@@ -1,11 +1,13 @@
 # Size budgets for release binaries, checked by `ultar-check budget`
 # (binary name -> maximum size in bytes). Binaries that are not built are skipped.
 [binaries]
+# Measured 22.11.2026 (x86_64 release, stripped): ultar-busd 0.41 MB, udrv 1.0 MB, ultar-i18n-check 0.40 MB.
+# Budget = measured size + about 50 % room; the aarch64 static builds are slightly larger.
+ultar-busd = 700_000
+udrv = 1_600_000
+ultar-i18n-check = 650_000
+# Targets for programs that do not exist yet (docs/PLAN.md §3.6).
 ultar-stage0 = 1_500_000
 ultar-init = 2_500_000
 ultar-devd = 3_000_000
-ultar-ctl = 2_000_000
 ultar-settingsd = 3_000_000
-ultar-pkg = 4_000_000
-ultar-update = 4_000_000
-ultar-check = 4_000_000
