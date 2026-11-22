@@ -181,7 +181,7 @@ Die Zeichnung zeigt die Latein-Richtung; in Arabisch ist alles gespiegelt (Über
 ### 5.4 Tastenkürzel (Standard, alle änderbar)
 Super: Übersicht · Super+A: App-Raster · Super+L: Sperren · Super+D: Arbeitsfläche zeigen · Super+E: Dateien · Super+T/Strg+Alt+T: Terminal ·
 Super+I: Einstellungen · Super+V: Zwischenablage · Super+Leertaste: Eingabesprache wechseln (Helfer dann Super+H) · Druck: Bildschirmfoto ·
-Alt+F4: Fenster schließen · Super+Pfeile: Andocken · Super+Bild↑/↓: Arbeitsfläche · Alt+Tab · Super+1…9: Dock-App n · Strg+Alt+Entf: Ein/Aus-Menü.
+Alt+F4: Fenster schließen · Super+Pfeile: Andocken · Super+Bild↑/↓: Arbeitsfläche · Alt+Tab · Super+1…9: Dock-App n · Super+P: Bildschirm-Modus · Strg+Alt+Entf: Ein/Aus-Menü.
 Super+Leertaste wechselt die Sprache (wie Ubuntu); der Helfer liegt auf Super+H.
 
 ### 5.5 Dieselbe Hülle auf Handy und Tablet
@@ -285,7 +285,7 @@ Bedingung = Fähigkeit, ohne die der Bereich nicht erscheint.
 | **Netzwerk** (network) | Kabel: Zustand, Geschwindigkeit, IPv4/IPv6 automatisch/fest, DNS, Routen, MTU · VPN: hinzufügen (WireGuard, Datei importieren), an/aus, „immer an“ mit Sperre · Proxy · Brandmauer: Profil (öffentlich/privat), offene Dienste |
 | **Mobilfunk** (modem) | Daten an/aus · Roaming · bevorzugte Netzart · Netzwahl automatisch/manuell · Zugangspunkt · SIM-PIN · Verbrauch + Limit · zweite SIM |
 | **Bluetooth** (bluetooth) | an/aus · sichtbar · Geräte koppeln/verbinden/entfernen · je Gerät: Art, Akku, Tonprofil |
-| **Anzeige** (display) | Anordnung · Hauptbildschirm · spiegeln/erweitern · Auflösung · Bildwiederholrate (variabel) · Skalierung · Ausrichtung · Nachtlicht (Plan, Wärme) · HDR (wenn möglich) · Farbprofil · Helligkeit, automatisch (Sensor) |
+| **Anzeige** (display) | **Anordnung:** Bildschirme als nummerierte Rechtecke, per Ziehen an die echte Lage anpassen (rasten an Kanten ein); „Bildschirme kennzeichnen“ (Nummer groß auf jedem Bildschirm), „Erkennen“ · **Modus bei mehreren Bildschirmen:** Erweitern · Spiegeln (gleiche Auflösung wird automatisch gewählt; wählbar, welche Bildschirme spiegeln) · Nur ein Bildschirm · **Schnellwahl Super+P:** Nur dieser Rechner · Spiegeln · Erweitern · Nur zweiter Bildschirm · **Je Bildschirm:** Hauptbildschirm (Leiste, neue Apps, Anmeldebildschirm), Auflösung (empfohlene markiert), Größe der Elemente 100–300 %, Bildwiederholrate (variabel wenn möglich), Ausrichtung (quer/hoch/gedreht), HDR, Farbprofil, Helligkeit (auch externer Bildschirm über DDC, wenn unterstützt), Übergröße-Ausgleich (TV) · **Allgemein:** Nachtlicht (Plan, Wärme), Fensterlage je Bildschirm merken, Leiste/Dock auf Haupt- oder allen Bildschirmen, Verhalten bei zugeklapptem Deckel mit externem Bildschirm · **Sicherheit:** jede Änderung von Auflösung/Modus/Anordnung fragt „Behalten?“ und nimmt sich nach 15 s zurück · gemerkt wird je Bildschirm-Kombination (Dock zu Hause ≠ Beamer im Büro) |
 | **Ton** (audio) | Ausgabegerät, Lautstärke, Balance, Test · Eingabegerät, Pegel-Anzeige · Lautstärke je App · Systemklänge (Thema, Lautstärke) · Über-Verstärkung an/aus |
 | **Energie** (immer; Akku-Teile nur mit battery) | Modus Leistung/Ausgewogen/Sparen · Akku-Stand, Verlauf, Zustand · Ladegrenze (80 %) · Bildschirm dunkel/aus nach · Bereitschaft nach (Netz/Akku) · Netzschalter-/Deckel-Aktion · Akku in % zeigen · Sparen automatisch bei x % |
 | **Arbeitsfläche & Dock** | Dock: Lage, Größe, ausblenden, alle Bildschirme, Papierkorb/Datenträger zeigen · Schreibtisch-Symbole: an, Größe, Anfangsecke · Leiste: Sekunden, Wochentag, Datum, Hijri |
@@ -365,6 +365,11 @@ Bewusst **anders** als Ubuntu: Arabisch zuerst · Rechte je App für alle Apps (
 Treiber-Schritt im Installer · Komponenten statt fester App-Auswahl · Diagnoseberichte standardmäßig aus.
 
 ---
+
+## 10b. Entwurfsbilder
+
+Die Bilder zur Freigabe liegen auf der Entwurfsfläche „Ultar OS – Desktop-Entwurf“ (claude.ai, Design). Stil: an Windows 11
+angelehnt (zentrierte Symbole, runde Ecken, Einstellungen mit Seitenleiste und Karten), eigene Marke und Farben.
 
 ## 11. Entscheidungen (22.11.2026)
 
