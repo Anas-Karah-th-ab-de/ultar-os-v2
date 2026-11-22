@@ -80,12 +80,13 @@ impl SourceFile {
     }
 }
 
-/// Whether a path is test code by convention (`tests/`, `benches/`, `tests.rs`, `*_test(s).rs`).
+/// Whether a path is test code by convention (`tests/`, `benches/`, `tests.rs`, `testkit.rs`, `*_test(s).rs`).
 pub fn is_test_path(path: &str) -> bool {
     let mut parts: Vec<&str> = path.split('/').collect();
     let file = parts.pop().unwrap_or("");
     parts.iter().any(|p| *p == "tests" || *p == "benches")
         || file == "tests.rs"
+        || file == "testkit.rs"
         || file.ends_with("_test.rs")
         || file.ends_with("_tests.rs")
 }

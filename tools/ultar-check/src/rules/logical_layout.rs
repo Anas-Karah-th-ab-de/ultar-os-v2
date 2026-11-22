@@ -8,6 +8,9 @@ use crate::scan::{SourceFile, TokenKind};
 /// Areas that contain layout code.
 const CHECKED_PREFIXES: [&str; 2] = ["platform/", "apps/"];
 
+/// The toolkit is the one place that turns start/end into physical sides, so it names them.
+const RESOLVER_PREFIXES: [&str; 1] = ["platform/ultar-ui/"];
+
 /// Identifier parts that name a physical side.
 const PHYSICAL_SIDES: [&str; 2] = ["left", "right"];
 
@@ -17,7 +20,10 @@ const MARKER: &str = "physical";
 /// Flags identifiers with a `left`/`right` part unless the line is marked `// physical`.
 pub fn check(files: &[SourceFile]) -> Vec<Finding> {
     let mut findings = Vec::new();
-    for file in files.iter().filter(|f| f.is_under(&CHECKED_PREFIXES)) {
+    for file in files
+        .iter()
+        .filter(|f| f.is_under(&CHECKED_PREFIXES) && !f.is_under(&RESOLVER_PREFIXES))
+    {
         let mut last_line = 0;
         for token in &file.code {
             let candidate = token.kind == TokenKind::Ident

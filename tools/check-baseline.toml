@@ -310,7 +310,7 @@ count = 1
 
 [[entry]]
 rule = "paths"
-path = "system/services/ultar-cloud/src/lib.rs"
+path = "system/services/ultar-cloud/src/device.rs"
 count = 2
 
 [[entry]]
@@ -436,11 +436,6 @@ count = 1
 [[entry]]
 rule = "edition"
 path = "system/core/ultar-apps/src/lib.rs"
-count = 1
-
-[[entry]]
-rule = "edition"
-path = "system/hal/ultar-hal-system/src/lib.rs"
 count = 1
 
 [[entry]]
@@ -780,11 +775,6 @@ count = 1
 
 [[entry]]
 rule = "text"
-path = "server/ultraos-server/src/main.rs"
-count = 4
-
-[[entry]]
-rule = "text"
 path = "server/ultraos-server/src/verbund.rs"
 count = 3
 
@@ -836,7 +826,7 @@ count = 2
 [[entry]]
 rule = "text"
 path = "system/core/ultar-pkg/src/lib.rs"
-count = 8
+count = 9
 
 [[entry]]
 rule = "text"
@@ -1181,7 +1171,7 @@ count = 3
 [[entry]]
 rule = "size"
 path = "kernel/ultar-kern/src/syscall.rs"
-count = 7
+count = 8
 
 [[entry]]
 rule = "size"
@@ -1516,21 +1506,6 @@ count = 1
 [[entry]]
 rule = "size"
 path = "platform/ultar-wm/src/x11.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "server/ultraos-server/src/main.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "server/ultraos-server/src/signal.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "server/ultraos-server/src/verbund.rs"
 count = 1
 
 [[entry]]
@@ -2465,23 +2440,8 @@ count = 22
 
 [[entry]]
 rule = "unwrap"
-path = "server/ultraos-server/src/auth.rs"
-count = 1
-
-[[entry]]
-rule = "unwrap"
-path = "server/ultraos-server/src/main.rs"
-count = 15
-
-[[entry]]
-rule = "unwrap"
-path = "server/ultraos-server/src/signal.rs"
-count = 4
-
-[[entry]]
-rule = "unwrap"
-path = "server/ultraos-server/src/verbund.rs"
-count = 11
+path = "server/cloud-e2e/src/lib.rs"
+count = 20
 
 [[entry]]
 rule = "unwrap"

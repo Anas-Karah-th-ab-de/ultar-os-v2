@@ -223,17 +223,17 @@ fn unwrap_baseline_ratchet() {
 fn physical_sides_are_flagged_in_platform_and_apps() {
     let f = Fixture::new();
     let source = "pub struct Insets {\n    pub left: u32,\n    pub paddingRight: u32,\n    pub start: u32,\n}\nfn f(i: &Insets) -> u32 { i.left + i.left }\nconst MARGIN_LEFT: u32 = 1;\nfn leftover() -> u32 { let brightness = 1; brightness }\nlet s = \"left\"; // left in a comment\n";
-    f.write("platform/ultar-ui/src/lib.rs", source);
+    f.write("platform/shell-desktop/src/lib.rs", source);
     f.write("apps/phone/src/lib.rs", "fn align_right() {}\n");
     f.write("system/services/net/src/lib.rs", source);
     assert_eq!(
         f.lines(Rule::LogicalLayout),
         [
             "apps/phone/src/lib.rs:1: logical-layout: identifier `align_right` uses left/right; use start/end or mark the line `// physical`",
-            "platform/ultar-ui/src/lib.rs:2: logical-layout: identifier `left` uses left/right; use start/end or mark the line `// physical`",
-            "platform/ultar-ui/src/lib.rs:3: logical-layout: identifier `paddingRight` uses left/right; use start/end or mark the line `// physical`",
-            "platform/ultar-ui/src/lib.rs:6: logical-layout: identifier `left` uses left/right; use start/end or mark the line `// physical`",
-            "platform/ultar-ui/src/lib.rs:7: logical-layout: identifier `MARGIN_LEFT` uses left/right; use start/end or mark the line `// physical`",
+            "platform/shell-desktop/src/lib.rs:2: logical-layout: identifier `left` uses left/right; use start/end or mark the line `// physical`",
+            "platform/shell-desktop/src/lib.rs:3: logical-layout: identifier `paddingRight` uses left/right; use start/end or mark the line `// physical`",
+            "platform/shell-desktop/src/lib.rs:6: logical-layout: identifier `left` uses left/right; use start/end or mark the line `// physical`",
+            "platform/shell-desktop/src/lib.rs:7: logical-layout: identifier `MARGIN_LEFT` uses left/right; use start/end or mark the line `// physical`",
         ]
     );
 }

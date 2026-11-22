@@ -6,7 +6,11 @@ use crate::msg::Key;
 use crate::scan::{ident_at, path_sep_at, punct_at, SourceFile, Token};
 
 /// Crates that may look at the edition directly.
-const ALLOWED_PREFIXES: [&str; 2] = ["system/core/ultar-profile/", "system/core/ultar-init/"];
+const ALLOWED_PREFIXES: [&str; 3] = [
+    "system/core/ultar-profile/",
+    "system/core/ultar-init/",
+    "system/hal/ultar-hal-system/",
+];
 
 const EDITION_TYPE: &str = "Edition";
 const PROFILE_CRATE: &str = "ultar_profile";
