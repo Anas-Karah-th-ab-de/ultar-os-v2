@@ -68,7 +68,7 @@ Der Kern-Test braucht `rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf 
 
 ## Weitere Dokumente
 
-[Plan](docs/PLAN.md) · [Stand](docs/STATUS.md) · [Treiberziele](docs/DRIVER-TARGETS.md) ·
+[Plan](docs/PLAN.md) · [Desktop, Installation, Komponenten](docs/DESKTOP-SPEC.md) · [Stand](docs/STATUS.md) · [Treiberziele](docs/DRIVER-TARGETS.md) ·
 [Schnittstellen der neuen Bausteine](docs/integration/) · [Texte für die Webseite](docs/homepage/) ·
 [Dokumente des Vorgängers](docs/legacy/)
 
