@@ -1,0 +1,5 @@
+Noto Sans, Noto Sans Arabic – Copyright Google LLC.
+Lizenz: SIL Open Font License 1.1 (https://openfontlicense.org). Unverändert übernommen.
+
+DejaVu Sans Mono (Code-Editor) – Copyright Bitstream, Inc. / DejaVu-Änderungen gemeinfrei.
+Lizenz: Bitstream Vera Fonts License (frei verwendbar und weitergebbar, siehe https://dejavu-fonts.github.io/License.html). Unverändert übernommen.

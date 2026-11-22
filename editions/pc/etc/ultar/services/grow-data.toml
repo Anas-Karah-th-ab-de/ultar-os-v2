@@ -1,0 +1,9 @@
+# Erster Start: Datenpartition „ultar-data“ auf den freien Platz des Datenträgers vergrößern
+# (growpart + resize2fs im laufenden Betrieb). Danach Merker /data/ultar/.grown – es passiert nichts mehr.
+editions = ["desktop", "server"]
+after = ["coldplug"]
+compat = true
+exec = "/bin/sh"
+args = ["-c", "M=/data/ultar/.grown; [ -f $M ] && exit 0; D=$(awk '$2==\"/data\"{print $1}' /proc/mounts | head -1); [ -b \"$D\" ] || exit 0; N=${D##*/}; P=$(cat /sys/class/block/$N/partition) || exit 0; K=$(basename $(readlink -f /sys/class/block/$N/..)); mkdir -p /data/ultar; O=$(growpart /dev/$K $P 2>&1); R=$?; echo \"$O\"; if [ $R -eq 0 ]; then resize2fs $D && : > $M; elif echo \"$O\" | grep -q NOCHANGE; then : > $M; fi; exit 0"]
+oneshot = true
+restart = "never"

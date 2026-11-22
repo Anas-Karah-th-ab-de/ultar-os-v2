@@ -1,0 +1,27 @@
+{
+  "pci": "00:01.0",
+  "hersteller": "1234",
+  "geraet": "1111",
+  "subsystem": "1af4:1100",
+  "klasse": "030000",
+  "rev": 2,
+  "art": "Grafik (VGA)",
+  "bauplan": "vga-fb",
+  "norm": "VGA/Bochs-Bildspeicher (VBE-DISPI) bzw. GOP-Übernahme",
+  "bars": [
+    {
+      "bar": 0,
+      "adresse": "0x80000000",
+      "groesse": 16777216,
+      "io": false
+    },
+    {
+      "bar": 2,
+      "adresse": "0x810c6000",
+      "groesse": 4096,
+      "io": false
+    }
+  ],
+  "faehigkeiten": [],
+  "fehler": null
+}

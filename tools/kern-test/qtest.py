@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Ultar-Kern in QEMU starten und Befehle über die serielle Konsole schicken.
+   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)"""
+import os, re, subprocess, sys, time, select
+
+img = sys.argv[1]
+cmds = sys.argv[2:]
+code = "/usr/share/OVMF/OVMF_CODE_4M.fd"
+vars_ = "/tmp/qtest-vars.fd"
+subprocess.run(["cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars_], check=True)
+args = ["qemu-system-x86_64", "-machine", "q35", "-m", os.environ.get("MEM", "1024"), "-smp", os.environ.get("SMP", "4"),
+        "-cpu", os.environ.get("CPU", "max"), "-display", "none", "-no-reboot",
+        "-drive", f"if=pflash,format=raw,readonly=on,file={code}", "-drive", f"if=pflash,format=raw,file={vars_}",
+        "-drive", f"file={img},if=none,id=b,format=raw", "-device", os.environ.get("DEV", "virtio-blk-pci") + ",drive=b",
+        "-netdev", os.environ.get("NETDEV", "user,id=n"), "-device", os.environ.get("NIC", "virtio-net-pci") + ",netdev=n", "-serial", "stdio"] + os.environ.get("QARGS", "").split()
+p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+buf = b""
+
+# Eingabeaufforderung: "ultar-kern:/pfad> " (optional mit Tastatur-Kennung)
+PROMPT = re.compile(rb"ultar-kern[^\n>]*> ")
+
+def read_until(pat, timeout):
+    global buf
+    end = time.time() + timeout
+    while time.time() < end:
+        r, _, _ = select.select([p.stdout], [], [], 0.2)
+        if r:
+            d = os.read(p.stdout.fileno(), 65536)
+            if not d:
+                break
+            buf += d
+            sys.stdout.write(d.decode("utf-8", "replace")); sys.stdout.flush()
+            if (re.search(PROMPT, buf) if pat == "PROMPT" else pat.encode() in buf):
+                return True
+    return False
+
+ok = read_until("PROMPT", 60)
+for c in cmds:
+    buf = b""
+    if c.startswith("@"):  # Eingabe ohne auf Bereitschaft zu warten
+        time.sleep(1.0)
+        p.stdin.write(c[1:].encode().replace(b"\\n", b"\n") + b"\r"); p.stdin.flush()
+        read_until("PROMPT", 5)  # Bereitschaft abholen, sonst gilt sie für den nächsten Befehl
+        continue
+    p.stdin.write(c.encode() + b"\r"); p.stdin.flush()
+    read_until("PROMPT", float(os.environ.get("WAIT", "40")))
+p.kill()

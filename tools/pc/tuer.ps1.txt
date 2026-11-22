@@ -1,0 +1,3 @@
+Hinweis: Der Tür-Helfer tuer.ps1 liegt auf dem PC unter UltarFlash\a30x\tuer.ps1.
+Er wartet, bis COM13 frei ist, schiebt Dateien (upush2) und führt genau einen Befehl aus – ohne das
+Banner-Warten von ucmd.ps1 (das bei jedem Aufruf die volle Wartezeit kostete).

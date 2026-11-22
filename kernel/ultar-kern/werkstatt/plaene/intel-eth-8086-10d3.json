@@ -1,0 +1,44 @@
+{
+  "pci": "00:03.0",
+  "hersteller": "8086",
+  "geraet": "10d3",
+  "subsystem": "8086:0000",
+  "klasse": "020000",
+  "rev": 0,
+  "art": "Ethernet",
+  "bauplan": "intel-eth",
+  "norm": "Intel-Ethernet-Datenblatt (e1000/e1000e/igc, öffentlich)",
+  "bars": [
+    {
+      "bar": 0,
+      "adresse": "0x810a0000",
+      "groesse": 131072,
+      "io": false
+    },
+    {
+      "bar": 1,
+      "adresse": "0x81080000",
+      "groesse": 131072,
+      "io": false
+    },
+    {
+      "bar": 2,
+      "adresse": "0x60e0",
+      "groesse": 32,
+      "io": true
+    },
+    {
+      "bar": 3,
+      "adresse": "0x810c0000",
+      "groesse": 16384,
+      "io": false
+    }
+  ],
+  "faehigkeiten": [
+    1,
+    5,
+    16,
+    17
+  ],
+  "fehler": null
+}

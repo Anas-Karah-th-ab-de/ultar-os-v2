@@ -1,0 +1,23 @@
+# ultar-llm – Einstellungen (Vorgaben). Eigene Änderungen gehören nach /data/ultar/llm.toml
+# (Desktop zusätzlich ~/.config/ultar/llm.toml). Nicht gesetzte Werte wählt der Dienst nach Gerät:
+#   Handy/Tablet: Threads = schnelle Kerne (2–4), Kontext 4096, KV-Cache Q8, Entladen nach 5 min,
+#                 Pause unter 10 % Akku (ohne Ladegerät) und über 75 °C.
+#   Desktop/PC:   Threads = physische Kerne, Kontext 8192–16384, Entladen nach 30 min.
+# Wirksame Werte anzeigen: ultar-llm info     Tempo messen und Threads empfehlen: ultar-llm bench
+
+# model = "/data/ultar/models/Qwen3-1.7B-Q4_K_M.gguf"   # leer = model.gguf, sonst größtes passendes
+# model_dirs = ["/data/ultar/models", "/data/ultar/agent"]
+# listen = "127.0.0.1:8080"        # "" = kein TCP; andere Rechner nur mit allow_remote = true + api_key
+# socket = "/run/ultar/llm.sock"
+# ctx = 4096
+# threads = 2
+# threads_batch = 8
+# kv_q8 = true
+# big_cores_only = false
+# idle_unload_secs = 300
+# preload = false
+# min_battery = 10
+# max_temp_c = 75.0
+# unload_pressure = 10.0
+# mem_reserve_mb = 500
+# default_max_tokens = 512

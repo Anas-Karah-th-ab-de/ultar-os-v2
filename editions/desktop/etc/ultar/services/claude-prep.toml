@@ -1,0 +1,8 @@
+# Claude-Startmenü-Einträge und Arbeitsordner bereitstellen (Desktop-Ausgabe). Die Skripte liegen im Kernsystem;
+# der Ubuntu-Bereich sieht sie unter /data/ultar/claude. Einträge in /data/ultar/launchers erscheinen in
+# Ultar-Desktop und Touch-Oberfläche. Installation von Claude Code geschieht beim ersten Start des Eintrags.
+editions = ["desktop"]
+exec = "/bin/sh"
+args = ["-c", "for i in $(seq 1 60); do [ -d /data/ultar ] && break; sleep 1; done; mkdir -p /data/ultar/claude /data/ultar/launchers /data/ultar/dev; cp /usr/lib/ultar/claude-setup.sh /usr/lib/ultar/claude-session.sh /data/ultar/claude/; printf '[Desktop Entry]\\nType=Application\\nName=Claude Code\\nName[ar]=Claude Code\\nComment=Claude mit deinem Abo: Programmieren, System steuern\\nExec=sh /data/ultar/claude/claude-session.sh code\\nIcon=claude\\nCategories=Development;\\n' > /data/ultar/launchers/ultar-claude-code.desktop; printf '[Desktop Entry]\\nType=Application\\nName=Claude\\nComment=claude.ai im eigenen Fenster\\nExec=sh /data/ultar/claude/claude-session.sh web\\nIcon=claude\\nCategories=Network;\\n' > /data/ultar/launchers/ultar-claude.desktop; [ -f /data/ultar/dev/CLAUDE.md ] || cp /usr/lib/ultar/CLAUDE-dev.md /data/ultar/dev/CLAUDE.md"]
+oneshot = true
+restart = "never"

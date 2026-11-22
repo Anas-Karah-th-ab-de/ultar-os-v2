@@ -1,0 +1,17 @@
+# /etc/caddy/Caddyfile – TLS (ACME) vor ultraos-server. WebSockets (/v1/signal, /v1/verbund/relais) laufen mit durch.
+ultar.code-craft.tech {
+	encode zstd gzip
+	# Verbund-Relais: lange Verbindungen, keine Puffer
+	@relais path /v1/verbund/relais
+	reverse_proxy @relais 127.0.0.1:8080 {
+		flush_interval -1
+		stream_timeout 24h
+		stream_close_delay 5s
+	}
+	reverse_proxy 127.0.0.1:8080
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}

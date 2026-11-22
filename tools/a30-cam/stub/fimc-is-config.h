@@ -1,0 +1,2 @@
+#define USE_DEBUG_LIBRARY_VER
+#define CAPTURE_NODE_MAX 12

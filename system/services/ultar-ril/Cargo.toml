@@ -1,0 +1,17 @@
+[package]
+name = "ultar-ril"
+version = "0.6.0"
+edition = "2021"
+license = "Proprietary"
+
+[lib]
+name = "ultar_ril"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-ril"
+path = "src/main.rs"
+
+[dependencies]
+ultar-radio = { path = "../ultar-radio" }
+libc = "0.2"

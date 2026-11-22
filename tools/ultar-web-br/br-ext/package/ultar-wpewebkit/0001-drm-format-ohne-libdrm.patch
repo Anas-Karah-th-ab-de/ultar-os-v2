@@ -1,0 +1,10 @@
+WPE 2.54.3 baut ohne libdrm nicht (DRM_FORMAT_XRGB8888 fehlt). Wert der Vierzeichen-Kennung direkt setzen.
+
+--- a/Source/WebKit/UIProcess/wpe/AcceleratedBackingStore.cpp
++++ b/Source/WebKit/UIProcess/wpe/AcceleratedBackingStore.cpp
+@@ -26,2 +26,5 @@
+ #include "config.h"
+ #include "AcceleratedBackingStore.h"
++#ifndef DRM_FORMAT_XRGB8888
++#define DRM_FORMAT_XRGB8888 0x34325258
++#endif

@@ -1,0 +1,13 @@
+[package]
+name = "ultar-vpn"
+version.workspace = true
+edition.workspace = true
+description = "WireGuard-Client für Ultar: gesamter Verkehr über den eigenen Server, mit Killswitch."
+
+[lib]
+name = "ultar_vpn"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uvpn"
+path = "src/bin/uvpn.rs"

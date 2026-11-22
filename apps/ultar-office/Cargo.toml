@@ -1,0 +1,23 @@
+[package]
+name = "ultar-office"
+version.workspace = true
+edition.workspace = true
+description = "Ultar OS – eigene Büro-Apps in reinem Rust: PDF lesen/rendern, Word (.docx), Excel (.xlsx/.csv) mit Formeln, Texteditor (Notepad++-Art). Ohne C-Bibliotheken, ohne Ubuntu-Bereich – läuft auf dem Linux-Kern und dem Ultar-Kern."
+
+[dependencies]
+hayro = "0.9"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
+encoding_rs = "0.8"
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+png = "0.17"
+
+[lib]
+name = "ultar_office"
+path = "src/lib.rs"
+
+[[bin]]
+name = "udoc"
+path = "src/bin/udoc.rs"

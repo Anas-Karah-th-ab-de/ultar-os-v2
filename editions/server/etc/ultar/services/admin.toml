@@ -1,0 +1,10 @@
+# Web-Verwaltung (HTTPS, Port 9443): Zustand, Dienste, Apps installieren, Ubuntu-Pakete, Neustart.
+# Anfangskennwort und Zertifikats-Fingerabdruck erscheinen beim ersten Start auf dem Bildschirm.
+editions = ["server"]
+exec = "/usr/bin/ultar-admin"
+args = ["serve", "--listen", "[::]:9443"]
+after = ["net"]
+console = true
+restart = "always"
+[cgroup]
+"memory.max" = "128M"

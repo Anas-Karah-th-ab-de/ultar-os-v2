@@ -1,0 +1,28 @@
+#!/bin/bash
+# TEST-ATTRAPPE für adb: spielt ein Samsung A30 aus dem Ordner $FAKE_DEV nach (kein echtes Gerät).
+D=${FAKE_DEV:?}; state=$(cat "$D/state" 2>/dev/null || echo adb)
+HAD_S=""; [ "$1" = "-s" ] && HAD_S=1
+[ "$1" = "-s" ] && { [ "$2" = "R58M123ABC" ] || { echo "adb: device '$2' not found" >&2; exit 1; }; shift 2; }
+# wie echtes adb: bei mehreren gelisteten Geräten ohne -s abbrechen
+if [ -f "$D/multi" ] && [ -z "$HAD_S" ] && [ "$1" != devices ] && [ "$1" != version ] && [ "$1" != start-server ]; then echo "adb: more than one device/emulator" >&2; exit 1; fi
+rw() { sed -e "s#/dev/block#$D/dev/block#g" -e "s#/vendor#$D/vendor#g" -e "s#/system#$D/system#g" -e "s#/proc/#$D/proc/#g" -e "s#/sys/#$D/sys/#g" <<<"$1"; }
+case "$1" in
+  version) echo "Android Debug Bridge (Attrappe)";;
+  start-server) ;;
+  devices) echo "List of devices attached"; [ "$state" = adb ] && printf 'R58M123ABC\tdevice\n'; [ "$state" = unauthorized ] && printf 'R58M123ABC\tunauthorized\n'; [ -f "$D/multi" ] && printf 'emulator-5554\toffline\n'; true;;
+  reboot) echo "$2" > "$D/state";;
+  pull) src=$(rw "$2"); [ -e "$src" ] || { echo "adb: error: remote object '$2' does not exist" >&2; exit 1; }
+        if [ -d "$src" ]; then cp -r "$src/." "$3/"; else cp "$src" "$3"; fi;;
+  shell|exec-out) verb=$1; shift; cmd="$*"
+    case "$cmd" in
+      "getprop ro.product.model") echo "SM-A305F";; "getprop ro.product.device") echo "a30";; "getprop ro.product.brand") echo "samsung";;
+      "getprop ro.build.fingerprint") echo "samsung/a30dd/a30:11/RP1A.200720.012/A305FDDU6CUI3:user/release-keys";;
+      "getprop ro.boot.flash.locked") cat "$D/locked" 2>/dev/null || echo 0;; getprop\ *) echo "";;
+      "uname -r") echo "4.4.177-22232766";; "dumpsys battery") echo "  level: $(cat "$D/battery" 2>/dev/null || echo 80)";;
+      *) c="$cmd"; if [[ "$c" == su\ -c\ * ]]; then c="${c#su -c }"; c="${c#\'}"; c="${c%\'}"; fi
+         [ "$c" = id ] && { echo "uid=0(root) gid=0(root)"; exit 0; }
+         [ "$c" = getprop ] && { echo "[ro.product.model]: [SM-A305F]"; exit 0; }
+         # Ausgabe wie auf dem Gerät: ohne den Attrappen-Ordner im Pfad (Binärdaten von exec-out unverändert)
+         if [ "$verb" = shell ]; then bash -c "$(rw "$c")" | sed "s#$D##g"; exit ${PIPESTATUS[0]}; else bash -c "$(rw "$c")"; fi;;
+    esac;;
+esac

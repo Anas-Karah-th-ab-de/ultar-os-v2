@@ -1,0 +1,7 @@
+[package]
+name = "ultar-ime"
+version.workspace = true
+edition.workspace = true
+description = "Ultar-Tastatur: Belegungen, Maße, Trefferflächen, Sonderzeichen – ohne Zeichnen, für Shell, Desktop und Browser"
+
+[dependencies]

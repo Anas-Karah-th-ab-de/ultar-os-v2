@@ -1,0 +1,26 @@
+# ultar-llm als systemd-Dienst – für Ultar-Desktop auf einem normalen Ubuntu/Debian-PC oder Server.
+# (Auf Ultar OS selbst startet ultar-init den Dienst: /etc/ultar/services/llm.toml)
+#   sudo cp ultar-llm.service /etc/systemd/system/ && sudo systemctl enable --now ultar-llm
+# Modelle: /var/lib/ultar/models/*.gguf   Einstellungen: /etc/ultar/llm.toml
+[Unit]
+Description=Ultar LLM – lokales Sprachmodell (OpenAI-kompatibel auf 127.0.0.1:8080)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ultar-llm serve --socket /run/ultar/llm.sock
+RuntimeDirectory=ultar
+RuntimeDirectoryMode=0755
+DynamicUser=yes
+SupplementaryGroups=render video
+Environment=ULTAR_LLM_PROFILE=desktop
+Nice=5
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+MemoryHigh=90%
+
+[Install]
+WantedBy=multi-user.target

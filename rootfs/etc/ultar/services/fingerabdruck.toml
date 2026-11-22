@@ -1,0 +1,8 @@
+# Nur Handy-Ausgabe (Samsung-Hardware)
+editions = ["phone"]
+# Fingerabdruck (Samsung A30): Android-Umgebung unter /data/android mit Samsungs TEE- und
+# Fingerabdruckdiensten, Vermittler-Socket /run/ultar/fp.sock. Ohne /data/android beendet sich das
+# Skript ruhig (wartet eine Stunde). Siehe docs/A30-FINGERABDRUCK.md.
+exec = "/system/bin/sh"
+args = ["/data/android/fp-dienst.sh"]
+after = ["drivers"]

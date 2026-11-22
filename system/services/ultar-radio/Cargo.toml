@@ -1,0 +1,8 @@
+[package]
+name = "ultar-radio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Gemeinsames Mobilfunk-Modell: Zustand (SIM, Zellen), Vorgaben (Netzwahl), Smart-Zellwahl"
+
+[dependencies]

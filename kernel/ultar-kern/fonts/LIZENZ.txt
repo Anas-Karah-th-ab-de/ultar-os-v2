@@ -1,0 +1,1 @@
+Schriften: Terminus (SIL OFL 1.1) und Arabic-Fixed16 aus console-setup (frei verwendbar), PSF1-Format.

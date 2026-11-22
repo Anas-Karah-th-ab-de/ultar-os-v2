@@ -1,0 +1,20 @@
+[package]
+name = "ultar-cloud"
+version.workspace = true
+edition.workspace = true
+description = "Ultar-Cloud-Client: Konto/Login, eindeutige Nummer, VPN-Provisionierung, Store, OTA-Updates (gegen ultar.code-craft.tech)."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+ultar-vpn = { path = "../ultar-vpn" }
+ultar-pkg = { path = "../../core/ultar-pkg" }
+
+[lib]
+name = "ultar_cloud"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ucloud"
+path = "src/bin/ucloud.rs"

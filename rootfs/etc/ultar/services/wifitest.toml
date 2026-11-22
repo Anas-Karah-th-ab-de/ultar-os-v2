@@ -1,0 +1,5 @@
+# Nur Entwicklungs-Image: Test-Zugangspunkt "UltarTest" (Kennwort geheim1234) auf dem zweiten
+# simulierten Funkgerät (Modul mac80211_hwsim). Start: Kernel-Parameter ultar.start=wifitest
+manual = true
+exec = "/usr/lib/ultar/wifitest.sh"
+restart = "never"

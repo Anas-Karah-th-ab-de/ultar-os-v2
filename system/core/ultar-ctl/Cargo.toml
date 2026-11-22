@@ -1,0 +1,7 @@
+[package]
+name = "ultar-ctl"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ultar-sprache = { path = "../ultar-sprache" }

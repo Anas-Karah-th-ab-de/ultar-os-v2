@@ -1,0 +1,24 @@
+{
+  "pci": "00:04.0",
+  "hersteller": "1b36",
+  "geraet": "000d",
+  "subsystem": "1af4:1100",
+  "klasse": "0c0330",
+  "rev": 1,
+  "art": "USB 3 (xHCI)",
+  "bauplan": "xhci",
+  "norm": "eXtensible Host Controller Interface 1.2 (Intel)",
+  "bars": [
+    {
+      "bar": 0,
+      "adresse": "0xc000004000",
+      "groesse": 16384,
+      "io": false
+    }
+  ],
+  "faehigkeiten": [
+    17,
+    16
+  ],
+  "fehler": null
+}

@@ -1,0 +1,23 @@
+[package]
+name = "ultar-apps"
+version.workspace = true
+edition.workspace = true
+description = "Ultar OS – ein Installer für alle App-Formate: .uap (signiert), .deb, .apk, .exe, .msi, AppImage, Flatpak"
+
+[dependencies]
+ultar-sprache = { path = "../ultar-sprache" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+ultar-pkg = { path = "../ultar-pkg" }
+ultar-edition = { path = "../ultar-edition" }
+
+[lib]
+name = "ultar_apps"
+path = "src/lib.rs"
+
+[[bin]]
+name = "uapp"
+path = "src/bin/uapp.rs"

@@ -1,0 +1,61 @@
+# Baut das Ultar-Fenstersystem (platform/ultar-wm) als .deb für den Ubuntu-Bereich – x86_64 (PC) und arm64
+# (Galaxy A30, RK3588, Tablets). arm64 wird über Ubuntu-Multiarch quer übersetzt.
+# Ergebnis: Artefakt "ultar-wm-debs"; bei einem Tag v* zusätzlich am Release.
+name: ultar-wm
+on:
+  push:
+    paths: ["platform/ultar-wm/**", "scripts/package-ultar-wm.sh", ".github/workflows/ultar-wm.yml", "rootfs/etc/ultar/desktop.toml"]
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Abhängigkeiten
+        run: |
+          set -e
+          LIBS="libxkbcommon-dev libwayland-dev libgbm-dev libegl-dev libgles-dev libudev-dev libseat-dev libinput-dev libdrm-dev libpixman-1-dev"
+          if [ "${{ matrix.arch }}" = arm64 ]; then
+            sudo dpkg --add-architecture arm64
+            # Hauptquellen nur für amd64, ports.ubuntu.com für arm64
+            sudo sed -i 's/^Types: deb$/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
+            printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports\nSuites: noble noble-updates noble-security\nComponents: main universe\nArchitectures: arm64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n' | sudo tee /etc/apt/sources.list.d/arm64.sources
+            # amd64- und arm64-Spiegel sind nicht immer gleich aktuell: bei Versionskonflikt kurz warten und neu versuchen
+            for t in 1 2 3 4; do
+              # libinput-dev zieht über libwacom glib-dev nach, dessen arm64-Stand oft nicht zum amd64-Stand passt.
+              # libinput wird ohne pkg-config gelinkt – die Laufzeitbibliothek plus Verweis genügt.
+              sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config gcc-aarch64-linux-gnu libc6-dev-arm64-cross libinput10:arm64 $(for l in $LIBS; do [ $l = libinput-dev ] || printf '%s:arm64 ' $l; done) && break
+              [ $t = 4 ] && exit 1; sleep 90
+            done
+            sudo ln -sf libinput.so.10 /usr/lib/aarch64-linux-gnu/libinput.so
+            rustup target add aarch64-unknown-linux-gnu
+          else
+            sudo apt-get update
+            sudo apt-get install -y pkg-config $LIBS
+          fi
+      - name: Bauen und packen
+        run: |
+          set -e
+          if [ "${{ matrix.arch }}" = arm64 ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+            export PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=/ PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+            export ULTAR_WM_TARGET=aarch64-unknown-linux-gnu DEB_ARCH=arm64
+          fi
+          scripts/package-ultar-wm.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ultar-wm-${{ matrix.arch }}
+          path: dist/*.deb
+      - name: An Release hängen (nur bei Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.deb --clobber || true

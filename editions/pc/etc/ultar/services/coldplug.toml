@@ -1,0 +1,10 @@
+# PCs/Laptops/Server: Treiber für alle erkannten Geräte laden (Grafik, Netzwerk, WLAN, Ton, Eingabe …).
+# Liest die Gerätekennungen (modalias) aus /sys und lädt die passenden Module aus dem Ubuntu-Bereich –
+# dort liegen sie in genau der Version des laufenden Kernels (beide aus demselben Ubuntu-Paket).
+# Firmware (WLAN, Grafik) ebenfalls aus dem Ubuntu-Bereich.
+editions = ["desktop", "server"]
+compat = true
+exec = "/bin/sh"
+args = ["-c", "echo /compat/lib/firmware > /sys/module/firmware_class/parameters/path; cat /sys/bus/*/devices/*/modalias 2>/dev/null | sort -u | xargs -r modprobe -a -q -b 2>/dev/null; modprobe -a -q -b binder_linux tun wireguard fuse loop overlay snd_hda_intel 2>/dev/null; exit 0"]
+oneshot = true
+restart = "never"

@@ -1,0 +1,34 @@
+[Unit]
+Description=Ultar-Cloud Server (Konten, Anrufe, Store, OTA, VPN, Ultar-Verbund-Relais)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=ULTRAOS_BIND=127.0.0.1:8080
+Environment=ULTRAOS_DB=/var/lib/ultraos/ultraos.sqlite
+Environment=RUST_LOG=info
+EnvironmentFile=/etc/ultraos/secret.env
+ExecStart=/usr/local/bin/ultraos-server
+Restart=always
+RestartSec=1
+DynamicUser=yes
+StateDirectory=ultraos
+# Viele gleichzeitige Verbund-/Signal-WebSockets
+LimitNOFILE=65536
+# Härtung
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

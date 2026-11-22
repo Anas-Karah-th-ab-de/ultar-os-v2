@@ -1,0 +1,14 @@
+# Ultar-Verbund: Geräte (Handy, Laptop, Server, Platine) im Netz finden, koppeln, steuern, Leistung bündeln.
+# Der Dienst läuft immer, tut aber nichts, solange der Nutzer den Verbund nicht einschaltet
+# (Einstellungen → Verbund, `ultar-verbund an`, oder /proc/ultar/verbund auf dem Ultar-Kern).
+exec = "/usr/bin/ultar-verbund"
+args = ["dienst"]
+restart = "always"
+after = ["net"]
+
+[env]
+ULTAR_VERBUND_DIR = "/data/ultar/verbund"
+ULTAR_VERBUND_LOG = "1"
+
+[cgroup]
+"pids.max" = "512"

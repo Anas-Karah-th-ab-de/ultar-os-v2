@@ -1,0 +1,20 @@
+# Ultar-Desktop (Fenstersystem ultar-wm) – Vorgaben. Eigene Änderungen gehören nach /data/ultar/desktop.toml.
+
+# "auto": Tablet-Modus auf schmalen Bildschirmen (unter 900 Punkten Breite), sonst Desktop.
+# "desktop": Fenster frei verschiebbar.  "tablet": jedes Fenster füllt den Bildschirm.
+mode = "auto"
+
+# Sprache: leer = wie die Ultar-Oberfläche (/data/ultar/settings.toml)
+lang = ""
+
+# Terminal für Super+Enter (leer = foot, weston-terminal, gnome-terminal oder xterm, je nachdem, was installiert ist)
+terminal = ""
+
+# Programme, die beim Start mitlaufen
+autostart = []
+
+# Eigene Einträge im Startmenü (stehen vorne). Alle Programme mit .desktop-Datei erscheinen zusätzlich von selbst.
+# [[app]]
+# name = "KM POS"
+# exec = "kmpos-server --gui"
+# icon = "/usr/share/icons/hicolor/128x128/apps/kmpos.png"

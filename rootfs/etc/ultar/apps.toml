@@ -1,0 +1,9 @@
+# Apps von KM Code Craft. Installiert wird das .deb aus dem neuesten GitHub-Release
+# (Dateiname endet auf _arm64.deb / _amd64.deb). Eigene Einträge: /data/ultar/apps.toml
+
+[[app]]
+id = "kmpos-server"
+name = "KM POS Server"
+description = "Universal POS / WMS / ERP – zentraler Knoten (Master) für Kassen, Lager und Küchenanzeigen im lokalen Netz"
+package = "kmpos-server"
+github = "Anas-Karah-th-ab-de/universal-pos-erp"

@@ -1,0 +1,18 @@
+WPE bietet keine öffentliche Einstellung, um die Hardwarebeschleunigung abzuschalten (nur GTK).
+Ultar Web zeichnet ohne GPU: WEBKIT_DISABLE_HARDWARE_ACCELERATION=1 schaltet Skia auf CPU/Shared Memory.
+
+--- a/Source/WebKit/UIProcess/API/glib/WebKitSettings.cpp
++++ b/Source/WebKit/UIProcess/API/glib/WebKitSettings.cpp
+@@ -73,6 +73,13 @@
+         mathFontFamily = preferences->mathFontFamily().utf8();
+         defaultCharset = preferences->defaultTextEncodingName().utf8();
++#if PLATFORM(WPE)
++        if (const char* v = getenv("WEBKIT_DISABLE_HARDWARE_ACCELERATION"); v && strcmp(v, "0")) {
++            preferences->setHardwareAccelerationEnabled(false);
++            preferences->setAcceleratedCompositingEnabled(false);
++            preferences->setForceCompositingMode(false);
++        }
++#endif
+ #if ENABLE(WEB_RTC)
+         webrtcUDPPortsRange = preferences->webRTCUDPPortRange().utf8();
+ #endif

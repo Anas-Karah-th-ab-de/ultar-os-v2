@@ -1,0 +1,6 @@
+# Brandmauer des Ultar-Kerns – Standard: von außen ist NICHTS erreichbar.
+# Eine Regel je Zeile, z. B.:
+#   offen 22          (TCP-Port 22 für SSH öffnen)
+#   offen udp 5353
+#   ping an           (auf Ping antworten)
+# Verbund-Ports (47800/47801) öffnen sich nur, solange der Ultar-Verbund AN ist.

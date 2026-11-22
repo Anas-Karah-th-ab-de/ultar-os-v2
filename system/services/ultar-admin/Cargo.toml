@@ -1,0 +1,23 @@
+[package]
+name = "ultar-admin"
+version.workspace = true
+edition.workspace = true
+description = "Ultar OS – Web-Verwaltung für Server und Desktop (HTTPS, Anmeldung, Dienste, Apps, Systemzustand)"
+
+[dependencies]
+axum = { version = "0.7", default-features = false, features = ["http1", "json", "query", "tokio"] }
+axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "time", "sync"] }
+futures-util = { version = "0.3", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+argon2 = "0.5"
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+nix = { version = "0.29", features = ["fs", "net", "hostname"] }
+ultar-apps = { path = "../../core/ultar-apps" }
+ultar-edition = { path = "../../core/ultar-edition" }

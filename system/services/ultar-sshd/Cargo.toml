@@ -1,0 +1,17 @@
+[package]
+name = "ultar-sshd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Entwickler-Zugang (SSH) für Ultar OS: Befehle, Kernprotokoll, Dateien (SFTP) und Weiterleitung zu Gerätediensten – reines Rust, statisch, läuft auf dem Ultar-Kern und auf dem Handy. Nur mit Schlüssel, nur wenn eingeschaltet."
+
+[dependencies]
+russh = { version = "0.65", default-features = false, features = ["ring", "flate2"] }
+russh-sftp = "4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "process", "sync", "time", "fs"] }
+libc = "0.2"
+getrandom = "0.2"
+anyhow = "1"
+# Bildschirmfoto direkt aus /dev/fb0 (ohne Oberfläche)
+png = "0.17"

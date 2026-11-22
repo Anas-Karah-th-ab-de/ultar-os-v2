@@ -1,0 +1,6 @@
+# Ubuntu-Bereich ohne eigene Partition (z. B. Galaxy A30): /data/compat wird auf /compat gelegt, sobald /data da ist.
+# Vorhandene Partition (LABEL=ultar-compat) hat Vorrang – dann ist /compat schon eingebunden und es passiert nichts.
+exec = "/bin/sh"
+args = ["-c", "for i in $(seq 1 60); do [ -d /data/compat/usr ] && break; sleep 1; done; [ -d /data/compat/usr ] || exit 0; grep -q ' /compat ' /proc/mounts || mount -o bind /data/compat /compat"]
+oneshot = true
+restart = "never"

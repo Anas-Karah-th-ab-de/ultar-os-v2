@@ -1,0 +1,13 @@
+[package]
+name = "ultar-notify"
+version.workspace = true
+edition.workspace = true
+description = "Benachrichtigungs-Schnittstelle für Ultar OS: Apps/Dienste melden Ereignisse (Anruf, SMS, Nachricht, System); die Oberfläche zeigt und alarmiert."
+
+[lib]
+name = "ultar_notify"
+path = "src/lib.rs"
+
+[[bin]]
+name = "unotify"
+path = "src/bin/unotify.rs"

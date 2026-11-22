@@ -1,0 +1,8 @@
+# SSH-Zugang auf dem Desktop: nur auf Wunsch (ultar-ctl start sshd bzw. Web-Verwaltung → Dienste)
+editions = ["desktop"]
+manual = true
+after = ["net"]
+exec = "/bin/sh"
+args = ["-c", "K=/data/ultar/ssh; mkdir -p $K /run/sshd; chmod 700 $K; for t in ed25519 ecdsa rsa; do [ -f $K/ssh_host_${t}_key ] || ssh-keygen -q -N \"\" -t $t -f $K/ssh_host_${t}_key; done; touch $K/authorized_keys; chmod 600 $K/authorized_keys; exec /usr/sbin/sshd -D -e -h $K/ssh_host_ed25519_key -h $K/ssh_host_ecdsa_key -h $K/ssh_host_rsa_key -o AuthorizedKeysFile=$K/authorized_keys -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o PermitRootLogin=prohibit-password"]
+compat = true
+restart = "always"

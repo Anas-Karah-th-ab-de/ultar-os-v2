@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ultar OS · Verwaltung</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div id="login" class="center hidden">
+  <form id="loginform" class="card login">
+    <img src="/logo.png" alt="KM Code Craft" class="logo">
+    <h1 data-t="title">Ultar OS</h1>
+    <p class="sub" data-t="login_sub"></p>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <button class="primary" data-t="login"></button>
+    <p id="loginerr" class="err"></p>
+    <div class="langs"><button type="button" data-lang="ar">العربية</button><button type="button" data-lang="en">English</button><button type="button" data-lang="de">Deutsch</button></div>
+  </form>
+</div>
+<div id="main" class="hidden">
+  <header>
+    <img src="/logo.png" alt="KM Code Craft" class="logo small">
+    <div class="brand"><b>Ultar OS</b><span id="edition"></span></div>
+    <nav>
+      <button data-tab="overview" data-t="t_overview" class="on"></button>
+      <button data-tab="services" data-t="t_services"></button>
+      <button data-tab="apps" data-t="t_apps"></button>
+      <button data-tab="system" data-t="t_system"></button>
+    </nav>
+    <div class="langs"><button data-lang="ar">ع</button><button data-lang="en">EN</button><button data-lang="de">DE</button></div>
+    <button id="logout" class="ghost" data-t="logout"></button>
+  </header>
+  <div id="initial" class="banner hidden" data-t="initial_pw"></div>
+  <section id="overview" class="tab">
+    <div class="grid" id="cards"></div>
+    <div class="card"><h2 data-t="net"></h2><div id="netlist" class="list"></div></div>
+    <div class="card"><h2 data-t="disks"></h2><div id="disklist" class="list"></div></div>
+  </section>
+  <section id="services" class="tab hidden">
+    <div class="card"><h2 data-t="t_services"></h2><table id="svc"><thead><tr><th data-t="svc_name"></th><th data-t="svc_state"></th><th>PID</th><th data-t="svc_restarts"></th><th data-t="svc_up"></th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="card hidden" id="logcard"><h2 id="logtitle"></h2><pre id="log"></pre></div>
+  </section>
+  <section id="apps" class="tab hidden">
+    <div class="card">
+      <h2 data-t="install"></h2>
+      <p class="sub" data-t="install_sub"></p>
+      <label id="drop" class="drop"><input type="file" id="file" hidden><span data-t="drop"></span></label>
+      <label class="check"><input type="checkbox" id="silent"> <span data-t="silent"></span></label>
+      <pre id="instlog" class="hidden"></pre>
+    </div>
+    <div class="card"><h2 data-t="installed"></h2><div id="applist" class="list"></div></div>
+    <div class="card">
+      <h2 data-t="ubuntu"></h2>
+      <form id="aptform" class="row"><input id="aptpkg" placeholder="nginx, postgresql, nodejs …" pattern="[a-z0-9+.\-]+" required><button class="primary" data-t="apt_install"></button><button type="button" id="aptrm" class="ghost" data-t="apt_remove"></button></form>
+      <pre id="aptlog" class="hidden"></pre>
+    </div>
+  </section>
+  <section id="system" class="tab hidden">
+    <div class="card"><h2 data-t="power"></h2><div class="row"><button id="reboot" class="ghost" data-t="reboot"></button><button id="poweroff" class="danger" data-t="poweroff"></button></div></div>
+    <div class="card"><h2 data-t="chpw"></h2>
+      <form id="pwform" class="col"><input id="oldpw" type="password" autocomplete="current-password" required><input id="newpw" type="password" autocomplete="new-password" minlength="10" required><input id="newpw2" type="password" autocomplete="new-password" minlength="10" required><button class="primary" data-t="save"></button><p id="pwmsg" class="sub"></p></form>
+    </div>
+    <div class="card"><h2 data-t="ssh"></h2><p class="sub" data-t="ssh_sub"></p>
+      <form id="sshform" class="col wide"><textarea id="sshkeys" rows="5" spellcheck="false" placeholder="ssh-ed25519 AAAA… name@pc"></textarea><button class="primary" data-t="save"></button><p id="sshmsg" class="sub"></p></form>
+    </div>
+    <div class="card"><h2 data-t="about"></h2><p class="sub">KM Code Craft · Mohamad Anas Kara Mohamad · محمد أنس قرة محمد · <a href="https://code-craft.tech" rel="noreferrer">code-craft.tech</a></p></div>
+  </section>
+  <div id="toast" class="toast hidden"></div>
+</div>
+</body>
+</html>

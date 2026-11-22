@@ -1,0 +1,21 @@
+2
+denylist
+[all]
+# Gefaehrliche/host-nahe Syscalls sperren (Container kann Host-Kernel weniger angreifen):
+kexec_load errno 1
+kexec_file_load errno 1
+init_module errno 1
+finit_module errno 1
+delete_module errno 1
+mount errno 1
+umount2 errno 1
+pivot_root errno 1
+swapon errno 1
+swapoff errno 1
+reboot errno 1
+settimeofday errno 1
+clock_settime errno 1
+setns errno 1
+unshare errno 1
+perf_event_open errno 1
+bpf errno 1

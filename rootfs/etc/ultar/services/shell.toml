@@ -1,0 +1,5 @@
+# Notfall-/Entwickler-Shell auf der Konsole: ultar-ctl start shell
+exec = "/bin/sh"
+console = true
+manual = true
+restart = "never"

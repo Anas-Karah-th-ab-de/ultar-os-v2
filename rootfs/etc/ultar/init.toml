@@ -1,0 +1,37 @@
+# Ultar OS – Systemkonfiguration
+hostname = "ultar"
+shutdown_grace_ms = 3000
+
+# Ubuntu-Kompatibilitätsbereich (eigene Partition). optional = kein Abbruch, wenn sie fehlt.
+[[mounts]]
+# Quelle: Partition mit diesem Namen auf irgendeinem Datenträger; sonst der feste Pfad (virtuelle Maschine)
+source = "LABEL=ultar-compat|/dev/vda"
+target = "/compat"
+fstype = "ext4"
+options = "noatime"
+optional = true
+
+# Nutzerdaten: Einstellungen der Oberfläche, Netzwerkkonfiguration
+[[mounts]]
+source = "LABEL=ultar-data|/dev/vdb"
+target = "/data"
+fstype = "ext4"
+options = "noatime"
+optional = true
+
+# Samsung-vendor (WLAN-/BT-Firmware: /vendor/etc/wifi/mx140.bin). A30: mmcblk0p26.
+# Nötig, damit der SCSC-Treiber die Firmware beim Start findet (sonst kommt der WLAN-Chip nicht hoch).
+[[mounts]]
+source = "LABEL=vendor|/dev/mmcblk0p26"
+target = "/vendor"
+fstype = "ext4"
+options = "ro,noatime"
+optional = true
+
+# EFS (echte WLAN-/Bluetooth-MAC: /efs/wifi/.mac.info). A30: mmcblk0p3.
+[[mounts]]
+source = "LABEL=efs|/dev/mmcblk0p3"
+target = "/efs"
+fstype = "ext4"
+options = "ro,noatime"
+optional = true

@@ -1,0 +1,9 @@
+# Alter Weg (Rückfall): llama-server aus llama.cpp im Ubuntu-Bereich. Nur nutzen, wenn ultar-llm fehlt:
+#   ultar-ctl stop llm && ultar-ctl start llm-compat
+manual = true
+compat = true
+exec = "/data/ultar/agent/llama-server"
+args = ["-m", "/data/ultar/agent/model.gguf", "--host", "127.0.0.1", "--port", "8080", "-c", "4096", "--parallel", "1"]
+restart = "on-failure"
+[cgroup]
+"cpu.weight" = "60"

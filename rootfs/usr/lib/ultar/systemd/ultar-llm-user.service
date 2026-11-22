@@ -1,0 +1,14 @@
+# ultar-llm für einen einzelnen Nutzer (ohne root):
+#   cp ultar-llm-user.service ~/.config/systemd/user/ultar-llm.service && systemctl --user enable --now ultar-llm
+# Modelle: ~/.local/share/ultar/models/*.gguf   Socket: $XDG_RUNTIME_DIR/ultar-llm.sock
+[Unit]
+Description=Ultar LLM (Nutzer) – lokales Sprachmodell
+
+[Service]
+ExecStart=/usr/bin/ultar-llm serve
+Environment=ULTAR_LLM_PROFILE=desktop
+Nice=5
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

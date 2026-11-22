@@ -1,0 +1,7 @@
+# Entwickler-Zugang (SSH, ultar-sshd – reines Rust, kein Ubuntu-Bereich nötig): PC steuert das Gerät während der
+# Entwicklung – Befehle, Kernprotokoll, Dateien (SFTP/scp), Bildschirmfoto, Tippen, Weiterleitung zu Gerätediensten.
+# Nur mit Schlüssel. Ohne Einschalten (Einstellungen → System → Entwickleroptionen, `ultar-sshd an`,
+# /etc/ultar/entwickler oder Startparameter ultar.entwickler=1) beendet sich der Dienst sofort wieder.
+exec = "/usr/bin/ultar-sshd"
+after = ["net"]
+restart = "on-failure"

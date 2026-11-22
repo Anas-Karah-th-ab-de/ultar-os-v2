@@ -1,0 +1,9 @@
+# Beispiel-Dienst: beendet sich absichtlich mit Fehler -> testet Neustart mit Backoff
+manual = true   # Start nur im Test: Kernel-Parameter ultar.start=heartbeat,selftest
+exec = "/bin/sh"
+args = ["-c", "echo heartbeat $(date +%T); sleep 2; exit 1"]
+restart = "on-failure"
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "16"

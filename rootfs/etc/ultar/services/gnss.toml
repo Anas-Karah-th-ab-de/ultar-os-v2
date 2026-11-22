@@ -1,0 +1,8 @@
+# Nur Handy-Ausgabe (Samsung-Hardware)
+editions = ["phone"]
+# GPS (Samsung A30): Samsungs gpsd + GNSS-Dienst in der Android-Umgebung unter /data/android,
+# Ausgabe /run/ultar/gnss.nmea für die Oberfläche (Einstellungen -> Standort). GNSS ist nur an,
+# solange die Oberfläche /run/ultar/gnss.want berührt. Siehe docs/A30-GNSS.md.
+exec = "/system/bin/sh"
+args = ["/data/android/gnss-dienst.sh"]
+after = ["drivers"]

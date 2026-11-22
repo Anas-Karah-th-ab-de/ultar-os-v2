@@ -1,0 +1,6 @@
+# Netzwerkdienst: DHCP / statische Adresse für Kabelnetzwerk
+exec = "/usr/bin/ultar-net"
+restart = "always"
+
+[cgroup]
+"memory.max" = "32M"

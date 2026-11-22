@@ -1,0 +1,31 @@
+# Ultar OS – Systemkonfiguration für PCs, Laptops und Server (Desktop- und Server-Ausgabe)
+hostname = "ultar"
+shutdown_grace_ms = 5000
+
+# Ubuntu-Bereich: Kernel-Module, Firmware, Programme (Wine, Waydroid, Flatpak, SSH …)
+# wait_ms: USB-Sticks und NVMe-/SATA-Laufwerke melden sich erst nach dem Laden ihrer Treiber
+[[mounts]]
+source = "LABEL=ultar-compat"
+target = "/compat"
+fstype = "ext4"
+options = "noatime"
+optional = true
+wait_ms = 15000
+
+# Nutzerdaten (Einstellungen, Apps, Wine-/Android-Bereiche). Wächst beim ersten Start auf den freien Platz.
+[[mounts]]
+source = "LABEL=ultar-data"
+target = "/data"
+fstype = "ext4"
+options = "noatime"
+optional = true
+wait_ms = 15000
+
+# EFI-Systempartition (Kernel, Startabbild, Bootmenü) – für Systemupdates
+[[mounts]]
+source = "LABEL=ULTAR-EFI|PARTLABEL=ULTAR-EFI"
+target = "/boot/efi"
+fstype = "vfat"
+options = "noatime,umask=0077"
+optional = true
+wait_ms = 3000

@@ -1,0 +1,6 @@
+# Selbsttest beim Booten (nur Entwicklungs-Image)
+exec = "/usr/lib/ultar/selftest.sh"
+oneshot = true
+manual = true
+console = true
+after = ["heartbeat"]

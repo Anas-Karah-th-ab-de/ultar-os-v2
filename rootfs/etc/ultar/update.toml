@@ -1,0 +1,6 @@
+# Systemupdate aus GitHub-Releases (Dateien: ultar-initramfs-<arch>.cpio.zst + SHA256SUMS)
+api = "https://api.github.com"
+repo = "Anas-Karah-th-ab-de/ultar-os"
+# Datei, aus der der Bootloader das Kernsystem lädt (geräteabhängig, z. B. "/boot/ultar-initramfs.cpio.zst").
+# Leer: das geprüfte Update wird nur unter /data/ultar/update bereitgelegt.
+boot_target = ""

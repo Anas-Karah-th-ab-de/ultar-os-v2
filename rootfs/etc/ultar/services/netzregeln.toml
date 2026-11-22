@@ -1,0 +1,6 @@
+# Internet-Regeln (Einstellungen → Zellen & Container → Internet-Regeln, `zelle netz`):
+# „Gerät aus“ sperrt den eigenen Verkehr des Systems; erlaubte Zellen und Dienste bleiben online.
+# Läuft vor dem Netz, damit beim Start nichts durchrutscht.
+exec = "/usr/bin/zelle"
+args = ["netz", "anwenden"]
+oneshot = true

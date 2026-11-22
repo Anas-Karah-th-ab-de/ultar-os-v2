@@ -1,0 +1,32 @@
+# Baut llama-server (llama.cpp) für den lokalen Agenten als statisches arm64-Programm (läuft auf jedem ARMv8-Gerät,
+# auch Galaxy A30 mit Cortex-A73/A53 ohne Zusatzbefehle). Ergebnis: Artefakt "llama-server-arm64".
+# Auf dem Gerät: nach /data/ultar-agent/llama-server legen, dann agent-install.sh (Offline-Weg).
+name: llama-arm64
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/llama-arm64.yml"]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Werkzeuge
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu cmake
+      - name: llama.cpp holen
+        run: git clone --depth 1 https://github.com/ggml-org/llama.cpp && git -C llama.cpp log -1 --format='%h %cd' > llama-version.txt
+      - name: Bauen (statisch, ARMv8-Grundbefehlssatz)
+        run: |
+          cmake -S llama.cpp -B b -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=armv8-a -DGGML_OPENMP=OFF \
+            -DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_SERVER=ON -DCMAKE_EXE_LINKER_FLAGS="-static"
+          cmake --build b --target llama-server -j4
+          mkdir -p out && cp b/bin/llama-server out/ && aarch64-linux-gnu-strip out/llama-server && cp llama-version.txt out/
+          file out/llama-server; ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-arm64
+          path: out/

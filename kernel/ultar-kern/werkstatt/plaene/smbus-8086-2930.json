@@ -1,0 +1,21 @@
+{
+  "pci": "00:1f.3",
+  "hersteller": "8086",
+  "geraet": "2930",
+  "subsystem": "1af4:1100",
+  "klasse": "0c0500",
+  "rev": 2,
+  "art": "SMBus",
+  "bauplan": "smbus",
+  "norm": "SMBus 3.0 / Intel PCH-Datenblatt",
+  "bars": [
+    {
+      "bar": 4,
+      "adresse": "0x6080",
+      "groesse": 64,
+      "io": true
+    }
+  ],
+  "faehigkeiten": [],
+  "fehler": null
+}

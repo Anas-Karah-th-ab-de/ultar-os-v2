@@ -1,0 +1,5 @@
+# Lädt beim Start die über die Treibersuche gefundenen Treiber (Liste: /data/ultar/drivers.list)
+exec = "/usr/bin/ultar-compat"
+args = ["modules"]
+oneshot = true
+restart = "never"

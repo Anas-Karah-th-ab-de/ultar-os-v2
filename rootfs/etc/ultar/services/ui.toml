@@ -1,0 +1,7 @@
+# Oberfläche gibt es in der Handy- und der Desktop-Ausgabe (Server: keine)
+editions = ["phone", "desktop"]
+# Oberfläche (Touch): Startbildschirm, Einstellungen, Pakete, Dienste, Terminal
+exec = "/usr/bin/ultar-shell"
+# PC/Laptop: erst Grafiktreiber laden (coldplug), sonst übernimmt die Oberfläche den vorläufigen EFI-Bildschirm
+after = ["coldplug"]
+restart = "always"

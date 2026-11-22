@@ -1,0 +1,9 @@
+target/
+out/
+tools/ultar-flash/UltarFlash.exe
+dist/
+tools/ultar-flash/*.msi
+target-*/
+*.exe
+*.msi
+kernel/ultar-kern/target/

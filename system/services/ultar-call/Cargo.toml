@@ -1,0 +1,22 @@
+[package]
+name = "ultar-call"
+version.workspace = true
+edition.workspace = true
+description = "Anrufe/Video zwischen Ultar-Geräten über die Cloud-Signalisierung (WebRTC, Ende-zu-Ende DTLS-SRTP). Mock als Standard; echtes WebRTC hinter Feature 'call-real'."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Signalisierung im Gerätebau (Feature real). Die Medien-Engine (webrtc-Crate) wird am Gerät
+# eingehängt (siehe real.rs / docs/A30-ANRUFE.md) und erst dort gegen den Audio-Stack verifiziert.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
+tokio-tungstenite = { version = "0.23", features = ["native-tls"], optional = true }
+futures-util = { version = "0.3", optional = true }
+
+[features]
+real = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
+
+[lib]
+name = "ultar_call"
+path = "src/lib.rs"

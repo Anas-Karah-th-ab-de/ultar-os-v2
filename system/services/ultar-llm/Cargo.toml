@@ -1,0 +1,36 @@
+[package]
+name = "ultar-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Lokales Sprachmodell als Dienst im Rust-Kern von Ultar OS (Handy und Desktop): llama.cpp statisch eingebunden, OpenAI-kompatible Schnittstelle über Unix-Socket und 127.0.0.1, Speicher-/Akku-/Hitze-Schutz, Laden bei Bedarf."
+
+[lib]
+name = "ultar_llm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-llm"
+path = "src/main.rs"
+
+[features]
+default = ["llama", "vision"]
+# Rechenkern llama.cpp (statisch inkl. libstdc++, ohne OpenMP – eigener ggml-Thread-Pool). Ohne: nur Test-Engine "mock:".
+llama = ["dep:llama-cpp-2"]
+# Desktop mit Grafikkarte (nicht statisch: braucht die Treiberbibliotheken des Systems)
+gpu-vulkan = ["llama", "llama-cpp-2/vulkan"]
+# Bilder verstehen (Bildschirm, Kamera, mitgebrachte Fotos): llama.cpp mtmd + mmproj-Datei neben dem Modell
+vision = ["llama", "llama-cpp-2/mtmd"]
+gpu-cuda = ["llama", "llama-cpp-2/cuda"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+libc = "0.2"
+# Modelle laden (Hugging Face / Ollama) – reines Rust mit rustls
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+sha2 = "0.10"
+base64 = "0.22"
+llama-cpp-2 = { version = "=0.1.161", default-features = false, features = ["common", "static-stdcxx"], optional = true }

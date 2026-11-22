@@ -1,0 +1,10 @@
+# Richtlinie für App-Installation (uapp). Nutzer-Einstellung: /data/ultar/apps-policy.toml (hat Vorrang).
+#
+# Von KM Code Craft signierte .uap-Pakete sind immer erlaubt (Signaturprüfung gegen /etc/ultar/trusted-keys).
+# Fremde Formate: .deb, .apk, .exe, .msi, AppImage, Flatpak, .rpm
+allow_foreign = true
+# Windows-Programme: eigener Wine-Bereich je App, ohne Laufwerk Z: (= ganzes Dateisystem);
+# Austausch nur über Laufwerk D: = /data/ultar/share
+wine_isolate = true
+# Einzelne Formate sperren, z. B. ["exe", "msi"] für Firmengeräte
+deny_formats = []

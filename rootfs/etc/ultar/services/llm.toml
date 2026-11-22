@@ -1,0 +1,11 @@
+# Lokales Sprachmodell (Dienst ultar-llm im Rust-Kern – kein Ubuntu-Bereich nötig).
+# Wird von der Oberfläche gestartet, wenn der Agent/Helfer aktiv ist und ein Modell (.gguf) unter
+# /data/ultar/models oder /data/ultar/agent liegt. Das Modell selbst lädt der Dienst erst bei der ersten
+# Anfrage und entlädt es im Leerlauf, bei Speicherdruck, leerem Akku oder Hitze (Einstellungen: /etc/ultar/llm.toml).
+# Erreichbar nur auf dem Gerät: /run/ultar/llm.sock und 127.0.0.1:8080 (OpenAI-kompatibel).
+manual = true
+exec = "/usr/bin/ultar-llm"
+args = ["serve"]
+restart = "on-failure"
+[cgroup]
+"cpu.weight" = "60"

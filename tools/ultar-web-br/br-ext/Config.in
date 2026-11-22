@@ -1,0 +1,1 @@
+source "$BR2_EXTERNAL_ULTAR_PATH/package/ultar-wpewebkit/Config.in"

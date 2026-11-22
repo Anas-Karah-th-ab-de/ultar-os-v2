@@ -1,0 +1,24 @@
+# docker compose up -d   – ultraos-server + Caddy (TLS). Vorher: echo "ULTRAOS_SECRET=$(openssl rand -hex 32)" > secret.env
+services:
+  ultraos:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: kmcodecraft/ultraos-server
+    restart: always
+    env_file: secret.env
+    volumes:
+      - daten:/var/lib/ultraos
+    ulimits:
+      nofile: 65536
+  caddy:
+    image: caddy:2
+    restart: always
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on: [ultraos]
+volumes:
+  daten:
+  caddy:

@@ -1,0 +1,10 @@
+# Nur Handy-Ausgabe (Samsung-Hardware)
+editions = ["phone"]
+# Funkdienst: hält den Mobilfunk-Zustand (SIM, Netz, Zellen) für die Oberfläche aktuell
+# (/run/ultar/radio/state) und führt Netzwahl-/PIN-Befehle aus. Wartet selbst, bis das Modem online ist.
+exec = "/usr/bin/ultar-ril"
+args = ["--daemon"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"

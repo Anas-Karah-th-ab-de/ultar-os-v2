@@ -1,0 +1,8 @@
+# Web-Verwaltung auf dem Desktop: nur auf Wunsch und nur vom Gerät selbst (https://127.0.0.1:9443)
+editions = ["desktop"]
+manual = true
+exec = "/usr/bin/ultar-admin"
+args = ["serve", "--listen", "127.0.0.1:9443"]
+restart = "on-failure"
+[cgroup]
+"memory.max" = "128M"

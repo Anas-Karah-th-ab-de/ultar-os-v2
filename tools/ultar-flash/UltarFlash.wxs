@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Installationspaket für Ultar Flash. Gleicher UpgradeCode in jeder Version: neuere MSI ersetzt die ältere. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Ultar Flash" Language="1031" Version="$(var.Version)" Manufacturer="KM Code Craft" UpgradeCode="6B0C8E0E-5A4D-4C1B-9E55-7C3A1F0D2A61">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Description="Ultar Flash – Sicherung, Flashen und Wiederherstellen für Ultar OS" />
+    <MajorUpgrade DowngradeErrorMessage="Eine neuere Version von Ultar Flash ist bereits installiert." />
+    <Media Id="1" Cabinet="ultarflash.cab" EmbedCab="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="CompanyDir" Name="KM Code Craft">
+          <Directory Id="INSTALLDIR" Name="Ultar Flash">
+            <Component Id="MainExe" Guid="2F1D7B76-8D0B-4B0E-A1B5-0E6B2B7C4D11">
+              <File Id="UltarFlashExe" Name="UltarFlash.exe" Source="UltarFlash.exe" KeyPath="yes">
+                <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="Ultar Flash" WorkingDirectory="INSTALLDIR" Advertise="yes" />
+              </File>
+            </Component>
+            <Component Id="Readme" Guid="9C6E0A52-3B1F-4E0A-8B0C-5D3E7A1F6C22">
+              <File Id="Liesmich" Name="LIESMICH.md" Source="LIESMICH.md" KeyPath="yes" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+    <Feature Id="Main" Title="Ultar Flash" Level="1">
+      <ComponentRef Id="MainExe" />
+      <ComponentRef Id="Readme" />
+    </Feature>
+  </Product>
+</Wix>

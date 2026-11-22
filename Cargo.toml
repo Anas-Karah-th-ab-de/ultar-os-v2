@@ -1,0 +1,107 @@
+# Ultar OS v2 – one workspace, folders = areas (docs/PLAN.md §3.0)
+[workspace]
+resolver = "2"
+members = [
+    "apps/ultar-office",
+    "apps/ultar-web",
+    "external/ultar-telegram",
+    "platform/ultar-ime",
+    "platform/ultar-shell",
+    "system/core/ultar-apps",
+    "system/core/ultar-ctl",
+    "system/core/ultar-edition",
+    "system/core/ultar-init",
+    "system/core/ultar-pkg",
+    "system/core/ultar-secure",
+    "system/core/ultar-sprache",
+    "system/services/ultar-admin",
+    "system/services/ultar-audio",
+    "system/services/ultar-bt",
+    "system/services/ultar-call",
+    "system/services/ultar-cloud",
+    "system/services/ultar-compat",
+    "system/services/ultar-face",
+    "system/services/ultar-llm",
+    "system/services/ultar-modem",
+    "system/services/ultar-net",
+    "system/services/ultar-notify",
+    "system/services/ultar-radio",
+    "system/services/ultar-ril",
+    "system/services/ultar-sshd",
+    "system/services/ultar-verbund",
+    "system/services/ultar-vpn",
+    "system/services/ultar-zellen",
+]
+# own workspaces: kernel (no std), server (x86 only), legacy window manager
+exclude = ["kernel", "server", "platform/ultar-wm", "tools"]
+
+[workspace.package]
+version = "0.6.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Oberfläche: auf Geschwindigkeit optimiert (Software-Rendering); alles andere auf Größe
+[profile.release.package.ultar-shell]
+opt-level = 3
+
+# Schrift (Setzen/Rastern) läuft in jedem Bild: auf Geschwindigkeit statt Größe
+[profile.release.package.cosmic-text]
+opt-level = 3
+[profile.release.package.swash]
+opt-level = 3
+[profile.release.package.zeno]
+opt-level = 3
+[profile.release.package.ttf-parser]
+opt-level = 3
+[profile.release.package.harfrust]
+opt-level = 3
+[profile.release.package.skrifa]
+opt-level = 3
+[profile.release.package.read-fonts]
+opt-level = 3
+
+# Gesichtserkennung: Rechenkerne auf Geschwindigkeit
+[profile.release.package.ultar-face]
+opt-level = 3
+[profile.release.package.tract-linalg]
+opt-level = 3
+[profile.release.package.tract-core]
+opt-level = 3
+
+# Sprachmodell-Dienst: Rechenkerne auf Geschwindigkeit
+[profile.release.package.ultar-llm]
+opt-level = 3
+[profile.release.package.llama-cpp-sys-2]
+opt-level = 3
+
+# Browser: Zeichnen und Zusammensetzen auf Geschwindigkeit
+[profile.release.package.ultar-web]
+opt-level = 3
+
+# Büro-Apps: PDF-Rendern (hayro/vello_cpu) und Formel-/XML-Verarbeitung auf Geschwindigkeit
+[profile.release.package.ultar-office]
+opt-level = 3
+[profile.release.package.hayro]
+opt-level = 3
+[profile.release.package.hayro-interpret]
+opt-level = 3
+[profile.release.package.hayro-syntax]
+opt-level = 3
+[profile.release.package.hayro-font]
+opt-level = 3
+[profile.release.package.vello_cpu]
+opt-level = 3
+[profile.release.package.vello_common]
+opt-level = 3
+[profile.release.package.fearless_simd]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3

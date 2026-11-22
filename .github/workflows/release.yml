@@ -1,0 +1,80 @@
+# Baut bei einem Tag v<version> die Release-Dateien und veröffentlicht sie.
+# Aus diesen Releases holen Ultar OS (Systemupdate) und Ultar Flash (MSI) ihre Updates.
+name: Release
+# Auslösen: Tag v<version> pushen ODER auf GitHub unter Actions -> Release -> "Run workflow" klicken
+# (dann wird der Tag v<version> aus Cargo.toml selbst angelegt).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd cpio zip mono-mcs libmono-system-windows-forms4.0-cil libmono-system-web-extensions4.0-cil libmono-system-io-compression4.0-cil libmono-system-io-compression-filesystem4.0-cil mono-devel wixl gcc-aarch64-linux-gnu g++-aarch64-linux-gnu cmake
+          rustup target add aarch64-unknown-linux-gnu
+      - name: Version bestimmen (Tag muss zur Version passen)
+        run: |
+          TAG="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then test "$GITHUB_REF_NAME" = "$TAG"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+      - name: Release-Dateien bauen (x86_64)
+        run: scripts/make-release.sh
+      - name: Kernsystem für ARM bauen (noch ungetestet)
+        continue-on-error: true
+        run: |
+          export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
+          ARCH=aarch64 DEBUG=0 MODULES="" OUT=dist/tmp scripts/build-initramfs.sh
+          mv dist/tmp/ultar-initramfs-aarch64.cpio.zst dist/ && rm -rf dist/tmp
+          (cd dist && rm -f SHA256SUMS && sha256sum * > SHA256SUMS)
+      - name: uapp und ultar-admin (Programme einzeln, für vorhandene Installationen)
+        continue-on-error: true
+        run: |
+          RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu -p ultar-apps -p ultar-admin
+          cp target/x86_64-unknown-linux-gnu/release/uapp dist/uapp-x86_64
+          cp target/x86_64-unknown-linux-gnu/release/ultar-admin dist/ultar-admin-x86_64
+          (cd dist && rm -f SHA256SUMS && sha256sum * > SHA256SUMS)
+      - name: Ultar Flash prüfen
+        run: LANG=C.UTF-8 tools/ultar-flash/test/run-tests.sh
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "Ultar OS $TAG" --generate-notes
+          fi
+
+  # PC-/Laptop- und Server-Abbilder (UEFI, x86_64). Groß (Ubuntu-Bereich mit Kernel, Firmware, Wine) – eigener Lauf.
+  pc-images:
+    needs: release
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      matrix:
+        edition: [server, desktop]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Platz schaffen
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; df -h /
+      - name: Werkzeuge
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap gdisk dosfstools mtools e2fsprogs zstd cpio systemd-boot-efi systemd-ukify busybox-static kmod cmake clang
+      - name: Abbild bauen
+        run: |
+          TAG="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"; echo "TAG=$TAG" >> "$GITHUB_ENV"
+          sudo -E env "PATH=$PATH" EDITION=${{ matrix.edition }} COMPRESS=1 DEBUG=1 scripts/build-pc-image.sh
+      - name: Hochladen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out && sha256sum ultar-${{ matrix.edition }}-x86_64.img.zst > ultar-${{ matrix.edition }}-x86_64.img.zst.sha256
+          gh release upload "$TAG" ultar-${{ matrix.edition }}-x86_64.img.zst ultar-${{ matrix.edition }}-x86_64.img.zst.sha256 --clobber

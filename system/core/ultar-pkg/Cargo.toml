@@ -1,0 +1,33 @@
+[package]
+name = "ultar-pkg"
+version.workspace = true
+edition.workspace = true
+description = "Ultar-App-Paketformat (.uap): packen, signieren (ed25519) und installieren. Unsignierte oder manipulierte Pakete werden abgelehnt."
+
+[dependencies]
+ultar-sprache = { path = "../ultar-sprache" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.22"
+hex = "0.4"
+tar = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[lib]
+name = "ultar_pkg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "upkg"
+path = "src/bin/upkg.rs"
+
+[[bin]]
+name = "upkg-sign"
+path = "src/bin/upkg_sign.rs"
+
+[[bin]]
+name = "upkg-keygen"
+path = "src/bin/upkg_keygen.rs"

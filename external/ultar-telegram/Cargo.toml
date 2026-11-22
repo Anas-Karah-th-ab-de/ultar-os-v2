@@ -1,0 +1,17 @@
+[package]
+name = "ultar-telegram"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+# Standard: nur Mock (immer kompilierbar, für UI-Integration). "real" = echtes MTProto über grammers.
+default = []
+real = ["grammers-client", "grammers-session", "tokio"]
+
+[dependencies]
+grammers-client = { version = "0.7", optional = true }
+grammers-session = { version = "0.7", optional = true }
+tokio = { version = "1", features = ["rt", "macros", "time"], optional = true }
+
+[lib]
+path = "src/lib.rs"
