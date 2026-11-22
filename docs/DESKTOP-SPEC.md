@@ -182,7 +182,7 @@ Die Zeichnung zeigt die Latein-Richtung; in Arabisch ist alles gespiegelt (Über
 Super: Übersicht · Super+A: App-Raster · Super+L: Sperren · Super+D: Arbeitsfläche zeigen · Super+E: Dateien · Super+T/Strg+Alt+T: Terminal ·
 Super+I: Einstellungen · Super+V: Zwischenablage · Super+Leertaste: Eingabesprache wechseln (Helfer dann Super+H) · Druck: Bildschirmfoto ·
 Alt+F4: Fenster schließen · Super+Pfeile: Andocken · Super+Bild↑/↓: Arbeitsfläche · Alt+Tab · Super+1…9: Dock-App n · Strg+Alt+Entf: Ein/Aus-Menü.
-Entscheidung nötig: Super+Leertaste für Sprache (wie Ubuntu) – Helfer bekommt Super+H.
+Super+Leertaste wechselt die Sprache (wie Ubuntu); der Helfer liegt auf Super+H.
 
 ### 5.5 Dieselbe Hülle auf Handy und Tablet
 `shell-mobile` nutzt dieselben Dienste und Bausteine: Leiste → Statusleiste; Schnelleinstellungen → Wisch von oben;
@@ -329,7 +329,7 @@ Bedingung = Fähigkeit, ohne die der Bereich nicht erscheint.
 | Ultar Store | App Center | Abschnitt 7.3 |
 | Datenschutz-Zentrale | Security Center | Rechte je App, Hauptschalter, Protokoll der Zugriffe |
 | Einstellungen | Einstellungen | Abschnitt 8 |
-| Browser | Firefox | Reiter, Lesezeichen, Verlauf, Downloads, privates Fenster, Kennwörter, Werbe-/Tracking-Schutz, PDF, Übersetzen, Erweiterungen (später) |
+| Ultar Browser (Servo), Rückfall Firefox als Komponente | Firefox | Reiter, Lesezeichen, Verlauf, Downloads, privates Fenster, Kennwörter, Werbe-/Tracking-Schutz, PDF, Übersetzen, Erweiterungen (später) |
 | Rechner · Uhr · Kalender (leicht) · Zeichen · Schriften | gleichnamig | Rechner: einfach/wissenschaftlich/Programmierer/Umrechnen · Uhr: Weltuhr, Wecker, Stoppuhr, Timer · Kalender mit Hijri |
 | Datenträger · Belegung | Laufwerke · Festplattenbelegung | Partitionieren, formatieren, Zustand (SMART), Abbild schreiben/erstellen (Startmedium), Belegung als Karte |
 | Kennwörter & Schlüssel | Passwörter und Verschlüsselung | Schlüsselbund, SSH-/Signier-Schlüssel, Zertifikate |
@@ -366,10 +366,30 @@ Treiber-Schritt im Installer · Komponenten statt fester App-Auswahl · Diagnose
 
 ---
 
-## 11. Offene Entscheidungen
+## 11. Entscheidungen (22.11.2026)
 
-1. **Dock unten in der Mitte** (Vorschlag) oder am Rand wie bei Ubuntu? (Umstellbar bleibt es in jedem Fall.)
-2. **Leiste oben** behalten (Vorschlag) – oder eine einzige Leiste unten wie bei Windows?
-3. **Fensterknöpfe am Ende** der Titelleiste (Arabisch: links) – einverstanden?
-4. **Browser:** eigener Rust-Browser als Grund-App erst, wenn er alltagstauglich ist; bis dahin welcher Weg?
-5. **Farbwelt:** dunkles „Ultar Noir“ mit Gold weiterführen, oder hell als Standard mit Gold-Akzent?
+| # | Frage | Entscheidung |
+|---|---|---|
+| 1 | Dock | **unten in der Mitte** als Standard; umstellbar auf Anfang/Ende |
+| 2 | Leiste | **oben** als Standard; umstellbar nach **unten** (dann liegen Leiste und Dock als eine Zeile unten: Übersicht · Dock · Uhr · Status) |
+| 3 | Fensterknöpfe | am **Ende** der Titelleiste (Arabisch: links) |
+| 4 | Browser | siehe unten |
+| 5 | Farbwelt | **Dunkel („Ultar Noir“ mit Gold) als Standard**, Hell wählbar, dazu „automatisch nach Sonnenstand“ |
+
+### Browser – Empfehlung (angenommen)
+
+**Grund-App „Ultar Browser“ = eigene Oberfläche (Rust, `ultar-ui`) auf der Engine Servo.**
+- Servo ist in Rust geschrieben und als Bibliothek einbettbar (Crate `servo` seit April 2026) – passt zu „eigener Kern,
+  kein Linux-Unterbau“ und läuft als normale App in einer Zelle.
+- Stand November 2026: monatliche Fassungen (0.7), viele echte Seiten laufen, aber **noch nicht jede** – für den Alltag
+  allein reicht das nicht sicher.
+- Deshalb zwei Stufen:
+  1. **Jetzt:** Ultar Browser (Servo) ist die Grund-App. Erkennt er eine Seite, die nicht richtig läuft, bietet er
+     „In Firefox öffnen“ an.
+  2. **Rückfall:** **Firefox** als wählbare Komponente über den Store (läuft über die Komponente „Linux-Programme“).
+     Im Installer-Umfang „Erweitert“ vorausgewählt, solange Servo Lücken hat.
+- Der bisherige Weg (WPE WebKit in `apps/ultar-web`) entfällt: C++-Engine mit Linux-Abhängigkeiten, widerspricht der
+  Kern-zuerst-Regel.
+- Was der Ultar Browser selbst liefert (nicht Servo): Reiter, Adresszeile mit Suche, Lesezeichen, Verlauf, Downloads,
+  privates Fenster, Kennwörter (Schlüsselbund), Werbe-/Tracking-Sperre, Rechte je Seite, arabische Oberfläche.
+- Risiko offen benannt: DRM-Videos (Widevine) und einige Bank-/Konferenzseiten gehen vorerst nur im Rückfall-Browser.
