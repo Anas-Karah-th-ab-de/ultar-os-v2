@@ -25,7 +25,9 @@ fn connect_running() -> bool {
         .map(|rd| {
             rd.flatten().any(|e| {
                 let p = e.path().join("comm");
-                std::fs::read_to_string(p).map(|s| s.trim() == "librespot").unwrap_or(false)
+                std::fs::read_to_string(p)
+                    .map(|s| s.trim() == "librespot")
+                    .unwrap_or(false)
             })
         })
         .unwrap_or(false)
@@ -45,21 +47,45 @@ impl App {
 
         // Vorschaltseite wie in der Web-Demo, darunter das Connect-Gerät
         let txt = self.t("Official Spotify Connect: the device appears as speaker \"Ultar\".");
-        y = self.webapp_page(ui, area, sc, "Spotify", crate::ui::Ic::Music, 0x1DB954, "https://open.spotify.com/", txt);
+        y = self.webapp_page(
+            ui,
+            area,
+            sc,
+            "Spotify",
+            crate::ui::Ic::Music,
+            0x1DB954,
+            "https://open.spotify.com/",
+            txt,
+        );
 
         // Weg 2: librespot Connect-Gerät
         ui.section(&mut y, self.t("Spotify Connect (librespot)"));
         let have = std::path::Path::new(LIBRESPOT_BIN).exists();
         if !have {
-            self.caption(ui, &mut y, self.t("librespot is not installed yet (see docs)."));
+            self.caption(
+                ui,
+                &mut y,
+                self.t("librespot is not installed yet (see docs)."),
+            );
         } else {
             self.caption(ui, &mut y, self.t("Runs as the Connect device \"Ultar\". Needs Spotify Premium. Control it from the Spotify app or the web player."));
             let running = connect_running();
-            let label = if running { self.t("Stop Connect device") } else { self.t("Start Connect device") };
+            let label = if running {
+                self.t("Stop Connect device")
+            } else {
+                self.t("Start Connect device")
+            };
             let kind = if running { Btn::Danger } else { Btn::Primary };
-            if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), label, kind) {
+            if ui.button(
+                Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+                label,
+                kind,
+            ) {
                 if running {
-                    let _ = std::process::Command::new("/system/bin/sh").arg("-c").arg("kill $(pidof librespot) 2>/dev/null").status();
+                    let _ = std::process::Command::new("/system/bin/sh")
+                        .arg("-c")
+                        .arg("kill $(pidof librespot) 2>/dev/null")
+                        .status();
                     self.toast(self.t("Stopped").into());
                 } else {
                     let r = std::process::Command::new("/system/bin/sh")
@@ -76,7 +102,11 @@ impl App {
                 ui.dirty = true;
             }
             y += ui.dp(64.0);
-            let st = if running { self.t("Connect device is running") } else { self.t("Connect device is off") };
+            let st = if running {
+                self.t("Connect device is running")
+            } else {
+                self.t("Connect device is off")
+            };
             self.caption(ui, &mut y, st);
         }
 

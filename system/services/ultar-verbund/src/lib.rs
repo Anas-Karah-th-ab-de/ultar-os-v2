@@ -23,8 +23,8 @@ pub mod proto;
 pub mod relay;
 pub mod ressourcen;
 pub mod ton;
-pub mod weitergeben;
 pub mod web;
+pub mod weitergeben;
 
 pub const UDP_PORT: u16 = 47800;
 pub const TCP_PORT: u16 = 47801;
@@ -43,5 +43,8 @@ pub fn datenordner() -> std::path::PathBuf {
 }
 
 pub fn jetzt_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }

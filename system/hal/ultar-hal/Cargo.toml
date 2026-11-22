@@ -1,0 +1,20 @@
+[package]
+name = "ultar-hal"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar OS hardware abstraction layer: device class traits, backend selection and a mock backend"
+
+[features]
+default = []
+# Complete in-memory backend for developing and testing services and UI without hardware.
+mock = []
+
+[dependencies]
+ultar-profile = { path = "../../core/ultar-profile" }
+
+[dev-dependencies]
+# Turns the mock backend on for every test build of this crate.
+ultar-hal = { path = ".", features = ["mock"] }
+

@@ -19,16 +19,56 @@ pub fn early_mounts() {
     let nosuid = MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC;
     mnt("proc", "/proc", "proc", nosuid, None);
     mnt("sysfs", "/sys", "sysfs", nosuid, None);
-    mnt("devtmpfs", "/dev", "devtmpfs", MsFlags::MS_NOSUID, Some("mode=0755"));
-    mnt("devpts", "/dev/pts", "devpts", MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC, Some("gid=5,mode=620,ptmxmode=666"));
-    mnt("tmpfs", "/dev/shm", "tmpfs", MsFlags::MS_NOSUID | MsFlags::MS_NODEV, Some("mode=1777"));
-    mnt("tmpfs", "/run", "tmpfs", MsFlags::MS_NOSUID | MsFlags::MS_NODEV, Some("mode=0755"));
-    mnt("tmpfs", "/tmp", "tmpfs", MsFlags::MS_NOSUID | MsFlags::MS_NODEV, Some("mode=1777"));
-    mnt("cgroup2", "/sys/fs/cgroup", "cgroup2", nosuid, Some("nsdelegate"));
+    mnt(
+        "devtmpfs",
+        "/dev",
+        "devtmpfs",
+        MsFlags::MS_NOSUID,
+        Some("mode=0755"),
+    );
+    mnt(
+        "devpts",
+        "/dev/pts",
+        "devpts",
+        MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC,
+        Some("gid=5,mode=620,ptmxmode=666"),
+    );
+    mnt(
+        "tmpfs",
+        "/dev/shm",
+        "tmpfs",
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+        Some("mode=1777"),
+    );
+    mnt(
+        "tmpfs",
+        "/run",
+        "tmpfs",
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+        Some("mode=0755"),
+    );
+    mnt(
+        "tmpfs",
+        "/tmp",
+        "tmpfs",
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+        Some("mode=1777"),
+    );
+    mnt(
+        "cgroup2",
+        "/sys/fs/cgroup",
+        "cgroup2",
+        nosuid,
+        Some("nsdelegate"),
+    );
     let _ = fs::create_dir_all("/run/ultar/log");
     // Standard-Symlinks, die viele Programme erwarten
-    for (l, t) in [("/dev/fd", "/proc/self/fd"), ("/dev/stdin", "/proc/self/fd/0"),
-                   ("/dev/stdout", "/proc/self/fd/1"), ("/dev/stderr", "/proc/self/fd/2")] {
+    for (l, t) in [
+        ("/dev/fd", "/proc/self/fd"),
+        ("/dev/stdin", "/proc/self/fd/0"),
+        ("/dev/stdout", "/proc/self/fd/1"),
+        ("/dev/stderr", "/proc/self/fd/2"),
+    ] {
         let _ = std::os::unix::fs::symlink(t, l);
     }
 }
@@ -60,14 +100,23 @@ pub fn mount_vendor_firmware() {
         }
     }
     let _ = fs::create_dir_all("/vendor");
-    if let Err(e) = mount(Some(node.as_str()), "/vendor", Some("ext4"), MsFlags::MS_RDONLY | MsFlags::MS_NOSUID, None::<&str>) {
+    if let Err(e) = mount(
+        Some(node.as_str()),
+        "/vendor",
+        Some("ext4"),
+        MsFlags::MS_RDONLY | MsFlags::MS_NOSUID,
+        None::<&str>,
+    ) {
         if e != nix::errno::Errno::EBUSY {
             log(&format!("mount /vendor fehlgeschlagen: {e}"));
         }
     }
     // Kernel-Firmware-Suchpfad auf die Hersteller-Firmware setzen.
     if std::path::Path::new("/vendor/firmware").is_dir() {
-        let _ = fs::write("/sys/module/firmware_class/parameters/path", "/vendor/firmware");
+        let _ = fs::write(
+            "/sys/module/firmware_class/parameters/path",
+            "/vendor/firmware",
+        );
     }
     // Offene und künftige Firmware-Anfragen bedient der Nachlader (fwhelper.rs), der auch das Zeitlimit setzt.
     // Kernel-Panik -> nach 5 s neu starten statt stehen zu bleiben
@@ -78,15 +127,27 @@ pub fn mount_vendor_firmware() {
 /// den Framebuffer. Zeigt, dass der Kernel `ultar-init` gestartet hat – noch bevor die Oberfläche läuft.
 pub fn boot_marker() {
     use std::io::Write;
-    let Ok(sz) = fs::read_to_string("/sys/class/graphics/fb0/virtual_size") else { return };
+    let Ok(sz) = fs::read_to_string("/sys/class/graphics/fb0/virtual_size") else {
+        return;
+    };
     let mut it = sz.trim().split(',').filter_map(|v| v.parse::<usize>().ok());
-    let (Some(w), Some(_h)) = (it.next(), it.next()) else { return };
-    let bpp = fs::read_to_string("/sys/class/graphics/fb0/bits_per_pixel").ok().and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(32);
+    let (Some(w), Some(_h)) = (it.next(), it.next()) else {
+        return;
+    };
+    let bpp = fs::read_to_string("/sys/class/graphics/fb0/bits_per_pixel")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(32);
     if bpp != 32 {
         return;
     }
-    let stride = fs::read_to_string("/sys/class/graphics/fb0/stride").ok().and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(w * 4);
-    let Ok(mut f) = fs::OpenOptions::new().write(true).open("/dev/fb0") else { return };
+    let stride = fs::read_to_string("/sys/class/graphics/fb0/stride")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(w * 4);
+    let Ok(mut f) = fs::OpenOptions::new().write(true).open("/dev/fb0") else {
+        return;
+    };
     // Gold ist in beiden Byte-Reihenfolgen (BGRX/RGBX) gut als heller Balken erkennbar
     let mut row = vec![0u8; stride];
     for px in row.chunks_exact_mut(4).take(w) {
@@ -110,7 +171,11 @@ pub fn configure(cfg: &InitConfig) {
         load_module(m);
     }
     if let Ok(list) = fs::read_to_string(crate::config::MODULE_LIST) {
-        for m in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        for m in list
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
             load_module(m);
         }
     }
@@ -120,7 +185,11 @@ pub fn configure(cfg: &InitConfig) {
             flags |= MsFlags::MS_RDONLY;
         }
         let _ = fs::create_dir_all(&m.target);
-        let data = if data.is_empty() { None } else { Some(data.as_str()) };
+        let data = if data.is_empty() {
+            None
+        } else {
+            Some(data.as_str())
+        };
         // Quelle auflösen: mehrere Kandidaten ("LABEL=name|/dev/…"), damit dieselbe Konfiguration auf jedem Gerät passt
         // USB-Sticks und NVMe/SATA (als Modul geladen) melden sich erst nach einigen 100 ms
         let t0 = std::time::Instant::now();
@@ -130,13 +199,28 @@ pub fn configure(cfg: &InitConfig) {
             found = crate::hw::resolve_source(&m.source);
         }
         if m.wait_ms > 0 && found.is_some() && t0.elapsed().as_millis() > 100 {
-            log(&format!("{} nach {} ms gefunden", m.target, t0.elapsed().as_millis()));
+            log(&format!(
+                "{} nach {} ms gefunden",
+                m.target,
+                t0.elapsed().as_millis()
+            ));
         }
         let Some(source) = found else {
-            log(&format!("{}nicht gemountet {}: keine der Quellen vorhanden ({})", if m.optional { "optional " } else { "FEHLER " }, m.target, m.source));
+            log(&format!(
+                "{}nicht gemountet {}: keine der Quellen vorhanden ({})",
+                if m.optional { "optional " } else { "FEHLER " },
+                m.target,
+                m.source
+            ));
             continue;
         };
-        match mount(Some(source.as_str()), m.target.as_str(), Some(m.fstype.as_str()), flags, data) {
+        match mount(
+            Some(source.as_str()),
+            m.target.as_str(),
+            Some(m.fstype.as_str()),
+            flags,
+            data,
+        ) {
             Ok(()) => log(&format!("gemountet: {} -> {}", source, m.target)),
             Err(e) if m.optional => log(&format!("optional nicht gemountet {}: {e}", m.target)),
             Err(e) => log(&format!("FEHLER mount {} -> {}: {e}", m.source, m.target)),
@@ -163,7 +247,9 @@ pub fn sprache_von_startpartition() {
     if std::path::Path::new(ziel).exists() || !std::path::Path::new("/data").is_dir() {
         return;
     }
-    let Some(dev) = crate::hw::find_by_partlabel("ULTAR-EFI") else { return };
+    let Some(dev) = crate::hw::find_by_partlabel("ULTAR-EFI") else {
+        return;
+    };
     let ort = "/run/ultar/esp";
     let _ = fs::create_dir_all(ort);
     let fl = MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC;
@@ -192,7 +278,11 @@ pub fn mount_userdata_bg() {
 /// Versucht ext4 und f2fs (rw). Verändert die Partition nicht; wird sie nicht erkannt, nur Protokoll.
 fn mount_userdata() {
     // schon etwas auf /data gemountet?
-    if fs::read_to_string("/proc/mounts").unwrap_or_default().lines().any(|l| l.split_whitespace().nth(1) == Some("/data")) {
+    if fs::read_to_string("/proc/mounts")
+        .unwrap_or_default()
+        .lines()
+        .any(|l| l.split_whitespace().nth(1) == Some("/data"))
+    {
         return;
     }
     // größte Partition der Haupt-eMMC finden
@@ -200,8 +290,16 @@ fn mount_userdata() {
     if let Ok(rd) = fs::read_dir("/sys/block") {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
-            if n.starts_with("mmcblk") && !n.contains('p') && !n.contains("boot") && !n.contains("rpmb") {
-                let b: u64 = fs::read_to_string(format!("/sys/block/{n}/size")).unwrap_or_default().trim().parse().unwrap_or(0);
+            if n.starts_with("mmcblk")
+                && !n.contains('p')
+                && !n.contains("boot")
+                && !n.contains("rpmb")
+            {
+                let b: u64 = fs::read_to_string(format!("/sys/block/{n}/size"))
+                    .unwrap_or_default()
+                    .trim()
+                    .parse()
+                    .unwrap_or(0);
                 if b > emmc.1 {
                     emmc = (n, b);
                 }
@@ -216,7 +314,11 @@ fn mount_userdata() {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
             if n.starts_with(&emmc.0) && n.contains('p') {
-                let b: u64 = fs::read_to_string(format!("/sys/block/{}/{n}/size", emmc.0)).unwrap_or_default().trim().parse().unwrap_or(0);
+                let b: u64 = fs::read_to_string(format!("/sys/block/{}/{n}/size", emmc.0))
+                    .unwrap_or_default()
+                    .trim()
+                    .parse()
+                    .unwrap_or(0);
                 if b > part.1 {
                     part = (n, b);
                 }
@@ -230,9 +332,18 @@ fn mount_userdata() {
     let _ = fs::create_dir_all("/data");
     let flags = MsFlags::MS_NOATIME;
     for fstype in ["ext4", "f2fs"] {
-        match mount(Some(dev.as_str()), "/data", Some(fstype), flags, None::<&str>) {
+        match mount(
+            Some(dev.as_str()),
+            "/data",
+            Some(fstype),
+            flags,
+            None::<&str>,
+        ) {
             Ok(()) => {
-                log(&format!("Speicher: {dev} ({}) als /data eingebunden [{fstype}]", human_gb(part.1 * 512)));
+                log(&format!(
+                    "Speicher: {dev} ({}) als /data eingebunden [{fstype}]",
+                    human_gb(part.1 * 512)
+                ));
                 let _ = fs::create_dir_all("/data/ultar");
                 return;
             }
@@ -297,11 +408,19 @@ fn loopback_up() {
         fn close(fd: i32) -> i32;
     }
     unsafe {
-        let fd = socket(2 /*AF_INET*/, 2 /*SOCK_DGRAM*/ | 0o2000000 /*CLOEXEC*/, 0);
+        let fd = socket(
+            2,                            /*AF_INET*/
+            2 /*SOCK_DGRAM*/ | 0o2000000, /*CLOEXEC*/
+            0,
+        );
         if fd < 0 {
             return;
         }
-        let mut r = IfReq { name: [0; 16], flags: 0, _pad: [0; 22] };
+        let mut r = IfReq {
+            name: [0; 16],
+            flags: 0,
+            _pad: [0; 22],
+        };
         r.name[..2].copy_from_slice(b"lo");
         if ioctl(fd, SIOCGIFFLAGS, &mut r) == 0 {
             r.flags |= IFF_UP;
@@ -314,14 +433,25 @@ fn loopback_up() {
 /// Alles aushängen (umgekehrte Reihenfolge), Root read-only.
 pub fn unmount_all() {
     nix::unistd::sync();
-    let Ok(m) = fs::read_to_string("/proc/mounts") else { return };
-    let targets: Vec<String> = m.lines().filter_map(|l| l.split_whitespace().nth(1).map(String::from)).collect();
+    let Ok(m) = fs::read_to_string("/proc/mounts") else {
+        return;
+    };
+    let targets: Vec<String> = m
+        .lines()
+        .filter_map(|l| l.split_whitespace().nth(1).map(String::from))
+        .collect();
     for t in targets.iter().rev() {
         if matches!(t.as_str(), "/" | "/proc" | "/sys" | "/dev") {
             continue;
         }
         let _ = umount2(t.as_str(), MntFlags::MNT_DETACH);
     }
-    let _ = mount(None::<&str>, "/", None::<&str>, MsFlags::MS_REMOUNT | MsFlags::MS_RDONLY, None::<&str>);
+    let _ = mount(
+        None::<&str>,
+        "/",
+        None::<&str>,
+        MsFlags::MS_REMOUNT | MsFlags::MS_RDONLY,
+        None::<&str>,
+    );
     nix::unistd::sync();
 }

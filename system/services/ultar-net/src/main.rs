@@ -8,10 +8,10 @@ use nix::libc;
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 use nix::sys::signal::{SigSet, Signal};
 use nix::sys::signalfd::{SfdFlags, SignalFd};
-use std::os::fd::AsFd;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, UdpSocket};
+use std::os::fd::AsFd;
 use std::os::fd::FromRawFd;
 use std::time::{Duration, Instant};
 
@@ -29,7 +29,14 @@ struct Cfg {
 
 impl Default for Cfg {
     fn default() -> Self {
-        Self { dhcp: true, address: String::new(), prefix: 24, gateway: String::new(), dns: String::new(), ignore: Vec::new() }
+        Self {
+            dhcp: true,
+            address: String::new(),
+            prefix: 24,
+            gateway: String::new(),
+            dns: String::new(),
+            ignore: Vec::new(),
+        }
     }
 }
 
@@ -60,7 +67,10 @@ struct Lease {
 fn main() {
     let _ = std::fs::create_dir_all("/run/ultar/net");
     let cfg = load_cfg();
-    log(&format!("Start ({})", if cfg.dhcp { "DHCP" } else { "statisch" }));
+    log(&format!(
+        "Start ({})",
+        if cfg.dhcp { "DHCP" } else { "statisch" }
+    ));
     // SIGTERM/SIGINT gezielt abholen (in allen Threads blockiert), damit beim Stoppen
     // der Status für die Oberfläche entfernt wird.
     let mut mask = SigSet::empty();
@@ -85,7 +95,11 @@ fn main() {
                 let wifi = e.path().join("wireless").exists() || e.path().join("phy80211").exists();
                 // Nebenschnittstellen des WLAN-Chips (Wi-Fi Direct, Hotspot, NAN) nicht verwalten –
                 // sonst startet ein zweites wpa_supplicant samt DHCP auf p2p0 (Samsung SCSC legt p2p0 an).
-                if wifi && ["p2p", "swlan", "ap", "aware", "nan"].iter().any(|p| name.starts_with(p)) {
+                if wifi
+                    && ["p2p", "swlan", "ap", "aware", "nan"]
+                        .iter()
+                        .any(|p| name.starts_with(p))
+                {
                     known.insert(name);
                     continue;
                 }
@@ -122,7 +136,11 @@ const WPA_HDR: &str = "ctrl_interface=DIR=/run/wpa_supplicant\nupdate_config=1\n
 
 /// Native statische wpa_supplicant-Binary von Ultar, sonst Ubuntu-Bereich.
 fn wpa_native() -> Option<&'static str> {
-    for p in ["/usr/lib/ultar/wpa_supplicant", "/sbin/wpa_supplicant", "/usr/sbin/wpa_supplicant"] {
+    for p in [
+        "/usr/lib/ultar/wpa_supplicant",
+        "/sbin/wpa_supplicant",
+        "/usr/sbin/wpa_supplicant",
+    ] {
         if std::path::Path::new(p).exists() {
             return Some(p);
         }
@@ -137,7 +155,9 @@ fn wait_data(max: Duration) {
     let t0 = Instant::now();
     while t0.elapsed() < max {
         let m = std::fs::read_to_string("/proc/mounts").unwrap_or_default();
-        if m.lines().any(|l| l.split_whitespace().nth(1) == Some("/data")) {
+        if m.lines()
+            .any(|l| l.split_whitespace().nth(1) == Some("/data"))
+        {
             return;
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -149,16 +169,25 @@ fn ensure_wifi_conf() {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let cur = std::fs::read_to_string(WIFI_CONF).unwrap_or_default();
-    if cur.lines().any(|l| l.trim_start().starts_with("ctrl_interface=")) {
+    if cur
+        .lines()
+        .any(|l| l.trim_start().starts_with("ctrl_interface="))
+    {
         return;
     }
     let _ = std::fs::create_dir_all("/data/ultar");
     let tmp = format!("{WIFI_CONF}.tmp");
-    let r = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).and_then(|mut f| {
-        f.write_all(WPA_HDR.as_bytes())?;
-        f.write_all(cur.as_bytes())?;
-        f.sync_all()
-    });
+    let r = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .and_then(|mut f| {
+            f.write_all(WPA_HDR.as_bytes())?;
+            f.write_all(cur.as_bytes())?;
+            f.sync_all()
+        });
     match r.and_then(|_| std::fs::rename(&tmp, WIFI_CONF)) {
         Ok(()) => log("WLAN-Konfiguration vorbereitet"),
         Err(e) => log(&format!("WLAN-Konfiguration nicht schreibbar: {e}")),
@@ -174,7 +203,9 @@ fn wifi_up(name: &str) {
         match set_flags(name, true) {
             Ok(()) => return,
             Err(e) => {
-                log(&format!("{name}: Einschalten fehlgeschlagen: {e} – neuer Versuch in {backoff} s"));
+                log(&format!(
+                    "{name}: Einschalten fehlgeschlagen: {e} – neuer Versuch in {backoff} s"
+                ));
                 status(name, "wlan-start-fehler", None);
             }
         }
@@ -190,20 +221,32 @@ fn kill_stale_wpa(iface: &str) -> usize {
     let mut n = 0;
     if let Ok(rd) = std::fs::read_dir("/proc") {
         for e in rd.flatten() {
-            let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
+            let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else {
+                continue;
+            };
             if pid as u32 == std::process::id() {
                 continue;
             }
             let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
-            let args: Vec<String> = cmd.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
-            let is_wpa = args.first().is_some_and(|a| a.ends_with("wpa_supplicant")) || args.iter().any(|a| a.ends_with("/wpa_supplicant"));
-            let ours = args.windows(2).any(|w| w[0] == "-i" && w[1] == iface) || args.iter().any(|a| *a == format!("-i{iface}"));
+            let args: Vec<String> = cmd
+                .split(|b| *b == 0)
+                .map(|a| String::from_utf8_lossy(a).into_owned())
+                .collect();
+            let is_wpa = args.first().is_some_and(|a| a.ends_with("wpa_supplicant"))
+                || args.iter().any(|a| a.ends_with("/wpa_supplicant"));
+            let ours = args.windows(2).any(|w| w[0] == "-i" && w[1] == iface)
+                || args.iter().any(|a| *a == format!("-i{iface}"));
             if is_wpa && ours {
                 // erst sauber beenden (meldet sich beim Zugangspunkt ab), dann notfalls hart
                 unsafe { libc::kill(pid, libc::SIGTERM) };
                 let t0 = Instant::now();
-                while std::path::Path::new(&format!("/proc/{pid}/cmdline")).exists() && t0.elapsed() < Duration::from_secs(3) {
-                    if std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|s| s.contains(") Z ")).unwrap_or(false) {
+                while std::path::Path::new(&format!("/proc/{pid}/cmdline")).exists()
+                    && t0.elapsed() < Duration::from_secs(3)
+                {
+                    if std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                        .map(|s| s.contains(") Z "))
+                        .unwrap_or(false)
+                    {
                         break;
                     }
                     std::thread::sleep(Duration::from_millis(100));
@@ -214,7 +257,9 @@ fn kill_stale_wpa(iface: &str) -> usize {
         }
     }
     if n > 0 {
-        log(&format!("{iface}: {n} alte wpa_supplicant-Instanz(en) beendet"));
+        log(&format!(
+            "{iface}: {n} alte wpa_supplicant-Instanz(en) beendet"
+        ));
         // dem Treiber Zeit für die Abmeldung lassen
         std::thread::sleep(Duration::from_millis(1500));
     }
@@ -253,7 +298,9 @@ fn heal_port(iface: &str, last: &mut Option<Instant>) {
         return;
     }
     *last = Some(Instant::now());
-    log(&format!("{iface}: Datenport des Treibers gesperrt – trenne und verbinde neu"));
+    log(&format!(
+        "{iface}: Datenport des Treibers gesperrt – trenne und verbinde neu"
+    ));
     let _ = wpa_cmd(iface, "DISCONNECT");
     std::thread::sleep(Duration::from_secs(2));
     let _ = wpa_cmd(iface, "RECONNECT");
@@ -275,7 +322,17 @@ fn wpa_supervise(name: String, native: Option<&'static str>) {
                 }
                 None => {
                     let mut c = std::process::Command::new("/usr/bin/ultar-compat");
-                    c.args(["run", "--", "/usr/sbin/wpa_supplicant", "-i", &name, "-c", WIFI_CONF, "-D", "nl80211,wext"]);
+                    c.args([
+                        "run",
+                        "--",
+                        "/usr/sbin/wpa_supplicant",
+                        "-i",
+                        &name,
+                        "-c",
+                        WIFI_CONF,
+                        "-D",
+                        "nl80211,wext",
+                    ]);
                     c
                 }
             };
@@ -309,7 +366,10 @@ fn wpa_supervise(name: String, native: Option<&'static str>) {
 }
 
 fn run_iface(name: String, cfg: Cfg, wifi: bool) {
-    log(&format!("{name}: gefunden{}", if wifi { " (WLAN)" } else { "" }));
+    log(&format!(
+        "{name}: gefunden{}",
+        if wifi { " (WLAN)" } else { "" }
+    ));
     if wifi {
         let native = wpa_native();
         if native.is_none() && !std::path::Path::new(WPA_COMPAT).exists() {
@@ -329,7 +389,11 @@ fn run_iface(name: String, cfg: Cfg, wifi: bool) {
     let mut backoff = 1u64;
     loop {
         if !carrier(&name) {
-            status(&name, if wifi { "wlan-getrennt" } else { "kein-kabel" }, None);
+            status(
+                &name,
+                if wifi { "wlan-getrennt" } else { "kein-kabel" },
+                None,
+            );
             while !carrier(&name) {
                 std::thread::sleep(Duration::from_secs(1));
             }
@@ -359,7 +423,13 @@ fn run_iface(name: String, cfg: Cfg, wifi: bool) {
         backoff = 1;
         match apply(&name, &lease) {
             Ok(()) => {
-                log(&format!("{name}: {}/{} gw {:?} dns {:?}", lease.ip, mask_prefix(lease.mask), lease.gw, lease.dns));
+                log(&format!(
+                    "{name}: {}/{} gw {:?} dns {:?}",
+                    lease.ip,
+                    mask_prefix(lease.mask),
+                    lease.gw,
+                    lease.dns
+                ));
                 status(&name, "verbunden", Some(&lease));
             }
             Err(e) => {
@@ -368,7 +438,11 @@ fn run_iface(name: String, cfg: Cfg, wifi: bool) {
             }
         }
         // Bis zur Erneuerung (halbe Lease-Zeit) Verbindung überwachen
-        let renew = if cfg.dhcp { Duration::from_secs((lease.secs / 2).clamp(60, 43200) as u64) } else { Duration::from_secs(u32::MAX as u64) };
+        let renew = if cfg.dhcp {
+            Duration::from_secs((lease.secs / 2).clamp(60, 43200) as u64)
+        } else {
+            Duration::from_secs(u32::MAX as u64)
+        };
         let t0 = Instant::now();
         let mut healed: Option<Instant> = None;
         while t0.elapsed() < renew {
@@ -386,7 +460,9 @@ fn run_iface(name: String, cfg: Cfg, wifi: bool) {
 }
 
 fn carrier(name: &str) -> bool {
-    std::fs::read_to_string(format!("/sys/class/net/{name}/carrier")).map(|s| s.trim() == "1").unwrap_or(false)
+    std::fs::read_to_string(format!("/sys/class/net/{name}/carrier"))
+        .map(|s| s.trim() == "1")
+        .unwrap_or(false)
 }
 
 fn mac(name: &str) -> [u8; 6] {
@@ -404,7 +480,11 @@ fn mask_prefix(m: Ipv4Addr) -> u32 {
 }
 
 fn prefix_mask(p: u8) -> Ipv4Addr {
-    Ipv4Addr::from(if p == 0 { 0 } else { u32::MAX << (32 - p.min(32) as u32) })
+    Ipv4Addr::from(if p == 0 {
+        0
+    } else {
+        u32::MAX << (32 - p.min(32) as u32)
+    })
 }
 
 fn static_lease(c: &Cfg) -> Option<Lease> {
@@ -412,7 +492,11 @@ fn static_lease(c: &Cfg) -> Option<Lease> {
         ip: c.address.trim().parse().ok()?,
         mask: prefix_mask(c.prefix),
         gw: c.gateway.trim().parse().ok(),
-        dns: c.dns.split([',', ' ']).filter_map(|d| d.trim().parse().ok()).collect(),
+        dns: c
+            .dns
+            .split([',', ' '])
+            .filter_map(|d| d.trim().parse().ok())
+            .collect(),
         secs: u32::MAX,
     })
 }
@@ -420,7 +504,16 @@ fn static_lease(c: &Cfg) -> Option<Lease> {
 fn status(name: &str, state: &str, l: Option<&Lease>) {
     let m = mac(name);
     let wifi = std::path::Path::new(&format!("/sys/class/net/{name}/phy80211")).exists();
-    let mut s = format!("kind={}\nstate={state}\nmac={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n", if wifi { "wlan" } else { "kabel" }, m[0], m[1], m[2], m[3], m[4], m[5]);
+    let mut s = format!(
+        "kind={}\nstate={state}\nmac={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n",
+        if wifi { "wlan" } else { "kabel" },
+        m[0],
+        m[1],
+        m[2],
+        m[3],
+        m[4],
+        m[5]
+    );
     if let Some(l) = l {
         s += &format!("ip={}/{}\n", l.ip, mask_prefix(l.mask));
         if let Some(g) = l.gw {
@@ -440,7 +533,11 @@ fn status(name: &str, state: &str, l: Option<&Lease>) {
 
 fn ctl_sock() -> std::io::Result<i32> {
     let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, 0) };
-    if fd < 0 { Err(std::io::Error::last_os_error()) } else { Ok(fd) }
+    if fd < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(fd)
+    }
 }
 
 fn ifreq(name: &str) -> libc::ifreq {
@@ -455,7 +552,9 @@ fn sockaddr(ip: Ipv4Addr) -> libc::sockaddr {
     let sin = libc::sockaddr_in {
         sin_family: libc::AF_INET as u16,
         sin_port: 0,
-        sin_addr: libc::in_addr { s_addr: u32::from(ip).to_be() },
+        sin_addr: libc::in_addr {
+            s_addr: u32::from(ip).to_be(),
+        },
         sin_zero: [0; 8],
     };
     unsafe { std::mem::transmute(sin) }
@@ -464,7 +563,11 @@ fn sockaddr(ip: Ipv4Addr) -> libc::sockaddr {
 fn io<T>(fd: i32, ret: i32, v: T) -> std::io::Result<T> {
     let e = std::io::Error::last_os_error();
     unsafe { libc::close(fd) };
-    if ret < 0 { Err(e) } else { Ok(v) }
+    if ret < 0 {
+        Err(e)
+    } else {
+        Ok(v)
+    }
 }
 
 fn set_flags(name: &str, up: bool) -> std::io::Result<()> {
@@ -525,7 +628,11 @@ fn apply(name: &str, l: &Lease) -> std::io::Result<()> {
         }
     }
     // Eigene DNS-Server des Nutzers (Oberfläche: Netzwerk-Werkzeuge) haben Vorrang vor DHCP
-    let own: Vec<Ipv4Addr> = std::fs::read_to_string("/data/ultar/dns.override").unwrap_or_default().split([',', ' ', '\n']).filter_map(|x| x.trim().parse().ok()).collect();
+    let own: Vec<Ipv4Addr> = std::fs::read_to_string("/data/ultar/dns.override")
+        .unwrap_or_default()
+        .split([',', ' ', '\n'])
+        .filter_map(|x| x.trim().parse().ok())
+        .collect();
     let dns = if own.is_empty() { l.dns.clone() } else { own };
     if !dns.is_empty() {
         let s: String = dns.iter().map(|d| format!("nameserver {d}\n")).collect();
@@ -545,9 +652,28 @@ fn dhcp_socket(name: &str) -> std::io::Result<UdpSocket> {
         }
         let one: libc::c_int = 1;
         let sz = std::mem::size_of::<libc::c_int>() as u32;
-        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_REUSEADDR, &one as *const _ as *const _, sz);
-        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_BROADCAST, &one as *const _ as *const _, sz);
-        if libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_BINDTODEVICE, name.as_ptr() as *const _, name.len() as u32) < 0 {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_REUSEADDR,
+            &one as *const _ as *const _,
+            sz,
+        );
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_BROADCAST,
+            &one as *const _ as *const _,
+            sz,
+        );
+        if libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_BINDTODEVICE,
+            name.as_ptr() as *const _,
+            name.len() as u32,
+        ) < 0
+        {
             let e = std::io::Error::last_os_error();
             libc::close(fd);
             return Err(e);
@@ -555,7 +681,12 @@ fn dhcp_socket(name: &str) -> std::io::Result<UdpSocket> {
         let mut a: libc::sockaddr_in = std::mem::zeroed();
         a.sin_family = libc::AF_INET as u16;
         a.sin_port = 68u16.to_be();
-        if libc::bind(fd, &a as *const _ as *const libc::sockaddr, std::mem::size_of::<libc::sockaddr_in>() as u32) < 0 {
+        if libc::bind(
+            fd,
+            &a as *const _ as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_in>() as u32,
+        ) < 0
+        {
             let e = std::io::Error::last_os_error();
             libc::close(fd);
             return Err(e);
@@ -604,11 +735,24 @@ struct Reply {
 }
 
 fn parse(b: &[u8], xid: u32, mac: [u8; 6]) -> Option<Reply> {
-    if b.len() < 240 || b[0] != 2 || b[4..8] != xid.to_be_bytes() || b[28..34] != mac || b[236..240] != [99, 130, 83, 99] {
+    if b.len() < 240
+        || b[0] != 2
+        || b[4..8] != xid.to_be_bytes()
+        || b[28..34] != mac
+        || b[236..240] != [99, 130, 83, 99]
+    {
         return None;
     }
     let ip4 = |v: &[u8]| (v.len() >= 4).then(|| Ipv4Addr::new(v[0], v[1], v[2], v[3]));
-    let mut r = Reply { kind: 0, yiaddr: Ipv4Addr::new(b[16], b[17], b[18], b[19]), server: None, mask: None, gw: None, dns: vec![], secs: 3600 };
+    let mut r = Reply {
+        kind: 0,
+        yiaddr: Ipv4Addr::new(b[16], b[17], b[18], b[19]),
+        server: None,
+        mask: None,
+        gw: None,
+        dns: vec![],
+        secs: 3600,
+    };
     let mut i = 240;
     while i < b.len() {
         let t = b[i];
@@ -625,7 +769,12 @@ fn parse(b: &[u8], xid: u32, mac: [u8; 6]) -> Option<Reply> {
             53 => r.kind = *v.first()?,
             1 => r.mask = ip4(v),
             3 => r.gw = ip4(v),
-            6 => r.dns = v.chunks_exact(4).map(|c| Ipv4Addr::new(c[0], c[1], c[2], c[3])).collect(),
+            6 => {
+                r.dns = v
+                    .chunks_exact(4)
+                    .map(|c| Ipv4Addr::new(c[0], c[1], c[2], c[3]))
+                    .collect()
+            }
             51 if len == 4 => r.secs = u32::from_be_bytes([v[0], v[1], v[2], v[3]]),
             54 => r.server = ip4(v),
             _ => {}
@@ -657,7 +806,14 @@ fn exchange(s: &UdpSocket, pkt: &[u8], xid: u32, mac: [u8; 6], want: u8) -> std:
                         }
                     }
                 }
-                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => break,
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    break
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -669,11 +825,18 @@ fn dhcp(name: &str) -> std::io::Result<Lease> {
     let s = dhcp_socket(name)?;
     let m = mac(name);
     let mut x = [0u8; 4];
-    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut x));
+    let _ = std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut x));
     let xid = u32::from_be_bytes(x);
     let offer = exchange(&s, &packet(1, xid, m, None), xid, m, 2)?;
     let server = offer.server.unwrap_or(Ipv4Addr::BROADCAST);
-    let ack = exchange(&s, &packet(3, xid, m, Some((offer.yiaddr, server))), xid, m, 5)?;
+    let ack = exchange(
+        &s,
+        &packet(3, xid, m, Some((offer.yiaddr, server))),
+        xid,
+        m,
+        5,
+    )?;
     Ok(Lease {
         ip: ack.yiaddr,
         mask: ack.mask.unwrap_or(Ipv4Addr::new(255, 255, 255, 0)),

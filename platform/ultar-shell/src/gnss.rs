@@ -79,7 +79,8 @@ pub struct GnssState {
 
 impl GnssState {
     fn loc_fresh(&self) -> bool {
-        self.last_loc.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(5))
+        self.last_loc
+            .is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(5))
     }
 }
 
@@ -127,11 +128,17 @@ pub fn feed_nmea_line(st: &mut GnssState, line: &str) -> bool {
         return false;
     }
     // Talker-ID ignorieren (GP/GN/GL/GA), nur den Satztyp (letzte 3 Zeichen) nehmen
-    let typ = if f[0].len() >= 3 { &f[0][f[0].len() - 3..] } else { f[0] };
+    let typ = if f[0].len() >= 3 {
+        &f[0][f[0].len() - 3..]
+    } else {
+        f[0]
+    };
     match f[0] {
         // Eigene Zeilen von gnssclient (Samsung-GNSS-Dienst): Position und Satellitenliste
         "$ULLOC" if f.len() >= 7 => {
-            let (Ok(la), Ok(lo)) = (f[1].parse::<f64>(), f[2].parse::<f64>()) else { return false };
+            let (Ok(la), Ok(lo)) = (f[1].parse::<f64>(), f[2].parse::<f64>()) else {
+                return false;
+            };
             st.fix.lat = la;
             st.fix.lon = lo;
             st.fix.alt_m = f[3].parse().unwrap_or(0.0);
@@ -300,7 +307,10 @@ pub fn reset() -> std::io::Result<()> {
     extern "C" {
         fn ioctl(fd: i32, req: u64, ...) -> i32;
     }
-    let f = std::fs::OpenOptions::new().read(true).write(true).open(GNSS_DEV)?;
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(GNSS_DEV)?;
     unsafe {
         ioctl(f.as_raw_fd(), GNSS_IOCTL_RESET);
     }
@@ -318,7 +328,9 @@ pub fn read_fix(st: &mut GnssState) -> Option<&GnssFix> {
     static LAST: Mutex<Option<std::time::Instant>> = Mutex::new(None);
     let due = {
         let mut l = LAST.lock().unwrap_or_else(|e| e.into_inner());
-        let due = l.map_or(true, |t| t.elapsed() >= std::time::Duration::from_millis(500));
+        let due = l.map_or(true, |t| {
+            t.elapsed() >= std::time::Duration::from_millis(500)
+        });
         if due {
             *l = Some(std::time::Instant::now());
         }
@@ -359,7 +371,11 @@ pub fn poll_file(st: &mut GnssState) -> std::io::Result<usize> {
         }
     };
     let meta = f.metadata()?;
-    st.service_up = meta.modified().ok().and_then(|m| m.elapsed().ok()).is_some_and(|d| d.as_secs() < 15);
+    st.service_up = meta
+        .modified()
+        .ok()
+        .and_then(|m| m.elapsed().ok())
+        .is_some_and(|d| d.as_secs() < 15);
     let len = meta.len();
     if len < st.file_off {
         st.file_off = 0;
@@ -396,11 +412,17 @@ mod tests {
     #[test]
     fn ultar_lines() {
         let mut st = GnssState::default();
-        assert!(feed_nmea_line(&mut st, "$ULLOC,36.2021000,37.1343000,410.0,8.5,0.00,0.0,1795173021509"));
+        assert!(feed_nmea_line(
+            &mut st,
+            "$ULLOC,36.2021000,37.1343000,410.0,8.5,0.00,0.0,1795173021509"
+        ));
         assert!(st.fix.valid);
         assert!((st.fix.lat - 36.2021).abs() < 1e-6);
         assert!((st.fix.acc_m - 8.5).abs() < 1e-3);
-        assert!(feed_nmea_line(&mut st, "$ULSV,3,2,5:40:120:32:1,12:10:300:18:1,70:5:20:9:0"));
+        assert!(feed_nmea_line(
+            &mut st,
+            "$ULSV,3,2,5:40:120:32:1,12:10:300:18:1,70:5:20:9:0"
+        ));
         assert_eq!(st.sats.len(), 3);
         assert_eq!(st.fix.sats_used, 2);
         assert_eq!(st.sats[1].snr, 18);
@@ -432,37 +454,109 @@ pub fn render_gnss(ui: &mut Ui, y: &mut f32, st: &GnssState, t: impl Fn(&'static
     ui.row(y, None, &t("Fix"), None, Some(&fixtxt), false);
     // farbiger Punkt für Fix-Status
     {
-        let dot = Rect::new(ui.w - ui.dp(34.0), *y - ui.dp(54.0) + ui.dp(18.0), ui.dp(12.0), ui.dp(12.0));
+        let dot = Rect::new(
+            ui.w - ui.dp(34.0),
+            *y - ui.dp(54.0) + ui.dp(18.0),
+            ui.dp(12.0),
+            ui.dp(12.0),
+        );
         ui.cv.rrect(dot, ui.dp(6.0), fixcol);
     }
     if st.fix.valid {
-        ui.row(y, None, &t("Latitude"), None, Some(&format!("{:.6}°", st.fix.lat)), false);
-        ui.row(y, None, &t("Longitude"), None, Some(&format!("{:.6}°", st.fix.lon)), false);
-        ui.row(y, None, &t("Altitude"), None, Some(&format!("{:.0} m", st.fix.alt_m)), false);
+        ui.row(
+            y,
+            None,
+            &t("Latitude"),
+            None,
+            Some(&format!("{:.6}°", st.fix.lat)),
+            false,
+        );
+        ui.row(
+            y,
+            None,
+            &t("Longitude"),
+            None,
+            Some(&format!("{:.6}°", st.fix.lon)),
+            false,
+        );
+        ui.row(
+            y,
+            None,
+            &t("Altitude"),
+            None,
+            Some(&format!("{:.0} m", st.fix.alt_m)),
+            false,
+        );
         if st.fix.acc_m > 0.0 {
-            ui.row(y, None, &t("Accuracy"), None, Some(&format!("± {:.0} m", st.fix.acc_m)), false);
+            ui.row(
+                y,
+                None,
+                &t("Accuracy"),
+                None,
+                Some(&format!("± {:.0} m", st.fix.acc_m)),
+                false,
+            );
         } else {
-            ui.row(y, None, &t("Accuracy (HDOP)"), None, Some(&format!("{:.1}", st.fix.hdop)), false);
+            ui.row(
+                y,
+                None,
+                &t("Accuracy (HDOP)"),
+                None,
+                Some(&format!("{:.1}", st.fix.hdop)),
+                false,
+            );
         }
         if st.fix.speed_kn > 0.5 {
-            ui.row(y, None, &t("Speed"), None, Some(&format!("{:.0} km/h", st.fix.speed_kn * 1.852)), false);
+            ui.row(
+                y,
+                None,
+                &t("Speed"),
+                None,
+                Some(&format!("{:.0} km/h", st.fix.speed_kn * 1.852)),
+                false,
+            );
         }
         if !st.fix.utc.is_empty() {
             ui.row(y, None, &t("Time (UTC)"), None, Some(&st.fix.utc), false);
         }
     } else {
         let c = ui.th.sub;
-        let msg = if st.service_up { t("Waiting for satellites…") } else { t("Starting GPS service…") };
-        ui.label(Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)), &msg, 14.0, c, false, Al::Start);
+        let msg = if st.service_up {
+            t("Waiting for satellites…")
+        } else {
+            t("Starting GPS service…")
+        };
+        ui.label(
+            Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
+            &msg,
+            14.0,
+            c,
+            false,
+            Al::Start,
+        );
         *y += ui.dp(30.0);
         if st.service_up {
-            ui.label(Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
-                &t("First fix outdoors can take 1–2 minutes"), 12.0, c, false, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
+                &t("First fix outdoors can take 1–2 minutes"),
+                12.0,
+                c,
+                false,
+                Al::Start,
+            );
             *y += ui.dp(26.0);
         }
     }
 
-    ui.section(y, &format!("{} ({}/{})", t("Satellites"), st.fix.sats_used, st.sats_in_view));
+    ui.section(
+        y,
+        &format!(
+            "{} ({}/{})",
+            t("Satellites"),
+            st.fix.sats_used,
+            st.sats_in_view
+        ),
+    );
     // Satelliten-Balken (SNR 0..50 dBHz)
     let bw = (ui.w - ui.dp(24.0)) / 16.0;
     let mut n = 0;
@@ -474,15 +568,39 @@ pub fn render_gnss(ui: &mut Ui, y: &mut f32, st: &GnssState, t: impl Fn(&'static
         let h = ui.dp(6.0) + (snr / 50.0) * ui.dp(60.0);
         let x = ui.dp(12.0) + n as f32 * bw;
         let base = *y + ui.dp(74.0);
-        let col = if s.snr >= 30 { ui.th.ok } else if s.snr >= 15 { ui.th.accent } else { ui.th.sub };
-        ui.cv.rrect(Rect::new(x + ui.dp(2.0), base - h, bw - ui.dp(4.0), h), ui.dp(2.0), col);
+        let col = if s.snr >= 30 {
+            ui.th.ok
+        } else if s.snr >= 15 {
+            ui.th.accent
+        } else {
+            ui.th.sub
+        };
+        ui.cv.rrect(
+            Rect::new(x + ui.dp(2.0), base - h, bw - ui.dp(4.0), h),
+            ui.dp(2.0),
+            col,
+        );
         let lc = ui.th.sub;
-        ui.label(Rect::new(x, base + ui.dp(2.0), bw, ui.dp(16.0)), &format!("{}", s.prn), 9.0, lc, false, Al::Center);
+        ui.label(
+            Rect::new(x, base + ui.dp(2.0), bw, ui.dp(16.0)),
+            &format!("{}", s.prn),
+            9.0,
+            lc,
+            false,
+            Al::Center,
+        );
         n += 1;
     }
     if st.sats.is_empty() {
         let c = ui.th.sub;
-        ui.label(Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)), &t("No satellites in view"), 13.0, c, false, Al::Start);
+        ui.label(
+            Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
+            &t("No satellites in view"),
+            13.0,
+            c,
+            false,
+            Al::Start,
+        );
     }
     *y += ui.dp(100.0);
     let _ = rgb; // genutzt falls erweitert

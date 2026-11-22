@@ -1,0 +1,2900 @@
+[[entry]]
+rule = "layers"
+path = "apps/ultar-web/Cargo.toml"
+count = 1
+
+[[entry]]
+rule = "layers"
+path = "platform/ultar-shell/Cargo.toml"
+count = 8
+
+[[entry]]
+rule = "layers"
+path = "system/services/ultar-cloud/Cargo.toml"
+count = 1
+
+[[entry]]
+rule = "layers"
+path = "system/services/ultar-ril/Cargo.toml"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "apps/ultar-web/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 5
+
+[[entry]]
+rule = "paths"
+path = "apps/ultar-web/src/sched.rs"
+count = 10
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/agent.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app.rs"
+count = 6
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_bt.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_jarvis.rs"
+count = 13
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_layout.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_messages.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_phone.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_spotify.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 3
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/audio.rs"
+count = 5
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/camera.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/decon.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/display.rs"
+count = 8
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/gnss.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/hw.rs"
+count = 6
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/input.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/mic.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/monitor.rs"
+count = 14
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/privacy.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/quick.rs"
+count = 6
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/selftest.rs"
+count = 29
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/sensors.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/sys.rs"
+count = 17
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 4
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/sysy.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-shell/src/tools.rs"
+count = 3
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-wm/src/decon.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-wm/src/fb.rs"
+count = 8
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-wm/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/boot.rs"
+count = 31
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/config.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/diag.rs"
+count = 20
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/fwhelper.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/hw.rs"
+count = 18
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/rescue.rs"
+count = 11
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-init/src/supervisor.rs"
+count = 4
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-secure/src/bin/stage0.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-secure/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-secure/src/udata.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/core/ultar-secure/src/verity.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-admin/src/main.rs"
+count = 8
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/codec_cod3035.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/ctl.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/jack.rs"
+count = 5
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/mixer.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/pcm.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/route.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-audio/src/stream.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-bt/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-bt/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-cloud/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-compat/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-llm/src/models.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-llm/src/platform.rs"
+count = 10
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-modem/src/main.rs"
+count = 7
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-net/src/main.rs"
+count = 11
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-ril/src/daemon.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-ril/src/link.rs"
+count = 4
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-ril/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-ril/src/pdp.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 11
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-sshd/src/steuern.rs"
+count = 9
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/bin/ultar-verbund.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/config.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/dienst.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/mining.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/ressourcen.rs"
+count = 5
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-verbund/src/ton.rs"
+count = 1
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-zellen/src/gpu.rs"
+count = 7
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-zellen/src/netz.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 2
+
+[[entry]]
+rule = "paths"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 24
+
+[[entry]]
+rule = "edition"
+path = "platform/ultar-shell/src/app.rs"
+count = 2
+
+[[entry]]
+rule = "edition"
+path = "platform/ultar-shell/src/app_desktop.rs"
+count = 1
+
+[[entry]]
+rule = "edition"
+path = "platform/ultar-shell/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "edition"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "edition"
+path = "system/hal/ultar-hal-system/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "edition"
+path = "system/services/ultar-admin/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-office/src/bin/udoc.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-office/src/docx.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-office/src/pdf.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-web/src/browser.rs"
+count = 8
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-web/src/i18n.rs"
+count = 48
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-web/src/platform.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "external/ultar-telegram/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/apic.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/arch.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/driver.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_ahci.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_bochs_vga.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_hda.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_intel_eth.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_ixgbe.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_smbus.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/gen_xhci.rs"
+count = 9
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/nvme.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/virtio.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/virtio_blk.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/drivers/virtio_net.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/efi.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/ext4.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/geraet.rs"
+count = 8
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/grafik.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/install.rs"
+count = 75
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/paging.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/pci.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/proc.rs"
+count = 7
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/selftest.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/shell.rs"
+count = 123
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/sprache.rs"
+count = 13
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/startseite.rs"
+count = 28
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/trap.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "kernel/ultar-kern/src/werkstatt.rs"
+count = 9
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-ime/src/lib.rs"
+count = 59
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app.rs"
+count = 22
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_buddy.rs"
+count = 9
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_cloud.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_demo.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_layout.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_office.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 18
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/app_zellen.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/audio.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/decon.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/display.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/help.rs"
+count = 128
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/i18n.rs"
+count = 1781
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/input.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/kbd.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/main.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/mind.rs"
+count = 147
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/selftest.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/sysd.rs"
+count = 10
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/sysy.rs"
+count = 28
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-shell/src/tools.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-wm/src/decon.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-wm/src/fb.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-wm/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 16
+
+[[entry]]
+rule = "text"
+path = "server/ultraos-server/src/db.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "server/ultraos-server/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "server/ultraos-server/src/verbund.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 14
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/boot.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/diag.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/fwhelper.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/hw.rs"
+count = 11
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/rescue.rs"
+count = 10
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-init/src/supervisor.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-pkg/src/bin/upkg_keygen.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-pkg/src/lib.rs"
+count = 8
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-secure/src/bin/stage0.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-secure/src/verity.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/core/ultar-sprache/src/tabellen.rs"
+count = 233
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-admin/src/main.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-audio/src/ctl.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-audio/src/main.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-audio/src/route.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-audio/src/stream.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-llm/src/client.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-llm/src/http.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-llm/src/main.rs"
+count = 5
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-llm/src/service.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-modem/src/main.rs"
+count = 13
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-net/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-radio/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-ril/src/daemon.rs"
+count = 8
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-ril/src/link.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-ril/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-ril/src/rfs.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 9
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-sshd/src/steuern.rs"
+count = 18
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/bildschirm.rs"
+count = 6
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/bin/ultar-verbund.rs"
+count = 26
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/dienst.rs"
+count = 12
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/kanal.rs"
+count = 3
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/mining.rs"
+count = 11
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/planer.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/web.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-verbund/src/weitergeben.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/bin/zelle.rs"
+count = 13
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/empfehlung.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/kiri.rs"
+count = 4
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/profil.rs"
+count = 1
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 2
+
+[[entry]]
+rule = "text"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/bin/udoc.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/code.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/doc.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/docx.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/pdf.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/sheet.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-office/src/xlsx.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-web/src/browser.rs"
+count = 12
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-web/src/compositor.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-web/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "external/ultar-telegram/src/grammers_backend.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/console.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/gen_ahci.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/gen_hda.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/gen_intel_eth.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/gen_ixgbe.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/gen_xhci.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/nvme.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/drivers/ps2kbd.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/efi.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/eingabe.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/ext4.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/fs.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/install.rs"
+count = 7
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/proc.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/procfs.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/selftest.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/shell.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/socket.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/startseite.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/syscall.rs"
+count = 7
+
+[[entry]]
+rule = "size"
+path = "kernel/ultar-kern/src/trap.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ime/src/lib.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/agent.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app.rs"
+count = 33
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_agent.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_bt.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_buddy.rs"
+count = 6
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_camera.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_cloud.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_demo.rs"
+count = 7
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_desktop.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_extra.rs"
+count = 6
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_gallery.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_jarvis.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_layout.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_messages.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_modern.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_more.rs"
+count = 21
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_office.rs"
+count = 11
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_phone.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_radio.rs"
+count = 7
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_security.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_spotify.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 22
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_telegram.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_voice.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/app_zellen.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/apps.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/audio.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/camera.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/decon.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/gfx.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/gnss.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/hw.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/i18n.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/input.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/kbd.rs"
+count = 6
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/linkcheck.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/mind.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/mjpeg.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/monitor.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/scan.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/selftest.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/sensors.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/sys.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/sysd.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/sysy.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/text.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/tools.rs"
+count = 10
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/ui.rs"
+count = 8
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-shell/src/update.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/fb.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/input_handler.rs"
+count = 8
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/render.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/shell/grabs.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/shell/mod.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/shell/ssd.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/shell/x11.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/shell/xdg.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/state.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/udev.rs"
+count = 8
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/winit.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-wm/src/x11.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "server/ultraos-server/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "server/ultraos-server/src/signal.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "server/ultraos-server/src/verbund.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-apps/src/bin/uapp.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 6
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/boot.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/diag.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/fwhelper.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/rescue.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-init/src/supervisor.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-admin/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-audio/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-bt/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-call/src/real.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-compat/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-face/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-face/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/config.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/http.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/llama.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/models.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/platform.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-llm/src/service.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-modem/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-net/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-radio/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/daemon.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/engine.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/pdp.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/rfs.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-ril/src/tel.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-sshd/src/steuern.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/bin/ultar-verbund.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/dienst.rs"
+count = 5
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/mining.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/planer.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/relay.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-verbund/src/web.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/bin/zelle.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/empfehlung.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/gpu.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/kiri.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/netz.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/browser.rs"
+count = 39
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/compositor.rs"
+count = 3
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/engine.rs"
+count = 18
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/ffi.rs"
+count = 53
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/main.rs"
+count = 11
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/platform.rs"
+count = 29
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "apps/ultar-web/src/sched.rs"
+count = 3
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/apic.rs"
+count = 14
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/arch.rs"
+count = 22
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/console.rs"
+count = 15
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_ahci.rs"
+count = 7
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_bochs_vga.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_hda.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_intel_eth.rs"
+count = 7
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_ixgbe.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_smbus.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/gen_xhci.rs"
+count = 19
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/nvme.rs"
+count = 9
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/ps2kbd.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/ps2maus.rs"
+count = 9
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/virtio.rs"
+count = 16
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/virtio_blk.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/virtio_net.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/drivers/virtio_rng.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/efi.rs"
+count = 11
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/eingabe.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/geraet.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/install.rs"
+count = 3
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/klog.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/main.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/mem.rs"
+count = 6
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/paging.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/pci.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/percpu.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/power.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/proc.rs"
+count = 24
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/selftest.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/syscall.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "kernel/ultar-kern/src/trap.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/app_more.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/audio.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/camera.rs"
+count = 30
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/decon.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/display.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/fern.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/gfx.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/gnss.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/input.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/linkcheck.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/mic.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/privacy.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/selftest.rs"
+count = 20
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/sys.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-wm/src/decon.rs"
+count = 10
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-wm/src/fb.rs"
+count = 6
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-wm/src/state.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-wm/src/udev.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "platform/ultar-wm/src/x11.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/core/ultar-init/src/boot.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/core/ultar-init/src/diag.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "system/core/ultar-init/src/fwhelper.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "system/core/ultar-init/src/rescue.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/core/ultar-init/src/supervisor.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/codec_cod3035.rs"
+count = 3
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/ctl.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/jack.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/mixer.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/pcm.rs"
+count = 5
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-audio/src/stream.rs"
+count = 8
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-llm/src/config.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-llm/src/llama.rs"
+count = 6
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-llm/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-llm/src/models.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-llm/src/platform.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-modem/src/main.rs"
+count = 12
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-net/src/main.rs"
+count = 12
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-ril/src/link.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-ril/src/pdp.rs"
+count = 9
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 7
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-sshd/src/steuern.rs"
+count = 4
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-verbund/src/dienst.rs"
+count = 1
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 2
+
+[[entry]]
+rule = "unsafe"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-office/src/code.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-office/src/sheet.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-web/src/browser.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-web/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-web/src/platform.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "external/ultar-telegram/src/grammers_backend.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/drivers/gen_hda.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/drivers/gen_xhci.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/ext4.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/fs.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/install.rs"
+count = 6
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/paging.rs"
+count = 5
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/proc.rs"
+count = 5
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/shell.rs"
+count = 5
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/signal.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/socket.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "kernel/ultar-kern/src/syscall.rs"
+count = 26
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_desktop.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_gallery.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_office.rs"
+count = 23
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 15
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_voice.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/app_zellen.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/apps.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/audio.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/camera.rs"
+count = 12
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/fern.rs"
+count = 8
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/kbd.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/main.rs"
+count = 9
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/monitor.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/sys.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/sysy.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-shell/src/tools.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/cursor.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/drawing.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/fb.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/focus.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/input_handler.rs"
+count = 34
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/render.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/shell/grabs.rs"
+count = 22
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/shell/mod.rs"
+count = 14
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/shell/ssd.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/shell/x11.rs"
+count = 31
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/shell/xdg.rs"
+count = 33
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/state.rs"
+count = 24
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/udev.rs"
+count = 44
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/winit.rs"
+count = 9
+
+[[entry]]
+rule = "unwrap"
+path = "platform/ultar-wm/src/x11.rs"
+count = 22
+
+[[entry]]
+rule = "unwrap"
+path = "server/ultraos-server/src/auth.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "server/ultraos-server/src/main.rs"
+count = 15
+
+[[entry]]
+rule = "unwrap"
+path = "server/ultraos-server/src/signal.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "server/ultraos-server/src/verbund.rs"
+count = 11
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-init/src/boot.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-init/src/config.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-init/src/diag.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-init/src/main.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-init/src/supervisor.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-secure/src/bin/stage0.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/core/ultar-sprache/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-admin/src/main.rs"
+count = 25
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-call/src/real.rs"
+count = 23
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-face/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-face/src/main.rs"
+count = 7
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/engine.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/http.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/llama.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/main.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/models.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-llm/src/service.rs"
+count = 8
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-modem/src/main.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-ril/src/link.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-sshd/src/steuern.rs"
+count = 4
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/bildschirm.rs"
+count = 9
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/bin/ultar-verbund.rs"
+count = 6
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/config.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/dienst.rs"
+count = 37
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/entdeckung.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/ident.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/kanal.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/mining.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/planer.rs"
+count = 17
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/relay.rs"
+count = 12
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/ton.rs"
+count = 1
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-verbund/src/web.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-vpn/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-zellen/src/bin/zelle.rs"
+count = 3
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-zellen/src/netz.rs"
+count = 2
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 5
+
+[[entry]]
+rule = "unwrap"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 1
+
+[[entry]]
+rule = "logical-layout"
+path = "apps/ultar-office/src/code.rs"
+count = 2
+
+[[entry]]
+rule = "logical-layout"
+path = "apps/ultar-web/src/browser.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-ime/src/lib.rs"
+count = 7
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app.rs"
+count = 13
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_agent.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_buddy.rs"
+count = 8
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_camera.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_cloud.rs"
+count = 6
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_demo.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_desktop.rs"
+count = 10
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_extra.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_gallery.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_jarvis.rs"
+count = 2
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_layout.rs"
+count = 15
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_messages.rs"
+count = 6
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_modern.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_more.rs"
+count = 27
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_office.rs"
+count = 14
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_radio.rs"
+count = 12
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/app_telegram.rs"
+count = 2
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/gfx.rs"
+count = 13
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/kbd.rs"
+count = 15
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/monitor.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/sysx.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/tools.rs"
+count = 23
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/ui.rs"
+count = 14
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-shell/src/wifi.rs"
+count = 4
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-wm/src/fb.rs"
+count = 5
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-wm/src/input_handler.rs"
+count = 3
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-wm/src/shell/grabs.rs"
+count = 26
+
+[[entry]]
+rule = "logical-layout"
+path = "platform/ultar-wm/src/shell/xdg.rs"
+count = 2
+
+[[entry]]
+rule = "linux-calls"
+path = "apps/ultar-web/src/sandbox.rs"
+count = 2
+
+[[entry]]
+rule = "linux-calls"
+path = "platform/ultar-shell/src/app_spotify.rs"
+count = 2
+
+[[entry]]
+rule = "linux-calls"
+path = "platform/ultar-shell/src/app_zellen.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "system/core/ultar-init/src/diag.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "system/core/ultar-secure/src/udata.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-verbund/src/mining.rs"
+count = 2
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-vpn/src/lib.rs"
+count = 4
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-zellen/src/kiri.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-zellen/src/netz.rs"
+count = 2
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-zellen/src/waechter.rs"
+count = 1
+
+[[entry]]
+rule = "linux-calls"
+path = "system/services/ultar-zellen/src/zelle.rs"
+count = 3
+

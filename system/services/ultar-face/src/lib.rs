@@ -15,12 +15,20 @@ pub struct Img {
 
 impl Img {
     pub fn new(w: usize, h: usize) -> Self {
-        Self { w, h, px: vec![0; w * h] }
+        Self {
+            w,
+            h,
+            px: vec![0; w * h],
+        }
     }
     #[inline]
     fn rgb(&self, x: usize, y: usize) -> [f32; 3] {
         let p = self.px[y * self.w + x];
-        [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32]
+        [
+            ((p >> 16) & 255) as f32,
+            ((p >> 8) & 255) as f32,
+            (p & 255) as f32,
+        ]
     }
     /// Bilinear abtasten (außerhalb: schwarz)
     fn sample(&self, x: f32, y: f32) -> [f32; 3] {
@@ -30,10 +38,16 @@ impl Img {
         let (x0, y0) = (x.floor() as usize, y.floor() as usize);
         let (x1, y1) = ((x0 + 1).min(self.w - 1), (y0 + 1).min(self.h - 1));
         let (fx, fy) = (x - x0 as f32, y - y0 as f32);
-        let (a, b, c, d) = (self.rgb(x0, y0), self.rgb(x1, y0), self.rgb(x0, y1), self.rgb(x1, y1));
+        let (a, b, c, d) = (
+            self.rgb(x0, y0),
+            self.rgb(x1, y0),
+            self.rgb(x0, y1),
+            self.rgb(x1, y1),
+        );
         let mut o = [0.0; 3];
         for i in 0..3 {
-            o[i] = (a[i] * (1.0 - fx) + b[i] * fx) * (1.0 - fy) + (c[i] * (1.0 - fx) + d[i] * fx) * fy;
+            o[i] =
+                (a[i] * (1.0 - fx) + b[i] * fx) * (1.0 - fy) + (c[i] * (1.0 - fx) + d[i] * fx) * fy;
         }
         o
     }
@@ -41,12 +55,20 @@ impl Img {
     pub fn rotate(&self, q: u8) -> Img {
         match q % 4 {
             0 => self.clone(),
-            2 => Img { w: self.w, h: self.h, px: self.px.iter().rev().copied().collect() },
+            2 => Img {
+                w: self.w,
+                h: self.h,
+                px: self.px.iter().rev().copied().collect(),
+            },
             q => {
                 let mut o = Img::new(self.h, self.w);
                 for y in 0..self.h {
                     for x in 0..self.w {
-                        let (nx, ny) = if q == 1 { (self.h - 1 - y, x) } else { (y, self.w - 1 - x) };
+                        let (nx, ny) = if q == 1 {
+                            (self.h - 1 - y, x)
+                        } else {
+                            (y, self.w - 1 - x)
+                        };
                         o.px[ny * o.w + nx] = self.px[y * self.w + x];
                     }
                 }
@@ -84,7 +106,13 @@ pub struct Engine {
 }
 
 /// Standardpunkte für 112×112 (ArcFace-Vorlage, wie OpenCV FaceRecognizerSF)
-const TEMPLATE: [[f32; 2]; 5] = [[38.2946, 51.6963], [73.5318, 51.5014], [56.0252, 71.7366], [41.5493, 92.3655], [70.7299, 92.2041]];
+const TEMPLATE: [[f32; 2]; 5] = [
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041],
+];
 
 impl Engine {
     /// Modelle laden. `det_size`: Kantenlänge der Erkennungs-Eingabe (Vielfaches von 32, z. B. 320).
@@ -107,12 +135,18 @@ impl Engine {
     pub fn detect(&self, img: &Img, min_score: f32) -> TractResult<Vec<Face>> {
         let s = self.det_size;
         let scale = (s as f32 / img.w as f32).min(s as f32 / img.h as f32);
-        let (nw, nh) = (((img.w as f32 * scale) as usize).min(s), ((img.h as f32 * scale) as usize).min(s));
+        let (nw, nh) = (
+            ((img.w as f32 * scale) as usize).min(s),
+            ((img.h as f32 * scale) as usize).min(s),
+        );
         // BGR, 0..255, oben links eingepasst
         let mut t = tract_ndarray::Array4::<f32>::zeros((1, 3, s, s));
         for y in 0..nh {
             for x in 0..nw {
-                let c = img.sample((x as f32 + 0.5) / scale - 0.5, (y as f32 + 0.5) / scale - 0.5);
+                let c = img.sample(
+                    (x as f32 + 0.5) / scale - 0.5,
+                    (y as f32 + 0.5) / scale - 0.5,
+                );
                 t[[0, 0, y, x]] = c[2];
                 t[[0, 1, y, x]] = c[1];
                 t[[0, 2, y, x]] = c[0];
@@ -140,9 +174,21 @@ impl Engine {
                 let h = bb[i * 4 + 3].exp() * st;
                 let mut kps = [[0f32; 2]; 5];
                 for (n, p) in kps.iter_mut().enumerate() {
-                    *p = [(kp[i * 10 + 2 * n] + c) * st / scale, (kp[i * 10 + 2 * n + 1] + r) * st / scale];
+                    *p = [
+                        (kp[i * 10 + 2 * n] + c) * st / scale,
+                        (kp[i * 10 + 2 * n + 1] + r) * st / scale,
+                    ];
                 }
-                faces.push(Face { score: sc, bbox: [(cx - w / 2.0) / scale, (cy - h / 2.0) / scale, w / scale, h / scale], kps });
+                faces.push(Face {
+                    score: sc,
+                    bbox: [
+                        (cx - w / 2.0) / scale,
+                        (cy - h / 2.0) / scale,
+                        w / scale,
+                        h / scale,
+                    ],
+                    kps,
+                });
             }
         }
         faces.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -238,7 +284,8 @@ pub fn align(img: &Img, kps: &[[f32; 2]; 5]) -> Img {
             let x = ia * uu - ib * vv;
             let y = ib * uu + ia * vv;
             let c = img.sample(x, y);
-            o.px[v * 112 + u] = ((c[0].round() as u32) << 16) | ((c[1].round() as u32) << 8) | c[2].round() as u32;
+            o.px[v * 112 + u] =
+                ((c[0].round() as u32) << 16) | ((c[1].round() as u32) << 8) | c[2].round() as u32;
         }
     }
     o
@@ -264,7 +311,17 @@ pub fn decode(b: &[u8]) -> Option<Vec<Vec<f32>>> {
     if b.len() != 8 + n * 128 * 4 {
         return None;
     }
-    Some((0..n).map(|i| (0..128).map(|j| f32::from_le_bytes(b[8 + (i * 128 + j) * 4..][..4].try_into().unwrap())).collect()).collect())
+    Some(
+        (0..n)
+            .map(|i| {
+                (0..128)
+                    .map(|j| {
+                        f32::from_le_bytes(b[8 + (i * 128 + j) * 4..][..4].try_into().unwrap())
+                    })
+                    .collect()
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -278,7 +335,10 @@ mod tests {
         let src: [[f32; 2]; 5] = TEMPLATE.map(|p| [p[0] * 2.0 + 10.0, p[1] * 2.0 + 5.0]);
         let (a, b, tx, ty) = similarity(&src, &TEMPLATE);
         assert!((a - 0.5).abs() < 1e-4 && b.abs() < 1e-4);
-        assert!((a * src[0][0] + tx - TEMPLATE[0][0]).abs() < 1e-3 && (a * src[0][1] + ty - TEMPLATE[0][1]).abs() < 1e-3);
+        assert!(
+            (a * src[0][0] + tx - TEMPLATE[0][0]).abs() < 1e-3
+                && (a * src[0][1] + ty - TEMPLATE[0][1]).abs() < 1e-3
+        );
     }
 
     #[test]
@@ -294,7 +354,10 @@ mod tests {
 
     #[test]
     fn speichern() {
-        let v = vec![normalize((0..128).map(|x| x as f32).collect()), normalize(vec![1.0; 128])];
+        let v = vec![
+            normalize((0..128).map(|x| x as f32).collect()),
+            normalize(vec![1.0; 128]),
+        ];
         let d = decode(&encode(&v)).unwrap();
         assert_eq!(d, v);
         assert!((cosine(&d[1], &d[1]) - 1.0).abs() < 1e-5);

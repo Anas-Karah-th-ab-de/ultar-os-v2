@@ -97,9 +97,15 @@ pub fn load_init() -> InitConfig {
     match std::fs::read_to_string(INIT_CONF) {
         Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
             crate::log(&format!("init.toml fehlerhaft, nutze Standard: {e}"));
-            InitConfig { shutdown_grace_ms: default_grace(), ..Default::default() }
+            InitConfig {
+                shutdown_grace_ms: default_grace(),
+                ..Default::default()
+            }
         }),
-        Err(_) => InitConfig { shutdown_grace_ms: default_grace(), ..Default::default() },
+        Err(_) => InitConfig {
+            shutdown_grace_ms: default_grace(),
+            ..Default::default()
+        },
     }
 }
 
@@ -118,10 +124,14 @@ pub fn cmdline_start() -> Vec<String> {
 
 pub fn load_services() -> Vec<ServiceConfig> {
     let mut out = Vec::new();
-    let mut paths: Vec<_> = [SERVICE_DIR, USER_SERVICE_DIR].iter().filter_map(|d| std::fs::read_dir(d).ok()).flat_map(|rd| rd.flatten().map(|e| e.path()).collect::<Vec<_>>()).collect();
+    let mut paths: Vec<_> = [SERVICE_DIR, USER_SERVICE_DIR]
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flat_map(|rd| rd.flatten().map(|e| e.path()).collect::<Vec<_>>())
+        .collect();
     paths.sort();
     let start = cmdline_start();
-    let edition = ultar_edition::current();
+    let edition = ultar_hal_system::current_edition();
     for p in paths {
         if p.extension().and_then(|e| e.to_str()) != Some("toml") {
             continue;

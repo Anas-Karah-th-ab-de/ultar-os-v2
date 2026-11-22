@@ -49,7 +49,10 @@ pub struct Config {
 impl Config {
     pub fn defaults(p: &Profile) -> Self {
         let mobile = p.kind == Kind::Mobile;
-        let mut dirs = vec!["/data/ultar/models".to_string(), "/data/ultar/agent".to_string()];
+        let mut dirs = vec![
+            "/data/ultar/models".to_string(),
+            "/data/ultar/agent".to_string(),
+        ];
         if !mobile {
             if let Some(h) = std::env::var_os("HOME") {
                 dirs.push(format!("{}/.local/share/ultar/models", h.to_string_lossy()));
@@ -60,14 +63,22 @@ impl Config {
             model: String::new(),
             model_dirs: dirs,
             listen: "127.0.0.1:8080".into(),
-            socket: if Path::new("/run").is_dir() && unsafe { libc::geteuid() } == 0 { "/run/ultar/llm.sock".into() } else { runtime_socket() },
+            socket: if Path::new("/run").is_dir() && unsafe { libc::geteuid() } == 0 {
+                "/run/ultar/llm.sock".into()
+            } else {
+                runtime_socket()
+            },
             allow_remote: false,
             api_key: String::new(),
             ctx: 0,
             threads: 0,
             threads_batch: 0,
             batch: if mobile { 256 } else { 512 },
-            gpu_layers: if cfg!(any(feature = "gpu-vulkan", feature = "gpu-cuda")) { 999 } else { 0 },
+            gpu_layers: if cfg!(any(feature = "gpu-vulkan", feature = "gpu-cuda")) {
+                999
+            } else {
+                0
+            },
             kv_q8: mobile,
             big_cores_only: false,
             idle_unload_secs: if mobile { 300 } else { 1800 },
@@ -84,8 +95,12 @@ impl Config {
     /// Alle Konfigurationsdateien der Reihe nach einlesen.
     pub fn load(p: &Profile, explicit: Option<&Path>) -> Result<Self, String> {
         let mut v = toml::Value::try_from(Self::defaults(p)).map_err(|e| e.to_string())?;
-        let mut files: Vec<PathBuf> = vec!["/etc/ultar/llm.toml".into(), "/data/ultar/llm.toml".into()];
-        if let Some(c) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))) {
+        let mut files: Vec<PathBuf> =
+            vec!["/etc/ultar/llm.toml".into(), "/data/ultar/llm.toml".into()];
+        if let Some(c) = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        {
             files.push(c.join("ultar/llm.toml"));
         }
         if let Some(e) = explicit {
@@ -98,7 +113,8 @@ impl Config {
                 }
                 continue;
             };
-            let over: toml::Value = toml::from_str(&s).map_err(|e| format!("{}: {e}", f.display()))?;
+            let over: toml::Value =
+                toml::from_str(&s).map_err(|e| format!("{}: {e}", f.display()))?;
             merge(&mut v, over);
         }
         let mut c: Config = v.try_into().map_err(|e| e.to_string())?;
@@ -118,10 +134,18 @@ impl Config {
     pub fn resolved(mut self, p: &Profile) -> Self {
         let (t, tb) = p.auto_threads();
         if self.threads <= 0 {
-            self.threads = if self.big_cores_only { p.big_cpus.len() as i32 } else { t };
+            self.threads = if self.big_cores_only {
+                p.big_cpus.len() as i32
+            } else {
+                t
+            };
         }
         if self.threads_batch <= 0 {
-            self.threads_batch = if self.big_cores_only { p.big_cpus.len() as i32 } else { tb };
+            self.threads_batch = if self.big_cores_only {
+                p.big_cpus.len() as i32
+            } else {
+                tb
+            };
         }
         if self.ctx == 0 {
             self.ctx = p.auto_ctx();
@@ -167,21 +191,37 @@ pub fn list_models(c: &Config) -> Vec<ModelFile> {
     let mut out: Vec<ModelFile> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut add = |path: PathBuf| {
-        let Ok(canon) = path.canonicalize() else { return };
+        let Ok(canon) = path.canonicalize() else {
+            return;
+        };
         if !seen.insert(canon.clone()) {
             return;
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        if !name.ends_with(".gguf") || name.contains("-of-") && !name.contains("-00001-of-") || name.starts_with("mmproj") {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !name.ends_with(".gguf")
+            || name.contains("-of-") && !name.contains("-00001-of-")
+            || name.starts_with("mmproj")
+        {
             return;
         }
         let bytes = std::fs::metadata(&canon).map(|m| m.len()).unwrap_or(0);
         let mut id = name.trim_end_matches(".gguf").to_string();
         if id == "model" {
             // /data/ultar/agent/model.gguf – Name aus dem Ziel einer Verknüpfung, sonst „local"
-            id = canon.file_name().map(|n| n.to_string_lossy().trim_end_matches(".gguf").to_string()).filter(|n| n != "model").unwrap_or_else(|| "local".into());
+            id = canon
+                .file_name()
+                .map(|n| n.to_string_lossy().trim_end_matches(".gguf").to_string())
+                .filter(|n| n != "model")
+                .unwrap_or_else(|| "local".into());
         }
-        out.push(ModelFile { id, path: path.to_string_lossy().into_owned(), bytes });
+        out.push(ModelFile {
+            id,
+            path: path.to_string_lossy().into_owned(),
+            bytes,
+        });
     };
     if !c.model.is_empty() && !c.model.starts_with("mock:") {
         add(PathBuf::from(&c.model));
@@ -201,7 +241,11 @@ pub fn list_models(c: &Config) -> Vec<ModelFile> {
 /// Standardmodell: ausdrücklich gesetzt, sonst model.gguf, sonst das größte, das in den Speicher passt.
 pub fn pick_model(c: &Config, mem_total: u64) -> Option<ModelFile> {
     if c.model.starts_with("mock:") {
-        return Some(ModelFile { id: "mock".into(), path: c.model.clone(), bytes: 0 });
+        return Some(ModelFile {
+            id: "mock".into(),
+            path: c.model.clone(),
+            bytes: 0,
+        });
     }
     let all = list_models(c);
     if !c.model.is_empty() {
@@ -213,5 +257,7 @@ pub fn pick_model(c: &Config, mem_total: u64) -> Option<ModelFile> {
     let budget = (mem_total as f64 * 0.55) as u64;
     let mut fit: Vec<&ModelFile> = all.iter().filter(|m| m.bytes <= budget).collect();
     fit.sort_by_key(|m| m.bytes);
-    fit.last().map(|m| (*m).clone()).or_else(|| all.iter().min_by_key(|m| m.bytes).cloned())
+    fit.last()
+        .map(|m| (*m).clone())
+        .or_else(|| all.iter().min_by_key(|m| m.bytes).cloned())
 }

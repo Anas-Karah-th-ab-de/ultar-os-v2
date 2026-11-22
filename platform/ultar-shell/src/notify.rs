@@ -12,7 +12,9 @@ pub struct Notifier {
 impl Default for Notifier {
     fn default() -> Self {
         // Beim Start am Ende beginnen, damit alte Zeilen nicht erneut alarmieren.
-        let seen = std::fs::metadata(ultar_notify::LOG).map(|m| m.len()).unwrap_or(0);
+        let seen = std::fs::metadata(ultar_notify::LOG)
+            .map(|m| m.len())
+            .unwrap_or(0);
         Self { seen }
     }
 }
@@ -20,7 +22,9 @@ impl Default for Notifier {
 impl Notifier {
     /// Neue Benachrichtigungen seit dem letzten Aufruf.
     pub fn poll(&mut self) -> Vec<Note> {
-        let len = std::fs::metadata(ultar_notify::LOG).map(|m| m.len()).unwrap_or(0);
+        let len = std::fs::metadata(ultar_notify::LOG)
+            .map(|m| m.len())
+            .unwrap_or(0);
         if len < self.seen {
             self.seen = 0; // Datei wurde geleert/rotiert
         }
@@ -59,8 +63,20 @@ pub struct Alert {
 pub fn alert_for(n: &Note, asleep: bool, sound_on: bool) -> Alert {
     match n.urgency {
         // Anruf o. Ä.: immer aufwecken, lauter Ton, kräftige Vibration
-        Urgency::High => Alert { sound: sound_on, vibrate_ms: 600, wake: true },
-        Urgency::Normal => Alert { sound: sound_on, vibrate_ms: if asleep { 250 } else { 0 }, wake: false },
-        Urgency::Low => Alert { sound: false, vibrate_ms: 0, wake: false },
+        Urgency::High => Alert {
+            sound: sound_on,
+            vibrate_ms: 600,
+            wake: true,
+        },
+        Urgency::Normal => Alert {
+            sound: sound_on,
+            vibrate_ms: if asleep { 250 } else { 0 },
+            wake: false,
+        },
+        Urgency::Low => Alert {
+            sound: false,
+            vibrate_ms: 0,
+            wake: false,
+        },
     }
 }

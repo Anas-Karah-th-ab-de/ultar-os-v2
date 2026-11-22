@@ -1,0 +1,17 @@
+[package]
+name = "ultar-devd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Runtime logic of the Ultar device daemon: device events, driver selection with health check, fallback, quarantine and remembered choices."
+
+[dependencies]
+ultar-driverpkg = { path = "../ultar-driverpkg" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[lib]
+name = "ultar_devd"
+path = "src/lib.rs"
+

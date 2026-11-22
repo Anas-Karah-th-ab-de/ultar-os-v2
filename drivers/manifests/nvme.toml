@@ -1,0 +1,17 @@
+# NVMe controllers by class (NVM Express 2.0). T1: Samsung PM981a 144d:a808, T2: Crucial E100 c0a9:560b.
+id = "nvme"
+version = "1.0.0"
+class = "storage"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.nvme.name"
+description_key = "driver.nvme.description"
+
+[match]
+pci_class = ["010802"]
+
+[content]
+# Stage A (docs/PLAN.md §5.5): the driver is built into the Ultar kernel; the package
+# carries its activation record. Stage B replaces this by a loadable module.
+hal_config = "builtin/nvme.toml"

@@ -29,16 +29,32 @@ pub struct Check {
 
 impl Check {
     fn ok(comp: &'static str, d: impl Into<String>) -> Self {
-        Check { comp, stat: Stat::Ok, detail: d.into() }
+        Check {
+            comp,
+            stat: Stat::Ok,
+            detail: d.into(),
+        }
     }
     fn warn(comp: &'static str, d: impl Into<String>) -> Self {
-        Check { comp, stat: Stat::Warn, detail: d.into() }
+        Check {
+            comp,
+            stat: Stat::Warn,
+            detail: d.into(),
+        }
     }
     fn fail(comp: &'static str, d: impl Into<String>) -> Self {
-        Check { comp, stat: Stat::Fail, detail: d.into() }
+        Check {
+            comp,
+            stat: Stat::Fail,
+            detail: d.into(),
+        }
     }
     fn info(comp: &'static str, d: impl Into<String>) -> Self {
-        Check { comp, stat: Stat::Info, detail: d.into() }
+        Check {
+            comp,
+            stat: Stat::Info,
+            detail: d.into(),
+        }
     }
 }
 
@@ -93,8 +109,14 @@ fn storage() -> Check {
     if let Ok(rd) = fs::read_dir("/sys/block") {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if name.starts_with("mmcblk") && !name.contains('p') && !name.contains("boot") && !name.contains("rpmb") {
-                let sect: u64 = read(&format!("/sys/block/{name}/size")).parse().unwrap_or(0);
+            if name.starts_with("mmcblk")
+                && !name.contains('p')
+                && !name.contains("boot")
+                && !name.contains("rpmb")
+            {
+                let sect: u64 = read(&format!("/sys/block/{name}/size"))
+                    .parse()
+                    .unwrap_or(0);
                 let bytes = sect * 512;
                 if bytes > total {
                     total = bytes;
@@ -112,7 +134,9 @@ fn storage() -> Check {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
             if n.starts_with(&dev) && n.contains('p') {
-                let sect: u64 = read(&format!("/sys/block/{dev}/{n}/size")).parse().unwrap_or(0);
+                let sect: u64 = read(&format!("/sys/block/{dev}/{n}/size"))
+                    .parse()
+                    .unwrap_or(0);
                 let b = sect * 512;
                 if b > biggest.1 {
                     biggest = (n, b);
@@ -122,7 +146,9 @@ fn storage() -> Check {
     }
     // /data eingebunden?
     let mounts = read("/proc/mounts");
-    let data_mounted = mounts.lines().any(|l| l.split_whitespace().nth(1) == Some("/data"));
+    let data_mounted = mounts
+        .lines()
+        .any(|l| l.split_whitespace().nth(1) == Some("/data"));
     let mut detail = format!("{dev}: {} gesamt", human(total));
     if !biggest.0.is_empty() {
         detail += &format!(", größte Part. {} {}", biggest.0, human(biggest.1));
@@ -156,7 +182,11 @@ fn display() -> Vec<Check> {
     if Path::new("/dev/fb0").exists() {
         // Auflösung aus /sys/class/graphics/fb0/virtual_size
         let res = read("/sys/class/graphics/fb0/virtual_size");
-        let res = if res.is_empty() { "fb0".to_string() } else { res.replace(',', "x") };
+        let res = if res.is_empty() {
+            "fb0".to_string()
+        } else {
+            res.replace(',', "x")
+        };
         v.push(Check::ok("st_display", format!("fb0 {res}")));
     } else {
         v.push(Check::fail("st_display", "kein /dev/fb0"));
@@ -184,20 +214,32 @@ fn keys() -> Check {
                 continue;
             }
             count += 1;
-            let Ok(f) = fs::File::open(e.path()) else { continue };
+            let Ok(f) = fs::File::open(e.path()) else {
+                continue;
+            };
             let fd = f.as_raw_fd();
             // Name
             let mut buf = [0u8; 128];
-            let r = unsafe { libc::ioctl(fd, ioc(IOC_READ, b'E' as u32, 0x06, 128), buf.as_mut_ptr()) };
+            let r =
+                unsafe { libc::ioctl(fd, ioc(IOC_READ, b'E' as u32, 0x06, 128), buf.as_mut_ptr()) };
             if r > 0 {
-                let nm = String::from_utf8_lossy(&buf[..(r as usize).min(128)]).trim_end_matches('\0').trim().to_string();
+                let nm = String::from_utf8_lossy(&buf[..(r as usize).min(128)])
+                    .trim_end_matches('\0')
+                    .trim()
+                    .to_string();
                 if !nm.is_empty() {
                     names.push(nm);
                 }
             }
             // Key-Bitmap (EV_KEY=1 -> nr 0x20+1)
             let mut keymap = [0u8; 96]; // deckt bis KEY-Code ~767 ab
-            let r = unsafe { libc::ioctl(fd, ioc(IOC_READ, b'E' as u32, 0x21, 96), keymap.as_mut_ptr()) };
+            let r = unsafe {
+                libc::ioctl(
+                    fd,
+                    ioc(IOC_READ, b'E' as u32, 0x21, 96),
+                    keymap.as_mut_ptr(),
+                )
+            };
             if r > 0 {
                 let test = |code: usize| (keymap[code / 8] >> (code % 8)) & 1 == 1;
                 if test(115) {
@@ -225,7 +267,14 @@ fn keys() -> Check {
     if power {
         found.push("Power");
     }
-    let detail = format!("{count} Eingabegeräte; Tasten: {}", if found.is_empty() { "keine erkannt".to_string() } else { found.join(", ") });
+    let detail = format!(
+        "{count} Eingabegeräte; Tasten: {}",
+        if found.is_empty() {
+            "keine erkannt".to_string()
+        } else {
+            found.join(", ")
+        }
+    );
     if vol_up && vol_dn && power {
         Check::ok("st_keys", detail)
     } else if found.is_empty() {
@@ -239,11 +288,21 @@ fn keys() -> Check {
 fn audio() -> Check {
     let cards = read("/proc/asound/cards");
     let has_snd = Path::new("/dev/snd").exists();
-    let pcm = fs::read_dir("/dev/snd").map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("pcmC")).count()).unwrap_or(0);
+    let pcm = fs::read_dir("/dev/snd")
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("pcmC"))
+                .count()
+        })
+        .unwrap_or(0);
     if !has_snd || cards.is_empty() || cards.contains("no soundcards") {
         return Check::fail("st_audio", "keine Soundkarte (/proc/asound leer)");
     }
-    let first = cards.lines().find(|l| l.contains('[')).map(|l| l.trim()).unwrap_or("Soundkarte");
+    let first = cards
+        .lines()
+        .find(|l| l.contains('['))
+        .map(|l| l.trim())
+        .unwrap_or("Soundkarte");
     Check::ok("st_audio", format!("{first}; {pcm} PCM-Geräte"))
 }
 
@@ -268,9 +327,15 @@ fn cameras() -> Check {
         }
     }
     if !cams.is_empty() {
-        Check::ok("st_camera", format!("{} Kamera(s): {}", cams.len(), cams.join(", ")))
+        Check::ok(
+            "st_camera",
+            format!("{} Kamera(s): {}", cams.len(), cams.join(", ")),
+        )
     } else if blocked > 0 {
-        Check::warn("st_camera", format!("{blocked} Video-Knoten blockieren beim Öffnen (Firmware fehlt)"))
+        Check::warn(
+            "st_camera",
+            format!("{blocked} Video-Knoten blockieren beim Öffnen (Firmware fehlt)"),
+        )
     } else {
         Check::fail("st_camera", "keine Kamera (/dev/video*) mit Capture")
     }
@@ -286,7 +351,9 @@ enum CamProbe {
 /// Hängt das Kind (Exynos-Firmware), wird es gekillt und der Knoten als „blockiert" gewertet.
 fn probe_video(path: &std::path::Path) -> CamProbe {
     use std::os::unix::ffi::OsStrExt;
-    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return CamProbe::None };
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return CamProbe::None;
+    };
     let mut fds = [0i32; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return CamProbe::None;
@@ -299,7 +366,8 @@ fn probe_video(path: &std::path::Path) -> CamProbe {
         let fd = unsafe { libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK) };
         if fd >= 0 {
             let mut cap = [0u8; 104];
-            let r = unsafe { libc::ioctl(fd, ioc(IOC_READ, b'V' as u32, 0, 104), cap.as_mut_ptr()) };
+            let r =
+                unsafe { libc::ioctl(fd, ioc(IOC_READ, b'V' as u32, 0, 104), cap.as_mut_ptr()) };
             if r == 0 {
                 let caps = u32::from_ne_bytes([cap[84], cap[85], cap[86], cap[87]]);
                 if caps & 0x1 != 0 {
@@ -324,7 +392,11 @@ fn probe_video(path: &std::path::Path) -> CamProbe {
     unsafe { libc::close(wr) };
     let mut buf = [0u8; 33];
     let mut got = 0usize;
-    let mut pfd = libc::pollfd { fd: rd, events: libc::POLLIN, revents: 0 };
+    let mut pfd = libc::pollfd {
+        fd: rd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
     let mut waited = 0;
     let mut alive = true;
     while waited < 1000 {
@@ -356,7 +428,10 @@ fn probe_video(path: &std::path::Path) -> CamProbe {
     let mut st = 0;
     unsafe { libc::waitpid(pid, &mut st, 0) };
     if got >= 1 && buf[0] == 1 {
-        let card = String::from_utf8_lossy(&buf[1..got]).trim_end_matches('\0').trim().to_string();
+        let card = String::from_utf8_lossy(&buf[1..got])
+            .trim_end_matches('\0')
+            .trim()
+            .to_string();
         CamProbe::Capture(card)
     } else {
         CamProbe::None
@@ -370,16 +445,36 @@ fn modem_sim() -> Check {
         .map(|rd| {
             rd.flatten()
                 .map(|e| e.file_name().to_string_lossy().into_owned())
-                .filter(|n| n.starts_with("umts_") || n.starts_with("cpif") || n.starts_with("rmnet") || n.contains("modem"))
+                .filter(|n| {
+                    n.starts_with("umts_")
+                        || n.starts_with("cpif")
+                        || n.starts_with("rmnet")
+                        || n.contains("modem")
+                })
                 .collect()
         })
         .unwrap_or_default();
-    let rmnet = fs::read_dir("/sys/class/net").map(|rd| rd.flatten().any(|e| e.file_name().to_string_lossy().starts_with("rmnet"))).unwrap_or(false);
+    let rmnet = fs::read_dir("/sys/class/net")
+        .map(|rd| {
+            rd.flatten()
+                .any(|e| e.file_name().to_string_lossy().starts_with("rmnet"))
+        })
+        .unwrap_or(false);
     let ril = Path::new("/dev/socket/rild").exists() || Path::new("/dev/umts_ipc0").exists();
     if modem_nodes.is_empty() && !rmnet {
-        return Check::fail("st_modem", "kein Modem-Knoten (umts_/cpif/rmnet) – Treiber fehlt");
+        return Check::fail(
+            "st_modem",
+            "kein Modem-Knoten (umts_/cpif/rmnet) – Treiber fehlt",
+        );
     }
-    let mut detail = format!("Knoten: {}", if modem_nodes.is_empty() { "–".to_string() } else { modem_nodes.join(", ") });
+    let mut detail = format!(
+        "Knoten: {}",
+        if modem_nodes.is_empty() {
+            "–".to_string()
+        } else {
+            modem_nodes.join(", ")
+        }
+    );
     if rmnet {
         detail += "; rmnet vorhanden";
     }
@@ -387,7 +482,10 @@ fn modem_sim() -> Check {
         detail += "; IPC bereit";
     }
     // SIM-Status kann erst der Modem-Dienst lesen; hier nur Hardware-Präsenz
-    Check::warn("st_modem", format!("{detail} (SIM-Status braucht Modem-Dienst)"))
+    Check::warn(
+        "st_modem",
+        format!("{detail} (SIM-Status braucht Modem-Dienst)"),
+    )
 }
 
 // ---------- WLAN ----------
@@ -398,8 +496,15 @@ fn wifi() -> Check {
     let mac = read(&format!("/sys/class/net/{ifc}/address"));
     let tools = crate::sys::wifi_tools();
     let valid_mac = !mac.is_empty() && mac != "00:00:00:00:00:00";
-    let mut detail = format!("{ifc} MAC {}", if mac.is_empty() { "?".into() } else { mac });
-    detail += if tools { "; Programme ✓" } else { "; Programme fehlen" };
+    let mut detail = format!(
+        "{ifc} MAC {}",
+        if mac.is_empty() { "?".into() } else { mac }
+    );
+    detail += if tools {
+        "; Programme ✓"
+    } else {
+        "; Programme fehlen"
+    };
     let state = crate::sys::wifi_state();
     match &state {
         Some(s) => detail += &format!("; wpa_supplicant {s}"),
@@ -414,7 +519,9 @@ fn wifi() -> Check {
 
 // ---------- Bluetooth ----------
 fn bluetooth() -> Check {
-    let hci = fs::read_dir("/sys/class/bluetooth").map(|rd| rd.flatten().count()).unwrap_or(0);
+    let hci = fs::read_dir("/sys/class/bluetooth")
+        .map(|rd| rd.flatten().count())
+        .unwrap_or(0);
     let scsc_bt = Path::new("/dev/scsc_bt").exists() || read("/proc/modules").contains("scsc_bt");
     if hci > 0 {
         Check::ok("st_bt", format!("{hci} HCI-Gerät(e)"))
@@ -427,11 +534,22 @@ fn bluetooth() -> Check {
 
 // ---------- Sensoren ----------
 fn sensors() -> Check {
-    let iio = fs::read_dir("/sys/bus/iio/devices").map(|rd| rd.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("iio:device")).count()).unwrap_or(0);
-    let sens = fs::read_dir("/sys/class/sensors").map(|rd| rd.flatten().count()).unwrap_or(0);
+    let iio = fs::read_dir("/sys/bus/iio/devices")
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("iio:device"))
+                .count()
+        })
+        .unwrap_or(0);
+    let sens = fs::read_dir("/sys/class/sensors")
+        .map(|rd| rd.flatten().count())
+        .unwrap_or(0);
     let n = iio + sens;
     if n > 0 {
-        Check::ok("st_sensors", format!("{n} Sensor(en) (iio:{iio}, class:{sens})"))
+        Check::ok(
+            "st_sensors",
+            format!("{n} Sensor(en) (iio:{iio}, class:{sens})"),
+        )
     } else {
         Check::warn("st_sensors", "keine Sensoren gefunden")
     }
@@ -444,7 +562,10 @@ fn battery() -> Check {
         if Path::new(&base).exists() {
             let cap = read(&format!("{base}/capacity"));
             let stat = read(&format!("{base}/status"));
-            let volt: f64 = read(&format!("{base}/voltage_now")).parse::<f64>().unwrap_or(0.0) / 1_000_000.0;
+            let volt: f64 = read(&format!("{base}/voltage_now"))
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                / 1_000_000.0;
             return Check::ok("st_battery", format!("{cap}% {stat} {volt:.2}V"));
         }
     }
@@ -453,7 +574,10 @@ fn battery() -> Check {
 
 // ---------- Vibration ----------
 fn vibrator() -> Check {
-    let paths = ["/sys/class/timed_output/vibrator", "/sys/class/leds/vibrator"];
+    let paths = [
+        "/sys/class/timed_output/vibrator",
+        "/sys/class/leds/vibrator",
+    ];
     for p in paths {
         if Path::new(p).exists() {
             return Check::ok("st_vibra", "Vibrationsmotor vorhanden");

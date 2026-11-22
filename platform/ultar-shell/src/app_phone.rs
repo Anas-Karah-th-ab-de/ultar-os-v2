@@ -55,7 +55,10 @@ pub struct StubTelephony {
 
 impl Default for StubTelephony {
     fn default() -> Self {
-        Self { state: CallState::Idle, log: Vec::new() }
+        Self {
+            state: CallState::Idle,
+            log: Vec::new(),
+        }
     }
 }
 
@@ -65,14 +68,28 @@ impl TelephonyBackend for StubTelephony {
             return;
         }
         self.state = CallState::Dialing(number.to_string());
-        self.log.insert(0, CallLogEntry { number: number.to_string(), dir: 0, when: String::new() });
+        self.log.insert(
+            0,
+            CallLogEntry {
+                number: number.to_string(),
+                dir: 0,
+                when: String::new(),
+            },
+        );
         if self.log.len() > 100 {
             self.log.truncate(100);
         }
     }
     fn simulate_incoming(&mut self, number: &str) {
         self.state = CallState::Incoming(number.to_string());
-        self.log.insert(0, CallLogEntry { number: number.to_string(), dir: 1, when: String::new() });
+        self.log.insert(
+            0,
+            CallLogEntry {
+                number: number.to_string(),
+                dir: 1,
+                when: String::new(),
+            },
+        );
     }
     fn hangup(&mut self) {
         self.state = CallState::Idle;
@@ -107,7 +124,10 @@ impl Default for CloudTelephony {
         if let (Some(num), Some(tok)) = (ultar_cloud::my_number(), ultar_cloud::token()) {
             inner.register(&num, &tok, &ultar_cloud::base_url());
         }
-        Self { inner, log: Vec::new() }
+        Self {
+            inner,
+            log: Vec::new(),
+        }
     }
 }
 
@@ -117,7 +137,14 @@ impl TelephonyBackend for CloudTelephony {
             return;
         }
         self.inner.place(number, false);
-        self.log.insert(0, CallLogEntry { number: number.to_string(), dir: 0, when: String::new() });
+        self.log.insert(
+            0,
+            CallLogEntry {
+                number: number.to_string(),
+                dir: 0,
+                when: String::new(),
+            },
+        );
         self.log.truncate(100);
     }
     fn hangup(&mut self) {
@@ -153,7 +180,9 @@ pub struct SimTelephony {
 
 impl Default for SimTelephony {
     fn default() -> Self {
-        let cloud = ultar_cloud::my_number().is_some().then(CloudTelephony::default);
+        let cloud = ultar_cloud::my_number()
+            .is_some()
+            .then(CloudTelephony::default);
         let log = load_call_log();
         Self { cloud, log }
     }
@@ -164,29 +193,48 @@ const USSD_FILE: &str = "/run/ultar/radio/ussd";
 
 /// USSD-/MMI-Code wie `*111#`?
 pub fn is_ussd(s: &str) -> bool {
-    s.len() >= 2 && (s.starts_with('*') || s.starts_with('#')) && s.ends_with('#') && s.chars().all(|c| c.is_ascii_digit() || c == '*' || c == '#')
+    s.len() >= 2
+        && (s.starts_with('*') || s.starts_with('#'))
+        && s.ends_with('#')
+        && s.chars()
+            .all(|c| c.is_ascii_digit() || c == '*' || c == '#')
 }
 
 /// USSD-Zustand des Funkdienstes: (state, text). state: 9 wartet, 1 fertig, 2 Antwort erwartet, 3–6 Ende/Fehler.
 pub fn ussd_state() -> (String, String) {
     let t = std::fs::read_to_string(USSD_FILE).unwrap_or_default();
-    let get = |k: &str| t.lines().find_map(|l| l.strip_prefix(k).map(|v| v.trim().to_string())).unwrap_or_default();
+    let get = |k: &str| {
+        t.lines()
+            .find_map(|l| l.strip_prefix(k).map(|v| v.trim().to_string()))
+            .unwrap_or_default()
+    };
     let hex = get("text=");
-    let b: Vec<u8> = hex.as_bytes().chunks(2).filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect();
+    let b: Vec<u8> = hex
+        .as_bytes()
+        .chunks(2)
+        .filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok())
+        .collect();
     (get("state="), String::from_utf8_lossy(&b).into_owned())
 }
 
 /// Anrufzustand des Funkdienstes lesen: (state, number)
 fn sim_call() -> (String, String) {
     let t = std::fs::read_to_string(CALL_FILE).unwrap_or_default();
-    let get = |k: &str| t.lines().find_map(|l| l.strip_prefix(k).map(|v| v.trim().to_string())).unwrap_or_default();
+    let get = |k: &str| {
+        t.lines()
+            .find_map(|l| l.strip_prefix(k).map(|v| v.trim().to_string()))
+            .unwrap_or_default()
+    };
     (get("state="), get("number="))
 }
 
 /// Ist eine SIM bereit und das Modem online?
 pub fn sim_ready() -> bool {
     let s = ultar_radio::read_state();
-    matches!(s.modem, ultar_radio::Modem::Online) && s.sims.iter().any(|x| x.state == ultar_radio::SimState::Ready)
+    matches!(s.modem, ultar_radio::Modem::Online)
+        && s.sims
+            .iter()
+            .any(|x| x.state == ultar_radio::SimState::Ready)
 }
 
 fn call_log_path() -> String {
@@ -202,28 +250,45 @@ fn load_call_log() -> Vec<CallLogEntry> {
             let mut it = l.split('\t');
             let when = it.next()?.to_string();
             let dir = it.next()?.parse().ok()?;
-            Some(CallLogEntry { when, dir, number: it.next()?.to_string() })
+            Some(CallLogEntry {
+                when,
+                dir,
+                number: it.next()?.to_string(),
+            })
         })
         .collect()
 }
 
 fn now_hm() -> String {
-    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     t.to_string()
 }
 
 impl SimTelephony {
     fn add_log(&mut self, number: &str, dir: u8) {
-        let e = CallLogEntry { number: number.to_string(), dir, when: now_hm() };
+        let e = CallLogEntry {
+            number: number.to_string(),
+            dir,
+            when: now_hm(),
+        };
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(call_log_path()) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(call_log_path())
+        {
             let _ = writeln!(f, "{}\t{}\t{}", e.when, e.dir, e.number);
         }
         self.log.insert(0, e);
         self.log.truncate(100);
     }
     fn cloud_active(&self) -> bool {
-        self.cloud.as_ref().is_some_and(|c| !matches!(c.state(), CallState::Idle))
+        self.cloud
+            .as_ref()
+            .is_some_and(|c| !matches!(c.state(), CallState::Idle))
     }
 }
 
@@ -235,7 +300,13 @@ impl TelephonyBackend for SimTelephony {
         // USSD/MMI-Codes (*111#) bzw. Antwort in einer laufenden USSD-Sitzung → Funkdienst, kein Anruf
         let compact = number.replace(' ', "");
         let (ust, _) = ussd_state();
-        if is_ussd(&compact) || (ust == "2" && compact.len() <= 20 && compact.chars().all(|c| c.is_ascii_digit() || c == '*' || c == '#')) {
+        if is_ussd(&compact)
+            || (ust == "2"
+                && compact.len() <= 20
+                && compact
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '*' || c == '#'))
+        {
             let hex: String = compact.bytes().map(|b| format!("{b:02x}")).collect();
             let _ = ultar_radio::send_cmd(&format!("ussd 0 {hex}"));
             return;
@@ -326,14 +397,26 @@ impl Default for PhoneState {
         // sonst Stub (bis echtes Mobilfunk-Modem). Beide nutzen dieselbe Oberfläche.
         // Gerät mit Mobilfunk-Modem (A30: /dev/umts_ipc0) → SIM-Telefonie (mit Cloud für Ultar-Nummern);
         // sonst Cloud-Telefonie bei Ultar-Konto, sonst Platzhalter.
-        let tel: Box<dyn TelephonyBackend> = if std::path::Path::new("/dev/umts_ipc0").exists() || std::env::var_os("ULTAR_SIM_TEL").is_some() {
+        let tel: Box<dyn TelephonyBackend> = if std::path::Path::new("/dev/umts_ipc0").exists()
+            || std::env::var_os("ULTAR_SIM_TEL").is_some()
+        {
             Box::new(SimTelephony::default())
         } else if ultar_cloud::my_number().is_some() {
             Box::new(CloudTelephony::default())
         } else {
             Box::new(StubTelephony::default())
         };
-        Self { number: String::new(), tab: 0, tel, since: None, mute: false, speaker: false, keypad: false, dtmf: String::new(), ringing: None }
+        Self {
+            number: String::new(),
+            tab: 0,
+            tel,
+            since: None,
+            mute: false,
+            speaker: false,
+            keypad: false,
+            dtmf: String::new(),
+            ringing: None,
+        }
     }
 }
 
@@ -368,8 +451,14 @@ impl App {
 
         if !ready {
             let c = ui.th.sub;
-            ui.label(Rect::new(body.x, body.y + ui.dp(2.0), body.w, ui.dp(20.0)),
-                self.t("No mobile network yet (modem/SIM not active)"), 12.0, c, false, Al::Center);
+            ui.label(
+                Rect::new(body.x, body.y + ui.dp(2.0), body.w, ui.dp(20.0)),
+                self.t("No mobile network yet (modem/SIM not active)"),
+                12.0,
+                c,
+                false,
+                Al::Center,
+            );
         }
 
         // USSD-Antwort des Netzes (z. B. Guthaben, Paket-Menü): eigene Karte oben; bei Menüs (Zustand 2) darunter
@@ -395,7 +484,11 @@ impl App {
             let th = ui.tx.measure(&msg, ui.dp(fs), false, tw).1;
             let btn_h = ui.dp(36.0);
             // Menü: Karte höchstens 42 % der Fläche, damit Antwortzeile und Tastenfeld Platz haben
-            let max_h = if menu { body.h * 0.42 } else { body.h - ui.dp(16.0) };
+            let max_h = if menu {
+                body.h * 0.42
+            } else {
+                body.h - ui.dp(16.0)
+            };
             let h = (th + pad * 3.0 + btn_h).min(max_h);
             let r = Rect::new(body.x, body.y + ui.dp(6.0), body.w, h);
             ui.card(r);
@@ -404,7 +497,11 @@ impl App {
             ui.para(r.x + pad, r.y + pad, tw, &msg, fs, tc);
             ui.set_clip(None);
             let by = r.bottom() - pad / 2.0 - btn_h;
-            if ui.button(Rect::new(r.x + pad, by, ui.dp(110.0), btn_h), self.t("Close"), crate::ui::Btn::Plain) {
+            if ui.button(
+                Rect::new(r.x + pad, by, ui.dp(110.0), btn_h),
+                self.t("Close"),
+                crate::ui::Btn::Plain,
+            ) {
                 let _ = ultar_radio::send_cmd("ussd_cancel");
                 self.phone.number.clear();
                 ui.dirty = true;
@@ -415,7 +512,14 @@ impl App {
             // Antwortzeile: was getippt wird, geht mit der grünen Taste als Antwort ans Netz
             let hint = self.t("Enter your reply on the keypad and press call");
             let sc = ui.th.sub;
-            ui.label(Rect::new(body.x, r.bottom() + ui.dp(4.0), body.w, ui.dp(16.0)), hint, 11.0, sc, false, Al::Center);
+            ui.label(
+                Rect::new(body.x, r.bottom() + ui.dp(4.0), body.w, ui.dp(16.0)),
+                hint,
+                11.0,
+                sc,
+                false,
+                Al::Center,
+            );
             let top = r.bottom() + ui.dp(22.0);
             body = Rect::new(body.x, top, body.w, (body.bottom() - top).max(ui.dp(200.0)));
             self.phone.tab = 0;
@@ -430,12 +534,27 @@ impl App {
 
         // Nummernanzeige
         let ussd_menu = ust == "2";
-        let disp = if ussd_menu { Rect::new(body.x, body.y, body.w, ui.dp(40.0)) } else { Rect::new(body.x, body.y + ui.dp(8.0), body.w, ui.dp(70.0)) };
+        let disp = if ussd_menu {
+            Rect::new(body.x, body.y, body.w, ui.dp(40.0))
+        } else {
+            Rect::new(body.x, body.y + ui.dp(8.0), body.w, ui.dp(70.0))
+        };
         let old_rtl = ui.rtl;
         ui.rtl = false;
-        let shown = if self.phone.number.is_empty() { String::new() } else { self.phone.number.clone() };
+        let shown = if self.phone.number.is_empty() {
+            String::new()
+        } else {
+            self.phone.number.clone()
+        };
         let tc = ui.th.text;
-        ui.label(disp, &shown, if ussd_menu { 28.0 } else { 40.0 }, tc, true, Al::Center);
+        ui.label(
+            disp,
+            &shown,
+            if ussd_menu { 28.0 } else { 40.0 },
+            tc,
+            true,
+            Al::Center,
+        );
         ui.rtl = old_rtl;
 
         // Name zum Kontakt, falls bekannt
@@ -443,14 +562,27 @@ impl App {
         let digits = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
         let cur = digits(&self.phone.number);
         if cur.len() >= 4 {
-            if let Some(ct) = self.extra.contacts.list.iter().find(|c| digits(&c.number).ends_with(&cur) || cur.ends_with(&digits(&c.number))) {
+            if let Some(ct) =
+                self.extra.contacts.list.iter().find(|c| {
+                    digits(&c.number).ends_with(&cur) || cur.ends_with(&digits(&c.number))
+                })
+            {
                 let (n, cs) = (ct.name.clone(), ui.th.accent);
-                ui.label(Rect::new(body.x, disp.bottom() - ui.dp(8.0), body.w, ui.dp(22.0)), &n, 14.0, cs, true, Al::Center);
+                ui.label(
+                    Rect::new(body.x, disp.bottom() - ui.dp(8.0), body.w, ui.dp(22.0)),
+                    &n,
+                    14.0,
+                    cs,
+                    true,
+                    Al::Center,
+                );
             }
         }
         // Tastenfeld 3x4 mit runden Tasten, darunter Anrufen (grün) und Löschen
         let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
-        let subs = ["", "ABC", "DEF", "GHI", "JKL", "MNO", "PQRS", "TUV", "WXYZ", "", "+", ""];
+        let subs = [
+            "", "ABC", "DEF", "GHI", "JKL", "MNO", "PQRS", "TUV", "WXYZ", "", "+", "",
+        ];
         let top = disp.bottom() + ui.dp(16.0);
         let call_d = ui.dp(68.0);
         let avail = (body.bottom() - top - call_d - ui.dp(22.0)).max(ui.dp(160.0));
@@ -464,16 +596,39 @@ impl App {
         let old_rtl = ui.rtl;
         ui.rtl = false;
         for (i, k) in keys.iter().enumerate() {
-            let (kx, ky) = (gx + (i % 3) as f32 * cw + cw / 2.0, top + (i / 3) as f32 * ch + ch / 2.0);
+            let (kx, ky) = (
+                gx + (i % 3) as f32 * cw + cw / 2.0,
+                top + (i / 3) as f32 * ch + ch / 2.0,
+            );
             let kw = (cw - ui.dp(14.0)).min(kr * 2.6);
             let hit = Rect::new(kx - kw / 2.0, ky - kr, kw, 2.0 * kr);
             let held = ui.held(hit);
-            ui.cv.rrect(hit, kr * 0.62, if held { ui.th.press } else { ui.th.card });
+            ui.cv
+                .rrect(hit, kr * 0.62, if held { ui.th.press } else { ui.th.card });
             let (tc, cs) = (ui.th.text, ui.th.sub);
             let has_sub = !subs[i].is_empty();
-            ui.label(Rect::new(hit.x, hit.y + if has_sub { -ui.dp(6.0) } else { 0.0 }, hit.w, hit.h), k, 26.0, tc, false, Al::Center);
+            ui.label(
+                Rect::new(
+                    hit.x,
+                    hit.y + if has_sub { -ui.dp(6.0) } else { 0.0 },
+                    hit.w,
+                    hit.h,
+                ),
+                k,
+                26.0,
+                tc,
+                false,
+                Al::Center,
+            );
             if has_sub {
-                ui.label(Rect::new(hit.x, ky + ui.dp(10.0), hit.w, ui.dp(14.0)), subs[i], 9.5, cs, false, Al::Center);
+                ui.label(
+                    Rect::new(hit.x, ky + ui.dp(10.0), hit.w, ui.dp(14.0)),
+                    subs[i],
+                    9.5,
+                    cs,
+                    false,
+                    Al::Center,
+                );
             }
             if ui.tap(hit) {
                 if self.phone.number.chars().count() < 24 {
@@ -490,7 +645,14 @@ impl App {
         ui.rtl = old_rtl;
         let ay = top + 4.0 * ch + ui.dp(10.0) + call_d / 2.0;
         let ok = ui.th.ok;
-        if ui.icon_btn(gx + gw / 2.0, ay, call_d / 2.0, crate::ui::Ic::Phone, ok, rgb(0xFFFFFF)) {
+        if ui.icon_btn(
+            gx + gw / 2.0,
+            ay,
+            call_d / 2.0,
+            crate::ui::Ic::Phone,
+            ok,
+            rgb(0xFFFFFF),
+        ) {
             let n = self.phone.number.clone();
             if n.is_empty() {
                 // leer: letzte Nummer übernehmen
@@ -507,14 +669,30 @@ impl App {
         }
         // links „UOS" (Ultar-Nummer), rechts Löschen – wie in der Web-Demo
         let ac = ui.th.accent;
-        let ur = Rect::new(gx + gw / 2.0 - cw - ui.dp(30.0), ay - ui.dp(22.0), ui.dp(60.0), ui.dp(44.0));
+        let ur = Rect::new(
+            gx + gw / 2.0 - cw - ui.dp(30.0),
+            ay - ui.dp(22.0),
+            ui.dp(60.0),
+            ui.dp(44.0),
+        );
         ui.label(ur, "UOS", 13.0, ac, true, Al::Center);
         if ui.tap(ur) && !self.phone.number.starts_with("UOS-") {
             self.phone.number = format!("UOS-{}", self.phone.number);
             ui.dirty = true;
         }
-        let tc = if self.phone.number.is_empty() { ui.th.sub.alpha(0.5) } else { ui.th.text };
-        if ui.icon_btn(gx + gw / 2.0 + cw, ay, ui.dp(22.0), crate::ui::Ic::Back, ui.th.card.alpha(0.0), tc) {
+        let tc = if self.phone.number.is_empty() {
+            ui.th.sub.alpha(0.5)
+        } else {
+            ui.th.text
+        };
+        if ui.icon_btn(
+            gx + gw / 2.0 + cw,
+            ay,
+            ui.dp(22.0),
+            crate::ui::Ic::Back,
+            ui.th.card.alpha(0.0),
+            tc,
+        ) {
             self.phone.number.pop();
             if self.phone.number == "UOS-" {
                 self.phone.number.clear();

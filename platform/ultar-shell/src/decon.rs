@@ -42,7 +42,12 @@ struct IonFdData {
     fd: i32,
 }
 fn ion_alloc(magic: u32, nr: u32) -> u64 {
-    ioc(DIR_RW, magic, nr, std::mem::size_of::<IonAllocationData>() as u32)
+    ioc(
+        DIR_RW,
+        magic,
+        nr,
+        std::mem::size_of::<IonAllocationData>() as u32,
+    )
 }
 fn ion_share(magic: u32, nr: u32) -> u64 {
     ioc(DIR_RW, magic, nr, std::mem::size_of::<IonFdData>() as u32)
@@ -146,7 +151,11 @@ pub struct Decon {
 impl Decon {
     /// DECON öffnen: Framebuffer-Gerät (für den Befehl) + ION-Puffer in Bildschirmgröße.
     pub fn open(fb_path: &str) -> Result<Self, String> {
-        let fb = OpenOptions::new().read(true).write(true).open(fb_path).map_err(|e| format!("{fb_path}: {e}"))?;
+        let fb = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(fb_path)
+            .map_err(|e| format!("{fb_path}: {e}"))?;
         // Größe aus dem fbdev-Var-Screeninfo lesen (FBIOGET_VSCREENINFO = 0x4600)
         let mut var = [0u32; 40];
         if unsafe { ioctl(fb.as_raw_fd(), 0x4600, var.as_mut_ptr()) } != 0 {
@@ -159,16 +168,37 @@ impl Decon {
         let line = (w * 4) as usize;
         let size = line * h as usize;
 
-        let ion = OpenOptions::new().read(true).write(true).open("/dev/ion").map_err(|e| format!("/dev/ion: {e}"))?;
+        let ion = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/ion")
+            .map_err(|e| format!("/dev/ion: {e}"))?;
         let alloc = |ion: &File| -> Result<(i32, *mut u8), String> {
             // ION-Puffer anlegen (System-Heap, Maske 1)
-            let mut a = IonAllocationData { len: size as u64, align: 0, heap_id_mask: 1, flags: 0, handle: 0 };
+            let mut a = IonAllocationData {
+                len: size as u64,
+                align: 0,
+                heap_id_mask: 1,
+                flags: 0,
+                handle: 0,
+            };
             if unsafe { ioctl(ion.as_raw_fd(), ion_alloc(b'I' as u32, 0), &mut a as *mut _) } < 0 {
                 return Err("ION_IOC_ALLOC fehlgeschlagen".into());
             }
             // dmabuf-Dateizeiger holen
-            let mut fdd = IonFdData { handle: a.handle, fd: -1 };
-            if unsafe { ioctl(ion.as_raw_fd(), ion_share(b'I' as u32, 4), &mut fdd as *mut _) } < 0 || fdd.fd < 0 {
+            let mut fdd = IonFdData {
+                handle: a.handle,
+                fd: -1,
+            };
+            if unsafe {
+                ioctl(
+                    ion.as_raw_fd(),
+                    ion_share(b'I' as u32, 4),
+                    &mut fdd as *mut _,
+                )
+            } < 0
+                || fdd.fd < 0
+            {
                 return Err("ION_IOC_SHARE fehlgeschlagen".into());
             }
             // in den Speicher abbilden (MAP_SHARED=1, PROT_READ|WRITE=3)
@@ -181,7 +211,18 @@ impl Decon {
         let b0 = alloc(&ion)?;
         // zweiter Puffer optional: ohne ihn bleibt es beim Einzelpuffer
         let b1 = alloc(&ion).unwrap_or(b0);
-        Ok(Self { fb, _ion: ion, bufs: [b0, b1], back: 0, buf_fd: b0.0, map: b0.1, size, w, h, line })
+        Ok(Self {
+            fb,
+            _ion: ion,
+            bufs: [b0, b1],
+            back: 0,
+            buf_fd: b0.0,
+            map: b0.1,
+            size,
+            w,
+            h,
+            line,
+        })
     }
 
     /// Zugriff auf den Bildpuffer als 32-Bit-Pixel (0x00RRGGBB).
@@ -221,8 +262,22 @@ impl Decon {
         c.buf.blending = 0;
         c.buf.idma_type = IDMA_G0;
         c.buf.format = FMT_BGRX_8888;
-        c.buf.src = Frame { x: 0, y: 0, w: self.w, h: self.h, f_w: self.w, f_h: self.h };
-        c.dst = Frame { x: 0, y: 0, w: self.w, h: self.h, f_w: self.w, f_h: self.h };
+        c.buf.src = Frame {
+            x: 0,
+            y: 0,
+            w: self.w,
+            h: self.h,
+            f_w: self.w,
+            f_h: self.h,
+        };
+        c.dst = Frame {
+            x: 0,
+            y: 0,
+            w: self.w,
+            h: self.h,
+            f_w: self.w,
+            f_h: self.h,
+        };
         let sz = std::mem::size_of::<WinConfigData>() as u32;
         let req = ioc(DIR_W, b'F' as u32, 209, sz);
         let r = unsafe { ioctl(self.fb.as_raw_fd(), req, &mut d as *mut _) };

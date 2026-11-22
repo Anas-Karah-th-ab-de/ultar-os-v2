@@ -16,7 +16,11 @@ pub struct Speicher {
 
 impl Default for Speicher {
     fn default() -> Self {
-        Speicher { max_gb: 0, ram_mb: 0, ram_garantiert_mb: 0 }
+        Speicher {
+            max_gb: 0,
+            ram_mb: 0,
+            ram_garantiert_mb: 0,
+        }
     }
 }
 
@@ -39,7 +43,15 @@ pub struct Netz {
 
 impl Default for Netz {
     fn default() -> Self {
-        Netz { art: "frei".into(), ueber: String::new(), wg_conf: String::new(), wg_adresse: String::new(), wg_endpunkt: String::new(), vpn_zelle: false, vpn_schnittstelle: "wg0".into() }
+        Netz {
+            art: "frei".into(),
+            ueber: String::new(),
+            wg_conf: String::new(),
+            wg_adresse: String::new(),
+            wg_endpunkt: String::new(),
+            vpn_zelle: false,
+            vpn_schnittstelle: "wg0".into(),
+        }
     }
 }
 
@@ -64,7 +76,18 @@ pub struct Privat {
 
 impl Default for Privat {
     fn default() -> Self {
-        Privat { standort: false, geraeteinfo: false, kamera: false, mikrofon: false, lautsprecher: true, usb: false, rechnername: "ultar".into(), ort: String::new(), zeitzone: String::new(), sprache: String::new() }
+        Privat {
+            standort: false,
+            geraeteinfo: false,
+            kamera: false,
+            mikrofon: false,
+            lautsprecher: true,
+            usb: false,
+            rechnername: "ultar".into(),
+            ort: String::new(),
+            zeitzone: String::new(),
+            sprache: String::new(),
+        }
     }
 }
 
@@ -120,12 +143,17 @@ pub fn ordner(name: &str) -> PathBuf {
 }
 
 pub fn gueltiger_name(n: &str) -> bool {
-    !n.is_empty() && n.len() <= 32 && n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') && !n.starts_with('-')
+    !n.is_empty()
+        && n.len() <= 32
+        && n.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !n.starts_with('-')
 }
 
 impl Profil {
     pub fn laden(name: &str) -> Result<Profil, String> {
-        let s = std::fs::read_to_string(ordner(name).join("zelle.toml")).map_err(|_| format!("Zelle „{name}“ gibt es nicht"))?;
+        let s = std::fs::read_to_string(ordner(name).join("zelle.toml"))
+            .map_err(|_| format!("Zelle „{name}“ gibt es nicht"))?;
         toml::from_str(&s).map_err(|e| format!("zelle.toml: {e}"))
     }
 
@@ -135,12 +163,20 @@ impl Profil {
         }
         let d = ordner(&self.name);
         std::fs::create_dir_all(d.join("daten")).map_err(|e| e.to_string())?;
-        std::fs::write(d.join("zelle.toml"), toml::to_string_pretty(self).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+        std::fs::write(
+            d.join("zelle.toml"),
+            toml::to_string_pretty(self).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())
     }
 
     pub fn alle() -> Vec<Profil> {
         let mut v: Vec<Profil> = std::fs::read_dir(crate::wurzel())
-            .map(|d| d.flatten().filter_map(|e| Profil::laden(&e.file_name().to_string_lossy()).ok()).collect())
+            .map(|d| {
+                d.flatten()
+                    .filter_map(|e| Profil::laden(&e.file_name().to_string_lossy()).ok())
+                    .collect()
+            })
             .unwrap_or_default();
         v.sort_by(|a, b| a.name.cmp(&b.name));
         v
@@ -155,7 +191,9 @@ impl Profil {
     pub fn belegt(&self) -> u64 {
         fn groesse(p: &std::path::Path) -> u64 {
             match std::fs::symlink_metadata(p) {
-                Ok(m) if m.is_dir() => std::fs::read_dir(p).map(|d| d.flatten().map(|e| groesse(&e.path())).sum()).unwrap_or(0),
+                Ok(m) if m.is_dir() => std::fs::read_dir(p)
+                    .map(|d| d.flatten().map(|e| groesse(&e.path())).sum())
+                    .unwrap_or(0),
                 Ok(m) => {
                     use std::os::unix::fs::MetadataExt;
                     m.blocks() * 512

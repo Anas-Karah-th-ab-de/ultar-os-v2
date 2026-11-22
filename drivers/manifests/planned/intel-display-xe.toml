@@ -1,0 +1,15 @@
+# Intel graphics display, Xe platform part. 8086:7d51 = Arc 140T (Arrow Lake-H), Beelink GTi15 Ultra.
+id = "intel-display-xe"
+version = "1.0.0"
+class = "display"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.intel-display-xe.name"
+description_key = "driver.intel-display-xe.description"
+
+[match]
+pci = ["8086:7d51"]
+
+[content]
+module = "drivers/intel_display_xe.uko"

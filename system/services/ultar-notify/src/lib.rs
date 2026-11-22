@@ -60,7 +60,11 @@ pub fn post(kind: &str, app: &str, title: &str, body: &str, urgency: Urgency) {
         clean(title),
         clean(body)
     );
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(LOG) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG)
+    {
         let _ = f.write_all(line.as_bytes());
     }
 }

@@ -90,7 +90,13 @@ fn ctl_set(f: &File, ids: &[u8], name: &str, item: &str) -> bool {
 
 /// Aufnahmeweg ein-/ausschalten. Liefert die Zahl gesetzter Regler (0 = kein passender Tonchip).
 pub fn route(on: bool) -> usize {
-    let Ok(f) = OpenOptions::new().read(true).write(true).open("/dev/snd/controlC0") else { return 0 };
+    let Ok(f) = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/snd/controlC0")
+    else {
+        return 0;
+    };
     let mut ids = vec![0u8; 64 * 1024];
     let mut list = [0u8; 80];
     list[4..8].copy_from_slice(&1024u32.to_le_bytes());
@@ -113,7 +119,10 @@ pub fn route(on: bool) -> usize {
         ("ADC Left Gain", "127"),
         ("ADC Right Gain", "127"),
     ];
-    steps.iter().filter(|(n, v)| ctl_set(&f, &ids, n, v)).count()
+    steps
+        .iter()
+        .filter(|(n, v)| ctl_set(&f, &ids, n, v))
+        .count()
 }
 
 pub fn available() -> bool {
@@ -164,14 +173,23 @@ impl Mic {
         if route(true) == 0 {
             return Err("kein Aufnahmeweg (Tonchip unbekannt)".into());
         }
-        let f = OpenOptions::new().read(true).open(DEV).map_err(|e| format!("{DEV}: {e}"))?;
+        let f = OpenOptions::new()
+            .read(true)
+            .open(DEV)
+            .map_err(|e| format!("{DEV}: {e}"))?;
         let fd = f.as_raw_fd();
         let mut hp = hw_params();
         if unsafe { ioctl(fd, PCM_HW_PARAMS, hp.as_mut_ptr()) } != 0 {
-            return Err(format!("{DEV}: Format abgelehnt ({})", std::io::Error::last_os_error()));
+            return Err(format!(
+                "{DEV}: Format abgelehnt ({})",
+                std::io::Error::last_os_error()
+            ));
         }
         if unsafe { ioctl(fd, PCM_PREPARE) } != 0 {
-            return Err(format!("{DEV}: PREPARE ({})", std::io::Error::last_os_error()));
+            return Err(format!(
+                "{DEV}: PREPARE ({})",
+                std::io::Error::last_os_error()
+            ));
         }
         unsafe { ioctl(fd, PCM_START) };
         let stop = Arc::new(AtomicBool::new(false));
@@ -261,8 +279,17 @@ pub fn test_cli(ms: u64, file: Option<&str>) -> i32 {
             }
         }
     }
-    let levels: Vec<String> = all.chunks(RATE as usize / 4).map(|c| format!("{:.0}", rms(c))).collect();
-    println!("Mikrofon: {} Werte in {} ms, RMS {:.1}, Spitze {}", all.len(), t0.elapsed().as_millis(), rms(&all), all.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0));
+    let levels: Vec<String> = all
+        .chunks(RATE as usize / 4)
+        .map(|c| format!("{:.0}", rms(c)))
+        .collect();
+    println!(
+        "Mikrofon: {} Werte in {} ms, RMS {:.1}, Spitze {}",
+        all.len(),
+        t0.elapsed().as_millis(),
+        rms(&all),
+        all.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0)
+    );
     println!("Verlauf: {}", levels.join(" "));
     if let Some(p) = file {
         if let Err(e) = std::fs::write(p, wav(&all)) {

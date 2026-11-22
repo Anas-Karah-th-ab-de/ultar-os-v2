@@ -95,7 +95,14 @@ fn parse_toc(fw: &[u8]) -> Vec<TocEntry> {
             break;
         }
         let rd = |a: usize| u32::from_le_bytes([e[a], e[a + 1], e[a + 2], e[a + 3]]);
-        out.push(TocEntry { name, b_offset: rd(12), m_offset: rd(16), size: rd(20), crc: rd(24), toc_count: rd(28) });
+        out.push(TocEntry {
+            name,
+            b_offset: rd(12),
+            m_offset: rd(16),
+            size: rd(20),
+            crc: rd(24),
+            toc_count: rd(28),
+        });
         off += TOC_ENTRY_SIZE;
         if out[0].toc_count != 0 && out.len() as u32 >= out[0].toc_count {
             break;
@@ -111,7 +118,14 @@ fn name_str(n: &[u8; 12]) -> String {
 
 fn ioc0(fd: i32, req: c_ulong, name: &str) -> i32 {
     let r = unsafe { ioctl(fd, req) };
-    eprintln!("ioctl {name} -> {r}{}", if r < 0 { format!(" ({})", std::io::Error::last_os_error()) } else { String::new() });
+    eprintln!(
+        "ioctl {name} -> {r}{}",
+        if r < 0 {
+            format!(" ({})", std::io::Error::last_os_error())
+        } else {
+            String::new()
+        }
+    );
     r
 }
 
@@ -137,19 +151,33 @@ fn xmit_stage(fd: i32, name: &str, e: &TocEntry, base: u32, data: &[u8]) -> bool
         };
         let r = unsafe { ioctl(fd, IOCTL_MODEM_XMIT_BOOT, &mf as *const _) };
         if r != 0 {
-            eprintln!("XMIT_BOOT {name} m_offset=0x{:x} len={len} -> {r} ({})", m_off + done as u32, std::io::Error::last_os_error());
+            eprintln!(
+                "XMIT_BOOT {name} m_offset=0x{:x} len={len} -> {r} ({})",
+                m_off + done as u32,
+                std::io::Error::last_os_error()
+            );
             return false;
         }
         done += len;
     }
-    eprintln!("XMIT_BOOT {name}: {} Bytes nach m_offset=0x{m_off:x} gesendet", data.len());
+    eprintln!(
+        "XMIT_BOOT {name}: {} Bytes nach m_offset=0x{m_off:x} gesendet",
+        data.len()
+    );
     true
 }
 
 fn sec_req(fd: i32, mode: u32, size_boot: u32, size_main: u32) -> i32 {
-    let sec = ModemSecReq { mode, size_boot, size_main, dummy: 0 };
+    let sec = ModemSecReq {
+        mode,
+        size_boot,
+        size_main,
+        dummy: 0,
+    };
     let r = unsafe { ioctl(fd, IOCTL_SECURITY_REQ, &sec as *const _) };
-    eprintln!("SECURITY_REQ mode={mode} size_boot={size_boot} size_main={size_main} -> {r} (0 = ok)");
+    eprintln!(
+        "SECURITY_REQ mode={mode} size_boot={size_boot} size_main={size_main} -> {r} (0 = ok)"
+    );
     r
 }
 
@@ -162,9 +190,19 @@ fn req_resp(dev: &mut File, req: u32, exp: u32) -> bool {
     }
     // Antwort mit Zeitlimit (poll), damit ein stummer CP das Werkzeug nicht aufhängt
     #[repr(C)]
-    struct PollFd { fd: i32, events: i16, revents: i16 }
-    extern "C" { fn poll(fds: *mut PollFd, n: u64, timeout: i32) -> i32; }
-    let mut p = PollFd { fd: dev.as_raw_fd(), events: 1, revents: 0 };
+    struct PollFd {
+        fd: i32,
+        events: i16,
+        revents: i16,
+    }
+    extern "C" {
+        fn poll(fds: *mut PollFd, n: u64, timeout: i32) -> i32;
+    }
+    let mut p = PollFd {
+        fd: dev.as_raw_fd(),
+        events: 1,
+        revents: 0,
+    };
     if unsafe { poll(&mut p, 1, 5000) } <= 0 {
         eprintln!("Handshake 0x{req:04x}: keine Antwort vom CP (5 s)");
         return false;
@@ -176,7 +214,10 @@ fn req_resp(dev: &mut File, req: u32, exp: u32) -> bool {
             eprintln!("Handshake 0x{req:04x} -> 0x{got:04x} (erwartet 0x{exp:04x})");
             got == exp
         }
-        r => { eprintln!("Handshake 0x{req:04x}: Lesen {r:?}"); false }
+        r => {
+            eprintln!("Handshake 0x{req:04x}: Lesen {r:?}");
+            false
+        }
     }
 }
 
@@ -186,7 +227,10 @@ fn req_resp(dev: &mut File, req: u32, exp: u32) -> bool {
 ///   DL_START → Handshake 0x900d/0xa00d, 0x9f00/0xaf00 → BOOT_OFF → STATUS bis ONLINE.
 /// NV kommt nicht aus der Firmware, sondern aus nv_data.bin (Kopie aus EFS – EFS selbst wird nie beschrieben).
 fn boot(fw: &[u8], toc: &[TocEntry], nv: Option<Vec<u8>>) -> std::io::Result<()> {
-    let mut dev = File::options().read(true).write(true).open("/dev/umts_boot0")?;
+    let mut dev = File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/umts_boot0")?;
     let fd = dev.as_raw_fd();
     let st = unsafe { ioctl(fd, IOCTL_MODEM_STATUS) };
     eprintln!("modem_status vorher: {st}");
@@ -195,7 +239,11 @@ fn boot(fw: &[u8], toc: &[TocEntry], nv: Option<Vec<u8>>) -> std::io::Result<()>
     sec_req(fd, 2, 0, 0);
 
     let (mut boot_size, mut main_size) = (0u32, 0u32);
-    let base = toc.iter().find(|e| name_str(&e.name) == "BOOT").map(|e| e.m_offset).unwrap_or(0);
+    let base = toc
+        .iter()
+        .find(|e| name_str(&e.name) == "BOOT")
+        .map(|e| e.m_offset)
+        .unwrap_or(0);
     for e in toc.iter().skip(1) {
         let nm = name_str(&e.name);
         if nm == "OFFSET" {
@@ -216,24 +264,38 @@ fn boot(fw: &[u8], toc: &[TocEntry], nv: Option<Vec<u8>>) -> std::io::Result<()>
         } else {
             let (s, l) = (e.b_offset as usize, e.size as usize);
             if l == 0 || s + l > fw.len() {
-                eprintln!("{nm}: liegt nicht in der Firmware (b_offset=0x{s:x}, size={l}) – übersprungen");
+                eprintln!(
+                    "{nm}: liegt nicht in der Firmware (b_offset=0x{s:x}, size={l}) – übersprungen"
+                );
                 continue;
             }
             std::borrow::Cow::Borrowed(&fw[s..s + l])
         };
-        if nm == "BOOT" { boot_size = e.size }
-        if nm == "MAIN" { main_size = e.size }
+        if nm == "BOOT" {
+            boot_size = e.size
+        }
+        if nm == "MAIN" {
+            main_size = e.size
+        }
         if !xmit_stage(fd, &nm, e, base, &data) {
             return Err(std::io::Error::other(format!("Stufe {nm} abgelehnt")));
         }
     }
 
     if sec_req(fd, 0, boot_size, main_size) != 0 {
-        return Err(std::io::Error::other("Signaturprüfung (SECURITY_REQ) fehlgeschlagen"));
+        return Err(std::io::Error::other(
+            "Signaturprüfung (SECURITY_REQ) fehlgeschlagen",
+        ));
     }
-    if ioc0(fd, IOCTL_MODEM_ON, "MODEM_ON") < 0 { return Err(std::io::Error::last_os_error()) }
-    if ioc0(fd, IOCTL_MODEM_BOOT_ON, "BOOT_ON") < 0 { return Err(std::io::Error::last_os_error()) }
-    if ioc0(fd, IOCTL_MODEM_DL_START, "DL_START") < 0 { return Err(std::io::Error::last_os_error()) }
+    if ioc0(fd, IOCTL_MODEM_ON, "MODEM_ON") < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if ioc0(fd, IOCTL_MODEM_BOOT_ON, "BOOT_ON") < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if ioc0(fd, IOCTL_MODEM_DL_START, "DL_START") < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
 
     let hs = req_resp(&mut dev, 0x900d, 0xa00d) && req_resp(&mut dev, 0x9f00, 0xaf00);
     if !hs {
@@ -249,13 +311,18 @@ fn boot(fw: &[u8], toc: &[TocEntry], nv: Option<Vec<u8>>) -> std::io::Result<()>
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
-    eprintln!("Modem nicht online geworden (status={}).", unsafe { ioctl(fd, IOCTL_MODEM_STATUS) });
+    eprintln!("Modem nicht online geworden (status={}).", unsafe {
+        ioctl(fd, IOCTL_MODEM_STATUS)
+    });
     Ok(())
 }
 
 /// Nach einem Fehlversuch steht der CP in STATE_BOOTING. MODEM_OFF (optional RESET) setzt ihn zurück.
 fn reset() -> std::io::Result<()> {
-    let dev = File::options().read(true).write(true).open("/dev/umts_boot0")?;
+    let dev = File::options()
+        .read(true)
+        .write(true)
+        .open("/dev/umts_boot0")?;
     let fd = dev.as_raw_fd();
     ioc0(fd, IOCTL_MODEM_OFF, "MODEM_OFF");
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -269,7 +336,13 @@ const WORK_DIR: &str = "/data/ultar/modem";
 
 extern "C" {
     fn mknod(path: *const std::os::raw::c_char, mode: u32, dev: u64) -> i32;
-    fn mount(src: *const std::os::raw::c_char, tgt: *const std::os::raw::c_char, fs: *const std::os::raw::c_char, flags: c_ulong, data: *const std::os::raw::c_char) -> i32;
+    fn mount(
+        src: *const std::os::raw::c_char,
+        tgt: *const std::os::raw::c_char,
+        fs: *const std::os::raw::c_char,
+        flags: c_ulong,
+        data: *const std::os::raw::c_char,
+    ) -> i32;
     fn umount(tgt: *const std::os::raw::c_char) -> i32;
     fn sync();
 }
@@ -278,7 +351,10 @@ extern "C" {
 fn part_node(name: &str) -> Option<String> {
     for e in std::fs::read_dir("/sys/class/block").ok()?.flatten() {
         let ue = std::fs::read_to_string(e.path().join("uevent")).unwrap_or_default();
-        if !ue.lines().any(|l| l.strip_prefix("PARTNAME=").is_some_and(|n| n.eq_ignore_ascii_case(name))) {
+        if !ue.lines().any(|l| {
+            l.strip_prefix("PARTNAME=")
+                .is_some_and(|n| n.eq_ignore_ascii_case(name))
+        }) {
             continue;
         }
         let dev = std::fs::read_to_string(e.path().join("dev")).ok()?;
@@ -288,7 +364,8 @@ fn part_node(name: &str) -> Option<String> {
         let path = format!("/dev/ultar-part-{name}");
         let c = std::ffi::CString::new(path.clone()).ok()?;
         // makedev wie glibc; S_IFBLK | 0600
-        let devno = ((maj & 0xfff) << 8) | (min & 0xff) | ((min & !0xff) << 12) | ((maj & !0xfff) << 32);
+        let devno =
+            ((maj & 0xfff) << 8) | (min & 0xff) | ((min & !0xff) << 12) | ((maj & !0xfff) << 32);
         unsafe { mknod(c.as_ptr(), 0o060600, devno) };
         return Some(path);
     }
@@ -303,13 +380,22 @@ fn ensure_efs() -> Option<Vec<u8>> {
     let fp = format!("{WORK_DIR}/factory.prop");
     let have_nv = std::fs::metadata(&nv).map(|m| m.len() > 0).unwrap_or(false);
     // factory.prop.none = EFS wurde schon durchsucht, die Datei gibt es dort nicht
-    let have_fp = std::path::Path::new(&fp).exists() || std::path::Path::new(&format!("{fp}.none")).exists();
+    let have_fp =
+        std::path::Path::new(&fp).exists() || std::path::Path::new(&format!("{fp}.none")).exists();
     if !(have_nv && have_fp) {
         if let Some(efs) = part_node("efs") {
             let mnt = "/run/ultar/modem/efs";
             let _ = std::fs::create_dir_all(mnt);
             let cs = |s: &str| std::ffi::CString::new(s).unwrap();
-            let r = unsafe { mount(cs(&efs).as_ptr(), cs(mnt).as_ptr(), cs("ext4").as_ptr(), 1, cs("noload").as_ptr()) };
+            let r = unsafe {
+                mount(
+                    cs(&efs).as_ptr(),
+                    cs(mnt).as_ptr(),
+                    cs("ext4").as_ptr(),
+                    1,
+                    cs("noload").as_ptr(),
+                )
+            };
             if r != 0 {
                 eprintln!("EFS nicht einbindbar: {}", std::io::Error::last_os_error());
             } else {
@@ -317,7 +403,10 @@ fn ensure_efs() -> Option<Vec<u8>> {
                 if !have_nv {
                     if let Ok(d) = std::fs::read(format!("{mnt}/nv_data.bin")) {
                         match std::fs::write(&nv, &d) {
-                            Ok(_) => eprintln!("nv_data.bin aus EFS kopiert ({} Bytes) – EFS bleibt unverändert", d.len()),
+                            Ok(_) => eprintln!(
+                                "nv_data.bin aus EFS kopiert ({} Bytes) – EFS bleibt unverändert",
+                                d.len()
+                            ),
                             Err(e) => eprintln!("{nv}: {e}"),
                         }
                     }
@@ -326,7 +415,10 @@ fn ensure_efs() -> Option<Vec<u8>> {
                     match std::fs::read(format!("{mnt}/factory.prop")) {
                         Ok(d) => {
                             let _ = std::fs::write(&fp, &d);
-                            eprintln!("factory.prop aus EFS kopiert: {}", String::from_utf8_lossy(&d).trim());
+                            eprintln!(
+                                "factory.prop aus EFS kopiert: {}",
+                                String::from_utf8_lossy(&d).trim()
+                            );
                         }
                         Err(_) => {
                             let _ = std::fs::write(format!("{fp}.none"), "");
@@ -354,7 +446,9 @@ const DS_DETECT_PARAM: &str = "/sys/module/modem_ctrl_ss310ap/parameters/ds_dete
 /// Der Kernel legt den Wert bei MODEM_ON (init_mailbox_regs) in das AP→CP-Statusregister; daran richtet der
 /// CP seine SIM-Erkennung aus. Vorrang: /data/ultar/modem/simslots (Hand-Vorgabe) vor EFS-factory.prop.
 fn set_sim_configuration() -> Option<u32> {
-    let manual = std::fs::read_to_string(format!("{WORK_DIR}/simslots")).ok().and_then(|s| s.trim().parse::<u32>().ok());
+    let manual = std::fs::read_to_string(format!("{WORK_DIR}/simslots"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok());
     let prop = std::fs::read_to_string(format!("{WORK_DIR}/factory.prop")).ok();
     let n = manual.or_else(|| prop.as_deref().and_then(sim_count_from_prop));
     let Some(n) = n else {
@@ -367,16 +461,18 @@ fn set_sim_configuration() -> Option<u32> {
         return None;
     }
     let n = n.min(2);
-    let ok = [DS_DETECT, DS_DETECT_PARAM].iter().any(|p| match std::fs::write(p, format!("{n}")) {
-        Ok(_) => {
-            eprintln!("SIM-Konfiguration: {n} Steckplatz/-plätze -> {p}");
-            true
-        }
-        Err(e) => {
-            eprintln!("SIM-Konfiguration: {p}: {e}");
-            false
-        }
-    });
+    let ok = [DS_DETECT, DS_DETECT_PARAM]
+        .iter()
+        .any(|p| match std::fs::write(p, format!("{n}")) {
+            Ok(_) => {
+                eprintln!("SIM-Konfiguration: {n} Steckplatz/-plätze -> {p}");
+                true
+            }
+            Err(e) => {
+                eprintln!("SIM-Konfiguration: {p}: {e}");
+                false
+            }
+        });
     let _ = std::fs::create_dir_all("/run/ultar/radio");
     let _ = std::fs::write("/run/ultar/radio/simslots", format!("{n}\n"));
     ok.then_some(n)
@@ -385,31 +481,47 @@ fn set_sim_configuration() -> Option<u32> {
 /// Systemstart: Modem starten, falls es noch nicht läuft. Firmware direkt aus der Partition „radio".
 fn auto() -> std::io::Result<()> {
     {
-        let dev = File::options().read(true).write(true).open("/dev/umts_boot0")?;
+        let dev = File::options()
+            .read(true)
+            .write(true)
+            .open("/dev/umts_boot0")?;
         let st = unsafe { ioctl(dev.as_raw_fd(), IOCTL_MODEM_STATUS) };
         if st == STATE_ONLINE {
             println!("Modem läuft bereits (status={st}).");
             return Ok(());
         }
     }
-    let radio = part_node("radio").ok_or_else(|| std::io::Error::other("Partition radio nicht gefunden"))?;
+    let radio = part_node("radio")
+        .ok_or_else(|| std::io::Error::other("Partition radio nicht gefunden"))?;
     let mut f = File::open(&radio)?;
     let mut head = vec![0u8; 512];
     f.read_exact(&mut head)?;
     let toc = parse_toc(&head);
     if toc.first().map(|e| name_str(&e.name)) != Some("TOC".into()) {
-        return Err(std::io::Error::other("keine gültige TOC in der Partition radio"));
+        return Err(std::io::Error::other(
+            "keine gültige TOC in der Partition radio",
+        ));
     }
     // nur so viel lesen, wie die Stufen brauchen
-    let need = toc.iter().filter(|e| !name_str(&e.name).starts_with("NV") && name_str(&e.name) != "OFFSET").map(|e| e.b_offset as usize + e.size as usize).max().unwrap_or(512);
+    let need = toc
+        .iter()
+        .filter(|e| !name_str(&e.name).starts_with("NV") && name_str(&e.name) != "OFFSET")
+        .map(|e| e.b_offset as usize + e.size as usize)
+        .max()
+        .unwrap_or(512);
     let mut fw = head;
     fw.resize(need.min(256 << 20), 0);
     f.read_exact(&mut fw[512..])?;
-    let toc: Vec<TocEntry> = toc.into_iter().filter(|e| name_str(&e.name) != "OFFSET").collect();
+    let toc: Vec<TocEntry> = toc
+        .into_iter()
+        .filter(|e| name_str(&e.name) != "OFFSET")
+        .collect();
     let nv = ensure_efs();
     set_sim_configuration();
     if nv.is_none() {
-        return Err(std::io::Error::other("nv_data.bin fehlt (EFS nicht lesbar) – ohne Kalibrierdaten wird nicht gebootet"));
+        return Err(std::io::Error::other(
+            "nv_data.bin fehlt (EFS nicht lesbar) – ohne Kalibrierdaten wird nicht gebootet",
+        ));
     }
     boot(&fw, &toc, nv)
 }
@@ -446,9 +558,15 @@ fn main() {
     println!("ultar-modem (modem_v1/ss310ap). ON=0x{:x} XMIT_BOOT=0x{:x} SECURITY_REQ=0x{:x} DL_START=0x{:x} BOOT_ON=0x{:x}",
         IOCTL_MODEM_ON, IOCTL_MODEM_XMIT_BOOT, IOCTL_SECURITY_REQ, IOCTL_MODEM_DL_START, IOCTL_MODEM_BOOT_ON);
 
-    let fw_path = args.iter().position(|a| a == "--fw").and_then(|i| args.get(i + 1)).cloned();
+    let fw_path = args
+        .iter()
+        .position(|a| a == "--fw")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
     let Some(path) = fw_path else {
-        println!("Aufruf: ultar-modem --auto | --fw <cp.bin> [--nv <nv_data.bin>] [--arm] | --reset");
+        println!(
+            "Aufruf: ultar-modem --auto | --fw <cp.bin> [--nv <nv_data.bin>] [--arm] | --reset"
+        );
         return;
     };
 
@@ -462,8 +580,15 @@ fn main() {
     let toc = parse_toc(&buf);
     println!("TOC-Einträge ({}):", toc.len());
     for e in &toc {
-        println!("  {:<10} b_offset=0x{:08x} m_offset=0x{:08x} size={} crc=0x{:08x} count={}",
-            name_str(&e.name), { e.b_offset }, { e.m_offset }, { e.size }, { e.crc }, { e.toc_count });
+        println!(
+            "  {:<10} b_offset=0x{:08x} m_offset=0x{:08x} size={} crc=0x{:08x} count={}",
+            name_str(&e.name),
+            { e.b_offset },
+            { e.m_offset },
+            { e.size },
+            { e.crc },
+            { e.toc_count }
+        );
     }
 
     if !args.iter().any(|a| a == "--arm") {
@@ -471,7 +596,11 @@ fn main() {
         return;
     }
     set_sim_configuration();
-    let nv = args.iter().position(|a| a == "--nv").and_then(|i| args.get(i + 1)).and_then(|p| std::fs::read(p).map_err(|e| eprintln!("NV {p}: {e}")).ok());
+    let nv = args
+        .iter()
+        .position(|a| a == "--nv")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|p| std::fs::read(p).map_err(|e| eprintln!("NV {p}: {e}")).ok());
     if let Err(e) = boot(&buf, &toc, nv) {
         eprintln!("Boot fehlgeschlagen: {e}");
     }

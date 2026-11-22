@@ -69,7 +69,10 @@ impl Format {
 }
 
 fn ext_of(p: &Path) -> String {
-    p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
+    p.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
 }
 
 /// Format an Inhalt (Magic) und Endung erkennen. Der Inhalt hat Vorrang: eine umbenannte Datei wird nicht
@@ -92,14 +95,22 @@ fn detect_bytes(h: &[u8], ext: &str, p: &Path) -> Format {
         if h.len() > 10 && &h[8..10] == b"AI" {
             return Format::AppImage;
         }
-        return if ext == "appimage" { Format::AppImage } else { Format::Unknown };
+        return if ext == "appimage" {
+            Format::AppImage
+        } else {
+            Format::Unknown
+        };
     }
     if starts(b"MZ") {
         return Format::Exe;
     }
     if starts(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]) {
         // OLE-Verbunddatei: MSI (Word-Dokumente haben dasselbe Magic)
-        return if ext == "msi" || ext == "msp" { Format::Msi } else { Format::Unknown };
+        return if ext == "msi" || ext == "msp" {
+            Format::Msi
+        } else {
+            Format::Unknown
+        };
     }
     if starts(&[0xED, 0xAB, 0xEE, 0xDB]) {
         return Format::Rpm;
@@ -110,7 +121,10 @@ fn detect_bytes(h: &[u8], ext: &str, p: &Path) -> Format {
     if starts(b"flatpak") || (ext == "flatpak" && starts(b"\x89")) {
         return Format::Flatpak;
     }
-    if ext == "flatpakref" && h.windows(14).any(|w| w == b"[Flatpak Ref]\n" || w == b"[Flatpak Ref]\r") {
+    if ext == "flatpakref"
+        && h.windows(14)
+            .any(|w| w == b"[Flatpak Ref]\n" || w == b"[Flatpak Ref]\r")
+    {
         return Format::FlatpakRef;
     }
     if starts(b"PK\x03\x04") {
@@ -128,7 +142,12 @@ fn detect_bytes(h: &[u8], ext: &str, p: &Path) -> Format {
         return Format::Unknown;
     }
     // .uap = tar mit ultar-manifest.toml (ustar-Magic an Position 257)
-    if h.len() > 262 && &h[257..262] == b"ustar" && (ext == "uap" || h.windows(ultar_pkg::M_MANIFEST.len()).any(|w| w == ultar_pkg::M_MANIFEST.as_bytes())) {
+    if h.len() > 262
+        && &h[257..262] == b"ustar"
+        && (ext == "uap"
+            || h.windows(ultar_pkg::M_MANIFEST.len())
+                .any(|w| w == ultar_pkg::M_MANIFEST.as_bytes()))
+    {
         return Format::Uap;
     }
     Format::Unknown
@@ -146,8 +165,16 @@ pub struct Paths {
 
 impl Paths {
     pub fn system() -> Paths {
-        let data = std::env::var("ULTAR_APPS_ROOT").map(PathBuf::from).unwrap_or_else(|_| "/data/ultar".into());
-        let compat_root = if in_compat() { "/".into() } else { std::env::var("ULTAR_COMPAT_ROOT").map(PathBuf::from).unwrap_or_else(|_| "/compat".into()) };
+        let data = std::env::var("ULTAR_APPS_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| "/data/ultar".into());
+        let compat_root = if in_compat() {
+            "/".into()
+        } else {
+            std::env::var("ULTAR_COMPAT_ROOT")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| "/compat".into())
+        };
         Paths { data, compat_root }
     }
     pub fn registry(&self) -> PathBuf {
@@ -195,14 +222,20 @@ pub struct Policy {
 
 impl Default for Policy {
     fn default() -> Self {
-        Policy { allow_foreign: true, wine_isolate: true, deny_formats: Vec::new() }
+        Policy {
+            allow_foreign: true,
+            wine_isolate: true,
+            deny_formats: Vec::new(),
+        }
     }
 }
 
 impl Policy {
     pub fn load(p: &Paths) -> Policy {
         let user = p.data.join("apps-policy.toml");
-        let sys = std::env::var("ULTAR_APPS_POLICY").map(PathBuf::from).unwrap_or_else(|_| "/etc/ultar/apps-policy.toml".into());
+        let sys = std::env::var("ULTAR_APPS_POLICY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| "/etc/ultar/apps-policy.toml".into());
         for f in [user, sys] {
             if let Ok(s) = std::fs::read_to_string(&f) {
                 if let Ok(pol) = toml::from_str(&s) {
@@ -227,8 +260,15 @@ impl Policy {
         }
     }
     pub fn check(&self, f: Format, force: bool) -> Result<(), String> {
-        if self.deny_formats.iter().any(|d| d.eq_ignore_ascii_case(Self::format_key(f))) {
-            return Err(format!("{} ist auf diesem Gerät gesperrt (Richtlinie)", f.label()));
+        if self
+            .deny_formats
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(Self::format_key(f)))
+        {
+            return Err(format!(
+                "{} ist auf diesem Gerät gesperrt (Richtlinie)",
+                f.label()
+            ));
         }
         if !f.is_signed_native() && !self.allow_foreign && !force {
             return Err(format!("{} ist nicht von KM Code Craft signiert; fremde Formate sind gesperrt (Einstellungen → Apps oder --allow-foreign)", f.label()));
@@ -265,7 +305,13 @@ pub struct Entry {
 
 pub fn list(p: &Paths) -> Vec<Entry> {
     let mut v: Vec<Entry> = std::fs::read_dir(p.registry())
-        .map(|rd| rd.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "toml")).filter_map(|e| std::fs::read_to_string(e.path()).ok()).filter_map(|s| toml::from_str(&s).ok()).collect())
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
+                .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+                .filter_map(|s| toml::from_str(&s).ok())
+                .collect()
+        })
         .unwrap_or_default();
     v.sort_by(|a: &Entry, b: &Entry| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     v
@@ -280,17 +326,31 @@ fn save(p: &Paths, e: &Entry) -> Result<(), String> {
     std::fs::create_dir_all(p.registry()).map_err(|e| e.to_string())?;
     let f = p.registry().join(format!("{}.toml", e.id));
     let tmp = f.with_extension("toml.tmp");
-    std::fs::write(&tmp, toml::to_string_pretty(e).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, toml::to_string_pretty(e).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &f).map_err(|e| e.to_string())
 }
 
 pub fn sanitize(s: &str) -> String {
-    let mut o: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c.to_ascii_lowercase() } else { '-' }).collect();
+    let mut o: String = s
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
     while o.contains("--") {
         o = o.replace("--", "-");
     }
     let o = o.trim_matches(|c| c == '-' || c == '.').to_string();
-    if o.is_empty() { "app".into() } else { o.chars().take(48).collect() }
+    if o.is_empty() {
+        "app".into()
+    } else {
+        o.chars().take(48).collect()
+    }
 }
 
 fn unique_id(p: &Paths, base: &str) -> String {
@@ -298,11 +358,17 @@ fn unique_id(p: &Paths, base: &str) -> String {
     if get(p, &base).is_none() {
         return base;
     }
-    (2..).map(|i| format!("{base}-{i}")).find(|c| get(p, c).is_none()).unwrap()
+    (2..)
+        .map(|i| format!("{base}-{i}"))
+        .find(|c| get(p, c).is_none())
+        .unwrap()
 }
 
 fn now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 pub fn sha256_file(p: &Path) -> std::io::Result<String> {
@@ -349,18 +415,39 @@ fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 
-fn run_ok(argv: &[String], env: &[(String, String)], log: &mut dyn FnMut(&str)) -> Result<String, String> {
+fn run_ok(
+    argv: &[String],
+    env: &[(String, String)],
+    log: &mut dyn FnMut(&str),
+) -> Result<String, String> {
     log(&format!("$ {}", argv.join(" ")));
-    let out = compat_cmd(argv, env).stdin(Stdio::null()).output().map_err(|e| format!("{}: {e}", argv[0]))?;
+    let out = compat_cmd(argv, env)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("{}: {e}", argv[0]))?;
     let so = String::from_utf8_lossy(&out.stdout).to_string();
     let se = String::from_utf8_lossy(&out.stderr).to_string();
-    for l in so.lines().chain(se.lines()).filter(|l| !l.trim().is_empty()).take(40) {
+    for l in so
+        .lines()
+        .chain(se.lines())
+        .filter(|l| !l.trim().is_empty())
+        .take(40)
+    {
         log(&format!("  {l}"));
     }
     if out.status.success() {
         Ok(so)
     } else {
-        Err(format!("{} fehlgeschlagen ({}): {}", argv[0], out.status, se.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim()))
+        Err(format!(
+            "{} fehlgeschlagen ({}): {}",
+            argv[0],
+            out.status,
+            se.lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .trim()
+        ))
     }
 }
 
@@ -380,8 +467,15 @@ pub struct Opts {
     pub name: Option<String>,
 }
 
-pub fn install(p: &Paths, file: &Path, o: &Opts, log: &mut dyn FnMut(&str)) -> Result<Entry, String> {
-    let file = file.canonicalize().map_err(|e| format!("{}: {e}", file.display()))?;
+pub fn install(
+    p: &Paths,
+    file: &Path,
+    o: &Opts,
+    log: &mut dyn FnMut(&str),
+) -> Result<Entry, String> {
+    let file = file
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", file.display()))?;
     let fmt = detect(&file).map_err(|e| e.to_string())?;
     log(&format!("Format: {}", fmt.label()));
     if !fmt.supported() {
@@ -393,15 +487,33 @@ pub fn install(p: &Paths, file: &Path, o: &Opts, log: &mut dyn FnMut(&str)) -> R
     }
     Policy::load(p).check(fmt, o.allow_foreign)?;
     let sha = sha256_file(&file).map_err(|e| e.to_string())?;
-    let stem = file.file_stem().and_then(|s| s.to_str()).unwrap_or("app").to_string();
-    let source = file.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+    let stem = file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("app")
+        .to_string();
+    let source = file
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
     // Kopie unter /data, damit der Ubuntu-Bereich (sieht /data, /media, /tmp) die Datei sicher erreicht
     std::fs::create_dir_all(p.incoming()).map_err(|e| e.to_string())?;
-    let staged = p.incoming().join(format!("{}.{}", &sha[..16], ext_of(&file)));
+    let staged = p
+        .incoming()
+        .join(format!("{}.{}", &sha[..16], ext_of(&file)));
     if !staged.exists() {
         std::fs::copy(&file, &staged).map_err(|e| format!("Kopie: {e}"))?;
     }
-    let mut e = Entry { name: o.name.clone().unwrap_or_else(|| pretty_name(&stem)), format: Some(fmt), source, sha256: sha, installed: now(), status: "ok".into(), ..Default::default() };
+    let mut e = Entry {
+        name: o.name.clone().unwrap_or_else(|| pretty_name(&stem)),
+        format: Some(fmt),
+        source,
+        sha256: sha,
+        installed: now(),
+        status: "ok".into(),
+        ..Default::default()
+    };
     let res = match fmt {
         Format::Uap => install_uap(p, &staged, &mut e, log),
         Format::Deb => install_deb(p, &staged, &mut e, log),
@@ -409,7 +521,9 @@ pub fn install(p: &Paths, file: &Path, o: &Opts, log: &mut dyn FnMut(&str)) -> R
         Format::Apk => install_apk(p, &staged, &stem, &mut e, log),
         Format::Exe | Format::Msi => install_wine(p, &staged, fmt, &stem, o, &mut e, log),
         Format::AppImage => install_appimage(p, &staged, &stem, &mut e, log),
-        Format::Flatpak | Format::FlatpakRef => install_flatpak(p, &staged, fmt, &stem, &mut e, log),
+        Format::Flatpak | Format::FlatpakRef => {
+            install_flatpak(p, &staged, fmt, &stem, &mut e, log)
+        }
         _ => unreachable!(),
     };
     let _ = std::fs::remove_file(&staged);
@@ -420,11 +534,40 @@ pub fn install(p: &Paths, file: &Path, o: &Opts, log: &mut dyn FnMut(&str)) -> R
 }
 
 fn pretty_name(stem: &str) -> String {
-    let base = stem.split(['_', '-']).filter(|w| !w.is_empty() && !w.chars().next().unwrap().is_ascii_digit() && !matches!(w.to_ascii_lowercase().as_str(), "setup" | "installer" | "install" | "x64" | "x86" | "amd64" | "arm64" | "win64" | "win32" | "release")).collect::<Vec<_>>().join(" ");
-    if base.is_empty() { stem.to_string() } else { base }
+    let base = stem
+        .split(['_', '-'])
+        .filter(|w| {
+            !w.is_empty()
+                && !w.chars().next().unwrap().is_ascii_digit()
+                && !matches!(
+                    w.to_ascii_lowercase().as_str(),
+                    "setup"
+                        | "installer"
+                        | "install"
+                        | "x64"
+                        | "x86"
+                        | "amd64"
+                        | "arm64"
+                        | "win64"
+                        | "win32"
+                        | "release"
+                )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if base.is_empty() {
+        stem.to_string()
+    } else {
+        base
+    }
 }
 
-fn install_uap(_p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_uap(
+    _p: &Paths,
+    f: &Path,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     let trusted = std::env::var("ULTAR_TRUSTED").unwrap_or_else(|_| ultar_pkg::TRUSTED_DIR.into());
     let m = ultar_pkg::install(f, Path::new(&trusted))?;
     log("Signatur geprüft (Ed25519) und installiert");
@@ -435,21 +578,46 @@ fn install_uap(_p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) -
 }
 
 fn deb_field(f: &Path, field: &str, log: &mut dyn FnMut(&str)) -> Result<String, String> {
-    Ok(run_ok(&s(&["dpkg-deb", "-f", &f.to_string_lossy(), field]), &[], log)?.trim().to_string())
+    Ok(run_ok(
+        &s(&["dpkg-deb", "-f", &f.to_string_lossy(), field]),
+        &[],
+        log,
+    )?
+    .trim()
+    .to_string())
 }
 
-fn install_deb(p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_deb(
+    p: &Paths,
+    f: &Path,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     if !p.compat_has("/usr/bin/apt-get") {
         return Err("Ubuntu-Bereich fehlt (/compat) – .deb-Pakete brauchen ihn".into());
     }
     let pkg = deb_field(f, "Package", log)?;
     let arch = deb_field(f, "Architecture", log).unwrap_or_default();
-    let ours = if host_arch() == "aarch64" { "arm64" } else { "amd64" };
+    let ours = if host_arch() == "aarch64" {
+        "arm64"
+    } else {
+        "amd64"
+    };
     if !arch.is_empty() && arch != "all" && arch != ours {
         return Err(format!("Paket ist für {arch}, dieses Gerät braucht {ours}"));
     }
     let env = vec![("DEBIAN_FRONTEND".to_string(), "noninteractive".to_string())];
-    run_ok(&s(&["apt-get", "install", "-y", "--no-install-recommends", &f.to_string_lossy()]), &env, log)?;
+    run_ok(
+        &s(&[
+            "apt-get",
+            "install",
+            "-y",
+            "--no-install-recommends",
+            &f.to_string_lossy(),
+        ]),
+        &env,
+        log,
+    )?;
     e.id = unique_id(p, &pkg);
     e.package = pkg.clone();
     if let Ok(n) = deb_field(f, "Description", log) {
@@ -460,8 +628,14 @@ fn install_deb(p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) ->
     e.name = pretty_name(&pkg);
     // Programme des Pakets mit .desktop-Datei erscheinen von selbst im Startmenü (/usr/share/applications)
     if let Ok(files) = run_ok(&s(&["dpkg", "-L", &pkg]), &[], &mut |_| {}) {
-        if let Some(d) = files.lines().find(|l| l.starts_with("/usr/share/applications/") && l.ends_with(".desktop")) {
-            if let Some(de) = parse_desktop(&std::fs::read_to_string(p.compat_root.join(d.trim_start_matches('/'))).unwrap_or_default()) {
+        if let Some(d) = files
+            .lines()
+            .find(|l| l.starts_with("/usr/share/applications/") && l.ends_with(".desktop"))
+        {
+            if let Some(de) = parse_desktop(
+                &std::fs::read_to_string(p.compat_root.join(d.trim_start_matches('/')))
+                    .unwrap_or_default(),
+            ) {
                 e.name = de.name;
                 e.run = de.exec;
             }
@@ -470,14 +644,36 @@ fn install_deb(p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) ->
     Ok(())
 }
 
-fn install_rpm(p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_rpm(
+    p: &Paths,
+    f: &Path,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     if !p.compat_has("/usr/bin/alien") {
         return Err("RPM-Pakete: im Ubuntu-Bereich fehlt „alien“ (ultar-compat apt install alien) – oder die .deb-Fassung nehmen".into());
     }
     let dir = p.incoming().join(format!("rpm-{}", &e.sha256[..12]));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    run_ok(&s(&["sh", "-c", &format!("cd '{}' && alien --to-deb --scripts '{}'", dir.display(), f.display())]), &[], log)?;
-    let deb = std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten().map(|x| x.path()).find(|x| x.extension().is_some_and(|x| x == "deb")).ok_or("alien hat kein .deb erzeugt")?;
+    run_ok(
+        &s(&[
+            "sh",
+            "-c",
+            &format!(
+                "cd '{}' && alien --to-deb --scripts '{}'",
+                dir.display(),
+                f.display()
+            ),
+        ]),
+        &[],
+        log,
+    )?;
+    let deb = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .map(|x| x.path())
+        .find(|x| x.extension().is_some_and(|x| x == "deb"))
+        .ok_or("alien hat kein .deb erzeugt")?;
     let r = install_deb(p, &deb, e, log);
     let _ = std::fs::remove_dir_all(&dir);
     e.format = Some(Format::Rpm);
@@ -488,12 +684,22 @@ fn install_rpm(p: &Paths, f: &Path, e: &mut Entry, log: &mut dyn FnMut(&str)) ->
 
 /// Paketname und ABIs aus einer APK lesen
 pub fn apk_info(f: &Path) -> Result<(String, Vec<String>), String> {
-    let mut z = zip::ZipArchive::new(std::fs::File::open(f).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let mut abis: Vec<String> = z.file_names().filter_map(|n| n.strip_prefix("lib/")).filter_map(|r| r.split('/').next()).filter(|a| !a.is_empty()).map(String::from).collect();
+    let mut z = zip::ZipArchive::new(std::fs::File::open(f).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    let mut abis: Vec<String> = z
+        .file_names()
+        .filter_map(|n| n.strip_prefix("lib/"))
+        .filter_map(|r| r.split('/').next())
+        .filter(|a| !a.is_empty())
+        .map(String::from)
+        .collect();
     abis.sort();
     abis.dedup();
     let mut buf = Vec::new();
-    z.by_name("AndroidManifest.xml").map_err(|e| e.to_string())?.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    z.by_name("AndroidManifest.xml")
+        .map_err(|e| e.to_string())?
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
     let pkg = axml_manifest_package(&buf).ok_or("AndroidManifest.xml: Paketname nicht lesbar")?;
     Ok((pkg, abis))
 }
@@ -502,7 +708,8 @@ fn u16le(b: &[u8], o: usize) -> Option<u16> {
     b.get(o..o + 2).map(|x| u16::from_le_bytes([x[0], x[1]]))
 }
 fn u32le(b: &[u8], o: usize) -> Option<u32> {
-    b.get(o..o + 4).map(|x| u32::from_le_bytes([x[0], x[1], x[2], x[3]]))
+    b.get(o..o + 4)
+        .map(|x| u32::from_le_bytes([x[0], x[1], x[2], x[3]]))
 }
 
 fn axml_strings(b: &[u8], off: usize) -> Option<Vec<String>> {
@@ -585,13 +792,30 @@ pub fn axml_manifest_package(b: &[u8]) -> Option<String> {
     None
 }
 
-fn install_apk(p: &Paths, f: &Path, stem: &str, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_apk(
+    p: &Paths,
+    f: &Path,
+    stem: &str,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     let (pkg, abis) = apk_info(f)?;
-    log(&format!("Android-Paket {pkg}, Bibliotheken: {}", if abis.is_empty() { "keine (läuft überall)".into() } else { abis.join(", ") }));
+    log(&format!(
+        "Android-Paket {pkg}, Bibliotheken: {}",
+        if abis.is_empty() {
+            "keine (läuft überall)".into()
+        } else {
+            abis.join(", ")
+        }
+    ));
     e.id = unique_id(p, &pkg);
     e.package = pkg.clone();
     e.name = pretty_name(stem);
-    let native: &[&str] = if host_arch() == "aarch64" { &["arm64-v8a", "armeabi-v7a", "armeabi"] } else { &["x86_64", "x86"] };
+    let native: &[&str] = if host_arch() == "aarch64" {
+        &["arm64-v8a", "armeabi-v7a", "armeabi"]
+    } else {
+        &["x86_64", "x86"]
+    };
     if !abis.is_empty() && !abis.iter().any(|a| native.contains(&a.as_str())) {
         e.note = format!("Nur Code für {} – braucht eine Übersetzungsschicht (libndk/libhoudini) in der Android-Umgebung", abis.join("/"));
         log(&e.note.clone());
@@ -604,14 +828,24 @@ fn install_apk(p: &Paths, f: &Path, stem: &str, e: &mut Entry, log: &mut dyn FnM
         // PC/Laptop: Waydroid (Android in Linux-Containern, gleicher Kernel)
         e.run = s(&["waydroid", "app", "launch", &pkg]);
         let st = run_ok(&s(&["waydroid", "status"]), &[], &mut |_| {}).unwrap_or_default();
-        if st.contains("RUNNING") && st.lines().any(|l| l.starts_with("Session") && l.contains("RUNNING")) {
-            run_ok(&s(&["waydroid", "app", "install", &keep.to_string_lossy()]), &[], log)?;
+        if st.contains("RUNNING")
+            && st
+                .lines()
+                .any(|l| l.starts_with("Session") && l.contains("RUNNING"))
+        {
+            run_ok(
+                &s(&["waydroid", "app", "install", &keep.to_string_lossy()]),
+                &[],
+                log,
+            )?;
             let _ = std::fs::remove_file(&keep);
         } else {
             e.status = "pending".into();
             log("Android-Umgebung (Waydroid) läuft nicht – die App wird beim nächsten Start installiert (uapp android-sync)");
         }
-    } else if Path::new("/usr/lib/ultar/android/ultar-android.sh").exists() || ultar_edition::current() == ultar_edition::Edition::Phone {
+    } else if Path::new("/usr/lib/ultar/android/ultar-android.sh").exists()
+        || ultar_hal_system::current_edition() == ultar_profile::Edition::Phone
+    {
         // Handy: abgeschottete Android-Umgebung (Standard AUS) installiert ausstehende APKs beim Start
         e.run = s(&["/usr/lib/ultar/android/ultar-android.sh", "launch", &pkg]);
         e.status = "pending".into();
@@ -619,20 +853,34 @@ fn install_apk(p: &Paths, f: &Path, stem: &str, e: &mut Entry, log: &mut dyn FnM
     } else {
         return Err("Keine Android-Umgebung: im Ubuntu-Bereich „waydroid“ installieren (Desktop-Ausgabe hat es dabei)".into());
     }
-    write_launcher(p, &e.id, &e.name, &format!("uapp run {}", e.id), "android", &mut e.launchers)?;
+    write_launcher(
+        p,
+        &e.id,
+        &e.name,
+        &format!("uapp run {}", e.id),
+        "android",
+        &mut e.launchers,
+    )?;
     Ok(())
 }
 
 /// Ausstehende APKs installieren (Aufruf, sobald die Android-Umgebung läuft)
 pub fn android_sync(p: &Paths, log: &mut dyn FnMut(&str)) -> Result<usize, String> {
     let mut n = 0;
-    for mut e in list(p).into_iter().filter(|e| e.format == Some(Format::Apk) && e.status == "pending") {
+    for mut e in list(p)
+        .into_iter()
+        .filter(|e| e.format == Some(Format::Apk) && e.status == "pending")
+    {
         let apk = p.android_pending().join(format!("{}.apk", e.package));
         if !apk.exists() {
             continue;
         }
         if p.compat_has("/usr/bin/waydroid") {
-            run_ok(&s(&["waydroid", "app", "install", &apk.to_string_lossy()]), &[], log)?;
+            run_ok(
+                &s(&["waydroid", "app", "install", &apk.to_string_lossy()]),
+                &[],
+                log,
+            )?;
             let _ = std::fs::remove_file(&apk);
             e.status = "ok".into();
             save(p, &e)?;
@@ -649,7 +897,10 @@ fn wine_env(p: &Paths, id: &str) -> Vec<(String, String)> {
     vec![
         ("WINEPREFIX".into(), pre.to_string_lossy().into()),
         ("HOME".into(), pre.join("home").to_string_lossy().into()),
-        ("XDG_DATA_HOME".into(), pre.join("home/.local/share").to_string_lossy().into()),
+        (
+            "XDG_DATA_HOME".into(),
+            pre.join("home/.local/share").to_string_lossy().into(),
+        ),
         ("WINEDEBUG".into(), "-all".into()),
         // keine Nachfrage nach Mono/Gecko beim Einrichten (offline-fähig)
         ("WINEDLLOVERRIDES".into(), "mscoree,mshtml=".into()),
@@ -674,13 +925,28 @@ pub fn wine_isolate(p: &Paths, id: &str) -> std::io::Result<()> {
 
 /// Wine-Befehl im Ordner C: starten (ohne Laufwerk Z: findet Wine sonst kein Arbeitsverzeichnis)
 fn in_drive_c(argv: Vec<String>) -> Vec<String> {
-    let mut v = s(&["sh", "-c", "cd \"$WINEPREFIX/drive_c\" 2>/dev/null; exec \"$@\"", "sh"]);
+    let mut v = s(&[
+        "sh",
+        "-c",
+        "cd \"$WINEPREFIX/drive_c\" 2>/dev/null; exec \"$@\"",
+        "sh",
+    ]);
     v.extend(argv);
     v
 }
 
-fn install_wine(p: &Paths, f: &Path, fmt: Format, stem: &str, o: &Opts, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
-    let wine = ["/usr/bin/wine", "/usr/lib/wine/wine64", "/usr/bin/wine64"].into_iter().find(|w| p.compat_has(w));
+fn install_wine(
+    p: &Paths,
+    f: &Path,
+    fmt: Format,
+    stem: &str,
+    o: &Opts,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
+    let wine = ["/usr/bin/wine", "/usr/lib/wine/wine64", "/usr/bin/wine64"]
+        .into_iter()
+        .find(|w| p.compat_has(w));
     let Some(wine) = wine else {
         return Err(if host_arch() == "aarch64" {
             "Windows-Programme auf ARM brauchen Wine mit Übersetzung (Hangover/FEX) im Ubuntu-Bereich – noch nicht eingerichtet".into()
@@ -688,7 +954,11 @@ fn install_wine(p: &Paths, f: &Path, fmt: Format, stem: &str, o: &Opts, e: &mut 
             "Wine fehlt im Ubuntu-Bereich (Desktop-Ausgabe hat es dabei; sonst: ultar-compat apt install wine64)".into()
         });
     };
-    let wine = if wine == "/usr/lib/wine/wine64" { "/usr/lib/wine/wine64" } else { "wine" };
+    let wine = if wine == "/usr/lib/wine/wine64" {
+        "/usr/lib/wine/wine64"
+    } else {
+        "wine"
+    };
     e.id = unique_id(p, stem);
     e.name = pretty_name(stem);
     let env = wine_env(p, &e.id);
@@ -702,31 +972,49 @@ fn install_wine(p: &Paths, f: &Path, fmt: Format, stem: &str, o: &Opts, e: &mut 
     // Installer bzw. Programm über einen Pfad in C: starten (Z: gibt es nicht mehr)
     let inst_dir = p.wine(&e.id).join("drive_c/ultar-setup");
     std::fs::create_dir_all(&inst_dir).map_err(|e| e.to_string())?;
-    let fname = format!("{}.{}", sanitize(stem), if fmt == Format::Msi { "msi" } else { "exe" });
+    let fname = format!(
+        "{}.{}",
+        sanitize(stem),
+        if fmt == Format::Msi { "msi" } else { "exe" }
+    );
     std::fs::copy(f, inst_dir.join(&fname)).map_err(|e| e.to_string())?;
     let winpath = format!("C:\\ultar-setup\\{fname}");
     let before = wine_desktop_files(p, &e.id);
-    let mut argv = if fmt == Format::Msi { s(&[wine, "msiexec", "/i", &winpath]) } else { s(&[wine, &winpath]) };
+    let mut argv = if fmt == Format::Msi {
+        s(&[wine, "msiexec", "/i", &winpath])
+    } else {
+        s(&[wine, &winpath])
+    };
     if o.silent && fmt == Format::Msi {
         argv.push("/qn".into());
     }
     log("Installation läuft …");
     let r = run_ok(&in_drive_c(argv), &env, log);
     // Wine legt für Programme mit Startmenü-Verknüpfung .desktop-Dateien an
-    let mut new: Vec<PathBuf> = wine_desktop_files(p, &e.id).into_iter().filter(|x| !before.contains(x)).collect();
+    let mut new: Vec<PathBuf> = wine_desktop_files(p, &e.id)
+        .into_iter()
+        .filter(|x| !before.contains(x))
+        .collect();
     new.sort();
     if let Err(err) = r {
         if new.is_empty() {
             return Err(err);
         }
-        log(&format!("Installer meldete einen Fehler, hat aber Programme angelegt: {err}"));
+        log(&format!(
+            "Installer meldete einen Fehler, hat aber Programme angelegt: {err}"
+        ));
     }
     let skip = |n: &str| {
         let l = n.to_lowercase();
-        l.contains("uninstall") || l.contains("deinstall") || l.contains("readme") || l.contains("website")
+        l.contains("uninstall")
+            || l.contains("deinstall")
+            || l.contains("readme")
+            || l.contains("website")
     };
     for (i, d) in new.iter().enumerate() {
-        let Some(de) = parse_desktop(&std::fs::read_to_string(d).unwrap_or_default()) else { continue };
+        let Some(de) = parse_desktop(&std::fs::read_to_string(d).unwrap_or_default()) else {
+            continue;
+        };
         if skip(&de.name) {
             continue;
         }
@@ -737,7 +1025,11 @@ fn install_wine(p: &Paths, f: &Path, fmt: Format, stem: &str, o: &Opts, e: &mut 
         let fname = format!("ultar-{}-{i}.desktop", e.id);
         let txt = std::fs::read_to_string(d).unwrap_or_default();
         std::fs::create_dir_all(p.launchers()).map_err(|e| e.to_string())?;
-        std::fs::write(p.launchers().join(&fname), add_desktop_key(&txt, "X-Ultar-App", &e.id)).map_err(|e| e.to_string())?;
+        std::fs::write(
+            p.launchers().join(&fname),
+            add_desktop_key(&txt, "X-Ultar-App", &e.id),
+        )
+        .map_err(|e| e.to_string())?;
         e.launchers.push(fname);
     }
     if e.run.is_empty() {
@@ -756,7 +1048,14 @@ fn install_wine(p: &Paths, f: &Path, fmt: Format, stem: &str, o: &Opts, e: &mut 
     let _ = std::fs::remove_dir_all(&inst_dir);
     e.env = env;
     if e.launchers.is_empty() && !e.run.is_empty() {
-        write_launcher(p, &e.id, &e.name, &format!("uapp run {}", e.id), "wine", &mut e.launchers)?;
+        write_launcher(
+            p,
+            &e.id,
+            &e.name,
+            &format!("uapp run {}", e.id),
+            "wine",
+            &mut e.launchers,
+        )?;
     }
     Ok(())
 }
@@ -786,11 +1085,20 @@ fn elf_machine(f: &Path) -> Option<u16> {
     Some(u16::from_le_bytes([h[18], h[19]]))
 }
 
-fn install_appimage(p: &Paths, f: &Path, stem: &str, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_appimage(
+    p: &Paths,
+    f: &Path,
+    stem: &str,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     let want = if host_arch() == "aarch64" { 183 } else { 62 };
     if let Some(m) = elf_machine(f) {
         if m != want {
-            return Err(format!("AppImage ist für eine andere Prozessor-Architektur (ELF {m}), dieses Gerät: {}", host_arch()));
+            return Err(format!(
+                "AppImage ist für eine andere Prozessor-Architektur (ELF {m}), dieses Gerät: {}",
+                host_arch()
+            ));
         }
     }
     e.id = unique_id(p, stem);
@@ -800,32 +1108,94 @@ fn install_appimage(p: &Paths, f: &Path, stem: &str, e: &mut Entry, log: &mut dy
     let dst = dir.join(format!("{}.AppImage", sanitize(stem)));
     std::fs::copy(f, &dst).map_err(|e| e.to_string())?;
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| e.to_string())?;
     // ohne FUSE lauffähig: entpacken und starten
     e.env = vec![("APPIMAGE_EXTRACT_AND_RUN".into(), "1".into())];
     e.run = vec![dst.to_string_lossy().into()];
     log("AppImage abgelegt (Start ohne FUSE über Entpacken)");
-    write_launcher(p, &e.id, &e.name, &format!("uapp run {}", e.id), "appimage", &mut e.launchers)
+    write_launcher(
+        p,
+        &e.id,
+        &e.name,
+        &format!("uapp run {}", e.id),
+        "appimage",
+        &mut e.launchers,
+    )
 }
 
 fn flatpak_apps(log: &mut dyn FnMut(&str)) -> Vec<String> {
-    run_ok(&s(&["flatpak", "list", "--app", "--columns=application"]), &[], log).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    run_ok(
+        &s(&["flatpak", "list", "--app", "--columns=application"]),
+        &[],
+        log,
+    )
+    .unwrap_or_default()
+    .lines()
+    .map(|l| l.trim().to_string())
+    .filter(|l| !l.is_empty())
+    .collect()
 }
 
-fn install_flatpak(p: &Paths, f: &Path, fmt: Format, stem: &str, e: &mut Entry, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+fn install_flatpak(
+    p: &Paths,
+    f: &Path,
+    fmt: Format,
+    stem: &str,
+    e: &mut Entry,
+    log: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     if !p.compat_has("/usr/bin/flatpak") {
         return Err("Flatpak fehlt im Ubuntu-Bereich (Desktop-Ausgabe hat es dabei; sonst: ultar-compat apt install flatpak)".into());
     }
     // Laufzeiten (GNOME/KDE/Freedesktop) kommen von Flathub
-    let _ = run_ok(&s(&["flatpak", "remote-add", "--if-not-exists", "--system", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"]), &[], log);
+    let _ = run_ok(
+        &s(&[
+            "flatpak",
+            "remote-add",
+            "--if-not-exists",
+            "--system",
+            "flathub",
+            "https://dl.flathub.org/repo/flathub.flatpakrepo",
+        ]),
+        &[],
+        log,
+    );
     let before = flatpak_apps(&mut |_| {});
     let fs = f.to_string_lossy().to_string();
-    let argv = if fmt == Format::FlatpakRef { s(&["flatpak", "install", "-y", "--noninteractive", "--system", "--from", &fs]) } else { s(&["flatpak", "install", "-y", "--noninteractive", "--system", "--bundle", &fs]) };
+    let argv = if fmt == Format::FlatpakRef {
+        s(&[
+            "flatpak",
+            "install",
+            "-y",
+            "--noninteractive",
+            "--system",
+            "--from",
+            &fs,
+        ])
+    } else {
+        s(&[
+            "flatpak",
+            "install",
+            "-y",
+            "--noninteractive",
+            "--system",
+            "--bundle",
+            &fs,
+        ])
+    };
     run_ok(&argv, &[], log)?;
     let after = flatpak_apps(&mut |_| {});
-    let appid = after.iter().find(|a| !before.contains(a)).cloned().or_else(|| {
-        std::fs::read_to_string(f).ok().and_then(|t| t.lines().find_map(|l| l.strip_prefix("Name=").map(|x| x.trim().to_string())))
-    });
+    let appid = after
+        .iter()
+        .find(|a| !before.contains(a))
+        .cloned()
+        .or_else(|| {
+            std::fs::read_to_string(f).ok().and_then(|t| {
+                t.lines()
+                    .find_map(|l| l.strip_prefix("Name=").map(|x| x.trim().to_string()))
+            })
+        });
     let appid = appid.ok_or("Flatpak installiert, App-Kennung aber nicht gefunden")?;
     e.id = unique_id(p, &appid);
     e.package = appid.clone();
@@ -849,7 +1219,11 @@ pub fn run(p: &Paths, id: &str) -> Result<std::process::Child, String> {
         c.args(&e.run[1..]);
         return c.spawn().map_err(|x| x.to_string());
     }
-    let argv = if matches!(e.format, Some(Format::Exe) | Some(Format::Msi)) { in_drive_c(e.run.clone()) } else { e.run.clone() };
+    let argv = if matches!(e.format, Some(Format::Exe) | Some(Format::Msi)) {
+        in_drive_c(e.run.clone())
+    } else {
+        e.run.clone()
+    };
     compat_cmd(&argv, &e.env).spawn().map_err(|x| x.to_string())
 }
 
@@ -858,7 +1232,11 @@ pub fn remove(p: &Paths, id: &str, log: &mut dyn FnMut(&str)) -> Result<(), Stri
     match e.format {
         Some(Format::Deb) | Some(Format::Rpm) => {
             let env = vec![("DEBIAN_FRONTEND".to_string(), "noninteractive".to_string())];
-            run_ok(&s(&["apt-get", "remove", "-y", "--autoremove", &e.package]), &env, log)?;
+            run_ok(
+                &s(&["apt-get", "remove", "-y", "--autoremove", &e.package]),
+                &env,
+                log,
+            )?;
         }
         Some(Format::Apk) => {
             let _ = std::fs::remove_file(p.android_pending().join(format!("{}.apk", e.package)));
@@ -873,7 +1251,18 @@ pub fn remove(p: &Paths, id: &str, log: &mut dyn FnMut(&str)) -> Result<(), Stri
             let _ = std::fs::remove_dir_all(p.app_dir(&e.id));
         }
         Some(Format::Flatpak) | Some(Format::FlatpakRef) => {
-            run_ok(&s(&["flatpak", "uninstall", "-y", "--noninteractive", "--system", &e.package]), &[], log)?;
+            run_ok(
+                &s(&[
+                    "flatpak",
+                    "uninstall",
+                    "-y",
+                    "--noninteractive",
+                    "--system",
+                    &e.package,
+                ]),
+                &[],
+                log,
+            )?;
         }
         Some(Format::Uap) => {
             // native Pakete: Dateien der Nutzlast liegen unter /data/ultar/apps/<id> bzw. im System
@@ -977,7 +1366,11 @@ pub fn parse_desktop(txt: &str) -> Option<DesktopEntry> {
             icon = v.to_string();
         }
     }
-    Some(DesktopEntry { name: name?, exec: exec?, icon })
+    Some(DesktopEntry {
+        name: name?,
+        exec: exec?,
+        icon,
+    })
 }
 
 fn add_desktop_key(txt: &str, k: &str, v: &str) -> String {
@@ -994,7 +1387,14 @@ fn add_desktop_key(txt: &str, k: &str, v: &str) -> String {
     o
 }
 
-fn write_launcher(p: &Paths, id: &str, name: &str, exec: &str, kind: &str, list: &mut Vec<String>) -> Result<(), String> {
+fn write_launcher(
+    p: &Paths,
+    id: &str,
+    name: &str,
+    exec: &str,
+    kind: &str,
+    list: &mut Vec<String>,
+) -> Result<(), String> {
     std::fs::create_dir_all(p.launchers()).map_err(|e| e.to_string())?;
     let fname = format!("ultar-{id}.desktop");
     let icon = match kind {
@@ -1028,12 +1428,40 @@ mod tests {
             ("a.deb", b"!<arch>\ndebian-binary   ".to_vec(), Format::Deb),
             ("a.exe", b"MZ\x90\x00".to_vec(), Format::Exe),
             ("renamed.txt", b"MZ\x90\x00".to_vec(), Format::Exe),
-            ("a.msi", vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0], Format::Msi),
-            ("a.doc", vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0], Format::Unknown),
-            ("x.AppImage", { let mut v = b"\x7fELF\x02\x01\x01\x00AI\x02".to_vec(); v.resize(64, 0); v }, Format::AppImage),
-            ("plain", { let mut v = b"\x7fELF\x02\x01\x01\x00\x00\x00".to_vec(); v.resize(64, 0); v }, Format::Unknown),
+            (
+                "a.msi",
+                vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0],
+                Format::Msi,
+            ),
+            (
+                "a.doc",
+                vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0],
+                Format::Unknown,
+            ),
+            (
+                "x.AppImage",
+                {
+                    let mut v = b"\x7fELF\x02\x01\x01\x00AI\x02".to_vec();
+                    v.resize(64, 0);
+                    v
+                },
+                Format::AppImage,
+            ),
+            (
+                "plain",
+                {
+                    let mut v = b"\x7fELF\x02\x01\x01\x00\x00\x00".to_vec();
+                    v.resize(64, 0);
+                    v
+                },
+                Format::Unknown,
+            ),
             ("a.rpm", vec![0xED, 0xAB, 0xEE, 0xDB, 3], Format::Rpm),
-            ("a.flatpakref", b"[Flatpak Ref]\nName=org.x.Y\n".to_vec(), Format::FlatpakRef),
+            (
+                "a.flatpakref",
+                b"[Flatpak Ref]\nName=org.x.Y\n".to_vec(),
+                Format::FlatpakRef,
+            ),
         ];
         for (n, b, want) in cases {
             let f = d.join(n);
@@ -1104,7 +1532,10 @@ mod tests {
 
     #[test]
     fn apk_package_name() {
-        assert_eq!(axml_manifest_package(&axml("tech.codecraft.demo")).as_deref(), Some("tech.codecraft.demo"));
+        assert_eq!(
+            axml_manifest_package(&axml("tech.codecraft.demo")).as_deref(),
+            Some("tech.codecraft.demo")
+        );
         let d = tmp("apk");
         let f = d.join("demo.apk");
         {
@@ -1124,24 +1555,51 @@ mod tests {
 
     #[test]
     fn exec_split() {
-        assert_eq!(split_exec(r#"env WINEPREFIX="/data/ultar/wine/x y" wine C:\\\\ProgramData\\\\A\\\\B.lnk"#), vec!["env", "WINEPREFIX=/data/ultar/wine/x y", "wine", r"C:\ProgramData\A\B.lnk"]);
-        assert_eq!(split_exec("code --new-window %F"), vec!["code", "--new-window"]);
+        assert_eq!(
+            split_exec(
+                r#"env WINEPREFIX="/data/ultar/wine/x y" wine C:\\\\ProgramData\\\\A\\\\B.lnk"#
+            ),
+            vec![
+                "env",
+                "WINEPREFIX=/data/ultar/wine/x y",
+                "wine",
+                r"C:\ProgramData\A\B.lnk"
+            ]
+        );
+        assert_eq!(
+            split_exec("code --new-window %F"),
+            vec!["code", "--new-window"]
+        );
     }
 
     #[test]
     fn policy_and_ids() {
         let d = tmp("pol");
-        let p = Paths { data: d.clone(), compat_root: d.join("nocompat") };
+        let p = Paths {
+            data: d.clone(),
+            compat_root: d.join("nocompat"),
+        };
         assert!(Policy::default().check(Format::Exe, false).is_ok());
-        let deny = Policy { allow_foreign: false, ..Default::default() };
+        let deny = Policy {
+            allow_foreign: false,
+            ..Default::default()
+        };
         assert!(deny.check(Format::Apk, false).is_err());
         assert!(deny.check(Format::Uap, false).is_ok());
         assert!(deny.check(Format::Apk, true).is_ok());
-        let pol = Policy { deny_formats: vec!["exe".into()], ..Default::default() };
+        let pol = Policy {
+            deny_formats: vec!["exe".into()],
+            ..Default::default()
+        };
         assert!(pol.check(Format::Exe, true).is_err());
         assert_eq!(sanitize("My App_Setup x64!"), "my-app-setup-x64");
         assert_eq!(pretty_name("Notepad++_8.6_Installer_x64"), "Notepad++");
-        let e = Entry { id: "my-app".into(), name: "My App".into(), status: "ok".into(), ..Default::default() };
+        let e = Entry {
+            id: "my-app".into(),
+            name: "My App".into(),
+            status: "ok".into(),
+            ..Default::default()
+        };
         save(&p, &e).unwrap();
         assert_eq!(unique_id(&p, "My App"), "my-app-2");
         assert_eq!(list(&p).len(), 1);

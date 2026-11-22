@@ -173,9 +173,17 @@ impl Camera {
         if unsafe { ioctl(self.fd, VIDIOC_QUERYCAP, &mut cap as *mut _ as *mut _) } < 0 {
             return Err(format!("QUERYCAP: {}", std::io::Error::last_os_error()));
         }
-        let caps = if cap.device_caps != 0 { cap.device_caps } else { cap.capabilities };
+        let caps = if cap.device_caps != 0 {
+            cap.device_caps
+        } else {
+            cap.capabilities
+        };
         self.mplane = (caps & CAP_VIDEO_CAPTURE_MPLANE) != 0 && (caps & CAP_VIDEO_CAPTURE) == 0;
-        self.btype = if self.mplane { BUF_TYPE_CAPTURE_MPLANE } else { BUF_TYPE_CAPTURE };
+        self.btype = if self.mplane {
+            BUF_TYPE_CAPTURE_MPLANE
+        } else {
+            BUF_TYPE_CAPTURE
+        };
 
         // aktuelles Format lesen
         let mut fmt: Format = unsafe { std::mem::zeroed() };
@@ -216,7 +224,11 @@ impl Camera {
             return Err("Format ohne Groesse".into());
         }
         if self.stride == 0 {
-            self.stride = if self.pix == PIX_YUYV { self.width * 2 } else { self.width };
+            self.stride = if self.pix == PIX_YUYV {
+                self.width * 2
+            } else {
+                self.width
+            };
         }
 
         // Puffer anfordern
@@ -245,12 +257,22 @@ impl Camera {
                 return Err(format!("QUERYBUF: {}", std::io::Error::last_os_error()));
             }
             let (len, off) = if self.mplane {
-                (planes[0].length as usize, (planes[0].m & 0xffff_ffff) as i64)
+                (
+                    planes[0].length as usize,
+                    (planes[0].m & 0xffff_ffff) as i64,
+                )
             } else {
                 (b.length as usize, (b.m & 0xffff_ffff) as i64)
             };
             let ptr = unsafe {
-                libc::mmap(std::ptr::null_mut(), len, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED, self.fd, off)
+                libc::mmap(
+                    std::ptr::null_mut(),
+                    len,
+                    libc::PROT_READ | libc::PROT_WRITE,
+                    libc::MAP_SHARED,
+                    self.fd,
+                    off,
+                )
             };
             if ptr == libc::MAP_FAILED {
                 return Err(format!("mmap: {}", std::io::Error::last_os_error()));
@@ -283,7 +305,11 @@ impl Camera {
     pub fn capture_frame(&mut self) -> Result<Vec<u32>, String> {
         let mut out: Option<Vec<u8>> = None;
         for tries in 0..30 {
-            let mut pfd = libc::pollfd { fd: self.fd, events: libc::POLLIN, revents: 0 };
+            let mut pfd = libc::pollfd {
+                fd: self.fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
             let pr = unsafe { libc::poll(&mut pfd, 1, 2000) };
             if pr <= 0 {
                 if tries > 3 {
@@ -322,7 +348,11 @@ impl Camera {
     }
 
     fn to_rgb(&self, src: &[u8]) -> Vec<u32> {
-        let (w, h, stride) = (self.width as usize, self.height as usize, self.stride as usize);
+        let (w, h, stride) = (
+            self.width as usize,
+            self.height as usize,
+            self.stride as usize,
+        );
         let mut px = vec![0u32; w * h];
         match self.pix {
             PIX_YUYV => {
@@ -333,7 +363,12 @@ impl Camera {
                         if i + 3 >= line.len() {
                             break;
                         }
-                        let (y0, u, y1, v) = (line[i] as i32, line[i + 1] as i32, line[i + 2] as i32, line[i + 3] as i32);
+                        let (y0, u, y1, v) = (
+                            line[i] as i32,
+                            line[i + 1] as i32,
+                            line[i + 2] as i32,
+                            line[i + 3] as i32,
+                        );
                         px[y * w + x] = yuv(y0, u, v);
                         if x + 1 < w {
                             px[y * w + x + 1] = yuv(y1, u, v);
@@ -353,7 +388,11 @@ impl Camera {
                         if ci + 1 >= src.len() {
                             break;
                         }
-                        let (u, v) = if nv21 { (src[ci + 1] as i32, src[ci] as i32) } else { (src[ci] as i32, src[ci + 1] as i32) };
+                        let (u, v) = if nv21 {
+                            (src[ci + 1] as i32, src[ci] as i32)
+                        } else {
+                            (src[ci] as i32, src[ci + 1] as i32)
+                        };
                         px[y * w + x] = yuv(yy, u, v);
                     }
                 }
@@ -363,7 +402,9 @@ impl Camera {
                     for x in 0..w {
                         let i = y * stride + x * 3;
                         if i + 2 < src.len() {
-                            px[y * w + x] = ((src[i] as u32) << 16) | ((src[i + 1] as u32) << 8) | src[i + 2] as u32;
+                            px[y * w + x] = ((src[i] as u32) << 16)
+                                | ((src[i + 1] as u32) << 8)
+                                | src[i + 2] as u32;
                         }
                     }
                 }
@@ -423,7 +464,11 @@ pub fn find_capture_node() -> Option<String> {
         let ok = unsafe { ioctl(fd, VIDIOC_QUERYCAP, &mut cap as *mut _ as *mut _) } == 0;
         unsafe { libc::close(fd) };
         if ok {
-            let caps = if cap.device_caps != 0 { cap.device_caps } else { cap.capabilities };
+            let caps = if cap.device_caps != 0 {
+                cap.device_caps
+            } else {
+                cap.capabilities
+            };
             if caps & (CAP_VIDEO_CAPTURE | CAP_VIDEO_CAPTURE_MPLANE) != 0 {
                 return Some(path);
             }
@@ -468,14 +513,18 @@ pub struct CameraWorker {
 /// Das übernimmt der Helfer `ultar-cam` (tools/a30-cam) und liefert fertige RGB-Bilder als Strom.
 const SAMSUNG_HELPER: &str = "/usr/bin/ultar-cam";
 pub fn samsung_available() -> bool {
-    std::path::Path::new("/sys/class/camera/rear/fw_update").exists() && std::path::Path::new(SAMSUNG_HELPER).exists()
+    std::path::Path::new("/sys/class/camera/rear/fw_update").exists()
+        && std::path::Path::new(SAMSUNG_HELPER).exists()
 }
 
 impl CameraWorker {
     /// Startet die Kamera im Hintergrund. `facing`: 0 Rück, 1 Front (nur Hinweis,
     /// Knotenwahl bestimmt der gespeicherte camera.node / die Autosuche).
     pub fn start(facing: u8, node_hint: Option<String>, data_dir: String) -> CameraWorker {
-        let sh = Arc::new(Shared { status: Mutex::new(0), ..Default::default() });
+        let sh = Arc::new(Shared {
+            status: Mutex::new(0),
+            ..Default::default()
+        });
         let stop = Arc::new(AtomicBool::new(false));
         let photo = Arc::new(AtomicBool::new(false));
         let sh2 = sh.clone();
@@ -492,7 +541,13 @@ impl CameraWorker {
                 }
             })
             .ok();
-        CameraWorker { sh, stop, photo, hires, facing }
+        CameraWorker {
+            sh,
+            stop,
+            photo,
+            hires,
+            facing,
+        }
     }
 
     /// Kann der Worker auf Anforderung ein Bild in voller Fotoauflösung liefern?
@@ -535,7 +590,12 @@ impl Drop for CameraWorker {
     }
 }
 
-fn worker_main(sh: Arc<Shared>, stop: Arc<AtomicBool>, node_hint: Option<String>, data_dir: String) {
+fn worker_main(
+    sh: Arc<Shared>,
+    stop: Arc<AtomicBool>,
+    node_hint: Option<String>,
+    data_dir: String,
+) {
     // Knoten bestimmen (kann blockieren – aber nur hier im Thread).
     let hinted = node_hint.as_ref().is_some_and(|s| !s.is_empty());
     let node = node_hint
@@ -602,7 +662,12 @@ fn samsung_main(sh: Arc<Shared>, stop: Arc<AtomicBool>, photo: Arc<AtomicBool>, 
     if facing == 1 {
         cmd.arg("front");
     }
-    let child = cmd.env("UCAM_STEP", "3").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
+    let child = cmd
+        .env("UCAM_STEP", "3")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(e) => {
@@ -635,7 +700,10 @@ fn samsung_main(sh: Arc<Shared>, stop: Arc<AtomicBool>, photo: Arc<AtomicBool>, 
         if cout.read_exact(&mut bytes).is_err() {
             break;
         }
-        let px: Vec<u32> = bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        let px: Vec<u32> = bytes
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
         if !live {
             *sh.status.lock().unwrap() = 1;
             live = true;
@@ -662,6 +730,10 @@ fn samsung_main(sh: Arc<Shared>, stop: Arc<AtomicBool>, photo: Arc<AtomicBool>, 
     let _ = child.wait();
     if !live {
         *sh.status.lock().unwrap() = 2;
-        *sh.err.lock().unwrap() = Some(if facing == 1 { "Frontkamera liefert kein Bild".into() } else { "Kamera liefert kein Bild".into() });
+        *sh.err.lock().unwrap() = Some(if facing == 1 {
+            "Frontkamera liefert kein Bild".into()
+        } else {
+            "Kamera liefert kein Bild".into()
+        });
     }
 }

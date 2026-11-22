@@ -39,10 +39,19 @@ impl WpeTab {
             let wpe = webkit_web_view_get_wpe_view(view);
             let mut tl = wpe_view_get_toplevel(wpe);
             if tl.is_null() {
-                tl = g_object_new(crate::platform::toplevel_type(), cs("display").as_ptr(), wpe_view_get_display(wpe), std::ptr::null::<std::ffi::c_char>());
+                tl = g_object_new(
+                    crate::platform::toplevel_type(),
+                    cs("display").as_ptr(),
+                    wpe_view_get_display(wpe),
+                    std::ptr::null::<std::ffi::c_char>(),
+                );
                 wpe_view_set_toplevel(wpe, tl);
             }
-            Self { view, wpe, toplevel: tl }
+            Self {
+                view,
+                wpe,
+                toplevel: tl,
+            }
         }
     }
 }
@@ -97,7 +106,8 @@ impl WebEngine for WpeTab {
             _ => WPE_EVENT_TOUCH_UP,
         };
         unsafe {
-            let ev = wpe_event_touch_new(t, self.wpe, WPE_INPUT_SOURCE_TOUCHSCREEN, time, 0, 1, x, y);
+            let ev =
+                wpe_event_touch_new(t, self.wpe, WPE_INPUT_SOURCE_TOUCHSCREEN, time, 0, 1, x, y);
             wpe_view_event(self.wpe, ev);
             wpe_event_unref(ev);
         }
@@ -105,7 +115,15 @@ impl WebEngine for WpeTab {
     fn key(&self, keyval: u32, keycode: u32, time: u32) {
         unsafe {
             for t in [WPE_EVENT_KEYBOARD_KEY_DOWN, WPE_EVENT_KEYBOARD_KEY_UP] {
-                let ev = wpe_event_keyboard_new(t, self.wpe, WPE_INPUT_SOURCE_KEYBOARD, time, 0, keycode, keyval);
+                let ev = wpe_event_keyboard_new(
+                    t,
+                    self.wpe,
+                    WPE_INPUT_SOURCE_KEYBOARD,
+                    time,
+                    0,
+                    keycode,
+                    keyval,
+                );
                 wpe_view_event(self.wpe, ev);
                 wpe_event_unref(ev);
             }
@@ -113,7 +131,10 @@ impl WebEngine for WpeTab {
     }
     fn resize(&self, w: i32, h: i32, scale: f64) {
         if crate::platform::debug() {
-            eprintln!("ultar-web[dbg]: resize {w}x{h} scale {scale:.2} toplevel={:?}", self.toplevel);
+            eprintln!(
+                "ultar-web[dbg]: resize {w}x{h} scale {scale:.2} toplevel={:?}",
+                self.toplevel
+            );
         }
         unsafe {
             wpe_toplevel_scale_changed(self.toplevel, scale);

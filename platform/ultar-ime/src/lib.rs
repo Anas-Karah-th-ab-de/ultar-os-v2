@@ -176,10 +176,22 @@ pub struct KeyDef {
 
 impl KeyDef {
     fn ch(c: &str) -> KeyDef {
-        KeyDef { act: Act::Text(c.into()), label: c.into(), weight: 1.0, style: Style::Letter, hint: None }
+        KeyDef {
+            act: Act::Text(c.into()),
+            label: c.into(),
+            weight: 1.0,
+            style: Style::Letter,
+            hint: None,
+        }
     }
     fn f(act: Act, label: &str, weight: f32, style: Style) -> KeyDef {
-        KeyDef { act, label: label.into(), weight, style, hint: None }
+        KeyDef {
+            act,
+            label: label.into(),
+            weight,
+            style,
+            hint: None,
+        }
     }
     /// Eingefügter Text dieser Taste (falls Zeichen-Taste).
     pub fn text(&self) -> Option<&str> {
@@ -230,9 +242,19 @@ fn up(c: char, shift: Shift) -> String {
 /// Untere Reihe (Buchstaben- und Zeichenseiten).
 fn bottom(lang: Lang, page: Page, purpose: Purpose) -> Row {
     let toggle = if page == Page::Letters {
-        KeyDef::f(Act::ToSymbols, if lang == Lang::Ar { "123؟" } else { "?123" }, 1.5, Style::Toggle)
+        KeyDef::f(
+            Act::ToSymbols,
+            if lang == Lang::Ar { "123؟" } else { "?123" },
+            1.5,
+            Style::Toggle,
+        )
     } else {
-        KeyDef::f(Act::ToLetters, if lang == Lang::Ar { "أبج" } else { "ABC" }, 1.5, Style::Toggle)
+        KeyDef::f(
+            Act::ToLetters,
+            if lang == Lang::Ar { "أبج" } else { "ABC" },
+            1.5,
+            Style::Toggle,
+        )
     };
     let (left, right) = match purpose {
         Purpose::Email => ("@", "."),
@@ -243,11 +265,18 @@ fn bottom(lang: Lang, page: Page, purpose: Purpose) -> Row {
     l.style = Style::Pill;
     let mut r = KeyDef::ch(right);
     r.style = Style::Pill;
-    r.hint = Some(if lang == Lang::Ar { "؟".into() } else { "?".into() });
+    r.hint = Some(if lang == Lang::Ar {
+        "؟".into()
+    } else {
+        "?".into()
+    });
     let globe = KeyDef::f(Act::Lang, "", 1.0, Style::Pill);
     let space = KeyDef::f(Act::Space, lang.native(), 4.0, Style::Space);
     let action = KeyDef::f(Act::Action, "", 1.4, Style::Action);
-    Row { kind: RowKind::Bottom, keys: vec![toggle, l, globe, space, r, action] }
+    Row {
+        kind: RowKind::Bottom,
+        keys: vec![toggle, l, globe, space, r, action],
+    }
 }
 
 fn ar_punct(lang: Lang, latin: &'static str, arabic: &'static str) -> &'static str {
@@ -276,14 +305,18 @@ pub fn rows(lang: Lang, page: Page, purpose: Purpose, shift: Shift, number_row: 
                         k
                     })
                     .collect();
-                out.push(Row { kind: RowKind::Numbers, keys });
+                out.push(Row {
+                    kind: RowKind::Numbers,
+                    keys,
+                });
             }
             for (ri, row) in l.iter().enumerate() {
                 let mut keys: Vec<KeyDef> = row
                     .chars()
                     .enumerate()
                     .map(|(i, c)| {
-                        let mut k = KeyDef::ch(&up(c, if lang == Lang::Ar { Shift::Off } else { shift }));
+                        let mut k =
+                            KeyDef::ch(&up(c, if lang == Lang::Ar { Shift::Off } else { shift }));
                         if ri == 0 && !number_row && i < 10 {
                             k.hint = Some(DIGITS[i..i + 1].into());
                         }
@@ -298,28 +331,71 @@ pub fn rows(lang: Lang, page: Page, purpose: Purpose, shift: Shift, number_row: 
                         keys.push(KeyDef::f(Act::Backspace, "", 1.0, Style::Func));
                     }
                 }
-                out.push(Row { kind: RowKind::Keys, keys });
+                out.push(Row {
+                    kind: RowKind::Keys,
+                    keys,
+                });
             }
         }
         Page::Symbols => {
-            out.push(Row { kind: RowKind::Keys, keys: DIGITS.chars().map(|c| KeyDef::ch(&c.to_string())).collect() });
-            out.push(Row { kind: RowKind::Keys, keys: ["@", "#", "€", "$", "%", "&", "-", "+", "(", ")"].iter().map(|c| KeyDef::ch(c)).collect() });
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: DIGITS.chars().map(|c| KeyDef::ch(&c.to_string())).collect(),
+            });
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: ["@", "#", "€", "$", "%", "&", "-", "+", "(", ")"]
+                    .iter()
+                    .map(|c| KeyDef::ch(c))
+                    .collect(),
+            });
             let mut r3 = vec![KeyDef::f(Act::ToSymbols2, "=\\<", 1.5, Style::Func)];
-            for c in ["*", "\"", "'", ":", ar_punct(lang, ";", "؛"), "!", ar_punct(lang, "?", "؟")] {
+            for c in [
+                "*",
+                "\"",
+                "'",
+                ":",
+                ar_punct(lang, ";", "؛"),
+                "!",
+                ar_punct(lang, "?", "؟"),
+            ] {
                 r3.push(KeyDef::ch(c));
             }
             r3.push(KeyDef::f(Act::Backspace, "", 1.5, Style::Func));
-            out.push(Row { kind: RowKind::Keys, keys: r3 });
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: r3,
+            });
         }
         Page::Symbols2 => {
-            out.push(Row { kind: RowKind::Keys, keys: ["~", "`", "|", "•", "°", "^", "_", "{", "}", "\\"].iter().map(|c| KeyDef::ch(c)).collect() });
-            out.push(Row { kind: RowKind::Keys, keys: ["£", "¥", "¢", "©", "®", "™", "§", "¶", "[", "]"].iter().map(|c| KeyDef::ch(c)).collect() });
-            let mut r3 = vec![KeyDef::f(Act::ToSymbols, if lang == Lang::Ar { "123؟" } else { "?123" }, 1.5, Style::Func)];
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: ["~", "`", "|", "•", "°", "^", "_", "{", "}", "\\"]
+                    .iter()
+                    .map(|c| KeyDef::ch(c))
+                    .collect(),
+            });
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: ["£", "¥", "¢", "©", "®", "™", "§", "¶", "[", "]"]
+                    .iter()
+                    .map(|c| KeyDef::ch(c))
+                    .collect(),
+            });
+            let mut r3 = vec![KeyDef::f(
+                Act::ToSymbols,
+                if lang == Lang::Ar { "123؟" } else { "?123" },
+                1.5,
+                Style::Func,
+            )];
             for c in ["<", ">", "«", "»", "×", "÷", "="] {
                 r3.push(KeyDef::ch(c));
             }
             r3.push(KeyDef::f(Act::Backspace, "", 1.5, Style::Func));
-            out.push(Row { kind: RowKind::Keys, keys: r3 });
+            out.push(Row {
+                kind: RowKind::Keys,
+                keys: r3,
+            });
         }
     }
     out.push(bottom(lang, page, purpose));
@@ -340,7 +416,10 @@ fn pad_rows(purpose: Purpose) -> Vec<Row> {
     };
     let bk = || KeyDef::f(Act::Backspace, "", 1.0, Style::Func);
     let ak = || KeyDef::f(Act::Action, "", 1.0, Style::Action);
-    let row = |keys: Vec<KeyDef>| Row { kind: RowKind::Keys, keys };
+    let row = |keys: Vec<KeyDef>| Row {
+        kind: RowKind::Keys,
+        keys,
+    };
     match purpose {
         Purpose::Pin => vec![
             row(vec![pk("1"), pk("2"), pk("3")]),
@@ -352,19 +431,31 @@ fn pad_rows(purpose: Purpose) -> Vec<Row> {
             row(vec![pk("1"), pk("2"), pk("3"), bk()]),
             row(vec![pk("4"), pk("5"), pk("6"), fk("+")]),
             row(vec![pk("7"), pk("8"), pk("9"), fk("*")]),
-            row(vec![fk("#"), pk("0"), KeyDef::f(Act::Space, "", 1.0, Style::Func), ak()]),
+            row(vec![
+                fk("#"),
+                pk("0"),
+                KeyDef::f(Act::Space, "", 1.0, Style::Func),
+                ak(),
+            ]),
         ],
         _ => vec![
             row(vec![pk("1"), pk("2"), pk("3"), bk()]),
             row(vec![pk("4"), pk("5"), pk("6"), fk("-")]),
             row(vec![pk("7"), pk("8"), pk("9"), fk(",")]),
-            row(vec![fk("."), pk("0"), KeyDef::f(Act::Space, "", 1.0, Style::Func), ak()]),
+            row(vec![
+                fk("."),
+                pk("0"),
+                KeyDef::f(Act::Space, "", 1.0, Style::Func),
+                ak(),
+            ]),
         ],
     }
 }
 
 /// Arabische Vokalzeichen (Taschkil): Fatha, Damma, Kasra, Schadda, Sukun, Fathatan, Dammatan, Kasratan.
-pub const TASHKIL: [char; 8] = ['\u{064E}', '\u{064F}', '\u{0650}', '\u{0651}', '\u{0652}', '\u{064B}', '\u{064C}', '\u{064D}'];
+pub const TASHKIL: [char; 8] = [
+    '\u{064E}', '\u{064F}', '\u{0650}', '\u{0651}', '\u{0652}', '\u{064B}', '\u{064C}', '\u{064D}',
+];
 
 /// Varianten für den langen Druck (Reihenfolge = Anzeige, erste = Vorauswahl).
 pub fn alts(lang: Lang, key: &str) -> Vec<String> {
@@ -373,13 +464,17 @@ pub fn alts(lang: Lang, key: &str) -> Vec<String> {
     let upper = key != lower;
     let fix = |v: Vec<String>| -> Vec<String> {
         if upper {
-            v.into_iter().map(|x| if x == "ß" { x } else { x.to_uppercase() }).collect()
+            v.into_iter()
+                .map(|x| if x == "ß" { x } else { x.to_uppercase() })
+                .collect()
         } else {
             v
         }
     };
     let mut c = key.chars();
-    let (Some(first), None) = (c.next(), c.next()) else { return Vec::new() };
+    let (Some(first), None) = (c.next(), c.next()) else {
+        return Vec::new();
+    };
     if ('\u{0621}'..='\u{064A}').contains(&first) || "گڤچپ".contains(first) {
         let mut v = s(match key {
             "ا" => &["أ", "إ", "آ", "ٱ", "ء"],
@@ -495,10 +590,16 @@ pub fn metrics(w: f32, h: f32, number_row: bool, size: u8, pad_layout: bool) -> 
     };
     let key_base = key_base * f;
     let pad = 4.0;
-    let width = if w > 760.0 { w.min(720.0).max(w * 0.6).min(w) } else { w };
+    let width = if w > 760.0 {
+        w.min(720.0).max(w * 0.6).min(w)
+    } else {
+        w
+    };
     let cap = h * height_cap(w, h);
     let rows = 4.0;
-    let fixed = |num: bool| pad * 2.0 + toolbar + if num { number_h + gap_y } else { 0.0 } + (rows - 1.0) * gap_y;
+    let fixed = |num: bool| {
+        pad * 2.0 + toolbar + if num { number_h + gap_y } else { 0.0 } + (rows - 1.0) * gap_y
+    };
     let fit = |num: bool| (cap - fixed(num)) / rows;
     let mut num = number_row && !pad_layout;
     let mut key_h = key_base.min(fit(num));
@@ -508,7 +609,17 @@ pub fn metrics(w: f32, h: f32, number_row: bool, size: u8, pad_layout: bool) -> 
     }
     let key_h = key_h.max(key_min * 0.85);
     let total = fixed(num) + rows * key_h;
-    Metrics { width, toolbar, number_h, number_row: num, key_h, gap_x, gap_y, pad, total }
+    Metrics {
+        width,
+        toolbar,
+        number_h,
+        number_row: num,
+        key_h,
+        gap_x,
+        gap_y,
+        pad,
+        total,
+    }
 }
 
 /// Rechteck in dp/px (gleiche Einheit wie die Eingabe).
@@ -547,7 +658,10 @@ pub struct Placed {
 
 /// Grundeinheit: Anzahl Tasten, die eine volle Buchstabenreihe hat.
 fn base_units(rows: &[Row]) -> f32 {
-    rows.iter().filter(|r| r.kind == RowKind::Keys).map(|r| r.keys.len() as f32).fold(10.0, f32::max)
+    rows.iter()
+        .filter(|r| r.kind == RowKind::Keys)
+        .map(|r| r.keys.len() as f32)
+        .fold(10.0, f32::max)
 }
 
 /// Tasten in die Fläche legen. `x, y, w` = Tastenfläche unter der Werkzeugleiste, alle Werte in derselben Einheit
@@ -560,16 +674,38 @@ pub fn place(rows: &[Row], x: f32, y: f32, w: f32, m: &Metrics, k: f32) -> Vec<P
     let mut out = Vec::new();
     let mut cy = y + pad;
     for (ri, row) in rows.iter().enumerate() {
-        let h = if row.kind == RowKind::Numbers { m.number_h * k } else { m.key_h * k };
+        let h = if row.kind == RowKind::Numbers {
+            m.number_h * k
+        } else {
+            m.key_h * k
+        };
         let weight: f32 = row.keys.iter().map(|k| k.weight).sum();
         // Untere Reihe und Ziffernblöcke füllen die Breite; Buchstabenreihen behalten die Grundeinheit
-        let stretch = row.kind != RowKind::Keys || rows.iter().all(|r| r.keys.iter().all(|k| matches!(k.style, Style::Pad | Style::Func | Style::Action)));
-        let u = if stretch || weight > units { (avail + gx) / weight } else { unit };
+        let stretch = row.kind != RowKind::Keys
+            || rows.iter().all(|r| {
+                r.keys
+                    .iter()
+                    .all(|k| matches!(k.style, Style::Pad | Style::Func | Style::Action))
+            });
+        let u = if stretch || weight > units {
+            (avail + gx) / weight
+        } else {
+            unit
+        };
         let total = weight * u - gx;
         let mut cx = x + pad + (avail - total) / 2.0;
         for def in &row.keys {
             let kw = def.weight * u - gx;
-            out.push(Placed { r: R { x: cx, y: cy, w: kw, h }, row: ri, def: def.clone() });
+            out.push(Placed {
+                r: R {
+                    x: cx,
+                    y: cy,
+                    w: kw,
+                    h,
+                },
+                row: ri,
+                def: def.clone(),
+            });
             cx += kw + gx;
         }
         cy += h + gy;
@@ -622,21 +758,48 @@ mod tests {
     use super::*;
 
     fn chars(rows: &[Row], kind: RowKind) -> Vec<String> {
-        rows.iter().filter(|r| r.kind == kind).map(|r| r.keys.iter().filter_map(|k| k.text().map(String::from)).collect()).collect()
+        rows.iter()
+            .filter(|r| r.kind == kind)
+            .map(|r| {
+                r.keys
+                    .iter()
+                    .filter_map(|k| k.text().map(String::from))
+                    .collect()
+            })
+            .collect()
     }
 
     #[test]
     fn arabic_layout_is_gboard_standard() {
         let r = rows(Lang::Ar, Page::Letters, Purpose::Text, Shift::Off, true);
         assert_eq!(chars(&r, RowKind::Numbers), vec!["1234567890"]);
-        assert_eq!(chars(&r, RowKind::Keys), vec!["ضصثقفغعهخحج", "شسيبلاتنمكط", "ذءؤرىةوزظد"]);
+        assert_eq!(
+            chars(&r, RowKind::Keys),
+            vec!["ضصثقفغعهخحج", "شسيبلاتنمكط", "ذءؤرىةوزظد"]
+        );
         // Löschen rechts in Reihe 3, kein Umschalter im Arabischen
         let r3 = &r[3].keys;
         assert_eq!(r3.last().unwrap().act, Act::Backspace);
         assert!(r3.iter().all(|k| k.act != Act::Shift));
         // untere Reihe: ؟123 · ، · Sprache · Leertaste · . · Aktion
-        let b: Vec<_> = r.last().unwrap().keys.iter().map(|k| k.act.clone()).collect();
-        assert_eq!(b, vec![Act::ToSymbols, Act::Text("،".into()), Act::Lang, Act::Space, Act::Text(".".into()), Act::Action]);
+        let b: Vec<_> = r
+            .last()
+            .unwrap()
+            .keys
+            .iter()
+            .map(|k| k.act.clone())
+            .collect();
+        assert_eq!(
+            b,
+            vec![
+                Act::ToSymbols,
+                Act::Text("،".into()),
+                Act::Lang,
+                Act::Space,
+                Act::Text(".".into()),
+                Act::Action
+            ]
+        );
         assert_eq!(r.last().unwrap().keys[0].label, "123؟"); // wird rechts-nach-links als „؟123“ gezeigt
         assert_eq!(r.last().unwrap().keys[3].label, "العربية");
     }
@@ -644,9 +807,15 @@ mod tests {
     #[test]
     fn latin_layouts() {
         let en = rows(Lang::En, Page::Letters, Purpose::Text, Shift::Off, true);
-        assert_eq!(chars(&en, RowKind::Keys), vec!["qwertyuiop", "asdfghjkl", "zxcvbnm"]);
+        assert_eq!(
+            chars(&en, RowKind::Keys),
+            vec!["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+        );
         let de = rows(Lang::De, Page::Letters, Purpose::Text, Shift::Once, false);
-        assert_eq!(chars(&de, RowKind::Keys), vec!["QWERTZUIOP", "ASDFGHJKL", "YXCVBNM"]);
+        assert_eq!(
+            chars(&de, RowKind::Keys),
+            vec!["QWERTZUIOP", "ASDFGHJKL", "YXCVBNM"]
+        );
         assert!(chars(&de, RowKind::Numbers).is_empty());
         // ohne Zahlenreihe: Ziffern als Nebenzeichen der oberen Reihe
         let hints: String = de[0].keys.iter().filter_map(|k| k.hint.clone()).collect();
@@ -671,12 +840,27 @@ mod tests {
     fn never_indian_digits() {
         for lang in Lang::ALL {
             for page in [Page::Letters, Page::Symbols, Page::Symbols2] {
-                for p in [Purpose::Text, Purpose::Pin, Purpose::Phone, Purpose::Number, Purpose::Email, Purpose::Url] {
+                for p in [
+                    Purpose::Text,
+                    Purpose::Pin,
+                    Purpose::Phone,
+                    Purpose::Number,
+                    Purpose::Email,
+                    Purpose::Url,
+                ] {
                     for num in [true, false] {
                         for r in rows(lang, page, p, Shift::Off, num) {
                             for k in r.keys {
-                                let all = format!("{}{}{}", k.label, k.text().unwrap_or(""), k.hint.clone().unwrap_or_default());
-                                assert!(!all.chars().any(is_foreign_digit), "{lang:?} {page:?} {p:?}: {all}");
+                                let all = format!(
+                                    "{}{}{}",
+                                    k.label,
+                                    k.text().unwrap_or(""),
+                                    k.hint.clone().unwrap_or_default()
+                                );
+                                assert!(
+                                    !all.chars().any(is_foreign_digit),
+                                    "{lang:?} {page:?} {p:?}: {all}"
+                                );
                             }
                         }
                     }
@@ -701,7 +885,16 @@ mod tests {
         assert_eq!(purpose_for("cname"), Purpose::Text);
     }
 
-    const SCREENS: [(f32, f32); 8] = [(360.0, 780.0), (360.0, 640.0), (780.0, 360.0), (640.0, 360.0), (914.0, 571.0), (571.0, 914.0), (600.0, 960.0), (1280.0, 800.0)];
+    const SCREENS: [(f32, f32); 8] = [
+        (360.0, 780.0),
+        (360.0, 640.0),
+        (780.0, 360.0),
+        (640.0, 360.0),
+        (914.0, 571.0),
+        (571.0, 914.0),
+        (600.0, 960.0),
+        (1280.0, 800.0),
+    ];
 
     fn all_layouts() -> Vec<Vec<Row>> {
         let mut v = Vec::new();
@@ -723,9 +916,16 @@ mod tests {
         for (w, h) in SCREENS {
             for size in 0..3 {
                 let m = metrics(w, h, true, size, false);
-                assert!(m.total <= h * height_cap(w, h) + 0.5 || m.key_h >= 30.0 * 0.85, "{w}x{h}: {m:?}");
+                assert!(
+                    m.total <= h * height_cap(w, h) + 0.5 || m.key_h >= 30.0 * 0.85,
+                    "{w}x{h}: {m:?}"
+                );
                 assert!(m.total <= h * 0.6, "{w}x{h}: zu hoch {}", m.total);
-                assert!(m.key_h >= 30.0 * 0.85, "{w}x{h}: Taste zu niedrig {}", m.key_h);
+                assert!(
+                    m.key_h >= 30.0 * 0.85,
+                    "{w}x{h}: Taste zu niedrig {}",
+                    m.key_h
+                );
                 assert!(m.width <= w);
             }
         }
@@ -749,15 +949,38 @@ mod tests {
                 let p = place(&rows_, x0, y0, aw, &m, k);
                 let ah = (m.total - m.toolbar) * k;
                 for (i, a) in p.iter().enumerate() {
-                    assert!(a.r.x >= x0 - 0.01 && a.r.right() <= x0 + aw + 0.01, "{w}x{h} Taste {} ragt raus", a.def.label);
-                    assert!(a.r.y >= y0 - 0.01 && a.r.bottom() <= y0 + ah + 0.5, "{w}x{h} Taste {} unten raus: {} > {}", a.def.label, a.r.bottom(), y0 + ah);
-                    assert!(a.r.w > 20.0 * k * 0.8, "{w}x{h} Taste {} zu schmal: {}", a.def.label, a.r.w / k);
+                    assert!(
+                        a.r.x >= x0 - 0.01 && a.r.right() <= x0 + aw + 0.01,
+                        "{w}x{h} Taste {} ragt raus",
+                        a.def.label
+                    );
+                    assert!(
+                        a.r.y >= y0 - 0.01 && a.r.bottom() <= y0 + ah + 0.5,
+                        "{w}x{h} Taste {} unten raus: {} > {}",
+                        a.def.label,
+                        a.r.bottom(),
+                        y0 + ah
+                    );
+                    assert!(
+                        a.r.w > 20.0 * k * 0.8,
+                        "{w}x{h} Taste {} zu schmal: {}",
+                        a.def.label,
+                        a.r.w / k
+                    );
                     for b in &p[i + 1..] {
-                        let ov = a.r.x < b.r.right() - 0.01 && b.r.x < a.r.right() - 0.01 && a.r.y < b.r.bottom() - 0.01 && b.r.y < a.r.bottom() - 0.01;
+                        let ov = a.r.x < b.r.right() - 0.01
+                            && b.r.x < a.r.right() - 0.01
+                            && a.r.y < b.r.bottom() - 0.01
+                            && b.r.y < a.r.bottom() - 0.01;
                         assert!(!ov, "{w}x{h}: {} überlappt {}", a.def.label, b.def.label);
                     }
                     // Mitte trifft die eigene Taste
-                    assert_eq!(hit(&p, a.r.cx(), a.r.cy(), 0.0), Some(i), "{w}x{h}: Mitte von {}", a.def.label);
+                    assert_eq!(
+                        hit(&p, a.r.cx(), a.r.cy(), 0.0),
+                        Some(i),
+                        "{w}x{h}: Mitte von {}",
+                        a.def.label
+                    );
                 }
                 // jeder Punkt (auch in den Lücken) trifft eine Taste, und zwar eine nahe
                 let mut yy = y0;
@@ -766,8 +989,18 @@ mod tests {
                     while xx < x0 + aw {
                         let i = hit(&p, xx, yy, 0.0).expect("tote Zone");
                         let r = p[i].r;
-                        let dx = if xx < r.x { r.x - xx } else if xx > r.right() { xx - r.right() } else { 0.0 };
-                        assert!(dx <= (m.gap_x * k).max(r.w), "{w}x{h}: Punkt {xx},{yy} -> ferne Taste {}", p[i].def.label);
+                        let dx = if xx < r.x {
+                            r.x - xx
+                        } else if xx > r.right() {
+                            xx - r.right()
+                        } else {
+                            0.0
+                        };
+                        assert!(
+                            dx <= (m.gap_x * k).max(r.w),
+                            "{w}x{h}: Punkt {xx},{yy} -> ferne Taste {}",
+                            p[i].def.label
+                        );
                         xx += 6.0;
                     }
                     yy += 6.0;

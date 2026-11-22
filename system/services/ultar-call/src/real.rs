@@ -12,8 +12,15 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 enum Cmd {
-    Register { number: String, token: String, server: String },
-    Place { peer: String, video: bool },
+    Register {
+        number: String,
+        token: String,
+        server: String,
+    },
+    Place {
+        peer: String,
+        video: bool,
+    },
     Answer,
     Hangup,
 }
@@ -44,7 +51,10 @@ impl WebrtcCall {
             let state = self.state.clone();
             let ready = self.ready.clone();
             std::thread::spawn(move || {
-                let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
                     Ok(r) => r,
                     Err(_) => return,
                 };
@@ -58,12 +68,23 @@ impl WebrtcCall {
 
 impl CallBackend for WebrtcCall {
     fn register(&mut self, number: &str, token: &str, server_base: &str) {
-        let (n, t, s) = (number.to_string(), token.to_string(), server_base.to_string());
-        let _ = self.ensure_worker().send(Cmd::Register { number: n, token: t, server: s });
+        let (n, t, s) = (
+            number.to_string(),
+            token.to_string(),
+            server_base.to_string(),
+        );
+        let _ = self.ensure_worker().send(Cmd::Register {
+            number: n,
+            token: t,
+            server: s,
+        });
     }
     fn place(&mut self, peer: &str, video: bool) {
         *self.state.lock().unwrap() = CallState::Dialing(peer.to_string());
-        let _ = self.ensure_worker().send(Cmd::Place { peer: peer.to_string(), video });
+        let _ = self.ensure_worker().send(Cmd::Place {
+            peer: peer.to_string(),
+            video,
+        });
     }
     fn answer(&mut self) {
         let _ = self.ensure_worker().send(Cmd::Answer);
@@ -86,7 +107,9 @@ impl CallBackend for WebrtcCall {
 }
 
 fn ws_url(server_base: &str) -> String {
-    let b = server_base.replace("https://", "wss://").replace("http://", "ws://");
+    let b = server_base
+        .replace("https://", "wss://")
+        .replace("http://", "ws://");
     format!("{}/v1/signal", b.trim_end_matches('/'))
 }
 
@@ -101,7 +124,11 @@ async fn worker(
     // auf Register warten
     let (number, token, server) = loop {
         match rx.recv().await {
-            Some(Cmd::Register { number, token, server }) => break (number, token, server),
+            Some(Cmd::Register {
+                number,
+                token,
+                server,
+            }) => break (number, token, server),
             Some(_) => continue,
             None => return,
         }
@@ -111,7 +138,9 @@ async fn worker(
     let (ws, _) = match tokio_tungstenite::connect_async(&url).await {
         Ok(x) => x,
         Err(e) => {
-            evt.lock().unwrap().push(CallEvent::Error(format!("Signalserver: {e}")));
+            evt.lock()
+                .unwrap()
+                .push(CallEvent::Error(format!("Signalserver: {e}")));
             return;
         }
     };
@@ -120,7 +149,9 @@ async fn worker(
     // Anmeldung
     let auth = serde_json::json!({"token": token, "number": number}).to_string();
     if sink.send(Message::Text(auth)).await.is_err() {
-        evt.lock().unwrap().push(CallEvent::Error("Anmeldung fehlgeschlagen".into()));
+        evt.lock()
+            .unwrap()
+            .push(CallEvent::Error("Anmeldung fehlgeschlagen".into()));
         return;
     }
     *ready.lock().unwrap() = true;

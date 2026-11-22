@@ -107,7 +107,10 @@ mod tests {
         assert_eq!(parse("anzahl 0"), Some(FpEv::Count(0)));
         assert_eq!(parse("fehler 3 0"), Some(FpEv::Error(3, 0)));
         assert_eq!(parse("fehler 8"), Some(FpEv::Error(8, 0)));
-        assert_eq!(parse("err gatekeeper verify"), Some(FpEv::Fail("gatekeeper verify".into())));
+        assert_eq!(
+            parse("err gatekeeper verify"),
+            Some(FpEv::Fail("gatekeeper verify".into()))
+        );
         assert_eq!(parse("los"), Some(FpEv::Started));
         assert_eq!(parse("quatsch"), None);
         assert_eq!(parse("ok"), None);

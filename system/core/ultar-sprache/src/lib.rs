@@ -40,14 +40,23 @@ pub fn ermitteln() -> Sprache {
     let data = std::env::var("ULTAR_DATA").unwrap_or_else(|_| "/data/ultar".into());
     if let Ok(t) = std::fs::read_to_string(format!("{data}/settings.toml")) {
         for l in t.lines() {
-            if let Some(v) = l.trim().strip_prefix("lang").map(str::trim).and_then(|r| r.strip_prefix('=')) {
+            if let Some(v) = l
+                .trim()
+                .strip_prefix("lang")
+                .map(str::trim)
+                .and_then(|r| r.strip_prefix('='))
+            {
                 if let Some(s) = aus_text(v) {
                     return s;
                 }
             }
         }
     }
-    std::fs::read_to_string("/etc/ultar/sprache").ok().as_deref().and_then(aus_text).unwrap_or(Sprache::De)
+    std::fs::read_to_string("/etc/ultar/sprache")
+        .ok()
+        .as_deref()
+        .and_then(aus_text)
+        .unwrap_or(Sprache::De)
 }
 
 pub fn sprache() -> Sprache {
@@ -68,7 +77,12 @@ fn tabelle(s: Sprache) -> &'static [(&'static str, &'static str)] {
     static AR: OnceLock<Vec<(&str, &str)>> = OnceLock::new();
     static EN: OnceLock<Vec<(&str, &str)>> = OnceLock::new();
     let bauen = |ar: bool| {
-        let mut v: Vec<(&str, &str)> = tabellen::ALLE.iter().flat_map(|t| t.iter()).map(|(de, en, a)| (*de, if ar { *a } else { *en })).filter(|(de, _)| !de.is_empty()).collect();
+        let mut v: Vec<(&str, &str)> = tabellen::ALLE
+            .iter()
+            .flat_map(|t| t.iter())
+            .map(|(de, en, a)| (*de, if ar { *a } else { *en }))
+            .filter(|(de, _)| !de.is_empty())
+            .collect();
         v.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
         v
     };
@@ -96,12 +110,34 @@ pub fn in_sprache(text: &str, s: Sprache) -> String {
     let b = text.as_bytes();
     'aussen: while i < b.len() {
         // Wendungen nur an Wortanfängen (nicht mitten in einem Wort)
-        let wortanfang = i == 0 || !text[..i].chars().next_back().map(wortzeichen).unwrap_or(false);
+        let wortanfang = i == 0
+            || !text[..i]
+                .chars()
+                .next_back()
+                .map(wortzeichen)
+                .unwrap_or(false);
         {
             for (de, ziel) in t {
-                if (wortanfang || !de.chars().next().map(|c| c.is_alphanumeric()).unwrap_or(false)) && text[i..].starts_with(de) {
+                if (wortanfang
+                    || !de
+                        .chars()
+                        .next()
+                        .map(|c| c.is_alphanumeric())
+                        .unwrap_or(false))
+                    && text[i..].starts_with(de)
+                {
                     let ende = i + de.len();
-                    let wortende = ende >= b.len() || !text[ende..].chars().next().map(wortzeichen).unwrap_or(false) || !de.chars().last().map(|c| c.is_alphanumeric()).unwrap_or(false);
+                    let wortende = ende >= b.len()
+                        || !text[ende..]
+                            .chars()
+                            .next()
+                            .map(wortzeichen)
+                            .unwrap_or(false)
+                        || !de
+                            .chars()
+                            .last()
+                            .map(|c| c.is_alphanumeric())
+                            .unwrap_or(false);
                     if wortende {
                         aus.push_str(ziel);
                         i = ende;
@@ -128,7 +164,11 @@ pub fn tr(text: &str) -> String {
 
 /// Befehlswort (auch englisch/arabisch eingegeben) auf das deutsche Befehlswort abbilden
 pub fn befehl<'a>(wort: &'a str) -> &'a str {
-    tabellen::BEFEHLE.iter().find(|(_, en, ar)| *en == wort || *ar == wort).map(|(de, _, _)| *de).unwrap_or(wort)
+    tabellen::BEFEHLE
+        .iter()
+        .find(|(_, en, ar)| *en == wort || *ar == wort)
+        .map(|(de, _, _)| *de)
+        .unwrap_or(wort)
 }
 
 /// Argumente mit übersetzten Befehlswörtern (für `match` in den Werkzeugen): nur Befehl und Unterbefehl,
@@ -162,12 +202,22 @@ mod tests {
 
     #[test]
     fn uebersetzt() {
-        let z = "Zelle „a“ angelegt: Netz frei, Protokoll aus, Standort gesperrt, Geräteinfo verborgen";
-        assert_eq!(in_sprache(z, Sprache::En), "Cell „a“ created: network open, log off, location blocked, device info hidden");
-        assert_eq!(in_sprache(z, Sprache::Ar), "الخلية „a“ أُنشئت: الشبكة مفتوح، السجل مطفأ، الموقع محجوب، معلومات الجهاز مخفي");
+        let z =
+            "Zelle „a“ angelegt: Netz frei, Protokoll aus, Standort gesperrt, Geräteinfo verborgen";
+        assert_eq!(
+            in_sprache(z, Sprache::En),
+            "Cell „a“ created: network open, log off, location blocked, device info hidden"
+        );
+        assert_eq!(
+            in_sprache(z, Sprache::Ar),
+            "الخلية „a“ أُنشئت: الشبكة مفتوح، السجل مطفأ، الموقع محجوب، معلومات الجهاز مخفي"
+        );
         assert_eq!(in_sprache("Zellenwand", Sprache::En), "Zellenwand"); // nicht mitten im Wort
         assert_eq!(in_sprache("gestoppt", Sprache::De), "gestoppt");
-        assert_eq!(in_sprache("zelle setze x protokoll.uploads true", Sprache::En), "zelle setze x protokoll.uploads true");
+        assert_eq!(
+            in_sprache("zelle setze x protokoll.uploads true", Sprache::En),
+            "zelle setze x protokoll.uploads true"
+        );
         assert_eq!(befehl("list"), "liste");
         std::env::set_var("ULTAR_LANG", "ar");
         assert_eq!(tr("{\"netz\":\"frei\"}"), "{\"netz\":\"frei\"}");

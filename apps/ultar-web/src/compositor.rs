@@ -20,7 +20,10 @@ pub struct IRect {
 pub enum Msg {
     Content(Frame),
     /// Leisten/Overlays: nur die Bereiche, die den Leisten gehören (mit ihren Pixeln), und der Inhaltsbereich
-    Chrome { pieces: Vec<(IRect, Vec<u32>)>, content: IRect },
+    Chrome {
+        pieces: Vec<(IRect, Vec<u32>)>,
+        content: IRect,
+    },
     /// Vorschaubild des aktuellen Inhalts anfordern (für die Tab-Übersicht)
     Thumb(u64),
     /// Bildschirmfoto als BMP schreiben (Test/Hilfe)
@@ -29,8 +32,16 @@ pub enum Msg {
 }
 
 pub enum Out {
-    Done { view: usize, buffer: usize },
-    Thumb { tag: u64, w: i32, h: i32, px: Vec<u32> },
+    Done {
+        view: usize,
+        buffer: usize,
+    },
+    Thumb {
+        tag: u64,
+        w: i32,
+        h: i32,
+        px: Vec<u32>,
+    },
     Shot(String),
 }
 
@@ -59,7 +70,14 @@ impl Screen for NullScreen {
     fn present(&mut self, _px: &[u32], _w: i32) {}
 }
 
-pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: impl Fn() + Send + 'static, stats: Arc<Stats>, bg: u32) {
+pub fn run(
+    mut scr: Box<dyn Screen>,
+    rx: Receiver<Msg>,
+    tx: Sender<Out>,
+    wake: impl Fn() + Send + 'static,
+    stats: Arc<Stats>,
+    bg: u32,
+) {
     crate::sched::pin_current_to_big();
     let (w, h) = scr.size();
     // Inhaltsebene (letztes Seitenbild) und Ausgabebild (Inhalt + Leisten)
@@ -78,7 +96,10 @@ pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: i
             Msg::Content(f) => {
                 if let Some(old) = newest.replace(f) {
                     stats.skipped.fetch_add(1, Ordering::Relaxed);
-                    let _ = tx.send(Out::Done { view: old.view, buffer: old.buffer });
+                    let _ = tx.send(Out::Done {
+                        view: old.view,
+                        buffer: old.buffer,
+                    });
                 }
             }
             Msg::Chrome { pieces, content: c } => {
@@ -96,7 +117,10 @@ pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: i
         }
         if quit {
             if let Some(f) = newest {
-                let _ = tx.send(Out::Done { view: f.view, buffer: f.buffer });
+                let _ = tx.send(Out::Done {
+                    view: f.view,
+                    buffer: f.buffer,
+                });
             }
             wake();
             return;
@@ -105,7 +129,10 @@ pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: i
         if let Some(f) = newest {
             blit_frame(&mut base, w, h, content, &f, bg);
             // Puffer sofort zurück: WebKit kann schon am nächsten Bild arbeiten, während wir ausgeben
-            let _ = tx.send(Out::Done { view: f.view, buffer: f.buffer });
+            let _ = tx.send(Out::Done {
+                view: f.view,
+                buffer: f.buffer,
+            });
             wake();
             chrome_changed = true;
         }
@@ -123,7 +150,12 @@ pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: i
         }
         for tag in thumbs {
             let (tw, th, px) = thumb(&base, w, content);
-            let _ = tx.send(Out::Thumb { tag, w: tw, h: th, px });
+            let _ = tx.send(Out::Thumb {
+                tag,
+                w: tw,
+                h: th,
+                px,
+            });
         }
         for p in shots {
             let r = write_bmp(&p, &out, w, h);
@@ -131,7 +163,9 @@ pub fn run(mut scr: Box<dyn Screen>, rx: Receiver<Msg>, tx: Sender<Out>, wake: i
                 Ok(()) => p,
                 Err(e) => format!(
                     "Fehler: {e} ({p}; Ordner da: {}; uid {})",
-                    std::path::Path::new(&p).parent().is_some_and(|d| d.is_dir()),
+                    std::path::Path::new(&p)
+                        .parent()
+                        .is_some_and(|d| d.is_dir()),
                     unsafe { libc::getuid() }
                 ),
             }));
@@ -153,7 +187,8 @@ fn blit_frame(dst: &mut [u32], w: i32, h: i32, r: IRect, f: &Frame, bg: u32) {
         if y < ch {
             let off = y as usize * f.stride as usize;
             if off + cw * 4 <= src.len() {
-                let s = unsafe { std::slice::from_raw_parts(src.as_ptr().add(off) as *const u32, cw) };
+                let s =
+                    unsafe { std::slice::from_raw_parts(src.as_ptr().add(off) as *const u32, cw) };
                 d[..cw].copy_from_slice(s);
             }
             d[cw..].fill(bg);
@@ -226,7 +261,18 @@ mod tests {
     #[test]
     fn leisten_ueber_inhalt() {
         let mut d = vec![0u32; 16];
-        put_piece(&mut d, &[7, 7, 7, 7], 4, 4, IRect { x: 1, y: 1, w: 2, h: 2 });
+        put_piece(
+            &mut d,
+            &[7, 7, 7, 7],
+            4,
+            4,
+            IRect {
+                x: 1,
+                y: 1,
+                w: 2,
+                h: 2,
+            },
+        );
         assert_eq!(d[5], 7);
         assert_eq!(d[10], 7);
         assert_eq!(d[0], 0);

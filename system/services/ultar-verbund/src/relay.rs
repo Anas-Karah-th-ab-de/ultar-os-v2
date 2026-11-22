@@ -54,11 +54,18 @@ impl Transport for RelaisTransport {
         self.r.senden(rahmen(DATEN, &self.pk, &self.s, r))
     }
     fn empfangen(&mut self) -> std::io::Result<Vec<u8>> {
-        let m = match self.limit {
-            Some(d) => self.rx.recv_timeout(d).map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "relais: zeit"))?,
-            None => self.rx.recv().map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "relais: weg"))?,
-        };
-        m.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::ConnectionReset, "relais: geschlossen"))
+        let m =
+            match self.limit {
+                Some(d) => self.rx.recv_timeout(d).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "relais: zeit")
+                })?,
+                None => self.rx.recv().map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::BrokenPipe, "relais: weg")
+                })?,
+            };
+        m.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::ConnectionReset, "relais: geschlossen")
+        })
     }
     fn zeitlimit(&mut self, d: Option<Duration>) {
         self.limit = d;
@@ -70,7 +77,11 @@ impl Transport for RelaisTransport {
 
 impl Drop for RelaisTransport {
     fn drop(&mut self) {
-        self.r.sitzungen.lock().unwrap().remove(&(self.pk.clone(), self.s));
+        self.r
+            .sitzungen
+            .lock()
+            .unwrap()
+            .remove(&(self.pk.clone(), self.s));
         let _ = self.r.senden(rahmen(SCHLIESSEN, &self.pk, &self.s, &[]));
     }
 }
@@ -89,13 +100,22 @@ pub struct Anmeldung {
 impl Relais {
     fn senden(&self, b: Vec<u8>) -> std::io::Result<()> {
         match &*self.aus.lock().unwrap() {
-            Some(tx) => tx.send(b).map_err(|_| std::io::Error::new(std::io::ErrorKind::NotConnected, "relais getrennt")),
-            None => Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "relais getrennt")),
+            Some(tx) => tx.send(b).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::NotConnected, "relais getrennt")
+            }),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "relais getrennt",
+            )),
         }
     }
 
     /// startet den Relais-Faden (verbindet sich bei Abbruch neu). `eingang` erhält neue eingehende Sitzungen.
-    pub fn starten(a: Anmeldung, eingang: Option<Sender<RelaisTransport>>, frei: Arc<dyn Fn() -> usize + Send + Sync>) -> Arc<Relais> {
+    pub fn starten(
+        a: Anmeldung,
+        eingang: Option<Sender<RelaisTransport>>,
+        frei: Arc<dyn Fn() -> usize + Send + Sync>,
+    ) -> Arc<Relais> {
         let r = Arc::new(Relais {
             aus: Mutex::new(None),
             sitzungen: Mutex::new(HashMap::new()),
@@ -120,7 +140,8 @@ impl Relais {
                             }
                         }
                     }
-                    r2.verbunden.store(false, std::sync::atomic::Ordering::SeqCst);
+                    r2.verbunden
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
                     *r2.aus.lock().unwrap() = None;
                     // alle offenen Sitzungen beenden
                     for (_, tx) in r2.sitzungen.lock().unwrap().drain() {
@@ -135,7 +156,12 @@ impl Relais {
         r
     }
 
-    fn sitzung(self: &Arc<Self>, a: &Anmeldung, eingang: &Option<Sender<RelaisTransport>>, frei: &Arc<dyn Fn() -> usize + Send + Sync>) -> Result<(), String> {
+    fn sitzung(
+        self: &Arc<Self>,
+        a: &Anmeldung,
+        eingang: &Option<Sender<RelaisTransport>>,
+        frei: &Arc<dyn Fn() -> usize + Send + Sync>,
+    ) -> Result<(), String> {
         let (mut ws, _) = tungstenite::connect(a.url.as_str()).map_err(|e| e.to_string())?;
         let setz = |ws: &mut tungstenite::WebSocket<MaybeTlsStream<TcpStream>>| {
             let d = Some(Duration::from_millis(50));
@@ -152,7 +178,8 @@ impl Relais {
             }
         };
         let anm = serde_json::json!({"token":a.token,"pk":a.pk,"name":a.name,"ausgabe":a.ausgabe,"rolle":a.rolle,"kerne":a.kerne,"frei":frei()});
-        ws.send(Message::Text(anm.to_string())).map_err(|e| e.to_string())?;
+        ws.send(Message::Text(anm.to_string()))
+            .map_err(|e| e.to_string())?;
         // auf „bereit“ warten
         let m = ws.read().map_err(|e| e.to_string())?;
         match &m {
@@ -162,7 +189,8 @@ impl Relais {
         setz(&mut ws);
         let (tx, rx) = channel::<Vec<u8>>();
         *self.aus.lock().unwrap() = Some(tx);
-        self.verbunden.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.verbunden
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let mut letzter_zustand = std::time::Instant::now();
         loop {
             if !self.an.load(std::sync::atomic::Ordering::SeqCst) {
@@ -181,11 +209,18 @@ impl Relais {
             }
             if letzter_zustand.elapsed() > Duration::from_secs(5) {
                 letzter_zustand = std::time::Instant::now();
-                ws.write(Message::Text(serde_json::json!({"typ":"frei","frei":frei()}).to_string())).map_err(|e| e.to_string())?;
+                ws.write(Message::Text(
+                    serde_json::json!({"typ":"frei","frei":frei()}).to_string(),
+                ))
+                .map_err(|e| e.to_string())?;
             }
             match ws.flush() {
                 Ok(()) => {}
-                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(tungstenite::Error::Io(e))
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
                 Err(e) => return Err(e.to_string()),
             }
             // eingehend
@@ -194,7 +229,11 @@ impl Relais {
                 Ok(Message::Text(t)) => self.text(&t),
                 Ok(Message::Close(_)) => return Err("geschlossen".into()),
                 Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(tungstenite::Error::Io(e))
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
                 Err(e) => return Err(e.to_string()),
             }
         }
@@ -210,7 +249,9 @@ impl Relais {
             tab.clear();
             for g in v["liste"].as_array().cloned().unwrap_or_default() {
                 let pk = g["pk"].as_str().unwrap_or("").to_string();
-                let Some(roh) = crate::ident::unhex(&pk) else { continue };
+                let Some(roh) = crate::ident::unhex(&pk) else {
+                    continue;
+                };
                 if roh.len() != 32 {
                     continue;
                 }
@@ -220,7 +261,12 @@ impl Relais {
                         kennung: crate::ident::kennung(&roh),
                         pk,
                         name: g["name"].as_str().unwrap_or("").chars().take(64).collect(),
-                        ausgabe: g["ausgabe"].as_str().unwrap_or("").chars().take(16).collect(),
+                        ausgabe: g["ausgabe"]
+                            .as_str()
+                            .unwrap_or("")
+                            .chars()
+                            .take(16)
+                            .collect(),
                         adresse: "relais".into(),
                         kerne: g["kerne"].as_u64().unwrap_or(1) as usize,
                         frei: g["frei"].as_u64().unwrap_or(0) as usize,
@@ -248,7 +294,13 @@ impl Relais {
                 if let Some(e) = eingang {
                     let (tx, rx) = channel();
                     self.sitzungen.lock().unwrap().insert(k, tx);
-                    let _ = e.send(RelaisTransport { r: self.clone(), pk, s, rx, limit: None });
+                    let _ = e.send(RelaisTransport {
+                        r: self.clone(),
+                        pk,
+                        s,
+                        rx,
+                        limit: None,
+                    });
                 }
             }
             DATEN => {
@@ -270,9 +322,18 @@ impl Relais {
         let mut s = [0u8; 8];
         rand::thread_rng().fill(&mut s);
         let (tx, rx) = channel();
-        self.sitzungen.lock().unwrap().insert((partner_pk.to_vec(), s), tx);
+        self.sitzungen
+            .lock()
+            .unwrap()
+            .insert((partner_pk.to_vec(), s), tx);
         self.senden(rahmen(OEFFNEN, partner_pk, &s, &[]))?;
-        Ok(RelaisTransport { r: self.clone(), pk: partner_pk.to_vec(), s, rx, limit: None })
+        Ok(RelaisTransport {
+            r: self.clone(),
+            pk: partner_pk.to_vec(),
+            s,
+            rx,
+            limit: None,
+        })
     }
 
     pub fn warte_verbunden(&self, d: Duration) -> bool {

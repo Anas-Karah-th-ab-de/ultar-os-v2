@@ -13,7 +13,13 @@ use std::ffi::CString;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 
-fn m(quelle: Option<&str>, ziel: &Path, typ: Option<&str>, flags: MsFlags, daten: Option<&str>) -> Result<(), String> {
+fn m(
+    quelle: Option<&str>,
+    ziel: &Path,
+    typ: Option<&str>,
+    flags: MsFlags,
+    daten: Option<&str>,
+) -> Result<(), String> {
     mount(quelle, ziel, typ, flags, daten).map_err(|e| format!("mount {}: {e}", ziel.display()))
 }
 
@@ -28,16 +34,38 @@ fn binden(q: &Path, z: &Path, nur_lesen: bool) -> Result<(), String> {
             std::fs::write(z, b"").map_err(|e| format!("{}: {e}", z.display()))?;
         }
     }
-    m(Some(&q.to_string_lossy()), z, None, MsFlags::MS_BIND | MsFlags::MS_REC, None)?;
+    m(
+        Some(&q.to_string_lossy()),
+        z,
+        None,
+        MsFlags::MS_BIND | MsFlags::MS_REC,
+        None,
+    )?;
     if nur_lesen {
-        m(None, z, None, MsFlags::MS_BIND | MsFlags::MS_REMOUNT | MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_NODEV, None)?;
+        m(
+            None,
+            z,
+            None,
+            MsFlags::MS_BIND
+                | MsFlags::MS_REMOUNT
+                | MsFlags::MS_RDONLY
+                | MsFlags::MS_NOSUID
+                | MsFlags::MS_NODEV,
+            None,
+        )?;
     }
     Ok(())
 }
 
 fn tmpfs(z: &Path, modus: &str) -> Result<(), String> {
     std::fs::create_dir_all(z).map_err(|e| e.to_string())?;
-    m(Some("tmpfs"), z, Some("tmpfs"), MsFlags::MS_NOSUID | MsFlags::MS_NODEV, Some(&format!("mode={modus}")))
+    m(
+        Some("tmpfs"),
+        z,
+        Some("tmpfs"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+        Some(&format!("mode={modus}")),
+    )
 }
 
 fn unter(wurzel: &Path, p: &str) -> PathBuf {
@@ -52,17 +80,40 @@ pub fn programm(p: &Profil) -> Result<(Vec<String>, Vec<(String, String)>, Strin
     if p.app.is_empty() {
         return Err("weder befehl noch app angegeben".into());
     }
-    let pfad = std::env::var("ULTAR_DATA").map(PathBuf::from).unwrap_or_else(|_| "/data/ultar".into()).join("apps.d").join(format!("{}.toml", p.app));
-    let s = std::fs::read_to_string(&pfad).map_err(|_| format!("App „{}“ ist nicht installiert", p.app))?;
+    let pfad = std::env::var("ULTAR_DATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| "/data/ultar".into())
+        .join("apps.d")
+        .join(format!("{}.toml", p.app));
+    let s = std::fs::read_to_string(&pfad)
+        .map_err(|_| format!("App „{}“ ist nicht installiert", p.app))?;
     let v: toml::Value = toml::from_str(&s).map_err(|e| e.to_string())?;
-    let run: Vec<String> = v.get("run").and_then(|r| r.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+    let run: Vec<String> = v
+        .get("run")
+        .and_then(|r| r.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
     if run.is_empty() {
         return Err(format!("App „{}“ hat keinen Startbefehl", p.app));
     }
     let mut env: Vec<(String, String)> = v
         .get("env")
         .and_then(|e| e.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_array()).filter_map(|kv| Some((kv.first()?.as_str()?.to_string(), kv.get(1)?.as_str()?.to_string()))).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_array())
+                .filter_map(|kv| {
+                    Some((
+                        kv.first()?.as_str()?.to_string(),
+                        kv.get(1)?.as_str()?.to_string(),
+                    ))
+                })
+                .collect()
+        })
         .unwrap_or_default();
     // eigener Wine-Bereich je Zelle (Kopie beim ersten Start, siehe innen)
     let mut ursprung = None;
@@ -77,7 +128,11 @@ pub fn programm(p: &Profil) -> Result<(Vec<String>, Vec<(String, String)>, Strin
     }
     env.extend(p.umgebung.clone());
     let nativ = v.get("format").and_then(|f| f.as_str()) == Some("uap");
-    let wurzel = if nativ { p.wurzel.clone() } else { "/compat".into() };
+    let wurzel = if nativ {
+        p.wurzel.clone()
+    } else {
+        "/compat".into()
+    };
     Ok((run, env, wurzel))
 }
 
@@ -92,45 +147,75 @@ fn ersatzdateien(p: &Profil) -> Result<PathBuf, String> {
             use std::io::Read;
             let _ = f.read_exact(&mut b);
         }
-        std::fs::write(&mid, format!("{}\n", b.iter().map(|x| format!("{x:02x}")).collect::<String>())).map_err(|e| e.to_string())?;
+        std::fs::write(
+            &mid,
+            format!(
+                "{}\n",
+                b.iter().map(|x| format!("{x:02x}")).collect::<String>()
+            ),
+        )
+        .map_err(|e| e.to_string())?;
     }
-    let kerne = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let kerne = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     let mut cpu = String::new();
     for i in 0..kerne {
         cpu += &format!("processor\t: {i}\nvendor_id\t: Ultar\nmodel name\t: Ultar Prozessor\ncpu MHz\t\t: 2000.000\ncache size\t: 1024 KB\nflags\t\t: fpu sse sse2\n\n");
     }
     std::fs::write(d.join("cpuinfo"), cpu).map_err(|e| e.to_string())?;
-    std::fs::write(d.join("hostname"), format!("{}\n", p.privat.rechnername)).map_err(|e| e.to_string())?;
-    let mut hosts = format!("127.0.0.1\tlocalhost {}\n::1\tlocalhost\n", p.privat.rechnername);
+    std::fs::write(d.join("hostname"), format!("{}\n", p.privat.rechnername))
+        .map_err(|e| e.to_string())?;
+    let mut hosts = format!(
+        "127.0.0.1\tlocalhost {}\n::1\tlocalhost\n",
+        p.privat.rechnername
+    );
     for v in &p.verknuepft {
         let (_, ip) = netz::adressen(v);
         hosts += &format!("{ip}\t{v} {v}.zelle\n");
     }
     std::fs::write(d.join("hosts"), hosts).map_err(|e| e.to_string())?;
-    let dns: String = netz::dns().iter().map(|a| format!("nameserver {a}\n")).collect();
+    let dns: String = netz::dns()
+        .iter()
+        .map(|a| format!("nameserver {a}\n"))
+        .collect();
     std::fs::write(d.join("resolv.conf"), dns).map_err(|e| e.to_string())?;
     // vorgegebene Identität: Zeitzone und Ort (die App sieht nur diese Werte)
-    std::fs::write(d.join("timezone"), format!("{}\n", p.privat.zeitzone)).map_err(|e| e.to_string())?;
+    std::fs::write(d.join("timezone"), format!("{}\n", p.privat.zeitzone))
+        .map_err(|e| e.to_string())?;
     std::fs::write(d.join("gnss.nmea"), nmea(&p.privat.ort)).map_err(|e| e.to_string())?;
     Ok(d)
 }
 
 /// NMEA-Sätze (GGA + RMC) für einen vorgegebenen Ort – leer ohne Ort
 pub fn nmea(ort: &str) -> String {
-    let Some((b, l)) = ort.split_once(',').and_then(|(b, l)| Some((b.trim().parse::<f64>().ok()?, l.trim().parse::<f64>().ok()?))) else {
+    let Some((b, l)) = ort
+        .split_once(',')
+        .and_then(|(b, l)| Some((b.trim().parse::<f64>().ok()?, l.trim().parse::<f64>().ok()?)))
+    else {
         return String::new();
     };
     let grad = |x: f64, stellen: usize| {
         let g = x.abs().trunc();
         format!("{:0w$}{:07.4}", g as u32, (x.abs() - g) * 60.0, w = stellen)
     };
-    let (ns, ew) = (if b < 0.0 { "S" } else { "N" }, if l < 0.0 { "W" } else { "E" });
+    let (ns, ew) = (
+        if b < 0.0 { "S" } else { "N" },
+        if l < 0.0 { "W" } else { "E" },
+    );
     let satz = |s: String| {
         let sum = s.bytes().fold(0u8, |a, c| a ^ c);
         format!("${s}*{sum:02X}\r\n")
     };
-    satz(format!("GPGGA,120000.00,{},{ns},{},{ew},1,08,0.9,100.0,M,0.0,M,,", grad(b, 2), grad(l, 3)))
-        + &satz(format!("GPRMC,120000.00,A,{},{ns},{},{ew},0.0,0.0,010126,,,A", grad(b, 2), grad(l, 3)))
+    satz(format!(
+        "GPGGA,120000.00,{},{ns},{},{ew},1,08,0.9,100.0,M,0.0,M,,",
+        grad(b, 2),
+        grad(l, 3)
+    )) + &satz(format!(
+        "GPRMC,120000.00,A,{},{ns},{},{ew},0.0,0.0,010126,,,A",
+        grad(b, 2),
+        grad(l, 3)
+    ))
 }
 
 /// Locale aus einer Kurzangabe („ar“ → „ar_SA.UTF-8“)
@@ -164,7 +249,14 @@ fn firefox_vorgaben(home: &Path, p: &Profil) {
         prefs += &format!("user_pref(\"intl.accept_languages\", \"{kurz}\");\nuser_pref(\"intl.locale.requested\", \"{kurz}\");\n");
     }
     let basis = home.join(".mozilla/firefox");
-    let mut profile: Vec<PathBuf> = std::fs::read_dir(&basis).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.join("prefs.js").exists() || p.join("times.json").exists()).collect()).unwrap_or_default();
+    let mut profile: Vec<PathBuf> = std::fs::read_dir(&basis)
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.join("prefs.js").exists() || p.join("times.json").exists())
+                .collect()
+        })
+        .unwrap_or_default();
     if profile.is_empty() {
         let d = basis.join("ultar.default");
         let _ = std::fs::create_dir_all(&d);
@@ -194,9 +286,16 @@ fn cgroup(p: &Profil) -> Option<PathBuf> {
     let g = eltern.join(&p.name);
     std::fs::create_dir_all(&g).ok()?;
     // dynamisch: keine feste Grenze (nimmt, was frei ist); fest: harte Grenze
-    let max = if p.speicher.ram_mb == 0 { "max".to_string() } else { (p.speicher.ram_mb << 20).to_string() };
+    let max = if p.speicher.ram_mb == 0 {
+        "max".to_string()
+    } else {
+        (p.speicher.ram_mb << 20).to_string()
+    };
     let _ = std::fs::write(g.join("memory.max"), max);
-    let _ = std::fs::write(g.join("memory.low"), (p.speicher.ram_garantiert_mb << 20).to_string());
+    let _ = std::fs::write(
+        g.join("memory.low"),
+        (p.speicher.ram_garantiert_mb << 20).to_string(),
+    );
     let _ = std::fs::write(g.join("pids.max"), "4096");
     Some(g)
 }
@@ -229,7 +328,11 @@ pub fn starten(p: &Profil, extra: &[String]) -> Result<(std::process::Child, Ber
         let _ = std::fs::set_permissions(&g, std::os::unix::fs::PermissionsExt::from_mode(0o1777));
     }
     netz::aufbauen(p)?;
-    let modus = if p.gpu.is_empty() { gpu::vorgabe() } else { p.gpu.clone() };
+    let modus = if p.gpu.is_empty() {
+        gpu::vorgabe()
+    } else {
+        p.gpu.clone()
+    };
     let w = gpu::waehlen(&modus, &gpu::karten());
     if p.protokoll.verbindungen {
         crate::waechter::regeln_setzen(p)?;
@@ -247,8 +350,10 @@ pub fn starten(p: &Profil, extra: &[String]) -> Result<(std::process::Child, Ber
     }
     let cg = cgroup(p);
     let auftrag = serde_json::json!({"befehl": befehl, "umgebung": umgebung, "wurzel": wurzel, "geraete": w.geraete, "gpu_umgebung": w.umgebung});
-    std::fs::write(d.join(".zelle/auftrag.json"), auftrag.to_string()).map_err(|e| e.to_string())?;
-    let ns_datei = std::fs::File::open(Path::new("/run/netns").join(netz::ns(&p.name))).map_err(|e| format!("Netz der Zelle: {e}"))?;
+    std::fs::write(d.join(".zelle/auftrag.json"), auftrag.to_string())
+        .map_err(|e| e.to_string())?;
+    let ns_datei = std::fs::File::open(Path::new("/run/netns").join(netz::ns(&p.name)))
+        .map_err(|e| format!("Netz der Zelle: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut cmd = std::process::Command::new(exe);
     cmd.args(["innen", &p.name]);
@@ -259,7 +364,10 @@ pub fn starten(p: &Profil, extra: &[String]) -> Result<(std::process::Child, Ber
             if libc::setns(ns_datei.as_raw_fd(), libc::CLONE_NEWNET) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
-            if libc::unshare(libc::CLONE_NEWNS | libc::CLONE_NEWUTS | libc::CLONE_NEWIPC | libc::CLONE_NEWPID) != 0 {
+            if libc::unshare(
+                libc::CLONE_NEWNS | libc::CLONE_NEWUTS | libc::CLONE_NEWIPC | libc::CLONE_NEWPID,
+            ) != 0
+            {
                 return Err(std::io::Error::last_os_error());
             }
             if let Some(g) = &cg2 {
@@ -272,7 +380,20 @@ pub fn starten(p: &Profil, extra: &[String]) -> Result<(std::process::Child, Ber
     let _ = std::fs::write(d.join(".zelle/pid"), k.id().to_string());
     let (_, ip) = netz::adressen(&p.name);
     let pid = k.id();
-    Ok((k, Bericht { name: p.name.clone(), pid, gpu: w.begruendung, netz: p.netz.art.clone(), ip: if p.netz.art == "aus" { String::new() } else { ip.to_string() } }))
+    Ok((
+        k,
+        Bericht {
+            name: p.name.clone(),
+            pid,
+            gpu: w.begruendung,
+            netz: p.netz.art.clone(),
+            ip: if p.netz.art == "aus" {
+                String::new()
+            } else {
+                ip.to_string()
+            },
+        },
+    ))
 }
 
 /// läuft in der Zelle: Sicht einrichten (PID 1) und die App starten
@@ -286,7 +407,8 @@ pub fn innen(name: &str) -> i32 {
     };
     // erster Kindprozess = PID 1 im neuen PID-Namensraum
     match unsafe { nix::unistd::fork() } {
-        Ok(nix::unistd::ForkResult::Parent { child }) => match nix::sys::wait::waitpid(child, None) {
+        Ok(nix::unistd::ForkResult::Parent { child }) => match nix::sys::wait::waitpid(child, None)
+        {
             Ok(nix::sys::wait::WaitStatus::Exited(_, c)) => c,
             _ => 1,
         },
@@ -309,9 +431,28 @@ pub fn innen(name: &str) -> i32 {
 
 fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     let d = ordner(&p.name);
-    let a: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(d.join(".zelle/auftrag.json")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let liste = |k: &str| -> Vec<String> { a[k].as_array().map(|v| v.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default() };
-    let paare = |k: &str| -> Vec<(String, String)> { a[k].as_array().map(|v| v.iter().filter_map(|x| Some((x[0].as_str()?.to_string(), x[1].as_str()?.to_string()))).collect()).unwrap_or_default() };
+    let a: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(d.join(".zelle/auftrag.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let liste = |k: &str| -> Vec<String> {
+        a[k].as_array()
+            .map(|v| {
+                v.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let paare = |k: &str| -> Vec<(String, String)> {
+        a[k].as_array()
+            .map(|v| {
+                v.iter()
+                    .filter_map(|x| Some((x[0].as_str()?.to_string(), x[1].as_str()?.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let befehl = liste("befehl");
     let geraete = liste("geraete");
     let mut umgebung = paare("umgebung");
@@ -319,28 +460,62 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     let wurzel = PathBuf::from(a["wurzel"].as_str().unwrap_or("/"));
 
     // 1. alles privat: nichts dringt hinaus oder herein
-    m(None, Path::new("/"), None, MsFlags::MS_REC | MsFlags::MS_PRIVATE, None)?;
+    m(
+        None,
+        Path::new("/"),
+        None,
+        MsFlags::MS_REC | MsFlags::MS_PRIVATE,
+        None,
+    )?;
     // 2. eigene Daten und verknüpfte Ordner vorab an einen Zwischenplatz (gleich wird /data verdeckt)
     let zwischen = PathBuf::from("/run/zellen-zwischen").join(&p.name);
     binden(&d.join("daten"), &zwischen.join("daten"), false)?;
     binden(&d.join(".zelle"), &zwischen.join("ersatz"), true)?;
     let ersatz = zwischen.join("ersatz");
     for v in &p.verknuepft {
-        binden(&gemeinsam(&p.name, v), &zwischen.join("gemeinsam").join(v), false)?;
+        binden(
+            &gemeinsam(&p.name, v),
+            &zwischen.join("gemeinsam").join(v),
+            false,
+        )?;
     }
     // Wine: eigener Bereich je Zelle – beim ersten Start Kopie (reflink, wo das Dateisystem es kann)
-    if let Some((_, alt)) = programm(p).ok().and_then(|(_, env, _)| env.into_iter().find(|(k, _)| k == "WINEPREFIX_URSPRUNG")) {
+    if let Some((_, alt)) = programm(p)
+        .ok()
+        .and_then(|(_, env, _)| env.into_iter().find(|(k, _)| k == "WINEPREFIX_URSPRUNG"))
+    {
         let ziel = d.join("daten/wine");
         if !ziel.exists() && Path::new(&alt).exists() {
-            let _ = std::process::Command::new("cp").args(["-a", "--reflink=auto", &alt, &ziel.to_string_lossy()]).status();
-            let _ = std::process::Command::new("chown").args(["-R", &format!("{0}:{0}", p.uid()), &ziel.to_string_lossy()]).status();
+            let _ = std::process::Command::new("cp")
+                .args(["-a", "--reflink=auto", &alt, &ziel.to_string_lossy()])
+                .status();
+            let _ = std::process::Command::new("chown")
+                .args(["-R", &format!("{0}:{0}", p.uid()), &ziel.to_string_lossy()])
+                .status();
         }
     }
     // 3. frisches /proc für den neuen PID-Raum, /tmp leer
-    m(Some("proc"), &unter(&wurzel, "/proc"), Some("proc"), MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC, None)?;
+    m(
+        Some("proc"),
+        &unter(&wurzel, "/proc"),
+        Some("proc"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
+        None,
+    )?;
     tmpfs(&unter(&wurzel, "/tmp"), "1777")?;
     // 4. fremden Speicher verdecken
-    for v in ["/data", "/home", "/root", "/media", "/mnt", "/srv", "/run/ultar", "/var/lib/ultar", "/run/user", "/var/log"] {
+    for v in [
+        "/data",
+        "/home",
+        "/root",
+        "/media",
+        "/mnt",
+        "/srv",
+        "/run/ultar",
+        "/var/lib/ultar",
+        "/run/user",
+        "/var/log",
+    ] {
         let z = unter(&wurzel, v);
         if z.is_dir() {
             tmpfs(&z, "755")?;
@@ -350,20 +525,30 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     let home = unter(&wurzel, "/data/zelle");
     binden(&zwischen.join("daten"), &home, false)?;
     for v in &p.verknuepft {
-        binden(&zwischen.join("gemeinsam").join(v), &unter(&wurzel, &format!("/data/gemeinsam/{v}")), false)?;
+        binden(
+            &zwischen.join("gemeinsam").join(v),
+            &unter(&wurzel, &format!("/data/gemeinsam/{v}")),
+            false,
+        )?;
     }
     // 6. Geräte: nur das Nötigste + was erlaubt ist
     let dev = unter(&wurzel, "/dev");
     let hostdev = zwischen.join("hostdev");
     binden(Path::new("/dev"), &hostdev, false)?;
     tmpfs(&dev, "755")?;
-    let mut erlaubt: Vec<String> = ["null", "zero", "full", "random", "urandom", "tty"].iter().map(|s| format!("/dev/{s}")).collect();
+    let mut erlaubt: Vec<String> = ["null", "zero", "full", "random", "urandom", "tty"]
+        .iter()
+        .map(|s| format!("/dev/{s}"))
+        .collect();
     erlaubt.extend(geraete);
     if p.privat.mikrofon || p.privat.lautsprecher {
         erlaubt.push("/dev/snd".into());
     }
     if p.privat.kamera {
-        for e in std::fs::read_dir("/dev").map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+        for e in std::fs::read_dir("/dev")
+            .map(|d| d.flatten().collect::<Vec<_>>())
+            .unwrap_or_default()
+        {
             let n = e.file_name().to_string_lossy().into_owned();
             if n.starts_with("video") || n.starts_with("media") {
                 erlaubt.push(format!("/dev/{n}"));
@@ -374,7 +559,10 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
         erlaubt.push("/dev/bus/usb".into());
     }
     if p.privat.standort {
-        for e in std::fs::read_dir("/dev").map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+        for e in std::fs::read_dir("/dev")
+            .map(|d| d.flatten().collect::<Vec<_>>())
+            .unwrap_or_default()
+        {
             let n = e.file_name().to_string_lossy().into_owned();
             if n.starts_with("ttyACM") || n.starts_with("gnss") {
                 erlaubt.push(format!("/dev/{n}"));
@@ -389,19 +577,50 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     }
     let pts = dev.join("pts");
     std::fs::create_dir_all(&pts).map_err(|e| e.to_string())?;
-    let _ = m(Some("devpts"), &pts, Some("devpts"), MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC, Some("newinstance,ptmxmode=0666,mode=620"));
+    let _ = m(
+        Some("devpts"),
+        &pts,
+        Some("devpts"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC,
+        Some("newinstance,ptmxmode=0666,mode=620"),
+    );
     let _ = std::os::unix::fs::symlink("pts/ptmx", dev.join("ptmx"));
     tmpfs(&dev.join("shm"), "1777")?;
-    for (n, z) in [("fd", "/proc/self/fd"), ("stdin", "/proc/self/fd/0"), ("stdout", "/proc/self/fd/1"), ("stderr", "/proc/self/fd/2")] {
+    for (n, z) in [
+        ("fd", "/proc/self/fd"),
+        ("stdin", "/proc/self/fd/0"),
+        ("stdout", "/proc/self/fd/1"),
+        ("stderr", "/proc/self/fd/2"),
+    ] {
         let _ = std::os::unix::fs::symlink(z, dev.join(n));
     }
     // 7. Geräteinfo: neutraler Prozessor, eigene Geräte-ID, keine DMI/Firmware/Akku-Daten
     let sys = unter(&wurzel, "/sys");
     std::fs::create_dir_all(&sys).map_err(|e| e.to_string())?;
-    let _ = m(Some("sysfs"), &sys, Some("sysfs"), MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC, None);
+    let _ = m(
+        Some("sysfs"),
+        &sys,
+        Some("sysfs"),
+        MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
+        None,
+    );
     if !p.privat.geraeteinfo {
-        binden(&ersatz.join("cpuinfo"), &unter(&wurzel, "/proc/cpuinfo"), true)?;
-        for v in ["/sys/class/dmi", "/sys/devices/virtual/dmi", "/sys/firmware", "/sys/class/power_supply", "/sys/class/hwmon", "/sys/bus/usb", "/sys/class/bluetooth", "/proc/device-tree", "/sys/class/ieee80211"] {
+        binden(
+            &ersatz.join("cpuinfo"),
+            &unter(&wurzel, "/proc/cpuinfo"),
+            true,
+        )?;
+        for v in [
+            "/sys/class/dmi",
+            "/sys/devices/virtual/dmi",
+            "/sys/firmware",
+            "/sys/class/power_supply",
+            "/sys/class/hwmon",
+            "/sys/bus/usb",
+            "/sys/class/bluetooth",
+            "/proc/device-tree",
+            "/sys/class/ieee80211",
+        ] {
             let z = unter(&wurzel, v);
             if z.is_dir() {
                 let _ = tmpfs(&z, "555");
@@ -416,7 +635,11 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
             }
         }
     }
-    for (q, z) in [("hostname", "/etc/hostname"), ("hosts", "/etc/hosts"), ("resolv.conf", "/etc/resolv.conf")] {
+    for (q, z) in [
+        ("hostname", "/etc/hostname"),
+        ("hosts", "/etc/hosts"),
+        ("resolv.conf", "/etc/resolv.conf"),
+    ] {
         let ziel = unter(&wurzel, z);
         if ziel.is_symlink() {
             let _ = std::fs::remove_file(&ziel); // z. B. resolv.conf → systemd: eigene Datei
@@ -425,7 +648,10 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     }
     // vorgegebene Zeitzone und Ort
     if !p.privat.zeitzone.is_empty() && !p.privat.zeitzone.contains("..") {
-        let zi = unter(&wurzel, &format!("/usr/share/zoneinfo/{}", p.privat.zeitzone));
+        let zi = unter(
+            &wurzel,
+            &format!("/usr/share/zoneinfo/{}", p.privat.zeitzone),
+        );
         let lt = unter(&wurzel, "/etc/localtime");
         if zi.is_file() && (lt.exists() || lt.is_symlink()) {
             let _ = binden(&zi, &std::fs::canonicalize(&lt).unwrap_or(lt), true);
@@ -465,7 +691,13 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     // 9. App als Kind von PID 1 starten, PID 1 räumt verwaiste Prozesse ab
     let mut cmd = std::process::Command::new(&befehl[0]);
     cmd.args(&befehl[1..]).env_clear();
-    cmd.env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/games").env("HOME", "/data/zelle").env("USER", "zelle").env("LANG", std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()));
+    cmd.env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/games")
+        .env("HOME", "/data/zelle")
+        .env("USER", "zelle")
+        .env(
+            "LANG",
+            std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()),
+        );
     for k in ["DISPLAY", "WAYLAND_DISPLAY", "TERM"] {
         if let Ok(v) = std::env::var(k) {
             cmd.env(k, v);
@@ -476,7 +708,9 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
     }
     if !p.privat.sprache.is_empty() {
         let l = locale(&p.privat.sprache);
-        cmd.env("LANG", &l).env("LC_ALL", &l).env("LANGUAGE", l.split('.').next().unwrap_or(""));
+        cmd.env("LANG", &l)
+            .env("LC_ALL", &l)
+            .env("LANGUAGE", l.split('.').next().unwrap_or(""));
     }
     if !p.privat.ort.is_empty() {
         cmd.env("ULTAR_STANDORT", &p.privat.ort);
@@ -493,7 +727,9 @@ fn einrichten_und_starten(p: &Profil) -> Result<i32, String> {
                 let _ = kind.try_wait();
                 return Ok(c);
             }
-            Ok(nix::sys::wait::WaitStatus::Signaled(pid, s, _)) if pid.as_raw() == haupt => return Ok(128 + s as i32),
+            Ok(nix::sys::wait::WaitStatus::Signaled(pid, s, _)) if pid.as_raw() == haupt => {
+                return Ok(128 + s as i32)
+            }
             Ok(_) => continue,
             Err(_) => return Ok(0),
         }
@@ -516,7 +752,11 @@ pub fn stoppen(name: &str) {
 }
 
 pub fn laeuft(name: &str) -> bool {
-    std::fs::read_to_string(ordner(name).join(".zelle/pid")).ok().and_then(|s| s.trim().parse::<i32>().ok()).map(|p| Path::new(&format!("/proc/{p}")).exists()).unwrap_or(false)
+    std::fs::read_to_string(ordner(name).join(".zelle/pid"))
+        .ok()
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .map(|p| Path::new(&format!("/proc/{p}")).exists())
+        .unwrap_or(false)
 }
 
 #[allow(dead_code)]

@@ -37,7 +37,12 @@ impl Text {
             db.load_font_source(cosmic_text::fontdb::Source::Binary(std::sync::Arc::new(f)));
         }
         db.set_sans_serif_family("Noto Sans");
-        Self { fs: FontSystem::new_with_locale_and_db("en-US".into(), db), cache: SwashCache::new(), bufs: HashMap::new(), old: HashMap::new() }
+        Self {
+            fs: FontSystem::new_with_locale_and_db("en-US".into(), db),
+            cache: SwashCache::new(),
+            bufs: HashMap::new(),
+            old: HashMap::new(),
+        }
     }
 
     /// style: 0 normal, 1 fett, 2 Festbreite
@@ -63,7 +68,17 @@ impl Text {
                 buf.set_wrap(Wrap::None);
                 buf.set_size(None, None);
             }
-            let attrs = if style == 2 { Attrs::new().family(Family::Name("DejaVu Sans Mono")) } else { Attrs::new().family(Family::Name("Noto Sans")).weight(if style == 1 { Weight::BOLD } else { Weight::NORMAL }) };
+            let attrs = if style == 2 {
+                Attrs::new().family(Family::Name("DejaVu Sans Mono"))
+            } else {
+                Attrs::new()
+                    .family(Family::Name("Noto Sans"))
+                    .weight(if style == 1 {
+                        Weight::BOLD
+                    } else {
+                        Weight::NORMAL
+                    })
+            };
             buf.set_text(text, &attrs, Shaping::Advanced, None);
             buf.shape_until_scroll(fs, false);
             let (mut w, mut h, mut min_x) = (0f32, 0f32, f32::MAX);
@@ -75,24 +90,41 @@ impl Text {
                 }
             }
             // Bei RTL ohne feste Breite richtet cosmic-text nicht an 0 aus; kleinste Glyphenposition ausgleichen
-            let shift = if wrap_w == 0.0 && min_x != f32::MAX { -min_x.round() as i32 } else { 0 };
+            let shift = if wrap_w == 0.0 && min_x != f32::MAX {
+                -min_x.round() as i32
+            } else {
+                0
+            };
             let mut spans: Vec<(i32, i32, i32, u8)> = Vec::new();
             let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            buf.draw(fs, cache, cosmic_text::Color::rgb(255, 255, 255), |gx, gy, gw, gh, c| {
-                if c.a() == 0 {
-                    return;
-                }
-                let gx = gx + shift;
-                for yy in gy..gy + gh as i32 {
-                    spans.push((gx, yy, gw as i32, c.a()));
-                }
-                x0 = x0.min(gx);
-                y0 = y0.min(gy);
-                x1 = x1.max(gx + gw as i32);
-                y1 = y1.max(gy + gh as i32);
-            });
+            buf.draw(
+                fs,
+                cache,
+                cosmic_text::Color::rgb(255, 255, 255),
+                |gx, gy, gw, gh, c| {
+                    if c.a() == 0 {
+                        return;
+                    }
+                    let gx = gx + shift;
+                    for yy in gy..gy + gh as i32 {
+                        spans.push((gx, yy, gw as i32, c.a()));
+                    }
+                    x0 = x0.min(gx);
+                    y0 = y0.min(gy);
+                    x1 = x1.max(gx + gw as i32);
+                    y1 = y1.max(gy + gh as i32);
+                },
+            );
             if spans.is_empty() {
-                return Entry { w, h, ox: 0, oy: 0, mw: 0, mh: 0, mask: Vec::new() };
+                return Entry {
+                    w,
+                    h,
+                    ox: 0,
+                    oy: 0,
+                    mw: 0,
+                    mh: 0,
+                    mask: Vec::new(),
+                };
             }
             let (mw, mh) = (x1 - x0, y1 - y0);
             let mut mask = vec![0u8; (mw * mh) as usize];
@@ -102,7 +134,15 @@ impl Text {
                     *m = (*m).max(a);
                 }
             }
-            Entry { w, h, ox: x0, oy: y0, mw, mh, mask }
+            Entry {
+                w,
+                h,
+                ox: x0,
+                oy: y0,
+                mw,
+                mh,
+                mask,
+            }
         })
     }
 
@@ -112,12 +152,29 @@ impl Text {
         (e.w, e.h)
     }
 
-    pub fn draw(&mut self, cv: &mut Canvas, text: &str, x: f32, y: f32, size: f32, color: Color, bold: bool, wrap_w: f32) -> (f32, f32) {
+    pub fn draw(
+        &mut self,
+        cv: &mut Canvas,
+        text: &str,
+        x: f32,
+        y: f32,
+        size: f32,
+        color: Color,
+        bold: bool,
+        wrap_w: f32,
+    ) -> (f32, f32) {
         if text.is_empty() {
             return (0.0, 0.0);
         }
         let e = self.entry(text, size, bold as u8, wrap_w);
-        cv.mask(x.round() as i32 + e.ox, y.round() as i32 + e.oy, e.mw, e.mh, &e.mask, color);
+        cv.mask(
+            x.round() as i32 + e.ox,
+            y.round() as i32 + e.oy,
+            e.mw,
+            e.mh,
+            &e.mask,
+            color,
+        );
         (e.w, e.h)
     }
 
@@ -128,12 +185,27 @@ impl Text {
     }
 
     /// Festbreitenschrift zeichnen (einzeilig)
-    pub fn draw_mono(&mut self, cv: &mut Canvas, text: &str, x: f32, y: f32, size: f32, color: Color) -> (f32, f32) {
+    pub fn draw_mono(
+        &mut self,
+        cv: &mut Canvas,
+        text: &str,
+        x: f32,
+        y: f32,
+        size: f32,
+        color: Color,
+    ) -> (f32, f32) {
         if text.is_empty() {
             return (0.0, 0.0);
         }
         let e = self.entry(text, size, 2, 0.0);
-        cv.mask(x.round() as i32 + e.ox, y.round() as i32 + e.oy, e.mw, e.mh, &e.mask, color);
+        cv.mask(
+            x.round() as i32 + e.ox,
+            y.round() as i32 + e.oy,
+            e.mw,
+            e.mh,
+            &e.mask,
+            color,
+        );
         (e.w, e.h)
     }
 }

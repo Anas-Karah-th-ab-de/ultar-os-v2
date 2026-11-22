@@ -26,7 +26,11 @@ pub struct Regeln {
 
 impl Default for Regeln {
     fn default() -> Self {
-        Regeln { geraet: true, vorgabe: "frei".into(), erlaubt: Vec::new() }
+        Regeln {
+            geraet: true,
+            vorgabe: "frei".into(),
+            erlaubt: Vec::new(),
+        }
     }
 }
 
@@ -36,22 +40,38 @@ fn datei() -> PathBuf {
 
 /// Liste für ultar-init (eine Zeile je Dienst)
 pub fn erlaubt_datei() -> PathBuf {
-    std::env::var("ULTAR_NETZ_ERLAUBT").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/data/ultar/netz-erlaubt"))
+    std::env::var("ULTAR_NETZ_ERLAUBT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/data/ultar/netz-erlaubt"))
 }
 
 impl Regeln {
     pub fn laden() -> Regeln {
-        std::fs::read_to_string(datei()).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(datei())
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default()
     }
 
     pub fn speichern(&self) -> Result<(), String> {
         let _ = std::fs::create_dir_all(crate::wurzel());
-        std::fs::write(datei(), toml::to_string_pretty(self).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        std::fs::write(
+            datei(),
+            toml::to_string_pretty(self).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
         let e = erlaubt_datei();
         if let Some(d) = e.parent() {
             let _ = std::fs::create_dir_all(d);
         }
-        std::fs::write(&e, self.erlaubt.iter().map(|n| format!("{n}\n")).collect::<String>()).map_err(|e| e.to_string())
+        std::fs::write(
+            &e,
+            self.erlaubt
+                .iter()
+                .map(|n| format!("{n}\n"))
+                .collect::<String>(),
+        )
+        .map_err(|e| e.to_string())
     }
 
     /// nftables-Regeln setzen (idempotent)
@@ -81,6 +101,8 @@ impl Regeln {
 
     /// Darf ein Systemdienst hinaus? (für ultar-init: liest nur die einfache Liste)
     pub fn dienst_erlaubt(name: &str) -> bool {
-        std::fs::read_to_string(erlaubt_datei()).map(|s| s.lines().any(|l| l.trim() == name)).unwrap_or(false)
+        std::fs::read_to_string(erlaubt_datei())
+            .map(|s| s.lines().any(|l| l.trim() == name))
+            .unwrap_or(false)
     }
 }

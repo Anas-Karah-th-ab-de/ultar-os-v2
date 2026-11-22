@@ -21,7 +21,11 @@ impl Value {
             Value::Empty => Ok(0.0),
             Value::Num(n) => Ok(*n),
             Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
-            Value::Text(t) => t.trim().replace(',', ".").parse::<f64>().map_err(|_| Value::Err("#VALUE!".into())),
+            Value::Text(t) => t
+                .trim()
+                .replace(',', ".")
+                .parse::<f64>()
+                .map_err(|_| Value::Err("#VALUE!".into())),
             Value::Err(_) => Err(self.clone()),
         }
     }
@@ -30,7 +34,13 @@ impl Value {
             Value::Empty => String::new(),
             Value::Num(n) => fmt_num(*n),
             Value::Text(t) => t.clone(),
-            Value::Bool(b) => if *b { "TRUE".into() } else { "FALSE".into() },
+            Value::Bool(b) => {
+                if *b {
+                    "TRUE".into()
+                } else {
+                    "FALSE".into()
+                }
+            }
             Value::Err(e) => e.clone(),
         }
     }
@@ -63,7 +73,11 @@ pub fn fmt_num(n: f64) -> String {
     }
     let s = format!("{:.10}", n);
     let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
-    if s == "-0" { "0".into() } else { s }
+    if s == "-0" {
+        "0".into()
+    } else {
+        s
+    }
 }
 
 // ------------------------------------------------------------------ Adressen
@@ -93,7 +107,9 @@ pub fn parse_cell(s: &str) -> Option<(u32, u32)> {
     let mut i = 0;
     let mut col: u32 = 0;
     while i < b.len() && b[i].is_ascii_alphabetic() {
-        col = col.checked_mul(26)?.checked_add((b[i].to_ascii_uppercase() - b'A') as u32 + 1)?;
+        col = col
+            .checked_mul(26)?
+            .checked_add((b[i].to_ascii_uppercase() - b'A') as u32 + 1)?;
         i += 1;
     }
     if i == 0 || i == b.len() || i > 3 {
@@ -119,7 +135,11 @@ pub fn parse_range(s: &str) -> Option<(Option<String>, (u32, u32), (u32, u32))> 
             (a, a)
         }
     };
-    Some((sheet, (a.0.min(b.0), a.1.min(b.1)), (a.0.max(b.0), a.1.max(b.1))))
+    Some((
+        sheet,
+        (a.0.min(b.0), a.1.min(b.1)),
+        (a.0.max(b.0), a.1.max(b.1)),
+    ))
 }
 
 // ------------------------------------------------------------------ Modell
@@ -135,7 +155,10 @@ pub struct Sheet {
 
 impl Sheet {
     pub fn new(name: &str) -> Self {
-        Sheet { name: name.into(), ..Default::default() }
+        Sheet {
+            name: name.into(),
+            ..Default::default()
+        }
     }
     pub fn get(&self, r: u32, c: u32) -> &str {
         self.cells.get(&(r, c)).map(|s| s.as_str()).unwrap_or("")
@@ -196,28 +219,46 @@ pub struct Workbook {
 
 impl Workbook {
     pub fn new() -> Self {
-        Workbook { sheets: vec![Sheet::new("Sheet1")] }
+        Workbook {
+            sheets: vec![Sheet::new("Sheet1")],
+        }
     }
 
     pub fn sheet_index(&self, name: &str) -> Option<usize> {
-        self.sheets.iter().position(|s| s.name.eq_ignore_ascii_case(name))
+        self.sheets
+            .iter()
+            .position(|s| s.name.eq_ignore_ascii_case(name))
     }
 
     /// Wert einer Zelle (Formeln werden berechnet)
     pub fn value(&self, sheet: usize, r: u32, c: u32) -> Value {
-        let mut ev = Eval { wb: self, visiting: HashSet::new(), depth: 0 };
+        let mut ev = Eval {
+            wb: self,
+            visiting: HashSet::new(),
+            depth: 0,
+        };
         ev.cell(sheet, r, c)
     }
 
     /// Formel oder Ausdruck im Kontext eines Blatts auswerten (ohne Zelle zu verändern)
     pub fn eval_formula(&self, sheet: usize, f: &str) -> Value {
-        let mut ev = Eval { wb: self, visiting: HashSet::new(), depth: 0 };
+        let mut ev = Eval {
+            wb: self,
+            visiting: HashSet::new(),
+            depth: 0,
+        };
         ev.formula(sheet, f.trim_start_matches('='))
     }
 
     /// Zelle per Text setzen: "Blatt!B3" oder "B3" (dann erstes/angegebenes Blatt)
-    pub fn set_ref(&mut self, default_sheet: usize, cell: &str, raw: &str) -> Result<(usize, u32, u32), String> {
-        let (sh, (r, c), _) = parse_range(cell).ok_or_else(|| format!("bad cell reference: {cell}"))?;
+    pub fn set_ref(
+        &mut self,
+        default_sheet: usize,
+        cell: &str,
+        raw: &str,
+    ) -> Result<(usize, u32, u32), String> {
+        let (sh, (r, c), _) =
+            parse_range(cell).ok_or_else(|| format!("bad cell reference: {cell}"))?;
         let si = match sh {
             Some(n) => match self.sheet_index(&n) {
                 Some(i) => i,
@@ -237,7 +278,9 @@ impl Workbook {
 
     /// Bereich als Tabelle aus Werten (für den Agenten und CSV)
     pub fn range_values(&self, sheet: usize, a: (u32, u32), b: (u32, u32)) -> Vec<Vec<Value>> {
-        (a.0..=b.0).map(|r| (a.1..=b.1).map(|c| self.value(sheet, r, c)).collect()).collect()
+        (a.0..=b.0)
+            .map(|r| (a.1..=b.1).map(|c| self.value(sheet, r, c)).collect())
+            .collect()
     }
 }
 
@@ -270,7 +313,11 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
             while i < ch.len() && (ch[i].is_ascii_digit() || ch[i] == '.') {
                 i += 1;
             }
-            if i < ch.len() && (ch[i] == 'e' || ch[i] == 'E') && i + 1 < ch.len() && (ch[i + 1].is_ascii_digit() || ch[i + 1] == '-' || ch[i + 1] == '+') {
+            if i < ch.len()
+                && (ch[i] == 'e' || ch[i] == 'E')
+                && i + 1 < ch.len()
+                && (ch[i + 1].is_ascii_digit() || ch[i + 1] == '-' || ch[i + 1] == '+')
+            {
                 i += 2;
                 while i < ch.len() && ch[i].is_ascii_digit() {
                     i += 1;
@@ -309,7 +356,14 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 }
                 i += 1;
             }
-            while i < ch.len() && (ch[i].is_alphanumeric() || ch[i] == '$' || ch[i] == '_' || ch[i] == '.' || ch[i] == '!' || ch[i] == ':') {
+            while i < ch.len()
+                && (ch[i].is_alphanumeric()
+                    || ch[i] == '$'
+                    || ch[i] == '_'
+                    || ch[i] == '.'
+                    || ch[i] == '!'
+                    || ch[i] == ':')
+            {
                 if ch[i] == '!' && i + 1 < ch.len() && ch[i + 1] == '\'' {
                     break;
                 }
@@ -404,7 +458,11 @@ impl Parser {
             };
             let p = prec(op);
             self.i += 1;
-            let rhs = if op == "^" { self.expr(p)? } else { self.expr(p + 1)? };
+            let rhs = if op == "^" {
+                self.expr(p)?
+            } else {
+                self.expr(p + 1)?
+            };
             lhs = Ast::Bin(op, Box::new(lhs), Box::new(rhs));
         }
         Ok(lhs)
@@ -487,10 +545,53 @@ pub fn check_formula(f: &str) -> Result<(), String> {
 
 /// Liste der unterstützten Funktionen (Hilfe in der App, Agent)
 pub const FUNCTIONS: &[&str] = &[
-    "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "COUNTBLANK", "PRODUCT", "MEDIAN", "IF", "IFERROR", "AND", "OR", "NOT",
-    "ROUND", "ROUNDUP", "ROUNDDOWN", "INT", "ABS", "SQRT", "POWER", "MOD", "PI", "LEN", "UPPER", "LOWER", "TRIM", "LEFT",
-    "RIGHT", "MID", "CONCAT", "CONCATENATE", "TEXTJOIN", "SUMIF", "COUNTIF", "AVERAGEIF", "VLOOKUP", "HLOOKUP", "INDEX",
-    "MATCH", "ISNUMBER", "ISBLANK", "ISTEXT", "VALUE", "TEXT", "STDEV", "VAR",
+    "SUM",
+    "AVERAGE",
+    "MIN",
+    "MAX",
+    "COUNT",
+    "COUNTA",
+    "COUNTBLANK",
+    "PRODUCT",
+    "MEDIAN",
+    "IF",
+    "IFERROR",
+    "AND",
+    "OR",
+    "NOT",
+    "ROUND",
+    "ROUNDUP",
+    "ROUNDDOWN",
+    "INT",
+    "ABS",
+    "SQRT",
+    "POWER",
+    "MOD",
+    "PI",
+    "LEN",
+    "UPPER",
+    "LOWER",
+    "TRIM",
+    "LEFT",
+    "RIGHT",
+    "MID",
+    "CONCAT",
+    "CONCATENATE",
+    "TEXTJOIN",
+    "SUMIF",
+    "COUNTIF",
+    "AVERAGEIF",
+    "VLOOKUP",
+    "HLOOKUP",
+    "INDEX",
+    "MATCH",
+    "ISNUMBER",
+    "ISBLANK",
+    "ISTEXT",
+    "VALUE",
+    "TEXT",
+    "STDEV",
+    "VAR",
 ];
 
 struct Eval<'a> {
@@ -515,7 +616,11 @@ impl Arg {
     fn one(self) -> Value {
         match self {
             Arg::One(v) => v,
-            Arg::Range(r) => r.into_iter().next().and_then(|row| row.into_iter().next()).unwrap_or(Value::Empty),
+            Arg::Range(r) => r
+                .into_iter()
+                .next()
+                .and_then(|row| row.into_iter().next())
+                .unwrap_or(Value::Empty),
         }
     }
 }
@@ -571,7 +676,9 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
                         _ => return false,
                     }
                 }
-                parts.last().map_or(true, |l| l.is_empty() || a.ends_with(l))
+                parts
+                    .last()
+                    .map_or(true, |l| l.is_empty() || a.ends_with(l))
             } else {
                 a == b
             }
@@ -585,7 +692,9 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
 
 impl Eval<'_> {
     fn cell(&mut self, sheet: usize, r: u32, c: u32) -> Value {
-        let Some(sh) = self.wb.sheets.get(sheet) else { return verr("#REF!") };
+        let Some(sh) = self.wb.sheets.get(sheet) else {
+            return verr("#REF!");
+        };
         let raw = sh.get(r, c);
         if raw.is_empty() {
             return Value::Empty;
@@ -623,7 +732,9 @@ impl Eval<'_> {
             Ast::Str(s) => Arg::One(Value::Text(s.clone())),
             Ast::Bool(b) => Arg::One(Value::Bool(*b)),
             Ast::Ref(sh, p, q, is_range) => {
-                let Some(si) = self.sheet_of(sheet, sh) else { return Arg::One(verr("#REF!")) };
+                let Some(si) = self.sheet_of(sheet, sh) else {
+                    return Arg::One(verr("#REF!"));
+                };
                 if !is_range {
                     return Arg::One(self.cell(si, p.0, p.1));
                 }
@@ -631,7 +742,11 @@ impl Eval<'_> {
                 let (er, ec) = self.wb.sheets[si].extent();
                 let r1 = q.0.min(er.saturating_sub(1).max(p.0));
                 let c1 = q.1.min(ec.saturating_sub(1).max(p.1));
-                Arg::Range((p.0..=r1).map(|r| (p.1..=c1).map(|c| self.cell(si, r, c)).collect()).collect())
+                Arg::Range(
+                    (p.0..=r1)
+                        .map(|r| (p.1..=c1).map(|c| self.cell(si, r, c)).collect())
+                        .collect(),
+                )
             }
             Ast::Un(o, e) => {
                 let v = self.eval(sheet, e).one();
@@ -710,7 +825,11 @@ impl Eval<'_> {
             "PRODUCT" => Value::Num(nums!().iter().product()),
             "AVERAGE" => {
                 let v = nums!();
-                if v.is_empty() { verr("#DIV/0!") } else { Value::Num(v.iter().sum::<f64>() / v.len() as f64) }
+                if v.is_empty() {
+                    verr("#DIV/0!")
+                } else {
+                    Value::Num(v.iter().sum::<f64>() / v.len() as f64)
+                }
             }
             "MIN" => Value::Num(nums!().into_iter().fold(f64::INFINITY, f64::min)).fix_inf(),
             "MAX" => Value::Num(nums!().into_iter().fold(f64::NEG_INFINITY, f64::max)).fix_inf(),
@@ -722,7 +841,11 @@ impl Eval<'_> {
                 }
                 v.sort_by(|a, b| a.partial_cmp(b).unwrap());
                 let m = v.len() / 2;
-                Value::Num(if v.len() % 2 == 1 { v[m] } else { (v[m - 1] + v[m]) / 2.0 })
+                Value::Num(if v.len() % 2 == 1 {
+                    v[m]
+                } else {
+                    (v[m - 1] + v[m]) / 2.0
+                })
             }
             "STDEV" | "VAR" => {
                 let v = nums!();
@@ -738,7 +861,11 @@ impl Eval<'_> {
                 let mut blank = 0;
                 for a in args {
                     for v in self.eval(sheet, a).flat() {
-                        if matches!(v, Value::Empty) { blank += 1 } else { n += 1 }
+                        if matches!(v, Value::Empty) {
+                            blank += 1
+                        } else {
+                            n += 1
+                        }
                     }
                 }
                 Value::Num(if name == "COUNTA" { n } else { blank } as f64)
@@ -748,14 +875,24 @@ impl Eval<'_> {
                 let c = self.eval(sheet, &args[0]).one();
                 match c.truthy() {
                     Ok(true) => self.eval(sheet, &args[1]).one(),
-                    Ok(false) => if args.len() > 2 { self.eval(sheet, &args[2]).one() } else { Value::Bool(false) },
+                    Ok(false) => {
+                        if args.len() > 2 {
+                            self.eval(sheet, &args[2]).one()
+                        } else {
+                            Value::Bool(false)
+                        }
+                    }
                     Err(e) => e,
                 }
             }
             "IFERROR" => {
                 need!(2);
                 let v = self.eval(sheet, &args[0]).one();
-                if v.is_err() { self.eval(sheet, &args[1]).one() } else { v }
+                if v.is_err() {
+                    self.eval(sheet, &args[1]).one()
+                } else {
+                    v
+                }
             }
             "AND" | "OR" => {
                 let mut acc = name == "AND";
@@ -765,7 +902,13 @@ impl Eval<'_> {
                             continue;
                         }
                         match v.truthy() {
-                            Ok(b) => if name == "AND" { acc &= b } else { acc |= b },
+                            Ok(b) => {
+                                if name == "AND" {
+                                    acc &= b
+                                } else {
+                                    acc |= b
+                                }
+                            }
                             Err(e) => return e,
                         }
                     }
@@ -786,35 +929,70 @@ impl Eval<'_> {
                 let k = 10f64.powi(d as i32);
                 let y = x * k;
                 let y = match name {
-                    "ROUND" => (y.abs() * (1.0 + 4.0 * f64::EPSILON) + 0.5).floor().copysign(y),
+                    "ROUND" => (y.abs() * (1.0 + 4.0 * f64::EPSILON) + 0.5)
+                        .floor()
+                        .copysign(y),
                     "ROUNDUP" => (y.abs() - 1e-9).ceil().copysign(y),
                     _ => (y.abs() + 1e-9).floor().copysign(y),
                 };
                 Value::Num(y / k)
             }
-            "INT" => { need!(1); Value::Num(num!(0).floor()) }
-            "ABS" => { need!(1); Value::Num(num!(0).abs()) }
+            "INT" => {
+                need!(1);
+                Value::Num(num!(0).floor())
+            }
+            "ABS" => {
+                need!(1);
+                Value::Num(num!(0).abs())
+            }
             "SQRT" => {
                 need!(1);
                 let x = num!(0);
-                if x < 0.0 { verr("#NUM!") } else { Value::Num(x.sqrt()) }
+                if x < 0.0 {
+                    verr("#NUM!")
+                } else {
+                    Value::Num(x.sqrt())
+                }
             }
-            "POWER" => { need!(2); Value::Num(num!(0).powf(num!(1))) }
+            "POWER" => {
+                need!(2);
+                Value::Num(num!(0).powf(num!(1)))
+            }
             "MOD" => {
                 need!(2);
                 let (a, b) = (num!(0), num!(1));
-                if b == 0.0 { verr("#DIV/0!") } else { Value::Num(a - b * (a / b).floor()) }
+                if b == 0.0 {
+                    verr("#DIV/0!")
+                } else {
+                    Value::Num(a - b * (a / b).floor())
+                }
             }
             "PI" => Value::Num(std::f64::consts::PI),
-            "LEN" => { need!(1); Value::Num(txt!(0).chars().count() as f64) }
-            "UPPER" => { need!(1); Value::Text(txt!(0).to_uppercase()) }
-            "LOWER" => { need!(1); Value::Text(txt!(0).to_lowercase()) }
-            "TRIM" => { need!(1); Value::Text(txt!(0).split_whitespace().collect::<Vec<_>>().join(" ")) }
+            "LEN" => {
+                need!(1);
+                Value::Num(txt!(0).chars().count() as f64)
+            }
+            "UPPER" => {
+                need!(1);
+                Value::Text(txt!(0).to_uppercase())
+            }
+            "LOWER" => {
+                need!(1);
+                Value::Text(txt!(0).to_lowercase())
+            }
+            "TRIM" => {
+                need!(1);
+                Value::Text(txt!(0).split_whitespace().collect::<Vec<_>>().join(" "))
+            }
             "LEFT" | "RIGHT" => {
                 need!(1);
                 let s: Vec<char> = txt!(0).chars().collect();
                 let n = if args.len() > 1 { num!(1) as usize } else { 1 }.min(s.len());
-                Value::Text(if name == "LEFT" { s[..n].iter().collect() } else { s[s.len() - n..].iter().collect() })
+                Value::Text(if name == "LEFT" {
+                    s[..n].iter().collect()
+                } else {
+                    s[s.len() - n..].iter().collect()
+                })
             }
             "MID" => {
                 need!(3);
@@ -838,7 +1016,10 @@ impl Eval<'_> {
             "TEXTJOIN" => {
                 need!(3);
                 let sep = txt!(0);
-                let skip = match self.eval(sheet, &args[1]).one().truthy() { Ok(b) => b, Err(e) => return e };
+                let skip = match self.eval(sheet, &args[1]).one().truthy() {
+                    Ok(b) => b,
+                    Err(e) => return e,
+                };
                 let mut parts = Vec::new();
                 for a in &args[2..] {
                     for v in self.eval(sheet, a).flat() {
@@ -854,7 +1035,11 @@ impl Eval<'_> {
                 need!(2);
                 let range = self.eval(sheet, &args[0]).flat();
                 let crit = self.eval(sheet, &args[1]).one();
-                let sumr = if args.len() > 2 { self.eval(sheet, &args[2]).flat() } else { range.clone() };
+                let sumr = if args.len() > 2 {
+                    self.eval(sheet, &args[2]).flat()
+                } else {
+                    range.clone()
+                };
                 let mut n = 0.0;
                 let mut s = 0.0;
                 for (i, v) in range.iter().enumerate() {
@@ -868,18 +1053,32 @@ impl Eval<'_> {
                 match name {
                     "COUNTIF" => Value::Num(n),
                     "SUMIF" => Value::Num(s),
-                    _ => if n == 0.0 { verr("#DIV/0!") } else { Value::Num(s / n) },
+                    _ => {
+                        if n == 0.0 {
+                            verr("#DIV/0!")
+                        } else {
+                            Value::Num(s / n)
+                        }
+                    }
                 }
             }
             "VLOOKUP" | "HLOOKUP" => {
                 need!(3);
                 let key = self.eval(sheet, &args[0]).one();
-                let Arg::Range(t) = self.eval(sheet, &args[1]) else { return verr("#N/A") };
+                let Arg::Range(t) = self.eval(sheet, &args[1]) else {
+                    return verr("#N/A");
+                };
                 let idx = num!(2) as usize;
-                let exact = if args.len() > 3 { !self.eval(sheet, &args[3]).one().truthy().unwrap_or(true) } else { false };
+                let exact = if args.len() > 3 {
+                    !self.eval(sheet, &args[3]).one().truthy().unwrap_or(true)
+                } else {
+                    false
+                };
                 let t: Vec<Vec<Value>> = if name == "HLOOKUP" {
                     let w = t.first().map_or(0, |r| r.len());
-                    (0..w).map(|c| t.iter().map(|r| r[c].clone()).collect()).collect()
+                    (0..w)
+                        .map(|c| t.iter().map(|r| r[c].clone()).collect())
+                        .collect()
                 } else {
                     t
                 };
@@ -908,11 +1107,20 @@ impl Eval<'_> {
             }
             "INDEX" => {
                 need!(2);
-                let Arg::Range(t) = self.eval(sheet, &args[0]) else { return verr("#REF!") };
+                let Arg::Range(t) = self.eval(sheet, &args[0]) else {
+                    return verr("#REF!");
+                };
                 let r = num!(1) as usize;
                 let c = if args.len() > 2 { num!(2) as usize } else { 1 };
-                let (r, c) = if t.len() == 1 && args.len() == 2 { (1, r) } else { (r, c) };
-                t.get(r.wrapping_sub(1)).and_then(|row| row.get(c.wrapping_sub(1))).cloned().unwrap_or_else(|| verr("#REF!"))
+                let (r, c) = if t.len() == 1 && args.len() == 2 {
+                    (1, r)
+                } else {
+                    (r, c)
+                };
+                t.get(r.wrapping_sub(1))
+                    .and_then(|row| row.get(c.wrapping_sub(1)))
+                    .cloned()
+                    .unwrap_or_else(|| verr("#REF!"))
             }
             "MATCH" => {
                 need!(2);
@@ -923,15 +1131,37 @@ impl Eval<'_> {
                     None => verr("#N/A"),
                 }
             }
-            "ISNUMBER" => { need!(1); Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Num(_))) }
-            "ISBLANK" => { need!(1); Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Empty)) }
-            "ISTEXT" => { need!(1); Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Text(_))) }
-            "VALUE" => { need!(1); match Value::Text(txt!(0)).num() { Ok(n) => Value::Num(n), Err(e) => e } }
+            "ISNUMBER" => {
+                need!(1);
+                Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Num(_)))
+            }
+            "ISBLANK" => {
+                need!(1);
+                Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Empty))
+            }
+            "ISTEXT" => {
+                need!(1);
+                Value::Bool(matches!(self.eval(sheet, &args[0]).one(), Value::Text(_)))
+            }
+            "VALUE" => {
+                need!(1);
+                match Value::Text(txt!(0)).num() {
+                    Ok(n) => Value::Num(n),
+                    Err(e) => e,
+                }
+            }
             "TEXT" => {
                 need!(1);
                 let x = num!(0);
-                let fmt = if args.len() > 1 { txt!(1) } else { String::new() };
-                let dec = fmt.split_once('.').map(|(_, d)| d.chars().filter(|c| *c == '0' || *c == '#').count()).unwrap_or(0);
+                let fmt = if args.len() > 1 {
+                    txt!(1)
+                } else {
+                    String::new()
+                };
+                let dec = fmt
+                    .split_once('.')
+                    .map(|(_, d)| d.chars().filter(|c| *c == '0' || *c == '#').count())
+                    .unwrap_or(0);
                 let pct = fmt.ends_with('%');
                 let x = if pct { x * 100.0 } else { x };
                 Value::Text(format!("{:.*}{}", dec, x, if pct { "%" } else { "" }))
@@ -971,7 +1201,12 @@ fn binop(o: &str, l: &Value, r: &Value) -> Value {
         "&" => Value::Text(l.text() + &r.text()),
         "=" | "<>" | "<" | ">" | "<=" | ">=" => {
             let ord = match (l.num(), r.num(), l, r) {
-                (Ok(a), Ok(b), Value::Num(_) | Value::Empty | Value::Bool(_), Value::Num(_) | Value::Empty | Value::Bool(_)) => a.partial_cmp(&b),
+                (
+                    Ok(a),
+                    Ok(b),
+                    Value::Num(_) | Value::Empty | Value::Bool(_),
+                    Value::Num(_) | Value::Empty | Value::Bool(_),
+                ) => a.partial_cmp(&b),
                 _ => Some(l.text().to_lowercase().cmp(&r.text().to_lowercase())),
             };
             let Some(ord) = ord else { return verr("#NUM!") };
@@ -994,7 +1229,13 @@ fn binop(o: &str, l: &Value, r: &Value) -> Value {
                 "+" => Value::Num(a + b),
                 "-" => Value::Num(a - b),
                 "*" => Value::Num(a * b),
-                "/" => if b == 0.0 { verr("#DIV/0!") } else { Value::Num(a / b) },
+                "/" => {
+                    if b == 0.0 {
+                        verr("#DIV/0!")
+                    } else {
+                        Value::Num(a / b)
+                    }
+                }
                 "^" => Value::Num(a.powf(b)),
                 _ => verr("#ERROR!"),
             }
@@ -1037,8 +1278,15 @@ pub fn literal(raw: &str) -> Value {
 pub fn read_csv(text: &str) -> Sheet {
     let text = text.trim_start_matches('\u{feff}');
     let first = text.lines().next().unwrap_or("");
-    let sep = [';', '\t', ','].into_iter().max_by_key(|c| first.matches(*c).count()).unwrap_or(',');
-    let sep = if first.matches(sep).count() == 0 { ',' } else { sep };
+    let sep = [';', '\t', ',']
+        .into_iter()
+        .max_by_key(|c| first.matches(*c).count())
+        .unwrap_or(',');
+    let sep = if first.matches(sep).count() == 0 {
+        ','
+    } else {
+        sep
+    };
     let mut sh = Sheet::new("Sheet1");
     let mut r = 0u32;
     let mut c = 0u32;
@@ -1093,7 +1341,9 @@ pub fn read_csv(text: &str) -> Sheet {
 
 /// Blatt als CSV (Werte, nicht Formeln)
 pub fn write_csv(wb: &Workbook, sheet: usize, sep: char) -> String {
-    let Some(sh) = wb.sheets.get(sheet) else { return String::new() };
+    let Some(sh) = wb.sheets.get(sheet) else {
+        return String::new();
+    };
     let (rows, cols) = sh.extent();
     let mut out = String::new();
     for r in 0..rows {
@@ -1133,12 +1383,25 @@ mod tests {
         assert_eq!(col_name(701), "ZZ");
         assert_eq!(parse_cell("AA10"), Some((9, 26)));
         assert_eq!(parse_cell("$b$2"), Some((1, 1)));
-        assert_eq!(parse_range("Sheet2!A1:B3").unwrap().0.as_deref(), Some("Sheet2"));
+        assert_eq!(
+            parse_range("Sheet2!A1:B3").unwrap().0.as_deref(),
+            Some("Sheet2")
+        );
     }
 
     #[test]
     fn rechnen() {
-        let w = wb(&[("A1", "10"), ("A2", "20"), ("A3", "=A1+A2*2"), ("B1", "=SUM(A1:A3)"), ("B2", "=AVERAGE(A1:A2)"), ("B3", "=IF(A1>5,\"gross\",\"klein\")"), ("C1", "=2^3^2"), ("C2", "=-A1+5%"), ("C3", "=\"a\"&\"b\"&A1")]);
+        let w = wb(&[
+            ("A1", "10"),
+            ("A2", "20"),
+            ("A3", "=A1+A2*2"),
+            ("B1", "=SUM(A1:A3)"),
+            ("B2", "=AVERAGE(A1:A2)"),
+            ("B3", "=IF(A1>5,\"gross\",\"klein\")"),
+            ("C1", "=2^3^2"),
+            ("C2", "=-A1+5%"),
+            ("C3", "=\"a\"&\"b\"&A1"),
+        ]);
         assert_eq!(w.value(0, 2, 0), Value::Num(50.0));
         assert_eq!(w.value(0, 0, 1), Value::Num(80.0));
         assert_eq!(w.value(0, 1, 1), Value::Num(15.0));
@@ -1150,7 +1413,23 @@ mod tests {
 
     #[test]
     fn funktionen() {
-        let w = wb(&[("A1", "Apfel"), ("B1", "3"), ("A2", "Birne"), ("B2", "5"), ("A3", "Apfel"), ("B3", "7"), ("D1", "=SUMIF(A1:A3,\"apfel\",B1:B3)"), ("D2", "=COUNTIF(B1:B3,\">4\")"), ("D3", "=VLOOKUP(\"Birne\",A1:B3,2,FALSE)"), ("D4", "=ROUND(2.345,2)"), ("D5", "=IFERROR(1/0,\"x\")"), ("D6", "=MATCH(\"Birne\",A1:A3,0)"), ("D7", "=INDEX(B1:B3,3)"), ("D8", "=TEXTJOIN(\"-\",TRUE,A1:A3)"), ("D9", "=MEDIAN(B1:B3)")]);
+        let w = wb(&[
+            ("A1", "Apfel"),
+            ("B1", "3"),
+            ("A2", "Birne"),
+            ("B2", "5"),
+            ("A3", "Apfel"),
+            ("B3", "7"),
+            ("D1", "=SUMIF(A1:A3,\"apfel\",B1:B3)"),
+            ("D2", "=COUNTIF(B1:B3,\">4\")"),
+            ("D3", "=VLOOKUP(\"Birne\",A1:B3,2,FALSE)"),
+            ("D4", "=ROUND(2.345,2)"),
+            ("D5", "=IFERROR(1/0,\"x\")"),
+            ("D6", "=MATCH(\"Birne\",A1:A3,0)"),
+            ("D7", "=INDEX(B1:B3,3)"),
+            ("D8", "=TEXTJOIN(\"-\",TRUE,A1:A3)"),
+            ("D9", "=MEDIAN(B1:B3)"),
+        ]);
         assert_eq!(w.value(0, 0, 3), Value::Num(10.0));
         assert_eq!(w.value(0, 1, 3), Value::Num(2.0));
         assert_eq!(w.value(0, 2, 3), Value::Num(5.0));
@@ -1164,7 +1443,13 @@ mod tests {
 
     #[test]
     fn fehler_und_zirkel() {
-        let w = wb(&[("A1", "=B1"), ("B1", "=A1"), ("C1", "=1/0"), ("C2", "=FOO(1)"), ("C3", "=Blatt2!A1")]);
+        let w = wb(&[
+            ("A1", "=B1"),
+            ("B1", "=A1"),
+            ("C1", "=1/0"),
+            ("C2", "=FOO(1)"),
+            ("C3", "=Blatt2!A1"),
+        ]);
         assert_eq!(w.value(0, 0, 0), Value::Err("#CIRC!".into()));
         assert_eq!(w.value(0, 0, 2), Value::Err("#DIV/0!".into()));
         assert_eq!(w.value(0, 1, 2), Value::Err("#NAME?".into()));

@@ -33,7 +33,10 @@ pub struct Request {
 
 impl Request {
     fn header(&self, k: &str) -> Option<&str> {
-        self.headers.iter().find(|(h, _)| h.eq_ignore_ascii_case(k)).map(|(_, v)| v.as_str())
+        self.headers
+            .iter()
+            .find(|(h, _)| h.eq_ignore_ascii_case(k))
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -44,7 +47,13 @@ fn read_request(r: &mut BufReader<&mut dyn Conn>) -> Result<Option<Request>, Str
     }
     let mut it = line.split_whitespace();
     let method = it.next().unwrap_or("").to_string();
-    let path = it.next().unwrap_or("/").split('?').next().unwrap_or("/").to_string();
+    let path = it
+        .next()
+        .unwrap_or("/")
+        .split('?')
+        .next()
+        .unwrap_or("/")
+        .to_string();
     let mut headers = Vec::new();
     loop {
         let mut h = String::new();
@@ -62,8 +71,16 @@ fn read_request(r: &mut BufReader<&mut dyn Conn>) -> Result<Option<Request>, Str
             headers.push((k.trim().to_string(), v.trim().to_string()));
         }
     }
-    let mut req = Request { method, path, headers, body: Vec::new() };
-    let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let mut req = Request {
+        method,
+        path,
+        headers,
+        body: Vec::new(),
+    };
+    let len: usize = req
+        .header("content-length")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     if len > MAX_BODY {
         return Err("Anfrage zu groß".into());
     }
@@ -99,15 +116,25 @@ fn err(w: &mut dyn Conn, code: u16, msg: &str) {
         503 => "unavailable_error",
         _ => "server_error",
     };
-    respond(w, code, &json!({"error": {"message": msg, "type": ty, "code": code}}));
+    respond(
+        w,
+        code,
+        &json!({"error": {"message": msg, "type": ty, "code": code}}),
+    );
 }
 
 fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn rid() -> String {
-    let n = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     format!("ultar-{:x}", n ^ (std::process::id() as u128) << 64)
 }
 
@@ -125,7 +152,10 @@ pub fn serve_conn(h: &Handle, mut conn: Box<dyn Conn>, tcp: bool) {
     match req {
         Ok(Some(req)) => {
             if tcp && !h.cfg.api_key.is_empty() {
-                let ok = req.header("authorization").map(|v| v.strip_prefix("Bearer ").unwrap_or(v) == h.cfg.api_key).unwrap_or(false);
+                let ok = req
+                    .header("authorization")
+                    .map(|v| v.strip_prefix("Bearer ").unwrap_or(v) == h.cfg.api_key)
+                    .unwrap_or(false);
                 if !ok {
                     err(&mut *conn, 401, "Schlüssel fehlt oder falsch");
                     CONNS.fetch_sub(1, Ordering::SeqCst);
@@ -141,14 +171,22 @@ pub fn serve_conn(h: &Handle, mut conn: Box<dyn Conn>, tcp: bool) {
 }
 
 fn route(h: &Handle, w: &mut dyn Conn, req: Request) {
-    let body: Value = if req.body.is_empty() { json!({}) } else { serde_json::from_slice(&req.body).unwrap_or(Value::Null) };
+    let body: Value = if req.body.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_slice(&req.body).unwrap_or(Value::Null)
+    };
     match (req.method.as_str(), req.path.trim_end_matches('/')) {
         ("OPTIONS", _) => {
             let _ = write!(w, "HTTP/1.1 204 No Content\r\nAllow: GET, POST, OPTIONS\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         }
         ("GET", "/health") | ("GET", "/v1/health") => {
             let s = h.state.lock().unwrap().clone();
-            respond(w, 200, &json!({"status": "ok", "engine": s.state, "model": s.model.as_ref().map(|m| m.id.clone())}));
+            respond(
+                w,
+                200,
+                &json!({"status": "ok", "engine": s.state, "model": s.model.as_ref().map(|m| m.id.clone())}),
+            );
         }
         ("GET", "/v1/models") | ("GET", "/models") => {
             let data: Vec<Value> = h
@@ -176,25 +214,38 @@ fn route(h: &Handle, w: &mut dyn Conn, req: Request) {
         }
         ("GET", "/ultar/catalog") => {
             let installed: Vec<String> = h.models().iter().map(|m| m.id.clone()).collect();
-            let cat: Vec<Value> = crate::models::CATALOG.iter().map(|e| {
-                let mut v = serde_json::to_value(e).unwrap_or_default();
-                v["installed"] = json!(installed.iter().any(|i| i.eq_ignore_ascii_case(e.id)));
-                v
-            }).collect();
-            respond(w, 200, &json!({"recommend": crate::models::recommend(&h.profile), "catalog": cat, "installed": installed,
-                                     "dir": h.cfg.model_dirs.first().cloned().unwrap_or_default(), "free_bytes": crate::models::free_space(h.cfg.model_dirs.first().map(|s| s.as_str()).unwrap_or("/"))}));
+            let cat: Vec<Value> = crate::models::CATALOG
+                .iter()
+                .map(|e| {
+                    let mut v = serde_json::to_value(e).unwrap_or_default();
+                    v["installed"] = json!(installed.iter().any(|i| i.eq_ignore_ascii_case(e.id)));
+                    v
+                })
+                .collect();
+            respond(
+                w,
+                200,
+                &json!({"recommend": crate::models::recommend(&h.profile), "catalog": cat, "installed": installed,
+                                     "dir": h.cfg.model_dirs.first().cloned().unwrap_or_default(), "free_bytes": crate::models::free_space(h.cfg.model_dirs.first().map(|s| s.as_str()).unwrap_or("/"))}),
+            );
         }
         ("POST", "/ultar/unload") => {
             h.unload();
             respond(w, 200, &json!({"ok": true}));
         }
-        ("POST", "/ultar/load") => match h.load(body.get("model").and_then(|m| m.as_str()).map(String::from)) {
-            Ok(info) => respond(w, 200, &json!({"ok": true, "model": info})),
-            Err(e) => err(w, 503, &e),
-        },
-        ("POST", "/v1/chat/completions") | ("POST", "/chat/completions") => completion(h, w, &body, true),
+        ("POST", "/ultar/load") => {
+            match h.load(body.get("model").and_then(|m| m.as_str()).map(String::from)) {
+                Ok(info) => respond(w, 200, &json!({"ok": true, "model": info})),
+                Err(e) => err(w, 503, &e),
+            }
+        }
+        ("POST", "/v1/chat/completions") | ("POST", "/chat/completions") => {
+            completion(h, w, &body, true)
+        }
         ("POST", "/v1/completions") | ("POST", "/completions") => completion(h, w, &body, false),
-        (_, "/v1/chat/completions" | "/v1/completions" | "/ultar/load" | "/ultar/unload") => err(w, 405, "Methode nicht erlaubt"),
+        (_, "/v1/chat/completions" | "/v1/completions" | "/ultar/load" | "/ultar/unload") => {
+            err(w, 405, "Methode nicht erlaubt")
+        }
         _ => err(w, 404, "unbekannter Pfad"),
     }
 }
@@ -203,7 +254,11 @@ fn content_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         // OpenAI-Teile: [{"type":"text","text":"…"}]
-        Value::Array(a) => a.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("\n"),
+        Value::Array(a) => a
+            .iter()
+            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n"),
         Value::Null => String::new(),
         o => o.to_string(),
     }
@@ -227,13 +282,24 @@ impl Drop for TmpFiles {
 }
 
 pub fn content_images(v: &Value, tmp: &mut Vec<String>) -> Result<Vec<String>, String> {
-    let Value::Array(a) = v else { return Ok(Vec::new()) };
+    let Value::Array(a) = v else {
+        return Ok(Vec::new());
+    };
     let mut out = Vec::new();
     for p in a {
-        let url = p.get("image_url").and_then(|u| u.get("url").or(Some(u))).and_then(|u| u.as_str()).map(String::from).or_else(|| {
-            let s = p.get("source")?;
-            Some(format!("data:{};base64,{}", s.get("media_type")?.as_str()?, s.get("data")?.as_str()?))
-        });
+        let url = p
+            .get("image_url")
+            .and_then(|u| u.get("url").or(Some(u)))
+            .and_then(|u| u.as_str())
+            .map(String::from)
+            .or_else(|| {
+                let s = p.get("source")?;
+                Some(format!(
+                    "data:{};base64,{}",
+                    s.get("media_type")?.as_str()?,
+                    s.get("data")?.as_str()?
+                ))
+            });
         let Some(url) = url else { continue };
         if let Some(rest) = url.strip_prefix("data:") {
             let (meta, data) = rest.split_once(',').ok_or("image: bad data URL")?;
@@ -241,17 +307,38 @@ pub fn content_images(v: &Value, tmp: &mut Vec<String>) -> Result<Vec<String>, S
                 return Err("image: only base64 data URLs".into());
             }
             use base64::Engine;
-            let bytes = base64::engine::general_purpose::STANDARD.decode(data.trim()).map_err(|e| format!("image: {e}"))?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data.trim())
+                .map_err(|e| format!("image: {e}"))?;
             if bytes.len() > 40 << 20 {
                 return Err("image too large (max 40 MB)".into());
             }
-            let ext = if meta.contains("png") { "png" } else if meta.contains("webp") { "webp" } else { "jpg" };
-            let dir = if std::path::Path::new("/run/ultar").is_dir() { "/run/ultar/llm-img".to_string() } else { std::env::temp_dir().join("ultar-llm-img").to_string_lossy().into_owned() };
+            let ext = if meta.contains("png") {
+                "png"
+            } else if meta.contains("webp") {
+                "webp"
+            } else {
+                "jpg"
+            };
+            let dir = if std::path::Path::new("/run/ultar").is_dir() {
+                "/run/ultar/llm-img".to_string()
+            } else {
+                std::env::temp_dir()
+                    .join("ultar-llm-img")
+                    .to_string_lossy()
+                    .into_owned()
+            };
             let _ = std::fs::create_dir_all(&dir);
             let f = format!("{dir}/{}-{}.{ext}", std::process::id(), rid());
             {
                 use std::os::unix::fs::OpenOptionsExt;
-                let mut fh = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&f).map_err(|e| e.to_string())?;
+                let mut fh = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&f)
+                    .map_err(|e| e.to_string())?;
                 std::io::Write::write_all(&mut fh, &bytes).map_err(|e| e.to_string())?;
             }
             tmp.push(f.clone());
@@ -259,8 +346,14 @@ pub fn content_images(v: &Value, tmp: &mut Vec<String>) -> Result<Vec<String>, S
         } else {
             let path = url.strip_prefix("file://").unwrap_or(&url).to_string();
             let low = path.to_ascii_lowercase();
-            let is_img = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"].iter().any(|e| low.ends_with(e));
-            if !path.starts_with('/') || !is_img || path.contains("/../") || !std::path::Path::new(&path).is_file() {
+            let is_img = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"]
+                .iter()
+                .any(|e| low.ends_with(e));
+            if !path.starts_with('/')
+                || !is_img
+                || path.contains("/../")
+                || !std::path::Path::new(&path).is_file()
+            {
                 return Err(format!("image: not a readable image file: {path}"));
             }
             out.push(path);
@@ -270,8 +363,16 @@ pub fn content_images(v: &Value, tmp: &mut Vec<String>) -> Result<Vec<String>, S
 }
 
 pub fn params_from(h: &Handle, b: &Value) -> GenParams {
-    let mut p = GenParams { max_tokens: h.cfg.default_max_tokens, ..Default::default() };
-    if let Some(n) = b.get("max_tokens").or_else(|| b.get("max_completion_tokens")).or_else(|| b.get("n_predict")).and_then(|v| v.as_i64()) {
+    let mut p = GenParams {
+        max_tokens: h.cfg.default_max_tokens,
+        ..Default::default()
+    };
+    if let Some(n) = b
+        .get("max_tokens")
+        .or_else(|| b.get("max_completion_tokens"))
+        .or_else(|| b.get("n_predict"))
+        .and_then(|v| v.as_i64())
+    {
         if n > 0 {
             p.max_tokens = n.min(1 << 20) as u32;
         }
@@ -296,11 +397,23 @@ pub fn params_from(h: &Handle, b: &Value) -> GenParams {
     }
     p.stop = match b.get("stop") {
         Some(Value::String(s)) => vec![s.clone()],
-        Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(String::from)).take(8).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(|x| x.as_str().map(String::from))
+            .take(8)
+            .collect(),
         _ => vec![],
     };
-    let rf = b.get("response_format").and_then(|r| r.get("type")).and_then(|t| t.as_str()).unwrap_or("");
-    if let Some(g) = b.get("grammar").and_then(|g| g.as_str()).filter(|g| !g.trim().is_empty()) {
+    let rf = b
+        .get("response_format")
+        .and_then(|r| r.get("type"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("");
+    if let Some(g) = b
+        .get("grammar")
+        .and_then(|g| g.as_str())
+        .filter(|g| !g.trim().is_empty())
+    {
         p.grammar = Some(g.to_string());
     } else if rf == "json_object" || rf == "json_schema" {
         p.grammar = Some(JSON_GBNF.to_string());
@@ -317,7 +430,9 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
     // Base64-Bilder als Dateien – nach der Antwort wieder löschen
     let mut tmp_imgs: Vec<String> = Vec::new();
     let input = if chat {
-        let Some(arr) = b.get("messages").and_then(|m| m.as_array()) else { return err(w, 400, "messages fehlt") };
+        let Some(arr) = b.get("messages").and_then(|m| m.as_array()) else {
+            return err(w, 400, "messages fehlt");
+        };
         let mut msgs: Vec<Msg> = Vec::new();
         for m in arr {
             let c = m.get("content").unwrap_or(&Value::Null);
@@ -328,7 +443,15 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
                     return err(w, 400, &e);
                 }
             };
-            msgs.push(Msg { role: m.get("role").and_then(|r| r.as_str()).unwrap_or("user").to_string(), content: content_text(c), images });
+            msgs.push(Msg {
+                role: m
+                    .get("role")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("user")
+                    .to_string(),
+                content: content_text(c),
+                images,
+            });
         }
         if msgs.is_empty() {
             return err(w, 400, "messages ist leer");
@@ -346,25 +469,46 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
     let stream = b.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
     let mut want = b.get("model").and_then(|m| m.as_str()).map(String::from);
     // Bilder dabei (oder Modell "vision"): ein installiertes Modell mit Projektor nehmen
-    let has_images = matches!(&input, Input::Chat { msgs, .. } if msgs.iter().any(|m| !m.images.is_empty()));
+    let has_images =
+        matches!(&input, Input::Chat { msgs, .. } if msgs.iter().any(|m| !m.images.is_empty()));
     if has_images || want.as_deref() == Some("vision") {
         let models = h.models();
-        let sees = |m: &crate::config::ModelFile| m.path.starts_with("mock:") || crate::models::mmproj_for(&m.path).is_some();
+        let sees = |m: &crate::config::ModelFile| {
+            m.path.starts_with("mock:") || crate::models::mmproj_for(&m.path).is_some()
+        };
         let can = |id: &str| models.iter().any(|m| m.id == id && sees(m));
         if !want.as_deref().is_some_and(can) {
             let rec = crate::models::recommend(&h.profile).vision;
-            let pick = rec.filter(|r| can(r)).map(String::from).or_else(|| models.iter().find(|m| sees(m)).map(|m| m.id.clone()));
+            let pick = rec
+                .filter(|r| can(r))
+                .map(String::from)
+                .or_else(|| models.iter().find(|m| sees(m)).map(|m| m.id.clone()));
             match pick {
                 Some(p) => want = Some(p),
-                None => return err(w, 400, "no vision model installed – install one (ultar-llm recommend / pull)"),
+                None => {
+                    return err(
+                        w,
+                        400,
+                        "no vision model installed – install one (ultar-llm recommend / pull)",
+                    )
+                }
             }
         }
     }
     let (tx, rx) = mpsc::channel();
-    h.submit(Job { model: want, input, params, events: tx });
+    h.submit(Job {
+        model: want,
+        input,
+        params,
+        events: tx,
+    });
     let id = rid();
     let created = now();
-    let obj = if chat { "chat.completion" } else { "text_completion" };
+    let obj = if chat {
+        "chat.completion"
+    } else {
+        "text_completion"
+    };
 
     if !stream {
         let mut text = String::new();
@@ -398,8 +542,15 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
     let mut started = false;
     let mut model = String::new();
     let chunk = |model: &str, delta: Value, finish: Value| -> String {
-        let c = if chat { json!({"index": 0, "delta": delta, "finish_reason": finish}) } else { json!({"index": 0, "text": delta.get("content").cloned().unwrap_or(json!("")), "finish_reason": finish}) };
-        format!("data: {}\n\n", json!({"id": id, "object": if chat {"chat.completion.chunk"} else {"text_completion"}, "created": created, "model": model, "choices": [c]}))
+        let c = if chat {
+            json!({"index": 0, "delta": delta, "finish_reason": finish})
+        } else {
+            json!({"index": 0, "text": delta.get("content").cloned().unwrap_or(json!("")), "finish_reason": finish})
+        };
+        format!(
+            "data: {}\n\n",
+            json!({"id": id, "object": if chat {"chat.completion.chunk"} else {"text_completion"}, "created": created, "model": model, "choices": [c]})
+        )
     };
     loop {
         let ev = match rx.recv_timeout(Duration::from_secs(1800)) {
@@ -415,13 +566,23 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
                     return;
                 }
                 if chat {
-                    let _ = w.write_all(chunk(&model, json!({"role": "assistant", "content": ""}), Value::Null).as_bytes());
+                    let _ = w.write_all(
+                        chunk(
+                            &model,
+                            json!({"role": "assistant", "content": ""}),
+                            Value::Null,
+                        )
+                        .as_bytes(),
+                    );
                 }
                 let _ = w.flush();
             }
             Event::Text(t) => {
                 // Schreibfehler = Nutzer hat abgebrochen → rx fallen lassen, Arbeits-Thread bricht ab
-                if w.write_all(chunk(&model, json!({"content": t}), Value::Null).as_bytes()).is_err() || w.flush().is_err() {
+                if w.write_all(chunk(&model, json!({"content": t}), Value::Null).as_bytes())
+                    .is_err()
+                    || w.flush().is_err()
+                {
                     return;
                 }
             }
@@ -440,7 +601,13 @@ fn completion(h: &Handle, w: &mut dyn Conn, b: &Value, chat: bool) {
                 if !started {
                     return err(w, code, &msg);
                 }
-                let _ = w.write_all(format!("data: {}\n\ndata: [DONE]\n\n", json!({"error": {"message": msg, "code": code}})).as_bytes());
+                let _ = w.write_all(
+                    format!(
+                        "data: {}\n\ndata: [DONE]\n\n",
+                        json!({"error": {"message": msg, "code": code}})
+                    )
+                    .as_bytes(),
+                );
                 return;
             }
         }
@@ -469,14 +636,22 @@ pub fn run(h: Handle) -> Result<(), String> {
             for c in l.incoming().flatten() {
                 let h3 = h2.clone();
                 let _ = c.set_read_timeout(Some(Duration::from_secs(60)));
-                let _ = std::thread::Builder::new().stack_size(256 << 10).spawn(move || serve_conn(&h3, Box::new(c), false));
+                let _ = std::thread::Builder::new()
+                    .stack_size(256 << 10)
+                    .spawn(move || serve_conn(&h3, Box::new(c), false));
             }
         }));
     }
     if !h.cfg.listen.is_empty() {
-        let addr: std::net::SocketAddr = h.cfg.listen.parse().map_err(|_| format!("ungültige Adresse: {}", h.cfg.listen))?;
+        let addr: std::net::SocketAddr = h
+            .cfg
+            .listen
+            .parse()
+            .map_err(|_| format!("ungültige Adresse: {}", h.cfg.listen))?;
         if !addr.ip().is_loopback() && !h.cfg.allow_remote {
-            return Err(format!("{addr} ist nicht lokal – nur mit allow_remote = true (und api_key) erlaubt"));
+            return Err(format!(
+                "{addr} ist nicht lokal – nur mit allow_remote = true (und api_key) erlaubt"
+            ));
         }
         if !addr.ip().is_loopback() && h.cfg.api_key.is_empty() {
             return Err("allow_remote braucht einen api_key".into());
@@ -489,7 +664,9 @@ pub fn run(h: Handle) -> Result<(), String> {
                 let h3 = h2.clone();
                 let _ = c.set_read_timeout(Some(Duration::from_secs(60)));
                 let _ = c.set_nodelay(true);
-                let _ = std::thread::Builder::new().stack_size(256 << 10).spawn(move || serve_conn(&h3, Box::new(c), true));
+                let _ = std::thread::Builder::new()
+                    .stack_size(256 << 10)
+                    .spawn(move || serve_conn(&h3, Box::new(c), true));
             }
         }));
     }

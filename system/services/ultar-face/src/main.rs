@@ -36,7 +36,14 @@ fn model_dir() -> String {
 
 fn engine() -> Engine {
     let d = model_dir();
-    match Engine::load(&format!("{d}/{DET}"), &format!("{d}/{REC}"), std::env::var("FACE_DET").ok().and_then(|s| s.parse().ok()).unwrap_or(640)) {
+    match Engine::load(
+        &format!("{d}/{DET}"),
+        &format!("{d}/{REC}"),
+        std::env::var("FACE_DET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(640),
+    ) {
         Ok(e) => e,
         Err(e) => {
             say(&format!("fehler modelle: {e}"));
@@ -64,7 +71,12 @@ fn read_ppm(p: &str) -> Img {
         while !b[i].is_ascii_whitespace() {
             i += 1;
         }
-        fields.push(std::str::from_utf8(&b[s..i]).unwrap().parse::<usize>().unwrap());
+        fields.push(
+            std::str::from_utf8(&b[s..i])
+                .unwrap()
+                .parse::<usize>()
+                .unwrap(),
+        );
     }
     i += 1;
     let (w, h) = (fields[0], fields[1]);
@@ -85,7 +97,14 @@ struct Cam {
 impl Cam {
     fn open() -> Option<Cam> {
         let bin = std::env::var("ULTAR_CAM").unwrap_or("/usr/bin/ultar-cam".into());
-        let mut child = Command::new(bin).args(["stream", "front"]).env("UCAM_STEP", "3").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+        let mut child = Command::new(bin)
+            .args(["stream", "front"])
+            .env("UCAM_STEP", "3")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
         let out = child.stdout.take()?;
         Some(Cam { child, out })
     }
@@ -99,7 +118,14 @@ impl Cam {
         }
         let mut b = vec![0u8; w * h * 4];
         self.out.read_exact(&mut b).ok()?;
-        Some(Img { w, h, px: b.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect() })
+        Some(Img {
+            w,
+            h,
+            px: b
+                .chunks_exact(4)
+                .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect(),
+        })
     }
 }
 
@@ -129,7 +155,10 @@ fn best_face(e: &Engine, img: &Img, rot: &mut usize) -> Option<(Img, Face)> {
         let r = ROTS[(*rot + k) % 4];
         let im = img.rotate(r);
         let faces = e.detect(&im, 0.75).ok()?;
-        if let Some(f) = faces.into_iter().max_by(|a, b| (a.bbox[2] * a.bbox[3]).total_cmp(&(b.bbox[2] * b.bbox[3]))) {
+        if let Some(f) = faces
+            .into_iter()
+            .max_by(|a, b| (a.bbox[2] * a.bbox[3]).total_cmp(&(b.bbox[2] * b.bbox[3])))
+        {
             *rot = (*rot + k) % 4;
             return Some((im, f));
         }
@@ -183,7 +212,12 @@ fn run_camera(learn: bool, secs: u64) -> i32 {
         };
         // zu klein / angeschnitten -> nicht verwenden
         let min_side = (im.w.min(im.h) as f32) * 0.18;
-        if f.bbox[2] < min_side || f.bbox[0] < 0.0 || f.bbox[1] < 0.0 || f.bbox[0] + f.bbox[2] > im.w as f32 || f.bbox[1] + f.bbox[3] > im.h as f32 {
+        if f.bbox[2] < min_side
+            || f.bbox[0] < 0.0
+            || f.bbox[1] < 0.0
+            || f.bbox[0] + f.bbox[2] > im.w as f32
+            || f.bbox[1] + f.bbox[3] > im.h as f32
+        {
             say("naeher");
             continue;
         }
@@ -205,7 +239,9 @@ fn run_camera(learn: bool, secs: u64) -> i32 {
             if got.len() >= SAMPLES {
                 let _ = std::fs::create_dir_all(STORE_DIR);
                 let tmp = format!("{STORE}.neu");
-                if std::fs::write(&tmp, encode(&got)).is_err() || std::fs::rename(&tmp, STORE).is_err() {
+                if std::fs::write(&tmp, encode(&got)).is_err()
+                    || std::fs::rename(&tmp, STORE).is_err()
+                {
                     say("fehler speichern");
                     return 2;
                 }
@@ -214,7 +250,12 @@ fn run_camera(learn: bool, secs: u64) -> i32 {
                 return 0;
             }
         } else {
-            let s = stored.as_ref().unwrap().iter().map(|g| cosine(g, &v)).fold(-1f32, f32::max);
+            let s = stored
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|g| cosine(g, &v))
+                .fold(-1f32, f32::max);
             best = best.max(s);
             if s >= THRESH {
                 say(&format!("ok {s:.2}"));
@@ -257,7 +298,12 @@ fn main() {
                 say("fehler kamera");
                 std::process::exit(2)
             };
-            say(&format!("bild {}x{} helligkeit {:.0}", img.w, img.h, img.brightness()));
+            say(&format!(
+                "bild {}x{} helligkeit {:.0}",
+                img.w,
+                img.h,
+                img.brightness()
+            ));
             let mut o = format!("P6 {} {} 255\n", img.w, img.h).into_bytes();
             for p in &img.px {
                 o.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, *p as u8]);
@@ -294,12 +340,21 @@ fn main() {
                 let faces = e.detect(&img, 0.6).unwrap();
                 let td = t.elapsed();
                 for f in &faces {
-                    say(&format!("{p}: score {:.3} box {:?} kps {:?}", f.score, f.bbox.map(|v| v.round()), f.kps.map(|k| k.map(|v| v.round()))));
+                    say(&format!(
+                        "{p}: score {:.3} box {:?} kps {:?}",
+                        f.score,
+                        f.bbox.map(|v| v.round()),
+                        f.kps.map(|k| k.map(|v| v.round()))
+                    ));
                 }
                 if let Some(f) = faces.first() {
                     let t = Instant::now();
                     let v = e.embed(&img, f).unwrap();
-                    say(&format!("{p}: erkennen {td:?}, merkmale {:?}, v[0..4] {:?}", t.elapsed(), &v[..4]));
+                    say(&format!(
+                        "{p}: erkennen {td:?}, merkmale {:?}, v[0..4] {:?}",
+                        t.elapsed(),
+                        &v[..4]
+                    ));
                     vs.push(v);
                 }
             }

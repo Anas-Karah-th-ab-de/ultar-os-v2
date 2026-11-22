@@ -51,7 +51,11 @@ pub struct MockCall {
 
 impl Default for MockCall {
     fn default() -> Self {
-        Self { state: CallState::Idle, events: Vec::new(), registered: false }
+        Self {
+            state: CallState::Idle,
+            events: Vec::new(),
+            registered: false,
+        }
     }
 }
 

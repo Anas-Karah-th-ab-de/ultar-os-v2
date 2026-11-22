@@ -139,7 +139,11 @@ fn want_dev(cur: Dev) -> Option<Dev> {
     let s = s.trim();
     match s {
         "off" | "" => None,
-        "auto" => Some(auto(if cur == Dev::Speaker { Dev::Speaker } else { Dev::Handset })),
+        "auto" => Some(auto(if cur == Dev::Speaker {
+            Dev::Speaker
+        } else {
+            Dev::Handset
+        })),
         x => Some(Dev::parse(x).unwrap_or(cur)),
     }
 }
@@ -163,7 +167,10 @@ pub fn call(initial: Option<Dev>, verbose: bool) -> i32 {
     call_paths(&c, &p, dev, verbose);
     let rx = Stream::open(BB_RX, false, 480, 4).and_then(|s| s.start().map(|_| s));
     let tx = Stream::open(BB_TX, true, 480, 4).and_then(|s| s.start().map(|_| s));
-    for (n, r) in [("Empfang", rx.as_ref().err()), ("Senden", tx.as_ref().err())] {
+    for (n, r) in [
+        ("Empfang", rx.as_ref().err()),
+        ("Senden", tx.as_ref().err()),
+    ] {
         match r {
             Some(e) => println!("Gesprächston {n}: {e}"),
             None => println!("Gesprächston {n}: läuft"),

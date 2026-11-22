@@ -2,8 +2,8 @@
 //! Untermodul von `app`. Versand/Empfang über ein `SmsBackend`; bis der Modem-Stack steht,
 //! ein lokaler Stub (speichert in /data/ultar/sms.json). Später an das echte Modem anklemmbar.
 
-use super::{App, Screen};
 use super::app_modern::{avatar, same_number, GREEN};
+use super::{App, Screen};
 use crate::gfx::{rgb, Rect};
 use crate::ui::{Al, Btn, Ic, Ui};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,10 @@ pub struct StubSms {
 impl StubSms {
     fn load() -> Self {
         let p = format!("{}/sms.json", crate::sys::data_dir());
-        let threads = std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let threads = std::fs::read_to_string(p)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
         Self { threads }
     }
     fn save(&self) {
@@ -60,9 +63,23 @@ impl SmsBackend for StubSms {
             return;
         }
         if let Some(t) = self.threads.iter_mut().find(|t| t.number == number) {
-            t.msgs.push(Sms { out: true, text: text.to_string(), when: String::new() });
+            t.msgs.push(Sms {
+                out: true,
+                text: text.to_string(),
+                when: String::new(),
+            });
         } else {
-            self.threads.insert(0, Thread { number: number.to_string(), msgs: vec![Sms { out: true, text: text.to_string(), when: String::new() }] });
+            self.threads.insert(
+                0,
+                Thread {
+                    number: number.to_string(),
+                    msgs: vec![Sms {
+                        out: true,
+                        text: text.to_string(),
+                        when: String::new(),
+                    }],
+                },
+            );
         }
         self.save();
     }
@@ -81,20 +98,31 @@ pub struct SimSms {
 const SMS_INBOX: &str = "/data/ultar/sms-in.tsv";
 
 fn unhex(s: &str) -> String {
-    let b: Vec<u8> = s.as_bytes().chunks(2).filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect();
+    let b: Vec<u8> = s
+        .as_bytes()
+        .chunks(2)
+        .filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok())
+        .collect();
     String::from_utf8_lossy(&b).into_owned()
 }
 
 impl SimSms {
     fn load() -> Self {
-        let off = std::fs::read_to_string(format!("{}/sms-in.off", crate::sys::data_dir())).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0);
-        Self { store: std::sync::Mutex::new((StubSms::load(), off)) }
+        let off = std::fs::read_to_string(format!("{}/sms-in.off", crate::sys::data_dir()))
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        Self {
+            store: std::sync::Mutex::new((StubSms::load(), off)),
+        }
     }
     /// Neue Zeilen des Posteingangs übernehmen.
     fn ingest(&self) {
         use std::io::{Read, Seek, SeekFrom};
         let Ok(mut g) = self.store.lock() else { return };
-        let Ok(mut f) = std::fs::File::open(SMS_INBOX) else { return };
+        let Ok(mut f) = std::fs::File::open(SMS_INBOX) else {
+            return;
+        };
         let len = f.metadata().map(|m| m.len()).unwrap_or(0);
         if len < g.1 {
             g.1 = 0; // Datei neu angelegt
@@ -113,25 +141,41 @@ impl SimSms {
                 continue;
             }
             let (from, text) = (p[2].to_string(), unhex(p[3]));
-            let m = Sms { out: false, text, when: p[0].to_string() };
+            let m = Sms {
+                out: false,
+                text,
+                when: p[0].to_string(),
+            };
             if let Some(i) = g.0.threads.iter().position(|t| t.number == from) {
                 let mut t = g.0.threads.remove(i);
                 t.msgs.push(m);
                 g.0.threads.insert(0, t);
             } else {
-                g.0.threads.insert(0, Thread { number: from, msgs: vec![m] });
+                g.0.threads.insert(
+                    0,
+                    Thread {
+                        number: from,
+                        msgs: vec![m],
+                    },
+                );
             }
         }
         g.1 += complete as u64;
         g.0.save();
-        let _ = std::fs::write(format!("{}/sms-in.off", crate::sys::data_dir()), g.1.to_string());
+        let _ = std::fs::write(
+            format!("{}/sms-in.off", crate::sys::data_dir()),
+            g.1.to_string(),
+        );
     }
 }
 
 impl SmsBackend for SimSms {
     fn threads(&self) -> Vec<Thread> {
         self.ingest();
-        self.store.lock().map(|g| g.0.threads.clone()).unwrap_or_default()
+        self.store
+            .lock()
+            .map(|g| g.0.threads.clone())
+            .unwrap_or_default()
     }
     fn send(&mut self, number: &str, text: &str) {
         if number.is_empty() || text.is_empty() {
@@ -159,12 +203,18 @@ pub struct MessagesState {
 
 impl Default for MessagesState {
     fn default() -> Self {
-        let sms: Box<dyn SmsBackend> = if std::path::Path::new("/dev/umts_ipc0").exists() || std::env::var_os("ULTAR_SIM_TEL").is_some() {
+        let sms: Box<dyn SmsBackend> = if std::path::Path::new("/dev/umts_ipc0").exists()
+            || std::env::var_os("ULTAR_SIM_TEL").is_some()
+        {
             Box::new(SimSms::load())
         } else {
             Box::new(StubSms::load())
         };
-        Self { open: None, composing_new: false, sms }
+        Self {
+            open: None,
+            composing_new: false,
+            sms,
+        }
     }
 }
 
@@ -192,9 +242,29 @@ impl App {
             y += ui.dp(38.0);
         }
         if threads.is_empty() {
-            ui.icon(Ic::Chat, ui.w / 2.0, y + ui.dp(90.0), ui.dp(44.0), cs.alpha(0.5));
-            ui.label(Rect::new(0.0, y + ui.dp(124.0), ui.w, ui.dp(24.0)), self.t("No messages"), 16.0, c, true, Al::Center);
-            ui.label(Rect::new(0.0, y + ui.dp(150.0), ui.w, ui.dp(20.0)), self.t("Start a conversation with the pen button"), 12.5, cs, false, Al::Center);
+            ui.icon(
+                Ic::Chat,
+                ui.w / 2.0,
+                y + ui.dp(90.0),
+                ui.dp(44.0),
+                cs.alpha(0.5),
+            );
+            ui.label(
+                Rect::new(0.0, y + ui.dp(124.0), ui.w, ui.dp(24.0)),
+                self.t("No messages"),
+                16.0,
+                c,
+                true,
+                Al::Center,
+            );
+            ui.label(
+                Rect::new(0.0, y + ui.dp(150.0), ui.w, ui.dp(20.0)),
+                self.t("Start a conversation with the pen button"),
+                12.5,
+                cs,
+                false,
+                Al::Center,
+            );
             y += ui.dp(190.0);
         }
         // Liste wie in der Web-Demo: eine Karte, Zeilen mit Trennlinie, farbiger Avatar
@@ -214,25 +284,78 @@ impl App {
                 ui.cv.rrect(r.inset(1.0), ui.dp(18.0), ui.th.press);
             }
             if i > 0 {
-                ui.cv.rect(Rect::new(r.x + 1.0, r.y, r.w - 2.0, 1.0), ui.th.line);
+                ui.cv
+                    .rect(Rect::new(r.x + 1.0, r.y, r.w - 2.0, 1.0), ui.th.line);
             }
-            let ax = if ui.rtl { r.right() - ui.dp(14.0) - ui.dp(22.0) } else { r.x + ui.dp(14.0) + ui.dp(22.0) };
+            let ax = if ui.rtl {
+                r.right() - ui.dp(14.0) - ui.dp(22.0)
+            } else {
+                r.x + ui.dp(14.0) + ui.dp(22.0)
+            };
             let shown = name.clone().unwrap_or_else(|| "#".into());
-            ui.avatar(ax, r.cy(), ui.dp(44.0), &shown, super::app_demo::avatar_color(&shown));
+            ui.avatar(
+                ax,
+                r.cy(),
+                ui.dp(44.0),
+                &shown,
+                super::app_demo::avatar_color(&shown),
+            );
             let last = t.msgs.last();
             let when = last.map(|s| s.when.clone()).unwrap_or_default();
-            let ww = if when.is_empty() { 0.0 } else { ui.text_w(&when, 11.0, false) + ui.dp(8.0) };
-            let tx = Rect::new(if ui.rtl { r.x + ui.dp(14.0) } else { r.x + ui.dp(70.0) }, r.y, r.w - ui.dp(84.0), r.h);
+            let ww = if when.is_empty() {
+                0.0
+            } else {
+                ui.text_w(&when, 11.0, false) + ui.dp(8.0)
+            };
+            let tx = Rect::new(
+                if ui.rtl {
+                    r.x + ui.dp(14.0)
+                } else {
+                    r.x + ui.dp(70.0)
+                },
+                r.y,
+                r.w - ui.dp(84.0),
+                r.h,
+            );
             let title = name.clone().unwrap_or_else(|| t.number.clone());
             let tw = tx.w - ww;
             let tf = ui.fit(&title, 15.0, false, tw);
             let nx = if ui.rtl { tx.x + ww } else { tx.x };
-            ui.label(Rect::new(nx, r.y + ui.dp(13.0), tw, ui.dp(22.0)), &tf, 15.0, c, false, Al::Start);
-            let prev = last.map(|s| if s.out { format!("{}: {}", self.t("You"), s.text) } else { s.text.clone() }).unwrap_or_default();
+            ui.label(
+                Rect::new(nx, r.y + ui.dp(13.0), tw, ui.dp(22.0)),
+                &tf,
+                15.0,
+                c,
+                false,
+                Al::Start,
+            );
+            let prev = last
+                .map(|s| {
+                    if s.out {
+                        format!("{}: {}", self.t("You"), s.text)
+                    } else {
+                        s.text.clone()
+                    }
+                })
+                .unwrap_or_default();
             let pf = ui.fit(&prev, 12.5, false, tw);
-            ui.label(Rect::new(nx, r.y + ui.dp(35.0), tw, ui.dp(20.0)), &pf, 12.5, cs, false, Al::Start);
+            ui.label(
+                Rect::new(nx, r.y + ui.dp(35.0), tw, ui.dp(20.0)),
+                &pf,
+                12.5,
+                cs,
+                false,
+                Al::Start,
+            );
             if !when.is_empty() {
-                ui.label(Rect::new(tx.x, r.y, tx.w, r.h), &when, 11.0, cs, false, Al::End);
+                ui.label(
+                    Rect::new(tx.x, r.y, tx.w, r.h),
+                    &when,
+                    11.0,
+                    cs,
+                    false,
+                    Al::End,
+                );
             }
             if ui.tap(r) {
                 self.msg.open = Some(i);
@@ -255,25 +378,81 @@ impl App {
         let name = self.contact_name(&t.number);
         // Kopf: Zurück, Avatar, Name/Nummer, Anrufen
         let hh = ui.dp(64.0);
-        let bx = if ui.rtl { ui.w - ui.dp(30.0) } else { ui.dp(30.0) };
-        if ui.icon_btn(bx, area.y + hh / 2.0, ui.dp(18.0), Ic::Back, rgb(0).alpha(0.0), c) {
+        let bx = if ui.rtl {
+            ui.w - ui.dp(30.0)
+        } else {
+            ui.dp(30.0)
+        };
+        if ui.icon_btn(
+            bx,
+            area.y + hh / 2.0,
+            ui.dp(18.0),
+            Ic::Back,
+            rgb(0).alpha(0.0),
+            c,
+        ) {
             self.msg.open = None;
             ui.dirty = true;
             return;
         }
-        let ax = if ui.rtl { ui.w - ui.dp(78.0) } else { ui.dp(78.0) };
-        avatar(ui, ax, area.y + hh / 2.0, ui.dp(20.0), name.as_deref().unwrap_or(""));
-        let tx = Rect::new(if ui.rtl { ui.dp(64.0) } else { ui.dp(108.0) }, area.y, ui.w - ui.dp(172.0), hh);
+        let ax = if ui.rtl {
+            ui.w - ui.dp(78.0)
+        } else {
+            ui.dp(78.0)
+        };
+        avatar(
+            ui,
+            ax,
+            area.y + hh / 2.0,
+            ui.dp(20.0),
+            name.as_deref().unwrap_or(""),
+        );
+        let tx = Rect::new(
+            if ui.rtl { ui.dp(64.0) } else { ui.dp(108.0) },
+            area.y,
+            ui.w - ui.dp(172.0),
+            hh,
+        );
         let title = name.clone().unwrap_or_else(|| t.number.clone());
         let tf = ui.fit(&title, 17.0, true, tx.w);
-        ui.label(Rect::new(tx.x, area.y + ui.dp(if name.is_some() { 10.0 } else { 20.0 }), tx.w, ui.dp(24.0)), &tf, 17.0, c, true, Al::Start);
+        ui.label(
+            Rect::new(
+                tx.x,
+                area.y + ui.dp(if name.is_some() { 10.0 } else { 20.0 }),
+                tx.w,
+                ui.dp(24.0),
+            ),
+            &tf,
+            17.0,
+            c,
+            true,
+            Al::Start,
+        );
         if name.is_some() {
             let old = ui.rtl;
-            ui.label(Rect::new(tx.x, area.y + ui.dp(34.0), tx.w, ui.dp(18.0)), &t.number, 12.0, cs, false, Al::Start);
+            ui.label(
+                Rect::new(tx.x, area.y + ui.dp(34.0), tx.w, ui.dp(18.0)),
+                &t.number,
+                12.0,
+                cs,
+                false,
+                Al::Start,
+            );
             ui.rtl = old;
         }
-        let cx = if ui.rtl { ui.dp(32.0) } else { ui.w - ui.dp(32.0) };
-        if ui.icon_btn(cx, area.y + hh / 2.0, ui.dp(19.0), Ic::Phone, rgb(GREEN).alpha(0.18), rgb(GREEN)) {
+        let cx = if ui.rtl {
+            ui.dp(32.0)
+        } else {
+            ui.w - ui.dp(32.0)
+        };
+        if ui.icon_btn(
+            cx,
+            area.y + hh / 2.0,
+            ui.dp(19.0),
+            Ic::Phone,
+            rgb(GREEN).alpha(0.18),
+            rgb(GREEN),
+        ) {
             let n = t.number.clone();
             self.phone.number = n.clone();
             self.phone.tel.dial(&n);
@@ -281,18 +460,36 @@ impl App {
             ui.dirty = true;
             return;
         }
-        ui.cv.rect(Rect::new(0.0, area.y + hh, ui.w, 1.0), ui.th.line);
+        ui.cv
+            .rect(Rect::new(0.0, area.y + hh, ui.w, 1.0), ui.th.line);
 
         // Eingabezeile unten: Feld + runder Senden-Knopf
         let iny = area.bottom() - ui.dp(58.0);
         let fw = ui.w - 2.0 * m - ui.dp(58.0);
         let fx = if ui.rtl { ui.w - m - fw } else { m };
-        ui.field(Rect::new(fx, iny, fw, ui.dp(48.0)), "sms_draft", &self.f("sms_draft"), self.t("Message"));
-        let sx = if ui.rtl { m + ui.dp(24.0) } else { ui.w - m - ui.dp(24.0) };
+        ui.field(
+            Rect::new(fx, iny, fw, ui.dp(48.0)),
+            "sms_draft",
+            &self.f("sms_draft"),
+            self.t("Message"),
+        );
+        let sx = if ui.rtl {
+            m + ui.dp(24.0)
+        } else {
+            ui.w - m - ui.dp(24.0)
+        };
         let draft = self.f("sms_draft");
         let (a, oa) = (ui.th.accent, ui.th.on_accent);
         let en = !draft.trim().is_empty();
-        if ui.icon_btn(sx, iny + ui.dp(24.0), ui.dp(24.0), Ic::Send, if en { a } else { ui.th.card }, if en { oa } else { cs }) && en {
+        if ui.icon_btn(
+            sx,
+            iny + ui.dp(24.0),
+            ui.dp(24.0),
+            Ic::Send,
+            if en { a } else { ui.th.card },
+            if en { oa } else { cs },
+        ) && en
+        {
             let num = t.number.clone();
             self.msg.sms.send(&num, draft.trim());
             self.fields.remove("sms_draft");
@@ -321,13 +518,47 @@ impl App {
             let bg = if sms.out { ui.th.accent } else { ui.th.card };
             ui.cv.rrect(r, ui.dp(18.0), bg);
             // kleine „Ecke“ zur Absenderseite
-            let cr = if right { Rect::new(r.right() - ui.dp(14.0), r.bottom() - ui.dp(14.0), ui.dp(14.0), ui.dp(14.0)) } else { Rect::new(r.x, r.bottom() - ui.dp(14.0), ui.dp(14.0), ui.dp(14.0)) };
+            let cr = if right {
+                Rect::new(
+                    r.right() - ui.dp(14.0),
+                    r.bottom() - ui.dp(14.0),
+                    ui.dp(14.0),
+                    ui.dp(14.0),
+                )
+            } else {
+                Rect::new(r.x, r.bottom() - ui.dp(14.0), ui.dp(14.0), ui.dp(14.0))
+            };
             ui.cv.rrect(cr, ui.dp(4.0), bg);
             let tc = if sms.out { ui.th.on_accent } else { c };
-            ui.tx.draw(ui.cv, &sms.text, r.x + pad, r.y + pad - ui.dp(2.0), fs, tc, false, maxw - 2.0 * pad);
+            ui.tx.draw(
+                ui.cv,
+                &sms.text,
+                r.x + pad,
+                r.y + pad - ui.dp(2.0),
+                fs,
+                tc,
+                false,
+                maxw - 2.0 * pad,
+            );
             if has_when {
-                let wc = if sms.out { ui.th.on_accent.alpha(0.6) } else { cs };
-                ui.label(Rect::new(r.x + pad, r.bottom() - ui.dp(20.0), r.w - 2.0 * pad, ui.dp(14.0)), &sms.when, 10.0, wc, false, Al::End);
+                let wc = if sms.out {
+                    ui.th.on_accent.alpha(0.6)
+                } else {
+                    cs
+                };
+                ui.label(
+                    Rect::new(
+                        r.x + pad,
+                        r.bottom() - ui.dp(20.0),
+                        r.w - 2.0 * pad,
+                        ui.dp(14.0),
+                    ),
+                    &sms.when,
+                    10.0,
+                    wc,
+                    false,
+                    Al::End,
+                );
             }
         }
         ui.set_clip(None);
@@ -338,7 +569,12 @@ impl App {
         let area = self.header(ui, area, self.t("New message"));
         let m = ui.dp(14.0);
         let mut y = area.y;
-        ui.field(Rect::new(m, y, area.w - 2.0 * m, ui.dp(48.0)), "sms_to", &self.f("sms_to"), self.t("Name or number"));
+        ui.field(
+            Rect::new(m, y, area.w - 2.0 * m, ui.dp(48.0)),
+            "sms_to",
+            &self.f("sms_to"),
+            self.t("Name or number"),
+        );
         y += ui.dp(56.0);
         // Kontakt-Vorschläge passend zur Eingabe
         self.extra_load();
@@ -348,7 +584,9 @@ impl App {
             .contacts
             .list
             .iter()
-            .filter(|ct| q.is_empty() || ct.name.to_lowercase().contains(&q) || ct.number.contains(q.trim()))
+            .filter(|ct| {
+                q.is_empty() || ct.name.to_lowercase().contains(&q) || ct.number.contains(q.trim())
+            })
             .take(4)
             .map(|ct| (ct.name.clone(), ct.number.clone()))
             .collect();
@@ -360,11 +598,38 @@ impl App {
             let r = Rect::new(m, y, ui.w - 2.0 * m, ui.dp(52.0));
             let held = ui.held(r);
             ui.card_h(r, held);
-            let ax = if ui.rtl { r.right() - ui.dp(28.0) } else { r.x + ui.dp(28.0) };
+            let ax = if ui.rtl {
+                r.right() - ui.dp(28.0)
+            } else {
+                r.x + ui.dp(28.0)
+            };
             avatar(ui, ax, r.cy(), ui.dp(17.0), &n);
-            let tx = Rect::new(if ui.rtl { r.x + ui.dp(12.0) } else { r.x + ui.dp(56.0) }, r.y, r.w - ui.dp(68.0), r.h);
-            ui.label(Rect::new(tx.x, r.y + ui.dp(7.0), tx.w, ui.dp(20.0)), &n, 14.5, c, true, Al::Start);
-            ui.label(Rect::new(tx.x, r.y + ui.dp(27.0), tx.w, ui.dp(18.0)), &num, 12.0, cs, false, Al::Start);
+            let tx = Rect::new(
+                if ui.rtl {
+                    r.x + ui.dp(12.0)
+                } else {
+                    r.x + ui.dp(56.0)
+                },
+                r.y,
+                r.w - ui.dp(68.0),
+                r.h,
+            );
+            ui.label(
+                Rect::new(tx.x, r.y + ui.dp(7.0), tx.w, ui.dp(20.0)),
+                &n,
+                14.5,
+                c,
+                true,
+                Al::Start,
+            );
+            ui.label(
+                Rect::new(tx.x, r.y + ui.dp(27.0), tx.w, ui.dp(18.0)),
+                &num,
+                12.0,
+                cs,
+                false,
+                Al::Start,
+            );
             if ui.tap(r) {
                 self.fields.insert("sms_to", num);
                 ui.dirty = true;
@@ -372,9 +637,18 @@ impl App {
             y += ui.dp(58.0);
         }
         y += ui.dp(4.0);
-        ui.field(Rect::new(m, y, area.w - 2.0 * m, ui.dp(48.0)), "sms_newtext", &self.f("sms_newtext"), self.t("Message"));
+        ui.field(
+            Rect::new(m, y, area.w - 2.0 * m, ui.dp(48.0)),
+            "sms_newtext",
+            &self.f("sms_newtext"),
+            self.t("Message"),
+        );
         y += ui.dp(58.0);
-        if ui.button(Rect::new(m, y, area.w - 2.0 * m, ui.dp(46.0)), self.t("Send"), Btn::Primary) {
+        if ui.button(
+            Rect::new(m, y, area.w - 2.0 * m, ui.dp(46.0)),
+            self.t("Send"),
+            Btn::Primary,
+        ) {
             let to = self.f("sms_to");
             let txt = self.f("sms_newtext");
             if !to.trim().is_empty() && !txt.trim().is_empty() {
@@ -384,7 +658,9 @@ impl App {
                 self.focus = None;
                 self.focus_reset = true;
                 let threads = self.msg.sms.threads();
-                self.msg.open = threads.iter().position(|t| same_number(&t.number, to.trim()));
+                self.msg.open = threads
+                    .iter()
+                    .position(|t| same_number(&t.number, to.trim()));
                 self.go(Screen::Messages);
             } else {
                 self.toast(self.t("Enter number and message").into());

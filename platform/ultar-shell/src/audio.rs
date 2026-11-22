@@ -35,7 +35,7 @@ fn hw_params() -> [u8; HW_PARAMS_SIZE] {
     put(&mut p, 4, 1 << 3); // Zugriff: RW_INTERLEAVED
     put(&mut p, 4 + 32, 1 << 2); // Format: S16_LE
     put(&mut p, 4 + 64, 1); // Unterformat: STD
-    // 12 Bereiche (je 12 Byte: min, max, Schalter) ab Byte 260
+                            // 12 Bereiche (je 12 Byte: min, max, Schalter) ab Byte 260
     let base = 4 + 8 * 32;
     for i in 0..12 {
         put(&mut p, base + i * 12, 0);
@@ -83,14 +83,24 @@ pub fn mixer_setup(level: f32) -> usize {
     if std::path::Path::new("/sys/devices/platform/14a50000.abox").exists() {
         for bin in ["/usr/bin/ultar-audio", "/data/ultar/tt/ultar-audio"] {
             if std::path::Path::new(bin).exists() {
-                let ok = std::process::Command::new(bin).args(["--route", &format!("{level:.2}")]).stdout(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+                let ok = std::process::Command::new(bin)
+                    .args(["--route", &format!("{level:.2}")])
+                    .stdout(std::process::Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success());
                 return ok as usize;
             }
         }
     }
     let mut done = 0;
     for card in 0..4 {
-        let Ok(f) = OpenOptions::new().read(true).write(true).open(format!("/dev/snd/controlC{card}")) else { continue };
+        let Ok(f) = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(format!("/dev/snd/controlC{card}"))
+        else {
+            continue;
+        };
         let fd = f.as_raw_fd();
         let mut ids = vec![0u8; ID * 256];
         let mut list = [0u8; LIST_SIZE];
@@ -102,9 +112,18 @@ pub fn mixer_setup(level: f32) -> usize {
         let used = (u32_at(&list, 8) as usize).min(256);
         for i in 0..used {
             let id = &ids[i * ID..(i + 1) * ID];
-            let name = String::from_utf8_lossy(&id[16..60]).trim_end_matches('\0').to_string();
-            let (is_switch, is_volume) = (name.ends_with("Playback Switch"), name.ends_with("Playback Volume"));
-            if !(is_switch || is_volume) || name.contains("Mic") || name.contains("Capture") || name.contains("Beep") {
+            let name = String::from_utf8_lossy(&id[16..60])
+                .trim_end_matches('\0')
+                .to_string();
+            let (is_switch, is_volume) = (
+                name.ends_with("Playback Switch"),
+                name.ends_with("Playback Volume"),
+            );
+            if !(is_switch || is_volume)
+                || name.contains("Mic")
+                || name.contains("Capture")
+                || name.contains("Beep")
+            {
                 continue;
             }
             let mut info = [0u8; INFO_SIZE];
@@ -149,7 +168,13 @@ pub fn tones(seq: &[(f32, u32)], volume: f32) -> Vec<u8> {
         for i in 0..n {
             let env = (i.min(n - 1 - i) as f32 / fade as f32).min(1.0);
             // Phase in f64 rechnen: in f32 verliert das Produkt bei langen Tönen die Genauigkeit (falsche Tonhöhe)
-            let s = if hz > 0.0 { ((i as f64 * hz as f64 * std::f64::consts::TAU / RATE as f64).sin() as f32 * amp * env) as i16 } else { 0 };
+            let s = if hz > 0.0 {
+                ((i as f64 * hz as f64 * std::f64::consts::TAU / RATE as f64).sin() as f32
+                    * amp
+                    * env) as i16
+            } else {
+                0
+            };
             out.extend_from_slice(&s.to_le_bytes());
             out.extend_from_slice(&s.to_le_bytes());
         }
@@ -174,12 +199,23 @@ fn play_blocking(pcm: &[u8]) -> Result<(), String> {
         };
         let mut hp = hw_params();
         if unsafe { ioctl(f.as_raw_fd(), PCM_HW_PARAMS, hp.as_mut_ptr()) } != 0 {
-            last = format!("{path}: Format 48 kHz/16 Bit/Stereo abgelehnt ({})", std::io::Error::last_os_error());
+            last = format!(
+                "{path}: Format 48 kHz/16 Bit/Stereo abgelehnt ({})",
+                std::io::Error::last_os_error()
+            );
             continue;
         }
         if std::env::var("ULTAR_AUDIO_DEBUG").is_ok() {
             let iv = |i: usize| (u32_at(&hp, 260 + i * 12), u32_at(&hp, 260 + i * 12 + 4));
-            println!("{path}: bits {:?} rahmenbits {:?} kanäle {:?} rate {:?} periode {:?} puffer {:?}", iv(0), iv(1), iv(2), iv(3), iv(5), iv(9));
+            println!(
+                "{path}: bits {:?} rahmenbits {:?} kanäle {:?} rate {:?} periode {:?} puffer {:?}",
+                iv(0),
+                iv(1),
+                iv(2),
+                iv(3),
+                iv(5),
+                iv(9)
+            );
         }
         unsafe { ioctl(f.as_raw_fd(), PCM_PREPARE) };
         f.write_all(pcm).map_err(|e| format!("{path}: {e}"))?;
@@ -210,7 +246,17 @@ pub fn play(seq: Vec<(f32, u32)>, volume: f32) {
 
 /// Weckton: drei aufsteigende Töne
 pub fn alarm(volume: f32) {
-    play(vec![(880.0, 180), (0.0, 60), (1175.0, 180), (0.0, 60), (1568.0, 320), (0.0, 200)], volume);
+    play(
+        vec![
+            (880.0, 180),
+            (0.0, 60),
+            (1175.0, 180),
+            (0.0, 60),
+            (1568.0, 320),
+            (0.0, 200),
+        ],
+        volume,
+    );
 }
 
 /// Kurzer Hinweiston
@@ -222,7 +268,16 @@ pub fn notify(volume: f32) {
 pub fn test_cli() -> i32 {
     let n = mixer_setup(0.85);
     println!("Mischer: {n} Regler/Schalter gesetzt");
-    match play_blocking(&tones(&[(880.0, 300), (0.0, 80), (1175.0, 300), (0.0, 80), (1568.0, 500)], 0.8)) {
+    match play_blocking(&tones(
+        &[
+            (880.0, 300),
+            (0.0, 80),
+            (1175.0, 300),
+            (0.0, 80),
+            (1568.0, 500),
+        ],
+        0.8,
+    )) {
         Ok(()) => {
             println!("Ton OK");
             0
@@ -251,15 +306,26 @@ mod tests {
         assert_eq!(u32_at(&p, 512), u32::MAX); // rmask
         let t = tones(&[(1000.0, 100), (0.0, 50)], 1.0);
         assert_eq!(t.len(), (4800 + 2400) * 4);
-        assert!(t[..4800 * 4].chunks(2).any(|s| i16::from_le_bytes([s[0], s[1]]).abs() > 20_000));
+        assert!(t[..4800 * 4]
+            .chunks(2)
+            .any(|s| i16::from_le_bytes([s[0], s[1]]).abs() > 20_000));
         assert!(t[4800 * 4..].iter().all(|&b| b == 0));
         // Tonhöhe prüfen: 1000 Hz über 100 ms = 100 Schwingungen (Nulldurchgänge von unten nach oben)
-        let left: Vec<i16> = t[..4800 * 4].chunks(4).map(|s| i16::from_le_bytes([s[0], s[1]])).collect();
+        let left: Vec<i16> = t[..4800 * 4]
+            .chunks(4)
+            .map(|s| i16::from_le_bytes([s[0], s[1]]))
+            .collect();
         let z = left.windows(2).filter(|w| w[0] < 0 && w[1] >= 0).count();
         assert!((99..=101).contains(&z), "Nulldurchgänge: {z}");
         let long = tones(&[(1568.0, 500)], 1.0);
-        let l2: Vec<i16> = long.chunks(4).map(|s| i16::from_le_bytes([s[0], s[1]])).collect();
-        let z2 = l2[12000..].windows(2).filter(|w| w[0] < 0 && w[1] >= 0).count();
+        let l2: Vec<i16> = long
+            .chunks(4)
+            .map(|s| i16::from_le_bytes([s[0], s[1]]))
+            .collect();
+        let z2 = l2[12000..]
+            .windows(2)
+            .filter(|w| w[0] < 0 && w[1] >= 0)
+            .count();
         assert!((390..=394).contains(&z2), "späte Nulldurchgänge: {z2}");
     }
 }
@@ -271,7 +337,9 @@ pub fn roh_cli() -> i32 {
     mixer_setup(0.85);
     for card in 0..4 {
         let path = format!("/dev/snd/pcmC{card}D0p");
-        let Ok(mut f) = OpenOptions::new().write(true).open(&path) else { continue };
+        let Ok(mut f) = OpenOptions::new().write(true).open(&path) else {
+            continue;
+        };
         let mut hp = hw_params();
         if unsafe { ioctl(f.as_raw_fd(), PCM_HW_PARAMS, hp.as_mut_ptr()) } != 0 {
             continue;

@@ -3,15 +3,18 @@
 //! ipc (Samsung-IPC-FMT-Nachricht), sim/net (SIM/Netz-Befehle), pdp (Daten→rmnet).
 //! Voraussetzung: CP gebootet+ONLINE (crates/ultar-modem).
 
-pub mod link;
-pub mod sipc5;
-pub mod tel;
+pub mod engine;
 pub mod ipc;
-pub mod sim;
+pub mod link;
+pub mod mock;
 pub mod net;
 pub mod pdp;
-pub mod mock;
 pub mod rfs;
-pub mod engine;
+pub mod sim;
+pub mod sipc5;
+pub mod tel;
 
-pub use link::{channel_to_node, MockLink, ModemLink, SipcFrame, UmtsLink, CH_FMT_0, CH_FMT_1, CH_PDP_0, CH_RFS_0, CH_ROUTER};
+pub use link::{
+    channel_to_node, MockLink, ModemLink, SipcFrame, UmtsLink, CH_FMT_0, CH_FMT_1, CH_PDP_0,
+    CH_RFS_0, CH_ROUTER,
+};

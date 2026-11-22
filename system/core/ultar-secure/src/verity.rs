@@ -52,7 +52,10 @@ pub fn open(cfg: &VerityCfg, name: &str) -> Result<String, String> {
 
 /// Status des aktiven Verity-Geräts (für die Anzeige in den Einstellungen).
 pub fn status(name: &str) -> Option<String> {
-    let out = Command::new(VERITYSETUP).args(["status", name]).output().ok()?;
+    let out = Command::new(VERITYSETUP)
+        .args(["status", name])
+        .output()
+        .ok()?;
     if out.status.success() {
         Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {

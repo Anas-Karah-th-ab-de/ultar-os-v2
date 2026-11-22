@@ -1,0 +1,189 @@
+# Ultar OS – quality gate for main (docs/PLAN.md §7 "CI-Pipeline").
+# Install as .github/workflows/ci.yml.
+#
+# fmt -> ultar-check (areas, paths, clean-code rules, budgets) -> clippy -> tests -> i18n
+# -> static aarch64 build (the "+crt-static" lesson from the A30).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+  # Output language of ultar-check in the logs (ar | en | de). Arabic is the tool's default.
+  ULTAR_LANG: en
+  # Crates that must build as static aarch64 programs (system core, plan §3.0 area 3).
+  STATIC_PACKAGES: ultar-bus ultar-driverpkg ultar-i18n
+  # Crates written under the v2 rules: linted with -D warnings. Code carried over from the old
+  # repository is held by the ratchet in tools/check-baseline.toml until it is rebuilt.
+  STRICT_PACKAGES: -p ultar-i18n -p ultar-profile -p ultar-hal -p ultar-hal-system -p ultar-bus -p ultar-driverpkg -p ultar-devd -p ultar-check
+  # ultar-llm builds llama.cpp (C++) and has its own workflow.
+  WORKSPACE: --workspace --exclude ultar-llm
+
+jobs:
+  gate:
+    name: Format and repository rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: gate-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: gate-${{ runner.os }}-
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Repository rules (ultar-check all)
+        run: cargo run --locked -p ultar-check -- all
+
+      - name: Rule report (JSON)
+        if: always()
+        run: cargo run --locked -p ultar-check -- all --format json > ultar-check.json || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ultar-check-report
+          path: ultar-check.json
+          if-no-files-found: ignore
+
+  test:
+    name: Clippy, tests, i18n
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: test-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: test-${{ runner.os }}-
+
+      - name: Clippy
+        run: |
+          cargo clippy --locked $STRICT_PACKAGES --all-targets -- -D warnings
+          cargo check --locked $WORKSPACE --all-targets
+
+      - name: Tests
+        run: cargo test --locked $WORKSPACE
+
+      - name: i18n check (every key in every language)
+        run: |
+          cargo run --locked -p ultar-i18n --bin ultar-i18n-check -- system/core/ultar-i18n/locales
+
+  static-aarch64:
+    name: Static aarch64 build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TARGET: aarch64-unknown-linux-musl
+      RUSTFLAGS: "-C target-feature=+crt-static"
+      # Pure-Rust crates link with the LLD shipped in the toolchain; no C cross compiler is
+      # installed on purpose, so a crate that pulls in a C library fails here.
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: rust-lld
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain and target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "$TARGET"
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: static-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: static-${{ runner.os }}-
+
+      - name: Build core crates (static)
+        run: |
+          packages=""
+          for name in $STATIC_PACKAGES; do packages="$packages -p $name"; done
+          cargo build --locked --release --target "$TARGET" $packages
+
+      - name: Verify static linking
+        run: |
+          dir="target/$TARGET/release"
+          checked=0
+          failed=0
+          for bin in $(find "$dir" -maxdepth 1 -type f -executable | sort); do
+            info=$(file -b "$bin")
+            checked=$((checked + 1))
+            case "$info" in
+              *"dynamically linked"*)
+                echo "::error file=$bin::not static: $info"
+                failed=1
+                ;;
+              *"statically linked"*|*"static-pie linked"*)
+                echo "ok   $bin"
+                ;;
+              *)
+                echo "::error file=$bin::unexpected file type: $info"
+                failed=1
+                ;;
+            esac
+          done
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::no binaries found in $dir"
+            exit 1
+          fi
+          exit "$failed"
+
+      - name: Size budgets of the static binaries
+        run: cargo run --locked -p ultar-check -- budget --target-dir target
+
+  kernel:
+    name: Ultar kernel in QEMU (drivers, ring 3, bus)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain and emulator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools
+      - name: Build, boot and test
+        run: PATH=/usr/lib/rust-1.97/bin:$PATH tools/kern-test/ci.sh

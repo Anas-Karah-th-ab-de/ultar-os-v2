@@ -29,20 +29,32 @@ use std::path::PathBuf;
 
 /// Wurzel aller Zellen: ULTAR_ZELLEN, sonst /data/ultar/zellen
 pub fn wurzel() -> PathBuf {
-    std::env::var("ULTAR_ZELLEN").map(PathBuf::from).unwrap_or_else(|_| "/data/ultar/zellen".into())
+    std::env::var("ULTAR_ZELLEN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| "/data/ultar/zellen".into())
 }
 
 pub fn jetzt() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Befehl ausführen, Fehler mit Ausgabe
 pub fn befehl(prog: &str, args: &[&str]) -> Result<String, String> {
-    let o = std::process::Command::new(prog).args(args).output().map_err(|e| format!("{prog}: {e}"))?;
+    let o = std::process::Command::new(prog)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{prog}: {e}"))?;
     if o.status.success() {
         Ok(String::from_utf8_lossy(&o.stdout).into_owned())
     } else {
-        Err(format!("{prog} {}: {}", args.join(" "), String::from_utf8_lossy(&o.stderr).trim()))
+        Err(format!(
+            "{prog} {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&o.stderr).trim()
+        ))
     }
 }
 

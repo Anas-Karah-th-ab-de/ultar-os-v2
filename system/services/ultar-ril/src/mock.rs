@@ -11,7 +11,10 @@ pub struct MockLink {
 
 impl MockLink {
     pub fn new() -> Self {
-        Self { sent: Vec::new(), inbox: VecDeque::new() }
+        Self {
+            sent: Vec::new(),
+            inbox: VecDeque::new(),
+        }
     }
 
     /// Mit genau einem Antwort-Frame vorbefüllen.

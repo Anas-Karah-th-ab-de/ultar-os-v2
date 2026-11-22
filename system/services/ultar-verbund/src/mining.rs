@@ -62,7 +62,10 @@ pub fn pfad(dir: &Path) -> PathBuf {
 
 impl Konfig {
     pub fn laden(dir: &Path) -> Konfig {
-        std::fs::read_to_string(pfad(dir)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(pfad(dir))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
     pub fn speichern(&self, dir: &Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dir)?;
@@ -104,12 +107,19 @@ pub fn lage() -> Lage {
     // letzte Bedienung: von der Oberfläche geschrieben (Unix-Sekunden); fehlt sie, gilt das Gerät als unbedient
     let run = crate::bildschirm::run_dir();
     let jetzt = crate::jetzt_ms() / 1000;
-    let zuletzt = std::fs::read_to_string(run.join("eingabe.zuletzt")).ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+    let zuletzt = std::fs::read_to_string(run.join("eingabe.zuletzt"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0);
     let mut am_strom = true;
     if let Ok(d) = std::fs::read_dir("/sys/class/power_supply") {
         for e in d.flatten() {
-            if std::fs::read_to_string(e.path().join("type")).map(|t| t.trim() == "Battery").unwrap_or(false)
-                && std::fs::read_to_string(e.path().join("status")).map(|s| s.trim() == "Discharging").unwrap_or(false)
+            if std::fs::read_to_string(e.path().join("type"))
+                .map(|t| t.trim() == "Battery")
+                .unwrap_or(false)
+                && std::fs::read_to_string(e.path().join("status"))
+                    .map(|s| s.trim() == "Discharging")
+                    .unwrap_or(false)
             {
                 am_strom = false;
             }
@@ -117,10 +127,24 @@ pub fn lage() -> Lage {
     }
     let temp_c = std::fs::read_dir("/sys/class/thermal")
         .ok()
-        .map(|d| d.flatten().filter_map(|e| std::fs::read_to_string(e.path().join("temp")).ok()?.trim().parse::<f32>().ok()).fold(None, |m: Option<f32>, v| Some(m.map_or(v, |m| m.max(v)))))
+        .map(|d| {
+            d.flatten()
+                .filter_map(|e| {
+                    std::fs::read_to_string(e.path().join("temp"))
+                        .ok()?
+                        .trim()
+                        .parse::<f32>()
+                        .ok()
+                })
+                .fold(None, |m: Option<f32>, v| Some(m.map_or(v, |m| m.max(v))))
+        })
         .flatten()
         .map(|t| if t > 1000.0 { t / 1000.0 } else { t });
-    Lage { sekunden_ohne_bedienung: jetzt.saturating_sub(zuletzt), am_strom, temp_c }
+    Lage {
+        sekunden_ohne_bedienung: jetzt.saturating_sub(zuletzt),
+        am_strom,
+        temp_c,
+    }
 }
 
 /// darf jetzt geschürft werden? (Grund, falls nicht)
@@ -140,7 +164,11 @@ pub fn darf(k: &Konfig, l: &Lage, verbund_belegt: usize, laeuft: bool) -> Result
     }
     if let Some(t) = l.temp_c {
         // 5 °C Abstand zum Wiedereinschalten, damit er nicht dauernd an/aus geht
-        let grenze = if laeuft { k.max_temp_c as f32 } else { k.max_temp_c as f32 - 5.0 };
+        let grenze = if laeuft {
+            k.max_temp_c as f32
+        } else {
+            k.max_temp_c as f32 - 5.0
+        };
         if t >= grenze {
             return Err(format!("zu warm ({t:.0} °C)"));
         }
@@ -158,7 +186,11 @@ pub fn miner_pfad(dir: &Path) -> PathBuf {
     if eigen.exists() {
         return eigen;
     }
-    for p in ["/usr/bin/xmrig", "/compat/usr/bin/xmrig", "/usr/local/bin/xmrig"] {
+    for p in [
+        "/usr/bin/xmrig",
+        "/compat/usr/bin/xmrig",
+        "/usr/local/bin/xmrig",
+    ] {
         if Path::new(p).exists() {
             return p.into();
         }
@@ -178,42 +210,88 @@ pub fn installieren(dir: &Path) -> Result<String, String> {
     let ziel = dir.join("miner");
     std::fs::create_dir_all(&ziel).map_err(|e| e.to_string())?;
     if cfg!(target_arch = "x86_64") {
-        let rel: serde_json::Value = ureq::get("https://api.github.com/repos/xmrig/xmrig/releases/latest")
-            .set("user-agent", "ultar-verbund")
-            .timeout(Duration::from_secs(30))
-            .call()
-            .map_err(|e| format!("GitHub: {e}"))?
-            .into_json()
-            .map_err(|e| e.to_string())?;
+        let rel: serde_json::Value =
+            ureq::get("https://api.github.com/repos/xmrig/xmrig/releases/latest")
+                .set("user-agent", "ultar-verbund")
+                .timeout(Duration::from_secs(30))
+                .call()
+                .map_err(|e| format!("GitHub: {e}"))?
+                .into_json()
+                .map_err(|e| e.to_string())?;
         let assets = rel["assets"].as_array().cloned().unwrap_or_default();
-        let url_von = |f: &dyn Fn(&str) -> bool| assets.iter().find(|a| f(a["name"].as_str().unwrap_or(""))).and_then(|a| a["browser_download_url"].as_str().map(String::from));
-        let paket = url_von(&|n| n.ends_with("linux-static-x64.tar.gz")).ok_or("kein statisches Linux-Paket im aktuellen Release")?;
+        let url_von = |f: &dyn Fn(&str) -> bool| {
+            assets
+                .iter()
+                .find(|a| f(a["name"].as_str().unwrap_or("")))
+                .and_then(|a| a["browser_download_url"].as_str().map(String::from))
+        };
+        let paket = url_von(&|n| n.ends_with("linux-static-x64.tar.gz"))
+            .ok_or("kein statisches Linux-Paket im aktuellen Release")?;
         let summen = url_von(&|n| n == "SHA256SUMS").ok_or("SHA256SUMS fehlt im Release")?;
-        let name = paket.rsplit('/').next().unwrap_or("xmrig.tar.gz").to_string();
+        let name = paket
+            .rsplit('/')
+            .next()
+            .unwrap_or("xmrig.tar.gz")
+            .to_string();
         let mut daten = Vec::new();
         use std::io::Read;
-        ureq::get(&paket).timeout(Duration::from_secs(300)).call().map_err(|e| e.to_string())?.into_reader().take(64 << 20).read_to_end(&mut daten).map_err(|e| e.to_string())?;
-        let liste = ureq::get(&summen).timeout(Duration::from_secs(30)).call().map_err(|e| e.to_string())?.into_string().map_err(|e| e.to_string())?;
-        let soll = liste.lines().find(|l| l.contains(&name)).and_then(|l| l.split_whitespace().next()).ok_or("Prüfsumme nicht gefunden")?.to_lowercase();
+        ureq::get(&paket)
+            .timeout(Duration::from_secs(300))
+            .call()
+            .map_err(|e| e.to_string())?
+            .into_reader()
+            .take(64 << 20)
+            .read_to_end(&mut daten)
+            .map_err(|e| e.to_string())?;
+        let liste = ureq::get(&summen)
+            .timeout(Duration::from_secs(30))
+            .call()
+            .map_err(|e| e.to_string())?
+            .into_string()
+            .map_err(|e| e.to_string())?;
+        let soll = liste
+            .lines()
+            .find(|l| l.contains(&name))
+            .and_then(|l| l.split_whitespace().next())
+            .ok_or("Prüfsumme nicht gefunden")?
+            .to_lowercase();
         use sha2::Digest;
         let ist = crate::ident::hex(&sha2::Sha256::digest(&daten));
         if ist != soll {
-            return Err(format!("Prüfsumme falsch ({ist} ≠ {soll}) – nicht eingerichtet"));
+            return Err(format!(
+                "Prüfsumme falsch ({ist} ≠ {soll}) – nicht eingerichtet"
+            ));
         }
         let tgz = ziel.join(&name);
         std::fs::write(&tgz, &daten).map_err(|e| e.to_string())?;
-        let ok = Command::new("tar").args(["-xzf"]).arg(&tgz).arg("-C").arg(&ziel).arg("--strip-components=1").status().map_err(|e| format!("tar: {e}"))?;
+        let ok = Command::new("tar")
+            .args(["-xzf"])
+            .arg(&tgz)
+            .arg("-C")
+            .arg(&ziel)
+            .arg("--strip-components=1")
+            .status()
+            .map_err(|e| format!("tar: {e}"))?;
         let _ = std::fs::remove_file(&tgz);
         if !ok.success() || !ziel.join("xmrig").exists() {
             return Err("Entpacken fehlgeschlagen".into());
         }
-        Ok(format!("XMRig {} eingerichtet (SHA-256 geprüft)", rel["tag_name"].as_str().unwrap_or("?")))
+        Ok(format!(
+            "XMRig {} eingerichtet (SHA-256 geprüft)",
+            rel["tag_name"].as_str().unwrap_or("?")
+        ))
     } else {
         // ARM (Handy, Platine): Ubuntu-Paket im Kompatibilitätsbereich
-        for (prog, args) in [("ultar-compat", vec!["apt", "install", "-y", "xmrig"]), ("apt-get", vec!["install", "-y", "xmrig"])] {
+        for (prog, args) in [
+            ("ultar-compat", vec!["apt", "install", "-y", "xmrig"]),
+            ("apt-get", vec!["install", "-y", "xmrig"]),
+        ] {
             if let Ok(s) = Command::new(prog).args(&args).status() {
                 if s.success() && installiert(dir) {
-                    return Ok(format!("XMRig eingerichtet ({})", miner_pfad(dir).display()));
+                    return Ok(format!(
+                        "XMRig eingerichtet ({})",
+                        miner_pfad(dir).display()
+                    ));
                 }
             }
         }
@@ -227,7 +305,11 @@ pub struct Miner {
     pub grund: String,
 }
 
-pub static MINER: Mutex<Miner> = Mutex::new(Miner { kind: None, seit: None, grund: String::new() });
+pub static MINER: Mutex<Miner> = Mutex::new(Miner {
+    kind: None,
+    seit: None,
+    grund: String::new(),
+});
 
 fn befehl(dir: &Path, k: &Konfig, name: &str) -> Vec<String> {
     if k.waehrung == "eigen" {
@@ -242,7 +324,11 @@ fn befehl(dir: &Path, k: &Konfig, name: &str) -> Vec<String> {
         "-u".into(),
         k.wallet.clone(),
         "-p".into(),
-        if k.arbeiter.is_empty() { name.to_string() } else { k.arbeiter.clone() },
+        if k.arbeiter.is_empty() {
+            name.to_string()
+        } else {
+            k.arbeiter.clone()
+        },
         "--threads".into(),
         n.to_string(),
         "--cpu-priority".into(),
@@ -284,7 +370,14 @@ impl Miner {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .or_else(|_| Command::new(&b[0]).args(&b[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn())
+            .or_else(|_| {
+                Command::new(&b[0])
+                    .args(&b[1..])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+            })
             .map_err(|e| format!("Miner: {e}"))?;
         self.kind = Some(kind);
         self.seit = Some(Instant::now());
@@ -374,15 +467,59 @@ mod tests {
     const W: &str = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A";
     #[test]
     fn regeln() {
-        let mut k = Konfig { aktiv: true, wallet: W.into(), ..Default::default() };
+        let mut k = Konfig {
+            aktiv: true,
+            wallet: W.into(),
+            ..Default::default()
+        };
         assert!(k.pruefen().is_ok());
-        let ruhig = Lage { sekunden_ohne_bedienung: 3600, am_strom: true, temp_c: Some(50.0) };
+        let ruhig = Lage {
+            sekunden_ohne_bedienung: 3600,
+            am_strom: true,
+            temp_c: Some(50.0),
+        };
         assert!(darf(&k, &ruhig, 0, false).is_ok());
-        assert!(darf(&k, &Lage { sekunden_ohne_bedienung: 10, ..ruhig.clone() }, 0, false).is_err());
+        assert!(darf(
+            &k,
+            &Lage {
+                sekunden_ohne_bedienung: 10,
+                ..ruhig.clone()
+            },
+            0,
+            false
+        )
+        .is_err());
         assert!(darf(&k, &ruhig, 1, true).is_err());
-        assert!(darf(&k, &Lage { am_strom: false, ..ruhig.clone() }, 0, false).is_err());
-        assert!(darf(&k, &Lage { temp_c: Some(72.0), ..ruhig.clone() }, 0, false).is_err()); // Abstand
-        assert!(darf(&k, &Lage { temp_c: Some(72.0), ..ruhig.clone() }, 0, true).is_ok());
+        assert!(darf(
+            &k,
+            &Lage {
+                am_strom: false,
+                ..ruhig.clone()
+            },
+            0,
+            false
+        )
+        .is_err());
+        assert!(darf(
+            &k,
+            &Lage {
+                temp_c: Some(72.0),
+                ..ruhig.clone()
+            },
+            0,
+            false
+        )
+        .is_err()); // Abstand
+        assert!(darf(
+            &k,
+            &Lage {
+                temp_c: Some(72.0),
+                ..ruhig.clone()
+            },
+            0,
+            true
+        )
+        .is_ok());
         k.waehrung = "eth".into();
         assert!(k.pruefen().unwrap_err().contains("Proof-of-Stake"));
         k.waehrung = "xmr".into();

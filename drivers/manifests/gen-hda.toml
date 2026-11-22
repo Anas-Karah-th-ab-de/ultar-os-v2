@@ -1,0 +1,20 @@
+# Intel HD Audio controllers by class (HDA 1.0a) plus the controllers of the two test machines by id,
+# because cAVS controllers may report class 0401 when the DSP is enabled.
+# T1: 8086:06c8, T2: 8086:7728.
+id = "gen-hda"
+version = "1.0.0"
+class = "audio"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "workshop"
+rank = 50
+name_key = "driver.gen-hda.name"
+description_key = "driver.gen-hda.description"
+
+[match]
+pci_class = ["0403"]
+pci = ["8086:06c8", "8086:7728"]
+
+[content]
+# Stage A (docs/PLAN.md §5.5): the driver is built into the Ultar kernel; the package
+# carries its activation record. Stage B replaces this by a loadable module.
+hal_config = "builtin/gen-hda.toml"

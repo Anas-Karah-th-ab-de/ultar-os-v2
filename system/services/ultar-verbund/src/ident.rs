@@ -17,11 +17,16 @@ impl Ident {
         let f = dir.join("schluessel");
         if let Ok(b) = std::fs::read(&f) {
             if b.len() == 64 {
-                return Ok(Ident { privat: b[..32].to_vec(), oeffentlich: b[32..].to_vec() });
+                return Ok(Ident {
+                    privat: b[..32].to_vec(),
+                    oeffentlich: b[32..].to_vec(),
+                });
             }
         }
         std::fs::create_dir_all(dir)?;
-        let kp = snow::Builder::new(NOISE.parse().unwrap()).generate_keypair().map_err(|e| std::io::Error::other(e.to_string()))?;
+        let kp = snow::Builder::new(NOISE.parse().unwrap())
+            .generate_keypair()
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         let mut b = kp.private.clone();
         b.extend_from_slice(&kp.public);
         std::fs::write(&f, &b)?;
@@ -30,7 +35,10 @@ impl Ident {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600));
         }
-        Ok(Ident { privat: kp.private, oeffentlich: kp.public })
+        Ok(Ident {
+            privat: kp.private,
+            oeffentlich: kp.public,
+        })
     }
 
     pub fn kennung(&self) -> String {
@@ -55,5 +63,8 @@ pub fn unhex(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+        .collect()
 }

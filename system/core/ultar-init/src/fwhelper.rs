@@ -9,14 +9,23 @@
 
 use std::fs;
 
-const DIRS: &[&str] = &["/lib/firmware", "/vendor/firmware", "/vendor/etc/wifi", "/vendor/etc", "/data/ultar/firmware", "/compat/lib/firmware"];
+const DIRS: &[&str] = &[
+    "/lib/firmware",
+    "/vendor/firmware",
+    "/vendor/etc/wifi",
+    "/vendor/etc",
+    "/data/ultar/firmware",
+    "/compat/lib/firmware",
+];
 const CLASS: &str = "/sys/class/firmware";
 
 fn find(name: &str) -> Option<String> {
     if name.contains("..") {
         return None;
     }
-    DIRS.iter().map(|d| format!("{d}/{name}")).find(|p| fs::metadata(p).is_ok_and(|m| m.is_file()))
+    DIRS.iter()
+        .map(|d| format!("{d}/{name}"))
+        .find(|p| fs::metadata(p).is_ok_and(|m| m.is_file()))
 }
 
 /// Eine offene Anfrage bedienen (sysfs-Verzeichnis der Anfrage, Firmware-Name).
@@ -28,13 +37,24 @@ fn serve(dir: &str, name: &str) {
     let data = find(name).and_then(|p| fs::read(&p).ok().map(|d| (p, d)));
     match data {
         Some((p, d)) => {
-            let ok = fs::write(&loading, "1").is_ok() && fs::write(format!("{dir}/data"), &d).is_ok();
+            let ok =
+                fs::write(&loading, "1").is_ok() && fs::write(format!("{dir}/data"), &d).is_ok();
             let _ = fs::write(&loading, if ok { "0" } else { "-1" });
-            crate::log(&format!("Firmware {name}: {} ({} Bytes aus {p})", if ok { "geladen" } else { "FEHLER beim Schreiben" }, d.len()));
+            crate::log(&format!(
+                "Firmware {name}: {} ({} Bytes aus {p})",
+                if ok {
+                    "geladen"
+                } else {
+                    "FEHLER beim Schreiben"
+                },
+                d.len()
+            ));
         }
         None => {
             let _ = fs::write(&loading, "-1");
-            crate::log(&format!("Firmware {name}: nicht vorhanden – Anfrage sofort abgelehnt"));
+            crate::log(&format!(
+                "Firmware {name}: nicht vorhanden – Anfrage sofort abgelehnt"
+            ));
         }
     }
 }
@@ -54,13 +74,25 @@ pub fn start() {
     std::thread::spawn(|| {
         use nix::libc;
         // Erst den Ereigniskanal öffnen, dann den Bestand bedienen – so geht keine Anfrage verloren.
-        let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, libc::NETLINK_KOBJECT_UEVENT) };
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
+                libc::NETLINK_KOBJECT_UEVENT,
+            )
+        };
         let mut bound = false;
         if fd >= 0 {
             let mut sa: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
             sa.nl_family = libc::AF_NETLINK as u16;
             sa.nl_groups = 1;
-            bound = unsafe { libc::bind(fd, &sa as *const _ as *const libc::sockaddr, std::mem::size_of::<libc::sockaddr_nl>() as u32) } == 0;
+            bound = unsafe {
+                libc::bind(
+                    fd,
+                    &sa as *const _ as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_nl>() as u32,
+                )
+            } == 0;
         }
         serve_pending();
         // Ab jetzt wird jede Anfrage sofort bedient oder abgelehnt; das Zeitlimit greift nur noch als Reserve.
@@ -80,13 +112,21 @@ pub fn start() {
                 continue;
             }
             let msg = &buf[..n as usize];
-            let mut fields = msg.split(|b| *b == 0).filter_map(|f| std::str::from_utf8(f).ok());
+            let mut fields = msg
+                .split(|b| *b == 0)
+                .filter_map(|f| std::str::from_utf8(f).ok());
             if !fields.next().is_some_and(|h| h.starts_with("add@")) {
                 continue;
             }
             let (mut sub, mut path, mut fw) = ("", "", "");
             for f in fields {
-                if let Some(v) = f.strip_prefix("SUBSYSTEM=") { sub = v } else if let Some(v) = f.strip_prefix("DEVPATH=") { path = v } else if let Some(v) = f.strip_prefix("FIRMWARE=") { fw = v }
+                if let Some(v) = f.strip_prefix("SUBSYSTEM=") {
+                    sub = v
+                } else if let Some(v) = f.strip_prefix("DEVPATH=") {
+                    path = v
+                } else if let Some(v) = f.strip_prefix("FIRMWARE=") {
+                    fw = v
+                }
             }
             if sub == "firmware" && !fw.is_empty() && !path.is_empty() {
                 serve(&format!("/sys{path}"), fw);

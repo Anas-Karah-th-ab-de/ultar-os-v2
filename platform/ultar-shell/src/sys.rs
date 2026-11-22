@@ -44,7 +44,29 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { lang: "ar".into(), dark: true, accent: 0, scale: 1.0, rotation: 0, brightness: 1.0, timeout_s: 0, tz_min: 60, hostname: String::new(), setup_done: false, adblock: true, sound: true, volume: 0.7, priv_all: true, priv_net: true, priv_cam: true, priv_mic: true, priv_loc: true, priv_sensors: true, priv_bt: true, help_btn: true }
+        Self {
+            lang: "ar".into(),
+            dark: true,
+            accent: 0,
+            scale: 1.0,
+            rotation: 0,
+            brightness: 1.0,
+            timeout_s: 0,
+            tz_min: 60,
+            hostname: String::new(),
+            setup_done: false,
+            adblock: true,
+            sound: true,
+            volume: 0.7,
+            priv_all: true,
+            priv_net: true,
+            priv_cam: true,
+            priv_mic: true,
+            priv_loc: true,
+            priv_sensors: true,
+            priv_bt: true,
+            help_btn: true,
+        }
     }
 }
 
@@ -62,7 +84,14 @@ pub struct NetCfg {
 
 impl Default for NetCfg {
     fn default() -> Self {
-        Self { dhcp: true, address: String::new(), prefix: 24, gateway: String::new(), dns: String::new(), ignore: Vec::new() }
+        Self {
+            dhcp: true,
+            address: String::new(),
+            prefix: 24,
+            gateway: String::new(),
+            dns: String::new(),
+            ignore: Vec::new(),
+        }
     }
 }
 
@@ -71,7 +100,10 @@ pub fn data_dir() -> String {
 }
 
 pub fn load<T: Default + DeserializeOwned>(name: &str) -> T {
-    std::fs::read_to_string(format!("{}/{name}", data_dir())).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default()
+    std::fs::read_to_string(format!("{}/{name}", data_dir()))
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 /// Atomar und stromausfallsicher speichern: temporäre Datei schreiben, auf den
@@ -82,7 +114,9 @@ pub fn save<T: Serialize>(name: &str, v: &T) -> Result<(), String> {
     let s = toml::to_string(v).map_err(|e| e.to_string())?;
     let tmp = format!("{dir}/.{name}.tmp");
     let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
-    f.write_all(s.as_bytes()).and_then(|_| f.sync_all()).map_err(|e| e.to_string())?;
+    f.write_all(s.as_bytes())
+        .and_then(|_| f.sync_all())
+        .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, format!("{dir}/{name}")).map_err(|e| e.to_string())?;
     if let Ok(d) = std::fs::File::open(&dir) {
         let _ = d.sync_all();
@@ -125,7 +159,10 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 }
 
 pub fn unix_now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 pub fn from_unix(t: i64, tz_min: i32) -> DateTime {
@@ -133,29 +170,59 @@ pub fn from_unix(t: i64, tz_min: i32) -> DateTime {
     let days = t.div_euclid(86400);
     let rem = t.rem_euclid(86400);
     let (y, mo, d) = civil_from_days(days);
-    DateTime { y, mo, d, h: rem / 3600, mi: rem % 3600 / 60, s: rem % 60, wd: (days + 4).rem_euclid(7) as usize }
+    DateTime {
+        y,
+        mo,
+        d,
+        h: rem / 3600,
+        mi: rem % 3600 / 60,
+        s: rem % 60,
+        wd: (days + 4).rem_euclid(7) as usize,
+    }
 }
 
 pub fn to_unix(dt: &DateTime, tz_min: i32) -> i64 {
-    days_from_civil(dt.y, dt.mo, dt.d) * 86400 + dt.h * 3600 + dt.mi * 60 + dt.s - tz_min as i64 * 60
+    days_from_civil(dt.y, dt.mo, dt.d) * 86400 + dt.h * 3600 + dt.mi * 60 + dt.s
+        - tz_min as i64 * 60
 }
 
 pub fn days_in_month(y: i64, m: i64) -> i64 {
-    days_from_civil(if m == 12 { y + 1 } else { y }, if m == 12 { 1 } else { m + 1 }, 1) - days_from_civil(y, m, 1)
+    days_from_civil(
+        if m == 12 { y + 1 } else { y },
+        if m == 12 { 1 } else { m + 1 },
+        1,
+    ) - days_from_civil(y, m, 1)
 }
 
 /// Systemzeit und Hardware-Uhr (RTC, in UTC) setzen.
 pub fn set_time(t: i64) -> Result<(), String> {
     use nix::sys::time::TimeSpec;
-    nix::time::clock_settime(nix::time::ClockId::CLOCK_REALTIME, TimeSpec::new(t, 0)).map_err(|e| e.to_string())?;
+    nix::time::clock_settime(nix::time::ClockId::CLOCK_REALTIME, TimeSpec::new(t, 0))
+        .map_err(|e| e.to_string())?;
     if let Ok(f) = std::fs::OpenOptions::new().write(true).open("/dev/rtc0") {
         let u = from_unix(t, 0);
-        let tm: [i32; 9] = [u.s as i32, u.mi as i32, u.h as i32, u.d as i32, u.mo as i32 - 1, u.y as i32 - 1900, 0, 0, 0];
+        let tm: [i32; 9] = [
+            u.s as i32,
+            u.mi as i32,
+            u.h as i32,
+            u.d as i32,
+            u.mo as i32 - 1,
+            u.y as i32 - 1900,
+            0,
+            0,
+            0,
+        ];
         extern "C" {
             fn ioctl(fd: i32, req: u64, ...) -> i32;
         }
         use std::os::fd::AsRawFd;
-        unsafe { ioctl(f.as_raw_fd(), 0x4024_700a /* RTC_SET_TIME */, tm.as_ptr()) };
+        unsafe {
+            ioctl(
+                f.as_raw_fd(),
+                0x4024_700a, /* RTC_SET_TIME */
+                tm.as_ptr(),
+            )
+        };
     }
     Ok(())
 }
@@ -164,12 +231,21 @@ pub fn set_time(t: i64) -> Result<(), String> {
 
 fn meminfo_raw() -> (u64, u64) {
     let s = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
-    let get = |k: &str| s.lines().find(|l| l.starts_with(k)).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let get = |k: &str| {
+        s.lines()
+            .find(|l| l.starts_with(k))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0)
+    };
     (get("MemTotal:") * 1024, get("MemAvailable:") * 1024)
 }
 
 pub fn is_mounted(path: &str) -> bool {
-    path == "/" || std::fs::read_to_string("/proc/mounts").map(|m| m.lines().any(|l| l.split_whitespace().nth(1) == Some(path))).unwrap_or(false)
+    path == "/"
+        || std::fs::read_to_string("/proc/mounts")
+            .map(|m| m.lines().any(|l| l.split_whitespace().nth(1) == Some(path)))
+            .unwrap_or(false)
 }
 
 /// Wartet (begrenzt), bis /data eingebunden ist. ultar-init mountet die große userdata-ext4 im
@@ -199,7 +275,10 @@ pub fn disk(path: &str) -> Option<(u64, u64)> {
         return None;
     }
     let s = nix::sys::statvfs::statvfs(path).ok()?;
-    Some((s.blocks() as u64 * s.fragment_size() as u64, s.blocks_available() as u64 * s.fragment_size() as u64))
+    Some((
+        s.blocks() as u64 * s.fragment_size() as u64,
+        s.blocks_available() as u64 * s.fragment_size() as u64,
+    ))
 }
 
 pub fn human(b: u64) -> String {
@@ -232,8 +311,14 @@ fn net_status_raw() -> Vec<NetIf> {
             if name.starts_with('.') {
                 continue;
             }
-            let mut n = NetIf { name, ..Default::default() };
-            for l in std::fs::read_to_string(e.path()).unwrap_or_default().lines() {
+            let mut n = NetIf {
+                name,
+                ..Default::default()
+            };
+            for l in std::fs::read_to_string(e.path())
+                .unwrap_or_default()
+                .lines()
+            {
                 if let Some((k, val)) = l.split_once('=') {
                     match k {
                         "state" => n.state = val.into(),
@@ -279,25 +364,47 @@ pub fn battery_info() -> Option<Battery> {
     memo("battery_info", 4000, battery_info_raw)
 }
 fn battery_info_raw() -> Option<Battery> {
-    let entries: Vec<_> = std::fs::read_dir("/sys/class/power_supply").ok()?.flatten().collect();
+    let entries: Vec<_> = std::fs::read_dir("/sys/class/power_supply")
+        .ok()?
+        .flatten()
+        .collect();
     // zuerst die klar als Akku benannten Knoten probieren
     let order = |e: &std::fs::DirEntry| -> i32 {
         let n = e.file_name().to_string_lossy().to_lowercase();
-        if n == "battery" { 0 } else if n.contains("battery") || n == "bms" { 1 } else { 2 }
+        if n == "battery" {
+            0
+        } else if n.contains("battery") || n == "bms" {
+            1
+        } else {
+            2
+        }
     };
     let mut entries = entries;
     entries.sort_by_key(order);
     for e in entries {
         let p = e.path();
         let name = e.file_name().to_string_lossy().to_lowercase();
-        let rd = |f: &str| std::fs::read_to_string(p.join(f)).map(|s| s.trim().to_string()).unwrap_or_default();
-        let is_batt = rd("type") == "Battery" || name == "battery" || name.contains("battery") || name == "bms";
+        let rd = |f: &str| {
+            std::fs::read_to_string(p.join(f))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
+        };
+        let is_batt = rd("type") == "Battery"
+            || name == "battery"
+            || name.contains("battery")
+            || name == "bms";
         if !is_batt {
             continue;
         }
         // Prozent direkt oder aus Ladung/Energie berechnet (manche Treiber liefern kein "capacity")
         let pct = rd("capacity").parse::<f32>().ok().or_else(|| {
-            let ratio = |now: &str, full: &str| Some(rd(now).parse::<f32>().ok()? / rd(full).parse::<f32>().ok().filter(|v| *v > 0.0)? * 100.0);
+            let ratio = |now: &str, full: &str| {
+                Some(
+                    rd(now).parse::<f32>().ok()?
+                        / rd(full).parse::<f32>().ok().filter(|v| *v > 0.0)?
+                        * 100.0,
+                )
+            };
             ratio("charge_now", "charge_full").or_else(|| ratio("energy_now", "energy_full"))
         });
         let Some(pct) = pct else { continue };
@@ -308,7 +415,10 @@ fn battery_info_raw() -> Option<Battery> {
             status,
             health: rd("health"),
             temp_c: rd("temp").parse::<f32>().ok().map(|t| t / 10.0),
-            volt: rd("voltage_now").parse::<f32>().ok().map(|v| v / 1_000_000.0),
+            volt: rd("voltage_now")
+                .parse::<f32>()
+                .ok()
+                .map(|v| v / 1_000_000.0),
         });
     }
     None
@@ -320,7 +430,10 @@ pub fn set_backlight(v: f32) -> bool {
     if let Ok(rd) = std::fs::read_dir("/sys/class/backlight") {
         for e in rd.flatten() {
             let p = e.path();
-            if let Some(max) = std::fs::read_to_string(p.join("max_brightness")).ok().and_then(|s| s.trim().parse::<f32>().ok()) {
+            if let Some(max) = std::fs::read_to_string(p.join("max_brightness"))
+                .ok()
+                .and_then(|s| s.trim().parse::<f32>().ok())
+            {
                 let val = (max * v.clamp(0.0, 1.0)).round() as u32;
                 any |= std::fs::write(p.join("brightness"), val.to_string()).is_ok();
             }
@@ -330,18 +443,36 @@ pub fn set_backlight(v: f32) -> bool {
 }
 
 pub fn read_trim(p: &str) -> String {
-    std::fs::read_to_string(p).unwrap_or_default().trim().to_string()
+    std::fs::read_to_string(p)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 pub fn cpu() -> String {
     let s = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
-    let n = s.lines().filter(|l| l.starts_with("processor")).count().max(1);
-    let model = s.lines().find(|l| l.starts_with("model name") || l.starts_with("Hardware") || l.starts_with("Model")).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim().to_string()).unwrap_or_else(|| std::env::consts::ARCH.to_string());
+    let n = s
+        .lines()
+        .filter(|l| l.starts_with("processor"))
+        .count()
+        .max(1);
+    let model = s
+        .lines()
+        .find(|l| {
+            l.starts_with("model name") || l.starts_with("Hardware") || l.starts_with("Model")
+        })
+        .and_then(|l| l.split_once(':'))
+        .map(|(_, v)| v.trim().to_string())
+        .unwrap_or_else(|| std::env::consts::ARCH.to_string());
     format!("{n} × {model}")
 }
 
 pub fn uptime_s() -> u64 {
-    read_trim("/proc/uptime").split('.').next().and_then(|v| v.parse().ok()).unwrap_or(0)
+    read_trim("/proc/uptime")
+        .split('.')
+        .next()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
 }
 
 // ---------- ultar-init ----------
@@ -352,7 +483,11 @@ pub fn ctl(cmd: &str) -> String {
         // ohne ultar-init (z. B. auf dem Ultar-Kern): Neustart/Ausschalten direkt über den Kern
         if matches!(cmd, "reboot" | "poweroff") && std::env::var("ULTAR_DRY").is_err() {
             nix::unistd::sync();
-            let m = if cmd == "reboot" { nix::sys::reboot::RebootMode::RB_AUTOBOOT } else { nix::sys::reboot::RebootMode::RB_POWER_OFF };
+            let m = if cmd == "reboot" {
+                nix::sys::reboot::RebootMode::RB_AUTOBOOT
+            } else {
+                nix::sys::reboot::RebootMode::RB_POWER_OFF
+            };
             let _ = nix::sys::reboot::reboot(m);
         }
         return String::new();
@@ -380,7 +515,11 @@ pub fn services() -> Vec<Svc> {
         .skip(1)
         .filter_map(|l| {
             let p: Vec<&str> = l.split_whitespace().collect();
-            (p.len() >= 4).then(|| Svc { name: p[0].into(), state: p[1].into(), pid: p[2].into() })
+            (p.len() >= 4).then(|| Svc {
+                name: p[0].into(),
+                state: p[1].into(),
+                pid: p[2].into(),
+            })
         })
         .collect()
 }
@@ -434,7 +573,12 @@ impl Bg {
 
     /// Programm ausführen und warten; Ausgabe wird zeilenweise gemeldet. Liefert den Exit-Code.
     pub fn stream(&self, prog: &str, args: &[String], line: fn(String) -> Msg) -> i32 {
-        let child = Command::new(prog).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
+        let child = Command::new(prog)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
         let mut child = match child {
             Ok(c) => c,
             Err(e) => {
@@ -446,7 +590,11 @@ impl Bg {
             std::thread::spawn(move || {
                 let mut r = BufReader::new(r);
                 let mut buf = Vec::new();
-                while r.read_until(b'\n', &mut buf).map(|n| n > 0).unwrap_or(false) {
+                while r
+                    .read_until(b'\n', &mut buf)
+                    .map(|n| n > 0)
+                    .unwrap_or(false)
+                {
                     let s = String::from_utf8_lossy(&buf);
                     // Fortschrittszeilen (\r) auf den letzten Stand kürzen
                     let s = s.trim_end().rsplit('\r').next().unwrap_or("").to_string();
@@ -466,7 +614,13 @@ impl Bg {
     }
 
     /// Programm im Hintergrund starten, Ausgabe zeilenweise melden.
-    pub fn run(&self, prog: &str, args: Vec<String>, line: fn(String) -> Msg, done: fn(i32) -> Msg) {
+    pub fn run(
+        &self,
+        prog: &str,
+        args: Vec<String>,
+        line: fn(String) -> Msg,
+        done: fn(i32) -> Msg,
+    ) {
         let bg = self.clone();
         let prog = prog.to_string();
         std::thread::spawn(move || {
@@ -477,7 +631,13 @@ impl Bg {
 }
 
 pub fn capture(prog: &str, args: &[&str]) -> String {
-    Command::new(prog).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+    Command::new(prog)
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 // ---------- WLAN ----------
@@ -495,7 +655,11 @@ pub fn iw_bin() -> Option<String> {
 }
 
 pub fn wpa_bin() -> Option<String> {
-    for p in ["/usr/lib/ultar/wpa_supplicant", "/sbin/wpa_supplicant", "/usr/sbin/wpa_supplicant"] {
+    for p in [
+        "/usr/lib/ultar/wpa_supplicant",
+        "/sbin/wpa_supplicant",
+        "/usr/sbin/wpa_supplicant",
+    ] {
         if std::path::Path::new(p).exists() {
             return Some(p.to_string());
         }
@@ -506,7 +670,8 @@ pub fn wpa_bin() -> Option<String> {
 pub fn wifi_tools() -> bool {
     // Entweder die nativen statischen Programme oder der Ubuntu-Bereich reichen.
     (wpa_bin().is_some() && iw_bin().is_some())
-        || (std::path::Path::new("/compat/usr/sbin/wpa_supplicant").exists() && std::path::Path::new("/compat/usr/sbin/iw").exists())
+        || (std::path::Path::new("/compat/usr/sbin/wpa_supplicant").exists()
+            && std::path::Path::new("/compat/usr/sbin/iw").exists())
 }
 
 /// WLAN-Hauptschnittstelle: bevorzugt wlan*, nie Nebenschnittstellen (p2p0 für Wi-Fi Direct,
@@ -518,7 +683,12 @@ pub fn wifi_iface() -> Option<String> {
         .flatten()
         .filter(|e| e.path().join("phy80211").exists())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| !ignore.contains(n) && !["p2p", "swlan", "ap", "aware", "nan"].iter().any(|p| n.starts_with(p)))
+        .filter(|n| {
+            !ignore.contains(n)
+                && !["p2p", "swlan", "ap", "aware", "nan"]
+                    .iter()
+                    .any(|p| n.starts_with(p))
+        })
         .collect();
     v.sort_by_key(|n| (!n.starts_with("wlan"), n.clone()));
     v.into_iter().next()
@@ -545,7 +715,9 @@ fn wifi_ssid_raw() -> Option<String> {
     if let Some(q) = v.strip_prefix('"').and_then(|x| x.strip_suffix('"')) {
         return Some(q.to_string());
     }
-    let bytes: Vec<u8> = (0..v.len() / 2).filter_map(|i| u8::from_str_radix(&v[2 * i..2 * i + 2], 16).ok()).collect();
+    let bytes: Vec<u8> = (0..v.len() / 2)
+        .filter_map(|i| u8::from_str_radix(&v[2 * i..2 * i + 2], 16).ok())
+        .collect();
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -564,8 +736,16 @@ pub fn wifi_save(ssid: &str, password: &str) -> Result<(), String> {
     let conf = format!("ctrl_interface=DIR=/run/wpa_supplicant\nupdate_config=1\nnetwork={{\nssid={hex}\n{auth}\nscan_ssid=1\n}}\n");
     std::fs::create_dir_all(data_dir()).map_err(|e| e.to_string())?;
     let tmp = format!("{WIFI_CONF}.tmp");
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).map_err(|e| e.to_string())?;
-    f.write_all(conf.as_bytes()).and_then(|_| f.sync_all()).map_err(|e| e.to_string())?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    f.write_all(conf.as_bytes())
+        .and_then(|_| f.sync_all())
+        .map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, WIFI_CONF).map_err(|e| e.to_string())
 }
 
@@ -617,8 +797,15 @@ fn iw_scan(ifc: &str) -> Vec<(String, i32, bool)> {
             if let Some(v) = t.strip_prefix("SSID: ") {
                 c.0 = crate::wifi::unescape(v);
             } else if let Some(v) = t.strip_prefix("signal: ") {
-                c.1 = v.split('.').next().and_then(|x| x.trim().parse().ok()).unwrap_or(-100);
-            } else if t.starts_with("RSN:") || t.starts_with("WPA:") || t.starts_with("capability:") && t.contains("Privacy") {
+                c.1 = v
+                    .split('.')
+                    .next()
+                    .and_then(|x| x.trim().parse().ok())
+                    .unwrap_or(-100);
+            } else if t.starts_with("RSN:")
+                || t.starts_with("WPA:")
+                || t.starts_with("capability:") && t.contains("Privacy")
+            {
                 c.2 = true;
             }
         }
@@ -630,10 +817,15 @@ fn iw_scan(ifc: &str) -> Vec<(String, i32, bool)> {
 pub fn wifi_scan(bg: &Bg) {
     let bg = bg.clone();
     std::thread::spawn(move || {
-        let Some(ifc) = wifi_iface() else { return bg.send(Msg::Wifi(Vec::new(), Vec::new())) };
+        let Some(ifc) = wifi_iface() else {
+            return bg.send(Msg::Wifi(Vec::new(), Vec::new()));
+        };
         iface_up(&ifc, true);
         let nets = crate::wifi::scan(&ifc).unwrap_or_else(|| iw_scan(&ifc));
-        let saved = crate::wifi::saved(&ifc).into_iter().map(|(_, n)| n).collect();
+        let saved = crate::wifi::saved(&ifc)
+            .into_iter()
+            .map(|(_, n)| n)
+            .collect();
         bg.send(Msg::Wifi(nets, saved));
     });
 }
@@ -643,7 +835,9 @@ pub fn wifi_scan(bg: &Bg) {
 pub fn wifi_connect(bg: &Bg, ssid: String, password: Option<String>) {
     let bg = bg.clone();
     std::thread::spawn(move || {
-        let Some(ifc) = wifi_iface() else { return bg.send(Msg::WifiDone(ssid, Err("no-device".into()))) };
+        let Some(ifc) = wifi_iface() else {
+            return bg.send(Msg::WifiDone(ssid, Err("no-device".into())));
+        };
         if !crate::wifi::available(&ifc) {
             // Rückfallweg: Datei schreiben, Netzdienst startet wpa_supplicant neu
             let r = wifi_save(&ssid, password.as_deref().unwrap_or("")).map(|_| {
@@ -656,7 +850,9 @@ pub fn wifi_connect(bg: &Bg, ssid: String, password: Option<String>) {
             None if crate::wifi::select(&ifc, &ssid) => Ok(()),
             None => crate::wifi::connect(&ifc, &ssid, ""),
         };
-        let r = r.and_then(|_| crate::wifi::wait_connected(&ifc, &ssid, std::time::Duration::from_secs(25)));
+        let r = r.and_then(|_| {
+            crate::wifi::wait_connected(&ifc, &ssid, std::time::Duration::from_secs(25))
+        });
         bg.send(Msg::WifiDone(ssid, r));
     });
 }
@@ -677,9 +873,14 @@ pub fn wifi_forget(ssid: &str) {
 /// Kann der Ultar-Desktop hier laufen? Grafikchip mit DRM/KMS (GPU-Weg) oder Bildspeicher (fbdev/DECON, Pixman-Weg).
 pub fn has_drm() -> bool {
     std::fs::read_dir("/dev/dri")
-        .map(|d| d.flatten().any(|e| e.file_name().to_string_lossy().starts_with("card")))
+        .map(|d| {
+            d.flatten()
+                .any(|e| e.file_name().to_string_lossy().starts_with("card"))
+        })
         .unwrap_or(false)
-        || ["/dev/fb0", "/dev/graphics/fb0"].iter().any(|p| std::path::Path::new(p).exists())
+        || ["/dev/fb0", "/dev/graphics/fb0"]
+            .iter()
+            .any(|p| std::path::Path::new(p).exists())
 }
 
 pub fn compat_ready() -> bool {
@@ -687,15 +888,36 @@ pub fn compat_ready() -> bool {
 }
 
 pub fn valid_pkg(name: &str) -> bool {
-    !name.is_empty() && name.len() < 100 && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c)) && !name.starts_with('-')
+    !name.is_empty()
+        && name.len() < 100
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c))
+        && !name.starts_with('-')
 }
 
 pub fn search_packages(bg: &Bg, query: String) {
     let bg = bg.clone();
     std::thread::spawn(move || {
         let q = query.trim().to_lowercase();
-        let out = capture(COMPAT, &["run", "--", "/usr/bin/apt-cache", "search", "--names-only", "--", &q]);
-        let mut res: Vec<(String, String)> = out.lines().filter_map(|l| l.split_once(" - ")).map(|(a, b)| (a.trim().to_string(), b.trim().to_string())).filter(|(n, _)| valid_pkg(n)).collect();
+        let out = capture(
+            COMPAT,
+            &[
+                "run",
+                "--",
+                "/usr/bin/apt-cache",
+                "search",
+                "--names-only",
+                "--",
+                &q,
+            ],
+        );
+        let mut res: Vec<(String, String)> = out
+            .lines()
+            .filter_map(|l| l.split_once(" - "))
+            .map(|(a, b)| (a.trim().to_string(), b.trim().to_string()))
+            .filter(|(n, _)| valid_pkg(n))
+            .collect();
         // exakte Treffer und Präfixe zuerst
         res.sort_by_key(|(n, _)| (n != &q, !n.starts_with(&q), n.len(), n.clone()));
         res.truncate(80);
@@ -706,8 +928,22 @@ pub fn search_packages(bg: &Bg, query: String) {
 pub fn load_installed(bg: &Bg) {
     let bg = bg.clone();
     std::thread::spawn(move || {
-        let out = capture(COMPAT, &["run", "--", "/usr/bin/dpkg-query", "-W", "-f=${Package} ${db:Status-Abbrev}\\n"]);
-        let set = out.lines().filter_map(|l| l.split_once(' ')).filter(|(_, st)| st.starts_with("ii")).map(|(n, _)| n.to_string()).collect();
+        let out = capture(
+            COMPAT,
+            &[
+                "run",
+                "--",
+                "/usr/bin/dpkg-query",
+                "-W",
+                "-f=${Package} ${db:Status-Abbrev}\\n",
+            ],
+        );
+        let set = out
+            .lines()
+            .filter_map(|l| l.split_once(' '))
+            .filter(|(_, st)| st.starts_with("ii"))
+            .map(|(n, _)| n.to_string())
+            .collect();
         bg.send(Msg::Installed(set));
     });
 }
@@ -723,7 +959,11 @@ pub fn proximity_near() -> Option<bool> {
             if n.contains("prox") {
                 for f in ["state", "prox_raw", "raw_data", "adc", "value", "data"] {
                     if let Ok(s) = std::fs::read_to_string(e.path().join(f)) {
-                        if let Some(v) = s.split_whitespace().next().and_then(|t| t.parse::<f32>().ok()) {
+                        if let Some(v) = s
+                            .split_whitespace()
+                            .next()
+                            .and_then(|t| t.parse::<f32>().ok())
+                        {
                             return Some(v > 0.0);
                         }
                     }
@@ -736,7 +976,11 @@ pub fn proximity_near() -> Option<bool> {
         for e in rd.flatten() {
             for f in ["in_proximity_raw", "in_proximity_input"] {
                 if let Ok(s) = std::fs::read_to_string(e.path().join(f)) {
-                    if let Some(v) = s.split_whitespace().next().and_then(|t| t.parse::<f32>().ok()) {
+                    if let Some(v) = s
+                        .split_whitespace()
+                        .next()
+                        .and_then(|t| t.parse::<f32>().ok())
+                    {
                         return Some(v > 0.0);
                     }
                 }
@@ -749,7 +993,10 @@ pub fn proximity_near() -> Option<bool> {
 /// Kurzer Vibrationsimpuls (ms) über die üblichen Vibrationsknoten. Best-effort.
 pub fn vibrate(ms: u32) {
     let v = ms.to_string();
-    for p in ["/sys/class/timed_output/vibrator/enable", "/sys/class/leds/vibrator/duration"] {
+    for p in [
+        "/sys/class/timed_output/vibrator/enable",
+        "/sys/class/leds/vibrator/duration",
+    ] {
         if std::fs::write(p, &v).is_ok() {
             // leds/vibrator braucht zusätzlich brightness/activate
             if p.contains("leds") {
@@ -772,13 +1019,22 @@ thread_local! {
 /// Ergebnis von `f` unter `key` höchstens `ttl_ms` lang wiederverwenden.
 pub fn memo<T: Clone + 'static>(key: &'static str, ttl_ms: u64, f: impl FnOnce() -> T) -> T {
     let hit = MEMO.with(|m| {
-        m.borrow().get(key).and_then(|(t, v)| if t.elapsed().as_millis() < ttl_ms as u128 { v.downcast_ref::<T>().cloned() } else { None })
+        m.borrow().get(key).and_then(|(t, v)| {
+            if t.elapsed().as_millis() < ttl_ms as u128 {
+                v.downcast_ref::<T>().cloned()
+            } else {
+                None
+            }
+        })
     });
     if let Some(v) = hit {
         return v;
     }
     let v = f();
-    MEMO.with(|m| m.borrow_mut().insert(key, (std::time::Instant::now(), Box::new(v.clone()))));
+    MEMO.with(|m| {
+        m.borrow_mut()
+            .insert(key, (std::time::Instant::now(), Box::new(v.clone())))
+    });
     v
 }
 
@@ -804,7 +1060,10 @@ pub fn vpn_status() -> ultar_vpn::VpnStatus {
 /// Alle Benachrichtigungen aus /run/ultar/notify.log und <data>/notify.log (höchstens 1 s alt).
 pub fn notes_all() -> Vec<ultar_notify::Note> {
     memo("notes", 1000, || {
-        let mut paths = vec!["/run/ultar/notify.log".to_string(), format!("{}/notify.log", data_dir())];
+        let mut paths = vec![
+            "/run/ultar/notify.log".to_string(),
+            format!("{}/notify.log", data_dir()),
+        ];
         paths.dedup();
         let mut v = Vec::new();
         for p in paths {
@@ -826,14 +1085,22 @@ pub fn meminfo() -> (u64, u64) {
 pub fn geraete_akkus() -> Vec<(String, u8)> {
     memo("geraete_akkus", 10_000, || {
         let mut v = Vec::new();
-        let Ok(rd) = std::fs::read_dir("/sys/class/power_supply") else { return v };
+        let Ok(rd) = std::fs::read_dir("/sys/class/power_supply") else {
+            return v;
+        };
         for e in rd.flatten() {
             let p = e.path();
-            let lies = |f: &str| std::fs::read_to_string(p.join(f)).map(|s| s.trim().to_string()).unwrap_or_default();
+            let lies = |f: &str| {
+                std::fs::read_to_string(p.join(f))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_default()
+            };
             if lies("scope") != "Device" {
                 continue;
             }
-            let Ok(pct) = lies("capacity").parse::<u8>() else { continue };
+            let Ok(pct) = lies("capacity").parse::<u8>() else {
+                continue;
+            };
             let mut name = lies("model_name");
             if name.is_empty() {
                 name = e.file_name().to_string_lossy().into_owned();

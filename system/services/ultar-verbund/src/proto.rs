@@ -50,32 +50,64 @@ pub enum Nachricht {
     Belegt,
     /// Lebenszeichen während einer langen Aufgabe (alle 2 s) – bleibt es aus, gilt das Gerät als weg
     Laeuft,
-    Fehler { text: String },
+    Fehler {
+        text: String,
+    },
     /// Kopplung: HMAC(code, pk_initiator ‖ pk_antwort) und Name
-    Koppeln { name: String, mac: String },
-    KoppelnOk { name: String, mac: String },
+    Koppeln {
+        name: String,
+        mac: String,
+    },
+    KoppelnOk {
+        name: String,
+        mac: String,
+    },
     /// allgemeine Bestätigung
-    Ok { text: String },
+    Ok {
+        text: String,
+    },
     // ---- Bildschirm teilen und fernbedienen ----
     /// Bildschirm teilen beginnen (startet bei Geräten ohne Bildschirm einen virtuellen)
     Teilen,
     /// Eingaben abliefern und das nächste Bild holen (wartet bis `warte_ms` auf eine Änderung)
-    Fern { eingaben: Vec<String>, warte_ms: u32, voll: bool },
+    Fern {
+        eingaben: Vec<String>,
+        warte_ms: u32,
+        voll: bool,
+    },
     /// Kachelpaket (base64), leer = unverändert
-    Bild { w: u32, h: u32, nr: u64, daten: String },
+    Bild {
+        w: u32,
+        h: u32,
+        nr: u64,
+        daten: String,
+    },
     /// einzelner Steuerbefehl an die Oberfläche: hell/drehen/bildschirm/oeffne/helfer
-    Aktion { zeile: String },
+    Aktion {
+        zeile: String,
+    },
     // ---- Weitergeben ----
     /// Datei übergeben (base64); `oeffnen` = dort sofort anzeigen
-    Datei { name: String, daten: String, oeffnen: bool },
+    Datei {
+        name: String,
+        daten: String,
+        oeffnen: bool,
+    },
     /// „zeig meinen Bildschirm/meine App bei dir“: das Ziel öffnet die Ansicht des Absenders
     Ansehen,
     // ---- Ton ----
     TonHoeren,
     TonWeiter,
-    TonDaten { pcm: String },
+    TonDaten {
+        pcm: String,
+    },
     // ---- Mining ----
     /// Mining-Einstellungen setzen (None = nur Status) und ggf. einrichten
-    Mining { konfig: Option<serde_json::Value>, einrichten: bool },
-    MiningStatus { status: serde_json::Value },
+    Mining {
+        konfig: Option<serde_json::Value>,
+        einrichten: bool,
+    },
+    MiningStatus {
+        status: serde_json::Value,
+    },
 }

@@ -17,7 +17,7 @@
 //! ```
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use ed25519_dalek::{Signature, SigningKey, VerifyingKey, Signer, Verifier};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -63,7 +63,11 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 fn sign_message(manifest: &[u8], payload: &[u8]) -> String {
-    format!("{MAGIC}\n{}\n{}\n", sha256_hex(manifest), sha256_hex(payload))
+    format!(
+        "{MAGIC}\n{}\n{}\n",
+        sha256_hex(manifest),
+        sha256_hex(payload)
+    )
 }
 
 // ---------- Schlüssel ----------
@@ -82,7 +86,10 @@ pub fn key_id(pubkey: &VerifyingKey) -> String {
 
 fn load_signing(hex_priv: &str) -> Result<SigningKey, String> {
     let b = hex::decode(hex_priv.trim()).map_err(|e| format!("Schlüssel hex: {e}"))?;
-    let arr: [u8; 32] = b.as_slice().try_into().map_err(|_| "privater Schlüssel muss 32 Byte sein".to_string())?;
+    let arr: [u8; 32] = b
+        .as_slice()
+        .try_into()
+        .map_err(|_| "privater Schlüssel muss 32 Byte sein".to_string())?;
     Ok(SigningKey::from_bytes(&arr))
 }
 
@@ -97,7 +104,8 @@ fn load_verifying(hex_pub: &str) -> Option<VerifyingKey> {
 fn make_payload_targz(src_dir: &Path) -> Result<Vec<u8>, String> {
     let enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     let mut tb = tar::Builder::new(enc);
-    tb.append_dir_all(".", src_dir).map_err(|e| format!("Payload packen: {e}"))?;
+    tb.append_dir_all(".", src_dir)
+        .map_err(|e| format!("Payload packen: {e}"))?;
     let enc = tb.into_inner().map_err(|e| e.to_string())?;
     enc.finish().map_err(|e| e.to_string())
 }
@@ -105,17 +113,25 @@ fn make_payload_targz(src_dir: &Path) -> Result<Vec<u8>, String> {
 fn extract_payload_targz(data: &[u8], dest: &Path) -> Result<(), String> {
     let dec = flate2::read::GzDecoder::new(data);
     let mut ar = tar::Archive::new(dec);
-    ar.unpack(dest).map_err(|e| format!("Payload entpacken: {e}"))
+    ar.unpack(dest)
+        .map_err(|e| format!("Payload entpacken: {e}"))
 }
 
 // ---------- Packen + signieren ----------
 
 /// Aus Manifest + Quellordner ein signiertes `.uap` schreiben.
-pub fn pack_and_sign(manifest_path: &Path, src_dir: &Path, out_uap: &Path, hex_priv: &str) -> Result<(), String> {
+pub fn pack_and_sign(
+    manifest_path: &Path,
+    src_dir: &Path,
+    out_uap: &Path,
+    hex_priv: &str,
+) -> Result<(), String> {
     let sk = load_signing(hex_priv)?;
-    let manifest_bytes = std::fs::read(manifest_path).map_err(|e| format!("Manifest lesen: {e}"))?;
+    let manifest_bytes =
+        std::fs::read(manifest_path).map_err(|e| format!("Manifest lesen: {e}"))?;
     // Manifest validieren
-    let _m: Manifest = toml::from_str(&String::from_utf8_lossy(&manifest_bytes)).map_err(|e| format!("Manifest ungültig: {e}"))?;
+    let _m: Manifest = toml::from_str(&String::from_utf8_lossy(&manifest_bytes))
+        .map_err(|e| format!("Manifest ungültig: {e}"))?;
     let payload = make_payload_targz(src_dir)?;
 
     let msg = sign_message(&manifest_bytes, &payload);
@@ -138,7 +154,8 @@ fn append_bytes<W: Write>(tb: &mut tar::Builder<W>, name: &str, data: &[u8]) -> 
     h.set_size(data.len() as u64);
     h.set_mode(0o644);
     h.set_cksum();
-    tb.append_data(&mut h, name, data).map_err(|e| format!("tar {name}: {e}"))
+    tb.append_data(&mut h, name, data)
+        .map_err(|e| format!("tar {name}: {e}"))
 }
 
 // ---------- Lesen + prüfen ----------
@@ -155,7 +172,11 @@ fn read_parts(uap: &Path) -> Result<Parts, String> {
     let (mut manifest, mut payload, mut sig_blob) = (None, None, None);
     for e in ar.entries().map_err(|e| e.to_string())? {
         let mut e = e.map_err(|e| e.to_string())?;
-        let path = e.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+        let path = e
+            .path()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
         let mut buf = Vec::new();
         e.read_to_end(&mut buf).map_err(|e| e.to_string())?;
         match path.as_str() {
@@ -200,8 +221,13 @@ pub fn verify(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
 
     // Signatur-Blob: "<keyid>\n<base64 sig>"
     let sig_b64 = p.sig_blob.lines().nth(1).unwrap_or("").trim();
-    let sig_bytes = B64.decode(sig_b64).map_err(|_| "Signatur nicht lesbar".to_string())?;
-    let sig_arr: [u8; 64] = sig_bytes.as_slice().try_into().map_err(|_| "Signaturlänge ungültig".to_string())?;
+    let sig_bytes = B64
+        .decode(sig_b64)
+        .map_err(|_| "Signatur nicht lesbar".to_string())?;
+    let sig_arr: [u8; 64] = sig_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| "Signaturlänge ungültig".to_string())?;
     let sig = Signature::from_bytes(&sig_arr);
 
     let keys = trusted_keys(trusted_dir);
@@ -210,16 +236,20 @@ pub fn verify(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
     }
     let ok = keys.iter().any(|k| k.verify(msg.as_bytes(), &sig).is_ok());
     if !ok {
-        return Err("Signatur ungültig oder unbekannter Herausgeber — Installation abgelehnt".into());
+        return Err(
+            "Signatur ungültig oder unbekannter Herausgeber — Installation abgelehnt".into(),
+        );
     }
-    let m: Manifest = toml::from_str(&String::from_utf8_lossy(&p.manifest)).map_err(|e| format!("Manifest ungültig: {e}"))?;
+    let m: Manifest = toml::from_str(&String::from_utf8_lossy(&p.manifest))
+        .map_err(|e| format!("Manifest ungültig: {e}"))?;
     Ok(m)
 }
 
 /// Nur-Info (prüft NICHT die Signatur gegen Gerätevertrauen — nur Anzeige).
 pub fn info(uap: &Path) -> Result<Manifest, String> {
     let p = read_parts(uap)?;
-    toml::from_str(&String::from_utf8_lossy(&p.manifest)).map_err(|e| format!("Manifest ungültig: {e}"))
+    toml::from_str(&String::from_utf8_lossy(&p.manifest))
+        .map_err(|e| format!("Manifest ungültig: {e}"))
 }
 
 // ---------- Installieren ----------
@@ -257,11 +287,16 @@ pub fn install(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
 
     // Dienste übernehmen
     if !m.services.is_empty() {
-        let _ = std::process::Command::new("/usr/bin/ultar-ctl").arg("reload").status();
+        let _ = std::process::Command::new("/usr/bin/ultar-ctl")
+            .arg("reload")
+            .status();
     }
     // Installationsvermerk
     let _ = std::fs::create_dir_all("/data/ultar/installed");
-    let _ = std::fs::write(format!("/data/ultar/installed/{}.toml", m.id), toml::to_string(&m).unwrap_or_default());
+    let _ = std::fs::write(
+        format!("/data/ultar/installed/{}.toml", m.id),
+        toml::to_string(&m).unwrap_or_default(),
+    );
     Ok(m)
 }
 

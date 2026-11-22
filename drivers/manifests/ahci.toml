@@ -1,0 +1,17 @@
+# SATA AHCI controllers by class (AHCI 1.3.1).
+id = "ahci"
+version = "1.0.0"
+class = "storage"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.ahci.name"
+description_key = "driver.ahci.description"
+
+[match]
+pci_class = ["010601"]
+
+[content]
+# Stage A (docs/PLAN.md §5.5): the driver is built into the Ultar kernel; the package
+# carries its activation record. Stage B replaces this by a loadable module.
+hal_config = "builtin/ahci.toml"

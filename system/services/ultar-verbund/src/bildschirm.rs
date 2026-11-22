@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 pub const KACHEL: usize = 64;
 
 pub fn run_dir() -> PathBuf {
-    std::env::var("ULTAR_RUN").unwrap_or_else(|_| "/run/ultar".into()).into()
+    std::env::var("ULTAR_RUN")
+        .unwrap_or_else(|_| "/run/ultar".into())
+        .into()
 }
 
 pub struct Bild {
@@ -55,7 +57,10 @@ pub fn lesen() -> Option<Bild> {
             std::thread::sleep(Duration::from_millis(5));
             continue;
         }
-        let px = roh[..w * h * 4].chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        let px = roh[..w * h * 4]
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
         return Some(Bild { w, h, nr, px });
     }
     None
@@ -71,7 +76,9 @@ pub fn anfordern() {
 /// Zeile an die Oberfläche (Eingabe oder Steuerung)
 pub fn an_oberflaeche(zeile: &str) -> Result<(), String> {
     let s = UnixDatagram::unbound().map_err(|e| e.to_string())?;
-    s.send_to(zeile.as_bytes(), run_dir().join("shell.fern")).map(|_| ()).map_err(|e| format!("Oberfläche nicht erreichbar: {e}"))
+    s.send_to(zeile.as_bytes(), run_dir().join("shell.fern"))
+        .map(|_| ())
+        .map_err(|e| format!("Oberfläche nicht erreichbar: {e}"))
 }
 
 pub fn oberflaeche_laeuft() -> bool {
@@ -97,12 +104,17 @@ pub fn oberflaeche_sicherstellen() -> Result<(), String> {
     }
     let prog = std::env::var("ULTAR_SHELL").unwrap_or_else(|_| "ultar-shell".into());
     let mut cmd = std::process::Command::new(&prog);
-    cmd.arg("--virtuell").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.arg("--virtuell")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     crate::dienst::ohne_netz(&mut cmd);
     if let Ok(g) = std::env::var("ULTAR_VIRTUELL") {
         cmd.arg(g);
     }
-    let k = cmd.spawn().map_err(|e| format!("keine Oberfläche ({prog}): {e}"))?;
+    let k = cmd
+        .spawn()
+        .map_err(|e| format!("keine Oberfläche ({prog}): {e}"))?;
     crate::dienst::log("virtueller Bildschirm gestartet (Gerät ohne Bildschirm)");
     *v = Some((k, Instant::now()));
     drop(v);
@@ -174,7 +186,12 @@ pub fn kodieren(neu: &Bild, alt: Option<&Bild>, voll: bool) -> Vec<u8> {
 }
 
 /// Kachelpaket in einen Bildpuffer (RGBA, Zeilenlänge w) einspielen; liefert die geänderten Kacheln
-pub fn dekodieren(paket: &[u8], w: usize, h: usize, rgba: &mut [u8]) -> Result<Vec<(usize, usize, usize, usize)>, String> {
+pub fn dekodieren(
+    paket: &[u8],
+    w: usize,
+    h: usize,
+    rgba: &mut [u8],
+) -> Result<Vec<(usize, usize, usize, usize)>, String> {
     let mut p = 0;
     let mut geaendert = Vec::new();
     while p + 12 <= paket.len() {
@@ -185,7 +202,8 @@ pub fn dekodieren(paket: &[u8], w: usize, h: usize, rgba: &mut [u8]) -> Result<V
         if p + len > paket.len() || x + kw > w || y + kh > h {
             return Err("Kachel außerhalb".into());
         }
-        let rgb = lz4_flex::decompress_size_prepended(&paket[p..p + len]).map_err(|e| e.to_string())?;
+        let rgb =
+            lz4_flex::decompress_size_prepended(&paket[p..p + len]).map_err(|e| e.to_string())?;
         p += len;
         if rgb.len() != kw * kh * 3 {
             return Err("Kachelgröße".into());
@@ -205,7 +223,23 @@ pub fn dekodieren(paket: &[u8], w: usize, h: usize, rgba: &mut [u8]) -> Result<V
 /// erlaubte Steuerbefehle für die Oberfläche (keine beliebigen Zeilen von außen)
 pub fn eingabe_erlaubt(z: &str) -> bool {
     let cmd = z.split_whitespace().next().unwrap_or("");
-    matches!(cmd, "ab" | "zieh" | "auf" | "zeichen" | "enter" | "loeschen" | "zurueck" | "lauter" | "leiser" | "hell" | "drehen" | "bildschirm" | "oeffne" | "helfer") && z.len() < 600 && !z.contains('\n')
+    matches!(
+        cmd,
+        "ab" | "zieh"
+            | "auf"
+            | "zeichen"
+            | "enter"
+            | "loeschen"
+            | "zurueck"
+            | "lauter"
+            | "leiser"
+            | "hell"
+            | "drehen"
+            | "bildschirm"
+            | "oeffne"
+            | "helfer"
+    ) && z.len() < 600
+        && !z.contains('\n')
 }
 
 /// Bild als BMP (für `ultar-verbund foto`)
@@ -237,8 +271,20 @@ mod tests {
     #[test]
     fn hin_und_zurueck() {
         let (w, h) = (150, 70);
-        let a = Bild { w, h, nr: 1, px: (0..w * h).map(|i| (i as u32 * 2654435761) & 0xffffff).collect() };
-        let mut b = Bild { w, h, nr: 2, px: a.px.clone() };
+        let a = Bild {
+            w,
+            h,
+            nr: 1,
+            px: (0..w * h)
+                .map(|i| (i as u32).wrapping_mul(2654435761) & 0xffffff)
+                .collect(),
+        };
+        let mut b = Bild {
+            w,
+            h,
+            nr: 2,
+            px: a.px.clone(),
+        };
         b.px[69 * w + 149] = 0x123456;
         let voll = kodieren(&a, None, true);
         let mut rgba = vec![0u8; w * h * 4];
@@ -248,9 +294,16 @@ mod tests {
         assert_eq!(k, vec![(128, 64, 22, 6)]);
         for i in 0..w * h {
             let p = b.px[i];
-            assert_eq!(&rgba[i * 4..i * 4 + 3], &[(p >> 16) as u8, (p >> 8) as u8, p as u8]);
+            assert_eq!(
+                &rgba[i * 4..i * 4 + 3],
+                &[(p >> 16) as u8, (p >> 8) as u8, p as u8]
+            );
         }
         assert!(kodieren(&b, Some(&b), false).is_empty());
-        assert!(eingabe_erlaubt("ab 0.1 0.2") && !eingabe_erlaubt("rm -rf /") && !eingabe_erlaubt("ab 1\nhell 1"));
+        assert!(
+            eingabe_erlaubt("ab 0.1 0.2")
+                && !eingabe_erlaubt("rm -rf /")
+                && !eingabe_erlaubt("ab 1\nhell 1")
+        );
     }
 }

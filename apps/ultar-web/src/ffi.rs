@@ -76,11 +76,20 @@ pub struct WPEDisplayClass {
 pub struct WPEViewClass {
     pub parent: GObjectClass,
     pub buffers_changed: Option<unsafe extern "C" fn(gpointer, *mut gpointer, c_uint)>,
-    pub render_buffer: Option<unsafe extern "C" fn(gpointer, gpointer, *const WPERectangle, c_uint, *mut *mut GError) -> gboolean>,
+    pub render_buffer: Option<
+        unsafe extern "C" fn(
+            gpointer,
+            gpointer,
+            *const WPERectangle,
+            c_uint,
+            *mut *mut GError,
+        ) -> gboolean,
+    >,
     pub lock_pointer: Option<unsafe extern "C" fn(gpointer) -> gboolean>,
     pub unlock_pointer: Option<unsafe extern "C" fn(gpointer) -> gboolean>,
     pub set_cursor_from_name: Option<unsafe extern "C" fn(gpointer, *const c_char)>,
-    pub set_cursor_from_bytes: Option<unsafe extern "C" fn(gpointer, gpointer, c_uint, c_uint, c_uint, c_uint, c_uint)>,
+    pub set_cursor_from_bytes:
+        Option<unsafe extern "C" fn(gpointer, gpointer, c_uint, c_uint, c_uint, c_uint, c_uint)>,
     pub set_opaque_rectangles: Option<unsafe extern "C" fn(gpointer, *mut WPERectangle, c_uint)>,
     pub can_be_mapped: Option<unsafe extern "C" fn(gpointer) -> gboolean>,
     pub get_accessible: Option<unsafe extern "C" fn(gpointer) -> gpointer>,
@@ -111,12 +120,14 @@ pub struct WPEScreenClass {
 #[repr(C)]
 pub struct WPEInputMethodContextClass {
     pub parent: GObjectClass,
-    pub get_preedit_string: Option<unsafe extern "C" fn(gpointer, *mut *mut c_char, *mut gpointer, *mut c_uint)>,
+    pub get_preedit_string:
+        Option<unsafe extern "C" fn(gpointer, *mut *mut c_char, *mut gpointer, *mut c_uint)>,
     pub filter_key_event: Option<unsafe extern "C" fn(gpointer, gpointer) -> gboolean>,
     pub focus_in: Option<unsafe extern "C" fn(gpointer)>,
     pub focus_out: Option<unsafe extern "C" fn(gpointer)>,
     pub set_cursor_area: Option<unsafe extern "C" fn(gpointer, c_int, c_int, c_int, c_int)>,
-    pub set_surrounding: Option<unsafe extern "C" fn(gpointer, *const c_char, c_uint, c_uint, c_uint)>,
+    pub set_surrounding:
+        Option<unsafe extern "C" fn(gpointer, *const c_char, c_uint, c_uint, c_uint)>,
     pub reset: Option<unsafe extern "C" fn(gpointer)>,
     pub padding: [usize; 8],
 }
@@ -180,13 +191,25 @@ extern "C" {
     pub fn g_variant_new_boolean(b: gboolean) -> gpointer;
 
     // GObject
-    pub fn g_type_register_static(parent: GType, name: *const c_char, info: *const GTypeInfo, flags: c_uint) -> GType;
+    pub fn g_type_register_static(
+        parent: GType,
+        name: *const c_char,
+        info: *const GTypeInfo,
+        flags: c_uint,
+    ) -> GType;
     pub fn g_type_query(t: GType, q: *mut GTypeQuery);
     pub fn g_type_check_instance_is_a(inst: gpointer, t: GType) -> gboolean;
     pub fn g_object_new(t: GType, first: *const c_char, ...) -> gpointer;
     pub fn g_object_ref(o: gpointer) -> gpointer;
     pub fn g_object_unref(o: gpointer);
-    pub fn g_signal_connect_data(inst: gpointer, sig: *const c_char, cb: GCallback, data: gpointer, destroy: gpointer, flags: c_uint) -> u64;
+    pub fn g_signal_connect_data(
+        inst: gpointer,
+        sig: *const c_char,
+        cb: GCallback,
+        data: gpointer,
+        destroy: gpointer,
+        flags: c_uint,
+    ) -> u64;
     pub fn g_signal_emit_by_name(inst: gpointer, sig: *const c_char, ...);
 
     // WPEPlatform
@@ -201,7 +224,13 @@ extern "C" {
     pub fn wpe_display_screen_added(d: gpointer, s: gpointer);
     pub fn wpe_display_set_available_input_devices(d: gpointer, dev: c_uint);
     pub fn wpe_display_get_settings(d: gpointer) -> gpointer;
-    pub fn wpe_settings_set_boolean(s: gpointer, key: *const c_char, v: gboolean, src: c_int, e: *mut *mut GError) -> gboolean;
+    pub fn wpe_settings_set_boolean(
+        s: gpointer,
+        key: *const c_char,
+        v: gboolean,
+        src: c_int,
+        e: *mut *mut GError,
+    ) -> gboolean;
     pub fn wpe_screen_set_size(s: gpointer, w: c_int, h: c_int);
     pub fn wpe_screen_set_physical_size(s: gpointer, w: c_int, h: c_int);
     pub fn wpe_screen_set_scale(s: gpointer, scale: c_double);
@@ -225,11 +254,59 @@ extern "C" {
     pub fn wpe_buffer_get_height(b: gpointer) -> c_int;
     pub fn wpe_buffer_shm_get_data(b: gpointer) -> gpointer;
     pub fn wpe_buffer_shm_get_stride(b: gpointer) -> c_uint;
-    pub fn wpe_event_touch_new(t: c_int, view: gpointer, src: c_int, time: u32, mods: c_uint, seq: u32, x: c_double, y: c_double) -> gpointer;
-    pub fn wpe_event_pointer_button_new(t: c_int, view: gpointer, src: c_int, time: u32, mods: c_uint, button: c_uint, x: c_double, y: c_double, count: c_uint) -> gpointer;
-    pub fn wpe_event_pointer_move_new(t: c_int, view: gpointer, src: c_int, time: u32, mods: c_uint, x: c_double, y: c_double, dx: c_double, dy: c_double) -> gpointer;
-    pub fn wpe_event_scroll_new(view: gpointer, src: c_int, time: u32, mods: c_uint, dx: c_double, dy: c_double, precise: gboolean, stop: gboolean, x: c_double, y: c_double) -> gpointer;
-    pub fn wpe_event_keyboard_new(t: c_int, view: gpointer, src: c_int, time: u32, mods: c_uint, keycode: c_uint, keyval: c_uint) -> gpointer;
+    pub fn wpe_event_touch_new(
+        t: c_int,
+        view: gpointer,
+        src: c_int,
+        time: u32,
+        mods: c_uint,
+        seq: u32,
+        x: c_double,
+        y: c_double,
+    ) -> gpointer;
+    pub fn wpe_event_pointer_button_new(
+        t: c_int,
+        view: gpointer,
+        src: c_int,
+        time: u32,
+        mods: c_uint,
+        button: c_uint,
+        x: c_double,
+        y: c_double,
+        count: c_uint,
+    ) -> gpointer;
+    pub fn wpe_event_pointer_move_new(
+        t: c_int,
+        view: gpointer,
+        src: c_int,
+        time: u32,
+        mods: c_uint,
+        x: c_double,
+        y: c_double,
+        dx: c_double,
+        dy: c_double,
+    ) -> gpointer;
+    pub fn wpe_event_scroll_new(
+        view: gpointer,
+        src: c_int,
+        time: u32,
+        mods: c_uint,
+        dx: c_double,
+        dy: c_double,
+        precise: gboolean,
+        stop: gboolean,
+        x: c_double,
+        y: c_double,
+    ) -> gpointer;
+    pub fn wpe_event_keyboard_new(
+        t: c_int,
+        view: gpointer,
+        src: c_int,
+        time: u32,
+        mods: c_uint,
+        keycode: c_uint,
+        keyval: c_uint,
+    ) -> gpointer;
     pub fn wpe_event_unref(e: gpointer);
     pub fn wpe_input_method_context_get_view(c: gpointer) -> gpointer;
     pub fn wpe_input_method_context_get_input_purpose(c: gpointer) -> c_int;
@@ -255,7 +332,11 @@ extern "C" {
     pub fn webkit_web_view_get_session_state(v: gpointer) -> gpointer;
     pub fn webkit_web_view_restore_session_state(v: gpointer, s: gpointer);
     pub fn webkit_web_view_session_state_unref(s: gpointer);
-    pub fn webkit_web_view_get_tls_info(v: gpointer, cert: *mut gpointer, errors: *mut c_uint) -> gboolean;
+    pub fn webkit_web_view_get_tls_info(
+        v: gpointer,
+        cert: *mut gpointer,
+        errors: *mut c_uint,
+    ) -> gboolean;
     pub fn webkit_settings_new() -> gpointer;
     pub fn webkit_settings_set_hardware_acceleration_policy(s: gpointer, p: c_int);
     pub fn webkit_settings_set_user_agent(s: gpointer, ua: *const c_char);
@@ -272,12 +353,30 @@ extern "C" {
     pub fn webkit_settings_set_enable_write_console_messages_to_stdout(s: gpointer, b: gboolean);
     pub fn webkit_web_context_set_cache_model(c: gpointer, m: c_int);
     pub fn webkit_web_context_set_preferred_languages(c: gpointer, langs: *const *const c_char);
-    pub fn webkit_web_context_register_uri_scheme(c: gpointer, scheme: *const c_char, cb: Option<unsafe extern "C" fn(gpointer, gpointer)>, data: gpointer, destroy: GDestroyNotify);
+    pub fn webkit_web_context_register_uri_scheme(
+        c: gpointer,
+        scheme: *const c_char,
+        cb: Option<unsafe extern "C" fn(gpointer, gpointer)>,
+        data: gpointer,
+        destroy: GDestroyNotify,
+    );
     pub fn webkit_web_context_get_type() -> GType;
     pub fn webkit_uri_scheme_request_get_path(r: gpointer) -> *const c_char;
-    pub fn webkit_uri_scheme_request_finish(r: gpointer, stream: gpointer, len: i64, mime: *const c_char);
-    pub fn g_memory_input_stream_new_from_data(data: *const c_void, len: isize, destroy: GDestroyNotify) -> gpointer;
-    pub fn webkit_network_session_new(data_dir: *const c_char, cache_dir: *const c_char) -> gpointer;
+    pub fn webkit_uri_scheme_request_finish(
+        r: gpointer,
+        stream: gpointer,
+        len: i64,
+        mime: *const c_char,
+    );
+    pub fn g_memory_input_stream_new_from_data(
+        data: *const c_void,
+        len: isize,
+        destroy: GDestroyNotify,
+    ) -> gpointer;
+    pub fn webkit_network_session_new(
+        data_dir: *const c_char,
+        cache_dir: *const c_char,
+    ) -> gpointer;
     pub fn webkit_network_session_new_ephemeral() -> gpointer;
     pub fn webkit_network_session_set_itp_enabled(s: gpointer, b: gboolean);
     pub fn webkit_network_session_get_cookie_manager(s: gpointer) -> gpointer;
@@ -294,10 +393,31 @@ extern "C" {
     pub fn webkit_user_content_manager_new() -> gpointer;
     pub fn webkit_user_content_manager_add_filter(m: gpointer, f: gpointer);
     pub fn webkit_user_content_filter_store_new(path: *const c_char) -> gpointer;
-    pub fn webkit_user_content_filter_store_save_from_file(st: gpointer, id: *const c_char, file: gpointer, cancel: gpointer, cb: GAsyncReadyCallback, data: gpointer);
-    pub fn webkit_user_content_filter_store_save_from_file_finish(st: gpointer, res: gpointer, e: *mut *mut GError) -> gpointer;
-    pub fn webkit_user_content_filter_store_load(st: gpointer, id: *const c_char, cancel: gpointer, cb: GAsyncReadyCallback, data: gpointer);
-    pub fn webkit_user_content_filter_store_load_finish(st: gpointer, res: gpointer, e: *mut *mut GError) -> gpointer;
+    pub fn webkit_user_content_filter_store_save_from_file(
+        st: gpointer,
+        id: *const c_char,
+        file: gpointer,
+        cancel: gpointer,
+        cb: GAsyncReadyCallback,
+        data: gpointer,
+    );
+    pub fn webkit_user_content_filter_store_save_from_file_finish(
+        st: gpointer,
+        res: gpointer,
+        e: *mut *mut GError,
+    ) -> gpointer;
+    pub fn webkit_user_content_filter_store_load(
+        st: gpointer,
+        id: *const c_char,
+        cancel: gpointer,
+        cb: GAsyncReadyCallback,
+        data: gpointer,
+    );
+    pub fn webkit_user_content_filter_store_load_finish(
+        st: gpointer,
+        res: gpointer,
+        e: *mut *mut GError,
+    ) -> gpointer;
     pub fn g_file_new_for_path(p: *const c_char) -> gpointer;
     pub fn webkit_permission_request_allow(r: gpointer);
     pub fn webkit_permission_request_deny(r: gpointer);
@@ -339,14 +459,25 @@ pub unsafe fn rs(p: *const c_char) -> String {
 /// Signal verbinden; `cb` ist ein extern "C"-Funktionszeiger beliebiger Signatur.
 pub unsafe fn connect(inst: gpointer, sig: &str, cb: *const (), data: gpointer) -> u64 {
     let s = cs(sig);
-    g_signal_connect_data(inst, s.as_ptr(), Some(std::mem::transmute::<*const (), unsafe extern "C" fn()>(cb)), data, std::ptr::null_mut(), 0)
+    g_signal_connect_data(
+        inst,
+        s.as_ptr(),
+        Some(std::mem::transmute::<*const (), unsafe extern "C" fn()>(cb)),
+        data,
+        std::ptr::null_mut(),
+        0,
+    )
 }
 
 extern "C" {
     pub fn g_strdup(s: *const c_char) -> *mut c_char;
     pub fn g_type_name_from_instance(inst: gpointer) -> *const c_char;
     pub fn g_memory_input_stream_new_from_bytes(b: gpointer) -> gpointer;
-    pub fn wpe_toplevel_foreach_view(t: gpointer, f: Option<unsafe extern "C" fn(gpointer, gpointer, gpointer) -> gboolean>, data: gpointer);
+    pub fn wpe_toplevel_foreach_view(
+        t: gpointer,
+        f: Option<unsafe extern "C" fn(gpointer, gpointer, gpointer) -> gboolean>,
+        data: gpointer,
+    );
     pub fn wpe_view_set_toplevel(v: gpointer, t: gpointer);
     pub fn webkit_web_view_get_back_forward_list(v: gpointer) -> gpointer;
     pub fn webkit_back_forward_list_get_current_item(l: gpointer) -> gpointer;

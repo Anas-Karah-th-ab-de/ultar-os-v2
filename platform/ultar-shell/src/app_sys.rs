@@ -91,7 +91,12 @@ pub struct EntwicklerSsh {
 impl EntwicklerSsh {
     fn lesen() -> Self {
         let mut e = EntwicklerSsh::default();
-        let Ok(o) = std::process::Command::new("ultar-sshd").arg("status").output() else { return e };
+        let Ok(o) = std::process::Command::new("ultar-sshd")
+            .arg("status")
+            .output()
+        else {
+            return e;
+        };
         e.vorhanden = true;
         for z in String::from_utf8_lossy(&o.stdout).lines() {
             let (k, v) = z.split_once(':').unwrap_or((z, ""));
@@ -159,7 +164,20 @@ impl SxState {
 }
 
 const DAYS_SHORT: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-pub(super) const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+pub(super) const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 
 impl App {
     fn sx_save(&mut self) {
@@ -230,14 +248,26 @@ impl App {
 
     /// Helligkeit: Energiesparen begrenzt auf 50 %.
     pub(super) fn sys_bright(&self, v: f32) -> f32 {
-        if self.sx.cfg.saver { v.min(0.5) } else { v }
+        if self.sx.cfg.saver {
+            v.min(0.5)
+        } else {
+            v
+        }
     }
 
     /// Alarm-Regeln nach Tonprofil und „Nicht stören": (Ton, Vibration in ms, Kopf-Hinweis)
     pub(super) fn sys_alert(&self, high: bool, sound: bool, vib: u32) -> (bool, u32, bool) {
         let quiet = self.dnd_active() && !high;
         let p = self.sx.cfg.profile;
-        (sound && p == 0 && !quiet, if p == 2 || quiet { 0 } else { vib.max(if p == 1 && !high { 200 } else { 0 }) }, !quiet)
+        (
+            sound && p == 0 && !quiet,
+            if p == 2 || quiet {
+                0
+            } else {
+                vib.max(if p == 1 && !high { 200 } else { 0 })
+            },
+            !quiet,
+        )
     }
 
     pub(super) fn sys_msg(&mut self, m: sysd::SysMsg) {
@@ -247,7 +277,9 @@ impl App {
                 self.sx_save();
                 self.apply_saver();
             }
-            sysd::SysMsg::TimeSynced(d) => self.toast(format!("{} ({d:+} s)", self.t("Time synchronized"))),
+            sysd::SysMsg::TimeSynced(d) => {
+                self.toast(format!("{} ({d:+} s)", self.t("Time synchronized")))
+            }
             sysd::SysMsg::Fp(ev) => self.fp_event(ev),
             sysd::SysMsg::Face(g, ev) => {
                 if g == self.sx.face_gen {
@@ -263,7 +295,9 @@ impl App {
         self.sx.face = None;
         self.sx.face_gen = self.sx.face_gen.wrapping_add(1);
         let (bg, g) = (self.bg.clone(), self.sx.face_gen);
-        self.sx.face = crate::face::FaceRun::start(args, move |ev| bg.send(sys::Msg::Sys(sysd::SysMsg::Face(g, ev))));
+        self.sx.face = crate::face::FaceRun::start(args, move |ev| {
+            bg.send(sys::Msg::Sys(sysd::SysMsg::Face(g, ev)))
+        });
         self.sx.face_mode = if self.sx.face.is_some() { mode } else { 0 };
         self.sx.face.is_some()
     }
@@ -279,10 +313,16 @@ impl App {
         let learn = self.sx.face_mode == 2;
         match ev {
             E::Camera if learn => self.sx.face_info = self.t("Look at the screen").into(),
-            E::NoFace if learn => self.sx.face_info = self.t("No face seen – hold the phone in front of you").into(),
+            E::NoFace if learn => {
+                self.sx.face_info = self
+                    .t("No face seen – hold the phone in front of you")
+                    .into()
+            }
             E::Dark => self.sx.face_info = self.t("Too dark").into(),
             E::Closer => self.sx.face_info = self.t("Move closer").into(),
-            E::Progress(n, m) => self.sx.face_info = format!("{} {n}/{m}", self.t("Recording face")),
+            E::Progress(n, m) => {
+                self.sx.face_info = format!("{} {n}/{m}", self.t("Recording face"))
+            }
             E::Restart => self.sx.face_info = self.t("Hold still – starting again").into(),
             E::Done => {
                 self.face_stop();
@@ -329,7 +369,9 @@ impl App {
     fn fp_start(&mut self, mode: u8, cmd: &str) -> bool {
         self.sx.fp = None;
         let bg = self.bg.clone();
-        let Some(mut c) = crate::fp::FpConn::open(move |ev| bg.send(sys::Msg::Sys(sysd::SysMsg::Fp(ev)))) else {
+        let Some(mut c) =
+            crate::fp::FpConn::open(move |ev| bg.send(sys::Msg::Sys(sysd::SysMsg::Fp(ev))))
+        else {
             self.sx.fp_mode = 0;
             self.sx.fp_retry = Some(Instant::now() + Duration::from_secs(5));
             return false;
@@ -363,8 +405,12 @@ impl App {
                 sys::vibrate(80);
             }
             E::Started => self.sx.fp_info = self.t("Place your finger on the sensor").into(),
-            E::Rest(n) if mode == 2 => self.sx.fp_info = format!("{} – {n}", self.t("Lift and touch again")),
-            E::Acquired(k) if mode == 2 && k != 0 => self.sx.fp_info = self.t("Not clear – touch again").into(),
+            E::Rest(n) if mode == 2 => {
+                self.sx.fp_info = format!("{} – {n}", self.t("Lift and touch again"))
+            }
+            E::Acquired(k) if mode == 2 && k != 0 => {
+                self.sx.fp_info = self.t("Not clear – touch again").into()
+            }
             E::Learned(_) if mode == 2 => {
                 self.sx.fp_info.clear();
                 self.toast(self.t("Fingerprint added").into());
@@ -386,12 +432,17 @@ impl App {
             E::Error(5, _) => {}
             E::Error(code, _) => {
                 if mode == 2 {
-                    self.sx.fp_info = if code == 3 { self.t("Time is up").into() } else { format!("{} ({code})", self.t("Fingerprint error")) };
+                    self.sx.fp_info = if code == 3 {
+                        self.t("Time is up").into()
+                    } else {
+                        format!("{} ({code})", self.t("Fingerprint error"))
+                    };
                 } else if mode == 1 && code == 7 {
                     self.sx.msg = self.t("Too many attempts – use the PIN").into();
                 }
                 self.fp_stop();
-                self.sx.fp_retry = Some(Instant::now() + Duration::from_secs(if code == 7 { 30 } else { 3 }));
+                self.sx.fp_retry =
+                    Some(Instant::now() + Duration::from_secs(if code == 7 { 30 } else { 3 }));
             }
             E::Fail(s) => {
                 if mode == 2 {
@@ -437,7 +488,13 @@ impl App {
 
     pub(super) fn apply_saver(&mut self) {
         let (av, _) = sysx::governors();
-        let prof = if self.sx.cfg.saver { "power".to_string() } else if self.sx.cfg.perf.is_empty() { "balanced".into() } else { self.sx.cfg.perf.clone() };
+        let prof = if self.sx.cfg.saver {
+            "power".to_string()
+        } else if self.sx.cfg.perf.is_empty() {
+            "balanced".into()
+        } else {
+            self.sx.cfg.perf.clone()
+        };
         if let Some(g) = sysx::governor_for(&prof, &av) {
             sysx::set_governor(&g);
         }
@@ -474,7 +531,13 @@ impl App {
             }
         }
         ui.rtl = old;
-        if !h.list.is_empty() && ui.button(Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Clear history"), Btn::Plain) {
+        if !h.list.is_empty()
+            && ui.button(
+                Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(46.0)),
+                self.t("Clear history"),
+                Btn::Plain,
+            )
+        {
             h.list.clear();
             let _ = sys::save("calc-history.toml", &h);
             ui.dirty = true;
@@ -493,13 +556,22 @@ impl App {
     /// Regelmäßig (aus tick): Zeitzone/Sommerzeit, Auto-Helligkeit. true = neu zeichnen.
     pub(super) fn sys_tick(&mut self) -> bool {
         let mut r = false;
-        if self.sx.snooze.as_ref().is_some_and(|s| Instant::now() >= s.0) {
+        if self
+            .sx
+            .snooze
+            .as_ref()
+            .is_some_and(|s| Instant::now() >= s.0)
+        {
             let (_, msg) = self.sx.snooze.take().unwrap();
             ultar_notify::post("system", "clock", &msg, "", ultar_notify::Urgency::High);
             self.tl.ringing = Some(msg);
             r = true;
         }
-        if self.sx.last_zone_check.map_or(true, |t| t.elapsed() > Duration::from_secs(30)) {
+        if self
+            .sx
+            .last_zone_check
+            .map_or(true, |t| t.elapsed() > Duration::from_secs(30))
+        {
             self.sx.last_zone_check = Some(Instant::now());
             if !self.sx.cfg.zone.is_empty() {
                 if let Some(off) = sysx::offset_at(&self.sx.cfg.zone, sys::unix_now()) {
@@ -511,15 +583,27 @@ impl App {
                 }
             }
         }
-        if self.sx.last_rssi.map_or(true, |t| t.elapsed() > Duration::from_secs(10)) {
+        if self
+            .sx
+            .last_rssi
+            .map_or(true, |t| t.elapsed() > Duration::from_secs(10))
+        {
             self.sx.last_rssi = Some(Instant::now());
-            let v = sys::wifi_iface().and_then(|i| crate::wifi::signal(&i)).map(|s| s.0).filter(|r| *r < 0);
+            let v = sys::wifi_iface()
+                .and_then(|i| crate::wifi::signal(&i))
+                .map(|s| s.0)
+                .filter(|r| *r < 0);
             if v != self.sx.rssi {
                 self.sx.rssi = v;
                 r = true;
             }
         }
-        if self.sx.cfg.auto_bright && self.sx.last_auto.map_or(true, |t| t.elapsed() > Duration::from_secs(3)) {
+        if self.sx.cfg.auto_bright
+            && self
+                .sx
+                .last_auto
+                .map_or(true, |t| t.elapsed() > Duration::from_secs(3))
+        {
             self.sx.last_auto = Some(Instant::now());
             if let Some(lux) = light_lux() {
                 let target = sysx::lux_to_brightness(lux);
@@ -530,7 +614,11 @@ impl App {
                 }
             }
         }
-        if self.sx.vol_shown.is_some_and(|t| t.elapsed() < Duration::from_millis(1700)) {
+        if self
+            .sx
+            .vol_shown
+            .is_some_and(|t| t.elapsed() < Duration::from_millis(1700))
+        {
             r = true;
         } else if self.sx.vol_shown.is_some() {
             self.sx.vol_shown = None;
@@ -539,33 +627,106 @@ impl App {
         if self.sx.cfg.show_fps || *self.sx.diag_busy.lock().unwrap() {
             r = true;
         }
-        if matches!(self.stack.last().map(|s| &s.0), Some(Screen::Sys(Sx::World | Sx::Battery))) {
+        if matches!(
+            self.stack.last().map(|s| &s.0),
+            Some(Screen::Sys(Sx::World | Sx::Battery))
+        ) {
             r = true;
         }
         r
     }
 
     pub(super) fn sys_needs_tick(&self) -> bool {
-        self.sx.vol_shown.is_some() || self.sx.cfg.show_fps || *self.sx.diag_busy.lock().unwrap() || self.sx.snooze.is_some() || self.sx.cfg.auto_bright
-            || matches!(self.stack.last().map(|s| &s.0), Some(Screen::Sys(Sx::World | Sx::Battery)))
+        self.sx.vol_shown.is_some()
+            || self.sx.cfg.show_fps
+            || *self.sx.diag_busy.lock().unwrap()
+            || self.sx.snooze.is_some()
+            || self.sx.cfg.auto_bright
+            || matches!(
+                self.stack.last().map(|s| &s.0),
+                Some(Screen::Sys(Sx::World | Sx::Battery))
+            )
             || (self.sx.locked && self.sx.wait_until.is_some_and(|t| t > Instant::now()))
     }
 
     /// Liste für die Einstellungen
     pub(super) fn sys_settings_items(&self) -> Vec<(Ic, &'static str, String, Screen)> {
         let c = &self.sx.cfg;
-        let on = |b: bool| -> String { if b { self.t("On").into() } else { String::new() } };
+        let on = |b: bool| -> String {
+            if b {
+                self.t("On").into()
+            } else {
+                String::new()
+            }
+        };
         vec![
-            (Ic::Lock, "Screen lock", if !c.pin_hash.is_empty() { "PIN".into() } else { on(c.lock) }, Screen::Sys(Sx::LockSet)),
-            (Ic::Clock, "Time zone & sync", sysx::zone(&c.zone).map(|z| z.1.to_string()).unwrap_or_default(), Screen::Sys(Sx::Time)),
-            (Ic::Chip, "Battery & performance", on(c.saver), Screen::Sys(Sx::Battery)),
-            (Ic::Sun, "Night light & brightness", on(self.night_active()), Screen::Sys(Sx::DisplayX)),
-            (Ic::Speaker, "Sound profiles", self.t(["Normal", "Vibrate", "Silent"][c.profile.min(2) as usize]).into(), Screen::Sys(Sx::SoundX)),
-            (Ic::List, "Notification history", String::new(), Screen::Sys(Sx::NotifHist)),
-            (Ic::UpDown, "Network tools", String::new(), Screen::Sys(Sx::NetTools)),
-            (Ic::Disk, "Backup & reset", String::new(), Screen::Sys(Sx::Backup)),
-            (Ic::Term, "System logs", String::new(), Screen::Sys(Sx::Logs)),
-            (Ic::Sliders, "Developer options", String::new(), Screen::Sys(Sx::Dev)),
+            (
+                Ic::Lock,
+                "Screen lock",
+                if !c.pin_hash.is_empty() {
+                    "PIN".into()
+                } else {
+                    on(c.lock)
+                },
+                Screen::Sys(Sx::LockSet),
+            ),
+            (
+                Ic::Clock,
+                "Time zone & sync",
+                sysx::zone(&c.zone)
+                    .map(|z| z.1.to_string())
+                    .unwrap_or_default(),
+                Screen::Sys(Sx::Time),
+            ),
+            (
+                Ic::Chip,
+                "Battery & performance",
+                on(c.saver),
+                Screen::Sys(Sx::Battery),
+            ),
+            (
+                Ic::Sun,
+                "Night light & brightness",
+                on(self.night_active()),
+                Screen::Sys(Sx::DisplayX),
+            ),
+            (
+                Ic::Speaker,
+                "Sound profiles",
+                self.t(["Normal", "Vibrate", "Silent"][c.profile.min(2) as usize])
+                    .into(),
+                Screen::Sys(Sx::SoundX),
+            ),
+            (
+                Ic::List,
+                "Notification history",
+                String::new(),
+                Screen::Sys(Sx::NotifHist),
+            ),
+            (
+                Ic::UpDown,
+                "Network tools",
+                String::new(),
+                Screen::Sys(Sx::NetTools),
+            ),
+            (
+                Ic::Disk,
+                "Backup & reset",
+                String::new(),
+                Screen::Sys(Sx::Backup),
+            ),
+            (
+                Ic::Term,
+                "System logs",
+                String::new(),
+                Screen::Sys(Sx::Logs),
+            ),
+            (
+                Ic::Sliders,
+                "Developer options",
+                String::new(),
+                Screen::Sys(Sx::Dev),
+            ),
         ]
     }
 
@@ -580,15 +741,38 @@ impl App {
             }
             Sx::EventEdit(i) => {
                 let cal: sysx::Calendar = sys::load("calendar.toml");
-                let e = i.and_then(|i| cal.events.get(i).cloned()).unwrap_or_default();
+                let e = i
+                    .and_then(|i| cal.events.get(i).cloned())
+                    .unwrap_or_default();
                 self.fields.insert("sx_ev_title", e.title);
-                self.fields.insert("sx_ev_time", if e.at >= 0 && i.is_some() { format!("{:02}:{:02}", e.at / 60, e.at % 60) } else { String::new() });
-                self.fields.insert("sx_ev_rem", if i.is_some() { e.remind.to_string() } else { "15".into() });
+                self.fields.insert(
+                    "sx_ev_time",
+                    if e.at >= 0 && i.is_some() {
+                        format!("{:02}:{:02}", e.at / 60, e.at % 60)
+                    } else {
+                        String::new()
+                    },
+                );
+                self.fields.insert(
+                    "sx_ev_rem",
+                    if i.is_some() {
+                        e.remind.to_string()
+                    } else {
+                        "15".into()
+                    },
+                );
             }
             Sx::Logs => self.sx_load_logs(),
             Sx::NetTools => {
                 self.fields.insert("sx_dns", self.sx.cfg.dns.clone());
-                self.fields.insert("sx_lim", if self.sx.cfg.data_limit_mb > 0 { self.sx.cfg.data_limit_mb.to_string() } else { String::new() });
+                self.fields.insert(
+                    "sx_lim",
+                    if self.sx.cfg.data_limit_mb > 0 {
+                        self.sx.cfg.data_limit_mb.to_string()
+                    } else {
+                        String::new()
+                    },
+                );
             }
             Sx::Time => {
                 self.fields.insert("sx_ntp", self.sx.cfg.ntp_server.clone());
@@ -659,7 +843,12 @@ impl App {
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
         let mut lock = self.sx.cfg.lock;
-        if ui.toggle_row(&mut y, self.t("Lock screen"), Some(self.t("Locks when the screen turns off")), &mut lock) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Lock screen"),
+            Some(self.t("Locks when the screen turns off")),
+            &mut lock,
+        ) {
             self.sx.cfg.lock = lock;
             if !lock {
                 self.sx.cfg.pin_hash.clear();
@@ -670,21 +859,46 @@ impl App {
         ui.section(&mut y, "PIN");
         let has = !self.sx.cfg.pin_hash.is_empty();
         let cs = ui.th.sub;
-        y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t(if has { "A PIN protects this device." } else { "Without a PIN, swiping up unlocks the device." }), 14.0, cs) + ui.dp(12.0);
+        y += ui.para(
+            ui.dp(22.0),
+            y,
+            ui.w - ui.dp(44.0),
+            self.t(if has {
+                "A PIN protects this device."
+            } else {
+                "Without a PIN, swiping up unlocks the device."
+            }),
+            14.0,
+            cs,
+        ) + ui.dp(12.0);
         let bw = ui.w - ui.dp(24.0);
-        if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t(if has { "Change PIN" } else { "Set PIN" }), Btn::Primary) {
+        if ui.button(
+            Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+            self.t(if has { "Change PIN" } else { "Set PIN" }),
+            Btn::Primary,
+        ) {
             self.go(Screen::Sys(Sx::PinSet));
             ui.dirty = true;
         }
         y += ui.dp(60.0);
-        if has && ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Remove PIN"), Btn::Plain) {
+        if has
+            && ui.button(
+                Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                self.t("Remove PIN"),
+                Btn::Plain,
+            )
+        {
             self.sx.cfg.pin_hash.clear();
             self.sx.cfg.pin_salt.clear();
             self.sx_save();
             ui.dirty = true;
         }
         y += ui.dp(60.0);
-        if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Lock now"), Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+            self.t("Lock now"),
+            Btn::Plain,
+        ) {
             self.sx.locked = true;
             self.sx.pin.clear();
             ui.dirty = true;
@@ -693,8 +907,19 @@ impl App {
         if crate::fp::available() {
             ui.section(&mut y, self.t("Fingerprint"));
             let n = self.sx.fp_count.unwrap_or(0);
-            let cnt = self.sx.fp_count.map(|n| n.to_string()).unwrap_or("…".into());
-            ui.row(&mut y, None, self.t("Saved fingerprints"), None, Some(&cnt), false);
+            let cnt = self
+                .sx
+                .fp_count
+                .map(|n| n.to_string())
+                .unwrap_or("…".into());
+            ui.row(
+                &mut y,
+                None,
+                self.t("Saved fingerprints"),
+                None,
+                Some(&cnt),
+                false,
+            );
             if has {
                 let mut on = self.sx.cfg.fp_unlock && n > 0;
                 let old = ui.enabled;
@@ -715,12 +940,20 @@ impl App {
             let old = ui.enabled;
             ui.enabled = old && has;
             if self.sx.fp_mode == 2 {
-                if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Cancel"), Btn::Plain) {
+                if ui.button(
+                    Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                    self.t("Cancel"),
+                    Btn::Plain,
+                ) {
                     self.fp_stop();
                     self.sx.fp_info.clear();
                     ui.dirty = true;
                 }
-            } else if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Add fingerprint"), Btn::Primary) {
+            } else if ui.button(
+                Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                self.t("Add fingerprint"),
+                Btn::Primary,
+            ) {
                 self.sx.fp_info = self.t("Place your finger on the sensor").into();
                 if !self.fp_start(2, "learn") {
                     self.sx.fp_info = self.t("Fingerprint service not ready").into();
@@ -728,7 +961,14 @@ impl App {
                 ui.dirty = true;
             }
             y += ui.dp(60.0);
-            if n > 0 && self.sx.fp_mode != 2 && ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Delete all fingerprints"), Btn::Plain) {
+            if n > 0
+                && self.sx.fp_mode != 2
+                && ui.button(
+                    Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                    self.t("Delete all fingerprints"),
+                    Btn::Plain,
+                )
+            {
                 self.fp_start(4, "remove 0");
                 ui.dirty = true;
             }
@@ -740,7 +980,11 @@ impl App {
             let enrolled = crate::face::enrolled();
             let cs = ui.th.sub;
             y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Less secure than a PIN or fingerprint: someone who looks like you or a photo may unlock the device."), 13.5, cs) + ui.dp(10.0);
-            let st = if enrolled { self.t("Set up") } else { self.t("Not set up") };
+            let st = if enrolled {
+                self.t("Set up")
+            } else {
+                self.t("Not set up")
+            };
             ui.row(&mut y, None, self.t("Face"), None, Some(st), false);
             if has {
                 let mut on = self.sx.cfg.face_unlock && enrolled;
@@ -762,12 +1006,24 @@ impl App {
             let old = ui.enabled;
             ui.enabled = old && has;
             if self.sx.face_mode == 2 {
-                if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Cancel"), Btn::Plain) {
+                if ui.button(
+                    Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                    self.t("Cancel"),
+                    Btn::Plain,
+                ) {
                     self.face_stop();
                     self.sx.face_info.clear();
                     ui.dirty = true;
                 }
-            } else if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t(if enrolled { "Set up face again" } else { "Set up face" }), Btn::Primary) {
+            } else if ui.button(
+                Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                self.t(if enrolled {
+                    "Set up face again"
+                } else {
+                    "Set up face"
+                }),
+                Btn::Primary,
+            ) {
                 self.sx.face_info = self.t("Starting camera…").into();
                 if !self.face_start(2, &["anlernen", "45"]) {
                     self.sx.face_info = self.t("Face error").into();
@@ -775,7 +1031,14 @@ impl App {
                 ui.dirty = true;
             }
             y += ui.dp(60.0);
-            if enrolled && self.sx.face_mode != 2 && ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Delete face data"), Btn::Plain) {
+            if enrolled
+                && self.sx.face_mode != 2
+                && ui.button(
+                    Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+                    self.t("Delete face data"),
+                    Btn::Plain,
+                )
+            {
                 crate::face::delete();
                 self.sx.cfg.face_unlock = false;
                 self.sx_save();
@@ -797,7 +1060,8 @@ impl App {
         let old = ui.enabled;
         ui.enabled = true;
         for (i, k) in keys.iter().enumerate() {
-            let r = Rect::new(x0 + (i % 3) as f32 * kw, top + (i / 3) as f32 * kw, kw, kw).inset(ui.dp(7.0));
+            let r = Rect::new(x0 + (i % 3) as f32 * kw, top + (i / 3) as f32 * kw, kw, kw)
+                .inset(ui.dp(7.0));
             let held = ui.held(r);
             let fg = if light { rgb(0xFFFFFF) } else { ui.th.text };
             let bgc = if held { fg.alpha(0.28) } else { fg.alpha(0.10) };
@@ -824,7 +1088,8 @@ impl App {
             if i < self.sx.pin.len() {
                 ui.cv.circle(x0 + i as f32 * gap, y, ui.dp(7.0), c);
             } else {
-                ui.cv.ring(x0 + i as f32 * gap, y, ui.dp(7.0), ui.dp(1.5), c);
+                ui.cv
+                    .ring(x0 + i as f32 * gap, y, ui.dp(7.0), ui.dp(1.5), c);
             }
         }
     }
@@ -832,13 +1097,31 @@ impl App {
     fn s_pinset(&mut self, ui: &mut Ui, area: Rect) {
         let area = self.header(ui, area, self.t("Set PIN"));
         let c = ui.th.text;
-        let title = if self.sx.pin_new.is_none() { self.t("Enter new PIN (4–8 digits)") } else { self.t("Confirm PIN") };
-        ui.label(Rect::new(0.0, area.y + ui.dp(24.0), ui.w, ui.dp(30.0)), title, 17.0, c, true, Al::Center);
+        let title = if self.sx.pin_new.is_none() {
+            self.t("Enter new PIN (4–8 digits)")
+        } else {
+            self.t("Confirm PIN")
+        };
+        ui.label(
+            Rect::new(0.0, area.y + ui.dp(24.0), ui.w, ui.dp(30.0)),
+            title,
+            17.0,
+            c,
+            true,
+            Al::Center,
+        );
         self.pin_dots(ui, area.y + ui.dp(80.0), self.sx.pin.len().max(4), c);
         if !self.sx.msg.is_empty() {
             let m = self.sx.msg.clone();
             let d = ui.th.danger;
-            ui.label(Rect::new(0.0, area.y + ui.dp(102.0), ui.w, ui.dp(24.0)), &m, 14.0, d, false, Al::Center);
+            ui.label(
+                Rect::new(0.0, area.y + ui.dp(102.0), ui.w, ui.dp(24.0)),
+                &m,
+                14.0,
+                d,
+                false,
+                Al::Center,
+            );
         }
         let top = area.y + ui.dp(140.0);
         match self.keypad(ui, top, false) {
@@ -881,12 +1164,27 @@ impl App {
         let w = rgb(0xF2F0EA);
         // Hintergrund wie in der Demo: warmes Leuchten oben, darunter Ultar-Schwarz
         ui.cv.rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0x0A0B0E));
-        ui.cv.vgrad(Rect::new(0.0, 0.0, ui.w, ui.h * 0.55), rgb(0x1C1A10), rgb(0x0A0B0E));
+        ui.cv.vgrad(
+            Rect::new(0.0, 0.0, ui.w, ui.h * 0.55),
+            rgb(0x1C1A10),
+            rgb(0x0A0B0E),
+        );
         let dt = self.now_dt();
         let has_pin = !self.sx.cfg.pin_hash.is_empty();
         if let Some((cap, chg)) = sys::battery() {
-            let s = if chg { format!("{} · {cap} %", self.t("Charging")) } else { format!("{cap} %") };
-            ui.label(Rect::new(0.0, ui.dp(8.0), ui.w - ui.dp(16.0), ui.dp(20.0)), &s, 13.0, w.alpha(0.8), false, Al::End);
+            let s = if chg {
+                format!("{} · {cap} %", self.t("Charging"))
+            } else {
+                format!("{cap} %")
+            };
+            ui.label(
+                Rect::new(0.0, ui.dp(8.0), ui.w - ui.dp(16.0), ui.dp(20.0)),
+                &s,
+                13.0,
+                w.alpha(0.8),
+                false,
+                Al::End,
+            );
         }
         let old = ui.enabled;
         ui.enabled = true;
@@ -894,8 +1192,29 @@ impl App {
         if !self.sx.pin_mode || !has_pin {
             // ---- Hauptansicht ----
             let mut y = top + ui.dp(40.0);
-            let date = if self.set.lang == "ar" { format!("{}، {} {}", self.t(crate::i18n::DAYS[dt.wd]), dt.d, self.t(MONTHS[(dt.mo as usize).clamp(1, 12) - 1])) } else { format!("{}, {}. {}", self.t(crate::i18n::DAYS[dt.wd]), dt.d, self.t(MONTHS[(dt.mo as usize).clamp(1, 12) - 1])) };
-            ui.label(Rect::new(0.0, y, ui.w, ui.dp(22.0)), &date, 15.0, w.alpha(0.75), false, Al::Center);
+            let date = if self.set.lang == "ar" {
+                format!(
+                    "{}، {} {}",
+                    self.t(crate::i18n::DAYS[dt.wd]),
+                    dt.d,
+                    self.t(MONTHS[(dt.mo as usize).clamp(1, 12) - 1])
+                )
+            } else {
+                format!(
+                    "{}, {}. {}",
+                    self.t(crate::i18n::DAYS[dt.wd]),
+                    dt.d,
+                    self.t(MONTHS[(dt.mo as usize).clamp(1, 12) - 1])
+                )
+            };
+            ui.label(
+                Rect::new(0.0, y, ui.w, ui.dp(22.0)),
+                &date,
+                15.0,
+                w.alpha(0.75),
+                false,
+                Al::Center,
+            );
             y += ui.dp(26.0);
             let clock = self.clock_str(dt.h, dt.mi);
             let mut csz = 104.0;
@@ -906,10 +1225,19 @@ impl App {
             let cr = Rect::new((ui.w - cw) / 2.0, y, cw, ui.dp(112.0));
             ui.label(cr, &clock, csz, w, true, Al::Center);
             let (hh, top_c) = (ui.h, rgb(0x1C1A10));
-            ui.cv.dot_screen(cr, ui.dp(5.0).max(3.0), |yy| top_c.mix(rgb(0x0A0B0E), (yy / (hh * 0.55)).clamp(0.0, 1.0)));
+            ui.cv.dot_screen(cr, ui.dp(5.0).max(3.0), |yy| {
+                top_c.mix(rgb(0x0A0B0E), (yy / (hh * 0.55)).clamp(0.0, 1.0))
+            });
             y += ui.dp(116.0);
             let hs = super::app_demo::hijri_str(&self.set.lang, dt.y, dt.mo, dt.d);
-            ui.label(Rect::new(0.0, y, ui.w, ui.dp(20.0)), &hs, 13.0, w.alpha(0.6), false, Al::Center);
+            ui.label(
+                Rect::new(0.0, y, ui.w, ui.dp(20.0)),
+                &hs,
+                13.0,
+                w.alpha(0.6),
+                false,
+                Al::Center,
+            );
             y += ui.dp(30.0);
             // Pillen: nächster Wecker, VPN
             let mut pills: Vec<(Ic, String)> = Vec::new();
@@ -920,7 +1248,10 @@ impl App {
                 pills.push((Ic::Lock, "VPN".into()));
             }
             if !pills.is_empty() {
-                let ws: Vec<f32> = pills.iter().map(|p| ui.text_w(&p.1, 13.0, false) + ui.dp(44.0)).collect();
+                let ws: Vec<f32> = pills
+                    .iter()
+                    .map(|p| ui.text_w(&p.1, 13.0, false) + ui.dp(44.0))
+                    .collect();
                 let tot: f32 = ws.iter().sum::<f32>() + ui.dp(8.0) * (pills.len() as f32 - 1.0);
                 let mut x = (ui.w - tot) / 2.0;
                 for (i, (ic, t)) in pills.iter().enumerate() {
@@ -928,7 +1259,14 @@ impl App {
                     ui.cv.rrect(r, ui.dp(16.0), w.alpha(0.12));
                     ui.cv.rrect(r.inset(1.0), ui.dp(15.0), rgb(0x0A0B0E));
                     ui.icon(*ic, r.x + ui.dp(18.0), r.cy(), ui.dp(13.0), w);
-                    ui.label(Rect::new(r.x + ui.dp(30.0), r.y, r.w - ui.dp(36.0), r.h), t, 13.0, w, false, Al::Start);
+                    ui.label(
+                        Rect::new(r.x + ui.dp(30.0), r.y, r.w - ui.dp(36.0), r.h),
+                        t,
+                        13.0,
+                        w,
+                        false,
+                        Al::Start,
+                    );
                     x += ws[i] + ui.dp(8.0);
                 }
                 y += ui.dp(32.0);
@@ -946,15 +1284,57 @@ impl App {
                     break;
                 }
                 ui.cv.rrect(r, ui.dp(20.0), rgb(0x1C1F26).alpha(0.78));
-                let ix = if ui.rtl { r.right() - ui.dp(30.0) } else { r.x + ui.dp(30.0) };
-                ui.cv.rrect(Rect::new(ix - ui.dp(16.0), r.cy() - ui.dp(16.0), ui.dp(32.0), ui.dp(32.0)), ui.dp(10.0), rgb(0x2A2D35));
-                let nic = match n.kind.as_str() { "call" => Ic::Phone, "sms" | "message" => Ic::Chat, "store" => Ic::Box, _ => Ic::Bell };
+                let ix = if ui.rtl {
+                    r.right() - ui.dp(30.0)
+                } else {
+                    r.x + ui.dp(30.0)
+                };
+                ui.cv.rrect(
+                    Rect::new(
+                        ix - ui.dp(16.0),
+                        r.cy() - ui.dp(16.0),
+                        ui.dp(32.0),
+                        ui.dp(32.0),
+                    ),
+                    ui.dp(10.0),
+                    rgb(0x2A2D35),
+                );
+                let nic = match n.kind.as_str() {
+                    "call" => Ic::Phone,
+                    "sms" | "message" => Ic::Chat,
+                    "store" => Ic::Box,
+                    _ => Ic::Bell,
+                };
                 ui.icon(nic, ix, r.cy(), ui.dp(16.0), ui.th.accent);
-                let tx = Rect::new(if ui.rtl { r.x + ui.dp(14.0) } else { r.x + ui.dp(58.0) }, r.y, r.w - ui.dp(72.0), r.h);
-                let raw = if n.app.is_empty() { n.kind.clone() } else { n.app.clone() };
-                let cap: String = raw.chars().next().map(|c| c.to_uppercase().collect::<String>() + &raw[c.len_utf8()..]).unwrap_or_default();
+                let tx = Rect::new(
+                    if ui.rtl {
+                        r.x + ui.dp(14.0)
+                    } else {
+                        r.x + ui.dp(58.0)
+                    },
+                    r.y,
+                    r.w - ui.dp(72.0),
+                    r.h,
+                );
+                let raw = if n.app.is_empty() {
+                    n.kind.clone()
+                } else {
+                    n.app.clone()
+                };
+                let cap: String = raw
+                    .chars()
+                    .next()
+                    .map(|c| c.to_uppercase().collect::<String>() + &raw[c.len_utf8()..])
+                    .unwrap_or_default();
                 let app = self.t_dyn(&cap);
-                ui.label(Rect::new(tx.x, r.y + ui.dp(8.0), tx.w, ui.dp(16.0)), &app, 12.0, w.alpha(0.7), false, Al::Start);
+                ui.label(
+                    Rect::new(tx.x, r.y + ui.dp(8.0), tx.w, ui.dp(16.0)),
+                    &app,
+                    12.0,
+                    w.alpha(0.7),
+                    false,
+                    Al::Start,
+                );
                 if n.ts > 0 {
                     let mins = ((now - n.ts).max(0) / 60) as i64;
                     let (v, u) = if mins < 60 { (mins, 0) } else { (mins / 60, 1) };
@@ -963,42 +1343,116 @@ impl App {
                         "ar" => format!("منذ {v} {}", if u == 0 { "د" } else { "س" }),
                         _ => format!("{v} {} ago", if u == 0 { "min" } else { "h" }),
                     };
-                    ui.label(Rect::new(tx.x, r.y + ui.dp(8.0), tx.w, ui.dp(16.0)), ago.trim(), 12.0, w.alpha(0.7), false, Al::End);
+                    ui.label(
+                        Rect::new(tx.x, r.y + ui.dp(8.0), tx.w, ui.dp(16.0)),
+                        ago.trim(),
+                        12.0,
+                        w.alpha(0.7),
+                        false,
+                        Al::End,
+                    );
                 }
                 let tf = ui.fit(&n.title, 14.0, true, tx.w);
-                ui.label(Rect::new(tx.x, r.y + ui.dp(25.0), tx.w, ui.dp(20.0)), &tf, 14.0, w, true, Al::Start);
-                ui.label(Rect::new(tx.x, r.y + ui.dp(44.0), tx.w, ui.dp(16.0)), self.t("Content hidden until unlocked"), 12.5, w.alpha(0.7), false, Al::Start);
+                ui.label(
+                    Rect::new(tx.x, r.y + ui.dp(25.0), tx.w, ui.dp(20.0)),
+                    &tf,
+                    14.0,
+                    w,
+                    true,
+                    Al::Start,
+                );
+                ui.label(
+                    Rect::new(tx.x, r.y + ui.dp(44.0), tx.w, ui.dp(16.0)),
+                    self.t("Content hidden until unlocked"),
+                    12.5,
+                    w.alpha(0.7),
+                    false,
+                    Al::Start,
+                );
                 y += ui.dp(74.0);
             }
             // Unten: Taschenlampe, Fingerabdruck, Kamera
             let fp_on = self.sx.cfg.fp_unlock && crate::fp::available();
-            if has_pin && fp_on && self.sx.fp_mode == 0 && self.sx.fp_retry.map_or(true, |t| Instant::now() >= t) {
+            if has_pin
+                && fp_on
+                && self.sx.fp_mode == 0
+                && self.sx.fp_retry.map_or(true, |t| Instant::now() >= t)
+            {
                 self.fp_start(1, "auth");
             }
             let by = ui.h - ui.dp(52.0) - ui.dp(150.0);
             let side = ui.dp(26.0);
             let (lx, rx) = (ui.dp(24.0) + side, ui.w - ui.dp(24.0) - side);
             let torch = crate::quick::torch_on();
-            if ui.icon_btn(lx, by, side, Ic::Torch, if torch { ui.th.accent } else { w.alpha(0.08) }, if torch { ui.th.on_accent } else { w }) {
+            if ui.icon_btn(
+                lx,
+                by,
+                side,
+                Ic::Torch,
+                if torch { ui.th.accent } else { w.alpha(0.08) },
+                if torch { ui.th.on_accent } else { w },
+            ) {
                 crate::quick::set_torch(!torch);
                 ui.dirty = true;
             }
             let cam = ui.icon_btn(rx, by, side, Ic::Camera, w.alpha(0.08), w);
             let fr = ui.dp(34.0);
             let gold = rgb(0xD8C870);
-            ui.cv.circle(ui.w / 2.0, by, fr + ui.dp(10.0), gold.alpha(0.06));
+            ui.cv
+                .circle(ui.w / 2.0, by, fr + ui.dp(10.0), gold.alpha(0.06));
             ui.cv.ring(ui.w / 2.0, by, fr, ui.dp(1.5), gold.alpha(0.6));
             ui.icon(Ic::Finger, ui.w / 2.0, by, ui.dp(26.0), rgb(0xF0E8A0));
             let fp_tap = ui.tap(Rect::new(ui.w / 2.0 - fr, by - fr, 2.0 * fr, 2.0 * fr));
-            let hint = if self.sx.fp_mode == 1 { self.t("Touch sensor or tap for PIN") } else { self.t("Tap for PIN") };
-            ui.label(Rect::new(0.0, by + fr + ui.dp(10.0), ui.w, ui.dp(18.0)), if has_pin { hint } else { self.t("Tap to unlock") }, 12.5, w.alpha(0.7), false, Al::Center);
+            let hint = if self.sx.fp_mode == 1 {
+                self.t("Touch sensor or tap for PIN")
+            } else {
+                self.t("Tap for PIN")
+            };
+            ui.label(
+                Rect::new(0.0, by + fr + ui.dp(10.0), ui.w, ui.dp(18.0)),
+                if has_pin {
+                    hint
+                } else {
+                    self.t("Tap to unlock")
+                },
+                12.5,
+                w.alpha(0.7),
+                false,
+                Al::Center,
+            );
             let sy = by + fr + ui.dp(40.0);
             let (ax, ay, aw) = (ui.w / 2.0, sy, ui.dp(7.0));
-            ui.cv.line(ax - aw, ay + aw * 0.5, ax, ay - aw * 0.5, ui.dp(2.0), w.alpha(0.85));
-            ui.cv.line(ax, ay - aw * 0.5, ax + aw, ay + aw * 0.5, ui.dp(2.0), w.alpha(0.85));
-            ui.label(Rect::new(0.0, sy + ui.dp(10.0), ui.w, ui.dp(20.0)), self.t("Swipe up"), 13.0, w.alpha(0.85), false, Al::Center);
+            ui.cv.line(
+                ax - aw,
+                ay + aw * 0.5,
+                ax,
+                ay - aw * 0.5,
+                ui.dp(2.0),
+                w.alpha(0.85),
+            );
+            ui.cv.line(
+                ax,
+                ay - aw * 0.5,
+                ax + aw,
+                ay + aw * 0.5,
+                ui.dp(2.0),
+                w.alpha(0.85),
+            );
+            ui.label(
+                Rect::new(0.0, sy + ui.dp(10.0), ui.w, ui.dp(20.0)),
+                self.t("Swipe up"),
+                13.0,
+                w.alpha(0.85),
+                false,
+                Al::Center,
+            );
             let swiped = ui.p.released && ui.p.moved && ui.p.y - ui.p.py < -ui.dp(60.0);
-            let up_tap = ui.tap(Rect::new(ui.w / 2.0 - ui.dp(80.0), sy - ui.dp(14.0), ui.dp(160.0), ui.dp(48.0)));
+            let up_tap = ui.tap(Rect::new(
+                ui.w / 2.0 - ui.dp(80.0),
+                sy - ui.dp(14.0),
+                ui.dp(160.0),
+                ui.dp(48.0),
+            ));
             if swiped || fp_tap || up_tap || cam {
                 if has_pin {
                     self.sx.pin_mode = true;
@@ -1014,40 +1468,95 @@ impl App {
         } else {
             // ---- PIN-Ansicht ----
             ui.icon(Ic::Lock, ui.w / 2.0, top + ui.dp(52.0), ui.dp(26.0), w);
-            ui.label(Rect::new(0.0, top + ui.dp(74.0), ui.w, ui.dp(24.0)), self.t("Enter PIN"), 17.0, w, false, Al::Center);
+            ui.label(
+                Rect::new(0.0, top + ui.dp(74.0), ui.w, ui.dp(24.0)),
+                self.t("Enter PIN"),
+                17.0,
+                w,
+                false,
+                Al::Center,
+            );
             let top = top + ui.dp(30.0) - ui.h * 0.08;
-            let wait = self.sx.wait_until.map(|t| t.saturating_duration_since(Instant::now()).as_secs()).unwrap_or(0);
+            let wait = self
+                .sx
+                .wait_until
+                .map(|t| t.saturating_duration_since(Instant::now()).as_secs())
+                .unwrap_or(0);
             let dots_y = top + ui.h * 0.08 + ui.dp(110.0);
             // Fingerabdruck: Prüfen läuft, solange der Sperrbildschirm sichtbar ist
             let fp_on = self.sx.cfg.fp_unlock && crate::fp::available();
-            if fp_on && self.sx.fp_mode == 0 && self.sx.fp_retry.map_or(true, |t| Instant::now() >= t) {
+            if fp_on
+                && self.sx.fp_mode == 0
+                && self.sx.fp_retry.map_or(true, |t| Instant::now() >= t)
+            {
                 self.fp_start(1, "auth");
             }
             // Gesicht: einmal je Aufwachen automatisch, danach per Tippen erneut
-            let face_on = self.sx.cfg.face_unlock && crate::face::available() && crate::face::enrolled();
+            let face_on =
+                self.sx.cfg.face_unlock && crate::face::available() && crate::face::enrolled();
             if face_on && wait == 0 && !self.sx.face_tried && self.sx.face_mode == 0 {
                 self.sx.face_tried = true;
                 self.face_start(1, &["pruefen", "8"]);
             }
             if wait > 0 {
                 let s = format!("{} {wait} s", self.t("Try again in"));
-                ui.label(Rect::new(0.0, dots_y - ui.dp(12.0), ui.w, ui.dp(24.0)), &s, 15.0, ui.th.danger, true, Al::Center);
+                ui.label(
+                    Rect::new(0.0, dots_y - ui.dp(12.0), ui.w, ui.dp(24.0)),
+                    &s,
+                    15.0,
+                    ui.th.danger,
+                    true,
+                    Al::Center,
+                );
             } else {
                 self.pin_dots(ui, dots_y, self.sx.pin.len().max(4), w);
                 if !self.sx.msg.is_empty() {
                     let m = self.sx.msg.clone();
-                    ui.label(Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)), &m, 13.5, rgb(0xF87171), false, Al::Center);
+                    ui.label(
+                        Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)),
+                        &m,
+                        13.5,
+                        rgb(0xF87171),
+                        false,
+                        Al::Center,
+                    );
                 } else if self.sx.face_mode == 1 {
                     let m = self.t("Looking for your face…");
-                    ui.label(Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)), m, 13.5, w.alpha(0.65), false, Al::Center);
+                    ui.label(
+                        Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)),
+                        m,
+                        13.5,
+                        w.alpha(0.65),
+                        false,
+                        Al::Center,
+                    );
                 } else if self.sx.fp_mode == 1 {
                     let m = self.t("Touch the fingerprint sensor");
-                    ui.label(Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)), m, 13.5, w.alpha(0.65), false, Al::Center);
+                    ui.label(
+                        Rect::new(0.0, dots_y + ui.dp(16.0), ui.w, ui.dp(22.0)),
+                        m,
+                        13.5,
+                        w.alpha(0.65),
+                        false,
+                        Al::Center,
+                    );
                 }
                 if face_on && self.sx.face_tried && self.sx.face_mode == 0 {
                     // kleines Gesichtssymbol oben: erneut versuchen
-                    let r = Rect::new(ui.w / 2.0 - ui.dp(70.0), dots_y - ui.dp(58.0), ui.dp(140.0), ui.dp(34.0));
-                    ui.label(r, self.t("Try face again"), 13.5, ui.th.accent, true, Al::Center);
+                    let r = Rect::new(
+                        ui.w / 2.0 - ui.dp(70.0),
+                        dots_y - ui.dp(58.0),
+                        ui.dp(140.0),
+                        ui.dp(34.0),
+                    );
+                    ui.label(
+                        r,
+                        self.t("Try face again"),
+                        13.5,
+                        ui.th.accent,
+                        true,
+                        Al::Center,
+                    );
                     if ui.tap(r) {
                         self.sx.msg.clear();
                         self.face_start(1, &["pruefen", "8"]);
@@ -1067,7 +1576,10 @@ impl App {
                     Some(d) if self.sx.pin.len() < 8 => {
                         self.sx.pin.push(d);
                         // Bei passender Länge sofort prüfen (PIN-Länge ergibt sich aus dem Versuch, nicht gespeichert)
-                        if self.sx.pin.len() >= 4 && sysx::pin_hash(&self.sx.pin, &self.sx.cfg.pin_salt) == self.sx.cfg.pin_hash {
+                        if self.sx.pin.len() >= 4
+                            && sysx::pin_hash(&self.sx.pin, &self.sx.cfg.pin_salt)
+                                == self.sx.cfg.pin_hash
+                        {
                             self.try_unlock();
                         }
                     }
@@ -1077,7 +1589,12 @@ impl App {
             if wait > 0 {
                 ui.dirty = false;
             }
-            let cr = Rect::new(ui.w / 2.0 - ui.dp(70.0), ui.h - ui.dp(52.0) - ui.dp(44.0), ui.dp(140.0), ui.dp(40.0));
+            let cr = Rect::new(
+                ui.w / 2.0 - ui.dp(70.0),
+                ui.h - ui.dp(52.0) - ui.dp(44.0),
+                ui.dp(140.0),
+                ui.dp(40.0),
+            );
             ui.label(cr, self.t("Cancel"), 14.0, w.alpha(0.7), false, Al::Center);
             if ui.tap(cr) {
                 self.sx.pin_mode = false;
@@ -1120,7 +1637,12 @@ impl App {
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
         let mut at = self.sx.cfg.auto_time;
-        if ui.toggle_row(&mut y, self.t("Automatic time"), Some(self.t("Synchronize with a time server")), &mut at) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Automatic time"),
+            Some(self.t("Synchronize with a time server")),
+            &mut at,
+        ) {
             self.sx.cfg.auto_time = at;
             self.sx_save();
         }
@@ -1134,18 +1656,51 @@ impl App {
             self.t("never").to_string()
         } else {
             let d = sys::from_unix(st.last_sync, self.set.tz_min);
-            format!("{:02}.{:02}. {}{}", d.d, d.mo, self.clock_str(d.h, d.mi), if st.last_sync_ok { String::new() } else { format!(" – {}", st.last_sync_msg) })
+            format!(
+                "{:02}.{:02}. {}{}",
+                d.d,
+                d.mo,
+                self.clock_str(d.h, d.mi),
+                if st.last_sync_ok {
+                    String::new()
+                } else {
+                    format!(" – {}", st.last_sync_msg)
+                }
+            )
         };
-        ui.row(&mut y, Some(Ic::Clock), self.t("Last sync"), None, Some(&last), false);
+        ui.row(
+            &mut y,
+            Some(Ic::Clock),
+            self.t("Last sync"),
+            None,
+            Some(&last),
+            false,
+        );
         self.field_row(ui, &mut y, "sx_ntp", "Time server", "pool.ntp.org");
         let busy = *self.sx.diag_busy.lock().unwrap();
         let old = ui.enabled;
         ui.enabled = old && !busy;
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), self.t(if busy { "Synchronizing…" } else { "Synchronize now" }), Btn::Primary) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t(if busy {
+                "Synchronizing…"
+            } else {
+                "Synchronize now"
+            }),
+            Btn::Primary,
+        ) {
             let srv = self.f("sx_ntp").trim().to_string();
-            self.sx.cfg.ntp_server = if srv.is_empty() { "pool.ntp.org".into() } else { srv };
+            self.sx.cfg.ntp_server = if srv.is_empty() {
+                "pool.ntp.org".into()
+            } else {
+                srv
+            };
             self.sx_save();
-            let (out, b, srv) = (self.sx.diag.clone(), self.sx.diag_busy.clone(), self.sx.cfg.ntp_server.clone());
+            let (out, b, srv) = (
+                self.sx.diag.clone(),
+                self.sx.diag_busy.clone(),
+                self.sx.cfg.ntp_server.clone(),
+            );
             *b.lock().unwrap() = true;
             std::thread::spawn(move || {
                 let r = sysd::sync_time(&srv);
@@ -1167,15 +1722,41 @@ impl App {
         let now = sys::unix_now();
         let mut pick = None;
         let manual = self.sx.cfg.zone.is_empty();
-        if ui.row(&mut y, None, self.t("Manual (fixed offset)"), None, if manual { Some(self.t("Selected")) } else { None }, false) {
+        if ui.row(
+            &mut y,
+            None,
+            self.t("Manual (fixed offset)"),
+            None,
+            if manual {
+                Some(self.t("Selected"))
+            } else {
+                None
+            },
+            false,
+        ) {
             self.sx.cfg.zone.clear();
             self.sx_save();
         }
         for (id, name, _, rule) in sysx::ZONES {
             let off = sysx::offset_at(id, now).unwrap_or(0);
-            let sub = format!("{}{}", sysx::fmt_offset(off), if *rule != sysx::Dst::None { format!(" · {}", self.t("summer time")) } else { String::new() });
+            let sub = format!(
+                "{}{}",
+                sysx::fmt_offset(off),
+                if *rule != sysx::Dst::None {
+                    format!(" · {}", self.t("summer time"))
+                } else {
+                    String::new()
+                }
+            );
             let sel = self.sx.cfg.zone == *id;
-            if ui.row(&mut y, None, name, Some(&sub), if sel { Some(self.t("Selected")) } else { None }, false) {
+            if ui.row(
+                &mut y,
+                None,
+                name,
+                Some(&sub),
+                if sel { Some(self.t("Selected")) } else { None },
+                false,
+            ) {
                 pick = Some((id.to_string(), off));
             }
         }
@@ -1196,24 +1777,69 @@ impl App {
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
         if let Some(b) = sys::battery_info() {
-            let st = format!("{} % · {}", b.percent, if b.charging { self.t("Charging") } else { self.t("On battery") });
-            ui.row(&mut y, Some(Ic::Chip), self.t("Battery"), Some(&st), None, false);
+            let st = format!(
+                "{} % · {}",
+                b.percent,
+                if b.charging {
+                    self.t("Charging")
+                } else {
+                    self.t("On battery")
+                }
+            );
+            ui.row(
+                &mut y,
+                Some(Ic::Chip),
+                self.t("Battery"),
+                Some(&st),
+                None,
+                false,
+            );
             let temp = b.temp_c.map(|t| format!("{t:.1} °C")).unwrap_or("–".into());
-            ui.row(&mut y, None, self.t("Temperature"), None, Some(&temp), false);
-            let health = if b.health.is_empty() { "–".to_string() } else { b.health.clone() };
+            ui.row(
+                &mut y,
+                None,
+                self.t("Temperature"),
+                None,
+                Some(&temp),
+                false,
+            );
+            let health = if b.health.is_empty() {
+                "–".to_string()
+            } else {
+                b.health.clone()
+            };
             ui.row(&mut y, None, self.t("Health"), None, Some(&health), false);
             if let Some(v) = b.volt {
-                ui.row(&mut y, None, self.t("Voltage"), None, Some(&format!("{v:.2} V")), false);
+                ui.row(
+                    &mut y,
+                    None,
+                    self.t("Voltage"),
+                    None,
+                    Some(&format!("{v:.2} V")),
+                    false,
+                );
             }
         } else {
             self.caption(ui, &mut y, self.t("No battery found"));
         }
         if let Some((z, c)) = sysx::hottest_zone() {
-            ui.row(&mut y, None, self.t("Hottest component"), Some(&z), Some(&format!("{c:.0} °C")), false);
+            ui.row(
+                &mut y,
+                None,
+                self.t("Hottest component"),
+                Some(&z),
+                Some(&format!("{c:.0} °C")),
+                false,
+            );
         }
         ui.section(&mut y, self.t("Battery saver"));
         let mut s = self.sx.cfg.saver;
-        if ui.toggle_row(&mut y, self.t("Battery saver"), Some(self.t("Limits brightness and CPU speed")), &mut s) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Battery saver"),
+            Some(self.t("Limits brightness and CPU speed")),
+            &mut s,
+        ) {
             self.sx.cfg.saver = s;
             self.sx_save();
             self.apply_saver();
@@ -1223,7 +1849,11 @@ impl App {
             self.sx.cfg.auto_saver = a;
             self.sx_save();
         }
-        let d = ui.stepper(&mut y, self.t("At battery level"), &format!("{} %", self.sx.cfg.saver_at));
+        let d = ui.stepper(
+            &mut y,
+            self.t("At battery level"),
+            &format!("{} %", self.sx.cfg.saver_at),
+        );
         if d != 0 {
             self.sx.cfg.saver_at = (self.sx.cfg.saver_at as i32 + d * 5).clamp(5, 50) as u8;
             self.sx_save();
@@ -1235,15 +1865,26 @@ impl App {
         }
         ui.section(&mut y, self.t("Performance"));
         let (av, cur) = sysx::governors();
-        let opts = [self.t("Power saving"), self.t("Balanced"), self.t("Performance")];
+        let opts = [
+            self.t("Power saving"),
+            self.t("Balanced"),
+            self.t("Performance"),
+        ];
         let keys = ["power", "balanced", "performance"];
-        let sel = keys.iter().position(|k| *k == self.sx.cfg.perf).unwrap_or(1);
+        let sel = keys
+            .iter()
+            .position(|k| *k == self.sx.cfg.perf)
+            .unwrap_or(1);
         if let Some(i) = ui.chips(&mut y, &opts, sel) {
             self.sx.cfg.perf = keys[i].into();
             self.sx_save();
             self.apply_saver();
         }
-        let info = if av.is_empty() { self.t("CPU governor not available").to_string() } else { format!("CPU: {cur} ({})", av.join(", ")) };
+        let info = if av.is_empty() {
+            self.t("CPU governor not available").to_string()
+        } else {
+            format!("CPU: {cur} ({})", av.join(", "))
+        };
         let c = ui.th.sub;
         y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), &info, 13.0, c) + ui.dp(16.0);
         ui.scroll_end(area, y + *sc - area.y, sc);
@@ -1256,45 +1897,81 @@ impl App {
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
         let mut n = self.sx.cfg.night;
-        if ui.toggle_row(&mut y, self.t("Night light"), Some(self.t("Warmer colors, less blue light")), &mut n) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Night light"),
+            Some(self.t("Warmer colors, less blue light")),
+            &mut n,
+        ) {
             self.sx.cfg.night = n;
             self.sx_save();
         }
         self.caption(ui, &mut y, self.t("Strength"));
         let mut v = self.sx.cfg.night_strength;
-        if ui.slider("sx_night", Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(44.0)), &mut v) {
+        if ui.slider(
+            "sx_night",
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(44.0)),
+            &mut v,
+        ) {
             self.sx.cfg.night_strength = v;
             self.sx_save();
         }
         y += ui.dp(54.0);
         let mut s = self.sx.cfg.night_sched;
-        let sub = format!("{} – {}", self.clock_str((self.sx.cfg.night_from / 60) as i64, (self.sx.cfg.night_from % 60) as i64), self.clock_str((self.sx.cfg.night_to / 60) as i64, (self.sx.cfg.night_to % 60) as i64));
+        let sub = format!(
+            "{} – {}",
+            self.clock_str(
+                (self.sx.cfg.night_from / 60) as i64,
+                (self.sx.cfg.night_from % 60) as i64
+            ),
+            self.clock_str(
+                (self.sx.cfg.night_to / 60) as i64,
+                (self.sx.cfg.night_to % 60) as i64
+            )
+        );
         if ui.toggle_row(&mut y, self.t("Schedule"), Some(&sub), &mut s) {
             self.sx.cfg.night_sched = s;
             self.sx_save();
         }
         if s {
-            let d = ui.stepper(&mut y, self.t("From"), &format!("{:02}:00", self.sx.cfg.night_from / 60));
+            let d = ui.stepper(
+                &mut y,
+                self.t("From"),
+                &format!("{:02}:00", self.sx.cfg.night_from / 60),
+            );
             if d != 0 {
-                self.sx.cfg.night_from = ((self.sx.cfg.night_from as i32 / 60 + d).rem_euclid(24) * 60) as u16;
+                self.sx.cfg.night_from =
+                    ((self.sx.cfg.night_from as i32 / 60 + d).rem_euclid(24) * 60) as u16;
                 self.sx_save();
             }
-            let d = ui.stepper(&mut y, self.t("Until"), &format!("{:02}:00", self.sx.cfg.night_to / 60));
+            let d = ui.stepper(
+                &mut y,
+                self.t("Until"),
+                &format!("{:02}:00", self.sx.cfg.night_to / 60),
+            );
             if d != 0 {
-                self.sx.cfg.night_to = ((self.sx.cfg.night_to as i32 / 60 + d).rem_euclid(24) * 60) as u16;
+                self.sx.cfg.night_to =
+                    ((self.sx.cfg.night_to as i32 / 60 + d).rem_euclid(24) * 60) as u16;
                 self.sx_save();
             }
         }
         ui.section(&mut y, self.t("Brightness"));
         let has_light = light_lux().is_some();
-        let lux = light_lux().map(|l| format!("{l:.0} lx")).unwrap_or_else(|| self.t("no light sensor").into());
+        let lux = light_lux()
+            .map(|l| format!("{l:.0} lx"))
+            .unwrap_or_else(|| self.t("no light sensor").into());
         let mut ab = self.sx.cfg.auto_bright;
         if ui.toggle_row(&mut y, self.t("Adaptive brightness"), Some(&lux), &mut ab) {
             self.sx.cfg.auto_bright = ab && has_light;
             self.sx_save();
         }
         let mut hc = self.sx.cfg.contrast;
-        if ui.toggle_row(&mut y, self.t("High contrast"), Some(self.t("Stronger text and lines")), &mut hc) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("High contrast"),
+            Some(self.t("Stronger text and lines")),
+            &mut hc,
+        ) {
             self.sx.cfg.contrast = hc;
             self.sx_save();
         }
@@ -1322,32 +1999,60 @@ impl App {
         }
         ui.section(&mut y, self.t("Do not disturb"));
         let c = ui.th.sub;
-        y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Silences notifications. Calls, alarms and reminders still come through."), 13.5, c) + ui.dp(10.0);
+        y += ui.para(
+            ui.dp(22.0),
+            y,
+            ui.w - ui.dp(44.0),
+            self.t("Silences notifications. Calls, alarms and reminders still come through."),
+            13.5,
+            c,
+        ) + ui.dp(10.0);
         let mut d = self.sx.cfg.dnd;
         if ui.toggle_row(&mut y, self.t("Do not disturb"), None, &mut d) {
             self.sx.cfg.dnd = d;
             self.sx_save();
         }
         let mut s = self.sx.cfg.dnd_sched;
-        let sub = format!("{:02}:00 – {:02}:00", self.sx.cfg.dnd_from / 60, self.sx.cfg.dnd_to / 60);
+        let sub = format!(
+            "{:02}:00 – {:02}:00",
+            self.sx.cfg.dnd_from / 60,
+            self.sx.cfg.dnd_to / 60
+        );
         if ui.toggle_row(&mut y, self.t("Schedule"), Some(&sub), &mut s) {
             self.sx.cfg.dnd_sched = s;
             self.sx_save();
         }
         if s {
-            let dd = ui.stepper(&mut y, self.t("From"), &format!("{:02}:00", self.sx.cfg.dnd_from / 60));
+            let dd = ui.stepper(
+                &mut y,
+                self.t("From"),
+                &format!("{:02}:00", self.sx.cfg.dnd_from / 60),
+            );
             if dd != 0 {
-                self.sx.cfg.dnd_from = ((self.sx.cfg.dnd_from as i32 / 60 + dd).rem_euclid(24) * 60) as u16;
+                self.sx.cfg.dnd_from =
+                    ((self.sx.cfg.dnd_from as i32 / 60 + dd).rem_euclid(24) * 60) as u16;
                 self.sx_save();
             }
-            let dd = ui.stepper(&mut y, self.t("Until"), &format!("{:02}:00", self.sx.cfg.dnd_to / 60));
+            let dd = ui.stepper(
+                &mut y,
+                self.t("Until"),
+                &format!("{:02}:00", self.sx.cfg.dnd_to / 60),
+            );
             if dd != 0 {
-                self.sx.cfg.dnd_to = ((self.sx.cfg.dnd_to as i32 / 60 + dd).rem_euclid(24) * 60) as u16;
+                self.sx.cfg.dnd_to =
+                    ((self.sx.cfg.dnd_to as i32 / 60 + dd).rem_euclid(24) * 60) as u16;
                 self.sx_save();
             }
         }
         let active = self.dnd_active();
-        ui.row(&mut y, None, self.t("Status"), None, Some(self.t(if active { "Active" } else { "Off" })), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Status"),
+            None,
+            Some(self.t(if active { "Active" } else { "Off" })),
+            false,
+        );
         ui.scroll_end(area, y + *sc - area.y, sc);
     }
 
@@ -1358,12 +2063,20 @@ impl App {
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
         let bw = (ui.w - ui.dp(32.0)) / 2.0;
-        if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Clear current"), Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+            self.t("Clear current"),
+            Btn::Plain,
+        ) {
             sysd::clear_notifications();
             self.toast(self.t("Cleared").into());
             ui.dirty = true;
         }
-        if ui.button(Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)), self.t("Clear history"), Btn::Danger) {
+        if ui.button(
+            Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)),
+            self.t("Clear history"),
+            Btn::Danger,
+        ) {
             sysd::clear_history();
             ui.dirty = true;
         }
@@ -1375,7 +2088,11 @@ impl App {
         for n in h.iter().take(120) {
             let d = sys::from_unix(n.ts, self.set.tz_min);
             let when = format!("{:02}.{:02}. {}", d.d, d.mo, self.clock_str(d.h, d.mi));
-            let sub = if n.body.is_empty() { n.app.clone() } else { format!("{} · {}", n.app, n.body) };
+            let sub = if n.body.is_empty() {
+                n.app.clone()
+            } else {
+                format!("{} · {}", n.app, n.body)
+            };
             ui.row(&mut y, None, &n.title, Some(&sub), Some(&when), false);
         }
         ui.scroll_end(area, y + *sc - area.y, sc);
@@ -1391,16 +2108,55 @@ impl App {
         ui.section(&mut y, self.t("Wi-Fi details"));
         if let Some(ifc) = sys::wifi_iface() {
             let st = crate::wifi::status(&ifc).unwrap_or_default();
-            let g = |k: &str| crate::wifi::get(&st, k).map(crate::wifi::unescape).unwrap_or_else(|| "–".into());
-            let sig = crate::wifi::signal(&ifc).map(|(r, f)| format!("{r} dBm · {f} MHz")).unwrap_or("–".into());
-            let net = sys::net_status().into_iter().find(|n| n.name == ifc).unwrap_or_default();
-            for (k, v) in [("Network", g("ssid")), ("Signal", sig), ("IP address", g("ip_address")), ("Gateway", if net.gw.is_empty() { "–".into() } else { net.gw.clone() }), ("DNS", if net.dns.is_empty() { "–".into() } else { net.dns.clone() }), ("MAC", g("address")), ("Security", g("key_mgmt")), ("BSSID", g("bssid"))] {
+            let g = |k: &str| {
+                crate::wifi::get(&st, k)
+                    .map(crate::wifi::unescape)
+                    .unwrap_or_else(|| "–".into())
+            };
+            let sig = crate::wifi::signal(&ifc)
+                .map(|(r, f)| format!("{r} dBm · {f} MHz"))
+                .unwrap_or("–".into());
+            let net = sys::net_status()
+                .into_iter()
+                .find(|n| n.name == ifc)
+                .unwrap_or_default();
+            for (k, v) in [
+                ("Network", g("ssid")),
+                ("Signal", sig),
+                ("IP address", g("ip_address")),
+                (
+                    "Gateway",
+                    if net.gw.is_empty() {
+                        "–".into()
+                    } else {
+                        net.gw.clone()
+                    },
+                ),
+                (
+                    "DNS",
+                    if net.dns.is_empty() {
+                        "–".into()
+                    } else {
+                        net.dns.clone()
+                    },
+                ),
+                ("MAC", g("address")),
+                ("Security", g("key_mgmt")),
+                ("BSSID", g("bssid")),
+            ] {
                 ui.row(&mut y, None, self.t(k), None, Some(&v), false);
             }
         } else {
             self.caption(ui, &mut y, self.t("No Wi-Fi device found"));
         }
-        if ui.row(&mut y, Some(Ic::Plus), self.t("Add hidden network"), None, None, true) {
+        if ui.row(
+            &mut y,
+            Some(Ic::Plus),
+            self.t("Add hidden network"),
+            None,
+            None,
+            true,
+        ) {
             self.go(Screen::Sys(Sx::HiddenWifi));
             ui.dirty = true;
         }
@@ -1409,7 +2165,15 @@ impl App {
         let busy = *self.sx.diag_busy.lock().unwrap();
         let old = ui.enabled;
         ui.enabled = old && !busy;
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), self.t(if busy { "Testing…" } else { "Test connection" }), Btn::Primary) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t(if busy {
+                "Testing…"
+            } else {
+                "Test connection"
+            }),
+            Btn::Primary,
+        ) {
             self.run_diag();
             ui.dirty = true;
         }
@@ -1417,15 +2181,30 @@ impl App {
         y += ui.dp(58.0);
         for l in self.sx.diag.lock().unwrap().clone() {
             let ok = l.starts_with('✓');
-            let c = if ok { ui.th.ok } else if l.starts_with('✗') { ui.th.danger } else { ui.th.sub };
+            let c = if ok {
+                ui.th.ok
+            } else if l.starts_with('✗') {
+                ui.th.danger
+            } else {
+                ui.th.sub
+            };
             y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), &l, 14.0, c) + ui.dp(6.0);
         }
         // DNS
         ui.section(&mut y, "DNS");
         self.field_row(ui, &mut y, "sx_dns", "Own DNS servers", "1.1.1.1, 9.9.9.9");
         let bw = (ui.w - ui.dp(32.0)) / 2.0;
-        if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), self.t("Save"), Btn::Primary) {
-            let v: Vec<String> = self.f("sx_dns").split([',', ' ']).filter(|s| !s.is_empty()).map(String::from).collect();
+        if ui.button(
+            Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+            self.t("Save"),
+            Btn::Primary,
+        ) {
+            let v: Vec<String> = self
+                .f("sx_dns")
+                .split([',', ' '])
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
             if v.iter().all(|s| s.parse::<std::net::Ipv4Addr>().is_ok()) {
                 self.sx.cfg.dns = v.join(",");
                 self.sx_save();
@@ -1435,7 +2214,11 @@ impl App {
                 self.toast(self.t("Invalid input").into());
             }
         }
-        if ui.button(Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)), self.t("Automatic"), Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)),
+            self.t("Automatic"),
+            Btn::Plain,
+        ) {
             self.sx.cfg.dns.clear();
             self.fields.insert("sx_dns", String::new());
             self.sx_save();
@@ -1447,9 +2230,26 @@ impl App {
         let usage: Usage = sys::load("net-usage.toml");
         let d = self.now_dt();
         let used = sysx::month_usage(&usage.days, d.y, d.mo);
-        ui.row(&mut y, None, self.t("This month"), None, Some(&sys::human(used)), false);
-        self.field_row(ui, &mut y, "sx_lim", "Monthly limit (MB, empty = off)", "5000");
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Save"), Btn::Plain) {
+        ui.row(
+            &mut y,
+            None,
+            self.t("This month"),
+            None,
+            Some(&sys::human(used)),
+            false,
+        );
+        self.field_row(
+            ui,
+            &mut y,
+            "sx_lim",
+            "Monthly limit (MB, empty = off)",
+            "5000",
+        );
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t("Save"),
+            Btn::Plain,
+        ) {
             let t = self.f("sx_lim").trim().to_string();
             match t.parse::<u64>() {
                 Ok(v) => self.sx.cfg.data_limit_mb = v,
@@ -1471,17 +2271,38 @@ impl App {
         let (out, busy) = (self.sx.diag.clone(), self.sx.diag_busy.clone());
         *busy.lock().unwrap() = true;
         out.lock().unwrap().clear();
-        let gw = sys::net_status().into_iter().find(|n| n.state == "verbunden").map(|n| n.gw).unwrap_or_default();
+        let gw = sys::net_status()
+            .into_iter()
+            .find(|n| n.state == "verbunden")
+            .map(|n| n.gw)
+            .unwrap_or_default();
         let lang = self.set.lang.clone();
         std::thread::spawn(move || {
             let push = |s: String| out.lock().unwrap().push(s);
-            let l = |de: &str, en: &str, ar: &str| -> String { match lang.as_str() { "de" => de, "en" => en, _ => ar }.to_string() };
+            let l = |de: &str, en: &str, ar: &str| -> String {
+                match lang.as_str() {
+                    "de" => de,
+                    "en" => en,
+                    _ => ar,
+                }
+                .to_string()
+            };
             match gw.parse::<std::net::Ipv4Addr>() {
                 Ok(ip) => match sysx::ping(ip, 1500) {
-                    Ok(ms) => push(format!("✓ {} {gw}: {ms:.0} ms", l("Router", "Router", "الموجّه"))),
+                    Ok(ms) => push(format!(
+                        "✓ {} {gw}: {ms:.0} ms",
+                        l("Router", "Router", "الموجّه")
+                    )),
                     Err(e) => push(format!("✗ {} {gw}: {e}", l("Router", "Router", "الموجّه"))),
                 },
-                Err(_) => push(format!("✗ {}", l("Keine Verbindung (kein Gateway)", "Not connected (no gateway)", "غير متصل (لا يوجد موجّه)"))),
+                Err(_) => push(format!(
+                    "✗ {}",
+                    l(
+                        "Keine Verbindung (kein Gateway)",
+                        "Not connected (no gateway)",
+                        "غير متصل (لا يوجد موجّه)"
+                    )
+                )),
             }
             match sysx::ping("1.1.1.1".parse().unwrap(), 2000) {
                 Ok(ms) => push(format!("✓ Internet (1.1.1.1): {ms:.0} ms")),
@@ -1503,8 +2324,18 @@ impl App {
         let area = self.header(ui, area, self.t("Add hidden network"));
         let mut y = area.y;
         self.field_row(ui, &mut y, "sx_ssid", "Network name (SSID)", "");
-        self.field_row(ui, &mut y, "sx_wpw", "Password", self.t("empty = open network"));
-        if ui.button(Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Connect"), Btn::Primary) {
+        self.field_row(
+            ui,
+            &mut y,
+            "sx_wpw",
+            "Password",
+            self.t("empty = open network"),
+        );
+        if ui.button(
+            Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t("Connect"),
+            Btn::Primary,
+        ) {
             let ssid = self.f("sx_ssid").trim().to_string();
             let pw = self.f("sx_wpw");
             if ssid.is_empty() || ssid.len() > 32 {
@@ -1524,7 +2355,11 @@ impl App {
     // ------------------------------------------------------------ Protokolle
 
     fn sx_load_logs(&mut self) {
-        self.sx.logs = if self.sx.log_tab == 0 { sysx::kernel_log(400) } else { sysx::service_log(400) };
+        self.sx.logs = if self.sx.log_tab == 0 {
+            sysx::kernel_log(400)
+        } else {
+            sysx::service_log(400)
+        };
         if self.sx.logs.is_empty() {
             self.sx.logs.push("–".into());
         }
@@ -1533,13 +2368,21 @@ impl App {
     fn s_logs(&mut self, ui: &mut Ui, area: Rect, sc: &mut f32) {
         let area = self.header(ui, area, self.t("System logs"));
         let mut y0 = area.y;
-        if let Some(i) = ui.chips(&mut y0, &[self.t("Kernel"), self.t("Services")], self.sx.log_tab) {
+        if let Some(i) = ui.chips(
+            &mut y0,
+            &[self.t("Kernel"), self.t("Services")],
+            self.sx.log_tab,
+        ) {
             self.sx.log_tab = i;
             self.sx_load_logs();
             *sc = 0.0;
         }
         let bw = ui.w - ui.dp(24.0);
-        if ui.button(Rect::new(ui.dp(12.0), y0, bw, ui.dp(40.0)), self.t("Refresh"), Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(12.0), y0, bw, ui.dp(40.0)),
+            self.t("Refresh"),
+            Btn::Plain,
+        ) {
             self.sx_load_logs();
         }
         y0 += ui.dp(48.0);
@@ -1550,7 +2393,10 @@ impl App {
         ui.rtl = false;
         // neueste oben
         for l in self.sx.logs.iter().rev() {
-            let h = ui.dp(17.0) * ((l.chars().count() as f32 * 6.6 * ui.k / (ui.w - ui.dp(24.0))).ceil().max(1.0));
+            let h = ui.dp(17.0)
+                * ((l.chars().count() as f32 * 6.6 * ui.k / (ui.w - ui.dp(24.0)))
+                    .ceil()
+                    .max(1.0));
             if y + h > list.y && y < list.bottom() {
                 ui.para(ui.dp(12.0), y, ui.w - ui.dp(24.0), l, 11.5, c);
             }
@@ -1570,9 +2416,16 @@ impl App {
         ui.section(&mut y, self.t("Backup"));
         let c = ui.th.sub;
         y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Saves settings, notes, contacts, calendar and alarms to /data/Backups. Passwords are not included."), 13.5, c) + ui.dp(10.0);
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Create backup"), Btn::Primary) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t("Create backup"),
+            Btn::Primary,
+        ) {
             let d = self.now_dt();
-            let stamp = format!("{:04}{:02}{:02}-{:02}{:02}{:02}", d.y, d.mo, d.d, d.h, d.mi, d.s);
+            let stamp = format!(
+                "{:04}{:02}{:02}-{:02}{:02}{:02}",
+                d.y, d.mo, d.d, d.h, d.mi, d.s
+            );
             self.sx.msg = match sysx::backup_create(&stamp) {
                 Ok((p, n)) => format!("✓ {n} {} → {p}", self.t("files")),
                 Err(e) => format!("✗ {e}"),
@@ -1582,7 +2435,14 @@ impl App {
         y += ui.dp(60.0);
         let mut restore = None;
         for b in sysx::backup_list().iter().take(8) {
-            if ui.row(&mut y, Some(Ic::Disk), b, Some(self.t("Tap to restore")), None, true) {
+            if ui.row(
+                &mut y,
+                Some(Ic::Disk),
+                b,
+                Some(self.t("Tap to restore")),
+                None,
+                true,
+            ) {
                 restore = Some(b.clone());
             }
         }
@@ -1605,7 +2465,11 @@ impl App {
         let label = format!("{} ({})", self.t("Clean up"), sys::human(total));
         let old = ui.enabled;
         ui.enabled = old && total > 0;
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), &label, Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            &label,
+            Btn::Plain,
+        ) {
             let freed = sysx::cleanup_run(&self.sx.cleanup);
             self.sx.msg = format!("✓ {} {}", sys::human(freed), self.t("freed"));
             self.sx.cleanup = sysx::cleanup_candidates();
@@ -1613,13 +2477,26 @@ impl App {
         ui.enabled = old;
         y += ui.dp(60.0);
         ui.section(&mut y, self.t("Factory reset"));
-        y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Deletes all settings, accounts, Wi-Fi networks, notes and contacts. Photos stay."), 13.5, c) + ui.dp(10.0);
+        y += ui.para(
+            ui.dp(22.0),
+            y,
+            ui.w - ui.dp(44.0),
+            self.t(
+                "Deletes all settings, accounts, Wi-Fi networks, notes and contacts. Photos stay.",
+            ),
+            13.5,
+            c,
+        ) + ui.dp(10.0);
         let label = match self.sx.confirm {
             0 => self.t("Reset device"),
             1 => self.t("Really reset? Tap again"),
             _ => self.t("Last chance – tap to delete everything"),
         };
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), label, Btn::Danger) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            label,
+            Btn::Danger,
+        ) {
             self.sx.confirm += 1;
             if self.sx.confirm >= 3 {
                 sysx::factory_reset(true);
@@ -1653,14 +2530,36 @@ impl App {
             self.sx.cfg.stay_awake_charging = aw;
             self.sx_save();
         }
-        ui.row(&mut y, None, self.t("Render time"), None, Some(&format!("{:.1} ms (Ø {:.1})", self.perf.1, self.perf.2)), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Render time"),
+            None,
+            Some(&format!("{:.1} ms (Ø {:.1})", self.perf.1, self.perf.2)),
+            false,
+        );
         self.s_dev_ssh(ui, &mut y);
         ui.section(&mut y, self.t("Restart into"));
         let c = ui.th.sub;
-        y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Download mode is needed to flash a new system image with Ultar Flash."), 13.5, c) + ui.dp(10.0);
+        y += ui.para(
+            ui.dp(22.0),
+            y,
+            ui.w - ui.dp(44.0),
+            self.t("Download mode is needed to flash a new system image with Ultar Flash."),
+            13.5,
+            c,
+        ) + ui.dp(10.0);
         let bw = (ui.w - ui.dp(32.0)) / 2.0;
-        let label_dl = if self.sx.confirm == 1 { self.t("Tap again") } else { self.t("Download mode") };
-        if ui.button(Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)), label_dl, Btn::Danger) {
+        let label_dl = if self.sx.confirm == 1 {
+            self.t("Tap again")
+        } else {
+            self.t("Download mode")
+        };
+        if ui.button(
+            Rect::new(ui.dp(12.0), y, bw, ui.dp(46.0)),
+            label_dl,
+            Btn::Danger,
+        ) {
             if self.sx.confirm == 1 {
                 if let Err(e) = sysx::reboot_to("download") {
                     self.toast(e);
@@ -1669,8 +2568,16 @@ impl App {
             self.sx.confirm = 1;
             ui.dirty = true;
         }
-        let label_rc = if self.sx.confirm == 2 { self.t("Tap again") } else { self.t("Recovery") };
-        if ui.button(Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)), label_rc, Btn::Plain) {
+        let label_rc = if self.sx.confirm == 2 {
+            self.t("Tap again")
+        } else {
+            self.t("Recovery")
+        };
+        if ui.button(
+            Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)),
+            label_rc,
+            Btn::Plain,
+        ) {
             if self.sx.confirm == 2 {
                 if let Err(e) = sysx::reboot_to("recovery") {
                     self.toast(e);
@@ -1686,10 +2593,20 @@ impl App {
     /// Entwickler-Zugang (SSH): PC steuert das Gerät während der Entwicklung (Befehle, Kernprotokoll, Dateien,
     /// Bildschirmfoto, Tippen). Nur Schlüssel; einschalten, Adresse/Fingerabdruck zeigen, Schlüssel des PCs eintragen.
     fn s_dev_ssh(&mut self, ui: &mut Ui, y: &mut f32) {
-        if self.sx.ssh.as_ref().map_or(true, |(t, _)| t.elapsed() > Duration::from_secs(4)) {
+        if self
+            .sx
+            .ssh
+            .as_ref()
+            .map_or(true, |(t, _)| t.elapsed() > Duration::from_secs(4))
+        {
             self.sx.ssh = Some((Instant::now(), EntwicklerSsh::lesen()));
         }
-        let st = self.sx.ssh.as_ref().map(|x| x.1.clone()).unwrap_or_default();
+        let st = self
+            .sx
+            .ssh
+            .as_ref()
+            .map(|x| x.1.clone())
+            .unwrap_or_default();
         if !st.vorhanden {
             return;
         }
@@ -1698,23 +2615,64 @@ impl App {
         *y += ui.para(ui.dp(22.0), *y, ui.w - ui.dp(44.0), self.t("Lets your PC control this device during development: commands, kernel log, files, screenshots and taps. Only with a key from your PC, never with a password."), 13.5, c) + ui.dp(10.0);
         let mut an = st.an;
         if ui.toggle_row(y, self.t("SSH access"), None, &mut an) {
-            let _ = std::process::Command::new("ultar-sshd").arg(if an { "an" } else { "aus" }).output();
-            let _ = sys::ctl(if an { "restart entwickler" } else { "stop entwickler" });
+            let _ = std::process::Command::new("ultar-sshd")
+                .arg(if an { "an" } else { "aus" })
+                .output();
+            let _ = sys::ctl(if an {
+                "restart entwickler"
+            } else {
+                "stop entwickler"
+            });
             self.sx.ssh = None;
-            self.toast(if an { self.t("SSH access on").to_string() } else { self.t("SSH access off").to_string() });
+            self.toast(if an {
+                self.t("SSH access on").to_string()
+            } else {
+                self.t("SSH access off").to_string()
+            });
             ui.dirty = true;
         }
-        let adr = if st.adresse.is_empty() { "—".to_string() } else { format!("{}:{}", st.adresse, st.port) };
+        let adr = if st.adresse.is_empty() {
+            "—".to_string()
+        } else {
+            format!("{}:{}", st.adresse, st.port)
+        };
         ui.row(y, None, self.t("Address"), None, Some(&adr), false);
-        ui.row(y, None, self.t("Device key"), Some(&st.fingerabdruck), None, false);
-        ui.row(y, None, self.t("Allowed keys"), None, Some(&st.schluessel), false);
+        ui.row(
+            y,
+            None,
+            self.t("Device key"),
+            Some(&st.fingerabdruck),
+            None,
+            false,
+        );
+        ui.row(
+            y,
+            None,
+            self.t("Allowed keys"),
+            None,
+            Some(&st.schluessel),
+            false,
+        );
         let m = ui.dp(16.0);
         let r = Rect::new(m, *y + ui.dp(4.0), ui.w - 2.0 * m, ui.dp(48.0));
-        ui.field(r, "ssh_key", &self.f("ssh_key"), self.t("Paste the public key of your PC (ssh-ed25519 …)"));
+        ui.field(
+            r,
+            "ssh_key",
+            &self.f("ssh_key"),
+            self.t("Paste the public key of your PC (ssh-ed25519 …)"),
+        );
         *y += ui.dp(58.0);
-        if ui.button(Rect::new(m, *y, ui.w - 2.0 * m, ui.dp(44.0)), self.t("Allow key"), Btn::Plain) {
+        if ui.button(
+            Rect::new(m, *y, ui.w - 2.0 * m, ui.dp(44.0)),
+            self.t("Allow key"),
+            Btn::Plain,
+        ) {
             let k = self.f("ssh_key");
-            match std::process::Command::new("ultar-sshd").arg("schluessel").arg(k.trim()).output() {
+            match std::process::Command::new("ultar-sshd")
+                .arg("schluessel")
+                .arg(k.trim())
+                .output()
+            {
                 Ok(o) if o.status.success() => {
                     self.fields.insert("ssh_key", String::new());
                     self.toast(self.t("Key allowed").to_string());
@@ -1749,16 +2707,44 @@ impl App {
         let mut y = area.y - *sc;
         // Monatskopf: Pfeile außen, Monat + Hijri-Monat in der Mitte
         let title = format!("{} {cy}", self.t(MONTHS[(cm - 1) as usize]));
-        ui.label(Rect::new(0.0, y + ui.dp(2.0), ui.w, ui.dp(24.0)), &title, 17.0, c, true, Al::Center);
+        ui.label(
+            Rect::new(0.0, y + ui.dp(2.0), ui.w, ui.dp(24.0)),
+            &title,
+            17.0,
+            c,
+            true,
+            Al::Center,
+        );
         let hs = super::app_demo::hijri_str(&self.set.lang, cy, cm, 1);
-        ui.label(Rect::new(0.0, y + ui.dp(26.0), ui.w, ui.dp(18.0)), &hs, 12.0, cs, false, Al::Center);
+        ui.label(
+            Rect::new(0.0, y + ui.dp(26.0), ui.w, ui.dp(18.0)),
+            &hs,
+            12.0,
+            cs,
+            false,
+            Al::Center,
+        );
         let (lx, rx) = (m + ui.dp(22.0), ui.w - m - ui.dp(22.0));
         let (px, nx) = if ui.rtl { (rx, lx) } else { (lx, rx) };
-        if ui.icon_btn(px, y + ui.dp(22.0), ui.dp(18.0), Ic::Back, ui.th.card.alpha(0.0), c) {
+        if ui.icon_btn(
+            px,
+            y + ui.dp(22.0),
+            ui.dp(18.0),
+            Ic::Back,
+            ui.th.card.alpha(0.0),
+            c,
+        ) {
             self.sx.cal_ym = if cm == 1 { (cy - 1, 12) } else { (cy, cm - 1) };
             ui.dirty = true;
         }
-        if ui.icon_btn(nx, y + ui.dp(22.0), ui.dp(18.0), Ic::Chevron, ui.th.card.alpha(0.0), c) {
+        if ui.icon_btn(
+            nx,
+            y + ui.dp(22.0),
+            ui.dp(18.0),
+            Ic::Chevron,
+            ui.th.card.alpha(0.0),
+            c,
+        ) {
             self.sx.cal_ym = if cm == 12 { (cy + 1, 1) } else { (cy, cm + 1) };
             ui.dirty = true;
         }
@@ -1772,7 +2758,14 @@ impl App {
         };
         for (i, d) in narrow.iter().enumerate() {
             let col = if ui.rtl { 6 - i } else { i };
-            ui.label(Rect::new(m + col as f32 * (cw + gap), y, cw, ui.dp(22.0)), d, 11.0, cs, false, Al::Center);
+            ui.label(
+                Rect::new(m + col as f32 * (cw + gap), y, cw, ui.dp(22.0)),
+                d,
+                11.0,
+                cs,
+                false,
+                Al::Center,
+            );
         }
         y += ui.dp(26.0);
         let (first, days) = sysx::month_grid(cy, cm);
@@ -1781,7 +2774,12 @@ impl App {
         for d in 1..=days {
             let i = first + d as usize - 1;
             let col = if ui.rtl { 6 - i % 7 } else { i % 7 };
-            let r = Rect::new(m + col as f32 * (cw + gap), y + (i / 7) as f32 * (ch + gap), cw, ch);
+            let r = Rect::new(
+                m + col as f32 * (cw + gap),
+                y + (i / 7) as f32 * (ch + gap),
+                cw,
+                ch,
+            );
             let is_today = d == today.d && cm == today.mo && cy == today.y;
             let sel = d == self.sx.cal_day && !is_today;
             if is_today {
@@ -1792,13 +2790,31 @@ impl App {
             }
             let tc = if is_today { ui.th.on_accent } else { c };
             let sc2 = if is_today { ui.th.on_accent } else { cs };
-            let has_ev = cal.events.iter().any(|e| e.y == cy && e.mo == cm && e.d == d);
+            let has_ev = cal
+                .events
+                .iter()
+                .any(|e| e.y == cy && e.mo == cm && e.d == d);
             let dy = if has_ev { -ui.dp(4.0) } else { 0.0 };
-            ui.label(Rect::new(r.x, r.cy() - ui.dp(13.0) + dy, r.w, ui.dp(18.0)), &d.to_string(), 14.0, tc, false, Al::Center);
+            ui.label(
+                Rect::new(r.x, r.cy() - ui.dp(13.0) + dy, r.w, ui.dp(18.0)),
+                &d.to_string(),
+                14.0,
+                tc,
+                false,
+                Al::Center,
+            );
             let (_, _, hd) = crate::sysy::hijri(cy, cm, d);
-            ui.label(Rect::new(r.x, r.cy() + ui.dp(4.0) + dy, r.w, ui.dp(12.0)), &hd.to_string(), 8.5, sc2, false, Al::Center);
+            ui.label(
+                Rect::new(r.x, r.cy() + ui.dp(4.0) + dy, r.w, ui.dp(12.0)),
+                &hd.to_string(),
+                8.5,
+                sc2,
+                false,
+                Al::Center,
+            );
             if has_ev {
-                ui.cv.circle(r.cx(), r.cy() + ui.dp(17.0), ui.dp(2.0), rgb(0xF80000));
+                ui.cv
+                    .circle(r.cx(), r.cy() + ui.dp(17.0), ui.dp(2.0), rgb(0xF80000));
             }
             if ui.tap(r) {
                 self.sx.cal_day = d;
@@ -1810,9 +2826,19 @@ impl App {
         let day = self.sx.cal_day.clamp(1, days);
         let wd = (first + day as usize - 1) % 7; // 0 = Montag
         let wname = self.t(crate::i18n::DAYS[(wd + 1) % 7]);
-        let sec = if self.set.lang == "ar" { format!("{wname}، {day} {}", self.t(MONTHS[(cm - 1) as usize])) } else { format!("{wname}, {day}. {}", self.t(MONTHS[(cm - 1) as usize])) };
+        let sec = if self.set.lang == "ar" {
+            format!("{wname}، {day} {}", self.t(MONTHS[(cm - 1) as usize]))
+        } else {
+            format!("{wname}, {day}. {}", self.t(MONTHS[(cm - 1) as usize]))
+        };
         ui.section(&mut y, &sec);
-        let mut evs: Vec<(usize, sysx::Event)> = cal.events.iter().cloned().enumerate().filter(|(_, e)| e.y == cy && e.mo == cm && e.d == day).collect();
+        let mut evs: Vec<(usize, sysx::Event)> = cal
+            .events
+            .iter()
+            .cloned()
+            .enumerate()
+            .filter(|(_, e)| e.y == cy && e.mo == cm && e.d == day)
+            .collect();
         evs.sort_by_key(|e| e.1.at);
         ui.kb.row_end.set(-1.0);
         if evs.is_empty() {
@@ -1823,8 +2849,21 @@ impl App {
         }
         let mut open = None;
         for (i, e) in evs {
-            let when = if e.at < 0 { self.t("All day").to_string() } else { format!("{:02}:{:02}", e.at / 60, e.at % 60) };
-            let sub = if e.remind > 0 { format!("{when} · {} {} {}", self.t("Reminder"), e.remind, self.t("min before – the helper calls")) } else { when };
+            let when = if e.at < 0 {
+                self.t("All day").to_string()
+            } else {
+                format!("{:02}:{:02}", e.at / 60, e.at % 60)
+            };
+            let sub = if e.remind > 0 {
+                format!(
+                    "{when} · {} {} {}",
+                    self.t("Reminder"),
+                    e.remind,
+                    self.t("min before – the helper calls")
+                )
+            } else {
+                when
+            };
             if ui.row(&mut y, Some(Ic::Clock), &e.title, Some(&sub), None, false) {
                 open = Some(i);
             }
@@ -1838,28 +2877,86 @@ impl App {
     }
 
     fn s_event(&mut self, ui: &mut Ui, area: Rect, idx: Option<usize>) {
-        let area = self.header(ui, area, self.t(if idx.is_some() { "Edit event" } else { "New event" }));
+        let area = self.header(
+            ui,
+            area,
+            self.t(if idx.is_some() {
+                "Edit event"
+            } else {
+                "New event"
+            }),
+        );
         let mut y = area.y;
         let (cy, cm) = self.sx.cal_ym;
         let day = format!("{:02}.{:02}.{cy}", self.sx.cal_day, cm);
-        ui.row(&mut y, Some(Ic::Clock), self.t("Date"), None, Some(&day), false);
+        ui.row(
+            &mut y,
+            Some(Ic::Clock),
+            self.t("Date"),
+            None,
+            Some(&day),
+            false,
+        );
         self.field_row(ui, &mut y, "sx_ev_title", "Title", "");
-        self.field_row(ui, &mut y, "sx_ev_time", "Time (HH:MM, empty = all day)", "09:30");
-        self.field_row(ui, &mut y, "sx_ev_rem", "Reminder (minutes before, 0 = none)", "15");
+        self.field_row(
+            ui,
+            &mut y,
+            "sx_ev_time",
+            "Time (HH:MM, empty = all day)",
+            "09:30",
+        );
+        self.field_row(
+            ui,
+            &mut y,
+            "sx_ev_rem",
+            "Reminder (minutes before, 0 = none)",
+            "15",
+        );
         let bw = (ui.w - ui.dp(32.0)) / 2.0;
-        if ui.button(Rect::new(ui.dp(12.0), y, if idx.is_some() { bw } else { ui.w - ui.dp(24.0) }, ui.dp(46.0)), self.t("Save"), Btn::Primary) {
+        if ui.button(
+            Rect::new(
+                ui.dp(12.0),
+                y,
+                if idx.is_some() {
+                    bw
+                } else {
+                    ui.w - ui.dp(24.0)
+                },
+                ui.dp(46.0),
+            ),
+            self.t("Save"),
+            Btn::Primary,
+        ) {
             let title = self.f("sx_ev_title").trim().to_string();
             let tm = self.f("sx_ev_time").trim().to_string();
             let at = if tm.is_empty() {
                 Some(-1)
             } else {
-                tm.split_once(':').and_then(|(h, m)| Some((h.trim().parse::<i32>().ok()?, m.trim().parse::<i32>().ok()?))).filter(|(h, m)| (0..24).contains(h) && (0..60).contains(m)).map(|(h, m)| h * 60 + m)
+                tm.split_once(':')
+                    .and_then(|(h, m)| {
+                        Some((h.trim().parse::<i32>().ok()?, m.trim().parse::<i32>().ok()?))
+                    })
+                    .filter(|(h, m)| (0..24).contains(h) && (0..60).contains(m))
+                    .map(|(h, m)| h * 60 + m)
             };
-            let rem = self.f("sx_ev_rem").trim().parse::<i32>().unwrap_or(0).clamp(0, 10080);
+            let rem = self
+                .f("sx_ev_rem")
+                .trim()
+                .parse::<i32>()
+                .unwrap_or(0)
+                .clamp(0, 10080);
             match at {
                 Some(at) if !title.is_empty() => {
                     let mut cal: sysx::Calendar = sys::load("calendar.toml");
-                    let e = sysx::Event { y: cy, mo: cm, d: self.sx.cal_day, at, title, remind: if at < 0 { 0 } else { rem }, notified: false };
+                    let e = sysx::Event {
+                        y: cy,
+                        mo: cm,
+                        d: self.sx.cal_day,
+                        at,
+                        title,
+                        remind: if at < 0 { 0 } else { rem },
+                        notified: false,
+                    };
                     match idx {
                         Some(i) if i < cal.events.len() => cal.events[i] = e,
                         _ => cal.events.push(e),
@@ -1873,7 +2970,11 @@ impl App {
             ui.dirty = true;
         }
         if let Some(i) = idx {
-            if ui.button(Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)), self.t("Delete"), Btn::Danger) {
+            if ui.button(
+                Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(46.0)),
+                self.t("Delete"),
+                Btn::Danger,
+            ) {
                 let mut cal: sysx::Calendar = sys::load("calendar.toml");
                 if i < cal.events.len() {
                     cal.events.remove(i);
@@ -1899,14 +3000,40 @@ impl App {
             let off = sysx::offset_at(id, now).unwrap_or(0);
             let d = sys::from_unix(now, off);
             let diff = (off - self.set.tz_min) as f32 / 60.0;
-            let sub = format!("{} · {}{} h", sysx::fmt_offset(off), if diff >= 0.0 { "+" } else { "" }, diff);
+            let sub = format!(
+                "{} · {}{} h",
+                sysx::fmt_offset(off),
+                if diff >= 0.0 { "+" } else { "" },
+                diff
+            );
             let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(78.0));
             ui.card(r);
             let (c, cs) = (ui.th.text, ui.th.sub);
             let inner = r.inset(ui.dp(16.0));
-            ui.label(Rect::new(inner.x, inner.y, inner.w * 0.55, ui.dp(24.0)), z.1, 17.0, c, true, Al::Start);
-            ui.label(Rect::new(inner.x, inner.y + ui.dp(24.0), inner.w * 0.6, ui.dp(20.0)), &sub, 12.5, cs, false, Al::Start);
-            ui.label(Rect::new(inner.x, inner.y, inner.w - ui.dp(34.0), inner.h), &self.clock_str(d.h, d.mi), 28.0, c, true, Al::End);
+            ui.label(
+                Rect::new(inner.x, inner.y, inner.w * 0.55, ui.dp(24.0)),
+                z.1,
+                17.0,
+                c,
+                true,
+                Al::Start,
+            );
+            ui.label(
+                Rect::new(inner.x, inner.y + ui.dp(24.0), inner.w * 0.6, ui.dp(20.0)),
+                &sub,
+                12.5,
+                cs,
+                false,
+                Al::Start,
+            );
+            ui.label(
+                Rect::new(inner.x, inner.y, inner.w - ui.dp(34.0), inner.h),
+                &self.clock_str(d.h, d.mi),
+                28.0,
+                c,
+                true,
+                Al::End,
+            );
             let x = Rect::new(r.right() - ui.dp(40.0), r.y, ui.dp(36.0), r.h);
             ui.icon(Ic::Close, x.cx(), x.cy(), ui.dp(14.0), cs);
             if ui.tap(x) {
@@ -1921,9 +3048,19 @@ impl App {
         }
         ui.section(&mut y, self.t("Add city"));
         let mut add = None;
-        for (id, name, _, _) in sysx::ZONES.iter().filter(|z| !self.sx.cfg.world.iter().any(|w| w == z.0)) {
+        for (id, name, _, _) in sysx::ZONES
+            .iter()
+            .filter(|z| !self.sx.cfg.world.iter().any(|w| w == z.0))
+        {
             let off = sysx::offset_at(id, now).unwrap_or(0);
-            if ui.row(&mut y, Some(Ic::Plus), name, Some(&sysx::fmt_offset(off)), None, false) {
+            if ui.row(
+                &mut y,
+                Some(Ic::Plus),
+                name,
+                Some(&sysx::fmt_offset(off)),
+                None,
+                false,
+            ) {
                 add = Some(id.to_string());
             }
         }
@@ -1947,7 +3084,11 @@ impl App {
         // Kategorien in zwei Reihen
         for row in [&cats[..4], &cats[4..]] {
             let base = if row.len() == 4 { 0 } else { 4 };
-            let sel = if cat >= base && cat < base + row.len() { cat - base } else { usize::MAX };
+            let sel = if cat >= base && cat < base + row.len() {
+                cat - base
+            } else {
+                usize::MAX
+            };
             if let Some(i) = ui.chips(&mut y, row, sel) {
                 self.sx.unit = (base + i, 0, 1);
                 ui.dirty = true;
@@ -1958,7 +3099,11 @@ impl App {
         self.caption(ui, &mut y, self.t("From"));
         for chunk in 0..units.len().div_ceil(4) {
             let part = &units[chunk * 4..(chunk * 4 + 4).min(units.len())];
-            let sel = if from / 4 == chunk { from % 4 } else { usize::MAX };
+            let sel = if from / 4 == chunk {
+                from % 4
+            } else {
+                usize::MAX
+            };
             if let Some(i) = ui.chips(&mut y, part, sel) {
                 self.sx.unit.1 = chunk * 4 + i;
             }
@@ -1972,11 +3117,22 @@ impl App {
             }
         }
         let (cat, from, to) = self.sx.unit;
-        let v = self.f("sx_unit").replace(',', ".").trim().parse::<f64>().unwrap_or(1.0);
+        let v = self
+            .f("sx_unit")
+            .replace(',', ".")
+            .trim()
+            .parse::<f64>()
+            .unwrap_or(1.0);
         let res = sysx::convert(cat, from.min(units.len() - 1), to.min(units.len() - 1), v);
         let r = Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(84.0));
         ui.card(r);
-        let s = format!("{} {} = {} {}", sysx::fmt_num(v), units[from.min(units.len() - 1)], sysx::fmt_num(res), units[to.min(units.len() - 1)]);
+        let s = format!(
+            "{} {} = {} {}",
+            sysx::fmt_num(v),
+            units[from.min(units.len() - 1)],
+            sysx::fmt_num(res),
+            units[to.min(units.len() - 1)]
+        );
         let (c, old) = (ui.th.text, ui.rtl);
         ui.rtl = false;
         let fs = if s.chars().count() > 26 { 18.0 } else { 24.0 };
@@ -2003,7 +3159,13 @@ impl App {
         for (ic, key, target) in self.all_apps() {
             for name in [self.t(key), key] {
                 if let Some(s) = sysx::score(&q, name) {
-                    hits.push((s + 50, ic, self.t(key).into(), self.t("App").into(), target.clone()));
+                    hits.push((
+                        s + 50,
+                        ic,
+                        self.t(key).into(),
+                        self.t("App").into(),
+                        target.clone(),
+                    ));
                     break;
                 }
             }
@@ -2028,29 +3190,59 @@ impl App {
         for (ic, k, s) in settings {
             for name in [self.t(k), k] {
                 if let Some(sc_) = sysx::score(&q, name) {
-                    hits.push((sc_ + 40, ic, self.t(k).into(), self.t("Settings").into(), Some(s.clone())));
+                    hits.push((
+                        sc_ + 40,
+                        ic,
+                        self.t(k).into(),
+                        self.t("Settings").into(),
+                        Some(s.clone()),
+                    ));
                     break;
                 }
             }
         }
         let contacts: super::app_extra::Contacts = sys::load("contacts.toml");
         for (i, c) in contacts.list.iter().enumerate() {
-            if let Some(s) = sysx::score(&q, &c.name).or_else(|| (!q.trim().is_empty() && c.number.replace(' ', "").contains(q.trim())).then_some(300)) {
-                hits.push((s, Ic::Person, c.name.clone(), c.number.clone(), Some(Screen::ContactEdit(Some(i)))));
+            if let Some(s) = sysx::score(&q, &c.name).or_else(|| {
+                (!q.trim().is_empty() && c.number.replace(' ', "").contains(q.trim()))
+                    .then_some(300)
+            }) {
+                hits.push((
+                    s,
+                    Ic::Person,
+                    c.name.clone(),
+                    c.number.clone(),
+                    Some(Screen::ContactEdit(Some(i))),
+                ));
             }
         }
         let notes: super::app_extra::Notes = sys::load("notes.toml");
         for (i, n) in notes.list.iter().enumerate() {
             let first = n.text.lines().next().unwrap_or("").to_string();
-            if let Some(s) = sysx::score(&q, &first).or_else(|| (q.trim().chars().count() >= 3 && n.text.to_lowercase().contains(&q.trim().to_lowercase())).then_some(200)) {
-                hits.push((s, Ic::Note, first, self.t("Note").into(), Some(Screen::NoteEdit(i))));
+            if let Some(s) = sysx::score(&q, &first).or_else(|| {
+                (q.trim().chars().count() >= 3
+                    && n.text.to_lowercase().contains(&q.trim().to_lowercase()))
+                .then_some(200)
+            }) {
+                hits.push((
+                    s,
+                    Ic::Note,
+                    first,
+                    self.t("Note").into(),
+                    Some(Screen::NoteEdit(i)),
+                ));
             }
         }
         hits.sort_by(|a, b| b.0.cmp(&a.0));
         if q.trim().is_empty() {
             // Vorschläge wie in der Web-Demo
             ui.section(&mut y, self.t("Suggestions"));
-            let mut sugg: Vec<String> = vec![self.t("Wi-Fi").into(), "VPN".into(), self.t("Camera").into(), self.t("Battery").into()];
+            let mut sugg: Vec<String> = vec![
+                self.t("Wi-Fi").into(),
+                "VPN".into(),
+                self.t("Camera").into(),
+                self.t("Battery").into(),
+            ];
             if let Some(c) = contacts.list.first() {
                 sugg.push(c.name.split_whitespace().next().unwrap_or("").to_string());
             }
@@ -2084,10 +3276,24 @@ impl App {
                 y += ui.dp(40.0);
             }
             let cs = ui.th.sub;
-            y += ui.para(m, y + ui.dp(4.0), ui.w - 2.0 * m, self.t("Arabic-tolerant: \"احمد\" also finds \"أحمد\"."), 12.5, cs) + ui.dp(8.0);
+            y += ui.para(
+                m,
+                y + ui.dp(4.0),
+                ui.w - 2.0 * m,
+                self.t("Arabic-tolerant: \"احمد\" also finds \"أحمد\"."),
+                12.5,
+                cs,
+            ) + ui.dp(8.0);
         } else if hits.is_empty() {
             let cs = ui.th.sub;
-            ui.label(Rect::new(0.0, y + ui.dp(30.0), ui.w, ui.dp(22.0)), self.t("Nothing found"), 14.0, cs, false, Al::Center);
+            ui.label(
+                Rect::new(0.0, y + ui.dp(30.0), ui.w, ui.dp(22.0)),
+                self.t("Nothing found"),
+                14.0,
+                cs,
+                false,
+                Al::Center,
+            );
             y += ui.dp(80.0);
         }
         ui.kb.row_end.set(-1.0);
@@ -2121,23 +3327,60 @@ impl App {
                 ui.cv.rrect(r, ui.dp(26.0), ui.th.card);
                 let muted = !self.set.sound || self.sx.cfg.profile > 0;
                 let c = ui.th.text;
-                let ix = if ui.rtl { r.right() - ui.dp(28.0) } else { r.x + ui.dp(28.0) };
-                ui.icon(Ic::Speaker, ix, r.cy(), ui.dp(18.0), if muted { ui.th.sub } else { c });
-                let bar = if ui.rtl { Rect::new(r.x + ui.dp(64.0), r.cy() - ui.dp(4.0), r.w - ui.dp(116.0), ui.dp(8.0)) } else { Rect::new(r.x + ui.dp(52.0), r.cy() - ui.dp(4.0), r.w - ui.dp(116.0), ui.dp(8.0)) };
+                let ix = if ui.rtl {
+                    r.right() - ui.dp(28.0)
+                } else {
+                    r.x + ui.dp(28.0)
+                };
+                ui.icon(
+                    Ic::Speaker,
+                    ix,
+                    r.cy(),
+                    ui.dp(18.0),
+                    if muted { ui.th.sub } else { c },
+                );
+                let bar = if ui.rtl {
+                    Rect::new(
+                        r.x + ui.dp(64.0),
+                        r.cy() - ui.dp(4.0),
+                        r.w - ui.dp(116.0),
+                        ui.dp(8.0),
+                    )
+                } else {
+                    Rect::new(
+                        r.x + ui.dp(52.0),
+                        r.cy() - ui.dp(4.0),
+                        r.w - ui.dp(116.0),
+                        ui.dp(8.0),
+                    )
+                };
                 ui.progress(bar, self.set.volume);
                 let pct = format!("{}", (self.set.volume * 100.0).round());
-                let pr = if ui.rtl { Rect::new(r.x + ui.dp(14.0), r.y, ui.dp(44.0), r.h) } else { Rect::new(r.right() - ui.dp(58.0), r.y, ui.dp(44.0), r.h) };
+                let pr = if ui.rtl {
+                    Rect::new(r.x + ui.dp(14.0), r.y, ui.dp(44.0), r.h)
+                } else {
+                    Rect::new(r.right() - ui.dp(58.0), r.y, ui.dp(44.0), r.h)
+                };
                 ui.label(pr, &pct, 14.0, c, true, Al::Center);
             }
         }
         if self.sx.cfg.show_touches && (ui.p.down || ui.p.released) {
-            ui.cv.circle(ui.p.x, ui.p.y, ui.dp(22.0), rgb(0xFFFFFF).alpha(0.35));
-            ui.cv.ring(ui.p.x, ui.p.y, ui.dp(22.0), ui.dp(2.0), rgb(0xFFFFFF).alpha(0.8));
+            ui.cv
+                .circle(ui.p.x, ui.p.y, ui.dp(22.0), rgb(0xFFFFFF).alpha(0.35));
+            ui.cv.ring(
+                ui.p.x,
+                ui.p.y,
+                ui.dp(22.0),
+                ui.dp(2.0),
+                rgb(0xFFFFFF).alpha(0.8),
+            );
         }
         if self.sx.cfg.show_fps {
             let now = Instant::now();
             self.sx.frames.push(now);
-            self.sx.frames.retain(|t| now.duration_since(*t) < Duration::from_secs(1));
+            self.sx
+                .frames
+                .retain(|t| now.duration_since(*t) < Duration::from_secs(1));
             let s = format!("{} fps · {:.1} ms", self.sx.frames.len(), self.perf.1);
             let r = Rect::new(ui.dp(8.0), ui.h - ui.dp(84.0), ui.dp(130.0), ui.dp(24.0));
             ui.cv.rrect(r, ui.dp(6.0), rgb(0).alpha(0.65));
@@ -2170,7 +3413,10 @@ pub fn light_lux() -> Option<f32> {
     if let Ok(rd) = std::fs::read_dir("/sys/bus/iio/devices") {
         for e in rd.flatten() {
             for f in ["in_illuminance_input", "in_illuminance_raw"] {
-                if let Some(v) = std::fs::read_to_string(e.path().join(f)).ok().and_then(|s| s.trim().parse::<f32>().ok()) {
+                if let Some(v) = std::fs::read_to_string(e.path().join(f))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<f32>().ok())
+                {
                     return Some(v);
                 }
             }
@@ -2181,7 +3427,10 @@ pub fn light_lux() -> Option<f32> {
     ENABLED.call_once(|| {
         if let Ok(rd) = std::fs::read_dir("/sys/class/input") {
             for e in rd.flatten() {
-                if std::fs::read_to_string(e.path().join("name")).map(|n| n.trim() == "light_sensor").unwrap_or(false) {
+                if std::fs::read_to_string(e.path().join("name"))
+                    .map(|n| n.trim() == "light_sensor")
+                    .unwrap_or(false)
+                {
                     let _ = std::fs::write(e.path().join("enable"), "1");
                 }
             }
@@ -2192,8 +3441,13 @@ pub fn light_lux() -> Option<f32> {
             let n = e.file_name().to_string_lossy().to_lowercase();
             if n.contains("light") {
                 for f in ["lux", "raw_data", "light_lux"] {
-                    let Ok(s) = std::fs::read_to_string(e.path().join(f)) else { continue };
-                    let v: Vec<f32> = s.split([',', ' ', '\n']).filter_map(|x| x.trim().parse::<f32>().ok()).collect();
+                    let Ok(s) = std::fs::read_to_string(e.path().join(f)) else {
+                        continue;
+                    };
+                    let v: Vec<f32> = s
+                        .split([',', ' ', '\n'])
+                        .filter_map(|x| x.trim().parse::<f32>().ok())
+                        .collect();
                     match v.len() {
                         0 => continue,
                         // Farbsensor (R,G,B,W,Belichtung,Verstärkung): hellsten Kanal als Lux-Näherung
@@ -2215,7 +3469,10 @@ pub fn apply_dns(list: &str) {
         return;
     }
     let _ = std::fs::write(&p, list);
-    let conf: String = list.split(',').map(|s| format!("nameserver {}\n", s.trim())).collect();
+    let conf: String = list
+        .split(',')
+        .map(|s| format!("nameserver {}\n", s.trim()))
+        .collect();
     let _ = std::fs::write("/run/ultar/resolv.conf", &conf);
     let _ = std::fs::write("/etc/resolv.conf", &conf);
 }

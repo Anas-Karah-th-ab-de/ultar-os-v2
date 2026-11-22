@@ -74,7 +74,8 @@ pub fn start(wake: i32) {
 }
 
 fn zahl(s: Option<&str>) -> Option<f32> {
-    s.and_then(|v| v.parse::<f32>().ok()).filter(|v| v.is_finite())
+    s.and_then(|v| v.parse::<f32>().ok())
+        .filter(|v| v.is_finite())
 }
 
 pub fn verarbeiten(z: &str) {
@@ -88,7 +89,11 @@ pub fn verarbeiten(z: &str) {
         "ab" | "zieh" => {
             if let (Some(x), Some(y)) = (zahl(w.next()), zahl(w.next())) {
                 let (x, y) = (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0));
-                ev(if cmd == "ab" { Ev::Down(x, y) } else { Ev::Move(x, y) });
+                ev(if cmd == "ab" {
+                    Ev::Down(x, y)
+                } else {
+                    Ev::Move(x, y)
+                });
             }
         }
         "auf" => ev(Ev::Up),
@@ -104,7 +109,11 @@ pub fn verarbeiten(z: &str) {
             }
         }
         "drehen" => {
-            if let Some(r) = w.next().and_then(|v| v.parse::<u16>().ok()).filter(|r| [0, 90, 180, 270].contains(r)) {
+            if let Some(r) = w
+                .next()
+                .and_then(|v| v.parse::<u16>().ok())
+                .filter(|r| [0, 90, 180, 270].contains(r))
+            {
                 st(Steuer::Drehen(r));
             }
         }
@@ -116,7 +125,11 @@ pub fn verarbeiten(z: &str) {
         }
         "helfer" if !rest.is_empty() => st(Steuer::Helfer(rest.chars().take(500).collect())),
         "datei" if rest.starts_with('/') && !rest.contains("..") => st(Steuer::Datei(rest.into())),
-        "browser" if rest.starts_with("http://127.0.0.1:") || rest.starts_with("http://localhost:") => st(Steuer::Browser(rest.into())),
+        "browser"
+            if rest.starts_with("http://127.0.0.1:") || rest.starts_with("http://localhost:") =>
+        {
+            st(Steuer::Browser(rest.into()))
+        }
         _ => {}
     }
 }
@@ -133,7 +146,10 @@ pub fn steuerung() -> Vec<Steuer> {
 /// letzte Bedienung für den Verbund ablegen (Mining nur im Leerlauf); höchstens alle 5 s
 pub fn bedient() {
     static ZULETZT: AtomicU64 = AtomicU64::new(0);
-    let jetzt = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let jetzt = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     if jetzt.saturating_sub(ZULETZT.load(Ordering::Relaxed)) >= 5 {
         ZULETZT.store(jetzt, Ordering::Relaxed);
         let _ = std::fs::write(format!("{}/eingabe.zuletzt", run_dir()), jetzt.to_string());
@@ -153,11 +169,16 @@ impl Geste {
     pub fn ereignis(&mut self, e: &Ev) -> bool {
         match *e {
             Ev::Down(x, y) => {
-                *self = Geste { start: Some((Instant::now(), x, y)), ..Default::default() };
+                *self = Geste {
+                    start: Some((Instant::now(), x, y)),
+                    ..Default::default()
+                };
                 false
             }
             Ev::Move(x, y) => {
-                let Some((t, x0, y0)) = self.start else { return false };
+                let Some((t, x0, y0)) = self.start else {
+                    return false;
+                };
                 if self.ausgeloest {
                     return false;
                 }
@@ -197,7 +218,11 @@ pub fn teilen_aktiv() -> bool {
         *g = Some(Instant::now());
         let frisch = std::fs::metadata(format!("{}/teilen", run_dir()))
             .and_then(|m| m.modified())
-            .map(|t| t.elapsed().map(|e| e < Duration::from_secs(5)).unwrap_or(true))
+            .map(|t| {
+                t.elapsed()
+                    .map(|e| e < Duration::from_secs(5))
+                    .unwrap_or(true)
+            })
             .unwrap_or(false);
         AKTIV.store(frisch, Ordering::Relaxed);
         if !frisch {
@@ -216,7 +241,13 @@ pub fn bild(px: &[u32], w: i32) {
     let mut d = DATEI.lock().unwrap();
     if d.is_none() {
         let pfad = format!("{}/bildschirm.raw", run_dir());
-        *d = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(pfad).ok();
+        *d = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(pfad)
+            .ok();
     }
     let Some(f) = d.as_ref() else { return };
     let nr = NR.fetch_add(1, Ordering::Relaxed) + 1;
@@ -240,9 +271,16 @@ pub fn bild(px: &[u32], w: i32) {
 
 /// Größe des virtuellen Bildschirms: Argument, ULTAR_VIRTUELL oder /etc/ultar/virtuell, sonst 1280x800
 pub fn virtuell_groesse(arg: Option<&str>) -> (u32, u32) {
-    let s = arg.map(String::from).or_else(|| std::env::var("ULTAR_VIRTUELL").ok()).or_else(|| std::fs::read_to_string("/etc/ultar/virtuell").ok()).unwrap_or_default();
+    let s = arg
+        .map(String::from)
+        .or_else(|| std::env::var("ULTAR_VIRTUELL").ok())
+        .or_else(|| std::fs::read_to_string("/etc/ultar/virtuell").ok())
+        .unwrap_or_default();
     let mut p = s.trim().split(['x', 'X']);
-    match (p.next().and_then(|v| v.parse().ok()), p.next().and_then(|v| v.parse().ok())) {
+    match (
+        p.next().and_then(|v| v.parse().ok()),
+        p.next().and_then(|v| v.parse().ok()),
+    ) {
         (Some(w), Some(h)) if (160..=7680).contains(&w) && (160..=4320).contains(&h) => (w, h),
         _ => (1280, 800),
     }
@@ -258,7 +296,16 @@ mod tests {
         verarbeiten("auf");
         verarbeiten("zeichen hä");
         let e = eingaben();
-        assert_eq!(e, vec![Ev::Down(0.5, 0.25), Ev::Move(1.0, 0.0), Ev::Up, Ev::Char('h'), Ev::Char('ä')]);
+        assert_eq!(
+            e,
+            vec![
+                Ev::Down(0.5, 0.25),
+                Ev::Move(1.0, 0.0),
+                Ev::Up,
+                Ev::Char('h'),
+                Ev::Char('ä')
+            ]
+        );
         verarbeiten("hell 50");
         verarbeiten("drehen 45");
         verarbeiten("drehen 90");

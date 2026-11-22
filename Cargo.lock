@@ -656,6 +656,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
+name = "cobs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "color"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1191,6 +1200,18 @@ dependencies = [
  "subtle",
  "zeroize",
 ]
+
+[[package]]
+name = "embedded-io"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1a6892d9eef45c8fa6b9e0086428a2cca8491aca8f787c534a3d6d0bcb3ced"
+
+[[package]]
+name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "encoding_rs"
@@ -3439,6 +3460,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "postcard"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5431b3dcfdf6d1985c87d11f267a171c0dec0a8cd544c6727b747d36365f1fca"
+dependencies = [
+ "cobs",
+ "embedded-io 0.4.0",
+ "embedded-io 0.6.1",
+ "serde",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5140,7 +5173,8 @@ dependencies = [
  "tokio",
  "toml",
  "ultar-apps",
- "ultar-edition",
+ "ultar-hal-system",
+ "ultar-profile",
 ]
 
 [[package]]
@@ -5151,8 +5185,9 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "toml",
- "ultar-edition",
+ "ultar-hal-system",
  "ultar-pkg",
+ "ultar-profile",
  "ultar-sprache",
  "zip",
 ]
@@ -5169,6 +5204,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-bus"
+version = "0.7.0"
+dependencies = [
+ "postcard",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "ultar-call"
 version = "0.6.0"
 dependencies = [
@@ -5177,6 +5221,15 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "ultar-check"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
@@ -5205,8 +5258,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "ultar-edition"
-version = "0.6.0"
+name = "ultar-devd"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "toml",
+ "ultar-driverpkg",
+]
+
+[[package]]
+name = "ultar-driverpkg"
+version = "0.7.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek 2.2.0",
+ "flate2",
+ "hex",
+ "rand 0.8.8",
+ "serde",
+ "sha2 0.10.9",
+ "tar",
+ "toml",
+]
 
 [[package]]
 name = "ultar-face"
@@ -5214,6 +5287,25 @@ version = "0.6.0"
 dependencies = [
  "tract-onnx",
 ]
+
+[[package]]
+name = "ultar-hal"
+version = "0.7.0"
+dependencies = [
+ "ultar-hal",
+ "ultar-profile",
+]
+
+[[package]]
+name = "ultar-hal-system"
+version = "0.7.0"
+dependencies = [
+ "ultar-profile",
+]
+
+[[package]]
+name = "ultar-i18n"
+version = "0.7.0"
 
 [[package]]
 name = "ultar-ime"
@@ -5226,7 +5318,8 @@ dependencies = [
  "nix 0.29.0",
  "serde",
  "toml",
- "ultar-edition",
+ "ultar-hal-system",
+ "ultar-profile",
 ]
 
 [[package]]
@@ -5294,6 +5387,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-profile"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "ultar-radio"
 version = "0.6.0"
 
@@ -5326,11 +5427,12 @@ dependencies = [
  "toml",
  "ultar-call",
  "ultar-cloud",
- "ultar-edition",
+ "ultar-hal-system",
  "ultar-ime",
  "ultar-llm",
  "ultar-notify",
  "ultar-office",
+ "ultar-profile",
  "ultar-radio",
  "ultar-secure",
  "ultar-sprache",

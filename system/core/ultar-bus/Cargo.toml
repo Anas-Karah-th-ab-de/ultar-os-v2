@@ -1,0 +1,25 @@
+[package]
+name = "ultar-bus"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Typed, permission-checked, event-driven IPC of Ultar OS (system core, area 3)"
+
+[lib]
+name = "ultar_bus"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-busd"
+path = "src/bin/ultar-busd.rs"
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+# Only used by tests to prove that policy files are real TOML and that the
+# built-in subset reader agrees with a full TOML implementation.
+toml = "0.8"
+

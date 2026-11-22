@@ -47,9 +47,17 @@ pub fn enable(password: &str) -> Result<(), String> {
     let part = data_partition();
     run_with_pw(
         &[
-            "luksFormat", "--type", "luks2",
-            "--cipher", "aes-xts-plain64", "--key-size", "512",
-            "--pbkdf", "argon2id", "--batch-mode", &part,
+            "luksFormat",
+            "--type",
+            "luks2",
+            "--cipher",
+            "aes-xts-plain64",
+            "--key-size",
+            "512",
+            "--pbkdf",
+            "argon2id",
+            "--batch-mode",
+            &part,
         ],
         password,
     )?;
@@ -100,10 +108,17 @@ pub fn close() -> Result<(), String> {
         .args(["luksClose", DATA_MAP])
         .status()
         .map_err(|e| e.to_string())?;
-    if st.success() { Ok(()) } else { Err("luksClose".into()) }
+    if st.success() {
+        Ok(())
+    } else {
+        Err("luksClose".into())
+    }
 }
 
 /// Entschlüsseln (in-place) — hebt die Verschlüsselung auf. Schwer/langwierig.
 pub fn disable(password: &str) -> Result<(), String> {
-    run_with_pw(&["reencrypt", "--decrypt", "--batch-mode", &data_partition()], password)
+    run_with_pw(
+        &["reencrypt", "--decrypt", "--batch-mode", &data_partition()],
+        password,
+    )
 }

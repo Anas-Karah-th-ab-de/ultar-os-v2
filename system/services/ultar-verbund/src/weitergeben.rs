@@ -22,7 +22,11 @@ pub fn empfang_ordner() -> PathBuf {
 /// sicherer Dateiname (kein Pfad, keine Steuerzeichen) – verhindert ../-Angriffe
 pub fn sicherer_name(n: &str) -> String {
     let basis = n.rsplit(['/', '\\']).next().unwrap_or("");
-    let s: String = basis.chars().filter(|c| !c.is_control() && !"<>:\"|?*".contains(*c)).take(120).collect();
+    let s: String = basis
+        .chars()
+        .filter(|c| !c.is_control() && !"<>:\"|?*".contains(*c))
+        .take(120)
+        .collect();
     let s = s.trim().trim_start_matches('.').to_string();
     if s.is_empty() {
         "datei".into()
@@ -60,8 +64,17 @@ pub fn hinweis(titel: &str, text: &str) {
     let _ = std::fs::create_dir_all(&run);
     let sauber = |s: &str| s.replace(['\t', '\n'], " ");
     // Format wie ultar-notify: Zeit, Dringlichkeit, Art, App, Titel, Text
-    let zeile = format!("{}\tnormal\tapp\tverbund\t{}\t{}\n", crate::jetzt_ms() / 1000, sauber(titel), sauber(text));
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(run.join("notify.log")) {
+    let zeile = format!(
+        "{}\tnormal\tapp\tverbund\t{}\t{}\n",
+        crate::jetzt_ms() / 1000,
+        sauber(titel),
+        sauber(text)
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(run.join("notify.log"))
+    {
         let _ = f.write_all(zeile.as_bytes());
     }
 }

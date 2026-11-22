@@ -12,7 +12,8 @@ sha2 = "0.10"
 hex = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ultar-pkg = { path = "../ultar-pkg" }
-ultar-edition = { path = "../ultar-edition" }
+ultar-profile = { path = "../ultar-profile" }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
 
 [lib]
 name = "ultar_apps"

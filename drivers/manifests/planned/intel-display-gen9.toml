@@ -1,0 +1,15 @@
+# Intel graphics display, generation 9/9.5 platform part. 8086:9bc4 = UHD Graphics (Comet Lake-H), ThinkPad P1 Gen 3.
+id = "intel-display-gen9"
+version = "1.0.0"
+class = "display"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.intel-display-gen9.name"
+description_key = "driver.intel-display-gen9.description"
+
+[match]
+pci = ["8086:9bc4"]
+
+[content]
+module = "drivers/intel_display_gen9.uko"

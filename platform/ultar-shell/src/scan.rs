@@ -47,7 +47,11 @@ fn otsu(g: &[u8]) -> u8 {
         hist[v as usize] += 1;
     }
     let total = g.len() as f64;
-    let sum: f64 = hist.iter().enumerate().map(|(i, &c)| i as f64 * c as f64).sum();
+    let sum: f64 = hist
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| i as f64 * c as f64)
+        .sum();
     let (mut wb, mut sb, mut best, mut thr) = (0f64, 0f64, -1f64, 127u8);
     for (i, &c) in hist.iter().enumerate() {
         wb += c as f64;
@@ -136,7 +140,12 @@ pub fn detect(px: &[u32], w: u32, h: u32) -> Option<Quad> {
         return None;
     }
     // Ecken = Extrempunkte entlang der Diagonalen
-    let (mut tl, mut tr, mut br, mut bl) = ((0usize, 0usize), (0usize, 0usize), (0usize, 0usize), (0usize, 0usize));
+    let (mut tl, mut tr, mut br, mut bl) = (
+        (0usize, 0usize),
+        (0usize, 0usize),
+        (0usize, 0usize),
+        (0usize, 0usize),
+    );
     let (mut s_min, mut s_max, mut d_min, mut d_max) = (i64::MAX, i64::MIN, i64::MAX, i64::MIN);
     for i in 0..n {
         if lab[i] != best_id {
@@ -163,8 +172,18 @@ pub fn detect(px: &[u32], w: u32, h: u32) -> Option<Quad> {
             bl = (x, y);
         }
     }
-    let nrm = |p: (usize, usize), dx: f32, dy: f32| (((p.0 as f32 + dx) / sw as f32).clamp(0.0, 1.0), ((p.1 as f32 + dy) / sh as f32).clamp(0.0, 1.0));
-    let q: Quad = [nrm(tl, 0.0, 0.0), nrm(tr, 1.0, 0.0), nrm(br, 1.0, 1.0), nrm(bl, 0.0, 1.0)];
+    let nrm = |p: (usize, usize), dx: f32, dy: f32| {
+        (
+            ((p.0 as f32 + dx) / sw as f32).clamp(0.0, 1.0),
+            ((p.1 as f32 + dy) / sh as f32).clamp(0.0, 1.0),
+        )
+    };
+    let q: Quad = [
+        nrm(tl, 0.0, 0.0),
+        nrm(tr, 1.0, 0.0),
+        nrm(br, 1.0, 1.0),
+        nrm(bl, 0.0, 1.0),
+    ];
     if valid(&q) {
         Some(q)
     } else {
@@ -198,7 +217,8 @@ pub fn valid(q: &Quad) -> bool {
 pub fn smooth(old: Option<Quad>, new: Quad) -> Quad {
     match old {
         Some(o) => {
-            let far = (0..4).any(|i| (o[i].0 - new[i].0).abs() > 0.12 || (o[i].1 - new[i].1).abs() > 0.12);
+            let far = (0..4)
+                .any(|i| (o[i].0 - new[i].0).abs() > 0.12 || (o[i].1 - new[i].1).abs() > 0.12);
             if far {
                 new
             } else {
@@ -216,7 +236,10 @@ pub fn smooth(old: Option<Quad>, new: Quad) -> Quad {
 /// Perspektivisch entzerren: das Viereck `q` wird zum Rechteck. `max_side` begrenzt die längere Kante.
 pub fn warp(px: &[u32], w: u32, h: u32, q: &Quad, max_side: u32) -> (u32, u32, Vec<u32>) {
     let (wf, hf) = (w as f32, h as f32);
-    let p: Vec<(f32, f32)> = q.iter().map(|c| (c.0 * (wf - 1.0), c.1 * (hf - 1.0))).collect();
+    let p: Vec<(f32, f32)> = q
+        .iter()
+        .map(|c| (c.0 * (wf - 1.0), c.1 * (hf - 1.0)))
+        .collect();
     let dist = |a: (f32, f32), b: (f32, f32)| ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt();
     let mut ow = (dist(p[0], p[1]) + dist(p[3], p[2])) / 2.0;
     let mut oh = (dist(p[0], p[3]) + dist(p[1], p[2])) / 2.0;
@@ -225,11 +248,17 @@ pub fn warp(px: &[u32], w: u32, h: u32, q: &Quad, max_side: u32) -> (u32, u32, V
     oh = (oh * k).max(8.0);
     let (ow, oh) = (ow as u32, oh as u32);
     // Abbildung Einheitsquadrat → Viereck (Heckbert): x = (a u + b v + c) / (g u + h v + 1)
-    let (x0, y0, x1, y1, x2, y2, x3, y3) = (p[0].0, p[0].1, p[1].0, p[1].1, p[2].0, p[2].1, p[3].0, p[3].1);
+    let (x0, y0, x1, y1, x2, y2, x3, y3) = (
+        p[0].0, p[0].1, p[1].0, p[1].1, p[2].0, p[2].1, p[3].0, p[3].1,
+    );
     let (dx1, dx2, dx3) = (x1 - x2, x3 - x2, x0 - x1 + x2 - x3);
     let (dy1, dy2, dy3) = (y1 - y2, y3 - y2, y0 - y1 + y2 - y3);
     let den = dx1 * dy2 - dx2 * dy1;
-    let (g, hh) = if den.abs() < 1e-6 { (0.0, 0.0) } else { ((dx3 * dy2 - dx2 * dy3) / den, (dx1 * dy3 - dx3 * dy1) / den) };
+    let (g, hh) = if den.abs() < 1e-6 {
+        (0.0, 0.0)
+    } else {
+        ((dx3 * dy2 - dx2 * dy3) / den, (dx1 * dy3 - dx3 * dy1) / den)
+    };
     let (a, b, c) = (x1 - x0 + g * x1, x3 - x0 + hh * x3, x0);
     let (d, e, f) = (y1 - y0 + g * y1, y3 - y0 + hh * y3, y0);
     let mut out = vec![0u32; (ow * oh) as usize];
@@ -241,9 +270,17 @@ pub fn warp(px: &[u32], w: u32, h: u32, q: &Quad, max_side: u32) -> (u32, u32, V
             let z = g * u + hh * v + 1.0;
             let (sx, sy) = ((a * u + b * v + c) / z, (d * u + e * v + f) / z);
             let (xi, yi) = (sx.floor() as i32, sy.floor() as i32);
-            let (fx, fy) = (((sx - xi as f32) * 256.0) as u32, ((sy - yi as f32) * 256.0) as u32);
+            let (fx, fy) = (
+                ((sx - xi as f32) * 256.0) as u32,
+                ((sy - yi as f32) * 256.0) as u32,
+            );
             let at = |x: i32, y: i32| px[(y.clamp(0, hi - 1) * wi + x.clamp(0, wi - 1)) as usize];
-            let (p00, p10, p01, p11) = (at(xi, yi), at(xi + 1, yi), at(xi, yi + 1), at(xi + 1, yi + 1));
+            let (p00, p10, p01, p11) = (
+                at(xi, yi),
+                at(xi + 1, yi),
+                at(xi, yi + 1),
+                at(xi + 1, yi + 1),
+            );
             let mut o = 0u32;
             for sh in [16u32, 8, 0] {
                 let ch = |p: u32| (p >> sh) & 255;
@@ -340,7 +377,8 @@ pub fn enhance(px: &mut [u32], w: u32, h: u32, filter: Filter) {
             let gx = ((x as f32 + 0.5) / tw as f32 - 0.5).clamp(0.0, (N - 1) as f32);
             let (x0, fx) = (gx as usize, gx.fract());
             let x1 = (x0 + 1).min(N - 1);
-            let white = (tile[y0 * N + x0] * (1.0 - fx) + tile[y0 * N + x1] * fx) * (1.0 - fy) + (tile[y1 * N + x0] * (1.0 - fx) + tile[y1 * N + x1] * fx) * fy;
+            let white = (tile[y0 * N + x0] * (1.0 - fx) + tile[y0 * N + x1] * fx) * (1.0 - fy)
+                + (tile[y1 * N + x0] * (1.0 - fx) + tile[y1 * N + x1] * fx) * fy;
             // Papier auf ~245 ziehen, leichte Kontrastanhebung
             let gain = 245.0 / white;
             let p = px[y * w + x];
@@ -383,9 +421,17 @@ pub fn pdf(pages: &[(Vec<u8>, u32, u32)]) -> Vec<u8> {
     };
     obj(&mut out, &mut offs, b"<< /Type /Catalog /Pages 2 0 R >>");
     let kids: String = (0..n).map(|i| format!("{} 0 R ", 3 + i * 3)).collect();
-    obj(&mut out, &mut offs, format!("<< /Type /Pages /Count {n} /Kids [ {kids}] >>").as_bytes());
+    obj(
+        &mut out,
+        &mut offs,
+        format!("<< /Type /Pages /Count {n} /Kids [ {kids}] >>").as_bytes(),
+    );
     for (i, (jpg, w, h)) in pages.iter().enumerate() {
-        let (pw, ph) = if w > h { (842.0f32, 595.0f32) } else { (595.0f32, 842.0f32) };
+        let (pw, ph) = if w > h {
+            (842.0f32, 595.0f32)
+        } else {
+            (595.0f32, 842.0f32)
+        };
         let m = 18.0f32;
         let k = ((pw - 2.0 * m) / *w as f32).min((ph - 2.0 * m) / *h as f32);
         let (iw, ih) = (*w as f32 * k, *h as f32 * k);
@@ -402,7 +448,15 @@ pub fn pdf(pages: &[(Vec<u8>, u32, u32)]) -> Vec<u8> {
             .as_bytes(),
         );
         let content = format!("q {iw:.2} 0 0 {ih:.2} {x:.2} {y:.2} cm /Im0 Do Q");
-        obj(&mut out, &mut offs, format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()).as_bytes());
+        obj(
+            &mut out,
+            &mut offs,
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            )
+            .as_bytes(),
+        );
         let mut body = format!("<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n", jpg.len()).into_bytes();
         body.extend_from_slice(jpg);
         body.extend_from_slice(b"\nendstream");
@@ -413,7 +467,13 @@ pub fn pdf(pages: &[(Vec<u8>, u32, u32)]) -> Vec<u8> {
     for o in &offs {
         out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", offs.len() + 1).as_bytes());
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            offs.len() + 1
+        )
+        .as_bytes(),
+    );
     out
 }
 
@@ -434,7 +494,11 @@ mod tests {
                 });
                 if inside {
                     // Papier mit „Textzeilen"
-                    px[(y * w + x) as usize] = if y % 12 < 2 && x % 7 < 5 { 0x202020 } else { 0xE8E4DC };
+                    px[(y * w + x) as usize] = if y % 12 < 2 && x % 7 < 5 {
+                        0x202020
+                    } else {
+                        0xE8E4DC
+                    };
                 }
             }
         }
@@ -447,7 +511,12 @@ mod tests {
         let px = scene(640, 480, &q);
         let d = detect(&px, 640, 480).expect("Blatt nicht gefunden");
         for i in 0..4 {
-            assert!((d[i].0 - q[i].0).abs() < 0.04 && (d[i].1 - q[i].1).abs() < 0.04, "Ecke {i}: {:?} statt {:?}", d[i], q[i]);
+            assert!(
+                (d[i].0 - q[i].0).abs() < 0.04 && (d[i].1 - q[i].1).abs() < 0.04,
+                "Ecke {i}: {:?} statt {:?}",
+                d[i],
+                q[i]
+            );
         }
     }
 
@@ -465,7 +534,11 @@ mod tests {
         assert!(w > 300 && h > 250);
         // fast alles im entzerrten Bild ist Papier oder Text, kein Tisch (0x302820)
         let tisch = out.iter().filter(|&&p| p == 0x302820).count();
-        assert!(tisch * 50 < out.len(), "{tisch} Tischpixel von {}", out.len());
+        assert!(
+            tisch * 50 < out.len(),
+            "{tisch} Tischpixel von {}",
+            out.len()
+        );
         // Ecken sind Papier
         assert!(luma(out[(5 * w + 5) as usize]) > 150 || luma(out[(5 * w + 6) as usize]) < 80);
     }
@@ -497,7 +570,10 @@ mod tests {
         // Schatten links ist weg: Papier links und rechts gleich hell
         let mut c = px.clone();
         enhance(&mut c, w, h, Filter::Gray);
-        let (l, r) = (c[(10 * w + 8) as usize] & 255, c[(10 * w + w - 8) as usize] & 255);
+        let (l, r) = (
+            c[(10 * w + 8) as usize] & 255,
+            c[(10 * w + w - 8) as usize] & 255,
+        );
         assert!((l as i32 - r as i32).abs() < 25, "links {l} rechts {r}");
     }
 
@@ -512,7 +588,13 @@ mod tests {
         assert!(s.trim_end().ends_with("%%EOF"));
         // xref-Einträge zeigen auf "n 0 obj" (auf den Bytes prüfen, nicht auf dem verlustbehafteten Text)
         let pos = p.windows(9).rposition(|w| w == b"startxref").unwrap();
-        let xref: usize = String::from_utf8_lossy(&p[pos + 10..]).lines().next().unwrap().trim().parse().unwrap();
+        let xref: usize = String::from_utf8_lossy(&p[pos + 10..])
+            .lines()
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert!(p[xref..].starts_with(b"xref"));
         let tab = String::from_utf8_lossy(&p[xref..]).to_string();
         let off: usize = tab.lines().nth(3).unwrap()[..10].parse().unwrap();

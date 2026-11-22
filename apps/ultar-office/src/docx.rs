@@ -16,15 +16,22 @@ fn local(name: &[u8]) -> &[u8] {
 }
 
 fn attr(e: &quick_xml::events::BytesStart, key: &[u8]) -> Option<String> {
-    e.attributes().flatten().find(|a| local(a.key.as_ref()) == key).map(|a| String::from_utf8_lossy(&a.value).into_owned())
+    e.attributes()
+        .flatten()
+        .find(|a| local(a.key.as_ref()) == key)
+        .map(|a| String::from_utf8_lossy(&a.value).into_owned())
 }
 
 fn on(e: &quick_xml::events::BytesStart) -> bool {
-    !matches!(attr(e, b"val").as_deref(), Some("0") | Some("false") | Some("none"))
+    !matches!(
+        attr(e, b"val").as_deref(),
+        Some("0") | Some("false") | Some("none")
+    )
 }
 
 pub fn read_zip_entry(bytes: &[u8], name: &str) -> Result<Vec<u8>, String> {
-    let mut z = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("not a zip/office file: {e}"))?;
+    let mut z = zip::ZipArchive::new(Cursor::new(bytes))
+        .map_err(|e| format!("not a zip/office file: {e}"))?;
     let mut f = z.by_name(name).map_err(|_| format!("{name} missing"))?;
     let mut v = Vec::new();
     f.read_to_end(&mut v).map_err(|e| e.to_string())?;
@@ -34,7 +41,9 @@ pub fn read_zip_entry(bytes: &[u8], name: &str) -> Result<Vec<u8>, String> {
 /// Formatvorlagen-Kennung (styles.xml) → Name; bei Word steht in document.xml nur die Kennung
 fn style_names(bytes: &[u8]) -> std::collections::HashMap<String, String> {
     let mut m = std::collections::HashMap::new();
-    let Ok(x) = read_zip_entry(bytes, "word/styles.xml") else { return m };
+    let Ok(x) = read_zip_entry(bytes, "word/styles.xml") else {
+        return m;
+    };
     let mut r = Reader::from_reader(&x[..]);
     let mut buf = Vec::new();
     let mut cur: Option<String> = None;
@@ -58,7 +67,12 @@ fn style_names(bytes: &[u8]) -> std::collections::HashMap<String, String> {
 }
 
 fn style_from(id: &str, names: &std::collections::HashMap<String, String>) -> Style {
-    let n = names.get(id).map(|s| s.as_str()).unwrap_or(id).to_ascii_lowercase().replace(' ', "");
+    let n = names
+        .get(id)
+        .map(|s| s.as_str())
+        .unwrap_or(id)
+        .to_ascii_lowercase()
+        .replace(' ', "");
     let id = id.to_ascii_lowercase();
     let is = |k: &str| n == k || id == k;
     if is("title") || n.starts_with("titel") {
@@ -85,7 +99,9 @@ fn style_from(id: &str, names: &std::collections::HashMap<String, String>) -> St
 /// Nummerierungen, die Zahlen (statt Punkte) erzeugen: numId → true
 fn numbering_decimal(bytes: &[u8]) -> std::collections::HashMap<String, bool> {
     let mut out = std::collections::HashMap::new();
-    let Ok(x) = read_zip_entry(bytes, "word/numbering.xml") else { return out };
+    let Ok(x) = read_zip_entry(bytes, "word/numbering.xml") else {
+        return out;
+    };
     let mut abs: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
     let mut r = Reader::from_reader(&x[..]);
     let mut buf = Vec::new();
@@ -97,7 +113,10 @@ fn numbering_decimal(bytes: &[u8]) -> std::collections::HashMap<String, bool> {
                 b"lvl" => lvl0 = attr(&e, b"ilvl").as_deref() == Some("0"),
                 b"numFmt" if lvl0 => {
                     if let Some(a) = &cur_abs {
-                        abs.insert(a.clone(), attr(&e, b"val").is_some_and(|v| v != "bullet" && v != "none"));
+                        abs.insert(
+                            a.clone(),
+                            attr(&e, b"val").is_some_and(|v| v != "bullet" && v != "none"),
+                        );
                     }
                 }
                 b"num" => cur_num = attr(&e, b"numId"),
@@ -226,7 +245,11 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     in_ppr = false;
                     if let (Some(p), Some(n)) = (para.as_mut(), num_id.as_ref()) {
                         if n != "0" && matches!(p.style, Style::Normal) {
-                            p.style = if nums.get(n).copied().unwrap_or(false) { Style::Number } else { Style::Bullet };
+                            p.style = if nums.get(n).copied().unwrap_or(false) {
+                                Style::Number
+                            } else {
+                                Style::Bullet
+                            };
                         }
                     }
                 }
@@ -234,7 +257,13 @@ pub fn read(bytes: &[u8]) -> Result<Document, String> {
                     if let (Some(rr), Some(p)) = (run.take(), para.as_mut()) {
                         if !rr.text.is_empty() {
                             match p.runs.last_mut() {
-                                Some(l) if l.bold == rr.bold && l.italic == rr.italic && l.underline == rr.underline => l.text.push_str(&rr.text),
+                                Some(l)
+                                    if l.bold == rr.bold
+                                        && l.italic == rr.italic
+                                        && l.underline == rr.underline =>
+                                {
+                                    l.text.push_str(&rr.text)
+                                }
                                 _ => p.runs.push(rr),
                             }
                         }
@@ -290,7 +319,9 @@ pub fn esc(s: &str) -> String {
 fn run_xml(r: &Run, rtl: bool, mono: bool) -> String {
     let mut rpr = String::new();
     if mono {
-        rpr.push_str(r#"<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>"#);
+        rpr.push_str(
+            r#"<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/>"#,
+        );
     }
     if r.bold {
         rpr.push_str("<w:b/><w:bCs/>");
@@ -342,8 +373,12 @@ fn para_xml(p: &Para) -> String {
         ppr.push_str(&format!(r#"<w:pStyle w:val="{s}"/>"#));
     }
     match p.style {
-        Style::Bullet => ppr.push_str(r#"<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>"#),
-        Style::Number => ppr.push_str(r#"<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>"#),
+        Style::Bullet => {
+            ppr.push_str(r#"<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>"#)
+        }
+        Style::Number => {
+            ppr.push_str(r#"<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>"#)
+        }
         _ => {}
     }
     if rtl {
@@ -360,7 +395,11 @@ fn para_xml(p: &Para) -> String {
     if let Some(j) = jc {
         ppr.push_str(&format!(r#"<w:jc w:val="{j}"/>"#));
     }
-    let runs: String = p.runs.iter().map(|r| run_xml(r, rtl, p.style == Style::Code)).collect();
+    let runs: String = p
+        .runs
+        .iter()
+        .map(|r| run_xml(r, rtl, p.style == Style::Code))
+        .collect();
     if ppr.is_empty() {
         format!("<w:p>{runs}</w:p>")
     } else {
@@ -371,7 +410,9 @@ fn para_xml(p: &Para) -> String {
 fn table_xml(t: &[Vec<String>]) -> String {
     let cols = t.iter().map(|r| r.len()).max().unwrap_or(1).max(1);
     let w = 9000 / cols;
-    let mut s = String::from(r#"<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:color="999999"/></w:tblBorders></w:tblPr><w:tblGrid>"#);
+    let mut s = String::from(
+        r#"<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:color="999999"/></w:tblBorders></w:tblPr><w:tblGrid>"#,
+    );
     for _ in 0..cols {
         s.push_str(&format!(r#"<w:gridCol w:w="{w}"/>"#));
     }
@@ -384,7 +425,10 @@ fn table_xml(t: &[Vec<String>]) -> String {
             if ri == 0 {
                 p.runs[0].bold = true;
             }
-            s.push_str(&format!(r#"<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/></w:tcPr>{}</w:tc>"#, para_xml(&p)));
+            s.push_str(&format!(
+                r#"<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/></w:tcPr>{}</w:tc>"#,
+                para_xml(&p)
+            ));
         }
         s.push_str("</w:tr>");
     }
@@ -424,18 +468,24 @@ const DOC_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>"#;
 
 pub(crate) fn app_xml(app_kind: &str) -> String {
-    format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ultar {app_kind} – KM Code Craft</Application></Properties>"#)
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Ultar {app_kind} – KM Code Craft</Application></Properties>"#
+    )
 }
 
 pub(crate) fn core_xml(title: &str) -> String {
-    format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{}</dc:title><dc:creator>Ultar OS</dc:creator></cp:coreProperties>"#, esc(title))
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>{}</dc:title><dc:creator>Ultar OS</dc:creator></cp:coreProperties>"#,
+        esc(title)
+    )
 }
 
 pub(crate) fn zip_write(files: &[(&str, &[u8])]) -> Result<Vec<u8>, String> {
     let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let opt = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     for (n, d) in files {
         w.start_file(*n, opt).map_err(|e| e.to_string())?;
         w.write_all(d).map_err(|e| e.to_string())?;
@@ -464,7 +514,11 @@ pub fn write(d: &Document) -> Result<Vec<u8>, String> {
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>{body}<w:p/>{sect}</w:body></w:document>"#
     );
-    let title = d.paras().find(|p| !p.text().trim().is_empty()).map(|p| p.text()).unwrap_or_default();
+    let title = d
+        .paras()
+        .find(|p| !p.text().trim().is_empty())
+        .map(|p| p.text())
+        .unwrap_or_default();
     let core = core_xml(&title.chars().take(80).collect::<String>());
     let app = app_xml("Writer");
     zip_write(&[
@@ -495,6 +549,9 @@ mod tests {
             back2.blocks.pop();
         }
         assert_eq!(back2, d);
-        assert!(String::from_utf8_lossy(&read_zip_entry(&bytes, "word/document.xml").unwrap()).contains("<w:bidi/>"));
+        assert!(
+            String::from_utf8_lossy(&read_zip_entry(&bytes, "word/document.xml").unwrap())
+                .contains("<w:bidi/>")
+        );
     }
 }

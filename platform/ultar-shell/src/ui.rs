@@ -24,7 +24,9 @@ pub struct Theme {
 
 /// Erste Farbe: Gold aus dem Logo von KM Code Craft (Verlauf #F0F090 → #D8C870 → #B08838),
 /// dann Bronze und KM-Rot aus dem Logo, danach freie Akzente („Ultar Noir").
-pub const ACCENTS: [u32; 7] = [0xD8C870, 0xB08838, 0xF80000, 0x5B8DEF, 0x4ADE80, 0xA855F7, 0x14B8A6];
+pub const ACCENTS: [u32; 7] = [
+    0xD8C870, 0xB08838, 0xF80000, 0x5B8DEF, 0x4ADE80, 0xA855F7, 0x14B8A6,
+];
 /// Rot der Marke (KM im Logo) – nur für Marke, Aufnahme und Alarm
 pub const KM_RED: u32 = 0xF80000;
 
@@ -34,7 +36,11 @@ pub const KM_RED: u32 = 0xF80000;
 pub fn scale_for(w: f32, h: f32, user: f32) -> f32 {
     let (short, long) = (w.min(h), w.max(h));
     // Handys wie die Web-Demo: 390 logische Punkte Breite (1080 px -> 2,77); Tablets 600
-    let k = if short >= 700.0 && long / short < 1.7 { short / 600.0 } else { (short / 390.0).min(long / 700.0) };
+    let k = if short >= 700.0 && long / short < 1.7 {
+        short / 600.0
+    } else {
+        (short / 390.0).min(long / 700.0)
+    };
     (k * user).max(0.5)
 }
 
@@ -251,18 +257,30 @@ impl Ui<'_> {
     }
 
     pub fn visible(&self, r: Rect) -> bool {
-        self.clip.map_or(true, |c| r.bottom() > c.y && r.y < c.bottom())
+        self.clip
+            .map_or(true, |c| r.bottom() > c.y && r.y < c.bottom())
     }
 
     pub fn tap(&self, r: Rect) -> bool {
         if self.clip.is_none() && r.bottom() > self.kb.reach.get() {
             self.kb.reach.set(r.bottom());
         }
-        self.enabled && self.p.released && !self.p.moved && self.p.capture.is_none() && r.contains(self.p.px, self.p.py) && r.contains(self.p.x, self.p.y) && self.in_clip(self.p.px, self.p.py)
+        self.enabled
+            && self.p.released
+            && !self.p.moved
+            && self.p.capture.is_none()
+            && r.contains(self.p.px, self.p.py)
+            && r.contains(self.p.x, self.p.y)
+            && self.in_clip(self.p.px, self.p.py)
     }
 
     pub fn held(&self, r: Rect) -> bool {
-        self.enabled && self.p.down && !self.p.moved && self.p.capture.is_none() && r.contains(self.p.px, self.p.py) && self.in_clip(self.p.px, self.p.py)
+        self.enabled
+            && self.p.down
+            && !self.p.moved
+            && self.p.capture.is_none()
+            && r.contains(self.p.px, self.p.py)
+            && self.in_clip(self.p.px, self.p.py)
     }
 
     pub fn set_clip(&mut self, r: Option<Rect>) {
@@ -318,20 +336,42 @@ impl Ui<'_> {
             let c2 = match old {
                 Some(o) => {
                     let (x0, y0) = (r.x.max(o.x), r.y.max(o.y));
-                    Rect::new(x0, y0, (r.right().min(o.right()) - x0).max(0.0), (r.bottom().min(o.bottom()) - y0).max(0.0))
+                    Rect::new(
+                        x0,
+                        y0,
+                        (r.right().min(o.right()) - x0).max(0.0),
+                        (r.bottom().min(o.bottom()) - y0).max(0.0),
+                    )
                 }
                 None => r,
             };
             self.cv.set_clip(Some(c2));
         }
-        self.tx.draw(self.cv, s, x.max(if tw > r.w && al != Al::End { r.x } else { f32::MIN }), r.cy() - th / 2.0, sz, c, bold, 0.0);
+        self.tx.draw(
+            self.cv,
+            s,
+            x.max(if tw > r.w && al != Al::End {
+                r.x
+            } else {
+                f32::MIN
+            }),
+            r.cy() - th / 2.0,
+            sz,
+            c,
+            bold,
+            0.0,
+        );
         self.cv.set_clip(old);
     }
 
     /// Mehrzeiliger Text; liefert die Höhe.
     /// Adressen im gezeichneten Text merken (billige Vorprüfung, damit normale Texte nichts kosten).
     fn note_links(&mut self, s: &str) {
-        if self.links.len() < 8 && s.len() >= 6 && s.contains('.') && (s.contains('/') || s.contains("www.")) {
+        if self.links.len() < 8
+            && s.len() >= 6
+            && s.contains('.')
+            && (s.contains('/') || s.contains("www."))
+        {
             for u in crate::linkcheck::find_urls(s) {
                 if self.links.len() < 8 && !self.links.contains(&u) {
                     self.links.push(u);
@@ -386,21 +426,50 @@ impl Ui<'_> {
                     base = base.mix(self.th.bg, 0.55);
                 }
                 self.cv.rrect(r, rad, base);
-                self.label(r.inset(self.dp(6.0)), label, 15.0, self.th.on_accent, true, Al::Center);
+                self.label(
+                    r.inset(self.dp(6.0)),
+                    label,
+                    15.0,
+                    self.th.on_accent,
+                    true,
+                    Al::Center,
+                );
             }
             Btn::Danger => {
                 let bg = rgb(0xC62828);
                 let bg = if held { bg.mix(rgb(0), 0.18) } else { bg };
-                let bg = if self.enabled { bg } else { bg.mix(self.th.bg, 0.5) };
+                let bg = if self.enabled {
+                    bg
+                } else {
+                    bg.mix(self.th.bg, 0.5)
+                };
                 self.cv.rrect(r, rad, bg);
-                self.label(r.inset(self.dp(6.0)), label, 15.0, rgb(0xFFFFFF), true, Al::Center);
+                self.label(
+                    r.inset(self.dp(6.0)),
+                    label,
+                    15.0,
+                    rgb(0xFFFFFF),
+                    true,
+                    Al::Center,
+                );
             }
             Btn::Plain => {
                 // wie .btn.ghost in der Demo: durchsichtig mit feinem Rand, mittlere Schrift
                 self.cv.rrect(r, rad, self.th.line);
-                self.cv.rrect(r.inset(1.0), rad - 1.0, if held { self.th.press } else { self.th.bg });
+                self.cv.rrect(
+                    r.inset(1.0),
+                    rad - 1.0,
+                    if held { self.th.press } else { self.th.bg },
+                );
                 let lf = self.fit(label, 15.0, false, r.w - self.dp(12.0));
-                self.label(r.inset(self.dp(6.0)), &lf, 15.0, self.th.text, false, Al::Center);
+                self.label(
+                    r.inset(self.dp(6.0)),
+                    &lf,
+                    15.0,
+                    self.th.text,
+                    false,
+                    Al::Center,
+                );
             }
         }
         self.tap(r)
@@ -410,15 +479,31 @@ impl Ui<'_> {
     pub fn card_h(&mut self, r: Rect, held: bool) {
         let rad = self.dp(20.0).min(r.h / 2.0);
         self.cv.rrect(r, rad, self.th.line);
-        self.cv.rrect(r.inset(1.0), rad - 1.0, if held { self.th.press } else { self.th.card });
+        self.cv.rrect(
+            r.inset(1.0),
+            rad - 1.0,
+            if held { self.th.press } else { self.th.card },
+        );
     }
 
     /// Avatar mit Anfangsbuchstaben (Kreis in Farbe)
     pub fn avatar(&mut self, cx: f32, cy: f32, d: f32, name: &str, col: Color) {
         self.cv.circle(cx, cy, d / 2.0, col);
-        let ini: String = name.split_whitespace().filter_map(|w| w.chars().next()).take(2).collect::<String>().to_uppercase();
+        let ini: String = name
+            .split_whitespace()
+            .filter_map(|w| w.chars().next())
+            .take(2)
+            .collect::<String>()
+            .to_uppercase();
         let ini = if ini.is_empty() { "?".to_string() } else { ini };
-        self.label(Rect::new(cx - d / 2.0, cy - d / 2.0, d, d), &ini, d * 0.36 / self.k.max(0.01) * 1.0, rgb(0xFFFFFF), true, Al::Center);
+        self.label(
+            Rect::new(cx - d / 2.0, cy - d / 2.0, d, d),
+            &ini,
+            d * 0.36 / self.k.max(0.01) * 1.0,
+            rgb(0xFFFFFF),
+            true,
+            Al::Center,
+        );
     }
 
     /// Abschnittsüberschrift wie in der Web-Demo: klein, gedämpft, in Großbuchstaben
@@ -426,7 +511,12 @@ impl Ui<'_> {
         if (self.kb.row_end.get() - *y).abs() < 1.0 {
             *y += self.dp(10.0);
         }
-        let r = Rect::new(self.dp(24.0), *y + self.dp(6.0), self.w - self.dp(48.0), self.dp(22.0));
+        let r = Rect::new(
+            self.dp(24.0),
+            *y + self.dp(6.0),
+            self.w - self.dp(48.0),
+            self.dp(22.0),
+        );
         let c = self.th.sub;
         let up = s.to_uppercase();
         self.label(r, &up, 12.0, c, false, Al::Start);
@@ -434,7 +524,15 @@ impl Ui<'_> {
     }
 
     /// Listenzeile als Karte. Liefert true bei Antippen.
-    pub fn row(&mut self, y: &mut f32, icon: Option<Ic>, title: &str, sub: Option<&str>, value: Option<&str>, chevron: bool) -> bool {
+    pub fn row(
+        &mut self,
+        y: &mut f32,
+        icon: Option<Ic>,
+        title: &str,
+        sub: Option<&str>,
+        value: Option<&str>,
+        chevron: bool,
+    ) -> bool {
         // Gruppierte Liste wie in der Web-Demo: aneinanderliegende Zeilen bilden eine Karte mit Trennlinien
         let m = self.dp(16.0);
         let h = self.dp(if sub.is_some() { 62.0 } else { 54.0 });
@@ -458,7 +556,8 @@ impl Ui<'_> {
             let card = self.th.card;
             for (x, inx) in [(r.x, r.x + 1.0), (r.right() - rad, r.right() - rad)] {
                 self.cv.rect(Rect::new(x, r.y - rad, rad, 2.0 * rad), ln);
-                self.cv.rect(Rect::new(inx, r.y - rad, rad - 1.0, rad), card);
+                self.cv
+                    .rect(Rect::new(inx, r.y - rad, rad - 1.0, rad), card);
                 self.cv.rect(Rect::new(inx, r.y, rad - 1.0, rad), bg);
             }
             let lr = Rect::new(r.x + 1.0, r.y, r.w - 2.0, 1.0);
@@ -471,12 +570,20 @@ impl Ui<'_> {
         inner.h = r.h;
         if let Some(ic) = icon {
             let s = self.dp(32.0);
-            let cx = if self.rtl { inner.right() - s / 2.0 } else { inner.x + s / 2.0 };
+            let cx = if self.rtl {
+                inner.right() - s / 2.0
+            } else {
+                inner.x + s / 2.0
+            };
             let (bgc, fgc) = match self.kb.row_bg.take() {
                 Some(b) => (b, rgb(0xFFFFFF)),
                 None => (self.th.accent.alpha(0.16), self.th.accent),
             };
-            self.cv.rrect(Rect::new(cx - s / 2.0, r.cy() - s / 2.0, s, s), self.dp(10.0), bgc);
+            self.cv.rrect(
+                Rect::new(cx - s / 2.0, r.cy() - s / 2.0, s, s),
+                self.dp(10.0),
+                bgc,
+            );
             self.icon(ic, cx, r.cy(), self.dp(17.0), fgc);
             if !self.rtl {
                 inner.x += s + pad;
@@ -485,7 +592,11 @@ impl Ui<'_> {
         }
         if chevron {
             let s = self.dp(14.0);
-            let cx = if self.rtl { inner.x + s / 2.0 } else { inner.right() - s / 2.0 };
+            let cx = if self.rtl {
+                inner.x + s / 2.0
+            } else {
+                inner.right() - s / 2.0
+            };
             let c = self.th.sub.alpha(0.6);
             self.icon(Ic::Chevron, cx, r.cy(), s, c);
             if self.rtl {
@@ -498,19 +609,41 @@ impl Ui<'_> {
             // Wert auf höchstens ~58 % kürzen, damit er nie den Titel überlappt
             let v = self.fit(v, 13.0, false, inner.w * 0.58);
             let vw = self.text_w(&v, 13.0, false);
-            let c = if self.kb.row_gold.take() { self.th.accent } else { self.th.sub };
+            let c = if self.kb.row_gold.take() {
+                self.th.accent
+            } else {
+                self.th.sub
+            };
             self.label(inner, &v, 13.0, c, false, Al::End);
             tw = inner.w - vw - self.dp(12.0);
         }
-        let tr = if self.rtl { Rect::new(inner.right() - tw, inner.y, tw, inner.h) } else { Rect::new(inner.x, inner.y, tw, inner.h) };
+        let tr = if self.rtl {
+            Rect::new(inner.right() - tw, inner.y, tw, inner.h)
+        } else {
+            Rect::new(inner.x, inner.y, tw, inner.h)
+        };
         let c = self.th.text;
         match sub {
             Some(s) => {
                 let tf = self.fit(title, 15.0, true, tr.w);
-                self.label(Rect::new(tr.x, r.y + self.dp(9.0), tr.w, self.dp(24.0)), &tf, 15.0, c, false, Al::Start);
+                self.label(
+                    Rect::new(tr.x, r.y + self.dp(9.0), tr.w, self.dp(24.0)),
+                    &tf,
+                    15.0,
+                    c,
+                    false,
+                    Al::Start,
+                );
                 let cs = self.th.sub;
                 let sf = self.fit(s, 12.5, false, tr.w);
-                self.label(Rect::new(tr.x, r.y + self.dp(32.0), tr.w, self.dp(20.0)), &sf, 12.5, cs, false, Al::Start);
+                self.label(
+                    Rect::new(tr.x, r.y + self.dp(32.0), tr.w, self.dp(20.0)),
+                    &sf,
+                    12.5,
+                    cs,
+                    false,
+                    Al::Start,
+                );
             }
             None => {
                 let tf = self.fit(title, 15.0, true, tr.w);
@@ -520,7 +653,13 @@ impl Ui<'_> {
         self.tap(r)
     }
 
-    pub fn toggle_row(&mut self, y: &mut f32, title: &str, sub: Option<&str>, on: &mut bool) -> bool {
+    pub fn toggle_row(
+        &mut self,
+        y: &mut f32,
+        title: &str,
+        sub: Option<&str>,
+        on: &mut bool,
+    ) -> bool {
         let m = self.dp(16.0);
         let h = self.dp(if sub.is_some() { 62.0 } else { 54.0 });
         let r = Rect::new(m, *y, self.w - 2.0 * m, h);
@@ -532,11 +671,27 @@ impl Ui<'_> {
         if !self.visible(r) {
             return false;
         }
-        let tx = if self.rtl { r.x + pad } else { r.right() - pad - tw };
+        let tx = if self.rtl {
+            r.x + pad
+        } else {
+            r.right() - pad - tw
+        };
         let t = Rect::new(tx, r.cy() - thh / 2.0, tw, thh);
         // Schalter wie in der Web-Demo: an = goldene Bahn mit dunklem Knopf, aus = graue Bahn
-        self.cv.rrect(t, thh / 2.0, if *on { self.th.accent } else { self.th.line.mix(self.th.sub, 0.25) });
-        let kx = if *on != self.rtl { t.right() - thh / 2.0 } else { t.x + thh / 2.0 };
+        self.cv.rrect(
+            t,
+            thh / 2.0,
+            if *on {
+                self.th.accent
+            } else {
+                self.th.line.mix(self.th.sub, 0.25)
+            },
+        );
+        let kx = if *on != self.rtl {
+            t.right() - thh / 2.0
+        } else {
+            t.x + thh / 2.0
+        };
         let kc = if *on { self.th.on_accent } else { self.th.sub };
         self.cv.circle(kx, t.cy(), thh / 2.0 - self.dp(3.0), kc);
         if tapped {
@@ -549,7 +704,11 @@ impl Ui<'_> {
     pub fn slider(&mut self, id: &'static str, r: Rect, v: &mut f32) -> bool {
         let kr = self.dp(13.0);
         let (x0, x1) = (r.x + kr, r.right() - kr);
-        if self.enabled && self.p.pressed && r.contains(self.p.x, self.p.y) && self.in_clip(self.p.x, self.p.y) {
+        if self.enabled
+            && self.p.pressed
+            && r.contains(self.p.x, self.p.y)
+            && self.in_clip(self.p.x, self.p.y)
+        {
             self.p.capture = Some(id);
         }
         let mut changed = false;
@@ -567,8 +726,16 @@ impl Ui<'_> {
         let th = self.dp(6.0);
         let pos = if self.rtl { 1.0 - *v } else { *v };
         let kx = x0 + (x1 - x0) * pos;
-        self.cv.rrect(Rect::new(x0, r.cy() - th / 2.0, x1 - x0, th), th / 2.0, self.th.line);
-        let fill = if self.rtl { Rect::new(kx, r.cy() - th / 2.0, x1 - kx, th) } else { Rect::new(x0, r.cy() - th / 2.0, kx - x0, th) };
+        self.cv.rrect(
+            Rect::new(x0, r.cy() - th / 2.0, x1 - x0, th),
+            th / 2.0,
+            self.th.line,
+        );
+        let fill = if self.rtl {
+            Rect::new(kx, r.cy() - th / 2.0, x1 - kx, th)
+        } else {
+            Rect::new(x0, r.cy() - th / 2.0, kx - x0, th)
+        };
         self.cv.rrect(fill, th / 2.0, self.th.accent);
         self.cv.circle(kx, r.cy(), kr, self.th.accent);
         self.cv.circle(kx, r.cy(), kr - self.dp(4.0), rgb(0xFFFFFF));
@@ -596,7 +763,11 @@ impl Ui<'_> {
                 self.cv.rrect(c, self.dp(12.0), self.th.line);
             }
             let col = if i == sel { self.th.text } else { self.th.sub };
-            let fs = if self.text_w(o, 13.5, false) <= c.w - self.dp(6.0) { 13.5 } else { 12.0 };
+            let fs = if self.text_w(o, 13.5, false) <= c.w - self.dp(6.0) {
+                13.5
+            } else {
+                12.0
+            };
             let of = self.fit(o, fs, false, c.w - self.dp(4.0));
             self.label(c, &of, fs, col, false, Al::Center);
             if self.tap(c) && i != sel {
@@ -621,25 +792,47 @@ impl Ui<'_> {
         let pad = self.dp(12.0);
         let b = self.dp(38.0);
         let (minus, plus) = if self.rtl {
-            (Rect::new(r.x + pad + b + self.dp(8.0), r.cy() - b / 2.0, b, b), Rect::new(r.x + pad, r.cy() - b / 2.0, b, b))
+            (
+                Rect::new(r.x + pad + b + self.dp(8.0), r.cy() - b / 2.0, b, b),
+                Rect::new(r.x + pad, r.cy() - b / 2.0, b, b),
+            )
         } else {
-            (Rect::new(r.right() - pad - 2.0 * b - self.dp(8.0), r.cy() - b / 2.0, b, b), Rect::new(r.right() - pad - b, r.cy() - b / 2.0, b, b))
+            (
+                Rect::new(
+                    r.right() - pad - 2.0 * b - self.dp(8.0),
+                    r.cy() - b / 2.0,
+                    b,
+                    b,
+                ),
+                Rect::new(r.right() - pad - b, r.cy() - b / 2.0, b, b),
+            )
         };
         let lw = r.w - 2.0 * pad - 2.0 * b - self.dp(20.0);
-        let lr = if self.rtl { Rect::new(r.right() - pad - lw, r.y, lw, h) } else { Rect::new(r.x + pad, r.y, lw, h) };
+        let lr = if self.rtl {
+            Rect::new(r.right() - pad - lw, r.y, lw, h)
+        } else {
+            Rect::new(r.x + pad, r.y, lw, h)
+        };
         let (ct, cs) = (self.th.text, self.th.sub);
         self.label(lr, title, 15.0, ct, false, Al::Start);
         self.label(lr, value, 15.0, cs, false, Al::End);
         let mut d = 0;
         for (rc, sign) in [(minus, -1), (plus, 1)] {
             let held = self.held(rc);
-            self.cv.circle(rc.cx(), rc.cy(), b / 2.0, if held { self.th.line } else { self.th.press });
+            self.cv.circle(
+                rc.cx(),
+                rc.cy(),
+                b / 2.0,
+                if held { self.th.line } else { self.th.press },
+            );
             let a = self.th.text;
             let l = self.dp(7.0);
             let t = self.dp(2.5);
-            self.cv.line(rc.cx() - l, rc.cy(), rc.cx() + l, rc.cy(), t, a);
+            self.cv
+                .line(rc.cx() - l, rc.cy(), rc.cx() + l, rc.cy(), t, a);
             if sign > 0 {
-                self.cv.line(rc.cx(), rc.cy() - l, rc.cx(), rc.cy() + l, t, a);
+                self.cv
+                    .line(rc.cx(), rc.cy() - l, rc.cx(), rc.cy() + l, t, a);
             }
             if self.tap(rc) {
                 d = sign;
@@ -669,19 +862,35 @@ impl Ui<'_> {
         }
         // Eingabefeld wie in der Web-Demo (.inp): s1, feiner Rand, im Fokus goldener Rand
         let rad = self.dp(14.0);
-        self.cv.rrect(r, rad, if focused { self.th.accent } else { self.th.line });
+        self.cv.rrect(
+            r,
+            rad,
+            if focused {
+                self.th.accent
+            } else {
+                self.th.line
+            },
+        );
         self.cv.rrect(r.inset(1.0), rad - 1.0, self.th.card);
         let inner = Rect::new(r.x + self.dp(14.0), r.y, r.w - self.dp(28.0), r.h);
         if val.is_empty() && !focused {
             let c = self.th.sub;
             self.label(inner, hint, 16.0, c, false, Al::Start);
         } else {
-            let shown = if focused { format!("{val}|") } else { val.to_string() };
+            let shown = if focused {
+                format!("{val}|")
+            } else {
+                val.to_string()
+            };
             let c = self.th.text;
             // langen Text am Ende zeigen
             let tw = self.text_w(&shown, 16.0, false);
             let al = if tw > inner.w { Al::End } else { Al::Start };
-            let al = if self.rtl && tw <= inner.w { Al::Start } else { al };
+            let al = if self.rtl && tw <= inner.w {
+                Al::Start
+            } else {
+                al
+            };
             self.label(inner, &shown, 16.0, c, false, al);
         }
         if self.tap(r) && !focused {
@@ -693,8 +902,16 @@ impl Ui<'_> {
     pub fn progress(&mut self, r: Rect, v: f32) {
         self.cv.rrect(r, r.h / 2.0, self.th.line);
         let w = (r.w * v.clamp(0.0, 1.0)).max(r.h);
-        let c = if v > 0.9 { self.th.danger } else { self.th.accent };
-        let fr = if self.rtl { Rect::new(r.right() - w, r.y, w, r.h) } else { Rect::new(r.x, r.y, w, r.h) };
+        let c = if v > 0.9 {
+            self.th.danger
+        } else {
+            self.th.accent
+        };
+        let fr = if self.rtl {
+            Rect::new(r.right() - w, r.y, w, r.h)
+        } else {
+            Rect::new(r.x, r.y, w, r.h)
+        };
         self.cv.rrect(fr, r.h / 2.0, c);
     }
 
@@ -703,7 +920,16 @@ impl Ui<'_> {
         let hit = Rect::new(cx - r * 1.25, cy - r * 1.25, r * 2.5, r * 2.5);
         let held = self.held(hit);
         if bg.a > 0 {
-            self.cv.circle(cx, cy, r, if held { bg.mix(rgb(0x808080), 0.35) } else { bg });
+            self.cv.circle(
+                cx,
+                cy,
+                r,
+                if held {
+                    bg.mix(rgb(0x808080), 0.35)
+                } else {
+                    bg
+                },
+            );
         } else if held {
             self.cv.circle(cx, cy, r, fg.alpha(0.15));
         }
@@ -722,9 +948,17 @@ impl Ui<'_> {
             self.cv.rrect(r, h / 2.0, self.th.accent);
         } else {
             self.cv.rrect(r, h / 2.0, self.th.line);
-            self.cv.rrect(r.inset(1.0), h / 2.0, if held { self.th.press } else { self.th.card });
+            self.cv.rrect(
+                r.inset(1.0),
+                h / 2.0,
+                if held { self.th.press } else { self.th.card },
+            );
         }
-        let c = if active { self.th.on_accent } else { self.th.text };
+        let c = if active {
+            self.th.on_accent
+        } else {
+            self.th.text
+        };
         self.label(r, label, 13.0, c, active, Al::Center);
         (w, self.tap(r))
     }
@@ -736,7 +970,8 @@ impl Ui<'_> {
         let k = scroll_key(area);
         let now = std::time::Instant::now();
         let inside = area.contains(self.p.px, self.p.py);
-        let grab = self.enabled && self.p.down && self.p.moved && self.p.capture.is_none() && inside;
+        let grab =
+            self.enabled && self.p.down && self.p.moved && self.p.capture.is_none() && inside;
         let limit = area.h * 0.35;
         SP.with(|sp| {
             let mut sp = sp.borrow_mut();
@@ -768,14 +1003,24 @@ impl Ui<'_> {
                     return;
                 }
                 // Gummiband: über das Ende hinaus wird der Weg immer zäher
-                let over = if *scroll < 0.0 { -*scroll } else if *scroll > max { *scroll - max } else { 0.0 };
+                let over = if *scroll < 0.0 {
+                    -*scroll
+                } else if *scroll > max {
+                    *scroll - max
+                } else {
+                    0.0
+                };
                 if (*scroll <= 0.0 && d < 0.0) || (*scroll >= max && d > 0.0) {
                     d *= 0.5 * (1.0 - (over / limit).min(0.95));
                 }
                 *scroll += d;
                 let dt = now.duration_since(sp.last).as_secs_f32().max(0.004);
                 let v = d / dt;
-                sp.vel = if dt > 0.12 { v } else { sp.vel * 0.55 + v * 0.45 };
+                sp.vel = if dt > 0.12 {
+                    v
+                } else {
+                    sp.vel * 0.55 + v * 0.45
+                };
                 sp.last = now;
             } else if sp.key == Some(k) && sp.dragging && !self.p.down {
                 // losgelassen: Schwung übernehmen
@@ -807,9 +1052,17 @@ impl Ui<'_> {
                     }
                     // in den Rand hineinlaufender Schwung: nur leicht überschießen
                     if max.is_finite() && (*scroll < 0.0 || *scroll > max) {
-                        let o = if *scroll < 0.0 { *scroll } else { *scroll - max };
+                        let o = if *scroll < 0.0 {
+                            *scroll
+                        } else {
+                            *scroll - max
+                        };
                         if o.abs() > limit * 0.25 {
-                            *scroll = if *scroll < 0.0 { -limit * 0.25 } else { max + limit * 0.25 };
+                            *scroll = if *scroll < 0.0 {
+                                -limit * 0.25
+                            } else {
+                                max + limit * 0.25
+                            };
                             sp.vel = 0.0;
                         }
                     }
@@ -840,7 +1093,13 @@ impl Ui<'_> {
                 if c == area {
                     let m = self.dp(14.0);
                     let extra = self.dp(76.0).min((area.h - fr.h - 2.0 * m).max(0.0));
-                    let d = if fr.bottom() + extra + m > area.bottom() { (fr.bottom() + extra + m - area.bottom()).min((fr.y - m - area.y).max(0.0)) } else if fr.y - m < area.y { fr.y - m - area.y } else { 0.0 };
+                    let d = if fr.bottom() + extra + m > area.bottom() {
+                        (fr.bottom() + extra + m - area.bottom()).min((fr.y - m - area.y).max(0.0))
+                    } else if fr.y - m < area.y {
+                        fr.y - m - area.y
+                    } else {
+                        0.0
+                    };
                     let ns = (*scroll + d).clamp(0.0, max);
                     if (ns - *scroll).abs() > 0.5 {
                         let fr2 = Rect::new(fr.x, fr.y - (ns - *scroll), fr.w, fr.h);
@@ -862,12 +1121,27 @@ impl Ui<'_> {
         }
         if max > 0.0 {
             // Rollbalken (schrumpft beim Überziehen)
-            let over = if *scroll < 0.0 { -*scroll } else if *scroll > max { *scroll - max } else { 0.0 };
-            let bh = ((area.h * area.h / content_h).max(self.dp(24.0)) - over * 0.5).max(self.dp(10.0));
+            let over = if *scroll < 0.0 {
+                -*scroll
+            } else if *scroll > max {
+                *scroll - max
+            } else {
+                0.0
+            };
+            let bh =
+                ((area.h * area.h / content_h).max(self.dp(24.0)) - over * 0.5).max(self.dp(10.0));
             let pos = (*scroll / max).clamp(0.0, 1.0);
             let by = area.y + (area.h - bh) * pos;
-            let x = if self.rtl { area.x + self.dp(3.0) } else { area.right() - self.dp(6.0) };
-            self.cv.rrect(Rect::new(x, by, self.dp(3.0), bh), self.dp(1.5), self.th.sub.alpha(0.5));
+            let x = if self.rtl {
+                area.x + self.dp(3.0)
+            } else {
+                area.right() - self.dp(6.0)
+            };
+            self.cv.rrect(
+                Rect::new(x, by, self.dp(3.0), bh),
+                self.dp(1.5),
+                self.th.sub.alpha(0.5),
+            );
         }
         self.set_clip(None);
     }
@@ -880,7 +1154,14 @@ impl Ui<'_> {
     pub fn icon_w(&mut self, ic: Ic, cx: f32, cy: f32, s: f32, c: Color, sw: f32) {
         if let Some(name) = svg_name(ic) {
             if let Some(m) = svg_mask(name, s, sw) {
-                self.cv.mask((cx - m.1 as f32 / 2.0).round() as i32, (cy - m.2 as f32 / 2.0).round() as i32, m.1, m.2, &m.0, c);
+                self.cv.mask(
+                    (cx - m.1 as f32 / 2.0).round() as i32,
+                    (cy - m.2 as f32 / 2.0).round() as i32,
+                    m.1,
+                    m.2,
+                    &m.0,
+                    c,
+                );
                 return;
             }
         }
@@ -892,13 +1173,24 @@ impl Ui<'_> {
         let r = s / 2.0;
         let cv = &mut *self.cv;
         // Farbe für Aussparungen (Linse, Zeilen): Gegenton zum Symbol
-        let cut = if (c.r as u32 * 3 + c.g as u32 * 6 + c.b as u32) / 10 < 90 { rgb(0xFFFFFF).alpha(0.8) } else { rgb(0x101216).alpha(0.85) };
+        let cut = if (c.r as u32 * 3 + c.g as u32 * 6 + c.b as u32) / 10 < 90 {
+            rgb(0xFFFFFF).alpha(0.8)
+        } else {
+            rgb(0x101216).alpha(0.85)
+        };
         match ic {
             Ic::Svg(_) => {}
             Ic::Gear => {
                 for i in 0..8 {
                     let a = i as f32 * std::f32::consts::PI / 4.0;
-                    cv.line(cx + a.cos() * r * 0.62, cy + a.sin() * r * 0.62, cx + a.cos() * r * 0.98, cy + a.sin() * r * 0.98, t * 1.8, c);
+                    cv.line(
+                        cx + a.cos() * r * 0.62,
+                        cy + a.sin() * r * 0.62,
+                        cx + a.cos() * r * 0.98,
+                        cy + a.sin() * r * 0.98,
+                        t * 1.8,
+                        c,
+                    );
                 }
                 cv.ring(cx, cy, r * 0.5, t * 1.6, c);
             }
@@ -910,13 +1202,27 @@ impl Ui<'_> {
                 cv.line(x0, y1, x1, y1, t, c);
                 cv.line(x0, y0, cx - r * 0.45, cy - r * 0.9, t, c);
                 cv.line(x1, y0, cx + r * 0.45, cy - r * 0.9, t, c);
-                cv.line(cx - r * 0.45, cy - r * 0.9, cx + r * 0.45, cy - r * 0.9, t, c);
+                cv.line(
+                    cx - r * 0.45,
+                    cy - r * 0.9,
+                    cx + r * 0.45,
+                    cy - r * 0.9,
+                    t,
+                    c,
+                );
                 cv.line(cx, y0, cx, cy + r * 0.1, t, c);
             }
             Ic::Term => {
                 cv.line(cx - r * 0.8, cy - r * 0.5, cx - r * 0.2, cy, t * 1.2, c);
                 cv.line(cx - r * 0.2, cy, cx - r * 0.8, cy + r * 0.5, t * 1.2, c);
-                cv.line(cx + r * 0.05, cy + r * 0.55, cx + r * 0.8, cy + r * 0.55, t * 1.2, c);
+                cv.line(
+                    cx + r * 0.05,
+                    cy + r * 0.55,
+                    cx + r * 0.8,
+                    cy + r * 0.55,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::List => {
                 for i in -1..=1 {
@@ -927,11 +1233,19 @@ impl Ui<'_> {
             }
             Ic::Power => {
                 let rr = r * 0.78;
-                cv.sdf(Rect::new(cx - r - 1.0, cy - r - 1.0, s + 2.0, s + 2.0), c, |x, y| {
-                    let d = (((x - cx).powi(2) + (y - cy).powi(2)).sqrt() - rr).abs() - t / 2.0;
-                    // oben offen
-                    if y < cy - rr * 0.45 && (x - cx).abs() < rr * 0.5 { 1.0 } else { d }
-                });
+                cv.sdf(
+                    Rect::new(cx - r - 1.0, cy - r - 1.0, s + 2.0, s + 2.0),
+                    c,
+                    |x, y| {
+                        let d = (((x - cx).powi(2) + (y - cy).powi(2)).sqrt() - rr).abs() - t / 2.0;
+                        // oben offen
+                        if y < cy - rr * 0.45 && (x - cx).abs() < rr * 0.5 {
+                            1.0
+                        } else {
+                            d
+                        }
+                    },
+                );
                 cv.line(cx, cy - r, cx, cy - r * 0.1, t, c);
             }
             Ic::Globe => {
@@ -946,13 +1260,27 @@ impl Ui<'_> {
                 cv.circle(cx, cy, r * 0.38, c);
                 for i in 0..8 {
                     let a = i as f32 * std::f32::consts::PI / 4.0;
-                    cv.line(cx + a.cos() * r * 0.62, cy + a.sin() * r * 0.62, cx + a.cos() * r * 0.95, cy + a.sin() * r * 0.95, t, c);
+                    cv.line(
+                        cx + a.cos() * r * 0.62,
+                        cy + a.sin() * r * 0.62,
+                        cx + a.cos() * r * 0.95,
+                        cy + a.sin() * r * 0.95,
+                        t,
+                        c,
+                    );
                 }
             }
             Ic::Lang => {
                 cv.line(cx - r * 0.7, cy + r * 0.8, cx, cy - r * 0.8, t * 1.2, c);
                 cv.line(cx, cy - r * 0.8, cx + r * 0.7, cy + r * 0.8, t * 1.2, c);
-                cv.line(cx - r * 0.4, cy + r * 0.2, cx + r * 0.4, cy + r * 0.2, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.4,
+                    cy + r * 0.2,
+                    cx + r * 0.4,
+                    cy + r * 0.2,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Clock => {
                 cv.ring(cx, cy, r * 0.85, t, c);
@@ -962,7 +1290,11 @@ impl Ui<'_> {
             Ic::Disk => {
                 for i in -1..=1 {
                     let y = cy + i as f32 * r * 0.62;
-                    cv.rrect(Rect::new(cx - r * 0.85, y - r * 0.22, r * 1.7, r * 0.44), r * 0.14, c);
+                    cv.rrect(
+                        Rect::new(cx - r * 0.85, y - r * 0.22, r * 1.7, r * 0.44),
+                        r * 0.14,
+                        c,
+                    );
                 }
             }
             Ic::Info => {
@@ -973,26 +1305,97 @@ impl Ui<'_> {
             Ic::Back | Ic::Chevron => {
                 let flip = (ic == Ic::Back) != self.rtl;
                 let d = if flip { -1.0 } else { 1.0 };
-                cv.line(cx - d * r * 0.3, cy - r * 0.7, cx + d * r * 0.4, cy, t * 1.3, c);
-                cv.line(cx + d * r * 0.4, cy, cx - d * r * 0.3, cy + r * 0.7, t * 1.3, c);
+                cv.line(
+                    cx - d * r * 0.3,
+                    cy - r * 0.7,
+                    cx + d * r * 0.4,
+                    cy,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx + d * r * 0.4,
+                    cy,
+                    cx - d * r * 0.3,
+                    cy + r * 0.7,
+                    t * 1.3,
+                    c,
+                );
             }
             Ic::Home => cv.ring(cx, cy, r * 0.7, t * 1.3, c),
             Ic::Bot => {
-                cv.rrect(Rect::new(cx - r * 0.8, cy - r * 0.45, r * 1.6, r * 1.25), r * 0.3, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.8, cy - r * 0.45, r * 1.6, r * 1.25),
+                    r * 0.3,
+                    c,
+                );
                 cv.line(cx, cy - r * 0.45, cx, cy - r * 0.9, t, c);
                 cv.circle(cx, cy - r * 0.92, t * 1.1, c);
-                let eye = if c.r as u32 + c.g as u32 + c.b as u32 > 384 { rgb(0x20242C) } else { rgb(0xFFFFFF) };
+                let eye = if c.r as u32 + c.g as u32 + c.b as u32 > 384 {
+                    rgb(0x20242C)
+                } else {
+                    rgb(0xFFFFFF)
+                };
                 cv.circle(cx - r * 0.35, cy + r * 0.1, r * 0.16, eye);
                 cv.circle(cx + r * 0.35, cy + r * 0.1, r * 0.16, eye);
             }
             Ic::Calc => {
-                cv.line(cx - r * 0.75, cy - r * 0.45, cx - r * 0.15, cy - r * 0.45, t * 1.3, c);
-                cv.line(cx - r * 0.45, cy - r * 0.75, cx - r * 0.45, cy - r * 0.15, t * 1.3, c);
-                cv.line(cx + r * 0.2, cy - r * 0.45, cx + r * 0.75, cy - r * 0.45, t * 1.3, c);
-                cv.line(cx - r * 0.68, cy + r * 0.22, cx - r * 0.22, cy + r * 0.68, t * 1.3, c);
-                cv.line(cx - r * 0.22, cy + r * 0.22, cx - r * 0.68, cy + r * 0.68, t * 1.3, c);
-                cv.line(cx + r * 0.2, cy + r * 0.32, cx + r * 0.75, cy + r * 0.32, t * 1.3, c);
-                cv.line(cx + r * 0.2, cy + r * 0.6, cx + r * 0.75, cy + r * 0.6, t * 1.3, c);
+                cv.line(
+                    cx - r * 0.75,
+                    cy - r * 0.45,
+                    cx - r * 0.15,
+                    cy - r * 0.45,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.45,
+                    cy - r * 0.75,
+                    cx - r * 0.45,
+                    cy - r * 0.15,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.2,
+                    cy - r * 0.45,
+                    cx + r * 0.75,
+                    cy - r * 0.45,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.68,
+                    cy + r * 0.22,
+                    cx - r * 0.22,
+                    cy + r * 0.68,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.22,
+                    cy + r * 0.22,
+                    cx - r * 0.68,
+                    cy + r * 0.68,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.2,
+                    cy + r * 0.32,
+                    cx + r * 0.75,
+                    cy + r * 0.32,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.2,
+                    cy + r * 0.6,
+                    cx + r * 0.75,
+                    cy + r * 0.6,
+                    t * 1.3,
+                    c,
+                );
             }
             Ic::Folder => {
                 let (x0, x1, y0, y1) = (cx - r * 0.9, cx + r * 0.9, cy - r * 0.45, cy + r * 0.7);
@@ -1012,18 +1415,46 @@ impl Ui<'_> {
                 cv.circle(cx + r * 0.4, cy - r * 0.3, r * 0.16, c);
                 cv.line(x0, y1 - r * 0.1, cx - r * 0.25, cy, t, c);
                 cv.line(cx - r * 0.25, cy, cx + r * 0.2, cy + r * 0.45, t, c);
-                cv.line(cx + r * 0.2, cy + r * 0.45, cx + r * 0.5, cy + r * 0.2, t, c);
+                cv.line(
+                    cx + r * 0.2,
+                    cy + r * 0.45,
+                    cx + r * 0.5,
+                    cy + r * 0.2,
+                    t,
+                    c,
+                );
                 cv.line(cx + r * 0.5, cy + r * 0.2, x1, y1 - r * 0.2, t, c);
             }
             Ic::Shield => {
                 cv.line(cx - r * 0.75, cy - r * 0.6, cx, cy - r * 0.9, t * 1.2, c);
                 cv.line(cx, cy - r * 0.9, cx + r * 0.75, cy - r * 0.6, t * 1.2, c);
-                cv.line(cx - r * 0.75, cy - r * 0.6, cx - r * 0.75, cy + r * 0.1, t * 1.2, c);
-                cv.line(cx + r * 0.75, cy - r * 0.6, cx + r * 0.75, cy + r * 0.1, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.75,
+                    cy - r * 0.6,
+                    cx - r * 0.75,
+                    cy + r * 0.1,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.75,
+                    cy - r * 0.6,
+                    cx + r * 0.75,
+                    cy + r * 0.1,
+                    t * 1.2,
+                    c,
+                );
                 cv.line(cx - r * 0.75, cy + r * 0.1, cx, cy + r * 0.92, t * 1.2, c);
                 cv.line(cx + r * 0.75, cy + r * 0.1, cx, cy + r * 0.92, t * 1.2, c);
                 cv.line(cx - r * 0.3, cy, cx - r * 0.05, cy + r * 0.28, t * 1.2, c);
-                cv.line(cx - r * 0.05, cy + r * 0.28, cx + r * 0.35, cy - r * 0.25, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.05,
+                    cy + r * 0.28,
+                    cx + r * 0.35,
+                    cy - r * 0.25,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Wifi => {
                 // drei Bögen + Punkt (WLAN)
@@ -1044,12 +1475,54 @@ impl Ui<'_> {
                 cv.circle(cx, cy + r * 0.55, t * 1.3, c);
             }
             Ic::UpDown => {
-                cv.line(cx - r * 0.4, cy + r * 0.8, cx - r * 0.4, cy - r * 0.8, t * 1.2, c);
-                cv.line(cx - r * 0.4, cy - r * 0.8, cx - r * 0.75, cy - r * 0.42, t * 1.2, c);
-                cv.line(cx - r * 0.4, cy - r * 0.8, cx - r * 0.05, cy - r * 0.42, t * 1.2, c);
-                cv.line(cx + r * 0.4, cy - r * 0.8, cx + r * 0.4, cy + r * 0.8, t * 1.2, c);
-                cv.line(cx + r * 0.4, cy + r * 0.8, cx + r * 0.05, cy + r * 0.42, t * 1.2, c);
-                cv.line(cx + r * 0.4, cy + r * 0.8, cx + r * 0.75, cy + r * 0.42, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.4,
+                    cy + r * 0.8,
+                    cx - r * 0.4,
+                    cy - r * 0.8,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.4,
+                    cy - r * 0.8,
+                    cx - r * 0.75,
+                    cy - r * 0.42,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.4,
+                    cy - r * 0.8,
+                    cx - r * 0.05,
+                    cy - r * 0.42,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.4,
+                    cy - r * 0.8,
+                    cx + r * 0.4,
+                    cy + r * 0.8,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.4,
+                    cy + r * 0.8,
+                    cx + r * 0.05,
+                    cy + r * 0.42,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.4,
+                    cy + r * 0.8,
+                    cx + r * 0.75,
+                    cy + r * 0.42,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Bt => {
                 let (x0, x1) = (cx - r * 0.45, cx + r * 0.45);
@@ -1067,34 +1540,143 @@ impl Ui<'_> {
                 cv.line(cx + r * 0.4, cy + r * 0.9, cx, cy + r * 0.65, t * 1.2, c);
             }
             Ic::Torch => {
-                cv.line(cx - r * 0.45, cy - r * 0.85, cx + r * 0.45, cy - r * 0.85, t * 1.2, c);
-                cv.line(cx - r * 0.45, cy - r * 0.85, cx - r * 0.45, cy - r * 0.45, t * 1.2, c);
-                cv.line(cx + r * 0.45, cy - r * 0.85, cx + r * 0.45, cy - r * 0.45, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.45,
+                    cy - r * 0.85,
+                    cx + r * 0.45,
+                    cy - r * 0.85,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.45,
+                    cy - r * 0.85,
+                    cx - r * 0.45,
+                    cy - r * 0.45,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.45,
+                    cy - r * 0.85,
+                    cx + r * 0.45,
+                    cy - r * 0.45,
+                    t * 1.2,
+                    c,
+                );
                 cv.line(cx - r * 0.45, cy - r * 0.45, cx - r * 0.2, cy, t * 1.2, c);
                 cv.line(cx + r * 0.45, cy - r * 0.45, cx + r * 0.2, cy, t * 1.2, c);
                 cv.line(cx - r * 0.2, cy, cx - r * 0.2, cy + r * 0.9, t * 1.2, c);
                 cv.line(cx + r * 0.2, cy, cx + r * 0.2, cy + r * 0.9, t * 1.2, c);
-                cv.line(cx - r * 0.2, cy + r * 0.9, cx + r * 0.2, cy + r * 0.9, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.2,
+                    cy + r * 0.9,
+                    cx + r * 0.2,
+                    cy + r * 0.9,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Speaker => {
-                cv.line(cx - r * 0.85, cy - r * 0.3, cx - r * 0.5, cy - r * 0.3, t * 1.2, c);
-                cv.line(cx - r * 0.85, cy + r * 0.3, cx - r * 0.5, cy + r * 0.3, t * 1.2, c);
-                cv.line(cx - r * 0.85, cy - r * 0.3, cx - r * 0.85, cy + r * 0.3, t * 1.2, c);
-                cv.line(cx - r * 0.5, cy - r * 0.3, cx - r * 0.05, cy - r * 0.75, t * 1.2, c);
-                cv.line(cx - r * 0.5, cy + r * 0.3, cx - r * 0.05, cy + r * 0.75, t * 1.2, c);
-                cv.line(cx - r * 0.05, cy - r * 0.75, cx - r * 0.05, cy + r * 0.75, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.85,
+                    cy - r * 0.3,
+                    cx - r * 0.5,
+                    cy - r * 0.3,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.85,
+                    cy + r * 0.3,
+                    cx - r * 0.5,
+                    cy + r * 0.3,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.85,
+                    cy - r * 0.3,
+                    cx - r * 0.85,
+                    cy + r * 0.3,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.5,
+                    cy - r * 0.3,
+                    cx - r * 0.05,
+                    cy - r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.5,
+                    cy + r * 0.3,
+                    cx - r * 0.05,
+                    cy + r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.05,
+                    cy - r * 0.75,
+                    cx - r * 0.05,
+                    cy + r * 0.75,
+                    t * 1.2,
+                    c,
+                );
                 cv.line(cx + r * 0.3, cy - r * 0.3, cx + r * 0.42, cy, t * 1.1, c);
                 cv.line(cx + r * 0.42, cy, cx + r * 0.3, cy + r * 0.3, t * 1.1, c);
                 cv.line(cx + r * 0.6, cy - r * 0.6, cx + r * 0.85, cy, t * 1.1, c);
                 cv.line(cx + r * 0.85, cy, cx + r * 0.6, cy + r * 0.6, t * 1.1, c);
             }
             Ic::Lock => {
-                cv.rrect(Rect::new(cx - r * 0.7, cy - r * 0.1, r * 1.4, r * 1.0), r * 0.18, c);
-                cv.line(cx - r * 0.42, cy - r * 0.1, cx - r * 0.42, cy - r * 0.45, t * 1.2, c);
-                cv.line(cx + r * 0.42, cy - r * 0.1, cx + r * 0.42, cy - r * 0.45, t * 1.2, c);
-                cv.line(cx - r * 0.42, cy - r * 0.45, cx - r * 0.2, cy - r * 0.8, t * 1.2, c);
-                cv.line(cx + r * 0.42, cy - r * 0.45, cx + r * 0.2, cy - r * 0.8, t * 1.2, c);
-                cv.line(cx - r * 0.2, cy - r * 0.8, cx + r * 0.2, cy - r * 0.8, t * 1.2, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.7, cy - r * 0.1, r * 1.4, r * 1.0),
+                    r * 0.18,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.42,
+                    cy - r * 0.1,
+                    cx - r * 0.42,
+                    cy - r * 0.45,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.42,
+                    cy - r * 0.1,
+                    cx + r * 0.42,
+                    cy - r * 0.45,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.42,
+                    cy - r * 0.45,
+                    cx - r * 0.2,
+                    cy - r * 0.8,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.42,
+                    cy - r * 0.45,
+                    cx + r * 0.2,
+                    cy - r * 0.8,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.2,
+                    cy - r * 0.8,
+                    cx + r * 0.2,
+                    cy - r * 0.8,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Phone => {
                 // Hörer: zwei Muscheln, verbunden durch einen Bogen
@@ -1118,32 +1700,128 @@ impl Ui<'_> {
                 cv.line(x0, y1, x1, y1, t * 1.2, c);
                 cv.line(x0, y0, x0, y1, t * 1.2, c);
                 cv.line(x1, y0, x1, y1, t * 1.2, c);
-                cv.line(cx - r * 0.45, cy - r * 0.25, cx + r * 0.45, cy - r * 0.25, t, c);
-                cv.line(cx - r * 0.45, cy + r * 0.05, cx + r * 0.2, cy + r * 0.05, t, c);
-                cv.line(cx - r * 0.45, cy + r * 0.4, cx - r * 0.6, cy + r * 0.9, t * 1.4, c);
-                cv.line(cx - r * 0.6, cy + r * 0.9, cx - r * 0.05, cy + r * 0.45, t * 1.4, c);
+                cv.line(
+                    cx - r * 0.45,
+                    cy - r * 0.25,
+                    cx + r * 0.45,
+                    cy - r * 0.25,
+                    t,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.45,
+                    cy + r * 0.05,
+                    cx + r * 0.2,
+                    cy + r * 0.05,
+                    t,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.45,
+                    cy + r * 0.4,
+                    cx - r * 0.6,
+                    cy + r * 0.9,
+                    t * 1.4,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.6,
+                    cy + r * 0.9,
+                    cx - r * 0.05,
+                    cy + r * 0.45,
+                    t * 1.4,
+                    c,
+                );
             }
             Ic::Camera => {
-                cv.line(cx - r * 0.9, cy - r * 0.45, cx + r * 0.9, cy - r * 0.45, t * 1.2, c);
-                cv.line(cx - r * 0.9, cy + r * 0.75, cx + r * 0.9, cy + r * 0.75, t * 1.2, c);
-                cv.line(cx - r * 0.9, cy - r * 0.45, cx - r * 0.9, cy + r * 0.75, t * 1.2, c);
-                cv.line(cx + r * 0.9, cy - r * 0.45, cx + r * 0.9, cy + r * 0.75, t * 1.2, c);
-                cv.line(cx - r * 0.35, cy - r * 0.45, cx - r * 0.2, cy - r * 0.75, t * 1.2, c);
-                cv.line(cx + r * 0.35, cy - r * 0.45, cx + r * 0.2, cy - r * 0.75, t * 1.2, c);
-                cv.line(cx - r * 0.2, cy - r * 0.75, cx + r * 0.2, cy - r * 0.75, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.9,
+                    cy - r * 0.45,
+                    cx + r * 0.9,
+                    cy - r * 0.45,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.9,
+                    cy + r * 0.75,
+                    cx + r * 0.9,
+                    cy + r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.9,
+                    cy - r * 0.45,
+                    cx - r * 0.9,
+                    cy + r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.9,
+                    cy - r * 0.45,
+                    cx + r * 0.9,
+                    cy + r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.35,
+                    cy - r * 0.45,
+                    cx - r * 0.2,
+                    cy - r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.35,
+                    cy - r * 0.45,
+                    cx + r * 0.2,
+                    cy - r * 0.75,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.2,
+                    cy - r * 0.75,
+                    cx + r * 0.2,
+                    cy - r * 0.75,
+                    t * 1.2,
+                    c,
+                );
                 cv.ring(cx, cy + r * 0.15, r * 0.36, t * 1.2, c);
             }
             Ic::Grid => {
                 for i in 0..3 {
                     for j in 0..3 {
-                        cv.circle(cx + (i as f32 - 1.0) * r * 0.62, cy + (j as f32 - 1.0) * r * 0.62, t * 1.4, c);
+                        cv.circle(
+                            cx + (i as f32 - 1.0) * r * 0.62,
+                            cy + (j as f32 - 1.0) * r * 0.62,
+                            t * 1.4,
+                            c,
+                        );
                     }
                 }
             }
             Ic::Sliders => {
                 for (i, k) in [(-0.6f32, 0.3f32), (0.0, -0.4), (0.6, 0.15)] {
-                    cv.line(cx + i * r, cy - r * 0.85, cx + i * r, cy + r * 0.85, t * 1.1, c);
-                    cv.line(cx + i * r - r * 0.22, cy + k * r, cx + i * r + r * 0.22, cy + k * r, t * 1.6, c);
+                    cv.line(
+                        cx + i * r,
+                        cy - r * 0.85,
+                        cx + i * r,
+                        cy + r * 0.85,
+                        t * 1.1,
+                        c,
+                    );
+                    cv.line(
+                        cx + i * r - r * 0.22,
+                        cy + k * r,
+                        cx + i * r + r * 0.22,
+                        cy + k * r,
+                        t * 1.6,
+                        c,
+                    );
                 }
             }
             Ic::Bell => {
@@ -1158,15 +1836,39 @@ impl Ui<'_> {
                     }
                     prev = Some((px, py));
                 }
-                cv.line(cx - r * 0.62, cy - r * 0.1, cx - r * 0.62, cy + r * 0.4, t * 1.2, c);
-                cv.line(cx + r * 0.62, cy - r * 0.1, cx + r * 0.62, cy + r * 0.4, t * 1.2, c);
-                cv.line(cx - r * 0.9, cy + r * 0.45, cx + r * 0.9, cy + r * 0.45, t * 1.3, c);
+                cv.line(
+                    cx - r * 0.62,
+                    cy - r * 0.1,
+                    cx - r * 0.62,
+                    cy + r * 0.4,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.62,
+                    cy - r * 0.1,
+                    cx + r * 0.62,
+                    cy + r * 0.4,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.9,
+                    cy + r * 0.45,
+                    cx + r * 0.9,
+                    cy + r * 0.45,
+                    t * 1.3,
+                    c,
+                );
                 cv.circle(cx, cy + r * 0.8, t * 1.4, c);
             }
             Ic::Moon => {
                 // Sichel aus zwei Bögen
                 let seg = 10;
-                for (rad, off, from, to) in [(r * 0.9, 0.0, 40.0f32, 320.0f32), (r * 0.72, r * 0.42, 75.0, 285.0)] {
+                for (rad, off, from, to) in [
+                    (r * 0.9, 0.0, 40.0f32, 320.0f32),
+                    (r * 0.72, r * 0.42, 75.0, 285.0),
+                ] {
                     let mut prev: Option<(f32, f32)> = None;
                     for i in 0..=seg {
                         let a = (from + (to - from) * i as f32 / seg as f32).to_radians();
@@ -1182,7 +1884,14 @@ impl Ui<'_> {
                 // Mast mit zwei Beinen
                 cv.line(cx, cy - r * 0.15, cx - r * 0.5, cy + r * 0.92, t * 1.2, c);
                 cv.line(cx, cy - r * 0.15, cx + r * 0.5, cy + r * 0.92, t * 1.2, c);
-                cv.line(cx - r * 0.26, cy + r * 0.42, cx + r * 0.26, cy + r * 0.42, t, c);
+                cv.line(
+                    cx - r * 0.26,
+                    cy + r * 0.42,
+                    cx + r * 0.26,
+                    cy + r * 0.42,
+                    t,
+                    c,
+                );
                 cv.circle(cx, cy - r * 0.22, t * 1.1, c);
                 // Funkwellen als Bögen links und rechts
                 for (k, rad) in [(0usize, r * 0.42), (1, r * 0.8)] {
@@ -1203,7 +1912,11 @@ impl Ui<'_> {
                 }
             }
             Ic::Chip => {
-                cv.rrect(Rect::new(cx - r * 0.55, cy - r * 0.55, r * 1.1, r * 1.1), r * 0.15, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.55, cy - r * 0.55, r * 1.1, r * 1.1),
+                    r * 0.15,
+                    c,
+                );
                 for i in -1..=1 {
                     let o = i as f32 * r * 0.36;
                     cv.line(cx + o, cy - r * 0.95, cx + o, cy - r * 0.55, t, c);
@@ -1222,8 +1935,16 @@ impl Ui<'_> {
                 });
             }
             Ic::Pause => {
-                cv.rrect(Rect::new(cx - r * 0.6, cy - r * 0.75, r * 0.42, r * 1.5), r * 0.12, c);
-                cv.rrect(Rect::new(cx + r * 0.18, cy - r * 0.75, r * 0.42, r * 1.5), r * 0.12, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.6, cy - r * 0.75, r * 0.42, r * 1.5),
+                    r * 0.12,
+                    c,
+                );
+                cv.rrect(
+                    Rect::new(cx + r * 0.18, cy - r * 0.75, r * 0.42, r * 1.5),
+                    r * 0.12,
+                    c,
+                );
             }
             Ic::Note => {
                 let b = Rect::new(cx - r * 0.72, cy - r * 0.92, r * 1.44, r * 1.84);
@@ -1237,7 +1958,8 @@ impl Ui<'_> {
             Ic::Person => {
                 cv.circle(cx, cy - r * 0.42, r * 0.42, c);
                 cv.sdf(Rect::new(cx - r, cy, 2.0 * r, r), c, |x, y| {
-                    let d = ((x - cx).powi(2) / 0.72 + (y - (cy + r * 0.98)).powi(2)).sqrt() - r * 0.86;
+                    let d =
+                        ((x - cx).powi(2) / 0.72 + (y - (cy + r * 0.98)).powi(2)).sqrt() - r * 0.86;
                     d.max(y - (cy + r * 0.92))
                 });
             }
@@ -1250,27 +1972,100 @@ impl Ui<'_> {
             }
             Ic::Flip => {
                 cv.ring(cx, cy, r * 0.72, t * 1.2, c);
-                cv.rect(Rect::new(cx - r * 0.2, cy - r, r * 0.4, r * 0.5), rgb(0).alpha(0.0));
-                cv.line(cx + r * 0.72, cy - r * 0.05, cx + r * 0.42, cy - r * 0.3, t * 1.2, c);
-                cv.line(cx + r * 0.72, cy - r * 0.05, cx + r * 0.98, cy - r * 0.32, t * 1.2, c);
-                cv.line(cx - r * 0.72, cy + r * 0.05, cx - r * 0.42, cy + r * 0.3, t * 1.2, c);
-                cv.line(cx - r * 0.72, cy + r * 0.05, cx - r * 0.98, cy + r * 0.32, t * 1.2, c);
+                cv.rect(
+                    Rect::new(cx - r * 0.2, cy - r, r * 0.4, r * 0.5),
+                    rgb(0).alpha(0.0),
+                );
+                cv.line(
+                    cx + r * 0.72,
+                    cy - r * 0.05,
+                    cx + r * 0.42,
+                    cy - r * 0.3,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.72,
+                    cy - r * 0.05,
+                    cx + r * 0.98,
+                    cy - r * 0.32,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.72,
+                    cy + r * 0.05,
+                    cx - r * 0.42,
+                    cy + r * 0.3,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.72,
+                    cy + r * 0.05,
+                    cx - r * 0.98,
+                    cy + r * 0.32,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Flash => {
-                cv.line(cx + r * 0.25, cy - r * 0.95, cx - r * 0.4, cy + r * 0.08, t * 1.7, c);
-                cv.line(cx - r * 0.4, cy + r * 0.08, cx + r * 0.4, cy - r * 0.08, t * 1.7, c);
-                cv.line(cx + r * 0.4, cy - r * 0.08, cx - r * 0.25, cy + r * 0.95, t * 1.7, c);
+                cv.line(
+                    cx + r * 0.25,
+                    cy - r * 0.95,
+                    cx - r * 0.4,
+                    cy + r * 0.08,
+                    t * 1.7,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.4,
+                    cy + r * 0.08,
+                    cx + r * 0.4,
+                    cy - r * 0.08,
+                    t * 1.7,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.4,
+                    cy - r * 0.08,
+                    cx - r * 0.25,
+                    cy + r * 0.95,
+                    t * 1.7,
+                    c,
+                );
             }
             Ic::Thirds => {
                 for i in [-1.0f32, 1.0] {
-                    cv.line(cx + i * r * 0.3, cy - r * 0.85, cx + i * r * 0.3, cy + r * 0.85, t, c);
-                    cv.line(cx - r * 0.85, cy + i * r * 0.3, cx + r * 0.85, cy + i * r * 0.3, t, c);
+                    cv.line(
+                        cx + i * r * 0.3,
+                        cy - r * 0.85,
+                        cx + i * r * 0.3,
+                        cy + r * 0.85,
+                        t,
+                        c,
+                    );
+                    cv.line(
+                        cx - r * 0.85,
+                        cy + i * r * 0.3,
+                        cx + r * 0.85,
+                        cy + i * r * 0.3,
+                        t,
+                        c,
+                    );
                 }
             }
             Ic::Timer => {
                 cv.ring(cx, cy + r * 0.1, r * 0.72, t * 1.2, c);
                 cv.line(cx, cy + r * 0.1, cx, cy - r * 0.32, t * 1.2, c);
-                cv.line(cx - r * 0.22, cy - r * 0.95, cx + r * 0.22, cy - r * 0.95, t * 1.4, c);
+                cv.line(
+                    cx - r * 0.22,
+                    cy - r * 0.95,
+                    cx + r * 0.22,
+                    cy - r * 0.95,
+                    t * 1.4,
+                    c,
+                );
             }
             Ic::Heart => {
                 cv.sdf(Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r), c, |x, y| {
@@ -1282,11 +2077,46 @@ impl Ui<'_> {
                 });
             }
             Ic::Trash => {
-                cv.line(cx - r * 0.8, cy - r * 0.55, cx + r * 0.8, cy - r * 0.55, t * 1.3, c);
-                cv.line(cx - r * 0.25, cy - r * 0.85, cx + r * 0.25, cy - r * 0.85, t * 1.3, c);
-                cv.line(cx - r * 0.55, cy - r * 0.55, cx - r * 0.42, cy + r * 0.85, t * 1.2, c);
-                cv.line(cx + r * 0.55, cy - r * 0.55, cx + r * 0.42, cy + r * 0.85, t * 1.2, c);
-                cv.line(cx - r * 0.42, cy + r * 0.85, cx + r * 0.42, cy + r * 0.85, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.8,
+                    cy - r * 0.55,
+                    cx + r * 0.8,
+                    cy - r * 0.55,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.25,
+                    cy - r * 0.85,
+                    cx + r * 0.25,
+                    cy - r * 0.85,
+                    t * 1.3,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.55,
+                    cy - r * 0.55,
+                    cx - r * 0.42,
+                    cy + r * 0.85,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.55,
+                    cy - r * 0.55,
+                    cx + r * 0.42,
+                    cy + r * 0.85,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.42,
+                    cy + r * 0.85,
+                    cx + r * 0.42,
+                    cy + r * 0.85,
+                    t * 1.2,
+                    c,
+                );
                 cv.line(cx, cy - r * 0.2, cx, cy + r * 0.5, t, c);
             }
             Ic::Rotate => {
@@ -1299,16 +2129,34 @@ impl Ui<'_> {
                 cv.line(cx, cy - r * 0.7, cx, cy + r * 0.7, t * 1.6, c);
             }
             Ic::Close => {
-                cv.line(cx - r * 0.6, cy - r * 0.6, cx + r * 0.6, cy + r * 0.6, t * 1.4, c);
-                cv.line(cx + r * 0.6, cy - r * 0.6, cx - r * 0.6, cy + r * 0.6, t * 1.4, c);
+                cv.line(
+                    cx - r * 0.6,
+                    cy - r * 0.6,
+                    cx + r * 0.6,
+                    cy + r * 0.6,
+                    t * 1.4,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.6,
+                    cy - r * 0.6,
+                    cx - r * 0.6,
+                    cy + r * 0.6,
+                    t * 1.4,
+                    c,
+                );
             }
             Ic::Spark => {
                 // KI-Funke: vierzackiger Stern mit eingezogenen Flanken + kleiner Begleiter
                 let star = |cv: &mut Canvas, sx: f32, sy: f32, sr: f32| {
-                    cv.sdf(Rect::new(sx - sr, sy - sr, 2.0 * sr, 2.0 * sr), c, |x, y| {
-                        let (dx, dy) = ((x - sx).abs() / sr, (y - sy).abs() / sr);
-                        ((dx.powf(0.58) + dy.powf(0.58)).powf(1.0 / 0.58) - 1.0) * sr * 0.6
-                    });
+                    cv.sdf(
+                        Rect::new(sx - sr, sy - sr, 2.0 * sr, 2.0 * sr),
+                        c,
+                        |x, y| {
+                            let (dx, dy) = ((x - sx).abs() / sr, (y - sy).abs() / sr);
+                            ((dx.powf(0.58) + dy.powf(0.58)).powf(1.0 / 0.58) - 1.0) * sr * 0.6
+                        },
+                    );
                 };
                 star(cv, cx - r * 0.12, cy + r * 0.1, r * 0.88);
                 star(cv, cx + r * 0.66, cy - r * 0.66, r * 0.34);
@@ -1326,15 +2174,47 @@ impl Ui<'_> {
             Ic::Music => {
                 cv.circle(cx - r * 0.42, cy + r * 0.55, r * 0.3, c);
                 cv.circle(cx + r * 0.5, cy + r * 0.35, r * 0.3, c);
-                cv.line(cx - r * 0.16, cy + r * 0.55, cx - r * 0.16, cy - r * 0.7, t * 1.2, c);
-                cv.line(cx + r * 0.76, cy + r * 0.35, cx + r * 0.76, cy - r * 0.9, t * 1.2, c);
-                cv.line(cx - r * 0.16, cy - r * 0.7, cx + r * 0.76, cy - r * 0.9, t * 1.8, c);
+                cv.line(
+                    cx - r * 0.16,
+                    cy + r * 0.55,
+                    cx - r * 0.16,
+                    cy - r * 0.7,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.76,
+                    cy + r * 0.35,
+                    cx + r * 0.76,
+                    cy - r * 0.9,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.16,
+                    cy - r * 0.7,
+                    cx + r * 0.76,
+                    cy - r * 0.9,
+                    t * 1.8,
+                    c,
+                );
             }
             Ic::Video => {
-                cv.rrect(Rect::new(cx - r * 0.95, cy - r * 0.6, r * 1.35, r * 1.2), r * 0.22, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.95, cy - r * 0.6, r * 1.35, r * 1.2),
+                    r * 0.22,
+                    c,
+                );
                 cv.line(cx + r * 0.5, cy, cx + r * 0.88, cy - r * 0.42, t * 1.6, c);
                 cv.line(cx + r * 0.5, cy, cx + r * 0.88, cy + r * 0.42, t * 1.6, c);
-                cv.line(cx + r * 0.88, cy - r * 0.42, cx + r * 0.88, cy + r * 0.42, t * 1.6, c);
+                cv.line(
+                    cx + r * 0.88,
+                    cy - r * 0.42,
+                    cx + r * 0.88,
+                    cy + r * 0.42,
+                    t * 1.6,
+                    c,
+                );
             }
             Ic::Doc => {
                 let a = Rect::new(cx - r * 0.65, cy - r * 0.85, r * 1.3, r * 1.7);
@@ -1349,13 +2229,34 @@ impl Ui<'_> {
                 cv.line(cx, cy - r * 0.85, cx, cy + r * 0.35, t * 1.2, c);
                 cv.line(cx - r * 0.45, cy - r * 0.05, cx, cy + r * 0.4, t * 1.2, c);
                 cv.line(cx + r * 0.45, cy - r * 0.05, cx, cy + r * 0.4, t * 1.2, c);
-                cv.line(cx - r * 0.8, cy + r * 0.85, cx + r * 0.8, cy + r * 0.85, t * 1.2, c);
+                cv.line(
+                    cx - r * 0.8,
+                    cy + r * 0.85,
+                    cx + r * 0.8,
+                    cy + r * 0.85,
+                    t * 1.2,
+                    c,
+                );
             }
             Ic::Cut => {
                 cv.ring(cx - r * 0.45, cy + r * 0.5, r * 0.28, t, c);
                 cv.ring(cx + r * 0.45, cy + r * 0.5, r * 0.28, t, c);
-                cv.line(cx - r * 0.3, cy + r * 0.28, cx + r * 0.45, cy - r * 0.85, t, c);
-                cv.line(cx + r * 0.3, cy + r * 0.28, cx - r * 0.45, cy - r * 0.85, t, c);
+                cv.line(
+                    cx - r * 0.3,
+                    cy + r * 0.28,
+                    cx + r * 0.45,
+                    cy - r * 0.85,
+                    t,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.3,
+                    cy + r * 0.28,
+                    cx - r * 0.45,
+                    cy - r * 0.85,
+                    t,
+                    c,
+                );
             }
             Ic::Finger => {
                 // Fingerabdruck: konzentrische Bögen, unten offen
@@ -1375,7 +2276,14 @@ impl Ui<'_> {
             }
             Ic::Pin => {
                 cv.circle(cx, cy - r * 0.35, r * 0.55, c);
-                cv.line(cx, cy + r * 0.1, cx - r * 0.25, cy + r * 1.0, t * 1.4, rgb(0xB0B0B0));
+                cv.line(
+                    cx,
+                    cy + r * 0.1,
+                    cx - r * 0.25,
+                    cy + r * 1.0,
+                    t * 1.4,
+                    rgb(0xB0B0B0),
+                );
             }
             Ic::Usb => {
                 let a = Rect::new(cx - r * 0.45, cy - r * 0.2, r * 0.9, r * 1.1);
@@ -1394,47 +2302,155 @@ impl Ui<'_> {
                 }
             }
             Ic::Pen => {
-                cv.line(cx - r * 0.55, cy + r * 0.55, cx + r * 0.5, cy - r * 0.5, t * 2.2, c);
-                cv.line(cx + r * 0.45, cy - r * 0.75, cx + r * 0.75, cy - r * 0.45, t * 2.2, c);
-                cv.line(cx - r * 0.8, cy + r * 0.8, cx - r * 0.6, cy + r * 0.6, t * 1.2, c);
-                cv.line(cx - r * 0.2, cy + r * 0.9, cx + r * 0.85, cy + r * 0.9, t, c);
+                cv.line(
+                    cx - r * 0.55,
+                    cy + r * 0.55,
+                    cx + r * 0.5,
+                    cy - r * 0.5,
+                    t * 2.2,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.45,
+                    cy - r * 0.75,
+                    cx + r * 0.75,
+                    cy - r * 0.45,
+                    t * 2.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.8,
+                    cy + r * 0.8,
+                    cx - r * 0.6,
+                    cy + r * 0.6,
+                    t * 1.2,
+                    c,
+                );
+                cv.line(
+                    cx - r * 0.2,
+                    cy + r * 0.9,
+                    cx + r * 0.85,
+                    cy + r * 0.9,
+                    t,
+                    c,
+                );
             }
             Ic::Mic => {
-                cv.rrect(Rect::new(cx - r * 0.3, cy - r * 0.85, r * 0.6, r * 1.15), r * 0.3, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.3, cy - r * 0.85, r * 0.6, r * 1.15),
+                    r * 0.3,
+                    c,
+                );
                 let (a, b) = (r * 0.58, r * 0.15);
                 cv.line(cx - a, cy - b, cx - a * 0.8, cy + r * 0.25, t, c);
                 cv.line(cx + a, cy - b, cx + a * 0.8, cy + r * 0.25, t, c);
                 cv.line(cx - a * 0.8, cy + r * 0.25, cx, cy + r * 0.55, t, c);
                 cv.line(cx + a * 0.8, cy + r * 0.25, cx, cy + r * 0.55, t, c);
                 cv.line(cx, cy + r * 0.55, cx, cy + r * 0.9, t, c);
-                cv.line(cx - r * 0.35, cy + r * 0.9, cx + r * 0.35, cy + r * 0.9, t, c);
+                cv.line(
+                    cx - r * 0.35,
+                    cy + r * 0.9,
+                    cx + r * 0.35,
+                    cy + r * 0.9,
+                    t,
+                    c,
+                );
             }
             Ic::Search => {
                 cv.ring(cx - r * 0.15, cy - r * 0.15, r * 0.55, t * 1.3, c);
-                cv.line(cx + r * 0.28, cy + r * 0.28, cx + r * 0.8, cy + r * 0.8, t * 1.5, c);
+                cv.line(
+                    cx + r * 0.28,
+                    cy + r * 0.28,
+                    cx + r * 0.8,
+                    cy + r * 0.8,
+                    t * 1.5,
+                    c,
+                );
             }
             Ic::Wall => {
-                cv.rrect(Rect::new(cx - r * 0.9, cy - r * 0.7, r * 1.8, r * 1.4), r * 0.2, c);
+                cv.rrect(
+                    Rect::new(cx - r * 0.9, cy - r * 0.7, r * 1.8, r * 1.4),
+                    r * 0.2,
+                    c,
+                );
                 cv.circle(cx + r * 0.4, cy - r * 0.25, r * 0.18, cut);
-                cv.line(cx - r * 0.6, cy + r * 0.4, cx - r * 0.1, cy - r * 0.1, t, cut);
-                cv.line(cx - r * 0.1, cy - r * 0.1, cx + r * 0.5, cy + r * 0.4, t, cut);
+                cv.line(
+                    cx - r * 0.6,
+                    cy + r * 0.4,
+                    cx - r * 0.1,
+                    cy - r * 0.1,
+                    t,
+                    cut,
+                );
+                cv.line(
+                    cx - r * 0.1,
+                    cy - r * 0.1,
+                    cx + r * 0.5,
+                    cy + r * 0.4,
+                    t,
+                    cut,
+                );
             }
             Ic::Bksp => {
-                let pts = [(-0.95f32, 0.0f32), (-0.35, -0.62), (0.9, -0.62), (0.9, 0.62), (-0.35, 0.62), (-0.95, 0.0)];
+                let pts = [
+                    (-0.95f32, 0.0f32),
+                    (-0.35, -0.62),
+                    (0.9, -0.62),
+                    (0.9, 0.62),
+                    (-0.35, 0.62),
+                    (-0.95, 0.0),
+                ];
                 for w in pts.windows(2) {
-                    cv.line(cx + w[0].0 * r, cy + w[0].1 * r, cx + w[1].0 * r, cy + w[1].1 * r, t * 1.1, c);
+                    cv.line(
+                        cx + w[0].0 * r,
+                        cy + w[0].1 * r,
+                        cx + w[1].0 * r,
+                        cy + w[1].1 * r,
+                        t * 1.1,
+                        c,
+                    );
                 }
-                cv.line(cx - r * 0.02, cy - r * 0.26, cx + r * 0.5, cy + r * 0.26, t * 1.1, c);
-                cv.line(cx + r * 0.5, cy - r * 0.26, cx - r * 0.02, cy + r * 0.26, t * 1.1, c);
+                cv.line(
+                    cx - r * 0.02,
+                    cy - r * 0.26,
+                    cx + r * 0.5,
+                    cy + r * 0.26,
+                    t * 1.1,
+                    c,
+                );
+                cv.line(
+                    cx + r * 0.5,
+                    cy - r * 0.26,
+                    cx - r * 0.02,
+                    cy + r * 0.26,
+                    t * 1.1,
+                    c,
+                );
             }
             Ic::Apps => {
                 for (dx, dy) in [(-1.0f32, -1.0f32), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-                    cv.rrect(Rect::new(cx + dx * r * 0.45 - r * 0.32, cy + dy * r * 0.45 - r * 0.32, r * 0.64, r * 0.64), r * 0.16, c);
+                    cv.rrect(
+                        Rect::new(
+                            cx + dx * r * 0.45 - r * 0.32,
+                            cy + dy * r * 0.45 - r * 0.32,
+                            r * 0.64,
+                            r * 0.64,
+                        ),
+                        r * 0.16,
+                        c,
+                    );
                 }
             }
             Ic::Check => {
                 cv.line(cx - r * 0.7, cy, cx - r * 0.15, cy + r * 0.55, t * 1.4, c);
-                cv.line(cx - r * 0.15, cy + r * 0.55, cx + r * 0.75, cy - r * 0.55, t * 1.4, c);
+                cv.line(
+                    cx - r * 0.15,
+                    cy + r * 0.55,
+                    cx + r * 0.75,
+                    cy - r * 0.55,
+                    t * 1.4,
+                    c,
+                );
             }
         }
     }
@@ -1447,12 +2463,28 @@ mod scale_tests {
     #[test]
     fn every_screen_gets_enough_room() {
         // (Breite, Höhe) -> mindestens 360 x 600 dp nutzbar, auf Tablets mehr
-        for (w, h) in [(480.0, 800.0), (720.0, 1280.0), (1080.0, 2340.0), (1280.0, 800.0), (800.0, 1280.0), (1920.0, 1080.0), (240.0, 320.0), (2560.0, 1600.0)] {
+        for (w, h) in [
+            (480.0, 800.0),
+            (720.0, 1280.0),
+            (1080.0, 2340.0),
+            (1280.0, 800.0),
+            (800.0, 1280.0),
+            (1920.0, 1080.0),
+            (240.0, 320.0),
+            (2560.0, 1600.0),
+        ] {
             let k = scale_for(w, h, 1.0);
             let (dw, dh): (f32, f32) = (w / k, h / k);
-            assert!(dw.min(dh) >= 359.0 && dw.max(dh) >= 599.0, "{w}x{h}: {dw}x{dh} dp");
+            assert!(
+                dw.min(dh) >= 359.0 && dw.max(dh) >= 599.0,
+                "{w}x{h}: {dw}x{dh} dp"
+            );
         }
-        assert!((scale_for(720.0, 1280.0, 1.0) - 2.0).abs() < 0.01); // Handy unverändert
+        let phone_width = 720.0 / scale_for(720.0, 1280.0, 1.0);
+        assert!(
+            (390.0..400.0).contains(&phone_width),
+            "phone: about 390 logical points wide, got {phone_width}"
+        );
         assert!(scale_for(1280.0, 800.0, 1.0) < 1.4); // Tablet: mehr Inhalt statt größerer Elemente
     }
 }
@@ -1503,7 +2535,23 @@ mod scroll_tests {
     use crate::text::Text;
 
     fn with_ui<F: FnMut(&mut Ui)>(cv: &mut Canvas, tx: &mut Text, p: &mut Ptr, mut f: F) {
-        let mut ui = Ui { th: theme(true, 0), k: 1.0, w: 360.0, h: 640.0, cv, tx, p, rtl: false, enabled: true, focus: None, dirty: false, clip: None, links: Vec::new(), kb: Default::default(), seen: None };
+        let mut ui = Ui {
+            th: theme(true, 0),
+            k: 1.0,
+            w: 360.0,
+            h: 640.0,
+            cv,
+            tx,
+            p,
+            rtl: false,
+            enabled: true,
+            focus: None,
+            dirty: false,
+            clip: None,
+            links: Vec::new(),
+            kb: Default::default(),
+            seen: None,
+        };
         f(&mut ui);
     }
 
@@ -1516,7 +2564,16 @@ mod scroll_tests {
         let area = Rect::new(0.0, 0.0, 360.0, 500.0);
         let content = 800.0; // max = 300
         let mut sc = 290.0f32;
-        let mut p = Ptr { x: 100.0, y: 400.0, px: 100.0, py: 400.0, down: true, pressed: true, moved: true, ..Default::default() };
+        let mut p = Ptr {
+            x: 100.0,
+            y: 400.0,
+            px: 100.0,
+            py: 400.0,
+            down: true,
+            pressed: true,
+            moved: true,
+            ..Default::default()
+        };
         let mut prev = sc;
         for _ in 0..40 {
             p.dy = -12.0; // Finger nach oben = Inhalt nach oben (scroll wächst)
@@ -1525,11 +2582,17 @@ mod scroll_tests {
                 ui.scroll_end(area, content, &mut sc);
             });
             p.pressed = false;
-            assert!(sc >= prev - 0.001, "kein Zurückspringen beim Ziehen: {prev} -> {sc}");
+            assert!(
+                sc >= prev - 0.001,
+                "kein Zurückspringen beim Ziehen: {prev} -> {sc}"
+            );
             prev = sc;
             std::thread::sleep(std::time::Duration::from_millis(4));
         }
-        assert!(sc > 300.0 && sc < 300.0 + 500.0 * 0.35 + 0.1, "gedämpftes Überziehen: {sc}");
+        assert!(
+            sc > 300.0 && sc < 300.0 + 500.0 * 0.35 + 0.1,
+            "gedämpftes Überziehen: {sc}"
+        );
         // loslassen -> zurückfedern
         p.down = false;
         p.released = true;
@@ -1540,7 +2603,10 @@ mod scroll_tests {
                 ui.scroll_end(area, content, &mut sc);
             });
             p.released = false;
-            assert!(sc <= last + 0.001, "Zurückfedern ohne Zittern: {last} -> {sc}");
+            assert!(
+                sc <= last + 0.001,
+                "Zurückfedern ohne Zittern: {last} -> {sc}"
+            );
             last = sc;
             std::thread::sleep(std::time::Duration::from_millis(8));
         }
@@ -1642,7 +2708,11 @@ fn svg_mask(name: &'static str, s: f32, sw: f32) -> Option<SvgMask> {
         let off = (px as f32 - s) / 2.0;
         let mut buf = vec![0u8; (px * px) as usize];
         zeno::Mask::new(path)
-            .style(zeno::Stroke::new(sw).cap(zeno::Cap::Round).join(zeno::Join::Round))
+            .style(
+                zeno::Stroke::new(sw)
+                    .cap(zeno::Cap::Round)
+                    .join(zeno::Join::Round),
+            )
             .transform(Some(zeno::Transform::scale(k, k).then_translate(off, off)))
             .size(px, px)
             .render_into(&mut buf, None);

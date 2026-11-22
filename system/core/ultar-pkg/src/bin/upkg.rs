@@ -8,14 +8,20 @@ fn main() {
     let cmd = a.get(1).map(|s| s.as_str()).unwrap_or("");
     let file = a.get(2).map(|s| s.as_str()).unwrap_or("");
     if file.is_empty() {
-        eprintln!("{}", ultar_sprache::tr("Aufruf: upkg info|verify|install <datei.uap>"));
+        eprintln!(
+            "{}",
+            ultar_sprache::tr("Aufruf: upkg info|verify|install <datei.uap>")
+        );
         std::process::exit(2);
     }
     let trusted_s = std::env::var("ULTAR_TRUSTED").unwrap_or_else(|_| TRUSTED_DIR.to_string());
     let trusted = Path::new(&trusted_s);
     match cmd {
         "info" => match ultar_pkg::info(Path::new(file)) {
-            Ok(m) => println!("{} {} v{} ({}, {})", m.id, m.name, m.version, m.arch, m.kind),
+            Ok(m) => println!(
+                "{} {} v{} ({}, {})",
+                m.id, m.name, m.version, m.arch, m.kind
+            ),
             Err(e) => fail(e),
         },
         "verify" => match ultar_pkg::verify(Path::new(file), trusted) {

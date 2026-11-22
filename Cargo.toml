@@ -2,6 +2,14 @@
 [workspace]
 resolver = "2"
 members = [
+    "system/core/ultar-i18n",
+    "system/core/ultar-profile",
+    "system/hal/ultar-hal",
+    "system/hal/ultar-hal-system",
+    "system/core/ultar-bus",
+    "system/core/ultar-driverpkg",
+    "system/core/ultar-devd",
+    "tools/ultar-check",
     "apps/ultar-office",
     "apps/ultar-web",
     "external/ultar-telegram",
@@ -9,7 +17,6 @@ members = [
     "platform/ultar-shell",
     "system/core/ultar-apps",
     "system/core/ultar-ctl",
-    "system/core/ultar-edition",
     "system/core/ultar-init",
     "system/core/ultar-pkg",
     "system/core/ultar-secure",
@@ -33,7 +40,7 @@ members = [
     "system/services/ultar-zellen",
 ]
 # own workspaces: kernel (no std), server (x86 only), legacy window manager
-exclude = ["kernel", "server", "platform/ultar-wm", "tools"]
+exclude = ["kernel", "server", "platform/ultar-wm"]
 
 [workspace.package]
 version = "0.6.0"

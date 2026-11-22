@@ -1449,7 +1449,15 @@ const T: &[(&str, &str, &str)] = &[
     ("Connected devices", "Verbundene Geräte", "الأجهزة المتصلة"),
 ];
 
-pub const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+pub const DAYS: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
 
 pub fn tr_dyn(lang: &str, key: &str) -> String {
     if lang == "en" {
@@ -1466,7 +1474,13 @@ pub fn tr(lang: &str, key: &'static str) -> &'static str {
         return key;
     }
     match T.iter().find(|e| e.0 == key) {
-        Some(e) => if lang == "ar" { e.2 } else { e.1 },
+        Some(e) => {
+            if lang == "ar" {
+                e.2
+            } else {
+                e.1
+            }
+        }
         None => key,
     }
 }

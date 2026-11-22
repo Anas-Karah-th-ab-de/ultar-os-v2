@@ -15,7 +15,17 @@ pub enum Style {
 }
 
 impl Style {
-    pub const ALL: [Style; 9] = [Style::Normal, Style::Title, Style::H1, Style::H2, Style::H3, Style::Bullet, Style::Number, Style::Quote, Style::Code];
+    pub const ALL: [Style; 9] = [
+        Style::Normal,
+        Style::Title,
+        Style::H1,
+        Style::H2,
+        Style::H3,
+        Style::Bullet,
+        Style::Number,
+        Style::Quote,
+        Style::Code,
+    ];
     /// Schriftgröße in Punkt (Bildschirm und .docx)
     pub fn size(self) -> f32 {
         match self {
@@ -64,7 +74,10 @@ pub struct Run {
 
 impl Run {
     pub fn plain(t: &str) -> Self {
-        Run { text: t.into(), ..Default::default() }
+        Run {
+            text: t.into(),
+            ..Default::default()
+        }
     }
 }
 
@@ -77,7 +90,11 @@ pub struct Para {
 
 impl Para {
     pub fn new(style: Style, text: &str) -> Self {
-        Para { style, align: Align::Start, runs: vec![Run::plain(text)] }
+        Para {
+            style,
+            align: Align::Start,
+            runs: vec![Run::plain(text)],
+        }
     }
     pub fn text(&self) -> String {
         self.runs.iter().map(|r| r.text.as_str()).collect()
@@ -93,14 +110,20 @@ impl Para {
         is_rtl(&self.text())
     }
     pub fn all_bold(&self) -> bool {
-        self.runs.iter().any(|r| r.bold && !r.text.trim().is_empty()) && self.runs.iter().all(|r| r.bold || r.text.trim().is_empty())
+        self.runs
+            .iter()
+            .any(|r| r.bold && !r.text.trim().is_empty())
+            && self.runs.iter().all(|r| r.bold || r.text.trim().is_empty())
     }
 }
 
 pub fn is_rtl(s: &str) -> bool {
     for c in s.chars() {
         let u = c as u32;
-        if (0x0590..=0x08FF).contains(&u) || (0xFB1D..=0xFDFF).contains(&u) || (0xFE70..=0xFEFF).contains(&u) {
+        if (0x0590..=0x08FF).contains(&u)
+            || (0xFB1D..=0xFDFF).contains(&u)
+            || (0xFE70..=0xFEFF).contains(&u)
+        {
             return true;
         }
         if c.is_alphabetic() {
@@ -123,7 +146,13 @@ pub struct Document {
 
 impl Document {
     pub fn paras(&self) -> impl Iterator<Item = &Para> {
-        self.blocks.iter().filter_map(|b| if let Block::Para(p) = b { Some(p) } else { None })
+        self.blocks.iter().filter_map(|b| {
+            if let Block::Para(p) = b {
+                Some(p)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn word_count(&self) -> usize {
@@ -226,7 +255,11 @@ impl Document {
         let mut para = String::new();
         let flush = |d: &mut Document, para: &mut String| {
             if !para.trim().is_empty() {
-                d.blocks.push(Block::Para(Para { style: Style::Normal, align: Align::Start, runs: inline(para.trim()) }));
+                d.blocks.push(Block::Para(Para {
+                    style: Style::Normal,
+                    align: Align::Start,
+                    runs: inline(para.trim()),
+                }));
             }
             para.clear();
         };
@@ -235,8 +268,14 @@ impl Document {
             let tt = t.trim_start();
             if tt.starts_with('|') && tt.ends_with('|') && tt.len() > 1 {
                 flush(&mut d, &mut para);
-                let cells: Vec<String> = tt[1..tt.len() - 1].split('|').map(|c| c.trim().to_string()).collect();
-                if !cells.iter().all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':')) {
+                let cells: Vec<String> = tt[1..tt.len() - 1]
+                    .split('|')
+                    .map(|c| c.trim().to_string())
+                    .collect();
+                if !cells
+                    .iter()
+                    .all(|c| !c.is_empty() && c.chars().all(|ch| ch == '-' || ch == ':'))
+                {
                     table.push(cells);
                 }
                 continue;
@@ -252,14 +291,31 @@ impl Document {
             } else if let Some(b) = tt.strip_prefix("## ") {
                 (Some(Style::H2), b)
             } else if let Some(b) = tt.strip_prefix("# ") {
-                (Some(if d.blocks.is_empty() { Style::Title } else { Style::H1 }), b)
-            } else if let Some(b) = tt.strip_prefix("- ").or_else(|| tt.strip_prefix("* ")).or_else(|| tt.strip_prefix("• ")) {
+                (
+                    Some(if d.blocks.is_empty() {
+                        Style::Title
+                    } else {
+                        Style::H1
+                    }),
+                    b,
+                )
+            } else if let Some(b) = tt
+                .strip_prefix("- ")
+                .or_else(|| tt.strip_prefix("* "))
+                .or_else(|| tt.strip_prefix("• "))
+            {
                 (Some(Style::Bullet), b)
             } else if let Some(b) = tt.strip_prefix("> ") {
                 (Some(Style::Quote), b)
             } else if t.starts_with("    ") || t.starts_with('\t') {
-                (Some(Style::Code), t.trim_start_matches('\t').strip_prefix("    ").unwrap_or(t))
-            } else if let Some(p) = tt.find(". ").filter(|&p| p > 0 && p < 4 && tt[..p].chars().all(|c| c.is_ascii_digit())) {
+                (
+                    Some(Style::Code),
+                    t.trim_start_matches('\t').strip_prefix("    ").unwrap_or(t),
+                )
+            } else if let Some(p) = tt
+                .find(". ")
+                .filter(|&p| p > 0 && p < 4 && tt[..p].chars().all(|c| c.is_ascii_digit()))
+            {
                 (Some(Style::Number), &tt[p + 2..])
             } else {
                 (None, tt)
@@ -267,8 +323,16 @@ impl Document {
             match style {
                 Some(s) => {
                     flush(&mut d, &mut para);
-                    let runs = if s == Style::Code { vec![Run::plain(body)] } else { inline(body) };
-                    d.blocks.push(Block::Para(Para { style: s, align: Align::Start, runs }));
+                    let runs = if s == Style::Code {
+                        vec![Run::plain(body)]
+                    } else {
+                        inline(body)
+                    };
+                    d.blocks.push(Block::Para(Para {
+                        style: s,
+                        align: Align::Start,
+                        runs,
+                    }));
                 }
                 None => {
                     if !para.is_empty() {
@@ -288,7 +352,12 @@ impl Document {
 
     /// Einfacher Text: jede Zeile ein Absatz
     pub fn from_text(t: &str) -> Document {
-        Document { blocks: t.lines().map(|l| Block::Para(Para::new(Style::Normal, l))).collect() }
+        Document {
+            blocks: t
+                .lines()
+                .map(|l| Block::Para(Para::new(Style::Normal, l)))
+                .collect(),
+        }
     }
 
     /// Suchen und Ersetzen in allen Absätzen und Tabellen; liefert Anzahl
@@ -349,14 +418,24 @@ fn inline(s: &str) -> Vec<Run> {
             if let Some(end) = rest[mark.len()..].find(mark) {
                 let inner = &rest[mark.len()..mark.len() + end];
                 if !inner.is_empty() && !inner.starts_with(' ') {
-                    out.push(Run { text: inner.into(), bold: b, italic: i, underline: false });
+                    out.push(Run {
+                        text: inner.into(),
+                        bold: b,
+                        italic: i,
+                        underline: false,
+                    });
                     rest = &rest[mark.len() * 2 + end..];
                     continue;
                 }
             }
         }
         // bis zum nächsten möglichen Zeichen kopieren
-        let next = rest.char_indices().skip(1).find(|(_, c)| *c == '*' || *c == '_').map(|(k, _)| k).unwrap_or(rest.len());
+        let next = rest
+            .char_indices()
+            .skip(1)
+            .find(|(_, c)| *c == '*' || *c == '_')
+            .map(|(k, _)| k)
+            .unwrap_or(rest.len());
         match out.last_mut() {
             Some(r) if !r.bold && !r.italic => r.text.push_str(&rest[..next]),
             _ => out.push(Run::plain(&rest[..next])),

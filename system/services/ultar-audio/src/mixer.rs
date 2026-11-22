@@ -26,7 +26,11 @@ pub struct Mixer {
 
 impl Mixer {
     pub fn open() -> Self {
-        let f = OpenOptions::new().read(true).write(true).open("/dev/snd/controlC0").ok();
+        let f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/snd/controlC0")
+            .ok();
         Mixer { f }
     }
 
@@ -44,7 +48,9 @@ impl Mixer {
         for i in 0..used {
             let id = &ids[i * 64..i * 64 + 64];
             let numid = u32a(id, 0) as i32;
-            let name = String::from_utf8_lossy(&id[16..60]).trim_end_matches('\0').to_string();
+            let name = String::from_utf8_lossy(&id[16..60])
+                .trim_end_matches('\0')
+                .to_string();
             cb(numid, numid as u32, &name);
             let _ = name;
         }
@@ -66,7 +72,9 @@ impl Mixer {
         let mut done = 0;
         for i in 0..used {
             let id = &ids[i * 64..i * 64 + 64];
-            let name = String::from_utf8_lossy(&id[16..60]).trim_end_matches('\0').to_string();
+            let name = String::from_utf8_lossy(&id[16..60])
+                .trim_end_matches('\0')
+                .to_string();
             if !name.contains(key) {
                 continue;
             }
@@ -94,7 +102,9 @@ impl Mixer {
 
     /// Enum-Control (Name enthält `key`) auf den Item-String `item` setzen.
     pub fn set_enum(&self, key: &str, item: &str) -> bool {
-        let Some(f) = self.f.as_ref() else { return false };
+        let Some(f) = self.f.as_ref() else {
+            return false;
+        };
         let fd = f.as_raw_fd();
         let mut list = [0u8; 80];
         let mut ids = vec![0u8; 64 * 2048];
@@ -106,7 +116,9 @@ impl Mixer {
         let used = (u32a(&list, 8) as usize).min(2048);
         for i in 0..used {
             let id = &ids[i * 64..i * 64 + 64];
-            let name = String::from_utf8_lossy(&id[16..60]).trim_end_matches('\0').to_string();
+            let name = String::from_utf8_lossy(&id[16..60])
+                .trim_end_matches('\0')
+                .to_string();
             if !name.contains(key) {
                 continue;
             }
@@ -129,7 +141,9 @@ impl Mixer {
                 if unsafe { ioctl(fd, CTL_INFO, info2.as_mut_ptr()) } != 0 {
                     continue;
                 }
-                let en = String::from_utf8_lossy(&info2[88..152]).trim_end_matches('\0').to_string();
+                let en = String::from_utf8_lossy(&info2[88..152])
+                    .trim_end_matches('\0')
+                    .to_string();
                 if en == item {
                     let mut v = [0u8; 1224];
                     v[..64].copy_from_slice(id);

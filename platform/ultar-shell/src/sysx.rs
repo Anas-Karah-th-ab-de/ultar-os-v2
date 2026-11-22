@@ -92,7 +92,11 @@ impl Default for SysCfg {
             data_limit_mb: 0,
             show_touches: false,
             show_fps: false,
-            world: vec!["Europe/Berlin".into(), "Asia/Damascus".into(), "America/New_York".into()],
+            world: vec![
+                "Europe/Berlin".into(),
+                "Asia/Damascus".into(),
+                "America/New_York".into(),
+            ],
         }
     }
 }
@@ -164,7 +168,24 @@ pub fn zone(id: &str) -> Option<(&'static str, &'static str, i32, Dst)> {
 /// Tag (1..31) des n-ten (n>=1) bzw. letzten (n=0) Wochentags `wd` (0=So) im Monat.
 fn nth_weekday(y: i64, m: i64, wd: usize, n: u32) -> i64 {
     let dim = crate::sys::days_in_month(y, m);
-    let wd_of = |d: i64| crate::sys::from_unix(crate::sys::to_unix(&crate::sys::DateTime { y, mo: m, d, h: 12, mi: 0, s: 0, wd: 0 }, 0), 0).wd;
+    let wd_of = |d: i64| {
+        crate::sys::from_unix(
+            crate::sys::to_unix(
+                &crate::sys::DateTime {
+                    y,
+                    mo: m,
+                    d,
+                    h: 12,
+                    mi: 0,
+                    s: 0,
+                    wd: 0,
+                },
+                0,
+            ),
+            0,
+        )
+        .wd
+    };
     if n == 0 {
         (1..=dim).rev().find(|&d| wd_of(d) == wd).unwrap_or(dim)
     } else {
@@ -174,7 +195,18 @@ fn nth_weekday(y: i64, m: i64, wd: usize, n: u32) -> i64 {
 }
 
 fn utc_at(y: i64, m: i64, d: i64, h: i64, off_min: i32) -> i64 {
-    crate::sys::to_unix(&crate::sys::DateTime { y, mo: m, d, h, mi: 0, s: 0, wd: 0 }, off_min)
+    crate::sys::to_unix(
+        &crate::sys::DateTime {
+            y,
+            mo: m,
+            d,
+            h,
+            mi: 0,
+            s: 0,
+            wd: 0,
+        },
+        off_min,
+    )
 }
 
 /// Versatz zu UTC in Minuten für eine Zone zu einem Zeitpunkt (inkl. Sommerzeit).
@@ -183,10 +215,22 @@ pub fn offset_at(zone_id: &str, t: i64) -> Option<i32> {
     let y = crate::sys::from_unix(t, std).y;
     let summer = match rule {
         Dst::None => false,
-        Dst::Eu => t >= utc_at(y, 3, nth_weekday(y, 3, 0, 0), 1, 0) && t < utc_at(y, 10, nth_weekday(y, 10, 0, 0), 1, 0),
-        Dst::Us => t >= utc_at(y, 3, nth_weekday(y, 3, 0, 2), 2, std) && t < utc_at(y, 11, nth_weekday(y, 11, 0, 1), 2, std + 60),
-        Dst::Egypt => t >= utc_at(y, 4, nth_weekday(y, 4, 5, 0), 0, std) && t < utc_at(y, 10, nth_weekday(y, 10, 4, 0), 24, std + 60),
-        Dst::Lebanon => t >= utc_at(y, 3, nth_weekday(y, 3, 0, 0), 0, std) && t < utc_at(y, 10, nth_weekday(y, 10, 0, 0), 0, std + 60),
+        Dst::Eu => {
+            t >= utc_at(y, 3, nth_weekday(y, 3, 0, 0), 1, 0)
+                && t < utc_at(y, 10, nth_weekday(y, 10, 0, 0), 1, 0)
+        }
+        Dst::Us => {
+            t >= utc_at(y, 3, nth_weekday(y, 3, 0, 2), 2, std)
+                && t < utc_at(y, 11, nth_weekday(y, 11, 0, 1), 2, std + 60)
+        }
+        Dst::Egypt => {
+            t >= utc_at(y, 4, nth_weekday(y, 4, 5, 0), 0, std)
+                && t < utc_at(y, 10, nth_weekday(y, 10, 4, 0), 24, std + 60)
+        }
+        Dst::Lebanon => {
+            t >= utc_at(y, 3, nth_weekday(y, 3, 0, 0), 0, std)
+                && t < utc_at(y, 10, nth_weekday(y, 10, 0, 0), 0, std + 60)
+        }
     };
     Some(std + if summer { 60 } else { 0 })
 }
@@ -194,7 +238,11 @@ pub fn offset_at(zone_id: &str, t: i64) -> Option<i32> {
 pub fn fmt_offset(min: i32) -> String {
     let s = if min < 0 { '-' } else { '+' };
     let a = min.abs();
-    if a % 60 == 0 { format!("UTC{s}{}", a / 60) } else { format!("UTC{s}{}:{:02}", a / 60, a % 60) }
+    if a % 60 == 0 {
+        format!("UTC{s}{}", a / 60)
+    } else {
+        format!("UTC{s}{}:{:02}", a / 60, a % 60)
+    }
 }
 
 /// Uhrzeit im 24- oder 12-Stunden-Format.
@@ -236,7 +284,11 @@ pub fn nameservers() -> Vec<std::net::Ipv4Addr> {
     let mut v = Vec::new();
     for p in ["/run/ultar/resolv.conf", "/etc/resolv.conf"] {
         for l in std::fs::read_to_string(p).unwrap_or_default().lines() {
-            if let Some(ip) = l.trim().strip_prefix("nameserver").and_then(|x| x.trim().parse().ok()) {
+            if let Some(ip) = l
+                .trim()
+                .strip_prefix("nameserver")
+                .and_then(|x| x.trim().parse().ok())
+            {
                 if !v.contains(&ip) {
                     v.push(ip);
                 }
@@ -264,7 +316,10 @@ pub fn dns_parse(b: &[u8], id: u16) -> Option<std::net::Ipv4Addr> {
     if b.len() < 12 || u16::from_be_bytes([b[0], b[1]]) != id || b[3] & 0x0F != 0 {
         return None;
     }
-    let (qd, an) = (u16::from_be_bytes([b[4], b[5]]), u16::from_be_bytes([b[6], b[7]]));
+    let (qd, an) = (
+        u16::from_be_bytes([b[4], b[5]]),
+        u16::from_be_bytes([b[6], b[7]]),
+    );
     let mut i = 12;
     let skip_name = |mut i: usize| -> Option<usize> {
         loop {
@@ -300,11 +355,16 @@ pub fn resolve(host: &str) -> Result<std::net::Ipv4Addr, String> {
     if let Ok(ip) = host.parse() {
         return Ok(ip);
     }
-    if let Some(std::net::SocketAddr::V4(a)) = (host, 0).to_socket_addrs().ok().and_then(|mut it| it.find(|a| a.is_ipv4())) {
+    if let Some(std::net::SocketAddr::V4(a)) = (host, 0)
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut it| it.find(|a| a.is_ipv4()))
+    {
         return Ok(*a.ip());
     }
     let s = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
-    s.set_read_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+    s.set_read_timeout(Some(Duration::from_secs(2)))
+        .map_err(|e| e.to_string())?;
     let id = (std::process::id() as u16) ^ 0x5a5a;
     for ns in nameservers() {
         if s.send_to(&dns_query(id, host), (ns, 53)).is_err() {
@@ -327,9 +387,11 @@ pub fn sntp_query(server: &str) -> Result<i64, String> {
     let ip = resolve(server).unwrap_or(std::net::Ipv4Addr::new(216, 239, 35, 0));
     let addr = std::net::SocketAddrV4::new(ip, 123);
     let s = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
-    s.set_read_timeout(Some(Duration::from_secs(3))).map_err(|e| e.to_string())?;
+    s.set_read_timeout(Some(Duration::from_secs(3)))
+        .map_err(|e| e.to_string())?;
     let t0 = std::time::Instant::now();
-    s.send_to(&sntp_request(), addr).map_err(|e| e.to_string())?;
+    s.send_to(&sntp_request(), addr)
+        .map_err(|e| e.to_string())?;
     let mut b = [0u8; 64];
     let (n, _) = s.recv_from(&mut b).map_err(|e| e.to_string())?;
     let ms = sntp_parse(&b[..n]).ok_or("Antwort ungültig")?;
@@ -343,20 +405,40 @@ pub fn parse_http_date(s: &str) -> Option<i64> {
         return None;
     }
     let d: i64 = p[1].parse().ok()?;
-    let mo = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].iter().position(|m| *m == p[2])? as i64 + 1;
+    let mo = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .iter()
+    .position(|m| *m == p[2])? as i64
+        + 1;
     let y: i64 = p[3].parse().ok()?;
     let t: Vec<i64> = p[4].split(':').filter_map(|x| x.parse().ok()).collect();
     if t.len() != 3 {
         return None;
     }
-    Some(crate::sys::to_unix(&crate::sys::DateTime { y, mo, d, h: t[0], mi: t[1], s: t[2], wd: 0 }, 0))
+    Some(crate::sys::to_unix(
+        &crate::sys::DateTime {
+            y,
+            mo,
+            d,
+            h: t[0],
+            mi: t[1],
+            s: t[2],
+            wd: 0,
+        },
+        0,
+    ))
 }
 
 /// Ersatz-Zeitquelle, wenn UDP 123 gesperrt ist: „Date"-Kopf einer HTTP-Antwort (TCP 80).
 pub fn http_time() -> Result<i64, String> {
     use std::io::{Read, Write};
     let mut last = String::new();
-    for (ip, host) in [("1.1.1.1", "one.one.one.one"), ("8.8.4.4", "dns.google"), ("142.250.185.78", "www.google.com")] {
+    for (ip, host) in [
+        ("1.1.1.1", "one.one.one.one"),
+        ("8.8.4.4", "dns.google"),
+        ("142.250.185.78", "www.google.com"),
+    ] {
         let addr: std::net::SocketAddr = format!("{ip}:80").parse().unwrap();
         let t0 = std::time::Instant::now();
         let mut s = match std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
@@ -371,7 +453,11 @@ pub fn http_time() -> Result<i64, String> {
         let mut buf = vec![0u8; 4096];
         let n = s.read(&mut buf).unwrap_or(0);
         let txt = String::from_utf8_lossy(&buf[..n]);
-        if let Some(t) = txt.lines().find_map(|l| l.strip_prefix("Date:").or_else(|| l.strip_prefix("date:"))).and_then(|v| parse_http_date(v.trim())) {
+        if let Some(t) = txt
+            .lines()
+            .find_map(|l| l.strip_prefix("Date:").or_else(|| l.strip_prefix("date:")))
+            .and_then(|v| parse_http_date(v.trim()))
+        {
             return Ok(t * 1000 + 500 + t0.elapsed().as_millis() as i64 / 2);
         }
         last = "kein Date-Kopf".into();
@@ -389,9 +475,21 @@ pub fn set_clock(unix_ms: i64) -> bool {
 /// Kleine SHA-256 (FIPS 180-4) – nur für den PIN-Abgleich auf dem Gerät.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
-    let mut h: [u32; 8] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
     let mut m = data.to_vec();
     let bits = (data.len() as u64) * 8;
     m.push(0x80);
@@ -407,17 +505,33 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let mut v = h;
         for i in 0..64 {
             let s1 = v[4].rotate_right(6) ^ v[4].rotate_right(11) ^ v[4].rotate_right(25);
             let ch = (v[4] & v[5]) ^ (!v[4] & v[6]);
-            let t1 = v[7].wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let t1 = v[7]
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
             let s0 = v[0].rotate_right(2) ^ v[0].rotate_right(13) ^ v[0].rotate_right(22);
             let mj = (v[0] & v[1]) ^ (v[0] & v[2]) ^ (v[1] & v[2]);
             let t2 = s0.wrapping_add(mj);
-            v = [t1.wrapping_add(t2), v[0], v[1], v[2], v[3].wrapping_add(t1), v[4], v[5], v[6]];
+            v = [
+                t1.wrapping_add(t2),
+                v[0],
+                v[1],
+                v[2],
+                v[3].wrapping_add(t1),
+                v[4],
+                v[5],
+                v[6],
+            ];
         }
         for i in 0..8 {
             h[i] = h[i].wrapping_add(v[i]);
@@ -451,7 +565,10 @@ pub fn new_salt() -> String {
         use std::io::Read;
         let _ = f.read_exact(&mut b);
     } else {
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1);
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(1);
         b[..16].copy_from_slice(&t.to_le_bytes());
     }
     hex(&b)
@@ -463,27 +580,97 @@ pub fn pin_valid(pin: &str) -> bool {
 
 /// Wartezeit nach Fehlversuchen: ab 5 Fehlern 30 s, danach jeweils doppelt, höchstens 15 min.
 pub fn lockout_secs(fails: u32) -> u64 {
-    if fails < 5 { 0 } else { (30u64 << (fails - 5).min(5)).min(900) }
+    if fails < 5 {
+        0
+    } else {
+        (30u64 << (fails - 5).min(5)).min(900)
+    }
 }
 
 // ---------------------------------------------------------------- Einheiten
 
 /// (Kategorie, [(Einheit, Faktor zur Basiseinheit)]); Temperatur wird gesondert gerechnet.
 pub const UNITS: &[(&str, &[(&str, f64)])] = &[
-    ("Length", &[("mm", 0.001), ("cm", 0.01), ("m", 1.0), ("km", 1000.0), ("in", 0.0254), ("ft", 0.3048), ("yd", 0.9144), ("mi", 1609.344)]),
-    ("Weight", &[("g", 0.001), ("kg", 1.0), ("t", 1000.0), ("oz", 0.028349523125), ("lb", 0.45359237)]),
+    (
+        "Length",
+        &[
+            ("mm", 0.001),
+            ("cm", 0.01),
+            ("m", 1.0),
+            ("km", 1000.0),
+            ("in", 0.0254),
+            ("ft", 0.3048),
+            ("yd", 0.9144),
+            ("mi", 1609.344),
+        ],
+    ),
+    (
+        "Weight",
+        &[
+            ("g", 0.001),
+            ("kg", 1.0),
+            ("t", 1000.0),
+            ("oz", 0.028349523125),
+            ("lb", 0.45359237),
+        ],
+    ),
     ("Temperature", &[("°C", 1.0), ("°F", 1.0), ("K", 1.0)]),
-    ("Area", &[("m²", 1.0), ("km²", 1e6), ("ha", 1e4), ("ft²", 0.09290304), ("acre", 4046.8564224)]),
-    ("Capacity", &[("ml", 0.001), ("l", 1.0), ("m³", 1000.0), ("gal (US)", 3.785411784), ("cup", 0.2365882365)]),
-    ("Speed", &[("km/h", 1.0 / 3.6), ("m/s", 1.0), ("mph", 0.44704), ("kn", 0.514444)]),
-    ("Data", &[("B", 1.0), ("KB", 1e3), ("MB", 1e6), ("GB", 1e9), ("KiB", 1024.0), ("MiB", 1048576.0), ("GiB", 1073741824.0)]),
+    (
+        "Area",
+        &[
+            ("m²", 1.0),
+            ("km²", 1e6),
+            ("ha", 1e4),
+            ("ft²", 0.09290304),
+            ("acre", 4046.8564224),
+        ],
+    ),
+    (
+        "Capacity",
+        &[
+            ("ml", 0.001),
+            ("l", 1.0),
+            ("m³", 1000.0),
+            ("gal (US)", 3.785411784),
+            ("cup", 0.2365882365),
+        ],
+    ),
+    (
+        "Speed",
+        &[
+            ("km/h", 1.0 / 3.6),
+            ("m/s", 1.0),
+            ("mph", 0.44704),
+            ("kn", 0.514444),
+        ],
+    ),
+    (
+        "Data",
+        &[
+            ("B", 1.0),
+            ("KB", 1e3),
+            ("MB", 1e6),
+            ("GB", 1e9),
+            ("KiB", 1024.0),
+            ("MiB", 1048576.0),
+            ("GiB", 1073741824.0),
+        ],
+    ),
 ];
 
 pub fn convert(cat: usize, from: usize, to: usize, v: f64) -> f64 {
     let (name, units) = UNITS[cat];
     if name == "Temperature" {
-        let c = match from { 1 => (v - 32.0) * 5.0 / 9.0, 2 => v - 273.15, _ => v };
-        return match to { 1 => c * 9.0 / 5.0 + 32.0, 2 => c + 273.15, _ => c };
+        let c = match from {
+            1 => (v - 32.0) * 5.0 / 9.0,
+            2 => v - 273.15,
+            _ => v,
+        };
+        return match to {
+            1 => c * 9.0 / 5.0 + 32.0,
+            2 => c + 273.15,
+            _ => c,
+        };
     }
     v * units[from].1 / units[to].1
 }
@@ -492,7 +679,11 @@ pub fn fmt_num(v: f64) -> String {
     if !v.is_finite() {
         return "–".into();
     }
-    let s = if v.abs() >= 1e9 || (v != 0.0 && v.abs() < 1e-4) { format!("{v:.4e}") } else { format!("{v:.6}") };
+    let s = if v.abs() >= 1e9 || (v != 0.0 && v.abs() < 1e-4) {
+        format!("{v:.4e}")
+    } else {
+        format!("{v:.6}")
+    };
     if s.contains('e') {
         return s;
     }
@@ -524,13 +715,39 @@ pub struct Calendar {
 impl Event {
     pub fn start_unix(&self, tz_min: i32) -> i64 {
         let m = self.at.max(0) as i64;
-        crate::sys::to_unix(&crate::sys::DateTime { y: self.y, mo: self.mo, d: self.d, h: m / 60, mi: m % 60, s: 0, wd: 0 }, tz_min)
+        crate::sys::to_unix(
+            &crate::sys::DateTime {
+                y: self.y,
+                mo: self.mo,
+                d: self.d,
+                h: m / 60,
+                mi: m % 60,
+                s: 0,
+                wd: 0,
+            },
+            tz_min,
+        )
     }
 }
 
 /// Monatsraster: (Wochentag des 1. mit Montag=0, Tage im Monat).
 pub fn month_grid(y: i64, mo: i64) -> (usize, i64) {
-    let wd = crate::sys::from_unix(crate::sys::to_unix(&crate::sys::DateTime { y, mo, d: 1, h: 12, mi: 0, s: 0, wd: 0 }, 0), 0).wd;
+    let wd = crate::sys::from_unix(
+        crate::sys::to_unix(
+            &crate::sys::DateTime {
+                y,
+                mo,
+                d: 1,
+                h: 12,
+                mi: 0,
+                s: 0,
+                wd: 0,
+            },
+            0,
+        ),
+        0,
+    )
+    .wd;
     ((wd + 6) % 7, crate::sys::days_in_month(y, mo))
 }
 
@@ -586,7 +803,13 @@ pub enum BattEvent {
 }
 
 /// Ereignisse beim Übergang `prev` -> `cur` (Prozent, lädt).
-pub fn battery_events(prev: Option<(u8, bool)>, cur: (u8, bool), auto_saver: bool, saver_at: u8, saver_on: bool) -> Vec<BattEvent> {
+pub fn battery_events(
+    prev: Option<(u8, bool)>,
+    cur: (u8, bool),
+    auto_saver: bool,
+    saver_at: u8,
+    saver_on: bool,
+) -> Vec<BattEvent> {
     let mut v = Vec::new();
     let Some((pp, pc)) = prev else { return v };
     let (p, c) = cur;
@@ -617,12 +840,20 @@ pub fn hottest_zone() -> Option<(String, f32)> {
     let mut best: Option<(String, f32)> = None;
     for e in std::fs::read_dir("/sys/class/thermal").ok()?.flatten() {
         let p = e.path();
-        let Some(t) = std::fs::read_to_string(p.join("temp")).ok().and_then(|s| s.trim().parse::<f32>().ok()) else { continue };
+        let Some(t) = std::fs::read_to_string(p.join("temp"))
+            .ok()
+            .and_then(|s| s.trim().parse::<f32>().ok())
+        else {
+            continue;
+        };
         let c = if t > 1000.0 { t / 1000.0 } else { t };
         if !(1.0..150.0).contains(&c) {
             continue;
         }
-        let n = std::fs::read_to_string(p.join("type")).unwrap_or_default().trim().to_string();
+        let n = std::fs::read_to_string(p.join("type"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         if best.as_ref().map_or(true, |b| c > b.1) {
             best = Some((n, c));
         }
@@ -633,9 +864,13 @@ pub fn hottest_zone() -> Option<(String, f32)> {
 /// Verfügbare CPU-Regler (aus cpu0) und den aktuellen.
 pub fn governors() -> (Vec<String>, String) {
     let base = "/sys/devices/system/cpu/cpu0/cpufreq";
-    let av = std::fs::read_to_string(format!("{base}/scaling_available_governors")).unwrap_or_default();
+    let av =
+        std::fs::read_to_string(format!("{base}/scaling_available_governors")).unwrap_or_default();
     let cur = std::fs::read_to_string(format!("{base}/scaling_governor")).unwrap_or_default();
-    (av.split_whitespace().map(String::from).collect(), cur.trim().to_string())
+    (
+        av.split_whitespace().map(String::from).collect(),
+        cur.trim().to_string(),
+    )
 }
 
 /// Regler auf allen Kernen setzen. Liefert die Zahl der Kerne, bei denen es geklappt hat.
@@ -644,7 +879,10 @@ pub fn set_governor(g: &str) -> usize {
     if let Ok(rd) = std::fs::read_dir("/sys/devices/system/cpu") {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if name.starts_with("cpu") && name[3..].chars().all(|c| c.is_ascii_digit()) && !name[3..].is_empty() {
+            if name.starts_with("cpu")
+                && name[3..].chars().all(|c| c.is_ascii_digit())
+                && !name[3..].is_empty()
+            {
                 n += std::fs::write(e.path().join("cpufreq/scaling_governor"), g).is_ok() as usize;
             }
         }
@@ -659,7 +897,9 @@ pub fn governor_for(profile: &str, avail: &[String]) -> Option<String> {
         "performance" => &["performance"],
         _ => &["schedutil", "interactive", "cfinteractive", "ondemand"],
     };
-    want.iter().find(|w| avail.iter().any(|a| a == *w)).map(|s| s.to_string())
+    want.iter()
+        .find(|w| avail.iter().any(|a| a == *w))
+        .map(|s| s.to_string())
 }
 
 // ---------------------------------------------------------------- Suche
@@ -668,8 +908,15 @@ fn fold(s: &str) -> String {
     s.chars()
         .flat_map(|c| c.to_lowercase())
         .map(|c| match c {
-            'ä' => 'a', 'ö' => 'o', 'ü' => 'u', 'ß' => 's', 'é' | 'è' | 'ê' => 'e', 'á' | 'à' | 'â' => 'a',
-            'أ' | 'إ' | 'آ' => 'ا', 'ة' => 'ه', 'ى' => 'ي',
+            'ä' => 'a',
+            'ö' => 'o',
+            'ü' => 'u',
+            'ß' => 's',
+            'é' | 'è' | 'ê' => 'e',
+            'á' | 'à' | 'â' => 'a',
+            'أ' | 'إ' | 'آ' => 'ا',
+            'ة' => 'ه',
+            'ى' => 'ي',
             c => c,
         })
         .filter(|c| !matches!(*c, '\u{064B}'..='\u{0652}'))
@@ -689,7 +936,9 @@ pub fn score(query: &str, name: &str) -> Option<u32> {
     if n.starts_with(&q) {
         return Some(800 - n.len().min(200) as u32);
     }
-    if n.split(|c: char| !c.is_alphanumeric()).any(|w| w.starts_with(&q)) {
+    if n.split(|c: char| !c.is_alphanumeric())
+        .any(|w| w.starts_with(&q))
+    {
         return Some(600);
     }
     if n.contains(&q) {
@@ -719,12 +968,25 @@ fn csum(b: &[u8]) -> u16 {
 pub fn ping(ip: std::net::Ipv4Addr, timeout_ms: u64) -> Result<f32, String> {
     use nix::libc;
     unsafe {
-        let fd = libc::socket(libc::AF_INET, libc::SOCK_RAW | libc::SOCK_CLOEXEC, libc::IPPROTO_ICMP);
+        let fd = libc::socket(
+            libc::AF_INET,
+            libc::SOCK_RAW | libc::SOCK_CLOEXEC,
+            libc::IPPROTO_ICMP,
+        );
         if fd < 0 {
             return Err(std::io::Error::last_os_error().to_string());
         }
-        let tv = libc::timeval { tv_sec: (timeout_ms / 1000) as _, tv_usec: ((timeout_ms % 1000) * 1000) as _ };
-        libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_RCVTIMEO, &tv as *const _ as *const _, std::mem::size_of::<libc::timeval>() as u32);
+        let tv = libc::timeval {
+            tv_sec: (timeout_ms / 1000) as _,
+            tv_usec: ((timeout_ms % 1000) * 1000) as _,
+        };
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            &tv as *const _ as *const _,
+            std::mem::size_of::<libc::timeval>() as u32,
+        );
         let id = (std::process::id() & 0xFFFF) as u16;
         let mut pkt = vec![8u8, 0, 0, 0];
         pkt.extend_from_slice(&id.to_be_bytes());
@@ -736,7 +998,14 @@ pub fn ping(ip: std::net::Ipv4Addr, timeout_ms: u64) -> Result<f32, String> {
         sa.sin_family = libc::AF_INET as _;
         sa.sin_addr.s_addr = u32::from_ne_bytes(ip.octets());
         let t0 = std::time::Instant::now();
-        let r = libc::sendto(fd, pkt.as_ptr() as *const _, pkt.len(), 0, &sa as *const _ as *const libc::sockaddr, std::mem::size_of::<libc::sockaddr_in>() as u32);
+        let r = libc::sendto(
+            fd,
+            pkt.as_ptr() as *const _,
+            pkt.len(),
+            0,
+            &sa as *const _ as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_in>() as u32,
+        );
         if r < 0 {
             let e = std::io::Error::last_os_error().to_string();
             libc::close(fd);
@@ -751,7 +1020,10 @@ pub fn ping(ip: std::net::Ipv4Addr, timeout_ms: u64) -> Result<f32, String> {
             }
             let n = n as usize;
             let ihl = ((buf[0] & 0x0F) as usize) * 4;
-            if n >= ihl + 8 && buf[ihl] == 0 && u16::from_be_bytes([buf[ihl + 4], buf[ihl + 5]]) == id {
+            if n >= ihl + 8
+                && buf[ihl] == 0
+                && u16::from_be_bytes([buf[ihl + 4], buf[ihl + 5]]) == id
+            {
                 libc::close(fd);
                 return Ok(t0.elapsed().as_secs_f32() * 1000.0);
             }
@@ -773,7 +1045,11 @@ pub fn dns_test(host: &str) -> Result<(f32, String), String> {
 /// TCP-Verbindung zu einem Dienst im Internet: Dauer in ms.
 pub fn tcp_test(addr: &str) -> Result<f32, String> {
     use std::net::ToSocketAddrs;
-    let a = addr.to_socket_addrs().map_err(|e| e.to_string())?.next().ok_or("Adresse")?;
+    let a = addr
+        .to_socket_addrs()
+        .map_err(|e| e.to_string())?
+        .next()
+        .ok_or("Adresse")?;
     let t0 = std::time::Instant::now();
     std::net::TcpStream::connect_timeout(&a, Duration::from_secs(4)).map_err(|e| e.to_string())?;
     Ok(t0.elapsed().as_secs_f32() * 1000.0)
@@ -782,14 +1058,28 @@ pub fn tcp_test(addr: &str) -> Result<f32, String> {
 /// Datenverbrauch des laufenden Monats (Bytes, rx+tx) aus der Monitor-Statistik (Tagesschlüssel JJJJ-MM-TT).
 pub fn month_usage(days: &std::collections::BTreeMap<String, (u64, u64)>, y: i64, mo: i64) -> u64 {
     let p = format!("{y:04}-{mo:02}");
-    days.iter().filter(|(k, _)| k.starts_with(&p)).map(|(_, v)| v.0 + v.1).sum()
+    days.iter()
+        .filter(|(k, _)| k.starts_with(&p))
+        .map(|(_, v)| v.0 + v.1)
+        .sum()
 }
 
 // ---------------------------------------------------------------- Sicherung, Bereinigen, Protokoll
 
 /// Was gesichert wird (relativ zu /data/ultar). Zugangsdaten (wifi.conf, Konto) bewusst ausgenommen.
 pub const BACKUP_FILES: &[&str] = &[
-    "settings.toml", "system.toml", "net.toml", "notes.toml", "contacts.toml", "calendar.toml", "alarms.toml", "launches.toml", "agent.toml", "apps.toml", "messages.toml", "calc-history.toml",
+    "settings.toml",
+    "system.toml",
+    "net.toml",
+    "notes.toml",
+    "contacts.toml",
+    "calendar.toml",
+    "alarms.toml",
+    "launches.toml",
+    "agent.toml",
+    "apps.toml",
+    "messages.toml",
+    "calc-history.toml",
 ];
 
 pub fn backup_root() -> String {
@@ -821,7 +1111,13 @@ pub fn backup_list() -> Vec<String> {
 
 fn backup_list_in(root: &str) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(root)
-        .map(|rd| rd.flatten().filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with("ultar-")).collect())
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("ultar-"))
+                .collect()
+        })
         .unwrap_or_default();
     v.sort();
     v.reverse();
@@ -867,12 +1163,21 @@ fn factory_reset_in(data: &str, keep_media: bool) -> usize {
                 continue;
             }
             let p = e.path();
-            let ok = if p.is_dir() { std::fs::remove_dir_all(&p).is_ok() } else { std::fs::remove_file(&p).is_ok() };
+            let ok = if p.is_dir() {
+                std::fs::remove_dir_all(&p).is_ok()
+            } else {
+                std::fs::remove_file(&p).is_ok()
+            };
             n += ok as usize;
         }
     }
     if !keep_media {
-        for d in ["/data/DCIM", "/data/Pictures", "/data/media", "/data/Documents"] {
+        for d in [
+            "/data/DCIM",
+            "/data/Pictures",
+            "/data/media",
+            "/data/Documents",
+        ] {
             n += std::fs::remove_dir_all(d).is_ok() as usize;
         }
     }
@@ -880,9 +1185,13 @@ fn factory_reset_in(data: &str, keep_media: bool) -> usize {
 }
 
 fn dir_size(p: &std::path::Path) -> u64 {
-    let Ok(m) = std::fs::symlink_metadata(p) else { return 0 };
+    let Ok(m) = std::fs::symlink_metadata(p) else {
+        return 0;
+    };
     if m.is_dir() {
-        std::fs::read_dir(p).map(|rd| rd.flatten().map(|e| dir_size(&e.path())).sum()).unwrap_or(0)
+        std::fs::read_dir(p)
+            .map(|rd| rd.flatten().map(|e| dir_size(&e.path())).sum())
+            .unwrap_or(0)
     } else {
         m.len()
     }
@@ -892,13 +1201,26 @@ fn dir_size(p: &std::path::Path) -> u64 {
 pub fn cleanup_candidates() -> Vec<(String, u64)> {
     let d = crate::sys::data_dir();
     let mut v = Vec::new();
-    for p in [format!("{d}/cache"), format!("{d}/thumbs"), format!("{d}/tmp"), format!("{d}/screen.png"), format!("{d}/shell.gz"), format!("{d}/shell2.gz"), format!("{d}/net.gz"), "/data/tmp".into()] {
+    for p in [
+        format!("{d}/cache"),
+        format!("{d}/thumbs"),
+        format!("{d}/tmp"),
+        format!("{d}/screen.png"),
+        format!("{d}/shell.gz"),
+        format!("{d}/shell2.gz"),
+        format!("{d}/net.gz"),
+        "/data/tmp".into(),
+    ] {
         let s = dir_size(std::path::Path::new(&p));
         if s > 0 {
             v.push((p, s));
         }
     }
-    for p in ["/usr/bin/ultar-shell.old", "/usr/bin/ultar-shell.old2", "/usr/bin/ultar-net.old"] {
+    for p in [
+        "/usr/bin/ultar-shell.old",
+        "/usr/bin/ultar-shell.old2",
+        "/usr/bin/ultar-net.old",
+    ] {
         if let Ok(m) = std::fs::metadata(p) {
             v.push((p.to_string(), m.len()));
         }
@@ -910,7 +1232,11 @@ pub fn cleanup_run(list: &[(String, u64)]) -> u64 {
     let mut freed = 0;
     for (p, s) in list {
         let path = std::path::Path::new(p);
-        let ok = if path.is_dir() { std::fs::remove_dir_all(path).is_ok() } else { std::fs::remove_file(path).is_ok() };
+        let ok = if path.is_dir() {
+            std::fs::remove_dir_all(path).is_ok()
+        } else {
+            std::fs::remove_file(path).is_ok()
+        };
         if ok {
             freed += s;
         }
@@ -927,13 +1253,26 @@ pub fn kernel_log(max_lines: usize) -> Vec<String> {
         return vec![std::io::Error::last_os_error().to_string()];
     }
     let s = String::from_utf8_lossy(&buf[..n as usize]);
-    let lines: Vec<String> = s.lines().map(|l| l.strip_prefix('<').and_then(|x| x.split_once('>')).map(|(_, r)| r).unwrap_or(l).to_string()).collect();
+    let lines: Vec<String> = s
+        .lines()
+        .map(|l| {
+            l.strip_prefix('<')
+                .and_then(|x| x.split_once('>'))
+                .map(|(_, r)| r)
+                .unwrap_or(l)
+                .to_string()
+        })
+        .collect();
     lines[lines.len().saturating_sub(max_lines)..].to_vec()
 }
 
 /// Protokoll der Ultar-Dienste (Ausgaben, die ultar-init sammelt), falls vorhanden.
 pub fn service_log(max_lines: usize) -> Vec<String> {
-    for p in ["/run/ultar/init.log", "/run/ultar/log", "/data/ultar/init.log"] {
+    for p in [
+        "/run/ultar/init.log",
+        "/run/ultar/log",
+        "/data/ultar/init.log",
+    ] {
         if let Ok(s) = std::fs::read_to_string(p) {
             let l: Vec<String> = s.lines().map(String::from).collect();
             return l[l.len().saturating_sub(max_lines)..].to_vec();
@@ -947,8 +1286,20 @@ pub fn reboot_to(mode: &str) -> Result<(), String> {
     use nix::libc;
     unsafe { libc::sync() };
     let arg = std::ffi::CString::new(mode).map_err(|e| e.to_string())?;
-    let r = unsafe { libc::syscall(libc::SYS_reboot, libc::LINUX_REBOOT_MAGIC1, libc::LINUX_REBOOT_MAGIC2, libc::LINUX_REBOOT_CMD_RESTART2, arg.as_ptr()) };
-    if r < 0 { Err(std::io::Error::last_os_error().to_string()) } else { Ok(()) }
+    let r = unsafe {
+        libc::syscall(
+            libc::SYS_reboot,
+            libc::LINUX_REBOOT_MAGIC1,
+            libc::LINUX_REBOOT_MAGIC2,
+            libc::LINUX_REBOOT_CMD_RESTART2,
+            arg.as_ptr(),
+        )
+    };
+    if r < 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
 }
 
 /// Bild als PNG speichern (Bildschirmfoto). Pixel 0x00RRGGBB.
@@ -968,7 +1319,18 @@ mod tests {
     use super::*;
 
     fn ut(y: i64, mo: i64, d: i64, h: i64, mi: i64) -> i64 {
-        crate::sys::to_unix(&crate::sys::DateTime { y, mo, d, h, mi, s: 0, wd: 0 }, 0)
+        crate::sys::to_unix(
+            &crate::sys::DateTime {
+                y,
+                mo,
+                d,
+                h,
+                mi,
+                s: 0,
+                wd: 0,
+            },
+            0,
+        )
     }
 
     #[test]
@@ -976,14 +1338,32 @@ mod tests {
         // EU 2026: 29.03. 01:00 UTC bis 25.10. 01:00 UTC
         assert_eq!(offset_at("Europe/Berlin", ut(2026, 3, 29, 0, 59)), Some(60));
         assert_eq!(offset_at("Europe/Berlin", ut(2026, 3, 29, 1, 0)), Some(120));
-        assert_eq!(offset_at("Europe/Berlin", ut(2026, 10, 25, 0, 59)), Some(120));
+        assert_eq!(
+            offset_at("Europe/Berlin", ut(2026, 10, 25, 0, 59)),
+            Some(120)
+        );
         assert_eq!(offset_at("Europe/Berlin", ut(2026, 10, 25, 1, 0)), Some(60));
-        assert_eq!(offset_at("Europe/Berlin", ut(2026, 11, 19, 12, 0)), Some(60));
+        assert_eq!(
+            offset_at("Europe/Berlin", ut(2026, 11, 19, 12, 0)),
+            Some(60)
+        );
         // USA 2026: 08.03. 02:00 EST (07:00 UTC) bis 01.11. 02:00 EDT (06:00 UTC)
-        assert_eq!(offset_at("America/New_York", ut(2026, 3, 8, 6, 59)), Some(-300));
-        assert_eq!(offset_at("America/New_York", ut(2026, 3, 8, 7, 0)), Some(-240));
-        assert_eq!(offset_at("America/New_York", ut(2026, 11, 1, 5, 59)), Some(-240));
-        assert_eq!(offset_at("America/New_York", ut(2026, 11, 1, 6, 0)), Some(-300));
+        assert_eq!(
+            offset_at("America/New_York", ut(2026, 3, 8, 6, 59)),
+            Some(-300)
+        );
+        assert_eq!(
+            offset_at("America/New_York", ut(2026, 3, 8, 7, 0)),
+            Some(-240)
+        );
+        assert_eq!(
+            offset_at("America/New_York", ut(2026, 11, 1, 5, 59)),
+            Some(-240)
+        );
+        assert_eq!(
+            offset_at("America/New_York", ut(2026, 11, 1, 6, 0)),
+            Some(-300)
+        );
         // Damaskus ganzjährig UTC+3
         assert_eq!(offset_at("Asia/Damascus", ut(2026, 7, 1, 0, 0)), Some(180));
         assert_eq!(offset_at("Asia/Damascus", ut(2026, 1, 1, 0, 0)), Some(180));
@@ -1024,15 +1404,27 @@ mod tests {
         r[3] = 0x80;
         r[7] = 1;
         r.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 93, 184, 216, 34]);
-        assert_eq!(dns_parse(&r, 0x1234), Some(std::net::Ipv4Addr::new(93, 184, 216, 34)));
+        assert_eq!(
+            dns_parse(&r, 0x1234),
+            Some(std::net::Ipv4Addr::new(93, 184, 216, 34))
+        );
         assert_eq!(dns_parse(&r, 0x9999), None);
-        assert_eq!(parse_http_date("Thu, 19 Nov 2026 19:48:14 GMT"), Some(ut(2026, 11, 19, 19, 48) + 14));
+        assert_eq!(
+            parse_http_date("Thu, 19 Nov 2026 19:48:14 GMT"),
+            Some(ut(2026, 11, 19, 19, 48) + 14)
+        );
     }
 
     #[test]
     fn sha_and_pin() {
-        assert_eq!(hex(&sha256(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        assert_eq!(hex(&sha256(b"")), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            hex(&sha256(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            hex(&sha256(b"")),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         let s = "00112233";
         assert_eq!(pin_hash("1234", s), pin_hash("1234", s));
         assert_ne!(pin_hash("1234", s), pin_hash("1235", s));
@@ -1054,7 +1446,15 @@ mod tests {
         assert_eq!(month_grid(2026, 11), (6, 30));
         assert_eq!(month_grid(2026, 2), (6, 28));
         let mut cal = Calendar::default();
-        cal.events.push(Event { y: 2026, mo: 11, d: 20, at: 9 * 60, title: "Termin".into(), remind: 15, notified: false });
+        cal.events.push(Event {
+            y: 2026,
+            mo: 11,
+            d: 20,
+            at: 9 * 60,
+            title: "Termin".into(),
+            remind: 15,
+            notified: false,
+        });
         let start = cal.events[0].start_unix(60);
         assert!(due_reminders(&cal, start - 16 * 60, 60).is_empty());
         assert_eq!(due_reminders(&cal, start - 10 * 60, 60), vec![0]);
@@ -1068,17 +1468,35 @@ mod tests {
     #[test]
     fn battery_and_display() {
         use BattEvent::*;
-        assert_eq!(battery_events(Some((16, false)), (15, false), true, 15, false), vec![Low(15), SaverOn]);
-        assert_eq!(battery_events(Some((6, false)), (5, false), true, 15, true), vec![Low(5)]);
-        assert_eq!(battery_events(Some((40, false)), (40, true), true, 15, true), vec![ChargingStarted, SaverOff]);
-        assert_eq!(battery_events(Some((99, true)), (100, true), false, 15, false), vec![Full]);
+        assert_eq!(
+            battery_events(Some((16, false)), (15, false), true, 15, false),
+            vec![Low(15), SaverOn]
+        );
+        assert_eq!(
+            battery_events(Some((6, false)), (5, false), true, 15, true),
+            vec![Low(5)]
+        );
+        assert_eq!(
+            battery_events(Some((40, false)), (40, true), true, 15, true),
+            vec![ChargingStarted, SaverOff]
+        );
+        assert_eq!(
+            battery_events(Some((99, true)), (100, true), false, 15, false),
+            vec![Full]
+        );
         assert!(battery_events(None, (5, false), true, 15, false).is_empty());
         let mut px = [0x00FF_FFFFu32, 0x0000_00FF];
         night_tint(&mut px, 1.0);
         assert_eq!(px[0] >> 16, 0xFF);
         assert!((px[0] & 0xFF) < 0x60 && ((px[0] >> 8) & 0xFF) > 0xB0);
-        assert!(lux_to_brightness(0.5) < lux_to_brightness(100.0) && lux_to_brightness(100000.0) == 1.0);
-        let av = vec!["schedutil".to_string(), "powersave".to_string(), "performance".into()];
+        assert!(
+            lux_to_brightness(0.5) < lux_to_brightness(100.0) && lux_to_brightness(100000.0) == 1.0
+        );
+        let av = vec![
+            "schedutil".to_string(),
+            "powersave".to_string(),
+            "performance".into(),
+        ];
         assert_eq!(governor_for("power", &av).as_deref(), Some("powersave"));
         assert_eq!(governor_for("balanced", &av).as_deref(), Some("schedutil"));
         let mut d = std::collections::BTreeMap::new();
@@ -1092,16 +1510,28 @@ mod tests {
         let base = std::env::temp_dir().join(format!("ultar-bk-{}", std::process::id()));
         let data = base.join("data");
         std::fs::create_dir_all(&data).unwrap();
-        let (ds, bk) = (data.to_str().unwrap().to_string(), base.join("bk").to_str().unwrap().to_string());
+        let (ds, bk) = (
+            data.to_str().unwrap().to_string(),
+            base.join("bk").to_str().unwrap().to_string(),
+        );
         std::fs::write(data.join("notes.toml"), "a=1").unwrap();
         std::fs::write(data.join("wifi.conf"), "geheim").unwrap();
         let (dir, n) = backup_create_in(&ds, &bk, "20261119-200000").unwrap();
         assert_eq!(n, 1);
         assert!(!std::path::Path::new(&dir).join("wifi.conf").exists());
         std::fs::write(data.join("notes.toml"), "a=2").unwrap();
-        assert_eq!(backup_list_in(&bk), vec!["ultar-20261119-200000".to_string()]);
-        assert_eq!(backup_restore_in(&ds, &bk, "ultar-20261119-200000").unwrap(), 1);
-        assert_eq!(std::fs::read_to_string(data.join("notes.toml")).unwrap(), "a=1");
+        assert_eq!(
+            backup_list_in(&bk),
+            vec!["ultar-20261119-200000".to_string()]
+        );
+        assert_eq!(
+            backup_restore_in(&ds, &bk, "ultar-20261119-200000").unwrap(),
+            1
+        );
+        assert_eq!(
+            std::fs::read_to_string(data.join("notes.toml")).unwrap(),
+            "a=1"
+        );
         assert!(backup_restore_in(&ds, &bk, "../x").is_err());
         std::fs::write(data.join("hw-profile.toml"), "x").unwrap();
         factory_reset_in(&ds, true);

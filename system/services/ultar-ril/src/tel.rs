@@ -74,8 +74,17 @@ pub fn parse_call_list(d: &[u8]) -> Vec<CallEntry> {
         }
         let (id, term, status, nlen) = (d[o + 1], d[o + 2], d[o + 3], d[o + 5] as usize);
         let num = d.get(o + 7..o + 7 + nlen).unwrap_or(&[]);
-        let number: String = num.iter().filter(|b| b.is_ascii_graphic()).map(|b| *b as char).collect();
-        out.push(CallEntry { id, term, status: CallStatus::from_u8(status), number });
+        let number: String = num
+            .iter()
+            .filter(|b| b.is_ascii_graphic())
+            .map(|b| *b as char)
+            .collect();
+        out.push(CallEntry {
+            id,
+            term,
+            status: CallStatus::from_u8(status),
+            number,
+        });
         o += 7 + nlen;
     }
     out
@@ -86,13 +95,21 @@ pub fn parse_call_list(d: &[u8]) -> Vec<CallEntry> {
 /// Nummer als ASCII (max 87, „+" bleibt drin), letztes Byte 0.
 /// Am A30 bestätigt: das alte libsamsung-ipc-Format wurde mit Fehler 0x0064 abgelehnt.
 pub fn build_outgoing(number: &str) -> Vec<u8> {
-    let num: Vec<u8> = number.bytes().filter(|b| b.is_ascii_digit() || matches!(b, b'+' | b'*' | b'#')).take(87).collect();
+    let num: Vec<u8> = number
+        .bytes()
+        .filter(|b| b.is_ascii_digit() || matches!(b, b'+' | b'*' | b'#'))
+        .take(87)
+        .collect();
     let mut b = vec![0u8; 92];
     b[0] = 0x00;
     b[1] = 0x01;
     b[2] = 0x00;
     b[3] = num.len() as u8;
-    b[4] = if num.first() == Some(&b'+') { 0x11 } else { 0x21 };
+    b[4] = if num.first() == Some(&b'+') {
+        0x11
+    } else {
+        0x21
+    };
     b[5..5 + num.len()].copy_from_slice(&num);
     b
 }
@@ -143,11 +160,13 @@ fn semi_octets(b: &[u8], digits: usize) -> String {
 
 /// GSM-03.38-Grundtabelle (ohne Erweiterung bis auf häufige Zeichen).
 const GSM7: [char; 128] = [
-    '@', '£', '$', '¥', 'è', 'é', 'ù', 'ì', 'ò', 'Ç', '\n', 'Ø', 'ø', '\r', 'Å', 'å', 'Δ', '_', 'Φ', 'Γ', 'Λ', 'Ω', 'Π', 'Ψ', 'Σ', 'Θ', 'Ξ',
-    '\u{1b}', 'Æ', 'æ', 'ß', 'É', ' ', '!', '"', '#', '¤', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5',
-    '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '¡', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
-    'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Ä', 'Ö', 'Ñ', 'Ü', '§', '¿', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'ä', 'ö', 'ñ', 'ü', 'à',
+    '@', '£', '$', '¥', 'è', 'é', 'ù', 'ì', 'ò', 'Ç', '\n', 'Ø', 'ø', '\r', 'Å', 'å', 'Δ', '_',
+    'Φ', 'Γ', 'Λ', 'Ω', 'Π', 'Ψ', 'Σ', 'Θ', 'Ξ', '\u{1b}', 'Æ', 'æ', 'ß', 'É', ' ', '!', '"', '#',
+    '¤', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6',
+    '7', '8', '9', ':', ';', '<', '=', '>', '?', '¡', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I',
+    'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Ä', 'Ö',
+    'Ñ', 'Ü', '§', '¿', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o',
+    'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'ä', 'ö', 'ñ', 'ü', 'à',
 ];
 
 fn gsm7_ext(c: u8) -> char {
@@ -205,7 +224,11 @@ pub fn decode_deliver(pdu: &[u8]) -> Option<InSms> {
         unpack7(oa, oa_digits * 4 / 7, 0) // alphanumerischer Absender (z. B. „Syriatel")
     } else {
         let n = semi_octets(oa, oa_digits);
-        if toa & 0x70 == 0x10 { format!("+{n}") } else { n }
+        if toa & 0x70 == 0x10 {
+            format!("+{n}")
+        } else {
+            n
+        }
     };
     o += 2 + oa_bytes;
     let _pid = *pdu.get(o)?;
@@ -233,14 +256,24 @@ pub fn decode_deliver(pdu: &[u8]) -> Option<InSms> {
         body = ud.get(hdr_len..)?;
     }
     // Alphabet aus DCS (allgemeine Gruppe 00xx und Gruppe F)
-    let alpha = if dcs & 0xc0 == 0x00 || dcs & 0xf0 == 0xf0 { (dcs >> 2) & 0x03 } else if dcs & 0xf0 == 0xe0 { 2 } else { 0 };
+    let alpha = if dcs & 0xc0 == 0x00 || dcs & 0xf0 == 0xf0 {
+        (dcs >> 2) & 0x03
+    } else if dcs & 0xf0 == 0xe0 {
+        2
+    } else {
+        0
+    };
     let text = match alpha {
         2 => {
             let n = udl.saturating_sub(hdr_len).min(body.len());
-            let u: Vec<u16> = body[..n].chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+            let u: Vec<u16> = body[..n]
+                .chunks_exact(2)
+                .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                .collect();
             String::from_utf16_lossy(&u)
         }
-        1 => String::from_utf8_lossy(&body[..udl.saturating_sub(hdr_len).min(body.len())]).into_owned(),
+        1 => String::from_utf8_lossy(&body[..udl.saturating_sub(hdr_len).min(body.len())])
+            .into_owned(),
         _ => {
             // Septette: udl zählt Septette inkl. Kopf; Kopf belegt ceil(hdr_len*8/7) Septette
             let hdr_septets = (hdr_len * 8).div_ceil(7);
@@ -270,7 +303,11 @@ pub fn encode_submit(to: &str, text: &str) -> Vec<u8> {
     }
     p.push(0x00); // PID
     if is_gsm7(text) {
-        let sept: Vec<u8> = text.chars().take(160).map(|c| GSM7.iter().position(|g| *g == c).unwrap_or(0x3f) as u8).collect();
+        let sept: Vec<u8> = text
+            .chars()
+            .take(160)
+            .map(|c| GSM7.iter().position(|g| *g == c).unwrap_or(0x3f) as u8)
+            .collect();
         p.push(0x00); // DCS GSM-7
         p.push(sept.len() as u8);
         let mut acc: u32 = 0;
@@ -300,7 +337,12 @@ pub fn encode_submit(to: &str, text: &str) -> Vec<u8> {
 
 /// SMS_SEND_MSG: Kopf `type 0x02 (abgehend), msg_type 0x01 (einzeln), länge, smsc_len` + SMSC + PDU.
 pub fn build_send(smsc: &[u8], pdu: &[u8]) -> Vec<u8> {
-    let mut b = vec![0x02, 0x01, (1 + smsc.len() + pdu.len()) as u8, smsc.len() as u8];
+    let mut b = vec![
+        0x02,
+        0x01,
+        (1 + smsc.len() + pdu.len()) as u8,
+        smsc.len() as u8,
+    ];
     b.extend_from_slice(smsc);
     b.extend_from_slice(pdu);
     b
@@ -310,7 +352,10 @@ pub fn build_send(smsc: &[u8], pdu: &[u8]) -> Vec<u8> {
 
 /// GSM-7 packen (wie libsec-ril `PackToGsm7bit`).
 pub fn pack7(text: &str) -> (Vec<u8>, usize) {
-    let sept: Vec<u8> = text.chars().map(|c| GSM7.iter().position(|g| *g == c).unwrap_or(0x3f) as u8).collect();
+    let sept: Vec<u8> = text
+        .chars()
+        .map(|c| GSM7.iter().position(|g| *g == c).unwrap_or(0x3f) as u8)
+        .collect();
     let mut out = Vec::new();
     let (mut acc, mut bits) = (0u32, 0);
     for s in &sept {
@@ -358,12 +403,17 @@ pub fn parse_ussd(d: &[u8]) -> Option<(u8, String)> {
     let data = d.get(3..3 + len).unwrap_or(&d[3..]);
     let ucs2 = dcs & 0x0c == 0x08 || dcs == 0x11 || dcs & 0xf0 == 0x40 && dcs & 0x0c == 0x08;
     let text = if ucs2 {
-        let u: Vec<u16> = data.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let u: Vec<u16> = data
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
         String::from_utf16_lossy(&u)
     } else if dcs & 0x0c == 0x04 {
         String::from_utf8_lossy(data).into_owned()
     } else {
-        unpack7(data, data.len() * 8 / 7, 0).trim_end_matches('\r').to_string()
+        unpack7(data, data.len() * 8 / 7, 0)
+            .trim_end_matches('\r')
+            .to_string()
     };
     Some((state, text))
 }
@@ -371,7 +421,11 @@ pub fn parse_ussd(d: &[u8]) -> Option<(u8, String)> {
 /// Ist die Eingabe ein USSD-/MMI-Code (z. B. `*111#`, `#123*1#`)?
 pub fn is_ussd(s: &str) -> bool {
     let s = s.trim();
-    s.len() >= 2 && (s.starts_with('*') || s.starts_with('#')) && s.ends_with('#') && s.chars().all(|c| c.is_ascii_digit() || c == '*' || c == '#')
+    s.len() >= 2
+        && (s.starts_with('*') || s.starts_with('#'))
+        && s.ends_with('#')
+        && s.chars()
+            .all(|c| c.is_ascii_digit() || c == '*' || c == '#')
 }
 
 /// Text sicher für eine Zeile kodieren (Hex von UTF-8).
@@ -380,7 +434,11 @@ pub fn hex(s: &str) -> String {
 }
 
 pub fn unhex(s: &str) -> String {
-    let b: Vec<u8> = s.as_bytes().chunks(2).filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect();
+    let b: Vec<u8> = s
+        .as_bytes()
+        .chunks(2)
+        .filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok())
+        .collect();
     String::from_utf8_lossy(&b).into_owned()
 }
 
@@ -389,7 +447,10 @@ mod tests {
     use super::*;
 
     fn h(s: &str) -> Vec<u8> {
-        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 
     #[test]
@@ -460,7 +521,10 @@ mod tests {
     #[test]
     fn waehlen() {
         let b = build_outgoing("+963944123456");
-        assert_eq!((b.len(), b[0], b[1], b[3], b[4]), (92, 0x00, 0x01, 13, 0x11));
+        assert_eq!(
+            (b.len(), b[0], b[1], b[3], b[4]),
+            (92, 0x00, 0x01, 13, 0x11)
+        );
         assert_eq!(&b[5..18], b"+963944123456");
         let b = build_outgoing("0992762987");
         assert_eq!((b[3], b[4]), (10, 0x21));

@@ -34,7 +34,12 @@ fn png_groesse(p: &str) -> Option<(u32, u32)> {
     let f = std::fs::File::open(p).ok()?;
     let mut b = [0u8; 24];
     f.read_exact_at(&mut b, 0).ok()?;
-    (&b[1..4] == b"PNG").then(|| (u32::from_be_bytes(b[16..20].try_into().unwrap()), u32::from_be_bytes(b[20..24].try_into().unwrap())))
+    (&b[1..4] == b"PNG").then(|| {
+        (
+            u32::from_be_bytes(b[16..20].try_into().unwrap()),
+            u32::from_be_bytes(b[20..24].try_into().unwrap()),
+        )
+    })
 }
 
 /// Bildschirmfoto: Oberfläche (SIGUSR1 → /data/ultar/screen.png), sonst Bildspeicher /dev/fb0
@@ -63,7 +68,9 @@ fn fb_foto() -> Result<String, String> {
     let mut fix = [0u8; 80];
     use std::os::fd::AsRawFd;
     unsafe {
-        if libc::ioctl(f.as_raw_fd(), 0x4600, var.as_mut_ptr()) != 0 || libc::ioctl(f.as_raw_fd(), 0x4602, fix.as_mut_ptr()) != 0 {
+        if libc::ioctl(f.as_raw_fd(), 0x4600, var.as_mut_ptr()) != 0
+            || libc::ioctl(f.as_raw_fd(), 0x4602, fix.as_mut_ptr()) != 0
+        {
             return Err("Bildspeicher: ioctl".into());
         }
     }
@@ -75,11 +82,16 @@ fn fb_foto() -> Result<String, String> {
     let (ro, go, bo) = (var[8], var[11], var[14]);
     let yoff = var[5] as usize;
     let mut roh = vec![0u8; line * h];
-    f.read_exact_at(&mut roh, (yoff * line) as u64).map_err(|e| format!("Bildspeicher lesen: {e}"))?;
+    f.read_exact_at(&mut roh, (yoff * line) as u64)
+        .map_err(|e| format!("Bildspeicher lesen: {e}"))?;
     let mut rgb = Vec::with_capacity(w * h * 3);
     for y in 0..h {
         for x in 0..w {
-            let p = u32::from_le_bytes(roh[y * line + x * 4..y * line + x * 4 + 4].try_into().unwrap());
+            let p = u32::from_le_bytes(
+                roh[y * line + x * 4..y * line + x * 4 + 4]
+                    .try_into()
+                    .unwrap(),
+            );
             rgb.extend_from_slice(&[(p >> ro) as u8, (p >> go) as u8, (p >> bo) as u8]);
         }
     }
@@ -88,7 +100,9 @@ fn fb_foto() -> Result<String, String> {
     let mut enc = png::Encoder::new(std::io::BufWriter::new(datei), w as u32, h as u32);
     enc.set_color(png::ColorType::Rgb);
     enc.set_depth(png::BitDepth::Eight);
-    enc.write_header().and_then(|mut wr| wr.write_image_data(&rgb)).map_err(|e| e.to_string())?;
+    enc.write_header()
+        .and_then(|mut wr| wr.write_image_data(&rgb))
+        .map_err(|e| e.to_string())?;
     Ok(format!("{ziel} {w}x{h}\n"))
 }
 
@@ -100,23 +114,34 @@ fn groesse() -> Option<(f32, f32)> {
     let f = std::fs::File::open("/dev/fb0").ok()?;
     let mut var = [0u32; 40];
     use std::os::fd::AsRawFd;
-    (unsafe { libc::ioctl(f.as_raw_fd(), 0x4600, var.as_mut_ptr()) } == 0 && var[0] > 0).then(|| (var[0] as f32, var[1] as f32))
+    (unsafe { libc::ioctl(f.as_raw_fd(), 0x4600, var.as_mut_ptr()) } == 0 && var[0] > 0)
+        .then(|| (var[0] as f32, var[1] as f32))
 }
 
 /// Koordinate: „0.5“ = Anteil, „640“ = Bildpunkt des Fotos
 fn koord(x: &str, y: &str) -> Result<(f32, f32), String> {
-    let (a, b): (f32, f32) = (x.parse().map_err(|_| format!("Zahl? {x}"))?, y.parse().map_err(|_| format!("Zahl? {y}"))?);
+    let (a, b): (f32, f32) = (
+        x.parse().map_err(|_| format!("Zahl? {x}"))?,
+        y.parse().map_err(|_| format!("Zahl? {y}"))?,
+    );
     if a <= 1.0 && b <= 1.0 && (x.contains('.') || y.contains('.')) {
         return Ok((a.clamp(0.0, 1.0), b.clamp(0.0, 1.0)));
     }
-    let (w, h) = groesse().ok_or("Bildschirmgröße unbekannt – erst „bildschirm“ aufrufen oder Anteile (0.0–1.0) angeben")?;
-    Ok(((a / (w - 1.0).max(1.0)).clamp(0.0, 1.0), (b / (h - 1.0).max(1.0)).clamp(0.0, 1.0)))
+    let (w, h) = groesse().ok_or(
+        "Bildschirmgröße unbekannt – erst „bildschirm“ aufrufen oder Anteile (0.0–1.0) angeben",
+    )?;
+    Ok((
+        (a / (w - 1.0).max(1.0)).clamp(0.0, 1.0),
+        (b / (h - 1.0).max(1.0)).clamp(0.0, 1.0),
+    ))
 }
 
 /// Zeile an die Fernbedienung der Oberfläche; false = nicht erreichbar
 fn fern(zeilen: &[String]) -> bool {
     let pfad = format!("{}/shell.fern", run_dir());
-    let Ok(s) = std::os::unix::net::UnixDatagram::unbound() else { return false };
+    let Ok(s) = std::os::unix::net::UnixDatagram::unbound() else {
+        return false;
+    };
     for z in zeilen {
         if s.send_to(z.as_bytes(), &pfad).is_err() {
             return false;
@@ -136,7 +161,10 @@ fn ev(typ: u16, code: u16, wert: i32) -> [u8; 24] {
 }
 
 fn schreibe(dev: &str, evs: &[[u8; 24]]) -> Result<(), String> {
-    let mut f = std::fs::OpenOptions::new().write(true).open(dev).map_err(|e| format!("{dev}: {e}"))?;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .open(dev)
+        .map_err(|e| format!("{dev}: {e}"))?;
     let alles: Vec<u8> = evs.iter().flatten().copied().collect();
     f.write_all(&alles).map_err(|e| format!("{dev}: {e}"))
 }
@@ -145,7 +173,11 @@ const SYN: [u8; 24] = [0; 24];
 
 fn maus_pos(u: f32, v: f32) -> Result<Vec<[u8; 24]>, String> {
     let (w, h) = groesse().ok_or("Bildschirmgröße unbekannt")?;
-    Ok(vec![ev(3, 0, (u * (w - 1.0)).round() as i32), ev(3, 1, (v * (h - 1.0)).round() as i32), SYN])
+    Ok(vec![
+        ev(3, 0, (u * (w - 1.0)).round() as i32),
+        ev(3, 1, (v * (h - 1.0)).round() as i32),
+        SYN,
+    ])
 }
 
 fn ev_tippen(u: f32, v: f32) -> Result<(), String> {
@@ -164,17 +196,26 @@ fn ev_wischen(a: (f32, f32), b: (f32, f32), ms: u64) -> Result<(), String> {
     for i in 1..=n {
         let t = i as f32 / n as f32;
         std::thread::sleep(Duration::from_millis(ms / n));
-        schreibe("/dev/input/event0", &maus_pos(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)?)?;
+        schreibe(
+            "/dev/input/event0",
+            &maus_pos(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)?,
+        )?;
     }
     schreibe("/dev/input/event0", &[ev(1, 0x110, 0), SYN])
 }
 
 /// Belegung der Hardware-Tastatur wie die Oberfläche sie gemerkt hat (/data/ultar/tastatur), sonst nach Systemsprache
 fn deutsch() -> bool {
-    match std::fs::read_to_string("/data/ultar/tastatur").ok().as_deref().map(str::trim) {
+    match std::fs::read_to_string("/data/ultar/tastatur")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+    {
         Some("de") => true,
         Some("us") | Some("en") => false,
-        _ => std::fs::read_to_string("/data/ultar/settings.toml").map(|s| s.contains("lang = \"de\"")).unwrap_or(false),
+        _ => std::fs::read_to_string("/data/ultar/settings.toml")
+            .map(|s| s.contains("lang = \"de\""))
+            .unwrap_or(false),
     }
 }
 
@@ -188,8 +229,18 @@ enum Mod {
 
 /// Zeichen → Linux-Tastencode + Umschalter (US- oder deutsche Belegung, wie die Oberfläche sie auswertet)
 fn zeichen_code(c: char, de: bool) -> Option<(u16, Mod)> {
-    const US: [(u16, &str, &str); 4] = [(2, "1234567890-=", "!@#$%^&*()_+"), (16, "qwertyuiop[]", "QWERTYUIOP{}"), (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"), (44, "zxcvbnm,./", "ZXCVBNM<>?")];
-    const DE: [(u16, &str, &str); 4] = [(2, "1234567890ß´", "!\"§$%&/()=?`"), (16, "qwertzuiopü+", "QWERTZUIOPÜ*"), (30, "asdfghjklöä^", "ASDFGHJKLÖÄ°"), (44, "yxcvbnm,.-", "YXCVBNM;:_")];
+    const US: [(u16, &str, &str); 4] = [
+        (2, "1234567890-=", "!@#$%^&*()_+"),
+        (16, "qwertyuiop[]", "QWERTYUIOP{}"),
+        (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"),
+        (44, "zxcvbnm,./", "ZXCVBNM<>?"),
+    ];
+    const DE: [(u16, &str, &str); 4] = [
+        (2, "1234567890ß´", "!\"§$%&/()=?`"),
+        (16, "qwertzuiopü+", "QWERTZUIOPÜ*"),
+        (30, "asdfghjklöä^", "ASDFGHJKLÖÄ°"),
+        (44, "yxcvbnm,.-", "YXCVBNM;:_"),
+    ];
     match c {
         '\n' => return Some((28, Mod::Keine)),
         ' ' => return Some((57, Mod::Keine)),

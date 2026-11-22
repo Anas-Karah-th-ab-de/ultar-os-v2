@@ -35,15 +35,132 @@ pub struct Entry {
 /// Qwen3: sehr gut bei Werkzeugaufrufen (JSON) und mehrsprachig (Arabisch/Deutsch/Englisch).
 /// Bilder: Projektor (mmproj) aus ggml-org, passend zu llama.cpp-mtmd.
 pub const CATALOG: &[Entry] = &[
-    Entry { id: "qwen3-0.6b", name: "Qwen3 0.6B", role: "chat", vision: false, hf_repo: "unsloth/Qwen3-0.6B-GGUF", hf_file: "Qwen3-0.6B-Q4_K_M.gguf", hf_mmproj: "", ollama: "qwen3:0.6b", size_mb: 400, ram_mb: 900, langs: "ar en de +100", note: "fast, simple commands" },
-    Entry { id: "qwen3-1.7b", name: "Qwen3 1.7B", role: "chat", vision: false, hf_repo: "unsloth/Qwen3-1.7B-GGUF", hf_file: "Qwen3-1.7B-Q4_K_M.gguf", hf_mmproj: "", ollama: "qwen3:1.7b", size_mb: 1100, ram_mb: 1800, langs: "ar en de +100", note: "good tool use on phones" },
-    Entry { id: "qwen3-4b", name: "Qwen3 4B", role: "chat", vision: false, hf_repo: "unsloth/Qwen3-4B-GGUF", hf_file: "Qwen3-4B-Q4_K_M.gguf", hf_mmproj: "", ollama: "qwen3:4b", size_mb: 2500, ram_mb: 3600, langs: "ar en de +100", note: "smart, phones with 8 GB+" },
-    Entry { id: "qwen3-8b", name: "Qwen3 8B", role: "chat", vision: false, hf_repo: "unsloth/Qwen3-8B-GGUF", hf_file: "Qwen3-8B-Q4_K_M.gguf", hf_mmproj: "", ollama: "qwen3:8b", size_mb: 5000, ram_mb: 6500, langs: "ar en de +100", note: "laptop/PC, 16 GB phones" },
-    Entry { id: "qwen3-30b-a3b", name: "Qwen3 30B-A3B (MoE)", role: "chat", vision: false, hf_repo: "unsloth/Qwen3-30B-A3B-GGUF", hf_file: "Qwen3-30B-A3B-Q4_K_M.gguf", hf_mmproj: "", ollama: "qwen3:30b", size_mb: 18600, ram_mb: 22000, langs: "ar en de +100", note: "PC/server 32 GB+, fast for its size (3B active)" },
-    Entry { id: "smolvlm2-500m", name: "SmolVLM2 500M (vision)", role: "vision", vision: true, hf_repo: "ggml-org/SmolVLM2-500M-Video-Instruct-GGUF", hf_file: "SmolVLM2-500M-Video-Instruct-Q8_0.gguf", hf_mmproj: "mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf", ollama: "", size_mb: 540, ram_mb: 1100, langs: "en", note: "sees screen/camera on small phones (English answers)" },
-    Entry { id: "qwen2.5-vl-3b", name: "Qwen2.5-VL 3B (vision)", role: "vision", vision: true, hf_repo: "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF", hf_file: "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf", hf_mmproj: "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf", ollama: "", size_mb: 2700, ram_mb: 4200, langs: "ar en de +", note: "reads screens, documents, Arabic text in images" },
-    Entry { id: "gemma3-4b", name: "Gemma 3 4B (vision)", role: "vision", vision: true, hf_repo: "ggml-org/gemma-3-4b-it-GGUF", hf_file: "gemma-3-4b-it-Q4_K_M.gguf", hf_mmproj: "mmproj-model-f16.gguf", ollama: "", size_mb: 3300, ram_mb: 5000, langs: "ar en de +140", note: "strong multilingual vision" },
-    Entry { id: "qwen2.5-vl-7b", name: "Qwen2.5-VL 7B (vision)", role: "vision", vision: true, hf_repo: "ggml-org/Qwen2.5-VL-7B-Instruct-GGUF", hf_file: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", hf_mmproj: "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf", ollama: "", size_mb: 5500, ram_mb: 8000, langs: "ar en de +", note: "PC: best screen/document understanding" },
+    Entry {
+        id: "qwen3-0.6b",
+        name: "Qwen3 0.6B",
+        role: "chat",
+        vision: false,
+        hf_repo: "unsloth/Qwen3-0.6B-GGUF",
+        hf_file: "Qwen3-0.6B-Q4_K_M.gguf",
+        hf_mmproj: "",
+        ollama: "qwen3:0.6b",
+        size_mb: 400,
+        ram_mb: 900,
+        langs: "ar en de +100",
+        note: "fast, simple commands",
+    },
+    Entry {
+        id: "qwen3-1.7b",
+        name: "Qwen3 1.7B",
+        role: "chat",
+        vision: false,
+        hf_repo: "unsloth/Qwen3-1.7B-GGUF",
+        hf_file: "Qwen3-1.7B-Q4_K_M.gguf",
+        hf_mmproj: "",
+        ollama: "qwen3:1.7b",
+        size_mb: 1100,
+        ram_mb: 1800,
+        langs: "ar en de +100",
+        note: "good tool use on phones",
+    },
+    Entry {
+        id: "qwen3-4b",
+        name: "Qwen3 4B",
+        role: "chat",
+        vision: false,
+        hf_repo: "unsloth/Qwen3-4B-GGUF",
+        hf_file: "Qwen3-4B-Q4_K_M.gguf",
+        hf_mmproj: "",
+        ollama: "qwen3:4b",
+        size_mb: 2500,
+        ram_mb: 3600,
+        langs: "ar en de +100",
+        note: "smart, phones with 8 GB+",
+    },
+    Entry {
+        id: "qwen3-8b",
+        name: "Qwen3 8B",
+        role: "chat",
+        vision: false,
+        hf_repo: "unsloth/Qwen3-8B-GGUF",
+        hf_file: "Qwen3-8B-Q4_K_M.gguf",
+        hf_mmproj: "",
+        ollama: "qwen3:8b",
+        size_mb: 5000,
+        ram_mb: 6500,
+        langs: "ar en de +100",
+        note: "laptop/PC, 16 GB phones",
+    },
+    Entry {
+        id: "qwen3-30b-a3b",
+        name: "Qwen3 30B-A3B (MoE)",
+        role: "chat",
+        vision: false,
+        hf_repo: "unsloth/Qwen3-30B-A3B-GGUF",
+        hf_file: "Qwen3-30B-A3B-Q4_K_M.gguf",
+        hf_mmproj: "",
+        ollama: "qwen3:30b",
+        size_mb: 18600,
+        ram_mb: 22000,
+        langs: "ar en de +100",
+        note: "PC/server 32 GB+, fast for its size (3B active)",
+    },
+    Entry {
+        id: "smolvlm2-500m",
+        name: "SmolVLM2 500M (vision)",
+        role: "vision",
+        vision: true,
+        hf_repo: "ggml-org/SmolVLM2-500M-Video-Instruct-GGUF",
+        hf_file: "SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+        hf_mmproj: "mmproj-SmolVLM2-500M-Video-Instruct-Q8_0.gguf",
+        ollama: "",
+        size_mb: 540,
+        ram_mb: 1100,
+        langs: "en",
+        note: "sees screen/camera on small phones (English answers)",
+    },
+    Entry {
+        id: "qwen2.5-vl-3b",
+        name: "Qwen2.5-VL 3B (vision)",
+        role: "vision",
+        vision: true,
+        hf_repo: "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF",
+        hf_file: "Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf",
+        hf_mmproj: "mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf",
+        ollama: "",
+        size_mb: 2700,
+        ram_mb: 4200,
+        langs: "ar en de +",
+        note: "reads screens, documents, Arabic text in images",
+    },
+    Entry {
+        id: "gemma3-4b",
+        name: "Gemma 3 4B (vision)",
+        role: "vision",
+        vision: true,
+        hf_repo: "ggml-org/gemma-3-4b-it-GGUF",
+        hf_file: "gemma-3-4b-it-Q4_K_M.gguf",
+        hf_mmproj: "mmproj-model-f16.gguf",
+        ollama: "",
+        size_mb: 3300,
+        ram_mb: 5000,
+        langs: "ar en de +140",
+        note: "strong multilingual vision",
+    },
+    Entry {
+        id: "qwen2.5-vl-7b",
+        name: "Qwen2.5-VL 7B (vision)",
+        role: "vision",
+        vision: true,
+        hf_repo: "ggml-org/Qwen2.5-VL-7B-Instruct-GGUF",
+        hf_file: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+        hf_mmproj: "mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf",
+        ollama: "",
+        size_mb: 5500,
+        ram_mb: 8000,
+        langs: "ar en de +",
+        note: "PC: best screen/document understanding",
+    },
 ];
 
 pub fn find(id: &str) -> Option<&'static Entry> {
@@ -59,7 +176,8 @@ pub fn gpu() -> Option<String> {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
             if n.starts_with("card") && !n.contains('-') {
-                let vendor = std::fs::read_to_string(e.path().join("device/vendor")).unwrap_or_default();
+                let vendor =
+                    std::fs::read_to_string(e.path().join("device/vendor")).unwrap_or_default();
                 match vendor.trim() {
                     "0x1002" => return Some("amd".into()),
                     "0x8086" => return Some("intel".into()),
@@ -91,7 +209,8 @@ pub fn recommend(p: &Profile) -> Recommendation {
     let gb = p.mem_total as f64 / 1e9;
     let slow_arm = p.arch == "aarch64" && !p.simd.contains("dotprod");
     let g = gpu();
-    let budget_mb = (p.mem_total / 1_000_000) as f64 * if p.kind == Kind::Mobile { 0.45 } else { 0.55 };
+    let budget_mb =
+        (p.mem_total / 1_000_000) as f64 * if p.kind == Kind::Mobile { 0.45 } else { 0.55 };
     let mut chat = "qwen3-0.6b";
     for id in ["qwen3-1.7b", "qwen3-4b", "qwen3-8b", "qwen3-30b-a3b"] {
         let e = find(id).unwrap();
@@ -126,7 +245,14 @@ pub fn recommend(p: &Profile) -> Recommendation {
         why.push_str(&format!(", GPU {gp}"));
     }
     why.push_str(&format!(", {} cores", p.cpus));
-    Recommendation { chat, vision, why, mem_gb: (gb * 10.0).round() / 10.0, cpu: format!("{} {}", p.arch, p.simd), gpu: g }
+    Recommendation {
+        chat,
+        vision,
+        why,
+        mem_gb: (gb * 10.0).round() / 10.0,
+        cpu: format!("{} {}", p.arch, p.simd),
+        gpu: g,
+    }
 }
 
 // ------------------------------------------------------------------ Herunterladen
@@ -135,7 +261,11 @@ pub fn recommend(p: &Profile) -> Recommendation {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Source {
     /// Hugging Face: Repo, Datei, optional Projektor
-    Hf { repo: String, file: String, mmproj: Option<String> },
+    Hf {
+        repo: String,
+        file: String,
+        mmproj: Option<String>,
+    },
     /// Ollama-Bibliothek: Name, Variante (z. B. "qwen3", "1.7b")
     Ollama { name: String, tag: String },
 }
@@ -147,7 +277,13 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
     if let Some(r) = s.strip_prefix("ollama:") {
         let (n, t) = r.split_once(':').unwrap_or((r, "latest"));
         let id = format!("{}-{}", n.replace('/', "-"), t);
-        return Ok((id, Source::Ollama { name: n.into(), tag: t.into() }));
+        return Ok((
+            id,
+            Source::Ollama {
+                name: n.into(),
+                tag: t.into(),
+            },
+        ));
     }
     if let Some(r) = s.strip_prefix("hf:") {
         let (main, mm) = match r.split_once('+') {
@@ -159,14 +295,39 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
             return Err("hf:<user>/<repo>/<file>.gguf[+<mmproj>.gguf]".into());
         }
         let id = parts[2].trim_end_matches(".gguf").to_string();
-        return Ok((id, Source::Hf { repo: format!("{}/{}", parts[0], parts[1]), file: parts[2].into(), mmproj: mm }));
+        return Ok((
+            id,
+            Source::Hf {
+                repo: format!("{}/{}", parts[0], parts[1]),
+                file: parts[2].into(),
+                mmproj: mm,
+            },
+        ));
     }
     if s.starts_with("https://huggingface.co/") && s.contains("/resolve/") {
         let rest = s.trim_start_matches("https://huggingface.co/");
         let (repo, file) = rest.split_once("/resolve/").ok_or("bad URL")?;
-        let file = file.split_once('/').map(|(_, f)| f).unwrap_or(file).split('?').next().unwrap_or("");
-        let id = file.rsplit('/').next().unwrap_or(file).trim_end_matches(".gguf").to_string();
-        return Ok((id, Source::Hf { repo: repo.into(), file: file.into(), mmproj: None }));
+        let file = file
+            .split_once('/')
+            .map(|(_, f)| f)
+            .unwrap_or(file)
+            .split('?')
+            .next()
+            .unwrap_or("");
+        let id = file
+            .rsplit('/')
+            .next()
+            .unwrap_or(file)
+            .trim_end_matches(".gguf")
+            .to_string();
+        return Ok((
+            id,
+            Source::Hf {
+                repo: repo.into(),
+                file: file.into(),
+                mmproj: None,
+            },
+        ));
     }
     let (id, via_ollama) = match s.split_once('@') {
         Some((a, "ollama")) => (a, true),
@@ -176,12 +337,28 @@ pub fn parse_spec(spec: &str) -> Result<(String, Source), String> {
     let e = find(id).ok_or_else(|| format!("unknown model {id} – see `ultar-llm catalog`"))?;
     if via_ollama {
         if e.ollama.is_empty() {
-            return Err(format!("{} is not in the Ollama library – use Hugging Face", e.name));
+            return Err(format!(
+                "{} is not in the Ollama library – use Hugging Face",
+                e.name
+            ));
         }
         let (n, t) = e.ollama.split_once(':').unwrap_or((e.ollama, "latest"));
-        return Ok((e.id.into(), Source::Ollama { name: n.into(), tag: t.into() }));
+        return Ok((
+            e.id.into(),
+            Source::Ollama {
+                name: n.into(),
+                tag: t.into(),
+            },
+        ));
     }
-    Ok((e.id.into(), Source::Hf { repo: e.hf_repo.into(), file: e.hf_file.into(), mmproj: (!e.hf_mmproj.is_empty()).then(|| e.hf_mmproj.to_string()) }))
+    Ok((
+        e.id.into(),
+        Source::Hf {
+            repo: e.hf_repo.into(),
+            file: e.hf_file.into(),
+            mmproj: (!e.hf_mmproj.is_empty()).then(|| e.hf_mmproj.to_string()),
+        },
+    ))
 }
 
 fn hf_base() -> String {
@@ -192,15 +369,29 @@ fn ollama_base() -> String {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(20)).timeout_read(Duration::from_secs(60)).redirects(8).user_agent("ultar-llm (Ultar OS, KM Code Craft)").build()
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(20))
+        .timeout_read(Duration::from_secs(60))
+        .redirects(8)
+        .user_agent("ultar-llm (Ultar OS, KM Code Craft)")
+        .build()
 }
 
 /// Fortschritt: (Datei, geladen, gesamt)
 pub type Progress<'a> = &'a mut dyn FnMut(&str, u64, u64);
 
 /// Eine Datei laden (fortsetzbar über `<ziel>.part`), optional SHA-256 prüfen.
-fn fetch(url: &str, dest: &Path, sha256: Option<&str>, label: &str, prog: Progress) -> Result<u64, String> {
-    let part = dest.with_extension(format!("{}.part", dest.extension().and_then(|e| e.to_str()).unwrap_or("bin")));
+fn fetch(
+    url: &str,
+    dest: &Path,
+    sha256: Option<&str>,
+    label: &str,
+    prog: Progress,
+) -> Result<u64, String> {
+    let part = dest.with_extension(format!(
+        "{}.part",
+        dest.extension().and_then(|e| e.to_str()).unwrap_or("bin")
+    ));
     let mut have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
     let a = agent();
     let mut req = a.get(url);
@@ -214,27 +405,41 @@ fn fetch(url: &str, dest: &Path, sha256: Option<&str>, label: &str, prog: Progre
             std::fs::rename(&part, dest).map_err(|e| e.to_string())?;
             return Ok(have);
         }
-        Err(ureq::Error::Status(c, r)) => return Err(format!("{label}: HTTP {c} {}", r.status_text())),
+        Err(ureq::Error::Status(c, r)) => {
+            return Err(format!("{label}: HTTP {c} {}", r.status_text()))
+        }
         Err(e) => return Err(format!("{label}: {e}")),
     };
     if resp.status() == 200 && have > 0 {
         // Server kann nicht fortsetzen → neu beginnen
         have = 0;
     }
-    let len = resp.header("content-length").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let len = resp
+        .header("content-length")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
     let total = if len > 0 { have + len } else { 0 };
-    let mut f = std::fs::OpenOptions::new().create(true).append(have > 0).write(true).truncate(have == 0).open(&part).map_err(|e| format!("{}: {e}", part.display()))?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(have > 0)
+        .write(true)
+        .truncate(have == 0)
+        .open(&part)
+        .map_err(|e| format!("{}: {e}", part.display()))?;
     let mut r = resp.into_reader();
     let mut buf = vec![0u8; 1 << 20];
     let mut done = have;
     let mut last = Instant::now();
     prog(label, done, total);
     loop {
-        let n = r.read(&mut buf).map_err(|e| format!("{label}: {e} (download can be resumed)"))?;
+        let n = r
+            .read(&mut buf)
+            .map_err(|e| format!("{label}: {e} (download can be resumed)"))?;
         if n == 0 {
             break;
         }
-        f.write_all(&buf[..n]).map_err(|e| format!("{}: {e}", part.display()))?;
+        f.write_all(&buf[..n])
+            .map_err(|e| format!("{}: {e}", part.display()))?;
         done += n as u64;
         if last.elapsed() > Duration::from_millis(400) {
             prog(label, done, total);
@@ -244,7 +449,9 @@ fn fetch(url: &str, dest: &Path, sha256: Option<&str>, label: &str, prog: Progre
     f.sync_all().ok();
     drop(f);
     if total > 0 && done < total {
-        return Err(format!("{label}: incomplete ({done}/{total}), run again to resume"));
+        return Err(format!(
+            "{label}: incomplete ({done}/{total}), run again to resume"
+        ));
     }
     if let Some(want) = sha256 {
         prog(&format!("{label} (SHA-256)"), done, total);
@@ -282,7 +489,11 @@ fn hf_sha(url: &str) -> Option<String> {
     let r = agent().head(url).call().ok()?;
     for k in ["x-linked-etag", "etag"] {
         if let Some(v) = r.header(k) {
-            let v = v.trim_matches('"').trim_start_matches("W/").trim_matches('"').to_string();
+            let v = v
+                .trim_matches('"')
+                .trim_start_matches("W/")
+                .trim_matches('"')
+                .to_string();
             if v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Some(v);
             }
@@ -312,7 +523,11 @@ pub fn pull(spec: &str, dir: &str, prog: Progress) -> Result<Pulled, String> {
             let url = format!("{}/{repo}/resolve/main/{file}", hf_base());
             if let Some(e) = find(&id) {
                 if free > 0 && free < e.size_mb * 1_100_000 {
-                    return Err(format!("not enough storage: {} MB free, {} MB needed", free >> 20, e.size_mb));
+                    return Err(format!(
+                        "not enough storage: {} MB free, {} MB needed",
+                        free >> 20,
+                        e.size_mb
+                    ));
                 }
             }
             let sha = hf_sha(&url);
@@ -329,43 +544,89 @@ pub fn pull(spec: &str, dir: &str, prog: Progress) -> Result<Pulled, String> {
                 }
                 mm = Some(mm_path.to_string_lossy().into_owned());
             }
-            Ok(Pulled { id, model: model.to_string_lossy().into_owned(), mmproj: mm, bytes })
+            Ok(Pulled {
+                id,
+                model: model.to_string_lossy().into_owned(),
+                mmproj: mm,
+                bytes,
+            })
         }
         Source::Ollama { name, tag } => {
-            let lib = if name.contains('/') { name.clone() } else { format!("library/{name}") };
+            let lib = if name.contains('/') {
+                name.clone()
+            } else {
+                format!("library/{name}")
+            };
             let murl = format!("{}/v2/{lib}/manifests/{tag}", ollama_base());
             let man: serde_json::Value = agent()
                 .get(&murl)
-                .set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+                .set(
+                    "Accept",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                )
                 .call()
                 .map_err(|e| format!("Ollama manifest {name}:{tag}: {e}"))?
                 .into_json()
                 .map_err(|e| format!("Ollama manifest: {e}"))?;
             let layers = man["layers"].as_array().cloned().unwrap_or_default();
-            let pick = |t: &str| layers.iter().find(|l| l["mediaType"].as_str() == Some(t)).and_then(|l| Some((l["digest"].as_str()?.to_string(), l["size"].as_u64().unwrap_or(0))));
-            let (dg, size) = pick("application/vnd.ollama.image.model").ok_or("Ollama: no model layer")?;
+            let pick = |t: &str| {
+                layers
+                    .iter()
+                    .find(|l| l["mediaType"].as_str() == Some(t))
+                    .and_then(|l| {
+                        Some((
+                            l["digest"].as_str()?.to_string(),
+                            l["size"].as_u64().unwrap_or(0),
+                        ))
+                    })
+            };
+            let (dg, size) =
+                pick("application/vnd.ollama.image.model").ok_or("Ollama: no model layer")?;
             if free > 0 && free < size + size / 10 {
-                return Err(format!("not enough storage: {} MB free, {} MB needed", free >> 20, size >> 20));
+                return Err(format!(
+                    "not enough storage: {} MB free, {} MB needed",
+                    free >> 20,
+                    size >> 20
+                ));
             }
             let mut bytes = 0;
             if !model.exists() {
-                bytes += fetch(&format!("{}/v2/{lib}/blobs/{dg}", ollama_base()), &model, Some(&dg), &format!("{name}:{tag}"), prog)?;
+                bytes += fetch(
+                    &format!("{}/v2/{lib}/blobs/{dg}", ollama_base()),
+                    &model,
+                    Some(&dg),
+                    &format!("{name}:{tag}"),
+                    prog,
+                )?;
             }
             let mut mm = None;
             if let Some((pd, _)) = pick("application/vnd.ollama.image.projector") {
                 if !mm_path.exists() {
-                    bytes += fetch(&format!("{}/v2/{lib}/blobs/{pd}", ollama_base()), &mm_path, Some(&pd), &format!("{name}:{tag} projector"), prog)?;
+                    bytes += fetch(
+                        &format!("{}/v2/{lib}/blobs/{pd}", ollama_base()),
+                        &mm_path,
+                        Some(&pd),
+                        &format!("{name}:{tag} projector"),
+                        prog,
+                    )?;
                 }
                 mm = Some(mm_path.to_string_lossy().into_owned());
             }
-            Ok(Pulled { id, model: model.to_string_lossy().into_owned(), mmproj: mm, bytes })
+            Ok(Pulled {
+                id,
+                model: model.to_string_lossy().into_owned(),
+                mmproj: mm,
+                bytes,
+            })
         }
     }
 }
 
 /// Freier Platz im Dateisystem (Bytes), 0 = unbekannt
 pub fn free_space(dir: &str) -> u64 {
-    let Ok(c) = std::ffi::CString::new(dir) else { return 0 };
+    let Ok(c) = std::ffi::CString::new(dir) else {
+        return 0;
+    };
     let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statvfs(c.as_ptr(), &mut s) } != 0 {
         return 0;
@@ -385,7 +646,12 @@ pub fn mmproj_for(model_path: &str) -> Option<String> {
             return Some(q.to_string_lossy().into_owned());
         }
     }
-    let base = stem.split(['-', '.']).take(2).collect::<Vec<_>>().join("-").to_ascii_lowercase();
+    let base = stem
+        .split(['-', '.'])
+        .take(2)
+        .collect::<Vec<_>>()
+        .join("-")
+        .to_ascii_lowercase();
     let rd = std::fs::read_dir(dir).ok()?;
     for e in rd.flatten() {
         let n = e.file_name().to_string_lossy().to_ascii_lowercase();
@@ -402,7 +668,15 @@ mod tests {
     use crate::platform::Kind;
 
     fn prof(gb: f64, kind: Kind, arch: &'static str, simd: &str) -> Profile {
-        Profile { kind, arch, cpus: 8, cores: 8, big_cpus: vec![], simd: simd.into(), mem_total: (gb * 1e9) as u64 }
+        Profile {
+            kind,
+            arch,
+            cpus: 8,
+            cores: 8,
+            big_cpus: vec![],
+            simd: simd.into(),
+            mem_total: (gb * 1e9) as u64,
+        }
     }
 
     #[test]
@@ -411,7 +685,10 @@ mod tests {
         let r = recommend(&prof(3.7, Kind::Mobile, "aarch64", "neon"));
         assert_eq!(r.chat, "qwen3-0.6b");
         assert_eq!(r.vision, Some("smolvlm2-500m"));
-        assert_eq!(recommend(&prof(1.5, Kind::Mobile, "aarch64", "neon")).vision, None);
+        assert_eq!(
+            recommend(&prof(1.5, Kind::Mobile, "aarch64", "neon")).vision,
+            None
+        );
         let r = recommend(&prof(4.0, Kind::Mobile, "aarch64", "neon"));
         assert_eq!(r.chat, "qwen3-1.7b");
         // OnePlus 15 (16 GB, mit dotprod/i8mm)
@@ -428,12 +705,34 @@ mod tests {
 
     #[test]
     fn angaben() {
-        assert_eq!(parse_spec("qwen3-1.7b").unwrap().1, Source::Hf { repo: "unsloth/Qwen3-1.7B-GGUF".into(), file: "Qwen3-1.7B-Q4_K_M.gguf".into(), mmproj: None });
-        assert_eq!(parse_spec("qwen3-1.7b@ollama").unwrap().1, Source::Ollama { name: "qwen3".into(), tag: "1.7b".into() });
+        assert_eq!(
+            parse_spec("qwen3-1.7b").unwrap().1,
+            Source::Hf {
+                repo: "unsloth/Qwen3-1.7B-GGUF".into(),
+                file: "Qwen3-1.7B-Q4_K_M.gguf".into(),
+                mmproj: None
+            }
+        );
+        assert_eq!(
+            parse_spec("qwen3-1.7b@ollama").unwrap().1,
+            Source::Ollama {
+                name: "qwen3".into(),
+                tag: "1.7b".into()
+            }
+        );
         assert!(parse_spec("gemma3-4b@ollama").is_err());
-        let (id, s) = parse_spec("hf:ggml-org/gemma-3-4b-it-GGUF/gemma-3-4b-it-Q4_K_M.gguf+mmproj-model-f16.gguf").unwrap();
+        let (id, s) = parse_spec(
+            "hf:ggml-org/gemma-3-4b-it-GGUF/gemma-3-4b-it-Q4_K_M.gguf+mmproj-model-f16.gguf",
+        )
+        .unwrap();
         assert_eq!(id, "gemma-3-4b-it-Q4_K_M");
-        assert!(matches!(s, Source::Hf { mmproj: Some(_), .. }));
+        assert!(matches!(
+            s,
+            Source::Hf {
+                mmproj: Some(_),
+                ..
+            }
+        ));
         let (id, _) = parse_spec("https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf?download=true").unwrap();
         assert_eq!(id, "Qwen3-4B-Q4_K_M");
         assert_eq!(parse_spec("ollama:llama3.2:3b").unwrap().0, "llama3.2-3b");
@@ -446,7 +745,12 @@ mod tests {
         use std::net::TcpListener;
         let model: Vec<u8> = [b"GGUF".as_slice(), &vec![7u8; 300_000]].concat();
         let proj: Vec<u8> = [b"GGUF".as_slice(), &vec![9u8; 1000]].concat();
-        let dg = |d: &[u8]| -> String { Sha256::digest(d).iter().map(|b| format!("{b:02x}")).collect() };
+        let dg = |d: &[u8]| -> String {
+            Sha256::digest(d)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect()
+        };
         let (md, pd) = (dg(&model), dg(&proj));
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
@@ -481,8 +785,16 @@ mod tests {
                 };
                 let mut w = s;
                 let part = &body[range.min(body.len())..];
-                let status = if range > 0 { "206 Partial Content" } else { "200 OK" };
-                let _ = write!(w, "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n", part.len());
+                let status = if range > 0 {
+                    "206 Partial Content"
+                } else {
+                    "200 OK"
+                };
+                let _ = write!(
+                    w,
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
+                    part.len()
+                );
                 if !head {
                     let _ = w.write_all(part);
                 }
@@ -504,7 +816,10 @@ mod tests {
         let r = pull("ollama:qwen3:1.7b", &d, &mut |_, _, _| {}).unwrap();
         assert_eq!(std::fs::read(&r.model).unwrap(), model);
         assert_eq!(std::fs::read(r.mmproj.unwrap()).unwrap(), proj);
-        assert_eq!(mmproj_for(&r.model).as_deref(), Some(dir.join("mmproj-qwen3-1.7b.gguf").to_str().unwrap()));
+        assert_eq!(
+            mmproj_for(&r.model).as_deref(),
+            Some(dir.join("mmproj-qwen3-1.7b.gguf").to_str().unwrap())
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

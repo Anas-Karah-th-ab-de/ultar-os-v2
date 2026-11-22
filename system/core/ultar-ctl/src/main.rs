@@ -5,12 +5,19 @@ use std::os::unix::net::UnixStream;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = if args.is_empty() { "status".to_string() } else { args.join(" ") };
+    let cmd = if args.is_empty() {
+        "status".to_string()
+    } else {
+        args.join(" ")
+    };
     let path = std::env::var("ULTAR_CTL_SOCK").unwrap_or_else(|_| "/run/ultar/ctl.sock".into());
     let mut s = match UnixStream::connect(&path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("ultar-ctl: {}", ultar_sprache::tr(&format!("keine Verbindung zu {path}: {e}")));
+            eprintln!(
+                "ultar-ctl: {}",
+                ultar_sprache::tr(&format!("keine Verbindung zu {path}: {e}"))
+            );
             std::process::exit(2);
         }
     };

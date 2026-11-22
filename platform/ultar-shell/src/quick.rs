@@ -2,9 +2,12 @@
 //! WLAN/Bluetooth/Flugmodus wirken über rfkill; mobile Daten über rmnet (sobald Modem aktiv);
 //! Taschenlampe über die Kamera-LED (/sys/class/leds/*torch*|*flash*).
 
-
 fn rfkill_blocked(kind: &str) -> bool {
-    let key: &'static str = match kind { "wlan" => "rfk_wlan", "bluetooth" => "rfk_bt", _ => return rfkill_blocked_raw(kind) };
+    let key: &'static str = match kind {
+        "wlan" => "rfk_wlan",
+        "bluetooth" => "rfk_bt",
+        _ => return rfkill_blocked_raw(kind),
+    };
     let k = kind.to_string();
     crate::sys::memo(key, 800, move || rfkill_blocked_raw(&k))
 }
@@ -12,8 +15,14 @@ fn rfkill_blocked_raw(kind: &str) -> bool {
     if let Ok(rd) = std::fs::read_dir("/sys/class/rfkill") {
         for e in rd.flatten() {
             let p = e.path();
-            if std::fs::read_to_string(p.join("type")).unwrap_or_default().trim() == kind {
-                return std::fs::read_to_string(p.join("soft")).map(|s| s.trim() == "1").unwrap_or(false);
+            if std::fs::read_to_string(p.join("type"))
+                .unwrap_or_default()
+                .trim()
+                == kind
+            {
+                return std::fs::read_to_string(p.join("soft"))
+                    .map(|s| s.trim() == "1")
+                    .unwrap_or(false);
             }
         }
     }
@@ -25,7 +34,12 @@ fn rfkill_set(kind: &str, on: bool) {
     if let Ok(rd) = std::fs::read_dir("/sys/class/rfkill") {
         for e in rd.flatten() {
             let p = e.path();
-            if kind == "any" || std::fs::read_to_string(p.join("type")).unwrap_or_default().trim() == kind {
+            if kind == "any"
+                || std::fs::read_to_string(p.join("type"))
+                    .unwrap_or_default()
+                    .trim()
+                    == kind
+            {
                 let _ = std::fs::write(p.join("soft"), soft);
             }
         }
@@ -50,18 +64,35 @@ pub fn set_wifi(on: bool) {
 /// Geräte ohne rfkill (A30): Schalter als Datei, ausgewertet vom Bluetooth-Bildschirm/-Dienst.
 const BT_FLAG: &str = "/data/ultar/bt.on";
 fn has_rfkill(kind: &str) -> bool {
-    let key: &'static str = match kind { "wlan" => "has_wlan", "bluetooth" => "has_bt", _ => return has_rfkill_raw(kind) };
+    let key: &'static str = match kind {
+        "wlan" => "has_wlan",
+        "bluetooth" => "has_bt",
+        _ => return has_rfkill_raw(kind),
+    };
     let k = kind.to_string();
     crate::sys::memo(key, 10_000, move || has_rfkill_raw(&k))
 }
 fn has_rfkill_raw(kind: &str) -> bool {
-    std::fs::read_dir("/sys/class/rfkill").map(|rd| rd.flatten().any(|e| std::fs::read_to_string(e.path().join("type")).unwrap_or_default().trim() == kind)).unwrap_or(false)
+    std::fs::read_dir("/sys/class/rfkill")
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                std::fs::read_to_string(e.path().join("type"))
+                    .unwrap_or_default()
+                    .trim()
+                    == kind
+            })
+        })
+        .unwrap_or(false)
 }
 pub fn bt_on() -> bool {
     crate::sys::memo("q_bt_on", 800, bt_on_raw)
 }
 fn bt_on_raw() -> bool {
-    if has_rfkill("bluetooth") { !rfkill_blocked("bluetooth") } else { std::path::Path::new(BT_FLAG).exists() }
+    if has_rfkill("bluetooth") {
+        !rfkill_blocked("bluetooth")
+    } else {
+        std::path::Path::new(BT_FLAG).exists()
+    }
 }
 pub fn set_bt(on: bool) {
     crate::sys::memo_clear();
@@ -82,7 +113,8 @@ pub fn airplane_on() -> bool {
     crate::sys::memo("q_airplane_on", 800, airplane_on_raw)
 }
 fn airplane_on_raw() -> bool {
-    std::path::Path::new(AIRPLANE_FLAG).exists() || (has_rfkill("wlan") && rfkill_blocked("wlan") && rfkill_blocked("bluetooth"))
+    std::path::Path::new(AIRPLANE_FLAG).exists()
+        || (has_rfkill("wlan") && rfkill_blocked("wlan") && rfkill_blocked("bluetooth"))
 }
 pub fn set_airplane(on: bool) {
     crate::sys::memo_clear();
@@ -170,7 +202,13 @@ pub fn set_torch(on: bool) {
         return;
     }
     if let Some(p) = torch_node() {
-        let max = std::fs::read_to_string(p.join("max_brightness")).ok().and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(1);
-        let _ = std::fs::write(p.join("brightness"), if on { max.to_string() } else { "0".into() });
+        let max = std::fs::read_to_string(p.join("max_brightness"))
+            .ok()
+            .and_then(|s| s.trim().parse::<i32>().ok())
+            .unwrap_or(1);
+        let _ = std::fs::write(
+            p.join("brightness"),
+            if on { max.to_string() } else { "0".into() },
+        );
     }
 }

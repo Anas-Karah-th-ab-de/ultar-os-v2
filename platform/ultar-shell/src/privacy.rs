@@ -49,10 +49,17 @@ pub fn allowed(set: &Settings, cap: Cap) -> bool {
 
 /// Anzahl der gerade gesperrten Gruppen (für die Anzeige).
 pub fn blocked_count(set: &Settings) -> usize {
-    [Cap::Network, Cap::Camera, Cap::Microphone, Cap::Location, Cap::Sensors, Cap::Bluetooth]
-        .iter()
-        .filter(|c| !allowed(set, **c))
-        .count()
+    [
+        Cap::Network,
+        Cap::Camera,
+        Cap::Microphone,
+        Cap::Location,
+        Cap::Sensors,
+        Cap::Bluetooth,
+    ]
+    .iter()
+    .filter(|c| !allowed(set, **c))
+    .count()
 }
 
 /// Zustand aktiv durchsetzen: Netz-Schnittstellen aus/an, Bluetooth per rfkill, Status schreiben.
@@ -63,9 +70,13 @@ pub fn apply(set: &Settings) {
     if let Ok(mut f) = std::fs::File::create("/run/ultar/privacy") {
         let line = format!(
             "all={}\nnet={}\ncam={}\nmic={}\nloc={}\nsensors={}\nbt={}\n",
-            b(set.priv_all), b(allowed(set, Cap::Network)), b(allowed(set, Cap::Camera)),
-            b(allowed(set, Cap::Microphone)), b(allowed(set, Cap::Location)),
-            b(allowed(set, Cap::Sensors)), b(allowed(set, Cap::Bluetooth)),
+            b(set.priv_all),
+            b(allowed(set, Cap::Network)),
+            b(allowed(set, Cap::Camera)),
+            b(allowed(set, Cap::Microphone)),
+            b(allowed(set, Cap::Location)),
+            b(allowed(set, Cap::Sensors)),
+            b(allowed(set, Cap::Bluetooth)),
         );
         let _ = f.write_all(line.as_bytes());
     }
@@ -82,7 +93,11 @@ pub fn apply(set: &Settings) {
 }
 
 fn b(v: bool) -> u8 {
-    if v { 1 } else { 0 }
+    if v {
+        1
+    } else {
+        0
+    }
 }
 
 fn net_ifaces() -> Vec<String> {

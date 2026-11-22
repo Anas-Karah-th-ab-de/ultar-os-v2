@@ -44,7 +44,14 @@ pub struct Desk {
 
 impl Default for Desk {
     fn default() -> Self {
-        Desk { fenster: Vec::new(), start: false, ziel: Ziel::Nichts, next: 1, an: false, innen: false }
+        Desk {
+            fenster: Vec::new(),
+            start: false,
+            ziel: Ziel::Nichts,
+            next: 1,
+            an: false,
+            innen: false,
+        }
     }
 }
 
@@ -62,32 +69,56 @@ impl App {
             Ok("handy") => return false,
             _ => {}
         }
-        if matches!(ultar_edition::current(), ultar_edition::Edition::Desktop | ultar_edition::Edition::Server) {
+        if matches!(
+            ultar_hal_system::current_edition(),
+            ultar_profile::Edition::Desktop | ultar_profile::Edition::Server
+        ) {
             return true;
         }
         ui.w > ui.h && ui.w / ui.k >= 1000.0
     }
 
     fn desk_apps(&self) -> Vec<(Ic, &'static str, Screen)> {
-        self.all_apps().into_iter().filter(|(_, n, _)| !OHNE.contains(n)).filter_map(|(ic, n, s)| s.map(|s| (ic, n, s))).collect()
+        self.all_apps()
+            .into_iter()
+            .filter(|(_, n, _)| !OHNE.contains(n))
+            .filter_map(|(ic, n, s)| s.map(|s| (ic, n, s)))
+            .collect()
     }
 
     /// App in einem neuen Fenster öffnen (oder vorhandenes Fenster derselben App nach vorn holen)
     pub(super) fn desk_oeffnen(&mut self, ui: &Ui, ic: Ic, titel: &str, s: Screen) {
         self.desk.start = false;
-        if let Some(i) = self.desk.fenster.iter().position(|f| f.stack.first().map(|x| &x.0) == Some(&s)) {
+        if let Some(i) = self
+            .desk
+            .fenster
+            .iter()
+            .position(|f| f.stack.first().map(|x| &x.0) == Some(&s))
+        {
             let mut f = self.desk.fenster.remove(i);
             f.min = false;
             self.desk.fenster.push(f);
             return;
         }
         let n = self.desk.fenster.len() as f32;
-        let (w, h) = ((ui.w * 0.62).max(ui.dp(560.0)).min(ui.w - ui.dp(40.0)), (ui.h * 0.74).max(ui.dp(420.0)).min(ui.h - ui.dp(90.0)));
+        let (w, h) = (
+            (ui.w * 0.62).max(ui.dp(560.0)).min(ui.w - ui.dp(40.0)),
+            (ui.h * 0.74).max(ui.dp(420.0)).min(ui.h - ui.dp(90.0)),
+        );
         let x = (ui.w - w) / 2.0 + (n % 6.0 - 2.5) * ui.dp(28.0);
         let y = ((ui.h - ui.dp(52.0) - h) / 2.0 + (n % 6.0 - 2.5) * ui.dp(22.0)).max(ui.dp(8.0));
         let id = self.desk.next;
         self.desk.next += 1;
-        self.desk.fenster.push(Fenster { id, stack: vec![(s, 0.0)], r: Rect::new(x, y, w, h), min: false, max: false, titel: titel.into(), ic, cv: None });
+        self.desk.fenster.push(Fenster {
+            id,
+            stack: vec![(s, 0.0)],
+            r: Rect::new(x, y, w, h),
+            min: false,
+            max: false,
+            titel: titel.into(),
+            ic,
+            cv: None,
+        });
         self.focus = None;
     }
 
@@ -105,7 +136,9 @@ impl App {
             self.desk.start = false;
             return true;
         }
-        let Some(i) = self.desk.fenster.iter().rposition(|f| !f.min) else { return true };
+        let Some(i) = self.desk.fenster.iter().rposition(|f| !f.min) else {
+            return true;
+        };
         std::mem::swap(&mut self.stack, &mut self.desk.fenster[i].stack);
         self.back_stack();
         std::mem::swap(&mut self.stack, &mut self.desk.fenster[i].stack);
@@ -117,7 +150,9 @@ impl App {
         if !self.desk.an && self.desk.fenster.is_empty() {
             if let Ok(v) = std::env::var("ULTAR_DESK_OEFFNEN") {
                 for n in v.split(',') {
-                    if let Some((ic, name, s)) = self.desk_apps().into_iter().find(|a| a.1 == n.trim()) {
+                    if let Some((ic, name, s)) =
+                        self.desk_apps().into_iter().find(|a| a.1 == n.trim())
+                    {
                         let t = self.t(name).to_string();
                         self.desk_oeffnen(ui, ic, &t, s);
                     }
@@ -135,7 +170,12 @@ impl App {
         // Navigation außerhalb eines Fensters (z. B. Benachrichtigung öffnet einen Bildschirm): als Fenster zeigen
         while self.stack.len() > 1 {
             let (s, _) = self.stack.pop().unwrap();
-            let (ic, titel) = self.desk_apps().into_iter().find(|(_, _, x)| *x == s).map(|(ic, n, _)| (ic, self.t(n).to_string())).unwrap_or((Ic::Apps, String::from("Ultar")));
+            let (ic, titel) = self
+                .desk_apps()
+                .into_iter()
+                .find(|(_, _, x)| *x == s)
+                .map(|(ic, n, _)| (ic, self.t(n).to_string()))
+                .unwrap_or((Ic::Apps, String::from("Ultar")));
             self.desk_oeffnen(ui, ic, &titel, s);
         }
         // ---- Ziel der Maus bestimmen (beim Drücken), solange gedrückt bleibt es
@@ -146,12 +186,23 @@ impl App {
                 Ziel::Start
             } else if py >= h - lh {
                 Ziel::Leiste
-            } else if let Some(f) = self.desk.fenster.iter().rev().find(|f| !f.min && f.r.contains(px, py)) {
+            } else if let Some(f) = self
+                .desk
+                .fenster
+                .iter()
+                .rev()
+                .find(|f| !f.min && f.r.contains(px, py))
+            {
                 let id = f.id;
                 let r = f.r;
                 let th = ui.dp(36.0);
                 let ecke = ui.dp(16.0);
-                let in_ecke = py > r.bottom() - ecke && if rtl { px < r.x + ecke } else { px > r.right() - ecke };
+                let in_ecke = py > r.bottom() - ecke
+                    && if rtl {
+                        px < r.x + ecke
+                    } else {
+                        px > r.right() - ecke
+                    };
                 // nach vorn holen
                 if let Some(i) = self.desk.fenster.iter().position(|f| f.id == id) {
                     let f = self.desk.fenster.remove(i);
@@ -162,9 +213,17 @@ impl App {
                 }
                 self.desk.start = false;
                 let knoepfe = ui.dp(3.0 * 40.0);
-                let auf_knopf = if rtl { px < r.x + knoepfe } else { px > r.right() - knoepfe };
+                let auf_knopf = if rtl {
+                    px < r.x + knoepfe
+                } else {
+                    px > r.right() - knoepfe
+                };
                 if in_ecke {
-                    Ziel::Groesse(id, r.w - if rtl { -(px - r.x) } else { px - r.x }, r.h - (py - r.y))
+                    Ziel::Groesse(
+                        id,
+                        r.w - if rtl { -(px - r.x) } else { px - r.x },
+                        r.h - (py - r.y),
+                    )
                 } else if py < r.y + th && !auf_knopf {
                     Ziel::Bewegen(id, px - r.x, py - r.y)
                 } else {
@@ -190,7 +249,11 @@ impl App {
             }
             Ziel::Groesse(id, ow, oh) if ui.p.down => {
                 if let Some(f) = self.desk.fenster.iter_mut().find(|f| f.id == id) {
-                    let rel = if rtl { f.r.right() - ui.p.x } else { ui.p.x - f.r.x };
+                    let rel = if rtl {
+                        f.r.right() - ui.p.x
+                    } else {
+                        ui.p.x - f.r.x
+                    };
                     let neu_w = (rel + ow - f.r.w + f.r.w).max(ui.dp(360.0));
                     let neu_w = neu_w.min(w);
                     if rtl {
@@ -200,7 +263,8 @@ impl App {
                     } else {
                         f.r.w = neu_w;
                     }
-                    f.r.h = (ui.p.y - f.r.y + oh - f.r.h + f.r.h).clamp(ui.dp(260.0), h - lh - f.r.y);
+                    f.r.h =
+                        (ui.p.y - f.r.y + oh - f.r.h + f.r.h).clamp(ui.dp(260.0), h - lh - f.r.y);
                     let _ = (ow, oh);
                 }
                 ui.dirty = true;
@@ -210,28 +274,72 @@ impl App {
 
         // ---- Arbeitsfläche
         ui.set_clip(None);
-        ui.cv.vgrad(Rect::new(0.0, 0.0, w, h), rgb(0x10131A), rgb(0x05060A));
+        ui.cv
+            .vgrad(Rect::new(0.0, 0.0, w, h), rgb(0x10131A), rgb(0x05060A));
         let l = crate::brand::logo();
         let lw = (w.min(h) * 0.34).min(ui.dp(420.0));
         let lhh = lw * l.h as f32 / l.w as f32;
-        ui.cv.image(&l, (w - lw) / 2.0, (h - lh - lhh) / 2.0 - ui.dp(20.0), lw, lhh);
-        ui.cv.rect(Rect::new(0.0, 0.0, w, h - lh), rgb(0x05060A).alpha(0.55));
+        ui.cv.image(
+            &l,
+            (w - lw) / 2.0,
+            (h - lh - lhh) / 2.0 - ui.dp(20.0),
+            lw,
+            lhh,
+        );
+        ui.cv
+            .rect(Rect::new(0.0, 0.0, w, h - lh), rgb(0x05060A).alpha(0.55));
         // Symbole auf der Arbeitsfläche
-        let symbole: Vec<(Ic, &'static str, Screen)> = self.desk_apps().into_iter().filter(|(_, n, _)| ["Files", "Terminal", "Settings", "Ultar Store", "Browser", "KM helper"].contains(n)).collect();
+        let symbole: Vec<(Ic, &'static str, Screen)> = self
+            .desk_apps()
+            .into_iter()
+            .filter(|(_, n, _)| {
+                [
+                    "Files",
+                    "Terminal",
+                    "Settings",
+                    "Ultar Store",
+                    "Browser",
+                    "KM helper",
+                ]
+                .contains(n)
+            })
+            .collect();
         let (sw, shh) = (ui.dp(88.0), ((h - lh - ui.dp(28.0)) / 6.0).min(ui.dp(88.0)));
         let enabled_alt = ui.enabled;
         ui.enabled = ziel == Ziel::Flaeche;
         for (i, (ic, n, s)) in symbole.into_iter().enumerate() {
-            let cell = Rect::new(fx(ui.dp(14.0), sw), ui.dp(14.0) + i as f32 * shh, sw, shh - ui.dp(4.0));
+            let cell = Rect::new(
+                fx(ui.dp(14.0), sw),
+                ui.dp(14.0) + i as f32 * shh,
+                sw,
+                shh - ui.dp(4.0),
+            );
             if ui.held(cell) || cell.contains(ui.p.x, ui.p.y) {
                 ui.cv.rrect(cell, ui.dp(12.0), rgb(0xFFFFFF).alpha(0.07));
             }
-            let ir = Rect::new(cell.cx() - ui.dp(21.0), cell.y + ui.dp(6.0), ui.dp(42.0), ui.dp(42.0));
-            ui.cv.rrect_vgrad(ir, ui.dp(12.0), rgb(0x232733), rgb(0x171A22));
-            let fg = if n == "KM helper" || n == "Ultar Store" { ui.th.accent } else { rgb(0xE8ECF4) };
+            let ir = Rect::new(
+                cell.cx() - ui.dp(21.0),
+                cell.y + ui.dp(6.0),
+                ui.dp(42.0),
+                ui.dp(42.0),
+            );
+            ui.cv
+                .rrect_vgrad(ir, ui.dp(12.0), rgb(0x232733), rgb(0x171A22));
+            let fg = if n == "KM helper" || n == "Ultar Store" {
+                ui.th.accent
+            } else {
+                rgb(0xE8ECF4)
+            };
             ui.icon_w(ic, ir.cx(), ir.cy(), ui.dp(21.0), fg, 1.6);
             let lab = ui.fit(self.t(n), 12.0, false, cell.w - ui.dp(6.0));
-            ui.label(Rect::new(cell.x, ir.bottom() + ui.dp(4.0), cell.w, ui.dp(18.0)), &lab, 12.0, rgb(0xE8ECF4), false, Al::Center);
+            ui.label(
+                Rect::new(cell.x, ir.bottom() + ui.dp(4.0), cell.w, ui.dp(18.0)),
+                &lab,
+                12.0,
+                rgb(0xE8ECF4),
+                false,
+                Al::Center,
+            );
             if ui.tap(cell) {
                 let t = self.t(n).to_string();
                 self.desk_oeffnen(ui, ic, &t, s);
@@ -255,32 +363,89 @@ impl App {
             let r = self.desk.fenster[i].r;
             let th = ui.dp(36.0);
             // Schatten, Rahmen, Titelleiste
-            ui.cv.soft_shadow(r, ui.dp(10.0), rgb(0x000000).alpha(if aktiv { 0.55 } else { 0.35 }));
-            ui.cv.rrect(r, ui.dp(10.0), if aktiv { ui.th.accent.alpha(0.55) } else { rgb(0xFFFFFF).alpha(0.10) });
+            ui.cv.soft_shadow(
+                r,
+                ui.dp(10.0),
+                rgb(0x000000).alpha(if aktiv { 0.55 } else { 0.35 }),
+            );
+            ui.cv.rrect(
+                r,
+                ui.dp(10.0),
+                if aktiv {
+                    ui.th.accent.alpha(0.55)
+                } else {
+                    rgb(0xFFFFFF).alpha(0.10)
+                },
+            );
             ui.cv.rrect(r.inset(1.0), ui.dp(9.0), rgb(0x14171E));
             let tr = Rect::new(r.x + 1.0, r.y + 1.0, r.w - 2.0, th);
-            ui.cv.rect(Rect::new(tr.x, tr.y + ui.dp(9.0), tr.w, th - ui.dp(9.0)), if aktiv { rgb(0x1C2029) } else { rgb(0x171A21) });
-            ui.cv.rrect(Rect::new(tr.x, tr.y, tr.w, ui.dp(20.0)), ui.dp(9.0), if aktiv { rgb(0x1C2029) } else { rgb(0x171A21) });
+            ui.cv.rect(
+                Rect::new(tr.x, tr.y + ui.dp(9.0), tr.w, th - ui.dp(9.0)),
+                if aktiv { rgb(0x1C2029) } else { rgb(0x171A21) },
+            );
+            ui.cv.rrect(
+                Rect::new(tr.x, tr.y, tr.w, ui.dp(20.0)),
+                ui.dp(9.0),
+                if aktiv { rgb(0x1C2029) } else { rgb(0x171A21) },
+            );
             let ic = self.desk.fenster[i].ic;
             let titel = {
                 let f = &self.desk.fenster[i];
                 // Titel: Titel des aktuellen Bildschirms, wenn er nicht die Start-App ist
                 f.titel.clone()
             };
-            let ix = if rtl { tr.right() - ui.dp(22.0) } else { tr.x + ui.dp(22.0) };
+            let ix = if rtl {
+                tr.right() - ui.dp(22.0)
+            } else {
+                tr.x + ui.dp(22.0)
+            };
             ui.icon_w(ic, ix, tr.cy(), ui.dp(16.0), ui.th.accent, 1.6);
-            let tl = Rect::new(if rtl { tr.x + ui.dp(130.0) } else { tr.x + ui.dp(40.0) }, tr.y, tr.w - ui.dp(170.0), th);
-            ui.label(tl, &titel, 13.0, if aktiv { rgb(0xF2F4F8) } else { rgb(0x9AA3B2) }, true, Al::Start);
+            let tl = Rect::new(
+                if rtl {
+                    tr.x + ui.dp(130.0)
+                } else {
+                    tr.x + ui.dp(40.0)
+                },
+                tr.y,
+                tr.w - ui.dp(170.0),
+                th,
+            );
+            ui.label(
+                tl,
+                &titel,
+                13.0,
+                if aktiv { rgb(0xF2F4F8) } else { rgb(0x9AA3B2) },
+                true,
+                Al::Start,
+            );
             // Knöpfe: schließen, maximieren, minimieren (am Ende; Arabisch links)
             let bw = ui.dp(40.0);
-            let mut knopf = |k: usize| Rect::new(if rtl { tr.x + k as f32 * bw } else { tr.right() - (k + 1) as f32 * bw }, tr.y, bw, th);
+            let mut knopf = |k: usize| {
+                Rect::new(
+                    if rtl {
+                        tr.x + k as f32 * bw
+                    } else {
+                        tr.right() - (k + 1) as f32 * bw
+                    },
+                    tr.y,
+                    bw,
+                    th,
+                )
+            };
             let (kz, km, kmin) = (knopf(0), knopf(1), knopf(2));
             let en = ui.enabled;
             ui.enabled = ziel == Ziel::Fenster(self.desk.fenster[i].id);
             for (kr, art) in [(kz, 0), (km, 1), (kmin, 2)] {
                 let hover = kr.contains(ui.p.x, ui.p.y);
                 if hover {
-                    ui.cv.rect(kr.inset(ui.dp(4.0)), if art == 0 { rgb(0xC0392B) } else { rgb(0xFFFFFF).alpha(0.10) });
+                    ui.cv.rect(
+                        kr.inset(ui.dp(4.0)),
+                        if art == 0 {
+                            rgb(0xC0392B)
+                        } else {
+                            rgb(0xFFFFFF).alpha(0.10)
+                        },
+                    );
                 }
                 let c = rgb(0xDDE2EA);
                 let (cx, cy, s) = (kr.cx(), kr.cy(), ui.dp(5.0));
@@ -295,7 +460,9 @@ impl App {
                         ui.cv.line(cx - s, cy - s, cx - s, cy + s, ui.dp(1.4), c);
                         ui.cv.line(cx + s, cy - s, cx + s, cy + s, ui.dp(1.4), c);
                     }
-                    _ => ui.cv.line(cx - s, cy + s * 0.6, cx + s, cy + s * 0.6, ui.dp(1.4), c),
+                    _ => ui
+                        .cv
+                        .line(cx - s, cy + s * 0.6, cx + s, cy + s * 0.6, ui.dp(1.4), c),
                 }
                 if ui.tap(kr) {
                     match art {
@@ -324,9 +491,21 @@ impl App {
                 _ => Canvas::new(cw, chh),
             };
             let mut p2 = if ziel == Ziel::Fenster(self.desk.fenster[i].id) {
-                Ptr { x: ui.p.x - cr.x, y: ui.p.y - cr.y, px: ui.p.px - cr.x, py: ui.p.py - cr.y, ..*ui.p }
+                Ptr {
+                    x: ui.p.x - cr.x,
+                    y: ui.p.y - cr.y,
+                    px: ui.p.px - cr.x,
+                    py: ui.p.py - cr.y,
+                    ..*ui.p
+                }
             } else {
-                Ptr { x: -1e6, y: -1e6, px: -1e6, py: -1e6, ..Ptr::default() }
+                Ptr {
+                    x: -1e6,
+                    y: -1e6,
+                    px: -1e6,
+                    py: -1e6,
+                    ..Ptr::default()
+                }
             };
             // Mausrad nur für das Fenster unter dem Zeiger
             if cr.contains(ui.p.x, ui.p.y) && aktiv {
@@ -336,9 +515,26 @@ impl App {
             }
             let mut dirty = false;
             {
-                let mut u2 = Ui { cv: &mut cv, tx: &mut *ui.tx, p: &mut p2, th: ui.th, k: ui.k, w: cw as f32, h: chh as f32, rtl, enabled: true, focus: self.focus, dirty: false, clip: None, links: Vec::new(), kb: Default::default(), seen: None };
+                let mut u2 = Ui {
+                    cv: &mut cv,
+                    tx: &mut *ui.tx,
+                    p: &mut p2,
+                    th: ui.th,
+                    k: ui.k,
+                    w: cw as f32,
+                    h: chh as f32,
+                    rtl,
+                    enabled: true,
+                    focus: self.focus,
+                    dirty: false,
+                    clip: None,
+                    links: Vec::new(),
+                    kb: Default::default(),
+                    seen: None,
+                };
                 u2.cv.set_clip(None);
-                u2.cv.vgrad(Rect::new(0.0, 0.0, u2.w, u2.h), u2.th.bg, u2.th.bg2);
+                u2.cv
+                    .vgrad(Rect::new(0.0, 0.0, u2.w, u2.h), u2.th.bg, u2.th.bg2);
                 std::mem::swap(&mut self.stack, &mut self.desk.fenster[i].stack);
                 self.desk.innen = true;
                 let fokus_vorher = self.focus;
@@ -374,13 +570,31 @@ impl App {
             }
             ui.dirty |= dirty;
             ui.cv.set_clip(None);
-            ui.cv.blit_xrgb(&cv.px, cw as u32, chh as u32, Rect::new(0.0, 0.0, cw as f32, chh as f32), Rect::new(cr.x.round(), cr.y.round(), cw as f32, chh as f32), false);
+            ui.cv.blit_xrgb(
+                &cv.px,
+                cw as u32,
+                chh as u32,
+                Rect::new(0.0, 0.0, cw as f32, chh as f32),
+                Rect::new(cr.x.round(), cr.y.round(), cw as f32, chh as f32),
+                false,
+            );
             // Griff zum Größe ändern
-            let g = if rtl { (r.x + ui.dp(4.0), r.bottom() - ui.dp(4.0)) } else { (r.right() - ui.dp(4.0), r.bottom() - ui.dp(4.0)) };
+            let g = if rtl {
+                (r.x + ui.dp(4.0), r.bottom() - ui.dp(4.0))
+            } else {
+                (r.right() - ui.dp(4.0), r.bottom() - ui.dp(4.0))
+            };
             let d = if rtl { 1.0 } else { -1.0 };
             for k in 1..=3 {
                 let o = ui.dp(4.0) * k as f32;
-                ui.cv.line(g.0, g.1 - o, g.0 + d * o, g.1, ui.dp(1.0), rgb(0xFFFFFF).alpha(0.25));
+                ui.cv.line(
+                    g.0,
+                    g.1 - o,
+                    g.0 + d * o,
+                    g.1,
+                    ui.dp(1.0),
+                    rgb(0xFFFFFF).alpha(0.25),
+                );
             }
             self.desk.fenster[i].cv = Some(cv);
             // leerer Verlauf (z. B. Zurück in der Start-App) → Fenster schließen
@@ -395,17 +609,29 @@ impl App {
         // ---- Leiste
         let lr = Rect::new(0.0, h - lh, w, lh);
         ui.cv.rect(lr, rgb(0x0C0E13).alpha(0.94));
-        ui.cv.rect(Rect::new(0.0, h - lh, w, 1.0), rgb(0xFFFFFF).alpha(0.08));
+        ui.cv
+            .rect(Rect::new(0.0, h - lh, w, 1.0), rgb(0xFFFFFF).alpha(0.08));
         let en = ui.enabled;
         ui.enabled = ziel == Ziel::Leiste;
         // Start
-        let sr = Rect::new(fx(ui.dp(8.0), ui.dp(44.0)), h - lh + ui.dp(4.0), ui.dp(44.0), ui.dp(44.0));
+        let sr = Rect::new(
+            fx(ui.dp(8.0), ui.dp(44.0)),
+            h - lh + ui.dp(4.0),
+            ui.dp(44.0),
+            ui.dp(44.0),
+        );
         if self.desk.start || sr.contains(ui.p.x, ui.p.y) {
             ui.cv.rrect(sr, ui.dp(10.0), rgb(0xFFFFFF).alpha(0.10));
         }
         let mark = crate::brand::mark();
         let ms = ui.dp(30.0);
-        ui.cv.image(&mark, sr.cx() - ms / 2.0, sr.cy() - ms / 2.0 * mark.h as f32 / mark.w as f32, ms, ms * mark.h as f32 / mark.w as f32);
+        ui.cv.image(
+            &mark,
+            sr.cx() - ms / 2.0,
+            sr.cy() - ms / 2.0 * mark.h as f32 / mark.w as f32,
+            ms,
+            ms * mark.h as f32 / mark.w as f32,
+        );
         if ui.tap(sr) {
             self.desk.start = !self.desk.start;
             if self.desk.start {
@@ -417,26 +643,61 @@ impl App {
         // angeheftete Apps + offene Fenster
         let mut x = ui.dp(64.0);
         let apps = self.desk_apps();
-        let mut eintraege: Vec<(Ic, String, Option<u64>, Option<Screen>)> = LEISTE.iter().filter_map(|n| apps.iter().find(|a| a.1 == *n)).map(|(ic, n, s)| {
-            let offen = self.desk.fenster.iter().find(|f| f.stack.first().map(|x| &x.0) == Some(s)).map(|f| f.id);
-            (*ic, self.t(n).to_string(), offen, Some(s.clone()))
-        }).collect();
+        let mut eintraege: Vec<(Ic, String, Option<u64>, Option<Screen>)> = LEISTE
+            .iter()
+            .filter_map(|n| apps.iter().find(|a| a.1 == *n))
+            .map(|(ic, n, s)| {
+                let offen = self
+                    .desk
+                    .fenster
+                    .iter()
+                    .find(|f| f.stack.first().map(|x| &x.0) == Some(s))
+                    .map(|f| f.id);
+                (*ic, self.t(n).to_string(), offen, Some(s.clone()))
+            })
+            .collect();
         for f in &self.desk.fenster {
             if !eintraege.iter().any(|e| e.2 == Some(f.id)) {
                 eintraege.push((f.ic, f.titel.clone(), Some(f.id), None));
             }
         }
-        let oben_id = self.desk.fenster.iter().rev().find(|f| !f.min).map(|f| f.id);
+        let oben_id = self
+            .desk
+            .fenster
+            .iter()
+            .rev()
+            .find(|f| !f.min)
+            .map(|f| f.id);
         for (ic, titel, offen, s) in eintraege {
-            let br = Rect::new(fx(x, ui.dp(44.0)), h - lh + ui.dp(4.0), ui.dp(44.0), ui.dp(44.0));
+            let br = Rect::new(
+                fx(x, ui.dp(44.0)),
+                h - lh + ui.dp(4.0),
+                ui.dp(44.0),
+                ui.dp(44.0),
+            );
             if br.contains(ui.p.x, ui.p.y) {
                 ui.cv.rrect(br, ui.dp(10.0), rgb(0xFFFFFF).alpha(0.08));
             }
-            ui.icon_w(ic, br.cx(), br.cy() - ui.dp(2.0), ui.dp(20.0), if offen.is_some() { rgb(0xF2F4F8) } else { rgb(0xAAB2C0) }, 1.6);
+            ui.icon_w(
+                ic,
+                br.cx(),
+                br.cy() - ui.dp(2.0),
+                ui.dp(20.0),
+                if offen.is_some() {
+                    rgb(0xF2F4F8)
+                } else {
+                    rgb(0xAAB2C0)
+                },
+                1.6,
+            );
             if let Some(id) = offen {
                 let aktiv = oben_id == Some(id);
                 let bw = if aktiv { ui.dp(18.0) } else { ui.dp(6.0) };
-                ui.cv.rrect(Rect::new(br.cx() - bw / 2.0, br.bottom() - ui.dp(5.0), bw, ui.dp(3.0)), ui.dp(1.5), if aktiv { ui.th.accent } else { rgb(0x8A93A3) });
+                ui.cv.rrect(
+                    Rect::new(br.cx() - bw / 2.0, br.bottom() - ui.dp(5.0), bw, ui.dp(3.0)),
+                    ui.dp(1.5),
+                    if aktiv { ui.th.accent } else { rgb(0x8A93A3) },
+                );
             }
             if ui.tap(br) {
                 match (offen, s) {
@@ -461,16 +722,40 @@ impl App {
         let datum = format!("{:02}.{:02}.{}", dt.d, dt.mo, dt.y);
         let uw = ui.dp(96.0);
         let ur = Rect::new(fx(w - uw - ui.dp(8.0), uw), h - lh, uw, lh);
-        ui.label(Rect::new(ur.x, ur.y + ui.dp(7.0), ur.w, ui.dp(20.0)), &uhr, 14.0, rgb(0xF2F4F8), true, Al::Center);
-        ui.label(Rect::new(ur.x, ur.y + ui.dp(27.0), ur.w, ui.dp(18.0)), &datum, 11.0, rgb(0x9AA3B2), false, Al::Center);
-        let kr = Rect::new(fx(w - uw - ui.dp(60.0), ui.dp(44.0)), h - lh + ui.dp(4.0), ui.dp(44.0), ui.dp(44.0));
+        ui.label(
+            Rect::new(ur.x, ur.y + ui.dp(7.0), ur.w, ui.dp(20.0)),
+            &uhr,
+            14.0,
+            rgb(0xF2F4F8),
+            true,
+            Al::Center,
+        );
+        ui.label(
+            Rect::new(ur.x, ur.y + ui.dp(27.0), ur.w, ui.dp(18.0)),
+            &datum,
+            11.0,
+            rgb(0x9AA3B2),
+            false,
+            Al::Center,
+        );
+        let kr = Rect::new(
+            fx(w - uw - ui.dp(60.0), ui.dp(44.0)),
+            h - lh + ui.dp(4.0),
+            ui.dp(44.0),
+            ui.dp(44.0),
+        );
         let kb = crate::input::belegung_name();
         ui.label(kr, kb, 13.0, rgb(0xDDE2EA), true, Al::Center);
         if ui.tap(kr) {
             crate::input::belegung_weiter();
             ui.dirty = true;
         }
-        let nr = Rect::new(fx(w - uw - ui.dp(104.0), ui.dp(44.0)), h - lh + ui.dp(4.0), ui.dp(44.0), ui.dp(44.0));
+        let nr = Rect::new(
+            fx(w - uw - ui.dp(104.0), ui.dp(44.0)),
+            h - lh + ui.dp(4.0),
+            ui.dp(44.0),
+            ui.dp(44.0),
+        );
         // Akkus angeschlossener Geräte (Maus, Tastatur, Kopfhörer) neben dem Netz
         let mut ax = w - uw - ui.dp(112.0);
         for (name, pct) in crate::sys::geraete_akkus().into_iter().take(3) {
@@ -479,13 +764,39 @@ impl App {
             ax -= tw;
             let ar = Rect::new(fx(ax, tw), h - lh + ui.dp(12.0), tw, ui.dp(28.0));
             ui.cv.rrect(ar, ui.dp(14.0), rgb(0xFFFFFF).alpha(0.06));
-            ui.icon_w(Ic::Bt, if rtl { ar.right() - ui.dp(12.0) } else { ar.x + ui.dp(12.0) }, ar.cy(), ui.dp(12.0), if pct < 20 { rgb(0xE5484D) } else { rgb(0xC8CED8) }, 1.4);
-            let tr = if rtl { Rect::new(ar.x, ar.y, ar.w - ui.dp(22.0), ar.h) } else { Rect::new(ar.x + ui.dp(22.0), ar.y, ar.w - ui.dp(22.0), ar.h) };
+            ui.icon_w(
+                Ic::Bt,
+                if rtl {
+                    ar.right() - ui.dp(12.0)
+                } else {
+                    ar.x + ui.dp(12.0)
+                },
+                ar.cy(),
+                ui.dp(12.0),
+                if pct < 20 {
+                    rgb(0xE5484D)
+                } else {
+                    rgb(0xC8CED8)
+                },
+                1.4,
+            );
+            let tr = if rtl {
+                Rect::new(ar.x, ar.y, ar.w - ui.dp(22.0), ar.h)
+            } else {
+                Rect::new(ar.x + ui.dp(22.0), ar.y, ar.w - ui.dp(22.0), ar.h)
+            };
             ui.label(tr, &t, 11.0, rgb(0xDDE2EA), false, Al::Start);
             ax -= ui.dp(6.0);
         }
         let online = crate::sys::online();
-        ui.icon_w(Ic::Globe, nr.cx(), nr.cy(), ui.dp(18.0), if online { rgb(0xDDE2EA) } else { rgb(0x6B7382) }, 1.6);
+        ui.icon_w(
+            Ic::Globe,
+            nr.cx(),
+            nr.cy(),
+            ui.dp(18.0),
+            if online { rgb(0xDDE2EA) } else { rgb(0x6B7382) },
+            1.6,
+        );
         if ui.tap(nr) {
             self.desk_oeffnen(ui, Ic::Wifi, &self.t("Network").to_string(), Screen::Net);
             ui.dirty = true;
@@ -515,8 +826,15 @@ impl App {
     }
 
     fn desk_start_rect(&self, ui: &Ui) -> Rect {
-        let (mw, mh) = (ui.dp(600.0).min(ui.w - ui.dp(16.0)), ui.dp(560.0).min(ui.h - ui.dp(70.0)));
-        let x = if ui.rtl { ui.w - mw - ui.dp(8.0) } else { ui.dp(8.0) };
+        let (mw, mh) = (
+            ui.dp(600.0).min(ui.w - ui.dp(16.0)),
+            ui.dp(560.0).min(ui.h - ui.dp(70.0)),
+        );
+        let x = if ui.rtl {
+            ui.w - mw - ui.dp(8.0)
+        } else {
+            ui.dp(8.0)
+        };
         Rect::new(x, ui.h - ui.dp(52.0) - mh - ui.dp(8.0), mw, mh)
     }
 
@@ -536,7 +854,15 @@ impl App {
             self.focus = Some("desk_q");
         }
         let q = q.trim().to_lowercase();
-        let apps: Vec<(Ic, &'static str, Screen)> = self.desk_apps().into_iter().filter(|(_, n, _)| q.is_empty() || self.t(n).to_lowercase().contains(&q) || n.to_lowercase().contains(&q)).collect();
+        let apps: Vec<(Ic, &'static str, Screen)> = self
+            .desk_apps()
+            .into_iter()
+            .filter(|(_, n, _)| {
+                q.is_empty()
+                    || self.t(n).to_lowercase().contains(&q)
+                    || n.to_lowercase().contains(&q)
+            })
+            .collect();
         // Enter startet den ersten Treffer
         if !q.is_empty() && std::mem::take(&mut self.desk_enter) {
             if let Some((ic, n, s)) = apps.first().cloned() {
@@ -552,26 +878,56 @@ impl App {
         let gx = r.x + m;
         let gw = (r.w - 2.0 * m) / cols as f32;
         let rh = ui.dp(92.0);
-        let liste = Rect::new(r.x + 1.0, fr.bottom() + ui.dp(10.0), r.w - 2.0, r.bottom() - ui.dp(54.0) - fr.bottom() - ui.dp(10.0));
+        let liste = Rect::new(
+            r.x + 1.0,
+            fr.bottom() + ui.dp(10.0),
+            r.w - 2.0,
+            r.bottom() - ui.dp(54.0) - fr.bottom() - ui.dp(10.0),
+        );
         let mut sc = self.desk_start_sc;
         ui.scroll_begin(liste, &mut sc);
         let y0 = liste.y + ui.dp(4.0) - sc;
         let zeilen = apps.len().div_ceil(cols);
         for (i, (ic, n, s)) in apps.into_iter().enumerate() {
-            let col = if ui.rtl { cols - 1 - i % cols } else { i % cols };
+            let col = if ui.rtl {
+                cols - 1 - i % cols
+            } else {
+                i % cols
+            };
             let cell = Rect::new(gx + col as f32 * gw, y0 + (i / cols) as f32 * rh, gw, rh);
             if !ui.visible(cell) {
                 continue;
             }
             if cell.contains(ui.p.x, ui.p.y) {
-                ui.cv.rrect(cell.inset(ui.dp(3.0)), ui.dp(10.0), rgb(0xFFFFFF).alpha(0.06));
+                ui.cv.rrect(
+                    cell.inset(ui.dp(3.0)),
+                    ui.dp(10.0),
+                    rgb(0xFFFFFF).alpha(0.06),
+                );
             }
-            let ir = Rect::new(cell.cx() - ui.dp(22.0), cell.y + ui.dp(10.0), ui.dp(44.0), ui.dp(44.0));
-            ui.cv.rrect_vgrad(ir, ui.dp(12.0), rgb(0x232733), rgb(0x171A22));
-            let fg = if n == "KM helper" || n == "Ultar Store" { ui.th.accent } else { rgb(0xE8ECF4) };
+            let ir = Rect::new(
+                cell.cx() - ui.dp(22.0),
+                cell.y + ui.dp(10.0),
+                ui.dp(44.0),
+                ui.dp(44.0),
+            );
+            ui.cv
+                .rrect_vgrad(ir, ui.dp(12.0), rgb(0x232733), rgb(0x171A22));
+            let fg = if n == "KM helper" || n == "Ultar Store" {
+                ui.th.accent
+            } else {
+                rgb(0xE8ECF4)
+            };
             ui.icon_w(ic, ir.cx(), ir.cy(), ui.dp(21.0), fg, 1.6);
             let lab = ui.fit(self.t(n), 11.5, false, cell.w - ui.dp(6.0));
-            ui.label(Rect::new(cell.x, ir.bottom() + ui.dp(5.0), cell.w, ui.dp(18.0)), &lab, 11.5, rgb(0xDDE2EA), false, Al::Center);
+            ui.label(
+                Rect::new(cell.x, ir.bottom() + ui.dp(5.0), cell.w, ui.dp(18.0)),
+                &lab,
+                11.5,
+                rgb(0xDDE2EA),
+                false,
+                Al::Center,
+            );
             if ui.tap(cell) {
                 let t = self.t(n).to_string();
                 self.desk_oeffnen(ui, ic, &t, s);
@@ -583,12 +939,39 @@ impl App {
         ui.set_clip(None);
         // Fußzeile: Name des Systems, Ein/Aus
         let fy = r.bottom() - ui.dp(52.0);
-        ui.cv.rect(Rect::new(r.x + 1.0, fy, r.w - 2.0, 1.0), rgb(0xFFFFFF).alpha(0.07));
+        ui.cv.rect(
+            Rect::new(r.x + 1.0, fy, r.w - 2.0, 1.0),
+            rgb(0xFFFFFF).alpha(0.07),
+        );
         let nr = Rect::new(r.x + m, fy, r.w - 2.0 * m - ui.dp(48.0), ui.dp(52.0));
         let host: String = self.set.hostname.chars().take(24).collect();
-        let name = if host.is_empty() { "Ultar OS".to_string() } else { format!("Ultar OS · {host}") };
-        ui.label(if ui.rtl { Rect::new(r.x + m + ui.dp(48.0), fy, nr.w, nr.h) } else { nr }, &name, 13.0, rgb(0xC8CED8), false, Al::Start);
-        let pr = Rect::new(if ui.rtl { r.x + m } else { r.right() - m - ui.dp(44.0) }, fy + ui.dp(4.0), ui.dp(44.0), ui.dp(44.0));
+        let name = if host.is_empty() {
+            "Ultar OS".to_string()
+        } else {
+            format!("Ultar OS · {host}")
+        };
+        ui.label(
+            if ui.rtl {
+                Rect::new(r.x + m + ui.dp(48.0), fy, nr.w, nr.h)
+            } else {
+                nr
+            },
+            &name,
+            13.0,
+            rgb(0xC8CED8),
+            false,
+            Al::Start,
+        );
+        let pr = Rect::new(
+            if ui.rtl {
+                r.x + m
+            } else {
+                r.right() - m - ui.dp(44.0)
+            },
+            fy + ui.dp(4.0),
+            ui.dp(44.0),
+            ui.dp(44.0),
+        );
         if pr.contains(ui.p.x, ui.p.y) {
             ui.cv.rrect(pr, ui.dp(10.0), rgb(0xFFFFFF).alpha(0.08));
         }
@@ -605,7 +988,15 @@ impl App {
 /// Farbe des Mauszeigers (Pfeil) – zeichnet main.rs über alles
 pub fn zeiger(cv: &mut Canvas, x: f32, y: f32, s: f32) {
     cv.set_clip(None);
-    let pts = [(0.0, 0.0), (0.0, 17.0), (4.2, 13.2), (7.0, 19.5), (9.6, 18.4), (6.9, 12.2), (12.5, 12.2)];
+    let pts = [
+        (0.0, 0.0),
+        (0.0, 17.0),
+        (4.2, 13.2),
+        (7.0, 19.5),
+        (9.6, 18.4),
+        (6.9, 12.2),
+        (12.5, 12.2),
+    ];
     let c_rand: Color = rgb(0x000000);
     let c_innen: Color = rgb(0xFFFFFF);
     // gefüllter Pfeil über ein Abstandsfeld (Punkt-in-Polygon)
@@ -627,7 +1018,10 @@ pub fn zeiger(cv: &mut Canvas, x: f32, y: f32, s: f32) {
         for px in bb.x as i32..bb.right() as i32 {
             let (fxp, fyp) = (px as f32 + 0.5, py as f32 + 0.5);
             if inside(fxp, fyp, 0.0) {
-                let rand = !inside(fxp - s, fyp, 0.0) || !inside(fxp + s, fyp, 0.0) || !inside(fxp, fyp - s, 0.0) || !inside(fxp, fyp + s, 0.0);
+                let rand = !inside(fxp - s, fyp, 0.0)
+                    || !inside(fxp + s, fyp, 0.0)
+                    || !inside(fxp, fyp - s, 0.0)
+                    || !inside(fxp, fyp + s, 0.0);
                 cv.point(px, py, if rand { c_rand } else { c_innen }, 255);
             }
         }

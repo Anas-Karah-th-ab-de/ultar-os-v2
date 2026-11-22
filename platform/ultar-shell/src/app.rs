@@ -5,67 +5,67 @@ use crate::apps::{self, AppsCfg};
 use crate::brand;
 use crate::gfx::{rgb, Rect};
 use crate::hw::{self, HwDev};
-use crate::quick;
 use crate::i18n::{tr, DAYS};
+use crate::quick;
 use crate::sys::{self, Bg, Msg, NetCfg, Settings, Svc};
 use crate::ui::{Al, Btn, Ic, Key, Ui, ACCENTS};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-#[path = "tools.rs"]
-mod tools;
-#[path = "monitor.rs"]
-mod monitor;
-#[path = "sensors.rs"]
-mod sensors;
-#[path = "app_phone.rs"]
-mod app_phone;
-#[path = "app_radio.rs"]
-mod app_radio;
-#[path = "app_layout.rs"]
-mod app_layout;
-#[path = "app_modern.rs"]
-mod app_modern;
-#[path = "app_messages.rs"]
-mod app_messages;
-#[path = "app_camera.rs"]
-mod app_camera;
-#[path = "app_telegram.rs"]
-mod app_telegram;
-#[path = "app_spotify.rs"]
-mod app_spotify;
-#[path = "app_security.rs"]
-mod app_security;
-#[path = "app_cloud.rs"]
-mod app_cloud;
-#[path = "app_zellen.rs"]
-mod app_zellen;
-#[path = "app_desktop.rs"]
-pub(crate) mod app_desktop;
-#[path = "app_demo.rs"]
-mod app_demo;
-#[path = "app_gallery.rs"]
-mod app_gallery;
 #[path = "app_agent.rs"]
 mod app_agent;
 #[path = "app_bt.rs"]
 mod app_bt;
-#[path = "app_extra.rs"]
-mod app_extra;
 #[path = "app_buddy.rs"]
 mod app_buddy;
-#[path = "app_voice.rs"]
-mod app_voice;
-/// Büro-Apps: PDF, Dokumente, Tabellen, Code-Editor
-#[path = "app_office.rs"]
-mod app_office;
+#[path = "app_camera.rs"]
+mod app_camera;
+#[path = "app_cloud.rs"]
+mod app_cloud;
+#[path = "app_demo.rs"]
+mod app_demo;
+#[path = "app_desktop.rs"]
+pub(crate) mod app_desktop;
+#[path = "app_extra.rs"]
+mod app_extra;
+#[path = "app_gallery.rs"]
+mod app_gallery;
 /// System-Assistent wie Jarvis: sieht Bildschirm/Kamera/Mitgebrachtes, Root-Werkzeuge mit Rückfrage, Modelle
 #[path = "app_jarvis.rs"]
 mod app_jarvis;
-#[path = "app_sys.rs"]
-pub(crate) mod app_sys;
+#[path = "app_layout.rs"]
+mod app_layout;
+#[path = "app_messages.rs"]
+mod app_messages;
+#[path = "app_modern.rs"]
+mod app_modern;
 #[path = "app_more.rs"]
 pub(crate) mod app_more;
+/// Büro-Apps: PDF, Dokumente, Tabellen, Code-Editor
+#[path = "app_office.rs"]
+mod app_office;
+#[path = "app_phone.rs"]
+mod app_phone;
+#[path = "app_radio.rs"]
+mod app_radio;
+#[path = "app_security.rs"]
+mod app_security;
+#[path = "app_spotify.rs"]
+mod app_spotify;
+#[path = "app_sys.rs"]
+pub(crate) mod app_sys;
+#[path = "app_telegram.rs"]
+mod app_telegram;
+#[path = "app_voice.rs"]
+mod app_voice;
+#[path = "app_zellen.rs"]
+mod app_zellen;
+#[path = "monitor.rs"]
+mod monitor;
+#[path = "sensors.rs"]
+mod sensors;
+#[path = "tools.rs"]
+mod tools;
 
 #[derive(Clone, PartialEq)]
 pub enum Screen {
@@ -281,11 +281,16 @@ impl App {
         let mut set: Settings = sys::load("settings.toml");
         // Laptop/Server auf dem Ultar-Kern: die Installation hat die Sprache schon gewählt – Desktop direkt,
         // ohne die Einrichtung des Handys (Einstellungen bleiben jederzeit änderbar)
-        if !set.setup_done && !std::path::Path::new(&format!("{}/settings.toml", sys::data_dir())).exists() {
+        if !set.setup_done
+            && !std::path::Path::new(&format!("{}/settings.toml", sys::data_dir())).exists()
+        {
             if let Ok(l) = std::env::var("ULTAR_SYSTEMSPRACHE") {
                 if matches!(l.as_str(), "ar" | "de" | "en") {
                     set.lang = l;
-                    if matches!(ultar_edition::current(), ultar_edition::Edition::Desktop | ultar_edition::Edition::Server) {
+                    if matches!(
+                        ultar_hal_system::current_edition(),
+                        ultar_profile::Edition::Desktop | ultar_profile::Edition::Server
+                    ) {
                         set.setup_done = true;
                     }
                 }
@@ -407,7 +412,10 @@ impl App {
     /// vom Verbund empfangene Datei öffnen (Bild → Fotoansicht, sonst Dateiansicht)
     pub fn remote_datei(&mut self, pfad: String) {
         let low = pfad.to_lowercase();
-        if [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"].iter().any(|e| low.ends_with(e)) {
+        if [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]
+            .iter()
+            .any(|e| low.ends_with(e))
+        {
             self.go(Screen::Photo(pfad));
         } else if let Some(s) = Self::office_screen_for(&pfad) {
             self.go(s);
@@ -427,7 +435,9 @@ impl App {
     }
 
     pub fn remote_open(&mut self, screen: &str, lang: Option<&str>) {
-        let lang = lang.map(|l| l.to_string()).unwrap_or_else(|| self.set.lang.clone());
+        let lang = lang
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| self.set.lang.clone());
         let done = self.set.setup_done;
         self.debug_open(screen, &lang);
         self.set.setup_done = done;
@@ -457,7 +467,14 @@ impl App {
             self.focus = Some(field);
             self.focus_reset = true;
             if art != "pin" && art != "phone" && art != "num" && art != "contact" {
-                self.fields.insert(field, match kl { "ar" => "مرحبا، نلتقي الساعة 6".into(), "de" => "Treffen um 18 Uhr, dann gr".into(), _ => "See you at 6, then".into() });
+                self.fields.insert(
+                    field,
+                    match kl {
+                        "ar" => "مرحبا، نلتقي الساعة 6".into(),
+                        "de" => "Treffen um 18 Uhr, dann gr".into(),
+                        _ => "See you at 6, then".into(),
+                    },
+                );
             }
             self.kb.debug(art, kl);
             self.debug_open(scr, lang);
@@ -477,7 +494,15 @@ impl App {
             }
             _ => {}
         }
-        let screen = if screen.starts_with("call") && screen != "call_shade" { "phone" } else if screen == "call_shade" { "home" } else if screen == "msgthread" { "messages" } else { screen };
+        let screen = if screen.starts_with("call") && screen != "call_shade" {
+            "phone"
+        } else if screen == "call_shade" {
+            "home"
+        } else if screen == "msgthread" {
+            "messages"
+        } else {
+            screen
+        };
         let s = match screen {
             "settings" => Screen::Settings,
             "net" => Screen::Net,
@@ -491,7 +516,13 @@ impl App {
             "helper" => Screen::Helper,
             "noteedit" => {
                 self.extra_load();
-                let t = self.extra.notes.list.first().map(|n| n.text.clone()).unwrap_or_default();
+                let t = self
+                    .extra
+                    .notes
+                    .list
+                    .first()
+                    .map(|n| n.text.clone())
+                    .unwrap_or_default();
                 self.fields.insert("note", t);
                 Screen::NoteEdit(0)
             }
@@ -505,17 +536,28 @@ impl App {
             "buddysay" => {
                 self.buddy.away = false;
                 self.buddy.open = true;
-                self.buddy.remote_say = std::fs::read_to_string("/run/ultar/buddy.say").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).or(Some("help".into()));
+                self.buddy.remote_say = std::fs::read_to_string("/run/ultar/buddy.say")
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .or(Some("help".into()));
                 Screen::Messages
             }
             "buddytour" => {
                 self.buddy.snap = true;
                 self.buddy_tour();
-                self.buddy.tour = std::fs::read_to_string("/run/ultar/buddy.say").ok().and_then(|s| s.trim().parse().ok()).or(Some(0));
+                self.buddy.tour = std::fs::read_to_string("/run/ultar/buddy.say")
+                    .ok()
+                    .and_then(|s| s.trim().parse().ok())
+                    .or(Some(0));
                 Screen::Home
             }
             "buddycall" => {
-                let t = std::fs::read_to_string("/run/ultar/buddy.say").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "Zahnarzt um 14:00 – in 30 Minuten losgehen".into());
+                let t = std::fs::read_to_string("/run/ultar/buddy.say")
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "Zahnarzt um 14:00 – in 30 Minuten losgehen".into());
                 self.buddy.snap = true;
                 self.buddy_call(t, 0);
                 Screen::Home
@@ -642,11 +684,33 @@ impl App {
                 self.agent_up = Some(true);
                 let de = lang == "de";
                 self.chat = vec![
-                    (0, if de { "Mach ein Foto und stell den Wecker auf 7 Uhr".into() } else { "التقط صورة واضبط المنبّه على السابعة".into() }),
+                    (
+                        0,
+                        if de {
+                            "Mach ein Foto und stell den Wecker auf 7 Uhr".into()
+                        } else {
+                            "التقط صورة واضبط المنبّه على السابعة".into()
+                        },
+                    ),
                     (2, "take_photo()".into()),
                     (2, "set_alarm(hour=7, minute=0)".into()),
-                    (1, if de { "Erledigt: Das Foto liegt in der Galerie, der Wecker klingelt um 07:00.".into() } else { "تم: الصورة في المعرض والمنبّه مضبوط على 07:00.".into() }),
-                    (0, if de { "Installiere VLC".into() } else { "ثبّت VLC".into() }),
+                    (
+                        1,
+                        if de {
+                            "Erledigt: Das Foto liegt in der Galerie, der Wecker klingelt um 07:00."
+                                .into()
+                        } else {
+                            "تم: الصورة في المعرض والمنبّه مضبوط على 07:00.".into()
+                        },
+                    ),
+                    (
+                        0,
+                        if de {
+                            "Installiere VLC".into()
+                        } else {
+                            "ثبّت VLC".into()
+                        },
+                    ),
                     (2, "install_package(name=vlc)".into()),
                 ];
                 self.agent_busy = true;
@@ -657,7 +721,15 @@ impl App {
                 self.agent.enabled = true;
                 self.agent_up = Some(true);
                 let (de, ar) = (lang == "de", lang == "ar");
-                let tr = |d: &str, a: &str, e: &str| if de { d.to_string() } else if ar { a.to_string() } else { e.to_string() };
+                let tr = |d: &str, a: &str, e: &str| {
+                    if de {
+                        d.to_string()
+                    } else if ar {
+                        a.to_string()
+                    } else {
+                        e.to_string()
+                    }
+                };
                 self.chat = vec![
                     (0, tr("Was ist auf meinem Bildschirm?", "ما الذي على شاشتي؟", "What is on my screen?")),
                     (2, "see_screen()".into()),
@@ -670,7 +742,10 @@ impl App {
                 ];
                 self.jv.view = Some((1, 1, vec![0]));
                 if screen == "jarvis" {
-                    self.pending = Some(crate::agent::Call { tool: "kill_process".into(), args: serde_json::json!({"pid": 812, "signal": "term"}) });
+                    self.pending = Some(crate::agent::Call {
+                        tool: "kill_process".into(),
+                        args: serde_json::json!({"pid": 812, "signal": "term"}),
+                    });
                     self.agent_busy = true;
                 } else {
                     self.jv.attach_open = true;
@@ -748,13 +823,25 @@ impl App {
             app_phone::CallState::Incoming(from) if self.more_blocked(&from) => {
                 // Sperrliste: still ablehnen, nur im Verlauf vermerken
                 self.phone.tel.hangup();
-                ultar_notify::post("call", "phone", &self.t_owned("Blocked call"), &from, ultar_notify::Urgency::Low);
+                ultar_notify::post(
+                    "call",
+                    "phone",
+                    &self.t_owned("Blocked call"),
+                    &from,
+                    ultar_notify::Urgency::Low,
+                );
             }
             app_phone::CallState::Incoming(from) => {
                 if self.last_incoming != from {
                     self.last_incoming = from.clone();
                     let who = self.contact_name(&from).unwrap_or_else(|| from.clone());
-                    ultar_notify::post("call", "phone", &self.t_owned("Incoming call"), &who, ultar_notify::Urgency::High);
+                    ultar_notify::post(
+                        "call",
+                        "phone",
+                        &self.t_owned("Incoming call"),
+                        &who,
+                        ultar_notify::Urgency::High,
+                    );
                     // Anrufbildschirm sofort zeigen (auch aus jeder anderen App), Schnelleinstellungen schließen
                     self.shade = false;
                     if !matches!(self.stack.last().map(|s| &s.0), Some(Screen::Phone)) {
@@ -777,7 +864,13 @@ impl App {
                 // Klingelte und wurde nicht angenommen -> verpasster Anruf
                 if let Some(from) = self.phone.ringing.take() {
                     let who = self.contact_name(&from).unwrap_or_else(|| from.clone());
-                    ultar_notify::post("call", "phone", &self.t_owned("Missed call"), &who, ultar_notify::Urgency::Normal);
+                    ultar_notify::post(
+                        "call",
+                        "phone",
+                        &self.t_owned("Missed call"),
+                        &who,
+                        ultar_notify::Urgency::Normal,
+                    );
                 }
                 self.phone.since = None;
                 self.phone.mute = false;
@@ -798,7 +891,11 @@ impl App {
                 continue;
             }
             let mut a = crate::notify::alert_for(&n, asleep, self.set.sound);
-            let (snd, vib, heads) = self.sys_alert(n.urgency == ultar_notify::Urgency::High, a.sound, a.vibrate_ms);
+            let (snd, vib, heads) = self.sys_alert(
+                n.urgency == ultar_notify::Urgency::High,
+                a.sound,
+                a.vibrate_ms,
+            );
             a.sound = snd;
             a.vibrate_ms = vib;
             if !heads {
@@ -830,7 +927,11 @@ impl App {
         self.sx.vol_shown = Some(Instant::now());
         crate::audio::mixer_setup(self.set.volume);
         self.save();
-        self.toast(format!("{} {}%", self.t("Volume"), (self.set.volume * 100.0).round() as i32));
+        self.toast(format!(
+            "{} {}%",
+            self.t("Volume"),
+            (self.set.volume * 100.0).round() as i32
+        ));
         if self.set.volume > 0.0 {
             crate::audio::play(vec![(1175.0, 40)], self.set.volume);
         }
@@ -872,14 +973,16 @@ impl App {
                 self.fields.insert("dns", self.net.dns.clone());
             }
             Screen::System => {
-                self.fields.insert("host", sys::read_trim("/proc/sys/kernel/hostname"));
+                self.fields
+                    .insert("host", sys::read_trim("/proc/sys/kernel/hostname"));
             }
             Screen::WifiPw(..) => {
                 self.fields.insert("wpw", String::new());
             }
             Screen::Store => {
                 self.apps = apps::catalog();
-                self.fields.insert("ghtok", self.apps_cfg.github_token.clone());
+                self.fields
+                    .insert("ghtok", self.apps_cfg.github_token.clone());
                 if sys::compat_ready() {
                     sys::load_installed(&self.bg);
                 }
@@ -892,7 +995,8 @@ impl App {
             Screen::Agent => self.check_agent(),
             Screen::AgentSet | Screen::Setup(3) => {
                 self.fields.insert("akey", self.agent.api_key.clone());
-                self.fields.insert("amodel", self.agent.claude_model.clone());
+                self.fields
+                    .insert("amodel", self.agent.claude_model.clone());
                 self.fields.insert("ep", self.agent.endpoint.clone());
             }
             _ => {}
@@ -913,9 +1017,17 @@ impl App {
 
     pub(super) fn back_stack(&mut self) {
         // Dateien: Zurück geht erst den Ordnerbaum hinauf bis zur Übersicht (wie in der Demo)
-        if matches!(self.stack.last().map(|s| &s.0), Some(Screen::Files)) && self.tl.cwd != "/data" {
-            let parent = std::path::Path::new(&self.tl.cwd).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-            self.tl.cwd = if parent.len() < 5 || !parent.starts_with("/data") { "/data".into() } else { parent };
+        if matches!(self.stack.last().map(|s| &s.0), Some(Screen::Files)) && self.tl.cwd != "/data"
+        {
+            let parent = std::path::Path::new(&self.tl.cwd)
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            self.tl.cwd = if parent.len() < 5 || !parent.starts_with("/data") {
+                "/data".into()
+            } else {
+                parent
+            };
             if let Some(l) = self.stack.last_mut() {
                 l.1 = 0.0;
             }
@@ -1025,7 +1137,10 @@ impl App {
                 self.toast(m);
                 // gespeicherte Netze aktualisieren
                 if let Some(ifc) = sys::wifi_iface() {
-                    self.wifi_saved = crate::wifi::saved(&ifc).into_iter().map(|(_, n)| n).collect();
+                    self.wifi_saved = crate::wifi::saved(&ifc)
+                        .into_iter()
+                        .map(|(_, n)| n)
+                        .collect();
                 }
             }
             Msg::Update(r) => {
@@ -1055,7 +1170,8 @@ impl App {
                 self.agent_up = Some(true);
                 // Bilder sind gesehen – nicht in jeder weiteren Runde neu rechnen/senden
                 agent::strip_images(&mut self.history);
-                self.history.push(serde_json::json!({"role": "assistant", "content": text}));
+                self.history
+                    .push(serde_json::json!({"role": "assistant", "content": text}));
                 match agent::parse(&text) {
                     Reply::Answer(a) => {
                         self.chat.push((1, a));
@@ -1090,7 +1206,13 @@ impl App {
         }
         let purpose = ultar_ime::purpose_for(id);
         // Ziffernfelder: indische Ziffern (z. B. aus eingefügtem Text) als 0–9
-        let norm = |s: &str| if purpose.pad() { ultar_ime::normalize_digits(s) } else { s.to_string() };
+        let norm = |s: &str| {
+            if purpose.pad() {
+                ultar_ime::normalize_digits(s)
+            } else {
+                s.to_string()
+            }
+        };
         match o {
             KbOut::Insert(t) => self.fields.entry(id).or_default().push_str(&norm(&t)),
             KbOut::Backspace => self.on_key(Key::Backspace),
@@ -1181,14 +1303,40 @@ impl App {
             || self.gallery_needs_tick()
             || self.office_needs_tick()
             || self.ptr_down
-            || matches!(self.stack.last().map(|s| &s.0), Some(Screen::Monitor | Screen::Sensors | Screen::Gnss | Screen::Bluetooth | Screen::Camera | Screen::Telegram | Screen::Spotify | Screen::Phone | Screen::Radio | Screen::Cells | Screen::Route))
+            || matches!(
+                self.stack.last().map(|s| &s.0),
+                Some(
+                    Screen::Monitor
+                        | Screen::Sensors
+                        | Screen::Gnss
+                        | Screen::Bluetooth
+                        | Screen::Camera
+                        | Screen::Telegram
+                        | Screen::Spotify
+                        | Screen::Phone
+                        | Screen::Radio
+                        | Screen::Cells
+                        | Screen::Route
+                )
+            )
             || self.call_active()
             || self.agent_busy
             || self.wifi_scanning
             || self.wifi_connecting.is_some()
             || self.upd_checking
             || self.job_running()
-            || matches!(self.stack.last().map(|s| &s.0), Some(Screen::Services | Screen::Net | Screen::Storage | Screen::Time | Screen::System | Screen::Setup(1) | Screen::Setup(2)))
+            || matches!(
+                self.stack.last().map(|s| &s.0),
+                Some(
+                    Screen::Services
+                        | Screen::Net
+                        | Screen::Storage
+                        | Screen::Time
+                        | Screen::System
+                        | Screen::Setup(1)
+                        | Screen::Setup(2)
+                )
+            )
     }
 
     /// Läuft gerade etwas Bewegtes (Kamerabild, Video, Selbstauslöser)? Dann zeichnet die Hauptschleife zügig weiter.
@@ -1229,7 +1377,10 @@ impl App {
         // Laufender Anruf: Gesprächszeit in Statusleiste/Schnelleinstellungen weiterzählen
         r |= self.call_active();
         // Mobilfunk-Bildschirme: Zustand des Funkdienstes etwa sekündlich nachziehen
-        if matches!(self.stack.last().map(|s| &s.0), Some(Screen::Radio | Screen::Cells | Screen::Route)) {
+        if matches!(
+            self.stack.last().map(|s| &s.0),
+            Some(Screen::Radio | Screen::Cells | Screen::Route)
+        ) {
             r = true;
         }
         if let Some((_, t)) = &self.toast {
@@ -1239,8 +1390,15 @@ impl App {
             }
         }
         match self.stack.last().map(|s| &s.0) {
-            Some(Screen::Services) | Some(Screen::Net) | Some(Screen::Storage) | Some(Screen::Time) => r = true,
-            Some(Screen::Job) | Some(Screen::Setup(2)) if self.job.as_ref().is_some_and(|j| j.done.is_none()) => r = true,
+            Some(Screen::Services)
+            | Some(Screen::Net)
+            | Some(Screen::Storage)
+            | Some(Screen::Time) => r = true,
+            Some(Screen::Job) | Some(Screen::Setup(2))
+                if self.job.as_ref().is_some_and(|j| j.done.is_none()) =>
+            {
+                r = true
+            }
             Some(Screen::Setup(1)) => r = true,
             _ => {}
         }
@@ -1279,18 +1437,52 @@ impl App {
             "en" => "en_US",
             _ => "de_DE",
         };
-        let hat_locale = ["/usr/lib/locale", "/compat/usr/lib/locale"].iter().any(|d| std::path::Path::new(&format!("{d}/{loc}.utf8")).exists());
-        let c = format!("export ULTAR_LANG={k} LANGUAGE={k}{}; {c}", if hat_locale { format!(" LANG={loc}.UTF-8") } else { String::new() });
+        let hat_locale = ["/usr/lib/locale", "/compat/usr/lib/locale"]
+            .iter()
+            .any(|d| std::path::Path::new(&format!("{d}/{loc}.utf8")).exists());
+        let c = format!(
+            "export ULTAR_LANG={k} LANGUAGE={k}{}; {c}",
+            if hat_locale {
+                format!(" LANG={loc}.UTF-8")
+            } else {
+                String::new()
+            }
+        );
         if sys::compat_ready() {
-            self.bg.run(sys::COMPAT, vec!["run".into(), "--".into(), "/bin/bash".into(), "-c".into(), c], Msg::TermLine, Msg::TermDone);
+            self.bg.run(
+                sys::COMPAT,
+                vec![
+                    "run".into(),
+                    "--".into(),
+                    "/bin/bash".into(),
+                    "-c".into(),
+                    c,
+                ],
+                Msg::TermLine,
+                Msg::TermDone,
+            );
         } else {
-            self.bg.run("/bin/sh", vec!["-c".into(), c], Msg::TermLine, Msg::TermDone);
+            self.bg.run(
+                "/bin/sh",
+                vec!["-c".into(), c],
+                Msg::TermLine,
+                Msg::TermDone,
+            );
         }
     }
 
     fn start_job(&mut self, title: String, args: &[&str]) {
-        self.job = Some(Job { title, lines: Vec::new(), done: None });
-        self.bg.run(sys::COMPAT, args.iter().map(|s| s.to_string()).collect(), Msg::JobLine, Msg::JobDone);
+        self.job = Some(Job {
+            title,
+            lines: Vec::new(),
+            done: None,
+        });
+        self.bg.run(
+            sys::COMPAT,
+            args.iter().map(|s| s.to_string()).collect(),
+            Msg::JobLine,
+            Msg::JobDone,
+        );
         self.go(Screen::Job);
     }
 
@@ -1311,7 +1503,11 @@ impl App {
             self.toast(format!("{}: {e}", self.t("Could not save")));
         }
         if agent::model_installed() {
-            sys::ctl(if self.agent.enabled && self.agent.backend != "claude" { "start llm" } else { "stop llm" });
+            sys::ctl(if self.agent.enabled && self.agent.backend != "claude" {
+                "start llm"
+            } else {
+                "stop llm"
+            });
         }
     }
 
@@ -1319,14 +1515,19 @@ impl App {
         self.agent_busy = true;
         let (bg, cfg, hist) = (self.bg.clone(), self.agent.clone(), self.history.clone());
         std::thread::spawn(move || {
-            let r = if cfg.backend == "claude" { agent::complete_claude(&cfg, &hist) } else { agent::complete(&cfg.endpoint, &hist) };
+            let r = if cfg.backend == "claude" {
+                agent::complete_claude(&cfg, &hist)
+            } else {
+                agent::complete(&cfg.endpoint, &hist)
+            };
             bg.send(Msg::AgentReply(r))
         });
     }
 
     fn send_chat(&mut self) {
         let text = self.f("chat").trim().to_string();
-        if (text.is_empty() && self.jv.attach.is_empty()) || self.agent_busy || !self.agent.enabled {
+        if (text.is_empty() && self.jv.attach.is_empty()) || self.agent_busy || !self.agent.enabled
+        {
             return;
         }
         self.fields.insert("chat", String::new());
@@ -1351,7 +1552,8 @@ impl App {
             return self.buddy_tool_result(res);
         }
         let res: String = res.chars().take(1500).collect();
-        self.history.push(serde_json::json!({"role": "user", "content": format!("TOOL_RESULT: {res}")}));
+        self.history
+            .push(serde_json::json!({"role": "user", "content": format!("TOOL_RESULT: {res}")}));
         self.request();
     }
 
@@ -1380,8 +1582,15 @@ impl App {
             "get_status" => {
                 let dt = sys::from_unix(sys::unix_now(), self.set.tz_min);
                 let (mt, ma) = sys::meminfo();
-                let net: Vec<String> = sys::net_status().iter().map(|n| format!("{} {} {}", n.name, n.state, n.ip)).collect();
-                let disk = |p: &str| sys::disk(p).map(|d| format!("{} free of {}", sys::human(d.1), sys::human(d.0))).unwrap_or_else(|| "n/a".into());
+                let net: Vec<String> = sys::net_status()
+                    .iter()
+                    .map(|n| format!("{} {} {}", n.name, n.state, n.ip))
+                    .collect();
+                let disk = |p: &str| {
+                    sys::disk(p)
+                        .map(|d| format!("{} free of {}", sys::human(d.1), sys::human(d.0)))
+                        .unwrap_or_else(|| "n/a".into())
+                };
                 format!("time {:04}-{:02}-{:02} {:02}:{:02}; network [{}]; ram {} free of {}; system {}; ubuntu area {}; user data {}; battery {:?}; language {}; brightness {}%; dark {}",
                     dt.y, dt.mo, dt.d, dt.h, dt.mi, net.join(", "), sys::human(ma), sys::human(mt), disk("/"), disk("/compat"), disk("/data"), sys::battery(), self.set.lang, (self.set.brightness * 100.0).round(), self.set.dark)
             }
@@ -1457,7 +1666,12 @@ impl App {
             "list_services" => sys::ctl("status"),
             "service" => {
                 let (a, n) = (c.arg("action"), c.arg("name"));
-                if !["start", "stop", "restart"].contains(&a.as_str()) || n == "ui" || !n.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+                if !["start", "stop", "restart"].contains(&a.as_str())
+                    || n == "ui"
+                    || !n
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+                {
                     "error: not allowed".into()
                 } else {
                     sys::ctl(&format!("{a} {n}"))
@@ -1466,9 +1680,24 @@ impl App {
             "search_packages" => {
                 let q = c.arg("query");
                 return later(Box::new(move || {
-                    let out = sys::capture(sys::COMPAT, &["run", "--", "/usr/bin/apt-cache", "search", "--names-only", "--", &q]);
+                    let out = sys::capture(
+                        sys::COMPAT,
+                        &[
+                            "run",
+                            "--",
+                            "/usr/bin/apt-cache",
+                            "search",
+                            "--names-only",
+                            "--",
+                            &q,
+                        ],
+                    );
                     let v: Vec<&str> = out.lines().take(12).collect();
-                    if v.is_empty() { "no results".into() } else { v.join("\n") }
+                    if v.is_empty() {
+                        "no results".into()
+                    } else {
+                        v.join("\n")
+                    }
                 }));
             }
             "install_package" | "remove_package" => {
@@ -1476,12 +1705,28 @@ impl App {
                 if !sys::valid_pkg(&name) {
                     "error: invalid package name".into()
                 } else {
-                    let verb = if c.tool == "install_package" { "install" } else { "remove" };
+                    let verb = if c.tool == "install_package" {
+                        "install"
+                    } else {
+                        "remove"
+                    };
                     return later(Box::new(move || {
-                        let out = std::process::Command::new(sys::COMPAT).args(["apt", verb, "--no-install-recommends", &name]).output();
+                        let out = std::process::Command::new(sys::COMPAT)
+                            .args(["apt", verb, "--no-install-recommends", &name])
+                            .output();
                         match out {
                             Ok(o) if o.status.success() => format!("ok: {verb} {name}"),
-                            Ok(o) => format!("error: {}", String::from_utf8_lossy(&o.stderr).chars().rev().take(400).collect::<String>().chars().rev().collect::<String>()),
+                            Ok(o) => format!(
+                                "error: {}",
+                                String::from_utf8_lossy(&o.stderr)
+                                    .chars()
+                                    .rev()
+                                    .take(400)
+                                    .collect::<String>()
+                                    .chars()
+                                    .rev()
+                                    .collect::<String>()
+                            ),
                             Err(e) => format!("error: {e}"),
                         }
                     }));
@@ -1491,8 +1736,16 @@ impl App {
                 let cmd = c.arg("command");
                 return later(Box::new(move || {
                     let wrapped = format!("({cmd}) 2>&1");
-                    let out = if sys::compat_ready() { sys::capture(sys::COMPAT, &["run", "--", "/bin/bash", "-c", &wrapped]) } else { sys::capture("/bin/sh", &["-c", &wrapped]) };
-                    if out.trim().is_empty() { "(no output)".into() } else { out }
+                    let out = if sys::compat_ready() {
+                        sys::capture(sys::COMPAT, &["run", "--", "/bin/bash", "-c", &wrapped])
+                    } else {
+                        sys::capture("/bin/sh", &["-c", &wrapped])
+                    };
+                    if out.trim().is_empty() {
+                        "(no output)".into()
+                    } else {
+                        out
+                    }
                 }));
             }
             "power" => match c.arg("action").as_str() {
@@ -1506,7 +1759,11 @@ impl App {
     }
 
     fn start_driver_search(&mut self) {
-        self.job = Some(Job { title: self.t("Driver search").into(), lines: Vec::new(), done: None });
+        self.job = Some(Job {
+            title: self.t("Driver search").into(),
+            lines: Vec::new(),
+            done: None,
+        });
         hw::fix_online(&self.bg);
     }
 
@@ -1583,12 +1840,19 @@ impl App {
                 // „Neuer Kontakt" ist ein Blatt über der Kontaktliste
                 self.stack.pop();
                 let ok = match self.sheet {
-                Some(app_demo::Sheet::NewContact) => matches!(self.stack.last().map(|s| &s.0), Some(Screen::Contacts)),
-                Some(app_demo::Sheet::NewAlarm) => matches!(self.stack.last().map(|s| &s.0), Some(Screen::Clock)),
-                Some(app_demo::Sheet::NewEvent) => matches!(self.stack.last().map(|s| &s.0), Some(Screen::Sys(app_sys::Sx::Calendar))),
-                None => true,
-            };
-            if !ok {
+                    Some(app_demo::Sheet::NewContact) => {
+                        matches!(self.stack.last().map(|s| &s.0), Some(Screen::Contacts))
+                    }
+                    Some(app_demo::Sheet::NewAlarm) => {
+                        matches!(self.stack.last().map(|s| &s.0), Some(Screen::Clock))
+                    }
+                    Some(app_demo::Sheet::NewEvent) => matches!(
+                        self.stack.last().map(|s| &s.0),
+                        Some(Screen::Sys(app_sys::Sx::Calendar))
+                    ),
+                    None => true,
+                };
+                if !ok {
                     self.stack.push((Screen::Contacts, 0.0));
                 }
                 self.new_contact_sheet();
@@ -1617,7 +1881,8 @@ impl App {
     fn draw_screens(&mut self, ui: &mut Ui) {
         ui.set_clip(None);
         // Hintergrund mit sanftem Verlauf für Tiefe (statt flacher Füllung)
-        ui.cv.vgrad(Rect::new(0.0, 0.0, ui.w, ui.h), ui.th.bg, ui.th.bg2);
+        ui.cv
+            .vgrad(Rect::new(0.0, 0.0, ui.w, ui.h), ui.th.bg, ui.th.bg2);
         ui.rtl = self.set.lang == "ar";
         ui.focus = self.focus;
         if self.sx.cfg.contrast {
@@ -1658,8 +1923,15 @@ impl App {
         }
         let sb = ui.dp(30.0);
         let nb = ui.dp(52.0);
-        let kbh = match self.focus { Some(f) => self.kb.height(ui, f), None => 0.0 };
-        ui.enabled = !self.power_dialog && !self.shade && self.pending.is_none() && self.tl.menu.is_none() && !self.buddy.blocks(ui.p);
+        let kbh = match self.focus {
+            Some(f) => self.kb.height(ui, f),
+            None => 0.0,
+        };
+        ui.enabled = !self.power_dialog
+            && !self.shade
+            && self.pending.is_none()
+            && self.tl.menu.is_none()
+            && !self.buddy.blocks(ui.p);
         // Berührungsdauer mitführen (für den langen Druck)
         if ui.p.pressed {
             self.press_at = Some(Instant::now());
@@ -1700,7 +1972,8 @@ impl App {
             area
         };
         // Kamera und Betrachter sind Vollbild-Apps auf Schwarz: dunkles Farbschema, egal was eingestellt ist
-        let immersive = matches!(scr, Screen::Camera | Screen::Photo(_)) || (scr == Screen::Home && matches!(self.wall, Some(Some(_))));
+        let immersive = matches!(scr, Screen::Camera | Screen::Photo(_))
+            || (scr == Screen::Home && matches!(self.wall, Some(Some(_))));
         let th_user = ui.th;
         if immersive {
             ui.th = crate::ui::theme(true, self.set.accent);
@@ -1726,7 +1999,14 @@ impl App {
                         let m = ui.dp(14.0);
                         // Feld und das Nächste darunter (meist „Speichern") zeigen – das Feld selbst bleibt immer sichtbar
                         let extra = ui.dp(76.0).min((vis.h - fr.h - 2.0 * m).max(0.0));
-                        let d = if fr.bottom() + extra + m > vis.bottom() { (fr.bottom() + extra + m - vis.bottom()).min((fr.y - m - vis.y).max(0.0)) } else if fr.y - m < vis.y { fr.y - m - vis.y } else { 0.0 };
+                        let d = if fr.bottom() + extra + m > vis.bottom() {
+                            (fr.bottom() + extra + m - vis.bottom())
+                                .min((fr.y - m - vis.y).max(0.0))
+                        } else if fr.y - m < vis.y {
+                            fr.y - m - vis.y
+                        } else {
+                            0.0
+                        };
                         let np = (pan + d).clamp(0.0, (full.h - vis.h).max(0.0));
                         if (np - pan).abs() > 0.5 {
                             pan = np;
@@ -1789,7 +2069,8 @@ impl App {
             let lang = self.set.lang.clone();
             let clip = self.mx.cfg.clip.clone();
             let tr = |k: &'static str| crate::i18n::tr(&lang, k);
-            if let Some(o) = crate::kbd::keyboard(ui, ka, &mut self.kb, &lang, id, &cur, &clip, &tr) {
+            if let Some(o) = crate::kbd::keyboard(ui, ka, &mut self.kb, &lang, id, &cur, &clip, &tr)
+            {
                 self.on_kb(o);
             }
         }
@@ -1814,7 +2095,9 @@ impl App {
             } else if self.shade && dy < -far && dx.abs() < dy.abs() * 0.7 {
                 self.shade = false;
                 ui.dirty = true;
-            } else if ((ui.p.px < edge && dx > far) || (ui.p.px > ui.w - edge && dx < -far)) && dy.abs() < dx.abs() * 0.6 {
+            } else if ((ui.p.px < edge && dx > far) || (ui.p.px > ui.w - edge && dx < -far))
+                && dy.abs() < dx.abs() * 0.6
+            {
                 self.back();
                 ui.dirty = true;
             } else if ui.p.py > ui.h - ui.dp(52.0) && dy < -far && dx.abs() < dy.abs() * 0.6 {
@@ -1833,7 +2116,12 @@ impl App {
         if let Some((s, _)) = &self.toast {
             let s = s.clone();
             let w = (ui.text_w(&s, 14.0, false) + ui.dp(36.0)).min(ui.w - ui.dp(24.0));
-            let r = Rect::new((ui.w - w) / 2.0, ui.h - nb - kbh - ui.dp(58.0), w, ui.dp(42.0));
+            let r = Rect::new(
+                (ui.w - w) / 2.0,
+                ui.h - nb - kbh - ui.dp(58.0),
+                w,
+                ui.dp(42.0),
+            );
             ui.cv.rrect(r, ui.dp(21.0), ui.th.text);
             let c = ui.th.bg;
             ui.label(r.inset(ui.dp(10.0)), &s, 14.0, c, false, Al::Center);
@@ -1865,15 +2153,46 @@ impl App {
             let info = format!("{cap} %");
             let txw = ui.text_w(&info, 13.0, false);
             let (bw, bh) = (ui.dp(24.0), ui.dp(12.0));
-            let bx = if ui.rtl { r.x } else { r.right() - bw - ui.dp(2.0) };
+            let bx = if ui.rtl {
+                r.x
+            } else {
+                r.right() - bw - ui.dp(2.0)
+            };
             let by = (h - bh) / 2.0;
             ui.cv.rrect(Rect::new(bx, by, bw, bh), ui.dp(3.0), c);
-            ui.cv.rrect(Rect::new(bx + ui.dp(1.5), by + ui.dp(1.5), bw - ui.dp(3.0), bh - ui.dp(3.0)), ui.dp(2.0), ui.th.bg);
-            ui.cv.rrect(Rect::new(bx + bw, by + bh * 0.3, ui.dp(2.0), bh * 0.4), ui.dp(1.0), c);
-            let fillc = if chg { ui.th.ok } else if cap < 15 { ui.th.danger } else { c };
+            ui.cv.rrect(
+                Rect::new(
+                    bx + ui.dp(1.5),
+                    by + ui.dp(1.5),
+                    bw - ui.dp(3.0),
+                    bh - ui.dp(3.0),
+                ),
+                ui.dp(2.0),
+                ui.th.bg,
+            );
+            ui.cv.rrect(
+                Rect::new(bx + bw, by + bh * 0.3, ui.dp(2.0), bh * 0.4),
+                ui.dp(1.0),
+                c,
+            );
+            let fillc = if chg {
+                ui.th.ok
+            } else if cap < 15 {
+                ui.th.danger
+            } else {
+                c
+            };
             let fw = ((bw - ui.dp(6.0)) * cap as f32 / 100.0).max(ui.dp(2.0));
-            ui.cv.rrect(Rect::new(bx + ui.dp(3.0), by + ui.dp(3.0), fw, bh - ui.dp(6.0)), ui.dp(1.0), fillc);
-            let lr = if ui.rtl { Rect::new(r.x + bw + ui.dp(8.0), 0.0, txw, h) } else { Rect::new(r.right() - bw - ui.dp(8.0) - txw, 0.0, txw, h) };
+            ui.cv.rrect(
+                Rect::new(bx + ui.dp(3.0), by + ui.dp(3.0), fw, bh - ui.dp(6.0)),
+                ui.dp(1.0),
+                fillc,
+            );
+            let lr = if ui.rtl {
+                Rect::new(r.x + bw + ui.dp(8.0), 0.0, txw, h)
+            } else {
+                Rect::new(r.right() - bw - ui.dp(8.0) - txw, 0.0, txw, h)
+            };
             let old = ui.rtl;
             ui.rtl = false;
             ui.label(lr, &info, 13.0, c, false, Al::Start);
@@ -1882,7 +2201,11 @@ impl App {
         }
         // Funk-Anzeigen links des Akkus: Mobilfunk-Punkt, WLAN-Balken, VPN-Schloss
         let dir = if ui.rtl { 1.0 } else { -1.0 };
-        let mut ix = if ui.rtl { r.x + tw + ui.dp(14.0) } else { r.right() - tw - ui.dp(14.0) };
+        let mut ix = if ui.rtl {
+            r.x + tw + ui.dp(14.0)
+        } else {
+            r.right() - tw - ui.dp(14.0)
+        };
         let step = ui.dp(18.0);
 
         // WLAN: Bögen-Symbol (hell = verbunden, gedämpft = an, aber ohne Verbindung; aus = nicht gezeigt)
@@ -1920,7 +2243,10 @@ impl App {
 
     fn nav_bar(&mut self, ui: &mut Ui, h: f32) {
         let r = Rect::new(0.0, ui.h - h, ui.w, h);
-        let immersive = matches!(self.stack.last().map(|s| &s.0), Some(Screen::Camera | Screen::Photo(_)));
+        let immersive = matches!(
+            self.stack.last().map(|s| &s.0),
+            Some(Screen::Camera | Screen::Photo(_))
+        );
         ui.cv.rect(r, if immersive { rgb(0) } else { ui.th.bg });
         if !immersive {
             ui.cv.rect(Rect::new(0.0, r.y, ui.w, 1.0), ui.th.line);
@@ -1928,19 +2254,59 @@ impl App {
         let old = ui.enabled;
         ui.enabled = true;
         let third = ui.w / 3.0;
-        let (rb, rh) = if ui.rtl { (Rect::new(2.0 * third, r.y, third, h), Rect::new(third, r.y, third, h)) } else { (Rect::new(0.0, r.y, third, h), Rect::new(third, r.y, third, h)) };
-        let can_back = self.stack.len() > 1 || self.focus.is_some() || self.power_dialog || self.pending.is_some();
+        let (rb, rh) = if ui.rtl {
+            (
+                Rect::new(2.0 * third, r.y, third, h),
+                Rect::new(third, r.y, third, h),
+            )
+        } else {
+            (
+                Rect::new(0.0, r.y, third, h),
+                Rect::new(third, r.y, third, h),
+            )
+        };
+        let can_back = self.stack.len() > 1
+            || self.focus.is_some()
+            || self.power_dialog
+            || self.pending.is_some();
         let c = ui.th.text;
         let cs = ui.th.sub.alpha(0.4);
-        ui.icon(Ic::Back, rb.cx(), rb.cy(), ui.dp(22.0), if can_back { c } else { cs });
-        ui.icon(Ic::Home, rh.cx(), rh.cy(), ui.dp(22.0), if self.mx.pinned { ui.th.accent } else { c });
+        ui.icon(
+            Ic::Back,
+            rb.cx(),
+            rb.cy(),
+            ui.dp(22.0),
+            if can_back { c } else { cs },
+        );
+        ui.icon(
+            Ic::Home,
+            rh.cx(),
+            rh.cy(),
+            ui.dp(22.0),
+            if self.mx.pinned { ui.th.accent } else { c },
+        );
         // Dritte Taste: zuletzt verwendete Apps
-        let rr = if ui.rtl { Rect::new(0.0, r.y, third, h) } else { Rect::new(2.0 * third, r.y, third, h) };
+        let rr = if ui.rtl {
+            Rect::new(0.0, r.y, third, h)
+        } else {
+            Rect::new(2.0 * third, r.y, third, h)
+        };
         let sq = ui.dp(8.5);
-        ui.cv.rrect(Rect::new(rr.cx() - sq, rr.cy() - sq, 2.0 * sq, 2.0 * sq), ui.dp(4.0), if self.mx.pinned { cs } else { c });
-        ui.cv.rrect(Rect::new(rr.cx() - sq, rr.cy() - sq, 2.0 * sq, 2.0 * sq).inset(ui.dp(2.2)), ui.dp(2.5), if immersive { rgb(0) } else { ui.th.bg });
+        ui.cv.rrect(
+            Rect::new(rr.cx() - sq, rr.cy() - sq, 2.0 * sq, 2.0 * sq),
+            ui.dp(4.0),
+            if self.mx.pinned { cs } else { c },
+        );
+        ui.cv.rrect(
+            Rect::new(rr.cx() - sq, rr.cy() - sq, 2.0 * sq, 2.0 * sq).inset(ui.dp(2.2)),
+            ui.dp(2.5),
+            if immersive { rgb(0) } else { ui.th.bg },
+        );
         if !self.mx.pinned && ui.tap(rr) {
-            if matches!(self.stack.last().map(|s| &s.0), Some(Screen::More(app_more::Mx::Recents))) {
+            if matches!(
+                self.stack.last().map(|s| &s.0),
+                Some(Screen::More(app_more::Mx::Recents))
+            ) {
                 self.back();
             } else if self.set.setup_done {
                 self.focus = None;
@@ -1977,9 +2343,17 @@ impl App {
         let h = ui.dp(56.0);
         let c = ui.th.text;
         let cy = area.y + h / 2.0;
-        let help = if self.set.help_btn { self.cur_help() } else { None };
+        let help = if self.set.help_btn {
+            self.cur_help()
+        } else {
+            None
+        };
         // Zurück
-        let bx = if ui.rtl { ui.w - ui.dp(30.0) } else { ui.dp(30.0) };
+        let bx = if ui.rtl {
+            ui.w - ui.dp(30.0)
+        } else {
+            ui.dp(30.0)
+        };
         let br = Rect::new(bx - ui.dp(22.0), cy - ui.dp(22.0), ui.dp(44.0), ui.dp(44.0));
         if ui.held(br) {
             ui.cv.circle(bx, cy, ui.dp(19.0), ui.th.press);
@@ -2005,14 +2379,25 @@ impl App {
         };
         self.hdr_tap = false;
         if let Some(ic) = act {
-            let ax = if ui.rtl { ui.dp(28.0) } else { ui.w - ui.dp(28.0) };
+            let ax = if ui.rtl {
+                ui.dp(28.0)
+            } else {
+                ui.w - ui.dp(28.0)
+            };
             if ui.icon_btn(ax, cy, ui.dp(16.0), ic, ui.th.card.alpha(0.0), c) {
                 self.hdr_tap = true;
                 ui.dirty = true;
             }
         }
         let shift = if act.is_some() { ui.dp(44.0) } else { 0.0 };
-        let tw = ui.w - side - shift - if help.is_some() { ui.dp(56.0) } else { ui.dp(16.0) };
+        let tw = ui.w
+            - side
+            - shift
+            - if help.is_some() {
+                ui.dp(56.0)
+            } else {
+                ui.dp(16.0)
+            };
         let tx = if ui.rtl { ui.w - side - tw } else { side };
         let tr = Rect::new(tx, area.y, tw, h);
         let tf = ui.fit(title, 20.0, true, tw);
@@ -2023,7 +2408,11 @@ impl App {
         }
         if let Some(id) = help {
             let r = ui.dp(16.0);
-            let hx = if ui.rtl { ui.dp(28.0) + shift } else { ui.w - ui.dp(28.0) - shift };
+            let hx = if ui.rtl {
+                ui.dp(28.0) + shift
+            } else {
+                ui.w - ui.dp(28.0) - shift
+            };
             if ui.icon_btn(hx, cy, r, Ic::Info, ui.th.card.alpha(0.0), ui.th.sub) {
                 self.go(Screen::Help(Some(id.to_string())));
             }
@@ -2130,7 +2519,14 @@ impl App {
                 y += h + ui.dp(20.0);
                 // Verweis zum Assistenten
                 let hint = ui.th.sub;
-                let h2 = ui.para(x, y, w, self.t("Ask the assistant for anything you can't find here."), 12.5, hint);
+                let h2 = ui.para(
+                    x,
+                    y,
+                    w,
+                    self.t("Ask the assistant for anything you can't find here."),
+                    12.5,
+                    hint,
+                );
                 y += h2 + ui.dp(12.0);
             } else {
                 self.caption(ui, &mut y, self.t("No help for this topic."));
@@ -2158,7 +2554,9 @@ impl App {
                     q.is_empty()
                         || self.t(t.title).to_lowercase().contains(&q)
                         || t.title.to_lowercase().contains(&q)
-                        || t.body[crate::help::li_pub(self.lang())].to_lowercase().contains(&q)
+                        || t.body[crate::help::li_pub(self.lang())]
+                            .to_lowercase()
+                            .contains(&q)
                 })
                 .collect();
             if part.is_empty() {
@@ -2170,7 +2568,14 @@ impl App {
             for t in part {
                 shown += 1;
                 let sub = crate::help::first_line(t.body[crate::help::li_pub(self.lang())]);
-                if ui.row(&mut y, Some(Ic::Info), self.t(t.title), Some(sub), None, true) {
+                if ui.row(
+                    &mut y,
+                    Some(Ic::Info),
+                    self.t(t.title),
+                    Some(sub),
+                    None,
+                    true,
+                ) {
                     nav = Some(t.id.to_string());
                 }
             }
@@ -2202,9 +2607,27 @@ impl App {
             (Ic::Gear, "Settings", Some(Screen::Settings)),
             (Ic::Svg("store"), "Ultar Store", Some(Screen::StoreCloud)),
             (Ic::Term, "Terminal", Some(Screen::Terminal)),
-            (Ic::Globe, "Browser", Some(Screen::Web(sys::memo("browser_home", 3000, || std::fs::read_to_string(format!("{}/browser-home", sys::data_dir())).map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "about:blank".into()))))),
-            (Ic::Svg("wa"), "WhatsApp", Some(Screen::WebApp("whatsapp".into()))),
-            (Ic::Svg("yt"), "YouTube", Some(Screen::WebApp("youtube".into()))),
+            (
+                Ic::Globe,
+                "Browser",
+                Some(Screen::Web(sys::memo("browser_home", 3000, || {
+                    std::fs::read_to_string(format!("{}/browser-home", sys::data_dir()))
+                        .map(|s| s.trim().to_string())
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "about:blank".into())
+                }))),
+            ),
+            (
+                Ic::Svg("wa"),
+                "WhatsApp",
+                Some(Screen::WebApp("whatsapp".into())),
+            ),
+            (
+                Ic::Svg("yt"),
+                "YouTube",
+                Some(Screen::WebApp("youtube".into())),
+            ),
             (Ic::Svg("spot"), "Spotify", Some(Screen::Spotify)),
             (Ic::Svg("tg"), "Telegram", Some(Screen::Telegram)),
             (Ic::Phone, "Phone", Some(Screen::Phone)),
@@ -2212,18 +2635,54 @@ impl App {
             (Ic::Camera, "Camera", Some(Screen::Camera)),
             (Ic::Image, "Gallery", Some(Screen::Gallery)),
             (Ic::Note, "Notes", Some(Screen::Notes)),
-            (Ic::Svg("pdf"), "PDF reader", Some(Screen::Office(app_office::Ox::List(0)))),
-            (Ic::Doc, "Documents", Some(Screen::Office(app_office::Ox::List(1)))),
-            (Ic::Svg("xls"), "Sheets", Some(Screen::Office(app_office::Ox::List(2)))),
-            (Ic::Svg("code"), "Code editor", Some(Screen::Office(app_office::Ox::List(3)))),
+            (
+                Ic::Svg("pdf"),
+                "PDF reader",
+                Some(Screen::Office(app_office::Ox::List(0))),
+            ),
+            (
+                Ic::Doc,
+                "Documents",
+                Some(Screen::Office(app_office::Ox::List(1))),
+            ),
+            (
+                Ic::Svg("xls"),
+                "Sheets",
+                Some(Screen::Office(app_office::Ox::List(2))),
+            ),
+            (
+                Ic::Svg("code"),
+                "Code editor",
+                Some(Screen::Office(app_office::Ox::List(3))),
+            ),
             (Ic::Person, "Contacts", Some(Screen::Contacts)),
             (Ic::Calc, "Calculator", Some(Screen::Calc)),
-            (Ic::Svg("cal"), "Calendar", Some(Screen::Sys(app_sys::Sx::Calendar))),
-            (Ic::Globe, "World clock", Some(Screen::Sys(app_sys::Sx::World))),
-            (Ic::Sliders, "Unit converter", Some(Screen::Sys(app_sys::Sx::Units))),
+            (
+                Ic::Svg("cal"),
+                "Calendar",
+                Some(Screen::Sys(app_sys::Sx::Calendar)),
+            ),
+            (
+                Ic::Globe,
+                "World clock",
+                Some(Screen::Sys(app_sys::Sx::World)),
+            ),
+            (
+                Ic::Sliders,
+                "Unit converter",
+                Some(Screen::Sys(app_sys::Sx::Units)),
+            ),
             (Ic::Search, "Search", Some(Screen::Sys(app_sys::Sx::Search))),
-            (Ic::Svg("tools"), "Tools", Some(Screen::More(app_more::Mx::Tools))),
-            (Ic::Heart, "Device care", Some(Screen::More(app_more::Mx::Care))),
+            (
+                Ic::Svg("tools"),
+                "Tools",
+                Some(Screen::More(app_more::Mx::Tools)),
+            ),
+            (
+                Ic::Heart,
+                "Device care",
+                Some(Screen::More(app_more::Mx::Care)),
+            ),
             (Ic::Clock, "Clock", Some(Screen::Clock)),
             (Ic::Folder, "Files", Some(Screen::Files)),
             (Ic::Apps, "Ubuntu apps", Some(Screen::UbuntuApps)),
@@ -2247,10 +2706,23 @@ impl App {
         if let Some(Some(p)) = &self.wall {
             let k = (ui.w / p.w as f32).max(ui.h / p.h as f32);
             let (w, h) = (p.w as f32 * k, p.h as f32 * k);
-            ui.cv.blit_rgba(&p.rgba, p.w, p.h, Rect::new((ui.w - w) / 2.0, (ui.h - h) / 2.0, w, h));
-            ui.cv.veil(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0).alpha(0.42), rgb(0).alpha(0.78));
+            ui.cv.blit_rgba(
+                &p.rgba,
+                p.w,
+                p.h,
+                Rect::new((ui.w - w) / 2.0, (ui.h - h) / 2.0, w, h),
+            );
+            ui.cv.veil(
+                Rect::new(0.0, 0.0, ui.w, ui.h),
+                rgb(0).alpha(0.42),
+                rgb(0).alpha(0.78),
+            );
         }
-        let (c, cs) = if has_wall { (rgb(0xFFFFFF), rgb(0xFFFFFF).alpha(0.78)) } else { (ui.th.text, ui.th.sub) };
+        let (c, cs) = if has_wall {
+            (rgb(0xFFFFFF), rgb(0xFFFFFF).alpha(0.78))
+        } else {
+            (ui.th.text, ui.th.sub)
+        };
         let wide = ui.w > ui.h;
         // Wenig Höhe (Querformat, kurze Handys): Uhr kompakter, damit alle Apps sichtbar bleiben
         let compact = wide || area.h < ui.dp(600.0);
@@ -2259,11 +2731,23 @@ impl App {
             let lg = brand::logo();
             let lw = (ui.w * 0.36).min(ui.dp(150.0));
             let lh = lw * lg.h as f32 / lg.w as f32;
-            ui.cv.image(&lg, (ui.w - lw) / 2.0, area.y + ui.dp(12.0), lw, lh);
+            ui.cv
+                .image(&lg, (ui.w - lw) / 2.0, area.y + ui.dp(12.0), lw, lh);
         }
         // Ein/Aus oben in der Ecke
-        let px = if ui.rtl { ui.dp(30.0) } else { ui.w - ui.dp(30.0) };
-        if ui.icon_btn(px, area.y + ui.dp(26.0), ui.dp(17.0), Ic::Power, c.alpha(0.08), cs) {
+        let px = if ui.rtl {
+            ui.dp(30.0)
+        } else {
+            ui.w - ui.dp(30.0)
+        };
+        if ui.icon_btn(
+            px,
+            area.y + ui.dp(26.0),
+            ui.dp(17.0),
+            Ic::Power,
+            c.alpha(0.08),
+            cs,
+        ) {
             self.power_dialog = true;
             ui.dirty = true;
         }
@@ -2271,13 +2755,49 @@ impl App {
         let has_freq = !self.frequent().is_empty();
         let both = !compact && has_freq && area.h >= ui.dp(688.0);
         let show_radio = !compact && (!has_freq || both);
-        let (clock_y, clock_h, clock_sz, date_y, chips_y, grid_y) = if compact { (2.0, 58.0, 46.0, 58.0, 0.0, 92.0) } else { (78.0, 90.0, 70.0, 166.0, 204.0, if both { 296.0 } else { 256.0 }) };
-        ui.label(Rect::new(0.0, area.y + ui.dp(clock_y), ui.w, ui.dp(clock_h)), &self.clock_str(dt.h, dt.mi), clock_sz, c, true, Al::Center);
+        let (clock_y, clock_h, clock_sz, date_y, chips_y, grid_y) = if compact {
+            (2.0, 58.0, 46.0, 58.0, 0.0, 92.0)
+        } else {
+            (
+                78.0,
+                90.0,
+                70.0,
+                166.0,
+                204.0,
+                if both { 296.0 } else { 256.0 },
+            )
+        };
+        ui.label(
+            Rect::new(0.0, area.y + ui.dp(clock_y), ui.w, ui.dp(clock_h)),
+            &self.clock_str(dt.h, dt.mi),
+            clock_sz,
+            c,
+            true,
+            Al::Center,
+        );
         let date = format!("{}, {:02}.{:02}.{}", self.t(DAYS[dt.wd]), dt.d, dt.mo, dt.y);
-        ui.label(Rect::new(0.0, area.y + ui.dp(date_y), ui.w, ui.dp(if compact { 24.0 } else { 28.0 })), &date, if compact { 14.0 } else { 15.5 }, cs, false, Al::Center);
+        ui.label(
+            Rect::new(
+                0.0,
+                area.y + ui.dp(date_y),
+                ui.w,
+                ui.dp(if compact { 24.0 } else { 28.0 }),
+            ),
+            &date,
+            if compact { 14.0 } else { 15.5 },
+            cs,
+            false,
+            Al::Center,
+        );
 
         // Apps: (Symbol, Name, Farbton, Ziel)
-        let browser_home = sys::memo("browser_home", 3000, || std::fs::read_to_string(format!("{}/browser-home", sys::data_dir())).map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "about:blank".into()));
+        let browser_home = sys::memo("browser_home", 3000, || {
+            std::fs::read_to_string(format!("{}/browser-home", sys::data_dir()))
+                .map(|s| s.trim().to_string())
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "about:blank".into())
+        });
         let dock: [(Ic, &'static str, u32, Screen); 4] = [
             (Ic::Phone, "Phone", 0x22C55E, Screen::Phone),
             (Ic::Chat, "Messages", 0x3B82F6, Screen::Messages),
@@ -2285,7 +2805,12 @@ impl App {
             (Ic::Camera, "Camera", 0x64748B, Screen::Camera),
         ];
         let apps: [(Ic, &'static str, u32, Screen); 16] = [
-            (Ic::Spark, "Agent", ACCENTS[self.set.accent % ACCENTS.len()], Screen::Agent),
+            (
+                Ic::Spark,
+                "Agent",
+                ACCENTS[self.set.accent % ACCENTS.len()],
+                Screen::Agent,
+            ),
             (Ic::Image, "Gallery", 0xF472B6, Screen::Gallery),
             (Ic::Clock, "Clock", 0x60A5FA, Screen::Clock),
             (Ic::Calc, "Calculator", 0xF59E0B, Screen::Calc),
@@ -2293,9 +2818,19 @@ impl App {
             (Ic::Note, "Notes", 0xFACC15, Screen::Notes),
             (Ic::Person, "Contacts", 0x34D399, Screen::Contacts),
             (Ic::Gear, "Settings", 0x94A3B8, Screen::Settings),
-            (Ic::Chat, "WhatsApp", 0x25D366, Screen::WebApp("whatsapp".into())),
+            (
+                Ic::Chat,
+                "WhatsApp",
+                0x25D366,
+                Screen::WebApp("whatsapp".into()),
+            ),
             (Ic::Send, "Telegram", 0x38BDF8, Screen::Telegram),
-            (Ic::Play, "YouTube", 0xF43F5E, Screen::WebApp("youtube".into())),
+            (
+                Ic::Play,
+                "YouTube",
+                0xF43F5E,
+                Screen::WebApp("youtube".into()),
+            ),
             (Ic::Music, "Spotify", 0x1ED760, Screen::Spotify),
             (Ic::Box, "Ultar Store", 0xA78BFA, Screen::StoreCloud),
             (Ic::Term, "Terminal", 0x4ADE80, Screen::Terminal),
@@ -2308,9 +2843,17 @@ impl App {
             let m = ui.dp(16.0);
             let w = (ui.w - 2.0 * m) / freq.len() as f32;
             for (i, name) in freq.iter().enumerate() {
-                let Some((_, key, _, target)) = apps.iter().chain(dock.iter()).find(|a| a.1 == name.as_str()).cloned() else { continue };
+                let Some((_, key, _, target)) = apps
+                    .iter()
+                    .chain(dock.iter())
+                    .find(|a| a.1 == name.as_str())
+                    .cloned()
+                else {
+                    continue;
+                };
                 let col = if ui.rtl { freq.len() - 1 - i } else { i };
-                let r = Rect::new(m + col as f32 * w, area.y + ui.dp(chips_y), w, ui.dp(40.0)).inset(ui.dp(3.0));
+                let r = Rect::new(m + col as f32 * w, area.y + ui.dp(chips_y), w, ui.dp(40.0))
+                    .inset(ui.dp(3.0));
                 if ui.button(r, self.t(key), Btn::Plain) {
                     self.count_launch(key);
                     self.go(target);
@@ -2322,9 +2865,22 @@ impl App {
         let m = ui.dp(14.0);
         let dock_h = ui.dp(if compact { 76.0 } else { 84.0 });
         let dw = (ui.w - 2.0 * m).min(ui.dp(440.0));
-        let dr = Rect::new((ui.w - dw) / 2.0, area.bottom() - dock_h - ui.dp(8.0), dw, dock_h);
+        let dr = Rect::new(
+            (ui.w - dw) / 2.0,
+            area.bottom() - dock_h - ui.dp(8.0),
+            dw,
+            dock_h,
+        );
         ui.cv.rrect(dr, ui.dp(26.0), c.alpha(0.10));
-        ui.cv.rrect(dr.inset(1.0), ui.dp(25.0), if has_wall { rgb(0x101216).alpha(0.55) } else { ui.th.card.alpha(0.92) });
+        ui.cv.rrect(
+            dr.inset(1.0),
+            ui.dp(25.0),
+            if has_wall {
+                rgb(0x101216).alpha(0.55)
+            } else {
+                ui.th.card.alpha(0.92)
+            },
+        );
         let ds = (dock_h - ui.dp(24.0)).min(ui.dp(58.0));
         let mut go_to: Option<(&'static str, Screen)> = None;
         for (i, (ic, name, hue, target)) in dock.iter().enumerate() {
@@ -2336,31 +2892,64 @@ impl App {
             let held = ui.held(hit);
             // Ultar Noir: neutrale Glasfläche, nur das Telefon grün
             let phone = *name == "Phone";
-            let base = if phone { rgb(0x173A24) } else if has_wall { rgb(0x1C1F26) } else { ui.th.press };
+            let base = if phone {
+                rgb(0x173A24)
+            } else if has_wall {
+                rgb(0x1C1F26)
+            } else {
+                ui.th.press
+            };
             let base = if held { base.mix(rgb(0), 0.3) } else { base };
             let _ = hue;
             ui.cv.rrect(ir, ds * 0.32, base);
-            ui.cv.rrect(Rect::new(ir.x, ir.y, ir.w, ir.h * 0.45), ds * 0.32, rgb(0xFFFFFF).alpha(0.04));
-            ui.icon(*ic, ir.cx(), ir.cy(), ds * 0.46, if phone { ui.th.ok } else if has_wall { rgb(0xFFFFFF) } else { ui.th.text });
+            ui.cv.rrect(
+                Rect::new(ir.x, ir.y, ir.w, ir.h * 0.45),
+                ds * 0.32,
+                rgb(0xFFFFFF).alpha(0.04),
+            );
+            ui.icon(
+                *ic,
+                ir.cx(),
+                ir.cy(),
+                ds * 0.46,
+                if phone {
+                    ui.th.ok
+                } else if has_wall {
+                    rgb(0xFFFFFF)
+                } else {
+                    ui.th.text
+                },
+            );
             if ui.tap(hit) {
                 go_to = Some((name, target.clone()));
             }
         }
         // Raster: Spalten nach Breite (eine Kachel braucht rund 88 dp), Zeilenhöhe nach verfügbarer Höhe
         let m = ui.dp(16.0);
-        let cols = (((ui.w - 2.0 * m) / ui.dp(88.0)) as usize).clamp(4, 8).min(apps.len());
+        let cols = (((ui.w - 2.0 * m) / ui.dp(88.0)) as usize)
+            .clamp(4, 8)
+            .min(apps.len());
         let tw = (ui.w - 2.0 * m) / cols as f32;
         let y0 = area.y + ui.dp(grid_y);
         // Verbindungsleiste (Mobilfunk) zwischen Datum und App-Raster
         if show_radio {
-            let cr = if both { Rect::new(m, y0 - ui.dp(46.0), ui.w - 2.0 * m, ui.dp(38.0)) } else { Rect::new(m, y0 - ui.dp(50.0), ui.w - 2.0 * m, ui.dp(42.0)) };
+            let cr = if both {
+                Rect::new(m, y0 - ui.dp(46.0), ui.w - 2.0 * m, ui.dp(38.0))
+            } else {
+                Rect::new(m, y0 - ui.dp(50.0), ui.w - 2.0 * m, ui.dp(42.0))
+            };
             self.home_radio_card(ui, cr);
         }
         let rows = apps.len().div_ceil(cols);
         let th = ((dr.y - y0 - ui.dp(8.0)) / rows as f32).clamp(ui.dp(70.0), ui.dp(104.0));
         // Symbolgröße folgt der Zeilenhöhe, damit die Beschriftung nie abgeschnitten wird
         let icon_s = (th - ui.dp(36.0)).clamp(ui.dp(38.0), ui.dp(58.0));
-        ui.set_clip(Some(Rect::new(0.0, y0 - ui.dp(4.0), ui.w, (dr.y - y0).max(0.0))));
+        ui.set_clip(Some(Rect::new(
+            0.0,
+            y0 - ui.dp(4.0),
+            ui.w,
+            (dr.y - y0).max(0.0),
+        )));
         for (i, (ic, name, hue, target)) in apps.iter().enumerate() {
             let col = i % cols;
             let col = if ui.rtl { cols - 1 - col } else { col };
@@ -2377,12 +2966,48 @@ impl App {
             if !has_wall {
                 ui.cv.soft_shadow(ir, rad, rgb(0));
             }
-            ui.cv.rrect(ir, rad, if has_wall { rgb(0xFFFFFF).alpha(0.12) } else { ui.th.line });
+            ui.cv.rrect(
+                ir,
+                rad,
+                if has_wall {
+                    rgb(0xFFFFFF).alpha(0.12)
+                } else {
+                    ui.th.line
+                },
+            );
             ui.cv.rrect(ir.inset(1.0), rad - 1.0, tile);
-            ui.cv.rrect(Rect::new(ir.x + 1.0, ir.y + 1.0, ir.w - 2.0, ir.h * 0.45), rad - 1.0, rgb(0xFFFFFF).alpha(0.05));
+            ui.cv.rrect(
+                Rect::new(ir.x + 1.0, ir.y + 1.0, ir.w - 2.0, ir.h * 0.45),
+                rad - 1.0,
+                rgb(0xFFFFFF).alpha(0.05),
+            );
             let gold = matches!(ic, Ic::Spark | Ic::Box);
-            ui.icon(*ic, ir.cx(), ir.cy(), s * 0.46, if gold { ui.th.accent } else if has_wall { rgb(0xFFFFFF) } else { ui.th.text.mix(hue, 0.0) });
-            ui.label(Rect::new(cell.x + ui.dp(2.0), ir.bottom() + ui.dp(4.0), cell.w - ui.dp(4.0), ui.dp(22.0)), self.t(name), 12.0, if has_wall { c } else { cs.mix(c, 0.45) }, false, Al::Center);
+            ui.icon(
+                *ic,
+                ir.cx(),
+                ir.cy(),
+                s * 0.46,
+                if gold {
+                    ui.th.accent
+                } else if has_wall {
+                    rgb(0xFFFFFF)
+                } else {
+                    ui.th.text.mix(hue, 0.0)
+                },
+            );
+            ui.label(
+                Rect::new(
+                    cell.x + ui.dp(2.0),
+                    ir.bottom() + ui.dp(4.0),
+                    cell.w - ui.dp(4.0),
+                    ui.dp(22.0),
+                ),
+                self.t(name),
+                12.0,
+                if has_wall { c } else { cs.mix(c, 0.45) },
+                false,
+                Al::Center,
+            );
             if ui.tap(cell) {
                 go_to = Some((name, target.clone()));
             }
@@ -2399,30 +3024,137 @@ impl App {
         let area = self.header(ui, area, "");
         ui.scroll_begin(area, sc);
         let mut y = area.y - *sc;
-        let net = sys::net_status().into_iter().find(|n| n.state == "verbunden").map(|n| n.ip).unwrap_or_default();
+        let net = sys::net_status()
+            .into_iter()
+            .find(|n| n.state == "verbunden")
+            .map(|n| n.ip)
+            .unwrap_or_default();
         let nmiss = hw::missing(&self.hw).len();
-        let acct = sys::memo("cloud_num", 3000, ultar_cloud::my_number).unwrap_or_else(|| if sys::memo("cloud_tok", 3000, || ultar_cloud::token().is_some()) { self.t("Signed in").into() } else { String::new() });
+        let acct = sys::memo("cloud_num", 3000, ultar_cloud::my_number).unwrap_or_else(|| {
+            if sys::memo("cloud_tok", 3000, || ultar_cloud::token().is_some()) {
+                self.t("Signed in").into()
+            } else {
+                String::new()
+            }
+        });
         let rs = self.radio();
-        let mobile = if rs.in_service() { format!("{} · {}", if rs.operator.is_empty() { rs.plmn.clone() } else { rs.operator.clone() }, app_radio::rat_short(&rs.rat)) } else { String::new() };
+        let mobile = if rs.in_service() {
+            format!(
+                "{} · {}",
+                if rs.operator.is_empty() {
+                    rs.plmn.clone()
+                } else {
+                    rs.operator.clone()
+                },
+                app_radio::rat_short(&rs.rat)
+            )
+        } else {
+            String::new()
+        };
         let mut items: Vec<(Ic, &'static str, String, Screen)> = vec![
             (Ic::Wifi, "Network", net, Screen::Net),
             (Ic::Tower, "Mobile network", mobile, Screen::Radio),
-            (Ic::Shield, "Privacy", self.t(if self.set.adblock { "Ads blocked" } else { "Off" }).into(), Screen::Privacy),
-            (Ic::Shield, "Security", if sys::memo("udata_enc", 30_000, ultar_secure::udata::is_encrypted) { self.t("Encrypted").into() } else { String::new() }, Screen::Security),
+            (
+                Ic::Shield,
+                "Privacy",
+                self.t(if self.set.adblock {
+                    "Ads blocked"
+                } else {
+                    "Off"
+                })
+                .into(),
+                Screen::Privacy,
+            ),
+            (
+                Ic::Shield,
+                "Security",
+                if sys::memo("udata_enc", 30_000, ultar_secure::udata::is_encrypted) {
+                    self.t("Encrypted").into()
+                } else {
+                    String::new()
+                },
+                Screen::Security,
+            ),
             (Ic::Person, "Account", acct, Screen::Account),
-            (Ic::Lock, "VPN", if crate::sys::vpn_status().up { self.t("Connected").into() } else { String::new() }, Screen::Vpn),
-            (Ic::Chip, "Device cluster", app_cloud::verbund_kurz(self), Screen::Verbund),
-            (Ic::Box, "Cells & containers", app_zellen::kurz(self), Screen::Zellen),
+            (
+                Ic::Lock,
+                "VPN",
+                if crate::sys::vpn_status().up {
+                    self.t("Connected").into()
+                } else {
+                    String::new()
+                },
+                Screen::Vpn,
+            ),
+            (
+                Ic::Chip,
+                "Device cluster",
+                app_cloud::verbund_kurz(self),
+                Screen::Verbund,
+            ),
+            (
+                Ic::Box,
+                "Cells & containers",
+                app_zellen::kurz(self),
+                Screen::Zellen,
+            ),
             (Ic::Box, "Ultar Store", String::new(), Screen::StoreCloud),
             (Ic::Info, "System update", String::new(), Screen::Updates),
-            (Ic::Sun, "Display", format!("{} %", (self.set.brightness * 100.0).round()), Screen::Display),
-            (Ic::Speaker, "Sound", if self.set.sound { format!("{} %", (self.set.volume * 100.0).round()) } else { self.t("Off").to_string() }, Screen::Sound),
-            (Ic::Lang, "Language", match self.set.lang.as_str() { "ar" => "العربية", "en" => "English", _ => "Deutsch" }.into(), Screen::Lang),
-            (Ic::Clock, "Date & time", tz_label(self.set.tz_min), Screen::Time),
+            (
+                Ic::Sun,
+                "Display",
+                format!("{} %", (self.set.brightness * 100.0).round()),
+                Screen::Display,
+            ),
+            (
+                Ic::Speaker,
+                "Sound",
+                if self.set.sound {
+                    format!("{} %", (self.set.volume * 100.0).round())
+                } else {
+                    self.t("Off").to_string()
+                },
+                Screen::Sound,
+            ),
+            (
+                Ic::Lang,
+                "Language",
+                match self.set.lang.as_str() {
+                    "ar" => "العربية",
+                    "en" => "English",
+                    _ => "Deutsch",
+                }
+                .into(),
+                Screen::Lang,
+            ),
+            (
+                Ic::Clock,
+                "Date & time",
+                tz_label(self.set.tz_min),
+                Screen::Time,
+            ),
             (Ic::Disk, "Storage", String::new(), Screen::Storage),
             (Ic::List, "Services", String::new(), Screen::Services),
-            (Ic::Chip, "Hardware & drivers", if nmiss > 0 { format!("{nmiss} {}", self.t("without driver")) } else { String::new() }, Screen::Hardware),
-            (Ic::Bt, "Bluetooth", if app_bt::enabled() { self.t("On").into() } else { String::new() }, Screen::Bluetooth),
+            (
+                Ic::Chip,
+                "Hardware & drivers",
+                if nmiss > 0 {
+                    format!("{nmiss} {}", self.t("without driver"))
+                } else {
+                    String::new()
+                },
+                Screen::Hardware,
+            ),
+            (
+                Ic::Bt,
+                "Bluetooth",
+                if app_bt::enabled() {
+                    self.t("On").into()
+                } else {
+                    String::new()
+                },
+                Screen::Bluetooth,
+            ),
             (Ic::Sun, "Sensors", String::new(), Screen::Sensors),
             (Ic::Globe, "Location (GPS)", String::new(), Screen::Gnss),
             (Ic::Spark, "Local agent", String::new(), Screen::AgentSet),
@@ -2433,13 +3165,22 @@ impl App {
         // Geräte-Akkus (Kopfhörer, kabellose Maus/Tastatur …): als eigene Zeile, wenn vorhanden
         let akkus = sys::geraete_akkus();
         if !akkus.is_empty() {
-            let txt = akkus.iter().map(|(n, p)| format!("{n} {p} %")).collect::<Vec<_>>().join(" · ");
+            let txt = akkus
+                .iter()
+                .map(|(n, p)| format!("{n} {p} %"))
+                .collect::<Vec<_>>()
+                .join(" · ");
             items.insert(2, (Ic::Bt, "Connected devices", txt, Screen::Bluetooth));
         }
         // Mobilfunk nur mit Modem/SIM; PC (Laptop/Server): keine Handy-Sensoren, Ortung nur mit Empfänger
         let mobil = self.mobilfunk_vorhanden();
-        let pc = matches!(ultar_edition::current(), ultar_edition::Edition::Desktop | ultar_edition::Edition::Server) || self.desk.an;
-        let gnss = ["/dev/gnss0", "/dev/ttyACM0", "/run/ultar/gnss.nmea"].iter().any(|p| std::path::Path::new(p).exists());
+        let pc = matches!(
+            ultar_hal_system::current_edition(),
+            ultar_profile::Edition::Desktop | ultar_profile::Edition::Server
+        ) || self.desk.an;
+        let gnss = ["/dev/gnss0", "/dev/ttyACM0", "/run/ultar/gnss.nmea"]
+            .iter()
+            .any(|p| std::path::Path::new(p).exists());
         items.retain(|(_, k, _, _)| match *k {
             "Mobile network" => mobil,
             "Sensors" => !pc,
@@ -2449,12 +3190,43 @@ impl App {
         let extra = self.sys_settings_items();
         let at = items.len() - 1;
         items.splice(at..at, extra);
-        items.insert(items.len() - 1, (Ic::Sliders, "Modes & automation", String::new(), Screen::More(app_more::Mx::Modes)));
-        items.insert(items.len() - 1, (Ic::Heart, "Device care", String::new(), Screen::More(app_more::Mx::Care)));
-        items.insert(items.len() - 1, (Ic::Clock, "Screen time", String::new(), Screen::More(app_more::Mx::Usage)));
+        items.insert(
+            items.len() - 1,
+            (
+                Ic::Sliders,
+                "Modes & automation",
+                String::new(),
+                Screen::More(app_more::Mx::Modes),
+            ),
+        );
+        items.insert(
+            items.len() - 1,
+            (
+                Ic::Heart,
+                "Device care",
+                String::new(),
+                Screen::More(app_more::Mx::Care),
+            ),
+        );
+        items.insert(
+            items.len() - 1,
+            (
+                Ic::Clock,
+                "Screen time",
+                String::new(),
+                Screen::More(app_more::Mx::Usage),
+            ),
+        );
         // Wie in der Web-Demo: großer Titel, Suchfeld, Ultar-Konto-Karte, vier Gruppen mit farbigen Symbolen
         let c = ui.th.text;
-        ui.label(Rect::new(ui.dp(22.0), y + ui.dp(6.0), ui.w - ui.dp(44.0), ui.dp(40.0)), self.t("Settings"), 32.0, c, true, Al::Start);
+        ui.label(
+            Rect::new(ui.dp(22.0), y + ui.dp(6.0), ui.w - ui.dp(44.0), ui.dp(40.0)),
+            self.t("Settings"),
+            32.0,
+            c,
+            true,
+            Al::Start,
+        );
         y += ui.dp(58.0);
         let fr = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(48.0));
         if ui.visible(fr) {
@@ -2467,22 +3239,53 @@ impl App {
             let held = ui.held(r);
             let ac = ui.th.accent;
             ui.cv.rrect(r, ui.dp(22.0), ac.mix(ui.th.card, 0.65));
-            ui.cv.rrect(r.inset(1.0), ui.dp(21.0), if held { ui.th.press } else { ui.th.card });
+            ui.cv.rrect(
+                r.inset(1.0),
+                ui.dp(21.0),
+                if held { ui.th.press } else { ui.th.card },
+            );
             ui.cv.rrect(r.inset(1.0), ui.dp(21.0), ac.alpha(0.08));
-            let ax = if ui.rtl { r.right() - ui.dp(14.0) - ui.dp(24.0) } else { r.x + ui.dp(14.0) + ui.dp(24.0) };
-            ui.cv.circle(ax, r.cy(), ui.dp(24.0), ui.th.accent2.alpha(0.4));
+            let ax = if ui.rtl {
+                r.right() - ui.dp(14.0) - ui.dp(24.0)
+            } else {
+                r.x + ui.dp(14.0) + ui.dp(24.0)
+            };
+            ui.cv
+                .circle(ax, r.cy(), ui.dp(24.0), ui.th.accent2.alpha(0.4));
             ui.cv.circle(ax, r.cy(), ui.dp(23.0), rgb(0x121108));
             let mk = brand::mark();
             let mw = ui.dp(34.0);
             let mh = mw * mk.h as f32 / mk.w.max(1) as f32;
             ui.cv.image(&mk, ax - mw / 2.0, r.cy() - mh / 2.0, mw, mh);
-            let tx = if ui.rtl { r.x + ui.dp(40.0) } else { r.x + ui.dp(76.0) };
+            let tx = if ui.rtl {
+                r.x + ui.dp(40.0)
+            } else {
+                r.x + ui.dp(76.0)
+            };
             let tw = r.w - ui.dp(116.0);
-            ui.label(Rect::new(tx, r.y + ui.dp(14.0), tw, ui.dp(22.0)), self.t("Ultar account"), 16.0, c, true, Al::Start);
+            ui.label(
+                Rect::new(tx, r.y + ui.dp(14.0), tw, ui.dp(22.0)),
+                self.t("Ultar account"),
+                16.0,
+                c,
+                true,
+                Al::Start,
+            );
             let num = ultar_cloud::my_number().unwrap_or_else(|| "UOS-—".into());
             let cs = ui.th.sub;
-            ui.label(Rect::new(tx, r.y + ui.dp(38.0), tw, ui.dp(18.0)), &num, 12.5, cs, false, Al::Start);
-            let chx = if ui.rtl { r.x + ui.dp(22.0) } else { r.right() - ui.dp(22.0) };
+            ui.label(
+                Rect::new(tx, r.y + ui.dp(38.0), tw, ui.dp(18.0)),
+                &num,
+                12.5,
+                cs,
+                false,
+                Al::Start,
+            );
+            let chx = if ui.rtl {
+                r.x + ui.dp(22.0)
+            } else {
+                r.right() - ui.dp(22.0)
+            };
             ui.icon(Ic::Chevron, chx, r.cy(), ui.dp(16.0), cs.alpha(0.6));
             if ui.tap(r) {
                 self.go(Screen::Account);
@@ -2493,9 +3296,19 @@ impl App {
         // Gruppen wie in der Demo
         let group = |name: &str| -> usize {
             match name {
-                "Network" | "Mobile network" | "VPN" | "Device cluster" | "Bluetooth" | "Network tools" | "Location (GPS)" => 0,
-                "Display" | "Sound" | "Night light & brightness" | "Sound profiles" | "Battery & performance" | "Storage" | "Sensors" | "Hardware & drivers" | "Device care" => 1,
-                "Privacy" | "Security" | "Screen lock" | "Local agent" | "Ubuntu apps" | "Ultar Store" | "Account" => 2,
+                "Network" | "Mobile network" | "VPN" | "Device cluster" | "Bluetooth"
+                | "Network tools" | "Location (GPS)" => 0,
+                "Display"
+                | "Sound"
+                | "Night light & brightness"
+                | "Sound profiles"
+                | "Battery & performance"
+                | "Storage"
+                | "Sensors"
+                | "Hardware & drivers"
+                | "Device care" => 1,
+                "Privacy" | "Security" | "Screen lock" | "Local agent" | "Ubuntu apps"
+                | "Ultar Store" | "Account" => 2,
                 _ => 3,
             }
         };
@@ -2503,7 +3316,9 @@ impl App {
             match name {
                 "Network" | "Bluetooth" | "Network tools" | "Backup & reset" => 0x1E3A5F,
                 "Mobile network" | "Battery & performance" | "Device care" => 0x173A24,
-                "VPN" | "Device cluster" | "Local agent" | "System update" | "Ultar Store" => 0x4A421C,
+                "VPN" | "Device cluster" | "Local agent" | "System update" | "Ultar Store" => {
+                    0x4A421C
+                }
                 "Privacy" | "Security" | "Screen lock" => 0x4A1D1D,
                 "Ubuntu apps" => 0x5A2A1C,
                 _ => 0x2A2D35,
@@ -2512,7 +3327,17 @@ impl App {
         let heads = ["Connections", "Device", "Protection & apps", "System"];
         let mut shown = 0;
         for (g, head) in heads.iter().enumerate() {
-            let part: Vec<_> = items.iter().filter(|it| it.1 != "Account" && group(it.1) == g && (q.is_empty() || self.t(it.1).to_lowercase().contains(&q) || it.1.to_lowercase().contains(&q))).cloned().collect();
+            let part: Vec<_> = items
+                .iter()
+                .filter(|it| {
+                    it.1 != "Account"
+                        && group(it.1) == g
+                        && (q.is_empty()
+                            || self.t(it.1).to_lowercase().contains(&q)
+                            || it.1.to_lowercase().contains(&q))
+                })
+                .cloned()
+                .collect();
             if part.is_empty() {
                 continue;
             }
@@ -2536,13 +3361,27 @@ impl App {
         }
         if shown == 0 {
             let cs = ui.th.sub;
-            ui.label(Rect::new(0.0, y + ui.dp(30.0), ui.w, ui.dp(22.0)), self.t("Nothing found"), 14.0, cs, false, Al::Center);
+            ui.label(
+                Rect::new(0.0, y + ui.dp(30.0), ui.w, ui.dp(22.0)),
+                self.t("Nothing found"),
+                14.0,
+                cs,
+                false,
+                Al::Center,
+            );
             y += ui.dp(80.0);
         }
         ui.scroll_end(area, y + *sc - area.y, sc);
     }
 
-    fn field_row(&mut self, ui: &mut Ui, y: &mut f32, id: &'static str, label: &'static str, hint: &str) {
+    fn field_row(
+        &mut self,
+        ui: &mut Ui,
+        y: &mut f32,
+        id: &'static str,
+        label: &'static str,
+        hint: &str,
+    ) {
         self.caption(ui, y, self.t(label));
         let r = Rect::new(ui.dp(16.0), *y, ui.w - ui.dp(32.0), ui.dp(52.0));
         if ui.visible(r) {
@@ -2567,15 +3406,34 @@ impl App {
                 "dhcp" => self.t("Connecting…"),
                 _ => self.t("Error"),
             };
-            ui.row(&mut y, Some(Ic::Globe), &n.name, Some(if n.ip.is_empty() { &n.mac } else { &n.ip }), Some(st), false);
+            ui.row(
+                &mut y,
+                Some(Ic::Globe),
+                &n.name,
+                Some(if n.ip.is_empty() { &n.mac } else { &n.ip }),
+                Some(st),
+                false,
+            );
             if !n.ip.is_empty() {
                 ui.row(&mut y, None, self.t("Gateway"), None, Some(&n.gw), false);
-                ui.row(&mut y, None, self.t("DNS server"), None, Some(&n.dns), false);
+                ui.row(
+                    &mut y,
+                    None,
+                    self.t("DNS server"),
+                    None,
+                    Some(&n.dns),
+                    false,
+                );
                 ui.row(&mut y, None, "MAC", None, Some(&n.mac), false);
             }
         }
         let mut dhcp = self.net.dhcp;
-        if ui.toggle_row(&mut y, self.t("Automatic (DHCP)"), Some(self.t("Address is assigned by the router")), &mut dhcp) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Automatic (DHCP)"),
+            Some(self.t("Address is assigned by the router")),
+            &mut dhcp,
+        ) {
             self.net.dhcp = dhcp;
             if dhcp {
                 self.apply_net();
@@ -2590,8 +3448,13 @@ impl App {
             if ui.button(r, self.t("Apply"), Btn::Primary) {
                 let ok = self.f("ip").trim().parse::<std::net::Ipv4Addr>().is_ok()
                     && self.f("prefix").trim().parse::<u8>().is_ok_and(|p| p <= 32)
-                    && (self.f("gw").trim().is_empty() || self.f("gw").trim().parse::<std::net::Ipv4Addr>().is_ok())
-                    && self.f("dns").split([',', ' ']).filter(|s| !s.is_empty()).all(|d| d.parse::<std::net::Ipv4Addr>().is_ok());
+                    && (self.f("gw").trim().is_empty()
+                        || self.f("gw").trim().parse::<std::net::Ipv4Addr>().is_ok())
+                    && self
+                        .f("dns")
+                        .split([',', ' '])
+                        .filter(|s| !s.is_empty())
+                        .all(|d| d.parse::<std::net::Ipv4Addr>().is_ok());
                 if ok {
                     self.net.address = self.f("ip").trim().into();
                     self.net.prefix = self.f("prefix").trim().parse().unwrap_or(24);
@@ -2608,9 +3471,23 @@ impl App {
         ui.section(&mut y, self.t("Wi-Fi"));
         let c = ui.th.sub;
         if sys::wifi_iface().is_none() {
-            y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("No Wi-Fi device found"), 14.0, c) + ui.dp(20.0);
+            y += ui.para(
+                ui.dp(22.0),
+                y,
+                ui.w - ui.dp(44.0),
+                self.t("No Wi-Fi device found"),
+                14.0,
+                c,
+            ) + ui.dp(20.0);
         } else if !sys::wifi_tools() {
-            y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Wi-Fi programs are missing. Install the packages wpasupplicant and iw."), 14.0, c) + ui.dp(20.0);
+            y += ui.para(
+                ui.dp(22.0),
+                y,
+                ui.w - ui.dp(44.0),
+                self.t("Wi-Fi programs are missing. Install the packages wpasupplicant and iw."),
+                14.0,
+                c,
+            ) + ui.dp(20.0);
         } else {
             let cur = sys::wifi_ssid();
             let wst = sys::wifi_state();
@@ -2620,27 +3497,72 @@ impl App {
                     (_, "wlan-start-fehler") => self.t("Wi-Fi could not be started"),
                     (Some("INTERFACE_DISABLED"), _) => self.t("Wi-Fi is off"),
                     (Some("COMPLETED"), _) => self.t("Getting address…"),
-                    (Some("AUTHENTICATING" | "ASSOCIATING" | "ASSOCIATED" | "4WAY_HANDSHAKE" | "GROUP_HANDSHAKE"), _) | (_, "dhcp") => self.t("Connecting…"),
+                    (
+                        Some(
+                            "AUTHENTICATING" | "ASSOCIATING" | "ASSOCIATED" | "4WAY_HANDSHAKE"
+                            | "GROUP_HANDSHAKE",
+                        ),
+                        _,
+                    )
+                    | (_, "dhcp") => self.t("Connecting…"),
                     (_, "wlan-start") => self.t("Starting…"),
-                    (_, "wlan-bereit" | "kein-kabel" | "wlan-getrennt") | (Some(_), _) => self.t("Not connected"),
+                    (_, "wlan-bereit" | "kein-kabel" | "wlan-getrennt") | (Some(_), _) => {
+                        self.t("Not connected")
+                    }
                     _ => self.t("Error"),
                 };
-                let st = if self.wifi_connecting.is_some() { self.t("Connecting…") } else { st };
-                let title = self.wifi_connecting.clone().or_else(|| cur.clone()).unwrap_or_else(|| n.name.clone());
-                ui.row(&mut y, Some(Ic::Globe), &title, Some(if n.ip.is_empty() { &n.mac } else { &n.ip }), Some(st), false);
+                let st = if self.wifi_connecting.is_some() {
+                    self.t("Connecting…")
+                } else {
+                    st
+                };
+                let title = self
+                    .wifi_connecting
+                    .clone()
+                    .or_else(|| cur.clone())
+                    .unwrap_or_else(|| n.name.clone());
+                ui.row(
+                    &mut y,
+                    Some(Ic::Globe),
+                    &title,
+                    Some(if n.ip.is_empty() { &n.mac } else { &n.ip }),
+                    Some(st),
+                    false,
+                );
             }
             let bw = (ui.w - ui.dp(32.0)) / 2.0;
             let old = ui.enabled;
             ui.enabled = old && !self.wifi_scanning;
-            let label = if self.wifi_scanning { self.t("Searching…") } else { self.t("Search networks") };
-            if ui.button(Rect::new(ui.dp(12.0), y, if cur.is_some() { bw } else { ui.w - ui.dp(24.0) }, ui.dp(48.0)), label, Btn::Primary) {
+            let label = if self.wifi_scanning {
+                self.t("Searching…")
+            } else {
+                self.t("Search networks")
+            };
+            if ui.button(
+                Rect::new(
+                    ui.dp(12.0),
+                    y,
+                    if cur.is_some() {
+                        bw
+                    } else {
+                        ui.w - ui.dp(24.0)
+                    },
+                    ui.dp(48.0),
+                ),
+                label,
+                Btn::Primary,
+            ) {
                 self.wifi_scanning = true;
                 sys::wifi_scan(&self.bg);
                 ui.dirty = true;
             }
             ui.enabled = old;
             if let Some(c) = &cur {
-                if ui.button(Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(48.0)), self.t("Forget network"), Btn::Plain) {
+                if ui.button(
+                    Rect::new(ui.dp(20.0) + bw, y, bw, ui.dp(48.0)),
+                    self.t("Forget network"),
+                    Btn::Plain,
+                ) {
                     sys::wifi_forget(c);
                     self.wifi_saved.retain(|n| n != c);
                     ui.dirty = true;
@@ -2650,12 +3572,28 @@ impl App {
             let mut open = None;
             let connected = wst.as_deref() == Some("COMPLETED");
             for (ssid, sig, sec) in &self.wifi {
-                let q = match *sig { s if s >= -55 => self.t("Excellent"), s if s >= -67 => self.t("Good"), s if s >= -78 => self.t("Fair"), _ => self.t("Weak") };
-                let mut sub = format!("{q} ({sig} dBm) · {}", if *sec { self.t("secured") } else { self.t("open") });
+                let q = match *sig {
+                    s if s >= -55 => self.t("Excellent"),
+                    s if s >= -67 => self.t("Good"),
+                    s if s >= -78 => self.t("Fair"),
+                    _ => self.t("Weak"),
+                };
+                let mut sub = format!(
+                    "{q} ({sig} dBm) · {}",
+                    if *sec {
+                        self.t("secured")
+                    } else {
+                        self.t("open")
+                    }
+                );
                 if self.wifi_saved.contains(ssid) {
                     sub += &format!(" · {}", self.t("Saved network"));
                 }
-                let right = if connected && cur.as_deref() == Some(ssid.as_str()) { Some(self.t("Connected")) } else { None };
+                let right = if connected && cur.as_deref() == Some(ssid.as_str()) {
+                    Some(self.t("Connected"))
+                } else {
+                    None
+                };
                 if ui.row(&mut y, None, ssid, Some(&sub), right, true) {
                     open = Some((ssid.clone(), *sec));
                 }
@@ -2673,11 +3611,34 @@ impl App {
             y += ui.dp(12.0);
         }
         let mobil = self.mobilfunk_vorhanden();
-        ui.section(&mut y, self.t(if mobil { "Mobile network & Bluetooth" } else { "Bluetooth" }));
-        if mobil && ui.row(&mut y, Some(Ic::Globe), self.t("Mobile network"), None, None, true) {
+        ui.section(
+            &mut y,
+            self.t(if mobil {
+                "Mobile network & Bluetooth"
+            } else {
+                "Bluetooth"
+            }),
+        );
+        if mobil
+            && ui.row(
+                &mut y,
+                Some(Ic::Globe),
+                self.t("Mobile network"),
+                None,
+                None,
+                true,
+            )
+        {
             self.go(Screen::Radio);
         }
-        if ui.row(&mut y, Some(Ic::Wifi), self.t("Bluetooth"), None, None, true) {
+        if ui.row(
+            &mut y,
+            Some(Ic::Wifi),
+            self.t("Bluetooth"),
+            None,
+            None,
+            true,
+        ) {
             self.go(Screen::Bluetooth);
         }
         let _ = c;
@@ -2706,11 +3667,28 @@ impl App {
         let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(92.0));
         ui.card(r);
         let (c, cs) = (ui.th.text, ui.th.sub);
-        let lr = Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(8.0), r.w - ui.dp(28.0), ui.dp(30.0));
+        let lr = Rect::new(
+            r.x + ui.dp(14.0),
+            r.y + ui.dp(8.0),
+            r.w - ui.dp(28.0),
+            ui.dp(30.0),
+        );
         ui.label(lr, self.t("Brightness"), 16.0, c, false, Al::Start);
-        ui.label(lr, &format!("{} %", (self.set.brightness * 100.0).round()), 14.0, cs, false, Al::End);
+        ui.label(
+            lr,
+            &format!("{} %", (self.set.brightness * 100.0).round()),
+            14.0,
+            cs,
+            false,
+            Al::End,
+        );
         let mut v = (self.set.brightness - 0.1) / 0.9;
-        let sr = Rect::new(r.x + ui.dp(10.0), r.y + ui.dp(44.0), r.w - ui.dp(20.0), ui.dp(40.0));
+        let sr = Rect::new(
+            r.x + ui.dp(10.0),
+            r.y + ui.dp(44.0),
+            r.w - ui.dp(20.0),
+            ui.dp(40.0),
+        );
         if ui.slider("bright", sr, &mut v) {
             self.set.brightness = 0.1 + 0.9 * v;
             self.apply_brightness();
@@ -2723,19 +3701,29 @@ impl App {
         self.caption(ui, &mut y, self.t("Screen off after"));
         const TO: [u32; 4] = [30, 60, 300, 0];
         let never = self.t("Never");
-        let sel = TO.iter().position(|t| *t == self.set.timeout_s).unwrap_or(3);
+        let sel = TO
+            .iter()
+            .position(|t| *t == self.set.timeout_s)
+            .unwrap_or(3);
         if let Some(i) = ui.chips(&mut y, &["30 s", "1 min", "5 min", never], sel) {
             self.set.timeout_s = TO[i];
             self.save();
         }
         self.caption(ui, &mut y, self.t("Rotation"));
-        if let Some(i) = ui.chips(&mut y, &["0°", "90°", "180°", "270°"], (self.set.rotation / 90) as usize % 4) {
+        if let Some(i) = ui.chips(
+            &mut y,
+            &["0°", "90°", "180°", "270°"],
+            (self.set.rotation / 90) as usize % 4,
+        ) {
             self.set.rotation = i as u16 * 90;
             self.save();
         }
         self.caption(ui, &mut y, self.t("Size"));
         const SC: [f32; 4] = [0.85, 1.0, 1.15, 1.3];
-        let sel = SC.iter().position(|s| (*s - self.set.scale).abs() < 0.01).unwrap_or(1);
+        let sel = SC
+            .iter()
+            .position(|s| (*s - self.set.scale).abs() < 0.01)
+            .unwrap_or(1);
         if let Some(i) = ui.chips(&mut y, &["85 %", "100 %", "115 %", "130 %"], sel) {
             self.set.scale = SC[i];
             self.save();
@@ -2747,7 +3735,12 @@ impl App {
             self.save();
         }
         let mut hb = self.set.help_btn;
-        if ui.toggle_row(&mut y, self.t("Help button in the title bar"), Some(self.t("The (i) button opens the help for each page")), &mut hb) {
+        if ui.toggle_row(
+            &mut y,
+            self.t("Help button in the title bar"),
+            Some(self.t("The (i) button opens the help for each page")),
+            &mut hb,
+        ) {
             self.set.help_btn = hb;
             self.save();
         }
@@ -2756,7 +3749,19 @@ impl App {
         let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(96.0));
         if ui.visible(r) {
             ui.card(r);
-            ui.label(Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(8.0), r.w - ui.dp(28.0), ui.dp(30.0)), self.t("Accent color"), 16.0, c, false, Al::Start);
+            ui.label(
+                Rect::new(
+                    r.x + ui.dp(14.0),
+                    r.y + ui.dp(8.0),
+                    r.w - ui.dp(28.0),
+                    ui.dp(30.0),
+                ),
+                self.t("Accent color"),
+                16.0,
+                c,
+                false,
+                Al::Start,
+            );
             let cw = (r.w - ui.dp(28.0)) / ACCENTS.len() as f32;
             for (i, a) in ACCENTS.iter().enumerate() {
                 let cx = r.x + ui.dp(14.0) + cw * (i as f32 + 0.5);
@@ -2765,7 +3770,9 @@ impl App {
                 if i == self.set.accent {
                     ui.icon(Ic::Check, cx, cy, ui.dp(18.0), rgb(0xFFFFFF));
                 }
-                if ui.tap(Rect::new(cx - cw / 2.0, cy - ui.dp(24.0), cw, ui.dp(48.0))) && i != self.set.accent {
+                if ui.tap(Rect::new(cx - cw / 2.0, cy - ui.dp(24.0), cw, ui.dp(48.0)))
+                    && i != self.set.accent
+                {
                     self.set.accent = i;
                     self.save();
                     ui.dirty = true;
@@ -2774,7 +3781,14 @@ impl App {
         }
         y += r.h + ui.dp(8.0);
         let res = format!("{} × {}", self.disp.0, self.disp.1);
-        ui.row(&mut y, None, self.t("Resolution"), Some(&self.disp.2.clone()), Some(&res), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Resolution"),
+            Some(&self.disp.2.clone()),
+            Some(&res),
+            false,
+        );
         ui.scroll_end(area, y + *sc - area.y, sc);
     }
 
@@ -2804,9 +3818,23 @@ impl App {
         let now = sys::unix_now();
         let mut dt = sys::from_unix(now, self.set.tz_min);
         let (c, cs) = (ui.th.text, ui.th.sub);
-        ui.label(Rect::new(0.0, y, ui.w, ui.dp(60.0)), &format!("{:02}:{:02}:{:02}", dt.h, dt.mi, dt.s), 40.0, c, true, Al::Center);
+        ui.label(
+            Rect::new(0.0, y, ui.w, ui.dp(60.0)),
+            &format!("{:02}:{:02}:{:02}", dt.h, dt.mi, dt.s),
+            40.0,
+            c,
+            true,
+            Al::Center,
+        );
         y += ui.dp(60.0);
-        ui.label(Rect::new(0.0, y, ui.w, ui.dp(28.0)), &format!("{}, {:02}.{:02}.{}", self.t(DAYS[dt.wd]), dt.d, dt.mo, dt.y), 15.0, cs, false, Al::Center);
+        ui.label(
+            Rect::new(0.0, y, ui.w, ui.dp(28.0)),
+            &format!("{}, {:02}.{:02}.{}", self.t(DAYS[dt.wd]), dt.d, dt.mo, dt.y),
+            15.0,
+            cs,
+            false,
+            Al::Center,
+        );
         y += ui.dp(40.0);
         let d = ui.stepper(&mut y, self.t("Time zone"), &tz_label(self.set.tz_min));
         if d != 0 {
@@ -2864,13 +3892,32 @@ impl App {
             let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(84.0));
             ui.card(r);
             let (c, cs) = (ui.th.text, ui.th.sub);
-            let lr = Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(10.0), r.w - ui.dp(28.0), ui.dp(28.0));
+            let lr = Rect::new(
+                r.x + ui.dp(14.0),
+                r.y + ui.dp(10.0),
+                r.w - ui.dp(28.0),
+                ui.dp(28.0),
+            );
             ui.label(lr, self.t(name), 16.0, c, false, Al::Start);
             match v {
                 Some((total, free)) if total > 0 => {
-                    let s = format!("{} {} {} {}", sys::human(free), self.t("free"), self.t("of"), sys::human(total));
+                    let s = format!(
+                        "{} {} {} {}",
+                        sys::human(free),
+                        self.t("free"),
+                        self.t("of"),
+                        sys::human(total)
+                    );
                     ui.label(lr, &s, 13.0, cs, false, Al::End);
-                    ui.progress(Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(54.0), r.w - ui.dp(28.0), ui.dp(10.0)), 1.0 - free as f32 / total as f32);
+                    ui.progress(
+                        Rect::new(
+                            r.x + ui.dp(14.0),
+                            r.y + ui.dp(54.0),
+                            r.w - ui.dp(28.0),
+                            ui.dp(10.0),
+                        ),
+                        1.0 - free as f32 / total as f32,
+                    );
                 }
                 _ => ui.label(lr, self.t("not available"), 13.0, cs, false, Al::End),
             }
@@ -2880,7 +3927,10 @@ impl App {
 
     fn s_services(&mut self, ui: &mut Ui, area: Rect, sc: &mut f32) {
         let area = self.header(ui, area, self.t("Services"));
-        if self.svc_at.map_or(true, |t| t.elapsed() > Duration::from_millis(900)) {
+        if self
+            .svc_at
+            .map_or(true, |t| t.elapsed() > Duration::from_millis(900))
+        {
             self.svcs = sys::services();
             self.svc_at = Some(Instant::now());
         }
@@ -2898,15 +3948,27 @@ impl App {
                 ("ar", "fertig") => "انتهى",
                 (_, o) => o,
             };
-            let sub = if running { format!("{state} · PID {}", s.pid) } else { state.to_string() };
+            let sub = if running {
+                format!("{state} · PID {}", s.pid)
+            } else {
+                state.to_string()
+            };
             ui.row(&mut y, None, &s.name, Some(&sub), None, false);
             if s.name == "ui" {
                 continue; // die Oberfläche selbst nicht stoppen
             }
             let bw = ui.dp(104.0);
-            let bx = if ui.rtl { ui.dp(24.0) } else { ui.w - ui.dp(24.0) - bw };
+            let bx = if ui.rtl {
+                ui.dp(24.0)
+            } else {
+                ui.w - ui.dp(24.0) - bw
+            };
             let br = Rect::new(bx, y0 + ui.dp(12.0), bw, ui.dp(44.0));
-            let (label, kind, cmd) = if running { (self.t("Stop"), Btn::Danger, "stop") } else { (self.t("Start"), Btn::Primary, "start") };
+            let (label, kind, cmd) = if running {
+                (self.t("Stop"), Btn::Danger, "stop")
+            } else {
+                (self.t("Start"), Btn::Primary, "start")
+            };
             if ui.button(br, label, kind) {
                 sys::ctl(&format!("{cmd} {}", s.name));
                 self.svc_at = None;
@@ -2923,11 +3985,27 @@ impl App {
         self.caption(ui, &mut y, self.t("Device name"));
         let bw = ui.dp(110.0);
         let fw = ui.w - ui.dp(24.0) - bw - ui.dp(8.0);
-        let (fx, bx) = if ui.rtl { (ui.dp(12.0) + bw + ui.dp(8.0), ui.dp(12.0)) } else { (ui.dp(12.0), ui.dp(12.0) + fw + ui.dp(8.0)) };
-        ui.field(Rect::new(fx, y, fw, ui.dp(48.0)), "host", &self.f("host"), "ultar");
-        if ui.button(Rect::new(bx, y, bw, ui.dp(46.0)), self.t("Apply"), Btn::Primary) {
+        let (fx, bx) = if ui.rtl {
+            (ui.dp(12.0) + bw + ui.dp(8.0), ui.dp(12.0))
+        } else {
+            (ui.dp(12.0), ui.dp(12.0) + fw + ui.dp(8.0))
+        };
+        ui.field(
+            Rect::new(fx, y, fw, ui.dp(48.0)),
+            "host",
+            &self.f("host"),
+            "ultar",
+        );
+        if ui.button(
+            Rect::new(bx, y, bw, ui.dp(46.0)),
+            self.t("Apply"),
+            Btn::Primary,
+        ) {
             let h = self.f("host").trim().to_string();
-            let ok = !h.is_empty() && h.len() <= 63 && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && !h.starts_with('-');
+            let ok = !h.is_empty()
+                && h.len() <= 63
+                && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && !h.starts_with('-');
             if ok && nix::unistd::sethostname(&h).is_ok() {
                 self.set.hostname = h;
                 self.save();
@@ -2945,19 +4023,47 @@ impl App {
         let up = sys::uptime_s();
         let rows = [
             ("Version", format!("Ultar OS {}", env!("CARGO_PKG_VERSION"))),
-            ("Edition", ultar_edition::current().label(self.lang()).to_string()),
+            (
+                "Edition",
+                ultar_hal_system::current_edition()
+                    .label(
+                        ultar_profile::msg::Lang::parse(self.lang())
+                            .unwrap_or(ultar_profile::msg::Lang::Ar),
+                    )
+                    .to_string(),
+            ),
             ("Kernel", sys::read_trim("/proc/sys/kernel/osrelease")),
             ("Processor", sys::cpu()),
             ("Memory (RAM)", sys::human(mt)),
-            ("Uptime", format!("{} h {:02} min", up / 3600, up % 3600 / 60)),
+            (
+                "Uptime",
+                format!("{} h {:02} min", up / 3600, up % 3600 / 60),
+            ),
         ];
         for (k, v) in rows {
             ui.row(&mut y, None, self.t(k), None, Some(&v), false);
         }
         {
-            let rss = sys::read_trim("/proc/self/statm").split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * 4096;
-            let v = format!("{:.0} ms · {:.1} ms · {}", self.perf.0, self.perf.2, sys::human(rss));
-            ui.row(&mut y, None, self.t("Diagnostics"), Some(self.t("Start · frame time · memory of the interface")), Some(&v), false);
+            let rss = sys::read_trim("/proc/self/statm")
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0)
+                * 4096;
+            let v = format!(
+                "{:.0} ms · {:.1} ms · {}",
+                self.perf.0,
+                self.perf.2,
+                sys::human(rss)
+            );
+            ui.row(
+                &mut y,
+                None,
+                self.t("Diagnostics"),
+                Some(self.t("Start · frame time · memory of the interface")),
+                Some(&v),
+                false,
+            );
         }
         if let Some(b) = sys::battery_info() {
             let st = match b.status.as_str() {
@@ -2976,21 +4082,60 @@ impl App {
                 detail.push(b.health.clone());
             }
             let sub = detail.join(" · ");
-            ui.row(&mut y, None, self.t("Battery"), if sub.is_empty() { None } else { Some(&sub) }, Some(&format!("{} % · {st}", b.percent)), false);
+            ui.row(
+                &mut y,
+                None,
+                self.t("Battery"),
+                if sub.is_empty() { None } else { Some(&sub) },
+                Some(&format!("{} % · {st}", b.percent)),
+                false,
+            );
         } else if let Some((cap, chg)) = sys::battery() {
-            let st = if chg { self.t("Charging") } else { self.t("On battery") };
-            ui.row(&mut y, None, self.t("Battery"), None, Some(&format!("{cap} % · {st}")), false);
+            let st = if chg {
+                self.t("Charging")
+            } else {
+                self.t("On battery")
+            };
+            ui.row(
+                &mut y,
+                None,
+                self.t("Battery"),
+                None,
+                Some(&format!("{cap} % · {st}")),
+                false,
+            );
         } else {
-            ui.row(&mut y, None, self.t("Battery"), None, Some(self.t("Not detected")), false);
+            ui.row(
+                &mut y,
+                None,
+                self.t("Battery"),
+                None,
+                Some(self.t("Not detected")),
+                false,
+            );
         }
-        if ui.row(&mut y, Some(Ic::Box), self.t("System update"), None, Some(crate::update::VERSION), true) {
+        if ui.row(
+            &mut y,
+            Some(Ic::Box),
+            self.t("System update"),
+            None,
+            Some(crate::update::VERSION),
+            true,
+        ) {
             self.go(Screen::Update);
             ui.dirty = true;
         }
         // Ultar-Cloud: eindeutige Rufnummer
         if let Some(num) = ultar_cloud::my_number() {
             ui.section(&mut y, self.t("Ultar number"));
-            ui.row(&mut y, Some(Ic::Bot), self.t("Your number"), Some(self.t("Calls between Ultar devices")), Some(&num), false);
+            ui.row(
+                &mut y,
+                Some(Ic::Bot),
+                self.t("Your number"),
+                Some(self.t("Calls between Ultar devices")),
+                Some(&num),
+                false,
+            );
         }
         // Hersteller / Entwickler – Markenblock mit Logo
         ui.section(&mut y, self.t("Manufacturer"));
@@ -3001,10 +4146,31 @@ impl App {
             ui.cv.image(&lg, (ui.w - lw) / 2.0, y + ui.dp(4.0), lw, lh);
             y += lh + ui.dp(14.0);
         }
-        ui.row(&mut y, None, self.t("Brand"), None, Some("KM Code Craft"), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Brand"),
+            None,
+            Some("KM Code Craft"),
+            false,
+        );
         // Entwicklername voll (lateinisch + arabisch) als Unterzeile, nicht gekürzt im Wertfeld
-        ui.row(&mut y, None, self.t("Developer"), Some("Mohamad Anas Kara Mohamad · محمد أنس قرة محمد"), None, false);
-        ui.row(&mut y, None, self.t("Website"), None, Some("code-craft.tech"), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Developer"),
+            Some("Mohamad Anas Kara Mohamad · محمد أنس قرة محمد"),
+            None,
+            false,
+        );
+        ui.row(
+            &mut y,
+            None,
+            self.t("Website"),
+            None,
+            Some("code-craft.tech"),
+            false,
+        );
         let r = Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(50.0));
         if ui.button(r, self.t("Power"), Btn::Plain) {
             self.power_dialog = true;
@@ -3029,11 +4195,22 @@ impl App {
         let mut y = area.y;
         if !sys::compat_ready() {
             let c = ui.th.danger;
-            ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("Ubuntu area not available"), 15.0, c);
+            ui.para(
+                ui.dp(22.0),
+                y,
+                ui.w - ui.dp(44.0),
+                self.t("Ubuntu area not available"),
+                15.0,
+                c,
+            );
             return;
         }
         let inst_tab = self.t("Installed");
-        if let Some(i) = ui.chips(&mut y, &["KM Code Craft", "Ubuntu", inst_tab], self.store_tab) {
+        if let Some(i) = ui.chips(
+            &mut y,
+            &["KM Code Craft", "Ubuntu", inst_tab],
+            self.store_tab,
+        ) {
             self.store_tab = i;
             *sc = 0.0;
             self.focus = None;
@@ -3043,7 +4220,14 @@ impl App {
             if !sys::online() {
                 let r = Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0));
                 let c = ui.th.danger;
-                ui.label(r, self.t("No internet connection"), 13.0, c, false, Al::Start);
+                ui.label(
+                    r,
+                    self.t("No internet connection"),
+                    13.0,
+                    c,
+                    false,
+                    Al::Start,
+                );
                 y += ui.dp(28.0);
             }
             let list = Rect::new(area.x, y, area.w, (area.bottom() - y).max(0.0));
@@ -3055,9 +4239,22 @@ impl App {
         }
         let bw = ui.dp(104.0);
         let fw = ui.w - ui.dp(24.0) - bw - ui.dp(8.0);
-        let (fx, bx) = if ui.rtl { (ui.dp(12.0) + bw + ui.dp(8.0), ui.dp(12.0)) } else { (ui.dp(12.0), ui.dp(12.0) + fw + ui.dp(8.0)) };
-        ui.field(Rect::new(fx, y, fw, ui.dp(48.0)), "q", &self.f("q"), self.t("Search packages"));
-        if ui.button(Rect::new(bx, y, bw, ui.dp(46.0)), self.t("Search"), Btn::Primary) {
+        let (fx, bx) = if ui.rtl {
+            (ui.dp(12.0) + bw + ui.dp(8.0), ui.dp(12.0))
+        } else {
+            (ui.dp(12.0), ui.dp(12.0) + fw + ui.dp(8.0))
+        };
+        ui.field(
+            Rect::new(fx, y, fw, ui.dp(48.0)),
+            "q",
+            &self.f("q"),
+            self.t("Search packages"),
+        );
+        if ui.button(
+            Rect::new(bx, y, bw, ui.dp(46.0)),
+            self.t("Search"),
+            Btn::Primary,
+        ) {
             self.do_search();
             ui.dirty = true;
         }
@@ -3065,7 +4262,11 @@ impl App {
         let online = sys::online();
         let old = ui.enabled;
         ui.enabled = old && online && !self.job_running();
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Update package list"), Btn::Plain) {
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t("Update package list"),
+            Btn::Plain,
+        ) {
             self.start_job(self.t("Update package list").into(), &["apt", "update"]);
             ui.dirty = true;
         }
@@ -3074,7 +4275,14 @@ impl App {
         if !online {
             let r = Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0));
             let c = ui.th.danger;
-            ui.label(r, self.t("No internet connection"), 13.0, c, false, Al::Start);
+            ui.label(
+                r,
+                self.t("No internet connection"),
+                13.0,
+                c,
+                false,
+                Al::Start,
+            );
             y += ui.dp(28.0);
         }
         let list = Rect::new(area.x, y, area.w, (area.bottom() - y).max(0.0));
@@ -3107,17 +4315,32 @@ impl App {
         let c = ui.th.sub;
         y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), desc, 15.0, c) + ui.dp(16.0);
         let installed = self.installed.contains(name);
-        ui.row(&mut y, Some(Ic::Box), "Status", None, Some(if installed { self.t("Installed") } else { self.t("Not installed") }), false);
+        ui.row(
+            &mut y,
+            Some(Ic::Box),
+            "Status",
+            None,
+            Some(if installed {
+                self.t("Installed")
+            } else {
+                self.t("Not installed")
+            }),
+            false,
+        );
         let r = Rect::new(ui.dp(16.0), y + ui.dp(8.0), ui.w - ui.dp(32.0), ui.dp(52.0));
         let old = ui.enabled;
-        ui.enabled = old && !self.job_running() && sys::valid_pkg(name) && (installed || sys::online());
+        ui.enabled =
+            old && !self.job_running() && sys::valid_pkg(name) && (installed || sys::online());
         if installed {
             if ui.button(r, self.t("Remove"), Btn::Danger) {
                 self.remove_pkg(name);
                 ui.dirty = true;
             }
         } else if ui.button(r, self.t("Install"), Btn::Primary) {
-            self.start_job(format!("{}: {name}", self.t("Install")), &["apt", "install", "--no-install-recommends", name]);
+            self.start_job(
+                format!("{}: {name}", self.t("Install")),
+                &["apt", "install", "--no-install-recommends", name],
+            );
             if !self.user_pkgs.list.iter().any(|p| p == name) {
                 self.user_pkgs.list.push(name.to_string());
                 let _ = sys::save("user-pkgs.toml", &self.user_pkgs);
@@ -3127,13 +4350,28 @@ impl App {
         ui.enabled = old;
         if !installed && !sys::online() {
             let c = ui.th.danger;
-            ui.label(Rect::new(ui.dp(22.0), r.bottom() + ui.dp(8.0), ui.w - ui.dp(44.0), ui.dp(26.0)), self.t("No internet connection"), 13.0, c, false, Al::Start);
+            ui.label(
+                Rect::new(
+                    ui.dp(22.0),
+                    r.bottom() + ui.dp(8.0),
+                    ui.w - ui.dp(44.0),
+                    ui.dp(26.0),
+                ),
+                self.t("No internet connection"),
+                13.0,
+                c,
+                false,
+                Al::Start,
+            );
         }
     }
 
     /// Ubuntu-Paket entfernen (mit nicht mehr gebrauchten Abhängigkeiten) und aus der Merkliste streichen.
     fn remove_pkg(&mut self, name: &str) {
-        self.start_job(format!("{}: {name}", self.t("Remove")), &["apt", "remove", "--autoremove", name]);
+        self.start_job(
+            format!("{}: {name}", self.t("Remove")),
+            &["apt", "remove", "--autoremove", name],
+        );
         self.user_pkgs.list.retain(|p| p != name);
         let _ = sys::save("user-pkgs.toml", &self.user_pkgs);
     }
@@ -3147,25 +4385,59 @@ impl App {
         let mut n = 0;
         let bw = ui.dp(112.0);
         let busy = self.job_running();
-        for a in self.apps.clone().into_iter().filter(|a| self.installed.contains(&a.package)) {
+        for a in self
+            .apps
+            .clone()
+            .into_iter()
+            .filter(|a| self.installed.contains(&a.package))
+        {
             let y0 = y;
-            ui.row(&mut y, Some(Ic::Box), &a.name, Some("KM Code Craft"), None, false);
-            let bx = if ui.rtl { ui.dp(24.0) } else { ui.w - ui.dp(24.0) - bw };
+            ui.row(
+                &mut y,
+                Some(Ic::Box),
+                &a.name,
+                Some("KM Code Craft"),
+                None,
+                false,
+            );
+            let bx = if ui.rtl {
+                ui.dp(24.0)
+            } else {
+                ui.w - ui.dp(24.0) - bw
+            };
             let old = ui.enabled;
             ui.enabled = old && !busy;
-            if ui.button(Rect::new(bx, y0 + ui.dp(12.0), bw, ui.dp(44.0)), self.t("Remove"), Btn::Danger) {
+            if ui.button(
+                Rect::new(bx, y0 + ui.dp(12.0), bw, ui.dp(44.0)),
+                self.t("Remove"),
+                Btn::Danger,
+            ) {
                 act_app = Some(a.clone());
             }
             ui.enabled = old;
             n += 1;
         }
-        for p in self.user_pkgs.list.clone().into_iter().filter(|p| self.installed.contains(p)) {
+        for p in self
+            .user_pkgs
+            .list
+            .clone()
+            .into_iter()
+            .filter(|p| self.installed.contains(p))
+        {
             let y0 = y;
             ui.row(&mut y, Some(Ic::Box), &p, Some("Ubuntu"), None, false);
-            let bx = if ui.rtl { ui.dp(24.0) } else { ui.w - ui.dp(24.0) - bw };
+            let bx = if ui.rtl {
+                ui.dp(24.0)
+            } else {
+                ui.w - ui.dp(24.0) - bw
+            };
             let old = ui.enabled;
             ui.enabled = old && !busy;
-            if ui.button(Rect::new(bx, y0 + ui.dp(12.0), bw, ui.dp(44.0)), self.t("Remove"), Btn::Danger) {
+            if ui.button(
+                Rect::new(bx, y0 + ui.dp(12.0), bw, ui.dp(44.0)),
+                self.t("Remove"),
+                Btn::Danger,
+            ) {
                 act_pkg = Some(p.clone());
             }
             ui.enabled = old;
@@ -3176,7 +4448,11 @@ impl App {
         }
         ui.scroll_end(list, y + *sc - list.y, sc);
         if let Some(a) = act_app {
-            self.job = Some(Job { title: format!("{}: {}", self.t("Remove"), a.name), lines: Vec::new(), done: None });
+            self.job = Some(Job {
+                title: format!("{}: {}", self.t("Remove"), a.name),
+                lines: Vec::new(),
+                done: None,
+            });
             apps::remove(&self.bg, a);
             self.go(Screen::Job);
             ui.dirty = true;
@@ -3215,8 +4491,20 @@ impl App {
             Some(0) => (self.t("Done").to_string(), ui.th.ok),
             Some(c) => (format!("{} (Code {c})", self.t("Failed")), ui.th.danger),
         };
-        ui.label(Rect::new(ui.dp(22.0), area.y, ui.w - ui.dp(44.0), ui.dp(30.0)), &txt, 16.0, col, true, Al::Start);
-        let r = Rect::new(ui.dp(12.0), area.y + ui.dp(38.0), ui.w - ui.dp(24.0), (area.h - ui.dp(50.0)).max(0.0));
+        ui.label(
+            Rect::new(ui.dp(22.0), area.y, ui.w - ui.dp(44.0), ui.dp(30.0)),
+            &txt,
+            16.0,
+            col,
+            true,
+            Al::Start,
+        );
+        let r = Rect::new(
+            ui.dp(12.0),
+            area.y + ui.dp(38.0),
+            ui.w - ui.dp(24.0),
+            (area.h - ui.dp(50.0)).max(0.0),
+        );
         self.log(ui, r, &lines);
     }
 
@@ -3229,9 +4517,18 @@ impl App {
         }
         if self.term.is_empty() {
             let k = std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default();
-            let kern = if std::env::var("ULTAR_KERN").is_ok() || k.trim().is_empty() { "Ultar-Kern".to_string() } else { format!("Linux {}", k.trim()) };
-            self.term.push(format!("Ultar OS {} ({kern} {}) · KM Code Craft", crate::update::VERSION, std::env::consts::ARCH));
-            self.term.push(self.t("Type \"help\" for commands.").to_string());
+            let kern = if std::env::var("ULTAR_KERN").is_ok() || k.trim().is_empty() {
+                "Ultar-Kern".to_string()
+            } else {
+                format!("Linux {}", k.trim())
+            };
+            self.term.push(format!(
+                "Ultar OS {} ({kern} {}) · KM Code Craft",
+                crate::update::VERSION,
+                std::env::consts::ARCH
+            ));
+            self.term
+                .push(self.t("Type \"help\" for commands.").to_string());
         }
         let chips_h = ui.dp(52.0);
         let tr = Rect::new(0.0, area.y, ui.w, (area.h - chips_h).max(ui.dp(60.0)));
@@ -3266,21 +4563,56 @@ impl App {
         let mut y = tr.y + pad;
         for (t, cmd) in &wrapped[start..] {
             // Zeilen, die arabisch beginnen, rechtsbündig (wie ein RTL-Terminal)
-            let rtl = t.chars().find(|c| c.is_alphabetic()).is_some_and(|c| ('\u{0590}'..='\u{08FF}').contains(&c) || ('\u{FB1D}'..='\u{FEFC}').contains(&c));
-            ui.label(Rect::new(tr.x + pad, y, maxw, lh), t, fs, if *cmd { rgb(0xF0E8A0) } else { rgb(0xCFE8C8) }, false, if rtl { Al::End } else { Al::Start });
+            let rtl = t.chars().find(|c| c.is_alphabetic()).is_some_and(|c| {
+                ('\u{0590}'..='\u{08FF}').contains(&c) || ('\u{FB1D}'..='\u{FEFC}').contains(&c)
+            });
+            ui.label(
+                Rect::new(tr.x + pad, y, maxw, lh),
+                t,
+                fs,
+                if *cmd { rgb(0xF0E8A0) } else { rgb(0xCFE8C8) },
+                false,
+                if rtl { Al::End } else { Al::Start },
+            );
             y += lh;
         }
         // Eingabezeile: ultar@a30:~$ Befehl▌
         let mut x = tr.x + pad;
-        let wer = format!("ultar@{}", if self.set.hostname.is_empty() { "ultar" } else { self.set.hostname.as_str() });
-        for (part, col) in [(wer.as_str(), 0xD8C870u32), (":", 0xCFE8C8), ("~", 0x7AB8FF), ("$ ", 0xCFE8C8)] {
-            ui.label(Rect::new(x, y, maxw, lh), part, fs, rgb(col), false, Al::Start);
+        let wer = format!(
+            "ultar@{}",
+            if self.set.hostname.is_empty() {
+                "ultar"
+            } else {
+                self.set.hostname.as_str()
+            }
+        );
+        for (part, col) in [
+            (wer.as_str(), 0xD8C870u32),
+            (":", 0xCFE8C8),
+            ("~", 0x7AB8FF),
+            ("$ ", 0xCFE8C8),
+        ] {
+            ui.label(
+                Rect::new(x, y, maxw, lh),
+                part,
+                fs,
+                rgb(col),
+                false,
+                Al::Start,
+            );
             x += ui.text_w(part, fs, false);
         }
         let focused = self.focus == Some("cmd");
         let cmd = self.f("cmd");
         let shown = if focused { format!("{cmd}▌") } else { cmd };
-        ui.label(Rect::new(x, y, tr.right() - pad - x, lh), &shown, fs, rgb(0xFFFFFF), false, Al::Start);
+        ui.label(
+            Rect::new(x, y, tr.right() - pad - x, lh),
+            &shown,
+            fs,
+            rgb(0xFFFFFF),
+            false,
+            Al::Start,
+        );
         ui.rtl = old;
         if ui.tap(tr) && !focused {
             self.focus = Some("cmd");
@@ -3288,7 +4620,15 @@ impl App {
             ui.dirty = true;
         }
         // Befehls-Pillen
-        let cmds = ["help", "neofetch", "ultar-ctl status", "ls", "df", "apt install htop", "top"];
+        let cmds = [
+            "help",
+            "neofetch",
+            "ultar-ctl status",
+            "ls",
+            "df",
+            "apt install htop",
+            "top",
+        ];
         let mut px = ui.dp(10.0);
         let py = tr.bottom() + ui.dp(10.0);
         let old = ui.rtl;
@@ -3312,11 +4652,26 @@ impl App {
     fn s_update(&mut self, ui: &mut Ui, area: Rect) {
         let area = self.header(ui, area, self.t("System update"));
         let mut y = area.y;
-        ui.row(&mut y, None, self.t("Installed version"), None, Some(crate::update::VERSION), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Installed version"),
+            None,
+            Some(crate::update::VERSION),
+            false,
+        );
         let old = ui.enabled;
         ui.enabled = old && !self.upd_checking && sys::online() && sys::compat_ready();
-        let label = if self.upd_checking { self.t("Searching…") } else { self.t("Check for updates") };
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)), label, Btn::Primary) {
+        let label = if self.upd_checking {
+            self.t("Searching…")
+        } else {
+            self.t("Check for updates")
+        };
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(46.0)),
+            label,
+            Btn::Primary,
+        ) {
             self.upd_checking = true;
             self.upd = None;
             crate::update::check(&self.bg, self.apps_cfg.github_token.clone());
@@ -3326,27 +4681,67 @@ impl App {
         y += ui.dp(60.0);
         if !sys::online() {
             let c = ui.th.danger;
-            ui.label(Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)), self.t("No internet connection"), 13.0, c, false, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)),
+                self.t("No internet connection"),
+                13.0,
+                c,
+                false,
+                Al::Start,
+            );
             y += ui.dp(30.0);
         }
         let Some(r) = self.upd.clone() else { return };
         if !r.error.is_empty() {
             let c = ui.th.danger;
-            let hint = if self.apps_cfg.github_token.is_empty() { self.t("The project is private: enter a GitHub token under Packages.") } else { "" };
-            y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), &format!("{} {hint}", r.error), 14.0, c);
+            let hint = if self.apps_cfg.github_token.is_empty() {
+                self.t("The project is private: enter a GitHub token under Packages.")
+            } else {
+                ""
+            };
+            y += ui.para(
+                ui.dp(22.0),
+                y,
+                ui.w - ui.dp(44.0),
+                &format!("{} {hint}", r.error),
+                14.0,
+                c,
+            );
             let _ = y;
             return;
         }
-        ui.row(&mut y, None, self.t("Latest version"), None, Some(&r.tag), false);
+        ui.row(
+            &mut y,
+            None,
+            self.t("Latest version"),
+            None,
+            Some(&r.tag),
+            false,
+        );
         if !r.newer {
             let c = ui.th.ok;
-            ui.label(Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(30.0)), self.t("The system is up to date."), 15.0, c, true, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(30.0)),
+                self.t("The system is up to date."),
+                15.0,
+                c,
+                true,
+                Al::Start,
+            );
             return;
         }
         let old = ui.enabled;
         ui.enabled = old && !self.job_running();
-        if ui.button(Rect::new(ui.dp(16.0), y + ui.dp(4.0), ui.w - ui.dp(32.0), ui.dp(46.0)), self.t("Download and install"), Btn::Primary) {
-            self.job = Some(Job { title: format!("{} {}", self.t("System update"), r.tag), lines: Vec::new(), done: None });
+        if ui.button(
+            Rect::new(ui.dp(16.0), y + ui.dp(4.0), ui.w - ui.dp(32.0), ui.dp(46.0)),
+            self.t("Download and install"),
+            Btn::Primary,
+        ) {
+            self.job = Some(Job {
+                title: format!("{} {}", self.t("System update"), r.tag),
+                lines: Vec::new(),
+                done: None,
+            });
             crate::update::install(&self.bg, r, self.apps_cfg.github_token.clone());
             self.go(Screen::Job);
             ui.dirty = true;
@@ -3362,7 +4757,11 @@ impl App {
         }
         let r = Rect::new(ui.dp(16.0), y + ui.dp(6.0), ui.w - ui.dp(32.0), ui.dp(52.0));
         if ui.button(r, self.t("Connect"), Btn::Primary) {
-            let pw = if secured { self.f("wpw") } else { String::new() };
+            let pw = if secured {
+                self.f("wpw")
+            } else {
+                String::new()
+            };
             if secured && pw.is_empty() {
                 self.toast(self.t("Invalid input").into());
             } else {
@@ -3398,16 +4797,60 @@ impl App {
             let (c, cs) = (ui.th.text, ui.th.sub);
             let mk = crate::brand::mark();
             let s = ui.dp(40.0);
-            ui.cv.rrect(Rect::new(r.x + ui.dp(14.0), y0 + ui.dp(14.0), s, s), ui.dp(10.0), crate::brand::BOOT_BG);
-            ui.cv.image(&mk, r.x + ui.dp(18.0), y0 + ui.dp(19.0), s - ui.dp(8.0), (s - ui.dp(8.0)) * mk.h as f32 / mk.w as f32);
+            ui.cv.rrect(
+                Rect::new(r.x + ui.dp(14.0), y0 + ui.dp(14.0), s, s),
+                ui.dp(10.0),
+                crate::brand::BOOT_BG,
+            );
+            ui.cv.image(
+                &mk,
+                r.x + ui.dp(18.0),
+                y0 + ui.dp(19.0),
+                s - ui.dp(8.0),
+                (s - ui.dp(8.0)) * mk.h as f32 / mk.w as f32,
+            );
             let tx = r.x + ui.dp(66.0);
-            ui.label(Rect::new(tx, y0 + ui.dp(10.0), r.w - ui.dp(80.0), ui.dp(26.0)), &a.name, 16.0, c, true, Al::Start);
-            let src = if !a.url.is_empty() { "URL".to_string() } else { format!("GitHub · {}", a.github) };
-            ui.label(Rect::new(tx, y0 + ui.dp(34.0), r.w - ui.dp(80.0), ui.dp(20.0)), &if installed { format!("{inst} · {src}") } else { src }, 12.0, cs, false, Al::Start);
+            ui.label(
+                Rect::new(tx, y0 + ui.dp(10.0), r.w - ui.dp(80.0), ui.dp(26.0)),
+                &a.name,
+                16.0,
+                c,
+                true,
+                Al::Start,
+            );
+            let src = if !a.url.is_empty() {
+                "URL".to_string()
+            } else {
+                format!("GitHub · {}", a.github)
+            };
+            ui.label(
+                Rect::new(tx, y0 + ui.dp(34.0), r.w - ui.dp(80.0), ui.dp(20.0)),
+                &if installed {
+                    format!("{inst} · {src}")
+                } else {
+                    src
+                },
+                12.0,
+                cs,
+                false,
+                Al::Start,
+            );
             if !installed {
-                ui.para(r.x + ui.dp(14.0), y0 + ui.dp(60.0), r.w - ui.dp(150.0), &a.description, 12.0, cs);
+                ui.para(
+                    r.x + ui.dp(14.0),
+                    y0 + ui.dp(60.0),
+                    r.w - ui.dp(150.0),
+                    &a.description,
+                    12.0,
+                    cs,
+                );
             }
-            let br = Rect::new(r.right() - ui.dp(126.0), y0 + ui.dp(74.0), ui.dp(112.0), ui.dp(44.0));
+            let br = Rect::new(
+                r.right() - ui.dp(126.0),
+                y0 + ui.dp(74.0),
+                ui.dp(112.0),
+                ui.dp(44.0),
+            );
             let old = ui.enabled;
             ui.enabled = old && !self.job_running() && (installed || sys::online());
             if installed {
@@ -3435,9 +4878,17 @@ impl App {
         let r = Rect::new(ui.dp(12.0), y, fw, ui.dp(52.0));
         if ui.visible(r) {
             let shown = self.f("ghtok");
-            let masked = if self.focus == Some("ghtok") || shown.len() < 8 { shown.clone() } else { format!("{}…{}", &shown[..4], "•".repeat(6)) };
+            let masked = if self.focus == Some("ghtok") || shown.len() < 8 {
+                shown.clone()
+            } else {
+                format!("{}…{}", &shown[..4], "•".repeat(6))
+            };
             ui.field(r, "ghtok", &masked, "ghp_…");
-            if ui.button(Rect::new(ui.dp(12.0) + fw + ui.dp(8.0), y, bw, ui.dp(46.0)), self.t("Apply"), Btn::Primary) {
+            if ui.button(
+                Rect::new(ui.dp(12.0) + fw + ui.dp(8.0), y, bw, ui.dp(46.0)),
+                self.t("Apply"),
+                Btn::Primary,
+            ) {
                 self.apps_cfg.github_token = shown.trim().to_string();
                 match sys::save("apps-auth.toml", &self.apps_cfg) {
                     Ok(()) => self.toast(self.t("Saved").into()),
@@ -3451,8 +4902,16 @@ impl App {
         y += ui.dp(64.0);
         ui.scroll_end(list, y + *sc - list.y, sc);
         if let Some((a, install)) = act {
-            let title = format!("{}: {}", self.t(if install { "Install" } else { "Remove" }), a.name);
-            self.job = Some(Job { title, lines: Vec::new(), done: None });
+            let title = format!(
+                "{}: {}",
+                self.t(if install { "Install" } else { "Remove" }),
+                a.name
+            );
+            self.job = Some(Job {
+                title,
+                lines: Vec::new(),
+                done: None,
+            });
             if install {
                 apps::install(&self.bg, a, self.apps_cfg.github_token.clone());
             } else {
@@ -3465,13 +4924,23 @@ impl App {
 
     fn hw_rows(&mut self, ui: &mut Ui, y: &mut f32, only_missing: bool) {
         let devs = self.hw.clone();
-        for d in devs.iter().filter(|d| !only_missing || (d.driver.is_none() && !d.passive)) {
+        for d in devs
+            .iter()
+            .filter(|d| !only_missing || (d.driver.is_none() && !d.passive))
+        {
             let v = match &d.driver {
                 Some(n) => n.clone(),
                 None if d.passive => "–".into(),
                 None => self.t("no driver").to_string(),
             };
-            ui.row(y, Some(Ic::Chip), self.t(d.kind), Some(&format!("{} {}", d.bus, d.id)), Some(&v), false);
+            ui.row(
+                y,
+                Some(Ic::Chip),
+                self.t(d.kind),
+                Some(&format!("{} {}", d.bus, d.id)),
+                Some(&v),
+                false,
+            );
         }
     }
 
@@ -3488,7 +4957,14 @@ impl App {
         *y += ui.dp(58.0);
         if !online {
             let c = ui.th.danger;
-            ui.label(Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(26.0)), self.t("No internet connection"), 13.0, c, false, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(26.0)),
+                self.t("No internet connection"),
+                13.0,
+                c,
+                false,
+                Al::Start,
+            );
             *y += ui.dp(28.0);
         }
     }
@@ -3496,9 +4972,19 @@ impl App {
     fn hw_summary(&mut self) -> String {
         let miss = hw::missing(&self.hw).len();
         if miss == 0 {
-            format!("{} {} · {}", self.hw.len(), self.t("devices detected"), self.t("All devices have a driver"))
+            format!(
+                "{} {} · {}",
+                self.hw.len(),
+                self.t("devices detected"),
+                self.t("All devices have a driver")
+            )
         } else {
-            format!("{} {} · {miss} {}", self.hw.len(), self.t("devices detected"), self.t("without driver"))
+            format!(
+                "{} {} · {miss} {}",
+                self.hw.len(),
+                self.t("devices detected"),
+                self.t("without driver")
+            )
         }
     }
 
@@ -3533,7 +5019,14 @@ impl App {
                     Some(0) => (self.t("Done"), ui.th.ok),
                     Some(_) => (self.t("Failed"), ui.th.danger),
                 };
-                ui.label(Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)), txt, 14.0, col, true, Al::Start);
+                ui.label(
+                    Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)),
+                    txt,
+                    14.0,
+                    col,
+                    true,
+                    Al::Start,
+                );
                 y += ui.dp(30.0);
                 let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(190.0));
                 if ui.visible(r) {
@@ -3558,8 +5051,14 @@ impl App {
         // Abschnittsüberschrift
         let ok = self.selftest.iter().filter(|c| c.stat == Stat::Ok).count();
         let n = self.selftest.len();
-        ui.label(Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
-            &format!("{} · {ok}/{n} OK", self.t("Component test")), 14.0, ui.th.accent, true, Al::Start);
+        ui.label(
+            Rect::new(ui.dp(22.0), *y, ui.w - ui.dp(44.0), ui.dp(24.0)),
+            &format!("{} · {ok}/{n} OK", self.t("Component test")),
+            14.0,
+            ui.th.accent,
+            true,
+            Al::Start,
+        );
         *y += ui.dp(30.0);
         let checks = self.selftest.clone();
         for c in &checks {
@@ -3573,14 +5072,37 @@ impl App {
             if ui.visible(r) {
                 ui.card(r);
                 // farbiger Statuspunkt links
-                let dot = Rect::new(r.x + ui.dp(12.0), r.cy() - ui.dp(13.0), ui.dp(26.0), ui.dp(26.0));
+                let dot = Rect::new(
+                    r.x + ui.dp(12.0),
+                    r.cy() - ui.dp(13.0),
+                    ui.dp(26.0),
+                    ui.dp(26.0),
+                );
                 ui.cv.rrect(dot, ui.dp(13.0), col);
                 ui.label(dot, sym, 11.0, ui.th.bg, true, Al::Center);
                 // Titel + Detail
-                let tx = if ui.rtl { r.x + ui.dp(14.0) } else { r.x + ui.dp(48.0) };
+                let tx = if ui.rtl {
+                    r.x + ui.dp(14.0)
+                } else {
+                    r.x + ui.dp(48.0)
+                };
                 let tw = r.w - ui.dp(62.0);
-                ui.label(Rect::new(tx, r.y + ui.dp(9.0), tw, ui.dp(22.0)), self.t(c.comp), 15.0, ui.th.text, true, Al::Start);
-                ui.label(Rect::new(tx, r.y + ui.dp(32.0), tw, ui.dp(20.0)), &c.detail, 12.0, ui.th.sub, false, Al::Start);
+                ui.label(
+                    Rect::new(tx, r.y + ui.dp(9.0), tw, ui.dp(22.0)),
+                    self.t(c.comp),
+                    15.0,
+                    ui.th.text,
+                    true,
+                    Al::Start,
+                );
+                ui.label(
+                    Rect::new(tx, r.y + ui.dp(32.0), tw, ui.dp(20.0)),
+                    &c.detail,
+                    12.0,
+                    ui.th.sub,
+                    false,
+                    Al::Start,
+                );
             }
             *y += ui.dp(66.0);
         }
@@ -3592,11 +5114,17 @@ impl App {
             (self.t("Agent is disabled"), ui.th.sub)
         } else if self.agent.backend == "claude" {
             if self.agent.api_key.trim().is_empty() {
-                (self.t("Enter your Anthropic API key to use Claude."), ui.th.danger)
+                (
+                    self.t("Enter your Anthropic API key to use Claude."),
+                    ui.th.danger,
+                )
             } else if !sys::online() {
                 (self.t("No internet connection"), ui.th.danger)
             } else {
-                (self.t("Claude is used over the internet (Anthropic API)."), ui.th.ok)
+                (
+                    self.t("Claude is used over the internet (Anthropic API)."),
+                    ui.th.ok,
+                )
             }
         } else if self.agent_up == Some(true) {
             (self.t("Language model ready"), ui.th.ok)
@@ -3616,7 +5144,14 @@ impl App {
             self.check_agent();
         }
         let mut cf = self.agent.confirm;
-        if ui.toggle_row(y, self.t("Ask before risky actions"), Some(self.t("Calls and services. Root commands, security, camera and files always ask.")), &mut cf) {
+        if ui.toggle_row(
+            y,
+            self.t("Ask before risky actions"),
+            Some(
+                self.t("Calls and services. Root commands, security, camera and files always ask."),
+            ),
+            &mut cf,
+        ) {
             self.agent.confirm = cf;
             self.save_agent();
         }
@@ -3631,7 +5166,11 @@ impl App {
         self.agent_toggles(ui, &mut y);
         self.caption(ui, &mut y, self.t("Language model"));
         let local = self.t("On the device");
-        if let Some(i) = ui.chips(&mut y, &[local, "Claude"], if self.agent.backend == "claude" { 1 } else { 0 }) {
+        if let Some(i) = ui.chips(
+            &mut y,
+            &[local, "Claude"],
+            if self.agent.backend == "claude" { 1 } else { 0 },
+        ) {
             self.agent.backend = if i == 1 { "claude" } else { "local" }.into();
             self.agent_up = None;
             self.save_agent();
@@ -3647,11 +5186,25 @@ impl App {
         let bw = ui.dp(110.0);
         let fw = ui.w - ui.dp(24.0) - bw - ui.dp(8.0);
         if claude {
-            ui.field(Rect::new(ui.dp(12.0), y, fw, ui.dp(48.0)), "amodel", &self.f("amodel"), "claude-haiku-5-5");
+            ui.field(
+                Rect::new(ui.dp(12.0), y, fw, ui.dp(48.0)),
+                "amodel",
+                &self.f("amodel"),
+                "claude-haiku-5-5",
+            );
         } else {
-            ui.field(Rect::new(ui.dp(12.0), y, fw, ui.dp(48.0)), "ep", &self.f("ep"), "127.0.0.1:8080");
+            ui.field(
+                Rect::new(ui.dp(12.0), y, fw, ui.dp(48.0)),
+                "ep",
+                &self.f("ep"),
+                "127.0.0.1:8080",
+            );
         }
-        if ui.button(Rect::new(ui.dp(12.0) + fw + ui.dp(8.0), y, bw, ui.dp(46.0)), self.t("Apply"), Btn::Primary) {
+        if ui.button(
+            Rect::new(ui.dp(12.0) + fw + ui.dp(8.0), y, bw, ui.dp(46.0)),
+            self.t("Apply"),
+            Btn::Primary,
+        ) {
             let ep = self.f("ep").trim().to_string();
             if claude {
                 self.agent.api_key = self.f("akey").trim().to_string();
@@ -3685,9 +5238,12 @@ impl App {
     }
 
     fn d_confirm(&mut self, ui: &mut Ui) {
-        let Some(call) = self.pending.clone() else { return };
+        let Some(call) = self.pending.clone() else {
+            return;
+        };
         ui.set_clip(None);
-        ui.cv.rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0).alpha(0.55));
+        ui.cv
+            .rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0).alpha(0.55));
         ui.enabled = true;
         let w = (ui.w - ui.dp(48.0)).min(ui.dp(440.0));
         let desc = call.describe();
@@ -3700,17 +5256,55 @@ impl App {
         let (c, cs) = (ui.th.text, ui.th.sub);
         // Art des Eingriffs (rot bei Root/Sicherheit/Kamera/Dateien), darunter was genau ausgeführt wird
         if let Some(rk) = &risk {
-            let col = if call.always_confirm() { ui.th.danger } else { ui.th.accent };
-            ui.label(Rect::new(r.x + ui.dp(20.0), r.y + ui.dp(12.0), r.w - ui.dp(40.0), ui.dp(30.0)), rk, 16.0, col, true, Al::Start);
+            let col = if call.always_confirm() {
+                ui.th.danger
+            } else {
+                ui.th.accent
+            };
+            ui.label(
+                Rect::new(
+                    r.x + ui.dp(20.0),
+                    r.y + ui.dp(12.0),
+                    r.w - ui.dp(40.0),
+                    ui.dp(30.0),
+                ),
+                rk,
+                16.0,
+                col,
+                true,
+                Al::Start,
+            );
         }
-        ui.label(Rect::new(r.x + ui.dp(20.0), r.y + ui.dp(12.0) + extra, r.w - ui.dp(40.0), ui.dp(36.0)), self.t("The agent wants to run:"), 15.0, cs, false, Al::Start);
-        ui.tx.draw(ui.cv, &desc, r.x + ui.dp(20.0), r.y + ui.dp(54.0) + extra, ui.dp(15.0), c, false, w - ui.dp(40.0));
+        ui.label(
+            Rect::new(
+                r.x + ui.dp(20.0),
+                r.y + ui.dp(12.0) + extra,
+                r.w - ui.dp(40.0),
+                ui.dp(36.0),
+            ),
+            self.t("The agent wants to run:"),
+            15.0,
+            cs,
+            false,
+            Al::Start,
+        );
+        ui.tx.draw(
+            ui.cv,
+            &desc,
+            r.x + ui.dp(20.0),
+            r.y + ui.dp(54.0) + extra,
+            ui.dp(15.0),
+            c,
+            false,
+            w - ui.dp(40.0),
+        );
         let bw = (r.w - ui.dp(52.0)) / 2.0;
         let by = r.bottom() - ui.dp(66.0);
         let deny = Rect::new(r.x + ui.dp(20.0), by, bw, ui.dp(48.0));
         let allow = Rect::new(deny.right() + ui.dp(12.0), by, bw, ui.dp(48.0));
         let held = ui.held(deny);
-        ui.cv.rrect(deny, ui.dp(12.0), if held { ui.th.press } else { ui.th.bg });
+        ui.cv
+            .rrect(deny, ui.dp(12.0), if held { ui.th.press } else { ui.th.bg });
         ui.label(deny, self.t("Deny"), 15.0, c, true, Al::Center);
         if ui.tap(deny) {
             self.deny();
@@ -3740,17 +5334,48 @@ impl App {
             } else {
                 // Logo ist für dunklen Grund gezeichnet
                 let pad = ui.dp(16.0);
-                ui.cv.rrect(Rect::new((ui.w - lw) / 2.0 - pad, top - pad, lw + 2.0 * pad, lh + 2.0 * pad), ui.dp(18.0), brand::BOOT_BG);
+                ui.cv.rrect(
+                    Rect::new(
+                        (ui.w - lw) / 2.0 - pad,
+                        top - pad,
+                        lw + 2.0 * pad,
+                        lh + 2.0 * pad,
+                    ),
+                    ui.dp(18.0),
+                    brand::BOOT_BG,
+                );
                 ui.cv.image(&l, (ui.w - lw) / 2.0, top, lw, lh);
             }
             let mut y = top + lh + ui.dp(26.0);
-            ui.label(Rect::new(0.0, y, ui.w, ui.dp(40.0)), "مرحبًا · Welcome · Willkommen", 20.0, c, true, Al::Center);
+            ui.label(
+                Rect::new(0.0, y, ui.w, ui.dp(40.0)),
+                "مرحبًا · Welcome · Willkommen",
+                20.0,
+                c,
+                true,
+                Al::Center,
+            );
             y += ui.dp(44.0);
-            ui.label(Rect::new(0.0, y, ui.w, ui.dp(28.0)), "اختر لغتك · Choose your language · Sprache wählen", 13.0, cs, false, Al::Center);
+            ui.label(
+                Rect::new(0.0, y, ui.w, ui.dp(28.0)),
+                "اختر لغتك · Choose your language · Sprache wählen",
+                13.0,
+                cs,
+                false,
+                Al::Center,
+            );
             y += ui.dp(44.0);
             for (code, name) in [("ar", "العربية"), ("en", "English"), ("de", "Deutsch")] {
                 let r = Rect::new(ui.dp(32.0), y, ui.w - ui.dp(64.0), ui.dp(58.0));
-                if ui.button(r, name, if self.set.lang == code { Btn::Primary } else { Btn::Plain }) {
+                if ui.button(
+                    r,
+                    name,
+                    if self.set.lang == code {
+                        Btn::Primary
+                    } else {
+                        Btn::Plain
+                    },
+                ) {
                     self.set.lang = code.into();
                     self.save();
                     self.go_step(1);
@@ -3760,7 +5385,13 @@ impl App {
             }
             can_next = false;
         } else {
-            let titles = ["", "Network", "Hardware & drivers", "Local agent", "You are all set"];
+            let titles = [
+                "",
+                "Network",
+                "Hardware & drivers",
+                "Local agent",
+                "You are all set",
+            ];
             let inner = self.header(ui, body, self.t(titles[step as usize]));
             ui.scroll_begin(inner, sc);
             let mut y = inner.y - *sc;
@@ -3778,7 +5409,14 @@ impl App {
                             "dhcp" => self.t("Connecting…"),
                             _ => self.t("Error"),
                         };
-                        ui.row(&mut y, Some(Ic::Globe), &n.name, Some(if n.ip.is_empty() { &n.mac } else { &n.ip }), Some(st), false);
+                        ui.row(
+                            &mut y,
+                            Some(Ic::Globe),
+                            &n.name,
+                            Some(if n.ip.is_empty() { &n.mac } else { &n.ip }),
+                            Some(st),
+                            false,
+                        );
                     }
                     if !sys::online() {
                         next_label = self.t("Skip");
@@ -3788,7 +5426,12 @@ impl App {
                     let sum = self.hw_summary();
                     self.caption(ui, &mut y, &sum);
                     self.hw_rows(ui, &mut y, true);
-                    if !hw::missing(&self.hw).is_empty() || self.job.as_ref().is_some_and(|j| j.title == self.t("Driver search")) {
+                    if !hw::missing(&self.hw).is_empty()
+                        || self
+                            .job
+                            .as_ref()
+                            .is_some_and(|j| j.title == self.t("Driver search"))
+                    {
                         self.driver_button(ui, &mut y);
                     }
                     if let Some(j) = &self.job {
@@ -3799,7 +5442,14 @@ impl App {
                                 Some(0) => (self.t("Done"), ui.th.ok),
                                 Some(_) => (self.t("Failed"), ui.th.danger),
                             };
-                            ui.label(Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)), txt, 14.0, col, true, Al::Start);
+                            ui.label(
+                                Rect::new(ui.dp(22.0), y, ui.w - ui.dp(44.0), ui.dp(26.0)),
+                                txt,
+                                14.0,
+                                col,
+                                true,
+                                Al::Start,
+                            );
                             y += ui.dp(30.0);
                             let r = Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(220.0));
                             if ui.visible(r) {
@@ -3825,7 +5475,14 @@ impl App {
                     let mh = mw * m.h as f32 / m.w as f32;
                     ui.cv.image(&m, (ui.w - mw) / 2.0, y + ui.dp(10.0), mw, mh);
                     y += mh + ui.dp(30.0);
-                    y += ui.para(ui.dp(22.0), y, ui.w - ui.dp(44.0), self.t("You can change everything later in the settings."), 15.0, cs);
+                    y += ui.para(
+                        ui.dp(22.0),
+                        y,
+                        ui.w - ui.dp(44.0),
+                        self.t("You can change everything later in the settings."),
+                        15.0,
+                        cs,
+                    );
                     next_label = self.t("Finish");
                 }
             }
@@ -3835,7 +5492,17 @@ impl App {
         ui.set_clip(None);
         let fy = area.bottom() - bh + ui.dp(12.0);
         let bw = (ui.w - ui.dp(36.0)) / 2.0;
-        let (rb, rn) = if ui.rtl { (Rect::new(ui.dp(24.0) + bw, fy, bw, ui.dp(52.0)), Rect::new(ui.dp(12.0), fy, bw, ui.dp(52.0))) } else { (Rect::new(ui.dp(12.0), fy, bw, ui.dp(52.0)), Rect::new(ui.dp(24.0) + bw, fy, bw, ui.dp(52.0))) };
+        let (rb, rn) = if ui.rtl {
+            (
+                Rect::new(ui.dp(24.0) + bw, fy, bw, ui.dp(52.0)),
+                Rect::new(ui.dp(12.0), fy, bw, ui.dp(52.0)),
+            )
+        } else {
+            (
+                Rect::new(ui.dp(12.0), fy, bw, ui.dp(52.0)),
+                Rect::new(ui.dp(24.0) + bw, fy, bw, ui.dp(52.0)),
+            )
+        };
         if step > 0 && ui.button(rb, self.t("Back"), Btn::Plain) {
             self.go_step(step - 1);
             ui.dirty = true;
@@ -3860,8 +5527,13 @@ impl App {
         // Fortschrittspunkte
         for i in 0..5 {
             let x = ui.w / 2.0 + (i as f32 - 2.0) * ui.dp(14.0);
-            let col = if i == step as i32 { ui.th.accent } else { ui.th.line };
-            ui.cv.circle(x, area.bottom() - bh + ui.dp(2.0), ui.dp(3.5), col);
+            let col = if i == step as i32 {
+                ui.th.accent
+            } else {
+                ui.th.line
+            };
+            ui.cv
+                .circle(x, area.bottom() - bh + ui.dp(2.0), ui.dp(3.5), col);
         }
     }
 
@@ -3879,7 +5551,13 @@ impl App {
             None => false,
         };
         if !show {
-            if self.heads.is_some() && self.heads.as_ref().map(|(_, a)| a.elapsed() >= Duration::from_secs(4)).unwrap_or(false) {
+            if self.heads.is_some()
+                && self
+                    .heads
+                    .as_ref()
+                    .map(|(_, a)| a.elapsed() >= Duration::from_secs(4))
+                    .unwrap_or(false)
+            {
                 self.heads = None;
             }
             return;
@@ -3890,15 +5568,44 @@ impl App {
         };
         ui.set_clip(None);
         let m = ui.dp(12.0);
-        let h = if body.is_empty() { ui.dp(56.0) } else { ui.dp(72.0) };
+        let h = if body.is_empty() {
+            ui.dp(56.0)
+        } else {
+            ui.dp(72.0)
+        };
         let r = Rect::new(m, ui.dp(34.0), ui.w - 2.0 * m, h);
         ui.card(r);
         let accent = if call { ui.th.ok } else { ui.th.accent };
-        ui.cv.rrect(Rect::new(r.x, r.y, ui.dp(4.0), r.h), ui.dp(2.0), accent);
+        ui.cv
+            .rrect(Rect::new(r.x, r.y, ui.dp(4.0), r.h), ui.dp(2.0), accent);
         let c = ui.th.text;
-        ui.label(Rect::new(r.x + ui.dp(16.0), r.y + ui.dp(8.0), r.w - ui.dp(28.0), ui.dp(24.0)), &title, 15.0, c, true, Al::Start);
+        ui.label(
+            Rect::new(
+                r.x + ui.dp(16.0),
+                r.y + ui.dp(8.0),
+                r.w - ui.dp(28.0),
+                ui.dp(24.0),
+            ),
+            &title,
+            15.0,
+            c,
+            true,
+            Al::Start,
+        );
         if !body.is_empty() {
-            ui.label(Rect::new(r.x + ui.dp(16.0), r.y + ui.dp(34.0), r.w - ui.dp(28.0), ui.dp(22.0)), &body, 13.0, ui.th.sub, false, Al::Start);
+            ui.label(
+                Rect::new(
+                    r.x + ui.dp(16.0),
+                    r.y + ui.dp(34.0),
+                    r.w - ui.dp(28.0),
+                    ui.dp(22.0),
+                ),
+                &body,
+                13.0,
+                ui.th.sub,
+                false,
+                Al::Start,
+            );
         }
         if ui.tap(r) {
             self.heads = None;
@@ -3910,15 +5617,30 @@ impl App {
     /// Schnelleinstellungen + Benachrichtigungen (Wisch von oben).
     fn d_power(&mut self, ui: &mut Ui, active: bool) {
         ui.set_clip(None);
-        ui.cv.rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0).alpha(0.55));
+        ui.cv
+            .rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0).alpha(0.55));
         ui.enabled = active;
         let w = (ui.w - ui.dp(48.0)).min(ui.dp(420.0));
         let h = ui.dp(248.0);
         let r = Rect::new((ui.w - w) / 2.0, (ui.h - h) / 2.0, w, h);
         ui.cv.rrect(r, ui.dp(20.0), ui.th.card);
         let c = ui.th.text;
-        ui.label(Rect::new(r.x, r.y + ui.dp(10.0), r.w, ui.dp(44.0)), self.t("Power"), 20.0, c, true, Al::Center);
-        let b = |i: f32| Rect::new(r.x + ui.dp(16.0), r.y + ui.dp(60.0) + i * ui.dp(60.0), r.w - ui.dp(32.0), ui.dp(50.0));
+        ui.label(
+            Rect::new(r.x, r.y + ui.dp(10.0), r.w, ui.dp(44.0)),
+            self.t("Power"),
+            20.0,
+            c,
+            true,
+            Al::Center,
+        );
+        let b = |i: f32| {
+            Rect::new(
+                r.x + ui.dp(16.0),
+                r.y + ui.dp(60.0) + i * ui.dp(60.0),
+                r.w - ui.dp(32.0),
+                ui.dp(50.0),
+            )
+        };
         let (b0, b1, b2) = (b(0.0), b(1.0), b(2.0));
         if ui.button(b0, self.t("Restart"), Btn::Primary) {
             self.toast(self.t("Restart").into());
@@ -3932,7 +5654,8 @@ impl App {
         }
         // Abbrechen: eigene Fläche, damit sie sich vom Kartenhintergrund abhebt
         let held = ui.held(b2);
-        ui.cv.rrect(b2, ui.dp(12.0), if held { ui.th.press } else { ui.th.bg });
+        ui.cv
+            .rrect(b2, ui.dp(12.0), if held { ui.th.press } else { ui.th.bg });
         ui.label(b2, self.t("Cancel"), 15.0, c, true, Al::Center);
         if ui.tap(b2) || (active && ui.p.released && !ui.p.moved && !r.contains(ui.p.px, ui.p.py)) {
             self.power_dialog = false;
@@ -3944,7 +5667,12 @@ impl App {
 }
 
 fn tz_label(m: i32) -> String {
-    format!("UTC{}{:02}:{:02}", if m < 0 { '−' } else { '+' }, m.abs() / 60, m.abs() % 60)
+    format!(
+        "UTC{}{:02}:{:02}",
+        if m < 0 { '−' } else { '+' },
+        m.abs() / 60,
+        m.abs() % 60
+    )
 }
 
 /// Benachrichtigungen lesen: eine je Zeile, Format "Titel\tText" (Text optional), neueste zuerst.
@@ -3979,7 +5707,23 @@ mod flow_tests {
 
     fn draw(app: &mut App, cv: &mut Canvas, tx: &mut Text, p: &mut Ptr) {
         let (w, h) = (cv.w as f32, cv.h as f32);
-        let mut ui = Ui { th: crate::ui::theme(app.set.dark, app.set.accent), k: crate::ui::scale_for(w, h, app.set.scale), w, h, cv, tx, p, rtl: false, enabled: true, focus: None, dirty: false, clip: None, links: Vec::new(), kb: Default::default(), seen: None };
+        let mut ui = Ui {
+            th: crate::ui::theme(app.set.dark, app.set.accent),
+            k: crate::ui::scale_for(w, h, app.set.scale),
+            w,
+            h,
+            cv,
+            tx,
+            p,
+            rtl: false,
+            enabled: true,
+            focus: None,
+            dirty: false,
+            clip: None,
+            links: Vec::new(),
+            kb: Default::default(),
+            seen: None,
+        };
         app.draw(&mut ui);
     }
 
@@ -4011,21 +5755,45 @@ mod flow_tests {
         std::env::set_var("ULTAR_MEDIA", &root);
         std::env::set_var("ULTAR_DATA", root.join("ultar"));
         let (tx, _rx) = std::sync::mpsc::channel();
-        let (_rfd, wfd) = nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC).unwrap();
-        let mut app = App::new(Bg { tx, wake: std::sync::Arc::new(wfd) }, (720, 1520, "test".into()));
+        let (_rfd, wfd) =
+            nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC)
+                .unwrap();
+        let mut app = App::new(
+            Bg {
+                tx,
+                wake: std::sync::Arc::new(wfd),
+            },
+            (720, 1520, "test".into()),
+        );
         app.debug_open("camera", "de");
         let (mut cv, mut text, mut p) = (Canvas::new(720, 1520), Text::new(), Ptr::default());
         draw(&mut app, &mut cv, &mut text, &mut p);
         let cam_dir = app_gallery::camera_dir();
-        let count = |ext: &str| std::fs::read_dir(&cam_dir).map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().ends_with(ext)).count()).unwrap_or(0);
+        let count = |ext: &str| {
+            std::fs::read_dir(&cam_dir)
+                .map(|d| {
+                    d.flatten()
+                        .filter(|e| e.file_name().to_string_lossy().ends_with(ext))
+                        .count()
+                })
+                .unwrap_or(0)
+        };
 
         // --- Foto: Auslöser antippen -> JPEG im Kamera-Ordner, in voller Größe des Suchers
         let shutter = (360.0, 1302.0);
         tap(&mut app, &mut cv, &mut text, &mut p, shutter.0, shutter.1);
-        assert!(wait_for(|| count(".jpg") == 1), "Foto wurde nicht gespeichert");
+        assert!(
+            wait_for(|| count(".jpg") == 1),
+            "Foto wurde nicht gespeichert"
+        );
         draw(&mut app, &mut cv, &mut text, &mut p);
         assert!(!app.cam.busy);
-        let jpg = std::fs::read_dir(&cam_dir).unwrap().flatten().find(|e| e.file_name().to_string_lossy().ends_with(".jpg")).unwrap().path();
+        let jpg = std::fs::read_dir(&cam_dir)
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().to_string_lossy().ends_with(".jpg"))
+            .unwrap()
+            .path();
         assert_eq!(image::image_dimensions(&jpg).unwrap(), (480, 640));
 
         // --- Quadrat + 2-fach-Zoom: Ausschnitt 240x240
@@ -4034,7 +5802,11 @@ mod flow_tests {
         assert!(app.capture_photo());
         assert!(wait_for(|| count(".jpg") == 2));
         draw(&mut app, &mut cv, &mut text, &mut p);
-        let dims: Vec<(u32, u32)> = std::fs::read_dir(&cam_dir).unwrap().flatten().filter_map(|e| image::image_dimensions(e.path()).ok()).collect();
+        let dims: Vec<(u32, u32)> = std::fs::read_dir(&cam_dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|e| image::image_dimensions(e.path()).ok())
+            .collect();
         assert!(dims.contains(&(240, 240)), "{dims:?}");
 
         // --- Video: starten, ein paar Bilder, stoppen -> abspielbares AVI
@@ -4049,42 +5821,79 @@ mod flow_tests {
         }
         tap(&mut app, &mut cv, &mut text, &mut p, shutter.0, shutter.1);
         assert!(app.cam.rec.is_none());
-        assert!(wait_for(|| {
-            draw(&mut app, &mut cv, &mut text, &mut p);
-            !app.cam.busy && count(".avi") == 1
-        }), "Video wurde nicht gespeichert");
-        let avi = std::fs::read_dir(&cam_dir).unwrap().flatten().find(|e| e.file_name().to_string_lossy().ends_with(".avi")).unwrap().path();
+        assert!(
+            wait_for(|| {
+                draw(&mut app, &mut cv, &mut text, &mut p);
+                !app.cam.busy && count(".avi") == 1
+            }),
+            "Video wurde nicht gespeichert"
+        );
+        let avi = std::fs::read_dir(&cam_dir)
+            .unwrap()
+            .flatten()
+            .find(|e| e.file_name().to_string_lossy().ends_with(".avi"))
+            .unwrap()
+            .path();
         let mut rd = crate::mjpeg::Reader::open(avi.to_str().unwrap()).unwrap();
-        assert!(rd.index.len() >= 2 && rd.frame(0).is_some(), "Video ohne Bilder");
+        assert!(
+            rd.index.len() >= 2 && rd.frame(0).is_some(),
+            "Video ohne Bilder"
+        );
 
         // --- Galerie zeigt alle drei; Vorschaubilder entstehen im Hintergrund
         app.debug_open("gallery", "de");
         draw(&mut app, &mut cv, &mut text, &mut p);
-        assert!(app.cam.worker.is_none() && app.cam.last_frame.is_none(), "Kamera wurde beim Verlassen nicht freigegeben");
+        assert!(
+            app.cam.worker.is_none() && app.cam.last_frame.is_none(),
+            "Kamera wurde beim Verlassen nicht freigegeben"
+        );
         assert_eq!(app.gal.items.len(), 3);
-        assert!(wait_for(|| {
-            draw(&mut app, &mut cv, &mut text, &mut p);
-            !app.gal.pending()
-        }), "Vorschaubilder fehlen");
-        assert!(std::fs::read_dir(root.join("ultar/cache/thumbs")).unwrap().count() >= 3);
+        assert!(
+            wait_for(|| {
+                draw(&mut app, &mut cv, &mut text, &mut p);
+                !app.gal.pending()
+            }),
+            "Vorschaubilder fehlen"
+        );
+        assert!(
+            std::fs::read_dir(root.join("ultar/cache/thumbs"))
+                .unwrap()
+                .count()
+                >= 3
+        );
 
         // --- Betrachter: Foto und Video zeichnen, Favorit setzen, blättern, löschen
         let list: Vec<String> = app.gal.items.iter().map(|i| i.path.clone()).collect();
         app.open_photo(list[0].clone(), list.clone());
         draw(&mut app, &mut cv, &mut text, &mut p);
         // Herz unten links (erste von fünf bzw. drei Aktionen)
-        let n_act = if crate::mjpeg::is_video(&list[0]) { 3.0 } else { 5.0 };
-        tap(&mut app, &mut cv, &mut text, &mut p, 720.0 / n_act / 2.0, 1520.0 - 104.0 - 84.0 - 8.0);
+        let n_act = if crate::mjpeg::is_video(&list[0]) {
+            3.0
+        } else {
+            5.0
+        };
+        tap(
+            &mut app,
+            &mut cv,
+            &mut text,
+            &mut p,
+            720.0 / n_act / 2.0,
+            1520.0 - 104.0 - 84.0 - 8.0,
+        );
         assert_eq!(app.gal.cfg.favorites, vec![list[0].clone()]);
         // nach links wischen -> nächstes Bild
-        (p.x, p.y, p.px, p.py, p.down, p.pressed, p.moved) = (500.0, 700.0, 500.0, 700.0, true, true, false);
+        (p.x, p.y, p.px, p.py, p.down, p.pressed, p.moved) =
+            (500.0, 700.0, 500.0, 700.0, true, true, false);
         draw(&mut app, &mut cv, &mut text, &mut p);
         (p.x, p.pressed, p.moved) = (200.0, false, true);
         draw(&mut app, &mut cv, &mut text, &mut p);
         (p.down, p.released) = (false, true);
         draw(&mut app, &mut cv, &mut text, &mut p);
         (p.released, p.moved) = (false, false);
-        assert!(matches!(app.stack.last(), Some((Screen::Photo(x), _)) if *x == list[1]), "Wischen blättert nicht");
+        assert!(
+            matches!(app.stack.last(), Some((Screen::Photo(x), _)) if *x == list[1]),
+            "Wischen blättert nicht"
+        );
         for path in &list {
             app.open_photo(path.clone(), list.clone());
             draw(&mut app, &mut cv, &mut text, &mut p);
@@ -4092,26 +5901,98 @@ mod flow_tests {
         }
 
         // --- Agent bedient die Apps
-        let call = |tool: &str, args: serde_json::Value| Call { tool: tool.into(), args };
-        assert!(app.exec_apps(&call("set_alarm", serde_json::json!({"hour": 7, "minute": 30}))).unwrap().starts_with("ok"));
-        assert!(app.tl.alarms.list.iter().any(|a| a.h == 7 && a.m == 30 && a.on));
-        assert!(app.exec_apps(&call("set_alarm", serde_json::json!({"hour": 25}))).unwrap().starts_with("error"));
-        assert!(app.exec_apps(&call("add_note", serde_json::json!({"text": "Milch kaufen"}))).unwrap().starts_with("ok"));
-        assert!(app.exec_apps(&call("list_notes", serde_json::json!({}))).unwrap().contains("Milch"));
-        assert!(app.exec_apps(&call("add_contact", serde_json::json!({"name": "Lina", "number": "+49 30 1"}))).unwrap().starts_with("ok"));
-        assert!(app.exec_apps(&call("find_contact", serde_json::json!({"name": "lin"}))).unwrap().contains("+49 30 1"));
-        assert!(app.exec_apps(&call("start_timer", serde_json::json!({"minutes": 5}))).unwrap().starts_with("ok"));
+        let call = |tool: &str, args: serde_json::Value| Call {
+            tool: tool.into(),
+            args,
+        };
+        assert!(app
+            .exec_apps(&call(
+                "set_alarm",
+                serde_json::json!({"hour": 7, "minute": 30})
+            ))
+            .unwrap()
+            .starts_with("ok"));
+        assert!(app
+            .tl
+            .alarms
+            .list
+            .iter()
+            .any(|a| a.h == 7 && a.m == 30 && a.on));
+        assert!(app
+            .exec_apps(&call("set_alarm", serde_json::json!({"hour": 25})))
+            .unwrap()
+            .starts_with("error"));
+        assert!(app
+            .exec_apps(&call(
+                "add_note",
+                serde_json::json!({"text": "Milch kaufen"})
+            ))
+            .unwrap()
+            .starts_with("ok"));
+        assert!(app
+            .exec_apps(&call("list_notes", serde_json::json!({})))
+            .unwrap()
+            .contains("Milch"));
+        assert!(app
+            .exec_apps(&call(
+                "add_contact",
+                serde_json::json!({"name": "Lina", "number": "+49 30 1"})
+            ))
+            .unwrap()
+            .starts_with("ok"));
+        assert!(app
+            .exec_apps(&call("find_contact", serde_json::json!({"name": "lin"})))
+            .unwrap()
+            .contains("+49 30 1"));
+        assert!(app
+            .exec_apps(&call("start_timer", serde_json::json!({"minutes": 5})))
+            .unwrap()
+            .starts_with("ok"));
         assert!(app.tl.timer_end.is_some());
-        assert!(app.exec_apps(&call("read_file", serde_json::json!({"path": "/data/ultar/wifi.conf"}))).unwrap().starts_with("error"));
-        assert!(app.exec_apps(&call("open_app", serde_json::json!({"name": "notes"}))).unwrap() == "ok");
+        assert!(app
+            .exec_apps(&call(
+                "read_file",
+                serde_json::json!({"path": "/data/ultar/wifi.conf"})
+            ))
+            .unwrap()
+            .starts_with("error"));
+        assert!(
+            app.exec_apps(&call("open_app", serde_json::json!({"name": "notes"})))
+                .unwrap()
+                == "ok"
+        );
         assert!(matches!(app.stack.last(), Some((Screen::Notes, _))));
-        assert!(app.exec_apps(&call("take_photo", serde_json::json!({}))).unwrap().starts_with("ok"));
-        assert!(matches!(app.stack.last(), Some((Screen::Camera, _))) && app.cam.countdown.is_some());
-        assert!(app.exec_apps(&call("get_status", serde_json::json!({}))).is_none(), "bekannte System-Werkzeuge bleiben beim alten Weg");
+        assert!(app
+            .exec_apps(&call("take_photo", serde_json::json!({})))
+            .unwrap()
+            .starts_with("ok"));
+        assert!(
+            matches!(app.stack.last(), Some((Screen::Camera, _))) && app.cam.countdown.is_some()
+        );
+        assert!(
+            app.exec_apps(&call("get_status", serde_json::json!({})))
+                .is_none(),
+            "bekannte System-Werkzeuge bleiben beim alten Weg"
+        );
         // jede neue App zeichnet ohne Absturz, auch auf Arabisch und im Querformat
         let mut wide = Canvas::new(1280, 800);
         for lang in ["de", "ar", "en"] {
-            for s in ["home", "camera", "gallery", "photo", "agent", "agentchat", "agentset", "notes", "contacts", "ubuntu", "phone", "calc", "clock", "files"] {
+            for s in [
+                "home",
+                "camera",
+                "gallery",
+                "photo",
+                "agent",
+                "agentchat",
+                "agentset",
+                "notes",
+                "contacts",
+                "ubuntu",
+                "phone",
+                "calc",
+                "clock",
+                "files",
+            ] {
                 app.debug_open(s, lang);
                 draw(&mut app, &mut cv, &mut text, &mut p);
                 draw(&mut app, &mut wide, &mut text, &mut p);
@@ -4132,8 +6013,16 @@ mod flow_tests {
         uo::create(&p("zahlen.xlsx"), "5,7\n").unwrap();
         std::fs::write(p("main.py"), "def f():\n    return 1\n").unwrap();
         let (tx, _rx) = std::sync::mpsc::channel();
-        let (_rfd, wfd) = nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC).unwrap();
-        let mut app = App::new(Bg { tx, wake: std::sync::Arc::new(wfd) }, (720, 1520, "test".into()));
+        let (_rfd, wfd) =
+            nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC)
+                .unwrap();
+        let mut app = App::new(
+            Bg {
+                tx,
+                wake: std::sync::Arc::new(wfd),
+            },
+            (720, 1520, "test".into()),
+        );
         let (mut cv, mut text, mut pt) = (Canvas::new(720, 1520), Text::new(), Ptr::default());
 
         // --- Dokument: Absatz bearbeiten, Enter teilt, Verlassen speichert als .docx
@@ -4165,7 +6054,10 @@ mod flow_tests {
         draw(&mut app, &mut cv, &mut text, &mut pt);
         app.focus = None;
         app.home();
-        assert_eq!(uo::sheet_get(&p("zahlen.xlsx"), "C1").unwrap(), "24 [=SUM(A1:B1)*2]");
+        assert_eq!(
+            uo::sheet_get(&p("zahlen.xlsx"), "C1").unwrap(),
+            "24 [=SUM(A1:B1)*2]"
+        );
 
         // --- Code: tippen mit automatischer Klammer, Suchen/Ersetzen, Speichern beim Verlassen
         app.debug_open(&format!("office:{}", p("main.py")), "de");
@@ -4174,7 +6066,10 @@ mod flow_tests {
         tap(&mut app, &mut cv, &mut text, &mut pt, 400.0, 240.0);
         draw(&mut app, &mut cv, &mut text, &mut pt);
         assert_eq!(app.focus, Some("office_ed"));
-        assert!(app.office.code.as_ref().unwrap().tabs[0].buf.cur > 0, "Antippen traf den Editor nicht");
+        assert!(
+            app.office.code.as_ref().unwrap().tabs[0].buf.cur > 0,
+            "Antippen traf den Editor nicht"
+        );
         {
             let t = &mut app.office.code.as_mut().unwrap().tabs[0];
             t.buf.cur = t.buf.text.len();
@@ -4187,18 +6082,46 @@ mod flow_tests {
         }
         app.on_key(Key::Char(')'));
         draw(&mut app, &mut cv, &mut text, &mut pt);
-        assert_eq!(app.office.code.as_ref().unwrap().tabs[0].buf.text, "def f():\n    return 1\nprint(f())");
+        assert_eq!(
+            app.office.code.as_ref().unwrap().tabs[0].buf.text,
+            "def f():\n    return 1\nprint(f())"
+        );
         app.fields.insert("code_find", "return 1".into());
         app.office_find_enter("code_find");
-        assert_eq!(app.office.code.as_ref().unwrap().tabs[0].buf.selected_text(), "return 1");
+        assert_eq!(
+            app.office.code.as_ref().unwrap().tabs[0]
+                .buf
+                .selected_text(),
+            "return 1"
+        );
         // Agent sieht, was offen ist; Dateien außerhalb von /data bleiben gesperrt
-        let call = |tool: &str, args: serde_json::Value| crate::agent::Call { tool: tool.into(), args };
-        let cur = app.exec_apps(&call("doc_current", serde_json::json!({}))).unwrap();
-        assert!(cur.contains("main.py") && cur.contains("selection: return 1"), "{cur}");
-        assert!(app.exec_apps(&call("doc_read", serde_json::json!({"path": p("main.py")}))).unwrap().starts_with("error"));
-        assert!(app.exec_apps(&call("doc_create", serde_json::json!({"path": "/data/ultar/x.docx", "content": "x"}))).unwrap().starts_with("error"));
+        let call = |tool: &str, args: serde_json::Value| crate::agent::Call {
+            tool: tool.into(),
+            args,
+        };
+        let cur = app
+            .exec_apps(&call("doc_current", serde_json::json!({})))
+            .unwrap();
+        assert!(
+            cur.contains("main.py") && cur.contains("selection: return 1"),
+            "{cur}"
+        );
+        assert!(app
+            .exec_apps(&call("doc_read", serde_json::json!({"path": p("main.py")})))
+            .unwrap()
+            .starts_with("error"));
+        assert!(app
+            .exec_apps(&call(
+                "doc_create",
+                serde_json::json!({"path": "/data/ultar/x.docx", "content": "x"})
+            ))
+            .unwrap()
+            .starts_with("error"));
         app.home();
-        assert_eq!(std::fs::read_to_string(p("main.py")).unwrap(), "def f():\n    return 1\nprint(f())");
+        assert_eq!(
+            std::fs::read_to_string(p("main.py")).unwrap(),
+            "def f():\n    return 1\nprint(f())"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -4212,8 +6135,16 @@ mod flow_tests {
         std::env::set_var("ULTAR_MODEL_DIR", root.join("models"));
         std::fs::write(root.join("models/mmproj-qwen2.5-vl-3b.gguf"), b"GGUF").unwrap();
         let (tx, _rx) = std::sync::mpsc::channel();
-        let (_rfd, wfd) = nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC).unwrap();
-        let mut app = App::new(Bg { tx, wake: std::sync::Arc::new(wfd) }, (720, 1520, "test".into()));
+        let (_rfd, wfd) =
+            nix::unistd::pipe2(nix::fcntl::OFlag::O_NONBLOCK | nix::fcntl::OFlag::O_CLOEXEC)
+                .unwrap();
+        let mut app = App::new(
+            Bg {
+                tx,
+                wake: std::sync::Arc::new(wfd),
+            },
+            (720, 1520, "test".into()),
+        );
         app.agent.enabled = true;
         app.agent.endpoint = "127.0.0.1:9".into(); // nicht erreichbar – Antworten werden hier nachgestellt
         let (mut cv, mut text, mut p) = (Canvas::new(720, 1520), Text::new(), Ptr::default());
@@ -4221,17 +6152,30 @@ mod flow_tests {
         app.debug_open("calc", "en");
         draw(&mut app, &mut cv, &mut text, &mut p);
         assert!(app.jv.view.is_some());
-        assert!(app.jv.view_text.iter().any(|t| t.contains("Calculator")), "{:?}", app.jv.view_text);
+        assert!(
+            app.jv.view_text.iter().any(|t| t.contains("Calculator")),
+            "{:?}",
+            app.jv.view_text
+        );
         app.go(Screen::Agent);
         draw(&mut app, &mut cv, &mut text, &mut p);
         // der Assistent selbst wird nicht als „Bildschirm" gemerkt
         assert!(app.jv.view_text.iter().any(|t| t.contains("Calculator")));
         let reply = |app: &mut App, s: &str| app.on_msg(Msg::AgentReply(Ok(s.to_string())));
-        let last = |app: &App| app.history.last().map(|m| m.to_string()).unwrap_or_default();
+        let last = |app: &App| {
+            app.history
+                .last()
+                .map(|m| m.to_string())
+                .unwrap_or_default()
+        };
 
         // sehen (Text)
         reply(&mut app, r#"{"tool":"see_screen","args":{}}"#);
-        assert!(last(&app).contains("TOOL_RESULT") && last(&app).contains("Calculator"), "{}", last(&app));
+        assert!(
+            last(&app).contains("TOOL_RESULT") && last(&app).contains("Calculator"),
+            "{}",
+            last(&app)
+        );
         // sehen (Bild) – Bildschirmfoto geht als Bild an das Modell
         reply(&mut app, r#"{"tool":"look_screen","args":{}}"#);
         assert!(crate::agent::has_image(app.history.last().unwrap()));
@@ -4243,17 +6187,30 @@ mod flow_tests {
         // Root-Befehl: immer erst bestätigen; ablehnen → Modell erfährt es
         app.agent.confirm = false;
         app.steps = 0;
-        reply(&mut app, r#"{"tool":"run_command","args":{"command":"id"}}"#);
+        reply(
+            &mut app,
+            r#"{"tool":"run_command","args":{"command":"id"}}"#,
+        );
         assert!(app.pending.is_some(), "Root-Befehl ohne Rückfrage");
         app.deny();
         assert!(last(&app).contains("denied"));
         // Geheimnisse lesen → Rückfrage; normale Systemdateien frei
-        reply(&mut app, r#"{"tool":"read_any","args":{"path":"/data/ultar/wifi.conf"}}"#);
+        reply(
+            &mut app,
+            r#"{"tool":"read_any","args":{"path":"/data/ultar/wifi.conf"}}"#,
+        );
         assert!(app.pending.take().is_some());
-        reply(&mut app, r#"{"tool":"read_any","args":{"path":"/proc/version"}}"#);
+        reply(
+            &mut app,
+            r#"{"tool":"read_any","args":{"path":"/proc/version"}}"#,
+        );
         assert!(app.pending.is_none() && last(&app).contains("TOOL_RESULT"));
         // Sicherheit/Kamera → Rückfrage
-        for t in [r#"{"tool":"set_privacy","args":{"group":"camera","on":false}}"#, r#"{"tool":"look_at_user","args":{}}"#, r#"{"tool":"kill_process","args":{"pid":"1"}}"#] {
+        for t in [
+            r#"{"tool":"set_privacy","args":{"group":"camera","on":false}}"#,
+            r#"{"tool":"look_at_user","args":{}}"#,
+            r#"{"tool":"kill_process","args":{"pid":"1"}}"#,
+        ] {
             app.steps = 0;
             reply(&mut app, t);
             assert!(app.pending.take().is_some(), "{t}");
@@ -4269,10 +6226,20 @@ mod flow_tests {
 
         // Mitbringen: Foto + Textdatei → eine Nachricht mit Bild und Dateiinhalt
         let img = root.join("foto.png");
-        image::save_buffer(&img, &[200u8; 3 * 4 * 4], 4, 4, image::ExtendedColorType::Rgb8).unwrap();
+        image::save_buffer(
+            &img,
+            &[200u8; 3 * 4 * 4],
+            4,
+            4,
+            image::ExtendedColorType::Rgb8,
+        )
+        .unwrap();
         let txt = root.join("notiz.txt");
         std::fs::write(&txt, "Einkaufsliste: Brot").unwrap();
-        app.jv.attach = vec![img.to_string_lossy().into_owned(), txt.to_string_lossy().into_owned()];
+        app.jv.attach = vec![
+            img.to_string_lossy().into_owned(),
+            txt.to_string_lossy().into_owned(),
+        ];
         app.agent_busy = false;
         app.fields.insert("chat", "Was ist das?".into());
         app.send_chat();
@@ -4283,9 +6250,25 @@ mod flow_tests {
         assert!(app.jv.attach.is_empty());
 
         // Echte Runde gegen den Modell-Dienst (Test-Engine), wenn gebaut: Bild kommt beim Modell an
-        let bin = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/release/ultar-llm");
+        let bin = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../target/release/ultar-llm"
+        );
         if std::path::Path::new(bin).exists() {
-            let mut child = std::process::Command::new(bin).args(["serve", "--model", "mock:", "--listen", "127.0.0.1:18181", "--socket", ""]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().unwrap();
+            let mut child = std::process::Command::new(bin)
+                .args([
+                    "serve",
+                    "--model",
+                    "mock:",
+                    "--listen",
+                    "127.0.0.1:18181",
+                    "--socket",
+                    "",
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
             let mut ok = false;
             for _ in 0..50 {
                 if crate::agent::reachable("127.0.0.1:18181") {
@@ -4294,9 +6277,16 @@ mod flow_tests {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-            let r = if ok { crate::agent::complete("127.0.0.1:18181", &[m]) } else { Err("not reachable".into()) };
+            let r = if ok {
+                crate::agent::complete("127.0.0.1:18181", &[m])
+            } else {
+                Err("not reachable".into())
+            };
             let _ = child.kill();
-            assert!(r.as_deref().unwrap_or("").contains("mock saw 1 image"), "{r:?}");
+            assert!(
+                r.as_deref().unwrap_or("").contains("mock saw 1 image"),
+                "{r:?}"
+            );
         }
         let _ = std::fs::remove_dir_all(&root);
     }

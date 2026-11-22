@@ -58,7 +58,7 @@ pub const IPC_MISC_TIME_INFO: u16 = 0x0A05;
 pub const IPC_PWR_PHONE_PWR_UP: u16 = 0x0101; // VERIFY
 pub const IPC_PWR_PHONE_STATE: u16 = 0x0107; // VERIFY
 pub const IPC_PWR_PHONE_RESET: u16 = 0x0103; // VERIFY
-// NET – VERIFY (net.h war nicht abrufbar; bekannte libsamsung-ipc-Werte):
+                                             // NET – VERIFY (net.h war nicht abrufbar; bekannte libsamsung-ipc-Werte):
 pub const IPC_NET_PREF_PLMN: u16 = 0x0801; // VERIFY
 pub const IPC_NET_PLMN_SEL: u16 = 0x0802; // VERIFY – manuelle/auto Netzwahl
 pub const IPC_NET_SERVICE_DOMAIN_CONFIG: u16 = 0x0808; // VERIFY
@@ -68,7 +68,7 @@ pub const IPC_NET_REGIST: u16 = 0x0805; // VERIFY – Registrierungsstatus
 pub const IPC_NET_PLMN_LIST: u16 = 0x0804; // VERIFY – verfügbare Netze (Scan)
 pub const IPC_NET_SERVING_NETWORK: u16 = 0x0803; // VERIFY – aktueller Operator/PLMN
 pub const IPC_NET_BAND_SEL: u16 = 0x0807; // VERIFY
-// DISP – VERIFY (disp.h nicht abrufbar):
+                                          // DISP – VERIFY (disp.h nicht abrufbar):
 pub const IPC_DISP_ICON_INFO: u16 = 0x0701; // VERIFY – u.a. Signalbalken
 pub const IPC_DISP_RSSI_INFO: u16 = 0x0706; // VERIFY – RSSI
 
@@ -109,7 +109,13 @@ pub fn decode(payload: &[u8]) -> Option<IpcMessage> {
     let msg_type = payload[6];
     let end = length.clamp(7, payload.len());
     let data = payload.get(7..end).unwrap_or(&[]).to_vec();
-    Some(IpcMessage { command: ((group as u16) << 8) | index as u16, msg_type, mseq, aseq, data })
+    Some(IpcMessage {
+        command: ((group as u16) << 8) | index as u16,
+        msg_type,
+        mseq,
+        aseq,
+        data,
+    })
 }
 
 /// Zustandsbehafteter RIL-Client über eine Transportverbindung.
@@ -138,7 +144,13 @@ impl<L: ModemLink> Ril<L> {
 
     /// Anfrage senden und auf die passende Antwort (gleiches Kommando) warten.
     /// Unaufgeforderte Meldungen (EVENT) werden dabei übersprungen.
-    pub fn request(&mut self, command: u16, msg_type: u8, data: &[u8], timeout_ms: u32) -> std::io::Result<Option<IpcMessage>> {
+    pub fn request(
+        &mut self,
+        command: u16,
+        msg_type: u8,
+        data: &[u8],
+        timeout_ms: u32,
+    ) -> std::io::Result<Option<IpcMessage>> {
         let seq = self.next_seq();
         let payload = encode(command, msg_type, seq, data);
         self.link.send(FMT_CHANNEL, &payload)?;
@@ -171,7 +183,12 @@ impl<L: ModemLink> Ril<L> {
     }
 
     /// EXEC/SET-Anfrage mit Rumpf.
-    pub fn exec(&mut self, command: u16, data: &[u8], timeout_ms: u32) -> std::io::Result<Option<IpcMessage>> {
+    pub fn exec(
+        &mut self,
+        command: u16,
+        data: &[u8],
+        timeout_ms: u32,
+    ) -> std::io::Result<Option<IpcMessage>> {
         self.request(command, IPC_TYPE_EXEC, data, timeout_ms)
     }
 }
@@ -185,7 +202,10 @@ mod tests {
         let body = [0xDE, 0xAD, 0xBE, 0xEF];
         let bytes = encode(IPC_MISC_ME_IMSI, IPC_TYPE_GET, 7, &body);
         // Kopf prüfen
-        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]) as usize, 7 + body.len());
+        assert_eq!(
+            u16::from_le_bytes([bytes[0], bytes[1]]) as usize,
+            7 + body.len()
+        );
         assert_eq!(bytes[2], 7); // mseq
         assert_eq!(bytes[4], G_MISC); // group
         assert_eq!(bytes[5], 0x02); // index

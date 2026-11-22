@@ -6,7 +6,11 @@
 use ultar_bt::*;
 
 fn hostname() -> String {
-    std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string()).ok().filter(|s| !s.is_empty() && s != "(none)" && s != "localhost").unwrap_or_else(|| "Ultar".into())
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim().to_string())
+        .ok()
+        .filter(|s| !s.is_empty() && s != "(none)" && s != "localhost")
+        .unwrap_or_else(|| "Ultar".into())
 }
 
 fn run() -> Result<(), Error> {
@@ -29,11 +33,22 @@ fn run() -> Result<(), Error> {
     println!("adresse\t{}", addr_str(&addr));
     println!("version\thci={ver} hersteller=0x{manu:04X} lmp_sub=0x{sub:04X}");
     if a[1] == "scan" {
-        let secs = a.get(2).and_then(|s| s.parse().ok()).unwrap_or(10u64).clamp(2, 60);
+        let secs = a
+            .get(2)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10u64)
+            .clamp(2, 60);
         let list = h.scan(secs, |_| {})?;
         let mut tsv = String::new();
         for f in &list {
-            let line = format!("{}\t{}\t{}\t{:06X}\t{}\n", addr_str(&f.addr), if f.le { "le" } else { "br" }, f.rssi.map(|r| r.to_string()).unwrap_or_default(), f.class, f.name.clone().unwrap_or_default());
+            let line = format!(
+                "{}\t{}\t{}\t{:06X}\t{}\n",
+                addr_str(&f.addr),
+                if f.le { "le" } else { "br" },
+                f.rssi.map(|r| r.to_string()).unwrap_or_default(),
+                f.class,
+                f.name.clone().unwrap_or_default()
+            );
             print!("{line}");
             tsv.push_str(&line);
         }

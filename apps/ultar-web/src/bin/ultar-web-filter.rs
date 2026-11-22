@@ -76,7 +76,13 @@ fn net_rule(line: &str) -> Option<Rule> {
     if pat.starts_with('/') && pat.ends_with('/') && pat.len() > 2 {
         return None; // eigene reguläre Ausdrücke der Liste: oft außerhalb des WebKit-Umfangs
     }
-    let mut r = Rule { filter: to_regex(pat)?, types: Vec::new(), load: None, if_dom: Vec::new(), unless_dom: Vec::new() };
+    let mut r = Rule {
+        filter: to_regex(pat)?,
+        types: Vec::new(),
+        load: None,
+        if_dom: Vec::new(),
+        unless_dom: Vec::new(),
+    };
     for o in opts.split(',').filter(|o| !o.is_empty()) {
         match o {
             "third-party" | "3p" => r.load = Some("third-party"),
@@ -118,7 +124,11 @@ fn emit(out: &mut String, r: &Rule, action: &str, n: &mut usize) {
         out.push_str(",\n");
     }
     *n += 1;
-    let _ = write!(out, "{{\"trigger\":{{\"url-filter\":\"{}\"", esc_json(&r.filter));
+    let _ = write!(
+        out,
+        "{{\"trigger\":{{\"url-filter\":\"{}\"",
+        esc_json(&r.filter)
+    );
     if !r.types.is_empty() {
         let t: Vec<String> = r.types.iter().map(|t| format!("\"{t}\"")).collect();
         let _ = write!(out, ",\"resource-type\":[{}]", t.join(","));
@@ -152,19 +162,34 @@ fn main() {
             if line.is_empty() || line.starts_with('!') || line.starts_with('[') {
                 continue;
             }
-            if ["#@#", "#?#", "#$#", "#%#", "##+js", "##^"].iter().any(|m| line.contains(m)) {
+            if ["#@#", "#?#", "#$#", "#%#", "##+js", "##^"]
+                .iter()
+                .any(|m| line.contains(m))
+            {
                 skipped += 1;
                 continue;
             }
             if let Some((doms, sel)) = line.split_once("##") {
-                if sel.is_empty() || [":has(", ":-abp", ":style(", ":xpath(", ":upward(", ":remove("].iter().any(|m| sel.contains(m)) || !sel.is_ascii() || !doms.is_ascii() {
+                if sel.is_empty()
+                    || [
+                        ":has(", ":-abp", ":style(", ":xpath(", ":upward(", ":remove(",
+                    ]
+                    .iter()
+                    .any(|m| sel.contains(m))
+                    || !sel.is_ascii()
+                    || !doms.is_ascii()
+                {
                     skipped += 1;
                     continue;
                 }
                 if doms.is_empty() {
                     generic_css.push(sel.to_string());
                 } else {
-                    let d: Vec<String> = doms.split(',').filter(|d| !d.starts_with('~') && !d.is_empty()).map(|d| format!("*{}", d.to_ascii_lowercase())).collect();
+                    let d: Vec<String> = doms
+                        .split(',')
+                        .filter(|d| !d.starts_with('~') && !d.is_empty())
+                        .map(|d| format!("*{}", d.to_ascii_lowercase()))
+                        .collect();
                     if !d.is_empty() {
                         dom_css.push((d, sel.to_string()));
                     }
@@ -212,7 +237,11 @@ fn main() {
     }
     out.push_str("\n]\n");
     std::fs::write(&a[0], out).expect("schreiben");
-    std::fs::write(format!("{}.count", a[0].trim_end_matches(".json")), n.to_string()).ok();
+    std::fs::write(
+        format!("{}.count", a[0].trim_end_matches(".json")),
+        n.to_string(),
+    )
+    .ok();
     eprintln!("ultar-web-filter: {n} Regeln ({} blockieren, {} Ausnahmen, {} CSS), {skipped} nicht übersetzbar", block.len(), allow.len(), generic_css.len() + dom_css.len());
 }
 
@@ -221,7 +250,10 @@ mod tests {
     use super::*;
     #[test]
     fn muster() {
-        assert_eq!(to_regex("||ads.example.com^").unwrap(), "^[a-z][a-z0-9+.-]*://([^/]*\\.)?ads\\.example\\.com[^a-z0-9_.%-]");
+        assert_eq!(
+            to_regex("||ads.example.com^").unwrap(),
+            "^[a-z][a-z0-9+.-]*://([^/]*\\.)?ads\\.example\\.com[^a-z0-9_.%-]"
+        );
         assert!(net_rule("||x.com^$third-party,script").unwrap().types == vec!["script"]);
         assert!(net_rule("||x.com^$redirect=noop").is_none());
     }

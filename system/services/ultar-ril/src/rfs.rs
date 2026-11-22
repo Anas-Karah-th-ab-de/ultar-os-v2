@@ -39,7 +39,9 @@ pub struct Rfs {
 }
 
 fn u32_at(d: &[u8], o: usize) -> u32 {
-    d.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0)
+    d.get(o..o + 4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .unwrap_or(0)
 }
 
 /// Antwortrahmen bauen.
@@ -62,7 +64,13 @@ impl Rfs {
     pub fn new(dir: impl Into<PathBuf>) -> Rfs {
         let dir = dir.into();
         let _ = std::fs::create_dir_all(dir.join("rfs"));
-        Rfs { dir, buf: Vec::new(), files: HashMap::new(), next_fd: 3, log: Vec::new() }
+        Rfs {
+            dir,
+            buf: Vec::new(),
+            files: HashMap::new(),
+            next_fd: 3,
+            log: Vec::new(),
+        }
     }
 
     fn nv_path(&self) -> PathBuf {
@@ -89,7 +97,8 @@ impl Rfs {
             }
             let len = u32_at(&self.buf, 0) as usize;
             if !(6..=8 << 20).contains(&len) {
-                self.log.push(format!("RFS: unplausible Länge {len} – Puffer verworfen"));
+                self.log
+                    .push(format!("RFS: unplausible Länge {len} – Puffer verworfen"));
                 self.buf.clear();
                 break;
             }
@@ -111,7 +120,10 @@ impl Rfs {
                     f.seek(SeekFrom::Start(off as u64))?;
                     f.read_exact(&mut data)
                 });
-                self.log.push(format!("RFS NV lesen off=0x{off:x} len={len} -> {}", if ok.is_ok() { "ok" } else { "FEHLER" }));
+                self.log.push(format!(
+                    "RFS NV lesen off=0x{off:x} len={len} -> {}",
+                    if ok.is_ok() { "ok" } else { "FEHLER" }
+                ));
                 let mut b = vec![ok.is_ok() as u8];
                 b.extend_from_slice(&off.to_le_bytes());
                 b.extend_from_slice(&len.to_le_bytes());
@@ -124,14 +136,22 @@ impl Rfs {
                 let (off, len) = (u32_at(d, 0), u32_at(d, 4));
                 let data = d.get(8..8 + len as usize);
                 let ok = match data {
-                    Some(data) => OpenOptions::new().write(true).create(true).truncate(false).open(self.nv_path()).and_then(|mut f| {
-                        f.seek(SeekFrom::Start(off as u64))?;
-                        f.write_all(data)?;
-                        f.sync_data()
-                    }),
+                    Some(data) => OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .truncate(false)
+                        .open(self.nv_path())
+                        .and_then(|mut f| {
+                            f.seek(SeekFrom::Start(off as u64))?;
+                            f.write_all(data)?;
+                            f.sync_data()
+                        }),
                     None => Err(std::io::Error::other("zu kurz")),
                 };
-                self.log.push(format!("RFS NV schreiben off=0x{off:x} len={len} -> {}", if ok.is_ok() { "ok" } else { "FEHLER" }));
+                self.log.push(format!(
+                    "RFS NV schreiben off=0x{off:x} len={len} -> {}",
+                    if ok.is_ok() { "ok" } else { "FEHLER" }
+                ));
                 let mut b = vec![ok.is_ok() as u8];
                 b.extend_from_slice(&off.to_le_bytes());
                 b.extend_from_slice(&len.to_le_bytes());
@@ -140,12 +160,19 @@ impl Rfs {
             RFS_OPEN_FILE | RFS_CREATE_FILE => {
                 let (flags, plen) = (u32_at(d, 0), u32_at(d, 4) as usize);
                 let raw = d.get(8..(8 + plen).min(d.len())).unwrap_or(&[]);
-                let name = String::from_utf8_lossy(raw).trim_end_matches('\0').to_string();
+                let name = String::from_utf8_lossy(raw)
+                    .trim_end_matches('\0')
+                    .to_string();
                 let res = match self.map_path(raw) {
                     Some(p) => {
                         let acc = flags & 3; // O_RDONLY 0, O_WRONLY 1, O_RDWR 2
                         let create = cmd == RFS_CREATE_FILE || flags & 0o100 != 0;
-                        OpenOptions::new().read(acc != 1).write(acc != 0).create(create && acc != 0).truncate(flags & 0o1000 != 0 && acc != 0).open(p)
+                        OpenOptions::new()
+                            .read(acc != 1)
+                            .write(acc != 0)
+                            .create(create && acc != 0)
+                            .truncate(flags & 0o1000 != 0 && acc != 0)
+                            .open(p)
                     }
                     None => Err(std::io::Error::from_raw_os_error(ENOENT)),
                 };
@@ -154,12 +181,16 @@ impl Rfs {
                         let fd = self.next_fd;
                         self.next_fd += 1;
                         self.files.insert(fd, f);
-                        self.log.push(format!("RFS öffnen \"{name}\" flags=0x{flags:x} -> fd {fd}"));
+                        self.log.push(format!(
+                            "RFS öffnen \"{name}\" flags=0x{flags:x} -> fd {fd}"
+                        ));
                         frame(cmd, id, &ret_err(fd, 0))
                     }
                     Err(e) => {
                         let en = e.raw_os_error().unwrap_or(ENOENT);
-                        self.log.push(format!("RFS öffnen \"{name}\" flags=0x{flags:x} -> Fehler {en}"));
+                        self.log.push(format!(
+                            "RFS öffnen \"{name}\" flags=0x{flags:x} -> Fehler {en}"
+                        ));
                         frame(cmd, id, &ret_err(-1, en))
                     }
                 }
@@ -167,8 +198,12 @@ impl Rfs {
             RFS_READ_FILE => {
                 let (fd, len) = (u32_at(d, 0) as i32, (u32_at(d, 4) as usize).min(1 << 20));
                 let mut data = vec![0u8; len];
-                let r = self.files.get_mut(&fd).ok_or(EBADF).and_then(|f| f.read(&mut data).map_err(|e| e.raw_os_error().unwrap_or(EIO)));
-                self.log.push(format!("RFS lesen fd {fd} len={len} -> {r:?}"));
+                let r = self.files.get_mut(&fd).ok_or(EBADF).and_then(|f| {
+                    f.read(&mut data)
+                        .map_err(|e| e.raw_os_error().unwrap_or(EIO))
+                });
+                self.log
+                    .push(format!("RFS lesen fd {fd} len={len} -> {r:?}"));
                 match r {
                     Ok(n) => {
                         let mut b = ret_err(n as i32, 0);
@@ -181,8 +216,13 @@ impl Rfs {
             RFS_WRITE_FILE => {
                 let (fd, len) = (u32_at(d, 0) as i32, u32_at(d, 4) as usize);
                 let data = d.get(8..(8 + len).min(d.len())).unwrap_or(&[]);
-                let r = self.files.get_mut(&fd).ok_or(EBADF).and_then(|f| f.write(data).map_err(|e| e.raw_os_error().unwrap_or(EIO)));
-                self.log.push(format!("RFS schreiben fd {fd} len={len} -> {r:?}"));
+                let r = self
+                    .files
+                    .get_mut(&fd)
+                    .ok_or(EBADF)
+                    .and_then(|f| f.write(data).map_err(|e| e.raw_os_error().unwrap_or(EIO)));
+                self.log
+                    .push(format!("RFS schreiben fd {fd} len={len} -> {r:?}"));
                 match r {
                     Ok(n) => frame(cmd, id, &ret_err(n as i32, 0)),
                     Err(e) => frame(cmd, id, &ret_err(-1, e)),
@@ -195,8 +235,14 @@ impl Rfs {
                     2 => SeekFrom::End(off as i64),
                     _ => SeekFrom::Start(off.max(0) as u64),
                 };
-                let r = self.files.get_mut(&fd).ok_or(EBADF).and_then(|f| f.seek(pos).map_err(|e| e.raw_os_error().unwrap_or(EIO)));
-                self.log.push(format!("RFS springen fd {fd} off={off} whence={whence} -> {r:?}"));
+                let r = self
+                    .files
+                    .get_mut(&fd)
+                    .ok_or(EBADF)
+                    .and_then(|f| f.seek(pos).map_err(|e| e.raw_os_error().unwrap_or(EIO)));
+                self.log.push(format!(
+                    "RFS springen fd {fd} off={off} whence={whence} -> {r:?}"
+                ));
                 match r {
                     Ok(n) => frame(cmd, id, &ret_err(n as i32, 0)),
                     Err(e) => frame(cmd, id, &ret_err(-1, e)),
@@ -206,11 +252,23 @@ impl Rfs {
                 let fd = u32_at(d, 0) as i32;
                 let ok = self.files.remove(&fd).is_some();
                 self.log.push(format!("RFS schließen fd {fd} -> {ok}"));
-                frame(cmd, id, &if ok { ret_err(0, 0) } else { ret_err(-1, EBADF) })
+                frame(
+                    cmd,
+                    id,
+                    &if ok {
+                        ret_err(0, 0)
+                    } else {
+                        ret_err(-1, EBADF)
+                    },
+                )
             }
             _ => {
                 let head: Vec<String> = d.iter().take(48).map(|b| format!("{b:02x}")).collect();
-                self.log.push(format!("RFS unbekannter Befehl 0x{cmd:02x} id={id} len={} daten={}", d.len(), head.join(" ")));
+                self.log.push(format!(
+                    "RFS unbekannter Befehl 0x{cmd:02x} id={id} len={} daten={}",
+                    d.len(),
+                    head.join(" ")
+                ));
                 frame(cmd, id, &ret_err(-1, ENOENT))
             }
         }
@@ -243,7 +301,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(&out[0][..6], &[15, 0, 0, 0, RFS_NV_WRITE_ITEM, 7]);
         assert_eq!(out[0][6], 1); // bestätigt
-        // lesen
+                                  // lesen
         let mut body = 0x100u32.to_le_bytes().to_vec();
         body.extend_from_slice(&5u32.to_le_bytes());
         let out = r.feed(&frame(RFS_NV_READ_ITEM, 8, &body));
@@ -262,7 +320,10 @@ mod tests {
         let out = r.feed(&frame(RFS_OPEN_FILE, 1, &body));
         // landet als "passwd" im eigenen Ordner -> gibt es nicht
         assert_eq!(i32::from_le_bytes(out[0][6..10].try_into().unwrap()), -1);
-        assert_eq!(i32::from_le_bytes(out[0][10..14].try_into().unwrap()), ENOENT);
+        assert_eq!(
+            i32::from_le_bytes(out[0][10..14].try_into().unwrap()),
+            ENOENT
+        );
     }
 
     #[test]

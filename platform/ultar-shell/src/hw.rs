@@ -21,11 +21,16 @@ pub struct HwDev {
 }
 
 fn rd(p: &std::path::Path, f: &str) -> String {
-    std::fs::read_to_string(p.join(f)).unwrap_or_default().trim().to_string()
+    std::fs::read_to_string(p.join(f))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 fn driver(p: &std::path::Path) -> Option<String> {
-    std::fs::read_link(p.join("driver")).ok().and_then(|l| l.file_name().map(|n| n.to_string_lossy().into_owned()))
+    std::fs::read_link(p.join("driver"))
+        .ok()
+        .and_then(|l| l.file_name().map(|n| n.to_string_lossy().into_owned()))
 }
 
 pub fn scan() -> Vec<HwDev> {
@@ -33,7 +38,8 @@ pub fn scan() -> Vec<HwDev> {
     if let Ok(rd_) = std::fs::read_dir("/sys/bus/pci/devices") {
         for e in rd_.flatten() {
             let p = e.path();
-            let class = u32::from_str_radix(rd(&p, "class").trim_start_matches("0x"), 16).unwrap_or(0);
+            let class =
+                u32::from_str_radix(rd(&p, "class").trim_start_matches("0x"), 16).unwrap_or(0);
             let base = class >> 16;
             let kind = match base {
                 0x01 => "Storage controller",
@@ -47,8 +53,19 @@ pub fn scan() -> Vec<HwDev> {
                 0x06 => "Bridge",
                 _ => "Other device",
             };
-            let id = format!("{}:{}", rd(&p, "vendor").trim_start_matches("0x"), rd(&p, "device").trim_start_matches("0x"));
-            v.push(HwDev { bus: "PCI", id, kind, modalias: rd(&p, "modalias"), driver: driver(&p), passive: matches!(base, 0x05 | 0x06 | 0x08) });
+            let id = format!(
+                "{}:{}",
+                rd(&p, "vendor").trim_start_matches("0x"),
+                rd(&p, "device").trim_start_matches("0x")
+            );
+            v.push(HwDev {
+                bus: "PCI",
+                id,
+                kind,
+                modalias: rd(&p, "modalias"),
+                driver: driver(&p),
+                passive: matches!(base, 0x05 | 0x06 | 0x08),
+            });
         }
     }
     if let Ok(rd_) = std::fs::read_dir("/sys/bus/usb/devices") {
@@ -70,9 +87,19 @@ pub fn scan() -> Vec<HwDev> {
                 _ => "Other device",
             };
             let parent = p.parent().map(|x| x.to_path_buf()).unwrap_or_default();
-            let dev = std::fs::canonicalize(&p).ok().and_then(|c| c.parent().map(|x| x.to_path_buf())).unwrap_or(parent);
+            let dev = std::fs::canonicalize(&p)
+                .ok()
+                .and_then(|c| c.parent().map(|x| x.to_path_buf()))
+                .unwrap_or(parent);
             let id = format!("{}:{}", rd(&dev, "idVendor"), rd(&dev, "idProduct"));
-            v.push(HwDev { bus: "USB", id, kind, modalias: rd(&p, "modalias"), driver: driver(&p), passive: false });
+            v.push(HwDev {
+                bus: "USB",
+                id,
+                kind,
+                modalias: rd(&p, "modalias"),
+                driver: driver(&p),
+                passive: false,
+            });
         }
     }
     v.sort_by(|a, b| (a.driver.is_some(), a.bus, &a.id).cmp(&(b.driver.is_some(), b.bus, &b.id)));
@@ -80,7 +107,9 @@ pub fn scan() -> Vec<HwDev> {
 }
 
 pub fn missing(devs: &[HwDev]) -> Vec<&HwDev> {
-    devs.iter().filter(|d| d.driver.is_none() && !d.passive && !d.modalias.is_empty()).collect()
+    devs.iter()
+        .filter(|d| d.driver.is_none() && !d.passive && !d.modalias.is_empty())
+        .collect()
 }
 
 /// Vom Kernel vergeblich angeforderte Firmware-Dateien (aus dem Kernel-Protokoll).
@@ -88,7 +117,13 @@ pub fn missing_firmware() -> Vec<String> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
     let mut out = Vec::new();
-    let Ok(mut f) = std::fs::OpenOptions::new().read(true).custom_flags(0o4000).open("/dev/kmsg") else { return out };
+    let Ok(mut f) = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(0o4000)
+        .open("/dev/kmsg")
+    else {
+        return out;
+    };
     let mut buf = [0u8; 8192];
     while let Ok(n) = f.read(&mut buf) {
         if n == 0 {
@@ -96,7 +131,11 @@ pub fn missing_firmware() -> Vec<String> {
         }
         let l = String::from_utf8_lossy(&buf[..n]);
         if l.contains("firmware") && l.contains("failed") {
-            if let Some(name) = l.split("firmware load for ").nth(1).and_then(|r| r.split_whitespace().next()) {
+            if let Some(name) = l
+                .split("firmware load for ")
+                .nth(1)
+                .and_then(|r| r.split_whitespace().next())
+            {
                 if !out.iter().any(|o| o == name) {
                     out.push(name.to_string());
                 }
@@ -111,7 +150,19 @@ fn args(a: &[&str]) -> Vec<String> {
 }
 
 fn has_pkg(name: &str) -> bool {
-    !sys::capture(COMPAT, &["run", "--", "/usr/bin/apt-cache", "show", "--no-all-versions", name]).trim().is_empty()
+    !sys::capture(
+        COMPAT,
+        &[
+            "run",
+            "--",
+            "/usr/bin/apt-cache",
+            "show",
+            "--no-all-versions",
+            name,
+        ],
+    )
+    .trim()
+    .is_empty()
 }
 
 /// Online nach Treibern suchen und sie laden. Läuft im Hintergrund; Fortschritt als JobLine.
@@ -122,7 +173,10 @@ pub fn fix_online(bg: &Bg) {
         let kver = sys::read_trim("/proc/sys/kernel/osrelease");
         // Hersteller-Pfad (/vendor/firmware, von ultar-init gesetzt) nicht überschreiben – sonst finden Video/Kamera nichts mehr
         if sys::read_trim("/sys/module/firmware_class/parameters/path").is_empty() {
-            let _ = std::fs::write("/sys/module/firmware_class/parameters/path", "/compat/lib/firmware");
+            let _ = std::fs::write(
+                "/sys/module/firmware_class/parameters/path",
+                "/compat/lib/firmware",
+            );
         }
         let before = missing(&scan()).len();
         say(format!("Kernel {kver}: {before} device(s) without driver"));
@@ -131,10 +185,15 @@ pub fn fix_online(bg: &Bg) {
             bg.send(Msg::JobDone(code));
             return;
         }
-        let mut pkgs = vec![format!("linux-modules-{kver}"), format!("linux-modules-extra-{kver}")];
+        let mut pkgs = vec![
+            format!("linux-modules-{kver}"),
+            format!("linux-modules-extra-{kver}"),
+        ];
         pkgs.retain(|p| has_pkg(p));
         if pkgs.is_empty() {
-            say(format!("No driver package for kernel {kver} in the package sources."));
+            say(format!(
+                "No driver package for kernel {kver} in the package sources."
+            ));
             bg.send(Msg::JobDone(2));
             return;
         }
@@ -143,15 +202,37 @@ pub fn fix_online(bg: &Bg) {
             if missing(&scan()).is_empty() && i > 0 {
                 break;
             }
-            let code = bg.stream(COMPAT, &args(&["apt", "install", "--no-install-recommends", "kmod", pkg]), Msg::JobLine);
+            let code = bg.stream(
+                COMPAT,
+                &args(&["apt", "install", "--no-install-recommends", "kmod", pkg]),
+                Msg::JobLine,
+            );
             if code != 0 {
                 say(format!("{pkg}: installation failed (code {code})"));
                 continue;
             }
-            bg.stream(COMPAT, &args(&["run", "--", "/usr/sbin/depmod", &kver]), Msg::JobLine);
+            bg.stream(
+                COMPAT,
+                &args(&["run", "--", "/usr/sbin/depmod", &kver]),
+                Msg::JobLine,
+            );
             for d in missing(&scan()) {
-                let code = bg.stream(COMPAT, &args(&["run", "--", "/usr/sbin/modprobe", "-b", &d.modalias]), Msg::JobLine);
-                say(format!("{} {} ({}): {}", d.bus, d.id, d.kind, if code == 0 { "driver loaded" } else { "no driver found" }));
+                let code = bg.stream(
+                    COMPAT,
+                    &args(&["run", "--", "/usr/sbin/modprobe", "-b", &d.modalias]),
+                    Msg::JobLine,
+                );
+                say(format!(
+                    "{} {} ({}): {}",
+                    d.bus,
+                    d.id,
+                    d.kind,
+                    if code == 0 {
+                        "driver loaded"
+                    } else {
+                        "no driver found"
+                    }
+                ));
                 if code == 0 {
                     fixed.push(d.modalias.clone());
                 }
@@ -164,15 +245,31 @@ pub fn fix_online(bg: &Bg) {
             if !has_pkg("linux-firmware") {
                 say("Package linux-firmware not available.".into());
             } else if free < 900 << 20 {
-                say(format!("Not enough space in the Ubuntu area for linux-firmware ({} free).", sys::human(free)));
+                say(format!(
+                    "Not enough space in the Ubuntu area for linux-firmware ({} free).",
+                    sys::human(free)
+                ));
             } else {
-                bg.stream(COMPAT, &args(&["apt", "install", "--no-install-recommends", "linux-firmware"]), Msg::JobLine);
+                bg.stream(
+                    COMPAT,
+                    &args(&[
+                        "apt",
+                        "install",
+                        "--no-install-recommends",
+                        "linux-firmware",
+                    ]),
+                    Msg::JobLine,
+                );
             }
         }
         // für den nächsten Start merken
         if !fixed.is_empty() {
             let path = format!("{}/drivers.list", sys::data_dir());
-            let mut all: Vec<String> = std::fs::read_to_string(&path).unwrap_or_default().lines().map(String::from).collect();
+            let mut all: Vec<String> = std::fs::read_to_string(&path)
+                .unwrap_or_default()
+                .lines()
+                .map(String::from)
+                .collect();
             for f in fixed {
                 if !all.contains(&f) {
                     all.push(f);
@@ -182,7 +279,10 @@ pub fn fix_online(bg: &Bg) {
             let _ = std::fs::write(&path, all.join("\n") + "\n");
         }
         let after = missing(&scan()).len();
-        say(format!("{} of {before} device(s) now have a driver.", before - after.min(before)));
+        say(format!(
+            "{} of {before} device(s) now have a driver.",
+            before - after.min(before)
+        ));
         bg.send(Msg::HwChanged);
         bg.send(Msg::JobDone(if after == 0 { 0 } else { 1 }));
     });

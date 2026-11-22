@@ -22,15 +22,21 @@ const POLL: Duration = Duration::from_secs(3);
 const RETRY: Duration = Duration::from_secs(5);
 
 fn now() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn offline(note: &str) {
-    let s = radio::RadioState { modem: radio::Modem::Offline, updated: now(), note: note.into(), ..Default::default() };
+    let s = radio::RadioState {
+        modem: radio::Modem::Offline,
+        updated: now(),
+        note: note.into(),
+        ..Default::default()
+    };
     let _ = radio::write_state(&s);
 }
-
-
 
 /// Ordner mit der Arbeitskopie der Modem-Einstellungen (nv_data.bin) – nie die EFS-Partition selbst.
 const MODEM_DIR: &str = "/data/ultar/modem";
@@ -51,14 +57,25 @@ struct Apn {
 fn read_apn() -> Apn {
     let txt = std::fs::read_to_string(APN_CONF).unwrap_or_default();
     let get = |k: &str| {
-        txt.lines().filter_map(|l| l.split_once('=')).find(|(a, _)| a.trim() == k).map(|(_, v)| v.trim().to_string()).filter(|v| !v.is_empty())
+        txt.lines()
+            .filter_map(|l| l.split_once('='))
+            .find(|(a, _)| a.trim() == k)
+            .map(|(_, v)| v.trim().to_string())
+            .filter(|v| !v.is_empty())
     };
-    Apn { apn: get("apn").unwrap_or_default(), user: get("user"), pass: get("pass") }
+    Apn {
+        apn: get("apn").unwrap_or_default(),
+        user: get("user"),
+        pass: get("pass"),
+    }
 }
 
 /// Hinweis bei fehlender Karte: wie viele Steckplätze dem Modem gemeldet wurden (ultar-modem, wie cbd).
 fn no_sim_note() -> String {
-    match std::fs::read_to_string("/run/ultar/radio/simslots").ok().and_then(|s| s.trim().parse::<u8>().ok()) {
+    match std::fs::read_to_string("/run/ultar/radio/simslots")
+        .ok()
+        .and_then(|s| s.trim().parse::<u8>().ok())
+    {
         Some(n) => format!("Keine SIM erkannt (Modem kennt {n} Steckplatz/-plätze)"),
         None => "Keine SIM erkannt (SIM-Steckplätze dem Modem nicht gemeldet)".into(),
     }
@@ -122,10 +139,24 @@ pub fn operator_name(plmn: &str) -> String {
 }
 
 fn to_radio(st: &State, note: &str) -> radio::RadioState {
-    let mut s = radio::RadioState { modem: radio::Modem::Online, updated: now(), note: note.into(), ..Default::default() };
-    s.sims.push(radio::Sim { slot: 1, state: sim_state(st.sim), operator: String::new(), number: String::new() });
+    let mut s = radio::RadioState {
+        modem: radio::Modem::Online,
+        updated: now(),
+        note: note.into(),
+        ..Default::default()
+    };
+    s.sims.push(radio::Sim {
+        slot: 1,
+        state: sim_state(st.sim),
+        operator: String::new(),
+        number: String::new(),
+    });
     // paketvermittelte Anmeldung zeigt die Datentechnik, sonst leitungsvermittelt
-    let reg = if matches!(st.reg_ps.status, 2 | 6) { &st.reg_ps } else { &st.reg_cs };
+    let reg = if matches!(st.reg_ps.status, 2 | 6) {
+        &st.reg_ps
+    } else {
+        &st.reg_cs
+    };
     // Netz gefunden, aber ohne SIM bzw. ohne Anmeldung: nur Notrufe – Anbieter trotzdem zeigen
     if st.reg_cs.status == 4 && !matches!(st.reg_ps.status, 2 | 6) {
         s.plmn = st.plmn.clone();
@@ -147,7 +178,14 @@ fn to_radio(st: &State, note: &str) -> radio::RadioState {
     if !s.operator.is_empty() && s.cells.is_empty() {
         if let Some((rsrp, rsrq, sinr10)) = st.lte {
             s.serving = Some(1);
-            s.cells.push(radio::Cell { id: 1, rat: s.rat.clone(), rsrp: Some(rsrp), rsrq: Some(rsrq), sinr: Some(sinr10 / 10), ..Default::default() });
+            s.cells.push(radio::Cell {
+                id: 1,
+                rat: s.rat.clone(),
+                rsrp: Some(rsrp),
+                rsrq: Some(rsrq),
+                sinr: Some(sinr10 / 10),
+                ..Default::default()
+            });
         }
     }
     if matches!(reg.status, 2 | 6) {
@@ -157,9 +195,22 @@ fn to_radio(st: &State, note: &str) -> radio::RadioState {
         s.operator = operator_name(&st.plmn);
         s.serving = Some(1);
         // RSSI des Modems: 0..31 wie bei AT+CSQ → dBm = −113 + 2·n (grobe Näherung, bis die Zellmessung steht)
-        let dbm = st.lte.map(|l| l.0).or_else(|| st.rssi.filter(|r| *r <= 31).map(|r| -113 + 2 * r as i32));
-        let (rsrq, sinr) = st.lte.map(|l| (Some(l.1), Some(l.2 / 10))).unwrap_or((None, None));
-        s.cells.push(radio::Cell { id: 1, rat: s.rat.clone(), rsrp: dbm, rsrq, sinr, ..Default::default() });
+        let dbm = st
+            .lte
+            .map(|l| l.0)
+            .or_else(|| st.rssi.filter(|r| *r <= 31).map(|r| -113 + 2 * r as i32));
+        let (rsrq, sinr) = st
+            .lte
+            .map(|l| (Some(l.1), Some(l.2 / 10)))
+            .unwrap_or((None, None));
+        s.cells.push(radio::Cell {
+            id: 1,
+            rat: s.rat.clone(),
+            rsrp: dbm,
+            rsrq,
+            sinr,
+            ..Default::default()
+        });
     }
     s
 }
@@ -169,10 +220,17 @@ fn flush_log(lines: &mut Vec<String>) {
     if lines.is_empty() {
         return;
     }
-    if std::fs::metadata(IPC_LOG).map(|m| m.len() > 512 * 1024).unwrap_or(false) {
+    if std::fs::metadata(IPC_LOG)
+        .map(|m| m.len() > 512 * 1024)
+        .unwrap_or(false)
+    {
         let _ = std::fs::rename(IPC_LOG, format!("{IPC_LOG}.alt"));
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(IPC_LOG) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(IPC_LOG)
+    {
         let t = now();
         for l in lines.drain(..) {
             let _ = writeln!(f, "{t} {l}");
@@ -212,22 +270,37 @@ pub fn run() -> ! {
         // Kanäle lassen sich auch bei ausgeschaltetem Modem öffnen – erst senden, wenn der Kernel „ONLINE" meldet
         let mut waited = 0;
         while !modem_online() {
-            offline(if waited < 6 { "Modem startet …" } else { "Modem ist aus (Dienst modem prüfen)" });
+            offline(if waited < 6 {
+                "Modem startet …"
+            } else {
+                "Modem ist aus (Dienst modem prüfen)"
+            });
             std::thread::sleep(RETRY);
             waited += 1;
         }
         let mut s1 = Slot::new(Engine::new(link, Rfs::new(MODEM_DIR)));
-        let mut s2 = has2.then(|| Slot::new(Engine::with_fmt(link2, Rfs::new(format!("{MODEM_DIR}/sim2")), CH_FMT_1)));
+        let mut s2 = has2.then(|| {
+            Slot::new(Engine::with_fmt(
+                link2,
+                Rfs::new(format!("{MODEM_DIR}/sim2")),
+                CH_FMT_1,
+            ))
+        });
         let mut note = String::new();
         let mut sms_join: Vec<(u8, ultar_ril::tel::InSms, Instant)> = Vec::new();
         let mut last_call: Option<(u8, ultar_ril::tel::CallEntry)> = None;
         write_call(None);
         let mut voice = CallAudio::default();
         let mut last_list = Instant::now();
-        let (mut last_query, mut last_write, mut last_alive) = (Instant::now() - POLL, Instant::now() - POLL, Instant::now());
+        let (mut last_query, mut last_write, mut last_alive) =
+            (Instant::now() - POLL, Instant::now() - POLL, Instant::now());
         let mut last_state = (State::default(), State::default());
         // Mobile Daten: Steckplatz, angefordert seit, eingerichtete Adresse
-        let (mut data_slot, mut data_req, mut data_cfg): (u8, Option<Instant>, Option<std::net::Ipv4Addr>) = (0, None, None);
+        let (mut data_slot, mut data_req, mut data_cfg): (
+            u8,
+            Option<Instant>,
+            Option<std::net::Ipv4Addr>,
+        ) = (0, None, None);
         'run: loop {
             if last_alive.elapsed() >= POLL {
                 last_alive = Instant::now();
@@ -249,29 +322,54 @@ pub fn run() -> ! {
                 match (it.next(), it.next(), it.next()) {
                     (Some("pin"), slot, Some(code)) => match pin_body(code) {
                         Some(b) => {
-                            let sl = if slot == Some("2") { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
-                            let _ = sl.eng.send(ultar_ril::engine::CMD_SEC_PIN_STATUS, IPC_TYPE_SET, &b);
+                            let sl = if slot == Some("2") {
+                                s2.as_mut().unwrap_or(&mut s1)
+                            } else {
+                                &mut s1
+                            };
+                            let _ = sl.eng.send(
+                                ultar_ril::engine::CMD_SEC_PIN_STATUS,
+                                IPC_TYPE_SET,
+                                &b,
+                            );
                             note = "PIN gesendet".into();
                         }
                         None => note = "PIN muss 4–8 Ziffern haben".into(),
                     },
-                    (Some("select"), Some(_id), _) => note = "Zellsperre: Modem-Befehl noch nicht verfügbar – Zelle gilt als bevorzugt".into(),
+                    (Some("select"), Some(_id), _) => note =
+                        "Zellsperre: Modem-Befehl noch nicht verfügbar – Zelle gilt als bevorzugt"
+                            .into(),
                     (Some("raw"), Some(cmd), data) => {
                         // Entwicklung: "raw <cmd hex> <typ><daten hex>" (SIM 1) bzw. "raw2 …" nicht nötig: "raw" geht an SIM 1
-                        let bytes: Vec<u8> = data.unwrap_or("").as_bytes().chunks(2).filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect();
-                        if let (Ok(cmd), Some((ty, rest))) = (u16::from_str_radix(cmd, 16), bytes.split_first()) {
+                        let bytes: Vec<u8> = data
+                            .unwrap_or("")
+                            .as_bytes()
+                            .chunks(2)
+                            .filter_map(|c| {
+                                u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()
+                            })
+                            .collect();
+                        if let (Ok(cmd), Some((ty, rest))) =
+                            (u16::from_str_radix(cmd, 16), bytes.split_first())
+                        {
                             let _ = s1.eng.send(cmd, *ty, rest);
                         }
                     }
                     (Some("dial"), slot, Some(num)) => {
                         let n = tel_slot(slot, radio::read_prefs().call_sim, &s1, s2.as_ref());
-                        let sl = if n == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+                        let sl = if n == 2 {
+                            s2.as_mut().unwrap_or(&mut s1)
+                        } else {
+                            &mut s1
+                        };
                         let _ = sl.eng.dial(num);
                         note = format!("Wähle {num} (SIM {n})");
                     }
                     (Some("answer"), _, _) => {
                         for sl in std::iter::once(&mut s1).chain(s2.as_mut()) {
-                            if sl.eng.st.calls.iter().any(|c| matches!(c.status, CallStatus::Incoming | CallStatus::Waiting)) {
+                            if sl.eng.st.calls.iter().any(|c| {
+                                matches!(c.status, CallStatus::Incoming | CallStatus::Waiting)
+                            }) {
                                 let _ = sl.eng.answer();
                             }
                         }
@@ -295,14 +393,22 @@ pub fn run() -> ! {
                     (Some("sms"), slot, Some(num)) => {
                         let text = ultar_ril::tel::unhex(it.next().unwrap_or(""));
                         let n = tel_slot(slot, radio::read_prefs().sms_sim, &s1, s2.as_ref());
-                        let sl = if n == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+                        let sl = if n == 2 {
+                            s2.as_mut().unwrap_or(&mut s1)
+                        } else {
+                            &mut s1
+                        };
                         let _ = sl.eng.send_sms(num, &text, &read_smsc());
                         note = format!("SMS an {num} gesendet (SIM {n})");
                     }
                     (Some("ussd"), slot, Some(code)) => {
                         let code = ultar_ril::tel::unhex(code);
                         let n = tel_slot(slot, radio::read_prefs().call_sim, &s1, s2.as_ref());
-                        let sl = if n == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+                        let sl = if n == 2 {
+                            s2.as_mut().unwrap_or(&mut s1)
+                        } else {
+                            &mut s1
+                        };
                         let _ = sl.eng.send_ussd(&code);
                         write_ussd(n, 9, "");
                     }
@@ -315,8 +421,19 @@ pub fn run() -> ! {
                         write_ussd(0, 1, "");
                     }
                     (Some("raw2"), Some(cmd), data) => {
-                        let bytes: Vec<u8> = data.unwrap_or("").as_bytes().chunks(2).filter_map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect();
-                        if let (Some(sl), Ok(cmd), Some((ty, rest))) = (s2.as_mut(), u16::from_str_radix(cmd, 16), bytes.split_first()) {
+                        let bytes: Vec<u8> = data
+                            .unwrap_or("")
+                            .as_bytes()
+                            .chunks(2)
+                            .filter_map(|c| {
+                                u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()
+                            })
+                            .collect();
+                        if let (Some(sl), Ok(cmd), Some((ty, rest))) = (
+                            s2.as_mut(),
+                            u16::from_str_radix(cmd, 16),
+                            bytes.split_first(),
+                        ) {
                             let _ = sl.eng.send(cmd, *ty, rest);
                         }
                     }
@@ -334,26 +451,42 @@ pub fn run() -> ! {
                 1
             } else if s2.as_ref().is_some_and(ready) {
                 2
-            } else if s2.as_ref().is_some_and(|sl| sl.eng.st.sim.is_some() && sl.eng.st.sim != Some(0x80)) && s1.eng.st.sim == Some(0x80) {
+            } else if s2
+                .as_ref()
+                .is_some_and(|sl| sl.eng.st.sim.is_some() && sl.eng.st.sim != Some(0x80))
+                && s1.eng.st.sim == Some(0x80)
+            {
                 2
             } else {
                 1
             };
             // Mobile Daten wie der Samsung-RIL: erst bei bereiter SIM + Paketdienst-Anmeldung den Kontext aufbauen
             if data_slot != 0 && data_slot != act_no {
-                let old = if data_slot == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+                let old = if data_slot == 2 {
+                    s2.as_mut().unwrap_or(&mut s1)
+                } else {
+                    &mut s1
+                };
                 let _ = old.eng.data_disconnect();
-                let _ = ultar_ril::pdp::set_iface_down(&ultar_ril::pdp::ifname_for_cid(ultar_ril::engine::DATA_CID));
+                let _ = ultar_ril::pdp::set_iface_down(&ultar_ril::pdp::ifname_for_cid(
+                    ultar_ril::engine::DATA_CID,
+                ));
                 (data_slot, data_req, data_cfg) = (0, None, None);
             }
-            let act = if act_no == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+            let act = if act_no == 2 {
+                s2.as_mut().unwrap_or(&mut s1)
+            } else {
+                &mut s1
+            };
             let eng = &mut act.eng;
             let want_data = std::path::Path::new(MOBILE_DATA_FLAG).exists() && on;
             let can_data = eng.st.phone_state == 2
                 && sim_state(eng.st.sim) == radio::SimState::Ready
                 && matches!(eng.st.reg_ps.status, 2 | 6);
             if want_data && can_data {
-                if eng.st.data_ip.is_none() && data_req.map_or(true, |t| t.elapsed() >= Duration::from_secs(30)) {
+                if eng.st.data_ip.is_none()
+                    && data_req.map_or(true, |t| t.elapsed() >= Duration::from_secs(30))
+                {
                     let a = read_apn();
                     let _ = eng.data_connect(&a.apn, a.user.as_deref(), a.pass.as_deref());
                     data_req = Some(Instant::now());
@@ -366,9 +499,23 @@ pub fn run() -> ! {
                         eng.st.data_ip = None;
                     } else if data_cfg != Some(c.ip) {
                         let ifname = ultar_ril::pdp::ifname_for_cid(c.cid.max(1));
-                        let dns: Vec<_> = [c.dns1, c.dns2].into_iter().filter(|d| !d.is_unspecified()).collect();
-                        let mask = if c.mask.is_unspecified() { std::net::Ipv4Addr::new(255, 255, 255, 0) } else { c.mask };
-                        let s = ultar_ril::pdp::DataSession { cid: c.cid, ifname: ifname.clone(), ip: c.ip, mask, gateway: c.gateway, dns };
+                        let dns: Vec<_> = [c.dns1, c.dns2]
+                            .into_iter()
+                            .filter(|d| !d.is_unspecified())
+                            .collect();
+                        let mask = if c.mask.is_unspecified() {
+                            std::net::Ipv4Addr::new(255, 255, 255, 0)
+                        } else {
+                            c.mask
+                        };
+                        let s = ultar_ril::pdp::DataSession {
+                            cid: c.cid,
+                            ifname: ifname.clone(),
+                            ip: c.ip,
+                            mask,
+                            gateway: c.gateway,
+                            dns,
+                        };
                         note = match ultar_ril::pdp::configure_iface(&s) {
                             Ok(_) => {
                                 data_cfg = Some(c.ip);
@@ -380,7 +527,9 @@ pub fn run() -> ! {
                 }
             } else if !want_data && (data_req.is_some() || data_cfg.is_some()) {
                 let _ = eng.data_disconnect();
-                let _ = ultar_ril::pdp::set_iface_down(&ultar_ril::pdp::ifname_for_cid(ultar_ril::engine::DATA_CID));
+                let _ = ultar_ril::pdp::set_iface_down(&ultar_ril::pdp::ifname_for_cid(
+                    ultar_ril::engine::DATA_CID,
+                ));
                 (data_slot, data_req, data_cfg) = (0, None, None);
                 note.clear();
             } else if want_data && !can_data && data_cfg.is_some() {
@@ -400,24 +549,51 @@ pub fn run() -> ! {
                     write_ussd(i as u8 + 1, state, &text);
                 }
             }
-            let cur_call = std::iter::once(&s1).chain(s2.as_ref()).enumerate().find_map(|(i, sl)| sl.eng.st.calls.first().map(|c| (i as u8 + 1, c.clone())));
+            let cur_call = std::iter::once(&s1)
+                .chain(s2.as_ref())
+                .enumerate()
+                .find_map(|(i, sl)| sl.eng.st.calls.first().map(|c| (i as u8 + 1, c.clone())));
             if cur_call != last_call {
                 write_call(cur_call.as_ref());
                 last_call = cur_call;
             }
             // Gesprächston: Modem-Takt und -Tonweg schalten, ultar-audio verbindet Modem und Tonchip im ABOX
-            let talking = std::iter::once(&s1).chain(s2.as_ref()).enumerate().find_map(|(i, sl)| {
-                sl.eng.st.calls.iter().any(|c| matches!(c.status, CallStatus::Active | CallStatus::Dialing | CallStatus::Alerting | CallStatus::Holding)).then_some(i as u8 + 1)
-            });
+            let talking = std::iter::once(&s1)
+                .chain(s2.as_ref())
+                .enumerate()
+                .find_map(|(i, sl)| {
+                    sl.eng
+                        .st
+                        .calls
+                        .iter()
+                        .any(|c| {
+                            matches!(
+                                c.status,
+                                CallStatus::Active
+                                    | CallStatus::Dialing
+                                    | CallStatus::Alerting
+                                    | CallStatus::Holding
+                            )
+                        })
+                        .then_some(i as u8 + 1)
+                });
             for (slot, cmd, ty, data) in voice.step(talking) {
-                let sl = if slot == 2 { s2.as_mut().unwrap_or(&mut s1) } else { &mut s1 };
+                let sl = if slot == 2 {
+                    s2.as_mut().unwrap_or(&mut s1)
+                } else {
+                    &mut s1
+                };
                 let _ = sl.eng.send(cmd, ty, &data);
             }
             if last_call.is_some() && last_list.elapsed() >= Duration::from_secs(2) {
                 last_list = Instant::now();
                 for sl in std::iter::once(&mut s1).chain(s2.as_mut()) {
                     if !sl.eng.st.calls.is_empty() {
-                        let _ = sl.eng.send(ultar_ril::tel::CMD_CALL_LIST, ultar_ril::ipc::IPC_TYPE_GET, &[]);
+                        let _ = sl.eng.send(
+                            ultar_ril::tel::CMD_CALL_LIST,
+                            ultar_ril::ipc::IPC_TYPE_GET,
+                            &[],
+                        );
                     }
                 }
             }
@@ -431,11 +607,25 @@ pub fn run() -> ! {
             }
             flush_log(&mut s1.eng.log);
             if let Some(sl) = s2.as_mut() {
-                let mut l: Vec<String> = sl.eng.log.drain(..).map(|x| format!("[SIM2] {x}")).collect();
+                let mut l: Vec<String> = sl
+                    .eng
+                    .log
+                    .drain(..)
+                    .map(|x| format!("[SIM2] {x}"))
+                    .collect();
                 flush_log(&mut l);
             }
             let st2 = s2.as_ref().map(|sl| sl.eng.st.clone()).unwrap_or_default();
-            let cur = (State { rx: 0, ..s1.eng.st.clone() }, State { rx: 0, ..st2.clone() });
+            let cur = (
+                State {
+                    rx: 0,
+                    ..s1.eng.st.clone()
+                },
+                State {
+                    rx: 0,
+                    ..st2.clone()
+                },
+            );
             if cur != last_state || last_write.elapsed() >= POLL {
                 last_state = cur;
                 last_write = Instant::now();
@@ -450,10 +640,26 @@ pub fn run() -> ! {
                 };
                 let mut rs = to_radio(act_st, &n);
                 rs.sims.clear();
-                let op = |st: &State| if sim_state(st.sim) == radio::SimState::Ready && !st.plmn.is_empty() { operator_name(&st.plmn) } else { String::new() };
-                rs.sims.push(radio::Sim { slot: 1, state: sim_state(s1.eng.st.sim), operator: op(&s1.eng.st), number: String::new() });
+                let op = |st: &State| {
+                    if sim_state(st.sim) == radio::SimState::Ready && !st.plmn.is_empty() {
+                        operator_name(&st.plmn)
+                    } else {
+                        String::new()
+                    }
+                };
+                rs.sims.push(radio::Sim {
+                    slot: 1,
+                    state: sim_state(s1.eng.st.sim),
+                    operator: op(&s1.eng.st),
+                    number: String::new(),
+                });
                 if has2 {
-                    rs.sims.push(radio::Sim { slot: 2, state: sim_state(st2.sim), operator: op(&st2), number: String::new() });
+                    rs.sims.push(radio::Sim {
+                        slot: 2,
+                        state: sim_state(st2.sim),
+                        operator: op(&st2),
+                        number: String::new(),
+                    });
                 }
                 if rs.note.is_empty() {
                     rs.note = sim_summary(&rs.sims);
@@ -482,14 +688,26 @@ fn tel_slot(arg: Option<&str>, pref: u8, s1: &Slot, s2: Option<&Slot>) -> u8 {
 /// fehlt sie, leer (Modem nimmt die der SIM).
 fn read_smsc() -> Vec<u8> {
     let txt = std::fs::read_to_string(APN_CONF).unwrap_or_default();
-    let Some(n) = txt.lines().filter_map(|l| l.split_once('=')).find(|(k, _)| k.trim() == "smsc").map(|(_, v)| v.trim().to_string()) else {
+    let Some(n) = txt
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .find(|(k, _)| k.trim() == "smsc")
+        .map(|(_, v)| v.trim().to_string())
+    else {
         return Vec::new();
     };
-    let d: Vec<u8> = n.bytes().filter(|b| b.is_ascii_digit()).map(|b| b - b'0').collect();
+    let d: Vec<u8> = n
+        .bytes()
+        .filter(|b| b.is_ascii_digit())
+        .map(|b| b - b'0')
+        .collect();
     if d.is_empty() {
         return Vec::new();
     }
-    let mut v = vec![(1 + d.len().div_ceil(2)) as u8, if n.starts_with('+') { 0x91 } else { 0x81 }];
+    let mut v = vec![
+        (1 + d.len().div_ceil(2)) as u8,
+        if n.starts_with('+') { 0x91 } else { 0x81 },
+    ];
     for c in d.chunks(2) {
         v.push((c.get(1).copied().unwrap_or(0x0f) << 4) | c[0]);
     }
@@ -502,7 +720,10 @@ pub const USSD_FILE: &str = "/run/ultar/radio/ussd";
 /// `slot=`, `text=` (Hex von UTF-8). Antworten des Netzes erscheinen zusätzlich als Benachrichtigung.
 fn write_ussd(slot: u8, state: u8, text: &str) {
     use std::io::Write;
-    let t = format!("state={state}\nslot={slot}\ntext={}\n", ultar_ril::tel::hex(text));
+    let t = format!(
+        "state={state}\nslot={slot}\ntext={}\n",
+        ultar_ril::tel::hex(text)
+    );
     let tmp = format!("{USSD_FILE}.tmp");
     if std::fs::write(&tmp, t).is_ok() {
         let _ = std::fs::rename(&tmp, USSD_FILE);
@@ -510,7 +731,11 @@ fn write_ussd(slot: u8, state: u8, text: &str) {
     if !text.is_empty() {
         let clean = text.replace(['\t', '\n', '\r'], " ");
         let line = format!("{}\tnormal\tsystem\tphone\tUSSD\t{}\n", now(), clean);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/run/ultar/notify.log") {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/run/ultar/notify.log")
+        {
             let _ = f.write_all(line.as_bytes());
         }
     } else {
@@ -525,7 +750,13 @@ pub const SMS_INBOX: &str = "/data/ultar/sms-in.tsv";
 /// Klingelt es, wird die Oberfläche über die Benachrichtigungsdatei geweckt (auch bei Bildschirm aus).
 fn write_call(c: Option<&(u8, ultar_ril::tel::CallEntry)>) {
     let txt = match c {
-        Some((slot, e)) => format!("state={}\nnumber={}\nslot={}\nid={}\n", e.status.key(), e.number, slot, e.id),
+        Some((slot, e)) => format!(
+            "state={}\nnumber={}\nslot={}\nid={}\n",
+            e.status.key(),
+            e.number,
+            slot,
+            e.id
+        ),
         None => "state=idle\nnumber=\nslot=\nid=\n".to_string(),
     };
     let tmp = format!("{CALL_FILE}.tmp");
@@ -540,7 +771,11 @@ fn write_call(c: Option<&(u8, ultar_ril::tel::CallEntry)>) {
 /// Oberfläche wecken, ohne eine sichtbare Benachrichtigung zu schreiben: Änderungszeit der Datei setzen.
 fn wake_shell() {
     let p = "/run/ultar/notify.log";
-    if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+    if let Ok(f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(p)
+    {
         let _ = f.set_modified(std::time::SystemTime::now());
     }
 }
@@ -562,11 +797,20 @@ fn deliver_sms(q: &mut Vec<(u8, ultar_ril::tel::InSms, Instant)>) {
                 done.push((*slot, m.from.clone(), m.text.clone()));
             }
             Some((r, total, _)) => {
-                let idx: Vec<usize> = (0..q.len()).filter(|&j| !taken[j] && q[j].1.from == m.from && q[j].1.part.map(|p| p.0) == Some(r)).collect();
+                let idx: Vec<usize> = (0..q.len())
+                    .filter(|&j| {
+                        !taken[j] && q[j].1.from == m.from && q[j].1.part.map(|p| p.0) == Some(r)
+                    })
+                    .collect();
                 if idx.len() >= total as usize || t.elapsed() >= Duration::from_secs(120) {
-                    let mut parts: Vec<&ultar_ril::tel::InSms> = idx.iter().map(|&j| &q[j].1).collect();
+                    let mut parts: Vec<&ultar_ril::tel::InSms> =
+                        idx.iter().map(|&j| &q[j].1).collect();
                     parts.sort_by_key(|p| p.part.map(|x| x.2).unwrap_or(0));
-                    done.push((*slot, m.from.clone(), parts.iter().map(|p| p.text.as_str()).collect()));
+                    done.push((
+                        *slot,
+                        m.from.clone(),
+                        parts.iter().map(|p| p.text.as_str()).collect(),
+                    ));
                     for j in idx {
                         taken[j] = true;
                     }
@@ -581,12 +825,32 @@ fn deliver_sms(q: &mut Vec<(u8, ultar_ril::tel::InSms, Instant)>) {
     }
     *q = keep;
     for (slot, from, text) in done {
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(SMS_INBOX) {
-            let _ = writeln!(f, "{}\t{}\t{}\t{}", now(), slot, from, ultar_ril::tel::hex(&text));
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(SMS_INBOX)
+        {
+            let _ = writeln!(
+                f,
+                "{}\t{}\t{}\t{}",
+                now(),
+                slot,
+                from,
+                ultar_ril::tel::hex(&text)
+            );
         }
         let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
-        let line = format!("{}\tnormal\tsms\tmessages\t{}\t{}\n", now(), clean(&from), clean(&text));
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/run/ultar/notify.log") {
+        let line = format!(
+            "{}\tnormal\tsms\tmessages\t{}\t{}\n",
+            now(),
+            clean(&from),
+            clean(&text)
+        );
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/run/ultar/notify.log")
+        {
             let _ = f.write_all(line.as_bytes());
         }
     }
@@ -597,7 +861,9 @@ fn sim_summary(sims: &[radio::Sim]) -> String {
     let parts: Vec<String> = sims
         .iter()
         .map(|s| match s.state {
-            radio::SimState::Ready if !s.operator.is_empty() => format!("SIM {}: {}", s.slot, s.operator),
+            radio::SimState::Ready if !s.operator.is_empty() => {
+                format!("SIM {}: {}", s.slot, s.operator)
+            }
             radio::SimState::Ready => format!("SIM {}: bereit", s.slot),
             radio::SimState::Absent => format!("Steckplatz {} leer", s.slot),
             radio::SimState::Pin | radio::SimState::Puk => format!("SIM {}: PIN nötig", s.slot),
@@ -613,7 +879,11 @@ fn sim_summary(sims: &[radio::Sim]) -> String {
 /// Bei zwei bereiten SIMs bleibt die Wahl des Nutzers; zeigt eine Rolle auf einen leeren Steckplatz,
 /// wird sie auf die bereite SIM umgestellt.
 fn auto_sim_roles(sims: &[radio::Sim]) {
-    let ready: Vec<u8> = sims.iter().filter(|s| s.state == radio::SimState::Ready).map(|s| s.slot).collect();
+    let ready: Vec<u8> = sims
+        .iter()
+        .filter(|s| s.state == radio::SimState::Ready)
+        .map(|s| s.slot)
+        .collect();
     if ready.is_empty() {
         return;
     }
@@ -627,11 +897,19 @@ fn auto_sim_roles(sims: &[radio::Sim]) {
             ready[0]
         }
     };
-    let n = radio::Prefs { data_sim: fix(p.data_sim, false), call_sim: fix(p.call_sim, true), sms_sim: fix(p.sms_sim, true), ..p.clone() };
+    let n = radio::Prefs {
+        data_sim: fix(p.data_sim, false),
+        call_sim: fix(p.call_sim, true),
+        sms_sim: fix(p.sms_sim, true),
+        ..p.clone()
+    };
     if (n.data_sim, n.call_sim, n.sms_sim) != (p.data_sim, p.call_sim, p.sms_sim) {
         p = n;
         let _ = radio::write_prefs(&p);
-        eprintln!("ultar-ril: SIM-Rollen automatisch: Daten SIM {}, Anrufe SIM {}, SMS SIM {}", p.data_sim, p.call_sim, p.sms_sim);
+        eprintln!(
+            "ultar-ril: SIM-Rollen automatisch: Daten SIM {}, Anrufe SIM {}, SMS SIM {}",
+            p.data_sim, p.call_sim, p.sms_sim
+        );
     }
 }
 
@@ -645,7 +923,12 @@ struct Slot {
 
 impl Slot {
     fn new(eng: Engine<UmtsLink>) -> Slot {
-        Slot { eng, want_radio: None, asked_imei: false, opened: Instant::now() }
+        Slot {
+            eng,
+            want_radio: None,
+            asked_imei: false,
+            opened: Instant::now(),
+        }
     }
 
     /// Einschalten erkennen, IMEI holen, Funk an/aus nach Flugmodus.
@@ -654,11 +937,19 @@ impl Slot {
         // Lief das Modem schon (Dienst neu gestartet), kommt keine Einschaltmeldung mehr: nach 2 s davon ausgehen
         if !eng.st.powered && self.opened.elapsed() >= Duration::from_secs(2) {
             eng.st.powered = true;
-            let _ = eng.send(ultar_ril::engine::CMD_PWR_PHONE_STATE, ultar_ril::ipc::IPC_TYPE_GET, &[]);
+            let _ = eng.send(
+                ultar_ril::engine::CMD_PWR_PHONE_STATE,
+                ultar_ril::ipc::IPC_TYPE_GET,
+                &[],
+            );
         }
         if eng.st.powered && eng.st.imei.is_empty() && !self.asked_imei {
             self.asked_imei = true;
-            let _ = eng.send(ultar_ril::engine::CMD_MISC_ME_SN, ultar_ril::ipc::IPC_TYPE_GET, &[0x01]);
+            let _ = eng.send(
+                ultar_ril::engine::CMD_MISC_ME_SN,
+                ultar_ril::ipc::IPC_TYPE_GET,
+                &[0x01],
+            );
         }
         if eng.st.powered && self.want_radio != Some(on) {
             self.want_radio = Some(on);
@@ -686,7 +977,8 @@ struct CallAudio {
 }
 
 fn headset_plugged() -> bool {
-    std::fs::read_to_string("/sys/class/audio/earjack/state").is_ok_and(|s| !matches!(s.trim(), "" | "0"))
+    std::fs::read_to_string("/sys/class/audio/earjack/state")
+        .is_ok_and(|s| !matches!(s.trim(), "" | "0"))
 }
 
 /// Gewünschter Weg: Datei der Oberfläche, „auto" = Kopfhörer falls eingesteckt, sonst Hörmuschel.
@@ -732,7 +1024,11 @@ impl CallAudio {
                     out.push((slot, SND_CLOCK, IPC_TYPE_EXEC, vec![1]));
                 }
                 if self.child.is_none() {
-                    let log = std::fs::OpenOptions::new().create(true).append(true).open("/run/ultar/log/callaudio.log").ok();
+                    let log = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open("/run/ultar/log/callaudio.log")
+                        .ok();
                     let mut cmd = std::process::Command::new("/usr/bin/ultar-audio");
                     cmd.arg("--call").stdin(std::process::Stdio::null());
                     if let Some(f) = log {

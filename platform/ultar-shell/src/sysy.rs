@@ -80,7 +80,13 @@ impl Default for MoreCfg {
             method: 0,
             compass_offset: 0.0,
             // Basis: 1 Einheit der ersten Währung; Kurse trägt der Nutzer selbst ein (kein Netz nötig)
-            rates: vec![("USD".into(), 1.0), ("EUR".into(), 0.92), ("SYP".into(), 13000.0), ("TRY".into(), 34.0), ("SAR".into(), 3.75)],
+            rates: vec![
+                ("USD".into(), 1.0),
+                ("EUR".into(), 0.92),
+                ("SYP".into(), 13000.0),
+                ("TRY".into(), 34.0),
+                ("SAR".into(), 3.75),
+            ],
             counter: 0,
             counter_goal: 33,
             todos: Vec::new(),
@@ -109,7 +115,12 @@ pub struct Stats {
 
 impl Stats {
     pub fn add_usage(&mut self, day: &str, app: &str, secs: u64) {
-        *self.usage.entry(day.to_string()).or_default().entry(app.to_string()).or_default() += secs;
+        *self
+            .usage
+            .entry(day.to_string())
+            .or_default()
+            .entry(app.to_string())
+            .or_default() += secs;
         while self.usage.len() > 14 {
             let k = self.usage.keys().next().cloned().unwrap();
             self.usage.remove(&k);
@@ -126,7 +137,11 @@ impl Stats {
     }
     /// Nutzung eines Tages, größte zuerst
     pub fn day_usage(&self, day: &str) -> Vec<(String, u64)> {
-        let mut v: Vec<(String, u64)> = self.usage.get(day).map(|m| m.iter().map(|(k, v)| (k.clone(), *v)).collect()).unwrap_or_default();
+        let mut v: Vec<(String, u64)> = self
+            .usage
+            .get(day)
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), *v)).collect())
+            .unwrap_or_default();
         v.sort_by(|a, b| b.1.cmp(&a.1));
         v
     }
@@ -159,7 +174,11 @@ pub fn from_jdn(j: i64) -> (i64, i64, i64) {
     let d = (4 * c + 3) / 1461;
     let e = c - 1461 * d / 4;
     let m = (5 * e + 2) / 153;
-    (100 * b + d - 4800 + m / 10, m + 3 - 12 * (m / 10), e - (153 * m + 2) / 5 + 1)
+    (
+        100 * b + d - 4800 + m / 10,
+        m + 3 - 12 * (m / 10),
+        e - (153 * m + 2) / 5 + 1,
+    )
 }
 
 pub fn add_days(d: (i64, i64, i64), n: i64) -> (i64, i64, i64) {
@@ -168,16 +187,54 @@ pub fn add_days(d: (i64, i64, i64), n: i64) -> (i64, i64, i64) {
 
 /// "TT.MM.JJJJ" oder "JJJJ-MM-TT" lesen
 pub fn parse_date(s: &str) -> Option<(i64, i64, i64)> {
-    let p: Vec<i64> = s.split(['.', '-', '/', ' ']).filter(|x| !x.is_empty()).filter_map(|x| x.trim().parse().ok()).collect();
+    let p: Vec<i64> = s
+        .split(['.', '-', '/', ' '])
+        .filter(|x| !x.is_empty())
+        .filter_map(|x| x.trim().parse().ok())
+        .collect();
     if p.len() != 3 {
         return None;
     }
-    let (y, m, d) = if p[0] > 31 { (p[0], p[1], p[2]) } else { (p[2], p[1], p[0]) };
-    ((1..=12).contains(&m) && (1..=31).contains(&d) && (1..=9999).contains(&y) && d <= crate::sys::days_in_month(y, m)).then_some((y, m, d))
+    let (y, m, d) = if p[0] > 31 {
+        (p[0], p[1], p[2])
+    } else {
+        (p[2], p[1], p[0])
+    };
+    ((1..=12).contains(&m)
+        && (1..=31).contains(&d)
+        && (1..=9999).contains(&y)
+        && d <= crate::sys::days_in_month(y, m))
+    .then_some((y, m, d))
 }
 
-pub const HIJRI_MONTHS: [&str; 12] = ["Muharram", "Safar", "Rabi' I", "Rabi' II", "Jumada I", "Jumada II", "Rajab", "Sha'ban", "Ramadan", "Shawwal", "Dhu al-Qi'dah", "Dhu al-Hijjah"];
-pub const HIJRI_MONTHS_AR: [&str; 12] = ["محرّم", "صفر", "ربيع الأول", "ربيع الآخر", "جمادى الأولى", "جمادى الآخرة", "رجب", "شعبان", "رمضان", "شوّال", "ذو القعدة", "ذو الحجة"];
+pub const HIJRI_MONTHS: [&str; 12] = [
+    "Muharram",
+    "Safar",
+    "Rabi' I",
+    "Rabi' II",
+    "Jumada I",
+    "Jumada II",
+    "Rajab",
+    "Sha'ban",
+    "Ramadan",
+    "Shawwal",
+    "Dhu al-Qi'dah",
+    "Dhu al-Hijjah",
+];
+pub const HIJRI_MONTHS_AR: [&str; 12] = [
+    "محرّم",
+    "صفر",
+    "ربيع الأول",
+    "ربيع الآخر",
+    "جمادى الأولى",
+    "جمادى الآخرة",
+    "رجب",
+    "شعبان",
+    "رمضان",
+    "شوّال",
+    "ذو القعدة",
+    "ذو الحجة",
+];
 
 /// Hijri-Datum (rechnerischer/tabellarischer Kalender; die Sichtung des Mondes kann ±1 Tag abweichen).
 pub fn hijri(y: i64, m: i64, d: i64) -> (i64, i64, i64) {
@@ -213,7 +270,12 @@ pub const CITIES: [(&str, &str, f64, f64); 16] = [
     ("New York", "نيويورك", 40.7128, -74.006),
 ];
 
-pub const METHODS: [(&str, f64, f64, f64); 4] = [("MWL", 18.0, 17.0, 0.0), ("Egypt", 19.5, 17.5, 0.0), ("Umm al-Qura", 18.5, 0.0, 90.0), ("Karachi", 18.0, 18.0, 0.0)];
+pub const METHODS: [(&str, f64, f64, f64); 4] = [
+    ("MWL", 18.0, 17.0, 0.0),
+    ("Egypt", 19.5, 17.5, 0.0),
+    ("Umm al-Qura", 18.5, 0.0, 90.0),
+    ("Karachi", 18.0, 18.0, 0.0),
+];
 
 fn dsin(d: f64) -> f64 {
     d.to_radians().sin()
@@ -229,7 +291,11 @@ fn sun(jd: f64) -> (f64, f64) {
     let q = (280.459 + 0.98564736 * d).rem_euclid(360.0);
     let l = (q + 1.915 * dsin(g) + 0.020 * dsin(2.0 * g)).rem_euclid(360.0);
     let e = 23.439 - 0.00000036 * d;
-    let ra = (dcos(e) * dsin(l)).atan2(dcos(l)).to_degrees().rem_euclid(360.0) / 15.0;
+    let ra = (dcos(e) * dsin(l))
+        .atan2(dcos(l))
+        .to_degrees()
+        .rem_euclid(360.0)
+        / 15.0;
     let decl = (dsin(e) * dsin(l)).asin().to_degrees();
     let mut eqt = q / 15.0 - ra;
     if eqt > 12.0 {
@@ -243,7 +309,13 @@ fn sun(jd: f64) -> (f64, f64) {
 
 /// Gebetszeiten in Minuten seit Mitternacht (Ortszeit): Fajr, Sonnenaufgang, Dhuhr, Asr, Maghrib, Isha.
 /// `tz_min` = Versatz zur Weltzeit in Minuten. None, wenn die Sonne den Winkel nicht erreicht (hohe Breiten).
-pub fn prayer_times(lat: f64, lon: f64, tz_min: i32, date: (i64, i64, i64), method: usize) -> [Option<u16>; 6] {
+pub fn prayer_times(
+    lat: f64,
+    lon: f64,
+    tz_min: i32,
+    date: (i64, i64, i64),
+    method: usize,
+) -> [Option<u16>; 6] {
     let (_, fajr_a, isha_a, isha_min) = METHODS[method.min(METHODS.len() - 1)];
     let jd = jdn(date.0, date.1, date.2) as f64 - 0.5 - lon / (15.0 * 24.0);
     let tz = tz_min as f64 / 60.0;
@@ -252,18 +324,33 @@ pub fn prayer_times(lat: f64, lon: f64, tz_min: i32, date: (i64, i64, i64), meth
     let hour_angle = |alt: f64, t: f64| -> Option<f64> {
         let decl = sun(jd + t / 24.0).0;
         let c = (dsin(alt) - dsin(lat) * dsin(decl)) / (dcos(lat) * dcos(decl));
-        (-1.0..=1.0).contains(&c).then(|| c.acos().to_degrees() / 15.0)
+        (-1.0..=1.0)
+            .contains(&c)
+            .then(|| c.acos().to_degrees() / 15.0)
     };
     let before = |alt: f64, guess: f64| hour_angle(alt, guess).map(|h| noon(guess) - h);
     let after = |alt: f64, guess: f64| hour_angle(alt, guess).map(|h| noon(guess) + h);
     let asr = {
         let decl = sun(jd + 13.0 / 24.0).0;
-        let alt = (1.0 / (1.0 + (lat - decl).abs().to_radians().tan())).atan().to_degrees();
+        let alt = (1.0 / (1.0 + (lat - decl).abs().to_radians().tan()))
+            .atan()
+            .to_degrees();
         after(alt, 13.0)
     };
     let maghrib = after(-0.833, 18.0);
-    let isha = if isha_min > 0.0 { maghrib.map(|m| m + isha_min / 60.0) } else { after(-isha_a, 18.0) };
-    let v = [before(-fajr_a, 5.0), before(-0.833, 6.0), Some(noon(12.0) + 1.0 / 60.0), asr, maghrib, isha];
+    let isha = if isha_min > 0.0 {
+        maghrib.map(|m| m + isha_min / 60.0)
+    } else {
+        after(-isha_a, 18.0)
+    };
+    let v = [
+        before(-fajr_a, 5.0),
+        before(-0.833, 6.0),
+        Some(noon(12.0) + 1.0 / 60.0),
+        asr,
+        maghrib,
+        isha,
+    ];
     v.map(|t| t.map(|h| ((h.rem_euclid(24.0) * 60.0).round() as u16) % 1440))
 }
 
@@ -282,12 +369,16 @@ pub fn heading(mx: f32, my: f32, offset: f32) -> f32 {
 }
 
 pub fn cardinal(deg: f32) -> &'static str {
-    ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][(((deg + 22.5).rem_euclid(360.0)) / 45.0) as usize % 8]
+    ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        [(((deg + 22.5).rem_euclid(360.0)) / 45.0) as usize % 8]
 }
 
 /// Neigung in Grad aus dem Beschleunigungssensor: (links/rechts, vor/zurück)
 pub fn tilt(ax: f32, ay: f32, az: f32) -> (f32, f32) {
-    (ax.atan2((ay * ay + az * az).sqrt()).to_degrees(), ay.atan2((ax * ax + az * az).sqrt()).to_degrees())
+    (
+        ax.atan2((ay * ay + az * az).sqrt()).to_degrees(),
+        ay.atan2((ax * ax + az * az).sqrt()).to_degrees(),
+    )
 }
 
 // ---------------------------------------------------------------- Rechner
@@ -307,8 +398,14 @@ pub fn loan_payment(amount: f64, rate_pct: f64, months: u32) -> f64 {
 
 /// Zahl in Basis 2/8/10/16 lesen
 pub fn parse_base(s: &str, base: u32) -> Option<u64> {
-    let t = s.trim().trim_start_matches("0x").trim_start_matches("0b").replace([' ', '_'], "");
-    (!t.is_empty()).then(|| u64::from_str_radix(&t, base).ok()).flatten()
+    let t = s
+        .trim()
+        .trim_start_matches("0x")
+        .trim_start_matches("0b")
+        .replace([' ', '_'], "");
+    (!t.is_empty())
+        .then(|| u64::from_str_radix(&t, base).ok())
+        .flatten()
 }
 
 pub fn to_base(v: u64, base: u32) -> String {
@@ -342,15 +439,27 @@ pub fn password(random: &[u8], len: usize, upper: bool, digits: bool, symbols: b
     }
     // Verwerfen statt Modulo, damit jedes Zeichen gleich wahrscheinlich ist
     let lim = (256 / set.len()) * set.len();
-    random.iter().filter(|b| (**b as usize) < lim).take(len).map(|b| set[*b as usize % set.len()] as char).collect()
+    random
+        .iter()
+        .filter(|b| (**b as usize) < lim)
+        .take(len)
+        .map(|b| set[*b as usize % set.len()] as char)
+        .collect()
 }
 
 pub fn random_bytes(n: usize) -> Vec<u8> {
     use std::io::Read;
     let mut b = vec![0u8; n];
-    if std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).is_err() {
+    if std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut b))
+        .is_err()
+    {
         // Notbehelf ohne /dev/urandom: Uhrzeit mischen (nur für Würfel, nicht für Kennwörter gedacht)
-        let mut x = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(1) | 1;
+        let mut x = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(1)
+            | 1;
         for v in b.iter_mut() {
             x ^= x << 13;
             x ^= x >> 7;
@@ -417,7 +526,11 @@ pub fn morse(text: &str) -> Vec<(bool, u32)> {
 pub fn battery_estimate(hist: &[(i64, u8, bool)]) -> Option<(bool, u32)> {
     let last = *hist.last()?;
     // zusammenhängender Abschnitt mit gleichem Ladezustand, höchstens 6 h zurück
-    let seg: Vec<&(i64, u8, bool)> = hist.iter().rev().take_while(|s| s.2 == last.2 && last.0 - s.0 <= 6 * 3600).collect();
+    let seg: Vec<&(i64, u8, bool)> = hist
+        .iter()
+        .rev()
+        .take_while(|s| s.2 == last.2 && last.0 - s.0 <= 6 * 3600)
+        .collect();
     let first = **seg.last()?;
     let dt = (last.0 - first.0) as f64;
     let dp = last.1 as f64 - first.1 as f64;
@@ -460,7 +573,10 @@ pub fn health_score(h: &Health) -> (u8, Vec<&'static str>) {
         s -= 10;
         tips.push("Memory is tight – close running programs");
     }
-    if h.batt_health.as_deref().is_some_and(|b| !b.eq_ignore_ascii_case("good") && !b.is_empty()) {
+    if h.batt_health
+        .as_deref()
+        .is_some_and(|b| !b.eq_ignore_ascii_case("good") && !b.is_empty())
+    {
         s -= 15;
         tips.push("Battery reports a problem");
     }
@@ -493,22 +609,32 @@ pub fn health_score(h: &Health) -> (u8, Vec<&'static str>) {
 /// Größte Einträge unter `root` (Ordner mit Gesamtgröße, Dateien), größte zuerst. Folgt keinen Verknüpfungen.
 pub fn biggest(root: &str, max: usize) -> Vec<(String, u64, bool)> {
     fn size(p: &std::path::Path, depth: u32) -> u64 {
-        let Ok(md) = std::fs::symlink_metadata(p) else { return 0 };
+        let Ok(md) = std::fs::symlink_metadata(p) else {
+            return 0;
+        };
         if md.is_file() {
             return md.len();
         }
         if !md.is_dir() || depth > 12 {
             return 0;
         }
-        std::fs::read_dir(p).map(|rd| rd.flatten().map(|e| size(&e.path(), depth + 1)).sum()).unwrap_or(0)
+        std::fs::read_dir(p)
+            .map(|rd| rd.flatten().map(|e| size(&e.path(), depth + 1)).sum())
+            .unwrap_or(0)
     }
     let mut v: Vec<(String, u64, bool)> = std::fs::read_dir(root)
         .map(|rd| {
             rd.flatten()
                 .map(|e| {
                     let p = e.path();
-                    let is_dir = std::fs::symlink_metadata(&p).map(|m| m.is_dir()).unwrap_or(false);
-                    (e.file_name().to_string_lossy().into_owned(), size(&p, 0), is_dir)
+                    let is_dir = std::fs::symlink_metadata(&p)
+                        .map(|m| m.is_dir())
+                        .unwrap_or(false);
+                    (
+                        e.file_name().to_string_lossy().into_owned(),
+                        size(&p, 0),
+                        is_dir,
+                    )
                 })
                 .collect()
         })
@@ -526,8 +652,14 @@ pub fn processes(max: usize) -> Vec<(u32, String, u64)> {
                 .filter_map(|e| {
                     let pid: u32 = e.file_name().to_string_lossy().parse().ok()?;
                     let st = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-                    let name = st.lines().find_map(|l| l.strip_prefix("Name:")).map(|s| s.trim().to_string())?;
-                    let rss = st.lines().find_map(|l| l.strip_prefix("VmRSS:")).and_then(|s| s.split_whitespace().next()?.parse::<u64>().ok())?;
+                    let name = st
+                        .lines()
+                        .find_map(|l| l.strip_prefix("Name:"))
+                        .map(|s| s.trim().to_string())?;
+                    let rss = st
+                        .lines()
+                        .find_map(|l| l.strip_prefix("VmRSS:"))
+                        .and_then(|s| s.split_whitespace().next()?.parse::<u64>().ok())?;
                     Some((pid, name, rss * 1024))
                 })
                 .collect()
@@ -540,7 +672,18 @@ pub fn processes(max: usize) -> Vec<(u32, String, u64)> {
 
 /// Programme, die für das System nötig sind – werden nicht zum Beenden angeboten.
 pub fn protected_process(name: &str) -> bool {
-    ["ultar-init", "ultar-shell", "ultar-net", "ultar-ril", "init", "wpa_supplicant", "ultar-audio", "propsvc"].iter().any(|p| name.starts_with(p))
+    [
+        "ultar-init",
+        "ultar-shell",
+        "ultar-net",
+        "ultar-ril",
+        "init",
+        "wpa_supplicant",
+        "ultar-audio",
+        "propsvc",
+    ]
+    .iter()
+    .any(|p| name.starts_with(p))
 }
 
 /// Zwischenablage: neuester Eintrag vorn, ohne Doppelte, höchstens 20, je höchstens 2000 Zeichen.
@@ -593,7 +736,8 @@ mod tests {
     fn prayer_times_damascus() {
         // Damaskus, 20.11.2026, UTC+3: Mittag ~12:21, Sonnenaufgang ~07:11, Untergang ~17:31
         let t = prayer_times(33.5138, 36.2765, 180, (2026, 11, 20), 0);
-        let near = |v: Option<u16>, want: u16, tol: i32| (v.unwrap() as i32 - want as i32).abs() <= tol;
+        let near =
+            |v: Option<u16>, want: u16, tol: i32| (v.unwrap() as i32 - want as i32).abs() <= tol;
         assert!(near(t[2], 12 * 60 + 21, 3), "Dhuhr {:?}", t[2]);
         assert!(near(t[1], 7 * 60 + 11, 5), "Sonnenaufgang {:?}", t[1]);
         assert!(near(t[4], 17 * 60 + 31, 5), "Maghrib {:?}", t[4]);
@@ -608,9 +752,21 @@ mod tests {
 
     #[test]
     fn qibla_directions() {
-        assert!((qibla(33.5138, 36.2765) - 164.6).abs() < 1.5, "Damaskus {}", qibla(33.5138, 36.2765));
-        assert!((qibla(52.52, 13.405) - 136.7).abs() < 1.5, "Berlin {}", qibla(52.52, 13.405));
-        assert!((qibla(40.7128, -74.006) - 58.5).abs() < 1.5, "New York {}", qibla(40.7128, -74.006));
+        assert!(
+            (qibla(33.5138, 36.2765) - 164.6).abs() < 1.5,
+            "Damaskus {}",
+            qibla(33.5138, 36.2765)
+        );
+        assert!(
+            (qibla(52.52, 13.405) - 136.7).abs() < 1.5,
+            "Berlin {}",
+            qibla(52.52, 13.405)
+        );
+        assert!(
+            (qibla(40.7128, -74.006) - 58.5).abs() < 1.5,
+            "New York {}",
+            qibla(40.7128, -74.006)
+        );
     }
 
     #[test]
@@ -658,7 +814,9 @@ mod tests {
     #[test]
     fn battery_estimates() {
         // 10 % in einer Stunde entladen, noch 50 % -> 5 h
-        let h: Vec<(i64, u8, bool)> = (0..=6).map(|i| (i * 600, 60 - (i as u8 * 10 / 6), false)).collect();
+        let h: Vec<(i64, u8, bool)> = (0..=6)
+            .map(|i| (i * 600, 60 - (i as u8 * 10 / 6), false))
+            .collect();
         let (chg, m) = battery_estimate(&h).unwrap();
         assert!(!chg && (280..=320).contains(&m), "{m}");
         // lädt 20 % in 30 min bei 80 % -> 30 min
@@ -669,9 +827,25 @@ mod tests {
 
     #[test]
     fn health_and_clip() {
-        let good = Health { storage_free_pct: 60.0, ram_free_pct: 50.0, batt_health: Some("Good".into()), temp_c: Some(30.0), backup_age_days: Some(3), uptime_days: 1.0, has_pin: true };
+        let good = Health {
+            storage_free_pct: 60.0,
+            ram_free_pct: 50.0,
+            batt_health: Some("Good".into()),
+            temp_c: Some(30.0),
+            backup_age_days: Some(3),
+            uptime_days: 1.0,
+            has_pin: true,
+        };
         assert_eq!(health_score(&good), (100, vec![]));
-        let bad = Health { storage_free_pct: 5.0, ram_free_pct: 5.0, batt_health: Some("Overheat".into()), temp_c: Some(65.0), backup_age_days: None, uptime_days: 20.0, has_pin: false };
+        let bad = Health {
+            storage_free_pct: 5.0,
+            ram_free_pct: 5.0,
+            batt_health: Some("Overheat".into()),
+            temp_c: Some(65.0),
+            backup_age_days: None,
+            uptime_days: 20.0,
+            has_pin: false,
+        };
         let (s, tips) = health_score(&bad);
         assert_eq!(s, 10);
         assert_eq!(tips.len(), 7);
@@ -689,7 +863,10 @@ mod tests {
         s.add_usage("2026-11-20", "Phone", 60);
         s.add_usage("2026-11-20", "Files", 600);
         s.add_usage("2026-11-20", "Phone", 30);
-        assert_eq!(s.day_usage("2026-11-20"), vec![("Files".to_string(), 600), ("Phone".to_string(), 90)]);
+        assert_eq!(
+            s.day_usage("2026-11-20"),
+            vec![("Files".to_string(), 600), ("Phone".to_string(), 90)]
+        );
         for d in 0..20 {
             s.add_usage(&format!("2026-10-{:02}", d + 1), "x", 1);
         }

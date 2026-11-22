@@ -70,7 +70,10 @@ impl Paths {
                 let name = attr(t, "name").unwrap_or_default();
                 if selfclose {
                     if let Some(cur) = stack.last() {
-                        self.paths.entry(cur.clone()).or_default().push(Step::Path(name));
+                        self.paths
+                            .entry(cur.clone())
+                            .or_default()
+                            .push(Step::Path(name));
                     }
                 } else {
                     // Ein Weg darf mehrfach vorkommen (gains ergänzt nicht, sondern ist eigener Name) – neu anlegen
@@ -78,9 +81,15 @@ impl Paths {
                     stack.push(name);
                 }
             } else if t.starts_with("ctl ") {
-                let (Some(n), Some(v)) = (attr(t, "name"), attr(t, "value")) else { continue };
+                let (Some(n), Some(v)) = (attr(t, "name"), attr(t, "value")) else {
+                    continue;
+                };
                 match stack.last() {
-                    Some(cur) => self.paths.entry(cur.clone()).or_default().push(Step::Ctl(n, v)),
+                    Some(cur) => self
+                        .paths
+                        .entry(cur.clone())
+                        .or_default()
+                        .push(Step::Ctl(n, v)),
                     None => self.defaults.push((n, v)),
                 }
             } else if t.starts_with("include ") {
@@ -102,7 +111,9 @@ impl Paths {
         if depth > 16 {
             return;
         }
-        let Some(steps) = self.paths.get(name) else { return };
+        let Some(steps) = self.paths.get(name) else {
+            return;
+        };
         for s in steps {
             match s {
                 Step::Ctl(n, v) => out.push((n.clone(), v.clone())),
@@ -122,8 +133,17 @@ impl Paths {
 
     /// Nur die Wiedergabe-Grundeinstellung (Aufnahmeregler bleiben, damit eine laufende Aufnahme weiterläuft).
     pub fn reset_playback(&self, c: &Ctl, verbose: bool) -> usize {
-        let capture = |n: &str| ["NSRC", "SPUM", "SIFM", "RECP", "MIC", "ADC", "Inmux"].iter().any(|k| n.contains(k));
-        let list: Vec<(String, String)> = self.defaults.iter().filter(|(n, _)| !capture(n)).cloned().collect();
+        let capture = |n: &str| {
+            ["NSRC", "SPUM", "SIFM", "RECP", "MIC", "ADC", "Inmux"]
+                .iter()
+                .any(|k| n.contains(k))
+        };
+        let list: Vec<(String, String)> = self
+            .defaults
+            .iter()
+            .filter(|(n, _)| !capture(n))
+            .cloned()
+            .collect();
         apply(c, &list, verbose)
     }
 
@@ -181,7 +201,10 @@ mod tests {
         assert_eq!(p.defaults, vec![("A".to_string(), "0".to_string())]);
         assert_eq!(
             p.flatten("inc-h"),
-            vec![("EP EP On".into(), "1".into()), ("ABOX Sound Type".into(), "VOICE".into())]
+            vec![
+                ("EP EP On".into(), "1".into()),
+                ("ABOX Sound Type".into(), "VOICE".into())
+            ]
         );
         assert_eq!(p.flatten("gain-inc-h").len(), 1);
     }

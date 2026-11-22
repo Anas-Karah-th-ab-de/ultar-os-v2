@@ -1,7 +1,0 @@
-[package]
-name = "ultar-edition"
-version.workspace = true
-edition.workspace = true
-description = "Ultar OS – Ausgabe (Handy, Desktop/Laptop, Server) bestimmen"
-
-[dependencies]

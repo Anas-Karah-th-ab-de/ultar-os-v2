@@ -7,9 +7,9 @@
 //! Antworttypen: INDI 1, RESP 2, NOTI 3. Anfragetypen: EXEC 1, GET 2, SET 3.
 
 use crate::ipc::*;
-use crate::link::{ModemLink, CH_FMT_0, CH_RFS_0};
 #[allow(unused_imports)]
 use crate::link::CH_FMT_1;
+use crate::link::{ModemLink, CH_FMT_0, CH_RFS_0};
 use crate::rfs::Rfs;
 
 pub const T_INDI: u8 = 1;
@@ -90,23 +90,42 @@ pub struct Engine<L: ModemLink> {
 }
 
 fn hex(d: &[u8]) -> String {
-    d.iter().take(64).map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ") + if d.len() > 64 { " …" } else { "" }
+    d.iter()
+        .take(64)
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+        + if d.len() > 64 { " …" } else { "" }
 }
 
 impl<L: ModemLink> Engine<L> {
     pub fn new(link: L, rfs: Rfs) -> Self {
-        Engine { link, rfs, st: State::default(), seq: 1, fmt: CH_FMT_0, log: Vec::new(), inbox: Vec::new(), ussd: Vec::new(), ussd_open: false }
+        Engine {
+            link,
+            rfs,
+            st: State::default(),
+            seq: 1,
+            fmt: CH_FMT_0,
+            log: Vec::new(),
+            inbox: Vec::new(),
+            ussd: Vec::new(),
+            ussd_open: false,
+        }
     }
 
     /// Engine für einen anderen FMT-Kanal (SIM 2: CH_FMT_1).
     pub fn with_fmt(link: L, rfs: Rfs, fmt: u8) -> Self {
-        Engine { fmt, ..Engine::new(link, rfs) }
+        Engine {
+            fmt,
+            ..Engine::new(link, rfs)
+        }
     }
 
     pub fn send(&mut self, cmd: u16, ty: u8, data: &[u8]) -> std::io::Result<()> {
         let seq = self.seq;
         self.seq = if self.seq == 0xfe { 1 } else { self.seq + 1 };
-        self.log.push(format!("TX {cmd:04x} typ {ty} seq {seq}: {}", hex(data)));
+        self.log
+            .push(format!("TX {cmd:04x} typ {ty} seq {seq}: {}", hex(data)));
         self.link.send(self.fmt, &encode(cmd, ty, seq, data))
     }
 
@@ -118,21 +137,42 @@ impl<L: ModemLink> Engine<L> {
 
     /// Mobile Daten einschalten wie der Samsung-RIL: APN definieren (0x0D01 SET), Kontext aktivieren
     /// (0x0D04 SET). Die IP-Konfiguration meldet das Modem danach von selbst (0x0D09, 0x0D10).
-    pub fn data_connect(&mut self, apn: &str, user: Option<&str>, pass: Option<&str>) -> std::io::Result<()> {
+    pub fn data_connect(
+        &mut self,
+        apn: &str,
+        user: Option<&str>,
+        pass: Option<&str>,
+    ) -> std::io::Result<()> {
         self.st.data_ip = None;
-        self.send(CMD_GPRS_DEFINE_PDP_CONTEXT, IPC_TYPE_SET, &crate::pdp::build_define_pdp(DATA_CID, apn))?;
-        self.send(CMD_GPRS_PDP_CONTEXT, IPC_TYPE_SET, &crate::pdp::build_pdp_context(DATA_CID, true, user, pass))
+        self.send(
+            CMD_GPRS_DEFINE_PDP_CONTEXT,
+            IPC_TYPE_SET,
+            &crate::pdp::build_define_pdp(DATA_CID, apn),
+        )?;
+        self.send(
+            CMD_GPRS_PDP_CONTEXT,
+            IPC_TYPE_SET,
+            &crate::pdp::build_pdp_context(DATA_CID, true, user, pass),
+        )
     }
 
     /// Mobile Daten ausschalten (Kontext deaktivieren).
     pub fn data_disconnect(&mut self) -> std::io::Result<()> {
         self.st.data_ip = None;
-        self.send(CMD_GPRS_PDP_CONTEXT, IPC_TYPE_SET, &crate::pdp::build_pdp_context(DATA_CID, false, None, None))
+        self.send(
+            CMD_GPRS_PDP_CONTEXT,
+            IPC_TYPE_SET,
+            &crate::pdp::build_pdp_context(DATA_CID, false, None, None),
+        )
     }
 
     /// Anruf wählen (CALL_OUTGOING).
     pub fn dial(&mut self, number: &str) -> std::io::Result<()> {
-        self.send(crate::tel::CMD_CALL_OUTGOING, IPC_TYPE_EXEC, &crate::tel::build_outgoing(number))?;
+        self.send(
+            crate::tel::CMD_CALL_OUTGOING,
+            IPC_TYPE_EXEC,
+            &crate::tel::build_outgoing(number),
+        )?;
         self.send(crate::tel::CMD_CALL_LIST, IPC_TYPE_GET, &[])
     }
     /// Eingehenden Anruf annehmen.
@@ -147,11 +187,22 @@ impl<L: ModemLink> Engine<L> {
     /// SMS senden; lange Texte gehen als mehrere Einzel-SMS (160 GSM-7- bzw. 70 UCS-2-Zeichen).
     pub fn send_sms(&mut self, to: &str, text: &str, smsc: &[u8]) -> std::io::Result<()> {
         let chars: Vec<char> = text.chars().collect();
-        let per = if text.chars().all(|c| crate::tel::encode_submit("0", &c.to_string())[3] == 0x00) { 160 } else { 70 };
+        let per = if text
+            .chars()
+            .all(|c| crate::tel::encode_submit("0", &c.to_string())[3] == 0x00)
+        {
+            160
+        } else {
+            70
+        };
         for part in chars.chunks(per) {
             let t: String = part.iter().collect();
             let pdu = crate::tel::encode_submit(to, &t);
-            self.send(crate::tel::CMD_SMS_SEND_MSG, IPC_TYPE_EXEC, &crate::tel::build_send(smsc, &pdu))?;
+            self.send(
+                crate::tel::CMD_SMS_SEND_MSG,
+                IPC_TYPE_EXEC,
+                &crate::tel::build_send(smsc, &pdu),
+            )?;
         }
         Ok(())
     }
@@ -159,12 +210,20 @@ impl<L: ModemLink> Engine<L> {
     /// USSD-Code senden (`*111#`) bzw. in laufender Sitzung antworten.
     pub fn send_ussd(&mut self, code: &str) -> std::io::Result<()> {
         let open = self.ussd_open;
-        self.send(crate::tel::CMD_SS_USSD, IPC_TYPE_EXEC, &crate::tel::build_ussd(code, open))
+        self.send(
+            crate::tel::CMD_SS_USSD,
+            IPC_TYPE_EXEC,
+            &crate::tel::build_ussd(code, open),
+        )
     }
     /// USSD-Sitzung beenden.
     pub fn cancel_ussd(&mut self) -> std::io::Result<()> {
         self.ussd_open = false;
-        self.send(crate::tel::CMD_SS_USSD, IPC_TYPE_EXEC, &crate::tel::build_ussd_cancel())
+        self.send(
+            crate::tel::CMD_SS_USSD,
+            IPC_TYPE_EXEC,
+            &crate::tel::build_ussd_cancel(),
+        )
     }
 
     /// Zustände nachfragen (SIM, Anmeldung leitungs-/paketvermittelt, Netz).
@@ -180,7 +239,9 @@ impl<L: ModemLink> Engine<L> {
 
     /// Einen Schritt: höchstens `timeout_ms` auf einen Rahmen warten und ihn verarbeiten. true = etwas kam an.
     pub fn step(&mut self, timeout_ms: u32) -> std::io::Result<bool> {
-        let Some(f) = self.link.recv(timeout_ms)? else { return Ok(false) };
+        let Some(f) = self.link.recv(timeout_ms)? else {
+            return Ok(false);
+        };
         match f.channel {
             CH_RFS_0 => {
                 for resp in self.rfs.feed(&f.payload) {
@@ -200,7 +261,14 @@ impl<L: ModemLink> Engine<L> {
 
     fn on_fmt(&mut self, m: &IpcMessage) {
         self.st.rx += 1;
-        self.log.push(format!("RX {:04x} typ {} seq {}/{}: {}", m.command, m.msg_type, m.mseq, m.aseq, hex(&m.data)));
+        self.log.push(format!(
+            "RX {:04x} typ {} seq {}/{}: {}",
+            m.command,
+            m.msg_type,
+            m.mseq,
+            m.aseq,
+            hex(&m.data)
+        ));
         let d = &m.data;
         match m.command {
             CMD_PWR_PHONE_PWR_UP => self.st.powered = true,
@@ -215,13 +283,27 @@ impl<L: ModemLink> Engine<L> {
                     act: d[0],
                     domain: d[1],
                     status: d[2],
-                    lac: d.get(4..6).map(|b| u16::from_le_bytes([b[0], b[1]])).unwrap_or(0),
-                    cid: d.get(6..10).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0),
+                    lac: d
+                        .get(4..6)
+                        .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                        .unwrap_or(0),
+                    cid: d
+                        .get(6..10)
+                        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                        .unwrap_or(0),
                 };
-                if r.domain == 0x03 { self.st.reg_ps = r } else { self.st.reg_cs = r }
+                if r.domain == 0x03 {
+                    self.st.reg_ps = r
+                } else {
+                    self.st.reg_cs = r
+                }
             }
             CMD_NET_SERVING_NETWORK if d.len() >= 9 => {
-                self.st.plmn = d[3..9].iter().filter(|b| b.is_ascii_digit()).map(|b| *b as char).collect();
+                self.st.plmn = d[3..9]
+                    .iter()
+                    .filter(|b| b.is_ascii_digit())
+                    .map(|b| *b as char)
+                    .collect();
             }
             CMD_DISP_ICON_INFO if d.len() >= 2 => self.st.rssi = Some(d[1]),
             // Shannon (A30): [0]=[4]=|RSRP|, [5]=|RSRQ|, [6..8]=SINR·10 (u16), [3]=111−|RSRP| (Stufe)
@@ -234,7 +316,12 @@ impl<L: ModemLink> Engine<L> {
             crate::tel::CMD_CALL_INCOMING | crate::tel::CMD_CALL_STATUS => {
                 if m.command == crate::tel::CMD_CALL_INCOMING && self.st.calls.is_empty() {
                     // sofort klingeln, die Nummer kommt mit der Anrufliste
-                    self.st.calls.push(crate::tel::CallEntry { id: d.get(1).copied().unwrap_or(1), term: 1, status: crate::tel::CallStatus::Incoming, number: String::new() });
+                    self.st.calls.push(crate::tel::CallEntry {
+                        id: d.get(1).copied().unwrap_or(1),
+                        term: 1,
+                        status: crate::tel::CallStatus::Incoming,
+                        number: String::new(),
+                    });
                 }
                 let _ = self.send(crate::tel::CMD_CALL_LIST, IPC_TYPE_GET, &[]);
             }
@@ -249,32 +336,54 @@ impl<L: ModemLink> Engine<L> {
                 if let Some((tpid, pdu)) = crate::tel::split_incoming(d) {
                     match crate::tel::decode_deliver(pdu) {
                         Some(sms) => {
-                            self.log.push(format!("SMS von {}: {} Zeichen", sms.from, sms.text.chars().count()));
+                            self.log.push(format!(
+                                "SMS von {}: {} Zeichen",
+                                sms.from,
+                                sms.text.chars().count()
+                            ));
                             self.inbox.push(sms);
                         }
-                        None => self.log.push("SMS: PDU nicht lesbar (Statusbericht?)".into()),
+                        None => self
+                            .log
+                            .push("SMS: PDU nicht lesbar (Statusbericht?)".into()),
                     }
                     // Empfang bestätigen, sonst wiederholt das Netz die SMS
-                    let _ = self.send(crate::tel::CMD_SMS_DELIVER_REPORT, IPC_TYPE_EXEC, &crate::tel::build_deliver_report(tpid));
+                    let _ = self.send(
+                        crate::tel::CMD_SMS_DELIVER_REPORT,
+                        IPC_TYPE_EXEC,
+                        &crate::tel::build_deliver_report(tpid),
+                    );
                 }
             }
             CMD_GPRS_IP_CONFIGURATION => {
                 if let Some(c) = crate::pdp::parse_ip_config(d) {
-                    self.log.push(format!("Daten: cid {} IP {} GW {} DNS {} {} (Fehler {})", c.cid, c.ip, c.gateway, c.dns1, c.dns2, c.fail_cause));
+                    self.log.push(format!(
+                        "Daten: cid {} IP {} GW {} DNS {} {} (Fehler {})",
+                        c.cid, c.ip, c.gateway, c.dns1, c.dns2, c.fail_cause
+                    ));
                     self.st.data_ip = Some(c);
                 }
             }
             // ipc_gprs_call_status_data: cid, status, fail_cause:u16 (// VERIFY am Gerät)
             CMD_GPRS_CALL_STATUS if d.len() >= 2 => {
                 self.st.data_status = Some(d[1]);
-                self.st.data_fail = d.get(2..4).map(|b| u16::from_le_bytes([b[0], b[1]])).unwrap_or(0);
+                self.st.data_fail = d
+                    .get(2..4)
+                    .map(|b| u16::from_le_bytes([b[0], b[1]]))
+                    .unwrap_or(0);
                 if d[1] != 1 {
                     self.st.data_ip = None;
                 }
             }
             CMD_MISC_ME_SN if d.len() >= 3 => {
                 let n = d[1] as usize;
-                self.st.imei = d.get(2..2 + n).unwrap_or(&[]).iter().filter(|b| b.is_ascii_alphanumeric()).map(|b| *b as char).collect();
+                self.st.imei = d
+                    .get(2..2 + n)
+                    .unwrap_or(&[])
+                    .iter()
+                    .filter(|b| b.is_ascii_alphanumeric())
+                    .map(|b| *b as char)
+                    .collect();
             }
             _ => {}
         }
@@ -305,9 +414,13 @@ mod tests {
     fn eng(frames: &[(u8, &[u8])]) -> Engine<Fake> {
         let mut f = Fake::default();
         for (c, p) in frames {
-            f.rx.push_back(SipcFrame { channel: *c, payload: p.to_vec() });
+            f.rx.push_back(SipcFrame {
+                channel: *c,
+                payload: p.to_vec(),
+            });
         }
-        let d = std::env::temp_dir().join(format!("ultar-eng-{}-{}", std::process::id(), frames.len()));
+        let d =
+            std::env::temp_dir().join(format!("ultar-eng-{}-{}", std::process::id(), frames.len()));
         Engine::new(f, Rfs::new(d))
     }
 
@@ -349,12 +462,25 @@ mod tests {
         assert_eq!(e.st.calls.len(), 1);
         assert_eq!(e.link.tx.last().unwrap().1[4..7], [0x02, 0x06, 2]);
         // SMS: Kopf (type 1, msg 1, idx 0, tpid 7, len) + PDU „How are you?"
-        let pdu: Vec<u8> = (0..76).step_by(2).map(|i| u8::from_str_radix(&"07911326040000F0040B911346610089F60000208062917314080CC8F71D14969741F977FD07"[i..i + 2], 16).unwrap()).collect();
+        let pdu: Vec<u8> = (0..76)
+            .step_by(2)
+            .map(|i| {
+                u8::from_str_radix(
+                    &"07911326040000F0040B911346610089F60000208062917314080CC8F71D14969741F977FD07"
+                        [i..i + 2],
+                    16,
+                )
+                .unwrap()
+            })
+            .collect();
         let mut f = vec![0, 0, 2, 0, 0x04, 0x02, 3, 1, 1, 0, 0, 7, pdu.len() as u8];
         f.extend_from_slice(&pdu);
         let n = f.len() as u16;
         f[0..2].copy_from_slice(&n.to_le_bytes());
-        e.link.rx.push_back(SipcFrame { channel: 235, payload: f });
+        e.link.rx.push_back(SipcFrame {
+            channel: 235,
+            payload: f,
+        });
         e.step(0).unwrap();
         assert_eq!(e.inbox[0].text, "How are you?");
         assert_eq!(e.link.tx.last().unwrap().1[4..7], [0x04, 0x06, 1]);
@@ -362,16 +488,32 @@ mod tests {
 
     #[test]
     fn lte_signal_wie_a30() {
-        let mut e = eng(&[(235, &[0x19, 0, 9, 0, 0x07, 0x06, 3, 0x68, 0x63, 0x63, 0x07, 0x68, 0x0d, 0xf0, 0x00, 0x02, 0xff, 0x01, 0xff, 0, 0, 0, 0, 0, 0])]);
+        let mut e = eng(&[(
+            235,
+            &[
+                0x19, 0, 9, 0, 0x07, 0x06, 3, 0x68, 0x63, 0x63, 0x07, 0x68, 0x0d, 0xf0, 0x00, 0x02,
+                0xff, 0x01, 0xff, 0, 0, 0, 0, 0, 0,
+            ],
+        )]);
         e.step(0).unwrap();
         assert_eq!(e.st.lte, Some((-104, -13, 240)));
     }
 
     #[test]
     fn sim2_auf_eigenem_kanal() {
-        let mut e = Engine::with_fmt(Fake::default(), Rfs::new(std::env::temp_dir().join("ultar-ril-test2")), CH_FMT_1);
-        e.link.rx.push_back(SipcFrame { channel: 236, payload: vec![0x09, 0, 5, 0, 0x05, 0x01, 3, 0x82, 0] });
-        e.link.rx.push_back(SipcFrame { channel: 235, payload: vec![0x09, 0, 5, 0, 0x05, 0x01, 3, 0x80, 0] });
+        let mut e = Engine::with_fmt(
+            Fake::default(),
+            Rfs::new(std::env::temp_dir().join("ultar-ril-test2")),
+            CH_FMT_1,
+        );
+        e.link.rx.push_back(SipcFrame {
+            channel: 236,
+            payload: vec![0x09, 0, 5, 0, 0x05, 0x01, 3, 0x82, 0],
+        });
+        e.link.rx.push_back(SipcFrame {
+            channel: 235,
+            payload: vec![0x09, 0, 5, 0, 0x05, 0x01, 3, 0x80, 0],
+        });
         e.step(0).unwrap();
         e.step(0).unwrap();
         assert_eq!(e.st.sim, Some(0x82));
@@ -382,7 +524,9 @@ mod tests {
     #[test]
     fn mobile_daten_ablauf() {
         let mut ip = vec![1u8, 0, 0];
-        ip.extend_from_slice(&[10, 1, 2, 3, 8, 8, 8, 8, 1, 1, 1, 1, 10, 1, 2, 1, 255, 255, 255, 0, 0, 0, 0, 0]);
+        ip.extend_from_slice(&[
+            10, 1, 2, 3, 8, 8, 8, 8, 1, 1, 1, 1, 10, 1, 2, 1, 255, 255, 255, 0, 0, 0, 0, 0,
+        ]);
         let mut f = vec![0u8, 0, 7, 0, 0x0d, 0x09, 3];
         f.extend_from_slice(&ip);
         let n = f.len() as u16;
@@ -400,9 +544,23 @@ mod tests {
 
     #[test]
     fn regist_and_radio_on() {
-        let mut e = eng(&[(235, &[18, 0, 9, 0, 0x08, 0x05, 3, 4, 2, 2, 0, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0])]);
+        let mut e = eng(&[(
+            235,
+            &[
+                18, 0, 9, 0, 0x08, 0x05, 3, 4, 2, 2, 0, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0,
+            ],
+        )]);
         e.step(0).unwrap();
-        assert_eq!(e.st.reg_cs, Reg { act: 4, domain: 2, status: 2, lac: 0x1234, cid: 0x12345678 });
+        assert_eq!(
+            e.st.reg_cs,
+            Reg {
+                act: 4,
+                domain: 2,
+                status: 2,
+                lac: 0x1234,
+                cid: 0x12345678
+            }
+        );
         e.set_radio(true).unwrap();
         assert_eq!(e.link.tx[0].1, vec![9, 0, 1, 0, 0x01, 0x07, 1, 0x02, 0x02]);
     }

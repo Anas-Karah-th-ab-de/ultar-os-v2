@@ -50,7 +50,11 @@ pub struct Info {
 
 impl Ctl {
     pub fn open() -> Option<Ctl> {
-        let f = OpenOptions::new().read(true).write(true).open("/dev/snd/controlC0").ok()?;
+        let f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/snd/controlC0")
+            .ok()?;
         let mut raw = vec![0u8; 64 * 2048];
         let mut list = [0u8; 80];
         list[4..8].copy_from_slice(&2048u32.to_le_bytes());
@@ -87,7 +91,13 @@ impl Ctl {
         }
         let ty = u32a(&b, 64);
         let count = (u32a(&b, 72) as usize).clamp(1, 128);
-        let mut inf = Info { ty, count, min: 0, max: 0, items: Vec::new() };
+        let mut inf = Info {
+            ty,
+            count,
+            min: 0,
+            max: 0,
+            items: Vec::new(),
+        };
         if ty == T_ENUM {
             let n = u32a(&b, 80).min(256);
             for k in 0..n {
@@ -155,7 +165,9 @@ impl Ctl {
                 let x: i64 = match val {
                     "On" | "on" | "true" => 1,
                     "Off" | "off" | "false" => 0,
-                    _ => val.parse().map_err(|_| format!("{name}: keine Zahl '{val}'"))?,
+                    _ => val
+                        .parse()
+                        .map_err(|_| format!("{name}: keine Zahl '{val}'"))?,
                 };
                 for c in 0..inf.count {
                     v[72 + c * 8..80 + c * 8].copy_from_slice(&x.to_le_bytes());
@@ -171,8 +183,12 @@ impl Ctl {
 
     /// Zahl-Regler anteilig (0..1) zwischen min und max setzen.
     pub fn set_frac(&self, name: &str, f: f32) -> bool {
-        let Some(i) = self.idx(name) else { return false };
-        let Some(inf) = self.info_at(i) else { return false };
+        let Some(i) = self.idx(name) else {
+            return false;
+        };
+        let Some(inf) = self.info_at(i) else {
+            return false;
+        };
         let x = inf.min + ((inf.max - inf.min) as f32 * f.clamp(0.0, 1.0)).round() as i64;
         self.set(name, &x.to_string()).is_ok()
     }

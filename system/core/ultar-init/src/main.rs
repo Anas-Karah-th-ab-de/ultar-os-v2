@@ -58,18 +58,22 @@ fn main() {
         }));
         boot::early_mounts();
         // Samsung-Firmware (/vendor) nur auf Handys – auf PCs gibt es die Partition nicht (oder sie ist fremd)
-        if ultar_edition::current() == ultar_edition::Edition::Phone {
+        if ultar_hal_system::current_edition() == ultar_profile::Edition::Phone {
             boot::mount_vendor_firmware();
         }
         fwhelper::start();
         boot::boot_marker();
         let _ = nix::sys::reboot::set_cad_enabled(false); // Strg+Alt+Entf -> SIGINT
     }
-    log(&format!("Ultar OS init {} startet (pid1={is_pid1}, Ausgabe {})", env!("CARGO_PKG_VERSION"), ultar_edition::current()));
+    log(&format!(
+        "Ultar OS init {} startet (pid1={is_pid1}, Ausgabe {})",
+        env!("CARGO_PKG_VERSION"),
+        ultar_hal_system::current_edition()
+    ));
     let cfg = config::load_init();
     if is_pid1 {
         boot::configure(&cfg);
-        if ultar_edition::current() != ultar_edition::Edition::Phone {
+        if ultar_hal_system::current_edition() != ultar_profile::Edition::Phone {
             boot::sprache_von_startpartition();
         }
         diag::start();
@@ -77,18 +81,27 @@ fn main() {
         // langsame ext4-Mount den Boot nicht blockiert.
         // Nur Handy: größte eMMC-Partition als /data. Auf PCs/Laptops (auch mit eMMC) NIE eine fremde
         // Partition einbinden – dort kommt /data nur aus der Partition „ultar-data“ (init.toml).
-        if ultar_edition::current() == ultar_edition::Edition::Phone {
+        if ultar_hal_system::current_edition() == ultar_profile::Edition::Phone {
             boot::mount_userdata_bg();
         }
     }
 
     // Signale blockieren und über signalfd empfangen
     let mut mask = SigSet::empty();
-    for s in [Signal::SIGCHLD, Signal::SIGTERM, Signal::SIGINT, Signal::SIGUSR1, Signal::SIGUSR2, Signal::SIGPWR, Signal::SIGHUP] {
+    for s in [
+        Signal::SIGCHLD,
+        Signal::SIGTERM,
+        Signal::SIGINT,
+        Signal::SIGUSR1,
+        Signal::SIGUSR2,
+        Signal::SIGPWR,
+        Signal::SIGHUP,
+    ] {
         mask.add(s);
     }
     mask.thread_block().expect("sigmask");
-    let mut sfd = SignalFd::with_flags(&mask, SfdFlags::SFD_NONBLOCK | SfdFlags::SFD_CLOEXEC).expect("signalfd");
+    let mut sfd = SignalFd::with_flags(&mask, SfdFlags::SFD_NONBLOCK | SfdFlags::SFD_CLOEXEC)
+        .expect("signalfd");
 
     let sp = sock_path();
     let _ = std::fs::remove_file(&sp);
@@ -119,7 +132,10 @@ fn main() {
         let all_settled = sup.tick();
         if all_settled && !ready_reported {
             ready_reported = true;
-            log(&format!("System bereit nach {:.0} ms seit Kernelstart", uptime() * 1000.0));
+            log(&format!(
+                "System bereit nach {:.0} ms seit Kernelstart",
+                uptime() * 1000.0
+            ));
         }
         if halt.is_some() {
             break;
@@ -132,7 +148,13 @@ fn main() {
         // und nach JEDEM Aufwachen zusätzlich reapen (WNOHANG ist billig).
         const MAX_IDLE_MS: i32 = 1000;
         let timeout = match sup.next_deadline() {
-            Some(t) => PollTimeout::try_from((t.saturating_duration_since(Instant::now()).as_millis().min(MAX_IDLE_MS as u128) as i32).max(1)).unwrap_or(PollTimeout::from(MAX_IDLE_MS as u16)),
+            Some(t) => PollTimeout::try_from(
+                (t.saturating_duration_since(Instant::now())
+                    .as_millis()
+                    .min(MAX_IDLE_MS as u128) as i32)
+                    .max(1),
+            )
+            .unwrap_or(PollTimeout::from(MAX_IDLE_MS as u16)),
             None => PollTimeout::from(MAX_IDLE_MS as u16),
         };
         let mut fds = vec![PollFd::new(sfd.as_fd(), PollFlags::POLLIN)];
@@ -143,8 +165,13 @@ fn main() {
             Ok(_) | Err(nix::errno::Errno::EINTR) => {}
             Err(e) => log(&format!("poll: {e}")),
         }
-        let sig_ready = fds[0].revents().is_some_and(|r| r.contains(PollFlags::POLLIN));
-        let ctl_ready = fds.get(1).and_then(|f| f.revents()).is_some_and(|r| r.contains(PollFlags::POLLIN));
+        let sig_ready = fds[0]
+            .revents()
+            .is_some_and(|r| r.contains(PollFlags::POLLIN));
+        let ctl_ready = fds
+            .get(1)
+            .and_then(|f| f.revents())
+            .is_some_and(|r| r.contains(PollFlags::POLLIN));
         drop(fds);
 
         if sig_ready {
@@ -186,7 +213,11 @@ fn reap(sup: &mut Supervisor) {
     }
 }
 
-fn handle_ctl(stream: std::os::unix::net::UnixStream, sup: &mut Supervisor, grace: Duration) -> Option<Halt> {
+fn handle_ctl(
+    stream: std::os::unix::net::UnixStream,
+    sup: &mut Supervisor,
+    grace: Duration,
+) -> Option<Halt> {
     stream.set_nonblocking(false).ok();
     stream.set_read_timeout(Some(Duration::from_secs(1))).ok();
     let mut line = String::new();

@@ -36,12 +36,19 @@ pub enum Kind {
 
 impl Kind {
     pub fn of(path: &str) -> Kind {
-        let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        let ext = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
         match ext.as_str() {
             "pdf" => Kind::Pdf,
             "docx" | "docm" | "dotx" => Kind::Doc,
             "xlsx" | "xlsm" | "xltx" | "csv" | "tsv" => Kind::Sheet,
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "avi" | "mp4" | "mkv" | "mp3" | "ogg" | "wav" | "zip" | "gz" | "xz" | "zst" | "tar" | "uap" | "deb" | "apk" | "exe" | "msi" | "so" | "bin" | "img" | "iso" | "gguf" | "ttf" | "otf" | "doc" | "xls" | "ppt" | "pptx" | "odt" | "ods" => Kind::Other,
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "avi" | "mp4" | "mkv" | "mp3"
+            | "ogg" | "wav" | "zip" | "gz" | "xz" | "zst" | "tar" | "uap" | "deb" | "apk"
+            | "exe" | "msi" | "so" | "bin" | "img" | "iso" | "gguf" | "ttf" | "otf" | "doc"
+            | "xls" | "ppt" | "pptx" | "odt" | "ods" => Kind::Other,
             _ => Kind::Text,
         }
     }
@@ -57,7 +64,11 @@ pub fn looks_text(bytes: &[u8]) -> bool {
 
 pub fn read_doc(path: &str) -> Result<doc::Document, String> {
     let b = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     match ext.as_str() {
         "docx" | "docm" | "dotx" => docx::read(&b),
         "md" | "markdown" => Ok(doc::Document::from_markdown(&code::decode(&b).0)),
@@ -66,7 +77,11 @@ pub fn read_doc(path: &str) -> Result<doc::Document, String> {
 }
 
 pub fn write_doc(path: &str, d: &doc::Document) -> Result<(), String> {
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let bytes = match ext.as_str() {
         "docx" => docx::write(d)?,
         "md" | "markdown" => d.to_markdown().into_bytes(),
@@ -77,10 +92,17 @@ pub fn write_doc(path: &str, d: &doc::Document) -> Result<(), String> {
 
 pub fn read_book(path: &str) -> Result<sheet::Workbook, String> {
     let b = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     match ext.as_str() {
         "csv" | "tsv" | "txt" => {
-            let name = Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("Sheet1");
+            let name = Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Sheet1");
             let mut sh = sheet::read_csv(&code::decode(&b).0);
             sh.name = name.chars().take(31).collect();
             Ok(sheet::Workbook { sheets: vec![sh] })
@@ -90,7 +112,11 @@ pub fn read_book(path: &str) -> Result<sheet::Workbook, String> {
 }
 
 pub fn write_book(path: &str, wb: &sheet::Workbook, active: usize) -> Result<(), String> {
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let bytes = match ext.as_str() {
         "csv" => sheet::write_csv(wb, active, ',').into_bytes(),
         "tsv" => sheet::write_csv(wb, active, '\t').into_bytes(),
@@ -143,12 +169,22 @@ pub fn read_text(path: &str, max: usize) -> Result<String, String> {
         }
         Kind::Other => return Err("unsupported file type".into()),
     };
-    Ok(if t.chars().count() > max { t.chars().take(max).collect::<String>() + "\n…" } else { t })
+    Ok(if t.chars().count() > max {
+        t.chars().take(max).collect::<String>() + "\n…"
+    } else {
+        t
+    })
 }
 
 /// Blatt (oder Bereich) als Text-Tabelle mit Zeilen-/Spaltenköpfen: Werte, Formeln in Klammern
-pub fn sheet_table(wb: &sheet::Workbook, si: usize, range: Option<((u32, u32), (u32, u32))>) -> String {
-    let Some(sh) = wb.sheets.get(si) else { return String::new() };
+pub fn sheet_table(
+    wb: &sheet::Workbook,
+    si: usize,
+    range: Option<((u32, u32), (u32, u32))>,
+) -> String {
+    let Some(sh) = wb.sheets.get(si) else {
+        return String::new();
+    };
     let (rows, cols) = sh.extent();
     if rows == 0 {
         return "(empty)\n".into();
@@ -156,7 +192,12 @@ pub fn sheet_table(wb: &sheet::Workbook, si: usize, range: Option<((u32, u32), (
     let ((r0, c0), (r1, c1)) = range.unwrap_or(((0, 0), (rows.min(200) - 1, cols.min(26) - 1)));
     let mut out = String::new();
     out.push_str("   \t");
-    out.push_str(&(c0..=c1).map(sheet::col_name).collect::<Vec<_>>().join("\t"));
+    out.push_str(
+        &(c0..=c1)
+            .map(sheet::col_name)
+            .collect::<Vec<_>>()
+            .join("\t"),
+    );
     out.push('\n');
     for r in r0..=r1 {
         out.push_str(&format!("{}\t", r + 1));
@@ -164,7 +205,11 @@ pub fn sheet_table(wb: &sheet::Workbook, si: usize, range: Option<((u32, u32), (
             .map(|c| {
                 let raw = sh.get(r, c);
                 let v = wb.value(si, r, c).text();
-                if raw.starts_with('=') { format!("{v} [{raw}]") } else { v }
+                if raw.starts_with('=') {
+                    format!("{v} [{raw}]")
+                } else {
+                    v
+                }
             })
             .collect();
         out.push_str(&cells.join("\t"));
@@ -190,12 +235,25 @@ pub fn info(path: &str) -> Result<serde_json::Value, String> {
         Kind::Doc => {
             let d = read_doc(path)?;
             v["paragraphs"] = d.paras().count().into();
-            v["tables"] = d.blocks.iter().filter(|b| matches!(b, doc::Block::Table(_))).count().into();
+            v["tables"] = d
+                .blocks
+                .iter()
+                .filter(|b| matches!(b, doc::Block::Table(_)))
+                .count()
+                .into();
             v["words"] = d.word_count().into();
         }
         Kind::Sheet => {
             let wb = read_book(path)?;
-            v["sheets"] = wb.sheets.iter().map(|s| { let (r, c) = s.extent(); serde_json::json!({"name": s.name, "rows": r, "cols": c}) }).collect::<Vec<_>>().into();
+            v["sheets"] = wb
+                .sheets
+                .iter()
+                .map(|s| {
+                    let (r, c) = s.extent();
+                    serde_json::json!({"name": s.name, "rows": r, "cols": c})
+                })
+                .collect::<Vec<_>>()
+                .into();
         }
         Kind::Text => {
             let b = std::fs::read(path).map_err(|e| e.to_string())?;
@@ -227,7 +285,15 @@ pub fn replace_in_file(path: &str, find: &str, repl: &str, regex: bool) -> Resul
         Kind::Text => {
             let b = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
             let mut buf = code::Buffer::from_bytes(&b);
-            let n = buf.replace_all(find, repl, &code::FindOpt { case: true, word: false, regex })?;
+            let n = buf.replace_all(
+                find,
+                repl,
+                &code::FindOpt {
+                    case: true,
+                    word: false,
+                    regex,
+                },
+            )?;
             if n > 0 {
                 write_atomic(path, &buf.to_bytes())?;
             }
@@ -271,7 +337,11 @@ pub fn create(path: &str, content: &str) -> Result<(), String> {
 
 /// Zelle(n) setzen (Agent, `udoc sheet set`): liefert den neuen Wert
 pub fn sheet_set(path: &str, cell: &str, raw: &str) -> Result<String, String> {
-    let mut wb = if Path::new(path).exists() { read_book(path)? } else { sheet::Workbook::new() };
+    let mut wb = if Path::new(path).exists() {
+        read_book(path)?
+    } else {
+        sheet::Workbook::new()
+    };
     if raw.starts_with('=') {
         sheet::check_formula(raw).map_err(|e| format!("formula: {e}"))?;
     }
@@ -284,7 +354,10 @@ pub fn sheet_set(path: &str, cell: &str, raw: &str) -> Result<String, String> {
 pub fn sheet_get(path: &str, range: &str) -> Result<String, String> {
     let wb = read_book(path)?;
     if range.trim().is_empty() {
-        return Ok((0..wb.sheets.len()).map(|i| format!("## {}\n{}", wb.sheets[i].name, sheet_table(&wb, i, None))).collect::<Vec<_>>().join("\n"));
+        return Ok((0..wb.sheets.len())
+            .map(|i| format!("## {}\n{}", wb.sheets[i].name, sheet_table(&wb, i, None)))
+            .collect::<Vec<_>>()
+            .join("\n"));
     }
     let (sh, a, b) = sheet::parse_range(range).ok_or_else(|| format!("bad range: {range}"))?;
     let si = match sh {
@@ -294,7 +367,11 @@ pub fn sheet_get(path: &str, range: &str) -> Result<String, String> {
     if a == b {
         let raw = wb.sheets[si].get(a.0, a.1).to_string();
         let v = wb.value(si, a.0, a.1).text();
-        return Ok(if raw.starts_with('=') { format!("{v} [{raw}]") } else { v });
+        return Ok(if raw.starts_with('=') {
+            format!("{v} [{raw}]")
+        } else {
+            v
+        });
     }
     Ok(sheet_table(&wb, si, Some((a, b))))
 }
@@ -309,13 +386,23 @@ mod tests {
         let _ = std::fs::create_dir_all(&d);
         let p = |n: &str| d.join(n).to_string_lossy().into_owned();
         create(&p("brief.docx"), "# Brief\n\nHallo **Welt**").unwrap();
-        assert!(read_text(&p("brief.docx"), 1000).unwrap().contains("**Welt**"));
-        assert_eq!(replace_in_file(&p("brief.docx"), "Welt", "Ultar", false).unwrap(), 1);
+        assert!(read_text(&p("brief.docx"), 1000)
+            .unwrap()
+            .contains("**Welt**"));
+        assert_eq!(
+            replace_in_file(&p("brief.docx"), "Welt", "Ultar", false).unwrap(),
+            1
+        );
         assert!(read_text(&p("brief.docx"), 1000).unwrap().contains("Ultar"));
         assert_eq!(sheet_set(&p("k.xlsx"), "A1", "5").unwrap(), "5");
         assert_eq!(sheet_set(&p("k.xlsx"), "A2", "7").unwrap(), "7");
-        assert_eq!(sheet_set(&p("k.xlsx"), "A3", "=SUM(A1:A2)*2").unwrap(), "24");
-        assert!(sheet_get(&p("k.xlsx"), "A3").unwrap().starts_with("24 [=SUM"));
+        assert_eq!(
+            sheet_set(&p("k.xlsx"), "A3", "=SUM(A1:A2)*2").unwrap(),
+            "24"
+        );
+        assert!(sheet_get(&p("k.xlsx"), "A3")
+            .unwrap()
+            .starts_with("24 [=SUM"));
         assert!(sheet_set(&p("k.xlsx"), "A4", "=SUM(A1").is_err());
         create(&p("x.rs"), "fn main() {}\n").unwrap();
         assert_eq!(info(&p("x.rs")).unwrap()["language"], "Rust");

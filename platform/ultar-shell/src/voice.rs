@@ -72,14 +72,24 @@ fn mfcc_raw(s: &[i16]) -> Vec<Frame> {
     }
     // Dreiecksfilter 100–7000 Hz
     let (lo, hi) = (mel(100.0), mel(7000.0));
-    let edge: Vec<f32> = (0..NMEL + 2).map(|i| 700.0 * (10f32.powf((lo + (hi - lo) * i as f32 / (NMEL + 1) as f32) / 2595.0) - 1.0) / RATE * NFFT as f32).collect();
+    let edge: Vec<f32> = (0..NMEL + 2)
+        .map(|i| {
+            700.0 * (10f32.powf((lo + (hi - lo) * i as f32 / (NMEL + 1) as f32) / 2595.0) - 1.0)
+                / RATE
+                * NFFT as f32
+        })
+        .collect();
     let mut out = Vec::with_capacity((s.len() - WIN) / HOP + 1);
     let (mut re, mut im) = (vec![0f32; NFFT], vec![0f32; NFFT]);
     for start in (0..=s.len() - WIN).step_by(HOP) {
         re.fill(0.0);
         im.fill(0.0);
         for i in 0..WIN {
-            let prev = if start + i > 0 { s[start + i - 1] as f32 } else { 0.0 };
+            let prev = if start + i > 0 {
+                s[start + i - 1] as f32
+            } else {
+                0.0
+            };
             let x = s[start + i] as f32 - 0.97 * prev;
             re[i] = x * (0.54 - 0.46 * (2.0 * PI * i as f32 / (WIN - 1) as f32).cos());
         }
@@ -90,7 +100,11 @@ fn mfcc_raw(s: &[i16]) -> Vec<Frame> {
             let mut acc = 0.0;
             for k in a.floor() as usize..=(c.ceil() as usize).min(NFFT / 2) {
                 let kf = k as f32;
-                let w = if kf <= b { (kf - a) / (b - a).max(1e-3) } else { (c - kf) / (c - b).max(1e-3) };
+                let w = if kf <= b {
+                    (kf - a) / (b - a).max(1e-3)
+                } else {
+                    (c - kf) / (c - b).max(1e-3)
+                };
                 if w > 0.0 {
                     acc += w * (re[k] * re[k] + im[k] * im[k]);
                 }
@@ -99,7 +113,9 @@ fn mfcc_raw(s: &[i16]) -> Vec<Frame> {
         }
         let mut f = [0f32; NC];
         for (c, fc) in f.iter_mut().enumerate() {
-            *fc = (0..NMEL).map(|m| e[m] * (PI * (c + 1) as f32 * (m as f32 + 0.5) / NMEL as f32).cos()).sum();
+            *fc = (0..NMEL)
+                .map(|m| e[m] * (PI * (c + 1) as f32 * (m as f32 + 0.5) / NMEL as f32).cos())
+                .sum();
         }
         out.push(f);
     }
@@ -147,12 +163,23 @@ pub fn analyze(s: &[i16]) -> Option<Utt> {
             mean[c] += f[c] / raw.len() as f32;
         }
     }
-    let mfcc = raw.iter().map(|f| std::array::from_fn(|c| f[c] - mean[c])).collect();
-    Some(Utt { mfcc, mean, pitch: pitch(s) })
+    let mfcc = raw
+        .iter()
+        .map(|f| std::array::from_fn(|c| f[c] - mean[c]))
+        .collect();
+    Some(Utt {
+        mfcc,
+        mean,
+        pitch: pitch(s),
+    })
 }
 
 fn dist(a: &Frame, b: &Frame) -> f32 {
-    a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt()
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x - y) * (x - y))
+        .sum::<f32>()
+        .sqrt()
 }
 
 /// Abstand zweier Merkmalsfolgen (dynamische Zeitanpassung mit Band), je Schritt gemittelt.
@@ -192,14 +219,23 @@ pub struct Cutter {
 
 impl Default for Cutter {
     fn default() -> Self {
-        Cutter { noise: 30.0, buf: Vec::new(), pre: Vec::new(), speech: 0, quiet: 0, level: 0.0 }
+        Cutter {
+            noise: 30.0,
+            buf: Vec::new(),
+            pre: Vec::new(),
+            speech: 0,
+            quiet: 0,
+            level: 0.0,
+        }
     }
 }
 
 impl Cutter {
     /// Block einspeisen; liefert eine fertige Äußerung, sobald nach Sprache 0,4 s Ruhe war (höchstens 4 s lang).
     pub fn feed(&mut self, block: &[i16]) -> Option<Vec<i16>> {
-        let rms = (block.iter().map(|v| (*v as f32).powi(2)).sum::<f32>() / block.len().max(1) as f32).sqrt();
+        let rms = (block.iter().map(|v| (*v as f32).powi(2)).sum::<f32>()
+            / block.len().max(1) as f32)
+            .sqrt();
         self.level = rms;
         let loud = rms > (self.noise * 3.0).max(45.0);
         if self.buf.is_empty() {
@@ -232,7 +268,10 @@ impl Cutter {
             let ok = self.speech >= 12; // mindestens ~0,25 s Sprache
             self.speech = 0;
             // Ruhe am Ende bis auf 0,1 s abschneiden
-            out.truncate(out.len().saturating_sub(self.quiet.saturating_sub(5) * block.len()));
+            out.truncate(
+                out.len()
+                    .saturating_sub(self.quiet.saturating_sub(5) * block.len()),
+            );
             self.quiet = 0;
             return ok.then_some(out);
         }
@@ -280,8 +319,17 @@ impl Profile {
                 ds.push(dtw(&refs[i].mfcc, &refs[j].mfcc));
             }
         }
-        let intra = if ds.is_empty() { 6.0 } else { ds.iter().sum::<f32>() / ds.len() as f32 };
-        let p = Phrase { name: name.into(), action: action.into(), refs, thr: (intra * 2.0).max(intra + 4.0) };
+        let intra = if ds.is_empty() {
+            6.0
+        } else {
+            ds.iter().sum::<f32>() / ds.len() as f32
+        };
+        let p = Phrase {
+            name: name.into(),
+            action: action.into(),
+            refs,
+            thr: (intra * 2.0).max(intra + 4.0),
+        };
         match self.phrases.iter().position(|x| x.name == name) {
             Some(i) => self.phrases[i] = p,
             None => self.phrases.push(p),
@@ -300,11 +348,15 @@ impl Profile {
             *self = Profile::default();
             return;
         }
-        self.mean = std::array::from_fn(|c| all.iter().map(|u| u.mean[c]).sum::<f32>() / all.len() as f32);
+        self.mean =
+            std::array::from_fn(|c| all.iter().map(|u| u.mean[c]).sum::<f32>() / all.len() as f32);
         let mut ps: Vec<f32> = all.iter().map(|u| u.pitch).filter(|p| *p > 0.0).collect();
         ps.sort_by(|a, b| a.total_cmp(b));
         self.pitch = ps.get(ps.len() / 2).copied().unwrap_or(0.0);
-        let far = all.iter().map(|u| dist(&u.mean, &self.mean)).fold(0.0f32, f32::max);
+        let far = all
+            .iter()
+            .map(|u| dist(&u.mean, &self.mean))
+            .fold(0.0f32, f32::max);
         self.spread = (far * 1.8).max(9.0);
     }
 
@@ -315,21 +367,49 @@ impl Profile {
     /// Passt die Stimme zum Besitzer?
     pub fn same_voice(&self, u: &Utt) -> bool {
         let timbre = dist(&u.mean, &self.mean) <= self.spread;
-        let tone = self.pitch <= 0.0 || u.pitch <= 0.0 || (u.pitch / self.pitch > 0.78 && u.pitch / self.pitch < 1.28);
+        let tone = self.pitch <= 0.0
+            || u.pitch <= 0.0
+            || (u.pitch / self.pitch > 0.78 && u.pitch / self.pitch < 1.28);
         timbre && tone
     }
 
     /// Messwerte einer Äußerung gegen alle Sätze (für das Protokoll zur Feinabstimmung).
     pub fn scores(&self, u: &Utt) -> String {
-        let per: Vec<String> = self.phrases.iter().map(|p| format!("{}={:.2}", p.name, p.refs.iter().map(|r| dtw(&r.mfcc, &u.mfcc)).fold(f32::MAX, f32::min) / p.thr.max(0.1))).collect();
-        format!("stimme {:.1}/{:.1} ton {:.0}/{:.0} {}", dist(&u.mean, &self.mean), self.spread, u.pitch, self.pitch, per.join(" "))
+        let per: Vec<String> = self
+            .phrases
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}={:.2}",
+                    p.name,
+                    p.refs
+                        .iter()
+                        .map(|r| dtw(&r.mfcc, &u.mfcc))
+                        .fold(f32::MAX, f32::min)
+                        / p.thr.max(0.1)
+                )
+            })
+            .collect();
+        format!(
+            "stimme {:.1}/{:.1} ton {:.0}/{:.0} {}",
+            dist(&u.mean, &self.mean),
+            self.spread,
+            u.pitch,
+            self.pitch,
+            per.join(" ")
+        )
     }
 
     /// Äußerung einordnen. `only`: nur diese Sätze prüfen (z. B. nur das Weckwort).
     pub fn hear(&self, u: &Utt, only: impl Fn(&Phrase) -> bool) -> Heard {
         let mut best: Option<(usize, f32)> = None;
         for (i, p) in self.phrases.iter().enumerate().filter(|(_, p)| only(p)) {
-            let d = p.refs.iter().map(|r| dtw(&r.mfcc, &u.mfcc)).fold(f32::MAX, f32::min) / p.thr.max(0.1);
+            let d = p
+                .refs
+                .iter()
+                .map(|r| dtw(&r.mfcc, &u.mfcc))
+                .fold(f32::MAX, f32::min)
+                / p.thr.max(0.1);
             if best.is_none_or(|b| d < b.1) {
                 best = Some((i, d));
             }
@@ -345,9 +425,19 @@ impl Profile {
     pub fn to_text(&self) -> String {
         let mut s = String::new();
         for p in &self.phrases {
-            s.push_str(&format!("P\t{}\t{}\t{}\n", p.name, p.action.replace(['\t', '\n'], " "), p.thr));
+            s.push_str(&format!(
+                "P\t{}\t{}\t{}\n",
+                p.name,
+                p.action.replace(['\t', '\n'], " "),
+                p.thr
+            ));
             for r in &p.refs {
-                let nums: Vec<String> = r.mean.iter().chain(r.mfcc.iter().flatten()).map(|v| format!("{v:.2}")).collect();
+                let nums: Vec<String> = r
+                    .mean
+                    .iter()
+                    .chain(r.mfcc.iter().flatten())
+                    .map(|v| format!("{v:.2}"))
+                    .collect();
                 s.push_str(&format!("R\t{}\t{}\n", r.pitch, nums.join(" ")));
             }
         }
@@ -359,13 +449,22 @@ impl Profile {
         for l in t.lines() {
             let f: Vec<&str> = l.split('\t').collect();
             match f.as_slice() {
-                ["P", name, action, thr] => pr.phrases.push(Phrase { name: name.to_string(), action: action.to_string(), refs: Vec::new(), thr: thr.parse().unwrap_or(8.0) }),
+                ["P", name, action, thr] => pr.phrases.push(Phrase {
+                    name: name.to_string(),
+                    action: action.to_string(),
+                    refs: Vec::new(),
+                    thr: thr.parse().unwrap_or(8.0),
+                }),
                 ["R", pitch, nums] => {
                     let v: Vec<f32> = nums.split(' ').filter_map(|x| x.parse().ok()).collect();
                     if v.len() >= NC * 2 && v.len() % NC == 0 {
                         let fr = |i: usize| -> Frame { std::array::from_fn(|c| v[i * NC + c]) };
                         if let Some(p) = pr.phrases.last_mut() {
-                            p.refs.push(Utt { mean: fr(0), mfcc: (1..v.len() / NC).map(fr).collect(), pitch: pitch.parse().unwrap_or(0.0) });
+                            p.refs.push(Utt {
+                                mean: fr(0),
+                                mfcc: (1..v.len() / NC).map(fr).collect(),
+                                pitch: pitch.parse().unwrap_or(0.0),
+                            });
                         }
                     }
                 }
@@ -407,20 +506,35 @@ mod tests {
     fn woerter_und_stimmen() {
         let hey = [(500.0, 0.18), (1800.0, 0.22), (900.0, 0.2)];
         let other = [(2200.0, 0.3), (600.0, 0.15), (2600.0, 0.12), (1200.0, 0.2)];
-        let refs: Vec<Utt> = [0.0, 0.06, -0.05].iter().map(|j| analyze(&say(120.0, &hey, *j)).unwrap()).collect();
+        let refs: Vec<Utt> = [0.0, 0.06, -0.05]
+            .iter()
+            .map(|j| analyze(&say(120.0, &hey, *j)).unwrap())
+            .collect();
         let mut p = Profile::default();
         p.enroll(WAKE, "", refs);
         let all = |_: &Phrase| true;
         // dasselbe Wort, etwas anders gesprochen: erkannt
-        assert_eq!(p.hear(&analyze(&say(121.0, &hey, 0.03)).unwrap(), all), Heard::Owner(0));
+        assert_eq!(
+            p.hear(&analyze(&say(121.0, &hey, 0.03)).unwrap(), all),
+            Heard::Owner(0)
+        );
         // anderes Wort: nichts
-        assert_eq!(p.hear(&analyze(&say(120.0, &other, 0.0)).unwrap(), all), Heard::Nothing);
+        assert_eq!(
+            p.hear(&analyze(&say(120.0, &other, 0.0)).unwrap(), all),
+            Heard::Nothing
+        );
         // dasselbe Wort, deutlich andere Tonhöhe: fremde Stimme
-        assert_eq!(p.hear(&analyze(&say(160.0, &hey, 0.0)).unwrap(), all), Heard::Stranger(0));
+        assert_eq!(
+            p.hear(&analyze(&say(160.0, &hey, 0.0)).unwrap(), all),
+            Heard::Stranger(0)
+        );
         // speichern und laden
         let q = Profile::from_text(&p.to_text());
         assert_eq!(q.phrases.len(), 1);
-        assert_eq!(q.hear(&analyze(&say(119.0, &hey, -0.02)).unwrap(), all), Heard::Owner(0));
+        assert_eq!(
+            q.hear(&analyze(&say(119.0, &hey, -0.02)).unwrap(), all),
+            Heard::Owner(0)
+        );
         let pt = pitch(&say(150.0, &hey, 0.0));
         assert!((pt - 150.0).abs() < 6.0, "{pt}");
     }
@@ -438,7 +552,11 @@ mod tests {
             }
         }
         assert_eq!(got.len(), 1);
-        assert!(got[0].len() > 6000 && got[0].len() < 16_000, "{}", got[0].len());
+        assert!(
+            got[0].len() > 6000 && got[0].len() < 16_000,
+            "{}",
+            got[0].len()
+        );
         assert!(analyze(&got[0]).is_some());
     }
 }

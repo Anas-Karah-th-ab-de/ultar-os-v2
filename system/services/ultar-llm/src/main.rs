@@ -15,7 +15,9 @@ use std::io::{BufRead, Write};
 use ultar_llm::{client, config::Config, platform, service::Handle};
 
 fn opt(args: &[String], name: &str) -> Option<String> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1).cloned())
 }
 
 fn flag(args: &[String], name: &str) -> bool {
@@ -24,7 +26,10 @@ fn flag(args: &[String], name: &str) -> bool {
 
 fn load_cfg(args: &[String]) -> Result<(Config, platform::Profile), String> {
     let p = platform::detect();
-    let mut c = Config::load(&p, opt(args, "--config").as_deref().map(std::path::Path::new))?;
+    let mut c = Config::load(
+        &p,
+        opt(args, "--config").as_deref().map(std::path::Path::new),
+    )?;
     if let Some(m) = opt(args, "--model") {
         c.model = m;
     }
@@ -49,7 +54,11 @@ fn endpoint(args: &[String]) -> String {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = args.first().filter(|a| !a.starts_with("--") || matches!(a.as_str(), "--version" | "--help")).cloned().unwrap_or_else(|| "serve".into());
+    let cmd = args
+        .first()
+        .filter(|a| !a.starts_with("--") || matches!(a.as_str(), "--version" | "--help"))
+        .cloned()
+        .unwrap_or_else(|| "serve".into());
     let r = match cmd.as_str() {
         "serve" => serve(&args),
         "info" => load_cfg(&args).map(|(c, p)| {
@@ -135,15 +144,28 @@ fn serve(args: &[String]) -> Result<(), String> {
         c.ctx
     );
     match ultar_llm::config::pick_model(&c, p.mem_total) {
-        Some(m) => eprintln!("ultar-llm: Standardmodell {} ({} MB) – wird bei der ersten Anfrage geladen", m.path, m.bytes >> 20),
-        None => eprintln!("ultar-llm: noch kein Modell (.gguf in {})", c.model_dirs.join(", ")),
+        Some(m) => eprintln!(
+            "ultar-llm: Standardmodell {} ({} MB) – wird bei der ersten Anfrage geladen",
+            m.path,
+            m.bytes >> 20
+        ),
+        None => eprintln!(
+            "ultar-llm: noch kein Modell (.gguf in {})",
+            c.model_dirs.join(", ")
+        ),
     }
     // Abbruch-Signale: Socket aufräumen
     let sock = c.socket.clone();
     unsafe {
         SOCK.get_or_init(|| sock);
-        libc::signal(libc::SIGTERM, on_term as extern "C" fn(libc::c_int) as libc::sighandler_t);
-        libc::signal(libc::SIGINT, on_term as extern "C" fn(libc::c_int) as libc::sighandler_t);
+        libc::signal(
+            libc::SIGTERM,
+            on_term as extern "C" fn(libc::c_int) as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGINT,
+            on_term as extern "C" fn(libc::c_int) as libc::sighandler_t,
+        );
         libc::signal(libc::SIGPIPE, libc::SIG_IGN);
     }
     ultar_llm::http::run(Handle::start(c, p))
@@ -163,14 +185,28 @@ extern "C" fn on_term(_: libc::c_int) {
 }
 
 fn ask(args: &[String]) -> Result<(), String> {
-    let q: Vec<&String> = args.iter().skip(1).filter(|a| !a.starts_with("--")).collect();
+    let q: Vec<&String> = args
+        .iter()
+        .skip(1)
+        .filter(|a| !a.starts_with("--"))
+        .collect();
     // Werte von Optionen nicht als Frage werten
-    let skip: Vec<String> = ["--model", "--system", "--endpoint", "--image"].iter().filter_map(|o| opt(args, o)).collect();
-    let q: Vec<&str> = q.iter().map(|s| s.as_str()).filter(|s| !skip.iter().any(|k| k == s)).collect();
+    let skip: Vec<String> = ["--model", "--system", "--endpoint", "--image"]
+        .iter()
+        .filter_map(|o| opt(args, o))
+        .collect();
+    let q: Vec<&str> = q
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|s| !skip.iter().any(|k| k == s))
+        .collect();
     let mut question = q.join(" ");
     if question.is_empty() || question == "-" {
         question.clear();
-        std::io::stdin().lock().read_line(&mut question).map_err(|e| e.to_string())?;
+        std::io::stdin()
+            .lock()
+            .read_line(&mut question)
+            .map_err(|e| e.to_string())?;
     }
     let mut msgs = vec![];
     if let Some(s) = opt(args, "--system") {
@@ -198,7 +234,11 @@ fn ask(args: &[String]) -> Result<(), String> {
     })?;
     println!();
     if flag(args, "--stats") {
-        eprintln!("[{} Token in {:.1} s]", usage["completion_tokens"], t0.elapsed().as_secs_f64());
+        eprintln!(
+            "[{} Token in {:.1} s]",
+            usage["completion_tokens"],
+            t0.elapsed().as_secs_f64()
+        );
     }
     Ok(())
 }
@@ -228,10 +268,14 @@ fn chat(args: &[String]) -> Result<(), String> {
             _ => {}
         }
         hist.push(json!({"role": "user", "content": l}));
-        let (text, _) = client::chat_stream(&ep, &json!({"model": opt(args, "--model").unwrap_or_else(|| "local".into()), "messages": hist}), &mut |t| {
-            print!("{t}");
-            let _ = std::io::stdout().flush();
-        })?;
+        let (text, _) = client::chat_stream(
+            &ep,
+            &json!({"model": opt(args, "--model").unwrap_or_else(|| "local".into()), "messages": hist}),
+            &mut |t| {
+                print!("{t}");
+                let _ = std::io::stdout().flush();
+            },
+        )?;
         println!();
         hist.push(json!({"role": "assistant", "content": text}));
     }
@@ -243,15 +287,33 @@ fn bench(args: &[String]) -> Result<(), String> {
     use ultar_llm::engine::{GenParams, Msg};
     let (mut c, p) = load_cfg(args)?;
     let m = ultar_llm::config::pick_model(&c, p.mem_total).ok_or("kein Modell")?;
-    let n: u32 = opt(args, "--tokens").and_then(|t| t.parse().ok()).unwrap_or(64);
-    let mut cands: Vec<i32> = vec![p.big_cpus.len() as i32, 2, 4, 6, 8, p.cores as i32, p.cpus as i32];
+    let n: u32 = opt(args, "--tokens")
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(64);
+    let mut cands: Vec<i32> = vec![
+        p.big_cpus.len() as i32,
+        2,
+        4,
+        6,
+        8,
+        p.cores as i32,
+        p.cpus as i32,
+    ];
     cands.retain(|&t| t >= 1 && t as usize <= p.cpus);
     cands.sort();
     cands.dedup();
     if let Some(t) = opt(args, "--threads").and_then(|t| t.parse().ok()) {
         cands = vec![t];
     }
-    println!("Modell {} ({} MB), {:?}, {} CPUs, schnelle: {:?}, SIMD {}", m.path, m.bytes >> 20, p.kind, p.cpus, p.big_cpus, p.simd);
+    println!(
+        "Modell {} ({} MB), {:?}, {} CPUs, schnelle: {:?}, SIMD {}",
+        m.path,
+        m.bytes >> 20,
+        p.kind,
+        p.cpus,
+        p.big_cpus,
+        p.simd
+    );
     let msgs = [Msg { role: "user".into(), content: "Erkläre in drei Sätzen, wie ein Akku funktioniert. / Explain in three sentences how a battery works.".into(), images: vec![] }];
     let mut best = (0.0f64, 0i32);
     for t in cands {
@@ -259,9 +321,15 @@ fn bench(args: &[String]) -> Result<(), String> {
         c.threads_batch = p.cpus.min(8) as i32;
         let mut s = ultar_llm::llama::open(&c, &m.id, &m.path)?;
         let prompt = s.chat_prompt(&msgs, false)?;
-        let gp = GenParams { max_tokens: n, temperature: 0.0, ..Default::default() };
+        let gp = GenParams {
+            max_tokens: n,
+            temperature: 0.0,
+            ..Default::default()
+        };
         let st = s.generate(&prompt, &gp, &mut |_| true)?;
-        let temp = platform::cpu_temp().map(|t| format!("{t:.0} °C")).unwrap_or_default();
+        let temp = platform::cpu_temp()
+            .map(|t| format!("{t:.0} °C"))
+            .unwrap_or_default();
         println!(
             "Threads {t:>2}: Einlesen {:>7.1} Tok/s  Erzeugen {:>6.2} Tok/s  ({} Token)  {temp}",
             st.prompt_tps(),
@@ -274,7 +342,10 @@ fn bench(args: &[String]) -> Result<(), String> {
         drop(s);
         std::thread::sleep(std::time::Duration::from_secs(2)); // abkühlen
     }
-    println!("\nEmpfehlung für /data/ultar/llm.toml:\nthreads = {}", best.1);
+    println!(
+        "\nEmpfehlung für /data/ultar/llm.toml:\nthreads = {}",
+        best.1
+    );
     Ok(())
 }
 

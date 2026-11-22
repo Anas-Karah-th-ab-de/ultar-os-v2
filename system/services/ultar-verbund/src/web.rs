@@ -26,15 +26,29 @@ pub struct Ansicht {
 }
 
 impl Ansicht {
-    pub fn neu(ich: Ident, ziel: Gesehen, relais: Option<Arc<Relais>>, token: String) -> Arc<Ansicht> {
-        Arc::new(Ansicht { ich, ziel, relais, kanal: Mutex::new(None), token, zuletzt: crate::jetzt_ms().into() })
+    pub fn neu(
+        ich: Ident,
+        ziel: Gesehen,
+        relais: Option<Arc<Relais>>,
+        token: String,
+    ) -> Arc<Ansicht> {
+        Arc::new(Ansicht {
+            ich,
+            ziel,
+            relais,
+            kanal: Mutex::new(None),
+            token,
+            zuletzt: crate::jetzt_ms().into(),
+        })
     }
 
     fn kanal<'a>(&self, k: &'a mut Option<Kanal>) -> Result<&'a mut Kanal, String> {
         if k.is_none() {
-            let mut neu = dienst::verbinden(&self.ich, &self.ziel, self.relais.as_ref()).map_err(|e| e.to_string())?;
+            let mut neu = dienst::verbinden(&self.ich, &self.ziel, self.relais.as_ref())
+                .map_err(|e| e.to_string())?;
             neu.zeitlimit(Some(Duration::from_secs(30)));
-            neu.nachricht_senden(&Nachricht::Teilen).map_err(|e| e.to_string())?;
+            neu.nachricht_senden(&Nachricht::Teilen)
+                .map_err(|e| e.to_string())?;
             match neu.nachricht_empfangen().map_err(|e| e.to_string())? {
                 Nachricht::Ok { .. } => {}
                 Nachricht::Fehler { text } => return Err(text),
@@ -70,14 +84,22 @@ impl Ansicht {
     /// Bild holen: Antwort [w u32][h u32][nr u64][neu u8][Kachelpaket]
     pub fn bild(&self, eingaben: Vec<String>, voll: bool) -> Result<Vec<u8>, String> {
         let neu_verbunden = self.kanal.lock().unwrap().is_none();
-        match self.frage(&Nachricht::Fern { eingaben, warte_ms: 300, voll: voll || neu_verbunden })? {
+        match self.frage(&Nachricht::Fern {
+            eingaben,
+            warte_ms: 300,
+            voll: voll || neu_verbunden,
+        })? {
             Nachricht::Bild { w, h, nr, daten } => {
                 let mut out = Vec::new();
                 out.extend_from_slice(&w.to_le_bytes());
                 out.extend_from_slice(&h.to_le_bytes());
                 out.extend_from_slice(&nr.to_le_bytes());
                 out.push((voll || neu_verbunden) as u8);
-                out.extend(base64::engine::general_purpose::STANDARD.decode(daten).map_err(|e| e.to_string())?);
+                out.extend(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(daten)
+                        .map_err(|e| e.to_string())?,
+                );
                 Ok(out)
             }
             Nachricht::Fehler { text } => Err(text),
@@ -88,7 +110,11 @@ impl Ansicht {
     pub fn starten(self: &Arc<Self>, adresse: &str) -> std::io::Result<String> {
         let l = TcpListener::bind(adresse)?;
         let a = l.local_addr()?;
-        let host = if a.ip().is_unspecified() { "127.0.0.1".to_string() } else { a.ip().to_string() };
+        let host = if a.ip().is_unspecified() {
+            "127.0.0.1".to_string()
+        } else {
+            a.ip().to_string()
+        };
         let url = format!("http://{host}:{}/?t={}", a.port(), self.token);
         let s = self.clone();
         std::thread::spawn(move || {
@@ -111,7 +137,10 @@ impl Ansicht {
                 return Ok(());
             }
             let mut teile = zeile.split_whitespace();
-            let (methode, ziel) = (teile.next().unwrap_or("").to_string(), teile.next().unwrap_or("/").to_string());
+            let (methode, ziel) = (
+                teile.next().unwrap_or("").to_string(),
+                teile.next().unwrap_or("/").to_string(),
+            );
             let mut laenge = 0usize;
             loop {
                 let mut h = String::new();
@@ -134,19 +163,32 @@ impl Ansicht {
             let mut body = vec![0u8; laenge];
             r.read_exact(&mut body)?;
             let (pfad, query) = ziel.split_once('?').unwrap_or((&ziel, ""));
-            let q = |k: &str| query.split('&').find_map(|p| p.strip_prefix(&format!("{k}="))).map(url_dekodieren);
-            self.zuletzt.store(crate::jetzt_ms(), std::sync::atomic::Ordering::Relaxed);
+            let q = |k: &str| {
+                query
+                    .split('&')
+                    .find_map(|p| p.strip_prefix(&format!("{k}=")))
+                    .map(url_dekodieren)
+            };
+            self.zuletzt
+                .store(crate::jetzt_ms(), std::sync::atomic::Ordering::Relaxed);
             if q("t").as_deref() != Some(self.token.as_str()) {
                 antwort(&mut c, 403, "text/plain", b"Zugriff verweigert")?;
                 continue;
             }
             match (methode.as_str(), pfad) {
                 ("GET", "/") => {
-                    let seite = SEITE.replace("{{NAME}}", &html_esc(&self.ziel.name)).replace("{{T}}", &self.token);
+                    let seite = SEITE
+                        .replace("{{NAME}}", &html_esc(&self.ziel.name))
+                        .replace("{{T}}", &self.token);
                     antwort(&mut c, 200, "text/html; charset=utf-8", seite.as_bytes())?
                 }
                 ("POST", "/bild") => {
-                    let eingaben: Vec<String> = String::from_utf8_lossy(&body).lines().filter(|l| !l.is_empty()).map(String::from).take(200).collect();
+                    let eingaben: Vec<String> = String::from_utf8_lossy(&body)
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(String::from)
+                        .take(200)
+                        .collect();
                     match self.bild(eingaben, q("voll").as_deref() == Some("1")) {
                         Ok(b) => antwort(&mut c, 200, "application/octet-stream", &b)?,
                         Err(e) => antwort(&mut c, 503, "text/plain", e.as_bytes())?,
@@ -155,17 +197,29 @@ impl Ansicht {
                 ("POST", "/aktion") => {
                     let zeile = String::from_utf8_lossy(&body).trim().to_string();
                     match self.frage(&Nachricht::Aktion { zeile }) {
-                        Ok(Nachricht::Ok { text }) => antwort(&mut c, 200, "text/plain", text.as_bytes())?,
-                        Ok(Nachricht::Fehler { text }) => antwort(&mut c, 400, "text/plain", text.as_bytes())?,
+                        Ok(Nachricht::Ok { text }) => {
+                            antwort(&mut c, 200, "text/plain", text.as_bytes())?
+                        }
+                        Ok(Nachricht::Fehler { text }) => {
+                            antwort(&mut c, 400, "text/plain", text.as_bytes())?
+                        }
                         _ => antwort(&mut c, 503, "text/plain", b"keine Antwort")?,
                     }
                 }
                 ("POST", "/datei") => {
                     let name = q("name").unwrap_or_else(|| "datei".into());
-                    let n = Nachricht::Datei { name, daten: base64::engine::general_purpose::STANDARD.encode(&body), oeffnen: true };
+                    let n = Nachricht::Datei {
+                        name,
+                        daten: base64::engine::general_purpose::STANDARD.encode(&body),
+                        oeffnen: true,
+                    };
                     match self.frage(&n) {
-                        Ok(Nachricht::Ok { text }) => antwort(&mut c, 200, "text/plain", text.as_bytes())?,
-                        Ok(Nachricht::Fehler { text }) => antwort(&mut c, 400, "text/plain", text.as_bytes())?,
+                        Ok(Nachricht::Ok { text }) => {
+                            antwort(&mut c, 200, "text/plain", text.as_bytes())?
+                        }
+                        Ok(Nachricht::Fehler { text }) => {
+                            antwort(&mut c, 400, "text/plain", text.as_bytes())?
+                        }
                         _ => antwort(&mut c, 503, "text/plain", b"keine Antwort")?,
                     }
                 }
@@ -212,7 +266,10 @@ fn url_dekodieren(s: &str) -> String {
 }
 
 fn html_esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 pub fn token() -> String {

@@ -18,7 +18,10 @@ pub fn base_url() -> String {
 }
 
 pub fn token() -> Option<String> {
-    std::fs::read_to_string(TOKEN_FILE).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read_to_string(TOKEN_FILE)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn save_token(t: &str) {
@@ -28,13 +31,17 @@ fn save_token(t: &str) {
 
 /// HTTP-Aufruf über curl. body=None → GET/kein Body. Gibt den geparsten JSON-Body zurück.
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(30)).build()
+    ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
 }
 
 /// HTTPS direkt in Rust (rustls) – ohne curl, läuft auch auf dem Ultar-Kern ohne Ubuntu
 fn http(method: &str, path: &str, auth: Option<&str>, body: Option<&str>) -> Result<Value, String> {
     let url = format!("{}{}", base_url(), path);
-    let mut r = agent().request(method, &url).set("content-type", "application/json");
+    let mut r = agent()
+        .request(method, &url)
+        .set("content-type", "application/json");
     if let Some(t) = auth {
         r = r.set("authorization", &format!("Bearer {t}"));
     }
@@ -46,7 +53,10 @@ fn http(method: &str, path: &str, auth: Option<&str>, body: Option<&str>) -> Res
         Ok(x) => x,
         Err(ureq::Error::Status(code, x)) => {
             let t = x.into_string().unwrap_or_default();
-            let msg = serde_json::from_str::<Value>(&t).ok().and_then(|v| v["error"].as_str().map(String::from)).unwrap_or(t);
+            let msg = serde_json::from_str::<Value>(&t)
+                .ok()
+                .and_then(|v| v["error"].as_str().map(String::from))
+                .unwrap_or(t);
             return Err(format!("HTTP {code}: {}", msg.trim()));
         }
         Err(e) => return Err(format!("Verbindung: {e}")),
@@ -57,7 +67,10 @@ fn http(method: &str, path: &str, auth: Option<&str>, body: Option<&str>) -> Res
 
 /// Datei herunterladen (HTTPS, rustls)
 fn laden(url: &str, auth: Option<&str>, ziel: &str) -> Result<(), String> {
-    let mut r = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(300)).build().get(url);
+    let mut r = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .get(url);
     if let Some(t) = auth {
         r = r.set("authorization", &format!("Bearer {t}"));
     }
@@ -72,7 +85,11 @@ fn laden(url: &str, auth: Option<&str>, ziel: &str) -> Result<(), String> {
 pub fn register(username: &str, password: &str) -> Result<String, String> {
     let body = serde_json::json!({"username":username,"password":password}).to_string();
     let v = http("POST", "/v1/account/register", None, Some(&body))?;
-    let t = v.get("token").and_then(|x| x.as_str()).ok_or_else(|| err(&v))?.to_string();
+    let t = v
+        .get("token")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| err(&v))?
+        .to_string();
     save_token(&t);
     Ok(t)
 }
@@ -80,7 +97,11 @@ pub fn register(username: &str, password: &str) -> Result<String, String> {
 pub fn login(username: &str, password: &str) -> Result<String, String> {
     let body = serde_json::json!({"username":username,"password":password}).to_string();
     let v = http("POST", "/v1/account/login", None, Some(&body))?;
-    let t = v.get("token").and_then(|x| x.as_str()).ok_or_else(|| err(&v))?.to_string();
+    let t = v
+        .get("token")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| err(&v))?
+        .to_string();
     save_token(&t);
     Ok(t)
 }
@@ -91,7 +112,12 @@ pub fn login(username: &str, password: &str) -> Result<String, String> {
 pub fn device_id() -> String {
     let serial = std::fs::read_to_string("/proc/cmdline")
         .ok()
-        .and_then(|c| c.split_whitespace().find_map(|k| k.strip_prefix("androidboot.serialno=").map(|s| s.to_string())))
+        .and_then(|c| {
+            c.split_whitespace().find_map(|k| {
+                k.strip_prefix("androidboot.serialno=")
+                    .map(|s| s.to_string())
+            })
+        })
         .or_else(|| std::fs::read_to_string("/sys/class/android_usb/android0/iSerial").ok())
         .unwrap_or_else(|| "unknown".into());
     let pk = std::fs::read_to_string("/data/ultar/device.pub").unwrap_or_default();
@@ -108,13 +134,20 @@ pub fn register_number() -> Result<String, String> {
     let t = token().ok_or("nicht angemeldet")?;
     let body = serde_json::json!({"device_id":device_id(),"pubkey":std::fs::read_to_string("/data/ultar/device.pub").unwrap_or_default().trim()}).to_string();
     let v = http("POST", "/v1/device/register", Some(&t), Some(&body))?;
-    let n = v.get("number").and_then(|x| x.as_str()).ok_or_else(|| err(&v))?.to_string();
+    let n = v
+        .get("number")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| err(&v))?
+        .to_string();
     let _ = std::fs::write(NUMBER_FILE, &n);
     Ok(n)
 }
 
 pub fn my_number() -> Option<String> {
-    std::fs::read_to_string(NUMBER_FILE).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    std::fs::read_to_string(NUMBER_FILE)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 // ---------- VPN-Provisionierung ----------
@@ -125,11 +158,20 @@ pub fn vpn_provision() -> Result<(), String> {
     let (priv_k, pub_k) = ultar_vpn::genkeys()?;
     let body = serde_json::json!({"pubkey":pub_k}).to_string();
     let v = http("POST", "/v1/vpn/peer", Some(&t), Some(&body))?;
-    let endpoint = v.get("endpoint").and_then(|x| x.as_str()).ok_or_else(|| err(&v))?;
-    let server_pubkey = v.get("server_pubkey").and_then(|x| x.as_str()).unwrap_or("");
+    let endpoint = v
+        .get("endpoint")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| err(&v))?;
+    let server_pubkey = v
+        .get("server_pubkey")
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
     let address = v.get("address").and_then(|x| x.as_str()).unwrap_or("");
     let dns = v.get("dns").and_then(|x| x.as_str()).unwrap_or("10.80.0.1");
-    let allowed = v.get("allowed_ips").and_then(|x| x.as_str()).unwrap_or("0.0.0.0/0, ::/0");
+    let allowed = v
+        .get("allowed_ips")
+        .and_then(|x| x.as_str())
+        .unwrap_or("0.0.0.0/0, ::/0");
     let _ = std::fs::create_dir_all("/run/ultar");
     let conf = format!(
         "private_key={priv_k}\nserver_pubkey={server_pubkey}\nendpoint={endpoint}\naddress={address}\ndns={dns}\nallowed_ips={allowed}\n"
@@ -164,10 +206,17 @@ pub fn store_install(app: &AppMeta) -> Result<String, String> {
     let _ = std::fs::create_dir_all("/data/ultar/dl");
     let dst = format!("/data/ultar/dl/{}.uap", app.id);
     // URL kann absolut sein oder relativ zum Server
-    let url = if app.url.starts_with("http") { app.url.clone() } else { format!("{}{}", base_url(), app.url) };
+    let url = if app.url.starts_with("http") {
+        app.url.clone()
+    } else {
+        format!("{}{}", base_url(), app.url)
+    };
     laden(&url, Some(&t), &dst)?;
     // harte Signaturprüfung + Installation
-    let m = ultar_pkg::install(std::path::Path::new(&dst), std::path::Path::new(ultar_pkg::TRUSTED_DIR))?;
+    let m = ultar_pkg::install(
+        std::path::Path::new(&dst),
+        std::path::Path::new(ultar_pkg::TRUSTED_DIR),
+    )?;
     let _ = std::fs::remove_file(&dst);
     Ok(format!("{} v{}", m.name, m.version))
 }
@@ -186,7 +235,12 @@ pub struct Release {
 pub fn update_check(channel: &str) -> Result<Option<Release>, String> {
     let t = token().ok_or("nicht angemeldet")?;
     let url = format!("{}/v1/update/latest", base_url());
-    let resp = match agent().get(&url).set("authorization", &format!("Bearer {t}")).set("x-ultar-channel", channel).call() {
+    let resp = match agent()
+        .get(&url)
+        .set("authorization", &format!("Bearer {t}"))
+        .set("x-ultar-channel", channel)
+        .call()
+    {
         Ok(r) => r,
         Err(ureq::Error::Status(..)) => return Ok(None),
         Err(e) => return Err(format!("Verbindung: {e}")),
@@ -204,5 +258,8 @@ pub fn update_check(channel: &str) -> Result<Option<Release>, String> {
 }
 
 fn err(v: &Value) -> String {
-    v.get("error").and_then(|x| x.as_str()).unwrap_or("unerwartete Antwort").to_string()
+    v.get("error")
+        .and_then(|x| x.as_str())
+        .unwrap_or("unerwartete Antwort")
+        .to_string()
 }

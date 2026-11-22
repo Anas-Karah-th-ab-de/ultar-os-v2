@@ -78,10 +78,25 @@ enum Overlay {
     None,
     Menu,
     Tabs,
-    Url { text: String, sugg: Vec<(String, String)> },
-    Dialog { d: gpointer, kind: i32, msg: String, text: String },
-    Options { m: gpointer, items: Vec<(String, bool, bool, bool)> },
-    Perm { req: gpointer, what: String, host: String },
+    Url {
+        text: String,
+        sugg: Vec<(String, String)>,
+    },
+    Dialog {
+        d: gpointer,
+        kind: i32,
+        msg: String,
+        text: String,
+    },
+    Options {
+        m: gpointer,
+        items: Vec<(String, bool, bool, bool)>,
+    },
+    Perm {
+        req: gpointer,
+        what: String,
+        host: String,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -258,7 +273,13 @@ unsafe extern "C" fn s_create(v: gpointer, _action: gpointer, _id: gpointer) -> 
 unsafe extern "C" fn s_scheme(req: gpointer, _d: gpointer) {
     // ultar://leistung -> "leistung" (der Name steht an der Stelle des Hosts, nicht im Pfad)
     let uri = rs(webkit_uri_scheme_request_get_uri(req));
-    let path = uri.trim_start_matches("ultar:").trim_start_matches('/').split(['/', '?', '#']).next().unwrap_or("").to_string();
+    let path = uri
+        .trim_start_matches("ultar:")
+        .trim_start_matches('/')
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_string();
     let html = with(|b| b.internal_page(&path)).unwrap_or_else(|| "<p>…</p>".into());
     let bytes = g_bytes_new(html.as_ptr() as *const _, html.len());
     let stream = g_memory_input_stream_new_from_bytes(bytes);
@@ -283,8 +304,17 @@ unsafe extern "C" fn s_filter_loaded(store: gpointer, res: gpointer, data: gpoin
     // noch nicht kompiliert: aus JSON übersetzen (einmalig, danach gespeichert)
     with(|b| {
         let id = cs(&b.filter_id());
-        let g = g_file_new_for_path(cs(&format!("{}/share/ultar-web/filters.json", b.o.bundle)).as_ptr());
-        webkit_user_content_filter_store_save_from_file(store, id.as_ptr(), g, null_mut(), Some(s_filter_saved), file as gpointer);
+        let g = g_file_new_for_path(
+            cs(&format!("{}/share/ultar-web/filters.json", b.o.bundle)).as_ptr(),
+        );
+        webkit_user_content_filter_store_save_from_file(
+            store,
+            id.as_ptr(),
+            g,
+            null_mut(),
+            Some(s_filter_saved),
+            file as gpointer,
+        );
         g_object_unref(g);
         b.filters = "wird vorbereitet".into();
     });
@@ -295,7 +325,11 @@ unsafe extern "C" fn s_filter_saved(store: gpointer, res: gpointer, _d: gpointer
     if !f.is_null() {
         with(|b| b.filter_ready(f, "neu übersetzt"));
     } else {
-        let m = if err.is_null() { String::new() } else { rs((*err).message) };
+        let m = if err.is_null() {
+            String::new()
+        } else {
+            rs((*err).message)
+        };
         eprintln!("ultar-web: Filter nicht übersetzbar: {m}");
         with(|b| b.filters = format!("Fehler: {m}"));
     }
@@ -303,7 +337,18 @@ unsafe extern "C" fn s_filter_saved(store: gpointer, res: gpointer, _d: gpointer
 
 impl Browser {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(o: Opts, w: i32, h: i32, touch: bool, keyboard: bool, comp: Sender<Msg>, outs: Receiver<Out>, input: Receiver<Ev>, stats: Arc<Stats>, lp: gpointer) -> Self {
+    pub fn new(
+        o: Opts,
+        w: i32,
+        h: i32,
+        touch: bool,
+        keyboard: bool,
+        comp: Sender<Msg>,
+        outs: Receiver<Out>,
+        input: Receiver<Ev>,
+        stats: Arc<Stats>,
+        lp: gpointer,
+    ) -> Self {
         let k = ui::scale_for(w as f32, h as f32, 1.0);
         let scale = k as f64;
         let display = platform::create_display(w, h, scale, touch, keyboard);
@@ -318,7 +363,12 @@ impl Browser {
             webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5);
             webkit_memory_pressure_settings_set_poll_interval(mps, 10.0);
             webkit_network_session_set_memory_pressure_settings(mps);
-            let ctx = g_object_new(webkit_web_context_get_type(), cs("memory-pressure-settings").as_ptr(), mps, std::ptr::null::<c_char>());
+            let ctx = g_object_new(
+                webkit_web_context_get_type(),
+                cs("memory-pressure-settings").as_ptr(),
+                mps,
+                std::ptr::null::<c_char>(),
+            );
             webkit_memory_pressure_settings_free(mps);
             webkit_web_context_set_cache_model(ctx, WEBKIT_CACHE_MODEL_WEB_BROWSER);
             let langs: [&std::ffi::CStr; 3] = match o.lang {
@@ -326,9 +376,20 @@ impl Browser {
                 Lang::De => [c"de", c"en", c"ar"],
                 Lang::En => [c"en", c"de", c"ar"],
             };
-            let lp2 = [langs[0].as_ptr(), langs[1].as_ptr(), langs[2].as_ptr(), std::ptr::null()];
+            let lp2 = [
+                langs[0].as_ptr(),
+                langs[1].as_ptr(),
+                langs[2].as_ptr(),
+                std::ptr::null(),
+            ];
             webkit_web_context_set_preferred_languages(ctx, lp2.as_ptr());
-            webkit_web_context_register_uri_scheme(ctx, c"ultar".as_ptr(), Some(s_scheme), null_mut(), None);
+            webkit_web_context_register_uri_scheme(
+                ctx,
+                c"ultar".as_ptr(),
+                Some(s_scheme),
+                null_mut(),
+                None,
+            );
             let data = cs(&format!("{}/daten", o.data_dir));
             let cache = cs(&format!("{}/cache", o.data_dir));
             let sess = webkit_network_session_new(data.as_ptr(), cache.as_ptr());
@@ -417,7 +478,9 @@ impl Browser {
     }
 
     fn filter_id(&self) -> String {
-        let v = std::fs::read_to_string(format!("{}/share/ultar-web/filters.version", self.o.bundle)).unwrap_or_else(|_| "0".into());
+        let v =
+            std::fs::read_to_string(format!("{}/share/ultar-web/filters.version", self.o.bundle))
+                .unwrap_or_else(|_| "0".into());
         format!("ultar-schutz-{}", v.trim())
     }
 
@@ -426,13 +489,20 @@ impl Browser {
             let dir = cs(&format!("{}/filter", self.o.data_dir));
             let store = webkit_user_content_filter_store_new(dir.as_ptr());
             let id = cs(&self.filter_id());
-            webkit_user_content_filter_store_load(store, id.as_ptr(), null_mut(), Some(s_filter_loaded), null_mut());
+            webkit_user_content_filter_store_load(
+                store,
+                id.as_ptr(),
+                null_mut(),
+                Some(s_filter_loaded),
+                null_mut(),
+            );
         }
     }
 
     fn filter_ready(&mut self, f: gpointer, how: &str) {
         unsafe { webkit_user_content_manager_add_filter(self.ucm, f) };
-        let n = std::fs::read_to_string(format!("{}/share/ultar-web/filters.count", self.o.bundle)).unwrap_or_default();
+        let n = std::fs::read_to_string(format!("{}/share/ultar-web/filters.count", self.o.bundle))
+            .unwrap_or_default();
         self.filters = format!("{} Regeln aktiv ({how})", n.trim());
         self.dirty = true;
     }
@@ -450,7 +520,13 @@ impl Browser {
     fn connect_view(&self, v: gpointer, id: u64) {
         let d = id as gpointer;
         unsafe {
-            for s in ["notify::title", "notify::uri", "notify::estimated-load-progress", "notify::is-loading", "notify::is-playing-audio"] {
+            for s in [
+                "notify::title",
+                "notify::uri",
+                "notify::estimated-load-progress",
+                "notify::is-loading",
+                "notify::is-playing-audio",
+            ] {
                 connect(v, s, s_notify as *const (), d);
             }
             connect(v, "load-changed", s_load as *const (), d);
@@ -465,8 +541,16 @@ impl Browser {
     }
 
     fn new_view(&mut self, private: bool, desktop: bool, related: gpointer) -> gpointer {
-        let sess = if private { self.private_session() } else { self.sess };
-        let st = if desktop { self.settings_d } else { self.settings_m };
+        let sess = if private {
+            self.private_session()
+        } else {
+            self.sess
+        };
+        let st = if desktop {
+            self.settings_d
+        } else {
+            self.settings_m
+        };
         unsafe {
             if related.is_null() {
                 g_object_new(
@@ -536,7 +620,12 @@ impl Browser {
     }
 
     fn open_related(&mut self, parent: gpointer) -> gpointer {
-        let (private, desktop) = self.tabs.iter().find(|t| t.eng.as_ref().is_some_and(|e| e.view == parent)).map(|t| (t.private, t.desktop)).unwrap_or((false, false));
+        let (private, desktop) = self
+            .tabs
+            .iter()
+            .find(|t| t.eng.as_ref().is_some_and(|e| e.view == parent))
+            .map(|t| (t.private, t.desktop))
+            .unwrap_or((false, false));
         let v = self.new_view(private, desktop, parent);
         let i = self.add_tab(v, private, desktop);
         self.switch(i);
@@ -545,19 +634,36 @@ impl Browser {
 
     // ---------------- Tabs und Lebenszyklus ----------------
     fn tb(&self) -> i32 {
-        if self.full { 0 } else { (56.0 * self.k).round() as i32 }
+        if self.full {
+            0
+        } else {
+            (56.0 * self.k).round() as i32
+        }
     }
     fn bb(&self) -> i32 {
-        if self.full || self.osk { 0 } else { (54.0 * self.k).round() as i32 }
+        if self.full || self.osk {
+            0
+        } else {
+            (54.0 * self.k).round() as i32
+        }
     }
     fn kh(&self) -> i32 {
-        if self.osk { (236.0 * self.k).round() as i32 } else { 0 }
+        if self.osk {
+            (236.0 * self.k).round() as i32
+        } else {
+            0
+        }
     }
 
     /// Inhaltsbereich neu berechnen und der aktiven Seite die Größe mitteilen (wie Chrome: Tastatur verkleinert die Seite).
     fn layout(&mut self) {
         let top = self.tb();
-        let r = IRect { x: 0, y: top, w: self.w, h: (self.h - top - self.bb() - self.kh()).max(1) };
+        let r = IRect {
+            x: 0,
+            y: top,
+            w: self.w,
+            h: (self.h - top - self.bb() - self.kh()).max(1),
+        };
         if r != self.content {
             self.content = r;
             self.resize_active();
@@ -566,7 +672,10 @@ impl Browser {
     }
 
     fn css(&self) -> (i32, i32) {
-        ((self.content.w as f64 / self.scale).round() as i32, (self.content.h as f64 / self.scale).round() as i32)
+        (
+            (self.content.w as f64 / self.scale).round() as i32,
+            (self.content.h as f64 / self.scale).round() as i32,
+        )
     }
 
     fn resize_active(&self) {
@@ -635,7 +744,9 @@ impl Browser {
             if !s.is_null() {
                 webkit_web_view_restore_session_state(v, s);
                 webkit_web_view_session_state_unref(s);
-                let item = webkit_back_forward_list_get_current_item(webkit_web_view_get_back_forward_list(v));
+                let item = webkit_back_forward_list_get_current_item(
+                    webkit_web_view_get_back_forward_list(v),
+                );
                 if !item.is_null() {
                     webkit_web_view_go_to_back_forward_list_item(v, item);
                 } else {
@@ -689,13 +800,23 @@ impl Browser {
             let _ = pid;
         }
         for t in self.tabs.iter_mut() {
-            if t.state == State::Hidden && t.hidden_at.is_some_and(|h| h.elapsed() > Duration::from_secs(300)) && !t.eng.as_ref().is_some_and(|e| e.playing_audio()) {
+            if t.state == State::Hidden
+                && t.hidden_at
+                    .is_some_and(|h| h.elapsed() > Duration::from_secs(300))
+                && !t.eng.as_ref().is_some_and(|e| e.playing_audio())
+            {
                 t.state = State::Frozen;
             }
         }
         let free = crate::sched::mem_free_ratio();
         if free < 0.12 {
-            let victim = self.tabs.iter().enumerate().filter(|(i, t)| *i != self.cur && t.eng.is_some() && t.state != State::Active).min_by_key(|(_, t)| t.used).map(|(i, _)| i);
+            let victim = self
+                .tabs
+                .iter()
+                .enumerate()
+                .filter(|(i, t)| *i != self.cur && t.eng.is_some() && t.state != State::Active)
+                .min_by_key(|(_, t)| t.used)
+                .map(|(i, _)| i);
             if let Some(v) = victim {
                 self.discard(v);
             }
@@ -712,7 +833,11 @@ impl Browser {
             .zip(self.cpu_prev.iter())
             .map(|(a, b)| {
                 let (dt, di) = (a.0.saturating_sub(b.0), a.1.saturating_sub(b.1));
-                if dt == 0 { 0.0 } else { 1.0 - di as f32 / dt as f32 }
+                if dt == 0 {
+                    0.0
+                } else {
+                    1.0 - di as f32 / dt as f32
+                }
             })
             .collect();
         self.cpu_prev = now;
@@ -723,7 +848,12 @@ impl Browser {
             .into_iter()
             .map(|(pid, name)| {
                 let (rss, cpu) = crate::sched::proc_usage(pid);
-                let old = self.proc_prev.iter().find(|x| x.0 == pid).map(|x| x.1).unwrap_or(cpu);
+                let old = self
+                    .proc_prev
+                    .iter()
+                    .find(|x| x.0 == pid)
+                    .map(|x| x.1)
+                    .unwrap_or(cpu);
                 prev.push((pid, cpu));
                 (pid, name, rss, (cpu - old.min(cpu)) as f32 / 10.0 / 1.0)
             })
@@ -745,7 +875,9 @@ impl Browser {
 
     /// Bildschirmfoto im laufenden Betrieb (SIGUSR2) – liegt danach im Profilordner als bildschirm.bmp
     pub fn screenshot(&self) {
-        let _ = self.comp.send(Msg::Shot(format!("{}/bildschirm.bmp", self.o.data_dir)));
+        let _ = self
+            .comp
+            .send(Msg::Shot(format!("{}/bildschirm.bmp", self.o.data_dir)));
     }
 
     pub fn exit_code(&self) -> i32 {
@@ -754,8 +886,13 @@ impl Browser {
 
     // ---------------- Verlauf, Sitzung ----------------
     fn load_history(&mut self) {
-        let s = std::fs::read_to_string(format!("{}/verlauf.tsv", self.o.data_dir)).unwrap_or_default();
-        self.history = s.lines().filter_map(|l| l.split_once('\t')).map(|(u, t)| (u.to_string(), t.to_string())).collect();
+        let s =
+            std::fs::read_to_string(format!("{}/verlauf.tsv", self.o.data_dir)).unwrap_or_default();
+        self.history = s
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(u, t)| (u.to_string(), t.to_string()))
+            .collect();
     }
 
     fn remember(&mut self, uri: &str, title: &str) {
@@ -763,16 +900,26 @@ impl Browser {
             return;
         }
         self.history.retain(|x| x.0 != uri);
-        self.history.push((uri.to_string(), title.replace(['\t', '\n'], " ")));
+        self.history
+            .push((uri.to_string(), title.replace(['\t', '\n'], " ")));
         if self.history.len() > 2000 {
             self.history.drain(..self.history.len() - 2000);
         }
-        let s: String = self.history.iter().map(|(u, t)| format!("{u}\t{t}\n")).collect();
+        let s: String = self
+            .history
+            .iter()
+            .map(|(u, t)| format!("{u}\t{t}\n"))
+            .collect();
         let _ = std::fs::write(format!("{}/verlauf.tsv", self.o.data_dir), s);
     }
 
     fn save_session(&self) {
-        let s: String = self.tabs.iter().filter(|t| !t.private && !t.uri.is_empty()).map(|t| format!("{}\n", t.uri)).collect();
+        let s: String = self
+            .tabs
+            .iter()
+            .filter(|t| !t.private && !t.uri.is_empty())
+            .map(|t| format!("{}\n", t.uri))
+            .collect();
         let _ = std::fs::write(format!("{}/sitzung.txt", self.o.data_dir), s);
     }
 
@@ -780,10 +927,23 @@ impl Browser {
         // erste Messung, damit ultar://leistung sofort Werte je Kern zeigt
         self.cpu_prev = crate::sched::cpu_times();
         let url = self.o.url.clone();
-        let saved = std::fs::read_to_string(format!("{}/sitzung.txt", self.o.data_dir)).unwrap_or_default();
-        let restore: Vec<String> = if url.is_empty() && !self.o.app { saved.lines().filter(|l| !l.is_empty()).map(String::from).collect() } else { Vec::new() };
+        let saved =
+            std::fs::read_to_string(format!("{}/sitzung.txt", self.o.data_dir)).unwrap_or_default();
+        let restore: Vec<String> = if url.is_empty() && !self.o.app {
+            saved
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()
+        } else {
+            Vec::new()
+        };
         if restore.is_empty() {
-            self.open(if url.is_empty() { HOME } else { &url }, false, self.o.desktop);
+            self.open(
+                if url.is_empty() { HOME } else { &url },
+                false,
+                self.o.desktop,
+            );
         } else {
             // Nur der aktive Tab lädt; die übrigen bleiben verworfen, bis sie geöffnet werden
             let last = restore.len() - 1;
@@ -793,7 +953,23 @@ impl Browser {
                 } else {
                     let id = self.next_id;
                     self.next_id += 1;
-                    self.tabs.push(Tab { id, eng: None, title: u.clone(), uri: u.clone(), progress: 0.0, loading: false, secure: false, private: false, desktop: self.o.desktop, state: State::Discarded, hidden_at: None, used: Instant::now(), thumb: None, session: null_mut(), crashed: false });
+                    self.tabs.push(Tab {
+                        id,
+                        eng: None,
+                        title: u.clone(),
+                        uri: u.clone(),
+                        progress: 0.0,
+                        loading: false,
+                        secure: false,
+                        private: false,
+                        desktop: self.o.desktop,
+                        state: State::Discarded,
+                        hidden_at: None,
+                        used: Instant::now(),
+                        thumb: None,
+                        session: null_mut(),
+                        crashed: false,
+                    });
                 }
             }
             self.cur = usize::MAX;
@@ -843,14 +1019,21 @@ impl Browser {
             let busy = self.tabs.get(self.cur).is_some_and(|t| t.loading);
             if Instant::now() >= due && (!busy || Instant::now() >= due + Duration::from_secs(20)) {
                 self.shot_due = None;
-                let _ = self.comp.send(Msg::Shot(self.o.shot.clone().unwrap_or_default()));
+                let _ = self
+                    .comp
+                    .send(Msg::Shot(self.o.shot.clone().unwrap_or_default()));
             }
         }
         self.redraw_if_dirty();
     }
 
     fn plat(&mut self, ev: PlatEv) {
-        let active_wpe = self.tabs.get(self.cur).and_then(|t| t.eng.as_ref()).map(|e| e.wpe as usize).unwrap_or(0);
+        let active_wpe = self
+            .tabs
+            .get(self.cur)
+            .and_then(|t| t.eng.as_ref())
+            .map(|e| e.wpe as usize)
+            .unwrap_or(0);
         match ev {
             PlatEv::ImFocusIn { ctx, view, osk, .. } => {
                 if view == active_wpe {
@@ -909,7 +1092,11 @@ impl Browser {
             Q::Dialog(_, d) => unsafe {
                 let kind = webkit_script_dialog_get_dialog_type(d);
                 let msg = rs(webkit_script_dialog_get_message(d));
-                let text = if kind == WEBKIT_SCRIPT_DIALOG_PROMPT { rs(webkit_script_dialog_prompt_get_default_text(d)) } else { String::new() };
+                let text = if kind == WEBKIT_SCRIPT_DIALOG_PROMPT {
+                    rs(webkit_script_dialog_prompt_get_default_text(d))
+                } else {
+                    String::new()
+                };
                 self.close_overlay();
                 self.osk = kind == WEBKIT_SCRIPT_DIALOG_PROMPT;
                 self.ov = Overlay::Dialog { d, kind, msg, text };
@@ -920,7 +1107,12 @@ impl Browser {
                 let items = (0..n)
                     .map(|i| {
                         let it = webkit_option_menu_get_item(m, i);
-                        (rs(webkit_option_menu_item_get_label(it)), webkit_option_menu_item_is_enabled(it) != 0, webkit_option_menu_item_is_selected(it) != 0, webkit_option_menu_item_is_group_label(it) != 0)
+                        (
+                            rs(webkit_option_menu_item_get_label(it)),
+                            webkit_option_menu_item_is_enabled(it) != 0,
+                            webkit_option_menu_item_is_selected(it) != 0,
+                            webkit_option_menu_item_is_group_label(it) != 0,
+                        )
                     })
                     .collect();
                 self.close_overlay();
@@ -928,11 +1120,18 @@ impl Browser {
             },
             Q::Perm(id, req) => unsafe {
                 let ty = rs(g_type_name_from_instance(req));
-                let host = self.idx(id).map(|i| host_of(&self.tabs[i].uri)).unwrap_or_default();
+                let host = self
+                    .idx(id)
+                    .map(|i| host_of(&self.tabs[i].uri))
+                    .unwrap_or_default();
                 let (cap, what) = match ty.as_str() {
                     "WebKitGeolocationPermissionRequest" => ("loc", t(self.o.lang, "Standort")),
-                    "WebKitUserMediaPermissionRequest" => ("cam", t(self.o.lang, "Kamera/Mikrofon")),
-                    "WebKitNotificationPermissionRequest" => ("", t(self.o.lang, "Benachrichtigungen")),
+                    "WebKitUserMediaPermissionRequest" => {
+                        ("cam", t(self.o.lang, "Kamera/Mikrofon"))
+                    }
+                    "WebKitNotificationPermissionRequest" => {
+                        ("", t(self.o.lang, "Benachrichtigungen"))
+                    }
                     "WebKitClipboardPermissionRequest" => ("", t(self.o.lang, "Zwischenablage")),
                     "WebKitPointerLockPermissionRequest" => {
                         webkit_permission_request_allow(req);
@@ -952,7 +1151,11 @@ impl Browser {
                     return;
                 }
                 self.close_overlay();
-                self.ov = Overlay::Perm { req, what: what.to_string(), host };
+                self.ov = Overlay::Perm {
+                    req,
+                    what: what.to_string(),
+                    host,
+                };
             },
         }
         self.dirty = true;
@@ -1090,7 +1293,10 @@ impl Browser {
     }
 
     fn to_css(&self, x: f32, y: f32) -> (f64, f64) {
-        (((x - self.content.x as f32) as f64 / self.scale).max(0.0), ((y - self.content.y as f32) as f64 / self.scale).max(0.0))
+        (
+            ((x - self.content.x as f32) as f64 / self.scale).max(0.0),
+            ((y - self.content.y as f32) as f64 / self.scale).max(0.0),
+        )
     }
 
     /// Tastendruck (Bildschirm- oder echte Tastatur) an das richtige Ziel
@@ -1214,9 +1420,20 @@ impl Browser {
                 }
             }
             Act::EditUrl => {
-                let u = self.tabs.get(self.cur).map(|t| t.uri.clone()).unwrap_or_default();
-                let u = if u.starts_with("ultar:") { String::new() } else { u };
-                self.ov = Overlay::Url { text: u, sugg: Vec::new() };
+                let u = self
+                    .tabs
+                    .get(self.cur)
+                    .map(|t| t.uri.clone())
+                    .unwrap_or_default();
+                let u = if u.starts_with("ultar:") {
+                    String::new()
+                } else {
+                    u
+                };
+                self.ov = Overlay::Url {
+                    text: u,
+                    sugg: Vec::new(),
+                };
                 self.osk = true;
                 self.layout();
             }
@@ -1254,7 +1471,12 @@ impl Browser {
                     t.desktop = !t.desktop;
                     let (d, u) = (t.desktop, t.uri.clone());
                     if let Some(e) = &t.eng {
-                        unsafe { webkit_web_view_set_settings(e.view, if d { self.settings_d } else { self.settings_m }) };
+                        unsafe {
+                            webkit_web_view_set_settings(
+                                e.view,
+                                if d { self.settings_d } else { self.settings_m },
+                            )
+                        };
                         e.load(&u);
                     }
                 }
@@ -1268,7 +1490,9 @@ impl Browser {
             Act::Dialog(ok) => {
                 if let Overlay::Dialog { d, kind, text, .. } = &self.ov {
                     unsafe {
-                        if *kind == WEBKIT_SCRIPT_DIALOG_CONFIRM || *kind == WEBKIT_SCRIPT_DIALOG_BEFORE_UNLOAD_CONFIRM {
+                        if *kind == WEBKIT_SCRIPT_DIALOG_CONFIRM
+                            || *kind == WEBKIT_SCRIPT_DIALOG_BEFORE_UNLOAD_CONFIRM
+                        {
                             webkit_script_dialog_confirm_set_confirmed(*d, ok as gboolean);
                         }
                         if *kind == WEBKIT_SCRIPT_DIALOG_PROMPT && ok {
@@ -1325,9 +1549,49 @@ impl Browser {
             let lang = self.o.lang;
             let app = self.o.app;
             let filters = self.filters.clone();
-            let Browser { cv, tx, p, th, k, w, h, tabs, cur, ov, osk, full, kb, content, tscroll, .. } = self;
-            let mut ui = Ui { cv, tx, p, th: *th, k: *k, w: *w as f32, h: *h as f32, rtl: false, enabled: true, focus: None, dirty: false, clip: None, links: Vec::new() };
-            let d = Draw { lang, app, filters: &filters, tabs, cur: *cur, osk: *osk, full: *full, content: *content };
+            let Browser {
+                cv,
+                tx,
+                p,
+                th,
+                k,
+                w,
+                h,
+                tabs,
+                cur,
+                ov,
+                osk,
+                full,
+                kb,
+                content,
+                tscroll,
+                ..
+            } = self;
+            let mut ui = Ui {
+                cv,
+                tx,
+                p,
+                th: *th,
+                k: *k,
+                w: *w as f32,
+                h: *h as f32,
+                rtl: false,
+                enabled: true,
+                focus: None,
+                dirty: false,
+                clip: None,
+                links: Vec::new(),
+            };
+            let d = Draw {
+                lang,
+                app,
+                filters: &filters,
+                tabs,
+                cur: *cur,
+                osk: *osk,
+                full: *full,
+                content: *content,
+            };
             rects = d.draw(&mut ui, ov, kb, tscroll, &mut acts);
             again = ui.dirty;
         }
@@ -1347,7 +1611,10 @@ impl Browser {
                 (*r, v)
             })
             .collect();
-        let _ = self.comp.send(Msg::Chrome { pieces, content: self.content });
+        let _ = self.comp.send(Msg::Chrome {
+            pieces,
+            content: self.content,
+        });
         for a in acts {
             self.act(a);
         }
@@ -1375,8 +1642,18 @@ impl Browser {
         let body = match path {
             "leistung" => self.perf_html(),
             _ => {
-                let tiles = [("WhatsApp", "https://web.whatsapp.com/", "W"), ("YouTube", "https://m.youtube.com/", "▶"), ("Telegram", "https://web.telegram.org/", "T"), ("Wikipedia", "https://www.wikipedia.org/", "W"), ("KM Code Craft", "https://code-craft.tech/", "KM"), (t(l, "Leistung"), "ultar://leistung", "⚡")];
-                let tl: String = tiles.iter().map(|(n, u, i)| format!("<a class='t' href='{u}'><b>{i}</b>{n}</a>")).collect();
+                let tiles = [
+                    ("WhatsApp", "https://web.whatsapp.com/", "W"),
+                    ("YouTube", "https://m.youtube.com/", "▶"),
+                    ("Telegram", "https://web.telegram.org/", "T"),
+                    ("Wikipedia", "https://www.wikipedia.org/", "W"),
+                    ("KM Code Craft", "https://code-craft.tech/", "KM"),
+                    (t(l, "Leistung"), "ultar://leistung", "⚡"),
+                ];
+                let tl: String = tiles
+                    .iter()
+                    .map(|(n, u, i)| format!("<a class='t' href='{u}'><b>{i}</b>{n}</a>"))
+                    .collect();
                 format!(
                     "<h1>Ultar Web</h1><p>{}</p><form action='https://duckduckgo.com/' method='get'><input name='q' placeholder='{}' autocomplete='off'></form><div class='g'>{tl}</div><p style='margin-top:24px'>{} · {}</p>",
                     t(l, "Schnell, privat, ohne Werbung."),
@@ -1395,7 +1672,11 @@ impl Browser {
         let topo = crate::sched::topo();
         let st = &self.stats;
         let frames = st.frames.load(std::sync::atomic::Ordering::Relaxed);
-        let avg = if frames > 0 { st.sum_us.load(std::sync::atomic::Ordering::Relaxed) as f64 / frames as f64 / 1000.0 } else { 0.0 };
+        let avg = if frames > 0 {
+            st.sum_us.load(std::sync::atomic::Ordering::Relaxed) as f64 / frames as f64 / 1000.0
+        } else {
+            0.0
+        };
         let mut s = format!("<h1>{}</h1>", t(l, "Leistung"));
         s += &format!(
             "<p>{}: {} · {}: {:?} · {}: {:?} · RAM: {} MB · {}: {:.0} %</p>",
@@ -1423,20 +1704,46 @@ impl Browser {
             t(l, "Laufzeit"),
             self.started.elapsed().as_secs()
         );
-        s += &format!("<p>{}: {} · {}: {}</p>", t(l, "Zeichen-Threads"), topo.ncpu, t(l, "Energiesparen"), if self.saver { t(l, "an") } else { t(l, "aus") });
+        s += &format!(
+            "<p>{}: {} · {}: {}</p>",
+            t(l, "Zeichen-Threads"),
+            topo.ncpu,
+            t(l, "Energiesparen"),
+            if self.saver { t(l, "an") } else { t(l, "aus") }
+        );
         s += &format!("<h1>{}</h1><table>", t(l, "Kerne"));
         for (i, v) in self.cpu_load.iter().enumerate() {
             s += &format!("<tr><td>CPU {i}</td><td style='width:70%'><div class='bar'><i style='width:{:.0}%'></i></div></td><td>{:.0} %</td></tr>", v * 100.0, v * 100.0);
         }
-        s += &format!("</table><h1>{}</h1><table><tr><th>PID</th><th>{}</th><th>RAM</th><th>CPU</th></tr>", t(l, "Prozesse"), t(l, "Name"));
+        s += &format!(
+            "</table><h1>{}</h1><table><tr><th>PID</th><th>{}</th><th>RAM</th><th>CPU</th></tr>",
+            t(l, "Prozesse"),
+            t(l, "Name")
+        );
         for (pid, name, rss, cpu) in &self.procs {
-            s += &format!("<tr><td>{pid}</td><td>{name}</td><td>{} MB</td><td>{cpu:.0} %</td></tr>", rss / 1024);
+            s += &format!(
+                "<tr><td>{pid}</td><td>{name}</td><td>{} MB</td><td>{cpu:.0} %</td></tr>",
+                rss / 1024
+            );
         }
-        s += &format!("</table><h1>Tabs</h1><table><tr><th>#</th><th>{}</th><th>{}</th></tr>", t(l, "Seite"), t(l, "Zustand"));
+        s += &format!(
+            "</table><h1>Tabs</h1><table><tr><th>#</th><th>{}</th><th>{}</th></tr>",
+            t(l, "Seite"),
+            t(l, "Zustand")
+        );
         for tb in &self.tabs {
-            s += &format!("<tr><td>{}</td><td>{}</td><td>{}</td></tr>", tb.id, html_esc(&host_of(&tb.uri)), tb.state.name(l));
+            s += &format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+                tb.id,
+                html_esc(&host_of(&tb.uri)),
+                tb.state.name(l)
+            );
         }
-        s += &format!("</table><p>{}: {}</p>", t(l, "Werbe- und Trackingschutz"), html_esc(&self.filters));
+        s += &format!(
+            "</table><p>{}: {}</p>",
+            t(l, "Werbe- und Trackingschutz"),
+            html_esc(&self.filters)
+        );
         s
     }
 }
@@ -1454,17 +1761,33 @@ struct Draw<'a> {
 }
 
 fn ir(r: Rect) -> IRect {
-    IRect { x: r.x.floor() as i32, y: r.y.floor() as i32, w: r.w.ceil() as i32 + 1, h: r.h.ceil() as i32 + 1 }
+    IRect {
+        x: r.x.floor() as i32,
+        y: r.y.floor() as i32,
+        w: r.w.ceil() as i32 + 1,
+        h: r.h.ceil() as i32 + 1,
+    }
 }
 
 impl Draw<'_> {
-    fn draw(&self, ui: &mut Ui, ov: &Overlay, kb: &mut u8, tscroll: &mut f32, acts: &mut Vec<Act>) -> Vec<IRect> {
+    fn draw(
+        &self,
+        ui: &mut Ui,
+        ov: &Overlay,
+        kb: &mut u8,
+        tscroll: &mut f32,
+        acts: &mut Vec<Act>,
+    ) -> Vec<IRect> {
         let (w, h) = (ui.w, ui.h);
         let l = self.lang;
         let mut rects = Vec::new();
         let tb = if self.full { 0.0 } else { ui.dp(56.0) };
         let kh = if self.osk { ui.dp(236.0) } else { 0.0 };
-        let bb = if self.full || self.osk { 0.0 } else { ui.dp(54.0) };
+        let bb = if self.full || self.osk {
+            0.0
+        } else {
+            ui.dp(54.0)
+        };
         let tab = self.tabs.get(self.cur);
 
         if let Overlay::Tabs = ov {
@@ -1497,10 +1820,31 @@ impl Draw<'_> {
         // abgestürzte Seite
         if tab.is_some_and(|t| t.crashed) && matches!(ov, Overlay::None) {
             let c = self.content;
-            let r = Rect::new(c.x as f32 + ui.dp(24.0), c.y as f32 + c.h as f32 * 0.3, c.w as f32 - ui.dp(48.0), ui.dp(150.0));
+            let r = Rect::new(
+                c.x as f32 + ui.dp(24.0),
+                c.y as f32 + c.h as f32 * 0.3,
+                c.w as f32 - ui.dp(48.0),
+                ui.dp(150.0),
+            );
             ui.card(r);
-            ui.label(Rect::new(r.x, r.y + ui.dp(14.0), r.w, ui.dp(30.0)), t(l, "Die Seite wurde beendet."), 17.0, ui.th.text, true, Al::Center);
-            if ui.button(Rect::new(r.x + ui.dp(24.0), r.bottom() - ui.dp(64.0), r.w - ui.dp(48.0), ui.dp(46.0)), t(l, "Neu laden"), ui::Btn::Primary) {
+            ui.label(
+                Rect::new(r.x, r.y + ui.dp(14.0), r.w, ui.dp(30.0)),
+                t(l, "Die Seite wurde beendet."),
+                17.0,
+                ui.th.text,
+                true,
+                Al::Center,
+            );
+            if ui.button(
+                Rect::new(
+                    r.x + ui.dp(24.0),
+                    r.bottom() - ui.dp(64.0),
+                    r.w - ui.dp(48.0),
+                    ui.dp(46.0),
+                ),
+                t(l, "Neu laden"),
+                ui::Btn::Primary,
+            ) {
                 acts.push(Act::Reload);
             }
             rects.push(ir(r));
@@ -1509,17 +1853,43 @@ impl Draw<'_> {
             Overlay::Menu => {
                 let items: Vec<(Ic, &str, Option<Act>)> = vec![
                     (Ic::Plus, t(l, "Neuer Tab"), Some(Act::NewTab(false))),
-                    (Ic::Lock, t(l, "Neuer privater Tab"), Some(Act::NewTab(true))),
+                    (
+                        Ic::Lock,
+                        t(l, "Neuer privater Tab"),
+                        Some(Act::NewTab(true)),
+                    ),
                     (Ic::Globe, t(l, "Desktop-Version"), Some(Act::Desktop)),
                     (Ic::Rotate, t(l, "Neu laden"), Some(Act::Reload)),
                     (Ic::Chip, t(l, "Leistung"), Some(Act::Perf)),
                     (Ic::Shield, self.filters, None),
-                    (Ic::Power, if self.app { t(l, "App schließen") } else { t(l, "Browser schließen") }, Some(Act::Exit)),
+                    (
+                        Ic::Power,
+                        if self.app {
+                            t(l, "App schließen")
+                        } else {
+                            t(l, "Browser schließen")
+                        },
+                        Some(Act::Exit),
+                    ),
                 ];
                 let rh = ui.dp(50.0);
                 let pw = ui.dp(270.0).min(w - ui.dp(16.0));
-                let panel = Rect::new(w - pw - ui.dp(8.0), tb + ui.dp(4.0), pw, rh * items.len() as f32 + ui.dp(12.0));
-                ui.cv.soft_shadow(panel, ui.dp(14.0), Color { r: 0, g: 0, b: 0, a: 120 });
+                let panel = Rect::new(
+                    w - pw - ui.dp(8.0),
+                    tb + ui.dp(4.0),
+                    pw,
+                    rh * items.len() as f32 + ui.dp(12.0),
+                );
+                ui.cv.soft_shadow(
+                    panel,
+                    ui.dp(14.0),
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 120,
+                    },
+                );
                 ui.card(panel);
                 let desktop = tab.is_some_and(|t| t.desktop);
                 let mut y = panel.y + ui.dp(6.0);
@@ -1529,12 +1899,31 @@ impl Draw<'_> {
                         ui.cv.rrect(r, ui.dp(10.0), ui.th.press);
                     }
                     let c = if a.is_some() { ui.th.text } else { ui.th.sub };
-                    ui.icon(ic, r.x + ui.dp(22.0), r.cy(), ui.dp(20.0), if a.is_some() { ui.th.accent } else { ui.th.sub });
+                    ui.icon(
+                        ic,
+                        r.x + ui.dp(22.0),
+                        r.cy(),
+                        ui.dp(20.0),
+                        if a.is_some() { ui.th.accent } else { ui.th.sub },
+                    );
                     let lw = r.w - ui.dp(84.0);
                     let s = ui.fit(label, 15.0, false, lw);
-                    ui.label(Rect::new(r.x + ui.dp(46.0), r.y, lw, r.h), &s, 15.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(r.x + ui.dp(46.0), r.y, lw, r.h),
+                        &s,
+                        15.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     if matches!(a, Some(Act::Desktop)) && desktop {
-                        ui.icon(Ic::Check, r.right() - ui.dp(20.0), r.cy(), ui.dp(18.0), ui.th.accent);
+                        ui.icon(
+                            Ic::Check,
+                            r.right() - ui.dp(20.0),
+                            r.cy(),
+                            ui.dp(18.0),
+                            ui.th.accent,
+                        );
                     }
                     if let Some(a) = a {
                         if ui.tap(r) {
@@ -1546,41 +1935,106 @@ impl Draw<'_> {
                 if ui.p.released && !ui.p.moved && !panel.contains(ui.p.px, ui.p.py) {
                     acts.push(Act::Close);
                 }
-                rects.push(ir(Rect::new(panel.x - ui.dp(14.0), panel.y - ui.dp(14.0), panel.w + ui.dp(28.0), panel.h + ui.dp(28.0))));
+                rects.push(ir(Rect::new(
+                    panel.x - ui.dp(14.0),
+                    panel.y - ui.dp(14.0),
+                    panel.w + ui.dp(28.0),
+                    panel.h + ui.dp(28.0),
+                )));
             }
-            Overlay::Dialog { kind, msg, text, .. } => {
+            Overlay::Dialog {
+                kind, msg, text, ..
+            } => {
                 let cw = (w - ui.dp(40.0)).min(ui.dp(420.0));
-                let mh = ui.tx.measure(msg, ui.dp(15.0), false, cw - ui.dp(40.0)).1.min(h * 0.4);
-                let fh = if *kind == WEBKIT_SCRIPT_DIALOG_PROMPT { ui.dp(56.0) } else { 0.0 };
+                let mh = ui
+                    .tx
+                    .measure(msg, ui.dp(15.0), false, cw - ui.dp(40.0))
+                    .1
+                    .min(h * 0.4);
+                let fh = if *kind == WEBKIT_SCRIPT_DIALOG_PROMPT {
+                    ui.dp(56.0)
+                } else {
+                    0.0
+                };
                 let chh = mh + fh + ui.dp(120.0);
-                let top = if self.osk { (h - kh - chh) / 2.0 } else { (h - chh) / 2.0 }.max(ui.dp(8.0));
+                let top = if self.osk {
+                    (h - kh - chh) / 2.0
+                } else {
+                    (h - chh) / 2.0
+                }
+                .max(ui.dp(8.0));
                 let r = Rect::new((w - cw) / 2.0, top, cw, chh);
-                ui.cv.soft_shadow(r, ui.dp(16.0), Color { r: 0, g: 0, b: 0, a: 140 });
+                ui.cv.soft_shadow(
+                    r,
+                    ui.dp(16.0),
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 140,
+                    },
+                );
                 ui.card(r);
                 ui.set_clip(Some(Rect::new(r.x, r.y, r.w, mh + ui.dp(30.0))));
-                ui.para(r.x + ui.dp(20.0), r.y + ui.dp(20.0), cw - ui.dp(40.0), msg, 15.0, ui.th.text);
+                ui.para(
+                    r.x + ui.dp(20.0),
+                    r.y + ui.dp(20.0),
+                    cw - ui.dp(40.0),
+                    msg,
+                    15.0,
+                    ui.th.text,
+                );
                 ui.set_clip(None);
                 if fh > 0.0 {
-                    let fr = Rect::new(r.x + ui.dp(20.0), r.y + mh + ui.dp(30.0), cw - ui.dp(40.0), ui.dp(44.0));
+                    let fr = Rect::new(
+                        r.x + ui.dp(20.0),
+                        r.y + mh + ui.dp(30.0),
+                        cw - ui.dp(40.0),
+                        ui.dp(44.0),
+                    );
                     ui.cv.rrect(fr, ui.dp(10.0), ui.th.bg);
                     let shown = format!("{text}|");
-                    ui.label(fr.inset(ui.dp(10.0)), &shown, 15.0, ui.th.text, false, Al::Start);
+                    ui.label(
+                        fr.inset(ui.dp(10.0)),
+                        &shown,
+                        15.0,
+                        ui.th.text,
+                        false,
+                        Al::Start,
+                    );
                 }
                 let by = r.bottom() - ui.dp(60.0);
                 let bw = (cw - ui.dp(52.0)) / 2.0;
                 if *kind == WEBKIT_SCRIPT_DIALOG_ALERT {
-                    if ui.button(Rect::new(r.x + ui.dp(20.0), by, cw - ui.dp(40.0), ui.dp(44.0)), "OK", ui::Btn::Primary) {
+                    if ui.button(
+                        Rect::new(r.x + ui.dp(20.0), by, cw - ui.dp(40.0), ui.dp(44.0)),
+                        "OK",
+                        ui::Btn::Primary,
+                    ) {
                         acts.push(Act::Dialog(true));
                     }
                 } else {
-                    if ui.button(Rect::new(r.x + ui.dp(20.0), by, bw, ui.dp(44.0)), t(l, "Abbrechen"), ui::Btn::Plain) {
+                    if ui.button(
+                        Rect::new(r.x + ui.dp(20.0), by, bw, ui.dp(44.0)),
+                        t(l, "Abbrechen"),
+                        ui::Btn::Plain,
+                    ) {
                         acts.push(Act::Dialog(false));
                     }
-                    if ui.button(Rect::new(r.x + ui.dp(32.0) + bw, by, bw, ui.dp(44.0)), "OK", ui::Btn::Primary) {
+                    if ui.button(
+                        Rect::new(r.x + ui.dp(32.0) + bw, by, bw, ui.dp(44.0)),
+                        "OK",
+                        ui::Btn::Primary,
+                    ) {
                         acts.push(Act::Dialog(true));
                     }
                 }
-                rects.push(ir(Rect::new(r.x - ui.dp(16.0), r.y - ui.dp(16.0), r.w + ui.dp(32.0), r.h + ui.dp(32.0))));
+                rects.push(ir(Rect::new(
+                    r.x - ui.dp(16.0),
+                    r.y - ui.dp(16.0),
+                    r.w + ui.dp(32.0),
+                    r.h + ui.dp(32.0),
+                )));
             }
             Overlay::Options { items, .. } => {
                 let rh = ui.dp(50.0);
@@ -1600,12 +2054,31 @@ impl Draw<'_> {
                     if *enabled && !*group && ui.held(row) {
                         ui.cv.rrect(row, ui.dp(10.0), ui.th.press);
                     }
-                    let c = if *group { ui.th.sub } else if *enabled { ui.th.text } else { ui.th.sub };
+                    let c = if *group {
+                        ui.th.sub
+                    } else if *enabled {
+                        ui.th.text
+                    } else {
+                        ui.th.sub
+                    };
                     ui.rtl = l == Lang::Ar;
-                    ui.label(Rect::new(row.x + ui.dp(16.0), row.y, row.w - ui.dp(56.0), rh), label, 15.0, c, *group, Al::Start);
+                    ui.label(
+                        Rect::new(row.x + ui.dp(16.0), row.y, row.w - ui.dp(56.0), rh),
+                        label,
+                        15.0,
+                        c,
+                        *group,
+                        Al::Start,
+                    );
                     ui.rtl = false;
                     if *sel {
-                        ui.icon(Ic::Check, row.right() - ui.dp(22.0), row.cy(), ui.dp(18.0), ui.th.accent);
+                        ui.icon(
+                            Ic::Check,
+                            row.right() - ui.dp(22.0),
+                            row.cy(),
+                            ui.dp(18.0),
+                            ui.th.accent,
+                        );
                     }
                     if *enabled && !*group && ui.tap(row) {
                         acts.push(Act::Option(i as u32));
@@ -1623,17 +2096,38 @@ impl Draw<'_> {
                 let r = Rect::new(0.0, h - sh, w, sh);
                 ui.cv.rect(r, ui.th.card);
                 ui.cv.rect(Rect::new(0.0, r.y, w, 1.0), ui.th.line);
-                ui.icon(Ic::Shield, w / 2.0, r.y + ui.dp(30.0), ui.dp(26.0), ui.th.accent);
+                ui.icon(
+                    Ic::Shield,
+                    w / 2.0,
+                    r.y + ui.dp(30.0),
+                    ui.dp(26.0),
+                    ui.th.accent,
+                );
                 let msg = format!("{host}: {} – {what}", t(l, "möchte zugreifen"));
                 ui.rtl = l == Lang::Ar;
-                ui.para(ui.dp(24.0), r.y + ui.dp(56.0), w - ui.dp(48.0), &msg, 15.0, ui.th.text);
+                ui.para(
+                    ui.dp(24.0),
+                    r.y + ui.dp(56.0),
+                    w - ui.dp(48.0),
+                    &msg,
+                    15.0,
+                    ui.th.text,
+                );
                 ui.rtl = false;
                 let bw = (w - ui.dp(60.0)) / 2.0;
                 let by = r.bottom() - ui.dp(64.0);
-                if ui.button(Rect::new(ui.dp(24.0), by, bw, ui.dp(46.0)), t(l, "Ablehnen"), ui::Btn::Plain) {
+                if ui.button(
+                    Rect::new(ui.dp(24.0), by, bw, ui.dp(46.0)),
+                    t(l, "Ablehnen"),
+                    ui::Btn::Plain,
+                ) {
                     acts.push(Act::Perm(false));
                 }
-                if ui.button(Rect::new(ui.dp(36.0) + bw, by, bw, ui.dp(46.0)), t(l, "Erlauben"), ui::Btn::Primary) {
+                if ui.button(
+                    Rect::new(ui.dp(36.0) + bw, by, bw, ui.dp(46.0)),
+                    t(l, "Erlauben"),
+                    ui::Btn::Primary,
+                ) {
                     acts.push(Act::Perm(true));
                 }
                 rects.push(ir(r));
@@ -1646,11 +2140,21 @@ impl Draw<'_> {
     fn top_bar(&self, ui: &mut Ui, r: Rect, tab: Option<&Tab>, acts: &mut Vec<Act>) {
         let l = self.lang;
         ui.cv.rect(r, ui.th.card);
-        ui.cv.rect(Rect::new(0.0, r.bottom() - 1.0, r.w, 1.0), ui.th.line);
+        ui.cv
+            .rect(Rect::new(0.0, r.bottom() - 1.0, r.w, 1.0), ui.th.line);
         let btn = ui.dp(46.0);
-        let pill = Rect::new(ui.dp(10.0), r.y + ui.dp(8.0), r.w - ui.dp(20.0) - btn * 2.0, r.h - ui.dp(16.0));
+        let pill = Rect::new(
+            ui.dp(10.0),
+            r.y + ui.dp(8.0),
+            r.w - ui.dp(20.0) - btn * 2.0,
+            r.h - ui.dp(16.0),
+        );
         let held = ui.held(pill);
-        ui.cv.rrect(pill, pill.h / 2.0, if held { ui.th.press } else { ui.th.bg });
+        ui.cv.rrect(
+            pill,
+            pill.h / 2.0,
+            if held { ui.th.press } else { ui.th.bg },
+        );
         let (ic, icc) = match tab {
             Some(t) if t.private => (Ic::Lock, ui.th.accent2),
             Some(t) if t.secure => (Ic::Lock, ui.th.ok),
@@ -1659,28 +2163,58 @@ impl Draw<'_> {
         };
         ui.icon(ic, pill.x + ui.dp(20.0), pill.cy(), ui.dp(16.0), icc);
         let text = match tab {
-            Some(t) if t.uri.starts_with("ultar://start") || t.uri.is_empty() => t_s(l, "Suchen oder Adresse eingeben"),
+            Some(t) if t.uri.starts_with("ultar://start") || t.uri.is_empty() => {
+                t_s(l, "Suchen oder Adresse eingeben")
+            }
             Some(t) if t.uri.starts_with("ultar:") => t.title.clone(),
             Some(t) => host_of(&t.uri),
             None => String::new(),
         };
-        let tc = if tab.is_some_and(|t| t.uri.starts_with("ultar://start")) { ui.th.sub } else { ui.th.text };
+        let tc = if tab.is_some_and(|t| t.uri.starts_with("ultar://start")) {
+            ui.th.sub
+        } else {
+            ui.th.text
+        };
         let tw = pill.w - ui.dp(48.0);
         let s = ui.fit(&text, 15.0, false, tw);
-        ui.label(Rect::new(pill.x + ui.dp(38.0), pill.y, tw, pill.h), &s, 15.0, tc, false, Al::Start);
+        ui.label(
+            Rect::new(pill.x + ui.dp(38.0), pill.y, tw, pill.h),
+            &s,
+            15.0,
+            tc,
+            false,
+            Al::Start,
+        );
         if ui.tap(pill) {
             acts.push(Act::EditUrl);
         }
         // Tab-Zähler
-        let tr = Rect::new(r.w - btn * 2.0 - ui.dp(4.0), r.y + (r.h - btn) / 2.0, btn, btn);
+        let tr = Rect::new(
+            r.w - btn * 2.0 - ui.dp(4.0),
+            r.y + (r.h - btn) / 2.0,
+            btn,
+            btn,
+        );
         if ui.held(tr) {
             ui.cv.circle(tr.cx(), tr.cy(), btn / 2.0, ui.th.press);
         }
-        let sq = Rect::new(tr.cx() - ui.dp(11.0), tr.cy() - ui.dp(11.0), ui.dp(22.0), ui.dp(22.0));
+        let sq = Rect::new(
+            tr.cx() - ui.dp(11.0),
+            tr.cy() - ui.dp(11.0),
+            ui.dp(22.0),
+            ui.dp(22.0),
+        );
         ui.cv.rrect(sq, ui.dp(5.0), ui.th.text);
         ui.cv.rrect(sq.inset(ui.dp(2.0)), ui.dp(4.0), ui.th.card);
         let n = self.tabs.len();
-        ui.label(sq, &if n > 99 { ":D".into() } else { n.to_string() }, 11.0, ui.th.text, true, Al::Center);
+        ui.label(
+            sq,
+            &if n > 99 { ":D".into() } else { n.to_string() },
+            11.0,
+            ui.th.text,
+            true,
+            Al::Center,
+        );
         if ui.tap(tr) {
             acts.push(Act::Tabs);
         }
@@ -1690,7 +2224,8 @@ impl Draw<'_> {
             ui.cv.circle(mr.cx(), mr.cy(), btn / 2.0, ui.th.press);
         }
         for d in [-1.0f32, 0.0, 1.0] {
-            ui.cv.circle(mr.cx(), mr.cy() + d * ui.dp(6.0), ui.dp(2.2), ui.th.text);
+            ui.cv
+                .circle(mr.cx(), mr.cy() + d * ui.dp(6.0), ui.dp(2.2), ui.th.text);
         }
         if ui.tap(mr) {
             acts.push(Act::Menu);
@@ -1699,7 +2234,10 @@ impl Draw<'_> {
         if let Some(t) = tab {
             if t.loading {
                 let pw = (r.w * t.progress.clamp(0.05, 1.0) as f32).round();
-                ui.cv.rect(Rect::new(0.0, r.bottom() - ui.dp(2.5), pw, ui.dp(2.5)), ui.th.accent);
+                ui.cv.rect(
+                    Rect::new(0.0, r.bottom() - ui.dp(2.5), pw, ui.dp(2.5)),
+                    ui.th.accent,
+                );
             }
         }
     }
@@ -1708,13 +2246,20 @@ impl Draw<'_> {
         ui.cv.rect(r, ui.th.card);
         ui.cv.rect(Rect::new(0.0, r.y, r.w, 1.0), ui.th.line);
         let e = tab.and_then(|t| t.eng.as_ref());
-        let (cb, cf) = (e.is_some_and(|e| e.can_back()), e.is_some_and(|e| e.can_forward()));
+        let (cb, cf) = (
+            e.is_some_and(|e| e.can_back()),
+            e.is_some_and(|e| e.can_forward()),
+        );
         let loading = tab.is_some_and(|t| t.loading);
         let items: [(Ic, bool, Act); 5] = [
             (Ic::Back, true, Act::Back),
             (Ic::Chevron, cf, Act::Forward),
             (Ic::Home, true, Act::Home),
-            (if loading { Ic::Close } else { Ic::Rotate }, true, if loading { Act::Stop } else { Act::Reload }),
+            (
+                if loading { Ic::Close } else { Ic::Rotate },
+                true,
+                if loading { Act::Stop } else { Act::Reload },
+            ),
             (Ic::Plus, true, Act::NewTab(false)),
         ];
         let cw = r.w / items.len() as f32;
@@ -1724,21 +2269,38 @@ impl Draw<'_> {
             if en && ui.held(cell) {
                 ui.cv.circle(cell.cx(), cell.cy(), ui.dp(21.0), ui.th.press);
             }
-            ui.icon(ic, cell.cx(), cell.cy(), ui.dp(22.0), if en { ui.th.text } else { ui.th.line });
+            ui.icon(
+                ic,
+                cell.cx(),
+                cell.cy(),
+                ui.dp(22.0),
+                if en { ui.th.text } else { ui.th.line },
+            );
             if en && ui.tap(cell) {
                 acts.push(a);
             }
         }
     }
 
-    fn url_view(&self, ui: &mut Ui, r: Rect, text: &str, sugg: &[(String, String)], acts: &mut Vec<Act>) {
+    fn url_view(
+        &self,
+        ui: &mut Ui,
+        r: Rect,
+        text: &str,
+        sugg: &[(String, String)],
+        acts: &mut Vec<Act>,
+    ) {
         let l = self.lang;
         ui.cv.rect(r, ui.th.bg);
         let bar = Rect::new(0.0, 0.0, r.w, ui.dp(56.0));
         ui.cv.rect(bar, ui.th.card);
         let f = Rect::new(ui.dp(10.0), ui.dp(8.0), r.w - ui.dp(70.0), ui.dp(40.0));
         ui.cv.rrect(f, f.h / 2.0, ui.th.bg);
-        ui.cv.rrect(Rect::new(f.x, f.bottom() - 2.0, f.w, 2.0), 1.0, ui.th.accent);
+        ui.cv.rrect(
+            Rect::new(f.x, f.bottom() - 2.0, f.w, 2.0),
+            1.0,
+            ui.th.accent,
+        );
         let shown = format!("{text}|");
         let tw = f.w - ui.dp(54.0);
         // langen Text vom Ende her zeigen (Eingabestelle sichtbar)
@@ -1746,7 +2308,14 @@ impl Draw<'_> {
         while ui.text_w(&s, 15.0, false) > tw && s.chars().count() > 1 {
             s = s.chars().skip(1).collect();
         }
-        ui.label(Rect::new(f.x + ui.dp(16.0), f.y, tw, f.h), &s, 15.0, ui.th.text, false, Al::Start);
+        ui.label(
+            Rect::new(f.x + ui.dp(16.0), f.y, tw, f.h),
+            &s,
+            15.0,
+            ui.th.text,
+            false,
+            Al::Start,
+        );
         let cr = Rect::new(f.right() - ui.dp(40.0), f.y, ui.dp(40.0), f.h);
         ui.icon(Ic::Close, cr.cx(), cr.cy(), ui.dp(16.0), ui.th.sub);
         if ui.tap(cr) {
@@ -1765,10 +2334,27 @@ impl Draw<'_> {
             if ui.held(row) {
                 ui.cv.rect(row, ui.th.press);
             }
-            ui.icon(if is_url { Ic::Globe } else { Ic::Search }, ui.dp(30.0), row.cy(), ui.dp(18.0), ui.th.accent);
-            let lab = if is_url { format!("{} {}", t(l, "Öffnen:"), text.trim()) } else { format!("{} {}", t(l, "Suchen:"), text.trim()) };
+            ui.icon(
+                if is_url { Ic::Globe } else { Ic::Search },
+                ui.dp(30.0),
+                row.cy(),
+                ui.dp(18.0),
+                ui.th.accent,
+            );
+            let lab = if is_url {
+                format!("{} {}", t(l, "Öffnen:"), text.trim())
+            } else {
+                format!("{} {}", t(l, "Suchen:"), text.trim())
+            };
             let s = ui.fit(&lab, 15.0, false, r.w - ui.dp(76.0));
-            ui.label(Rect::new(ui.dp(60.0), row.y, r.w - ui.dp(76.0), rh), &s, 15.0, ui.th.text, false, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(60.0), row.y, r.w - ui.dp(76.0), rh),
+                &s,
+                15.0,
+                ui.th.text,
+                false,
+                Al::Start,
+            );
             if ui.tap(row) {
                 acts.push(Act::Submit(text.to_string()));
             }
@@ -1786,8 +2372,22 @@ impl Draw<'_> {
             let tw = r.w - ui.dp(76.0);
             let a = ui.fit(if tt.is_empty() { u } else { tt }, 15.0, false, tw);
             let b = ui.fit(u, 12.0, false, tw);
-            ui.label(Rect::new(ui.dp(60.0), row.y + ui.dp(6.0), tw, ui.dp(24.0)), &a, 15.0, ui.th.text, false, Al::Start);
-            ui.label(Rect::new(ui.dp(60.0), row.y + ui.dp(30.0), tw, ui.dp(20.0)), &b, 12.0, ui.th.sub, false, Al::Start);
+            ui.label(
+                Rect::new(ui.dp(60.0), row.y + ui.dp(6.0), tw, ui.dp(24.0)),
+                &a,
+                15.0,
+                ui.th.text,
+                false,
+                Al::Start,
+            );
+            ui.label(
+                Rect::new(ui.dp(60.0), row.y + ui.dp(30.0), tw, ui.dp(20.0)),
+                &b,
+                12.0,
+                ui.th.sub,
+                false,
+                Al::Start,
+            );
             if ui.tap(row) {
                 acts.push(Act::Submit(u.clone()));
             }
@@ -1800,7 +2400,14 @@ impl Draw<'_> {
         ui.cv.vgrad(r, ui.th.bg, ui.th.bg2);
         let head = Rect::new(0.0, 0.0, r.w, ui.dp(56.0));
         ui.cv.rect(head, ui.th.card);
-        ui.label(Rect::new(ui.dp(18.0), 0.0, r.w / 2.0, head.h), &format!("Tabs ({})", self.tabs.len()), 18.0, ui.th.text, true, Al::Start);
+        ui.label(
+            Rect::new(ui.dp(18.0), 0.0, r.w / 2.0, head.h),
+            &format!("Tabs ({})", self.tabs.len()),
+            18.0,
+            ui.th.text,
+            true,
+            Al::Start,
+        );
         let plus = Rect::new(r.w - ui.dp(112.0), ui.dp(5.0), ui.dp(46.0), ui.dp(46.0));
         ui.icon(Ic::Plus, plus.cx(), plus.cy(), ui.dp(22.0), ui.th.accent);
         if ui.tap(plus) {
@@ -1824,28 +2431,79 @@ impl Draw<'_> {
         ui.set_clip(Some(area));
         for (i, tb) in self.tabs.iter().enumerate() {
             let (cx, cy) = ((i % cols) as f32, (i / cols) as f32);
-            let card = Rect::new(gap + cx * (cw + gap), area.y + gap + cy * (ch + gap) - *tscroll, cw, ch);
+            let card = Rect::new(
+                gap + cx * (cw + gap),
+                area.y + gap + cy * (ch + gap) - *tscroll,
+                cw,
+                ch,
+            );
             if !ui.visible(card) {
                 continue;
             }
-            ui.cv.soft_shadow(card, ui.dp(10.0), Color { r: 0, g: 0, b: 0, a: 90 });
-            ui.cv.rrect(card, ui.dp(14.0), if i == self.cur { ui.th.accent } else { ui.th.line });
+            ui.cv.soft_shadow(
+                card,
+                ui.dp(10.0),
+                Color {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                    a: 90,
+                },
+            );
+            ui.cv.rrect(
+                card,
+                ui.dp(14.0),
+                if i == self.cur {
+                    ui.th.accent
+                } else {
+                    ui.th.line
+                },
+            );
             let inner = card.inset(ui.dp(2.0));
             ui.cv.rrect(inner, ui.dp(12.0), ui.th.card);
             let tr = Rect::new(inner.x, inner.y, inner.w, ui.dp(34.0));
             if tb.private {
-                ui.icon(Ic::Lock, tr.x + ui.dp(16.0), tr.cy(), ui.dp(14.0), ui.th.accent2);
+                ui.icon(
+                    Ic::Lock,
+                    tr.x + ui.dp(16.0),
+                    tr.cy(),
+                    ui.dp(14.0),
+                    ui.th.accent2,
+                );
             }
-            let title = if tb.title.is_empty() { host_of(&tb.uri) } else { tb.title.clone() };
+            let title = if tb.title.is_empty() {
+                host_of(&tb.uri)
+            } else {
+                tb.title.clone()
+            };
             let s = ui.fit(&title, 13.0, false, tr.w - ui.dp(64.0));
-            ui.label(Rect::new(tr.x + ui.dp(30.0), tr.y, tr.w - ui.dp(64.0), tr.h), &s, 13.0, ui.th.text, false, Al::Start);
+            ui.label(
+                Rect::new(tr.x + ui.dp(30.0), tr.y, tr.w - ui.dp(64.0), tr.h),
+                &s,
+                13.0,
+                ui.th.text,
+                false,
+                Al::Start,
+            );
             let xr = Rect::new(tr.right() - ui.dp(34.0), tr.y, ui.dp(34.0), tr.h);
             ui.icon(Ic::Close, xr.cx(), xr.cy(), ui.dp(13.0), ui.th.sub);
-            let img = Rect::new(inner.x + ui.dp(4.0), tr.bottom(), inner.w - ui.dp(8.0), inner.bottom() - tr.bottom() - ui.dp(4.0));
+            let img = Rect::new(
+                inner.x + ui.dp(4.0),
+                tr.bottom(),
+                inner.w - ui.dp(8.0),
+                inner.bottom() - tr.bottom() - ui.dp(4.0),
+            );
             match &tb.thumb {
                 Some((tw, th, px)) if *tw > 0 => {
                     let srch = (*th as f32).min(*tw as f32 * img.h / img.w);
-                    ui.cv.blit_xrgb(px, *tw as u32, *th as u32, Rect::new(0.0, 0.0, *tw as f32, srch), img, false);
+                    ui.cv.blit_xrgb(
+                        px,
+                        *tw as u32,
+                        *th as u32,
+                        Rect::new(0.0, 0.0, *tw as f32, srch),
+                        img,
+                        false,
+                    );
                 }
                 _ => {
                     ui.cv.rrect(img, ui.dp(8.0), ui.th.bg);
@@ -1855,8 +2513,22 @@ impl Draw<'_> {
             if tb.state != State::Active {
                 let s = tb.state.name(l);
                 let (pw, _) = ui.tx.measure(s, ui.dp(11.0), false, 0.0);
-                let pr = Rect::new(img.x + ui.dp(6.0), img.bottom() - ui.dp(26.0), pw + ui.dp(16.0), ui.dp(20.0));
-                ui.cv.rrect(pr, ui.dp(10.0), Color { r: 0, g: 0, b: 0, a: 160 });
+                let pr = Rect::new(
+                    img.x + ui.dp(6.0),
+                    img.bottom() - ui.dp(26.0),
+                    pw + ui.dp(16.0),
+                    ui.dp(20.0),
+                );
+                ui.cv.rrect(
+                    pr,
+                    ui.dp(10.0),
+                    Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 160,
+                    },
+                );
                 ui.label(pr, s, 11.0, rgb(0xFFFFFF), false, Al::Center);
             }
             if ui.tap(xr) {
@@ -1911,7 +2583,12 @@ pub fn as_url(s: &str) -> Option<String> {
         return Some(s.to_string());
     }
     let host = s.split(['/', '?', '#']).next().unwrap_or("");
-    let ok = (host.contains('.') && !host.starts_with('.') && !host.ends_with('.') && host.rsplit('.').next().is_some_and(|tld| tld.len() >= 2 && tld.chars().all(|c| c.is_alphabetic() || c.is_ascii_digit())))
+    let ok = (host.contains('.')
+        && !host.starts_with('.')
+        && !host.ends_with('.')
+        && host.rsplit('.').next().is_some_and(|tld| {
+            tld.len() >= 2 && tld.chars().all(|c| c.is_alphabetic() || c.is_ascii_digit())
+        }))
         || host.starts_with("localhost");
     ok.then(|| format!("https://{s}"))
 }
@@ -1920,7 +2597,9 @@ pub fn urlencode(s: &str) -> String {
     let mut o = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => o.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                o.push(b as char)
+            }
             b' ' => o.push('+'),
             _ => o.push_str(&format!("%{b:02X}")),
         }
@@ -1929,19 +2608,32 @@ pub fn urlencode(s: &str) -> String {
 }
 
 fn html_esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('\'', "&#39;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\'', "&#39;")
 }
 
 /// Zeichen -> X11-Keysym (Latin-1 direkt, sonst Unicode-Keysym)
 fn keysym_of(c: char) -> u32 {
     let u = c as u32;
-    if (0x20..0x7f).contains(&u) || (0xa0..0x100).contains(&u) { u } else { 0x0100_0000 | u }
+    if (0x20..0x7f).contains(&u) || (0xa0..0x100).contains(&u) {
+        u
+    } else {
+        0x0100_0000 | u
+    }
 }
 
 /// Datenschutzzentrum des Systems fragen (/run/ultar/privacy: all=1, cam=1 …). Fehlt die Datei: erlaubt.
 fn privacy_allows(cap: &str) -> bool {
-    let Ok(s) = std::fs::read_to_string("/run/ultar/privacy") else { return true };
-    let get = |k: &str| s.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).map(|v| v.trim() == "1");
+    let Ok(s) = std::fs::read_to_string("/run/ultar/privacy") else {
+        return true;
+    };
+    let get = |k: &str| {
+        s.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .map(|v| v.trim() == "1")
+    };
     if get("all") == Some(false) {
         return false;
     }
@@ -1956,11 +2648,17 @@ mod tests {
     use super::*;
     #[test]
     fn adressen_und_suche() {
-        assert_eq!(as_url("example.com").as_deref(), Some("https://example.com"));
+        assert_eq!(
+            as_url("example.com").as_deref(),
+            Some("https://example.com")
+        );
         assert_eq!(as_url("https://a.b/c").as_deref(), Some("https://a.b/c"));
         assert_eq!(as_url("wetter berlin"), None);
         assert_eq!(as_url("hallo"), None);
-        assert_eq!(as_url("ultar://leistung").as_deref(), Some("ultar://leistung"));
+        assert_eq!(
+            as_url("ultar://leistung").as_deref(),
+            Some("ultar://leistung")
+        );
         assert_eq!(host_of("https://www.youtube.com/watch?v=1"), "youtube.com");
         assert_eq!(urlencode("ä b"), "%C3%A4+b");
         assert_eq!(keysym_of('a'), 'a' as u32);

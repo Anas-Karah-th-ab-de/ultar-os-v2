@@ -7,4 +7,5 @@ edition.workspace = true
 nix = { version = "0.29", features = ["mount", "signal", "process", "reboot", "poll", "hostname", "kmod", "fs"] }
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
-ultar-edition = { path = "../ultar-edition" }
+ultar-profile = { path = "../ultar-profile" }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }

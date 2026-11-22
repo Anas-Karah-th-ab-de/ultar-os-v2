@@ -30,7 +30,10 @@ pub fn cmd_path() -> String {
 
 /// Vorgaben liegen bei den Nutzerdaten (überleben Neustarts).
 pub fn prefs_path() -> String {
-    format!("{}/radio.conf", std::env::var("ULTAR_DATA").unwrap_or_else(|_| "/data/ultar".into()))
+    format!(
+        "{}/radio.conf",
+        std::env::var("ULTAR_DATA").unwrap_or_else(|_| "/data/ultar".into())
+    )
 }
 
 // ---------------------------------------------------------------- Zustand
@@ -157,7 +160,15 @@ impl RadioState {
 }
 
 fn clean(s: &str) -> String {
-    s.chars().map(|c| if matches!(c, ';' | '\n' | '\r') { ',' } else { c }).collect()
+    s.chars()
+        .map(|c| {
+            if matches!(c, ';' | '\n' | '\r') {
+                ','
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 fn opt<T: std::fmt::Display>(o: &Option<T>) -> String {
@@ -183,7 +194,14 @@ pub fn format_state(s: &RadioState) -> String {
     let _ = writeln!(o, "updated={}", s.updated);
     let _ = writeln!(o, "note={}", clean(&s.note));
     for m in &s.sims {
-        let _ = writeln!(o, "sim=slot:{};state:{};op:{};num:{}", m.slot, m.state.key(), clean(&m.operator).replace(':', " "), clean(&m.number).replace(':', " "));
+        let _ = writeln!(
+            o,
+            "sim=slot:{};state:{};op:{};num:{}",
+            m.slot,
+            m.state.key(),
+            clean(&m.operator).replace(':', " "),
+            clean(&m.number).replace(':', " ")
+        );
     }
     for c in &s.cells {
         let _ = writeln!(
@@ -223,7 +241,9 @@ fn num<T: std::str::FromStr>(v: &str) -> Option<T> {
 pub fn parse_state(text: &str) -> RadioState {
     let mut s = RadioState::default();
     for line in text.lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         match k.trim() {
             "modem" => {
                 s.modem = match v.trim() {
@@ -293,7 +313,9 @@ pub fn parse_state(text: &str) -> RadioState {
 
 /// Zustand lesen; fehlt die Datei (Dienst läuft nicht), gilt „Modem aus".
 pub fn read_state() -> RadioState {
-    std::fs::read_to_string(state_path()).map(|t| parse_state(&t)).unwrap_or_default()
+    std::fs::read_to_string(state_path())
+        .map(|t| parse_state(&t))
+        .unwrap_or_default()
 }
 
 /// Zustand atomar schreiben (erst .tmp, dann umbenennen – die Oberfläche liest nie eine halbe Datei).
@@ -393,7 +415,15 @@ pub struct Prefs {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { mode: Mode::Smart, pinned: None, data_sim: 1, call_sim: 1, sms_sim: 1, roaming: false, tech: Tech::Auto }
+        Prefs {
+            mode: Mode::Smart,
+            pinned: None,
+            data_sim: 1,
+            call_sim: 1,
+            sms_sim: 1,
+            roaming: false,
+            tech: Tech::Auto,
+        }
     }
 }
 
@@ -416,7 +446,9 @@ pub fn parse_prefs(text: &str) -> Prefs {
         if line.trim_start().starts_with('#') {
             continue;
         }
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         let v = v.trim();
         match k.trim() {
             "mode" => p.mode = Mode::from_key(v),
@@ -433,7 +465,9 @@ pub fn parse_prefs(text: &str) -> Prefs {
 }
 
 pub fn read_prefs() -> Prefs {
-    std::fs::read_to_string(prefs_path()).map(|t| parse_prefs(&t)).unwrap_or_default()
+    std::fs::read_to_string(prefs_path())
+        .map(|t| parse_prefs(&t))
+        .unwrap_or_default()
 }
 
 pub fn write_prefs(p: &Prefs) -> std::io::Result<()> {
@@ -453,7 +487,10 @@ pub fn send_cmd(line: &str) -> std::io::Result<()> {
     if let Some(dir) = std::path::Path::new(&p).parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&p)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&p)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -466,9 +503,14 @@ pub fn send_cmd(line: &str) -> std::io::Result<()> {
 /// Alle anstehenden Befehle abholen und die Datei leeren (Funkdienst).
 pub fn take_cmds() -> Vec<String> {
     let p = cmd_path();
-    let Ok(t) = std::fs::read_to_string(&p) else { return Vec::new() };
+    let Ok(t) = std::fs::read_to_string(&p) else {
+        return Vec::new();
+    };
     let _ = std::fs::write(&p, "");
-    t.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    t.lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
 }
 
 // ---------------------------------------------------------------- Bewertung
@@ -493,7 +535,11 @@ pub const SMART_HOLD_S: u64 = 30;
 
 /// Typische Kanalbreite je LTE-Band in MHz (für die Schätzung, wenn keine Messung vorliegt).
 fn bandwidth_mhz(band: &str) -> f32 {
-    match band.trim_start_matches(['B', 'b']).parse::<u32>().unwrap_or(0) {
+    match band
+        .trim_start_matches(['B', 'b'])
+        .parse::<u32>()
+        .unwrap_or(0)
+    {
         20 | 8 | 28 => 10.0,
         3 | 7 => 20.0,
         1 => 15.0,
@@ -513,7 +559,10 @@ pub fn est_mbps(c: &Cell) -> Option<f32> {
     };
     // Shannon-Grenze × Praxisfaktor; freie Kapazität nach Auslastung
     let eff = (1.0 + 10f32.powf(sinr / 10.0)).log2();
-    let free = 1.0 - c.load.map(|l| l.min(100) as f32 / 100.0 * 0.85).unwrap_or(0.4);
+    let free = 1.0
+        - c.load
+            .map(|l| l.min(100) as f32 / 100.0 * 0.85)
+            .unwrap_or(0.4);
     Some((bandwidth_mhz(&c.band) * eff * 0.6 * free).max(0.1))
 }
 
@@ -523,7 +572,11 @@ fn usable(c: &Cell) -> bool {
 
 /// Zelle mit dem stärksten Signal (Auto-Modus).
 pub fn strongest(cells: &[Cell]) -> Option<u32> {
-    cells.iter().filter(|c| c.rsrp.is_some()).max_by_key(|c| c.rsrp.unwrap_or(i32::MIN)).map(|c| c.id)
+    cells
+        .iter()
+        .filter(|c| c.rsrp.is_some())
+        .max_by_key(|c| c.rsrp.unwrap_or(i32::MIN))
+        .map(|c| c.id)
 }
 
 /// Zelle mit dem besten Tempo unter den verlässlich nutzbaren (Smart-Modus).
@@ -580,7 +633,12 @@ impl SmartGate {
 
     /// Wartet gerade ein Wechsel? (Zelle, verbleibende Sekunden)
     pub fn pending(&self, now_s: u64) -> Option<(u32, u64)> {
-        self.cand.map(|c| (c, SMART_HOLD_S.saturating_sub(now_s.saturating_sub(self.since))))
+        self.cand.map(|c| {
+            (
+                c,
+                SMART_HOLD_S.saturating_sub(now_s.saturating_sub(self.since)),
+            )
+        })
     }
 }
 
@@ -603,8 +661,18 @@ pub fn demo() -> RadioState {
     RadioState {
         modem: Modem::Online,
         sims: vec![
-            Sim { slot: 1, state: SimState::Ready, operator: "Demo-Netz".into(), number: String::new() },
-            Sim { slot: 2, state: SimState::Pin, operator: String::new(), number: String::new() },
+            Sim {
+                slot: 1,
+                state: SimState::Ready,
+                operator: "Demo-Netz".into(),
+                number: String::new(),
+            },
+            Sim {
+                slot: 2,
+                state: SimState::Pin,
+                operator: String::new(),
+                number: String::new(),
+            },
         ],
         rat: "LTE-A".into(),
         plmn: "00101".into(),
@@ -655,7 +723,15 @@ mod tests {
 
     #[test]
     fn prefs_roundtrip() {
-        let p = Prefs { mode: Mode::Manual, pinned: Some(4), data_sim: 2, call_sim: 0, sms_sim: 1, roaming: true, tech: Tech::Lte };
+        let p = Prefs {
+            mode: Mode::Manual,
+            pinned: Some(4),
+            data_sim: 2,
+            call_sim: 0,
+            sms_sim: 1,
+            roaming: true,
+            tech: Tech::Lte,
+        };
         assert_eq!(parse_prefs(&format_prefs(&p)), p);
         assert_eq!(parse_prefs("data_sim=9\n").data_sim, 1);
     }

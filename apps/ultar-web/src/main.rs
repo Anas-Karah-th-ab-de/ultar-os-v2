@@ -65,7 +65,15 @@ struct Args {
 }
 
 fn args() -> Args {
-    let mut a = Args { url: String::new(), profile: String::new(), app: false, desktop: false, shot: None, wait: 8, size: (720, 1520) };
+    let mut a = Args {
+        url: String::new(),
+        profile: String::new(),
+        app: false,
+        desktop: false,
+        shot: None,
+        wait: 8,
+        size: (720, 1520),
+    };
     let mut it = std::env::args().skip(1);
     while let Some(x) = it.next() {
         match x.as_str() {
@@ -76,12 +84,18 @@ fn args() -> Args {
             "--shot" => a.shot = it.next(),
             "--warten" | "--wait" => a.wait = it.next().and_then(|s| s.parse().ok()).unwrap_or(8),
             "--groesse" | "--size" => {
-                if let Some((w, h)) = it.next().and_then(|s| s.split_once('x').map(|(a, b)| (a.parse().unwrap_or(720), b.parse().unwrap_or(1520)))) {
+                if let Some((w, h)) = it.next().and_then(|s| {
+                    s.split_once('x')
+                        .map(|(a, b)| (a.parse().unwrap_or(720), b.parse().unwrap_or(1520)))
+                }) {
                     a.size = (w, h);
                 }
             }
             "--version" => {
-                println!("ultar-web {} (Rust-Kern, Engine: WPE WebKit)", env!("CARGO_PKG_VERSION"));
+                println!(
+                    "ultar-web {} (Rust-Kern, Engine: WPE WebKit)",
+                    env!("CARGO_PKG_VERSION")
+                );
                 std::process::exit(0);
             }
             s if !s.starts_with("--") => a.url = s.to_string(),
@@ -94,8 +108,18 @@ fn args() -> Args {
 /// Einstellungen des Systems (Sprache, Farbschema, Akzent) aus /data/ultar/settings.toml
 fn system_settings() -> (String, bool, usize) {
     let s = std::fs::read_to_string("/data/ultar/settings.toml").unwrap_or_default();
-    let get = |k: &str| s.lines().find_map(|l| l.trim().strip_prefix(k).and_then(|r| r.trim_start().strip_prefix('=')).map(|v| v.trim().trim_matches('"').to_string()));
-    let lang = std::env::var("ULTAR_LANG").ok().or_else(|| get("lang")).unwrap_or_else(|| "ar".into());
+    let get = |k: &str| {
+        s.lines().find_map(|l| {
+            l.trim()
+                .strip_prefix(k)
+                .and_then(|r| r.trim_start().strip_prefix('='))
+                .map(|v| v.trim().trim_matches('"').to_string())
+        })
+    };
+    let lang = std::env::var("ULTAR_LANG")
+        .ok()
+        .or_else(|| get("lang"))
+        .unwrap_or_else(|| "ar".into());
     let dark = get("dark").map(|v| v != "false").unwrap_or(true);
     let accent = get("accent").and_then(|v| v.parse().ok()).unwrap_or(0);
     (lang, dark, accent)
@@ -106,14 +130,33 @@ fn profile_for(url: &str, app: bool) -> String {
     if !app {
         return "browser".into();
     }
-    let h = url.split_once("://").map(|x| x.1).unwrap_or(url).split('/').next().unwrap_or("").to_lowercase();
-    for (k, v) in [("whatsapp.com", "whatsapp"), ("telegram.org", "telegram"), ("youtube.com", "youtube"), ("spotify.com", "spotify")] {
+    let h = url
+        .split_once("://")
+        .map(|x| x.1)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    for (k, v) in [
+        ("whatsapp.com", "whatsapp"),
+        ("telegram.org", "telegram"),
+        ("youtube.com", "youtube"),
+        ("spotify.com", "spotify"),
+    ] {
         if h.contains(k) {
             return v.into();
         }
     }
-    let s: String = h.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    if s.is_empty() { "browser".into() } else { s }
+    let s: String = h
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    if s.is_empty() {
+        "browser".into()
+    } else {
+        s
+    }
 }
 
 #[cfg(not(ultar_engine))]
@@ -132,11 +175,18 @@ fn main() {
     let bundle = std::env::var("ULTAR_WEB_BUNDLE").unwrap_or_else(|_| "/usr/lib/ultar/web".into());
     let (lang, dark, accent) = system_settings();
     let app = a.app || std::env::var("ULTAR_WEB_APP").is_ok();
-    let profile = if a.profile.is_empty() { profile_for(&a.url, app) } else { a.profile.clone() };
+    let profile = if a.profile.is_empty() {
+        profile_for(&a.url, app)
+    } else {
+        a.profile.clone()
+    };
     let base = if std::path::Path::new("/data/ultar").is_dir() && a.shot.is_none() {
         "/data/ultar/web".to_string()
     } else {
-        format!("{}/.ultar-web", std::env::var("HOME").unwrap_or_else(|_| "/tmp".into()))
+        format!(
+            "{}/.ultar-web",
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())
+        )
     };
     let data_dir = format!("{base}/{profile}");
     let _ = std::fs::create_dir_all(&data_dir);
@@ -151,9 +201,15 @@ fn main() {
             std::env::set_var(k, v)
         }
     };
-    env("WEBKIT_EXEC_PATH", format!("{bundle}/libexec/wpe-webkit-2.0"));
+    env(
+        "WEBKIT_EXEC_PATH",
+        format!("{bundle}/libexec/wpe-webkit-2.0"),
+    );
     env("GIO_MODULE_DIR", format!("{bundle}/lib/gio/modules"));
-    env("WEBKIT_INJECTED_BUNDLE_PATH", format!("{bundle}/lib/wpe-webkit-2.0/injected-bundle"));
+    env(
+        "WEBKIT_INJECTED_BUNDLE_PATH",
+        format!("{bundle}/lib/wpe-webkit-2.0/injected-bundle"),
+    );
     env("GCONV_PATH", format!("{bundle}/lib/gconv"));
     env("LANG", "C.UTF-8".into());
     // Ohne GPU: Skia zeichnet auf der CPU direkt in Shared Memory (Patch 0002 in ultar-wpewebkit)
@@ -164,14 +220,27 @@ fn main() {
     let hw = hw_decoder_ok();
     env(
         "GST_PLUGIN_SYSTEM_PATH_1_0",
-        if hw { format!("{bundle}/lib/gstreamer-1.0:{bundle}/lib/gstreamer-hw") } else { format!("{bundle}/lib/gstreamer-1.0") },
+        if hw {
+            format!("{bundle}/lib/gstreamer-1.0:{bundle}/lib/gstreamer-hw")
+        } else {
+            format!("{bundle}/lib/gstreamer-1.0")
+        },
     );
-    env("GST_PLUGIN_SCANNER_1_0", format!("{bundle}/libexec/gstreamer-1.0/gst-plugin-scanner"));
+    env(
+        "GST_PLUGIN_SCANNER_1_0",
+        format!("{bundle}/libexec/gstreamer-1.0/gst-plugin-scanner"),
+    );
     env("GST_REGISTRY_1_0", format!("{data_dir}/gst-registry.bin"));
     env("FONTCONFIG_FILE", format!("{bundle}/etc/fonts/fonts.conf"));
     env("XKB_CONFIG_ROOT", format!("{bundle}/share/X11/xkb"));
-    env("WEBKIT_TLS_CAFILE_PEM", format!("{bundle}/etc/ssl/certs/ca-certificates.crt"));
-    env("SSL_CERT_FILE", format!("{bundle}/etc/ssl/certs/ca-certificates.crt"));
+    env(
+        "WEBKIT_TLS_CAFILE_PEM",
+        format!("{bundle}/etc/ssl/certs/ca-certificates.crt"),
+    );
+    env(
+        "SSL_CERT_FILE",
+        format!("{bundle}/etc/ssl/certs/ca-certificates.crt"),
+    );
     env("XDG_DATA_HOME", format!("{data_dir}/share"));
     env("XDG_CACHE_HOME", format!("{data_dir}/cache"));
     env("XDG_CONFIG_HOME", format!("{data_dir}/config"));
@@ -198,7 +267,10 @@ fn main() {
         let fd = eventfd();
         let _ = i.wait(0, unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) });
     }
-    let (touch, keyboard) = inp.as_ref().map(|i| (i.has_touch, true)).unwrap_or((true, true));
+    let (touch, keyboard) = inp
+        .as_ref()
+        .map(|i| (i.has_touch, true))
+        .unwrap_or((true, true));
     let dropped = sandbox::drop_privileges(&data_dir, sched::topo().ram_mb);
     let _ = std::fs::create_dir_all(format!("{data_dir}/run"));
     eprintln!("ultar-web: {}x{} · {} Kerne (schnell {:?}) · Profil {profile} · Rechte abgegeben: {dropped}", w, h, sched::topo().ncpu, sched::topo().big);
@@ -219,7 +291,10 @@ fn main() {
     {
         let st = stats.clone();
         let wk = wake;
-        std::thread::Builder::new().name("compositor".into()).spawn(move || compositor::run(scr, crx, otx, wk, st, bg)).expect("Compositor-Thread");
+        std::thread::Builder::new()
+            .name("compositor".into())
+            .spawn(move || compositor::run(scr, crx, otx, wk, st, bg))
+            .expect("Compositor-Thread");
     }
     if let Some(mut i) = inp {
         let wk = wake;
@@ -228,7 +303,9 @@ fn main() {
             .spawn(move || {
                 sched::pin_current_to_big();
                 loop {
-                    let evs = i.wait(10_000, unsafe { std::os::fd::BorrowedFd::borrow_raw(quit_fd) });
+                    let evs = i.wait(10_000, unsafe {
+                        std::os::fd::BorrowedFd::borrow_raw(quit_fd)
+                    });
                     if evs.is_empty() {
                         continue;
                     }
@@ -246,7 +323,11 @@ fn main() {
     unsafe {
         use ffi::*;
         let lp = g_main_loop_new(std::ptr::null_mut(), FALSE);
-        unsafe extern "C" fn on_wake(fd: std::ffi::c_int, _c: std::ffi::c_uint, _d: gpointer) -> gboolean {
+        unsafe extern "C" fn on_wake(
+            fd: std::ffi::c_int,
+            _c: std::ffi::c_uint,
+            _d: gpointer,
+        ) -> gboolean {
             let mut v = 0u64;
             libc::read(fd, &mut v as *mut u64 as *mut _, 8);
             browser::pump();
@@ -311,7 +392,9 @@ fn hw_decoder_ok() -> bool {
         .map(|rd| {
             rd.flatten()
                 .filter(|e| {
-                    let n = std::fs::read_to_string(e.path().join("name")).unwrap_or_default().to_lowercase();
+                    let n = std::fs::read_to_string(e.path().join("name"))
+                        .unwrap_or_default()
+                        .to_lowercase();
                     n.contains("mfc") || n.contains("dec")
                 })
                 .map(|e| format!("/dev/{}", e.file_name().to_string_lossy()))
@@ -364,12 +447,25 @@ fn hw_decoder_ok() -> bool {
 /// Feste Pfade von WPE WebKit (Release-Bau) auf das Bündel verweisen lassen.
 pub fn link_fixed_paths(bundle: &str) {
     for (fixed, target) in [
-        ("/usr/libexec/wpe-webkit-2.0", format!("{bundle}/libexec/wpe-webkit-2.0")),
-        ("/usr/lib/wpe-webkit-2.0", format!("{bundle}/lib/wpe-webkit-2.0")),
-        ("/usr/share/wpe-webkit-2.0", format!("{bundle}/share/wpe-webkit-2.0")),
+        (
+            "/usr/libexec/wpe-webkit-2.0",
+            format!("{bundle}/libexec/wpe-webkit-2.0"),
+        ),
+        (
+            "/usr/lib/wpe-webkit-2.0",
+            format!("{bundle}/lib/wpe-webkit-2.0"),
+        ),
+        (
+            "/usr/share/wpe-webkit-2.0",
+            format!("{bundle}/share/wpe-webkit-2.0"),
+        ),
     ] {
         let p = std::path::Path::new(fixed);
-        if std::fs::read_link(p).map(|t| t.to_string_lossy() == target).unwrap_or(false) || !std::path::Path::new(&target).exists() {
+        if std::fs::read_link(p)
+            .map(|t| t.to_string_lossy() == target)
+            .unwrap_or(false)
+            || !std::path::Path::new(&target).exists()
+        {
             continue;
         }
         if p.symlink_metadata().is_ok() {
@@ -411,7 +507,13 @@ impl compositor::Screen for Disp {
 mod tests {
     #[test]
     fn profile() {
-        assert_eq!(super::profile_for("https://web.whatsapp.com/", true), "whatsapp");
-        assert_eq!(super::profile_for("https://example.org/x", false), "browser");
+        assert_eq!(
+            super::profile_for("https://web.whatsapp.com/", true),
+            "whatsapp"
+        );
+        assert_eq!(
+            super::profile_for("https://example.org/x", false),
+            "browser"
+        );
     }
 }

@@ -72,7 +72,13 @@ pub struct FaceRun {
 impl FaceRun {
     /// `args`: z. B. ["pruefen", "8"] oder ["anlernen", "40"]. Ereignisse kommen über `on`.
     pub fn start(args: &[&str], on: impl Fn(FaceEv) + Send + 'static) -> Option<Self> {
-        let mut child = Command::new(BIN).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+        let mut child = Command::new(BIN)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
         let out = child.stdout.take()?;
         let id = child.id();
         std::thread::Builder::new()

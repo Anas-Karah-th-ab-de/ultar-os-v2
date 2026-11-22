@@ -1,0 +1,21 @@
+[package]
+name = "ultar-i18n"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The one translation and locale system of Ultar OS (Arabic first, then English and German)"
+
+
+[features]
+default = ["std"]
+std = []
+
+[lib]
+name = "ultar_i18n"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-i18n-check"
+path = "src/bin/ultar-i18n-check.rs"
+required-features = ["std"]

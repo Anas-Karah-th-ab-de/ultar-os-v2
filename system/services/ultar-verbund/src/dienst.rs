@@ -6,8 +6,8 @@ use crate::entdeckung::{self, Gesehen, Meldung, Tabelle};
 use crate::ident::{self, Ident};
 use crate::kanal::{Kanal, TcpTransport, Transport};
 use crate::proto::{Aufgabe, Ergebnis, Nachricht, Zustand};
-use base64::Engine;
 use crate::relay::{Anmeldung, Relais};
+use base64::Engine;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::{HashMap, VecDeque};
@@ -20,7 +20,10 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 pub fn log(s: &str) {
-    if std::env::var("ULTAR_VERBUND_LOG").map(|v| v != "0").unwrap_or(true) {
+    if std::env::var("ULTAR_VERBUND_LOG")
+        .map(|v| v != "0")
+        .unwrap_or(true)
+    {
         eprintln!("[verbund] {s}");
     }
 }
@@ -32,13 +35,23 @@ const MAX_AUSGABE: usize = 16 << 20;
 /// Befehl mit Eingabe und Zeitlimit ausführen
 pub fn ausfuehren(a: &Aufgabe, knoten: &str) -> Ergebnis {
     let t = Instant::now();
-    let mut e = Ergebnis { id: a.id.clone(), code: -1, ausgabe: String::new(), fehler: String::new(), dauer_ms: 0, knoten: knoten.into() };
+    let mut e = Ergebnis {
+        id: a.id.clone(),
+        code: -1,
+        ausgabe: String::new(),
+        fehler: String::new(),
+        dauer_ms: 0,
+        knoten: knoten.into(),
+    };
     if a.befehl.is_empty() {
         e.fehler = "leerer Befehl".into();
         return e;
     }
     let mut cmd = Command::new(&a.befehl[0]);
-    cmd.args(&a.befehl[1..]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(&a.befehl[1..])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     ohne_netz(&mut cmd);
     let kind = cmd.spawn();
     let mut kind = match kind {
@@ -66,7 +79,11 @@ pub fn ausfuehren(a: &Aufgabe, knoten: &str) -> Ergebnis {
         let _ = (&mut se).take(1 << 20).read_to_end(&mut v);
         v
     });
-    let limit = if a.zeit_ms == 0 { Duration::from_secs(600) } else { Duration::from_millis(a.zeit_ms) };
+    let limit = if a.zeit_ms == 0 {
+        Duration::from_secs(600)
+    } else {
+        Duration::from_millis(a.zeit_ms)
+    };
     let code = loop {
         match kind.try_wait() {
             Ok(Some(s)) => break s.code().unwrap_or(-1),
@@ -182,10 +199,19 @@ impl Dienst {
         let z = ZustandDatei {
             ich: Some(self.zustand()),
             geraete: self.alle_geraete(),
-            relais: self.relais.lock().unwrap().as_ref().map(|r| r.verbunden.load(Ordering::SeqCst)).unwrap_or(false),
+            relais: self
+                .relais
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|r| r.verbunden.load(Ordering::SeqCst))
+                .unwrap_or(false),
             erledigt: self.erledigt.load(Ordering::SeqCst),
             zeit_ms: crate::jetzt_ms(),
-            mining: crate::mining::MINER.try_lock().map(|m| m.grund.clone()).unwrap_or_default(),
+            mining: crate::mining::MINER
+                .try_lock()
+                .map(|m| m.grund.clone())
+                .unwrap_or_default(),
         };
         let p = self.dir.join("zustand.json");
         let tmp = self.dir.join("zustand.json.neu");
@@ -257,12 +283,19 @@ impl Dienst {
 
     fn koppeln(&self, partner_pk: &[u8], name: &str, mac: &str) -> Nachricht {
         let p = self.dir.join("koppeln.json");
-        let Some(mut kc) = std::fs::read_to_string(&p).ok().and_then(|s| serde_json::from_str::<KoppelCode>(&s).ok()) else {
-            return Nachricht::Fehler { text: "keine Kopplung offen".into() };
+        let Some(mut kc) = std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|s| serde_json::from_str::<KoppelCode>(&s).ok())
+        else {
+            return Nachricht::Fehler {
+                text: "keine Kopplung offen".into(),
+            };
         };
         if crate::jetzt_ms() > kc.bis_ms {
             let _ = std::fs::remove_file(&p);
-            return Nachricht::Fehler { text: "Code abgelaufen".into() };
+            return Nachricht::Fehler {
+                text: "Code abgelaufen".into(),
+            };
         }
         let erwartet = koppel_mac(&kc.code, partner_pk, &self.ich.oeffentlich);
         if erwartet != mac {
@@ -273,11 +306,19 @@ impl Dienst {
             } else {
                 let _ = std::fs::write(&p, serde_json::to_vec(&kc).unwrap());
             }
-            return Nachricht::Fehler { text: "falscher Code".into() };
+            return Nachricht::Fehler {
+                text: "falscher Code".into(),
+            };
         }
         let _ = std::fs::remove_file(&p);
         let pk = ident::hex(partner_pk);
-        let partner = Partner { kennung: ident::kennung(partner_pk), pk, name: name.chars().take(64).collect(), rolle: kc.rolle, quelle: "code".into() };
+        let partner = Partner {
+            kennung: ident::kennung(partner_pk),
+            pk,
+            name: name.chars().take(64).collect(),
+            rolle: kc.rolle,
+            quelle: "code".into(),
+        };
         {
             let mut c = self.cfg.write().unwrap();
             // frisch von der Platte, damit parallele CLI-Änderungen nicht verloren gehen
@@ -287,14 +328,22 @@ impl Dienst {
             c.partner = neu.partner;
             *self.cfg_zeit.lock().unwrap() = None;
         }
-        log(&format!("gekoppelt mit {} ({})", partner.name, partner.kennung));
+        log(&format!(
+            "gekoppelt mit {} ({})",
+            partner.name, partner.kennung
+        ));
         let name = self.cfg.read().unwrap().name.clone();
-        Nachricht::KoppelnOk { name, mac: koppel_mac(&kc.code, &self.ich.oeffentlich, partner_pk) }
+        Nachricht::KoppelnOk {
+            name,
+            mac: koppel_mac(&kc.code, &self.ich.oeffentlich, partner_pk),
+        }
     }
 
     /// Einstellungen neu laden, wenn die Datei sich geändert hat (an/aus, Partner, Relais) – vor jeder Vertrauensentscheidung
     pub fn frisch(&self) {
-        let m = std::fs::metadata(crate::config::pfad(&self.dir)).and_then(|m| m.modified()).ok();
+        let m = std::fs::metadata(crate::config::pfad(&self.dir))
+            .and_then(|m| m.modified())
+            .ok();
         let kern = std::path::Path::new("/proc/ultar/verbund").exists();
         {
             let mut z = self.cfg_zeit.lock().unwrap();
@@ -306,7 +355,11 @@ impl Dienst {
         let neu = Config::laden(&self.dir);
         let alt_aktiv = self.cfg.read().unwrap().aktiv;
         if neu.aktiv != alt_aktiv {
-            log(if neu.aktiv { "Verbund AN" } else { "Verbund AUS" });
+            log(if neu.aktiv {
+                "Verbund AN"
+            } else {
+                "Verbund AUS"
+            });
             if !neu.aktiv {
                 self.netz.lock().unwrap().clear();
             }
@@ -315,7 +368,12 @@ impl Dienst {
     }
 
     /// Aufgabe rechnen und dabei alle 2 s „Laeuft“ senden; None = Verbindung weg
-    fn mit_lebenszeichen(self: &Arc<Self>, k: &mut Kanal, pk: &str, a: &Aufgabe) -> Option<Nachricht> {
+    fn mit_lebenszeichen(
+        self: &Arc<Self>,
+        k: &mut Kanal,
+        pk: &str,
+        a: &Aufgabe,
+    ) -> Option<Nachricht> {
         let (tx, rx) = std::sync::mpsc::channel();
         let (d, pk2, a2) = (self.clone(), pk.to_string(), a.clone());
         std::thread::spawn(move || {
@@ -329,7 +387,11 @@ impl Dienst {
                         return None; // Ergebnis landet im Zwischenspeicher – Wiederholung bekommt es sofort
                     }
                 }
-                Err(_) => return Some(Nachricht::Fehler { text: "intern".into() }),
+                Err(_) => {
+                    return Some(Nachricht::Fehler {
+                        text: "intern".into(),
+                    })
+                }
             }
         }
     }
@@ -355,17 +417,31 @@ impl Dienst {
             self.frisch();
             let (aktiv, partner, steuern, rechnen_ok, c) = {
                 let c = self.cfg.read().unwrap();
-                (c.aktiv, c.partner(&pk).cloned(), c.steuern_erlauben, c.rechnen_erlauben, c.clone())
+                (
+                    c.aktiv,
+                    c.partner(&pk).cloned(),
+                    c.steuern_erlauben,
+                    c.rechnen_erlauben,
+                    c.clone(),
+                )
             };
             if !aktiv {
-                let _ = k.nachricht_senden(&Nachricht::Fehler { text: "Verbund ist aus".into() });
+                let _ = k.nachricht_senden(&Nachricht::Fehler {
+                    text: "Verbund ist aus".into(),
+                });
                 return;
             }
             let antwort = match (&m, &partner) {
                 (Nachricht::Koppeln { name, mac }, _) => self.koppeln(&k.partner_pk, name, mac),
                 (_, None) => {
-                    let _ = k.nachricht_senden(&Nachricht::Fehler { text: "nicht gekoppelt".into() });
-                    log(&format!("abgewiesen: {} ist nicht gekoppelt ({})", ident::kennung(&k.partner_pk), k.weg()));
+                    let _ = k.nachricht_senden(&Nachricht::Fehler {
+                        text: "nicht gekoppelt".into(),
+                    });
+                    log(&format!(
+                        "abgewiesen: {} ist nicht gekoppelt ({})",
+                        ident::kennung(&k.partner_pk),
+                        k.weg()
+                    ));
                     return;
                 }
                 (Nachricht::Zustand, Some(_)) => Nachricht::ZustandAntwort(self.zustand()),
@@ -376,7 +452,9 @@ impl Dienst {
                             None => return,
                         }
                     } else {
-                        Nachricht::Fehler { text: "Rechnen auf diesem Gerät nicht erlaubt".into() }
+                        Nachricht::Fehler {
+                            text: "Rechnen auf diesem Gerät nicht erlaubt".into(),
+                        }
                     }
                 }
                 (Nachricht::Steuern(a), Some(p)) => {
@@ -387,7 +465,9 @@ impl Dienst {
                             None => return,
                         }
                     } else {
-                        Nachricht::Fehler { text: "Steuern nicht erlaubt".into() }
+                        Nachricht::Fehler {
+                            text: "Steuern nicht erlaubt".into(),
+                        }
                     }
                 }
                 (m, Some(p)) => self.weitere(m, p, &c, &mut sitzung),
@@ -411,13 +491,25 @@ pub struct Sitzung {
 }
 
 impl Dienst {
-    fn weitere(self: &Arc<Self>, m: &Nachricht, p: &Partner, c: &Config, s: &mut Sitzung) -> Nachricht {
+    fn weitere(
+        self: &Arc<Self>,
+        m: &Nachricht,
+        p: &Partner,
+        c: &Config,
+        s: &mut Sitzung,
+    ) -> Nachricht {
         use crate::bildschirm as bs;
         let voll = p.rolle == Rolle::Voll;
-        let nein = |t: &str| Nachricht::Fehler { text: format!("{t} auf diesem Gerät nicht erlaubt") };
+        let nein = |t: &str| Nachricht::Fehler {
+            text: format!("{t} auf diesem Gerät nicht erlaubt"),
+        };
         let b64 = base64::engine::general_purpose::STANDARD;
         match m {
-            Nachricht::Teilen | Nachricht::Fern { .. } | Nachricht::Aktion { .. } if !(voll && c.bildschirm_erlauben) => nein("Bildschirm teilen"),
+            Nachricht::Teilen | Nachricht::Fern { .. } | Nachricht::Aktion { .. }
+                if !(voll && c.bildschirm_erlauben) =>
+            {
+                nein("Bildschirm teilen")
+            }
             Nachricht::Teilen => {
                 if let Err(e) = bs::oberflaeche_sicherstellen() {
                     return Nachricht::Fehler { text: e };
@@ -427,12 +519,21 @@ impl Dienst {
                 if !s.gemeldet {
                     s.gemeldet = true;
                     log(&format!("bildschirm geteilt mit {}", p.name));
-                    crate::weitergeben::hinweis("Bildschirm wird geteilt", &format!("{} sieht und bedient diesen Bildschirm", p.name));
+                    crate::weitergeben::hinweis(
+                        "Bildschirm wird geteilt",
+                        &format!("{} sieht und bedient diesen Bildschirm", p.name),
+                    );
                 }
                 s.bild = None;
-                Nachricht::Ok { text: "teilen".into() }
+                Nachricht::Ok {
+                    text: "teilen".into(),
+                }
             }
-            Nachricht::Fern { eingaben, warte_ms, voll: ganz } => {
+            Nachricht::Fern {
+                eingaben,
+                warte_ms,
+                voll: ganz,
+            } => {
                 bs::anfordern();
                 bs::benutzt();
                 for z in eingaben.iter().filter(|z| bs::eingabe_erlaubt(z)) {
@@ -458,19 +559,33 @@ impl Dienst {
                 match neu {
                     Some(b) => {
                         let daten = bs::kodieren(&b, s.bild.as_ref(), *ganz);
-                        let antwort = Nachricht::Bild { w: b.w as u32, h: b.h as u32, nr: b.nr, daten: b64.encode(daten) };
+                        let antwort = Nachricht::Bild {
+                            w: b.w as u32,
+                            h: b.h as u32,
+                            nr: b.nr,
+                            daten: b64.encode(daten),
+                        };
                         s.bild = Some(b);
                         antwort
                     }
                     None => match &s.bild {
-                        Some(b) => Nachricht::Bild { w: b.w as u32, h: b.h as u32, nr: b.nr, daten: String::new() },
-                        None => Nachricht::Fehler { text: "noch kein Bild (Oberfläche startet)".into() },
+                        Some(b) => Nachricht::Bild {
+                            w: b.w as u32,
+                            h: b.h as u32,
+                            nr: b.nr,
+                            daten: String::new(),
+                        },
+                        None => Nachricht::Fehler {
+                            text: "noch kein Bild (Oberfläche startet)".into(),
+                        },
                     },
                 }
             }
             Nachricht::Aktion { zeile } => {
                 if !bs::eingabe_erlaubt(zeile) {
-                    return Nachricht::Fehler { text: "unbekannte Aktion".into() };
+                    return Nachricht::Fehler {
+                        text: "unbekannte Aktion".into(),
+                    };
                 }
                 if let Err(e) = bs::oberflaeche_sicherstellen() {
                     return Nachricht::Fehler { text: e };
@@ -478,26 +593,41 @@ impl Dienst {
                 bs::benutzt();
                 log(&format!("aktion von {}: {zeile}", p.name));
                 match bs::an_oberflaeche(zeile) {
-                    Ok(()) => Nachricht::Ok { text: format!("ausgeführt: {zeile}") },
+                    Ok(()) => Nachricht::Ok {
+                        text: format!("ausgeführt: {zeile}"),
+                    },
                     Err(e) => Nachricht::Fehler { text: e },
                 }
             }
-            Nachricht::Datei { name, daten, oeffnen } => {
+            Nachricht::Datei {
+                name,
+                daten,
+                oeffnen,
+            } => {
                 if !c.dateien_erlauben {
                     return nein("Dateien annehmen");
                 }
                 let roh = match b64.decode(daten) {
                     Ok(r) => r,
-                    Err(_) => return Nachricht::Fehler { text: "Daten kaputt".into() },
+                    Err(_) => {
+                        return Nachricht::Fehler {
+                            text: "Daten kaputt".into(),
+                        }
+                    }
                 };
                 match crate::weitergeben::ablegen(name, &roh) {
                     Ok(pfad) => {
                         log(&format!("datei von {}: {}", p.name, pfad.display()));
-                        crate::weitergeben::hinweis(&format!("Von {}", p.name), &pfad.display().to_string());
+                        crate::weitergeben::hinweis(
+                            &format!("Von {}", p.name),
+                            &pfad.display().to_string(),
+                        );
                         if *oeffnen && bs::oberflaeche_laeuft() {
                             let _ = bs::an_oberflaeche(&format!("datei {}", pfad.display()));
                         }
-                        Nachricht::Ok { text: pfad.display().to_string() }
+                        Nachricht::Ok {
+                            text: pfad.display().to_string(),
+                        }
                     }
                     Err(e) => Nachricht::Fehler { text: e },
                 }
@@ -507,7 +637,9 @@ impl Dienst {
                     return nein("Ansicht öffnen");
                 }
                 if !bs::oberflaeche_laeuft() {
-                    return Nachricht::Fehler { text: "dieses Gerät hat keine Oberfläche zum Anzeigen".into() };
+                    return Nachricht::Fehler {
+                        text: "dieses Gerät hat keine Oberfläche zum Anzeigen".into(),
+                    };
                 }
                 // Ansicht des Absenders öffnen: eigener Prozess, die Oberfläche bekommt die Adresse
                 let exe = std::env::current_exe().unwrap_or_else(|_| "ultar-verbund".into());
@@ -519,23 +651,40 @@ impl Dienst {
                     .stderr(Stdio::null())
                     .spawn();
                 match r {
-                    Ok(_) => Nachricht::Ok { text: format!("zeige {}", p.name) },
-                    Err(e) => Nachricht::Fehler { text: e.to_string() },
+                    Ok(_) => Nachricht::Ok {
+                        text: format!("zeige {}", p.name),
+                    },
+                    Err(e) => Nachricht::Fehler {
+                        text: e.to_string(),
+                    },
                 }
             }
-            Nachricht::TonHoeren | Nachricht::TonWeiter | Nachricht::TonDaten { .. } if !(voll && c.ton_erlauben) => nein("Ton"),
+            Nachricht::TonHoeren | Nachricht::TonWeiter | Nachricht::TonDaten { .. }
+                if !(voll && c.ton_erlauben) =>
+            {
+                nein("Ton")
+            }
             Nachricht::TonHoeren => match crate::ton::Aufnahme::start() {
                 Ok(a) => {
                     log(&format!("{} hört mit", p.name));
-                    crate::weitergeben::hinweis("Mikrofon geteilt", &format!("{} hört dieses Gerät", p.name));
+                    crate::weitergeben::hinweis(
+                        "Mikrofon geteilt",
+                        &format!("{} hört dieses Gerät", p.name),
+                    );
                     s.aufnahme = Some(a);
-                    Nachricht::Ok { text: "hören".into() }
+                    Nachricht::Ok {
+                        text: "hören".into(),
+                    }
                 }
                 Err(e) => Nachricht::Fehler { text: e },
             },
             Nachricht::TonWeiter => match &s.aufnahme {
-                Some(a) => Nachricht::TonDaten { pcm: b64.encode(a.holen(250)) },
-                None => Nachricht::Fehler { text: "erst TonHoeren".into() },
+                Some(a) => Nachricht::TonDaten {
+                    pcm: b64.encode(a.holen(250)),
+                },
+                None => Nachricht::Fehler {
+                    text: "erst TonHoeren".into(),
+                },
             },
             Nachricht::TonDaten { pcm } => {
                 if s.wiedergabe.is_none() {
@@ -549,7 +698,9 @@ impl Dienst {
                 }
                 let roh = b64.decode(pcm).unwrap_or_default();
                 match s.wiedergabe.as_mut().unwrap().spielen(&roh) {
-                    Ok(()) => Nachricht::Ok { text: String::new() },
+                    Ok(()) => Nachricht::Ok {
+                        text: String::new(),
+                    },
                     Err(e) => {
                         s.wiedergabe = None;
                         Nachricht::Fehler { text: e }
@@ -579,7 +730,11 @@ impl Dienst {
                             let _ = k.speichern(&self.dir);
                             log(&format!("mining-einstellungen von {}", p.name));
                         }
-                        Err(e) => return Nachricht::Fehler { text: e.to_string() },
+                        Err(e) => {
+                            return Nachricht::Fehler {
+                                text: e.to_string(),
+                            }
+                        }
                     }
                 }
                 if *einrichten && !crate::mining::installiert(&self.dir) {
@@ -589,9 +744,13 @@ impl Dienst {
                         Err(e) => log(&format!("mining: einrichten fehlgeschlagen: {e}")),
                     });
                 }
-                Nachricht::MiningStatus { status: serde_json::to_value(crate::mining::status(&self.dir)).unwrap() }
+                Nachricht::MiningStatus {
+                    status: serde_json::to_value(crate::mining::status(&self.dir)).unwrap(),
+                }
             }
-            _ => Nachricht::Fehler { text: "unerwartet".into() },
+            _ => Nachricht::Fehler {
+                text: "unerwartet".into(),
+            },
         }
     }
 }
@@ -613,7 +772,14 @@ pub fn starten(dir: PathBuf) -> std::io::Result<()> {
         erledigt: AtomicUsize::new(0),
         cfg_zeit: Mutex::new(None),
     });
-    log(&format!("Ultar-Verbund {} – {} „{}“ ({}), {}", crate::VERSION, d.ich.kennung(), cfg.name, crate::ressourcen::ausgabe(), if cfg.aktiv { "AN" } else { "aus" }));
+    log(&format!(
+        "Ultar-Verbund {} – {} „{}“ ({}), {}",
+        crate::VERSION,
+        d.ich.kennung(),
+        cfg.name,
+        crate::ressourcen::ausgabe(),
+        if cfg.aktiv { "AN" } else { "aus" }
+    ));
     if crate::chaos::get().aktiv() {
         log(&format!("chaos aktiv: {:?}", crate::chaos::get()));
     }
@@ -645,11 +811,28 @@ pub fn starten(dir: PathBuf) -> std::io::Result<()> {
                         continue;
                     }
                     let neu = !d.netz.lock().unwrap().contains_key(&{
-                        serde_json::from_slice::<Meldung>(&b[..n]).map(|m| m.pk).unwrap_or_default()
+                        serde_json::from_slice::<Meldung>(&b[..n])
+                            .map(|m| m.pk)
+                            .unwrap_or_default()
                     });
-                    if let Some(g) = entdeckung::verarbeiten(&d.netz, &d.ich.pk_hex(), &b[..n], von, |pk| c.partner(pk).is_some()) {
+                    if let Some(g) =
+                        entdeckung::verarbeiten(&d.netz, &d.ich.pk_hex(), &b[..n], von, |pk| {
+                            c.partner(pk).is_some()
+                        })
+                    {
                         if neu {
-                            log(&format!("gefunden: {} „{}“ ({}) {} {}", g.kennung, g.name, g.ausgabe, g.adresse, if g.vertraut { "vertraut" } else { "nicht gekoppelt" }));
+                            log(&format!(
+                                "gefunden: {} „{}“ ({}) {} {}",
+                                g.kennung,
+                                g.name,
+                                g.ausgabe,
+                                g.adresse,
+                                if g.vertraut {
+                                    "vertraut"
+                                } else {
+                                    "nicht gekoppelt"
+                                }
+                            ));
                         }
                     }
                 }
@@ -724,14 +907,25 @@ pub fn starten(dir: PathBuf) -> std::io::Result<()> {
         if c.aktiv && letzte_meldung.elapsed() >= Duration::from_secs(2) {
             letzte_meldung = Instant::now();
             let z = d.zustand();
-            let meld = Meldung { v: 1, k: z.kennung, pk: d.ich.pk_hex(), n: z.name, a: z.ausgabe, p: c.tcp_port, kerne: z.kerne, frei: z.frei, aktiv: true };
+            let meld = Meldung {
+                v: 1,
+                k: z.kennung,
+                pk: d.ich.pk_hex(),
+                n: z.name,
+                a: z.ausgabe,
+                p: c.tcp_port,
+                kerne: z.kerne,
+                frei: z.frei,
+                aktiv: true,
+            };
             entdeckung::senden(&u, &meld, &entdeckung::ziele(c.udp_port, &c.ziele));
             entdeckung::aufraeumen(&d.netz);
         }
         if letzte_wartung.elapsed() >= Duration::from_secs(5) {
             letzte_wartung = Instant::now();
             crate::bildschirm::aufraeumen(Duration::from_secs(90));
-            let (dir2, name, belegt) = (dir.clone(), c.name.clone(), d.belegt.load(Ordering::SeqCst));
+            let (dir2, name, belegt) =
+                (dir.clone(), c.name.clone(), d.belegt.load(Ordering::SeqCst));
             std::thread::spawn(move || crate::mining::steuern(&dir2, &name, belegt));
         }
         d.schreibe_zustand();
@@ -754,16 +948,25 @@ pub fn verbinden(ich: &Ident, g: &Gesehen, relais: Option<&Arc<Relais>>) -> std:
     } else if let Some(r) = relais {
         Kanal::verbinden(Box::new(r.oeffnen(&pk)?), ich)?
     } else {
-        return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "kein Weg (Relais aus)"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "kein Weg (Relais aus)",
+        ));
     };
     if k.partner_pk != pk {
-        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "falscher Geräteschlüssel"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "falscher Geräteschlüssel",
+        ));
     }
     Ok(k)
 }
 
 pub fn zustand_lesen(dir: &std::path::Path) -> ZustandDatei {
-    std::fs::read_to_string(dir.join("zustand.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    std::fs::read_to_string(dir.join("zustand.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 /// Kindprozess ohne die Netz-Gruppe starten: darf der Verbund bei „Gerät offline“ ins Internet,

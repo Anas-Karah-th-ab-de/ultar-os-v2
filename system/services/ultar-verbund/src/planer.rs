@@ -69,7 +69,13 @@ impl Planer {
         Arc::new(Planer {
             ich,
             relais,
-            s: Mutex::new(Stand { offen: (0..n).collect(), laufend: HashMap::new(), fertig: vec![None; n], versuche: vec![0; n], rest: n }),
+            s: Mutex::new(Stand {
+                offen: (0..n).collect(),
+                laufend: HashMap::new(),
+                fertig: vec![None; n],
+                versuche: vec![0; n],
+                rest: n,
+            }),
             aufgaben,
             cv: Condvar::new(),
             stat: Mutex::new(Statistik::default()),
@@ -92,13 +98,24 @@ impl Planer {
                 return Some(i);
             }
             // Nachzügler doppelt starten (einmal), wenn sie schon > 3 s laufen
-            let kandidat = s.laufend.iter().filter(|(i, (t, n))| *n == 1 && s.fertig[**i].is_none() && t.elapsed() > Duration::from_secs(3)).map(|(i, _)| *i).next();
+            let kandidat = s
+                .laufend
+                .iter()
+                .filter(|(i, (t, n))| {
+                    *n == 1 && s.fertig[**i].is_none() && t.elapsed() > Duration::from_secs(3)
+                })
+                .map(|(i, _)| *i)
+                .next();
             if let Some(i) = kandidat {
                 s.laufend.get_mut(&i).unwrap().1 += 1;
                 self.stat.lock().unwrap().spekulativ += 1;
                 return Some(i);
             }
-            s = self.cv.wait_timeout(s, Duration::from_millis(100)).unwrap().0;
+            s = self
+                .cv
+                .wait_timeout(s, Duration::from_millis(100))
+                .unwrap()
+                .0;
         }
     }
 
@@ -113,9 +130,19 @@ impl Planer {
         if s.fertig[i].is_none() {
             s.fertig[i] = Some(e);
             s.rest -= 1;
-            *self.stat.lock().unwrap().je_knoten.entry(knoten.to_string()).or_default() += 1;
+            *self
+                .stat
+                .lock()
+                .unwrap()
+                .je_knoten
+                .entry(knoten.to_string())
+                .or_default() += 1;
             if !self.leise && std::env::var("ULTAR_VERBUND_FORTSCHRITT").is_ok() {
-                eprintln!("[verbund] {}/{} fertig ({knoten})", self.aufgaben.len() - s.rest, self.aufgaben.len());
+                eprintln!(
+                    "[verbund] {}/{} fertig ({knoten})",
+                    self.aufgaben.len() - s.rest,
+                    self.aufgaben.len()
+                );
             }
         }
         self.cv.notify_all();
@@ -138,7 +165,14 @@ impl Planer {
             self.stat.lock().unwrap().wiederholt += 1;
             if s.versuche[i] >= MAX_VERSUCHE {
                 let a = &self.aufgaben[i];
-                s.fertig[i] = Some(Ergebnis { id: a.id.clone(), code: -3, ausgabe: String::new(), fehler: "aufgegeben nach zu vielen Ausfällen".into(), dauer_ms: 0, knoten: String::new() });
+                s.fertig[i] = Some(Ergebnis {
+                    id: a.id.clone(),
+                    code: -3,
+                    ausgabe: String::new(),
+                    fehler: "aufgegeben nach zu vielen Ausfällen".into(),
+                    dauer_ms: 0,
+                    knoten: String::new(),
+                });
                 s.rest -= 1;
             } else {
                 s.offen.push_front(i);
@@ -190,7 +224,10 @@ impl Planer {
                         }
                         other => {
                             if std::env::var("ULTAR_VERBUND_LOG").is_ok() {
-                                eprintln!("[verbund] {name}: {:?}", other.as_ref().map(|_| "antwort").map_err(|e| e.to_string()));
+                                eprintln!(
+                                    "[verbund] {name}: {:?}",
+                                    other.as_ref().map(|_| "antwort").map_err(|e| e.to_string())
+                                );
                             }
                             kanal = None;
                             fehler_folge += 1;
@@ -202,7 +239,9 @@ impl Planer {
                                 }
                                 return;
                             }
-                            std::thread::sleep(Duration::from_millis(100 * (1 << fehler_folge.min(4))));
+                            std::thread::sleep(Duration::from_millis(
+                                100 * (1 << fehler_folge.min(4)),
+                            ));
                         }
                     }
                 }
@@ -245,7 +284,9 @@ impl Planer {
         // alle Geräte weg? Rest hier rechnen
         let rest: Vec<usize> = {
             let s = self.s.lock().unwrap();
-            (0..self.aufgaben.len()).filter(|i| s.fertig[*i].is_none()).collect()
+            (0..self.aufgaben.len())
+                .filter(|i| s.fertig[*i].is_none())
+                .collect()
         };
         for i in rest {
             let e = dienst::ausfuehren(&self.aufgaben[i], &self.ich.kennung());

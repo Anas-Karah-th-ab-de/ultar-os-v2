@@ -49,14 +49,23 @@ fn hw_params() -> [u8; 608] {
 /// Ton/PCM auf pcmC0D<dev>p spielen. `pcm` = 16-bit Stereo LE Interleaved.
 pub fn play(dev: u32, pcm: &[u8]) -> Result<(), String> {
     let path = format!("/dev/snd/pcmC0D{dev}p");
-    let mut f = OpenOptions::new().write(true).open(&path).map_err(|e| format!("{path}: {e}"))?;
+    let mut f = OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .map_err(|e| format!("{path}: {e}"))?;
     let fd = f.as_raw_fd();
     let mut hp = hw_params();
     if unsafe { ioctl(fd, PCM_HW_PARAMS, hp.as_mut_ptr()) } != 0 {
-        return Err(format!("{path}: HW_PARAMS {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "{path}: HW_PARAMS {}",
+            std::io::Error::last_os_error()
+        ));
     }
     if unsafe { ioctl(fd, PCM_PREPARE) } != 0 {
-        return Err(format!("{path}: PREPARE {}", std::io::Error::last_os_error()));
+        return Err(format!(
+            "{path}: PREPARE {}",
+            std::io::Error::last_os_error()
+        ));
     }
     // explizit STARTen (triggert DPCM-BE: UAIF-Startup/hw_params/trigger)
     unsafe { ioctl(fd, PCM_START) };
@@ -73,7 +82,9 @@ pub fn tone(hz: f32, ms: u32, vol: f32) -> Vec<u8> {
     let mut out = Vec::with_capacity(n * 4);
     for i in 0..n {
         let env = (i.min(n - 1 - i) as f32 / fade as f32).min(1.0);
-        let s = (((i as f64) * hz as f64 * std::f64::consts::TAU / RATE as f64).sin() as f32 * amp * env) as i16;
+        let s = (((i as f64) * hz as f64 * std::f64::consts::TAU / RATE as f64).sin() as f32
+            * amp
+            * env) as i16;
         out.extend_from_slice(&s.to_le_bytes());
         out.extend_from_slice(&s.to_le_bytes());
     }
@@ -94,7 +105,11 @@ pub fn klog_audio() -> Vec<String> {
         .lines()
         .filter(|l| {
             let d = l.to_lowercase();
-            d.contains("abox") || d.contains("uaif") || d.contains("calliope") || d.contains("cod3035") || d.contains("rdma")
+            d.contains("abox")
+                || d.contains("uaif")
+                || d.contains("calliope")
+                || d.contains("cod3035")
+                || d.contains("rdma")
         })
         .map(|s| s.to_string())
         .collect()

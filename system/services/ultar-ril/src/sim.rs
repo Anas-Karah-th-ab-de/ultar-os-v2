@@ -50,7 +50,11 @@ fn map_status(raw: u8) -> SimStatus {
         _ => SimState::Unknown,
     };
     let present = !matches!(state, SimState::Absent);
-    SimStatus { present, state, raw }
+    SimStatus {
+        present,
+        state,
+        raw,
+    }
 }
 
 /// SIM-/PIN-Status lesen.
@@ -70,15 +74,30 @@ pub fn sim_status<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::R
                 .unwrap_or(0xFF);
             Ok(map_status(raw))
         }
-        None => Ok(SimStatus { present: false, state: SimState::Unknown, raw: 0xFF }),
+        None => Ok(SimStatus {
+            present: false,
+            state: SimState::Unknown,
+            raw: 0xFF,
+        }),
     }
 }
 
 fn is_known_status(b: u8) -> bool {
     matches!(
         b,
-        PIN_READY | PIN_SIM_LOCK_REQUIRED | 0x02 | PIN_LOCK_SC | 0x04 | PIN_LOCK_PN | 0x06 | 0x07 | 0x08
-            | PIN_CARD_NOT_PRESENT | PIN_CARD_ERROR | PIN_INIT_COMPLETE | PIN_PB_INIT_COMPLETE
+        PIN_READY
+            | PIN_SIM_LOCK_REQUIRED
+            | 0x02
+            | PIN_LOCK_SC
+            | 0x04
+            | PIN_LOCK_PN
+            | 0x06
+            | 0x07
+            | 0x08
+            | PIN_CARD_NOT_PRESENT
+            | PIN_CARD_ERROR
+            | PIN_INIT_COMPLETE
+            | PIN_PB_INIT_COMPLETE
     )
 }
 
@@ -86,12 +105,26 @@ fn is_known_status(b: u8) -> bool {
 /// Rumpf nach libsamsung-ipc `ipc_sec_pin_status_request_data`:
 /// [type=PIN1 0x03][len1][len2][pin1 8 Byte][pin2 8 Byte]. // VERIFY am Gerät (Antwort = CFRM/GEN_PHONE_RES).
 /// Liefert true, wenn das Modem geantwortet hat; den neuen Zustand danach mit `sim_status` prüfen.
-pub fn enter_pin<L: ModemLink>(ril: &mut Ril<L>, pin: &str, timeout_ms: u32) -> std::io::Result<bool> {
+pub fn enter_pin<L: ModemLink>(
+    ril: &mut Ril<L>,
+    pin: &str,
+    timeout_ms: u32,
+) -> std::io::Result<bool> {
     let digits: Vec<u8> = pin.bytes().filter(|b| b.is_ascii_digit()).collect();
     if !(4..=8).contains(&digits.len()) {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "PIN muss 4–8 Ziffern haben"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "PIN muss 4–8 Ziffern haben",
+        ));
     }
-    Ok(ril.request(IPC_SEC_PIN_STATUS, IPC_TYPE_SET, &pin_body(&digits), timeout_ms)?.is_some())
+    Ok(ril
+        .request(
+            IPC_SEC_PIN_STATUS,
+            IPC_TYPE_SET,
+            &pin_body(&digits),
+            timeout_ms,
+        )?
+        .is_some())
 }
 
 fn pin_body(digits: &[u8]) -> Vec<u8> {
@@ -122,7 +155,11 @@ pub fn imsi<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Result<
         Some(m) if !m.data.is_empty() => {
             let len = m.data[0] as usize;
             let bytes = m.data.get(1..1 + len).unwrap_or(&m.data[1..]);
-            let s: String = bytes.iter().filter(|b| b.is_ascii_digit()).map(|b| *b as char).collect();
+            let s: String = bytes
+                .iter()
+                .filter(|b| b.is_ascii_digit())
+                .map(|b| *b as char)
+                .collect();
             Ok(if s.is_empty() { None } else { Some(s) })
         }
         _ => Ok(None),
@@ -135,8 +172,17 @@ pub fn imei<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Result<
     match ril.exec(IPC_MISC_ME_SN, &[0x01], timeout_ms)? {
         Some(m) => {
             // Rumpf: [subtyp][länge][ascii…] – defensiv die längste Ziffernkette nehmen.
-            let digits: String = m.data.iter().filter(|b| b.is_ascii_digit()).map(|b| *b as char).collect();
-            Ok(if digits.len() >= 14 { Some(digits) } else { None })
+            let digits: String = m
+                .data
+                .iter()
+                .filter(|b| b.is_ascii_digit())
+                .map(|b| *b as char)
+                .collect();
+            Ok(if digits.len() >= 14 {
+                Some(digits)
+            } else {
+                None
+            })
         }
         None => Ok(None),
     }
@@ -159,7 +205,12 @@ mod tests {
     #[test]
     fn sim_ready() {
         // Antwort IPC_SEC_PIN_STATUS, type CFRM, Rumpf mit Status READY (0x00) an [1]
-        let resp = encode(IPC_SEC_PIN_STATUS, IPC_TYPE_CFRM, 1, &[0x00, PIN_INIT_COMPLETE]);
+        let resp = encode(
+            IPC_SEC_PIN_STATUS,
+            IPC_TYPE_CFRM,
+            1,
+            &[0x00, PIN_INIT_COMPLETE],
+        );
         let mut ril = Ril::new(MockLink::with_frame(FMT_CHANNEL, resp));
         let st = sim_status(&mut ril, 1000).unwrap();
         assert_eq!(st.state, SimState::Ready);
@@ -168,7 +219,12 @@ mod tests {
 
     #[test]
     fn sim_absent() {
-        let resp = encode(IPC_SEC_PIN_STATUS, IPC_TYPE_CFRM, 1, &[0x01, PIN_CARD_NOT_PRESENT]);
+        let resp = encode(
+            IPC_SEC_PIN_STATUS,
+            IPC_TYPE_CFRM,
+            1,
+            &[0x01, PIN_CARD_NOT_PRESENT],
+        );
         let mut ril = Ril::new(MockLink::with_frame(FMT_CHANNEL, resp));
         let st = sim_status(&mut ril, 1000).unwrap();
         assert_eq!(st.state, SimState::Absent);

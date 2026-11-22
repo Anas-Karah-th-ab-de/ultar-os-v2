@@ -45,10 +45,28 @@ impl Supervisor {
     pub fn new(cfgs: Vec<ServiceConfig>, is_pid1: bool) -> Self {
         let mut services = BTreeMap::new();
         for c in cfgs {
-            let state = if c.manual { State::Stopped } else { State::Pending };
-            services.insert(c.name.clone(), Service { cfg: c, state, restarts: 0, want_stop: false, restart_after_stop: false, stop_deadline: None });
+            let state = if c.manual {
+                State::Stopped
+            } else {
+                State::Pending
+            };
+            services.insert(
+                c.name.clone(),
+                Service {
+                    cfg: c,
+                    state,
+                    restarts: 0,
+                    want_stop: false,
+                    restart_after_stop: false,
+                    stop_deadline: None,
+                },
+            );
         }
-        Self { services, pid_map: BTreeMap::new(), is_pid1 }
+        Self {
+            services,
+            pid_map: BTreeMap::new(),
+            is_pid1,
+        }
     }
 
     /// Neu hinzugekommene Dienstdateien aufnehmen (z. B. nach einer App-Installation).
@@ -56,8 +74,22 @@ impl Supervisor {
         let mut n = 0;
         for c in cfgs {
             if !self.services.contains_key(&c.name) {
-                let state = if c.manual { State::Stopped } else { State::Pending };
-                self.services.insert(c.name.clone(), Service { cfg: c, state, restarts: 0, want_stop: false, restart_after_stop: false, stop_deadline: None });
+                let state = if c.manual {
+                    State::Stopped
+                } else {
+                    State::Pending
+                };
+                self.services.insert(
+                    c.name.clone(),
+                    Service {
+                        cfg: c,
+                        state,
+                        restarts: 0,
+                        want_stop: false,
+                        restart_after_stop: false,
+                        stop_deadline: None,
+                    },
+                );
                 n += 1;
             }
         }
@@ -99,7 +131,9 @@ impl Supervisor {
                 _ => {}
             }
         }
-        self.services.values().all(|s| !matches!(s.state, State::Pending | State::Backoff { .. }))
+        self.services
+            .values()
+            .all(|s| !matches!(s.state, State::Pending | State::Backoff { .. }))
     }
 
     /// Nächster Zeitpunkt, zu dem tick() etwas tun muss (für poll-Timeout).
@@ -129,9 +163,15 @@ impl Supervisor {
         };
 
         let mut cmd = Command::new(&prog);
-        cmd.args(&args).env_clear().env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
-            .env("HOME", "/root").env("ULTAR_SERVICE", name)
-            .env("ULTAR_EDITION", ultar_edition::current().as_str());
+        cmd.args(&args)
+            .env_clear()
+            .env("PATH", "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("HOME", "/root")
+            .env("ULTAR_SERVICE", name)
+            .env(
+                "ULTAR_EDITION",
+                ultar_hal_system::current_edition().as_str(),
+            );
         for (k, v) in &c.env {
             cmd.env(k, v);
         }
@@ -139,7 +179,9 @@ impl Supervisor {
             cmd.current_dir(w);
         }
         if c.console {
-            cmd.stdin(open_or_null("/dev/console", false)).stdout(open_or_null("/dev/console", true)).stderr(open_or_null("/dev/console", true));
+            cmd.stdin(open_or_null("/dev/console", false))
+                .stdout(open_or_null("/dev/console", true))
+                .stderr(open_or_null("/dev/console", true));
         } else {
             let lp = format!("/run/ultar/log/{name}.log");
             let f = OpenOptions::new().create(true).append(true).open(&lp);
@@ -147,9 +189,15 @@ impl Supervisor {
                 Ok(f) => {
                     let f2 = f.try_clone().ok();
                     cmd.stdin(Stdio::null()).stdout(f);
-                    if let Some(f2) = f2 { cmd.stderr(f2); }
+                    if let Some(f2) = f2 {
+                        cmd.stderr(f2);
+                    }
                 }
-                Err(_) => { cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()); }
+                Err(_) => {
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+                }
             }
         }
 
@@ -171,7 +219,9 @@ impl Supervisor {
                 }
                 if console {
                     // Konsole als steuerndes Terminal -> Strg+C funktioniert
-                    extern "C" { fn ioctl(fd: i32, req: u64, ...) -> i32; }
+                    extern "C" {
+                        fn ioctl(fd: i32, req: u64, ...) -> i32;
+                    }
                     ioctl(0, 0x540E /*TIOCSCTTY*/, 1);
                 }
                 // Signale von init nicht vererben
@@ -186,7 +236,10 @@ impl Supervisor {
                 let pid = child.id() as i32;
                 std::mem::forget(child); // Reaping erfolgt zentral über waitpid(-1)
                 log(&format!("gestartet: {name} (pid {pid})"));
-                s.state = State::Running { pid, since: Instant::now() };
+                s.state = State::Running {
+                    pid,
+                    since: Instant::now(),
+                };
                 self.pid_map.insert(pid, name.to_string());
             }
             Err(e) => {
@@ -195,7 +248,9 @@ impl Supervisor {
                 s.state = if c.restart == Restart::Never || s.restarts > 10 {
                     State::Failed(e.to_string())
                 } else {
-                    State::Backoff { until: Instant::now() + backoff(s.restarts) }
+                    State::Backoff {
+                        until: Instant::now() + backoff(s.restarts),
+                    }
                 };
             }
         }
@@ -203,15 +258,27 @@ impl Supervisor {
 
     /// Von waitpid gemeldetes Prozessende verarbeiten.
     pub fn on_exit(&mut self, pid: i32, code: i32) {
-        let Some(name) = self.pid_map.remove(&pid) else { return }; // verwaister Prozess
+        let Some(name) = self.pid_map.remove(&pid) else {
+            return;
+        }; // verwaister Prozess
         let s = self.services.get_mut(&name).unwrap();
-        let ran = match s.state { State::Running { since, .. } => since.elapsed(), _ => Duration::ZERO };
+        let ran = match s.state {
+            State::Running { since, .. } => since.elapsed(),
+            _ => Duration::ZERO,
+        };
         let ok = code == 0;
-        log(&format!("beendet: {name} (pid {pid}, code {code}, Laufzeit {} ms)", ran.as_millis()));
+        log(&format!(
+            "beendet: {name} (pid {pid}, code {code}, Laufzeit {} ms)",
+            ran.as_millis()
+        ));
         // Restprozesse der Dienst-cgroup beseitigen
         cgroup_kill(&name);
         if s.want_stop {
-            s.state = if std::mem::take(&mut s.restart_after_stop) { State::Pending } else { State::Stopped };
+            s.state = if std::mem::take(&mut s.restart_after_stop) {
+                State::Pending
+            } else {
+                State::Stopped
+            };
             return;
         }
         if s.cfg.oneshot {
@@ -232,8 +299,14 @@ impl Supervisor {
         }
         s.restarts += 1;
         let d = backoff(s.restarts);
-        log(&format!("{name}: Neustart in {} ms (Versuch {})", d.as_millis(), s.restarts));
-        s.state = State::Backoff { until: Instant::now() + d };
+        log(&format!(
+            "{name}: Neustart in {} ms (Versuch {})",
+            d.as_millis(),
+            s.restarts
+        ));
+        s.state = State::Backoff {
+            until: Instant::now() + d,
+        };
     }
 
     pub fn start(&mut self, name: &str) -> Result<(), String> {
@@ -260,7 +333,10 @@ impl Supervisor {
     }
 
     pub fn restart(&mut self, name: &str, grace: Duration) -> Result<(), String> {
-        let running = matches!(self.services.get(name).ok_or("unbekannter Dienst")?.state, State::Running { .. });
+        let running = matches!(
+            self.services.get(name).ok_or("unbekannter Dienst")?.state,
+            State::Running { .. }
+        );
         if running {
             self.stop(name, grace)?;
             self.services.get_mut(name).unwrap().restart_after_stop = true;
@@ -271,7 +347,10 @@ impl Supervisor {
     }
 
     pub fn running_count(&self) -> usize {
-        self.services.values().filter(|s| matches!(s.state, State::Running { .. })).count()
+        self.services
+            .values()
+            .filter(|s| matches!(s.state, State::Running { .. }))
+            .count()
     }
 
     pub fn stop_all(&mut self) {
@@ -282,18 +361,28 @@ impl Supervisor {
     }
 
     pub fn status(&self) -> String {
-        let mut out = format!("{:<20} {:<10} {:>7} {:>8} {:>10}\n", "DIENST", "ZUSTAND", "PID", "NEUSTART", "LAUFZEIT");
+        let mut out = format!(
+            "{:<20} {:<10} {:>7} {:>8} {:>10}\n",
+            "DIENST", "ZUSTAND", "PID", "NEUSTART", "LAUFZEIT"
+        );
         for (n, s) in &self.services {
             let (st, pid, up) = match &s.state {
                 State::Pending => ("wartet".to_string(), "-".to_string(), "-".to_string()),
-                State::Running { pid, since } => ("läuft".into(), pid.to_string(), format!("{}s", since.elapsed().as_secs())),
+                State::Running { pid, since } => (
+                    "läuft".into(),
+                    pid.to_string(),
+                    format!("{}s", since.elapsed().as_secs()),
+                ),
                 State::Backoff { .. } => ("backoff".into(), "-".into(), "-".into()),
                 State::Done { ok: true } => ("fertig".into(), "-".into(), "-".into()),
                 State::Done { ok: false } => ("fehler".into(), "-".into(), "-".into()),
                 State::Stopped => ("gestoppt".into(), "-".into(), "-".into()),
                 State::Failed(_) => ("defekt".into(), "-".into(), "-".into()),
             };
-            out += &format!("{:<20} {:<10} {:>7} {:>8} {:>10}\n", n, st, pid, s.restarts, up);
+            out += &format!(
+                "{:<20} {:<10} {:>7} {:>8} {:>10}\n",
+                n, st, pid, s.restarts, up
+            );
         }
         out
     }
@@ -318,7 +407,10 @@ fn prepare_cgroup(name: &str, limits: &BTreeMap<String, String>) -> Option<fs::F
             log(&format!("{name}: cgroup {k}={v} nicht gesetzt: {e}"));
         }
     }
-    OpenOptions::new().write(true).open(format!("{dir}/cgroup.procs")).ok()
+    OpenOptions::new()
+        .write(true)
+        .open(format!("{dir}/cgroup.procs"))
+        .ok()
 }
 
 fn cgroup_kill(name: &str) {
@@ -329,5 +421,7 @@ fn cgroup_kill(name: &str) {
 const NETZ_GID: u32 = 47900;
 
 fn netz_erlaubt(name: &str) -> bool {
-    std::fs::read_to_string("/data/ultar/netz-erlaubt").map(|s| s.lines().any(|l| l.trim() == name)).unwrap_or(false)
+    std::fs::read_to_string("/data/ultar/netz-erlaubt")
+        .map(|s| s.lines().any(|l| l.trim() == name))
+        .unwrap_or(false)
 }

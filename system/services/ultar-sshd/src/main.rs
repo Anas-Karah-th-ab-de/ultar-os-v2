@@ -32,24 +32,35 @@ fn log(s: &str) {
 // ------------------------------------------------------------------ Einstellungen
 
 fn dir() -> PathBuf {
-    std::env::var("ULTAR_ENTWICKLER_DIR").map(PathBuf::from).unwrap_or_else(|_| "/data/ultar/entwickler".into())
+    std::env::var("ULTAR_ENTWICKLER_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| "/data/ultar/entwickler".into())
 }
 
 fn eingeschaltet() -> bool {
     // „aus“ in den Einstellungen gilt auch gegen das Entwicklungs-Abbild (/etc/ultar/entwickler)
     !dir().join("aus").exists()
         && (dir().join("an").exists()
-        || Path::new("/etc/ultar/entwickler").exists()
-            || std::fs::read_to_string("/proc/cmdline").unwrap_or_default().split_whitespace().any(|a| a == "ultar.entwickler=1"))
+            || Path::new("/etc/ultar/entwickler").exists()
+            || std::fs::read_to_string("/proc/cmdline")
+                .unwrap_or_default()
+                .split_whitespace()
+                .any(|a| a == "ultar.entwickler=1"))
 }
 
 fn port() -> u16 {
-    std::fs::read_to_string(dir().join("port")).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(STANDARD_PORT)
+    std::fs::read_to_string(dir().join("port"))
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(STANDARD_PORT)
 }
 
 /// Erlaubte Schlüssel: auf der Datenpartition (änderbar) und im Abbild (Bauzeit, `ENTWICKLER_SCHLUESSEL`)
 fn schluessel_dateien() -> Vec<PathBuf> {
-    vec![dir().join("authorized_keys"), PathBuf::from("/etc/ultar/entwickler.keys")]
+    vec![
+        dir().join("authorized_keys"),
+        PathBuf::from("/etc/ultar/entwickler.keys"),
+    ]
 }
 
 fn erlaubte_schluessel() -> Vec<PublicKey> {
@@ -69,12 +80,17 @@ fn erlaubte_schluessel() -> Vec<PublicKey> {
 }
 
 fn schluessel_erlaubt(k: &PublicKey) -> bool {
-    erlaubte_schluessel().iter().any(|e| e.key_data() == k.key_data())
+    erlaubte_schluessel()
+        .iter()
+        .any(|e| e.key_data() == k.key_data())
 }
 
 /// Wirtsschlüssel laden oder einmalig erzeugen (bleibt über Neustarts gleich, damit der PC ihn wiedererkennt)
 fn wirtsschluessel() -> anyhow::Result<PrivateKey> {
-    let mut orte = vec![dir().join("host_ed25519"), PathBuf::from("/etc/ultar/entwickler.host")];
+    let mut orte = vec![
+        dir().join("host_ed25519"),
+        PathBuf::from("/etc/ultar/entwickler.host"),
+    ];
     orte.push(PathBuf::from("/run/ultar/entwickler-host_ed25519"));
     for o in &orte {
         if let Ok(s) = std::fs::read_to_string(o) {
@@ -108,7 +124,11 @@ fn kernlog() -> String {
     if let Ok(s) = std::fs::read_to_string("/proc/ultar/protokoll") {
         return s;
     }
-    if let Ok(f) = std::fs::OpenOptions::new().read(true).custom_flags_nb().open("/dev/kmsg") {
+    if let Ok(f) = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags_nb()
+        .open("/dev/kmsg")
+    {
         let mut f = f;
         let mut out = String::new();
         let mut b = vec![0u8; 8192];
@@ -119,7 +139,11 @@ fn kernlog() -> String {
             let z = String::from_utf8_lossy(&b[..n]);
             // "6,1234,567890,-;Nachricht" → "[   0.567890] Nachricht"
             let (kopf, text) = z.split_once(';').unwrap_or(("", &z));
-            let us: u64 = kopf.split(',').nth(2).and_then(|t| t.parse().ok()).unwrap_or(0);
+            let us: u64 = kopf
+                .split(',')
+                .nth(2)
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(0);
             out += &format!("[{:>5}.{:06}] {}", us / 1_000_000, us % 1_000_000, text);
             if !text.ends_with('\n') {
                 out.push('\n');
@@ -151,11 +175,17 @@ fn info() -> String {
         s += &format!("name: {}", h);
     }
     let up = lies("/proc/uptime");
-    s += &format!("laufzeit: {} s\n", up.split_whitespace().next().unwrap_or("?"));
+    s += &format!(
+        "laufzeit: {} s\n",
+        up.split_whitespace().next().unwrap_or("?")
+    );
     for z in lies("/proc/meminfo").lines().take(3) {
         s += &format!("{z}\n");
     }
-    s += &format!("kerne: {}\n", lies("/proc/cpuinfo").matches("processor").count());
+    s += &format!(
+        "kerne: {}\n",
+        lies("/proc/cpuinfo").matches("processor").count()
+    );
     let sich = lies("/proc/ultar/sicherheit");
     if !sich.is_empty() {
         s += "--- sicherheit ---\n";
@@ -166,7 +196,11 @@ fn info() -> String {
         s += "--- firewall ---\n";
         s += &fw;
     }
-    s += &format!("entwickler-ssh: port {}, {} schlüssel\n", port(), erlaubte_schluessel().len());
+    s += &format!(
+        "entwickler-ssh: port {}, {} schlüssel\n",
+        port(),
+        erlaubte_schluessel().len()
+    );
     s
 }
 
@@ -189,18 +223,39 @@ fn hilfe() -> String {
         .into()
 }
 
-const WERKZEUGE: [&str; 12] = ["kernlog", "info", "ultar-hilfe", "bildschirm", "tippen", "wischen", "text", "taste", "oeffne", "helfer", "tap", "swipe"];
+const WERKZEUGE: [&str; 12] = [
+    "kernlog",
+    "info",
+    "ultar-hilfe",
+    "bildschirm",
+    "tippen",
+    "wischen",
+    "text",
+    "taste",
+    "oeffne",
+    "helfer",
+    "tap",
+    "swipe",
+];
 
 /// einfacher Befehl ohne Shell-Zeichen (sonst übernimmt /bin/sh mit den Werkzeug-Skripten)
 fn einfach(cmd: &str) -> bool {
-    !cmd.chars().any(|c| matches!(c, ';' | '|' | '&' | '>' | '<' | '`' | '$' | '(' | ')' | '\n'))
+    !cmd.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|' | '&' | '>' | '<' | '`' | '$' | '(' | ')' | '\n'
+        )
+    })
 }
 
 /// Werkzeuge als kleine Skripte, damit sie auch in Shell-Zeilen gehen (`tippen 10 20 && bildschirm`)
 fn werkzeuge_anlegen() -> Option<String> {
     let exe = std::env::current_exe().ok()?.to_string_lossy().into_owned();
     let sh = shell()?.0;
-    let d = format!("{}/entwickler-bin", std::env::var("ULTAR_RUN").unwrap_or_else(|_| "/run/ultar".into()));
+    let d = format!(
+        "{}/entwickler-bin",
+        std::env::var("ULTAR_RUN").unwrap_or_else(|_| "/run/ultar".into())
+    );
     std::fs::create_dir_all(&d).ok()?;
     for w in WERKZEUGE {
         let p = format!("{d}/{w}");
@@ -282,7 +337,12 @@ struct Lauf {
 
 fn openpty(p: &Pty) -> std::io::Result<(OwnedFd, OwnedFd)> {
     let (mut m, mut s) = (0, 0);
-    let ws = libc::winsize { ws_row: p.rows.max(1), ws_col: p.cols.max(1), ws_xpixel: 0, ws_ypixel: 0 };
+    let ws = libc::winsize {
+        ws_row: p.rows.max(1),
+        ws_col: p.cols.max(1),
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
     let r = unsafe { libc::openpty(&mut m, &mut s, std::ptr::null_mut(), std::ptr::null(), &ws) };
     if r != 0 {
         return Err(std::io::Error::last_os_error());
@@ -298,7 +358,14 @@ fn leser(mut r: impl Read + Send + 'static, tx: mpsc::Sender<Ereignis>, err: boo
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     let d = b[..n].to_vec();
-                    if tx.blocking_send(if err { Ereignis::Err(d) } else { Ereignis::Aus(d) }).is_err() {
+                    if tx
+                        .blocking_send(if err {
+                            Ereignis::Err(d)
+                        } else {
+                            Ereignis::Aus(d)
+                        })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -320,14 +387,24 @@ fn schreiber(mut w: impl Write + Send + 'static) -> std::sync::mpsc::Sender<Vec<
     tx
 }
 
-fn starten(cmd: Option<&str>, pty: Option<&Pty>, env: &HashMap<String, String>) -> std::io::Result<Lauf> {
+fn starten(
+    cmd: Option<&str>,
+    pty: Option<&Pty>,
+    env: &HashMap<String, String>,
+) -> std::io::Result<Lauf> {
     let (prog, mut args) = match shell() {
         Some(s) => s,
         None => {
             // ohne Shell: Befehl direkt ausführen
-            let w: Vec<String> = cmd.unwrap_or("").split_whitespace().map(String::from).collect();
+            let w: Vec<String> = cmd
+                .unwrap_or("")
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             if w.is_empty() {
-                return Err(std::io::Error::other("keine Shell auf dem Gerät (/bin/sh) – nur eingebaute Befehle: ultar-hilfe"));
+                return Err(std::io::Error::other(
+                    "keine Shell auf dem Gerät (/bin/sh) – nur eingebaute Befehle: ultar-hilfe",
+                ));
             }
             (w[0].clone(), w[1..].to_vec())
         }
@@ -339,9 +416,18 @@ fn starten(cmd: Option<&str>, pty: Option<&Pty>, env: &HashMap<String, String>) 
         }
     }
     let mut c = Command::new(&prog);
-    c.args(&args).current_dir(if Path::new("/root").is_dir() { "/root" } else { "/" });
-    c.env("HOME", "/root").env("USER", "root").env("LOGNAME", "root").env("SHELL", &prog).env("ULTAR_ENTWICKLER", "1");
-    let pfad = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
+    c.args(&args).current_dir(if Path::new("/root").is_dir() {
+        "/root"
+    } else {
+        "/"
+    });
+    c.env("HOME", "/root")
+        .env("USER", "root")
+        .env("LOGNAME", "root")
+        .env("SHELL", &prog)
+        .env("ULTAR_ENTWICKLER", "1");
+    let pfad = std::env::var("PATH")
+        .unwrap_or_else(|_| "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".into());
     match WERKZEUG_DIR.get().cloned().flatten() {
         Some(d) => c.env("PATH", format!("{d}:{pfad}")),
         None => c.env("PATH", pfad),
@@ -354,10 +440,19 @@ fn starten(cmd: Option<&str>, pty: Option<&Pty>, env: &HashMap<String, String>) 
     let (tx, rx) = mpsc::channel(64);
     if let Some(p) = pty {
         if let Ok((m, s)) = openpty(p) {
-            c.env("TERM", if p.term.is_empty() { "xterm-256color" } else { &p.term });
+            c.env(
+                "TERM",
+                if p.term.is_empty() {
+                    "xterm-256color"
+                } else {
+                    &p.term
+                },
+            );
             let s0 = s.try_clone()?;
             let s1 = s.try_clone()?;
-            c.stdin(Stdio::from(s0)).stdout(Stdio::from(s1)).stderr(Stdio::from(s));
+            c.stdin(Stdio::from(s0))
+                .stdout(Stdio::from(s1))
+                .stderr(Stdio::from(s));
             unsafe {
                 use std::os::unix::process::CommandExt;
                 c.pre_exec(|| {
@@ -378,11 +473,19 @@ fn starten(cmd: Option<&str>, pty: Option<&Pty>, env: &HashMap<String, String>) 
                 let code = kind.wait().ok().and_then(|s| s.code()).unwrap_or(255) as u32;
                 let _ = txe.blocking_send(Ereignis::Ende(code));
             });
-            return Ok(Lauf { ein: Some(schreiber(wf)), master: Some(mfd), pid, rx, stroeme: 1 });
+            return Ok(Lauf {
+                ein: Some(schreiber(wf)),
+                master: Some(mfd),
+                pid,
+                rx,
+                stroeme: 1,
+            });
         }
         // kein Pseudo-Terminal (Ultar-Kern): weiter mit Rohren, Ausgabe bleibt lesbar
     }
-    c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    c.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut kind = c.spawn()?;
     let ein = kind.stdin.take().map(schreiber);
     leser(kind.stdout.take().unwrap(), tx.clone(), false);
@@ -392,7 +495,13 @@ fn starten(cmd: Option<&str>, pty: Option<&Pty>, env: &HashMap<String, String>) 
         let code = kind.wait().ok().and_then(|s| s.code()).unwrap_or(255) as u32;
         let _ = tx.blocking_send(Ereignis::Ende(code));
     });
-    Ok(Lauf { ein, master: None, pid, rx, stroeme: 2 })
+    Ok(Lauf {
+        ein,
+        master: None,
+        pid,
+        rx,
+        stroeme: 2,
+    })
 }
 
 /// Kanal bedienen, bis der Prozess endet und seine Ausgabe vollständig übertragen ist
@@ -505,7 +614,9 @@ async fn sftp_bruecke(ch: Channel<Msg>, b: tokio::io::DuplexStream) {
 }
 
 async fn text_senden(channel: Channel<Msg>, text: String, code: u32) {
-    let _ = channel.data_bytes(text.replace("\n", "\r\n").into_bytes()).await;
+    let _ = channel
+        .data_bytes(text.replace("\n", "\r\n").into_bytes())
+        .await;
     let _ = channel.exit_status(code).await;
     let _ = channel.eof().await;
     let _ = channel.close().await;
@@ -519,7 +630,10 @@ struct Server;
 impl russh::server::Server for Server {
     type Handler = Verbindung;
     fn new_client(&mut self, adr: Option<std::net::SocketAddr>) -> Verbindung {
-        Verbindung { adr: adr.map(|a| a.to_string()).unwrap_or_default(), ..Default::default() }
+        Verbindung {
+            adr: adr.map(|a| a.to_string()).unwrap_or_default(),
+            ..Default::default()
+        }
     }
 }
 
@@ -540,42 +654,101 @@ impl Verbindung {
 impl russh::server::Handler for Verbindung {
     type Error = anyhow::Error;
 
-    async fn auth_publickey_offered(&mut self, _u: &str, o: PublicKeyOffer<'_>) -> Result<Auth, Self::Error> {
-        Ok(if schluessel_erlaubt(o.public_key) { Auth::Accept } else { Auth::reject() })
+    async fn auth_publickey_offered(
+        &mut self,
+        _u: &str,
+        o: PublicKeyOffer<'_>,
+    ) -> Result<Auth, Self::Error> {
+        Ok(if schluessel_erlaubt(o.public_key) {
+            Auth::Accept
+        } else {
+            Auth::reject()
+        })
     }
 
-    async fn auth_publickey(&mut self, user: &str, k: VerifiedPublicKey<'_>) -> Result<Auth, Self::Error> {
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        k: VerifiedPublicKey<'_>,
+    ) -> Result<Auth, Self::Error> {
         if schluessel_erlaubt(k.public_key) {
-            log(&format!("angemeldet: {user} von {} ({})", self.adr, k.public_key.fingerprint(HashAlg::Sha256)));
+            log(&format!(
+                "angemeldet: {user} von {} ({})",
+                self.adr,
+                k.public_key.fingerprint(HashAlg::Sha256)
+            ));
             Ok(Auth::Accept)
         } else {
-            log(&format!("abgelehnt: {user} von {} ({})", self.adr, k.public_key.fingerprint(HashAlg::Sha256)));
+            log(&format!(
+                "abgelehnt: {user} von {} ({})",
+                self.adr,
+                k.public_key.fingerprint(HashAlg::Sha256)
+            ));
             Ok(Auth::reject())
         }
     }
 
-    async fn channel_open_session(&mut self, ch: Channel<Msg>, reply: russh::server::ChannelOpenHandle, _s: &mut Session) -> Result<(), Self::Error> {
+    async fn channel_open_session(
+        &mut self,
+        ch: Channel<Msg>,
+        reply: russh::server::ChannelOpenHandle,
+        _s: &mut Session,
+    ) -> Result<(), Self::Error> {
         self.kanaele.lock().await.insert(ch.id(), ch);
         reply.accept().await;
         Ok(())
     }
 
-    async fn pty_request(&mut self, id: ChannelId, term: &str, cols: u32, rows: u32, _pw: u32, _ph: u32, _m: &[(russh::Pty, u32)], s: &mut Session) -> Result<(), Self::Error> {
-        self.pty.insert(id, Pty { term: term.into(), cols: cols as u16, rows: rows as u16 });
+    async fn pty_request(
+        &mut self,
+        id: ChannelId,
+        term: &str,
+        cols: u32,
+        rows: u32,
+        _pw: u32,
+        _ph: u32,
+        _m: &[(russh::Pty, u32)],
+        s: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.pty.insert(
+            id,
+            Pty {
+                term: term.into(),
+                cols: cols as u16,
+                rows: rows as u16,
+            },
+        );
         s.channel_success(id)?;
         Ok(())
     }
 
-    async fn env_request(&mut self, id: ChannelId, k: &str, v: &str, s: &mut Session) -> Result<(), Self::Error> {
+    async fn env_request(
+        &mut self,
+        id: ChannelId,
+        k: &str,
+        v: &str,
+        s: &mut Session,
+    ) -> Result<(), Self::Error> {
         self.env.insert(k.into(), v.into());
         s.channel_success(id)?;
         Ok(())
     }
 
-    async fn exec_request(&mut self, id: ChannelId, data: &[u8], s: &mut Session) -> Result<(), Self::Error> {
+    async fn exec_request(
+        &mut self,
+        id: ChannelId,
+        data: &[u8],
+        s: &mut Session,
+    ) -> Result<(), Self::Error> {
         let cmd = String::from_utf8_lossy(data).into_owned();
-        log(&format!("befehl ({}): {}", self.adr, cmd.chars().take(200).collect::<String>()));
-        let Some(ch) = self.nimm(id).await else { return Ok(s.channel_failure(id)?) };
+        log(&format!(
+            "befehl ({}): {}",
+            self.adr,
+            cmd.chars().take(200).collect::<String>()
+        ));
+        let Some(ch) = self.nimm(id).await else {
+            return Ok(s.channel_failure(id)?);
+        };
         s.channel_success(id)?;
         if let Some((t, code)) = eingebaut(&cmd) {
             tokio::spawn(async move {
@@ -600,10 +773,19 @@ impl russh::server::Handler for Verbindung {
 
     async fn shell_request(&mut self, id: ChannelId, s: &mut Session) -> Result<(), Self::Error> {
         log(&format!("shell ({})", self.adr));
-        let Some(ch) = self.nimm(id).await else { return Ok(s.channel_failure(id)?) };
+        let Some(ch) = self.nimm(id).await else {
+            return Ok(s.channel_failure(id)?);
+        };
         s.channel_success(id)?;
         let pty = self.pty.get(&id).cloned();
-        let gruss = format!("Ultar OS – Entwickler-Zugang ({}). „ultar-hilfe“ zeigt die eingebauten Befehle.\r\n", if pty.is_some() { "Terminal" } else { "ohne Terminal" });
+        let gruss = format!(
+            "Ultar OS – Entwickler-Zugang ({}). „ultar-hilfe“ zeigt die eingebauten Befehle.\r\n",
+            if pty.is_some() {
+                "Terminal"
+            } else {
+                "ohne Terminal"
+            }
+        );
         let _ = ch.data_bytes(gruss.into_bytes()).await;
         match starten(None, pty.as_ref(), &self.env) {
             Ok(l) => {
@@ -616,14 +798,25 @@ impl russh::server::Handler for Verbindung {
         Ok(())
     }
 
-    async fn subsystem_request(&mut self, id: ChannelId, name: &str, s: &mut Session) -> Result<(), Self::Error> {
+    async fn subsystem_request(
+        &mut self,
+        id: ChannelId,
+        name: &str,
+        s: &mut Session,
+    ) -> Result<(), Self::Error> {
         if name != "sftp" {
             return Ok(s.channel_failure(id)?);
         }
-        let Some(ch) = self.nimm(id).await else { return Ok(s.channel_failure(id)?) };
+        let Some(ch) = self.nimm(id).await else {
+            return Ok(s.channel_failure(id)?);
+        };
         s.channel_success(id)?;
         log(&format!("sftp ({})", self.adr));
-        let home = if Path::new("/root").is_dir() { "/root" } else { "/" };
+        let home = if Path::new("/root").is_dir() {
+            "/root"
+        } else {
+            "/"
+        };
         let (a, b) = tokio::io::duplex(512 * 1024);
         russh_sftp::server::run(a, sftp::Sitzung::neu(home)).await;
         tokio::spawn(sftp_bruecke(ch, b));
@@ -642,7 +835,9 @@ impl russh::server::Handler for Verbindung {
     ) -> Result<(), Self::Error> {
         // nur Dienste auf dem Gerät selbst (Sprachmodell, Web-Verwaltung …) – kein Sprungbrett ins Netz
         if !matches!(host, "127.0.0.1" | "localhost" | "::1") || port == 0 || port > 65535 {
-            reply.reject(russh::ChannelOpenFailure::AdministrativelyProhibited).await;
+            reply
+                .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
             return Ok(());
         }
         let ziel = format!("127.0.0.1:{port}");
@@ -672,7 +867,10 @@ impl russh::server::Handler for Verbindung {
 // ------------------------------------------------------------------ Befehlszeile
 
 fn status() -> String {
-    let k = wirtsschluessel().ok().map(|k| k.public_key().fingerprint(HashAlg::Sha256).to_string()).unwrap_or_else(|| "?".into());
+    let k = wirtsschluessel()
+        .ok()
+        .map(|k| k.public_key().fingerprint(HashAlg::Sha256).to_string())
+        .unwrap_or_else(|| "?".into());
     format!(
         "entwickler-ssh: {}\nport: {}\nwirtsschlüssel: {}\nerlaubte schlüssel: {}\nordner: {}\n",
         if eingeschaltet() { "an" } else { "aus" },
@@ -684,14 +882,18 @@ fn status() -> String {
 }
 
 fn schluessel_hinzu(z: &str) -> anyhow::Result<()> {
-    let k = PublicKey::from_openssh(z.trim()).map_err(|e| anyhow::anyhow!("kein gültiger öffentlicher Schlüssel: {e}"))?;
+    let k = PublicKey::from_openssh(z.trim())
+        .map_err(|e| anyhow::anyhow!("kein gültiger öffentlicher Schlüssel: {e}"))?;
     if schluessel_erlaubt(&k) {
         println!("schon erlaubt: {}", k.fingerprint(HashAlg::Sha256));
         return Ok(());
     }
     std::fs::create_dir_all(dir())?;
     let p = dir().join("authorized_keys");
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&p)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&p)?;
     writeln!(f, "{}", k.to_openssh()?)?;
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
@@ -710,7 +912,10 @@ fn main() -> anyhow::Result<()> {
             std::fs::create_dir_all(dir())?;
             let _ = std::fs::remove_file(dir().join("aus"));
             std::fs::write(dir().join("an"), b"")?;
-            println!("Entwickler-Zugang an (Port {}). Wirksam nach Neustart des Dienstes.", port());
+            println!(
+                "Entwickler-Zugang an (Port {}). Wirksam nach Neustart des Dienstes.",
+                port()
+            );
             return Ok(());
         }
         Some("aus") => {
@@ -733,7 +938,17 @@ fn main() -> anyhow::Result<()> {
         }
         Some("werkzeug") => {
             // aus den Werkzeug-Skripten: ultar-sshd werkzeug <name> <argumente…>
-            let zeile = a[1..].iter().map(|x| if x.contains(' ') && a[1] != "text" && a[1] != "helfer" { format!("\"{x}\"") } else { x.clone() }).collect::<Vec<_>>().join(" ");
+            let zeile = a[1..]
+                .iter()
+                .map(|x| {
+                    if x.contains(' ') && a[1] != "text" && a[1] != "helfer" {
+                        format!("\"{x}\"")
+                    } else {
+                        x.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
             let w: Vec<&str> = a[1..].iter().map(|s| s.as_str()).collect();
             let r = steuern::befehl(&w, &zeile).map(|r| r.map_err(|e| format!("fehler: {e}\n")));
             let (t, code) = match r {
@@ -744,7 +959,11 @@ fn main() -> anyhow::Result<()> {
                     None => (format!("unbekannt: {zeile}\n"), 2),
                 },
             };
-            if code == 0 { print!("{t}") } else { eprint!("{t}") }
+            if code == 0 {
+                print!("{t}")
+            } else {
+                eprint!("{t}")
+            }
             std::process::exit(code as i32);
         }
         Some("-h") | Some("--help") | Some("hilfe") => {
@@ -754,19 +973,37 @@ fn main() -> anyhow::Result<()> {
         _ => {}
     }
     let immer = a.iter().any(|x| x == "--immer");
-    let port = a.iter().position(|x| x == "--port").and_then(|i| a.get(i + 1)).and_then(|p| p.parse().ok()).unwrap_or_else(port);
+    let port = a
+        .iter()
+        .position(|x| x == "--port")
+        .and_then(|i| a.get(i + 1))
+        .and_then(|p| p.parse().ok())
+        .unwrap_or_else(port);
     if !immer && !eingeschaltet() {
         log("aus (einschalten: ultar-sshd an, /etc/ultar/entwickler oder Startparameter ultar.entwickler=1)");
         return Ok(());
     }
     if erlaubte_schluessel().is_empty() {
-        log(&format!("kein erlaubter Schlüssel ({}): Zugang bleibt zu", schluessel_dateien().iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")));
+        log(&format!(
+            "kein erlaubter Schlüssel ({}): Zugang bleibt zu",
+            schluessel_dateien()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
         return Ok(());
     }
     let key = wirtsschluessel()?;
     let _ = WERKZEUG_DIR.set(werkzeuge_anlegen());
-    log(&format!("Port {port}, Wirtsschlüssel {}", key.public_key().fingerprint(HashAlg::Sha256)));
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
+    log(&format!(
+        "Port {port}, Wirtsschlüssel {}",
+        key.public_key().fingerprint(HashAlg::Sha256)
+    ));
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?;
     rt.block_on(async move {
         let cfg = russh::server::Config {
             keys: vec![key],
@@ -794,7 +1031,10 @@ mod tests {
         assert_eq!(eingebaut("taste quatsch").unwrap().1, 1);
         assert!(eingebaut("info").is_some());
         assert!(eingebaut("ls -la").is_none());
-        assert!(eingebaut("text a; bildschirm").is_none(), "Shell-Zeile geht an /bin/sh");
+        assert!(
+            eingebaut("text a; bildschirm").is_none(),
+            "Shell-Zeile geht an /bin/sh"
+        );
     }
 
     #[test]
@@ -811,7 +1051,11 @@ mod tests {
         assert!(schluessel_hinzu("ssh-ed25519 kaputt").is_err());
         let w1 = wirtsschluessel().unwrap();
         let w2 = wirtsschluessel().unwrap();
-        assert_eq!(w1.public_key().key_data(), w2.public_key().key_data(), "Wirtsschlüssel bleibt gleich");
+        assert_eq!(
+            w1.public_key().key_data(),
+            w2.public_key().key_data(),
+            "Wirtsschlüssel bleibt gleich"
+        );
         // an/aus: „aus“ gewinnt auch gegen /etc/ultar/entwickler
         std::fs::write(t.join("an"), b"").unwrap();
         assert!(eingeschaltet());

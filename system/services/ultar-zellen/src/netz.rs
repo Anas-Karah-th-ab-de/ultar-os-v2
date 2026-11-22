@@ -24,13 +24,22 @@ pub fn adressen(name: &str) -> (Ipv4Addr, Ipv4Addr) {
 fn index(name: &str) -> u32 {
     // gespeicherter Index (bei Kollision vergeben) – sonst aus dem Namen
     let f = crate::profil::ordner(name).join("netz-index");
-    if let Some(i) = std::fs::read_to_string(&f).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
+    if let Some(i) = std::fs::read_to_string(&f)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+    {
         return i;
     }
     let belegt: Vec<u32> = Profil::alle()
         .iter()
         .filter(|p| p.name != name)
-        .filter_map(|p| std::fs::read_to_string(crate::profil::ordner(&p.name).join("netz-index")).ok()?.trim().parse().ok())
+        .filter_map(|p| {
+            std::fs::read_to_string(crate::profil::ordner(&p.name).join("netz-index"))
+                .ok()?
+                .trim()
+                .parse()
+                .ok()
+        })
         .collect();
     let mut i = 1 + crate::kurzhash(name) % 16000;
     while belegt.contains(&i) {
@@ -49,7 +58,10 @@ fn veth(name: &str) -> String {
 }
 
 fn in_ns(name: &str, args: &[&str]) -> Result<String, String> {
-    let mut a = vec!["netns", "exec", &ns_s(name)].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let mut a = vec!["netns", "exec", &ns_s(name)]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
     a.extend(args.iter().map(|s| s.to_string()));
     let r: Vec<&str> = a.iter().map(|s| s.as_str()).collect();
     befehl("ip", &r)
@@ -76,7 +88,10 @@ pub fn aufbauen(p: &Profil) -> Result<(), String> {
     let (g, z) = adressen(n);
     let v = veth(n);
     if befehl("ip", &["link", "show", &v]).is_err() {
-        befehl("ip", &["link", "add", &v, "type", "veth", "peer", "name", "zcell0"])?;
+        befehl(
+            "ip",
+            &["link", "add", &v, "type", "veth", "peer", "name", "zcell0"],
+        )?;
         befehl("ip", &["link", "set", "zcell0", "netns", &ns(n)])?;
         in_ns(n, &["ip", "link", "set", "zcell0", "name", "e0"])?;
     }
@@ -88,7 +103,10 @@ pub fn aufbauen(p: &Profil) -> Result<(), String> {
     match p.netz.art.as_str() {
         "wireguard" => wireguard(p, g)?,
         _ => {
-            let _ = in_ns(n, &["ip", "route", "replace", "default", "via", &g.to_string()]);
+            let _ = in_ns(
+                n,
+                &["ip", "route", "replace", "default", "via", &g.to_string()],
+            );
         }
     }
     // „ueber“: Richtlinien-Routing auf dem Gerät – alles von dieser Zelle zur VPN-Zelle
@@ -100,16 +118,76 @@ pub fn aufbauen(p: &Profil) -> Result<(), String> {
         let (_, vz) = adressen(&vpn.name);
         let t = (1000 + index(n)).to_string();
         let _ = befehl("ip", &["rule", "del", "from", &z.to_string(), "table", &t]);
-        befehl("ip", &["rule", "add", "from", &z.to_string(), "table", &t, "priority", "100"])?;
+        befehl(
+            "ip",
+            &[
+                "rule",
+                "add",
+                "from",
+                &z.to_string(),
+                "table",
+                &t,
+                "priority",
+                "100",
+            ],
+        )?;
         // Rückfall „unerreichbar“: fällt die VPN-Zelle weg, endet die Suche hier – kein Umweg über das normale Netz
-        befehl("ip", &["route", "replace", "unreachable", "default", "metric", "4000", "table", &t])?;
-        let _ = befehl("ip", &["route", "replace", "default", "via", &vz.to_string(), "dev", &veth(&vpn.name), "metric", "10", "table", &t]);
-        befehl("ip", &["route", "replace", &format!("{z}/32"), "dev", &v, "table", &t])?;
+        befehl(
+            "ip",
+            &[
+                "route",
+                "replace",
+                "unreachable",
+                "default",
+                "metric",
+                "4000",
+                "table",
+                &t,
+            ],
+        )?;
+        let _ = befehl(
+            "ip",
+            &[
+                "route",
+                "replace",
+                "default",
+                "via",
+                &vz.to_string(),
+                "dev",
+                &veth(&vpn.name),
+                "metric",
+                "10",
+                "table",
+                &t,
+            ],
+        );
+        befehl(
+            "ip",
+            &[
+                "route",
+                "replace",
+                &format!("{z}/32"),
+                "dev",
+                &v,
+                "table",
+                &t,
+            ],
+        )?;
     }
     // VPN-Zelle: weiterleiten, aber nur durch den Tunnel
     if p.netz.vpn_zelle {
         in_ns(n, &["sh", "-c", "echo 1 > /proc/sys/net/ipv4/ip_forward"])?;
-        in_ns(n, &["ip", "route", "replace", "10.88.0.0/16", "via", &g.to_string()])?;
+        in_ns(
+            n,
+            &[
+                "ip",
+                "route",
+                "replace",
+                "10.88.0.0/16",
+                "via",
+                &g.to_string(),
+            ],
+        )?;
         let iface = &p.netz.vpn_schnittstelle;
         let regel = format!(
             "table inet ultar_vpn {{ chain weiter {{ type filter hook forward priority 0; policy drop; ct state established,related accept; iifname \"e0\" oifname \"{iface}\" accept; }}\n \
@@ -123,25 +201,49 @@ pub fn aufbauen(p: &Profil) -> Result<(), String> {
 
 fn nft_in(name: &str, regel: &str) -> Result<(), String> {
     use std::io::Write;
-    let mut k = std::process::Command::new("ip").args(["netns", "exec", &ns(name), "nft", "-f", "-"]).stdin(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
-    k.stdin.take().unwrap().write_all(regel.as_bytes()).map_err(|e| e.to_string())?;
+    let mut k = std::process::Command::new("ip")
+        .args(["netns", "exec", &ns(name), "nft", "-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    k.stdin
+        .take()
+        .unwrap()
+        .write_all(regel.as_bytes())
+        .map_err(|e| e.to_string())?;
     let o = k.wait_with_output().map_err(|e| e.to_string())?;
     if o.status.success() {
         Ok(())
     } else {
-        Err(format!("nft: {}", String::from_utf8_lossy(&o.stderr).trim()))
+        Err(format!(
+            "nft: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ))
     }
 }
 
 pub fn nft(regel: &str) -> Result<(), String> {
     use std::io::Write;
-    let mut k = std::process::Command::new("nft").args(["-f", "-"]).stdin(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
-    k.stdin.take().unwrap().write_all(regel.as_bytes()).map_err(|e| e.to_string())?;
+    let mut k = std::process::Command::new("nft")
+        .args(["-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    k.stdin
+        .take()
+        .unwrap()
+        .write_all(regel.as_bytes())
+        .map_err(|e| e.to_string())?;
     let o = k.wait_with_output().map_err(|e| e.to_string())?;
     if o.status.success() {
         Ok(())
     } else {
-        Err(format!("nft: {}", String::from_utf8_lossy(&o.stderr).trim()))
+        Err(format!(
+            "nft: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ))
     }
 }
 
@@ -150,7 +252,14 @@ fn wireguard(p: &Profil, g: Ipv4Addr) -> Result<(), String> {
     if p.netz.wg_conf.is_empty() || p.netz.wg_endpunkt.is_empty() {
         return Err("wireguard: wg_conf und wg_endpunkt angeben".into());
     }
-    let ep_ip = p.netz.wg_endpunkt.rsplit_once(':').map(|x| x.0).unwrap_or(&p.netz.wg_endpunkt).trim_matches(['[', ']']).to_string();
+    let ep_ip = p
+        .netz
+        .wg_endpunkt
+        .rsplit_once(':')
+        .map(|x| x.0)
+        .unwrap_or(&p.netz.wg_endpunkt)
+        .trim_matches(['[', ']'])
+        .to_string();
     if in_ns(n, &["ip", "link", "show", "wg0"]).is_err() {
         in_ns(n, &["ip", "link", "add", "wg0", "type", "wireguard"])?;
     }
@@ -160,7 +269,17 @@ fn wireguard(p: &Profil, g: Ipv4Addr) -> Result<(), String> {
     }
     in_ns(n, &["ip", "link", "set", "wg0", "up"])?;
     // nur der Endpunkt am Tunnel vorbei, alles andere durch den Tunnel – ohne Tunnel: nichts
-    in_ns(n, &["ip", "route", "replace", &format!("{ep_ip}/32"), "via", &g.to_string()])?;
+    in_ns(
+        n,
+        &[
+            "ip",
+            "route",
+            "replace",
+            &format!("{ep_ip}/32"),
+            "via",
+            &g.to_string(),
+        ],
+    )?;
     in_ns(n, &["ip", "route", "replace", "default", "dev", "wg0"])?;
     Ok(())
 }
@@ -186,7 +305,10 @@ pub fn regeln() -> Result<(), String> {
     let alle = Profil::alle();
     let mut fwd = String::new();
     let mut zwischen = String::new();
-    for p in alle.iter().filter(|p| p.netz.art != "aus" && besteht(&p.name)) {
+    for p in alle
+        .iter()
+        .filter(|p| p.netz.art != "aus" && besteht(&p.name))
+    {
         let (_, z) = adressen(&p.name);
         match p.netz.art.as_str() {
             "ueber" => {
@@ -201,7 +323,12 @@ pub fn regeln() -> Result<(), String> {
                 }
             }
             "wireguard" => {
-                let ep = p.netz.wg_endpunkt.rsplit_once(':').map(|x| x.0.to_string()).unwrap_or_default();
+                let ep = p
+                    .netz
+                    .wg_endpunkt
+                    .rsplit_once(':')
+                    .map(|x| x.0.to_string())
+                    .unwrap_or_default();
                 if !ep.is_empty() {
                     fwd += &format!("    ip saddr {z} ip daddr != {ep} drop\n");
                 }
@@ -227,12 +354,20 @@ pub fn dns() -> Vec<String> {
     if let Ok(v) = std::env::var("ULTAR_ZELLEN_DNS") {
         return v.split(',').map(String::from).collect();
     }
-    let mut v: Vec<String> = ["/run/ultar/resolv.conf", "/etc/resolv.conf", "/run/systemd/resolve/resolv.conf"]
-        .iter()
-        .filter_map(|p| std::fs::read_to_string(p).ok())
-        .flat_map(|s| s.lines().filter_map(|l| l.strip_prefix("nameserver").map(|x| x.trim().to_string())).collect::<Vec<_>>())
-        .filter(|a| !a.starts_with("127.") && a != "::1")
-        .collect();
+    let mut v: Vec<String> = [
+        "/run/ultar/resolv.conf",
+        "/etc/resolv.conf",
+        "/run/systemd/resolve/resolv.conf",
+    ]
+    .iter()
+    .filter_map(|p| std::fs::read_to_string(p).ok())
+    .flat_map(|s| {
+        s.lines()
+            .filter_map(|l| l.strip_prefix("nameserver").map(|x| x.trim().to_string()))
+            .collect::<Vec<_>>()
+    })
+    .filter(|a| !a.starts_with("127.") && a != "::1")
+    .collect();
     v.dedup();
     if v.is_empty() {
         v.push("9.9.9.9".into());

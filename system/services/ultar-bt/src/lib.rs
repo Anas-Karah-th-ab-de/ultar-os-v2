@@ -68,7 +68,10 @@ impl Framer {
             }
             let pkt: Vec<u8> = self.buf.drain(..hdr + len).collect();
             return Some(match pkt[0] {
-                H4_EVT => Packet::Event { code: pkt[1], data: pkt[3..].to_vec() },
+                H4_EVT => Packet::Event {
+                    code: pkt[1],
+                    data: pkt[3..].to_vec(),
+                },
                 H4_ACL => Packet::Acl(pkt[1..].to_vec()),
                 _ => Packet::Sco(pkt[1..].to_vec()),
             });
@@ -88,7 +91,10 @@ pub struct Found {
 }
 
 pub fn addr_str(a: &[u8; 6]) -> String {
-    format!("{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", a[5], a[4], a[3], a[2], a[1], a[0])
+    format!(
+        "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+        a[5], a[4], a[3], a[2], a[1], a[0]
+    )
 }
 
 /// Name aus EIR-/Werbedaten (Längen-Typ-Wert-Folgen; Typ 0x09 = voller, 0x08 = gekürzter Name).
@@ -101,10 +107,18 @@ pub fn name_from_ad(ad: &[u8]) -> Option<String> {
         }
         let (ty, val) = (ad[i + 1], &ad[i + 2..i + 1 + l]);
         if ty == 0x09 {
-            return Some(String::from_utf8_lossy(val).trim_end_matches('\0').to_string());
+            return Some(
+                String::from_utf8_lossy(val)
+                    .trim_end_matches('\0')
+                    .to_string(),
+            );
         }
         if ty == 0x08 {
-            short = Some(String::from_utf8_lossy(val).trim_end_matches('\0').to_string());
+            short = Some(
+                String::from_utf8_lossy(val)
+                    .trim_end_matches('\0')
+                    .to_string(),
+            );
         }
         i += 1 + l;
     }
@@ -119,19 +133,37 @@ pub fn parse_found(code: u8, d: &[u8]) -> Vec<Found> {
         // Inquiry Result: n × (addr 6, psrm 1, res 2, class 3, clock 2) = 14
         0x02 if !d.is_empty() => {
             for c in d[1..].chunks_exact(14).take(d[0] as usize) {
-                out.push(Found { addr: addr(c), le: false, rssi: None, name: None, class: u32::from_le_bytes([c[9], c[10], c[11], 0]) });
+                out.push(Found {
+                    addr: addr(c),
+                    le: false,
+                    rssi: None,
+                    name: None,
+                    class: u32::from_le_bytes([c[9], c[10], c[11], 0]),
+                });
             }
         }
         // Inquiry Result with RSSI: n × (addr 6, psrm 1, res 1, class 3, clock 2, rssi 1) = 14
         0x22 if !d.is_empty() => {
             for c in d[1..].chunks_exact(14).take(d[0] as usize) {
-                out.push(Found { addr: addr(c), le: false, rssi: Some(c[13] as i8), name: None, class: u32::from_le_bytes([c[8], c[9], c[10], 0]) });
+                out.push(Found {
+                    addr: addr(c),
+                    le: false,
+                    rssi: Some(c[13] as i8),
+                    name: None,
+                    class: u32::from_le_bytes([c[8], c[9], c[10], 0]),
+                });
             }
         }
         // Extended Inquiry Result: 1 × (addr 6, psrm 1, res 1, class 3, clock 2, rssi 1, eir 240)
         0x2F if d.len() >= 15 => {
             let c = &d[1..];
-            out.push(Found { addr: addr(c), le: false, rssi: Some(c[13] as i8), name: name_from_ad(&c[14..]), class: u32::from_le_bytes([c[8], c[9], c[10], 0]) });
+            out.push(Found {
+                addr: addr(c),
+                le: false,
+                rssi: Some(c[13] as i8),
+                name: name_from_ad(&c[14..]),
+                class: u32::from_le_bytes([c[8], c[9], c[10], 0]),
+            });
         }
         // LE Meta, Unterereignis 0x02 Advertising Report: n × (typ 1, addrtyp 1, addr 6, len 1, daten, rssi 1)
         0x3E if d.len() >= 2 && d[0] == 0x02 => {
@@ -144,7 +176,13 @@ pub fn parse_found(code: u8, d: &[u8]) -> Vec<Found> {
                 if i + 9 + l + 1 > d.len() {
                     break;
                 }
-                out.push(Found { addr: addr(&d[i + 2..]), le: true, rssi: Some(d[i + 9 + l] as i8), name: name_from_ad(&d[i + 9..i + 9 + l]), class: 0 });
+                out.push(Found {
+                    addr: addr(&d[i + 2..]),
+                    le: true,
+                    rssi: Some(d[i + 9 + l] as i8),
+                    name: name_from_ad(&d[i + 9..i + 9 + l]),
+                    class: 0,
+                });
                 i += 9 + l + 1;
             }
         }
@@ -204,7 +242,11 @@ impl Hci {
     /// Öffnet das H4-Gerät – das startet den Bluetooth-Dienst im Chip.
     pub fn open(path: &str) -> std::io::Result<Hci> {
         let dev = File::options().read(true).write(true).open(path)?;
-        Ok(Hci { dev, fr: Framer::default(), pending: Vec::new() })
+        Ok(Hci {
+            dev,
+            fr: Framer::default(),
+            pending: Vec::new(),
+        })
     }
 
     /// Nächstes Paket, höchstens `timeout` warten.
@@ -241,11 +283,23 @@ impl Hci {
         let end = Instant::now() + Duration::from_secs(4);
         while Instant::now() < end {
             match self.recv(end.saturating_duration_since(Instant::now()))? {
-                Some(Packet::Event { code: 0x0E, data }) if data.len() >= 4 && u16::from_le_bytes([data[1], data[2]]) == op => {
-                    return if data[3] == 0 { Ok(data[4..].to_vec()) } else { Err(Error::Status(op, data[3])) };
+                Some(Packet::Event { code: 0x0E, data })
+                    if data.len() >= 4 && u16::from_le_bytes([data[1], data[2]]) == op =>
+                {
+                    return if data[3] == 0 {
+                        Ok(data[4..].to_vec())
+                    } else {
+                        Err(Error::Status(op, data[3]))
+                    };
                 }
-                Some(Packet::Event { code: 0x0F, data }) if data.len() >= 4 && u16::from_le_bytes([data[2], data[3]]) == op => {
-                    return if data[0] == 0 { Ok(Vec::new()) } else { Err(Error::Status(op, data[0])) };
+                Some(Packet::Event { code: 0x0F, data })
+                    if data.len() >= 4 && u16::from_le_bytes([data[2], data[3]]) == op =>
+                {
+                    return if data[0] == 0 {
+                        Ok(Vec::new())
+                    } else {
+                        Err(Error::Status(op, data[0]))
+                    };
                 }
                 Some(other) => self.pending.push(other),
                 None => break,
@@ -257,7 +311,10 @@ impl Hci {
     /// Grundeinrichtung: zurücksetzen, Ereignisse freischalten, Suchergebnisse mit Empfangsstärke und Namen.
     pub fn init(&mut self, name: &str) -> Result<(), Error> {
         self.cmd(OP_RESET, &[])?;
-        self.cmd(OP_SET_EVENT_MASK, &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F])?;
+        self.cmd(
+            OP_SET_EVENT_MASK,
+            &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F],
+        )?;
         let _ = self.cmd(OP_LE_SET_EVENT_MASK, &[0x1F, 0, 0, 0, 0, 0, 0, 0]);
         let _ = self.cmd(OP_WRITE_INQUIRY_MODE, &[2]);
         let mut n = [0u8; 248];
@@ -282,7 +339,11 @@ impl Hci {
         if r.len() < 8 {
             return Ok((0, 0, 0));
         }
-        Ok((r[0], u16::from_le_bytes([r[4], r[5]]), u16::from_le_bytes([r[6], r[7]])))
+        Ok((
+            r[0],
+            u16::from_le_bytes([r[4], r[5]]),
+            u16::from_le_bytes([r[6], r[7]]),
+        ))
     }
 
     /// Sichtbar/verbindbar schalten (0 = aus, 2 = verbindbar, 3 = sichtbar + verbindbar).
@@ -291,10 +352,17 @@ impl Hci {
     }
 
     /// Geräte suchen: klassisch (Inquiry) und Low Energy gleichzeitig, `secs` Sekunden.
-    pub fn scan(&mut self, secs: u64, mut on_found: impl FnMut(&Found)) -> Result<Vec<Found>, Error> {
+    pub fn scan(
+        &mut self,
+        secs: u64,
+        mut on_found: impl FnMut(&Found),
+    ) -> Result<Vec<Found>, Error> {
         let mut list = Vec::new();
         // LE: aktiv suchen, 10 ms Fenster alle 100 ms (lässt dem klassischen Funk Zeit), Duplikate filtern
-        let le = self.cmd(OP_LE_SET_SCAN_PARAMS, &[1, 0xA0, 0x00, 0x10, 0x00, 0, 0]).is_ok() && self.cmd(OP_LE_SET_SCAN_ENABLE, &[1, 1]).is_ok();
+        let le = self
+            .cmd(OP_LE_SET_SCAN_PARAMS, &[1, 0xA0, 0x00, 0x10, 0x00, 0, 0])
+            .is_ok()
+            && self.cmd(OP_LE_SET_SCAN_ENABLE, &[1, 1]).is_ok();
         // klassisch: allgemeine Suche (LAP 9E8B33), Dauer in 1,28-s-Schritten (max. 0x30)
         let units = ((secs as f32 / 1.28).ceil() as u8).clamp(1, 0x30);
         let classic = self.cmd(OP_INQUIRY, &[0x33, 0x8B, 0x9E, units, 0]).is_ok();
@@ -304,7 +372,11 @@ impl Hci {
         let end = Instant::now() + Duration::from_secs(secs);
         let mut queued: Vec<Packet> = std::mem::take(&mut self.pending);
         loop {
-            let pkt = if let Some(p) = queued.pop() { Some(p) } else { self.recv(end.saturating_duration_since(Instant::now()))? };
+            let pkt = if let Some(p) = queued.pop() {
+                Some(p)
+            } else {
+                self.recv(end.saturating_duration_since(Instant::now()))?
+            };
             let Some(pkt) = pkt else { break };
             if let Packet::Event { code, data } = pkt {
                 for f in parse_found(code, &data) {
@@ -339,8 +411,20 @@ mod tests {
         f.push(&[0x04, 0x0E, 0x04, 0x01]);
         assert!(f.next().is_none());
         f.push(&[0x03, 0x0C, 0x00, 0x04, 0x01, 0x01, 0x00]);
-        assert_eq!(f.next(), Some(Packet::Event { code: 0x0E, data: vec![1, 3, 0x0C, 0] }));
-        assert_eq!(f.next(), Some(Packet::Event { code: 0x01, data: vec![0] }));
+        assert_eq!(
+            f.next(),
+            Some(Packet::Event {
+                code: 0x0E,
+                data: vec![1, 3, 0x0C, 0]
+            })
+        );
+        assert_eq!(
+            f.next(),
+            Some(Packet::Event {
+                code: 0x01,
+                data: vec![0]
+            })
+        );
         assert!(f.next().is_none());
     }
 
@@ -348,12 +432,18 @@ mod tests {
     fn framer_acl_and_resync() {
         let mut f = Framer::default();
         f.push(&[0xEE, 0x02, 0x01, 0x20, 0x02, 0x00, 0xAA, 0xBB]);
-        assert_eq!(f.next(), Some(Packet::Acl(vec![0x01, 0x20, 0x02, 0x00, 0xAA, 0xBB])));
+        assert_eq!(
+            f.next(),
+            Some(Packet::Acl(vec![0x01, 0x20, 0x02, 0x00, 0xAA, 0xBB]))
+        );
     }
 
     #[test]
     fn ad_names() {
-        assert_eq!(name_from_ad(&[2, 1, 6, 6, 9, b'U', b'l', b't', b'a', b'r']), Some("Ultar".into()));
+        assert_eq!(
+            name_from_ad(&[2, 1, 6, 6, 9, b'U', b'l', b't', b'a', b'r']),
+            Some("Ultar".into())
+        );
         assert_eq!(name_from_ad(&[3, 8, b'U', b'l']), Some("Ul".into()));
         assert_eq!(name_from_ad(&[2, 1, 6]), None);
         assert_eq!(name_from_ad(&[9, 9, b'x']), None); // Länge läuft über das Ende
@@ -362,12 +452,17 @@ mod tests {
     #[test]
     fn le_report() {
         // 1 Bericht: ADV_IND, öffentliche Adresse 11:22:33:44:55:66, 7 Byte Daten (Name "Maus"), RSSI -60
-        let mut d = vec![0x02, 1, 0, 0, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 6, 5, 9, b'M', b'a', b'u', b's'];
+        let mut d = vec![
+            0x02, 1, 0, 0, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 6, 5, 9, b'M', b'a', b'u', b's',
+        ];
         d.push((-60i8) as u8);
         let f = parse_found(0x3E, &d);
         assert_eq!(f.len(), 1);
         assert_eq!(addr_str(&f[0].addr), "11:22:33:44:55:66");
-        assert_eq!((f[0].le, f[0].rssi, f[0].name.as_deref()), (true, Some(-60), Some("Maus")));
+        assert_eq!(
+            (f[0].le, f[0].rssi, f[0].name.as_deref()),
+            (true, Some(-60), Some("Maus"))
+        );
     }
 
     #[test]
@@ -378,8 +473,18 @@ mod tests {
         assert_eq!((f[0].rssi, f[0].class), (Some(-45), 0x5A020C));
         let mut list = Vec::new();
         merge(&mut list, f[0].clone());
-        merge(&mut list, Found { name: Some("Box".into()), rssi: Some(-70), ..f[0].clone() });
+        merge(
+            &mut list,
+            Found {
+                name: Some("Box".into()),
+                rssi: Some(-70),
+                ..f[0].clone()
+            },
+        );
         assert_eq!(list.len(), 1);
-        assert_eq!((list[0].rssi, list[0].name.as_deref()), (Some(-45), Some("Box")));
+        assert_eq!(
+            (list[0].rssi, list[0].name.as_deref()),
+            (Some(-45), Some("Box"))
+        );
     }
 }

@@ -38,7 +38,9 @@ pub struct Cod3035Codec {
 
 impl Default for Cod3035Codec {
     fn default() -> Self {
-        Cod3035Codec { ctl: "/dev/snd/controlC0" }
+        Cod3035Codec {
+            ctl: "/dev/snd/controlC0",
+        }
     }
 }
 
@@ -48,7 +50,11 @@ impl Cod3035Codec {
     }
 
     fn open(&self) -> Option<File> {
-        OpenOptions::new().read(true).write(true).open(self.ctl).ok()
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(self.ctl)
+            .ok()
     }
 
     /// Ein int/bool-Control per Name (Teilstring exakt gleich) auf `val` setzen.

@@ -87,7 +87,13 @@ pub struct MockTg {
 
 impl Default for MockTg {
     fn default() -> Self {
-        Self { stage: LoginStage::NeedPhone, chats: Vec::new(), msgs: Vec::new(), open_id: 0, dirty: true }
+        Self {
+            stage: LoginStage::NeedPhone,
+            chats: Vec::new(),
+            msgs: Vec::new(),
+            open_id: 0,
+            dirty: true,
+        }
     }
 }
 
@@ -108,8 +114,18 @@ impl TgBackend for MockTg {
         if code.len() >= 4 {
             self.stage = LoginStage::Ready;
             self.chats = vec![
-                ChatSummary { id: 1, title: "Gespeicherte Nachrichten".into(), last: "Willkommen bei Ultar".into(), unread: 0 },
-                ChatSummary { id: 2, title: "Mohamad".into(), last: "Test ✓".into(), unread: 2 },
+                ChatSummary {
+                    id: 1,
+                    title: "Gespeicherte Nachrichten".into(),
+                    last: "Willkommen bei Ultar".into(),
+                    unread: 0,
+                },
+                ChatSummary {
+                    id: 2,
+                    title: "Mohamad".into(),
+                    last: "Test ✓".into(),
+                    unread: 2,
+                },
             ];
         } else {
             self.stage = LoginStage::Error("Code ungültig".into());
@@ -129,8 +145,18 @@ impl TgBackend for MockTg {
     fn open(&mut self, chat_id: i64) {
         self.open_id = chat_id;
         self.msgs = vec![
-            Msg { out: false, text: "Hallo von Telegram".into(), when: "12:00".into(), sender: "Mohamad".into() },
-            Msg { out: true, text: "Läuft auf Ultar OS 🎉".into(), when: "12:01".into(), sender: String::new() },
+            Msg {
+                out: false,
+                text: "Hallo von Telegram".into(),
+                when: "12:00".into(),
+                sender: "Mohamad".into(),
+            },
+            Msg {
+                out: true,
+                text: "Läuft auf Ultar OS 🎉".into(),
+                when: "12:01".into(),
+                sender: String::new(),
+            },
         ];
         self.dirty = true;
     }
@@ -139,7 +165,12 @@ impl TgBackend for MockTg {
     }
     fn send(&mut self, _chat_id: i64, text: &str) {
         if !text.is_empty() {
-            self.msgs.push(Msg { out: true, text: text.to_string(), when: String::new(), sender: String::new() });
+            self.msgs.push(Msg {
+                out: true,
+                text: text.to_string(),
+                when: String::new(),
+                sender: String::new(),
+            });
             self.dirty = true;
         }
     }

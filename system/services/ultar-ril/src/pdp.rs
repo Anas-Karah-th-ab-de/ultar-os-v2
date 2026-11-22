@@ -106,7 +106,12 @@ pub fn build_define_pdp(cid: u8, apn: &str) -> Vec<u8> {
 
 /// struct ipc_gprs_pdp_context_request_set_data (103 Byte): enable, cid, magic1[4],
 /// username[32], password[32], unknown[32], magic2.
-pub fn build_pdp_context(cid: u8, activate: bool, user: Option<&str>, pass: Option<&str>) -> Vec<u8> {
+pub fn build_pdp_context(
+    cid: u8,
+    activate: bool,
+    user: Option<&str>,
+    pass: Option<&str>,
+) -> Vec<u8> {
     let mut b = vec![0u8; 103];
     b[0] = if activate { 1 } else { 0 }; // enable (1=aktivieren, 0=deaktivieren)
     b[1] = cid;
@@ -190,18 +195,33 @@ pub fn activate_data<L: ModemLink>(
     configure: bool,
 ) -> io::Result<DataSession> {
     // 1) APN definieren
-    let m = fmt::message(next_seq(), fmt::GROUP_GPRS, fmt::IDX_DEFINE_PDP_CONTEXT, fmt::TYPE_SET, &build_define_pdp(cid, apn));
+    let m = fmt::message(
+        next_seq(),
+        fmt::GROUP_GPRS,
+        fmt::IDX_DEFINE_PDP_CONTEXT,
+        fmt::TYPE_SET,
+        &build_define_pdp(cid, apn),
+    );
     l.send(CH_FMT, &m)?;
     let _ = wait_cfrm(l, fmt::IDX_DEFINE_PDP_CONTEXT, 3000)?;
 
     // 2) PDP-Kontext aktivieren
-    let m = fmt::message(next_seq(), fmt::GROUP_GPRS, fmt::IDX_PDP_CONTEXT, fmt::TYPE_SET, &build_pdp_context(cid, true, user, pass));
+    let m = fmt::message(
+        next_seq(),
+        fmt::GROUP_GPRS,
+        fmt::IDX_PDP_CONTEXT,
+        fmt::TYPE_SET,
+        &build_pdp_context(cid, true, user, pass),
+    );
     l.send(CH_FMT, &m)?;
 
     // 3) Auf IP-Konfiguration warten (kommt als CFRM auf PDP_CONTEXT oder als eigenes IP_CONFIGURATION/EVENT)
     let cfg = wait_ip_config(l, cid, 15000)?;
     if cfg.fail_cause != 0 {
-        return Err(io::Error::new(io::ErrorKind::Other, format!("PDP-Aktivierung abgelehnt (fail_cause={})", cfg.fail_cause)));
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("PDP-Aktivierung abgelehnt (fail_cause={})", cfg.fail_cause),
+        ));
     }
     let mut dns = Vec::new();
     if !cfg.dns1.is_unspecified() {
@@ -214,7 +234,11 @@ pub fn activate_data<L: ModemLink>(
         cid,
         ifname: ifname_for_cid(cid),
         ip: cfg.ip,
-        mask: if cfg.mask.is_unspecified() { Ipv4Addr::new(255, 255, 255, 0) } else { cfg.mask },
+        mask: if cfg.mask.is_unspecified() {
+            Ipv4Addr::new(255, 255, 255, 0)
+        } else {
+            cfg.mask
+        },
         gateway: cfg.gateway,
         dns,
     };
@@ -226,7 +250,13 @@ pub fn activate_data<L: ModemLink>(
 
 /// Mobile Daten deaktivieren (PDP_CONTEXT enable=0) und die Schnittstelle herunterfahren.
 pub fn deactivate_data<L: ModemLink>(l: &mut L, cid: u8) -> io::Result<()> {
-    let m = fmt::message(next_seq(), fmt::GROUP_GPRS, fmt::IDX_PDP_CONTEXT, fmt::TYPE_SET, &build_pdp_context(cid, false, None, None));
+    let m = fmt::message(
+        next_seq(),
+        fmt::GROUP_GPRS,
+        fmt::IDX_PDP_CONTEXT,
+        fmt::TYPE_SET,
+        &build_pdp_context(cid, false, None, None),
+    );
     l.send(CH_FMT, &m)?;
     let _ = wait_cfrm(l, fmt::IDX_PDP_CONTEXT, 5000);
     let _ = set_iface_down(&ifname_for_cid(cid));
@@ -257,12 +287,18 @@ fn wait_cfrm<L: ModemLink>(l: &mut L, index: u8, timeout_ms: u32) -> io::Result<
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "keine Antwort vom Modem"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "keine Antwort vom Modem",
+            ));
         }
         if let Some(f) = l.recv(left.as_millis() as u32)? {
             if f.channel == CH_FMT {
                 if let Some((g, i, t, body)) = fmt::parse(&f.payload) {
-                    if g == fmt::GROUP_GPRS && i == index && (t == fmt::TYPE_CFRM || t == fmt::TYPE_EVENT) {
+                    if g == fmt::GROUP_GPRS
+                        && i == index
+                        && (t == fmt::TYPE_CFRM || t == fmt::TYPE_EVENT)
+                    {
                         return Ok(body.to_vec());
                     }
                 }
@@ -277,13 +313,18 @@ fn wait_ip_config<L: ModemLink>(l: &mut L, cid: u8, timeout_ms: u32) -> io::Resu
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         if left.is_zero() {
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "keine IP-Konfiguration vom Modem"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "keine IP-Konfiguration vom Modem",
+            ));
         }
         if let Some(f) = l.recv(left.as_millis() as u32)? {
             if f.channel != CH_FMT {
                 continue;
             }
-            let Some((g, i, _t, body)) = fmt::parse(&f.payload) else { continue };
+            let Some((g, i, _t, body)) = fmt::parse(&f.payload) else {
+                continue;
+            };
             if g != fmt::GROUP_GPRS {
                 continue;
             }
@@ -302,9 +343,13 @@ fn wait_ip_config<L: ModemLink>(l: &mut L, cid: u8, timeout_ms: u32) -> io::Resu
                         }
                     }
                 }
-            } else if i == fmt::IDX_CALL_STATUS && body.len() >= 3 && body[0] == cid && body[1] == 0 {
+            } else if i == fmt::IDX_CALL_STATUS && body.len() >= 3 && body[0] == cid && body[1] == 0
+            {
                 // status 0 = getrennt/abgelehnt
-                return Err(io::Error::new(io::ErrorKind::Other, format!("PDP getrennt (fail_cause={})", body[2])));
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("PDP getrennt (fail_cause={})", body[2]),
+                ));
             }
         }
     }
@@ -358,7 +403,9 @@ fn sockaddr(ip: Ipv4Addr) -> libc::sockaddr {
     let sin = libc::sockaddr_in {
         sin_family: libc::AF_INET as u16,
         sin_port: 0,
-        sin_addr: libc::in_addr { s_addr: u32::from(ip).to_be() },
+        sin_addr: libc::in_addr {
+            s_addr: u32::from(ip).to_be(),
+        },
         sin_zero: [0; 8],
     };
     unsafe { std::mem::transmute(sin) }
@@ -442,9 +489,16 @@ mod tests {
             if let Some((g, i, t, _body)) = fmt::parse(payload) {
                 if g == fmt::GROUP_GPRS && i == fmt::IDX_DEFINE_PDP_CONTEXT {
                     let m = fmt::message(0, g, i, fmt::TYPE_CFRM, &[]);
-                    self.inbox.push_back(SipcFrame { channel: CH_FMT, payload: m });
+                    self.inbox.push_back(SipcFrame {
+                        channel: CH_FMT,
+                        payload: m,
+                    });
                 }
-                if g == fmt::GROUP_GPRS && i == fmt::IDX_PDP_CONTEXT && t == fmt::TYPE_SET && self.reply_ip {
+                if g == fmt::GROUP_GPRS
+                    && i == fmt::IDX_PDP_CONTEXT
+                    && t == fmt::TYPE_SET
+                    && self.reply_ip
+                {
                     let mut body = vec![0u8; 27];
                     body[0] = 1; // cid
                     body[1] = 0x07; // field_flag
@@ -455,7 +509,10 @@ mod tests {
                     body[15..19].copy_from_slice(&[10, 20, 30, 1]); // gateway
                     body[19..23].copy_from_slice(&[255, 255, 255, 0]); // mask
                     let m = fmt::message(0, g, fmt::IDX_IP_CONFIGURATION, fmt::TYPE_CFRM, &body);
-                    self.inbox.push_back(SipcFrame { channel: CH_FMT, payload: m });
+                    self.inbox.push_back(SipcFrame {
+                        channel: CH_FMT,
+                        payload: m,
+                    });
                 }
             }
             Ok(())
@@ -494,7 +551,13 @@ mod tests {
 
     #[test]
     fn fmt_roundtrip() {
-        let m = fmt::message(5, fmt::GROUP_GPRS, fmt::IDX_PDP_CONTEXT, fmt::TYPE_SET, &[1, 2, 3]);
+        let m = fmt::message(
+            5,
+            fmt::GROUP_GPRS,
+            fmt::IDX_PDP_CONTEXT,
+            fmt::TYPE_SET,
+            &[1, 2, 3],
+        );
         let (g, i, t, body) = fmt::parse(&m).unwrap();
         assert_eq!((g, i, t), (0x0D, 0x04, fmt::TYPE_SET));
         assert_eq!(body, &[1, 2, 3]);
@@ -514,12 +577,19 @@ mod tests {
 
     #[test]
     fn activate_flow_without_configure() {
-        let mut l = MockLink { sent: Vec::new(), inbox: Default::default(), reply_ip: true };
+        let mut l = MockLink {
+            sent: Vec::new(),
+            inbox: Default::default(),
+            reply_ip: true,
+        };
         let s = activate_data(&mut l, 1, "internet", None, None, false).unwrap();
         assert_eq!(s.ifname, "rmnet0");
         assert_eq!(s.ip, Ipv4Addr::new(10, 20, 30, 40));
         assert_eq!(s.gateway, Ipv4Addr::new(10, 20, 30, 1));
-        assert_eq!(s.dns, vec![Ipv4Addr::new(8, 8, 8, 8), Ipv4Addr::new(1, 1, 1, 1)]);
+        assert_eq!(
+            s.dns,
+            vec![Ipv4Addr::new(8, 8, 8, 8), Ipv4Addr::new(1, 1, 1, 1)]
+        );
         // zwei Sendungen: DEFINE + PDP_CONTEXT
         assert_eq!(l.sent.len(), 2);
     }

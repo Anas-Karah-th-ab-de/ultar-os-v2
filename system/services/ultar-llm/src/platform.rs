@@ -47,7 +47,10 @@ fn cpu_list() -> Vec<usize> {
         }
     }
     if v.is_empty() {
-        v = (0..std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)).collect();
+        v = (0..std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1))
+            .collect();
     }
     v
 }
@@ -89,7 +92,10 @@ fn simd() -> String {
     {
         let mut f = vec!["neon"];
         for (n, on) in [
-            ("dotprod", std::arch::is_aarch64_feature_detected!("dotprod")),
+            (
+                "dotprod",
+                std::arch::is_aarch64_feature_detected!("dotprod"),
+            ),
             ("i8mm", std::arch::is_aarch64_feature_detected!("i8mm")),
             ("fp16", std::arch::is_aarch64_feature_detected!("fp16")),
             ("sve", std::arch::is_aarch64_feature_detected!("sve")),
@@ -112,7 +118,10 @@ pub fn has_battery() -> bool {
 /// Akku: (Prozent, lädt gerade). Erkennt Samsung-Knoten (battery) und Standard (type=Battery).
 pub fn battery() -> Option<(u8, bool)> {
     let dir = fs::read_dir("/sys/class/power_supply").ok()?;
-    let mut cands: Vec<String> = dir.flatten().map(|e| e.path().to_string_lossy().into_owned()).collect();
+    let mut cands: Vec<String> = dir
+        .flatten()
+        .map(|e| e.path().to_string_lossy().into_owned())
+        .collect();
     cands.sort_by_key(|p| !p.ends_with("/battery"));
     for p in cands {
         let ty = read(&format!("{p}/type")).unwrap_or_default();
@@ -123,9 +132,12 @@ pub fn battery() -> Option<(u8, bool)> {
         if read(&format!("{p}/scope")).as_deref() == Some("Device") {
             continue; // Akku einer Maus o. Ä.
         }
-        let Some(cap) = read(&format!("{p}/capacity")).and_then(|c| c.parse::<i32>().ok()) else { continue };
+        let Some(cap) = read(&format!("{p}/capacity")).and_then(|c| c.parse::<i32>().ok()) else {
+            continue;
+        };
         let st = read(&format!("{p}/status")).unwrap_or_default();
-        let charging = matches!(st.as_str(), "Charging" | "Full") || read("/sys/class/power_supply/ac/online").as_deref() == Some("1");
+        let charging = matches!(st.as_str(), "Charging" | "Full")
+            || read("/sys/class/power_supply/ac/online").as_deref() == Some("1");
         return Some((cap.clamp(0, 100) as u8, charging));
     }
     None
@@ -137,15 +149,26 @@ pub fn cpu_temp() -> Option<f32> {
     let mut best: Option<f32> = None;
     for e in dir.flatten() {
         let p = e.path();
-        if !p.file_name().map(|n| n.to_string_lossy().starts_with("thermal_zone")).unwrap_or(false) {
+        if !p
+            .file_name()
+            .map(|n| n.to_string_lossy().starts_with("thermal_zone"))
+            .unwrap_or(false)
+        {
             continue;
         }
-        let ty = read(&format!("{}/type", p.display())).unwrap_or_default().to_ascii_lowercase();
+        let ty = read(&format!("{}/type", p.display()))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         // Akku-, Funk- und Gehäusefühler zählen nicht
-        if ty.contains("battery") || ty.contains("skin") || ty.contains("pa_") || ty.contains("modem") {
+        if ty.contains("battery")
+            || ty.contains("skin")
+            || ty.contains("pa_")
+            || ty.contains("modem")
+        {
             continue;
         }
-        if let Some(t) = read(&format!("{}/temp", p.display())).and_then(|t| t.parse::<f32>().ok()) {
+        if let Some(t) = read(&format!("{}/temp", p.display())).and_then(|t| t.parse::<f32>().ok())
+        {
             let c = if t > 1000.0 { t / 1000.0 } else { t };
             if (0.0..150.0).contains(&c) {
                 best = Some(best.map_or(c, |b: f32| b.max(c)));
@@ -159,7 +182,9 @@ pub fn cpu_temp() -> Option<f32> {
 pub fn mem_pressure() -> Option<f32> {
     let s = fs::read_to_string("/proc/pressure/memory").ok()?;
     let l = s.lines().find(|l| l.starts_with("some"))?;
-    l.split_whitespace().find_map(|kv| kv.strip_prefix("avg10=")).and_then(|v| v.parse().ok())
+    l.split_whitespace()
+        .find_map(|kv| kv.strip_prefix("avg10="))
+        .and_then(|v| v.parse().ok())
 }
 
 pub fn detect() -> Profile {
@@ -168,7 +193,16 @@ pub fn detect() -> Profile {
     // Maximaltakt je CPU → big-Kerne
     let freqs: Vec<(usize, u64)> = cpus_list
         .iter()
-        .map(|&c| (c, read(&format!("/sys/devices/system/cpu/cpu{c}/cpufreq/cpuinfo_max_freq")).and_then(|f| f.parse().ok()).unwrap_or(0)))
+        .map(|&c| {
+            (
+                c,
+                read(&format!(
+                    "/sys/devices/system/cpu/cpu{c}/cpufreq/cpuinfo_max_freq"
+                ))
+                .and_then(|f| f.parse().ok())
+                .unwrap_or(0),
+            )
+        })
         .collect();
     let top = freqs.iter().map(|f| f.1).max().unwrap_or(0);
     let mut big_cpus: Vec<usize> = freqs.iter().filter(|f| f.1 == top).map(|f| f.0).collect();
@@ -178,9 +212,16 @@ pub fn detect() -> Profile {
     // physische Kerne
     let mut ids = std::collections::BTreeSet::new();
     for &c in &cpus_list {
-        let core = read(&format!("/sys/devices/system/cpu/cpu{c}/topology/core_id")).unwrap_or_else(|| c.to_string());
-        let pkg = read(&format!("/sys/devices/system/cpu/cpu{c}/topology/physical_package_id")).unwrap_or_default();
-        let cluster = read(&format!("/sys/devices/system/cpu/cpu{c}/topology/cluster_id")).unwrap_or_default();
+        let core = read(&format!("/sys/devices/system/cpu/cpu{c}/topology/core_id"))
+            .unwrap_or_else(|| c.to_string());
+        let pkg = read(&format!(
+            "/sys/devices/system/cpu/cpu{c}/topology/physical_package_id"
+        ))
+        .unwrap_or_default();
+        let cluster = read(&format!(
+            "/sys/devices/system/cpu/cpu{c}/topology/cluster_id"
+        ))
+        .unwrap_or_default();
         ids.insert(format!("{pkg}:{cluster}:{core}"));
     }
     let cores = ids.len().clamp(1, cpus.max(1));
@@ -198,7 +239,15 @@ pub fn detect() -> Profile {
             }
         }
     };
-    Profile { kind, arch, cpus, cores, big_cpus, simd: simd(), mem_total }
+    Profile {
+        kind,
+        arch,
+        cpus,
+        cores,
+        big_cpus,
+        simd: simd(),
+        mem_total,
+    }
 }
 
 impl Profile {
@@ -208,7 +257,11 @@ impl Profile {
             // big.LITTLE: Erzeugen auf so vielen Threads, wie es schnelle Kerne gibt (mindestens 2, höchstens 4);
             // langsame Kerne bremsen beim Erzeugen eher, helfen aber beim Einlesen des Prompts.
             Kind::Mobile => {
-                let gen = if self.big_cpus.len() == self.cpus { self.cpus.min(4) } else { self.big_cpus.len().clamp(2, 4) };
+                let gen = if self.big_cpus.len() == self.cpus {
+                    self.cpus.min(4)
+                } else {
+                    self.big_cpus.len().clamp(2, 4)
+                };
                 (gen as i32, self.cpus.min(8) as i32)
             }
             Kind::Desktop => {

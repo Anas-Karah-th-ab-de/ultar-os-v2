@@ -23,7 +23,10 @@ pub fn get() -> Chaos {
         if let Ok(s) = std::env::var("ULTAR_VERBUND_CHAOS") {
             for t in s.split(',') {
                 let mut kv = t.splitn(2, '=');
-                let (k, v) = (kv.next().unwrap_or("").trim(), kv.next().unwrap_or("0").trim());
+                let (k, v) = (
+                    kv.next().unwrap_or("").trim(),
+                    kv.next().unwrap_or("0").trim(),
+                );
                 match k {
                     "abbruch" => c.abbruch = v.parse().unwrap_or(0.0),
                     "kaputt" => c.kaputt = v.parse().unwrap_or(0.0),
@@ -49,10 +52,15 @@ impl Chaos {
         }
         let mut r = rand::thread_rng();
         if self.verzoegerung > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(r.gen_range(0..=self.verzoegerung)));
+            std::thread::sleep(std::time::Duration::from_millis(
+                r.gen_range(0..=self.verzoegerung),
+            ));
         }
         if self.abbruch > 0.0 && r.gen_bool(self.abbruch.min(1.0)) {
-            return Err(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "chaos: abbruch"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                "chaos: abbruch",
+            ));
         }
         if self.kaputt > 0.0 && !b.is_empty() && r.gen_bool(self.kaputt.min(1.0)) {
             let i = r.gen_range(0..b.len());

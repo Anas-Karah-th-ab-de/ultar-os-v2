@@ -25,13 +25,23 @@ pub struct UpdCfg {
 
 impl Default for UpdCfg {
     fn default() -> Self {
-        Self { api: "https://api.github.com".into(), repo: "Anas-Karah-th-ab-de/ultar-os".into(), boot_target: String::new() }
+        Self {
+            api: "https://api.github.com".into(),
+            repo: "Anas-Karah-th-ab-de/ultar-os".into(),
+            boot_target: String::new(),
+        }
     }
 }
 
 pub fn cfg() -> UpdCfg {
-    for p in [format!("{}/update.toml", sys::data_dir()), "/etc/ultar/update.toml".to_string()] {
-        if let Some(c) = std::fs::read_to_string(p).ok().and_then(|s| toml::from_str(&s).ok()) {
+    for p in [
+        format!("{}/update.toml", sys::data_dir()),
+        "/etc/ultar/update.toml".to_string(),
+    ] {
+        if let Some(c) = std::fs::read_to_string(p)
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+        {
             return c;
         }
     }
@@ -49,7 +59,16 @@ pub struct Release {
 }
 
 fn ver(s: &str) -> Vec<u32> {
-    s.trim_start_matches(['v', 'V']).split('.').map(|p| p.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0)).collect()
+    s.trim_start_matches(['v', 'V'])
+        .split('.')
+        .map(|p| {
+            p.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .unwrap_or(0)
+        })
+        .collect()
 }
 
 pub fn is_newer(tag: &str, current: &str) -> bool {
@@ -58,7 +77,11 @@ pub fn is_newer(tag: &str, current: &str) -> bool {
 
 fn auth(c: &UpdCfg, url: &str, token: &str) -> String {
     // Token nur an die GitHub-Schnittstelle selbst senden
-    if !token.is_empty() && url.starts_with(&c.api) { format!("header = \"Authorization: Bearer {token}\"\n") } else { String::new() }
+    if !token.is_empty() && url.starts_with(&c.api) {
+        format!("header = \"Authorization: Bearer {token}\"\n")
+    } else {
+        String::new()
+    }
 }
 
 pub fn check(bg: &Bg, token: String) {
@@ -73,13 +96,21 @@ pub fn check(bg: &Bg, token: String) {
             Ok(body) => {
                 let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
                 match v["tag_name"].as_str() {
-                    None => r.error = v["message"].as_str().unwrap_or("no release found").to_string(),
+                    None => {
+                        r.error = v["message"]
+                            .as_str()
+                            .unwrap_or("no release found")
+                            .to_string()
+                    }
                     Some(tag) => {
                         r.tag = tag.to_string();
                         r.newer = is_newer(tag, VERSION);
                         let want = format!("ultar-initramfs-{}.cpio.zst", std::env::consts::ARCH);
                         for a in v["assets"].as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
-                            let (name, url) = (a["name"].as_str().unwrap_or(""), a["url"].as_str().unwrap_or(""));
+                            let (name, url) = (
+                                a["name"].as_str().unwrap_or(""),
+                                a["url"].as_str().unwrap_or(""),
+                            );
                             if name == want {
                                 r.image_name = name.into();
                                 r.image_url = url.into();
@@ -106,7 +137,11 @@ pub fn install(bg: &Bg, r: Release, token: String) {
             bg.send(Msg::JobDone(1));
         };
         if r.image_url.is_empty() {
-            return fail(format!("Release {} has no system image for this device ({}).", r.tag, std::env::consts::ARCH));
+            return fail(format!(
+                "Release {} has no system image for this device ({}).",
+                r.tag,
+                std::env::consts::ARCH
+            ));
         }
         if r.sums_url.is_empty() {
             return fail("Release has no SHA256SUMS – update refused.".into());
@@ -115,20 +150,33 @@ pub fn install(bg: &Bg, r: Release, token: String) {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             return fail(format!("{dir}: {e}"));
         }
-        let (img, sums) = (format!("{dir}/{}.neu", r.image_name), format!("{dir}/SHA256SUMS"));
+        let (img, sums) = (
+            format!("{dir}/{}.neu", r.image_name),
+            format!("{dir}/SHA256SUMS"),
+        );
         for (url, file) in [(&r.sums_url, &sums), (&r.image_url, &img)] {
-            say(format!("Downloading {} …", file.rsplit('/').next().unwrap_or("")));
+            say(format!(
+                "Downloading {} …",
+                file.rsplit('/').next().unwrap_or("")
+            ));
             let conf = format!("url = \"{url}\"\noutput = \"{file}\"\nfail\nheader = \"Accept: application/octet-stream\"\nheader = \"User-Agent: ultar-os\"\n{}", auth(&c, url, &token));
             if let Err(e) = curl(&conf, &[]) {
                 return fail(format!("Download failed: {e}"));
             }
         }
-        let want = std::fs::read_to_string(&sums).unwrap_or_default().lines().find_map(|l| {
-            let mut p = l.split_whitespace();
-            let (h, n) = (p.next()?, p.next()?);
-            (n.trim_start_matches('*') == r.image_name).then(|| h.to_lowercase())
-        });
-        let have = sys::capture(COMPAT, &["run", "--", "/usr/bin/sha256sum", &img]).split_whitespace().next().unwrap_or("").to_lowercase();
+        let want = std::fs::read_to_string(&sums)
+            .unwrap_or_default()
+            .lines()
+            .find_map(|l| {
+                let mut p = l.split_whitespace();
+                let (h, n) = (p.next()?, p.next()?);
+                (n.trim_start_matches('*') == r.image_name).then(|| h.to_lowercase())
+            });
+        let have = sys::capture(COMPAT, &["run", "--", "/usr/bin/sha256sum", &img])
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
         match want {
             Some(w) if !have.is_empty() && w == have => say("Checksum matches.".into()),
             Some(_) => {
@@ -163,7 +211,10 @@ pub fn install(bg: &Bg, r: Release, token: String) {
         match res {
             Ok(()) => {
                 nix::unistd::sync();
-                say(format!("Update {} installed to {}. Previous version kept as .alt. Restart to use it.", r.tag, c.boot_target));
+                say(format!(
+                    "Update {} installed to {}. Previous version kept as .alt. Restart to use it.",
+                    r.tag, c.boot_target
+                ));
                 bg.send(Msg::JobDone(0));
             }
             Err(e) => fail(format!("Could not write {}: {e}", c.boot_target)),

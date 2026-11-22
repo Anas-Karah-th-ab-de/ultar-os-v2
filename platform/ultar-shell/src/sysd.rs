@@ -78,14 +78,18 @@ pub fn sync_time(server: &str) -> Result<i64, String> {
 
 /// Neue Zeilen aus /run/ultar/notify.log an den Verlauf anhängen (höchstens 300 Zeilen behalten).
 fn archive_notifications(st: &mut State) {
-    let len = std::fs::metadata(ultar_notify::LOG).map(|m| m.len()).unwrap_or(0);
+    let len = std::fs::metadata(ultar_notify::LOG)
+        .map(|m| m.len())
+        .unwrap_or(0);
     if len < st.hist_seen {
         st.hist_seen = 0;
     }
     if len == st.hist_seen {
         return;
     }
-    let Ok(data) = std::fs::read(ultar_notify::LOG) else { return };
+    let Ok(data) = std::fs::read(ultar_notify::LOG) else {
+        return;
+    };
     let new = String::from_utf8_lossy(&data[st.hist_seen as usize..]).to_string();
     let complete = &new[..new.rfind('\n').map(|i| i + 1).unwrap_or(0)];
     if complete.is_empty() {
@@ -103,7 +107,10 @@ fn archive_notifications(st: &mut State) {
 /// Benachrichtigungsverlauf (neueste zuerst).
 pub fn history() -> Vec<ultar_notify::Note> {
     let s = std::fs::read_to_string(format!("{}/{HISTORY}", sys::data_dir())).unwrap_or_default();
-    s.lines().rev().filter_map(ultar_notify::parse_line).collect()
+    s.lines()
+        .rev()
+        .filter_map(ultar_notify::parse_line)
+        .collect()
 }
 
 /// Aktuelle Benachrichtigungen leeren (der Verlauf bleibt).
@@ -145,14 +152,53 @@ fn run(bg: Bg) {
         // Akku
         if let Some(b) = sys::battery_info() {
             let cur = (b.percent, b.charging);
-            for ev in sysx::battery_events(prev_batt, cur, cfg.auto_saver, cfg.saver_at, cfg.saver) {
+            for ev in sysx::battery_events(prev_batt, cur, cfg.auto_saver, cfg.saver_at, cfg.saver)
+            {
                 match ev {
-                    BattEvent::Low(p) => ultar_notify::post("system", "battery", &text(&lang, "Akku schwach", "Battery low", "البطارية منخفضة"), &format!("{p} %"), if p <= 5 { Urgency::High } else { Urgency::Normal }),
-                    BattEvent::ChargingStarted => ultar_notify::post("system", "battery", &text(&lang, "Wird geladen", "Charging", "جارٍ الشحن"), &format!("{} %", b.percent), Urgency::Low),
-                    BattEvent::Full => ultar_notify::post("system", "battery", &text(&lang, "Akku voll", "Battery full", "البطارية ممتلئة"), &text(&lang, "Ladegerät kann getrennt werden", "You can unplug the charger", "يمكنك فصل الشاحن"), Urgency::Normal),
+                    BattEvent::Low(p) => ultar_notify::post(
+                        "system",
+                        "battery",
+                        &text(&lang, "Akku schwach", "Battery low", "البطارية منخفضة"),
+                        &format!("{p} %"),
+                        if p <= 5 {
+                            Urgency::High
+                        } else {
+                            Urgency::Normal
+                        },
+                    ),
+                    BattEvent::ChargingStarted => ultar_notify::post(
+                        "system",
+                        "battery",
+                        &text(&lang, "Wird geladen", "Charging", "جارٍ الشحن"),
+                        &format!("{} %", b.percent),
+                        Urgency::Low,
+                    ),
+                    BattEvent::Full => ultar_notify::post(
+                        "system",
+                        "battery",
+                        &text(&lang, "Akku voll", "Battery full", "البطارية ممتلئة"),
+                        &text(
+                            &lang,
+                            "Ladegerät kann getrennt werden",
+                            "You can unplug the charger",
+                            "يمكنك فصل الشاحن",
+                        ),
+                        Urgency::Normal,
+                    ),
                     BattEvent::SaverOn => {
                         bg.send(Msg::Sys(SysMsg::Saver(true)));
-                        ultar_notify::post("system", "battery", &text(&lang, "Energiesparmodus an", "Battery saver on", "تم تشغيل توفير الطاقة"), &format!("≤ {} %", cfg.saver_at), Urgency::Low);
+                        ultar_notify::post(
+                            "system",
+                            "battery",
+                            &text(
+                                &lang,
+                                "Energiesparmodus an",
+                                "Battery saver on",
+                                "تم تشغيل توفير الطاقة",
+                            ),
+                            &format!("≤ {} %", cfg.saver_at),
+                            Urgency::Low,
+                        );
                     }
                     BattEvent::SaverOff => bg.send(Msg::Sys(SysMsg::Saver(false))),
                 }
@@ -164,12 +210,22 @@ fn run(bg: Bg) {
         if let Some((zone, c)) = sysx::hottest_zone() {
             if c >= 70.0 && last_hot.map_or(true, |t| t.elapsed() > Duration::from_secs(1800)) {
                 last_hot = Some(Instant::now());
-                ultar_notify::post("system", "thermal", &text(&lang, "Gerät ist heiß", "Device is hot", "الجهاز ساخن"), &format!("{c:.0} °C ({zone})"), Urgency::Normal);
+                ultar_notify::post(
+                    "system",
+                    "thermal",
+                    &text(&lang, "Gerät ist heiß", "Device is hot", "الجهاز ساخن"),
+                    &format!("{c:.0} °C ({zone})"),
+                    Urgency::Normal,
+                );
             }
         }
 
         // Zeitabgleich: beim Start (sobald online) und danach alle 12 h
-        let due = if st.last_sync_ok { now - st.last_sync > 12 * 3600 } else { now - st.last_try > 300 };
+        let due = if st.last_sync_ok {
+            now - st.last_sync > 12 * 3600
+        } else {
+            now - st.last_try > 300
+        };
         if cfg.auto_time && sys::online() && due && started.elapsed() > Duration::from_secs(15) {
             st.last_try = now;
             match sync_time(&cfg.ntp_server) {
@@ -196,7 +252,16 @@ fn run(bg: Bg) {
                 let e = &mut cal.events[i];
                 e.notified = true;
                 let t = sysx::fmt_clock((e.at / 60) as i64, (e.at % 60) as i64, cfg.h12);
-                ultar_notify::post("system", "calendar", &e.title, &format!("{} {t}", text(&lang, "Termin um", "Event at", "موعد الساعة")), Urgency::High);
+                ultar_notify::post(
+                    "system",
+                    "calendar",
+                    &e.title,
+                    &format!(
+                        "{} {t}",
+                        text(&lang, "Termin um", "Event at", "موعد الساعة")
+                    ),
+                    Urgency::High,
+                );
             }
             let _ = sys::save("calendar.toml", &cal);
         }
@@ -212,10 +277,26 @@ fn run(bg: Bg) {
                 st.limit_warned = key;
                 st.limit_level = 0;
             }
-            let level = if used >= lim { 2 } else if used * 10 >= lim * 8 { 1 } else { 0 };
+            let level = if used >= lim {
+                2
+            } else if used * 10 >= lim * 8 {
+                1
+            } else {
+                0
+            };
             if level > st.limit_level {
                 st.limit_level = level;
-                ultar_notify::post("system", "data", &text(&lang, "Datenlimit", "Data limit", "حد البيانات"), &format!("{} / {} MB", used / 1_000_000, cfg.data_limit_mb), if level == 2 { Urgency::High } else { Urgency::Normal });
+                ultar_notify::post(
+                    "system",
+                    "data",
+                    &text(&lang, "Datenlimit", "Data limit", "حد البيانات"),
+                    &format!("{} / {} MB", used / 1_000_000, cfg.data_limit_mb),
+                    if level == 2 {
+                        Urgency::High
+                    } else {
+                        Urgency::Normal
+                    },
+                );
             }
         }
 

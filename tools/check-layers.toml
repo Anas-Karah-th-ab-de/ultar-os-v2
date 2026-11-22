@@ -1,0 +1,139 @@
+# Area and dependency rules for `ultar-check layers` (plan §3.0 and §7 rule 0/1).
+#
+# Every crate must live below exactly one area prefix. A path dependency is
+# allowed when
+#   * both crates are in the same area and that area has `internal = true`, or
+#   * an [[allow]] entry matches (from area, to area and, if `crates` is given,
+#     the target crate directory equals or lies below one of the listed paths).
+# Everything else fails. `rank` is only used to tell "upward" dependencies
+# (lower layer depends on a higher one) apart from other forbidden ones.
+# Areas with `unrestricted = true` may depend on anything (developer tooling).
+
+# Path prefixes that are not checked at all (repository relative).
+# server/ is the cloud side (own x86 workspace), not part of the device system.
+exclude = ["server/"]
+
+[[area]]
+name = "kernel"
+prefix = "kernel/"
+rank = 1
+internal = true
+
+[[area]]
+name = "drivers"
+prefix = "drivers/"
+rank = 2
+internal = true
+
+[[area]]
+name = "system-core"
+prefix = "system/core/"
+rank = 3
+internal = true
+
+[[area]]
+name = "system-hal"
+prefix = "system/hal/"
+rank = 4
+internal = false
+
+[[area]]
+name = "system-services"
+prefix = "system/services/"
+rank = 5
+internal = false
+
+[[area]]
+name = "platform"
+prefix = "platform/"
+rank = 6
+internal = true
+
+[[area]]
+name = "apps"
+prefix = "apps/"
+rank = 7
+internal = false
+
+[[area]]
+name = "external"
+prefix = "external/"
+rank = 8
+internal = false
+
+[[area]]
+name = "tools"
+prefix = "tools/"
+rank = 100
+unrestricted = true
+
+# kernel -> nothing from the repository except kernel drivers
+[[allow]]
+from = "kernel"
+to = "drivers"
+crates = ["drivers/kernel"]
+
+# drivers -> driver package format only
+[[allow]]
+from = "drivers"
+to = "system-core"
+crates = ["system/core/ultar-driverpkg"]
+
+# HAL backends -> HAL traits + system core
+[[allow]]
+from = "system-hal"
+to = "system-hal"
+crates = ["system/hal/ultar-hal"]
+
+[[allow]]
+from = "system-hal"
+to = "system-core"
+
+# Area 3 is system core + HAL together: the core may use the HAL traits and the
+# system source of the device profile, never a device backend.
+[[allow]]
+from = "system-core"
+to = "system-hal"
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+
+# services -> system core + HAL traits
+[[allow]]
+from = "system-services"
+to = "system-core"
+
+[[allow]]
+from = "system-services"
+to = "system-hal"
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+
+# platform -> system core + HAL traits
+[[allow]]
+from = "platform"
+to = "system-core"
+
+[[allow]]
+from = "platform"
+to = "system-hal"
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+
+# apps -> public app API + bus/i18n/profile
+[[allow]]
+from = "apps"
+to = "platform"
+crates = ["platform/app-api", "platform/ultar-ui"]
+
+[[allow]]
+from = "apps"
+to = "system-core"
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]
+
+# third-party packages use the same API as system apps
+[[allow]]
+from = "external"
+to = "platform"
+crates = ["platform/app-api", "platform/ultar-ui"]
+
+[[allow]]
+from = "external"
+to = "system-core"
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]

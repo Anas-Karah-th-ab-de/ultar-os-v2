@@ -95,7 +95,10 @@ fn pdf_open(path: &str, bg: crate::sys::Bg) -> PdfView {
     let sh2 = sh.clone();
     let p = path.to_string();
     std::thread::spawn(move || {
-        let doc = match std::fs::read(&p).map_err(|e| e.to_string()).and_then(uo::pdf::PdfDoc::open) {
+        let doc = match std::fs::read(&p)
+            .map_err(|e| e.to_string())
+            .and_then(uo::pdf::PdfDoc::open)
+        {
             Ok(d) => d,
             Err(e) => {
                 sh2.lock().unwrap().err = Some(e);
@@ -123,7 +126,17 @@ fn pdf_open(path: &str, bg: crate::sys::Bg) -> PdfView {
                         let mut s = sh2.lock().unwrap();
                         s.pending.remove(&(i, w));
                         if let Some(img) = img {
-                            s.pics.insert(i, (w, Arc::new(PagePic { w: img.w, h: img.h, rgba: img.rgba })));
+                            s.pics.insert(
+                                i,
+                                (
+                                    w,
+                                    Arc::new(PagePic {
+                                        w: img.w,
+                                        h: img.h,
+                                        rgba: img.rgba,
+                                    }),
+                                ),
+                            );
                         }
                     }
                     PdfReq::Text(i) => {
@@ -143,7 +156,17 @@ fn pdf_open(path: &str, bg: crate::sys::Bg) -> PdfView {
             }
         }
     });
-    PdfView { path: path.into(), tx, sh, zoom: 1.0, hx: 0.0, cur: 0, text_mode: false, search: false, jump: None }
+    PdfView {
+        path: path.into(),
+        tx,
+        sh,
+        zoom: 1.0,
+        hx: 0.0,
+        cur: 0,
+        text_mode: false,
+        search: false,
+        jump: None,
+    }
 }
 
 // ------------------------------------------------------------------ Dokument
@@ -213,7 +236,11 @@ fn byte_at_vcol(line: &str, col: usize) -> usize {
             return b;
         }
         if col < n {
-            return if col - c > (n - c) / 2 { b + ch.len_utf8() } else { b };
+            return if col - c > (n - c) / 2 {
+                b + ch.len_utf8()
+            } else {
+                b
+            };
         }
         c = n;
     }
@@ -240,7 +267,9 @@ fn scan(kind: u8) -> Vec<(String, u64, u64)> {
     let root = media_root();
     let mut stack = vec![(root.clone(), 0)];
     while let Some((d, depth)) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
@@ -249,7 +278,13 @@ fn scan(kind: u8) -> Vec<(String, u64, u64)> {
             let p = format!("{}/{}", d.trim_end_matches('/'), name);
             let Ok(m) = e.metadata() else { continue };
             if m.is_dir() {
-                if depth < 5 && !(d == root && matches!(name.as_str(), "ultar" | "compat" | "android" | "lost+found" | "cache")) {
+                if depth < 5
+                    && !(d == root
+                        && matches!(
+                            name.as_str(),
+                            "ultar" | "compat" | "android" | "lost+found" | "cache"
+                        ))
+                {
                     stack.push((p, depth + 1));
                 }
                 continue;
@@ -260,7 +295,12 @@ fn scan(kind: u8) -> Vec<(String, u64, u64)> {
                 _ => k == Some(kind),
             };
             if ok {
-                let mt = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+                let mt = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
                 out.push((p, m.len(), mt));
                 if out.len() > 600 {
                     break;
@@ -288,7 +328,10 @@ fn human_size(b: u64) -> String {
 }
 
 fn file_name(p: &str) -> String {
-    std::path::Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    std::path::Path::new(p)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// Farben der Syntaxhervorhebung (dunkel / hell)
@@ -339,7 +382,10 @@ impl App {
         let k = kind_of(path)?;
         if k == 3 {
             // nur echte Textdateien
-            let b = std::fs::read(path).ok().map(|b| b.into_iter().take(8192).collect::<Vec<u8>>()).unwrap_or_default();
+            let b = std::fs::read(path)
+                .ok()
+                .map(|b| b.into_iter().take(8192).collect::<Vec<u8>>())
+                .unwrap_or_default();
             if !uo::looks_text(&b) {
                 return None;
             }
@@ -374,9 +420,26 @@ impl App {
                             Err(e) => (Document::default(), Some(e)),
                         }
                     } else {
-                        (Document { blocks: vec![Block::Para(Para::new(Style::Title, "")), Block::Para(Para::new(Style::Normal, ""))] }, None)
+                        (
+                            Document {
+                                blocks: vec![
+                                    Block::Para(Para::new(Style::Title, "")),
+                                    Block::Para(Para::new(Style::Normal, "")),
+                                ],
+                            },
+                            None,
+                        )
                     };
-                    self.office.doc = Some(DocView { path: p.clone(), doc, sel: None, buf: Buffer::new(""), dirty: false, err, follow: false, pill_x: 0.0 });
+                    self.office.doc = Some(DocView {
+                        path: p.clone(),
+                        doc,
+                        sel: None,
+                        buf: Buffer::new(""),
+                        dirty: false,
+                        err,
+                        follow: false,
+                        pill_x: 0.0,
+                    });
                 }
                 self.office_recent(p);
             }
@@ -390,12 +453,28 @@ impl App {
                     } else {
                         (Workbook::new(), None)
                     };
-                    self.office.sheet = Some(SheetView { path: p.clone(), wb, si: 0, sel: (0, 0), sx: 0.0, editing: false, dirty: false, err });
+                    self.office.sheet = Some(SheetView {
+                        path: p.clone(),
+                        wb,
+                        si: 0,
+                        sel: (0, 0),
+                        sx: 0.0,
+                        editing: false,
+                        dirty: false,
+                        err,
+                    });
                 }
                 self.office_recent(p);
             }
             Ox::Code(p) => {
-                let v = self.office.code.get_or_insert_with(|| CodeView { tabs: Vec::new(), cur: 0, find: false, opt: FindOpt::default(), select: false, hits: 0 });
+                let v = self.office.code.get_or_insert_with(|| CodeView {
+                    tabs: Vec::new(),
+                    cur: 0,
+                    find: false,
+                    opt: FindOpt::default(),
+                    select: false,
+                    hits: 0,
+                });
                 match v.tabs.iter().position(|t| &t.path == p) {
                     Some(i) => v.cur = i,
                     None => {
@@ -403,7 +482,14 @@ impl App {
                             Ok(b) => Buffer::from_bytes(&b),
                             Err(_) => Buffer::new(""),
                         };
-                        v.tabs.push(CodeTab { path: p.clone(), buf, lang: Lang::from_path(p), hx: 0.0, sy: 0.0, follow: false });
+                        v.tabs.push(CodeTab {
+                            path: p.clone(),
+                            buf,
+                            lang: Lang::from_path(p),
+                            hx: 0.0,
+                            sy: 0.0,
+                            follow: false,
+                        });
                         v.cur = v.tabs.len() - 1;
                     }
                 }
@@ -452,7 +538,10 @@ impl App {
         self.office.pdf.as_ref().is_some_and(|p| {
             let s = p.sh.lock().unwrap();
             !s.pending.is_empty() || s.busy || (s.info.is_none() && s.err.is_none())
-        }) && matches!(self.stack.last().map(|s| &s.0), Some(Screen::Office(Ox::Pdf(_))))
+        }) && matches!(
+            self.stack.last().map(|s| &s.0),
+            Some(Screen::Office(Ox::Pdf(_)))
+        )
     }
 
     pub(super) fn s_office(&mut self, ui: &mut Ui, area: Rect, x: Ox, sc: &mut f32) {
@@ -467,7 +556,8 @@ impl App {
 
     /// Kleine Werkzeugleiste aus Symbolknöpfen; liefert den Index des angetippten Knopfs
     fn office_toolbar(&mut self, ui: &mut Ui, r: Rect, items: &[(Ic, bool)]) -> Option<usize> {
-        ui.cv.rect(Rect::new(r.x, r.bottom() - 1.0, r.w, 1.0), ui.th.line);
+        ui.cv
+            .rect(Rect::new(r.x, r.bottom() - 1.0, r.w, 1.0), ui.th.line);
         let n = items.len().max(1);
         let step = (r.w / n as f32).min(ui.dp(52.0));
         let total = step * n as f32;
@@ -476,7 +566,11 @@ impl App {
         for (i, (ic, active)) in items.iter().enumerate() {
             let k = if ui.rtl { n - 1 - i } else { i };
             let cx = x0 + step * (k as f32 + 0.5);
-            let (bg, fg) = if *active { (ui.th.accent.alpha(0.22), ui.th.accent) } else { (ui.th.card.alpha(0.0), ui.th.text) };
+            let (bg, fg) = if *active {
+                (ui.th.accent.alpha(0.22), ui.th.accent)
+            } else {
+                (ui.th.card.alpha(0.0), ui.th.text)
+            };
             if ui.icon_btn(cx, r.cy(), ui.dp(17.0), *ic, bg, fg) {
                 hit = Some(i);
             }
@@ -503,12 +597,28 @@ impl App {
     fn s_office_list(&mut self, ui: &mut Ui, area: Rect, kind: u8, sc: &mut f32) {
         let title = self.t(KIND_NAMES[(kind as usize).min(3)]);
         let area = self.header(ui, area, title);
-        let fresh = self.office.files.as_ref().is_some_and(|f| f.0 == kind && f.1.elapsed().as_secs() < 4);
+        let fresh = self
+            .office
+            .files
+            .as_ref()
+            .is_some_and(|f| f.0 == kind && f.1.elapsed().as_secs() < 4);
         if !fresh {
             self.office.files = Some((kind, Instant::now(), scan(kind)));
         }
-        let files = self.office.files.as_ref().map(|f| f.2.clone()).unwrap_or_default();
-        let recent: Vec<String> = self.office_cfg().recent.iter().filter(|p| kind_of(p) == Some(kind) && std::path::Path::new(p).exists()).take(4).cloned().collect();
+        let files = self
+            .office
+            .files
+            .as_ref()
+            .map(|f| f.2.clone())
+            .unwrap_or_default();
+        let recent: Vec<String> = self
+            .office_cfg()
+            .recent
+            .iter()
+            .filter(|p| kind_of(p) == Some(kind) && std::path::Path::new(p).exists())
+            .take(4)
+            .cloned()
+            .collect();
         // Neu-Knöpfe (außer PDF)
         let m = ui.dp(16.0);
         let mut y = area.y + ui.dp(6.0);
@@ -516,7 +626,12 @@ impl App {
             let opts: &[(&str, &str)] = match kind {
                 1 => &[("New document", "docx"), ("Markdown", "md")],
                 2 => &[("New sheet", "xlsx"), ("CSV", "csv")],
-                _ => &[("New file", "txt"), ("Python", "py"), ("Rust", "rs"), ("HTML", "html")],
+                _ => &[
+                    ("New file", "txt"),
+                    ("Python", "py"),
+                    ("Rust", "rs"),
+                    ("HTML", "html"),
+                ],
             };
             let mut x = m;
             for (label, ext) in opts {
@@ -552,7 +667,13 @@ impl App {
         let body = Rect::new(area.x, y, area.w, (area.bottom() - y).max(0.0));
         if files.is_empty() && recent.is_empty() {
             let ic = list_icon(kind);
-            self.empty(ui, body, ic, self.t("No files yet"), self.t("Files in Documents, Download and other folders appear here."));
+            self.empty(
+                ui,
+                body,
+                ic,
+                self.t("No files yet"),
+                self.t("Files in Documents, Download and other folders appear here."),
+            );
             return;
         }
         ui.scroll_begin(body, sc);
@@ -561,8 +682,23 @@ impl App {
         if !recent.is_empty() {
             ui.section(&mut yy, self.t("Recent"));
             for p in &recent {
-                let sub = std::path::Path::new(p).parent().map(|d| d.to_string_lossy().replace(&media_root(), "").trim_start_matches('/').to_string()).unwrap_or_default();
-                if ui.row(&mut yy, Some(list_icon(kind)), &file_name(p), Some(&sub), None, true) {
+                let sub = std::path::Path::new(p)
+                    .parent()
+                    .map(|d| {
+                        d.to_string_lossy()
+                            .replace(&media_root(), "")
+                            .trim_start_matches('/')
+                            .to_string()
+                    })
+                    .unwrap_or_default();
+                if ui.row(
+                    &mut yy,
+                    Some(list_icon(kind)),
+                    &file_name(p),
+                    Some(&sub),
+                    None,
+                    true,
+                ) {
                     open = Some(p.clone());
                 }
             }
@@ -571,9 +707,22 @@ impl App {
         let now = crate::sys::unix_now() as u64;
         for (p, size, mt) in files.iter().take(300) {
             let age = now.saturating_sub(*mt);
-            let when = if age < 3600 { format!("{} min", age / 60) } else if age < 86400 { format!("{} h", age / 3600) } else { format!("{} d", age / 86400) };
+            let when = if age < 3600 {
+                format!("{} min", age / 60)
+            } else if age < 86400 {
+                format!("{} h", age / 3600)
+            } else {
+                format!("{} d", age / 86400)
+            };
             let sub = format!("{} · {}", human_size(*size), when);
-            if ui.row(&mut yy, Some(list_icon(kind)), &file_name(p), Some(&sub), None, true) {
+            if ui.row(
+                &mut yy,
+                Some(list_icon(kind)),
+                &file_name(p),
+                Some(&sub),
+                None,
+                true,
+            ) {
                 open = Some(p.clone());
             }
         }
@@ -622,7 +771,13 @@ impl App {
         };
         // Werkzeugleiste: Suchen, Text, Verkleinern, Vergrößern, Agent
         let tb = Rect::new(area.x, area.y, area.w, ui.dp(46.0));
-        let items = [(Ic::Search, v.search), (Ic::Doc, v.text_mode), (Ic::Svg("minus"), false), (Ic::Plus, v.zoom > 1.01), (Ic::Spark, false)];
+        let items = [
+            (Ic::Search, v.search),
+            (Ic::Doc, v.text_mode),
+            (Ic::Svg("minus"), false),
+            (Ic::Plus, v.zoom > 1.01),
+            (Ic::Spark, false),
+        ];
         match self.office_toolbar(ui, tb, &items) {
             Some(0) => {
                 v.search = !v.search;
@@ -664,7 +819,12 @@ impl App {
         }
         let mut top = tb.bottom();
         if v.search {
-            let fr = Rect::new(ui.dp(12.0), top + ui.dp(6.0), ui.w - ui.dp(24.0), ui.dp(44.0));
+            let fr = Rect::new(
+                ui.dp(12.0),
+                top + ui.dp(6.0),
+                ui.w - ui.dp(24.0),
+                ui.dp(44.0),
+            );
             let q = self.f("pdf_q");
             ui.field(fr, "pdf_q", &q, self.t("Search in document"));
             top = fr.bottom() + ui.dp(6.0);
@@ -674,14 +834,28 @@ impl App {
             };
             if busy {
                 let c = ui.th.sub;
-                ui.label(Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(24.0)), self.t("Searching…"), 13.0, c, false, Al::Start);
+                ui.label(
+                    Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(24.0)),
+                    self.t("Searching…"),
+                    13.0,
+                    c,
+                    false,
+                    Al::Start,
+                );
                 top += ui.dp(26.0);
             } else if let Some(res) = res {
                 let rh = ui.dp(40.0);
                 let shown = res.len().min(5);
                 if res.is_empty() {
                     let c = ui.th.sub;
-                    ui.label(Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(24.0)), self.t("No results"), 13.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(24.0)),
+                        self.t("No results"),
+                        13.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     top += ui.dp(26.0);
                 }
                 for (pg, line) in res.iter().take(shown) {
@@ -689,9 +863,23 @@ impl App {
                     ui.card_h(r, ui.held(r));
                     let (c, cs) = (ui.th.text, ui.th.accent);
                     let lab = format!("{}", pg + 1);
-                    ui.label(Rect::new(r.x + ui.dp(10.0), r.y, ui.dp(36.0), r.h), &lab, 13.0, cs, true, Al::Start);
+                    ui.label(
+                        Rect::new(r.x + ui.dp(10.0), r.y, ui.dp(36.0), r.h),
+                        &lab,
+                        13.0,
+                        cs,
+                        true,
+                        Al::Start,
+                    );
                     let lf = ui.fit(line, 13.0, false, r.w - ui.dp(56.0));
-                    ui.label(Rect::new(r.x + ui.dp(46.0), r.y, r.w - ui.dp(56.0), r.h), &lf, 13.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(r.x + ui.dp(46.0), r.y, r.w - ui.dp(56.0), r.h),
+                        &lf,
+                        13.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     if ui.tap(r) {
                         v.jump = Some(*pg);
                         v.text_mode = false;
@@ -704,7 +892,14 @@ impl App {
                 if res.len() > shown {
                     let c = ui.th.sub;
                     let t = format!("+{} …", res.len() - shown);
-                    ui.label(Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(20.0)), &t, 12.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(ui.dp(16.0), top, ui.w - ui.dp(32.0), ui.dp(20.0)),
+                        &t,
+                        12.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     top += ui.dp(22.0);
                 }
             }
@@ -712,7 +907,14 @@ impl App {
         let body = Rect::new(0.0, top, ui.w, (area.bottom() - top).max(0.0));
         if let Some(e) = err {
             let c = ui.th.danger;
-            ui.para(ui.dp(20.0), body.y + ui.dp(30.0), ui.w - ui.dp(40.0), &format!("{}: {e}", self.t("Could not open")), 15.0, c);
+            ui.para(
+                ui.dp(20.0),
+                body.y + ui.dp(30.0),
+                ui.w - ui.dp(40.0),
+                &format!("{}: {e}", self.t("Could not open")),
+                15.0,
+                c,
+            );
             self.office.pdf = Some(v);
             return;
         }
@@ -732,9 +934,22 @@ impl App {
             let bar = Rect::new(m, y, ui.w - 2.0 * m, ui.dp(40.0));
             let (c, cs) = (ui.th.text, ui.th.sub);
             let lab = format!("{} {} / {}", self.t("Page"), cur + 1, n);
-            ui.label(Rect::new(bar.x, bar.y, bar.w / 2.0, bar.h), &lab, 14.0, cs, true, Al::Start);
+            ui.label(
+                Rect::new(bar.x, bar.y, bar.w / 2.0, bar.h),
+                &lab,
+                14.0,
+                cs,
+                true,
+                Al::Start,
+            );
             // Blättern und Kopieren
-            let bx = |k: f32| if ui.rtl { bar.x + ui.dp(20.0) + k * ui.dp(44.0) } else { bar.right() - ui.dp(20.0) - k * ui.dp(44.0) };
+            let bx = |k: f32| {
+                if ui.rtl {
+                    bar.x + ui.dp(20.0) + k * ui.dp(44.0)
+                } else {
+                    bar.right() - ui.dp(20.0) - k * ui.dp(44.0)
+                }
+            };
             let (x0, x1, x2) = (bx(0.0), bx(1.0), bx(2.0));
             let tc = ui.th.text;
             let nb = ui.th.card;
@@ -755,7 +970,14 @@ impl App {
             }
             y += ui.dp(50.0);
             let h = match &txt {
-                Some(t) if t.trim().is_empty() => ui.para(m, y, ui.w - 2.0 * m, self.t("No text on this page (scanned image?)"), 15.0, cs),
+                Some(t) if t.trim().is_empty() => ui.para(
+                    m,
+                    y,
+                    ui.w - 2.0 * m,
+                    self.t("No text on this page (scanned image?)"),
+                    15.0,
+                    cs,
+                ),
                 Some(t) => ui.para(m, y, ui.w - 2.0 * m, t, 16.0, c),
                 None => {
                     if !v.sh.lock().unwrap().text.contains_key(&cur) {
@@ -784,7 +1006,10 @@ impl App {
         }
         // Doppeltippen: Zoom 1× ↔ 2×
         let dbl_tap = ui.tap(body) && {
-            let d = self.office.last_tap.is_some_and(|t| t.elapsed().as_millis() < 320);
+            let d = self
+                .office
+                .last_tap
+                .is_some_and(|t| t.elapsed().as_millis() < 320);
             self.office.last_tap = if d { None } else { Some(Instant::now()) };
             d
         };
@@ -798,7 +1023,12 @@ impl App {
             ui.dirty = true;
         }
         let maxhx = (pw + 2.0 * m - body.w).max(0.0);
-        if v.zoom > 1.01 && ui.p.down && ui.p.moved && body.contains(ui.p.px, ui.p.py) && ui.p.capture.is_none() {
+        if v.zoom > 1.01
+            && ui.p.down
+            && ui.p.moved
+            && body.contains(ui.p.px, ui.p.py)
+            && ui.p.capture.is_none()
+        {
             v.hx = (v.hx - ui.p.dx).clamp(0.0, maxhx);
             ui.p.dx = 0.0;
         }
@@ -842,7 +1072,9 @@ impl App {
         // auch knapp außerhalb vorbereiten
         for i in wanted.clone() {
             let y = body.y + tops[i] - *sc;
-            if (y > body.bottom() || y + heights[i] < body.y) && !v.sh.lock().unwrap().pics.contains_key(&i) {
+            if (y > body.bottom() || y + heights[i] < body.y)
+                && !v.sh.lock().unwrap().pics.contains_key(&i)
+            {
                 self.pdf_request(&v, i, want_w);
             }
         }
@@ -850,20 +1082,35 @@ impl App {
             let mut s = v.sh.lock().unwrap();
             // Speicher: nur Seiten um die aktuelle behalten
             let cur = v.cur;
-            s.pics.retain(|k, _| (*k as isize - cur as isize).abs() <= 4);
+            s.pics
+                .retain(|k, _| (*k as isize - cur as isize).abs() <= 4);
             s.wanted = wanted;
         }
         ui.scroll_end(body, acc + ui.dp(60.0), sc);
         // Seitenanzeige unten
         let lab = format!("{} / {}", v.cur + 1, n);
         let w = ui.text_w(&lab, 13.0, true) + ui.dp(26.0);
-        let r = Rect::new((ui.w - w) / 2.0, body.bottom() - ui.dp(46.0), w, ui.dp(32.0));
+        let r = Rect::new(
+            (ui.w - w) / 2.0,
+            body.bottom() - ui.dp(46.0),
+            w,
+            ui.dp(32.0),
+        );
         ui.cv.rrect(r, r.h / 2.0, rgb(0x111318).alpha(0.82));
         ui.label(r, &lab, 13.0, rgb(0xFFFFFF), true, Al::Center);
         if v.zoom > 1.01 {
             let z = format!("{:.0} %", v.zoom * 100.0);
             let zw = ui.text_w(&z, 12.0, false) + ui.dp(20.0);
-            let zr = Rect::new(if ui.rtl { ui.dp(12.0) } else { ui.w - zw - ui.dp(12.0) }, body.bottom() - ui.dp(46.0), zw, ui.dp(32.0));
+            let zr = Rect::new(
+                if ui.rtl {
+                    ui.dp(12.0)
+                } else {
+                    ui.w - zw - ui.dp(12.0)
+                },
+                body.bottom() - ui.dp(46.0),
+                zw,
+                ui.dp(32.0),
+            );
             ui.cv.rrect(zr, zr.h / 2.0, rgb(0x111318).alpha(0.7));
             ui.label(zr, &z, 12.0, rgb(0xFFFFFF), false, Al::Center);
         }
@@ -936,7 +1183,11 @@ impl App {
             }
             d = self.office.doc.take().unwrap();
         }
-        let title = format!("{}{}", if d.dirty || d.buf.dirty { "• " } else { "" }, file_name(path));
+        let title = format!(
+            "{}{}",
+            if d.dirty || d.buf.dirty { "• " } else { "" },
+            file_name(path)
+        );
         let area = self.header(ui, area, &title);
         let editing = d.sel.is_some() && self.focus == Some("office_ed");
         if !editing && d.sel.is_some() && self.focus.is_none() {
@@ -966,7 +1217,15 @@ impl App {
                 Align::End => Ic::Svg("align-e"),
                 _ => Ic::Svg("align-s"),
             };
-            let items = [(Ic::Svg("bold"), bold), (al_ic, al != Align::Start), (Ic::Back, false), (Ic::Svg("fwd"), false), (Ic::Plus, false), (Ic::Trash, false), (Ic::Check, false)];
+            let items = [
+                (Ic::Svg("bold"), bold),
+                (al_ic, al != Align::Start),
+                (Ic::Back, false),
+                (Ic::Svg("fwd"), false),
+                (Ic::Plus, false),
+                (Ic::Trash, false),
+                (Ic::Check, false),
+            ];
             match self.office_toolbar(ui, tb, &items) {
                 Some(0) => {
                     if let Some(Block::Para(p)) = d.doc.blocks.get_mut(si) {
@@ -988,17 +1247,29 @@ impl App {
                     }
                 }
                 Some(2) => {
-                    if ui.rtl { d.buf.right(false) } else { d.buf.left(false) }
+                    if ui.rtl {
+                        d.buf.right(false)
+                    } else {
+                        d.buf.left(false)
+                    }
                 }
                 Some(3) => {
-                    if ui.rtl { d.buf.left(false) } else { d.buf.right(false) }
+                    if ui.rtl {
+                        d.buf.left(false)
+                    } else {
+                        d.buf.right(false)
+                    }
                 }
                 Some(4) => {
                     // neuer Absatz darunter
                     if let Some(Block::Para(p)) = d.doc.blocks.get_mut(si) {
                         p.set_text(&d.buf.text);
                     }
-                    let st = if matches!(style, Style::Bullet | Style::Number) { style } else { Style::Normal };
+                    let st = if matches!(style, Style::Bullet | Style::Number) {
+                        style
+                    } else {
+                        Style::Normal
+                    };
                     d.doc.blocks.insert(si + 1, Block::Para(Para::new(st, "")));
                     d.sel = Some(si + 1);
                     d.buf = Buffer::new("");
@@ -1031,15 +1302,33 @@ impl App {
             }
             if d.sel.is_some() {
                 // Formatvorlagen als eine Pillenreihe; zu breit → seitlich wischen
-                let names: [(&str, Style); 8] = [("Text", Style::Normal), ("Title", Style::Title), ("H1", Style::H1), ("H2", Style::H2), ("H3", Style::H3), ("• List", Style::Bullet), ("1. List", Style::Number), ("Quote", Style::Quote)];
+                let names: [(&str, Style); 8] = [
+                    ("Text", Style::Normal),
+                    ("Title", Style::Title),
+                    ("H1", Style::H1),
+                    ("H2", Style::H2),
+                    ("H3", Style::H3),
+                    ("• List", Style::Bullet),
+                    ("1. List", Style::Number),
+                    ("Quote", Style::Quote),
+                ];
                 let py = top + ui.dp(6.0);
                 let row = Rect::new(0.0, py - ui.dp(2.0), ui.w, ui.dp(38.0));
-                if ui.p.down && ui.p.moved && row.contains(ui.p.px, ui.p.py) && ui.p.capture.is_none() {
+                if ui.p.down
+                    && ui.p.moved
+                    && row.contains(ui.p.px, ui.p.py)
+                    && ui.p.capture.is_none()
+                {
                     d.pill_x -= if ui.rtl { -ui.p.dx } else { ui.p.dx };
                     ui.p.dx = 0.0;
                 }
-                let widths: Vec<f32> = names.iter().map(|(lab, st)| ui.text_w(self.t(lab), 13.0, *st == style) + ui.dp(26.0)).collect();
-                let total: f32 = widths.iter().sum::<f32>() + ui.dp(6.0) * (widths.len() as f32 - 1.0) + ui.dp(24.0);
+                let widths: Vec<f32> = names
+                    .iter()
+                    .map(|(lab, st)| ui.text_w(self.t(lab), 13.0, *st == style) + ui.dp(26.0))
+                    .collect();
+                let total: f32 = widths.iter().sum::<f32>()
+                    + ui.dp(6.0) * (widths.len() as f32 - 1.0)
+                    + ui.dp(24.0);
                 d.pill_x = d.pill_x.clamp(0.0, (total - ui.w).max(0.0));
                 let old_clip = ui.clip;
                 ui.set_clip(Some(row));
@@ -1062,7 +1351,12 @@ impl App {
                 top = py + ui.dp(40.0);
             }
         } else {
-            let items = [(Ic::Plus, false), (Ic::Download, false), (Ic::Copy, false), (Ic::Spark, false)];
+            let items = [
+                (Ic::Plus, false),
+                (Ic::Download, false),
+                (Ic::Copy, false),
+                (Ic::Spark, false),
+            ];
             match self.office_toolbar(ui, tb, &items) {
                 Some(0) => {
                     d.doc.blocks.push(Block::Para(Para::new(Style::Normal, "")));
@@ -1074,15 +1368,13 @@ impl App {
                     self.focus_reset = true;
                     *sc = f32::MAX / 4.0;
                 }
-                Some(1) => {
-                    match uo::write_doc(&d.path, &d.doc) {
-                        Ok(_) => {
-                            d.dirty = false;
-                            self.toast(self.t("Saved").into());
-                        }
-                        Err(e) => self.toast(format!("{}: {e}", self.t("Could not save"))),
+                Some(1) => match uo::write_doc(&d.path, &d.doc) {
+                    Ok(_) => {
+                        d.dirty = false;
+                        self.toast(self.t("Saved").into());
                     }
-                }
+                    Err(e) => self.toast(format!("{}: {e}", self.t("Could not save"))),
+                },
                 Some(2) => {
                     let t = d.doc.to_text();
                     self.copy_text(&t);
@@ -1103,7 +1395,14 @@ impl App {
         let body = Rect::new(0.0, top, ui.w, (area.bottom() - top - ui.dp(24.0)).max(0.0));
         if let Some(e) = &d.err {
             let c = ui.th.danger;
-            ui.para(ui.dp(16.0), body.y + ui.dp(6.0), ui.w - ui.dp(32.0), e, 13.0, c);
+            ui.para(
+                ui.dp(16.0),
+                body.y + ui.dp(6.0),
+                ui.w - ui.dp(32.0),
+                e,
+                13.0,
+                c,
+            );
         }
         // Papier
         ui.scroll_begin(body, sc);
@@ -1117,8 +1416,10 @@ impl App {
         let paper_top = body.y - *sc + ui.dp(10.0);
         // Höhe erst nach dem Zeichnen bekannt: Papier zuerst groß genug zeichnen (Vorjahreshöhe aus Bildlauf)
         let est = SCRATCH_H.with(|h| h.get()).max(body.h);
-        ui.cv.soft_shadow(Rect::new(px, paper_top, paper_w, est), ui.dp(6.0), rgb(0));
-        ui.cv.rect(Rect::new(px, paper_top, paper_w, est), rgb(PAPER));
+        ui.cv
+            .soft_shadow(Rect::new(px, paper_top, paper_w, est), ui.dp(6.0), rgb(0));
+        ui.cv
+            .rect(Rect::new(px, paper_top, paper_w, est), rgb(PAPER));
         let ink = rgb(INK);
         let mut num = 0;
         let mut tap_block = None;
@@ -1146,11 +1447,21 @@ impl App {
                         let c = d.buf.cur.min(text.len());
                         text.insert(c, '|');
                     }
-                    let shown = if text.is_empty() && !sel { if p.style == Style::Title { self.t("Title").to_string() } else { String::new() } } else { text.clone() };
+                    let shown = if text.is_empty() && !sel {
+                        if p.style == Style::Title {
+                            self.t("Title").to_string()
+                        } else {
+                            String::new()
+                        }
+                    } else {
+                        text.clone()
+                    };
                     let rtl = uo::doc::is_rtl(&shown) || (shown.is_empty() && ui.rtl);
                     let tw = inner_w - ind;
                     let sz = ui.dp(fs);
-                    let (mw, mh) = ui.tx.measure(if shown.is_empty() { " " } else { &shown }, sz, bold, tw);
+                    let (mw, mh) =
+                        ui.tx
+                            .measure(if shown.is_empty() { " " } else { &shown }, sz, bold, tw);
                     let pad_top = match p.style {
                         Style::Title => ui.dp(4.0),
                         Style::H1 | Style::H2 | Style::H3 => ui.dp(10.0),
@@ -1158,22 +1469,52 @@ impl App {
                     };
                     y += pad_top;
                     let h = mh.max(sz * 1.35);
-                    let br = Rect::new(inner_x - ui.dp(8.0), y - ui.dp(4.0), inner_w + ui.dp(16.0), h + ui.dp(8.0));
+                    let br = Rect::new(
+                        inner_x - ui.dp(8.0),
+                        y - ui.dp(4.0),
+                        inner_w + ui.dp(16.0),
+                        h + ui.dp(8.0),
+                    );
                     if sel {
                         ui.cv.rrect(br, ui.dp(8.0), ui.th.accent.alpha(0.16));
                     }
                     if p.style == Style::Quote {
-                        let qx = if rtl { inner_x + inner_w - ui.dp(3.0) } else { inner_x };
+                        let qx = if rtl {
+                            inner_x + inner_w - ui.dp(3.0)
+                        } else {
+                            inner_x
+                        };
                         ui.cv.rect(Rect::new(qx, y, ui.dp(3.0), h), rgb(0xC9A227));
                     }
                     if p.style == Style::Code {
-                        ui.cv.rrect(Rect::new(inner_x - ui.dp(4.0), y - ui.dp(2.0), inner_w + ui.dp(8.0), h + ui.dp(4.0)), ui.dp(4.0), rgb(0xF3F4F6));
+                        ui.cv.rrect(
+                            Rect::new(
+                                inner_x - ui.dp(4.0),
+                                y - ui.dp(2.0),
+                                inner_w + ui.dp(8.0),
+                                h + ui.dp(4.0),
+                            ),
+                            ui.dp(4.0),
+                            rgb(0xF3F4F6),
+                        );
                     }
                     if !prefix.is_empty() {
-                        let pxx = if rtl { inner_x + inner_w - ind + ui.dp(4.0) } else { inner_x };
+                        let pxx = if rtl {
+                            inner_x + inner_w - ind + ui.dp(4.0)
+                        } else {
+                            inner_x
+                        };
                         ui.tx.draw(ui.cv, &prefix, pxx, y, sz, ink, false, 0.0);
                     }
-                    let col = if shown == self.t("Title") && p.text().is_empty() { rgb(0x9CA3AF) } else if p.style == Style::Quote { rgb(0x555555) } else if matches!(p.style, Style::H1) { rgb(0x8A6D0B) } else { ink };
+                    let col = if shown == self.t("Title") && p.text().is_empty() {
+                        rgb(0x9CA3AF)
+                    } else if p.style == Style::Quote {
+                        rgb(0x555555)
+                    } else if matches!(p.style, Style::H1) {
+                        rgb(0x8A6D0B)
+                    } else {
+                        ink
+                    };
                     // Ausrichtung: Text einzeilig messen, sonst über die Breite umbrechen
                     let tx0 = if rtl { inner_x } else { inner_x + ind };
                     let off = match (p.align, rtl) {
@@ -1183,7 +1524,8 @@ impl App {
                         _ => 0.0,
                     };
                     if ui.visible(br) && !shown.is_empty() {
-                        ui.tx.draw(ui.cv, &shown, tx0 + off.max(0.0), y, sz, col, bold, tw);
+                        ui.tx
+                            .draw(ui.cv, &shown, tx0 + off.max(0.0), y, sz, col, bold, tw);
                     }
                     if ui.tap(br) && !sel {
                         tap_block = Some(i);
@@ -1209,18 +1551,37 @@ impl App {
                             ui.cv.rect(Rect::new(r.x, r.y, r.w, 1.0), rgb(0xD1D5DB));
                             ui.cv.rect(Rect::new(r.x, r.y, 1.0, r.h), rgb(0xD1D5DB));
                             if ri == 0 {
-                                ui.cv.rect(Rect::new(r.x + 1.0, r.y + 1.0, r.w - 1.0, r.h - 1.0), rgb(0xF3F4F6));
+                                ui.cv.rect(
+                                    Rect::new(r.x + 1.0, r.y + 1.0, r.w - 1.0, r.h - 1.0),
+                                    rgb(0xF3F4F6),
+                                );
                             }
                             let s = row.get(c).map(|s| s.as_str()).unwrap_or("");
                             let f = ui.fit(s, 12.0, ri == 0, cw - ui.dp(10.0));
                             let old = ui.rtl;
-                            ui.label(Rect::new(r.x + ui.dp(5.0), r.y, cw - ui.dp(10.0), rh), &f, 12.0, ink, ri == 0, Al::Start);
+                            ui.label(
+                                Rect::new(r.x + ui.dp(5.0), r.y, cw - ui.dp(10.0), rh),
+                                &f,
+                                12.0,
+                                ink,
+                                ri == 0,
+                                Al::Start,
+                            );
                             ui.rtl = old;
                         }
                         y += rh;
                     }
-                    ui.cv.rect(Rect::new(inner_x, y, inner_w, 1.0), rgb(0xD1D5DB));
-                    ui.cv.rect(Rect::new(inner_x + inner_w, y - rh * t.len() as f32, 1.0, rh * t.len() as f32), rgb(0xD1D5DB));
+                    ui.cv
+                        .rect(Rect::new(inner_x, y, inner_w, 1.0), rgb(0xD1D5DB));
+                    ui.cv.rect(
+                        Rect::new(
+                            inner_x + inner_w,
+                            y - rh * t.len() as f32,
+                            1.0,
+                            rh * t.len() as f32,
+                        ),
+                        rgb(0xD1D5DB),
+                    );
                     y += ui.dp(12.0);
                 }
             }
@@ -1228,7 +1589,8 @@ impl App {
         // Tippen unter den letzten Absatz: ans Ende schreiben
         let tail = Rect::new(px, y, paper_w, ui.dp(80.0));
         if ui.tap(tail) && d.sel.is_none() {
-            let last_empty = matches!(d.doc.blocks.last(), Some(Block::Para(p)) if p.text().is_empty());
+            let last_empty =
+                matches!(d.doc.blocks.last(), Some(Block::Para(p)) if p.text().is_empty());
             if !last_empty {
                 d.doc.blocks.push(Block::Para(Para::new(Style::Normal, "")));
             }
@@ -1254,10 +1616,30 @@ impl App {
         ui.scroll_end(body, content_h + ui.dp(20.0), sc);
         // Fußzeile: Wörter
         let words = d.doc.word_count();
-        let state = if d.dirty { self.t("Not saved") } else { self.t("Saved") };
-        let foot = if self.lang() == "ar" { format!("{}: {} · {}", self.t("words"), words, state) } else { format!("{} {} · {}", words, self.t("words"), state) };
+        let state = if d.dirty {
+            self.t("Not saved")
+        } else {
+            self.t("Saved")
+        };
+        let foot = if self.lang() == "ar" {
+            format!("{}: {} · {}", self.t("words"), words, state)
+        } else {
+            format!("{} {} · {}", words, self.t("words"), state)
+        };
         let c = ui.th.sub;
-        ui.label(Rect::new(ui.dp(16.0), area.bottom() - ui.dp(22.0), ui.w - ui.dp(32.0), ui.dp(20.0)), &foot, 12.0, c, false, Al::Start);
+        ui.label(
+            Rect::new(
+                ui.dp(16.0),
+                area.bottom() - ui.dp(22.0),
+                ui.w - ui.dp(32.0),
+                ui.dp(20.0),
+            ),
+            &foot,
+            12.0,
+            c,
+            false,
+            Al::Start,
+        );
         self.office.doc = Some(d);
         if let Some(i) = tap_block {
             self.doc_select(i);
@@ -1312,11 +1694,26 @@ impl App {
 
     fn office_selected(&self) -> String {
         match self.office_cur_screen() {
-            Some(Ox::Code(_)) => self.office.code.as_ref().and_then(|c| c.tabs.get(c.cur)).map(|t| {
-                let s = t.buf.selected_text();
-                if s.is_empty() { t.buf.line(t.buf.line_col(t.buf.cur).0).to_string() } else { s }
-            }).unwrap_or_default(),
-            Some(Ox::Doc(_)) => self.office.doc.as_ref().map(|d| d.buf.text.clone()).unwrap_or_default(),
+            Some(Ox::Code(_)) => self
+                .office
+                .code
+                .as_ref()
+                .and_then(|c| c.tabs.get(c.cur))
+                .map(|t| {
+                    let s = t.buf.selected_text();
+                    if s.is_empty() {
+                        t.buf.line(t.buf.line_col(t.buf.cur).0).to_string()
+                    } else {
+                        s
+                    }
+                })
+                .unwrap_or_default(),
+            Some(Ox::Doc(_)) => self
+                .office
+                .doc
+                .as_ref()
+                .map(|d| d.buf.text.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     }
@@ -1324,7 +1721,12 @@ impl App {
     fn office_cut(&mut self) {
         match self.office_cur_screen() {
             Some(Ox::Code(_)) => {
-                if let Some(t) = self.office.code.as_mut().and_then(|c| c.tabs.get_mut(c.cur)) {
+                if let Some(t) = self
+                    .office
+                    .code
+                    .as_mut()
+                    .and_then(|c| c.tabs.get_mut(c.cur))
+                {
                     if t.buf.selection().is_some() {
                         t.buf.backspace();
                     } else {
@@ -1345,7 +1747,12 @@ impl App {
     fn office_insert(&mut self, s: &str) {
         match self.office_cur_screen() {
             Some(Ox::Code(_)) => {
-                if let Some(t) = self.office.code.as_mut().and_then(|c| c.tabs.get_mut(c.cur)) {
+                if let Some(t) = self
+                    .office
+                    .code
+                    .as_mut()
+                    .and_then(|c| c.tabs.get_mut(c.cur))
+                {
                     // automatische Klammerpaare
                     let pair = match s {
                         "(" => Some(")"),
@@ -1355,12 +1762,17 @@ impl App {
                         _ => None,
                     };
                     let next = t.buf.text[t.buf.cur..].chars().next();
-                    if [")", "]", "}", "\""].contains(&s) && next.map(|c| c.to_string()).as_deref() == Some(s) && t.buf.selection().is_none() {
+                    if [")", "]", "}", "\""].contains(&s)
+                        && next.map(|c| c.to_string()).as_deref() == Some(s)
+                        && t.buf.selection().is_none()
+                    {
                         t.buf.right(false);
                     } else {
                         t.buf.insert(s);
                         if let Some(p) = pair {
-                            if t.buf.selection().is_none() && next.map_or(true, |c| c.is_whitespace() || ")]};,".contains(c)) {
+                            if t.buf.selection().is_none()
+                                && next.map_or(true, |c| c.is_whitespace() || ")]};,".contains(c))
+                            {
                                 t.buf.insert(p);
                                 t.buf.left(false);
                             }
@@ -1383,7 +1795,12 @@ impl App {
         use crate::ui::Key;
         match self.office_cur_screen() {
             Some(Ox::Code(_)) => {
-                if let Some(t) = self.office.code.as_mut().and_then(|c| c.tabs.get_mut(c.cur)) {
+                if let Some(t) = self
+                    .office
+                    .code
+                    .as_mut()
+                    .and_then(|c| c.tabs.get_mut(c.cur))
+                {
                     match k {
                         Key::Char(c) => {
                             let s = c.to_string();
@@ -1395,13 +1812,30 @@ impl App {
                             // leeres Klammerpaar zusammen löschen
                             let prev = t.buf.text[..t.buf.cur].chars().last();
                             let next = t.buf.text[t.buf.cur..].chars().next();
-                            if t.buf.selection().is_none() && matches!((prev, next), (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}')) | (Some('"'), Some('"'))) {
+                            if t.buf.selection().is_none()
+                                && matches!(
+                                    (prev, next),
+                                    (Some('('), Some(')'))
+                                        | (Some('['), Some(']'))
+                                        | (Some('{'), Some('}'))
+                                        | (Some('"'), Some('"'))
+                                )
+                            {
                                 t.buf.delete();
                             }
                             t.buf.backspace();
                         }
                         Key::Enter => {
-                            let unit = if t.buf.text.contains("\n\t") { "\t" } else if t.lang == Lang::Yaml || t.lang == Lang::Html || t.lang == Lang::Xml { "  " } else { "    " };
+                            let unit = if t.buf.text.contains("\n\t") {
+                                "\t"
+                            } else if t.lang == Lang::Yaml
+                                || t.lang == Lang::Html
+                                || t.lang == Lang::Xml
+                            {
+                                "  "
+                            } else {
+                                "    "
+                            };
                             t.buf.newline(unit);
                         }
                     }
@@ -1409,7 +1843,9 @@ impl App {
                 }
             }
             Some(Ox::Doc(_)) => {
-                let Some(d) = self.office.doc.as_mut() else { return };
+                let Some(d) = self.office.doc.as_mut() else {
+                    return;
+                };
                 let Some(si) = d.sel else { return };
                 match k {
                     Key::Char(c) => {
@@ -1446,7 +1882,10 @@ impl App {
                             _ => Style::Normal,
                         };
                         // leerer Listenpunkt + Enter = Liste beenden
-                        if a.is_empty() && b.is_empty() && matches!(style, Style::Bullet | Style::Number) {
+                        if a.is_empty()
+                            && b.is_empty()
+                            && matches!(style, Style::Bullet | Style::Number)
+                        {
                             if let Some(Block::Para(p)) = d.doc.blocks.get_mut(si) {
                                 p.style = Style::Normal;
                             }
@@ -1456,7 +1895,14 @@ impl App {
                         if let Some(Block::Para(p)) = d.doc.blocks.get_mut(si) {
                             p.set_text(&a);
                         }
-                        let st = if matches!(style, Style::Bullet | Style::Number | Style::Code | Style::Quote) { style } else { Style::Normal };
+                        let st = if matches!(
+                            style,
+                            Style::Bullet | Style::Number | Style::Code | Style::Quote
+                        ) {
+                            style
+                        } else {
+                            Style::Normal
+                        };
                         d.doc.blocks.insert(si + 1, Block::Para(Para::new(st, &b)));
                         d.sel = Some(si + 1);
                         d.buf = Buffer::new(&b);
@@ -1508,7 +1954,11 @@ impl App {
         if let Some(s) = self.office.sheet.as_mut() {
             if s.editing {
                 let (r, c) = s.sel;
-                let old = s.wb.sheets.get(s.si).map(|sh| sh.get(r, c).to_string()).unwrap_or_default();
+                let old =
+                    s.wb.sheets
+                        .get(s.si)
+                        .map(|sh| sh.get(r, c).to_string())
+                        .unwrap_or_default();
                 if old != raw {
                     if let Some(sh) = s.wb.sheets.get_mut(s.si) {
                         sh.set(r, c, raw.trim_end());
@@ -1525,7 +1975,11 @@ impl App {
         self.sheet_commit();
         if let Some(s) = self.office.sheet.as_mut() {
             s.sel.0 += 1;
-            let raw = s.wb.sheets.get(s.si).map(|sh| sh.get(s.sel.0, s.sel.1).to_string()).unwrap_or_default();
+            let raw =
+                s.wb.sheets
+                    .get(s.si)
+                    .map(|sh| sh.get(s.sel.0, s.sel.1).to_string())
+                    .unwrap_or_default();
             self.fields.insert("office_cell", raw);
             if let Some(s) = self.office.sheet.as_mut() {
                 s.editing = true;
@@ -1567,7 +2021,12 @@ impl App {
         ui.cv.rrect(nr, ui.dp(12.0), ui.th.accent.alpha(0.18));
         let ac = ui.th.accent;
         ui.label(nr, &name, 15.0, ac, true, Al::Center);
-        let fr = Rect::new(if ui.rtl { m } else { m + nw + ui.dp(8.0) }, fy, ui.w - 2.0 * m - nw - ui.dp(8.0), fh);
+        let fr = Rect::new(
+            if ui.rtl { m } else { m + nw + ui.dp(8.0) },
+            fy,
+            ui.w - 2.0 * m - nw - ui.dp(8.0),
+            fh,
+        );
         let raw_sel = s.wb.sheets[s.si].get(s.sel.0, s.sel.1).to_string();
         if !s.editing {
             self.fields.insert("office_cell", raw_sel.clone());
@@ -1583,7 +2042,10 @@ impl App {
         let mut top = fy + fh + ui.dp(6.0);
         // Schnelltasten beim Bearbeiten: Formelzeichen
         if s.editing && self.focus == Some("office_cell") {
-            let keys = ["=", "SUM(", "AVERAGE(", "IF(", "(", ")", ":", ";", "+", "-", "*", "/", "&", "\"", "ROUND(", "COUNT(", "MAX(", "MIN("];
+            let keys = [
+                "=", "SUM(", "AVERAGE(", "IF(", "(", ")", ":", ";", "+", "-", "*", "/", "&", "\"",
+                "ROUND(", "COUNT(", "MAX(", "MIN(",
+            ];
             let mut x = m;
             for k in keys {
                 let w = ui.text_w(k, 13.0, false) + ui.dp(22.0);
@@ -1603,7 +2065,14 @@ impl App {
         } else {
             // Werkzeuge: Zeile/Spalte einfügen/löschen, Speichern, Agent
             let tb = Rect::new(area.x, top - ui.dp(2.0), area.w, ui.dp(44.0));
-            let items = [(Ic::Svg("row+"), false), (Ic::Svg("col+"), false), (Ic::Svg("row-"), false), (Ic::Svg("col-"), false), (Ic::Download, false), (Ic::Spark, false)];
+            let items = [
+                (Ic::Svg("row+"), false),
+                (Ic::Svg("col+"), false),
+                (Ic::Svg("row-"), false),
+                (Ic::Svg("col-"), false),
+                (Ic::Download, false),
+                (Ic::Spark, false),
+            ];
             match self.office_toolbar(ui, tb, &items) {
                 Some(0) => {
                     s.wb.sheets[s.si].insert_row(s.sel.0);
@@ -1647,14 +2116,26 @@ impl App {
         }
         // Raster
         let tabs_h = ui.dp(40.0);
-        let grid = Rect::new(0.0, top, ui.w, (area.bottom() - top - tabs_h).max(ui.dp(60.0)));
+        let grid = Rect::new(
+            0.0,
+            top,
+            ui.w,
+            (area.bottom() - top - tabs_h).max(ui.dp(60.0)),
+        );
         let rh = ui.dp(34.0);
         let hw = ui.dp(40.0); // Zeilennummern
         let hh = ui.dp(28.0); // Spaltenköpfe
         let (er, ec) = s.wb.sheets[s.si].extent();
         let rows = (er + 30).max(60);
         let cols = (ec + 6).max(12);
-        let ws: Vec<f32> = (0..cols).map(|c| ui.dp((s.wb.sheets[s.si].widths.get(&c).copied().unwrap_or(11.0) * 8.0).clamp(56.0, 260.0))).collect();
+        let ws: Vec<f32> = (0..cols)
+            .map(|c| {
+                ui.dp(
+                    (s.wb.sheets[s.si].widths.get(&c).copied().unwrap_or(11.0) * 8.0)
+                        .clamp(56.0, 260.0),
+                )
+            })
+            .collect();
         let colw = |c: u32| -> f32 { ws[c as usize] };
         let mut cx = Vec::with_capacity(cols as usize + 1);
         let mut acc = 0.0;
@@ -1682,7 +2163,11 @@ impl App {
         let (uw, rtl, ssx) = (ui.w, ui.rtl, s.sx);
         let xpos = |c: u32| -> f32 {
             let x = hw + cx[c as usize] - ssx;
-            if rtl { uw - x - colw(c) } else { x }
+            if rtl {
+                uw - x - colw(c)
+            } else {
+                x
+            }
         };
         let mut tap_cell = None;
         for r in r0..r1 {
@@ -1709,14 +2194,32 @@ impl App {
                     // Zahlen immer links-nach-rechts, Text nach eigener Schrift
                     ui.rtl = matches!(v, Value::Text(_)) && uo::doc::is_rtl(&txt);
                     let al2 = if ui.rtl { Al::Start } else { al };
-                    ui.label(Rect::new(x + ui.dp(5.0), y, w - ui.dp(10.0), rh), &f, 13.0, col, false, al2);
+                    ui.label(
+                        Rect::new(x + ui.dp(5.0), y, w - ui.dp(10.0), rh),
+                        &f,
+                        13.0,
+                        col,
+                        false,
+                        al2,
+                    );
                     ui.rtl = old;
                     if raw.starts_with('=') {
                         // kleines Dreieck = Formel
-                        ui.cv.rect(Rect::new(if ui.rtl { x + 1.0 } else { x + w - ui.dp(5.0) }, y + 1.0, ui.dp(4.0), ui.dp(4.0)), ui.th.accent.alpha(0.6));
+                        ui.cv.rect(
+                            Rect::new(
+                                if ui.rtl { x + 1.0 } else { x + w - ui.dp(5.0) },
+                                y + 1.0,
+                                ui.dp(4.0),
+                                ui.dp(4.0),
+                            ),
+                            ui.th.accent.alpha(0.6),
+                        );
                     }
                 }
-                ui.cv.rect(Rect::new(if ui.rtl { x } else { x + w - 1.0 }, y, 1.0, rh), line);
+                ui.cv.rect(
+                    Rect::new(if ui.rtl { x } else { x + w - 1.0 }, y, 1.0, rh),
+                    line,
+                );
                 if ui.tap(rr) {
                     tap_cell = Some((r, c));
                 }
@@ -1730,7 +2233,12 @@ impl App {
                 let x = xpos(c);
                 let rr = Rect::new(x, y, colw(c), rh);
                 let a = ui.th.accent;
-                for (rx, ry, rw, rh2) in [(rr.x, rr.y, rr.w, 2.0), (rr.x, rr.bottom() - 2.0, rr.w, 2.0), (rr.x, rr.y, 2.0, rr.h), (rr.right() - 2.0, rr.y, 2.0, rr.h)] {
+                for (rx, ry, rw, rh2) in [
+                    (rr.x, rr.y, rr.w, 2.0),
+                    (rr.x, rr.bottom() - 2.0, rr.w, 2.0),
+                    (rr.x, rr.y, 2.0, rr.h),
+                    (rr.right() - 2.0, rr.y, 2.0, rr.h),
+                ] {
                     ui.cv.rect(Rect::new(rx, ry, rw, rh2), a);
                 }
             }
@@ -1738,12 +2246,20 @@ impl App {
         // Zeilennummern (fest links)
         let head_bg = if dark { rgb(0x1A1D24) } else { rgb(0xF1F3F5) };
         let nx = if ui.rtl { ui.w - hw } else { 0.0 };
-        ui.cv.rect(Rect::new(nx, cells_area.y, hw, cells_area.h), head_bg);
+        ui.cv
+            .rect(Rect::new(nx, cells_area.y, hw, cells_area.h), head_bg);
         for r in r0..r1 {
             let y = cells_area.y + r as f32 * rh - *sc;
             let selr = r == s.sel.0;
             let lab = (r + 1).to_string();
-            ui.label(Rect::new(nx, y, hw, rh), &lab, 11.0, if selr { ui.th.accent } else { sub }, selr, Al::Center);
+            ui.label(
+                Rect::new(nx, y, hw, rh),
+                &lab,
+                11.0,
+                if selr { ui.th.accent } else { sub },
+                selr,
+                Al::Center,
+            );
             ui.cv.rect(Rect::new(nx, y + rh - 1.0, hw, 1.0), line);
         }
         ui.scroll_end(cells_area, rows as f32 * rh + ui.dp(40.0), sc);
@@ -1757,11 +2273,22 @@ impl App {
             }
             let selc = c == s.sel.1;
             let lab = col_name(c);
-            ui.label(Rect::new(x, grid.y, w, hh), &lab, 11.0, if selc { ui.th.accent } else { sub }, selc, Al::Center);
-            ui.cv.rect(Rect::new(if ui.rtl { x } else { x + w - 1.0 }, grid.y, 1.0, hh), line);
+            ui.label(
+                Rect::new(x, grid.y, w, hh),
+                &lab,
+                11.0,
+                if selc { ui.th.accent } else { sub },
+                selc,
+                Al::Center,
+            );
+            ui.cv.rect(
+                Rect::new(if ui.rtl { x } else { x + w - 1.0 }, grid.y, 1.0, hh),
+                line,
+            );
         }
         ui.cv.rect(Rect::new(nx, grid.y, hw, hh), head_bg);
-        ui.cv.rect(Rect::new(0.0, grid.y + hh - 1.0, ui.w, 1.0), line);
+        ui.cv
+            .rect(Rect::new(0.0, grid.y + hh - 1.0, ui.w, 1.0), line);
         if let Some((r, c)) = tap_cell {
             let same = s.sel == (r, c);
             // zweites Antippen der gewählten Zelle = bearbeiten (wie in Tabellen-Apps auf dem Handy)
@@ -1771,7 +2298,10 @@ impl App {
                 // während einer Formel: Zellbezug einfügen statt wechseln
                 let cur = self.f("office_cell");
                 if cur.starts_with('=') && cur.ends_with(|ch: char| "=(+-*/,:&<>".contains(ch)) {
-                    self.fields.entry("office_cell").or_default().push_str(&cell_name(r, c));
+                    self.fields
+                        .entry("office_cell")
+                        .or_default()
+                        .push_str(&cell_name(r, c));
                     ui.dirty = true;
                     self.office.sheet = Some(s);
                     return;
@@ -1818,7 +2348,8 @@ impl App {
         let (_, add) = ui.pill(px, ty + ui.dp(4.0), "+", false);
         if add {
             let n = s.wb.sheets.len() + 1;
-            s.wb.sheets.push(uo::sheet::Sheet::new(&format!("Sheet{n}")));
+            s.wb.sheets
+                .push(uo::sheet::Sheet::new(&format!("Sheet{n}")));
             s.si = s.wb.sheets.len() - 1;
             s.sel = (0, 0);
             s.dirty = true;
@@ -1859,7 +2390,14 @@ impl App {
         // Werkzeugleiste
         let tb = Rect::new(area.x, area.y, area.w, ui.dp(44.0));
         let (cu, cr) = (v.tabs[v.cur].buf.can_undo(), v.tabs[v.cur].buf.can_redo());
-        let items = [(Ic::Svg("undo"), false), (Ic::Svg("redo"), false), (Ic::Search, v.find), (Ic::Svg("sel"), v.select), (Ic::Download, false), (Ic::Svg("more"), self.office.menu)];
+        let items = [
+            (Ic::Svg("undo"), false),
+            (Ic::Svg("redo"), false),
+            (Ic::Search, v.find),
+            (Ic::Svg("sel"), v.select),
+            (Ic::Download, false),
+            (Ic::Svg("more"), self.office.menu),
+        ];
         let _ = (cu, cr);
         match self.office_toolbar(ui, tb, &items) {
             Some(0) => {
@@ -1918,13 +2456,32 @@ impl App {
             let mut close = None;
             let mut sw = None;
             for (i, t) in v.tabs.iter().enumerate() {
-                let n = format!("{}{}", if t.buf.dirty { "• " } else { "" }, file_name(&t.path));
+                let n = format!(
+                    "{}{}",
+                    if t.buf.dirty { "• " } else { "" },
+                    file_name(&t.path)
+                );
                 let w = ui.text_w(&n, 12.0, i == v.cur) + ui.dp(46.0);
                 let px = if ui.rtl { ui.w - x - w } else { x };
                 let r = Rect::new(px, top + ui.dp(3.0), w, th - ui.dp(6.0));
-                ui.cv.rrect(r, ui.dp(8.0), if i == v.cur { ui.th.accent.alpha(0.2) } else { ui.th.card });
+                ui.cv.rrect(
+                    r,
+                    ui.dp(8.0),
+                    if i == v.cur {
+                        ui.th.accent.alpha(0.2)
+                    } else {
+                        ui.th.card
+                    },
+                );
                 let c = if i == v.cur { ui.th.accent } else { ui.th.text };
-                ui.label(Rect::new(r.x + ui.dp(10.0), r.y, w - ui.dp(36.0), r.h), &n, 12.0, c, i == v.cur, Al::Start);
+                ui.label(
+                    Rect::new(r.x + ui.dp(10.0), r.y, w - ui.dp(36.0), r.h),
+                    &n,
+                    12.0,
+                    c,
+                    i == v.cur,
+                    Al::Start,
+                );
                 let xr = Rect::new(r.right() - ui.dp(28.0), r.y, ui.dp(28.0), r.h);
                 ui.icon(Ic::Close, xr.cx(), xr.cy(), ui.dp(10.0), ui.th.sub);
                 if ui.tap(xr) {
@@ -1967,10 +2524,30 @@ impl App {
             let m = ui.dp(10.0);
             let fh = ui.dp(40.0);
             let bw = ui.dp(40.0);
-            let f1 = Rect::new(m, top + ui.dp(4.0), ui.w - 2.0 * m - 2.0 * bw - ui.dp(8.0), fh);
+            let f1 = Rect::new(
+                m,
+                top + ui.dp(4.0),
+                ui.w - 2.0 * m - 2.0 * bw - ui.dp(8.0),
+                fh,
+            );
             let q = self.f("code_find");
-            ui.field(if ui.rtl { Rect::new(m + 2.0 * bw + ui.dp(8.0), f1.y, f1.w, f1.h) } else { f1 }, "code_find", &q, self.t("Find"));
-            let bxs = |k: f32| if ui.rtl { m + bw * (k + 0.5) } else { ui.w - m - bw * (k + 0.5) };
+            ui.field(
+                if ui.rtl {
+                    Rect::new(m + 2.0 * bw + ui.dp(8.0), f1.y, f1.w, f1.h)
+                } else {
+                    f1
+                },
+                "code_find",
+                &q,
+                self.t("Find"),
+            );
+            let bxs = |k: f32| {
+                if ui.rtl {
+                    m + bw * (k + 0.5)
+                } else {
+                    ui.w - m - bw * (k + 0.5)
+                }
+            };
             let (tc, nb) = (ui.th.text, ui.th.card);
             let (bprev, bnext) = (bxs(1.0), bxs(0.0));
             if ui.icon_btn(bprev, f1.cy(), ui.dp(15.0), Ic::Svg("up"), nb, tc) {
@@ -1990,7 +2567,16 @@ impl App {
             let y2 = f1.bottom() + ui.dp(6.0);
             let f2 = Rect::new(m, y2, ui.w - 2.0 * m - 2.0 * bw - ui.dp(8.0), fh);
             let rq = self.f("code_repl");
-            ui.field(if ui.rtl { Rect::new(m + 2.0 * bw + ui.dp(8.0), f2.y, f2.w, f2.h) } else { f2 }, "code_repl", &rq, self.t("Replace with"));
+            ui.field(
+                if ui.rtl {
+                    Rect::new(m + 2.0 * bw + ui.dp(8.0), f2.y, f2.w, f2.h)
+                } else {
+                    f2
+                },
+                "code_repl",
+                &rq,
+                self.t("Replace with"),
+            );
             if ui.icon_btn(bnext, f2.cy(), ui.dp(15.0), Ic::Check, nb, tc) {
                 let o = v.opt.clone();
                 v.tabs[v.cur].buf.replace_one(&q, &rq, &o);
@@ -2023,7 +2609,11 @@ impl App {
             v.hits = uo::code::find_all(&v.tabs[v.cur].buf.text, &q, &v.opt).len();
             let hl = format!("{} {}", v.hits, self.t("hits"));
             let c = ui.th.sub;
-            let lr = if ui.rtl { Rect::new(m, y3, ui.w - x - m, ui.dp(32.0)) } else { Rect::new(x, y3, ui.w - x - m, ui.dp(32.0)) };
+            let lr = if ui.rtl {
+                Rect::new(m, y3, ui.w - x - m, ui.dp(32.0))
+            } else {
+                Rect::new(x, y3, ui.w - x - m, ui.dp(32.0))
+            };
             ui.label(lr, &hl, 12.0, c, false, Al::Start);
             top = y3 + ui.dp(38.0);
         }
@@ -2035,7 +2625,12 @@ impl App {
         // Tastenleiste und Statuszeile unten
         let bar_h = ui.dp(40.0);
         let st_h = ui.dp(22.0);
-        let ed = Rect::new(0.0, top, ui.w, (area.bottom() - top - bar_h - st_h).max(ui.dp(60.0)));
+        let ed = Rect::new(
+            0.0,
+            top,
+            ui.w,
+            (area.bottom() - top - bar_h - st_h).max(ui.dp(60.0)),
+        );
         let dark = ui.th.bg.r < 128;
         let ed_bg = if dark { rgb(0x0F1115) } else { rgb(0xFBFBFC) };
         ui.cv.rect(ed, ed_bg);
@@ -2047,7 +2642,11 @@ impl App {
         let nlines = t.buf.line_count();
         let gut = cw * (nlines.to_string().len().max(2) as f32 + 1.5);
         let gx = if false { ed.right() - gut } else { ed.x };
-        let tx0 = if false { ed.x + ui.dp(6.0) } else { ed.x + gut + ui.dp(6.0) };
+        let tx0 = if false {
+            ed.x + ui.dp(6.0)
+        } else {
+            ed.x + gut + ui.dp(6.0)
+        };
         let text_w = ed.w - gut - ui.dp(12.0);
         // Schreibmarke sichtbar halten
         let (cl, _) = t.buf.line_col(t.buf.cur);
@@ -2080,7 +2679,10 @@ impl App {
         t.hx = t.hx.max(0.0);
         let old_clip = ui.clip;
         ui.set_clip(Some(ed));
-        ui.cv.rect(Rect::new(gx, ed.y, gut, ed.h), if dark { rgb(0x14171C) } else { rgb(0xF0F1F3) });
+        ui.cv.rect(
+            Rect::new(gx, ed.y, gut, ed.h),
+            if dark { rgb(0x14171C) } else { rgb(0xF0F1F3) },
+        );
         let first = (t.sy / lh).floor() as usize;
         let last = ((t.sy + ed.h) / lh).ceil() as usize + 1;
         // Zustand mehrzeiliger Kommentare bis zur ersten sichtbaren Zeile vorrechnen
@@ -2093,30 +2695,59 @@ impl App {
             if i > last.min(nlines) {
                 break;
             }
-            let (toks, nst) = if t.lang == Lang::Plain { (vec![(0, line.len(), Tk::Text)], st) } else { uo::code::highlight(line, t.lang, st) };
+            let (toks, nst) = if t.lang == Lang::Plain {
+                (vec![(0, line.len(), Tk::Text)], st)
+            } else {
+                uo::code::highlight(line, t.lang, st)
+            };
             st = nst;
             let le = ls + line.len();
             if i >= first {
                 let y = ed.y + i as f32 * lh - t.sy;
                 if i == cl {
-                    ui.cv.rect(Rect::new(ed.x, y, ed.w, lh), ui.th.accent.alpha(if dark { 0.07 } else { 0.08 }));
+                    ui.cv.rect(
+                        Rect::new(ed.x, y, ed.w, lh),
+                        ui.th.accent.alpha(if dark { 0.07 } else { 0.08 }),
+                    );
                 }
                 // Auswahl
                 if let Some((a, b)) = sel {
                     if a <= le && b >= ls && !(a == le && b == le && a != b && a > ls) {
                         let ca = vcol(line, a.saturating_sub(ls).min(line.len()));
-                        let cb = if b > le { vcol(line, line.len()) + 1 } else { vcol(line, b - ls) };
+                        let cb = if b > le {
+                            vcol(line, line.len()) + 1
+                        } else {
+                            vcol(line, b - ls)
+                        };
                         if cb > ca {
                             let x0 = tx0 + ca as f32 * cw - t.hx;
-                            ui.cv.rect(Rect::new(x0, y, (cb - ca) as f32 * cw, lh), rgb(0x3B82F6).alpha(0.35));
+                            ui.cv.rect(
+                                Rect::new(x0, y, (cb - ca) as f32 * cw, lh),
+                                rgb(0x3B82F6).alpha(0.35),
+                            );
                         }
                     }
                 }
                 // Zeilennummer
                 let ln = (i + 1).to_string();
                 let lnw = ln.len() as f32 * cw;
-                let lnx = if false { gx + cw * 0.5 } else { gx + gut - lnw - cw * 0.6 };
-                ui.tx.draw_mono(ui.cv, &ln, lnx, y + (lh - sz * 1.3) / 2.0, sz * 0.92, if i == cl { ui.th.accent } else { ui.th.sub.alpha(0.8) });
+                let lnx = if false {
+                    gx + cw * 0.5
+                } else {
+                    gx + gut - lnw - cw * 0.6
+                };
+                ui.tx.draw_mono(
+                    ui.cv,
+                    &ln,
+                    lnx,
+                    y + (lh - sz * 1.3) / 2.0,
+                    sz * 0.92,
+                    if i == cl {
+                        ui.th.accent
+                    } else {
+                        ui.th.sub.alpha(0.8)
+                    },
+                );
                 // Text in Farbe
                 let old2 = ui.clip;
                 let tclip = Rect::new(tx0 - ui.dp(2.0), ed.y, text_w + ui.dp(4.0), ed.h);
@@ -2133,13 +2764,27 @@ impl App {
                     if x + (b - a) as f32 * cw < tx0 - cw * 40.0 {
                         continue;
                     }
-                    let s2 = if s.contains('\t') { s.replace('\t', "    ") } else { s.to_string() };
-                    ui.tx.draw_mono(ui.cv, &s2, x, y + (lh - sz * 1.3) / 2.0, sz, tk_color(k, dark, tcol));
+                    let s2 = if s.contains('\t') {
+                        s.replace('\t', "    ")
+                    } else {
+                        s.to_string()
+                    };
+                    ui.tx.draw_mono(
+                        ui.cv,
+                        &s2,
+                        x,
+                        y + (lh - sz * 1.3) / 2.0,
+                        sz,
+                        tk_color(k, dark, tcol),
+                    );
                 }
                 // Schreibmarke
                 if i == cl && self.focus == Some("office_ed") {
                     let x = tx0 + cvc as f32 * cw - t.hx;
-                    ui.cv.rect(Rect::new(x - 1.0, y + ui.dp(2.0), ui.dp(2.0), lh - ui.dp(4.0)), ui.th.accent);
+                    ui.cv.rect(
+                        Rect::new(x - 1.0, y + ui.dp(2.0), ui.dp(2.0), lh - ui.dp(4.0)),
+                        ui.th.accent,
+                    );
                 }
                 ui.set_clip(old2);
             }
@@ -2160,7 +2805,10 @@ impl App {
                 t.buf.anchor = None;
             }
             t.buf.cur = p.min(t.buf.text.len());
-            let dbl = self.office.last_tap.is_some_and(|x| x.elapsed().as_millis() < 330);
+            let dbl = self
+                .office
+                .last_tap
+                .is_some_and(|x| x.elapsed().as_millis() < 330);
             self.office.last_tap = if dbl { None } else { Some(Instant::now()) };
             if dbl {
                 t.buf.select_word();
@@ -2176,7 +2824,22 @@ impl App {
         let bar = Rect::new(0.0, by, ui.w, bar_h);
         ui.cv.rect(bar, ui.th.card);
         ui.cv.rect(Rect::new(0.0, by, ui.w, 1.0), ui.th.line);
-        let labels: [&str; 14] = ["Tab", "←", "↑", "↓", "→", "Line start", "Line end", "Paste", "{", "}", "(", ")", ";", "\""];
+        let labels: [&str; 14] = [
+            "Tab",
+            "←",
+            "↑",
+            "↓",
+            "→",
+            "Line start",
+            "Line end",
+            "Paste",
+            "{",
+            "}",
+            "(",
+            ")",
+            ";",
+            "\"",
+        ];
         let mut x = ui.dp(6.0);
         let mut hit = None;
         for (i, l) in labels.iter().enumerate() {
@@ -2187,7 +2850,11 @@ impl App {
             }
             let px = x;
             let r = Rect::new(px, by + ui.dp(4.0), w, bar_h - ui.dp(8.0));
-            ui.cv.rrect(r, ui.dp(8.0), if ui.held(r) { ui.th.press } else { ui.th.bg });
+            ui.cv.rrect(
+                r,
+                ui.dp(8.0),
+                if ui.held(r) { ui.th.press } else { ui.th.bg },
+            );
             let c = ui.th.text;
             ui.label(r, lab, 13.0, c, false, Al::Center);
             if ui.tap(r) {
@@ -2203,7 +2870,11 @@ impl App {
                     if t.buf.selection().is_some() {
                         t.buf.indent("    ", false);
                     } else {
-                        let unit = if t.buf.text.contains("\n\t") || t.path.ends_with("Makefile") { "\t" } else { "    " };
+                        let unit = if t.buf.text.contains("\n\t") || t.path.ends_with("Makefile") {
+                            "\t"
+                        } else {
+                            "    "
+                        };
                         t.buf.insert(unit);
                     }
                 }
@@ -2239,7 +2910,11 @@ impl App {
             l + 1,
             self.t("Col"),
             c + 1,
-            if sel_n > 0 { format!(" ({sel_n})") } else { String::new() },
+            if sel_n > 0 {
+                format!(" ({sel_n})")
+            } else {
+                String::new()
+            },
             t.lang.name(),
             t.buf.enc.label(),
             t.buf.eol.label()
@@ -2257,7 +2932,20 @@ impl App {
     fn code_menu(&mut self, ui: &mut Ui, v: &mut CodeView, top: f32) -> f32 {
         let m = ui.dp(10.0);
         let mut y = top + ui.dp(6.0);
-        let items: [&str; 12] = ["Go to line", "Duplicate line", "Delete line", "Move up", "Move down", "Comment", "Indent", "Outdent", "Language", "Encoding", "Line ending", "Ask assistant"];
+        let items: [&str; 12] = [
+            "Go to line",
+            "Duplicate line",
+            "Delete line",
+            "Move up",
+            "Move down",
+            "Comment",
+            "Indent",
+            "Outdent",
+            "Language",
+            "Encoding",
+            "Line ending",
+            "Ask assistant",
+        ];
         let mut x = m;
         let mut hit = None;
         for (i, l) in items.iter().enumerate() {
@@ -2279,11 +2967,18 @@ impl App {
         let fs = self.office_cfg().code_size;
         let lab = format!("A−   {:.0}   A+", fs);
         let r = Rect::new(m, y, ui.dp(150.0), ui.dp(32.0));
-        let r = if ui.rtl { Rect::new(ui.w - m - r.w, r.y, r.w, r.h) } else { r };
+        let r = if ui.rtl {
+            Rect::new(ui.w - m - r.w, r.y, r.w, r.h)
+        } else {
+            r
+        };
         ui.cv.rrect(r, r.h / 2.0, ui.th.card);
         let c = ui.th.text;
         ui.label(r, &lab, 13.0, c, false, Al::Center);
-        let (minus, plus) = (Rect::new(r.x, r.y, r.w / 3.0, r.h), Rect::new(r.right() - r.w / 3.0, r.y, r.w / 3.0, r.h));
+        let (minus, plus) = (
+            Rect::new(r.x, r.y, r.w / 3.0, r.h),
+            Rect::new(r.right() - r.w / 3.0, r.y, r.w / 3.0, r.h),
+        );
         let (minus, plus) = if ui.rtl { (plus, minus) } else { (minus, plus) };
         if ui.tap(minus) || ui.tap(plus) {
             let d = if ui.tap(plus) { 1.0 } else { -1.0 };
@@ -2293,7 +2988,12 @@ impl App {
             let _ = crate::sys::save("office.toml", &c);
             ui.dirty = true;
         }
-        let gr = Rect::new(if ui.rtl { m } else { m + ui.dp(160.0) }, y, ui.w - 2.0 * m - ui.dp(160.0), ui.dp(36.0));
+        let gr = Rect::new(
+            if ui.rtl { m } else { m + ui.dp(160.0) },
+            y,
+            ui.w - 2.0 * m - ui.dp(160.0),
+            ui.dp(36.0),
+        );
         let gq = self.f("code_goto");
         ui.field(gr, "code_goto", &gq, self.t("Line number"));
         y += ui.dp(44.0);
@@ -2322,7 +3022,10 @@ impl App {
                     self.toast(t.lang.name().into());
                 }
                 9 => {
-                    let k = uo::code::Enc::ALL.iter().position(|e| *e == t.buf.enc).unwrap_or(0);
+                    let k = uo::code::Enc::ALL
+                        .iter()
+                        .position(|e| *e == t.buf.enc)
+                        .unwrap_or(0);
                     t.buf.enc = uo::code::Enc::ALL[(k + 1) % uo::code::Enc::ALL.len()];
                     t.buf.dirty = true;
                     self.toast(format!("{} → {}", self.t("Save as"), t.buf.enc.label()));
@@ -2337,16 +3040,20 @@ impl App {
                 }
                 _ => {
                     if t.buf.dirty {
-                        let _ = uo::write_atomic(&t.path, &t.buf.to_bytes()).map(|_| t.buf.dirty = false);
+                        let _ = uo::write_atomic(&t.path, &t.buf.to_bytes())
+                            .map(|_| t.buf.dirty = false);
                     }
                     let p = t.path.clone();
                     let what = self.t("Explain and improve").to_string();
                     self.office.menu = false;
-                    self.fields.insert("chat", match self.lang() {
-                        "ar" => format!("{what} الملف {p}"),
-                        "de" => format!("{what}: Datei {p}"),
-                        _ => format!("{what}: file {p}"),
-                    });
+                    self.fields.insert(
+                        "chat",
+                        match self.lang() {
+                            "ar" => format!("{what} الملف {p}"),
+                            "de" => format!("{what}: Datei {p}"),
+                            _ => format!("{what}: file {p}"),
+                        },
+                    );
                     self.go(Screen::Agent);
                     self.focus = Some("chat");
                     self.focus_reset = true;
@@ -2401,19 +3108,72 @@ impl App {
                         format!("open: {p} (PDF, page {page})")
                     }
                     Some(Screen::Office(Ox::Doc(p))) => {
-                        let sel = self.office.doc.as_ref().and_then(|d| d.sel.and_then(|i| d.doc.blocks.get(i))).map(|b| if let Block::Para(p) = b { p.text() } else { String::new() }).unwrap_or_default();
-                        format!("open: {p} (document){}", if sel.is_empty() { String::new() } else { format!(", selected paragraph: {sel}") })
+                        let sel = self
+                            .office
+                            .doc
+                            .as_ref()
+                            .and_then(|d| d.sel.and_then(|i| d.doc.blocks.get(i)))
+                            .map(|b| {
+                                if let Block::Para(p) = b {
+                                    p.text()
+                                } else {
+                                    String::new()
+                                }
+                            })
+                            .unwrap_or_default();
+                        format!(
+                            "open: {p} (document){}",
+                            if sel.is_empty() {
+                                String::new()
+                            } else {
+                                format!(", selected paragraph: {sel}")
+                            }
+                        )
                     }
                     Some(Screen::Office(Ox::Sheet(p))) => {
-                        let (cell, raw) = self.office.sheet.as_ref().map(|s| (cell_name(s.sel.0, s.sel.1), s.wb.sheets.get(s.si).map(|sh| format!("{}!", sh.name)).unwrap_or_default() + &s.wb.sheets.get(s.si).map(|sh| sh.get(s.sel.0, s.sel.1).to_string()).unwrap_or_default())).unwrap_or_default();
+                        let (cell, raw) = self
+                            .office
+                            .sheet
+                            .as_ref()
+                            .map(|s| {
+                                (
+                                    cell_name(s.sel.0, s.sel.1),
+                                    s.wb.sheets
+                                        .get(s.si)
+                                        .map(|sh| format!("{}!", sh.name))
+                                        .unwrap_or_default()
+                                        + &s.wb
+                                            .sheets
+                                            .get(s.si)
+                                            .map(|sh| sh.get(s.sel.0, s.sel.1).to_string())
+                                            .unwrap_or_default(),
+                                )
+                            })
+                            .unwrap_or_default();
                         format!("open: {p} (sheet), selected cell {cell}: {raw}")
                     }
                     Some(Screen::Office(Ox::Code(p))) => {
-                        let (l, col, sel) = self.office.code.as_ref().and_then(|v| v.tabs.get(v.cur)).map(|t| {
-                            let (l, c) = t.buf.line_col(t.buf.cur);
-                            (l + 1, c + 1, t.buf.selected_text())
-                        }).unwrap_or((1, 1, String::new()));
-                        format!("open: {p} (text), cursor line {l} column {col}{}", if sel.is_empty() { String::new() } else { format!(", selection: {}", sel.chars().take(400).collect::<String>()) })
+                        let (l, col, sel) = self
+                            .office
+                            .code
+                            .as_ref()
+                            .and_then(|v| v.tabs.get(v.cur))
+                            .map(|t| {
+                                let (l, c) = t.buf.line_col(t.buf.cur);
+                                (l + 1, c + 1, t.buf.selected_text())
+                            })
+                            .unwrap_or((1, 1, String::new()));
+                        format!(
+                            "open: {p} (text), cursor line {l} column {col}{}",
+                            if sel.is_empty() {
+                                String::new()
+                            } else {
+                                format!(
+                                    ", selection: {}",
+                                    sel.chars().take(400).collect::<String>()
+                                )
+                            }
+                        )
                     }
                     _ => "no document is open".into(),
                 }
@@ -2438,8 +3198,15 @@ impl App {
                 self.office_leave();
                 let page = c.arg("page").trim().parse::<usize>().ok();
                 match (uo::Kind::of(&path), page) {
-                    (uo::Kind::Pdf, Some(p)) if p > 0 => match std::fs::read(&path).map_err(|e| e.to_string()).and_then(uo::pdf::PdfDoc::open) {
-                        Ok(d) if p <= d.pages() => format!("page {p}/{}:\n{}", d.pages(), d.page_text(p - 1).chars().take(3000).collect::<String>()),
+                    (uo::Kind::Pdf, Some(p)) if p > 0 => match std::fs::read(&path)
+                        .map_err(|e| e.to_string())
+                        .and_then(uo::pdf::PdfDoc::open)
+                    {
+                        Ok(d) if p <= d.pages() => format!(
+                            "page {p}/{}:\n{}",
+                            d.pages(),
+                            d.page_text(p - 1).chars().take(3000).collect::<String>()
+                        ),
                         Ok(d) => format!("error: page 1..{}", d.pages()),
                         Err(e) => format!("error: {e}"),
                     },
@@ -2492,15 +3259,21 @@ impl App {
                 self.office_leave();
                 let text = c.arg("text");
                 let r = match uo::Kind::of(&path) {
-                    uo::Kind::Doc => uo::read_doc(&path).or_else(|_| Ok::<_, String>(Document::default())).and_then(|mut d| {
-                        d.blocks.extend(Document::from_markdown(&text).blocks);
-                        uo::write_doc(&path, &d)
-                    }),
+                    uo::Kind::Doc => uo::read_doc(&path)
+                        .or_else(|_| Ok::<_, String>(Document::default()))
+                        .and_then(|mut d| {
+                            d.blocks.extend(Document::from_markdown(&text).blocks);
+                            uo::write_doc(&path, &d)
+                        }),
                     uo::Kind::Text => {
                         let b = std::fs::read(&path).unwrap_or_default();
                         let mut buf = Buffer::from_bytes(&b);
                         buf.cur = buf.text.len();
-                        let nl = if buf.text.is_empty() || buf.text.ends_with('\n') { "" } else { "\n" };
+                        let nl = if buf.text.is_empty() || buf.text.ends_with('\n') {
+                            ""
+                        } else {
+                            "\n"
+                        };
                         buf.insert(&format!("{nl}{text}"));
                         uo::write_atomic(&path, &buf.to_bytes())
                     }
@@ -2538,7 +3311,11 @@ impl App {
                 }
             }
             "sheet_eval" => {
-                let wb = if path.is_empty() { Ok(Workbook::new()) } else { need_path(&path).and_then(|_| uo::read_book(&path)) };
+                let wb = if path.is_empty() {
+                    Ok(Workbook::new())
+                } else {
+                    need_path(&path).and_then(|_| uo::read_book(&path))
+                };
                 match wb {
                     Ok(wb) => wb.eval_formula(0, &c.arg("formula")).text(),
                     Err(e) => format!("error: {e}"),
@@ -2548,10 +3325,20 @@ impl App {
                 if let Err(e) = need_path(&path) {
                     return Some(e);
                 }
-                match std::fs::read(&path).map_err(|e| e.to_string()).and_then(uo::pdf::PdfDoc::open) {
+                match std::fs::read(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(uo::pdf::PdfDoc::open)
+                {
                     Ok(d) => {
                         let r = d.search(&c.arg("query"), 20);
-                        if r.is_empty() { "no results".into() } else { r.iter().map(|(p, s)| format!("page {}: {s}", p + 1)).collect::<Vec<_>>().join("\n") }
+                        if r.is_empty() {
+                            "no results".into()
+                        } else {
+                            r.iter()
+                                .map(|(p, s)| format!("page {}: {s}", p + 1))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        }
                     }
                     Err(e) => format!("error: {e}"),
                 }
@@ -2566,7 +3353,15 @@ impl App {
                 };
                 let mut v: Vec<(String, u64, u64)> = k.into_iter().flat_map(scan).collect();
                 v.sort_by(|a, b| b.2.cmp(&a.2));
-                if v.is_empty() { "no documents found".into() } else { v.iter().take(40).map(|f| f.0.clone()).collect::<Vec<_>>().join("\n") }
+                if v.is_empty() {
+                    "no documents found".into()
+                } else {
+                    v.iter()
+                        .take(40)
+                        .map(|f| f.0.clone())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
             }
             _ => return None,
         };

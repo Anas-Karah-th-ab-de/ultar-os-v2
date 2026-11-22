@@ -29,7 +29,14 @@ impl Writer {
     pub fn create(path: &str, w: u32, h: u32) -> std::io::Result<Writer> {
         let mut f = File::create(path)?;
         f.write_all(&[0u8; HDR as usize])?;
-        Ok(Writer { f, w, h, idx: Vec::new(), pos: HDR, max: 0 })
+        Ok(Writer {
+            f,
+            w,
+            h,
+            idx: Vec::new(),
+            pos: HDR,
+            max: 0,
+        })
     }
 
     pub fn frames(&self) -> usize {
@@ -74,7 +81,22 @@ impl Writer {
         h.extend_from_slice(b"hdrl");
         h.extend_from_slice(b"avih");
         h.extend_from_slice(&le32(56));
-        for v in [usec, self.max.saturating_mul(1_000_000 / usec.max(1)).max(1), 0, 0x10, n, 0, 1, self.max, self.w, self.h, 0, 0, 0, 0] {
+        for v in [
+            usec,
+            self.max.saturating_mul(1_000_000 / usec.max(1)).max(1),
+            0,
+            0x10,
+            n,
+            0,
+            1,
+            self.max,
+            self.w,
+            self.h,
+            0,
+            0,
+            0,
+            0,
+        ] {
             h.extend_from_slice(&le32(v));
         }
         h.extend_from_slice(b"LIST");
@@ -144,7 +166,9 @@ impl Reader {
             let Some(c) = rd(&mut f, pos, 8) else { break };
             let size = u(&c, 4) as u64;
             if &c[0..4] == b"LIST" {
-                let Some(t) = rd(&mut f, pos + 8, 4) else { break };
+                let Some(t) = rd(&mut f, pos + 8, 4) else {
+                    break;
+                };
                 if &t == b"hdrl" {
                     if let Some(a) = rd(&mut f, pos + 12, 8 + 56) {
                         if &a[0..4] == b"avih" {
@@ -171,7 +195,13 @@ impl Reader {
         if index.is_empty() {
             return Err("keine Bilder im Video".into());
         }
-        Ok(Reader { f, index, usec, w, h })
+        Ok(Reader {
+            f,
+            index,
+            usec,
+            w,
+            h,
+        })
     }
 
     pub fn duration_ms(&self) -> u64 {
@@ -193,7 +223,9 @@ impl Reader {
     /// Bild `i` dekodiert als (Breite, Höhe, RGBA).
     pub fn frame(&mut self, i: usize) -> Option<(u32, u32, Vec<u8>)> {
         let j = self.jpeg(i)?;
-        let im = image::load_from_memory_with_format(&j, image::ImageFormat::Jpeg).ok()?.to_rgba8();
+        let im = image::load_from_memory_with_format(&j, image::ImageFormat::Jpeg)
+            .ok()?
+            .to_rgba8();
         Some((im.width(), im.height(), im.into_raw()))
     }
 }
@@ -208,7 +240,9 @@ pub fn encode_jpeg(px: &[u32], w: u32, h: u32, quality: u8) -> Option<Vec<u8>> {
         rgb.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, p as u8]);
     }
     let mut out = Vec::with_capacity((w * h / 4) as usize);
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality).encode(&rgb, w, h, image::ExtendedColorType::Rgb8).ok()?;
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+        .encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
+        .ok()?;
     Some(out)
 }
 
@@ -227,7 +261,9 @@ mod tests {
         let (w, h) = (64u32, 48u32);
         let mut wr = Writer::create(path, w, h).unwrap();
         for n in 0..5u32 {
-            let px: Vec<u32> = (0..w * h).map(|i| ((i + n * 7) % 255) << 16 | 0x40 << 8 | n * 40).collect();
+            let px: Vec<u32> = (0..w * h)
+                .map(|i| ((i + n * 7) % 255) << 16 | 0x40 << 8 | n * 40)
+                .collect();
             wr.push(&encode_jpeg(&px, w, h, 80).unwrap()).unwrap();
         }
         assert_eq!(wr.frames(), 5);

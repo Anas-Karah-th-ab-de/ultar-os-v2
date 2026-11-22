@@ -1,0 +1,12 @@
+[package]
+name = "ultar-profile"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar OS device profile: form factor, edition, capabilities and the rules derived from them"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
+

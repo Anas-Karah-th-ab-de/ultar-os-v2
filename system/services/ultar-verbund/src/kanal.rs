@@ -35,7 +35,10 @@ impl Transport for TcpTransport {
         let _ = self.0.set_write_timeout(d);
     }
     fn beschreibung(&self) -> String {
-        self.0.peer_addr().map(|a| format!("direkt {a}")).unwrap_or_else(|_| "direkt".into())
+        self.0
+            .peer_addr()
+            .map(|a| format!("direkt {a}"))
+            .unwrap_or_else(|_| "direkt".into())
     }
 }
 
@@ -60,14 +63,27 @@ impl Kanal {
         Self::handshake(t, ich, false)
     }
 
-    fn handshake(mut t: Box<dyn Transport>, ich: &Ident, initiator: bool) -> std::io::Result<Kanal> {
+    fn handshake(
+        mut t: Box<dyn Transport>,
+        ich: &Ident,
+        initiator: bool,
+    ) -> std::io::Result<Kanal> {
         t.zeitlimit(Some(Duration::from_secs(10)));
         let b = snow::Builder::new(NOISE.parse().unwrap()).local_private_key(&ich.privat);
-        let mut hs = if initiator { b.build_initiator() } else { b.build_responder() }.map_err(fehler)?;
+        let mut hs = if initiator {
+            b.build_initiator()
+        } else {
+            b.build_responder()
+        }
+        .map_err(fehler)?;
         let mut buf = vec![0u8; 65535];
         let mut tmp = vec![0u8; 65535];
         // XX: -> e ; <- e, ee, s, es ; -> s, se
-        let schritte: [bool; 3] = if initiator { [true, false, true] } else { [false, true, false] };
+        let schritte: [bool; 3] = if initiator {
+            [true, false, true]
+        } else {
+            [false, true, false]
+        };
         for schreiben in schritte {
             if schreiben {
                 let n = hs.write_message(&[], &mut buf).map_err(fehler)?;
@@ -77,10 +93,18 @@ impl Kanal {
                 hs.read_message(&m, &mut tmp).map_err(fehler)?;
             }
         }
-        let partner_pk = hs.get_remote_static().ok_or_else(|| fehler("kein Partnerschlüssel"))?.to_vec();
+        let partner_pk = hs
+            .get_remote_static()
+            .ok_or_else(|| fehler("kein Partnerschlüssel"))?
+            .to_vec();
         let n = hs.into_transport_mode().map_err(fehler)?;
         t.zeitlimit(None);
-        Ok(Kanal { t, n, partner_pk, buf })
+        Ok(Kanal {
+            t,
+            n,
+            partner_pk,
+            buf,
+        })
     }
 
     fn rahmen_senden(&mut self, klar: &[u8]) -> std::io::Result<()> {

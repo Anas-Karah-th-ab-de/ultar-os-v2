@@ -42,8 +42,18 @@ pub struct CamCfg {
 impl Default for CamCfg {
     fn default() -> Self {
         // Samsung-Telefone: Rücksensor um 90°, Frontsensor um 270° gedreht eingebaut
-        let rot = if crate::camera::samsung_available() { [1, 3] } else { [0, 0] };
-        Self { grid: false, timer_s: 0, rot, mirror_front: true, scan_filter: 0 }
+        let rot = if crate::camera::samsung_available() {
+            [1, 3]
+        } else {
+            [0, 0]
+        };
+        Self {
+            grid: false,
+            timer_s: 0,
+            rot,
+            mirror_front: true,
+            scan_filter: 0,
+        }
     }
 }
 
@@ -128,7 +138,11 @@ fn demo_frame() -> Frame {
         for x in 0..w {
             let (fx, fy) = (x as f32 / w as f32, y as f32 / h as f32);
             let sky = fy < 0.62;
-            let (mut r, mut g, mut b) = if sky { (40.0 + 180.0 * fy, 90.0 + 120.0 * fy, 190.0 - 40.0 * fy) } else { (38.0 + 30.0 * fx, 70.0 - 40.0 * (fy - 0.62), 52.0) };
+            let (mut r, mut g, mut b) = if sky {
+                (40.0 + 180.0 * fy, 90.0 + 120.0 * fy, 190.0 - 40.0 * fy)
+            } else {
+                (38.0 + 30.0 * fx, 70.0 - 40.0 * (fy - 0.62), 52.0)
+            };
             let d = ((fx - 0.7).powi(2) + (fy - 0.28).powi(2) * 1.6).sqrt();
             if d < 0.09 {
                 (r, g, b) = (255.0, 226.0, 150.0);
@@ -145,7 +159,10 @@ fn demo_frame() -> Frame {
 
 fn stamp(tz_min: i32) -> String {
     let d = sys::from_unix(sys::unix_now(), tz_min);
-    format!("{:04}{:02}{:02}_{:02}{:02}{:02}", d.y, d.mo, d.d, d.h, d.mi, d.s)
+    format!(
+        "{:04}{:02}{:02}_{:02}{:02}{:02}",
+        d.y, d.mo, d.d, d.h, d.mi, d.s
+    )
 }
 
 fn unique(prefix: &str, tz_min: i32, ext: &str) -> String {
@@ -164,7 +181,11 @@ fn unique(prefix: &str, tz_min: i32, ext: &str) -> String {
 /// Bildausschnitt für Zielseitenverhältnis `aspect` (Breite/Höhe) und Zoom, mittig.
 fn crop(w: u32, h: u32, aspect: f32, zoom: f32) -> Rect {
     let (wf, hf) = (w as f32, h as f32);
-    let (mut cw, mut ch) = if wf / hf > aspect { (hf * aspect, hf) } else { (wf, wf / aspect) };
+    let (mut cw, mut ch) = if wf / hf > aspect {
+        (hf * aspect, hf)
+    } else {
+        (wf, wf / aspect)
+    };
     cw /= zoom.max(1.0);
     ch /= zoom.max(1.0);
     Rect::new((wf - cw) / 2.0, (hf - ch) / 2.0, cw, ch)
@@ -182,14 +203,21 @@ impl App {
     }
 
     pub(super) fn camera_animating(&self) -> bool {
-        self.cam.worker.is_some() || self.cam.countdown.is_some() || self.cam.flash_fx.is_some() || self.cam.busy
+        self.cam.worker.is_some()
+            || self.cam.countdown.is_some()
+            || self.cam.flash_fx.is_some()
+            || self.cam.busy
     }
 
     /// Beim Verlassen der Kamera: alles freigeben (Sensor, Licht, laufende Aufnahme abschließen).
     pub(super) fn camera_leave(&mut self) {
         self.cam.review = None;
         self.cam.remote_shot = false;
-        if self.cam.worker.is_none() && self.cam.rec.is_none() && !self.cam.torch && self.cam.last_frame.is_none() {
+        if self.cam.worker.is_none()
+            && self.cam.rec.is_none()
+            && !self.cam.torch
+            && self.cam.last_frame.is_none()
+        {
             return;
         }
         self.cam.rec = None; // Kanal schließt -> Recorder schreibt das Video fertig
@@ -212,11 +240,31 @@ impl App {
         ui.cv.rect(Rect::new(0.0, 0.0, ui.w, ui.h), rgb(0x050506));
         if !crate::privacy::allowed(&self.set, crate::privacy::Cap::Camera) {
             self.camera_leave();
-            let r = Rect::new(ui.dp(24.0), area.cy() - ui.dp(70.0), ui.w - ui.dp(48.0), ui.dp(140.0));
-            ui.cv.circle(r.cx(), r.y + ui.dp(30.0), ui.dp(30.0), white.alpha(0.08));
+            let r = Rect::new(
+                ui.dp(24.0),
+                area.cy() - ui.dp(70.0),
+                ui.w - ui.dp(48.0),
+                ui.dp(140.0),
+            );
+            ui.cv
+                .circle(r.cx(), r.y + ui.dp(30.0), ui.dp(30.0), white.alpha(0.08));
             ui.icon(Ic::Shield, r.cx(), r.y + ui.dp(30.0), ui.dp(28.0), gold);
-            ui.label(Rect::new(r.x, r.y + ui.dp(76.0), r.w, ui.dp(26.0)), self.t("Camera is switched off"), 17.0, white, true, Al::Center);
-            ui.label(Rect::new(r.x, r.y + ui.dp(104.0), r.w, ui.dp(22.0)), self.t("Turned off in privacy settings"), 13.0, white.alpha(0.6), false, Al::Center);
+            ui.label(
+                Rect::new(r.x, r.y + ui.dp(76.0), r.w, ui.dp(26.0)),
+                self.t("Camera is switched off"),
+                17.0,
+                white,
+                true,
+                Al::Center,
+            );
+            ui.label(
+                Rect::new(r.x, r.y + ui.dp(104.0), r.w, ui.dp(22.0)),
+                self.t("Turned off in privacy settings"),
+                13.0,
+                white.alpha(0.6),
+                false,
+                Al::Center,
+            );
             return;
         }
         let dry = std::env::var("ULTAR_DRY").is_ok();
@@ -249,10 +297,15 @@ impl App {
         }
         if self.cam.mode == 3 {
             // höchstens ~6x je Sekunde suchen; die Vorschau ist klein, das kostet wenige Millisekunden
-            let due = self.cam.scan_at.map(|t| t.elapsed() > Duration::from_millis(160)).unwrap_or(true);
+            let due = self
+                .cam
+                .scan_at
+                .map(|t| t.elapsed() > Duration::from_millis(160))
+                .unwrap_or(true);
             if fresh && due {
                 if let Some((w, h, px)) = &self.cam.last_frame {
-                    self.cam.scan_quad = scan::detect(px, *w, *h).map(|q| scan::smooth(self.cam.scan_quad, q));
+                    self.cam.scan_quad =
+                        scan::detect(px, *w, *h).map(|q| scan::smooth(self.cam.scan_quad, q));
                     self.cam.scan_at = Some(Instant::now());
                 }
             }
@@ -284,10 +337,16 @@ impl App {
         let wide = ui.w > ui.h;
         let (view, ctrl) = if wide {
             let cw = ui.dp(132.0);
-            (Rect::new(0.0, area.y, ui.w - cw, area.h), Rect::new(ui.w - cw, area.y, cw, area.h))
+            (
+                Rect::new(0.0, area.y, ui.w - cw, area.h),
+                Rect::new(ui.w - cw, area.y, cw, area.h),
+            )
         } else {
             let ch = ui.dp(158.0).min(area.h * 0.3);
-            (Rect::new(0.0, area.y + ui.dp(52.0), ui.w, area.h - ch - ui.dp(52.0)), Rect::new(0.0, area.bottom() - ch, ui.w, ch))
+            (
+                Rect::new(0.0, area.y + ui.dp(52.0), ui.w, area.h - ch - ui.dp(52.0)),
+                Rect::new(0.0, area.bottom() - ch, ui.w, ch),
+            )
         };
         let top = Rect::new(view.x, area.y, view.w, ui.dp(52.0));
         let mirror = facing == 1 && cfg.mirror_front;
@@ -306,8 +365,21 @@ impl App {
         if let Some((w, h, px)) = &self.cam.last_frame {
             let (w, h) = (*w, *h);
             if w > 0 && h > 0 {
-                let aspect = if self.cam.mode == 1 { 1.0 } else { w as f32 / h as f32 };
-                let src = crop(w, h, aspect, if self.cam.mode == 3 { 1.0 } else { self.cam.zoom });
+                let aspect = if self.cam.mode == 1 {
+                    1.0
+                } else {
+                    w as f32 / h as f32
+                };
+                let src = crop(
+                    w,
+                    h,
+                    aspect,
+                    if self.cam.mode == 3 {
+                        1.0
+                    } else {
+                        self.cam.zoom
+                    },
+                );
                 let k = (view.w / aspect).min(view.h);
                 let (dw, dh) = (k * aspect, k);
                 pic = Rect::new(view.cx() - dw / 2.0, view.cy() - dh / 2.0, dw, dh);
@@ -319,21 +391,56 @@ impl App {
         let on = self.cam.worker.is_some();
         if !have {
             let status = self.cam.worker.as_ref().map(|w| w.status());
-            let waited = self.cam.opened_at.map(|t| t.elapsed().as_secs()).unwrap_or(0);
-            let failed = self.cam.err.is_some() || status == Some(CamStatus::Failed) || (on && waited >= 8);
+            let waited = self
+                .cam
+                .opened_at
+                .map(|t| t.elapsed().as_secs())
+                .unwrap_or(0);
+            let failed =
+                self.cam.err.is_some() || status == Some(CamStatus::Failed) || (on && waited >= 8);
             ui.cv.rrect(pic, ui.dp(18.0), rgb(0x0E0F12));
-            ui.cv.circle(pic.cx(), pic.cy() - ui.dp(34.0), ui.dp(34.0), white.alpha(0.06));
-            ui.icon(Ic::Camera, pic.cx(), pic.cy() - ui.dp(34.0), ui.dp(32.0), if failed { white.alpha(0.45) } else { gold });
-            let msg = if failed { self.t("Camera not available").to_string() } else { self.t("Starting camera…").to_string() };
-            ui.label(Rect::new(pic.x, pic.cy() + ui.dp(10.0), pic.w, ui.dp(24.0)), &msg, 15.0, white, true, Al::Center);
+            ui.cv.circle(
+                pic.cx(),
+                pic.cy() - ui.dp(34.0),
+                ui.dp(34.0),
+                white.alpha(0.06),
+            );
+            ui.icon(
+                Ic::Camera,
+                pic.cx(),
+                pic.cy() - ui.dp(34.0),
+                ui.dp(32.0),
+                if failed { white.alpha(0.45) } else { gold },
+            );
+            let msg = if failed {
+                self.t("Camera not available").to_string()
+            } else {
+                self.t("Starting camera…").to_string()
+            };
+            ui.label(
+                Rect::new(pic.x, pic.cy() + ui.dp(10.0), pic.w, ui.dp(24.0)),
+                &msg,
+                15.0,
+                white,
+                true,
+                Al::Center,
+            );
             if failed {
                 if let Some(e) = self.cam.err.clone() {
                     let e = ui.fit(&e, 12.0, false, pic.w - ui.dp(40.0));
-                    ui.label(Rect::new(pic.x, pic.cy() + ui.dp(36.0), pic.w, ui.dp(20.0)), &e, 12.0, white.alpha(0.5), false, Al::Center);
+                    ui.label(
+                        Rect::new(pic.x, pic.cy() + ui.dp(36.0), pic.w, ui.dp(20.0)),
+                        &e,
+                        12.0,
+                        white.alpha(0.5),
+                        false,
+                        Al::Center,
+                    );
                 }
                 let label = self.t("Try again");
                 let pw = ui.text_w(label, 13.5, false) + ui.dp(26.0);
-                let (_, tapped) = ui.pill(pic.cx() - pw / 2.0, pic.cy() + ui.dp(66.0), label, false);
+                let (_, tapped) =
+                    ui.pill(pic.cx() - pw / 2.0, pic.cy() + ui.dp(66.0), label, false);
                 if tapped {
                     if let Some(w) = self.cam.worker.take() {
                         w.stop();
@@ -373,7 +480,10 @@ impl App {
             // gesammelte Seiten → PDF
             let n = self.cam.scan_pages.lock().map(|p| p.len()).unwrap_or(0);
             if n > 0 {
-                let label = format!("PDF · {n} {}", self.t(if n == 1 { "page" } else { "pages" }));
+                let label = format!(
+                    "PDF · {n} {}",
+                    self.t(if n == 1 { "page" } else { "pages" })
+                );
                 let pw = ui.text_w(&label, 13.5, true) + ui.dp(26.0);
                 let th0 = ui.th;
                 ui.th.card = rgb(0x17181C);
@@ -406,14 +516,26 @@ impl App {
             let step = (top.w / n).min(ui.dp(96.0));
             let x0 = top.cx() - step * (n - 1.0) / 2.0;
             let r = ui.dp(17.0);
-            let items: [(Ic, bool, u8); 4] = [(Ic::Flash, self.cam.torch, 0), (Ic::Timer, cfg.timer_s > 0, 1), (Ic::Thirds, cfg.grid, 2), (Ic::Rotate, false, 3)];
+            let items: [(Ic, bool, u8); 4] = [
+                (Ic::Flash, self.cam.torch, 0),
+                (Ic::Timer, cfg.timer_s > 0, 1),
+                (Ic::Thirds, cfg.grid, 2),
+                (Ic::Rotate, false, 3),
+            ];
             for (i, (ic, active, id)) in items.into_iter().enumerate() {
                 let i = if ui.rtl { 3 - i } else { i };
                 let cx = x0 + step * i as f32;
                 let fg = if active { gold } else { white };
                 let old = ui.enabled;
                 ui.enabled = old && (!recording || id == 0);
-                if ui.icon_btn(cx, top.cy(), r, ic, white.alpha(if active { 0.14 } else { 0.07 }), fg) {
+                if ui.icon_btn(
+                    cx,
+                    top.cy(),
+                    r,
+                    ic,
+                    white.alpha(if active { 0.14 } else { 0.07 }),
+                    fg,
+                ) {
                     match id {
                         0 => {
                             self.cam.torch = !self.cam.torch;
@@ -446,7 +568,19 @@ impl App {
                 if id == 1 && cfg.timer_s > 0 {
                     let old = ui.rtl;
                     ui.rtl = false;
-                    ui.label(Rect::new(cx + r * 0.5, top.cy() - r - ui.dp(2.0), ui.dp(22.0), ui.dp(14.0)), &cfg.timer_s.to_string(), 10.5, gold, true, Al::Center);
+                    ui.label(
+                        Rect::new(
+                            cx + r * 0.5,
+                            top.cy() - r - ui.dp(2.0),
+                            ui.dp(22.0),
+                            ui.dp(14.0),
+                        ),
+                        &cfg.timer_s.to_string(),
+                        10.5,
+                        gold,
+                        true,
+                        Al::Center,
+                    );
                     ui.rtl = old;
                 }
             }
@@ -460,22 +594,42 @@ impl App {
             let r = Rect::new(pic.cx() - tw / 2.0, pic.y + ui.dp(12.0), tw, ui.dp(28.0));
             ui.cv.rrect(r, ui.dp(14.0), rgb(0).alpha(0.55));
             if s % 2 == 0 {
-                ui.cv.circle(r.x + ui.dp(14.0), r.cy(), ui.dp(4.5), rgb(0xF43F5E));
+                ui.cv
+                    .circle(r.x + ui.dp(14.0), r.cy(), ui.dp(4.5), rgb(0xF43F5E));
             }
             let old = ui.rtl;
             ui.rtl = false;
-            ui.label(Rect::new(r.x + ui.dp(24.0), r.y, r.w - ui.dp(30.0), r.h), &t, 13.0, white, true, Al::Start);
+            ui.label(
+                Rect::new(r.x + ui.dp(24.0), r.y, r.w - ui.dp(30.0), r.h),
+                &t,
+                13.0,
+                white,
+                true,
+                Al::Start,
+            );
             ui.rtl = old;
         }
 
         // Scanner: Aufbereitung wählen (Farbe / Grau / Schwarz-Weiß)
         if have && self.cam.mode == 3 {
             let names = ["Color", "Gray", "B/W"];
-            let ws: Vec<f32> = names.iter().map(|m| ui.text_w(self.t(m), 12.5, true) + ui.dp(22.0)).collect();
+            let ws: Vec<f32> = names
+                .iter()
+                .map(|m| ui.text_w(self.t(m), 12.5, true) + ui.dp(22.0))
+                .collect();
             let total: f32 = ws.iter().sum::<f32>() + ui.dp(8.0);
             let hgt = ui.dp(32.0);
             let cy = pic.bottom() - ui.dp(28.0);
-            ui.cv.rrect(Rect::new(pic.cx() - total / 2.0, cy - hgt / 2.0 - ui.dp(3.0), total, hgt + ui.dp(6.0)), hgt / 2.0 + ui.dp(3.0), rgb(0).alpha(0.45));
+            ui.cv.rrect(
+                Rect::new(
+                    pic.cx() - total / 2.0,
+                    cy - hgt / 2.0 - ui.dp(3.0),
+                    total,
+                    hgt + ui.dp(6.0),
+                ),
+                hgt / 2.0 + ui.dp(3.0),
+                rgb(0).alpha(0.45),
+            );
             let mut x = pic.cx() - total / 2.0 + ui.dp(4.0);
             let order: Vec<usize> = if ui.rtl { vec![2, 1, 0] } else { vec![0, 1, 2] };
             for i in order {
@@ -484,7 +638,14 @@ impl App {
                 if active {
                     ui.cv.rrect(hit, hgt / 2.0, white.alpha(0.92));
                 }
-                ui.label(hit, self.t(names[i]), 12.5, if active { rgb(0x101010) } else { white }, true, Al::Center);
+                ui.label(
+                    hit,
+                    self.t(names[i]),
+                    12.5,
+                    if active { rgb(0x101010) } else { white },
+                    true,
+                    Al::Center,
+                );
                 if ui.tap(hit) {
                     self.cam_cfg().scan_filter = i as u8;
                     self.cam_save();
@@ -502,7 +663,16 @@ impl App {
             let cy = pic.bottom() - ui.dp(28.0);
             let x0 = pic.cx() - gap;
             let bw = gap * 2.0 + r * 2.0 + ui.dp(10.0);
-            ui.cv.rrect(Rect::new(pic.cx() - bw / 2.0, cy - r - ui.dp(5.0), bw, 2.0 * r + ui.dp(10.0)), r + ui.dp(5.0), rgb(0).alpha(0.38));
+            ui.cv.rrect(
+                Rect::new(
+                    pic.cx() - bw / 2.0,
+                    cy - r - ui.dp(5.0),
+                    bw,
+                    2.0 * r + ui.dp(10.0),
+                ),
+                r + ui.dp(5.0),
+                rgb(0).alpha(0.38),
+            );
             for (i, z) in zs.iter().enumerate() {
                 let cx = x0 + gap * i as f32;
                 let active = (self.cam.zoom - z).abs() < 0.05;
@@ -512,7 +682,14 @@ impl App {
                 }
                 let old = ui.rtl;
                 ui.rtl = false;
-                ui.label(hit, &format!("{}×", *z as u32), 12.0, if active { rgb(0x101010) } else { white }, true, Al::Center);
+                ui.label(
+                    hit,
+                    &format!("{}×", *z as u32),
+                    12.0,
+                    if active { rgb(0x101010) } else { white },
+                    true,
+                    Al::Center,
+                );
                 ui.rtl = old;
                 if ui.tap(hit) {
                     self.cam.zoom = *z;
@@ -531,35 +708,73 @@ impl App {
                 }
             } else {
                 let n = left.as_secs() + 1;
-                ui.cv.circle(pic.cx(), pic.cy(), ui.dp(58.0), rgb(0).alpha(0.4));
-                ui.label(Rect::new(pic.x, pic.cy() - ui.dp(50.0), pic.w, ui.dp(100.0)), &n.to_string(), 72.0, white, true, Al::Center);
+                ui.cv
+                    .circle(pic.cx(), pic.cy(), ui.dp(58.0), rgb(0).alpha(0.4));
+                ui.label(
+                    Rect::new(pic.x, pic.cy() - ui.dp(50.0), pic.w, ui.dp(100.0)),
+                    &n.to_string(),
+                    72.0,
+                    white,
+                    true,
+                    Al::Center,
+                );
             }
         }
 
         // ---------- Bedienfeld: Modi, Vorschau, Auslöser, Kamera wechseln ----------
         let modes = ["Photo", "Square", "Video", "Scan"];
         let (sx, sy, tx, ty, fx, fy) = if wide {
-            (ctrl.cx(), ctrl.cy(), ctrl.cx(), ctrl.y + ui.dp(54.0), ctrl.cx(), ctrl.bottom() - ui.dp(54.0))
+            (
+                ctrl.cx(),
+                ctrl.cy(),
+                ctrl.cx(),
+                ctrl.y + ui.dp(54.0),
+                ctrl.cx(),
+                ctrl.bottom() - ui.dp(54.0),
+            )
         } else {
             let y = ctrl.y + ui.dp(44.0) + (ctrl.h - ui.dp(44.0)) / 2.0;
             let side = (ui.w * 0.3).min(ui.dp(130.0));
             let (a, b) = (ctrl.cx() - side, ctrl.cx() + side);
-            if ui.rtl { (ctrl.cx(), y, b, y, a, y) } else { (ctrl.cx(), y, a, y, b, y) }
+            if ui.rtl {
+                (ctrl.cx(), y, b, y, a, y)
+            } else {
+                (ctrl.cx(), y, a, y, b, y)
+            }
         };
         if !recording {
             // Modus-Leiste wie in der Web-Demo: Text-Reiter (Video, Foto, Scan, Quadrat), aktiver gold mit Punkt
             let order_demo: [usize; 4] = [2, 0, 3, 1];
-            let ws: Vec<f32> = order_demo.iter().map(|i| ui.text_w(self.t(modes[*i]), 14.0, false) + ui.dp(28.0)).collect();
+            let ws: Vec<f32> = order_demo
+                .iter()
+                .map(|i| ui.text_w(self.t(modes[*i]), 14.0, false) + ui.dp(28.0))
+                .collect();
             let total: f32 = ws.iter().sum();
-            let (mut x, y) = if wide { (view.cx() - total / 2.0, view.y + ui.dp(60.0)) } else { (ctrl.cx() - total / 2.0, ctrl.y + ui.dp(6.0)) };
-            let seq: Vec<usize> = if ui.rtl { (0..4).rev().collect() } else { (0..4).collect() };
+            let (mut x, y) = if wide {
+                (view.cx() - total / 2.0, view.y + ui.dp(60.0))
+            } else {
+                (ctrl.cx() - total / 2.0, ctrl.y + ui.dp(6.0))
+            };
+            let seq: Vec<usize> = if ui.rtl {
+                (0..4).rev().collect()
+            } else {
+                (0..4).collect()
+            };
             for k in seq {
                 let i = order_demo[k];
                 let r = Rect::new(x, y, ws[k], ui.dp(32.0));
                 let on = self.cam.mode == i as u8;
-                ui.label(r, self.t(modes[i]), 14.0, if on { rgb(0xD8C870) } else { white.alpha(0.7) }, on, Al::Center);
+                ui.label(
+                    r,
+                    self.t(modes[i]),
+                    14.0,
+                    if on { rgb(0xD8C870) } else { white.alpha(0.7) },
+                    on,
+                    Al::Center,
+                );
                 if on {
-                    ui.cv.circle(r.cx(), r.bottom() + ui.dp(2.0), ui.dp(2.0), rgb(0xD8C870));
+                    ui.cv
+                        .circle(r.cx(), r.bottom() + ui.dp(2.0), ui.dp(2.0), rgb(0xD8C870));
                 }
                 if ui.tap(r) {
                     self.cam.mode = i as u8;
@@ -578,17 +793,30 @@ impl App {
         ui.cv.circle(tx, ty, tr, rgb(0x17181C));
         if let Some(it) = &newest {
             if self.cam.thumb.as_ref().map(|t| t.0.as_str()) != Some(it.path.as_str()) {
-                let p = if it.video { mjpeg::Reader::open(&it.path).ok().and_then(|mut r| r.frame(0)).map(|(w, h, rgba)| Pic { w, h, rgba }) } else { decode(&it.path, 160).ok() };
+                let p = if it.video {
+                    mjpeg::Reader::open(&it.path)
+                        .ok()
+                        .and_then(|mut r| r.frame(0))
+                        .map(|(w, h, rgba)| Pic { w, h, rgba })
+                } else {
+                    decode(&it.path, 160).ok()
+                };
                 self.cam.thumb = Some((it.path.clone(), p));
             }
             if let Some((_, Some(p))) = &self.cam.thumb {
                 let k = (thumb_rect.w / p.w as f32).max(thumb_rect.h / p.h as f32);
                 let (w, h) = (p.w as f32 * k, p.h as f32 * k);
                 ui.cv.set_clip(Some(thumb_rect));
-                ui.cv.blit_rgba(&p.rgba, p.w, p.h, Rect::new(tx - w / 2.0, ty - h / 2.0, w, h));
+                ui.cv.blit_rgba(
+                    &p.rgba,
+                    p.w,
+                    p.h,
+                    Rect::new(tx - w / 2.0, ty - h / 2.0, w, h),
+                );
                 ui.cv.set_clip(None);
                 ui.cv.round_corners(thumb_rect, tr, rgb(0));
-                ui.cv.ring(tx, ty, tr + ui.dp(1.0), ui.dp(2.0), white.alpha(0.85));
+                ui.cv
+                    .ring(tx, ty, tr + ui.dp(1.0), ui.dp(2.0), white.alpha(0.85));
             }
         } else {
             ui.icon(Ic::Image, tx, ty, ui.dp(22.0), white.alpha(0.5));
@@ -610,7 +838,14 @@ impl App {
         let hit = Rect::new(sx - ro, sy - ro, 2.0 * ro, 2.0 * ro);
         let held = ui.held(hit);
         let can = have && !self.cam.busy;
-        if self.cam.remote_shot && can && self.cam.opened_at.map(|t| t.elapsed() > Duration::from_millis(3000)).unwrap_or(true) {
+        if self.cam.remote_shot
+            && can
+            && self
+                .cam
+                .opened_at
+                .map(|t| t.elapsed() > Duration::from_millis(3000))
+                .unwrap_or(true)
+        {
             self.cam.remote_shot = false;
             if self.cam.mode == 3 {
                 self.capture_scan();
@@ -618,15 +853,30 @@ impl App {
                 self.capture_photo();
             }
         }
-        ui.cv.ring(sx, sy, ro - ui.dp(2.0), ui.dp(4.0), if can { white } else { white.alpha(0.35) });
+        ui.cv.ring(
+            sx,
+            sy,
+            ro - ui.dp(2.0),
+            ui.dp(4.0),
+            if can { white } else { white.alpha(0.35) },
+        );
         let video = self.cam.mode == 2;
         let inner = if video { rgb(0xF43F5E) } else { white };
         let inner = if can { inner } else { inner.alpha(0.35) };
         if recording {
             let s = ui.dp(24.0);
-            ui.cv.rrect(Rect::new(sx - s / 2.0, sy - s / 2.0, s, s), ui.dp(6.0), inner);
+            ui.cv.rrect(
+                Rect::new(sx - s / 2.0, sy - s / 2.0, s, s),
+                ui.dp(6.0),
+                inner,
+            );
         } else {
-            ui.cv.circle(sx, sy, if held && can { ri - ui.dp(4.0) } else { ri }, inner);
+            ui.cv.circle(
+                sx,
+                sy,
+                if held && can { ri - ui.dp(4.0) } else { ri },
+                inner,
+            );
         }
         if self.cam.countdown.is_some() {
             ui.icon(Ic::Close, sx, sy, ui.dp(20.0), rgb(0x101010));
@@ -686,8 +936,15 @@ impl App {
         self.cam.last_frame = None;
         self.cam.opened_at = Some(Instant::now());
         // gemerkter Knoten je Kamera: camera.node (Rück) / camera-front.node
-        let file = if self.cam.facing == 1 { "camera-front.node" } else { "camera.node" };
-        let hint = std::fs::read_to_string(format!("{}/{file}", sys::data_dir())).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let file = if self.cam.facing == 1 {
+            "camera-front.node"
+        } else {
+            "camera.node"
+        };
+        let hint = std::fs::read_to_string(format!("{}/{file}", sys::data_dir()))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         if self.cam.facing == 1 && hint.is_none() {
             // Ohne bekannten Front-Knoten bleibt es bei der Rückkamera (Knoten in camera-front.node eintragen)
             self.toast(self.t("Front camera node not known yet").into());
@@ -703,7 +960,12 @@ impl App {
             self.cam_cfg().rot[facing]
         };
         if let Some(wk) = self.cam.worker.as_ref().filter(|w| w.hires()) {
-            let base = self.cam.last_frame.as_ref().map(|f| f.0.max(f.1)).unwrap_or(0);
+            let base = self
+                .cam
+                .last_frame
+                .as_ref()
+                .map(|f| f.0.max(f.1))
+                .unwrap_or(0);
             wk.request_photo();
             let until = Instant::now() + Duration::from_millis(1500);
             while Instant::now() < until {
@@ -722,7 +984,9 @@ impl App {
     /// Dokument aufnehmen: Blatt suchen und zur Kontrolle anzeigen (Ecken lassen sich ziehen).
     pub(super) fn capture_scan(&mut self) -> bool {
         self.grab_hires();
-        let Some(frame) = self.cam.last_frame.clone() else { return false };
+        let Some(frame) = self.cam.last_frame.clone() else {
+            return false;
+        };
         let (w, h) = (frame.0, frame.1);
         if w == 0 || h == 0 || (frame.2.len() as u32) < w * h {
             return false;
@@ -734,7 +998,12 @@ impl App {
         if self.set.sound {
             crate::audio::play(vec![(1800.0, 25), (1200.0, 35)], self.set.volume * 0.5);
         }
-        self.cam.review = Some(Review { frame, quad, grab: None, found: found.is_some() });
+        self.cam.review = Some(Review {
+            frame,
+            quad,
+            grab: None,
+            found: found.is_some(),
+        });
         true
     }
 
@@ -744,7 +1013,11 @@ impl App {
         let q = rv.quad;
         let filter = scan::Filter::from(self.cam_cfg().scan_filter);
         let path = unique("SCAN", self.set.tz_min, "jpg");
-        let (slot, bg, pages) = (self.cam.saved.clone(), self.bg.clone(), self.cam.scan_pages.clone());
+        let (slot, bg, pages) = (
+            self.cam.saved.clone(),
+            self.bg.clone(),
+            self.cam.scan_pages.clone(),
+        );
         self.cam.busy = true;
         std::thread::spawn(move || {
             let (ow, oh, mut out) = scan::warp(&px, w, h, &q, 2200);
@@ -778,13 +1051,36 @@ impl App {
         let gold = ui.th.accent;
         let (w, h) = (rv.frame.0, rv.frame.1);
         let aspect = w as f32 / h as f32;
-        let avail = Rect::new(view.x + ui.dp(18.0), view.y + ui.dp(40.0), view.w - ui.dp(36.0), view.h - ui.dp(100.0));
+        let avail = Rect::new(
+            view.x + ui.dp(18.0),
+            view.y + ui.dp(40.0),
+            view.w - ui.dp(36.0),
+            view.h - ui.dp(100.0),
+        );
         let k = (avail.w / aspect).min(avail.h);
         let (dw, dh) = (k * aspect, k);
         let pic = Rect::new(avail.cx() - dw / 2.0, avail.cy() - dh / 2.0, dw, dh);
-        ui.cv.blit_xrgb(&rv.frame.2, w, h, Rect::new(0.0, 0.0, w as f32, h as f32), pic, false);
-        let hint = if rv.found { self.t("Check the corners") } else { self.t("Drag the corners to the page edges") };
-        ui.label(Rect::new(view.x, view.y + ui.dp(8.0), view.w, ui.dp(24.0)), hint, 14.0, white, true, Al::Center);
+        ui.cv.blit_xrgb(
+            &rv.frame.2,
+            w,
+            h,
+            Rect::new(0.0, 0.0, w as f32, h as f32),
+            pic,
+            false,
+        );
+        let hint = if rv.found {
+            self.t("Check the corners")
+        } else {
+            self.t("Drag the corners to the page edges")
+        };
+        ui.label(
+            Rect::new(view.x, view.y + ui.dp(8.0), view.w, ui.dp(24.0)),
+            hint,
+            14.0,
+            white,
+            true,
+            Al::Center,
+        );
 
         // Ecken ziehen
         let pt = |c: (f32, f32)| (pic.x + c.0 * pic.w, pic.y + c.1 * pic.h);
@@ -802,7 +1098,10 @@ impl App {
         }
         if ui.p.down {
             if let Some(i) = rv.grab {
-                rv.quad[i] = (((ui.p.x - pic.x) / pic.w).clamp(0.0, 1.0), ((ui.p.y - pic.y) / pic.h).clamp(0.0, 1.0));
+                rv.quad[i] = (
+                    ((ui.p.x - pic.x) / pic.w).clamp(0.0, 1.0),
+                    ((ui.p.y - pic.y) / pic.h).clamp(0.0, 1.0),
+                );
                 ui.dirty = true;
             }
         } else {
@@ -817,7 +1116,8 @@ impl App {
         for (i, c) in rv.quad.iter().enumerate() {
             let (x, y) = pt(*c);
             let big = rv.grab == Some(i);
-            ui.cv.circle(x, y, ui.dp(if big { 20.0 } else { 13.0 }), lc.alpha(0.35));
+            ui.cv
+                .circle(x, y, ui.dp(if big { 20.0 } else { 13.0 }), lc.alpha(0.35));
             ui.cv.circle(x, y, ui.dp(8.0), lc);
             ui.cv.circle(x, y, ui.dp(4.0), white);
         }
@@ -825,11 +1125,23 @@ impl App {
         // Filterwahl
         let cfg_filter = self.cam_cfg().scan_filter as usize;
         let names = ["Color", "Gray", "B/W"];
-        let ws: Vec<f32> = names.iter().map(|m| ui.text_w(self.t(m), 12.5, true) + ui.dp(22.0)).collect();
+        let ws: Vec<f32> = names
+            .iter()
+            .map(|m| ui.text_w(self.t(m), 12.5, true) + ui.dp(22.0))
+            .collect();
         let total: f32 = ws.iter().sum::<f32>() + ui.dp(8.0);
         let hgt = ui.dp(32.0);
         let cy = view.bottom() - ui.dp(26.0);
-        ui.cv.rrect(Rect::new(view.cx() - total / 2.0, cy - hgt / 2.0 - ui.dp(3.0), total, hgt + ui.dp(6.0)), hgt / 2.0 + ui.dp(3.0), rgb(0x17181C));
+        ui.cv.rrect(
+            Rect::new(
+                view.cx() - total / 2.0,
+                cy - hgt / 2.0 - ui.dp(3.0),
+                total,
+                hgt + ui.dp(6.0),
+            ),
+            hgt / 2.0 + ui.dp(3.0),
+            rgb(0x17181C),
+        );
         let mut x = view.cx() - total / 2.0 + ui.dp(4.0);
         let order: Vec<usize> = if ui.rtl { vec![2, 1, 0] } else { vec![0, 1, 2] };
         for i in order {
@@ -837,7 +1149,18 @@ impl App {
             if cfg_filter == i {
                 ui.cv.rrect(hit, hgt / 2.0, white.alpha(0.92));
             }
-            ui.label(hit, self.t(names[i]), 12.5, if cfg_filter == i { rgb(0x101010) } else { white }, true, Al::Center);
+            ui.label(
+                hit,
+                self.t(names[i]),
+                12.5,
+                if cfg_filter == i {
+                    rgb(0x101010)
+                } else {
+                    white
+                },
+                true,
+                Al::Center,
+            );
             if rv.grab.is_none() && ui.tap(hit) {
                 self.cam_cfg().scan_filter = i as u8;
                 self.cam_save();
@@ -849,9 +1172,20 @@ impl App {
         // Verwerfen / Übernehmen
         let y = ctrl.cy();
         let side = (ui.w * 0.22).min(ui.dp(96.0));
-        let (xl, xr) = if ui.rtl { (ctrl.cx() + side, ctrl.cx() - side) } else { (ctrl.cx() - side, ctrl.cx() + side) };
+        let (xl, xr) = if ui.rtl {
+            (ctrl.cx() + side, ctrl.cx() - side)
+        } else {
+            (ctrl.cx() - side, ctrl.cx() + side)
+        };
         let discard = ui.icon_btn(xl, y, ui.dp(26.0), Ic::Close, white.alpha(0.12), white);
-        let accept = ui.icon_btn(xr, y, ui.dp(32.0), Ic::Check, if ok { gold } else { white.alpha(0.12) }, if ok { rgb(0x101010) } else { white.alpha(0.4) });
+        let accept = ui.icon_btn(
+            xr,
+            y,
+            ui.dp(32.0),
+            Ic::Check,
+            if ok { gold } else { white.alpha(0.12) },
+            if ok { rgb(0x101010) } else { white.alpha(0.4) },
+        );
         let remote = std::mem::take(&mut self.cam.remote_accept);
         if discard && rv.grab.is_none() {
             ui.dirty = true;
@@ -896,15 +1230,26 @@ impl App {
     /// Sichtbaren Ausschnitt (Modus, Zoom, Spiegelung) als JPEG speichern – im Hintergrund.
     pub(super) fn capture_photo(&mut self) -> bool {
         self.grab_hires();
-        let Some((w, h, px)) = self.cam.last_frame.clone() else { return false };
+        let Some((w, h, px)) = self.cam.last_frame.clone() else {
+            return false;
+        };
         if w == 0 || h == 0 || (px.len() as u32) < w * h {
             return false;
         }
         let facing = self.cam.facing as usize & 1;
         let mirror = facing == 1 && self.cam_cfg().mirror_front;
-        let aspect = if self.cam.mode == 1 { 1.0 } else { w as f32 / h as f32 };
+        let aspect = if self.cam.mode == 1 {
+            1.0
+        } else {
+            w as f32 / h as f32
+        };
         let c = crop(w, h, aspect, self.cam.zoom);
-        let (cx, cy, cw, ch) = (c.x as u32, c.y as u32, (c.w as u32).clamp(1, w), (c.h as u32).clamp(1, h));
+        let (cx, cy, cw, ch) = (
+            c.x as u32,
+            c.y as u32,
+            (c.w as u32).clamp(1, w),
+            (c.h as u32).clamp(1, h),
+        );
         let path = unique("IMG", self.set.tz_min, "jpg");
         let (slot, bg) = (self.cam.saved.clone(), self.bg.clone());
         self.cam.flash_fx = Some(Instant::now());
@@ -922,7 +1267,10 @@ impl App {
                     out.extend_from_slice(row);
                 }
             }
-            let res = mjpeg::encode_jpeg(&out, cw, ch, 93).ok_or_else(|| "JPEG".to_string()).and_then(|j| std::fs::write(&path, j).map_err(|e| e.to_string())).map(|_| path);
+            let res = mjpeg::encode_jpeg(&out, cw, ch, 93)
+                .ok_or_else(|| "JPEG".to_string())
+                .and_then(|j| std::fs::write(&path, j).map_err(|e| e.to_string()))
+                .map(|_| path);
             if let Ok(mut s) = slot.lock() {
                 *s = Some(res);
             }
@@ -932,7 +1280,9 @@ impl App {
     }
 
     fn start_recording(&mut self) {
-        let Some((w, h, _)) = &self.cam.last_frame else { return };
+        let Some((w, h, _)) = &self.cam.last_frame else {
+            return;
+        };
         let (w, h) = (*w, *h);
         let path = unique("VID", self.set.tz_min, "avi");
         let (tx, rx) = sync_channel::<Frame>(2);
@@ -954,7 +1304,8 @@ impl App {
                     let _ = std::fs::remove_file(&path);
                     return Err("Keine Bilder aufgenommen".into());
                 }
-                wr.finish((t0.elapsed().as_micros() / n) as u32).map_err(|e| e.to_string())?;
+                wr.finish((t0.elapsed().as_micros() / n) as u32)
+                    .map_err(|e| e.to_string())?;
                 Ok(path.clone())
             })();
             if let Ok(mut s) = slot.lock() {
@@ -962,7 +1313,10 @@ impl App {
             }
             bg.poke();
         });
-        self.cam.rec = Some(Recorder { tx, started: Instant::now() });
+        self.cam.rec = Some(Recorder {
+            tx,
+            started: Instant::now(),
+        });
     }
 }
 

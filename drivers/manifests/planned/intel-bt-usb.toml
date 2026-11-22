@@ -1,0 +1,17 @@
+# Intel Bluetooth over USB HCI. 8087:0026 = AX201 companion (T1), 8087:0036 = BE200 companion (T2).
+# The closed vendor firmware is only loaded; the file names are fixed when the firmware is packaged.
+id = "intel-bt-usb"
+version = "1.0.0"
+class = "bluetooth"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.intel-bt-usb.name"
+description_key = "driver.intel-bt-usb.description"
+
+[match]
+usb = ["8087:0026", "8087:0036"]
+
+[content]
+module = "drivers/intel_bt_usb.uko"
+firmware = ["firmware/intel/bt-0026.sfi", "firmware/intel/bt-0036.sfi"]

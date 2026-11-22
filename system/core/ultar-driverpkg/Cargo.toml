@@ -1,0 +1,27 @@
+[package]
+name = "ultar-driverpkg"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Signed Ultar driver package format (.utr), hardware matching engine and driver depot index for the installation medium."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.22"
+hex = "0.4"
+tar = { version = "0.4", default-features = false }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[lib]
+name = "ultar_driverpkg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "udrv"
+path = "src/bin/udrv.rs"
+

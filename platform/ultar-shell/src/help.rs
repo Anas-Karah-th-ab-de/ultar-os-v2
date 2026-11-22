@@ -22,11 +22,33 @@ pub struct Topic {
     pub system: bool,
 }
 
-const fn t(id: &'static str, title: &'static str, en: &'static str, de: &'static str, ar: &'static str) -> Topic {
-    Topic { id, title, body: [en, de, ar], system: false }
+const fn t(
+    id: &'static str,
+    title: &'static str,
+    en: &'static str,
+    de: &'static str,
+    ar: &'static str,
+) -> Topic {
+    Topic {
+        id,
+        title,
+        body: [en, de, ar],
+        system: false,
+    }
 }
-const fn s(id: &'static str, title: &'static str, en: &'static str, de: &'static str, ar: &'static str) -> Topic {
-    Topic { id, title, body: [en, de, ar], system: true }
+const fn s(
+    id: &'static str,
+    title: &'static str,
+    en: &'static str,
+    de: &'static str,
+    ar: &'static str,
+) -> Topic {
+    Topic {
+        id,
+        title,
+        body: [en, de, ar],
+        system: true,
+    }
 }
 
 pub const TOPICS: &[Topic] = &[
@@ -362,9 +384,15 @@ pub fn export(dir: &str) {
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }
-    let mut index = String::from("# Ultar OS – Hilfe / Help\n\nKM Code Craft (Mohamad Anas Kara Mohamad)\n\n");
+    let mut index =
+        String::from("# Ultar OS – Hilfe / Help\n\nKM Code Craft (Mohamad Anas Kara Mohamad)\n\n");
     for t in TOPICS {
-        index.push_str(&format!("- [{}]({}.md) — {}\n", t.title, t.id, first_sentence(t.body[0]).trim()));
+        index.push_str(&format!(
+            "- [{}]({}.md) — {}\n",
+            t.title,
+            t.id,
+            first_sentence(t.body[0]).trim()
+        ));
         let doc = format!(
             "# {title}\n\nid: `{id}`\n\n## English\n{en}\n\n## Deutsch\n{de}\n\n## العربية\n{ar}\n",
             title = t.title,
@@ -386,8 +414,17 @@ mod tests {
     fn ids_unique_and_complete() {
         for t in TOPICS {
             assert!(!t.id.is_empty());
-            assert!(!t.body[0].is_empty() && !t.body[1].is_empty() && !t.body[2].is_empty(), "leer: {}", t.id);
-            assert_eq!(TOPICS.iter().filter(|x| x.id == t.id).count(), 1, "doppelt: {}", t.id);
+            assert!(
+                !t.body[0].is_empty() && !t.body[1].is_empty() && !t.body[2].is_empty(),
+                "leer: {}",
+                t.id
+            );
+            assert_eq!(
+                TOPICS.iter().filter(|x| x.id == t.id).count(),
+                1,
+                "doppelt: {}",
+                t.id
+            );
         }
     }
 

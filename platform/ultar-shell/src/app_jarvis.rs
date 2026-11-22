@@ -17,7 +17,14 @@ use ultar_llm::models;
 
 /// Ordner für Bilder an den Assistenten (privat, im Speicher)
 fn img_dir() -> String {
-    let d = if std::path::Path::new("/run/ultar").is_dir() { "/run/ultar/agent".to_string() } else { std::env::temp_dir().join("ultar-agent").to_string_lossy().into_owned() };
+    let d = if std::path::Path::new("/run/ultar").is_dir() {
+        "/run/ultar/agent".to_string()
+    } else {
+        std::env::temp_dir()
+            .join("ultar-agent")
+            .to_string_lossy()
+            .into_owned()
+    };
     let _ = std::fs::create_dir_all(&d);
     #[cfg(unix)]
     {
@@ -50,7 +57,9 @@ pub struct Jarvis {
 
 fn is_img(p: &str) -> bool {
     let l = p.to_ascii_lowercase();
-    [".png", ".jpg", ".jpeg", ".webp", ".bmp"].iter().any(|e| l.ends_with(e))
+    [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
+        .iter()
+        .any(|e| l.ends_with(e))
 }
 
 /// XRGB-Bild als PNG speichern
@@ -63,22 +72,44 @@ fn save_png(path: &str, w: u32, h: u32, px: &[u32]) -> Result<(), String> {
 }
 
 fn read_trim(p: &str) -> String {
-    std::fs::read_to_string(p).map(|s| s.trim().to_string()).unwrap_or_default()
+    std::fs::read_to_string(p)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
 }
 
 /// Prozesse aus /proc: (pid, Name, RSS in KB, CPU-Zeit in Ticks, Befehlszeile)
 fn procs() -> Vec<(u32, String, u64, u64, String)> {
     let mut v = Vec::new();
-    let Ok(rd) = std::fs::read_dir("/proc") else { return v };
+    let Ok(rd) = std::fs::read_dir("/proc") else {
+        return v;
+    };
     for e in rd.flatten() {
-        let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() else { continue };
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-        let (Some(a), Some(b)) = (stat.find('('), stat.rfind(')')) else { continue };
+        let (Some(a), Some(b)) = (stat.find('('), stat.rfind(')')) else {
+            continue;
+        };
         let name = stat[a + 1..b].to_string();
         let f: Vec<&str> = stat[b + 2..].split_whitespace().collect();
-        let ticks = f.get(11).and_then(|x| x.parse::<u64>().ok()).unwrap_or(0) + f.get(12).and_then(|x| x.parse::<u64>().ok()).unwrap_or(0);
-        let rss = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap_or_default().lines().find(|l| l.starts_with("VmRSS:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|x| x.parse().ok()).unwrap_or(0);
-        let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).map(|b| String::from_utf8_lossy(&b).replace('\0', " ").trim().to_string()).unwrap_or_default();
+        let ticks = f.get(11).and_then(|x| x.parse::<u64>().ok()).unwrap_or(0)
+            + f.get(12).and_then(|x| x.parse::<u64>().ok()).unwrap_or(0);
+        let rss = std::fs::read_to_string(format!("/proc/{pid}/status"))
+            .unwrap_or_default()
+            .lines()
+            .find(|l| l.starts_with("VmRSS:"))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|x| x.parse().ok())
+            .unwrap_or(0);
+        let cmd = std::fs::read(format!("/proc/{pid}/cmdline"))
+            .map(|b| {
+                String::from_utf8_lossy(&b)
+                    .replace('\0', " ")
+                    .trim()
+                    .to_string()
+            })
+            .unwrap_or_default();
         v.push((pid, name, rss, ticks, cmd));
     }
     v
@@ -88,11 +119,17 @@ fn procs() -> Vec<(u32, String, u64, u64, String)> {
 fn socket_owners() -> std::collections::HashMap<u64, (u32, String)> {
     let mut m = std::collections::HashMap::new();
     for (pid, name, ..) in procs() {
-        let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else { continue };
+        let Ok(rd) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+            continue;
+        };
         for fd in rd.flatten() {
             if let Ok(t) = std::fs::read_link(fd.path()) {
                 let t = t.to_string_lossy();
-                if let Some(i) = t.strip_prefix("socket:[").and_then(|x| x.strip_suffix(']')).and_then(|x| x.parse::<u64>().ok()) {
+                if let Some(i) = t
+                    .strip_prefix("socket:[")
+                    .and_then(|x| x.strip_suffix(']'))
+                    .and_then(|x| x.parse::<u64>().ok())
+                {
                     m.insert(i, (pid, name.clone()));
                 }
             }
@@ -110,7 +147,9 @@ fn hex_addr(h: &str, v6: bool) -> String {
     } else {
         let mut b = Vec::new();
         for i in 0..4 {
-            let w = u32::from_str_radix(ip.get(i * 8..i * 8 + 8).unwrap_or("0"), 16).unwrap_or(0).to_le_bytes();
+            let w = u32::from_str_radix(ip.get(i * 8..i * 8 + 8).unwrap_or("0"), 16)
+                .unwrap_or(0)
+                .to_le_bytes();
             b.extend_from_slice(&w);
         }
         let a: [u8; 16] = b.try_into().unwrap_or([0; 16]);
@@ -127,7 +166,12 @@ pub fn connections() -> String {
     let owners = socket_owners();
     let mut est = Vec::new();
     let mut listen = Vec::new();
-    for (file, proto, v6) in [("/proc/net/tcp", "tcp", false), ("/proc/net/tcp6", "tcp", true), ("/proc/net/udp", "udp", false), ("/proc/net/udp6", "udp", true)] {
+    for (file, proto, v6) in [
+        ("/proc/net/tcp", "tcp", false),
+        ("/proc/net/tcp6", "tcp", true),
+        ("/proc/net/udp", "udp", false),
+        ("/proc/net/udp6", "udp", true),
+    ] {
         let t = std::fs::read_to_string(file).unwrap_or_default();
         for l in t.lines().skip(1) {
             let f: Vec<&str> = l.split_whitespace().collect();
@@ -136,8 +180,13 @@ pub fn connections() -> String {
             }
             let (local, remote, st) = (hex_addr(f[1], v6), hex_addr(f[2], v6), f[3]);
             let inode: u64 = f[9].parse().unwrap_or(0);
-            let who = owners.get(&inode).map(|(p, n)| format!("{n}[{p}]")).unwrap_or_else(|| "?".into());
-            if (proto == "tcp" && st == "0A") || (proto == "udp" && remote.ends_with(":0") && st == "07") {
+            let who = owners
+                .get(&inode)
+                .map(|(p, n)| format!("{n}[{p}]"))
+                .unwrap_or_else(|| "?".into());
+            if (proto == "tcp" && st == "0A")
+                || (proto == "udp" && remote.ends_with(":0") && st == "07")
+            {
                 listen.push(format!("{proto} {local} {who}"));
             } else if proto == "tcp" && st == "01" {
                 est.push(format!("{who} {local} -> {remote}"));
@@ -148,17 +197,42 @@ pub fn connections() -> String {
     est.dedup();
     listen.sort();
     listen.dedup();
-    format!("ESTABLISHED ({}):\n{}\nLISTENING ({}):\n{}", est.len(), if est.is_empty() { "none".into() } else { est.join("\n") }, listen.len(), if listen.is_empty() { "none".into() } else { listen.join("\n") })
+    format!(
+        "ESTABLISHED ({}):\n{}\nLISTENING ({}):\n{}",
+        est.len(),
+        if est.is_empty() {
+            "none".into()
+        } else {
+            est.join("\n")
+        },
+        listen.len(),
+        if listen.is_empty() {
+            "none".into()
+        } else {
+            listen.join("\n")
+        }
+    )
 }
 
 impl App {
     /// Vor dem Zeichnen: soll dieses Bild für den Assistenten festgehalten werden?
     pub(super) fn jarvis_capture_due(&self) -> bool {
-        let Some(top) = self.stack.last().map(|s| &s.0) else { return false };
-        if matches!(top, Screen::Agent | Screen::AgentSet | Screen::Job | Screen::Setup(_) | Screen::WifiPw(..)) || self.sx.locked || self.pending.is_some() {
+        let Some(top) = self.stack.last().map(|s| &s.0) else {
+            return false;
+        };
+        if matches!(
+            top,
+            Screen::Agent | Screen::AgentSet | Screen::Job | Screen::Setup(_) | Screen::WifiPw(..)
+        ) || self.sx.locked
+            || self.pending.is_some()
+        {
             return false;
         }
-        self.jv.view_scr.as_ref() != Some(top) || self.jv.view_at.map_or(true, |t| t.elapsed() > Duration::from_millis(1500))
+        self.jv.view_scr.as_ref() != Some(top)
+            || self
+                .jv
+                .view_at
+                .map_or(true, |t| t.elapsed() > Duration::from_millis(1500))
     }
 
     /// Nach dem Zeichnen: Text und verkleinertes Bild der Seite merken (höchstens ~1×/1,5 s, sonst bei Seitenwechsel)
@@ -187,8 +261,18 @@ impl App {
             return true;
         }
         let dir = model_dir();
-        std::fs::read_dir(&dir).map(|rd| rd.flatten().any(|e| e.file_name().to_string_lossy().starts_with("mmproj"))).unwrap_or(false)
-            || std::fs::read_dir(agent::MODEL_DIR).map(|rd| rd.flatten().any(|e| e.file_name().to_string_lossy().starts_with("mmproj"))).unwrap_or(false)
+        std::fs::read_dir(&dir)
+            .map(|rd| {
+                rd.flatten()
+                    .any(|e| e.file_name().to_string_lossy().starts_with("mmproj"))
+            })
+            .unwrap_or(false)
+            || std::fs::read_dir(agent::MODEL_DIR)
+                .map(|rd| {
+                    rd.flatten()
+                        .any(|e| e.file_name().to_string_lossy().starts_with("mmproj"))
+                })
+                .unwrap_or(false)
     }
 
     /// Bildschirmfoto der letzten Seite als Datei
@@ -202,7 +286,8 @@ impl App {
     /// Ergebnis eines Werkzeugs mit Bild an das Modell geben
     pub(super) fn tool_result_img(&mut self, res: String, img: String) {
         let res: String = res.chars().take(1500).collect();
-        self.history.push(agent::user_msg(&format!("TOOL_RESULT: {res}"), &[img]));
+        self.history
+            .push(agent::user_msg(&format!("TOOL_RESULT: {res}"), &[img]));
         self.request();
     }
 
@@ -211,7 +296,12 @@ impl App {
         let bg = self.bg.clone();
         let res = match c.tool.as_str() {
             "see_screen" => {
-                let title = self.jv.view_scr.as_ref().map(|s| self.screen_label(s)).unwrap_or_default();
+                let title = self
+                    .jv
+                    .view_scr
+                    .as_ref()
+                    .map(|s| self.screen_label(s))
+                    .unwrap_or_default();
                 if self.jv.view_text.is_empty() {
                     "The user has not looked at any app yet (only this conversation).".into()
                 } else {
@@ -234,7 +324,10 @@ impl App {
                 match self.jarvis_screen_png() {
                     Ok(p) => {
                         let q = c.arg("question");
-                        self.tool_result_img(format!("screenshot of the screen the user was looking at. {q}"), p);
+                        self.tool_result_img(
+                            format!("screenshot of the screen the user was looking at. {q}"),
+                            p,
+                        );
                         return Some(Err(()));
                     }
                     Err(e) => format!("error: {e}"),
@@ -242,12 +335,18 @@ impl App {
             }
             "look_at_user" => {
                 if !crate::privacy::allowed(&self.set, crate::privacy::Cap::Camera) {
-                    return Some(Ok("error: the camera is switched off in privacy settings".into()));
+                    return Some(Ok(
+                        "error: the camera is switched off in privacy settings".into()
+                    ));
                 }
                 if !self.jarvis_can_see() {
                     return Some(Ok("error: no vision model installed".into()));
                 }
-                let node = std::fs::read_to_string(format!("{}/camera-front.node", sys::data_dir())).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+                let node =
+                    std::fs::read_to_string(format!("{}/camera-front.node", sys::data_dir()))
+                        .ok()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
                 let data = sys::data_dir();
                 std::thread::spawn(move || {
                     let w = crate::camera::CameraWorker::start(1, node, data);
@@ -276,7 +375,10 @@ impl App {
                                 Err(e) => bg.send(Msg::AgentTool(format!("error: {e}"))),
                             }
                         }
-                        None => bg.send(Msg::AgentTool(format!("error: camera gave no picture{}", err.map(|e| format!(" ({e})")).unwrap_or_default()))),
+                        None => bg.send(Msg::AgentTool(format!(
+                            "error: camera gave no picture{}",
+                            err.map(|e| format!(" ({e})")).unwrap_or_default()
+                        ))),
                     }
                 });
                 return Some(Err(()));
@@ -284,13 +386,30 @@ impl App {
             "system_info" => {
                 let (mt, ma) = sys::meminfo();
                 let load = read_trim("/proc/loadavg");
-                let up = read_trim("/proc/uptime").split_whitespace().next().and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0) as u64;
-                let temp = ultar_llm::platform::cpu_temp().map(|t| format!("{t:.0} °C")).unwrap_or_else(|| "n/a".into());
-                let disk = |p: &str| sys::disk(p).map(|d| format!("{} free of {}", sys::human(d.1), sys::human(d.0))).unwrap_or_else(|| "n/a".into());
-                let net: Vec<String> = sys::net_status().iter().map(|n| format!("{} {} {}", n.name, n.state, n.ip)).collect();
+                let up = read_trim("/proc/uptime")
+                    .split_whitespace()
+                    .next()
+                    .and_then(|x| x.parse::<f64>().ok())
+                    .unwrap_or(0.0) as u64;
+                let temp = ultar_llm::platform::cpu_temp()
+                    .map(|t| format!("{t:.0} °C"))
+                    .unwrap_or_else(|| "n/a".into());
+                let disk = |p: &str| {
+                    sys::disk(p)
+                        .map(|d| format!("{} free of {}", sys::human(d.1), sys::human(d.0)))
+                        .unwrap_or_else(|| "n/a".into())
+                };
+                let net: Vec<String> = sys::net_status()
+                    .iter()
+                    .map(|n| format!("{} {} {}", n.name, n.state, n.ip))
+                    .collect();
                 let mut ps = procs();
                 ps.sort_by(|a, b| b.2.cmp(&a.2));
-                let top: Vec<String> = ps.iter().take(8).map(|p| format!("{} [{}] {} MB", p.1, p.0, p.2 / 1024)).collect();
+                let top: Vec<String> = ps
+                    .iter()
+                    .take(8)
+                    .map(|p| format!("{} [{}] {} MB", p.1, p.0, p.2 / 1024))
+                    .collect();
                 format!(
                     "kernel {}; uptime {}h{}m; load {load}; cpus {}; temp {temp}; ram {} free of {}; battery {:?}; storage system {}, user {}; network [{}]; processes {}; top memory: {}",
                     read_trim("/proc/sys/kernel/osrelease"),
@@ -314,7 +433,20 @@ impl App {
                 } else {
                     ps.sort_by(|a, b| b.2.cmp(&a.2));
                 }
-                ps.iter().take(25).map(|p| format!("{:>6} {:<18} {:>6} MB  cpu {:>7}  {}", p.0, p.1, p.2 / 1024, p.3, p.4.chars().take(60).collect::<String>())).collect::<Vec<_>>().join("\n")
+                ps.iter()
+                    .take(25)
+                    .map(|p| {
+                        format!(
+                            "{:>6} {:<18} {:>6} MB  cpu {:>7}  {}",
+                            p.0,
+                            p.1,
+                            p.2 / 1024,
+                            p.3,
+                            p.4.chars().take(60).collect::<String>()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
             }
             "kill_process" => {
                 let pid: i32 = c.arg("pid").trim().parse().unwrap_or(0);
@@ -322,7 +454,11 @@ impl App {
                 if pid <= 1 || pid == me {
                     "error: this process cannot be stopped (init or the interface itself)".into()
                 } else {
-                    let sig = if c.arg("signal").eq_ignore_ascii_case("kill") { nix::sys::signal::Signal::SIGKILL } else { nix::sys::signal::Signal::SIGTERM };
+                    let sig = if c.arg("signal").eq_ignore_ascii_case("kill") {
+                        nix::sys::signal::Signal::SIGKILL
+                    } else {
+                        nix::sys::signal::Signal::SIGTERM
+                    };
                     match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), sig) {
                         Ok(_) => format!("ok: signal {sig:?} sent to {pid}"),
                         Err(e) => format!("error: {e}"),
@@ -332,18 +468,56 @@ impl App {
             "network_connections" => connections(),
             "security_status" => {
                 let s = &self.set;
-                let groups = [("network", s.priv_net), ("camera", s.priv_cam), ("microphone", s.priv_mic), ("location", s.priv_loc), ("sensors", s.priv_sensors), ("bluetooth", s.priv_bt)];
-                let g: Vec<String> = groups.iter().map(|(n, on)| format!("{n} {}", if s.priv_all && *on { "allowed" } else { "blocked" })).collect();
+                let groups = [
+                    ("network", s.priv_net),
+                    ("camera", s.priv_cam),
+                    ("microphone", s.priv_mic),
+                    ("location", s.priv_loc),
+                    ("sensors", s.priv_sensors),
+                    ("bluetooth", s.priv_bt),
+                ];
+                let g: Vec<String> = groups
+                    .iter()
+                    .map(|(n, on)| {
+                        format!(
+                            "{n} {}",
+                            if s.priv_all && *on {
+                                "allowed"
+                            } else {
+                                "blocked"
+                            }
+                        )
+                    })
+                    .collect();
                 let v = ultar_vpn::status();
-                let vpn = if v.up { format!("on via {}", v.endpoint) } else { "off".to_string() };
-                let listen = connections().split("LISTENING").nth(1).unwrap_or("").lines().take(12).collect::<Vec<_>>().join("; ");
+                let vpn = if v.up {
+                    format!("on via {}", v.endpoint)
+                } else {
+                    "off".to_string()
+                };
+                let listen = connections()
+                    .split("LISTENING")
+                    .nth(1)
+                    .unwrap_or("")
+                    .lines()
+                    .take(12)
+                    .collect::<Vec<_>>()
+                    .join("; ");
                 format!(
                     "device switch {}; {}; vpn {}; screen lock {}; assistant model {}; listening{}",
-                    if s.priv_all { "on" } else { "OFF (everything blocked)" },
+                    if s.priv_all {
+                        "on"
+                    } else {
+                        "OFF (everything blocked)"
+                    },
                     g.join(", "),
                     vpn.chars().take(120).collect::<String>(),
                     if self.sx.cfg.lock { "on" } else { "off" },
-                    if self.agent.backend == "claude" { "Claude (cloud – data leaves the device)" } else { "local (nothing leaves the device)" },
+                    if self.agent.backend == "claude" {
+                        "Claude (cloud – data leaves the device)"
+                    } else {
+                        "local (nothing leaves the device)"
+                    },
                     listen
                 )
             }
@@ -362,16 +536,32 @@ impl App {
                 }
                 crate::privacy::apply(&self.set);
                 self.save();
-                format!("ok: {} {}", c.arg("group"), if on { "allowed" } else { "blocked" })
+                format!(
+                    "ok: {} {}",
+                    c.arg("group"),
+                    if on { "allowed" } else { "blocked" }
+                )
             }
             "logs" => {
                 let n: usize = c.arg("lines").trim().parse().unwrap_or(40).clamp(5, 200);
-                let v = if c.arg("source") == "services" { crate::sysx::service_log(n) } else { crate::sysx::kernel_log(n) };
-                if v.is_empty() { "(no log lines)".into() } else { v.join("\n") }
+                let v = if c.arg("source") == "services" {
+                    crate::sysx::service_log(n)
+                } else {
+                    crate::sysx::kernel_log(n)
+                };
+                if v.is_empty() {
+                    "(no log lines)".into()
+                } else {
+                    v.join("\n")
+                }
             }
             "list_dir" => {
                 let p = c.arg("path");
-                let p = if p.trim().is_empty() { "/".to_string() } else { p };
+                let p = if p.trim().is_empty() {
+                    "/".to_string()
+                } else {
+                    p
+                };
                 match std::fs::read_dir(&p) {
                     Ok(rd) => {
                         let mut v: Vec<String> = rd
@@ -380,11 +570,22 @@ impl App {
                             .map(|e| {
                                 let m = e.metadata().ok();
                                 let d = m.as_ref().is_some_and(|m| m.is_dir());
-                                format!("{}{}{}", e.file_name().to_string_lossy(), if d { "/" } else { "" }, m.filter(|m| !m.is_dir()).map(|m| format!("  {}", sys::human(m.len()))).unwrap_or_default())
+                                format!(
+                                    "{}{}{}",
+                                    e.file_name().to_string_lossy(),
+                                    if d { "/" } else { "" },
+                                    m.filter(|m| !m.is_dir())
+                                        .map(|m| format!("  {}", sys::human(m.len())))
+                                        .unwrap_or_default()
+                                )
                             })
                             .collect();
                         v.sort();
-                        if v.is_empty() { "(empty)".into() } else { v.join("\n") }
+                        if v.is_empty() {
+                            "(empty)".into()
+                        } else {
+                            v.join("\n")
+                        }
                     }
                     Err(e) => format!("error: {e}"),
                 }
@@ -392,15 +593,31 @@ impl App {
             "read_any" => {
                 let p = c.arg("path");
                 match std::fs::read(&p) {
-                    Ok(b) if p.starts_with("/proc/") || p.starts_with("/sys/") || ultar_office::looks_text(&b) => {
-                        let max: usize = c.arg("max").trim().parse().unwrap_or(3000).clamp(200, 12000);
+                    Ok(b)
+                        if p.starts_with("/proc/")
+                            || p.starts_with("/sys/")
+                            || ultar_office::looks_text(&b) =>
+                    {
+                        let max: usize = c
+                            .arg("max")
+                            .trim()
+                            .parse()
+                            .unwrap_or(3000)
+                            .clamp(200, 12000);
                         let t = String::from_utf8_lossy(&b);
                         let t: String = t.chars().take(max).collect();
-                        if b.len() > max { format!("{t}\n… ({} bytes total)", b.len()) } else { t }
+                        if b.len() > max {
+                            format!("{t}\n… ({} bytes total)", b.len())
+                        } else {
+                            t
+                        }
                     }
                     Ok(_) => match ultar_office::read_text(&p, 3000) {
                         Ok(t) => t,
-                        Err(_) => format!("binary file, {} bytes", std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)),
+                        Err(_) => format!(
+                            "binary file, {} bytes",
+                            std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0)
+                        ),
                     },
                     Err(e) => format!("error: {e}"),
                 }
@@ -411,7 +628,11 @@ impl App {
                     "error: absolute path needed".into()
                 } else {
                     let r = if matches!(c.arg("append").as_str(), "true" | "1") {
-                        std::fs::OpenOptions::new().create(true).append(true).open(&p).and_then(|mut f| std::io::Write::write_all(&mut f, content.as_bytes()))
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&p)
+                            .and_then(|mut f| std::io::Write::write_all(&mut f, content.as_bytes()))
                     } else {
                         if let Some(d) = std::path::Path::new(&p).parent() {
                             let _ = std::fs::create_dir_all(d);
@@ -426,12 +647,33 @@ impl App {
             }
             "delete_path" => {
                 let p = c.arg("path");
-                let protected = ["/", "/data", "/data/ultar", "/usr", "/etc", "/sbin", "/bin", "/boot", "/proc", "/sys", "/dev", "/vendor", "/system"];
-                if protected.contains(&p.trim_end_matches('/')) || p.trim().is_empty() || !p.starts_with('/') {
+                let protected = [
+                    "/",
+                    "/data",
+                    "/data/ultar",
+                    "/usr",
+                    "/etc",
+                    "/sbin",
+                    "/bin",
+                    "/boot",
+                    "/proc",
+                    "/sys",
+                    "/dev",
+                    "/vendor",
+                    "/system",
+                ];
+                if protected.contains(&p.trim_end_matches('/'))
+                    || p.trim().is_empty()
+                    || !p.starts_with('/')
+                {
                     "error: this path is protected".into()
                 } else {
                     let path = std::path::Path::new(&p);
-                    let r = if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
+                    let r = if path.is_dir() {
+                        std::fs::remove_dir_all(path)
+                    } else {
+                        std::fs::remove_file(path)
+                    };
                     match r {
                         Ok(_) => format!("ok: deleted {p}"),
                         Err(e) => format!("error: {e}"),
@@ -444,7 +686,11 @@ impl App {
                 std::thread::spawn(move || {
                     let wrapped = format!("({cmd}) 2>&1");
                     let out = if ubuntu {
-                        if sys::compat_ready() { sys::capture(sys::COMPAT, &["run", "--", "/bin/bash", "-c", &wrapped]) } else { "error: Ubuntu area not available".into() }
+                        if sys::compat_ready() {
+                            sys::capture(sys::COMPAT, &["run", "--", "/bin/bash", "-c", &wrapped])
+                        } else {
+                            "error: Ubuntu area not available".into()
+                        }
                     } else if std::path::Path::new("/bin/sh").exists() {
                         // direkt im Ultar-System als root (kein Ubuntu-Bereich)
                         sys::capture("/bin/sh", &["-c", &wrapped])
@@ -453,15 +699,36 @@ impl App {
                     } else {
                         "error: no shell available".into()
                     };
-                    let out: String = if out.chars().count() > 3000 { out.chars().rev().take(3000).collect::<Vec<_>>().into_iter().rev().collect() } else { out };
-                    bg.send(Msg::AgentTool(if out.trim().is_empty() { "(no output)".into() } else { out }))
+                    let out: String = if out.chars().count() > 3000 {
+                        out.chars()
+                            .rev()
+                            .take(3000)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect()
+                    } else {
+                        out
+                    };
+                    bg.send(Msg::AgentTool(if out.trim().is_empty() {
+                        "(no output)".into()
+                    } else {
+                        out
+                    }))
                 });
                 return Some(Err(()));
             }
             "model_status" => {
                 let p = ultar_llm::platform::detect();
                 let r = models::recommend(&p);
-                let installed: Vec<String> = std::fs::read_dir(model_dir()).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".gguf")).collect()).unwrap_or_default();
+                let installed: Vec<String> = std::fs::read_dir(model_dir())
+                    .map(|rd| {
+                        rd.flatten()
+                            .map(|e| e.file_name().to_string_lossy().into_owned())
+                            .filter(|n| n.ends_with(".gguf"))
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 format!(
                     "device: {} ({}); recommended chat model {} and vision model {}; installed: [{}]; engine: ultar-llm on the Ultar core{}",
                     r.why,
@@ -474,9 +741,20 @@ impl App {
             }
             "model_download" => {
                 let id = c.arg("id");
-                let spec = if c.arg("source") == "ollama" { format!("{id}@ollama") } else { id.clone() };
+                let spec = if c.arg("source") == "ollama" {
+                    format!("{id}@ollama")
+                } else {
+                    id.clone()
+                };
                 if models::parse_spec(&spec).is_err() {
-                    return Some(Ok(format!("error: unknown model {id} – known: {}", models::CATALOG.iter().map(|e| e.id).collect::<Vec<_>>().join(", "))));
+                    return Some(Ok(format!(
+                        "error: unknown model {id} – known: {}",
+                        models::CATALOG
+                            .iter()
+                            .map(|e| e.id)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )));
                 }
                 self.jarvis_pull(spec);
                 format!("ok: download of {id} started – progress is shown on screen; tell the user it can take a while")
@@ -488,7 +766,11 @@ impl App {
 
     /// Name der Seite für die Beschreibung
     fn screen_label(&self, s: &Screen) -> String {
-        let name = self.all_apps().into_iter().find(|a| a.2.as_ref() == Some(s)).map(|a| a.1.to_string());
+        let name = self
+            .all_apps()
+            .into_iter()
+            .find(|a| a.2.as_ref() == Some(s))
+            .map(|a| a.1.to_string());
         name.unwrap_or_else(|| match s {
             Screen::Home => "Home screen".into(),
             Screen::Settings => "Settings".into(),
@@ -505,10 +787,16 @@ impl App {
             self.toast(self.t("Please wait").into());
             return;
         }
-        let id = models::parse_spec(&spec).map(|x| x.0).unwrap_or_else(|_| spec.clone());
+        let id = models::parse_spec(&spec)
+            .map(|x| x.0)
+            .unwrap_or_else(|_| spec.clone());
         let vision = models::find(&id).is_some_and(|e| e.vision);
         self.jv.pulling = Some(id.clone());
-        self.job = Some(Job { title: format!("{} – {id}", self.t("Language model")), lines: vec![format!("{} {}", self.t("Downloading"), spec)], done: None });
+        self.job = Some(Job {
+            title: format!("{} – {id}", self.t("Language model")),
+            lines: vec![format!("{} {}", self.t("Downloading"), spec)],
+            done: None,
+        });
         self.go(Screen::Job);
         let bg = self.bg.clone();
         let dir = model_dir();
@@ -520,7 +808,11 @@ impl App {
                 if last.elapsed() > Duration::from_secs(2) || (pct != lastp && pct % 10 == 0) {
                     last = Instant::now();
                     lastp = pct;
-                    bg.send(Msg::JobLine(if total > 0 { format!("{label}: {} / {} MB ({pct} %)", done >> 20, total >> 20) } else { format!("{label}: {} MB", done >> 20) }));
+                    bg.send(Msg::JobLine(if total > 0 {
+                        format!("{label}: {} / {} MB ({pct} %)", done >> 20, total >> 20)
+                    } else {
+                        format!("{label}: {} MB", done >> 20)
+                    }));
                 }
             });
             match r {
@@ -528,11 +820,18 @@ impl App {
                     // Gesprächsmodell als Standard des Dienstes festlegen (Bild-Modelle lädt der Dienst bei Bedarf)
                     if !vision {
                         let cfgp = format!("{}/llm.toml", sys::data_dir());
-                        let mut t: toml::Table = std::fs::read_to_string(&cfgp).ok().and_then(|s| s.parse().ok()).unwrap_or_default();
+                        let mut t: toml::Table = std::fs::read_to_string(&cfgp)
+                            .ok()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or_default();
                         t.insert("model".into(), toml::Value::String(p.model.clone()));
                         let _ = std::fs::write(&cfgp, toml::to_string(&t).unwrap_or_default());
                     }
-                    bg.send(Msg::JobLine(format!("OK: {}{}", p.model, p.mmproj.map(|m| format!(" + {m}")).unwrap_or_default())));
+                    bg.send(Msg::JobLine(format!(
+                        "OK: {}{}",
+                        p.model,
+                        p.mmproj.map(|m| format!(" + {m}")).unwrap_or_default()
+                    )));
                     sys::ctl("restart llm");
                     bg.send(Msg::JobDone(0));
                     bg.send(Msg::AgentUp(false));
@@ -550,13 +849,39 @@ impl App {
         ui.section(y, self.t("Language model on the device"));
         let p = ultar_llm::platform::detect();
         let r = models::recommend(&p);
-        let installed: Vec<String> = std::fs::read_dir(model_dir()).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().trim_end_matches(".gguf").to_string()).collect()).unwrap_or_default();
+        let installed: Vec<String> = std::fs::read_dir(model_dir())
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| {
+                        e.file_name()
+                            .to_string_lossy()
+                            .trim_end_matches(".gguf")
+                            .to_string()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         let cs = ui.th.sub;
-        let dev = format!("{}: {:.1} GB RAM · {} · {} {}", self.t("This device"), r.mem_gb, r.cpu, self.t("GPU"), r.gpu.clone().unwrap_or_else(|| "–".into()));
+        let dev = format!(
+            "{}: {:.1} GB RAM · {} · {} {}",
+            self.t("This device"),
+            r.mem_gb,
+            r.cpu,
+            self.t("GPU"),
+            r.gpu.clone().unwrap_or_else(|| "–".into())
+        );
         *y += ui.para(ui.dp(22.0), *y, ui.w - ui.dp(44.0), &dev, 12.5, cs) + ui.dp(4.0);
         let rec_chat = models::find(r.chat).map(|e| e.name).unwrap_or(r.chat);
-        let rec_vis = r.vision.and_then(models::find).map(|e| e.name).unwrap_or("–");
-        let rec = format!("★ {}: {rec_chat} · {}: {rec_vis}", self.t("Recommended"), self.t("Vision"));
+        let rec_vis = r
+            .vision
+            .and_then(models::find)
+            .map(|e| e.name)
+            .unwrap_or("–");
+        let rec = format!(
+            "★ {}: {rec_chat} · {}: {rec_vis}",
+            self.t("Recommended"),
+            self.t("Vision")
+        );
         let ac = ui.th.accent;
         *y += ui.para(ui.dp(22.0), *y, ui.w - ui.dp(44.0), &rec, 13.5, ac) + ui.dp(8.0);
         self.caption(ui, y, self.t("Source"));
@@ -569,10 +894,34 @@ impl App {
         for e in models::CATALOG {
             let have = installed.iter().any(|i| i.eq_ignore_ascii_case(e.id));
             let star = e.id == r.chat || Some(e.id) == r.vision;
-            let sub = format!("{} · {} MB · {} MB RAM · {}", self.t(if e.vision { "sees images" } else { "chat and tools" }), e.size_mb, e.ram_mb, e.langs);
-            let val = if have { self.t("Installed") } else if star { self.t("recommended") } else { "" };
+            let sub = format!(
+                "{} · {} MB · {} MB RAM · {}",
+                self.t(if e.vision {
+                    "sees images"
+                } else {
+                    "chat and tools"
+                }),
+                e.size_mb,
+                e.ram_mb,
+                e.langs
+            );
+            let val = if have {
+                self.t("Installed")
+            } else if star {
+                self.t("recommended")
+            } else {
+                ""
+            };
             ui.kb.row_gold.set(star && !have);
-            if ui.row(y, Some(if e.vision { Ic::Camera } else { Ic::Spark }), e.name, Some(&sub), Some(val), !have) && !have {
+            if ui.row(
+                y,
+                Some(if e.vision { Ic::Camera } else { Ic::Spark }),
+                e.name,
+                Some(&sub),
+                Some(val),
+                !have,
+            ) && !have
+            {
                 pick = Some(e);
             }
         }
@@ -582,14 +931,22 @@ impl App {
                 self.toast(self.t("Only on Hugging Face – switched source").into());
                 self.jv.src = 0;
             }
-            let spec = if self.jv.src == 1 { format!("{}@ollama", e.id) } else { e.id.to_string() };
+            let spec = if self.jv.src == 1 {
+                format!("{}@ollama", e.id)
+            } else {
+                e.id.to_string()
+            };
             self.agent.enabled = true;
             self.agent.backend = "local".into();
             self.save_agent();
             self.jarvis_pull(spec);
             ui.dirty = true;
         }
-        let msg = if sys::online() { self.t("Downloads go directly into the Ultar core (no Ubuntu area). Vision models load only when you show the assistant something.") } else { self.t("Offline: copy a .gguf model (and its mmproj file) into /data/ultar/models.") };
+        let msg = if sys::online() {
+            self.t("Downloads go directly into the Ultar core (no Ubuntu area). Vision models load only when you show the assistant something.")
+        } else {
+            self.t("Offline: copy a .gguf model (and its mmproj file) into /data/ultar/models.")
+        };
         *y += ui.para(ui.dp(22.0), *y, ui.w - ui.dp(44.0), msg, 12.5, cs) + ui.dp(12.0);
     }
 
@@ -603,19 +960,40 @@ impl App {
         if self.jv.attach_open {
             let mut opts: Vec<(Ic, String, Option<String>)> = Vec::new();
             if self.jv.view.is_some() {
-                opts.push((Ic::Svg("img"), self.t("Current screen").into(), Some("screen:".into())));
+                opts.push((
+                    Ic::Svg("img"),
+                    self.t("Current screen").into(),
+                    Some("screen:".into()),
+                ));
             }
-            opts.push((Ic::Camera, self.t("Take a photo").into(), Some("camera:".into())));
+            opts.push((
+                Ic::Camera,
+                self.t("Take a photo").into(),
+                Some("camera:".into()),
+            ));
             // neueste Bilder und Dokumente
             let media = std::env::var("ULTAR_MEDIA").unwrap_or_else(|_| "/data".into());
             let mut recent: Vec<(String, u64)> = Vec::new();
-            for d in ["DCIM/Camera", "Pictures", "Download", "Documents", "Pictures/Screenshots"] {
+            for d in [
+                "DCIM/Camera",
+                "Pictures",
+                "Download",
+                "Documents",
+                "Pictures/Screenshots",
+            ] {
                 if let Ok(rd) = std::fs::read_dir(format!("{media}/{d}")) {
                     for e in rd.flatten() {
                         let p = e.path().to_string_lossy().into_owned();
-                        let ok = is_img(&p) || !matches!(ultar_office::Kind::of(&p), ultar_office::Kind::Other);
+                        let ok = is_img(&p)
+                            || !matches!(ultar_office::Kind::of(&p), ultar_office::Kind::Other);
                         if ok && e.path().is_file() {
-                            let mt = e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+                            let mt = e
+                                .metadata()
+                                .ok()
+                                .and_then(|m| m.modified().ok())
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
                             recent.push((p, mt));
                         }
                     }
@@ -623,7 +1001,10 @@ impl App {
             }
             recent.sort_by(|a, b| b.1.cmp(&a.1));
             for (p, _) in recent.into_iter().take(5) {
-                let n = std::path::Path::new(&p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let n = std::path::Path::new(&p)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 opts.push((if is_img(&p) { Ic::Image } else { Ic::Doc }, n, Some(p)));
             }
             let rh = ui.dp(46.0);
@@ -639,13 +1020,28 @@ impl App {
                 if ui.held(rr) {
                     ui.cv.rrect(rr, ui.dp(12.0), ui.th.press);
                 }
-                let ix = if ui.rtl { rr.right() - ui.dp(24.0) } else { rr.x + ui.dp(24.0) };
+                let ix = if ui.rtl {
+                    rr.right() - ui.dp(24.0)
+                } else {
+                    rr.x + ui.dp(24.0)
+                };
                 let ac = ui.th.accent;
                 ui.icon(*ic, ix, rr.cy(), ui.dp(18.0), ac);
-                let tx = if ui.rtl { rr.x + ui.dp(10.0) } else { rr.x + ui.dp(48.0) };
+                let tx = if ui.rtl {
+                    rr.x + ui.dp(10.0)
+                } else {
+                    rr.x + ui.dp(48.0)
+                };
                 let lf = ui.fit(label, 14.5, false, rr.w - ui.dp(60.0));
                 let c = ui.th.text;
-                ui.label(Rect::new(tx, rr.y, rr.w - ui.dp(58.0), rh), &lf, 14.5, c, false, Al::Start);
+                ui.label(
+                    Rect::new(tx, rr.y, rr.w - ui.dp(58.0), rh),
+                    &lf,
+                    14.5,
+                    c,
+                    false,
+                    Al::Start,
+                );
                 if ui.tap(rr) {
                     pick = val.clone();
                 }
@@ -670,9 +1066,18 @@ impl App {
             }
         }
         // „camera:" durch das neueste Foto ersetzen, sobald wir zurück sind
-        if self.jv.attach.iter().any(|a| a == "camera:") && matches!(self.stack.last().map(|s| &s.0), Some(Screen::Agent)) {
+        if self.jv.attach.iter().any(|a| a == "camera:")
+            && matches!(self.stack.last().map(|s| &s.0), Some(Screen::Agent))
+        {
             let dir = super::app_gallery::camera_dir();
-            let newest = std::fs::read_dir(&dir).ok().and_then(|rd| rd.flatten().filter(|e| is_img(&e.path().to_string_lossy())).max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))).map(|e| e.path().to_string_lossy().into_owned());
+            let newest = std::fs::read_dir(&dir)
+                .ok()
+                .and_then(|rd| {
+                    rd.flatten()
+                        .filter(|e| is_img(&e.path().to_string_lossy()))
+                        .max_by_key(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+                })
+                .map(|e| e.path().to_string_lossy().into_owned());
             self.jv.attach.retain(|a| a != "camera:");
             if let Some(n) = newest {
                 self.jv.attach.push(n);
@@ -685,17 +1090,37 @@ impl App {
             let mut x = m;
             let mut remove = None;
             for (i, a) in self.jv.attach.clone().iter().enumerate() {
-                let n = std::path::Path::new(a).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let n = if n.starts_with("screen-") { self.t("Screen").to_string() } else { n };
+                let n = std::path::Path::new(a)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let n = if n.starts_with("screen-") {
+                    self.t("Screen").to_string()
+                } else {
+                    n
+                };
                 let lf = ui.fit(&n, 12.5, false, ui.dp(150.0));
                 let w = ui.text_w(&lf, 12.5, false) + ui.dp(58.0);
                 let px = if ui.rtl { ui.w - x - w } else { x };
                 let r = Rect::new(px, y, w, ch);
                 let ac = ui.th.accent;
                 ui.cv.rrect(r, ch / 2.0, ac.alpha(0.16));
-                ui.icon(if is_img(a) { Ic::Image } else { Ic::Doc }, r.x + ui.dp(16.0), r.cy(), ui.dp(13.0), ac);
+                ui.icon(
+                    if is_img(a) { Ic::Image } else { Ic::Doc },
+                    r.x + ui.dp(16.0),
+                    r.cy(),
+                    ui.dp(13.0),
+                    ac,
+                );
                 let c = ui.th.text;
-                ui.label(Rect::new(r.x + ui.dp(28.0), r.y, w - ui.dp(54.0), ch), &lf, 12.5, c, false, Al::Start);
+                ui.label(
+                    Rect::new(r.x + ui.dp(28.0), r.y, w - ui.dp(54.0), ch),
+                    &lf,
+                    12.5,
+                    c,
+                    false,
+                    Al::Start,
+                );
                 let xr = Rect::new(r.right() - ui.dp(28.0), r.y, ui.dp(28.0), ch);
                 let cs = ui.th.sub;
                 ui.icon(Ic::Close, xr.cx(), xr.cy(), ui.dp(10.0), cs);
@@ -719,14 +1144,19 @@ impl App {
         let mut body = text.to_string();
         let mut shown = text.to_string();
         for a in items.into_iter().filter(|a| a != "camera:") {
-            let name = std::path::Path::new(&a).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = std::path::Path::new(&a)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             if is_img(&a) {
                 imgs.push(a.clone());
                 shown.push_str(&format!("\n📎 {name}"));
             } else {
                 match ultar_office::read_text(&a, 6000) {
                     Ok(t) => body.push_str(&format!("\n\n[The user brought the file {a}:]\n{t}")),
-                    Err(e) => body.push_str(&format!("\n\n[The user brought the file {a} – could not read it: {e}]")),
+                    Err(e) => body.push_str(&format!(
+                        "\n\n[The user brought the file {a} – could not read it: {e}]"
+                    )),
                 }
                 shown.push_str(&format!("\n📎 {name}"));
             }
@@ -743,7 +1173,12 @@ impl App {
         if c.always_confirm() {
             return true;
         }
-        if self.agent.backend == "claude" && matches!(c.tool.as_str(), "look_screen" | "see_screen" | "read_any" | "network_connections" | "processes") {
+        if self.agent.backend == "claude"
+            && matches!(
+                c.tool.as_str(),
+                "look_screen" | "see_screen" | "read_any" | "network_connections" | "processes"
+            )
+        {
             // Inhalte verlassen das Gerät → erst fragen
             return true;
         }
@@ -752,7 +1187,11 @@ impl App {
 
     pub(super) fn jarvis_button(&mut self, ui: &mut Ui, cx: f32, cy: f32, r: f32) {
         let open = self.jv.attach_open;
-        let (bg, fg) = if open { (ui.th.accent, ui.th.on_accent) } else { (ui.th.card, ui.th.text) };
+        let (bg, fg) = if open {
+            (ui.th.accent, ui.th.on_accent)
+        } else {
+            (ui.th.card, ui.th.text)
+        };
         if ui.icon_btn(cx, cy, r, Ic::Plus, bg, fg) {
             self.jv.attach_open = !open;
             ui.dirty = true;

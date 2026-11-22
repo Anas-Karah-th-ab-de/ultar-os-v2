@@ -1,0 +1,2 @@
+# Activation record of a driver built into the Ultar kernel.
+kernel_driver = "gen-hda"

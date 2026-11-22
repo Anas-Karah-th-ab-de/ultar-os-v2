@@ -1,0 +1,10 @@
+[package]
+name = "ultar-hal-system"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Reads the device description of the running system (kernel, firmware) for ultar-profile"
+
+[dependencies]
+ultar-profile = { path = "../../core/ultar-profile" }

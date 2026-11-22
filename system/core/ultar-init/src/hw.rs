@@ -30,14 +30,23 @@ pub struct Profile {
 }
 
 fn read(p: &str) -> String {
-    fs::read_to_string(p).unwrap_or_default().trim_matches(|c: char| c == '\0' || c.is_whitespace()).to_string()
+    fs::read_to_string(p)
+        .unwrap_or_default()
+        .trim_matches(|c: char| c == '\0' || c.is_whitespace())
+        .to_string()
 }
 
 /// Kennung des Geräts: Modell aus dem Gerätebaum (ARM) oder DMI (PC) plus Kernel-Version.
 pub fn device_id() -> String {
     let mut model = read("/proc/device-tree/model");
     if model.is_empty() {
-        model = format!("{} {}", read("/sys/class/dmi/id/sys_vendor"), read("/sys/class/dmi/id/product_name")).trim().to_string();
+        model = format!(
+            "{} {}",
+            read("/sys/class/dmi/id/sys_vendor"),
+            read("/sys/class/dmi/id/product_name")
+        )
+        .trim()
+        .to_string();
     }
     if model.is_empty() {
         model = "unbekannt".into();
@@ -49,9 +58,16 @@ impl Profile {
     /// Profil laden. Passt die Gerätekennung nicht (anderes Gerät, anderer Kernel), wird es verworfen.
     pub fn load() -> Self {
         let device = device_id();
-        let mut p = Profile { device: device.clone(), ..Default::default() };
-        let Ok(text) = fs::read_to_string(PROFILE) else { return p };
-        let Ok(t) = text.parse::<toml::Table>() else { return p };
+        let mut p = Profile {
+            device: device.clone(),
+            ..Default::default()
+        };
+        let Ok(text) = fs::read_to_string(PROFILE) else {
+            return p;
+        };
+        let Ok(t) = text.parse::<toml::Table>() else {
+            return p;
+        };
         if t.get("device").and_then(|v| v.as_str()) != Some(device.as_str()) {
             crate::log("Geräteschalter: gespeichertes Profil gehört zu einem anderen Gerät/Kernel – es wird neu gesucht");
             return p;
@@ -80,7 +96,9 @@ impl Profile {
                     crate::log(&format!("Geräteschalter: {func} = {prev} (gemerkt)"));
                     return prev;
                 }
-                crate::log(&format!("Geräteschalter: {func} = {prev} funktioniert nicht mehr – suche neu"));
+                crate::log(&format!(
+                    "Geräteschalter: {func} = {prev} funktioniert nicht mehr – suche neu"
+                ));
             }
         }
         for c in cases {
@@ -105,7 +123,10 @@ impl Profile {
     fn text(&self) -> String {
         let mut s = format!("# Ultar OS – Geräteprofil (vom Geräteschalter erzeugt; löschen = beim nächsten Start neu suchen)\ndevice = \"{}\"\n", self.device);
         for (k, v) in &self.map {
-            s.push_str(&format!("{k} = \"{}\"\n", v.replace('\\', "/").replace('"', "'")));
+            s.push_str(&format!(
+                "{k} = \"{}\"\n",
+                v.replace('\\', "/").replace('"', "'")
+            ));
         }
         s
     }
@@ -119,20 +140,31 @@ impl Profile {
             return;
         }
         // Nur schreiben, wenn /data wirklich eine eingehängte Datenpartition ist (nicht ins flüchtige Startabbild)
-        let mounted = fs::read_to_string("/proc/mounts").map(|m| m.lines().any(|l| l.split_whitespace().nth(1) == Some("/data"))).unwrap_or(false);
+        let mounted = fs::read_to_string("/proc/mounts")
+            .map(|m| {
+                m.lines()
+                    .any(|l| l.split_whitespace().nth(1) == Some("/data"))
+            })
+            .unwrap_or(false);
         if !mounted {
             crate::log("Geräteschalter: keine Datenpartition – Profil gilt nur für diesen Start");
             return;
         }
         let _ = fs::create_dir_all("/data/ultar");
         let tmp = format!("{PROFILE}.tmp");
-        let ok = fs::File::create(&tmp).and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_all())).is_ok() && fs::rename(&tmp, PROFILE).is_ok();
+        let ok = fs::File::create(&tmp)
+            .and_then(|mut f| f.write_all(text.as_bytes()).and_then(|_| f.sync_all()))
+            .is_ok()
+            && fs::rename(&tmp, PROFILE).is_ok();
         if ok {
             if let Ok(d) = fs::File::open("/data/ultar") {
                 let _ = d.sync_all();
             }
             self.changed = false;
-            crate::log(&format!("Geräteschalter: Profil gespeichert ({} Funktionen)", self.map.len()));
+            crate::log(&format!(
+                "Geräteschalter: Profil gespeichert ({} Funktionen)",
+                self.map.len()
+            ));
         } else {
             crate::log("Geräteschalter: Profil konnte nicht gespeichert werden");
         }
@@ -157,10 +189,17 @@ fn ext_label(dev: &str) -> Option<String> {
 
 /// Blockgerät mit dem Dateisystem-Namen `label` suchen (alle Platten und Partitionen, nur lesend).
 pub fn find_by_label(label: &str) -> Option<String> {
-    let mut names: Vec<String> = fs::read_dir("/sys/class/block").ok()?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    let mut names: Vec<String> = fs::read_dir("/sys/class/block")
+        .ok()?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
     names.retain(|n| !n.starts_with("loop") && !n.starts_with("ram") && !n.starts_with("zram"));
     names.sort();
-    names.into_iter().map(|n| format!("/dev/{n}")).find(|d| ext_label(d).as_deref() == Some(label) || fat_label(d).as_deref() == Some(label))
+    names
+        .into_iter()
+        .map(|n| format!("/dev/{n}"))
+        .find(|d| ext_label(d).as_deref() == Some(label) || fat_label(d).as_deref() == Some(label))
 }
 
 /// Name eines FAT-Dateisystems (EFI-Systempartition) aus dem Bootsektor
@@ -171,16 +210,34 @@ fn fat_label(dev: &str) -> Option<String> {
     if b[510] != 0x55 || b[511] != 0xAA {
         return None;
     }
-    let raw = if &b[82..87] == b"FAT32" { &b[71..82] } else if &b[54..57] == b"FAT" { &b[43..54] } else { return None };
+    let raw = if &b[82..87] == b"FAT32" {
+        &b[71..82]
+    } else if &b[54..57] == b"FAT" {
+        &b[43..54]
+    } else {
+        return None;
+    };
     let s = String::from_utf8_lossy(raw).trim_end().to_string();
     (!s.is_empty() && s != "NO NAME").then_some(s)
 }
 
 /// Gerät mit diesem GPT-Partitionsnamen (PARTNAME aus sysfs)
 pub fn find_by_partlabel(name: &str) -> Option<String> {
-    let mut names: Vec<String> = fs::read_dir("/sys/class/block").ok()?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    let mut names: Vec<String> = fs::read_dir("/sys/class/block")
+        .ok()?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
     names.sort();
-    names.into_iter().find(|n| fs::read_to_string(format!("/sys/class/block/{n}/uevent")).unwrap_or_default().lines().any(|l| l.strip_prefix("PARTNAME=") == Some(name))).map(|n| format!("/dev/{n}"))
+    names
+        .into_iter()
+        .find(|n| {
+            fs::read_to_string(format!("/sys/class/block/{n}/uevent"))
+                .unwrap_or_default()
+                .lines()
+                .any(|l| l.strip_prefix("PARTNAME=") == Some(name))
+        })
+        .map(|n| format!("/dev/{n}"))
 }
 
 /// Quelle eines Mount-Eintrags auflösen. Mehrere Kandidaten mit `|` getrennt, der erste vorhandene gilt:
@@ -229,8 +286,17 @@ pub fn pick_vibrator(p: &mut Profile) -> String {
     p.choose(
         "vibrator",
         &[
-            Case { name: "timed_output", probe: &|| w(VIB_TIMED, "150") },
-            Case { name: "leds", probe: &|| w(&format!("{VIB_LEDS}/duration"), "150") && w(&format!("{VIB_LEDS}/activate"), "1") },
+            Case {
+                name: "timed_output",
+                probe: &|| w(VIB_TIMED, "150"),
+            },
+            Case {
+                name: "leds",
+                probe: &|| {
+                    w(&format!("{VIB_LEDS}/duration"), "150")
+                        && w(&format!("{VIB_LEDS}/activate"), "1")
+                },
+            },
         ],
     )
 }
@@ -242,9 +308,18 @@ pub fn pick_display(p: &mut Profile) -> String {
     p.choose(
         "display",
         &[
-            Case { name: "drm", probe: &has("/dev/dri/card0") },
-            Case { name: "fbdev", probe: &has("/dev/fb0") },
-            Case { name: "fbdev_graphics", probe: &has("/dev/graphics/fb0") },
+            Case {
+                name: "drm",
+                probe: &has("/dev/dri/card0"),
+            },
+            Case {
+                name: "fbdev",
+                probe: &has("/dev/fb0"),
+            },
+            Case {
+                name: "fbdev_graphics",
+                probe: &has("/dev/graphics/fb0"),
+            },
         ],
     )
 }
@@ -270,10 +345,26 @@ pub fn pick_backlight(p: &mut Profile) -> String {
             return prev;
         }
     }
-    let mut names: Vec<String> = fs::read_dir("/sys/class/backlight").map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    let mut names: Vec<String> = fs::read_dir("/sys/class/backlight")
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
     names.sort();
-    let found = names.into_iter().find(|n| on(n)).unwrap_or_else(|| "none".into());
-    crate::log(&format!("Geräteschalter: backlight = {found} ({})", if found == "none" { "kein Fall passt" } else { "gefunden" }));
+    let found = names
+        .into_iter()
+        .find(|n| on(n))
+        .unwrap_or_else(|| "none".into());
+    crate::log(&format!(
+        "Geräteschalter: backlight = {found} ({})",
+        if found == "none" {
+            "kein Fall passt"
+        } else {
+            "gefunden"
+        }
+    ));
     p.set("backlight", &found);
     found
 }
@@ -284,7 +375,10 @@ mod tests {
 
     #[test]
     fn profile_text_roundtrip() {
-        let mut p = Profile { device: "Test | 1.0".into(), ..Default::default() };
+        let mut p = Profile {
+            device: "Test | 1.0".into(),
+            ..Default::default()
+        };
         p.set("usb", "configfs");
         p.set("vibrator", "none");
         let t = p.text().parse::<toml::Table>().unwrap();
@@ -308,7 +402,20 @@ mod tests {
             calls.borrow_mut().push("c");
             true
         };
-        let cases = [Case { name: "a", probe: &a }, Case { name: "b", probe: &b }, Case { name: "c", probe: &c }];
+        let cases = [
+            Case {
+                name: "a",
+                probe: &a,
+            },
+            Case {
+                name: "b",
+                probe: &b,
+            },
+            Case {
+                name: "c",
+                probe: &c,
+            },
+        ];
         // Erster Start: der Reihe nach, erster Treffer gilt
         assert_eq!(p.choose("f", &cases), "b");
         assert_eq!(*calls.borrow(), vec!["a", "b"]);
@@ -326,7 +433,10 @@ mod tests {
     #[test]
     fn resolve_source_candidates() {
         assert_eq!(resolve_source("tmpfs").as_deref(), Some("tmpfs"));
-        assert_eq!(resolve_source("/dev/gibt-es-nicht|/dev/null").as_deref(), Some("/dev/null"));
+        assert_eq!(
+            resolve_source("/dev/gibt-es-nicht|/dev/null").as_deref(),
+            Some("/dev/null")
+        );
         assert_eq!(resolve_source("/dev/gibt-es-nicht"), None);
     }
 }

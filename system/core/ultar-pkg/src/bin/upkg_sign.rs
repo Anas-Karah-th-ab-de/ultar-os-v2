@@ -9,7 +9,12 @@ fn main() {
         std::process::exit(2);
     }
     let priv_hex = std::fs::read_to_string(&a[4]).unwrap_or_default();
-    match ultar_pkg::pack_and_sign(Path::new(&a[1]), Path::new(&a[2]), Path::new(&a[3]), priv_hex.trim()) {
+    match ultar_pkg::pack_and_sign(
+        Path::new(&a[1]),
+        Path::new(&a[2]),
+        Path::new(&a[3]),
+        priv_hex.trim(),
+    ) {
         Ok(()) => println!("OK signiert: {}", a[3]),
         Err(e) => {
             eprintln!("FEHLER: {e}");

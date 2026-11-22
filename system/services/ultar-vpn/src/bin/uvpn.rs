@@ -22,7 +22,11 @@ fn load_cfg() -> Option<WgConfig> {
             }
         }
     }
-    if c.private_key.is_empty() || c.server_pubkey.is_empty() { None } else { Some(c) }
+    if c.private_key.is_empty() || c.server_pubkey.is_empty() {
+        None
+    } else {
+        Some(c)
+    }
 }
 
 fn main() {

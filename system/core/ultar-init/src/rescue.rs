@@ -33,7 +33,14 @@ const UI_STALE: Duration = Duration::from_secs(150);
 pub const UI_ALIVE: &str = "/run/ultar/ui.alive";
 
 /// Programme der Vordergrund-Sitzung (comm, vom Kernel auf 15 Zeichen gekürzt).
-const UI_PROCS: &[&str] = &["ultar-shell", "weston", "epiphany", "WebKitWebProces", "WebKitNetworkPr", "librespot"];
+const UI_PROCS: &[&str] = &[
+    "ultar-shell",
+    "weston",
+    "epiphany",
+    "WebKitWebProces",
+    "WebKitNetworkPr",
+    "librespot",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Level {
@@ -56,8 +63,12 @@ impl Level {
 /// Startet Tasten-Überwachung und Wachhund der Oberfläche (nur als PID 1 aufrufen).
 pub fn start(vib: String) {
     let v = vib.clone();
-    let _ = std::thread::Builder::new().name("rescue-keys".into()).spawn(move || keys_loop(&v));
-    let _ = std::thread::Builder::new().name("ui-watchdog".into()).spawn(move || watchdog_loop(&vib));
+    let _ = std::thread::Builder::new()
+        .name("rescue-keys".into())
+        .spawn(move || keys_loop(&v));
+    let _ = std::thread::Builder::new()
+        .name("ui-watchdog".into())
+        .spawn(move || watchdog_loop(&vib));
 }
 
 // ------------------------------------------------------------------ Aktionen
@@ -74,7 +85,10 @@ pub fn act(level: Level, why: &str, vib: &str) -> String {
         }
         Level::Services => {
             // trifft alle Prozesse außer PID 1 (und deren Threads wie Tür/Wachhund) – der Supervisor startet neu
-            let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(-1), nix::sys::signal::Signal::SIGKILL);
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(-1),
+                nix::sys::signal::Signal::SIGKILL,
+            );
             notify(&texts().2, &texts().3);
             "alle Dienste beendet, Neustart folgt\n".into()
         }
@@ -108,7 +122,10 @@ fn kill_comm(names: &[&str]) -> usize {
     let mut n = 0;
     for (pid, comm) in procs() {
         if names.iter().any(|w| comm == *w) {
-            let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::Signal::SIGKILL);
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGKILL,
+            );
             n += 1;
         }
     }
@@ -116,11 +133,21 @@ fn kill_comm(names: &[&str]) -> usize {
 }
 
 fn procs() -> Vec<(i32, String)> {
-    let Ok(rd) = fs::read_dir("/proc") else { return Vec::new() };
+    let Ok(rd) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
     rd.flatten()
         .filter_map(|e| {
             let pid: i32 = e.file_name().to_str()?.parse().ok()?;
-            (pid > 1).then(|| (pid, fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default().trim().to_string()))
+            (pid > 1).then(|| {
+                (
+                    pid,
+                    fs::read_to_string(format!("/proc/{pid}/comm"))
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string(),
+                )
+            })
         })
         .collect()
 }
@@ -128,7 +155,9 @@ fn procs() -> Vec<(i32, String)> {
 /// Zustand eines Prozesses aus /proc/<pid>/stat (R, S, D, Z …).
 fn state(pid: i32) -> char {
     let s = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
-    s.rfind(") ").and_then(|i| s[i + 2..].chars().next()).unwrap_or('?')
+    s.rfind(") ")
+        .and_then(|i| s[i + 2..].chars().next())
+        .unwrap_or('?')
 }
 
 /// Alle Threads von Programmen (keine Kernel-Threads) im Zustand D (unterbrechungsfreies Warten im Kernel) mit Kernel-Funktion – zeigt, welcher
@@ -140,13 +169,21 @@ pub fn stuck_report() -> Vec<String> {
         if fs::read(format!("/proc/{pid}/cmdline")).map_or(true, |c| c.is_empty()) {
             continue;
         }
-        let Ok(tasks) = fs::read_dir(format!("/proc/{pid}/task")) else { continue };
+        let Ok(tasks) = fs::read_dir(format!("/proc/{pid}/task")) else {
+            continue;
+        };
         for t in tasks.flatten() {
-            let Some(tid) = t.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) else { continue };
+            let Some(tid) = t.file_name().to_str().and_then(|s| s.parse::<i32>().ok()) else {
+                continue;
+            };
             let st = fs::read_to_string(format!("/proc/{pid}/task/{tid}/stat")).unwrap_or_default();
-            let c = st.rfind(") ").and_then(|i| st[i + 2..].chars().next()).unwrap_or('?');
+            let c = st
+                .rfind(") ")
+                .and_then(|i| st[i + 2..].chars().next())
+                .unwrap_or('?');
             if c == 'D' {
-                let wchan = fs::read_to_string(format!("/proc/{pid}/task/{tid}/wchan")).unwrap_or_default();
+                let wchan =
+                    fs::read_to_string(format!("/proc/{pid}/task/{tid}/wchan")).unwrap_or_default();
                 out.push(format!("{comm} pid {pid} tid {tid}: D in {}", wchan.trim()));
             }
         }
@@ -162,7 +199,10 @@ fn record(what: &str, stuck: &[String]) {
     for l in stuck {
         s.push_str(&format!("  {l}\n"));
     }
-    crate::log(&format!("Notausstieg {what}; {} hängende Kernel-Aufrufe", stuck.len()));
+    crate::log(&format!(
+        "Notausstieg {what}; {} hängende Kernel-Aufrufe",
+        stuck.len()
+    ));
     for p in ["/run/ultar/rescue.log", "/data/ultar/rescue.log"] {
         if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(p) {
             let _ = f.write_all(s.as_bytes());
@@ -171,26 +211,58 @@ fn record(what: &str, stuck: &[String]) {
 }
 
 fn uptime() -> f64 {
-    fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next()?.parse().ok()).unwrap_or(0.0)
+    fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|s| s.split_whitespace().next()?.parse().ok())
+        .unwrap_or(0.0)
 }
 
 /// Texte in der Systemsprache (aus /data/ultar/settings.toml).
 fn texts() -> (String, String, String, String) {
     let set = fs::read_to_string("/data/ultar/settings.toml").unwrap_or_default();
-    let lang = set.lines().find_map(|l| l.trim().strip_prefix("lang")).map(|r| r.trim_start_matches([' ', '=']).trim_matches(['"', ' '])).unwrap_or("ar");
-    let t = |a: &str, b: &str, c: &str, d: &str| (a.to_string(), b.to_string(), c.to_string(), d.to_string());
+    let lang = set
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("lang"))
+        .map(|r| r.trim_start_matches([' ', '=']).trim_matches(['"', ' ']))
+        .unwrap_or("ar");
+    let t = |a: &str, b: &str, c: &str, d: &str| {
+        (a.to_string(), b.to_string(), c.to_string(), d.to_string())
+    };
     match lang {
-        "de" => t("Notausstieg", "Oberfläche wurde neu gestartet", "Notausstieg", "Alle Dienste wurden neu gestartet"),
-        "en" => t("Emergency exit", "Interface was restarted", "Emergency exit", "All services were restarted"),
-        _ => t("مخرج الطوارئ", "تمت إعادة تشغيل الواجهة", "مخرج الطوارئ", "تمت إعادة تشغيل جميع الخدمات"),
+        "de" => t(
+            "Notausstieg",
+            "Oberfläche wurde neu gestartet",
+            "Notausstieg",
+            "Alle Dienste wurden neu gestartet",
+        ),
+        "en" => t(
+            "Emergency exit",
+            "Interface was restarted",
+            "Emergency exit",
+            "All services were restarted",
+        ),
+        _ => t(
+            "مخرج الطوارئ",
+            "تمت إعادة تشغيل الواجهة",
+            "مخرج الطوارئ",
+            "تمت إعادة تشغيل جميع الخدمات",
+        ),
     }
 }
 
 fn notify(title: &str, body: &str) {
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let _ = fs::create_dir_all("/run/ultar");
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open("/run/ultar/notify.log") {
-        let _ = f.write_all(format!("{ts}\tnormal\tsystem\tultar-init\t{title}\t{body}\n").as_bytes());
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/run/ultar/notify.log")
+    {
+        let _ =
+            f.write_all(format!("{ts}\tnormal\tsystem\tultar-init\t{title}\t{body}\n").as_bytes());
     }
 }
 
@@ -210,10 +282,18 @@ fn has_vol_keys(f: &fs::File) -> bool {
 }
 
 fn open_key_devs() -> Vec<fs::File> {
-    let Ok(rd) = fs::read_dir("/dev/input") else { return Vec::new() };
+    let Ok(rd) = fs::read_dir("/dev/input") else {
+        return Vec::new();
+    };
     rd.flatten()
         .filter(|e| e.file_name().to_string_lossy().starts_with("event"))
-        .filter_map(|e| fs::OpenOptions::new().read(true).custom_flags(0o4000 | 0o2000000).open(e.path()).ok())
+        .filter_map(|e| {
+            fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(0o4000 | 0o2000000)
+                .open(e.path())
+                .ok()
+        })
         .filter(has_vol_keys)
         .collect()
 }
@@ -268,14 +348,22 @@ impl Combo {
     }
 
     pub fn tick(&mut self, now: Instant) -> Step {
-        let Some(s) = self.since else { return Step::None };
+        let Some(s) = self.since else {
+            return Step::None;
+        };
         let held = now - s;
         if held >= L3 {
             self.since = None;
             self.armed = 0;
             return Step::Act(Level::Reboot);
         }
-        let want = if held >= L2 { 2 } else if held >= L1 { 1 } else { 0 };
+        let want = if held >= L2 {
+            2
+        } else if held >= L1 {
+            1
+        } else {
+            0
+        };
         if want > self.armed {
             self.armed = want;
             return Step::Armed(want);
@@ -294,10 +382,15 @@ fn keys_loop(vib: &str) {
     let mut devs = open_key_devs();
     let mut last_scan = Instant::now();
     let mut combo = Combo::default();
-    crate::log(&format!("Notausstieg: {} Gerät(e) mit Lautstärketasten überwacht (Laut+Leise halten)", devs.len()));
+    crate::log(&format!(
+        "Notausstieg: {} Gerät(e) mit Lautstärketasten überwacht (Laut+Leise halten)",
+        devs.len()
+    ));
     let mut buf = [0u8; 24 * 32];
     loop {
-        if devs.is_empty() || last_scan.elapsed() > Duration::from_secs(if devs.is_empty() { 5 } else { 60 }) {
+        if devs.is_empty()
+            || last_scan.elapsed() > Duration::from_secs(if devs.is_empty() { 5 } else { 60 })
+        {
             if !combo.active() {
                 devs = open_key_devs();
                 last_scan = Instant::now();
@@ -308,7 +401,10 @@ fn keys_loop(vib: &str) {
             std::thread::sleep(Duration::from_millis(timeout as u64));
             continue;
         }
-        let mut fds: Vec<PollFd> = devs.iter().map(|d| PollFd::new(d.as_fd(), PollFlags::POLLIN)).collect();
+        let mut fds: Vec<PollFd> = devs
+            .iter()
+            .map(|d| PollFd::new(d.as_fd(), PollFlags::POLLIN))
+            .collect();
         let _ = poll(&mut fds, PollTimeout::from(timeout));
         drop(fds);
         let now = Instant::now();
@@ -355,20 +451,34 @@ fn watchdog_loop(vib: &str) {
     loop {
         std::thread::sleep(Duration::from_secs(15));
         // Nur wenn die laufende Oberfläche das Lebenszeichen kennt (alte Fassungen schreiben keins)
-        let Ok(m) = fs::metadata(UI_ALIVE).and_then(|m| m.modified()) else { continue };
+        let Ok(m) = fs::metadata(UI_ALIVE).and_then(|m| m.modified()) else {
+            continue;
+        };
         let age = m.elapsed().unwrap_or_default();
         if age < UI_STALE {
             continue;
         }
-        let Some((pid, _)) = procs().into_iter().find(|(_, c)| c == "ultar-shell") else { continue };
+        let Some((pid, _)) = procs().into_iter().find(|(_, c)| c == "ultar-shell") else {
+            continue;
+        };
         // Läuft die Oberfläche gerade erst? Dann ist die alte Datei vom Vorgänger.
         if proc_age(pid).is_some_and(|a| a < UI_STALE) {
             continue;
         }
         let st = state(pid);
-        crate::log(&format!("Wachhund: Oberfläche (pid {pid}, Zustand {st}) seit {} s ohne Lebenszeichen", age.as_secs()));
+        crate::log(&format!(
+            "Wachhund: Oberfläche (pid {pid}, Zustand {st}) seit {} s ohne Lebenszeichen",
+            age.as_secs()
+        ));
         crate::hw::vibrate(vib, 60);
-        act(Level::Ui, &format!("Wachhund, {} s ohne Lebenszeichen, Zustand {st}", age.as_secs()), vib);
+        act(
+            Level::Ui,
+            &format!(
+                "Wachhund, {} s ohne Lebenszeichen, Zustand {st}",
+                age.as_secs()
+            ),
+            vib,
+        );
         // Datei auffrischen, damit erst die neue Oberfläche wieder bewertet wird
         let _ = fs::write(UI_ALIVE, b"restart");
     }
@@ -380,7 +490,9 @@ fn proc_age(pid: i32) -> Option<Duration> {
     let rest = &s[s.rfind(") ")? + 2..];
     let start: f64 = rest.split_whitespace().nth(19)?.parse().ok()?;
     let hz = unsafe { nix::libc::sysconf(nix::libc::_SC_CLK_TCK) } as f64;
-    Some(Duration::from_secs_f64((uptime() - start / hz.max(1.0)).max(0.0)))
+    Some(Duration::from_secs_f64(
+        (uptime() - start / hz.max(1.0)).max(0.0),
+    ))
 }
 
 #[cfg(test)]
@@ -394,10 +506,22 @@ mod tests {
         assert!(matches!(c.key(KEY_VOLUMEUP, true, t0), Step::None));
         assert!(matches!(c.key(KEY_VOLUMEDOWN, true, t0), Step::None));
         assert!(c.active());
-        assert!(matches!(c.tick(t0 + Duration::from_millis(1500)), Step::None));
-        assert!(matches!(c.tick(t0 + Duration::from_millis(2100)), Step::Armed(1)));
-        assert!(matches!(c.tick(t0 + Duration::from_millis(2200)), Step::None));
-        assert!(matches!(c.key(KEY_VOLUMEUP, false, t0 + Duration::from_secs(3)), Step::Act(Level::Ui)));
+        assert!(matches!(
+            c.tick(t0 + Duration::from_millis(1500)),
+            Step::None
+        ));
+        assert!(matches!(
+            c.tick(t0 + Duration::from_millis(2100)),
+            Step::Armed(1)
+        ));
+        assert!(matches!(
+            c.tick(t0 + Duration::from_millis(2200)),
+            Step::None
+        ));
+        assert!(matches!(
+            c.key(KEY_VOLUMEUP, false, t0 + Duration::from_secs(3)),
+            Step::Act(Level::Ui)
+        ));
         // kurz danach: Sperrzeit, nichts passiert
         c.key(KEY_VOLUMEUP, true, t0 + Duration::from_secs(4));
         assert!(!c.active());
@@ -410,13 +534,22 @@ mod tests {
         c.key(KEY_VOLUMEUP, true, t0);
         c.key(KEY_VOLUMEDOWN, true, t0);
         c.tick(t0 + Duration::from_secs(3));
-        assert!(matches!(c.tick(t0 + Duration::from_secs(7)), Step::Armed(2)));
-        assert!(matches!(c.key(KEY_VOLUMEDOWN, false, t0 + Duration::from_secs(8)), Step::Act(Level::Services)));
+        assert!(matches!(
+            c.tick(t0 + Duration::from_secs(7)),
+            Step::Armed(2)
+        ));
+        assert!(matches!(
+            c.key(KEY_VOLUMEDOWN, false, t0 + Duration::from_secs(8)),
+            Step::Act(Level::Services)
+        ));
         let t1 = t0 + Duration::from_secs(20);
         c.key(KEY_VOLUMEUP, false, t1);
         c.key(KEY_VOLUMEUP, true, t1);
         c.key(KEY_VOLUMEDOWN, true, t1);
-        assert!(matches!(c.tick(t1 + Duration::from_secs(10)), Step::Act(Level::Reboot)));
+        assert!(matches!(
+            c.tick(t1 + Duration::from_secs(10)),
+            Step::Act(Level::Reboot)
+        ));
     }
 
     #[test]
@@ -426,6 +559,9 @@ mod tests {
         c.key(KEY_VOLUMEUP, true, t0);
         assert!(matches!(c.tick(t0 + Duration::from_secs(12)), Step::None));
         c.key(KEY_VOLUMEDOWN, true, t0 + Duration::from_secs(12));
-        assert!(matches!(c.key(KEY_VOLUMEDOWN, false, t0 + Duration::from_secs(13)), Step::None));
+        assert!(matches!(
+            c.key(KEY_VOLUMEDOWN, false, t0 + Duration::from_secs(13)),
+            Step::None
+        ));
     }
 }

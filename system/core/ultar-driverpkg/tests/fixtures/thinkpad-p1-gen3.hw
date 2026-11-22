@@ -1,0 +1,31 @@
+# Lenovo ThinkPad P1 Gen 3 (20SU) – test machine 1.
+# Transcribed from devices/thinkpad-p1-gen3/hardware.md (inventory of 2026-11-22).
+# The inventory lists vendor:device ids only; the PCI/USB class codes below are the
+# standard codes of these device types and still have to be confirmed by the self test.
+machine ThinkPad P1 Gen 3
+pci 8086:9b44 class=060000 label=host-bridge
+pci 8086:068e class=060100 label=lpc
+pci 8086:9bc4 class=030000 label=intel-uhd-gen9.5
+pci 10de:1eb6 class=030000 label=nvidia-quadro-rtx-4000
+pci 10de:10f8 class=040300 label=nvidia-hdmi-audio
+pci 10de:1ad8 class=0c0330 label=nvidia-usb-c-xhci
+pci 10de:1ad9 class=0c8000 label=nvidia-usb-c-ucsi
+pci 144d:a808 class=010802 label=samsung-pm981a
+pci 8086:0d4c class=020000 label=intel-i219-lm
+pci 8086:06f0 class=028000 label=intel-ax201
+pci 8086:06ed class=0c0330 label=pch-xhci
+pci 8086:15ec class=0c0330 label=thunderbolt-xhci
+pci 8086:15eb class=088000 label=thunderbolt-controller
+pci 8086:15ea class=060400 label=thunderbolt-pcie-switch
+pci 8086:06c8 class=040100 label=intel-cavs-audio
+pci 8086:06e8 class=0c8000 label=lpss-i2c-0
+pci 8086:06e9 class=0c8000 label=lpss-i2c-1
+pci 8086:06a3 class=0c0500 label=smbus
+pci 17a0:9755 class=080501 label=genesys-card-reader
+pci 8086:06f9 class=118000 label=thermal
+pci 8086:06e0 class=078000 label=mei
+pci 8086:06a4 class=0c8000 label=spi
+pci 8086:06e3 class=070002 label=amt-sol
+usb 8087:0026 class=e00101 label=intel-bluetooth
+usb 04f2:b6be class=ef0201 label=integrated-camera
+usb 06cb:00bd class=ff0000 label=synaptics-fingerprint

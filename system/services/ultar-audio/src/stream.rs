@@ -86,25 +86,46 @@ impl Stream {
             // Treiber will andere Periodengröße: frei wählen lassen
             hp = hw(0, 0, false);
             if unsafe { ioctl(fd, HW_PARAMS, hp.as_mut_ptr()) } != 0 {
-                return Err(format!("{path}: HW_PARAMS {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "{path}: HW_PARAMS {}",
+                    std::io::Error::last_os_error()
+                ));
             }
         }
         let base = 4 + 8 * 32;
-        let rd = |i: usize| u32::from_le_bytes([hp[base + i * 12], hp[base + i * 12 + 1], hp[base + i * 12 + 2], hp[base + i * 12 + 3]]);
+        let rd = |i: usize| {
+            u32::from_le_bytes([
+                hp[base + i * 12],
+                hp[base + i * 12 + 1],
+                hp[base + i * 12 + 2],
+                hp[base + i * 12 + 3],
+            ])
+        };
         let per = rd(5) as usize;
         let buf = rd(9) as u64;
         if !capture {
             sw_silence(fd, buf);
         }
         if unsafe { ioctl(fd, PREPARE) } != 0 {
-            return Err(format!("{path}: PREPARE {}", std::io::Error::last_os_error()));
+            return Err(format!(
+                "{path}: PREPARE {}",
+                std::io::Error::last_os_error()
+            ));
         }
-        Ok(Stream { f, path, period: per.max(1) })
+        Ok(Stream {
+            f,
+            path,
+            period: per.max(1),
+        })
     }
 
     pub fn start(&self) -> Result<(), String> {
         if unsafe { ioctl(self.f.as_raw_fd(), START) } != 0 {
-            return Err(format!("{}: START {}", self.path, std::io::Error::last_os_error()));
+            return Err(format!(
+                "{}: START {}",
+                self.path,
+                std::io::Error::last_os_error()
+            ));
         }
         Ok(())
     }
@@ -157,7 +178,12 @@ pub fn record(dev: u32, ms: u32) -> Result<Vec<i16>, String> {
         match rx.recv_timeout(std::time::Duration::from_secs(2)) {
             Ok(Ok(b)) => all.extend_from_slice(&b),
             Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(format!("keine Daten nach {} Werten (Strom läuft nicht)", all.len())),
+            Err(_) => {
+                return Err(format!(
+                    "keine Daten nach {} Werten (Strom läuft nicht)",
+                    all.len()
+                ))
+            }
         }
     }
     all.truncate(want);

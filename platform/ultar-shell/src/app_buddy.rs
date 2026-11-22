@@ -12,14 +12,14 @@
 //! Agenten, wenn er eingerichtet ist.
 
 use super::App;
+use super::Screen;
 use crate::gfx::{rgb, Rect};
 use crate::linkcheck::{self, Report, Verdict};
 use crate::mind::{self, Intent};
-use super::Screen;
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use crate::ui::{Al, Ic, Ui};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 const STATE: &str = "/data/ultar/buddy";
 const REMINDERS: &str = "/data/ultar/reminders.tsv";
@@ -115,7 +115,14 @@ const TOUR: [(&str, f32, f32); 8] = [
 impl Buddy {
     /// Gehört die laufende Berührung dem Helfer? Dann darf die Seite darunter nicht reagieren.
     pub fn blocks(&self, p: &crate::ui::Ptr) -> bool {
-        self.drag || self.calling.is_some() || self.tour.is_some() || self.learning || self.hit.iter().any(|r| r.contains(p.x, p.y) || ((p.down || p.released) && r.contains(p.px, p.py)))
+        self.drag
+            || self.calling.is_some()
+            || self.tour.is_some()
+            || self.learning
+            || self
+                .hit
+                .iter()
+                .any(|r| r.contains(p.x, p.y) || ((p.down || p.released) && r.contains(p.px, p.py)))
     }
 }
 
@@ -126,7 +133,16 @@ impl Buddy {
 
     /// Bewegt sich gerade etwas an ihm? Dann zeichnet die Hauptschleife zügig weiter.
     pub fn animating(&self) -> bool {
-        self.calling.is_some() || self.tour.is_some() || self.learning || self.moving || self.roam.is_some() || self.hop.is_some_and(|t| t.elapsed() < Duration::from_millis(520)) || self.say.is_some() || self.alert.is_some()
+        self.calling.is_some()
+            || self.tour.is_some()
+            || self.learning
+            || self.moving
+            || self.roam.is_some()
+            || self
+                .hop
+                .is_some_and(|t| t.elapsed() < Duration::from_millis(520))
+            || self.say.is_some()
+            || self.alert.is_some()
     }
 
     pub fn on_sleep(&mut self) {
@@ -137,7 +153,11 @@ impl Buddy {
 
     fn rem_save(&mut self) {
         self.reminders.sort_by_key(|r| r.0);
-        let s: String = self.reminders.iter().map(|(t, n, x)| format!("{t}\t{n}\t{}\n", x.replace(['\t', '\n'], " "))).collect();
+        let s: String = self
+            .reminders
+            .iter()
+            .map(|(t, n, x)| format!("{t}\t{n}\t{}\n", x.replace(['\t', '\n'], " ")))
+            .collect();
         let _ = std::fs::write(REMINDERS, s);
     }
 
@@ -148,7 +168,11 @@ impl Buddy {
             .lines()
             .filter_map(|l| {
                 let mut f = l.splitn(3, '\t');
-                Some((f.next()?.parse().ok()?, f.next()?.parse().ok()?, f.next()?.to_string()))
+                Some((
+                    f.next()?.parse().ok()?,
+                    f.next()?.parse().ok()?,
+                    f.next()?.to_string(),
+                ))
             })
             .collect();
         self.reminders.sort_by_key(|r| r.0);
@@ -157,7 +181,10 @@ impl Buddy {
 
 /// billiger Zufall für Ausflüge (kein Kryptobedarf)
 fn dice() -> u64 {
-    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(7);
     (n ^ (n >> 17)).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 20
 }
 
@@ -171,7 +198,13 @@ impl App {
         b.say = None;
         b.alert = None;
         let now = Instant::now();
-        b.calling = Some(Calling { text, since: now, rung: now, tries, quiet: false });
+        b.calling = Some(Calling {
+            text,
+            since: now,
+            rung: now,
+            tries,
+            quiet: false,
+        });
         self.shade = false;
         if self.focus == Some("buddy") {
             self.focus = None;
@@ -191,14 +224,31 @@ impl App {
         b.roam = None;
         b.say = None;
         let now = Instant::now();
-        b.calling = Some(Calling { text, since: now, rung: now, tries: 0, quiet: true });
+        b.calling = Some(Calling {
+            text,
+            since: now,
+            rung: now,
+            tries: 0,
+            quiet: true,
+        });
         b.hop = Some(now);
     }
 
     fn buddy_ring(&self) {
         let (snd, vib, _) = self.sys_alert(true, self.set.sound, 350);
         if snd {
-            crate::audio::play(vec![(784.0, 110), (0.0, 30), (1047.0, 110), (0.0, 30), (1319.0, 110), (0.0, 30), (1568.0, 220)], self.set.volume);
+            crate::audio::play(
+                vec![
+                    (784.0, 110),
+                    (0.0, 30),
+                    (1047.0, 110),
+                    (0.0, 30),
+                    (1319.0, 110),
+                    (0.0, 30),
+                    (1568.0, 220),
+                ],
+                self.set.volume,
+            );
         }
         if vib > 0 {
             crate::sys::vibrate(vib);
@@ -210,9 +260,16 @@ impl App {
     }
 
     fn rem_line(&self, t: i64, text: &str) -> String {
-        let (d, n) = (crate::sys::from_unix(t, self.set.tz_min), crate::sys::from_unix(crate::sys::unix_now(), self.set.tz_min));
+        let (d, n) = (
+            crate::sys::from_unix(t, self.set.tz_min),
+            crate::sys::from_unix(crate::sys::unix_now(), self.set.tz_min),
+        );
         let clock = self.clock_str(d.h, d.mi);
-        if (d.y, d.mo, d.d) == (n.y, n.mo, n.d) { format!("{clock}  {text}") } else { format!("{:02}.{:02}. {clock}  {text}", d.d, d.mo) }
+        if (d.y, d.mo, d.d) == (n.y, n.mo, n.d) {
+            format!("{clock}  {text}")
+        } else {
+            format!("{:02}.{:02}. {clock}  {text}", d.d, d.mo)
+        }
     }
 
     /// Uhrwerk des Helfers: fällige Erinnerungen, Klingeln, Ausflüge, Begrüßung. true = es gibt etwas zu zeigen
@@ -236,7 +293,12 @@ impl App {
                 started = true;
             }
         }
-        if self.buddy.calling.as_ref().is_some_and(|c| c.quiet && c.since.elapsed() > Duration::from_secs(7)) {
+        if self
+            .buddy
+            .calling
+            .as_ref()
+            .is_some_and(|c| c.quiet && c.since.elapsed() > Duration::from_secs(7))
+        {
             self.buddy.calling = None;
             return true;
         }
@@ -249,7 +311,13 @@ impl App {
                     self.buddy.reminders.push((now + 300, tries + 1, text));
                     self.buddy.rem_save();
                 } else {
-                    ultar_notify::post("system", "helper", &self.t_owned("Missed reminder"), &text, ultar_notify::Urgency::Normal);
+                    ultar_notify::post(
+                        "system",
+                        "helper",
+                        &self.t_owned("Missed reminder"),
+                        &text,
+                        ultar_notify::Urgency::Normal,
+                    );
                 }
                 return true;
             } else if c.rung.elapsed() >= Duration::from_millis(3200) {
@@ -264,18 +332,42 @@ impl App {
         if b.roam.is_some_and(|r| Instant::now() >= r.2) {
             b.roam = None;
         }
-        if b.say.as_ref().is_some_and(|s| s.1.elapsed() > Duration::from_secs(6)) {
+        if b.say
+            .as_ref()
+            .is_some_and(|s| s.1.elapsed() > Duration::from_secs(6))
+        {
             b.say = None;
         }
-        let idle = !b.away && !b.open && b.calling.is_none() && b.tour.is_none() && !b.drag && self.focus.is_none() && !self.sx.locked && !self.shade;
+        let idle = !b.away
+            && !b.open
+            && b.calling.is_none()
+            && b.tour.is_none()
+            && !b.drag
+            && self.focus.is_none()
+            && !self.sx.locked
+            && !self.shade;
         // Begrüßung nach längerer Pause (mit der nächsten Erinnerung von heute)
         if let Some(t) = self.buddy.slept {
             if !self.sx.locked {
                 self.buddy.slept = None;
                 if idle && t.elapsed() > Duration::from_secs(30 * 60) {
                     let h = crate::sys::from_unix(now, self.set.tz_min).h;
-                    let mut msg = self.t(if h < 11 { "Good morning!" } else if h < 18 { "Hello again!" } else { "Good evening!" }).to_string();
-                    if let Some((t, _, x)) = self.buddy.reminders.first().filter(|r| r.0 - now < 86400).cloned() {
+                    let mut msg = self
+                        .t(if h < 11 {
+                            "Good morning!"
+                        } else if h < 18 {
+                            "Hello again!"
+                        } else {
+                            "Good evening!"
+                        })
+                        .to_string();
+                    if let Some((t, _, x)) = self
+                        .buddy
+                        .reminders
+                        .first()
+                        .filter(|r| r.0 - now < 86400)
+                        .cloned()
+                    {
                         msg = format!("{msg}  {}", self.rem_line(t, &x));
                     }
                     self.buddy.say = Some((msg, Instant::now()));
@@ -284,12 +376,24 @@ impl App {
             }
         }
         // erster Start: sich vorstellen und durch das System führen
-        if !self.buddy.introduced && !self.buddy.snap && self.buddy.tour.is_none() && self.buddy.calling.is_none() && !self.sx.locked && !self.shade && matches!(self.stack.last().map(|s| &s.0), Some(Screen::Home)) {
+        if !self.buddy.introduced
+            && !self.buddy.snap
+            && self.buddy.tour.is_none()
+            && self.buddy.calling.is_none()
+            && !self.sx.locked
+            && !self.shade
+            && matches!(self.stack.last().map(|s| &s.0), Some(Screen::Home))
+        {
             self.buddy_tour();
             return true;
         }
         // ab und zu ein kleiner Ausflug – nicht über Kamera, Bildern oder beim Tippen
-        let calm = idle && !self.ptr_down && !matches!(self.stack.last().map(|s| &s.0), Some(Screen::Camera | Screen::Photo(_)));
+        let calm = idle
+            && !self.ptr_down
+            && !matches!(
+                self.stack.last().map(|s| &s.0),
+                Some(Screen::Camera | Screen::Photo(_))
+            );
         let b = &mut self.buddy;
         match b.stroll_at {
             None => b.stroll_at = Some(Instant::now() + Duration::from_secs(40 + dice() % 50)),
@@ -300,7 +404,11 @@ impl App {
                     if d % 4 == 0 {
                         b.hop = Some(Instant::now());
                     } else {
-                        b.roam = Some((0.15 + (d % 70) as f32 / 100.0, 0.12 + ((d >> 8) % 60) as f32 / 100.0, Instant::now() + Duration::from_millis(3200 + d % 1800)));
+                        b.roam = Some((
+                            0.15 + (d % 70) as f32 / 100.0,
+                            0.12 + ((d >> 8) % 60) as f32 / 100.0,
+                            Instant::now() + Duration::from_millis(3200 + d % 1800),
+                        ));
                     }
                 }
             }
@@ -313,7 +421,10 @@ impl App {
         if !self.buddy.loaded {
             self.buddy.loaded = true;
             if let Ok(s) = std::fs::read_to_string(STATE) {
-                let v: Vec<f32> = s.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+                let v: Vec<f32> = s
+                    .split_whitespace()
+                    .filter_map(|x| x.parse().ok())
+                    .collect();
                 if v.len() >= 3 {
                     self.buddy.introduced = v.get(3).is_some_and(|x| *x > 0.5);
                     self.buddy.away = v[0] > 0.5;
@@ -344,18 +455,53 @@ impl App {
     /// Passendes Hilfethema zu einer Frage suchen (Titel zählt mehr als Text).
     fn buddy_help(&self, text: &str, asked: bool) -> Option<&'static crate::help::Topic> {
         const STOP: [&str; 30] = [
-            "wie", "was", "ist", "der", "die", "das", "ein", "eine", "funktioniert", "geht", "hilfe", "help", "how", "does", "the", "work", "works", "what", "about", "mit", "dem", "den", "und", "ich", "kann", "can", "كيف", "ما", "هو",
+            "wie",
+            "was",
+            "ist",
+            "der",
+            "die",
+            "das",
+            "ein",
+            "eine",
+            "funktioniert",
+            "geht",
+            "hilfe",
+            "help",
+            "how",
+            "does",
+            "the",
+            "work",
+            "works",
+            "what",
+            "about",
+            "mit",
+            "dem",
+            "den",
+            "und",
+            "ich",
+            "kann",
+            "can",
+            "كيف",
+            "ما",
+            "هو",
             "يعمل",
         ];
         let li = crate::help::li_pub(self.lang());
         let q = text.to_lowercase();
-        let words: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|w| w.chars().count() >= 3 && !STOP.contains(w)).collect();
+        let words: Vec<&str> = q
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| w.chars().count() >= 3 && !STOP.contains(w))
+            .collect();
         if words.is_empty() {
             return None;
         }
         let mut best: Option<(u32, &'static crate::help::Topic)> = None;
         for t in crate::help::TOPICS {
-            let (title, en, body) = (self.t(t.title).to_lowercase(), t.title.to_lowercase(), t.body[li].to_lowercase());
+            let (title, en, body) = (
+                self.t(t.title).to_lowercase(),
+                t.title.to_lowercase(),
+                t.body[li].to_lowercase(),
+            );
             let mut sc = 0;
             for w in &words {
                 if title.contains(w) || en.contains(w) || t.id == *w {
@@ -374,13 +520,28 @@ impl App {
     fn buddy_show_help(&mut self, t: &'static crate::help::Topic) {
         let body = t.body[crate::help::li_pub(self.lang())];
         let short: String = body.chars().take(360).collect();
-        self.buddy.answer = Some(format!("{}\n{}{}", self.t(t.title), short, if body.chars().count() > 360 { "…" } else { "" }));
+        self.buddy.answer = Some(format!(
+            "{}\n{}{}",
+            self.t(t.title),
+            short,
+            if body.chars().count() > 360 {
+                "…"
+            } else {
+                ""
+            }
+        ));
         self.buddy.help_id = Some(t.id);
     }
 
     fn buddy_save(&self) {
         let (x, y) = self.buddy.pos.unwrap_or((-1.0, -1.0));
-        let _ = std::fs::write(STATE, format!("{} {x:.0} {y:.0} {}\n", self.buddy.away as u8, self.buddy.introduced as u8));
+        let _ = std::fs::write(
+            STATE,
+            format!(
+                "{} {x:.0} {y:.0} {}\n",
+                self.buddy.away as u8, self.buddy.introduced as u8
+            ),
+        );
     }
 
     fn buddy_check(&mut self, url: String) {
@@ -390,7 +551,11 @@ impl App {
         self.buddy.checking = Some(url.clone());
         let (slot, bg) = (self.buddy.slot.clone(), self.bg.clone());
         std::thread::spawn(move || {
-            let full = if url.contains("://") { url.clone() } else { format!("http://{url}") };
+            let full = if url.contains("://") {
+                url.clone()
+            } else {
+                format!("http://{url}")
+            };
             let trace = linkcheck::probe(&full);
             let rep = linkcheck::judge(&full, Some(&trace));
             if let Ok(mut s) = slot.lock() {
@@ -405,7 +570,11 @@ impl App {
         let res = res.trim();
         let txt = if let Some(rest) = res.strip_prefix("ok") {
             let rest = rest.trim_start_matches([':', ' ']);
-            if rest.is_empty() { self.t("Done").to_string() } else { format!("{}: {}", self.t("Done"), rest) }
+            if rest.is_empty() {
+                self.t("Done").to_string()
+            } else {
+                format!("{}: {}", self.t("Done"), rest)
+            }
         } else if let Some(rest) = res.strip_prefix("error:") {
             format!("{}: {}", self.t("Error"), rest.trim())
         } else {
@@ -437,7 +606,23 @@ impl App {
         self.buddy.help_id = None;
         // „Wie funktioniert …?" – erst in den Hilfeseiten des Systems nachsehen
         let low = text.to_lowercase();
-        if ["wie ", "how ", "كيف", "was ist", "what is", "ما هو", "ما هي", "erklär", "explain", "اشرح", "hilfe ", "help "].iter().any(|m| low.contains(m)) {
+        if [
+            "wie ",
+            "how ",
+            "كيف",
+            "was ist",
+            "what is",
+            "ما هو",
+            "ما هي",
+            "erklär",
+            "explain",
+            "اشرح",
+            "hilfe ",
+            "help ",
+        ]
+        .iter()
+        .any(|m| low.contains(m))
+        {
             if let Some(t) = self.buddy_help(&text, true) {
                 return self.buddy_show_help(t);
             }
@@ -467,7 +652,13 @@ impl App {
             }
             Some(Intent::Time) => {
                 let d = crate::sys::from_unix(crate::sys::unix_now(), self.set.tz_min);
-                self.buddy.answer = Some(format!("{}  ·  {:02}.{:02}.{:04}", self.clock_str(d.h, d.mi), d.d, d.mo, d.y));
+                self.buddy.answer = Some(format!(
+                    "{}  ·  {:02}.{:02}.{:04}",
+                    self.clock_str(d.h, d.mi),
+                    d.d,
+                    d.mo,
+                    d.y
+                ));
             }
             Some(Intent::Away) => {
                 self.buddy.away = true;
@@ -481,19 +672,36 @@ impl App {
                 let t = mind::due(when, crate::sys::unix_now(), self.set.tz_min);
                 self.buddy.reminders.push((t, 0, what.clone()));
                 self.buddy.rem_save();
-                self.buddy.answer = Some(format!("{}\n{}", self.t("I will call you:"), self.rem_line(t, &what)));
+                self.buddy.answer = Some(format!(
+                    "{}\n{}",
+                    self.t("I will call you:"),
+                    self.rem_line(t, &what)
+                ));
                 self.buddy_hop();
             }
             Some(Intent::Reminders) => {
-                let list: Vec<String> = self.buddy.reminders.iter().take(8).map(|(t, _, x)| self.rem_line(*t, x)).collect();
-                self.buddy.answer = Some(if list.is_empty() { self.t("No reminders").to_string() } else { format!("{}\n{}", self.t("Your reminders:"), list.join("\n")) });
+                let list: Vec<String> = self
+                    .buddy
+                    .reminders
+                    .iter()
+                    .take(8)
+                    .map(|(t, _, x)| self.rem_line(*t, x))
+                    .collect();
+                self.buddy.answer = Some(if list.is_empty() {
+                    self.t("No reminders").to_string()
+                } else {
+                    format!("{}\n{}", self.t("Your reminders:"), list.join("\n"))
+                });
             }
             Some(Intent::Tour) => self.buddy_tour(),
             Some(Intent::VoiceSetup) => self.voice_setup(),
             Some(Intent::VoiceSecret) => self.voice_learn(crate::voice::SECRET, "", 3),
             Some(Intent::VoiceOff) => {
                 self.voice_enable(false);
-                self.buddy.answer = Some(self.t("Voice control is off. I am not listening.").to_string());
+                self.buddy.answer = Some(
+                    self.t("Voice control is off. I am not listening.")
+                        .to_string(),
+                );
             }
             Some(Intent::VoiceTeach(cmd)) => self.voice_learn(&cmd.clone(), &cmd, 3),
             Some(Intent::ForgetReminders) => {
@@ -534,7 +742,11 @@ impl App {
             let v = match self.buddy.guard.get(&u) {
                 Some(v) => *v,
                 None => {
-                    let full = if u.contains("://") { u.clone() } else { format!("http://{u}") };
+                    let full = if u.contains("://") {
+                        u.clone()
+                    } else {
+                        format!("http://{u}")
+                    };
                     let v = linkcheck::analyze(&full).verdict;
                     if self.buddy.guard.len() > 400 {
                         self.buddy.guard.clear();
@@ -551,11 +763,21 @@ impl App {
                 worst = v;
             }
         }
-        if self.buddy.alert.as_ref().is_some_and(|a| a.2.elapsed().as_secs() >= 8 || !self.buddy.links.contains(&a.0)) {
+        if self
+            .buddy
+            .alert
+            .as_ref()
+            .is_some_and(|a| a.2.elapsed().as_secs() >= 8 || !self.buddy.links.contains(&a.0))
+        {
             self.buddy.alert = None;
         }
         if std::mem::take(&mut self.buddy.remote_check) {
-            let u = self.buddy.links.first().cloned().unwrap_or_else(|| "http://example.com/".into());
+            let u = self
+                .buddy
+                .links
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "http://example.com/".into());
             self.buddy_check(u);
         }
         let old_enabled = ui.enabled;
@@ -567,8 +789,17 @@ impl App {
             let (tw, th) = (ui.dp(9.0), ui.dp(64.0));
             let x = if ui.rtl { 0.0 } else { ui.w - tw };
             let tab = Rect::new(x, top + (bottom - top) * 0.42, tw, th);
-            ui.cv.rrect(Rect::new(tab.x - if ui.rtl { tw } else { 0.0 }, tab.y, tw * 2.0, th), tw, gold.alpha(0.85));
-            let grab = Rect::new(if ui.rtl { 0.0 } else { ui.w - ui.dp(26.0) }, tab.y - ui.dp(8.0), ui.dp(26.0), th + ui.dp(16.0));
+            ui.cv.rrect(
+                Rect::new(tab.x - if ui.rtl { tw } else { 0.0 }, tab.y, tw * 2.0, th),
+                tw,
+                gold.alpha(0.85),
+            );
+            let grab = Rect::new(
+                if ui.rtl { 0.0 } else { ui.w - ui.dp(26.0) },
+                tab.y - ui.dp(8.0),
+                ui.dp(26.0),
+                th + ui.dp(16.0),
+            );
             self.buddy.hit.push(grab);
             if ui.tap(grab) {
                 self.buddy.away = false;
@@ -584,7 +815,10 @@ impl App {
         }
 
         // Tastatur für ein anderes Feld offen: Helfer tritt beiseite (wie in der Web-Demo), nichts verdecken
-        if !self.buddy.open && self.focus.is_some_and(|f| f != "buddy") && bottom < ui.h - ui.dp(60.0) {
+        if !self.buddy.open
+            && self.focus.is_some_and(|f| f != "buddy")
+            && bottom < ui.h - ui.dp(60.0)
+        {
             self.buddy.frame = None;
             self.buddy.stage = None;
             ui.enabled = old_enabled;
@@ -593,8 +827,20 @@ impl App {
         let r = ui.dp(27.0);
         let m = ui.dp(10.0);
         // Startbildschirm: sitzt oben rechts neben der Uhr (über keinem App-Symbol), sonst unten am Rand
-        let on_home = matches!(self.stack.last().map(|e| &e.0), Some(Screen::Home)) && ui.h > ui.w && ui.h >= ui.dp(680.0);
-        let home = if on_home { (if ui.rtl { r + m } else { ui.w - r - m }, top + ui.dp(122.0)) } else { (if ui.rtl { r + m } else { ui.w - r - m }, bottom - ui.dp(120.0)) };
+        let on_home = matches!(self.stack.last().map(|e| &e.0), Some(Screen::Home))
+            && ui.h > ui.w
+            && ui.h >= ui.dp(680.0);
+        let home = if on_home {
+            (
+                if ui.rtl { r + m } else { ui.w - r - m },
+                top + ui.dp(122.0),
+            )
+        } else {
+            (
+                if ui.rtl { r + m } else { ui.w - r - m },
+                bottom - ui.dp(120.0),
+            )
+        };
         let mut pos = self.buddy.pos.unwrap_or(home);
         pos.0 = pos.0.clamp(r + m * 0.5, ui.w - r - m * 0.5);
         pos.1 = pos.1.clamp(top + r + m, (bottom - r - m).max(top + r + m));
@@ -603,7 +849,11 @@ impl App {
         // Außerhalb des Startbildschirms schaut er standardmäßig nur halb vom Rand herein, damit er keine
         // Bedienelemente verdeckt (antippen öffnet ihn, ziehen setzt ihn frei hin)
         if self.buddy.pos.is_none() && !on_home {
-            let y = if keypad { top + (bottom - top) * 0.28 } else { bottom - ui.dp(120.0) };
+            let y = if keypad {
+                top + (bottom - top) * 0.28
+            } else {
+                bottom - ui.dp(120.0)
+            };
             pos = (if ui.rtl { r * 0.45 } else { ui.w - r * 0.45 }, y);
         }
 
@@ -615,9 +865,21 @@ impl App {
         if self.buddy.open {
             let pw = ui.w - ui.dp(24.0);
             let inner = pw - ui.dp(28.0);
-            let reply: Option<String> = self.buddy.asked.and_then(|n| self.chat.iter().skip(n).rev().find(|c| c.0 != 0).map(|c| c.1.chars().take(420).collect()));
+            let reply: Option<String> = self.buddy.asked.and_then(|n| {
+                self.chat
+                    .iter()
+                    .skip(n)
+                    .rev()
+                    .find(|c| c.0 != 0)
+                    .map(|c| c.1.chars().take(420).collect())
+            });
             let waiting = self.buddy.asked.is_some() && reply.is_none();
-            let shown_links: Vec<String> = if self.buddy.report.is_none() && self.buddy.checking.is_none() { self.buddy.links.iter().take(3).cloned().collect() } else { Vec::new() };
+            let shown_links: Vec<String> =
+                if self.buddy.report.is_none() && self.buddy.checking.is_none() {
+                    self.buddy.links.iter().take(3).cloned().collect()
+                } else {
+                    Vec::new()
+                };
             let answer = self.buddy.answer.clone();
             let mut h = ui.dp(58.0) + ui.dp(62.0) + ui.dp(44.0);
             if let Some(t) = &answer {
@@ -651,15 +913,41 @@ impl App {
             let x0 = pr.x + ui.dp(14.0);
             let mut y = pr.y + ui.dp(10.0);
             // Kopf
-            ui.label(Rect::new(x0, y, inner * 0.5, ui.dp(24.0)), self.t("Helper"), 17.0, c, true, Al::Start);
+            ui.label(
+                Rect::new(x0, y, inner * 0.5, ui.dp(24.0)),
+                self.t("Helper"),
+                17.0,
+                c,
+                true,
+                Al::Start,
+            );
             let sub = if let Some((t, _, x)) = self.buddy.reminders.first().cloned() {
                 format!("{}: {}", self.t("Up next"), self.rem_line(t, &x))
-            } else if self.buddy.links.is_empty() { self.t("No links on this page").to_string() } else { format!("{}: {}", self.t("Links on this page"), self.buddy.links.len()) };
-            ui.label(Rect::new(x0, y + ui.dp(23.0), inner * 0.62, ui.dp(18.0)), &sub, 12.0, cs, false, Al::Start);
+            } else if self.buddy.links.is_empty() {
+                self.t("No links on this page").to_string()
+            } else {
+                format!(
+                    "{}: {}",
+                    self.t("Links on this page"),
+                    self.buddy.links.len()
+                )
+            };
+            ui.label(
+                Rect::new(x0, y + ui.dp(23.0), inner * 0.62, ui.dp(18.0)),
+                &sub,
+                12.0,
+                cs,
+                false,
+                Al::Start,
+            );
             {
                 let label = self.t("Send away");
                 let bw = ui.text_w(label, 13.5, false) + ui.dp(26.0);
-                let bx = if ui.rtl { pr.x + ui.dp(12.0) } else { pr.right() - bw - ui.dp(12.0) };
+                let bx = if ui.rtl {
+                    pr.x + ui.dp(12.0)
+                } else {
+                    pr.right() - bw - ui.dp(12.0)
+                };
                 let (_, tapped) = ui.pill(bx, y + ui.dp(4.0), label, false);
                 if tapped {
                     self.buddy.away = true;
@@ -671,7 +959,12 @@ impl App {
                 }
             }
             y += ui.dp(52.0);
-            ui.set_clip(Some(Rect::new(pr.x, y, pr.w, pr.bottom() - ui.dp(106.0) - y)));
+            ui.set_clip(Some(Rect::new(
+                pr.x,
+                y,
+                pr.w,
+                pr.bottom() - ui.dp(106.0) - y,
+            )));
             // Ergebnis der Prüfung
             if let Some(rep) = self.buddy.report.clone() {
                 let (head, col) = match rep.verdict {
@@ -679,39 +972,121 @@ impl App {
                     Verdict::Warn => (self.t("Be careful"), rgb(0xE8A317)),
                     Verdict::Bad => (self.t("Probably dangerous"), ui.th.danger),
                 };
-                ui.cv.circle(if ui.rtl { pr.right() - ui.dp(24.0) } else { x0 + ui.dp(10.0) }, y + ui.dp(13.0), ui.dp(10.0), col);
-                ui.label(Rect::new(x0 + if ui.rtl { 0.0 } else { ui.dp(28.0) }, y, inner - ui.dp(28.0), ui.dp(26.0)), head, 17.0, col, true, Al::Start);
+                ui.cv.circle(
+                    if ui.rtl {
+                        pr.right() - ui.dp(24.0)
+                    } else {
+                        x0 + ui.dp(10.0)
+                    },
+                    y + ui.dp(13.0),
+                    ui.dp(10.0),
+                    col,
+                );
+                ui.label(
+                    Rect::new(
+                        x0 + if ui.rtl { 0.0 } else { ui.dp(28.0) },
+                        y,
+                        inner - ui.dp(28.0),
+                        ui.dp(26.0),
+                    ),
+                    head,
+                    17.0,
+                    col,
+                    true,
+                    Al::Start,
+                );
                 let host = ui.fit(&rep.host, 13.0, false, inner);
-                ui.label(Rect::new(x0, y + ui.dp(28.0), inner, ui.dp(20.0)), &host, 13.0, cs, false, Al::Start);
+                ui.label(
+                    Rect::new(x0, y + ui.dp(28.0), inner, ui.dp(20.0)),
+                    &host,
+                    13.0,
+                    cs,
+                    false,
+                    Al::Start,
+                );
                 y += ui.dp(52.0);
                 if rep.reasons.is_empty() {
-                    ui.label(Rect::new(x0, y, inner, ui.dp(20.0)), self.t("No problems found in the address"), 13.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(x0, y, inner, ui.dp(20.0)),
+                        self.t("No problems found in the address"),
+                        13.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     y += ui.dp(21.0);
                 }
                 for (why, extra) in rep.reasons.iter().take(6) {
-                    let line = if extra.is_empty() { format!("• {}", self.t(why)) } else { format!("• {}: {extra}", self.t(why)) };
+                    let line = if extra.is_empty() {
+                        format!("• {}", self.t(why))
+                    } else {
+                        format!("• {}: {extra}", self.t(why))
+                    };
                     let line = ui.fit(&line, 13.0, false, inner);
-                    ui.label(Rect::new(x0, y, inner, ui.dp(20.0)), &line, 13.0, c, false, Al::Start);
+                    ui.label(
+                        Rect::new(x0, y, inner, ui.dp(20.0)),
+                        &line,
+                        13.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     y += ui.dp(21.0);
                 }
-                ui.label(Rect::new(x0, y + ui.dp(2.0), inner, ui.dp(18.0)), self.t("An estimate, not a guarantee"), 11.5, cs, false, Al::Start);
+                ui.label(
+                    Rect::new(x0, y + ui.dp(2.0), inner, ui.dp(18.0)),
+                    self.t("An estimate, not a guarantee"),
+                    11.5,
+                    cs,
+                    false,
+                    Al::Start,
+                );
                 y += ui.dp(26.0);
             }
             if self.buddy.checking.is_some() || waiting {
-                let msg = if waiting { self.t("Thinking…") } else { self.t("Checking in the sealed box…") };
-                ui.label(Rect::new(x0, y, inner, ui.dp(26.0)), msg, 13.5, cs, false, Al::Start);
+                let msg = if waiting {
+                    self.t("Thinking…")
+                } else {
+                    self.t("Checking in the sealed box…")
+                };
+                ui.label(
+                    Rect::new(x0, y, inner, ui.dp(26.0)),
+                    msg,
+                    13.5,
+                    cs,
+                    false,
+                    Al::Start,
+                );
                 y += ui.dp(34.0);
                 ui.dirty = true;
             }
             if !shown_links.is_empty() {
-                ui.label(Rect::new(x0, y, inner, ui.dp(18.0)), self.t("Links on this page"), 12.0, cs, true, Al::Start);
+                ui.label(
+                    Rect::new(x0, y, inner, ui.dp(18.0)),
+                    self.t("Links on this page"),
+                    12.0,
+                    cs,
+                    true,
+                    Al::Start,
+                );
                 y += ui.dp(24.0);
                 let label = self.t("Check");
                 let bw = ui.text_w(label, 13.5, false) + ui.dp(26.0);
                 for u in shown_links {
                     let name = ui.fit(&u, 13.0, false, inner - bw - ui.dp(10.0));
-                    let (tx, bx) = if ui.rtl { (x0 + bw + ui.dp(10.0), x0) } else { (x0, pr.right() - bw - ui.dp(14.0)) };
-                    ui.label(Rect::new(tx, y, inner - bw - ui.dp(10.0), ui.dp(36.0)), &name, 13.0, c, false, Al::Start);
+                    let (tx, bx) = if ui.rtl {
+                        (x0 + bw + ui.dp(10.0), x0)
+                    } else {
+                        (x0, pr.right() - bw - ui.dp(14.0))
+                    };
+                    ui.label(
+                        Rect::new(tx, y, inner - bw - ui.dp(10.0), ui.dp(36.0)),
+                        &name,
+                        13.0,
+                        c,
+                        false,
+                        Al::Start,
+                    );
                     let (_, tapped) = ui.pill(bx, y, label, true);
                     if tapped {
                         self.buddy_check(u);
@@ -725,7 +1100,11 @@ impl App {
             }
             if let Some(id) = self.buddy.help_id {
                 let label = self.t("Open help page");
-                let bx = if ui.rtl { pr.right() - ui.dp(14.0) - ui.text_w(label, 13.5, false) - ui.dp(26.0) } else { x0 };
+                let bx = if ui.rtl {
+                    pr.right() - ui.dp(14.0) - ui.text_w(label, 13.5, false) - ui.dp(26.0)
+                } else {
+                    x0
+                };
                 if ui.pill(bx, y, label, true).1 {
                     self.buddy.open = false;
                     self.focus = None;
@@ -748,7 +1127,18 @@ impl App {
                 let torch = crate::quick::torch_on();
                 let on_cam = matches!(self.stack.last(), Some((Screen::Camera, _)));
                 let chips: [(&'static str, &'static str); 3] = [
-                    if on_cam { ("Scan", "scan document") } else { ("Flashlight", if torch { "flashlight off" } else { "flashlight on" }) },
+                    if on_cam {
+                        ("Scan", "scan document")
+                    } else {
+                        (
+                            "Flashlight",
+                            if torch {
+                                "flashlight off"
+                            } else {
+                                "flashlight on"
+                            },
+                        )
+                    },
                     ("Status", "status"),
                     ("Help", "help"),
                 ];
@@ -758,8 +1148,13 @@ impl App {
                 ui.th.card = ui.th.bg;
                 for (label, cmd) in chips {
                     let lw = ui.text_w(self.t(label), 13.5, false) + ui.dp(26.0);
-                    let px = if ui.rtl { pr.right() - ui.dp(14.0) - (cx - x0) - lw } else { cx };
-                    let (w, tapped) = ui.pill(px, cy, self.t(label), label == "Flashlight" && torch);
+                    let px = if ui.rtl {
+                        pr.right() - ui.dp(14.0) - (cx - x0) - lw
+                    } else {
+                        cx
+                    };
+                    let (w, tapped) =
+                        ui.pill(px, cy, self.t(label), label == "Flashlight" && torch);
                     cx += w + ui.dp(8.0);
                     if tapped {
                         self.buddy_run(cmd.to_string());
@@ -772,10 +1167,23 @@ impl App {
             let fh = ui.dp(46.0);
             let fy = pr.bottom() - fh - ui.dp(10.0);
             let fw = inner - fh - ui.dp(8.0);
-            let (fx, bx) = if ui.rtl { (x0 + fh + ui.dp(8.0), x0 + fh / 2.0) } else { (x0, x0 + fw + ui.dp(8.0) + fh / 2.0) };
-            ui.field(Rect::new(fx, fy, fw, fh), "buddy", &self.f("buddy"), self.t("Ask or paste a link"));
+            let (fx, bx) = if ui.rtl {
+                (x0 + fh + ui.dp(8.0), x0 + fh / 2.0)
+            } else {
+                (x0, x0 + fw + ui.dp(8.0) + fh / 2.0)
+            };
+            ui.field(
+                Rect::new(fx, fy, fw, fh),
+                "buddy",
+                &self.f("buddy"),
+                self.t("Ask or paste a link"),
+            );
             let can = !self.f("buddy").trim().is_empty() && !self.agent_busy;
-            let (bgc, fgc) = if can { (gold, ui.th.on_accent) } else { (ui.th.bg, cs) };
+            let (bgc, fgc) = if can {
+                (gold, ui.th.on_accent)
+            } else {
+                (ui.th.bg, cs)
+            };
             if ui.icon_btn(bx, fy + fh / 2.0, fh / 2.0, Ic::Send, bgc, fgc) && can {
                 self.buddy_send();
                 ui.dirty = true;
@@ -784,28 +1192,61 @@ impl App {
         }
 
         // ---------- Figur: wohin will er, wo ist er ----------
-        let calling = self.buddy.calling.as_ref().map(|c| (c.text.clone(), !c.quiet && c.rung.elapsed().as_millis() < 900));
+        let calling = self.buddy.calling.as_ref().map(|c| {
+            (
+                c.text.clone(),
+                !c.quiet && c.rung.elapsed().as_millis() < 900,
+            )
+        });
         let quiet_call = self.buddy.calling.as_ref().is_some_and(|c| c.quiet);
         let learn = self.voice_card();
         let free = (bottom - top - 2.0 * (r + m)).max(1.0);
-        let tour = self.buddy.tour.filter(|_| calling.is_none() && panel.is_none() && learn.is_none());
+        let tour = self
+            .buddy
+            .tour
+            .filter(|_| calling.is_none() && panel.is_none() && learn.is_none());
         let target = match (&calling, panel, self.buddy.roam) {
             (Some(_), _, _) => (ui.w / 2.0, top + (bottom - top) * 0.34),
             (None, _, _) if learn.is_some() => (ui.w / 2.0, top + (bottom - top) * 0.3),
             (None, None, _) if tour.is_some() => {
                 let (_, ax, ay) = TOUR[tour.unwrap_or(0).min(TOUR.len() - 1)];
-                (r + m + ax * (ui.w - 2.0 * (r + m)), top + r * 1.4 + m + ay * (bottom - top - 2.0 * (r * 1.4 + m)))
+                (
+                    r + m + ax * (ui.w - 2.0 * (r + m)),
+                    top + r * 1.4 + m + ay * (bottom - top - 2.0 * (r * 1.4 + m)),
+                )
             }
             // geöffnet sitzt er oben auf dem Feld
-            (None, Some(pr), _) => (if ui.rtl { pr.x + r + ui.dp(18.0) } else { pr.right() - r - ui.dp(18.0) }, pr.y - r * 0.55),
-            (None, None, Some((ax, ay, _))) if !self.buddy.drag => (r + m + ax * (ui.w - 2.0 * (r + m)), top + r + m + ay * free),
+            (None, Some(pr), _) => (
+                if ui.rtl {
+                    pr.x + r + ui.dp(18.0)
+                } else {
+                    pr.right() - r - ui.dp(18.0)
+                },
+                pr.y - r * 0.55,
+            ),
+            (None, None, Some((ax, ay, _))) if !self.buddy.drag => {
+                (r + m + ax * (ui.w - 2.0 * (r + m)), top + r + m + ay * free)
+            }
             _ => pos,
         };
         let now_i = Instant::now();
-        let dt = self.buddy.frame.map(|t| now_i.duration_since(t).as_secs_f32()).unwrap_or(0.0).min(0.1);
+        let dt = self
+            .buddy
+            .frame
+            .map(|t| now_i.duration_since(t).as_secs_f32())
+            .unwrap_or(0.0)
+            .min(0.1);
         self.buddy.frame = Some(now_i);
         let dragging = self.buddy.drag && self.buddy.moved && panel.is_none();
-        let grow_to = if calling.is_some() { 1.0 } else if learn.is_some() { 0.7 } else if tour.is_some() { 0.4 } else { 0.0 };
+        let grow_to = if calling.is_some() {
+            1.0
+        } else if learn.is_some() {
+            0.7
+        } else if tour.is_some() {
+            0.4
+        } else {
+            0.0
+        };
         let mut cur = self.buddy.cur.unwrap_or(target);
         if self.buddy.snap || dragging {
             cur = target;
@@ -836,7 +1277,11 @@ impl App {
         }
         let grow = self.buddy.grow;
         let stage = self.buddy.stage.take();
-        let pv = if stage.is_some() { self.buddy.preview } else { 0 };
+        let pv = if stage.is_some() {
+            self.buddy.preview
+        } else {
+            0
+        };
         let rr = stage.map(|s| s.2).unwrap_or(r * (1.0 + 0.8 * grow));
         let shown = stage.map(|s| (s.0, s.1)).unwrap_or(cur);
         if stage.is_some() {
@@ -844,14 +1289,34 @@ impl App {
         }
         // Hüpfen: beim Laufen kleine Schritte, auf Zuruf ein Sprung
         let walk = (rest / ui.dp(36.0)).min(1.0) * self.buddy.phase.sin().abs() * ui.dp(9.0);
-        let jump = self.buddy.hop.map(|t| t.elapsed().as_millis() as f32 / 480.0).filter(|t| *t < 1.0).map(|t| (t * std::f32::consts::PI).sin() * ui.dp(18.0)).unwrap_or(0.0);
+        let jump = self
+            .buddy
+            .hop
+            .map(|t| t.elapsed().as_millis() as f32 / 480.0)
+            .filter(|t| *t < 1.0)
+            .map(|t| (t * std::f32::consts::PI).sin() * ui.dp(18.0))
+            .unwrap_or(0.0);
         let lift = if dragging { 0.0 } else { walk + jump };
 
         let body = Rect::new(shown.0 - rr, shown.1 - rr, 2.0 * rr, 2.0 * rr);
         let grab = body.inset(-ui.dp(6.0));
         self.buddy.hit.push(grab);
-        let p = (ui.p.x, ui.p.y, ui.p.px, ui.p.py, ui.p.down, ui.p.pressed, ui.p.released);
-        if ui.enabled && p.5 && grab.contains(p.2, p.3) && calling.is_none() && tour.is_none() && learn.is_none() {
+        let p = (
+            ui.p.x,
+            ui.p.y,
+            ui.p.px,
+            ui.p.py,
+            ui.p.down,
+            ui.p.pressed,
+            ui.p.released,
+        );
+        if ui.enabled
+            && p.5
+            && grab.contains(p.2, p.3)
+            && calling.is_none()
+            && tour.is_none()
+            && learn.is_none()
+        {
             self.buddy.drag = true;
             self.buddy.moved = false;
             self.buddy.roam = None;
@@ -884,8 +1349,12 @@ impl App {
                 ui.dirty = true;
             }
         }
-        let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-        let wave = |period: u128| ((now_ms % period) as f32 / period as f32 * std::f32::consts::TAU).sin();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let wave =
+            |period: u128| ((now_ms % period) as f32 / period as f32 * std::f32::consts::TAU).sin();
 
         // ---------- Anruf: Seite abdunkeln, Karte mit dem Anliegen ----------
         if let Some((text, _)) = &calling {
@@ -894,7 +1363,13 @@ impl App {
             ui.cv.rect(all, rgb(0).alpha(0.62 * grow));
             for i in 0..3 {
                 let t = ((now_ms + i * 500) % 1500) as f32 / 1500.0;
-                ui.cv.ring(shown.0, shown.1, rr + ui.dp(6.0) + t * ui.dp(46.0), ui.dp(2.5), gold.alpha((1.0 - t) * 0.8 * grow));
+                ui.cv.ring(
+                    shown.0,
+                    shown.1,
+                    rr + ui.dp(6.0) + t * ui.dp(46.0),
+                    ui.dp(2.5),
+                    gold.alpha((1.0 - t) * 0.8 * grow),
+                );
             }
             let cw = ui.w - ui.dp(48.0);
             let inner = cw - ui.dp(36.0);
@@ -905,14 +1380,46 @@ impl App {
             ui.cv.rrect(card, ui.dp(24.0), gold);
             ui.cv.rrect(card.inset(1.5), ui.dp(23.0), ui.th.card);
             let d = crate::sys::from_unix(crate::sys::unix_now(), self.set.tz_min);
-            let head = if quiet_call { "KM Code Craft".to_string() } else { format!("{}  ·  {}", self.t("Reminder"), self.clock_str(d.h, d.mi)) };
-            ui.label(Rect::new(card.x, card.y + ui.dp(14.0), cw, ui.dp(22.0)), &head, 13.5, gold, true, Al::Center);
-            ui.para(card.x + ui.dp(18.0), card.y + ui.dp(46.0), inner, text, 19.0, ui.th.text);
-            let (l1, l2) = (self.t(if quiet_call { "OK" } else { "Done" }), self.t("In 10 min"));
-            let (w1, w2) = (ui.text_w(l1, 13.5, false) + ui.dp(26.0), if quiet_call { -ui.dp(14.0) } else { ui.text_w(l2, 13.5, false) + ui.dp(26.0) });
+            let head = if quiet_call {
+                "KM Code Craft".to_string()
+            } else {
+                format!("{}  ·  {}", self.t("Reminder"), self.clock_str(d.h, d.mi))
+            };
+            ui.label(
+                Rect::new(card.x, card.y + ui.dp(14.0), cw, ui.dp(22.0)),
+                &head,
+                13.5,
+                gold,
+                true,
+                Al::Center,
+            );
+            ui.para(
+                card.x + ui.dp(18.0),
+                card.y + ui.dp(46.0),
+                inner,
+                text,
+                19.0,
+                ui.th.text,
+            );
+            let (l1, l2) = (
+                self.t(if quiet_call { "OK" } else { "Done" }),
+                self.t("In 10 min"),
+            );
+            let (w1, w2) = (
+                ui.text_w(l1, 13.5, false) + ui.dp(26.0),
+                if quiet_call {
+                    -ui.dp(14.0)
+                } else {
+                    ui.text_w(l2, 13.5, false) + ui.dp(26.0)
+                },
+            );
             let by = card.bottom() - ui.dp(54.0);
             let x1 = card.x + (cw - w1 - w2 - ui.dp(14.0)) / 2.0;
-            let (xa, xb) = if ui.rtl { (x1 + w2 + ui.dp(14.0), x1) } else { (x1, x1 + w1 + ui.dp(14.0)) };
+            let (xa, xb) = if ui.rtl {
+                (x1 + w2 + ui.dp(14.0), x1)
+            } else {
+                (x1, x1 + w1 + ui.dp(14.0))
+            };
             let done = ui.pill(xa, by, l1, true).1;
             let later = !quiet_call && ui.pill(xb, by, l2, false).1;
             if quiet_call && done {
@@ -920,12 +1427,22 @@ impl App {
                 ui.dirty = true;
             } else if done || later {
                 if later {
-                    self.buddy.reminders.push((crate::sys::unix_now() + 600, 0, text.clone()));
+                    self.buddy
+                        .reminders
+                        .push((crate::sys::unix_now() + 600, 0, text.clone()));
                     self.buddy.rem_save();
                 }
                 self.buddy.calling = None;
                 self.buddy.hop = Some(Instant::now());
-                self.buddy.say = Some((self.t(if later { "OK, in 10 minutes again" } else { "Done" }).to_string(), Instant::now()));
+                self.buddy.say = Some((
+                    self.t(if later {
+                        "OK, in 10 minutes again"
+                    } else {
+                        "Done"
+                    })
+                    .to_string(),
+                    Instant::now(),
+                ));
                 ui.dirty = true;
             }
         }
@@ -943,8 +1460,22 @@ impl App {
             ui.cv.soft_shadow(card, ui.dp(24.0), rgb(0).alpha(0.4));
             ui.cv.rrect(card, ui.dp(24.0), gold);
             ui.cv.rrect(card.inset(1.5), ui.dp(23.0), ui.th.card);
-            ui.label(Rect::new(card.x, card.y + ui.dp(12.0), cw, ui.dp(22.0)), title, 13.0, gold, true, Al::Center);
-            ui.para(card.x + ui.dp(18.0), card.y + ui.dp(42.0), inner, hint, 16.5, ui.th.text);
+            ui.label(
+                Rect::new(card.x, card.y + ui.dp(12.0), cw, ui.dp(22.0)),
+                title,
+                13.0,
+                gold,
+                true,
+                Al::Center,
+            );
+            ui.para(
+                card.x + ui.dp(18.0),
+                card.y + ui.dp(42.0),
+                inner,
+                hint,
+                16.5,
+                ui.th.text,
+            );
             // Fortschritt: ein Punkt je Aufnahme
             let dy = card.y + ui.dp(42.0) + th_ + ui.dp(20.0);
             for i in 0..*need {
@@ -959,10 +1490,19 @@ impl App {
             let bar = Rect::new(card.x + ui.dp(18.0), dy + ui.dp(20.0), inner, ui.dp(6.0));
             ui.cv.rrect(bar, ui.dp(3.0), ui.th.bg);
             let lv = ((level / 30.0).max(1.0).log10() / 2.0).clamp(0.0, 1.0);
-            ui.cv.rrect(Rect::new(bar.x, bar.y, bar.w * lv, bar.h), ui.dp(3.0), gold);
+            ui.cv
+                .rrect(Rect::new(bar.x, bar.y, bar.w * lv, bar.h), ui.dp(3.0), gold);
             let label = self.t("Cancel");
             let bw = ui.text_w(label, 13.5, false) + ui.dp(26.0);
-            if ui.pill(card.x + (cw - bw) / 2.0, card.bottom() - ui.dp(50.0), label, false).1 {
+            if ui
+                .pill(
+                    card.x + (cw - bw) / 2.0,
+                    card.bottom() - ui.dp(50.0),
+                    label,
+                    false,
+                )
+                .1
+            {
                 self.voice_cancel();
             }
             ui.dirty = true;
@@ -980,20 +1520,49 @@ impl App {
             let th_ = ui.tx.measure(&text, ui.dp(16.5), false, inner).1;
             let ch = ui.dp(48.0) + th_ + ui.dp(70.0);
             // Karte unter ihm, wenn er oben steht – sonst über ihm (Zielstelle zählt, damit sie nicht springt)
-            let cy = if target.1 < top + (bottom - top) * 0.5 { target.1 + rr + ui.dp(30.0) } else { target.1 - rr - ui.dp(40.0) - ch };
+            let cy = if target.1 < top + (bottom - top) * 0.5 {
+                target.1 + rr + ui.dp(30.0)
+            } else {
+                target.1 - rr - ui.dp(40.0) - ch
+            };
             let card = Rect::new(ui.dp(20.0), cy, cw, ch);
             ui.cv.soft_shadow(card, ui.dp(24.0), rgb(0).alpha(0.4));
             ui.cv.rrect(card, ui.dp(24.0), gold);
             ui.cv.rrect(card.inset(1.5), ui.dp(23.0), ui.th.card);
             let head = format!("KM Code Craft  ·  {} / {}", step + 1, TOUR.len());
-            ui.label(Rect::new(card.x, card.y + ui.dp(12.0), cw, ui.dp(22.0)), &head, 13.0, gold, true, Al::Center);
-            ui.para(card.x + ui.dp(18.0), card.y + ui.dp(42.0), inner, &text, 16.5, ui.th.text);
+            ui.label(
+                Rect::new(card.x, card.y + ui.dp(12.0), cw, ui.dp(22.0)),
+                &head,
+                13.0,
+                gold,
+                true,
+                Al::Center,
+            );
+            ui.para(
+                card.x + ui.dp(18.0),
+                card.y + ui.dp(42.0),
+                inner,
+                &text,
+                16.5,
+                ui.th.text,
+            );
             let last = step + 1 == TOUR.len();
             let (l1, l2) = (self.t(if last { "Done" } else { "Next" }), self.t("Skip"));
-            let (w1, w2) = (ui.text_w(l1, 13.5, false) + ui.dp(26.0), if last { 0.0 } else { ui.text_w(l2, 13.5, false) + ui.dp(26.0) + ui.dp(14.0) });
+            let (w1, w2) = (
+                ui.text_w(l1, 13.5, false) + ui.dp(26.0),
+                if last {
+                    0.0
+                } else {
+                    ui.text_w(l2, 13.5, false) + ui.dp(26.0) + ui.dp(14.0)
+                },
+            );
             let by = card.bottom() - ui.dp(52.0);
             let x1 = card.x + (cw - w1 - w2) / 2.0;
-            let (xa, xb) = if ui.rtl { (x1 + w2, x1) } else { (x1, x1 + w1 + ui.dp(14.0)) };
+            let (xa, xb) = if ui.rtl {
+                (x1 + w2, x1)
+            } else {
+                (x1, x1 + w1 + ui.dp(14.0))
+            };
             let next = ui.pill(xa, by, l1, true).1;
             let skip = !last && ui.pill(xb, by, l2, false).1;
             if next || skip {
@@ -1003,15 +1572,34 @@ impl App {
             }
         }
 
-        let busy = self.buddy.checking.is_some() || (self.buddy.asked.is_some() && self.agent_busy) || pv == 2 || pv == 3;
+        let busy = self.buddy.checking.is_some()
+            || (self.buddy.asked.is_some() && self.agent_busy)
+            || pv == 2
+            || pv == 3;
         // Schatten bleibt am Boden und wird beim Abheben blasser
         if busy {
             let t = (now_ms % 1200) as f32 / 1200.0;
-            ui.cv.ring(shown.0, shown.1, rr + ui.dp(3.0) + t * ui.dp(8.0), ui.dp(2.0), gold.alpha(1.0 - t));
+            ui.cv.ring(
+                shown.0,
+                shown.1,
+                rr + ui.dp(3.0) + t * ui.dp(8.0),
+                ui.dp(2.0),
+                gold.alpha(1.0 - t),
+            );
             ui.dirty = true;
         }
         // Stimmung: Ergebnis der letzten Prüfung, sonst der Wächter über die Links der Seite
-        let mood = if calling.is_some() { None } else { self.buddy.report.as_ref().map(|x| x.verdict).or(if worst != Verdict::Ok && panel.is_none() { Some(worst) } else { None }) };
+        let mood = if calling.is_some() {
+            None
+        } else {
+            self.buddy.report.as_ref().map(|x| x.verdict).or(
+                if worst != Verdict::Ok && panel.is_none() {
+                    Some(worst)
+                } else {
+                    None
+                },
+            )
+        };
         let tone = match mood {
             Some(Verdict::Bad) => ui.th.danger,
             Some(Verdict::Warn) => rgb(0xE8A317),
@@ -1020,7 +1608,13 @@ impl App {
         };
         // wackeln: bei Gefahr, und beim Klingeln wie ein Telefon
         let ringing = calling.as_ref().is_some_and(|c| c.1) || pv == 5;
-        let shake = if ringing { wave(110) * ui.dp(4.0) } else if self.buddy.alert.is_some() { wave(300) * ui.dp(2.0) } else { 0.0 };
+        let shake = if ringing {
+            wave(110) * ui.dp(4.0)
+        } else if self.buddy.alert.is_some() {
+            wave(300) * ui.dp(2.0)
+        } else {
+            0.0
+        };
         // atmen
         let r = rr * (1.0 + 0.018 * wave(3600));
         let (fx, fy) = (shown.0 + shake, shown.1 - lift);
@@ -1032,27 +1626,77 @@ impl App {
         let py = |v: f32| oy + (v - 115.0) * s;
         let ink = rgb(0x1B1C22);
         let (cream_t, cream_m, cream_b) = (rgb(0xFFFBEE), rgb(0xF1E7C2), rgb(0xCDB872));
-        let state_happy = calling.is_some() || tour.is_some() || self.buddy.hop.is_some_and(|t| t.elapsed().as_millis() < 700) || pv == 1 || pv == 5;
+        let state_happy = calling.is_some()
+            || tour.is_some()
+            || self
+                .buddy
+                .hop
+                .is_some_and(|t| t.elapsed().as_millis() < 700)
+            || pv == 1
+            || pv == 5;
         let state_alert = mood == Some(Verdict::Bad) || pv == 6;
         let talking = (self.buddy.say.is_some() || quiet_call || pv == 4) && !state_alert;
-        let gem = if state_alert { ui.th.danger } else if ringing { ui.th.ok } else { tone };
+        let gem = if state_alert {
+            ui.th.danger
+        } else if ringing {
+            ui.th.ok
+        } else {
+            tone
+        };
         // Schatten/Glanz am Boden: bleibt unten, wird beim Abheben kleiner
         let ground = shown.1 + 95.0 * s;
         let sk = (1.0 - lift / ui.dp(40.0)).clamp(0.55, 1.0);
-        ui.cv.ellipse(shown.0, ground, 44.0 * s * sk, 7.0 * s, 0.0, rgb(0).alpha(0.32 * sk));
+        ui.cv.ellipse(
+            shown.0,
+            ground,
+            44.0 * s * sk,
+            7.0 * s,
+            0.0,
+            rgb(0).alpha(0.32 * sk),
+        );
         // Fühler: schwingen der Bewegung hinterher, Lichter an der Spitze (Statusfarbe)
         let sway = (-self.buddy.vx * 0.035).clamp(-r * 0.4, r * 0.4) + shake * 0.8;
-        for (side, base_x, tip_x, ph) in [(-1.0f32, 80.0f32, 65.0f32, 0u128), (1.0, 120.0, 135.0, 1150)] {
+        for (side, base_x, tip_x, ph) in [
+            (-1.0f32, 80.0f32, 65.0f32, 0u128),
+            (1.0, 120.0, 135.0, 1150),
+        ] {
             let w = ((now_ms + ph) % 2300) as f32 / 2300.0 * std::f32::consts::TAU;
             let tx = px(tip_x) + sway + w.sin() * 3.0 * s * 2.0 + side * 0.0;
             let ty = py(22.0);
-            ui.cv.line(px(base_x), py(52.0), (px(base_x) + tx) / 2.0 + side * 2.0 * s, py(36.0), 4.5 * s, cream_b);
-            ui.cv.line((px(base_x) + tx) / 2.0 + side * 2.0 * s, py(36.0), tx, ty, 4.5 * s, cream_b);
-            let glow = if busy || calling.is_some() || self.buddy.say.is_some() { 0.35 + 0.25 * wave(700) } else { 0.0 };
+            ui.cv.line(
+                px(base_x),
+                py(52.0),
+                (px(base_x) + tx) / 2.0 + side * 2.0 * s,
+                py(36.0),
+                4.5 * s,
+                cream_b,
+            );
+            ui.cv.line(
+                (px(base_x) + tx) / 2.0 + side * 2.0 * s,
+                py(36.0),
+                tx,
+                ty,
+                4.5 * s,
+                cream_b,
+            );
+            let glow = if busy || calling.is_some() || self.buddy.say.is_some() {
+                0.35 + 0.25 * wave(700)
+            } else {
+                0.0
+            };
             if glow > 0.0 {
                 ui.cv.circle(tx, ty, 13.0 * s, gem.alpha(glow));
             }
-            ui.cv.circle(tx, ty, 7.5 * s, if state_alert || ringing { gem } else { rgb(0xF0F090) });
+            ui.cv.circle(
+                tx,
+                ty,
+                7.5 * s,
+                if state_alert || ringing {
+                    gem
+                } else {
+                    rgb(0xF0F090)
+                },
+            );
         }
         // Körper: weiche Bohne mit Verlauf (Creme → Logo-Gold), Glanzlicht oben links
         let (bx0, by0, bw, bh) = (px(32.0), py(42.0), 136.0 * s, 146.0 * s);
@@ -1068,10 +1712,31 @@ impl App {
             let (dx, dy) = ((x - ccx) / (rx * 0.9), (y - ccy + 18.0 * s) / (ry * 0.62));
             ((dx * dx + dy * dy).sqrt() - 1.0) * rx * 0.6
         });
-        ui.cv.ellipse(px(70.0), py(70.0), 18.0 * s, 9.0 * s, -0.49, rgb(0xFFFFFF).alpha(0.7));
+        ui.cv.ellipse(
+            px(70.0),
+            py(70.0),
+            18.0 * s,
+            9.0 * s,
+            -0.49,
+            rgb(0xFFFFFF).alpha(0.7),
+        );
         // Bäckchen (Rot der Marke, zart)
-        ui.cv.ellipse(px(64.0), py(124.0), 9.0 * s, 5.0 * s, 0.0, rgb(crate::ui::KM_RED).alpha(0.2));
-        ui.cv.ellipse(px(136.0), py(124.0), 9.0 * s, 5.0 * s, 0.0, rgb(crate::ui::KM_RED).alpha(0.2));
+        ui.cv.ellipse(
+            px(64.0),
+            py(124.0),
+            9.0 * s,
+            5.0 * s,
+            0.0,
+            rgb(crate::ui::KM_RED).alpha(0.2),
+        );
+        ui.cv.ellipse(
+            px(136.0),
+            py(124.0),
+            9.0 * s,
+            5.0 * s,
+            0.0,
+            rgb(crate::ui::KM_RED).alpha(0.2),
+        );
         // Augen: schauen zur Berührung/Laufrichtung, blinzeln; fröhlich (^ ^), streng (Gefahr), müde (Nacht)
         let look = if calling.is_some() || learn.is_some() {
             (0.0, 0.25)
@@ -1092,7 +1757,16 @@ impl App {
         let (lx, ly) = (look.0 / ln * 5.0 * s, look.1 / ln * 4.0 * s);
         let blink = now_ms % 4300 < 140;
         let hour = crate::sys::from_unix(crate::sys::unix_now(), self.set.tz_min).h;
-        let sleepy = pv == 7 || pv == 0 && !(6..23).contains(&hour) && mood.is_none() && !busy && calling.is_none() && tour.is_none() && learn.is_none() && !self.buddy.moving && self.buddy.roam.is_none();
+        let sleepy = pv == 7
+            || pv == 0
+                && !(6..23).contains(&hour)
+                && mood.is_none()
+                && !busy
+                && calling.is_none()
+                && tour.is_none()
+                && learn.is_none()
+                && !self.buddy.moving
+                && self.buddy.roam.is_none();
         let arc = |ui: &mut Ui, cx: f32, cy: f32, w: f32, h: f32, th: f32, c: crate::gfx::Color| {
             // Bogen aus kurzen Strichen: h > 0 = nach oben gewölbt (^), h < 0 = nach unten (∪)
             let mut prev: Option<(f32, f32)> = None;
@@ -1115,11 +1789,20 @@ impl App {
                 ui.cv.line(ex - 9.0 * s, ey, ex + 9.0 * s, ey, 5.0 * s, ink);
             } else if state_alert {
                 ui.cv.ellipse(ex, ey + 2.0 * s, 10.0 * s, 5.0 * s, 0.0, ink);
-                ui.cv.line(px(100.0 + sx * 34.0), py(90.0), px(100.0 + sx * 8.0), py(98.0), 5.0 * s, ink);
+                ui.cv.line(
+                    px(100.0 + sx * 34.0),
+                    py(90.0),
+                    px(100.0 + sx * 8.0),
+                    py(98.0),
+                    5.0 * s,
+                    ink,
+                );
             } else {
                 let big = if p.4 || busy { 1.12 } else { 1.0 };
-                ui.cv.ellipse(ex, ey, 10.5 * s * big, 13.5 * s * big, 0.0, ink);
-                ui.cv.circle(ex + 4.0 * s, ey - 6.0 * s, 3.8 * s, rgb(0xFFFFFF));
+                ui.cv
+                    .ellipse(ex, ey, 10.5 * s * big, 13.5 * s * big, 0.0, ink);
+                ui.cv
+                    .circle(ex + 4.0 * s, ey - 6.0 * s, 3.8 * s, rgb(0xFFFFFF));
             }
         }
         // Mund: lächeln, offen (fröhlich), sprechen (bewegt), rund (nachdenken), traurig (Gefahr)
@@ -1128,25 +1811,39 @@ impl App {
             arc(ui, mx, my + 5.0 * s, 10.0 * s, 6.0 * s, 4.5 * s, ink);
         } else if talking {
             let o = 0.35 + 0.75 * wave(320).abs();
-            ui.cv.ellipse(mx, my + 2.0 * s, 9.0 * s, 7.5 * s * o, 0.0, ink);
+            ui.cv
+                .ellipse(mx, my + 2.0 * s, 9.0 * s, 7.5 * s * o, 0.0, ink);
         } else if state_happy {
-            ui.cv.sdf(Rect::new(mx - 14.0 * s, my - 4.0 * s, 28.0 * s, 22.0 * s), ink, |x, y| {
-                let (dx, dy) = ((x - mx) / (13.0 * s), (y - (my - 3.0 * s)) / (16.0 * s));
-                let e = ((dx * dx + dy * dy).sqrt() - 1.0) * 13.0 * s;
-                e.max((my - 3.0 * s) - y)
-            });
+            ui.cv.sdf(
+                Rect::new(mx - 14.0 * s, my - 4.0 * s, 28.0 * s, 22.0 * s),
+                ink,
+                |x, y| {
+                    let (dx, dy) = ((x - mx) / (13.0 * s), (y - (my - 3.0 * s)) / (16.0 * s));
+                    let e = ((dx * dx + dy * dy).sqrt() - 1.0) * 13.0 * s;
+                    e.max((my - 3.0 * s) - y)
+                },
+            );
         } else if busy {
             ui.cv.ellipse(mx, my + 2.0 * s, 5.0 * s, 6.0 * s, 0.0, ink);
         } else {
             arc(ui, mx, my - 4.0 * s, 10.0 * s, -8.0 * s, 4.5 * s, ink);
         }
         // Brust-Licht: zeigt den Zustand (Gold bereit, Grün Anruf, Rot Gefahr), atmet
-        ui.cv.circle(px(100.0), py(162.0), 8.5 * s, rgb(0xFFFFFF).alpha(0.55));
-        ui.cv.circle(px(100.0), py(162.0), 6.5 * s, gem.alpha(0.75 + 0.25 * wave(2600)));
+        ui.cv
+            .circle(px(100.0), py(162.0), 8.5 * s, rgb(0xFFFFFF).alpha(0.55));
+        ui.cv.circle(
+            px(100.0),
+            py(162.0),
+            6.5 * s,
+            gem.alpha(0.75 + 0.25 * wave(2600)),
+        );
         // Hände: schweben; winken beim Anruf/Begrüßen, Hand am Kinn beim Nachdenken, „Stopp" bei Gefahr,
         // gestikulieren beim Sprechen
         let bob = |ph: u128| wave(2600 + ph) * 3.0 * s;
-        let (mut hl, mut hr) = ((px(42.0), py(142.0) + bob(0)), (px(158.0), py(142.0) + bob(1300)));
+        let (mut hl, mut hr) = (
+            (px(42.0), py(142.0) + bob(0)),
+            (px(158.0), py(142.0) + bob(1300)),
+        );
         if calling.is_some() || tour.is_some() {
             let w = wave(if ringing { 500 } else { 900 });
             hr = (px(160.0) + w * 6.0 * s, py(84.0) - (w.abs() * 4.0) * s);
@@ -1160,29 +1857,74 @@ impl App {
             hr.1 -= (-wave(1400)).max(0.0) * 14.0 * s;
         }
         for (hx, hy) in [hl, hr] {
-            ui.cv.sdf_vgrad(Rect::new(hx - 13.5 * s, hy - 13.5 * s, 27.0 * s, 27.0 * s), cream_t, cream_b, |x, y| ((x - hx).powi(2) + (y - hy).powi(2)).sqrt() - 12.5 * s);
+            ui.cv.sdf_vgrad(
+                Rect::new(hx - 13.5 * s, hy - 13.5 * s, 27.0 * s, 27.0 * s),
+                cream_t,
+                cream_b,
+                |x, y| ((x - hx).powi(2) + (y - hy).powi(2)).sqrt() - 12.5 * s,
+            );
         }
         // Denkblasen beim Nachdenken, „z" beim Schlafen
         if busy {
-            for (i, (u, v, rr2)) in [(150.0f32, 34.0f32, 5.0f32), (166.0, 20.0, 7.0), (186.0, 2.0, 10.0)].iter().enumerate() {
-                let a = 0.35 + 0.65 * (((now_ms + i as u128 * 200) % 1200) as f32 / 1200.0 * std::f32::consts::TAU).sin().abs();
+            for (i, (u, v, rr2)) in [
+                (150.0f32, 34.0f32, 5.0f32),
+                (166.0, 20.0, 7.0),
+                (186.0, 2.0, 10.0),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let a = 0.35
+                    + 0.65
+                        * (((now_ms + i as u128 * 200) % 1200) as f32 / 1200.0
+                            * std::f32::consts::TAU)
+                            .sin()
+                            .abs();
                 let u = if ui.rtl { 200.0 - u } else { *u };
                 ui.cv.circle(px(u), py(*v), rr2 * s, ui.th.accent2.alpha(a));
             }
         } else if sleepy {
             let t = (now_ms % 2400) as f32 / 2400.0;
-            let zr = Rect::new(px(146.0) + t * 14.0 * s, py(30.0) - t * 26.0 * s, 24.0 * s, 24.0 * s);
-            ui.label(zr, "z", (16.0 * s / ui.k).max(8.0), ui.th.accent2.alpha(1.0 - t), true, Al::Center);
+            let zr = Rect::new(
+                px(146.0) + t * 14.0 * s,
+                py(30.0) - t * 26.0 * s,
+                24.0 * s,
+                24.0 * s,
+            );
+            ui.label(
+                zr,
+                "z",
+                (16.0 * s / ui.k).max(8.0),
+                ui.th.accent2.alpha(1.0 - t),
+                true,
+                Al::Center,
+            );
             ui.dirty = true;
         }
-        let quiet = panel.is_none() && calling.is_none() && tour.is_none() && learn.is_none() && !self.buddy.moving;
+        let quiet = panel.is_none()
+            && calling.is_none()
+            && tour.is_none()
+            && learn.is_none()
+            && !self.buddy.moving;
         // Zeichen an der Figur: Ausrufezeichen bei auffälligen Links, sonst Zahl der Links
         if quiet && !self.buddy.links.is_empty() {
             let (bx, by) = (fx + r * 0.72, fy - r * 0.72);
             let warn = worst != Verdict::Ok;
-            ui.cv.circle(bx, by, ui.dp(9.5), if warn { tone } else { gold });
-            let n = if warn { "!".to_string() } else { self.buddy.links.len().min(9).to_string() };
-            ui.label(Rect::new(bx - ui.dp(9.0), by - ui.dp(9.0), ui.dp(18.0), ui.dp(18.0)), &n, 11.5, if warn { white } else { ui.th.on_accent }, true, Al::Center);
+            ui.cv
+                .circle(bx, by, ui.dp(9.5), if warn { tone } else { gold });
+            let n = if warn {
+                "!".to_string()
+            } else {
+                self.buddy.links.len().min(9).to_string()
+            };
+            ui.label(
+                Rect::new(bx - ui.dp(9.0), by - ui.dp(9.0), ui.dp(18.0), ui.dp(18.0)),
+                &n,
+                11.5,
+                if warn { white } else { ui.th.on_accent },
+                true,
+                Al::Center,
+            );
         }
         // Sprechblasen neben der Figur: Warnung vor einem gefährlichen Link (antippen = genau prüfen) oder ein kurzer Satz
         if quiet {
@@ -1192,9 +1934,19 @@ impl App {
                 None => self.buddy.say.as_ref().map(|s| s.0.clone()),
             };
             if let Some(msg) = msg {
-                let tw = (ui.text_w(&msg, 13.0, true) + ui.dp(26.0)).min(ui.w - 2.0 * r - ui.dp(40.0));
+                let tw =
+                    (ui.text_w(&msg, 13.0, true) + ui.dp(26.0)).min(ui.w - 2.0 * r - ui.dp(40.0));
                 let left = fx > ui.w / 2.0;
-                let br = Rect::new(if left { fx - r - ui.dp(8.0) - tw } else { fx + r + ui.dp(8.0) }, fy - ui.dp(19.0), tw, ui.dp(38.0));
+                let br = Rect::new(
+                    if left {
+                        fx - r - ui.dp(8.0) - tw
+                    } else {
+                        fx + r + ui.dp(8.0)
+                    },
+                    fy - ui.dp(19.0),
+                    tw,
+                    ui.dp(38.0),
+                );
                 ui.cv.soft_shadow(br, ui.dp(19.0), rgb(0).alpha(0.3));
                 if alert.is_some() {
                     ui.cv.rrect(br, ui.dp(19.0), ui.th.danger);
@@ -1203,7 +1955,14 @@ impl App {
                     ui.cv.rrect(br.inset(1.5), ui.dp(17.5), ui.th.card);
                 }
                 let m2 = ui.fit(&msg, 13.0, true, tw - ui.dp(20.0));
-                ui.label(br, &m2, 13.0, if alert.is_some() { white } else { ui.th.text }, true, Al::Center);
+                ui.label(
+                    br,
+                    &m2,
+                    13.0,
+                    if alert.is_some() { white } else { ui.th.text },
+                    true,
+                    Al::Center,
+                );
                 self.buddy.hit.push(br);
                 if ui.tap(br) {
                     self.buddy.open = true;

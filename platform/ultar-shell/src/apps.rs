@@ -40,8 +40,14 @@ pub struct AppsCfg {
 
 pub fn catalog() -> Vec<App> {
     let mut out: Vec<App> = Vec::new();
-    for p in ["/etc/ultar/apps.toml".to_string(), format!("{}/apps.toml", sys::data_dir())] {
-        if let Some(c) = std::fs::read_to_string(p).ok().and_then(|s| toml::from_str::<Catalog>(&s).ok()) {
+    for p in [
+        "/etc/ultar/apps.toml".to_string(),
+        format!("{}/apps.toml", sys::data_dir()),
+    ] {
+        if let Some(c) = std::fs::read_to_string(p)
+            .ok()
+            .and_then(|s| toml::from_str::<Catalog>(&s).ok())
+        {
             for a in c.app {
                 out.retain(|o| o.id != a.id);
                 out.push(a);
@@ -67,10 +73,30 @@ fn args(a: &[&str]) -> Vec<String> {
 pub fn curl(config: &str, extra: &[&str]) -> Result<Vec<u8>, String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let mut a = vec!["run", "--", "/usr/bin/curl", "-sS", "-L", "--max-time", "300", "-K", "-"];
+    let mut a = vec![
+        "run",
+        "--",
+        "/usr/bin/curl",
+        "-sS",
+        "-L",
+        "--max-time",
+        "300",
+        "-K",
+        "-",
+    ];
     a.extend_from_slice(extra);
-    let mut ch = Command::new(COMPAT).args(&a).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
-    ch.stdin.take().unwrap().write_all(config.as_bytes()).map_err(|e| e.to_string())?;
+    let mut ch = Command::new(COMPAT)
+        .args(&a)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    ch.stdin
+        .take()
+        .unwrap()
+        .write_all(config.as_bytes())
+        .map_err(|e| e.to_string())?;
     let out = ch.wait_with_output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
@@ -94,11 +120,26 @@ pub fn install(bg: &Bg, app: App, token: String) {
         if !curl_ready() {
             say("Installing download tool (curl) …".into());
             bg.stream(COMPAT, &args(&["apt", "update"]), Msg::JobLine);
-            if bg.stream(COMPAT, &args(&["apt", "install", "--no-install-recommends", "curl", "ca-certificates"]), Msg::JobLine) != 0 {
+            if bg.stream(
+                COMPAT,
+                &args(&[
+                    "apt",
+                    "install",
+                    "--no-install-recommends",
+                    "curl",
+                    "ca-certificates",
+                ]),
+                Msg::JobLine,
+            ) != 0
+            {
                 return fail("curl could not be installed.".into());
             }
         }
-        let auth = if token.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {token}\"\n") };
+        let auth = if token.is_empty() {
+            String::new()
+        } else {
+            format!("header = \"Authorization: Bearer {token}\"\n")
+        };
         // 1. Adresse der Paketdatei bestimmen
         let (url, accept) = if !app.url.is_empty() {
             (app.url.clone(), String::new())
@@ -111,15 +152,30 @@ pub fn install(bg: &Bg, app: App, token: String) {
             };
             let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
             let suffix = format!("_{}.deb", arch());
-            let asset = v["assets"].as_array().and_then(|a| a.iter().find(|x| x["name"].as_str().is_some_and(|n| n.ends_with(&suffix) || n.ends_with("_all.deb"))));
+            let asset = v["assets"].as_array().and_then(|a| {
+                a.iter().find(|x| {
+                    x["name"]
+                        .as_str()
+                        .is_some_and(|n| n.ends_with(&suffix) || n.ends_with("_all.deb"))
+                })
+            });
             match asset.and_then(|a| a["url"].as_str()) {
                 Some(u) => {
-                    say(format!("Release {}: {}", v["tag_name"].as_str().unwrap_or("?"), asset.unwrap()["name"].as_str().unwrap_or("")));
+                    say(format!(
+                        "Release {}: {}",
+                        v["tag_name"].as_str().unwrap_or("?"),
+                        asset.unwrap()["name"].as_str().unwrap_or("")
+                    ));
                     (u.to_string(), "header = \"Accept: application/octet-stream\"\nheader = \"User-Agent: ultar-os\"\n".to_string())
                 }
                 None => {
-                    let msg = v["message"].as_str().unwrap_or("no release with a matching .deb file");
-                    return fail(format!("{}: {msg} (needed: *{suffix}). For private projects enter a GitHub token.", app.github));
+                    let msg = v["message"]
+                        .as_str()
+                        .unwrap_or("no release with a matching .deb file");
+                    return fail(format!(
+                        "{}: {msg} (needed: *{suffix}). For private projects enter a GitHub token.",
+                        app.github
+                    ));
                 }
             }
         } else {
@@ -128,7 +184,11 @@ pub fn install(bg: &Bg, app: App, token: String) {
         // 2. Herunterladen (/tmp ist im Ubuntu-Bereich dasselbe Verzeichnis)
         let file = format!("/tmp/ultar-app-{}.deb", app.id);
         say(format!("Downloading {url} …"));
-        let use_auth = if url.starts_with("https://api.github.com/") { auth.as_str() } else { "" };
+        let use_auth = if url.starts_with("https://api.github.com/") {
+            auth.as_str()
+        } else {
+            ""
+        };
         let cfg = format!("url = \"{url}\"\noutput = \"{file}\"\nfail\n{accept}{use_auth}");
         if let Err(e) = curl(&cfg, &[]) {
             return fail(format!("Download failed: {e}"));
@@ -155,7 +215,9 @@ pub fn install(bg: &Bg, app: App, token: String) {
 fn activate_services(bg: &Bg) {
     let src = "/compat/usr/share/ultar/services";
     let dst = format!("{}/services", sys::data_dir());
-    let Ok(rd) = std::fs::read_dir(src) else { return };
+    let Ok(rd) = std::fs::read_dir(src) else {
+        return;
+    };
     let _ = std::fs::create_dir_all(&dst);
     let mut names = Vec::new();
     for e in rd.flatten() {
@@ -175,14 +237,29 @@ pub fn remove(bg: &Bg, app: App) {
     let bg = bg.clone();
     std::thread::spawn(move || {
         // Dienste der App stoppen und abmelden
-        if let Ok(out) = std::process::Command::new(COMPAT).args(["run", "--", "/usr/bin/dpkg", "-L", &app.package]).output() {
-            for l in String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with("/usr/share/ultar/services/") && l.ends_with(".toml")) {
-                let n = l.rsplit('/').next().unwrap_or("").trim_end_matches(".toml").to_string();
+        if let Ok(out) = std::process::Command::new(COMPAT)
+            .args(["run", "--", "/usr/bin/dpkg", "-L", &app.package])
+            .output()
+        {
+            for l in String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter(|l| l.starts_with("/usr/share/ultar/services/") && l.ends_with(".toml"))
+            {
+                let n = l
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .trim_end_matches(".toml")
+                    .to_string();
                 sys::ctl(&format!("stop {n}"));
                 let _ = std::fs::remove_file(format!("{}/services/{n}.toml", sys::data_dir()));
             }
         }
-        let code = bg.stream(COMPAT, &args(&["apt", "remove", &app.package]), Msg::JobLine);
+        let code = bg.stream(
+            COMPAT,
+            &args(&["apt", "remove", &app.package]),
+            Msg::JobLine,
+        );
         bg.send(Msg::AppsChanged);
         bg.send(Msg::JobDone(code));
     });

@@ -21,7 +21,12 @@ pub enum Jack {
 
 fn from_sysfs() -> Option<Jack> {
     let s = std::fs::read_to_string("/sys/class/audio/earjack/state").ok()?;
-    let v: i32 = s.trim().split(|c: char| !c.is_ascii_digit()).find(|t| !t.is_empty())?.parse().ok()?;
+    let v: i32 = s
+        .trim()
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|t| !t.is_empty())?
+        .parse()
+        .ok()?;
     // Samsung: 0 = nichts, 1 = 4-polig (mit Mikro), 2 = 3-polig
     Some(match v {
         0 => Jack::None,
@@ -32,12 +37,16 @@ fn from_sysfs() -> Option<Jack> {
 
 fn from_input() -> Option<Jack> {
     for i in 0..32 {
-        let n = std::fs::read_to_string(format!("/sys/class/input/input{i}/name")).unwrap_or_default();
+        let n =
+            std::fs::read_to_string(format!("/sys/class/input/input{i}/name")).unwrap_or_default();
         if !n.contains("Headset") && !n.to_lowercase().contains("jack") {
             continue;
         }
         let dir = std::fs::read_dir(format!("/sys/class/input/input{i}")).ok()?;
-        let ev = dir.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.starts_with("event"))?;
+        let ev = dir
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .find(|n| n.starts_with("event"))?;
         let f = std::fs::File::open(format!("/dev/input/{ev}")).ok()?;
         let mut bits = [0u8; 8];
         // EVIOCGSW(len) = _IOC(READ, 'E', 0x1b, len)
@@ -63,7 +72,9 @@ pub fn state() -> Jack {
 pub fn describe() -> String {
     format!(
         "earjack/state={:?} input={:?} -> {:?}",
-        std::fs::read_to_string("/sys/class/audio/earjack/state").map(|s| s.trim().to_string()).ok(),
+        std::fs::read_to_string("/sys/class/audio/earjack/state")
+            .map(|s| s.trim().to_string())
+            .ok(),
         from_input(),
         state()
     )

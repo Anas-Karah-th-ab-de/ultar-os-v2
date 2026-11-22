@@ -49,7 +49,11 @@ fn main() {
             }
             "pdf-search" => {
                 let d = uo::pdf::PdfDoc::open(std::fs::read(a(1)).map_err(|e| e.to_string())?)?;
-                d.search(&a(2), 50).into_iter().map(|(p, s)| serde_json::json!({"page": p + 1, "text": s})).collect::<Vec<_>>().into()
+                d.search(&a(2), 50)
+                    .into_iter()
+                    .map(|(p, s)| serde_json::json!({"page": p + 1, "text": s}))
+                    .collect::<Vec<_>>()
+                    .into()
             }
             "pdf-render" => {
                 let d = uo::pdf::PdfDoc::open(std::fs::read(a(1)).map_err(|e| e.to_string())?)?;
@@ -60,13 +64,16 @@ fn main() {
                 let mut enc = png::Encoder::new(std::io::BufWriter::new(f), img.w, img.h);
                 enc.set_color(png::ColorType::Rgba);
                 enc.set_depth(png::BitDepth::Eight);
-                enc.write_header().and_then(|mut wr| wr.write_image_data(&img.rgba)).map_err(|e| e.to_string())?;
+                enc.write_header()
+                    .and_then(|mut wr| wr.write_image_data(&img.rgba))
+                    .map_err(|e| e.to_string())?;
                 serde_json::json!({"png": a(4), "width": img.w, "height": img.h})
             }
             "create" => {
                 let content = if a(2) == "-" {
                     let mut s = String::new();
-                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut s).map_err(|e| e.to_string())?;
+                    std::io::Read::read_to_string(&mut std::io::stdin(), &mut s)
+                        .map_err(|e| e.to_string())?;
                     s
                 } else {
                     a(2).replace("\\n", "\n")
@@ -88,11 +95,24 @@ fn main() {
             "convert" => {
                 let (src, dst) = (a(1), a(2));
                 match (uo::Kind::of(&src), uo::Kind::of(&dst)) {
-                    (uo::Kind::Sheet, uo::Kind::Sheet) => uo::write_book(&dst, &uo::read_book(&src)?, 0)?,
-                    (uo::Kind::Doc | uo::Kind::Text, _) | (_, uo::Kind::Doc) if uo::Kind::of(&src) != uo::Kind::Pdf => uo::write_doc(&dst, &uo::read_doc(&src)?)?,
-                    (uo::Kind::Pdf, uo::Kind::Text) => uo::write_atomic(&dst, uo::read_text(&src, usize::MAX)?.as_bytes())?,
-                    (uo::Kind::Pdf, uo::Kind::Doc) => uo::write_doc(&dst, &uo::doc::Document::from_text(&uo::read_text(&src, usize::MAX)?))?,
-                    (uo::Kind::Sheet, uo::Kind::Text) => uo::write_atomic(&dst, uo::read_text(&src, usize::MAX)?.as_bytes())?,
+                    (uo::Kind::Sheet, uo::Kind::Sheet) => {
+                        uo::write_book(&dst, &uo::read_book(&src)?, 0)?
+                    }
+                    (uo::Kind::Doc | uo::Kind::Text, _) | (_, uo::Kind::Doc)
+                        if uo::Kind::of(&src) != uo::Kind::Pdf =>
+                    {
+                        uo::write_doc(&dst, &uo::read_doc(&src)?)?
+                    }
+                    (uo::Kind::Pdf, uo::Kind::Text) => {
+                        uo::write_atomic(&dst, uo::read_text(&src, usize::MAX)?.as_bytes())?
+                    }
+                    (uo::Kind::Pdf, uo::Kind::Doc) => uo::write_doc(
+                        &dst,
+                        &uo::doc::Document::from_text(&uo::read_text(&src, usize::MAX)?),
+                    )?,
+                    (uo::Kind::Sheet, uo::Kind::Text) => {
+                        uo::write_atomic(&dst, uo::read_text(&src, usize::MAX)?.as_bytes())?
+                    }
                     _ => return Err("conversion not supported".into()),
                 }
                 "ok".into()
@@ -102,7 +122,11 @@ fn main() {
                 let buf = uo::code::Buffer::from_bytes(&b);
                 let from: usize = a(2).parse().unwrap_or(1).max(1);
                 let to: usize = a(3).parse().unwrap_or(from + 40);
-                (from..=to.min(buf.line_count())).map(|l| format!("{l}: {}", buf.line(l - 1))).collect::<Vec<_>>().join("\n").into()
+                (from..=to.min(buf.line_count()))
+                    .map(|l| format!("{l}: {}", buf.line(l - 1)))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .into()
             }
             "insert" => {
                 let b = std::fs::read(a(1)).unwrap_or_default();
@@ -110,7 +134,11 @@ fn main() {
                 let l: usize = a(2).parse().unwrap_or(0);
                 if l == 0 || l > buf.line_count() {
                     buf.cur = buf.text.len();
-                    let nl = if buf.text.is_empty() || buf.text.ends_with('\n') { "" } else { "\n" };
+                    let nl = if buf.text.is_empty() || buf.text.ends_with('\n') {
+                        ""
+                    } else {
+                        "\n"
+                    };
                     buf.insert(&format!("{nl}{}", a(3)));
                 } else {
                     buf.cur = buf.pos(l - 1, 0);

@@ -34,7 +34,11 @@ fn ensure_mount(src: &str, tgt: &str, fstype: &str, flags: MsFlags) {
 }
 
 fn exec_real_init() -> ! {
-    let path = if Path::new(REAL_INIT).exists() { REAL_INIT } else { "/init.real" };
+    let path = if Path::new(REAL_INIT).exists() {
+        REAL_INIT
+    } else {
+        "/init.real"
+    };
     let c = CString::new(path).unwrap();
     let _ = execv(&c, &[c.clone()]);
     klog("exec echter Init fehlgeschlagen — Notfall-Shell");
@@ -79,13 +83,25 @@ fn main() {
     };
 
     let _ = std::fs::create_dir_all(NEWROOT);
-    if mount(Some(dev.as_str()), NEWROOT, Some("ext4"), MsFlags::MS_RDONLY, None::<&str>).is_err() {
+    if mount(
+        Some(dev.as_str()),
+        NEWROOT,
+        Some("ext4"),
+        MsFlags::MS_RDONLY,
+        None::<&str>,
+    )
+    .is_err()
+    {
         klog("Verity-Root mounten fehlgeschlagen");
         halt_tamper();
     }
 
     // virtuelle Dateisysteme in den neuen Root verschieben
-    for (from, to) in [("/proc", "/newroot/proc"), ("/sys", "/newroot/sys"), ("/dev", "/newroot/dev")] {
+    for (from, to) in [
+        ("/proc", "/newroot/proc"),
+        ("/sys", "/newroot/sys"),
+        ("/dev", "/newroot/dev"),
+    ] {
         let _ = std::fs::create_dir_all(to);
         let _ = mount(Some(from), to, None::<&str>, MsFlags::MS_MOVE, None::<&str>);
     }

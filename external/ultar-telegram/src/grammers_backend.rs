@@ -6,7 +6,11 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 enum Cmd {
-    Connect { api_id: i32, api_hash: String, session: String },
+    Connect {
+        api_id: i32,
+        api_hash: String,
+        session: String,
+    },
     RequestCode(String),
     SubmitCode(String),
     SubmitPassword(String),
@@ -31,16 +35,28 @@ pub struct GrammersTg {
 impl Default for GrammersTg {
     fn default() -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
-        let shared = Arc::new(Mutex::new(Shared { stage: Some(LoginStage::NeedPhone), dirty: true, ..Default::default() }));
+        let shared = Arc::new(Mutex::new(Shared {
+            stage: Some(LoginStage::NeedPhone),
+            dirty: true,
+            ..Default::default()
+        }));
         let sh2 = shared.clone();
         std::thread::spawn(move || worker(rx, sh2));
-        Self { tx, shared, local_stage: LoginStage::NeedPhone }
+        Self {
+            tx,
+            shared,
+            local_stage: LoginStage::NeedPhone,
+        }
     }
 }
 
 impl TgBackend for GrammersTg {
     fn connect(&mut self, api_id: i32, api_hash: &str, session_path: &str) {
-        let _ = self.tx.send(Cmd::Connect { api_id, api_hash: api_hash.into(), session: session_path.into() });
+        let _ = self.tx.send(Cmd::Connect {
+            api_id,
+            api_hash: api_hash.into(),
+            session: session_path.into(),
+        });
     }
     fn request_code(&mut self, phone: &str) {
         let _ = self.tx.send(Cmd::RequestCode(phone.into()));
@@ -55,13 +71,19 @@ impl TgBackend for GrammersTg {
         self.local_stage.clone()
     }
     fn chats(&self) -> Vec<ChatSummary> {
-        self.shared.lock().map(|s| s.chats.clone()).unwrap_or_default()
+        self.shared
+            .lock()
+            .map(|s| s.chats.clone())
+            .unwrap_or_default()
     }
     fn open(&mut self, chat_id: i64) {
         let _ = self.tx.send(Cmd::Open(chat_id));
     }
     fn messages(&self) -> Vec<Msg> {
-        self.shared.lock().map(|s| s.msgs.clone()).unwrap_or_default()
+        self.shared
+            .lock()
+            .map(|s| s.msgs.clone())
+            .unwrap_or_default()
     }
     fn send(&mut self, chat_id: i64, text: &str) {
         let _ = self.tx.send(Cmd::Send(chat_id, text.into()));
@@ -74,7 +96,10 @@ impl TgBackend for GrammersTg {
         }
     }
     fn dirty(&mut self) -> bool {
-        self.shared.lock().map(|mut s| std::mem::replace(&mut s.dirty, false)).unwrap_or(false)
+        self.shared
+            .lock()
+            .map(|mut s| std::mem::replace(&mut s.dirty, false))
+            .unwrap_or(false)
     }
 }
 
@@ -86,7 +111,10 @@ fn set_stage(sh: &Arc<Mutex<Shared>>, st: LoginStage) {
 }
 
 fn worker(rx: Receiver<Cmd>, sh: Arc<Mutex<Shared>>) {
-    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             set_stage(&sh, LoginStage::Error(format!("Laufzeit: {e}")));
@@ -105,11 +133,23 @@ fn worker(rx: Receiver<Cmd>, sh: Arc<Mutex<Shared>>) {
             // Befehle nicht-blockierend abholen; nebenbei Updates pumpen.
             match rx.try_recv() {
                 Ok(cmd) => match cmd {
-                    Cmd::Connect { api_id, api_hash, session } => {
+                    Cmd::Connect {
+                        api_id,
+                        api_hash,
+                        session,
+                    } => {
                         session_path = session.clone();
                         set_stage(&sh, LoginStage::Busy);
-                        let sess = Session::load_file_or_create(&session).unwrap_or_else(|_| Session::new());
-                        match Client::connect(Config { session: sess, api_id, api_hash, params: Default::default() }).await {
+                        let sess = Session::load_file_or_create(&session)
+                            .unwrap_or_else(|_| Session::new());
+                        match Client::connect(Config {
+                            session: sess,
+                            api_id,
+                            api_hash,
+                            params: Default::default(),
+                        })
+                        .await
+                        {
                             Ok(c) => {
                                 let authed = c.is_authorized().await.unwrap_or(false);
                                 client = Some(c);
@@ -131,7 +171,10 @@ fn worker(rx: Receiver<Cmd>, sh: Arc<Mutex<Shared>>) {
                                     login_token = Some(tok);
                                     set_stage(&sh, LoginStage::NeedCode);
                                 }
-                                Err(e) => set_stage(&sh, LoginStage::Error(format!("Code anfordern: {e}"))),
+                                Err(e) => set_stage(
+                                    &sh,
+                                    LoginStage::Error(format!("Code anfordern: {e}")),
+                                ),
                             }
                         }
                     }
@@ -144,14 +187,21 @@ fn worker(rx: Receiver<Cmd>, sh: Arc<Mutex<Shared>>) {
                                     set_stage(&sh, LoginStage::Ready);
                                     load_dialogs(c, &sh).await;
                                 }
-                                Err(SignInError::PasswordRequired(_pw)) => set_stage(&sh, LoginStage::NeedPassword),
-                                Err(e) => set_stage(&sh, LoginStage::Error(format!("Anmeldung: {e}"))),
+                                Err(SignInError::PasswordRequired(_pw)) => {
+                                    set_stage(&sh, LoginStage::NeedPassword)
+                                }
+                                Err(e) => {
+                                    set_stage(&sh, LoginStage::Error(format!("Anmeldung: {e}")))
+                                }
                             }
                         }
                     }
                     Cmd::SubmitPassword(_password) => {
                         // check_password-API je nach grammers-Version; hier als offen markiert.
-                        set_stage(&sh, LoginStage::Error("2FA-Passwort noch nicht implementiert".into()));
+                        set_stage(
+                            &sh,
+                            LoginStage::Error("2FA-Passwort noch nicht implementiert".into()),
+                        );
                     }
                     Cmd::Open(id) => {
                         if let Some(c) = &client {
@@ -170,7 +220,12 @@ fn worker(rx: Receiver<Cmd>, sh: Arc<Mutex<Shared>>) {
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
                     // kurz auf Updates warten
                     if let Some(c) = &client {
-                        if let Ok(Ok(_upd)) = tokio::time::timeout(std::time::Duration::from_millis(400), c.next_update()).await {
+                        if let Ok(Ok(_upd)) = tokio::time::timeout(
+                            std::time::Duration::from_millis(400),
+                            c.next_update(),
+                        )
+                        .await
+                        {
                             if let Ok(mut s) = sh.lock() {
                                 s.dirty = true;
                             }
@@ -191,8 +246,17 @@ async fn load_dialogs(c: &grammers_client::Client, sh: &Arc<Mutex<Shared>>) {
     let mut n = 0;
     while let Ok(Some(d)) = dialogs.next().await {
         let chat = d.chat();
-        let last = d.last_message.as_ref().map(|m| m.text().to_string()).unwrap_or_default();
-        out.push(ChatSummary { id: chat.id(), title: chat.name().to_string(), last, unread: 0 });
+        let last = d
+            .last_message
+            .as_ref()
+            .map(|m| m.text().to_string())
+            .unwrap_or_default();
+        out.push(ChatSummary {
+            id: chat.id(),
+            title: chat.name().to_string(),
+            last,
+            unread: 0,
+        });
         n += 1;
         if n >= 60 {
             break;
@@ -204,7 +268,10 @@ async fn load_dialogs(c: &grammers_client::Client, sh: &Arc<Mutex<Shared>>) {
     }
 }
 
-async fn resolve_chat(c: &grammers_client::Client, id: i64) -> Result<grammers_client::types::Chat, ()> {
+async fn resolve_chat(
+    c: &grammers_client::Client,
+    id: i64,
+) -> Result<grammers_client::types::Chat, ()> {
     let mut dialogs = c.iter_dialogs();
     while let Ok(Some(d)) = dialogs.next().await {
         let chat = d.chat();
@@ -223,7 +290,12 @@ async fn load_history(c: &grammers_client::Client, id: i64, sh: &Arc<Mutex<Share
     let mut out = Vec::new();
     let mut it = c.iter_messages(&chat).limit(40);
     while let Ok(Some(m)) = it.next().await {
-        out.push(Msg { out: m.outgoing(), text: m.text().to_string(), when: String::new(), sender: String::new() });
+        out.push(Msg {
+            out: m.outgoing(),
+            text: m.text().to_string(),
+            when: String::new(),
+            sender: String::new(),
+        });
     }
     out.reverse();
     if let Ok(mut s) = sh.lock() {

@@ -41,7 +41,9 @@ pub fn deutsch() -> bool {
         let de = match w.as_deref().map(str::trim) {
             Some("de") => true,
             Some("us") | Some("en") => false,
-            _ => std::fs::read_to_string(format!("{}/settings.toml", crate::sys::data_dir())).map(|s| s.contains("lang = \"de\"")).unwrap_or(false),
+            _ => std::fs::read_to_string(format!("{}/settings.toml", crate::sys::data_dir()))
+                .map(|s| s.contains("lang = \"de\""))
+                .unwrap_or(false),
         };
         DEUTSCH.store(de as u8, Relaxed);
         return de;
@@ -86,16 +88,50 @@ pub fn arabisch_umschalten() {
 /// US-Taste → arabisches Zeichen (Belegung „Arabisch 101“, wie der Ultar-Kern); zweites Zeichen für Lam-Alef
 fn arabisch_zeichen(c: char) -> (char, Option<char>) {
     match c {
-        'q' => ('ض', None), 'w' => ('ص', None), 'e' => ('ث', None), 'r' => ('ق', None), 't' => ('ف', None),
-        'y' => ('غ', None), 'u' => ('ع', None), 'i' => ('ه', None), 'o' => ('خ', None), 'p' => ('ح', None),
-        '[' => ('ج', None), ']' => ('د', None),
-        'a' => ('ش', None), 's' => ('س', None), 'd' => ('ي', None), 'f' => ('ب', None), 'g' => ('ل', None),
-        'h' => ('ا', None), 'j' => ('ت', None), 'k' => ('ن', None), 'l' => ('م', None), ';' => ('ك', None),
-        '\'' => ('ط', None), '`' => ('ذ', None),
-        'z' => ('ئ', None), 'x' => ('ء', None), 'c' => ('ؤ', None), 'v' => ('ر', None), 'b' => ('ل', Some('ا')),
-        'n' => ('ى', None), 'm' => ('ة', None), ',' => ('و', None), '.' => ('ز', None), '/' => ('ظ', None),
-        'T' => ('ل', Some('إ')), 'Y' => ('إ', None), 'G' => ('ل', Some('أ')), 'H' => ('أ', None), 'B' => ('ل', Some('آ')),
-        'N' => ('آ', None), 'K' => ('،', None), 'P' => ('؛', None), '?' => ('؟', None), 'J' => ('ـ', None),
+        'q' => ('ض', None),
+        'w' => ('ص', None),
+        'e' => ('ث', None),
+        'r' => ('ق', None),
+        't' => ('ف', None),
+        'y' => ('غ', None),
+        'u' => ('ع', None),
+        'i' => ('ه', None),
+        'o' => ('خ', None),
+        'p' => ('ح', None),
+        '[' => ('ج', None),
+        ']' => ('د', None),
+        'a' => ('ش', None),
+        's' => ('س', None),
+        'd' => ('ي', None),
+        'f' => ('ب', None),
+        'g' => ('ل', None),
+        'h' => ('ا', None),
+        'j' => ('ت', None),
+        'k' => ('ن', None),
+        'l' => ('م', None),
+        ';' => ('ك', None),
+        '\'' => ('ط', None),
+        '`' => ('ذ', None),
+        'z' => ('ئ', None),
+        'x' => ('ء', None),
+        'c' => ('ؤ', None),
+        'v' => ('ر', None),
+        'b' => ('ل', Some('ا')),
+        'n' => ('ى', None),
+        'm' => ('ة', None),
+        ',' => ('و', None),
+        '.' => ('ز', None),
+        '/' => ('ظ', None),
+        'T' => ('ل', Some('إ')),
+        'Y' => ('إ', None),
+        'G' => ('ل', Some('أ')),
+        'H' => ('أ', None),
+        'B' => ('ل', Some('آ')),
+        'N' => ('آ', None),
+        'K' => ('،', None),
+        'P' => ('؛', None),
+        '?' => ('؟', None),
+        'J' => ('ـ', None),
         _ => (c, None),
     }
 }
@@ -136,25 +172,54 @@ fn absinfo(f: &File, code: u64) -> Option<(i32, i32)> {
 
 impl Input {
     pub fn new() -> Self {
-        Self { devs: Vec::new(), last_scan: None, cursor: (0.5, 0.5), has_mouse: false, has_touch: false }
+        Self {
+            devs: Vec::new(),
+            last_scan: None,
+            cursor: (0.5, 0.5),
+            has_mouse: false,
+            has_touch: false,
+        }
     }
 
     fn scan(&mut self) {
         self.last_scan = Some(Instant::now());
-        let Ok(rd) = std::fs::read_dir("/dev/input") else { return };
+        let Ok(rd) = std::fs::read_dir("/dev/input") else {
+            return;
+        };
         for e in rd.flatten() {
             let path = e.path().to_string_lossy().into_owned();
-            if !e.file_name().to_string_lossy().starts_with("event") || self.devs.iter().any(|d| d.path == path) {
+            if !e.file_name().to_string_lossy().starts_with("event")
+                || self.devs.iter().any(|d| d.path == path)
+            {
                 continue;
             }
-            let Ok(f) = std::fs::OpenOptions::new().read(true).custom_flags(0o4000 /*O_NONBLOCK*/ | 0o2000000 /*O_CLOEXEC*/).open(&path) else { continue };
+            let Ok(f) = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(0o4000 /*O_NONBLOCK*/ | 0o2000000 /*O_CLOEXEC*/)
+                .open(&path)
+            else {
+                continue;
+            };
             // Multitouch-Achsen bevorzugen, sonst ABS_X/ABS_Y
             let ax = absinfo(&f, 0x35).or_else(|| absinfo(&f, 0));
             let ay = absinfo(&f, 0x36).or_else(|| absinfo(&f, 1));
             if ax.is_some() && ay.is_some() {
                 self.has_touch = true;
             }
-            self.devs.push(Dev { f, path, ax, ay, x: 0, y: 0, down: false, was_down: false, moved: false, shift: false, alt: false, altgr: false });
+            self.devs.push(Dev {
+                f,
+                path,
+                ax,
+                ay,
+                x: 0,
+                y: 0,
+                down: false,
+                was_down: false,
+                moved: false,
+                shift: false,
+                alt: false,
+                altgr: false,
+            });
         }
     }
 
@@ -163,7 +228,11 @@ impl Input {
         if self.last_scan.map_or(true, |t| t.elapsed().as_secs() >= 3) {
             self.scan();
         }
-        let mut fds: Vec<PollFd> = self.devs.iter().map(|d| PollFd::new(d.f.as_fd(), PollFlags::POLLIN)).collect();
+        let mut fds: Vec<PollFd> = self
+            .devs
+            .iter()
+            .map(|d| PollFd::new(d.f.as_fd(), PollFlags::POLLIN))
+            .collect();
         fds.push(PollFd::new(wake, PollFlags::POLLIN));
         let _ = poll(&mut fds, PollTimeout::from(timeout_ms));
         drop(fds);
@@ -198,7 +267,7 @@ impl Input {
                             d.y = val;
                             d.moved = true;
                         }
-                        (3, 0x39) => d.down = val >= 0,             // ABS_MT_TRACKING_ID
+                        (3, 0x39) => d.down = val >= 0, // ABS_MT_TRACKING_ID
                         (1, 0x14a) | (1, 0x110) => d.down = val != 0, // BTN_TOUCH / BTN_LEFT
                         (2, 0) => {
                             self.cursor.0 = (self.cursor.0 + val as f32 / 1000.0).clamp(0.0, 1.0);
@@ -230,7 +299,11 @@ impl Input {
                         (1, 114) if val != 0 => out.push(Ev::VolDown),
                         (1, 116) if val == 1 => out.push(Ev::Power),
                         (1, k) if val != 0 && !d.alt => {
-                            let ev = if arabisch() { key(k, d.shift) } else { key_belegung(k, d.shift, deutsch(), d.altgr) };
+                            let ev = if arabisch() {
+                                key(k, d.shift)
+                            } else {
+                                key_belegung(k, d.shift, deutsch(), d.altgr)
+                            };
                             match ev {
                                 Some(Ev::Char(c)) if arabisch() => {
                                     let (a, b) = arabisch_zeichen(c);
@@ -246,7 +319,10 @@ impl Input {
                         (0, 0) => {
                             let pos = match (d.ax, d.ay) {
                                 (Some((x0, x1)), Some((y0, y1))) => {
-                                    let p = ((d.x - x0) as f32 / (x1 - x0) as f32, (d.y - y0) as f32 / (y1 - y0) as f32);
+                                    let p = (
+                                        (d.x - x0) as f32 / (x1 - x0) as f32,
+                                        (d.y - y0) as f32 / (y1 - y0) as f32,
+                                    );
                                     self.cursor = p;
                                     p
                                 }

@@ -34,7 +34,10 @@ pub struct SensorReading {
 }
 
 fn rd(p: &str) -> String {
-    std::fs::read_to_string(p).unwrap_or_default().trim().to_string()
+    std::fs::read_to_string(p)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 /// Erste existierende Datei aus einer Kandidatenliste lesen.
@@ -86,12 +89,29 @@ fn kind_for(name: &str) -> (Kind, &'static str) {
 /// Werte je nach Sensortyp aus den üblichen Samsung-Attributen lesen.
 fn read_sensor_values(base: &str, kind: Kind) -> Vec<f32> {
     match kind {
-        Kind::Accel | Kind::Gyro | Kind::Magnetic => rd_any(base, &["raw_data", "data", "raw_value", "value"]).map(|s| nums(&s)).unwrap_or_default(),
-        Kind::Light => rd_any(base, &["lux", "raw_data", "value", "adc", "data"]).map(|s| nums(&s)).unwrap_or_default(),
-        Kind::Proximity => rd_any(base, &["state", "prox_raw", "raw_data", "adc", "value", "data"]).map(|s| nums(&s)).unwrap_or_default(),
-        Kind::Steps => rd_any(base, &["step_cnt", "step_count", "value", "raw_data"]).map(|s| nums(&s)).unwrap_or_default(),
-        Kind::Pressure => rd_any(base, &["sea_level_pressure", "raw_data", "value"]).map(|s| nums(&s)).unwrap_or_default(),
-        _ => rd_any(base, &["raw_data", "value", "state", "data"]).map(|s| nums(&s)).unwrap_or_default(),
+        Kind::Accel | Kind::Gyro | Kind::Magnetic => {
+            rd_any(base, &["raw_data", "data", "raw_value", "value"])
+                .map(|s| nums(&s))
+                .unwrap_or_default()
+        }
+        Kind::Light => rd_any(base, &["lux", "raw_data", "value", "adc", "data"])
+            .map(|s| nums(&s))
+            .unwrap_or_default(),
+        Kind::Proximity => rd_any(
+            base,
+            &["state", "prox_raw", "raw_data", "adc", "value", "data"],
+        )
+        .map(|s| nums(&s))
+        .unwrap_or_default(),
+        Kind::Steps => rd_any(base, &["step_cnt", "step_count", "value", "raw_data"])
+            .map(|s| nums(&s))
+            .unwrap_or_default(),
+        Kind::Pressure => rd_any(base, &["sea_level_pressure", "raw_data", "value"])
+            .map(|s| nums(&s))
+            .unwrap_or_default(),
+        _ => rd_any(base, &["raw_data", "value", "state", "data"])
+            .map(|s| nums(&s))
+            .unwrap_or_default(),
     }
 }
 
@@ -109,14 +129,25 @@ pub fn read_all() -> Vec<SensorReading> {
             }
             let base = e.path().to_string_lossy().into_owned();
             let label = rd(&format!("{base}/name"));
-            let shown = if label.is_empty() { dname.clone() } else { label };
+            let shown = if label.is_empty() {
+                dname.clone()
+            } else {
+                label
+            };
             let (kind, unit) = kind_for(&shown);
             let values = read_sensor_values(&base, kind);
             let enabled = match rd_any(&base, &["enable"]) {
                 Some(v) => Some(v.trim() != "0" && !v.trim().is_empty()),
                 None => None,
             };
-            out.push(SensorReading { name: shown, kind, values, unit, enabled, present: true });
+            out.push(SensorReading {
+                name: shown,
+                kind,
+                values,
+                unit,
+                enabled,
+                present: true,
+            });
         }
     }
 
@@ -129,7 +160,11 @@ pub fn read_all() -> Vec<SensorReading> {
             }
             let base = e.path().to_string_lossy().into_owned();
             let label = rd(&format!("{base}/name"));
-            let shown = if label.is_empty() { dname.clone() } else { label };
+            let shown = if label.is_empty() {
+                dname.clone()
+            } else {
+                label
+            };
             // schon über /sys/class/sensors erfasst? dann überspringen
             if out.iter().any(|s| s.name.eq_ignore_ascii_case(&shown)) {
                 continue;
@@ -137,7 +172,21 @@ pub fn read_all() -> Vec<SensorReading> {
             let (kind, unit) = kind_for(&shown);
             let mut values = Vec::new();
             // gängige IIO-Kanäle in fester Reihenfolge
-            for ch in ["in_accel_x_raw", "in_accel_y_raw", "in_accel_z_raw", "in_anglvel_x_raw", "in_anglvel_y_raw", "in_anglvel_z_raw", "in_magn_x_raw", "in_magn_y_raw", "in_magn_z_raw", "in_illuminance_input", "in_illuminance_raw", "in_proximity_raw", "in_pressure_input"] {
+            for ch in [
+                "in_accel_x_raw",
+                "in_accel_y_raw",
+                "in_accel_z_raw",
+                "in_anglvel_x_raw",
+                "in_anglvel_y_raw",
+                "in_anglvel_z_raw",
+                "in_magn_x_raw",
+                "in_magn_y_raw",
+                "in_magn_z_raw",
+                "in_illuminance_input",
+                "in_illuminance_raw",
+                "in_proximity_raw",
+                "in_pressure_input",
+            ] {
                 let v = rd(&format!("{base}/{ch}"));
                 if let Ok(n) = v.parse::<f32>() {
                     values.push(n);
@@ -146,7 +195,14 @@ pub fn read_all() -> Vec<SensorReading> {
             if values.is_empty() {
                 continue; // reiner Trigger/ohne lesbare Kanäle
             }
-            out.push(SensorReading { name: shown, kind, values, unit, enabled: None, present: true });
+            out.push(SensorReading {
+                name: shown,
+                kind,
+                values,
+                unit,
+                enabled: None,
+                present: true,
+            });
         }
     }
 
@@ -193,7 +249,10 @@ fn fmt_values(r: &SensorReading) -> String {
     }
     match r.kind {
         Kind::Accel | Kind::Gyro | Kind::Magnetic if r.values.len() >= 3 => {
-            format!("x {:.1}  y {:.1}  z {:.1}  {}", r.values[0], r.values[1], r.values[2], r.unit)
+            format!(
+                "x {:.1}  y {:.1}  z {:.1}  {}",
+                r.values[0], r.values[1], r.values[2], r.unit
+            )
         }
         Kind::Proximity => {
             let v = r.values[0];
@@ -230,7 +289,11 @@ impl App {
         for r in &list {
             let title = self.t(label_key(r.kind)).to_string();
             let val = fmt_values(r);
-            let sub = if r.name.eq_ignore_ascii_case(&title) { None } else { Some(r.name.as_str()) };
+            let sub = if r.name.eq_ignore_ascii_case(&title) {
+                None
+            } else {
+                Some(r.name.as_str())
+            };
             let en = match r.enabled {
                 Some(true) => format!("{}  ·  {}", val, self.t("on")),
                 Some(false) => format!("{}  ·  {}", val, self.t("off")),

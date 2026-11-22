@@ -16,11 +16,19 @@ fn local(name: &[u8]) -> &[u8] {
 }
 
 fn attr(e: &quick_xml::events::BytesStart, key: &[u8]) -> Option<String> {
-    e.attributes().flatten().find(|a| a.key.as_ref() == key || local(a.key.as_ref()) == key && !a.key.as_ref().starts_with(b"xmlns")).map(|a| String::from_utf8_lossy(&a.value).into_owned())
+    e.attributes()
+        .flatten()
+        .find(|a| {
+            a.key.as_ref() == key
+                || local(a.key.as_ref()) == key && !a.key.as_ref().starts_with(b"xmlns")
+        })
+        .map(|a| String::from_utf8_lossy(&a.value).into_owned())
 }
 
 fn shared_strings(bytes: &[u8]) -> Vec<String> {
-    let Ok(x) = read_zip_entry(bytes, "xl/sharedStrings.xml") else { return Vec::new() };
+    let Ok(x) = read_zip_entry(bytes, "xl/sharedStrings.xml") else {
+        return Vec::new();
+    };
     let mut r = Reader::from_reader(&x[..]);
     let mut buf = Vec::new();
     let mut out = Vec::new();
@@ -38,7 +46,9 @@ fn shared_strings(bytes: &[u8]) -> Vec<String> {
                 _ => {}
             },
             Ok(Event::Empty(e)) if local(e.name().as_ref()) == b"si" => out.push(String::new()),
-            Ok(Event::Text(t)) if in_t => cur.push_str(&t.unescape().map(|c| c.into_owned()).unwrap_or_default()),
+            Ok(Event::Text(t)) if in_t => {
+                cur.push_str(&t.unescape().map(|c| c.into_owned()).unwrap_or_default())
+            }
             Ok(Event::End(e)) => match local(e.name().as_ref()) {
                 b"t" => in_t = false,
                 b"rPh" => in_rph = false,
@@ -65,10 +75,16 @@ fn sheet_list(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     let mut buf = Vec::new();
     loop {
         match r.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local(e.name().as_ref()) == b"Relationship" => {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local(e.name().as_ref()) == b"Relationship" =>
+            {
                 if let (Some(id), Some(t)) = (attr(&e, b"Id"), attr(&e, b"Target")) {
                     let t = t.trim_start_matches('/').to_string();
-                    let t = if t.starts_with("xl/") { t } else { format!("xl/{t}") };
+                    let t = if t.starts_with("xl/") {
+                        t
+                    } else {
+                        format!("xl/{t}")
+                    };
                     targets.insert(id, t);
                 }
             }
@@ -85,8 +101,14 @@ fn sheet_list(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) if local(e.name().as_ref()) == b"sheet" => {
                 i += 1;
                 let name = attr(&e, b"name").unwrap_or_else(|| format!("Sheet{i}"));
-                let rid = e.attributes().flatten().find(|a| local(a.key.as_ref()) == b"id").map(|a| String::from_utf8_lossy(&a.value).into_owned());
-                let path = rid.and_then(|id| targets.get(&id).cloned()).unwrap_or_else(|| format!("xl/worksheets/sheet{i}.xml"));
+                let rid = e
+                    .attributes()
+                    .flatten()
+                    .find(|a| local(a.key.as_ref()) == b"id")
+                    .map(|a| String::from_utf8_lossy(&a.value).into_owned());
+                let path = rid
+                    .and_then(|id| targets.get(&id).cloned())
+                    .unwrap_or_else(|| format!("xl/worksheets/sheet{i}.xml"));
                 out.push((name, path));
             }
             Ok(Event::Eof) | Err(_) => break,
@@ -115,11 +137,16 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                 let empty = matches!(ev, Ok(Event::Empty(_)));
                 match local(e.name().as_ref()) {
                     b"row" => {
-                        row_no = attr(e, b"r").and_then(|v| v.parse::<u32>().ok()).map(|v| v - 1).unwrap_or(row_no);
+                        row_no = attr(e, b"r")
+                            .and_then(|v| v.parse::<u32>().ok())
+                            .map(|v| v - 1)
+                            .unwrap_or(row_no);
                         next_col = 0;
                     }
                     b"c" => {
-                        let pos = attr(e, b"r").and_then(|v| parse_cell(&v)).unwrap_or((row_no, next_col));
+                        let pos = attr(e, b"r")
+                            .and_then(|v| parse_cell(&v))
+                            .unwrap_or((row_no, next_col));
                         next_col = pos.1 + 1;
                         typ = attr(e, b"t").unwrap_or_default();
                         val.clear();
@@ -135,8 +162,12 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                     }
                     b"t" if !empty => in_is_t = true,
                     b"col" => {
-                        if let (Some(a), Some(b), Some(w)) = (attr(e, b"min"), attr(e, b"max"), attr(e, b"width")) {
-                            if let (Ok(a), Ok(b), Ok(w)) = (a.parse::<u32>(), b.parse::<u32>(), w.parse::<f32>()) {
+                        if let (Some(a), Some(b), Some(w)) =
+                            (attr(e, b"min"), attr(e, b"max"), attr(e, b"width"))
+                        {
+                            if let (Ok(a), Ok(b), Ok(w)) =
+                                (a.parse::<u32>(), b.parse::<u32>(), w.parse::<f32>())
+                            {
                                 for c in a..=b.min(a + 200) {
                                     sh.widths.insert(c - 1, w);
                                 }
@@ -146,7 +177,10 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                     _ => {}
                 }
                 if local(e.name().as_ref()) == b"row" {
-                    row_no = attr(e, b"r").and_then(|v| v.parse::<u32>().ok()).map(|v| v - 1).unwrap_or(row_no);
+                    row_no = attr(e, b"r")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .map(|v| v - 1)
+                        .unwrap_or(row_no);
                 }
             }
             Ok(Event::Text(t)) => {
@@ -168,8 +202,19 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                     if let Some((rr, cc)) = cur.take() {
                         let raw = match (&formula, typ.as_str()) {
                             (Some(f), _) if !f.is_empty() => format!("={f}"),
-                            (_, "s") => val.trim().parse::<usize>().ok().and_then(|i| ss.get(i).cloned()).unwrap_or_default(),
-                            (_, "b") => if val.trim() == "1" { "TRUE".into() } else { "FALSE".into() },
+                            (_, "s") => val
+                                .trim()
+                                .parse::<usize>()
+                                .ok()
+                                .and_then(|i| ss.get(i).cloned())
+                                .unwrap_or_default(),
+                            (_, "b") => {
+                                if val.trim() == "1" {
+                                    "TRUE".into()
+                                } else {
+                                    "FALSE".into()
+                                }
+                            }
                             (_, "str") | (_, "inlineStr") => val.clone(),
                             (_, "e") => val.clone(),
                             _ => match val.trim().parse::<f64>() {
@@ -178,7 +223,16 @@ fn read_sheet(x: &[u8], name: &str, ss: &[String]) -> Sheet {
                             },
                         };
                         // Text, der wie eine Zahl/Formel aussieht, bleibt Text
-                        let raw = if matches!(typ.as_str(), "s" | "str" | "inlineStr") && formula.is_none() && (raw.starts_with('=') || crate::sheet::literal(&raw) != Value::Text(raw.clone())) && !raw.is_empty() { format!("'{raw}") } else { raw };
+                        let raw = if matches!(typ.as_str(), "s" | "str" | "inlineStr")
+                            && formula.is_none()
+                            && (raw.starts_with('=')
+                                || crate::sheet::literal(&raw) != Value::Text(raw.clone()))
+                            && !raw.is_empty()
+                        {
+                            format!("'{raw}")
+                        } else {
+                            raw
+                        };
                         sh.set(rr, cc, &raw);
                     }
                 }
@@ -209,14 +263,28 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
 fn sheet_xml(wb: &Workbook, si: usize) -> String {
     let sh = &wb.sheets[si];
     let (rows, cols) = sh.extent();
-    let dim = if rows == 0 { "A1".to_string() } else { format!("A1:{}", cell_name(rows - 1, cols.saturating_sub(1))) };
-    let mut s = format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    let dim = if rows == 0 {
+        "A1".to_string()
+    } else {
+        format!("A1:{}", cell_name(rows - 1, cols.saturating_sub(1)))
+    };
+    let mut s = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="{dim}"/><sheetViews><sheetView workbookViewId="0"{}/></sheetViews><sheetFormatPr defaultRowHeight="15"/>"#,
-        if sh.cells.values().any(|v| crate::doc::is_rtl(v)) { r#" rightToLeft="1""# } else { "" });
+        if sh.cells.values().any(|v| crate::doc::is_rtl(v)) {
+            r#" rightToLeft="1""#
+        } else {
+            ""
+        }
+    );
     if !sh.widths.is_empty() {
         s.push_str("<cols>");
         for (c, w) in &sh.widths {
-            s.push_str(&format!(r#"<col min="{0}" max="{0}" width="{1}" customWidth="1"/>"#, c + 1, w));
+            s.push_str(&format!(
+                r#"<col min="{0}" max="{0}" width="{1}" customWidth="1"/>"#,
+                c + 1,
+                w
+            ));
         }
         s.push_str("</cols>");
     }
@@ -240,14 +308,26 @@ fn sheet_xml(wb: &Workbook, si: usize) -> String {
                 Value::Text(x) => (r#" t="str""#, x.clone()),
                 Value::Empty => (r#" t="str""#, String::new()),
             };
-            s.push_str(&format!(r#"<c r="{rf}"{t}><f>{}</f><v>{}</v></c>"#, esc(f), esc(&vv)));
+            s.push_str(&format!(
+                r#"<c r="{rf}"{t}><f>{}</f><v>{}</v></c>"#,
+                esc(f),
+                esc(&vv)
+            ));
         } else if let Some(text) = raw.strip_prefix('\'') {
-            s.push_str(&format!(r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#, esc(text)));
+            s.push_str(&format!(
+                r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+                esc(text)
+            ));
         } else {
             match crate::sheet::literal(raw) {
                 Value::Num(n) => s.push_str(&format!(r#"<c r="{rf}"><v>{}</v></c>"#, fmt_num(n))),
-                Value::Bool(b) => s.push_str(&format!(r#"<c r="{rf}" t="b"><v>{}</v></c>"#, b as u8)),
-                _ => s.push_str(&format!(r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#, esc(raw))),
+                Value::Bool(b) => {
+                    s.push_str(&format!(r#"<c r="{rf}" t="b"><v>{}</v></c>"#, b as u8))
+                }
+                _ => s.push_str(&format!(
+                    r#"<c r="{rf}" t="inlineStr"><is><t xml:space="preserve">{}</t></is></c>"#,
+                    esc(raw)
+                )),
             }
         }
     }
@@ -264,18 +344,29 @@ const STYLES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 /// .xlsx schreiben
 pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
     let n = wb.sheets.len().max(1);
-    let mut ct = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#);
-    let mut wbx = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>"#);
-    let mut rels = String::from(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#);
+    let mut ct = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#,
+    );
+    let mut wbx = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>"#,
+    );
+    let mut rels = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
+    );
     let mut sheets_xml = Vec::new();
     let empty = Workbook::new();
     let w = if wb.sheets.is_empty() { &empty } else { wb };
     for i in 0..n {
         ct.push_str(&format!(r#"<Override PartName="/xl/worksheets/sheet{}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>"#, i + 1));
-        wbx.push_str(&format!(r#"<sheet name="{}" sheetId="{}" r:id="rId{}"/>"#, esc(&w.sheets[i].name), i + 1, i + 1));
+        wbx.push_str(&format!(
+            r#"<sheet name="{}" sheetId="{}" r:id="rId{}"/>"#,
+            esc(&w.sheets[i].name),
+            i + 1,
+            i + 1
+        ));
         rels.push_str(&format!(r#"<Relationship Id="rId{0}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{0}.xml"/>"#, i + 1));
         sheets_xml.push(sheet_xml(w, i));
     }
@@ -286,7 +377,9 @@ pub fn write(wb: &Workbook) -> Result<Vec<u8>, String> {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#;
     let core = crate::docx::core_xml(&w.sheets[0].name);
     let app = crate::docx::app_xml("Sheets");
-    let names: Vec<String> = (1..=n).map(|i| format!("xl/worksheets/sheet{i}.xml")).collect();
+    let names: Vec<String> = (1..=n)
+        .map(|i| format!("xl/worksheets/sheet{i}.xml"))
+        .collect();
     let mut files: Vec<(&str, &[u8])> = vec![
         ("[Content_Types].xml", ct.as_bytes()),
         ("_rels/.rels", root_rels.as_bytes()),
@@ -332,7 +425,8 @@ mod tests {
         assert_eq!(back.value(1, 0, 0), Value::Num(1000.25));
         assert_eq!(back.value(0, 0, 2), Value::Bool(true));
         // berechnetes Ergebnis steht in der Datei (für Vorschauen ohne Neuberechnung)
-        let x = String::from_utf8(read_zip_entry(&bytes, "xl/worksheets/sheet1.xml").unwrap()).unwrap();
+        let x =
+            String::from_utf8(read_zip_entry(&bytes, "xl/worksheets/sheet1.xml").unwrap()).unwrap();
         assert!(x.contains("<f>SUM(B2:B3)</f><v>2000.5</v>"));
         assert!(x.contains(r#"rightToLeft="1""#));
     }

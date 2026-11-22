@@ -12,7 +12,11 @@ pub struct Img {
 }
 
 fn img(raw: &'static [u8]) -> Img {
-    Img { w: u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]), h: u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]), rgba: &raw[8..] }
+    Img {
+        w: u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]),
+        h: u32::from_le_bytes([raw[4], raw[5], raw[6], raw[7]]),
+        rgba: &raw[8..],
+    }
 }
 
 /// Logo mit Schriftzug (für dunklen Hintergrund)
@@ -40,11 +44,29 @@ pub fn splash(cv: &mut Canvas, tx: &mut Text, lang: &str) {
     let sz = short * 0.05;
     let name = "Ultar OS";
     let (tw, _) = tx.measure(name, sz, true, 0.0);
-    tx.draw(cv, name, (w - tw) / 2.0, h * 0.42 + lh / 2.0 + sz * 1.2, sz, rgb(0xE9D68A), true, 0.0);
+    tx.draw(
+        cv,
+        name,
+        (w - tw) / 2.0,
+        h * 0.42 + lh / 2.0 + sz * 1.2,
+        sz,
+        rgb(0xE9D68A),
+        true,
+        0.0,
+    );
     let msg = tr(lang, "Starting…");
     let sz2 = short * 0.036;
     let (tw, _) = tx.measure(msg, sz2, false, 0.0);
-    tx.draw(cv, msg, (w - tw) / 2.0, h * 0.86, sz2, rgb(0x9AA1AD), false, 0.0);
+    tx.draw(
+        cv,
+        msg,
+        (w - tw) / 2.0,
+        h * 0.86,
+        sz2,
+        rgb(0x9AA1AD),
+        false,
+        0.0,
+    );
 }
 
 /// 24-Bit-BMP schreiben (Format, das U-Boot und die meisten Bootloader als Startbild laden).

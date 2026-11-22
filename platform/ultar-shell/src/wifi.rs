@@ -27,7 +27,11 @@ impl Ctrl {
             return None;
         }
         let _ = std::fs::create_dir_all("/run/ultar");
-        let local = format!("/run/ultar/wpa-{}-{}", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed));
+        let local = format!(
+            "/run/ultar/wpa-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        );
         let _ = std::fs::remove_file(&local);
         let s = UnixDatagram::bind(&local).ok()?;
         let c = Ctrl { s, local };
@@ -61,10 +65,16 @@ impl Ctrl {
         let mut buf = vec![0u8; 4096];
         loop {
             let left = end.checked_duration_since(Instant::now())?;
-            self.s.set_read_timeout(Some(left.max(Duration::from_millis(20)))).ok()?;
+            self.s
+                .set_read_timeout(Some(left.max(Duration::from_millis(20))))
+                .ok()?;
             let n = self.s.recv(&mut buf).ok()?;
             let r = String::from_utf8_lossy(&buf[..n]);
-            if let Some(ev) = r.strip_prefix('<').and_then(|x| x.split_once('>')).map(|(_, e)| e) {
+            if let Some(ev) = r
+                .strip_prefix('<')
+                .and_then(|x| x.split_once('>'))
+                .map(|(_, e)| e)
+            {
                 if pred(ev) {
                     return Some(ev.to_string());
                 }
@@ -100,11 +110,26 @@ pub fn unescape(s: &str) -> String {
                     out.push(b'\\');
                     i += 1;
                 }
-                b'n' => { out.push(b'\n'); i += 2; }
-                b'r' => { out.push(b'\r'); i += 2; }
-                b't' => { out.push(b'\t'); i += 2; }
-                b'e' => { out.push(0x1b); i += 2; }
-                c => { out.push(c); i += 2; }
+                b'n' => {
+                    out.push(b'\n');
+                    i += 2;
+                }
+                b'r' => {
+                    out.push(b'\r');
+                    i += 2;
+                }
+                b't' => {
+                    out.push(b'\t');
+                    i += 2;
+                }
+                b'e' => {
+                    out.push(0x1b);
+                    i += 2;
+                }
+                c => {
+                    out.push(c);
+                    i += 2;
+                }
             }
         } else {
             out.push(b[i]);
@@ -134,7 +159,9 @@ pub fn parse_results(s: &str) -> Vec<Net> {
                 return None;
             }
             let sig = f[2].trim().parse().unwrap_or(-100);
-            let sec = ["WPA", "RSN", "WEP", "SAE", "OWE"].iter().any(|k| f[3].contains(k));
+            let sec = ["WPA", "RSN", "WEP", "SAE", "OWE"]
+                .iter()
+                .any(|k| f[3].contains(k));
             Some((unescape(f[4]), sig, sec))
         })
         .collect();
@@ -149,7 +176,13 @@ pub fn scan(iface: &str) -> Option<Vec<Net>> {
     // FAIL-BUSY = es läuft schon eine Suche; dann einfach auf deren Ergebnis warten
     if r.trim() == "OK" || r.contains("BUSY") {
         if let Some(e) = &ev {
-            e.wait_event(|x| x.starts_with("CTRL-EVENT-SCAN-RESULTS") || x.starts_with("CTRL-EVENT-SCAN-FAILED"), Duration::from_secs(12));
+            e.wait_event(
+                |x| {
+                    x.starts_with("CTRL-EVENT-SCAN-RESULTS")
+                        || x.starts_with("CTRL-EVENT-SCAN-FAILED")
+                },
+                Duration::from_secs(12),
+            );
             let _ = e.cmd("DETACH");
         } else {
             std::thread::sleep(Duration::from_secs(5));
@@ -161,7 +194,12 @@ pub fn scan(iface: &str) -> Option<Vec<Net>> {
 /// STATUS als Schlüssel/Wert-Liste.
 pub fn status(iface: &str) -> Option<Vec<(String, String)>> {
     let r = Ctrl::open(iface)?.cmd("STATUS")?;
-    Some(r.lines().filter_map(|l| l.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect())
+    Some(
+        r.lines()
+            .filter_map(|l| l.split_once('='))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    )
 }
 
 pub fn get<'a>(st: &'a [(String, String)], k: &str) -> Option<&'a str> {
@@ -171,13 +209,19 @@ pub fn get<'a>(st: &'a [(String, String)], k: &str) -> Option<&'a str> {
 /// Signal der bestehenden Verbindung: (RSSI dBm, Frequenz MHz).
 pub fn signal(iface: &str) -> Option<(i32, i32)> {
     let r = Ctrl::open(iface)?.cmd("SIGNAL_POLL")?;
-    let g = |k: &str| r.lines().find_map(|l| l.strip_prefix(k)).and_then(|v| v.trim().parse::<i32>().ok());
+    let g = |k: &str| {
+        r.lines()
+            .find_map(|l| l.strip_prefix(k))
+            .and_then(|v| v.trim().parse::<i32>().ok())
+    };
     Some((g("RSSI=")?, g("FREQUENCY=").unwrap_or(0)))
 }
 
 /// Gespeicherte Netze: (id, Name).
 pub fn saved(iface: &str) -> Vec<(u32, String)> {
-    let Some(r) = Ctrl::open(iface).and_then(|c| c.cmd("LIST_NETWORKS")) else { return Vec::new() };
+    let Some(r) = Ctrl::open(iface).and_then(|c| c.cmd("LIST_NETWORKS")) else {
+        return Vec::new();
+    };
     r.lines()
         .skip(1)
         .filter_map(|l| {
@@ -207,7 +251,10 @@ pub fn connect(iface: &str, ssid: &str, pw: &str) -> Result<(), String> {
             c.ok(&format!("REMOVE_NETWORK {id}"));
         }
     }
-    let id: u32 = c.cmd("ADD_NETWORK").and_then(|r| r.trim().parse().ok()).ok_or("ADD_NETWORK")?;
+    let id: u32 = c
+        .cmd("ADD_NETWORK")
+        .and_then(|r| r.trim().parse().ok())
+        .ok_or("ADD_NETWORK")?;
     let hex: String = ssid.bytes().map(|b| format!("{b:02x}")).collect();
     let mut set = vec![format!("ssid {hex}"), "scan_ssid 1".to_string()];
     if pw.is_empty() {
@@ -232,7 +279,9 @@ pub fn connect(iface: &str, ssid: &str, pw: &str) -> Result<(), String> {
 
 /// Gespeichertes Netz wieder wählen (ohne Kennwort-Eingabe).
 pub fn select(iface: &str, ssid: &str) -> bool {
-    let Some(c) = Ctrl::open(iface) else { return false };
+    let Some(c) = Ctrl::open(iface) else {
+        return false;
+    };
     match saved(iface).into_iter().find(|(_, n)| n == ssid) {
         Some((id, _)) => c.ok(&format!("SELECT_NETWORK {id}")),
         None => false,
@@ -241,7 +290,9 @@ pub fn select(iface: &str, ssid: &str) -> bool {
 
 /// Netz vergessen (alle Einträge mit diesem Namen) und speichern.
 pub fn forget(iface: &str, ssid: &str) -> bool {
-    let Some(c) = Ctrl::open(iface) else { return false };
+    let Some(c) = Ctrl::open(iface) else {
+        return false;
+    };
     let mut any = false;
     for (id, n) in saved(iface) {
         if n == ssid {
@@ -255,14 +306,30 @@ pub fn forget(iface: &str, ssid: &str) -> bool {
 /// Auf das Ergebnis eines Verbindungsversuchs warten.
 /// Err("wrong-key") bei falschem Kennwort, Err("timeout") ohne Verbindung.
 pub fn wait_connected(iface: &str, ssid: &str, timeout: Duration) -> Result<(), String> {
-    let ev = Ctrl::open(iface).filter(|e| e.ok("ATTACH")).ok_or("wpa_supplicant")?;
-    let done = |st: Option<Vec<(String, String)>>| st.map(|s| get(&s, "wpa_state") == Some("COMPLETED") && get(&s, "ssid").map(unescape).as_deref() == Some(ssid)).unwrap_or(false);
+    let ev = Ctrl::open(iface)
+        .filter(|e| e.ok("ATTACH"))
+        .ok_or("wpa_supplicant")?;
+    let done = |st: Option<Vec<(String, String)>>| {
+        st.map(|s| {
+            get(&s, "wpa_state") == Some("COMPLETED")
+                && get(&s, "ssid").map(unescape).as_deref() == Some(ssid)
+        })
+        .unwrap_or(false)
+    };
     if done(status(iface)) {
         return Ok(());
     }
     let end = Instant::now() + timeout;
     while let Some(left) = end.checked_duration_since(Instant::now()) {
-        let e = ev.wait_event(|x| x.starts_with("CTRL-EVENT-CONNECTED") || x.starts_with("CTRL-EVENT-SSID-TEMP-DISABLED") || x.starts_with("CTRL-EVENT-ASSOC-REJECT") || x.contains("WRONG_KEY"), left);
+        let e = ev.wait_event(
+            |x| {
+                x.starts_with("CTRL-EVENT-CONNECTED")
+                    || x.starts_with("CTRL-EVENT-SSID-TEMP-DISABLED")
+                    || x.starts_with("CTRL-EVENT-ASSOC-REJECT")
+                    || x.contains("WRONG_KEY")
+            },
+            left,
+        );
         let Some(e) = e else { break };
         if e.contains("WRONG_KEY") {
             let _ = ev.cmd("DETACH");
@@ -274,7 +341,11 @@ pub fn wait_connected(iface: &str, ssid: &str, timeout: Duration) -> Result<(), 
         }
     }
     let _ = ev.cmd("DETACH");
-    if done(status(iface)) { Ok(()) } else { Err("timeout".into()) }
+    if done(status(iface)) {
+        Ok(())
+    } else {
+        Err("timeout".into())
+    }
 }
 
 #[cfg(test)]
@@ -289,7 +360,10 @@ mod tests {
                  aa:bb:cc:00:00:03\t2437\t-60\t[ESS]\tCaf\\xc3\\xa9 Gast\n\
                  aa:bb:cc:00:00:04\t2437\t-55\t[WPA2-PSK-CCMP][ESS]\t\n";
         let n = parse_results(s);
-        assert_eq!(n, vec![("Home".into(), -48, true), ("Café Gast".into(), -60, false)]);
+        assert_eq!(
+            n,
+            vec![("Home".into(), -48, true), ("Café Gast".into(), -60, false)]
+        );
     }
 
     #[test]

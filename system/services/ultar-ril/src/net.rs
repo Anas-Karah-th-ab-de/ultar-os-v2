@@ -84,7 +84,10 @@ pub fn regist<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Resul
 }
 
 /// Aktuellen Operator/PLMN lesen (IPC_NET_SERVING_NETWORK). Rumpf enthält 6 ASCII-PLMN-Ziffern. // VERIFY
-pub fn serving_plmn<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Result<Option<String>> {
+pub fn serving_plmn<L: ModemLink>(
+    ril: &mut Ril<L>,
+    timeout_ms: u32,
+) -> std::io::Result<Option<String>> {
     match ril.get(IPC_NET_SERVING_NETWORK, timeout_ms)? {
         Some(m) => Ok(extract_plmn(&m.data)),
         None => Ok(None),
@@ -92,7 +95,10 @@ pub fn serving_plmn<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io:
 }
 
 /// Signalstärke lesen (IPC_DISP_RSSI_INFO). // VERIFY: Rohwert->dBm/Balken.
-pub fn signal<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Result<(Option<i32>, Option<u8>)> {
+pub fn signal<L: ModemLink>(
+    ril: &mut Ril<L>,
+    timeout_ms: u32,
+) -> std::io::Result<(Option<i32>, Option<u8>)> {
     match ril.get(IPC_DISP_RSSI_INFO, timeout_ms)? {
         Some(m) if !m.data.is_empty() => {
             let raw = m.data[0];
@@ -117,11 +123,20 @@ pub fn network_state<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io
     let (reg, rat) = regist(ril, timeout_ms)?;
     let plmn = serving_plmn(ril, timeout_ms).unwrap_or(None);
     let (signal_dbm, bars) = signal(ril, timeout_ms).unwrap_or((None, None));
-    Ok(NetState { reg, rat, plmn, signal_dbm, bars })
+    Ok(NetState {
+        reg,
+        rat,
+        plmn,
+        signal_dbm,
+        bars,
+    })
 }
 
 /// Verfügbare Netze suchen (IPC_NET_PLMN_LIST). Kann mehrere Frames umfassen (Transport reassembliert). // VERIFY
-pub fn scan_networks<L: ModemLink>(ril: &mut Ril<L>, timeout_ms: u32) -> std::io::Result<Vec<Plmn>> {
+pub fn scan_networks<L: ModemLink>(
+    ril: &mut Ril<L>,
+    timeout_ms: u32,
+) -> std::io::Result<Vec<Plmn>> {
     match ril.exec(IPC_NET_PLMN_LIST, &[], timeout_ms)? {
         Some(m) => Ok(parse_plmn_list(&m.data)),
         None => Ok(Vec::new()),
@@ -152,7 +167,9 @@ pub fn select_network<L: ModemLink>(
             body.extend_from_slice(&p);
         }
     }
-    Ok(ril.request(IPC_NET_PLMN_SEL, IPC_TYPE_SET, &body, timeout_ms)?.is_some())
+    Ok(ril
+        .request(IPC_NET_PLMN_SEL, IPC_TYPE_SET, &body, timeout_ms)?
+        .is_some())
 }
 
 fn rat_to_act(r: Rat) -> u8 {
@@ -192,9 +209,17 @@ fn parse_plmn_list(data: &[u8]) -> Vec<Plmn> {
     let mut i = 0;
     while i + 8 <= data.len() {
         // Kandidat: data[i]=status, data[i+1..i+7]=plmn, data[i+7]=act
-        let plmn: String = data[i + 1..i + 7].iter().filter(|b| b.is_ascii_digit()).map(|b| *b as char).collect();
+        let plmn: String = data[i + 1..i + 7]
+            .iter()
+            .filter(|b| b.is_ascii_digit())
+            .map(|b| *b as char)
+            .collect();
         if plmn.len() >= 5 {
-            out.push(Plmn { mcc_mnc: plmn, rat: map_rat(data[i + 7]), status: data[i] });
+            out.push(Plmn {
+                mcc_mnc: plmn,
+                rat: map_rat(data[i + 7]),
+                status: data[i],
+            });
             i += 8;
         } else {
             i += 1;
@@ -220,9 +245,17 @@ mod tests {
 
     #[test]
     fn plmn_extract() {
-        let resp = encode(IPC_NET_SERVING_NETWORK, IPC_TYPE_CFRM, 1, &[0xAA, b'2', b'6', b'2', b'0', b'1', 0x00]);
+        let resp = encode(
+            IPC_NET_SERVING_NETWORK,
+            IPC_TYPE_CFRM,
+            1,
+            &[0xAA, b'2', b'6', b'2', b'0', b'1', 0x00],
+        );
         let mut ril = Ril::new(MockLink::with_frame(FMT_CHANNEL, resp));
-        assert_eq!(serving_plmn(&mut ril, 1000).unwrap().as_deref(), Some("26201"));
+        assert_eq!(
+            serving_plmn(&mut ril, 1000).unwrap().as_deref(),
+            Some("26201")
+        );
     }
 
     #[test]

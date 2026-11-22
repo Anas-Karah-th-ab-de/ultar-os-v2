@@ -25,7 +25,11 @@ pub struct KbCfg {
 
 impl Default for KbCfg {
     fn default() -> Self {
-        Self { number_row: true, size: 1, preview: true }
+        Self {
+            number_row: true,
+            size: 1,
+            preview: true,
+        }
     }
 }
 
@@ -107,7 +111,13 @@ impl KbState {
 
     /// Höhe der Tastatur in Pixeln für den aktuellen Bildschirm und das Feld.
     pub fn height(&self, ui: &Ui, field: &str) -> f32 {
-        let m = ime::metrics(ui.w / ui.k, ui.h / ui.k, self.cfg.number_row, self.cfg.size, ime::purpose_for(field).pad());
+        let m = ime::metrics(
+            ui.w / ui.k,
+            ui.h / ui.k,
+            self.cfg.number_row,
+            self.cfg.size,
+            ime::purpose_for(field).pad(),
+        );
         ui.dp(m.total)
     }
 }
@@ -145,7 +155,11 @@ fn pal(ui: &Ui) -> Pal {
     let dark = (th.bg.r as u32 + th.bg.g as u32 + th.bg.b as u32) < 3 * 128;
     let white = rgb(0xFFFFFF);
     let (bg, key, func) = if dark {
-        (th.bg.mix(white, 0.045), th.bg.mix(white, 0.14), th.bg.mix(white, 0.095))
+        (
+            th.bg.mix(white, 0.045),
+            th.bg.mix(white, 0.14),
+            th.bg.mix(white, 0.095),
+        )
     } else {
         (th.bg.mix(th.text, 0.08), white, th.bg.mix(th.text, 0.16))
     };
@@ -157,7 +171,11 @@ fn pal(ui: &Ui) -> Pal {
         text: th.text,
         sub: th.sub,
         tog_bg: th.accent.mix(bg, if dark { 0.74 } else { 0.8 }),
-        tog_fg: if dark { th.accent.mix(white, 0.5) } else { th.accent.mix(th.text, 0.45) },
+        tog_fg: if dark {
+            th.accent.mix(white, 0.5)
+        } else {
+            th.accent.mix(th.text, 0.45)
+        },
         gold: th.accent,
         on_gold: th.on_accent,
     }
@@ -168,7 +186,16 @@ fn rr(r: &ime::R) -> Rect {
 }
 
 /// Tastatur zeichnen und bedienen. `area` = ganze Tastaturfläche (Breite des Bildschirms).
-pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field: &'static str, field_text: &str, clip: &[String], tr: &dyn Fn(&'static str) -> &'static str) -> Option<KbOut> {
+pub fn keyboard(
+    ui: &mut Ui,
+    area: Rect,
+    st: &mut KbState,
+    sys_lang: &str,
+    field: &'static str,
+    field_text: &str,
+    clip: &[String],
+    tr: &dyn Fn(&'static str) -> &'static str,
+) -> Option<KbOut> {
     let sys = Lang::from_code(sys_lang);
     if sys != st.sys {
         st.sys = sys;
@@ -191,7 +218,13 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
     let purpose = ime::purpose_for(field);
     let p = pal(ui);
     let k = ui.k;
-    let m = ime::metrics(ui.w / k, ui.h / k, st.cfg.number_row, st.cfg.size, purpose.pad());
+    let m = ime::metrics(
+        ui.w / k,
+        ui.h / k,
+        st.cfg.number_row,
+        st.cfg.size,
+        purpose.pad(),
+    );
     let kw = m.width * k;
     let kx = area.x + (area.w - kw) / 2.0;
     ui.cv.rect(area, p.bg);
@@ -216,16 +249,39 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
     let end_res = slot * 2.0 + ui.dp(8.0);
     for (lab, k) in acts.iter() {
         let iw = ui.dp(20.0);
-        let w = if lab.is_empty() { ui.dp(32.0) } else { ui.text_w(lab, 12.5, true) + iw + ui.dp(14.0) };
-        let r = Rect::new(if rtl { tb.right() - x - w } else { tb.x + x }, tb.y + ui.dp(4.0), w, tb.h - ui.dp(8.0));
+        let w = if lab.is_empty() {
+            ui.dp(32.0)
+        } else {
+            ui.text_w(lab, 12.5, true) + iw + ui.dp(14.0)
+        };
+        let r = Rect::new(
+            if rtl { tb.right() - x - w } else { tb.x + x },
+            tb.y + ui.dp(4.0),
+            w,
+            tb.h - ui.dp(8.0),
+        );
         if ui.held(r) {
             ui.cv.rrect(r, r.h / 2.0, p.func);
         }
-        let ic = match k { 0 => Ic::Copy, 1 => Ic::Cut, _ => Ic::Doc };
-        let icx = if lab.is_empty() { r.cx() } else if rtl { r.right() - ui.dp(14.0) } else { r.x + ui.dp(14.0) };
+        let ic = match k {
+            0 => Ic::Copy,
+            1 => Ic::Cut,
+            _ => Ic::Doc,
+        };
+        let icx = if lab.is_empty() {
+            r.cx()
+        } else if rtl {
+            r.right() - ui.dp(14.0)
+        } else {
+            r.x + ui.dp(14.0)
+        };
         ui.icon(ic, icx, r.cy(), ui.dp(13.0), gold);
         if !lab.is_empty() {
-            let lr = if rtl { Rect::new(r.x, r.y, r.w - iw - ui.dp(6.0), r.h) } else { Rect::new(r.x + iw + ui.dp(6.0), r.y, r.w - iw - ui.dp(6.0), r.h) };
+            let lr = if rtl {
+                Rect::new(r.x, r.y, r.w - iw - ui.dp(6.0), r.h)
+            } else {
+                Rect::new(r.x + iw + ui.dp(6.0), r.y, r.w - iw - ui.dp(6.0), r.h)
+            };
             ui.label(lr, lab, 12.5, gold, true, Al::Start);
         }
         if ui.tap(r) {
@@ -246,9 +302,18 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
             if x + w > kw - end_res {
                 break;
             }
-            let r = Rect::new(if rtl { tb.right() - x - w } else { tb.x + x }, tb.y + ui.dp(6.0), w, tb.h - ui.dp(12.0));
+            let r = Rect::new(
+                if rtl { tb.right() - x - w } else { tb.x + x },
+                tb.y + ui.dp(6.0),
+                w,
+                tb.h - ui.dp(12.0),
+            );
             ui.cv.rrect(r, r.h / 2.0, p.sub.alpha(0.35));
-            ui.cv.rrect(r.inset(1.0), r.h / 2.0 - 1.0, if ui.held(r) { p.func } else { p.key });
+            ui.cv.rrect(
+                r.inset(1.0),
+                r.h / 2.0 - 1.0,
+                if ui.held(r) { p.func } else { p.key },
+            );
             ui.label(r, &lab, 12.5, p.text, false, Al::Center);
             if ui.tap(r) {
                 out = Some(KbOut::Paste(i));
@@ -258,19 +323,31 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
         }
     }
     // Einstellungen klein vor dem Ausblenden
-    let gx = if rtl { tb.x + slot * 1.5 + ui.dp(4.0) } else { tb.right() - slot * 1.5 - ui.dp(4.0) };
+    let gx = if rtl {
+        tb.x + slot * 1.5 + ui.dp(4.0)
+    } else {
+        tb.right() - slot * 1.5 - ui.dp(4.0)
+    };
     let gr = Rect::new(gx - slot / 2.0, tb.y, slot, tb.h);
     if st.panel == Panel::Settings || ui.held(gr) {
         ui.cv.circle(gx, tb.cy(), tb.h * 0.42, p.func);
     }
     ui.icon(Ic::Gear, gx, tb.cy(), s * 0.85, p.sub.mix(p.text, 0.35));
     if ui.tap(gr) {
-        st.panel = if st.panel == Panel::Settings { Panel::Keys } else { Panel::Settings };
+        st.panel = if st.panel == Panel::Settings {
+            Panel::Keys
+        } else {
+            Panel::Settings
+        };
         ui.dirty = true;
     }
     let _ = draw_clip;
     // Ausblenden (Pfeil nach unten) auf der anderen Seite
-    let hx = if rtl { tb.x + slot / 2.0 + ui.dp(4.0) } else { tb.right() - slot / 2.0 - ui.dp(4.0) };
+    let hx = if rtl {
+        tb.x + slot / 2.0 + ui.dp(4.0)
+    } else {
+        tb.right() - slot / 2.0 - ui.dp(4.0)
+    };
     let hr = Rect::new(hx - slot / 2.0, tb.y, slot, tb.h);
     if ui.held(hr) {
         ui.cv.circle(hx, tb.cy(), tb.h * 0.42, p.func);
@@ -292,7 +369,8 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
     let placed = ime::place(&rows, body.x, body.y, body.w, &m, k);
     let bias = ui.dp(m.key_h) * 0.08;
     let touch = ui.enabled && ui.p.capture.is_none();
-    let inside = |x: f32, y: f32| x >= body.x && x < body.right() && y >= body.y && y < body.bottom();
+    let inside =
+        |x: f32, y: f32| x >= body.x && x < body.right() && y >= body.y && y < body.bottom();
 
     // Berührung beginnt
     if touch && ui.p.pressed && inside(ui.p.x, ui.p.y) {
@@ -312,19 +390,38 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
             let held = t0.elapsed();
             if let Some(pp) = &mut st.popup {
                 // Auswahl in der Varianten-Leiste folgt dem Finger
-                let (r, per) = popup_geom(ui, &placed[pp.key].r, pp.items.len(), body, rtl_items(&pp.items));
-                let col = (((ui.p.x - r.x) / per).floor().max(0.0) as usize).min(pp.items.len().saturating_sub(1));
+                let (r, per) = popup_geom(
+                    ui,
+                    &placed[pp.key].r,
+                    pp.items.len(),
+                    body,
+                    rtl_items(&pp.items),
+                );
+                let col = (((ui.p.x - r.x) / per).floor().max(0.0) as usize)
+                    .min(pp.items.len().saturating_sub(1));
                 let n_row = popup_cols(pp.items.len());
-                let row = if pp.items.len() > n_row && ui.p.y < r.y + r.h / 2.0 { 0 } else if pp.items.len() > n_row { 1 } else { 0 };
+                let row = if pp.items.len() > n_row && ui.p.y < r.y + r.h / 2.0 {
+                    0
+                } else if pp.items.len() > n_row {
+                    1
+                } else {
+                    0
+                };
                 let idx = (row * n_row + col.min(n_row - 1)).min(pp.items.len() - 1);
-                let idx = if rtl_items(&pp.items) { mirror(idx, pp.items.len(), n_row) } else { idx };
+                let idx = if rtl_items(&pp.items) {
+                    mirror(idx, pp.items.len(), n_row)
+                } else {
+                    idx
+                };
                 if idx != pp.sel {
                     pp.sel = idx;
                 }
                 ui.dirty = true;
             } else if placed[i0].def.act == Act::Backspace {
                 if held > Duration::from_millis(450) {
-                    let due = st.repeat.map_or(true, |t| t.elapsed() > Duration::from_millis(60));
+                    let due = st
+                        .repeat
+                        .map_or(true, |t| t.elapsed() > Duration::from_millis(60));
                     if due {
                         st.repeat = Some(Instant::now());
                         out = Some(KbOut::Backspace);
@@ -344,7 +441,11 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
                     if let Some(txt) = placed[i].def.text() {
                         let items = ime::alts(st.lang, txt);
                         if !items.is_empty() {
-                            st.popup = Some(Popup { key: i, items, sel: 0 });
+                            st.popup = Some(Popup {
+                                key: i,
+                                items,
+                                sel: 0,
+                            });
                             crate::sys::vibrate(12);
                         }
                     }
@@ -369,7 +470,9 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
                 Act::Action => out = Some(KbOut::Enter),
                 Act::Backspace => {}
                 Act::Shift => {
-                    let quick = st.last_shift.is_some_and(|t| t.elapsed() < Duration::from_millis(350));
+                    let quick = st
+                        .last_shift
+                        .is_some_and(|t| t.elapsed() < Duration::from_millis(350));
                     st.shift = match st.shift {
                         Shift::Off => Shift::Once,
                         Shift::Once if quick => Shift::Lock,
@@ -402,7 +505,11 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
             st.down = Some((i, Instant::now()));
             if st.dbg_alt {
                 let items = ime::alts(st.lang, lbl);
-                st.popup = Some(Popup { key: i, items, sel: 0 });
+                st.popup = Some(Popup {
+                    key: i,
+                    items,
+                    sel: 0,
+                });
             }
         }
     }
@@ -416,7 +523,10 @@ pub fn keyboard(ui: &mut Ui, area: Rect, st: &mut KbState, sys_lang: &str, field
         draw_popup(ui, &p, &placed[pp.key].r, &pp.items, pp.sel, body);
     } else if let Some(i) = pressed {
         let d = &placed[i].def;
-        if st.cfg.preview && matches!(d.style, Style::Letter | Style::Digit | Style::Pill) && d.text().is_some() {
+        if st.cfg.preview
+            && matches!(d.style, Style::Letter | Style::Digit | Style::Pill)
+            && d.text().is_some()
+        {
             draw_preview(ui, &p, &placed[i].r, &d.label);
         }
     }
@@ -433,7 +543,10 @@ fn after_char(st: &mut KbState) {
 }
 
 fn label_size(d: &ime::KeyDef) -> f32 {
-    let arabic = d.label.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c));
+    let arabic = d
+        .label
+        .chars()
+        .any(|c| ('\u{0600}'..='\u{06FF}').contains(&c));
     match d.style {
         Style::Digit => 17.0,
         Style::Pad => 24.0,
@@ -457,13 +570,27 @@ fn draw_key(ui: &mut Ui, p: &Pal, pk: &Placed, down: bool, st: &KbState, purpose
             }
         }
         Style::Letter => ui.cv.rrect(r, rad, if down { p.press } else { p.key }),
-        Style::Pad => ui.cv.rrect(r, rad * 1.4, if down { p.press } else { p.key }),
+        Style::Pad => ui
+            .cv
+            .rrect(r, rad * 1.4, if down { p.press } else { p.key }),
         Style::Func => ui.cv.rrect(r, rad, if down { p.press } else { p.func }),
-        Style::Toggle => ui.cv.rrect(r, pill, if down { p.tog_bg.mix(p.text, 0.15) } else { p.tog_bg }),
+        Style::Toggle => ui.cv.rrect(
+            r,
+            pill,
+            if down {
+                p.tog_bg.mix(p.text, 0.15)
+            } else {
+                p.tog_bg
+            },
+        ),
         Style::Pill => ui.cv.rrect(r, pill, if down { p.press } else { p.func }),
         Style::Space => ui.cv.rrect(r, pill, if down { p.press } else { p.key }),
         Style::Action => {
-            let c = if down { p.gold.mix(p.text, 0.2) } else { p.gold };
+            let c = if down {
+                p.gold.mix(p.text, 0.2)
+            } else {
+                p.gold
+            };
             ui.cv.rrect(r, pill, c);
         }
     }
@@ -486,12 +613,23 @@ fn draw_key(ui: &mut Ui, p: &Pal, pk: &Placed, down: bool, st: &KbState, purpose
         Act::Space if d.label.is_empty() => draw_space(ui, r.cx(), r.cy(), ic, p.text),
         // „؟123“: gemischte Richtung einzeln setzen (؟ links, wie bei Gboard)
         _ if d.label == "123؟" => {
-            let c = if d.style == Style::Toggle { p.tog_fg } else { p.text };
+            let c = if d.style == Style::Toggle {
+                p.tog_fg
+            } else {
+                p.text
+            };
             let sz = label_size(d);
             let (w1, w2) = (ui.text_w("؟", sz, true), ui.text_w("123", sz, true));
             let x = r.cx() - (w1 + w2) / 2.0;
             ui.label(Rect::new(x, r.y, w1, r.h), "؟", sz, c, true, Al::Center);
-            ui.label(Rect::new(x + w1, r.y, w2, r.h), "123", sz, c, true, Al::Center);
+            ui.label(
+                Rect::new(x + w1, r.y, w2, r.h),
+                "123",
+                sz,
+                c,
+                true,
+                Al::Center,
+            );
         }
         _ => {
             let c = match d.style {
@@ -502,7 +640,12 @@ fn draw_key(ui: &mut Ui, p: &Pal, pk: &Placed, down: bool, st: &KbState, purpose
             let bold = matches!(d.style, Style::Toggle);
             ui.label(r, &d.label, label_size(d), c, bold, Al::Center);
             if let Some(h) = &d.hint {
-                let hr = Rect::new(r.right() - ui.dp(13.0), r.y + ui.dp(2.0), ui.dp(11.0), ui.dp(13.0));
+                let hr = Rect::new(
+                    r.right() - ui.dp(13.0),
+                    r.y + ui.dp(2.0),
+                    ui.dp(11.0),
+                    ui.dp(13.0),
+                );
                 ui.label(hr, h, 10.0, p.sub, false, Al::Center);
             }
         }
@@ -533,14 +676,18 @@ fn popup_cols(n: usize) -> usize {
 
 /// Arabische Varianten von rechts nach links anordnen.
 fn rtl_items(items: &[String]) -> bool {
-    items.first().is_some_and(|s| s.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c)))
+    items
+        .first()
+        .is_some_and(|s| s.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c)))
 }
 
 /// Index in einer Reihe spiegeln (für Rechts-nach-links).
 fn mirror(idx: usize, n: usize, cols: usize) -> usize {
     let (row, col) = (idx / cols, idx % cols);
     let in_row = (n - row * cols).min(cols);
-    let col = in_row.saturating_sub(1).saturating_sub(col.min(in_row.saturating_sub(1)));
+    let col = in_row
+        .saturating_sub(1)
+        .saturating_sub(col.min(in_row.saturating_sub(1)));
     (row * cols + col).min(n - 1)
 }
 
@@ -552,7 +699,11 @@ fn popup_geom(ui: &Ui, kr: &ime::R, n: usize, body: Rect, rtl: bool) -> (Rect, f
     let w = per * cols as f32 + ui.dp(8.0);
     let h = kr.h.min(ui.dp(48.0)) * rows as f32 + ui.dp(8.0);
     // die erste (vorausgewählte) Variante steht genau über dem Finger
-    let x = if rtl { kr.cx() + per / 2.0 + ui.dp(4.0) - w } else { kr.cx() - per / 2.0 - ui.dp(4.0) };
+    let x = if rtl {
+        kr.cx() + per / 2.0 + ui.dp(4.0) - w
+    } else {
+        kr.cx() - per / 2.0 - ui.dp(4.0)
+    };
     let x = x.clamp(body.x + ui.dp(2.0), body.right() - w - ui.dp(2.0));
     (Rect::new(x, kr.y - h - ui.dp(6.0), w, h), per)
 }
@@ -570,22 +721,51 @@ fn draw_popup(ui: &mut Ui, p: &Pal, kr: &ime::R, items: &[String], sel: usize, b
     for (i, it) in items.iter().enumerate() {
         let vis = if rtl { mirror(i, items.len(), cols) } else { i };
         let (row, col) = (vis / cols, vis % cols);
-        let cell = Rect::new(r.x + ui.dp(4.0) + col as f32 * per, r.y + ui.dp(4.0) + row as f32 * ih, per, ih);
+        let cell = Rect::new(
+            r.x + ui.dp(4.0) + col as f32 * per,
+            r.y + ui.dp(4.0) + row as f32 * ih,
+            per,
+            ih,
+        );
         let fg = if i == sel {
             ui.cv.rrect(cell.inset(ui.dp(2.0)), ui.dp(8.0), p.gold);
             p.on_gold
         } else {
             p.text
         };
-        ui.label(cell, it, if it.chars().count() > 2 && !rtl { 13.0 } else { 20.0 }, fg, false, Al::Center);
+        ui.label(
+            cell,
+            it,
+            if it.chars().count() > 2 && !rtl {
+                13.0
+            } else {
+                20.0
+            },
+            fg,
+            false,
+            Al::Center,
+        );
     }
     ui.rtl = old;
 }
 
-fn clip_panel(ui: &mut Ui, body: Rect, p: &Pal, purpose: Purpose, field_text: &str, clip: &[String], tr: &dyn Fn(&'static str) -> &'static str) -> Option<KbOut> {
+fn clip_panel(
+    ui: &mut Ui,
+    body: Rect,
+    p: &Pal,
+    purpose: Purpose,
+    field_text: &str,
+    clip: &[String],
+    tr: &dyn Fn(&'static str) -> &'static str,
+) -> Option<KbOut> {
     let mut out = None;
     let m = ui.dp(10.0);
-    let head = Rect::new(body.x + m, body.y + ui.dp(4.0), body.w - 2.0 * m, ui.dp(36.0));
+    let head = Rect::new(
+        body.x + m,
+        body.y + ui.dp(4.0),
+        body.w - 2.0 * m,
+        ui.dp(36.0),
+    );
     let ta = Al::Start;
     ui.label(head, tr("Clipboard"), 14.0, p.sub, true, ta);
     if !purpose.sensitive() && !field_text.is_empty() {
@@ -593,7 +773,8 @@ fn clip_panel(ui: &mut Ui, body: Rect, p: &Pal, purpose: Purpose, field_text: &s
         let w = ui.text_w(lab, 13.5, false) + ui.dp(26.0);
         let x = if ui.rtl { head.x } else { head.right() - w };
         let r = Rect::new(x, head.y, w, head.h);
-        ui.cv.rrect(r, r.h / 2.0, if ui.held(r) { p.press } else { p.func });
+        ui.cv
+            .rrect(r, r.h / 2.0, if ui.held(r) { p.press } else { p.func });
         ui.label(r, lab, 13.5, p.text, false, Al::Center);
         if ui.tap(r) {
             out = Some(KbOut::CopyField);
@@ -601,7 +782,14 @@ fn clip_panel(ui: &mut Ui, body: Rect, p: &Pal, purpose: Purpose, field_text: &s
     }
     let mut y = head.bottom() + ui.dp(6.0);
     if clip.is_empty() {
-        ui.label(Rect::new(body.x, y, body.w, ui.dp(60.0)), tr("Nothing copied yet"), 14.0, p.sub, false, Al::Center);
+        ui.label(
+            Rect::new(body.x, y, body.w, ui.dp(60.0)),
+            tr("Nothing copied yet"),
+            14.0,
+            p.sub,
+            false,
+            Al::Center,
+        );
         return out;
     }
     let rh = ui.dp(46.0);
@@ -610,7 +798,8 @@ fn clip_panel(ui: &mut Ui, body: Rect, p: &Pal, purpose: Purpose, field_text: &s
             break;
         }
         let r = Rect::new(body.x + m, y, body.w - 2.0 * m, rh);
-        ui.cv.rrect(r, ui.dp(10.0), if ui.held(r) { p.press } else { p.key });
+        ui.cv
+            .rrect(r, ui.dp(10.0), if ui.held(r) { p.press } else { p.key });
         let one: String = c.replace('\n', " ");
         let one = ui.fit(&one, 14.0, false, r.w - ui.dp(24.0));
         ui.label(r.inset(ui.dp(12.0)), &one, 14.0, p.text, false, ta);
@@ -622,7 +811,13 @@ fn clip_panel(ui: &mut Ui, body: Rect, p: &Pal, purpose: Purpose, field_text: &s
     out
 }
 
-fn settings_panel(ui: &mut Ui, body: Rect, p: &Pal, st: &mut KbState, tr: &dyn Fn(&'static str) -> &'static str) -> Option<KbOut> {
+fn settings_panel(
+    ui: &mut Ui,
+    body: Rect,
+    p: &Pal,
+    st: &mut KbState,
+    tr: &dyn Fn(&'static str) -> &'static str,
+) -> Option<KbOut> {
     let mut out = None;
     let m = ui.dp(12.0);
     let rh = ui.dp(48.0);
@@ -636,8 +831,13 @@ fn settings_panel(ui: &mut Ui, body: Rect, p: &Pal, st: &mut KbState, tr: &dyn F
         let tx = if ui.rtl { r.x } else { r.right() - tw };
         let t = Rect::new(tx, r.cy() - th / 2.0, tw, th);
         ui.cv.rrect(t, th / 2.0, if *on { p.gold } else { p.func });
-        let kx = if *on != ui.rtl { t.right() - th / 2.0 } else { t.x + th / 2.0 };
-        ui.cv.circle(kx, t.cy(), th / 2.0 - ui.dp(3.0), rgb(0xFFFFFF));
+        let kx = if *on != ui.rtl {
+            t.right() - th / 2.0
+        } else {
+            t.x + th / 2.0
+        };
+        ui.cv
+            .circle(kx, t.cy(), th / 2.0 - ui.dp(3.0), rgb(0xFFFFFF));
         if ui.tap(r) {
             *on = !*on;
             out = Some(KbOut::CfgChanged);
@@ -651,15 +851,26 @@ fn settings_panel(ui: &mut Ui, body: Rect, p: &Pal, st: &mut KbState, tr: &dyn F
     let r = Rect::new(body.x + m, y, body.w - 2.0 * m, rh);
     ui.label(r, tr("Key size"), 15.0, p.text, false, ta);
     let names = [tr("Small"), tr("Normal"), tr("Large")];
-    let pw: Vec<f32> = names.iter().map(|n| ui.text_w(n, 13.0, false) + ui.dp(22.0)).collect();
+    let pw: Vec<f32> = names
+        .iter()
+        .map(|n| ui.text_w(n, 13.0, false) + ui.dp(22.0))
+        .collect();
     let total: f32 = pw.iter().sum::<f32>() + ui.dp(6.0) * 2.0;
     let mut x = if ui.rtl { r.x } else { r.right() - total };
     let order: Vec<usize> = if ui.rtl { vec![2, 1, 0] } else { vec![0, 1, 2] };
     for i in order {
         let pr = Rect::new(x, r.cy() - ui.dp(16.0), pw[i], ui.dp(32.0));
         let on = st.cfg.size == i as u8;
-        ui.cv.rrect(pr, pr.h / 2.0, if on { p.gold } else { p.func });
-        ui.label(pr, names[i], 13.0, if on { p.on_gold } else { p.text }, on, Al::Center);
+        ui.cv
+            .rrect(pr, pr.h / 2.0, if on { p.gold } else { p.func });
+        ui.label(
+            pr,
+            names[i],
+            13.0,
+            if on { p.on_gold } else { p.text },
+            on,
+            Al::Center,
+        );
         if ui.tap(pr) {
             st.cfg.size = i as u8;
             out = Some(KbOut::CfgChanged);
@@ -676,10 +887,19 @@ fn draw_clip(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color) {
     let r = s / 2.0;
     let t = (s * 0.1).max(1.5);
     let b = Rect::new(cx - r * 0.72, cy - r * 0.78, r * 1.44, r * 1.75);
-    for (x0, y0, x1, y1) in [(b.x, b.y, b.right(), b.y), (b.x, b.y, b.x, b.bottom()), (b.right(), b.y, b.right(), b.bottom()), (b.x, b.bottom(), b.right(), b.bottom())] {
+    for (x0, y0, x1, y1) in [
+        (b.x, b.y, b.right(), b.y),
+        (b.x, b.y, b.x, b.bottom()),
+        (b.right(), b.y, b.right(), b.bottom()),
+        (b.x, b.bottom(), b.right(), b.bottom()),
+    ] {
         ui.cv.line(x0, y0, x1, y1, t, c);
     }
-    ui.cv.rrect(Rect::new(cx - r * 0.38, cy - r * 0.98, r * 0.76, r * 0.42), r * 0.12, c);
+    ui.cv.rrect(
+        Rect::new(cx - r * 0.38, cy - r * 0.98, r * 0.76, r * 0.42),
+        r * 0.12,
+        c,
+    );
     for i in 0..2 {
         let y = cy - r * 0.05 + i as f32 * r * 0.42;
         ui.cv.line(cx - r * 0.38, y, cx + r * 0.38, y, t * 0.9, c);
@@ -689,27 +909,61 @@ fn draw_clip(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color) {
 fn draw_chevron_down(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color) {
     let r = s / 2.0;
     let t = (s * 0.12).max(1.5);
-    ui.cv.line(cx - r * 0.7, cy - r * 0.3, cx, cy + r * 0.4, t, c);
-    ui.cv.line(cx, cy + r * 0.4, cx + r * 0.7, cy - r * 0.3, t, c);
+    ui.cv
+        .line(cx - r * 0.7, cy - r * 0.3, cx, cy + r * 0.4, t, c);
+    ui.cv
+        .line(cx, cy + r * 0.4, cx + r * 0.7, cy - r * 0.3, t, c);
 }
 
 fn draw_shift(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color, st: Shift) {
     let r = s / 2.0;
     let t = (s * 0.1).max(1.5);
-    let pts = [(0.0f32, -0.85f32), (0.8, 0.0), (0.38, 0.0), (0.38, 0.6), (-0.38, 0.6), (-0.38, 0.0), (-0.8, 0.0), (0.0, -0.85)];
+    let pts = [
+        (0.0f32, -0.85f32),
+        (0.8, 0.0),
+        (0.38, 0.0),
+        (0.38, 0.6),
+        (-0.38, 0.6),
+        (-0.38, 0.0),
+        (-0.8, 0.0),
+        (0.0, -0.85),
+    ];
     if st == Shift::Off {
         for w in pts.windows(2) {
-            ui.cv.line(cx + w[0].0 * r, cy + w[0].1 * r, cx + w[1].0 * r, cy + w[1].1 * r, t, c);
+            ui.cv.line(
+                cx + w[0].0 * r,
+                cy + w[0].1 * r,
+                cx + w[1].0 * r,
+                cy + w[1].1 * r,
+                t,
+                c,
+            );
         }
     } else {
-        ui.cv.sdf(Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r), c, |x, y| {
-            let (px, py) = ((x - cx) / r, (y - cy) / r);
-            let tri = if py <= 0.0 && py >= -0.85 { px.abs() - (0.8 * (py + 0.85) / 0.85) } else { 1.0 };
-            let stem = if py > -0.05 && py <= 0.6 { px.abs() - 0.38 } else { 1.0 };
-            tri.min(stem) * r
-        });
+        ui.cv
+            .sdf(Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r), c, |x, y| {
+                let (px, py) = ((x - cx) / r, (y - cy) / r);
+                let tri = if py <= 0.0 && py >= -0.85 {
+                    px.abs() - (0.8 * (py + 0.85) / 0.85)
+                } else {
+                    1.0
+                };
+                let stem = if py > -0.05 && py <= 0.6 {
+                    px.abs() - 0.38
+                } else {
+                    1.0
+                };
+                tri.min(stem) * r
+            });
         if st == Shift::Lock {
-            ui.cv.line(cx - r * 0.45, cy + r * 0.9, cx + r * 0.45, cy + r * 0.9, t * 1.2, c);
+            ui.cv.line(
+                cx - r * 0.45,
+                cy + r * 0.9,
+                cx + r * 0.45,
+                cy + r * 0.9,
+                t * 1.2,
+                c,
+            );
         }
     }
 }
@@ -717,18 +971,25 @@ fn draw_shift(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color, st: Shift) {
 fn draw_return(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color) {
     let r = s / 2.0;
     let t = (s * 0.11).max(1.5);
-    ui.cv.line(cx + r * 0.7, cy - r * 0.6, cx + r * 0.7, cy + r * 0.2, t, c);
-    ui.cv.line(cx + r * 0.7, cy + r * 0.2, cx - r * 0.7, cy + r * 0.2, t, c);
-    ui.cv.line(cx - r * 0.7, cy + r * 0.2, cx - r * 0.3, cy - r * 0.2, t, c);
-    ui.cv.line(cx - r * 0.7, cy + r * 0.2, cx - r * 0.3, cy + r * 0.6, t, c);
+    ui.cv
+        .line(cx + r * 0.7, cy - r * 0.6, cx + r * 0.7, cy + r * 0.2, t, c);
+    ui.cv
+        .line(cx + r * 0.7, cy + r * 0.2, cx - r * 0.7, cy + r * 0.2, t, c);
+    ui.cv
+        .line(cx - r * 0.7, cy + r * 0.2, cx - r * 0.3, cy - r * 0.2, t, c);
+    ui.cv
+        .line(cx - r * 0.7, cy + r * 0.2, cx - r * 0.3, cy + r * 0.6, t, c);
 }
 
 fn draw_space(ui: &mut Ui, cx: f32, cy: f32, s: f32, c: Color) {
     let r = s / 2.0;
     let t = (s * 0.1).max(1.5);
-    ui.cv.line(cx - r * 0.8, cy + r * 0.2, cx + r * 0.8, cy + r * 0.2, t, c);
-    ui.cv.line(cx - r * 0.8, cy - r * 0.2, cx - r * 0.8, cy + r * 0.2, t, c);
-    ui.cv.line(cx + r * 0.8, cy - r * 0.2, cx + r * 0.8, cy + r * 0.2, t, c);
+    ui.cv
+        .line(cx - r * 0.8, cy + r * 0.2, cx + r * 0.8, cy + r * 0.2, t, c);
+    ui.cv
+        .line(cx - r * 0.8, cy - r * 0.2, cx - r * 0.8, cy + r * 0.2, t, c);
+    ui.cv
+        .line(cx + r * 0.8, cy - r * 0.2, cx + r * 0.8, cy + r * 0.2, t, c);
 }
 
 #[cfg(test)]
@@ -739,7 +1000,12 @@ mod tests {
     #[test]
     fn labels_fit_their_keys() {
         let mut tx = crate::text::Text::new();
-        for (w, h, k) in [(1080.0f32, 2340.0f32, 3.0f32), (720.0, 1280.0, 2.0), (2340.0, 1080.0, 3.0), (1280.0, 800.0, 1.33)] {
+        for (w, h, k) in [
+            (1080.0f32, 2340.0f32, 3.0f32),
+            (720.0, 1280.0, 2.0),
+            (2340.0, 1080.0, 3.0),
+            (1280.0, 800.0, 1.33),
+        ] {
             let (wd, hd) = (w / k, h / k);
             for lang in Lang::ALL {
                 for page in [Page::Letters, Page::Symbols, Page::Symbols2] {
@@ -752,9 +1018,19 @@ mod tests {
                                 continue;
                             }
                             let bold = d.style == Style::Toggle;
-                            let (tw, th) = tx.measure(&d.label, (label_size(d) * k).round(), bold, 0.0);
-                            assert!(tw <= pk.r.w - 2.0, "{w}x{h} {lang:?} {page:?}: „{}“ {tw} > {}", d.label, pk.r.w);
-                            assert!(th <= pk.r.h * 1.45, "{w}x{h} {lang:?}: „{}“ zu hoch", d.label);
+                            let (tw, th) =
+                                tx.measure(&d.label, (label_size(d) * k).round(), bold, 0.0);
+                            assert!(
+                                tw <= pk.r.w - 2.0,
+                                "{w}x{h} {lang:?} {page:?}: „{}“ {tw} > {}",
+                                d.label,
+                                pk.r.w
+                            );
+                            assert!(
+                                th <= pk.r.h * 1.45,
+                                "{w}x{h} {lang:?}: „{}“ zu hoch",
+                                d.label
+                            );
                         }
                     }
                 }
@@ -773,15 +1049,58 @@ mod tests {
         let area = Rect::new(0.0, 780.0 - 320.0, 360.0, 320.0);
         let tr = |k: &'static str| k;
         let mut frame = |p: &mut Ptr, st: &mut KbState| {
-            let mut ui = Ui { th: theme(true, 0), k: 1.0, w: 360.0, h: 780.0, cv: &mut cv, tx: &mut tx, p, rtl: false, enabled: true, focus: None, dirty: false, clip: None, links: Vec::new(), kb: Default::default(), seen: None };
+            let mut ui = Ui {
+                th: theme(true, 0),
+                k: 1.0,
+                w: 360.0,
+                h: 780.0,
+                cv: &mut cv,
+                tx: &mut tx,
+                p,
+                rtl: false,
+                enabled: true,
+                focus: None,
+                dirty: false,
+                clip: None,
+                links: Vec::new(),
+                kb: Default::default(),
+                seen: None,
+            };
             keyboard(&mut ui, area, st, "de", "cname", "", &[], &tr)
         };
         let m = ime::metrics(360.0, 780.0, st.cfg.number_row, st.cfg.size, false);
-        let rows = ime::rows(Lang::De, Page::Letters, Purpose::Text, Shift::Off, m.number_row);
+        let rows = ime::rows(
+            Lang::De,
+            Page::Letters,
+            Purpose::Text,
+            Shift::Off,
+            m.number_row,
+        );
         let placed = ime::place(&rows, 0.0, area.y + m.toolbar, 360.0, &m, 1.0);
-        let at = |lbl: &str| placed.iter().find(|k| k.def.label == lbl || (lbl == "<bk>" && k.def.act == Act::Backspace) || (lbl == "<sh>" && k.def.act == Act::Shift)).unwrap().r;
-        let tap = |frame: &mut dyn FnMut(&mut Ptr, &mut KbState) -> Option<KbOut>, st: &mut KbState, r: ime::R, hold_ms: u64| {
-            let mut p = Ptr { x: r.cx(), y: r.cy(), px: r.cx(), py: r.cy(), down: true, pressed: true, ..Default::default() };
+        let at = |lbl: &str| {
+            placed
+                .iter()
+                .find(|k| {
+                    k.def.label == lbl
+                        || (lbl == "<bk>" && k.def.act == Act::Backspace)
+                        || (lbl == "<sh>" && k.def.act == Act::Shift)
+                })
+                .unwrap()
+                .r
+        };
+        let tap = |frame: &mut dyn FnMut(&mut Ptr, &mut KbState) -> Option<KbOut>,
+                   st: &mut KbState,
+                   r: ime::R,
+                   hold_ms: u64| {
+            let mut p = Ptr {
+                x: r.cx(),
+                y: r.cy(),
+                px: r.cx(),
+                py: r.cy(),
+                down: true,
+                pressed: true,
+                ..Default::default()
+            };
             let mut outs = vec![frame(&mut p, st)];
             p.pressed = false;
             let t = Instant::now();
@@ -794,19 +1113,36 @@ mod tests {
             outs.push(frame(&mut p, st));
             outs.into_iter().flatten().collect::<Vec<_>>()
         };
-        assert_eq!(tap(&mut frame, &mut st, at("g"), 0), vec![KbOut::Insert("g".into())]);
-        assert_eq!(tap(&mut frame, &mut st, at("u"), 500), vec![KbOut::Insert("ü".into())]);
-        assert_eq!(tap(&mut frame, &mut st, at("<bk>"), 0), vec![KbOut::Backspace]);
+        assert_eq!(
+            tap(&mut frame, &mut st, at("g"), 0),
+            vec![KbOut::Insert("g".into())]
+        );
+        assert_eq!(
+            tap(&mut frame, &mut st, at("u"), 500),
+            vec![KbOut::Insert("ü".into())]
+        );
+        assert_eq!(
+            tap(&mut frame, &mut st, at("<bk>"), 0),
+            vec![KbOut::Backspace]
+        );
         // Löschen halten wiederholt
         assert!(tap(&mut frame, &mut st, at("<bk>"), 700).len() >= 3);
         // Umschalter: ein Großbuchstabe, danach wieder klein
         assert!(tap(&mut frame, &mut st, at("<sh>"), 0).is_empty());
         assert_eq!(st.shift, Shift::Once);
-        assert_eq!(tap(&mut frame, &mut st, at("a"), 0), vec![KbOut::Insert("A".into())]);
+        assert_eq!(
+            tap(&mut frame, &mut st, at("a"), 0),
+            vec![KbOut::Insert("A".into())]
+        );
         assert_eq!(st.shift, Shift::Off);
         // Lücke zwischen zwei Tasten trifft trotzdem
         let (a, s_) = (at("a"), at("s"));
-        let gap = ime::R { x: (a.right() + s_.x) / 2.0 - 0.5, y: a.y, w: 1.0, h: a.h };
+        let gap = ime::R {
+            x: (a.right() + s_.x) / 2.0 - 0.5,
+            y: a.y,
+            w: 1.0,
+            h: a.h,
+        };
         assert_eq!(tap(&mut frame, &mut st, gap, 0).len(), 1);
     }
 

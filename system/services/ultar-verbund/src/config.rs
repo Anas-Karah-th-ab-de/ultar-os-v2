@@ -53,7 +53,9 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let name = std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_else(|_| "ultar".into());
+        let name = std::fs::read_to_string("/etc/hostname")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "ultar".into());
         Config {
             aktiv: false,
             name,
@@ -80,7 +82,10 @@ pub fn pfad(dir: &Path) -> PathBuf {
 impl Config {
     /// nur die Datei (zum Ändern und Speichern) – ohne Kern-Schalter und Umgebung
     pub fn datei(dir: &Path) -> Config {
-        std::fs::read_to_string(pfad(dir)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(pfad(dir))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
 
     /// wirksame Einstellungen: Datei + Kern-Schalter (/proc/ultar/verbund) + ULTAR_VERBUND_AKTIV.
@@ -116,7 +121,9 @@ impl Config {
     }
 
     pub fn kerne(&self) -> usize {
-        let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let n = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
         if self.max_kerne == 0 {
             n
         } else {

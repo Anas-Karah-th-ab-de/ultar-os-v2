@@ -15,10 +15,10 @@ pub const CONF: &str = "/run/ultar/wg0.conf";
 pub struct WgConfig {
     pub private_key: String,
     pub server_pubkey: String,
-    pub endpoint: String,     // host:port
-    pub address: String,      // 10.80.x.y/32
-    pub dns: String,          // 10.80.0.1
-    pub allowed_ips: String,  // 0.0.0.0/0, ::/0
+    pub endpoint: String,    // host:port
+    pub address: String,     // 10.80.x.y/32
+    pub dns: String,         // 10.80.0.1
+    pub allowed_ips: String, // 0.0.0.0/0, ::/0
 }
 
 #[derive(Default, Debug, Clone)]
@@ -32,11 +32,18 @@ pub struct VpnStatus {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new(cmd).args(args).output().map_err(|e| format!("{cmd}: {e}"))?;
+    let out = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{cmd}: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
-        Err(format!("{cmd} {:?}: {}", args, String::from_utf8_lossy(&out.stderr).trim()))
+        Err(format!(
+            "{cmd} {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
     }
 }
 
@@ -52,7 +59,11 @@ pub fn genkeys() -> Result<(String, String), String> {
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
-    c.stdin.as_mut().unwrap().write_all(priv_k.as_bytes()).map_err(|e| e.to_string())?;
+    c.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(priv_k.as_bytes())
+        .map_err(|e| e.to_string())?;
     let out = c.wait_with_output().map_err(|e| e.to_string())?;
     let pub_k = String::from_utf8_lossy(&out.stdout).trim().to_string();
     Ok((priv_k, pub_k))
@@ -82,8 +93,17 @@ fn killswitch_on(endpoint: &str) -> Result<(), String> {
     );
     use std::io::Write;
     use std::process::Stdio;
-    let mut c = Command::new("nft").arg("-f").arg("-").stdin(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
-    c.stdin.as_mut().unwrap().write_all(rules.as_bytes()).map_err(|e| e.to_string())?;
+    let mut c = Command::new("nft")
+        .arg("-f")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    c.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(rules.as_bytes())
+        .map_err(|e| e.to_string())?;
     if c.wait().map_err(|e| e.to_string())?.success() {
         Ok(())
     } else {
@@ -92,7 +112,9 @@ fn killswitch_on(endpoint: &str) -> Result<(), String> {
 }
 
 fn killswitch_off() {
-    let _ = Command::new("nft").args(["delete", "table", "inet", "ultarks"]).status();
+    let _ = Command::new("nft")
+        .args(["delete", "table", "inet", "ultarks"])
+        .status();
 }
 
 /// Tunnel hochbringen und gesamten Verkehr hindurchleiten.
@@ -101,7 +123,9 @@ pub fn connect(cfg: &WgConfig) -> Result<(), String> {
     // Schnittstelle anlegen (Kernel-WireGuard). Fehlt das Modul -> boringtun-Userspace.
     if run("ip", &["link", "add", IFACE, "type", "wireguard"]).is_err() {
         // boringtun erzeugt die wg0 selbst
-        let _ = Command::new("/usr/lib/ultar/boringtun").args(["--disable-drop-privileges", IFACE]).status();
+        let _ = Command::new("/usr/lib/ultar/boringtun")
+            .args(["--disable-drop-privileges", IFACE])
+            .status();
     }
     run(WG, &["setconf", IFACE, CONF])?;
     run("ip", &["address", "add", &cfg.address, "dev", IFACE]).ok();
@@ -110,7 +134,10 @@ pub fn connect(cfg: &WgConfig) -> Result<(), String> {
     run("ip", &["route", "add", "0.0.0.0/1", "dev", IFACE]).ok();
     run("ip", &["route", "add", "128.0.0.0/1", "dev", IFACE]).ok();
     // DNS über den Tunnel
-    let _ = std::fs::write("/run/ultar/resolv.conf", format!("nameserver {}\n", cfg.dns));
+    let _ = std::fs::write(
+        "/run/ultar/resolv.conf",
+        format!("nameserver {}\n", cfg.dns),
+    );
     let _ = std::fs::copy("/run/ultar/resolv.conf", "/etc/resolv.conf");
     killswitch_on(&cfg.endpoint)?;
     Ok(())
@@ -143,7 +170,11 @@ pub fn load_saved() -> Option<WgConfig> {
             }
         }
     }
-    if c.private_key.is_empty() || c.server_pubkey.is_empty() { None } else { Some(c) }
+    if c.private_key.is_empty() || c.server_pubkey.is_empty() {
+        None
+    } else {
+        Some(c)
+    }
 }
 
 /// Tunnel aus der gespeicherten Konfiguration hochbringen.

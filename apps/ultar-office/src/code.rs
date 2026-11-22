@@ -27,7 +27,14 @@ impl Enc {
             Enc::Win1252 => "Windows-1252",
         }
     }
-    pub const ALL: [Enc; 6] = [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Win1256, Enc::Win1252];
+    pub const ALL: [Enc; 6] = [
+        Enc::Utf8,
+        Enc::Utf8Bom,
+        Enc::Utf16Le,
+        Enc::Utf16Be,
+        Enc::Win1256,
+        Enc::Win1252,
+    ];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,19 +67,34 @@ pub fn decode(b: &[u8]) -> (String, Enc, Eol) {
     let (text, enc) = if b.starts_with(&[0xEF, 0xBB, 0xBF]) {
         (String::from_utf8_lossy(&b[3..]).into_owned(), Enc::Utf8Bom)
     } else if b.starts_with(&[0xFF, 0xFE]) {
-        (UTF_16LE.decode_without_bom_handling(&b[2..]).0.into_owned(), Enc::Utf16Le)
+        (
+            UTF_16LE.decode_without_bom_handling(&b[2..]).0.into_owned(),
+            Enc::Utf16Le,
+        )
     } else if b.starts_with(&[0xFE, 0xFF]) {
-        (UTF_16BE.decode_without_bom_handling(&b[2..]).0.into_owned(), Enc::Utf16Be)
+        (
+            UTF_16BE.decode_without_bom_handling(&b[2..]).0.into_owned(),
+            Enc::Utf16Be,
+        )
     } else if let Ok(s) = std::str::from_utf8(b) {
         (s.to_string(), Enc::Utf8)
     } else {
         // Arabische Buchstaben liegen in 1256 überwiegend in C1–DF und E1–FE
         let hi = b.iter().filter(|&&c| c >= 0x80).count().max(1);
-        let ar = b.iter().filter(|&&c| (0xC1..=0xDF).contains(&c) || (0xE1..=0xEF).contains(&c)).count();
+        let ar = b
+            .iter()
+            .filter(|&&c| (0xC1..=0xDF).contains(&c) || (0xE1..=0xEF).contains(&c))
+            .count();
         if ar * 10 >= hi * 6 {
-            (WINDOWS_1256.decode_without_bom_handling(b).0.into_owned(), Enc::Win1256)
+            (
+                WINDOWS_1256.decode_without_bom_handling(b).0.into_owned(),
+                Enc::Win1256,
+            )
         } else {
-            (WINDOWS_1252.decode_without_bom_handling(b).0.into_owned(), Enc::Win1252)
+            (
+                WINDOWS_1252.decode_without_bom_handling(b).0.into_owned(),
+                Enc::Win1252,
+            )
         }
     };
     let eol = if text.contains("\r\n") {
@@ -83,12 +105,20 @@ pub fn decode(b: &[u8]) -> (String, Enc, Eol) {
         Eol::Lf
     };
     // intern immer \n
-    let text = if eol == Eol::Lf { text } else { text.replace("\r\n", "\n").replace('\r', "\n") };
+    let text = if eol == Eol::Lf {
+        text
+    } else {
+        text.replace("\r\n", "\n").replace('\r', "\n")
+    };
     (text, enc, eol)
 }
 
 pub fn encode(text: &str, enc: Enc, eol: Eol) -> Vec<u8> {
-    let t = if eol == Eol::Lf { text.to_string() } else { text.replace('\n', eol.s()) };
+    let t = if eol == Eol::Lf {
+        text.to_string()
+    } else {
+        text.replace('\n', eol.s())
+    };
     let enc_of = |e: &'static Encoding| e.encode(&t).0.into_owned();
     match enc {
         Enc::Utf8 => t.into_bytes(),
@@ -137,7 +167,17 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new(text: &str) -> Self {
-        Buffer { text: text.into(), cur: 0, anchor: None, enc: Enc::Utf8, eol: Eol::Lf, dirty: false, undo: Vec::new(), redo: Vec::new(), typing: false }
+        Buffer {
+            text: text.into(),
+            cur: 0,
+            anchor: None,
+            enc: Enc::Utf8,
+            eol: Eol::Lf,
+            dirty: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            typing: false,
+        }
     }
 
     pub fn from_bytes(b: &[u8]) -> Self {
@@ -154,7 +194,10 @@ impl Buffer {
 
     fn snap(&mut self, typing: bool) {
         if !(typing && self.typing) {
-            self.undo.push(Snap { text: self.text.clone(), cur: self.cur });
+            self.undo.push(Snap {
+                text: self.text.clone(),
+                cur: self.cur,
+            });
             if self.undo.len() > 200 {
                 self.undo.remove(0);
             }
@@ -167,7 +210,10 @@ impl Buffer {
     pub fn undo(&mut self) -> bool {
         match self.undo.pop() {
             Some(s) => {
-                self.redo.push(Snap { text: std::mem::replace(&mut self.text, s.text), cur: self.cur });
+                self.redo.push(Snap {
+                    text: std::mem::replace(&mut self.text, s.text),
+                    cur: self.cur,
+                });
                 self.cur = s.cur.min(self.text.len());
                 self.anchor = None;
                 self.typing = false;
@@ -181,7 +227,10 @@ impl Buffer {
     pub fn redo(&mut self) -> bool {
         match self.redo.pop() {
             Some(s) => {
-                self.undo.push(Snap { text: std::mem::replace(&mut self.text, s.text), cur: self.cur });
+                self.undo.push(Snap {
+                    text: std::mem::replace(&mut self.text, s.text),
+                    cur: self.cur,
+                });
                 self.cur = s.cur.min(self.text.len());
                 self.anchor = None;
                 self.typing = false;
@@ -208,7 +257,9 @@ impl Buffer {
     }
 
     pub fn selected_text(&self) -> String {
-        self.selection().map(|(a, b)| self.text[a..b].to_string()).unwrap_or_default()
+        self.selection()
+            .map(|(a, b)| self.text[a..b].to_string())
+            .unwrap_or_default()
     }
 
     fn delete_sel(&mut self) -> bool {
@@ -235,7 +286,10 @@ impl Buffer {
     pub fn newline(&mut self, indent_unit: &str) {
         let ls = self.line_start(self.cur);
         let line = &self.text[ls..self.cur];
-        let mut ind: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        let mut ind: String = line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
         let tr = line.trim_end();
         if tr.ends_with('{') || tr.ends_with('[') || tr.ends_with('(') || tr.ends_with(':') {
             ind.push_str(indent_unit);
@@ -323,7 +377,12 @@ impl Buffer {
         self.sel(select);
         let ls = self.line_start(self.cur);
         // erst zum ersten Nicht-Leerzeichen, beim zweiten Mal an den Zeilenanfang
-        let first = ls + self.text[ls..].chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| c.len_utf8()).sum::<usize>();
+        let first = ls
+            + self.text[ls..]
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .map(|c| c.len_utf8())
+                .sum::<usize>();
         self.cur = if self.cur == first { ls } else { first };
         self.typing = false;
     }
@@ -370,7 +429,10 @@ impl Buffer {
         self.text[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0)
     }
     pub fn line_end(&self, pos: usize) -> usize {
-        self.text[pos..].find('\n').map(|p| pos + p).unwrap_or(self.text.len())
+        self.text[pos..]
+            .find('\n')
+            .map(|p| pos + p)
+            .unwrap_or(self.text.len())
     }
     /// (Zeile, Spalte in Zeichen), beide ab 0
     pub fn line_col(&self, pos: usize) -> (usize, usize) {
@@ -436,13 +498,16 @@ impl Buffer {
     }
     /// Zeilenkommentar umschalten (für die erkannte Sprache)
     pub fn toggle_comment(&mut self, lang: Lang) {
-        let Some(tok) = lang.line_comment() else { return };
+        let Some(tok) = lang.line_comment() else {
+            return;
+        };
         self.snap(false);
         let (a, b) = self.selection().unwrap_or((self.cur, self.cur));
         let (l0, _) = self.line_col(a);
         let (l1, _) = self.line_col(b);
         let mut lines: Vec<String> = self.text.split('\n').map(String::from).collect();
-        let all = (l0..=l1).all(|i| lines[i].trim_start().starts_with(tok) || lines[i].trim().is_empty());
+        let all =
+            (l0..=l1).all(|i| lines[i].trim_start().starts_with(tok) || lines[i].trim().is_empty());
         for line in lines.iter_mut().take(l1 + 1).skip(l0) {
             if line.trim().is_empty() {
                 continue;
@@ -497,7 +562,12 @@ impl Buffer {
             return false;
         }
         let from = self.cur;
-        let h = hits.iter().find(|(a, _)| *a >= from && Some(*a) != self.anchor).or_else(|| hits.first()).copied().unwrap();
+        let h = hits
+            .iter()
+            .find(|(a, _)| *a >= from && Some(*a) != self.anchor)
+            .or_else(|| hits.first())
+            .copied()
+            .unwrap();
         self.anchor = Some(h.0);
         self.cur = h.1;
         self.typing = false;
@@ -510,7 +580,13 @@ impl Buffer {
             return false;
         }
         let from = self.selection().map(|s| s.0).unwrap_or(self.cur);
-        let h = hits.iter().rev().find(|(a, _)| *a < from).or_else(|| hits.last()).copied().unwrap();
+        let h = hits
+            .iter()
+            .rev()
+            .find(|(a, _)| *a < from)
+            .or_else(|| hits.last())
+            .copied()
+            .unwrap();
         self.anchor = Some(h.0);
         self.cur = h.1;
         true
@@ -529,7 +605,9 @@ impl Buffer {
     pub fn replace_one(&mut self, q: &str, repl: &str, opt: &FindOpt) -> bool {
         if let Some((a, b)) = self.selection() {
             let sel = &self.text[a..b];
-            let ok = find_all(sel, q, opt).first().is_some_and(|&(x, y)| x == 0 && y == sel.len());
+            let ok = find_all(sel, q, opt)
+                .first()
+                .is_some_and(|&(x, y)| x == 0 && y == sel.len());
             if ok {
                 let r = if opt.regex {
                     match regex_of(q, opt) {
@@ -549,7 +627,11 @@ impl Buffer {
     }
 
     pub fn stats(&self) -> (usize, usize, usize) {
-        (self.line_count(), self.text.split_whitespace().count(), self.text.chars().count())
+        (
+            self.line_count(),
+            self.text.split_whitespace().count(),
+            self.text.chars().count(),
+        )
     }
 }
 
@@ -561,11 +643,20 @@ pub struct FindOpt {
 }
 
 fn regex_of(q: &str, opt: &FindOpt) -> Result<regex::Regex, String> {
-    let mut p = if opt.regex { q.to_string() } else { regex::escape(q) };
+    let mut p = if opt.regex {
+        q.to_string()
+    } else {
+        regex::escape(q)
+    };
     if opt.word {
         p = format!(r"\b(?:{p})\b");
     }
-    regex::RegexBuilder::new(&p).case_insensitive(!opt.case).multi_line(true).size_limit(1 << 22).build().map_err(|e| e.to_string())
+    regex::RegexBuilder::new(&p)
+        .case_insensitive(!opt.case)
+        .multi_line(true)
+        .size_limit(1 << 22)
+        .build()
+        .map_err(|e| e.to_string())
 }
 
 /// Alle Fundstellen (Byte-Bereiche)
@@ -574,18 +665,32 @@ pub fn find_all(text: &str, q: &str, opt: &FindOpt) -> Vec<(usize, usize)> {
         return Vec::new();
     }
     match regex_of(q, opt) {
-        Ok(re) => re.find_iter(text).filter(|m| m.start() != m.end()).map(|m| (m.start(), m.end())).take(100_000).collect(),
+        Ok(re) => re
+            .find_iter(text)
+            .filter(|m| m.start() != m.end())
+            .map(|m| (m.start(), m.end()))
+            .take(100_000)
+            .collect(),
         Err(_) => Vec::new(),
     }
 }
 
-pub fn replace_all(text: &str, q: &str, repl: &str, opt: &FindOpt) -> Result<(String, usize), String> {
+pub fn replace_all(
+    text: &str,
+    q: &str,
+    repl: &str,
+    opt: &FindOpt,
+) -> Result<(String, usize), String> {
     if q.is_empty() {
         return Ok((text.to_string(), 0));
     }
     let re = regex_of(q, opt)?;
     let n = re.find_iter(text).count();
-    let out = if opt.regex { re.replace_all(text, repl).into_owned() } else { re.replace_all(text, regex::NoExpand(repl)).into_owned() };
+    let out = if opt.regex {
+        re.replace_all(text, repl).into_owned()
+    } else {
+        re.replace_all(text, regex::NoExpand(repl)).into_owned()
+    };
     Ok((out, n))
 }
 
@@ -641,13 +746,39 @@ pub enum Lang {
 
 impl Lang {
     pub const ALL: [Lang; 22] = [
-        Lang::Plain, Lang::Rust, Lang::C, Lang::Cpp, Lang::Python, Lang::JavaScript, Lang::TypeScript, Lang::Json, Lang::Toml, Lang::Yaml,
-        Lang::Html, Lang::Xml, Lang::Css, Lang::Shell, Lang::Markdown, Lang::Sql, Lang::Go, Lang::Java, Lang::Kotlin, Lang::CSharp, Lang::Php, Lang::Ini,
+        Lang::Plain,
+        Lang::Rust,
+        Lang::C,
+        Lang::Cpp,
+        Lang::Python,
+        Lang::JavaScript,
+        Lang::TypeScript,
+        Lang::Json,
+        Lang::Toml,
+        Lang::Yaml,
+        Lang::Html,
+        Lang::Xml,
+        Lang::Css,
+        Lang::Shell,
+        Lang::Markdown,
+        Lang::Sql,
+        Lang::Go,
+        Lang::Java,
+        Lang::Kotlin,
+        Lang::CSharp,
+        Lang::Php,
+        Lang::Ini,
     ];
 
     pub fn from_path(p: &str) -> Lang {
         let name = p.rsplit('/').next().unwrap_or(p).to_ascii_lowercase();
-        if name == "makefile" || name == "dockerfile" || name.ends_with(".sh") || name.ends_with(".bash") || name == ".bashrc" || name == ".profile" {
+        if name == "makefile"
+            || name == "dockerfile"
+            || name.ends_with(".sh")
+            || name.ends_with(".bash")
+            || name == ".bashrc"
+            || name == ".profile"
+        {
             return Lang::Shell;
         }
         let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
@@ -706,7 +837,16 @@ impl Lang {
 
     pub fn line_comment(self) -> Option<&'static str> {
         match self {
-            Lang::Rust | Lang::C | Lang::Cpp | Lang::JavaScript | Lang::TypeScript | Lang::Go | Lang::Java | Lang::Kotlin | Lang::CSharp | Lang::Php => Some("//"),
+            Lang::Rust
+            | Lang::C
+            | Lang::Cpp
+            | Lang::JavaScript
+            | Lang::TypeScript
+            | Lang::Go
+            | Lang::Java
+            | Lang::Kotlin
+            | Lang::CSharp
+            | Lang::Php => Some("//"),
             Lang::Python | Lang::Toml | Lang::Yaml | Lang::Shell => Some("#"),
             Lang::Sql => Some("--"),
             Lang::Ini => Some(";"),
@@ -716,7 +856,18 @@ impl Lang {
 
     fn block_comment(self) -> Option<(&'static str, &'static str)> {
         match self {
-            Lang::Rust | Lang::C | Lang::Cpp | Lang::JavaScript | Lang::TypeScript | Lang::Go | Lang::Java | Lang::Kotlin | Lang::CSharp | Lang::Php | Lang::Css | Lang::Sql => Some(("/*", "*/")),
+            Lang::Rust
+            | Lang::C
+            | Lang::Cpp
+            | Lang::JavaScript
+            | Lang::TypeScript
+            | Lang::Go
+            | Lang::Java
+            | Lang::Kotlin
+            | Lang::CSharp
+            | Lang::Php
+            | Lang::Css
+            | Lang::Sql => Some(("/*", "*/")),
             Lang::Html | Lang::Xml | Lang::Markdown => Some(("<!--", "-->")),
             Lang::Python => Some(("\"\"\"", "\"\"\"")),
             _ => None,
@@ -725,15 +876,256 @@ impl Lang {
 
     fn keywords(self) -> &'static [&'static str] {
         match self {
-            Lang::Rust => &["as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while", "Some", "None", "Ok", "Err"],
-            Lang::C | Lang::Cpp => &["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "int", "long", "register", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "class", "namespace", "template", "typename", "public", "private", "protected", "virtual", "new", "delete", "this", "true", "false", "nullptr", "bool", "using", "include", "define", "ifdef", "ifndef", "endif", "uint8_t", "uint16_t", "uint32_t", "size_t"],
-            Lang::Python => &["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield", "self", "print"],
-            Lang::JavaScript | Lang::TypeScript => &["async", "await", "break", "case", "catch", "class", "const", "continue", "default", "delete", "do", "else", "export", "extends", "false", "finally", "for", "from", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "yield", "interface", "type", "enum", "implements", "readonly", "public", "private", "string", "number", "boolean", "any"],
-            Lang::Go => &["break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var", "nil", "true", "false", "string", "int", "error"],
-            Lang::Java | Lang::Kotlin | Lang::CSharp => &["abstract", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float", "for", "if", "implements", "import", "instanceof", "int", "interface", "long", "new", "package", "private", "protected", "public", "return", "short", "static", "super", "switch", "this", "throw", "throws", "try", "void", "while", "true", "false", "null", "fun", "val", "var", "when", "object", "namespace", "using", "string", "var", "override"],
-            Lang::Php => &["echo", "function", "if", "else", "elseif", "foreach", "as", "return", "class", "public", "private", "new", "array", "true", "false", "null", "while", "for", "use", "namespace"],
-            Lang::Shell => &["if", "then", "else", "elif", "fi", "for", "in", "do", "done", "while", "case", "esac", "function", "return", "local", "export", "echo", "exit", "set", "unset", "read", "sudo", "cd"],
-            Lang::Sql => &["select", "from", "where", "insert", "into", "values", "update", "set", "delete", "create", "table", "drop", "alter", "and", "or", "not", "null", "join", "left", "right", "inner", "on", "group", "by", "order", "having", "limit", "as", "primary", "key", "index", "distinct", "count", "integer", "text", "varchar"],
+            Lang::Rust => &[
+                "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else",
+                "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match",
+                "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
+                "super", "trait", "true", "type", "unsafe", "use", "where", "while", "Some",
+                "None", "Ok", "Err",
+            ],
+            Lang::C | Lang::Cpp => &[
+                "auto",
+                "break",
+                "case",
+                "char",
+                "const",
+                "continue",
+                "default",
+                "do",
+                "double",
+                "else",
+                "enum",
+                "extern",
+                "float",
+                "for",
+                "goto",
+                "if",
+                "int",
+                "long",
+                "register",
+                "return",
+                "short",
+                "signed",
+                "sizeof",
+                "static",
+                "struct",
+                "switch",
+                "typedef",
+                "union",
+                "unsigned",
+                "void",
+                "volatile",
+                "while",
+                "class",
+                "namespace",
+                "template",
+                "typename",
+                "public",
+                "private",
+                "protected",
+                "virtual",
+                "new",
+                "delete",
+                "this",
+                "true",
+                "false",
+                "nullptr",
+                "bool",
+                "using",
+                "include",
+                "define",
+                "ifdef",
+                "ifndef",
+                "endif",
+                "uint8_t",
+                "uint16_t",
+                "uint32_t",
+                "size_t",
+            ],
+            Lang::Python => &[
+                "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+                "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
+                "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
+                "raise", "return", "try", "while", "with", "yield", "self", "print",
+            ],
+            Lang::JavaScript | Lang::TypeScript => &[
+                "async",
+                "await",
+                "break",
+                "case",
+                "catch",
+                "class",
+                "const",
+                "continue",
+                "default",
+                "delete",
+                "do",
+                "else",
+                "export",
+                "extends",
+                "false",
+                "finally",
+                "for",
+                "from",
+                "function",
+                "if",
+                "import",
+                "in",
+                "instanceof",
+                "let",
+                "new",
+                "null",
+                "of",
+                "return",
+                "static",
+                "super",
+                "switch",
+                "this",
+                "throw",
+                "true",
+                "try",
+                "typeof",
+                "undefined",
+                "var",
+                "void",
+                "while",
+                "yield",
+                "interface",
+                "type",
+                "enum",
+                "implements",
+                "readonly",
+                "public",
+                "private",
+                "string",
+                "number",
+                "boolean",
+                "any",
+            ],
+            Lang::Go => &[
+                "break",
+                "case",
+                "chan",
+                "const",
+                "continue",
+                "default",
+                "defer",
+                "else",
+                "fallthrough",
+                "for",
+                "func",
+                "go",
+                "goto",
+                "if",
+                "import",
+                "interface",
+                "map",
+                "package",
+                "range",
+                "return",
+                "select",
+                "struct",
+                "switch",
+                "type",
+                "var",
+                "nil",
+                "true",
+                "false",
+                "string",
+                "int",
+                "error",
+            ],
+            Lang::Java | Lang::Kotlin | Lang::CSharp => &[
+                "abstract",
+                "boolean",
+                "break",
+                "byte",
+                "case",
+                "catch",
+                "char",
+                "class",
+                "const",
+                "continue",
+                "default",
+                "do",
+                "double",
+                "else",
+                "enum",
+                "extends",
+                "final",
+                "finally",
+                "float",
+                "for",
+                "if",
+                "implements",
+                "import",
+                "instanceof",
+                "int",
+                "interface",
+                "long",
+                "new",
+                "package",
+                "private",
+                "protected",
+                "public",
+                "return",
+                "short",
+                "static",
+                "super",
+                "switch",
+                "this",
+                "throw",
+                "throws",
+                "try",
+                "void",
+                "while",
+                "true",
+                "false",
+                "null",
+                "fun",
+                "val",
+                "var",
+                "when",
+                "object",
+                "namespace",
+                "using",
+                "string",
+                "var",
+                "override",
+            ],
+            Lang::Php => &[
+                "echo",
+                "function",
+                "if",
+                "else",
+                "elseif",
+                "foreach",
+                "as",
+                "return",
+                "class",
+                "public",
+                "private",
+                "new",
+                "array",
+                "true",
+                "false",
+                "null",
+                "while",
+                "for",
+                "use",
+                "namespace",
+            ],
+            Lang::Shell => &[
+                "if", "then", "else", "elif", "fi", "for", "in", "do", "done", "while", "case",
+                "esac", "function", "return", "local", "export", "echo", "exit", "set", "unset",
+                "read", "sudo", "cd",
+            ],
+            Lang::Sql => &[
+                "select", "from", "where", "insert", "into", "values", "update", "set", "delete",
+                "create", "table", "drop", "alter", "and", "or", "not", "null", "join", "left",
+                "right", "inner", "on", "group", "by", "order", "having", "limit", "as", "primary",
+                "key", "index", "distinct", "count", "integer", "text", "varchar",
+            ],
             Lang::Css => &["important", "media", "import", "font-face", "keyframes"],
             Lang::Json | Lang::Toml | Lang::Yaml => &["true", "false", "null"],
             _ => &[],
@@ -826,7 +1218,9 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
         }
         if let Some(c) = lc {
             // in Shell/TOML nur '#' am Wortanfang
-            if rest.starts_with(c) && !(c == "#" && i > 0 && !b[i - 1].is_ascii_whitespace() && lang == Lang::Shell) {
+            if rest.starts_with(c)
+                && !(c == "#" && i > 0 && !b[i - 1].is_ascii_whitespace() && lang == Lang::Shell)
+            {
                 out.push((i, n, Tk::Comment));
                 break;
             }
@@ -834,7 +1228,10 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
         let ch = b[i];
         if ch == b'"' || ch == b'\'' || ch == b'`' {
             // in Rust ist ' meist Lebensdauer: nur 'x' als Zeichen werten
-            if ch == b'\'' && lang == Lang::Rust && !(i + 2 < n && (b[i + 2] == b'\'' || b[i + 1] == b'\\')) {
+            if ch == b'\''
+                && lang == Lang::Rust
+                && !(i + 2 < n && (b[i + 2] == b'\'' || b[i + 1] == b'\\'))
+            {
                 out.push((i, i + 1, Tk::Punct));
                 i += 1;
                 continue;
@@ -865,9 +1262,19 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
             i = j;
             continue;
         }
-        if ch.is_ascii_alphabetic() || ch == b'_' || ch >= 0x80 || (ch == b'$' && matches!(lang, Lang::Shell | Lang::Php)) || (ch == b'-' && lang == Lang::Css) {
+        if ch.is_ascii_alphabetic()
+            || ch == b'_'
+            || ch >= 0x80
+            || (ch == b'$' && matches!(lang, Lang::Shell | Lang::Php))
+            || (ch == b'-' && lang == Lang::Css)
+        {
             let mut j = i + 1;
-            while j < n && (b[j].is_ascii_alphanumeric() || b[j] == b'_' || b[j] >= 0x80 || (b[j] == b'-' && matches!(lang, Lang::Css | Lang::Html | Lang::Xml))) {
+            while j < n
+                && (b[j].is_ascii_alphanumeric()
+                    || b[j] == b'_'
+                    || b[j] >= 0x80
+                    || (b[j] == b'-' && matches!(lang, Lang::Css | Lang::Html | Lang::Xml)))
+            {
                 j += 1;
             }
             while !line.is_char_boundary(j) {
@@ -875,15 +1282,36 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
             }
             let w = &line[i..j];
             let next = line[j..].trim_start();
-            let k = if (ci && kws.iter().any(|k| k.eq_ignore_ascii_case(w))) || (!ci && kws.contains(&w)) {
+            let k = if (ci && kws.iter().any(|k| k.eq_ignore_ascii_case(w)))
+                || (!ci && kws.contains(&w))
+            {
                 Tk::Keyword
             } else if ch == b'$' {
                 Tk::Name
-            } else if next.starts_with('(') || (matches!(lang, Lang::Html | Lang::Xml) && i > 0 && (b[i - 1] == b'<' || b[i - 1] == b'/')) {
+            } else if next.starts_with('(')
+                || (matches!(lang, Lang::Html | Lang::Xml)
+                    && i > 0
+                    && (b[i - 1] == b'<' || b[i - 1] == b'/'))
+            {
                 Tk::Name
-            } else if matches!(lang, Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css) && (next.starts_with(':') || next.starts_with('=')) {
+            } else if matches!(
+                lang,
+                Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css
+            ) && (next.starts_with(':') || next.starts_with('='))
+            {
                 Tk::Name
-            } else if w.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && matches!(lang, Lang::Rust | Lang::Java | Lang::Kotlin | Lang::CSharp | Lang::TypeScript | Lang::Go | Lang::Cpp) {
+            } else if w.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                && matches!(
+                    lang,
+                    Lang::Rust
+                        | Lang::Java
+                        | Lang::Kotlin
+                        | Lang::CSharp
+                        | Lang::TypeScript
+                        | Lang::Go
+                        | Lang::Cpp
+                )
+            {
                 Tk::Name
             } else {
                 Tk::Text
@@ -892,7 +1320,10 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
             i = j;
             continue;
         }
-        if ch == b'[' && matches!(lang, Lang::Toml | Lang::Ini) && i == line.len() - line.trim_start().len() {
+        if ch == b'['
+            && matches!(lang, Lang::Toml | Lang::Ini)
+            && i == line.len() - line.trim_start().len()
+        {
             out.push((i, n, Tk::Keyword));
             break;
         }
@@ -900,7 +1331,15 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
         while !line.is_char_boundary(j) {
             j += 1;
         }
-        out.push((i, j, if ch.is_ascii_punctuation() { Tk::Punct } else { Tk::Text }));
+        out.push((
+            i,
+            j,
+            if ch.is_ascii_punctuation() {
+                Tk::Punct
+            } else {
+                Tk::Text
+            },
+        ));
         i = j;
     }
     (out, st)
@@ -913,7 +1352,11 @@ mod tests {
     #[test]
     fn kodierungen() {
         for enc in Enc::ALL {
-            let text = if matches!(enc, Enc::Win1252) { "Grüße\nZeile 2" } else { "مرحبا Welt\nZeile 2" };
+            let text = if matches!(enc, Enc::Win1252) {
+                "Grüße\nZeile 2"
+            } else {
+                "مرحبا Welt\nZeile 2"
+            };
             for eol in [Eol::Lf, Eol::CrLf] {
                 let b = encode(text, enc, eol);
                 let (t, e, l) = decode(&b);
@@ -951,13 +1394,22 @@ mod tests {
     #[test]
     fn suchen_ersetzen() {
         let mut b = Buffer::new("Apfel apfel Apfelsaft");
-        let opt = FindOpt { case: true, ..Default::default() };
+        let opt = FindOpt {
+            case: true,
+            ..Default::default()
+        };
         assert!(b.find_next("Apfel", &opt));
         assert_eq!(b.selected_text(), "Apfel");
-        let w = FindOpt { word: true, ..Default::default() };
+        let w = FindOpt {
+            word: true,
+            ..Default::default()
+        };
         assert_eq!(b.replace_all("apfel", "Birne", &w).unwrap(), 2);
         assert_eq!(b.text, "Birne Birne Apfelsaft");
-        let re = FindOpt { regex: true, ..Default::default() };
+        let re = FindOpt {
+            regex: true,
+            ..Default::default()
+        };
         assert_eq!(b.replace_all(r"(\w+)saft", "$1-Saft", &re).unwrap(), 1);
         assert_eq!(b.text, "Birne Birne Apfel-Saft");
     }

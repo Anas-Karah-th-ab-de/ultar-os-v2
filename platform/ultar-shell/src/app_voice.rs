@@ -60,7 +60,11 @@ fn log(line: &str) {
     if std::fs::metadata(LOG).is_ok_and(|m| m.len() > 60_000) {
         let _ = std::fs::remove_file(LOG);
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(LOG) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG)
+    {
         let _ = writeln!(f, "{} {line}", crate::sys::unix_now());
     }
 }
@@ -71,7 +75,8 @@ impl App {
             return;
         }
         self.voice.loaded = true;
-        self.voice.profile = Profile::from_text(&std::fs::read_to_string(PROFILE).unwrap_or_default());
+        self.voice.profile =
+            Profile::from_text(&std::fs::read_to_string(PROFILE).unwrap_or_default());
         self.voice.enabled = std::path::Path::new(ENABLED).exists();
     }
 
@@ -92,7 +97,14 @@ impl App {
     fn voice_sound(&self, good: bool) {
         let (snd, _, _) = self.sys_alert(true, self.set.sound, 0);
         if snd {
-            crate::audio::play(if good { vec![(1319.0, 70), (1760.0, 90)] } else { vec![(330.0, 160), (262.0, 220)] }, self.set.volume * 0.7);
+            crate::audio::play(
+                if good {
+                    vec![(1319.0, 70), (1760.0, 90)]
+                } else {
+                    vec![(330.0, 160), (262.0, 220)]
+                },
+                self.set.volume * 0.7,
+            );
         }
     }
 
@@ -103,7 +115,14 @@ impl App {
             PRINT => (self.t("Your voice"), format!("{}\n„{}“", self.t("Read this sentence aloud so I learn your voice:"), self.t("My assistant listens only to my voice."))),
             _ => (self.t("Voice command"), format!("{}\n„{action}“", self.t("Say it the way you will say it later:"))),
         };
-        Learn { name: name.into(), action: action.into(), need, got: Vec::new(), title: title.to_string(), hint }
+        Learn {
+            name: name.into(),
+            action: action.into(),
+            need,
+            got: Vec::new(),
+            title: title.to_string(),
+            hint,
+        }
     }
 
     /// Einrichtung: Weckwort dreimal, dann die Stimmprobe zweimal.
@@ -146,7 +165,12 @@ impl App {
     /// Für die Karte: (Titel, Aufforderung, schon aufgenommen, nötig, Pegel)
     pub(super) fn voice_card(&self) -> Option<(String, String, usize, usize, f32)> {
         let l = self.voice.learn.as_ref()?;
-        let level = self.voice.ear.as_ref().map(|e| f32::from_bits(e.level.load(Ordering::Relaxed))).unwrap_or(0.0);
+        let level = self
+            .voice
+            .ear
+            .as_ref()
+            .map(|e| f32::from_bits(e.level.load(Ordering::Relaxed)))
+            .unwrap_or(0.0);
         Some((l.title.clone(), l.hint.clone(), l.got.len(), l.need, level))
     }
 
@@ -159,7 +183,9 @@ impl App {
         std::thread::spawn(move || {
             let mut cut = Cutter::default();
             while !st.load(Ordering::Relaxed) {
-                let Ok(block) = mic.rx.recv_timeout(Duration::from_secs(3)) else { break };
+                let Ok(block) = mic.rx.recv_timeout(Duration::from_secs(3)) else {
+                    break;
+                };
                 // eigene Töne nicht für Sprache halten
                 if crate::audio::is_busy() {
                     cut = Cutter::default();
@@ -206,7 +232,9 @@ impl App {
     }
 
     fn voice_heard(&mut self, samples: Vec<i16>) -> bool {
-        let Some(u) = voice::analyze(&samples) else { return false };
+        let Some(u) = voice::analyze(&samples) else {
+            return false;
+        };
         // ---- Einlernen ----
         if let Some(l) = &mut self.voice.learn {
             l.got.push(u);
@@ -235,7 +263,11 @@ impl App {
             return false;
         }
         let locked = self.sx.locked;
-        log(&format!("{}{}", if locked { "gesperrt " } else { "" }, self.voice.profile.scores(&u)));
+        log(&format!(
+            "{}{}",
+            if locked { "gesperrt " } else { "" },
+            self.voice.profile.scores(&u)
+        ));
         let special = |n: &str| n == voice::WAKE || n == voice::SECRET || n == PRINT;
         // ---- nach dem Weckwort: Befehl ----
         if self.voice.armed.is_some_and(|t| Instant::now() < t) {
@@ -251,7 +283,9 @@ impl App {
             };
         }
         // ---- Weckwort (nur entsperrt) oder geheimes Wort (immer) ----
-        match self.voice.profile.hear(&u, |p| p.name == voice::SECRET || (!locked && p.name == voice::WAKE)) {
+        match self.voice.profile.hear(&u, |p| {
+            p.name == voice::SECRET || (!locked && p.name == voice::WAKE)
+        }) {
             Heard::Owner(_) => {
                 self.voice_arm();
                 true
@@ -265,8 +299,17 @@ impl App {
         self.voice.armed = Some(Instant::now() + Duration::from_secs(8));
         self.voice.verify = None;
         self.voice_sound(true);
-        let any = self.voice.profile.phrases.iter().any(|p| p.name != voice::WAKE && p.name != voice::SECRET && p.name != PRINT);
-        let msg = if any { self.t("I am listening …") } else { self.t("I hear you. Teach me commands with: teach voice command flashlight on.") };
+        let any = self
+            .voice
+            .profile
+            .phrases
+            .iter()
+            .any(|p| p.name != voice::WAKE && p.name != voice::SECRET && p.name != PRINT);
+        let msg = if any {
+            self.t("I am listening …")
+        } else {
+            self.t("I hear you. Teach me commands with: teach voice command flashlight on.")
+        };
         self.buddy_show(msg.to_string());
     }
 
@@ -290,7 +333,11 @@ impl App {
         let v = &self.voice;
         let secret = v.profile.find(voice::SECRET).is_some();
         // lauschen: beim Einlernen immer; sonst wenn eingeschaltet – bei dunklem/gesperrtem Bildschirm nur mit geheimem Wort
-        let want = v.learn.is_some() || (v.enabled && v.profile.find(voice::WAKE).is_some() && !self.call_active() && (secret || !(asleep || self.sx.locked)));
+        let want = v.learn.is_some()
+            || (v.enabled
+                && v.profile.find(voice::WAKE).is_some()
+                && !self.call_active()
+                && (secret || !(asleep || self.sx.locked)));
         if want && self.voice.ear.is_none() {
             match self.ear_start() {
                 Ok(e) => self.voice.ear = Some(e),
@@ -317,7 +364,12 @@ impl App {
             }
             self.voice.was_locked = self.sx.locked;
         }
-        let heard: Vec<Vec<i16>> = self.voice.ear.as_ref().map(|e| e.rx.try_iter().collect()).unwrap_or_default();
+        let heard: Vec<Vec<i16>> = self
+            .voice
+            .ear
+            .as_ref()
+            .map(|e| e.rx.try_iter().collect())
+            .unwrap_or_default();
         for u in heard {
             show |= self.voice_heard(u);
         }

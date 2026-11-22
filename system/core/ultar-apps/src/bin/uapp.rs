@@ -23,7 +23,9 @@ fn main() {
     let r: Result<(), String> = match a.first().map(String::as_str) {
         Some("detect") => {
             let f = a.get(1).unwrap_or_else(|| usage());
-            ua::detect(Path::new(f)).map(|fm| println!("{} ({:?})", fm.label(), fm)).map_err(|e| e.to_string())
+            ua::detect(Path::new(f))
+                .map(|fm| println!("{} ({:?})", fm.label(), fm))
+                .map_err(|e| e.to_string())
         }
         Some("install") => {
             let mut o = ua::Opts::default();
@@ -60,7 +62,13 @@ fn main() {
                 println!("{}", ultar_sprache::tr("Keine Apps installiert."));
             } else {
                 for e in l {
-                    println!("{:28} {:34} {:8} {}", e.id, e.name, e.status, e.format.map(|f| f.label()).unwrap_or(""));
+                    println!(
+                        "{:28} {:34} {:8} {}",
+                        e.id,
+                        e.name,
+                        e.status,
+                        e.format.map(|f| f.label()).unwrap_or("")
+                    );
                 }
             }
             Ok(())
@@ -73,10 +81,11 @@ fn main() {
             let id = a.get(1).unwrap_or_else(|| usage());
             ua::remove(&p, id, &mut log)
         }
-        Some("android-sync") => ua::android_sync(&p, &mut log).map(|n| println!("{}", ultar_sprache::tr(&format!("{n} App(s) installiert")))),
+        Some("android-sync") => ua::android_sync(&p, &mut log)
+            .map(|n| println!("{}", ultar_sprache::tr(&format!("{n} App(s) installiert")))),
         Some("policy") => {
             let pol = ua::Policy::load(&p);
-            println!("Ausgabe: {}\nfremde Formate erlaubt: {}\nWindows-Apps abgeschottet: {}\ngesperrt: {:?}", ultar_edition::current(), pol.allow_foreign, pol.wine_isolate, pol.deny_formats);
+            println!("Ausgabe: {}\nfremde Formate erlaubt: {}\nWindows-Apps abgeschottet: {}\ngesperrt: {:?}", ultar_hal_system::current_edition(), pol.allow_foreign, pol.wine_isolate, pol.deny_formats);
             Ok(())
         }
         _ => usage(),

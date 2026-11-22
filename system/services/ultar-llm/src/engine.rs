@@ -14,14 +14,22 @@ pub struct Msg {
 
 impl Msg {
     pub fn text(role: &str, content: &str) -> Self {
-        Msg { role: role.into(), content: content.into(), images: Vec::new() }
+        Msg {
+            role: role.into(),
+            content: content.into(),
+            images: Vec::new(),
+        }
     }
     /// Inhalt mit einer Bildmarke je Bild davor (für Modelle mit Projektor)
     pub fn content_mm(&self) -> String {
         if self.images.is_empty() {
             return self.content.clone();
         }
-        let marks: String = self.images.iter().map(|_| format!("{MEDIA_MARKER}\n")).collect();
+        let marks: String = self
+            .images
+            .iter()
+            .map(|_| format!("{MEDIA_MARKER}\n"))
+            .collect();
         format!("{marks}{}", self.content)
     }
 }
@@ -42,7 +50,17 @@ pub struct GenParams {
 
 impl Default for GenParams {
     fn default() -> Self {
-        Self { max_tokens: 512, temperature: 0.7, top_p: 0.9, top_k: 40, min_p: 0.05, repeat_penalty: 1.05, seed: 0xC0DE, stop: vec![], grammar: None }
+        Self {
+            max_tokens: 512,
+            temperature: 0.7,
+            top_p: 0.9,
+            top_k: 40,
+            min_p: 0.05,
+            repeat_penalty: 1.05,
+            seed: 0xC0DE,
+            stop: vec![],
+            grammar: None,
+        }
     }
 }
 
@@ -93,13 +111,24 @@ pub trait Session {
     /// Chatverlauf → Prompt-Text nach der Vorlage des Modells (endet mit dem Anfang der Assistenten-Antwort).
     fn chat_prompt(&self, msgs: &[Msg], json_only: bool) -> Result<String, String>;
     /// Text erzeugen. `sink` bekommt fertige Textstücke; gibt sie `false` zurück, wird abgebrochen.
-    fn generate(&mut self, prompt: &str, p: &GenParams, sink: &mut dyn FnMut(&str) -> bool) -> Result<Stats, String>;
+    fn generate(
+        &mut self,
+        prompt: &str,
+        p: &GenParams,
+        sink: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<Stats, String>;
     /// Kann das Modell Bilder sehen (Projektor geladen)?
     fn vision(&self) -> bool {
         false
     }
     /// Erzeugen mit Bildern: `prompt` enthält für jedes Bild die Marke `MEDIA_MARKER` (in Reihenfolge von `images`).
-    fn generate_mm(&mut self, _prompt: &str, _images: &[String], _p: &GenParams, _sink: &mut dyn FnMut(&str) -> bool) -> Result<Stats, String> {
+    fn generate_mm(
+        &mut self,
+        _prompt: &str,
+        _images: &[String],
+        _p: &GenParams,
+        _sink: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<Stats, String> {
         Err("this model cannot see images – install a vision model (e.g. ultar-llm pull qwen2.5-vl-3b)".into())
     }
 }
@@ -130,8 +159,19 @@ pub struct StopFilter {
 impl StopFilter {
     pub fn new(stops: &[String]) -> Self {
         let stops: Vec<String> = stops.iter().filter(|s| !s.is_empty()).cloned().collect();
-        let hold = stops.iter().map(|s| s.len()).max().unwrap_or(1).saturating_sub(1);
-        Self { stops, hold, out: String::new(), sent: 0, pending: Vec::new() }
+        let hold = stops
+            .iter()
+            .map(|s| s.len())
+            .max()
+            .unwrap_or(1)
+            .saturating_sub(1);
+        Self {
+            stops,
+            hold,
+            out: String::new(),
+            sent: 0,
+            pending: Vec::new(),
+        }
     }
 
     /// Neue Bytes eines Tokens. Liefert (freizugebender Text, Stoppwort gefunden).
@@ -150,7 +190,9 @@ impl StopFilter {
                 return self.release();
             }
         };
-        let s = std::str::from_utf8(&self.pending[..valid]).unwrap().to_string();
+        let s = std::str::from_utf8(&self.pending[..valid])
+            .unwrap()
+            .to_string();
         self.pending.drain(..valid);
         self.out.push_str(&s);
         self.release()
@@ -200,7 +242,11 @@ impl StopFilter {
 pub fn chatml(msgs: &[Msg]) -> String {
     let mut s = String::new();
     for m in msgs {
-        s.push_str(&format!("<|im_start|>{}\n{}<|im_end|>\n", m.role, m.content_mm()));
+        s.push_str(&format!(
+            "<|im_start|>{}\n{}<|im_end|>\n",
+            m.role,
+            m.content_mm()
+        ));
     }
     s.push_str("<|im_start|>assistant\n");
     s
@@ -213,7 +259,16 @@ pub struct Mock {
 
 impl Session for Mock {
     fn info(&self) -> ModelInfo {
-        ModelInfo { id: "mock".into(), path: "mock:".into(), engine: "mock".into(), n_ctx: self.n_ctx, n_params: 0, bytes: 0, threads: 1, load_ms: 0.0 }
+        ModelInfo {
+            id: "mock".into(),
+            path: "mock:".into(),
+            engine: "mock".into(),
+            n_ctx: self.n_ctx,
+            n_params: 0,
+            bytes: 0,
+            threads: 1,
+            load_ms: 0.0,
+        }
     }
 
     fn chat_prompt(&self, msgs: &[Msg], _json_only: bool) -> Result<String, String> {
@@ -225,7 +280,13 @@ impl Session for Mock {
     }
 
     /// Test: meldet, welche Bilder angekommen sind (Größe aus dem Dateikopf), ohne zu „sehen"
-    fn generate_mm(&mut self, prompt: &str, images: &[String], p: &GenParams, sink: &mut dyn FnMut(&str) -> bool) -> Result<Stats, String> {
+    fn generate_mm(
+        &mut self,
+        prompt: &str,
+        images: &[String],
+        p: &GenParams,
+        sink: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<Stats, String> {
         if prompt.matches(MEDIA_MARKER).count() != images.len() {
             return Err("image markers do not match images".into());
         }
@@ -235,18 +296,45 @@ impl Session for Mock {
             seen.push(format!("{} bytes", b.len()));
         }
         let text = format!("mock saw {} image(s): {}", images.len(), seen.join(", "));
-        let text = if p.grammar.is_some() { serde_json::json!({"answer": text}).to_string() } else { text };
+        let text = if p.grammar.is_some() {
+            serde_json::json!({"answer": text}).to_string()
+        } else {
+            text
+        };
         sink(&text);
-        Ok(Stats { prompt_tokens: 1, completion_tokens: 1, finish: "stop".into(), ..Default::default() })
+        Ok(Stats {
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            finish: "stop".into(),
+            ..Default::default()
+        })
     }
 
-    fn generate(&mut self, prompt: &str, p: &GenParams, sink: &mut dyn FnMut(&str) -> bool) -> Result<Stats, String> {
+    fn generate(
+        &mut self,
+        prompt: &str,
+        p: &GenParams,
+        sink: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<Stats, String> {
         let t0 = std::time::Instant::now();
         // letzte Nutzerzeile finden
-        let user = prompt.rsplit("<|im_start|>user\n").next().and_then(|r| r.split("<|im_end|>").next()).unwrap_or(prompt).trim().to_string();
-        let text = if p.grammar.is_some() { serde_json::json!({"answer": format!("echo: {user}")}).to_string() } else { format!("echo: {user}") };
+        let user = prompt
+            .rsplit("<|im_start|>user\n")
+            .next()
+            .and_then(|r| r.split("<|im_end|>").next())
+            .unwrap_or(prompt)
+            .trim()
+            .to_string();
+        let text = if p.grammar.is_some() {
+            serde_json::json!({"answer": format!("echo: {user}")}).to_string()
+        } else {
+            format!("echo: {user}")
+        };
         let mut f = StopFilter::new(&p.stop);
-        let mut st = Stats { prompt_tokens: prompt.split_whitespace().count() as u32, ..Default::default() };
+        let mut st = Stats {
+            prompt_tokens: prompt.split_whitespace().count() as u32,
+            ..Default::default()
+        };
         st.finish = "length".into();
         for (i, ch) in text.split_inclusive(' ').enumerate() {
             if i as u32 >= p.max_tokens {
@@ -262,7 +350,9 @@ impl Session for Mock {
                 break;
             }
         }
-        if st.finish != "stop" && (st.completion_tokens as usize) >= text.split_inclusive(' ').count() {
+        if st.finish != "stop"
+            && (st.completion_tokens as usize) >= text.split_inclusive(' ').count()
+        {
             st.finish = "stop".into();
         }
         let r = f.finish();
@@ -316,9 +406,21 @@ mod tests {
     #[test]
     fn mock_json() {
         let mut m = Mock { n_ctx: 512 };
-        let pr = m.chat_prompt(&[Msg { role: "user".into(), content: "hi".into(), images: vec![] }], true).unwrap();
+        let pr = m
+            .chat_prompt(
+                &[Msg {
+                    role: "user".into(),
+                    content: "hi".into(),
+                    images: vec![],
+                }],
+                true,
+            )
+            .unwrap();
         let mut out = String::new();
-        let p = GenParams { grammar: Some(JSON_GBNF.into()), ..Default::default() };
+        let p = GenParams {
+            grammar: Some(JSON_GBNF.into()),
+            ..Default::default()
+        };
         m.generate(&pr, &p, &mut |s| {
             out.push_str(s);
             true

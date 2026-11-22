@@ -1,0 +1,18 @@
+# USB xHCI host controllers by class (xHCI 1.2), including hubs, HID and mass storage.
+# T1: 8086:06ed, 8086:15ec; T2: 8086:777d, 8086:7ec0.
+id = "gen-xhci"
+version = "1.0.0"
+class = "bus"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "workshop"
+rank = 50
+name_key = "driver.gen-xhci.name"
+description_key = "driver.gen-xhci.description"
+
+[match]
+pci_class = ["0c0330"]
+
+[content]
+# Stage A (docs/PLAN.md §5.5): the driver is built into the Ultar kernel; the package
+# carries its activation record. Stage B replaces this by a loadable module.
+hal_config = "builtin/gen-xhci.toml"

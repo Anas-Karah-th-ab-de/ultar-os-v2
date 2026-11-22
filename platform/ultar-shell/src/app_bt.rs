@@ -37,7 +37,8 @@ fn with<R>(f: impl FnOnce(&mut BtState) -> R) -> R {
 }
 
 pub fn available() -> bool {
-    std::path::Path::new("/dev/scsc_h4_0").exists() && BIN.iter().any(|b| std::path::Path::new(b).exists())
+    std::path::Path::new("/dev/scsc_h4_0").exists()
+        && BIN.iter().any(|b| std::path::Path::new(b).exists())
 }
 
 pub fn enabled() -> bool {
@@ -94,8 +95,14 @@ fn start_scan() {
         return;
     }
     std::thread::spawn(|| {
-        let bin = BIN.iter().find(|b| std::path::Path::new(b).exists()).copied().unwrap_or(BIN[0]);
-        let out = std::process::Command::new(bin).args(["scan", "10"]).output();
+        let bin = BIN
+            .iter()
+            .find(|b| std::path::Path::new(b).exists())
+            .copied()
+            .unwrap_or(BIN[0]);
+        let out = std::process::Command::new(bin)
+            .args(["scan", "10"])
+            .output();
         with(|s| {
             s.scanning = false;
             s.scanned = true;
@@ -106,7 +113,13 @@ fn start_scan() {
                     s.devs = devs;
                     s.error.clear();
                 }
-                Ok(o) => s.error = String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("").to_string(),
+                Ok(o) => {
+                    s.error = String::from_utf8_lossy(&o.stderr)
+                        .lines()
+                        .last()
+                        .unwrap_or("")
+                        .to_string()
+                }
                 Err(e) => s.error = e.to_string(),
             }
         });
@@ -139,13 +152,37 @@ impl App {
             ui.scroll_end(area, y + *sc - area.y, sc);
             return;
         }
-        let (scanning, addr, devs, error, scanned) = with(|s| (s.scanning, s.addr.clone(), s.devs.clone(), s.error.clone(), s.scanned));
+        let (scanning, addr, devs, error, scanned) = with(|s| {
+            (
+                s.scanning,
+                s.addr.clone(),
+                s.devs.clone(),
+                s.error.clone(),
+                s.scanned,
+            )
+        });
         if !addr.is_empty() {
-            ui.row(&mut y, Some(Ic::Chip), self.t("This device"), None, Some(&addr), false);
+            ui.row(
+                &mut y,
+                Some(Ic::Chip),
+                self.t("This device"),
+                None,
+                Some(&addr),
+                false,
+            );
         }
         y += ui.dp(8.0);
-        let label = if scanning { self.t("Searching…") } else { self.t("Search for devices") };
-        if ui.button(Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(48.0)), label, if scanning { Btn::Plain } else { Btn::Primary }) && !scanning {
+        let label = if scanning {
+            self.t("Searching…")
+        } else {
+            self.t("Search for devices")
+        };
+        if ui.button(
+            Rect::new(ui.dp(16.0), y, ui.w - ui.dp(32.0), ui.dp(48.0)),
+            label,
+            if scanning { Btn::Plain } else { Btn::Primary },
+        ) && !scanning
+        {
             start_scan();
         }
         y += ui.dp(60.0);
@@ -157,16 +194,47 @@ impl App {
         }
         ui.section(&mut y, self.t("Devices nearby"));
         if devs.is_empty() {
-            self.caption(ui, &mut y, self.t(if scanning { "Searching…" } else { "No devices found" }));
+            self.caption(
+                ui,
+                &mut y,
+                self.t(if scanning {
+                    "Searching…"
+                } else {
+                    "No devices found"
+                }),
+            );
         }
         for d in &devs {
-            let title = if d.name.is_empty() { d.addr.clone() } else { d.name.clone() };
-            let sub = format!("{}{}", self.t(kind_key(d)), if d.name.is_empty() { String::new() } else { format!("  ·  {}", d.addr) });
+            let title = if d.name.is_empty() {
+                d.addr.clone()
+            } else {
+                d.name.clone()
+            };
+            let sub = format!(
+                "{}{}",
+                self.t(kind_key(d)),
+                if d.name.is_empty() {
+                    String::new()
+                } else {
+                    format!("  ·  {}", d.addr)
+                }
+            );
             let val = d.rssi.map(|r| format!("{r} dBm"));
-            ui.row(&mut y, Some(Ic::Wifi), &title, Some(&sub), val.as_deref(), false);
+            ui.row(
+                &mut y,
+                Some(Ic::Wifi),
+                &title,
+                Some(&sub),
+                val.as_deref(),
+                false,
+            );
         }
         y += ui.dp(10.0);
-        self.caption(ui, &mut y, self.t("Pairing, audio and keyboards are not available yet"));
+        self.caption(
+            ui,
+            &mut y,
+            self.t("Pairing, audio and keyboards are not available yet"),
+        );
         ui.scroll_end(area, y + *sc - area.y, sc);
     }
 

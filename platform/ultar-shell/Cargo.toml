@@ -21,7 +21,8 @@ ultar-call = { path = "../../system/services/ultar-call" }
 ultar-notify = { path = "../../system/services/ultar-notify" }
 ultar-radio = { path = "../../system/services/ultar-radio" }
 ultar-ime = { path = "../ultar-ime" }
-ultar-edition = { path = "../../system/core/ultar-edition" }
+ultar-profile = { path = "../../system/core/ultar-profile" }
+ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
 ultar-office = { path = "../../apps/ultar-office" }
 # Modellkatalog, Empfehlung und Herunterladen (Hugging Face / Ollama) – ohne Rechenkern
 ultar-llm = { path = "../../system/services/ultar-llm", default-features = false }

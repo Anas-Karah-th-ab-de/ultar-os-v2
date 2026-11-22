@@ -17,7 +17,7 @@ pub struct Mon {
     cpu_prev: Vec<(u64, u64)>, // je Zeile aus /proc/stat: (gesamt, leerlauf)
     pub cpu: Vec<f32>,         // [0] = alle Kerne, danach je Kern (0..1)
     pub cpu_hist: Vec<f32>,
-    pub mem: (u64, u64),       // gesamt, verfügbar (Bytes)
+    pub mem: (u64, u64), // gesamt, verfügbar (Bytes)
     pub gpu: Option<(String, f32)>,
     pub npu: Option<(String, f32)>,
     net_prev: BTreeMap<String, (u64, u64)>,
@@ -47,7 +47,11 @@ pub fn parse_stat(s: &str) -> Vec<(u64, u64)> {
     s.lines()
         .filter(|l| l.starts_with("cpu"))
         .map(|l| {
-            let v: Vec<u64> = l.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect();
+            let v: Vec<u64> = l
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|x| x.parse().ok())
+                .collect();
             let idle = v.get(3).copied().unwrap_or(0) + v.get(4).copied().unwrap_or(0);
             (v.iter().take(8).sum(), idle)
         })
@@ -59,14 +63,21 @@ pub fn parse_netdev(s: &str) -> BTreeMap<String, (u64, u64)> {
     s.lines()
         .filter_map(|l| {
             let (name, rest) = l.split_once(':')?;
-            let v: Vec<u64> = rest.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+            let v: Vec<u64> = rest
+                .split_whitespace()
+                .filter_map(|x| x.parse().ok())
+                .collect();
             Some((name.trim().to_string(), (*v.first()?, *v.get(8)?)))
         })
         .collect()
 }
 
 fn first_number(s: &str) -> Option<f32> {
-    let t: String = s.trim().chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let t: String = s
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
     t.parse().ok()
 }
 
@@ -118,7 +129,12 @@ fn top_processes() -> Vec<(String, u64)> {
                     if !pid.chars().all(|c| c.is_ascii_digit()) {
                         return None;
                     }
-                    let rss = read(&format!("/proc/{pid}/statm")).split_whitespace().nth(1)?.parse::<u64>().ok()? * 4096;
+                    let rss = read(&format!("/proc/{pid}/statm"))
+                        .split_whitespace()
+                        .nth(1)?
+                        .parse::<u64>()
+                        .ok()?
+                        * 4096;
                     if rss == 0 {
                         return None;
                     }
@@ -164,7 +180,10 @@ impl Mon {
     /// Messung. Läuft auch im Hintergrund weiter (Verbrauch je Tag), dann seltener.
     pub fn sample(&mut self, tz_min: i32) {
         let now = Instant::now();
-        let dt = self.last.map(|t| now.duration_since(t).as_secs_f32()).unwrap_or(0.0);
+        let dt = self
+            .last
+            .map(|t| now.duration_since(t).as_secs_f32())
+            .unwrap_or(0.0);
         if self.last.is_some() && dt < 0.4 {
             return;
         }
@@ -172,10 +191,18 @@ impl Mon {
         // Prozessor
         let cur = parse_stat(&read("/proc/stat"));
         if cur.len() == self.cpu_prev.len() && !cur.is_empty() {
-            self.cpu = cur.iter().zip(&self.cpu_prev).map(|(c, p)| {
-                let (dt, di) = (c.0.saturating_sub(p.0), c.1.saturating_sub(p.1));
-                if dt == 0 { 0.0 } else { (1.0 - di as f32 / dt as f32).clamp(0.0, 1.0) }
-            }).collect();
+            self.cpu = cur
+                .iter()
+                .zip(&self.cpu_prev)
+                .map(|(c, p)| {
+                    let (dt, di) = (c.0.saturating_sub(p.0), c.1.saturating_sub(p.1));
+                    if dt == 0 {
+                        0.0
+                    } else {
+                        (1.0 - di as f32 / dt as f32).clamp(0.0, 1.0)
+                    }
+                })
+                .collect();
             push(&mut self.cpu_hist, self.cpu[0]);
         }
         self.cpu_prev = cur;
@@ -192,7 +219,11 @@ impl Mon {
             }
             let (prx, ptx) = self.net_prev.get(n).copied().unwrap_or((*rx, *tx));
             let (drx, dtx) = (rx.saturating_sub(prx), tx.saturating_sub(ptx));
-            let (r, t) = if dt > 0.0 { (drx as f32 / dt, dtx as f32 / dt) } else { (0.0, 0.0) };
+            let (r, t) = if dt > 0.0 {
+                (drx as f32 / dt, dtx as f32 / dt)
+            } else {
+                (0.0, 0.0)
+            };
             net.insert(n.clone(), (r, t, *rx, *tx));
             down += r;
             up += t;
@@ -203,7 +234,11 @@ impl Mon {
             push(&mut self.up_hist, up);
             push(&mut self.down_hist, down);
             let d = sys::from_unix(sys::unix_now(), tz_min);
-            let e = self.usage.days.entry(format!("{:04}-{:02}-{:02}", d.y, d.mo, d.d)).or_default();
+            let e = self
+                .usage
+                .days
+                .entry(format!("{:04}-{:02}-{:02}", d.y, d.mo, d.d))
+                .or_default();
             e.0 += d_rx;
             e.1 += d_tx;
             while self.usage.days.len() > 31 {
@@ -211,7 +246,11 @@ impl Mon {
                 self.usage.days.remove(&k);
             }
             // höchstens einmal je Minute sichern (schont den Speicher)
-            if (d_rx + d_tx > 0) && self.usage_saved.map_or(true, |t| t.elapsed().as_secs() >= 60) {
+            if (d_rx + d_tx > 0)
+                && self
+                    .usage_saved
+                    .map_or(true, |t| t.elapsed().as_secs() >= 60)
+            {
                 let _ = sys::save("net-usage.toml", &self.usage);
                 self.usage_saved = Some(now);
             }
@@ -229,18 +268,36 @@ impl App {
     /// Balken mit Beschriftung links und Wert rechts
     fn meter(&mut self, ui: &mut Ui, y: &mut f32, title: &str, value: &str, v: Option<f32>) {
         let m = ui.dp(12.0);
-        let r = Rect::new(m, *y, ui.w - 2.0 * m, ui.dp(if v.is_some() { 66.0 } else { 48.0 }));
+        let r = Rect::new(
+            m,
+            *y,
+            ui.w - 2.0 * m,
+            ui.dp(if v.is_some() { 66.0 } else { 48.0 }),
+        );
         *y += r.h + ui.dp(8.0);
         if !ui.visible(r) {
             return;
         }
         ui.card(r);
         let (c, cs) = (ui.th.text, ui.th.sub);
-        let lr = Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(8.0), r.w - ui.dp(28.0), ui.dp(26.0));
+        let lr = Rect::new(
+            r.x + ui.dp(14.0),
+            r.y + ui.dp(8.0),
+            r.w - ui.dp(28.0),
+            ui.dp(26.0),
+        );
         ui.label(lr, title, 15.0, c, false, Al::Start);
         ui.label(lr, value, 14.0, cs, false, Al::End);
         if let Some(v) = v {
-            ui.progress(Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(42.0), r.w - ui.dp(28.0), ui.dp(10.0)), v);
+            ui.progress(
+                Rect::new(
+                    r.x + ui.dp(14.0),
+                    r.y + ui.dp(42.0),
+                    r.w - ui.dp(28.0),
+                    ui.dp(10.0),
+                ),
+                v,
+            );
         }
     }
 
@@ -297,19 +354,39 @@ impl App {
             let ch = ui.dp(28.0 + 64.0 + 8.0) + core_rows * ui.dp(22.0) + ui.dp(10.0);
             let r = Rect::new(m, y, ui.w - 2.0 * m, ch);
             ui.card(r);
-            let inn = Rect::new(r.x + ui.dp(14.0), r.y + ui.dp(12.0), r.w - ui.dp(28.0), ui.dp(20.0));
+            let inn = Rect::new(
+                r.x + ui.dp(14.0),
+                r.y + ui.dp(12.0),
+                r.w - ui.dp(28.0),
+                ui.dp(20.0),
+            );
             ui.label(inn, self.t("Processor"), 15.0, c, true, Al::Start);
-            ui.label(inn, &format!("{:.0} %", cpu * 100.0), 15.0, ui.th.accent, false, Al::End);
+            ui.label(
+                inn,
+                &format!("{:.0} %", cpu * 100.0),
+                15.0,
+                ui.th.accent,
+                false,
+                Al::End,
+            );
             // Verlauf als Linie
             let gr = Rect::new(inn.x, inn.y + ui.dp(28.0), inn.w, ui.dp(60.0));
             let hist = self.mon.cpu_hist.clone();
             if hist.len() >= 2 {
                 let n = hist.len();
                 let ac = ui.th.accent;
-                let pts: Vec<(f32, f32)> = hist.iter().enumerate().map(|(i, v)| {
-                    let x = if ui.rtl { gr.right() - gr.w * i as f32 / (n - 1) as f32 } else { gr.x + gr.w * i as f32 / (n - 1) as f32 };
-                    (x, gr.bottom() - gr.h * v.clamp(0.0, 1.0))
-                }).collect();
+                let pts: Vec<(f32, f32)> = hist
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let x = if ui.rtl {
+                            gr.right() - gr.w * i as f32 / (n - 1) as f32
+                        } else {
+                            gr.x + gr.w * i as f32 / (n - 1) as f32
+                        };
+                        (x, gr.bottom() - gr.h * v.clamp(0.0, 1.0))
+                    })
+                    .collect();
                 for w in pts.windows(2) {
                     ui.cv.line(w[0].0, w[0].1, w[1].0, w[1].1, ui.dp(2.0), ac);
                 }
@@ -320,48 +397,127 @@ impl App {
                 let col = if ui.rtl { 3 - i % 4 } else { i % 4 };
                 let cx = inn.x + col as f32 * (cw + ui.dp(6.0));
                 let cy = gr.bottom() + ui.dp(8.0) + (i / 4) as f32 * ui.dp(22.0);
-                ui.label(Rect::new(cx, cy, cw, ui.dp(12.0)), &format!("C{i}"), 10.0, cs, false, Al::Start);
+                ui.label(
+                    Rect::new(cx, cy, cw, ui.dp(12.0)),
+                    &format!("C{i}"),
+                    10.0,
+                    cs,
+                    false,
+                    Al::Start,
+                );
                 let br = Rect::new(cx, cy + ui.dp(14.0), cw, ui.dp(5.0));
                 ui.cv.rrect(br, ui.dp(2.5), ui.th.line);
                 let fw = (br.w * v.clamp(0.0, 1.0)).max(ui.dp(5.0));
-                ui.cv.rrect(if ui.rtl { Rect::new(br.right() - fw, br.y, fw, br.h) } else { Rect::new(br.x, br.y, fw, br.h) }, ui.dp(2.5), ui.th.accent);
+                ui.cv.rrect(
+                    if ui.rtl {
+                        Rect::new(br.right() - fw, br.y, fw, br.h)
+                    } else {
+                        Rect::new(br.x, br.y, fw, br.h)
+                    },
+                    ui.dp(2.5),
+                    ui.th.accent,
+                );
             }
             y += ch + ui.dp(12.0);
             // Vier Karten: RAM, Grafik, NPU, Temperatur
             let (mt, ma) = self.mon.mem;
             let used = mt.saturating_sub(ma);
-            let temp = std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp").ok().and_then(|t| t.trim().parse::<f32>().ok()).map(|t| if t > 1000.0 { t / 1000.0 } else { t });
+            let temp = std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp")
+                .ok()
+                .and_then(|t| t.trim().parse::<f32>().ok())
+                .map(|t| if t > 1000.0 { t / 1000.0 } else { t });
             let gpu = self.mon.gpu.clone();
             let npu = self.mon.npu.clone();
             let tiles: [(String, String, Option<f32>); 4] = [
-                ("RAM".into(), format!("{} / {}", sys::human(used), sys::human(mt)), Some(if mt > 0 { used as f32 / mt as f32 } else { 0.0 })),
-                (gpu.as_ref().map(|g| format!("GPU ({})", g.0)).unwrap_or_else(|| "GPU".into()), gpu.as_ref().map(|g| format!("{:.0} %", g.1 * 100.0)).unwrap_or_else(|| na.to_string()), gpu.map(|g| g.1)),
-                ("NPU".into(), npu.as_ref().map(|g| format!("{:.0} %", g.1 * 100.0)).unwrap_or_else(|| na.to_string()), npu.map(|g| g.1)),
-                (self.t("Temperature").into(), temp.map(|t| format!("{t:.0} °C")).unwrap_or_else(|| na.to_string()), temp.map(|t| t / 100.0)),
+                (
+                    "RAM".into(),
+                    format!("{} / {}", sys::human(used), sys::human(mt)),
+                    Some(if mt > 0 { used as f32 / mt as f32 } else { 0.0 }),
+                ),
+                (
+                    gpu.as_ref()
+                        .map(|g| format!("GPU ({})", g.0))
+                        .unwrap_or_else(|| "GPU".into()),
+                    gpu.as_ref()
+                        .map(|g| format!("{:.0} %", g.1 * 100.0))
+                        .unwrap_or_else(|| na.to_string()),
+                    gpu.map(|g| g.1),
+                ),
+                (
+                    "NPU".into(),
+                    npu.as_ref()
+                        .map(|g| format!("{:.0} %", g.1 * 100.0))
+                        .unwrap_or_else(|| na.to_string()),
+                    npu.map(|g| g.1),
+                ),
+                (
+                    self.t("Temperature").into(),
+                    temp.map(|t| format!("{t:.0} °C"))
+                        .unwrap_or_else(|| na.to_string()),
+                    temp.map(|t| t / 100.0),
+                ),
             ];
             let gap = ui.dp(10.0);
             let tw = (ui.w - 2.0 * m - gap) / 2.0;
             let th = ui.dp(76.0);
             for (i, (lab, val, f)) in tiles.iter().enumerate() {
                 let col = if ui.rtl { 1 - i % 2 } else { i % 2 };
-                let r = Rect::new(m + col as f32 * (tw + gap), y + (i / 2) as f32 * (th + gap), tw, th);
+                let r = Rect::new(
+                    m + col as f32 * (tw + gap),
+                    y + (i / 2) as f32 * (th + gap),
+                    tw,
+                    th,
+                );
                 ui.card(r);
                 let inn = r.inset(ui.dp(12.0));
                 let lf = ui.fit(lab, 12.0, false, inn.w);
-                ui.label(Rect::new(inn.x, inn.y, inn.w, ui.dp(16.0)), &lf, 12.0, cs, false, Al::Start);
-                let vs = if ui.text_w(val, 18.0, true) <= inn.w { 18.0 } else { 14.0 };
+                ui.label(
+                    Rect::new(inn.x, inn.y, inn.w, ui.dp(16.0)),
+                    &lf,
+                    12.0,
+                    cs,
+                    false,
+                    Al::Start,
+                );
+                let vs = if ui.text_w(val, 18.0, true) <= inn.w {
+                    18.0
+                } else {
+                    14.0
+                };
                 let vf = ui.fit(val, vs, true, inn.w);
-                ui.label(Rect::new(inn.x, inn.y + ui.dp(18.0), inn.w, ui.dp(24.0)), &vf, vs, c, true, Al::Start);
+                ui.label(
+                    Rect::new(inn.x, inn.y + ui.dp(18.0), inn.w, ui.dp(24.0)),
+                    &vf,
+                    vs,
+                    c,
+                    true,
+                    Al::Start,
+                );
                 let br = Rect::new(inn.x, inn.bottom() - ui.dp(5.0), inn.w, ui.dp(5.0));
                 ui.cv.rrect(br, ui.dp(2.5), ui.th.line);
                 if let Some(f) = f {
                     let fw = (br.w * f.clamp(0.0, 1.0)).max(ui.dp(5.0));
-                    ui.cv.rrect(if ui.rtl { Rect::new(br.right() - fw, br.y, fw, br.h) } else { Rect::new(br.x, br.y, fw, br.h) }, ui.dp(2.5), ui.th.accent);
+                    ui.cv.rrect(
+                        if ui.rtl {
+                            Rect::new(br.right() - fw, br.y, fw, br.h)
+                        } else {
+                            Rect::new(br.x, br.y, fw, br.h)
+                        },
+                        ui.dp(2.5),
+                        ui.th.accent,
+                    );
                 }
             }
             y += 2.0 * (th + gap) + ui.dp(4.0);
             let note = self.t("The interface itself needs ~65 MB RAM – Android over 1 GB.");
-            y += ui.para(m + ui.dp(4.0), y, ui.w - 2.0 * m - ui.dp(8.0), note, 12.5, cs) + ui.dp(16.0);
+            y += ui.para(
+                m + ui.dp(4.0),
+                y,
+                ui.w - 2.0 * m - ui.dp(8.0),
+                note,
+                12.5,
+                cs,
+            ) + ui.dp(16.0);
         } else if self.mon_tab == 2 {
             ui.kb.row_end.set(-1.0);
             for (name, rss) in self.mon.top.clone() {
@@ -370,16 +526,40 @@ impl App {
         } else {
             let up: f32 = self.mon.net.values().map(|v| v.1).sum();
             let down: f32 = self.mon.net.values().map(|v| v.0).sum();
-            let peak = self.mon.up_hist.iter().chain(self.mon.down_hist.iter()).cloned().fold(1024.0, f32::max);
+            let peak = self
+                .mon
+                .up_hist
+                .iter()
+                .chain(self.mon.down_hist.iter())
+                .cloned()
+                .fold(1024.0, f32::max);
             self.meter(ui, &mut y, self.t("Upload"), &rate(up), Some(up / peak));
-            self.meter(ui, &mut y, self.t("Download"), &rate(down), Some(down / peak));
+            self.meter(
+                ui,
+                &mut y,
+                self.t("Download"),
+                &rate(down),
+                Some(down / peak),
+            );
             let (uh, dh) = (self.mon.up_hist.clone(), self.mon.down_hist.clone());
             self.graph(ui, &mut y, &uh, Some(&dh), peak);
-            let s = format!("{} · max. {}", self.t("Upload coloured, download grey, last minute"), rate(peak));
+            let s = format!(
+                "{} · max. {}",
+                self.t("Upload coloured, download grey, last minute"),
+                rate(peak)
+            );
             self.caption(ui, &mut y, &s);
             ui.section(&mut y, self.t("Per connection (since start)"));
             for (n, (r, t, rx, tx)) in self.mon.net.clone() {
-                let sub = format!("{}: {} ({})  ·  {}: {} ({})", self.t("Upload"), rate(t), amount(tx), self.t("Download"), rate(r), amount(rx));
+                let sub = format!(
+                    "{}: {} ({})  ·  {}: {} ({})",
+                    self.t("Upload"),
+                    rate(t),
+                    amount(tx),
+                    self.t("Download"),
+                    rate(r),
+                    amount(rx)
+                );
                 ui.row(&mut y, None, &n, Some(&sub), None, false);
             }
             if self.mon.net.is_empty() {
@@ -387,7 +567,13 @@ impl App {
             }
             ui.section(&mut y, self.t("Per day"));
             for (day, (rx, tx)) in self.mon.usage.days.clone().into_iter().rev().take(7) {
-                let sub = format!("{}: {}  ·  {}: {}", self.t("Upload"), amount(tx), self.t("Download"), amount(rx));
+                let sub = format!(
+                    "{}: {}  ·  {}: {}",
+                    self.t("Upload"),
+                    amount(tx),
+                    self.t("Download"),
+                    amount(rx)
+                );
                 ui.row(&mut y, None, &day, Some(&sub), None, false);
             }
         }

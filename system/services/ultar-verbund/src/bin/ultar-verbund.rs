@@ -1,9 +1,10 @@
 //! ultar-verbund – Befehlszeile und Dienst des Ultar-Verbunds.
 
-use ultar_sprache::{eprintln, println};
+use base64::Engine;
 use std::io::{BufRead, Read};
 use std::sync::Arc;
 use std::time::Duration;
+use ultar_sprache::{eprintln, println};
 use ultar_verbund::config::{Config, Rolle};
 use ultar_verbund::dienst::{self, KoppelCode};
 use ultar_verbund::entdeckung::{self, Gesehen};
@@ -12,7 +13,6 @@ use ultar_verbund::planer::{Knoten, Planer};
 use ultar_verbund::proto::{Aufgabe, Nachricht};
 use ultar_verbund::relay::{Anmeldung, Relais};
 use ultar_verbund::*;
-use base64::Engine;
 
 const HILFE: &str = ultar_sprache::tabellen::VERBUND_HILFE_DE;
 
@@ -27,7 +27,14 @@ fn main() {
         ["status"] | [] => status(&dir),
         ["geraete"] | ["geräte"] => geraete(&dir),
         ["koppeln"] => koppeln_anbieten(&dir, Rolle::Voll),
-        ["koppeln", "--rolle", r] => koppeln_anbieten(&dir, if *r == "rechnen" { Rolle::Rechnen } else { Rolle::Voll }),
+        ["koppeln", "--rolle", r] => koppeln_anbieten(
+            &dir,
+            if *r == "rechnen" {
+                Rolle::Rechnen
+            } else {
+                Rolle::Voll
+            },
+        ),
         ["koppeln", ziel, code] => koppeln_mit(&dir, ziel, code),
         ["entkoppeln", ziel] => entkoppeln(&dir, ziel),
         ["konto", rest @ ..] => konto(&dir, rest),
@@ -59,11 +66,21 @@ fn main() {
             frage(&dir, ziel, Nachricht::Aktion { zeile }).and_then(antwort_zeigen)
         }
         ["fern", ziel, zeilen @ ..] if !zeilen.is_empty() => fern(&dir, ziel, zeilen),
-        ["senden", ziel, datei, rest @ ..] => senden(&dir, ziel, datei, !rest.contains(&"--nicht-oeffnen")),
+        ["senden", ziel, datei, rest @ ..] => {
+            senden(&dir, ziel, datei, !rest.contains(&"--nicht-oeffnen"))
+        }
         ["weitergeben", ziel] => frage(&dir, ziel, Nachricht::Ansehen).and_then(antwort_zeigen),
         ["weitergeben", ziel, datei] => senden(&dir, ziel, datei, true),
-        ["hoeren", ziel, rest @ ..] => hoeren(&dir, ziel, rest.first().and_then(|s| s.parse().ok()).unwrap_or(0)),
-        ["sprechen", ziel, rest @ ..] => sprechen(&dir, ziel, rest.first().and_then(|s| s.parse().ok()).unwrap_or(0)),
+        ["hoeren", ziel, rest @ ..] => hoeren(
+            &dir,
+            ziel,
+            rest.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+        ),
+        ["sprechen", ziel, rest @ ..] => sprechen(
+            &dir,
+            ziel,
+            rest.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+        ),
         ["mining", rest @ ..] => mining(&dir, rest),
         ["bench", rest @ ..] => bench(&dir, rest),
         ["arbeit", i, iter] => {
@@ -114,7 +131,14 @@ fn schalten(dir: &std::path::Path, an: bool) -> R {
     c.aktiv = an;
     c.speichern(dir).map_err(|e| e.to_string())?;
     Ident::laden(dir).map_err(|e| e.to_string())?;
-    println!("Ultar-Verbund {}", if an { "AN – Geräte im Netz werden gefunden, gekoppelte Geräte helfen sich gegenseitig" } else { "AUS – dieses Gerät ist für andere unsichtbar" });
+    println!(
+        "Ultar-Verbund {}",
+        if an {
+            "AN – Geräte im Netz werden gefunden, gekoppelte Geräte helfen sich gegenseitig"
+        } else {
+            "AUS – dieses Gerät ist für andere unsichtbar"
+        }
+    );
     Ok(())
 }
 
@@ -123,13 +147,42 @@ fn status(dir: &std::path::Path) -> R {
     let c = Config::laden(dir);
     let z = dienst::zustand_lesen(dir);
     let laeuft = jetzt_ms().saturating_sub(z.zeit_ms) < 5000;
-    println!("Gerät      {} „{}“ ({})", ich.kennung(), c.name, ressourcen::ausgabe());
+    println!(
+        "Gerät      {} „{}“ ({})",
+        ich.kennung(),
+        c.name,
+        ressourcen::ausgabe()
+    );
     println!("Verbund    {}", if c.aktiv { "AN" } else { "AUS" });
-    println!("Dienst     {}", if laeuft { "läuft" } else { "läuft nicht (ultar-verbund dienst)" });
+    println!(
+        "Dienst     {}",
+        if laeuft {
+            "läuft"
+        } else {
+            "läuft nicht (ultar-verbund dienst)"
+        }
+    );
     println!("Kerne      {} (max {})", ressourcen::kerne(), c.kerne());
-    println!("Relais     {} {}", c.relais, if c.token.is_empty() { "(kein Konto)" } else if z.relais { "verbunden" } else { "getrennt" });
-    println!("Erlaubt    steuern={} rechnen={}", c.steuern_erlauben, c.rechnen_erlauben);
-    println!("Gekoppelt  {} Geräte, erledigte Aufgaben {}", c.partner.len(), z.erledigt);
+    println!(
+        "Relais     {} {}",
+        c.relais,
+        if c.token.is_empty() {
+            "(kein Konto)"
+        } else if z.relais {
+            "verbunden"
+        } else {
+            "getrennt"
+        }
+    );
+    println!(
+        "Erlaubt    steuern={} rechnen={}",
+        c.steuern_erlauben, c.rechnen_erlauben
+    );
+    println!(
+        "Gekoppelt  {} Geräte, erledigte Aufgaben {}",
+        c.partner.len(),
+        z.erledigt
+    );
     Ok(())
 }
 
@@ -145,7 +198,9 @@ fn geraete_finden(dir: &std::path::Path, c: &Config, ich: &Ident) -> Vec<Gesehen
         let mut b = [0u8; 2048];
         while start.elapsed() < Duration::from_millis(2500) {
             if let Ok((n, von)) = u.recv_from(&mut b) {
-                entdeckung::verarbeiten(&t, &ich.pk_hex(), &b[..n], von, |pk| c.partner(pk).is_some());
+                entdeckung::verarbeiten(&t, &ich.pk_hex(), &b[..n], von, |pk| {
+                    c.partner(pk).is_some()
+                });
             }
         }
     }
@@ -158,7 +213,10 @@ fn geraete(dir: &std::path::Path) -> R {
     let c = Config::laden(dir);
     let v = geraete_finden(dir, &c, &ich);
     if v.is_empty() {
-        println!("keine Geräte gefunden{}", if c.aktiv { "" } else { " (Verbund ist AUS)" });
+        println!(
+            "keine Geräte gefunden{}",
+            if c.aktiv { "" } else { " (Verbund ist AUS)" }
+        );
     }
     for g in &v {
         println!(
@@ -174,15 +232,34 @@ fn geraete(dir: &std::path::Path) -> R {
     }
     for p in &c.partner {
         if !v.iter().any(|g| g.pk == p.pk) {
-            println!("{}  {:<20} (nicht erreichbar, gekoppelt über {})", p.kennung, p.name, p.quelle);
+            println!(
+                "{}  {:<20} (nicht erreichbar, gekoppelt über {})",
+                p.kennung, p.name, p.quelle
+            );
         }
     }
     Ok(())
 }
 
-fn ziel_suchen(dir: &std::path::Path, c: &Config, ich: &Ident, ziel: &str) -> Result<Gesehen, String> {
+fn ziel_suchen(
+    dir: &std::path::Path,
+    c: &Config,
+    ich: &Ident,
+    ziel: &str,
+) -> Result<Gesehen, String> {
     if let Ok(a) = ziel.parse::<std::net::SocketAddr>() {
-        return Ok(Gesehen { kennung: String::new(), pk: String::new(), name: ziel.into(), ausgabe: String::new(), adresse: a.to_string(), kerne: 1, frei: 1, zuletzt_ms: 0, vertraut: false, weg: "netz".into() });
+        return Ok(Gesehen {
+            kennung: String::new(),
+            pk: String::new(),
+            name: ziel.into(),
+            ausgabe: String::new(),
+            adresse: a.to_string(),
+            kerne: 1,
+            frei: 1,
+            zuletzt_ms: 0,
+            vertraut: false,
+            weg: "netz".into(),
+        });
     }
     let v = geraete_finden(dir, c, ich);
     v.into_iter()
@@ -195,7 +272,15 @@ fn relais_client(c: &Config, ich: &Ident) -> Option<Arc<Relais>> {
         return None;
     }
     let r = Relais::starten(
-        Anmeldung { url: c.relais.clone(), token: c.token.clone(), pk: ich.pk_hex(), name: c.name.clone(), ausgabe: ressourcen::ausgabe(), rolle: "client".into(), kerne: 0 },
+        Anmeldung {
+            url: c.relais.clone(),
+            token: c.token.clone(),
+            pk: ich.pk_hex(),
+            name: c.name.clone(),
+            ausgabe: ressourcen::ausgabe(),
+            rolle: "client".into(),
+            kerne: 0,
+        },
         None,
         Arc::new(|| 0),
     );
@@ -209,13 +294,22 @@ fn koppeln_anbieten(dir: &std::path::Path, rolle: Rolle) -> R {
     if !c.aktiv {
         return Err("Verbund ist AUS – zuerst: ultar-verbund an".into());
     }
-    let code = std::env::var("ULTAR_VERBUND_CODE").unwrap_or_else(|_| format!("{:06}", rand::thread_rng().gen_range(0..1_000_000)));
-    let kc = KoppelCode { code: code.clone(), bis_ms: jetzt_ms() + 300_000, rolle, fehlversuche: 0 };
+    let code = std::env::var("ULTAR_VERBUND_CODE")
+        .unwrap_or_else(|_| format!("{:06}", rand::thread_rng().gen_range(0..1_000_000)));
+    let kc = KoppelCode {
+        code: code.clone(),
+        bis_ms: jetzt_ms() + 300_000,
+        rolle,
+        fehlversuche: 0,
+    };
     let p = dir.join("koppeln.json");
     std::fs::write(&p, serde_json::to_vec(&kc).unwrap()).map_err(|e| e.to_string())?;
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     println!("Kopplungscode: {code}   (5 Minuten gültig)");
-    println!("Auf dem anderen Gerät: ultar-verbund koppeln {} {code}", ich.kennung());
+    println!(
+        "Auf dem anderen Gerät: ultar-verbund koppeln {} {code}",
+        ich.kennung()
+    );
     let vorher = c.partner.len();
     let t = std::time::Instant::now();
     while t.elapsed() < Duration::from_secs(300) {
@@ -239,25 +333,41 @@ fn koppeln_mit(dir: &std::path::Path, ziel: &str, code: &str) -> R {
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     let c = Config::laden(dir);
     let g = ziel_suchen(dir, &c, &ich, ziel)?;
-    let relais = if g.weg == "relais" { relais_client(&c, &ich) } else { None };
+    let relais = if g.weg == "relais" {
+        relais_client(&c, &ich)
+    } else {
+        None
+    };
     let mut k = if g.pk.is_empty() {
         // nur Adresse bekannt: Schlüssel wird durch den Code bestätigt
         let a: std::net::SocketAddr = g.adresse.parse().map_err(|_| "Adresse")?;
-        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3)).map_err(|e| e.to_string())?;
-        kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich).map_err(|e| e.to_string())?
+        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3))
+            .map_err(|e| e.to_string())?;
+        kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich)
+            .map_err(|e| e.to_string())?
     } else {
         dienst::verbinden(&ich, &g, relais.as_ref()).map_err(|e| e.to_string())?
     };
     let partner_pk = k.partner_pk.clone();
     let mac = dienst::koppel_mac(code, &ich.oeffentlich, &partner_pk);
-    k.nachricht_senden(&Nachricht::Koppeln { name: c.name.clone(), mac }).map_err(|e| e.to_string())?;
+    k.nachricht_senden(&Nachricht::Koppeln {
+        name: c.name.clone(),
+        mac,
+    })
+    .map_err(|e| e.to_string())?;
     match k.nachricht_empfangen().map_err(|e| e.to_string())? {
         Nachricht::KoppelnOk { name, mac } => {
             if mac != dienst::koppel_mac(code, &partner_pk, &ich.oeffentlich) {
                 return Err("Antwort nicht echt (Code passt nicht)".into());
             }
             let mut c = Config::datei(dir);
-            c.hinzufuegen(config::Partner { kennung: ident::kennung(&partner_pk), pk: ident::hex(&partner_pk), name: name.clone(), rolle: Rolle::Voll, quelle: "code".into() });
+            c.hinzufuegen(config::Partner {
+                kennung: ident::kennung(&partner_pk),
+                pk: ident::hex(&partner_pk),
+                name: name.clone(),
+                rolle: Rolle::Voll,
+                quelle: "code".into(),
+            });
             c.speichern(dir).map_err(|e| e.to_string())?;
             println!("gekoppelt mit „{name}“ ({})", ident::kennung(&partner_pk));
             Ok(())
@@ -270,7 +380,8 @@ fn koppeln_mit(dir: &std::path::Path, ziel: &str, code: &str) -> R {
 fn entkoppeln(dir: &std::path::Path, ziel: &str) -> R {
     let mut c = Config::datei(dir);
     let vor = c.partner.len();
-    c.partner.retain(|p| !(p.kennung.eq_ignore_ascii_case(ziel) || p.name == ziel || p.pk == ziel));
+    c.partner
+        .retain(|p| !(p.kennung.eq_ignore_ascii_case(ziel) || p.name == ziel || p.pk == ziel));
     if c.partner.len() == vor {
         return Err("nicht gekoppelt".into());
     }
@@ -289,7 +400,10 @@ fn konto(dir: &std::path::Path, rest: &[&str]) -> R {
                 Err(_) => {
                     eprint!("Passwort: ");
                     let mut s = String::new();
-                    std::io::stdin().lock().read_line(&mut s).map_err(|e| e.to_string())?;
+                    std::io::stdin()
+                        .lock()
+                        .read_line(&mut s)
+                        .map_err(|e| e.to_string())?;
                     s.trim_end().to_string()
                 }
             };
@@ -314,14 +428,23 @@ fn ausfuehren(dir: &std::path::Path, ziel: &str, cmd: &[&str]) -> R {
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     let c = Config::laden(dir);
     let g = ziel_suchen(dir, &c, &ich, ziel)?;
-    let relais = if g.weg == "relais" { relais_client(&c, &ich) } else { None };
+    let relais = if g.weg == "relais" {
+        relais_client(&c, &ich)
+    } else {
+        None
+    };
     let mut k = if g.pk.is_empty() {
         // nur Adresse angegeben: Gegenstelle muss ein gekoppeltes Gerät sein
         let a: std::net::SocketAddr = g.adresse.parse().map_err(|_| "Adresse")?;
-        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3)).map_err(|e| e.to_string())?;
-        let k = kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich).map_err(|e| e.to_string())?;
+        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3))
+            .map_err(|e| e.to_string())?;
+        let k = kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich)
+            .map_err(|e| e.to_string())?;
         if c.partner(&ident::hex(&k.partner_pk)).is_none() {
-            return Err(format!("{} ist nicht gekoppelt", ident::kennung(&k.partner_pk)));
+            return Err(format!(
+                "{} ist nicht gekoppelt",
+                ident::kennung(&k.partner_pk)
+            ));
         }
         k
     } else {
@@ -331,8 +454,14 @@ fn ausfuehren(dir: &std::path::Path, ziel: &str, cmd: &[&str]) -> R {
     if std::env::var("ULTAR_VERBUND_EINGABE").is_ok() {
         std::io::stdin().read_to_string(&mut eingabe).ok();
     }
-    let a = Aufgabe { id: format!("s-{}-{}", jetzt_ms(), std::process::id()), befehl: cmd.iter().map(|s| s.to_string()).collect(), eingabe, zeit_ms: 0 };
-    k.nachricht_senden(&Nachricht::Steuern(a)).map_err(|e| e.to_string())?;
+    let a = Aufgabe {
+        id: format!("s-{}-{}", jetzt_ms(), std::process::id()),
+        befehl: cmd.iter().map(|s| s.to_string()).collect(),
+        eingabe,
+        zeit_ms: 0,
+    };
+    k.nachricht_senden(&Nachricht::Steuern(a))
+        .map_err(|e| e.to_string())?;
     k.zeitlimit(Some(Duration::from_secs(8)));
     let antwort = loop {
         match k.nachricht_empfangen().map_err(|e| e.to_string())? {
@@ -352,16 +481,31 @@ fn ausfuehren(dir: &std::path::Path, ziel: &str, cmd: &[&str]) -> R {
     }
 }
 
-fn knoten(dir: &std::path::Path, c: &Config, ich: &Ident, lokal: bool) -> (Vec<Knoten>, Option<Arc<Relais>>) {
+fn knoten(
+    dir: &std::path::Path,
+    c: &Config,
+    ich: &Ident,
+    lokal: bool,
+) -> (Vec<Knoten>, Option<Arc<Relais>>) {
     let mut v = Vec::new();
     if lokal && c.rechnen_erlauben {
-        v.push(Knoten::Lokal { kerne: c.kerne(), name: c.name.clone() });
+        v.push(Knoten::Lokal {
+            kerne: c.kerne(),
+            name: c.name.clone(),
+        });
     }
     if !c.aktiv {
         return (v, None);
     }
-    let geraete: Vec<Gesehen> = geraete_finden(dir, c, ich).into_iter().filter(|g| c.partner(&g.pk).is_some()).collect();
-    let relais = if geraete.iter().any(|g| g.weg == "relais") { relais_client(c, ich) } else { None };
+    let geraete: Vec<Gesehen> = geraete_finden(dir, c, ich)
+        .into_iter()
+        .filter(|g| c.partner(&g.pk).is_some())
+        .collect();
+    let relais = if geraete.iter().any(|g| g.weg == "relais") {
+        relais_client(c, ich)
+    } else {
+        None
+    };
     for g in geraete {
         let kerne = g.frei.max(1);
         v.push(Knoten::Fern { g, kerne });
@@ -387,7 +531,10 @@ fn verteilt(dir: &std::path::Path, rest: &[&str]) -> R {
             "--json" => json = true,
             "--zeit" => {
                 i += 1;
-                zeit = rest.get(i).and_then(|x| x.parse().ok()).ok_or("--zeit ms")?;
+                zeit = rest
+                    .get(i)
+                    .and_then(|x| x.parse().ok())
+                    .ok_or("--zeit ms")?;
             }
             x => return Err(format!("unbekannt: {x}")),
         }
@@ -397,12 +544,25 @@ fn verteilt(dir: &std::path::Path, rest: &[&str]) -> R {
     if cmd.is_empty() {
         return Err("verteilt [-n N] [--zeilen] -- befehl … {}".into());
     }
-    let werte: Vec<String> = if zeilen { std::io::stdin().lock().lines().map_while(Result::ok).collect() } else { (0..n.max(1)).map(|x| x.to_string()).collect() };
+    let werte: Vec<String> = if zeilen {
+        std::io::stdin()
+            .lock()
+            .lines()
+            .map_while(Result::ok)
+            .collect()
+    } else {
+        (0..n.max(1)).map(|x| x.to_string()).collect()
+    };
     let lauf = format!("{:x}{:x}", jetzt_ms(), std::process::id());
     let aufgaben: Vec<Aufgabe> = werte
         .iter()
         .enumerate()
-        .map(|(k, w)| Aufgabe { id: format!("{lauf}-{k}"), befehl: cmd.iter().map(|s| s.replace("{}", w)).collect(), eingabe: String::new(), zeit_ms: zeit })
+        .map(|(k, w)| Aufgabe {
+            id: format!("{lauf}-{k}"),
+            befehl: cmd.iter().map(|s| s.replace("{}", w)).collect(),
+            eingabe: String::new(),
+            zeit_ms: zeit,
+        })
         .collect();
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     let c = Config::laden(dir);
@@ -410,7 +570,17 @@ fn verteilt(dir: &std::path::Path, rest: &[&str]) -> R {
     if kn.is_empty() {
         return Err("keine Geräte zum Rechnen".into());
     }
-    eprintln!("[verbund] {} Aufgaben auf {} Geräte ({} Kerne): {}", aufgaben.len(), kn.len(), kn.iter().map(|k| match k { Knoten::Lokal { kerne, .. } | Knoten::Fern { kerne, .. } => *kerne }).sum::<usize>(), kn.iter().map(|k| k.name()).collect::<Vec<_>>().join(", "));
+    eprintln!(
+        "[verbund] {} Aufgaben auf {} Geräte ({} Kerne): {}",
+        aufgaben.len(),
+        kn.len(),
+        kn.iter()
+            .map(|k| match k {
+                Knoten::Lokal { kerne, .. } | Knoten::Fern { kerne, .. } => *kerne,
+            })
+            .sum::<usize>(),
+        kn.iter().map(|k| k.name()).collect::<Vec<_>>().join(", ")
+    );
     let p = Planer::neu(ich, relais, aufgaben);
     let (erg, st) = p.ausfuehren(kn);
     let mut fehl = 0;
@@ -446,11 +616,34 @@ fn bench(dir: &std::path::Path, rest: &[&str]) -> R {
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     let c = Config::laden(dir);
     let exe = "ultar-verbund".to_string();
-    let mk = |tag: &str| -> Vec<Aufgabe> { (0..n).map(|k| Aufgabe { id: format!("bench-{tag}-{}-{k}", jetzt_ms()), befehl: vec![exe.clone(), "arbeit".into(), k.to_string(), iter.to_string()], eingabe: String::new(), zeit_ms: 0 }).collect() };
+    let mk = |tag: &str| -> Vec<Aufgabe> {
+        (0..n)
+            .map(|k| Aufgabe {
+                id: format!("bench-{tag}-{}-{k}", jetzt_ms()),
+                befehl: vec![
+                    exe.clone(),
+                    "arbeit".into(),
+                    k.to_string(),
+                    iter.to_string(),
+                ],
+                eingabe: String::new(),
+                zeit_ms: 0,
+            })
+            .collect()
+    };
     let erwartet: Vec<String> = (0..n).map(|k| arbeit(&k.to_string(), iter)).collect();
-    let pruefe = |e: &[proto::Ergebnis]| e.iter().zip(&erwartet).all(|(e, w)| e.ausgabe.trim() == w);
+    let pruefe =
+        |e: &[proto::Ergebnis]| e.iter().zip(&erwartet).all(|(e, w)| e.ausgabe.trim() == w);
 
-    let (l, _) = knoten(dir, &Config { aktiv: false, ..c.clone() }, &ich, true);
+    let (l, _) = knoten(
+        dir,
+        &Config {
+            aktiv: false,
+            ..c.clone()
+        },
+        &ich,
+        true,
+    );
     let p = Planer::neu(ich.clone(), None, mk("hier"));
     let (e1, s1) = p.ausfuehren(l);
     let (kn, relais) = knoten(dir, &c, &ich, true);
@@ -458,10 +651,22 @@ fn bench(dir: &std::path::Path, rest: &[&str]) -> R {
     let p = Planer::neu(ich, relais, mk("verbund"));
     let (e2, s2) = p.ausfuehren(kn);
     println!("Aufgaben            {n} × SHA-256-Kette ({iter})");
-    println!("nur dieses Gerät    {} ms  {}", s1.dauer_ms, if pruefe(&e1) { "korrekt" } else { "FEHLER" });
-    println!("ganzer Verbund      {} ms  {}  ({geraete} Geräte, {:?})", s2.dauer_ms, if pruefe(&e2) { "korrekt" } else { "FEHLER" }, s2.je_knoten);
+    println!(
+        "nur dieses Gerät    {} ms  {}",
+        s1.dauer_ms,
+        if pruefe(&e1) { "korrekt" } else { "FEHLER" }
+    );
+    println!(
+        "ganzer Verbund      {} ms  {}  ({geraete} Geräte, {:?})",
+        s2.dauer_ms,
+        if pruefe(&e2) { "korrekt" } else { "FEHLER" },
+        s2.je_knoten
+    );
     if s2.dauer_ms > 0 {
-        println!("Beschleunigung      {:.2}×", s1.dauer_ms as f64 / s2.dauer_ms as f64);
+        println!(
+            "Beschleunigung      {:.2}×",
+            s1.dauer_ms as f64 / s2.dauer_ms as f64
+        );
     }
     if !pruefe(&e1) || !pruefe(&e2) {
         return Err("Ergebnisse falsch".into());
@@ -469,21 +674,32 @@ fn bench(dir: &std::path::Path, rest: &[&str]) -> R {
     Ok(())
 }
 
-
 // ---------------- Bildschirm, Weitergeben, Ton, Mining ----------------
 
 /// Kanal zu einem Gerät (Name, Kennung oder ip:port) – bei bloßer Adresse muss es gekoppelt sein
-fn kanal_zu(dir: &std::path::Path, ziel: &str) -> Result<(kanal::Kanal, Gesehen, Option<Arc<Relais>>, Ident), String> {
+fn kanal_zu(
+    dir: &std::path::Path,
+    ziel: &str,
+) -> Result<(kanal::Kanal, Gesehen, Option<Arc<Relais>>, Ident), String> {
     let ich = Ident::laden(dir).map_err(|e| e.to_string())?;
     let c = Config::laden(dir);
     let mut g = ziel_suchen(dir, &c, &ich, ziel)?;
-    let relais = if g.weg == "relais" { relais_client(&c, &ich) } else { None };
+    let relais = if g.weg == "relais" {
+        relais_client(&c, &ich)
+    } else {
+        None
+    };
     let k = if g.pk.is_empty() {
         let a: std::net::SocketAddr = g.adresse.parse().map_err(|_| "Adresse")?;
-        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3)).map_err(|e| e.to_string())?;
-        let k = kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich).map_err(|e| e.to_string())?;
+        let s = std::net::TcpStream::connect_timeout(&a, Duration::from_secs(3))
+            .map_err(|e| e.to_string())?;
+        let k = kanal::Kanal::verbinden(Box::new(kanal::TcpTransport(s)), &ich)
+            .map_err(|e| e.to_string())?;
         if c.partner(&ident::hex(&k.partner_pk)).is_none() {
-            return Err(format!("{} ist nicht gekoppelt", ident::kennung(&k.partner_pk)));
+            return Err(format!(
+                "{} ist nicht gekoppelt",
+                ident::kennung(&k.partner_pk)
+            ));
         }
         g.pk = ident::hex(&k.partner_pk);
         g.kennung = ident::kennung(&k.partner_pk);
@@ -517,7 +733,12 @@ fn antwort_zeigen(n: Nachricht) -> R {
 }
 
 fn anzeigen(dir: &std::path::Path, ziel: &str, rest: &[&str]) -> R {
-    let adresse = rest.iter().position(|x| *x == "--web").and_then(|i| rest.get(i + 1)).copied().unwrap_or("127.0.0.1:0");
+    let adresse = rest
+        .iter()
+        .position(|x| *x == "--web")
+        .and_then(|i| rest.get(i + 1))
+        .copied()
+        .unwrap_or("127.0.0.1:0");
     let oeffnen = rest.contains(&"--oeffnen");
     let (k, g, relais, ich) = kanal_zu(dir, ziel)?;
     drop(k);
@@ -528,7 +749,10 @@ fn anzeigen(dir: &std::path::Path, ziel: &str, rest: &[&str]) -> R {
         eprintln!("[verbund] {e} – neuer Versuch beim Öffnen");
     }
     println!("{url}");
-    eprintln!("[verbund] Ansicht von „{}“ – im Browser öffnen: {url}", g.name);
+    eprintln!(
+        "[verbund] Ansicht von „{}“ – im Browser öffnen: {url}",
+        g.name
+    );
     if oeffnen {
         // die eigene Oberfläche zeigt die Ansicht im Browser
         bildschirm::an_oberflaeche(&format!("browser {url}"))?;
@@ -542,17 +766,36 @@ fn anzeigen(dir: &std::path::Path, ziel: &str, rest: &[&str]) -> R {
     }
 }
 
-fn bild_holen(dir: &std::path::Path, ziel: &str, zeilen: Vec<String>) -> Result<(usize, usize, Vec<u8>), String> {
+fn bild_holen(
+    dir: &std::path::Path,
+    ziel: &str,
+    zeilen: Vec<String>,
+) -> Result<(usize, usize, Vec<u8>), String> {
     let (mut k, ..) = kanal_zu(dir, ziel)?;
     k.zeitlimit(Some(Duration::from_secs(30)));
-    k.nachricht_senden(&Nachricht::Teilen).map_err(|e| e.to_string())?;
+    k.nachricht_senden(&Nachricht::Teilen)
+        .map_err(|e| e.to_string())?;
     if let Nachricht::Fehler { text } = k.nachricht_empfangen().map_err(|e| e.to_string())? {
         return Err(text);
     }
-    let mut runde = |eingaben: Vec<String>, voll: bool, warte: u32| -> Result<(usize, usize, Vec<u8>), String> {
-        k.nachricht_senden(&Nachricht::Fern { eingaben, warte_ms: warte, voll }).map_err(|e| e.to_string())?;
+    let mut runde = |eingaben: Vec<String>,
+                     voll: bool,
+                     warte: u32|
+     -> Result<(usize, usize, Vec<u8>), String> {
+        k.nachricht_senden(&Nachricht::Fern {
+            eingaben,
+            warte_ms: warte,
+            voll,
+        })
+        .map_err(|e| e.to_string())?;
         match k.nachricht_empfangen().map_err(|e| e.to_string())? {
-            Nachricht::Bild { w, h, daten, .. } => Ok((w as usize, h as usize, base64::engine::general_purpose::STANDARD.decode(daten).map_err(|e| e.to_string())?)),
+            Nachricht::Bild { w, h, daten, .. } => Ok((
+                w as usize,
+                h as usize,
+                base64::engine::general_purpose::STANDARD
+                    .decode(daten)
+                    .map_err(|e| e.to_string())?,
+            )),
             Nachricht::Fehler { text } => Err(text),
             _ => Err("unerwartet".into()),
         }
@@ -596,14 +839,26 @@ fn senden(dir: &std::path::Path, ziel: &str, datei: &str, oeffnen: bool) -> R {
     if daten.len() > weitergeben::MAX_DATEI {
         return Err("Datei zu groß (höchstens 48 MB)".into());
     }
-    let name = std::path::Path::new(datei).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "datei".into());
-    antwort_zeigen(frage(dir, ziel, Nachricht::Datei { name, daten: base64::engine::general_purpose::STANDARD.encode(&daten), oeffnen })?)
+    let name = std::path::Path::new(datei)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "datei".into());
+    antwort_zeigen(frage(
+        dir,
+        ziel,
+        Nachricht::Datei {
+            name,
+            daten: base64::engine::general_purpose::STANDARD.encode(&daten),
+            oeffnen,
+        },
+    )?)
 }
 
 fn hoeren(dir: &std::path::Path, ziel: &str, sek: u64) -> R {
     let (mut k, g, ..) = kanal_zu(dir, ziel)?;
     k.zeitlimit(Some(Duration::from_secs(10)));
-    k.nachricht_senden(&Nachricht::TonHoeren).map_err(|e| e.to_string())?;
+    k.nachricht_senden(&Nachricht::TonHoeren)
+        .map_err(|e| e.to_string())?;
     if let Nachricht::Fehler { text } = k.nachricht_empfangen().map_err(|e| e.to_string())? {
         return Err(text);
     }
@@ -612,10 +867,13 @@ fn hoeren(dir: &std::path::Path, ziel: &str, sek: u64) -> R {
     let t = std::time::Instant::now();
     let mut bytes = 0usize;
     while sek == 0 || t.elapsed() < Duration::from_secs(sek) {
-        k.nachricht_senden(&Nachricht::TonWeiter).map_err(|e| e.to_string())?;
+        k.nachricht_senden(&Nachricht::TonWeiter)
+            .map_err(|e| e.to_string())?;
         match k.nachricht_empfangen().map_err(|e| e.to_string())? {
             Nachricht::TonDaten { pcm } => {
-                let roh = base64::engine::general_purpose::STANDARD.decode(pcm).unwrap_or_default();
+                let roh = base64::engine::general_purpose::STANDARD
+                    .decode(pcm)
+                    .unwrap_or_default();
                 bytes += roh.len();
                 w.spielen(&roh)?;
             }
@@ -623,7 +881,10 @@ fn hoeren(dir: &std::path::Path, ziel: &str, sek: u64) -> R {
             _ => return Err("unerwartet".into()),
         }
     }
-    eprintln!("[verbund] {:.1} s Ton empfangen", bytes as f64 / (ton::RATE as f64 * 2.0));
+    eprintln!(
+        "[verbund] {:.1} s Ton empfangen",
+        bytes as f64 / (ton::RATE as f64 * 2.0)
+    );
     Ok(())
 }
 
@@ -643,12 +904,18 @@ fn sprechen(dir: &std::path::Path, ziel: &str, sek: u64) -> R {
             continue;
         }
         bytes += pcm.len();
-        k.nachricht_senden(&Nachricht::TonDaten { pcm: base64::engine::general_purpose::STANDARD.encode(&pcm) }).map_err(|e| e.to_string())?;
+        k.nachricht_senden(&Nachricht::TonDaten {
+            pcm: base64::engine::general_purpose::STANDARD.encode(&pcm),
+        })
+        .map_err(|e| e.to_string())?;
         if let Nachricht::Fehler { text } = k.nachricht_empfangen().map_err(|e| e.to_string())? {
             return Err(text);
         }
     }
-    eprintln!("[verbund] {:.1} s gesprochen", bytes as f64 / (ton::RATE as f64 * 2.0));
+    eprintln!(
+        "[verbund] {:.1} s gesprochen",
+        bytes as f64 / (ton::RATE as f64 * 2.0)
+    );
     Ok(())
 }
 

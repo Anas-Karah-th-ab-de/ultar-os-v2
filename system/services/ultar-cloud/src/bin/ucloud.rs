@@ -9,20 +9,26 @@ fn main() {
         "register" => cloud::register(arg(&a, 2), arg(&a, 3)).map(|_| println!("OK angemeldet")),
         "login" => cloud::login(arg(&a, 2), arg(&a, 3)).map(|_| println!("OK angemeldet")),
         "number" => cloud::register_number().map(|n| println!("Nummer: {n}")),
-        "vpn" => cloud::vpn_provision().map(|_| println!("OK VPN-Peer bereitgestellt (/run/ultar/wg-peer.conf)")),
+        "vpn" => cloud::vpn_provision()
+            .map(|_| println!("OK VPN-Peer bereitgestellt (/run/ultar/wg-peer.conf)")),
         "store" => cloud::store_list().map(|apps| {
             for app in apps {
                 println!("{}  {}  v{}  {} B", app.id, app.name, app.version, app.size);
             }
         }),
-        "update" => cloud::update_check(a.get(2).map(|s| s.as_str()).unwrap_or("stable")).map(|r| match r {
-            Some(rel) => println!("Update: v{} ({})  {}", rel.version, rel.channel, rel.url),
-            None => println!("kein Update"),
-        }),
+        "update" => {
+            cloud::update_check(a.get(2).map(|s| s.as_str()).unwrap_or("stable")).map(|r| match r {
+                Some(rel) => println!("Update: v{} ({})  {}", rel.version, rel.channel, rel.url),
+                None => println!("kein Update"),
+            })
+        }
         "whoami" => {
             println!("server: {}", cloud::base_url());
             println!("angemeldet: {}", cloud::token().is_some());
-            println!("nummer: {}", cloud::my_number().unwrap_or_else(|| "—".into()));
+            println!(
+                "nummer: {}",
+                cloud::my_number().unwrap_or_else(|| "—".into())
+            );
             Ok(())
         }
         _ => Err(format!("unbekannt: {cmd}")),

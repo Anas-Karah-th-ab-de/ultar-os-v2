@@ -20,4 +20,5 @@ sha2 = "0.10"
 hex = "0.4"
 nix = { version = "0.29", features = ["fs", "net", "hostname"] }
 ultar-apps = { path = "../../core/ultar-apps" }
-ultar-edition = { path = "../../core/ultar-edition" }
+ultar-profile = { path = "../../core/ultar-profile" }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }

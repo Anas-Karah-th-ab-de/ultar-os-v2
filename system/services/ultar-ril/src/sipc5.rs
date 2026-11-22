@@ -88,11 +88,12 @@ pub fn parse_frame(buf: &[u8]) -> Option<(usize, u8, usize, &[u8])> {
     }
     let ch = buf[1];
     // len-Feld: bei EXT ohne Multiframe 4 Byte (u32), sonst 2 Byte (u16)
-    let frame_len = if (buf[0] & SIPC5_EXT_FIELD_EXIST != 0) && ((buf[0] & 0b11) != SIPC5_MULTI_FRAME_CFG) {
-        u32::from_le_bytes([buf[2], buf[3], buf[4], buf[5]]) as usize
-    } else {
-        u16::from_le_bytes([buf[2], buf[3]]) as usize
-    };
+    let frame_len =
+        if (buf[0] & SIPC5_EXT_FIELD_EXIST != 0) && ((buf[0] & 0b11) != SIPC5_MULTI_FRAME_CFG) {
+            u32::from_le_bytes([buf[2], buf[3], buf[4], buf[5]]) as usize
+        } else {
+            u16::from_le_bytes([buf[2], buf[3]]) as usize
+        };
     if frame_len < hl || frame_len > buf.len() {
         // Payload evtl. unvollständig – nur Header+Längen zurückgeben, Payload soweit vorhanden
         let end = buf.len().min(frame_len.max(hl));

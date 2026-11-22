@@ -39,7 +39,11 @@ pub struct Gesehen {
 pub type Tabelle = Arc<Mutex<HashMap<String, Gesehen>>>;
 
 pub fn socket(port: u16) -> std::io::Result<UdpSocket> {
-    let s = socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+    let s = socket2::Socket::new(
+        socket2::Domain::IPV4,
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    )?;
     s.set_reuse_address(true)?;
     #[cfg(unix)]
     let _ = s.set_reuse_port(true);
@@ -53,13 +57,19 @@ pub fn socket(port: u16) -> std::io::Result<UdpSocket> {
 /// Rundruf-Ziele: 255.255.255.255 + Broadcast jeder Schnittstelle (aus /proc/net/route nicht ableitbar → feste Liste) + Extra-Ziele
 pub fn ziele(port: u16, extra: &[String]) -> Vec<SocketAddr> {
     let mut v: Vec<SocketAddr> = vec![SocketAddr::from(([255, 255, 255, 255], port))];
-    let mut env: Vec<String> = std::env::var("ULTAR_VERBUND_ZIELE").map(|s| s.split(',').map(|x| x.trim().to_string()).collect()).unwrap_or_default();
+    let mut env: Vec<String> = std::env::var("ULTAR_VERBUND_ZIELE")
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).collect())
+        .unwrap_or_default();
     env.extend(extra.iter().cloned());
     for z in env {
         if z.is_empty() {
             continue;
         }
-        let z = if z.contains(':') { z } else { format!("{z}:{port}") };
+        let z = if z.contains(':') {
+            z
+        } else {
+            format!("{z}:{port}")
+        };
         if let Ok(a) = z.parse() {
             v.push(a);
         }
@@ -75,7 +85,13 @@ pub fn senden(u: &UdpSocket, m: &Meldung, ziele: &[SocketAddr]) {
 }
 
 /// eine empfangene Meldung verarbeiten (eigene ignorieren)
-pub fn verarbeiten(t: &Tabelle, eigen_pk: &str, b: &[u8], von: SocketAddr, vertraut: impl Fn(&str) -> bool) -> Option<Gesehen> {
+pub fn verarbeiten(
+    t: &Tabelle,
+    eigen_pk: &str,
+    b: &[u8],
+    von: SocketAddr,
+    vertraut: impl Fn(&str) -> bool,
+) -> Option<Gesehen> {
     let m: Meldung = serde_json::from_slice(b).ok()?;
     if m.v != 1 || m.pk == eigen_pk || m.pk.len() != 64 || !m.aktiv {
         return None;
@@ -103,5 +119,7 @@ pub fn verarbeiten(t: &Tabelle, eigen_pk: &str, b: &[u8], von: SocketAddr, vertr
 /// veraltete Einträge (> 10 s) entfernen
 pub fn aufraeumen(t: &Tabelle) {
     let jetzt = crate::jetzt_ms();
-    t.lock().unwrap().retain(|_, g| g.weg == "relais" || jetzt.saturating_sub(g.zuletzt_ms) < 10_000);
+    t.lock()
+        .unwrap()
+        .retain(|_, g| g.weg == "relais" || jetzt.saturating_sub(g.zuletzt_ms) < 10_000);
 }

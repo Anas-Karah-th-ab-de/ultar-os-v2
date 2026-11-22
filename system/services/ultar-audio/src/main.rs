@@ -32,10 +32,21 @@ use route::Dev;
 
 fn firmware_present() -> Vec<(String, bool)> {
     let names = ["calliope_sram.bin", "calliope_dram.bin"];
-    let dirs = ["/vendor/firmware", "/lib/firmware", "/etc/firmware", "/firmware/image"];
+    let dirs = [
+        "/vendor/firmware",
+        "/lib/firmware",
+        "/etc/firmware",
+        "/firmware/image",
+    ];
     names
         .iter()
-        .map(|n| (n.to_string(), dirs.iter().any(|d| std::path::Path::new(&format!("{d}/{n}")).exists())))
+        .map(|n| {
+            (
+                n.to_string(),
+                dirs.iter()
+                    .any(|d| std::path::Path::new(&format!("{d}/{n}")).exists()),
+            )
+        })
         .collect()
 }
 
@@ -44,7 +55,8 @@ fn status() {
     for (n, ok) in firmware_present() {
         println!("  firmware {n}: {}", if ok { "gefunden" } else { "FEHLT" });
     }
-    let v = std::fs::read_to_string("/sys/devices/platform/14a50000.abox/calliope_version").unwrap_or_default();
+    let v = std::fs::read_to_string("/sys/devices/platform/14a50000.abox/calliope_version")
+        .unwrap_or_default();
     println!("  calliope_version = {}", v.trim());
     println!("  Kopfhörer: {}", jack::describe());
     println!("  Gesprächston läuft: {}", route::call_running());
@@ -84,10 +96,21 @@ fn rec(ms: u32, file: Option<&str>, src: &str) -> i32 {
             let l: Vec<i16> = s.iter().step_by(2).copied().collect();
             let r: Vec<i16> = s.iter().skip(1).step_by(2).copied().collect();
             let q = stream::RATE as usize / 4;
-            let lv: Vec<String> = l.chunks(q).map(|c| format!("{:.0}", stream::rms(c))).collect();
-            let rv: Vec<String> = r.chunks(q).map(|c| format!("{:.0}", stream::rms(c))).collect();
+            let lv: Vec<String> = l
+                .chunks(q)
+                .map(|c| format!("{:.0}", stream::rms(c)))
+                .collect();
+            let rv: Vec<String> = r
+                .chunks(q)
+                .map(|c| format!("{:.0}", stream::rms(c)))
+                .collect();
             let peak = s.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
-            println!("Mikrofon ({src}): {} Rahmen, RMS L {:.1} R {:.1}, Spitze {peak}", l.len(), stream::rms(&l), stream::rms(&r));
+            println!(
+                "Mikrofon ({src}): {} Rahmen, RMS L {:.1} R {:.1}, Spitze {peak}",
+                l.len(),
+                stream::rms(&l),
+                stream::rms(&r)
+            );
             println!("  L: {}", lv.join(" "));
             println!("  R: {}", rv.join(" "));
             if let Some(f) = file {
@@ -125,7 +148,11 @@ fn main() {
             let rdma: u32 = arg(2).and_then(|s| s.parse().ok()).unwrap_or(0);
             let hz: f32 = arg(3).and_then(|s| s.parse().ok()).unwrap_or(440.0);
             route::media(Dev::Speaker, 0.8, verbose);
-            if play_to(rdma, &pcm::tone(hz, 800, 0.8)) { 0 } else { 1 }
+            if play_to(rdma, &pcm::tone(hz, 800, 0.8)) {
+                0
+            } else {
+                1
+            }
         }
         Some("--route") => {
             // Für die Oberfläche: Weg vor jedem Ton. Während eines Gesprächs nichts anfassen.

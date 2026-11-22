@@ -27,12 +27,36 @@ pub fn regeln_setzen(p: &Profil) -> Result<(), String> {
         "table ip ultar_waechter {{\n chain umleiten {{ type nat hook output priority -100;\n  meta skuid {uid} ip daddr != 127.0.0.0/8 tcp dport 1-65535 redirect to :{TCP_PORT}\n  meta skuid {uid} udp dport 53 redirect to :{DNS_PORT}\n }}\n chain sperre {{ type filter hook output priority 0;\n  meta skuid {uid} ip daddr != 127.0.0.0/8 udp dport != 53 drop\n }}\n}}\n"
     );
     let ns = crate::netz::ns(&p.name);
-    let _ = crate::befehl("ip", &["netns", "exec", &ns, "nft", "delete", "table", "ip", "ultar_waechter"]);
-    let mut k = std::process::Command::new("ip").args(["netns", "exec", &ns, "nft", "-f", "-"]).stdin(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
-    k.stdin.take().unwrap().write_all(regel.as_bytes()).map_err(|e| e.to_string())?;
+    let _ = crate::befehl(
+        "ip",
+        &[
+            "netns",
+            "exec",
+            &ns,
+            "nft",
+            "delete",
+            "table",
+            "ip",
+            "ultar_waechter",
+        ],
+    );
+    let mut k = std::process::Command::new("ip")
+        .args(["netns", "exec", &ns, "nft", "-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    k.stdin
+        .take()
+        .unwrap()
+        .write_all(regel.as_bytes())
+        .map_err(|e| e.to_string())?;
     let o = k.wait_with_output().map_err(|e| e.to_string())?;
     if !o.status.success() {
-        return Err(format!("Wächter-Regeln: {}", String::from_utf8_lossy(&o.stderr).trim()));
+        return Err(format!(
+            "Wächter-Regeln: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ));
     }
     Ok(())
 }
@@ -84,7 +108,9 @@ pub fn sni(b: &[u8]) -> Option<String> {
         if typ == 0 {
             // server_name: Listenlänge(2) Typ(1) Namenslänge(2) Name
             let n = u16::from_be_bytes([*b.get(p + 3)?, *b.get(p + 4)?]) as usize;
-            return std::str::from_utf8(b.get(p + 5..p + 5 + n)?).ok().map(String::from);
+            return std::str::from_utf8(b.get(p + 5..p + 5 + n)?)
+                .ok()
+                .map(String::from);
         }
         p += len;
     }
@@ -95,10 +121,19 @@ pub fn sni(b: &[u8]) -> Option<String> {
 pub fn http_host(b: &[u8]) -> Option<String> {
     let s = std::str::from_utf8(&b[..b.len().min(4096)]).ok()?;
     let erste = s.lines().next()?;
-    if !["GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS "].iter().any(|m| erste.starts_with(m)) {
+    if ![
+        "GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ",
+    ]
+    .iter()
+    .any(|m| erste.starts_with(m))
+    {
         return None;
     }
-    s.lines().find_map(|l| l.strip_prefix("Host:").or_else(|| l.strip_prefix("host:")).map(|h| h.trim().to_string()))
+    s.lines().find_map(|l| {
+        l.strip_prefix("Host:")
+            .or_else(|| l.strip_prefix("host:"))
+            .map(|h| h.trim().to_string())
+    })
 }
 
 fn ursprungsziel(s: &TcpStream) -> Option<SocketAddrV4> {
@@ -106,16 +141,29 @@ fn ursprungsziel(s: &TcpStream) -> Option<SocketAddrV4> {
     let mut a: libc::sockaddr_in = unsafe { std::mem::zeroed() };
     let mut l = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
     // SO_ORIGINAL_DST = 80
-    let r = unsafe { libc::getsockopt(s.as_raw_fd(), libc::SOL_IP, 80, &mut a as *mut _ as *mut libc::c_void, &mut l) };
+    let r = unsafe {
+        libc::getsockopt(
+            s.as_raw_fd(),
+            libc::SOL_IP,
+            80,
+            &mut a as *mut _ as *mut libc::c_void,
+            &mut l,
+        )
+    };
     if r != 0 {
         return None;
     }
-    Some(SocketAddrV4::new(Ipv4Addr::from(u32::from_be(a.sin_addr.s_addr)), u16::from_be(a.sin_port)))
+    Some(SocketAddrV4::new(
+        Ipv4Addr::from(u32::from_be(a.sin_addr.s_addr)),
+        u16::from_be(a.sin_port),
+    ))
 }
 
 fn tcp_verbindung(c: TcpStream, log: Arc<Log>, p: Arc<Profil>) {
     let t = Instant::now();
-    let Some(ziel) = ursprungsziel(&c) else { return };
+    let Some(ziel) = ursprungsziel(&c) else {
+        return;
+    };
     let _ = c.set_read_timeout(Some(Duration::from_millis(1500)));
     // ersten Block lesen (für Name/Upload), dann weiterreichen
     let mut erst = vec![0u8; 16384];
@@ -123,8 +171,20 @@ fn tcp_verbindung(c: TcpStream, log: Arc<Log>, p: Arc<Profil>) {
     erst.truncate(n);
     let _ = c.set_read_timeout(None);
     let name = sni(&erst).or_else(|| http_host(&erst)).unwrap_or_default();
-    let upload = if p.protokoll.uploads && http_host(&erst).is_some() { String::from_utf8_lossy(&erst[..erst.len().min(512)]).into_owned() } else { String::new() };
-    let mut e = Eintrag { zeit: crate::jetzt(), zelle: p.name.clone(), art: "tcp".into(), ziel: ziel.to_string(), name, upload, ..Default::default() };
+    let upload = if p.protokoll.uploads && http_host(&erst).is_some() {
+        String::from_utf8_lossy(&erst[..erst.len().min(512)]).into_owned()
+    } else {
+        String::new()
+    };
+    let mut e = Eintrag {
+        zeit: crate::jetzt(),
+        zelle: p.name.clone(),
+        art: "tcp".into(),
+        ziel: ziel.to_string(),
+        name,
+        upload,
+        ..Default::default()
+    };
     let s = match TcpStream::connect_timeout(&SocketAddr::V4(ziel), Duration::from_secs(10)) {
         Ok(s) => s,
         Err(err) => {
@@ -188,7 +248,9 @@ pub fn dns_name(q: &[u8]) -> Option<String> {
 }
 
 fn dns_dienst(log: Arc<Log>, p: Arc<Profil>) {
-    let Ok(s) = UdpSocket::bind(("127.0.0.1", DNS_PORT)) else { return };
+    let Ok(s) = UdpSocket::bind(("127.0.0.1", DNS_PORT)) else {
+        return;
+    };
     let ober: Vec<String> = crate::netz::dns();
     let mut b = [0u8; 1500];
     while let Ok((n, von)) = s.recv_from(&mut b) {
@@ -213,7 +275,16 @@ fn dns_dienst(log: Arc<Log>, p: Arc<Profil>) {
             if let Some(a) = &antwort {
                 let _ = s2.send_to(a, von);
             }
-            log.schreiben(&Eintrag { zeit: crate::jetzt(), zelle: p.name.clone(), art: "dns".into(), name, ziel: ober.first().cloned().unwrap_or_default(), hoch: q.len() as u64, runter: antwort.map(|a| a.len() as u64).unwrap_or(0), ..Default::default() });
+            log.schreiben(&Eintrag {
+                zeit: crate::jetzt(),
+                zelle: p.name.clone(),
+                art: "dns".into(),
+                name,
+                ziel: ober.first().cloned().unwrap_or_default(),
+                hoch: q.len() as u64,
+                runter: antwort.map(|a| a.len() as u64).unwrap_or(0),
+                ..Default::default()
+            });
         });
     }
 }
@@ -221,8 +292,14 @@ fn dns_dienst(log: Arc<Log>, p: Arc<Profil>) {
 /// Wächter einer Zelle (läuft im Netz der Zelle)
 pub fn laufen(name: &str) -> Result<(), String> {
     let p = Arc::new(Profil::laden(name)?);
-    let datei = std::fs::OpenOptions::new().create(true).append(true).open(ordner(name).join("protokoll.jsonl")).map_err(|e| e.to_string())?;
-    let log = Arc::new(Log { datei: Mutex::new(datei) });
+    let datei = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ordner(name).join("protokoll.jsonl"))
+        .map_err(|e| e.to_string())?;
+    let log = Arc::new(Log {
+        datei: Mutex::new(datei),
+    });
     let l = TcpListener::bind(("0.0.0.0", TCP_PORT)).map_err(|e| format!("Wächter: {e}"))?;
     {
         let (log, p) = (log.clone(), p.clone());
@@ -239,39 +316,73 @@ pub fn laufen(name: &str) -> Result<(), String> {
 pub fn system(intervall: Duration, runden: Option<u64>) -> Result<(), String> {
     let pfad = crate::wurzel().join("system-protokoll.jsonl");
     std::fs::create_dir_all(crate::wurzel()).map_err(|e| e.to_string())?;
-    let log = Log { datei: Mutex::new(std::fs::OpenOptions::new().create(true).append(true).open(&pfad).map_err(|e| e.to_string())?) };
+    let log = Log {
+        datei: Mutex::new(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&pfad)
+                .map_err(|e| e.to_string())?,
+        ),
+    };
     let mut gesehen = std::collections::HashSet::new();
     let mut r = 0;
     loop {
         // inode → Prozess
         let mut wem = std::collections::HashMap::new();
-        for e in std::fs::read_dir("/proc").map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+        for e in std::fs::read_dir("/proc")
+            .map(|d| d.flatten().collect::<Vec<_>>())
+            .unwrap_or_default()
+        {
             let pid = e.file_name().to_string_lossy().into_owned();
             if !pid.chars().all(|c| c.is_ascii_digit()) {
                 continue;
             }
-            let prog = std::fs::read_to_string(e.path().join("comm")).unwrap_or_default().trim().to_string();
-            for fd in std::fs::read_dir(e.path().join("fd")).map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+            let prog = std::fs::read_to_string(e.path().join("comm"))
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            for fd in std::fs::read_dir(e.path().join("fd"))
+                .map(|d| d.flatten().collect::<Vec<_>>())
+                .unwrap_or_default()
+            {
                 if let Ok(z) = std::fs::read_link(fd.path()) {
-                    if let Some(i) = z.to_string_lossy().strip_prefix("socket:[").and_then(|x| x.strip_suffix(']')) {
+                    if let Some(i) = z
+                        .to_string_lossy()
+                        .strip_prefix("socket:[")
+                        .and_then(|x| x.strip_suffix(']'))
+                    {
                         wem.insert(i.to_string(), format!("{prog} ({pid})"));
                     }
                 }
             }
         }
         for (datei, v6) in [("/proc/net/tcp", false), ("/proc/net/tcp6", true)] {
-            for z in std::fs::read_to_string(datei).unwrap_or_default().lines().skip(1) {
+            for z in std::fs::read_to_string(datei)
+                .unwrap_or_default()
+                .lines()
+                .skip(1)
+            {
                 let f: Vec<&str> = z.split_whitespace().collect();
                 if f.len() < 10 || f[3] != "01" {
                     continue; // nur bestehende Verbindungen
                 }
                 let ziel = adresse(f[2], v6);
-                if ziel.starts_with("127.") || ziel.starts_with("[::1]") || ziel.starts_with("[::ffff:127.") {
+                if ziel.starts_with("127.")
+                    || ziel.starts_with("[::1]")
+                    || ziel.starts_with("[::ffff:127.")
+                {
                     continue;
                 }
                 let schluessel = format!("{}-{}", f[9], ziel);
                 if gesehen.insert(schluessel) {
-                    log.schreiben(&Eintrag { zeit: crate::jetzt(), zelle: wem.get(f[9]).cloned().unwrap_or_else(|| "?".into()), art: "system".into(), ziel, ..Default::default() });
+                    log.schreiben(&Eintrag {
+                        zeit: crate::jetzt(),
+                        zelle: wem.get(f[9]).cloned().unwrap_or_else(|| "?".into()),
+                        art: "system".into(),
+                        ziel,
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -292,7 +403,9 @@ fn adresse(hex: &str, v6: bool) -> String {
     }
     let mut b = [0u8; 16];
     for i in 0..4 {
-        let w = u32::from_str_radix(a.get(i * 8..i * 8 + 8).unwrap_or("0"), 16).unwrap_or(0).swap_bytes();
+        let w = u32::from_str_radix(a.get(i * 8..i * 8 + 8).unwrap_or("0"), 16)
+            .unwrap_or(0)
+            .swap_bytes();
         b[i * 4..i * 4 + 4].copy_from_slice(&w.to_be_bytes());
     }
     format!("[{}]:{port}", std::net::Ipv6Addr::from(b))
@@ -303,7 +416,10 @@ mod tests {
     use super::*;
     #[test]
     fn namen() {
-        assert_eq!(http_host(b"POST /x HTTP/1.1\r\nHost: daten.example\r\n\r\nabc").as_deref(), Some("daten.example"));
+        assert_eq!(
+            http_host(b"POST /x HTTP/1.1\r\nHost: daten.example\r\n\r\nabc").as_deref(),
+            Some("daten.example")
+        );
         assert_eq!(http_host(b"\x16\x03\x01"), None);
         // DNS-Frage für www.example.org
         let mut q = vec![0u8; 12];

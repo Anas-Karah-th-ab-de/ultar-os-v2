@@ -1,0 +1,21 @@
+# Beelink GTi15 Ultra – test machine 2.
+# Transcribed from devices/beelink-gti15/hardware.md (inventory of 2026-11-22).
+# The class codes of the NVMe drives (01:08:02) come from the inventory; the other class
+# codes are the standard codes of these device types. Not listed here: the Thunderbolt DMA
+# functions 00:0d.2/.3 (the inventory gives no ids) and the two ASMedia hubs (served by the
+# xHCI bus driver itself).
+machine Beelink GTi15 Ultra
+pci 8086:57b0 class=020000 at=ad:00.0 label=intel-e610-port0
+pci 8086:57b0 class=020000 at=ad:00.1 label=intel-e610-port1
+pci c0a9:560b class=010802 at=01:00.0 label=crucial-e100-0
+pci c0a9:560b class=010802 at=02:00.0 label=crucial-e100-1
+pci 8086:777d class=0c0330 at=00:14.0 label=pch-xhci
+pci 8086:7ec0 class=0c0330 at=00:0d.0 label=type-c-xhci
+pci 8086:7d51 class=030000 at=00:02.0 label=intel-arc-140t
+pci 8086:7728 class=040300 at=00:1f.3 label=hd-audio
+pci 1217:9863 class=080501 at=ab:00.0 label=o2-micro-card-reader
+pci 8086:272b class=028000 at=ac:00.0 label=intel-be200
+pci 8086:7d1d class=120000 at=00:0b.0 label=intel-npu
+usb 1c7a:0577 label=fingerprint
+usb 8087:0036 class=e00101 label=intel-bluetooth
+usb 1d6b:a4a7 label=usb-audio

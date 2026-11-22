@@ -68,14 +68,20 @@ pub struct UmtsLink {
 impl UmtsLink {
     /// Öffnet den FMT-Hauptkanal (/dev/umts_ipc0). Weitere Kanäle werden bei Bedarf geöffnet.
     pub fn open() -> std::io::Result<Self> {
-        let mut l = UmtsLink { nodes: HashMap::new(), bufsize: 4096 };
+        let mut l = UmtsLink {
+            nodes: HashMap::new(),
+            bufsize: 4096,
+        };
         l.ensure(CH_FMT_0)?;
         Ok(l)
     }
 
     /// Leerer Transport ohne offene Knoten (zum gezielten Öffnen einzelner Kanäle).
     pub fn empty() -> Self {
-        UmtsLink { nodes: HashMap::new(), bufsize: 4096 }
+        UmtsLink {
+            nodes: HashMap::new(),
+            bufsize: 4096,
+        }
     }
 
     /// Stellt sicher, dass der Knoten für `channel` offen ist (nichtblockierend).
@@ -84,9 +90,16 @@ impl UmtsLink {
             return Ok(());
         }
         let path = channel_to_node(channel).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Kanal hat keinen Zeichenknoten (PDP läuft über rmnet)")
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Kanal hat keinen Zeichenknoten (PDP läuft über rmnet)",
+            )
         })?;
-        let f = OpenOptions::new().read(true).write(true).custom_flags(O_NONBLOCK).open(path)?;
+        let f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(O_NONBLOCK)
+            .open(path)?;
         self.nodes.insert(channel, f);
         Ok(())
     }
@@ -107,7 +120,11 @@ impl ModemLink for UmtsLink {
         let chans: Vec<u8> = self.nodes.keys().copied().collect();
         let mut pfds: Vec<PollFd> = chans
             .iter()
-            .map(|c| PollFd { fd: self.nodes[c].as_raw_fd(), events: POLLIN, revents: 0 })
+            .map(|c| PollFd {
+                fd: self.nodes[c].as_raw_fd(),
+                events: POLLIN,
+                revents: 0,
+            })
             .collect();
         let n = unsafe { poll(pfds.as_mut_ptr(), pfds.len() as u64, timeout_ms as i32) };
         if n <= 0 {
@@ -122,7 +139,10 @@ impl ModemLink for UmtsLink {
                     Ok(0) => continue,
                     Ok(len) => {
                         buf.truncate(len);
-                        return Ok(Some(SipcFrame { channel: ch, payload: buf }));
+                        return Ok(Some(SipcFrame {
+                            channel: ch,
+                            payload: buf,
+                        }));
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
                     Err(e) => return Err(e),
@@ -141,7 +161,10 @@ pub struct MockLink {
 
 impl MockLink {
     pub fn new() -> Self {
-        MockLink { sent: Vec::new(), inbox: std::collections::VecDeque::new() }
+        MockLink {
+            sent: Vec::new(),
+            inbox: std::collections::VecDeque::new(),
+        }
     }
     pub fn push_rx(&mut self, channel: u8, payload: Vec<u8>) {
         self.inbox.push_back(SipcFrame { channel, payload });
@@ -156,7 +179,10 @@ impl Default for MockLink {
 
 impl ModemLink for MockLink {
     fn send(&mut self, channel: u8, payload: &[u8]) -> std::io::Result<()> {
-        self.sent.push(SipcFrame { channel, payload: payload.to_vec() });
+        self.sent.push(SipcFrame {
+            channel,
+            payload: payload.to_vec(),
+        });
         Ok(())
     }
     fn recv(&mut self, _timeout_ms: u32) -> std::io::Result<Option<SipcFrame>> {

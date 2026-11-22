@@ -4,7 +4,9 @@
 fn main() {
     println!("cargo:rerun-if-env-changed=ULTAR_WEB_SYSROOT");
     println!("cargo::rustc-check-cfg=cfg(ultar_engine)");
-    let Ok(sys) = std::env::var("ULTAR_WEB_SYSROOT") else { return };
+    let Ok(sys) = std::env::var("ULTAR_WEB_SYSROOT") else {
+        return;
+    };
     println!("cargo:rustc-cfg=ultar_engine");
     if std::env::var("ULTAR_WEB_CHECK_ONLY").is_ok() {
         return;
