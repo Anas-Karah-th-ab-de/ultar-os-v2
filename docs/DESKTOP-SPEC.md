@@ -64,6 +64,44 @@ Funktion „nebenbei“ entstehen und keine vergessen werden.
 | 6 | **Prüfung** | Bildtests, Bedientests (jeder Weg durch die Fläche), Barrierefreiheit, Leistungsbudget, Lauf auf dem Ultar-Kern | CI grün |
 | 7 | **Abnahme** | Durchlauf nur in Arabisch am Testrechner; Vergleich mit dem Ubuntu-Gegenstück: fehlt etwas Nötiges? | `verified` |
 
+### 2.2b Rollen – jede Fläche geht durch mehrere Hände
+
+Gearbeitet wird immer mit mehreren Agenten gleichzeitig, jeder mit **einer** Rolle und eigener Aufgabe. Keine Rolle
+prüft ihre eigene Arbeit. Eine Fläche gilt erst als fertig, wenn alle Rollen unterschrieben haben.
+
+| Rolle | Aufgabe | Liefert |
+|---|---|---|
+| **Produkt** | Zweck, Vollständigkeit gegen Ubuntu und gegen das alte System, keine Dopplung | Eintrag im Verzeichnis, Liste der Muss-Funktionen |
+| **Gestaltung** | Entwurfsbild in allen Größen/Sprachen/Farbwelten; nur Gestaltungswerte und Bausteine | freigegebenes Bild = **Referenz** |
+| **Arabisch** | Wortwahl, Richtung, Begriffe einheitlich (Glossar `i18n/glossary.toml`) | geprüfte Texte |
+| **Bau: Dienst** | Logik, Bus-Schnittstelle, Tests | Dienst mit Vertragstests |
+| **Bau: Oberfläche** | setzt das Bild 1:1 um – ohne eigene Gestaltungsentscheidungen | Fläche aus `ultar-ui` |
+| **Prüfer Bedienung** | jeder Klick, jede Taste, jede Geste, jeder Zustand; versucht es kaputt zu machen | Klickliste 100 % grün |
+| **Prüfer Bild** | vergleicht Umsetzung mit der Referenz (Bild für Bild) | Abweichungsliste = leer |
+| **Prüfer Zugang** | Tastatur allein, Bildschirmleser, Kontrast, große Schrift | Bericht |
+| **Abnahme** | unabhängiger Durchlauf am Testrechner in Arabisch; hat die Fläche vorher nie gesehen | „verified“ |
+
+### 2.2c Umsetzung darf nicht anders aussehen als der Entwurf – dreifache Sicherung
+
+1. **Eine Quelle für Werte:** Farben, Abstände, Radien, Schriften stehen einmal in `design/tokens.toml`. Entwurfsbilder
+   **und** `ultar-ui` werden daraus erzeugt – es gibt keine zweite Stelle, an der ein Wert stehen kann.
+2. **Bildvergleich in der CI:** jede freigegebene Fläche liegt als Referenzbild im Repo (`docs/ui/ref/<id>/<größe>-<sprache>-<farbwelt>.png`).
+   Die echte Oberfläche wird im Test in derselben Größe gezeichnet (`--shot`) und Bildpunkt für Bildpunkt verglichen
+   (Toleranz nur für Kantenglättung der Schrift). Abweichung = Bau scheitert. Ändern darf ein Referenzbild nur, wer
+   ein neu freigegebenes Entwurfsbild vorlegt.
+3. **Maßprüfung:** zusätzlich prüft ein Test die Lage und Größe jedes Elements gegen die Beschreibung (Abstände im
+   Raster, Mindestgrößen, Reihenfolge in Arabisch gespiegelt).
+4. **Zwei unabhängige Prüfer** („Prüfer Bild“ und „Abnahme“) sehen die Fläche am echten Bildschirm – nicht derselbe
+   Agent, der gebaut hat.
+
+### 2.2d Jeder Klick funktioniert – Klickliste
+
+Für jede Fläche erzeugt die CI aus dem Verzeichnis die **Klickliste**: jedes bedienbare Element × jede Bedienart
+(Klick, Rechtsklick, Doppelklick, Ziehen, Tastatur, Touch) × jeder Zustand. Jede Zeile braucht einen Test, der die
+**Wirkung** prüft (nicht nur „stürzt nicht ab“): Zustand im Dienst geändert, richtige Fläche geöffnet, Rückmeldung
+sichtbar, nach Neustart noch da. Ein Element ohne Zeile oder eine Zeile ohne Test lässt den Bau scheitern.
+Dazu ein Zufallstest je Fläche (10 000 zufällige Eingaben): kein Absturz, kein Hänger, kein Element ohne Reaktion.
+
 ### 2.3 Reihenfolge der Arbeit
 1. Gestaltungswerte + Bausteine (`ultar-ui`) – Abschnitt 3/4.
 2. Compositor + Desktop-Hülle – Abschnitt 5.
@@ -125,7 +163,7 @@ Datei-Symbole nach Art (Text, Tabelle, Bild, Ton, Film, Archiv, Programm, unbeka
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ [Übersicht]  [App-Menü der aktiven App]        Sa 22 Nov  16:52        [Status] │  Leiste oben (32)
+│ [Übersicht]  [App-Menü der aktiven App]        So 22 Nov  16:52        [Status] │  Leiste oben (32)
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │                         Arbeitsfläche mit Fenstern                           │
@@ -398,3 +436,63 @@ angelehnt (zentrierte Symbole, runde Ecken, Einstellungen mit Seitenleiste und K
 - Was der Ultar Browser selbst liefert (nicht Servo): Reiter, Adresszeile mit Suche, Lesezeichen, Verlauf, Downloads,
   privates Fenster, Kennwörter (Schlüsselbund), Werbe-/Tracking-Sperre, Rechte je Seite, arabische Oberfläche.
 - Risiko offen benannt: DRM-Videos (Widevine) und einige Bank-/Konferenzseiten gehen vorerst nur im Rückfall-Browser.
+
+---
+
+## 12. Nachtrag aus der Bestandsprüfung (22.11.2026)
+
+Drei Prüfer haben das alte System gegen diesen Entwurf gehalten. Die vollständigen Listen – jede Zeile mit Fundstelle im
+alten Code und Vorschlag – liegen unter `docs/ui/audit/` und werden Zeile für Zeile ins Verzeichnis (`inventory.toml`)
+übernommen. Ergebnis: Konto/Anrufe/Sicherheit **71** Funktionen, davon 51 nicht voll abgedeckt · Systemfunktionen/Apps
+**191**, davon 130 nicht voll abgedeckt, dazu 31 Dopplungen im alten System mit je einem Zielort.
+Die folgenden Punkte sind damit **Teil des Entwurfs**:
+
+### 12.1 Ultar-Konto (Einstellungen → Konten → Ultar-Konto; Server `ultar.code-craft.tech`)
+
+| Element | Funktion |
+|---|---|
+| Karte „Abgemeldet“ | Benutzername, Kennwort (Stärke, anzeigen), „Anmelden“ · „Konto anlegen“; Satz, wofür das Konto dient (Anrufe, Store, VPN, Verbund über Internet, Sicherung) |
+| Zustände | abgemeldet · meldet an · angemeldet · offline (zeigt letzten Stand, nichts geht verloren) · Fehler mit Ursache (falsches Kennwort, Server nicht erreichbar, Zeit falsch) · gesperrt nach Fehlversuchen |
+| Dieses Gerät | Gerätename, „registriert / nicht registriert“, „Gerät registrieren“, Liste meiner Geräte mit „Abmelden/Entfernen“ |
+| **Ultar-Nummer** | `UOS-XXXX-XXXX` groß, Kopieren, QR; auch in System/Info und im Kopf der Telefon-App |
+| Dienste des Kontos (je Schalter) | Ultar-Anrufe annehmen (Standard aus) · Ultar-VPN · Store-Käufe · Sicherung · Verbund über Internet |
+| Erweitert | Server-Adresse (nur abgemeldet änderbar, mit Erreichbarkeits-Prüfung) · Kennwort ändern · Abmelden · Konto löschen |
+| Ohne Konto | Gerät bleibt voll benutzbar; Store und Updates gehen dann über Offline-Quellen (USB). **Entscheidung nötig:** soll der Store online auch ohne Konto gehen? Der heutige Server verlangt ein Konto. |
+
+### 12.2 Telefon – eine App, zwei Wege (Komponente „Kommunikation“; Mobilfunk-Teil nur mit Modem)
+
+| Fläche | Inhalt |
+|---|---|
+| Wählfeld | Umschalter **Ultar-Nummer · Mobilfunk** (Mobilfunk nur mit SIM); Ziffern, `UOS-`-Vorsatz, Kontaktvorschläge, Sprach- oder Videoanruf |
+| Eingehender Anruf | Vollbild/Banner: Name oder Nummer, Weg (Ultar/SIM 1/SIM 2), Annehmen · Ablehnen · mit Nachricht ablehnen; auch auf dem Sperrbildschirm |
+| Gespräch | Dauer, Weg, Verschlüsselung (Ende-zu-Ende bei Ultar), Stumm, Lautsprecher/Ausgabegerät, Tastenfeld, Halten, Video an/aus, Kamera wechseln, Bildschirm teilen, Auflegen |
+| Anrufliste | ein-/ausgehend/verpasst, Rückruf, Kontakt anlegen, Nummer sperren, Eintrag löschen |
+| Zustände | nicht angemeldet · nicht erreichbar · Gegenseite offline · kein Mikrofon/keine Kamera (Recht fehlt) · schlechte Verbindung |
+| Einstellungen | Klingelton, Vibration, Nicht stören-Ausnahmen, gesperrte Nummern, Anrufe auf anderen eigenen Geräten klingeln lassen |
+| Mobilfunk zusätzlich | SMS (in „Nachrichten“), USSD-Codes mit Antwortdialog, Dual-SIM-Zuordnung (Daten/Anrufe/SMS), Netz- und **Funkmast-Wahl** (Auto · Smart · Manuell, Zelle anheften), Live-Signalwerte |
+
+### 12.3 Weitere Ergänzungen
+
+| Bereich | Ergänzt |
+|---|---|
+| **VPN** | „Ultar-VPN“ mit einem Tipp über das Konto (zusätzlich zum Datei-Import), Sperre bei Abbruch (Killswitch), Anzeige des Verbindungswegs |
+| **Werbe-/Tracker-Sperre** | systemweit (nicht nur im Browser): Schalter, Liste wählen/aktualisieren, Ausnahmen – unter Datenschutz & Sicherheit |
+| **Zellen & Container** (neuer Bereich, Komponente) | je Zelle: Netz (aus · nur VPN · frei), Identität, Speicher, Grafikkarte, Protokoll der Uploads; Kiri-Container. **Offen:** der Ultar-Kern hat laut alter Unterlage noch keine Namensräume – Voraussetzung für Zellen, vor P5 zu klären |
+| **Notfall** (neuer Bereich) | Notruf, Notfallkontakt, medizinische Angaben auf dem Sperrbildschirm, SOS-Licht; Tasten-Notausstieg in drei Stufen (Laut+Leise) |
+| **Helfer** | Rechte-Stufen für Verwalter-Aktionen (immer mit Bestätigung), Link-Prüfung, Modellquellen Hugging Face/Ollama, Bild-Modell, geheimes Wort, Besitzer-Stimme, eigene Sprachbefehle |
+| **Anmeldung** | Besitzer-Stimme und geheimes Wort neben PIN/Fingerabdruck/Gesicht |
+| **Neue Grund-Apps** | Notizen (mit Aufgaben und Erinnerungen) · in „Uhr“: Gebetszeiten, Qibla, Fokus-Timer · „Werkzeuge“: Kompass/Wasserwaage (nur mit Sensoren), Zähler, Kennwort-Erzeuger |
+| **Systemfunktionen** | Benachrichtigungsverlauf · Tonprofile/Vibration · automatische Helligkeit · Nutzungszeit · App-Fixierung · Schlafmodus · geplanter Neustart · Netzdiagnose · Dienste-Liste (in Systemmonitor) |
+| **Verbund** | App-Weitergabe zwischen Geräten, Recht „Ton“. **Entscheidung nötig:** Mining im Verbund/Konto übernehmen oder streichen? |
+| **Store** | Formate AppImage, Flatpak, rpm; Web-Apps (WhatsApp, YouTube) und Telegram/Spotify als normale Store-Einträge (Bereich 7) |
+| **Installer** | Auswahl der Ausgabe „Server“ (ohne Oberfläche, mit Web-Verwaltung) |
+| **Freigaben** | Web-Verwaltung als eigene Freigabe; SSH nur noch an **einer** Stelle (Freigaben), nicht zusätzlich in den Entwickleroptionen |
+
+### 12.4 Entwurfsprüfung Runde 1 (vier Rollen)
+
+Gefunden: 71 Abweichungen von den Gestaltungswerten, 31 Klicks ohne festgelegte Wirkung, 35 Arabisch-/Richtungs-Funde,
+Kontrast der Texte in Ordnung (kleinster Wert 5,1:1). **Sofort behoben:** Zurück-Pfeil in Arabisch, Zahlen/Einheiten in
+arabischem Text (3840 × 2160, 60 Hz), Begriffe (إظهار أرقام الشاشات, الأدوات المكتبية, تكرار), Monatsname تشرين الثاني,
+Firefox setzt „Linux-Programme“, Kontrast der Rahmen und der App-Symbole im hellen Thema.
+**Offen für Runde 2 (vor Freigabe):** Symbole mit Doppelbedeutung auflösen, alle Maße auf das Raster, Schriftstufen,
+jeden undefinierten Klick festlegen, Zustandsbilder (leer, lädt, Fehler, offline, ohne Hardware), Größen statt Platzhalter.
