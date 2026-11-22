@@ -212,6 +212,8 @@ Die Regeln sollen den eigenen Kernel voranbringen, nicht nur Ordnung schaffen.
 - **Treiber-Werkstatt als Fließband:** Gerät ohne Treiber → Bauplan → erzeugter Treiber → Prüfung in QEMU/am Gerät →
   `.utr` ins Depot. Reihenfolge der fehlenden Treiber nach Zielrechnern: Intel-/AMD-Grafik, WLAN, Realtek-Ethernet,
   USB-Hubs, virtio-gpu/-input, Bluetooth, ALSA-Schnittstelle für `gen-hda`.
+- **Keine „Grenze“:** Für Geräte ohne offene Beschreibung gilt „beobachten (Ubuntu/Windows) – verstehen – selbst
+  bauen“, als letzter Bauteil (siehe `docs/DRIVER-TARGETS.md`, Stufe 4).
 - **CI startet jede Änderung auf dem Ultar-Kern** (QEMU bis zur Oberfläche), nicht nur auf Linux.
 
 ### 3.6 Leistung – das Beste aus der Hardware holen

@@ -6,7 +6,11 @@ im Installationsmedium.
 - **T1** Lenovo ThinkPad P1 Gen 3 – Laptop (Akku, Panel 4K, Touchpad, WLAN) → `devices/thinkpad-p1-gen3/`
 - **T2** Beelink GTi15 Ultra, Core Ultra 9 285H, `root@192.168.100.18` – Mini-PC/Server → `devices/beelink-gti15/`
 
-Stand: ✅ vorhanden (in ultar-os) · 🔧 vorhanden, am Gerät noch zu prüfen · ⬜ neu zu schreiben · ⛔ Grenze
+Stand: ✅ vorhanden (in ultar-os) · 🔧 vorhanden, am Gerät noch zu prüfen · ⬜ neu zu schreiben · 🔬 Erkundung nötig (Stufe 4)
+
+**Grundsatz: Es gibt keine „Grenze“.** Jedes Gerät der zwei Rechner bekommt einen Treiber. Wo der Hersteller nichts
+offenlegt, wird beobachtet, wie Ubuntu und Windows das Gerät ansprechen, daraus eine eigene Beschreibung geschrieben
+und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 
 ## Stufe 1 – startet, installiert, bedienbar (zuerst)
 
@@ -45,14 +49,33 @@ Stand: ✅ vorhanden (in ultar-os) · 🔧 vorhanden, am Gerät noch zu prüfen 
 | Bluetooth Intel (USB-HCI + Firmware) | ✔ | ✔ | ⬜ | HCI ist Norm; Firmware geschlossen; `ultar-bt`-Host wiederverwenden |
 | NPU (Intel AI Boost) | – | ✔ | ⬜ | keine offene Norm, aber offener Linux-Treiber als Beschreibung; Firmware geschlossen |
 
-## Grenzen – ehrlich
+## Stufe 4 – Erkundung: Geräte ohne offene Beschreibung (letzter Bauteil)
 
-| Gerät | Grund | Ausweg |
+| Gerät | Was fehlt | Weg |
 |---|---|---|
-| ⛔ **NVIDIA Quadro RTX 4000** (T1) | keine öffentliche Registerbeschreibung; Beschleunigung nur mit signierter Hersteller-Firmware | Das Laptop-Panel hängt an der Intel-Grafik → Bild und Desktop laufen ohne NVIDIA. Die NVIDIA-Karte wird abgeschaltet (Strom sparen). Externe Ausgänge, die fest an der NVIDIA hängen, bleiben dunkel. |
-| ⛔ **DisplayLink-Dock Dell D3100** (T1, deine 3 Monitore) | Protokoll geschlossen und verschlüsselt | Monitor direkt per USB-C/Thunderbolt/HDMI anschließen oder Dock mit DisplayPort-Alt-Mode. Ethernet/Ton des Docks sind USB-Normklassen und machbar. |
-| ⛔ Fingerabdruck Synaptics (T1), Fingerabdruck 1c7a:0577 (T2) | geschlossenes Protokoll | später, falls Hersteller-Doku auftaucht |
-| ⛔ Intel ME/AMT | bewusst kein Treiber (Angriffsfläche) | – |
+| 🔬 **NVIDIA Quadro RTX 4000** (T1) | Registerbeschreibung; Start der Karte braucht signierte Hersteller-Firmware (GSP) | Offene Linux-Treiber als Beschreibung (nouveau, Nova, NVIDIAs offene Kernmodule) + eigene Mitschnitte. Hersteller-Firmware wird geladen, nicht ersetzt. Erst Anzeige/Ausgänge, dann 3D, dann Rechnen (für LLM). Sehr groß. |
+| 🔬 **DisplayLink-Dock Dell D3100** (T1, 3 Monitore) | Protokoll geschlossen | USB-Mitschnitt unter Windows und Ubuntu (Hersteller-Treiber), vorhandene Community-Analysen der DL-3xxx-Reihe; eigener Treiber: Bild komprimieren → USB. Ethernet/Ton des Docks sind Normklassen (früher, Stufe 2). |
+| 🔬 Fingerabdruck Synaptics 06cb:00bd (T1), 1c7a:0577 (T2) | Protokoll geschlossen, teils verschlüsselter Kanal zum Sensor | libfprint und dessen Analysen als Ausgang + USB-Mitschnitt; Abgleich im Sensor (Match-on-Chip) nutzen |
+| 🔬 Intel NPU (T2) | keine Norm | offener Linux-Treiber (ivpu) als Beschreibung, Firmware des Herstellers laden |
+| 🔬 Thunderbolt-Sonderfunktionen, Genesys-Kartenleser, Thermal/EC-Sonderregister (T1) | lückenhafte Doku | Mitschnitt + ACPI-Tabellen |
+| Intel ME/AMT | Beschreibung teils offen | bewusst **ohne** Treiber als Voreinstellung (Angriffsfläche); auf Wunsch später |
+
+### Arbeitsweise „beobachten – verstehen – selbst bauen“ (`treiber/werkstatt/erkundung/`)
+
+1. **Beobachten:** dasselbe Gerät unter Ubuntu und Windows betreiben und mitschneiden –
+   USB: `usbmon`/Wireshark, USBPcap · PCI-Register: `mmiotrace`, VFIO-Durchreichung an QEMU mit Zugriffsprotokoll ·
+   Windows: ETW-Spuren · dazu ACPI-Tabellen, Firmware-Dateien, offene Linux-Treiber lesen.
+2. **Verstehen:** aus den Mitschnitten eine **eigene Beschreibung** schreiben (Register, Befehle, Abläufe:
+   Einschalten, Modus setzen, Daten senden, Schlafen) – als Bauplan der Werkstatt, mit Wiedergabe-Tests:
+   der Mitschnitt wird gegen den neuen Treiber abgespielt und verglichen.
+3. **Selbst bauen:** Treiber in Rust nach dieser Beschreibung – eigener Code, kein kopierter Fremdcode
+   (Lizenz und Unabhängigkeit bleiben sauber). Hersteller-Firmware wird nur geladen; ob sie mitgeliefert werden darf,
+   wird je Datei geprüft, sonst holt der Installer sie vom Gerät/aus dem Netz.
+4. **Prüfen** in VFIO und am echten Gerät, dann `.utr`.
+
+Der Rechner T2 (VFIO, IOMMU an) und dein PC (WSL/Windows-Mitschnitt) sind dafür die Messplätze. Ehrlich bleibt:
+diese Teile sind die aufwendigsten und haben keinen festen Termin – sie blockieren aber nichts davor, weil Bild
+(Intel-Grafik), Netz und Bedienung ohne sie laufen.
 
 ## Reihenfolge und Prüfung
 
@@ -61,7 +84,8 @@ Stand: ✅ vorhanden (in ultar-os) · 🔧 vorhanden, am Gerät noch zu prüfen 
 2. AML-Interpreter → Akku/Thermik/Energie.
 3. Intel-Grafik Anzeige (T1 Gen 9.5 zuerst, da Laptop-Panel; dann T2 Xe).
 4. Ton, Touchpad, USB-Klassen, TPM.
-5. WLAN/Bluetooth, dann 3D-Beschleunigung, zuletzt NPU und Thunderbolt.
+5. WLAN/Bluetooth, dann 3D-Beschleunigung, dann Thunderbolt.
+6. Stufe 4 (Erkundung): NPU → Fingerabdruck → DisplayLink → NVIDIA.
 
 Jeder Treiber gilt erst als fertig mit: Manifest `.utr`, Prüfung in QEMU (wo emulierbar) **und** am echten Gerät,
 Eintrag in der Paritätstabelle, arabischen Anzeigenamen.
