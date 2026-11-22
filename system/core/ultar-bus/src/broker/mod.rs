@@ -20,7 +20,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -39,7 +39,9 @@ pub struct BrokerConfig {
     pub max_frame: u32,
     /// Frames that may wait for one client before it counts as too slow.
     pub queue_capacity: usize,
-    /// Most authenticated connections at the same time.
+    /// Bytes that may wait for one client (one frame always fits).
+    pub queue_bytes: usize,
+    /// Most authenticated connections at the same time, per listener.
     pub max_connections: usize,
     /// Most subscriptions per connection.
     pub max_subscriptions: usize,
@@ -58,6 +60,7 @@ impl Default for BrokerConfig {
         Self {
             max_frame: DEFAULT_MAX_FRAME,
             queue_capacity: 1024,
+            queue_bytes: 8 << 20,
             max_connections: 256,
             max_subscriptions: 256,
             max_retained: 256,
@@ -149,10 +152,12 @@ impl BrokerBuilder {
 
     /// Binds all sockets and starts serving.
     pub fn start(self) -> Result<Broker, BusError> {
+        let mut state = State::new();
+        state.queue_bytes = self.config.queue_bytes;
         let shared = Arc::new(Shared {
             config: self.config,
             policy: RwLock::new(self.policy),
-            state: Mutex::new(State::new()),
+            state: Mutex::new(state),
             stopping: AtomicBool::new(false),
             next_conn: AtomicU64::new(1),
             live_threads: Mutex::new(0),
@@ -211,9 +216,10 @@ impl Broker {
                 .map_err(BusError::Io)?;
         }
         let shared = self.shared.clone();
+        let index = self.paths.len();
         let acceptor = thread::Builder::new()
             .name("ultar-bus-accept".into())
-            .spawn(move || accept_loop(&shared, &listener, &spec.auth))
+            .spawn(move || accept_loop(&shared, &listener, &spec.auth, index))
             .map_err(BusError::Io)?;
         self.acceptors.push(acceptor);
         Ok(())
@@ -285,31 +291,50 @@ impl Drop for Broker {
     }
 }
 
-fn accept_loop(shared: &Arc<Shared>, listener: &UnixListener, auth: &Arc<dyn PeerIdentity>) {
+fn accept_loop(
+    shared: &Arc<Shared>,
+    listener: &UnixListener,
+    auth: &Arc<dyn PeerIdentity>,
+    index: usize,
+) {
+    // Threads of this listener only: one socket cannot starve the others.
+    let own = Arc::new(AtomicUsize::new(0));
     for incoming in listener.incoming() {
         if shared.stopping.load(Ordering::SeqCst) {
             return;
         }
         match incoming {
-            Ok(stream) => spawn_connection(shared, stream, auth),
+            Ok(stream) => spawn_connection(shared, stream, auth, index, &own),
             Err(_) => thread::sleep(ACCEPT_RETRY),
         }
     }
 }
 
-fn spawn_connection(shared: &Arc<Shared>, stream: UnixStream, auth: &Arc<dyn PeerIdentity>) {
-    {
-        let mut live = lock(&shared.live_threads);
-        if *live
-            >= shared
-                .config
-                .max_connections
-                .saturating_add(HANDSHAKE_SLACK)
-        {
-            return;
-        }
-        *live += 1;
+struct OwnGuard(Arc<AtomicUsize>);
+
+impl Drop for OwnGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
+}
+
+fn spawn_connection(
+    shared: &Arc<Shared>,
+    stream: UnixStream,
+    auth: &Arc<dyn PeerIdentity>,
+    index: usize,
+    own: &Arc<AtomicUsize>,
+) {
+    let limit = shared
+        .config
+        .max_connections
+        .saturating_add(HANDSHAKE_SLACK);
+    if own.fetch_add(1, Ordering::SeqCst) >= limit {
+        own.fetch_sub(1, Ordering::SeqCst);
+        return;
+    }
+    let own_guard = OwnGuard(own.clone());
+    *lock(&shared.live_threads) += 1;
     let guard = LiveGuard(shared.clone());
     let auth = auth.clone();
     // If the thread cannot be created the closure is dropped, and with it
@@ -318,7 +343,8 @@ fn spawn_connection(shared: &Arc<Shared>, stream: UnixStream, auth: &Arc<dyn Pee
         .name("ultar-bus-conn".into())
         .stack_size(READER_STACK)
         .spawn(move || {
-            conn::serve(&guard.0, stream, auth.as_ref());
+            conn::serve(&guard.0, stream, auth.as_ref(), index);
+            drop(own_guard);
             drop(guard);
         });
 }

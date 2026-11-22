@@ -56,6 +56,12 @@ pub fn issue_token(secret: &[u8], account_id: i64, ttl_secs: i64) -> Option<Stri
 /// Verifies a token and returns its account id. The signature comparison is constant-time
 /// (`verify_slice`), so response timing does not reveal how many signature bytes matched.
 pub fn verify_token(secret: &[u8], token: &str) -> Option<i64> {
+    verify_token_expiry(secret, token).map(|(id, _)| id)
+}
+
+/// Like [`verify_token`], and also returns the expiry time the token carries (so the caller can tell
+/// when it was issued).
+pub fn verify_token_expiry(secret: &[u8], token: &str) -> Option<(i64, i64)> {
     if token.len() > 256 {
         return None;
     }
@@ -69,7 +75,7 @@ pub fn verify_token(secret: &[u8], token: &str) -> Option<i64> {
     if crate::db::now() > exp {
         return None;
     }
-    id.parse().ok()
+    Some((id.parse().ok()?, exp))
 }
 
 #[cfg(test)]

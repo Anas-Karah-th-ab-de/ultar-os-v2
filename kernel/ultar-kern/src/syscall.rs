@@ -50,7 +50,8 @@ struct Tty {
 static TTY: Mutex<Tty> = Mutex::new(Tty { line: Vec::new(), ready: VecDeque::new(), eof: false, icanon: true, echo: true });
 
 fn echo(b: &[u8]) {
-    crate::kprint!("{}", String::from_utf8_lossy(b));
+    // nicht über kprint!: Programmausgaben gehören nicht ins Kernprotokoll (siehe console::UserOut)
+    let _ = core::fmt::Write::write_str(&mut crate::console::UserOut, &String::from_utf8_lossy(b));
 }
 
 /// Tastatur und serielle Schnittstelle abfragen
@@ -671,11 +672,14 @@ fn sys_write(fd: u64, buf: u64, n: u64) -> i64 {
                 if !*write {
                     return Err(-EBADF);
                 }
+                if *append {
+                    *pos = fd_data.len() as u64;
+                }
+                if pos.checked_add(data.len() as u64).map_or(true, |end| end > MAX_FILE_BYTES) {
+                    return Err(-EFBIG);
+                }
                 *dirty = true;
                 let v = Arc::make_mut(fd_data);
-                if *append {
-                    *pos = v.len() as u64;
-                }
                 let s = *pos as usize;
                 if v.len() < s + data.len() {
                     v.resize(s + data.len(), 0);
@@ -859,6 +863,9 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if loc.read_only {
                 return -EROFS;
             }
+            if loc.confined && kernel_tree(&path) {
+                return -EPERM;
+            }
             let parent = fs::normalize(&path, "..");
             if !matches!(fs::stat(&parent), Some((1, _))) {
                 return -ENOENT;
@@ -870,6 +877,21 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     };
     with(|p| p.add_fd(Fd { kind, cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF)
 }
+
+/// Host paths at or below `/proc` and `/dev`: the kernel's own trees. They are the same for every
+/// process, so a confined view (a cell) must not add, replace or remove entries there – such an entry
+/// would land in the host's global tree, visible to the host and to every other cell.
+fn kernel_tree(host: &str) -> bool {
+    ["/proc", "/dev"].iter().any(|d| crate::isolation::mount::below(host, d).is_some())
+}
+
+/// Largest size of one file held in memory (RAM layer, tmpfs, descriptor buffers). A size beyond it
+/// is refused with `EFBIG` instead of asking the kernel heap for it (an allocation that fails stops
+/// the whole machine).
+const MAX_FILE_BYTES: u64 = 64 << 20;
+/// End of the user half of the address space (canonical lower half).
+const USER_TOP: u64 = 0x8000_0000_0000;
+const EFBIG: i64 = 27;
 
 fn stat_buf(mode: u32, size: u64, ino: u64, rdev: u64) -> Vec<u8> {
     let mut b = vec![0u8; 144];
@@ -1077,6 +1099,9 @@ fn write_bytes(fd: u64, data: &[u8]) -> i64 {
             FdKind::Console => Ok(true),
             FdKind::Null => Ok(false),
             FdKind::File { data: fd_data, pos, write: true, dirty, .. } => {
+                if pos.checked_add(data.len() as u64).map_or(true, |end| end > MAX_FILE_BYTES) {
+                    return Err(-EFBIG);
+                }
                 *dirty = true;
                 let v = Arc::make_mut(fd_data);
                 let s = *pos as usize;
@@ -1136,7 +1161,7 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
         return -EROFS;
     }
     // nothing can be renamed into /proc or /dev (a rename must not reach the kernel's control files)
-    if ["/proc", "/dev"].iter().any(|d| crate::isolation::mount::below(&nl.host, d).is_some()) {
+    if kernel_tree(&nl.host) || ol.confined && kernel_tree(&ol.host) {
         return -EPERM;
     }
     // a symbolic link is moved as a link (links exist on tmpfs only)
@@ -1167,6 +1192,7 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
 
 fn sys_ftruncate(fd: u64, len: u64) -> i64 {
     with(|p| match p.fd(fd).map(|d| &mut d.kind) {
+        Some(FdKind::File { write: true, .. }) if len > MAX_FILE_BYTES => -EFBIG,
         Some(FdKind::File { data, write: true, dirty, .. }) => {
             *dirty = true;
             Arc::make_mut(data).resize(len as usize, 0);
@@ -1190,6 +1216,7 @@ fn sys_mkdir(dirfd: i64, path: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
     match locate(dirfd, &p, false) {
         Ok(loc) if loc.read_only => -EROFS,
+        Ok(loc) if loc.confined && kernel_tree(&loc.host) => -EPERM,
         Ok(loc) if fs::mkdir(&loc.host) => 0,
         Ok(_) => -EEXIST,
         Err(e) => e,
@@ -1204,6 +1231,9 @@ fn sys_unlink(dirfd: i64, path: u64) -> i64 {
     };
     if loc.read_only {
         return -EROFS;
+    }
+    if loc.confined && kernel_tree(&loc.host) {
+        return -EPERM;
     }
     let path = loc.host;
     if fs::unlink(&path) {
@@ -1274,6 +1304,8 @@ fn sys_dup(old: u64, new: Option<u64>, flags: u64) -> i64 {
 
 fn sys_fcntl(fd: u64, cmd: u64, arg: u64) -> i64 {
     match cmd {
+        // the lowest number asked for is bounded like dup2 (the table is a vector indexed by number)
+        0 | 1030 if arg >= 65536 => -EINVAL,
         0 | 1030 => with(|p| {
             let Some(d) = p.fd(fd) else { return -EBADF };
             let mut n = d.dup();
@@ -2114,7 +2146,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
     };
     with(|p| {
         let va = if flags & 0x10 != 0 {
-            if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) {
+            // above the user half the page-table index wraps (non-canonical addresses) or names the
+            // kernel half: a mapping there would replace the kernel's own mappings in this address space
+            if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
                 return -EINVAL;
             }
             p.space().unreserve(addr, len);
@@ -2126,6 +2160,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
             addr
         } else {
             let v = p.g.mmap_next;
+            if v + len + 4096 > proc::STACK_TOP - (1 << 30) {
+                return -ENOMEM;
+            }
             p.g.mmap_next += len + 4096;
             v
         };
@@ -2154,7 +2191,8 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
 }
 
 fn sys_munmap(addr: u64, len: u64) -> i64 {
-    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW {
+    // same bound as mmap: without it one call walks up to 2^52 pages while holding the process lock
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > 1 << 34 || addr >= USER_TOP || addr + len > USER_TOP {
         return -EINVAL;
     }
     with(|p| {

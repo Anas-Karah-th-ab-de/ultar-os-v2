@@ -25,6 +25,20 @@ pub const TOKEN_TTL_SECS: i64 = 30 * 86400;
 /// Highest host number of the internal WireGuard pool 10.80.0.0/16.
 const WG_POOL_LAST: u32 = 0xFFFE;
 
+/// Most WireGuard peers one account may hold (each takes an address of the shared 10.80.0.0/16 pool for good).
+pub const MAX_VPN_PEERS_PER_ACCOUNT: i64 = 16;
+/// Password hashes computed at the same time. Argon2id needs about 19 MiB per computation; without a
+/// bound, concurrent register/login requests from many addresses decide how much memory the server uses.
+const HASH_SLOTS: usize = 4;
+static HASHING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(HASH_SLOTS);
+
+/// A stored hash that matches no password: verified for unknown users so that the answer takes as
+/// long as for a known user with a wrong password.
+fn decoy_hash() -> &'static str {
+    static DECOY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DECOY.get_or_init(|| auth::hash_password("decoy-password-never-accepted").unwrap_or_default())
+}
+
 /// JSON body extractor whose failures are typed API errors.
 pub struct ApiJson<T>(pub T);
 
@@ -80,6 +94,7 @@ pub async fn account_register(
         return Err(ApiError::InvalidRequest);
     }
     let password = c.password;
+    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
     let hash = tokio::task::spawn_blocking(move || auth::hash_password(&password))
         .await
         .map_err(|_| ApiError::Internal)?
@@ -116,17 +131,20 @@ pub async fn account_login(
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
-    let Some((id, hash)) = row else {
-        return Err(ApiError::InvalidCredentials);
+    // unknown user: the same work as for a wrong password (no timing difference to tell them apart)
+    let (id, hash) = match row {
+        Some((id, hash)) => (Some(id), hash),
+        None => (None, decoy_hash().to_string()),
     };
     let password = c.password;
+    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
     let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
         .await
         .map_err(|_| ApiError::Internal)?;
-    if !ok {
-        return Err(ApiError::InvalidCredentials);
+    match id {
+        Some(id) if ok => session(&st, id),
+        _ => Err(ApiError::InvalidCredentials),
     }
-    session(&st, id)
 }
 
 /// `GET /v1/account/entitlements` — what the signed-in account has access to:
@@ -275,6 +293,14 @@ pub async fn vpn_peer(
     let address = match existing {
         Some(a) => a,
         None => {
+            let held: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM wg_peers WHERE account_id=?1",
+                [acc],
+                |r| r.get(0),
+            )?;
+            if held >= MAX_VPN_PEERS_PER_ACCOUNT {
+                return Err(ApiError::VpnPoolExhausted);
+            }
             let n = st.wg_next.fetch_add(1, Ordering::SeqCst);
             if n > WG_POOL_LAST {
                 st.wg_next.store(WG_POOL_LAST + 1, Ordering::SeqCst);

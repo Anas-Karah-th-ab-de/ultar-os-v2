@@ -140,9 +140,11 @@ impl<'a> Painter<'a> {
         &self.env
     }
 
-    /// The colour of a role in the active theme, with the current opacity applied.
+    /// The colour of a role in the active theme. The current opacity is applied once, by the
+    /// drawing calls (`fill`, `stroke`, `line`, `spinner`, `text`, `icon`), not here: applying
+    /// it in both places painted disabled widgets at opacity² (0.16 instead of 0.4).
     pub fn color(&self, role: ColorRole) -> Color {
-        self.env.palette().get(role).with_alpha(self.opacity)
+        self.env.palette().get(role)
     }
 
     /// Sets the opacity applied to all following drawing (disabled widgets) and returns the

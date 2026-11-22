@@ -2,6 +2,21 @@
 
 Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Umsetzung Welle 2 (23.11.2026) – gebaut, eingebunden, unabhängig geprüft
+
+| Baustein | Stand |
+|---|---|
+| Kern: Abschottung Stufe 1 | Mount- und PID-Namensräume, Rechte je Prozess; Ausbruchs-Tests in der Kern-Prüfung (QEMU) grün |
+| `platform/ultar-ui` | Baukasten: Gestaltungswerte aus `design/tokens.toml`, Zeichnen, arabischer Textsatz mit Leserichtung, 8 Bausteine mit allen Zuständen, Bildvergleich mit 297 Referenzbildern; ganzer Bildschirm 1920×1080 in 3,6–5,7 ms |
+| `system/core/ultar-settingsd` | Einstellungsdienst mit 111 Einstellungen in 10 Bereichen, „Behalten oder zurück“, Profile je Bildschirm-Kombination; Abfrage 34 µs |
+| `system/core/ultar-devd` | läuft als Dienst (Start 2–3 ms), Bus-Dienst `devices`, `udevctl`; Treiberwechsel nur, wo der Kern es kann |
+| Server + Gerät | Store und Updates ohne Konto, Berechtigungen für Premium und gesperrte Kanäle, Schutz der offenen Endpunkte |
+| Prüfung | drei unabhängige Prüfer: 1 kritischer und 19 schwere Befunde, davon 1 kritischer und 15 schwere behoben – Rest in `docs/review/OFFENE-BEFUNDE.md` |
+
+Zusammen jetzt **rund 1 400 automatische Tests** ohne Fehler (Arbeitsbereich, Server, Ende-zu-Ende), Kern-Prüfung grün.
+**Nicht produktionsreif:** siehe „Offen – sperrt den Einsatz“ in `docs/review/OFFENE-BEFUNDE.md`. Noch keine sichtbare
+neue Oberfläche: Compositor, Desktop-Hülle und Apps sind nicht gebaut; nichts lief auf echter Hardware.
+
 ## Fertig und geprüft
 
 | Was | Nachweis |

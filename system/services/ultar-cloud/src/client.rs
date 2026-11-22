@@ -30,6 +30,41 @@ pub struct VpnPeer {
     pub allowed_ips: String,
 }
 
+/// Largest app package the client downloads, whatever size the server announces.
+pub const MAX_APP_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// Compares two version strings component by component (`.`, `-`, `+` separate components; numeric
+/// components compare as numbers, others as text).
+pub fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let split = |v: &str| -> Vec<String> { v.split(['.', '-', '+']).map(str::to_string).collect() };
+    let (a, b) = (split(a), split(b));
+    for i in 0..a.len().max(b.len()) {
+        let (x, y) = (
+            a.get(i).map_or("0", String::as_str),
+            b.get(i).map_or("0", String::as_str),
+        );
+        let order = match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(x), Ok(y)) => x.cmp(&y),
+            _ => x.cmp(y),
+        };
+        if order != std::cmp::Ordering::Equal {
+            return order;
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Version of the app recorded at its last installation under `root`, if any.
+fn installed_version(root: &Path, id: &str) -> Option<String> {
+    let text =
+        std::fs::read_to_string(root.join("data/ultar/installed").join(format!("{id}.toml")))
+            .ok()?;
+    text.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "version").then(|| value.trim().trim_matches('"').to_string())
+    })
+}
+
 /// A client for one server.
 #[derive(Clone)]
 pub struct Client {
@@ -123,6 +158,10 @@ impl Client {
     /// Downloads the current package of `app` to `dest` and checks size and SHA-256 against the
     /// catalogue. This is a transport check only; the signature is checked at installation.
     pub fn download_app(&self, app: &AppDetails, dest: &Path) -> Result<(), CloudError> {
+        // The announced size comes from the server; it must not decide how much disk a download may take.
+        if app.summary.size == 0 || app.summary.size > MAX_APP_BYTES {
+            return Err(CloudError::Integrity);
+        }
         let expected = Expected {
             size: app.summary.size,
             sha256: &app.sha256,
@@ -160,7 +199,20 @@ impl Client {
             .map_err(CloudError::Package)
             .and_then(|manifest| {
                 if manifest.id == id {
-                    Ok(())
+                    // the server may only move an installed app forward (an older, genuinely signed
+                    // package would bring back fixed weaknesses)
+                    match installed_version(root, id) {
+                        Some(have)
+                            if version_cmp(&manifest.version, &have)
+                                == std::cmp::Ordering::Less =>
+                        {
+                            Err(CloudError::Package(format!(
+                                "refusing downgrade of {id}: installed {have}, offered {}",
+                                manifest.version
+                            )))
+                        }
+                        _ => Ok(()),
+                    }
                 } else {
                     Err(CloudError::Package(format!(
                         "package is {}, expected {id}",

@@ -156,7 +156,7 @@ pub async fn geraet(
     h: HeaderMap,
     Json(g): Json<GeraetReg>,
 ) -> impl IntoResponse {
-    let Some(acc) = bearer(&h).and_then(|t| auth::verify_token(&st.secret, t)) else {
+    let Some(acc) = bearer(&h).and_then(|t| crate::entitlements::account_of_token(&st, t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     match eintragen(&st, acc, &g.pk, &g.name, &g.ausgabe) {
@@ -177,7 +177,7 @@ pub async fn entfernen(
     h: HeaderMap,
     Json(g): Json<Entfernen>,
 ) -> impl IntoResponse {
-    let Some(acc) = bearer(&h).and_then(|t| auth::verify_token(&st.secret, t)) else {
+    let Some(acc) = bearer(&h).and_then(|t| crate::entitlements::account_of_token(&st, t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let n = st
@@ -193,7 +193,7 @@ pub async fn entfernen(
 
 /// `GET /v1/verbund/geraete` — devices of the account with their online state.
 pub async fn geraete(State(st): State<Arc<AppState>>, h: HeaderMap) -> impl IntoResponse {
-    let Some(acc) = bearer(&h).and_then(|t| auth::verify_token(&st.secret, t)) else {
+    let Some(acc) = bearer(&h).and_then(|t| crate::entitlements::account_of_token(&st, t)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     let online: Vec<String> = st
@@ -276,7 +276,7 @@ fn admit(
     st: &AppState,
     anm: &serde_json::Value,
 ) -> Result<(RelaySession, mpsc::Receiver<Message>), String> {
-    let acc = auth::verify_token(&st.secret, anm["token"].as_str().unwrap_or(""))
+    let acc = crate::entitlements::account_of_token(&st, anm["token"].as_str().unwrap_or(""))
         .ok_or_else(|| r#"{"typ":"fehler","text":"anmeldung"}"#.to_string())?;
     let pk = anm["pk"].as_str().unwrap_or("").to_string();
     let name = anm["name"].as_str().unwrap_or("").to_string();

@@ -414,6 +414,30 @@ impl Write for Out {
     }
 }
 
+/// Ausgabe von Benutzerprogrammen: Bildschirm und serielle Schnittstelle, aber NICHT das Kernprotokoll.
+/// Sonst kann jedes Programm Zeilen wie `[treiber] …` in `/proc/ultar/protokoll` schreiben,
+/// die `ultar-devd` als Aussage des Kerns liest.
+pub struct UserOut;
+
+impl Write for UserOut {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let _g = lock();
+        for b in s.bytes() {
+            if b == b'\n' {
+                serial_put(b'\r');
+            }
+            serial_put(b);
+        }
+        if !GRAFIK.load(core::sync::atomic::Ordering::Relaxed) {
+            let scr = unsafe { &mut *core::ptr::addr_of_mut!(SCREEN) };
+            for c in s.chars() {
+                scr.put(c);
+            }
+        }
+        Ok(())
+    }
+}
+
 pub fn set_color(fg: u32) {
     unsafe { (*core::ptr::addr_of_mut!(SCREEN)).fg = fg };
 }

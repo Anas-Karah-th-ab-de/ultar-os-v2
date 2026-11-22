@@ -34,7 +34,7 @@ fn login(st: &AppState, first: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(first).ok()?;
     let token = v.get("token")?.as_str()?;
     let number = v.get("number")?.as_str()?;
-    let acc = auth::verify_token(&st.secret, token)?;
+    let acc = crate::entitlements::account_of_token(&st, token)?;
     let owns = st
         .db
         .lock()

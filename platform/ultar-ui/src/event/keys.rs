@@ -150,7 +150,7 @@ impl Ui {
         modifiers: Modifiers,
         out: &mut Vec<Action>,
     ) -> bool {
-        let towards_end = self.towards_end(key);
+        let base_rtl = self.env.direction.is_rtl();
         let Ok(field) = self.text_field_mut(id) else {
             return false;
         };
@@ -162,7 +162,7 @@ impl Ui {
             Key::Backspace => changed = field.backspace(),
             Key::Delete => changed = field.delete(),
             Key::ArrowLeft | Key::ArrowRight => {
-                field.move_caret(towards_end);
+                field.move_caret_visual(key == Key::ArrowRight, base_rtl);
             }
             Key::Home => field.set_caret(0),
             Key::End => field.set_caret(usize::MAX),

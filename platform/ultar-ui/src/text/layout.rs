@@ -321,9 +321,28 @@ fn truncate(
         while cut > 0 && !(shaped.cluster_start.get(cut).copied().unwrap_or(false) && fits(cut)) {
             cut -= 1;
         }
-        let mut candidate = String::with_capacity(cut + ELLIPSIS.len_utf8());
-        candidate.push_str(first_line.get(..cut).unwrap_or("").trim_end());
+        let kept = first_line.get(..cut).unwrap_or("").trim_end();
+        // The ellipsis is a neutral character: after a run against the paragraph direction
+        // (a number or Latin word in Arabic, Arabic in English) UAX #9 would resolve it to the
+        // paragraph direction and put it at the far end of that run, away from the cut. A
+        // direction mark of the run's direction on both sides keeps it next to the cut.
+        let last_rtl = shaped
+            .glyphs
+            .iter()
+            .filter(|g| (g.cluster as usize) < kept.len())
+            .max_by_key(|g| g.cluster)
+            .map(|g| g.rtl);
+        let mark = match last_rtl {
+            Some(rtl) if rtl != style.direction.is_rtl() => {
+                Some(if rtl { '\u{200F}' } else { '\u{200E}' })
+            }
+            _ => None,
+        };
+        let mut candidate = String::with_capacity(cut + ELLIPSIS.len_utf8() + 6);
+        candidate.push_str(kept);
+        candidate.extend(mark);
         candidate.push(ELLIPSIS);
+        candidate.extend(mark);
         let (mut layout, _) = build(fonts, buffer, &candidate, style, None);
         if layout.width <= max || cut == 0 {
             layout.truncated = true;

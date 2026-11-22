@@ -1171,7 +1171,7 @@ count = 3
 [[entry]]
 rule = "size"
 path = "kernel/ultar-kern/src/syscall.rs"
-count = 8
+count = 9
 
 [[entry]]
 rule = "size"
@@ -1440,6 +1440,16 @@ count = 1
 
 [[entry]]
 rule = "size"
+path = "platform/ultar-ui/tests/review_arabic.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/tests/review_fuzz.rs"
+count = 1
+
+[[entry]]
+rule = "size"
 path = "platform/ultar-wm/src/fb.rs"
 count = 2
 
@@ -1520,6 +1530,11 @@ count = 6
 
 [[entry]]
 rule = "size"
+path = "system/core/ultar-bus/tests/bus_review_policy_diff.rs"
+count = 1
+
+[[entry]]
+rule = "size"
 path = "system/core/ultar-init/src/boot.rs"
 count = 2
 
@@ -1566,6 +1581,11 @@ count = 1
 [[entry]]
 rule = "size"
 path = "system/services/ultar-call/src/real.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-cloud/tests/device_sec_review.rs"
 count = 1
 
 [[entry]]
@@ -1791,7 +1811,7 @@ count = 22
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/console.rs"
-count = 15
+count = 16
 
 [[entry]]
 rule = "unsafe"

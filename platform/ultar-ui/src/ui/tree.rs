@@ -251,6 +251,10 @@ impl Ui {
         }
         select.selected = index;
         self.touch(id);
+        if self.is_open(id) {
+            // The open list shows the check mark and the bold option: repaint it too.
+            self.touch_popup();
+        }
         Ok(())
     }
 

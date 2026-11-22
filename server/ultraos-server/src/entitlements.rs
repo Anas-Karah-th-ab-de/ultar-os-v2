@@ -50,10 +50,26 @@ pub fn bearer(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
+/// The account a session token stands for. The signature and expiry alone are not enough: the
+/// account must still exist, and it must not be younger than the token (account numbers of deleted
+/// accounts are given out again, and a token of the deleted account must not speak for the new one).
+pub fn account_of_token(st: &AppState, token: &str) -> Option<i64> {
+    let (id, expires) = auth::verify_token_expiry(&st.secret, token)?;
+    let issued = expires - crate::accounts::TOKEN_TTL_SECS;
+    let created: Option<i64> = st
+        .db
+        .lock()
+        .query_row("SELECT created FROM accounts WHERE id=?1", [id], |r| {
+            r.get(0)
+        })
+        .ok();
+    created.filter(|c| *c <= issued).map(|_| id)
+}
+
 /// The account of a request with a valid token; `auth_required` otherwise.
 pub fn require_account(st: &AppState, headers: &HeaderMap) -> Result<i64, ApiError> {
     bearer(headers)
-        .and_then(|t| auth::verify_token(&st.secret, t))
+        .and_then(|t| account_of_token(st, t))
         .ok_or(ApiError::AuthRequired)
 }
 

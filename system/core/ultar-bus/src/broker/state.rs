@@ -10,7 +10,7 @@ use crate::wire::{Envelope, Kind};
 use std::collections::HashMap;
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -76,6 +76,10 @@ pub(crate) struct ConnEntry {
     pub(crate) identity: Identity,
     pub(crate) queue: SyncSender<Frame>,
     pub(crate) control: Arc<LinkControl>,
+    /// Listener the connection came in on (limits are per listener).
+    pub(crate) listener: usize,
+    /// Bytes waiting in `queue`; the writer subtracts what it has written.
+    pub(crate) queued: Arc<AtomicUsize>,
     pub(crate) subscriptions: Vec<(u64, Pattern)>,
     pub(crate) services: Vec<String>,
 }
@@ -113,6 +117,8 @@ pub(crate) struct State {
     pub(crate) pending: HashMap<u64, Pending>,
     pub(crate) next_request: u64,
     pub(crate) dropped_slow: u64,
+    /// Upper bound of bytes waiting for one connection.
+    pub(crate) queue_bytes: usize,
     last_purge: Instant,
 }
 
@@ -125,6 +131,7 @@ impl State {
             pending: HashMap::new(),
             next_request: 1,
             dropped_slow: 0,
+            queue_bytes: usize::MAX,
             last_purge: Instant::now(),
         }
     }
@@ -137,10 +144,21 @@ impl State {
         if entry.control.is_closing() {
             return Queued::Gone;
         }
+        let len = frame.len();
+        let waiting = entry.queued.load(Ordering::SeqCst);
+        // One frame always fits, whatever its size.
+        if waiting > 0 && waiting.saturating_add(len) > self.queue_bytes {
+            return Queued::Full;
+        }
+        entry.queued.fetch_add(len, Ordering::SeqCst);
         match entry.queue.try_send(frame) {
             Ok(()) => Queued::Yes,
-            Err(TrySendError::Full(_)) => Queued::Full,
+            Err(TrySendError::Full(_)) => {
+                entry.queued.fetch_sub(len, Ordering::SeqCst);
+                Queued::Full
+            }
             Err(TrySendError::Disconnected(_)) => {
+                entry.queued.fetch_sub(len, Ordering::SeqCst);
                 entry.control.hang_up();
                 Queued::Gone
             }
@@ -257,6 +275,8 @@ pub(crate) mod testing {
                 identity: Identity::new(identity).unwrap(),
                 queue: tx,
                 control: control.clone(),
+                listener: 0,
+                queued: Arc::new(AtomicUsize::new(0)),
                 subscriptions: Vec::new(),
                 services: Vec::new(),
             },

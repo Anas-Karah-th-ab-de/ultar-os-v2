@@ -105,6 +105,10 @@ impl Core {
             // An applier that fails at start must not keep the service
             // from starting; the failure is counted.
             Ok(_) | Err(SettingsError::Apply(_)) => Ok(()),
+            // The journal file could not be rewritten (disk full, read-only):
+            // the values are taken back all the same; the entries stay on
+            // disk and are handled again at the next start, which is harmless.
+            Err(SettingsError::Store(_)) => Ok(()),
             Err(error) => Err(error),
         }
     }

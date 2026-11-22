@@ -150,6 +150,35 @@ impl TextField {
         }
     }
 
+    /// Moves the caret one character towards the physical right (`right`) or left, as the
+    /// text is displayed in a paragraph of base direction `base_rtl`: over a left-to-right
+    /// character "right" is forward, over a right-to-left character it is backward. At a
+    /// place where neither neighbour lies on the wanted side (the end of a run against the
+    /// base direction) the caret moves logically, as seen from the base direction.
+    pub fn move_caret_visual(&mut self, right: bool, base_rtl: bool) -> bool {
+        let base = if base_rtl {
+            unicode_bidi::Level::rtl()
+        } else {
+            unicode_bidi::Level::ltr()
+        };
+        let bidi = unicode_bidi::BidiInfo::new(&self.text, Some(base));
+        let rtl_at = |byte: usize| bidi.levels.get(byte).map(|level| level.is_rtl());
+        let next_rtl = if self.caret < self.text.len() {
+            rtl_at(self.caret)
+        } else {
+            None
+        };
+        let previous_rtl = self.previous_boundary().and_then(rtl_at);
+        // Crossing the next character moves right when it is left-to-right; crossing the
+        // previous one moves right when it is right-to-left.
+        let forward = match (next_rtl, previous_rtl) {
+            (Some(next), _) if next != right => true,
+            (_, Some(previous)) if previous == right => false,
+            _ => right != base_rtl,
+        };
+        self.move_caret(forward)
+    }
+
     /// Puts the caret at `byte` (moved back to a character boundary, clamped to the content).
     pub fn set_caret(&mut self, byte: usize) {
         let mut at = byte.min(self.text.len());
