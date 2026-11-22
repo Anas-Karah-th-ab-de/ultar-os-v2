@@ -2,6 +2,9 @@
 //! (z. B. Ubuntus `busybox`) unverändert auf dem Ultar-Kern laufen. Eigene Umsetzung, kein Linux-Code.
 
 use crate::fs;
+use crate::isolation::path::{link_at, Loc, View};
+use crate::isolation::rights::Rights;
+use crate::isolation::{calls, signals};
 use crate::proc::{self, Fd, FdKind, Pipe, Proc, State, Wait, PROCS};
 use crate::trap::TrapFrame;
 use alloc::collections::VecDeque;
@@ -12,12 +15,16 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::Mutex;
 
+const EPERM: i64 = 1;
 const ENOENT: i64 = 2;
+const ESRCH: i64 = 3;
 const EBADF: i64 = 9;
 const ECHILD: i64 = 10;
 const ENOMEM: i64 = 12;
+const EACCES: i64 = 13;
 const EFAULT: i64 = 14;
 const EEXIST: i64 = 17;
+const EXDEV: i64 = 18;
 const ENOTDIR: i64 = 20;
 const EISDIR: i64 = 21;
 const EINVAL: i64 = 22;
@@ -27,6 +34,7 @@ const EROFS: i64 = 30;
 const EPIPE: i64 = 32;
 const ERANGE: i64 = 34;
 const ENOSYS: i64 = 38;
+const ELOOP: i64 = 40;
 const ENOTCONN_U: i64 = 107;
 
 // ------------------------------------------------------------------ Terminal (Zeilendisziplin)
@@ -172,29 +180,45 @@ fn now_ns(clk: u64) -> u64 {
     }
 }
 
-fn with<R>(f: impl FnOnce(&mut Proc) -> R) -> Option<R> {
+pub(crate) fn with<R>(f: impl FnOnce(&mut Proc) -> R) -> Option<R> {
     let mut ps = PROCS.lock();
     let me = proc::current();
     ps.iter_mut().find(|p| p.pid == me).map(|p| f(p))
 }
 
-fn ustr(path: u64) -> Option<String> {
+pub(crate) fn ustr(path: u64) -> Option<String> {
     with(|p| proc::read_cstr(p.space(), path)).flatten()
 }
 
-fn resolve(dirfd: i64, path: &str) -> String {
-    with(|p| {
+/// Resolve a path of the calling process inside its view (mount namespace + root, see isolation::path).
+/// A relative path starts at the working directory or, with a directory descriptor, at the view path that
+/// descriptor was opened with – but only if it was opened in the caller's current view (else `EXDEV`).
+/// `follow`: follow a symbolic link in the last component. `Err` carries the negative error number.
+pub(crate) fn locate(dirfd: i64, path: &str, follow: bool) -> Result<Loc, i64> {
+    let snap = with(|p| {
+        let view = View::of(&p.g.iso);
         let base = if dirfd >= 0 && !path.starts_with('/') {
             match p.fd(dirfd as u64).map(|f| &f.kind) {
-                Some(FdKind::Dir { path, .. }) => path.clone(),
+                Some(FdKind::Dir { view: at, tag, .. }) => {
+                    if *tag != view.tag() {
+                        return Err(crate::isolation::path::PathError::OtherView.errno());
+                    }
+                    at.clone()
+                }
                 _ => p.g.cwd.clone(),
             }
         } else {
             p.g.cwd.clone()
         };
-        fs::normalize(&base, path)
-    })
-    .unwrap_or_default()
+        Ok((view, base))
+    });
+    let (view, base) = snap.unwrap_or(Err(-ENOENT))?;
+    view.walk(&base, path, follow).map_err(|e| e.errno())
+}
+
+/// Number under which the calling thread sees the kernel-wide thread number `global` (0: not visible).
+fn shown(p: &Proc, global: u64) -> i64 {
+    p.link.ns().local(global).unwrap_or(0) as i64
 }
 
 fn put(va: u64, data: &[u8]) -> bool {
@@ -238,11 +262,22 @@ pub fn dispatch(f: &mut TrapFrame) {
         crate::kprintln!("[spur {}] {nr}({:#x}, {:#x}, {:#x}, {:#x})", proc::current(), a[0], a[1], a[2], a[3]);
     }
     let r = match nr {
+        // calls guarded by a right the caller does not hold
+        n if calls::gate(n).is_some() => Res::Val(-EPERM),
+        155 => Res::Val(calls::sys_pivot_root(a[0], a[1])),
+        161 => Res::Val(calls::sys_chroot(a[0])),
+        165 => Res::Val(calls::sys_mount(a[0], a[1], a[2], a[3])),
+        166 => Res::Val(calls::sys_umount(a[0], a[1])),
+        272 => Res::Val(calls::sys_unshare(a[0])),
+        308 => Res::Val(calls::sys_setns(a[0], a[1])),
+        88 => Res::Val(calls::sys_symlink(a[0], -100, a[1])),
+        266 => Res::Val(calls::sys_symlink(a[0], a[1] as i32 as i64, a[2])),
         0 => sys_read(a[0], a[1], a[2], None),
         1 => Res::Val(sys_write(a[0], a[1], a[2])),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
         3 => Res::Val(with(|p| if (a[0] as u32 as usize) < p.g.fds.len() && p.g.fds[a[0] as u32 as usize].take().is_some() { 0 } else { -EBADF }).unwrap_or(-EBADF)),
-        4 | 6 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
+        4 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
+        6 => Res::Val(sys_stat_path(-100, a[0], a[1], 0x100)),
         5 => Res::Val(sys_fstat(a[0], a[1])),
         7 => sys_poll(a[0], a[1], a[2] as i64),
         8 => Res::Val(sys_lseek(a[0], a[1] as i64, a[2])),
@@ -275,8 +310,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         32 => Res::Val(sys_dup(a[0], None, 0)),
         33 => Res::Val(sys_dup(a[0], Some(a[1]), 0)),
         35 => sys_sleep(a[0], false),
-        39 => Res::Val(with(|p| p.tgid as i64).unwrap_or(0)),
-        186 => Res::Val(proc::current() as i64),
+        39 => Res::Val(with(|p| shown(p, p.tgid)).unwrap_or(0)),
+        186 => Res::Val(with(|p| shown(p, p.pid)).unwrap_or(0)),
         202 => sys_futex(a[0], a[1], a[2], a[3]),
         204 => {
             let (on, _) = crate::apic::cpu_count();
@@ -290,7 +325,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         60 => proc::exit_thread(((a[0] & 0xff) << 8) as i32, false),
         231 => proc::exit_thread(((a[0] & 0xff) << 8) as i32, true),
         61 => sys_wait4(a[0] as i32 as i64, a[1], a[2]),
-        62 => Res::Val(sys_kill(f, a[0] as i32 as i64, a[1])),
+        62 => Res::Val(sys_kill(a[0] as i32 as i64, a[1])),
         63 => Res::Val(sys_uname(a[0])),
         72 => Res::Val(sys_fcntl(a[0], a[1], a[2])),
         79 => Res::Val(sys_getcwd(a[0], a[1])),
@@ -302,7 +337,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         40 => Res::Val(sys_sendfile(a[0], a[1], a[2], a[3])),
         // prctl: PR_GET_AUXV (Linux 6.4+) gibt es hier nicht – wie ältere Kernel mit EINVAL antworten, damit glibc/Rust
         // ihren Rückfallweg nehmen (sonst lesen Ubuntu-26-Programme eine leere Hilfstabelle und stürzen ab)
-        157 => Res::Val(if a[0] == 0x4155_5856 { -22 } else { 0 }),
+        157 => Res::Val(calls::sys_prctl(a[0], a[1])),
         // getresuid/getresgid: alles root
         118 | 120 => {
             for ptr in [a[0], a[1], a[2]] {
@@ -312,7 +347,7 @@ pub fn dispatch(f: &mut TrapFrame) {
             }
             Res::Val(0)
         }
-        165 | 166 | 170 | 171 | 122 | 123 | 203 | 204 | 221 | 52 | 90 | 91 | 92 | 93 | 94 | 268 | 260 | 280 | 162 | 74 | 75 | 306 => Res::Val(0),
+        170 | 171 | 122 | 123 | 203 | 204 | 221 | 52 | 90 | 91 | 92 | 93 | 94 | 268 | 260 | 280 | 162 | 74 | 75 | 306 => Res::Val(0),
         82 => Res::Val(sys_rename(-100, a[0], -100, a[1])),
         264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),
@@ -378,7 +413,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
         137 | 138 => Res::Val(sys_statfs(if nr == 137 { a[1] } else { a[1] })),
         334 | 332 | 435 | 326 | 285 | 425 | 426 | 427 => Res::Val(-ENOSYS),
-        88 | 266 | 86 | 265 => Res::Val(-1),
+        86 | 265 => Res::Val(-1),
         95 => Res::Val(with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0)),
         96 => {
             let ns = now_ns(0);
@@ -393,21 +428,12 @@ pub fn dispatch(f: &mut TrapFrame) {
         97 => Res::Val(sys_prlimit(a[0], a[1])),
         99 => Res::Val(sys_sysinfo(a[0])),
         102 | 104 | 107 | 108 => Res::Val(0),
-        110 => Res::Val(with(|p| p.ppid as i64).unwrap_or(0)),
-        111 | 121 => Res::Val(with(|p| p.pgid as i64).unwrap_or(0)),
-        112 | 124 => Res::Val(proc::current() as i64),
+        110 => Res::Val(with(|p| shown(p, p.ppid)).unwrap_or(0)),
+        111 | 121 => Res::Val(with(|p| shown(p, p.pgid)).unwrap_or(0)),
+        112 | 124 => Res::Val(with(|p| shown(p, p.pid)).unwrap_or(0)),
         158 => Res::Val(sys_arch_prctl(a[0], a[1])),
-        200 => {
-            let tg = PROCS.lock().iter().find(|p| p.pid == a[0]).map(|p| p.tgid);
-            Res::Val(match tg {
-                Some(t) => {
-                    crate::signal::send(t, a[0], a[1]);
-                    0
-                }
-                None => -3,
-            })
-        }
-        234 => Res::Val(if crate::signal::send(a[0], a[1], a[2]) { 0 } else { -3 }),
+        200 => Res::Val(sys_tgkill(None, a[0], a[1])),
+        234 => Res::Val(sys_tgkill(Some(a[0]), a[1], a[2])),
         201 => {
             let s = now_ns(0) / 1_000_000_000;
             if a[0] != 0 {
@@ -418,7 +444,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         217 => Res::Val(sys_getdents(a[0], a[1], a[2])),
         218 => Res::Val(with(|p| {
             p.clear_tid = a[0];
-            p.pid as i64
+            shown(p, p.pid)
         })
         .unwrap_or(0)),
         228 => {
@@ -521,6 +547,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 Src::Data(data[start..end].to_vec())
             }
             FdKind::Dir { .. } => Src::Err(-EISDIR),
+            FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
                 Some(off) => Src::Data(crate::eingabe::fb_lesen(off, n)),
                 None => Src::Err(-EINVAL),
@@ -771,15 +798,37 @@ fn sys_readv(fd: u64, base: u64, cnt: u64) -> Res {
 
 fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    let path = resolve(dirfd, &p);
+    let nofollow = flags & 0x20000 != 0;
+    let loc = match locate(dirfd, &p, !nofollow) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    if nofollow && link_at(&loc).is_some() {
+        return -ELOOP;
+    }
+    let path = loc.host.clone();
     let acc = flags & 3;
     let (creat, excl, trunc, append, dironly, cloexec) = (flags & 0x40 != 0, flags & 0x80 != 0, flags & 0x200 != 0, flags & 0x400 != 0, flags & 0x10000 != 0, flags & 0x80000 != 0);
+    let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::NONE);
+    // namespace handle /proc/<pid>/ns/{mnt,pid} (argument of setns)
+    if path.starts_with("/proc/") {
+        if let Some((tgid, entry)) = crate::procfs::pid_entry(&path) {
+            if let Some(kind) = entry.strip_prefix("ns/") {
+                let Some(ns) = proc::ns_ref(tgid, kind) else { return -ENOENT };
+                return with(|p| p.add_fd(Fd { kind: FdKind::Ns(ns), cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF);
+            }
+        }
+        if acc != 0 && (path == "/proc/ultar/firewall" || path == "/proc/ultar/verbund") && !rights.has(Rights::NET_ADMIN) {
+            return -EACCES;
+        }
+    }
     let kind = match fs::open(&path) {
         Some(_) if creat && excl => return -EEXIST,
         Some(fs::Node::Dev(d)) => match d {
             "null" => FdKind::Null,
             "zero" => FdKind::Zero,
             "urandom" | "random" => FdKind::Random,
+            "fb0" | "input/event0" | "input/event1" if !rights.has(Rights::RAW_DEVICE) => return -EACCES,
             "fb0" => match if acc == 0 { crate::eingabe::FbFd::lesend() } else { crate::eingabe::FbFd::neu() } {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,
@@ -794,16 +843,22 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if acc != 0 {
                 return -EISDIR;
             }
-            FdKind::Dir { ents, pos: 0, path: path.clone() }
+            FdKind::Dir { ents, pos: 0, path: path.clone(), view: loc.view.clone(), tag: loc.tag }
         }
         Some(fs::Node::File(data)) => {
             if dironly {
                 return -ENOTDIR;
             }
+            if acc != 0 && loc.read_only {
+                return -EROFS;
+            }
             let data = if trunc && acc != 0 { Arc::new(Vec::new()) } else { data };
             FdKind::File { data, pos: 0, path: path.clone(), append, write: acc != 0, dirty: trunc && acc != 0 }
         }
         None if creat => {
+            if loc.read_only {
+                return -EROFS;
+            }
             let parent = fs::normalize(&path, "..");
             if !matches!(fs::stat(&parent), Some((1, _))) {
                 return -ENOENT;
@@ -842,7 +897,16 @@ fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
     if p.is_empty() && flags & 0x1000 != 0 {
         return sys_fstat(dirfd as u64, buf);
     }
-    let path = resolve(dirfd, &p);
+    let loc = match locate(dirfd, &p, flags & 0x100 == 0) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    let path = loc.host.clone();
+    if flags & 0x100 != 0 {
+        if let Some(target) = link_at(&loc) {
+            return if put(buf, &stat_buf(0o120777, target.len() as u64, ino(&path), 0)) { 0 } else { -EFAULT };
+        }
+    }
     let b = match fs::stat(&path) {
         Some((0, size)) => stat_buf(0o100755, size, ino(&path), 0),
         Some((1, _)) => stat_buf(0o040755, 4096, ino(&path), 0),
@@ -871,6 +935,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => stat_buf(0o000600, 0, 9, 0),
             FdKind::Fb(_) => stat_buf(0o020660, 0, 10, 29 << 8),
             FdKind::Eingabe(e) => stat_buf(0o020660, 0, 11, (13 << 8) | (64 + e.0 as u64)),
+            FdKind::Ns(_) => stat_buf(0o100444, 0, 12, 0),
         })
     })
     .flatten();
@@ -918,7 +983,7 @@ fn sys_lseek(fd: u64, off: i64, wh: u64) -> i64 {
 fn sys_getdents(fd: u64, buf: u64, count: u64) -> i64 {
     let out = with(|p| {
         let Some(d) = p.fd(fd) else { return Err(-EBADF) };
-        let FdKind::Dir { ents, pos, path } = &mut d.kind else { return Err(-ENOTDIR) };
+        let FdKind::Dir { ents, pos, path, .. } = &mut d.kind else { return Err(-ENOTDIR) };
         let mut out = Vec::new();
         let mut all: Vec<(String, u8)> = vec![(".".into(), 4), ("..".into(), 4)];
         all.extend(ents.iter().map(|e| (e.name.clone(), if e.dir { 4 } else { 8 })));
@@ -957,11 +1022,23 @@ fn sys_getdents(fd: u64, buf: u64, count: u64) -> i64 {
 
 fn sys_readlink(dirfd: i64, path: u64, buf: u64, n: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    let full = resolve(dirfd, &p);
-    let t = if full == "/proc/self/exe" || full == alloc::format!("/proc/{}/exe", proc::current()) {
-        with(|p| p.g.exe.clone()).unwrap_or_default()
-    } else {
-        return -EINVAL;
+    let loc = match locate(dirfd, &p, false) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    // /proc/<pid>/exe (own process) and /proc/<pid>/ns/*; otherwise a symbolic link of the file tree
+    let entry = if loc.host.starts_with("/proc/") { crate::procfs::pid_entry(&loc.host) } else { None };
+    let t = match entry {
+        Some((tgid, "exe")) if tgid == proc::current_group() => with(|p| p.g.exe.clone()).unwrap_or_default(),
+        Some((tgid, "ns/mnt")) | Some((tgid, "ns/pid")) => match crate::procfs::ns_name(tgid, &loc.host[loc.host.len() - 3..]) {
+            Some(name) => name,
+            None => return -ENOENT,
+        },
+        Some(_) => return -EINVAL,
+        None => match link_at(&loc) {
+            Some(target) => target,
+            None => return -EINVAL,
+        },
     };
     let b = &t.as_bytes()[..t.len().min(n as usize)];
     if put(buf, b) {
@@ -1051,8 +1128,36 @@ fn sys_statfs(buf: u64) -> i64 {
 
 fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     let (Some(o), Some(n)) = (ustr(op), ustr(np)) else { return -EFAULT };
-    let (o, n) = (resolve(od, &o), resolve(nd, &n));
+    let (ol, nl) = match (locate(od, &o, false), locate(nd, &n, false)) {
+        (Ok(o), Ok(n)) => (o, n),
+        (Err(e), _) | (_, Err(e)) => return e,
+    };
+    if ol.read_only || nl.read_only {
+        return -EROFS;
+    }
+    // nothing can be renamed into /proc or /dev (a rename must not reach the kernel's control files)
+    if ["/proc", "/dev"].iter().any(|d| crate::isolation::mount::below(&nl.host, d).is_some()) {
+        return -EPERM;
+    }
+    // a symbolic link is moved as a link (links exist on tmpfs only)
+    if let Some(target) = link_at(&ol) {
+        if !crate::isolation::tmpfs::is_private(&nl.host) {
+            return -EXDEV;
+        }
+        fs::unlink(&nl.host);
+        if !crate::isolation::tmpfs::symlink(&nl.host, &target) {
+            return -EEXIST;
+        }
+        fs::unlink(&ol.host);
+        return 0;
+    }
+    // a link at the new name is replaced, not written through
+    let replaced_link = link_at(&nl).is_some();
+    let (o, n) = (ol.host, nl.host);
     let Some(data) = fs::read_all(&o) else { return -ENOENT };
+    if replaced_link {
+        fs::unlink(&n);
+    }
     fs::write_file(&n, (*data).clone());
     if !fs::unlink(&o) {
         return -EROFS;
@@ -1074,25 +1179,33 @@ fn sys_ftruncate(fd: u64, len: u64) -> i64 {
 
 fn sys_access(dirfd: i64, path: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    if fs::stat(&resolve(dirfd, &p)).is_some() {
-        0
-    } else {
-        -ENOENT
+    match locate(dirfd, &p, true) {
+        Ok(loc) if fs::stat(&loc.host).is_some() => 0,
+        Ok(_) => -ENOENT,
+        Err(e) => e,
     }
 }
 
 fn sys_mkdir(dirfd: i64, path: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    if fs::mkdir(&resolve(dirfd, &p)) {
-        0
-    } else {
-        -EEXIST
+    match locate(dirfd, &p, false) {
+        Ok(loc) if loc.read_only => -EROFS,
+        Ok(loc) if fs::mkdir(&loc.host) => 0,
+        Ok(_) => -EEXIST,
+        Err(e) => e,
     }
 }
 
 fn sys_unlink(dirfd: i64, path: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    let path = resolve(dirfd, &p);
+    let loc = match locate(dirfd, &p, false) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    if loc.read_only {
+        return -EROFS;
+    }
+    let path = loc.host;
     if fs::unlink(&path) {
         0
     } else if fs::stat(&path).is_some() {
@@ -1118,10 +1231,13 @@ fn sys_getcwd(buf: u64, size: u64) -> i64 {
 
 fn sys_chdir(path: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
-    let path = resolve(-100, &p);
-    match fs::stat(&path) {
+    let loc = match locate(-100, &p, true) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    match fs::stat(&loc.host) {
         Some((1, _)) => {
-            with(|p| p.g.cwd = path);
+            with(|p| p.g.cwd = loc.view);
             0
         }
         Some(_) => -ENOTDIR,
@@ -1623,6 +1739,9 @@ fn sock_id(fd: u64) -> Option<usize> {
 }
 
 fn sys_reboot(cmd: u64) -> i64 {
+    if !calls::holds(Rights::REBOOT) {
+        return -EPERM;
+    }
     match cmd {
         0 | 0x89AB_CDEF => 0,
         0x0123_4567 => {
@@ -1716,8 +1835,11 @@ fn sys_socketpair(domain: u64, _typ: u64, sv: u64) -> i64 {
 fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
     if unix_sock(fd).is_some() {
         let Some(path) = unix_path(addr, len) else { return Res::Val(-22) };
-        let cwd = with(|p| p.g.cwd.clone()).unwrap_or_default();
-        let path = fs::normalize(&cwd, &path);
+        // socket paths live in the caller's view like every other path
+        let path = match locate(-100, &path, true) {
+            Ok(l) => l.host,
+            Err(e) => return Res::Val(e),
+        };
         let l = UNIX_LISTEN.lock().iter().find(|(p, _)| *p == path).map(|(_, s)| s.clone());
         let Some(l) = l else { return Res::Val(-111) };
         let (mine, theirs) = proc::unix_pair();
@@ -1911,8 +2033,10 @@ fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
 fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
     if let Some(us) = unix_sock(fd) {
         let Some(path) = unix_path(addr, len) else { return -22 };
-        let cwd = with(|p| p.g.cwd.clone()).unwrap_or_default();
-        let path = fs::normalize(&cwd, &path);
+        let path = match locate(-100, &path, true) {
+            Ok(l) => l.host,
+            Err(e) => return e,
+        };
         if UNIX_LISTEN.lock().iter().any(|(p, _)| *p == path) {
             return -98;
         }
@@ -2059,11 +2183,41 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
     let pid = proc::new_pid();
     let fs_now = unsafe { crate::paging::rdmsr(0xC000_0100) };
     let thread = flags & VM != 0 && flags & VFORK == 0;
+    // namespaces: only mount and pid exist; a thread cannot get its own
+    let new_ns = flags & (calls::CLONE_NEWNS | calls::CLONE_NEWPID);
+    if flags & calls::CLONE_NEW_UNSUPPORTED != 0 || new_ns != 0 && (thread || flags & THREAD != 0) {
+        return -EINVAL;
+    }
     let child = with(|p| {
+        if new_ns != 0 && !p.g.iso.rights.has(Rights::MOUNT) {
+            return Err(-EPERM);
+        }
+        // pid namespace of the child: a new one, or the one set for children (unshare/setns)
+        let child_ns = if thread {
+            if !Arc::ptr_eq(p.link.ns(), &p.g.iso.pid_ns_children) {
+                return Err(-EINVAL);
+            }
+            p.link.ns().clone()
+        } else if flags & calls::CLONE_NEWPID != 0 {
+            match crate::isolation::pid::PidNs::child(&p.g.iso.pid_ns_children) {
+                Some(ns) => ns,
+                None => return Err(-28),
+            }
+        } else {
+            p.g.iso.pid_ns_children.clone()
+        };
+        if child_ns.is_dead() {
+            return Err(-ENOMEM);
+        }
         let g = if thread {
             // Faden: Adressraum, Dateien, Signale gemeinsam
             p.g.clone()
         } else {
+            let mut iso = p.g.iso.clone();
+            iso.pid_ns_children = child_ns.clone();
+            if flags & calls::CLONE_NEWNS != 0 {
+                iso.mnt = iso.mnt.copy();
+            }
             let fds = if flags & FILES != 0 {
                 p.g.fds.iter().map(|o| o.as_ref().map(|d| d.dup())).collect()
             } else {
@@ -2086,21 +2240,27 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
                 cmdline: p.g.cmdline.clone(),
                 sigact: p.g.sigact,
                 auxv: p.g.auxv.clone(),
+                iso,
+                exe_host: p.g.exe_host.clone(),
             })
         };
+        // numbers of the child: as the parent sees it (return value) and as it sees itself
+        let link = crate::isolation::pid::PidLink::new(child_ns, pid);
+        let seen_by_parent = shown(p, pid);
+        let seen_by_child = link.ns().local(pid).unwrap_or(0);
         let mut fr = f.clone();
         fr.rax = 0;
         if stack != 0 {
             fr.rsp = stack;
         }
         if flags & PARENT_SETTID != 0 && ptid != 0 {
-            proc::write_user(p.space(), ptid, &(pid as u32).to_le_bytes());
+            proc::write_user(p.space(), ptid, &(seen_by_parent as u32).to_le_bytes());
         }
         if flags & CHILD_SETTID != 0 && ctid != 0 {
-            proc::write_user(g.space.as_ref().unwrap(), ctid, &(pid as u32).to_le_bytes());
+            proc::write_user(g.space.as_ref().unwrap(), ctid, &(seen_by_child as u32).to_le_bytes());
         }
         let tgid = if thread || flags & THREAD != 0 { p.tgid } else { pid };
-        Proc {
+        Ok((seen_by_parent, Proc {
             pid,
             tgid,
             ppid: if tgid == pid { p.tgid } else { p.ppid },
@@ -2118,14 +2278,26 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             on_cpu: false,
             poll_dl: None,
             g,
-        }
+            link,
+        }))
     });
-    let Some(child) = child else { return -ENOMEM };
-    PROCS.lock().push(alloc::boxed::Box::new(child));
-    if flags & VFORK != 0 {
-        block(f, Wait::Vfork(pid), false, pid as i64);
+    let (seen, child) = match child {
+        Some(Ok(c)) => c,
+        Some(Err(e)) => return e,
+        None => return -ENOMEM,
+    };
+    {
+        // the namespace's pid 1 may have ended meanwhile: checked under the same lock that ends it
+        let mut ps = PROCS.lock();
+        if child.link.ns().is_dead() {
+            return -ENOMEM;
+        }
+        ps.push(alloc::boxed::Box::new(child));
     }
-    pid as i64
+    if flags & VFORK != 0 {
+        block(f, Wait::Vfork(pid), false, seen);
+    }
+    seen
 }
 
 fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
@@ -2169,11 +2341,16 @@ fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
 fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
     let args = with(|p| {
         let sp = p.space();
-        Some((proc::read_cstr(sp, path)?, proc::read_strv(sp, argv)?, proc::read_strv(sp, envp)?, p.g.cwd.clone()))
+        Some((proc::read_cstr(sp, path)?, proc::read_strv(sp, argv)?, proc::read_strv(sp, envp)?))
     })
     .flatten();
-    let Some((path, argv, envp, cwd)) = args else { return -EFAULT };
-    let full = fs::normalize(&cwd, &path);
+    let Some((path, argv, envp)) = args else { return -EFAULT };
+    // the program is looked up in the caller's view; `full` is its place in the kernel's tree
+    let loc = match locate(-100, &path, true) {
+        Ok(l) => l,
+        Err(e) => return e,
+    };
+    let full = loc.host.clone();
     let data = match fs::open(&full) {
         Some(fs::Node::File(d)) => d,
         Some(_) => return -13,
@@ -2187,19 +2364,26 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
         let interp = String::from(it.next().unwrap_or("/bin/sh"));
         let mut nargv: Vec<String> = vec![interp.clone()];
         nargv.extend(it.map(String::from));
-        nargv.push(full.clone());
+        nargv.push(loc.view.clone());
         nargv.extend(argv.into_iter().skip(1));
-        let idata = match fs::read_all(&fs::normalize(&cwd, &interp)) {
+        let iloc = match locate(-100, &interp, true) {
+            Ok(l) => l,
+            Err(e) => return e,
+        };
+        let idata = match fs::read_all(&iloc.host) {
             Some(d) => d,
             None => return -ENOENT,
         };
-        return exec_image(f, &idata, nargv, envp, &interp);
+        return exec_image(f, &idata, nargv, envp, &iloc);
     }
-    exec_image(f, &data, argv, envp, &full)
+    exec_image(f, &data, argv, envp, &loc)
 }
 
-fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<String>, path: &str) -> i64 {
-    let img = match proc::load_elf(data, &argv, &envp, path) {
+fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<String>, loc: &Loc) -> i64 {
+    let path = loc.view.as_str();
+    // the dynamic loader named by the program is read through the caller's view as well
+    let read = |p: &str| locate(-100, p, true).ok().and_then(|l| fs::read_all(&l.host));
+    let img = match proc::load_elf(data, &argv, &envp, path, &read) {
         Ok(i) => i,
         Err(e) => {
             crate::kprintln!("[exec] {path}: {e}");
@@ -2217,6 +2401,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
         p.fs_base = 0;
         p.name = argv.first().cloned().unwrap_or_default();
         p.g.exe = String::from(path);
+        p.g.exe_host = loc.host.clone();
         p.g.cmdline = argv.clone();
         for d in p.g.fds.iter_mut() {
             if d.as_ref().map(|x| x.cloexec).unwrap_or(false) {
@@ -2231,7 +2416,16 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
 }
 
 fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
-    let me = with(|p| p.tgid).unwrap_or(0);
+    let Some((me, ns)) = with(|p| (p.tgid, p.link.ns().clone())) else { return Res::Val(-ECHILD) };
+    // the caller names a child by the number of its own pid namespace
+    let pid = if pid > 0 {
+        match ns.global(pid as u64) {
+            Some(g) => g as i64,
+            None => return Res::Val(-ECHILD),
+        }
+    } else {
+        pid
+    };
     let mut ps = PROCS.lock();
     let mine = |c: &&alloc::boxed::Box<Proc>| c.pid == c.tgid && c.ppid == me && (pid <= 0 || c.pid == pid as u64);
     if !ps.iter().any(|c| mine(&c)) {
@@ -2244,7 +2438,7 @@ fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
         if status != 0 {
             put(status, &st.to_le_bytes());
         }
-        return Res::Val(c.pid as i64);
+        return Res::Val(ns.local(c.pid).unwrap_or(0) as i64);
     }
     drop(ps);
     if opts & 1 != 0 {
@@ -2253,20 +2447,20 @@ fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
     Res::Block(Wait::Child(pid))
 }
 
-fn sys_kill(_f: &mut TrapFrame, pid: i64, sig: u64) -> i64 {
+/// `kill`: the targets are named in the caller's pid namespace; visibility, the pid 1 rule and the
+/// `KILL_ANY` right are decided in isolation::signals.
+fn sys_kill(pid: i64, sig: u64) -> i64 {
     let mut ps = PROCS.lock();
     let me = proc::current();
-    let (my_tgid, my_pgid) = ps.iter().find(|p| p.pid == me).map(|p| (p.tgid, p.pgid)).unwrap_or((0, 0));
-    let targets: Vec<u64> = match pid {
-        p if p > 0 => alloc::vec![p as u64],
-        0 => ps.iter().filter(|p| p.pid == p.tgid && p.pgid == my_pgid).map(|p| p.tgid).collect(),
-        -1 => ps.iter().filter(|p| p.pid == p.tgid && p.tgid != my_tgid).map(|p| p.tgid).collect(),
-        p => ps.iter().filter(|x| x.pid == x.tgid && x.pgid == (-p) as u64).map(|x| x.tgid).collect(),
+    let Some(sender) = ps.iter().position(|p| p.pid == me) else { return -ESRCH };
+    let targets = match signals::kill_targets(&ps, sender, pid) {
+        Ok(t) => t,
+        Err(e) => return e,
     };
-    let live: Vec<u64> = targets.into_iter().filter(|t| ps.iter().any(|p| p.tgid == *t && !matches!(p.state, State::Zombie(_) | State::Dead))).collect();
-    if live.is_empty() {
-        return -3;
-    }
+    let live = match signals::permitted(&ps, sender, &targets, sig, pid > 0) {
+        Ok(t) => t,
+        Err(e) => return e,
+    };
     if sig == 0 {
         return 0;
     }
@@ -2279,6 +2473,32 @@ fn sys_kill(_f: &mut TrapFrame, pid: i64, sig: u64) -> i64 {
         proc::exit_thread(sig as i32, true);
     }
     0
+}
+
+/// `tkill(tid, sig)` (`tgid` = None) and `tgkill(tgid, tid, sig)`: signal one thread, same rules as `kill`.
+fn sys_tgkill(tgid: Option<u64>, tid: u64, sig: u64) -> i64 {
+    let mut ps = PROCS.lock();
+    let me = proc::current();
+    let Some(sender) = ps.iter().position(|p| p.pid == me) else { return -ESRCH };
+    let ns = ps[sender].link.ns().clone();
+    let Some(thread) = ns.global(tid) else { return -ESRCH };
+    let Some(group) = ps.iter().find(|p| p.pid == thread).map(|p| p.tgid) else { return -ESRCH };
+    if let Some(want) = tgid {
+        if ns.global(want) != Some(group) {
+            return -ESRCH;
+        }
+    }
+    match signals::permitted(&ps, sender, &[group], sig, true) {
+        Err(e) => e,
+        Ok(t) if t.is_empty() || sig == 0 => 0,
+        Ok(_) => {
+            // tgkill reports a thread that cannot take the signal; tkill never did
+            if !crate::signal::send_locked(&mut ps, group, thread, sig) && tgid.is_some() {
+                return -ESRCH;
+            }
+            0
+        }
+    }
 }
 
 fn sys_sigaction(sig: u64, act: u64, old: u64) -> i64 {

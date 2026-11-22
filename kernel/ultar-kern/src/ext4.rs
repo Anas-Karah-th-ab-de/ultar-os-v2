@@ -210,6 +210,26 @@ impl Ext4 {
         String::from_utf8_lossy(&d).into_owned()
     }
 
+    /// Target of the symbolic link at `path` (relative to this file system's root) without following
+    /// it; `None` if the last component is not a link.
+    pub fn link_at(&self, path: &str) -> Option<String> {
+        let path = path.trim_matches('/');
+        let (dir, name) = match path.rfind('/') {
+            Some(i) => (&path[..i], &path[i + 1..]),
+            None => ("", path),
+        };
+        if name.is_empty() {
+            return None;
+        }
+        let (_, parent) = self.lookup(dir)?;
+        if !parent.is_dir() {
+            return None;
+        }
+        let entry = self.list(&parent).into_iter().find(|e| e.0 == name)?;
+        let node = self.inode(entry.1)?;
+        node.is_link().then(|| self.link_target(&node))
+    }
+
     /// Pfad (relativ zur Wurzel dieses Dateisystems) auflösen, Verknüpfungen folgen
     pub fn lookup(&self, path: &str) -> Option<(u64, Inode)> {
         let mut comps: Vec<String> = path.split('/').filter(|s| !s.is_empty()).map(String::from).collect();

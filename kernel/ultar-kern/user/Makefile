@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -16,3 +16,5 @@ blocktest: blocktest.c
 	gcc -O2 -static -pthread -o $@ $<
 lauscher: lauscher.c
 	gcc -O2 -static -o $@ $<
+zelltest: zelltest.c zelltest-zelle.c zelltest.h
+	gcc -O2 -Wall -Wextra -static -o $@ zelltest.c zelltest-zelle.c

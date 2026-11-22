@@ -33,7 +33,9 @@ pub enum FdKind {
     Zero,
     Random,
     File { data: Arc<Vec<u8>>, pos: u64, path: String, append: bool, write: bool, dirty: bool },
-    Dir { ents: Vec<fs::DirEnt>, pos: usize, path: String },
+    /// `path` ist der Pfad im Dateibaum des Kerns; `view`/`tag`: path as the opening process saw it and the
+    /// view it was opened in (base for *at calls, see isolation::path)
+    Dir { ents: Vec<fs::DirEnt>, pos: usize, path: String, view: String, tag: crate::isolation::ViewTag },
     PipeR(Arc<Pipe>),
     PipeW(Arc<Pipe>),
     Sock(Arc<crate::socket::Handle>),
@@ -53,6 +55,8 @@ pub enum FdKind {
     Fb(Arc<crate::eingabe::FbFd>),
     /// Eingabegerät /dev/input/eventN (Maus/Tastatur)
     Eingabe(Arc<crate::eingabe::EingabeFd>),
+    /// Namespace handle (`/proc/<pid>/ns/*`), argument of `setns`
+    Ns(crate::isolation::NsRef),
 }
 
 pub enum UnixState {
@@ -90,7 +94,7 @@ impl Fd {
             FdKind::Zero => FdKind::Zero,
             FdKind::Random => FdKind::Random,
             FdKind::File { data, pos, path, append, write, dirty } => FdKind::File { data: data.clone(), pos: *pos, path: path.clone(), append: *append, write: *write, dirty: *dirty },
-            FdKind::Dir { ents, pos, path } => FdKind::Dir { ents: ents.clone(), pos: *pos, path: path.clone() },
+            FdKind::Dir { ents, pos, path, view, tag } => FdKind::Dir { ents: ents.clone(), pos: *pos, path: path.clone(), view: view.clone(), tag: *tag },
             FdKind::PipeR(p) => {
                 p.readers.fetch_add(1, Ordering::SeqCst);
                 FdKind::PipeR(p.clone())
@@ -112,6 +116,7 @@ impl Fd {
             FdKind::TimerFd(t) => FdKind::TimerFd(t.clone()),
             FdKind::Fb(f) => FdKind::Fb(f.clone()),
             FdKind::Eingabe(e) => FdKind::Eingabe(e.clone()),
+            FdKind::Ns(n) => FdKind::Ns(n.clone()),
         };
         Fd { kind, cloexec: false, flags: self.flags }
     }
@@ -218,6 +223,10 @@ pub struct Group {
     pub sigact: [SigAct; 65],
     /// Hilfsvektor (auxv) wie beim Start auf den Stapel gelegt – für /proc/<pid>/auxv
     pub auxv: Vec<u8>,
+    /// Isolation: mount namespace, root, pid namespace of children, rights (shared by the threads)
+    pub iso: crate::isolation::Isolation,
+    /// Host path of the running program (`exe` is the path the process itself sees)
+    pub exe_host: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -258,6 +267,8 @@ pub struct Proc {
     /// Frist eines wiederholten poll/select/epoll_wait: (Aufrufstelle, Frist in ms)
     pub poll_dl: Option<(u64, u64)>,
     pub g: Shared<Group>,
+    /// Membership in the pid namespace (numbers of this thread in its namespace and all ancestors)
+    pub link: crate::isolation::pid::PidLink,
 }
 
 impl Proc {
@@ -476,7 +487,10 @@ fn load_segments(sp: &mut AddrSpace, data: &[u8], base: u64) -> Result<(u64, u64
 
 /// ELF64-Programm laden (statisch: ET_EXEC im Fenster 4 MB–256 MB oder PIE; dynamisch: mit ld.so aus dem
 /// Dateibaum) und Stapel mit argv, envp, auxv anlegen
-pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str) -> Result<Image, &'static str> {
+///
+/// `read`: reads a file by the path the program names (the dynamic loader); the caller resolves it in the
+/// view of the process that will run the program.
+pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read: &dyn Fn(&str) -> Option<Arc<Vec<u8>>>) -> Result<Image, &'static str> {
     if data.len() < 64 || &data[0..4] != b"\x7fELF" || data[4] != 2 || data[5] != 1 || u16le(data, 18) != 62 {
         return Err("kein x86_64-ELF-Programm");
     }
@@ -509,7 +523,7 @@ pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str) -> Re
     let prog_entry = base + u64le(data, 24);
     let (entry, interp_base) = match interp {
         Some(ip) => {
-            let idata = fs::read_all(&ip).ok_or("Programmlader (ld.so) nicht gefunden")?;
+            let idata = read(&ip).ok_or("Programmlader (ld.so) nicht gefunden")?;
             if idata.len() < 64 || &idata[0..4] != b"\x7fELF" || u16le(&idata, 16) != 3 {
                 return Err("Programmlader ist kein ELF");
             }
@@ -690,7 +704,7 @@ pub fn spawn_init(path: &str, argv: Vec<String>, envp: Vec<String>) -> Result<u6
 
 fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>) -> Result<u64, String> {
     let data = fs::read_all(path).ok_or_else(|| alloc::format!("{path}: nicht gefunden"))?;
-    let img = load_elf(&data, &argv, &envp, path).map_err(|e| alloc::format!("{path}: {e}"))?;
+    let img = load_elf(&data, &argv, &envp, path, &|p| fs::read_all(p)).map_err(|e| alloc::format!("{path}: {e}"))?;
     let pid = want.unwrap_or_else(|| NEXT_PID.fetch_add(1, Ordering::Relaxed));
     let g = Group {
         space: Some(img.space),
@@ -708,6 +722,8 @@ fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>)
         cmdline: argv.clone(),
         sigact: [SigAct::default(); 65],
         auxv: img.auxv.clone(),
+        iso: crate::isolation::Isolation::host(),
+        exe_host: String::from(path),
     };
     let p = Proc {
         pid,
@@ -727,6 +743,7 @@ fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>)
         on_cpu: false,
         poll_dl: None,
         g: Shared::new(g),
+        link: crate::isolation::pid::PidLink::new(crate::isolation::pid::PidNs::initial(), pid),
     };
     PROCS.lock().push(Box::new(p));
     Ok(pid)
@@ -973,11 +990,30 @@ fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
     for c in ps.iter_mut().filter(|c| c.ppid == tgid) {
         c.ppid = 0;
     }
+    end_pid_namespace(ps, tgid);
     // Elternprozess benachrichtigen (SIGCHLD); vfork-Eltern und wait4-Wartende weckt der Planer
     if let Some(pp) = ps.iter().find(|t| t.pid == tgid).map(|t| t.ppid) {
         if pp != 0 {
             crate::signal::send_locked(ps, pp, 0, crate::signal::SIGCHLD);
         }
+    }
+}
+
+/// If the group that just ended was pid 1 of a pid namespace: close the namespace and kill every
+/// other process in it (and in namespaces nested below).
+fn end_pid_namespace(ps: &mut Vec<Box<Proc>>, tgid: u64) {
+    let Some(ns) = ps.iter().find(|t| t.pid == tgid).map(|t| t.link.ns().clone()) else { return };
+    if ns.is_initial() || ns.init_global() != tgid || ns.is_dead() {
+        return;
+    }
+    ns.mark_dead();
+    let victims: Vec<u64> = ps
+        .iter()
+        .filter(|p| p.pid == p.tgid && p.tgid != tgid && ns.contains(p.link.ns()) && !matches!(p.state, State::Zombie(_) | State::Dead))
+        .map(|p| p.tgid)
+        .collect();
+    for v in victims {
+        kill_group(ps, v, 9);
     }
 }
 
@@ -1137,6 +1173,8 @@ pub fn on_syscall(f: &mut TrapFrame) {
 }
 
 pub struct Info {
+    /// Kernel-wide number of the group (`pid`, `ppid`, `pgid` are the numbers the reader sees)
+    pub global: u64,
     pub pid: u64,
     pub ppid: u64,
     pub pgid: u64,
@@ -1148,19 +1186,53 @@ pub struct Info {
     pub auxv: Vec<u8>,
 }
 
+/// Prozesse, wie der lesende Prozess sie sieht: only those visible in the reader's pid namespace, with the
+/// reader's numbers. Called from the kernel console (no current process) it lists everything.
 pub fn infos() -> Vec<Info> {
-    PROCS
-        .lock()
-        .iter()
+    let ps = PROCS.lock();
+    let me = current();
+    let ns = ps.iter().find(|p| p.pid == me).map(|p| p.link.ns().clone()).unwrap_or_else(crate::isolation::pid::PidNs::initial);
+    ps.iter()
         .filter(|p| p.pid == p.tgid)
-        .map(|p| {
+        .filter_map(|p| {
+            let pid = ns.local(p.pid)?;
             let mut pages = 0;
             if let Some(s) = &p.g.space {
                 s.for_each(|_, _, _| pages += 1);
             }
-            Info { pid: p.pid, ppid: p.ppid, pgid: p.pgid, name: p.name.clone(), cmdline: p.g.cmdline.clone(), exe: p.g.exe.clone(), state: p.state, pages, auxv: p.g.auxv.clone() }
+            let (ppid, pgid) = (ns.local(p.ppid).unwrap_or(0), ns.local(p.pgid).unwrap_or(0));
+            Some(Info { global: p.pid, pid, ppid, pgid, name: p.name.clone(), cmdline: p.g.cmdline.clone(), exe: p.g.exe_host.clone(), state: p.state, pages, auxv: p.g.auxv.clone() })
         })
         .collect()
+}
+
+/// Group (kernel-wide number) of the calling thread; 0 outside a process.
+pub fn current_group() -> u64 {
+    let me = current();
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.tgid).unwrap_or(0)
+}
+
+/// Whether the reader lives in the initial pid namespace (the kernel console counts as that).
+pub fn reader_in_initial_pid_ns() -> bool {
+    let me = current();
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.link.ns().is_initial()).unwrap_or(true)
+}
+
+/// Mount namespace of the calling process if it is not the initial one.
+pub fn reader_mount_ns() -> Option<Arc<crate::isolation::mount::MountNs>> {
+    let me = current();
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.g.iso.mnt.clone()).filter(|m| !m.is_initial())
+}
+
+/// Namespace of kind `kind` ("mnt" or "pid") of the group with the kernel-wide number `tgid`.
+pub fn ns_ref(tgid: u64, kind: &str) -> Option<crate::isolation::NsRef> {
+    let ps = PROCS.lock();
+    let p = ps.iter().find(|p| p.pid == tgid)?;
+    match kind {
+        "mnt" => Some(crate::isolation::NsRef::Mnt(p.g.iso.mnt.clone())),
+        "pid" => Some(crate::isolation::NsRef::Pid(p.link.ns().clone())),
+        _ => None,
+    }
 }
 
 pub fn list() -> Vec<(u64, u64, String, State)> {

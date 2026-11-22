@@ -76,8 +76,8 @@ pub fn run() {
             }
         }
     }
-    // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc
-    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"])] {
+    // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc; zelltest = escape tests of the isolation
+    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"])] {
         match programm(p) {
             Some(path) => {
                 kprintln!("[test] Programm {p}:");

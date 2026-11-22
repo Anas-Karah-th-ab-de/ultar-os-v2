@@ -81,10 +81,6 @@ fn interrupt(p: &mut Proc, restart: bool) {
     p.state = State::Ready;
 }
 
-pub fn send(tgid: u64, tid: u64, sig: u64) -> bool {
-    send_locked(&mut PROCS.lock(), tgid, tid, sig)
-}
-
 /// Strg+C: SIGINT an alle Gruppen
 pub fn interrupt_all() {
     let mut ps = PROCS.lock();

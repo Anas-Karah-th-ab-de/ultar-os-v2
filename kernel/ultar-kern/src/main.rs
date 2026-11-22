@@ -21,6 +21,7 @@ mod fs;
 mod geraet;
 mod grafik;
 mod install;
+mod isolation;
 mod power;
 mod sprache;
 mod startseite;

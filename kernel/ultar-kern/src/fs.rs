@@ -6,6 +6,7 @@
 //! Ein Dateibaum: Pfade werden zuerst im RAM, dann auf FAT gesucht.
 
 use crate::driver::BLOCK;
+use crate::isolation::tmpfs;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
@@ -362,7 +363,7 @@ pub fn normalize(cwd: &str, p: &str) -> String {
     s
 }
 
-fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
+pub(crate) fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
     let ram = RAM.lock();
     let pre = if path == "/" { String::from("/") } else { alloc::format!("{path}/") };
     let mut out: BTreeMap<String, DirEnt> = BTreeMap::new();
@@ -373,7 +374,8 @@ fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
         }
         found = true;
         let rest = &k[pre.len()..];
-        if rest.is_empty() {
+        // private trees of namespaces (isolation::tmpfs) are not part of the visible tree
+        if rest.is_empty() || rest.starts_with('\0') {
             continue;
         }
         let (name, dir) = match rest.find('/') {
@@ -416,6 +418,9 @@ fn fs_open(path: &str) -> Option<Node> {
 
 /// Knoten unter absolutem Pfad
 pub fn open(path: &str) -> Option<Node> {
+    if tmpfs::is_private(path) {
+        return tmpfs::open(path);
+    }
     if let Some(d) = path.strip_prefix("/dev/") {
         if let Some(n) = DEVS.iter().find(|&&x| x == d) {
             return Some(Node::Dev(n));
@@ -499,6 +504,9 @@ pub fn open(path: &str) -> Option<Node> {
 
 /// Art und Größe ohne den Inhalt zu lesen: (0 Datei, 1 Verzeichnis, 2 Gerät), Größe
 pub fn stat(path: &str) -> Option<(u8, u64)> {
+    if tmpfs::is_private(path) {
+        return tmpfs::stat(path);
+    }
     if let Some(v) = RAM.lock().get(path) {
         return Some((0, v.len() as u64));
     }
@@ -524,6 +532,9 @@ pub fn stat(path: &str) -> Option<(u8, u64)> {
 
 /// ext4-Einhängepunkt für einen Pfad, wenn dort geschrieben werden kann: (Mount-Index, relativer Pfad)
 fn ext4_target(path: &str) -> Option<(usize, String)> {
+    if tmpfs::is_private(path) {
+        return None;
+    }
     if ["/dev", "/proc", "/tmp", "/run", "/sys"].iter().any(|d| path == *d || path.starts_with(&alloc::format!("{d}/"))) {
         return None;
     }
@@ -555,6 +566,11 @@ pub fn write_file(path: &str, data: Vec<u8>) {
         for z in core::str::from_utf8(&data).unwrap_or("").lines() {
             let _ = crate::firewall::befehl(z);
         }
+        return;
+    }
+    if tmpfs::is_private(path) {
+        // a file of a tree that no longer exists is dropped
+        let _ = tmpfs::write(path, data);
         return;
     }
     if let Some((i, rel)) = ext4_target(path) {
@@ -617,6 +633,9 @@ pub fn mounts() -> Vec<(String, &'static str)> {
 }
 
 pub fn mkdir(path: &str) -> bool {
+    if tmpfs::is_private(path) {
+        return tmpfs::mkdir(path);
+    }
     if stat(path).is_some() {
         return false;
     }
@@ -630,6 +649,9 @@ pub fn mkdir(path: &str) -> bool {
 }
 
 pub fn unlink(path: &str) -> bool {
+    if tmpfs::is_private(path) {
+        return tmpfs::unlink(path);
+    }
     if RAM.lock().remove(path).is_some() || RAM.lock().remove(&alloc::format!("{path}/")).is_some() {
         return true;
     }
@@ -646,5 +668,16 @@ pub fn read_all(path: &str) -> Option<Arc<Vec<u8>>> {
     match open(path)? {
         Node::File(d) => Some(d),
         _ => None,
+    }
+}
+
+/// Target of the symbolic link at `path` on a disk file system, without following it (`None` if the
+/// path is not a link). Parent directories must already be free of links (the path walker ensures that).
+pub fn disk_link(path: &str) -> Option<String> {
+    let m = MOUNTS.lock();
+    let best = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len())?;
+    match &best.1 {
+        Mnt::Ext4(x, _) => x.link_at(&path[best.0.len().min(path.len())..]),
+        Mnt::Fat(_) => None,
     }
 }

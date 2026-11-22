@@ -27,10 +27,13 @@ pub fn open(path: &str) -> Option<Node> {
     let (total, _, _, _) = crate::mem::stats();
     let free = crate::mem::free_bytes();
     let up = crate::arch::uptime_ms();
+    // kernel log, firewall and mesh state belong to the machine: only readers in the initial pid namespace see them
+    let host_reader = proc::reader_in_initial_pid_ns();
     match first {
         "" => {
             let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "self", "ultar"]
                 .iter()
+                .filter(|n| host_reader || **n != "ultar")
                 .map(|n| DirEnt { name: String::from(*n), dir: *n == "self" || *n == "ultar", size: 0 })
                 .collect();
             for p in proc::infos() {
@@ -38,6 +41,7 @@ pub fn open(path: &str) -> Option<Node> {
             }
             Some(Node::Dir(v))
         }
+        "ultar" if !host_reader => None,
         "ultar" => match sub {
             "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
             "verbund" => file(crate::verbund::text()),
@@ -60,10 +64,20 @@ pub fn open(path: &str) -> Option<Node> {
             free >> 10
         )),
         "uptime" => file(format!("{}.{:02} {}.{:02}\n", up / 1000, up % 1000 / 10, up / 1000, up % 1000 / 10)),
-        "loadavg" => file(format!("0.00 0.00 0.00 1/{} {}\n", proc::infos().len(), proc::current())),
+        "loadavg" => {
+            let (all, own) = (proc::infos(), proc::current_group());
+            file(format!("0.00 0.00 0.00 1/{} {}\n", all.len(), all.iter().find(|p| p.global == own).map(|p| p.pid).unwrap_or(0)))
+        }
         "version" => file(String::from("Linux version 6.8.0-ultar-kern (Ultar-Kern 0.4, KM Code Craft) #1\n")),
         "mounts" => {
             let mut s = String::new();
+            // a process in its own mount namespace reads that namespace's table
+            if let Some(ns) = proc::reader_mount_ns() {
+                for (at, fstype, ro) in ns.table() {
+                    s += &format!("{fstype} {at} {fstype} {} 0 0\n", if ro { "ro" } else { "rw" });
+                }
+                return file(s);
+            }
             for (p, t) in crate::fs::mounts() {
                 s += &format!("ultar {p} {t} ro 0 0\n");
             }
@@ -85,11 +99,19 @@ pub fn open(path: &str) -> Option<Node> {
             file(s)
         }
         pid => {
-            let pid: u64 = if pid == "self" { proc::current() } else { pid.parse().ok()? };
-            let p = proc::infos().into_iter().find(|p| p.pid == pid)?;
+            // numbers are those of the reader's pid namespace; processes outside it do not exist here
+            let p = if pid == "self" {
+                let own = proc::current_group();
+                proc::infos().into_iter().find(|p| p.global == own)?
+            } else {
+                let pid: u64 = pid.parse().ok()?;
+                proc::infos().into_iter().find(|p| p.pid == pid)?
+            };
             match sub {
+                "ns" => Some(Node::Dir(["mnt", "pid"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
+                "ns/mnt" | "ns/pid" => file(ns_name(p.global, &sub[3..])?),
                 "auxv" => Some(Node::File(alloc::sync::Arc::new(p.auxv.clone()))),
-                "" => Some(Node::Dir(["stat", "cmdline", "status", "comm", "exe", "auxv"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
+                "" => Some(Node::Dir(["stat", "cmdline", "status", "comm", "exe", "auxv", "ns"].iter().map(|n| DirEnt { name: String::from(*n), dir: *n == "ns", size: 0 }).collect())),
                 "stat" => file(format!(
                     "{} ({}) {} {} {} {} 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 0 {} {} 0\n",
                     p.pid,
@@ -123,4 +145,26 @@ pub fn open(path: &str) -> Option<Node> {
             }
         }
     }
+}
+
+/// Name of a namespace as Linux prints it (`mnt:[4]`), for the group with the kernel-wide number `tgid`.
+pub fn ns_name(tgid: u64, kind: &str) -> Option<String> {
+    Some(match proc::ns_ref(tgid, kind)? {
+        crate::isolation::NsRef::Mnt(m) => format!("mnt:[{}]", m.id()),
+        crate::isolation::NsRef::Pid(n) => format!("pid:[{}]", n.id()),
+    })
+}
+
+/// If the host path is `/proc/<pid>/ns/<kind>` or `/proc/<pid>/exe` of a process the reader can see:
+/// (kernel-wide group number, entry name).
+pub fn pid_entry(path: &str) -> Option<(u64, &str)> {
+    let rest = path.strip_prefix("/proc/")?;
+    let (pid, entry) = rest.split_once('/')?;
+    if pid != "self" && pid.parse::<u64>().is_err() {
+        return None;
+    }
+    let own = proc::current_group();
+    let infos = proc::infos();
+    let p = if pid == "self" { infos.iter().find(|p| p.global == own)? } else { infos.iter().find(|p| Some(p.pid) == pid.parse().ok())? };
+    Some((p.global, entry))
 }

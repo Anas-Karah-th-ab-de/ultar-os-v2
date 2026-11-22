@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ultar-Kern in QEMU starten und Befehle über die serielle Konsole schicken.
    qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)"""
-import os, re, subprocess, sys, time, select
+import codecs, os, re, subprocess, sys, time, select
 
 img = sys.argv[1]
 cmds = sys.argv[2:]
@@ -15,6 +15,9 @@ args = ["qemu-system-x86_64", "-machine", "q35", "-m", os.environ.get("MEM", "10
         "-netdev", os.environ.get("NETDEV", "user,id=n"), "-device", os.environ.get("NIC", "virtio-net-pci") + ",netdev=n", "-serial", "stdio"] + os.environ.get("QARGS", "").split()
 p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 buf = b""
+# The serial output arrives in arbitrary pieces: decode incrementally, so a UTF-8 character split across
+# two reads is not turned into replacement characters (the gate greps the log for texts with umlauts).
+decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
 # Eingabeaufforderung: "ultar-kern:/pfad> " (optional mit Tastatur-Kennung)
 PROMPT = re.compile(rb"ultar-kern[^\n>]*> ")
@@ -29,7 +32,7 @@ def read_until(pat, timeout):
             if not d:
                 break
             buf += d
-            sys.stdout.write(d.decode("utf-8", "replace")); sys.stdout.flush()
+            sys.stdout.write(decoder.decode(d)); sys.stdout.flush()
             if (re.search(PROMPT, buf) if pat == "PROMPT" else pat.encode() in buf):
                 return True
     return False
