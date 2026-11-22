@@ -10,7 +10,7 @@
 use crate::error::Coded;
 use crate::keys::{sha256_hex, PrivateKey, TrustedKeys};
 use crate::manifest::{Manifest, ManifestError};
-use crate::payload::{list_payload, unpack_payload, PayloadEntry};
+use crate::payload::{list_payload, read_payload_file, unpack_payload, PayloadEntry};
 use crate::sign::{package_message, SignatureBlob, SignatureError};
 use std::fmt;
 use std::io::Read;
@@ -372,6 +372,11 @@ impl VerifiedPackage {
     /// The verified compressed payload.
     pub fn payload(&self) -> &[u8] {
         &self.payload
+    }
+
+    /// Reads one file of the verified payload into memory; `None` when it is not in the package.
+    pub fn read_file(&self, path: &str) -> Result<Option<Vec<u8>>, PackageError> {
+        read_payload_file(&self.payload, path, &self.limits)
     }
 
     /// Unpacks the verified payload below `dest` (paths are confined to `dest`).

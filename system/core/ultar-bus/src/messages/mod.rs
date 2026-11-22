@@ -4,6 +4,7 @@
 //! |---|---|---|---|
 //! | `devices.capabilities` | topic | yes | `devd` |
 //! | `devices.driver_state` | topic | no | `devd` |
+//! | `devices.list` / `switch` / `rollback` / `clear_quarantine` / `rescan` / `shutdown` | calls | – | `devd` |
 //! | `notify.post` | call | – | notification service |
 //! | `notify.posted` | topic | no | notification service |
 //! | `settings.get` / `settings.set` | calls | – | `settingsd` |
@@ -13,6 +14,7 @@
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod device_service;
 pub mod devices;
 pub mod notify;
 pub mod power;

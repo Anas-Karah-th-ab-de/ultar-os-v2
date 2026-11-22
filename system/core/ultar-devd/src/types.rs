@@ -90,6 +90,9 @@ coded_enum! {
         InitFailed => "init-failed",
         /// Loading did not finish in time.
         Timeout => "timeout",
+        /// The loader cannot do what the package needs on this kernel (loadable module,
+        /// activating a built-in driver the kernel did not bind). Not a driver fault.
+        Unsupported => "unsupported",
     }
 }
 
@@ -199,6 +202,8 @@ pub enum AttemptOutcome {
     Failed(FailureReason),
     /// Not tried further because its package is not on this system (no quarantine).
     Skipped,
+    /// The loader cannot use this package on the running kernel (no quarantine).
+    Unsupported,
     /// The device disappeared during the attempt (no quarantine).
     DeviceGone,
 }

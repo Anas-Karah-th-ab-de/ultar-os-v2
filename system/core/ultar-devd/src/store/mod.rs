@@ -1,8 +1,10 @@
-//! The persisted decisions and their text form; an in-memory [`ChoiceStore`].
+//! The persisted decisions and their text form; an in-memory [`ChoiceStore`] and the
+//! file-backed one of the daemon ([`file::FileStore`]).
 //!
-//! The daemon binary writes the text returned by [`StoredState::to_toml`] to its state
-//! file (atomically) and feeds it back through [`StoredState::from_toml`]; this crate
-//! itself knows no paths.
+//! [`StoredState::to_toml`] / [`StoredState::from_toml`] define the body of the state
+//! file; [`file`] adds the checksummed header and the atomic replacement on disk.
+
+pub mod file;
 
 use crate::traits::{ChoiceStore, StoreError};
 use crate::types::{DriverKey, FailureReason, QuarantineEntry};
@@ -12,6 +14,10 @@ use ultar_driverpkg::Version;
 
 /// Format version of the stored text.
 pub const STORE_FORMAT: u32 = 1;
+
+/// Most quarantine entries kept; when exceeded the oldest entries are dropped
+/// (they are retried at the next probe, which re-quarantines a driver that still fails).
+pub const MAX_QUARANTINE: usize = 4096;
 
 /// Everything the daemon remembers across boots. Devices are keyed by
 /// [`ultar_driverpkg::DeviceDescriptor::identity`].
@@ -139,6 +145,10 @@ impl StoredState {
             driver,
             reason,
         });
+        if self.quarantine.len() > MAX_QUARANTINE {
+            let excess = self.quarantine.len() - MAX_QUARANTINE;
+            self.quarantine.drain(..excess);
+        }
     }
 
     /// Removes the quarantine entry for a driver on a device; `true` when one existed.
@@ -283,6 +293,21 @@ mod tests {
         assert!(state.release(device, &key("bad-eth")));
         assert!(!state.release(device, &key("bad-eth")));
         assert_eq!(state.quarantine.len(), 1);
+    }
+
+    #[test]
+    fn quarantine_is_bounded() {
+        let mut state = StoredState::default();
+        for n in 0..MAX_QUARANTINE + 3 {
+            state.quarantine_driver(
+                &format!("dev{n}"),
+                key("bad"),
+                FailureReason::Load(LoadFailure::Timeout),
+            );
+        }
+        assert_eq!(state.quarantine.len(), MAX_QUARANTINE);
+        assert!(state.quarantined("dev0", &key("bad")).is_none());
+        assert!(state.quarantined("dev3", &key("bad")).is_some());
     }
 
     #[test]

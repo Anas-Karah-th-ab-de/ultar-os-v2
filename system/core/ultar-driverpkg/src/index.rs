@@ -333,6 +333,14 @@ impl DriverIndex {
         Ok(Self { entries, lookup })
     }
 
+    /// An index without entries (a system whose depot is missing or unreadable).
+    pub fn empty() -> Self {
+        Self {
+            entries: Vec::new(),
+            lookup: Lookup::build(&[]),
+        }
+    }
+
     /// All entries in index order.
     pub fn entries(&self) -> &[IndexEntry] {
         &self.entries

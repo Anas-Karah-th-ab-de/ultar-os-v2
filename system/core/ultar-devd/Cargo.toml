@@ -4,14 +4,28 @@ version = "0.7.0"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
-description = "Runtime logic of the Ultar device daemon: device events, driver selection with health check, fallback, quarantine and remembered choices."
+description = "The Ultar device daemon: device events, driver selection with health check, fallback, quarantine and remembered choices; daemon ultar-devd and tool udevctl."
 
 [dependencies]
 ultar-driverpkg = { path = "../ultar-driverpkg" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
+ultar-bus = { path = "../ultar-bus" }
+ultar-i18n = { path = "../ultar-i18n" }
 
 [lib]
 name = "ultar_devd"
 path = "src/lib.rs"
 
+
+[[bin]]
+name = "ultar-devd"
+path = "src/bin/ultar-devd.rs"
+
+[[bin]]
+name = "udevctl"
+path = "src/bin/udevctl.rs"
+
+[dev-dependencies]
+ultar-profile = { path = "../ultar-profile" }

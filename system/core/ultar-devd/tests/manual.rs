@@ -246,6 +246,33 @@ fn switching_a_failed_device_to_a_chosen_driver() {
 }
 
 #[test]
+fn a_switch_the_loader_cannot_perform_is_refused_untouched() {
+    let mut rig = boot(&three_drivers(), StoredState::default());
+    rig.add(nic());
+    rig.world.borrow_mut().no_switch.push("beta".into());
+    assert_eq!(
+        rig.manager.switch_driver(NIC, &key("beta")),
+        Err(DevdError::Unsupported {
+            device: NIC.into(),
+            driver: key("beta")
+        })
+    );
+    // Refused before anything was unloaded or stored.
+    let unloaded = rig
+        .world
+        .borrow()
+        .log
+        .iter()
+        .any(|l| l.starts_with("unload"));
+    assert!(!unloaded);
+    assert_eq!(rig.manager.phase(NIC), Some(Phase::Active));
+    assert_eq!(rig.events(), ["+alpha"]);
+    assert_eq!(rig.manager.store().saves(), 1);
+    // A driver the loader can switch to still works.
+    assert!(rig.manager.switch_driver(NIC, &key("gamma")).is_ok());
+}
+
+#[test]
 fn refused_operations() {
     let mut rig = boot(&three_drivers(), StoredState::default());
     rig.add(nic());

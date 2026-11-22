@@ -7,9 +7,19 @@
 //!
 //! Both the Ultar kernel and the transitional Linux device kernels expose these files
 //! under the same names, so one source serves both.
+//!
+//! [`hardware`] enumerates the devices of the running system for driver matching and
+//! [`kernel_drivers`] reads which built-in kernel drivers exist and what they operate.
+//! This crate is the only place where hardware paths (`/proc/ultar/…`, `/sys/…`) appear.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
+pub mod hardware;
+pub mod kernel_drivers;
+
+pub use hardware::{HardwareError, HardwareReader, Inventory, InventoryNote};
+pub use kernel_drivers::{kernel_abi, BindState, ControlInterface, KernelDrivers};
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -120,6 +120,11 @@ impl<L: DriverLoader, H: HealthCheck, S: ChoiceStore, K: CapabilitySink> DeviceM
         &self.store
     }
 
+    /// The persistent store, mutable (to collect the store's own events).
+    pub fn store_mut(&mut self) -> &mut S {
+        &mut self.store
+    }
+
     /// The capability sink.
     pub fn sink(&self) -> &K {
         &self.sink

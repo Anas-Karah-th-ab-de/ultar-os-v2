@@ -107,6 +107,12 @@ impl<L: DriverLoader, H: HealthCheck, S: ChoiceStore, K: CapabilitySink> DeviceM
                 driver: driver.clone(),
             });
         }
+        if !self.loader.can_switch(&device, &target) {
+            return Err(DevdError::Unsupported {
+                device: address.to_string(),
+                driver: driver.clone(),
+            });
+        }
         let mut report = ProbeReport::new(address);
         let old = self.begin_switch(address, driver, &mut report)?;
         let snapshot = self.state.quarantine.clone();

@@ -8,3 +8,4 @@ description = "Reads the device description of the running system (kernel, firmw
 
 [dependencies]
 ultar-profile = { path = "../../core/ultar-profile" }
+ultar-driverpkg = { path = "../../core/ultar-driverpkg" }

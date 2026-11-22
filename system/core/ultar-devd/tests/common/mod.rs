@@ -26,6 +26,8 @@ pub struct World {
     pub load_errors: HashMap<String, LoadError>,
     /// Health verdicts by `driver` or `driver@address`; default is healthy.
     pub verdicts: HashMap<String, HealthVerdict>,
+    /// Drivers the loader says it cannot switch to.
+    pub no_switch: Vec<String>,
     /// `load|check|unload <driver> <address>` in call order.
     pub log: Vec<String>,
     /// Every emitted capability change.
@@ -59,6 +61,10 @@ impl DriverLoader for MockLoader {
             .borrow_mut()
             .log
             .push(format!("unload {} {}", driver.id, device.address));
+    }
+
+    fn can_switch(&mut self, _device: &DeviceDescriptor, target: &Candidate) -> bool {
+        !self.0.borrow().no_switch.contains(&target.id)
     }
 }
 

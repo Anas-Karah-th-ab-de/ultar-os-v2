@@ -142,6 +142,23 @@ fn a_missing_package_is_skipped_without_quarantine() {
 }
 
 #[test]
+fn an_unsupported_package_is_passed_over_without_quarantine() {
+    let mut rig = boot(&three_drivers(), StoredState::default());
+    for driver in ["alpha", "beta", "gamma"] {
+        rig.fail_load(driver, LoadError::Failed(LoadFailure::Unsupported));
+    }
+    let report = rig.add(nic());
+    assert!(report
+        .attempts
+        .iter()
+        .all(|a| a.outcome == AttemptOutcome::Unsupported));
+    assert_eq!(report.attempts.len(), 3);
+    assert_eq!(report.final_phase(), Some(Phase::Failed));
+    assert!(rig.stored().quarantine.is_empty());
+    assert!(rig.stored().choices.is_empty());
+}
+
+#[test]
 fn all_candidates_fail() {
     let mut rig = boot(&three_drivers(), StoredState::default());
     rig.verdict("alpha", NO_RESPONSE);

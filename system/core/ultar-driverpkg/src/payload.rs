@@ -268,6 +268,34 @@ pub fn list_payload(payload: &[u8], limits: &Limits) -> Result<Vec<PayloadEntry>
     })
 }
 
+/// Reads one regular file out of a payload after validating the whole payload.
+///
+/// Returns `None` when the payload holds no file at `path` (normalized, relative).
+pub fn read_payload_file(
+    payload: &[u8],
+    path: &str,
+    limits: &Limits,
+) -> Result<Option<Vec<u8>>, PackageError> {
+    let mut found = None;
+    walk(payload, limits, |entry, data| {
+        if entry.is_dir || entry.path != path {
+            return io::copy(data, &mut io::sink())
+                .map(|_| ())
+                .map_err(|_| PackageError::PayloadCorrupt);
+        }
+        let mut bytes = Vec::new();
+        data.take(entry.size)
+            .read_to_end(&mut bytes)
+            .map_err(|_| PackageError::PayloadCorrupt)?;
+        if bytes.len() as u64 != entry.size {
+            return Err(PackageError::PayloadCorrupt);
+        }
+        found = Some(bytes);
+        Ok(())
+    })?;
+    Ok(found)
+}
+
 fn refuse_links(dest: &Path, relative: &str) -> Result<(), PackageError> {
     let mut current = dest.to_path_buf();
     for part in relative.split('/') {

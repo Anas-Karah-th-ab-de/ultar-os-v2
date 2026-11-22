@@ -34,6 +34,13 @@ pub enum DevdError {
         /// The phase the device is in.
         phase: Phase,
     },
+    /// The loader cannot switch the device to this driver on the running kernel.
+    Unsupported {
+        /// Address of the device.
+        device: String,
+        /// The requested driver.
+        driver: DriverKey,
+    },
     /// The state machine refused a step (an internal inconsistency; never expected).
     Transition(InvalidTransition),
 }
@@ -48,6 +55,7 @@ impl DevdError {
             Self::AlreadyActive(_) => "devd.error.already-active",
             Self::NothingToRollBack(_) => "devd.error.nothing-to-roll-back",
             Self::WrongPhase { .. } => "devd.error.wrong-phase",
+            Self::Unsupported { .. } => "devd.error.unsupported",
             Self::Transition(_) => "devd.error.transition",
         }
     }
@@ -60,7 +68,9 @@ impl fmt::Display for DevdError {
             Self::UnknownDevice(device) | Self::NothingToRollBack(device) => {
                 write!(f, "{code}: {device}")
             }
-            Self::NotACandidate { device, driver } | Self::Quarantined { device, driver } => {
+            Self::NotACandidate { device, driver }
+            | Self::Quarantined { device, driver }
+            | Self::Unsupported { device, driver } => {
                 write!(f, "{code}: {device}: {driver}")
             }
             Self::AlreadyActive(driver) => write!(f, "{code}: {driver}"),
@@ -117,6 +127,13 @@ mod tests {
                     driver: driver.clone(),
                 },
                 "devd.error.quarantined: pci:0: drv 1.0.0",
+            ),
+            (
+                DevdError::Unsupported {
+                    device: device.clone(),
+                    driver: driver.clone(),
+                },
+                "devd.error.unsupported: pci:0: drv 1.0.0",
             ),
             (
                 DevdError::AlreadyActive(driver),

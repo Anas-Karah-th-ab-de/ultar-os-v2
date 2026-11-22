@@ -425,3 +425,19 @@ fn content_must_be_in_payload() {
     assert!(matches!(bad_manifest, PackageError::Manifest(_)));
     assert_eq!(bad_manifest.code(), "driverpkg.manifest.syntax");
 }
+
+#[test]
+fn reads_single_files_of_a_verified_package() {
+    let key = PrivateKey::generate();
+    let verified = verify(&pack(&manifest(), &key), &trusted(&key)).unwrap();
+    assert_eq!(
+        verified.read_file("drivers/drv.uko").unwrap(),
+        Some(b"dummy drivers/drv.uko".to_vec())
+    );
+    assert_eq!(verified.read_file("drivers/other.uko").unwrap(), None);
+    assert_eq!(verified.read_file("drivers").unwrap(), None);
+    assert!(matches!(
+        ultar_driverpkg::payload::read_payload_file(b"garbage", "a", &Limits::default()),
+        Err(PackageError::PayloadCorrupt)
+    ));
+}

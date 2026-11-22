@@ -137,6 +137,13 @@ impl TrustedKeys {
         Ok(set)
     }
 
+    /// Adds every key of `other` that is not yet present.
+    pub fn extend(&mut self, other: TrustedKeys) {
+        for key in other.keys {
+            self.insert(key);
+        }
+    }
+
     /// Adds a key; returns `false` when it was already present.
     pub fn insert(&mut self, key: PublicKey) -> bool {
         if self.keys.contains(&key) {
@@ -205,6 +212,18 @@ mod tests {
             KeyError::BadPoint
         );
         assert_eq!(KeyError::BadPoint.to_string(), "driverpkg.key.bad-point");
+    }
+
+    #[test]
+    fn extend_merges_without_duplicates() {
+        let a = PrivateKey::generate().public();
+        let b = PrivateKey::generate().public();
+        let mut set = TrustedKeys::from(a.clone());
+        let mut other = TrustedKeys::from(a);
+        other.insert(b.clone());
+        set.extend(other);
+        assert_eq!(set.len(), 2);
+        assert!(set.find(&b.key_id()).is_some());
     }
 
     #[test]

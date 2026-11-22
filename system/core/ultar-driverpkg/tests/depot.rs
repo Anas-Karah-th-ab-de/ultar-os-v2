@@ -352,3 +352,18 @@ fn installed_subset_and_edge_cases() {
     assert!(select_for_install(&nothing, false).packages.is_empty());
     assert_eq!(resolve(&devices, &index, "other-abi").driverless().len(), 4);
 }
+
+#[test]
+fn empty_index_matches_nothing() {
+    let index = DriverIndex::empty();
+    assert!(index.is_empty());
+    assert_eq!(index.entries().len(), 0);
+    let device = pci("pci:00:1f.6", 0x8086, 0x0d4c, 0x02_0000);
+    assert!(resolve(&[device], &index, "ultar-kern-abi-1").devices[0]
+        .chosen
+        .is_none());
+    assert_eq!(
+        index.to_toml().unwrap(),
+        DriverIndex::new(Vec::new()).unwrap().to_toml().unwrap()
+    );
+}

@@ -28,6 +28,7 @@ enum Trial {
     Works(Vec<Capability>),
     Failed(FailureReason),
     Skipped,
+    Unsupported,
     Gone,
 }
 
@@ -38,6 +39,7 @@ impl<L: DriverLoader, H: HealthCheck, S: ChoiceStore, K: CapabilitySink> DeviceM
             Ok(()) => {}
             Err(LoadError::DeviceGone) => return Trial::Gone,
             Err(LoadError::Failed(LoadFailure::PackageMissing)) => return Trial::Skipped,
+            Err(LoadError::Failed(LoadFailure::Unsupported)) => return Trial::Unsupported,
             Err(LoadError::Failed(failure)) => return Trial::Failed(FailureReason::Load(failure)),
         }
         match self.health.check(device, candidate) {
@@ -76,6 +78,7 @@ impl<L: DriverLoader, H: HealthCheck, S: ChoiceStore, K: CapabilitySink> DeviceM
                     (AttemptOutcome::Failed(reason), None)
                 }
                 Trial::Skipped => (AttemptOutcome::Skipped, None),
+                Trial::Unsupported => (AttemptOutcome::Unsupported, None),
                 Trial::Gone => (AttemptOutcome::DeviceGone, Some(RunEnd::Gone)),
             };
             report.attempts.push(Attempt { driver, outcome });

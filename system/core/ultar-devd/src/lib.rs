@@ -1,12 +1,13 @@
-//! Runtime logic of the device daemon `ultar-devd` (plan §5.4).
+//! The device daemon `ultar-devd` (plan §5.4) and its command line client `udevctl`.
 //!
-//! **Area:** system core (plan §3.0, area 3). This crate is a pure library: it touches
-//! no hardware and no files. Everything outside is reached through traits –
-//! [`DriverLoader`] (load/unload a driver), [`HealthCheck`] (does the device work?),
-//! [`ChoiceStore`] (persist decisions) and [`CapabilitySink`] (publish capabilities on
-//! the bus). The daemon binary and the HAL supply the implementations.
+//! **Area:** system core (plan §3.0, area 3). Hardware paths appear nowhere in this crate;
+//! the system description comes from the HAL crate `ultar-hal-system`.
 //!
-//! Flow for a device event:
+//! The crate has two layers:
+//!
+//! **Pure logic** (no I/O) – [`DeviceManager`] with the per-device state machine ([`fsm`]),
+//! reached from outside only through the traits [`DriverLoader`], [`HealthCheck`],
+//! [`ChoiceStore`] and [`CapabilitySink`]. Flow for a device event:
 //!
 //! 1. candidates from the depot index ([`ultar_driverpkg::candidates`]),
 //! 2. the remembered driver first, then the others best-first,
@@ -16,20 +17,34 @@
 //!    longer works the search runs again and the store is corrected,
 //! 5. a [`CapabilityChange`] is emitted.
 //!
-//! The per-device life cycle is an explicit state machine ([`fsm`]). The manual
-//! operations of the settings panel "Drivers & hardware" (list, switch, roll back,
-//! clear quarantine, rescan) are methods of [`DeviceManager`].
+//! **The running service** – the implementations of those traits and the daemon:
+//!
+//! * [`store::file`] – file-backed store (atomic, checksummed, self-recovering),
+//! * [`builtin`] – loader and health check for drivers built into the kernel (stage A),
+//! * [`bus`] – capability sink publishing `devices.capabilities` / `devices.driver_state`,
+//! * [`daemon`] + [`service`] – start-up and the bus service `devices`
+//!   (list, switch, rollback, clear_quarantine, rescan, shutdown),
+//! * [`runner`] / [`cli`] – the binaries `ultar-devd` and `udevctl`, [`msg`] their texts.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![deny(missing_docs)]
 
+pub mod builtin;
+pub mod bus;
+pub mod caps;
+pub mod cli;
+pub mod daemon;
+pub mod depot;
 pub mod error;
 pub mod fsm;
 pub mod manager;
+pub mod msg;
 mod ops;
 mod probe;
+pub mod runner;
+pub mod service;
 pub mod store;
 pub mod traits;
 pub mod types;

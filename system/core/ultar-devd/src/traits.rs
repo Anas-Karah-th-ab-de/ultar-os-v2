@@ -35,6 +35,14 @@ pub trait DriverLoader {
 
     /// Unloads `driver` from `device` (best effort; also called after a failed health check).
     fn unload(&mut self, device: &DeviceDescriptor, driver: &Candidate);
+
+    /// Whether this loader can replace the driver of `device` by `target` on the running
+    /// system. The manager asks before a manual switch touches anything; a loader that
+    /// cannot deactivate the current driver or activate the target answers `false`, and the
+    /// switch is refused with [`crate::DevdError::Unsupported`] instead of being attempted.
+    fn can_switch(&mut self, _device: &DeviceDescriptor, _target: &Candidate) -> bool {
+        true
+    }
 }
 
 /// The result of a health check.
