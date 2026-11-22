@@ -1,7 +1,9 @@
 [package]
 name = "ultar-pkg"
-version.workspace = true
-edition.workspace = true
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
 description = "Ultar-App-Paketformat (.uap): packen, signieren (ed25519) und installieren. Unsignierte oder manipulierte Pakete werden abgelehnt."
 
 [dependencies]
@@ -15,6 +17,9 @@ base64 = "0.22"
 hex = "0.4"
 tar = "0.4"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [lib]
 name = "ultar_pkg"

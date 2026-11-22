@@ -20,6 +20,7 @@ if [ ! -f /etc/ultraos/secret.env ]; then
   echo "neuer Token-Schlüssel in /etc/ultraos/secret.env"
 fi
 install -Dm644 ultraos.service /etc/systemd/system/ultraos.service
+install -Dm755 ultraos-admin /usr/local/bin/ultraos-admin
 if command -v caddy >/dev/null && ! grep -q ultar.code-craft.tech /etc/caddy/Caddyfile 2>/dev/null; then
   install -Dm644 Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy || true
 fi

@@ -7,6 +7,10 @@ services:
     image: kmcodecraft/ultraos-server
     restart: always
     env_file: secret.env
+    environment:
+      # Only the caddy container reaches this service (no published port). Its address is in a
+      # private Docker network, so X-Forwarded-For from these ranges is believed for rate limiting.
+      ULTRAOS_TRUSTED_PROXIES: 172.16.0.0/12,192.168.0.0/16,10.0.0.0/8
     volumes:
       - daten:/var/lib/ultraos
     ulimits:

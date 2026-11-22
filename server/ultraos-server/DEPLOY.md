@@ -1,58 +1,83 @@
 # ultraos-server — Deployment (ultar.code-craft.tech)
 
-Rust/Axum-Dienst für Konten, Rufnummern, Anruf-Signalisierung, Store, OTA, WireGuard-Provisionierung
-und das **Ultar-Verbund-Relais** (Geräte desselben Kontos verbinden sich darüber, wenn sie nicht im selben Netz sind).
+Rust/Axum-Dienst für den **öffentlichen Store-Katalog und System-Updates (ohne Konto)**, Konten,
+Rufnummern, Anruf-Signalisierung, Zugänge für Premium-Apps und geschützte Update-Kanäle,
+WireGuard-Provisionierung und das **Ultar-Verbund-Relais**.
+
+Alle Endpunkte mit Parametern, Antworten und Fehlercodes: **[API.md](API.md)**.
 
 **Schnellweg:** `sudo server/ultraos-server/deploy/install.sh` (baut, installiert systemd-Dienst, Token-Schlüssel,
 Caddy) – oder als Container: `cd server/ultraos-server/deploy && docker compose up -d`.
-Alle Dateien liegen in `deploy/` (ultraos.service, Caddyfile, install.sh, Dockerfile, docker-compose.yml).
+Alle Dateien liegen in `deploy/` (ultraos.service, ultraos-admin, Caddyfile, install.sh, Dockerfile, docker-compose.yml).
+
+> Stand der Prüfung: Server und Verwaltungsbefehle sind durch automatische Tests abgedeckt
+> (siehe INTEGRATION.md). Die Dateien in `deploy/` (systemd, Caddy, Docker, `ultraos-admin`) wurden
+> angepasst, konnten in der Bauumgebung aber **nicht ausgeführt** werden – zuerst auf einem
+> Testserver einspielen.
 
 ## 1. Bauen
 ```bash
 cd server/ultraos-server
 cargo build --release          # Binary: target/release/ultraos-server
+cargo test                     # startet den echten Server auf einem freien Port
 ```
 
 ## 2. Umgebungsvariablen
-| Variable | Zweck | Beispiel |
+| Variable | Zweck | Beispiel / Standard |
 |---|---|---|
 | `ULTRAOS_BIND` | Lauschadresse (hinter Caddy) | `127.0.0.1:8080` |
 | `ULTRAOS_DB` | SQLite-Datei | `/var/lib/ultraos/ultraos.sqlite` |
-| `ULTRAOS_SECRET` | 32-Byte Token-Schlüssel (hex, **fest setzen!**) | `openssl rand -hex 32` |
+| `ULTRAOS_FILES` | Dateiablage für Pakete und System-Abbilder (Dateiname = SHA-256 des Inhalts) | `/var/lib/ultraos/files` |
+| `ULTRAOS_SECRET` | 32-Byte Token-Schlüssel (hex, **fest setzen!**). Gesetzt, aber fehlerhaft → Server startet nicht. | `openssl rand -hex 32` |
 | `ULTRAOS_WG_PUBKEY` | öffentlicher WireGuard-Serverschlüssel | `…=` |
 | `ULTRAOS_WG_ENDPOINT` | WG-Endpunkt | `ultar.code-craft.tech:51820` |
+| `ULTRAOS_TURN_SECRET` | coturn `static-auth-secret` (eigenes Geheimnis, **nicht** der Token-Schlüssel) | leer = TURN aus |
+| `ULTRAOS_TURN_HOST` | öffentlicher TURN/STUN-Host (nicht über den CDN-Proxy) | `ultar.code-craft.tech` |
+| `ULTRAOS_TRUSTED_PROXIES` | Adressen/Netze der vorgeschalteten Proxys, deren `X-Forwarded-For` geglaubt wird (Komma-getrennt, auch `a.b.c.d/nn`) | `127.0.0.1,::1` |
+| `ULTRAOS_LIMIT_GENERAL` | Anfragen je Client: `Stoß,je_Minute` | `120,120` |
+| `ULTRAOS_LIMIT_DOWNLOAD` | Downloads je Client | `30,20` |
+| `ULTRAOS_LIMIT_AUTH` | Registrierung/Anmeldung je Client | `10,6` |
+
+Fehlerhafte Werte bei den Proxys und Grenzen werden im Protokoll gemeldet (`ignored_trusted_proxy`,
+`ignored_limit`) und nicht übernommen.
 
 ## 3. systemd — `/etc/systemd/system/ultraos.service` (vollständig gehärtet in `deploy/ultraos.service`)
 ```ini
-[Unit]
-Description=Ultar-Cloud Server
-After=network.target
 [Service]
 Environment=ULTRAOS_BIND=127.0.0.1:8080
 Environment=ULTRAOS_DB=/var/lib/ultraos/ultraos.sqlite
+Environment=ULTRAOS_FILES=/var/lib/ultraos/files
 EnvironmentFile=/etc/ultraos/secret.env
 ExecStart=/usr/local/bin/ultraos-server
 Restart=always
 DynamicUser=yes
 StateDirectory=ultraos
-[Install]
-WantedBy=multi-user.target
 ```
+Protokoll: strukturierte Zeilen (`event=… key=value`) auf stderr → journald. Es werden **keine
+Client-Adressen, Benutzernamen oder Suchbegriffe** protokolliert (nur Methode, Pfad ohne
+Query, Klasse, Status).
 
-## 4. TLS-Terminierung — Caddy `/etc/caddy/Caddyfile`
-```
-ultar.code-craft.tech {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-Caddy holt das Zertifikat automatisch (ACME). WebSocket `/v1/signal` wird mit durchgereicht.
+## 4. TLS-Terminierung — Caddy (`deploy/Caddyfile`)
+Caddy holt das Zertifikat automatisch (ACME) und begrenzt Kopfzeilen, Body-Größe und langsame
+Verbindungen, bevor sie den Dienst erreichen. WebSockets (`/v1/signal`, `/v1/verbund/relais`)
+werden durchgereicht.
+
+**Client-Adresse für die Anfragegrenzen** – wichtig, sonst teilen sich alle Nutzer ein Kontingent:
+- Caddy direkt am Internet: Standard passt (Caddy setzt `X-Forwarded-For`, der Dienst vertraut
+  nur `127.0.0.1`/`::1`).
+- Docker: Caddy hat eine Adresse aus dem Docker-Netz → in `docker-compose.yml` ist
+  `ULTRAOS_TRUSTED_PROXIES` auf die privaten Netze gesetzt (der Dienst hat keinen veröffentlichten Port).
+- **Cloudflare (oder ein anderes CDN) vor Caddy:** dann sieht Caddy nur die CDN-Adresse. In Caddy
+  `header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}` im `reverse_proxy` setzen
+  **und** den Ursprung per Firewall nur für die CDN-Netze öffnen (sonst kann jeder den Kopf fälschen).
+  Der Dienst wertet immer nur den **letzten** Eintrag von `X-Forwarded-For` aus.
 
 ## 5. TURN/STUN — coturn `/etc/turnserver.conf`
 ```
 listening-port=3478
 tls-listening-port=5349
 use-auth-secret
-static-auth-secret=<derselbe wie ULTRAOS_SECRET, als Klartext-Secret>
+static-auth-secret=<derselbe Wert wie ULTRAOS_TURN_SECRET>
 realm=ultar.code-craft.tech
 ```
 (Server gibt kurzlebige Zugangsdaten über `/v1/turn-cred` aus.)
@@ -70,42 +95,99 @@ PostDown = nft delete table ip ultraos
 zusätzlich produktiv dort `wg set wg0 peer <pubkey> allowed-ips <ip>` ausführen (oder periodischer
 Sync-Dienst, der die DB nach `wg0` schreibt).
 
-## 7. API (v1)
-| Methode | Pfad | Auth | Zweck |
-|---|---|---|---|
-| GET | `/v1/health` | — | Lebenszeichen |
-| POST | `/v1/account/register` | — | Konto anlegen → Token |
-| POST | `/v1/account/login` | — | Login → Token |
-| POST | `/v1/device/register` | Bearer | Gerät + **eindeutige Nummer** |
-| GET (WS) | `/v1/signal` | im 1. Frame | Anruf-/Video-Signalisierung |
-| GET | `/v1/turn-cred` | Bearer | kurzlebige TURN-Zugangsdaten |
-| GET | `/v1/store/apps` | Bearer | App-Liste (signiert) |
-| GET | `/v1/update/latest` | Bearer | neuestes System-Image (Kanal via `x-ultar-channel`) |
-| POST | `/v1/vpn/peer` | Bearer | WireGuard-Peer provisionieren |
-| POST | `/v1/verbund/geraet` | Bearer | Verbund-Gerät (Noise-Schlüssel) dem Konto zuordnen; fremder Schlüssel → 409 |
-| POST | `/v1/verbund/geraet/entfernen` | Bearer | Gerät aus dem Konto-Verbund entfernen |
-| GET | `/v1/verbund/geraete` | Bearer | Geräte des Kontos (+ online) |
-| GET (WS) | `/v1/verbund/relais` | im 1. Frame | Relais: Binärrahmen nur zwischen Geräten desselben Kontos, Inhalt Noise-verschlüsselt |
-| GET | `/v1/verbund/statistik` | — | Verbindungen, weitergeleitete/verworfene Rahmen |
+## 7. Store und Updates ohne Konto (Entscheidung vom 22.11.2026)
+| Was | Zugang |
+|---|---|
+| Katalog, Suche, Kategorien, App-Seite | offen |
+| Download **kostenloser** Pakete | offen |
+| `update/latest` + Abbild der **offenen** Kanäle (`stable`, `beta`) | offen |
+| **Premium**-Pakete | Token **und** Zugang `app:<Kennung>` |
+| **Geschützte** Kanäle (`preview`, `lts`) | Token **und** Zugang `channel:<Name>` |
+| Rufnummer, Signalisierung, TURN, VPN, Verbund | Konto (wie bisher) |
 
-### Ultar-Verbund-Relais
+Der Server ist **nie** der Vertrauensanker: Pakete und Abbilder sind vom Herausgeber signiert und
+werden am Gerät geprüft (`ultar_pkg`, dm-verity-Root-Hash + Signatur). Ein kompromittierter Server
+kann nichts Unsigniertes einschleusen; er kann höchstens Dateien vorenthalten oder ältere, echt
+signierte Versionen anbieten (siehe INTEGRATION.md, Bedrohungsbetrachtung).
+
+## 8. Datenbank-Migration (vorhandene Installation)
+Beim Start wird die Datei **an Ort und Stelle** auf das aktuelle Schema gebracht (`PRAGMA user_version`,
+eine Transaktion; bricht sie ab, bleibt das alte Schema unverändert). Vorhandene Konten, Geräte,
+Nummern, VPN-Peers, Store-Einträge und Releases bleiben erhalten:
+- alte Store-Einträge sind kostenlos, Kategorie `other`, ihre Datei bleibt am bisherigen Ort (`url`) –
+  der Download-Endpunkt leitet dorthin um (307);
+- alte Releases gelten für `arch=any`, `edition=any`; Kanäle, die schon Releases hatten, bleiben offen;
+- neue Kanäle `preview` und `lts` werden geschützt angelegt.
+
+**Vor dem Update sichern** (ein Zurück auf das alte Binary ist nach der Migration nicht vorgesehen):
+```bash
+systemctl stop ultraos
+sqlite3 /var/lib/ultraos/ultraos.sqlite ".backup '/root/ultraos-vor-update.sqlite'"
+./install.sh
+```
+Eine Datenbank eines **neueren** Servers wird nicht angefasst (Start bricht mit Meldung ab).
+
+## 9. Verwaltung: Veröffentlichen und Zugänge (`ultraos-server admin …`)
+Es gibt **keine** Verwaltungs-Schnittstelle über HTTP. Befehle laufen auf dem Server und arbeiten
+direkt auf Datenbank und Dateiablage (auch während der Dienst läuft). Mit systemd über den Wrapper
+`ultraos-admin` (führt den Befehl als Benutzer des Dienstes aus), im Container mit
+`docker compose exec ultraos ultraos-server admin …`. Ausgaben auf Arabisch/Englisch/Deutsch (`LANG`).
+
+```bash
+# App veröffentlichen (Paket vorher mit upkg-sign signieren)
+cat > /srv/ultraos-incoming/sheets.json <<'EOF'
+{"id":"com.kmcc.sheets","name":"KM Sheets","version":"1.1.0",
+ "description":"Tabellen","category":"office","publisher":"KM Code Craft",
+ "premium":false,"permissions":["files"],"file_types":["xlsx","csv"],
+ "installed_size":600000,"changelog":"schneller"}
+EOF
+ultraos-admin publish-app /srv/ultraos-incoming/sheets.json /srv/ultraos-incoming/sheets.uap
+
+ultraos-admin publisher "KM Code Craft" verified      # „geprüfter Herausgeber“
+ultraos-admin premium com.kmcc.pro on|off             # nur für Pakete in der Dateiablage
+
+# System-Abbild veröffentlichen
+echo '{"channel":"stable","version":"0.7.0","arch":"aarch64","edition":"phone","roothash":"<hex>","sig":"<base64>"}' > rel.json
+ultraos-admin publish-release rel.json ultar-0.7.0.img
+ultraos-admin channel preview gated|open              # Kanal anlegen / schützen / öffnen
+
+# Zugänge (keine Bezahllogik – ein Zugang existiert, weil er hier eingetragen wurde)
+ultraos-admin grant  <benutzer> app com.kmcc.pro
+ultraos-admin grant  <benutzer> channel preview
+ultraos-admin revoke <benutzer> app com.kmcc.pro
+ultraos-admin entitlements <benutzer>
+```
+Regeln: veröffentlichte Versionen sind unveränderlich (gleiche Version erneut → Fehler); unbekannte
+Felder in der JSON-Beschreibung werden abgelehnt; jede Änderung steht in der Tabelle `audit`.
+Der Server öffnet oder prüft das Paket nicht – Signaturprüfung ist Sache des Geräts.
+
+## 10. Ultar-Verbund-Relais
 Der Server sieht nur Chiffretext (Noise_XX zwischen den Geräten, Ende-zu-Ende). Er leitet nur innerhalb eines
 Kontos weiter, begrenzt Puffer (512 Rahmen je Verbindung, 70 KB je Rahmen, 64 Verbindungen je Konto) und meldet
-„unerreichbar“, statt zu stauen. Ein Neustart des Servers trennt nur – die Geräte verbinden sich selbst neu,
-laufende Aufgaben werden auf andere Geräte umgeplant (siehe docs/VERBUND.md, Chaos-Tests).
+„unerreichbar“, statt zu stauen. Ein Neustart des Servers trennt nur – die Geräte verbinden sich selbst neu.
 
-## 8. Härtung vor Produktion
+## 11. Schutz der öffentlichen Endpunkte (eingebaut)
+- Anfragegrenzen je Client (Token-Bucket im Speicher, höchstens 50 000 Einträge; IPv6 je /64). Adressen stehen
+  nur im Arbeitsspeicher und werden gelöscht, sobald das Kontingent wieder voll ist (spätestens Fenster + 10 s).
+- Größen: Body ≤ 16 KiB, Anfrageziel ≤ 2048 Byte, Suchtext ≤ 100 Zeichen, Seite ≤ 100 Einträge.
+- Downloads: nur über App-Kennung/Release-Nummer; Dateinamen stammen aus der Datenbank (SHA-256), nie vom Client.
+- `ETag`/`If-None-Match` und `Range`/`If-Range` für Katalog und Dateien (Fortsetzen abgebrochener Downloads).
+
+## 12. Vor Produktion noch zu tun (nicht erledigt, nicht behauptet)
 - `ULTRAOS_SECRET` fest und geheim (sonst sind alle Token nach Neustart ungültig).
-- Rate-Limiting/fail2ban auf `/account/*`.
-- DB-Backups (SQLite WAL) + Monitoring.
+- TLS-Terminierung mit der neuen Caddy-Konfiguration auf dem Testserver prüfen (Zeitlimits, Body-Grenze,
+  `Range`/`ETag` durch den Proxy, WebSockets).
+- **Sicherungen:** tägliches `sqlite3 … ".backup"` + Dateiablage, verschlüsselt außer Haus; Rückspielen üben.
+- **Überwachung:** Dienst-Zustand (`/v1/health`), 5xx- und 429-Rate aus dem Protokoll, Plattenplatz, Zertifikatsablauf.
+- **Externer Penetrationstest** (Auth, Signalisierung, Relais, öffentliche Endpunkte). Der Code ist getestet,
+  aber **nicht** extern geprüft oder auditiert.
 - Signaturschlüssel (ed25519) für Store/OTA offline halten; nur öffentliche Schlüssel aufs Gerät.
-- Pentest der Signalisierung und Auth.
+- Bandbreiten-/Verbindungsgrenzen je Client am Proxy oder per Firewall (der Dienst zählt Anfragen, nicht Bytes).
+- Lasttest mit realistischen Abbildgrößen.
 
-## 9. App-Store: signierte Pakete (.uap)
+## 13. App-Store: signierte Pakete (.uap)
 Alle Apps sind signiert (Ed25519); das Gerät lehnt Unsigniertes ab. Ablauf:
 1. Einmalig Herausgeber-Schlüssel erzeugen: `upkg-keygen` → privaten Teil geheim auf dem Signier-
    rechner halten, öffentlichen Teil ins Gerät-Image (`/etc/ultar/trusted-keys/kmcodecraft.ed25519`).
 2. App paketieren + signieren: `upkg-sign <manifest.toml> <ordner> <app.uap> <privkey-datei>`.
-3. `<app.uap>` auf den Server legen (z. B. unter `/var/lib/ultraos/apps/`, ausgeliefert über
-   einen statischen Pfad hinter Caddy), Zeile in `store_apps` eintragen (id, name, version, size,
-   sha256, sig, url). `url` zeigt auf die .uap. Format-Details: docs/A30-APP-PAKET.md.
+3. Mit `ultraos-admin publish-app` veröffentlichen (§9). Format-Details: docs/A30-APP-PAKET.md.

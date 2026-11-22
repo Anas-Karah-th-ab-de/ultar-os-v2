@@ -256,20 +256,46 @@ pub fn info(uap: &Path) -> Result<Manifest, String> {
 
 /// Installiert ein Paket — NUR nach erfolgreicher Signaturprüfung.
 pub fn install(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
+    install_at(uap, trusted_dir, Path::new("/"))
+}
+
+/// True for package ids that are safe as a directory name: 1–128 characters of
+/// `a-z A-Z 0-9 . _ -`, starting with a letter or digit, without `..`.
+pub fn valid_id(id: &str) -> bool {
+    let bytes = id.as_bytes();
+    bytes.first().is_some_and(|b| b.is_ascii_alphanumeric())
+        && bytes.len() <= 128
+        && !id.contains("..")
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// Like [`install`], but with `root` in place of `/` (tests, offline images). The signature is
+/// verified first; on failure nothing is written. `compat-deb` packages and the service reload
+/// need the live system and are only supported with `root` = `/`.
+pub fn install_at(uap: &Path, trusted_dir: &Path, root: &Path) -> Result<Manifest, String> {
     let m = verify(uap, trusted_dir)?; // harte Sperre
+    if !valid_id(&m.id) {
+        return Err("Paketkennung ungültig — Installation abgelehnt".into());
+    }
+    let live = root == Path::new("/");
     let p = read_parts(uap)?;
+    let stage = root.join("data/ultar/apps").join(&m.id);
 
     match m.kind.as_str() {
         "native" => {
             // Dateien direkt ins Wurzeldateisystem (Payload-Pfade sind unter usr/, etc/ … gewurzelt)
-            extract_payload_targz(&p.payload, Path::new("/"))?;
+            extract_payload_targz(&p.payload, root)?;
         }
         "compat-deb" => {
+            if !live {
+                return Err("compat-deb nur auf dem laufenden System installierbar".into());
+            }
             // Payload in Staging, enthaltenes .deb im Ubuntu-Bereich installieren
-            let stage = format!("/data/ultar/apps/{}", m.id);
-            let _ = std::fs::create_dir_all(&stage);
-            extract_payload_targz(&p.payload, Path::new(&stage))?;
-            let deb = find_first_deb(Path::new(&stage)).ok_or("kein .deb im Paket")?;
+            std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+            extract_payload_targz(&p.payload, &stage)?;
+            let deb = find_first_deb(&stage).ok_or("kein .deb im Paket")?;
             let st = std::process::Command::new("/usr/bin/ultar-compat")
                 .args(["dpkg", "-i", &deb])
                 .status()
@@ -278,23 +304,23 @@ pub fn install(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
                 return Err("dpkg-Installation fehlgeschlagen".into());
             }
         }
-        "data" | _ => {
-            let stage = format!("/data/ultar/apps/{}", m.id);
-            let _ = std::fs::create_dir_all(&stage);
-            extract_payload_targz(&p.payload, Path::new(&stage))?;
+        _ => {
+            std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+            extract_payload_targz(&p.payload, &stage)?;
         }
     }
 
     // Dienste übernehmen
-    if !m.services.is_empty() {
+    if live && !m.services.is_empty() {
         let _ = std::process::Command::new("/usr/bin/ultar-ctl")
             .arg("reload")
             .status();
     }
     // Installationsvermerk
-    let _ = std::fs::create_dir_all("/data/ultar/installed");
+    let installed = root.join("data/ultar/installed");
+    let _ = std::fs::create_dir_all(&installed);
     let _ = std::fs::write(
-        format!("/data/ultar/installed/{}.toml", m.id),
+        installed.join(format!("{}.toml", m.id)),
         toml::to_string(&m).unwrap_or_default(),
     );
     Ok(m)

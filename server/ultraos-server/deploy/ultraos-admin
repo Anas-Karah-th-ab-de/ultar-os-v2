@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# ultraos-admin – runs "ultraos-server admin …" as the service's own user, so that files and
+# SQLite journals created by an admin command stay writable for the running service.
+#
+#   ultraos-admin grant <username> app <app-id>
+#   ultraos-admin publish-app /srv/ultraos-incoming/meta.json /srv/ultraos-incoming/app.uap
+#
+# Files given to publish-app / publish-release must be readable by other users (the service runs
+# as a dynamic user): put them in a directory such as /srv/ultraos-incoming, not in /root.
+# NOTE: written for the systemd unit in this directory (DynamicUser=yes, StateDirectory=ultraos);
+# it could not be executed in the build environment (no systemd there) – try it on staging first.
+set -euo pipefail
+exec systemd-run --quiet --wait --pipe --collect \
+  -p DynamicUser=yes -p User=ultraos -p StateDirectory=ultraos \
+  -E ULTRAOS_DB=/var/lib/ultraos/ultraos.sqlite \
+  -E ULTRAOS_FILES=/var/lib/ultraos/files \
+  -E "LANG=${LANG:-}" \
+  /usr/local/bin/ultraos-server admin "$@"

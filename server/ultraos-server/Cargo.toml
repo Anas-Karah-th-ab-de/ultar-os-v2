@@ -1,11 +1,13 @@
-# Eigenständiges Workspace (x86-Server), getrennt vom aarch64-Geräte-Workspace.
+# Standalone workspace (x86 server), separate from the aarch64 device workspace.
 [workspace]
 
 [package]
 name = "ultraos-server"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
-description = "Ultar-Cloud: Konten, Rufnummern, Anruf-Signalisierung, Store, OTA-Updates, WireGuard-Provisionierung (ultar.code-craft.tech)"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar cloud: public store catalogue and system updates, accounts, numbers, call signalling, entitlements, WireGuard provisioning (ultar.code-craft.tech)"
 
 [dependencies]
 axum = { version = "0.7", features = ["ws", "macros"] }
@@ -25,6 +27,21 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
+[dev-dependencies]
+ureq = { version = "2", default-features = false }
+tempfile = "3"
+tokio-tungstenite = "0.24"
+
+[lib]
+name = "ultraos_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ultraos-server"
 path = "src/main.rs"
+
+# Password hashing is far too slow unoptimised; tests register several accounts.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

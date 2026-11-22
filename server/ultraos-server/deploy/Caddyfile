@@ -1,6 +1,22 @@
+# Global limits for the public endpoints (store catalogue, downloads, updates need no account):
+# slow or oversized requests are cut off here, before they reach ultraos-server.
+{
+	servers {
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+		max_header_size 16KB
+	}
+}
+
 # /etc/caddy/Caddyfile – TLS (ACME) vor ultraos-server. WebSockets (/v1/signal, /v1/verbund/relais) laufen mit durch.
 ultar.code-craft.tech {
 	encode zstd gzip
+	# All request bodies are small JSON documents (the server itself accepts at most 16 KB).
+	request_body {
+		max_size 64KB
+	}
 	# Verbund-Relais: lange Verbindungen, keine Puffer
 	@relais path /v1/verbund/relais
 	reverse_proxy @relais 127.0.0.1:8080 {

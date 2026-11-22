@@ -5234,10 +5234,14 @@ dependencies = [
 
 [[package]]
 name = "ultar-cloud"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
+ "hex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ultar-i18n",
  "ultar-pkg",
  "ultar-vpn",
  "ureq",
@@ -5377,7 +5381,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-pkg"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "base64",
  "ed25519-dalek 2.2.0",
@@ -5387,6 +5391,7 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "tar",
+ "tempfile",
  "toml",
  "ultar-sprache",
 ]

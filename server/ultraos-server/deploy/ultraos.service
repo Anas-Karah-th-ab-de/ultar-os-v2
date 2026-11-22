@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Environment=ULTRAOS_BIND=127.0.0.1:8080
 Environment=ULTRAOS_DB=/var/lib/ultraos/ultraos.sqlite
+Environment=ULTRAOS_FILES=/var/lib/ultraos/files
 Environment=RUST_LOG=info
 EnvironmentFile=/etc/ultraos/secret.env
 ExecStart=/usr/local/bin/ultraos-server

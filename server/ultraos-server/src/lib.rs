@@ -1,0 +1,211 @@
+//! ultraos-server — the Ultar cloud for `ultar.code-craft.tech` (area: server).
+//!
+//! Services:
+//! * **Public, no account:** store catalogue (paging, search, categories, app details), download
+//!   of free packages, newest system release of the open channels and its image.
+//! * **Account + entitlement:** premium packages and gated update channels.
+//! * **Account:** device registration with the unique Ultar number, call signalling (WebSocket),
+//!   TURN credentials, WireGuard provisioning, Ultar-Verbund (device list and end-to-end relay).
+//!
+//! The server is never a trust anchor: packages and system images are signed by the publisher
+//! and verified on the device. The server only transports them and decides who may fetch what.
+//!
+//! TLS is terminated in front of this process (Caddy). See `DEPLOY.md` and `API.md`.
+
+#![forbid(unsafe_code)]
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+#![deny(missing_docs)]
+
+pub mod accounts;
+pub mod admin;
+pub mod auth;
+pub mod catalog;
+pub mod cli;
+pub mod clock;
+pub mod conditional;
+pub mod db;
+pub mod entitlements;
+pub mod error;
+pub mod files;
+pub mod guard;
+pub mod migrate;
+pub mod msg;
+pub mod ratelimit;
+pub mod search;
+pub mod signal;
+pub mod store_api;
+pub mod updates;
+pub mod verbund;
+
+use axum::extract::{ws::WebSocketUpgrade, DefaultBodyLimit, State};
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
+use axum::Router;
+use clock::Clock;
+use db::{Db, DbError};
+use files::FileStore;
+use guard::ProxyNet;
+use ratelimit::{LimiterConfig, RateLimiter};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicU32;
+use std::sync::Arc;
+
+/// Everything the server needs to start.
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Path of the SQLite database file.
+    pub db_path: String,
+    /// Directory of the content-addressed file store (packages, system images).
+    pub files_dir: PathBuf,
+    /// 32-byte key for session tokens.
+    pub secret: [u8; 32],
+    /// Public WireGuard key of the server.
+    pub wg_server_pubkey: String,
+    /// WireGuard endpoint (`host:port`).
+    pub wg_endpoint: String,
+    /// coturn `static-auth-secret` (empty = TURN not configured).
+    pub turn_secret: String,
+    /// Public TURN/STUN host.
+    pub turn_host: String,
+    /// Reverse proxies whose `X-Forwarded-For` is believed.
+    pub trusted_proxies: Vec<ProxyNet>,
+    /// Rate limits.
+    pub limits: LimiterConfig,
+}
+
+impl Config {
+    /// A configuration with the given storage locations and token key; everything else default
+    /// (loopback is the only trusted proxy, TURN unconfigured).
+    pub fn new(
+        db_path: impl Into<String>,
+        files_dir: impl Into<PathBuf>,
+        secret: [u8; 32],
+    ) -> Self {
+        Self {
+            db_path: db_path.into(),
+            files_dir: files_dir.into(),
+            secret,
+            wg_server_pubkey: String::new(),
+            wg_endpoint: "ultar.code-craft.tech:51820".to_string(),
+            turn_secret: String::new(),
+            turn_host: "ultar.code-craft.tech".to_string(),
+            trusted_proxies: vec![
+                ProxyNet::host(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+                ProxyNet::host(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+            ],
+            limits: LimiterConfig::default(),
+        }
+    }
+}
+
+/// Shared state of all request handlers.
+pub struct AppState {
+    /// The database.
+    pub db: Db,
+    /// Key for session tokens.
+    pub secret: [u8; 32],
+    /// Call signalling: number → socket.
+    pub hub: signal::Hub,
+    /// Ultar-Verbund: relay between devices of the same account.
+    pub verbund: verbund::Hub,
+    /// Counter for internal WireGuard addresses (10.80.x.y).
+    pub wg_next: AtomicU32,
+    /// Public WireGuard key of the server.
+    pub wg_server_pubkey: String,
+    /// WireGuard endpoint.
+    pub wg_endpoint: String,
+    /// coturn use-auth-secret (its own secret, not the token key).
+    pub turn_secret: String,
+    /// Public TURN/STUN host (not behind the CDN proxy).
+    pub turn_host: String,
+    /// File store for packages and system images.
+    pub files: FileStore,
+    /// Per-client rate limiter.
+    pub limiter: RateLimiter,
+    /// Reverse proxies whose `X-Forwarded-For` is believed.
+    pub trusted_proxies: Vec<ProxyNet>,
+}
+
+impl AppState {
+    /// Opens (and migrates) the database and builds the shared state.
+    pub fn new(config: Config, clock: Arc<dyn Clock>) -> Result<Arc<Self>, DbError> {
+        let db = Db::open(&config.db_path)?;
+        let wg_start = accounts::next_wg_host(&db.lock())?;
+        Ok(Arc::new(Self {
+            db,
+            secret: config.secret,
+            hub: signal::Hub::default(),
+            verbund: verbund::Hub::default(),
+            wg_next: AtomicU32::new(wg_start),
+            wg_server_pubkey: config.wg_server_pubkey,
+            wg_endpoint: config.wg_endpoint,
+            turn_secret: config.turn_secret,
+            turn_host: config.turn_host,
+            files: FileStore::new(config.files_dir),
+            limiter: RateLimiter::new(config.limits, clock),
+            trusted_proxies: config.trusted_proxies,
+        }))
+    }
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
+
+async fn signal_ws(State(st): State<Arc<AppState>>, ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.max_message_size(signal::MAX_MESSAGE_BYTES)
+        .max_frame_size(signal::MAX_MESSAGE_BYTES)
+        .on_upgrade(move |socket| signal::handle(socket, st))
+}
+
+/// Builds the router with all routes, the body limit and the request guard.
+pub fn router(state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/v1/health", get(health))
+        .route("/v1/account/register", post(accounts::account_register))
+        .route("/v1/account/login", post(accounts::account_login))
+        .route(
+            "/v1/account/entitlements",
+            get(accounts::account_entitlements),
+        )
+        .route("/v1/device/register", post(accounts::device_register))
+        .route("/v1/signal", get(signal_ws))
+        .route("/v1/turn-cred", get(accounts::turn_cred))
+        .route("/v1/vpn/peer", post(accounts::vpn_peer))
+        .route("/v1/store/apps", get(store_api::store_apps))
+        .route("/v1/store/catalog", get(store_api::catalog_list))
+        .route("/v1/store/categories", get(store_api::categories))
+        .route("/v1/store/apps/:id", get(store_api::app_details))
+        .route("/v1/store/apps/:id/download", get(store_api::app_download))
+        .route("/v1/update/latest", get(updates::update_latest))
+        .route("/v1/update/file/:id", get(updates::update_file))
+        .route("/v1/verbund/geraet", post(verbund::geraet))
+        .route("/v1/verbund/geraet/entfernen", post(verbund::entfernen))
+        .route("/v1/verbund/geraete", get(verbund::geraete))
+        .route("/v1/verbund/relais", get(verbund::relais_ws))
+        .route("/v1/verbund/statistik", get(verbund::statistik))
+        .fallback(|| async { error::ApiError::NotFound })
+        .layer(DefaultBodyLimit::max(guard::MAX_BODY_BYTES))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            guard::guard,
+        ))
+        .with_state(state)
+}
+
+/// Serves the router on an already bound listener until the process ends or `shutdown` resolves.
+pub async fn serve<F>(
+    listener: tokio::net::TcpListener,
+    state: Arc<AppState>,
+    shutdown: F,
+) -> std::io::Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await
+}

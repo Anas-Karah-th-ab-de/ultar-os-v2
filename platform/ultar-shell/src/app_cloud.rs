@@ -49,7 +49,7 @@ impl App {
                 ) {
                     match ultar_cloud::register_number() {
                         Ok(n) => self.toast(format!("{}: {n}", self.t("Number"))),
-                        Err(e) => self.toast(e),
+                        Err(e) => self.toast(e.to_string()),
                     }
                 }
                 y += ui.dp(56.0);
@@ -115,7 +115,7 @@ impl App {
                 self.fields.insert("acc_pw", String::new());
                 self.focus = None;
             }
-            Err(e) => self.toast(e),
+            Err(e) => self.toast(e.to_string()),
         }
     }
 
@@ -449,7 +449,7 @@ impl App {
             // provisionieren (falls nötig) + Tunnel hoch
             if ultar_vpn::load_saved().is_none() {
                 if let Err(e) = ultar_cloud::vpn_provision() {
-                    self.toast(e);
+                    self.toast(e.to_string());
                     return;
                 }
             }
@@ -557,7 +557,7 @@ impl App {
                                 self.cloud.apps = a;
                                 self.cloud.apps_loaded = true;
                             }
-                            Err(e) => self.toast(e),
+                            Err(e) => self.toast(e.to_string()),
                         }
                     }
                     ui.dirty = true;
@@ -631,7 +631,7 @@ impl App {
                             );
                             self.toast(format!("{}: {name}", self.t("Installed")));
                         }
-                        Err(e) => self.toast(e),
+                        Err(e) => self.toast(e.to_string()),
                     }
                     ui.dirty = true;
                 }
@@ -712,7 +712,7 @@ impl App {
                     self.toast(format!("{} v{}", self.t("Update available"), rel.version));
                 }
                 Ok(None) => self.toast(self.t("System is up to date").into()),
-                Err(e) => self.toast(e),
+                Err(e) => self.toast(e.to_string()),
             }
         }
         y += ui.dp(58.0);
