@@ -81,6 +81,11 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         paging::init(mem::top(&boot), fb);
         mem::init(&boot);
         apic::init();
+        #[cfg(feature = "remote-test")]
+        apic::arm_deadline(match option_env!("ULTAR_DEADLINE_MS") {
+            Some(ms) => ms.parse().unwrap_or(180_000),
+            None => 180_000,
+        });
         // freie Seite unter 1 MB für den Startcode der weiteren Kerne (bevorzugt 0x8000)
         let free = |a: u64| boot.regions().any(|d| crate::efi::usable(d.typ) && d.phys <= a && d.phys + d.pages * 4096 >= a + 0x1000);
         // zwei Seiten: Startcode + Kopie der obersten Seitentabelle (muss unter 4 GB liegen)

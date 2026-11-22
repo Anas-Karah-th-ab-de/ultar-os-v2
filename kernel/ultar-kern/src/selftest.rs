@@ -11,6 +11,9 @@ use alloc::vec;
 const DATEI: &str = "ultar-kern/selbsttest.txt";
 
 pub fn wanted() -> bool {
+    #[cfg(feature = "remote-test")]
+    return true;
+    #[allow(unreachable_code)]
     crate::fs::fat_has(DATEI)
 }
 
@@ -19,6 +22,13 @@ fn programm(name: &str) -> Option<String> {
 }
 
 pub fn run() {
+    // Only for proving the restart deadline in the emulator: hang on purpose.
+    if option_env!("ULTAR_TEST_HANG").is_some() {
+        kprintln!("[test] hanging on purpose");
+        loop {
+            core::hint::spin_loop();
+        }
+    }
     let t0 = crate::arch::uptime_ms();
     kprintln!("=== Ultar-Kern Selbsttest (Version {}) ===", env!("CARGO_PKG_VERSION"));
     kprintln!("Zeit (RTC, UTC): {} s seit 1970", crate::syscall::epoch_secs());
@@ -67,7 +77,7 @@ pub fn run() {
         }
     }
     // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc
-    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"])] {
+    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"])] {
         match programm(p) {
             Some(path) => {
                 kprintln!("[test] Programm {p}:");
@@ -89,6 +99,13 @@ pub fn run() {
         Some(p) => kprintln!("[test] Protokoll geschrieben: {p} – Stick unter Windows öffnen und Datei schicken"),
         None => kprintln!("[test] Protokoll konnte nicht geschrieben werden (Bildschirmfoto machen)"),
     }
+    #[cfg(feature = "remote-test")]
+    {
+        kprintln!("[test] remote-test: restarting in 3 s");
+        crate::arch::sleep_us(3_000_000);
+        crate::power::neustart();
+    }
+    #[allow(unreachable_code)]
     if crate::fs::fat_has("ultar-kern/auto-aus") {
         kprintln!("[test] auto-aus: schalte in 5 s aus");
         crate::arch::sleep_us(5_000_000);

@@ -44,7 +44,20 @@ pub fn eoi() {
 pub fn tick() {
     if crate::percpu::id() == 0 {
         TICKS.fetch_add(1, Ordering::Relaxed);
+        let deadline = DEADLINE_MS.load(Ordering::Relaxed);
+        if deadline != 0 && crate::arch::uptime_ms() > deadline {
+            crate::power::neustart();
+        }
     }
+}
+
+/// Uptime in ms after which the timer interrupt restarts the computer (0 = off).
+static DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Arms the restart deadline: used by the remote hardware test so that a hanging kernel
+/// gives the machine back instead of staying down until someone presses the power button.
+pub fn arm_deadline(ms_from_now: u64) {
+    DEADLINE_MS.store(crate::arch::uptime_ms() + ms_from_now, Ordering::Relaxed);
 }
 
 pub fn ticks() -> u64 {

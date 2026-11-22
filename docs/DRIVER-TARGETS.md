@@ -89,3 +89,18 @@ diese Teile sind die aufwendigsten und haben keinen festen Termin – sie blocki
 
 Jeder Treiber gilt erst als fertig mit: Manifest `.utr`, Prüfung in QEMU (wo emulierbar) **und** am echten Gerät,
 Eintrag in der Paritätstabelle, arabischen Anzeigenamen.
+
+## Prüfung auf dem echten Rechner aus der Ferne (über SSH)
+
+Drei Stufen, jede erst nach bestandener vorheriger:
+
+1. **Einzelgeräte per VFIO** (wie bisher, `tools/kern-test/vfio-*.sh`) – der Server läuft weiter.
+2. **Kern unter KVM auf dem Zielrechner** mit echtem Prozessor, allen Kernen und den echten SMBIOS-Tabellen:
+   `tools/kern-test/kvm-on-target.sh <kern.efi> <bin-ordner>` – ändert nichts am Rechner.
+3. **Einmaliger Start direkt auf der Hardware:** `tools/kern-test/remote-boot.sh check | prepare | go | collect`.
+   Der Kern wird mit `--features remote-test` gebaut: Selbsttest, Protokoll auf die EFI-Partition, danach Neustart von
+   selbst; hängt er, startet eine Frist (180 s) den Rechner neu. Gestartet wird über „BootNext“ – jeder weitere Start
+   führt wieder ins normale System. In QEMU geprüft: Normalfall (Neustart nach 9 s) und absichtlicher Hänger
+   (Neustart durch die Frist).
+   **Restrisiko:** Hängt der Kern, bevor der Zeitgeber läuft, oder mit gesperrten Unterbrechungen, greift die Frist
+   nicht – dann muss einmal jemand den Netzschalter drücken (danach startet wieder das normale System).
