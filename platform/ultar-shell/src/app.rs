@@ -5748,6 +5748,7 @@ mod flow_tests {
 
     #[test]
     fn kamera_galerie_agent() {
+        let _env = crate::sys::test_env_guard();
         let root = std::env::temp_dir().join(format!("ultar-flow-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("ultar")).unwrap();
@@ -6003,6 +6004,7 @@ mod flow_tests {
 
     #[test]
     fn buero_apps() {
+        let _env = crate::sys::test_env_guard();
         use ultar_office as uo;
         let root = std::env::temp_dir().join(format!("ultar-buero-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -6127,6 +6129,7 @@ mod flow_tests {
 
     #[test]
     fn system_assistent() {
+        let _env = crate::sys::test_env_guard();
         let root = std::env::temp_dir().join(format!("ultar-jarvis-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("models")).unwrap();

@@ -1111,3 +1111,13 @@ pub fn geraete_akkus() -> Vec<(String, u8)> {
         v
     })
 }
+
+/// Serializes tests that change process-wide environment variables (data and media
+/// directories). Without it such tests race when the test runner uses several threads.
+#[cfg(test)]
+pub fn test_env_guard() -> std::sync::MutexGuard<'static, ()> {
+    static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    TEST_ENV
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}

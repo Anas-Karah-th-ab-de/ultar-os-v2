@@ -18,8 +18,8 @@ Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 ## Beim Übernehmen gefundene und behobene Fehler
 
 - Der Browser `ultar-web` ließ sich auf dem alten Stand nicht mehr bauen (fehlende Abhängigkeiten und Module).
-- Zwei Tests schlugen fehl: Bildschirm-Maßstab (Test passte nicht mehr zum Entwurf mit 390 Punkten Breite) und
-  Bildschirmübertragung im Verbund (Überlauf im Testmuster).
+- Drei Testfehler: Bildschirm-Maßstab (Test passte nicht mehr zum Entwurf mit 390 Punkten Breite) und
+  Bildschirmübertragung im Verbund (Überlauf im Testmuster); dazu liefen Tests der Oberfläche, die gemeinsame Umgebungsvariablen ändern, gegeneinander (fiel erst auf GitHub auf) – jetzt nacheinander.
 - Die alte Geräteart-Erkennung (`ultar-edition`) ist durch `ultar-profile` + `ultar-hal-system` ersetzt.
 
 ## Noch nicht gemacht (ehrlich)
@@ -39,8 +39,8 @@ Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 ## Nicht geprüft
 
 - Kein Lauf auf echter Hardware in dieser Sitzung (ThinkPad, Beelink, A30) – alles in QEMU bzw. als Test.
-- Die GitHub-Prüfung (`.github/workflows/ci.yml`) ist geschrieben, aber noch nie auf GitHub gelaufen.
-- Kein ARM-Bau der neuen Bausteine (nur x86_64); `ultar-llm` (llama.cpp) wurde nicht gebaut.
+- Die GitHub-Prüfung (`.github/workflows/ci.yml`) läuft auf GitHub: Format, Regeln, Tests, statischer ARM64-Bau der neuen Bausteine und Kern-Start in QEMU.
+- ARM64: nur gebaut (statisch, in der GitHub-Prüfung), nicht ausgeführt; `ultar-llm` (llama.cpp) wurde nicht gebaut.
 - Arabische Texte sind nicht von einem Muttersprachler gegengelesen.
 - Zielwerte in `tools/budgets.toml` sind Vorgaben, keine Messwerte.
 

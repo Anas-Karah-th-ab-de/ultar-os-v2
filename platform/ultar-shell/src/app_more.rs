@@ -3189,6 +3189,7 @@ mod tests {
 
     #[test]
     fn recents_pinning_block_and_reminders() {
+        let _env = crate::sys::test_env_guard();
         let mut a = app();
         // zuletzt verwendet: neueste vorn, ohne Doppelte
         a.go(Screen::Phone);
