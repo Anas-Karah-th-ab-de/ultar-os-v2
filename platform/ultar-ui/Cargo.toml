@@ -1,0 +1,26 @@
+[package]
+name = "ultar-ui"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The one UI toolkit of Ultar OS: tokens, software canvas, Arabic-first text, logical layout, widgets, events, snapshots"
+build = "build.rs"
+
+[features]
+default = ["snapshot"]
+# PNG encoding/decoding and the image-comparison test helper.
+snapshot = ["dep:png"]
+
+[dependencies]
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+rustybuzz = "0.20"
+unicode-bidi = { version = "0.3", default-features = false, features = ["hardcoded-data", "std"] }
+ab_glyph_rasterizer = "0.1"
+png = { version = "0.17", optional = true }
+
+[build-dependencies]
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+[dev-dependencies]
+png = "0.17"

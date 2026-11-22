@@ -1,0 +1,83 @@
+# Ultar OS design tokens – the ONE source of every visual value (docs/DESKTOP-SPEC.md §3).
+# The UI toolkit (platform/ultar-ui) and the design artboards are both generated from this file.
+# No colour, size or radius may be written anywhere else.
+
+[space]            # logical points; nothing else is allowed
+values = [4, 8, 12, 16, 24, 32, 48]
+
+[radius]
+control = 8        # buttons, inputs, list rows
+card = 12          # cards, windows, sheets
+round = 9999       # switches, avatars, pills
+
+[type]
+sizes = [12, 14, 16, 20, 24, 32]
+body = 14
+line_height_latin = 1.5
+line_height_arabic = 1.6
+family_arabic_text = "Noto Naskh Arabic"
+family_arabic_title = "Noto Kufi Arabic"
+family_latin = "Noto Sans"
+family_mono = "Noto Sans Mono"
+weights = [400, 500, 600, 700]
+
+[size]
+bar_height = 56            # the single bar at the bottom (standard)
+titlebar_height = 40
+target_pointer_min = 32
+target_touch_min = 44
+icon_small = 16
+icon = 24
+stroke = 1.5
+focus_ring = 2
+
+[motion]                   # milliseconds
+feedback = 120
+fade = 200
+overview = 300
+
+[layout]                   # size classes by logical width
+compact_max = 599
+medium_max = 1023
+
+[theme.dark]               # standard
+ground = "#0B0D11"
+bar = "#12151B"
+surface = "#171A21"
+raised = "#1F232C"
+hover = "#262B36"
+line = "#2E333E"           # decorative separators
+control_border = "#6F7789" # borders of inputs and switches (>= 3:1 on surface)
+text = "#F2F0EA"
+text_muted = "#A9ADB8"
+accent = "#D4AF37"         # brand gold: the one main action, and "on"
+on_accent = "#14110A"
+accent_text = "#E3C55A"
+info = "#7FB2FF"
+success = "#6FD08C"
+warning = "#F0B95A"
+danger = "#FF8A80"
+
+[theme.light]
+ground = "#E9EBEF"
+bar = "#F7F8FA"
+surface = "#FFFFFF"
+raised = "#F3F4F7"
+hover = "#E6E8EE"
+line = "#D5D9E0"
+control_border = "#767E90"
+text = "#15171C"
+text_muted = "#565C6B"
+accent = "#C9A227"
+on_accent = "#14110A"
+accent_text = "#7A5C00"
+info = "#1F5FBF"
+success = "#1F7A3D"
+warning = "#8A5A00"
+danger = "#B3261E"
+
+[shadow]                   # one elevation level for everything that floats
+offset_y = 12
+blur = 32
+alpha_dark = 0.40
+alpha_light = 0.18

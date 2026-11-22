@@ -1,0 +1,25 @@
+[package]
+name = "ultar-settingsd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Settings service of Ultar OS: schema, store, bus service and CLI (system core, area 3)"
+
+[lib]
+name = "ultar_settingsd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-settingsd"
+path = "src/bin/ultar-settingsd.rs"
+
+[[bin]]
+name = "usettings"
+path = "src/bin/usettings.rs"
+
+[dependencies]
+ultar-bus = { path = "../ultar-bus" }
+ultar-i18n = { path = "../ultar-i18n" }
+ultar-profile = { path = "../ultar-profile" }
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }

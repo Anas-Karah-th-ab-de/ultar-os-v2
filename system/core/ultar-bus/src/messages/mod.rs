@@ -9,6 +9,9 @@
 //! | `notify.posted` | topic | no | notification service |
 //! | `settings.get` / `settings.set` | calls | – | `settingsd` |
 //! | `settings.changed` | topic | no | `settingsd` |
+//! | `settings.reset` / `list` / `confirm` / `revert` / `set_displays` / `shutdown` | calls | – | `settingsd` |
+//! | `settings.pending` / `settings.pending_resolved` | topics | no | `settingsd` |
+//! | `settings.store_report` | topic | yes | `settingsd` |
 //! | `power.state` | topic | yes | power service |
 //! | `shell.mode` | topic | yes | shell |
 //!
@@ -19,6 +22,7 @@ pub mod devices;
 pub mod notify;
 pub mod power;
 pub mod settings;
+mod settings_ext;
 pub mod shell;
 
 #[cfg(test)]
@@ -48,6 +52,15 @@ mod tests {
         check_call::<super::notify::Post>();
         check_call::<super::settings::Get>();
         check_call::<super::settings::Set>();
+        check_call::<super::settings::Reset>();
+        check_call::<super::settings::ListRequest>();
+        check_call::<super::settings::Confirm>();
+        check_call::<super::settings::Revert>();
+        check_call::<super::settings::SetDisplays>();
+        check_call::<super::settings::Shutdown>();
+        check_topic::<super::settings::PendingConfirmation>();
+        check_topic::<super::settings::PendingResolved>();
+        check_topic::<super::settings::StoreReport>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

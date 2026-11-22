@@ -14,7 +14,12 @@ pub enum SettingValue {
     Decimal(f64),
     /// Identifier or text typed by the user (language tag, device name).
     Text(String),
+    /// Ordered list of identifiers or texts (appended in 0.7.0 for
+    /// `settingsd`; older values keep their encoding).
+    List(Vec<String>),
 }
+
+pub use super::settings_ext::*;
 
 /// `settings.get` – read one setting.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -103,6 +108,7 @@ mod tests {
             SettingValue::Integer(-40),
             SettingValue::Decimal(1.25),
             SettingValue::Text("ar-SY".into()),
+            SettingValue::List(vec!["a".into(), "b".into()]),
         ];
         for value in values {
             let changed = Changed {
