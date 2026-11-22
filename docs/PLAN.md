@@ -251,6 +251,33 @@ Wie das erreicht wird – fest in der Architektur:
 - **Bau:** Profil-geführte Optimierung (PGO) + LTO für Compositor, `ultar-ui`, Kern; Zielprozessor je Geräteprofil
   (z. B. `x86-64-v3` für PC), weiterhin statisch.
 
+### 3.7 Abschottung im Ultar-Kern: Namensräume, Gruppen, Profile mit Rechten
+
+Voraussetzung für „jede App ein eigener Prozess in einer Zelle“ (P5), für Zellen/Container und für die Rechte je App.
+Der Kern bekommt drei Bausteine, die zusammen **eine** Sache bilden – die Zelle:
+
+| Baustein | Was er trennt/begrenzt | Umfang |
+|---|---|---|
+| **Namensräume** (was ein Prozess *sieht*) | Dateibaum (mount) · Prozessliste (pid) · Netz (net: eigene Schnittstellen, Routen, Brandmauer) · Rechnername (uts) · IPC/gemeinsamer Speicher (ipc) · Benutzer-Nummern (user) · Geräte (dev: nur freigegebene Gerätedateien) | Linux-verträgliche Aufrufe `clone`/`unshare`/`setns`, damit vorhandene Werkzeuge (Container, Kiri) laufen |
+| **Gruppen** (wie viel ein Prozess *verbraucht*) | Prozessor-Anteil und Kerne (schnell/sparsam) · Speicher-Obergrenze · Ein-/Ausgabe · Zahl der Prozesse · Grafikkarte/NPU-Anteil · Netz-Bandbreite · Energie (im Hintergrund einfrieren) | **neu gruppiert** statt Linux-Nachbau: ein Baum mit vier festen Ästen – `system` (Kern-Dienste) · `session` (Oberfläche, aktive App bevorzugt) · `apps` (je App eine Gruppe; Vordergrund/Hintergrund/eingefroren) · `cells` (Container, Fremdsysteme). Die Zeitplanung kennt die Äste: Oberfläche und aktive App gehen immer vor. Linux-Sicht (`cgroup2`-Dateien) als Übersetzung für fremde Programme. |
+| **Rechte** (was ein Prozess *darf*) | einzelne Fähigkeiten statt „root oder nicht“ (Netz öffnen, Geräte, Zeit stellen, Module laden …) · Filter für Systemaufrufe · Dateizugriff nur auf freigegebene Pfade | Standard: nichts erlaubt; jede Erlaubnis kommt aus dem Profil |
+
+**Profile mit Rechten (später, Schnittstelle wird jetzt mitgeplant):** ein Profil ist ein benannter, signierter Satz aus
+Namensräumen + Gruppengrenzen + Rechten. Der Kern setzt es beim Start des Prozesses durch; eine App kann ihr Profil nie
+selbst erweitern.
+
+| Profil | Für |
+|---|---|
+| `app.standard` | Fremd-Apps: eigener Dateibereich, Netz nur nach Erlaubnis, keine Geräte |
+| `app.system` | System-Apps von KM Code Craft: zusätzlich benannte Bus-Dienste (z. B. Telefon → `radio.call`) |
+| `service.<name>` | je Systemdienst genau die nötigen Rechte (z. B. `service.net`: Netz verwalten, sonst nichts) |
+| `cell.linux` · `cell.windows` · `cell.android` | Fremdsysteme: eigenes Netz, eigener Dateibaum, kein Zugriff auf Nutzerdaten außer Freigabe-Ordner |
+| `user.admin` · `user.standard` · `user.child` · `user.guest` · `user.work` | Benutzer-Profile: was ein Mensch darf (Apps installieren, Einstellungen ändern, Zeiten, Arbeits-/Privatbereich getrennt) |
+
+Reihenfolge im Bau: mount + pid + Rechte-Grundlage (reicht für P5) → net + Gruppen-Baum → user/ipc/uts/dev →
+Profile als Dateien + Verwaltung in den Einstellungen („Benutzer“, „Apps → Rechte“, „Zellen“). Jede Stufe mit
+Ausbruchs-Tests (ein Prozess versucht, aus seiner Zelle zu sehen, zu schreiben, zu senden) in der Kern-Prüfung.
+
 ## 4. Trennung: gemeinsam · Handy · Desktop · Server
 
 Gesteuert über **Fähigkeiten**, nicht über die Ausgabe. Die Ausgabe (`phone/desktop/server`) bleibt nur als
@@ -442,6 +469,7 @@ Kern-Test (`wsl-x11.py geraete`-Äquivalent in QEMU).
 | **P1 Repo-Struktur** | Crates in Schicht-Ordner verschieben, `rootfs-editions` → `editions`, Gerätedoku → `geraete/`; **kein Verhaltenswechsel** | gleiches Abbild bit-gleich bzw. gleiches Verhalten in QEMU + A30 |
 | **P2 i18n vereinheitlichen** | `ultar-i18n` + `.ftl`; Shell, Installer, CLI umstellen; `ultar-sprache` entfernen | Prüfung „alle Schlüssel in ar/en/de“ grün; keine deutschen Reste in Ar |
 | **P2b Kernel entschlacken** | Installer, Startseite und Bedien-Konsole aus dem Ultar-Kern in eigene Ring-3-Programme (`apps/installer`, Plattform); im Kern bleibt nur die serielle Not-Konsole | Kern enthält keine Oberfläche/Nutzertexte mehr; Installation in QEMU/VMware läuft wie vorher |
+| **P2c Abschottung im Kern** | Namensräume (mount, pid), Rechte-Grundlage, Gruppen-Baum – §3.7 | Ausbruchs-Tests grün in QEMU; ein Testprogramm läuft in einer Zelle und sieht nur seinen Bereich |
 | **P3 HAL herausziehen** | Traits + `hal-generic-linux` + `hal-exynos7885` + `hal-ultar-kern`; Shell ohne `/sys`/`/dev` | Pfad-Prüfung grün; A30: Anzeige, Touch, Akku, WLAN, Ton wie vorher |
 | **P4 devd + Profil** | ein `hw`, Fähigkeiten über `ultar-bus`, `coldplug`/`drivers` ersetzt | QEMU, VMware, Beelink, A30 erkennen alles wie vorher; Treiberwechsel/Rückfall funktioniert |
 | **P5 Oberfläche zerlegen + Apps als Prozesse** | `ultar-ui`, `app-api`, Compositor-Kern, jede System-App als eigener Prozess in einer Zelle; `ultar-shell`-Monolith aufgelöst | alle Bildschirmtests gleich; Absturz einer App lässt die Oberfläche stehen; Rechte je App greifen |

@@ -161,6 +161,10 @@ Datei-Symbole nach Art (Text, Tabelle, Bild, Ton, Film, Archiv, Programm, unbeka
 
 ### 5.1 Aufbau des Bildschirms
 
+> **Standard ist seit 22.11.2026 die eine Leiste unten** (Abschnitt 11). Alle Funktionen der folgenden Tabelle gelten
+> unverändert; „Leiste oben“ und „Dock“ liegen im Standard gemeinsam in der unteren Leiste. Das App-Menü der aktiven
+> App entfällt dort (seine Einträge stehen im Rechtsklick-Menü des App-Symbols).
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ [Übersicht]  [App-Menü der aktiven App]        So 22 Nov  16:52        [Status] │  Leiste oben (32)
@@ -413,8 +417,7 @@ angelehnt (zentrierte Symbole, runde Ecken, Einstellungen mit Seitenleiste und K
 
 | # | Frage | Entscheidung |
 |---|---|---|
-| 1 | Dock | **unten in der Mitte** als Standard; umstellbar auf Anfang/Ende |
-| 2 | Leiste | **oben** als Standard; umstellbar nach **unten** (dann liegen Leiste und Dock als eine Zeile unten: Übersicht · Dock · Uhr · Status) |
+| 1+2 | Leiste und Dock | **Standard: eine einzige Leiste unten wie bei Windows 11** – Mitte: Übersicht · alle Apps · Suche · angeheftete und laufende Apps; Ende: Tastaturbelegung · Status (öffnet Schnelleinstellungen) · Uhr/Datum (öffnet Kalender und Benachrichtigungen); Anfang: Papierkorb. Schnelleinstellungen und Kalender öffnen von unten am Ende. Umstellbar: Symbole am Anfang statt Mitte · Leiste oben + getrenntes Dock (Abschnitt 5.1 beschreibt diese Variante) |
 | 3 | Fensterknöpfe | am **Ende** der Titelleiste (Arabisch: links) |
 | 4 | Browser | siehe unten |
 | 5 | Farbwelt | **Dunkel („Ultar Noir“ mit Gold) als Standard**, Hell wählbar, dazu „automatisch nach Sonnenstand“ |
@@ -496,3 +499,12 @@ arabischem Text (3840 × 2160, 60 Hz), Begriffe (إظهار أرقام الشا�
 Firefox setzt „Linux-Programme“, Kontrast der Rahmen und der App-Symbole im hellen Thema.
 **Offen für Runde 2 (vor Freigabe):** Symbole mit Doppelbedeutung auflösen, alle Maße auf das Raster, Schriftstufen,
 jeden undefinierten Klick festlegen, Zustandsbilder (leer, lädt, Fehler, offline, ohne Hardware), Größen statt Platzhalter.
+
+### 12.5 Entscheidungen vom 22.11.2026 (abends)
+
+| Frage | Entscheidung | Folge |
+|---|---|---|
+| Store und Updates ohne Konto | **Ja – beides geht ohne Ultar-Konto.** Später: Premium-Apps und bestimmte Updates nur mit Zugang. | Server bekommt offene Lese-Endpunkte für Katalog, kostenlose Apps und System-Updates (weiter mit Signaturprüfung am Gerät). Im Store drei Zustände je App: frei · „Premium – Anmeldung nötig“ · gekauft/freigeschaltet. Update-Kanäle: frei (Standard) · mit Zugang (z. B. Vorab, Langzeit-Pflege). Konto bleibt nötig nur für: Anrufe über Ultar-Nummer, Ultar-VPN, Sicherung, Verbund über Internet, Premium. |
+| Mining | **Optional** – nicht im Grundsystem. | Eigene Komponente „Rechenleistung teilen (Mining)“ im Store, standardmäßig nicht installiert; nach Installation aus, mit Grenzen (nur am Netzteil, Temperatur, CPU-Anteil) und klarer Anzeige in der Leiste, solange es läuft. Kein Eintrag im Konto-Bildschirm. |
+| Standard-Desktop | **Eine Leiste unten wie bei Windows 11** | siehe Abschnitt 11; Entwurfsbilder umgestellt, Leiste oben + Dock bleibt als Variante |
+| Namensräume | **Werden in den Ultar-Kern eingebaut**, zusammen mit Gruppen und später Profilen mit Rechten | siehe PLAN.md §3.7 |
