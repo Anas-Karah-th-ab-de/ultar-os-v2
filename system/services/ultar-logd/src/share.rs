@@ -63,6 +63,23 @@ impl Share {
     }
 }
 
+impl Share {
+    /// Takes a ticket if fewer than `limit` deliveries wait, without
+    /// waiting.
+    pub fn try_take(&self, limit: usize) -> Option<Ticket> {
+        let mut waiting = self
+            .0
+            .waiting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if *waiting >= limit.max(1) {
+            return None;
+        }
+        *waiting += 1;
+        Some(Ticket(self.0.clone()))
+    }
+}
+
 /// One record's place in its source's share; given back when dropped.
 pub struct Ticket(Arc<Count>);
 
@@ -106,5 +123,7 @@ mod tests {
         assert_eq!(share.waiting(), 2);
         drop(third);
         assert_eq!(share.waiting(), 1);
+        let fourth = share.try_take(2);
+        assert!(fourth.is_some() && share.try_take(2).is_none());
     }
 }

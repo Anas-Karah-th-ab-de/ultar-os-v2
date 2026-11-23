@@ -133,6 +133,11 @@ pub struct SourceStats {
     pub stored: u64,
     /// Records refused by the rate limit or a full queue.
     pub dropped: u64,
+    /// Part of `dropped` refused by the source's own rate limit.
+    pub dropped_rate: u64,
+    /// Part of `dropped` refused because the log service's queue had no
+    /// room (stays 0 while every source keeps to its share).
+    pub dropped_queue: u64,
     /// Records refused as malformed.
     pub malformed: u64,
 }
@@ -162,7 +167,8 @@ impl Message for Stats {
 }
 
 impl Message for StatsReply {
-    const VERSION: u16 = 1;
+    // 2: `SourceStats` names the reason of a drop.
+    const VERSION: u16 = 2;
 }
 
 impl Call for Stats {
@@ -211,8 +217,11 @@ mod tests {
         };
         let back: Query = decode_versioned(1, &encode(&query).unwrap()).unwrap();
         assert_eq!(back, query);
-        let stats: StatsReply =
-            decode_versioned(1, &encode(&StatsReply::default()).unwrap()).unwrap();
+        let stats: StatsReply = decode_versioned(
+            StatsReply::VERSION,
+            &encode(&StatsReply::default()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(stats, StatsReply::default());
     }
 }

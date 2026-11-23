@@ -13,51 +13,20 @@
 //! reaches it) or the identity the kernel credentials of the connection
 //! map to; a peer that cannot be identified is disconnected.
 
-use crate::share::{Share, Ticket};
+pub use crate::delivery::{Counts, Delivery, Sink};
+use crate::share::Share;
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{SyncSender, TrySendError};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use ultar_service::log::wire::{decode_body, FrameReader};
-use ultar_service::log::{Clock, MonotonicClock, OwnedRecord, RateLimit, TokenBucket};
+use ultar_service::log::{Clock, MonotonicClock, RateLimit, TokenBucket};
 use ultar_service::socket::{bind_listener, ensure_parent, BindError};
 use ultar_service::UidMap;
-
-/// What the ingestion side hands to the engine.
-#[derive(Debug)]
-pub enum Delivery {
-    /// A valid record of `service`.
-    Record {
-        /// Verified name of the source.
-        service: String,
-        /// The record.
-        record: OwnedRecord,
-        /// The record's place in its source's share of the queue; given
-        /// back when the delivery is dropped.
-        ticket: Ticket,
-    },
-    /// Records of `service` that did not fit into the queue.
-    Dropped {
-        /// Verified name of the source.
-        service: String,
-        /// How many.
-        count: u64,
-    },
-    /// Malformed records of `service`.
-    Malformed {
-        /// Verified name of the source.
-        service: String,
-        /// How many.
-        count: u64,
-    },
-    /// A peer that could not be identified or exceeded a connection bound.
-    Rejected,
-}
 
 /// Who the peers of a listener are.
 #[derive(Clone)]
@@ -104,9 +73,13 @@ impl IngestLimits {
     };
 
     /// Whether the shares of all sources there can be (at most one per
-    /// connection) fit a queue of `capacity` entries.
+    /// connection) and the share of rejections fit a queue of `capacity`
+    /// entries.
     pub const fn fits(&self, capacity: usize) -> bool {
-        self.max_connections.saturating_mul(self.share) <= capacity
+        self.max_connections
+            .saturating_add(1)
+            .saturating_mul(self.share)
+            <= capacity
     }
 }
 
@@ -126,6 +99,11 @@ struct Table {
 
 struct Shared {
     limits: IngestLimits,
+    /// Share of the rejections of all listeners.
+    rejections: Share,
+    /// Rejections that found the rejection share full; reported with the
+    /// next one.
+    unreported_rejections: AtomicU64,
     clock: MonotonicClock,
     stopping: AtomicBool,
     table: Mutex<Table>,
@@ -199,66 +177,46 @@ fn admit(shared: &Arc<Shared>, service: &str, stream: &UnixStream) -> Option<(Sl
     Some((slot, share))
 }
 
-/// Where deliveries go.
-pub trait Sink: Send + Sync {
-    /// Offers one delivery without blocking: `Ok(true)` taken, `Ok(false)`
-    /// no room right now, `Err(())` the receiver is gone for good.
-    #[allow(clippy::result_unit_err)]
-    fn offer(&self, delivery: Delivery) -> Result<bool, ()>;
-
-    /// Delivers, waiting for room if necessary (used for counts only).
-    /// `Err(())` when the receiver is gone for good.
-    #[allow(clippy::result_unit_err)]
-    fn deliver(&self, delivery: Delivery) -> Result<(), ()>;
-}
-
-impl Sink for SyncSender<Delivery> {
-    fn offer(&self, delivery: Delivery) -> Result<bool, ()> {
-        match self.try_send(delivery) {
-            Ok(()) => Ok(true),
-            Err(TrySendError::Full(_)) => Ok(false),
-            Err(TrySendError::Disconnected(_)) => Err(()),
-        }
-    }
-
-    fn deliver(&self, delivery: Delivery) -> Result<(), ()> {
-        self.send(delivery).map_err(|_| ())
-    }
-}
-
 type Queue = Arc<dyn Sink>;
 
 fn offer(queue: &Queue, delivery: Delivery) -> Result<bool, ()> {
     queue.offer(delivery)
 }
 
-/// Counts of one connection that still have to be reported.
-#[derive(Default)]
-struct Backlog {
-    dropped: u64,
-    malformed: u64,
+/// Reports the counts of a connection. Like a record, the report takes a
+/// place in the source's share (waiting for it on this connection only), so
+/// a flooding source's counts never fill the queue. `Err(())` when the
+/// engine is gone or the service stops.
+fn report(
+    shared: &Shared,
+    (service, share): (&str, &Share),
+    counts: &mut Counts,
+    queue: &Queue,
+) -> Result<(), ()> {
+    if counts.is_empty() {
+        return Ok(());
+    }
+    let stopping = || shared.stopping.load(Ordering::SeqCst);
+    let ticket = share.take(shared.limits.share, stopping).ok_or(())?;
+    queue.deliver(Delivery::Counts {
+        service: service.to_owned(),
+        counts: std::mem::take(counts),
+        ticket,
+    })
 }
 
-impl Backlog {
-    /// Reports the counts. This is the one place where a reader waits for
-    /// the queue: counts must not get lost, and only the thread of this
-    /// connection waits (its peer's socket buffer fills meanwhile; the
-    /// logging API on the other side never blocks its service).
-    /// `Err(())` when the engine is gone.
-    fn report(&mut self, service: &str, queue: &Queue) -> Result<(), ()> {
-        if self.dropped > 0 {
-            queue.deliver(Delivery::Dropped {
-                service: service.to_owned(),
-                count: std::mem::take(&mut self.dropped),
-            })?;
-        }
-        if self.malformed > 0 {
-            queue.deliver(Delivery::Malformed {
-                service: service.to_owned(),
-                count: std::mem::take(&mut self.malformed),
-            })?;
-        }
-        Ok(())
+/// Reports a rejected peer without waiting: beyond the rejection share it
+/// is only counted and named in the next report.
+fn reject(shared: &Shared, queue: &Queue) {
+    let Some(ticket) = shared.rejections.try_take(shared.limits.share) else {
+        shared.unreported_rejections.fetch_add(1, Ordering::SeqCst);
+        return;
+    };
+    let count = 1 + shared.unreported_rejections.swap(0, Ordering::SeqCst);
+    if let Ok(false) = offer(queue, Delivery::Rejected { count, ticket }) {
+        shared
+            .unreported_rejections
+            .fetch_add(count, Ordering::SeqCst);
     }
 }
 
@@ -270,7 +228,8 @@ fn read_connection(
     queue: &Queue,
 ) {
     let mut frames = FrameReader::new();
-    let mut backlog = Backlog::default();
+    let mut backlog = Counts::default();
+    let source = (service, share);
     let mut buffer = [0u8; 4096];
     let mut gone = false;
     while !gone {
@@ -284,7 +243,7 @@ fn read_connection(
                 return;
             };
             if !shared.allow(service) {
-                backlog.dropped += 1;
+                backlog.rate += 1;
                 return;
             }
             let stopping = || shared.stopping.load(Ordering::SeqCst);
@@ -299,19 +258,19 @@ fn read_connection(
             };
             match offer(queue, delivery) {
                 Ok(true) => {}
-                Ok(false) => backlog.dropped += 1,
+                Ok(false) => backlog.queue += 1,
                 Err(()) => gone = true,
             }
         });
         if framing.is_err() {
             // The stream lost its frame boundaries: count it and hang up.
             backlog.malformed += 1;
-            let _ = backlog.report(service, queue);
+            let _ = report(shared, source, &mut backlog, queue);
             break;
         }
-        gone |= backlog.report(service, queue).is_err();
+        gone |= report(shared, source, &mut backlog, queue).is_err();
     }
-    let _ = backlog.report(service, queue);
+    let _ = report(shared, source, &mut backlog, queue);
     let _ = stream.shutdown(Shutdown::Both);
 }
 
@@ -327,7 +286,7 @@ fn serve_peer(shared: &Arc<Shared>, stream: UnixStream, names: &SourceNames, que
         .as_deref()
         .and_then(|service| admit(shared, service, &stream));
     let (Some(service), Some((slot, share))) = (service, slot) else {
-        let _ = offer(queue, Delivery::Rejected);
+        reject(shared, queue);
         let _ = stream.shutdown(Shutdown::Both);
         return;
     };
@@ -372,6 +331,8 @@ impl Ingest {
         let shared = Arc::new(Shared {
             limits,
             clock: MonotonicClock::new(),
+            rejections: Share::default(),
+            unreported_rejections: AtomicU64::new(0),
             stopping: AtomicBool::new(false),
             table: Mutex::new(Table::default()),
         });

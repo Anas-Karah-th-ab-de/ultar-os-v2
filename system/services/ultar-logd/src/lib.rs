@@ -33,6 +33,7 @@ pub mod cli;
 pub mod clock;
 pub mod core;
 pub mod daemon;
+pub mod delivery;
 pub mod export;
 pub mod format;
 pub mod ingest;

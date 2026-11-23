@@ -4,6 +4,7 @@
 
 use crate::chain::Chain;
 use crate::clock::Clock;
+use crate::delivery::Counts;
 use crate::record::{clean_text, SourceKind, Stored, INTERNAL_NAME, KERNEL_NAME};
 use crate::ring::Ring;
 use crate::storage::Storage;
@@ -63,6 +64,10 @@ struct SourceState {
     bucket: TokenBucket,
     stored: u64,
     dropped: u64,
+    /// Part of `dropped` over the rate limit (socket or core).
+    dropped_rate: u64,
+    /// Part of `dropped` for want of room in the engine's queue.
+    dropped_queue: u64,
     malformed: u64,
     /// Drops reported from outside the core that no marker has named yet.
     unreported: u64,
@@ -153,6 +158,8 @@ impl Core {
                 bucket: TokenBucket::new(rate, now),
                 stored: 0,
                 dropped: 0,
+                dropped_rate: 0,
+                dropped_queue: 0,
                 malformed: 0,
                 unreported: 0,
             })
@@ -219,6 +226,7 @@ impl Core {
         let state = self.source(name);
         if !state.bucket.allow(now) {
             state.dropped += 1;
+            state.dropped_rate += 1;
             return None;
         }
         let refused = state.bucket.take_dropped() + std::mem::take(&mut state.unreported);
@@ -241,18 +249,17 @@ impl Core {
         self.limited(service, Stored::from_owned(0, 0, service, record))
     }
 
-    /// Counts records of `service` that were dropped before they reached
-    /// the core (rate limit at the socket, full queue); they show up in
+    /// Counts records of `service` that did not reach the core (rate limit
+    /// at the socket, full queue, malformed); the dropped ones show up in
     /// the next drop marker of that source.
-    pub fn note_dropped(&mut self, service: &str, count: u64) {
+    pub fn note_counts(&mut self, service: &str, counts: Counts) {
         let state = self.source(service);
-        state.dropped += count;
-        state.unreported += count;
-    }
-
-    /// Counts a malformed record of `service`.
-    pub fn note_malformed(&mut self, service: &str) {
-        self.source(service).malformed += 1;
+        let dropped = counts.rate.saturating_add(counts.queue);
+        state.dropped = state.dropped.saturating_add(dropped);
+        state.dropped_rate = state.dropped_rate.saturating_add(counts.rate);
+        state.dropped_queue = state.dropped_queue.saturating_add(counts.queue);
+        state.unreported = state.unreported.saturating_add(dropped);
+        state.malformed = state.malformed.saturating_add(counts.malformed);
     }
 
     /// Stores lines of the kernel log as the separate source `kernel`.
@@ -358,6 +365,8 @@ impl Core {
                     service: name.clone(),
                     stored: state.stored,
                     dropped: state.dropped,
+                    dropped_rate: state.dropped_rate,
+                    dropped_queue: state.dropped_queue,
                     malformed: state.malformed,
                 })
                 .collect(),

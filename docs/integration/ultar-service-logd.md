@@ -258,10 +258,4 @@ covered by the chain. Fixed (segment seed), test added.
 | R3-S1 | `SessionOptions::stop`: connect/register end at once on stop; settingsd, devd, logd exit 0. |
 | R3-S2 | `adopt_fd`/`close_inherited` no longer public; `ultar_sys::take_inherited` (one-shot) in `Runtime::start`; `Runtime::read_secret(SecretSource, max)`; undeclared/non-pipe/non-file descriptor = start error `service.start.descriptor_refused` (exit 71). |
 | R3 guard `a_flooding_source_does_not_starve_another_source` (failed under load, FIX3) | Fair admission to the engine queue (`ultar-logd/src/share.rs`): each source may have at most `IngestLimits::share` (32) records waiting; at its share a source's reader waits on its own connection. Shares of all sources fit the queue (128 × 32 = 4096, compile-time check). Deterministic test `tests/fair_queue.rs` stalls the engine. |
-| R3-B3 | Token table ≤ 256 KiB, ≤ 1024 entries. |
-| R3-L4 | `clean_text` replaces bidi controls (U+061C, 200B–200F, 202A–202E, 2060–2069, FEFF). |
-| R3-W1 | Wire keys/words: digit run ≤ 6. The review's `review3_logd.rs` constant `LONG` had a run of 10 and was adapted (run of 6). |
-| R3-P1 | `SIGHUP` reads the policy again in logd (waiting readers re-scoped), settingsd and devd (`Reloadable` access); faulty file keeps the old one, logged. |
-
-Open: kernel side of R3-K1 (connect permission check, socket nodes, real file modes); refusing `system.admin`
-on a path visible to cells; `ultar-bus` now depends on `ultar-sys` (Cargo.lock entry of `ultar-bus` changes).
+| Same guard on CI (FIX4) | Exact path: the **drop counts** of the flooder (over its rate: 644 579 refused) were reported with one queue entry per read and no share, filling the queue; the victim's record then found it full. Now every ingestion delivery holds a ticket: records and counts in the source's share, rejected peers in one share of their own (beyond it only counted). Queue = 129 × 32 + 256 reserve. Stats per source: `dropped_rate`, `dropped_queue` (`StatsReply` version 2; `ulog stats` prints them). `tests/fair_queue.rs` covers records, counts and rejections with a stalled engine. |

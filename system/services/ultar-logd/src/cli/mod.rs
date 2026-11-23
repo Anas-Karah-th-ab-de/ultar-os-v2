@@ -269,8 +269,13 @@ fn stats(client: &Client, io: &mut Streams<'_>) -> i32 {
     for source in &reply.sources {
         let _ = writeln!(
             io.out,
-            "source={} stored={} dropped={} malformed={}",
-            source.service, source.stored, source.dropped, source.malformed
+            "source={} stored={} dropped={} malformed={} dropped_rate={} dropped_queue={}",
+            source.service,
+            source.stored,
+            source.dropped,
+            source.malformed,
+            source.dropped_rate,
+            source.dropped_queue
         );
     }
     EXIT_OK

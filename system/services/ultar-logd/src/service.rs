@@ -178,15 +178,15 @@ impl Engine {
             } => {
                 self.core.ingest(&service, record);
             }
-            Delivery::Dropped { service, count } => self.core.note_dropped(&service, count),
-            Delivery::Malformed { service, count } => {
-                for _ in 0..count.min(1024) {
-                    self.core.note_malformed(&service);
-                }
-            }
-            Delivery::Rejected => {
-                self.rejected += 1;
-                if self.rejected % REJECT_REPORT_EVERY == 1 {
+            Delivery::Counts {
+                service, counts, ..
+            } => self.core.note_counts(&service, counts),
+            Delivery::Rejected { count, .. } => {
+                let before = self.rejected;
+                self.rejected += count;
+                if before / REJECT_REPORT_EVERY != self.rejected / REJECT_REPORT_EVERY
+                    || before == 0
+                {
                     let fields = vec![("total".to_owned(), OwnedValue::Count(self.rejected))];
                     self.core.internal(Level::Warn, "log.peer_rejected", fields);
                 }

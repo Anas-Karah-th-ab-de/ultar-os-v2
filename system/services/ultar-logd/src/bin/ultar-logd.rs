@@ -51,10 +51,15 @@ use ultar_service::{
 };
 
 /// Records and requests that may wait for the engine thread.
-const QUEUE: usize = 4096;
-// Every source's share of the queue fits at the same time, so a flooding
-// source never takes the room of another one.
-const _: () = assert!(IngestLimits::STANDARD.fits(QUEUE));
+/// (128 connections + rejections) × 32 records per share, plus room for
+/// the rest.
+const QUEUE: usize = 129 * 32 + RESERVE;
+/// Room in the queue beyond the ingestion shares: bus requests and the
+/// daemon's own inputs.
+const RESERVE: usize = 256;
+// Every source's share of the queue (and the share of rejections) fits at
+// the same time, so a flooding source never takes the room of another one.
+const _: () = assert!(IngestLimits::STANDARD.fits(QUEUE - RESERVE));
 /// Pause before the bus is tried again after it went away for good.
 const BUS_RETRY: Duration = Duration::from_millis(500);
 /// Largest chain key or bus token read from a file or descriptor.
