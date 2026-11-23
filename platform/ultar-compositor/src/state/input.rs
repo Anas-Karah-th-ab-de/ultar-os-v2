@@ -2,7 +2,7 @@
 //! touch contacts. A client only ever gets events for its own surfaces,
 //! with coordinates relative to them.
 
-use super::{ClientId, State, SurfaceKey};
+use super::{ClientId, Placed, State, SurfaceKey};
 use crate::decor::{self, Button, Part};
 use crate::geom::Rect;
 
@@ -97,6 +97,8 @@ pub struct Pointer {
     pub snap_preview: Option<Rect>,
     /// Last input was touch (pointer hidden).
     pub hidden: bool,
+    /// Touch contacts and the surface each one belongs to.
+    pub(super) touches: std::collections::HashMap<u32, SurfaceKey>,
 }
 
 pub(super) fn fixed(v: f64) -> i32 {
@@ -154,7 +156,9 @@ impl State {
         )
     }
 
-    /// The topmost surface at a logical point and the part hit.
+    /// The topmost surface at a logical point and the part hit. Fully
+    /// transparent pixels are not hit (they belong to what is below);
+    /// nothing below a system dialog is hit (it is modal).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<(SurfaceKey, Part, Rect)> {
         let (px, py) = (x.floor() as i32, y.floor() as i32);
         let rtl = self.rtl();
@@ -162,16 +166,44 @@ impl State {
             if let Some(i) = placed.window {
                 let w = &self.windows[i];
                 let f = w.frame;
-                let resizable = w.floating() || w.snap.is_some();
+                let resizable = (w.floating() || w.snap.is_some()) && !w.secure;
                 let part = decor::hit(f.w, f.h, px - f.x, py - f.y, w.decorated(), resizable, rtl);
+                let part = match part {
+                    Some(Part::Button(b)) if w.secure && b != Button::Close => Some(Part::Title),
+                    other => other,
+                };
                 if let Some(part) = part {
-                    return Some((w.key, part, placed.content));
+                    if part != Part::Content || self.solid_at(placed, x, y) {
+                        return Some((w.key, part, placed.content));
+                    }
                 }
-            } else if placed.content.contains(px, py) {
+                if w.secure {
+                    return None;
+                }
+            } else if placed.content.contains(px, py) && self.solid_at(placed, x, y) {
                 return Some((placed.key, Part::Content, placed.content));
             }
         }
         None
+    }
+
+    /// False where the surface's pixel at a logical point is fully
+    /// transparent.
+    fn solid_at(&self, placed: &Placed, x: f64, y: f64) -> bool {
+        let Some(s) = self.surface(placed.key) else {
+            return false;
+        };
+        if s.opaque {
+            return true;
+        }
+        let Some(img) = s.image.as_ref() else {
+            return false;
+        };
+        let c = placed.content;
+        let ix = (x - f64::from(c.x)) * f64::from(img.width()) / f64::from(c.w.max(1));
+        let iy = (y - f64::from(c.y)) * f64::from(img.height()) / f64::from(c.h.max(1));
+        img.pixel(ix.floor() as i32, iy.floor() as i32)
+            .is_some_and(|p| p >> 24 != 0)
     }
 
     fn surface_point(&self, key: SurfaceKey) -> Option<(i32, i32)> {
@@ -205,7 +237,7 @@ impl State {
             Some(PointerGrab::TitlePress { key, start }) => {
                 let moved = (self.pointer.x - start.0).hypot(self.pointer.y - start.1);
                 if moved >= DRAG_START {
-                    self.begin_move(key);
+                    self.begin_move_at(key, Some(start));
                 }
             }
             Some(PointerGrab::Move { key, offset }) => self.drag_window(key, offset),

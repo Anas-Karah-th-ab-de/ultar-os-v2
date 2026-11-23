@@ -21,6 +21,7 @@ pub mod backend;
 pub mod clock;
 pub mod config;
 pub mod conn;
+pub mod cursor;
 pub mod decor;
 pub mod geom;
 pub mod keymap;

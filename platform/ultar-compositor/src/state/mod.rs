@@ -8,11 +8,14 @@ mod keys;
 mod layers;
 mod outputs;
 mod requests;
+mod session;
+mod text;
 mod transfer;
 mod windows;
 
 pub use input::PointerGrab;
 pub use layers::Placed;
+pub use session::{Session, INDICATOR_MS};
 pub use transfer::Transfers;
 pub use windows::Window;
 
@@ -140,8 +143,8 @@ pub struct State {
     pub pointer: input::Pointer,
     /// Keyboard state.
     pub keyboard: Keyboard,
-    /// Touch contacts and the surface each one belongs to.
-    touches: HashMap<u32, SurfaceKey>,
+    /// Lock, trusted path, activation, recording indicator.
+    pub session: Session,
     /// Damage per output (device pixels).
     pub damage: HashMap<OutputId, Region>,
     /// Title bar renderer (None if the toolkit could not start).
@@ -181,7 +184,7 @@ impl State {
             focus: None,
             pointer: input::Pointer::default(),
             keyboard: Keyboard::default(),
-            touches: HashMap::new(),
+            session: Session::default(),
             damage: HashMap::new(),
             decor,
             now: 0,
@@ -211,11 +214,28 @@ impl State {
 
     /// Adds a connection. Returns `None` when the client limit is reached
     /// (the stream is dropped, which closes it).
+    /// A user id without rights gets at most
+    /// [`crate::config::Limits::clients_per_uid`] connections and never the
+    /// reserved slots, so one app cannot lock out the shell or lock screen.
     pub fn add_client(&mut self, conn: Conn) -> Option<ClientId> {
-        if self.clients.len() >= self.config.limits.clients {
+        let limits = self.config.limits;
+        let uid = conn.peer.uid;
+        let rights = self.config.rights.rights_of(uid);
+        let total = self.clients.len();
+        if total >= limits.clients {
             return None;
         }
-        let rights = self.config.rights.rights_of(conn.peer.uid);
+        if rights == Rights::NONE {
+            let same = self
+                .clients
+                .values()
+                .filter(|c| c.conn.peer.uid == uid)
+                .count();
+            let open = limits.clients.saturating_sub(limits.reserved_clients);
+            if total >= open || same >= limits.clients_per_uid {
+                return None;
+            }
+        }
         let id = self.counters.client;
         self.counters.client = self.counters.client.wrapping_add(1).max(1);
         self.clients.insert(id, Client::new(conn, rights));
@@ -302,7 +322,8 @@ impl State {
         {
             self.pointer.grab = None;
         }
-        self.touches.retain(|_, k| k.client != client);
+        self.pointer.touches.retain(|_, k| k.client != client);
+        self.session_forget(client);
     }
 
     /// Clients marked for removal.
@@ -386,7 +407,9 @@ impl State {
             .filter_map(|c| c.ping.map(|(_, t)| t + limit))
             .filter(|&t| t > self.now || self.windows.iter().any(|w| !w.unresponsive))
             .min();
-        [ping, self.transfers.next_deadline()]
+        let indicator = (self.session.indicator_shown && self.session.recording_until > self.now)
+            .then_some(self.session.recording_until);
+        [ping, self.transfers.next_deadline(), indicator]
             .into_iter()
             .flatten()
             .min()

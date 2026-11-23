@@ -20,6 +20,8 @@ pub enum GfxError {
         /// Bytes the buffer has.
         actual: u64,
     },
+    /// A shared buffer has unallocated (sparse) pages.
+    Sparse,
     /// A shared buffer is larger than [`crate::shm::MAX_SHARED_BYTES`].
     TooLarge,
     /// No usable device was found.
@@ -37,6 +39,7 @@ impl GfxError {
             GfxError::NotSealed => "gfx.error.not_sealed",
             GfxError::TooSmall { .. } => "gfx.error.too_small",
             GfxError::TooLarge => "gfx.error.too_large",
+            GfxError::Sparse => "gfx.error.sparse",
             GfxError::NoDevice => "gfx.error.no_device",
             GfxError::UnsupportedFormat => "gfx.error.unsupported_format",
         }
@@ -95,6 +98,7 @@ mod tests {
                 actual: 1,
             },
             GfxError::TooLarge,
+            GfxError::Sparse,
             GfxError::NoDevice,
             GfxError::UnsupportedFormat,
         ];

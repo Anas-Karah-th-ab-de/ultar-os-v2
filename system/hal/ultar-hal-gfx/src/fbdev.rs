@@ -36,6 +36,9 @@ pub struct FbGeometry {
     pub line_bytes: u32,
     /// Red is in the lowest byte (RGBX) instead of the third (BGRX).
     pub swap_red_blue: bool,
+    /// Visible area starts at this byte of the device (panning:
+    /// `yoffset * line + xoffset * 4`).
+    pub origin: u64,
 }
 
 impl FbGeometry {
@@ -60,6 +63,7 @@ impl FbGeometry {
             height,
             line_bytes: line_length,
             swap_red_blue,
+            origin: u64::from(var[5]) * u64::from(line_length) + u64::from(var[4]) * 4,
         })
     }
 }
@@ -102,7 +106,14 @@ impl FbDev {
                 rustix::ioctl::Updater::<FBIOGET_FSCREENINFO, [u8; 80]>::new(&mut fix),
             )
         }?;
-        let line_length = u32::from_ne_bytes([fix[48], fix[49], fix[50], fix[51]]);
+        // `line_length` follows `smem_start` (an unsigned long) and five
+        // 32/16-bit fields: offset 48 on 64-bit targets, 44 on 32-bit ones.
+        let at = if cfg!(target_pointer_width = "64") {
+            48
+        } else {
+            44
+        };
+        let line_length = u32::from_ne_bytes([fix[at], fix[at + 1], fix[at + 2], fix[at + 3]]);
         let geometry = FbGeometry::from_screeninfo(&var, line_length)?;
         Ok(FbDev {
             file,
@@ -174,7 +185,8 @@ pub fn write_damage(
             } else {
                 source
             };
-            let offset = row as u64 * u64::from(geometry.line_bytes) + x as u64 * 4;
+            let offset =
+                geometry.origin + row as u64 * u64::from(geometry.line_bytes) + x as u64 * 4;
             write_at(offset, bytes)?;
         }
     }
@@ -270,6 +282,14 @@ mod tests {
     fn geometry_is_validated() {
         let g = FbGeometry::from_screeninfo(&var(4, 2, 16, 0), 32).unwrap();
         assert!(!g.swap_red_blue);
+        assert_eq!(g.origin, 0);
+        let mut panned = var(4, 2, 16, 0);
+        panned[4] = 2;
+        panned[5] = 3;
+        assert_eq!(
+            FbGeometry::from_screeninfo(&panned, 32).unwrap().origin,
+            3 * 32 + 8
+        );
         assert!(
             FbGeometry::from_screeninfo(&var(4, 2, 0, 16), 16)
                 .unwrap()
@@ -302,6 +322,7 @@ mod tests {
             height: 3,
             line_bytes: 20,
             swap_red_blue: true,
+            origin: 0,
         };
         let pixels: Vec<u8> = (0..48).collect();
         let frame = FrameView::new(Size::new(4, 3), 16, PixelFormat::Xrgb8888, &pixels).unwrap();

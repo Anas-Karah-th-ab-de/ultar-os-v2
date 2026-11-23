@@ -126,6 +126,8 @@ pub struct TitleKey {
     pub maximized: bool,
     /// The app does not answer pings.
     pub unresponsive: bool,
+    /// A system dialog: lock icon at the start, close button only.
+    pub secure: bool,
 }
 
 /// Draws title bars with the toolkit.
@@ -166,6 +168,16 @@ impl DecorRenderer {
     pub fn ground(&self) -> u32 {
         let env = PaintEnv::new(self.lang, self.theme);
         to_pixel(env.palette().get(ColorRole::Ground))
+    }
+
+    /// The scrim laid over everything below a system dialog.
+    pub fn scrim(&self) -> u32 {
+        let env = PaintEnv::new(self.lang, self.theme);
+        let alpha = match self.theme {
+            ThemeKind::Dark => ultar_ui::tokens::state::SCRIM_DARK,
+            ThemeKind::Light => ultar_ui::tokens::state::SCRIM_LIGHT,
+        };
+        to_pixel(env.palette().get(ColorRole::Ground).with_alpha(alpha))
     }
 
     /// Shadow opacity of the theme.
@@ -212,7 +224,23 @@ impl DecorRenderer {
             painter.color(text_role),
         );
         for (button, r) in buttons(width as i32, rtl) {
-            draw_button(&mut painter, key, button, r, text_role, rtl);
+            if !key.secure || button == Button::Close {
+                draw_button(&mut painter, key, button, r, text_role, rtl);
+            }
+        }
+        if key.secure {
+            // The trusted-path mark: only the compositor draws title bars,
+            // and system dialogs sit above everything apps can show.
+            let x = if rtl { width - BUTTON as f32 } else { 0.0 };
+            let at = ultar_ui::Rect::new(x, 0.0, BUTTON as f32, TITLEBAR as f32 - size::BORDER);
+            let accent = painter.color(ColorRole::Accent);
+            painter.icon(
+                IconId::Lock,
+                at,
+                size::ICON_SMALL,
+                QuarterTurns::None,
+                accent,
+            );
         }
         Image::from_bytes(canvas.width(), canvas.height(), canvas.data(), true)
     }
@@ -327,6 +355,7 @@ mod tests {
             pressed: None,
             maximized: true,
             unresponsive: false,
+            secure: false,
         };
         let img = r.render(&key).unwrap();
         assert_eq!((img.width(), img.height()), (400, 40));
@@ -351,5 +380,43 @@ mod tests {
         assert!(en.shadow_alpha() < r.shadow_alpha());
         assert_eq!(to_pixel(ultar_ui::Color::rgba(255, 0, 0, 128)), 0x8080_0000);
         assert_eq!(r.ground() >> 24, 0xff);
+    }
+
+    #[test]
+    fn system_dialogs_carry_the_lock_mark() {
+        let mut r = DecorRenderer::new(Lang::Ar, ThemeKind::Dark).unwrap();
+        let key = TitleKey {
+            width: 400,
+            scale_milli: 1000,
+            title: "كلمة المرور".into(),
+            focused: true,
+            hover: None,
+            pressed: None,
+            maximized: false,
+            unresponsive: false,
+            secure: true,
+        };
+        let secure = r.render(&key).unwrap();
+        let plain = r
+            .render(&TitleKey {
+                secure: false,
+                ..key.clone()
+            })
+            .unwrap();
+        // Arabic: the start is on the physical right, the buttons left. The
+        // lock is drawn in the accent colour (warm: red over blue).
+        let lock: Vec<u32> = (0..40)
+            .flat_map(|y| (360..400).map(move |x| (x, y)))
+            .filter(|&(x, y)| secure.pixel(x, y) != plain.pixel(x, y))
+            .filter_map(|(x, y)| secure.pixel(x, y))
+            .collect();
+        assert!(lock.len() > 10, "lock icon drawn");
+        assert!(lock.iter().any(|p| (p >> 16) & 0xff > (p & 0xff) + 0x40));
+        // Minimise and maximise are not drawn (only close).
+        let differs = (0..40)
+            .flat_map(|y| (40..120).map(move |x| (x, y)))
+            .filter(|&(x, y)| secure.pixel(x, y) != plain.pixel(x, y))
+            .count();
+        assert!(differs > 0);
     }
 }

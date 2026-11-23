@@ -69,6 +69,10 @@ strip = true
 [profile.release.package.ultar-shell]
 opt-level = 3
 
+# Compositor: blends every frame of every app window (software composition)
+[profile.release.package.ultar-compositor]
+opt-level = 3
+
 # Oberflächen-Werkzeugkasten: zeichnet jedes Bild (Budget 8 ms PC / 16 ms Telefon)
 [profile.release.package.ultar-ui]
 opt-level = 3

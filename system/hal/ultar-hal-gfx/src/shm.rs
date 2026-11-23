@@ -10,8 +10,8 @@
 //! compositor on the next read.
 
 use crate::GfxError;
-use rustix::fs::{fcntl_add_seals, fcntl_get_seals, fstat, ftruncate, memfd_create};
-use rustix::fs::{MemfdFlags, SealFlags};
+use rustix::fs::{fallocate, fcntl_add_seals, fcntl_get_seals, fstat, ftruncate, memfd_create};
+use rustix::fs::{FallocateFlags, MemfdFlags, SealFlags};
 use rustix::mm::{mmap, munmap, MapFlags, ProtFlags};
 use std::ffi::c_void;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -49,6 +49,9 @@ impl SharedBuffer {
             MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING,
         )?;
         ftruncate(&fd, len as u64)?;
+        // Allocate every page now: the pages are charged to this process
+        // (the app), and the compositor refuses buffers without them.
+        fallocate(&fd, FallocateFlags::empty(), 0, len as u64)?;
         fcntl_add_seals(&fd, REQUIRED_SEALS)?;
         // SAFETY: a fresh mapping (null hint, kernel chooses the address) of
         // `len` bytes of a file that is exactly `len` bytes long and sealed
@@ -120,7 +123,8 @@ unsafe impl Send for SealedMapping {}
 impl SealedMapping {
     /// Maps a descriptor received from a client. Refuses descriptors that
     /// are not sealed against shrinking (not a memory file, or the client
-    /// left the seal off), that are smaller than `min_len` or larger than
+    /// left the seal off), whose pages are not allocated (sparse: the
+    /// compositor would pay for them), that are smaller than `min_len` or larger than
     /// [`MAX_SHARED_BYTES`]. The descriptor is closed when this returns; the
     /// mapping keeps the memory alive.
     pub fn map(fd: OwnedFd, min_len: u64) -> Result<SealedMapping, GfxError> {
@@ -128,7 +132,13 @@ impl SealedMapping {
         if !seals.contains(SealFlags::SHRINK) {
             return Err(GfxError::NotSealed);
         }
-        let size = u64::try_from(fstat(&fd)?.st_size).map_err(|_| GfxError::InvalidArgument)?;
+        let stat = fstat(&fd)?;
+        let size = u64::try_from(stat.st_size).map_err(|_| GfxError::InvalidArgument)?;
+        // Sparse files cost the sender nothing and would be allocated (and
+        // charged) on the compositor's side when it reads them: refused.
+        let allocated = u64::try_from(stat.st_blocks)
+            .unwrap_or(0)
+            .saturating_mul(512);
         if size > MAX_SHARED_BYTES {
             return Err(GfxError::TooLarge);
         }
@@ -137,6 +147,9 @@ impl SealedMapping {
                 needed: min_len,
                 actual: size,
             });
+        }
+        if allocated < min_len {
+            return Err(GfxError::Sparse);
         }
         let len = usize::try_from(size).map_err(|_| GfxError::TooLarge)?;
         // SAFETY: read-only shared mapping of the whole file; the file can no
@@ -270,6 +283,17 @@ mod tests {
                 needed: 17,
                 actual: 16
             })
+        );
+    }
+
+    #[test]
+    fn sparse_memory_files_are_refused() {
+        let fd = memfd_create("t", MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING).unwrap();
+        ftruncate(&fd, 1 << 20).unwrap();
+        fcntl_add_seals(&fd, REQUIRED_SEALS).unwrap();
+        assert_eq!(
+            SealedMapping::map(fd, 1 << 20).err(),
+            Some(GfxError::Sparse)
         );
     }
 

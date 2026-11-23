@@ -115,11 +115,25 @@ fn decode_more(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
             enabled: r.bool()?,
             purpose: r.u8()?,
         },
+        _ => decode_session(opcode, r)?,
+    })
+}
+
+fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    Ok(match opcode {
         24 => Request::ImeCommit {
             text: r.text(MAX_IME_TEXT)?,
         },
         25 => Request::Capture {
             output: OutputId(r.u32()?),
+        },
+        26 => Request::Unlock {
+            surface: surface(r)?,
+        },
+        27 => Request::RequestActivation { serial: r.u32()? },
+        28 => Request::Activate {
+            surface: surface(r)?,
+            token: r.u64()?,
         },
         _ => return Err(WireError::BadValue),
     })

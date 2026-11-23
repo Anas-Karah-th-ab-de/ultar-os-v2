@@ -192,6 +192,10 @@ fn arabic_desktop_snapshot() {
     });
     web.pump(&mut comp);
     web.draw(&mut comp, SurfaceId(1), 0x6f4e2a);
+    // The user clicks the new window's title bar (it opened inactive).
+    let f = comp.state.windows[1].frame;
+    click(&mut comp, f64::from(f.x + f.w / 2), f64::from(f.y + 10));
+    web.pump(&mut comp);
     check(&mut comp, 0);
     assert_snapshot("two_windows_ar", comp.frame(OutputId(0)).unwrap());
 }

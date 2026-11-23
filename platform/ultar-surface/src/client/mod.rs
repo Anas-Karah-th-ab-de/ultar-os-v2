@@ -22,6 +22,10 @@ use std::time::{Duration, Instant};
 pub const WELCOME_TIMEOUT: Duration = Duration::from_secs(5);
 /// Events kept unread before the oldest pointer motions are merged away.
 const MAX_QUEUED: usize = 4096;
+/// Environment variable with an activation token from the launcher (the
+/// shell asked for it with the serial of the click that started the app);
+/// the first toplevel presents it and gets the focus.
+pub const ACTIVATION_ENV: &str = "ULTAR_ACTIVATION_TOKEN";
 
 /// One client connection.
 #[derive(Debug)]
@@ -35,6 +39,7 @@ pub struct Client {
     outputs: Vec<OutputInfo>,
     next_id: u32,
     scratch: Vec<u8>,
+    activation: Option<u64>,
 }
 
 impl Client {
@@ -78,6 +83,10 @@ impl Client {
             outputs: Vec::new(),
             next_id: 1,
             scratch: vec![0u8; 64 * 1024],
+            activation: std::env::var(ACTIVATION_ENV)
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .filter(|&t: &u64| t != 0),
         };
         client.send(&Request::Hello {
             version: PROTOCOL_VERSION,
@@ -107,6 +116,18 @@ impl Client {
                 None => return Err(ClientError::Timeout),
             }
         }
+    }
+
+    /// The launcher's activation token, once (the first toplevel uses it).
+    pub fn take_activation_token(&mut self) -> Option<u64> {
+        self.activation.take()
+    }
+
+    /// Asks for an activation token for a user action (`serial` of a click
+    /// or key); the answer is `Event::ActivationToken` (0 = refused). Pass
+    /// it to the started app in [`ACTIVATION_ENV`].
+    pub fn request_activation(&mut self, serial: u32) -> Result<(), ClientError> {
+        self.send(&Request::RequestActivation { serial })
     }
 
     /// How pixels travel to the compositor.

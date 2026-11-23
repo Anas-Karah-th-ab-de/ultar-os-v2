@@ -8,7 +8,8 @@ use ultar_compositor::Config;
 use ultar_hal::{InputEventKind, PointerButton};
 use ultar_surface::proto::{Event, Request, WindowState};
 
-fn two_windows() -> (ultar_compositor::Compositor, Peer, Peer) {
+/// A and B map one after the other; nothing was clicked yet.
+fn two_new_windows() -> (ultar_compositor::Compositor, Peer, Peer) {
     let mut comp = compositor(test_config(), &[(1280, 800)]);
     let mut a = Peer::hello(&mut comp);
     let mut b = Peer::hello(&mut comp);
@@ -19,13 +20,40 @@ fn two_windows() -> (ultar_compositor::Compositor, Peer, Peer) {
     (comp, a, b)
 }
 
+/// Two windows; the user clicked into B (B has the focus).
+fn two_windows() -> (ultar_compositor::Compositor, Peer, Peer) {
+    let (mut comp, mut a, mut b) = two_new_windows();
+    let c = comp.state.windows[1].content();
+    click(
+        &mut comp,
+        f64::from(c.x + c.w / 2),
+        f64::from(c.y + c.h / 2),
+    );
+    a.pump(&mut comp);
+    b.pump(&mut comp);
+    a.take();
+    b.take();
+    (comp, a, b)
+}
+
 #[test]
-fn windows_map_cascade_and_the_newest_has_focus() {
-    let (comp, mut a, mut b) = two_windows();
+fn windows_map_cascade_and_only_the_first_takes_the_focus() {
+    let (mut comp, mut a, mut b) = two_new_windows();
     let wins: Vec<_> = comp.state.windows.iter().filter(|w| w.mapped).collect();
     assert_eq!(wins.len(), 2);
     assert_ne!(wins[0].frame, wins[1].frame);
-    assert_eq!(comp.state.focus.map(|k| k.client), Some(wins[1].key.client));
+    // B opened without a user action on B: it is shown, inactive.
+    assert_eq!(comp.state.focus.map(|k| k.client), Some(wins[0].key.client));
+    assert!(!b
+        .take()
+        .iter()
+        .any(|e| matches!(e, Event::KeyboardFocus { focused: true, .. })));
+    a.take();
+    // A click moves the focus.
+    let f = comp.state.windows[1].frame;
+    click(&mut comp, f64::from(f.x + f.w / 2), f64::from(f.y + 10));
+    a.pump(&mut comp);
+    b.pump(&mut comp);
     let focus_a: Vec<_> = a
         .take()
         .into_iter()
@@ -34,7 +62,7 @@ fn windows_map_cascade_and_the_newest_has_focus() {
     assert_eq!(
         focus_a.last(),
         Some(&Event::KeyboardFocus {
-            surface: wins[0].key.surface,
+            surface: comp.state.windows[0].key.surface,
             focused: false
         })
     );

@@ -152,6 +152,12 @@ fn encode_data(event: &Event, w: &mut Writer) {
         Event::Error { code } => {
             w.u8(Event::error_code(*code));
         }
+        Event::ActivationToken { token } => {
+            w.u64(*token);
+        }
+        Event::SessionLocked { locked } => {
+            w.bool(*locked);
+        }
         _ => {}
     }
 }
@@ -314,6 +320,8 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         28 => Event::Error {
             code: ErrorCode::from_u8(r.u8()?)?,
         },
+        29 => Event::ActivationToken { token: r.u64()? },
+        30 => Event::SessionLocked { locked: r.bool()? },
         _ => return Err(WireError::BadValue),
     })
 }

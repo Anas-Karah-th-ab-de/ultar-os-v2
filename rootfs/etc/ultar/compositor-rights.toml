@@ -1,0 +1,10 @@
+# Rights of compositor clients by kernel user id (ultar-compositor --rights).
+# Lines: <uid> = "ui.shell, ui.input-method, ui.lock-screen, ui.capture,
+#                 ui.overlay, ui.system-dialog"
+# Unknown ids get no right (default deny). Root (0) is refused unless the
+# compositor runs with --allow-root (development only); every id may appear
+# once.
+#
+# Empty on purpose: the shell, lock screen and on-screen keyboard still run
+# as root inside ultar-shell. Each gets a line here when it runs as its own
+# user (see docs/integration/ultar-compositor.md, "Identities").

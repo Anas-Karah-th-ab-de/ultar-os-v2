@@ -309,6 +309,17 @@ pub enum Event {
         /// Why.
         code: ErrorCode,
     },
+    /// Answer to `RequestActivation` (single use, valid for a short time).
+    ActivationToken {
+        /// The token.
+        token: u64,
+    },
+    /// The session was locked or unlocked (sent to shell and lock screen:
+    /// start the lock screen when it is missing).
+    SessionLocked {
+        /// Locked now.
+        locked: bool,
+    },
 }
 
 impl Event {
@@ -343,6 +354,8 @@ impl Event {
             Event::ImeState { .. } => 26,
             Event::CaptureData { .. } => 27,
             Event::Error { .. } => 28,
+            Event::ActivationToken { .. } => 29,
+            Event::SessionLocked { .. } => 30,
         }
     }
 

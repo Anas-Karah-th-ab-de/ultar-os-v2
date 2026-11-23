@@ -8,7 +8,7 @@ Design, protocol, security model and kernel gaps: `docs/COMPOSITOR.md`. Patch ag
 | Crate / file | Area | Content |
 |---|---|---|
 | `system/hal/ultar-hal-gfx` (new, lib) | HAL (3) | `shm` (sealed memfd buffers, read-only mapping + copy), `fdpass` (`SCM_RIGHTS`, ≤ 4 per read), `kms::Kms` (DRM/KMS dumb buffers, every connected connector, implements `ultar_hal::Display`), `fbdev::FbDev` (`fb0`, `pwrite` of damaged rows, implements `Display`), `evdev::Evdev` + `Decoder` (raw `input_event`, keys, rel/abs pointer, single/multi touch, implements `ultar_hal::Input`). The only `unsafe` of the stack (2 mmaps, 2 munmaps, 1 copy, fbdev/evdev `ioctl`s), each with `SAFETY:` |
-| `platform/ultar-surface` (new, lib) | platform (5) | `wire` (frames, bounded reader/writer), `proto` (25 requests, 28 events, types, rights), `client::{Client, Window, WindowConfig, ClientError}`, `ui::{UiWindow, translate, device_size}` (feature `ui`, default) |
+| `platform/ultar-surface` (new, lib) | platform (5) | `wire` (frames, bounded reader/writer), `proto` (28 requests, 30 events, types, rights), `client::{Client, Window, WindowConfig, ClientError}`, `ui::{UiWindow, translate, device_size}` (feature `ui`, default) |
 | `platform/ultar-compositor` (new, lib + bins `ultar-compositor`, test helper `ultar-compositor-testclient`) | platform (5) | `server::Compositor` (loop), `state::*` (clients, requests, windows, layers, input, keys, grabs, transfers, outputs), `render::Renderer`, `pixels`, `decor`, `wm`, `keymap`, `output::Layout`, `backend::{Backend, Headless, HalBackend}`, `config::{Config, Limits, RightsTable}`, `msg` (ar/en/de) |
 | `docs/COMPOSITOR.md` (new) | docs | the design |
 | `tools/kern-test/compositor-qemu.py` (new) | tools | QEMU run on the Ultar kernel + screenshot + verdict |
@@ -26,14 +26,18 @@ Design, protocol, security model and kernel gaps: `docs/COMPOSITOR.md`. Patch ag
 ## 2. Wiring
 
 1. Apply the patch; copy the binary files (§6). The three crates are workspace members already.
-2. Service file for `ultar-init` (not written – `rootfs/etc/ultar/services/` belongs to the service
-   agent): `ultar-compositor --socket /run/ultar/ui/compositor --rights /etc/ultar/compositor-rights.toml`,
-   user `ui`, readiness via `ULTAR_READY_FD`, right `RAW_DEVICE`. `--headless WxH` runs without
+2. Service file for `ultar-init`: `rootfs/etc/ultar/services/compositor.toml` (fix round 1):
+   `manual = true` (until `ultar-shell` moves onto it – both would drive the display), own user
+   811, right `raw_device` only, `notify`, socket directory `/run/ultar/ui` (`public_dirs`),
+   `ultar-compositor --socket /run/ultar/ui/compositor.sock --rights /etc/ultar/compositor-rights.toml`;
+   checked by `ultar-init`'s `tests/shipped_services.rs`. `--headless WxH` runs without
    hardware, `--inline` forces the inline transport, `--lang ar|en|de`, `--light`, `--no-cursor`,
    `--kms PATH`, `--fb PATH`, `--allow-root` (development only).
 3. Rights file (`uid = "ui.shell,ui.capture"`; names `ui.shell`, `ui.input-method`,
-   `ui.lock-screen`, `ui.capture`, `ui.overlay`): to be written by the app installer
-   (`ultar-apps`) from the app manifest when apps get their own uids (kernel gap K9).
+   `ui.lock-screen`, `ui.capture`, `ui.overlay`, `ui.system-dialog`): shipped empty
+   (`rootfs/etc/ultar/compositor-rights.toml`); root and `u32::MAX` are refused, a uid twice is
+   refused (`--allow-root` accepts uid 0 for development). See §8 "Identities" for what is
+   missing.
 4. Apps: `Client::connect(path, app_id)` → `Window::create` + `Window::present(pixels, size,
    damage)` for any renderer, or `UiWindow::new(client, &WindowConfig::toplevel(title), ui)` +
    `UiWindow::dispatch(timeout)` for an `ultar-ui` tree (returns the toolkit's actions).
@@ -41,8 +45,13 @@ Design, protocol, security model and kernel gaps: `docs/COMPOSITOR.md`. Patch ag
    `ultar-surface` through `platform/app-api` when that crate exists (the layer table allows apps
    only `app-api` and `ultar-ui`).
 5. Shell: bar/dock = `Role::Panel{edge, size}`, notifications = `Role::Overlay`, lock screen =
-   `Role::Lock`, keyboard = `Role::InputPanel` + `ImeCommit`, wallpaper = `Role::Background` – each
-   needs its right in the rights file.
+   `Role::Lock` + `Unlock{surface}` after the password check, keyboard = `Role::InputPanel` +
+   `ImeCommit`, wallpaper = `Role::Background`, password/permission prompts of system services =
+   `Role::SystemDialog` (title = requesting app) – each needs its right in the rights file. The
+   shell reacts to `SessionLocked{true}` by starting the lock screen client (Ctrl+Alt+Del / Super+L
+   lock in the compositor itself). Launcher: on a click, `Client::request_activation(serial)` →
+   `ActivationToken{token}` → start the app with `ULTAR_ACTIVATION_TOKEN=<token>`; the client
+   library presents it with the first toplevel (`Activate`), which then gets the focus.
 6. Ultar kernel CI: build the two static binaries, `IMG=1 scripts/build-kern.sh`, then
    `python3 tools/kern-test/compositor-qemu.py out/ultar-kern-esp.img /tmp/shot.ppm` (exit 0 + line
    `COMPOSITOR-CHECK: OK windows=2 …`). The self-test entry runs the same scenario without
@@ -122,6 +131,11 @@ self-test mode itself was **not run**.
 
 ## 6. Binary files (not in the text patch)
 
+Fix round 1 (`FIX1.patch`) changes no binary file; the snapshots stay as they are (the tests now
+click the newer window before the snapshot, because a new window no longer takes the focus by
+itself).
+
+
 | File | Copy to |
 |---|---|
 | `binary/platform/ultar-compositor/tests/snapshots/two_windows_en.png` | `platform/ultar-compositor/tests/snapshots/` |
@@ -142,3 +156,67 @@ self-test mode itself was **not run**.
   keyboard repeat, more layouts, GPU renderer, page flips, direct scan-out, XWayland.
 * `ultar-wm` (Smithay-derived, MIT parts) is untouched: nothing was copied from it, so the new
   crates are plain `Proprietary`; `ultar-wm` and `app_desktop.rs` can be retired in P6 as planned.
+
+## 8. Fix round 1 (review `docs/review/compositor-runde-1.md`) – `FIX1.patch`
+
+Base: repository HEAD (after the UI round-4 fixes). The reviewer's six test files are part of the
+suite (`tests/review_{security,robustness,outputs,fds,bench}.rs`, `ultar-hal-gfx/tests/review_hal.rs`);
+all 17 FINDING tests pass, the SOUND ones still pass. `review_bench.rs` is now an asserted budget.
+
+| Finding | Fix (root) | Tests |
+|---|---|---|
+| C1 lock fails open | `Session::locked` is compositor state: set by a lock commit and by Ctrl+Alt+Del / Super+L, cleared only by `Unlock{surface}` from a `ui.lock-screen` client showing a lock surface; dead lock client → ground colour, no input, a new lock client takes over | `lock_screen_stays_locked_when_its_process_dies`, `unlock_needs_the_lock_screen_and_a_new_lock_client_takes_over` |
+| C2 IME to the app | one `text_target()` (lock surface while locked, else system dialog, else focus) for keys, `ImeCommit` and `ImeState` | `on_screen_keyboard_types_into_the_lock_screen_while_locked` |
+| C3 no trusted path | popups drawn right after their parent window (below panels), clamped and cut to the work area of the parent's output, ≤ 8 per toplevel; hit test skips alpha-0 pixels; secure attention keys; `Role::SystemDialog` (right `ui.system-dialog`): above panels, modal, lock icon in a compositor title bar, everything below (panels too) dimmed | `an_app_popup_cannot_cover_the_shell_panel`, `an_invisible_popup_cannot_take_other_apps_clicks`, `secure_attention_keys_lock_and_are_never_forwarded`, `system_dialogs_are_above_panels_dim_the_rest_and_are_modal`, `decor::system_dialogs_carry_the_lock_mark` |
+| M1 focus stealing | focus on map only if nothing/its client has it, a user action on the client since the last focus change (≤ 10 s), or an activation token (`RequestActivation` → `ActivationToken` → `Activate`, single use, 30 s, ≤ 16); an app's own restore from minimised does not focus | both `a_background_window_cannot_steal_focus_*`, `activation_tokens_move_the_focus_once`, `windows_map_cascade_and_only_the_first_takes_the_focus` |
+| M2 client slots | uid without rights: ≤ 8 connections and never the last 8 of 64 slots | `one_uid_cannot_take_every_client_slot`, `reserved_client_slots_stay_for_system_clients` |
+| M3 memory | 1 GiB for all clients (buffer creation and commit growth); sparse memfds refused (`st_blocks`), `SharedBuffer::create` `fallocate`s | `total_client_pixel_memory_is_bounded`, `sparse_buffers_are_refused`, `shm::sparse_memory_files_are_refused` |
+| M4 pacing | callbacks without damage answered once per refresh interval (moves the pacing clock) | `frame_callbacks_without_damage_are_paced` |
+| M5 flow control | a transfer's source is not read (nor polled) while a reader has > 2 MiB queued | `a_large_paste_does_not_disconnect_the_reader` |
+| M6 input hot-plug | dead devices: held keys released, `DeviceRemoved`, out of the poll set; netlink uevents (input/usb/hid) and SIGHUP rescan `/dev/input`; the backend refreshes its poll set | `a_hung_up_input_device_is_dropped`, `evdev` unit tests, `uevent` parser test |
+| M7 frame cost | popup cap + overdraw budget (translucent area of apps without rights: 2 screens per uid, 3 for all, bottom to top; the rest is left out of the scene); `opt-level = 3` for the compositor in release | `review_bench::translucent_stack_frame_cost_is_bounded` (asserted ≤ 16 ms CPU p99) |
+| M8 rights/uids | rights file refuses uid 0 (unless `--allow-root`), `u32::MAX` and duplicates; the compositor runs as its own user 811 (`compositor.toml`) | `config::tests::rights_file`, `shipped_services` |
+| m1 | every invisible format character removed from titles | `titles_lose_every_bidi_format_character`, `text::titles_lose_format_characters` |
+| m2 | `Output::user_scale_milli` kept apart from the effective (mirror) scale | `mirror_then_extend_restores_the_scale` |
+| m3 | `SYN_DROPPED` releases held keys and buttons | `syn_dropped_releases_held_keys` |
+| m4 | pointer to the primary's middle when its display went | `unplugging_the_display_under_window_and_pointer` |
+| m5 | move offset from the press point | `a_title_drag_keeps_the_grabbed_point_under_the_pointer` |
+| m6 | recording indicator (compositor dot, 2 s after), capture paused while locked, key repeat/release to the press's surface, grab/drag/touch end on lock, shadow cache per output, fbdev `x/yoffset` + 32-bit `line_length`, rights file `u32::MAX`/duplicates | `capture_shows_the_indicator_and_pauses_while_locked`, `a_key_release_goes_where_the_press_went`, `fbdev` origin test, `rights_file` |
+
+**Protocol (breaking for nobody outside this stack, version stays 1):** requests `Unlock` (26),
+`RequestActivation` (27), `Activate` (28); events `ActivationToken` (29), `SessionLocked` (30);
+`Role::SystemDialog` (7), `Rights::SYSTEM_DIALOG` (32, `ALL` = 63). Client library:
+`ACTIVATION_ENV`, `Client::take_activation_token`, `Client::request_activation`.
+**Compositor API:** `Limits` gained `clients_per_uid`, `reserved_clients`, `total_bytes`, `popups`,
+`transfer_queue`; `RightsTable::parse_with(text, allow_root)`, `RightsError::{Duplicate,
+Privileged}`; `State::{session, lock, locked, lock_surface, system_dialog, text_target,
+scene_parts, total_bytes, throttled, recording, tick_indicator}`; `Window::{secure,
+activate_on_map}`; `TitleKey::secure`; `Backend::rescan_input` (default: nothing); module
+`cursor` (pointer and indicator images; `render` re-exports the pointer items).
+**HAL:** `ultar_hal_gfx::uevent::{UeventSocket, Uevent}`, `Evdev::{empty, rescan}`,
+`GfxError::Sparse`.
+
+**Identities (M8) – what is still missing:** the compositor tells clients apart by kernel uid
+only. Today the surface (`ultar-shell`: lock screen, keyboard, bar) runs as root and apps are
+started by it without an id of their own, so the shipped rights file is empty and every app has
+the same (no) rights. Needed: (1) the app launcher (`ultar-apps` / the shell's launcher) starts
+each app as its own uid (kernel `SET_ID` and `ultar-sys::switch_identity` exist), (2) the
+installer writes the app's rights line from its manifest, (3) the shell's lock screen, keyboard
+and bar run as their own users with lines in the rights file, (4) `ultar-init` (or the shell)
+restarts a dead lock screen client after `SessionLocked{true}`.
+
+**Gate (fix round 1, 23.11.2026, x86_64 Linux, `-j1`, debug, `CARGO_INCREMENTAL=0`):**
+`cargo test -p ultar-hal-gfx -p ultar-surface -p ultar-compositor`: **129 passed, 0 failed,
+3 ignored** (the release-only budgets), identical in three runs; `ultar-init --test
+shipped_services` 5 passed (with `compositor.toml`). `cargo fmt --check` clean; `cargo clippy
+--all-targets -- -D warnings` clean for the three crates (also `ultar-surface
+--no-default-features --lib`); `ultar-check all`: ok, 5556 baselined as on HEAD (no new baseline
+entry), 141 warnings (139 on HEAD; "file getting long" warnings only).
+Release budgets (3 runs, thread CPU p99, best of three rounds): full HD 4 windows 2.5 / 1.7 /
+1.6 ms (budget 4 ms), caret 10 / 5 / 6 µs (0.3 ms), **hostile scene** (3 uids × 2 connections,
+each a window + 8 translucent full-screen popups + 6 translucent full-screen toplevels: 9 layers
+shown, 81 left out) 10.5 / 6.0 / 8.4 ms (budget 16 ms; before the fix 282 ms median with 58
+layers). Not run in this round: the QEMU run on the Ultar kernel (the uevent socket and
+`fallocate` there are untested; without uevents the backend still works and SIGHUP rescans),
+real input hot-plug hardware, a real lock screen / dialog service (none exists yet).
+

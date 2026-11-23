@@ -11,84 +11,7 @@ use std::collections::HashMap;
 use ultar_ui::paint::PaintEnv;
 use ultar_ui::tokens::{self, ColorRole, Radius};
 
-/// Edge of the pointer image in logical points (token `size.icon`).
-pub const CURSOR: i32 = tokens::size::ICON as i32;
-
-/// The logical area the pointer image covers at a position.
-pub fn cursor_rect(x: f64, y: f64) -> Rect {
-    Rect::new(
-        x.floor() as i32 - 1,
-        y.floor() as i32 - 1,
-        CURSOR + 2,
-        CURSOR + 2,
-    )
-}
-
-/// Arrow outline in units of 1/24 of the cursor edge (the classic pointer).
-const ARROW: [(f32, f32); 7] = [
-    (1.0, 1.0),
-    (1.0, 18.0),
-    (5.0, 14.0),
-    (8.0, 21.0),
-    (11.0, 20.0),
-    (8.0, 13.0),
-    (13.0, 13.0),
-];
-
-fn inside(poly: &[(f32, f32)], x: f32, y: f32) -> bool {
-    let mut odd = false;
-    let mut j = poly.len() - 1;
-    for i in 0..poly.len() {
-        let (xi, yi) = poly[i];
-        let (xj, yj) = poly[j];
-        if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
-            odd = !odd;
-        }
-        j = i;
-    }
-    odd
-}
-
-/// Draws the pointer at a scale: fill in the theme's text colour, outline
-/// in its ground colour.
-pub fn cursor_image(scale: f64, fill: u32, outline: u32) -> Option<Image> {
-    let edge = ((f64::from(CURSOR) * scale).ceil() as u32).max(1);
-    let mut img = Image::new(edge, edge, 0)?;
-    let unit = edge as f32 / 24.0;
-    let width = edge as usize;
-    for y in 0..edge {
-        for x in 0..edge {
-            let (mut core, mut any) = (0u32, 0u32);
-            for s in 0..4 {
-                let px = (x as f32 + (s % 2) as f32 * 0.5 + 0.25) / unit;
-                let py = (y as f32 + (s / 2) as f32 * 0.5 + 0.25) / unit;
-                let near = [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)]
-                    .iter()
-                    .any(|(dx, dy)| inside(&ARROW, px + dx, py + dy));
-                core += u32::from(
-                    inside(&ARROW, px, py)
-                        && [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)]
-                            .iter()
-                            .all(|(dx, dy)| inside(&ARROW, px + dx * 0.9, py + dy * 0.9)),
-                );
-                any += u32::from(inside(&ARROW, px, py) || near);
-            }
-            let px = if core > 0 {
-                pixels::over(scaled(outline, any * 64), scaled(fill, core * 64))
-            } else {
-                scaled(outline, any * 64)
-            };
-            img.data_mut()[y as usize * width + x as usize] = px;
-        }
-    }
-    Some(img)
-}
-
-fn scaled(color: u32, amount: u32) -> u32 {
-    let a = amount.min(255);
-    let ch = |shift: u32| (((color >> shift) & 0xff) * a / 255) << shift;
-    ch(24) | ch(16) | ch(8) | ch(0)
-}
+pub use crate::cursor::{cursor_image, cursor_rect, CURSOR};
 
 /// The composer: frames per output, cached pointer and corner masks.
 #[derive(Debug, Default)]
@@ -96,7 +19,7 @@ pub struct Renderer {
     frames: HashMap<u32, Image>,
     cursors: HashMap<u32, Image>,
     masks: HashMap<u32, pixels::CornerMask>,
-    shadow_cache: HashMap<ShadowKey, Shadow>,
+    shadow_cache: HashMap<u32, HashMap<ShadowKey, Shadow>>,
 }
 
 /// What a shadow depends on: device frame, blur, offset, opacity bits.
@@ -121,11 +44,13 @@ impl Renderer {
     /// Forgets the frame of a removed output.
     pub fn forget(&mut self, output: u32) {
         self.frames.remove(&output);
+        self.shadow_cache.remove(&output);
     }
 
     /// Composes the damage of `output` into its frame. Returns the damaged
     /// rectangles (empty: nothing to present).
     pub fn render(&mut self, state: &mut State, output: &Output) -> Vec<Rect> {
+        state.refresh_culled();
         let mut damage = state.damage.remove(&output.id).unwrap_or_default();
         let screen = Rect::new(0, 0, output.width as i32, output.height as i32);
         let fresh = !self
@@ -194,8 +119,25 @@ impl Renderer {
             .entry(radius)
             .or_insert_with(|| pixels::CornerMask::new(radius))
             .clone();
+        let mut dimmed = false;
         for (placed, shadow) in scene[start..].iter().zip(&shadows[start..]) {
+            let secure = placed
+                .window
+                .and_then(|i| state.windows.get(i))
+                .is_some_and(|w| w.secure);
+            if secure && !dimmed {
+                // Everything below a system dialog is dimmed: apps cannot
+                // dim the shell's panels, so the dialog is recognisable.
+                dimmed = true;
+                let scrim = state.decor.as_ref().map_or(0x8000_0000, |d| d.scrim());
+                if let Some(tile) = Image::new(1, 1, scrim) {
+                    pixels::scale(frame, *clip, clip, &tile, false);
+                }
+            }
             paint(state, o, placed, frame, clip, (&mask, shadow.as_ref()));
+        }
+        if state.session.indicator_shown {
+            paint_indicator(state, o, frame, clip);
         }
         if let Some(preview) = state.pointer.snap_preview {
             let env = PaintEnv::new(state.config.lang, state.config.theme);
@@ -222,6 +164,7 @@ impl Renderer {
         let blur = (f64::from(tokens::shadow::BLUR) * o.scale()) as i32;
         let off = (f64::from(tokens::shadow::OFFSET_Y) * o.scale()) as i32;
         let alpha = state.decor.as_ref().map_or(0.0, |d| d.shadow_alpha());
+        let mut cache = self.shadow_cache.remove(&o.id.0).unwrap_or_default();
         let mut kept = HashMap::new();
         let list = scene
             .iter()
@@ -231,8 +174,7 @@ impl Renderer {
                     return None;
                 }
                 let key = (to_device(o, w.frame), blur, off, alpha.to_bits());
-                let shadow = self
-                    .shadow_cache
+                let shadow = cache
                     .remove(&key)
                     .or_else(|| kept.get(&key).cloned())
                     .unwrap_or_else(|| Shadow::new(key.0, blur, off, alpha));
@@ -240,7 +182,7 @@ impl Renderer {
                 Some(shadow)
             })
             .collect();
-        self.shadow_cache = kept;
+        self.shadow_cache.insert(o.id.0, kept);
         list
     }
 
@@ -272,6 +214,19 @@ impl Renderer {
         if let Some(img) = self.cursors.get(&key) {
             pixels::blend(frame, at.x, at.y, img, img.bounds(), clip);
         }
+    }
+}
+
+/// Draws the recording indicator (a dot in the danger colour).
+fn paint_indicator(state: &State, o: &Output, frame: &mut Image, clip: &Rect) {
+    let at = to_device(o, crate::cursor::indicator_rect(o, state.rtl()));
+    if at.intersect(clip).is_none() {
+        return;
+    }
+    let env = PaintEnv::new(state.config.lang, state.config.theme);
+    let color = crate::decor::to_pixel(env.palette().get(ColorRole::Danger));
+    if let Some(dot) = crate::cursor::dot_image(at.w.max(1) as u32, color) {
+        pixels::blend(frame, at.x, at.y, &dot, dot.bounds(), clip);
     }
 }
 
@@ -441,6 +396,7 @@ fn refresh_titles(state: &mut State, o: &Output) {
             pressed: w.pressed,
             maximized: w.state == ultar_surface::proto::WindowState::Maximized,
             unresponsive: w.unresponsive,
+            secure: w.secure,
         };
         if w.title_cache.as_ref().is_none_or(|(k, _)| *k != key) {
             work.push((i, key));
@@ -453,29 +409,4 @@ fn refresh_titles(state: &mut State, o: &Output) {
         }
     }
     let _ = TITLEBAR;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cursor_is_drawn_with_outline() {
-        let img = cursor_image(1.0, 0xffff_ffff, 0xff00_0000).unwrap();
-        assert_eq!(img.width(), 24);
-        assert_eq!(
-            img.pixel(23, 23),
-            Some(0),
-            "outside the arrow is transparent"
-        );
-        let body = img.pixel(3, 10).unwrap();
-        assert_eq!(body >> 24, 0xff);
-        assert!(body & 0xff > 0x80, "inside is the fill colour");
-        let big = cursor_image(2.0, 0xffff_ffff, 0xff00_0000).unwrap();
-        assert_eq!(big.width(), 48);
-        assert_eq!(cursor_rect(10.5, 20.2), Rect::new(9, 19, 26, 26));
-        assert!(inside(&ARROW, 2.0, 10.0));
-        assert!(!inside(&ARROW, 20.0, 2.0));
-        assert_eq!(scaled(0xff80_4020, 128), 0x8040_2010);
-    }
 }

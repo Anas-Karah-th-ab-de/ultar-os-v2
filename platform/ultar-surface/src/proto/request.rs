@@ -199,6 +199,25 @@ pub enum Request {
         /// The output.
         output: OutputId,
     },
+    /// Ends the session lock after the lock screen authenticated the user
+    /// (needs [`Rights::LOCK_SCREEN`] and a lock surface of this client).
+    Unlock {
+        /// The client's lock surface.
+        surface: SurfaceId,
+    },
+    /// Asks for an activation token for a user action (a launcher passes it
+    /// to the app it starts, which then may take the focus with it).
+    RequestActivation {
+        /// Serial of the user action.
+        serial: u32,
+    },
+    /// Takes the keyboard focus with a token from `ActivationToken`.
+    Activate {
+        /// The surface.
+        surface: SurfaceId,
+        /// The token.
+        token: u64,
+    },
 }
 
 impl Request {
@@ -230,6 +249,9 @@ impl Request {
             Request::TextInput { .. } => 23,
             Request::ImeCommit { .. } => 24,
             Request::Capture { .. } => 25,
+            Request::Unlock { .. } => 26,
+            Request::RequestActivation { .. } => 27,
+            Request::Activate { .. } => 28,
         }
     }
 
@@ -347,11 +369,26 @@ impl Request {
             } => {
                 w.u32(surface.0).bool(*enabled).u8(*purpose);
             }
+            other => other.encode_session(w),
+        }
+    }
+
+    fn encode_session(&self, w: &mut Writer) {
+        match self {
             Request::ImeCommit { text } => {
                 w.str(text, MAX_IME_TEXT);
             }
             Request::Capture { output } => {
                 w.u32(output.0);
+            }
+            Request::Unlock { surface } => {
+                w.u32(surface.0);
+            }
+            Request::RequestActivation { serial } => {
+                w.u32(*serial);
+            }
+            Request::Activate { surface, token } => {
+                w.u32(surface.0).u64(*token);
             }
             _ => {}
         }

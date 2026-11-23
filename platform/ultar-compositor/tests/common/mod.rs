@@ -82,8 +82,33 @@ impl Peer {
         }
     }
 
+    /// A connection the compositor takes for one of user id `uid` (the
+    /// kernel's credentials are replaced: tests of per-uid rules).
+    pub fn hello_as(comp: &mut Compositor, uid: u32) -> Peer {
+        let (a, b) = UnixStream::pair().unwrap();
+        let peer = ultar_compositor::conn::Peer { pid: None, uid };
+        comp.state.accept(a, peer).expect("client accepted");
+        b.set_nonblocking(true).unwrap();
+        let mut p = Peer {
+            stream: b,
+            out: Vec::new(),
+            buffers: Vec::new(),
+            reader: FrameReader::new(),
+            events: Vec::new(),
+            closed: false,
+        };
+        p.greet(comp);
+        p
+    }
+
     pub fn hello(comp: &mut Compositor) -> Peer {
         let mut p = Peer::connect(comp);
+        p.greet(comp);
+        p
+    }
+
+    fn greet(&mut self, comp: &mut Compositor) {
+        let p = self;
         p.send(&Request::Hello {
             version: PROTOCOL_VERSION,
             app_id: "test".into(),
@@ -91,7 +116,6 @@ impl Peer {
         });
         p.pump(comp);
         assert!(p.events.iter().any(|e| matches!(e, Event::Welcome { .. })));
-        p
     }
 
     pub fn send(&mut self, r: &Request) {
@@ -178,11 +202,19 @@ impl Peer {
 
     /// Creates a toplevel and draws it in one colour at its configured size.
     pub fn window(&mut self, comp: &mut Compositor, id: u32, color: u32) -> SurfaceId {
+        self.window_role(comp, id, Role::Toplevel, color)
+    }
+
+    /// Creates a window-like surface (toplevel, system dialog) and draws it.
+    pub fn window_role(
+        &mut self,
+        comp: &mut Compositor,
+        id: u32,
+        role: Role,
+        color: u32,
+    ) -> SurfaceId {
         let s = SurfaceId(id);
-        self.send(&Request::CreateSurface {
-            surface: s,
-            role: Role::Toplevel,
-        });
+        self.send(&Request::CreateSurface { surface: s, role });
         self.pump(comp);
         self.draw(comp, s, color);
         s

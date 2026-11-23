@@ -6,7 +6,7 @@ use crate::decor::Part;
 use crate::keymap::{self, Output as KeyOutput};
 use crate::wm::{self, Arrow};
 use ultar_hal::KeyState;
-use ultar_surface::proto::{Event, Modifiers, Role};
+use ultar_surface::proto::{Event, Modifiers};
 
 impl State {
     pub(super) fn key(&mut self, code: u16, state: KeyState) {
@@ -21,10 +21,23 @@ impl State {
         if code == 58 && state == KeyState::Pressed {
             self.keyboard.caps_lock = !self.keyboard.caps_lock;
         }
+        if self.secure_attention(code, state) {
+            return;
+        }
         if state == KeyState::Pressed && self.shortcut(code) {
             return;
         }
-        let Some(key) = self.key_target() else { return };
+        // Repeats and the release go where the press went (focus changes
+        // and the lock do not split a key between two surfaces).
+        let target = match state {
+            KeyState::Pressed => self.text_target(),
+            KeyState::Repeated => self.session.pressed.get(&code).copied(),
+            KeyState::Released => self.session.pressed.remove(&code),
+        };
+        let Some(key) = target else { return };
+        if state == KeyState::Pressed {
+            self.session.pressed.insert(code, key);
+        }
         let modifiers = Modifiers(self.keyboard.modifiers);
         let output = if pressed {
             keymap::translate(self.key_layout(), code, modifiers, self.keyboard.caps_lock)
@@ -42,18 +55,6 @@ impl State {
             KeyState::Repeated => 2,
         };
         self.deliver_key(key, code, state_code, modifiers, (output, serial));
-    }
-
-    /// The surface keys go to: the lock screen while locked, else the focus.
-    fn key_target(&self) -> Option<SurfaceKey> {
-        if self.locked() {
-            self.layers
-                .iter()
-                .copied()
-                .find(|k| self.surface(*k).is_some_and(|s| s.role == Role::Lock))
-        } else {
-            self.focus
-        }
     }
 
     fn deliver_key(
@@ -156,7 +157,7 @@ impl State {
             self.pointer_to(lx, ly);
             self.pointer.hidden = true;
             self.button(BTN_PRIMARY, true);
-            self.touches.insert(
+            self.pointer.touches.insert(
                 id,
                 SurfaceKey {
                     client: u32::MAX,
@@ -170,7 +171,7 @@ impl State {
         if self.window_index(key).is_some() {
             self.focus_window(key);
         }
-        self.touches.insert(id, key);
+        self.pointer.touches.insert(id, key);
         let serial = self.user_serial(key.client);
         let (sx, sy) = (
             fixed(lx - f64::from(content.x)),
@@ -190,7 +191,7 @@ impl State {
 
     pub(super) fn touch_move(&mut self, id: u32, x: u16, y: u16) {
         let (lx, ly) = self.absolute(x, y);
-        let Some(&key) = self.touches.get(&id) else {
+        let Some(&key) = self.pointer.touches.get(&id) else {
             return;
         };
         if key.client == u32::MAX {
@@ -221,7 +222,7 @@ impl State {
     }
 
     pub(super) fn touch_up(&mut self, id: u32) {
-        let Some(key) = self.touches.remove(&id) else {
+        let Some(key) = self.pointer.touches.remove(&id) else {
             return;
         };
         if key.client == u32::MAX {
@@ -238,7 +239,7 @@ impl State {
     }
 
     pub(super) fn touch_cancel(&mut self) {
-        let keys: Vec<SurfaceKey> = self.touches.drain().map(|(_, k)| k).collect();
+        let keys: Vec<SurfaceKey> = self.pointer.touches.drain().map(|(_, k)| k).collect();
         let mut done = Vec::new();
         for key in keys {
             if key.client == u32::MAX {

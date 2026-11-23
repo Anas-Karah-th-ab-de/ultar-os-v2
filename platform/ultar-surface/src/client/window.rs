@@ -79,6 +79,11 @@ impl Window {
                 title: config.title.clone(),
             })?;
         }
+        if config.role == crate::proto::Role::Toplevel {
+            if let Some(token) = client.take_activation_token() {
+                client.send(&Request::Activate { surface, token })?;
+            }
+        }
         if config.min_size != (0, 0) {
             client.send(&Request::SetSizeLimits {
                 surface,

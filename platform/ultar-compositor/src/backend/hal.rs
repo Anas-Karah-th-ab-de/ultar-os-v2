@@ -8,11 +8,13 @@ use std::collections::HashMap;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::path::PathBuf;
 use ultar_hal::{
-    Display, DisplayEvent, DisplayId, FrameView, HalError, Input, InputEvent, PixelFormat, Size,
+    Display, DisplayEvent, DisplayId, FrameView, HalError, Input, InputEvent, InputEventKind,
+    PixelFormat, Size,
 };
 use ultar_hal_gfx::evdev::Evdev;
 use ultar_hal_gfx::fbdev::FbDev;
 use ultar_hal_gfx::kms::Kms;
+use ultar_hal_gfx::uevent::UeventSocket;
 use ultar_hal_gfx::GfxError;
 
 /// Which display backend to open.
@@ -26,10 +28,12 @@ pub enum OutputKind {
     Framebuffer(Option<PathBuf>),
 }
 
-/// HAL display + evdev input.
+/// HAL display + evdev input with hot-plug (kernel uevents; a rescan on
+/// SIGHUP where there are none).
 pub struct HalBackend {
     display: Box<dyn Display>,
-    input: Option<Evdev>,
+    input: Evdev,
+    uevents: Option<UeventSocket>,
     input_fds: Vec<OwnedFd>,
     staging: HashMap<u32, Vec<u8>>,
 }
@@ -37,7 +41,8 @@ pub struct HalBackend {
 impl std::fmt::Debug for HalBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HalBackend")
-            .field("input", &self.input.is_some())
+            .field("input_fds", &self.input_fds.len())
+            .field("uevents", &self.uevents.is_some())
             .finish()
     }
 }
@@ -53,14 +58,28 @@ impl HalBackend {
                 Err(_) => Box::new(FbDev::open(None)?),
             },
         };
-        let input = Evdev::open_all().ok();
-        let input_fds = input.as_ref().map(Evdev::poll_handles).unwrap_or_default();
+        let input = Evdev::open_all().unwrap_or_else(|_| Evdev::empty());
+        let input_fds = input.poll_handles();
         Ok(HalBackend {
             display,
             input,
+            uevents: UeventSocket::open().ok(),
             input_fds,
             staging: HashMap::new(),
         })
+    }
+
+    /// Refreshes the poll set after devices came or went.
+    fn track(&mut self, events: &[InputEvent]) {
+        let changed = events.iter().any(|e| {
+            matches!(
+                e.kind,
+                InputEventKind::DeviceAdded | InputEventKind::DeviceRemoved
+            )
+        });
+        if changed {
+            self.input_fds = self.input.poll_handles();
+        }
     }
 }
 
@@ -119,14 +138,30 @@ impl Backend for HalBackend {
     }
 
     fn input_fds(&self) -> Vec<BorrowedFd<'_>> {
-        self.input_fds.iter().map(|f| f.as_fd()).collect()
+        let devices = self.input_fds.iter().map(|f| f.as_fd());
+        devices
+            .chain(self.uevents.as_ref().map(|u| u.fd()))
+            .collect()
     }
 
     fn read_input(&mut self) -> Vec<InputEvent> {
-        self.input
+        let mut events = Vec::new();
+        if self
+            .uevents
             .as_ref()
-            .and_then(|i| i.poll(0).ok())
-            .unwrap_or_default()
+            .is_some_and(UeventSocket::input_changed)
+        {
+            events.extend(self.input.rescan());
+        }
+        events.extend(self.input.poll(0).unwrap_or_default());
+        self.track(&events);
+        events
+    }
+
+    fn rescan_input(&mut self) -> Vec<InputEvent> {
+        let events = self.input.rescan();
+        self.track(&events);
+        events
     }
 
     fn hotplug(&mut self) -> Vec<Hotplug> {

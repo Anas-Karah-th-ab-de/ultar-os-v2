@@ -6,7 +6,6 @@ use crate::backend::{Backend, Hotplug};
 pub use crate::clock::{Clock, MonotonicClock, Stats};
 use crate::config::Config;
 use crate::conn::Peer;
-use crate::geom::Rect;
 use crate::pixels::Image;
 use crate::render::Renderer;
 use crate::state::{ClientId, State};
@@ -16,7 +15,9 @@ use std::os::fd::AsFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::{Duration, Instant};
 use ultar_hal::InputEvent;
-use ultar_surface::proto::{Event, OutputId, MAX_CHUNK};
+use ultar_surface::proto::{Event, OutputId};
+
+mod frames;
 
 /// Milliseconds before queued output is tried again without a wake-up.
 const FLUSH_RETRY_MS: u64 = 10;
@@ -159,6 +160,7 @@ impl Compositor {
         }
         self.state.check_pings();
         self.state.tick_transfers();
+        self.state.tick_indicator();
         if self.frame_due() {
             self.render_now();
         }
@@ -236,7 +238,11 @@ impl Compositor {
         }
         for id in &ids {
             if let Some(c) = self.state.clients.get(id) {
-                let mut flags = PollFlags::IN;
+                let mut flags = if self.state.throttled(*id) {
+                    PollFlags::empty()
+                } else {
+                    PollFlags::IN
+                };
                 if c.conn.pending() > 0 {
                     flags |= PollFlags::OUT;
                 }
@@ -300,6 +306,9 @@ impl Compositor {
     /// Reads and handles what one client sent.
     pub fn read_client(&mut self, id: ClientId) {
         let budget = self.state.config.limits.read_slice;
+        if self.state.throttled(id) {
+            return;
+        }
         let Some(c) = self.state.clients.get_mut(&id) else {
             return;
         };
@@ -334,7 +343,7 @@ impl Compositor {
             let started = Instant::now();
             let damage = self.renderer.render(&mut self.state, &o);
             if damage.is_empty() {
-                self.frames_done(o.id);
+                self.idle_frame(&o);
                 continue;
             }
             let took = started.elapsed().as_micros() as u64;
@@ -350,84 +359,6 @@ impl Compositor {
             self.frames_done(o.id);
         }
         presented
-    }
-
-    /// Sends `FrameDone` to the surfaces on an output that asked for it.
-    fn frames_done(&mut self, output: OutputId) {
-        let Some(area) = self.state.layout.get(output).map(|o| o.logical_rect()) else {
-            return;
-        };
-        let time = self.clock.now_ms() as u32;
-        let keys: Vec<_> = self
-            .state
-            .scene()
-            .into_iter()
-            .filter(|p| p.content.intersect(&area).is_some())
-            .map(|p| p.key)
-            .collect();
-        for key in keys {
-            let wanted = self
-                .state
-                .surface_mut(key)
-                .is_some_and(|s| std::mem::replace(&mut s.frame_requested, false));
-            if wanted {
-                self.state.send(
-                    key.client,
-                    Event::FrameDone {
-                        surface: key.surface,
-                        time_ms: time,
-                    },
-                );
-            }
-        }
-    }
-
-    fn stream_captures(&mut self) {
-        let ids: Vec<ClientId> = self
-            .state
-            .clients
-            .iter()
-            .filter(|(_, c)| c.capture.is_some())
-            .map(|(&id, _)| id)
-            .collect();
-        for id in ids {
-            let Some((output, row)) = self.state.clients.get(&id).and_then(|c| c.capture) else {
-                continue;
-            };
-            if self
-                .state
-                .clients
-                .get(&id)
-                .is_some_and(|c| c.conn.pending() > MAX_CHUNK)
-            {
-                continue;
-            }
-            if self.renderer.frame(output.0).is_none() {
-                self.render_now();
-            }
-            let Some(frame) = self.renderer.frame(output.0) else {
-                if let Some(c) = self.state.clients.get_mut(&id) {
-                    c.capture = None;
-                }
-                continue;
-            };
-            let rows = (MAX_CHUNK / (frame.width() as usize * 4)).max(1) as u32;
-            let n = rows.min(frame.height() - row.min(frame.height()));
-            let data = frame.to_bytes(Rect::new(0, row as i32, frame.width() as i32, n as i32));
-            let last = row + n >= frame.height();
-            let event = Event::CaptureData {
-                output,
-                width: frame.width(),
-                height: frame.height(),
-                row,
-                data,
-                last,
-            };
-            if let Some(c) = self.state.clients.get_mut(&id) {
-                c.capture = if last { None } else { Some((output, row + n)) };
-            }
-            self.state.send(id, event);
-        }
     }
 
     /// Writes queued events and drops clients that broke or misbehaved.
@@ -454,8 +385,12 @@ impl Compositor {
         }
     }
 
-    /// Asks the backend about display changes and applies them.
+    /// Asks the backend about display and input device changes and
+    /// applies them.
     pub fn rescan_outputs(&mut self) {
+        for e in self.backend.rescan_input() {
+            self.state.input(&e);
+        }
         for change in self.backend.hotplug() {
             match change {
                 Hotplug::Added(o) => {

@@ -50,4 +50,9 @@ pub trait Backend {
     fn read_input(&mut self) -> Vec<InputEvent>;
     /// Display changes since the last call.
     fn hotplug(&mut self) -> Vec<Hotplug>;
+    /// Looks for input devices that came or went (SIGHUP, kernels without
+    /// uevents); returns `DeviceAdded`/`DeviceRemoved` and releases.
+    fn rescan_input(&mut self) -> Vec<InputEvent> {
+        Vec::new()
+    }
 }

@@ -17,15 +17,6 @@ fn valid_size(width: u32, height: u32) -> bool {
     (1..=MAX_SIDE).contains(&width) && (1..=MAX_SIDE).contains(&height)
 }
 
-/// Removes characters that reorder text (bidi overrides and isolates) so a
-/// title cannot disguise itself; the title bar isolates it anyway.
-fn clean_title(title: &str) -> String {
-    title
-        .chars()
-        .filter(|c| !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}'))
-        .collect()
-}
-
 impl State {
     /// Decodes and applies one request of `client`.
     pub fn handle_frame(&mut self, client: ClientId, opcode: u16, body: &[u8]) {
@@ -65,7 +56,7 @@ impl State {
             Request::SetTitle { surface, title } => {
                 let key = self.own_surface(client, surface)?;
                 if let Some(s) = self.surface_mut(key) {
-                    s.title = clean_title(&title);
+                    s.title = super::text::clean_title(&title);
                 }
                 if let Some(i) = self.window_index(key) {
                     let f = self.windows[i].frame;
@@ -188,7 +179,7 @@ impl State {
             Request::SetState { surface, state } => {
                 let key = self.own_surface(client, surface)?;
                 let index = self.window_index(key).ok_or(ErrorCode::UnknownObject)?;
-                self.set_window_state(index, state, None);
+                self.set_state_by(index, state, None, false);
                 Ok(())
             }
             other => self.apply_input(client, other),
@@ -229,6 +220,12 @@ impl State {
                 Ok(())
             }
             Request::ImeCommit { text } => self.ime_commit(client, text),
+            Request::Unlock { surface } => self.unlock(client, surface),
+            Request::RequestActivation { serial } => {
+                self.request_activation(client, serial);
+                Ok(())
+            }
+            Request::Activate { surface, token } => self.activate(client, surface, token),
             Request::Capture { output } => {
                 let c = self
                     .clients
@@ -278,12 +275,20 @@ impl State {
             if !ok {
                 return Err(ErrorCode::UnknownObject);
             }
+            let siblings = c
+                .surfaces
+                .values()
+                .filter(|s| matches!(s.role, Role::Popup { parent: p, .. } if p == parent))
+                .count();
+            if siblings >= self.config.limits.popups {
+                return Err(ErrorCode::Limit);
+            }
         }
         if let Some(c) = self.clients.get_mut(&client) {
             c.surfaces.insert(surface, Surface::new(surface, role));
         }
         let key = SurfaceKey { client, surface };
-        if role == Role::Toplevel {
+        if matches!(role, Role::Toplevel | Role::SystemDialog) {
             self.create_toplevel(key);
         } else {
             self.layers.push(key);
@@ -309,10 +314,16 @@ impl State {
         let bytes = u64::from(width) * u64::from(height) * 4;
         if c.buffers.len() >= self.config.limits.buffers
             || c.bytes + bytes > self.config.limits.client_bytes
+            || self.total_bytes() + bytes > self.config.limits.total_bytes
         {
             return Err(ErrorCode::Limit);
         }
         Ok(())
+    }
+
+    /// Pixel memory of all clients together.
+    pub fn total_bytes(&self) -> u64 {
+        self.clients.values().map(|c| c.bytes).sum()
     }
 
     fn add_buffer(&mut self, client: ClientId, id: BufferId, buffer: Buffer) {
@@ -358,6 +369,11 @@ impl State {
     fn commit(&mut self, client: ClientId, surface: SurfaceId, configure: u32) -> Outcome {
         let key = self.own_surface(client, surface)?;
         let budget = self.config.limits.client_bytes;
+        let total_room = self
+            .config
+            .limits
+            .total_bytes
+            .saturating_sub(self.total_bytes());
         let c = self
             .clients
             .get_mut(&client)
@@ -382,7 +398,7 @@ impl State {
                     .ok_or(ErrorCode::UnknownObject)?;
                 let grow =
                     (u64::from(buffer.width) * u64::from(buffer.height) * 4).saturating_sub(before);
-                if c.bytes + grow > budget {
+                if c.bytes + grow > budget || grow > total_room {
                     return Err(ErrorCode::Limit);
                 }
                 let rects = s.apply(Some(buffer)).ok_or(ErrorCode::BadBuffer)?;
@@ -398,6 +414,16 @@ impl State {
         }
         let rects = damage.unwrap_or_default();
         self.surface_damaged(key, &rects);
+        if self
+            .surface(key)
+            .is_some_and(|s| s.role == Role::Lock && s.image.is_some())
+        {
+            // A lock surface locks; a new one (after a crash) takes input.
+            if self.locked() {
+                self.update_ime();
+            }
+            self.lock();
+        }
         Ok(())
     }
 
@@ -433,47 +459,5 @@ impl State {
                 self.damage_logical(visible);
             }
         }
-    }
-
-    /// Tells the input method whether the focused surface has a text field.
-    pub(super) fn update_ime(&mut self) {
-        let wanted = self
-            .focus
-            .and_then(|k| self.surface(k))
-            .and_then(|s| s.text_input);
-        let panels: Vec<ClientId> = self
-            .layers
-            .iter()
-            .filter(|k| {
-                self.surface(**k)
-                    .is_some_and(|s| s.role == Role::InputPanel)
-            })
-            .map(|k| k.client)
-            .collect();
-        for client in panels {
-            let event = Event::ImeState {
-                active: wanted.is_some(),
-                purpose: wanted.unwrap_or(0),
-            };
-            self.send(client, event);
-        }
-    }
-
-    fn ime_commit(&mut self, client: ClientId, text: String) -> Outcome {
-        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
-        let has_panel = c.surfaces.values().any(|s| s.role == Role::InputPanel);
-        if !c.rights.contains(Rights::INPUT_METHOD) || !has_panel {
-            return Err(ErrorCode::Permission);
-        }
-        if let Some(focus) = self.focus {
-            self.send(
-                focus.client,
-                Event::Text {
-                    surface: focus.surface,
-                    text,
-                },
-            );
-        }
-        Ok(())
     }
 }

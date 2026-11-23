@@ -41,6 +41,10 @@ fn sample_requests() -> Vec<Request> {
         Request::TextInput { surface: s, enabled: true, purpose: 2 },
         Request::ImeCommit { text: "سلام\n".into() },
         Request::Capture { output: OutputId(0) },
+        Request::Unlock { surface: s },
+        Request::RequestActivation { serial: 4 },
+        Request::Activate { surface: s, token: u64::MAX - 3 },
+        Request::CreateSurface { surface: s, role: Role::SystemDialog },
     ]
 }
 
@@ -78,6 +82,8 @@ fn sample_events() -> Vec<Event> {
         Event::CaptureData { output: OutputId(0), width: 2, height: 1, row: 0, data: vec![0; 8], last: true },
         Event::Error { code: ErrorCode::Malformed },
         Event::Error { code: ErrorCode::TooSlow },
+        Event::ActivationToken { token: 0x1234_5678_9abc },
+        Event::SessionLocked { locked: true },
     ]
 }
 
@@ -132,7 +138,7 @@ fn limits_are_enforced_when_decoding() {
     body.push(9);
     assert!(Request::decode(18, &body).is_err());
     // Unknown role, edge, state, format.
-    assert!(Request::decode(2, &[1, 0, 0, 0, 7]).is_err());
+    assert!(Request::decode(2, &[1, 0, 0, 0, 8]).is_err());
     assert!(Request::decode(2, &[1, 0, 0, 0, 2, 4, 0, 0, 0, 0]).is_err());
     assert!(Request::decode(14, &[1, 0, 0, 0, 4]).is_err());
     assert!(Request::decode(7, &[1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2]).is_err());
@@ -147,6 +153,7 @@ fn rights_and_roles() {
     assert_eq!(Role::Lock.required_rights(), Rights::LOCK_SCREEN);
     assert_eq!(Role::InputPanel.required_rights(), Rights::INPUT_METHOD);
     assert_eq!(Role::Overlay.required_rights(), Rights::OVERLAY);
+    assert_eq!(Role::SystemDialog.required_rights(), Rights::SYSTEM_DIALOG);
     assert_eq!(
         Role::Panel {
             edge: Edge::Top,

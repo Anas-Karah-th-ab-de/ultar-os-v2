@@ -1,0 +1,23 @@
+# Native compositor (ultar-compositor): shows the windows of app processes
+# (ultar-surface protocol). Started by hand until the surface (ultar-shell)
+# moves onto it - both would drive the display: ultar-ctl start compositor
+editions = ["phone", "desktop"]
+manual = true
+exec = "/usr/bin/ultar-compositor"
+args = [
+    "--socket", "/run/ultar/ui/compositor.sock",
+    "--rights", "/etc/ultar/compositor-rights.toml",
+]
+# Identity and rights: its own user (811). Clients are told apart by their
+# kernel user ids (SO_PEERCRED); the rights table names user ids and refuses
+# root, so no client gets ui.* rights by running as root.
+# right raw_device: the display (DRM/KMS or fb0) and the input devices
+user = 811
+public_dirs = ["/run/ultar/ui"]
+rights = ["raw_device"]
+notify = true
+restart = "on-failure"
+
+[cgroup]
+"pids.max" = "16"
+"cpu.weight" = "200"

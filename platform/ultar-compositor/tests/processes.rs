@@ -31,10 +31,16 @@ fn two_processes_snapshot_focus_and_keys() {
     let mut blue = spawn(testclient(), &[s, "solid", "3050c0", "Blue"]);
     assert!(blue.wait_line(&mut comp, "drawn", WAIT));
     assert!(pump_until(&mut comp, WAIT, |c| mapped(c) == 2));
+    // Blue opened inactive (no user action on it); the user clicks its
+    // title bar.
+    assert_eq!(comp.state.focus, Some(comp.state.windows[0].key));
+    let fb = comp.state.windows[1].frame;
+    click(&mut comp, f64::from(fb.x + fb.w / 2), f64::from(fb.y + 10));
+    assert!(blue.wait_line(&mut comp, "focus 1", WAIT));
     comp.render_now();
     let frame = comp.frame(OutputId(0)).unwrap().clone();
     assert_snapshot("two_windows_en", &frame);
-    // Blue (newest) has focus; click on red's visible part.
+    // Blue has focus; click on red's visible part.
     let red_key = comp.state.windows[0].key;
     let wr = comp.state.windows[0].content();
     click(&mut comp, f64::from(wr.x + 4), f64::from(wr.y + 4));

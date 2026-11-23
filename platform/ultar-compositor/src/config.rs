@@ -11,18 +11,30 @@ use ultar_ui::Lang;
 pub struct Limits {
     /// Connected clients.
     pub clients: usize,
+    /// Connections one user id without rights may hold.
+    pub clients_per_uid: usize,
+    /// Of [`Limits::clients`], the slots only user ids with rights (shell,
+    /// lock screen, input method) may take.
+    pub reserved_clients: usize,
     /// Surfaces per client.
     pub surfaces: usize,
     /// Buffers per client.
     pub buffers: usize,
     /// Pixel memory per client (buffers + committed surface copies).
     pub client_bytes: u64,
+    /// Pixel memory of all clients together.
+    pub total_bytes: u64,
+    /// Popups per toplevel window.
+    pub popups: usize,
     /// Unsent events per client before it is dropped as too slow.
     pub out_bytes: usize,
     /// Bytes read from one client per loop turn (fairness).
     pub read_slice: usize,
     /// Size of one clipboard or drop transfer.
     pub transfer_bytes: usize,
+    /// Bytes queued for a transfer's reader before the source is no longer
+    /// read (flow control).
+    pub transfer_queue: usize,
     /// Milliseconds a transfer may take.
     pub transfer_ms: u64,
     /// Milliseconds without `Pong` before a window is "not responding".
@@ -35,12 +47,17 @@ impl Default for Limits {
     fn default() -> Self {
         Limits {
             clients: 64,
+            clients_per_uid: 8,
+            reserved_clients: 8,
             surfaces: 64,
             buffers: 64,
             client_bytes: 256 << 20,
+            total_bytes: 1 << 30,
+            popups: 8,
             out_bytes: 8 << 20,
             read_slice: 2 << 20,
             transfer_bytes: 16 << 20,
+            transfer_queue: 2 << 20,
             transfer_ms: 10_000,
             ping_ms: 5_000,
             serial_ms: 10_000,
@@ -89,6 +106,11 @@ pub enum RightsError {
     Syntax(usize),
     /// A right name is unknown.
     UnknownName(usize),
+    /// A user id appears twice.
+    Duplicate(usize),
+    /// Rights for root (0) or the unknown id (`u32::MAX`) without
+    /// `--allow-root`: services and apps have ids of their own.
+    Privileged(usize),
 }
 
 impl std::fmt::Display for RightsError {
@@ -96,6 +118,8 @@ impl std::fmt::Display for RightsError {
         match self {
             RightsError::Syntax(line) => write!(f, "compositor.rights.syntax ({line})"),
             RightsError::UnknownName(line) => write!(f, "compositor.rights.unknown ({line})"),
+            RightsError::Duplicate(line) => write!(f, "compositor.rights.duplicate ({line})"),
+            RightsError::Privileged(line) => write!(f, "compositor.rights.privileged ({line})"),
         }
     }
 }
@@ -111,17 +135,26 @@ pub struct RightsTable {
 }
 
 /// Manifest name of each right.
-pub const PERMISSION_NAMES: [(&str, Rights); 5] = [
+pub const PERMISSION_NAMES: [(&str, Rights); 6] = [
     ("ui.shell", Rights::SHELL),
     ("ui.input-method", Rights::INPUT_METHOD),
     ("ui.lock-screen", Rights::LOCK_SCREEN),
     ("ui.capture", Rights::CAPTURE),
     ("ui.overlay", Rights::OVERLAY),
+    ("ui.system-dialog", Rights::SYSTEM_DIALOG),
 ];
 
 impl RightsTable {
     /// Parses lines `1001 = "ui.shell,ui.capture"`; `#` starts a comment.
+    /// Root and the unknown id are refused (see [`RightsTable::parse_with`]).
     pub fn parse(text: &str) -> Result<RightsTable, RightsError> {
+        RightsTable::parse_with(text, false)
+    }
+
+    /// Parses a rights file; `allow_root` accepts rights for uid 0 (for
+    /// development systems where everything runs as root). A user id may
+    /// appear once; `u32::MAX` (credentials unknown) never gets rights.
+    pub fn parse_with(text: &str, allow_root: bool) -> Result<RightsTable, RightsError> {
         let mut table = RightsTable::default();
         for (n, raw) in text.lines().enumerate() {
             let line = raw.split('#').next().unwrap_or("").trim();
@@ -130,6 +163,12 @@ impl RightsTable {
             }
             let (uid, value) = line.split_once('=').ok_or(RightsError::Syntax(n + 1))?;
             let uid: u32 = uid.trim().parse().map_err(|_| RightsError::Syntax(n + 1))?;
+            if uid == u32::MAX || (uid == 0 && !allow_root) {
+                return Err(RightsError::Privileged(n + 1));
+            }
+            if table.by_uid.contains_key(&uid) {
+                return Err(RightsError::Duplicate(n + 1));
+            }
             let value = value.trim();
             let names = value
                 .strip_prefix('"')
@@ -188,6 +227,20 @@ mod tests {
             Err(RightsError::UnknownName(2))
         );
         assert!(RightsError::Syntax(3).to_string().contains('3'));
+        assert_eq!(
+            RightsTable::parse("7 = \"\"\n7 = \"ui.shell\""),
+            Err(RightsError::Duplicate(2))
+        );
+        assert_eq!(
+            RightsTable::parse("0 = \"ui.capture\""),
+            Err(RightsError::Privileged(1))
+        );
+        assert_eq!(
+            RightsTable::parse_with("4294967295 = \"\"", true),
+            Err(RightsError::Privileged(1))
+        );
+        let root = RightsTable::parse_with("0 = \"ui.system-dialog\"", true).unwrap();
+        assert_eq!(root.rights_of(0), Rights::SYSTEM_DIALOG);
         let mut t = RightsTable::default();
         t.grant(5, Rights::LOCK_SCREEN);
         t.grant(5, Rights::OVERLAY);

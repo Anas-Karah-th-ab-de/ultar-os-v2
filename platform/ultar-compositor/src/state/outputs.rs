@@ -52,5 +52,16 @@ impl State {
             self.configure_layer(key);
         }
         self.damage_all();
+        let (px, py) = (self.pointer.x.floor() as i32, self.pointer.y.floor() as i32);
+        if !self
+            .layout
+            .enabled()
+            .any(|o| o.logical_rect().contains(px, py))
+        {
+            // The display under the pointer is gone: to the primary's middle.
+            if let Some(r) = self.layout.primary().map(|o| o.logical_rect()) {
+                self.pointer_to(f64::from(r.x + r.w / 2), f64::from(r.y + r.h / 2));
+            }
+        }
     }
 }

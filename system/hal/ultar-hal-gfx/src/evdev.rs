@@ -50,6 +50,8 @@ const REL_X: u16 = 0;
 const REL_Y: u16 = 1;
 const REL_HWHEEL: u16 = 6;
 const REL_WHEEL: u16 = 8;
+/// Keys and buttons remembered as held.
+const MAX_HELD: usize = 32;
 /// Touch slots tracked.
 const SLOTS: usize = 10;
 
@@ -97,6 +99,7 @@ pub struct Decoder {
     abs_changed: bool,
     slot: usize,
     slots: [Slot; SLOTS],
+    held: Vec<u16>,
 }
 
 impl Decoder {
@@ -119,6 +122,7 @@ impl Decoder {
             abs_changed: false,
             slot: 0,
             slots: [Slot::default(); SLOTS],
+            held: Vec::new(),
         }
     }
 
@@ -168,7 +172,17 @@ impl Decoder {
         }
     }
 
+    /// Remembers which keys and buttons are down (released at `SYN_DROPPED`).
+    fn track(&mut self, code: u16, value: i32) {
+        if value == 0 {
+            self.held.retain(|&c| c != code);
+        } else if value == 1 && !self.held.contains(&code) && self.held.len() < MAX_HELD {
+            self.held.push(code);
+        }
+    }
+
     fn key(&mut self, time_us: u64, code: u16, value: i32) {
+        self.track(code, value);
         let button = match code {
             BTN_LEFT => Some(PointerButton::Primary),
             BTN_RIGHT => Some(PointerButton::Secondary),
@@ -275,9 +289,37 @@ impl Decoder {
         out.append(&mut self.pending);
     }
 
+    /// Events were lost: nothing is held any more (a release may have been
+    /// among the lost events), touches are cancelled.
     fn dropped(&mut self, time_us: u64, out: &mut Vec<InputEvent>) {
         self.pending.clear();
         self.rel = (0, 0);
+        for code in std::mem::take(&mut self.held) {
+            let kind = match code {
+                BTN_LEFT => InputEventKind::PointerButton {
+                    button: PointerButton::Primary,
+                    pressed: false,
+                },
+                BTN_RIGHT => InputEventKind::PointerButton {
+                    button: PointerButton::Secondary,
+                    pressed: false,
+                },
+                BTN_MIDDLE => InputEventKind::PointerButton {
+                    button: PointerButton::Middle,
+                    pressed: false,
+                },
+                0x113..=0x11f => InputEventKind::PointerButton {
+                    button: PointerButton::Other(code),
+                    pressed: false,
+                },
+                BTN_TOUCH => continue,
+                _ => InputEventKind::Key {
+                    code,
+                    state: KeyState::Released,
+                },
+            };
+            self.push(time_us, kind);
+        }
         if self.slots.iter().any(|s| s.active) {
             self.push(time_us, InputEventKind::TouchCancel);
         }
@@ -286,205 +328,9 @@ impl Decoder {
     }
 }
 
-struct Device {
-    info: InputDeviceInfo,
-    file: File,
-    decoder: Decoder,
-    partial: Vec<u8>,
-}
-
-/// All event devices of the machine.
-pub struct Evdev {
-    devices: Mutex<Vec<Device>>,
-}
-
-impl std::fmt::Debug for Evdev {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Evdev")
-    }
-}
-
-const fn ioc_read(nr: u32, len: u32) -> rustix::ioctl::Opcode {
-    (0x8000_0000 | (len << 16) | (0x45 << 8) | nr) as rustix::ioctl::Opcode
-}
-
-/// Issues one reading `ioctl` whose opcode is a constant.
-macro_rules! read_ioctl {
-    ($file:expr, $nr:expr, $len:expr, $value:expr) => {
-        // SAFETY: an `EVIOCG*` request of `$len` bytes; the kernel writes at
-        // most that many bytes into `$value`, whose type has exactly that size.
-        unsafe {
-            rustix::ioctl::ioctl(
-                $file,
-                rustix::ioctl::Updater::<{ ioc_read($nr, $len) }, _>::new($value),
-            )
-        }
-        .is_ok()
-    };
-}
-
-fn bits(file: &File, event_type: u16, out: &mut [u8; 96]) -> bool {
-    match event_type {
-        0 => read_ioctl!(file, 0x20, 96, out),
-        EV_KEY => read_ioctl!(file, 0x21, 96, out),
-        _ => read_ioctl!(file, 0x23, 96, out),
-    }
-}
-
-fn axis(file: &File, code: u16) -> Option<AxisRange> {
-    let mut info = [0i32; 6];
-    let ok = match code {
-        ABS_X => read_ioctl!(file, 0x40, 24, &mut info),
-        ABS_Y => read_ioctl!(file, 0x41, 24, &mut info),
-        ABS_MT_POSITION_X => read_ioctl!(file, 0x75, 24, &mut info),
-        ABS_MT_POSITION_Y => read_ioctl!(file, 0x76, 24, &mut info),
-        _ => false,
-    };
-    ok.then_some(AxisRange {
-        min: info[1],
-        max: info[2],
-    })
-}
-
-fn has(bits: &[u8; 96], bit: u16) -> bool {
-    bits.get(usize::from(bit / 8))
-        .is_some_and(|b| b & (1 << (bit % 8)) != 0)
-}
-
-/// Decides the kind of a device from its capability bits; `None` when the
-/// kernel does not answer `EVIOCGBIT` (the Ultar kernel).
-fn classify(file: &File) -> Option<(InputDeviceKind, bool)> {
-    let (mut types, mut keys, mut abs) = ([0u8; 96], [0u8; 96], [0u8; 96]);
-    if !bits(file, 0, &mut types) {
-        return None;
-    }
-    bits(file, EV_KEY, &mut keys);
-    bits(file, EV_ABS, &mut abs);
-    let kind = if has(&types, EV_ABS) && has(&abs, ABS_MT_SLOT) {
-        (InputDeviceKind::Touchscreen, true)
-    } else if has(&types, EV_ABS) && has(&keys, BTN_TOUCH) {
-        (InputDeviceKind::Touchscreen, false)
-    } else if has(&types, EV_REL) || (has(&types, EV_ABS) && has(&keys, BTN_LEFT)) {
-        (InputDeviceKind::Mouse, false)
-    } else if has(&keys, 30) {
-        (InputDeviceKind::Keyboard, false)
-    } else {
-        (InputDeviceKind::Buttons, false)
-    };
-    Some(kind)
-}
-
-impl Evdev {
-    /// Opens every readable `event*` device below [`INPUT_DIR`].
-    pub fn open_all() -> Result<Evdev, GfxError> {
-        let mut paths: Vec<PathBuf> = Vec::new();
-        for index in 0..MAX_DEVICES {
-            let path = Path::new(INPUT_DIR).join(format!("event{index}"));
-            if path.exists() {
-                paths.push(path);
-            }
-        }
-        Evdev::open_paths(&paths)
-    }
-
-    /// Opens the given event devices; unreadable ones are skipped.
-    pub fn open_paths(paths: &[PathBuf]) -> Result<Evdev, GfxError> {
-        let mut devices = Vec::new();
-        for path in paths.iter().take(MAX_DEVICES) {
-            let Ok(file) = OpenOptions::new()
-                .read(true)
-                .custom_flags(O_NONBLOCK)
-                .open(path)
-            else {
-                continue;
-            };
-            let id = InputDeviceId(devices.len() as u32);
-            let x_axis = axis(&file, ABS_X);
-            let (kind, multitouch) = classify(&file).unwrap_or(if x_axis.is_some() {
-                (InputDeviceKind::Mouse, false)
-            } else {
-                (InputDeviceKind::Keyboard, false)
-            });
-            let (x_code, y_code) = if multitouch {
-                (ABS_MT_POSITION_X, ABS_MT_POSITION_Y)
-            } else {
-                (ABS_X, ABS_Y)
-            };
-            let unit = AxisRange { min: 0, max: 65535 };
-            let x = axis(&file, x_code).unwrap_or(unit);
-            let y = axis(&file, y_code).unwrap_or(unit);
-            let decoder = Decoder::new(id, x, y, multitouch);
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            devices.push(Device {
-                info: InputDeviceInfo {
-                    id,
-                    kind,
-                    name,
-                    internal: true,
-                },
-                file,
-                decoder,
-                partial: Vec::new(),
-            });
-        }
-        if devices.is_empty() {
-            return Err(GfxError::NoDevice);
-        }
-        Ok(Evdev {
-            devices: Mutex::new(devices),
-        })
-    }
-
-    /// Duplicated descriptors of the devices for the caller's `poll` loop
-    /// (readable = [`Input::poll`] has events).
-    pub fn poll_handles(&self) -> Vec<OwnedFd> {
-        let Ok(devices) = self.devices.lock() else {
-            return Vec::new();
-        };
-        devices
-            .iter()
-            .filter_map(|d| d.file.try_clone().ok().map(OwnedFd::from))
-            .collect()
-    }
-}
-
-impl Input for Evdev {
-    fn devices(&self) -> HalResult<Vec<InputDeviceInfo>> {
-        let devices = self.devices.lock().map_err(|_| HalError::Busy)?;
-        Ok(devices.iter().map(|d| d.info.clone()).collect())
-    }
-
-    /// Reads what is there without blocking (`timeout_ms` is not waited:
-    /// the compositor waits on [`Evdev::poll_handles`]).
-    fn poll(&self, _timeout_ms: u32) -> HalResult<Vec<InputEvent>> {
-        let mut devices = self.devices.lock().map_err(|_| HalError::Busy)?;
-        let mut out = Vec::new();
-        let mut buf = [0u8; RECORD * 64];
-        for device in devices.iter_mut() {
-            loop {
-                match device.file.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        device.partial.extend_from_slice(&buf[..n]);
-                        let whole = device.partial.len() / RECORD * RECORD;
-                        for chunk in device.partial[..whole].chunks_exact(RECORD) {
-                            let mut record = [0u8; RECORD];
-                            record.copy_from_slice(chunk);
-                            device.decoder.feed(&record, &mut out);
-                        }
-                        device.partial.drain(..whole);
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
-                }
-            }
-        }
-        Ok(out)
-    }
-}
+#[path = "evdev_devices.rs"]
+mod devices;
+pub use devices::Evdev;
 
 #[cfg(test)]
 #[path = "evdev_tests.rs"]

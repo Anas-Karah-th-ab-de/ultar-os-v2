@@ -34,5 +34,6 @@ pub mod fbdev;
 pub mod fdpass;
 pub mod kms;
 pub mod shm;
+pub mod uevent;
 
 pub use error::GfxError;

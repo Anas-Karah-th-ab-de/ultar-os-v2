@@ -218,9 +218,27 @@ fn files_that_are_not_devices_are_read_as_records() {
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].kind, InputDeviceKind::Keyboard);
     assert_eq!(evdev.poll_handles().len(), 1);
-    let events = evdev.poll(0).unwrap();
-    assert_eq!(events.len(), 1);
+    // The file ends (a device that is gone): the key is read, then released
+    // and the device reported removed and dropped from the poll set.
+    let kinds: Vec<_> = evdev.poll(0).unwrap().into_iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            InputEventKind::Key {
+                code: 30,
+                state: KeyState::Pressed
+            },
+            InputEventKind::Key {
+                code: 30,
+                state: KeyState::Released
+            },
+            InputEventKind::DeviceRemoved,
+        ]
+    );
     assert!(evdev.poll(0).unwrap().is_empty());
+    assert!(evdev.poll_handles().is_empty());
+    assert!(evdev.devices().unwrap().is_empty());
+    assert!(Evdev::empty().poll_handles().is_empty());
     std::fs::remove_file(&path).unwrap();
     assert_eq!(
         Evdev::open_paths(&[PathBuf::from("/nonexistent/event0")]).err(),

@@ -42,10 +42,18 @@ impl State {
     }
 
     pub(super) fn begin_move(&mut self, key: SurfaceKey) {
+        self.begin_move_at(key, None);
+    }
+
+    /// Starts moving a window; `anchor` is the point that was grabbed (the
+    /// press position, so the motion up to the drag threshold is kept).
+    pub(super) fn begin_move_at(&mut self, key: SurfaceKey, anchor: Option<(f64, f64)>) {
         let Some(i) = self.window_index(key) else {
             return;
         };
-        if self.windows[i].state != WindowState::Normal || self.windows[i].snap.is_some() {
+        let restored =
+            self.windows[i].state != WindowState::Normal || self.windows[i].snap.is_some();
+        if restored {
             // Dragging a maximised or snapped window restores it under the pointer.
             let restore = self.windows[i].restore;
             let frame = self.windows[i].frame;
@@ -63,11 +71,17 @@ impl State {
         let f = self.windows[i]
             .pending
             .map_or(self.windows[i].frame, |p| p.1);
-        let offset = (
-            self.pointer.x - f64::from(f.x),
-            self.pointer.y - f64::from(f.y),
-        );
+        let pointer = (self.pointer.x, self.pointer.y);
+        let (ax, ay) = if restored {
+            pointer
+        } else {
+            anchor.unwrap_or(pointer)
+        };
+        let offset = (ax - f64::from(f.x), ay - f64::from(f.y));
         self.pointer.grab = Some(PointerGrab::Move { key, offset });
+        if anchor.is_some_and(|a| a != pointer) && !restored {
+            self.drag_window(key, offset);
+        }
     }
 
     pub(super) fn drag_window(&mut self, key: SurfaceKey, offset: (f64, f64)) {

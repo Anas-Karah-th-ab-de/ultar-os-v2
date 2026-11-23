@@ -81,6 +81,21 @@ impl Transfers {
         }
     }
 
+    /// Ends a drag without a drop (the session was locked).
+    pub fn cancel_drag(&mut self) {
+        self.drag = None;
+    }
+
+    /// Readers of the transfers `source` is sending (flow control: the
+    /// source is not read while one of them has too much queued).
+    pub fn readers_of(&self, source: ClientId) -> Vec<ClientId> {
+        self.active
+            .values()
+            .filter(|t| t.source == source)
+            .map(|t| t.dest)
+            .collect()
+    }
+
     /// Transfers whose destination must be told they ended.
     pub fn take_cancelled(&mut self) -> Vec<(ClientId, TransferId)> {
         std::mem::take(&mut self.cancelled)
@@ -193,6 +208,18 @@ impl State {
             }
             _ => Err(ErrorCode::Malformed),
         }
+    }
+
+    /// True while a reader of `client`'s transfers has more than
+    /// [`crate::config::Limits::transfer_queue`] bytes queued: the loop
+    /// does not read `client` then (its socket fills and it waits).
+    pub fn throttled(&self, client: ClientId) -> bool {
+        let limit = self.config.limits.transfer_queue;
+        self.transfers.readers_of(client).iter().any(|dest| {
+            self.clients
+                .get(dest)
+                .is_some_and(|c| c.conn.pending() > limit)
+        })
     }
 
     fn begin_transfer(

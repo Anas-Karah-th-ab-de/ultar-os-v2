@@ -96,7 +96,8 @@ fn config(args: &Args, lang: Lang) -> Result<Config, MsgKey> {
     }
     if let Some(path) = &args.rights {
         let body = std::fs::read_to_string(path).map_err(|_| MsgKey::RightsRejected)?;
-        config.rights = RightsTable::parse(&body).map_err(|_| MsgKey::RightsRejected)?;
+        config.rights =
+            RightsTable::parse_with(&body, args.allow_root).map_err(|_| MsgKey::RightsRejected)?;
     }
     Ok(config)
 }

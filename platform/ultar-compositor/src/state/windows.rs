@@ -37,6 +37,11 @@ pub struct Window {
     pub pressed: Option<Button>,
     /// Rendered title bar and what it was rendered for.
     pub title_cache: Option<(TitleKey, Image)>,
+    /// A system dialog (trusted path): stacked above the panels, modal,
+    /// marked with the lock icon in a title bar apps cannot cover.
+    pub secure: bool,
+    /// Focus when mapped (a valid activation token was presented).
+    pub activate_on_map: bool,
 }
 
 impl Window {
@@ -54,6 +59,8 @@ impl Window {
             hover: None,
             pressed: None,
             title_cache: None,
+            secure: false,
+            activate_on_map: false,
         }
     }
 
@@ -151,7 +158,12 @@ impl State {
     }
 
     pub(super) fn create_toplevel(&mut self, key: SurfaceKey) {
-        self.windows.push(Window::new(key));
+        let secure = self
+            .surface(key)
+            .is_some_and(|s| s.role == Role::SystemDialog);
+        let mut window = Window::new(key);
+        window.secure = secure;
+        self.windows.push(window);
         let Some(output) = self.layout.primary().map(|o| o.id) else {
             return;
         };
@@ -162,7 +174,17 @@ impl State {
         );
         let limits = self.surface(key).map(|s| s.limits).unwrap_or_default();
         let (w, h) = wm::clamp_size(size.0, size.1, limits.min, limits.max, work);
-        let frame = wm::place_new(work, w, h, TITLEBAR, self.windows.len().saturating_sub(1));
+        let frame = if secure {
+            let (fw, fh) = (w / 2, h / 2 + TITLEBAR);
+            Rect::new(
+                work.x + (work.w - fw) / 2,
+                work.y + (work.h - fh) / 2,
+                fw,
+                fh,
+            )
+        } else {
+            wm::place_new(work, w, h, TITLEBAR, self.windows.len().saturating_sub(1))
+        };
         if let Some(i) = self.window_index(key) {
             self.windows[i].pending = None;
             self.windows[i].frame = frame;
@@ -219,6 +241,9 @@ impl State {
             let area = self.windows[index].painted_area();
             self.windows[index].mapped = false;
             self.damage_logical(area);
+            if self.windows[index].secure {
+                self.damage_all();
+            }
             return None;
         };
         let before = self.windows[index].painted_area();
@@ -243,7 +268,7 @@ impl State {
         }
         if !was_mapped {
             self.damage_logical(after);
-            self.focus_window(key);
+            self.window_mapped(index);
             return None;
         }
         if before != after {
@@ -251,6 +276,21 @@ impl State {
             return None;
         }
         Some(self.windows[index].content())
+    }
+
+    /// A window appeared: system dialogs and windows of the app the user
+    /// works with (or with an activation token) get the focus; any other
+    /// window opens inactive (keys stay where the user typed).
+    fn window_mapped(&mut self, index: usize) {
+        let w = &mut self.windows[index];
+        let (key, secure) = (w.key, w.secure);
+        let token = std::mem::replace(&mut w.activate_on_map, false);
+        if secure {
+            self.damage_all();
+        }
+        if secure || token || self.may_take_focus(key.client) {
+            self.focus_window(key);
+        }
     }
 
     /// Raises a window and gives it the keyboard focus.
@@ -272,6 +312,7 @@ impl State {
         }
         let old = self.focus;
         self.focus = key;
+        self.session.focus_serial = self.next_serial();
         for (k, focused) in [(old, false), (key, true)] {
             let Some(k) = k else { continue };
             self.send(
@@ -313,7 +354,20 @@ impl State {
     /// Changes the state of a window (the compositor decides; the client
     /// draws the new size when it gets the configure).
     pub fn set_window_state(&mut self, index: usize, state: WindowState, snap: Option<Snap>) {
-        let Some(w) = self.windows.get(index) else {
+        self.set_state_by(index, state, snap, true);
+    }
+
+    /// Changes the state; `by_user` is false for an app's own request (a
+    /// restored window then gets the focus only if it may take it). System
+    /// dialogs stay as they are.
+    pub(super) fn set_state_by(
+        &mut self,
+        index: usize,
+        state: WindowState,
+        snap: Option<Snap>,
+        by_user: bool,
+    ) {
+        let Some(w) = self.windows.get(index).filter(|w| !w.secure) else {
             return;
         };
         let (key, old_state, frame) = (w.key, w.state, w.frame);
@@ -355,7 +409,7 @@ impl State {
         };
         self.damage_logical(area);
         self.configure_window(index, target);
-        if old_state == WindowState::Minimized {
+        if old_state == WindowState::Minimized && (by_user || self.may_take_focus(key.client)) {
             self.focus_window(key);
         }
     }
@@ -400,6 +454,9 @@ impl State {
             let w = self.windows.remove(i);
             if w.visible() {
                 self.damage_logical(w.painted_area());
+            }
+            if w.secure {
+                self.damage_all();
             }
         }
         if let Some(area) = self.layer_rect(key) {

@@ -37,8 +37,10 @@ pub struct Output {
     pub height: u32,
     /// Refresh rate in millihertz.
     pub refresh_millihertz: u32,
-    /// Device pixels per logical point × 1000.
+    /// Device pixels per logical point × 1000 (in effect).
     pub scale_milli: u32,
+    /// The scale the user chose (mirror mode overrides it for a while).
+    pub user_scale_milli: u32,
     /// Position in the global layout (logical points).
     pub x: i32,
     /// Position in the global layout (logical points).
@@ -147,6 +149,7 @@ impl Layout {
             height: size.1,
             refresh_millihertz: refresh_millihertz.max(1000),
             scale_milli: suggested_scale(size.0, width_mm),
+            user_scale_milli: suggested_scale(size.0, width_mm),
             x: 0,
             y: 0,
             primary,
@@ -180,6 +183,7 @@ impl Layout {
             return false;
         };
         o.scale_milli = stepped;
+        o.user_scale_milli = stepped;
         self.arrange();
         true
     }
@@ -217,6 +221,9 @@ impl Layout {
         // Primary first, then the others in connection order, left to right
         // (physical arrangement; the user can drag them in Settings later).
         self.outputs.sort_by_key(|o| (!o.primary, o.id));
+        for o in &mut self.outputs {
+            o.scale_milli = o.user_scale_milli;
+        }
         let primary_size = self.outputs.first().map(|o| o.logical_size());
         let mut x = 0;
         for o in &mut self.outputs {

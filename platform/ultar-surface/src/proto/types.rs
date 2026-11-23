@@ -157,6 +157,10 @@ pub enum Role {
     Background,
     /// Notifications and other surfaces above windows.
     Overlay,
+    /// A system dialog (password, permission prompt): above every window,
+    /// everything else dimmed, title bar with the compositor's lock mark
+    /// that no app can get.
+    SystemDialog,
 }
 
 impl Role {
@@ -189,6 +193,9 @@ impl Role {
             Role::Overlay => {
                 w.u8(6);
             }
+            Role::SystemDialog => {
+                w.u8(7);
+            }
         }
     }
 
@@ -217,6 +224,7 @@ impl Role {
             4 => Role::Lock,
             5 => Role::Background,
             6 => Role::Overlay,
+            7 => Role::SystemDialog,
             _ => return Err(WireError::BadValue),
         })
     }
@@ -229,6 +237,7 @@ impl Role {
             Role::InputPanel => Rights::INPUT_METHOD,
             Role::Lock => Rights::LOCK_SCREEN,
             Role::Overlay => Rights::OVERLAY,
+            Role::SystemDialog => Rights::SYSTEM_DIALOG,
         }
     }
 }
@@ -294,8 +303,10 @@ impl Rights {
     pub const CAPTURE: Rights = Rights(8);
     /// Surfaces above windows (notifications).
     pub const OVERLAY: Rights = Rights(16);
+    /// System dialogs (password, permission prompts) with the trusted mark.
+    pub const SYSTEM_DIALOG: Rights = Rights(32);
     /// Every right.
-    pub const ALL: Rights = Rights(31);
+    pub const ALL: Rights = Rights(63);
 
     /// True if every bit of `other` is set.
     pub const fn contains(self, other: Rights) -> bool {
