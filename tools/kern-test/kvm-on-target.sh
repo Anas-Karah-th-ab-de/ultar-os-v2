@@ -14,10 +14,13 @@ for f in "$BINS"/*; do mcopy -i "$W/esp.img" "$f" ::/bin/; done
 head -c 262144 /dev/zero | tr '\0' ' ' > "$W/log.txt"; mcopy -i "$W/esp.img" "$W/log.txt" ::/ultar-kern/selbsttest.txt
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$W/vars.fd"
 SMB=(); for t in /sys/firmware/dmi/tables/smbios_entry_point; do [ -r "$t" ] && cat /sys/firmware/dmi/tables/DMI > "$W/dmi.bin" && SMB=(-smbios "file=$W/dmi.bin"); done
-timeout 240 qemu-system-x86_64 -enable-kvm -machine q35 -cpu host -smp "$(nproc)" -m 4096 -display none -no-reboot \
+ACCEL="${ACCEL:-kvm}"; CPU="${CPU:-host}"; SMPN="${SMPN:-$(nproc)}"
+if [ "$ACCEL" = kvm ]; then ACC=(-enable-kvm); else ACC=(); fi
+timeout "${LIMIT:-240}" qemu-system-x86_64 "${ACC[@]}" -machine q35 -cpu "$CPU" -smp "$SMPN" -m 4096 -display none -no-reboot \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive "if=pflash,format=raw,file=$W/vars.fd" \
   -drive "file=$W/esp.img,if=none,id=b,format=raw" -device nvme,drive=b,serial=ultartest \
   -netdev user,id=n -device e1000e,netdev=n "${SMB[@]}" -serial "file:$W/serial.log" -monitor none || true
 mcopy -o -i "$W/esp.img" ::/ultar-kern/selbsttest.txt "$W/out.txt"
 if grep -aq "Selbsttest" "$W/out.txt"; then tr -d '\0' < "$W/out.txt" | sed 's/ *$//' | grep -av '^$'; else echo "NO LOG – serial output:"; tail -40 "$W/serial.log"; exit 1; fi
+if [ "${SERIAL:-0}" = 1 ]; then echo "--- serial (last 80 lines) ---"; tail -80 "$W/serial.log"; fi
 rm -rf "$W"
