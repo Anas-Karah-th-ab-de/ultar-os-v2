@@ -347,6 +347,11 @@ impl Ui {
             arrange(&mut self.nodes, &mut cx, *dialog, frame);
         }
         self.rebuild_order();
+        for index in 0..self.nodes.len() {
+            if matches!(self.nodes[index].widget, Widget::Tabs(_)) {
+                self.keep_tab_visible(NodeId(index as u32));
+            }
+        }
         // What floats hangs on rectangles and text sizes that may have changed.
         self.layers.tip = None;
         self.replace_menu();

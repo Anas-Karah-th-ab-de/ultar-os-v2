@@ -3,18 +3,23 @@
 mod access;
 mod access_tree;
 mod clock;
+mod edit;
 mod error;
+mod frame;
 mod layers;
 mod measure;
 mod menus;
 mod modal;
 mod render;
 mod scrolling;
+mod settings;
 mod state;
 mod toasts;
 mod tree;
 
-pub use access::{A11yNode, A11yState, Role};
+pub use access::{
+    A11yNode, A11yState, Role, CELL_PARTS, MENU_LEVEL_PARTS, MENU_PARTS, TOAST_PARTS,
+};
 pub use error::UiError;
 
 pub(crate) use layers::{Drag, DragKind, Layers, MenuOrigin, MenuState, PaintStep, Tip};
@@ -23,10 +28,10 @@ use crate::geom::{Rect, Size};
 use crate::layout::{Flex, LogicalRect, Sizing};
 use crate::paint::{PaintEnv, Resources};
 use crate::text::TextEngine;
-use crate::tokens::{ColorRole, InputMode, SizeClass, Space, ThemeKind};
+use crate::tokens::{ColorRole, InputMode, SizeClass, Space};
 use crate::widgets::{Label, Menu, Widget};
 use std::cell::RefCell;
-use ultar_i18n::{Direction, Lang, Translator};
+use ultar_i18n::{Lang, Translator};
 
 /// Most nodes one tree may hold.
 pub const MAX_NODES: usize = 4096;
@@ -64,6 +69,10 @@ pub(crate) struct Node {
     pub(crate) context_menu: Option<Box<Menu>>,
     /// The node can be dragged (`Ui::set_draggable`).
     pub(crate) draggable: bool,
+    /// A drag may end on this node (`Ui::set_drop_target`).
+    pub(crate) drop_target: bool,
+    /// Removed by `Ui::remove`; its identifier is not reused.
+    pub(crate) removed: bool,
     /// The nearest scroll container or dialog above this node (set by the layout): the
     /// node is drawn and hit only inside that ancestor's rectangle.
     pub(crate) clip_parent: Option<NodeId>,
@@ -113,6 +122,8 @@ pub(crate) struct InputState {
     pub(crate) focus_hint: Option<NodeId>,
     /// Modifier keys held.
     pub(crate) modifiers: crate::event::Modifiers,
+    /// The node a middle press landed on (a middle click is reported on release over it).
+    pub(crate) middle: Option<NodeId>,
 }
 
 impl InputState {
@@ -277,103 +288,13 @@ impl Ui {
         self.mode
     }
 
-    /// Resizes the surface.
-    ///
-    /// Sizes must be finite and not negative (`UiError::InvalidSize`); measurements are
-    /// kept (they depend on the available width, which they remember).
-    pub fn set_size(&mut self, size: Size) -> Result<(), UiError> {
-        let valid = |v: f32| v.is_finite() && v >= 0.0;
-        if !(valid(size.w) && valid(size.h)) {
-            return Err(UiError::InvalidSize);
-        }
-        if size != self.size {
-            self.size = size;
-            self.dirty.layout = true;
-            self.dirty.full = true;
-            self.layers.backdrop_stale = true;
-        }
-        Ok(())
-    }
-
-    /// Switches language; the direction follows the language.
-    pub fn set_lang(&mut self, lang: Lang) {
-        self.env.lang = lang;
-        self.env.direction = lang.direction();
-        self.tr.set_lang(lang);
-        self.invalidate_layout();
-    }
-
-    /// Overrides the layout direction without changing the language. Nothing is laid out
-    /// again: logical rectangles are resolved for the new direction when painting. An open
-    /// menu or tooltip closes (its place depends on the direction).
-    pub fn set_direction(&mut self, direction: Direction) {
-        if self.env.direction != direction {
-            self.layers.backdrop_stale = true;
-            self.env.direction = direction;
-            self.layers.menu = None;
-            self.layers.tip = None;
-            self.dirty.full = true;
-        }
-    }
-
-    /// Switches the theme.
-    pub fn set_theme(&mut self, theme: ThemeKind) {
-        if self.env.theme != theme {
-            self.env.theme = theme;
-            self.dirty.full = true;
-            self.layers.backdrop_stale = true;
-        }
-    }
-
-    /// Sets the device pixels per logical point (0.5 to 8).
-    pub fn set_scale(&mut self, scale: f32) -> Result<(), UiError> {
-        if !(scale.is_finite() && (0.5..=8.0).contains(&scale)) {
-            return Err(UiError::InvalidScale);
-        }
-        self.env.scale = scale;
-        self.invalidate_layout();
-        Ok(())
-    }
-
-    /// Switches between pointer and touch target sizes.
-    pub fn set_input_mode(&mut self, mode: InputMode) {
-        if self.mode != mode {
-            self.mode = mode;
-            self.invalidate_layout();
-        }
-    }
-
-    /// The colour role painted behind the tree.
-    pub fn set_background(&mut self, role: ColorRole) {
-        self.background = role;
-        self.dirty.full = true;
-        self.layers.backdrop_stale = true;
-    }
-
-    pub(crate) fn background(&self) -> ColorRole {
-        self.background
-    }
-
-    /// "Reduce motion": knobs jump and progress rings stand still.
-    pub fn set_reduce_motion(&mut self, reduce: bool) {
-        if self.reduce_motion != reduce {
-            self.reduce_motion = reduce;
-            self.dirty.full = true;
-            self.layers.backdrop_stale = true;
-        }
-    }
-
-    pub(crate) fn reduce_motion(&self) -> bool {
-        self.reduce_motion
-    }
-
     /// Forces a new layout with every node measured again, and a full repaint (after
     /// catalog changes).
     pub fn invalidate_layout(&mut self) {
         self.dirty.layout = true;
         self.dirty.remeasure = true;
         self.dirty.full = true;
-        self.layers.backdrop_stale = true;
+        self.layers.backdrop.ready = false;
     }
 
     /// A node changed its size (text, state, children): it and its ancestors are measured
@@ -387,7 +308,7 @@ impl Ui {
         self.dirty.layout = true;
         self.dirty.full = true;
         if !self.inside_open_dialog(id) {
-            self.layers.backdrop_stale = true;
+            self.layers.backdrop.ready = false;
         }
     }
 
@@ -395,7 +316,7 @@ impl Ui {
     pub(crate) fn relayout(&mut self) {
         self.dirty.layout = true;
         self.dirty.full = true;
-        self.layers.backdrop_stale = true;
+        self.layers.backdrop.ready = false;
     }
 
     /// `true` once after a full re-measure was requested; clears the request.
@@ -424,12 +345,12 @@ impl Ui {
     /// dialog is painted again too).
     pub(crate) fn repaint_all(&mut self) {
         self.dirty.full = true;
-        self.layers.backdrop_stale = true;
+        self.layers.backdrop.ready = false;
     }
 
     /// `true` when [`Ui::paint`] has something to draw.
     pub fn needs_paint(&self) -> bool {
-        self.dirty.full || !self.dirty.rects.is_empty()
+        self.dirty.full || !self.dirty.rects.is_empty() || self.layers.backdrop.fresh
     }
 
     /// Marks a logical-point rectangle for repaint.
@@ -446,18 +367,20 @@ impl Ui {
     }
 
     /// Marks a node (with its focus ring and halo) for repaint. A change under the scrim of
-    /// an open dialog also makes the dimmed backdrop stale.
+    /// an open dialog is also recorded for the dimmed backdrop (only that rectangle is
+    /// painted and dimmed again).
     pub(crate) fn touch(&mut self, id: NodeId) {
-        if self.layers.backdrop.is_some()
-            && !self.layers.backdrop_stale
-            && !self.inside_open_dialog(id)
-        {
-            self.layers.backdrop_stale = true;
+        let Some(rect) = self.rect(id).map(|r| r.inflate(Space::S8.points())) else {
+            return;
+        };
+        let behind = self.layers.backdrop.ready && !self.inside_open_dialog(id);
+        if behind && self.layers.backdrop.damage.len() < MAX_DIRTY {
+            self.layers.backdrop.damage.push(rect);
+        } else if behind {
+            self.layers.backdrop.ready = false;
             self.dirty.full = true;
         }
-        if let Some(rect) = self.rect(id) {
-            self.damage(rect.inflate(Space::S8.points()));
-        }
+        self.damage(rect);
     }
 
     /// The physical rectangle of a node in logical points, for the current direction and

@@ -45,9 +45,56 @@ impl Ui {
         match next {
             Some(id) if Some(id) != current || !self.input.focus_visible => {
                 self.set_focus(Some(id), true);
+                // Coming back with Shift+Tab, the show-password button is the first stop.
+                if !forward {
+                    self.set_eye_focus(id, true);
+                }
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Tab inside a password field: from the text to its show-password button (forward)
+    /// or back. `false` when Tab leaves the field.
+    fn eye_step(&mut self, forward: bool) -> bool {
+        let Some(id) = self.input.focus.filter(|id| !self.is_disabled(*id)) else {
+            return false;
+        };
+        let Ok(field) = self.text_field_mut(id) else {
+            return false;
+        };
+        if !field.is_password() || field.eye_focused == forward {
+            if let Ok(field) = self.text_field_mut(id) {
+                field.eye_focused = false;
+            }
+            return false;
+        }
+        self.set_eye_focus(id, forward);
+        true
+    }
+
+    /// Puts the keyboard on (or off) the show-password button of a password field.
+    pub(crate) fn set_eye_focus(&mut self, id: NodeId, on: bool) {
+        if let Ok(field) = self.text_field_mut(id) {
+            if field.is_password() && field.eye_focused != on {
+                field.eye_focused = on;
+                self.touch(id);
+            }
+        }
+    }
+
+    /// Space or Enter on the show-password button shows or hides the password.
+    fn toggle_password(&mut self, id: NodeId) {
+        if self.layers.gestures.reveal.is_some_and(|r| r.0 == id) {
+            self.hide_password();
+            return;
+        }
+        self.hide_password();
+        if let Ok(field) = self.text_field_mut(id) {
+            field.revealed = true;
+            self.layers.gestures.reveal = Some((id, None));
+            self.touch(id);
         }
     }
 
@@ -96,7 +143,8 @@ impl Ui {
             return self.popup_key(key, modifiers, out);
         }
         if key == Key::Tab {
-            return !modifiers.command() && self.move_focus(!modifiers.shift, true);
+            return !modifiers.command()
+                && (self.eye_step(!modifiers.shift) || self.move_focus(!modifiers.shift, true));
         }
         let focus = self.input.focus.filter(|id| !self.is_disabled(*id));
         if let (Some(id), Key::Escape) = (focus, key) {
@@ -161,8 +209,16 @@ impl Ui {
             Key::PageUp | Key::PageDown | Key::Home | Key::End => {
                 focus.is_some_and(|id| self.scroll_key(id, key, false, out))
             }
-            Key::ArrowDown => self.move_focus(true, false),
-            Key::ArrowUp => self.move_focus(false, false),
+            Key::ArrowDown | Key::ArrowUp => {
+                let moved = self.move_focus(key == Key::ArrowDown, false);
+                // Shift+arrow in a multi-selection list extends the selection to the item.
+                if let (true, true, Some(item)) =
+                    (moved, self.input.modifiers.shift, self.input.focus)
+                {
+                    self.mark_list_item(item, super::selection::Mark::Range, out);
+                }
+                moved
+            }
             Key::ArrowLeft | Key::ArrowRight => self.move_focus(self.towards_end(key), false),
             _ => false,
         }
@@ -199,6 +255,9 @@ impl Ui {
     ) -> bool {
         let plain = !modifiers.command();
         match self.nodes[id.index()].widget {
+            Widget::ListItem(_) if key == Key::Space && modifiers.ctrl => {
+                self.mark_list_item(id, super::selection::Mark::Toggle, out)
+            }
             Widget::Button(_)
             | Widget::IconButton(_)
             | Widget::Switch(_)
@@ -222,10 +281,14 @@ impl Ui {
             Widget::Slider(_) => self.slider_key(id, key, out),
             Widget::TextField(_) => self.field_key(id, key, modifiers, out),
             Widget::Scroll(_) => self.scroll_key(id, key, true, out),
-            Widget::Table(_) if plain => {
-                let towards_end = self.towards_end(key);
-                self.table_key(id, key, towards_end, out)
-            }
+            Widget::Table(_) => match self.table_mark_key(id, key, modifiers, out) {
+                Some(done) => done,
+                None if plain => {
+                    let towards_end = self.towards_end(key);
+                    self.table_key(id, key, towards_end, out)
+                }
+                None => false,
+            },
             Widget::Tree(_) if plain => {
                 let towards_end = self.towards_end(key);
                 self.tree_key(id, key, towards_end, out)
@@ -308,6 +371,14 @@ impl Ui {
             return false;
         };
         let base_rtl = field.direction.resolve(ui_direction).is_rtl();
+        if field.eye_focused {
+            if matches!(key, Key::Space | Key::Enter) && !modifiers.command() {
+                self.toggle_password(id);
+                return true;
+            }
+            // Any other key goes to the text again.
+            field.eye_focused = false;
+        }
         let mut changed = false;
         match key {
             Key::Char(_) | Key::Space if modifiers.command() => return false,

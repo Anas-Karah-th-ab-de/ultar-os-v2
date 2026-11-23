@@ -88,6 +88,18 @@ impl Ui {
         if self.input.focus != focus || self.input.focus_visible != visible {
             let previous = std::mem::replace(&mut self.input.focus, focus);
             self.input.focus_visible = visible;
+            if let Some(left) = previous.filter(|p| Some(*p) != focus) {
+                // A password shown by keyboard is hidden when its field loses the focus.
+                if self
+                    .layers
+                    .gestures
+                    .reveal
+                    .is_some_and(|r| r.0 == left && r.1.is_none())
+                {
+                    self.hide_password();
+                }
+                self.set_eye_focus(left, false);
+            }
             if focus.is_some() {
                 self.input.focus_hint = None;
             }
@@ -147,6 +159,7 @@ impl Ui {
                 node: popup.select,
                 kind: ActionKind::Closed,
             });
+            self.rehover();
         }
     }
 

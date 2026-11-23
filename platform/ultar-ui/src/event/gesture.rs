@@ -40,8 +40,9 @@ pub(crate) struct Gestures {
     pub(crate) last_click: Option<(NodeId, u64, Point)>,
     pub(crate) hold: Option<Hold>,
     pub(crate) grab: Option<Grab>,
-    /// A password field shown while its button is held.
-    pub(crate) reveal: Option<(NodeId, Pointer)>,
+    /// A password field shown while its button is held (`Some(pointer)`) or after the
+    /// keyboard toggled it (`None`).
+    pub(crate) reveal: Option<(NodeId, Option<Pointer>)>,
 }
 
 /// Most `Repeated` actions one clock step may produce (a stalled clock must not burst).
@@ -75,7 +76,7 @@ impl Ui {
         let now = self.now_ms;
         if let (Some(1), Ok(field)) = (part, self.text_field_mut(id)) {
             field.revealed = true;
-            self.layers.gestures.reveal = Some((id, pointer));
+            self.layers.gestures.reveal = Some((id, Some(pointer)));
             self.touch(id);
         }
         if self.is_hold_button(id) {
@@ -149,14 +150,24 @@ impl Ui {
         out: &mut Vec<Action>,
     ) -> bool {
         let mut handled = false;
-        if let Some((id, _)) = self.layers.gestures.reveal.filter(|r| r.1 == pointer) {
-            self.layers.gestures.reveal = None;
-            if let Ok(field) = self.text_field_mut(id) {
-                field.revealed = false;
-            }
-            self.touch(id);
+        if self
+            .layers
+            .gestures
+            .reveal
+            .is_some_and(|r| r.1 == Some(pointer))
+        {
+            self.hide_password();
             handled = true;
         }
+        let dropped = self
+            .layers
+            .gestures
+            .grab
+            .filter(|g| g.pointer == pointer && g.active);
+        let target = match (dropped, pos) {
+            (Some(grab), Some(p)) => self.drop_target_at(p, grab.node),
+            _ => None,
+        };
         let gestures = &mut self.layers.gestures;
         if let Some(hold) = gestures.hold.filter(|h| h.pointer == pointer) {
             gestures.hold = None;
@@ -168,7 +179,7 @@ impl Ui {
             if grab.active {
                 let end = pos.unwrap_or(grab.start);
                 let delta = Point::new(end.x - grab.start.x, end.y - grab.start.y);
-                out.push(act(grab.node, ActionKind::DragEnded(delta)));
+                out.push(act(grab.node, ActionKind::DragEnded { delta, target }));
                 handled = true;
             }
         }
@@ -242,5 +253,55 @@ impl Ui {
             .filter(|p| !p.fired)
             .map(|p| p.since.saturating_add(u64::from(motion::LONG_PRESS)));
         [hold, press].into_iter().flatten().min()
+    }
+
+    /// Masks a shown password again (its hold ended or was interrupted, the field lost the
+    /// focus, was disabled or cleared, a dialog opened).
+    pub(crate) fn hide_password(&mut self) {
+        if let Some((id, _)) = self.layers.gestures.reveal.take() {
+            if let Ok(field) = self.text_field_mut(id) {
+                field.revealed = false;
+            }
+            self.touch(id);
+        }
+    }
+
+    /// Ends every gesture without reporting it (a dialog appeared or went, the pointer
+    /// left the surface): holds, drags and long presses stop, a shown password is masked.
+    pub(crate) fn end_gestures(&mut self) {
+        self.hide_password();
+        let gestures = &mut self.layers.gestures;
+        gestures.hold = None;
+        gestures.grab = None;
+        gestures.long_press = None;
+    }
+
+    /// A middle release over the node the middle press landed on: `MiddleClicked` (open in
+    /// a new window, close a tab).
+    pub(crate) fn middle_up(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
+        let Some(id) = self.input.middle.take() else {
+            return false;
+        };
+        if self.hit(pos) == Some(id) {
+            out.push(act(id, ActionKind::MiddleClicked));
+        }
+        true
+    }
+
+    /// The pointer left the surface: no hover, no middle click, a password shown while the
+    /// mouse held its button is masked again.
+    pub(crate) fn pointer_leave(&mut self) -> bool {
+        self.input.pointer = None;
+        self.input.middle = None;
+        if self
+            .layers
+            .gestures
+            .reveal
+            .is_some_and(|r| r.1 == Some(Pointer::Mouse))
+        {
+            self.hide_password();
+        }
+        self.set_hover(None);
+        false
     }
 }

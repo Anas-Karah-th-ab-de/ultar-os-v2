@@ -257,13 +257,20 @@ fn z09_tabs_keep_the_minimum_target_width_on_a_phone() {
     let tabs = ui
         .add(root, Tabs::new(Label::key("demo.tabs"), labels))
         .unwrap();
-    ui.layout();
-    let rect = ui.rect(tabs).unwrap();
-    let per_tab = rect.w / 5.0;
-    assert!(
-        per_tab >= InputMode::Touch.min_target(),
-        "each tab is {per_tab} points wide (the bar neither scrolls nor wraps)"
-    );
+    // The bar scrolls by whole tabs (round 4, w-m1): every tab keeps the target width.
+    let parts: Vec<_> = ui
+        .a11y_tree()
+        .into_iter()
+        .filter(|n| n.id == tabs && n.part.is_some())
+        .collect();
+    assert_eq!(parts.len(), 5);
+    for tab in parts {
+        assert!(
+            tab.rect.w >= InputMode::Touch.min_target(),
+            "a tab is {} points wide",
+            tab.rect.w
+        );
+    }
 }
 
 /// The clear cross of a search field is a touch target of 44 x 44.

@@ -29,7 +29,8 @@ pub struct Toast {
 const PAD: Space = Space::S12;
 const GAP: Space = Space::S8;
 const EDGE: Space = Space::S16;
-const MAX_W: f32 = 10.0 * Space::S48.points();
+/// Width of a toast (boards and toolkit: `size.toast_width`), less on a narrow surface.
+const MAX_W: f32 = size::TOAST_WIDTH;
 
 /// Where a shown toast and its parts are.
 #[derive(Debug, Clone, Copy, PartialEq)]

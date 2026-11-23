@@ -48,6 +48,7 @@ ui.role.tree = Baum
 ui.role.tree_item = Baumeintrag
 ui.role.navigation = Navigation
 ui.role.banner = Kopfleiste
+ui.role.cell = Zelle
 ui.state.checked = aktiviert
 ui.state.unchecked = nicht aktiviert
 ui.state.mixed = teilweise aktiviert

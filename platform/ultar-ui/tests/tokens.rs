@@ -165,7 +165,14 @@ fn state_and_wave_3_tokens_match_the_file() {
     assert_eq!(state::FOCUS_RING.name(), value("state", "focus_ring"));
     assert_eq!(state::SPINNER_SWEEP, number("state", "spinner_sweep"));
     assert_eq!(state::BUSY_SEGMENT, number("state", "busy_segment"));
-    for key in ["border", "row_min", "box", "scroll_line", "touch_slop"] {
+    for key in [
+        "border",
+        "row_min",
+        "box",
+        "scroll_line",
+        "touch_slop",
+        "toast_width",
+    ] {
         assert!(number("size", key) > 0.0, "size.{key}");
     }
     assert_eq!(size::BORDER, number("size", "border"));

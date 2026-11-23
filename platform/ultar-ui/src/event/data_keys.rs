@@ -1,5 +1,6 @@
 //! Keyboard and activation of the data widgets: table and tree.
 
+use super::selection::Mark;
 use super::{Action, ActionKind, Key};
 use crate::ui::{NodeId, Ui};
 use crate::widgets::{TableCursor, TablePart, Widget};
@@ -29,6 +30,13 @@ impl Ui {
             }
             Some(TablePart::Row(row)) => {
                 table.cursor = TableCursor::Rows;
+                if table.multi {
+                    if let Some(mark) = Mark::from_modifiers(self.input.modifiers) {
+                        return self.mark_table_row(id, row, mark, out);
+                    }
+                    table.chosen = vec![row];
+                    table.anchor = Some(row);
+                }
                 if table.selected != Some(row) {
                     table.selected = Some(row);
                     out.push(act(id, ActionKind::Selected(row)));
@@ -78,12 +86,19 @@ impl Ui {
         if item.expanded != target {
             item.expanded = target;
             out.push(act(id, ActionKind::Expanded(index, target)));
+            // The selection never stays hidden in a closed branch: it moves to the item
+            // that was closed (as in every desktop tree).
+            let hidden = tree.selected.is_some_and(|s| tree.is_descendant(s, index));
+            if !target && hidden {
+                tree.selected = Some(index);
+                out.push(act(id, ActionKind::Selected(index)));
+            }
             self.invalidate_node(id);
         }
     }
 
     /// Scrolls the selected row of a table or tree into view (not the whole widget).
-    fn reveal_row(&mut self, id: NodeId) {
+    pub(crate) fn reveal_row(&mut self, id: NodeId) {
         let Some(rect) = self.rect(id) else {
             return;
         };

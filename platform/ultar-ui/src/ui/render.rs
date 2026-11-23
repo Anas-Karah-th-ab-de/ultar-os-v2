@@ -1,13 +1,11 @@
 //! Painting the tree: only damaged regions are redrawn.
 
 use super::{DragKind, NodeId, PaintStep, Ui};
-use crate::canvas::Canvas;
 use crate::geom::{Rect, Size};
 use crate::paint::Painter;
 use crate::tokens::{size, state, Radius, Space};
 use crate::widgets::{
-    focus_outset, paint_tooltip, shadow_reach, Dialog, PaintCx, PopupView, Select, ToastView,
-    Widget,
+    focus_outset, paint_tooltip, shadow_reach, PaintCx, PopupView, Select, ToastView, Widget,
 };
 
 impl Ui {
@@ -150,26 +148,32 @@ impl Ui {
         p.restore_clip(saved);
     }
 
-    fn paint_region(
+    /// Background and the paint steps before `end` (everything under the scrim, or the
+    /// whole tree when `end` is the number of steps).
+    pub(crate) fn paint_under(
         &self,
         p: &mut Painter<'_>,
         cx: &PaintCx<'_>,
         region: Rect,
-        layers: &Layer<'_>,
+        end: usize,
     ) {
-        let saved = p.clip(region);
-        let first = match (layers.backdrop, self.layers.scrim_step) {
-            (Some(backdrop), Some(end)) => {
-                p.copy_from(backdrop, region);
-                end
-            }
-            _ => {
-                let background = p.color(self.background());
-                p.fill(region, None, background);
-                0
-            }
-        };
-        for step in self.layers.steps.iter().skip(first) {
+        let background = p.color(self.background());
+        p.fill(region, None, background);
+        for step in self.layers.steps.iter().take(end) {
+            self.paint_step(p, cx, *step, &region);
+        }
+    }
+
+    /// The paint steps from `from` on, then the floating layers: options list, menu,
+    /// toasts and tooltip.
+    pub(crate) fn paint_top(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        region: Rect,
+        (from, toasts): (usize, &[(usize, ToastView)]),
+    ) {
+        for step in self.layers.steps.iter().skip(from) {
             self.paint_step(p, cx, *step, &region);
         }
         if let (Some(popup), Some((id, view))) = (self.input.popup, self.popup_view()) {
@@ -178,7 +182,7 @@ impl Ui {
             }
         }
         self.paint_menu(p, cx);
-        for (index, view) in layers.toasts {
+        for (index, view) in toasts {
             if let Some(shown) = self.layers.toasts.get(*index) {
                 shown.toast.paint(p, cx, view);
             }
@@ -188,91 +192,6 @@ impl Ui {
                 paint_tooltip(p, cx, tip.rect, label);
             }
         }
-        p.restore_clip(saved);
-    }
-
-    /// Paints what changed since the last call into `canvas` (everything on the first call
-    /// or after a layout change). The canvas records the touched pixels in its damage list.
-    ///
-    /// While a dialog or sheet is open, everything under it is painted once into a backdrop
-    /// buffer and dimmed with the scrim there; a frame then copies the damaged part of the
-    /// backdrop and paints only the dialog on top (the scrim is never blended per frame).
-    pub fn paint(&mut self, canvas: &mut Canvas) {
-        self.layout();
-        let surface = Rect::new(0.0, 0.0, self.size().w, self.size().h);
-        let regions: Vec<Rect> = if self.dirty.full {
-            self.dirty.rects.clear();
-            vec![surface]
-        } else {
-            std::mem::take(&mut self.dirty.rects)
-        };
-        self.dirty.full = false;
-        if regions.is_empty() {
-            return;
-        }
-        let toasts = self.toast_views();
-        let backdrop = self.backdrop_for(canvas);
-        // Nothing else borrows the resources while a frame is painted; if that ever were
-        // the case the frame is skipped instead of panicking.
-        let Ok(mut resources) = self.res.try_borrow_mut() else {
-            self.dirty.full = true;
-            return;
-        };
-        let mut painter = Painter::new(canvas, &mut resources, self.env);
-        let cx = PaintCx {
-            tr: &self.tr,
-            mode: self.mode,
-            spin: self.spin(),
-        };
-        let layers = Layer {
-            toasts: &toasts,
-            backdrop: backdrop.as_ref(),
-        };
-        for region in regions {
-            let region = snap_out(region.intersect(&surface), self.env.scale);
-            if !region.is_empty() {
-                self.paint_region(&mut painter, &cx, region, &layers);
-            }
-        }
-        drop(resources);
-        self.layers.backdrop = backdrop;
-    }
-
-    /// The backdrop for the open scrim dialog: kept from the last frame when nothing under
-    /// the dialog changed, painted and dimmed otherwise. `None` without such a dialog.
-    fn backdrop_for(&mut self, target: &Canvas) -> Option<Canvas> {
-        let end = self.layers.scrim_step?;
-        let stale = std::mem::take(&mut self.layers.backdrop_stale);
-        let kept = self.layers.backdrop.take().filter(|b| {
-            (b.width(), b.height(), b.format())
-                == (target.width(), target.height(), target.format())
-        });
-        let mut canvas = match kept {
-            Some(kept) if !stale => return Some(kept),
-            // The buffer is reused; every pixel is painted again below.
-            Some(mut kept) => {
-                kept.reset_clip();
-                kept
-            }
-            None => Canvas::new(target.width(), target.height(), target.format()).ok()?,
-        };
-        let surface = Rect::new(0.0, 0.0, self.size().w, self.size().h);
-        let mut resources = self.res.try_borrow_mut().ok()?;
-        let mut p = Painter::new(&mut canvas, &mut resources, self.env);
-        let cx = PaintCx {
-            tr: &self.tr,
-            mode: self.mode,
-            spin: self.spin(),
-        };
-        let background = p.color(self.background());
-        p.fill(surface, None, background);
-        for step in self.layers.steps.iter().take(end) {
-            self.paint_step(&mut p, &cx, *step, &surface);
-        }
-        let scrim = Dialog::scrim(&p);
-        p.fill(surface, None, scrim);
-        canvas.take_damage();
-        Some(canvas)
     }
 
     fn paint_step(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, step: PaintStep, region: &Rect) {
@@ -281,23 +200,10 @@ impl Ui {
             PaintStep::ScrollBar(id) => self.paint_scrollbar(p, id, region),
         }
     }
-
-    /// Paints the whole surface regardless of what changed.
-    pub fn paint_all(&mut self, canvas: &mut Canvas) {
-        // The dimmed backdrop under a dialog holds the same pixels: it is kept.
-        self.mark_full_repaint();
-        self.paint(canvas);
-    }
-}
-
-/// What a frame paints above the tree: toasts and the dimmed backdrop under a dialog.
-struct Layer<'a> {
-    toasts: &'a [(usize, ToastView)],
-    backdrop: Option<&'a Canvas>,
 }
 
 /// Grows a logical rectangle so that its edges fall on device pixels.
-fn snap_out(rect: Rect, scale: f32) -> Rect {
+pub(crate) fn snap_out(rect: Rect, scale: f32) -> Rect {
     let x0 = (rect.x * scale).floor() / scale;
     let y0 = (rect.y * scale).floor() / scale;
     let x1 = (rect.right() * scale).ceil() / scale;

@@ -9,6 +9,7 @@ mod gesture;
 mod keys;
 mod pointer;
 mod scroll_input;
+mod selection;
 
 pub(crate) use gesture::Gestures;
 pub(crate) use keys::{next_match, starts_with};
@@ -198,6 +199,11 @@ pub enum ActionKind {
     Scrolled(f32),
     /// A second activation of the same node within the double-click time.
     DoubleActivated,
+    /// A middle click (press and release of the middle button over the same node).
+    MiddleClicked,
+    /// The selection of a multi-selection list or table changed (Ctrl or Shift with a
+    /// click or the keyboard); read it with `Ui::selected_rows`.
+    SelectionChanged,
     /// A hold button went down.
     Pressed,
     /// A hold button is still held (every `motion.repeat` after `motion.long_press`).
@@ -208,8 +214,14 @@ pub enum ActionKind {
     DragStarted,
     /// A dragged node moved: the offset from where the drag started (physical points).
     Dragged(Point),
-    /// A drag ended with this total offset.
-    DragEnded(Point),
+    /// A drag ended: total offset from the press, and the drop target under the pointer
+    /// (`Ui::set_drop_target`), if any.
+    DragEnded {
+        /// Offset from where the drag started.
+        delta: Point,
+        /// The node the drag was dropped on.
+        target: Option<crate::ui::NodeId>,
+    },
     /// A table column header was chosen: column and ascending order.
     Sorted(usize, bool),
     /// A row of a table or an item of a tree was activated (Enter, double click).
@@ -258,18 +270,18 @@ impl Ui {
                 match button {
                     PointerButton::Primary => self.pointer_down(pos, Pointer::Mouse, &mut actions),
                     PointerButton::Secondary => self.secondary_down(pos, &mut actions),
-                    PointerButton::Middle => false,
+                    PointerButton::Middle => {
+                        self.input.middle = self.hit(pos).filter(|_| self.layers.menu.is_none());
+                        self.input.middle.is_some()
+                    }
                 }
             }
-            Event::PointerUp { pos, button } => {
-                button == PointerButton::Primary
-                    && self.pointer_up(pos, Pointer::Mouse, &mut actions)
-            }
-            Event::PointerLeave => {
-                self.input.pointer = None;
-                self.set_hover(None);
-                false
-            }
+            Event::PointerUp { pos, button } => match button {
+                PointerButton::Primary => self.pointer_up(pos, Pointer::Mouse, &mut actions),
+                PointerButton::Middle => self.middle_up(pos, &mut actions),
+                PointerButton::Secondary => false,
+            },
+            Event::PointerLeave => self.pointer_leave(),
             Event::TouchDown { id, pos } => self.touch_down(id, pos, &mut actions),
             Event::TouchMove { id, pos } => {
                 self.input.touch == Some(id) && self.pointer_move(pos, Pointer::Touch, &mut actions)

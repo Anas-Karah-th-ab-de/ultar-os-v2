@@ -94,6 +94,18 @@ impl Tree {
         }
     }
 
+    /// `true` when item `index` lies below item `ancestor` (in its branch).
+    pub fn is_descendant(&self, index: usize, ancestor: usize) -> bool {
+        let mut current = self.parent(index);
+        while let Some(p) = current {
+            if p == ancestor {
+                return true;
+            }
+            current = self.parent(p);
+        }
+        false
+    }
+
     /// The parent of item `index`.
     pub fn parent(&self, index: usize) -> Option<usize> {
         let depth = self.items.get(index)?.depth;

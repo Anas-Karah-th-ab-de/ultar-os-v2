@@ -39,7 +39,13 @@ Source: the same official repository, <https://github.com/notofonts/notofonts.gi
 `682229039c5a594f247890d94e3fb497be8d58dd` (2026-11-23), sparse checkout of exactly these paths,
 unhinted static TTF instances, files unmodified. Licence: SIL OFL 1.1 (`OFL.txt`, unchanged).
 Why: the token weights 500 and 600 were drawn as 400 and 700 (review m6); the toolkit now
-embeds the real Medium and SemiBold faces, and all weights of one family come from one commit.
+embeds the real Medium and SemiBold faces.
+
+The files come from **two** commits of that repository: the eight wave-3 files from
+`c6f674cf…` (table above), the eight wave-4 files from `68222903…` (this table). The font
+versions are the same in both commits for every family (Naskh 2.021, Kufi 2.110, Noto Sans
+Arabic 2.013, Noto Sans Mono 2.014; Noto Sans 2.015 exists only in the wave-4 set), so the
+weights of one family match; the SHA-256 of each file is recorded in its own table.
 
 | File | Path in the repository | Version | Bytes | SHA-256 | Used for |
 |---|---|---|---|---|---|

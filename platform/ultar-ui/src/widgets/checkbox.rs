@@ -62,7 +62,7 @@ impl Checkbox {
     ) -> Size {
         let spec = style::CONTROL_TEXT.weight(Weight::Medium);
         let text = cx.text_size(&self.label, spec, None);
-        let natural = BOX + GAP.points() + text.w;
+        let natural = BOX + 3.0 * GAP.points() + text.w;
         let width = natural.min(avail).max(BOX);
         let row = ROW.max(cx.mode.min_target());
         Size::new(width, row + style::error_height(cx, error, width))
@@ -83,7 +83,8 @@ impl Checkbox {
             p.fill(row, Some(Radius::Control), bg);
         }
         let direction = p.env().direction;
-        let mut inner = row;
+        // Boards: padding 12 at both ends, so the focus ring never touches box or label.
+        let mut inner = style::inset_inline(row, GAP);
         let slot = style::take_start(&mut inner, BOX, direction);
         style::take_start(&mut inner, GAP.points(), direction);
         let mark = style::centered(slot, Size::new(BOX, BOX));

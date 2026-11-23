@@ -49,11 +49,29 @@ impl Ui {
         };
         out.push(Action { node: id, kind });
         self.touch(id);
+        self.keep_tab_visible(id);
+    }
+
+    /// A tab strip that does not fit scrolls so that its chosen tab is visible.
+    pub(crate) fn keep_tab_visible(&mut self, id: NodeId) {
+        let Some(rect) = self.rect(id) else {
+            return;
+        };
+        if let Some(Widget::Tabs(tabs)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget) {
+            if tabs.keep_chosen_visible(rect) {
+                self.touch(id);
+            }
+        }
     }
 
     /// A list item was activated: it reports `Activated`; in a selectable list it becomes
     /// the selected item and the list reports `Selected(index)`.
     fn activate_item(&mut self, id: NodeId, out: &mut Vec<Action>) {
+        if let Some(mark) = super::selection::Mark::from_modifiers(self.input.modifiers) {
+            if self.mark_list_item(id, mark, out) {
+                return;
+            }
+        }
         out.push(Action {
             node: id,
             kind: ActionKind::Activated,
@@ -65,7 +83,15 @@ impl Ui {
         let selectable =
             matches!(&self.nodes[list.index()].widget, Widget::List(l) if l.selectable);
         let already = self.list_item(id).is_ok_and(|item| item.selected);
-        if selectable && !already && self.set_item_selected(id, true).is_ok() {
+        // In a multi-selection list a plain click keeps only this item selected.
+        let others = self.selected_rows(list).is_ok_and(|rows| rows.len() > 1);
+        let index = self.item_index(list, id);
+        if let Some(Widget::List(l)) = self.nodes.get_mut(list.index()).map(|n| &mut n.widget) {
+            if l.multi {
+                l.anchor = index;
+            }
+        }
+        if selectable && (!already || others) && self.set_item_selected(id, true).is_ok() {
             if let Some(index) = self.item_index(list, id) {
                 out.push(Action {
                     node: list,

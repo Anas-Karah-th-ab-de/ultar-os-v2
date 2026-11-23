@@ -25,6 +25,9 @@ pub struct Slider {
 const THUMB: f32 = size::ICON_SMALL;
 const TRACK_H: f32 = Space::S4.points();
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
+/// The value is written at the end edge in a slot of this width (boards: 48, gap 12).
+const VALUE_W: f32 = Space::S48.points();
+const VALUE_GAP: Space = Space::S12;
 
 impl Slider {
     /// A slider over `min..=max` (swapped if given in the wrong order) with a keyboard step.
@@ -95,6 +98,22 @@ impl Slider {
         }
     }
 
+    /// The part of `rect` the knob moves in: everything but the value slot at the end
+    /// edge (the whole rectangle when it is too narrow for both).
+    fn slide_area(rect: Rect, direction: Direction) -> Rect {
+        let mut area = rect;
+        if rect.w >= 2.0 * (VALUE_W + VALUE_GAP.points()) {
+            style::take_end(&mut area, VALUE_W + VALUE_GAP.points(), direction);
+        }
+        area
+    }
+
+    /// The value as written beside the track: the share of the range in percent (digits
+    /// 0–9, a left-to-right island in Arabic text).
+    pub(crate) fn value_text(&self) -> String {
+        format!("{}%", (self.fraction() * 100.0).round() as i32)
+    }
+
     fn track(rect: Rect) -> Rect {
         let half = THUMB / 2.0;
         Rect::new(
@@ -107,7 +126,7 @@ impl Slider {
 
     /// The value for a pointer at physical `x` inside the slider's `rect`.
     pub(crate) fn value_at(&self, rect: Rect, x: f32, direction: Direction) -> f32 {
-        let track = Slider::track(rect);
+        let track = Slider::track(Slider::slide_area(rect, direction));
         if track.w <= 0.0 {
             return self.value;
         }
@@ -131,6 +150,16 @@ impl Slider {
         Size::new(width, band + style::error_height(cx, error, width))
     }
 
+    /// The value text in its slot at the end edge of `band` (boards: 12, `text_muted`).
+    fn paint_value(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, band: Rect) {
+        let mut slot = band;
+        let slot = style::take_end(&mut slot, VALUE_W, p.env().direction);
+        let muted = p.color(ColorRole::TextMuted);
+        let label = Label::data(&self.value_text());
+        let align = crate::text::TextAlign::End;
+        style::draw_label(p, cx, &label, style::SMALL_TEXT, slot, align, muted);
+    }
+
     /// Paints the slider. Boards: track `control_border` (red with an error), filled part
     /// `accent_text`, knob `text` with an `accent_text` ring; loading shows a progress ring
     /// in place of the knob.
@@ -145,7 +174,11 @@ impl Slider {
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
         let band = Rect::new(rect.x, rect.y, rect.w, cx.mode.min_target().min(rect.h));
-        let track = Slider::track(band);
+        let area = Slider::slide_area(band, direction);
+        if area.w < band.w {
+            self.paint_value(p, cx, band);
+        }
+        let track = Slider::track(area);
         let rest = p.color(if v.error {
             ColorRole::Danger
         } else {
@@ -240,13 +273,20 @@ mod tests {
     fn pointer_position_maps_to_value_in_both_directions() {
         let s = slider();
         let rect = Rect::new(0.0, 0.0, NATURAL_W, THUMB);
-        let (left, right) = (THUMB / 2.0, NATURAL_W - THUMB / 2.0);
+        // The value slot sits at the end edge: the track is the rest.
+        let slot = VALUE_W + VALUE_GAP.points();
+        let (left, right) = (THUMB / 2.0, NATURAL_W - slot - THUMB / 2.0);
         assert_eq!(s.value_at(rect, left, Direction::Ltr), 0.0);
         assert_eq!(s.value_at(rect, right, Direction::Ltr), 100.0);
+        let (left, right) = (slot + THUMB / 2.0, NATURAL_W - THUMB / 2.0);
         assert_eq!(s.value_at(rect, left, Direction::Rtl), 100.0);
         assert_eq!(s.value_at(rect, right, Direction::Rtl), 0.0);
-        assert_eq!(s.value_at(rect, NATURAL_W / 2.0, Direction::Rtl), 50.0);
+        assert_eq!(
+            s.value_at(rect, slot + (NATURAL_W - slot) / 2.0, Direction::Rtl),
+            50.0
+        );
         assert_eq!(s.value_at(rect, -500.0, Direction::Ltr), 0.0);
+        assert_eq!(s.clone().value(30.0).value_text(), "30%");
         let narrow = Rect::new(0.0, 0.0, THUMB / 2.0, THUMB);
         assert_eq!(s.value_at(narrow, 3.0, Direction::Ltr), s.value);
     }

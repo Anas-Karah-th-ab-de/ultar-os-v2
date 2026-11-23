@@ -25,6 +25,8 @@ pub(super) fn new_node(widget: Widget, sizing: Sizing, parent: Option<NodeId>) -
         context_menu: None,
         clip_parent: None,
         draggable: false,
+        drop_target: false,
+        removed: false,
     }
 }
 
@@ -54,12 +56,16 @@ macro_rules! typed_access {
 
 impl Ui {
     pub(crate) fn node(&self, id: NodeId) -> Result<&Node, UiError> {
-        self.nodes.get(id.index()).ok_or(UiError::UnknownNode(id))
+        self.nodes
+            .get(id.index())
+            .filter(|n| !n.removed)
+            .ok_or(UiError::UnknownNode(id))
     }
 
     pub(crate) fn node_mut(&mut self, id: NodeId) -> Result<&mut Node, UiError> {
         self.nodes
             .get_mut(id.index())
+            .filter(|n| !n.removed)
             .ok_or(UiError::UnknownNode(id))
     }
 
@@ -224,6 +230,8 @@ impl Ui {
             self.drop_interaction_inside_disabled();
         }
         self.repaint_all();
+        // A node enabled again under the resting pointer is hovered at once.
+        self.rehover();
         Ok(())
     }
 
@@ -263,6 +271,9 @@ impl Ui {
         }
         if inside(self, self.layers.tip.map(|t| t.node)) {
             self.layers.tip = None;
+        }
+        if inside(self, self.layers.gestures.reveal.map(|r| r.0)) {
+            self.hide_password();
         }
     }
 
@@ -365,6 +376,7 @@ impl Ui {
             _ => {}
         }
         self.touch(id);
+        self.keep_tab_visible(id);
         if self.is_open(id) {
             // The open list shows the check mark and the bold option: repaint it too.
             self.touch_popup();
@@ -385,6 +397,9 @@ impl Ui {
     /// Replaces the content of a text field without emitting an action.
     pub fn set_text(&mut self, id: NodeId, text: &str) -> Result<(), UiError> {
         self.text_field_mut(id)?.set_text(text);
+        if self.layers.gestures.reveal.is_some_and(|r| r.0 == id) {
+            self.hide_password();
+        }
         self.touch(id);
         Ok(())
     }

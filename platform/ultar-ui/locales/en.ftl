@@ -48,6 +48,7 @@ ui.role.tree = tree
 ui.role.tree_item = tree item
 ui.role.navigation = navigation
 ui.role.banner = header bar
+ui.role.cell = cell
 ui.state.checked = checked
 ui.state.unchecked = not checked
 ui.state.mixed = partly checked

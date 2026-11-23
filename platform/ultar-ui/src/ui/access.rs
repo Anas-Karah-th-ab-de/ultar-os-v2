@@ -78,11 +78,25 @@ pub enum Role {
     Navigation,
     /// A header bar.
     Banner,
+    /// A cell of a table row (named by its column header).
+    Cell,
 }
+
+/// Parts of the accessibility tree are numbered per node; these bases keep the numbers of
+/// different kinds apart, so that `(id, part)` is unique in the whole tree.
+/// A table cell is `CELL_PARTS + row * MAX_TABLE_COLUMNS + column`.
+pub const CELL_PARTS: usize = 1 << 24;
+/// An open menu level `d` is `MENU_PARTS + d * MENU_LEVEL_PARTS`, its item `i` that plus
+/// `1 + i` (the owner of a menu may have parts of its own).
+pub const MENU_PARTS: usize = 1 << 28;
+/// Part numbers one menu level spans.
+pub const MENU_LEVEL_PARTS: usize = 1 << 8;
+/// Toast `i` is `TOAST_PARTS + 3 * i`, its action and close buttons the next two.
+pub const TOAST_PARTS: usize = 1 << 29;
 
 impl Role {
     /// All roles.
-    pub const ALL: [Role; 35] = [
+    pub const ALL: [Role; 36] = [
         Role::Group,
         Role::Text,
         Role::Image,
@@ -118,6 +132,7 @@ impl Role {
         Role::TreeItem,
         Role::Navigation,
         Role::Banner,
+        Role::Cell,
     ];
 
     /// Catalog key of the role's spoken name.
@@ -158,6 +173,7 @@ impl Role {
             Role::TreeItem => "ui.role.tree_item",
             Role::Navigation => "ui.role.navigation",
             Role::Banner => "ui.role.banner",
+            Role::Cell => "ui.role.cell",
         }
     }
 }
@@ -217,6 +233,8 @@ pub struct A11yNode {
     pub position: Option<(usize, usize)>,
     /// The node whose text names it (the settings row or list item around a control).
     pub labelled_by: Option<NodeId>,
+    /// The part of `labelled_by` that names this node (a cell: its column header).
+    pub labelled_by_part: Option<usize>,
     /// Smallest value, largest value and step of a slider.
     pub range: Option<(f32, f32, f32)>,
 }
@@ -238,6 +256,7 @@ impl A11yNode {
             parent: None,
             position: None,
             labelled_by: None,
+            labelled_by_part: None,
             range: None,
         }
     }

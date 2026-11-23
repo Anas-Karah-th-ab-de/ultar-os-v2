@@ -2,9 +2,12 @@
 //! a screen reader must reach one by one (radio options, tabs, open select options, the
 //! button of a search or password field, table headers and rows, tree items, toasts).
 
+use super::access::{CELL_PARTS, MENU_LEVEL_PARTS, MENU_PARTS, TOAST_PARTS};
 use super::{A11yNode, A11yState, NodeId, Role, Ui};
 use crate::geom::Rect;
-use crate::widgets::{DialogKind, Label, TableCursor, TablePart, Tone, Widget, MAX_TOASTS};
+use crate::widgets::{
+    DialogKind, Label, Table, TableCursor, TablePart, Tone, Widget, MAX_TABLE_COLUMNS,
+};
 
 fn number(value: f32) -> Label {
     let text = if value.fract() == 0.0 {
@@ -204,6 +207,9 @@ impl Ui {
                     };
                     node.name = Some(Label::key(key));
                     node.state.pressed = field.is_revealed();
+                    // The show-password button is a Tab stop of its own (Space shows).
+                    node.focusable = field.is_password();
+                    node.state.focused = owner.state.focused && field.eye_focused;
                     out.push(node);
                 }
             }
@@ -263,16 +269,54 @@ impl Ui {
             out.push(node);
         }
         let count = table.rows.len();
+        let mut joiner = self.tr.t("ui.a11y.joiner").into_owned();
+        joiner.push(' ');
         for (r, cells) in table.rows.iter().enumerate() {
             let band = table.band(rect, Some(r), self.mode);
             let mut node = self.part(owner, TablePart::Row(r).encode(), Role::TableRow, band);
             node.name = cells.first().cloned();
-            node.value = cells.get(1).cloned();
-            node.state.selected = Some(table.selected == Some(r));
+            // Every further cell is spoken with the row, in column order.
+            let rest: Vec<String> = cells
+                .iter()
+                .skip(1)
+                .map(|c| c.resolve(&self.tr).into_owned())
+                .collect();
+            node.value = (!rest.is_empty()).then(|| Label::data(&rest.join(&joiner)));
+            node.state.selected = Some(table.is_selected(r));
             node.state.focused = owner.state.focused
                 && table.cursor == TableCursor::Rows
                 && table.selected == Some(r);
             node.position = Some((r + 1, count));
+            out.push(node);
+            self.cell_parts(owner, (table, r), band, out);
+        }
+    }
+
+    /// The cells of row `r`: one node each, named by its column header (`labelled_by`).
+    fn cell_parts(
+        &self,
+        owner: &A11yNode,
+        (table, r): (&Table, usize),
+        band: Rect,
+        out: &mut Vec<A11yNode>,
+    ) {
+        let Some(cells) = table.rows.get(r) else {
+            return;
+        };
+        let columns = table.columns.len();
+        for (c, cell) in cells.iter().enumerate().take(columns) {
+            let rect = table.cell(band, c, self.env.direction);
+            let mut node = self.part(
+                owner,
+                CELL_PARTS + r * MAX_TABLE_COLUMNS + c,
+                Role::Cell,
+                rect,
+            );
+            node.parent = Some(owner.id);
+            node.name = Some(cell.clone());
+            node.labelled_by = Some(owner.id);
+            node.labelled_by_part = Some(TablePart::Header(c).encode());
+            node.position = Some((c + 1, columns));
             out.push(node);
         }
     }
@@ -312,7 +356,9 @@ impl Ui {
             let Some(level) = state.menu.level(&state.path[..depth.min(state.path.len())]) else {
                 continue;
             };
+            let base = MENU_PARTS + depth * MENU_LEVEL_PARTS;
             let mut menu = A11yNode::new(state.owner, Role::Menu, panel.rect);
+            menu.part = Some(base);
             menu.parent = Some(state.owner);
             nodes.push(menu);
             let deepest = depth == state.path.len();
@@ -322,7 +368,7 @@ impl Ui {
                     continue;
                 };
                 let mut node = A11yNode::new(state.owner, Role::MenuItem, row);
-                node.part = Some(index);
+                node.part = Some(base + 1 + index);
                 node.parent = Some(state.owner);
                 node.name = Some(item.label.clone());
                 node.value = item.shortcut.clone();
@@ -341,7 +387,7 @@ impl Ui {
 
     /// The visible toasts, as polite status messages.
     /// Each toast: a status node with its message and tone, then its action and close
-    /// buttons (parts after `MAX_TOASTS`, two per toast) so a screen reader reaches them.
+    /// buttons (see [`TOAST_PARTS`]) so a screen reader reaches them.
     fn toast_nodes(&mut self) -> Vec<A11yNode> {
         let root = self.root();
         let views = self.toast_views();
@@ -351,7 +397,7 @@ impl Ui {
                 continue;
             };
             let mut node = A11yNode::new(root, Role::Status, view.rect);
-            node.part = Some(i);
+            node.part = Some(TOAST_PARTS + 3 * i);
             node.name = Some(shown.toast.message.clone());
             node.description = shown.toast.tone.name_key().map(Label::key);
             nodes.push(node);
@@ -362,7 +408,7 @@ impl Ui {
             for (k, (rect, name)) in buttons.into_iter().enumerate() {
                 if let (Some(rect), Some(name)) = (rect, name) {
                     let mut button = A11yNode::new(root, Role::Button, rect);
-                    button.part = Some(MAX_TOASTS + 2 * i + k);
+                    button.part = Some(TOAST_PARTS + 3 * i + 1 + k);
                     button.name = Some(name);
                     nodes.push(button);
                 }
@@ -378,7 +424,16 @@ impl Ui {
         self.layout();
         let mut nodes = Vec::with_capacity(self.reachable().len());
         for id in self.reachable() {
-            if let Some(node) = self.a11y_node(*id) {
+            if let Some(mut node) = self.a11y_node(*id) {
+                if matches!(self.widget(*id), Some(Widget::TextField(f)) if f.eye_focused) {
+                    // The keyboard is on the show-password button, not on the text.
+                    let mut parts = Vec::new();
+                    self.parts_of(&node, &mut parts);
+                    node.state.focused = false;
+                    nodes.push(node);
+                    nodes.extend(parts);
+                    continue;
+                }
                 let mut parts = Vec::new();
                 self.parts_of(&node, &mut parts);
                 nodes.push(node);

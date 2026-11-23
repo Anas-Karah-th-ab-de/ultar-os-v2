@@ -269,5 +269,5 @@ fn catalogs_are_complete_in_arabic_english_and_german() {
             );
         }
     }
-    assert_eq!(roles.len(), 35);
+    assert_eq!(roles.len(), 36);
 }

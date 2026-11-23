@@ -48,6 +48,7 @@ ui.role.tree = شجرة
 ui.role.tree_item = عنصر الشجرة
 ui.role.navigation = تنقّل
 ui.role.banner = شريط العنوان
+ui.role.cell = خلية
 ui.state.checked = محدَّد
 ui.state.unchecked = غير محدَّد
 ui.state.mixed = محدَّد جزئيًا

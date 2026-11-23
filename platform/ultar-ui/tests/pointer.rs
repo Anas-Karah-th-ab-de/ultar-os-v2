@@ -156,17 +156,20 @@ fn slider_follows_the_pointer_in_both_directions() {
         ui.layout();
         let rect = ui.rect(slider).unwrap();
         let y = rect.center().y;
-        let start_x = if lang == Lang::Ar {
-            rect.right() - 1.0
+        let (start_x, end_x) = if lang == Lang::Ar {
+            (rect.right() - 1.0, rect.x + 1.0)
         } else {
-            rect.x + 1.0
+            (rect.x + 1.0, rect.right() - 1.0)
         };
-        let end_x = if lang == Lang::Ar {
-            rect.x + 1.0
+        // The value is written in a 48-point slot (+ 12 gap) at the end edge; the knob
+        // moves over the rest.
+        let slot = 60.0;
+        let track_mid = if lang == Lang::Ar {
+            rect.x + slot + (rect.w - slot) / 2.0
         } else {
-            rect.right() - 1.0
+            rect.x + (rect.w - slot) / 2.0
         };
-        let down = press(&mut ui, Point::new(rect.center().x, y));
+        let down = press(&mut ui, Point::new(track_mid, y));
         assert_eq!(
             kinds(&down.actions),
             vec![ActionKind::ValueChanged(50.0)],

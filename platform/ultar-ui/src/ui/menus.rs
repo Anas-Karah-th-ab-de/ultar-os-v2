@@ -113,8 +113,9 @@ impl Ui {
         false
     }
 
-    /// The deepest visible node under `pos` (operable or not), for context menus.
-    pub(crate) fn node_at(&self, pos: Point) -> Option<NodeId> {
+    /// The deepest visible node under `pos`, operable or not (only inside the topmost
+    /// dialog while one is open): what a drop, a context menu or a hit test lands on.
+    pub fn node_at(&self, pos: Point) -> Option<NodeId> {
         self.reachable()
             .iter()
             .rev()

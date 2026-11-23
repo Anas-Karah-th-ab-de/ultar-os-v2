@@ -40,6 +40,13 @@ pub struct Table {
     pub sort: Option<(usize, bool)>,
     /// Where the keyboard is.
     pub cursor: TableCursor,
+    /// `true` when several rows can be marked (Ctrl toggles, Shift extends).
+    pub multi: bool,
+    /// The marked rows of a multi-selection table, ascending (read them with
+    /// `Ui::selected_rows`).
+    pub(crate) chosen: Vec<usize>,
+    /// Where a Shift range starts.
+    pub(crate) anchor: Option<usize>,
 }
 
 const PAD: Space = Space::S12;
@@ -82,6 +89,25 @@ impl Table {
             selected: None,
             sort: None,
             cursor: TableCursor::Rows,
+            multi: false,
+            chosen: Vec::new(),
+            anchor: None,
+        }
+    }
+
+    /// The same table with multi-selection: Ctrl with a click or Space marks a row, Shift
+    /// with a click or an arrow marks a range; every marked row is announced as selected.
+    pub fn multi(mut self) -> Table {
+        self.multi = true;
+        self
+    }
+
+    /// `true` when row `row` is selected (marked in a multi-selection table).
+    pub(crate) fn is_selected(&self, row: usize) -> bool {
+        if self.multi {
+            self.chosen.binary_search(&row).is_ok()
+        } else {
+            self.selected == Some(row)
         }
     }
 

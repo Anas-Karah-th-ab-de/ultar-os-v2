@@ -44,7 +44,7 @@ impl TextDirection {
 }
 
 /// A text field.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TextField {
     /// Accessible name (catalog key).
     pub name: Label,
@@ -56,13 +56,39 @@ pub struct TextField {
     pub(crate) search: bool,
     /// `true` for a password field: the content is shown as dots.
     pub(crate) password: bool,
-    /// `true` while the password is shown (its button held).
+    /// `true` while the password is shown (its button held or toggled by keyboard).
     pub(crate) revealed: bool,
+    /// `true` while the keyboard is on the end button of a password field (a Tab stop of
+    /// its own, inside the field's focus).
+    pub(crate) eye_focused: bool,
     /// `true` when the name is shown above the field.
     pub(crate) show_label: bool,
     text: String,
     caret: usize,
     max_len: usize,
+}
+
+/// The content of a password field never reaches `Debug` output (logs, panics).
+impl std::fmt::Debug for TextField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text: &dyn std::fmt::Debug = if self.password {
+            &"<hidden>"
+        } else {
+            &self.text
+        };
+        f.debug_struct("TextField")
+            .field("name", &self.name)
+            .field("placeholder", &self.placeholder)
+            .field("direction", &self.direction)
+            .field("search", &self.search)
+            .field("password", &self.password)
+            .field("revealed", &self.revealed)
+            .field("show_label", &self.show_label)
+            .field("text", text)
+            .field("caret", &self.caret)
+            .field("max_len", &self.max_len)
+            .finish()
+    }
 }
 
 /// Characters a single-line field accepts: no control characters, no line or paragraph
@@ -81,6 +107,7 @@ impl TextField {
             search: false,
             password: false,
             revealed: false,
+            eye_focused: false,
             show_label: false,
             text: String::new(),
             caret: 0,
@@ -377,15 +404,19 @@ impl TextField {
         self.paint_search_parts(p, field);
         if self.show_label {
             let band = Rect::new(rect.x, rect.y, rect.w, LABEL_BAND - Space::S4.points());
-            let muted = p.color(ColorRole::TextMuted);
+            // Boards: the label above a field in `text`, 12/500.
+            let color = p.color(ColorRole::Text);
             let spec = style::SMALL_TEXT.weight(crate::text::Weight::Medium);
-            style::draw_label(p, cx, &self.name, spec, band, TextAlign::Start, muted);
+            style::draw_label(p, cx, &self.name, spec, band, TextAlign::Start, color);
         }
         let inner = self.text_area(field, p.env().direction);
         self.paint_content(p, cx, inner, has_focus);
         style::paint_error(p, cx, error, rect, field.bottom() - rect.y);
         if v.focused {
-            style::focus_ring(p, field, Radius::Card);
+            match self.end_button_rect(field, p.env().direction) {
+                Some(eye) if self.eye_focused => style::focus_ring(p, eye, Radius::Control),
+                _ => style::focus_ring(p, field, Radius::Card),
+            }
         }
         p.set_opacity(previous);
     }

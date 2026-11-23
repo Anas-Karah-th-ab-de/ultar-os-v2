@@ -22,9 +22,9 @@ def msep():
     """Separator: 8 high with the hairline in its middle."""
     return f'<div role="separator" style="height: {s2}; flex: none; display: flex; align-items: center"><span style="height: {HAIR}; flex: 1; background: {t.line}"></span></div>'
 def option(label, chosen=False, lit=False):
-    """Option of an open select: chosen = check in accent_text at the start, highlighted = hover background."""
+    """Option of an open select (as the toolkit draws it): chosen = text 600 with a check in accent_text at the end, highlighted = hover background."""
     mark = ic('check', True, t.acctext) if chosen else ''
-    return f'<button role="option" aria-selected="{"true" if chosen else "false"}"{act("select.option", label)} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; font-weight: {w6 if chosen else w4}"><span style="width: {ic_s}; height: {ic_s}; flex: none; display: inline-flex">{mark}</span><span>{tx(label)}</span></button>'
+    return f'<button role="option" aria-selected="{"true" if chosen else "false"}"{act("select.option", label)} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; font-weight: {w6 if chosen else w4}"><span style="flex: 1">{tx(label)}</span><span style="width: {ic_s}; height: {ic_s}; flex: none; display: inline-flex">{mark}</span></button>'
 def tooltip(label):
     """Tooltip: raised, control_border hairline, padding 4/8, small text, the one shadow. Appears after motion.tooltip_delay."""
     return f'<div role="tooltip" style="padding: {s1} {s2}; border-radius: {r_ctl}; background: {t.raised}; border: {HAIR} solid {t.ctl}; box-shadow: {t.shadow}; font-size: {f12}">{tx(label)}</div>'
@@ -71,8 +71,8 @@ def phone_sheet():
     page_ = f'<div style="padding: {s4}">{h2("Pictures")}{sub("12 items")}</div>'
     return f'<div style="position: relative; width: {g(90)}; height: {g(160)}; overflow: hidden; border-radius: {r_card}; background: {t.ground}; border: {HAIR} solid {t.line}">{page_}<div style="position: absolute; inset: 0; background: {t.scrim}"></div>{sheet_}</div>'
 def toast():
-    """Toast: raised, card radius, hairline in the tone colour, tone icon 24, action in accent_text 600, close button."""
-    return (f'<div role="status" style="width: {g(100)}; padding: {s3}; box-sizing: border-box; border-radius: {r_card}; background: {t.raised}; border: {HAIR} solid {t.ok}; box-shadow: {t.shadow}; display: flex; align-items: center; gap: {s2}">'
+    """Toast: size.toast_width wide, target + 2 x 8 high; raised, card radius, hairline in the tone colour, tone icon 24, action in accent_text 600, close button."""
+    return (f'<div role="status" style="width: {TOAST_W}; height: {g(12)}; padding: 0 {s3}; box-sizing: border-box; border-radius: {r_card}; background: {t.raised}; border: {HAIR} solid {t.ok}; box-shadow: {t.shadow}; display: flex; align-items: center; gap: {s2}">'
             f'<span style="display: inline-flex; color: {t.ok}">{ic("check")}</span><span style="flex: 1">{tx("3 files moved to the Trash.")}</span>'
             f'<button{act("toast.action", "Undo")} style="height: {tgt}; padding: 0 {s2}; border-radius: {r_ctl}; color: {t.acctext}; font-weight: {w6}">{tx("Undo")}</button>{ibtn("Close", "close", "toast.close")}</div>')
 legend = note('Tabs keep the target size and scroll when they do not fit. The scrollbar is 4 wide at 4 from the end edge (12 to grip), control_border at rest, text_muted while hovered or dragged.')

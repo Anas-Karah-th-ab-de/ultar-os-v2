@@ -4,9 +4,12 @@
 //! 2 on a 4K panel, a phone surface and a list of 2000 rows.
 //!
 //! Wall time only means something in an optimised build, so the tests are ignored in debug
-//! builds and run (and assert) with `cargo test --release --test r3_perf -- --test-threads=1`.
-//! A busy machine makes single frames slow; a budget that is missed is measured again (at
-//! most `ROUNDS` times) before the test fails, the best 99th percentile counts.
+//! builds and run (and assert) with
+//! `cargo test --release -p ultar-ui --test r3_perf --test w4_backdrop -- --include-ignored --test-threads=1`.
+//! The statistic asserted is the 99th percentile of one measurement (plan §3.6). Shared CI
+//! runners are too noisy for single frames: there `ULTAR_PERF_STAT=median` asserts the median
+//! against the same budget (`.github/workflows/ui-budgets.yml`); the 99th percentile is
+//! asserted on a quiet machine (release checklist).
 
 mod common;
 
@@ -22,41 +25,45 @@ use ultar_ui::{Lang, Point, Size};
 
 const FULL_HD: Size = Size::new(1920.0, 1080.0);
 const FRAMES: usize = 200;
-const ROUNDS: usize = 3;
 /// Budget of plan §3.6 for a PC (99 % of the frames), in milliseconds.
 const BUDGET_PC_MS: f64 = 8.0;
 /// Budget of plan §3.6 for the phone, in milliseconds.
 const BUDGET_PHONE_MS: f64 = 16.0;
-/// A 4K panel at scale 2 has four times the pixels of full HD; the plan names no budget for
-/// it, the phone budget (two PC budgets) is asserted.
-const BUDGET_4K_MS: f64 = 16.0;
+/// A 4K desktop panel is a PC: the PC budget of plan §3.6.
+const BUDGET_4K_MS: f64 = BUDGET_PC_MS;
 
-/// The 99th percentile of `FRAMES` runs of `frame`, in milliseconds; asserted against
-/// `budget` (best of up to `ROUNDS` measurements).
+/// `true` when CI asks for the median instead of the 99th percentile.
+fn median_only() -> bool {
+    std::env::var("ULTAR_PERF_STAT").is_ok_and(|v| v == "median")
+}
+
+/// Runs `frame` `FRAMES` times and asserts the 99th percentile (or, with
+/// `ULTAR_PERF_STAT=median`, the median) against `budget`, in milliseconds.
 fn measure(name: &str, budget: f64, mut frame: impl FnMut()) -> f64 {
     frame();
-    let mut best = f64::MAX;
-    for _ in 0..ROUNDS {
-        let mut times: Vec<f64> = (0..FRAMES)
-            .map(|_| {
-                let start = Instant::now();
-                frame();
-                start.elapsed().as_secs_f64() * 1000.0
-            })
-            .collect();
-        times.sort_by(f64::total_cmp);
-        let (median, p99) = (times[FRAMES / 2], times[FRAMES * 99 / 100]);
-        println!(
-            "{name}: median {median:.2} ms, p99 {p99:.2} ms, max {:.2} ms (budget {budget} ms)",
-            times[FRAMES - 1]
-        );
-        best = best.min(p99);
-        if best <= budget {
-            break;
-        }
-    }
-    assert!(best <= budget, "{name}: p99 {best:.2} ms over {budget} ms");
-    best
+    let mut times: Vec<f64> = (0..FRAMES)
+        .map(|_| {
+            let start = Instant::now();
+            frame();
+            start.elapsed().as_secs_f64() * 1000.0
+        })
+        .collect();
+    times.sort_by(f64::total_cmp);
+    let (median, p99) = (times[FRAMES / 2], times[FRAMES * 99 / 100]);
+    println!(
+        "{name}: median {median:.2} ms, p99 {p99:.2} ms, max {:.2} ms (budget {budget} ms)",
+        times[FRAMES - 1]
+    );
+    let (stat, value) = if median_only() {
+        ("median", median)
+    } else {
+        ("p99", p99)
+    };
+    assert!(
+        value <= budget,
+        "{name}: {stat} {value:.2} ms over {budget} ms"
+    );
+    value
 }
 
 fn canvas() -> Canvas {

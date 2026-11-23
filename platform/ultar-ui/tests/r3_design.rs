@@ -90,7 +90,8 @@ fn d01_state_graphics_keep_three_to_one_in_the_light_theme() {
     let (c, r, ..) = alone(slider, 200.0);
     check(
         "slider: thumb against ground",
-        best(&c, r.x + 96.0, r.x + 104.0, mid(r) - 6.0),
+        // Value slot 48 + 12 at the end: the thumb of 50 % sits at 70 (round 4).
+        best(&c, r.x + 66.0, r.x + 74.0, mid(r) - 6.0),
     );
     check(
         "slider: filled part against ground",
@@ -99,7 +100,7 @@ fn d01_state_graphics_keep_three_to_one_in_the_light_theme() {
     let (c, r, ..) = alone(Checkbox::new(k("demo.check.updates"), true), 260.0);
     check(
         "checkbox on: box edge against ground",
-        best(&c, r.x, r.x + 2.0, mid(r) - 5.0),
+        best(&c, r.x + 12.0, r.x + 14.0, mid(r) - 5.0), // row padding 12 (round 4)
     );
     let radio = RadioGroup::new(k("demo.radio"), vec![k("demo.radio.dark")]).selected(0);
     let (c, r, ..) = alone(radio, 200.0);
@@ -161,14 +162,16 @@ fn d03_check_box_and_radio_circle_have_the_size_of_the_boards() {
     let (canvas, r, ..) = alone(Checkbox::new(k("demo.check.updates"), false), 260.0);
     let ground = LIGHT.get(ColorRole::Ground);
     let y = r.y + r.h / 2.0;
-    let mut right = r.x;
+    // The box starts after the row's padding of 12 (boards, round 4).
+    let start = r.x + 12.0;
+    let mut right = start;
     for x in 0..24 {
-        let px = r.x + x as f32;
+        let px = start + x as f32;
         if contrast(at(&canvas, px, y), ground) > 2.0 {
             right = px;
         }
     }
-    let width = right - r.x + 1.0;
+    let width = right - start + 1.0;
     assert!(
         (width - size::ICON).abs() <= 1.0,
         "the box is {width} points wide, the boards draw {}",

@@ -96,11 +96,37 @@ pub(crate) struct Layers {
     /// Index in `steps` where the topmost dialog with a scrim starts; everything before it
     /// lies under the scrim.
     pub(crate) scrim_step: Option<usize>,
-    /// Everything under the scrim, painted once and dimmed (see `Ui::paint`).
-    pub(crate) backdrop: Option<crate::canvas::Canvas>,
-    /// Something under the scrim changed: the backdrop is painted again (into the same
-    /// buffer) before the next frame.
-    pub(crate) backdrop_stale: bool,
+    /// The dimmed part under a dialog with a scrim (see `ui/frame.rs`).
+    pub(crate) backdrop: Backdrop,
     /// Visible toasts, oldest first.
     pub(crate) toasts: Vec<super::toasts::Shown>,
+}
+
+/// The size and contents of the last frame painted (see `Backdrop::frame`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FrameMark {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) format: crate::canvas::PixelFormat,
+    /// The frame showed a dimmed scrim.
+    pub(crate) scrim: bool,
+}
+
+/// What lies under the scrim of the open dialog. Opening a dialog dims the pixels already
+/// in the frame in one pass; the buffer is only filled when a full repaint under the dialog
+/// needs it, is kept allocated between dialogs and follows changes behind the dialog by
+/// damage rectangles.
+#[derive(Default)]
+pub(crate) struct Backdrop {
+    /// Dimmed copy of everything under the scrim (kept allocated, also while no dialog is
+    /// open).
+    pub(crate) buffer: Option<crate::canvas::Canvas>,
+    /// `buffer` shows the current tree, except for `damage`.
+    pub(crate) ready: bool,
+    /// Rectangles behind the dialog that changed since `buffer` was filled.
+    pub(crate) damage: Vec<crate::geom::Rect>,
+    /// A dialog with a scrim opened since the last frame.
+    pub(crate) fresh: bool,
+    /// The last frame painted completely, if any.
+    pub(crate) frame: Option<FrameMark>,
 }

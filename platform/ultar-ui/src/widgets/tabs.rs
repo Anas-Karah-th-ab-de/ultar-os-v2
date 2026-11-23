@@ -18,6 +18,9 @@ pub struct Tabs {
     pub tabs: Vec<Label>,
     /// Index of the shown tab.
     pub selected: usize,
+    /// The first tab drawn at the start edge when the bar does not fit (the strip scrolls
+    /// by whole tabs so that the chosen one is always visible).
+    pub(crate) first: usize,
 }
 
 const PAD: Space = Space::S16;
@@ -30,6 +33,7 @@ impl Tabs {
             name,
             tabs,
             selected: 0,
+            first: 0,
         }
     }
 
@@ -41,11 +45,48 @@ impl Tabs {
         self
     }
 
-    /// The rectangle of tab `index`: tabs follow each other from the start edge.
+    /// Width of one tab: an equal share of the bar, never below the target size (the bar
+    /// is one target high).
+    fn tab_width(&self, rect: Rect) -> f32 {
+        let width = (rect.w / self.tabs.len().max(1) as f32).max(rect.h);
+        if width.is_finite() {
+            width
+        } else {
+            0.0
+        }
+    }
+
+    /// How many whole tabs the bar shows at once.
+    fn visible_count(&self, rect: Rect) -> usize {
+        let width = self.tab_width(rect);
+        if width > 0.0 {
+            ((rect.w / width).floor() as usize).max(1)
+        } else {
+            self.tabs.len()
+        }
+    }
+
+    /// Scrolls the strip by whole tabs so that the chosen tab is fully inside `rect`.
+    /// Returns `true` when the strip moved.
+    pub(crate) fn keep_chosen_visible(&mut self, rect: Rect) -> bool {
+        let shown = self.visible_count(rect);
+        let last_first = self.tabs.len().saturating_sub(shown);
+        let mut first = self.first.min(last_first);
+        if self.selected < first {
+            first = self.selected;
+        } else if self.selected >= first + shown {
+            first = self.selected + 1 - shown;
+        }
+        let moved = first != self.first;
+        self.first = first;
+        moved
+    }
+
+    /// The rectangle of tab `index`: tabs follow each other from the start edge (shifted by
+    /// the tabs scrolled out at the start).
     pub(crate) fn tab(&self, rect: Rect, index: usize, direction: Direction) -> Rect {
-        let width = rect.w / self.tabs.len().max(1) as f32;
-        let width = if width.is_finite() { width } else { 0.0 };
-        let offset = index as f32 * width;
+        let width = self.tab_width(rect);
+        let offset = (index as f32 - self.first as f32) * width;
         let x = if direction.is_rtl() {
             rect.right() - offset - width
         } else {
@@ -54,8 +95,11 @@ impl Tabs {
         Rect::new(x, rect.y, width, rect.h)
     }
 
-    /// The tab under `pos`.
+    /// The tab under `pos` (only inside the bar).
     pub(crate) fn part_at(&self, rect: Rect, pos: Point, direction: Direction) -> Option<usize> {
+        if !rect.contains(pos) {
+            return None;
+        }
         (0..self.tabs.len()).find(|i| self.tab(rect, *i, direction).contains(pos))
     }
 
@@ -67,9 +111,9 @@ impl Tabs {
         }
         let count = self.tabs.len() as f32;
         let natural = (widest + 2.0 * PAD.points()) * count;
-        // Every tab stays a full target: a bar of many tabs on a narrow surface is wider
-        // than the surface rather than below the minimum target.
-        let minimum = cx.mode.min_target() * count;
+        // Every tab stays a full target: a bar of many tabs on a narrow surface scrolls
+        // (by whole tabs, the chosen one always visible) instead of shrinking them.
+        let minimum = (cx.mode.min_target() * count).min(avail.max(cx.mode.min_target()));
         Size::new(natural.min(avail).max(minimum), cx.mode.min_target())
     }
 
@@ -87,6 +131,8 @@ impl Tabs {
         let (line, hairline) = (p.color(ColorRole::Line), p.hairline());
         let rule = Rect::new(rect.x, rect.bottom() - hairline, rect.w, hairline);
         p.fill(rule, None, line);
+        // Tabs scrolled out of the strip are cut at its edges.
+        let saved = p.clip(rect.inflate(style::focus_outset()));
         for (index, label) in self.tabs.iter().enumerate() {
             let tab = self.tab(rect, index, direction);
             let state = Visual {
@@ -118,6 +164,7 @@ impl Tabs {
                 }
             }
         }
+        p.restore_clip(saved);
         p.set_opacity(previous);
     }
 }

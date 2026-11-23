@@ -75,6 +75,8 @@ fn password(sheet: &mut Sheet) {
                 root,
                 TextField::password(k("demo.password")).text("sesame 42"),
             )?;
+            // Laid out first: the press must land on the eye button (round 4, w-m4).
+            ui.layout();
             let rect = ui.rect(id).unwrap_or_default();
             let pos = ultar_ui::Point::new(rect.right() - 8.0, rect.y + rect.h / 2.0);
             if ui.text(id).is_ok() {

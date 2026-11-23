@@ -37,6 +37,7 @@ row_min = 56               # minimum height of a settings or list row
 box = 24                   # check box, radio circle
 scroll_line = 48           # one wheel step
 touch_slop = 8             # a finger that moves less still taps
+toast_width = 400          # a toast (narrower on a small surface)
 
 [motion]                   # milliseconds
 feedback = 120
@@ -83,10 +84,10 @@ text = "#15171C"
 text_muted = "#565C6B"
 accent = "#C9A227"
 on_accent = "#14110A"
-accent_text = "#7A5C00"
-info = "#1F5FBF"
-success = "#1F7A3D"
-warning = "#8A5A00"
+accent_text = "#785B00"
+info = "#1E5CB9"
+success = "#1B6D36"
+warning = "#835500"
 danger = "#B3261E"
 
 [shadow]                   # one elevation level for everything that floats (CSS: 0 offset_y blur)

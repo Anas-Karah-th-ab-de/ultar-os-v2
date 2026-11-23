@@ -325,3 +325,87 @@ primary edge (two borders) and list row. New boards: `Menus` (menu, context menu
 submenu, select list, tooltip), `Bricks` (tabs, scrollbar, bottom sheet, toast) and
 `StatesLight`. `python3 design/boards/build.py` regenerates `project/*.dc.html`,
 `docs/ui/CLICKS.md` and `docs/ui/ICONS.md` (move the two .md files to `docs/ui/`).
+
+---
+
+# Wave 5 (2026-11-23): review round 4 (`docs/review/ui-runde-4.md`) fixed
+
+## Frame budgets (W1, W2, w-m6)
+- A dialog with a scrim no longer repaints the tree when it opens: the frame that shows it
+  paints only the regions that changed, then dims the pixels already in the canvas in one
+  pass (rows shared among up to four cores from 2 M pixels on; the part under the opaque
+  panel is skipped) and draws the dialog. The backdrop buffer is filled only for a full
+  repaint under the dialog, stays allocated between dialogs and follows changes behind the
+  dialog by damage rectangles: a spinner behind a dialog repaints its own rectangle
+  (0.1 ms at full HD instead of 3.6–4.1 ms).
+- Shapes are nine-sliced: rows along the straight sides reuse one coverage row; per-pixel
+  coverage is blended in 16-bit vector arithmetic (exact, tested against the scalar formula).
+- **Contract:** `Ui::paint` assumes the canvas is the one it painted last (as before);
+  with another buffer (double buffering) call `Ui::paint_all`.
+- Budgets (`tests/r3_perf.rs`, `tests/w4_backdrop.rs`): 8 ms PC including 4K at scale 2,
+  16 ms phone; one measurement of 200 frames, no best-of-three. **Which statistic where:**
+  the CI job `.github/workflows/ui-budgets.yml` runs
+  `cargo test --release -p ultar-ui --test r3_perf --test w4_backdrop -- --include-ignored --test-threads=1`
+  with `ULTAR_PERF_STAT=median` (shared runners are too noisy for single frames); the 99th
+  percentile – the figure of plan §3.6 – is asserted without the variable on a quiet machine
+  before a release.
+- Measured on the shared 2-core build machine (load 1.3–3.3, other builds running):
+  medians full HD dialog opens 2.2–2.5 ms, repaint under a dialog 1.1–1.3 ms, 4K dialog
+  opens 6.5–7.9 ms, 4K sheet opens 7.0–9.0 ms (best 4.6 ms: dim 3.2 + dialog 1.4), 4K repaint
+  under a sheet 5.1–6.5 ms, phone sheet opens 5.8–7.9 ms, spinner behind a dialog 0.08 ms.
+  The 99th percentiles on that machine are dominated by the other processes.
+
+## Input and data (W3)
+- `ActionKind::MiddleClicked` (middle press and release over the same node).
+- Multi-selection: `List::multi()`, `Table::multi()`; Ctrl+click / Ctrl+Space toggles,
+  Shift+click / Shift+arrow selects the range from the anchor; `ActionKind::SelectionChanged`,
+  `Ui::selected_rows(id)` (list or table), `Ui::set_selected_rows(table, rows)`; every marked
+  row is announced as selected.
+- Drops: `Ui::set_drop_target(id, bool)`, `Ui::node_at(pos)` (public now),
+  `ActionKind::DragEnded { delta, target }`.
+- Changing data in place: `Ui::set_table_rows`, `Ui::set_tree_items`, `Ui::set_select_options`
+  (selection, focus and scroll offset kept where they still exist), `Ui::move_child(parent,
+  from, to)`, `Ui::remove(id)` (focus moves on, menus, lists, dialogs and gestures inside end;
+  removed identifiers answer `UnknownNode` and are never reused, so `MAX_NODES` counts every
+  node ever added).
+- `List` stays one node per item (for up to a few hundred rows); long data belongs in a
+  `Table` (one node, only visible rows painted) – w-m7, written in the `list` module docs.
+
+## Accessibility (W4, W5)
+- 36 roles: `Role::Cell`. A table row speaks all its cells (first as name, the others as
+  value, in column order); every cell is a node of its own, `labelled_by` the table and
+  `labelled_by_part` its column header.
+- `(id, part)` is unique in every state (tested over every gallery state): part bases
+  `CELL_PARTS`, `MENU_PARTS` + level × `MENU_LEVEL_PARTS` (the menu node itself has a part
+  now), `TOAST_PARTS` (+ 3 per toast).
+
+## Password field (W6)
+The password is masked again when the hold ends or is interrupted (pointer leaves, field
+disabled or cleared, dialog opens, focus moves away). The show-password button is a Tab stop
+inside the field (Tab from the text, Shift+Tab from the next widget); Space or Enter shows /
+hides it (toggle button, `pressed` announced). `Debug` of a password field prints `<hidden>`.
+
+## Minor (w-m1 … w-m9)
+Tab strips scroll by whole tabs (chosen tab always visible); hover returns at once after
+re-enabling, a direction change and closing an options list; collapsing a branch moves the
+selection to the collapsed item; the `password-shown` pictures show the password; board ↔
+toolkit: field label in `text`, sidebar mark at the start edge on both, select check mark at
+the end on both, toast `size.toast_width` (new token, 400) × target + 16 on both, slider value
+text at the end (48 + 12) in the toolkit, check-box row padding 12 in the toolkit; fonts
+`SOURCES.md` names both commits; light theme `accent_text`, `info`, `success`, `warning`
+darkened so that they keep 4.5:1 on `line` (pressed / selected) as well.
+
+## Breaking changes (for the compositor and apps)
+1. `ActionKind::DragEnded(Point)` → `ActionKind::DragEnded { delta, target }`.
+2. New `ActionKind` variants `MiddleClicked`, `SelectionChanged` and `Role::Cell`
+   (`Role::ALL` has 36 entries): exhaustive matches need an arm.
+3. New public fields: `A11yNode::labelled_by_part`, `Table::multi`, `List::multi` (struct
+   literals need them; constructors and builders are unchanged).
+4. Accessibility part numbers of menus and toasts changed (see above); menu panel nodes have a
+   part.
+5. `Slider` reserves 60 points at its end edge for the value text (pointer positions map to
+   the remaining track); check-box rows are 24 points wider (padding).
+6. Light theme colours `accent_text`, `info`, `success`, `warning` changed (tokens).
+7. Collapsing a tree branch that holds the selection now reports `Selected(index)`.
+8. `Ui::paint` may use up to four threads (`std::thread::scope`) to dim a surface of 2 M
+   pixels or more; results are identical to one thread.

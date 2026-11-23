@@ -2,7 +2,7 @@
 //!
 //! Per row only the two edge zones are evaluated per pixel; the centre is one constant span.
 
-use super::blend::{alpha_of, blend_px, blend_span};
+use super::blend::{alpha_of, blend_alphas, blend_span};
 use super::Canvas;
 use crate::color::Color;
 use crate::geom::{PixelRect, Rect};
@@ -29,6 +29,17 @@ impl RoundBox {
         }
     }
 
+    /// Row centres between which the edge zones (`zone` pixels wide) see only the straight
+    /// sides: there the distance depends on `x` alone (`max(qx, qy) = qx`, `qy <= 0`).
+    fn straight_rows(&self, zone: i32) -> (f32, f32) {
+        let half = self.hy - self.r - zone as f32 - 2.0;
+        if half > 0.0 {
+            (self.cy - half, self.cy + half)
+        } else {
+            (0.0, 0.0)
+        }
+    }
+
     #[inline]
     fn dist(&self, px: f32, py: f32) -> f32 {
         let qx = (px - self.cx).abs() - (self.hx - self.r);
@@ -49,6 +60,10 @@ fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Pixels from which `Canvas::blend_rect` shares the rows among the cores (below, starting
+/// the threads costs more than they save).
+const PARALLEL_AREA: i64 = 1 << 21;
+
 /// Width of the edge zones for a shape whose coverage varies within `reach` pixels of its
 /// left and right border (float-to-integer conversion saturates, the sum must too).
 fn zone_width(reach: f32) -> i32 {
@@ -57,11 +72,13 @@ fn zone_width(reach: f32) -> i32 {
 
 impl Canvas {
     /// Paints coverage `cov(x, y)` over `bbox`. `edge_zone` is the distance from the left and
-    /// right border of `bbox` beyond which the coverage no longer depends on `x`.
+    /// right border of `bbox` beyond which the coverage no longer depends on `x`; rows whose
+    /// centre lies inside `alike` (open interval) have the same coverage in every row (the
+    /// straight sides of the shape), so it is computed once for them – the nine-slice of a
+    /// large panel or shadow.
     fn paint_coverage(
         &mut self,
-        bbox: PixelRect,
-        edge_zone: i32,
+        (bbox, edge_zone, alike): (PixelRect, i32, (f32, f32)),
         color: Color,
         cov: impl Fn(f32, f32) -> f32,
     ) {
@@ -77,24 +94,72 @@ impl Canvas {
             (right_start.max(area.x0), area.x1),
         ];
         let span = (left_end.max(area.x0), right_start.min(area.x1));
+        let mut alphas: Vec<u32> = Vec::new();
+        let (mut span_alpha, mut cached) = (0, false);
         for y in area.y0..area.y1 {
             let fy = y as f32 + 0.5;
+            let straight = fy > alike.0 && fy < alike.1;
+            if !(straight && cached) {
+                alphas.clear();
+                for (x0, x1) in zones {
+                    for x in x0..x1.max(x0) {
+                        alphas.push(alpha_of(cov(x as f32 + 0.5, fy), color.a));
+                    }
+                }
+                span_alpha = alpha_of(cov(left_end as f32 + 0.5, fy), color.a);
+                cached = straight;
+            }
+            let mut next = alphas.as_slice();
             for (x0, x1) in zones {
                 if x1 <= x0 {
                     continue;
                 }
-                let row = self.row_mut(y, x0, x1);
-                for (i, dst) in row.chunks_exact_mut(super::blend::BPP).enumerate() {
-                    let a = alpha_of(cov((x0 + i as i32) as f32 + 0.5, fy), color.a);
-                    if a > 0 {
-                        blend_px(dst, px, a);
-                    }
-                }
+                let n = (x1 - x0) as usize;
+                blend_alphas(self.row_mut(y, x0, x1), next.get(..n).unwrap_or(&[]), px);
+                next = next.get(n..).unwrap_or(&[]);
             }
             if span.1 > span.0 {
-                let a = alpha_of(cov(left_end as f32 + 0.5, fy), color.a);
-                blend_span(self.row_mut(y, span.0, span.1), px, a);
+                blend_span(self.row_mut(y, span.0, span.1), px, span_alpha);
             }
+        }
+        self.damage.add(area);
+    }
+
+    /// Blends `color` at full coverage over the pixel rectangle `area` (within the clip):
+    /// the pixels `fill_rrect` of that rectangle gives, with the rows of a large area shared
+    /// among up to four cores (the scrim over a 4K surface).
+    pub fn blend_rect(&mut self, area: PixelRect, color: Color) {
+        let area = area.intersect(&self.clip);
+        if area.is_empty() || color.a == 0 {
+            return;
+        }
+        let px = self.pack(color);
+        let alpha = u32::from(color.a);
+        let stride = self.width as usize * super::blend::BPP;
+        let columns = area.x0 as usize * super::blend::BPP..area.x1 as usize * super::blend::BPP;
+        let Some(rows) = self
+            .data
+            .get_mut(area.y0 as usize * stride..area.y1 as usize * stride)
+        else {
+            return;
+        };
+        let blend = |chunk: &mut [u8]| {
+            for row in chunk.chunks_exact_mut(stride) {
+                if let Some(span) = row.get_mut(columns.clone()) {
+                    blend_span(span, px, alpha);
+                }
+            }
+        };
+        let cores = std::thread::available_parallelism().map_or(1, |n| n.get().min(4));
+        if area.area() < PARALLEL_AREA || cores < 2 {
+            blend(rows);
+        } else {
+            let per = (area.height() as usize).div_ceil(cores) * stride;
+            std::thread::scope(|scope| {
+                for chunk in rows.chunks_mut(per.max(stride)) {
+                    scope.spawn(move || blend(chunk));
+                }
+            });
         }
         self.damage.add(area);
     }
@@ -106,9 +171,8 @@ impl Canvas {
         }
         let shape = RoundBox::new(&rect, radius);
         let zone = zone_width(shape.r);
-        self.paint_coverage(PixelRect::covering(&rect), zone, color, |x, y| {
-            edge(shape.dist(x, y))
-        });
+        let slices = (PixelRect::covering(&rect), zone, shape.straight_rows(zone));
+        self.paint_coverage(slices, color, |x, y| edge(shape.dist(x, y)));
     }
 
     /// Strokes the inside border of a rounded rectangle with `width` pixels.
@@ -118,7 +182,8 @@ impl Canvas {
         }
         let shape = RoundBox::new(&rect, radius);
         let zone = zone_width(shape.r + width);
-        self.paint_coverage(PixelRect::covering(&rect), zone, color, |x, y| {
+        let slices = (PixelRect::covering(&rect), zone, shape.straight_rows(zone));
+        self.paint_coverage(slices, color, |x, y| {
             let d = shape.dist(x, y);
             edge(d) - edge(d + width)
         });
@@ -134,7 +199,7 @@ impl Canvas {
         let shape = RoundBox::new(&rect, radius);
         let zone = zone_width(shape.r + blur);
         let bbox = PixelRect::covering(&rect.inflate(blur / 2.0));
-        self.paint_coverage(bbox, zone, color, |x, y| {
+        self.paint_coverage((bbox, zone, shape.straight_rows(zone)), color, |x, y| {
             1.0 - smooth(shape.dist(x, y) / blur + 0.5)
         });
     }

@@ -134,14 +134,19 @@ fn a_draggable_node_reports_the_drag_and_is_not_activated() {
     );
     assert_eq!(
         of(&release(&mut ui, far)),
-        vec![ActionKind::DragEnded(Point::new(40.0, 10.0))]
+        vec![ActionKind::DragEnded {
+            delta: Point::new(40.0, 10.0),
+            target: None
+        }]
     );
     // Without `set_draggable` the same gesture is an ordinary press that left its node.
     ui.set_draggable(tile, false).expect("not draggable");
     ui.advance_to(10_000);
     press(&mut ui, start);
     assert!(of(&move_to(&mut ui, far)).is_empty());
-    assert!(!of(&release(&mut ui, far)).contains(&ActionKind::DragEnded(Point::new(40.0, 10.0))));
+    assert!(!of(&release(&mut ui, far))
+        .iter()
+        .any(|k| matches!(k, ActionKind::DragEnded { .. })));
 }
 
 #[test]

@@ -65,6 +65,20 @@ fn mix(byte: u8, inv: u16, add: u16) -> u8 {
 /// Bytes blended per step of the vector loop (eight pixels).
 const BLOCK: usize = 8 * BPP;
 
+/// Blends a constant colour with a coverage per pixel (`alphas`, 0..=255) over a row slice;
+/// exactly `blend_px` for every pixel, in 16-bit arithmetic the compiler vectorises.
+#[inline]
+pub(crate) fn blend_alphas(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
+    let colour = [src[0], src[1], src[2], u8::MAX].map(u16::from);
+    for (px, &a) in dst.chunks_exact_mut(BPP).zip(alphas) {
+        let a = a.min(FULL) as u16;
+        let inv = FULL as u16 - a;
+        for (byte, c) in px.iter_mut().zip(colour) {
+            *byte = mix(*byte, inv, c * a + 128);
+        }
+    }
+}
+
 /// Blends a constant colour through an 8-bit coverage mask row; `alpha` scales the mask.
 #[inline]
 pub(crate) fn blend_mask_row(dst: &mut [u8], mask: &[u8], src: [u8; BPP], alpha: u32) {
@@ -117,6 +131,23 @@ mod tests {
         assert_eq!(alpha_of(2.0, 255), 255);
         assert_eq!(alpha_of(0.5, 255), 128);
         assert_eq!(alpha_of(-1.0, 255), 0);
+    }
+
+    #[test]
+    fn per_pixel_alphas_blend_exactly_like_single_pixels() {
+        let mut base = vec![0u8; 256 * BPP];
+        for (i, b) in base.iter_mut().enumerate() {
+            *b = ((i / BPP * 7 + i % BPP * 61) % 256) as u8;
+        }
+        let alphas: Vec<u32> = (0..256).collect();
+        for src in [[12, 200, 77, 0], [255, 255, 255, 9], [0, 0, 0, 0]] {
+            let (mut row, mut each) = (base.clone(), base.clone());
+            blend_alphas(&mut row, &alphas, src);
+            for (px, &a) in each.chunks_exact_mut(BPP).zip(&alphas) {
+                blend_px(px, src, a);
+            }
+            assert_eq!(row, each, "{src:?}");
+        }
     }
 
     #[test]

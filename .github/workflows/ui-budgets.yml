@@ -1,0 +1,56 @@
+# Ultar OS – frame budgets of the UI toolkit (docs/PLAN.md §3.6: 8 ms PC incl. 4K, 16 ms
+# phone), enforced on every change of ultar-ui, the design tokens or this workflow.
+#
+# Shared GitHub runners are too noisy for single frames: here the MEDIAN of every
+# measurement is asserted against the budget (ULTAR_PERF_STAT=median). The 99th percentile –
+# the figure of the plan – is asserted by the same tests without the variable, on a quiet
+# machine before a release (docs/integration/ultar-ui.md, "Frame budgets").
+name: UI frame budgets
+
+on:
+  push:
+    branches: [main]
+    paths: [platform/ultar-ui/**, design/tokens.toml, assets/fonts/**, .github/workflows/ui-budgets.yml]
+  pull_request:
+    branches: [main]
+    paths: [platform/ultar-ui/**, design/tokens.toml, assets/fonts/**, .github/workflows/ui-budgets.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-budgets-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  ULTAR_TOKENS: ${{ github.workspace }}/design/tokens.toml
+  ULTAR_PERF_STAT: median
+
+jobs:
+  budgets:
+    name: Frame budgets (release, median)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup default 1.97.0
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ui-budgets-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ui-budgets-${{ runner.os }}-
+
+      - name: Frame budgets
+        run: cargo test --release -p ultar-ui --test r3_perf --test w4_backdrop -- --include-ignored --test-threads=1 --nocapture

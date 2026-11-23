@@ -240,6 +240,19 @@ impl<'a> Painter<'a> {
             .fill_rrect(self.snap(rect), r, color.with_alpha(self.opacity));
     }
 
+    /// Blends `color` over a rectangle whose edges lie on device pixels (a damage region):
+    /// the same pixels as [`Painter::fill`] without corners, for large areas faster.
+    pub fn dim(&mut self, rect: Rect, color: Color) {
+        let r = self.snap(rect);
+        let area = PixelRect::new(
+            r.x.round() as i32,
+            r.y.round() as i32,
+            r.right().round() as i32,
+            r.bottom().round() as i32,
+        );
+        self.canvas.blend_rect(area, color.with_alpha(self.opacity));
+    }
+
     /// Strokes the inside border of a rectangle with `width` logical points.
     pub fn stroke(&mut self, rect: Rect, radius: Option<Radius>, width: f32, color: Color) {
         let r = self.radius(radius);

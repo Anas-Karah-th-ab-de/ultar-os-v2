@@ -1,4 +1,10 @@
 //! List and list item: rows the user picks from (navigation, files, results).
+//!
+//! Every item is a node (with its own trailing control, tooltip and context menu), so a
+//! list is meant for up to a few hundred rows; `MAX_NODES` bounds a tree. Long data –
+//! a folder of thousands of files, a log, search results – belongs in a [`super::Table`]:
+//! its rows are data, one node for the whole table, only the visible rows are painted, and
+//! `Ui::set_table_rows` replaces them in place.
 
 use super::style::{self, Visual};
 use super::{Label, MeasureCx, PaintCx};
@@ -23,6 +29,10 @@ pub struct List {
     /// `true` for the navigation list of a sidebar: compact items (one line, the target
     /// height, rounded), announced as navigation.
     pub navigation: bool,
+    /// `true` when several items can be selected (Ctrl toggles, Shift extends).
+    pub multi: bool,
+    /// Where a Shift range starts (index among the items).
+    pub(crate) anchor: Option<usize>,
 }
 
 impl List {
@@ -33,6 +43,8 @@ impl List {
             name: None,
             selectable: false,
             navigation: false,
+            multi: false,
+            anchor: None,
         }
     }
 
@@ -49,6 +61,14 @@ impl List {
     /// The same list with single selection.
     pub fn selectable(mut self) -> List {
         self.selectable = true;
+        self
+    }
+
+    /// The same list with multi-selection: a click selects one item, Ctrl with a click or
+    /// Space toggles an item, Shift with a click or an arrow selects a range.
+    pub fn multi(mut self) -> List {
+        self.selectable = true;
+        self.multi = true;
         self
     }
 

@@ -60,16 +60,22 @@ impl Ui {
         self.close_menu_with(&mut dropped);
         self.hide_tooltip();
         self.set_hover(None);
-        self.input.mouse = None;
-        self.input.finger = None;
-        self.layers.drag = None;
+        self.drop_pointer_state();
         let (focus, visible) = (self.input.focus, self.input.focus_visible);
         let dialog = self.dialog_mut(id)?;
         dialog.open = true;
         dialog.return_focus = focus;
         let (preferred, cancel) = (dialog.default_action, dialog.cancel_action);
         self.layers.open.push(id);
-        self.relayout();
+        if self.dialog(id)?.has_scrim() {
+            // Nothing behind the dialog moves: the next frame dims the canvas as it is and
+            // draws the dialog on top (see `ui/frame.rs`).
+            self.dirty.layout = true;
+            self.layers.backdrop.fresh = true;
+            self.layers.backdrop.ready = false;
+        } else {
+            self.relayout();
+        }
         self.layout();
         // A destructive default action never has the focus first: Enter must not delete
         // (spec §13.42); the safe cancel action has it then.
@@ -104,9 +110,7 @@ impl Ui {
         self.close_menu_with(&mut dropped);
         self.hide_tooltip();
         self.set_hover(None);
-        self.input.mouse = None;
-        self.input.finger = None;
-        self.layers.drag = None;
+        self.drop_pointer_state();
         let visible = self.input.focus_visible;
         let dialog = self.dialog_mut(id)?;
         dialog.open = false;
@@ -220,5 +224,16 @@ impl Ui {
             self.dismiss_modal(out);
         }
         true
+    }
+
+    /// Ends presses, scrollbar drags and gestures (a dialog appeared or went): the nodes
+    /// that showed them are repainted.
+    pub(crate) fn drop_pointer_state(&mut self) {
+        self.set_press(crate::ui::Pointer::Mouse, None);
+        self.set_press(crate::ui::Pointer::Touch, None);
+        if let Some(drag) = self.layers.drag.take() {
+            self.touch(drag.scroller);
+        }
+        self.end_gestures();
     }
 }
