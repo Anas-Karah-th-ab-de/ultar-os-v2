@@ -104,7 +104,10 @@ jobs:
           cargo check --locked $WORKSPACE --all-targets
 
       - name: Tests
-        run: cargo test --locked $WORKSPACE
+        run: |
+          cargo test --locked $WORKSPACE --exclude ultar-shell
+          # The old shell (to be replaced in P5) has tests that share process-wide state: run them one at a time.
+          cargo test --locked -p ultar-shell -- --test-threads=1
 
       - name: i18n check (every key in every language)
         run: |
