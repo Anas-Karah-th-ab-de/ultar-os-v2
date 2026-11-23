@@ -57,6 +57,8 @@ pub enum FdKind {
     Eingabe(Arc<crate::eingabe::EingabeFd>),
     /// Namespace handle (`/proc/<pid>/ns/*`), argument of `setns`
     Ns(crate::isolation::NsRef),
+    /// Raw A/B partition `/dev/ultar/part/*` (rawpart.rs)
+    RawPart(Arc<crate::rawpart::RawFd>),
 }
 
 pub enum UnixState {
@@ -106,6 +108,7 @@ impl Fd {
             }
             FdKind::UnixSock(s) => FdKind::UnixSock(s.clone()),
             FdKind::Epoll(e) => FdKind::Epoll(e.clone()),
+            FdKind::RawPart(r) => FdKind::RawPart(r.clone()),
             FdKind::EventFd(c, sem) => FdKind::EventFd(c.clone(), *sem),
             FdKind::TimerFd(t) => FdKind::TimerFd(t.clone()),
             FdKind::Fb(f) => FdKind::Fb(f.clone()),

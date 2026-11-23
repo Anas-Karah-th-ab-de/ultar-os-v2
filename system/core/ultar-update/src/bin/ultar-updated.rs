@@ -6,7 +6,8 @@
 //! The socket may also come from `ULTAR_BUS_SOCKET`.
 //!
 //! Runs under the service runtime (`ultar-service`): at start it closes inherited descriptors,
-//! sets umask 077, changes to `/`, sets the standard limits, drops every kernel right and forbids
+//! sets umask 077, changes to `/`, sets the standard limits, drops every kernel right except raw
+//! device access (the A/B partitions) and forbids
 //! privilege gain; it runs as root on purpose (it writes the slots and the boot control). It
 //! reports readiness to `ultar-init` once it is registered on the bus. `SIGTERM`/`SIGINT` end
 //! it: a running operation stops at its next checkpoint without clean-up (every point is safe,
@@ -17,7 +18,7 @@
 use std::process::ExitCode;
 use ultar_i18n::{Arg, Lang, Translator};
 use ultar_service::log::{LogTarget, LoggerConfig};
-use ultar_service::{exit, Runtime, ServiceSpec};
+use ultar_service::{exit, Right, RightSet, Runtime, ServiceSpec};
 use ultar_update::daemon::{parse_args, run, DaemonArgs, DaemonError, Hooks, SOCKET_ENV};
 use ultar_update::msg::{lang_hint, translator};
 
@@ -39,6 +40,9 @@ fn start_runtime(args: &DaemonArgs, tr: &Translator) -> Result<Runtime, ExitCode
     let mut spec = ServiceSpec::new("ultar-updated");
     // Slots, boot control and the state directory belong to root.
     spec.hardening.allow_root = true;
+    // The one kernel right kept: raw access to the A/B partitions (the kernel also requires
+    // root and refuses the running slot's partitions); every other right is dropped.
+    spec.hardening.rights = Some(RightSet::of(&[Right::RawDevice]));
     if let Some(path) = &args.log_socket {
         spec.log = LoggerConfig::to(LogTarget::Socket(path.clone()));
     }

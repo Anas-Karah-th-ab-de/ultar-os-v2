@@ -38,6 +38,8 @@ const IS_TFES: u32 = 1 << 30;
 const ATA_IDENTIFY: u8 = 0xec;
 const ATA_READ_DMA_EXT: u8 = 0x25;
 const ATA_WRITE_DMA_EXT: u8 = 0x35;
+/// FLUSH CACHE EXT (ACS-4 §7.11), no data
+const ATA_FLUSH_CACHE_EXT: u8 = 0xea;
 /// pro Befehl höchstens 64 KB (eine PRD-Zeile je 4-KB-Seite, 16 Zeilen)
 const MAXB: usize = 64 * 1024;
 
@@ -248,5 +250,9 @@ impl BlockDev for Disk {
             self.ata(ATA_WRITE_DMA_EXT, start, (chunk.len() / 512) as u16, chunk.len())?;
         }
         Ok(())
+    }
+    fn flush(&mut self) -> Result<()> {
+        // a non-data command: the one PRD entry `ata` always fills is not used by the device
+        self.ata(ATA_FLUSH_CACHE_EXT, 0, 0, 512)
     }
 }

@@ -51,6 +51,7 @@ update.error.unhealthy = Die neue Fassung hat nicht richtig funktioniert; ein Ne
 update.error.invalid_argument = Ungültiger Wert
 update.error.boot_failed = Die neue Fassung ist nicht gestartet; das Gerät ist von selbst zur vorigen Fassung zurückgekehrt
 update.error.tls_unavailable = Der Prozessor dieses Geräts kann die verschlüsselte Verbindung zum Aktualisierungsserver nicht herstellen; bitte eine Aktualisierung vom USB-Stick verwenden
+update.error.layout_not_ab = Diese Installation stammt aus der Zeit vor den A/B-Systembereichen und kann nicht aktualisiert werden. Bitte mit einem aktuellen Installationsmedium neu installieren
 
 update.history.staged = Aktualisierung geladen und geprüft
 update.history.applied = Aktualisierung installiert, wartet auf Neustart

@@ -1,0 +1,13 @@
+[package]
+name = "ultar-slots"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "A/B boot contract of Ultar OS: slot table, partition layout, slot metadata, GPT reading and the start decision – one no_std source for the updater, the UEFI loader, the installer and the kernel"
+
+[lib]
+name = "ultar_slots"
+path = "src/lib.rs"
+
+[dependencies]

@@ -5,6 +5,9 @@
 //! Quelle ist das Startmedium (GPT mit `ULTAR-INSTALL` oder `ULTAR-EFI` und `ultar-compat`); auf der Zielplatte heißt die
 //! Startpartition `ULTAR-EFI` – das installierte System startet deshalb nicht erneut in die Installation.
 
+#[path = "install_ab.rs"]
+mod ab;
+
 use crate::driver::BLOCK;
 use crate::efi::Framebuffer;
 use alloc::string::String;
@@ -505,6 +508,9 @@ pub(crate) struct Platte {
     teile: Vec<Teil>,
 }
 
+/// 1 MiB per copy step
+const BLOCK_SEKT: u64 = 2048;
+
 fn rd(idx: usize, lba: u64, n: usize) -> Option<Vec<u8>> {
     let mut b = BLOCK.lock();
     let d = b.get_mut(idx)?;
@@ -562,6 +568,15 @@ pub(crate) fn platten() -> Vec<Platte> {
 
 fn ist_quelle(p: &Platte) -> bool {
     p.teile.iter().any(|t| t.name == "ULTAR-INSTALL" || t.name == "ULTAR-EFI") && p.teile.iter().any(|t| t.name == "ultar-compat")
+}
+
+/// Sectors the target needs for medium `q` (A/B layout or the single-root layout).
+fn bedarf(q: &Platte) -> u64 {
+    if ab::is_source(q) {
+        ab::plan(q).map(|p| ab::needed(&p)).unwrap_or(u64::MAX)
+    } else {
+        benoetigt(q)
+    }
 }
 
 /// Startmedium mit Installationspartition? (dann startet die Installation von selbst)
@@ -843,7 +858,7 @@ impl Ui {
         let alle = platten();
         self.quelle = quelle(&alle);
         let q = self.quelle.as_ref().map(|q| q.idx);
-        let need = self.quelle.as_ref().map(benoetigt).unwrap_or(u64::MAX);
+        let need = self.quelle.as_ref().map(bedarf).unwrap_or(u64::MAX);
         self.ziele = alle.into_iter().filter(|p| Some(p.idx) != q && p.ss == 512 && p.sectors >= need).collect();
         self.wahl = None;
     }
@@ -1245,6 +1260,9 @@ impl Ui {
         if z.idx == q.idx {
             return Err(String::from("Zielplatte ist das Installationsmedium"));
         }
+        if ab::is_source(&q) {
+            return self.installieren_ab(q, z);
+        }
         if z.sectors < benoetigt(&q) {
             return Err(alloc::format!("Zielplatte zu klein ({} MB)", z.mb));
         }
@@ -1252,7 +1270,6 @@ impl Ui {
         let auftrag = plan(&q);
         let gesamt: u64 = auftrag.iter().map(|(t, _)| t.last - t.first + 1).sum::<u64>() * 2 + 1;
         let mut erledigt = 0u64;
-        const BLOCK_SEKT: u64 = 2048; // 1 MiB je Schritt
         // alte GPT vorne zerstören, damit eine abgebrochene Installation nicht als gültig gilt
         {
             let mut b = BLOCK.lock();

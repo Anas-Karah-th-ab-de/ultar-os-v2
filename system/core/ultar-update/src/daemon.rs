@@ -1,10 +1,11 @@
 //! The `ultar-updated` daemon: wires configuration, boot control, engine, network source and
 //! bus together.
 
+use crate::bootctl::BootControl;
 use crate::busfront::{serve, BusPublisher};
 use crate::clock::SystemClock;
 use crate::commit::BootOutcome;
-use crate::config::{ConfigError, DaemonConfig};
+use crate::config::{BootStore, ConfigError, DaemonConfig};
 use crate::engine::{Engine, Environment};
 use crate::error::UpdateError;
 use crate::fault::CancelFlag;
@@ -12,6 +13,7 @@ use crate::filectl::FileBootControl;
 use crate::fsutil::{create_private_dir, read_bounded};
 use crate::health::{BusHealth, FsSpace, HealthCheck};
 use crate::net::HttpSource;
+use crate::partctl::PartitionBootControl;
 use crate::service::{Core, SourceFactory};
 use crate::source::UpdateSource;
 use std::fmt;
@@ -236,8 +238,31 @@ fn register_stop(hooks: &Hooks<'_>, cancel: &Arc<CancelFlag>, client: &Client) -
 /// (the same as a power loss, which every step survives), then closes the bus connection.
 pub fn run(args: &DaemonArgs, hooks: Hooks<'_>) -> Result<(), DaemonError> {
     let config = load_config(&args.config)?;
-    let _lock = lock_state_dir(&config.engine.state_dir)?;
-    let boot = FileBootControl::open(&config.boot_dir, &config.roles)?;
+    let lock = lock_state_dir(&config.engine.state_dir)?;
+    match &config.boot {
+        BootStore::Files(dir) => {
+            let boot = FileBootControl::open(dir, &config.roles)?;
+            run_with(args, &config, boot, hooks, lock)
+        }
+        BootStore::Partitions {
+            dir,
+            running_slot_file,
+        } => {
+            let boot = PartitionBootControl::open_running(dir, running_slot_file, &config.roles)?;
+            run_with(args, &config, boot, hooks, lock)
+        }
+    }
+}
+
+/// The daemon over one boot control backend; `_lock` is the state directory lock, held until
+/// the service ends.
+fn run_with<B: BootControl + 'static>(
+    args: &DaemonArgs,
+    config: &DaemonConfig,
+    boot: B,
+    hooks: Hooks<'_>,
+    _lock: std::fs::File,
+) -> Result<(), DaemonError> {
     let cancel = Arc::new(CancelFlag::new());
     let env = Environment {
         clock: Arc::new(SystemClock),
@@ -286,7 +311,7 @@ pub fn run(args: &DaemonArgs, hooks: Hooks<'_>) -> Result<(), DaemonError> {
 
 /// The timer thread lives as long as the process. It wakes often and asks whether a run is
 /// due; the due time is stored on disk, so short uptimes do not starve the check.
-fn start_timer(core: Arc<Core<FileBootControl>>, interval: u64) {
+fn start_timer<B: BootControl + 'static>(core: Arc<Core<B>>, interval: u64) {
     let _ = std::thread::Builder::new()
         .name("update-timer".into())
         .spawn(move || loop {

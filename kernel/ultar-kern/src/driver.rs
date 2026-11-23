@@ -44,6 +44,11 @@ pub trait BlockDev: Send {
     fn write(&mut self, _lba: u64, _buf: &[u8]) -> Result<()> {
         Err("Datenträger nur lesbar".into())
     }
+    /// Makes every completed write durable (the device's write cache is emptied). A driver
+    /// that cannot guarantee that keeps this default, and `fsync` on its raw nodes fails.
+    fn flush(&mut self) -> Result<()> {
+        Err("no cache flush".into())
+    }
 }
 
 pub trait NetDev: Send {

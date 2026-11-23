@@ -51,6 +51,7 @@ update.error.unhealthy = The new version did not work properly; restart to retur
 update.error.invalid_argument = Invalid value
 update.error.boot_failed = The new version did not start; the device returned to the previous version by itself
 update.error.tls_unavailable = This device's processor cannot make the encrypted connection to the update server; use an update from a USB stick
+update.error.layout_not_ab = This installation predates the A/B system slots and cannot be updated. Reinstall from a current installation medium
 
 update.history.staged = Update downloaded and verified
 update.history.applied = Update installed, waiting for restart

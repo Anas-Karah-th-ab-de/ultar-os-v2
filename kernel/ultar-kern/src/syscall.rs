@@ -305,7 +305,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         0 => sys_read(a[0], a[1], a[2], None),
         1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
-        3 => Res::Val(with(|p| if (a[0] as u32 as usize) < p.g.fds.len() && p.g.fds[a[0] as u32 as usize].take().is_some() { 0 } else { -EBADF }).unwrap_or(-EBADF)),
+        3 => Res::Val(sys_close(a[0])),
         4 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
         6 => Res::Val(sys_stat_path(-100, a[0], a[1], 0x100)),
         5 => Res::Val(sys_fstat(a[0], a[1])),
@@ -368,6 +368,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         62 => Res::Val(sys_kill(a[0] as i32 as i64, a[1])),
         63 => Res::Val(sys_uname(a[0])),
         72 => Res::Val(sys_fcntl(a[0], a[1], a[2])),
+        73 => Res::Val(crate::flock::sys_flock(a[0], a[1])),
         79 => Res::Val(sys_getcwd(a[0], a[1])),
         80 => Res::Val(sys_chdir(a[0])),
         83 => Res::Val(sys_mkdir(-100, a[0], a[1])),
@@ -557,6 +558,9 @@ pub fn dispatch(f: &mut TrapFrame) {
 // ------------------------------------------------------------------ Dateien
 
 fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
+    if let Some(r) = crate::rawpart::sys_read(fd, buf, n, at) {
+        return Res::Val(r);
+    }
     let n = n.min(1 << 24) as usize;
     enum Src {
         Data(Vec<u8>),
@@ -620,7 +624,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -790,6 +794,9 @@ fn sys_write(fd: u64, buf: u64, n: u64) -> i64 {
 
 /// `write`: the result can be "wait and repeat" (full pipe) – see [`Res::Partial`].
 fn write_res(fd: u64, buf: u64, n: u64) -> Res {
+    if let Some(r) = crate::rawpart::sys_write(fd, buf, n, None) {
+        return Res::Val(r);
+    }
     let want = n.min(1 << 24) as usize;
     // a large write to a pipe is delivered in pieces (see `Res::Partial`): copy from the caller only
     // what the pipe can hold at once, not the whole request each time the writer wakes up
@@ -918,6 +925,9 @@ fn control_write(path: &str, data: &[u8]) -> i64 {
 
 /// pwrite64: Dateien an Stelle, Bildspeicher ab Versatz
 fn sys_pwrite(fd: u64, buf: u64, n: u64, off: u64) -> i64 {
+    if let Some(r) = crate::rawpart::sys_write(fd, buf, n, Some(off)) {
+        return r;
+    }
     let ist_fb = with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Fb(_)))).unwrap_or(false);
     if ist_fb {
         let Some(data) = get(buf, n.min(1 << 25) as usize) else { return -EFAULT };
@@ -1040,6 +1050,10 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             "zero" => FdKind::Zero,
             "urandom" | "random" => FdKind::Random,
             "fb0" | "input/event0" | "input/event1" if !rights.has(Rights::RAW_DEVICE) => return -EACCES,
+            d if d.starts_with("ultar/part/") => match crate::rawpart::open(d, acc != 0, rights.has(Rights::RAW_DEVICE)) {
+                Ok(k) => k,
+                Err(e) => return e,
+            },
             "fb0" => match if acc == 0 { crate::eingabe::FbFd::lesend() } else { crate::eingabe::FbFd::neu() } {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,
@@ -1140,6 +1154,9 @@ fn stat_entry(host: &str, fallback: u32, size: u64) -> Vec<u8> {
 /// (every disk write of this kernel is synchronous), in the RAM layer or a tmpfs it makes the data
 /// visible to others and is "durable" only as far as memory is. Pipes and sockets: `EINVAL`.
 fn sys_fsync(fd: u64) -> i64 {
+    if let Some(r) = crate::rawpart::sys_fsync(fd) {
+        return r;
+    }
     let job = with(|p| match p.fd(fd).map(|d| &d.kind) {
         Some(FdKind::File { data, path, write: true, dirty: true, .. }) => Ok(Some((path.clone(), data.clone()))),
         Some(FdKind::File { .. }) | Some(FdKind::Dir { .. }) => Ok(None),
@@ -1152,8 +1169,8 @@ fn sys_fsync(fd: u64) -> i64 {
         Ok(None) => return 0,
         Err(e) => return e,
     };
-    if !fs::store_file(&path, data) {
-        return -ENOSPC;
+    if let Err(e) = fs::store_file_res(&path, data) {
+        return e;
     }
     // stored: nothing left to write back until the next write
     with(|p| {
@@ -1162,6 +1179,26 @@ fn sys_fsync(fd: u64) -> i64 {
         }
     });
     0
+}
+
+/// `close`: a written file is stored first, and an error doing so is the result (`EIO`,
+/// `ENOSPC`) – the data is then not on the medium, and the caller must know.
+fn sys_close(fd: u64) -> i64 {
+    let taken = with(|p| p.g.fds.get_mut(fd as u32 as usize).and_then(Option::take)).flatten();
+    let Some(mut f) = taken else { return -EBADF };
+    let job = match &mut f.kind {
+        FdKind::File { data, path, write: true, dirty, .. } if *dirty => {
+            // stored here, not again when the descriptor is dropped
+            *dirty = false;
+            Some((path.clone(), data.clone()))
+        }
+        _ => None,
+    };
+    drop(f);
+    match job {
+        Some((path, data)) => fs::store_file_res(&path, data).err().unwrap_or(0),
+        None => 0,
+    }
 }
 
 fn ino(path: &str) -> u64 {
@@ -1213,6 +1250,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Fb(_) => Ok(stat_buf(0o020660, 0, 10, 29 << 8)),
             FdKind::Eingabe(e) => Ok(stat_buf(0o020660, 0, 11, (13 << 8) | (64 + e.0 as u64))),
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
+            FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
         })
     })
     .flatten();
@@ -1229,6 +1267,9 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
 }
 
 fn sys_lseek(fd: u64, off: i64, wh: u64) -> i64 {
+    if let Some(r) = crate::rawpart::sys_lseek(fd, off, wh) {
+        return r;
+    }
     with(|p| {
         let Some(d) = p.fd(fd) else { return -EBADF };
         match &mut d.kind {
@@ -1466,8 +1507,8 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if replaced_link {
         fs::unlink(&n);
     }
-    if !fs::store_file(&n, data) {
-        return -ENOSPC;
+    if let Err(e) = fs::store_file_res(&n, data) {
+        return e;
     }
     // mode and owner go with the entry (before the old name – and its record – is removed)
     crate::perm::moved(&o, &n);

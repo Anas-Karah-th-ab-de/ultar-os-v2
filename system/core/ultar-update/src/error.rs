@@ -126,6 +126,9 @@ pub enum UpdateError {
     BootFailed,
     /// This CPU cannot run the TLS crypto provider; `https` servers cannot be reached.
     TlsUnavailable,
+    /// The device was installed before A/B slots existed (one root partition, no
+    /// `ULTAR-BOOTCTL`): there is no second slot to write to. Reinstalling is the way forward.
+    LayoutNotAb,
 }
 
 impl UpdateError {
@@ -173,11 +176,12 @@ impl UpdateError {
             Self::InvalidArgument => "update.error.invalid_argument",
             Self::BootFailed => "update.error.boot_failed",
             Self::TlsUnavailable => "update.error.tls_unavailable",
+            Self::LayoutNotAb => "update.error.layout_not_ab",
         }
     }
 
     /// All message keys an error can produce (for catalogue completeness checks).
-    pub const KEYS: [&'static str; 41] = [
+    pub const KEYS: [&'static str; 42] = [
         "update.error.io",
         "update.error.malformed",
         "update.error.no_trusted_keys",
@@ -219,6 +223,7 @@ impl UpdateError {
         "update.error.invalid_argument",
         "update.error.boot_failed",
         "update.error.tls_unavailable",
+        "update.error.layout_not_ab",
     ];
 
     /// Stable numeric code used on the bus (`ErrorCode::Service(code)`): the position of the

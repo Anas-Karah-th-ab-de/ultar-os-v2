@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "ab-agent"
+version = "0.7.0"
+dependencies = [
+ "ultar-bus",
+]
+
+[[package]]
 name = "ab_glyph_rasterizer"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5570,6 +5577,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-slots"
+version = "0.7.0"
+
+[[package]]
 name = "ultar-sprache"
 version = "0.1.0"
 
@@ -5640,6 +5651,7 @@ dependencies = [
  "ultar-bus",
  "ultar-i18n",
  "ultar-service",
+ "ultar-slots",
  "ureq 3.5.2",
 ]
 

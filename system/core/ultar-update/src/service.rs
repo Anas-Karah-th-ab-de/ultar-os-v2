@@ -12,7 +12,7 @@ use crate::engine::{Engine, EnginePhase};
 use crate::error::UpdateError;
 use crate::fault::CancelFlag;
 use crate::health::HealthCheck;
-use crate::history;
+use crate::history::{self, HistoryKind};
 use crate::policy::Policy;
 use crate::source::UpdateSource;
 use std::collections::VecDeque;
@@ -225,6 +225,9 @@ impl<B: BootControl> Core<B> {
     /// Brings the snapshot in line with the engine and publishes it.
     pub(crate) fn refresh(&self, engine: &Engine<B>, error_key: Option<&'static str>) {
         let status = engine.status().ok();
+        let error_key = error_key
+            .map(str::to_string)
+            .or_else(|| boot_notice(engine));
         let policy = engine.policy();
         self.announce(|s| {
             let Some(status) = &status else {
@@ -253,7 +256,7 @@ impl<B: BootControl> Core<B> {
                 critical: known.is_some_and(|a| a.1),
                 notes_key: known.map(|a| a.2.clone()),
                 version,
-                error_key: error_key.map(str::to_string),
+                error_key: error_key.clone(),
             };
             s.status = Some(StatusReply {
                 progress: s.progress.clone(),
@@ -427,4 +430,15 @@ impl<B: BootControl> Core<B> {
         self.refresh(&engine, error_key);
         outcome
     }
+}
+
+/// What the last start told about a new release (it did not start, or failed its health
+/// check), as long as nothing newer happened: taken from the history, so the status says the
+/// same as the history and survives later operations that end without news (an automatic
+/// check right after the start, a daemon restart). The next history entry clears it.
+fn boot_notice<B: BootControl>(engine: &Engine<B>) -> Option<String> {
+    let last = engine.history().pop()?;
+    (last.kind == HistoryKind::RolledBack)
+        .then_some(last.detail_key)
+        .flatten()
 }

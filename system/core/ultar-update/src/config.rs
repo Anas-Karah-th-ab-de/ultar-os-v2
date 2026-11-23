@@ -56,8 +56,8 @@ impl std::error::Error for ConfigError {}
 pub struct DaemonConfig {
     /// Engine configuration.
     pub engine: EngineConfig,
-    /// Directory of the file-based boot control (slot table and slot images).
-    pub boot_dir: PathBuf,
+    /// Where the slots and the slot table live.
+    pub boot: BootStore,
     /// Payload roles of a slot.
     pub roles: Vec<Role>,
     /// Update server, when the device updates online.
@@ -74,6 +74,21 @@ pub struct DaemonConfig {
     pub check_interval_minutes: u32,
 }
 
+/// Which boot control backend the daemon uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootStore {
+    /// `boot_dir=`: the file-based boot control ([`crate::filectl::FileBootControl`]).
+    Files(PathBuf),
+    /// `partition_dir=` + `running_slot_file=`: raw partitions of the A/B layout
+    /// ([`crate::partctl::PartitionBootControl`]).
+    Partitions {
+        /// Directory with one node per partition, named by its GPT name.
+        dir: PathBuf,
+        /// File in which the kernel names the running slot (`a`, `b`, or `-`).
+        running_slot_file: PathBuf,
+    },
+}
+
 #[derive(Default)]
 struct Raw {
     single: Vec<(&'static str, String)>,
@@ -82,7 +97,7 @@ struct Raw {
     health_services: Vec<String>,
 }
 
-const SINGLE_KEYS: [&str; 18] = [
+const SINGLE_KEYS: [&str; 20] = [
     "image_time",
     "device",
     "arch",
@@ -91,6 +106,8 @@ const SINGLE_KEYS: [&str; 18] = [
     "rollback_index",
     "roles",
     "boot_dir",
+    "partition_dir",
+    "running_slot_file",
     "state_dir",
     "keys_dir",
     "server",
@@ -196,6 +213,29 @@ fn health_services(raw: &Raw) -> Result<Vec<String>, ConfigError> {
     }
 }
 
+/// Exactly one backend: `boot_dir`, or `partition_dir` together with `running_slot_file`.
+fn boot_store(raw: &Raw) -> Result<BootStore, ConfigError> {
+    let files = raw.get("boot_dir");
+    let parts = raw.get("partition_dir");
+    let slot_file = raw.get("running_slot_file");
+    match (files, parts, slot_file) {
+        (Some(dir), None, None) => Ok(BootStore::Files(PathBuf::from(dir))),
+        (None, Some(dir), Some(file)) => Ok(BootStore::Partitions {
+            dir: PathBuf::from(dir),
+            running_slot_file: PathBuf::from(file),
+        }),
+        (None, None, None) => Err(ConfigError {
+            line: 0,
+            kind: ConfigErrorKind::Missing("boot_dir"),
+        }),
+        (None, Some(_), None) => Err(ConfigError {
+            line: 0,
+            kind: ConfigErrorKind::Missing("running_slot_file"),
+        }),
+        _ => Err(value_error(0)),
+    }
+}
+
 fn parse_roles(text: &str) -> Result<Vec<Role>, ConfigError> {
     let mut roles = Vec::new();
     for name in text.split(',') {
@@ -243,7 +283,7 @@ impl DaemonConfig {
         };
         Ok(Self {
             engine,
-            boot_dir: PathBuf::from(raw.required("boot_dir")?),
+            boot: boot_store(&raw)?,
             roles: parse_roles(raw.required("roles")?)?,
             server: raw.get("server").map(str::to_string),
             token_file: raw.get("token_file").map(PathBuf::from),
@@ -294,6 +334,7 @@ health_service=devices
         assert_eq!(c.engine.reserve_bytes, 64 * 1024 * 1024);
         assert_eq!(c.engine.expiry_tolerance, 86_400);
         assert_eq!(c.roles, [Role::Kernel, Role::System]);
+        assert_eq!(c.boot, BootStore::Files(PathBuf::from("/boot/ultar")));
         assert_eq!(c.access.admins, ["system.settings", "system.admin"]);
         assert_eq!(c.access.network_identity.as_deref(), Some("system.net"));
         assert_eq!(c.health_services.len(), 2);
@@ -395,5 +436,33 @@ health_service=devices
     fn check_interval_has_a_lower_bound() {
         let c = DaemonConfig::parse(&format!("{GOOD}check_interval_minutes=1\n")).unwrap();
         assert_eq!(c.check_interval_minutes, 15);
+    }
+
+    #[test]
+    fn exactly_one_boot_backend() {
+        let parts = "partition_dir=/parts\nrunning_slot_file=/slot\n";
+        let text = GOOD.replace("boot_dir=/boot/ultar\n", parts);
+        let c = DaemonConfig::parse(&text).unwrap();
+        assert_eq!(
+            c.boot,
+            BootStore::Partitions {
+                dir: PathBuf::from("/parts"),
+                running_slot_file: PathBuf::from("/slot"),
+            }
+        );
+        let kind = |t: String| DaemonConfig::parse(&t).unwrap_err().kind;
+        assert_eq!(kind(format!("{GOOD}{parts}")), ConfigErrorKind::Value);
+        assert_eq!(
+            kind(GOOD.replace("boot_dir=/boot/ultar\n", "partition_dir=/p\n")),
+            ConfigErrorKind::Missing("running_slot_file")
+        );
+        assert_eq!(
+            kind(GOOD.replace("boot_dir=/boot/ultar\n", "running_slot_file=/s\n")),
+            ConfigErrorKind::Value
+        );
+        assert_eq!(
+            kind(GOOD.replace("boot_dir=/boot/ultar\n", "")),
+            ConfigErrorKind::Missing("boot_dir")
+        );
     }
 }

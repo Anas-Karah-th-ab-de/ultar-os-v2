@@ -26,6 +26,7 @@ path = "src/bin/uupdate-sign.rs"
 ultar-bus = { path = "../ultar-bus" }
 ultar-i18n = { path = "../ultar-i18n" }
 ultar-service = { path = "../ultar-service" }
+ultar-slots = { path = "../ultar-slots" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
 serde_json = "1"
 sha2 = "0.10"

@@ -73,6 +73,13 @@ from = "kernel"
 to = "drivers"
 crates = ["drivers/kernel"]
 
+# kernel (kernel, UEFI loader) -> the A/B boot contract shared with the updater: slot table,
+# partition layout, load options, GPT reader (no_std, pure; one source for both sides)
+[[allow]]
+from = "kernel"
+to = "system-core"
+crates = ["system/core/ultar-slots"]
+
 # drivers -> driver package format only
 [[allow]]
 from = "drivers"

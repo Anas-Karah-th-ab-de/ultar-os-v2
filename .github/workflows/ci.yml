@@ -28,7 +28,7 @@ env:
   STATIC_PACKAGES: ultar-bus ultar-driverpkg ultar-i18n ultar-service ultar-sys ultar-busd ultar-logd ultar-update
   # Crates written under the v2 rules: linted with -D warnings. Code carried over from the old
   # repository is held by the ratchet in tools/check-baseline.toml until it is rebuilt.
-  STRICT_PACKAGES: -p ultar-i18n -p ultar-profile -p ultar-hal -p ultar-hal-system -p ultar-bus -p ultar-driverpkg -p ultar-devd -p ultar-settingsd -p ultar-ui -p ultar-update -p ultar-service -p ultar-sys -p ultar-busd -p ultar-logd -p ultar-init -p ultar-compositor -p ultar-surface -p ultar-hal-gfx -p ultar-check
+  STRICT_PACKAGES: -p ultar-i18n -p ultar-profile -p ultar-hal -p ultar-hal-system -p ultar-bus -p ultar-driverpkg -p ultar-devd -p ultar-settingsd -p ultar-ui -p ultar-update -p ultar-slots -p ab-agent -p ultar-service -p ultar-sys -p ultar-busd -p ultar-logd -p ultar-init -p ultar-compositor -p ultar-surface -p ultar-hal-gfx -p ultar-check
   # The UI toolkit checks its token copy against the one source of design values.
   ULTAR_TOKENS: ${{ github.workspace }}/design/tokens.toml
   # ultar-llm builds llama.cpp (C++) and has its own workflow.

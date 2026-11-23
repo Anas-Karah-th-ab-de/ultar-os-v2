@@ -51,6 +51,7 @@ update.error.unhealthy = لم تعمل النسخة الجديدة كما يجب
 update.error.invalid_argument = قيمة غير صالحة
 update.error.boot_failed = لم تبدأ النسخة الجديدة؛ عاد الجهاز تلقائيًا إلى النسخة السابقة
 update.error.tls_unavailable = لا يدعم معالج هذا الجهاز الاتصال المشفّر بخادم التحديثات؛ استخدم التحديث من وسيط USB
+update.error.layout_not_ab = هذا التثبيت قديم وليس فيه خانتا نظام (أ/ب)، فلا يمكن تحديثه. ثبّت النظام من جديد بوسيط تثبيت حديث
 
 update.history.staged = نُزّل التحديث وتم التحقق منه
 update.history.applied = ثُبّت التحديث وينتظر إعادة التشغيل

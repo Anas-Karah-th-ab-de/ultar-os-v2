@@ -109,7 +109,11 @@ Reader: the valid copy with the newer sequence number. Sequence numbers wrap aro
 "newer" = ahead by less than 2^31, `slottable::seq_newer`). Writer: overwrite the *other* copy with sequence + 1 and
 flush. A torn write damages only the copy being written; no rename is needed (works on FAT).
 
-Boot decision (`boot::select`, the code the boot path has to run, also used by the tests):
+Where the copies live: files `slots.0/1` (file backend) or offsets 0 and 32 KiB of the raw partition
+`ULTAR-BOOTCTL` (partition backend, `partctl`; layout and loader: `docs/integration/boot-ab.md`). The table code
+is the `no_std` crate `system/core/ultar-slots`, compiled into the updater, the UEFI loader and the kernel.
+
+Boot decision (`ultar_slots::select`, the code the boot path runs, also used by the tests):
 1. Trial slot set, bootable and tries left > 0 → tries − 1, start the trial slot.
 2. Trial slot set otherwise → mark it unbootable, clear the trial.
 3. Default slot bootable → start it; else the other slot if bootable (it becomes default); else no slot (rescue).

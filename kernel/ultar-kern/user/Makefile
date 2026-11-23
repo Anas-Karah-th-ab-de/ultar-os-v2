@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -32,3 +32,9 @@ geraetetest: geraetetest.c
 # wake-ups: posix_spawn/vfork at execve, AF_UNIX shutdown/close, accept, signalfd with threads
 weckertest: weckertest.c
 	gcc -O2 -Wall -Wextra -static -pthread -o $@ $<
+# flock and process start (vfork released at exec), as the system updater needs them
+spawntest: spawntest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
+# durable whole-file writes on ext4 (extent trees, honest fsync/close), with a hard stop in between
+ext4test: ext4test.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<

@@ -1,0 +1,32 @@
+[package]
+name = "ultar-loader"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar A/B loader: the UEFI program on ULTAR-EFI that picks a system slot (boot counter, automatic fallback) and starts that slot's kernel"
+
+# own build (target x86_64-unknown-uefi, no std) – not part of the device workspace
+[workspace]
+
+[lib]
+name = "ultar_loader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-loader"
+path = "src/main.rs"
+test = false
+
+[profile.dev]
+panic = "abort"
+debug = false
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = false
+
+[dependencies]
+ultar-slots = { path = "../../system/core/ultar-slots" }

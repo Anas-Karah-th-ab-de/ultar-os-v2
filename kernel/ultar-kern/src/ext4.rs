@@ -320,6 +320,8 @@ fn wr(disk: usize, lba: u64, data: &[u8]) -> Option<()> {
 }
 
 pub type WResult<T> = core::result::Result<T, &'static str>;
+/// Error text of a full file system (the caller maps it to `ENOSPC`).
+pub const NO_SPACE: &str = "Datenträger voll";
 
 impl Ext4 {
     fn sb(&self) -> Option<Vec<u8>> {
@@ -379,6 +381,58 @@ impl Ext4 {
     }
 
     /// `n` Blöcke belegen (möglichst zusammenhängend): Liste (Start, Länge)
+    /// Whether group `g` holds a superblock backup (sparse_super: 0, 1 and powers of 3, 5, 7).
+    fn has_super(sb: &[u8], g: u64) -> bool {
+        if le32(sb, 100) & 1 == 0 || g <= 1 {
+            return true;
+        }
+        [3u64, 5, 7].iter().any(|&b| {
+            let mut p = b;
+            while p < g {
+                p *= b;
+            }
+            p == g
+        })
+    }
+
+    /// The block bitmap of a group that is still BLOCK_UNINIT, as the kernel and e2fsck derive it:
+    /// superblock backup and descriptor blocks (with the reserved ones), every bitmap and inode
+    /// table of any group that lies in this group (flex_bg), and the bits past the group's end.
+    /// `None` for layouts this writer does not derive (meta_bg, sparse_super2).
+    fn init_block_bitmap(&self, sb: &[u8], g: u64) -> WResult<Option<Vec<u8>>> {
+        if le32(sb, 96) & 0x10 != 0 || le32(sb, 92) & 0x200 != 0 {
+            return Ok(None);
+        }
+        let (bpg, first, wide) = (le32(sb, 32), le32(sb, 20), self.dsize >= 64);
+        let groups = self.groups(sb);
+        let start = first + g * bpg;
+        let total = le32(sb, 4) | if le32(sb, 96) & 0x80 != 0 { le32(sb, 0x150) << 32 } else { 0 };
+        let in_group = bpg.min(total - start);
+        let mut bm = alloc::vec![0u8; self.bs as usize];
+        let mut mark = |b: u64| {
+            if (start..start + in_group).contains(&b) {
+                let i = b - start;
+                bm[(i / 8) as usize] |= 1 << (i % 8);
+            }
+        };
+        if Self::has_super(sb, g) {
+            let gdt = (groups * self.dsize).div_ceil(self.bs) + le16(sb, 0xCE);
+            (start..start + 1 + gdt).for_each(&mut mark);
+        }
+        let itable = (le32(sb, 40) * self.isize).div_ceil(self.bs);
+        for other in 0..groups {
+            let (_, o, d) = self.gd(other)?;
+            mark(Self::gd_field(&d, o, 0, 0x20, wide, 32));
+            mark(Self::gd_field(&d, o, 4, 0x24, wide, 32));
+            let it = Self::gd_field(&d, o, 8, 0x28, wide, 32);
+            (it..it + itable).for_each(&mut mark);
+        }
+        for i in in_group..self.bs * 8 {
+            bm[(i / 8) as usize] |= 1 << (i % 8);
+        }
+        Ok(Some(bm))
+    }
+
     fn alloc_blocks(&self, mut n: u64) -> WResult<Vec<(u64, u64)>> {
         let mut sb = self.sb().ok_or("Lesefehler")?;
         let bpg = le32(&sb, 32);
@@ -391,15 +445,26 @@ impl Ext4 {
                 break;
             }
             let (db, o, mut dblk) = self.gd(g)?;
-            if le16(&dblk, o + 18) & 2 != 0 {
-                continue; // BLOCK_UNINIT
-            }
             let free = Self::gd_field(&dblk, o, 12, 0x2C, wide, 16);
             if free == 0 {
                 continue;
             }
             let bmb = Self::gd_field(&dblk, o, 0, 0x20, wide, 32);
-            let mut bm = self.block(bmb)?;
+            // BLOCK_UNINIT: the bitmap on disk was never written; build it (written below, with
+            // the flag cleared, once a block of the group is taken)
+            let uninit = le16(&dblk, o + 18) & 2 != 0;
+            let mut bm = if uninit {
+                match self.init_block_bitmap(&sb, g)? {
+                    Some(b) => b,
+                    None => continue,
+                }
+            } else {
+                self.block(bmb)?
+            };
+            if uninit {
+                let flags = le16(&dblk, o + 18) & !2;
+                put16(&mut dblk, o + 18, flags);
+            }
             let mut taken = 0u64;
             let mut i = 0u64;
             while i < bpg && n > 0 {
@@ -442,7 +507,7 @@ impl Ext4 {
         if n > 0 {
             // zurückgeben, was schon belegt wurde
             let _ = self.free_runs(&runs);
-            return Err("Datenträger voll");
+            return Err(NO_SPACE);
         }
         let fb = le32(&sb, 12) | le32(&sb, 0x158) << 32;
         let nf = fb.saturating_sub(total);
@@ -690,47 +755,122 @@ impl Ext4 {
         out
     }
 
-    /// Inhalt eines Inodes vollständig ersetzen
-    fn set_data(&self, ino: u64, data: &[u8]) -> WResult<()> {
-        let mut raw = self.get_raw(ino)?;
-        if le32(&raw, 32) & 0x1000_0000 != 0 {
-            return Err("Inline-Daten nicht unterstützt");
+    /// Extents per leaf block of an extent tree (the 4-byte checksum tail stays free).
+    fn leaf_capacity(&self) -> usize {
+        (self.bs as usize - 12 - 4) / 12
+    }
+
+    /// Writes an extent node: header (magic, entries, `max`, `depth`) and entries. Leaf entries
+    /// map logical blocks to `runs` (from logical block `first`); index entries (depth 1) point to
+    /// the leaf blocks in `runs` (start = leaf block, len = extents in that leaf).
+    fn extent_node(node: &mut [u8], runs: &[(u64, u64)], first: u64, max: usize, depth: u64) {
+        put16(node, 0, 0xF30A);
+        put16(node, 2, runs.len() as u64);
+        put16(node, 4, max as u64);
+        put16(node, 6, depth);
+        let mut logical = first;
+        for (k, &(start, len)) in runs.iter().enumerate() {
+            let o = 12 + k * 12;
+            put32(node, o, logical);
+            if depth == 0 {
+                put16(node, o + 4, len);
+                put16(node, o + 6, start >> 32);
+                put32(node, o + 8, start);
+            } else {
+                put32(node, o + 4, start);
+                put16(node, o + 8, start >> 32);
+            }
+            logical += if depth == 0 { len } else { 0 };
         }
-        let old = self.inode_blocks(&raw);
-        let nb = (data.len() as u64).div_ceil(self.bs);
-        let runs = if nb > 0 { self.alloc_blocks(nb)? } else { Vec::new() };
-        if runs.len() > 4 {
-            let _ = self.free_runs(&runs);
+    }
+
+    /// The 60-byte extent root of the inode for `runs`, and the leaf blocks it needs. Up to 4
+    /// runs fit in the inode itself (depth 0); more get a tree of depth 1 with up to 4 leaf
+    /// blocks (`4 × leaf_capacity` runs). Leaves are written (with checksum) before returning.
+    fn extent_tree(&self, ino: u64, raw: &[u8], runs: &[(u64, u64)]) -> WResult<([u8; 60], Vec<(u64, u64)>)> {
+        let mut root = [0u8; 60];
+        if runs.len() <= 4 {
+            Self::extent_node(&mut root, runs, 0, 4, 0);
+            return Ok((root, Vec::new()));
+        }
+        let per = self.leaf_capacity();
+        let leaves = runs.len().div_ceil(per);
+        if leaves > 4 {
             return Err("Datei zu zerstückelt");
         }
+        let blocks: Vec<u64> = self.alloc_blocks(leaves as u64)?.iter().flat_map(|&(s, l)| s..s + l).collect();
+        let sb = self.sb().ok_or("Lesefehler")?;
+        let mut index = Vec::new();
+        let mut logical = 0u64;
+        for (chunk, &leaf) in runs.chunks(per).zip(&blocks) {
+            let mut blk = alloc::vec![0u8; self.bs as usize];
+            Self::extent_node(&mut blk, chunk, logical, per, 0);
+            let tail = 12 + 12 * per;
+            if self.csum(&sb) {
+                let c = crc32c(self.inode_seed(&sb, ino, raw), &blk[..tail]);
+                put32(&mut blk, tail, c as u64);
+            }
+            if let Err(e) = self.put_block(leaf, &blk) {
+                let _ = self.free_runs(&blocks.iter().map(|&b| (b, 1)).collect::<Vec<_>>());
+                return Err(e);
+            }
+            index.push((leaf, logical));
+            logical += chunk.iter().map(|r| r.1).sum::<u64>();
+        }
+        put16(&mut root, 0, 0xF30A);
+        put16(&mut root, 2, index.len() as u64);
+        put16(&mut root, 4, 4);
+        put16(&mut root, 6, 1);
+        for (k, &(leaf, first)) in index.iter().enumerate() {
+            let o = 12 + k * 12;
+            put32(&mut root, o, first);
+            put32(&mut root, o + 4, leaf);
+            put16(&mut root, o + 8, leaf >> 32);
+        }
+        Ok((root, blocks.iter().map(|&b| (b, 1)).collect()))
+    }
+
+    /// Writes `data` into freshly allocated blocks; returns the runs.
+    fn write_runs(&self, data: &[u8]) -> WResult<Vec<(u64, u64)>> {
+        let nb = (data.len() as u64).div_ceil(self.bs);
+        let runs = if nb > 0 { self.alloc_blocks(nb)? } else { Vec::new() };
         let mut logical = 0u64;
         for &(start, len) in &runs {
             let s = (logical * self.bs) as usize;
             let e = ((logical + len) * self.bs) as usize;
             let mut chunk = data[s.min(data.len())..e.min(data.len())].to_vec();
             chunk.resize((len * self.bs) as usize, 0);
-            self.put_block_n(start, &chunk)?;
+            if let Err(e) = self.put_block_n(start, &chunk) {
+                let _ = self.free_runs(&runs);
+                return Err(e);
+            }
             logical += len;
         }
-        // Extent-Kopf im Inode
-        let mut ib = [0u8; 60];
-        put16(&mut ib, 0, 0xF30A);
-        put16(&mut ib, 2, runs.len() as u64);
-        put16(&mut ib, 4, 4);
-        let mut l = 0u64;
-        for (k, &(start, len)) in runs.iter().enumerate() {
-            let o = 12 + k * 12;
-            put32(&mut ib, o, l);
-            put16(&mut ib, o + 4, len);
-            put16(&mut ib, o + 6, start >> 32);
-            put32(&mut ib, o + 8, start);
-            l += len;
+        Ok(runs)
+    }
+
+    /// Inhalt eines Inodes vollständig ersetzen. Order: data blocks, extent leaves, inode, then
+    /// the old blocks are freed – a stop in between leaves the old content (and leaked blocks).
+    fn set_data(&self, ino: u64, data: &[u8]) -> WResult<()> {
+        let mut raw = self.get_raw(ino)?;
+        if le32(&raw, 32) & 0x1000_0000 != 0 {
+            return Err("Inline-Daten nicht unterstützt");
         }
-        raw[40..100].copy_from_slice(&ib);
+        let old = self.inode_blocks(&raw);
+        let runs = self.write_runs(data)?;
+        let (root, leaves) = match self.extent_tree(ino, &raw, &runs) {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = self.free_runs(&runs);
+                return Err(e);
+            }
+        };
+        raw[40..100].copy_from_slice(&root);
         let flags = (le32(&raw, 32) | 0x80000) & !0x1000;
         put32(&mut raw, 32, flags);
         put32(&mut raw, 4, data.len() as u64);
         put32(&mut raw, 108, (data.len() as u64) >> 32);
+        let nb = (data.len() as u64).div_ceil(self.bs) + leaves.len() as u64;
         let sectors = nb * self.bs / 512;
         put32(&mut raw, 0x1C, sectors);
         put16(&mut raw, 0x74, sectors >> 32);

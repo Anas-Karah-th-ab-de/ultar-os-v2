@@ -208,6 +208,15 @@ impl BlockDev for Nvme {
         }
         Ok(())
     }
+    /// NVM command Flush (opcode 0x00, NVMe 2.0 §7.1): volatile write cache to media.
+    fn flush(&mut self) -> Result<()> {
+        self.cid = self.cid.wrapping_add(1);
+        let mut c = [0u32; 16];
+        c[0] = (self.cid as u32) << 16;
+        c[1] = self.nsid;
+        self.io.run(&c)?;
+        Ok(())
+    }
 }
 
 impl Nvme {

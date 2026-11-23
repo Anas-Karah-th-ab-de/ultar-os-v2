@@ -4,6 +4,8 @@
 #   3. the system bus (ultar-bus) runs on the Ultar kernel,
 #   4. the escape tests of the process isolation pass (zelltest: mount/pid namespaces, rights),
 #   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs),
+#   5a. vfork release at exec and flock (spawntest); durable ext4 writes of large, fragmented files
+#       through a hard stop, honest ENOSPC/EIO from fsync and close (ext4-durable.sh),
 #   5b. identities, file modes and owners, Unix socket nodes and peer credentials, fsync (rechtetest),
 #       and modes/owners/data that reach a writable ext4 disk (rechte-ext4.sh; skipped without e2fsprogs),
 #   5c. the device interfaces for ultar-devd (geraetetest: device list, driver register, bind/unbind/rebind of
@@ -14,7 +16,8 @@
 #       Unix-socket readers, writers and accept, signalfd in threaded processes,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
-#   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK).
+#   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
+#   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
 set -euo pipefail
@@ -27,9 +30,9 @@ fi
 mcopy -o -i out/ultar-kern-esp.img "$BUSCK" ::/bin/busck
 LOG="${LOG:-$(mktemp)}"
 # a second network card (e1000) is the device the bind/unbind cycle of geraetetest works on
-QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" > "$LOG" 2>&1 || true
+QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" > "$LOG" 2>&1 || true
 fail=0
-for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK"; do
+for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK"; do
   if grep -q "$expect" "$LOG"; then echo "ok    $expect"; else echo "FAIL  $expect"; fail=1; fi
 done
 if grep -qiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=1; fi
@@ -72,6 +75,13 @@ if command -v mke2fs >/dev/null && command -v debugfs >/dev/null; then
 else
   echo "skip  RECHTETEST-EXT4 (e2fsprogs missing)"
 fi
+# durable ext4 writes (extent trees, honest fsync/close) through a hard stop, 1 KiB and 4 KiB blocks
+if command -v mke2fs >/dev/null && command -v debugfs >/dev/null && command -v e2fsck >/dev/null; then
+  EXT4_BLOCK=1024 bash tools/kern-test/ext4-durable.sh
+  EXT4_BLOCK=4096 bash tools/kern-test/ext4-durable.sh
+else
+  echo "skip  EXT4TEST (e2fsprogs missing)"
+fi
 # Resource groups: the test brings the machine to its memory limits on purpose, so it gets its own boots
 # (GRENZ_MEM: sizes in MiB; GRENZ_LOG: keep the logs as <GRENZ_LOG>-<size>.log).
 for mem in ${GRENZ_MEM:-512 2048}; do
@@ -85,3 +95,18 @@ for mem in ${GRENZ_MEM:-512 2048}; do
 done
 # The service manager with the shipped system services, each as its own user.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/init-e2e.sh
+# A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
+# its own installation and about 25 starts. AB_TEST=0 skips it.
+if [ "${AB_TEST:-1}" = 0 ]; then
+  echo "skip  AB-TEST (AB_TEST=0)"
+elif command -v mke2fs >/dev/null && command -v mkfs.vfat >/dev/null && command -v mcopy >/dev/null; then
+  ABLOG="${AB_LOG:-$(mktemp)}"
+  SMP="${SMP:-2}" timeout 3600 bash tools/kern-test/ab-test.sh > "$ABLOG" 2>&1 || true
+  if grep -q "^AB-TEST: ALLES OK" "$ABLOG"; then
+    echo "ok    $(grep '^AB-TEST:' "$ABLOG")"
+  else
+    echo "FAIL  AB-TEST"; grep -E "^(FAIL|AB-TEST)" "$ABLOG" | tail -20; tail -15 "$ABLOG"; exit 1
+  fi
+else
+  echo "skip  AB-TEST (e2fsprogs, dosfstools or mtools missing)"
+fi

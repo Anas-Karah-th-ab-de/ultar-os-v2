@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod apic;
+mod bootslot;
 mod buddy;
 mod arch;
 mod console;
@@ -20,6 +21,7 @@ mod devices;
 mod driver;
 mod drivers;
 mod firewall;
+mod flock;
 mod fs;
 mod geraet;
 mod grafik;
@@ -44,6 +46,7 @@ mod perm;
 mod pipe;
 mod proc;
 mod procfs;
+mod rawpart;
 mod shell;
 mod selftest;
 mod signal;
@@ -59,11 +62,18 @@ mod werkstatt;
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     kprintln!("\n{}: {info}", sprache::t("panik"));
+    // a counted attempt of a new slot restarts, so the loader can fall back
+    bootslot::start_failed("kernel panic");
     arch::halt_forever()
 }
 
 #[no_mangle]
 pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -> efi::Status {
+    // A/B start: the slot the loader chose (load options), before anything else depends on it
+    let mut options = [0u16; ultar_slots::layout::OPTIONS_MAX];
+    // SAFETY: still in the firmware phase; `image`/`st` are what the firmware passed.
+    let n = unsafe { efi::load_options(image, st, &mut options) };
+    bootslot::init(&options[..n]);
     // Systemsprache von der Startpartition (installiertes System): gilt ab dem ersten Bild
     if let Some(l) = unsafe { efi::sprache_lesen(image, st) } {
         sprache::set(l);
@@ -87,6 +97,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         arch::init_idt();
         trap::init();
         arch::calibrate_tsc();
+        bootslot::report();
         let fb = boot.fb.map(|f| (f.base, f.stride as u64 * f.height as u64 * 4));
         // Prozessor-Schutz an: SMEP/SMAP/UMIP (der Kern greift auf Benutzerspeicher nur über die Seitentabelle zu)
         arch::haerten();
@@ -135,6 +146,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         shell::partitions(i);
     }
     startseite::startbild(80, "p_disk");
+    rawpart::scan();
     fs::mount();
     perm::standard_dirs();
     sprache::laden();

@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "system/core/ultar-i18n",
     "system/core/ultar-update",
+    "system/core/ultar-slots",
     "system/core/ultar-service",
     "system/hal/ultar-sys",
     "system/core/ultar-busd",
@@ -20,6 +21,7 @@ members = [
     "system/core/ultar-devd",
     "system/core/ultar-settingsd",
     "tools/ultar-check",
+    "tools/kern-test/ab-agent",
     "apps/ultar-office",
     "apps/ultar-web",
     "external/ultar-telegram",

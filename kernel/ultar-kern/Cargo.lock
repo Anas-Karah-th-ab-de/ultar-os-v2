@@ -101,4 +101,9 @@ dependencies = [
  "ab_glyph",
  "linked_list_allocator",
  "spin",
+ "ultar-slots",
 ]
+
+[[package]]
+name = "ultar-slots"
+version = "0.7.0"

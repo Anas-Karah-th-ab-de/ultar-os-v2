@@ -2,9 +2,12 @@
 # Installationsmedium: der Ultar-Kern startet die grafische Installation und kopiert die Nutzlast auf die Zielplatte.
 # Aufbau (GPT):
 #   1  ULTAR-INSTALL  FAT32  Ultar-Kern (\EFI\BOOT\BOOTX64.EFI) + \ultar-installer – startet die Installation
-#   2  ULTAR-EFI      FAT32  Startpartition des installierten Systems
-#   3  ultar-compat   ext4   Ubuntu-Bereich
-#   4  ultar-data     ext4   (nur Desktop-Ausgabe) Einstellungen, Apps, Nutzerdaten
+#   2  ULTAR-EFI      FAT32  Startpartition des installierten Systems (Ultar-Kern-Ausgabe: nur der A/B-Lader)
+#   3  ultar-kernel   roh    (Ultar-Kern-Ausgabe) Kern für Bereich A
+#   4  ultar-compat   ext4   Systembereich (wird ultar-system-a)
+#   5  ultar-data     ext4   Einstellungen, Apps, Nutzerdaten
+# Die Ultar-Kern-Ausgabe wird im A/B-Aufbau installiert (docs/integration/boot-ab.md): ULTAR-EFI, ULTAR-BOOTCTL,
+# ultar-kernel-a/b, ultar-system-a/b, ultar-data.
 # Nutzlast:
 #   DESKTOP_IMG=out/ultar-desktop-x86_64.img  → Ultar OS Desktop (Linux-Kernel + Ultar-Oberfläche, scripts/build-pc-image.sh)
 #   sonst                                    → Ultar-Kern + Ultar-Bereich mit Desktop-Oberfläche (ultar-shell), ohne Linux
@@ -55,13 +58,17 @@ else
       cp /bin/busybox "$SRC/bin/busybox"; /bin/busybox --list > "$SRC/bin/.applets"
     fi
   fi
-  # 2) Startpartition des installierten Systems: Ultar-Kern + Marke \ultar\installiert
+  # 2) Startpartition des installierten Systems: A/B-Lader + Marke \ultar\installiert; der Kern liegt roh daneben
+  bash scripts/build-loader.sh >/dev/null
   cp "$ESP" "$W/efi.fat"
+  mcopy -o -i "$W/efi.fat" kernel/ultar-loader/target/x86_64-unknown-uefi/release/ultar-loader.efi ::/EFI/BOOT/BOOTX64.EFI
   mmd -i "$W/efi.fat" ::/ultar 2>/dev/null || true
   printf 'Ultar OS\n' > "$W/inst"; mcopy -o -i "$W/efi.fat" "$W/inst" ::/ultar/installiert
   # Systemsprache (wird bei der Installation mit der gewählten überschrieben) – ruhiger Start + Startseite
   printf 'ar\n' > "$W/spr"; mcopy -o -i "$W/efi.fat" "$W/spr" ::/ultar/sprache
   PARTS+=("$W/efi.fat:ef00:ULTAR-EFI")
+  cp kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi "$W/kernel.raw"
+  PARTS+=("$W/kernel.raw:8300:ultar-kernel")
   # 3) Ubuntu-Bereich
   R=$W/root; mkdir -p "$R"; cp -a "$SRC/." "$R/"
   mkdir -p "$R/etc/ultar"; printf 'desktop\n' > "$R/etc/ultar/edition"; printf 'ultar\n' > "$R/etc/hostname"
@@ -73,6 +80,8 @@ else
   mkfs.ext4 -q -L ultar-compat -d "$R" "$W/root.ext4" "${MB}M"
   rm -rf "$R"
   PARTS+=("$W/root.ext4:8300:ultar-compat")
+  mkdir -p "$W/data/ultar"; mkfs.ext4 -q -L ultar-data -d "$W/data" "$W/data.ext4" 256M
+  PARTS+=("$W/data.ext4:8300:ultar-data")
 fi
 # Größe und Partitionstabelle
 TOTAL=2048

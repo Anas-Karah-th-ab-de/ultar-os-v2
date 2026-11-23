@@ -104,6 +104,24 @@ fn try_fat(disk: usize, part: u64) -> Option<Fat> {
     Some(Fat { disk, part, bps, spc, fat_start, data_start, root_clus: le32(&b, 44) as u32, fat32, root_start, root_secs })
 }
 
+/// The running slot's system partition (on the boot disk), taken out of `exts`. Missing: the
+/// start failed (a trial restarts, see bootslot.rs).
+fn take_slot_root(exts: &mut Vec<(String, crate::ext4::Ext4, String)>, slot: ultar_slots::Slot) -> Option<(crate::ext4::Ext4, String)> {
+    let name = ultar_slots::layout::system_part(slot);
+    let at = crate::rawpart::locate(name).map(|(disk, first)| alloc::format!("{}:{first}", BLOCK.lock()[disk].name()));
+    let i = exts.iter().position(|e| e.0 == name && Some(&e.2) == at.as_ref());
+    match i {
+        Some(i) => {
+            let (_, x, w) = exts.remove(i);
+            Some((x, w))
+        }
+        None => {
+            crate::bootslot::start_failed(name);
+            None
+        }
+    }
+}
+
 /// Dateisysteme suchen und einhängen: ext4 `ultar-compat` (Ubuntu) als /, `ultar-data` als /data,
 /// FAT-Startpartition als /boot/efi – ohne ext4 wird FAT selbst zu /.
 pub fn mount() {
@@ -142,17 +160,34 @@ pub fn mount() {
             }
         }
     }
+    // A/B start: only the running slot's system (read only) and the data partition of the boot disk;
+    // the slots' partitions are never mounted otherwise (raw access only, rawpart.rs)
+    let slot_root = crate::bootslot::slot().map(|s| take_slot_root(&mut exts, s));
+    exts.retain(|e| !crate::rawpart::is_ab_name(&e.0));
+    if let Some(disk) = crate::rawpart::boot_disk() {
+        let own = alloc::format!("{}:", BLOCK.lock()[disk].name());
+        exts.retain(|e| e.0 != "ultar-data" || e.2.starts_with(own.as_str()));
+    }
     let mut m = MOUNTS.lock();
+    if crate::bootslot::slot().is_some() || crate::bootslot::refused() {
+        exts.retain(|e| e.0 != "ultar-compat");
+    }
+    if let Some(Some((x, w))) = slot_root {
+        crate::kprintln!("[fs] ext4 on {w} as / (slot system, read only)");
+        m.push((String::from("/"), Mnt::Ext4(x, false)));
+    }
     // ext4: ultar-compat (sonst erstes ext4 außer ultar-data) als /, ultar-data als /data, weitere unter /media
     let vom_installer = crate::efi::VOM_INSTALLER.load(core::sync::atomic::Ordering::Relaxed);
     let auf_installer = |w: &str| installer_platten.iter().any(|d| w.starts_with(d.as_str()));
+    let legacy = crate::bootslot::slot().is_none() && !crate::bootslot::refused();
     let root_idx = exts
         .iter()
         .position(|e| e.0 == "ultar-compat" && auf_installer(&e.2) == vom_installer)
         .or_else(|| exts.iter().position(|e| e.0 == "ultar-compat"))
-        .or_else(|| exts.iter().position(|e| e.0 != "ultar-data"));
-    let mut root_taken = false;
-    let mut root_platte = String::new();
+        .or_else(|| exts.iter().position(|e| e.0 != "ultar-data"))
+        .filter(|_| legacy);
+    let mut root_taken = !m.is_empty();
+    let mut root_platte = crate::rawpart::boot_disk().map(|d| alloc::format!("{}:", BLOCK.lock()[d].name())).unwrap_or_default();
     if let Some(i) = root_idx {
         let (name, x, w) = exts.remove(i);
         root_platte = alloc::format!("{}:", w.split(':').next().unwrap_or(""));
@@ -175,9 +210,10 @@ pub fn mount() {
     // FAT: die Partition mit dem Ultar-Kern (Ordner ultar-kern oder bin/kerntest) wird /boot/efi bzw. /
     let hat_kern = |f: &Fat| f.lookup("ultar-kern").is_some() || f.lookup("bin/kerntest").is_some();
     // Startpartition derselben Platte wie die Wurzel bevorzugen (installiertes System neben dem Installationsmedium)
-    let main = fats
-        .iter()
-        .position(|(f, w)| !root_platte.is_empty() && w.starts_with(root_platte.as_str()) && hat_kern(f))
+    // A/B start: the start partition of the boot disk (it holds only the loader)
+    let ab_esp = crate::rawpart::boot_disk().and_then(|_| fats.iter().position(|(_, w)| w.starts_with(root_platte.as_str())));
+    let main = ab_esp
+        .or_else(|| fats.iter().position(|(f, w)| !root_platte.is_empty() && w.starts_with(root_platte.as_str()) && hat_kern(f)))
         .or_else(|| fats.iter().position(|(f, _)| hat_kern(f)))
         .unwrap_or(0);
     for (i, (f, w)) in fats.into_iter().enumerate() {
@@ -437,6 +473,17 @@ fn fs_open(path: &str) -> Option<Node> {
     mnt_open(&best.1, rel)
 }
 
+/// `/dev/ultar`, `/dev/ultar/part` and the raw A/B partition nodes (rawpart.rs)
+fn raw_node(d: &str) -> Option<Node> {
+    let names = crate::rawpart::names();
+    match d {
+        _ if names.is_empty() => None,
+        "ultar" => Some(Node::Dir(vec![DirEnt { name: "part".into(), dir: true, size: 0 }])),
+        "ultar/part" => Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
+        _ => crate::rawpart::node(d).map(Node::Dev),
+    }
+}
+
 /// Knoten unter absolutem Pfad
 pub fn open(path: &str) -> Option<Node> {
     if tmpfs::is_private(path) {
@@ -445,6 +492,9 @@ pub fn open(path: &str) -> Option<Node> {
     if let Some(d) = path.strip_prefix("/dev/") {
         if let Some(n) = DEVS.iter().find(|&&x| x == d) {
             return Some(Node::Dev(n));
+        }
+        if let Some(n) = raw_node(d) {
+            return Some(n);
         }
         if crate::console::framebuffer().is_some() {
             if let Some(n) = UI_DEVS.iter().find(|&&x| x == d) {
@@ -460,6 +510,9 @@ pub fn open(path: &str) -> Option<Node> {
         if crate::console::framebuffer().is_some() {
             v.push(DirEnt { name: "fb0".into(), dir: false, size: 0 });
             v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
+        }
+        if !crate::rawpart::names().is_empty() {
+            v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
         }
         return Some(Node::Dir(v));
     }
@@ -646,43 +699,54 @@ pub fn ram_usage(path: &str) -> Option<(u64, u64)> {
 }
 
 /// Like [`write_file`] with a buffer that may be shared (it is stored as it is, without a copy).
-/// `false`: not stored – the quota of the RAM tree is exhausted or the tmpfs no longer exists.
+/// `false`: not stored – see [`store_file_res`].
 pub fn store_file(path: &str, data: Arc<Vec<u8>>) -> bool {
+    store_file_res(path, data).is_ok()
+}
+
+/// Stores a whole file. On a writable ext4 the data is on the medium when this returns `Ok`
+/// (blocks written, then the device's write cache flushed); a file the ext4 writer cannot
+/// place is **not** kept in memory instead: `Err(-ENOSPC)` (no space) or `Err(-EIO)`, and the
+/// disk keeps the old content. RAM trees: `Err(-ENOSPC)` when their quota is exhausted.
+pub fn store_file_res(path: &str, data: Arc<Vec<u8>>) -> Result<(), i64> {
+    const EIO: i64 = 5;
+    const ENOSPC: i64 = 28;
+    let ok = |stored: bool| if stored { Ok(()) } else { Err(-ENOSPC) };
     if path == "/proc/ultar/verbund" {
         crate::verbund::proc_schreiben(&data);
-        return true;
+        return Ok(());
     }
     if path == "/proc/ultar/firewall" {
         for z in core::str::from_utf8(&data).unwrap_or("").lines() {
             let _ = crate::firewall::befehl(z);
         }
-        return true;
+        return Ok(());
     }
     // control files are written directly (syscall::control_write); nothing is ever stored there
     if path.starts_with("/proc/") || crate::groups::files::is_tree(path) || crate::devices::sysfs::is_tree(path) {
-        return false;
+        return Err(-ENOSPC);
     }
     if tmpfs::is_private(path) {
         // a file of a tree that no longer exists is dropped
-        return tmpfs::write(path, data);
+        return ok(tmpfs::write(path, data));
     }
-    if let Some((i, rel)) = ext4_target(path) {
-        match with_ext4(i, |x| x.write_file(&rel, &data)) {
-            Some(Ok(())) => {
-                tmpfs::discard(path);
-                return true;
-            }
-            Some(Err(e)) => {
-                let mut w = WARNED.lock();
-                if !*w {
-                    crate::kprintln!("[fs] {path}: {e} – bleibt im Arbeitsspeicher");
-                    *w = true;
-                }
-            }
-            None => {}
+    let Some((i, rel)) = ext4_target(path) else { return ok(tmpfs::store(path, data)) };
+    match with_ext4(i, |x| x.write_file(&rel, &data).map(|()| x.disk)) {
+        Some(Ok(disk)) => {
+            tmpfs::discard(path);
+            let flushed = BLOCK.lock().get_mut(disk).is_some_and(|d| d.flush().is_ok());
+            if flushed { Ok(()) } else { Err(-EIO) }
         }
+        Some(Err(e)) => {
+            let mut w = WARNED.lock();
+            if !*w {
+                crate::kprintln!("[fs] {path}: {e} - not stored (the caller gets an error)");
+                *w = true;
+            }
+            Err(if e == crate::ext4::NO_SPACE { -ENOSPC } else { -EIO })
+        }
+        None => Err(-EIO),
     }
-    tmpfs::store(path, data)
 }
 
 /// Datei auf einer FAT-Partition an Ort überschreiben (Selbsttest-Protokoll); liefert den Pfad

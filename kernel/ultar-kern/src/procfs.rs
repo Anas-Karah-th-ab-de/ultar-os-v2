@@ -43,7 +43,7 @@ pub fn open(path: &str) -> Option<Node> {
         }
         "ultar" if !host_reader => None,
         "ultar" => match sub {
-            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll", "gruppen"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
+            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll", "gruppen", "boot_slot"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
             "verbund" => file(crate::verbund::text()),
             "geraet" => file(crate::geraet::text()),
             "anzeige" => file(crate::grafik::text()),
@@ -51,6 +51,8 @@ pub fn open(path: &str) -> Option<Node> {
             // resource groups: the tree with use and limits, the dynamic rules, leak counters
             "gruppen" => file(crate::groups::files::table()),
             "sicherheit" => file(crate::sicherheit_text()),
+            // A/B start: the running slot (a, b, or - without the A/B loader)
+            "boot_slot" => file(crate::bootslot::proc_text()),
             // Kernprotokoll (Ringpuffer) – für den Entwickler-Zugang (`ssh ultar kernlog`) und Fehlersuche
             "protokoll" => {
                 let mut v = alloc::vec::Vec::new();

@@ -434,6 +434,30 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
     print(st, "Start der installierten Platte fehlgeschlagen – Installation\n");
 }
 
+/// The load options this image was started with (UTF-16 units, as the parent set them), copied
+/// into `out`; empty when there are none.
+// SAFETY: callers pass the image handle and system table the firmware gave and call it before
+// ExitBootServices (boot services and the loaded image protocol are valid then).
+pub unsafe fn load_options(image: Handle, st: *mut SystemTable, out: &mut [u16]) -> usize {
+    let li = protokoll(st, image, &LOADED_IMAGE_GUID) as *const u8;
+    if li.is_null() {
+        return 0;
+    }
+    // SAFETY: EFI_LOADED_IMAGE_PROTOCOL (UEFI 2.10 §9.1): LoadOptionsSize (u32) at offset 48,
+    // LoadOptions (pointer) at offset 56; the firmware keeps both valid while the image runs.
+    let size = core::ptr::read_unaligned(li.add(48) as *const u32) as usize;
+    let ptr = core::ptr::read_unaligned(li.add(56) as *const *const u16);
+    if ptr.is_null() {
+        return 0;
+    }
+    let n = (size / 2).min(out.len());
+    for (i, slot) in out.iter_mut().take(n).enumerate() {
+        // SAFETY: inside the LoadOptionsSize bytes the firmware gave (n ≤ size / 2).
+        *slot = core::ptr::read_unaligned(ptr.add(i));
+    }
+    n
+}
+
 static RT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
 /// Systemsprache von der eigenen Startpartition (\ultar\sprache: ar/de/en) – noch vor ExitBootServices,

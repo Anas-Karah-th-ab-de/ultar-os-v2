@@ -92,4 +92,10 @@ impl BlockDev for Disk {
         }
         Ok(())
     }
+    /// No feature is negotiated, VIRTIO_BLK_F_FLUSH included: without it the device works
+    /// write-through (virtio block device, write cache rules), so a completed write is
+    /// already durable.
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
 }

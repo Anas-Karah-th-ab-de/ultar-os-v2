@@ -23,7 +23,9 @@
 //! ## Parts
 //!
 //! * [`engine::Engine`] – the synchronous core over a [`bootctl::BootControl`] backend
-//!   ([`filectl::FileBootControl`] is the complete file-based reference backend).
+//!   ([`filectl::FileBootControl`] is the complete file-based reference backend;
+//!   [`partctl::PartitionBootControl`] drives the raw partitions of the A/B disk layout that
+//!   the Ultar loader starts from).
 //! * [`service::Core`] + [`busfront`] – the bus service `update` ([`contract`]) with policy,
 //!   permissions (default deny) and progress events; [`daemon`] is the `ultar-updated` program.
 //! * [`cli`] – the `uupdate` command; [`signtool`] / [`signcli`] – the publisher's
@@ -61,6 +63,7 @@ pub mod manifest;
 pub mod monotonic;
 pub mod msg;
 pub mod net;
+pub mod partctl;
 pub mod policy;
 pub mod reject;
 pub mod service;

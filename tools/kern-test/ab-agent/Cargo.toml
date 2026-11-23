@@ -1,0 +1,10 @@
+[package]
+name = "ab-agent"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Test agent for the A/B gate (tools/kern-test/ab-test.sh): runs a bus broker, the real ultar-updated and uupdate on the Ultar kernel and reports with stable lines"
+
+[dependencies]
+ultar-bus = { path = "../../../system/core/ultar-bus" }
