@@ -122,6 +122,12 @@ at `SMP=2` and 3 of 3 at `SMP=4` (18 checks each, incl. spawntest, weckertest an
 `tools/check-layers.toml`, see §1). The updater daemon keeps exactly one kernel right, raw devices
 (`ultar-updated.rs`), which the A/B partitions need; without it the service runtime drops it.
 
+Images in the gate are made root-owned with `debugfs` after `mke2fs -d` (`root_owned` in
+`ab-test.sh`): `mke2fs -d` keeps the builder's uid, and on a non-root CI runner the updater then
+refused its state and key directories ("could not read or write the storage"). Every tool the
+gate needs is checked at its start (missing = failure, also in `ci.sh`), and when the daemon does
+not come up the agent prints owner/mode/readability of every path the configuration names.
+
 ## 6. Open / not done
 
 * **K5** (stage0 uses the running slot's verity root from the slot record) – not done; the record

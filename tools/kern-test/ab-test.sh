@@ -11,6 +11,13 @@
 # at the end unless AB_KEEP=1 (then the serial log of every start is in <work>/serial.log).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# every tool is required: a missing one is an error, not a skipped step
+for tool in qemu-system-x86_64 mke2fs debugfs e2fsck mkfs.vfat mcopy mmd python3 cargo; do
+  command -v "$tool" >/dev/null || { echo "AB-TEST: FEHLER (tool missing: $tool)"; exit 1; }
+done
+for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do
+  [ -f "$f" ] || { echo "AB-TEST: FEHLER (firmware missing: $f)"; exit 1; }
+done
 ROOT=$PWD
 export PATH=$PATH:/usr/sbin:/sbin
 [ -d /usr/lib/rust-1.97/bin ] && export PATH=/usr/lib/rust-1.97/bin:$PATH
@@ -51,6 +58,17 @@ SIGN=$BIN/uupdate-sign
 
 # 2) Keys and system images (ext4): A 0.7.0 (factory), B 0.8.0, C 0.9.0 (kernel panics), D 0.10.0, E 0.11.0
 "$SIGN" keygen --secret "$W/release.secret" --public "$W/release.ed25519" --lang en >/dev/null
+# `mke2fs -d` keeps the owners of the source files: the images must not depend on who builds them
+# (a CI runner is not root, and the updater only trusts a state directory owned by itself = root)
+root_owned() { # image source-dir
+  local cmds; cmds=$(mktemp)
+  { printf 'sif / uid 0\nsif / gid 0\n'
+    ( cd "$2" && find . -mindepth 1 | sed 's|^\.||' ) | while read -r p; do printf 'sif %s uid 0\nsif %s gid 0\n' "$p" "$p"; done
+  } > "$cmds"
+  debugfs -w -f "$cmds" "$1" >/dev/null 2>&1
+  rm -f "$cmds"
+  [ "$(debugfs -R 'stat /' "$1" 2>/dev/null | sed -n 's/.*User: *\([0-9]*\).*/\1/p')" = 0 ] || { echo "AB-TEST: FEHLER (owners of $1)"; exit 1; }
+}
 system() { # name version index
   local R=$W/root-$1
   mkdir -p "$R/bin" "$R/usr/bin" "$R/etc/ultar/update-keys" "$R/data" "$R/tmp"
@@ -74,6 +92,7 @@ reserve_mib=1
 health_service=none
 CONF
   mke2fs -q -t ext4 -L "system-$1" -d "$R" "$W/sys-$1.ext4" 16M
+  root_owned "$W/sys-$1.ext4" "$R"
   rm -rf "$R"
 }
 system a 0.7.0 1; system b 0.8.0 2; system c 0.9.0 3; system d 0.10.0 4; system e 0.11.0 5; system f 0.12.0 6
@@ -97,7 +116,8 @@ printf 'Ultar OS installation medium\n' > "$W/marker"; mcopy -i "$W/install.fat"
 truncate -s 16M "$W/esp.fat"; mkfs.vfat -n ULTAR-EFI "$W/esp.fat" >/dev/null
 mmd -i "$W/esp.fat" ::/EFI ::/EFI/BOOT ::/ultar; mcopy -i "$W/esp.fat" "$W/loader.efi" ::/EFI/BOOT/BOOTX64.EFI
 printf 'Ultar OS\n' > "$W/inst"; mcopy -i "$W/esp.fat" "$W/inst" ::/ultar/installiert
-mkdir -p "$W/data-root/ultar"; mke2fs -q -t ext4 -L ultar-data -d "$W/data-root" "$W/data.ext4" 64M; rm -rf "$W/data-root"
+mkdir -p "$W/data-root/ultar"; mke2fs -q -t ext4 -L ultar-data -d "$W/data-root" "$W/data.ext4" 64M
+root_owned "$W/data.ext4" "$W/data-root"; rm -rf "$W/data-root"
 python3 tools/kern-test/gptimg.py "$W/medium.img" "ULTAR-INSTALL:esp:$W/install.fat" "ULTAR-EFI:esp:$W/esp.fat" \
   "ultar-kernel:raw:$W/kernel.efi" "ultar-compat:linux:$W/sys-a.ext4" "ultar-data:linux:$W/data.ext4"
 # 4) The stick with the offline bundles (FAT32, no partition table)

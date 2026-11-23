@@ -81,6 +81,9 @@ else
   rm -rf "$R"
   PARTS+=("$W/root.ext4:8300:ultar-compat")
   mkdir -p "$W/data/ultar"; mkfs.ext4 -q -L ultar-data -d "$W/data" "$W/data.ext4" 256M
+  # owned by root whoever builds the medium (the updater trusts only a state directory of its own user)
+  printf 'sif / uid 0\nsif / gid 0\nsif /ultar uid 0\nsif /ultar gid 0\n' > "$W/owners"
+  debugfs -w -f "$W/owners" "$W/data.ext4" >/dev/null 2>&1
   PARTS+=("$W/data.ext4:8300:ultar-data")
 fi
 # Größe und Partitionstabelle

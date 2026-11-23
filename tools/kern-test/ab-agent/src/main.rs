@@ -81,6 +81,56 @@ fn rawcheck(running: &Path, other: &Path, table: &Path) {
     );
 }
 
+/// Why the daemon may not have started: owner, mode and readability of every path the
+/// configuration names (state, keys, partitions, running slot file) and of their parents.
+fn diagnose(config: &str) {
+    use std::os::unix::fs::MetadataExt;
+    let text = std::fs::read_to_string(config).unwrap_or_default();
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if ![
+            "state_dir",
+            "keys_dir",
+            "partition_dir",
+            "running_slot_file",
+            "boot_dir",
+        ]
+        .contains(&key)
+        {
+            continue;
+        }
+        let mut path = PathBuf::from(value.trim());
+        loop {
+            match std::fs::symlink_metadata(&path) {
+                Ok(m) => println!(
+                    "AGENT DIAG {key} {} uid={} gid={} mode={:o}",
+                    path.display(),
+                    m.uid(),
+                    m.gid(),
+                    m.mode()
+                ),
+                Err(e) => println!("AGENT DIAG {key} {} missing ({e})", path.display()),
+            }
+            if !path.pop() || path.as_os_str().is_empty() || path == Path::new("/") {
+                break;
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(value.trim()) {
+            for entry in entries.flatten() {
+                let open = std::fs::File::open(entry.path()).map(|_| "readable".to_string());
+                println!(
+                    "AGENT DIAG {key} entry {} {}",
+                    entry.path().display(),
+                    open.unwrap_or_else(|e| e.to_string())
+                );
+            }
+        }
+    }
+}
+
 /// Starts the daemon on the `system.updated` socket and waits until the service answers
 /// `status` (at most 60 s); the daemon prints its own state on the console.
 fn start_daemon(daemon: &str, cli: &str, config: &str, dir: &Path) -> Option<Child> {
@@ -109,6 +159,9 @@ fn start_daemon(daemon: &str, cli: &str, config: &str, dir: &Path) -> Option<Chi
         std::thread::sleep(Duration::from_millis(500));
     }
     println!("AGENT DAEMON {}", if ready { "ready" } else { "not-ready" });
+    if !ready {
+        diagnose(config);
+    }
     Some(child)
 }
 

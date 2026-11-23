@@ -108,5 +108,5 @@ elif command -v mke2fs >/dev/null && command -v mkfs.vfat >/dev/null && command 
     echo "FAIL  AB-TEST"; grep -E "^(FAIL|AB-TEST)" "$ABLOG" | tail -20; tail -15 "$ABLOG"; exit 1
   fi
 else
-  echo "skip  AB-TEST (e2fsprogs, dosfstools or mtools missing)"
+  echo "FAIL  AB-TEST (e2fsprogs, dosfstools or mtools missing)"; exit 1
 fi
