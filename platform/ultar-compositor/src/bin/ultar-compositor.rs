@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use ultar_compositor::backend::{Backend, HalBackend, Headless, OutputKind};
 use ultar_compositor::msg::{text, MsgKey};
 use ultar_compositor::{Compositor, Config, MonotonicClock, RightsTable};
+use ultar_hal_gfx::evdev::SeatPolicy;
 use ultar_i18n::Lang;
 use ultar_service::rights::{Right, RightSet}; // not a physical side: kernel rights
 use ultar_service::{exit, Runtime, ServiceSpec};
@@ -32,6 +33,7 @@ struct Args {
     light: bool,
     no_cursor: bool,
     allow_root: bool,
+    seat: SeatPolicy,
 }
 
 fn size(value: &str) -> Option<(u32, u32)> {
@@ -54,6 +56,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--light" => args.light = true,
             "--no-cursor" => args.no_cursor = true,
             "--allow-root" => args.allow_root = true,
+            "--seat-group" => args.seat.group = Some(it.next()?.parse().ok()?),
+            "--allow-virtual-input" => args.seat.virtual_allowed.push(it.next()?),
             _ => return None,
         }
     }
@@ -112,7 +116,8 @@ fn serve(rt: &Runtime, args: &Args, lang: Lang) -> i32 {
         Err(key) => return fail(key),
     };
     let backend: Box<dyn Backend> = if args.headless.is_empty() {
-        match HalBackend::open(args.output.as_ref().unwrap_or(&OutputKind::Auto)) {
+        let kind = args.output.as_ref().unwrap_or(&OutputKind::Auto);
+        match HalBackend::open(kind, args.seat.clone()) {
             Ok(b) => Box::new(b),
             Err(_) => return fail(MsgKey::NoDisplay),
         }
@@ -196,8 +201,15 @@ mod tests {
             "--light",
             "--no-cursor",
             "--allow-root",
+            "--seat-group",
+            "812",
+            "--allow-virtual-input",
+            "ultar-osk",
         ])
         .unwrap();
+        assert_eq!(k.seat.group, Some(812));
+        assert_eq!(k.seat.virtual_allowed, vec!["ultar-osk".to_string()]);
+        assert!(args(&["--socket", "s", "--seat-group", "x"]).is_none());
         assert!(
             matches!(k.output, Some(OutputKind::Kms(_))) && k.light && k.no_cursor && k.allow_root
         );

@@ -4,7 +4,7 @@
 
 use super::{State, SurfaceKey};
 use crate::geom::Rect;
-use ultar_surface::proto::{Configure, Edge, Event, Rights, Role, WindowState};
+use ultar_surface::proto::{Configure, Edge, Event, Role, WindowState};
 use ultar_ui::tokens::Space;
 
 /// One visible surface, bottom to top.
@@ -47,19 +47,12 @@ fn panel_strip(area: Rect, edge: Edge, size: i32, rtl: bool) -> Rect {
     }
 }
 
-/// Screens of translucent content one user id without rights may show
-/// (overdraw budget: bounds the cost of a frame).
-pub const TRANSLUCENT_SCREENS: i64 = 2;
-/// Screens of translucent content all apps without rights together may
-/// show (several app ids cannot add up to an unbounded frame).
-pub const TRANSLUCENT_SCREENS_TOTAL: i64 = 3;
-
 /// Stacking rank of non-window surfaces above the windows.
 fn rank(role: Role) -> u8 {
     match role {
         Role::Panel { .. } => 2,
-        Role::SystemDialog => 3,
-        Role::Overlay => 4,
+        Role::Overlay => 3,
+        Role::SystemDialog => 4,
         Role::InputPanel => 5,
         Role::Lock => 6,
         Role::Background | Role::Popup { .. } | Role::Toplevel => 0,
@@ -88,6 +81,8 @@ impl State {
             }
             Role::InputPanel => Rect::new(screen.x, screen.max_y() - h, w, h),
             Role::Overlay => {
+                // Notifications: at most a third of the screen each way.
+                let (w, h) = (w.min(screen.w / 3), h.min(screen.h / 3));
                 let x = if self.rtl() {
                     screen.x + margin
                 } else {
@@ -100,8 +95,10 @@ impl State {
         Some(rect)
     }
 
-    /// A popup stays inside the work area of its parent's output (it can
-    /// neither cover the shell's panels nor reach another display).
+    /// A popup stays inside its parent's content (and the work area of the
+    /// parent's output): it can neither cover the shell's panels, other
+    /// apps' windows nor reach another display. A popup larger than that is
+    /// shrunk to it.
     fn popup_rect(
         &self,
         key: SurfaceKey,
@@ -117,9 +114,10 @@ impl State {
             .window_index(parent)
             .filter(|&i| self.windows[i].visible())?;
         let base = self.windows[i].content();
-        let area = self
+        let work = self
             .window_output(self.windows[i].frame)
             .map_or(self.layout.bounds(), |o| self.work_area(o));
+        let area = base.intersect(&work).unwrap_or(base);
         let (w, h) = (w.min(area.w).max(1), h.min(area.h).max(1));
         let cx = base
             .x
@@ -189,38 +187,6 @@ impl State {
         above.sort_by_key(|(r, _)| *r);
         out.extend(above.into_iter().map(|(_, p)| p));
         self.cull(out)
-    }
-
-    /// Applies the overdraw budget: translucent surfaces of apps without
-    /// rights beyond [`TRANSLUCENT_SCREENS`] screens of area per user id,
-    /// or [`TRANSLUCENT_SCREENS_TOTAL`] for all, are left out (bottom to
-    /// top, so what is below stays).
-    fn cull(&self, scene: Vec<Placed>) -> (Vec<Placed>, Vec<SurfaceKey>) {
-        let bounds = self.layout.bounds();
-        let screens: i64 = self.layout.enabled().map(|o| o.logical_rect().area()).sum();
-        let budget = screens * TRANSLUCENT_SCREENS;
-        let mut all = screens * TRANSLUCENT_SCREENS_TOTAL;
-        let mut used: std::collections::HashMap<u32, i64> = Default::default();
-        let mut culled = Vec::new();
-        let mut kept = Vec::with_capacity(scene.len());
-        for p in scene {
-            let owner = self.clients.get(&p.key.client);
-            let translucent = self.surface(p.key).is_some_and(|s| !s.opaque);
-            let Some(c) = owner.filter(|c| translucent && c.rights == Rights::NONE) else {
-                kept.push(p);
-                continue;
-            };
-            let area = p.content.intersect(&bounds).map_or(0, |r| r.area());
-            let total = used.entry(c.conn.peer.uid).or_default();
-            if *total + area > budget || area > all {
-                culled.push(p.key);
-            } else {
-                *total += area;
-                all -= area;
-                kept.push(p);
-            }
-        }
-        (kept, culled)
     }
 
     /// Damages everything when the overdraw budget leaves out other

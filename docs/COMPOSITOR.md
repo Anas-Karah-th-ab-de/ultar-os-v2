@@ -74,7 +74,7 @@ Two transports, chosen by the compositor in `Welcome`:
 
 | Transport | How | Used where |
 |---|---|---|
-| **SharedMemory** | client creates a `memfd`, sizes it, adds seals `SHRINK|GROW|SEAL`, maps it read-write, sends the descriptor with `CreateShmBuffer` (`SCM_RIGHTS`). The compositor checks `F_GET_SEALS` ⊇ `SHRINK` (else `BadBuffer`), checks size ≥ `stride·(h−1)+4w` and ≤ 256 MiB and that the file is fully allocated (`st_blocks`; sparse = `BadBuffer`), maps it **read-only** | Linux (development) |
+| **SharedMemory** | client creates a `memfd`, sizes and allocates it (`fallocate`), seals `SHRINK|GROW`, maps it read-write, then seals `FUTURE_WRITE|SEAL` (no new writable mapping, no write, no hole punching – its own mapping keeps working), sends the descriptor with `CreateShmBuffer` (`SCM_RIGHTS`). The compositor checks `F_GET_SEALS` ⊇ `SHRINK|GROW|FUTURE_WRITE|SEAL` (else `BadBuffer`; without `FUTURE_WRITE` the pages could be punched out after the check and the compositor's copy would allocate them), checks size ≥ `stride·(h−1)+4w` and ≤ 256 MiB and that the file is fully allocated (`st_blocks`; sparse = `BadBuffer`), maps it **read-only** | Linux (development) |
 | **Inline** | `CreateInlineBuffer` allocates the buffer in the compositor (charged to the client); `WritePixels` sends only the damaged rows, ≤ 1 MiB per message | Ultar kernel today; `--inline` |
 
 On `Commit` the compositor **copies the damaged rectangles** out of the buffer into its own surface
@@ -119,9 +119,10 @@ Roles (`Role`): `Toplevel` (window with compositor decorations), `Popup{parent t
 reserves its strip of the primary output's work area; edges are logical: `Start` = right in Arabic),
 `InputPanel` (on-screen keyboard, bottom), `Lock`, `Background`, `Overlay` (notifications, at the
 top end corner), `SystemDialog` (password and permission prompts, §8a). Stacking: background <
-windows, each followed by its own popups < panels < system dialogs < overlays < input panel < lock.
-Popups stay inside the work area of their parent's output (clamped and cut to it: they cannot cover
-a panel or reach another display), at most 8 per toplevel. While the session is locked (§8a) **only**
+windows, each followed by its own popups < panels < overlays < system dialogs < input panel < lock.
+Popups stay inside their parent's content (clamped, and shrunk if larger: they cannot cover a panel,
+another app's window or another display), at most 8 per toplevel. Overlays need `ui.overlay` and are
+at most a third of the screen each way. While the session is locked (§8a) **only**
 lock surfaces and the input panel are drawn and get input.
 
 Configure/commit: the compositor sends `Configure{serial, size, scale, state, activated, rtl}`; the
@@ -178,8 +179,8 @@ damage, no waiting callbacks, no ping or transfer deadline → `poll` without ti
 ## 7. Input routing
 
 * Pointer: hit test top → bottom over the scene (decorations first: title, buttons, an 8-point resize
-  band outside the frame). Fully transparent pixels of a translucent surface are not hit (they belong
-  to what is below), so an invisible surface cannot take clicks; nothing below a system dialog is hit. Enter/Leave/Motion go only to the surface under the pointer, in its
+  band outside the frame). Pixels of a translucent surface with an opacity below 32/255 are not hit
+  (they belong to what is below), so an (almost) invisible surface cannot take clicks; nothing below a system dialog is hit. Enter/Leave/Motion go only to the surface under the pointer, in its
   coordinates. A press starts an **implicit grab**: until all buttons are up, events go to that
   surface even outside it. Click focuses and raises. Super+drag moves from anywhere.
 * Keyboard: modifiers tracked by the compositor; secure attention keys first (§8a), then compositor
@@ -202,9 +203,13 @@ damage, no waiting callbacks, no ping or transfer deadline → `poll` without ti
   (≤ 10 s), or with an activation token; otherwise it opens inactive. An app restoring itself from
   minimised does not take the focus either. Tokens: `RequestActivation{serial}` (a recent user
   serial of the asking client, e.g. the launcher's click) → `ActivationToken{token}` (64 bit from a
-  keyed SipHash with OS-random keys; single use, 30 s, ≤ 16 outstanding; 0 = refused); the launcher
-  hands it to the app in `ULTAR_ACTIVATION_TOKEN`, the client library sends `Activate{surface,
-  token}` with its first toplevel, which then gets the focus when it maps.
+  keyed SipHash with OS-random keys; single use, 30 s, ≤ 16 outstanding; 0 = refused). The serial
+  is used up: one user action buys one token. A token – also one parked on a window that has no
+  content yet – is void when it expires or when the user moves the focus (click, touch, Alt+Tab)
+  after it was made. The launcher hands it to the app in `ULTAR_ACTIVATION_TOKEN`, the client
+  library sends `Activate{surface, token}` with its first toplevel, which then gets the focus when
+  it maps. Tokens are transferable by design (launcher → app); the compositor's clock never goes
+  back, so expiries hold.
 * Ping: the first input to a client sends `Ping`; the client library answers in its event loop
   (an app that reads events is alive). No `Pong` within 5 s → title muted, `unresponsive` set.
 
@@ -243,34 +248,51 @@ Guarantees and how they are tested:
 * **Bounded resources**: per client 64 surfaces, 64 buffers, 8 popups per toplevel, 256 MiB pixel
   memory (buffers + committed copies), 8 MiB unsent events (a client that does not read is dropped –
   test `a_client_that_never_reads_is_dropped`), 2 MiB read per loop turn (fairness under flood – test
-  `hostile_clients_cannot_touch_others`), ≤ 4 pending descriptors (more = Malformed); 1 GiB pixel
-  memory for all clients together; 64 clients, of which a uid without rights may hold 8 and none of
-  the last 8 slots (reserved for shell, lock screen, input method). Shared buffers must be fully
-  allocated (`st_blocks`): a sparse memory file is refused, so a client cannot make the compositor's
-  copy fault in memory it never paid for.
-* **Flow control for transfers**: while a reader of a transfer has more than 2 MiB queued, the
-  source is not read (its socket fills, it waits); a 16 MiB paste into a busy app no longer drops
-  the app. The transfer deadline (10 s) ends a stalled transfer.
-* **Overdraw budget (bounded frame time)**: translucent surfaces of apps without rights are shown up
-  to 2 screens of area per uid and 3 screens for all such apps together (bottom to top; what is
-  beyond is left out of the scene, not drawn and not hit). With the popup cap and occlusion culling
-  the worst full frame an app can cause is asserted in `tests/review_bench.rs` (§9).
+  `hostile_clients_cannot_touch_others`), ≤ 4 pending descriptors (more = Malformed).
+  Per uid (`ShareLimits`): 32 connections, 512 MiB pixel memory, 32 visible windows. In total:
+  64 connections and 1 GiB, of which 8 slots and 128 MiB are reserved for the **system uids**
+  (holding `ui.shell`, `ui.lock-screen` or `ui.input-method`) – no app and no lesser right
+  (`ui.capture`, `ui.overlay`) can take them, so the lock screen can always connect and get its
+  buffers. Until apps have uids of their own (K9) all apps share one uid: the per-uid limits are
+  then the limits of all apps together (hence 32/512 MiB), the per-connection limits stay.
+  Shared buffers must be fully allocated (`st_blocks`) and sealed `FUTURE_WRITE` (§3), so a client
+  cannot make the compositor's copy fault in memory it never paid for.
+* **Flow control per transfer (pull)**: the compositor asks the source for each chunk
+  (`SendRequest`, repeated for the next chunk) only while the reader has ≤ 2 MiB queued; chunks a
+  source sends unasked while the reader is behind are held (≤ 2 MiB per transfer, so ≤ 128 MiB in
+  all), beyond that the transfer is cancelled (`TransferCancelled` to both). The source is always
+  read: a slow reader never freezes the clipboard owner, and a source that dies is removed at once.
+  The transfer deadline (10 s) ends a stalled transfer.
+* **Frame budget (bounded frame time)**: every surface of a non-system uid costs what it makes the
+  renderer touch beyond plain opaque copies – translucent content in full, title bar and shadow
+  band of windows. Per uid at most 2 screens of cost and 32 visible windows, 3 screens for all such
+  uids together. The budget is spent **from the top of the stack down** (popups after their
+  window), the focused window is never left out; what is left out is neither drawn nor hit. With
+  the popup cap and occlusion culling the worst frames an app can cause are asserted in
+  `tests/review_bench.rs` and `tests/review2_overdraw.rs` (§9).
 * Fuzzing (`tests/protocol_fuzz.rs`, fixed seeds): random byte streams, random requests with
   hostile field values, huge sizes, unsealed / too small / foreign descriptors, descriptor floods,
   lying strides – the compositor never panics, limits hold, the good client keeps working.
 
 ## 8a. Trusted path and session
 
-* **Lock (fail closed)**: locked is compositor state. The first lock surface with content locks, so
-  do the secure attention keys; only `Unlock{surface}` from a client with `ui.lock-screen` that shows
+* **Lock (fail closed, never dead)**: locked is compositor state. The first lock surface with
+  content locks, so do the secure attention keys – but only while a lock screen client is connected
+  (a client holding `ui.lock-screen` that said `Hello`): a lock that nobody could ever lift would
+  end the session, so without one the keys do nothing (they are still never forwarded). The lock
+  screen client should stay connected all session (started by `ultar-init` or the shell); it shows
+  its surface on `SessionLocked{true}`. Once locked, only `Unlock{surface}` from a client with `ui.lock-screen` that shows
   a lock surface clears it (it verified the password with the authentication service). A lock
   client that dies leaves the session locked: the ground colour, no input to anyone, until a new lock
   client attaches (its surface then gets the keys). Locking ends pointer grabs, drags and touches;
   captures pause. Clients with `ui.shell` or `ui.lock-screen` get `SessionLocked{locked}` (the shell
   starts the lock screen client).
-* **Secure attention keys**: Ctrl+Alt+Del and Super+L are handled only by the compositor: they lock,
-  the key and its release never reach a client.
-* **System dialogs** (`SystemDialog`, right `ui.system-dialog`): centred, above the panels, modal
+* **Secure attention keys**: Ctrl+Alt+Del and Super+L are handled only by the compositor: they lock
+  (with a lock screen client, see above), the key and its release never reach a client. Clients
+  cannot synthesise them (no key injection request; `ImeCommit` makes only `Text`); input devices
+  made by software (`uinput`) are not read unless allowed by name (§11).
+* **System dialogs** (`SystemDialog`, right `ui.system-dialog`): centred, above panels and overlays
+  (only the on-screen keyboard and the lock are higher), modal
   (keys go to them, nothing below is hit), not resizable/minimisable. Their title bar – drawn by the
   compositor – shows the lock icon in the accent colour and the title the dialog service sets (the
   requesting app's name); everything below, the shell's panels included, is dimmed with the theme's
@@ -287,6 +309,7 @@ Guarantees and how they are tested:
 | Full composition 1920×1080, 4 windows (1 maximised, 3 floating with shadows), software | ≤ 4 ms p99 (thread CPU time) | 2.1–3.0 ms CPU p99; wall time on the shared build machine 9–22 ms (other agents take the cores) |
 | Caret-sized damage | ≤ 0.3 ms p99 | 3–17 µs |
 | Hostile full frame 1920×1080: 3 app uids × 2 connections, each a window + 8 translucent full-screen popups + 6 translucent full-screen toplevels (`tests/review_bench.rs`) | ≤ 16 ms p99 (thread CPU time) | see integration notes |
+| Hostile full frame 1920×1080: one uid, 8 connections × 63 thin opaque floating windows (`tests/review2_overdraw.rs`) | ≤ 16 ms median (thread CPU time) | see integration notes |
 | Idle | no frame composed, no timer | asserted |
 | Input → photon | ≤ 1 frame interval + app draw time (PC budget 30 ms, §3.6) | not measured on hardware (open) |
 
@@ -311,8 +334,15 @@ from DPI), logical position, primary. Modes **extend** (side by side, primary fi
 snapped windows and layers, and moves the pointer to the primary's middle if its display went.
 Mirror mode overrides the scale of the other outputs only while it lasts (the user's scale is kept
 and comes back with extend/single). Input devices: kernel uevents (netlink `KOBJECT_UEVENT`) of the
-input/usb/hid subsystems make the backend rescan `/dev/input`; a device that hangs up leaves the
-poll set at once (its held keys and buttons are released first); SIGHUP rescans too. Windows are
+input/usb/hid subsystems make the backend rescan `/dev/input` (every `event*`; lost uevents –
+`ENOBUFS` – force a rescan too); a device is known by its node (`st_rdev` + inode), so one unplugged
+and replugged under the same name between two scans is dropped and opened again; a device that
+hangs up leaves the poll set at once (its held keys and buttons are released first); SIGHUP
+rescans too. **Seat**: only nodes of the seat are read – with `--seat-group GID` a node must
+belong to that group (`ultar-devd` must give the seat's event nodes to one group, mode `0660`, and
+nothing else), and devices made by software (`uinput`, below `/devices/virtual/` in sysfs) are
+refused unless named with `--allow-virtual-input NAME`. `/dev/uinput` must stay root-only (devd).
+Where sysfs is missing (the Ultar kernel, which has no `uinput`) every node counts as hardware. Windows are
 configured with the scale of the output holding most of
 them, so they redraw sharp after moving ("kein Hochrechnen").
 
@@ -333,8 +363,11 @@ them, so they redraw sharp after moving ("kein Hochrechnen").
   installer must write its rights line; until then the rights table cannot tell apps apart. The
   shell (lock screen, keyboard) still runs as root inside `ultar-shell`, so the shipped rights file
   is empty.
-* No restart of a dead lock screen client by the compositor itself (the shell gets
-  `SessionLocked` and must start one; until then the screen stays dark and locked).
+* No lock screen client exists yet, so Super+L / Ctrl+Alt+Del do nothing on a shipped system (by
+  design, N1); `ultar-init` should start one as its own user, with `ui.lock-screen`, that stays
+  connected and is restarted when it dies (while locked the screen stays dark until it is back).
+* `ultar-devd` does not yet set a seat group on event nodes; until it does the compositor runs
+  without `--seat-group` (any readable node; software devices still refused).
 * A window that opens without the focus is not announced (no "needs attention" event to the shell).
 
 * Kernel gaps K1–K9 above (shared memory, fd passing, vblank, more displays/input on the Ultar

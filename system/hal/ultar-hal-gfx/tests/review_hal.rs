@@ -128,19 +128,22 @@ fn sparse_buffers_are_refused() {
 }
 
 /// SOUND: a hole punched into a sealed buffer after it was mapped reads as
-/// zeros – no SIGBUS (SHRINK seal holds, the size never changes).
+/// zeros – no SIGBUS (SHRINK seal holds, the size never changes). Since
+/// fix round 2 (N8) buffers also carry `FUTURE_WRITE`, so the punch itself
+/// is refused; either way the compositor never faults.
 #[test]
 fn punched_holes_read_as_zero_without_sigbus() {
     let mut buffer = SharedBuffer::create(1 << 20).unwrap();
     buffer.bytes_mut().fill(0xff);
     let mapping = SealedMapping::map(buffer.fd().try_clone_to_owned().unwrap(), 1 << 20).unwrap();
     let flags = FallocateFlags::PUNCH_HOLE | FallocateFlags::KEEP_SIZE;
-    fallocate(buffer.fd(), flags, 0, 1 << 20).unwrap();
+    let punched = fallocate(buffer.fd(), flags, 0, 1 << 20).is_ok();
     let shrink = ftruncate(buffer.fd().as_fd(), 4096);
     assert!(shrink.is_err(), "sealed buffer must not shrink");
     let mut row = [1u32; 256];
     mapping.copy_pixels((1 << 20) - 1024, &mut row).unwrap();
-    assert!(row.iter().all(|&p| p == 0));
+    let expected = if punched { 0 } else { 0xffff_ffff };
+    assert!(row.iter().all(|&p| p == expected));
 }
 
 /// SOUND: huge-page memory files either map (pages reserved at map time)

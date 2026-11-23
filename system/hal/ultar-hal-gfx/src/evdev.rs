@@ -330,7 +330,7 @@ impl Decoder {
 
 #[path = "evdev_devices.rs"]
 mod devices;
-pub use devices::Evdev;
+pub use devices::{Evdev, SeatPolicy};
 
 #[cfg(test)]
 #[path = "evdev_tests.rs"]

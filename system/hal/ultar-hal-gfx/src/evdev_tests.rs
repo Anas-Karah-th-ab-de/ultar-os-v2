@@ -245,3 +245,24 @@ fn files_that_are_not_devices_are_read_as_records() {
         Some(GfxError::NoDevice)
     );
 }
+
+#[test]
+fn only_seat_devices_are_admitted() {
+    use std::os::unix::fs::MetadataExt;
+    let path = std::env::temp_dir().join(format!("ultar-seat-{}", std::process::id()));
+    std::fs::write(&path, [0u8; 4]).unwrap();
+    let file = std::fs::File::open(&path).unwrap();
+    let gid = file.metadata().unwrap().gid();
+    assert!(SeatPolicy::default().admits(&path, &file));
+    let seat = SeatPolicy {
+        group: Some(gid),
+        virtual_allowed: Vec::new(),
+    };
+    assert!(seat.admits(&path, &file));
+    let other = SeatPolicy {
+        group: Some(gid.wrapping_add(1)),
+        virtual_allowed: Vec::new(),
+    };
+    assert!(!other.admits(&path, &file), "node of another group refused");
+    std::fs::remove_file(&path).unwrap();
+}

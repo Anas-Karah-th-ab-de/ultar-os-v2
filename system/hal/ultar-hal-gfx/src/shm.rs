@@ -20,9 +20,12 @@ use std::ptr::NonNull;
 /// Largest shared buffer accepted or created: 256 MiB (an 8K frame).
 pub const MAX_SHARED_BYTES: u64 = 256 << 20;
 
-/// Seals every buffer carries: no shrinking, no growing, no further seal changes.
+/// Seals every buffer carries: no shrinking, no growing, no new writable
+/// mappings, writes or hole punching (`FUTURE_WRITE`: the app's own mapping,
+/// made before the seal, keeps working), no further seal changes.
 const REQUIRED_SEALS: SealFlags = SealFlags::SHRINK
     .union(SealFlags::GROW)
+    .union(SealFlags::FUTURE_WRITE)
     .union(SealFlags::SEAL);
 
 /// A writable shared pixel buffer owned by the app that draws into it.
@@ -52,7 +55,7 @@ impl SharedBuffer {
         // Allocate every page now: the pages are charged to this process
         // (the app), and the compositor refuses buffers without them.
         fallocate(&fd, FallocateFlags::empty(), 0, len as u64)?;
-        fcntl_add_seals(&fd, REQUIRED_SEALS)?;
+        fcntl_add_seals(&fd, SealFlags::SHRINK | SealFlags::GROW)?;
         // SAFETY: a fresh mapping (null hint, kernel chooses the address) of
         // `len` bytes of a file that is exactly `len` bytes long and sealed
         // against shrinking; nothing else in this process refers to it.
@@ -67,7 +70,12 @@ impl SharedBuffer {
             )
         }?;
         let ptr = NonNull::new(raw).ok_or(GfxError::Sys(12))?;
-        Ok(SharedBuffer { fd, ptr, len })
+        let buffer = SharedBuffer { fd, ptr, len };
+        // After the writable mapping exists: nobody (this process included)
+        // can punch holes or map it writable again, so the pages the
+        // compositor checked stay allocated and charged to this process.
+        fcntl_add_seals(&buffer.fd, SealFlags::FUTURE_WRITE | SealFlags::SEAL)?;
+        Ok(buffer)
     }
 
     /// The descriptor to pass to the compositor.
@@ -122,14 +130,15 @@ unsafe impl Send for SealedMapping {}
 
 impl SealedMapping {
     /// Maps a descriptor received from a client. Refuses descriptors that
-    /// are not sealed against shrinking (not a memory file, or the client
-    /// left the seal off), whose pages are not allocated (sparse: the
+    /// lack a required seal (not a memory file, or the client left a seal
+    /// off: without `FUTURE_WRITE` it could punch the checked pages out
+    /// again and the compositor's copy would allocate them), whose pages are not allocated (sparse: the
     /// compositor would pay for them), that are smaller than `min_len` or larger than
     /// [`MAX_SHARED_BYTES`]. The descriptor is closed when this returns; the
     /// mapping keeps the memory alive.
     pub fn map(fd: OwnedFd, min_len: u64) -> Result<SealedMapping, GfxError> {
         let seals = fcntl_get_seals(&fd).map_err(|_| GfxError::NotSealed)?;
-        if !seals.contains(SealFlags::SHRINK) {
+        if !seals.contains(REQUIRED_SEALS) {
             return Err(GfxError::NotSealed);
         }
         let stat = fstat(&fd)?;
@@ -295,6 +304,27 @@ mod tests {
             SealedMapping::map(fd, 1 << 20).err(),
             Some(GfxError::Sparse)
         );
+    }
+
+    #[test]
+    fn buffers_cannot_be_hollowed_after_the_check() {
+        // Allocated and sealed against resizing, but not against writes:
+        // the sender could punch the pages out after the check.
+        let fd = memfd_create("t", MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING).unwrap();
+        ftruncate(&fd, 1 << 16).unwrap();
+        fallocate(&fd, FallocateFlags::empty(), 0, 1 << 16).unwrap();
+        fcntl_add_seals(&fd, SealFlags::SHRINK | SealFlags::GROW | SealFlags::SEAL).unwrap();
+        assert_eq!(
+            SealedMapping::map(fd, 1 << 16).err(),
+            Some(GfxError::NotSealed)
+        );
+        // Our own buffers: still writable through the app's mapping, but
+        // no hole can be punched.
+        let mut buffer = SharedBuffer::create(1 << 16).unwrap();
+        buffer.bytes_mut()[0] = 7;
+        let punch = FallocateFlags::PUNCH_HOLE | FallocateFlags::KEEP_SIZE;
+        assert!(fallocate(buffer.fd(), punch, 0, 1 << 16).is_err());
+        assert!(SealedMapping::map(buffer.fd().try_clone_to_owned().unwrap(), 1 << 16).is_ok());
     }
 
     #[test]

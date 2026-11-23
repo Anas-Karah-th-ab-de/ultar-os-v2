@@ -144,7 +144,7 @@ impl State {
         };
         let key = self.windows[index].key;
         self.unminimize(index);
-        self.focus_window(key);
+        self.user_focus(key);
     }
 
     pub(super) fn touch_down(&mut self, id: u32, x: u16, y: u16) {
@@ -169,7 +169,7 @@ impl State {
         self.damage_cursor();
         self.pointer.hidden = true;
         if self.window_index(key).is_some() {
-            self.focus_window(key);
+            self.user_focus(key);
         }
         self.pointer.touches.insert(id, key);
         let serial = self.user_serial(key.client);

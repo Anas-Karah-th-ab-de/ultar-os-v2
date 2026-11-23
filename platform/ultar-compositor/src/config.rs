@@ -11,56 +11,97 @@ use ultar_ui::Lang;
 pub struct Limits {
     /// Connected clients.
     pub clients: usize,
-    /// Connections one user id without rights may hold.
-    pub clients_per_uid: usize,
-    /// Of [`Limits::clients`], the slots only user ids with rights (shell,
-    /// lock screen, input method) may take.
-    pub reserved_clients: usize,
     /// Surfaces per client.
     pub surfaces: usize,
     /// Buffers per client.
     pub buffers: usize,
-    /// Pixel memory per client (buffers + committed surface copies).
-    pub client_bytes: u64,
-    /// Pixel memory of all clients together.
-    pub total_bytes: u64,
     /// Popups per toplevel window.
     pub popups: usize,
+    /// Pixel memory per client (buffers + committed surface copies).
+    pub client_bytes: u64,
     /// Unsent events per client before it is dropped as too slow.
     pub out_bytes: usize,
     /// Bytes read from one client per loop turn (fairness).
     pub read_slice: usize,
-    /// Size of one clipboard or drop transfer.
-    pub transfer_bytes: usize,
-    /// Bytes queued for a transfer's reader before the source is no longer
-    /// read (flow control).
-    pub transfer_queue: usize,
-    /// Milliseconds a transfer may take.
-    pub transfer_ms: u64,
     /// Milliseconds without `Pong` before a window is "not responding".
     pub ping_ms: u64,
     /// Milliseconds a user-action serial stays valid.
     pub serial_ms: u64,
+    /// What user ids share and what is kept for the system clients.
+    pub share: ShareLimits,
+    /// Clipboard and drag and drop.
+    pub transfer: TransferLimits,
+}
+
+/// Limits per user id and the reserve of the system clients (shell, lock
+/// screen, input method: uids holding `ui.shell`, `ui.lock-screen` or
+/// `ui.input-method`). Every uid – system ones too – has the per-uid
+/// limits; only system uids may use the reserves.
+///
+/// Until apps run under uids of their own (kernel gap K9) every app of the
+/// session shares one uid, so the per-uid limits are the session's limits
+/// for all apps together: they are set high (32 connections, 512 MiB) and
+/// the per-connection limits do the rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShareLimits {
+    /// Connections per uid.
+    pub clients_per_uid: usize,
+    /// Of [`Limits::clients`], the slots only system uids may take.
+    pub reserved_clients: usize,
+    /// Pixel memory per uid (system uids excepted).
+    pub uid_bytes: u64,
+    /// Pixel memory of all clients together.
+    pub total_bytes: u64,
+    /// Of `total_bytes`, the part only system uids may use (a lock screen
+    /// always gets its buffers).
+    pub reserved_bytes: u64,
+    /// Visible toplevel windows per uid without rights (more are left out
+    /// of the scene: frame cost).
+    pub windows_per_uid: usize,
+}
+
+/// Limits of clipboard and drag-and-drop transfers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TransferLimits {
+    /// Size of one transfer.
+    pub bytes: usize,
+    /// Bytes queued for a transfer's reader before further data of that
+    /// transfer is held back (flow control per transfer).
+    pub queue: usize,
+    /// Bytes of one transfer the compositor holds back at most; a source
+    /// that sends more without being asked (`SendRequest`) loses the
+    /// transfer.
+    pub held: usize,
+    /// Milliseconds a transfer may take.
+    pub ms: u64,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Limits {
             clients: 64,
-            clients_per_uid: 8,
-            reserved_clients: 8,
             surfaces: 64,
             buffers: 64,
-            client_bytes: 256 << 20,
-            total_bytes: 1 << 30,
             popups: 8,
+            client_bytes: 256 << 20,
             out_bytes: 8 << 20,
             read_slice: 2 << 20,
-            transfer_bytes: 16 << 20,
-            transfer_queue: 2 << 20,
-            transfer_ms: 10_000,
             ping_ms: 5_000,
             serial_ms: 10_000,
+            share: ShareLimits {
+                clients_per_uid: 32,
+                reserved_clients: 8,
+                uid_bytes: 512 << 20,
+                total_bytes: 1 << 30,
+                reserved_bytes: 128 << 20,
+                windows_per_uid: 32,
+            },
+            transfer: TransferLimits {
+                bytes: 16 << 20,
+                queue: 2 << 20,
+                held: 2 << 20,
+                ms: 10_000,
+            },
         }
     }
 }

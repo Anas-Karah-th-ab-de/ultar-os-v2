@@ -220,3 +220,43 @@ layers). Not run in this round: the QEMU run on the Ultar kernel (the uevent soc
 `fallocate` there are untested; without uevents the backend still works and SIGHUP rescans),
 real input hot-plug hardware, a real lock screen / dialog service (none exists yet).
 
+
+## 9. Fix round 2 (review `docs/review/compositor-runde-2.md`) – `FIX2.patch`
+
+The reviewer's three files are part of the suite (`tests/review2_{trust,limits,overdraw}.rs`); all
+12 FINDING tests pass (N12 in release). New own tests: `tests/budget_and_flow.rs`, unit tests in
+`shm`, `session`, `evdev`. One reviewer test was changed: `review_hal::punched_holes_read_as_zero_
+without_sigbus` (round 1, SOUND) punched a hole into a `SharedBuffer`, which the N8 fix now forbids;
+it accepts both outcomes (punch refused, or zeros) – the property, no SIGBUS, is unchanged.
+
+| Finding | Decision / fix (root) |
+|---|---|
+| N1 SAK bricks | **Decision:** no compositor-internal lock screen (it would need password checking inside the compositor). A lock happens only while a lock screen client is connected (`State::lock_provider`: holds `ui.lock-screen`, said `Hello`); otherwise the secure attention keys do nothing (still swallowed). Once locked, the lock stays even if that client dies (C1). `lock()` returns whether it locked. |
+| N2 token abuse | `RequestActivation` uses up the serial (one action, one token). Tokens carry their expiry and the user-focus epoch; a parked `activate_on_map` is a `Grant` checked at map time (expired or after a user focus change = void). The state clock never goes back. |
+| N3 faint popup | Popups clamped (and shrunk) to the parent's content; hit test ignores pixels below opacity 32/255 (`HIT_ALPHA`). |
+| N4 overlay over dialog | Stacking: panels < overlays < system dialogs < OSK < lock; overlays dimmed and not hit under a dialog; overlay size ≤ a third of the screen each way. |
+| N5/N6/N7 shares | `Limits::share` (`ShareLimits`): every uid ≤ 32 connections and (non-system) ≤ 512 MiB; 8 slots and 128 MiB of the 1 GiB reserved for system uids (`ui.shell`/`ui.lock-screen`/`ui.input-method`); `State::memory_room`. 32/512 MiB because all apps share one uid until K9. |
+| N8 TOCTOU | Buffers are sealed `FUTURE_WRITE` after the app's writable mapping exists; the compositor requires `SHRINK|GROW|FUTURE_WRITE|SEAL` (punch-hole and new writable mappings refused by the kernel). |
+| N9/N10 transfers | Per-transfer pull: `SendRequest` again for each next chunk while the reader has ≤ 2 MiB queued; unasked chunks held ≤ 2 MiB per transfer, then the transfer is cancelled (both sides told). The source is always read and polled (no freeze, a dead source is removed at once). `Limits::transfer` (`TransferLimits`). |
+| N11/N12 budget | `state/budget.rs`: cost = translucent content + window title/shadow band, per uid 2 screens, 3 for all non-system uids, ≤ 32 visible windows per uid; spent from the top down, the focused window never left out, popups only with their window. |
+| N13 device churn | Devices are known by node (`st_rdev`, inode); `ENOBUFS` on the uevent socket forces a rescan; every `event*` is scanned. |
+| N14 injection | `SeatPolicy`: `--seat-group GID` (nodes must belong to the seat group devd sets) and software devices (`/devices/virtual/` in sysfs = uinput) refused unless `--allow-virtual-input NAME`. **devd must:** give the seat's event nodes to one group with mode 0660, keep `/dev/uinput` root-only; then add `--seat-group` to `compositor.toml`. |
+
+**API changes:** `Limits` regrouped: `share: ShareLimits {clients_per_uid, reserved_clients,
+uid_bytes, total_bytes, reserved_bytes, windows_per_uid}`, `transfer: TransferLimits {bytes, queue,
+held, ms}` (old flat fields removed); `state::is_system`; `State::{lock_provider, memory_room,
+uid_bytes}`; `State::lock() -> bool`; `Window::activate_on_map: Option<Grant>`; `HIT_ALPHA`;
+`HalBackend::open(kind, SeatPolicy)`; `ultar_hal_gfx::evdev::{SeatPolicy, Evdev::open_seat}`;
+command line `--seat-group`, `--allow-virtual-input`. Protocol: no new message; `SendRequest` is now
+repeated per chunk (sources should send one `SendData` per `SendRequest`).
+
+**Gate (fix round 2, x86_64 Linux, `-j1`, debug, `CARGO_INCREMENTAL=0`):** `cargo test -p
+ultar-hal-gfx -p ultar-surface -p ultar-compositor`: **146 passed, 0 failed, 4 ignored** (release-only
+budgets), identical in three runs. fmt clean, clippy `-D warnings` clean (three crates, also
+`ultar-surface --no-default-features --lib`), `ultar-check all` ok, 5556 baselined as on HEAD,
+144 warnings (143 on HEAD; file-size warnings only). Release (3 runs, thread CPU): full HD p99
+1.4 / 1.4 / 2.0 ms (4 ms), caret 5–9 µs, hostile translucent scene p99 12.4 / 12.3 / 12.2 ms
+(16 ms), 504 thin opaque windows median 5.4 / 5.0 / 4.7 ms (16 ms; 72 ms before). Not run: QEMU /
+Ultar kernel, real hot-plug and uinput devices, sysfs-based software-device detection on a real
+seat (unit-tested only for the group check), a real lock screen client.
+

@@ -70,7 +70,8 @@ impl UeventSocket {
         self.fd.as_fd()
     }
 
-    /// Reads every pending event; true if any concerned input devices.
+    /// Reads every pending event; true if any concerned input devices or
+    /// events were lost (`ENOBUFS`).
     pub fn input_changed(&self) -> bool {
         let mut buf = vec![0u8; MESSAGE];
         let mut changed = false;
@@ -79,6 +80,12 @@ impl UeventSocket {
                 Ok((n, _)) if n > 0 => {
                     let n = n.min(buf.len());
                     changed |= Uevent::parse(&buf[..n]).is_some_and(|e| e.concerns_input());
+                }
+                // Events were lost (receive buffer overflowed): anything may
+                // have changed, the caller rescans everything.
+                Err(rustix::io::Errno::NOBUFS) => {
+                    changed = true;
+                    break;
                 }
                 _ => break,
             }

@@ -11,6 +11,9 @@ use ultar_surface::proto::{Event, Modifiers, FIXED_ONE};
 
 /// The primary button's Linux code.
 pub const BTN_PRIMARY: u16 = 0x110;
+/// Least opacity (of 255) a pixel needs to take input: fainter pixels are
+/// not really seen by the user and belong to what is below.
+pub const HIT_ALPHA: u32 = 32;
 /// Points the pointer must travel before a title press becomes a move.
 const DRAG_START: f64 = 4.0;
 
@@ -187,8 +190,8 @@ impl State {
         None
     }
 
-    /// False where the surface's pixel at a logical point is fully
-    /// transparent.
+    /// False where the surface's pixel at a logical point is (nearly)
+    /// transparent: opacity below [`HIT_ALPHA`].
     fn solid_at(&self, placed: &Placed, x: f64, y: f64) -> bool {
         let Some(s) = self.surface(placed.key) else {
             return false;
@@ -203,7 +206,7 @@ impl State {
         let ix = (x - f64::from(c.x)) * f64::from(img.width()) / f64::from(c.w.max(1));
         let iy = (y - f64::from(c.y)) * f64::from(img.height()) / f64::from(c.h.max(1));
         img.pixel(ix.floor() as i32, iy.floor() as i32)
-            .is_some_and(|p| p >> 24 != 0)
+            .is_some_and(|p| p >> 24 >= HIT_ALPHA)
     }
 
     fn surface_point(&self, key: SurfaceKey) -> Option<(i32, i32)> {
@@ -375,7 +378,7 @@ impl State {
         };
         let on_top = self.windows.last().map(|w| w.key) == Some(key);
         if self.window_index(key).is_some() && (self.focus != Some(key) || !on_top) {
-            self.focus_window(key);
+            self.user_focus(key);
         }
         let super_held = self.keyboard.modifiers & Modifiers::SUPER != 0;
         let grab = match part {

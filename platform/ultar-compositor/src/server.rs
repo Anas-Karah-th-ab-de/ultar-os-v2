@@ -123,7 +123,8 @@ impl Compositor {
 
     /// Feeds input as if a device produced it.
     pub fn inject(&mut self, events: &[InputEvent]) {
-        self.state.now = self.clock.now_ms();
+        // Time never goes back for the state (expiries stay expired).
+        self.state.now = self.state.now.max(self.clock.now_ms());
         for e in events {
             self.state.input(e);
         }
@@ -146,7 +147,8 @@ impl Compositor {
     pub fn dispatch(&mut self, timeout: Option<Duration>) -> std::io::Result<()> {
         let wait = self.wait_time(timeout);
         let ready = self.wait(wait)?;
-        self.state.now = self.clock.now_ms();
+        // Time never goes back for the state (expiries stay expired).
+        self.state.now = self.state.now.max(self.clock.now_ms());
         if ready.listener {
             self.accept();
         }
@@ -238,11 +240,7 @@ impl Compositor {
         }
         for id in &ids {
             if let Some(c) = self.state.clients.get(id) {
-                let mut flags = if self.state.throttled(*id) {
-                    PollFlags::empty()
-                } else {
-                    PollFlags::IN
-                };
+                let mut flags = PollFlags::IN;
                 if c.conn.pending() > 0 {
                     flags |= PollFlags::OUT;
                 }
@@ -306,9 +304,6 @@ impl Compositor {
     /// Reads and handles what one client sent.
     pub fn read_client(&mut self, id: ClientId) {
         let budget = self.state.config.limits.read_slice;
-        if self.state.throttled(id) {
-            return;
-        }
         let Some(c) = self.state.clients.get_mut(&id) else {
             return;
         };

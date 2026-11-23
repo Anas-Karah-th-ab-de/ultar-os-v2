@@ -11,7 +11,7 @@ use ultar_hal::{
     Display, DisplayEvent, DisplayId, FrameView, HalError, Input, InputEvent, InputEventKind,
     PixelFormat, Size,
 };
-use ultar_hal_gfx::evdev::Evdev;
+use ultar_hal_gfx::evdev::{Evdev, SeatPolicy};
 use ultar_hal_gfx::fbdev::FbDev;
 use ultar_hal_gfx::kms::Kms;
 use ultar_hal_gfx::uevent::UeventSocket;
@@ -48,8 +48,9 @@ impl std::fmt::Debug for HalBackend {
 }
 
 impl HalBackend {
-    /// Opens the display and every input device (input is optional).
-    pub fn open(kind: &OutputKind) -> Result<HalBackend, GfxError> {
+    /// Opens the display and the seat's input devices (`seat`: which
+    /// event nodes belong to the session; input is optional).
+    pub fn open(kind: &OutputKind, seat: SeatPolicy) -> Result<HalBackend, GfxError> {
         let display: Box<dyn Display> = match kind {
             OutputKind::Kms(path) => Box::new(Kms::open(path.as_deref())?),
             OutputKind::Framebuffer(path) => Box::new(FbDev::open(path.as_deref())?),
@@ -58,7 +59,7 @@ impl HalBackend {
                 Err(_) => Box::new(FbDev::open(None)?),
             },
         };
-        let input = Evdev::open_all().unwrap_or_else(|_| Evdev::empty());
+        let input = Evdev::open_seat(seat).unwrap_or_else(|_| Evdev::empty());
         let input_fds = input.poll_handles();
         Ok(HalBackend {
             display,

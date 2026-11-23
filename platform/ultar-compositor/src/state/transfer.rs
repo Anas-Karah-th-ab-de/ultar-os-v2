@@ -10,16 +10,25 @@
 use super::input::PointerGrab;
 use super::{ClientId, State, SurfaceKey};
 use crate::decor::Part;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use ultar_surface::proto::{ErrorCode, Event, Request, SurfaceId, TransferId, MAX_MIME};
 
-/// One transfer in flight.
+/// One transfer in flight. Flow control is per transfer: the source is
+/// asked for each next chunk (`SendRequest`) only when the reader has
+/// room; chunks it sends unasked while the reader is behind are held (up
+/// to [`crate::config::TransferLimits::held`]), beyond that the transfer
+/// is cancelled. The source itself is always read (its other requests –
+/// commits, pongs – are never held up by a slow reader).
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Transfer {
     source: ClientId,
     dest: ClientId,
+    mime: String,
     bytes: usize,
     deadline: u64,
+    held: VecDeque<(Vec<u8>, bool)>,
+    held_bytes: usize,
+    asked: bool,
 }
 
 /// A drop waiting to be read.
@@ -86,16 +95,6 @@ impl Transfers {
         self.drag = None;
     }
 
-    /// Readers of the transfers `source` is sending (flow control: the
-    /// source is not read while one of them has too much queued).
-    pub fn readers_of(&self, source: ClientId) -> Vec<ClientId> {
-        self.active
-            .values()
-            .filter(|t| t.source == source)
-            .map(|t| t.dest)
-            .collect()
-    }
-
     /// Transfers whose destination must be told they ended.
     pub fn take_cancelled(&mut self) -> Vec<(ClientId, TransferId)> {
         std::mem::take(&mut self.cancelled)
@@ -128,15 +127,24 @@ impl Transfers {
             .min()
     }
 
-    fn start(&mut self, source: ClientId, dest: ClientId, deadline: u64) -> TransferId {
+    fn start(
+        &mut self,
+        (source, dest): (ClientId, ClientId),
+        mime: &str,
+        deadline: u64,
+    ) -> TransferId {
         self.next = self.next.wrapping_add(1).max(1);
         self.active.insert(
             self.next,
             Transfer {
                 source,
                 dest,
+                mime: mime.to_owned(),
                 bytes: 0,
                 deadline,
+                held: VecDeque::new(),
+                held_bytes: 0,
+                asked: true,
             },
         );
         TransferId(self.next)
@@ -210,16 +218,22 @@ impl State {
         }
     }
 
-    /// True while a reader of `client`'s transfers has more than
-    /// [`crate::config::Limits::transfer_queue`] bytes queued: the loop
-    /// does not read `client` then (its socket fills and it waits).
+    /// True while a transfer of `client` waits for its reader (data held
+    /// back, or the reader has more than
+    /// [`crate::config::TransferLimits::queue`] bytes queued). The source
+    /// is still read; only that transfer waits.
     pub fn throttled(&self, client: ClientId) -> bool {
-        let limit = self.config.limits.transfer_queue;
-        self.transfers.readers_of(client).iter().any(|dest| {
-            self.clients
-                .get(dest)
-                .is_some_and(|c| c.conn.pending() > limit)
-        })
+        self.transfers
+            .active
+            .values()
+            .any(|t| t.source == client && (!t.held.is_empty() || self.reader_full(t.dest)))
+    }
+
+    fn reader_full(&self, dest: ClientId) -> bool {
+        let limit = self.config.limits.transfer.queue;
+        self.clients
+            .get(&dest)
+            .is_none_or(|c| c.conn.pending() > limit)
     }
 
     fn begin_transfer(
@@ -235,8 +249,8 @@ impl State {
         if self.transfers.active.values().any(|t| t.dest == dest) {
             return Err(ErrorCode::Limit);
         }
-        let deadline = self.now + self.config.limits.transfer_ms;
-        let id = self.transfers.start(source, dest, deadline);
+        let deadline = self.now + self.config.limits.transfer.ms;
+        let id = self.transfers.start((source, dest), &mime, deadline);
         self.send(source, Event::SendRequest { transfer: id, mime });
         Ok(())
     }
@@ -248,7 +262,7 @@ impl State {
         data: Vec<u8>,
         last: bool,
     ) -> Result<(), ErrorCode> {
-        let limit = self.config.limits.transfer_bytes;
+        let limits = self.config.limits.transfer;
         let Some(t) = self.transfers.active.get_mut(&transfer.0) else {
             // Late data for a cancelled transfer is dropped quietly.
             return Ok(());
@@ -257,24 +271,68 @@ impl State {
             return Err(ErrorCode::Permission);
         }
         t.bytes += data.len();
-        let dest = t.dest;
-        if t.bytes > limit {
-            self.transfers.active.remove(&transfer.0);
-            self.send(dest, Event::TransferCancelled { transfer });
+        t.asked = false;
+        if t.bytes > limits.bytes || t.held_bytes + data.len() > limits.held {
+            // Too big, or sent unasked faster than the reader reads.
+            self.cancel_transfer(transfer);
             return Ok(());
         }
-        if last {
-            self.transfers.active.remove(&transfer.0);
-        }
-        self.send(
-            dest,
-            Event::Data {
-                transfer,
-                data,
-                last,
-            },
-        );
+        t.held_bytes += data.len();
+        t.held.push_back((data, last));
+        self.pump_transfer(transfer.0);
         Ok(())
+    }
+
+    /// Ends a transfer early; both sides are told.
+    fn cancel_transfer(&mut self, transfer: TransferId) {
+        if let Some(t) = self.transfers.active.remove(&transfer.0) {
+            self.send(t.dest, Event::TransferCancelled { transfer });
+            self.send(t.source, Event::TransferCancelled { transfer });
+        }
+    }
+
+    /// Moves held chunks of one transfer to its reader while the reader has
+    /// room, then asks the source for the next chunk.
+    fn pump_transfer(&mut self, id: u32) {
+        loop {
+            let Some(t) = self.transfers.active.get(&id) else {
+                return;
+            };
+            let (dest, source) = (t.dest, t.source);
+            if self.reader_full(dest) {
+                return;
+            }
+            let Some(t) = self.transfers.active.get_mut(&id) else {
+                return;
+            };
+            let Some((data, last)) = t.held.pop_front() else {
+                if !t.asked {
+                    t.asked = true;
+                    let mime = t.mime.clone();
+                    self.send(
+                        source,
+                        Event::SendRequest {
+                            transfer: TransferId(id),
+                            mime,
+                        },
+                    );
+                }
+                return;
+            };
+            t.held_bytes -= data.len();
+            if last {
+                self.transfers.active.remove(&id);
+            }
+            let transfer = TransferId(id);
+            self.send(
+                dest,
+                Event::Data {
+                    transfer,
+                    data,
+                    last,
+                },
+            );
+        }
     }
 
     /// The pointer was released during a drag: offer the data to the
@@ -293,7 +351,7 @@ impl State {
             source,
             target: key.client,
             mimes: mimes.clone(),
-            deadline: self.now + self.config.limits.transfer_ms,
+            deadline: self.now + self.config.limits.transfer.ms,
         });
         self.send(
             key.client,
@@ -334,11 +392,16 @@ impl State {
         Ok(())
     }
 
-    /// Sends cancellations and expires transfers (called by the loop).
+    /// Sends cancellations, expires transfers and moves held data on to
+    /// readers that have room again (called by the loop).
     pub fn tick_transfers(&mut self) {
         self.transfers.expire(self.now);
         for (to, id) in self.transfers.take_cancelled() {
             self.send(to, Event::TransferCancelled { transfer: id });
+        }
+        let ids: Vec<u32> = self.transfers.active.keys().copied().collect();
+        for id in ids {
+            self.pump_transfer(id);
         }
     }
 }
@@ -354,8 +417,8 @@ mod tests {
             ..Transfers::default()
         };
         assert_eq!(t.selection_mimes(), vec!["text/plain".to_string()]);
-        let a = t.start(1, 2, 100);
-        let _b = t.start(3, 4, 50);
+        let a = t.start((1, 2), "text/plain", 100);
+        let _b = t.start((3, 4), "text/plain", 50);
         assert_eq!(t.next_deadline(), Some(50));
         t.expire(60);
         assert_eq!(t.take_cancelled(), vec![(4, TransferId(2))]);

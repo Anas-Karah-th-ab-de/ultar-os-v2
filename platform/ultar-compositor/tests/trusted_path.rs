@@ -60,12 +60,14 @@ fn locked_event(p: &mut Peer, comp: &mut Compositor) -> Option<bool> {
     })
 }
 
-/// Ctrl+Alt+Del and Super+L lock the session; the app sees none of the
-/// keys of the combination's last key, the shell is told.
+/// Ctrl+Alt+Del and Super+L lock the session (a lock screen client is
+/// connected); the app sees none of the combination's last key, the shell
+/// is told.
 #[test]
 fn secure_attention_keys_lock_and_are_never_forwarded() {
     for combo in [&[29u16, 56, 111][..], &[125, 38][..]] {
-        let mut comp = compositor(config_with(Rights::SHELL), &[(800, 600)]);
+        let rights = Rights::SHELL.union(Rights::LOCK_SCREEN);
+        let mut comp = compositor(config_with(rights), &[(800, 600)]);
         let mut shell = Peer::hello(&mut comp);
         let mut app = Peer::hello(&mut comp);
         app.window(&mut comp, 1, 0xff0000);
@@ -90,10 +92,20 @@ fn secure_attention_keys_lock_and_are_never_forwarded() {
 /// lock client after a crash takes the keys; unlocking shows the desktop.
 #[test]
 fn unlock_needs_the_lock_screen_and_a_new_lock_client_takes_over() {
-    let mut comp = compositor(config_with(Rights::NONE), &[(800, 600)]);
-    let mut app = Peer::hello(&mut comp);
+    let mut table = RightsTable::default();
+    table.grant(901, Rights::LOCK_SCREEN);
+    let config = Config {
+        rights: table,
+        ..test_config()
+    };
+    let mut comp = compositor(config, &[(800, 600)]);
+    let mut app = Peer::hello_as(&mut comp, 5000);
     let s = app.window(&mut comp, 1, 0xff0000);
     key(&mut comp, 125, true);
+    key(&mut comp, 38, true);
+    assert!(!comp.state.locked(), "no lock screen client: no lock");
+    let _provider = Peer::hello_as(&mut comp, 901);
+    key(&mut comp, 38, false);
     key(&mut comp, 38, true);
     assert!(comp.state.locked());
     app.send(&Request::Unlock { surface: s });
@@ -278,7 +290,7 @@ impl Clock for Manual {
 fn capture_shows_the_indicator_and_pauses_while_locked() {
     let time = Arc::new(AtomicU64::new(1_000));
     let mut comp = Compositor::new(
-        config_with(Rights::CAPTURE),
+        config_with(Rights::CAPTURE.union(Rights::LOCK_SCREEN)),
         Box::new(Headless::new(&[(320, 200)])),
         Box::new(Manual(time.clone())),
     );
@@ -300,7 +312,7 @@ fn capture_shows_the_indicator_and_pauses_while_locked() {
     time.fetch_add(2_001, Ordering::SeqCst);
     comp.dispatch(Some(std::time::Duration::ZERO)).unwrap();
     assert_eq!(pixel(&comp, x, y), ground, "indicator gone 2 s after");
-    comp.state.lock();
+    assert!(comp.state.lock());
     p.take();
     p.send(&Request::Capture {
         output: OutputId(0),
@@ -332,7 +344,7 @@ fn reserved_client_slots_stay_for_system_clients() {
         accepted += usize::from(comp.state.accept(a, peer).is_some());
         keep.push(b);
     }
-    assert_eq!(accepted, limits.clients - limits.reserved_clients);
+    assert_eq!(accepted, limits.clients - limits.share.reserved_clients);
     let (a, _b) = UnixStream::pair().unwrap();
     let lock = ConnPeer {
         pid: None,

@@ -245,7 +245,10 @@ pub enum Event {
         /// Offered types (empty = clipboard empty).
         mimes: Vec<String>,
     },
-    /// Send the clipboard or drag data of this type for a transfer.
+    /// Send the next chunk (one `SendData`, ≤ `MAX_CHUNK`) of the clipboard
+    /// or drag data of this type for a transfer. Sent again for every next
+    /// chunk when the reader has room (flow control); chunks sent unasked
+    /// are held only up to a small bound, then the transfer is cancelled.
     SendRequest {
         /// The transfer.
         transfer: TransferId,

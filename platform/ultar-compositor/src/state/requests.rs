@@ -312,18 +312,10 @@ impl State {
             return Err(ErrorCode::BadBuffer);
         }
         let bytes = u64::from(width) * u64::from(height) * 4;
-        if c.buffers.len() >= self.config.limits.buffers
-            || c.bytes + bytes > self.config.limits.client_bytes
-            || self.total_bytes() + bytes > self.config.limits.total_bytes
-        {
+        if c.buffers.len() >= self.config.limits.buffers || bytes > self.memory_room(client) {
             return Err(ErrorCode::Limit);
         }
         Ok(())
-    }
-
-    /// Pixel memory of all clients together.
-    pub fn total_bytes(&self) -> u64 {
-        self.clients.values().map(|c| c.bytes).sum()
     }
 
     fn add_buffer(&mut self, client: ClientId, id: BufferId, buffer: Buffer) {
@@ -368,12 +360,7 @@ impl State {
 
     fn commit(&mut self, client: ClientId, surface: SurfaceId, configure: u32) -> Outcome {
         let key = self.own_surface(client, surface)?;
-        let budget = self.config.limits.client_bytes;
-        let total_room = self
-            .config
-            .limits
-            .total_bytes
-            .saturating_sub(self.total_bytes());
+        let room = self.memory_room(client);
         let c = self
             .clients
             .get_mut(&client)
@@ -398,7 +385,7 @@ impl State {
                     .ok_or(ErrorCode::UnknownObject)?;
                 let grow =
                     (u64::from(buffer.width) * u64::from(buffer.height) * 4).saturating_sub(before);
-                if c.bytes + grow > budget || grow > total_room {
+                if grow > room {
                     return Err(ErrorCode::Limit);
                 }
                 let rects = s.apply(Some(buffer)).ok_or(ErrorCode::BadBuffer)?;

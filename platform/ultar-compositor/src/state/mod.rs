@@ -2,10 +2,12 @@
 //! Independent of the backend and of the event loop, so it can be driven
 //! by tests directly.
 
+mod budget;
 mod grabs;
 mod input;
 mod keys;
 mod layers;
+mod memory;
 mod outputs;
 mod requests;
 mod session;
@@ -15,7 +17,7 @@ mod windows;
 
 pub use input::PointerGrab;
 pub use layers::Placed;
-pub use session::{Session, INDICATOR_MS};
+pub use session::{Grant, Session, INDICATOR_MS};
 pub use transfer::Transfers;
 pub use windows::Window;
 
@@ -33,6 +35,15 @@ use ultar_surface::proto::{
 
 /// Number of a connection.
 pub type ClientId = u32;
+
+/// Rights of the system clients (shell, lock screen, input method): they
+/// may use the reserved client slots and memory.
+pub fn is_system(rights: Rights) -> bool {
+    let system = Rights::SHELL
+        .union(Rights::LOCK_SCREEN)
+        .union(Rights::INPUT_METHOD);
+    rights.0 & system.0 != 0
+}
 
 /// A surface, globally: client plus the client's id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -212,29 +223,28 @@ impl State {
         self.counters.serial
     }
 
-    /// Adds a connection. Returns `None` when the client limit is reached
-    /// (the stream is dropped, which closes it).
-    /// A user id without rights gets at most
-    /// [`crate::config::Limits::clients_per_uid`] connections and never the
-    /// reserved slots, so one app cannot lock out the shell or lock screen.
+    /// Adds a connection. Returns `None` when a limit is reached (the
+    /// stream is dropped, which closes it): every uid gets at most
+    /// [`crate::config::ShareLimits::clients_per_uid`] connections, and
+    /// the reserved slots are only for system uids (shell, lock screen,
+    /// input method), so no app – and no lesser right – can lock them out.
     pub fn add_client(&mut self, conn: Conn) -> Option<ClientId> {
         let limits = self.config.limits;
         let uid = conn.peer.uid;
         let rights = self.config.rights.rights_of(uid);
         let total = self.clients.len();
-        if total >= limits.clients {
+        let same = self
+            .clients
+            .values()
+            .filter(|c| c.conn.peer.uid == uid)
+            .count();
+        let open = if is_system(rights) {
+            limits.clients
+        } else {
+            limits.clients.saturating_sub(limits.share.reserved_clients)
+        };
+        if total >= open || same >= limits.share.clients_per_uid {
             return None;
-        }
-        if rights == Rights::NONE {
-            let same = self
-                .clients
-                .values()
-                .filter(|c| c.conn.peer.uid == uid)
-                .count();
-            let open = limits.clients.saturating_sub(limits.reserved_clients);
-            if total >= open || same >= limits.clients_per_uid {
-                return None;
-            }
         }
         let id = self.counters.client;
         self.counters.client = self.counters.client.wrapping_add(1).max(1);

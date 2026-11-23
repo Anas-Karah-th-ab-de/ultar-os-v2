@@ -40,8 +40,9 @@ pub struct Window {
     /// A system dialog (trusted path): stacked above the panels, modal,
     /// marked with the lock icon in a title bar apps cannot cover.
     pub secure: bool,
-    /// Focus when mapped (a valid activation token was presented).
-    pub activate_on_map: bool,
+    /// Focus when mapped, if the grant is still valid then (an activation
+    /// token was presented before the window had content).
+    pub activate_on_map: Option<super::Grant>,
 }
 
 impl Window {
@@ -60,7 +61,7 @@ impl Window {
             pressed: None,
             title_cache: None,
             secure: false,
-            activate_on_map: false,
+            activate_on_map: None,
         }
     }
 
@@ -284,7 +285,8 @@ impl State {
     fn window_mapped(&mut self, index: usize) {
         let w = &mut self.windows[index];
         let (key, secure) = (w.key, w.secure);
-        let token = std::mem::replace(&mut w.activate_on_map, false);
+        let grant = w.activate_on_map.take();
+        let token = grant.is_some_and(|g| self.session.valid(&g, self.now));
         if secure {
             self.damage_all();
         }

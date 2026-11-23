@@ -32,8 +32,11 @@ pub const INDICATOR_MS: u64 = 2_000;
 pub struct Session {
     /// The session is locked.
     pub locked: bool,
-    /// Outstanding activation tokens (token, expiry).
-    tokens: Vec<(u64, u64)>,
+    /// Outstanding activation tokens.
+    tokens: Vec<Grant>,
+    /// Counts focus changes the user made (click, touch, Alt+Tab): a
+    /// token made before one is void.
+    pub(super) user_epoch: u64,
     /// Keyed hasher for tokens (keys from the OS random source).
     token_seed: RandomState,
     /// Tokens made so far.
@@ -52,9 +55,21 @@ pub struct Session {
     pub culled: Vec<SurfaceKey>,
 }
 
+/// What an activation token allows: focus until `expiry`, as long as the
+/// user has not moved the focus since it was made (`epoch`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grant {
+    /// The token.
+    pub token: u64,
+    /// Valid before this time.
+    pub expiry: u64,
+    /// [`Session::user_epoch`] when it was made.
+    pub epoch: u64,
+}
+
 impl Session {
     fn new_token(&mut self, now: u64) -> u64 {
-        self.tokens.retain(|&(_, expiry)| expiry > now);
+        self.tokens.retain(|g| g.expiry > now);
         if self.tokens.len() >= MAX_TOKENS {
             self.tokens.remove(0);
         }
@@ -63,19 +78,24 @@ impl Session {
         h.write_u64(self.token_count);
         h.write_u64(now);
         let token = h.finish().max(1);
-        self.tokens.push((token, now + TOKEN_MS));
+        self.tokens.push(Grant {
+            token,
+            expiry: now + TOKEN_MS,
+            epoch: self.user_epoch,
+        });
         token
     }
 
-    fn take_token(&mut self, token: u64, now: u64) -> bool {
-        let found = self
-            .tokens
-            .iter()
-            .position(|&(t, expiry)| t == token && expiry > now);
-        if let Some(i) = found {
-            self.tokens.remove(i);
-        }
-        found.is_some()
+    /// Takes a token (single use); `None` if unknown, expired or void.
+    fn take_token(&mut self, token: u64, now: u64) -> Option<Grant> {
+        let i = self.tokens.iter().position(|g| g.token == token)?;
+        let grant = self.tokens.remove(i);
+        self.valid(&grant, now).then_some(grant)
+    }
+
+    /// A grant still allows focus.
+    pub(super) fn valid(&self, grant: &Grant, now: u64) -> bool {
+        grant.expiry > now && grant.epoch == self.user_epoch
     }
 }
 
@@ -112,11 +132,25 @@ impl State {
         self.system_dialog().or(self.focus)
     }
 
+    /// True if a client that can show a lock screen is connected (holds
+    /// `ui.lock-screen` and said `Hello`).
+    pub fn lock_provider(&self) -> bool {
+        self.clients
+            .values()
+            .any(|c| c.hello && c.rights.contains(Rights::LOCK_SCREEN))
+    }
+
     /// Locks the session (lock surface, Super+L, Ctrl+Alt+Del). Grabs end,
-    /// touches are cancelled, the shell and lock clients are told.
-    pub fn lock(&mut self) {
+    /// touches are cancelled, the shell and lock clients are told. Refused
+    /// (false) when no lock screen client is connected: a lock nobody can
+    /// ever lift would end the session (fail safe, not fail dead). Once
+    /// locked, the lock stays even if that client dies.
+    pub fn lock(&mut self) -> bool {
         if self.session.locked {
-            return;
+            return true;
+        }
+        if !self.lock_provider() {
+            return false;
         }
         self.session.locked = true;
         self.pointer.grab = None;
@@ -129,6 +163,7 @@ impl State {
         self.notify_session();
         self.update_hover();
         self.update_ime();
+        true
     }
 
     /// Unlocks the session: only a lock screen client showing `surface`.
@@ -183,19 +218,23 @@ impl State {
     }
 
     /// Answers `RequestActivation`: a token for a recent user action of
-    /// the client (token 0 = refused).
+    /// the client (token 0 = refused). The serial is used up: one user
+    /// action buys one token.
     pub(super) fn request_activation(&mut self, client: ClientId, serial: u32) {
         let max_age = self.config.limits.serial_ms;
         let now = self.now;
-        let ok = self
-            .clients
-            .get(&client)
-            .is_some_and(|c| c.recent_serial(serial, now, max_age));
+        let ok = self.clients.get_mut(&client).is_some_and(|c| {
+            let fresh = c.recent_serial(serial, now, max_age);
+            c.serials.retain(|&(s, _)| s != serial);
+            fresh
+        });
         let token = if ok { self.session.new_token(now) } else { 0 };
         self.send(client, Event::ActivationToken { token });
     }
 
-    /// `Activate`: a valid token focuses the window now, or when it maps.
+    /// `Activate`: a valid token focuses the window now, or when it maps
+    /// before the token would have expired and before the user moves the
+    /// focus.
     pub(super) fn activate(
         &mut self,
         client: ClientId,
@@ -204,19 +243,30 @@ impl State {
     ) -> Result<(), ErrorCode> {
         let key = SurfaceKey { client, surface };
         let index = self.window_index(key).ok_or(ErrorCode::UnknownObject)?;
-        if !self.session.take_token(token, self.now) {
+        let Some(grant) = self.session.take_token(token, self.now) else {
             return Ok(());
-        }
+        };
         if self.windows[index].visible() {
             self.focus_window(key);
         } else {
-            self.windows[index].activate_on_map = true;
+            self.windows[index].activate_on_map = Some(grant);
         }
         Ok(())
     }
 
+    /// The user moved the focus to `key` (click, touch, Alt+Tab): earlier
+    /// activation tokens and parked activations become void.
+    pub(super) fn user_focus(&mut self, key: SurfaceKey) {
+        if self.focus != Some(key) {
+            self.session.user_epoch += 1;
+        }
+        self.focus_window(key);
+    }
+
     /// Secure attention keys (Ctrl+Alt+Del, Super+L): only the compositor
-    /// sees them; they lock the session. True if `code` was one.
+    /// sees them; they lock the session if a lock screen client is
+    /// connected, else they do nothing (still never forwarded). True if
+    /// `code` was one.
     pub(super) fn secure_attention(&mut self, code: u16, state: KeyState) -> bool {
         if let Some(i) = self.session.swallowed.iter().position(|&c| c == code) {
             if state == KeyState::Released {
@@ -230,7 +280,7 @@ impl State {
                 || (m.has(Modifiers::SUPER) && code == KEY_L));
         if sak {
             self.session.swallowed.push(code);
-            self.lock();
+            let _ = self.lock();
         }
         sak
     }
@@ -274,14 +324,20 @@ mod tests {
         let mut s = Session::default();
         let t = s.new_token(0);
         assert_ne!(t, 0);
-        assert!(s.take_token(t, 10));
-        assert!(!s.take_token(t, 10), "single use");
+        assert!(s.take_token(t, 10).is_some());
+        assert!(s.take_token(t, 10).is_none(), "single use");
         let late = s.new_token(0);
-        assert!(!s.take_token(late, TOKEN_MS), "expired");
+        assert!(s.take_token(late, TOKEN_MS).is_none(), "expired");
         let all: Vec<u64> = (0..MAX_TOKENS + 4).map(|i| s.new_token(i as u64)).collect();
         assert!(s.tokens.len() <= MAX_TOKENS);
-        assert!(!s.take_token(all[0], 100), "oldest dropped");
-        assert!(s.take_token(all[MAX_TOKENS + 3], 100));
-        assert!(!s.take_token(12345, 100));
+        assert!(s.take_token(all[0], 100).is_none(), "oldest dropped");
+        assert!(s.take_token(all[MAX_TOKENS + 3], 100).is_some());
+        assert!(s.take_token(12345, 100).is_none());
+        let before = s.new_token(200);
+        s.user_epoch += 1;
+        assert!(
+            s.take_token(before, 201).is_none(),
+            "void after a user focus change"
+        );
     }
 }

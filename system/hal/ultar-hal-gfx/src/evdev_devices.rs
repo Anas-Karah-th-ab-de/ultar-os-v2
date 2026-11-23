@@ -5,6 +5,9 @@ use super::*;
 
 struct Device {
     path: PathBuf,
+    /// Identity of the node that was opened (`st_rdev`, `st_ino`): a node
+    /// replugged under the same name between two scans is another device.
+    node: (u64, u64),
     info: InputDeviceInfo,
     file: File,
     decoder: Decoder,
@@ -17,6 +20,58 @@ struct Device {
 struct Set {
     devices: Vec<Device>,
     next_id: u32,
+    policy: SeatPolicy,
+}
+
+/// Which event devices belong to the seat (the compositor's user session).
+///
+/// `ultar-devd` gives the event nodes of the seat's devices to one group
+/// (mode `0660`); with `group` set, a node of another group is not opened.
+/// Devices made by software (`uinput`: below `/devices/virtual/` in sysfs)
+/// could type anything, the secure attention keys included, so they are
+/// refused unless their name is in `virtual_allowed` (on-screen keyboards
+/// of the system, test rigs). Where sysfs does not exist (the Ultar
+/// kernel: it has no `uinput`) every node counts as hardware.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SeatPolicy {
+    /// Group the seat's event nodes must belong to (`None`: any).
+    pub group: Option<u32>,
+    /// Device names (`EVIOCGNAME`/sysfs `name`) of software devices that
+    /// are accepted.
+    pub virtual_allowed: Vec<String>,
+}
+
+/// Where sysfs lists input class devices (to tell software devices apart).
+const SYS_INPUT: &str = "/sys/class/input";
+
+impl SeatPolicy {
+    /// May the opened node at `path` be read as a seat device?
+    pub(crate) fn admits(&self, path: &Path, file: &File) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        if let Some(group) = self.group {
+            if file.metadata().map_or(true, |m| m.gid() != group) {
+                return false;
+            }
+        }
+        let Some(name) = path.file_name() else {
+            return false;
+        };
+        let class = Path::new(SYS_INPUT).join(name);
+        let software = std::fs::read_link(&class)
+            .is_ok_and(|target| target.to_string_lossy().contains("/devices/virtual/"));
+        if !software {
+            return true;
+        }
+        let label = std::fs::read_to_string(class.join("device/name")).unwrap_or_default();
+        self.virtual_allowed.iter().any(|n| n == label.trim())
+    }
+}
+
+/// The identity of the node at `path` now (`None`: gone).
+fn node_of(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.rdev(), m.ino()))
 }
 
 /// All event devices of the machine.
@@ -101,9 +156,21 @@ fn classify(file: &File) -> Option<(InputDeviceKind, bool)> {
 }
 
 impl Evdev {
-    /// Opens every readable `event*` device below [`INPUT_DIR`].
+    /// Opens every readable `event*` device below [`INPUT_DIR`] that the
+    /// default [`SeatPolicy`] admits (no software devices).
     pub fn open_all() -> Result<Evdev, GfxError> {
-        Evdev::open_paths(&existing_paths())
+        Evdev::open_seat(SeatPolicy::default())
+    }
+
+    /// Opens the seat's devices under `policy`; an empty set is fine
+    /// (devices may come later with [`Evdev::rescan`]).
+    pub fn open_seat(policy: SeatPolicy) -> Result<Evdev, GfxError> {
+        let evdev = Evdev::empty();
+        if let Ok(mut set) = evdev.set.lock() {
+            set.policy = policy;
+        }
+        evdev.add_paths(&existing_paths());
+        Ok(evdev)
     }
 
     /// Opens the given event devices; unreadable ones are skipped. Fails
@@ -139,7 +206,8 @@ impl Evdev {
                 continue;
             }
             let id = InputDeviceId(set.next_id);
-            if let Some(device) = open_device(path, id) {
+            let device = open_device(path, id).filter(|d| set.policy.admits(path, &d.file));
+            if let Some(device) = device {
                 set.next_id = set.next_id.wrapping_add(1);
                 added.push(InputEvent {
                     device: id,
@@ -152,16 +220,18 @@ impl Evdev {
         added
     }
 
-    /// Hot-plug: drops devices whose node is gone, opens new `event*`
-    /// nodes. Call on a uevent (or periodically where there are none).
+    /// Hot-plug: drops devices whose node is gone or was replaced (same
+    /// name, other node), opens new `event*` nodes. Call on a uevent, after
+    /// lost uevents, or periodically where there are none.
     pub fn rescan(&self) -> Vec<InputEvent> {
         let paths = existing_paths();
         let mut events = Vec::new();
         if let Ok(mut set) = self.set.lock() {
-            for device in set.devices.iter_mut().filter(|d| !paths.contains(&d.path)) {
+            let live = |d: &Device| paths.contains(&d.path) && node_of(&d.path) == Some(d.node);
+            for device in set.devices.iter_mut().filter(|d| !live(d)) {
                 retire(device, &mut events);
             }
-            set.devices.retain(|d| paths.contains(&d.path));
+            set.devices.retain(live);
         }
         events.extend(self.add_paths(&paths));
         events
@@ -181,12 +251,21 @@ impl Evdev {
     }
 }
 
-/// The `event*` nodes that exist now.
+/// The `event*` nodes that exist now (every number, in number order).
 fn existing_paths() -> Vec<PathBuf> {
-    (0..MAX_DEVICES)
-        .map(|index| Path::new(INPUT_DIR).join(format!("event{index}")))
-        .filter(|p| p.exists())
-        .collect()
+    let Ok(entries) = std::fs::read_dir(INPUT_DIR) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(u32, PathBuf)> = entries
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name();
+            let n = name.to_str()?.strip_prefix("event")?.parse().ok()?;
+            Some((n, e.path()))
+        })
+        .collect();
+    found.sort();
+    found.into_iter().map(|(_, p)| p).collect()
 }
 
 fn open_device(path: &Path, id: InputDeviceId) -> Option<Device> {
@@ -213,8 +292,13 @@ fn open_device(path: &Path, id: InputDeviceId) -> Option<Device> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let node = file.metadata().map_or((0, 0), |m| {
+        use std::os::unix::fs::MetadataExt;
+        (m.rdev(), m.ino())
+    });
     Some(Device {
         path: path.to_path_buf(),
+        node,
         info: InputDeviceInfo {
             id,
             kind,
