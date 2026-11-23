@@ -50,6 +50,7 @@ update.error.network = Could not reach the update server
 update.error.unhealthy = The new version did not work properly; restart to return to the previous version
 update.error.invalid_argument = Invalid value
 update.error.boot_failed = The new version did not start; the device returned to the previous version by itself
+update.error.tls_unavailable = This device's processor cannot make the encrypted connection to the update server; use an update from a USB stick
 
 update.history.staged = Update downloaded and verified
 update.history.applied = Update installed, waiting for restart
@@ -89,10 +90,11 @@ update.cli.policy.rate_unlimited = Speed limit: none
 update.cli.yes = yes
 update.cli.no = no
 
-update.daemon.usage = Usage: ultar-updated --config FILE [--socket PATH] [--lang ar|en|de]
+update.daemon.usage = Usage: ultar-updated --config FILE [--socket PATH] [--log-socket PATH] [--lang ar|en|de]
 update.daemon.config = The configuration file is invalid (line {line}): {detail}
 update.daemon.bus = Could not connect to the system bus
 update.daemon.ready = Update service ready
+update.daemon.hardening_failed = The update service could not restrict itself at start: {detail}
 
 update.sign.usage = Usage: uupdate-sign COMMAND [options]
         keygen --secret FILE --public FILE

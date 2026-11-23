@@ -48,10 +48,13 @@ impl<B: BootControl> Engine<B> {
         match self.journal()? {
             Journal::Trial { slot, .. } if slot != active => self.trial_elsewhere(slot),
             Journal::Trial { .. } | Journal::Idle if !confirmed => {
-                if health.check().is_err() {
-                    return self.give_up_running_slot(active);
+                match health.check() {
+                    Ok(()) => self.commit(active),
+                    // The service is stopping while it waits: no verdict either way; the next
+                    // start judges again.
+                    Err(UpdateError::Interrupted) => Err(UpdateError::Interrupted),
+                    Err(_) => self.give_up_running_slot(active),
                 }
-                self.commit(active)
             }
             Journal::Trial { .. } => self.commit(active),
             Journal::Writing { .. } => {

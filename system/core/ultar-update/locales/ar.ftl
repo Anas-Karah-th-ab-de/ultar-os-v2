@@ -50,6 +50,7 @@ update.error.network = تعذّر الاتصال بخادم التحديثات
 update.error.unhealthy = لم تعمل النسخة الجديدة كما يجب؛ أعد التشغيل للعودة إلى النسخة السابقة
 update.error.invalid_argument = قيمة غير صالحة
 update.error.boot_failed = لم تبدأ النسخة الجديدة؛ عاد الجهاز تلقائيًا إلى النسخة السابقة
+update.error.tls_unavailable = لا يدعم معالج هذا الجهاز الاتصال المشفّر بخادم التحديثات؛ استخدم التحديث من وسيط USB
 
 update.history.staged = نُزّل التحديث وتم التحقق منه
 update.history.applied = ثُبّت التحديث وينتظر إعادة التشغيل
@@ -89,10 +90,11 @@ update.cli.policy.rate_unlimited = حد السرعة: بلا حد
 update.cli.yes = نعم
 update.cli.no = لا
 
-update.daemon.usage = الاستخدام: ultar-updated --config ملف [--socket مسار] [--lang ar|en|de]
+update.daemon.usage = الاستخدام: ultar-updated --config ملف [--socket مسار] [--log-socket مسار] [--lang ar|en|de]
 update.daemon.config = ملف الإعداد غير صالح (السطر {line}): {detail}
 update.daemon.bus = تعذّر الاتصال بناقل النظام
 update.daemon.ready = خدمة التحديث جاهزة
+update.daemon.hardening_failed = تعذّر تقييد خدمة التحديث عند بدء تشغيلها: {detail}
 
 update.sign.usage = الاستخدام: uupdate-sign الأمر [خيارات]
         keygen --secret ملف --public ملف

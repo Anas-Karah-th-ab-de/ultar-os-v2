@@ -3,16 +3,88 @@
 //! Only two requests exist: `GET /v1/update/latest` and a ranged `GET` of the release file.
 //! Nothing the server says is trusted – it only tells where bytes are. The session token (for
 //! gated channels) is sent to the configured server only, never to a redirect target elsewhere.
+//!
+//! **TLS is pure Rust:** rustls with the Graviola crypto provider (`rustls-graviola`; written by
+//! the rustls author, built from formally verified assembly, compiled by `rustc` alone – no C
+//! compiler, so the updater builds statically for every target). Certificates are always
+//! validated, against the Mozilla roots (`webpki-roots`) or the roots a caller gives. Graviola
+//! needs certain CPU features ([`tls_available`]); on a CPU without them an `https` source
+//! refuses to start ([`UpdateError::TlsUnavailable`]) instead of falling back to anything –
+//! offline bundles and plain `http` servers in a local network still work.
 
 use crate::error::{NetworkError, UpdateError};
 use crate::source::{Query, Remote, UpdateSource};
 use std::io::Read;
+use std::sync::Arc;
 use std::time::Duration;
+use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
 /// Largest `update/latest` answer read.
 const MAX_ANSWER: u64 = 64 * 1024;
 /// Longest location accepted from the server.
 const MAX_LOCATION: usize = 2048;
+
+/// True when this CPU can run the TLS crypto provider (Graviola). The list mirrors Graviola's
+/// own start-up check exactly, which would otherwise stop the process.
+///
+/// * `x86_64`: `aes`, `pclmulqdq`, `bmi1`, `adx`, `avx`, `avx2` (about every x86_64 CPU since
+///   2014);
+/// * `aarch64`: `neon`, `aes`, `pmull`, `sha2` (the ARMv8 crypto extensions; not on a
+///   Raspberry Pi 4 or earlier);
+/// * other architectures: never.
+pub fn tls_available() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::arch::is_x86_feature_detected!("aes")
+            && std::arch::is_x86_feature_detected!("pclmulqdq")
+            && std::arch::is_x86_feature_detected!("bmi1")
+            && std::arch::is_x86_feature_detected!("adx")
+            && std::arch::is_x86_feature_detected!("avx")
+            && std::arch::is_x86_feature_detected!("avx2")
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        std::arch::is_aarch64_feature_detected!("neon")
+            && std::arch::is_aarch64_feature_detected!("aes")
+            && std::arch::is_aarch64_feature_detected!("pmull")
+            && std::arch::is_aarch64_feature_detected!("sha2")
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        false
+    }
+}
+
+/// Which certificate authorities an `https` source trusts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Roots {
+    /// The Mozilla root programme, compiled in (`webpki-roots`).
+    #[default]
+    Mozilla,
+    /// Exactly these root certificates (DER) – for an own update server with an own CA.
+    Certificates(Vec<Vec<u8>>),
+}
+
+/// Time limits of every request. None of them can be switched off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timeouts {
+    /// Name lookup and TCP connection, each.
+    pub connect: Duration,
+    /// Sending the request; waiting for the response head.
+    pub response: Duration,
+    /// Each single read of the body (a stalled stream); see also [`MinRate`].
+    pub per_read: Duration,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(15),
+            response: Duration::from_secs(60),
+            per_read: Duration::from_secs(60),
+        }
+    }
+}
 
 /// The update server as a bundle source.
 pub struct HttpSource {
@@ -32,24 +104,74 @@ fn status_error(status: u16) -> UpdateError {
 }
 
 const PROTOCOL: UpdateError = UpdateError::Network(NetworkError::Protocol);
+const TRANSPORT: UpdateError = UpdateError::Network(NetworkError::Transport);
+
+fn tls_config(roots: &Roots) -> TlsConfig {
+    let root_certs = match roots {
+        Roots::Mozilla => RootCerts::WebPki,
+        Roots::Certificates(ders) => {
+            let certs = ders.iter().map(|der| Certificate::from_der(der).to_owned());
+            RootCerts::Specific(Arc::new(certs.collect()))
+        }
+    };
+    TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .unversioned_rustls_crypto_provider(Arc::new(rustls_graviola::default_provider()))
+        .root_certs(root_certs)
+        .disable_verification(false)
+        .build()
+}
+
+fn agent(https: bool, roots: &Roots, timeouts: &Timeouts) -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .tls_config(tls_config(roots))
+        // The source follows at most one redirect, by hand (token scope, https check).
+        .max_redirects(0)
+        // Statuses are mapped to typed errors here, not inside the client.
+        .http_status_as_error(false)
+        // A second guard below the location check of `resolve`.
+        .https_only(https)
+        // No proxy from the environment: a root daemon does not take routing from variables.
+        .proxy(None)
+        .timeout_resolve(Some(timeouts.connect))
+        .timeout_connect(Some(timeouts.connect))
+        .timeout_send_request(Some(timeouts.response))
+        .timeout_recv_response(Some(timeouts.response))
+        .timeout_per_read(Some(timeouts.per_read))
+        .build();
+    ureq::Agent::new_with_config(config)
+}
 
 impl HttpSource {
     /// A source for the server at `base_url` (`http://…` or `https://…`; a trailing slash is
-    /// ignored). `token`: session token for gated channels, `None` when nobody is signed in.
+    /// ignored), trusting the Mozilla roots. `token`: session token for gated channels,
+    /// `None` when nobody is signed in.
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self, UpdateError> {
+        Self::with(base_url, token, &Roots::Mozilla, &Timeouts::default())
+    }
+
+    /// A source with explicit trust roots and time limits.
+    /// [`UpdateError::TlsUnavailable`] for an `https` server on a CPU without the features
+    /// the TLS provider needs ([`tls_available`]).
+    pub fn with(
+        base_url: &str,
+        token: Option<String>,
+        roots: &Roots,
+        timeouts: &Timeouts,
+    ) -> Result<Self, UpdateError> {
         let base = base_url.trim_end_matches('/').to_string();
-        let scheme_ok = base.starts_with("https://") || base.starts_with("http://");
+        let https = base.starts_with("https://");
+        let scheme_ok = https || base.starts_with("http://");
         if !scheme_ok || base.len() > MAX_LOCATION || base.contains(char::is_whitespace) {
             return Err(UpdateError::InvalidArgument);
         }
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(15))
-            .timeout_read(Duration::from_secs(60))
-            .redirects(0)
-            .build();
+        if https && !tls_available() {
+            return Err(UpdateError::TlsUnavailable);
+        }
         let token = token
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty() && t.bytes().all(|b| b.is_ascii_graphic()));
+        let agent = agent(https, roots, timeouts);
         Ok(Self { base, token, agent })
     }
 
@@ -84,24 +206,34 @@ impl HttpSource {
         location: &str,
         query: &[(&str, &str)],
         range: Option<&str>,
-    ) -> Result<ureq::Response, UpdateError> {
+    ) -> Result<ureq::http::Response<ureq::Body>, UpdateError> {
         let (url, ours) = self.resolve(location)?;
         let mut request = self.agent.get(&url);
         for (key, value) in query {
-            request = request.query(key, value);
+            request = request.query(*key, *value);
         }
         if let Some(range) = range {
-            request = request.set("range", range);
+            request = request.header("range", range);
         }
         if let (true, Some(token)) = (ours, &self.token) {
-            request = request.set("authorization", &format!("Bearer {token}"));
+            request = request.header("authorization", format!("Bearer {token}"));
         }
-        match request.call() {
-            Ok(response) => Ok(response),
-            Err(ureq::Error::Status(status, _)) => Err(status_error(status)),
-            Err(ureq::Error::Transport(_)) => Err(UpdateError::Network(NetworkError::Transport)),
+        let response = request.call().map_err(|error| match error {
+            ureq::Error::StatusCode(status) => status_error(status),
+            ureq::Error::BadUri(_) | ureq::Error::Http(_) | ureq::Error::RequireHttpsOnly(_) => {
+                PROTOCOL
+            }
+            _ => TRANSPORT,
+        })?;
+        match response.status().as_u16() {
+            status @ 400..=599 => Err(status_error(status)),
+            _ => Ok(response),
         }
     }
+}
+
+fn header<'a>(response: &'a ureq::http::Response<ureq::Body>, name: &str) -> Option<&'a str> {
+    response.headers().get(name)?.to_str().ok()
 }
 
 /// A transfer slower than this on average (bytes per second) is given up …
@@ -156,17 +288,18 @@ impl UpdateSource for HttpSource {
             ("edition", query.edition),
         ];
         let response = self.get("/v1/update/latest", &pairs, None)?;
-        match response.status() {
+        match response.status().as_u16() {
             204 => return Ok(None),
             200 => {}
             other => return Err(UpdateError::Network(NetworkError::Status(other))),
         }
         let mut bytes = Vec::new();
         response
+            .into_body()
             .into_reader()
             .take(MAX_ANSWER + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| UpdateError::Network(NetworkError::Transport))?;
+            .map_err(|_| TRANSPORT)?;
         if bytes.len() as u64 > MAX_ANSWER {
             return Err(PROTOCOL);
         }
@@ -191,21 +324,22 @@ impl UpdateSource for HttpSource {
             _ => None,
         };
         let mut response = self.get(&remote.locator, &[], range.as_deref())?;
-        if (300..400).contains(&response.status()) {
+        if response.status().is_redirection() {
             // One hop, by hand: `get` attaches the token only for this server.
-            let target = response.header("location").ok_or(PROTOCOL)?.to_string();
+            let target = header(&response, "location").ok_or(PROTOCOL)?.to_string();
             response = self.get(&target, &[], range.as_deref())?;
         }
-        let start = match response.status() {
+        let start = match response.status().as_u16() {
             200 => 0,
-            206 => range_start(response.header("content-range")).ok_or(PROTOCOL)?,
+            206 => range_start(header(&response, "content-range")).ok_or(PROTOCOL)?,
             other => return Err(UpdateError::Network(NetworkError::Status(other))),
         };
         if start != 0 && start != offset {
             return Err(PROTOCOL);
         }
         let started = std::time::Instant::now();
-        let reader = MinRate::new(response.into_reader(), move || started.elapsed());
+        let body = response.into_body().into_reader();
+        let reader = MinRate::new(body, move || started.elapsed());
         match limit {
             Some(limit) => Ok((start, Box::new(reader.take(limit)))),
             None => Ok((start, Box::new(reader))),

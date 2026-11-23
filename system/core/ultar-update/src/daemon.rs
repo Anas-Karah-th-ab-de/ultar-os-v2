@@ -88,18 +88,24 @@ pub struct DaemonArgs {
     pub config: PathBuf,
     /// Bus socket.
     pub socket: PathBuf,
+    /// Socket of the log service; `None`: log records are not sent anywhere.
+    pub log_socket: Option<PathBuf>,
 }
 
-/// Reads `--config FILE [--socket PATH] [--lang xx]`; the socket may come from the environment.
+/// Reads `--config FILE [--socket PATH] [--log-socket PATH] [--lang xx]`; the bus socket may
+/// come from the environment.
 pub fn parse_args(words: &[String], socket_env: Option<String>) -> Result<DaemonArgs, DaemonError> {
     let args = crate::args::Args::parse(words, &[]).map_err(|_| DaemonError::Usage)?;
-    let known =
-        args.only(&["--config", "--socket", "--lang"]).is_ok() && args.positional.is_empty();
+    let known = args
+        .only(&["--config", "--socket", "--log-socket", "--lang"])
+        .is_ok()
+        && args.positional.is_empty();
     let one = |name| args.one(name).ok().flatten().map(str::to_string);
     match (known, one("--config"), one("--socket").or(socket_env)) {
         (true, Some(config), Some(socket)) => Ok(DaemonArgs {
             config: PathBuf::from(config),
             socket: PathBuf::from(socket),
+            log_socket: one("--log-socket").map(PathBuf::from),
         }),
         _ => Err(DaemonError::Usage),
     }
@@ -183,22 +189,52 @@ pub fn wait_healthy(
 struct Patient<'a> {
     inner: &'a dyn HealthCheck,
     attempts: u32,
+    stop: &'a CancelFlag,
 }
 
 impl HealthCheck for Patient<'_> {
     fn check(&self) -> Result<(), UpdateError> {
-        wait_healthy(self.inner, self.attempts, &mut || {
-            std::thread::sleep(Duration::from_secs(1));
-        })
+        let waited = wait_healthy(self.inner, self.attempts, &mut || {
+            if !self.stop.is_stopping() {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        });
+        // A stop during the wait is no verdict about the new release.
+        match waited {
+            Err(_) if self.stop.is_stopping() => Err(UpdateError::Interrupted),
+            other => other,
+        }
     }
 }
 
-/// Runs the daemon until the bus connection ends. `on_ready` is called once the service is
-/// registered, with what the start-up check found (`None` when that check itself failed).
-pub fn run(
-    args: &DaemonArgs,
-    on_ready: &mut dyn FnMut(Option<BootOutcome>),
-) -> Result<(), DaemonError> {
+/// What the program around the daemon provides (the service runtime in production).
+pub struct Hooks<'a> {
+    /// Called once the service is registered on the bus, with what the start-up check found
+    /// (`None` when that check itself failed or was interrupted by a stop).
+    pub ready: &'a mut dyn FnMut(Option<BootOutcome>),
+    /// Registers what has to happen on a stop signal. Returns `false` when the stop has
+    /// already begun (the action is then not registered and the daemon ends at once).
+    pub on_stop: &'a dyn Fn(Box<dyn FnOnce() + Send>) -> bool,
+}
+
+/// Registers the stop action: interrupt the running operation, close the bus connection.
+/// `false` when the stop has already begun (the connection is then closed at once).
+fn register_stop(hooks: &Hooks<'_>, cancel: &Arc<CancelFlag>, client: &Client) -> bool {
+    let (stop_flag, stop_client) = (cancel.clone(), client.clone());
+    let registered = (hooks.on_stop)(Box::new(move || {
+        stop_flag.stop();
+        stop_client.close();
+    }));
+    if !registered {
+        client.close();
+    }
+    registered
+}
+
+/// Runs the daemon until the bus connection ends or a stop is requested through
+/// [`Hooks::on_stop`]. A stop ends a running operation at its next checkpoint without clean-up
+/// (the same as a power loss, which every step survives), then closes the bus connection.
+pub fn run(args: &DaemonArgs, hooks: Hooks<'_>) -> Result<(), DaemonError> {
     let config = load_config(&args.config)?;
     let _lock = lock_state_dir(&config.engine.state_dir)?;
     let boot = FileBootControl::open(&config.boot_dir, &config.roles)?;
@@ -210,6 +246,9 @@ pub fn run(
     };
     let engine = Engine::open(config.engine.clone(), env, boot)?;
     let client = Client::connect(&args.socket, ClientOptions::named("ultar-updated"))?;
+    if !register_stop(&hooks, &cancel, &client) {
+        return Ok(());
+    }
     let sources = Arc::new(ServerSources::new(
         config.server.clone(),
         config.token_file.clone(),
@@ -217,7 +256,7 @@ pub fn run(
     let publisher = Arc::new(BusPublisher(client.clone()));
     let core = Arc::new(Core::new(
         engine,
-        cancel,
+        cancel.clone(),
         sources,
         publisher,
         config.access.clone(),
@@ -230,24 +269,30 @@ pub fn run(
     let patient = Patient {
         inner: &health,
         attempts: config.health_wait_seconds,
+        stop: &cancel,
     };
     // A failure here is published as the service's state (error key) and does not stop the
     // service: status and offline repair must stay reachable.
     let outcome = core.resume_after_boot(&patient).ok();
+    if cancel.is_stopping() {
+        return Ok(());
+    }
     let endpoint = client.register(crate::contract::SERVICE)?;
-    on_ready(outcome);
-    let ticker = core.clone();
-    let interval = u64::from(config.check_interval_minutes) * 60;
-    // The timer thread lives as long as the process. It wakes often and asks whether a run
-    // is due; the due time is stored on disk, so short uptimes do not starve the check.
+    (hooks.ready)(outcome);
+    start_timer(core.clone(), u64::from(config.check_interval_minutes) * 60);
+    serve(core, endpoint);
+    Ok(())
+}
+
+/// The timer thread lives as long as the process. It wakes often and asks whether a run is
+/// due; the due time is stored on disk, so short uptimes do not starve the check.
+fn start_timer(core: Arc<Core<FileBootControl>>, interval: u64) {
     let _ = std::thread::Builder::new()
         .name("update-timer".into())
         .spawn(move || loop {
-            let _ = ticker.tick_if_due(interval);
+            let _ = core.tick_if_due(interval);
             std::thread::sleep(Duration::from_secs(interval.min(TIMER_WAKE)));
         });
-    serve(core, endpoint);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -266,6 +311,9 @@ mod tests {
         assert_eq!(args.socket, PathBuf::from("/run/bus"));
         let env = parse_args(&words("--config c --lang de"), Some("/run/env".into())).unwrap();
         assert_eq!(env.socket, PathBuf::from("/run/env"));
+        assert_eq!(env.log_socket, None);
+        let logged = parse_args(&words("--config c --socket s --log-socket /run/log"), None);
+        assert_eq!(logged.unwrap().log_socket, Some(PathBuf::from("/run/log")));
         for bad in [
             "",
             "--config c",
@@ -347,6 +395,39 @@ mod tests {
         assert!(matches!(lock_state_dir(&state), Err(UpdateError::Busy)));
         drop(first);
         lock_state_dir(&state).unwrap();
+    }
+
+    #[test]
+    fn a_stop_ends_the_health_wait_without_a_verdict() {
+        let stop = CancelFlag::new();
+        let never = After(Cell::new(u32::MAX));
+        let patient = Patient {
+            inner: &never,
+            attempts: 3,
+            stop: &stop,
+        };
+        // Without a stop the result is the verdict (here: unhealthy, after three tries) …
+        stop.reset();
+        let quick = Patient {
+            attempts: 1,
+            ..patient
+        };
+        assert!(matches!(quick.check(), Err(UpdateError::Unhealthy)));
+        // … with a stop it is no verdict at all, and there is no more waiting.
+        stop.stop();
+        let started = std::time::Instant::now();
+        assert!(matches!(patient.check(), Err(UpdateError::Interrupted)));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        let healthy = After(Cell::new(0));
+        let ok = Patient {
+            inner: &healthy,
+            attempts: 3,
+            stop: &stop,
+        };
+        assert!(
+            ok.check().is_ok(),
+            "a service that answers is healthy even while stopping"
+        );
     }
 
     #[test]

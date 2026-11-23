@@ -290,6 +290,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1777,6 +1783,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "graviola"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0377ccc5ef095424121430046e475cf06658e23475b1af526655cfad0b86b2"
+dependencies = [
+ "cfg-if",
+ "getrandom 0.4.3",
+]
+
+[[package]]
 name = "group"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3218,7 +3234,7 @@ version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "serde_core",
 ]
 
@@ -4003,6 +4019,16 @@ dependencies = [
  "rustls-webpki",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rustls-graviola"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf5d0a370be690f7f1aa4e1b912fde3f5f9a5c53285062fd2d6ac1a52ab3e883"
+dependencies = [
+ "graviola",
+ "rustls",
 ]
 
 [[package]]
@@ -5265,7 +5291,7 @@ dependencies = [
 name = "ultar-cloud"
 version = "0.7.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "ed25519-dalek 2.2.0",
  "hex",
  "rand_core 0.6.4",
@@ -5277,7 +5303,7 @@ dependencies = [
  "ultar-i18n",
  "ultar-pkg",
  "ultar-vpn",
- "ureq",
+ "ureq 2.12.1",
  "zeroize",
 ]
 
@@ -5313,7 +5339,7 @@ dependencies = [
 name = "ultar-driverpkg"
 version = "0.7.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "ed25519-dalek 2.2.0",
  "flate2",
  "hex",
@@ -5370,14 +5396,14 @@ dependencies = [
 name = "ultar-llm"
 version = "0.6.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "libc",
  "llama-cpp-2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "toml",
- "ureq",
+ "ureq 2.12.1",
 ]
 
 [[package]]
@@ -5428,7 +5454,7 @@ dependencies = [
 name = "ultar-pkg"
 version = "0.7.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "ed25519-dalek 2.2.0",
  "flate2",
  "hex",
@@ -5492,7 +5518,7 @@ dependencies = [
 name = "ultar-shell"
 version = "0.6.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "cosmic-text",
  "drm",
  "image",
@@ -5569,20 +5595,23 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "rustix",
+ "rustls",
+ "rustls-graviola",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "ultar-bus",
  "ultar-i18n",
- "ureq",
+ "ultar-service",
+ "ureq 3.5.2",
 ]
 
 [[package]]
 name = "ultar-verbund"
 version = "0.6.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "hmac 0.12.1",
  "lz4_flex",
  "rand 0.8.8",
@@ -5593,7 +5622,7 @@ dependencies = [
  "socket2 0.5.10",
  "tungstenite",
  "ultar-sprache",
- "ureq",
+ "ureq 2.12.1",
 ]
 
 [[package]]
@@ -5623,7 +5652,7 @@ dependencies = [
  "sha2 0.10.9",
  "toml",
  "ultar-sprache",
- "ureq",
+ "ureq 2.12.1",
 ]
 
 [[package]]
@@ -5712,7 +5741,7 @@ version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "log",
  "once_cell",
  "rustls",
@@ -5721,6 +5750,34 @@ dependencies = [
  "serde_json",
  "url",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "ureq"
+version = "3.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ac5cecf619ca81f66a96482db09687c9f7465af65f4300a8c30cca05bd5a59d"
+dependencies = [
+ "base64 0.23.1",
+ "log",
+ "percent-encoding",
+ "rustls",
+ "rustls-pki-types",
+ "ureq-proto",
+ "utf8-zero",
+ "webpki-roots 1.0.12",
+]
+
+[[package]]
+name = "ureq-proto"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622dce33c252115466d83f63e9744a18f12b4406aae51a01c15ad8fcf1185eb3"
+dependencies = [
+ "base64 0.23.1",
+ "http",
+ "httparse",
+ "log",
 ]
 
 [[package]]
@@ -5740,6 +5797,12 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utf8-zero"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e"
 
 [[package]]
 name = "utf8_iter"

@@ -50,6 +50,7 @@ update.error.network = Der Aktualisierungsserver ist nicht erreichbar
 update.error.unhealthy = Die neue Fassung hat nicht richtig funktioniert; ein Neustart kehrt zur vorigen Fassung zurück
 update.error.invalid_argument = Ungültiger Wert
 update.error.boot_failed = Die neue Fassung ist nicht gestartet; das Gerät ist von selbst zur vorigen Fassung zurückgekehrt
+update.error.tls_unavailable = Der Prozessor dieses Geräts kann die verschlüsselte Verbindung zum Aktualisierungsserver nicht herstellen; bitte eine Aktualisierung vom USB-Stick verwenden
 
 update.history.staged = Aktualisierung geladen und geprüft
 update.history.applied = Aktualisierung installiert, wartet auf Neustart
@@ -89,10 +90,11 @@ update.cli.policy.rate_unlimited = Geschwindigkeitsgrenze: keine
 update.cli.yes = ja
 update.cli.no = nein
 
-update.daemon.usage = Aufruf: ultar-updated --config DATEI [--socket PFAD] [--lang ar|en|de]
+update.daemon.usage = Aufruf: ultar-updated --config DATEI [--socket PFAD] [--log-socket PFAD] [--lang ar|en|de]
 update.daemon.config = Die Konfigurationsdatei ist ungültig (Zeile {line}): {detail}
 update.daemon.bus = Verbindung zum Systembus fehlgeschlagen
 update.daemon.ready = Aktualisierungsdienst bereit
+update.daemon.hardening_failed = Der Aktualisierungsdienst konnte sich beim Start nicht einschränken: {detail}
 
 update.sign.usage = Aufruf: uupdate-sign BEFEHL [Optionen]
         keygen --secret DATEI --public DATEI

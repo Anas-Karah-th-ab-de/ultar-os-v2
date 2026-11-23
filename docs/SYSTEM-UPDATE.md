@@ -158,6 +158,15 @@ start chain (stage0) uses it to open the system image.
 
 ## 5. Download
 
+Transport (`net.rs`): HTTP/1.1 through `ureq` 3; TLS by rustls with the **Graviola** crypto provider – pure
+Rust plus formally verified assembly, compiled by `rustc` alone, so the updater builds statically for x86_64 and
+aarch64 without any C compiler. Certificates are always validated (Mozilla roots from `webpki-roots`, or the
+roots given to `HttpSource::with`). An `https` source never follows a location or redirect to `http`. Time limits
+(none can be switched off): 15 s name lookup and connect, 60 s for the response head, 60 s per body read, plus the
+minimum average rate (§9). No proxy is taken from the environment. Graviola needs CPU features (x86_64: AES,
+PCLMUL, BMI1, ADX, AVX, AVX2; aarch64: NEON, AES, PMULL, SHA2); on a CPU without them an `https` server is refused
+with `update.error.tls_unavailable` – never a fallback to plain text – and offline bundles still work.
+
 1. `GET /v1/update/latest?channel&arch&edition` → release id and location.
 2. `Range: bytes=0-131071` of `/v1/update/file/{id}` → header → rotations, signed manifest → full verification.
    Nothing is stored before this succeeds.
@@ -240,6 +249,15 @@ copied into staging with the same code as a download (same hashes, same marker) 
 other. No network, no account.
 
 ## 8. Service, CLI, texts
+
+`ultar-updated` runs under the service runtime (`ultar-service`): inherited descriptors closed, umask 077,
+working directory `/`, standard limits, every kernel right dropped, no privilege gain; root on purpose. Readiness
+is reported once the service is registered on the bus. `SIGTERM`/`SIGINT`: a running operation stops at its next
+checkpoint with `interrupted` – no clean-up, nothing staged or fetched is dropped (as after a power loss) – and a
+release under test is not judged when the stop comes during the health wait. A body read that is blocked when the
+stop comes can outlast the runtime's stop deadline; the runtime then ends the process, which every step survives.
+Who is an administrator is decided on the identity the broker gives the caller (`ultar-busd` derives it from the
+kernel's peer credentials); the updater itself never looks at sockets.
 
 Bus service `update` (contracts in `ultar_update::contract`, version 1): `status`, `check`, `download`,
 `apply`, `cancel`, `history`, `get_policy`, `set_policy`, `offline`, `boot_previous`, `network`; topic

@@ -73,9 +73,14 @@ pub trait Checkpoint: Send + Sync {
     fn reached(&self, step: Step) -> Result<(), UpdateError>;
 }
 
-/// The production checkpoint: stops with [`UpdateError::Cancelled`] once cancelled.
+/// The production checkpoint: stops with [`UpdateError::Cancelled`] once cancelled, and with
+/// [`UpdateError::Interrupted`] – like a power loss, nothing is cleaned up or dropped – once
+/// the service is stopping.
 #[derive(Debug, Default)]
-pub struct CancelFlag(AtomicBool);
+pub struct CancelFlag {
+    cancelled: AtomicBool,
+    stopping: AtomicBool,
+}
 
 impl CancelFlag {
     /// A flag that is not set.
@@ -85,23 +90,37 @@ impl CancelFlag {
 
     /// Asks the running operation to stop at its next checkpoint.
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.cancelled.store(true, Ordering::SeqCst);
     }
 
-    /// Clears the request (before a new operation starts).
+    /// Clears the cancel request (before a new operation starts). A stop stays.
     pub fn reset(&self) {
-        self.0.store(false, Ordering::SeqCst);
+        self.cancelled.store(false, Ordering::SeqCst);
     }
 
     /// True while a cancel request is pending.
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// The service is stopping (stop signal): every operation ends at its next checkpoint,
+    /// without clean-up, and nothing new starts. Not undone.
+    pub fn stop(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
+    }
+
+    /// True once [`CancelFlag::stop`] was called.
+    pub fn is_stopping(&self) -> bool {
+        self.stopping.load(Ordering::SeqCst)
     }
 }
 
 impl Checkpoint for CancelFlag {
     fn reached(&self, step: Step) -> Result<(), UpdateError> {
-        if step.cancellable() && self.is_cancelled() {
+        if self.is_stopping() {
+            // Any step, also of the commit: every point is safe to stop at (crash only).
+            Err(UpdateError::Interrupted)
+        } else if step.cancellable() && self.is_cancelled() {
             Err(UpdateError::Cancelled)
         } else {
             Ok(())
@@ -165,6 +184,18 @@ mod tests {
         assert!(flag.reached(Step::JournalIdle).is_ok());
         flag.reset();
         assert!(flag.reached(Step::ArmTrial).is_ok());
+    }
+
+    #[test]
+    fn stop_interrupts_every_step_and_survives_reset() {
+        let flag = CancelFlag::new();
+        flag.stop();
+        for step in [Step::DownloadChunk, Step::CommitFloor, Step::JournalIdle] {
+            assert!(matches!(flag.reached(step), Err(UpdateError::Interrupted)));
+        }
+        flag.reset();
+        assert!(flag.is_stopping() && !flag.is_cancelled());
+        assert!(flag.reached(Step::ArmTrial).is_err());
     }
 
     #[test]

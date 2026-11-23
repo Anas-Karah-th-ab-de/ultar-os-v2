@@ -25,7 +25,7 @@ env:
   # Output language of ultar-check in the logs (ar | en | de). Arabic is the tool's default.
   ULTAR_LANG: en
   # Crates that must build as static aarch64 programs (system core, plan §3.0 area 3).
-  STATIC_PACKAGES: ultar-bus ultar-driverpkg ultar-i18n ultar-service ultar-sys ultar-busd ultar-logd
+  STATIC_PACKAGES: ultar-bus ultar-driverpkg ultar-i18n ultar-service ultar-sys ultar-busd ultar-logd ultar-update
   # Crates written under the v2 rules: linted with -D warnings. Code carried over from the old
   # repository is held by the ratchet in tools/check-baseline.toml until it is rebuilt.
   STRICT_PACKAGES: -p ultar-i18n -p ultar-profile -p ultar-hal -p ultar-hal-system -p ultar-bus -p ultar-driverpkg -p ultar-devd -p ultar-settingsd -p ultar-ui -p ultar-update -p ultar-service -p ultar-sys -p ultar-busd -p ultar-logd -p ultar-check

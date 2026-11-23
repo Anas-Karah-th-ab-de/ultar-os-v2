@@ -25,6 +25,7 @@ path = "src/bin/uupdate-sign.rs"
 [dependencies]
 ultar-bus = { path = "../ultar-bus" }
 ultar-i18n = { path = "../ultar-i18n" }
+ultar-service = { path = "../ultar-service" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -32,8 +33,13 @@ hex = "0.4"
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
 getrandom = "0.2"
 rustix = { version = "1", default-features = false, features = ["std", "fs", "process"] }
-ureq = { version = "2", default-features = false, features = ["tls"] }
+# HTTP(S) without any C code: rustls with the Graviola provider, Mozilla roots compiled in.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+rustls-graviola = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
+# Only the TLS test server of tests/https.rs.
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+rustls-graviola = "0.4"
 

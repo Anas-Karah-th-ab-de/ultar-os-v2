@@ -124,6 +124,8 @@ pub enum UpdateError {
     InvalidArgument,
     /// The new release did not start; the boot code returned to the previous system.
     BootFailed,
+    /// This CPU cannot run the TLS crypto provider; `https` servers cannot be reached.
+    TlsUnavailable,
 }
 
 impl UpdateError {
@@ -170,11 +172,12 @@ impl UpdateError {
             Self::Unhealthy => "update.error.unhealthy",
             Self::InvalidArgument => "update.error.invalid_argument",
             Self::BootFailed => "update.error.boot_failed",
+            Self::TlsUnavailable => "update.error.tls_unavailable",
         }
     }
 
     /// All message keys an error can produce (for catalogue completeness checks).
-    pub const KEYS: [&'static str; 40] = [
+    pub const KEYS: [&'static str; 41] = [
         "update.error.io",
         "update.error.malformed",
         "update.error.no_trusted_keys",
@@ -215,6 +218,7 @@ impl UpdateError {
         "update.error.unhealthy",
         "update.error.invalid_argument",
         "update.error.boot_failed",
+        "update.error.tls_unavailable",
     ];
 
     /// Stable numeric code used on the bus (`ErrorCode::Service(code)`): the position of the

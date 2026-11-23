@@ -317,6 +317,28 @@ impl DaemonDevice {
 }
 
 #[test]
+fn daemon_ends_cleanly_on_a_stop_signal_and_starts_again() {
+    use rustix::process::{kill_process, Pid, Signal};
+    let dir = tempfile::tempdir().unwrap();
+    let publisher = publish(dir.path(), "0.7.1", "2");
+    let device = DaemonDevice::new(&publisher, "http://127.0.0.1:9");
+    for round in 0..2 {
+        let mut daemon = device.start_daemon();
+        let (code, text) = device.cli("app.files", "status");
+        assert_eq!(code, 0, "round {round}: {text}");
+        let pid = Pid::from_child(&daemon.0);
+        kill_process(pid, Signal::TERM).unwrap();
+        // Waits for the exit on another thread so that a hang fails the test instead.
+        let mut child = std::mem::replace(&mut daemon.0, Command::new("true").spawn().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(child.wait().map(|s| s.code())));
+        let status = rx.recv_timeout(std::time::Duration::from_secs(20)).unwrap();
+        assert_eq!(status.unwrap(), Some(0), "round {round}");
+        // Exited: the lock on the state directory is free, the next round starts.
+    }
+}
+
+#[test]
 fn daemon_process_installs_a_release_from_the_server() {
     let dir = tempfile::tempdir().unwrap();
     let publisher = publish(dir.path(), "0.7.1", "2");
