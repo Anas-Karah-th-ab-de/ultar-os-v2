@@ -5315,6 +5315,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-compositor"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+ "ultar-hal",
+ "ultar-hal-gfx",
+ "ultar-i18n",
+ "ultar-service",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-ctl"
 version = "0.6.0"
 dependencies = [
@@ -5363,6 +5376,15 @@ version = "0.7.0"
 dependencies = [
  "ultar-hal",
  "ultar-profile",
+]
+
+[[package]]
+name = "ultar-hal-gfx"
+version = "0.7.0"
+dependencies = [
+ "drm",
+ "rustix",
+ "ultar-hal",
 ]
 
 [[package]]
@@ -5560,6 +5582,15 @@ dependencies = [
  "russh",
  "russh-sftp",
  "tokio",
+]
+
+[[package]]
+name = "ultar-surface"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+ "ultar-hal-gfx",
+ "ultar-ui",
 ]
 
 [[package]]

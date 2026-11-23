@@ -21,6 +21,10 @@ if [ "${IMG:-0}" = 1 ] || [ "${RUN:-0}" = 1 ]; then
   # Testprogramme für Ring 3 (statisch) und – falls vorhanden – Ubuntus busybox-static unverändert
   mmd -i "$OUT/ultar-kern-esp.img" ::/bin
   ( cd user && make -s ) && for p in user/hallo user/hallo-glibc user/kerntest user/ereignis user/fadentest user/blocktest user/lauscher user/zelltest user/grenztest user/ausbruch user/rechtetest user/geraetetest; do mcopy -i "$OUT/ultar-kern-esp.img" "$p" ::/bin/; done
+  # Compositor + its test client (static builds, docs/integration/ultar-compositor.md), if built
+  for p in ultar-compositor ultar-compositor-testclient; do
+    b="${COMPOSITOR_BIN:-../../target/x86_64-unknown-linux-gnu/release}/$p"; [ -x "$b" ] && mcopy -i "$OUT/ultar-kern-esp.img" "$b" ::/bin/
+  done
   if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
     mcopy -i "$OUT/ultar-kern-esp.img" /bin/busybox ::/bin/busybox
     /bin/busybox --list > /tmp/ultar-applets && mcopy -i "$OUT/ultar-kern-esp.img" /tmp/ultar-applets ::/bin/.applets

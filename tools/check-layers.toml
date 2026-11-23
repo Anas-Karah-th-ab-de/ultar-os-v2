@@ -112,10 +112,13 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
 from = "platform"
 to = "system-core"
 
+# ultar-hal-gfx: the compositor owns the display and input devices and the
+# shared pixel memory of app windows (plan §3.6); its client library needs
+# the same shared memory. Device paths and unsafe stay in the HAL crate.
 [[allow]]
 from = "platform"
 to = "system-hal"
-crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-gfx"]
 
 # apps -> public app API + bus/i18n/profile
 [[allow]]

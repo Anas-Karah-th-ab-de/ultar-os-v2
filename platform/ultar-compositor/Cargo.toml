@@ -1,0 +1,36 @@
+[package]
+name = "ultar-compositor"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The native Ultar compositor: windows of app processes, software composition, input routing (platform, area 5)"
+
+[lib]
+name = "ultar_compositor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-compositor"
+path = "src/bin/ultar-compositor.rs"
+
+# Test helper: a scripted client process (tests/ start it as a separate process).
+[[bin]]
+name = "ultar-compositor-testclient"
+path = "tests/helpers/testclient.rs"
+test = false
+
+[dependencies]
+ultar-surface = { path = "../ultar-surface" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-hal-gfx = { path = "../../system/hal/ultar-hal-gfx" }
+ultar-service = { path = "../../system/core/ultar-service" }
+rustix = { version = "1", default-features = false, features = ["std", "event"] }
+
+[dev-dependencies]
+# Snapshot comparison (PNG) in the tests.
+ultar-ui = { path = "../ultar-ui" }
+# Unsealed memory files for the descriptor-abuse tests.
+rustix = { version = "1", default-features = false, features = ["std", "fs", "net", "time"] }

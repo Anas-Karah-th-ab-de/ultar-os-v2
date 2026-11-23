@@ -77,8 +77,9 @@ pub fn run() {
         }
     }
     // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc; zelltest = escape tests of the isolation;
-    // grenztest = resource groups, limits and the attacks that must not stop the machine
-    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"]), ("rechtetest", vec!["rechtetest"]), ("geraetetest", vec!["geraetetest"]), ("grenztest", vec!["grenztest"])] {
+    // grenztest = resource groups, limits and the attacks that must not stop the machine;
+    // ultar-compositor-testclient kerncheck = compositor on fb0 + two app processes (verdict COMPOSITOR-CHECK:)
+    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"]), ("rechtetest", vec!["rechtetest"]), ("geraetetest", vec!["geraetetest"]), ("grenztest", vec!["grenztest"]), ("ultar-compositor-testclient", vec!["ultar-compositor-testclient", "/tmp/ultar-ui", "kerncheck", "/bin/ultar-compositor"])] {
         match programm(p) {
             Some(path) => {
                 kprintln!("[test] Programm {p}:");

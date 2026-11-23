@@ -1,0 +1,19 @@
+[package]
+name = "ultar-hal-gfx"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Graphics HAL backends for the compositor: shared pixel memory, descriptor passing, DRM/KMS and fbdev outputs, evdev input (system HAL, area 3)"
+
+[lib]
+name = "ultar_hal_gfx"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-hal = { path = "../ultar-hal" }
+# Pure Rust system calls (linux_raw backend, no C library): memfd, seals, mmap,
+# SCM_RIGHTS, poll, ioctl.
+rustix = { version = "1", default-features = false, features = ["std", "fs", "mm", "net", "event"] }
+# DRM/KMS dumb buffers (pure Rust; already used by the old shell).
+drm = "0.15"

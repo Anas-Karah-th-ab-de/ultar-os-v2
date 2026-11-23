@@ -1,0 +1,17 @@
+[package]
+name = "ultar-surface"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Client side of the Ultar compositor: wire protocol, surfaces, shared buffers, ultar-ui bridge (platform, area 5)"
+
+[features]
+default = ["ui"]
+# Runs an ultar-ui widget tree in a window (UiWindow).
+ui = ["dep:ultar-ui"]
+
+[dependencies]
+ultar-hal-gfx = { path = "../../system/hal/ultar-hal-gfx" }
+ultar-ui = { path = "../ultar-ui", default-features = false, optional = true }
+rustix = { version = "1", default-features = false, features = ["std", "event"] }

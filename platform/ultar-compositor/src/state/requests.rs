@@ -1,0 +1,479 @@
+//! Handling of client requests. Every request is checked against the
+//! client's own objects, its rights and its limits; anything wrong ends
+//! the client with an error code – never the compositor.
+
+use super::{ClientId, State, SurfaceKey};
+use crate::geom::Rect;
+use crate::pixels::Image;
+use crate::surface::{Buffer, Storage, Surface};
+use ultar_hal_gfx::shm::SealedMapping;
+use ultar_surface::proto::{
+    BufferId, ErrorCode, Event, PixelFormat, Request, Rights, Role, SurfaceId, MAX_DAMAGE, MAX_SIDE,
+};
+
+type Outcome = Result<(), ErrorCode>;
+
+fn valid_size(width: u32, height: u32) -> bool {
+    (1..=MAX_SIDE).contains(&width) && (1..=MAX_SIDE).contains(&height)
+}
+
+/// Removes characters that reorder text (bidi overrides and isolates) so a
+/// title cannot disguise itself; the title bar isolates it anyway.
+fn clean_title(title: &str) -> String {
+    title
+        .chars()
+        .filter(|c| !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}'))
+        .collect()
+}
+
+impl State {
+    /// Decodes and applies one request of `client`.
+    pub fn handle_frame(&mut self, client: ClientId, opcode: u16, body: &[u8]) {
+        let request = match Request::decode(opcode, body) {
+            Ok(r) => r,
+            Err(_) => return self.fail(client, ErrorCode::Malformed),
+        };
+        let hello = self.clients.get(&client).is_some_and(|c| c.hello);
+        let is_hello = matches!(request, Request::Hello { .. });
+        let outcome = if is_hello == hello {
+            // A second Hello, or anything before the first.
+            Err(ErrorCode::Malformed)
+        } else {
+            self.apply(client, request)
+        };
+        if let Err(code) = outcome {
+            self.fail(client, code);
+        }
+    }
+
+    fn apply(&mut self, client: ClientId, request: Request) -> Outcome {
+        match request {
+            Request::Hello { app_id, .. } => {
+                if let Some(c) = self.clients.get_mut(&client) {
+                    c.hello = true;
+                    c.app_id = app_id;
+                }
+                self.welcome(client);
+                Ok(())
+            }
+            Request::CreateSurface { surface, role } => self.create_surface(client, surface, role),
+            Request::DestroySurface { surface } => {
+                let key = self.own_surface(client, surface)?;
+                self.destroy_surface(key);
+                Ok(())
+            }
+            Request::SetTitle { surface, title } => {
+                let key = self.own_surface(client, surface)?;
+                if let Some(s) = self.surface_mut(key) {
+                    s.title = clean_title(&title);
+                }
+                if let Some(i) = self.window_index(key) {
+                    let f = self.windows[i].frame;
+                    self.damage_logical(Rect::new(f.x, f.y, f.w, crate::decor::TITLEBAR));
+                }
+                Ok(())
+            }
+            Request::SetSizeLimits { surface, min, max } => {
+                let key = self.own_surface(client, surface)?;
+                let clamp = |(w, h): (u32, u32)| (w.min(MAX_SIDE), h.min(MAX_SIDE));
+                if let Some(s) = self.surface_mut(key) {
+                    s.limits.min = clamp(min);
+                    s.limits.max = clamp(max);
+                }
+                Ok(())
+            }
+            other => self.apply_buffers(client, other),
+        }
+    }
+
+    fn apply_buffers(&mut self, client: ClientId, request: Request) -> Outcome {
+        match request {
+            Request::CreateShmBuffer {
+                buffer,
+                width,
+                height,
+                stride,
+                format,
+            } => self.create_shm_buffer(client, buffer, (width, height, stride), format),
+            Request::CreateInlineBuffer {
+                buffer,
+                width,
+                height,
+                format,
+            } => {
+                self.check_new_buffer(client, buffer, width, height)?;
+                let image = Image::new(width, height, 0).ok_or(ErrorCode::Limit)?;
+                self.add_buffer(
+                    client,
+                    buffer,
+                    Buffer {
+                        width,
+                        height,
+                        format,
+                        storage: Storage::Inline(image),
+                    },
+                );
+                Ok(())
+            }
+            Request::WritePixels { buffer, rect, data } => {
+                let c = self
+                    .clients
+                    .get_mut(&client)
+                    .ok_or(ErrorCode::UnknownObject)?;
+                let b = c.buffers.get_mut(&buffer).ok_or(ErrorCode::UnknownObject)?;
+                if b.write(&rect, &data) {
+                    Ok(())
+                } else {
+                    Err(ErrorCode::BadBuffer)
+                }
+            }
+            Request::DestroyBuffer { buffer } => {
+                let c = self
+                    .clients
+                    .get_mut(&client)
+                    .ok_or(ErrorCode::UnknownObject)?;
+                let b = c.buffers.remove(&buffer).ok_or(ErrorCode::UnknownObject)?;
+                c.bytes = c.bytes.saturating_sub(b.charge());
+                for s in c.surfaces.values_mut() {
+                    if s.pending_buffer == Some(buffer.0) {
+                        s.pending_buffer = None;
+                    }
+                }
+                Ok(())
+            }
+            other => self.apply_more(client, other),
+        }
+    }
+
+    fn apply_more(&mut self, client: ClientId, request: Request) -> Outcome {
+        match request {
+            Request::Attach { surface, buffer } => {
+                let key = self.own_surface(client, surface)?;
+                if buffer.0 != 0
+                    && !self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|c| c.buffers.contains_key(&buffer))
+                {
+                    return Err(ErrorCode::UnknownObject);
+                }
+                if let Some(s) = self.surface_mut(key) {
+                    s.pending_buffer = Some(buffer.0);
+                }
+                Ok(())
+            }
+            Request::Damage { surface, rects } => {
+                let key = self.own_surface(client, surface)?;
+                if let Some(s) = self.surface_mut(key) {
+                    for r in rects {
+                        let w = r.width.min(MAX_SIDE) as i32;
+                        let h = r.height.min(MAX_SIDE) as i32;
+                        s.pending_damage.push(Rect::new(r.x, r.y, w, h));
+                    }
+                    if s.pending_damage.len() > MAX_DAMAGE {
+                        let all = Rect::new(0, 0, MAX_SIDE as i32, MAX_SIDE as i32);
+                        s.pending_damage = vec![all];
+                    }
+                }
+                Ok(())
+            }
+            Request::Commit { surface, configure } => self.commit(client, surface, configure),
+            Request::Frame { surface } => {
+                let key = self.own_surface(client, surface)?;
+                if let Some(s) = self.surface_mut(key) {
+                    s.frame_requested = true;
+                }
+                Ok(())
+            }
+            Request::SetState { surface, state } => {
+                let key = self.own_surface(client, surface)?;
+                let index = self.window_index(key).ok_or(ErrorCode::UnknownObject)?;
+                self.set_window_state(index, state, None);
+                Ok(())
+            }
+            other => self.apply_input(client, other),
+        }
+    }
+
+    fn apply_input(&mut self, client: ClientId, request: Request) -> Outcome {
+        match request {
+            Request::Move { surface, serial } => {
+                self.start_move_request(client, surface, serial, None)
+            }
+            Request::Resize {
+                surface,
+                serial,
+                edges,
+            } => self.start_move_request(client, surface, serial, Some(edges.0)),
+            Request::Pong { serial } => {
+                let c = self
+                    .clients
+                    .get_mut(&client)
+                    .ok_or(ErrorCode::UnknownObject)?;
+                if c.ping.is_some_and(|(s, _)| s == serial) {
+                    c.ping = None;
+                    self.set_unresponsive(client, false);
+                }
+                Ok(())
+            }
+            Request::TextInput {
+                surface,
+                enabled,
+                purpose,
+            } => {
+                let key = self.own_surface(client, surface)?;
+                if let Some(s) = self.surface_mut(key) {
+                    s.text_input = enabled.then_some(purpose);
+                }
+                self.update_ime();
+                Ok(())
+            }
+            Request::ImeCommit { text } => self.ime_commit(client, text),
+            Request::Capture { output } => {
+                let c = self
+                    .clients
+                    .get_mut(&client)
+                    .ok_or(ErrorCode::UnknownObject)?;
+                if !c.rights.contains(Rights::CAPTURE) {
+                    return Err(ErrorCode::Permission);
+                }
+                if self.layout.get(output).is_none() {
+                    return Err(ErrorCode::UnknownObject);
+                }
+                if let Some(c) = self.clients.get_mut(&client) {
+                    c.capture = Some((output, 0));
+                }
+                Ok(())
+            }
+            other => self.apply_transfer(client, other),
+        }
+    }
+
+    fn own_surface(&self, client: ClientId, surface: SurfaceId) -> Result<SurfaceKey, ErrorCode> {
+        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
+        if c.surfaces.contains_key(&surface) {
+            Ok(SurfaceKey { client, surface })
+        } else {
+            Err(ErrorCode::UnknownObject)
+        }
+    }
+
+    fn create_surface(&mut self, client: ClientId, surface: SurfaceId, role: Role) -> Outcome {
+        let limit = self.config.limits.surfaces;
+        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
+        if surface.0 == 0 || c.surfaces.contains_key(&surface) {
+            return Err(ErrorCode::UnknownObject);
+        }
+        if c.surfaces.len() >= limit {
+            return Err(ErrorCode::Limit);
+        }
+        if !c.rights.contains(role.required_rights()) {
+            return Err(ErrorCode::Permission);
+        }
+        if let Role::Popup { parent, .. } = role {
+            let ok = c
+                .surfaces
+                .get(&parent)
+                .is_some_and(|p| p.role == Role::Toplevel);
+            if !ok {
+                return Err(ErrorCode::UnknownObject);
+            }
+        }
+        if let Some(c) = self.clients.get_mut(&client) {
+            c.surfaces.insert(surface, Surface::new(surface, role));
+        }
+        let key = SurfaceKey { client, surface };
+        if role == Role::Toplevel {
+            self.create_toplevel(key);
+        } else {
+            self.layers.push(key);
+            self.configure_layer(key);
+        }
+        Ok(())
+    }
+
+    fn check_new_buffer(
+        &self,
+        client: ClientId,
+        buffer: BufferId,
+        width: u32,
+        height: u32,
+    ) -> Outcome {
+        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
+        if buffer.0 == 0 || c.buffers.contains_key(&buffer) {
+            return Err(ErrorCode::UnknownObject);
+        }
+        if !valid_size(width, height) {
+            return Err(ErrorCode::BadBuffer);
+        }
+        let bytes = u64::from(width) * u64::from(height) * 4;
+        if c.buffers.len() >= self.config.limits.buffers
+            || c.bytes + bytes > self.config.limits.client_bytes
+        {
+            return Err(ErrorCode::Limit);
+        }
+        Ok(())
+    }
+
+    fn add_buffer(&mut self, client: ClientId, id: BufferId, buffer: Buffer) {
+        if let Some(c) = self.clients.get_mut(&client) {
+            c.bytes += buffer.charge();
+            c.buffers.insert(id, buffer);
+        }
+    }
+
+    fn create_shm_buffer(
+        &mut self,
+        client: ClientId,
+        id: BufferId,
+        dims: (u32, u32, u32),
+        format: PixelFormat,
+    ) -> Outcome {
+        let fd = self.clients.get_mut(&client).and_then(|c| c.conn.take_fd());
+        if !self.shm {
+            return Err(ErrorCode::Permission);
+        }
+        let (width, height, stride) = dims;
+        self.check_new_buffer(client, id, width, height)?;
+        let row = u64::from(width) * 4;
+        if u64::from(stride) < row || u64::from(stride) > row + 4096 {
+            return Err(ErrorCode::BadBuffer);
+        }
+        let fd = fd.ok_or(ErrorCode::BadBuffer)?;
+        let needed = u64::from(stride) * u64::from(height - 1) + row;
+        let mapping = SealedMapping::map(fd, needed).map_err(|_| ErrorCode::BadBuffer)?;
+        self.add_buffer(
+            client,
+            id,
+            Buffer {
+                width,
+                height,
+                format,
+                storage: Storage::Shared { mapping, stride },
+            },
+        );
+        Ok(())
+    }
+
+    fn commit(&mut self, client: ClientId, surface: SurfaceId, configure: u32) -> Outcome {
+        let key = self.own_surface(client, surface)?;
+        let budget = self.config.limits.client_bytes;
+        let c = self
+            .clients
+            .get_mut(&client)
+            .ok_or(ErrorCode::UnknownObject)?;
+        let s = c
+            .surfaces
+            .get_mut(&surface)
+            .ok_or(ErrorCode::UnknownObject)?;
+        s.ack(configure);
+        let before = s.charge();
+        let mut released = None;
+        let damage = match s.pending_buffer.take() {
+            Some(0) => {
+                s.image = None;
+                s.pending_damage.clear();
+                Some(Vec::new())
+            }
+            Some(id) => {
+                let buffer = c
+                    .buffers
+                    .get(&BufferId(id))
+                    .ok_or(ErrorCode::UnknownObject)?;
+                let grow =
+                    (u64::from(buffer.width) * u64::from(buffer.height) * 4).saturating_sub(before);
+                if c.bytes + grow > budget {
+                    return Err(ErrorCode::Limit);
+                }
+                let rects = s.apply(Some(buffer)).ok_or(ErrorCode::BadBuffer)?;
+                released = Some(BufferId(id));
+                Some(rects)
+            }
+            None => s.apply(None),
+        };
+        let after = s.charge();
+        c.bytes = (c.bytes + after).saturating_sub(before);
+        if let Some(buffer) = released {
+            self.send(client, Event::BufferReleased { buffer });
+        }
+        let rects = damage.unwrap_or_default();
+        self.surface_damaged(key, &rects);
+        Ok(())
+    }
+
+    /// Turns surface-pixel damage of a commit into output damage.
+    fn surface_damaged(&mut self, key: SurfaceKey, rects: &[Rect]) {
+        let scale = self
+            .surface(key)
+            .map_or(1.0, |s| f64::from(s.scale_milli) / 1000.0);
+        let content = if self.window_index(key).is_some() {
+            self.window_committed(key)
+        } else {
+            let old = self.layer_rect(key);
+            if let Some(r) = old {
+                // Layers can change size with every commit: damage all.
+                self.damage_logical(r);
+            }
+            if self.surface(key).is_some_and(|s| s.image.is_none()) {
+                return;
+            }
+            None
+        };
+        let Some(content) = content else {
+            return;
+        };
+        for r in rects {
+            let logical = Rect::new(
+                (f64::from(r.x) / scale).floor() as i32,
+                (f64::from(r.y) / scale).floor() as i32,
+                (f64::from(r.w) / scale).ceil() as i32 + 1,
+                (f64::from(r.h) / scale).ceil() as i32 + 1,
+            );
+            if let Some(visible) = logical.translate(content.x, content.y).intersect(&content) {
+                self.damage_logical(visible);
+            }
+        }
+    }
+
+    /// Tells the input method whether the focused surface has a text field.
+    pub(super) fn update_ime(&mut self) {
+        let wanted = self
+            .focus
+            .and_then(|k| self.surface(k))
+            .and_then(|s| s.text_input);
+        let panels: Vec<ClientId> = self
+            .layers
+            .iter()
+            .filter(|k| {
+                self.surface(**k)
+                    .is_some_and(|s| s.role == Role::InputPanel)
+            })
+            .map(|k| k.client)
+            .collect();
+        for client in panels {
+            let event = Event::ImeState {
+                active: wanted.is_some(),
+                purpose: wanted.unwrap_or(0),
+            };
+            self.send(client, event);
+        }
+    }
+
+    fn ime_commit(&mut self, client: ClientId, text: String) -> Outcome {
+        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
+        let has_panel = c.surfaces.values().any(|s| s.role == Role::InputPanel);
+        if !c.rights.contains(Rights::INPUT_METHOD) || !has_panel {
+            return Err(ErrorCode::Permission);
+        }
+        if let Some(focus) = self.focus {
+            self.send(
+                focus.client,
+                Event::Text {
+                    surface: focus.surface,
+                    text,
+                },
+            );
+        }
+        Ok(())
+    }
+}
