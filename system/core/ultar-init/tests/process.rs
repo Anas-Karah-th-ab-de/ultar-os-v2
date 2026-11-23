@@ -73,7 +73,13 @@ fn a_service_is_moved_into_its_memory_group_with_its_limits() {
         (read("memory.max").as_str(), read("pids.max").as_str()),
         ("32M", "8")
     );
-    // The launcher moved itself in before it became the service.
+    // The launcher moves itself in before it becomes the service; init reports
+    // "running" once the launcher started (posix_spawn returns at its execve),
+    // so the move may still be under way.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while read("cgroup.procs").trim() != status[2] && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     assert_eq!(read("cgroup.procs").trim(), status[2]);
     world.wait_status("unlimited", |c| c[1] == "failed" || c[1] == "backoff");
     let (code, stderr) = stop(child);

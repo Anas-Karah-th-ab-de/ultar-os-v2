@@ -158,10 +158,64 @@ static void own_attacks(void) {
     aftermath("Angriff kleine Kern-Objekte", free_before, cells_before);
 }
 
+/* vfork (CLONE_VM|CLONE_VFORK) inside a cell: the child shares the parent's memory until execve or its end.
+ * A child killed before execve, a failed execve, and a child that takes the shared memory until the cell's
+ * limit ends it must all leave the cell's account at exactly zero when the cell is gone. */
+static int vfork_go;
+static int vfork_cell(long unused) {
+    (void)unused;
+    char g;
+    if (read(vfork_go, &g, 1) != 1) return 64;
+    prctl(PR_ULTAR_RIGHTS_DROP, ~0UL, 0, 0, 0);
+    int bad = 0, st = 0;
+    pid_t c = vfork();
+    if (c == 0) {
+        kill(getpid(), SIGKILL);
+        _exit(1);
+    }
+    if (!(c > 0 && waitpid(c, &st, 0) == c && WIFSIGNALED(st) && WTERMSIG(st) == SIGKILL)) bad |= 1;
+    c = vfork();
+    if (c == 0) {
+        execl("/gibt/es/nicht", "x", (char *)NULL);
+        _exit(127);
+    }
+    if (!(c > 0 && waitpid(c, &st, 0) == c && WIFEXITED(st) && WEXITSTATUS(st) == 127)) bad |= 2;
+    /* reserved by the parent (no pages yet); the child touches it until the cell's limit ends it */
+    long len = 256 * MB;
+    char *area = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (area == MAP_FAILED) return bad | 4;
+    c = vfork();
+    if (c == 0) {
+        for (long i = 0; i < len; i += 4096) area[i] = 1;
+        _exit(5);
+    }
+    if (!(c > 0 && waitpid(c, &st, 0) == c && WIFSIGNALED(st))) bad |= 8;
+    /* the parent goes on in the memory its child died in */
+    area[0] = 2;
+    if (getpid() != 1 || area[0] != 2) bad |= 16;
+    return bad;
+}
+
+static void vfork_tests(void) {
+    long free_before = free_kb(), cells_before = group_mem("/cells");
+    int go[2], st = -1;
+    if (pipe(go)) return;
+    vfork_go = go[0];
+    pid_t c = cell(vfork_cell, 0);
+    int limited = put_text(pf(CG "/cells/cell-%d/memory.max", (int)c), "32M") == 0;
+    int ran = write(go[1], "g", 1) == 1 && wait_ms(c, &st, 120000);
+    close(go[0]);
+    close(go[1]);
+    say("       (vfork-Zelle: Grenze %s, Status %#x)\n", limited ? "32 MiB" : "fehlt", st);
+    check("vfork in einer Zelle: Kind durch SIGKILL vor execve, execve-Fehler (127), Kind von der Grenze beendet – Elternprozess lebt weiter", limited && ran && WIFEXITED(st) && WEXITSTATUS(st) == 0);
+    aftermath("vfork in einer Zelle", free_before, cells_before);
+}
+
 void attack_tests(void) {
     say("== Angriffe einer Zelle ohne Rechte\n");
     reviewer_attacks();
     own_attacks();
+    vfork_tests();
 }
 
 /* ------------------------------------------------------------------ dynamic rules */

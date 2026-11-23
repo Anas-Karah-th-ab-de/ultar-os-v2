@@ -423,16 +423,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         46 => sys_sendmsg(a[0], a[1]),
         47 => sys_recvmsg(a[0], a[1], a[2]),
         307 => sys_sendmmsg(a[0], a[1], a[2]),
-        48 => Res::Val(match sock_id(a[0]) {
-            Some(id) => {
-                if a[1] >= 1 {
-                    crate::socket::shutdown_write(id);
-                }
-                0
-            }
-            None if unix_sock(a[0]).is_some() || with(|p| matches!(p.fd(a[0]).map(|d| &d.kind), Some(FdKind::UnixConn(..)))).unwrap_or(false) => 0,
-            None => -88,
-        }),
+        48 => Res::Val(sys_shutdown(a[0], a[1])),
         49 => Res::Val(sys_bind(a[0], a[1], a[2])),
         50 => Res::Val(match sock_id(a[0]) {
             Some(id) => crate::socket::listen(id),
@@ -644,7 +635,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::PipeR(pp) | FdKind::UnixConn(pp, _) => {
                 let mut b = pp.buf.lock();
                 if b.is_empty() {
-                    if pp.writers.load(Ordering::SeqCst) == 0 {
+                    if pp.write_closed() {
                         Src::Data(Vec::new())
                     } else if d.flags & 0x800 != 0 {
                         Src::Err(-11)
@@ -710,16 +701,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         Src::Block(w) => Res::Block(w),
         Src::Sock(id) => sock_recv(id, buf, n as u64, 0, 0, 0),
         Src::SigFd(m, nb) => {
-            let sig = with(|p| {
-                let ready = p.pending & m;
-                if ready == 0 {
-                    return 0;
-                }
-                let sig = ready.trailing_zeros() as u64 + 1;
-                p.pending &= !(1 << (sig - 1));
-                sig
-            })
-            .unwrap_or(0);
+            let sig = take_signal(m);
             if sig == 0 {
                 return if nb { Res::Val(-11) } else { Res::Block(Wait::Poll(crate::socket::gen(), 0)) };
             }
@@ -870,7 +852,7 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
             FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
                 // a blocking write that was continued (see `Res::Partial`) reports everything it
                 // delivered, also when the rest fails
-                if pp.readers.load(Ordering::SeqCst) == 0 {
+                if pp.read_closed() {
                     p.pending |= 1 << (crate::signal::SIGPIPE - 1);
                     let done = core::mem::take(&mut p.io_done);
                     return if done > 0 { Out::Done(done as usize) } else { Out::Res(Res::Val(-EPIPE)) };
@@ -1394,7 +1376,7 @@ fn write_bytes(fd: u64, data: &[u8]) -> Res {
                 Err(e) => Err(Res::Val(e)),
             },
             FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
-                if pp.readers.load(Ordering::SeqCst) == 0 {
+                if pp.read_closed() {
                     p.pending |= 1 << (crate::signal::SIGPIPE - 1);
                     return Err(Res::Val(-EPIPE));
                 }
@@ -1818,22 +1800,56 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
     }
 }
 
+/// Signals pending for the calling process: its own thread's and, for a signal sent to the whole
+/// process, those parked at any other thread (`signal::send_locked` puts a signal that every thread
+/// blocks on one of them) – what a `signalfd` sees, in whichever thread it is read.
+fn group_pending(ps: &[alloc::boxed::Box<Proc>], me: u64) -> u64 {
+    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else { return 0 };
+    ps.iter().filter(|p| p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead)).fold(0, |a, p| a | p.pending)
+}
+
+/// Take the lowest signal of `mask` pending for the calling process (own thread first); 0: none.
+fn take_signal(mask: u64) -> u64 {
+    let mut ps = proc::PROCS.lock();
+    let me = proc::current();
+    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else { return 0 };
+    let live = |p: &Proc| p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead);
+    let Some(i) = ps.iter().position(|p| p.pid == me && p.pending & mask != 0).or_else(|| ps.iter().position(|p| live(p) && p.pending & mask != 0)) else { return 0 };
+    let sig = (ps[i].pending & mask).trailing_zeros() as u64 + 1;
+    ps[i].pending &= !(1 << (sig - 1));
+    sig
+}
+
+/// [`fd_events`] for the calling thread, with the signals of the whole process for a `signalfd`.
+fn ready_of(fd: i64, ev: u32, inp: bool) -> u32 {
+    let mut ps = proc::PROCS.lock();
+    let me = proc::current();
+    let pending = group_pending(&ps, me);
+    ps.iter_mut().find(|p| p.pid == me).map(|p| fd_events(p, fd, ev, inp, pending)).unwrap_or(0x20)
+}
+
 /// Bereitschaft eines Deskriptors (POLLIN 1, POLLOUT 4, POLLHUP 0x10, POLLNVAL 0x20)
-fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool) -> u32 {
-    let pending = p.pending;
+fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
     let Some(d) = p.fd(fd as u64) else { return 0x20 };
     let r = |b: bool| (ev & 1) * b as u32;
     let w = |b: bool| (ev & 4) * b as u32;
     match &d.kind {
         FdKind::Console => r(inp) | w(true),
         FdKind::PipeR(pp) => r(!pp.buf.lock().is_empty() || pp.writers.load(Ordering::SeqCst) == 0) | if pp.writers.load(Ordering::SeqCst) == 0 { 0x10 } else { 0 },
-        FdKind::PipeW(pp) => w(pp.writable()) | if pp.readers.load(Ordering::SeqCst) == 0 { 8 } else { 0 },
+        FdKind::PipeW(pp) => w(pp.writable()) | if pp.read_closed() { 8 } else { 0 },
         FdKind::Sock(h) => {
             let (rr, ww) = crate::socket::readiness(h.0);
             r(rr) | w(ww)
         }
         FdKind::SigFd(m) => r(pending & *m != 0),
-        FdKind::UnixConn(rx, tx) => r(!rx.buf.lock().is_empty() || rx.writers.load(Ordering::SeqCst) == 0) | w(tx.readers.load(Ordering::SeqCst) > 0 && tx.writable()),
+        // end of file: readable; POLLRDHUP when the peer stopped sending (or we shut reading down),
+        // POLLHUP when both directions are closed
+        FdKind::UnixConn(rx, tx) => {
+            r(!rx.buf.lock().is_empty() || rx.write_closed())
+                | w(!tx.read_closed() && tx.writable())
+                | if rx.write_closed() { ev & 0x2000 } else { 0 }
+                | if rx.write_closed() && tx.read_closed() { 0x10 } else { 0 }
+        }
         FdKind::UnixSock(us) => r(matches!(&*us.lock(), proc::UnixState::Listening(_, q) if !q.is_empty())),
         FdKind::EventFd(c, _) => r(*c.lock() > 0) | w(true),
         FdKind::TimerFd(t) => {
@@ -1925,7 +1941,7 @@ fn sys_epoll_wait(epfd: u64, out: u64, max: u64, timeout: i64) -> Res {
         if n >= max.min(1024) {
             break;
         }
-        let r = with(|p| fd_events(p, fd as i64, events | 0x18, inp)).unwrap_or(0x20);
+        let r = ready_of(fd as i64, events | 0x18, inp);
         let r = r & (events | 0x18);
         if r != 0 {
             buf.extend_from_slice(&r.to_le_bytes());
@@ -2031,7 +2047,7 @@ fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
     for (i, c) in b.chunks(8).enumerate() {
         let fd = i32::from_le_bytes(c[0..4].try_into().unwrap());
         let ev = u16::from_le_bytes([c[4], c[5]]);
-        let kind_ready = with(|p| fd_events(p, fd as i64, ev as u32, inp) as u16).unwrap_or(0x20);
+        let kind_ready = ready_of(fd as i64, ev as u32, inp) as u16;
         out[i * 8 + 6..i * 8 + 8].copy_from_slice(&kind_ready.to_le_bytes());
         if kind_ready != 0 {
             ready += 1;
@@ -2074,7 +2090,7 @@ fn sys_select(n: u64, rfds: u64, wfds: u64, timeout_ms: i64) -> Res {
     let mut wo = vec![0u8; bytes];
     let mut cnt = 0;
     for i in 0..n {
-        let ev = with(|p| fd_events(p, i as i64, 5, inp)).unwrap_or(0x20);
+        let ev = ready_of(i as i64, 5, inp);
         let kind = if ev & 0x20 != 0 { None } else { Some(ev & 1 != 0) };
         let wready = ev & 4 != 0;
         if let Some(v) = &rd {
@@ -2274,6 +2290,56 @@ fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
         Ok(false) if crate::socket::is_nonblock(id) => Res::Val(-115),
         Ok(false) => Res::Block(Wait::Net(crate::socket::gen())),
         Err(e) => Res::Val(e),
+    }
+}
+
+/// `shutdown`. Unix stream: `SHUT_RD` (0) ends our reading (end of file once the buffer is empty;
+/// the peer's writes get `EPIPE`), `SHUT_WR` (1) ends our writing (`EPIPE`; the peer reads the rest, then
+/// end of file), `SHUT_RDWR` (2) both; blocked readers and writers of any thread wake up. A listening
+/// socket stops listening: a blocked `accept` ends with `EINVAL`, queued connections are refused.
+fn sys_shutdown(fd: u64, how: u64) -> i64 {
+    if how > 2 {
+        return -EINVAL;
+    }
+    if let Some(id) = sock_id(fd) {
+        if how >= 1 {
+            crate::socket::shutdown_write(id);
+        }
+        return 0;
+    }
+    if let Some(us) = unix_sock(fd) {
+        unix_unlisten(&us);
+        let queued = match core::mem::replace(&mut *us.lock(), proc::UnixState::Unbound) {
+            proc::UnixState::Listening(_, q) => q,
+            proc::UnixState::Unbound => return -ENOTCONN_U,
+        };
+        // the queued connections were never accepted: their ends close (the connector sees EOF/EPIPE)
+        for (r, w) in queued {
+            r.readers.fetch_sub(1, Ordering::SeqCst);
+            w.writers.fetch_sub(1, Ordering::SeqCst);
+        }
+        crate::socket::bump();
+        return 0;
+    }
+    let pipes = with(|p| match p.fd(fd).map(|d| &d.kind) {
+        Some(FdKind::UnixConn(rx, tx)) => Ok((rx.clone(), tx.clone())),
+        Some(_) => Err(-88),
+        None => Err(-EBADF),
+    })
+    .unwrap_or(Err(-EBADF));
+    match pipes {
+        Ok((rx, tx)) => {
+            if how != 1 {
+                rx.shut_down();
+            }
+            if how != 0 {
+                tx.shut_down();
+            }
+            // wake every thread blocked on either direction
+            crate::socket::bump();
+            0
+        }
+        Err(e) => e,
     }
 }
 
@@ -2701,7 +2767,9 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
                 }));
             }
             proc::Shared::new(proc::Group {
-                space: Some(p.space().fork().ok_or(-ENOMEM)?),
+                // vfork with CLONE_VM: the child runs in the parent's memory until execve/_exit
+                // (glibc's posix_spawn reports a failed execve through it); else a copy
+                space: Some(if flags & VM != 0 { p.g.space.clone().ok_or(-ENOMEM)? } else { Arc::new(p.space().fork().ok_or(-ENOMEM)?) }),
                 fds,
                 cwd: p.g.cwd.clone(),
                 brk_start: p.g.brk_start,
@@ -2779,6 +2847,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
         crate::heap::kernel(|| ps.push(child));
     }
     if flags & VFORK != 0 {
+        proc::vfork_started(pid, with(|p| p.tgid).unwrap_or(0));
         block(f, Wait::Vfork(pid), false, seen);
     }
     seen
@@ -2883,7 +2952,7 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
     with(|p| {
         p.g.auxv = img.auxv.clone();
-        p.g.space = Some(img.space);
+        p.g.space = Some(Arc::new(img.space));
         p.g.brk_start = img.brk;
         p.g.brk = img.brk;
         p.g.brk_limit = img.brk_limit;
@@ -2902,6 +2971,8 @@ fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<Strin
     });
     unsafe { crate::paging::wrmsr(0xC000_0100, 0) };
     *f = proc::fresh_frame(img.entry, img.sp);
+    // a parent waiting in vfork goes on now (the child no longer uses its memory)
+    proc::vfork_exec(proc::current());
     0
 }
 

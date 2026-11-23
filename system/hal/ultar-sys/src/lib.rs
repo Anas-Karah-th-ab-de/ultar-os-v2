@@ -18,6 +18,7 @@
 //! | wait for descriptors ([`wait_readable`], [`poll_readable`]) | `rustix::event::poll` |
 //! | type of an inherited descriptor ([`take_inherited`]) | `rustix::fs::fstat` |
 //! | no new privileges ([`set_no_new_privileges`]) | `rustix::thread::set_no_new_privs` |
+//! | kernel device events ([`uevent::UeventSocket`]) | `rustix::net::{socket_with, bind, recv}` (`AF_NETLINK`, `NETLINK_KOBJECT_UEVENT`) |
 //! | ids of a launched service ([`switch_identity`]), session ([`new_session`]), inherited descriptors ([`set_inherited`]) | `rustix::thread::set_thread_*`, `rustix::process::setsid`, `rustix::io::fcntl_setfd` |
 //!
 //! What `rustix` 1.1 cannot do safely is in the module `raw` – the only
@@ -44,6 +45,7 @@ mod tests;
 mod identity;
 pub mod inherit;
 pub mod machine;
+pub mod uevent;
 mod wait;
 
 pub use identity::{

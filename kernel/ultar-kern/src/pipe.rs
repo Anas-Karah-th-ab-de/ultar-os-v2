@@ -60,6 +60,9 @@ pub struct Pipe {
     /// Unix socket: identity of the process that writes into this direction – its process number
     /// (0 = not set: a plain pipe) and user id / group id packed into one word.
     writer: [AtomicU64; 2],
+    /// This direction was shut down (`shutdown` of a Unix socket): readers get end of file once the
+    /// buffer is empty, writers `EPIPE`.
+    shut: core::sync::atomic::AtomicBool,
     /// Packet mode (device events): lengths of the messages in `buf`, in order; `None`: a stream.
     /// Always locked after `buf`.
     lens: Mutex<Option<VecDeque<u32>>>,
@@ -73,7 +76,7 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], lens: Mutex::new(None) })
+        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None) })
     }
 
     /// Empty pipe in packet mode: every [`Pipe::push_packet`] is read back as one message.
@@ -122,6 +125,21 @@ impl Pipe {
     pub fn writer(&self) -> Option<crate::uds::Peer> {
         let (pid, ids) = (self.writer[0].load(Ordering::Relaxed), self.writer[1].load(Ordering::Relaxed));
         (pid != 0).then_some(crate::uds::Peer { pid, uid: (ids >> 32) as u32, gid: ids as u32 })
+    }
+
+    /// Shut this direction down (see `shut`).
+    pub fn shut_down(&self) {
+        self.shut.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether nobody will write any more: no writing end is open, or the direction was shut down.
+    pub fn write_closed(&self) -> bool {
+        self.writers.load(Ordering::SeqCst) == 0 || self.shut.load(Ordering::SeqCst)
+    }
+
+    /// Whether nobody reads any more: no reading end is open, or the direction was shut down.
+    pub fn read_closed(&self) -> bool {
+        self.readers.load(Ordering::SeqCst) == 0 || self.shut.load(Ordering::SeqCst)
     }
 
     /// Capacity in bytes.

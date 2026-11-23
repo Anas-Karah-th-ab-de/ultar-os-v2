@@ -205,7 +205,9 @@ pub struct SigAct {
 
 /// Zustand einer Fadengruppe (= ein Linux-„Prozess“)
 pub struct Group {
-    pub space: Option<AddrSpace>,
+    /// Address space; shared (`Arc`) with a `vfork` child (`CLONE_VM|CLONE_VFORK`) until that child
+    /// calls `execve` or ends.
+    pub space: Option<Arc<AddrSpace>>,
     pub fds: Vec<Option<Fd>>,
     pub cwd: String,
     pub brk_start: u64,
@@ -278,8 +280,8 @@ impl Proc {
         self.g.space.as_ref().unwrap()
     }
     #[track_caller]
-    pub fn space_mut(&mut self) -> &mut AddrSpace {
-        self.g.space.as_mut().unwrap()
+    pub fn space_mut(&mut self) -> &AddrSpace {
+        self.g.space.as_ref().unwrap()
     }
     pub fn fd(&mut self, n: u64) -> Option<&mut Fd> {
         // Deskriptoren sind `int`: obere Bits des Registers zählen nicht (glibc lässt sie stehen)
@@ -747,7 +749,7 @@ fn spawn_in(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>,
     let pids = crate::groups::PidCharge::new(res).ok_or_else(|| alloc::format!("{path}: zu viele Prozesse"))?;
     let pid = want.unwrap_or_else(|| NEXT_PID.fetch_add(1, Ordering::Relaxed));
     let g = Group {
-        space: Some(img.space),
+        space: Some(Arc::new(img.space)),
         fds: console_fds(),
         cwd: {
             let c = SHELL_CWD.lock().clone();
@@ -943,6 +945,12 @@ fn wake(ps: &mut [Box<Proc>]) {
     let alive: Vec<u64> = all.iter().filter(|x| !x.2).map(|x| x.0).collect();
     for p in ps.iter_mut() {
         if let State::Blocked(w) = p.state {
+            // killed while it was still running on another core (`end_group` only marks it then): whatever
+            // it waits for, it goes on so that the scheduler ends it – a pause() would hold it forever
+            if p.killed.is_some() {
+                p.state = State::Ready;
+                continue;
+            }
             let go = match w {
                 Wait::Input => input,
                 Wait::Sleep(t) => now >= t,
@@ -969,13 +977,46 @@ fn wake(ps: &mut [Box<Proc>]) {
                     let mine = |x: &&(u64, u64, bool)| x.1 == p.tgid && (pid <= 0 || x.0 == pid as u64);
                     all.iter().filter(mine).any(|x| x.2) || !all.iter().any(|x| mine(&x))
                 }
-                Wait::Vfork(c) => !alive.contains(&c),
+                Wait::Vfork(c) => vfork_done(c, alive.contains(&c)),
             };
             if go {
                 p.state = State::Ready;
             }
         }
     }
+}
+
+/// `vfork` children whose parent waits: (child, parent, released by `execve`). The parent resumes when
+/// its child called `execve` or ended, as on Linux – not only at the end of a long-running child.
+static VFORK: Mutex<Vec<(u64, u64, bool)>> = Mutex::new(Vec::new());
+
+/// A `vfork` child was created; its parent is about to wait for it.
+pub fn vfork_started(child: u64, parent: u64) {
+    crate::heap::kernel(|| VFORK.lock().push((child, parent, false)));
+}
+
+/// The calling process completed `execve`: a parent waiting in `vfork` may go on.
+pub fn vfork_exec(me: u64) {
+    if let Some(e) = VFORK.lock().iter_mut().find(|e| e.0 == me) {
+        e.2 = true;
+    }
+}
+
+/// Thread group `tgid` ended: as a waiting parent it needs no entry any more (as a child, the parent
+/// sees it gone and drops the entry when it resumes).
+fn vfork_parent_gone(tgid: u64) {
+    VFORK.lock().retain(|e| e.1 != tgid);
+}
+
+/// Whether the parent waiting for `vfork` child `c` may go on (the child called `execve` or is gone);
+/// the entry is dropped then.
+fn vfork_done(c: u64, alive: bool) -> bool {
+    let mut list = VFORK.lock();
+    let done = !alive || list.iter().any(|e| e.0 == c && e.2);
+    if done {
+        list.retain(|e| e.0 != c);
+    }
+    done
 }
 
 fn has_sigfd(p: &Proc) -> bool {
@@ -1037,6 +1078,7 @@ fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
         c.ppid = 0;
     }
     end_pid_namespace(ps, tgid);
+    vfork_parent_gone(tgid);
     // Elternprozess benachrichtigen (SIGCHLD); vfork-Eltern und wait4-Wartende weckt der Planer
     if let Some(pp) = ps.iter().find(|t| t.pid == tgid).map(|t| t.ppid) {
         if pp != 0 {

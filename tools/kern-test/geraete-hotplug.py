@@ -22,6 +22,7 @@ buf = b""
 decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
 def read_until(pat, timeout):
+    """Read the serial output until `pat` is in what was read since the last reset of `buf`."""
     global buf
     end = time.time() + timeout
     while time.time() < end:
@@ -54,8 +55,17 @@ try:
             monitor("device_add usb-kbd,bus=xhci.0,id=hotkbd")
             if read_until("USB BEREIT (remove)", max(5, deadline - time.time())):
                 monitor("device_del hotkbd")
-                read_until("GERAETETEST-USB: ", max(5, deadline - time.time()))
-                read_until("ultar-kern:/> ", 5)
+                # the whole verdict line and the next prompt: QEMU is stopped only after both arrived
+                if read_until("GERAETETEST-USB: ", max(5, deadline - time.time())):
+                    buf = buf[buf.rfind(b"GERAETETEST-USB: "):]
+                    if read_until("\n", 30):
+                        buf = b""
+                        read_until("ultar-kern:/> ", 30)
 finally:
+    # say why the run ended if QEMU ended by itself (a crash of the emulator is not the kernel's result)
+    code = p.poll()
+    if code is not None:
+        sys.stdout.write(f"\n[harness] QEMU ended by itself with code {code}\n"); sys.stdout.flush()
     p.kill()
+    p.wait()
     subprocess.run(["rm", "-rf", work])

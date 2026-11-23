@@ -16,7 +16,6 @@
 use std::os::fd::AsFd;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
@@ -206,12 +205,9 @@ fn stop(mut init: Child) -> Result<(), String> {
 
 fn test(run: &Run, groups: bool) -> Result<(), String> {
     let config = run.layout(groups).map_err(|e| format!("layout {e}"))?;
-    // `gid`: forces a fork; the Ultar kernel would hold a `posix_spawn`
-    // parent until the child ends (see `start.rs`).
     let init = Command::new(run.bin.join("ultar-init"))
         .arg("--config")
         .arg(config)
-        .gid(ultar_sys::egid())
         .spawn()
         .map_err(|e| format!("init {e}"))?;
     let checked = run.admin().and_then(|admin| {

@@ -22,7 +22,9 @@ pub fn serial_init() {
 fn serial_put(b: u8) {
     unsafe {
         let mut n = 0;
-        while inb(COM1 + 5) & 0x20 == 0 && n < 100_000 {
+        // wait for the transmitter (an emulator holds it while its output is not taken); a byte is
+        // dropped only after a long wait, so a slow reader does not lose log lines
+        while inb(COM1 + 5) & 0x20 == 0 && n < 2_000_000 {
             n += 1;
         }
         outb(COM1, b);
@@ -367,19 +369,35 @@ pub struct Out;
 /// Sperre für die Ausgabe (mehrere Kerne); derselbe Kern darf erneut hinein (z. B. Ausnahme beim Schreiben)
 static OWNER: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(usize::MAX);
 
-struct Guard(bool);
+/// Held while one piece of output is written: (this guard took the lock, interrupts were on before).
+/// Interrupts stay off meanwhile, so a timer or device interrupt on the same core cannot print into the
+/// middle of a line; other cores wait for the whole piece.
+struct Guard(bool, bool);
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.0 {
             OWNER.store(usize::MAX, core::sync::atomic::Ordering::Release);
         }
+        if self.1 {
+            // SAFETY: interrupts were on when the guard was taken; turning them on again restores that state.
+            unsafe { core::arch::asm!("sti", options(nomem, nostack)) };
+        }
     }
 }
 
+/// Whether interrupts are on, and turn them off.
+fn interrupts_off() -> bool {
+    let flags: u64;
+    // SAFETY: reads RFLAGS through the stack and clears IF; no memory of the program is touched.
+    unsafe { core::arch::asm!("pushfq", "pop {}", "cli", out(reg) flags) };
+    flags & (1 << 9) != 0
+}
+
 fn lock() -> Guard {
+    let was_on = interrupts_off();
     let me = crate::percpu::id();
     if OWNER.load(core::sync::atomic::Ordering::Acquire) == me {
-        return Guard(false);
+        return Guard(false, was_on);
     }
     let mut n = 0u64;
     while OWNER.compare_exchange(usize::MAX, me, core::sync::atomic::Ordering::Acquire, core::sync::atomic::Ordering::Relaxed).is_err() {
@@ -391,10 +409,16 @@ fn lock() -> Guard {
             break;
         }
     }
-    Guard(true)
+    Guard(true, was_on)
 }
 
 impl Write for Out {
+    /// A formatted message is written under one lock: its pieces and its line end stay together.
+    fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> fmt::Result {
+        let _g = lock();
+        fmt::write(self, args)
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let _g = lock();
         for b in s.bytes() {
@@ -452,7 +476,8 @@ macro_rules! kprint {
 #[macro_export]
 macro_rules! kprintln {
     () => { $crate::kprint!("\n") };
-    ($($a:tt)*) => {{ $crate::kprint!($($a)*); $crate::kprint!("\n"); }};
+    // one call: the line and its end are written under the console lock together
+    ($($a:tt)*) => {{ $crate::kprint!("{}\n", format_args!($($a)*)); }};
 }
 
 // ------------------------------------------------------------------ Arabisch: Formen und Leserichtung

@@ -5346,6 +5346,7 @@ dependencies = [
  "ultar-i18n",
  "ultar-profile",
  "ultar-service",
+ "ultar-sys",
 ]
 
 [[package]]

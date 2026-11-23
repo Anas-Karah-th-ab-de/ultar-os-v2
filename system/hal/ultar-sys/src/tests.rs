@@ -184,3 +184,33 @@ fn the_signal_mask_is_replaced_and_restored() {
     .join()
     .unwrap();
 }
+
+#[test]
+fn uevent_messages_are_parsed_and_foreign_ones_skipped() {
+    use crate::uevent::Uevent;
+    let msg = b"bind@/bus/pci/devices/0000:00:04.0\0ACTION=bind\0DEVPATH=/bus/pci/devices/0000:00:04.0\0SUBSYSTEM=pci\0SEQNUM=17\0DRIVER=gen-intel-eth\0";
+    let event = Uevent::parse(msg).unwrap();
+    assert_eq!(event.action, "bind");
+    assert_eq!(event.devpath, "/bus/pci/devices/0000:00:04.0");
+    assert_eq!(event.subsystem, "pci");
+    assert_eq!(event.seqnum, Some(17));
+    assert_eq!(event.var("DRIVER"), Some("gen-intel-eth"));
+    assert_eq!(event.var("MISSING"), None);
+    // the Linux device manager's re-broadcast and garbage are no kernel events
+    assert_eq!(Uevent::parse(b"libudev\0\xfe\xed\xca\xfe"), None);
+    assert_eq!(Uevent::parse(b""), None);
+    assert_eq!(Uevent::parse(b"\xff\xfe@x\0"), None);
+    let no_seq = Uevent::parse(b"add@/x\0SEQNUM=nope\0broken\0").unwrap();
+    assert_eq!((no_seq.seqnum, no_seq.vars.len()), (None, 1));
+}
+
+#[test]
+fn uevent_socket_opens_or_says_why() {
+    // in a container without netlink the open is refused with an error, never a panic
+    match crate::uevent::UeventSocket::open() {
+        Ok(socket) => assert!(socket
+            .next(Some(std::time::Duration::from_millis(10)))
+            .is_ok()),
+        Err(errno) => assert!(errno.0 > 0),
+    }
+}

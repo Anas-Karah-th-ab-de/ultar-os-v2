@@ -148,6 +148,9 @@ are unmounted, power off or restart.
 
 ## Found on the Ultar kernel (for the kernel agent)
 
+**Fixed in the kernel** (`kernel-process-wakeups.md`): both points below; the `gid` workaround in `start.rs` and
+`inittest` is removed and `init-e2e.sh` requires code 0 for every service.
+
 * **`posix_spawn` parent held until the child ends**: a parent that starts a program the way glibc's
   `posix_spawn` does (`clone` with `CLONE_VM|CLONE_VFORK`, which `std::process::Command` uses whenever it
   can) is released only when the child **exits**, not when it calls `execve`. A short program looks fine; a

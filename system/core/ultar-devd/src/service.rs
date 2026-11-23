@@ -2,13 +2,36 @@
 
 use crate::access::ADMIN_METHODS;
 use crate::daemon::Daemon;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use ultar_bus::messages::device_service::{
     ClearQuarantine, List, Rescan, Rollback, Shutdown, ShutdownReply, Switch, SERVICE,
 };
 use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
 use ultar_service::log::{Level, Record};
 
-/// How often the daemon looks at the kernel's device event counter between requests.
+/// Reads the kernel's device events (netlink, `ultar_sys::uevent`) on a thread of its own and raises
+/// the returned flag for each; `None` when the kernel refuses the socket (then the event counter
+/// file `/sys/kernel/uevent_seqnum` is read instead).
+fn watch_kernel_events() -> Option<Arc<AtomicBool>> {
+    let socket = ultar_sys::uevent::UeventSocket::open().ok()?;
+    let flag = Arc::new(AtomicBool::new(false));
+    let raised = flag.clone();
+    std::thread::Builder::new()
+        .name("uevents".into())
+        .spawn(move || {
+            while let Ok(event) = socket.next(None) {
+                if event.is_some() {
+                    raised.store(true, Ordering::SeqCst);
+                }
+            }
+        })
+        .ok()?;
+    Some(flag)
+}
+
+/// How often the daemon looks for kernel device events between requests (the bus endpoint and the
+/// event socket cannot be waited on together).
 pub const KERNEL_EVENT_POLL: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Whether the daemon keeps serving after a request.
@@ -69,6 +92,7 @@ impl Daemon {
     /// (every [`KERNEL_EVENT_POLL`]) and reads the hardware again when a device came, went
     /// or changed its binding.
     pub fn serve(&mut self, endpoint: &ServiceEndpoint) -> Result<(), BusError> {
+        let events = watch_kernel_events();
         loop {
             match endpoint.recv_timeout(KERNEL_EVENT_POLL) {
                 Ok(request) => {
@@ -78,7 +102,12 @@ impl Daemon {
                     self.note_kernel_events();
                 }
                 Err(BusError::Timeout) => {
-                    if self.kernel_events_pending() {
+                    // the event socket says it without a file read; without it the counter file
+                    let changed = match &events {
+                        Some(flag) => flag.swap(false, Ordering::SeqCst),
+                        None => self.kernel_events_pending(),
+                    };
+                    if changed {
                         let _ = self.rescan(None);
                     }
                 }

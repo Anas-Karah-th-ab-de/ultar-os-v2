@@ -187,7 +187,7 @@ impl AddrSpace {
 
     /// Benutzerseite bei `va` (genullt) bereitstellen; liefert die physische Adresse.
     /// `None`: no memory (limit of the group or the machine) – nothing was mapped at `va`.
-    pub fn map(&mut self, va: u64, writable: bool, exec: bool) -> Option<u64> {
+    pub fn map(&self, va: u64, writable: bool, exec: bool) -> Option<u64> {
         self.map_inner(va, writable, exec)
     }
 
@@ -208,7 +208,7 @@ impl AddrSpace {
         Some(pa)
     }
 
-    pub fn unmap(&mut self, va: u64) {
+    pub fn unmap(&self, va: u64) {
         if let Some(e) = self.walk(va) {
             if *e & P != 0 && *e & OWN != 0 {
                 crate::mem::free_page(*e & ADDR);
@@ -328,7 +328,7 @@ impl AddrSpace {
     /// Kopie für fork(): jede Seite wird kopiert. `None`: no memory for the copy (what was copied
     /// so far is freed again).
     pub fn fork(&self) -> Option<AddrSpace> {
-        let mut n = AddrSpace::new()?;
+        let n = AddrSpace::new()?;
         {
             let from = self.lazy.lock();
             let mut to = crate::mem::try_with_capacity(from.len())?;

@@ -10,6 +10,8 @@
 #       an e1000, driver ABI, uevents, health, rights) and USB hot-plug events (geraete-hotplug.py:
 #       a keyboard added and removed through the QEMU monitor), and ultar-devd binding a driver
 #       package through them (devd-qemu.sh; DEVD=/UDRV= for prebuilt binaries),
+#   5d. wake-ups (weckertest): posix_spawn/vfork release the parent at execve, shutdown/close wake blocked
+#       Unix-socket readers, writers and accept, signalfd in threaded processes,
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK).
@@ -25,14 +27,32 @@ fi
 mcopy -o -i out/ultar-kern-esp.img "$BUSCK" ::/bin/busck
 LOG="${LOG:-$(mktemp)}"
 # a second network card (e1000) is the device the bind/unbind cycle of geraetetest works on
-QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" > "$LOG" 2>&1 || true
+QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" > "$LOG" 2>&1 || true
 fail=0
-for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK"; do
+for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK"; do
   if grep -q "$expect" "$LOG"; then echo "ok    $expect"; else echo "FAIL  $expect"; fail=1; fi
 done
 if grep -qiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=1; fi
 grep -o "\[kern\] bereit nach [0-9]* ms" "$LOG" || true
 [ "$fail" = 0 ] || { tail -40 "$LOG"; exit 1; }
+# Many devices: 57 extra PCI functions (seven multifunction slots, one behind a PCIe root port) and four USB
+# devices make the generated tables larger than a page; geraetetest reads them in pieces. With this device set
+# QEMU 8.2 with one host thread per vCPU (MTTCG) itself crashed (SIGSEGV, exit 139) in about one boot of three at
+# SMP=4 while the guest was in its PCI scan, so this boot runs the vCPUs on one host thread (the guest still
+# has $SMP processors).
+MANY="-device pcie-root-port,id=rp1,chassis=1,slot=1 -device virtio-rng-pci,bus=rp1 -device qemu-xhci,id=xh -netdev user,id=n2 -device e1000,netdev=n2"
+for slot in 10 11 12 13 14 15 16; do for fn in 0 1 2 3 4 5 6 7; do
+  mf=""; [ "$fn" != 0 ] || mf=",multifunction=on"
+  MANY="$MANY -device virtio-rng-pci,addr=0x$slot.$fn$mf"; done; done
+for d in usb-kbd usb-mouse usb-tablet usb-kbd; do MANY="$MANY -device $d,bus=xh.0"; done
+MLOG="${MLOG:-$(mktemp)}"
+QARGS="$MANY -accel tcg,thread=single" SMP="${SMP:-2}" timeout 400 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/geraetetest" > "$MLOG" 2>&1 || true
+big=$(grep -aoE "Tabellen: devices [0-9]+ Bytes" "$MLOG" | grep -oE "[0-9]+" | head -1)
+if grep -aq "GERAETETEST: ALLES OK" "$MLOG" && grep -aq "alle Geräte haben einen Treiber" "$MLOG" && [ "${big:-0}" -gt 4096 ]; then
+  echo "ok    GERAETETEST: ALLES OK with many devices (device table $big bytes, read in pieces)"
+else
+  echo "FAIL  GERAETETEST with many devices (device table ${big:-0} bytes)"; grep -aE "FEHLER|GERAETETEST" "$MLOG" | tail -20; exit 1
+fi
 HLOG="${HLOG:-$(mktemp)}"
 SMP="${SMP:-2}" WAIT=120 timeout 300 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true
 if grep -q "GERAETETEST-USB: ALLES OK" "$HLOG" && ! grep -qiE "kernel panic|PANIK" "$HLOG"; then

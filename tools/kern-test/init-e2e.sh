@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The service manager on the Ultar kernel: ultar-init (not PID 1) starts the shipped logd, bus,
 # settingsd and devd definitions, each as its own user, in their memory groups; inittest checks
-# users, output in the log and a clean shutdown. Verdict line: "INIT: ALLES OK".
+# users, output in the log and a clean shutdown (each service exits 0 on SIGTERM). Verdict line: "INIT: ALLES OK".
 # IMG=<esp image> to use a built kernel image (else scripts/build-kern.sh builds one);
 # INIT_BIN=<dir> with static ultar-init, ultar-busd, ultar-logd, ultar-settingsd, ultar-devd and
 # examples/inittest (else they are built here).
@@ -26,8 +26,11 @@ done
 LOG="${LOG:-$WORK/init-e2e.log}"
 SMP="${SMP:-2}" MEM="${MEM:-1024}" WAIT="${WAIT:-180}" timeout 900 python3 tools/kern-test/qtest.py "$WORK/esp.img" \
   "/bin/inittest --bin /bin --work /tmp/it --groups" > "$LOG" 2>&1 || true
-if grep -q "INIT: ALLES OK" "$LOG" && ! grep -qiE "kernel panic|PANIK" "$LOG"; then
-  echo "ok    INIT: ALLES OK"
+# every service ends with code 0 on SIGTERM (not by its runtime's stop deadline, code 72)
+clean=1
+for s in logd bus settingsd devd; do grep -aqE "exit $s pid=[0-9]+ code=0 " "$LOG" || clean=0; done
+if grep -q "INIT: ALLES OK" "$LOG" && [ "$clean" = 1 ] && ! grep -qiE "kernel panic|PANIK" "$LOG"; then
+  echo "ok    INIT: ALLES OK (every service ended with code 0)"
 else
-  echo "FAIL  INIT"; grep -E "INIT:|ultar-init|refused|exit " "$LOG" | tail -40; exit 1
+  echo "FAIL  INIT"; grep -aE "INIT:|ultar-init|refused|exit " "$LOG" | tail -40; exit 1
 fi

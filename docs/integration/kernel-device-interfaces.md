@@ -126,4 +126,4 @@ configured and registered (`add`), a leaving one and everything behind it (hubs)
 - USB function drivers cannot be bound or unbound individually; a USB disk that leaves keeps its block entry, which
   then fails every access.
 - Hot-plug attach runs in the kernel's polling path (CPU 0) and can take about a second there per new device.
-- ultar-devd polls the event counter instead of reading the netlink socket.
+- ultar-devd reads the netlink socket through `ultar_sys::uevent` (since FIX1); its main loop still wakes once a second.

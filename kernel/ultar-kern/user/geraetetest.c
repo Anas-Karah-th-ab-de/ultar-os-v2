@@ -66,14 +66,41 @@ static const char *slurp(const char *path, char *buf, size_t n) {
     return buf;
 }
 
+/* the whole file, read in pieces of `piece` bytes until end of file (no size assumed); malloc'd, "" if
+ * unreadable – a generated file of the device tree must give the same bytes for every piece size */
+static char *whole(const char *path, size_t piece) {
+    size_t len = 0, cap = 4096;
+    char *b = malloc(cap + 1);
+    int fd = open(path, O_RDONLY);
+    if (!b) return NULL;
+    if (fd >= 0) {
+        for (;;) {
+            if (len + piece > cap) {
+                cap = (len + piece) * 2;
+                char *n = realloc(b, cap + 1);
+                if (!n) break;
+                b = n;
+            }
+            ssize_t k = read(fd, b + len, piece);
+            if (k <= 0) break;
+            len += k;
+        }
+        close(fd);
+    }
+    b[len] = 0;
+    return b;
+}
+
 static int file_is(const char *path, const char *want) {
     char b[256];
     return strcmp(slurp(path, b, sizeof b), want) == 0;
 }
 
 static int file_has(const char *path, const char *part) {
-    static char b[16384];
-    return strstr(slurp(path, b, sizeof b), part) != NULL;
+    char *b = whole(path, 65536);
+    int ok = b && strstr(b, part) != NULL;
+    free(b);
+    return ok;
 }
 
 /* write one control value; returns 0 or -1 with errno */
@@ -119,10 +146,64 @@ static int count_usb_devices(void) {
 }
 
 static int lines(const char *path) {
-    static char b[16384];
+    char *b = whole(path, 65536);
     int n = 0;
-    for (const char *p = slurp(path, b, sizeof b); *p; p++) n += *p == '\n';
+    for (const char *p = b ? b : ""; *p; p++) n += *p == '\n';
+    free(b);
     return n;
+}
+
+/* every generated table gives the same content in 7-byte reads as in one large read (offsets work, no
+ * truncation at a page or a line count) */
+static int pieces_agree(const char *path) {
+    char *a = whole(path, 65536), *b = whole(path, 7);
+    int ok = a && b && a[0] && strcmp(a, b) == 0;
+    free(a);
+    free(b);
+    return ok;
+}
+
+/* the line of driver `name` in the register table (NULL: none) */
+static const char *table_line(const char *table, const char *name) {
+    size_t n = strlen(name);
+    for (const char *l = table; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL)
+        if (strncmp(l, name, n) == 0 && strncmp(l + n, " pci ", 5) == 0) return l;
+    return NULL;
+}
+
+/* every driver directory has its line in /sys/kernel/ultar/drivers, and the line names exactly the
+ * devices linked in the directory, or "-" for none (whatever machine this is) */
+static int register_complete(void) {
+    char *table = whole("/sys/kernel/ultar/drivers", 65536);
+    DIR *d = opendir(PCI "/drivers");
+    struct dirent *e;
+    int ok = table && d;
+    while (ok && (e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        const char *line = table_line(table, e->d_name);
+        const char *end = line ? strchr(line, '\n') : NULL;
+        if (!line || !end) { ok = 0; break; }
+        char dir[160], last[2048];
+        snprintf(dir, sizeof dir, PCI "/drivers/%.60s", e->d_name);
+        snprintf(last, sizeof last, "%.*s", (int)(end - line), line);
+        char *devs = strrchr(last, ' ');
+        int linked = 0;
+        DIR *dd = opendir(dir);
+        struct dirent *x;
+        while (dd && (x = readdir(dd)))
+            if (strncmp(x->d_name, "0000:", 5) == 0) {
+                linked++;
+                if (!devs || !strstr(devs, x->d_name)) ok = 0;
+            }
+        if (dd) closedir(dd);
+        int named = 0;
+        for (const char *c = devs ? devs + 1 : ""; *c; c++) named += *c == ',';
+        named = devs && strcmp(devs, " -") ? named + 1 : 0;
+        if (named != linked) ok = 0;
+    }
+    if (d) closedir(d);
+    free(table);
+    return ok;
 }
 
 /* the value of KEY in a uevent message (keys end with NUL) */
@@ -176,7 +257,15 @@ static void abi_register_list(void) {
     check("Register: virtio-blk, virtio-net, nvme, gen-intel-eth, gen-xhci", in_dir(PCI "/drivers", "virtio-blk") && in_dir(PCI "/drivers", "virtio-net") && in_dir(PCI "/drivers", "nvme") && in_dir(PCI "/drivers", "gen-intel-eth") && in_dir(PCI "/drivers", "gen-xhci"));
     check("Register: Herkunft werkstatt / hand", file_is(PCI "/drivers/gen-intel-eth/ultar_origin", "werkstatt\n") && file_is(PCI "/drivers/virtio-blk/ultar_origin", "hand\n"));
     check("Register: Abbau unterstützt (gen-intel-eth) / nicht (virtio-blk) – sagt warum", file_is(PCI "/drivers/gen-intel-eth/ultar_unbind", "supported\n") && file_has(PCI "/drivers/virtio-blk/ultar_unbind", "unsupported: "));
-    check("Register: /sys/kernel/ultar/drivers nennt jeden Treiber", lines("/sys/kernel/ultar/drivers") >= count_dir(PCI "/drivers") && file_has("/sys/kernel/ultar/drivers", "virtio-blk pci hand 1 unsupported 0000:"));
+    check("Register: /sys/kernel/ultar/drivers nennt jeden Treiber mit genau seinen Geräten", lines("/sys/kernel/ultar/drivers") >= count_dir(PCI "/drivers") && register_complete());
+    int agree = 1;
+    const char *tables[] = {"/sys/kernel/ultar/devices", "/sys/kernel/ultar/drivers", "/sys/kernel/ultar/uevents", "/sys/kernel/ultar/driver_abi", "/sys/kernel/uevent_seqnum"};
+    for (unsigned i = 0; i < sizeof tables / sizeof *tables; i++) agree &= pieces_agree(tables[i]);
+    check("Tabellen: in 7-Byte-Stücken gelesen gleich wie am Stück (Versatz, nichts abgeschnitten)", agree);
+    char *dt = whole("/sys/kernel/ultar/devices", 65536), *rt = whole("/sys/kernel/ultar/drivers", 65536);
+    say("--     Tabellen: devices %zu Bytes (%d Zeilen), drivers %zu Bytes\n", dt ? strlen(dt) : 0, lines("/sys/kernel/ultar/devices"), rt ? strlen(rt) : 0);
+    free(dt);
+    free(rt);
     check("Register: Bindedateien bind/unbind (wie Linux)", in_dir(PCI "/drivers/gen-intel-eth", "bind") && in_dir(PCI "/drivers/gen-intel-eth", "unbind"));
     check("Ereignisse: /sys/kernel/uevent_seqnum lesbar", slurp("/sys/kernel/uevent_seqnum", b, sizeof b)[0] >= '0');
 }

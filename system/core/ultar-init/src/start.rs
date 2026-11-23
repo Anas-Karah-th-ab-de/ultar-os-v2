@@ -7,7 +7,6 @@ use crate::spec::{ServiceSpec, ALL_RIGHTS};
 use crate::unit::{OutputPipe, ReadyPipe, Run};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
@@ -248,11 +247,8 @@ fn spawn(
     } else {
         None
     };
-    // Set explicitly (to init's own group) so that `std` forks instead of
-    // using `posix_spawn`: the Ultar kernel releases the parent of a
-    // `vfork`-style clone only when the child ends, not at `execve` – init
-    // would wait for the service to end. The launcher sets the real ids.
-    launcher.gid(ultar_sys::egid());
+    // `std` may start the launcher with `posix_spawn` (vfork + execve): the
+    // kernel lets init go on at the launcher's `execve` (weckertest checks it).
     let child = launcher.spawn().map_err(|e| error("spawn", e))?;
     // The launcher is reaped by `waitpid(-1)` in the main loop; the handle
     // only holds the id.
