@@ -3170,6 +3170,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("ultar-flow-{}", std::process::id()));
         std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        std::env::set_var("ULTAR_OBERFLAECHE", "handy");
         std::env::set_var("ULTAR_MEDIA", &root);
         std::env::set_var("ULTAR_DATA", root.join("ultar"));
         let (tx, _rx) = std::sync::mpsc::channel();

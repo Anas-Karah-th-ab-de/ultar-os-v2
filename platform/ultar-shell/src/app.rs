@@ -5793,6 +5793,8 @@ mod flow_tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        // phone flows: the build machine must not pick the desktop surface by its own hardware
+        std::env::set_var("ULTAR_OBERFLAECHE", "handy");
         std::env::set_var("ULTAR_MEDIA", &root);
         std::env::set_var("ULTAR_DATA", root.join("ultar"));
         let (tx, _rx) = std::sync::mpsc::channel();
@@ -6057,6 +6059,8 @@ mod flow_tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        // phone flows: the build machine must not pick the desktop surface by its own hardware
+        std::env::set_var("ULTAR_OBERFLAECHE", "handy");
         std::env::set_var("ULTAR_MEDIA", &root);
         std::env::set_var("ULTAR_DATA", root.join("ultar"));
         let p = |n: &str| root.join(n).to_string_lossy().into_owned();
@@ -6191,6 +6195,8 @@ mod flow_tests {
         std::fs::create_dir_all(root.join("models")).unwrap();
         std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        // phone flows: the build machine must not pick the desktop surface by its own hardware
+        std::env::set_var("ULTAR_OBERFLAECHE", "handy");
         std::env::set_var("ULTAR_MEDIA", &root);
         std::env::set_var("ULTAR_DATA", root.join("ultar"));
         // ein Bild-Modell „installiert" (Projektor-Datei vorhanden)
