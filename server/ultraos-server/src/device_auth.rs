@@ -25,8 +25,11 @@ pub struct DeviceConfig {
     pub server_name: String,
     /// Most devices in use per account.
     pub max_devices: u32,
-    /// Seconds between the start of a lost-device recovery and the earliest finish.
+    /// Seconds between the start of a lost-device recovery and the earliest finish; also the
+    /// time after which a device added without approval may manage other devices.
     pub recovery_cooldown_secs: i64,
+    /// Failed password checks allowed per account within 15 minutes.
+    pub password_failures: u32,
 }
 
 impl Default for DeviceConfig {
@@ -35,6 +38,7 @@ impl Default for DeviceConfig {
             server_name: DEFAULT_SERVER_NAME.to_string(),
             max_devices: DEFAULT_MAX_DEVICES,
             recovery_cooldown_secs: DEFAULT_RECOVERY_COOLDOWN_SECS,
+            password_failures: crate::pwguard::DEFAULT_MAX_FAILURES,
         }
     }
 }
@@ -66,10 +70,20 @@ pub fn parse_cooldown(text: &str) -> Option<i64> {
         .filter(|n| (MIN_RECOVERY_COOLDOWN_SECS..=365 * 86_400).contains(n))
 }
 
+/// Parses the failed-password budget (1 to 1000).
+pub fn parse_password_failures(text: &str) -> Option<u32> {
+    text.trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|n| (1..=1000).contains(n))
+}
+
 /// Shared state of device authentication.
 pub struct DeviceAuth {
     /// Pending challenges.
     pub challenges: ChallengeStore,
+    /// Failed-password budgets per account.
+    pub passwords: crate::pwguard::PasswordGuard,
     /// Settings.
     pub config: DeviceConfig,
     clock: Arc<dyn Clock>,
@@ -84,6 +98,7 @@ impl DeviceAuth {
         let wall_base = crate::db::now() - i64::try_from(base_ms / 1000).unwrap_or(0);
         Self {
             challenges: ChallengeStore::default(),
+            passwords: crate::pwguard::PasswordGuard::new(config.password_failures),
             config,
             clock,
             wall_base,
@@ -105,6 +120,7 @@ impl DeviceAuth {
     pub fn limits(&self) -> Limits {
         Limits {
             max_devices: i64::from(self.config.max_devices),
+            cooldown_secs: self.config.recovery_cooldown_secs,
         }
     }
 }
@@ -152,6 +168,10 @@ mod tests {
         assert_eq!(parse_max_devices(" 100 "), Some(100));
         for bad in ["0", "101", "-1", "x", ""] {
             assert_eq!(parse_max_devices(bad), None, "{bad}");
+        }
+        assert_eq!(parse_password_failures("10"), Some(10));
+        for bad in ["0", "1001", "x"] {
+            assert_eq!(parse_password_failures(bad), None, "{bad}");
         }
         assert_eq!(parse_cooldown("3600"), Some(3600));
         assert_eq!(parse_cooldown("259200"), Some(259_200));

@@ -75,6 +75,18 @@ pub enum ApiError {
     },
     /// Another recovery is pending for the account.
     RecoveryPending,
+    /// The device was added without approval and may not manage other devices yet.
+    DeviceNotApproved {
+        /// Seconds until it may, without approval.
+        retry_after_secs: u64,
+    },
+    /// A registration from before device keys cannot be recovered yet.
+    RecoveryLocked {
+        /// Seconds until a recovery can be started.
+        retry_after_secs: u64,
+    },
+    /// The request was not complete in time.
+    RequestTimeout,
     /// There is no matching recovery.
     RecoveryUnknown,
     /// VPN: the internal address pool is used up.
@@ -113,6 +125,9 @@ impl ApiError {
             ApiError::LegacyNotEligible => "legacy_not_eligible",
             ApiError::CooldownActive { .. } => "cooldown_active",
             ApiError::RecoveryPending => "recovery_pending",
+            ApiError::DeviceNotApproved { .. } => "device_not_approved",
+            ApiError::RecoveryLocked { .. } => "recovery_locked",
+            ApiError::RequestTimeout => "request_timeout",
             ApiError::RecoveryUnknown => "recovery_unknown",
             ApiError::VpnPoolExhausted => "vpn_pool_exhausted",
             ApiError::Internal => "internal",
@@ -125,7 +140,10 @@ impl ApiError {
             ApiError::AuthRequired | ApiError::InvalidCredentials | ApiError::SignatureInvalid => {
                 StatusCode::UNAUTHORIZED
             }
-            ApiError::NotEntitled | ApiError::LegacyNotEligible => StatusCode::FORBIDDEN,
+            ApiError::NotEntitled
+            | ApiError::LegacyNotEligible
+            | ApiError::DeviceNotApproved { .. } => StatusCode::FORBIDDEN,
+            ApiError::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
             ApiError::NotFound | ApiError::DeviceUnknown | ApiError::RecoveryUnknown => {
                 StatusCode::NOT_FOUND
             }
@@ -143,6 +161,7 @@ impl ApiError {
             ApiError::DeviceLimit
             | ApiError::DeviceQuotaExhausted
             | ApiError::CooldownActive { .. }
+            | ApiError::RecoveryLocked { .. }
             | ApiError::RecoveryPending => StatusCode::CONFLICT,
             ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             ApiError::RangeNotSatisfiable { .. } => StatusCode::RANGE_NOT_SATISFIABLE,
@@ -207,6 +226,8 @@ impl From<crate::devices::DeviceError> for ApiError {
             D::RecoveryPending => ApiError::RecoveryPending,
             D::RecoveryUnknown => ApiError::RecoveryUnknown,
             D::CooldownActive { retry_after_secs } => ApiError::CooldownActive { retry_after_secs },
+            D::NotApproved { retry_after_secs } => ApiError::DeviceNotApproved { retry_after_secs },
+            D::RecoveryLocked { retry_after_secs } => ApiError::RecoveryLocked { retry_after_secs },
             D::NumbersExhausted => {
                 tracing::error!(event = "numbers_exhausted");
                 ApiError::Internal
@@ -225,6 +246,8 @@ impl IntoResponse for ApiError {
         match self {
             ApiError::RateLimited { retry_after_secs }
             | ApiError::ChallengeCapacity { retry_after_secs }
+            | ApiError::DeviceNotApproved { retry_after_secs }
+            | ApiError::RecoveryLocked { retry_after_secs }
             | ApiError::CooldownActive { retry_after_secs } => {
                 headers.insert(header::RETRY_AFTER, HeaderValue::from(retry_after_secs));
             }
@@ -246,7 +269,14 @@ impl IntoResponse for ApiError {
 mod tests {
     use super::*;
 
-    const ALL: [ApiError; 29] = [
+    const ALL: [ApiError; 32] = [
+        ApiError::DeviceNotApproved {
+            retry_after_secs: 2,
+        },
+        ApiError::RecoveryLocked {
+            retry_after_secs: 2,
+        },
+        ApiError::RequestTimeout,
         ApiError::ChallengeUnknown,
         ApiError::ChallengeUsed,
         ApiError::ChallengeExpired,
@@ -338,10 +368,8 @@ mod tests {
     }
 
     #[test]
-    fn device_errors_map_to_their_codes() {
+    fn challenge_errors_map_to_their_codes() {
         use crate::challenge::ChallengeError as C;
-        use crate::devices::DeviceError as D;
-        use crate::identity::PopError as P;
         let code = |e: ApiError| e.code();
         assert_eq!(code(C::Unknown.into()), "challenge_unknown");
         assert_eq!(code(C::Used.into()), "challenge_used");
@@ -359,6 +387,13 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("4")
         );
+    }
+
+    #[test]
+    fn proof_and_device_errors_map_to_their_codes() {
+        use crate::devices::DeviceError as D;
+        use crate::identity::PopError as P;
+        let code = |e: ApiError| e.code();
         assert_eq!(code(P::BadSignature.into()), "signature_invalid");
         for malformed in [P::MalformedKey, P::WeakKey, P::MalformedSignature] {
             assert_eq!(code(malformed.into()), "invalid_request");
@@ -373,6 +408,18 @@ mod tests {
             (D::InvalidName, "invalid_request"),
             (D::RecoveryPending, "recovery_pending"),
             (D::RecoveryUnknown, "recovery_unknown"),
+            (
+                D::NotApproved {
+                    retry_after_secs: 1,
+                },
+                "device_not_approved",
+            ),
+            (
+                D::RecoveryLocked {
+                    retry_after_secs: 1,
+                },
+                "recovery_locked",
+            ),
             (D::NumbersExhausted, "internal"),
             (D::Db(rusqlite::Error::QueryReturnedNoRows), "internal"),
         ] {

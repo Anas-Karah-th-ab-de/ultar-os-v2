@@ -2,7 +2,11 @@ use super::*;
 use crate::db::Db;
 use ed25519_dalek::SigningKey;
 
-const LIMITS: Limits = Limits { max_devices: 3 };
+const COOLDOWN: i64 = 1000;
+const LIMITS: Limits = Limits {
+    max_devices: 3,
+    cooldown_secs: COOLDOWN,
+};
 
 fn db() -> Db {
     let db = Db::open(":memory:").unwrap();
@@ -36,7 +40,7 @@ fn registration_assigns_one_number_per_key_and_is_idempotent() {
     );
     let second = register(&mut conn, 1, &key(2), "", 1000, LIMITS).unwrap();
     assert_ne!(second.number, first.number);
-    let listed = list(&conn, 1).unwrap();
+    let listed = list(&conn, 1, 0, COOLDOWN).unwrap();
     assert_eq!(listed.len(), 2);
     assert_eq!(
         listed[0].name, "Phone",
@@ -55,7 +59,7 @@ fn a_key_belongs_to_one_account() {
         register(&mut conn, 2, &key(1), "", 0, LIMITS),
         Err(DeviceError::Taken)
     ));
-    assert!(list(&conn, 2).unwrap().is_empty());
+    assert!(list(&conn, 2, 0, COOLDOWN).unwrap().is_empty());
     let quota: i64 = conn
         .query_row(
             "SELECT device_quota_used FROM accounts WHERE id=2",
@@ -89,7 +93,10 @@ fn device_limit_counts_devices_in_use_only() {
 fn lifetime_quota_stops_register_remove_loops() {
     let db = db();
     let mut conn = db.lock();
-    let limits = Limits { max_devices: 1 };
+    let limits = Limits {
+        max_devices: 1,
+        cooldown_secs: COOLDOWN,
+    };
     assert_eq!(limits.quota(), 10);
     for seed in 1..=10u8 {
         let done = register(&mut conn, 1, &key(seed), "", 0, limits).unwrap();
@@ -135,7 +142,7 @@ fn removal_retires_key_and_number_for_good() {
     let row = by_id(&conn, &done.device_id).unwrap().unwrap();
     assert_eq!((row.state, row.epoch), (DeviceState::Removed, 1));
     assert_eq!(number_of(&conn, row.row).unwrap(), None);
-    assert!(list(&conn, 1).unwrap().is_empty());
+    assert!(list(&conn, 1, 0, COOLDOWN).unwrap().is_empty());
     // Another account's device cannot be removed or renamed.
     let other = register(&mut conn, 2, &key(2), "", 0, LIMITS).unwrap();
     assert!(matches!(
@@ -188,7 +195,7 @@ fn names_are_validated_and_renaming_works() {
     let mut conn = db.lock();
     let done = register(&mut conn, 1, &key(1), "", 0, LIMITS).unwrap();
     rename(&conn, 1, &done.device_id, "  هاتف أنس  ").unwrap();
-    assert_eq!(list(&conn, 1).unwrap()[0].name, "هاتف أنس");
+    assert_eq!(list(&conn, 1, 0, COOLDOWN).unwrap()[0].name, "هاتف أنس");
     let long = "x".repeat(MAX_NAME_CHARS + 1);
     for bad in ["a\nb", "tab\there", long.as_str(), "nul\0"] {
         assert!(matches!(
@@ -212,7 +219,7 @@ fn last_seen_is_stored_as_a_day_and_written_once_per_day() {
     let mut conn = db.lock();
     let t0 = 1_800_000_000 + 4321;
     let done = register(&mut conn, 1, &key(1), "", t0, LIMITS).unwrap();
-    let seen = |conn: &Connection| list(conn, 1).unwrap()[0].last_seen;
+    let seen = |conn: &Connection| list(conn, 1, 0, COOLDOWN).unwrap()[0].last_seen;
     assert_eq!(seen(&conn), day_of(t0));
     assert_eq!(seen(&conn) % DAY_SECS, 0);
     touch(&conn, done.device_row, t0 + 3600).unwrap();
@@ -221,7 +228,7 @@ fn last_seen_is_stored_as_a_day_and_written_once_per_day() {
     assert_eq!(seen(&conn), day_of(t0) + DAY_SECS);
     touch(&conn, done.device_row, t0).unwrap();
     assert_eq!(seen(&conn), day_of(t0) + DAY_SECS, "never moves back");
-    assert_eq!(list(&conn, 1).unwrap()[0].added % DAY_SECS, 0);
+    assert_eq!(list(&conn, 1, 0, COOLDOWN).unwrap()[0].added % DAY_SECS, 0);
     assert_eq!(day_of(-1), -DAY_SECS);
 }
 
@@ -277,4 +284,59 @@ fn states_round_trip_and_unknown_codes_fail_closed() {
     .to_string()
     .contains('5'));
     assert!(std::error::Error::source(&DeviceError::Limit).is_none());
+}
+
+#[test]
+fn only_the_first_device_manages_at_once_others_need_approval_or_time() {
+    let db = db();
+    let mut conn = db.lock();
+    let first = register(&mut conn, 1, &key(1), "", 0, LIMITS).unwrap();
+    let second = register(&mut conn, 1, &key(2), "", 100, LIMITS).unwrap();
+    assert_eq!((first.manage_in, second.manage_in), (0, COOLDOWN));
+    let row = |conn: &Connection, id: &str| by_id(conn, id).unwrap().unwrap();
+    let added = row(&conn, &second.device_id);
+    assert_eq!(added.manage_in(600, COOLDOWN), Some(500));
+    assert!(matches!(
+        added.require_manager(600, COOLDOWN),
+        Err(DeviceError::NotApproved {
+            retry_after_secs: 500
+        })
+    ));
+    assert!(
+        added.require_manager(1100, COOLDOWN).is_ok(),
+        "after the cool-down"
+    );
+    // Registering again does not shorten or restart the wait.
+    let again = register(&mut conn, 1, &key(2), "", 600, LIMITS).unwrap();
+    assert_eq!(again.manage_in, 500);
+    let listed = list(&conn, 1, 600, COOLDOWN).unwrap();
+    assert_eq!(
+        (listed[0].manage_in, listed[1].manage_in),
+        (Some(0), Some(500))
+    );
+    // An unapproved device cannot approve; a managing one can, and only inside its account.
+    let third = register(&mut conn, 1, &key(3), "", 100, LIMITS).unwrap();
+    assert!(matches!(
+        approve(&mut conn, &added, &third.device_id, 600, COOLDOWN),
+        Err(DeviceError::NotApproved { .. })
+    ));
+    let manager = row(&conn, &first.device_id);
+    let foreign = register(&mut conn, 2, &key(9), "", 0, LIMITS).unwrap();
+    assert!(matches!(
+        approve(&mut conn, &manager, &foreign.device_id, 600, COOLDOWN),
+        Err(DeviceError::Unknown)
+    ));
+    approve(&mut conn, &manager, &second.device_id, 600, COOLDOWN).unwrap();
+    assert_eq!(
+        row(&conn, &second.device_id).manage_in(600, COOLDOWN),
+        Some(0)
+    );
+    // A removed device manages nothing, and a removed approver approves nothing.
+    remove(&mut conn, 1, &first.device_id, 700).unwrap();
+    assert_eq!(row(&conn, &first.device_id).manage_in(700, COOLDOWN), None);
+    assert!(matches!(
+        approve(&mut conn, &manager, &third.device_id, 700, COOLDOWN),
+        Err(DeviceError::Unknown)
+    ));
+    assert_eq!(by_row(&conn, 9999).unwrap(), None);
 }

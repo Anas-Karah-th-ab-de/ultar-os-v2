@@ -16,6 +16,9 @@ use std::sync::Arc;
 
 /// Longest accepted request target (path and query) in bytes.
 pub const MAX_URI_BYTES: usize = 2048;
+/// Time a request has from its head to the handler's answer (body upload and password hashing
+/// included). Downloads and WebSockets are not cut: their answer starts within this time.
+pub const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Largest accepted request body in bytes (all bodies are small JSON documents).
 pub const MAX_BODY_BYTES: usize = 16 * 1024;
 
@@ -73,11 +76,19 @@ impl ProxyNet {
     }
 }
 
+/// Paths that create an account or check a password: the strict class.
+const AUTH_PATHS: [&str; 4] = [
+    "/v1/account/register",
+    "/v1/account/login",
+    "/v1/account/password",
+    "/v1/device/recover/start",
+];
+
 /// The limit class a path is charged to; `None` for paths that are never limited.
 pub fn class_for(path: &str) -> Option<LimitClass> {
     if path == "/v1/health" {
         None
-    } else if path == "/v1/account/register" || path == "/v1/account/login" {
+    } else if AUTH_PATHS.contains(&path) {
         Some(LimitClass::Auth)
     } else if path.starts_with("/v1/update/file/") || path.ends_with("/download") {
         Some(LimitClass::Download)
@@ -141,7 +152,10 @@ pub async fn guard(
             return ApiError::RateLimited { retry_after_secs }.into_response();
         }
     }
-    let response = next.run(request).await;
+    let response = match tokio::time::timeout(REQUEST_TIMEOUT, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => ApiError::RequestTimeout.into_response(),
+    };
     // Paths hold app ids and release ids only; the query string (search terms) is left out.
     let logged_path: String = path.chars().take(160).collect();
     tracing::info!(
@@ -208,6 +222,15 @@ mod tests {
         assert_eq!(class_for("/v1/health"), None);
         assert_eq!(class_for("/v1/account/login"), Some(LimitClass::Auth));
         assert_eq!(class_for("/v1/account/register"), Some(LimitClass::Auth));
+        assert_eq!(class_for("/v1/account/password"), Some(LimitClass::Auth));
+        assert_eq!(
+            class_for("/v1/device/recover/start"),
+            Some(LimitClass::Auth)
+        );
+        assert_eq!(
+            class_for("/v1/device/recover/finish"),
+            Some(LimitClass::General)
+        );
         assert_eq!(
             class_for("/v1/account/entitlements"),
             Some(LimitClass::General)

@@ -101,6 +101,17 @@ pub(crate) fn apply(tx: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Schema version 3: a device added to an account that already has devices manages other
+/// devices only after approval or after the cool-down since its key was bound.
+///
+/// * `devices.approved` – 1 when the device may manage other devices at once. Rows that exist
+///   when this migration runs keep their rights (default 1).
+/// * `devices.key_since` – time the current key was bound (0 for rows from before).
+pub(crate) fn apply_v3(tx: &Transaction<'_>) -> rusqlite::Result<()> {
+    add_column(tx, "devices", "approved", "INTEGER NOT NULL DEFAULT 1")?;
+    add_column(tx, "devices", "key_since", "INTEGER NOT NULL DEFAULT 0")
+}
+
 #[cfg(test)]
 mod tests {
     use crate::migrate::{run, LATEST};
@@ -233,6 +244,8 @@ mod tests {
         for (table, column) in [
             ("devices", "public_key"),
             ("devices", "last_seen"),
+            ("devices", "approved"),
+            ("devices", "key_since"),
             ("numbers", "device_row"),
             ("accounts", "token_epoch"),
             ("accounts", "device_quota_used"),

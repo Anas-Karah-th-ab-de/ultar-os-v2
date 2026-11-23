@@ -28,6 +28,8 @@ pub enum EventKind {
     RecoveryFinished,
     /// The account password was changed.
     PasswordChanged,
+    /// A managing device gave an added device its management rights.
+    DeviceApproved,
 }
 
 impl EventKind {
@@ -42,6 +44,7 @@ impl EventKind {
             EventKind::RecoveryCancelled => "recovery_cancelled",
             EventKind::RecoveryFinished => "recovery_finished",
             EventKind::PasswordChanged => "password_changed",
+            EventKind::DeviceApproved => "device_approved",
         }
     }
 }
@@ -59,7 +62,9 @@ pub struct Event {
     pub at: i64,
 }
 
-/// Appends a notice and drops all but the newest [`MAX_EVENTS`] of the account.
+/// Appends a notice and drops all but the newest [`MAX_EVENTS`] of the account. The notice of a
+/// recovery that is still pending is never dropped, however many notices follow it: whoever
+/// started the recovery cannot push it out of the list.
 pub fn push(
     conn: &Connection,
     account_id: i64,
@@ -78,7 +83,11 @@ pub fn push(
     )?;
     conn.execute(
         "DELETE FROM device_events WHERE account_id=?1 AND id NOT IN
-           (SELECT id FROM device_events WHERE account_id=?1 ORDER BY id DESC LIMIT ?2)",
+           (SELECT id FROM device_events WHERE account_id=?1 ORDER BY id DESC LIMIT ?2)
+           AND NOT (kind='recovery_started'
+                    AND EXISTS (SELECT 1 FROM device_recoveries r WHERE r.account_id=?1)
+                    AND id = (SELECT MAX(id) FROM device_events
+                              WHERE account_id=?1 AND kind='recovery_started'))",
         rusqlite::params![account_id, MAX_EVENTS],
     )?;
     Ok(())
@@ -90,7 +99,8 @@ pub fn after(conn: &Connection, account_id: i64, after: i64) -> rusqlite::Result
         "SELECT id, kind, device, ts FROM device_events
          WHERE account_id=?1 AND id>?2 ORDER BY id LIMIT ?3",
     )?;
-    let rows = stmt.query_map(rusqlite::params![account_id, after, MAX_EVENTS], |r| {
+    // One more than the cap: the protected notice of a pending recovery may be kept on top.
+    let rows = stmt.query_map(rusqlite::params![account_id, after, MAX_EVENTS + 1], |r| {
         Ok(Event {
             id: r.get(0)?,
             kind: r.get(1)?,
@@ -131,6 +141,30 @@ mod tests {
     }
 
     #[test]
+    fn the_notice_of_a_pending_recovery_survives_any_number_of_later_notices() {
+        let db = Db::open(":memory:").unwrap();
+        let conn = db.lock();
+        conn.execute_batch(
+            "INSERT INTO accounts(id, username, pw_hash, created) VALUES(1,'a','h',0);
+             INSERT INTO device_recoveries VALUES(1, 5, x'00', 0, 10, 20);",
+        )
+        .unwrap();
+        push(&conn, 1, EventKind::RecoveryStarted, "lostdevice", 1).unwrap();
+        for i in 0..(3 * MAX_EVENTS) {
+            push(&conn, 1, EventKind::DeviceAdded, "throwaway", 2 + i).unwrap();
+        }
+        let list = after(&conn, 1, 0).unwrap();
+        assert_eq!(list.len() as i64, MAX_EVENTS + 1);
+        assert_eq!(list[0].kind, "recovery_started");
+        // Once the recovery is over, the notice ages out like any other.
+        conn.execute("DELETE FROM device_recoveries", []).unwrap();
+        push(&conn, 1, EventKind::DeviceAdded, "throwaway", 999).unwrap();
+        let list = after(&conn, 1, 0).unwrap();
+        assert_eq!(list.len() as i64, MAX_EVENTS);
+        assert!(list.iter().all(|e| e.kind != "recovery_started"));
+    }
+
+    #[test]
     fn event_names_are_distinct() {
         let all = [
             EventKind::DeviceAdded,
@@ -141,6 +175,7 @@ mod tests {
             EventKind::RecoveryCancelled,
             EventKind::RecoveryFinished,
             EventKind::PasswordChanged,
+            EventKind::DeviceApproved,
         ];
         let names: std::collections::HashSet<_> = all.iter().map(|k| k.as_str()).collect();
         assert_eq!(names.len(), all.len());

@@ -57,6 +57,37 @@ cloud.device.recovery_unknown = There is no device replacement waiting.
 cloud.device.server_mismatch = The security check named another server or account. Nothing was signed.
 cloud.device.key_unusable = The device key cannot be used. It was not changed.
 cloud.device.not_registered = This device is not registered yet.
+cloud.device.not_approved = {seconds ->
+    [one] This device was added recently. It can manage your other devices in {seconds} second, or at once when one of them approves it.
+   *[other] This device was added recently. It can manage your other devices in {seconds} seconds, or at once when one of them approves it.
+}
+cloud.device.recovery_locked = {seconds ->
+    [one] This earlier registration cannot be replaced yet. Update that device, or try again in {seconds} second.
+   *[other] This earlier registration cannot be replaced yet. Update that device, or try again in {seconds} seconds.
+}
+cloud.device.approved = The device was approved.
+cloud.device.state.waiting = added recently – cannot manage other devices yet
+
+# Security alerts
+cloud.alert.title = Security alert
+cloud.alert.recovery_pending = {hours ->
+    [0] Someone with your password asked to move the number of device {device} to another device. It can be moved now.
+    [one] Someone with your password asked to move the number of device {device} to another device. It can be moved in {hours} hour.
+   *[other] Someone with your password asked to move the number of device {device} to another device. It can be moved in {hours} hours.
+}
+cloud.alert.not_me = This was not me – stop it
+cloud.alert.recovery_cancelled = The move of the number was stopped. Change your password now.
+cloud.alert.cannot_cancel = This device was added recently and cannot stop it. Use one of your other devices, or change your password.
+cloud.alert.none = Nothing to report.
+cloud.alert.event.device_added = A device was added to your account: {device}
+cloud.alert.event.device_removed = A device was removed from your account: {device}
+cloud.alert.event.device_replaced = A number was moved to a new device: {device}
+cloud.alert.event.device_upgraded = An earlier registration was taken over by device {device}
+cloud.alert.event.device_approved = A device was approved to manage your devices: {device}
+cloud.alert.event.recovery_started = A request to move the number of device {device} was made with your password.
+cloud.alert.event.recovery_cancelled = A request to move a number was stopped.
+cloud.alert.event.recovery_finished = A number was moved to device {device} after the waiting time.
+cloud.alert.event.password_changed = The password of your account was changed.
 cloud.device.state.active = registered
 cloud.device.state.legacy = registered before device keys – update this device
 cloud.device.this_device = this device
@@ -73,4 +104,4 @@ cloud.cli.server = Server: {server}
 cloud.cli.account.signed_in = Account: signed in
 cloud.cli.account.signed_out = Account: signed out (store and updates work without an account)
 cloud.cli.unknown_command = Unknown command: {command}
-cloud.cli.usage = Usage: ucloud register|login <user> <password> · number · devices · device-rename <id> <name> · device-remove <id> · device-reset · vpn · store [search] · app <id> · install <id> · update [channel] · whoami
+cloud.cli.usage = Usage: ucloud register|login <user> [--password-file <file>] (password on standard input) · number · devices · device-rename <id> <name> · device-remove <id> · device-approve <id> · device-reset · alerts · not-me · vpn · store [search] · app <id> · install <id> · update [channel] · whoami

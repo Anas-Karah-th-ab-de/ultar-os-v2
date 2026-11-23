@@ -30,8 +30,12 @@ pub enum Purpose {
     ReplaceOld,
     /// Replacement, signed by the new device.
     ReplaceNew,
-    /// Replacement of a lost device, signed by the new device.
-    Recover,
+    /// Start of the replacement of a lost device, signed by the new device.
+    RecoverStart,
+    /// End of the replacement of a lost device, signed by the new device.
+    RecoverFinish,
+    /// This device grants management rights to a newly added device.
+    Approve,
 }
 
 impl Purpose {
@@ -44,7 +48,9 @@ impl Purpose {
             Purpose::Upgrade => "ultar-device-upgrade-v1",
             Purpose::ReplaceOld => "ultar-device-replace-old-v1",
             Purpose::ReplaceNew => "ultar-device-replace-new-v1",
-            Purpose::Recover => "ultar-device-recover-v1",
+            Purpose::RecoverStart => "ultar-device-recover-v1",
+            Purpose::RecoverFinish => "ultar-device-recover-finish-v1",
+            Purpose::Approve => "ultar-device-approve-v1",
         }
     }
 }
@@ -240,7 +246,9 @@ mod tests {
             Purpose::Upgrade,
             Purpose::ReplaceOld,
             Purpose::ReplaceNew,
-            Purpose::Recover,
+            Purpose::RecoverStart,
+            Purpose::RecoverFinish,
+            Purpose::Approve,
         ];
         let labels: std::collections::HashSet<_> = all.iter().map(|p| p.label()).collect();
         assert_eq!(labels.len(), all.len());

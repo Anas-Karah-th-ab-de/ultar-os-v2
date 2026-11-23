@@ -216,7 +216,17 @@ fn copy_checked(
     } else {
         UNKNOWN_SIZE_CAP
     };
-    let mut file = std::fs::File::create(part)?;
+    // Never through an existing name: a left-over or planted `.part` (file or link) is unlinked,
+    // then the file is created exclusively.
+    match std::fs::remove_file(part) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(part)?;
     let mut hasher = Sha256::new();
     let mut total = 0u64;
     let mut buf = vec![0u8; CHUNK];
@@ -242,36 +252,115 @@ fn copy_checked(
     Ok(())
 }
 
-/// Writes a small file atomically (temporary file, flush, rename). With `private`, the file is
-/// readable by its owner only (tokens, keys).
+/// Age after which a left-over temporary file of an interrupted write is removed.
+const STALE_TEMP_SECS: u64 = 60;
+
+/// A name for a temporary file next to `path` that nobody can predict: `<name>.new.<16 hex>`.
+pub(crate) fn fresh_temp_path(path: &Path) -> std::io::Result<PathBuf> {
+    use rand_core::RngCore;
+    let mut nonce = [0u8; 8];
+    rand_core::OsRng
+        .try_fill_bytes(&mut nonce)
+        .map_err(|_| std::io::Error::other("no random bytes"))?;
+    let mut name = path.as_os_str().to_os_string();
+    name.push(format!(".new.{}", hex::encode(nonce)));
+    Ok(PathBuf::from(name))
+}
+
+/// Removes temporary files of `path` (`<name>.new.<hex>`) that an interrupted write left behind
+/// more than a minute ago. Younger ones may belong to a writer that is at work right now.
+pub(crate) fn remove_stale_temps(path: &Path) {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|n| n.to_str())) else {
+        return;
+    };
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    let prefix = format!("{name}.new.");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let is_temp = file_name
+            .to_str()
+            .and_then(|n| n.strip_prefix(prefix.as_str()))
+            .is_some_and(|rest| rest.len() == 16 && rest.bytes().all(|b| b.is_ascii_hexdigit()));
+        let old = std::fs::symlink_metadata(entry.path())
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() >= STALE_TEMP_SECS);
+        if is_temp && old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Creates the directory of a private file if it is missing (mode 0700) and refuses a directory
+/// that others may write to: whoever can create names there could swap the file.
+#[cfg(unix)]
+fn private_parent(parent: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    if !parent.exists() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)?;
+    }
+    let mode = std::fs::metadata(parent)?.permissions().mode();
+    if mode & 0o022 != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "directory of a private file is writable by others",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn private_parent(parent: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(parent)
+}
+
+/// Writes a small file atomically and durably: a temporary file with an unpredictable name is
+/// created exclusively (never through an existing name or link), written, flushed and renamed
+/// over `path`; then the directory is flushed. With `private`, the file is readable by its owner
+/// only (tokens, state), a missing directory is created with mode 0700, and a directory that is
+/// writable by group or others is refused.
 pub fn write_atomic(path: &Path, content: &[u8], private: bool) -> std::io::Result<()> {
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = part_path(path);
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    if private {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let written = options.open(&tmp).and_then(|mut file| {
-        #[cfg(unix)]
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    if let Some(parent) = parent {
         if private {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-        }
-        file.write_all(content)?;
-        file.sync_all()
-    });
-    match written.and_then(|()| std::fs::rename(&tmp, path)) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp);
-            Err(e)
+            private_parent(parent)?;
+        } else {
+            std::fs::create_dir_all(parent)?;
         }
     }
+    remove_stale_temps(path);
+    let tmp = fresh_temp_path(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(if private { 0o600 } else { 0o644 });
+    }
+    let mut file = options.open(&tmp)?;
+    let written = file
+        .write_all(content)
+        .and_then(|()| file.sync_all())
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if let Some(parent) = parent {
+        std::fs::File::open(parent)?.sync_all()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

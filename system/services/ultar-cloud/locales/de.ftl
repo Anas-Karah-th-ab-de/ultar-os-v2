@@ -57,6 +57,37 @@ cloud.device.recovery_unknown = Es wartet kein Geräte-Ersatz.
 cloud.device.server_mismatch = Die Sicherheitsprüfung nannte einen anderen Server oder ein anderes Konto. Es wurde nichts signiert.
 cloud.device.key_unusable = Der Geräteschlüssel kann nicht verwendet werden. Er wurde nicht verändert.
 cloud.device.not_registered = Dieses Gerät ist noch nicht registriert.
+cloud.device.not_approved = {seconds ->
+    [one] Dieses Gerät wurde vor Kurzem hinzugefügt. Es darf deine anderen Geräte in {seconds} Sekunde verwalten – oder sofort, wenn eines davon es bestätigt.
+   *[other] Dieses Gerät wurde vor Kurzem hinzugefügt. Es darf deine anderen Geräte in {seconds} Sekunden verwalten – oder sofort, wenn eines davon es bestätigt.
+}
+cloud.device.recovery_locked = {seconds ->
+    [one] Diese frühere Registrierung kann noch nicht ersetzt werden. Aktualisiere jenes Gerät oder versuche es in {seconds} Sekunde erneut.
+   *[other] Diese frühere Registrierung kann noch nicht ersetzt werden. Aktualisiere jenes Gerät oder versuche es in {seconds} Sekunden erneut.
+}
+cloud.device.approved = Das Gerät wurde bestätigt.
+cloud.device.state.waiting = vor Kurzem hinzugefügt – darf andere Geräte noch nicht verwalten
+
+# Sicherheitshinweise
+cloud.alert.title = Sicherheitshinweis
+cloud.alert.recovery_pending = {hours ->
+    [0] Jemand mit deinem Kennwort will die Nummer des Geräts {device} auf ein anderes Gerät umziehen. Der Umzug ist jetzt möglich.
+    [one] Jemand mit deinem Kennwort will die Nummer des Geräts {device} auf ein anderes Gerät umziehen. Der Umzug ist in {hours} Stunde möglich.
+   *[other] Jemand mit deinem Kennwort will die Nummer des Geräts {device} auf ein anderes Gerät umziehen. Der Umzug ist in {hours} Stunden möglich.
+}
+cloud.alert.not_me = Das war ich nicht – abbrechen
+cloud.alert.recovery_cancelled = Der Umzug der Nummer wurde abgebrochen. Ändere jetzt dein Kennwort.
+cloud.alert.cannot_cancel = Dieses Gerät wurde vor Kurzem hinzugefügt und kann den Umzug nicht abbrechen. Nimm eines deiner anderen Geräte oder ändere dein Kennwort.
+cloud.alert.none = Es gibt nichts zu melden.
+cloud.alert.event.device_added = Deinem Konto wurde ein Gerät hinzugefügt: {device}
+cloud.alert.event.device_removed = Aus deinem Konto wurde ein Gerät entfernt: {device}
+cloud.alert.event.device_replaced = Eine Nummer wurde auf ein neues Gerät umgezogen: {device}
+cloud.alert.event.device_upgraded = Eine frühere Registrierung wurde von Gerät {device} übernommen
+cloud.alert.event.device_approved = Ein Gerät darf jetzt deine Geräte verwalten: {device}
+cloud.alert.event.recovery_started = Mit deinem Kennwort wurde der Umzug der Nummer von Gerät {device} beantragt.
+cloud.alert.event.recovery_cancelled = Ein beantragter Umzug einer Nummer wurde abgebrochen.
+cloud.alert.event.recovery_finished = Nach der Wartezeit wurde eine Nummer auf Gerät {device} umgezogen.
+cloud.alert.event.password_changed = Das Kennwort deines Kontos wurde geändert.
 cloud.device.state.active = registriert
 cloud.device.state.legacy = vor Einführung der Geräteschlüssel registriert – dieses Gerät aktualisieren
 cloud.device.this_device = dieses Gerät
@@ -73,4 +104,4 @@ cloud.cli.server = Server: {server}
 cloud.cli.account.signed_in = Konto: angemeldet
 cloud.cli.account.signed_out = Konto: abgemeldet (Store und Updates gehen ohne Konto)
 cloud.cli.unknown_command = Unbekannter Befehl: {command}
-cloud.cli.usage = Aufruf: ucloud register|login <Benutzer> <Kennwort> · number · devices · device-rename <Kennung> <Name> · device-remove <Kennung> · device-reset · vpn · store [Suche] · app <Kennung> · install <Kennung> · update [Kanal] · whoami
+cloud.cli.usage = Aufruf: ucloud register|login <Benutzer> [--password-file <Datei>] (Kennwort über die Standardeingabe) · number · devices · device-rename <Kennung> <Name> · device-remove <Kennung> · device-approve <Kennung> · device-reset · alerts · not-me · vpn · store [Suche] · app <Kennung> · install <Kennung> · update [Kanal] · whoami

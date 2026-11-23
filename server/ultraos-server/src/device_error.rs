@@ -30,6 +30,16 @@ pub enum DeviceError {
         /// Seconds left.
         retry_after_secs: u64,
     },
+    /// The device was added without approval and may not manage other devices yet.
+    NotApproved {
+        /// Seconds until it may, without approval.
+        retry_after_secs: u64,
+    },
+    /// A registration from before device keys cannot be recovered yet.
+    RecoveryLocked {
+        /// Seconds until a recovery can be started.
+        retry_after_secs: u64,
+    },
     /// The database reported an error.
     Db(rusqlite::Error),
 }
@@ -49,6 +59,12 @@ impl fmt::Display for DeviceError {
             DeviceError::RecoveryUnknown => f.write_str("no matching recovery"),
             DeviceError::CooldownActive { retry_after_secs } => {
                 write!(f, "cool-down active for {retry_after_secs} s")
+            }
+            DeviceError::NotApproved { retry_after_secs } => {
+                write!(f, "device not approved, {retry_after_secs} s left")
+            }
+            DeviceError::RecoveryLocked { retry_after_secs } => {
+                write!(f, "recovery locked for {retry_after_secs} s")
             }
             DeviceError::Db(e) => write!(f, "database: {e}"),
         }

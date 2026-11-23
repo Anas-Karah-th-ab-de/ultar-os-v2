@@ -5,9 +5,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use tokio_tungstenite::tungstenite::Message;
-use ultar_cloud::{
-    authorize_replacement, signal_auth, signal_hello, Client, CloudError, DeviceHome, KeyStore,
-};
+use ultar_cloud::{authorize_replacement, Client, CloudError, DeviceHome, KeyStore};
 use ultar_cloud_e2e::Stack;
 
 fn works(client: &Client) -> bool {
@@ -16,8 +14,7 @@ fn works(client: &Client) -> bool {
 
 /// Opens the signalling socket the way a device does; returns the last handshake frame.
 fn signal(s: &Stack, home: &DeviceHome) -> serde_json::Value {
-    let key = home.key_store().unwrap();
-    let me = home.identity().unwrap();
+    let proof = home.signal_proof(&s.base()).unwrap();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -26,13 +23,13 @@ fn signal(s: &Stack, home: &DeviceHome) -> serde_json::Value {
         let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/v1/signal", s.addr))
             .await
             .unwrap();
-        ws.send(Message::Text(signal_hello(&key).unwrap()))
+        ws.send(Message::Text(proof.hello().unwrap()))
             .await
             .unwrap();
         let Some(Ok(Message::Text(challenge))) = ws.next().await else {
             panic!("no challenge");
         };
-        let auth = match signal_auth(&key, &me.server, me.account_id, &challenge) {
+        let auth = match proof.answer(&challenge) {
             Ok(auth) => auth,
             Err(_) => return serde_json::from_str(&challenge).unwrap(),
         };
@@ -92,9 +89,14 @@ fn a_device_gets_its_own_key_id_and_number_and_keeps_them() {
     assert!(as_phone.devices().unwrap()[0].current);
 
     // Calls: the socket opens with the key and serves the device's number.
+    let ready = signal(&s, &phone);
     assert_eq!(
-        signal(&s, &phone),
-        serde_json::json!({"type":"ready","number": number})
+        (ready["type"].as_str(), ready["number"].as_str()),
+        (Some("ready"), Some(number.as_str()))
+    );
+    assert_eq!(
+        ready["manage"], true,
+        "the first device manages the account"
     );
 }
 
@@ -274,6 +276,10 @@ fn replacing_a_lost_device_waits_and_can_be_cancelled() {
     other.register_number(&anna, "", None).unwrap();
     let lost_id = lost.device_id().unwrap();
     let (new_key, other_key) = (new.key_store().unwrap(), other.key_store().unwrap());
+    // The second device was added later: the first approves it, so that it may read notices
+    // and stop a recovery.
+    anna.approve_device(&lost.key_store().unwrap(), &other.device_id().unwrap())
+        .unwrap();
 
     assert!(matches!(
         anna.recover_start(&new_key, "wrong-password", &lost_id),

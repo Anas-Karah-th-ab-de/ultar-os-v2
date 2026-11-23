@@ -5277,6 +5277,7 @@ dependencies = [
  "ultar-pkg",
  "ultar-vpn",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]

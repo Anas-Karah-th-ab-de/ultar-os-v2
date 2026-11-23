@@ -39,7 +39,9 @@ cargo test                     # startet den echten Server auf einem freien Port
 | `ULTRAOS_LIMIT_AUTH` | Registrierung/Anmeldung je Client | `10,6` |
 | `ULTRAOS_SERVER_NAME` | Name des Servers, wie ihn die Geräte aus ihrer Server-Adresse ableiten (Rechnername, bei abweichendem Port `name:port`, klein geschrieben). Steht in jeder Geräte-Signatur; stimmt er nicht, lehnen die Geräte jede Signatur ab (kein Gerät kann sich registrieren). | `ultar.code-craft.tech` |
 | `ULTRAOS_MAX_DEVICES` | Geräte je Konto (1–100) | `10` |
-| `ULTRAOS_DEVICE_COOLDOWN_SECS` | Wartezeit beim Ersatz eines verlorenen Geräts (mindestens 3600) | `259200` (72 h) |
+| `ULTRAOS_DEVICE_COOLDOWN_SECS` | Wartezeit beim Ersatz eines verlorenen Geräts **und** Zeit, nach der ein nachträglich hinzugefügtes Gerät ohne Bestätigung andere Geräte verwalten darf (mindestens 3600) | `259200` (72 h) |
+| `ULTRAOS_PASSWORD_FAILURES` | Fehlversuche des Kennworts je Konto in 15 Minuten (Anmeldung, Kennwort ändern, Geräte-Ersatz zusammen; 1–1000). Danach wird jede Kennwortprüfung dieses Kontos bis zum Ende des Zeitfensters abgewiesen; die Geräte des Kontos arbeiten weiter. | `10` |
+| `ULTRAOS_MAX_CONNECTIONS` | gleichzeitig offene Verbindungen des Prozesses (16–1000000); weitere warten in der Annahme-Warteschlange | `4096` |
 
 Fehlerhafte Werte bei den Proxys und Grenzen werden im Protokoll gemeldet (`ignored_trusted_proxy`,
 `ignored_limit`) und nicht übernommen.
@@ -194,3 +196,12 @@ Alle Apps sind signiert (Ed25519); das Gerät lehnt Unsigniertes ab. Ablauf:
    rechner halten, öffentlichen Teil ins Gerät-Image (`/etc/ultar/trusted-keys/kmcodecraft.ed25519`).
 2. App paketieren + signieren: `upkg-sign <manifest.toml> <ordner> <app.uap> <privkey-datei>`.
 3. Mit `ultraos-admin publish-app` veröffentlichen (§9). Format-Details: docs/A30-APP-PAKET.md.
+
+## Feste Grenzen des Prozesses (ohne Einstellung)
+
+- Der Kopf einer Anfrage muss binnen 10 s vollständig sein, sonst wird die Verbindung geschlossen.
+- Eine Anfrage (Rumpf und Bearbeitung) muss binnen 30 s beantwortet sein, sonst `408 request_timeout`
+  und die Verbindung wird geschlossen. WebSockets und Downloads sind davon nicht betroffen.
+- Diese Grenzen gelten unabhängig vom vorgeschalteten Proxy; dessen eigene Zeitgrenzen sollten
+  nicht kleiner sein (Caddy: Standardwerte passen).
+- `ULTRAOS_LIMIT_AUTH` gilt jetzt auch für `/v1/account/password` und `/v1/device/recover/start`.

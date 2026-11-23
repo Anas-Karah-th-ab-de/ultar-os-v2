@@ -12,6 +12,7 @@ use crate::http::write_atomic;
 use crate::identity;
 use crate::keystore::{FileKeyStore, KeyStore};
 use crate::model::{AppMeta, Release};
+use crate::signalling::SignalProof;
 use std::path::{Path, PathBuf};
 
 /// File with the server address in its first line.
@@ -159,6 +160,11 @@ impl DeviceHome {
         self.dir.join(name)
     }
 
+    /// The path of a state file of this device.
+    pub(crate) fn path(&self, name: &str) -> PathBuf {
+        self.file(name)
+    }
+
     /// The file key store of this device (the key is created at first use).
     pub fn key_store(&self) -> Result<FileKeyStore, CloudError> {
         Ok(FileKeyStore::open_or_create(self.file("device.key"))?)
@@ -223,6 +229,22 @@ impl DeviceHome {
         };
         self.save(client, &done)?;
         Ok(done.number)
+    }
+
+    /// The device's proof for the signalling socket of the server at `base_url` – the address the
+    /// socket is opened to. [`CloudError::NotRegistered`] when the device has no registration,
+    /// [`CloudError::ServerIdentityMismatch`] when `base_url` is not the server it is registered
+    /// with: the device signs a call sign-in only for the server it is connected to.
+    pub fn signal_proof(&self, base_url: &str) -> Result<SignalProof, CloudError> {
+        let registered = self.identity().ok_or(CloudError::NotRegistered)?;
+        if identity::server_name(base_url).as_deref() != Some(registered.server.as_str()) {
+            return Err(CloudError::ServerIdentityMismatch);
+        }
+        Ok(SignalProof::new(
+            self.key_store()?,
+            registered.server,
+            registered.account_id,
+        ))
     }
 
     /// Deletes key, state and number: the device has no identity until it registers again (new
@@ -353,6 +375,51 @@ mod tests {
             id,
             "a reset device is a new device"
         );
+    }
+
+    #[test]
+    fn a_call_sign_in_proof_exists_only_for_the_server_of_the_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = DeviceHome::new(dir.path());
+        assert!(matches!(
+            home.signal_proof("https://ultar.example"),
+            Err(CloudError::NotRegistered)
+        ));
+        let state = DeviceIdentity {
+            server: "ultar.example".into(),
+            account_id: 7,
+            device_id: home.device_id().unwrap(),
+            number: "UOS-0001-0002".into(),
+        };
+        write_atomic(&home.path("device.state"), state.to_text().as_bytes(), true).unwrap();
+        let proof = home.signal_proof("https://Ultar.Example:443/").unwrap();
+        assert_eq!(proof.server(), "ultar.example");
+        assert!(proof.hello().unwrap().contains(&state.device_id));
+        // Pointed at another server (settings, test server, tampered configuration): no proof.
+        for other in [
+            "https://evil.example",
+            "https://ultar.example:8443",
+            "http://ultar.example.evil.example",
+            "https://ultar.example@evil.example",
+            "",
+        ] {
+            assert!(
+                matches!(
+                    home.signal_proof(other),
+                    Err(CloudError::ServerIdentityMismatch)
+                ),
+                "{other}"
+            );
+        }
+        // And the proof itself answers only a challenge that names its server and account.
+        let frame = |server: &str, account: i64| {
+            serde_json::json!({"type":"challenge","challenge": crate::identity::encode(&[1u8; 32]),
+                "server": server, "account_id": account})
+            .to_string()
+        };
+        assert!(proof.answer(&frame("ultar.example", 7)).is_ok());
+        assert!(proof.answer(&frame("evil.example", 7)).is_err());
+        assert!(proof.answer(&frame("ultar.example", 8)).is_err());
     }
 
     #[test]

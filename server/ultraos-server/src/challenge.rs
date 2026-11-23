@@ -17,7 +17,7 @@ pub const CHALLENGE_ID_BYTES: usize = 16;
 pub const CHALLENGE_TTL_MS: u64 = 120_000;
 /// Most pending challenges of one account (or, for sessions, of one key).
 pub const MAX_PER_OWNER: u32 = 8;
-/// Most pending challenges in total.
+/// Most stored challenges in total (pending ones, and used ones until they expire).
 pub const MAX_TOTAL: usize = 65_536;
 
 /// What a challenge was issued for.
@@ -33,6 +33,8 @@ pub enum ChallengeUse {
     Replace,
     /// Replacement of a lost device.
     Recover,
+    /// An existing device approves a newly added one.
+    Approve,
 }
 
 impl ChallengeUse {
@@ -44,6 +46,7 @@ impl ChallengeUse {
             "upgrade" => Some(ChallengeUse::Upgrade),
             "replace" => Some(ChallengeUse::Replace),
             "recover" => Some(ChallengeUse::Recover),
+            "approve" => Some(ChallengeUse::Approve),
             _ => None,
         }
     }
@@ -158,6 +161,15 @@ impl ChallengeStore {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn release(per_owner: &mut HashMap<Owner, u32>, owner: &Owner) {
+        if let Some(n) = per_owner.get_mut(owner) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                per_owner.remove(owner);
+            }
+        }
+    }
+
     fn purge(&self, inner: &mut Inner, now_ms: u64) {
         if inner.entries.is_empty() || now_ms.saturating_sub(inner.oldest_ms) < self.ttl_ms {
             return;
@@ -173,15 +185,58 @@ impl ChallengeStore {
             let keep = now_ms.saturating_sub(e.issued_ms) < ttl;
             if keep {
                 oldest = oldest.min(e.issued_ms);
-            } else if let Some(n) = per_owner.get_mut(&e.owner) {
-                *n = n.saturating_sub(1);
-                if *n == 0 {
-                    per_owner.remove(&e.owner);
-                }
+            } else if !e.used {
+                Self::release(per_owner, &e.owner);
             }
             keep
         });
         *oldest_ms = if oldest == u64::MAX { now_ms } else { oldest };
+    }
+
+    /// The oldest pending (unused) challenge of `owner`: its id and issue time.
+    fn oldest_pending(inner: &Inner, owner: &Owner) -> Option<([u8; CHALLENGE_ID_BYTES], u64)> {
+        inner
+            .entries
+            .iter()
+            .filter(|(_, e)| !e.used && e.owner == *owner)
+            .min_by_key(|(_, e)| e.issued_ms)
+            .map(|(id, e)| (*id, e.issued_ms))
+    }
+
+    /// Makes room for one more pending challenge of `owner`, or says how long to wait.
+    ///
+    /// Challenges of an account are refused beyond the bound (the account asked for them itself).
+    /// Session challenges are requested without authentication by naming a public key: there the
+    /// oldest pending one is dropped instead, so that requests of a stranger who merely knows the
+    /// key cannot lock the device out of its sessions.
+    fn make_room(
+        &self,
+        inner: &mut Inner,
+        owner: &Owner,
+        now_ms: u64,
+    ) -> Result<(), ChallengeError> {
+        let capacity = |since_ms: u64| ChallengeError::Capacity {
+            retry_after_secs: self
+                .ttl_ms
+                .saturating_sub(now_ms.saturating_sub(since_ms))
+                .div_ceil(1000)
+                .max(1),
+        };
+        let held = inner.per_owner.get(owner).copied().unwrap_or(0);
+        if held >= self.max_per_owner {
+            let Some((id, issued_ms)) = Self::oldest_pending(inner, owner) else {
+                return Err(capacity(now_ms));
+            };
+            if !matches!(owner, Owner::Key(_)) {
+                return Err(capacity(issued_ms));
+            }
+            inner.entries.remove(&id);
+            Self::release(&mut inner.per_owner, owner);
+        }
+        if inner.entries.len() >= self.max_total {
+            return Err(capacity(inner.oldest_ms));
+        }
+        Ok(())
     }
 
     /// Issues a challenge bound to `purpose`, `account_id` and `public_key`.
@@ -198,15 +253,7 @@ impl ChallengeStore {
         };
         let mut inner = self.lock();
         self.purge(&mut inner, now_ms);
-        let held = inner.per_owner.get(&owner).copied().unwrap_or(0);
-        if held >= self.max_per_owner || inner.entries.len() >= self.max_total {
-            let wait_ms = self
-                .ttl_ms
-                .saturating_sub(now_ms.saturating_sub(inner.oldest_ms));
-            return Err(ChallengeError::Capacity {
-                retry_after_secs: wait_ms.div_ceil(1000).max(1),
-            });
-        }
+        self.make_room(&mut inner, &owner, now_ms)?;
         let mut issued = Issued {
             id: [0; CHALLENGE_ID_BYTES],
             challenge: [0; CHALLENGE_BYTES],
@@ -240,7 +287,9 @@ impl ChallengeStore {
     }
 
     /// Consumes a challenge. `account_id` is `None` when the caller learns the account from the
-    /// challenge itself (sessions). Any presentation of a pending challenge uses it up.
+    /// challenge itself (sessions). Any presentation of a pending challenge uses it up and frees
+    /// its place in the owner's bound; the entry stays until it expires only to tell a replay
+    /// (`Used`) from an unknown id.
     pub fn take(
         &self,
         id: &[u8; CHALLENGE_ID_BYTES],
@@ -250,11 +299,15 @@ impl ChallengeStore {
     ) -> Result<Bound, ChallengeError> {
         let mut inner = self.lock();
         let ttl = self.ttl_ms;
-        let entry = inner.entries.get_mut(id).ok_or(ChallengeError::Unknown)?;
+        let Inner {
+            entries, per_owner, ..
+        } = &mut *inner;
+        let entry = entries.get_mut(id).ok_or(ChallengeError::Unknown)?;
         if entry.used {
             return Err(ChallengeError::Used);
         }
         entry.used = true;
+        Self::release(per_owner, &entry.owner);
         if now_ms.saturating_sub(entry.issued_ms) >= ttl {
             return Err(ChallengeError::Expired);
         }
@@ -277,141 +330,5 @@ impl ChallengeStore {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const PK: [u8; 32] = [7; 32];
-
-    #[test]
-    fn a_challenge_is_accepted_once_for_its_purpose_and_account() {
-        let store = ChallengeStore::default();
-        let c = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        let bound = store
-            .take(&c.id, ChallengeUse::Register, Some(1), 10)
-            .unwrap();
-        assert_eq!((bound.account_id, bound.public_key), (1, PK));
-        assert_eq!(bound.challenge, c.challenge);
-        assert_eq!(
-            store.take(&c.id, ChallengeUse::Register, Some(1), 20),
-            Err(ChallengeError::Used)
-        );
-        assert_eq!(
-            store.take(&[0; 16], ChallengeUse::Register, Some(1), 20),
-            Err(ChallengeError::Unknown)
-        );
-    }
-
-    #[test]
-    fn challenges_are_random_and_distinct() {
-        let store = ChallengeStore::default();
-        let a = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        let b = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        assert_ne!(a.challenge, b.challenge);
-        assert_ne!(a.id, b.id);
-        assert_ne!(a.challenge, [0; 32]);
-    }
-
-    #[test]
-    fn wrong_account_or_purpose_is_a_mismatch_and_consumes_the_challenge() {
-        let store = ChallengeStore::default();
-        let c = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        assert_eq!(
-            store.take(&c.id, ChallengeUse::Register, Some(2), 1),
-            Err(ChallengeError::Mismatch)
-        );
-        assert_eq!(
-            store.take(&c.id, ChallengeUse::Register, Some(1), 2),
-            Err(ChallengeError::Used),
-            "the failed attempt used it up"
-        );
-        let c = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        assert_eq!(
-            store.take(&c.id, ChallengeUse::Replace, Some(1), 1),
-            Err(ChallengeError::Mismatch)
-        );
-        let c = store.issue(ChallengeUse::Session, 5, PK, 0).unwrap();
-        assert_eq!(
-            store
-                .take(&c.id, ChallengeUse::Session, None, 1)
-                .unwrap()
-                .account_id,
-            5
-        );
-    }
-
-    #[test]
-    fn expiry_is_exact_and_expired_entries_are_forgotten() {
-        let store = ChallengeStore::default();
-        let a = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        let b = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        assert!(store
-            .take(&a.id, ChallengeUse::Register, Some(1), CHALLENGE_TTL_MS - 1)
-            .is_ok());
-        assert_eq!(
-            store.take(&b.id, ChallengeUse::Register, Some(1), CHALLENGE_TTL_MS),
-            Err(ChallengeError::Expired)
-        );
-        assert_eq!(store.len(), 2);
-        store
-            .issue(ChallengeUse::Register, 2, PK, CHALLENGE_TTL_MS)
-            .unwrap();
-        assert_eq!(store.len(), 1, "issuing purges what has expired");
-        assert_eq!(
-            store.take(&a.id, ChallengeUse::Register, Some(1), CHALLENGE_TTL_MS),
-            Err(ChallengeError::Unknown)
-        );
-    }
-
-    #[test]
-    fn per_owner_and_total_bounds_hold_and_free_up_after_expiry() {
-        let store = ChallengeStore::new(1000, 2, 3);
-        store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        store.issue(ChallengeUse::Upgrade, 1, PK, 100).unwrap();
-        assert_eq!(
-            store.issue(ChallengeUse::Register, 1, PK, 200),
-            Err(ChallengeError::Capacity {
-                retry_after_secs: 1
-            })
-        );
-        // Sessions are counted per key, not per account.
-        store.issue(ChallengeUse::Session, 1, PK, 300).unwrap();
-        assert!(matches!(
-            store.issue(ChallengeUse::Register, 2, PK, 400),
-            Err(ChallengeError::Capacity { .. })
-        ));
-        assert_eq!(store.len(), 3);
-        // After the lifetime of the first two, their owner has room again.
-        store.issue(ChallengeUse::Register, 1, PK, 1100).unwrap();
-        store.issue(ChallengeUse::Register, 2, PK, 1100).unwrap();
-        assert_eq!(store.len(), 3);
-        assert!(!store.is_empty());
-        assert_eq!(store.ttl_secs(), 1);
-    }
-
-    #[test]
-    fn used_challenges_still_count_until_they_expire() {
-        let store = ChallengeStore::new(1000, 1, 10);
-        let c = store.issue(ChallengeUse::Register, 1, PK, 0).unwrap();
-        store
-            .take(&c.id, ChallengeUse::Register, Some(1), 1)
-            .unwrap();
-        assert!(store.issue(ChallengeUse::Register, 1, PK, 2).is_err());
-        assert!(store.issue(ChallengeUse::Register, 1, PK, 1000).is_ok());
-    }
-
-    #[test]
-    fn purposes_parse() {
-        for (text, expected) in [
-            ("register", ChallengeUse::Register),
-            ("session", ChallengeUse::Session),
-            ("upgrade", ChallengeUse::Upgrade),
-            ("replace", ChallengeUse::Replace),
-            ("recover", ChallengeUse::Recover),
-        ] {
-            assert_eq!(ChallengeUse::parse(text), Some(expected));
-        }
-        assert_eq!(ChallengeUse::parse("signal"), None);
-        assert_eq!(ChallengeUse::parse(""), None);
-        assert!(ChallengeError::Used.to_string().contains("used"));
-    }
-}
+#[path = "challenge_tests.rs"]
+mod tests;

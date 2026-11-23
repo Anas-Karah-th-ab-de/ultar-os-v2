@@ -10,6 +10,10 @@
 
 pub use crate::device_error::DeviceError;
 use crate::device_events::{self, EventKind};
+pub(crate) use crate::device_model::Standing;
+pub use crate::device_model::{
+    DeviceInfo, DeviceRow, DeviceState, Limits, Registered, QUOTA_FACTOR,
+};
 use crate::identity::{self, LEGACY_PREFIX, PUBLIC_KEY_BYTES};
 use rand::Rng;
 use rusqlite::{Connection, OptionalExtension};
@@ -21,123 +25,7 @@ pub const DAY_SECS: i64 = 86_400;
 pub const MAX_NAME_CHARS: usize = 64;
 /// Longest device id accepted from a client (legacy ids were up to 128 bytes).
 pub const MAX_DEVICE_ID_BYTES: usize = 140;
-/// A registered key may be bound this many times the device limit over an account's lifetime.
-pub const QUOTA_FACTOR: i64 = 10;
-
 const NUMBER_ATTEMPTS: usize = 20;
-
-/// Lifecycle state of a device row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceState {
-    /// Registered before device keys existed; has no key yet.
-    Legacy,
-    /// Registered with a key.
-    Active,
-    /// Removed by its account; the key is retired.
-    Removed,
-    /// Its number moved to another key; the key is retired.
-    Replaced,
-}
-
-impl DeviceState {
-    /// The value stored in the database.
-    pub fn code(self) -> i64 {
-        match self {
-            DeviceState::Legacy => 0,
-            DeviceState::Active => 1,
-            DeviceState::Removed => 2,
-            DeviceState::Replaced => 3,
-        }
-    }
-
-    /// Parses a stored value; unknown values count as removed (fail closed).
-    pub fn from_code(code: i64) -> Self {
-        match code {
-            0 => DeviceState::Legacy,
-            1 => DeviceState::Active,
-            3 => DeviceState::Replaced,
-            _ => DeviceState::Removed,
-        }
-    }
-
-    /// The name used in the API.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DeviceState::Legacy => "legacy",
-            DeviceState::Active => "active",
-            DeviceState::Removed => "removed",
-            DeviceState::Replaced => "replaced",
-        }
-    }
-
-    /// True for devices that are in use (legacy or active).
-    pub fn in_use(self) -> bool {
-        matches!(self, DeviceState::Legacy | DeviceState::Active)
-    }
-}
-
-/// Limits of one account.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Limits {
-    /// Most devices in use at the same time.
-    pub max_devices: i64,
-}
-
-impl Limits {
-    /// Key registrations allowed over the account's lifetime.
-    pub fn quota(self) -> i64 {
-        self.max_devices.saturating_mul(QUOTA_FACTOR)
-    }
-}
-
-/// Result of a registration, upgrade or move.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Registered {
-    /// Row of the device.
-    pub device_row: i64,
-    /// Key id of the device.
-    pub device_id: String,
-    /// Its Ultar number.
-    pub number: String,
-    /// Token epoch of the device.
-    pub epoch: i64,
-    /// False when the device was registered already and nothing changed.
-    pub created: bool,
-}
-
-/// A device row as stored.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeviceRow {
-    /// Row id.
-    pub row: i64,
-    /// Owning account.
-    pub account_id: i64,
-    /// Key id, or `legacy:<old id>`.
-    pub device_id: String,
-    /// Public key (`None` for legacy rows).
-    pub public_key: Option<[u8; PUBLIC_KEY_BYTES]>,
-    /// Lifecycle state.
-    pub state: DeviceState,
-    /// Token epoch.
-    pub epoch: i64,
-}
-
-/// One entry of the device list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeviceInfo {
-    /// Key id, or `legacy:<old id>`.
-    pub device_id: String,
-    /// Name given by the user.
-    pub name: String,
-    /// Number, if the device has one.
-    pub number: Option<String>,
-    /// Lifecycle state.
-    pub state: DeviceState,
-    /// Day of registration (Unix seconds, start of day).
-    pub added: i64,
-    /// Day of last contact (0 = never since keys exist).
-    pub last_seen: i64,
-}
 
 /// Rounds a time down to the start of its day.
 pub fn day_of(now: i64) -> i64 {
@@ -168,14 +56,29 @@ fn read_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<DeviceRow> {
         public_key: key.and_then(|k| <[u8; PUBLIC_KEY_BYTES]>::try_from(k.as_slice()).ok()),
         state: DeviceState::from_code(r.get(4)?),
         epoch: r.get(5)?,
+        approved: r.get::<_, i64>(6)? != 0,
+        key_since: r.get(7)?,
     })
 }
+
+const ROW_COLUMNS: &str =
+    "id, account_id, device_id, public_key, state, epoch, approved, key_since";
 
 /// The device with this id, in any state.
 pub fn by_id(conn: &Connection, device_id: &str) -> rusqlite::Result<Option<DeviceRow>> {
     conn.query_row(
-        "SELECT id, account_id, device_id, public_key, state, epoch FROM devices WHERE device_id=?1",
+        &format!("SELECT {ROW_COLUMNS} FROM devices WHERE device_id=?1"),
         [device_id],
+        read_row,
+    )
+    .optional()
+}
+
+/// The device with this row id, in any state.
+pub fn by_row(conn: &Connection, device_row: i64) -> rusqlite::Result<Option<DeviceRow>> {
+    conn.query_row(
+        &format!("SELECT {ROW_COLUMNS} FROM devices WHERE id=?1"),
+        [device_row],
         read_row,
     )
     .optional()
@@ -287,25 +190,67 @@ pub(crate) fn insert_active(
     public_key: &[u8; PUBLIC_KEY_BYTES],
     name: &str,
     now: i64,
+    standing: Standing,
 ) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO devices(account_id, device_id, public_key, state, name, epoch, created, last_seen)
-         VALUES(?1,?2,?3,1,?4,0,?5,?6)",
+        "INSERT INTO devices(account_id, device_id, public_key, state, name, epoch, created,
+                             last_seen, approved, key_since)
+         VALUES(?1,?2,?3,1,?4,0,?5,?6,?7,?8)",
         rusqlite::params![
             account_id,
             identity::device_id(public_key),
             public_key.as_slice(),
             name,
             now,
-            day_of(now)
+            day_of(now),
+            i64::from(standing.approved),
+            standing.key_since
         ],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
+/// The answer for a key that has a row already: the same number for the same active key of the
+/// same account, an error for everything else.
+fn registered_again(
+    conn: &Connection,
+    found: &DeviceRow,
+    account_id: i64,
+    public_key: &[u8; PUBLIC_KEY_BYTES],
+    now: i64,
+    limits: Limits,
+) -> Result<Registered, DeviceError> {
+    let same_key = found
+        .public_key
+        .is_some_and(|k| bool::from(k.ct_eq(public_key)));
+    if !found.state.in_use() {
+        return Err(DeviceError::Retired);
+    }
+    if found.account_id != account_id || !same_key {
+        return Err(DeviceError::Taken);
+    }
+    let number = match number_of(conn, found.row)? {
+        Some(n) => n,
+        None => allocate_number(conn, account_id, found.row, now)?,
+    };
+    Ok(Registered {
+        device_row: found.row,
+        device_id: found.device_id.clone(),
+        number,
+        epoch: found.epoch,
+        created: false,
+        manage_in: found.manage_in(now, limits.cooldown_secs).unwrap_or(0),
+    })
+}
+
 /// Registers `public_key` for `account_id` and assigns its number. The caller has verified that
 /// the requester holds the private key. Registering an active key of the same account again
 /// returns the existing number.
+///
+/// The first device of an account may manage the account's devices at once. A key added while
+/// the account has other devices in use gets that right only when one of them approves it
+/// ([`approve`]) or `limits.cooldown_secs` after its registration: a password alone adds a
+/// device, it does not take the account's devices away.
 pub fn register(
     conn: &mut Connection,
     account_id: i64,
@@ -318,33 +263,20 @@ pub fn register(
     let device_id = identity::device_id(public_key);
     let tx = conn.transaction()?;
     if let Some(found) = by_id(&tx, &device_id)? {
-        let same_key = found
-            .public_key
-            .is_some_and(|k| bool::from(k.ct_eq(public_key)));
-        if !found.state.in_use() {
-            return Err(DeviceError::Retired);
-        }
-        if found.account_id != account_id || !same_key {
-            return Err(DeviceError::Taken);
-        }
-        let number = match number_of(&tx, found.row)? {
-            Some(n) => n,
-            None => allocate_number(&tx, account_id, found.row, now)?,
-        };
+        let again = registered_again(&tx, &found, account_id, public_key, now, limits)?;
         tx.commit()?;
-        return Ok(Registered {
-            device_row: found.row,
-            device_id,
-            number,
-            epoch: found.epoch,
-            created: false,
-        });
+        return Ok(again);
     }
-    if devices_in_use(&tx, account_id)? >= limits.max_devices {
+    let others = devices_in_use(&tx, account_id)?;
+    if others >= limits.max_devices {
         return Err(DeviceError::Limit);
     }
     charge_quota(&tx, account_id, limits)?;
-    let device_row = insert_active(&tx, account_id, public_key, name, now)?;
+    let standing = Standing {
+        approved: others == 0,
+        key_since: now,
+    };
+    let device_row = insert_active(&tx, account_id, public_key, name, now, standing)?;
     let number = allocate_number(&tx, account_id, device_row, now)?;
     device_events::push(&tx, account_id, EventKind::DeviceAdded, &device_id, now)?;
     tx.commit()?;
@@ -354,7 +286,43 @@ pub fn register(
         number,
         epoch: 0,
         created: true,
+        manage_in: if standing.approved {
+            0
+        } else {
+            limits.cooldown_secs.max(0)
+        },
     })
+}
+
+/// A managing device (`approver`) gives the active device `device_id` of the same account its
+/// management rights. The caller verified the approver's signature over the target's key.
+pub fn approve(
+    conn: &mut Connection,
+    approver: &DeviceRow,
+    device_id: &str,
+    now: i64,
+    cooldown_secs: i64,
+) -> Result<(), DeviceError> {
+    let tx = conn.transaction()?;
+    // Read again inside the transaction: the approver must still be a managing device.
+    let current = by_row(&tx, approver.row)?
+        .filter(|d| d.account_id == approver.account_id)
+        .ok_or(DeviceError::Unknown)?;
+    current.require_manager(now, cooldown_secs)?;
+    let target = in_use(&tx, approver.account_id, device_id)?;
+    if target.state != DeviceState::Active {
+        return Err(DeviceError::Unknown);
+    }
+    tx.execute("UPDATE devices SET approved=1 WHERE id=?1", [target.row])?;
+    device_events::push(
+        &tx,
+        approver.account_id,
+        EventKind::DeviceApproved,
+        device_id,
+        now,
+    )?;
+    tx.commit()?;
+    Ok(())
 }
 
 /// The number of a legacy registration of `account_id` (read only; for clients of the first
@@ -375,21 +343,40 @@ pub fn legacy_number(
     }
 }
 
-/// The devices of an account that are in use, oldest first.
-pub fn list(conn: &Connection, account_id: i64) -> rusqlite::Result<Vec<DeviceInfo>> {
+/// The devices of an account that are in use, oldest first. `now` and `cooldown_secs` decide
+/// which of them may manage the others.
+pub fn list(
+    conn: &Connection,
+    account_id: i64,
+    now: i64,
+    cooldown_secs: i64,
+) -> rusqlite::Result<Vec<DeviceInfo>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT d.device_id, d.name, n.number, d.state, d.created, d.last_seen
+        "SELECT d.device_id, d.name, n.number, d.state, d.created, d.last_seen, d.approved,
+                d.key_since, d.public_key
          FROM devices d LEFT JOIN numbers n ON n.device_row = d.id AND n.state = 1
          WHERE d.account_id=?1 AND d.state IN (0,1) ORDER BY d.id LIMIT 1000",
     )?;
     let rows = stmt.query_map([account_id], |r| {
+        let state = DeviceState::from_code(r.get(3)?);
+        let (approved, key_since): (i64, i64) = (r.get(6)?, r.get(7)?);
+        let wait = key_since.saturating_add(cooldown_secs).saturating_sub(now);
+        let manage_in = match (state, approved != 0) {
+            (DeviceState::Active, true) => Some(0),
+            (DeviceState::Active, false) => Some(wait.max(0)),
+            _ => None,
+        };
         Ok(DeviceInfo {
             device_id: r.get(0)?,
             name: r.get(1)?,
             number: r.get(2)?,
-            state: DeviceState::from_code(r.get(3)?),
+            state,
             added: day_of(r.get(4)?),
             last_seen: r.get(5)?,
+            manage_in,
+            public_key: r
+                .get::<_, Option<Vec<u8>>>(8)?
+                .and_then(|k| <[u8; PUBLIC_KEY_BYTES]>::try_from(k.as_slice()).ok()),
         })
     })?;
     rows.collect()

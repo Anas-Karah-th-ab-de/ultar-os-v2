@@ -241,3 +241,30 @@ fn the_trait_is_object_safe_and_implementable_without_a_file() {
         .verify_strict(b"x", &Signature::from_bytes(&signature))
         .is_ok());
 }
+
+fn age(path: &std::path::Path, secs: u64) {
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(secs);
+    let file = std::fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(past).unwrap();
+}
+
+#[test]
+fn leftovers_of_an_interrupted_creation_are_removed_when_they_are_old() {
+    let (_dir, store) = store();
+    let public = store.public_key().unwrap();
+    let parent = store.path().parent().unwrap().to_path_buf();
+    // A crash between "link" and "unlink" leaves a second name of the key file behind; a crash
+    // before the link leaves an unused key. Both are an hour old.
+    let second_name = parent.join("device.key.new.00112233aabbccdd");
+    let unused = parent.join("device.key.new.0123456789abcdef");
+    let young = parent.join("device.key.new.ffeeddccbbaa0099");
+    std::fs::hard_link(store.path(), &second_name).unwrap();
+    std::fs::write(&unused, "another key").unwrap();
+    std::fs::write(&young, "a creator at work right now").unwrap();
+    age(store.path(), 3600);
+    age(&unused, 3600);
+    let again = FileKeyStore::open_or_create(store.path()).unwrap();
+    assert_eq!(again.public_key().unwrap(), public, "the key itself stays");
+    assert!(!second_name.exists() && !unused.exists());
+    assert!(young.exists(), "a young temporary file may be in use");
+}

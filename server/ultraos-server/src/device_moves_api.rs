@@ -5,7 +5,9 @@
 
 use crate::accounts::{password_matches, ApiJson};
 use crate::challenge::ChallengeUse;
-use crate::device_api::{notice_prefix, proven, registered_reply, short, Proof, Reply, Shared};
+use crate::device_api::{
+    managing_device, notice_prefix, proven, registered_reply, short, Proof, Reply, Shared,
+};
 use crate::device_moves;
 use crate::devices::{self, MAX_DEVICE_ID_BYTES};
 use crate::entitlements::{require_account, require_device};
@@ -115,7 +117,7 @@ pub async fn recover_start(
         &proof,
         ChallengeUse::Recover,
         Some(acc),
-        Purpose::Recover,
+        Purpose::RecoverStart,
         extra,
     )?;
     let now = st.devices.now_secs();
@@ -134,10 +136,14 @@ pub async fn recover_start(
 }
 
 /// `POST /v1/device/recover/cancel` — cancels the pending recovery of the account. Needs a device
-/// token: any device of the account, including the one reported lost.
+/// token of a managing device of the account (the one reported lost included).
 pub async fn recover_cancel(State(st): State<Shared>, h: HeaderMap) -> Reply {
     let me = require_device(&st, &h)?;
-    device_moves::recovery_cancel(&mut st.db.lock(), me.account_id, st.devices.now_secs())?;
+    {
+        let mut conn = st.db.lock();
+        managing_device(&conn, &st, &me)?;
+        device_moves::recovery_cancel(&mut conn, me.account_id, st.devices.now_secs())?;
+    }
     st.hub
         .notify_account(me.account_id, "recovery_cancelled", "");
     tracing::info!(event = "recovery_cancelled", device = %short(&me.device_id));
@@ -173,7 +179,7 @@ pub async fn recover_finish(
         &proof,
         ChallengeUse::Recover,
         Some(acc),
-        Purpose::Recover,
+        Purpose::RecoverFinish,
         extra,
     )?;
     let done = device_moves::recovery_finish(
@@ -190,4 +196,60 @@ pub async fn recover_finish(
         .notify_account(acc, "recovery_finished", &notice_prefix(&done.device_id));
     tracing::info!(event = "recovery_finished", device = %short(&done.device_id));
     registered_reply(&st, acc, &done)
+}
+
+/// Body of an approval.
+#[derive(Deserialize)]
+pub struct ApproveReq {
+    device_id: String,
+    challenge_id: String,
+    signature: String,
+}
+
+/// `POST /v1/device/approve` — a managing device gives a device that was added to the account
+/// its management rights at once. Needs the managing device's token **and** its signature over
+/// the new device's key (challenge of purpose `approve` issued for the approver's key,
+/// transcript `ultar-device-approve-v1`, extra = public key of the approved device): a stolen
+/// device token alone approves nothing.
+pub async fn approve(
+    State(st): State<Shared>,
+    h: HeaderMap,
+    ApiJson(r): ApiJson<ApproveReq>,
+) -> Reply {
+    let me = require_device(&st, &h)?;
+    let proof = Proof::parse(&r.challenge_id, &r.signature)?;
+    if !identity::is_device_id(&r.device_id) {
+        return Err(ApiError::InvalidRequest);
+    }
+    let acc = me.account_id;
+    let target_key = devices::in_use(&st.db.lock(), acc, &r.device_id)?
+        .public_key
+        .ok_or(ApiError::DeviceUnknown)?;
+    let bound = proven(
+        &st,
+        &proof,
+        ChallengeUse::Approve,
+        Some(acc),
+        Purpose::Approve,
+        &target_key,
+    )?;
+    // The signature must be the calling device's own.
+    if identity::device_id(&bound.public_key) != me.device_id {
+        return Err(ApiError::ChallengeMismatch);
+    }
+    {
+        let mut conn = st.db.lock();
+        let approver = managing_device(&conn, &st, &me)?;
+        devices::approve(
+            &mut conn,
+            &approver,
+            &r.device_id,
+            st.devices.now_secs(),
+            st.devices.config.recovery_cooldown_secs,
+        )?;
+    }
+    st.hub
+        .notify_account(acc, "device_approved", &notice_prefix(&r.device_id));
+    tracing::info!(event = "device_approved", device = %short(&r.device_id));
+    Ok(Json(json!({ "approved": true })))
 }

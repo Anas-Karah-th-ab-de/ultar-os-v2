@@ -99,6 +99,54 @@ impl CallBackend for WebrtcCall {
     }
 }
 
+fn push_event(evt: &Arc<Mutex<Vec<CallEvent>>>, event: CallEvent) {
+    if let Ok(mut events) = evt.lock() {
+        events.push(event);
+    }
+}
+
+fn text_field(v: &serde_json::Value, name: &str) -> String {
+    v.get(name)
+        .and_then(|x| x.as_str())
+        .unwrap_or_default()
+        .chars()
+        .take(64)
+        .collect()
+}
+
+/// A `notice` frame of the server as an event for the user interface.
+fn notice_event(v: &serde_json::Value) -> CallEvent {
+    CallEvent::Notice {
+        event: text_field(v, "event"),
+        device: text_field(v, "device"),
+    }
+}
+
+/// The pending recovery a `ready` frame reports, as the notice the device may have missed.
+fn pending_recovery(ready: &serde_json::Value) -> Option<CallEvent> {
+    let recovery = ready.get("recovery").filter(|r| r.is_object())?;
+    Some(CallEvent::Notice {
+        event: "recovery_started".to_string(),
+        device: text_field(recovery, "old_device").chars().take(8).collect(),
+    })
+}
+
+/// True when a frame that ends or answers a call comes from the party of the current call
+/// (`unreachable` is the server's own frame about the number that was dialled).
+fn from_current_peer(
+    ty: &str,
+    v: &serde_json::Value,
+    from: &str,
+    current_peer: &Option<String>,
+) -> bool {
+    let named = if ty == "unreachable" {
+        text_field(v, "to")
+    } else {
+        from.to_string()
+    };
+    current_peer.as_deref() == Some(named.as_str())
+}
+
 fn ws_url(server_base: &str) -> String {
     let b = server_base
         .replace("https://", "wss://")
@@ -170,6 +218,11 @@ async fn worker(
                         .unwrap_or("signal_refused"),
                 );
             }
+            // A recovery that is pending while the device signs in is a state, not a message it
+            // could have missed: report it like the notice.
+            if let Some(notice) = pending_recovery(&v) {
+                push_event(&evt, notice);
+            }
         }
         _ => return fail("signal_no_answer"),
     }
@@ -186,7 +239,8 @@ async fn worker(
                             let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
                             let from = v.get("from").and_then(|x| x.as_str()).unwrap_or("").to_string();
                             match ty {
-                                "ready" | "notice" => {}
+                                "ready" => {}
+                                "notice" => push_event(&evt, notice_event(&v)),
                                 "error" => {
                                     let code = v.get("error").and_then(|x| x.as_str()).unwrap_or("signal_error");
                                     fail(code);
@@ -199,6 +253,10 @@ async fn worker(
                                     evt.lock().unwrap().push(CallEvent::Incoming(from));
                                     // Medien-Engine: hier RTCPeerConnection.set_remote(offer) + Answer vorbereiten
                                 }
+                                // Answer, hang-up and "unreachable" count only from the party of
+                                // the current call; anybody may send frames to this number.
+                                "answer" | "bye" | "unreachable"
+                                    if !from_current_peer(ty, &v, &from, &current_peer) => {}
                                 "answer" => {
                                     if let CallState::Dialing(p) = state.lock().unwrap().clone() {
                                         *state.lock().unwrap() = CallState::Active(p);

@@ -32,7 +32,7 @@ fn old_database_is_upgraded_in_place_and_account_data_survives() {
     let (dir, db) = fixture_copy();
     assert_eq!(user_version(&db), 0, "fixture really is the old schema");
     let s = TestServer::start_in(dir, &db, |_| {});
-    assert_eq!(user_version(&db), 2);
+    assert_eq!(user_version(&db), 3);
 
     let login = s.post(
         "/v1/account/login",
@@ -176,7 +176,7 @@ fn old_releases_keep_their_channels_and_new_gated_channels_exist() {
 fn restarting_on_the_upgraded_file_changes_nothing() {
     let (dir, db) = fixture_copy();
     drop(ultraos_server::db::Db::open(&db.to_string_lossy()).unwrap());
-    assert_eq!(user_version(&db), 2);
+    assert_eq!(user_version(&db), 3);
     let s = TestServer::start_in(dir, &db, |_| {});
     assert_eq!(
         s.get("/v1/store/apps").json().as_array().unwrap().len(),
@@ -206,7 +206,7 @@ fn database_of_a_newer_server_is_refused() {
         err,
         ultraos_server::db::DbError::NewerSchema {
             found: 99,
-            supported: 2
+            supported: 3
         }
     ));
     assert_eq!(user_version(&db), 99, "the file is left untouched");

@@ -6,7 +6,7 @@
 use crate::device_events::{self, EventKind};
 use crate::devices::{
     self, allocate_number, charge_quota, clean_name, day_of, ensure_unused, in_use, insert_active,
-    number_of, DeviceError, DeviceRow, DeviceState, Limits, Registered,
+    number_of, DeviceError, DeviceRow, DeviceState, Limits, Registered, Standing,
 };
 use crate::identity::{self, LEGACY_PREFIX, PUBLIC_KEY_BYTES};
 use rusqlite::{Connection, OptionalExtension, Transaction};
@@ -29,19 +29,47 @@ pub fn legacy_cutoff(conn: &Connection) -> rusqlite::Result<i64> {
     Ok(text.and_then(|t| t.parse().ok()).unwrap_or(i64::MIN))
 }
 
-/// Binds an existing row to `public_key` in place; the number stays with the row.
+/// The new key of a move: the key itself, its name and when it gets management rights.
+struct NewKey<'a> {
+    public_key: &'a [u8; PUBLIC_KEY_BYTES],
+    name: &'a str,
+    standing: Standing,
+}
+
+fn manage_in(standing: Standing, now: i64, limits: Limits) -> i64 {
+    if standing.approved {
+        return 0;
+    }
+    standing
+        .key_since
+        .saturating_add(limits.cooldown_secs)
+        .saturating_sub(now)
+        .max(0)
+}
+
+/// Binds an existing row to the new key in place; the number stays with the row.
 fn rebind(
     tx: &Transaction<'_>,
     old: &DeviceRow,
-    public_key: &[u8; PUBLIC_KEY_BYTES],
-    name: &str,
+    new: &NewKey<'_>,
     now: i64,
+    limits: Limits,
 ) -> Result<Registered, DeviceError> {
+    let (public_key, name) = (new.public_key, new.name);
     let device_id = identity::device_id(public_key);
     tx.execute(
-        "UPDATE devices SET device_id=?1, public_key=?2, state=1, name=?3, epoch=epoch+1, last_seen=?4
-         WHERE id=?5",
-        rusqlite::params![device_id, public_key.as_slice(), name, day_of(now), old.row],
+        "UPDATE devices SET device_id=?1, public_key=?2, state=1, name=?3, epoch=epoch+1,
+                            last_seen=?4, approved=?5, key_since=?6
+         WHERE id=?7",
+        rusqlite::params![
+            device_id,
+            public_key.as_slice(),
+            name,
+            day_of(now),
+            i64::from(new.standing.approved),
+            new.standing.key_since,
+            old.row
+        ],
     )?;
     let number = match number_of(tx, old.row)? {
         Some(n) => n,
@@ -53,32 +81,33 @@ fn rebind(
         number,
         epoch: old.epoch + 1,
         created: true,
+        manage_in: manage_in(new.standing, now, limits),
     })
 }
 
-/// Moves the number of `old` to `public_key`: a legacy row is rebound in place, an active device
+/// Moves the number of `old` to the new key: a legacy row is rebound in place, an active device
 /// is marked replaced and a new row takes its number.
 fn transfer(
     tx: &Transaction<'_>,
     old: &DeviceRow,
-    public_key: &[u8; PUBLIC_KEY_BYTES],
-    name: &str,
+    new: &NewKey<'_>,
     now: i64,
     limits: Limits,
 ) -> Result<Registered, DeviceError> {
+    let (public_key, name) = (new.public_key, new.name);
     let device_id = identity::device_id(public_key);
     ensure_unused(tx, &device_id)?;
     charge_quota(tx, old.account_id, limits)?;
     tx.execute("DELETE FROM device_recoveries WHERE old_row=?1", [old.row])?;
     if old.state == DeviceState::Legacy {
-        return rebind(tx, old, public_key, name, now);
+        return rebind(tx, old, new, now, limits);
     }
     let number = number_of(tx, old.row)?;
     tx.execute(
         "UPDATE devices SET state=3, epoch=epoch+1 WHERE id=?1",
         [old.row],
     )?;
-    let device_row = insert_active(tx, old.account_id, public_key, name, now)?;
+    let device_row = insert_active(tx, old.account_id, public_key, name, now, new.standing)?;
     let number = match number {
         Some(n) => {
             tx.execute(
@@ -95,6 +124,7 @@ fn transfer(
         number,
         epoch: 0,
         created: true,
+        manage_in: manage_in(new.standing, now, limits),
     })
 }
 
@@ -134,7 +164,21 @@ pub fn upgrade_legacy(
     if claim.token_issued >= legacy_cutoff(&tx)? {
         return Err(DeviceError::LegacyNotEligible);
     }
-    let done = transfer(&tx, &old, public_key, name, now, limits)?;
+    // Like a registration: at once only when no other device of the account is in use.
+    let others: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM devices WHERE account_id=?1 AND state IN (0,1) AND id<>?2",
+        rusqlite::params![account_id, old.row],
+        |r| r.get(0),
+    )?;
+    let new = NewKey {
+        public_key,
+        name,
+        standing: Standing {
+            approved: others == 0,
+            key_since: now,
+        },
+    };
+    let done = transfer(&tx, &old, &new, now, limits)?;
     device_events::push(
         &tx,
         account_id,
@@ -147,7 +191,9 @@ pub fn upgrade_legacy(
 }
 
 /// Moves the number of the active device `old` to `new_key`. The caller verified the signature of
-/// the old key over this very replacement and the proof of possession of the new key.
+/// the old key over this very replacement and the proof of possession of the new key. The new
+/// device stands where the old one stood: it manages the account's devices from the moment the
+/// old one did (or would have).
 pub fn replace(
     conn: &mut Connection,
     old: &DeviceRow,
@@ -163,7 +209,15 @@ pub fn replace(
     if current.state != DeviceState::Active || current.row != old.row {
         return Err(DeviceError::Unknown);
     }
-    let done = transfer(&tx, &current, new_key, name, now, limits)?;
+    let new = NewKey {
+        public_key: new_key,
+        name,
+        standing: Standing {
+            approved: current.approved,
+            key_since: current.key_since,
+        },
+    };
+    let done = transfer(&tx, &current, &new, now, limits)?;
     device_events::push(
         &tx,
         old.account_id,
@@ -173,6 +227,54 @@ pub fn replace(
     )?;
     tx.commit()?;
     Ok(done)
+}
+
+/// A registration from before device keys has no key and so no way to be told about a recovery
+/// or to cancel it. While account tokens from before the migration are still valid (30 days),
+/// its own device can take it over with [`upgrade_legacy`]; a recovery – password only – is not
+/// offered during that time.
+fn legacy_recovery_open(conn: &Connection, now: i64) -> Result<(), DeviceError> {
+    // No recorded migration time: never open (fail closed).
+    let opens = match legacy_cutoff(conn)? {
+        i64::MIN => i64::MAX,
+        cutoff => cutoff.saturating_add(crate::accounts::TOKEN_TTL_SECS),
+    };
+    if now < opens {
+        return Err(DeviceError::RecoveryLocked {
+            retry_after_secs: u64::try_from(opens - now).unwrap_or(u64::MAX),
+        });
+    }
+    Ok(())
+}
+
+/// A recovery that is pending for an account, as it is reported to the account's devices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecoveryInfo {
+    /// Id of the device whose number is about to move.
+    pub old_device: String,
+    /// Seconds until the recovery can be finished (0 = it can).
+    pub eligible_in: i64,
+}
+
+/// The pending recovery of an account, if any.
+pub fn recovery_info(
+    conn: &Connection,
+    account_id: i64,
+    now: i64,
+) -> rusqlite::Result<Option<RecoveryInfo>> {
+    conn.query_row(
+        "SELECT d.device_id, r.eligible_at FROM device_recoveries r
+         JOIN devices d ON d.id = r.old_row
+         WHERE r.account_id=?1 AND r.expires_at>?2",
+        rusqlite::params![account_id, now],
+        |r| {
+            Ok(RecoveryInfo {
+                old_device: r.get(0)?,
+                eligible_in: r.get::<_, i64>(1)?.saturating_sub(now).max(0),
+            })
+        },
+    )
+    .optional()
 }
 
 struct Pending {
@@ -220,6 +322,9 @@ pub fn recovery_start(
     let tx = conn.transaction()?;
     let old = in_use(&tx, account_id, old_device_id)?;
     ensure_unused(&tx, &identity::device_id(new_key))?;
+    if old.state == DeviceState::Legacy {
+        legacy_recovery_open(&tx, now)?;
+    }
     if let Some(p) = pending(&tx, account_id, now)? {
         if same_request(&p, old.row, new_key) {
             tx.commit()?;
@@ -310,7 +415,16 @@ pub fn recovery_finish(
             retry_after_secs: u64::try_from(p.eligible_at - now).unwrap_or(u64::MAX),
         });
     }
-    let done = transfer(&tx, &old, new_key, name, now, limits)?;
+    // Password, cool-down and notice are behind this key: it manages the account's devices.
+    let new = NewKey {
+        public_key: new_key,
+        name,
+        standing: Standing {
+            approved: true,
+            key_since: now,
+        },
+    };
+    let done = transfer(&tx, &old, &new, now, limits)?;
     device_events::push(
         &tx,
         account_id,

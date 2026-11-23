@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 
 #[path = "app_agent.rs"]
 mod app_agent;
+#[path = "app_alert.rs"]
+mod app_alert;
 #[path = "app_bt.rs"]
 mod app_bt;
 #[path = "app_buddy.rs"]
@@ -818,6 +820,29 @@ impl App {
                 }
             }
             self.last_ussd = Some(m);
+        }
+        // Sicherheitshinweis des Ultar-Kontos: Meldung vom Signalserver -> sofort nachfragen; ein neu
+        // beantragter Nummern-Umzug wird als dringende Benachrichtigung gemeldet (auch bei Bildschirm aus).
+        if self.phone.tel.take_notice() {
+            self.phone.alert.recheck();
+        }
+        if self.phone.alert.take_fresh() {
+            ultar_notify::post(
+                "security",
+                "phone",
+                &ultar_cloud::messages::render(
+                    &self.set.lang,
+                    ultar_cloud::watch::KEY_ALERT_TITLE,
+                    &[],
+                ),
+                &self
+                    .phone
+                    .alert
+                    .banner_with_text(&self.set.lang)
+                    .map_or_else(String::new, |b| b.1.message),
+                ultar_notify::Urgency::High,
+            );
+            opened = true;
         }
         match self.phone.tel.state() {
             app_phone::CallState::Incoming(from) if self.more_blocked(&from) => {

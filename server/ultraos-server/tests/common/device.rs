@@ -150,6 +150,24 @@ impl TestDevice {
             .to_string()
     }
 
+    /// This (managing) device approves `new`: token plus signature over the new device's key.
+    pub fn approve_reply(&self, s: &TestServer, new: &TestDevice) -> Reply {
+        let token = self.session(s);
+        let c = self.challenge(s, "approve", Some(&token));
+        let signature = self.sign("ultar-device-approve-v1", &c, &new.public());
+        s.post(
+            "/v1/device/approve",
+            Some(&token),
+            &json!({"device_id": new.id(), "challenge_id": c.id, "signature": signature}),
+        )
+    }
+
+    /// Like [`TestDevice::approve_reply`]; must succeed.
+    pub fn approve(&self, s: &TestServer, new: &TestDevice) {
+        let reply = self.approve_reply(s, new);
+        assert_eq!(reply.status, 200, "{}", reply.text());
+    }
+
     pub fn session_reply(&self, s: &TestServer) -> Reply {
         let reply = self.challenge_reply(s, "session", None);
         if reply.status != 200 {

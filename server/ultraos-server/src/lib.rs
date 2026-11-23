@@ -33,6 +33,7 @@ pub mod device_api;
 pub mod device_auth;
 pub mod device_error;
 pub mod device_events;
+pub mod device_model;
 pub mod device_moves;
 pub mod device_moves_api;
 pub mod devices;
@@ -45,8 +46,10 @@ pub mod identity;
 pub mod migrate;
 mod migrate_v2;
 pub mod msg;
+pub mod pwguard;
 pub mod ratelimit;
 pub mod search;
+pub mod server;
 pub mod signal;
 pub mod store_api;
 pub mod updates;
@@ -61,7 +64,7 @@ use db::{Db, DbError};
 use files::FileStore;
 use guard::ProxyNet;
 use ratelimit::{LimiterConfig, RateLimiter};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
@@ -89,6 +92,8 @@ pub struct Config {
     pub limits: LimiterConfig,
     /// Device identity: server name, device limit, recovery cool-down.
     pub devices: device_auth::DeviceConfig,
+    /// Connections open at the same time.
+    pub max_connections: usize,
 }
 
 impl Config {
@@ -113,6 +118,7 @@ impl Config {
             ],
             limits: LimiterConfig::default(),
             devices: device_auth::DeviceConfig::default(),
+            max_connections: server::DEFAULT_MAX_CONNECTIONS,
         }
     }
 }
@@ -145,6 +151,8 @@ pub struct AppState {
     pub trusted_proxies: Vec<ProxyNet>,
     /// Device authentication: challenges, limits, time.
     pub devices: device_auth::DeviceAuth,
+    /// Connections open at the same time.
+    pub max_connections: usize,
 }
 
 impl AppState {
@@ -166,6 +174,7 @@ impl AppState {
             limiter: RateLimiter::new(config.limits, clock.clone()),
             trusted_proxies: config.trusted_proxies,
             devices: device_auth::DeviceAuth::new(config.devices, clock),
+            max_connections: config.max_connections,
         }))
     }
 }
@@ -198,6 +207,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/device/rename", post(device_api::rename))
         .route("/v1/device/remove", post(device_api::remove))
         .route("/v1/device/replace", post(device_moves_api::replace))
+        .route("/v1/device/approve", post(device_moves_api::approve))
         .route(
             "/v1/device/recover/start",
             post(device_moves_api::recover_start),
@@ -236,17 +246,4 @@ pub fn router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-/// Serves the router on an already bound listener until the process ends or `shutdown` resolves.
-pub async fn serve<F>(
-    listener: tokio::net::TcpListener,
-    state: Arc<AppState>,
-    shutdown: F,
-) -> std::io::Result<()>
-where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-}
+pub use server::serve;

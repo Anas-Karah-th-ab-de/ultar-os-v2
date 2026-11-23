@@ -77,6 +77,17 @@ pub enum CloudError {
         /// Seconds left.
         retry_after_secs: u64,
     },
+    /// This device was added without approval and may not manage other devices yet
+    /// (`device_not_approved`).
+    NotApproved {
+        /// Seconds until it may without approval.
+        retry_after_secs: u64,
+    },
+    /// The earlier registration cannot be replaced yet (`recovery_locked`).
+    RecoveryLocked {
+        /// Seconds until a replacement can be started.
+        retry_after_secs: u64,
+    },
     /// Another device replacement is already waiting (`recovery_pending`).
     RecoveryPending,
     /// There is no device replacement to finish or cancel (`recovery_unknown`).
@@ -124,6 +135,12 @@ impl CloudError {
             (Some("cooldown_active"), _) => CloudError::CooldownActive {
                 retry_after_secs: retry_after_secs.unwrap_or(1).max(1),
             },
+            (Some("device_not_approved"), _) => CloudError::NotApproved {
+                retry_after_secs: retry_after_secs.unwrap_or(1).max(1),
+            },
+            (Some("recovery_locked"), _) => CloudError::RecoveryLocked {
+                retry_after_secs: retry_after_secs.unwrap_or(1).max(1),
+            },
             (Some("recovery_pending"), _) => CloudError::RecoveryPending,
             (Some("recovery_unknown"), _) => CloudError::RecoveryUnknown,
             (None, 401) => CloudError::AuthRequired,
@@ -167,6 +184,8 @@ impl CloudError {
             (CloudError::UpdateRequired, _) => "cloud.device.update_required",
             (CloudError::LegacyNotEligible, _) => "cloud.device.legacy_not_eligible",
             (CloudError::CooldownActive { .. }, _) => "cloud.device.cooldown_active",
+            (CloudError::NotApproved { .. }, _) => "cloud.device.not_approved",
+            (CloudError::RecoveryLocked { .. }, _) => "cloud.device.recovery_locked",
             (CloudError::RecoveryPending, _) => "cloud.device.recovery_pending",
             (CloudError::RecoveryUnknown, _) => "cloud.device.recovery_unknown",
             (CloudError::ServerIdentityMismatch, _) => "cloud.device.server_mismatch",
@@ -180,6 +199,8 @@ impl CloudError {
     pub fn retry_after_secs(&self) -> Option<u64> {
         match self {
             CloudError::RateLimited { retry_after_secs }
+            | CloudError::NotApproved { retry_after_secs }
+            | CloudError::RecoveryLocked { retry_after_secs }
             | CloudError::CooldownActive { retry_after_secs } => Some(*retry_after_secs),
             _ => None,
         }
@@ -200,6 +221,12 @@ impl fmt::Display for CloudError {
             CloudError::Vpn(detail) => write!(f, "vpn: {detail}"),
             CloudError::CooldownActive { retry_after_secs } => {
                 write!(f, "cool-down active, {retry_after_secs} s left")
+            }
+            CloudError::NotApproved { retry_after_secs } => {
+                write!(f, "device not approved, {retry_after_secs} s left")
+            }
+            CloudError::RecoveryLocked { retry_after_secs } => {
+                write!(f, "recovery locked, {retry_after_secs} s left")
             }
             CloudError::KeyStore(e) => write!(f, "device key: {e}"),
             other => f.write_str(other.message_key(Subject::General)),
@@ -415,6 +442,18 @@ mod tests {
             f(404, Some("recovery_unknown"), None),
             CloudError::RecoveryUnknown
         ));
+        let wait = f(403, Some("device_not_approved"), Some(120));
+        assert!(matches!(
+            wait,
+            CloudError::NotApproved {
+                retry_after_secs: 120
+            }
+        ));
+        assert_eq!(wait.retry_after_secs(), Some(120));
+        assert!(wait.to_string().contains("120"));
+        let locked = f(409, Some("recovery_locked"), None);
+        assert_eq!(locked.retry_after_secs(), Some(1));
+        assert!(locked.to_string().contains("locked"));
         let key = CloudError::from(crate::keystore::KeyStoreError::Corrupt);
         assert!(std::error::Error::source(&key).is_some());
         assert!(key.to_string().contains("damaged"));

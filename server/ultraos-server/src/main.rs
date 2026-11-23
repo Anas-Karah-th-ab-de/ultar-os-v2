@@ -94,6 +94,11 @@ fn devices_from_env(devices: &mut device_auth::DeviceConfig) {
         &mut devices.max_devices,
     );
     apply(
+        "ULTRAOS_PASSWORD_FAILURES",
+        device_auth::parse_password_failures,
+        &mut devices.password_failures,
+    );
+    apply(
         "ULTRAOS_DEVICE_COOLDOWN_SECS",
         device_auth::parse_cooldown,
         &mut devices.recovery_cooldown_secs,
@@ -123,6 +128,12 @@ fn config_from_env(secret: [u8; 32]) -> Config {
     limit_from_env("ULTRAOS_LIMIT_DOWNLOAD", &mut config.limits.download);
     limit_from_env("ULTRAOS_LIMIT_AUTH", &mut config.limits.auth);
     devices_from_env(&mut config.devices);
+    if let Ok(text) = std::env::var("ULTRAOS_MAX_CONNECTIONS") {
+        match ultraos_server::server::parse_max_connections(&text) {
+            Some(n) => config.max_connections = n,
+            None => tracing::warn!(event = "ignored_setting", key = "ULTRAOS_MAX_CONNECTIONS"),
+        }
+    }
     config
 }
 

@@ -38,6 +38,40 @@ pub struct Registration {
     pub token: String,
     /// Lifetime of the token in seconds.
     pub expires_in: u64,
+    /// True when this device may manage the account's other devices (rename, remove, approve,
+    /// read notices, cancel a recovery). A device added to an account that already had devices
+    /// gets that right by approval from one of them, or after the waiting time.
+    #[serde(default)]
+    pub manage: bool,
+    /// Seconds until it may without approval (0 = it may).
+    #[serde(default)]
+    pub manage_in: i64,
+    /// A replacement of one of the account's devices that is waiting to be finished.
+    #[serde(default)]
+    pub recovery: Option<RecoveryState>,
+}
+
+/// A pending replacement of a lost device: somebody with the account password asked to move a
+/// number to a new device. Shown to the user until it is over or cancelled.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct RecoveryState {
+    /// Id of the device whose number is about to move.
+    pub old_device: String,
+    /// Seconds until the replacement can be finished (0 = now).
+    pub eligible_in: i64,
+}
+
+/// The devices of an account and what is pending for it.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct AccountDevices {
+    /// The devices in use.
+    pub devices: Vec<DeviceEntry>,
+    /// Most devices the account may have.
+    #[serde(default)]
+    pub limit: u32,
+    /// The pending replacement of a lost device, if any.
+    #[serde(default)]
+    pub recovery: Option<RecoveryState>,
 }
 
 /// One device of the account.
@@ -57,6 +91,12 @@ pub struct DeviceEntry {
     pub last_seen: i64,
     /// True for the device whose token made the request.
     pub current: bool,
+    /// True when the device may manage the account's other devices.
+    #[serde(default)]
+    pub manage: bool,
+    /// Its public key (base64url; absent for registrations from before device keys).
+    #[serde(default)]
+    pub public_key: Option<String>,
 }
 
 /// A security notice of the account.
@@ -97,7 +137,7 @@ fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, CloudError> 
 }
 
 /// Signs the transcript of `purpose` for `challenge` with `key`.
-fn sign(
+pub(crate) fn sign(
     key: &dyn KeyStore,
     purpose: Purpose,
     challenge: &Challenge,
@@ -226,13 +266,35 @@ impl Client {
 
     /// The devices of the signed-in account.
     pub fn devices(&self) -> Result<Vec<DeviceEntry>, CloudError> {
+        Ok(self.account_devices()?.devices)
+    }
+
+    /// The devices of the signed-in account together with a pending replacement, if any.
+    pub fn account_devices(&self) -> Result<AccountDevices, CloudError> {
         self.require_token()?;
-        let v = self.get_value("/v1/devices")?;
-        parse(
-            v.get("devices")
-                .cloned()
-                .ok_or(CloudError::InvalidResponse)?,
-        )
+        parse(self.get_value("/v1/devices")?)
+    }
+
+    /// This (managing) device gives the added device `device_id` its management rights at once.
+    /// The key of that device is taken from the account's device list and must hash to the id
+    /// the user confirmed; this device then signs it.
+    pub fn approve_device(&self, key: &dyn KeyStore, device_id: &str) -> Result<(), CloudError> {
+        let as_device = self.as_device(key)?;
+        let target_key = as_device
+            .devices()?
+            .into_iter()
+            .find(|d| d.device_id == device_id)
+            .and_then(|d| d.public_key)
+            .and_then(|k| identity::decode_fixed::<PUBLIC_KEY_BYTES>(&k))
+            .filter(|k| identity::device_id(k) == device_id)
+            .ok_or(CloudError::DeviceUnknown)?;
+        let c = as_device.device_challenge("approve", key)?;
+        let body = json!({
+            "device_id": device_id,
+            "challenge_id": c.id,
+            "signature": sign(key, Purpose::Approve, &c, &target_key)?,
+        });
+        as_device.post("/v1/device/approve", &body).map(|_| ())
     }
 
     /// Renames a device of the account. Authorised by this device's key.
@@ -256,20 +318,23 @@ impl Client {
             .map(|_| ())
     }
 
+    /// Security notices with an id above `after`, read with the device token this client holds.
+    pub(crate) fn events_after(&self, after: i64) -> Result<Vec<DeviceEvent>, CloudError> {
+        let v = self.get_value(&format!("/v1/device/events?after={after}"))?;
+        parse(
+            v.get("events")
+                .cloned()
+                .ok_or(CloudError::InvalidResponse)?,
+        )
+    }
+
     /// Security notices of the account with an id above `after`.
     pub fn device_events(
         &self,
         key: &dyn KeyStore,
         after: i64,
     ) -> Result<Vec<DeviceEvent>, CloudError> {
-        let v = self
-            .as_device(key)?
-            .get_value(&format!("/v1/device/events?after={after}"))?;
-        parse(
-            v.get("events")
-                .cloned()
-                .ok_or(CloudError::InvalidResponse)?,
-        )
+        self.as_device(key)?.events_after(after)
     }
 
     /// New device, step 1 of a replacement: asks the server for the challenge both devices sign.
@@ -314,7 +379,7 @@ impl Client {
             "password": password,
             "old_device_id": old_device_id,
             "challenge_id": c.id,
-            "signature": sign(new_key, Purpose::Recover, &c, old_device_id.as_bytes())?,
+            "signature": sign(new_key, Purpose::RecoverStart, &c, old_device_id.as_bytes())?,
         });
         self.post("/v1/device/recover/start", &body)?
             .get("eligible_in")
@@ -334,13 +399,13 @@ impl Client {
         let body = json!({
             "old_device_id": old_device_id,
             "challenge_id": c.id,
-            "signature": sign(new_key, Purpose::Recover, &c, old_device_id.as_bytes())?,
+            "signature": sign(new_key, Purpose::RecoverFinish, &c, old_device_id.as_bytes())?,
             "name": name,
         });
         parse(self.post("/v1/device/recover/finish", &body)?)
     }
 
-    /// Cancels a pending replacement. Authorised by this device's key (any device of the account).
+    /// Cancels a pending replacement. Authorised by this device's key (a managing device).
     pub fn recover_cancel(&self, key: &dyn KeyStore) -> Result<(), CloudError> {
         self.as_device(key)?
             .post("/v1/device/recover/cancel", &json!({}))
@@ -362,47 +427,6 @@ impl Client {
             .map(str::to_string)
             .ok_or(CloudError::InvalidResponse)
     }
-}
-
-/// First frame of the signalling socket: names the device.
-pub fn signal_hello(key: &dyn KeyStore) -> Result<String, CloudError> {
-    let device_id = identity::device_id(&key.public_key()?);
-    Ok(json!({"type": "hello", "device_id": device_id}).to_string())
-}
-
-/// Answer to the server's `challenge` frame on the signalling socket. `server` and `account_id`
-/// are what this device is registered with; a challenge that names anything else is refused and
-/// nothing is signed.
-pub fn signal_auth(
-    key: &dyn KeyStore,
-    server: &str,
-    account_id: i64,
-    challenge_frame: &str,
-) -> Result<String, CloudError> {
-    let v: Value =
-        serde_json::from_str(challenge_frame).map_err(|_| CloudError::InvalidResponse)?;
-    let text = |field: &str| v.get(field).and_then(Value::as_str);
-    if text("type") != Some("challenge") {
-        return Err(CloudError::InvalidResponse);
-    }
-    let challenge = Challenge {
-        id: String::new(),
-        bytes: text("challenge")
-            .and_then(identity::decode_fixed)
-            .ok_or(CloudError::InvalidResponse)?,
-        account_id: v
-            .get("account_id")
-            .and_then(Value::as_i64)
-            .ok_or(CloudError::InvalidResponse)?,
-        server: text("server")
-            .ok_or(CloudError::InvalidResponse)?
-            .to_string(),
-    };
-    if challenge.server != server || challenge.account_id != account_id {
-        return Err(CloudError::ServerIdentityMismatch);
-    }
-    let signature = sign(key, Purpose::Signal, &challenge, b"")?;
-    Ok(json!({"type": "auth", "signature": signature}).to_string())
 }
 
 #[cfg(test)]

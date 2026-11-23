@@ -98,7 +98,37 @@ pub(crate) fn registered_reply(st: &AppState, account_id: i64, done: &Registered
         "account_id": account_id,
         "token": token,
         "expires_in": DEVICE_TOKEN_TTL_SECS,
+        "manage": done.manage_in == 0,
+        "manage_in": done.manage_in,
+        "recovery": recovery_json(st, account_id)?,
     })))
+}
+
+/// The pending recovery of the account as it is reported to its devices (`null` when none): a
+/// recovery is a state, not only a notice, so every answer a device gets about itself carries it.
+pub(crate) fn recovery_json(st: &AppState, account_id: i64) -> Result<Value, ApiError> {
+    let info = device_moves::recovery_info(&st.db.lock(), account_id, st.devices.now_secs())?;
+    Ok(match info {
+        Some(r) => json!({"old_device": r.old_device, "eligible_in": r.eligible_in}),
+        None => Value::Null,
+    })
+}
+
+/// The calling device's row, if it may manage other devices of its account now
+/// (`device_not_approved` otherwise).
+pub(crate) fn managing_device(
+    conn: &rusqlite::Connection,
+    st: &AppState,
+    me: &crate::entitlements::DeviceSession,
+) -> Result<devices::DeviceRow, ApiError> {
+    let row = devices::by_row(conn, me.device_row)?
+        .filter(|d| d.account_id == me.account_id)
+        .ok_or(ApiError::AuthRequired)?;
+    row.require_manager(
+        st.devices.now_secs(),
+        st.devices.config.recovery_cooldown_secs,
+    )?;
+    Ok(row)
 }
 
 /// Body of the challenge request.
@@ -239,6 +269,12 @@ pub async fn session(State(st): State<Shared>, ApiJson(r): ApiJson<SessionReq>) 
             number,
             epoch: device.epoch,
             created: false,
+            manage_in: device
+                .manage_in(
+                    st.devices.now_secs(),
+                    st.devices.config.recovery_cooldown_secs,
+                )
+                .unwrap_or(0),
         }
     };
     registered_reply(&st, bound.account_id, &done)
@@ -296,13 +332,18 @@ pub async fn upgrade(
     registered_reply(&st, acc, &done)
 }
 
-/// `GET /v1/devices` — the devices of the account: name, number, state, day added, day last seen.
+/// `GET /v1/devices` — the devices of the account: name, number, state, day added, day last seen,
+/// whether each may manage the others, and the pending recovery if there is one.
 pub async fn list(State(st): State<Shared>, h: HeaderMap) -> Reply {
     let acc = require_account(&st, &h)?;
     let current = bearer(&h)
         .and_then(|t| device_of_token(&st, t))
         .map(|d| d.device_id);
-    let entries: Vec<Value> = devices::list(&st.db.lock(), acc)?
+    let (now, cooldown) = (
+        st.devices.now_secs(),
+        st.devices.config.recovery_cooldown_secs,
+    );
+    let entries: Vec<Value> = devices::list(&st.db.lock(), acc, now, cooldown)?
         .into_iter()
         .map(|d| {
             json!({
@@ -313,12 +354,16 @@ pub async fn list(State(st): State<Shared>, h: HeaderMap) -> Reply {
                 "added": d.added,
                 "last_seen": d.last_seen,
                 "current": current.as_deref() == Some(d.device_id.as_str()),
+                "manage": d.manage_in == Some(0),
+                "manage_in": d.manage_in,
+                "public_key": d.public_key.map(|k| identity::encode(&k)),
             })
         })
         .collect();
     Ok(Json(json!({
         "devices": entries,
         "limit": st.devices.config.max_devices,
+        "recovery": recovery_json(&st, acc)?,
     })))
 }
 
@@ -329,14 +374,17 @@ pub struct RenameReq {
     name: String,
 }
 
-/// `POST /v1/device/rename` — renames a device of the account. Needs a device token.
+/// `POST /v1/device/rename` — renames a device of the account. Needs the device token of a
+/// managing device.
 pub async fn rename(
     State(st): State<Shared>,
     h: HeaderMap,
     ApiJson(r): ApiJson<RenameReq>,
 ) -> Reply {
     let me = require_device(&st, &h)?;
-    devices::rename(&st.db.lock(), me.account_id, &r.device_id, &r.name)?;
+    let conn = st.db.lock();
+    managing_device(&conn, &st, &me)?;
+    devices::rename(&conn, me.account_id, &r.device_id, &r.name)?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -346,9 +394,9 @@ pub struct DeviceRef {
     device_id: String,
 }
 
-/// `POST /v1/device/remove` — removes a device of the account (also the calling one). Its key and
-/// number are retired, its tokens stop working, its signalling socket is closed. Needs a device
-/// token.
+/// `POST /v1/device/remove` — removes a device of the account. Its key and number are retired,
+/// its tokens stop working, its signalling socket is closed. Every device may remove itself;
+/// removing another device needs the device token of a managing device.
 pub async fn remove(
     State(st): State<Shared>,
     h: HeaderMap,
@@ -356,7 +404,13 @@ pub async fn remove(
 ) -> Reply {
     let me = require_device(&st, &h)?;
     let now = st.devices.now_secs();
-    let number = devices::remove(&mut st.db.lock(), me.account_id, &r.device_id, now)?;
+    let number = {
+        let mut conn = st.db.lock();
+        if r.device_id != me.device_id {
+            managing_device(&conn, &st, &me)?;
+        }
+        devices::remove(&mut conn, me.account_id, &r.device_id, now)?
+    };
     if let Some(number) = &number {
         st.hub.kick(number);
     }
@@ -375,7 +429,8 @@ pub struct EventsQuery {
     after: Option<i64>,
 }
 
-/// `GET /v1/device/events?after=<id>` — security notices of the account. Needs a device token.
+/// `GET /v1/device/events?after=<id>` — security notices of the account. Needs the device token
+/// of a managing device.
 pub async fn events(
     State(st): State<Shared>,
     h: HeaderMap,
@@ -384,7 +439,9 @@ pub async fn events(
     let me = require_device(&st, &h)?;
     let Query(query) = query.map_err(|_| ApiError::InvalidRequest)?;
     let after = query.after.unwrap_or(0).max(0);
-    let entries: Vec<Value> = device_events::after(&st.db.lock(), me.account_id, after)?
+    let conn = st.db.lock();
+    managing_device(&conn, &st, &me)?;
+    let entries: Vec<Value> = device_events::after(&conn, me.account_id, after)?
         .into_iter()
         .map(|e| json!({"id": e.id, "event": e.kind, "device": e.device, "at": e.at}))
         .collect();

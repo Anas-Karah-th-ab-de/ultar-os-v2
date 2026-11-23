@@ -1541,6 +1541,7 @@ dependencies = [
  "ultar-pkg",
  "ultar-vpn",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]
@@ -1598,6 +1599,8 @@ dependencies = [
  "futures-util",
  "hex",
  "hmac",
+ "hyper",
+ "hyper-util",
  "rand",
  "rusqlite",
  "serde",

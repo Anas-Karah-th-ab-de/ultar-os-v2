@@ -23,6 +23,13 @@ pub enum CallEvent {
     Answered,
     Ended,
     Error(String),
+    /// Security notice of the server about the account's devices (for example
+    /// `recovery_started`: somebody asked to move a number to another device). `device` holds the
+    /// first characters of the device id concerned. The user interface must show it.
+    Notice {
+        event: String,
+        device: String,
+    },
 }
 
 /// Proof of the device key towards the signalling server (docs/DEVICE-IDENTITY.md).

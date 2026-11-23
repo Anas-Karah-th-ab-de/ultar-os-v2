@@ -1,4 +1,5 @@
 use super::*;
+use crate::signalling::{signal_auth, signal_hello};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 
 struct MemoryKey(SigningKey);

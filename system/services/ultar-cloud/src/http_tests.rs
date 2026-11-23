@@ -181,3 +181,84 @@ fn unreachable_server_is_a_transport_error() {
     let err = t.get_json("/v1/store/catalog", &[]).unwrap_err();
     assert!(matches!(err, CloudError::Transport(_)), "{err}");
 }
+
+#[cfg(unix)]
+#[test]
+fn private_files_are_never_written_through_planted_names_or_into_open_directories() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let loot = outside.path().join("loot");
+    std::fs::write(&loot, "").unwrap();
+    let dest = dir.path().join("state/cloud.token");
+    // A missing directory of a private file is created for the owner only.
+    write_atomic(&dest, b"one", true).unwrap();
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(dest.parent().unwrap()), 0o700);
+    assert_eq!(mode(&dest), 0o600);
+    // The final name is a link out of the directory: the link is replaced, its target untouched.
+    std::fs::remove_file(&dest).unwrap();
+    symlink(&loot, &dest).unwrap();
+    symlink(&loot, dest.parent().unwrap().join("cloud.token.part")).unwrap();
+    write_atomic(&dest, b"two", true).unwrap();
+    assert_eq!(std::fs::read_to_string(&loot).unwrap(), "");
+    assert!(std::fs::symlink_metadata(&dest)
+        .unwrap()
+        .file_type()
+        .is_file());
+    assert_eq!(std::fs::read_to_string(&dest).unwrap(), "two");
+    // A directory that others may write to is refused for private files, not for public ones.
+    let open = dir.path().join("open");
+    std::fs::create_dir(&open).unwrap();
+    std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let refused = write_atomic(&open.join("cloud.token"), b"x", true).unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(!open.join("cloud.token").exists());
+    write_atomic(&open.join("number"), b"UOS", false).unwrap();
+    let left: Vec<_> = std::fs::read_dir(&open).unwrap().flatten().collect();
+    assert_eq!(left.len(), 1, "no temporary file left");
+}
+
+#[cfg(unix)]
+#[test]
+fn old_leftovers_of_interrupted_writes_are_removed_young_ones_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("device.state");
+    let old = dir.path().join("device.state.new.0011223344556677");
+    let young = dir.path().join("device.state.new.8899aabbccddeeff");
+    let other = dir.path().join("device.state.new.notatemp");
+    for p in [&old, &young, &other] {
+        std::fs::write(p, "x").unwrap();
+    }
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::options()
+        .write(true)
+        .open(&old)
+        .unwrap()
+        .set_modified(past)
+        .unwrap();
+    write_atomic(&dest, b"state", true).unwrap();
+    assert!(!old.exists(), "stale temporary file removed");
+    assert!(young.exists() && other.exists());
+    assert!(fresh_temp_path(&dest).unwrap() != fresh_temp_path(&dest).unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_download_is_not_written_through_a_planted_part_link() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let loot = outside.path().join("loot");
+    std::fs::write(&loot, "").unwrap();
+    let dest = dir.path().join("a.uap");
+    symlink(&loot, dir.path().join("a.uap.part")).unwrap();
+    let body = b"package bytes";
+    let expected = Expected {
+        size: body.len() as u64,
+        sha256: "",
+    };
+    write_verified(&body[..], expected, &dest).unwrap();
+    assert_eq!(std::fs::read_to_string(&loot).unwrap(), "");
+    assert_eq!(std::fs::read(&dest).unwrap(), body);
+}

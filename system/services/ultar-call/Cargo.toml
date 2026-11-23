@@ -20,3 +20,11 @@ real = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
 [lib]
 name = "ultar_call"
 path = "src/lib.rs"
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
+tokio-tungstenite = "0.23"
+futures-util = "0.3"
+
+[[test]]
+name = "r3_notices"
+required-features = ["real"]

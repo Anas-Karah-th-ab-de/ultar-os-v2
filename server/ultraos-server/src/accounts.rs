@@ -87,8 +87,34 @@ async fn hash_new_password(password: String) -> Result<String, ApiError> {
         .map_err(|_| ApiError::Internal)
 }
 
-/// Checks `password` against the stored hash of `account_id` (Argon2id, bounded concurrency).
-/// An unknown account costs the same work as a wrong password.
+/// Verifies `password` against `hash` (Argon2id, bounded concurrency). When the account is known
+/// the check is booked on its failed-password budget first ([`crate::pwguard`]); an exhausted
+/// budget answers `rate_limited` without looking at the password.
+async fn verify_guarded(
+    st: &AppState,
+    account_id: Option<i64>,
+    hash: String,
+    password: String,
+) -> Result<bool, ApiError> {
+    if let Some(id) = account_id {
+        st.devices
+            .passwords
+            .attempt(id, st.devices.now_ms())
+            .map_err(|retry_after_secs| ApiError::RateLimited { retry_after_secs })?;
+    }
+    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
+    let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    let ok = ok && account_id.is_some();
+    if let (true, Some(id)) = (ok, account_id) {
+        st.devices.passwords.succeeded(id);
+    }
+    Ok(ok)
+}
+
+/// Checks `password` against the stored hash of `account_id`. An unknown account costs the same
+/// work as a wrong password. Failed checks count against the account's budget.
 pub async fn password_matches(
     st: &AppState,
     account_id: i64,
@@ -106,13 +132,9 @@ pub async fn password_matches(
             |r| r.get(0),
         )
         .optional()?;
-    let known = stored.is_some();
+    let known = stored.is_some().then_some(account_id);
     let hash = stored.unwrap_or_else(|| decoy_hash().to_string());
-    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
-    let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
-        .await
-        .map_err(|_| ApiError::Internal)?;
-    Ok(ok && known)
+    verify_guarded(st, known, hash, password).await
 }
 
 /// `POST /v1/account/register` — creates an account and returns a session token.
@@ -162,11 +184,7 @@ pub async fn account_login(
         Some((id, hash, epoch)) => (Some((id, epoch)), hash),
         None => (None, decoy_hash().to_string()),
     };
-    let password = c.password;
-    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
-    let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
-        .await
-        .map_err(|_| ApiError::Internal)?;
+    let ok = verify_guarded(&st, id.map(|(id, _)| id), hash, c.password).await?;
     match id {
         Some((id, epoch)) if ok => session(&st, id, epoch),
         _ => Err(ApiError::InvalidCredentials),

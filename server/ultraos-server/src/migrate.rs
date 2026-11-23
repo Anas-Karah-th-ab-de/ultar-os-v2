@@ -13,13 +13,14 @@
 //! * `releases` is rebuilt with a numeric id, architecture and edition.
 //!
 //! Version 2 (device identity, see `docs/DEVICE-IDENTITY.md` §9): [`crate::migrate_v2`].
+//! Version 3 (approval of added devices): `devices.approved`, `devices.key_since`.
 
 use crate::db::DbError;
 use crate::search;
 use rusqlite::{Connection, Transaction};
 
 /// The schema version this build reads and writes.
-pub const LATEST: i64 = 2;
+pub const LATEST: i64 = 3;
 
 /// Brings the database to [`LATEST`]. Idempotent.
 pub fn run(conn: &mut Connection) -> Result<(), DbError> {
@@ -38,6 +39,9 @@ pub fn run(conn: &mut Connection) -> Result<(), DbError> {
     }
     if found < 2 {
         crate::migrate_v2::apply(&tx, crate::db::now())?;
+    }
+    if found < 3 {
+        crate::migrate_v2::apply_v3(&tx)?;
     }
     if found < LATEST {
         tx.pragma_update(None, "user_version", LATEST)?;

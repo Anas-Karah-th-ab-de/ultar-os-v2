@@ -85,6 +85,7 @@ fn a_token_is_bound_to_its_device_key_and_cannot_be_used_for_another_key() {
     let (phone, tablet) = (TestDevice::new(1), TestDevice::new(2));
     phone.register(&s, &token);
     tablet.register(&s, &token);
+    phone.approve(&s, &tablet);
     let (phone_token, tablet_token) = (phone.session(&s), tablet.session(&s));
 
     // The server knows which key a token belongs to, whoever presents it.
@@ -142,6 +143,7 @@ fn a_challenge_issued_before_removal_gives_no_token_after_it() {
     let (phone, tablet) = (TestDevice::new(1), TestDevice::new(2));
     phone.register(&s, &token);
     tablet.register(&s, &token);
+    phone.approve(&s, &tablet);
     let c = phone.challenge(&s, "session", None);
     let sig = phone.sign(SESSION, &c, b"");
     let tablet_token = tablet.session(&s);
@@ -323,14 +325,21 @@ fn signalling_is_opened_by_the_device_key_not_by_the_account() {
         let own = stranger.number(&s, &stolen);
         assert_ne!(own, number);
         let (_ws, ready) = stranger.signal(&s).await;
-        assert_eq!(ready, json!({"type":"ready","number": own}));
+        assert_eq!(
+            ready,
+            json!({"type":"ready","number": own,"manage": false,"recovery": null}),
+            "his device is an added one: it does not manage the account's devices"
+        );
         // Claiming the victim's device id with his own key fails.
         let (_ws, refused) = device.signal_signed_by(&s, &stranger).await;
         assert_eq!(refused, json!({"type":"error","error":"auth"}));
         bad_handshakes_are_refused(&s, &device).await;
         // The real device connects.
         let (_ws, ready) = device.signal(&s).await;
-        assert_eq!(ready, json!({"type":"ready","number": number}));
+        assert_eq!(
+            ready,
+            json!({"type":"ready","number": number,"manage": true,"recovery": null})
+        );
     });
 }
 
@@ -370,6 +379,7 @@ fn removing_a_device_closes_its_socket_and_others_are_told() {
     let (phone, tablet) = (TestDevice::new(1), TestDevice::new(2));
     let phone_number = phone.number(&s, &token);
     tablet.register(&s, &token);
+    phone.approve(&s, &tablet);
     let tablet_token = tablet.session(&s);
     runtime().block_on(async {
         let (mut phone_ws, _) = phone.signal(&s).await;

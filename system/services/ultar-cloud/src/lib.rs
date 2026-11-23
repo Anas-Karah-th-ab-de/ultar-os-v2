@@ -32,10 +32,12 @@ pub mod identity;
 pub mod keystore;
 pub mod messages;
 pub mod model;
+pub mod signalling;
+pub mod watch;
 
 pub use client::{Client, VpnPeer};
 pub use client_device::{
-    authorize_replacement, signal_auth, signal_hello, Challenge, DeviceEntry, DeviceEvent,
+    authorize_replacement, AccountDevices, Challenge, DeviceEntry, DeviceEvent, RecoveryState,
     Registration, ReplaceGrant, ReplaceRequest,
 };
 pub use device::{
@@ -49,3 +51,5 @@ pub use model::{
     AppAccess, AppDetails, AppMeta, AppSummary, CatalogPage, CatalogQuery, Category, Entitlements,
     Publisher, Release, VersionInfo,
 };
+pub use signalling::{signal_auth, signal_hello, SignalProof};
+pub use watch::{SecurityState, SecurityWatch};

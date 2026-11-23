@@ -43,6 +43,11 @@ pub trait TelephonyBackend: Send {
     fn set_speaker(&mut self, _on: bool) {}
     /// Tastenton (DTMF) während des Gesprächs senden
     fn dtmf(&mut self, _digit: char) {}
+    /// true, wenn der Signalserver seit dem letzten Aufruf einen Sicherheitshinweis gemeldet hat
+    /// (z. B. beantragter Nummern-Umzug) – die Oberfläche fragt dann den Kontostand neu ab.
+    fn take_notice(&mut self) -> bool {
+        false
+    }
     /// Test/Vorführung: eingehenden Anruf vortäuschen (nur Platzhalter-Backend; echte Backends ignorieren es)
     fn simulate_incoming(&mut self, _number: &str) {}
 }
@@ -111,23 +116,15 @@ impl TelephonyBackend for StubTelephony {
 }
 
 /// Weist dem Signalserver den Geräteschlüssel nach; verbindet `ultar-cloud` (Schlüssel) mit `ultar-call`.
-struct DeviceProof {
-    key: ultar_cloud::FileKeyStore,
-    identity: ultar_cloud::DeviceIdentity,
-}
+/// Der Nachweis gilt nur für den Server, zu dem die Verbindung aufgebaut wird (siehe `signal_proof`).
+struct DeviceProof(ultar_cloud::SignalProof);
 
 impl ultar_call::SignalAuth for DeviceProof {
     fn hello(&self) -> Result<String, String> {
-        ultar_cloud::signal_hello(&self.key).map_err(|e| e.to_string())
+        self.0.hello().map_err(|e| e.to_string())
     }
     fn answer(&self, challenge_frame: &str) -> Result<String, String> {
-        ultar_cloud::signal_auth(
-            &self.key,
-            &self.identity.server,
-            self.identity.account_id,
-            challenge_frame,
-        )
-        .map_err(|e| e.to_string())
+        self.0.answer(challenge_frame).map_err(|e| e.to_string())
     }
 }
 
@@ -142,12 +139,12 @@ impl Default for CloudTelephony {
     fn default() -> Self {
         let mut inner = ultar_call::default_backend();
         // beim Signalserver anmelden, wenn das Gerät registriert ist (Nachweis mit dem Geräteschlüssel)
-        let home = ultar_cloud::DeviceHome::system();
-        if let (Ok(key), Some(identity)) = (home.key_store(), home.identity()) {
-            inner.register(
-                &ultar_cloud::base_url(),
-                Box::new(DeviceProof { key, identity }),
-            );
+        // Der Nachweis wird für genau die Adresse ausgestellt, zu der verbunden wird: zeigt die
+        // Einstellung auf einen anderen Server als den der Registrierung, gibt es keinen Nachweis
+        // und keine Anmeldung (kein Signieren für einen fremden Server).
+        let base = ultar_cloud::base_url();
+        if let Ok(proof) = ultar_cloud::DeviceHome::system().signal_proof(&base) {
+            inner.register(&base, Box::new(DeviceProof(proof)));
         }
         Self {
             inner,
@@ -192,6 +189,12 @@ impl TelephonyBackend for CloudTelephony {
     }
     fn ready(&self) -> bool {
         self.inner.ready()
+    }
+    fn take_notice(&mut self) -> bool {
+        self.inner
+            .poll()
+            .iter()
+            .any(|e| matches!(e, ultar_call::CallEvent::Notice { .. }))
     }
 }
 
@@ -389,6 +392,9 @@ impl TelephonyBackend for SimTelephony {
         sim_ready() || self.cloud.as_ref().is_some_and(|c| c.ready())
     }
     // Gespräch über die SIM: Lautsprecher/Stumm schalten ultar-ril (Modem) und ultar-audio (Tonweg)
+    fn take_notice(&mut self) -> bool {
+        self.cloud.as_mut().is_some_and(|c| c.take_notice())
+    }
     fn supports_controls(&self) -> bool {
         !self.cloud_active()
     }
@@ -414,6 +420,8 @@ pub struct PhoneState {
     pub dtmf: String,
     /// klingelte gerade (Nummer) – wird beim Auflegen ohne Annehmen zum verpassten Anruf
     pub ringing: Option<String>,
+    /// Sicherheitshinweis des Ultar-Kontos (beantragter Nummern-Umzug)
+    pub alert: super::app_alert::SecurityAlert,
 }
 
 impl Default for PhoneState {
@@ -441,11 +449,51 @@ impl Default for PhoneState {
             keypad: false,
             dtmf: String::new(),
             ringing: None,
+            alert: Default::default(),
         }
     }
 }
 
 impl App {
+    /// Sicherheitshinweis des Ultar-Kontos als bleibende Karte über dem Wählfeld; gibt die
+    /// verbleibende Fläche zurück. Solange ein Nummern-Umzug beantragt ist, bleibt die Karte stehen.
+    fn security_banner(&mut self, ui: &mut Ui, body: Rect) -> Rect {
+        use super::app_alert::Banner;
+        let Some((banner, texts)) = self.phone.alert.banner_with_text(&self.set.lang) else {
+            return body;
+        };
+        let text = texts.message;
+        let action: &str = match banner {
+            Banner::Stopped => self.t("Close"),
+            Banner::Pending { .. } => &texts.action,
+        };
+        let pad = ui.dp(12.0);
+        let (tw, btn_h) = (body.w - 2.0 * pad, ui.dp(36.0));
+        let th = ui.tx.measure(&text, ui.dp(13.5), false, tw).1;
+        let r = Rect::new(body.x, body.y + ui.dp(4.0), body.w, th + btn_h + pad * 3.0);
+        ui.card(r);
+        let warn = ui.th.text;
+        ui.para(r.x + pad, r.y + pad, tw, &text, 13.5, warn);
+        let button = Rect::new(r.x + pad, r.bottom() - pad - btn_h, tw, btn_h);
+        let can_act = texts.can_act;
+        if can_act && ui.button(button, action, crate::ui::Btn::Plain) {
+            match banner {
+                Banner::Pending { .. } => self.phone.alert.not_me(),
+                Banner::Stopped => self.phone.alert.dismiss(),
+            }
+            ui.dirty = true;
+        } else if !can_act {
+            let c = ui.th.sub;
+            ui.label(button, action, 12.0, c, false, Al::Center);
+        }
+        Rect::new(
+            body.x,
+            r.bottom(),
+            body.w,
+            (body.bottom() - r.bottom()).max(0.0),
+        )
+    }
+
     pub(super) fn s_phone(&mut self, ui: &mut Ui, area: Rect) {
         // Laufender/klingelnder Anruf: Vollbild-Anrufbildschirm
         let st = self.phone.tel.state();
@@ -473,6 +521,7 @@ impl App {
             ui.dirty = true;
         }
         let body = Rect::new(m, ty, ui.w - 2.0 * m, area.bottom() - ty);
+        let body = self.security_banner(ui, body);
 
         if !ready {
             let c = ui.th.sub;

@@ -84,7 +84,7 @@ fn old_registrations_become_legacy_rows_and_keep_their_numbers() {
         .lock()
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
     let anna = old_token(1);
     let list = s.get_as("/v1/devices", &anna).json();
     let devices = list["devices"].as_array().unwrap();
@@ -285,33 +285,46 @@ fn the_squatted_constant_id_blocks_nobody_and_cannot_be_taken_over() {
 #[test]
 fn a_legacy_number_can_be_recovered_with_password_and_cool_down() {
     let s = start();
-    let fresh = login(&s, "fixture-anna");
     let device = TestDevice::new(1);
     let lost = format!("legacy:{}", ANNA_PHONE.0);
-    let proof = |path: &str, extra: serde_json::Value| {
-        let c = device.challenge(&s, "recover", Some(&fresh));
+    let proof = |token: &str, path: &str, label: &str, extra: serde_json::Value| {
+        let c = device.challenge(&s, "recover", Some(token));
         let mut body = json!({"old_device_id": lost, "challenge_id": c.id,
-            "signature": device.sign("ultar-device-recover-v1", &c, lost.as_bytes())});
+            "signature": device.sign(label, &c, lost.as_bytes())});
         body.as_object_mut()
             .unwrap()
             .extend(extra.as_object().unwrap().clone());
-        s.post(path, Some(&fresh), &body)
+        s.post(path, Some(token), &body)
     };
+    let (start_path, finish_path) = ("/v1/device/recover/start", "/v1/device/recover/finish");
+    let (start_label, finish_label) = ("ultar-device-recover-v1", "ultar-device-recover-finish-v1");
+    let password = json!({"password": "fixture-pass-1"});
+    // A legacy registration cannot be told about a recovery. While its own device can still
+    // upgrade it with the old account token (30 days), the password alone does not move it.
+    let fresh = login(&s, "fixture-anna");
+    let locked = proof(&fresh, start_path, start_label, password.clone());
+    assert_eq!(code(&locked), (409, "recovery_locked".into()));
+    let wait: i64 = locked.header("retry-after").unwrap().parse().unwrap();
+    assert!((30 * 86_400 - 5..=30 * 86_400).contains(&wait), "{wait}");
+    s.clock.advance_millis(30 * 86_400 * 1000);
+    let fresh = login(&s, "fixture-anna");
+    assert_eq!(proof(&fresh, start_path, start_label, password).status, 200);
+    let list = s.get_as("/v1/devices", &fresh).json();
+    assert_eq!(list["recovery"]["old_device"], lost.as_str());
+    assert_eq!(list["recovery"]["eligible_in"], 72 * 3600);
     assert_eq!(
-        proof(
-            "/v1/device/recover/start",
-            json!({"password": "fixture-pass-1"})
-        )
-        .status,
-        200
-    );
-    assert_eq!(
-        code(&proof("/v1/device/recover/finish", json!({}))),
+        code(&proof(&fresh, finish_path, finish_label, json!({}))),
         (409, "cooldown_active".into())
     );
     s.clock.advance_millis(72 * 3_600_000);
-    let done = proof("/v1/device/recover/finish", json!({}));
+    // The start label does not finish a recovery.
+    assert_eq!(
+        code(&proof(&fresh, finish_path, start_label, json!({}))),
+        (401, "signature_invalid".into())
+    );
+    let done = proof(&fresh, finish_path, finish_label, json!({}));
     assert_eq!(done.json()["number"], ANNA_PHONE.1);
+    assert_eq!(done.json()["manage"], true);
 }
 
 #[test]

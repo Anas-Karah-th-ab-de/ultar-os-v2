@@ -1,8 +1,12 @@
 //! ucloud — the Ultar cloud from the shell.
 //!
-//! `register|login <user> <password>` · `number` · `devices` · `device-rename <id> <name>` ·
-//! `device-remove <id>` · `device-reset` · `vpn` · `store [search]` · `app <id>` ·
-//! `install <id>` · `update [channel]` · `whoami`. Store and update commands work signed-out.
+//! `register|login <user> [--password-file <file>]` · `number` · `devices` ·
+//! `device-rename <id> <name>` · `device-remove <id>` · `device-approve <id>` · `device-reset` ·
+//! `alerts` · `not-me` · `vpn` · `store [search]` · `app <id>` · `install <id>` ·
+//! `update [channel]` · `whoami`. Store and update commands work signed-out.
+//!
+//! The password is never taken from the command line (other users can read it there, and it
+//! ends up in shell histories): it is read from standard input (first line) or from a file.
 //! All output goes through message keys (Arabic, English, German).
 
 #![forbid(unsafe_code)]
@@ -119,8 +123,10 @@ fn devices(tr: &Translator) -> Result<(), Failure> {
     for device in &list {
         let state = if device.state == "legacy" {
             "cloud.device.state.legacy"
-        } else {
+        } else if device.manage {
             "cloud.device.state.active"
+        } else {
+            "cloud.device.state.waiting"
         };
         let mark = if device.current {
             format!("  ({})", tr.t("cloud.device.this_device"))
@@ -157,6 +163,52 @@ fn device_change(tr: &Translator, id: &str, new_name: Option<&str>) -> Result<()
     Ok(())
 }
 
+/// The password: first line of the given file, or of standard input.
+fn read_password(file: Option<&str>) -> Result<String, CloudError> {
+    let mut line = String::new();
+    match file {
+        Some(path) => line = std::fs::read_to_string(path)?,
+        None => {
+            std::io::stdin().read_line(&mut line)?;
+        }
+    }
+    let password = line.lines().next().unwrap_or_default().to_string();
+    if password.is_empty() {
+        return Err(CloudError::InvalidCredentials);
+    }
+    Ok(password)
+}
+
+/// Shows what needs the user's attention: a pending move of a number and new security notices.
+fn alerts(tr: &Translator) -> Result<(), Failure> {
+    let watch = ultar_cloud::SecurityWatch::new(ultar_cloud::DeviceHome::system());
+    let state = watch.check(&ultar_cloud::client()).map_err(general)?;
+    if !state.needs_attention() {
+        println!("{}", tr.t("cloud.alert.none"));
+    }
+    if let (Some(recovery), Some(hours)) = (&state.recovery, state.recovery_hours()) {
+        let device: String = recovery.old_device.chars().take(8).collect();
+        let args = [("device", Arg::Str(&device)), ("hours", Arg::Int(hours))];
+        println!(
+            "{}",
+            tr.t_args(ultar_cloud::watch::KEY_RECOVERY_PENDING, &args)
+        );
+        let hint = if state.manage {
+            ultar_cloud::watch::KEY_NOT_ME
+        } else {
+            "cloud.alert.cannot_cancel"
+        };
+        println!("{}", tr.t(hint));
+    }
+    for notice in &state.notices {
+        if let Some(key) = ultar_cloud::watch::notice_key(&notice.event) {
+            let args = [("device", Arg::Str(&notice.device))];
+            println!("{}", tr.t_args(key, &args));
+        }
+    }
+    watch.acknowledge(&state).map_err(general)
+}
+
 fn whoami(tr: &Translator) {
     let server = ultar_cloud::base_url();
     println!(
@@ -179,13 +231,30 @@ fn whoami(tr: &Translator) {
 
 fn run(tr: &Translator, args: &[&str]) -> Result<bool, Failure> {
     match args {
-        ["register", user, password] => {
-            ultar_cloud::register(user, password).map_err(general)?;
+        ["register", user] | ["register", user, "--password-file", _] => {
+            let password = read_password(args.get(3).copied()).map_err(general)?;
+            ultar_cloud::register(user, &password).map_err(general)?;
             println!("{}", tr.t("cloud.cli.signed_in"));
         }
-        ["login", user, password] => {
-            ultar_cloud::login(user, password).map_err(general)?;
+        ["login", user] | ["login", user, "--password-file", _] => {
+            let password = read_password(args.get(3).copied()).map_err(general)?;
+            ultar_cloud::login(user, &password).map_err(general)?;
             println!("{}", tr.t("cloud.cli.signed_in"));
+        }
+        ["device-approve", id] => {
+            let key = ultar_cloud::DeviceHome::system()
+                .key_store()
+                .map_err(general)?;
+            ultar_cloud::client()
+                .approve_device(&key, id)
+                .map_err(general)?;
+            println!("{}", tr.t("cloud.device.approved"));
+        }
+        ["alerts"] => alerts(tr)?,
+        ["not-me"] => {
+            let watch = ultar_cloud::SecurityWatch::new(ultar_cloud::DeviceHome::system());
+            watch.not_me(&ultar_cloud::client()).map_err(general)?;
+            println!("{}", tr.t(ultar_cloud::watch::KEY_RECOVERY_CANCELLED));
         }
         ["number"] => {
             let number = ultar_cloud::register_number().map_err(general)?;

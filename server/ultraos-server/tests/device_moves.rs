@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 const OLD: &str = "ultar-device-replace-old-v1";
 const NEW: &str = "ultar-device-replace-new-v1";
 const RECOVER: &str = "ultar-device-recover-v1";
+const RECOVER_FINISH: &str = "ultar-device-recover-finish-v1";
 const HOUR_MS: u64 = 3_600_000;
 
 fn code(reply: &common::Reply) -> (u16, String) {
@@ -221,7 +222,7 @@ fn recover_finish(s: &TestServer, token: &str, lost: &str, new: &TestDevice) -> 
         "/v1/device/recover/finish",
         Some(token),
         &json!({"old_device_id": lost, "challenge_id": c.id, "name": "new phone",
-                "signature": new.sign(RECOVER, &c, lost.as_bytes())}),
+                "signature": new.sign(RECOVER_FINISH, &c, lost.as_bytes())}),
     )
 }
 
@@ -232,6 +233,7 @@ fn a_lost_device_is_replaced_after_password_cool_down_and_notice() {
     let (lost, tablet, new) = (TestDevice::new(1), TestDevice::new(2), TestDevice::new(3));
     let number = lost.number(&s, &token);
     tablet.register(&s, &token);
+    lost.approve(&s, &tablet);
     let tablet_token = tablet.session(&s);
     runtime().block_on(async {
         let (mut tablet_ws, _) = tablet.signal(&s).await;

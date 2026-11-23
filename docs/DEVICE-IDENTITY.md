@@ -1,6 +1,8 @@
 # Device identity (finding S15)
 
-Status: implemented in `server/ultraos-server` (schema 2) and `system/services/ultar-cloud`.
+Status: implemented in `server/ultraos-server` (schema 3) and `system/services/ultar-cloud`;
+revised after security review round 3 (`docs/review/identity-runde-3.md`). §10 says in one place
+what the account password alone can and cannot do.
 Wire reference: `server/ultraos-server/API.md` §3. This document is the design: threat model,
 protocol, state machines, storage, failure cases, migration.
 
@@ -27,7 +29,7 @@ Attackers considered:
 |---|---|---|
 | A1 | Any account holder | claim or block a device id / number of another device (squatting), register a key he does not hold |
 | A2 | Network observer of old traffic, replaying messages | reuse a signature: at another time, for another account, for another purpose, towards another server |
-| A3 | Thief of the account password (no device) | receive calls of an existing number; take a number over without delay and without the owner's devices being told |
+| A3 | Thief of the account password (no device) | receive calls of an existing number; remove, rename or read about the owner's devices; take a number over without delay and without the owner's devices being told (see §10 for what remains) |
 | A4 | Thief of a token (account or device) | keep access after the device is removed or the password is changed |
 | A5 | Holder of a removed / replaced device | keep using its number or tokens |
 | A6 | Malicious or impersonated server | obtain a signature usable on the real server; learn the private key |
@@ -72,7 +74,9 @@ T = label ‖ 0x00
 | legacy upgrade | `ultar-device-upgrade-v1` | new key | legacy device id (UTF-8) |
 | replace, old side | `ultar-device-replace-old-v1` | old key | new public key (32 bytes) |
 | replace, new side | `ultar-device-replace-new-v1` | new key | old public key (32 bytes) |
-| recover (lost device) | `ultar-device-recover-v1` | new key | id of the lost device (UTF-8) |
+| recover, start | `ultar-device-recover-v1` | new key | id of the lost device (UTF-8) |
+| recover, finish | `ultar-device-recover-finish-v1` | new key | id of the lost device (UTF-8) |
+| approve an added device | `ultar-device-approve-v1` | approving (managing) device | public key of the approved device (32 bytes) |
 
 No label is a prefix of another once the `0x00` is appended; every variable field carries its
 length, fixed fields have fixed sizes. A signature made for one purpose, account, server, key or
@@ -80,17 +84,26 @@ challenge does not verify for any other (A2).
 
 **Server name**: the authority of the server's public address, lower case, default port dropped
 (`ultar.code-craft.tech`, in tests `127.0.0.1:41234`). The server has it configured
-(`ULTRAOS_SERVER_NAME`); the device derives it from its own configured server address and refuses
+(`ULTRAOS_SERVER_NAME`); the device derives it from the address it is **connected to** and refuses
 to sign when the name in a challenge differs (A6: a signature obtained by server M names M and is
-useless at S).
+useless at S). This holds for the HTTP calls (`Client::device_challenge`) and for the call
+sign-in: `DeviceHome::signal_proof(address)` hands out a proof only when `address` is the server
+of the device's registration, so a device that is pointed at another server after it registered
+does not even answer that server's challenge.
 
 **Challenge**: 32 random bytes from the OS generator, valid 120 s, single use, bound at issue
 time to (purpose, account, claimed public key). It is addressed by a separate random 16-byte
 `challenge_id`; the challenge bytes themselves are never used as a lookup key and are compared
 only inside the signature check. The first presentation consumes it, whatever the outcome.
-Pending challenges are kept in memory only: at most 8 per account or key, 65 536 in total;
-beyond that the request is refused (`challenge_capacity`) – nothing is evicted early (A7).
-A restart forgets all pending challenges (fail closed).
+Challenges are kept in memory only. At most 8 are **pending** (issued, not yet presented) per
+account – for `session`, per key; a presented challenge frees its place at once and is
+remembered until its 120 s are over only to tell a replay (`challenge_used`) from an unknown id.
+Beyond 8 pending ones an account is refused (`challenge_capacity`, `Retry-After` = time until
+its own oldest one expires). Session challenges are requested without authentication, by naming
+a public key; there the oldest pending one of that key is dropped instead, so that a stranger
+who knows the key cannot lock the device out of its sessions (and with them out of cancelling a
+recovery). 65 536 challenges are stored in total; beyond that every request is refused (A7).
+A restart forgets all challenges (fail closed).
 
 Verification uses `verify_strict` (rejects small-order keys and non-canonical signatures); weak
 public keys are refused when the challenge is requested.
@@ -118,10 +131,16 @@ S      challenge exists, unused, unexpired, purpose register, same account   →
        key unknown → device limit, lifetime quota → insert device, assign number
        key already active on this account → same number (idempotent)
        key on another account → device_taken; key removed/replaced → device_retired
-S → D  {"device_id":"…","number":"UOS-…","account_id":7,"token":"<DT>","expires_in":86400}
+S → D  {"device_id":"…","number":"UOS-…","account_id":7,"token":"<DT>","expires_in":86400,
+        "manage":false,"manage_in":259200,"recovery":null}
 ```
 All checks and writes of one registration run in one database transaction; two concurrent
 registrations of one key end with one device row and one number.
+
+`manage` / `manage_in`: whether the device may manage the account's other devices (§5.5).
+`recovery`: the pending recovery of the account, `{"old_device":"…","eligible_in":…}` or `null`
+(§5.7). Both are part of every answer of this shape (register, session, upgrade, replace,
+recover/finish).
 
 ### 5.3 Device token (device-bound session)
 ```
@@ -147,26 +166,56 @@ first password change.
 D → S  {"type":"hello","device_id":"…"}
 S → D  {"type":"challenge","challenge":"…","server":"<name>","account_id":7}
 D → S  {"type":"auth","signature":"<sig over T(signal)>"}
-S → D  {"type":"ready","number":"UOS-…"}            or {"type":"error","error":"<code>"}
+S → D  {"type":"ready","number":"UOS-…","manage":true,"recovery":null}
+                                                    or {"type":"error","error":"<code>"}
 ```
 No token and no password is involved: the socket is opened with the device key, and it serves
 exactly the number of that key. An account password alone cannot receive calls (A3). The first
 frame of the first release (`{"token","number"}`) is answered with `device_key_required`.
-Removing or replacing a device closes its socket at once. Security notices (§5.8) are pushed to
-connected sockets of the account as `{"type":"notice","event":"…","device":"<prefix>"}`.
+
+There is **one socket per number**. The last step of the sign-in – reading the device's state
+again, looking up its number, entering the socket in the table – happens under the database
+lock, so a removal either came before (the sign-in fails) or comes after (it finds the socket).
+A new sign-in of the same device closes its previous socket (close frame, reason
+`signed_in_elsewhere`). Removing or replacing a device closes its socket at once
+(`{"type":"error","error":"device_removed"}`, then close). A socket relays a frame only while it
+is the table's current socket for its number; a socket that lost its place is closed with its
+next frame at the latest. `ready` carries the pending recovery (§5.7). Security notices (§5.8)
+are pushed to the connected **managing** devices of the account as
+`{"type":"notice","event":"…","device":"<prefix>"}`.
 
 ### 5.5 Devices of an account
 | Call | Auth | Effect |
 |---|---|---|
-| `GET /v1/devices` | AT or DT | name, number, state, day added, day last seen, limit |
-| `POST /v1/device/rename` | DT | new name for a device of the account |
-| `POST /v1/device/remove` | DT | device → removed; its number is retired; tokens and socket die |
-| `GET /v1/device/events` | DT | security notices of the account |
+| `GET /v1/devices` | AT or DT | per device: name, number, state, day added, day last seen, `manage`, `manage_in`, public key; the limit; the pending recovery |
+| `POST /v1/device/remove` (itself) | DT of that device | device → removed; its number is retired; tokens and socket die |
+| `POST /v1/device/remove` (another) | DT of a **managing** device | the same, for a device of the account |
+| `POST /v1/device/rename` | DT of a managing device | new name for a device of the account |
+| `GET /v1/device/events` | DT of a managing device | security notices of the account |
+| `POST /v1/device/approve` | DT of a managing device + its signature | an added device becomes a managing device at once |
+| `POST /v1/device/recover/cancel` | DT of a managing device | the pending recovery is cancelled |
 
-Changes need a device token, i.e. a registered device in hand: a password thief cannot remove
-devices or retire numbers. Limit: `ULTRAOS_MAX_DEVICES` active devices per account (default 10)
-→ `device_limit`; over its lifetime an account may register 10 × that many keys →
-`device_quota_exhausted` (bounds rows and burnt numbers, A7).
+**Managing devices.** A device token alone is not "a device of the owner in hand": the account
+password gives an account token, the account token registers a new key, and that registration
+answers with a device token. So management rights are separate from registration:
+
+* The first device of an account (no other device in use, legacy rows included) manages at once.
+* A key added to an account that already has devices gets its own number, its own calls, may
+  list the devices and remove **itself** – nothing else. It becomes a managing device
+  * when a managing device approves it: `POST /v1/device/approve` with that device's token and
+    its signature over the new device's public key (`ultar-device-approve-v1`, challenge of
+    purpose `approve` issued for the approver's key), or
+  * `ULTRAOS_DEVICE_COOLDOWN_SECS` (default 72 h) after its key was bound – the same time a
+    recovery takes; a legitimate owner without any other device is not locked out for longer
+    than a recovery would take, and during that time the owner's devices show the added device.
+* A replacement (§5.6) inherits the standing of the old device, clock included. A finished
+  recovery (§5.7) and the upgrade of an account's only legacy row give a managing device; the
+  upgrade of a legacy row next to other devices gives an added device.
+* Until then every management call answers `device_not_approved` (403) with `Retry-After`.
+
+Limit: `ULTRAOS_MAX_DEVICES` devices in use per account (default 10) → `device_limit`; over its
+lifetime an account may register 10 × that many keys → `device_quota_exhausted` (bounds rows and
+burnt numbers, A7).
 
 ### 5.6 Replace a device (old device at hand)
 ```
@@ -183,32 +232,67 @@ S → N  as registration (same number)
 ```
 The old key authorises exactly this new key, this account, this server, once.
 
-### 5.7 Replace a lost device (password + cool-down + notification)
+### 5.7 Replace a lost device (password + cool-down + the owner not objecting)
 ```
 N → S  POST /v1/device/recover/start   [AT]
-       {"password":"…","old_device_id":"…","challenge_id":"…","signature":"<T(recover)>"}
-S      password verified (Argon2id), PoP of the new key, old device active or legacy on this account
+       {"password":"…","old_device_id":"…","challenge_id":"…","signature":"<T(recover start)>"}
+S      password verified (Argon2id, failed-password budget §5.10), PoP of the new key,
+       old device active – or legacy and no longer upgradable, see below – on this account
        → pending recovery: eligible after ULTRAOS_DEVICE_COOLDOWN_SECS (default 72 h),
-         expires 7 days after that; notice "recovery_started" to all devices of the account
+         expires 7 days after that
 S → N  {"eligible_in":259200}
-any device of the account (also the "lost" one):
+a managing device of the account (the "lost" one included):
        POST /v1/device/recover/cancel [DT]  → cancelled, notice
 N → S  POST /v1/device/recover/finish  [AT]   (after the cool-down, fresh challenge)
-       {"old_device_id":"…","challenge_id":"…","signature":"<T(recover)>","name":"…"}
-S      same new key as at start, cool-down over, not expired, not cancelled → as §5.6
+       {"old_device_id":"…","challenge_id":"…","signature":"<T(recover finish)>","name":"…"}
+S      same new key as at start, cool-down over, not expired, not cancelled → as §5.6;
+       the new device is a managing device
 ```
 One recovery per account at a time; starting again never restarts the clock. A password change
-cancels a pending recovery. Before the cool-down: `cooldown_active` with `Retry-After`.
+cancels a pending recovery. Before the cool-down: `cooldown_active` with `Retry-After`. Start
+and finish have different labels: a signature captured at the start cannot finish.
+
+**How the owner learns of it.** The only thing between the password and the number is the
+owner's objection, so a pending recovery is a *state*, not a message that can be missed:
+
+* it is part of `GET /v1/devices`, of every register/session answer and of the `ready` frame of
+  the signalling socket (`"recovery":{"old_device","eligible_in"}`), for as long as it lasts;
+* the notice `recovery_started` is pushed to connected managing devices and is **never dropped
+  from the notice list while the recovery is pending**, however many notices follow (the list
+  otherwise keeps the newest 64);
+* the device shows it: the call service passes notices on (`CallEvent::Notice`),
+  `ultar_cloud::SecurityWatch::check` reads state and new notices at start, every 10 minutes and
+  on a notice; the phone app shows a lasting banner with "This was not me" (→
+  `recover/cancel`), and a new pending recovery is posted as an urgent system notification.
+
+**Legacy rows.** A registration from before device keys has no key: no socket, no device token,
+no way to be told or to cancel. Its own device can take it over with the account token it
+already has (§9) for as long as such tokens live – 30 days after the migration. During that
+time a recovery of a legacy row is refused (`recovery_locked` with `Retry-After`). Afterwards it
+moves with password and cool-down like any other device; the pending state is still visible in
+`GET /v1/devices` to any signed-in client of the account.
 
 ### 5.8 Notices
-Every change (device added / removed / replaced / upgraded, recovery started / cancelled /
-finished, password changed) is appended to a per-account list (newest 64 kept) and pushed to
-connected signalling sockets. Devices are named by the first 8 characters of their id.
+Every change (device added / removed / replaced / upgraded / approved, recovery started /
+cancelled / finished, password changed) is appended to a per-account list and pushed to the
+connected signalling sockets of managing devices. The newest 64 are kept; the `recovery_started`
+of a pending recovery is kept on top of that. Devices are named by the first 8 characters of
+their id. Reading the list needs a managing device.
 
 ### 5.9 Password change
 `POST /v1/account/password [AT] {"old_password","new_password"}` → account epoch + 1 (all
 account and device tokens of the account are dead), pending recovery cancelled, new account
 token returned. Devices stay registered and fetch new device tokens with their keys.
+
+### 5.10 Password checks
+The password is checked in three places: login, password change, recovery start. All three are
+in the strict rate class (`auth`, default 10 burst / 6 per minute per client address) and share
+one **failed-password budget per account**: after `ULTRAOS_PASSWORD_FAILURES` (default 10)
+failed checks within 15 minutes every further check for that account is answered
+`rate_limited` with `Retry-After` – without looking at the password – until the window is over,
+whatever address or token the requests come from. A check is booked before the password is
+verified, so parallel guesses cannot exceed the budget; right passwords do not use it up.
+The budget stops password use only: device keys, device tokens and calls are not affected.
 
 ## 6. State machines
 
@@ -227,38 +311,55 @@ challenge: PENDING ──presented (any result)──▶ USED ──120 s after 
 
 recovery: (none) ──start──▶ PENDING ──cool-down──▶ ELIGIBLE ──finish──▶ (none, number moved)
           PENDING/ELIGIBLE ──cancel | password change | 7 days after eligibility──▶ (none)
+
+standing: FIRST device ─────────────────────────────────────────▶ MANAGING
+          ADDED device ──approved by a managing device | cool-down since its key was bound──▶ MANAGING
+          REPLACEMENT ── stands where the old device stood (clock included)
+          RECOVERED ────────────────────────────────────────────▶ MANAGING
+
+socket:   (none) ──sign-in──▶ CURRENT ──new sign-in of the device──▶ closed (signed_in_elsewhere)
+                                 └────device removed / replaced────▶ closed (device_removed)
 ```
 A removed or replaced key can never be registered again (`device_retired`); the device has to
 create a new key and gets a new number.
 
 ## 7. What each side stores
 
-**Server** (SQLite, schema 2):
+**Server** (SQLite, schema 3):
 
 | Table | Content |
 |---|---|
-| `devices` | account, device id, public key (32 bytes; NULL = legacy), state, name, token epoch, creation time, last-seen **day** |
+| `devices` | account, device id, public key (32 bytes; NULL = legacy), state, name, token epoch, creation time, last-seen **day**, `approved` (manages at once), `key_since` (time the key was bound) |
 | `numbers` | number, account, device row, state (active / retired), creation time |
 | `retired_numbers` | numbers whose row was deleted (filled by a trigger, e.g. when an account is deleted) – consulted before a number is issued |
 | `device_recoveries` | account, old device row, new public key, eligible / expiry time |
 | `device_events` | notices (kind, 8-character id prefix, time) |
 | `accounts.token_epoch`, `accounts.device_quota_used` | revocation epoch, lifetime registration counter |
 | `meta` | `legacy_cutoff` – time of the migration |
-| memory only | pending challenges; number → live socket |
+| memory only | challenges; number → its one live socket; failed-password budgets (account id, count, window start) |
 
 No hardware serial number, no model, no address is stored. Last seen is rounded down to the day
 (UTC) and written at most once per day and device. Logs name a device by the first 6 characters
 of its id only; public keys, challenges, signatures and tokens are never logged (A8).
 
-**Device** (`/data/ultar`; key and state files have mode 0600 and are written atomically; the
-key file is checked on every use: regular file, owned by the calling user, no access for others,
-intact check line – otherwise nothing is signed and the file is left as it is):
+**Device** (`/data/ultar`). Key, state and token files have mode 0600. Every write goes through
+a temporary file with an unpredictable name (`<file>.new.<16 hex>`) that is created exclusively
+– never through an existing name or link –, flushed and renamed (the key: hard-linked, so an
+existing key is never replaced); temporary files older than a minute that an interrupted write
+left behind are removed at the next write or key use. A missing directory is created with mode
+0700; a directory that group or others may write to is refused for private files. Downloads are
+written to `<file>.part` after unlinking whatever has that name. The key file is checked on
+every use: regular file, owned by the calling user, no access for others, intact check line –
+otherwise nothing is signed and the file is left as it is. Copies of the private key in memory
+(seed, file text) are wiped after use, best effort:
 
 | File | Content |
 |---|---|
 | `device.key` | `ultar-device-key-v1`, seed, public key, SHA-256 check line (file key store) |
 | `device.state` | server name, account id, device id, number |
 | `number` | the number (read by the shell, as before) |
+| `events.seen` | id of the newest security notice the user has seen |
+| `cloud.token` | account token |
 
 `KeyStore` is a trait (`public_key`, `sign`); `FileKeyStore` is the implementation for hardware
 without a secure element. A TPM / secure-element store implements the same two calls and needs no
@@ -274,7 +375,13 @@ change anywhere else – no code outside the store ever sees private key bytes.
 | issued to another account, or for another purpose | `challenge_mismatch` 400 (and consumed) | – |
 | signature does not verify (wrong key, wrong server name, wrong account, altered field) | `signature_invalid` 401 | – |
 | public key malformed or weak | `invalid_request` 400 | – |
-| too many pending challenges | `challenge_capacity` 429 + `Retry-After` | wait |
+| more than 8 pending challenges of an account, or 65 536 stored in total | `challenge_capacity` 429 + `Retry-After` | wait |
+| management call (rename, remove another device, approve, events, recover/cancel) from an added device | `device_not_approved` 403 + `Retry-After` | have a managing device approve it, or wait |
+| recovery of a legacy registration within 30 days of the migration | `recovery_locked` 409 + `Retry-After` | update that device (it upgrades in place) |
+| failed-password budget of the account used up | `rate_limited` 429 + `Retry-After` | wait; devices keep working |
+| request not complete within 30 s (head: 10 s) | `request_timeout` 408 / connection closed | – |
+| device pointed at another server than the one it registered with | (device side) `ServerIdentityMismatch`: no call sign-in | sign in / register at that server |
+| state directory writable by group or others | (device side) I/O error, nothing written | fix the directory's mode |
 | key registered to another account | `device_taken` 409 | cannot happen without the private key; shown as error |
 | key removed / replaced earlier | `device_retired` 410 | create a new key (`reset`), register again |
 | 10 active devices | `device_limit` 409 | remove one first |
@@ -291,7 +398,7 @@ change anywhere else – no code outside the store ever sees private key bytes.
 
 Every failure leaves the stored state as it was; no failure path grants anything.
 
-## 9. Migration (schema 1 → 2)
+## 9. Migration (schema 1 → 2 → 3)
 
 One transaction, together with the version bump:
 
@@ -314,8 +421,10 @@ Afterwards:
   token was issued before `legacy_cutoff`** (strictly earlier, to the second) – the closest verifiable form of "the token that
   registered it": a token obtained with a stolen password after the migration is not enough (A3).
   The row is rewritten to the key (state ACTIVE, new id), the number stays.
-* Not eligible (`legacy_not_eligible`): the device registers as new and gets a new number; the
-  owner can still move the old number with §5.7 (password + cool-down + notice).
+* Not eligible (`legacy_not_eligible`): the device registers as new and gets a new number. The
+  old number can be moved with §5.7 (password + cool-down) once the 30 days are over in which
+  old tokens can still upgrade the row; before that a recovery of a legacy row is refused
+  (`recovery_locked`), because nobody could be told about it.
 * **The squatting case**: Mallory registered the constant id of serial-less devices (or a
   victim's id) before the migration. That row is a legacy row of *Mallory's* account. The
   victim's device now has a key-derived id, registers normally and is no longer blocked; its
@@ -327,7 +436,54 @@ Afterwards:
 
 Residual risk, accepted and documented: a token stolen *before* the migration from the owning
 account can perform the one upgrade of a legacy row. The owner's devices of that account see the
-notice `device_upgraded`; with a device at hand the intruder can be removed.
+notice `device_upgraded`; with a device at hand the intruder can be removed. A legacy row that was upgraded next to other devices is an added
+device (§5.5): it manages nothing for 72 h unless a managing device approves it.
 
 Tested against a database written by the server code of schema 1 (fixture
 `tests/fixtures/v1-devices.sql`, produced by running that server; see the test header).
+
+**Schema 3** (review round 3) adds `devices.approved` (default 1) and `devices.key_since`
+(default 0): devices that exist when it runs keep their management rights. Legacy rows that are
+upgraded afterwards follow §5.5.
+
+## 10. What the account password alone can do
+
+Somebody who knows the password and has **no device of the owner** can:
+
+| He can | What limits it |
+|---|---|
+| sign in, use the store and VPN of the account, read the device list (ids, names, numbers) | – (that is what the password is for) |
+| register a device of his own: it gets **its own, new** number | the owner's managing devices are told (`device_added`); the added device manages nothing for 72 h and can be removed by the owner at any time; device limit and lifetime quota |
+| start a recovery of one of the owner's devices | 72 h cool-down; reported as a state to every device of the owner for as long as it lasts (§5.7); any managing device stops it; a password change stops it; not for legacy rows within 30 days of the migration |
+| after 72 h without the owner objecting: finish the recovery – the number moves to his device, which then manages the account | this is the designed way back for an owner who lost every device; it is the residual risk of password-only recovery |
+| after 72 h: manage the account's devices with his added device | the same window, the same visibility (`manage_in` in the device list) |
+| change the password (he knows the old one) | ends all tokens; the owner's devices stay registered and keep their numbers and management rights |
+| guess further passwords | 10 failed checks per 15 minutes and account, strict rate class |
+
+He cannot, at any time: open the signalling socket of an existing number or receive its calls;
+obtain a device token for a key he does not hold; remove, rename or approve devices, read the
+notices or cancel a recovery before his device is approved or 72 h old; shorten a cool-down;
+take over a legacy registration by upgrade (needs a token from before the migration).
+
+The owner's side of this: a device that is online shows the alert within seconds, a device that
+comes online shows it at its next sign-in (state in `ready` and in the session answer). An owner
+whose devices are all offline for 72 h, or who ignores the alert, loses the number to whoever has
+the password – exactly as if he had lost his devices and recovered them himself.
+
+## 11. Limits of the server process
+
+| Limit | Value | Where |
+|---|---|---|
+| request head must arrive within | 10 s, else the connection is closed | `server::HEADER_READ_TIMEOUT` |
+| request (body, handler) must finish within | 30 s, else `408 request_timeout` and the connection is closed | `guard::REQUEST_TIMEOUT` |
+| open connections | `ULTRAOS_MAX_CONNECTIONS` (default 4096); further clients wait in the accept queue | `server::serve` |
+| body / request target | 16 KiB / 2048 bytes | `guard` |
+| signalling: sockets per number | 1 | `signal::Hub` |
+| challenges | 8 pending per account or key, 65 536 stored, 120 s | `challenge` |
+| failed password checks | 10 per account and 15 min | `pwguard` |
+| devices | 10 in use per account, 100 keys over its lifetime | `devices` |
+| notices | newest 64 per account (+ the one of a pending recovery) | `device_events` |
+
+WebSockets and downloads are not cut by the request timeout: their answer starts in time, the
+stream that follows is theirs. The reverse proxy in front has limits of its own; these hold
+without it.

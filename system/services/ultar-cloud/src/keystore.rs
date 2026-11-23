@@ -7,6 +7,10 @@
 //! The key file is created without ever replacing an existing file (temporary file, flush, hard
 //! link, directory flush), has mode 0600, and is refused on every use unless it is a regular file
 //! owned by the calling user with no access for anyone else and an intact check line.
+//!
+//! Copies of the private key that this module makes in memory (seed, file text) are wiped after
+//! use; `ed25519-dalek` wipes its own key on drop. Best effort: what the allocator or the kernel
+//! keep of freed pages is outside this module.
 
 use crate::identity::{PUBLIC_KEY_BYTES, SIGNATURE_BYTES};
 use ed25519_dalek::{Signer, SigningKey};
@@ -14,6 +18,7 @@ use sha2::{Digest, Sha256};
 use std::fmt;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use zeroize::Zeroize;
 
 const HEADER: &str = "ultar-device-key-v1";
 /// Largest key file read (a valid one has about 230 bytes).
@@ -95,8 +100,10 @@ fn hex32(line: Option<&str>, name: &str) -> Result<[u8; 32], KeyStoreError> {
         .and_then(|l| l.strip_prefix(name))
         .and_then(|l| l.strip_prefix('='))
         .ok_or(KeyStoreError::Corrupt)?;
-    let bytes = hex::decode(value).map_err(|_| KeyStoreError::Corrupt)?;
-    <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| KeyStoreError::Corrupt)
+    let mut bytes = hex::decode(value).map_err(|_| KeyStoreError::Corrupt)?;
+    let fixed = <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| KeyStoreError::Corrupt);
+    bytes.zeroize();
+    fixed
 }
 
 fn decode_file(text: &str) -> Result<SigningKey, KeyStoreError> {
@@ -104,13 +111,14 @@ fn decode_file(text: &str) -> Result<SigningKey, KeyStoreError> {
     if lines.next() != Some(HEADER) {
         return Err(KeyStoreError::Corrupt);
     }
-    let seed = hex32(lines.next(), "seed")?;
+    let mut seed = hex32(lines.next(), "seed")?;
     let public = hex32(lines.next(), "public")?;
     let check = hex32(lines.next(), "check")?;
     let key = SigningKey::from_bytes(&seed);
     let intact = lines.next().is_none()
         && key.verifying_key().to_bytes() == public
         && hex::encode(check) == check_line(&seed, &public);
+    seed.zeroize();
     if intact {
         Ok(key)
     } else {
@@ -146,6 +154,21 @@ fn same_file(_: &std::fs::Metadata, _: &std::fs::Metadata) -> bool {
     false
 }
 
+/// Creates the key's directory for the owner only when it is missing.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    if dir.exists() {
+        return Ok(());
+    }
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
 impl FileKeyStore {
     /// A store at `path`. Nothing is read or written yet.
     pub fn new(path: impl Into<PathBuf>) -> Self {
@@ -156,6 +179,9 @@ impl FileKeyStore {
     /// never replaced: if it is damaged or not private the error is returned and the file stays.
     pub fn open_or_create(path: impl Into<PathBuf>) -> Result<Self, KeyStoreError> {
         let store = Self::new(path);
+        // A creation that was interrupted between link and unlink left `<key>.new.<hex>` behind
+        // (a second name of the key file, or an unused key): it is removed.
+        crate::http::remove_stale_temps(&store.path);
         if !store.exists() {
             store.create()?;
         }
@@ -181,19 +207,14 @@ impl FileKeyStore {
         rand_core::OsRng
             .try_fill_bytes(&mut seed)
             .map_err(|_| KeyStoreError::Random)?;
-        let content = encode_file(&SigningKey::from_bytes(&seed));
+        let mut content = encode_file(&SigningKey::from_bytes(&seed));
+        seed.zeroize();
         let parent = self.path.parent().filter(|p| !p.as_os_str().is_empty());
         if let Some(dir) = parent {
-            std::fs::create_dir_all(dir)?;
+            create_private_dir(dir)?;
         }
         // A name of its own for every attempt: concurrent creators never touch each other's file.
-        let mut nonce = [0u8; 8];
-        rand_core::OsRng
-            .try_fill_bytes(&mut nonce)
-            .map_err(|_| KeyStoreError::Random)?;
-        let mut tmp_name = self.path.as_os_str().to_os_string();
-        tmp_name.push(format!(".new.{}", hex::encode(nonce)));
-        let tmp = PathBuf::from(tmp_name);
+        let tmp = crate::http::fresh_temp_path(&self.path)?;
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -209,6 +230,7 @@ impl FileKeyStore {
             .and_then(|()| file.sync_all())
             .and_then(|()| std::fs::hard_link(&tmp, &self.path));
         let _ = std::fs::remove_file(&tmp);
+        content.zeroize();
         match linked {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -240,7 +262,9 @@ impl FileKeyStore {
             .take(MAX_FILE_BYTES)
             .read_to_string(&mut text)
             .map_err(|_| KeyStoreError::Corrupt)?;
-        decode_file(&text)
+        let key = decode_file(&text);
+        text.zeroize();
+        key
     }
 
     /// Deletes the key. The device then has no identity; the next use creates a new key (a new

@@ -3,7 +3,10 @@ use crate::db::Db;
 use crate::devices::{list, register, remove};
 use ed25519_dalek::SigningKey;
 
-const LIMITS: Limits = Limits { max_devices: 3 };
+const LIMITS: Limits = Limits {
+    max_devices: 3,
+    cooldown_secs: COOLDOWN,
+};
 const COOLDOWN: i64 = 1000;
 
 fn db() -> Db {
@@ -139,7 +142,7 @@ fn replace_moves_the_number_and_retires_the_old_key() {
     let after = devices::by_id(&conn, &old.device_id).unwrap().unwrap();
     assert_eq!((after.state, after.epoch), (DeviceState::Replaced, 1));
     assert_eq!(devices::number_of(&conn, old.device_row).unwrap(), None);
-    let names: Vec<String> = list(&conn, 1)
+    let names: Vec<String> = list(&conn, 1, 0, COOLDOWN)
         .unwrap()
         .into_iter()
         .map(|d| d.name)
@@ -287,9 +290,46 @@ fn recovery_of_a_legacy_device_rebinds_it_and_foreign_devices_are_unknown() {
         recovery_start(&mut conn, 2, "legacy:old-1", &key(2), 0, COOLDOWN),
         Err(DeviceError::Unknown)
     ));
-    recovery_start(&mut conn, 1, "legacy:old-1", &key(2), 0, COOLDOWN).unwrap();
-    let done =
-        recovery_finish(&mut conn, 1, "legacy:old-1", &key(2), "", COOLDOWN, LIMITS).unwrap();
+    // While tokens from before the migration (cut-off 5000) can still upgrade the row – 30 days –
+    // a password-only recovery of a legacy registration is not offered.
+    let opens = 5000 + crate::accounts::TOKEN_TTL_SECS;
+    assert!(matches!(
+        recovery_start(&mut conn, 1, "legacy:old-1", &key(2), opens - 10, COOLDOWN),
+        Err(DeviceError::RecoveryLocked {
+            retry_after_secs: 10
+        })
+    ));
+    recovery_start(&mut conn, 1, "legacy:old-1", &key(2), opens, COOLDOWN).unwrap();
+    let info = recovery_info(&conn, 1, opens + 1).unwrap().unwrap();
+    assert_eq!(
+        (info.old_device.as_str(), info.eligible_in),
+        ("legacy:old-1", COOLDOWN - 1)
+    );
+    assert_eq!(recovery_info(&conn, 2, opens).unwrap(), None);
+    let at = opens + COOLDOWN;
+    let done = recovery_finish(&mut conn, 1, "legacy:old-1", &key(2), "", at, LIMITS).unwrap();
+    assert_eq!(
+        done.manage_in, 0,
+        "password, cool-down and notice are behind it"
+    );
+    assert_eq!(recovery_info(&conn, 1, at).unwrap(), None);
+    // Without a recorded migration time the lock never opens (fail closed).
+    conn.execute_batch(
+        "INSERT INTO devices(id, account_id, device_id, state, created) VALUES(51,1,'legacy:old-2',0,0);
+         DELETE FROM meta;",
+    )
+    .unwrap();
+    assert!(matches!(
+        recovery_start(
+            &mut conn,
+            1,
+            "legacy:old-2",
+            &key(8),
+            i64::MAX / 2,
+            COOLDOWN
+        ),
+        Err(DeviceError::RecoveryLocked { .. })
+    ));
     assert_eq!(
         (done.device_row, done.number.as_str()),
         (50, "UOS-AAAA-0001")
@@ -300,4 +340,30 @@ fn recovery_of_a_legacy_device_rebinds_it_and_foreign_devices_are_unknown() {
         Err(DeviceError::Taken)
     ));
     assert!(!taken.number.is_empty());
+}
+
+#[test]
+fn a_moved_number_gives_the_new_key_the_standing_its_path_earned() {
+    let db = db();
+    let mut conn = db.lock();
+    // Upgrade while another device of the account is in use: no management rights at once.
+    let first = register(&mut conn, 1, &key(1), "", 0, LIMITS).unwrap();
+    assert_eq!(first.manage_in, COOLDOWN, "the legacy row was there first");
+    let upgraded =
+        upgrade_legacy(&mut conn, claim(1, "old-1", 0), &key(2), "", 100, LIMITS).unwrap();
+    assert_eq!(upgraded.manage_in, COOLDOWN);
+    // Replacement: the new key stands where the old one stood, clock included.
+    let old_row = devices::by_id(&conn, &first.device_id).unwrap().unwrap();
+    let moved = replace(&mut conn, &old_row, &key(3), "", 400, LIMITS).unwrap();
+    assert_eq!(moved.manage_in, COOLDOWN - 400);
+    let row = devices::by_id(&conn, &moved.device_id).unwrap().unwrap();
+    assert_eq!((row.approved, row.key_since), (false, 0));
+    assert!(row.require_manager(COOLDOWN, COOLDOWN).is_ok());
+    // An account whose only device is a legacy row: its upgrade manages at once.
+    conn.execute_batch(
+        "INSERT INTO devices(id, account_id, device_id, state, created) VALUES(60,2,'legacy:solo',0,0);",
+    )
+    .unwrap();
+    let solo = upgrade_legacy(&mut conn, claim(2, "solo", 0), &key(4), "", 100, LIMITS).unwrap();
+    assert_eq!(solo.manage_in, 0);
 }

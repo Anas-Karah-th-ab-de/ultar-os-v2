@@ -65,6 +65,48 @@ cloud.device.recovery_unknown = لا يوجد طلب استبدال جهاز ق�
 cloud.device.server_mismatch = فحص الأمان يخصّ خادمًا آخر أو حسابًا آخر. لم يُوقَّع أي شيء.
 cloud.device.key_unusable = تعذّر استخدام مفتاح الجهاز. لم يُغيَّر المفتاح.
 cloud.device.not_registered = هذا الجهاز غير مسجَّل بعد.
+cloud.device.not_approved = {seconds ->
+    [zero] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى الآن.
+    [one] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى بعد ثانية واحدة، أو فورًا إذا وافق عليه أحدها.
+    [two] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى بعد ثانيتين، أو فورًا إذا وافق عليه أحدها.
+    [few] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى بعد {seconds} ثوانٍ، أو فورًا إذا وافق عليه أحدها.
+    [many] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى بعد {seconds} ثانية، أو فورًا إذا وافق عليه أحدها.
+   *[other] أُضيف هذا الجهاز حديثًا. يمكنه إدارة أجهزتك الأخرى بعد {seconds} ثانية، أو فورًا إذا وافق عليه أحدها.
+}
+cloud.device.recovery_locked = {seconds ->
+    [zero] يمكن الآن استبدال هذا التسجيل السابق.
+    [one] لا يمكن استبدال هذا التسجيل السابق بعد. حدِّث ذلك الجهاز، أو حاول بعد ثانية واحدة.
+    [two] لا يمكن استبدال هذا التسجيل السابق بعد. حدِّث ذلك الجهاز، أو حاول بعد ثانيتين.
+    [few] لا يمكن استبدال هذا التسجيل السابق بعد. حدِّث ذلك الجهاز، أو حاول بعد {seconds} ثوانٍ.
+    [many] لا يمكن استبدال هذا التسجيل السابق بعد. حدِّث ذلك الجهاز، أو حاول بعد {seconds} ثانية.
+   *[other] لا يمكن استبدال هذا التسجيل السابق بعد. حدِّث ذلك الجهاز، أو حاول بعد {seconds} ثانية.
+}
+cloud.device.approved = تمت الموافقة على الجهاز.
+cloud.device.state.waiting = أُضيف حديثًا – لا يمكنه إدارة الأجهزة الأخرى بعد
+
+# تنبيهات الأمان
+cloud.alert.title = تنبيه أمني
+cloud.alert.recovery_pending = {hours ->
+    [zero] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم الآن.
+    [one] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم بعد ساعة واحدة.
+    [two] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم بعد ساعتين.
+    [few] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم بعد {hours} ساعات.
+    [many] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم بعد {hours} ساعة.
+   *[other] طلب شخص يعرف كلمة مرورك نقل رقم الجهاز {device} إلى جهاز آخر. يمكن نقل الرقم بعد {hours} ساعة.
+}
+cloud.alert.not_me = لم أكن أنا – أوقف العملية
+cloud.alert.recovery_cancelled = أُوقف نقل الرقم. غيِّر كلمة مرورك الآن.
+cloud.alert.cannot_cancel = أُضيف هذا الجهاز حديثًا ولا يمكنه إيقاف العملية. استخدم أحد أجهزتك الأخرى أو غيِّر كلمة مرورك.
+cloud.alert.none = لا يوجد ما يستدعي التنبيه.
+cloud.alert.event.device_added = أُضيف جهاز إلى حسابك: {device}
+cloud.alert.event.device_removed = أُزيل جهاز من حسابك: {device}
+cloud.alert.event.device_replaced = نُقل رقم إلى جهاز جديد: {device}
+cloud.alert.event.device_upgraded = استلم الجهاز {device} تسجيلًا سابقًا
+cloud.alert.event.device_approved = أصبح بإمكان جهاز إدارة أجهزتك: {device}
+cloud.alert.event.recovery_started = طُلب بكلمة مرورك نقل رقم الجهاز {device}.
+cloud.alert.event.recovery_cancelled = أُوقف طلب لنقل رقم.
+cloud.alert.event.recovery_finished = نُقل رقم إلى الجهاز {device} بعد انتهاء مدة الانتظار.
+cloud.alert.event.password_changed = تم تغيير كلمة مرور حسابك.
 cloud.device.state.active = مسجَّل
 cloud.device.state.legacy = مسجَّل قبل اعتماد مفاتيح الأجهزة – حدِّث هذا الجهاز
 cloud.device.this_device = هذا الجهاز
@@ -81,4 +123,4 @@ cloud.cli.server = الخادم: {server}
 cloud.cli.account.signed_in = الحساب: مسجّل الدخول
 cloud.cli.account.signed_out = الحساب: غير مسجّل (المتجر والتحديثات يعملان بدون حساب)
 cloud.cli.unknown_command = أمر غير معروف: {command}
-cloud.cli.usage = الاستخدام: ucloud register|login <مستخدم> <كلمة-المرور> · number · devices · device-rename <معرّف> <اسم> · device-remove <معرّف> · device-reset · vpn · store [بحث] · app <معرّف> · install <معرّف> · update [قناة] · whoami
+cloud.cli.usage = الاستخدام: ucloud register|login <مستخدم> [--password-file <ملف>] (كلمة المرور عبر الإدخال القياسي) · number · devices · device-rename <معرّف> <اسم> · device-remove <معرّف> · device-approve <معرّف> · device-reset · alerts · not-me · vpn · store [بحث] · app <معرّف> · install <معرّف> · update [قناة] · whoami

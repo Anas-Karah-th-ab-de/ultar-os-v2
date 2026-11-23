@@ -2,7 +2,8 @@
 //! errors for the user.
 
 use crate::error::{CloudError, Subject};
-use ultar_i18n::{Arg, Lang, ParseError, Translator};
+pub use ultar_i18n::Arg;
+use ultar_i18n::{Lang, ParseError, Translator};
 
 /// Arabic catalogue (reference).
 pub const AR: &str = include_str!("../locales/ar.ftl");
@@ -16,6 +17,18 @@ pub fn register(translator: &mut Translator) -> Result<(), ParseError> {
     translator.add_source(Lang::Ar, AR)?;
     translator.add_source(Lang::En, EN)?;
     translator.add_source(Lang::De, DE)
+}
+
+/// Renders one message of this crate for a language code (`ar`, `en`, `de`; anything else is
+/// shown in Arabic, the first language of the system). For callers that have no translator of
+/// their own; a caller that renders often should keep the result.
+pub fn render(lang_code: &str, key: &str, args: &[(&str, Arg)]) -> String {
+    let lang = Lang::parse(lang_code).unwrap_or(Lang::Ar);
+    let mut translator = Translator::empty(lang);
+    if register(&mut translator).is_err() {
+        return key.to_string();
+    }
+    translator.t_args(key, args)
 }
 
 /// The text of an error for the user, in the translator's language.
@@ -72,6 +85,12 @@ mod tests {
                 retry_after_secs: 90,
             },
             CloudError::RecoveryPending,
+            CloudError::NotApproved {
+                retry_after_secs: 90,
+            },
+            CloudError::RecoveryLocked {
+                retry_after_secs: 90,
+            },
             CloudError::RecoveryUnknown,
             CloudError::ServerIdentityMismatch,
             CloudError::KeyStore(crate::keystore::KeyStoreError::Corrupt),
@@ -103,6 +122,22 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn render_serves_callers_without_a_translator() {
+        let hours = [("device", Arg::Str("abcdefgh")), ("hours", Arg::Int(5))];
+        let en = render("en", crate::watch::KEY_RECOVERY_PENDING, &hours);
+        assert!(en.contains("abcdefgh") && en.contains("5 hours"), "{en}");
+        let de = render("de", crate::watch::KEY_NOT_ME, &[]);
+        assert_eq!(de, "Das war ich nicht – abbrechen");
+        let ar = render("ar", crate::watch::KEY_ALERT_TITLE, &[]);
+        assert_eq!(
+            ar,
+            render("xx", crate::watch::KEY_ALERT_TITLE, &[]),
+            "unknown code: Arabic"
+        );
+        assert_ne!(ar, crate::watch::KEY_ALERT_TITLE);
     }
 
     #[test]

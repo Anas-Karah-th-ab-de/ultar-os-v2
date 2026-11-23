@@ -205,10 +205,12 @@ fn the_server_stores_only_key_id_number_and_coarse_times() {
         columns,
         [
             "account_id",
+            "approved",
             "created",
             "device_id",
             "epoch",
             "id",
+            "key_since",
             "last_seen",
             "name",
             "public_key",
