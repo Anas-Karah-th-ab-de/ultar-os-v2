@@ -26,12 +26,12 @@ IMG=1 bash scripts/build-kern.sh >/dev/null 2>out/build-kern.err || { tail -20 o
 RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -p ultar-bus --example selfcheck --target x86_64-unknown-linux-gnu 2>&1 | tail -1
 B=out/remote-test; rm -rf "$B"; mkdir -p "$B/bin"
 cp kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi "$B/ultar-kern-remote-test.efi"
-for p in hallo kerntest ereignis fadentest blocktest zelltest; do [ -f "kernel/ultar-kern/user/$p" ] && cp "kernel/ultar-kern/user/$p" "$B/bin/"; done
+for p in hallo kerntest ereignis fadentest blocktest zelltest grenztest; do [ -f "kernel/ultar-kern/user/$p" ] && cp "kernel/ultar-kern/user/$p" "$B/bin/"; done
 cp target/x86_64-unknown-linux-gnu/release/examples/selfcheck "$B/bin/busck"
 ( cd kernel/ultar-kern && cargo build --release >/dev/null 2>&1 )  # leave the normal kernel as the last build
 echo "=== machine: $(cat /sys/class/dmi/id/product_name) · $(nproc) cores · kernel under KVM with real SMBIOS ==="
 bash tools/kern-test/kvm-on-target.sh "$B/ultar-kern-remote-test.efi" "$B/bin" | tee out/stage1-kvm.log
 echo "=== verdict ==="
-ok=1; for want in "ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "alle Geräte haben einen Treiber"; do
+ok=1; for want in "ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "GRENZTEST: ALLES OK" "alle Geräte haben einen Treiber"; do
   if grep -aq "$want" out/stage1-kvm.log; then echo "ok    $want"; else echo "FAIL  $want"; ok=0; fi; done
 [ "$ok" = 1 ] && echo "STAGE1 PASSED" || { echo "STAGE1 FAILED"; exit 1; }
