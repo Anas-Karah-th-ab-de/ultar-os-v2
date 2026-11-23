@@ -9,7 +9,7 @@ use ultar_init::spec::{ServiceSpec, ALL_RIGHTS, RIGHT_NAMES};
 
 /// Services that still run as root, with the exact reason (the file
 /// repeats it in a `# root:` comment).
-const ROOT_ALLOWED: [(&str, &str); 17] = [
+const ROOT_ALLOWED: [(&str, &str); 18] = [
     ("compat-bind", "bind mount of the compat tree"),
     ("drivers", "module loading (finit_module) and /sys driver files"),
     ("entwickler", "remote administrator shell (developer access)"),
@@ -20,6 +20,7 @@ const ROOT_ALLOWED: [(&str, &str); 17] = [
     ("net", "addresses and routes, DHCP on port 68, wpa_supplicant via the compat runner"),
     ("netzregeln", "firewall rules"),
     ("ril", "modem IPC devices, address and routes of the mobile data interface"),
+    ("seat", "owner and mode of root's device nodes below /dev (ultar-devd-seat, no bus)"),
     ("selftest", "root-only control socket, dpkg and programs in the compat tree"),
     ("shell", "emergency administrator shell at the console"),
     ("tontest", "root-only control socket (power off after the tone)"),
@@ -150,4 +151,148 @@ fn the_heartbeat_and_the_language_model_run_without_root() {
     );
     let llm = find("llm").unwrap_or_default();
     assert_eq!((llm.uid, llm.rights), (Some(810), 0));
+}
+
+/// `ids.toml`: users (own group of the same id), other groups, members.
+struct Ids {
+    users: Vec<(String, u32)>,
+    groups: Vec<(String, u32)>,
+    members: Vec<(String, Vec<String>)>,
+}
+
+fn ids() -> Ids {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../rootfs/etc/ultar/ids.toml");
+    let text = fs::read_to_string(&path).unwrap_or_default();
+    let table: toml::Table = text.parse().unwrap_or_else(|e| panic!("{path:?}: {e}"));
+    let section = |name: &str| {
+        table
+            .get(name)
+            .and_then(|v| v.as_table())
+            .cloned()
+            .unwrap_or_default()
+    };
+    let numbers = |name: &str| -> Vec<(String, u32)> {
+        section(name)
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    v.as_integer()
+                        .and_then(|n| u32::try_from(n).ok())
+                        .unwrap_or(u32::MAX),
+                )
+            })
+            .collect()
+    };
+    let members = section("members")
+        .into_iter()
+        .map(|(k, v)| {
+            let names = v.as_array().map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_str().map(str::to_owned))
+                    .collect()
+            });
+            (k, names.unwrap_or_default())
+        })
+        .collect();
+    Ids {
+        users: numbers("users"),
+        groups: numbers("groups"),
+        members,
+    }
+}
+
+#[test]
+fn every_id_a_service_names_is_defined_once() {
+    let ids = ids();
+    let mut all: Vec<u32> = ids
+        .users
+        .iter()
+        .chain(&ids.groups)
+        .map(|(_, id)| *id)
+        .collect();
+    assert!(!all.contains(&u32::MAX), "an id is not a number");
+    all.sort_unstable();
+    let count = all.len();
+    all.dedup();
+    assert_eq!(all.len(), count, "an id is used twice in ids.toml");
+    let user_ids: Vec<u32> = ids.users.iter().map(|(_, id)| *id).collect();
+    for (path, _, spec) in shipped() {
+        let c = &spec.confinement;
+        if let Some(uid) = c.uid {
+            assert!(
+                user_ids.contains(&uid),
+                "{path:?}: user {uid} not in ids.toml"
+            );
+        }
+        for gid in c.gid.iter().chain(&c.groups) {
+            assert!(all.contains(gid), "{path:?}: group {gid} not in ids.toml");
+        }
+    }
+    let names: Vec<&String> = ids
+        .users
+        .iter()
+        .chain(&ids.groups)
+        .map(|(n, _)| n)
+        .collect();
+    for (group, members) in &ids.members {
+        assert!(names.contains(&group), "members of unknown group {group}");
+        for member in members {
+            assert!(
+                ids.users.iter().any(|(n, _)| n == member),
+                "unknown member {member}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_seat_group_holds_the_compositor_and_only_root_sets_its_nodes() {
+    let ids = ids();
+    let seat = ids
+        .groups
+        .iter()
+        .find(|(n, _)| n == "seat")
+        .map(|(_, id)| *id);
+    assert_eq!(seat, Some(812));
+    let specs: Vec<ServiceSpec> = shipped().into_iter().map(|(_, _, spec)| spec).collect();
+    let in_seat: Vec<&str> = specs
+        .iter()
+        .filter(|s| s.confinement.groups.contains(&812) || s.confinement.gid == Some(812))
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(
+        in_seat,
+        ["compositor"],
+        "only the compositor may open the seat's nodes"
+    );
+    let members = ids
+        .members
+        .iter()
+        .find(|(g, _)| g == "seat")
+        .map(|(_, m)| m.clone());
+    assert_eq!(members, Some(vec!["compositor".to_owned()]));
+    let compositor = specs
+        .iter()
+        .find(|s| s.name == "compositor")
+        .map(|s| s.program.args.clone());
+    let args = compositor.unwrap_or_default();
+    let after = |flag: &str| {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
+    assert_eq!(after("--seat-group").as_deref(), Some("812"));
+    assert_eq!(
+        after("--seat-state").as_deref(),
+        Some("/run/ultar/seat/modes")
+    );
+    let seat_service = specs
+        .iter()
+        .find(|s| s.name == "seat")
+        .map(|s| s.confinement.clone());
+    let seat_service = seat_service.unwrap_or_default();
+    assert_eq!(seat_service.uid, None);
+    assert_eq!(seat_service.rights, 1 << 9, "file_admin only");
 }

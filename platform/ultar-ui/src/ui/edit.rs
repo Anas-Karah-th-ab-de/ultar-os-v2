@@ -19,13 +19,23 @@ impl Ui {
     }
 
     /// [`Ui::set_table_rows`] with a stable key per row (a file's inode, a database id):
-    /// the selection follows the keys. `keys` must have one entry per row.
+    /// the selection follows the keys. `keys` must have one entry per row and no key twice
+    /// (`UiError::OptionOutOfRange` otherwise).
     pub fn set_table_rows_keyed(
         &mut self,
         id: NodeId,
         rows: Vec<Vec<Label>>,
         keys: Vec<u64>,
     ) -> Result<(), UiError> {
+        let mut sorted = keys.clone();
+        sorted.sort_unstable();
+        if let Some(at) = sorted.windows(2).position(|w| w[0] == w[1]) {
+            // A key names one row: duplicates would make one selection follow two rows.
+            return Err(UiError::OptionOutOfRange {
+                node: id,
+                index: at,
+            });
+        }
         if keys.len() != rows.len() {
             return Err(UiError::OptionOutOfRange {
                 node: id,
@@ -171,7 +181,11 @@ impl Ui {
         node.loading = false;
         node.context_menu = None;
         node.tooltip = None;
-        self.layers.free_slots.push(id.index());
+        // A slot whose generation would wrap is never handed out again (a stale handle must
+        // not come back to life after 2^32 reuses).
+        if id.generation() < u32::MAX {
+            self.layers.free_slots.push(id.index());
+        }
         let gestures = &mut self.layers.gestures;
         gestures.grab = gestures.grab.filter(|g| g.node != id);
         gestures.last_click = gestures.last_click.filter(|c| c.0 != id);

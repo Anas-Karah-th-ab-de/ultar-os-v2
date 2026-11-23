@@ -22,9 +22,9 @@ pub enum MsgKey {
     StartFailed,
 }
 
-const USAGE_AR: &str = "\u{627}\u{644}\u{627}\u{633}\u{62A}\u{62E}\u{62F}\u{627}\u{645}: ultar-compositor --socket \u{645}\u{633}\u{627}\u{631} [--headless WxH] [--kms \u{645}\u{633}\u{627}\u{631}] [--fb \u{645}\u{633}\u{627}\u{631}] [--rights \u{645}\u{644}\u{641}] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group \u{631}\u{642}\u{645}] [--allow-virtual-input \u{627}\u{633}\u{645}]";
-const USAGE_EN: &str = "usage: ultar-compositor --socket PATH [--headless WxH] [--kms PATH] [--fb PATH] [--rights FILE] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group GID] [--allow-virtual-input NAME]";
-const USAGE_DE: &str = "Aufruf: ultar-compositor --socket PFAD [--headless BxH] [--kms PFAD] [--fb PFAD] [--rights DATEI] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group GID] [--allow-virtual-input NAME]";
+const USAGE_AR: &str = "\u{627}\u{644}\u{627}\u{633}\u{62A}\u{62E}\u{62F}\u{627}\u{645}: ultar-compositor --socket \u{645}\u{633}\u{627}\u{631} [--headless WxH] [--kms \u{645}\u{633}\u{627}\u{631}] [--fb \u{645}\u{633}\u{627}\u{631}] [--rights \u{645}\u{644}\u{641}] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group \u{631}\u{642}\u{645}] [--allow-virtual-input \u{627}\u{633}\u{645}] [--seat-state \u{645}\u{633}\u{627}\u{631}]";
+const USAGE_EN: &str = "usage: ultar-compositor --socket PATH [--headless WxH] [--kms PATH] [--fb PATH] [--rights FILE] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group GID] [--allow-virtual-input NAME] [--seat-state PATH]";
+const USAGE_DE: &str = "Aufruf: ultar-compositor --socket PFAD [--headless BxH] [--kms PFAD] [--fb PFAD] [--rights DATEI] [--inline] [--lang ar|en|de] [--light] [--no-cursor] [--seat-group GID] [--allow-virtual-input NAME] [--seat-state PFAD]";
 
 /// The text of a message in a language.
 pub fn text(key: MsgKey, lang: Lang) -> &'static str {

@@ -2,14 +2,21 @@
 # ultar-devd end to end on the Ultar kernel in QEMU: the daemon reads the kernel's device tree
 # (/sys/bus, driver ABI from /sys/kernel/ultar/driver_abi), finds a signed stage-A package for the
 # e1000 whose built-in driver was unbound before, binds it through /sys/bus/pci/drivers/<d>/bind and
-# confirms the binding from the kernel's new state. Verdict line: "ok    DEVD-QEMU: ALLES OK".
-# DEVD=<file>: prebuilt static ultar-devd; UDRV=<file>: prebuilt udrv (host). Image: IMG=1 scripts/build-kern.sh.
+# confirms the binding from the kernel's new state. Then ultar-devd-seat looks at the seat's device nodes:
+# the Ultar kernel gates /dev by rights and refuses owners and modes there, which the program has to
+# detect (verdict "kernel-gated", not "kept" and not "failed"). Verdict line: "ok    DEVD-QEMU: ALLES OK".
+# DEVD=<file>: prebuilt static ultar-devd; SEAT=<file>: prebuilt static ultar-devd-seat; UDRV=<file>:
+# prebuilt udrv (host). Image: IMG=1 scripts/build-kern.sh.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 T="${CARGO_TARGET_DIR:-target}"
 if [ -z "${DEVD:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build -q --release -p ultar-devd --bin ultar-devd --target x86_64-unknown-linux-gnu
   DEVD="$T/x86_64-unknown-linux-gnu/release/ultar-devd"
+fi
+if [ -z "${SEAT:-}" ]; then
+  RUSTFLAGS="-C target-feature=+crt-static" cargo build -q --release -p ultar-devd --bin ultar-devd-seat --target x86_64-unknown-linux-gnu
+  SEAT="$T/x86_64-unknown-linux-gnu/release/ultar-devd-seat"
 fi
 if [ -z "${UDRV:-}" ]; then
   cargo build -q --release -p ultar-driverpkg --bin udrv
@@ -46,15 +53,19 @@ mmd -i "$IMG" ::/devd ::/devd/depot ::/devd/keys
 mcopy -i "$IMG" "$W"/depot/* ::/devd/depot/
 mcopy -i "$IMG" "$W/keys/test.keys" ::/devd/keys/
 mcopy -o -i "$IMG" "$DEVD" ::/bin/ultar-devd
+mcopy -o -i "$IMG" "$SEAT" ::/bin/ultar-devd-seat
+printf 'group = 812\n' > "$W/seat.toml"; mcopy -i "$IMG" "$W/seat.toml" ::/devd/seat.toml
 DLOG="${DLOG:-$W/log}"
 QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" WAIT=60 timeout 300 python3 tools/kern-test/qtest.py "$IMG" \
   "/bin/geraetetest --unbind-e1000" "/bin/ultar-devd --once --lang en --depot /devd/depot --keys /devd/keys --state /tmp/devd" \
-  "/bin/geraetetest --state-e1000" > "$DLOG" 2>&1 || true
+  "/bin/geraetetest --state-e1000" "/bin/ultar-devd-seat --once --lang en --config /devd/seat.toml" > "$DLOG" 2>&1 || true
 fail=0
 for want in "e1000 0000:00:" "gelöst" "pci:8086:100e  [working]" "driver: qemu-e1000 1.0.0" "bound"; do
   grep -aqF "$want" "$DLOG" || { echo "FAIL  DEVD-QEMU: missing \"$want\""; fail=1; }
 done
 grep -aF "GERAETETEST: e1000" "$DLOG" | tail -1 | grep -q " bound" || { echo "FAIL  DEVD-QEMU: e1000 not bound after ultar-devd"; fail=1; }
+grep -aqF "device modes: kernel-gated" "$DLOG" || { echo "FAIL  DEVD-QEMU: ultar-devd-seat did not detect the kernel's gating of /dev"; fail=1; }
+grep -aqE "^(fb0|input/event0) .* (set|unchanged)$" "$DLOG" && { echo "FAIL  DEVD-QEMU: a node reported as changed on a kernel without device modes"; fail=1; }
 if grep -aqiE "kernel panic|PANIK" "$DLOG"; then echo "FAIL  kernel panic"; fail=1; fi
 [ "$fail" = 0 ] || { tail -40 "$DLOG"; exit 1; }
 echo "ok    DEVD-QEMU: ALLES OK"

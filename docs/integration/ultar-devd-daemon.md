@@ -239,3 +239,36 @@ the kernel's sysfs format (`devices/sysfs.rs`) instead of log texts. The paragra
 - Arabic and German texts were written by the agent, not reviewed by a native speaker. Driver display names
   (`driver.<id>.name`) are still keys without texts.
 - No `[workspace]` tables were added (the copies come from the integrated repository and build standalone here because no parent workspace exists); the `Cargo.lock` files in the crate folders stem from those standalone builds and can be dropped. `target/` (build output), `gate.sh` and `gate.log` are not deliverables.
+
+## 9. Seat device nodes (`ultar-devd-seat`, compositor review N14)
+
+A second program of this crate, run as the service `seat` (`rootfs/etc/ultar/services/seat.toml`): root with
+the single right `file_admin`, no bus, reads `/sys` and `/etc/ultar/devd-seat.toml`, writes only seat nodes and
+`/run/ultar/seat/modes`. It is apart from the daemon so the daemon keeps running as user 804 without rights.
+
+| Node | Owner:group mode |
+|---|---|
+| `/dev/input/event*` of hardware | `root:seat` (812) `0660` |
+| `/dev/input/event*` of a software device (sysfs below `/devices/virtual/`) whose `name` is in `virtual_allowed` | `root:seat` `0660` |
+| any other software device, or an event node without a sysfs entry | `root:root` `0600` (fail closed) |
+| `/dev/dri/card*`, `/dev/fb*` | `root:seat` `0660` |
+| `/dev/uinput` | `root:root` `0600` |
+
+* When: every node at start (after subscribing to device events, so nothing added in between is missed), then
+  each `add`/`change`/`bind` event naming a seat node; lost events (`ENOBUFS`) → full scan. After giving an
+  input node to the seat it writes `change` into the node's sysfs `uevent`, so the compositor (which rescans on
+  that event) tries it again. Event contents only trigger a new evaluation; the decision comes from sysfs.
+* Safety: only character devices, never through links, only below `/dev` directories of root that nobody else
+  may change; the mode is narrowed first, then owner and group, then the final mode (no step grants more than
+  start or end); every change is read back.
+* Kernels: on Linux owners and modes are kept (`modes` = `kept`). The Ultar kernel refuses `chown`/`chmod` below
+  `/dev` (it gates the nodes by `raw_device`, `kernel-identities.md` §2): detected from that refusal on the
+  Ultar kernel only (`kernel-gated`); a refusal on Linux, or any other error, is `failed` – the compositor then
+  keeps its group check and opens nothing (fail closed). `--once` prints one line per node and the verdict.
+* Tests: `src/seat/tests.rs` (configuration bounds, classification, real nodes via `mknod` as root, links and
+  writable directories refused, verdict, state file, event parsing incl. 20 000 random messages with a fixed
+  seed); `tests/seat.rs` (the program: `--once`, and as a service a node added later is set after a device
+  event sent over netlink – hot-plug on Linux); `tools/kern-test/devd-qemu.sh` (Ultar kernel in QEMU:
+  `fb0`, `input/event0`, `input/event1` refused by the kernel, verdict `kernel-gated`). Not tested: hot-plug of
+  an input device on the Ultar kernel (its event nodes are fixed), a real DRM card, a real uinput device.
+

@@ -199,7 +199,11 @@ fn bd03_spinner_behind_a_dialog_at_full_hd_costs_little() {
             "spinner behind dialog: median {:.2} ms, p99 {:.2} ms",
             times[100], times[198]
         );
-        best = best.min(times[198]);
+        best = best.min(if median_only() {
+            times[100]
+        } else {
+            times[198]
+        });
     }
     assert!(
         best <= 8.0 * 0.5,

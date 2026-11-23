@@ -1,0 +1,13 @@
+# ultar-devd-seat: owner and mode of the seat's device nodes (see
+# rootfs/etc/ultar/services/seat.toml).
+#
+# Input event nodes of hardware and the display nodes (dri/card*, fb*) get
+# owner root, this group and mode 0660; /dev/uinput stays root-only (0600).
+# Group 812 = "seat" (rootfs/etc/ultar/ids.toml); its only member is the
+# compositor (811).
+group = 812
+
+# Software input devices (uinput, below /devices/virtual/ in sysfs) join the
+# seat only when their name (sysfs "name") is listed here, e.g. the system's
+# on-screen keyboard; every other one is made root-only. Empty: none.
+virtual_allowed = []

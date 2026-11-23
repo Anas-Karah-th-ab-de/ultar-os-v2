@@ -81,7 +81,7 @@ impl Ui {
     fn store(&mut self, mut node: Node) -> NodeId {
         match self.layers.free_slots.pop() {
             Some(index) if index < self.nodes.len() => {
-                let generation = self.nodes[index].slot.generation.wrapping_add(1);
+                let generation = self.nodes[index].slot.generation.saturating_add(1);
                 node.slot = Slot {
                     generation,
                     removed: false,

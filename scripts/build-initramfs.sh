@@ -45,6 +45,9 @@ if [ -f "$BIN/ultar-shell" ]; then install -m755 "$BIN/ultar-shell" "$STAGE/usr/
 [ -f "$BIN/udoc" ] && install -m755 "$BIN/udoc" "$STAGE/usr/bin/"
 # Entwickler-Zugang (SSH, nur Schlüssel; aus, bis eingeschaltet)
 [ -f "$BIN/ultar-sshd" ] && install -m755 "$BIN/ultar-sshd" "$STAGE/usr/bin/"
+# Gerätedateien des Arbeitsplatzes (Gruppe seat) und Compositor
+[ -f "$BIN/ultar-devd-seat" ] && install -m755 "$BIN/ultar-devd-seat" "$STAGE/usr/bin/"
+[ -f "$BIN/ultar-compositor" ] && install -m755 "$BIN/ultar-compositor" "$STAGE/usr/bin/"
 cp -a rootfs/. "$STAGE/"
 # Entwicklungs-Abbild: ENTWICKLER=1 schaltet den SSH-Zugang ein, ENTWICKLER_SCHLUESSEL=<datei.pub …> erlaubt diese
 # Schlüssel (z. B. ~/.ssh/ultar_dev_ed25519.pub vom PC, tools/entwickler/ultar-dev.sh einrichten)
@@ -87,8 +90,23 @@ if [ -n "${MODULES:-}" ]; then
     done
   done
 fi
-echo "root:x:0:0:root:/root:/bin/sh" > "$STAGE/etc/passwd"
-echo "root:x:0:" > "$STAGE/etc/group"
+# Benutzer und Gruppen aus rootfs/etc/ultar/ids.toml (feste Nummern der Dienste, Gruppe seat …)
+awk -v P="$STAGE/etc/passwd" -v G="$STAGE/etc/group" '
+  /^\[/ { sec = $0; next }
+  /^[a-z][a-z0-9_-]* *= */ {
+    name = $1; v = $0; sub(/^[^=]*= */, "", v); sub(/ *#.*$/, "", v)
+    if (sec == "[users]") { uid[name] = v; order[++n] = name; gid[name] = v }
+    else if (sec == "[groups]") { gid[name] = v; order[++n] = name }
+    else if (sec == "[members]") { gsub(/[][" ]/, "", v); mem[name] = v }
+  }
+  END {
+    printf "" > P; printf "" > G
+    for (i = 1; i <= n; i++) {
+      k = order[i]
+      if (k in uid) print k ":x:" uid[k] ":" uid[k] ":" k ":" (k == "root" ? "/root:/bin/sh" : "/nonexistent:/bin/false") >> P
+      print k ":x:" gid[k] ":" mem[k] >> G
+    }
+  }' rootfs/etc/ultar/ids.toml
 mkdir -p "$OUT"
 # Startbilder für den Bootloader (Logo + Text je Sprache), nur wenn das Programm hier lauffähig ist
 if [ "$ARCH" = "$(uname -m)" ] && [ -x "$BIN/ultar-shell" ]; then

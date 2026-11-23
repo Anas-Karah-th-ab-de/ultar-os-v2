@@ -451,3 +451,24 @@ Breaking changes: `NodeId` bit layout (handles are opaque; ordering of handles c
 `open_menu`/`open_context_menu` fail for nodes not shown; `set_table_rows` maps the selection
 by cell content instead of index; option-list check mark and sidebar bar moved; table rows far
 from the view have no accessibility node. Additive: `set_table_rows_keyed`, `Label: Hash`.
+
+---
+
+# Wave 7 (2026-11-23): review round 6
+
+- **ID1:** `NodeId` holds a 32-bit generation (slot in the low 16 bits, `u64` inside); a slot
+  whose generation would wrap is retired, never handed out again.
+- **ID2:** `set_table_rows_keyed` refuses duplicate keys (`UiError::OptionOutOfRange`).
+- **Build-profile robustness (R1 of round 5):** with 16 codegen units and no LTO the opaque row
+  fill was not vectorised (one pixel at a time, 2.7× slower full repaints). Opaque spans are
+  now written as 64-byte blocks, hot helpers are `#[inline]`; full HD full repaint with 16
+  units 0.94 ms (was 2.06). The CI job `ab` in `.github/workflows/ui-budgets.yml` runs
+  `tools/ui-bench/ab.sh a5eb384` with the workspace profile and with 16 codegen units, no LTO,
+  opt-level 3, so such a regression fails the build.
+- **W1 at 4K:** square fills on whole pixels (the background of a region) use the row blend
+  that large surfaces share among the cores (full repaint and the frame that closes a dialog);
+  the dim skips the opaque panel; the backdrop buffer is allocated with the first frame of a
+  large surface (≥ 2 M pixels, about 33 MB at 4K) instead of with the first dialog; a BGRX
+  canvas is created by doubling copies. Measurements: see the report (the shared machine was
+  not idle).
+- `tests/w4_backdrop.rs` bd03 asserts the median in median mode (it asserted the p99).

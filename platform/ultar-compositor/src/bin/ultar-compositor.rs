@@ -11,7 +11,7 @@
 
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ultar_compositor::backend::{Backend, HalBackend, Headless, OutputKind};
 use ultar_compositor::msg::{text, MsgKey};
 use ultar_compositor::{Compositor, Config, MonotonicClock, RightsTable};
@@ -34,6 +34,7 @@ struct Args {
     no_cursor: bool,
     allow_root: bool,
     seat: SeatPolicy,
+    seat_state: Option<PathBuf>,
 }
 
 fn size(value: &str) -> Option<(u32, u32)> {
@@ -58,6 +59,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--allow-root" => args.allow_root = true,
             "--seat-group" => args.seat.group = Some(it.next()?.parse().ok()?),
             "--allow-virtual-input" => args.seat.virtual_allowed.push(it.next()?),
+            "--seat-state" => args.seat_state = Some(PathBuf::from(it.next()?)),
             _ => return None,
         }
     }
@@ -106,6 +108,37 @@ fn config(args: &Args, lang: Lang) -> Result<Config, MsgKey> {
     Ok(config)
 }
 
+/// The seat policy after the state file of `ultar-devd-seat`
+/// (`--seat-state`). On a kernel that gates device nodes by the right
+/// `raw_device` instead of owners (word `kernel-gated`; the Ultar kernel) the
+/// group of a node says nothing, so the group check is dropped there. A
+/// missing file, any other word, or a file or directory that someone other
+/// than root could have written keeps the check (fail closed).
+fn seat_policy(seat: &SeatPolicy, state: Option<&Path>) -> SeatPolicy {
+    let mut seat = seat.clone();
+    if seat.group.is_some() && state.is_some_and(kernel_gated) {
+        seat.group = None;
+    }
+    seat
+}
+
+fn kernel_gated(path: &Path) -> bool {
+    use std::io::Read;
+    use std::os::unix::fs::MetadataExt;
+    let trusted = |p: &Path| {
+        std::fs::symlink_metadata(p).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0)
+    };
+    let is_file = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_file());
+    if !is_file || !trusted(path) || !path.parent().is_some_and(trusted) {
+        return false;
+    }
+    let mut word = String::new();
+    std::fs::File::open(path)
+        .and_then(|f| f.take(64).read_to_string(&mut word))
+        .is_ok()
+        && word.trim() == "kernel-gated"
+}
+
 fn serve(rt: &Runtime, args: &Args, lang: Lang) -> i32 {
     let fail = |key| {
         eprintln!("{}", text(key, lang));
@@ -117,7 +150,7 @@ fn serve(rt: &Runtime, args: &Args, lang: Lang) -> i32 {
     };
     let backend: Box<dyn Backend> = if args.headless.is_empty() {
         let kind = args.output.as_ref().unwrap_or(&OutputKind::Auto);
-        match HalBackend::open(kind, args.seat.clone()) {
+        match HalBackend::open(kind, seat_policy(&args.seat, args.seat_state.as_deref())) {
             Ok(b) => Box::new(b),
             Err(_) => return fail(MsgKey::NoDisplay),
         }
@@ -210,6 +243,8 @@ mod tests {
         assert_eq!(k.seat.group, Some(812));
         assert_eq!(k.seat.virtual_allowed, vec!["ultar-osk".to_string()]);
         assert!(args(&["--socket", "s", "--seat-group", "x"]).is_none());
+        let st = args(&["--socket", "s", "--seat-state", "/run/ultar/seat/modes"]).unwrap();
+        assert_eq!(st.seat_state, Some(PathBuf::from("/run/ultar/seat/modes")));
         assert!(
             matches!(k.output, Some(OutputKind::Kms(_))) && k.light && k.no_cursor && k.allow_root
         );
@@ -227,5 +262,50 @@ mod tests {
         a.write_all(b"x").unwrap();
         b.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, b"x");
+    }
+
+    #[test]
+    fn the_group_check_is_dropped_only_on_a_trusted_kernel_gated_state() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let dir = std::env::temp_dir().join(format!("seat-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let file = dir.join("modes");
+        let seat = SeatPolicy {
+            group: Some(812),
+            virtual_allowed: Vec::new(),
+        };
+        assert_eq!(seat_policy(&seat, None).group, Some(812));
+        assert_eq!(
+            seat_policy(&seat, Some(&file)).group,
+            Some(812),
+            "missing file"
+        );
+        std::fs::write(&file, "kept\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(seat_policy(&seat, Some(&file)).group, Some(812));
+        std::fs::write(&file, "kernel-gated\n").unwrap();
+        let root = std::fs::metadata(&file).unwrap().uid() == 0;
+        assert_eq!(
+            seat_policy(&seat, Some(&file)).group,
+            if root { None } else { Some(812) }
+        );
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o666)).unwrap();
+        assert_eq!(
+            seat_policy(&seat, Some(&file)).group,
+            Some(812),
+            "writable by others"
+        );
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert_eq!(
+            seat_policy(&seat, Some(&file)).group,
+            Some(812),
+            "directory writable by others"
+        );
+        let none = SeatPolicy::default();
+        assert_eq!(seat_policy(&none, Some(&file)).group, None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

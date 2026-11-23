@@ -26,8 +26,14 @@ name = "ultar-devd"
 path = "src/bin/ultar-devd.rs"
 
 [[bin]]
+name = "ultar-devd-seat"
+path = "src/bin/ultar-devd-seat.rs"
+
+[[bin]]
 name = "udevctl"
 path = "src/bin/udevctl.rs"
 
 [dev-dependencies]
+# tests/seat.rs sends a device event over netlink (hot-plug test).
+rustix = { version = "1", default-features = false, features = ["std", "net"] }
 ultar-profile = { path = "../ultar-profile" }

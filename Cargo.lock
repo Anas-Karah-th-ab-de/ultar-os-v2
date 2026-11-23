@@ -5338,6 +5338,7 @@ dependencies = [
 name = "ultar-devd"
 version = "0.7.0"
 dependencies = [
+ "rustix",
  "serde",
  "toml",
  "ultar-bus",

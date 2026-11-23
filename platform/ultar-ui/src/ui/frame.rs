@@ -54,6 +54,7 @@ impl Ui {
             scrim: end.is_some(),
         };
         let previous = self.layers.backdrop.frame.take();
+        self.prepare_backdrop(canvas);
         let toasts = self.toast_views();
         let painted = match end {
             Some(end) if fresh => {
@@ -71,6 +72,23 @@ impl Ui {
         self.layers.backdrop.frame = painted.then_some(mark);
         if !painted {
             self.dirty.full = true;
+        }
+    }
+
+    /// On a large surface (4K) the backdrop buffer is allocated with the first frame of that
+    /// size, so that the first dialog does not pay for 33 MB of fresh memory.
+    fn prepare_backdrop(&mut self, canvas: &Canvas) {
+        let size = (canvas.width(), canvas.height(), canvas.format());
+        let pixels = i64::from(size.0) * i64::from(size.1);
+        let fits = self
+            .layers
+            .backdrop
+            .buffer
+            .as_ref()
+            .is_some_and(|b| (b.width(), b.height(), b.format()) == size);
+        if !fits && pixels >= crate::canvas::LARGE_SURFACE {
+            self.layers.backdrop.buffer = Canvas::new(size.0, size.1, size.2).ok();
+            self.layers.backdrop.ready = false;
         }
     }
 

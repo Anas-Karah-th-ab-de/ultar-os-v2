@@ -7,12 +7,22 @@ exec = "/usr/bin/ultar-compositor"
 args = [
     "--socket", "/run/ultar/ui/compositor.sock",
     "--rights", "/etc/ultar/compositor-rights.toml",
+    # Only input nodes of the seat group (812, set by ultar-devd-seat) are
+    # opened; on a kernel that gates device nodes by rights instead of owners
+    # the state file says so and the group check is dropped (missing or
+    # other: the check stays, fail closed).
+    "--seat-group", "812",
+    "--seat-state", "/run/ultar/seat/modes",
 ]
+# The seat's nodes are set before the compositor opens them.
+after = ["seat"]
 # Identity and rights: its own user (811). Clients are told apart by their
 # kernel user ids (SO_PEERCRED); the rights table names user ids and refuses
 # root, so no client gets ui.* rights by running as root.
 # right raw_device: the display (DRM/KMS or fb0) and the input devices
+# Group seat (812): the seat's device nodes are root:seat 0660 (Linux).
 user = 811
+groups = [812]
 public_dirs = ["/run/ultar/ui"]
 rights = ["raw_device"]
 notify = true

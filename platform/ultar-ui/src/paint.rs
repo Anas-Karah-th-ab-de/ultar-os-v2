@@ -236,8 +236,25 @@ impl<'a> Painter<'a> {
     /// Fills a rectangle; `radius` rounds its corners.
     pub fn fill(&mut self, rect: Rect, radius: Option<Radius>, color: Color) {
         let r = self.radius(radius);
-        self.canvas
-            .fill_rrect(self.snap(rect), r, color.with_alpha(self.opacity));
+        let device = self.snap(rect);
+        let color = color.with_alpha(self.opacity);
+        // A square rectangle on whole pixels (the background of a region) is covered fully:
+        // the same pixels by the row blend, which a large surface shares among the cores.
+        let whole = |v: f32| (v - v.round()).abs() < 1e-3;
+        let aligned = [device.x, device.y, device.right(), device.bottom()]
+            .into_iter()
+            .all(whole);
+        if r <= 0.0 && aligned && !device.is_empty() {
+            let area = PixelRect::new(
+                device.x.round() as i32,
+                device.y.round() as i32,
+                device.right().round() as i32,
+                device.bottom().round() as i32,
+            );
+            self.canvas.blend_rect(area, color);
+        } else {
+            self.canvas.fill_rrect(device, r, color);
+        }
     }
 
     /// Blends `color` over a rectangle whose edges lie on device pixels (a damage region):

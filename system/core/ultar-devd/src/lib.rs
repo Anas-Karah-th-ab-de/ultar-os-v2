@@ -45,6 +45,7 @@ pub mod msg;
 mod ops;
 mod probe;
 pub mod runner;
+pub mod seat;
 pub mod service;
 pub mod sources;
 pub mod store;

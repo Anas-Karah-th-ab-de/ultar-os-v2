@@ -42,30 +42,31 @@ const MAX_DIRTY: usize = 16;
 /// Most actions that wait for the next event.
 const MAX_PENDING: usize = 32;
 
-/// Handle of a node in a [`Ui`]: the slot (low 16 bits) and the generation of the slot
-/// (high 16 bits). A removed node's slot is reused with the next generation, so an old
+/// Handle of a node in a [`Ui`]: the slot (low 16 bits) and the 32-bit generation of the
+/// slot (above). A removed node's slot is reused with the next generation – a slot whose
+/// generation would wrap is retired instead – so an old
 /// handle never reaches the new node (it answers `UiError::UnknownNode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NodeId(pub(crate) u32);
+pub struct NodeId(pub(crate) u64);
 
 impl NodeId {
-    pub(crate) fn new(index: usize, generation: u16) -> NodeId {
-        NodeId((u32::from(generation) << 16) | (index as u32 & 0xFFFF))
+    pub(crate) fn new(index: usize, generation: u32) -> NodeId {
+        NodeId((u64::from(generation) << 16) | (index as u64 & 0xFFFF))
     }
 
     pub(crate) fn index(self) -> usize {
         (self.0 & 0xFFFF) as usize
     }
 
-    pub(crate) fn generation(self) -> u16 {
-        (self.0 >> 16) as u16
+    pub(crate) fn generation(self) -> u32 {
+        (self.0 >> 16) as u32
     }
 }
 
 /// Generation of a node slot and whether the node in it was removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Slot {
-    pub(crate) generation: u16,
+    pub(crate) generation: u32,
     pub(crate) removed: bool,
 }
 

@@ -1,0 +1,31 @@
+# Seat device nodes (ultar-devd-seat, part of ultar-devd; compositor review
+# N14): the event nodes of input hardware and the display nodes (dri/card*,
+# fb*) get owner root, group seat (812) and mode 0660, /dev/uinput stays
+# root-only (0600), software input devices join the seat only when allowed in
+# /etc/ultar/devd-seat.toml. At start for every node, later on every device
+# event (hot-plug). The verdict (owners kept by the kernel, or the kernel
+# gates device nodes by rights) goes to /run/ultar/seat/modes for the
+# compositor.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-devd-seat"
+args = [
+    "--config", "/etc/ultar/devd-seat.toml",
+    "--state", "/run/ultar/seat",
+]
+# Its lines go to standard error, which ultar-init forwards to the log service.
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: changes owner and mode of device nodes below /dev that belong to root;
+#   Linux allows that to root (CAP_CHOWN, CAP_FOWNER) only. Kept apart from
+#   ultar-devd (user 804, no rights): a small program without bus that reads
+#   only /sys and its configuration and writes only the seat nodes and its state.
+# right file_admin: chown/chmod of the seat nodes (on the Ultar kernel only of
+#   use where it keeps owners in /dev; today it gates them by raw_device)
+rights = ["file_admin"]
+public_dirs = ["/run/ultar/seat"]
+notify = true
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "8"
+"cpu.weight" = "50"

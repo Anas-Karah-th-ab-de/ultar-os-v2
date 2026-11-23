@@ -18,6 +18,7 @@ struct RoundBox {
 }
 
 impl RoundBox {
+    #[inline]
     fn new(rect: &Rect, radius: f32) -> RoundBox {
         let (hx, hy) = (rect.w / 2.0, rect.h / 2.0);
         RoundBox {
@@ -31,6 +32,7 @@ impl RoundBox {
 
     /// Row centres between which the edge zones (`zone` pixels wide) see only the straight
     /// sides: there the distance depends on `x` alone (`max(qx, qy) = qx`, `qy <= 0`).
+    #[inline]
     fn straight_rows(&self, zone: i32) -> (f32, f32) {
         let half = self.hy - self.r - zone as f32 - 2.0;
         if half > 0.0 {
@@ -98,6 +100,7 @@ pub(crate) fn shared<T: Send>(items: Vec<T>, cores: usize, work: &(dyn Fn(T) + S
 
 /// Width of the edge zones for a shape whose coverage varies within `reach` pixels of its
 /// left and right border (float-to-integer conversion saturates, the sum must too).
+#[inline]
 fn zone_width(reach: f32) -> i32 {
     (reach.ceil() as i32).saturating_add(2)
 }
@@ -108,6 +111,7 @@ impl Canvas {
     /// centre lies inside `alike` (open interval) have the same coverage in every row (the
     /// straight sides of the shape), so it is computed once for them – the nine-slice of a
     /// large panel or shadow.
+    #[inline]
     fn paint_coverage(
         &mut self,
         (bbox, edge_zone, alike): (PixelRect, i32, (f32, f32)),

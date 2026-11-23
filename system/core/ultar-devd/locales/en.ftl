@@ -99,3 +99,14 @@ devd.daemon.policy-rejected = The policy file is not valid: {a}
 devd.daemon.token-rejected = The token could not be read: {a}
 devd.daemon.root-refused = The device service does not run as root without --allow-root.
 devd.daemon.hardening-failed = The self-limits could not be applied: {a}
+
+# ultar-devd-seat
+seat.usage = usage: ultar-devd-seat --config FILE (--state DIR | --once) [--root DIR] [--log-socket PATH] [--lang ar|en|de]
+seat.verdict = seat device nodes: {nodes} looked at, device modes: {modes}
+seat.state-failed = The state file could not be written: {a}
+seat.hardening-failed = The program could not limit itself: {a}
+seat.config.read = The seat configuration could not be read: {a}
+seat.config.syntax = The seat configuration is not valid: {a}
+seat.config.bound = The seat configuration has a value out of bounds: {a}
+seat.no-events = Device events are not available ({a}); nodes added later are not handled.
+seat.stopped = stopped.

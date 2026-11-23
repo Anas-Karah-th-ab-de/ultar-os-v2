@@ -22,6 +22,23 @@ pub(crate) fn blend_px(dst: &mut [u8], src: [u8; BPP], a: u32) {
     dst[3] = (da + div255((FULL - da) * a)) as u8;
 }
 
+/// Writes an opaque colour over a row slice. Whole 64-byte blocks of the repeated pixel
+/// are copied, which compiles to vector stores whatever the inlining of the build (one
+/// pixel at a time was 3× slower with 16 codegen units).
+#[inline]
+pub(crate) fn fill_opaque(dst: &mut [u8], src: [u8; BPP]) {
+    const SPAN: usize = 16 * BPP;
+    let opaque = [src[0], src[1], src[2], u8::MAX];
+    let block: [u8; SPAN] = std::array::from_fn(|i| opaque[i % BPP]);
+    let mut blocks = dst.chunks_exact_mut(SPAN);
+    for chunk in &mut blocks {
+        chunk.copy_from_slice(&block);
+    }
+    let rest = blocks.into_remainder();
+    let n = rest.len();
+    rest.copy_from_slice(block.get(..n).unwrap_or(&[]));
+}
+
 /// Blends a constant colour with constant coverage over a row slice.
 #[inline]
 pub(crate) fn blend_span(dst: &mut [u8], src: [u8; BPP], a: u32) {
@@ -29,10 +46,7 @@ pub(crate) fn blend_span(dst: &mut [u8], src: [u8; BPP], a: u32) {
         return;
     }
     if a >= FULL {
-        let opaque = [src[0], src[1], src[2], u8::MAX];
-        for px in dst.chunks_exact_mut(BPP) {
-            px.copy_from_slice(&opaque);
-        }
+        fill_opaque(dst, src);
         return;
     }
     // `div255` in 16-bit arithmetic (every intermediate stays below 2^16: 255 · 255 + 128 +
@@ -83,12 +97,7 @@ pub(crate) fn blend_alphas(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
         let run = &mut dst[start * BPP..end * BPP];
         match first {
             0 => {}
-            2 => {
-                let opaque = [src[0], src[1], src[2], u8::MAX];
-                for px in run.chunks_exact_mut(BPP) {
-                    px.copy_from_slice(&opaque);
-                }
-            }
+            2 => fill_opaque(run, src),
             _ => blend_varying(run, &alphas[start..end], src),
         }
         start = end;
@@ -96,6 +105,7 @@ pub(crate) fn blend_alphas(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
 }
 
 /// The partly covered run of [`blend_alphas`].
+#[inline]
 fn blend_varying(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
     let colour = [src[0], src[1], src[2], u8::MAX].map(u16::from);
     for (px, &a) in dst.chunks_exact_mut(BPP).zip(alphas) {

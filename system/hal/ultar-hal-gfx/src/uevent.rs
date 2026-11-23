@@ -45,9 +45,13 @@ impl Uevent {
     }
 
     /// True if input devices may have changed (input nodes, USB devices).
+    /// `change` of an input node: `ultar-devd-seat` gave it to the seat after
+    /// its `add` (an earlier open may have been refused), so it is tried again.
     pub fn concerns_input(&self) -> bool {
+        let action = self.action.as_str();
         matches!(self.subsystem.as_str(), "input" | "usb" | "hid")
-            && matches!(self.action.as_str(), "add" | "remove" | "bind" | "unbind")
+            && (matches!(action, "add" | "remove" | "bind" | "unbind")
+                || (action == "change" && self.subsystem == "input"))
     }
 }
 
@@ -113,6 +117,14 @@ mod tests {
             Uevent::parse(b"remove@/devices/virtual/input/input9/event5\0SUBSYSTEM=input\0")
                 .unwrap();
         assert!(input.concerns_input());
+        let seat =
+            Uevent::parse(b"change@/devices/x/input/input3/event2\0SUBSYSTEM=input\0").unwrap();
+        assert!(
+            seat.concerns_input(),
+            "a node given to the seat is tried again"
+        );
+        let usb = Uevent::parse(b"change@/devices/x/usb1\0SUBSYSTEM=usb\0").unwrap();
+        assert!(!usb.concerns_input());
         // Opening may be refused in a sandbox; when it works nothing is pending.
         if let Ok(s) = UeventSocket::open() {
             let _ = s.fd();

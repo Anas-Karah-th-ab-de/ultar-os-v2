@@ -99,3 +99,14 @@ devd.daemon.policy-rejected = Die Rechtedatei ist ungültig: {a}
 devd.daemon.token-rejected = Das Token konnte nicht gelesen werden: {a}
 devd.daemon.root-refused = Der Gerätedienst läuft ohne --allow-root nicht als root.
 devd.daemon.hardening-failed = Die Selbstbeschränkung ließ sich nicht anwenden: {a}
+
+# ultar-devd-seat
+seat.usage = Aufruf: ultar-devd-seat --config DATEI (--state ORDNER | --once) [--root ORDNER] [--log-socket PFAD] [--lang ar|en|de]
+seat.verdict = Gerätedateien des Arbeitsplatzes: {nodes} geprüft, Gerätemodi: {modes}
+seat.state-failed = Die Zustandsdatei konnte nicht geschrieben werden: {a}
+seat.hardening-failed = Das Programm konnte sich nicht selbst beschränken: {a}
+seat.config.read = Die Arbeitsplatz-Einstellungen konnten nicht gelesen werden: {a}
+seat.config.syntax = Die Arbeitsplatz-Einstellungen sind ungültig: {a}
+seat.config.bound = Ein Wert der Arbeitsplatz-Einstellungen liegt außerhalb der Grenzen: {a}
+seat.no-events = Geräteereignisse sind nicht verfügbar ({a}); später hinzugekommene Geräte werden nicht behandelt.
+seat.stopped = beendet.

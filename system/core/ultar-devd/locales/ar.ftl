@@ -102,3 +102,14 @@ devd.daemon.policy-rejected = ملف الصلاحيات غير صالح: {a}
 devd.daemon.token-rejected = تعذّرت قراءة الرمز السري: {a}
 devd.daemon.root-refused = لن تعمل خدمة الأجهزة بصلاحيات الجذر دون --allow-root.
 devd.daemon.hardening-failed = تعذّر تطبيق قيود الحماية الذاتية: {a}
+
+# ultar-devd-seat
+seat.usage = الاستخدام: ultar-devd-seat --config ملف (--state مجلد | --once) [--root مجلد] [--log-socket مسار] [--lang ar|en|de]
+seat.verdict = ملفات أجهزة مكان العمل: فُحص {nodes}، أوضاع الأجهزة: {modes}
+seat.state-failed = تعذّرت كتابة ملف الحالة: {a}
+seat.hardening-failed = تعذّر على البرنامج تقييد نفسه: {a}
+seat.config.read = تعذّرت قراءة إعدادات مكان العمل: {a}
+seat.config.syntax = إعدادات مكان العمل غير صالحة: {a}
+seat.config.bound = قيمة في إعدادات مكان العمل خارج الحدود: {a}
+seat.no-events = أحداث الأجهزة غير متاحة ({a})؛ لن تُعالَج الأجهزة المضافة لاحقًا.
+seat.stopped = توقّف.

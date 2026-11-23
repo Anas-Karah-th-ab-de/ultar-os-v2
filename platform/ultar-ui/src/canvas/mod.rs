@@ -75,6 +75,10 @@ pub struct Canvas {
     scratch: Vec<u8>,
 }
 
+/// Pixels from which a surface counts as large (the toolkit shares work among cores and
+/// keeps the dialog backdrop allocated): about a 2K panel.
+pub const LARGE_SURFACE: i64 = shapes::PARALLEL_AREA;
+
 impl Canvas {
     /// A canvas of `width` × `height` pixels, transparent (RGBA) or black (BGRX).
     pub fn new(width: u32, height: u32, format: PixelFormat) -> Result<Canvas, CanvasError> {
@@ -82,12 +86,12 @@ impl Canvas {
         if !valid(width) || !valid(height) {
             return Err(CanvasError::InvalidSize { width, height });
         }
-        let mut data = vec![0u8; width as usize * height as usize * BPP];
-        if format == PixelFormat::Bgrx8 {
-            for px in data.chunks_exact_mut(BPP) {
-                px[3] = u8::MAX;
-            }
-        }
+        let pixels = width as usize * height as usize;
+        let data = match format {
+            // Doubling copies of the black pixel: fast also for a 33 MB surface.
+            PixelFormat::Bgrx8 => [0, 0, 0, u8::MAX].repeat(pixels),
+            PixelFormat::Rgba8 => vec![0u8; pixels * BPP],
+        };
         Ok(Canvas {
             width,
             height,
@@ -177,6 +181,7 @@ impl Canvas {
     }
 
     /// Colour bytes in buffer order.
+    #[inline]
     fn pack(&self, color: Color) -> [u8; BPP] {
         match self.format {
             PixelFormat::Rgba8 => [color.r, color.g, color.b, color.a],
@@ -185,6 +190,7 @@ impl Canvas {
     }
 
     /// The bytes of row `y` from column `x0` to `x1` (caller guarantees they are inside).
+    #[inline]
     fn row_mut(&mut self, y: i32, x0: i32, x1: i32) -> &mut [u8] {
         let start = (y.max(0) as usize * self.width as usize + x0.max(0) as usize) * BPP;
         let end = start + (x1 - x0).max(0) as usize * BPP;

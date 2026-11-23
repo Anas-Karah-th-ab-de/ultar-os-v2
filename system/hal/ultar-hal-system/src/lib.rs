@@ -17,6 +17,7 @@
 
 pub mod hardware;
 pub mod kernel_drivers;
+pub mod seat_nodes;
 
 pub use hardware::{HardwareError, HardwareReader, Inventory};
 pub use kernel_drivers::{kernel_abi, uevent_seqnum, BindState, ControlInterface, KernelDrivers};

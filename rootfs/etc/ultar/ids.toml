@@ -1,0 +1,30 @@
+# Ultar OS – the system's users and groups (fixed ids). Service files name
+# them by number (`user`, `group`, `groups`); every number they use must be
+# listed here (ultar-init's shipped-file test). scripts/build-initramfs.sh
+# writes /etc/passwd and /etc/group from this file.
+#
+# [users]: name = id; each user has its own group of the same name and id.
+# [groups]: groups that are nobody's own group: name = id.
+# [members]: supplementary members of a group (user names).
+
+[users]
+root = 0
+busd = 801
+logd = 802
+settingsd = 803
+devd = 804
+llm = 810
+compositor = 811
+nobody = 65534
+
+[groups]
+# The seat's device nodes (input events, display): root:seat 0660, set by
+# ultar-devd-seat (rootfs/etc/ultar/devd-seat.toml).
+seat = 812
+
+[members]
+busd = ["logd"]
+logd = ["busd"]
+settingsd = ["busd", "logd"]
+devd = ["busd", "logd"]
+seat = ["compositor"]

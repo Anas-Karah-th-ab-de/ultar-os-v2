@@ -5,6 +5,8 @@
 # Builds tests/ab_bench.rs in this tree and in REF (release), runs both ROUNDS times
 # interleaved (default 3), prints the minimum per measurement and the ratio new/old, and
 # fails when a measurement is more than 20 % (+0.2 ms, the noise of a shared machine) slower than in REF.
+# Run it also with CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_LTO=false
+# CARGO_PROFILE_RELEASE_OPT_LEVEL=3: code that is fast only when inlined across units shows there.
 # Waits for a 1-minute load below 1.5 first (at most 10 minutes): measure on a quiet machine.
 set -eu
 REF=${1:-a5eb384}

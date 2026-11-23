@@ -54,3 +54,39 @@ jobs:
 
       - name: Frame budgets
         run: cargo test --release -p ultar-ui --test r3_perf --test w4_backdrop -- --include-ignored --test-threads=1 --nocapture
+
+  ab:
+    # A/B benchmark against the toolkit before the backdrop rework (tools/ui-bench/ab.sh):
+    # once with the workspace release profile, once with 16 codegen units, no LTO and
+    # opt-level 3 everywhere – the build in which helpers that only run fast when inlined
+    # across units show up (review round 6).
+    name: A/B benchmark (${{ matrix.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: workspace
+            units: ""
+          - profile: 16 codegen units
+            units: "16"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup default 1.97.0
+
+      - name: A/B benchmark against a5eb384
+        env:
+          AB_WORK: ${{ runner.temp }}/ab
+        run: |
+          if [ -n "${{ matrix.units }}" ]; then
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=${{ matrix.units }}
+            export CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_OPT_LEVEL=3
+          fi
+          sh tools/ui-bench/ab.sh a5eb384 3

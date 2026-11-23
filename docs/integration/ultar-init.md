@@ -44,6 +44,10 @@ administrator's sockets and init's sockets stay `0600` (root with `file_admin`).
 
 ## Identities and rights of the shipped services
 
+Users and groups: `rootfs/etc/ultar/ids.toml` (fixed ids; `scripts/build-initramfs.sh` writes `/etc/passwd` and
+`/etc/group` from it; the shipped-file test requires every id a service file names to be listed there, and the
+group `seat` (812) to hold the compositor and nobody else).
+
 Checked by `tests/shipped_services.rs`: no file asks for `all`; a service without its own user must be on the
 test's allow-list and carry a `# root:` reason; every kept right has a `# right NAME:` reason; every right at
 once only for `entwickler`, `shell`, `ui`. Where each right is enforced by the Ultar kernel: `mount` (mount,
@@ -53,6 +57,8 @@ chroot, pivot_root, unshare/clone of namespaces), `load_driver` (modules, `/sys`
 | Service | Runs as | Rights | Why (short; the file has the full reason) |
 |---|---|---|---|
 | bus, logd, settingsd, devd | 801–804 | none | (wave 4) |
+| compositor | 811, group seat 812 | raw_device | display and input; the seat's nodes are root:seat 0660 |
+| seat | root | file_admin | `ultar-devd-seat`: owner and mode of root's device nodes in `/dev` (Linux: CAP_CHOWN/CAP_FOWNER) |
 | heartbeat | 65534 (nobody) | none | prints and sleeps |
 | llm | 810 | none | socket moved to its own `/run/ultar/llm/llm.sock` (`public_dirs`, `--socket`); clients try it first, the old root socket stays a fallback; images in `/run/ultar/llm/img` |
 | verbund | root | none | reads/writes the surface's root-only files in `/run/ultar` (`shell.fern`, `bildschirm.raw`) |
@@ -163,7 +169,7 @@ are unmounted, power off or restart.
 
 ## Open
 
-* 17 services still run as root (table above). Not split yet, by size: `ui` (every administration page has to
+* 18 services still run as root (table above; `seat` by design: it changes root's device nodes). Not split yet, by size: `ui` (every administration page has to
   become a bus call to the owning service), `net`/`ril` (address/route helper behind the bus, DHCP and Wi-Fi as a
   user), the compat runner (drop to a user after chroot; then compat-bind/llm-compat/webtest/selftest), `verbund`
   (needs the surface to create its exchange files for a group), the tests on the root-only control socket
