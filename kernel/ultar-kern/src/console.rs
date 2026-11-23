@@ -434,6 +434,9 @@ impl Write for UserOut {
                 scr.put(c);
             }
         }
+        // The remote hardware test has no serial line to read: its only evidence is the log file, so program output is kept there too.
+        #[cfg(feature = "remote-test")]
+        crate::klog::record(s);
         Ok(())
     }
 }

@@ -11,6 +11,7 @@ truncate -s 64M "$W/esp.img"; mkfs.vfat -F 32 -n ULTAR-KERN "$W/esp.img" >/dev/n
 mmd -i "$W/esp.img" ::/EFI ::/EFI/BOOT ::/bin ::/ultar-kern
 mcopy -i "$W/esp.img" "$EFI" ::/EFI/BOOT/BOOTX64.EFI
 for f in "$BINS"/*; do mcopy -i "$W/esp.img" "$f" ::/bin/; done
+printf 'Willkommen auf dem Ultar-Kern.\n' > "$W/liesmich.txt"; mcopy -i "$W/esp.img" "$W/liesmich.txt" ::/liesmich.txt
 head -c 262144 /dev/zero | tr '\0' ' ' > "$W/log.txt"; mcopy -i "$W/esp.img" "$W/log.txt" ::/ultar-kern/selbsttest.txt
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$W/vars.fd"
 SMB=(); for t in /sys/firmware/dmi/tables/smbios_entry_point; do [ -r "$t" ] && cat /sys/firmware/dmi/tables/DMI > "$W/dmi.bin" && SMB=(-smbios "file=$W/dmi.bin"); done

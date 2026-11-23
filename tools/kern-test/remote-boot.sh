@@ -41,6 +41,7 @@ prepare() {
   local esp; esp=$(main_esp)
   mkdir -p "$esp/$DIR"; cp "$efi" "$esp/$DIR/ultar-kern.efi"
   if [ -n "$bins" ]; then mkdir -p "$esp/bin"; cp "$bins"/* "$esp/bin/" && echo "$bins" > "$esp/$DIR/bins-copied"; ls "$bins" > "$esp/$DIR/bins-list"; fi
+  if [ ! -e "$esp/liesmich.txt" ]; then printf 'Willkommen auf dem Ultar-Kern.\n' > "$esp/liesmich.txt"; : > "$esp/$DIR/liesmich-created"; fi
   # preallocated log file on every EFI partition: the kernel overwrites it in place
   for m in $(esp_mounts); do mkdir -p "$m/$LOGDIR"; head -c 262144 /dev/zero | tr '\0' ' ' > "$m/$LOGDIR/selbsttest.txt"; done
   sync
@@ -67,6 +68,7 @@ cleanup() {
   efibootmgr -q -N 2>/dev/null || true
   for m in $(esp_mounts); do
     if [ -f "$m/$DIR/bins-list" ]; then while read -r f; do rm -f "$m/bin/$f"; done < "$m/$DIR/bins-list"; rmdir "$m/bin" 2>/dev/null || true; fi
+    if [ -f "$m/$DIR/liesmich-created" ]; then rm -f "$m/liesmich.txt"; fi
     rm -rf "${m:?}/$DIR" "${m:?}/$LOGDIR"
   done
   echo "cleaned: boot entry and files removed"
