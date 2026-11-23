@@ -2,6 +2,25 @@
 
 Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
+## Umsetzung Welle 4 (23.11.2026) – gebaut, eingebunden, unabhängig geprüft
+
+| Baustein | Stand |
+|---|---|
+| Kern: Geräte und Treiber | Geräte- und Treiberliste im Linux-Format (`/sys/bus/...`), Binden/Lösen mit echtem Abbau wo möglich, Ereignisse über netlink, Prüf- und Zustandswerte; `ultar-devd` liest sie statt des Kern-Protokolls (D1 erledigt) |
+| Kern: Prozesse und Wecken | vfork gibt den Elternprozess beim exec frei, `shutdown` weckt blockierte Leser, Signale erreichen jeden Faden, ganze Zeilen je Prozessorkern, keine Speicherreste nach einer Prozess-Lawine |
+| Startlader A/B | eigener UEFI-Lader mit Slot-Tabelle und Startzähler, zwei Kern- und zwei System-Slots, Rückfall nach misslungenen Versuchsstarts, Stromausfall geprüft; Updater schreibt über Roh-Partitionen (K4 erledigt) |
+| ext4 | Extent-Bäume, ehrliche Fehler bei fsync/close statt stiller Datenverlust |
+| ultar-init | startet Dienste nach Abhängigkeit und Bereitschaft, als eigene Benutzer, in Speichergruppen, mit nur den nötigen Rechten; Ausgaben in den Protokolldienst; geordnetes Herunterfahren; `uinit` (I1 erledigt) |
+| Dienste | jede ausgelieferte Dienstdatei nennt Benutzer und Begründung je Recht; „alle Rechte“ wird abgelehnt; Eingabegeräte nur über die Gruppe `seat` |
+| Updater | HTTPS rein in Rust (ohne C-Bibliothek), statischer ARM64-Bau wieder in der Prüfung |
+| **Compositor** | eigener `ultar-compositor`: Fenster anderer Prozesse, Software-Zusammensetzung nach Schadensbereichen (1080p unter 4 ms), Eingabe-Lenkung, Dekoration aus den Gestaltungswerten (Arabisch gespiegelt), Sperre schließt sicher, sichere Taste, gekennzeichnete Systemdialoge; läuft auf dem Ultar-Kern mit zwei App-Prozessen |
+| Baukasten | Runde 4–6: Dialog dimmt das vorhandene Bild, Mehrfachauswahl, Ablegen, Mittelklick, Tabellen für Bildschirmleser, Kennwortfeld abgesichert, Knoten-Kennungen mit Generation, A/B-Messung in der Prüfung |
+| Alte Oberfläche | Ursache der gelegentlichen GitHub-Fehler gefunden: Testrechner wurden als Desktop erkannt |
+| **Echte Hardware** | Beelink (KVM, 16 Kerne): Stufe 1 mit allen Prüfungen bestanden, inkl. Geräte-Schnittstellen und Speichergrenzen |
+
+Prüfrunden: Compositor 2 Runden (zuerst 3 kritisch / 8 schwer, dann 2 kritisch / 7 schwer – alles behoben), Baukasten Runden 4–6.
+Rund **2 450 automatische Tests** ohne Fehler; Kern-Prüfung mit 19 Prüfungen inkl. A/B-Start, ext4 nach hartem Stopp, Init, Speichergrenzen.
+
 ## Umsetzung Welle 3 (23.11.2026) – gebaut, eingebunden, zweimal unabhängig geprüft
 
 | Baustein | Stand |

@@ -1,6 +1,6 @@
 # Unabhängige Prüfungen – Befunde und Stand
 
-Stand 23.11.2026, nach Runde 3 und 4 · Drei Prüfer, die den Code nicht geschrieben haben, haben versucht, ihn zu brechen.
+Stand 23.11.2026, nach Welle 4 · Drei Prüfer, die den Code nicht geschrieben haben, haben versucht, ihn zu brechen.
 Jeder Befund ist durch einen Test oder durch Lesen belegt. **Kein Teil ist damit „produktionsreif“** – die offenen
 Punkte unten sperren den Einsatz.
 
@@ -31,9 +31,11 @@ Punkte unten sperren den Einsatz.
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| D1 | Kern ↔ devd | Der Kern bietet keine Geräte-/Treiber-Liste und kein Binden/Lösen; devd liest das Protokoll | sechs Kern-Schnittstellen (docs/integration/ultar-devd-daemon.md §2) |
-| K4 | Kern/Start | Updater kann auf dem Ultar-Kern noch nichts installieren: kein Lader mit Slot-Wahl und Startzähler, nur eine Wurzel-Partition, FAT nur lesbar | Änderungen K1–K6 in `docs/SYSTEM-UPDATE.md` |
-| I1 | init | `ultar-init` nutzt die Bereitschafts-Meldung nicht, wechselt keine Benutzer, setzt Sitzung/Apps nicht in ihre Gruppen | init auf den Dienst-Rahmen umstellen |
+| A1 | Apps | Apps haben noch keine eigenen Benutzerkennungen; es gibt noch keinen App-Starter | Starter, der jede App als eigenen Benutzer in ihrer Zelle startet und ihre Rechte einträgt |
+| S1 | Oberfläche | Desktop-Hülle (Leiste, Startmenü, Schnelleinstellungen), Sperrbildschirm, Systemdialoge und Apps sind noch nicht gebaut; die Sicherheits-Tasten wirken erst mit einem Sperrbildschirm | Desktop-Hülle als Clients des Compositors (Welle 5) |
+| G1 | Kern/Grafik | Nur der Bildspeicher der Firmware: ein Bildschirm, kein echtes vblank, keine Touch- und Maus-Treiber | Grafiktreiber (virtio-gpu, Intel), HID-Maus/Tablet, Touch |
+| R1 | Root-Dienste | 17 Dienste laufen noch als root (je mit Begründung) | aufteilen in kleine Helfer oder Bus-Aufrufe |
+| H1 | Hardware | kein Start ohne KVM direkt auf dem Beelink; ThinkPad nicht getestet | Freigabe und Einschaltknopf vor Ort |
 
 ## Offen – leichter (vor Freigabe der jeweiligen Stufe)
 
