@@ -8,7 +8,7 @@
 # model = "/data/ultar/models/Qwen3-1.7B-Q4_K_M.gguf"   # leer = model.gguf, sonst größtes passendes
 # model_dirs = ["/data/ultar/models", "/data/ultar/agent"]
 # listen = "127.0.0.1:8080"        # "" = kein TCP; andere Rechner nur mit allow_remote = true + api_key
-# socket = "/run/ultar/llm.sock"
+# socket = "/run/ultar/llm.sock"   # der Dienst (eigener Benutzer 810) bekommt /run/ultar/llm/llm.sock über --socket
 # ctx = 4096
 # threads = 2
 # threads_batch = 8

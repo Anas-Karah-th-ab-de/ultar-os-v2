@@ -1,9 +1,11 @@
 # Ubuntu-Bereich ohne eigene Partition (z. B. Galaxy A30): /data/compat wird auf /compat gelegt, sobald /data da ist.
 # Vorhandene Partition (LABEL=ultar-compat) hat Vorrang – dann ist /compat schon eingebunden und es passiert nichts.
 exec = "/bin/sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: mounts the Ubuntu compatibility tree (/data/compat -> /compat) with a bind mount; Linux
+#   allows that to root (CAP_SYS_ADMIN) only. One-shot, ends after the mount.
+# right mount: the bind mount itself
+rights = ["mount"]
 args = ["-c", "for i in $(seq 1 60); do [ -d /data/compat/usr ] && break; sleep 1; done; [ -d /data/compat/usr ] || exit 0; grep -q ' /compat ' /proc/mounts || mount -o bind /data/compat /compat"]
 oneshot = true
 restart = "never"

@@ -3,8 +3,20 @@
 # Nur mit Schlüssel. Ohne Einschalten (Einstellungen → System → Entwickleroptionen, `ultar-sshd an`,
 # /etc/ultar/entwickler oder Startparameter ultar.entwickler=1) beendet sich der Dienst sofort wieder.
 exec = "/usr/bin/ultar-sshd"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: developer access (manual, only with installed keys): a remote administrator shell;
+#   whatever an administrator may do at the console, this shell may do. It also reads /dev/kmsg,
+#   /dev/fb0 and the input devices for its diagnosis commands.
+# right mount: administrator shell: commands of the developer may need it
+# right net_admin: administrator shell: commands of the developer may need it
+# right load_driver: administrator shell: commands of the developer may need it
+# right kill_any: administrator shell: commands of the developer may need it
+# right set_time: administrator shell: commands of the developer may need it
+# right raw_device: administrator shell: commands of the developer may need it
+# right reboot: administrator shell: commands of the developer may need it
+# right manage_groups: administrator shell: commands of the developer may need it
+# right set_id: administrator shell: commands of the developer may need it
+# right file_admin: administrator shell: commands of the developer may need it
+rights = ["mount", "net_admin", "load_driver", "kill_any", "set_time", "raw_device", "reboot", "manage_groups", "set_id", "file_admin"]
 after = ["net"]
 restart = "on-failure"

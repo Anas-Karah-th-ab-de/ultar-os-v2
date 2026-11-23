@@ -4,8 +4,11 @@ editions = ["phone"]
 # Ausgabe /run/ultar/gnss.nmea für die Oberfläche (Einstellungen -> Standort). GNSS ist nur an,
 # solange die Oberfläche /run/ultar/gnss.want berührt. Siehe docs/A30-GNSS.md.
 exec = "/system/bin/sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: starts the vendor GNSS HAL (Android binaries, phone only): chroot into the Android tree,
+#   bind mount of gps.cfg, chmod of /dev/gnss_ipc; the vendor daemons expect root.
+# right mount: chroot and bind mounts of the Android tree
+# right file_admin: chmod of /dev/gnss_ipc, files of the Android tree owned by other ids
+rights = ["mount", "file_admin"]
 args = ["/data/android/gnss-dienst.sh"]
 after = ["drivers"]

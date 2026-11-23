@@ -266,7 +266,7 @@ fn content_text(v: &Value) -> String {
 
 /// Bilder einer Nachricht: OpenAI `{"type":"image_url","image_url":{"url":…}}` mit `data:`-Adresse (Base64) oder
 /// `file:///pfad` bzw. absolutem Pfad (nur Bilddateien), Anthropic-Art `{"type":"image","source":{"data":…}}`.
-/// Base64-Bilder landen in einer privaten Datei unter /run/ultar/llm-img (bzw. Temp-Ordner) und werden nach der Antwort gelöscht.
+/// Base64-Bilder landen in einer privaten Datei unter /run/ultar/llm/img (Dienst), /run/ultar/llm-img (root) bzw. im Temp-Ordner und werden nach der Antwort gelöscht.
 fn cleanup(f: &[String]) {
     for x in f {
         let _ = std::fs::remove_file(x);
@@ -320,27 +320,8 @@ pub fn content_images(v: &Value, tmp: &mut Vec<String>) -> Result<Vec<String>, S
             } else {
                 "jpg"
             };
-            let dir = if std::path::Path::new("/run/ultar").is_dir() {
-                "/run/ultar/llm-img".to_string()
-            } else {
-                std::env::temp_dir()
-                    .join("ultar-llm-img")
-                    .to_string_lossy()
-                    .into_owned()
-            };
-            let _ = std::fs::create_dir_all(&dir);
-            let f = format!("{dir}/{}-{}.{ext}", std::process::id(), rid());
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                let mut fh = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .mode(0o600)
-                    .open(&f)
-                    .map_err(|e| e.to_string())?;
-                std::io::Write::write_all(&mut fh, &bytes).map_err(|e| e.to_string())?;
-            }
+            let name = format!("{}-{}.{ext}", std::process::id(), rid());
+            let f = write_private_image(&name, &bytes)?;
             tmp.push(f.clone());
             out.push(f);
         } else {
@@ -677,4 +658,65 @@ pub fn run(h: Handle) -> Result<(), String> {
         let _ = t.join();
     }
     Ok(())
+}
+
+/// Directory of the service started by ultar-init as its own user (`public_dirs`).
+const SERVICE_DIR: &str = "/run/ultar/llm";
+
+/// Writes an image into a private file (mode 0600) in the first directory this
+/// process may write: the service's own directory, the old root directory, the
+/// temp folder. Returns the path.
+fn write_private_image(name: &str, bytes: &[u8]) -> Result<String, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut dirs = Vec::new();
+    if std::path::Path::new(SERVICE_DIR).is_dir() {
+        dirs.push(format!("{SERVICE_DIR}/img"));
+    }
+    if std::path::Path::new("/run/ultar").is_dir() {
+        dirs.push("/run/ultar/llm-img".to_string());
+    }
+    dirs.push(
+        std::env::temp_dir()
+            .join("ultar-llm-img")
+            .to_string_lossy()
+            .into_owned(),
+    );
+    let mut last = String::from("no directory");
+    for dir in dirs {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            last = format!("{dir}: {e}");
+            continue;
+        }
+        let path = format!("{dir}/{name}");
+        let opened = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path);
+        match opened {
+            Ok(mut fh) => {
+                std::io::Write::write_all(&mut fh, bytes).map_err(|e| e.to_string())?;
+                return Ok(path);
+            }
+            Err(e) => last = format!("{path}: {e}"),
+        }
+    }
+    Err(last)
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::write_private_image;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn an_image_lands_in_a_private_file_of_a_writable_directory() {
+        let name = format!("test-{}.png", std::process::id());
+        let path = write_private_image(&name, b"\x89PNG").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(std::fs::read(&path).unwrap(), b"\x89PNG");
+        std::fs::remove_file(&path).unwrap();
+    }
 }

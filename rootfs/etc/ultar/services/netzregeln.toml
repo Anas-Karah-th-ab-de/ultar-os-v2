@@ -2,8 +2,9 @@
 # „Gerät aus“ sperrt den eigenen Verkehr des Systems; erlaubte Zellen und Dienste bleiben online.
 # Läuft vor dem Netz, damit beim Start nichts durchrutscht.
 exec = "/usr/bin/zelle"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: applies the firewall rules (writes /proc/ultar/firewall, nftables on Linux); one-shot.
+# right net_admin: the firewall rules
+rights = ["net_admin"]
 args = ["netz", "anwenden"]
 oneshot = true

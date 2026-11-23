@@ -12,7 +12,7 @@
 //! |---|---|---|
 //! | `user`, `group` | user and group id | init's own (root); `group` defaults to `user` |
 //! | `groups` | supplementary group ids (≤ 16) | none |
-//! | `rights` | kernel rights the service keeps (`all` or names, see [`RIGHT_NAMES`]) | none |
+//! | `rights` | kernel rights the service keeps (names, see [`RIGHT_NAMES`]; `all` only with the administrator's override in `init.toml`) | none |
 //! | `slice` | memory group parent: `system`, `session`, `apps` | `system` |
 //! | `[cgroup]` | limits written into its group (`memory.max`, `pids.max`, …) | none |
 //! | `dirs` | directories created for it, owned by it, mode `0700` | none |
@@ -220,6 +220,9 @@ pub struct Confinement {
     pub groups: Vec<u32>,
     /// Kernel rights kept (bit mask); all others are dropped.
     pub rights: u64,
+    /// The file asks for `all` rights: refused at start unless the
+    /// administrator named the service in `all_rights_allowed`.
+    pub all_rights: bool,
     /// Parent of its memory group.
     pub slice: Slice,
     /// Limits for its memory group.
@@ -348,6 +351,7 @@ impl ServiceSpec {
             gid: confine.group.or(confine.user),
             groups: confine.groups,
             rights: rights_mask(&confine.rights)?,
+            all_rights: confine.rights.iter().any(|name| name == "all"),
             slice: confine.slice,
             limits: confine.cgroup,
             dirs: paths(confine.dirs),

@@ -14,7 +14,7 @@ services itself the way the service runtime expects: confined, in order, with re
 | `system/services/ultar-logd` | `--listen-output PATH` (lines of services from init, stored as source kind `output`, free text like kernel lines: cleaned, limited per service, shown to `log.read_all` only, withheld by `ulog export` unless asked); `--group GID` per listener |
 | `system/core/ultar-bus` | contract `init.status` / `init.control` (`messages/init.rs`); `SourceKind::Output` in the log contract |
 | `rootfs/etc/ultar/services/{logd,bus,settingsd,devd}.toml` | own users, no `--allow-root`, sockets per group (`0660`), `notify`, `dirs`; bus listener `init.sock` for init |
-| `rootfs/etc/ultar/services/*.toml` (the others) | `rights = ["all"]` written out (they were root with every right before; nothing changes for them) |
+| `rootfs/etc/ultar/services/*.toml` (the others) | identity and the narrowest rights each one uses, every right and every root justified in the file (table "Identities and rights") |
 | `rootfs/etc/ultar/bus-policy.toml` | `system.init` registers `init`; `system.admin` may call `init.*` |
 | `rootfs/usr/lib/ultar/selftest.sh` | group path `system/heartbeat` |
 | `system/core/ultar-busd`, `-settingsd`, `-devd`, `ultar-logd` tests | the shipped-definition tests now require: own user, no root, readiness, sockets per group; sum of the bus bounds with the new listener |
@@ -23,7 +23,7 @@ services itself the way the service runtime expects: confined, in order, with re
 
 ## Service files – new keys
 
-`user`, `group` (default: `user`), `groups` (≤ 16), `rights` (`all` or `mount net_admin load_driver kill_any
+`user`, `group` (default: `user`), `groups` (≤ 16), `rights` (`all` – refused at start unless named in `init.toml`'s `all_rights_allowed` – or `mount net_admin load_driver kill_any
 set_time raw_device reboot manage_groups set_id file_admin`; **default: none**), `slice` (`system` | `session` |
 `apps`, default `system`), `dirs` (created, owned by the service, `0700`; what lies below and belongs to someone
 else – state of releases that ran the service as root – is handed over, links not followed, ≤ 10 000 entries),
@@ -38,7 +38,34 @@ administrator's sockets and init's sockets stay `0600` (root with `file_admin`).
 
 `init.toml` (all optional): `service_dirs`, `group_root` (default `/sys/fs/cgroup` as PID 1, none otherwise),
 `output_socket` (`/run/ultar/log/init.sock`), `bus_socket` (`/run/ultar/bus/init.sock`), `bus_policy`,
-`control_socket` (`/run/ultar/ctl.sock`), `net_allowed`, `launcher`, `shutdown_grace_ms`.
+`control_socket` (`/run/ultar/ctl.sock`), `net_allowed`, `launcher`, `shutdown_grace_ms`, `all_rights_allowed`
+(service names that may ask for `all`; default empty: such a file is refused when it would start, journal
+`refused … reason=rights_all_refused`, not restarted – fail closed).
+
+## Identities and rights of the shipped services
+
+Checked by `tests/shipped_services.rs`: no file asks for `all`; a service without its own user must be on the
+test's allow-list and carry a `# root:` reason; every kept right has a `# right NAME:` reason; every right at
+once only for `entwickler`, `shell`, `ui`. Where each right is enforced by the Ultar kernel: `mount` (mount,
+chroot, pivot_root, unshare/clone of namespaces), `load_driver` (modules, `/sys` control files), `net_admin`
+(`/proc/ultar/firewall`, `/proc/ultar/verbund`), `file_admin` (permission bypass, chown/chmod of others' files).
+
+| Service | Runs as | Rights | Why (short; the file has the full reason) |
+|---|---|---|---|
+| bus, logd, settingsd, devd | 801–804 | none | (wave 4) |
+| heartbeat | 65534 (nobody) | none | prints and sleeps |
+| llm | 810 | none | socket moved to its own `/run/ultar/llm/llm.sock` (`public_dirs`, `--socket`); clients try it first, the old root socket stays a fallback; images in `/run/ultar/llm/img` |
+| verbund | root | none | reads/writes the surface's root-only files in `/run/ultar` (`shell.fern`, `bildschirm.raw`) |
+| tontest | root | none | root-only control socket (power off) |
+| compat-bind, llm-compat, selftest, webtest | root | mount | bind mount / the compat runner (unshare, mounts, chroot; it does not drop to a user yet) |
+| drivers | root | load_driver | finit_module, `/sys/module/firmware_class/parameters/path` |
+| netzregeln | root | net_admin | firewall rules |
+| ril | root | net_admin | modem IPC devices, mobile data address and routes |
+| net, wifitest | root | net_admin, mount | addresses, routes, DHCP port 68; wpa_supplicant/hostapd via the compat runner |
+| modem | root | mount, load_driver | EFS mount, driver files in `/sys`, `/dev/umts_boot0` |
+| fingerabdruck, gnss | root | mount, file_admin | vendor HALs in a chroot with bind mounts, chmod of vendor device nodes |
+| shell, entwickler | root | all ten, listed | administrator shells (console rescue, developer access) |
+| ui | root | all ten, listed | the surface still administers the system itself (modprobe, iw, cells, dpkg, clock, reboot, kill, fb0/input) |
 
 ## How a service starts
 
@@ -133,8 +160,12 @@ are unmounted, power off or restart.
 
 ## Open
 
-* Services other than the four still run as root with every right (`rights = ["all"]` written out); each needs
-  its own user and the rights it really uses (net, ril, ui, compat …).
+* 17 services still run as root (table above). Not split yet, by size: `ui` (every administration page has to
+  become a bus call to the owning service), `net`/`ril` (address/route helper behind the bus, DHCP and Wi-Fi as a
+  user), the compat runner (drop to a user after chroot; then compat-bind/llm-compat/webtest/selftest), `verbund`
+  (needs the surface to create its exchange files for a group), the tests on the root-only control socket
+  (needs `init.control` over the bus for `system.admin`), the vendor HALs (the Android daemons expect root).
+* On Linux the rights list is not enforced (no capability drop); a root service keeps root's capabilities there.
 * Exit codes 120–127 of a service itself are read as launcher failures in the journal word (only the word).
 * `cpu.weight` has no controller on the Ultar kernel (skipped, reported); on Linux hybrid cgroup v1 machines
   the tree is "not there" (only cgroup2 at the group root is used).

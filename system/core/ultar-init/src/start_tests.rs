@@ -9,6 +9,7 @@ fn env(root: bool) -> Environment {
         stop_timeout: Duration::from_secs(1),
         edition: "server".into(),
         net_allowed: None,
+        all_rights_allowed: Vec::new(),
     }
 }
 
@@ -98,4 +99,17 @@ fn a_tree_left_by_a_root_service_is_handed_over() {
     // The link's target is untouched.
     assert_eq!(std::fs::metadata("/etc/passwd").unwrap().uid(), 0);
     std::fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn a_file_asking_for_all_rights_is_refused_without_the_override() {
+    let spec = spec("exec = \"/bin/true\"\nrights = [\"all\"]");
+    assert!(spec.confinement.all_rights);
+    let refused = start(&spec, &env(false), Instant::now()).map(|run| run.pid);
+    assert_eq!(refused.map_err(|e| e.word), Err("rights_all_refused"));
+    // With the override the start goes on (and fails later: no launcher).
+    let mut allowed = env(false);
+    allowed.all_rights_allowed = vec!["svc".into()];
+    let next = start(&spec, &allowed, Instant::now()).map(|run| run.pid);
+    assert_eq!(next.map_err(|e| e.word), Err("spawn"));
 }

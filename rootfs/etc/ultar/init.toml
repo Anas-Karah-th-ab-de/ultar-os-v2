@@ -1,6 +1,9 @@
 # Ultar OS – Systemkonfiguration
 hostname = "ultar"
 shutdown_grace_ms = 3000
+# Dienste, die `rights = ["all"]` verlangen dürfen (Administrator-Ausnahme). Leer: jede Datei mit
+# "all" wird beim Start abgewiesen (rights_all_refused). Die mitgelieferten Dateien nennen ihre Rechte einzeln.
+all_rights_allowed = []
 
 # Ubuntu-Kompatibilitätsbereich (eigene Partition). optional = kein Abbruch, wenn sie fehlt.
 [[mounts]]

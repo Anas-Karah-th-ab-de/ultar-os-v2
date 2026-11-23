@@ -2,13 +2,19 @@
 # Wird von der Oberfläche gestartet, wenn der Agent/Helfer aktiv ist und ein Modell (.gguf) unter
 # /data/ultar/models oder /data/ultar/agent liegt. Das Modell selbst lädt der Dienst erst bei der ersten
 # Anfrage und entlädt es im Leerlauf, bei Speicherdruck, leerem Akku oder Hitze (Einstellungen: /etc/ultar/llm.toml).
-# Erreichbar nur auf dem Gerät: /run/ultar/llm.sock und 127.0.0.1:8080 (OpenAI-kompatibel).
+# Erreichbar nur auf dem Gerät: /run/ultar/llm/llm.sock und 127.0.0.1:8080 (OpenAI-kompatibel).
 manual = true
 exec = "/usr/bin/ultar-llm"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
-args = ["serve"]
+args = ["serve", "--socket", "/run/ultar/llm/llm.sock"]
+# Identity and rights: its own user (810) without kernel rights. It reads the
+# models (world-readable files below /data/ultar), listens on its socket in
+# its own directory /run/ultar/llm (mode 0755, so clients reach the socket;
+# the socket itself is 0666 like before) and on 127.0.0.1:8080 (no
+# privileged port). The fallback socket /run/ultar/llm.sock is root-only and
+# no longer used by the service.
+user = 810
+public_dirs = ["/run/ultar/llm"]
+rights = []
 restart = "on-failure"
 [cgroup]
 "cpu.weight" = "60"

@@ -1,8 +1,10 @@
 # Selbsttest beim Booten (nur Entwicklungs-Image)
 exec = "/usr/lib/ultar/selftest.sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: manual test (kernel parameter ultar.start=...): stops services over the root-only
+#   control socket, runs dpkg and programs inside the compat tree, powers off.
+# right mount: the compat runner (unshare, mounts, chroot)
+rights = ["mount"]
 oneshot = true
 manual = true
 console = true

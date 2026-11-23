@@ -2,9 +2,23 @@
 editions = ["phone", "desktop"]
 # Oberfläche (Touch): Startbildschirm, Einstellungen, Pakete, Dienste, Terminal
 exec = "/usr/bin/ultar-shell"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: the surface still does system administration itself: it loads drivers (modprobe),
+#   configures Wi-Fi (iw), starts cells (namespaces, groups, ids), installs packages (dpkg in
+#   the compat tree), sets the clock, restarts into recovery, ends apps and draws on fb0/input.
+#   Each of these has to move behind a bus call to the service that owns it before the surface
+#   can run as a user.
+# right mount: cells and the compat runner
+# right net_admin: Wi-Fi and VPN settings
+# right load_driver: driver page: modprobe
+# right kill_any: ending apps it did not start itself
+# right set_time: date and time settings
+# right raw_device: fb0 and input devices
+# right reboot: restart into recovery or download mode
+# right manage_groups: memory groups of cells and apps
+# right set_id: cells and apps run as their own ids
+# right file_admin: packages and app files owned by other ids
+rights = ["mount", "net_admin", "load_driver", "kill_any", "set_time", "raw_device", "reboot", "manage_groups", "set_id", "file_admin"]
 # PC/Laptop: erst Grafiktreiber laden (coldplug), sonst übernimmt die Oberfläche den vorläufigen EFI-Bildschirm
 after = ["coldplug"]
 restart = "always"

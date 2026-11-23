@@ -114,6 +114,7 @@ fn environment(config: &config::InitConfig, pid1: bool) -> Environment {
         stop_timeout: Duration::from_millis(config.shutdown_grace_ms),
         edition: ultar_hal_system::current_edition().as_str().to_owned(),
         net_allowed: config.net_allowed.clone(),
+        all_rights_allowed: config.all_rights_allowed.clone(),
     };
     log(&format!(
         "platform groups={} rights={} ids={}",

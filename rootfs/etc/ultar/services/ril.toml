@@ -3,9 +3,11 @@ editions = ["phone"]
 # Funkdienst: hält den Mobilfunk-Zustand (SIM, Netz, Zellen) für die Oberfläche aktuell
 # (/run/ultar/radio/state) und führt Netzwahl-/PIN-Befehle aus. Wartet selbst, bis das Modem online ist.
 exec = "/usr/bin/ultar-ril"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: radio interface (phone): talks to the modem IPC device nodes and configures the mobile
+#   data interface (addresses, routes); root-only on Linux. To be split like net.
+# right net_admin: address and routes of the mobile data interface
+rights = ["net_admin"]
 args = ["--daemon"]
 restart = "always"
 

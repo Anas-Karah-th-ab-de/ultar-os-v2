@@ -79,6 +79,11 @@ pub struct InitConfig {
     /// Program executed as launcher (default: init itself).
     #[serde(default)]
     pub launcher: Option<PathBuf>,
+    /// The administrator's override: services allowed to keep every
+    /// kernel right (`rights = ["all"]`); all others asking for it are
+    /// refused at start.
+    #[serde(default)]
+    pub all_rights_allowed: Vec<String>,
 }
 
 fn default_grace() -> u64 {
@@ -126,6 +131,7 @@ impl Default for InitConfig {
             control_socket: default_control_socket(),
             net_allowed: default_net_allowed(),
             launcher: None,
+            all_rights_allowed: Vec::new(),
         }
     }
 }

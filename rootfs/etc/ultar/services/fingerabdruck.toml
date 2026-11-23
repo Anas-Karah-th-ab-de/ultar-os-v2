@@ -4,8 +4,12 @@ editions = ["phone"]
 # Fingerabdruckdiensten, Vermittler-Socket /run/ultar/fp.sock. Ohne /data/android beendet sich das
 # Skript ruhig (wartet eine Stunde). Siehe docs/A30-FINGERABDRUCK.md.
 exec = "/system/bin/sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: starts the vendor fingerprint HAL (Android binaries, phone only): it chroots into the
+#   Android tree, bind-mounts configuration files and makes the vendor device nodes usable
+#   (chmod of a node owned by root); the vendor daemons expect root.
+# right mount: chroot and bind mounts of the Android tree
+# right file_admin: chmod of the vendor device node, files of the Android tree owned by other ids
+rights = ["mount", "file_admin"]
 args = ["/data/android/fp-dienst.sh"]
 after = ["drivers"]

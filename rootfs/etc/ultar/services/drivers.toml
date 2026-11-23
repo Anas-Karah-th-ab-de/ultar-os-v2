@@ -1,8 +1,10 @@
 # Lädt beim Start die über die Treibersuche gefundenen Treiber (Liste: /data/ultar/drivers.list)
 exec = "/usr/bin/ultar-compat"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: loads the remembered kernel modules (finit_module) and sets the firmware path in
+#   /sys/module; Linux allows module loading to root (CAP_SYS_MODULE) only. One-shot.
+# right load_driver: loading modules and writing the driver control files below /sys
+rights = ["load_driver"]
 args = ["modules"]
 oneshot = true
 restart = "never"

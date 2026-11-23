@@ -2,9 +2,12 @@
 # Der Dienst läuft immer, tut aber nichts, solange der Nutzer den Verbund nicht einschaltet
 # (Einstellungen → Verbund, `ultar-verbund an`, oder /proc/ultar/verbund auf dem Ultar-Kern).
 exec = "/usr/bin/ultar-verbund"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: exchanges screen and files with the surface through /run/ultar (shell.fern,
+#   bildschirm.raw), which the surface creates as root without group access, and writes received
+#   files to /data/Empfangen. It needs no kernel right; it can run as its own user once the
+#   surface creates those for a group.
+# No kernel right.
 args = ["dienst"]
 restart = "always"
 after = ["net"]

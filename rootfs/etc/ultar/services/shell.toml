@@ -1,8 +1,19 @@
 # Notfall-/Entwickler-Shell auf der Konsole: ultar-ctl start shell
 exec = "/bin/sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: the emergency console shell (manual, the rescue path when the surface does not come up):
+#   an administrator shell by design.
+# right mount: administrator shell at the console
+# right net_admin: administrator shell at the console
+# right load_driver: administrator shell at the console
+# right kill_any: administrator shell at the console
+# right set_time: administrator shell at the console
+# right raw_device: administrator shell at the console
+# right reboot: administrator shell at the console
+# right manage_groups: administrator shell at the console
+# right set_id: administrator shell at the console
+# right file_admin: administrator shell at the console
+rights = ["mount", "net_admin", "load_driver", "kill_any", "set_time", "raw_device", "reboot", "manage_groups", "set_id", "file_admin"]
 console = true
 manual = true
 restart = "never"

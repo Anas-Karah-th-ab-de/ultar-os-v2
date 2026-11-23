@@ -168,7 +168,7 @@ impl Supervisor {
                 self.note(&line);
             }
             Err(error) => {
-                let permanent = error.word == "identity_needs_root";
+                let permanent = matches!(error.word, "identity_needs_root" | "rights_all_refused");
                 let pause = if permanent {
                     None
                 } else {

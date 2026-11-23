@@ -2,7 +2,10 @@
 # simulierten Funkgerät (Modul mac80211_hwsim). Start: Kernel-Parameter ultar.start=wifitest
 manual = true
 exec = "/usr/lib/ultar/wifitest.sh"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: manual Wi-Fi test: access point (hostapd through the compat runner), interface address
+#   (ifconfig), /proc/sys network switches, DHCP server.
+# right net_admin: interface address and network switches
+# right mount: hostapd runs through the compat runner
+rights = ["net_admin", "mount"]
 restart = "never"

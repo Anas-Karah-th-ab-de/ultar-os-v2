@@ -3,8 +3,12 @@ editions = ["phone"]
 # Modem (CP) starten: Firmware aus der Partition „radio", Einstellungen aus der Arbeitskopie von nv_data.bin.
 # Läuft einmal beim Systemstart; der Funkdienst (ril) wartet selbst, bis das Modem online ist.
 exec = "/usr/bin/ultar-modem"
-# Runs as root with every kernel right: not narrowed yet (see
-# docs/integration/ultar-init.md, "Open").
-rights = ["all"]
+# Identity and rights (checked by ultar-init's shipped-file test):
+# root: boots the modem (phone): writes the firmware into /dev/umts_boot0, sets module
+#   parameters and mounts the modem EFS partition; the device nodes and the mount are root-only
+#   on Linux.
+# right mount: mount of the EFS partition
+# right load_driver: the modem driver control files below /sys
+rights = ["mount", "load_driver"]
 args = ["--auto"]
 oneshot = true

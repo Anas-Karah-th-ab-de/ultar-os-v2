@@ -42,6 +42,7 @@ fn supervisor(dir: &std::path::Path, specs: Vec<ServiceSpec>) -> Supervisor {
         stop_timeout: Duration::from_millis(500),
         edition: "server".into(),
         net_allowed: None,
+        all_rights_allowed: Vec::new(),
     };
     Supervisor::new(specs, env, Forwarder::new(None), Box::new(|_| {}))
 }

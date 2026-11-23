@@ -1,10 +1,13 @@
 //! Kleiner Client für andere Ultar-Programme (Oberfläche, Helfer, Desktop): spricht den Dienst über
-//! den Unix-Socket ("unix:/run/ultar/llm.sock") oder TCP ("127.0.0.1:8080") an.
+//! den Unix-Socket ("unix:/run/ultar/llm/llm.sock") oder TCP ("127.0.0.1:8080") an.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read};
 use std::time::Duration;
 
+/// Socket of the service started by ultar-init as its own user (810), in its own directory.
+pub const SERVICE_SOCKET: &str = "/run/ultar/llm/llm.sock";
+/// Socket of a service running as root (older installations): only a fallback.
 pub const DEFAULT_SOCKET: &str = "/run/ultar/llm.sock";
 
 fn connect(endpoint: &str, timeout: u64) -> Result<Box<dyn crate::http::Conn>, String> {
@@ -144,6 +147,7 @@ pub fn default_endpoint() -> String {
         return e;
     }
     for p in [
+        SERVICE_SOCKET.to_string(),
         DEFAULT_SOCKET.to_string(),
         std::env::var("XDG_RUNTIME_DIR")
             .map(|d| format!("{d}/ultar-llm.sock"))

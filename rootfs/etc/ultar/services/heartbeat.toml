@@ -2,6 +2,11 @@
 manual = true   # Start nur im Test: Kernel-Parameter ultar.start=heartbeat,selftest
 exec = "/bin/sh"
 args = ["-c", "echo heartbeat $(date +%T); sleep 2; exit 1"]
+# Identity and rights: the unprivileged "nobody" user and group (65534); it
+# only prints and sleeps, so it needs no kernel right and owns no file.
+user = 65534
+group = 65534
+rights = []
 restart = "on-failure"
 
 [cgroup]

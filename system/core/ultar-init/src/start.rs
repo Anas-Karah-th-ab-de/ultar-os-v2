@@ -39,6 +39,10 @@ pub struct Environment {
     pub edition: String,
     /// File naming services that may use the network group.
     pub net_allowed: Option<PathBuf>,
+    /// Services the administrator allows to keep `all` rights
+    /// (`all_rights_allowed` in `init.toml`); every other file asking for
+    /// `all` is refused.
+    pub all_rights_allowed: Vec<String>,
 }
 
 /// Why a service could not be started (word for records, detail for the
@@ -164,6 +168,9 @@ fn console() -> Result<(Stdio, Stdio, Stdio), StartError> {
 
 /// Starts `spec`; returns its run.
 pub fn start(spec: &ServiceSpec, env: &Environment, now: Instant) -> Result<Run, StartError> {
+    if spec.confinement.all_rights && !env.all_rights_allowed.contains(&spec.name) {
+        return Err(error("rights_all_refused", "no administrator override"));
+    }
     let identity = identity(spec, env)?;
     let (uid, gid) = identity
         .as_ref()
