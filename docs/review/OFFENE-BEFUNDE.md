@@ -1,6 +1,6 @@
-# Unabhängige Prüfung Runde 1 – Befunde und Stand
+# Unabhängige Prüfungen – Befunde und Stand
 
-Stand 23.11.2026 · Drei Prüfer, die den Code nicht geschrieben haben, haben versucht, ihn zu brechen.
+Stand 23.11.2026, nach Runde 3 und 4 · Drei Prüfer, die den Code nicht geschrieben haben, haben versucht, ihn zu brechen.
 Jeder Befund ist durch einen Test oder durch Lesen belegt. **Kein Teil ist damit „produktionsreif“** – die offenen
 Punkte unten sperren den Einsatz.
 
@@ -19,20 +19,26 @@ Punkte unten sperren den Einsatz.
 | Baukasten | deaktivierte Bausteine zu blass (Deckkraft doppelt), Zeichenfehler bei offener Auswahlliste, Pfeiltasten im Textfeld bei gemischter Richtung vertauscht, Auslassungspunkte am falschen Ende | schwer |
 | Gerät | Server konnte eine ältere signierte App-Fassung unterschieben; Download ohne eigene Obergrenze | schwer |
 | Kern | K5: Speichermangel war eine Kern-Panik – eine Zelle ohne Rechte hielt den Rechner an (Speicher, tmpfs, Pipe, Prozess-Lawine). Jetzt: fehlbare Speicheranforderung, Vorrat des Kerns, begrenzte Pipe, tmpfs-Kontingent, Gruppen mit Grenzen und dynamischem Schutz (`docs/integration/kernel-memory-groups.md`); Prüfung `grenztest` (130 Prüfungen, 512 MiB und 2 GiB) in `ci.sh` | **kritisch** |
+| Server/Gerät | S15: Geräte-Kennung ohne Schlüsselnachweis. Jetzt Ed25519-Geräteschlüssel, Kennung aus dem Schlüssel, Nachweis per Aufgabe; Runde 3 (5 schwere) und Runde 4 (2 schwere) gefunden und behoben – Übernahme der Nummer per Kennwort, Entfernen fremder Geräte, Weiterleitung über fremden Server, alte Sockets, Kennwort-Raten, Aussperren des Besitzers, Füllen des Aufgabenspeichers (`docs/DEVICE-IDENTITY.md`, `identity-runde-3.md`) | **kritisch** |
+| Gerät | S16: kein Updater. Jetzt `ultar-update`: signiertes Manifest, Schutz vor älterer Fassung, A/B mit Rückfall, Offline-Paket `.uup`; Runde 3 (3 schwere, 5 leichte) behoben (`docs/SYSTEM-UPDATE.md`, `update-runde-3.md`) | **kritisch** |
+| Dienste | B: Dienst-Rahmen `ultar-service` (Signale, Grenzen, Bereitschaft, Kennung des Gegenübers), Protokolldienst `ultar-logd`, Vermittler `ultar-busd`; Runde 3 (1 kritischer: Vermittler durch stumme Verbindungen beendbar, 6 schwere) behoben (`services-runde-3.md`) | **kritisch** |
+| Kern | R3-K1: Kern hatte keine Benutzerkennungen, keine echten Dateirechte, Sockel ohne Rechteprüfung, kein `SO_PEERCRED`. Jetzt alles vorhanden; Prüfung `rechtetest` (102 Prüfungen) und ext4-Gegenprüfung in `ci.sh`; Wettlauf im Speichermangel-Abbruch bei 4 Kernen behoben | schwer |
 | Server | Kennwort-Hashing ohne Obergrenze (Speicher), VPN-Adressen von einem Konto aufbrauchbar, Token gelöschter Konten weiter gültig und auf das nächste Konto übertragbar, Anmelde-Zeit verriet Konten | schwer |
 
 ## Offen – sperrt den Einsatz
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| S15 | Server/Gerät | Geräte-Kennung ohne Schlüsselnachweis: wer sie zuerst sendet, besitzt sie; ohne Android-Seriennummer haben alle Geräte dieselbe Kennung | Geräteschlüssel erzeugen, Kennung = SHA-256 des Schlüssels, signierte Server-Aufgabe |
-| S16 | Gerät | System-Abbilder vom Server werden am Gerät noch nicht geprüft (kein Updater vorhanden) | Prüfung von Wurzel-Hash und Signatur + Schutz vor älterer Fassung, bevor ein Updater diesen Weg nutzt |
 | D1 | Kern ↔ devd | Der Kern bietet keine Geräte-/Treiber-Liste und kein Binden/Lösen; devd liest das Protokoll | sechs Kern-Schnittstellen (docs/integration/ultar-devd-daemon.md §2) |
-| B | Dienste | kein Dienst behandelt Signale, kein Protokolldienst, Vermittler ohne Kennung des Gegenübers (`SO_PEERCRED`), beibehaltene Themen nach Neustart nicht erneut gesendet | Dienst-Rahmen: Start-Reihenfolge über `ultar-init`, Stop-Signal, Protokoll, Kennung aus dem Kern |
-| U | Baukasten | Entwurfsbilder und Gestaltungswerte widersprechen sich an 20 Stellen (13-px-Schrift, 36 hohe Elemente, Schalter 44×24 …); keine fette arabische Schrift, Naskh/Kufi fehlen | Runde 2 der Bilder aus `design/tokens.toml` erzeugen; Schriften beschaffen (Lizenz prüfen) |
+| U3 | Baukasten | Runde 3: 8 schwere – Dialog sprengt das Zeitbudget, Listen nicht virtuell, Zugänglichkeits-Baum unvollständig, Zustandsgrafik im hellen Thema zu kontrastarm, Menüs am Telefon, fehlende Bausteine (Tabelle, Baum, Ziehen, Kennwortfeld …), 27 Abweichungen Bild ↔ Baukasten (`ui-runde-3.md`) | in Arbeit |
+| K4 | Kern/Start | Updater kann auf dem Ultar-Kern noch nichts installieren: kein Lader mit Slot-Wahl und Startzähler, nur eine Wurzel-Partition, FAT nur lesbar | Änderungen K1–K6 in `docs/SYSTEM-UPDATE.md` |
+| I1 | init | `ultar-init` nutzt die Bereitschafts-Meldung nicht, wechselt keine Benutzer, setzt Sitzung/Apps nicht in ihre Gruppen | init auf den Dienst-Rahmen umstellen |
 
 ## Offen – leichter (vor Freigabe der jeweiligen Stufe)
 
+Kern: kein `SCM_CREDENTIALS`; fsync schickt keinen Cache-Flush an NVMe/AHCI; Set-ID-Bits beim Start ignoriert ·
+Updater: Daemon noch ohne Dienst-Rahmen; nach fehlgeschlagener Gesundheitsprüfung startet niemand neu · statischer ARM64-Bau des Updaters braucht TLS ohne C-Bibliothek ·
+Server: Proxy-Grenzen (Caddy) nur als Konfigurationsdatei geprüft ·
 Kern (Rest von K5): einige große Kern-Puffer werden noch ohne Rückweg angefordert (Kopie der epoll-Liste, `/proc`-Listen und
 Wecktabelle des Planers je Fadenzahl, Lesen des Bildspeichers, Metadaten der Wirts-Datenträger) – begrenzt und aus dem
 Vorrat bedient, Liste in `docs/integration/kernel-memory-groups.md`; kein Prozessor-Anteil je Gruppe; nicht auf echter
