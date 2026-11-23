@@ -16,10 +16,11 @@ Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 | **Compositor** | eigener `ultar-compositor`: Fenster anderer Prozesse, Software-Zusammensetzung nach Schadensbereichen (1080p unter 4 ms), Eingabe-Lenkung, Dekoration aus den Gestaltungswerten (Arabisch gespiegelt), Sperre schließt sicher, sichere Taste, gekennzeichnete Systemdialoge; läuft auf dem Ultar-Kern mit zwei App-Prozessen |
 | Baukasten | Runde 4–6: Dialog dimmt das vorhandene Bild, Mehrfachauswahl, Ablegen, Mittelklick, Tabellen für Bildschirmleser, Kennwortfeld abgesichert, Knoten-Kennungen mit Generation, A/B-Messung in der Prüfung |
 | Alte Oberfläche | Ursache der gelegentlichen GitHub-Fehler gefunden: Testrechner wurden als Desktop erkannt |
-| **Echte Hardware** | Beelink (KVM, 16 Kerne): Stufe 1 mit allen Prüfungen bestanden, inkl. Geräte-Schnittstellen und Speichergrenzen |
+| Kern: Grafik und Fenster | memfd mit Siegeln, geteilter Speicher zwischen Prozessen, Übergabe von Deskriptoren, Bildspeicher mit vblank-Raster, Eingabegeräte für USB-Tastatur, -Maus und -Tablet mit Einstecken/Abziehen, Besitzer und Rechte auf Gerätedateien; der Compositor nutzt auf dem Ultar-Kern geteilten Speicher |
+| **Echte Hardware** | Beelink (KVM, 16 Kerne): Stufe 1 mit allen 10 Prüfungen bestanden, inkl. Geräte-Schnittstellen, Prozess-Start, Fenster-Kern und Speichergrenzen |
 
 Prüfrunden: Compositor 2 Runden (zuerst 3 kritisch / 8 schwer, dann 2 kritisch / 7 schwer – alles behoben), Baukasten Runden 4–6.
-Rund **2 450 automatische Tests** ohne Fehler; Kern-Prüfung mit 19 Prüfungen inkl. A/B-Start, ext4 nach hartem Stopp, Init, Speichergrenzen.
+Rund **2 450 automatische Tests** ohne Fehler; Kern-Prüfung mit 20 Prüfungen inkl. A/B-Start, ext4 nach hartem Stopp, Init, Speichergrenzen.
 
 ## Umsetzung Welle 3 (23.11.2026) – gebaut, eingebunden, zweimal unabhängig geprüft
 

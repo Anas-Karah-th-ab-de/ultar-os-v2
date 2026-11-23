@@ -33,9 +33,10 @@ Punkte unten sperren den Einsatz.
 |---|---|---|---|
 | A1 | Apps | Apps haben noch keine eigenen Benutzerkennungen; es gibt noch keinen App-Starter | Starter, der jede App als eigenen Benutzer in ihrer Zelle startet und ihre Rechte einträgt |
 | S1 | Oberfläche | Desktop-Hülle (Leiste, Startmenü, Schnelleinstellungen), Sperrbildschirm, Systemdialoge und Apps sind noch nicht gebaut; die Sicherheits-Tasten wirken erst mit einem Sperrbildschirm | Desktop-Hülle als Clients des Compositors (Welle 5) |
-| G1 | Kern/Grafik | Nur der Bildspeicher der Firmware: ein Bildschirm, kein echtes vblank, keine Touch- und Maus-Treiber | Grafiktreiber (virtio-gpu, Intel), HID-Maus/Tablet, Touch |
+| G1 | Kern/Grafik | Nur der Bildspeicher der Firmware: ein Bildschirm, vblank nur nachgebildet (60-Hz-Raster), kein Touch-Treiber (USB-Tastatur, -Maus und -Tablet gehen jetzt) | Grafiktreiber (virtio-gpu, Intel), Touch |
 | R1 | Root-Dienste | 17 Dienste laufen noch als root (je mit Begründung) | aufteilen in kleine Helfer oder Bus-Aufrufe |
-| H1 | Hardware | kein Start ohne KVM direkt auf dem Beelink; ThinkPad nicht getestet | Freigabe und Einschaltknopf vor Ort |
+| H1 | Hardware | kein Start ohne KVM direkt auf dem Beelink; ThinkPad nicht getestet; A/B-Start nur in QEMU geprüft | Freigabe und Einschaltknopf vor Ort |
+| K6 | Start | kein Zähler gegen ältere Fassung in einer EFI-Variable, kein Hardware-Wachhund nach dem Start | eigene Untersuchung (Firmware-Dienste stürzten in OVMF ab) |
 
 ## Offen – leichter (vor Freigabe der jeweiligen Stufe)
 
