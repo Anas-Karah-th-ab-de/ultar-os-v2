@@ -5807,8 +5807,10 @@ mod flow_tests {
             (720, 1520, "test".into()),
         );
         app.debug_open("camera", "de");
+        let mut trail = vec![format!("open: {}", state_of(&app))];
         let (mut cv, mut text, mut p) = (Canvas::new(720, 1520), Text::new(), Ptr::default());
         draw(&mut app, &mut cv, &mut text, &mut p);
+        trail.push(format!("first frame: {}", state_of(&app)));
         let cam_dir = app_gallery::camera_dir();
         let count = |ext: &str| {
             std::fs::read_dir(&cam_dir)
@@ -5823,10 +5825,14 @@ mod flow_tests {
         // --- Foto: Auslöser antippen -> JPEG im Kamera-Ordner, in voller Größe des Suchers
         let shutter = (360.0, 1302.0);
         tap(&mut app, &mut cv, &mut text, &mut p, shutter.0, shutter.1);
+        trail.push(format!("after shutter: {}", state_of(&app)));
         assert!(
             wait_for(|| count(".jpg") == 1),
-            "Foto wurde nicht gespeichert: {}",
-            state_of(&app)
+            "Foto wurde nicht gespeichert: {} | dir={:?} | {}",
+            state_of(&app),
+            std::fs::read_dir(&cam_dir)
+                .map(|d| d.flatten().map(|e| e.file_name()).collect::<Vec<_>>()),
+            trail.join(" → ")
         );
         draw(&mut app, &mut cv, &mut text, &mut p);
         assert!(!app.cam.busy);
@@ -6049,8 +6055,10 @@ mod flow_tests {
         use ultar_office as uo;
         let root = std::env::temp_dir().join(format!("ultar-buero-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        std::env::set_var("ULTAR_MEDIA", &root);
+        std::env::set_var("ULTAR_DATA", root.join("ultar"));
         let p = |n: &str| root.join(n).to_string_lossy().into_owned();
         uo::create(&p("brief.docx"), "# Brief\n\nErster Absatz").unwrap();
         uo::create(&p("zahlen.xlsx"), "5,7\n").unwrap();
@@ -6181,7 +6189,10 @@ mod flow_tests {
         let root = std::env::temp_dir().join(format!("ultar-jarvis-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("models")).unwrap();
+        std::fs::create_dir_all(root.join("ultar")).unwrap();
         std::env::set_var("ULTAR_DRY", "1");
+        std::env::set_var("ULTAR_MEDIA", &root);
+        std::env::set_var("ULTAR_DATA", root.join("ultar"));
         // ein Bild-Modell „installiert" (Projektor-Datei vorhanden)
         std::env::set_var("ULTAR_MODEL_DIR", root.join("models"));
         std::fs::write(root.join("models/mmproj-qwen2.5-vl-3b.gguf"), b"GGUF").unwrap();

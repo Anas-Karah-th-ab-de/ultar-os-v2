@@ -1112,12 +1112,43 @@ pub fn geraete_akkus() -> Vec<(String, u8)> {
     })
 }
 
-/// Serializes tests that change process-wide environment variables (data and media
-/// directories). Without it such tests race when the test runner uses several threads.
+/// Held by every test that changes process-wide environment variables (data and media
+/// directories, dry mode). It serializes those tests and, when dropped, puts every
+/// `ULTAR_*` variable back as it was, so no test inherits the directories of another one
+/// (a test that deleted its directory left later tests writing into nothing).
 #[cfg(test)]
-pub fn test_env_guard() -> std::sync::MutexGuard<'static, ()> {
+pub struct TestEnv {
+    saved: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+fn ultar_vars() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    std::env::vars_os()
+        .filter(|(k, _)| k.to_string_lossy().starts_with("ULTAR_"))
+        .collect()
+}
+
+#[cfg(test)]
+impl Drop for TestEnv {
+    fn drop(&mut self) {
+        for (k, _) in ultar_vars() {
+            std::env::remove_var(k);
+        }
+        for (k, v) in &self.saved {
+            std::env::set_var(k, v);
+        }
+    }
+}
+
+#[cfg(test)]
+pub fn test_env_guard() -> TestEnv {
     static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    TEST_ENV
+    let lock = TEST_ENV
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    TestEnv {
+        saved: ultar_vars(),
+        _lock: lock,
+    }
 }
