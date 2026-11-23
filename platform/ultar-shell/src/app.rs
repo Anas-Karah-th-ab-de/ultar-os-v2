@@ -69,7 +69,7 @@ mod sensors;
 #[path = "tools.rs"]
 mod tools;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Screen {
     Home,
     Settings,
@@ -5752,6 +5752,20 @@ mod flow_tests {
         app.draw(&mut ui);
     }
 
+    /// What a failed flow assertion needs to explain itself (screen, focus, last message, env).
+    fn state_of(app: &App) -> String {
+        format!(
+            "screen={:?} focus={:?} toast={:?} dry={:?} media={:?} data={:?} cores={:?}",
+            app.stack.last().map(|s| &s.0),
+            app.focus,
+            app.toast.as_ref().map(|t| &t.0),
+            std::env::var("ULTAR_DRY").ok(),
+            std::env::var("ULTAR_MEDIA").ok(),
+            std::env::var("ULTAR_DATA").ok(),
+            std::thread::available_parallelism().ok()
+        )
+    }
+
     fn tap(app: &mut App, cv: &mut Canvas, tx: &mut Text, p: &mut Ptr, x: f32, y: f32) {
         (p.x, p.y, p.px, p.py) = (x, y, x, y);
         (p.down, p.pressed, p.released, p.moved) = (true, true, false, false);
@@ -5811,7 +5825,8 @@ mod flow_tests {
         tap(&mut app, &mut cv, &mut text, &mut p, shutter.0, shutter.1);
         assert!(
             wait_for(|| count(".jpg") == 1),
-            "Foto wurde nicht gespeichert"
+            "Foto wurde nicht gespeichert: {}",
+            state_of(&app)
         );
         draw(&mut app, &mut cv, &mut text, &mut p);
         assert!(!app.cam.busy);
@@ -6072,7 +6087,12 @@ mod flow_tests {
                 .map(|d| d.to_text())
                 .unwrap_or_default()
         };
-        assert!(wait_for(|| saved().contains(want)), "{}", saved());
+        assert!(
+            wait_for(|| saved().contains(want)),
+            "{} – {}",
+            saved(),
+            state_of(&app)
+        );
 
         // --- Tabelle: Formel in B1, Enter übernimmt und geht nach unten
         app.debug_open(&format!("office:{}", p("zahlen.xlsx")), "de");
