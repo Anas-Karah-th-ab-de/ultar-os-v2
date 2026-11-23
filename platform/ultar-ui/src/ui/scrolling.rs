@@ -106,7 +106,7 @@ impl Ui {
     /// and dialog above it. `None` when nothing clips it.
     pub(crate) fn clip_rect(&self, id: NodeId) -> Option<Rect> {
         let mut clip: Option<Rect> = None;
-        let mut above = self.nodes.get(id.index())?.clip_parent;
+        let mut above = self.slot(id)?.clip_parent;
         while let Some(ancestor) = above {
             let rect = self.rect(ancestor)?;
             clip = Some(clip.map_or(rect, |c| c.intersect(&rect)));

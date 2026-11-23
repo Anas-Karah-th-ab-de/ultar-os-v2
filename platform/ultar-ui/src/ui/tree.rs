@@ -1,6 +1,6 @@
 //! Building the tree and reading or changing widget state from application code.
 
-use super::{Node, NodeId, Ui, UiError, MAX_DEPTH, MAX_NODES};
+use super::{Node, NodeId, Slot, Ui, UiError, MAX_DEPTH, MAX_NODES};
 use crate::layout::{LogicalRect, Sizing};
 use crate::paint::TextSpec;
 use crate::tokens::TypeSize;
@@ -26,7 +26,7 @@ pub(super) fn new_node(widget: Widget, sizing: Sizing, parent: Option<NodeId>) -
         clip_parent: None,
         draggable: false,
         drop_target: false,
-        removed: false,
+        slot: Slot::default(),
     }
 }
 
@@ -55,18 +55,53 @@ macro_rules! typed_access {
 }
 
 impl Ui {
-    pub(crate) fn node(&self, id: NodeId) -> Result<&Node, UiError> {
+    /// The live node `id` refers to (right slot and generation, not removed).
+    pub(crate) fn slot(&self, id: NodeId) -> Option<&Node> {
         self.nodes
             .get(id.index())
-            .filter(|n| !n.removed)
-            .ok_or(UiError::UnknownNode(id))
+            .filter(|n| n.slot.generation == id.generation() && !n.slot.removed)
+    }
+
+    /// See [`Ui::slot`].
+    pub(crate) fn slot_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes
+            .get_mut(id.index())
+            .filter(|n| n.slot.generation == id.generation() && !n.slot.removed)
+    }
+
+    /// The current handle of slot `index`.
+    pub(crate) fn id_at(&self, index: usize) -> NodeId {
+        NodeId::new(
+            index,
+            self.nodes.get(index).map_or(0, |n| n.slot.generation),
+        )
+    }
+
+    /// Puts `node` into a free slot (reused with the next generation) or a new one.
+    fn store(&mut self, mut node: Node) -> NodeId {
+        match self.layers.free_slots.pop() {
+            Some(index) if index < self.nodes.len() => {
+                let generation = self.nodes[index].slot.generation.wrapping_add(1);
+                node.slot = Slot {
+                    generation,
+                    removed: false,
+                };
+                self.nodes[index] = node;
+                NodeId::new(index, generation)
+            }
+            _ => {
+                self.nodes.push(node);
+                NodeId::new(self.nodes.len() - 1, 0)
+            }
+        }
+    }
+
+    pub(crate) fn node(&self, id: NodeId) -> Result<&Node, UiError> {
+        self.slot(id).ok_or(UiError::UnknownNode(id))
     }
 
     pub(crate) fn node_mut(&mut self, id: NodeId) -> Result<&mut Node, UiError> {
-        self.nodes
-            .get_mut(id.index())
-            .filter(|n| !n.removed)
-            .ok_or(UiError::UnknownNode(id))
+        self.slot_mut(id).ok_or(UiError::UnknownNode(id))
     }
 
     typed_access!(switch, switch_mut, Switch, Switch, "switch");
@@ -104,10 +139,10 @@ impl Ui {
 
     fn depth(&self, id: NodeId) -> usize {
         let mut depth = 0;
-        let mut current = self.nodes.get(id.index()).and_then(|n| n.parent);
+        let mut current = self.slot(id).and_then(|n| n.parent);
         while let Some(parent) = current {
             depth += 1;
-            current = self.nodes.get(parent.index()).and_then(|n| n.parent);
+            current = self.slot(parent).and_then(|n| n.parent);
         }
         depth
     }
@@ -145,46 +180,45 @@ impl Ui {
             return Err(UiError::NotAContainer(parent));
         }
         let needed = if title.is_some() { 2 } else { 1 };
-        if self.nodes.len() + needed > MAX_NODES {
+        if self.node_count() + needed > MAX_NODES {
             return Err(UiError::TooManyNodes);
         }
         if title.is_none() && self.depth(parent) + 1 >= MAX_DEPTH {
             return Err(UiError::TooDeep);
         }
-        let id = NodeId(self.nodes.len() as u32);
-        match title {
+        let id = match title {
             Some(title) => {
-                self.nodes.push(new_node(widget, sizing, None));
+                let id = self.store(new_node(widget, sizing, None));
                 self.layers.dialogs.push(id);
                 let spec = TextSpec::title(TypeSize::S16).weight(crate::text::Weight::Semibold);
                 let heading = Text::new(title).spec(spec);
-                let child = NodeId(self.nodes.len() as u32);
-                self.nodes
-                    .push(new_node(heading.into(), Sizing::AUTO, Some(id)));
+                let child = self.store(new_node(heading.into(), Sizing::AUTO, Some(id)));
                 self.node_mut(id)?.children.push(child);
+                id
             }
             None => {
-                self.nodes.push(new_node(widget, sizing, Some(parent)));
+                let id = self.store(new_node(widget, sizing, Some(parent)));
                 self.node_mut(parent)?.children.push(id);
+                id
             }
-        }
+        };
         self.invalidate_node(id);
         Ok(id)
     }
 
-    /// Number of nodes including the root.
+    /// Number of live nodes including the root.
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() - self.layers.free_slots.len()
     }
 
     /// The widget of a node.
     pub fn widget(&self, id: NodeId) -> Option<&Widget> {
-        self.nodes.get(id.index()).map(|n| &n.widget)
+        self.slot(id).map(|n| &n.widget)
     }
 
     /// The parent of a node; `None` for the root and for dialogs (they hang in no layout).
     pub fn parent(&self, id: NodeId) -> Option<NodeId> {
-        self.nodes.get(id.index()).and_then(|n| n.parent)
+        self.slot(id).and_then(|n| n.parent)
     }
 
     /// The children of a node in logical order.
@@ -197,7 +231,7 @@ impl Ui {
     /// `true` when the node or one of its ancestors is disabled.
     pub fn is_disabled(&self, id: NodeId) -> bool {
         let mut current = Some(id);
-        while let Some(node) = current.and_then(|c| self.nodes.get(c.index())) {
+        while let Some(node) = current.and_then(|c| self.slot(c)) {
             if node.disabled {
                 return true;
             }
@@ -208,7 +242,7 @@ impl Ui {
 
     /// The interaction and status flags a node is painted with.
     pub fn visual(&self, id: NodeId) -> Visual {
-        let Some(node) = self.nodes.get(id.index()) else {
+        let Some(node) = self.slot(id) else {
             return Visual::default();
         };
         let disabled = self.is_disabled(id);
@@ -275,6 +309,20 @@ impl Ui {
         if inside(self, self.layers.gestures.reveal.map(|r| r.0)) {
             self.hide_password();
         }
+        // A held button stops repeating and reports its release.
+        if let Some(hold) = self
+            .layers
+            .gestures
+            .hold
+            .filter(|h| inside(self, Some(h.node)))
+        {
+            self.layers.gestures.hold = None;
+            let released = crate::event::Action {
+                node: hold.node,
+                kind: crate::event::ActionKind::Released,
+            };
+            self.queue(vec![released]);
+        }
     }
 
     /// Shows or hides the loading state (buttons, icon buttons, switches, selects, check
@@ -307,7 +355,7 @@ impl Ui {
 
     /// The error message of a node, if it has one.
     pub fn error(&self, id: NodeId) -> Option<&Label> {
-        self.nodes.get(id.index()).and_then(|n| n.error.as_ref())
+        self.slot(id).and_then(|n| n.error.as_ref())
     }
 
     /// State of a switch.

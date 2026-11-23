@@ -409,3 +409,45 @@ darkened so that they keep 4.5:1 on `line` (pressed / selected) as well.
 7. Collapsing a tree branch that holds the selection now reports `Selected(index)`.
 8. `Ui::paint` may use up to four threads (`std::thread::scope`) to dim a surface of 2 M
    pixels or more; results are identical to one thread.
+
+---
+
+# Wave 6 (2026-11-23): review round 5 (`docs/review/ui-runde-5.md`)
+
+- **R1 (full repaint speed):** `blend_alphas` skips runs of transparent pixels, writes runs of
+  opaque ones and blends only the rest. The reported 2.7–3.5× slowdown did not reproduce here:
+  `tools/ui-bench/ab.sh a5eb384` (new permanent A/B benchmark: `tests/ab_bench.rs` built in
+  this tree and in the reference commit, run interleaved, minimum of 60 frames, fails at
+  > 20 % + 0.2 ms) measured full repaint 0.66 vs 0.70 ms (full HD) and 2.42 vs 2.63 ms (4K),
+  dialog open + close 2.1 vs 4.2 ms and 7.8 vs 41.9 ms (4K), repaint under a sheet 4.4 vs
+  10.9 ms (4K). Run it before a release: `AB_GIT=<clone with history> tools/ui-bench/ab.sh`.
+- **W1:** large dims and large copies (the backdrop at 4K) share their rows among up to four
+  cores; at a 1-minute load below 1 all budgets held their p99 in one of three runs, the other
+  two each missed one 4K figure (repaint under a sheet 15.5 ms, sheet opens 9.8 ms) while all
+  medians stayed at 2.1–6.8 ms. The first full repaint under the first dialog of a `Ui`
+  allocates the 33 MB backdrop at 4K (about 40 ms once).
+- **D1:** `NodeId` carries a generation (slot in the low 16 bits); removed slots are reused,
+  stale handles answer `UnknownNode`. `MAX_NODES` counts live nodes.
+- **D2:** `set_table_rows` keeps selection, marks, anchor and keyboard place on the row with
+  equal cells (sorting keeps the same files selected); `Ui::set_table_rows_keyed(id, rows,
+  keys)` follows stable keys.
+- **D3:** threads are started with `Builder::spawn_scoped`; work waits in a queue the calling
+  thread works too, so a refused thread only costs speed. `available_parallelism` is asked
+  once. Audit of the paint path: row access out of the buffer draws nothing (no slice panic),
+  copies check their lengths.
+- **D4–D8:** focus after `remove` continues after the removed branch; a held button that is
+  disabled or removed stops and reports `Released`; hover returns when a menu closes;
+  `open_menu` / `open_context_menu` refuse an owner that is not shown or not reachable
+  (`UiError::WrongWidget`); tab strips scroll with the wheel and keep the neighbour of the
+  chosen tab visible, so tapping the last visible tab reveals the next one.
+- **D9:** a table gets accessibility nodes (row and cells) only for rows within one view
+  height of what is shown plus the selected row ("n of m" keeps the full count): 10 000 × 4
+  → 340 nodes, under 1 ms.
+- **Marks (DESKTOP-SPEC §3 "Markierungen"):** check mark of menus and option lists in a slot
+  at the start edge (toolkit select list moved, board `Menus` back to the start); sidebar
+  current-item bar at the end edge (toolkit moved back to the approved board).
+
+Breaking changes: `NodeId` bit layout (handles are opaque; ordering of handles changed);
+`open_menu`/`open_context_menu` fail for nodes not shown; `set_table_rows` maps the selection
+by cell content instead of index; option-list check mark and sidebar bar moved; table rows far
+from the view have no accessibility node. Additive: `set_table_rows_keyed`, `Label: Hash`.

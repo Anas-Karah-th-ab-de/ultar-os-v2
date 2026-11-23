@@ -125,7 +125,13 @@ fn application(ui: &mut Ui, g: &Gallery, rng: &mut Rng, clock: &mut u64) -> Stri
         2 => ui.open_dialog(g.modal.sheet),
         3 => ui.close_dialog(g.modal.sheet),
         4 => ui.open_menu(g.menu_button, file_menu()),
-        5 => ui.open_context_menu(g.list, rng.point(), file_menu()),
+        // Behind an open dialog the list is not reachable: the menu is refused (round 5, D7).
+        5 => match ui.open_context_menu(g.list, rng.point(), file_menu()) {
+            Err(ultar_ui::ui::UiError::WrongWidget { .. }) if ui.open_dialog_node().is_some() => {
+                Ok(())
+            }
+            other => other,
+        },
         6 => {
             ui.close_menu();
             Ok(())

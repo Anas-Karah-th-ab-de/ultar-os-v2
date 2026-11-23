@@ -57,7 +57,7 @@ impl Ui {
         let Some(rect) = self.rect(id) else {
             return;
         };
-        if let Some(Widget::Tabs(tabs)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget) {
+        if let Some(Widget::Tabs(tabs)) = self.slot_mut(id).map(|n| &mut n.widget) {
             if tabs.keep_chosen_visible(rect) {
                 self.touch(id);
             }
@@ -86,7 +86,7 @@ impl Ui {
         // In a multi-selection list a plain click keeps only this item selected.
         let others = self.selected_rows(list).is_ok_and(|rows| rows.len() > 1);
         let index = self.item_index(list, id);
-        if let Some(Widget::List(l)) = self.nodes.get_mut(list.index()).map(|n| &mut n.widget) {
+        if let Some(Widget::List(l)) = self.slot_mut(list).map(|n| &mut n.widget) {
             if l.multi {
                 l.anchor = index;
             }

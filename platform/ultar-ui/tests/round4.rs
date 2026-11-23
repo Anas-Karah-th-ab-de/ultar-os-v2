@@ -246,20 +246,47 @@ fn a_drag_reports_the_drop_target_under_the_pointer() {
 }
 
 #[test]
+fn keyed_rows_keep_the_selection_on_their_key() {
+    let mut ui = ui(Lang::En);
+    let table = files(&mut ui, false);
+    common::key(&mut ui, Key::Tab);
+    // With keys the selection follows the key even when the cells change.
+    let keyed: Vec<Vec<Label>> = (0..3)
+        .map(|i| vec![Label::data(&format!("k{i}"))])
+        .collect();
+    ui.set_table_rows_keyed(table, keyed, vec![10, 20, 30])
+        .expect("keyed");
+    common::key(&mut ui, Key::Home);
+    let renamed: Vec<Vec<Label>> = (0..3)
+        .map(|i| vec![Label::data(&format!("r{i}"))])
+        .collect();
+    ui.set_table_rows_keyed(table, renamed, vec![20, 30, 10])
+        .expect("keyed");
+    assert_eq!(
+        ui.selected_rows(table).expect("rows"),
+        vec![2],
+        "key 10 moved to 2"
+    );
+    assert!(ui.set_table_rows_keyed(table, Vec::new(), vec![1]).is_err());
+}
+
+#[test]
 fn table_rows_tree_items_and_select_options_change_in_place() {
     let mut ui = ui(Lang::En);
     let table = files(&mut ui, false);
     common::key(&mut ui, Key::Tab);
     common::key(&mut ui, Key::End);
-    let rows: Vec<Vec<Label>> = (0..9)
+    // "file 5" (selected) moves to place 2 among new rows: the selection follows it.
+    let mut rows: Vec<Vec<Label>> = (0..9)
         .map(|i| vec![Label::data(&format!("new {i}"))])
         .collect();
+    rows.insert(2, vec![Label::data("file 5")]);
     ui.set_table_rows(table, rows).expect("rows");
     assert_eq!(ui.focused(), Some(table), "focus stays");
     assert_eq!(
         ui.selected_rows(table).expect("rows"),
-        vec![5],
-        "selection kept"
+        vec![2],
+        "selection follows its row"
     );
     ui.set_table_rows(table, vec![vec![Label::data("only")]])
         .expect("rows");

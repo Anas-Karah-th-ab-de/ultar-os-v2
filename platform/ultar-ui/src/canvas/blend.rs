@@ -69,6 +69,34 @@ const BLOCK: usize = 8 * BPP;
 /// exactly `blend_px` for every pixel, in 16-bit arithmetic the compiler vectorises.
 #[inline]
 pub(crate) fn blend_alphas(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
+    // Runs of equal kind: transparent pixels are skipped, opaque ones written, only the
+    // partly covered ones blended (most of a shape's edge zone is one of the first two).
+    let kind = |a: u32| (a > 0) as u8 + (a >= FULL) as u8;
+    let n = alphas.len().min(dst.len() / BPP);
+    let mut start = 0;
+    while start < n {
+        let first = kind(alphas[start]);
+        let end = alphas[start..n]
+            .iter()
+            .position(|a| kind(*a) != first)
+            .map_or(n, |len| start + len);
+        let run = &mut dst[start * BPP..end * BPP];
+        match first {
+            0 => {}
+            2 => {
+                let opaque = [src[0], src[1], src[2], u8::MAX];
+                for px in run.chunks_exact_mut(BPP) {
+                    px.copy_from_slice(&opaque);
+                }
+            }
+            _ => blend_varying(run, &alphas[start..end], src),
+        }
+        start = end;
+    }
+}
+
+/// The partly covered run of [`blend_alphas`].
+fn blend_varying(dst: &mut [u8], alphas: &[u32], src: [u8; BPP]) {
     let colour = [src[0], src[1], src[2], u8::MAX].map(u16::from);
     for (px, &a) in dst.chunks_exact_mut(BPP).zip(alphas) {
         let a = a.min(FULL) as u16;

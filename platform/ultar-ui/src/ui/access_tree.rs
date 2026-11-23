@@ -109,7 +109,7 @@ impl Ui {
     /// The accessibility node of one UI node; `None` for pure layout containers and
     /// unnamed (decorative) icons.
     pub fn a11y_node(&self, id: NodeId) -> Option<A11yNode> {
-        let node = self.nodes.get(id.index())?;
+        let node = self.slot(id)?;
         let (role, name, value) = describe_widget(&node.widget)?;
         let visual = self.visual(id);
         let mut out = A11yNode::new(id, role, self.rect(id)?);
@@ -243,6 +243,30 @@ impl Ui {
         }
     }
 
+    /// The rows of a table that get nodes: those within one view height of what is shown
+    /// (a screen reader moves through them; the position "n of m" tells the full count),
+    /// and the selected row wherever it is. A table of 100 000 rows costs only its window.
+    fn rows_near_view(&self, id: NodeId, table: &Table, rect: Rect) -> Vec<usize> {
+        let count = table.rows.len();
+        let row = Table::row_height(self.mode).max(1.0);
+        let surface = Rect::new(0.0, 0.0, self.size().w, self.size().h);
+        let view = self
+            .clip_rect(id)
+            .map_or(surface, |c| c.intersect(&surface));
+        let margin = view.h.max(row);
+        let first_y = rect.y + row; // below the header
+        let top = ((view.y - margin - first_y) / row).floor().max(0.0) as usize;
+        let bottom = ((view.bottom() + margin - first_y) / row).ceil().max(0.0) as usize;
+        let mut rows: Vec<usize> = (top.min(count)..bottom.min(count)).collect();
+        for extra in [table.selected, table.anchor].into_iter().flatten() {
+            if extra < count && !rows.contains(&extra) {
+                rows.push(extra);
+            }
+        }
+        rows.sort_unstable();
+        rows
+    }
+
     fn table_parts(&self, owner: &A11yNode, rect: Rect, out: &mut Vec<A11yNode>) {
         let Some(Widget::Table(table)) = self.widget(owner.id) else {
             return;
@@ -271,7 +295,10 @@ impl Ui {
         let count = table.rows.len();
         let mut joiner = self.tr.t("ui.a11y.joiner").into_owned();
         joiner.push(' ');
-        for (r, cells) in table.rows.iter().enumerate() {
+        for r in self.rows_near_view(owner.id, table, rect) {
+            let Some(cells) = table.rows.get(r) else {
+                continue;
+            };
             let band = table.band(rect, Some(r), self.mode);
             let mut node = self.part(owner, TablePart::Row(r).encode(), Role::TableRow, band);
             node.name = cells.first().cloned();

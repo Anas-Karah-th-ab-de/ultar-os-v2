@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use ultar_i18n::{Arg, Translator};
 
 /// An argument of a catalog message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LabelArg {
     /// Text; it is direction-isolated when inserted.
     Text(String),
@@ -15,7 +15,7 @@ pub enum LabelArg {
 }
 
 /// A text shown by a widget.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Label {
     /// A catalog key with optional arguments.
     Key {

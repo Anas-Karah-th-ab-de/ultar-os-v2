@@ -235,9 +235,20 @@ impl ListItem {
         if self.selected {
             // Selection is a bar at the start edge and a heavier label, not colour alone
             // (boards: `accent_text`, 4 × 16, centred).
+            // A sidebar marks its current item at the end edge (approved boards), other
+            // lists at the start edge.
             let accent = p.color(ColorRole::AccentText);
-            let mut edge = rect;
-            let bar = style::take_start(&mut edge, MARK.points(), p.env().direction);
+            let mut edge = if nav {
+                style::inset_inline(rect, NAV_PAD)
+            } else {
+                rect
+            };
+            let direction = p.env().direction;
+            let bar = if nav {
+                style::take_end(&mut edge, MARK.points(), direction)
+            } else {
+                style::take_start(&mut edge, MARK.points(), direction)
+            };
             let bar = style::centered(bar, Size::new(MARK.points(), size::ICON_SMALL));
             p.fill(bar, Some(Radius::Round), accent);
         }
@@ -263,6 +274,10 @@ impl ListItem {
         }
         let pad = if nav { NAV_PAD } else { PAD_INLINE };
         let mut inner = style::inset_inline(rect, pad);
+        if nav {
+            // Room for the selection mark at the end edge.
+            style::take_end(&mut inner, MARK.points() + GAP.points(), direction);
+        }
         let control = if v.loading {
             control.max(size::ICON_SMALL)
         } else {

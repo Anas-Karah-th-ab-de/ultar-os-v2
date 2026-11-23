@@ -59,8 +59,7 @@ impl Ui {
         mark: Mark,
         out: &mut Vec<Action>,
     ) {
-        let Some(Widget::Table(table)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget)
-        else {
+        let Some(Widget::Table(table)) = self.slot_mut(id).map(|n| &mut n.widget) else {
             return;
         };
         if !table.multi || row >= table.rows.len() {
@@ -119,7 +118,7 @@ impl Ui {
         mark: Mark,
         out: &mut Vec<Action>,
     ) -> bool {
-        let Some(list) = self.nodes.get(item.index()).and_then(|n| n.parent) else {
+        let Some(list) = self.slot(item).and_then(|n| n.parent) else {
             return false;
         };
         let Some(Widget::List(l)) = self.widget(list) else {
@@ -152,7 +151,7 @@ impl Ui {
             }
             self.invalidate_node(*c);
         }
-        if let Some(Widget::List(l)) = self.nodes.get_mut(list.index()).map(|n| &mut n.widget) {
+        if let Some(Widget::List(l)) = self.slot_mut(list).map(|n| &mut n.widget) {
             if mark == Mark::Toggle || l.anchor.is_none() {
                 l.anchor = Some(row);
             }

@@ -34,6 +34,9 @@ impl Ui {
             }
             return true;
         }
+        if self.tab_wheel(pos, lines) {
+            return true;
+        }
         // The innermost container that can still move in that direction takes the wheel.
         for id in self.scrollers_at(pos) {
             let offset = self.scroller(id).map_or(0.0, Scroll::offset);
@@ -185,5 +188,30 @@ impl Ui {
             _ => return false,
         };
         self.scroll_to(id, target, out)
+    }
+}
+
+impl Ui {
+    /// The wheel (or a two-finger swipe) over a tab strip that does not fit scrolls it by
+    /// one tab per step.
+    fn tab_wheel(&mut self, pos: Point, lines: f32) -> bool {
+        let Some(id) = self.hit(pos) else {
+            return false;
+        };
+        let Some(rect) = self.rect(id) else {
+            return false;
+        };
+        let steps = if lines > 0.0 { 1 } else { -1 };
+        let moved = match self.nodes.get_mut(id.index()).map(|n| &mut n.widget) {
+            Some(crate::widgets::Widget::Tabs(tabs)) if lines != 0.0 => {
+                tabs.scroll_strip(rect, steps)
+            }
+            _ => false,
+        };
+        if moved {
+            self.touch(id);
+            self.rehover();
+        }
+        moved
     }
 }

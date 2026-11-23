@@ -266,10 +266,10 @@ def row(label, subtext, control, last=False, icon=None):
 def cardhead(title, subtext='', end=''):
     return '<div style="padding: %s; display: flex; align-items: center; gap: %s; border-bottom: %s solid %s"><div style="flex: 1">%s%s</div>%s</div>' % (s4, s4, HAIR, t.line, h2(title), sub(subtext) if subtext else '', end)
 def navitem(icon, label, a, active=False):
-    """Sidebar item; the selection mark (accent_text, 4 x 16) at the start edge, as in the toolkit."""
+    """Sidebar item; the selection mark (accent_text, 4 x 16) at the end edge (approved round-2 board; the toolkit follows)."""
     mark = '<span style="width: %s; height: %s; flex: none; border-radius: %s; background: %s"></span>' % (s1, ic_s, r_round, t.acctext if active else 'transparent')
-    return '<button%s%s style="width: 100%%; height: %s; flex: none; padding: 0 %s; box-sizing: border-box; border-radius: %s; display: flex; align-items: center; gap: %s; background: %s; font-weight: %d">%s<span style="display: inline-flex; color: %s">%s</span><span style="flex: 1">%s</span></button>' % (
-        act(a, label), ' aria-current="page"' if active else '', tgt, s3, r_ctl, s3, t.hover if active else 'transparent', w6 if active else w4, mark, t.text if active else t.mute, ic(icon, True), tx(label))
+    return '<button%s%s style="width: 100%%; height: %s; flex: none; padding: 0 %s; box-sizing: border-box; border-radius: %s; display: flex; align-items: center; gap: %s; background: %s; font-weight: %d"><span style="display: inline-flex; color: %s">%s</span><span style="flex: 1">%s</span>%s</button>' % (
+        act(a, label), ' aria-current="page"' if active else '', tgt, s3, r_ctl, s3, t.hover if active else 'transparent', w6 if active else w4, t.text if active else t.mute, ic(icon, True), tx(label), mark)
 def sidebar(label, inner, width=70):
     return '<nav aria-label="%s" style="width: %s; flex: none; padding: %s; box-sizing: border-box; border-inline-end: %s solid %s; background: %s; display: flex; flex-direction: column; gap: %s; overflow-y: auto">%s</nav>' % (plain(label), g(width), s3, HAIR, t.line, t.bar, s1, inner)
 def searchbox(label, a, value='', width=None, state=''):

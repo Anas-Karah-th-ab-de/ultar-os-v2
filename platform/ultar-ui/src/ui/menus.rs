@@ -65,6 +65,13 @@ impl Ui {
             return Err(UiError::InvalidMenu);
         }
         self.layout();
+        // A menu belongs to something the user can see and reach.
+        if !self.reachable().contains(&owner) || self.rect(owner).is_none_or(|r| r.is_empty()) {
+            return Err(UiError::WrongWidget {
+                node: owner,
+                expected: "a node shown on the surface",
+            });
+        }
         let mut dropped = Vec::new();
         self.close_popup(&mut dropped);
         self.close_menu_with(&mut dropped);
@@ -200,6 +207,8 @@ impl Ui {
                 node: state.owner,
                 kind: ActionKind::Closed,
             });
+            // What lies under the resting pointer is hovered again at once.
+            self.rehover();
         }
     }
 

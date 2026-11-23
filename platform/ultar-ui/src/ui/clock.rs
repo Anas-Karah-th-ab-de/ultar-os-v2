@@ -34,7 +34,7 @@ impl Ui {
         }
         for index in 0..self.nodes.len() {
             if moves(&self.nodes[index]) {
-                self.touch(NodeId(index as u32));
+                self.touch(self.id_at(index));
             }
         }
         for node in &mut self.nodes {

@@ -103,7 +103,7 @@ impl Ui {
 
     /// The tooltip of a node.
     pub fn tooltip(&self, id: NodeId) -> Option<&Label> {
-        self.nodes.get(id.index()).and_then(|n| n.tooltip.as_ref())
+        self.slot(id).and_then(|n| n.tooltip.as_ref())
     }
 
     /// The node whose tooltip shows now.

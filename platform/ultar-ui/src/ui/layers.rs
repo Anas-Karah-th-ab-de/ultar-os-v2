@@ -98,6 +98,8 @@ pub(crate) struct Layers {
     pub(crate) scrim_step: Option<usize>,
     /// The dimmed part under a dialog with a scrim (see `ui/frame.rs`).
     pub(crate) backdrop: Backdrop,
+    /// Slots of removed nodes, reused by the next `add` (with the next generation).
+    pub(crate) free_slots: Vec<usize>,
     /// Visible toasts, oldest first.
     pub(crate) toasts: Vec<super::toasts::Shown>,
 }

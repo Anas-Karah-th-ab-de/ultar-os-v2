@@ -22,9 +22,9 @@ def msep():
     """Separator: 8 high with the hairline in its middle."""
     return f'<div role="separator" style="height: {s2}; flex: none; display: flex; align-items: center"><span style="height: {HAIR}; flex: 1; background: {t.line}"></span></div>'
 def option(label, chosen=False, lit=False):
-    """Option of an open select (as the toolkit draws it): chosen = text 600 with a check in accent_text at the end, highlighted = hover background."""
+    """Option of an open select: the check (accent_text) in a slot at the start edge, as in menus (toolkit follows); chosen = text 600, highlighted = hover background."""
     mark = ic('check', True, t.acctext) if chosen else ''
-    return f'<button role="option" aria-selected="{"true" if chosen else "false"}"{act("select.option", label)} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; font-weight: {w6 if chosen else w4}"><span style="flex: 1">{tx(label)}</span><span style="width: {ic_s}; height: {ic_s}; flex: none; display: inline-flex">{mark}</span></button>'
+    return f'<button role="option" aria-selected="{"true" if chosen else "false"}"{act("select.option", label)} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; font-weight: {w6 if chosen else w4}"><span style="width: {ic_s}; height: {ic_s}; flex: none; display: inline-flex">{mark}</span><span style="flex: 1">{tx(label)}</span></button>'
 def tooltip(label):
     """Tooltip: raised, control_border hairline, padding 4/8, small text, the one shadow. Appears after motion.tooltip_delay."""
     return f'<div role="tooltip" style="padding: {s1} {s2}; border-radius: {r_ctl}; background: {t.raised}; border: {HAIR} solid {t.ctl}; box-shadow: {t.shadow}; font-size: {f12}">{tx(label)}</div>'

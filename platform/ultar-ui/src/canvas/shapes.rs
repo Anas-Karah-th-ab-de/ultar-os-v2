@@ -62,7 +62,39 @@ fn smooth(t: f32) -> f32 {
 
 /// Pixels from which `Canvas::blend_rect` shares the rows among the cores (below, starting
 /// the threads costs more than they save).
-const PARALLEL_AREA: i64 = 1 << 21;
+pub(crate) const PARALLEL_AREA: i64 = 1 << 21;
+
+/// Cores to share large blends and copies among (at most four), asked once.
+pub(crate) fn cores() -> usize {
+    static CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *CORES.get_or_init(|| std::thread::available_parallelism().map_or(1, |n| n.get().min(4)))
+}
+
+/// Runs `work` on every item on up to `cores` threads. The items wait in a queue that the
+/// calling thread works through too: when the system refuses a thread, the calling thread
+/// simply does more (never a panic in a frame).
+pub(crate) fn shared<T: Send>(items: Vec<T>, cores: usize, work: &(dyn Fn(T) + Sync)) {
+    use std::sync::Mutex;
+    let queue = Mutex::new(items);
+    let next = || {
+        queue
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pop()
+    };
+    let drain = || {
+        while let Some(item) = next() {
+            work(item);
+        }
+    };
+    std::thread::scope(|scope| {
+        for _ in 1..cores {
+            // A refused thread leaves its share to the others.
+            let _ = std::thread::Builder::new().spawn_scoped(scope, drain);
+        }
+        drain();
+    });
+}
 
 /// Width of the edge zones for a shape whose coverage varies within `reach` pixels of its
 /// left and right border (float-to-integer conversion saturates, the sum must too).
@@ -150,16 +182,12 @@ impl Canvas {
                 }
             }
         };
-        let cores = std::thread::available_parallelism().map_or(1, |n| n.get().min(4));
+        let cores = cores();
         if area.area() < PARALLEL_AREA || cores < 2 {
             blend(rows);
         } else {
             let per = (area.height() as usize).div_ceil(cores) * stride;
-            std::thread::scope(|scope| {
-                for chunk in rows.chunks_mut(per.max(stride)) {
-                    scope.spawn(move || blend(chunk));
-                }
-            });
+            shared(rows.chunks_mut(per.max(stride)).collect(), cores, &blend);
         }
         self.damage.add(area);
     }

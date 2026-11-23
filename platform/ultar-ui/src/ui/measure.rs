@@ -349,7 +349,11 @@ impl Ui {
         self.rebuild_order();
         for index in 0..self.nodes.len() {
             if matches!(self.nodes[index].widget, Widget::Tabs(_)) {
-                self.keep_tab_visible(NodeId(index as u32));
+                let id = self.id_at(index);
+                let rect = self.rect(id);
+                if let (Some(rect), Widget::Tabs(tabs)) = (rect, &mut self.nodes[index].widget) {
+                    tabs.clamp_strip(rect);
+                }
             }
         }
         // What floats hangs on rectangles and text sizes that may have changed.

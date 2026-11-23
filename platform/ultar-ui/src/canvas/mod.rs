@@ -186,9 +186,10 @@ impl Canvas {
 
     /// The bytes of row `y` from column `x0` to `x1` (caller guarantees they are inside).
     fn row_mut(&mut self, y: i32, x0: i32, x1: i32) -> &mut [u8] {
-        let start = (y as usize * self.width as usize + x0 as usize) * BPP;
+        let start = (y.max(0) as usize * self.width as usize + x0.max(0) as usize) * BPP;
         let end = start + (x1 - x0).max(0) as usize * BPP;
-        &mut self.data[start..end]
+        // Callers clip first; an area outside the buffer draws nothing instead of panicking.
+        self.data.get_mut(start..end).unwrap_or_default()
     }
 
     /// Fills the clip area with `color`, replacing what is there (no blending).
@@ -282,6 +283,9 @@ impl Canvas {
         // A BGRX target needs opaque pixels; a BGRX source has them already, so a copy
         // between two BGRX canvases is a plain memory copy.
         let opaque = self.format == PixelFormat::Bgrx8 && source.format != PixelFormat::Bgrx8;
+        if !(swap || opaque) && dx == 0 && dy == 0 && self.copy_large(source, target) {
+            return;
+        }
         let columns = target.width() as usize;
         for row in target.y0..target.y1 {
             let (sy, sx) = (i64::from(row) - dy, i64::from(target.x0) - dx);
@@ -293,6 +297,9 @@ impl Canvas {
                 continue;
             };
             let to = self.row_mut(row, target.x0, target.x1);
+            if to.len() != from.len() {
+                continue;
+            }
             to.copy_from_slice(from);
             if swap || opaque {
                 for px in to.chunks_exact_mut(BPP) {
@@ -306,6 +313,39 @@ impl Canvas {
             }
         }
         self.damage.add(target);
+    }
+
+    /// A plain copy of a large area between two canvases of the same size and format,
+    /// rows shared among the cores (the backdrop under a dialog at 4K). `false` when the
+    /// area is small or the canvases differ (the caller copies row by row).
+    fn copy_large(&mut self, source: &Canvas, area: PixelRect) -> bool {
+        let cores = shapes::cores();
+        let same = (self.width, self.height) == (source.width, source.height);
+        if !same || cores < 2 || area.area() < shapes::PARALLEL_AREA {
+            return false;
+        }
+        let stride = self.width as usize * BPP;
+        let rows = area.y0 as usize * stride..area.y1 as usize * stride;
+        let columns = area.x0 as usize * BPP..area.x1 as usize * BPP;
+        let (Some(to), Some(from)) = (self.data.get_mut(rows.clone()), source.data.get(rows))
+        else {
+            return false;
+        };
+        let per = (area.height() as usize).div_ceil(cores).max(1) * stride;
+        let work = |(to, from): (&mut [u8], &[u8])| {
+            for (t, f) in to.chunks_exact_mut(stride).zip(from.chunks_exact(stride)) {
+                if let (Some(t), Some(f)) = (t.get_mut(columns.clone()), f.get(columns.clone())) {
+                    t.copy_from_slice(f);
+                }
+            }
+        };
+        shapes::shared(
+            to.chunks_mut(per).zip(from.chunks(per)).collect(),
+            cores,
+            &work,
+        );
+        self.damage.add(area);
+        true
     }
 
     /// Strokes a line with round caps.

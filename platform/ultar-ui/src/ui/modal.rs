@@ -14,7 +14,7 @@ impl Ui {
             if node == ancestor {
                 return true;
             }
-            current = self.nodes.get(node.index()).and_then(|n| n.parent);
+            current = self.slot(node).and_then(|n| n.parent);
         }
         false
     }
@@ -29,7 +29,7 @@ impl Ui {
     /// a surface opened above it), i.e. not part of the dimmed backdrop.
     pub(crate) fn inside_open_dialog(&self, id: NodeId) -> bool {
         let mut root = id;
-        while let Some(parent) = self.nodes.get(root.index()).and_then(|n| n.parent) {
+        while let Some(parent) = self.slot(root).and_then(|n| n.parent) {
             root = parent;
         }
         let scrim = self.layers.open.iter().rposition(

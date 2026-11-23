@@ -66,17 +66,39 @@ impl Tabs {
         }
     }
 
-    /// Scrolls the strip by whole tabs so that the chosen tab is fully inside `rect`.
-    /// Returns `true` when the strip moved.
+    /// Scrolls the strip by whole tabs so that the chosen tab is fully inside `rect`, with
+    /// its neighbour visible too when there is one (so that the next tab can be reached by
+    /// tapping the last visible one). Returns `true` when the strip moved.
     pub(crate) fn keep_chosen_visible(&mut self, rect: Rect) -> bool {
         let shown = self.visible_count(rect);
         let last_first = self.tabs.len().saturating_sub(shown);
+        let context = usize::from(shown >= 3);
         let mut first = self.first.min(last_first);
-        if self.selected < first {
-            first = self.selected;
-        } else if self.selected >= first + shown {
-            first = self.selected + 1 - shown;
+        let low = self.selected.saturating_sub(context);
+        let high = (self.selected + context).min(self.tabs.len().saturating_sub(1));
+        if low < first {
+            first = low;
+        } else if high >= first + shown {
+            first = (high + 1).saturating_sub(shown).min(last_first);
         }
+        let moved = first != self.first;
+        self.first = first;
+        moved
+    }
+
+    /// Keeps the strip inside its range (after a resize). Returns `true` when it moved.
+    pub(crate) fn clamp_strip(&mut self, rect: Rect) -> bool {
+        let last_first = self.tabs.len().saturating_sub(self.visible_count(rect));
+        let moved = self.first > last_first;
+        self.first = self.first.min(last_first);
+        moved
+    }
+
+    /// Scrolls the strip by `steps` tabs towards the end (negative: the start), within its
+    /// range. Returns `true` when it moved.
+    pub(crate) fn scroll_strip(&mut self, rect: Rect, steps: i32) -> bool {
+        let last_first = self.tabs.len().saturating_sub(self.visible_count(rect));
+        let first = (self.first as i64 + i64::from(steps)).clamp(0, last_first as i64) as usize;
         let moved = first != self.first;
         self.first = first;
         moved

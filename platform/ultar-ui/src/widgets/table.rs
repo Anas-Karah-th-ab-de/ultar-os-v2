@@ -47,6 +47,8 @@ pub struct Table {
     pub(crate) chosen: Vec<usize>,
     /// Where a Shift range starts.
     pub(crate) anchor: Option<usize>,
+    /// Stable key per row (`Ui::set_table_rows_keyed`); empty without keys.
+    pub(crate) keys: Vec<u64>,
 }
 
 const PAD: Space = Space::S12;
@@ -92,6 +94,7 @@ impl Table {
             multi: false,
             chosen: Vec::new(),
             anchor: None,
+            keys: Vec::new(),
         }
     }
 

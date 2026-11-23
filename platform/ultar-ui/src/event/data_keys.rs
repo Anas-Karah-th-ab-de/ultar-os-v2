@@ -17,6 +17,7 @@ impl Ui {
         part: Option<usize>,
         out: &mut Vec<Action>,
     ) {
+        let mark = Mark::from_modifiers(self.input.modifiers);
         let Some(Widget::Table(table)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget)
         else {
             return;
@@ -31,7 +32,7 @@ impl Ui {
             Some(TablePart::Row(row)) => {
                 table.cursor = TableCursor::Rows;
                 if table.multi {
-                    if let Some(mark) = Mark::from_modifiers(self.input.modifiers) {
+                    if let Some(mark) = mark {
                         return self.mark_table_row(id, row, mark, out);
                     }
                     table.chosen = vec![row];
@@ -61,7 +62,7 @@ impl Ui {
     }
 
     fn select_item(&mut self, id: NodeId, index: usize, out: &mut Vec<Action>) {
-        if let Some(Widget::Tree(tree)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget) {
+        if let Some(Widget::Tree(tree)) = self.slot_mut(id).map(|n| &mut n.widget) {
             if index < tree.items.len() && tree.selected != Some(index) {
                 tree.selected = Some(index);
                 out.push(act(id, ActionKind::Selected(index)));
@@ -73,7 +74,7 @@ impl Ui {
 
     /// Opens (`Some(true)`), closes or flips item `index` of a tree that has children.
     fn expand(&mut self, id: NodeId, index: usize, open: Option<bool>, out: &mut Vec<Action>) {
-        let Some(Widget::Tree(tree)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget) else {
+        let Some(Widget::Tree(tree)) = self.slot_mut(id).map(|n| &mut n.widget) else {
             return;
         };
         if !tree.has_children(index) {
@@ -127,8 +128,7 @@ impl Ui {
         towards_end: bool,
         out: &mut Vec<Action>,
     ) -> bool {
-        let Some(Widget::Table(table)) = self.nodes.get_mut(id.index()).map(|n| &mut n.widget)
-        else {
+        let Some(Widget::Table(table)) = self.slot_mut(id).map(|n| &mut n.widget) else {
             return false;
         };
         let rows = table.rows.len();

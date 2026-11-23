@@ -42,14 +42,31 @@ const MAX_DIRTY: usize = 16;
 /// Most actions that wait for the next event.
 const MAX_PENDING: usize = 32;
 
-/// Handle of a node in a [`Ui`].
+/// Handle of a node in a [`Ui`]: the slot (low 16 bits) and the generation of the slot
+/// (high 16 bits). A removed node's slot is reused with the next generation, so an old
+/// handle never reaches the new node (it answers `UiError::UnknownNode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NodeId(pub(crate) u32);
 
 impl NodeId {
-    pub(crate) fn index(self) -> usize {
-        self.0 as usize
+    pub(crate) fn new(index: usize, generation: u16) -> NodeId {
+        NodeId((u32::from(generation) << 16) | (index as u32 & 0xFFFF))
     }
+
+    pub(crate) fn index(self) -> usize {
+        (self.0 & 0xFFFF) as usize
+    }
+
+    pub(crate) fn generation(self) -> u16 {
+        (self.0 >> 16) as u16
+    }
+}
+
+/// Generation of a node slot and whether the node in it was removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Slot {
+    pub(crate) generation: u16,
+    pub(crate) removed: bool,
 }
 
 pub(crate) struct Node {
@@ -71,8 +88,8 @@ pub(crate) struct Node {
     pub(crate) draggable: bool,
     /// A drag may end on this node (`Ui::set_drop_target`).
     pub(crate) drop_target: bool,
-    /// Removed by `Ui::remove`; its identifier is not reused.
-    pub(crate) removed: bool,
+    /// Generation of the slot; removed by `Ui::remove` (the slot is reused).
+    pub(crate) slot: Slot,
     /// The nearest scroll container or dialog above this node (set by the layout): the
     /// node is drawn and hit only inside that ancestor's rectangle.
     pub(crate) clip_parent: Option<NodeId>,
@@ -235,7 +252,7 @@ impl Ui {
 
     /// The root node (a flex container).
     pub fn root(&self) -> NodeId {
-        NodeId(0)
+        NodeId::new(0, 0)
     }
 
     /// Removes every node and interaction state; the root becomes an empty column.
@@ -301,7 +318,7 @@ impl Ui {
     /// again at the next layout; every other node keeps its measurement.
     pub(crate) fn invalidate_node(&mut self, id: NodeId) {
         let mut current = Some(id);
-        while let Some(node) = current.and_then(|c| self.nodes.get_mut(c.index())) {
+        while let Some(node) = current.and_then(|c| self.slot_mut(c)) {
             node.measured = None;
             current = node.parent;
         }
@@ -386,10 +403,10 @@ impl Ui {
     /// The physical rectangle of a node in logical points, for the current direction and
     /// the current scroll offsets. Meaningful after [`Ui::layout`].
     pub fn rect(&self, id: NodeId) -> Option<Rect> {
-        let node = self.nodes.get(id.index())?;
+        let node = self.slot(id)?;
         let mut rect = node.frame.resolve(self.env.direction, self.size.w);
         let mut above = node.clip_parent;
-        while let Some(scroller) = above.and_then(|s| self.nodes.get(s.index())) {
+        while let Some(scroller) = above.and_then(|s| self.slot(s)) {
             if let Widget::Scroll(scroll) = &scroller.widget {
                 rect.y -= scroll.offset;
             }
@@ -401,6 +418,6 @@ impl Ui {
     /// The logical rectangle of a node (start-relative), independent of the direction and
     /// of scroll offsets.
     pub fn logical_rect(&self, id: NodeId) -> Option<LogicalRect> {
-        self.nodes.get(id.index()).map(|n| n.frame)
+        self.slot(id).map(|n| n.frame)
     }
 }

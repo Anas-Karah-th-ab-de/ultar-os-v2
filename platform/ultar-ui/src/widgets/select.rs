@@ -221,9 +221,10 @@ impl Select {
                 let hover = p.color(ColorRole::Hover);
                 p.fill(row, Some(Radius::Control), hover);
             }
+            // The check mark sits in a slot at the start edge, as in menus (boards: Menus).
             let mut inner = style::inset_inline(row, Space::S8);
-            let mark = style::take_end(&mut inner, CHEVRON, direction);
-            style::take_end(&mut inner, CHEVRON_GAP.points(), direction);
+            let mark = style::take_start(&mut inner, CHEVRON, direction);
+            style::take_start(&mut inner, CHEVRON_GAP.points(), direction);
             let chosen = index == self.selected;
             if chosen {
                 let accent = p.color(ColorRole::AccentText);
