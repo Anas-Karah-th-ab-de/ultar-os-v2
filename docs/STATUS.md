@@ -11,13 +11,12 @@ Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne
 | Dienste | `ultar-service` (Signale, Grenzen, Bereitschaft, Geheimnisse nur aus Datei/Deskriptor), `ultar-sys` (einziger `unsafe`-Teil), `ultar-busd`, `ultar-logd` + `ulog` (begrenzt, faire Aufnahme, Hash-Kette); Bus, Einstellungen und devd laufen darauf |
 | Geräte-Identität | Ed25519-Geräteschlüssel, Kennung aus dem Schlüssel, Anmeldung und Anrufe per Schlüsselnachweis, Wiederherstellung mit Wartezeit und Warnung auf allen Geräten, neue Geräte erst nach Freigabe |
 | System-Updates | `ultar-update` / `uupdate`: signiertes Manifest mit Schlüsselwechsel, Schutz vor älterer Fassung, A/B mit Rückfall, Offline-Paket; Stromausfall an 29 Stellen geprüft |
-| Schriften und Baukasten | Noto Naskh/Kufi/Sans Arabic/Mono (OFL), echte fette arabische Schrift, 15 neue Bausteine, 521 Referenzbilder |
-| Entwurf | Runde 2: 23 Tafeln aus den Gestaltungswerten, Klickliste mit 65 Festlegungen (DESKTOP-SPEC §13) |
+| Schriften und Baukasten | Noto Naskh/Kufi/Sans Arabic/Mono (OFL) mit echten Stärken 400/500/600/700, 27 Bausteine (u. a. Tabelle, Baum, Seitenleiste, Kopfleiste, Hinweis, Kennwortfeld, Ziehen), vollständiger Zugänglichkeits-Baum, 641 Referenzbilder; Dialog öffnen 3–5 ms (Budget 8 ms) |
+| Entwurf | Runde 3: 26 Tafeln aus denselben Gestaltungswerten wie der Baukasten; Runde 2: 23 Tafeln aus den Gestaltungswerten, Klickliste mit 65 Festlegungen (DESKTOP-SPEC §13) |
 | **Echte Hardware** | **Beelink GTi15 Ultra (KVM, echter Prozessor, 16 Kerne, echte SMBIOS): Stufe 1 bestanden** – alle Geräte mit Treiber, Ring-3-Programme, Bus, Ausbruchs- und Speichergrenzen-Prüfung ohne Fehler |
 
-Zusammen **rund 2 200 automatische Tests** ohne Fehler (Arbeitsbereich 1 809, Server 290, Ende-zu-Ende 21, Oberfläche 74), Kern-Prüfung mit 2 und 4 Kernen grün.
-**Nicht produktionsreif:** offen sind die Kern-Schnittstellen für devd (D1), die Baukasten-Befunde der Runde 3 (in Arbeit),
-der Startlader für A/B-Updates (K4) und `ultar-init` auf dem neuen Dienst-Rahmen. Noch keine sichtbare neue Oberfläche.
+Zusammen **rund 2 250 automatische Tests** ohne Fehler (Arbeitsbereich 1 872, Server 290, Ende-zu-Ende 21, Oberfläche 74), Kern-Prüfung mit 2 und 4 Kernen grün.
+**Nicht produktionsreif:** offen sind die Kern-Schnittstellen für devd (D1), die Nachprüfung der Baukasten-Korrekturen, der Startlader für A/B-Updates (K4) und `ultar-init` auf dem neuen Dienst-Rahmen. Noch keine sichtbare neue Oberfläche.
 Noch kein Start ohne KVM direkt auf der Hardware (Stufe 3).
 
 ## Umsetzung Welle 2 (23.11.2026) – gebaut, eingebunden, unabhängig geprüft

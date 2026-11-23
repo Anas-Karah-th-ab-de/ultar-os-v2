@@ -23,6 +23,8 @@ Punkte unten sperren den Einsatz.
 | Gerät | S16: kein Updater. Jetzt `ultar-update`: signiertes Manifest, Schutz vor älterer Fassung, A/B mit Rückfall, Offline-Paket `.uup`; Runde 3 (3 schwere, 5 leichte) behoben (`docs/SYSTEM-UPDATE.md`, `update-runde-3.md`) | **kritisch** |
 | Dienste | B: Dienst-Rahmen `ultar-service` (Signale, Grenzen, Bereitschaft, Kennung des Gegenübers), Protokolldienst `ultar-logd`, Vermittler `ultar-busd`; Runde 3 (1 kritischer: Vermittler durch stumme Verbindungen beendbar, 6 schwere) behoben (`services-runde-3.md`) | **kritisch** |
 | Kern | R3-K1: Kern hatte keine Benutzerkennungen, keine echten Dateirechte, Sockel ohne Rechteprüfung, kein `SO_PEERCRED`. Jetzt alles vorhanden; Prüfung `rechtetest` (102 Prüfungen) und ext4-Gegenprüfung in `ci.sh`; Wettlauf im Speichermangel-Abbruch bei 4 Kernen behoben | schwer |
+| Baukasten | U3: Runde 3 – Dialog sprengte das Zeitbudget, Listen nicht virtuell, Zugänglichkeits-Baum unvollständig, Zustandsgrafik im hellen Thema zu kontrastarm, Menüs am Telefon, fehlende Bausteine; 27 Abweichungen Bild ↔ Baukasten. Alles behoben, Tafeln folgen jetzt dem Baukasten (`ui-runde-3.md`); Nachprüfung durch einen zweiten Prüfer steht noch aus | schwer |
+| Oberfläche (alt) | Ein langsames Bild machte aus einem Tipp einen langen Druck (Tipp ging verloren) | schwer |
 | Server | Kennwort-Hashing ohne Obergrenze (Speicher), VPN-Adressen von einem Konto aufbrauchbar, Token gelöschter Konten weiter gültig und auf das nächste Konto übertragbar, Anmelde-Zeit verriet Konten | schwer |
 
 ## Offen – sperrt den Einsatz
@@ -30,7 +32,6 @@ Punkte unten sperren den Einsatz.
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
 | D1 | Kern ↔ devd | Der Kern bietet keine Geräte-/Treiber-Liste und kein Binden/Lösen; devd liest das Protokoll | sechs Kern-Schnittstellen (docs/integration/ultar-devd-daemon.md §2) |
-| U3 | Baukasten | Runde 3: 8 schwere – Dialog sprengt das Zeitbudget, Listen nicht virtuell, Zugänglichkeits-Baum unvollständig, Zustandsgrafik im hellen Thema zu kontrastarm, Menüs am Telefon, fehlende Bausteine (Tabelle, Baum, Ziehen, Kennwortfeld …), 27 Abweichungen Bild ↔ Baukasten (`ui-runde-3.md`) | in Arbeit |
 | K4 | Kern/Start | Updater kann auf dem Ultar-Kern noch nichts installieren: kein Lader mit Slot-Wahl und Startzähler, nur eine Wurzel-Partition, FAT nur lesbar | Änderungen K1–K6 in `docs/SYSTEM-UPDATE.md` |
 | I1 | init | `ultar-init` nutzt die Bereitschafts-Meldung nicht, wechselt keine Benutzer, setzt Sitzung/Apps nicht in ihre Gruppen | init auf den Dienst-Rahmen umstellen |
 
@@ -39,6 +40,7 @@ Punkte unten sperren den Einsatz.
 Kern: kein `SCM_CREDENTIALS`; fsync schickt keinen Cache-Flush an NVMe/AHCI; Set-ID-Bits beim Start ignoriert ·
 Updater: Daemon noch ohne Dienst-Rahmen; nach fehlgeschlagener Gesundheitsprüfung startet niemand neu · statischer ARM64-Bau des Updaters braucht TLS ohne C-Bibliothek ·
 Server: Proxy-Grenzen (Caddy) nur als Konfigurationsdatei geprüft ·
+Tests: zwei Ablauf-Tests der alten Oberfläche scheitern auf GitHub gelegentlich (Ursache offen, Fehlermeldung zeigt jetzt den Zustand); `ultar-logd` `after_sigkill` einmal gescheitert, nicht nachstellbar · Bildzeit nur auf dem Bau-Rechner gemessen, nicht auf ruhiger Hardware ·
 Kern (Rest von K5): einige große Kern-Puffer werden noch ohne Rückweg angefordert (Kopie der epoll-Liste, `/proc`-Listen und
 Wecktabelle des Planers je Fadenzahl, Lesen des Bildspeichers, Metadaten der Wirts-Datenträger) – begrenzt und aus dem
 Vorrat bedient, Liste in `docs/integration/kernel-memory-groups.md`; kein Prozessor-Anteil je Gruppe; nicht auf echter
