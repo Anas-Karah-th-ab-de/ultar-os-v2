@@ -76,7 +76,14 @@ int main(int argc, char **argv) {
         return 0;
     }
     setvbuf(stdout, NULL, _IONBF, 0);
-    vfork_exec(argv[0]);
+    /* The kernel self test starts programs with a bare name as argv[0]; exec needs a path. */
+    char self[256];
+    if (strchr(argv[0], '/')) {
+        snprintf(self, sizeof self, "%s", argv[0]);
+    } else {
+        snprintf(self, sizeof self, "/bin/%s", argv[0]);
+    }
+    vfork_exec(self);
     locks();
     printf(failures ? "SPAWNTEST: FEHLER (%d)\n" : "SPAWNTEST: ALLES OK\n", failures);
     return failures != 0;
