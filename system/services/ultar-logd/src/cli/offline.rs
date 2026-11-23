@@ -10,16 +10,16 @@ use crate::verify::verify;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use ultar_service::{read_secret_file, SecretFilePolicy};
+use ultar_service::{read_secret_source, SecretSource};
 
 /// Largest segment file read by `verify` and `export`.
 const MAX_SEGMENT_BYTES: u64 = 64 << 20;
 
-fn chain(key_file: Option<&Path>, io: &mut Streams<'_>) -> Result<Chain, i32> {
-    let Some(path) = key_file else {
+fn chain(key: Option<&SecretSource>, io: &mut Streams<'_>) -> Result<Chain, i32> {
+    let Some(source) = key else {
         return Ok(Chain::unkeyed());
     };
-    read_secret_file(path, &SecretFilePolicy::for_current_user())
+    read_secret_source(source, super::MAX_SECRET)
         .map(|key| Chain::keyed(key.expose()))
         .map_err(|error| {
             io.say_detail(Msg::SecretRejected, &error);
@@ -43,8 +43,8 @@ fn open_dir(dir: &Path, io: &mut Streams<'_>) -> Result<DirStorage, i32> {
     }
 }
 
-pub(super) fn run_verify(dir: &Path, key_file: Option<&Path>, io: &mut Streams<'_>) -> i32 {
-    let (chain, storage) = match (chain(key_file, io), open_dir(dir, io)) {
+pub(super) fn run_verify(dir: &Path, key: Option<&SecretSource>, io: &mut Streams<'_>) -> i32 {
+    let (chain, storage) = match (chain(key, io), open_dir(dir, io)) {
         (Ok(chain), Ok(storage)) => (chain, storage),
         (Err(code), _) | (_, Err(code)) => return code,
     };
@@ -86,11 +86,11 @@ pub(super) fn run_verify(dir: &Path, key_file: Option<&Path>, io: &mut Streams<'
 pub(super) fn run_export(
     dir: &Path,
     out: &Path,
-    key_file: Option<&Path>,
+    key: Option<&SecretSource>,
     options: ExportOptions,
     io: &mut Streams<'_>,
 ) -> i32 {
-    let (chain, storage) = match (chain(key_file, io), open_dir(dir, io)) {
+    let (chain, storage) = match (chain(key, io), open_dir(dir, io)) {
         (Ok(chain), Ok(storage)) => (chain, storage),
         (Err(code), _) | (_, Err(code)) => return code,
     };

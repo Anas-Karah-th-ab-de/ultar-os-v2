@@ -57,7 +57,11 @@ pub use lifecycle::{Lifecycle, Signal, State, StopCause, Wake};
 pub use peercred::{KernelCredentials, PeerCredError, UidMap};
 pub use ready::{ReadyError, ReadyEvent, ReadyNotifier, ReadyReader, READY_FD_ENV};
 pub use runtime::{Runtime, ServiceSpec, StartError};
-pub use secret::{read_secret_fd, read_secret_file, Secret, SecretError, SecretFilePolicy};
+pub use secret::{
+    read_secret_file, read_secret_file_limited, read_secret_owned, read_secret_source,
+    take_inherited_secret, Secret, SecretError, SecretFilePolicy, SecretSource,
+    MAX_SECRET_TABLE_LEN,
+};
 pub use session::{BusSession, SessionOptions};
 pub use ultar_sys::{Errno, Resource};
 

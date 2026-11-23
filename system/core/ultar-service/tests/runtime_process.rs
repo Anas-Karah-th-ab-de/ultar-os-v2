@@ -59,7 +59,12 @@ fn limits_umask_and_working_directory_are_applied_and_read_back() {
     probe.until("ready");
     assert_eq!(probe.value("platform"), Some("Linux"));
     assert_eq!(probe.value("limit.nofile"), Some("97/97"));
-    assert_eq!(probe.value("limit.as"), Some("536870912/536870912"));
+    // No address-space limit by default (R3-B0): the group's memory.max
+    // bounds memory, an address-space limit would only break thread starts.
+    assert_eq!(
+        probe.value("limit.as"),
+        Some("18446744073709551615/18446744073709551615")
+    );
     assert_eq!(probe.value("limit.nproc"), Some("128/128"));
     assert_eq!(probe.value("limit.core"), Some("0/0"));
     assert_eq!(probe.value("cwd"), Some("/"));
@@ -69,7 +74,6 @@ fn limits_umask_and_working_directory_are_applied_and_read_back() {
         "workdir",
         "no_new_privs",
         "limit_core",
-        "limit_as",
         "limit_nofile",
         "limit_nproc",
     ] {
@@ -135,30 +139,8 @@ fn through_shell(redirects: &str, args: &[&str]) -> Command {
     command
 }
 
-/// Descriptors the environment itself hands every child (test runner, CI
-/// agent, jobserver). The checks below count only what they planted.
-fn leaked_by_environment() -> u64 {
-    let mut probe = Probe::spawn(through_shell("", &[]));
-    probe.until("ready");
-    let n = probe
-        .value("closed_fds")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    probe.signal("TERM");
-    assert_eq!(probe.finish().0, Some(exit::OK));
-    n
-}
-
-fn closed_count(probe: &Probe) -> u64 {
-    probe
-        .value("closed_fds")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(u64::MAX)
-}
-
 #[test]
 fn inherited_descriptors_are_closed() {
-    let base = leaked_by_environment();
     let dir = temp_dir("fds");
     let file = dir.join("leak");
     std::fs::write(&file, b"x").unwrap();
@@ -166,7 +148,7 @@ fn inherited_descriptors_are_closed() {
     let redirects = format!("5<'{path}' 6<'{path}' 9<'{path}'");
     let mut probe = Probe::spawn(through_shell(&redirects, &[]));
     probe.until("ready");
-    assert_eq!(closed_count(&probe), base + 3);
+    assert_eq!(probe.value("closed_fds"), Some("3"));
     probe.signal("TERM");
     assert_eq!(probe.finish().0, Some(exit::OK));
 }
@@ -214,7 +196,6 @@ fn a_service_that_dies_during_start_closes_the_readiness_pipe() {
 
 #[test]
 fn secrets_come_from_a_descriptor_or_a_checked_file_never_printed() {
-    let base = leaked_by_environment();
     let dir = temp_dir("secret");
     let file = dir.join("token");
     std::fs::write(&file, b"correct horse battery\n").unwrap();
@@ -228,7 +209,7 @@ fn secrets_come_from_a_descriptor_or_a_checked_file_never_printed() {
     by_fd.until("ready");
     assert_eq!(by_fd.value("secret.len"), Some("21"));
     // Descriptor 4 was kept for the secret, nothing else was inherited.
-    assert_eq!(closed_count(&by_fd), base);
+    assert_eq!(by_fd.value("closed_fds"), Some("0"));
     by_fd.signal("TERM");
     let seen = by_fd.seen.join("\n");
     let (code, stderr) = by_fd.finish();
@@ -319,4 +300,27 @@ fn the_main_thread_waits_for_signals_and_the_work_runs_on_a_second_thread() {
     }
     probe.signal("TERM");
     assert_eq!(probe.finish().0, Some(exit::OK));
+}
+
+#[test]
+fn a_declared_descriptor_that_was_not_inherited_stops_the_start() {
+    // Nothing is passed under 7: the runtime must not adopt whatever the
+    // process would open under that number later (R3-S2).
+    let (code, stderr) = Probe::start(&["--secret-fd", "7"]).finish();
+    assert_eq!(code, Some(exit::HARDENING), "{stderr}");
+    assert!(
+        stderr.starts_with("service.start.descriptor_refused"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_declared_descriptor_must_be_a_pipe_or_a_file() {
+    // Descriptor 5 is a directory here.
+    let (code, stderr) = Probe::spawn(through_shell("5</", &["--secret-fd", "5"])).finish();
+    assert_eq!(code, Some(exit::HARDENING), "{stderr}");
+    assert!(
+        stderr.starts_with("service.start.descriptor_refused"),
+        "{stderr}"
+    );
 }

@@ -11,6 +11,7 @@
 //! The watcher thread sleeps on the client's connection state; nothing
 //! polls.
 
+use crate::lifecycle::{Lifecycle, State};
 use crate::secret::Secret;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -40,6 +41,10 @@ pub struct SessionOptions {
     pub backoff_min: Duration,
     /// Longest pause between attempts.
     pub backoff_max: Duration,
+    /// The service's lifecycle: a stop request ends every wait at once
+    /// (connect, register) with [`BusError::Closed`] instead of letting
+    /// the stop deadline run out (review round 3, R3-S1).
+    pub stop: Option<Lifecycle>,
 }
 
 impl SessionOptions {
@@ -52,6 +57,7 @@ impl SessionOptions {
             register_wait: Duration::from_secs(10),
             backoff_min: Duration::from_millis(20),
             backoff_max: Duration::from_secs(1),
+            stop: None,
         }
     }
 }
@@ -81,23 +87,40 @@ impl Backoff {
     }
 }
 
+/// Sleeps for `pause` or until a stop is requested; `false` on a stop.
+fn pause(stop: Option<&Lifecycle>, pause: Duration) -> bool {
+    match stop {
+        Some(lifecycle) => !lifecycle.wait_for_timeout(State::Stopping, pause),
+        None => {
+            thread::sleep(pause);
+            true
+        }
+    }
+}
+
 /// Retries `attempt` with back-off while `retry` says the error is
-/// temporary and the deadline has not passed.
+/// temporary, the deadline has not passed and no stop is requested.
 fn with_retry<T>(
     wait: Duration,
     mut backoff: Backoff,
+    stop: Option<&Lifecycle>,
     retry: impl Fn(&BusError) -> bool,
     mut attempt: impl FnMut() -> Result<T, BusError>,
 ) -> Result<T, BusError> {
     let deadline = Instant::now() + wait;
     loop {
+        if stop.is_some_and(Lifecycle::is_stopping) {
+            return Err(BusError::Closed);
+        }
         match attempt() {
             Err(error) if retry(&error) => {
                 let left = deadline.saturating_duration_since(Instant::now());
                 if left.is_zero() {
                     return Err(error);
                 }
-                thread::sleep(backoff.step().min(left));
+                if !pause(stop, backoff.step().min(left)) {
+                    return Err(BusError::Closed);
+                }
             }
             other => return other,
         }
@@ -160,6 +183,7 @@ pub struct BusSession {
     shared: Arc<Shared>,
     register_wait: Duration,
     backoff: Backoff,
+    stop: Option<Lifecycle>,
 }
 
 impl BusSession {
@@ -177,6 +201,7 @@ impl BusSession {
         let client = with_retry(
             options.connect_wait,
             backoff,
+            options.stop.as_ref(),
             |error| {
                 matches!(
                     error,
@@ -202,6 +227,7 @@ impl BusSession {
             shared,
             register_wait: options.register_wait,
             backoff,
+            stop: options.stop,
         })
     }
 
@@ -217,6 +243,7 @@ impl BusSession {
         with_retry(
             self.register_wait,
             self.backoff,
+            self.stop.as_ref(),
             |error| matches!(error, BusError::Remote(ErrorCode::NameTaken)),
             || self.shared.client.register(service),
         )
@@ -307,7 +334,7 @@ mod tests {
         let backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(1));
         let temporary = |error: &BusError| matches!(error, BusError::Timeout);
         let mut calls = 0;
-        let ok = with_retry(Duration::from_secs(30), backoff, temporary, || {
+        let ok = with_retry(Duration::from_secs(30), backoff, None, temporary, || {
             calls += 1;
             if calls < 3 {
                 Err(BusError::Timeout)
@@ -317,19 +344,52 @@ mod tests {
         });
         assert_eq!(ok.unwrap(), 3);
         let mut calls = 0;
-        let fatal: Result<(), _> = with_retry(Duration::from_secs(30), backoff, temporary, || {
-            calls += 1;
-            Err(BusError::AuthFailed)
-        });
+        let fatal: Result<(), _> =
+            with_retry(Duration::from_secs(30), backoff, None, temporary, || {
+                calls += 1;
+                Err(BusError::AuthFailed)
+            });
         assert!(matches!(fatal, Err(BusError::AuthFailed)));
         assert_eq!(calls, 1);
         let mut calls = 0;
-        let late: Result<(), _> = with_retry(Duration::ZERO, backoff, temporary, || {
+        let late: Result<(), _> = with_retry(Duration::ZERO, backoff, None, temporary, || {
             calls += 1;
             Err(BusError::Timeout)
         });
         assert!(matches!(late, Err(BusError::Timeout)));
         assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn a_stop_request_ends_the_retries_at_once() {
+        let life = Lifecycle::new();
+        let backoff = Backoff::new(Duration::from_secs(5), Duration::from_secs(5));
+        let temporary = |error: &BusError| matches!(error, BusError::Timeout);
+        let stopper = {
+            let life = life.clone();
+            std::thread::spawn(move || {
+                life.request_stop(crate::lifecycle::StopCause::Request);
+            })
+        };
+        let started = Instant::now();
+        let result: Result<(), _> = with_retry(
+            Duration::from_secs(60),
+            backoff,
+            Some(&life),
+            temporary,
+            || Err(BusError::Timeout),
+        );
+        stopper.join().unwrap();
+        assert!(matches!(result, Err(BusError::Closed)));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // Already stopping: not even one attempt.
+        let mut calls = 0;
+        let none: Result<(), _> =
+            with_retry(Duration::ZERO, backoff, Some(&life), temporary, || {
+                calls += 1;
+                Ok(())
+            });
+        assert!(none.is_err() && calls == 0);
     }
 
     #[test]

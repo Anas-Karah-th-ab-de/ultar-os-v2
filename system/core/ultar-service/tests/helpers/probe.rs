@@ -23,7 +23,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 use ultar_service::log::{LogTarget, LoggerConfig};
 use ultar_service::{
-    current_limit, exit, read_secret_fd, read_secret_file, Resource, Runtime, SecretFilePolicy,
+    current_limit, exit, read_secret_file, Resource, Runtime, SecretFilePolicy, SecretSource,
     ServiceSpec, State,
 };
 
@@ -75,7 +75,7 @@ fn spec(options: &Options) -> ServiceSpec {
         limits.open_files = Some(nofile);
     }
     if let Some(fd) = options.secret_fd {
-        spec.hardening.keep_descriptors.push(fd);
+        spec.inherited.push(fd);
     }
     if let Some(ms) = options.deadline_ms {
         spec.stop_deadline = Duration::from_millis(ms);
@@ -108,7 +108,7 @@ fn report(runtime: &Runtime, options: &Options) {
         say(&format!("cwd={}", cwd.display()));
     }
     let secret = match (&options.secret_fd, &options.secret_file) {
-        (Some(fd), _) => Some(read_secret_fd(*fd)),
+        (Some(fd), _) => Some(runtime.read_secret(&SecretSource::Fd(*fd), 4096)),
         (None, Some(path)) => Some(read_secret_file(
             path,
             &SecretFilePolicy::for_current_user(),

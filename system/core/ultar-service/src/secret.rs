@@ -24,12 +24,16 @@
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::Read;
+use std::os::fd::OwnedFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
 use ultar_sys as sys;
 
-/// Longest accepted secret in bytes.
+/// Longest accepted secret in bytes (a token, a key).
 pub const MAX_SECRET_LEN: usize = 4096;
+/// Longest accepted secret *table* in bytes (e.g. the broker's token file:
+/// one line per client).
+pub const MAX_SECRET_TABLE_LEN: usize = 256 * 1024;
 
 /// `O_NOFOLLOW`: the last path component must not be a symbolic link.
 #[cfg(target_arch = "x86_64")]
@@ -44,7 +48,12 @@ pub struct Secret(Vec<u8>);
 impl Secret {
     /// Wraps `bytes`. One trailing line feed (as editors and `echo` leave
     /// it) is removed; an empty or oversized secret is refused.
-    pub fn from_bytes(mut bytes: Vec<u8>) -> Result<Self, SecretError> {
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, SecretError> {
+        Self::from_bytes_limited(bytes, MAX_SECRET_LEN)
+    }
+
+    /// Like [`Self::from_bytes`] with an own upper bound (for tables).
+    pub fn from_bytes_limited(mut bytes: Vec<u8>, max: usize) -> Result<Self, SecretError> {
         if bytes.last() == Some(&b'\n') {
             bytes.pop();
         }
@@ -52,10 +61,16 @@ impl Secret {
         if secret.0.is_empty() {
             return Err(SecretError::Empty);
         }
-        if secret.0.len() > MAX_SECRET_LEN {
+        if secret.0.len() > max {
             return Err(SecretError::TooLong);
         }
         Ok(secret)
+    }
+
+    /// A second copy, for a secret read once from a descriptor and used
+    /// again (each copy is wiped when dropped).
+    pub fn duplicate(&self) -> Self {
+        Self(self.0.clone())
     }
 
     /// The bytes. Whoever calls this is responsible for where they go.
@@ -175,17 +190,17 @@ impl SecretFilePolicy {
     }
 }
 
-fn read_bounded(mut file: File) -> Result<Secret, SecretError> {
+fn read_bounded(mut file: File, max: usize) -> Result<Secret, SecretError> {
     // The buffer never grows beyond its first allocation, so no unwiped
     // copy of the secret is left behind by a reallocation, and it lives in
     // a `Secret` from the start, so it is wiped on every path.
-    let mut holder = Secret(Vec::with_capacity(MAX_SECRET_LEN + 2));
-    let limit = (MAX_SECRET_LEN + 2) as u64;
+    let mut holder = Secret(Vec::with_capacity(max + 2));
+    let limit = (max + 2) as u64;
     (&mut file)
         .take(limit)
         .read_to_end(&mut holder.0)
         .map_err(|error| SecretError::Io(error.kind()))?;
-    Secret::from_bytes(std::mem::take(&mut holder.0))
+    Secret::from_bytes_limited(std::mem::take(&mut holder.0), max)
 }
 
 /// Reads a secret from `path`.
@@ -195,6 +210,16 @@ fn read_bounded(mut file: File) -> Result<Secret, SecretError> {
 /// file is the file that is read. Any permission bit for group or others
 /// (`mode & 0o077`) refuses the file.
 pub fn read_secret_file(path: &Path, policy: &SecretFilePolicy) -> Result<Secret, SecretError> {
+    read_secret_file_limited(path, policy, MAX_SECRET_LEN)
+}
+
+/// Like [`read_secret_file`] with an own upper bound in bytes (for tables
+/// such as the broker's token file, at most [`MAX_SECRET_TABLE_LEN`]).
+pub fn read_secret_file_limited(
+    path: &Path,
+    policy: &SecretFilePolicy,
+    max: usize,
+) -> Result<Secret, SecretError> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(O_NOFOLLOW)
@@ -213,13 +238,50 @@ pub fn read_secret_file(path: &Path, policy: &SecretFilePolicy) -> Result<Secret
     if meta.mode() & 0o077 != 0 {
         return Err(SecretError::TooPermissive);
     }
-    read_bounded(file)
+    read_bounded(file, max.min(MAX_SECRET_TABLE_LEN))
 }
 
-/// Reads a secret from the inherited descriptor `fd` and closes it.
-pub fn read_secret_fd(fd: i32) -> Result<Secret, SecretError> {
-    let owned = sys::adopt_fd(fd).map_err(|_| SecretError::BadDescriptor)?;
-    read_bounded(File::from(owned))
+/// Reads a secret of at most `max` bytes from an inherited descriptor
+/// (a pipe or a file) and closes it. The descriptor comes from
+/// `Runtime::take_inherited` (daemons) or [`take_inherited_secret`]
+/// (tools); a bare number is never trusted.
+pub fn read_secret_owned(fd: OwnedFd, max: usize) -> Result<Secret, SecretError> {
+    read_bounded(File::from(fd), max.min(MAX_SECRET_TABLE_LEN))
+}
+
+/// For tools without the service runtime: takes over the inherited
+/// descriptor `fd` (a pipe or a regular file, checked) and reads a secret
+/// of at most `max` bytes from it. Works once per process and must come
+/// before the tool opens anything.
+pub fn take_inherited_secret(fd: i32, max: usize) -> Result<Secret, SecretError> {
+    let mut inherited =
+        sys::take_inherited(&[fd], false, 0).map_err(|_| SecretError::BadDescriptor)?;
+    let owned = inherited.take(fd).ok_or(SecretError::BadDescriptor)?;
+    read_secret_owned(owned, max)
+}
+
+/// For tools without the service runtime: reads a secret of at most `max`
+/// bytes from a checked file or an inherited descriptor (see
+/// [`take_inherited_secret`]: one descriptor per process).
+pub fn read_secret_source(source: &SecretSource, max: usize) -> Result<Secret, SecretError> {
+    match source {
+        SecretSource::File(path) => {
+            read_secret_file_limited(path, &SecretFilePolicy::for_current_user(), max)
+        }
+        SecretSource::Fd(fd) => take_inherited_secret(*fd, max),
+    }
+}
+
+/// Where a daemon finds a secret: a checked file or an inherited
+/// descriptor. Never the command line or the environment.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SecretSource {
+    /// A file owned by the service's user (or root) without access for
+    /// group and others.
+    File(std::path::PathBuf),
+    /// A descriptor the supervisor passed under this number; it must be
+    /// declared in `ServiceSpec::inherited`.
+    Fd(i32),
 }
 
 #[cfg(test)]
@@ -346,12 +408,26 @@ mod tests {
     }
 
     #[test]
-    fn unusable_descriptors_are_refused() {
-        for fd in [-1, 0, 2, 999_979] {
-            assert!(matches!(
-                read_secret_fd(fd),
-                Err(SecretError::BadDescriptor)
-            ));
-        }
+    fn a_secret_is_read_from_an_owned_pipe_with_its_own_bound() {
+        use std::io::Write;
+        let (reader, mut writer) = std::io::pipe().unwrap();
+        writer.write_all(b"pipe-secret\n").unwrap();
+        drop(writer);
+        let secret = read_secret_owned(OwnedFd::from(reader), 64).unwrap();
+        assert_eq!(secret.expose(), b"pipe-secret");
+        let (reader, mut writer) = std::io::pipe().unwrap();
+        writer.write_all(&[b'a'; 65]).unwrap();
+        drop(writer);
+        assert!(matches!(
+            read_secret_owned(OwnedFd::from(reader), 64),
+            Err(SecretError::TooLong)
+        ));
+        let table = vec![b't'; MAX_SECRET_LEN * 3];
+        assert_eq!(
+            Secret::from_bytes_limited(table, MAX_SECRET_TABLE_LEN)
+                .unwrap()
+                .len(),
+            MAX_SECRET_LEN * 3
+        );
     }
 }

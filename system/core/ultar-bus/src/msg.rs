@@ -76,11 +76,14 @@ pub enum MsgKey {
     PathNotSocket,
     /// The broker stopped.
     Stopped,
+    /// The listeners' connection bounds need more descriptors or threads
+    /// than the process may have; details follow.
+    LimitsTooSmall,
 }
 
 impl MsgKey {
     /// All keys, for completeness checks.
-    pub const ALL: [MsgKey; 15] = [
+    pub const ALL: [MsgKey; 16] = [
         MsgKey::Usage,
         MsgKey::Listening,
         MsgKey::BadArguments,
@@ -96,13 +99,15 @@ impl MsgKey {
         MsgKey::HardeningFailed,
         MsgKey::PathNotSocket,
         MsgKey::Stopped,
+        MsgKey::LimitsTooSmall,
     ];
 }
 
 const USAGE_SYNOPSIS: &str =
     "ultar-busd [--listen PATH=IDENTITY | --listen-cred PATH | --listen-token PATH]... \
-     [--mode OCTAL] [--owner UID] [--group GID] [--uid-map FILE] [--token-file FILE] \
-     [--policy FILE | --allow-all] [--log-socket PATH] [--allow-root] [PATH]";
+     [--mode OCTAL] [--owner UID] [--group GID] [--max-connections N] [--uid-map FILE] \
+     [--token-file FILE | --token-fd N] [--policy FILE | --allow-all] [--log-socket PATH] \
+     [--allow-root] [PATH]";
 
 fn arabic(key: MsgKey) -> &'static str {
     match key {
@@ -123,6 +128,9 @@ fn arabic(key: MsgKey) -> &'static str {
         MsgKey::HardeningFailed => "تعذّر تطبيق قيود الحماية الذاتية:",
         MsgKey::PathNotSocket => "مسار المقبس مشغول بملف ليس مقبسًا؛ لن يُحذف.",
         MsgKey::Stopped => "توقّف ناقل النظام.",
+        MsgKey::LimitsTooSmall => {
+            "حدود الاتصالات تتطلب واصفات ملفات أو خيوطًا أكثر مما يُسمح للعملية؛ قلّل ‎--max-connections‎:"
+        }
     }
 }
 
@@ -147,6 +155,10 @@ fn english(key: MsgKey) -> &'static str {
             "The socket path is occupied by something that is not a socket; it is left alone."
         }
         MsgKey::Stopped => "The system bus stopped.",
+        MsgKey::LimitsTooSmall => {
+            "The connection bounds need more descriptors or threads than the process may have; \
+             lower --max-connections:"
+        }
     }
 }
 
@@ -171,6 +183,10 @@ fn german(key: MsgKey) -> &'static str {
             "Am Sockel-Pfad liegt etwas, das kein Sockel ist; es wird nicht gelöscht."
         }
         MsgKey::Stopped => "Der Systembus wurde beendet.",
+        MsgKey::LimitsTooSmall => {
+            "Die Verbindungsgrenzen brauchen mehr Deskriptoren oder Threads, als der Prozess \
+             haben darf; --max-connections senken:"
+        }
     }
 }
 

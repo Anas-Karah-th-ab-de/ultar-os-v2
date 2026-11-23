@@ -40,7 +40,7 @@ fn the_shipped_definition_parses_with_valid_bounds() {
     );
     assert!(args.policy.is_some() && !args.allow_all && args.allow_root);
     assert!(
-        args.chain_key_file.is_none(),
+        args.chain_key.is_none(),
         "no key file is shipped; see INTEGRATION.md"
     );
 }

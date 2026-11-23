@@ -169,7 +169,12 @@ fn limits_are_applied_and_root_must_be_declared() {
         })
     };
     assert!(has("Max open files", "256"), "{limits}");
-    assert!(has("Max address space", "536870912"), "{limits}");
+    // No address-space limit of its own (review round 3, R3-B0): the
+    // group's memory.max bounds memory; the value is the inherited one.
+    assert!(has(
+        "Max address space",
+        &own_soft_limit("Max address space")
+    ));
     assert!(has("Max core file size", "0"), "{limits}");
     assert!(has("Max processes", "128"), "{limits}");
     send_signal(child.id(), "TERM");
@@ -388,4 +393,15 @@ fn the_shipped_service_definition_is_a_command_line_the_daemon_accepts() {
         Some(Path::new("/run/ultar/log/settingsd.sock"))
     );
     assert!(args.allow_root && args.token_file.is_none() && args.token_fd.is_none());
+}
+
+/// The soft limit `name` of this test process, as `/proc` shows it.
+fn own_soft_limit(name: &str) -> String {
+    let own = std::fs::read_to_string("/proc/self/limits").unwrap();
+    let line = own.lines().find(|line| line.starts_with(name)).unwrap();
+    line[name.len()..]
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned()
 }

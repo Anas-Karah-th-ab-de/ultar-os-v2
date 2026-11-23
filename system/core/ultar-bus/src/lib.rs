@@ -71,8 +71,8 @@ mod topic;
 pub mod wire;
 
 pub use broker::{
-    Broker, BrokerBuilder, BrokerConfig, BrokerEvent, BrokerObserver, BrokerStats, Operation,
-    SocketAccess,
+    Broker, BrokerBuilder, BrokerConfig, BrokerEvent, BrokerObserver, BrokerStats, Needs,
+    Operation, SocketAccess,
 };
 pub use client::{
     Client, ClientOptions, IncomingRequest, RawEvent, ServiceEndpoint, Subscription,

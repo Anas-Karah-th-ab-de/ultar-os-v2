@@ -13,10 +13,15 @@
 //!   written under the own identity. The service does not wait for the
 //!   bus: ingestion starts at once, the bus is joined when it appears.
 //! * `--chain-key-file FILE`: secret key that authenticates the hash
-//!   chain (owner and mode of the file are checked).
+//!   chain (owner and mode of the file are checked). `--chain-key-fd N`
+//!   reads it from an inherited descriptor instead (a pipe or file the
+//!   service manager opened; for kernels whose file owners and modes
+//!   cannot be checked). `--bus-token-file`/`--bus-token-fd` likewise.
 //!
 //! `SIGTERM`/`SIGINT`: stop accepting, write everything out, sync, remove
-//! the sockets, exit 0. `SIGHUP`: read the kernel log now.
+//! the sockets, exit 0. `SIGHUP`: read the kernel log now and read the
+//! policy again (a policy that does not load keeps the old one and is
+//! logged as `log.policy_reload_failed`).
 //!
 //! One line is written to standard output when the service takes records.
 
@@ -42,17 +47,23 @@ use ultar_logd::storage::{DirStorage, MemStorage, Storage};
 use ultar_service::log::Level;
 use ultar_service::{
     exit, peercred, read_secret_file, BusSession, HardeningError, Lifecycle, Limits, Runtime,
-    SecretFilePolicy, ServiceSpec, SessionOptions, StartError, UidMap, Wake,
+    Secret, SecretFilePolicy, SecretSource, ServiceSpec, SessionOptions, StartError, UidMap, Wake,
 };
 
 /// Records and requests that may wait for the engine thread.
 const QUEUE: usize = 4096;
 /// Pause before the bus is tried again after it went away for good.
 const BUS_RETRY: Duration = Duration::from_millis(500);
+/// Largest chain key or bus token read from a file or descriptor.
+const MAX_SECRET: usize = 4096;
 /// Limits of the log service: more descriptors than the standard daemon
 /// (128 connections), fewer threads are not possible (one per connection).
+/// No address-space limit: with one thread per connection the C library's
+/// per-thread memory pools reserve address space far beyond what is used,
+/// and a refused reservation aborts the process (review round 3, R3-B0);
+/// the memory bound is the group's `memory.max`.
 const LIMITS: Limits = Limits {
-    address_space: Some(512 << 20),
+    address_space: None,
     open_files: Some(256),
     processes: Some(256),
     core_dumps: false,
@@ -84,6 +95,11 @@ fn start_runtime(args: &DaemonArgs, lang: Lang) -> Result<Runtime, ExitCode> {
     let mut spec = ServiceSpec::new("ultar-logd");
     spec.hardening.allow_root = args.allow_root;
     spec.hardening.limits = Some(LIMITS);
+    for source in [&args.chain_key, &args.bus_token].into_iter().flatten() {
+        if let SecretSource::Fd(fd) = source {
+            spec.inherited.push(*fd);
+        }
+    }
     Runtime::start(spec).map_err(|error| {
         match error {
             StartError::Hardening(HardeningError::RunningAsRoot) => {
@@ -101,28 +117,42 @@ struct Loaded {
     chain: Chain,
     access: Box<dyn Access>,
     listeners: Vec<ListenerSpec>,
+    /// Bus token read once from an inherited descriptor.
+    bus_token: Option<Secret>,
 }
 
-fn load(args: &DaemonArgs, lang: Lang) -> Option<Loaded> {
-    let chain = match &args.chain_key_file {
+/// Reads a secret from its source; `Err(())`: a message was printed.
+fn secret(runtime: &Runtime, source: &SecretSource, lang: Lang) -> Result<Secret, ()> {
+    runtime
+        .read_secret(source, MAX_SECRET)
+        .map_err(|error| say_detail(lang, Msg::SecretRejected, &error))
+}
+
+/// The policy's view of who reads what (everything without a policy).
+fn load_access(
+    policy: Option<&std::path::Path>,
+) -> Result<Box<dyn Access>, ultar_bus::PolicyError> {
+    match policy {
+        None => Ok(Box::new(AllowAll)),
+        Some(path) => Ok(Box::new(PolicyAccess(Policy::load(path)?))),
+    }
+}
+
+fn load(args: &DaemonArgs, lang: Lang, runtime: &Runtime) -> Option<Loaded> {
+    let chain = match &args.chain_key {
         None => Chain::unkeyed(),
-        Some(path) => match read_secret_file(path, &SecretFilePolicy::for_current_user()) {
-            Ok(key) => Chain::keyed(key.expose()),
-            Err(error) => {
-                say_detail(lang, Msg::SecretRejected, &error);
-                return None;
-            }
-        },
+        Some(source) => Chain::keyed(secret(runtime, source, lang).ok()?.expose()),
     };
-    let access: Box<dyn Access> = match &args.policy {
-        None => Box::new(AllowAll),
-        Some(path) => match Policy::load(path) {
-            Ok(policy) => Box::new(PolicyAccess(policy)),
-            Err(error) => {
-                say_detail(lang, Msg::PolicyRejected, &error);
-                return None;
-            }
-        },
+    let bus_token = match &args.bus_token {
+        Some(source @ SecretSource::Fd(_)) => Some(secret(runtime, source, lang).ok()?),
+        _ => None,
+    };
+    let access = match load_access(args.policy.as_deref()) {
+        Ok(access) => access,
+        Err(error) => {
+            say_detail(lang, Msg::PolicyRejected, &error);
+            return None;
+        }
     };
     let map = match &args.uid_map {
         Some(path) if args.listeners.iter().any(|l| l.name.is_none()) => {
@@ -157,6 +187,7 @@ fn load(args: &DaemonArgs, lang: Lang) -> Option<Loaded> {
         chain,
         access,
         listeners,
+        bus_token,
     })
 }
 
@@ -182,7 +213,23 @@ fn set_current(current: &CurrentBus, client: Option<ultar_bus::Client>) {
 
 /// Serves the bus service `log` for as long as the daemon runs: joins the
 /// bus when it appears and again whenever the connection is lost for good.
-fn bus_loop(args: &DaemonArgs, inputs: &SyncSender<Input>, lifecycle: &Lifecycle) {
+/// The token for the next connection attempt: a token file is read again
+/// each time (it may have been replaced), a descriptor's token is kept.
+fn bus_token(args: &DaemonArgs, kept: Option<&Secret>) -> Option<Secret> {
+    match &args.bus_token {
+        Some(SecretSource::File(path)) => {
+            read_secret_file(path, &SecretFilePolicy::for_current_user()).ok()
+        }
+        _ => kept.map(Secret::duplicate),
+    }
+}
+
+fn bus_loop(
+    args: &DaemonArgs,
+    token: Option<Secret>,
+    inputs: &SyncSender<Input>,
+    lifecycle: &Lifecycle,
+) {
     let Some(socket) = &args.bus else {
         return;
     };
@@ -196,11 +243,11 @@ fn bus_loop(args: &DaemonArgs, inputs: &SyncSender<Input>, lifecycle: &Lifecycle
     while !lifecycle.is_stopping() {
         let mut options = SessionOptions::named("ultar-logd");
         options.connect_wait = BUS_RETRY;
-        if let Some(path) = &args.bus_token_file {
-            options.token = read_secret_file(path, &SecretFilePolicy::for_current_user()).ok();
-        }
+        options.token = bus_token(args, token.as_ref());
+        // A stop ends the attempts at once (review round 3, R3-S1).
+        options.stop = Some(lifecycle.clone());
         let Ok(session) = BusSession::connect(socket, options) else {
-            // The connection attempt itself waited; try again.
+            // The connection attempt itself waited (or the service stops).
             continue;
         };
         set_current(&current, Some(session.client().clone()));
@@ -238,11 +285,13 @@ impl Running {
     }
 }
 
-fn start_engine(
-    args: &DaemonArgs,
-    loaded: Loaded,
-    lang: Lang,
-) -> Option<(Running, Vec<ListenerSpec>)> {
+/// What the start hands on besides the engine.
+struct Rest {
+    listeners: Vec<ListenerSpec>,
+    bus_token: Option<Secret>,
+}
+
+fn start_engine(args: &DaemonArgs, loaded: Loaded, lang: Lang) -> Option<(Running, Rest)> {
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
     let (storage, on_disk) = open_storage(args, lang);
     let mut core = Core::open(args.config, storage, loaded.chain, clock.clone());
@@ -256,14 +305,31 @@ fn start_engine(
         .name("ultar-logd".into())
         .spawn(move || engine.run(&queue))
         .ok()?;
-    Some((Running { inputs, engine }, loaded.listeners))
+    let rest = Rest {
+        listeners: loaded.listeners,
+        bus_token: loaded.bus_token,
+    };
+    Some((Running { inputs, engine }, rest))
+}
+
+/// Reads the policy again and hands it to the engine; a policy that does
+/// not load keeps the old one (review round 3, R3-P1).
+fn reload_policy(args: &DaemonArgs, inputs: &SyncSender<Input>) {
+    if args.policy.is_none() {
+        return;
+    }
+    let input = match load_access(args.policy.as_deref()) {
+        Ok(access) => Input::Access(access),
+        Err(_) => Input::Internal(Level::Error, "log.policy_reload_failed"),
+    };
+    let _ = inputs.send(input);
 }
 
 fn run(args: DaemonArgs, lang: Lang, runtime: &Runtime) -> i32 {
-    let Some(loaded) = load(&args, lang) else {
+    let Some(loaded) = load(&args, lang, runtime) else {
         return exit::FAILURE;
     };
-    let Some((running, listeners)) = start_engine(&args, loaded, lang) else {
+    let Some((running, rest)) = start_engine(&args, loaded, lang) else {
         return exit::FAILURE;
     };
     let sink = Arc::new(InputSink(running.inputs.clone()));
@@ -271,7 +337,7 @@ fn run(args: DaemonArgs, lang: Lang, runtime: &Runtime) -> i32 {
         rate: args.config.rate,
         ..IngestLimits::STANDARD
     };
-    let ingest = match Ingest::start(&listeners, limits, sink) {
+    let ingest = match Ingest::start(&rest.listeners, limits, sink) {
         Ok(ingest) => ingest,
         Err(error) => {
             say_detail(lang, Msg::SocketFailed, &error);
@@ -281,10 +347,10 @@ fn run(args: DaemonArgs, lang: Lang, runtime: &Runtime) -> i32 {
     };
     let bus_thread = {
         let (args, inputs) = (args.clone(), running.inputs.clone());
-        let lifecycle = runtime.lifecycle().clone();
+        let (lifecycle, token) = (runtime.lifecycle().clone(), rest.bus_token);
         thread::Builder::new()
             .name("ultar-logd-bus".into())
-            .spawn(move || bus_loop(&args, &inputs, &lifecycle))
+            .spawn(move || bus_loop(&args, token, &inputs, &lifecycle))
     };
     runtime.ready();
     let mut out = std::io::stdout();
@@ -294,6 +360,7 @@ fn run(args: DaemonArgs, lang: Lang, runtime: &Runtime) -> i32 {
     while let Wake::Reload(count) = runtime.lifecycle().wait_change(reloads) {
         reloads = count;
         let _ = running.inputs.send(Input::ReadKernel);
+        reload_policy(&args, &running.inputs);
     }
     // Stop accepting and remove the sockets, leave the bus, then let the
     // engine write everything out.

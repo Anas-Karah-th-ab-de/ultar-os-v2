@@ -9,7 +9,7 @@ use std::time::Duration;
 use ultar_bus::messages::log::{Query, Stats, MAX_WAIT_MS};
 use ultar_bus::{BusError, Client, ClientOptions, ErrorCode};
 use ultar_service::log::Level;
-use ultar_service::{read_secret_file, SecretFilePolicy};
+use ultar_service::{read_secret_source, SecretSource};
 
 mod offline;
 
@@ -43,8 +43,8 @@ pub enum Command {
     Verify {
         /// The directory.
         dir: PathBuf,
-        /// Chain key file.
-        key_file: Option<PathBuf>,
+        /// Chain key (`--key-file` or `--key-fd`).
+        key: Option<SecretSource>,
     },
     /// Write a log directory to a text file for support.
     Export {
@@ -52,8 +52,8 @@ pub enum Command {
         dir: PathBuf,
         /// The file to write.
         out: PathBuf,
-        /// Chain key file.
-        key_file: Option<PathBuf>,
+        /// Chain key (`--key-file` or `--key-fd`).
+        key: Option<SecretSource>,
         /// Include the kernel's own lines.
         include_kernel_text: bool,
     },
@@ -64,8 +64,9 @@ pub enum Command {
 pub struct CliArgs {
     /// Bus socket.
     pub bus: PathBuf,
-    /// Token file for a bus listener that authenticates by token.
-    pub token_file: Option<PathBuf>,
+    /// Token for a bus listener that authenticates by token
+    /// (`--token-file` or `--token-fd`).
+    pub token: Option<SecretSource>,
     /// The command.
     pub command: Command,
 }
@@ -77,8 +78,8 @@ pub struct UsageError;
 #[derive(Default)]
 struct Options {
     bus: Option<PathBuf>,
-    token_file: Option<PathBuf>,
-    key_file: Option<PathBuf>,
+    token: Option<SecretSource>,
+    key: Option<SecretSource>,
     query: Query,
     count: Option<u64>,
     include_kernel_text: bool,
@@ -92,11 +93,29 @@ fn number<T: std::str::FromStr>(text: &str) -> Result<T, UsageError> {
     text.parse().map_err(|_| UsageError)
 }
 
+/// A secret has one source; naming it twice is a usage error.
+fn set_secret(slot: &mut Option<SecretSource>, source: SecretSource) -> Result<(), UsageError> {
+    if slot.replace(source).is_some() {
+        return Err(UsageError);
+    }
+    Ok(())
+}
+
+/// An inherited descriptor number above the standard streams.
+fn secret_fd(text: &str) -> Result<SecretSource, UsageError> {
+    match number::<i32>(text)? {
+        fd if fd >= 3 => Ok(SecretSource::Fd(fd)),
+        _ => Err(UsageError),
+    }
+}
+
 fn option(options: &mut Options, name: &str, value: String) -> Result<(), UsageError> {
     match name {
         "--bus" => options.bus = Some(PathBuf::from(value)),
-        "--token-file" => options.token_file = Some(PathBuf::from(value)),
-        "--key-file" => options.key_file = Some(PathBuf::from(value)),
+        "--token-file" => set_secret(&mut options.token, SecretSource::File(value.into()))?,
+        "--token-fd" => set_secret(&mut options.token, secret_fd(&value)?)?,
+        "--key-file" => set_secret(&mut options.key, SecretSource::File(value.into()))?,
+        "--key-fd" => set_secret(&mut options.key, secret_fd(&value)?)?,
         "--lang" => {}
         "--service" => options.query.service = Some(value),
         "--level" => {
@@ -135,19 +154,19 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<CliArgs, UsageErr
         ["stats"] => Command::Stats,
         ["verify", dir] => Command::Verify {
             dir: PathBuf::from(dir),
-            key_file: options.key_file,
+            key: options.key,
         },
         ["export", dir, out] => Command::Export {
             dir: PathBuf::from(dir),
             out: PathBuf::from(out),
-            key_file: options.key_file,
+            key: options.key,
             include_kernel_text: options.include_kernel_text,
         },
         _ => return Err(UsageError),
     };
     Ok(CliArgs {
         bus: options.bus.unwrap_or_else(|| PathBuf::from(DEFAULT_BUS)),
-        token_file: options.token_file,
+        token: options.token,
         command,
     })
 }
@@ -180,10 +199,13 @@ impl Streams<'_> {
     }
 }
 
+/// Largest token or chain key the tool reads.
+pub(crate) const MAX_SECRET: usize = 4096;
+
 fn connect(args: &CliArgs, io: &mut Streams<'_>) -> Result<Client, i32> {
     let mut options = ClientOptions::named("ulog");
-    if let Some(path) = &args.token_file {
-        match read_secret_file(path, &SecretFilePolicy::for_current_user()) {
+    if let Some(source) = &args.token {
+        match read_secret_source(source, MAX_SECRET) {
             Ok(secret) => options.token = secret.expose_str().map(str::to_owned),
             Err(error) => {
                 io.say_detail(Msg::SecretRejected, &error);
@@ -257,17 +279,17 @@ fn stats(client: &Client, io: &mut Streams<'_>) -> i32 {
 /// Runs `ulog` and returns its exit code.
 pub fn run(args: &CliArgs, io: &mut Streams<'_>) -> i32 {
     match &args.command {
-        Command::Verify { dir, key_file } => offline::run_verify(dir, key_file.as_deref(), io),
+        Command::Verify { dir, key } => offline::run_verify(dir, key.as_ref(), io),
         Command::Export {
             dir,
             out,
-            key_file,
+            key,
             include_kernel_text,
         } => {
             let options = ExportOptions {
                 include_kernel_text: *include_kernel_text,
             };
-            offline::run_export(dir, out, key_file.as_deref(), options, io)
+            offline::run_export(dir, out, key.as_ref(), options, io)
         }
         Command::Query(_) | Command::Follow { .. } | Command::Stats => {
             let client = match connect(args, io) {
@@ -326,7 +348,9 @@ mod tests {
         assert_eq!(query.command, Command::Query(expected));
         let follow = parsed(&["follow", "--count", "3", "--token-file", "/t"]).unwrap();
         assert_eq!(follow.bus, PathBuf::from(DEFAULT_BUS));
-        assert_eq!(follow.token_file, Some(PathBuf::from("/t")));
+        assert_eq!(follow.token, Some(SecretSource::File("/t".into())));
+        let by_fd = parsed(&["stats", "--token-fd", "5"]).unwrap();
+        assert_eq!(by_fd.token, Some(SecretSource::Fd(5)));
         assert!(matches!(
             follow.command,
             Command::Follow { count: Some(3), .. }
@@ -342,7 +366,7 @@ mod tests {
                 .command,
             Command::Verify {
                 dir: "/d".into(),
-                key_file: Some("/k".into())
+                key: Some(SecretSource::File("/k".into()))
             }
         );
         assert_eq!(
@@ -352,7 +376,7 @@ mod tests {
             Command::Export {
                 dir: "/d".into(),
                 out: "/o".into(),
-                key_file: None,
+                key: None,
                 include_kernel_text: true
             }
         );
@@ -370,6 +394,9 @@ mod tests {
             &["query", "--limit"],
             &["query", "--frob", "1"],
             &["query", "--token", "abc"],
+            &["verify", "/d", "--key-fd", "1"],
+            &["verify", "/d", "--key-fd", "3", "--key-file", "/k"],
+            &["stats", "--token-file", "/t", "--token-fd", "4"],
             &["bogus"],
         ] {
             assert_eq!(parsed(bad), Err(UsageError), "{bad:?}");

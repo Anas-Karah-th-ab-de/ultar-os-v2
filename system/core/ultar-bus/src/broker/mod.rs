@@ -1,10 +1,17 @@
 //! The broker: accepts connections on Unix domain sockets, authenticates
 //! them, enforces the policy and routes requests and events.
 //!
-//! The broker uses blocking I/O only. Every thread sleeps in `accept`,
-//! `read` or a queue until there is work, so an idle bus causes no wakeups.
+//! Every thread sleeps in `poll`, `read` or a queue until there is work,
+//! so an idle bus causes no wakeups. Each listener has one gate thread
+//! that accepts and runs all handshakes without blocking on a peer; an
+//! admitted connection gets a reader and a writer thread and one
+//! descriptor (review round 3, R3-B0/R3-B1).
+//!
+//! What a configuration costs at most is [`BrokerBuilder::needs`]: the host
+//! program checks it against its descriptor and thread limits.
 
 mod conn;
+mod gate;
 mod observe;
 mod route;
 #[cfg(test)]
@@ -22,17 +29,10 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-
-/// Stack size of the per-connection reader thread.
-const READER_STACK: usize = 256 * 1024;
-/// Pause after a failed `accept` (e.g. out of file descriptors).
-const ACCEPT_RETRY: Duration = Duration::from_millis(50);
-/// Connections that may be in the handshake beyond `max_connections`.
-const HANDSHAKE_SLACK: usize = 16;
 
 /// Limits and timeouts of a broker.
 #[derive(Clone, Debug)]
@@ -43,8 +43,12 @@ pub struct BrokerConfig {
     pub queue_capacity: usize,
     /// Bytes that may wait for one client (one frame always fits).
     pub queue_bytes: usize,
-    /// Most authenticated connections at the same time, per listener.
+    /// Most authenticated connections at the same time, per listener
+    /// (a listener may set its own, see [`SocketAccess::connections`]).
     pub max_connections: usize,
+    /// Most connections of one listener in the handshake at the same time;
+    /// further ones wait in the kernel's listen queue.
+    pub max_handshakes: usize,
     /// Most subscriptions per connection.
     pub max_subscriptions: usize,
     /// Most topics with a retained value.
@@ -64,6 +68,7 @@ impl Default for BrokerConfig {
             queue_capacity: 1024,
             queue_bytes: 8 << 20,
             max_connections: 256,
+            max_handshakes: 16,
             max_subscriptions: 256,
             max_retained: 256,
             handshake_timeout: Duration::from_secs(2),
@@ -111,8 +116,9 @@ impl Shared {
     }
 }
 
-/// Who may reach a socket file: permission bits, owner and group. Fields
-/// left `None` keep what `bind` produced under the process's umask.
+/// Who may reach a socket file: permission bits, owner and group, and how
+/// many may be connected through it. Fields left `None` keep what `bind`
+/// produced under the process's umask, and the broker's limit.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct SocketAccess {
     /// Permission bits, e.g. `0o660`.
@@ -121,6 +127,9 @@ pub struct SocketAccess {
     pub owner: Option<u32>,
     /// Owning group id.
     pub group: Option<u32>,
+    /// Most authenticated connections of this socket (default:
+    /// [`BrokerConfig::max_connections`]).
+    pub connections: Option<usize>,
 }
 
 impl SocketAccess {
@@ -130,12 +139,23 @@ impl SocketAccess {
             mode: Some(mode),
             owner: None,
             group: None,
+            connections: None,
         }
     }
 }
 
+/// The most a broker configuration can cost.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Needs {
+    /// Descriptors: one per connection (admitted or in the handshake) and
+    /// one per listener.
+    pub descriptors: usize,
+    /// Threads: two per admitted connection and one gate per listener.
+    pub threads: usize,
+}
+
 /// Decrements the live connection thread count when dropped.
-struct LiveGuard(Arc<Shared>);
+pub(crate) struct LiveGuard(pub(crate) Arc<Shared>);
 
 impl Drop for LiveGuard {
     fn drop(&mut self) {
@@ -203,6 +223,27 @@ impl BrokerBuilder {
             access,
         });
         self
+    }
+
+    /// The most descriptors and threads the configured listeners can use
+    /// (review round 3, R3-B1: the sum must stay below the process limits,
+    /// or one listener's peers lock out the others).
+    pub fn needs(&self) -> Needs {
+        let config = &self.config;
+        let mut needs = Needs::default();
+        for spec in &self.listeners {
+            let connections = spec.access.connections.unwrap_or(config.max_connections);
+            needs.descriptors = needs
+                .descriptors
+                .saturating_add(connections)
+                .saturating_add(config.max_handshakes)
+                .saturating_add(1);
+            needs.threads = needs
+                .threads
+                .saturating_add(connections.saturating_mul(2))
+                .saturating_add(1);
+        }
+        needs
     }
 
     /// Binds all sockets and starts serving.
@@ -292,11 +333,15 @@ impl Broker {
         let listener = bind(&spec.path)?;
         self.paths.push(spec.path.clone());
         restrict(&spec.path, &spec.access)?;
-        let shared = self.shared.clone();
         let index = self.paths.len();
+        let limit = spec
+            .access
+            .connections
+            .unwrap_or(self.shared.config.max_connections);
+        let gate = gate::Gate::new(self.shared.clone(), listener, spec.auth, index, limit);
         let acceptor = thread::Builder::new()
-            .name("ultar-bus-accept".into())
-            .spawn(move || accept_loop(&shared, &listener, &spec.auth, index))
+            .name("ultar-bus-gate".into())
+            .spawn(move || gate.run())
             .map_err(BusError::Io)?;
         self.acceptors.push(acceptor);
         Ok(())
@@ -339,7 +384,7 @@ impl Broker {
             entry.control.close_with(ErrorCode::ShuttingDown);
         }
         for path in &self.paths {
-            // Wakes the acceptor out of its blocking `accept`.
+            // Wakes the gate out of its `poll`.
             let _ = UnixStream::connect(path);
         }
         for acceptor in self.acceptors.drain(..) {
@@ -366,62 +411,4 @@ impl Drop for Broker {
     fn drop(&mut self) {
         self.stop();
     }
-}
-
-fn accept_loop(
-    shared: &Arc<Shared>,
-    listener: &UnixListener,
-    auth: &Arc<dyn PeerIdentity>,
-    index: usize,
-) {
-    // Threads of this listener only: one socket cannot starve the others.
-    let own = Arc::new(AtomicUsize::new(0));
-    for incoming in listener.incoming() {
-        if shared.stopping.load(Ordering::SeqCst) {
-            return;
-        }
-        match incoming {
-            Ok(stream) => spawn_connection(shared, stream, auth, index, &own),
-            Err(_) => thread::sleep(ACCEPT_RETRY),
-        }
-    }
-}
-
-struct OwnGuard(Arc<AtomicUsize>);
-
-impl Drop for OwnGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-fn spawn_connection(
-    shared: &Arc<Shared>,
-    stream: UnixStream,
-    auth: &Arc<dyn PeerIdentity>,
-    index: usize,
-    own: &Arc<AtomicUsize>,
-) {
-    let limit = shared
-        .config
-        .max_connections
-        .saturating_add(HANDSHAKE_SLACK);
-    if own.fetch_add(1, Ordering::SeqCst) >= limit {
-        own.fetch_sub(1, Ordering::SeqCst);
-        return;
-    }
-    let own_guard = OwnGuard(own.clone());
-    *lock(&shared.live_threads) += 1;
-    let guard = LiveGuard(shared.clone());
-    let auth = auth.clone();
-    // If the thread cannot be created the closure is dropped, and with it
-    // the guard and the stream.
-    let _ = thread::Builder::new()
-        .name("ultar-bus-conn".into())
-        .stack_size(READER_STACK)
-        .spawn(move || {
-            conn::serve(&guard.0, stream, auth.as_ref(), index);
-            drop(own_guard);
-            drop(guard);
-        });
 }

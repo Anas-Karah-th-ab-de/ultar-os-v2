@@ -87,12 +87,44 @@ fn limits_round_trip_and_the_mask_is_returned() {
 }
 
 #[test]
-fn adopt_refuses_standard_streams_closed_numbers_and_second_owners() {
-    assert_eq!(adopt_fd(1).err(), Some(Errno::EINVAL));
-    assert_eq!(adopt_fd(-4).err(), Some(Errno::EINVAL));
-    assert_eq!(adopt_fd(999_983).err(), Some(Errno::EBADF));
+fn inherited_descriptors_are_checked_and_taken_only_once() {
+    // The only test of this binary that calls `take_inherited`: it works
+    // once per process.
+    use std::os::fd::IntoRawFd;
+    let (reader, writer) = std::io::pipe().unwrap();
+    let pipe_fd = reader.into_raw_fd();
+    let socket = UnixStream::pair().unwrap().0.into_raw_fd();
+    // A socket is not an acceptable inherited descriptor.
+    let refused = take_inherited(&[pipe_fd, socket], false, 0);
+    assert_eq!(refused.err(), Some(InheritError::WrongType(socket)));
+    // The first call is spent – also when it failed.
+    let again = take_inherited(&[pipe_fd], false, 0);
+    assert_eq!(again.err(), Some(InheritError::AlreadyTaken));
+    drop(writer);
+    for error in [
+        InheritError::AlreadyTaken,
+        InheritError::Reserved(1),
+        InheritError::NotOpen(9),
+        InheritError::WrongType(5),
+        InheritError::Kernel(4, Errno::EBADF),
+    ] {
+        assert!(!error.to_string().is_empty());
+        assert_eq!(error.fd().is_none(), error == InheritError::AlreadyTaken);
+    }
     assert!(!is_open(999_983));
     assert!(!is_open(-1));
+}
+
+#[test]
+fn polling_reports_readable_descriptors_and_honours_the_timeout() {
+    use std::io::Write;
+    let (quiet, _keep) = std::io::pipe().unwrap();
+    let (ready, mut writer) = std::io::pipe().unwrap();
+    let idle = poll_readable(&[quiet.as_fd()], Some(std::time::Duration::from_millis(10)));
+    assert_eq!(idle, Ok(vec![false]));
+    writer.write_all(b"x").unwrap();
+    let both = poll_readable(&[quiet.as_fd(), ready.as_fd()], None).unwrap();
+    assert_eq!(both, vec![false, true]);
 }
 
 #[test]

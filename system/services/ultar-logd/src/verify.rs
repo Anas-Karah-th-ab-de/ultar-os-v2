@@ -66,6 +66,9 @@ pub enum Problem {
     /// The head file exists but is not authentic (damaged, or written
     /// without the chain key).
     HeadInvalid,
+    /// Segments exist but no head file: the head is written before the
+    /// first segment, so it was removed, possibly together with the tail.
+    HeadMissing,
 }
 
 impl Problem {
@@ -80,6 +83,7 @@ impl Problem {
             Self::MissingTail { .. } => "missing_tail",
             Self::HeadMismatch => "head_mismatch",
             Self::HeadInvalid => "head_invalid",
+            Self::HeadMissing => "head_missing",
         }
     }
 }
@@ -201,6 +205,8 @@ fn check_head(storage: &dyn Storage, chain: &Chain, walk: &Walk<'_>, report: &mu
     let Some((head_seq, head_link)) = head_of(storage, chain) else {
         if exists {
             report.problems.push(Problem::HeadInvalid);
+        } else if report.segments > 0 {
+            report.problems.push(Problem::HeadMissing);
         }
         return;
     };

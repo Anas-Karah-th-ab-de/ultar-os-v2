@@ -28,13 +28,14 @@ const PURGE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Handle to end a connection from any thread.
 pub(crate) struct LinkControl {
-    stream: UnixStream,
+    /// The connection's one descriptor, shared with reader and writer.
+    stream: Arc<UnixStream>,
     reason: Mutex<Option<ErrorCode>>,
     closing: AtomicBool,
 }
 
 impl LinkControl {
-    pub(crate) fn new(stream: UnixStream) -> Self {
+    pub(crate) fn new(stream: Arc<UnixStream>) -> Self {
         Self {
             stream,
             reason: Mutex::new(None),
@@ -282,7 +283,7 @@ pub(crate) mod testing {
     ) -> Probe {
         let (local, peer) = UnixStream::pair().unwrap();
         let (tx, rx) = sync_channel(capacity);
-        let control = Arc::new(LinkControl::new(local));
+        let control = Arc::new(LinkControl::new(Arc::new(local)));
         state.conns.insert(
             conn,
             ConnEntry {

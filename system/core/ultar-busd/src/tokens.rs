@@ -9,16 +9,25 @@
 //! ```
 //!
 //! The file is a secret: it is read with the owner and mode checks of
-//! [`ultar_service::read_secret_file`] (no access for group or others).
-//! Tokens shorter than [`MIN_TOKEN_LEN`] bytes are refused – a guessable
-//! token is no identity.
+//! [`ultar_service::read_secret_file`] (no access for group or others), or
+//! from a descriptor the service manager passes (`--token-fd`, for kernels
+//! whose file owners and modes cannot be checked). Tokens shorter than
+//! [`MIN_TOKEN_LEN`] bytes are refused – a guessable token is no identity.
+//! The table is bounded: `ultar_service::MAX_SECRET_TABLE_LEN` bytes, [`MAX_TOKENS`]
+//! entries (review round 3, R3-B3).
 
+use std::collections::BTreeSet;
+#[cfg(test)]
 use std::path::Path;
 use ultar_bus::{Identity, TokenIdentity};
-use ultar_service::{read_secret_file, SecretError, SecretFilePolicy};
+#[cfg(test)]
+use ultar_service::{read_secret_file_limited, SecretFilePolicy, MAX_SECRET_TABLE_LEN};
+use ultar_service::{Secret, SecretError};
 
 /// Shortest accepted token in bytes.
 pub const MIN_TOKEN_LEN: usize = 16;
+/// Most entries of a token table.
+pub const MAX_TOKENS: usize = 1024;
 
 /// Why a token file was refused. Carries no token text.
 #[derive(Debug)]
@@ -42,6 +51,8 @@ pub enum TokenFileError {
         /// 1-based line number.
         line: usize,
     },
+    /// More than [`MAX_TOKENS`] entries.
+    TooMany,
 }
 
 impl std::fmt::Display for TokenFileError {
@@ -52,6 +63,7 @@ impl std::fmt::Display for TokenFileError {
             Self::Syntax { line } => write!(f, "line {line}: expected identity = \"token\""),
             Self::WeakToken { line } => write!(f, "line {line}: token too short"),
             Self::Duplicate { line } => write!(f, "line {line}: duplicate identity or token"),
+            Self::TooMany => write!(f, "more than {MAX_TOKENS} entries"),
         }
     }
 }
@@ -75,7 +87,8 @@ fn parse_line(line: &str) -> Option<Option<(Identity, &str)>> {
 /// Parses the text of a token file.
 pub fn parse(text: &str) -> Result<TokenIdentity, TokenFileError> {
     let mut auth = TokenIdentity::new();
-    let mut seen: Vec<(Identity, &str)> = Vec::new();
+    let mut identities: BTreeSet<String> = BTreeSet::new();
+    let mut tokens: BTreeSet<&str> = BTreeSet::new();
     for (index, line) in text.lines().enumerate() {
         let line_number = index + 1;
         let Some(entry) = parse_line(line) else {
@@ -87,26 +100,35 @@ pub fn parse(text: &str) -> Result<TokenIdentity, TokenFileError> {
         if token.len() < MIN_TOKEN_LEN {
             return Err(TokenFileError::WeakToken { line: line_number });
         }
+        if tokens.len() >= MAX_TOKENS {
+            return Err(TokenFileError::TooMany);
+        }
         // Not secret-dependent timing towards a peer: this runs once at
         // start over the operator's own file.
-        if seen
-            .iter()
-            .any(|(id, tok)| *id == identity || *tok == token)
-        {
+        if !identities.insert(identity.as_str().to_owned()) || !tokens.insert(token) {
             return Err(TokenFileError::Duplicate { line: line_number });
         }
-        auth = auth.with_token(token, identity.clone());
-        seen.push((identity, token));
+        auth = auth.with_token(token, identity);
     }
     Ok(auth)
 }
 
-/// Reads and parses a token file.
+/// Parses a token table read from a file or a descriptor.
+pub fn from_secret(secret: &Secret) -> Result<TokenIdentity, TokenFileError> {
+    parse(secret.expose_str().ok_or(TokenFileError::NotText)?)
+}
+
+/// Reads and parses a token file (the daemon reads through the runtime,
+/// which also takes descriptors).
+#[cfg(test)]
 pub fn load(path: &Path) -> Result<TokenIdentity, TokenFileError> {
-    let secret = read_secret_file(path, &SecretFilePolicy::for_current_user())
-        .map_err(TokenFileError::Secret)?;
-    let text = secret.expose_str().ok_or(TokenFileError::NotText)?;
-    parse(text)
+    let secret = read_secret_file_limited(
+        path,
+        &SecretFilePolicy::for_current_user(),
+        MAX_SECRET_TABLE_LEN,
+    )
+    .map_err(TokenFileError::Secret)?;
+    from_secret(&secret)
 }
 
 #[cfg(test)]
@@ -165,6 +187,15 @@ mod tests {
             assert!(message.starts_with(expected), "{message}");
             assert!(!message.contains(A) && !message.contains("short\""));
         }
+    }
+
+    #[test]
+    fn a_table_is_bounded_in_entries() {
+        let line = |n: usize| format!("app.c{n} = \"0123456789abcdef-{n:05}\"\n");
+        let full: String = (0..MAX_TOKENS).map(line).collect();
+        assert!(parse(&full).is_ok());
+        let over = format!("{full}{}", line(MAX_TOKENS));
+        assert!(matches!(parse(&over), Err(TokenFileError::TooMany)));
     }
 
     #[test]

@@ -7,15 +7,21 @@
 #   "--listen-cred", "/run/ultar/bus/system.sock", "--mode", "0666",
 #   "--uid-map", "/etc/ultar/uid-map.toml"
 #
+# Each socket has its own connection bound (--max-connections): an admitted
+# connection costs one descriptor and two threads, one in the handshake one
+# descriptor. The broker refuses to start when the sum does not fit its
+# limits (1024 descriptors, 1024 threads); pids.max below covers the sum
+# with room (checked by service_files_tests.rs).
+#
 # SIGTERM: clients are told, the socket files are removed, exit code 0.
 # SIGHUP: the policy file is read again.
 exec = "/usr/bin/ultar-busd"
 args = [
-    "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0600",
-    "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0600",
-    "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0600",
+    "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0600", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0600", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0600", "--max-connections", "8",
     # Administration tools run by root: usettings, udevctl, ulog.
-    "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600",
+    "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/busd.sock",
     "--allow-root",
@@ -25,5 +31,5 @@ restart = "always"
 
 [cgroup]
 "memory.max" = "64M"
-"pids.max" = "1100"
+"pids.max" = "256"
 "cpu.weight" = "100"

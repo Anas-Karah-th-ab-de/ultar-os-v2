@@ -4,6 +4,7 @@ use crate::core::CoreConfig;
 use crate::store::FsyncPolicy;
 use std::path::PathBuf;
 use ultar_service::log::RateLimit;
+use ultar_service::SecretSource;
 
 /// One ingestion socket as named on the command line.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,14 +28,17 @@ pub struct DaemonArgs {
     pub uid_map: Option<PathBuf>,
     /// Bus socket for the reading service `log`.
     pub bus: Option<PathBuf>,
-    /// Token file for a bus listener that authenticates by token.
-    pub bus_token_file: Option<PathBuf>,
+    /// Token for a bus listener that authenticates by token: a checked
+    /// file (`--bus-token-file`) or an inherited descriptor
+    /// (`--bus-token-fd`, for kernels whose files cannot be checked).
+    pub bus_token: Option<SecretSource>,
     /// Bus policy file that decides who has `log.read_all`.
     pub policy: Option<PathBuf>,
     /// Everybody may read everything (development).
     pub allow_all: bool,
-    /// Secret key of the hash chain.
-    pub chain_key_file: Option<PathBuf>,
+    /// Secret key of the hash chain (`--chain-key-file` or
+    /// `--chain-key-fd`).
+    pub chain_key: Option<SecretSource>,
     /// The kernel's log file.
     pub kernel_log: Option<PathBuf>,
     /// Limits.
@@ -116,9 +120,9 @@ struct Raw {
     listeners: Vec<ListenArg>,
     uid_map: Option<PathBuf>,
     bus: Option<PathBuf>,
-    bus_token_file: Option<PathBuf>,
+    bus_token: Option<SecretSource>,
     policy: Option<PathBuf>,
-    chain_key_file: Option<PathBuf>,
+    chain_key: Option<SecretSource>,
     kernel_log: Option<PathBuf>,
     allow_all: bool,
     allow_root: bool,
@@ -130,14 +134,41 @@ fn path_option(raw: &mut Raw, name: &str, value: String) -> bool {
         "--dir" => &mut raw.dir,
         "--uid-map" => &mut raw.uid_map,
         "--bus" => &mut raw.bus,
-        "--bus-token-file" => &mut raw.bus_token_file,
         "--policy" => &mut raw.policy,
-        "--chain-key-file" => &mut raw.chain_key_file,
         "--kernel-log" => &mut raw.kernel_log,
         _ => return false,
     };
     *slot = Some(PathBuf::from(value));
     true
+}
+
+/// Lowest descriptor number a secret may be passed on (0 to 2 are the
+/// standard streams).
+const FIRST_SECRET_FD: i32 = 3;
+
+/// `--bus-token-file|fd`, `--chain-key-file|fd`: each secret has one
+/// source; naming it twice is an error. `Ok(false)`: not such an option.
+fn secret_option(raw: &mut Raw, name: &str, value: &str) -> Result<bool, ArgError> {
+    let (slot, by_fd) = match name {
+        "--bus-token-file" => (&mut raw.bus_token, false),
+        "--bus-token-fd" => (&mut raw.bus_token, true),
+        "--chain-key-file" => (&mut raw.chain_key, false),
+        "--chain-key-fd" => (&mut raw.chain_key, true),
+        _ => return Ok(false),
+    };
+    if slot.is_some() {
+        return Err(ArgError::Arguments);
+    }
+    *slot = Some(if by_fd {
+        let fd: i32 = number(value)?;
+        if fd < FIRST_SECRET_FD {
+            return Err(ArgError::Arguments);
+        }
+        SecretSource::Fd(fd)
+    } else {
+        SecretSource::File(PathBuf::from(value))
+    });
+    Ok(true)
 }
 
 fn limit_option(config: &mut CoreConfig, name: &str, value: &str) -> Result<(), ArgError> {
@@ -188,10 +219,10 @@ fn finish(raw: Raw, config: CoreConfig) -> Result<DaemonCommand, ArgError> {
         listeners: raw.listeners,
         uid_map: raw.uid_map,
         bus: raw.bus,
-        bus_token_file: raw.bus_token_file,
+        bus_token: raw.bus_token,
         policy: raw.policy,
         allow_all: raw.allow_all,
-        chain_key_file: raw.chain_key_file,
+        chain_key: raw.chain_key,
         kernel_log: raw.kernel_log,
         config,
         allow_root: raw.allow_root,
@@ -217,6 +248,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<DaemonCommand, Ar
                         let last = raw.listeners.last_mut().ok_or(ArgError::Arguments)?;
                         last.mode = Some(mode(&value)?);
                     }
+                    _ if secret_option(&mut raw, name, &value)? => {}
                     _ if path_option(&mut raw, name, value.clone()) => {}
                     _ => limit_option(&mut config, name, &value)?,
                 }
@@ -278,8 +310,11 @@ mod tests {
         assert_eq!(full.policy, Some(PathBuf::from("/p")));
         assert!(full.allow_root && !full.allow_all);
         assert_eq!(full.kernel_log, Some(PathBuf::from("/proc/x")));
-        assert_eq!(full.chain_key_file, Some(PathBuf::from("/k")));
-        assert_eq!(full.bus_token_file, Some(PathBuf::from("/t")));
+        assert_eq!(full.chain_key, Some(SecretSource::File("/k".into())));
+        assert_eq!(full.bus_token, Some(SecretSource::File("/t".into())));
+        let by_fd = words("--dir /d --listen /l=s --chain-key-fd 3 --bus-token-fd 4");
+        assert_eq!(by_fd.chain_key, Some(SecretSource::Fd(3)));
+        assert_eq!(by_fd.bus_token, Some(SecretSource::Fd(4)));
     }
 
     #[test]
@@ -339,6 +374,11 @@ mod tests {
             &["--listen", "/p=Bad Name"],
             // A secret on the command line is not accepted.
             &["--token", "secret"],
+            // Standard streams, and one secret from two sources.
+            &["--chain-key-fd", "2"],
+            &["--bus-token-fd", "x"],
+            &["--chain-key-fd", "3", "--chain-key-file", "/k"],
+            &["--bus-token-file", "/t", "--bus-token-fd", "4"],
             &["extra"],
         ] {
             assert_eq!(with(bad), Err(ArgError::Arguments), "{bad:?}");

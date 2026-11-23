@@ -148,11 +148,20 @@ fn sigterm_and_sigint_stop_cleanly_with_exit_code_zero() {
             stderr.ends_with("ultar-devd: The device service was stopped.\n"),
             "{stderr}"
         );
-        // The service name is free again: nothing answers.
-        assert!(matches!(
+        // The service name is free again: nothing answers. The broker
+        // learns of the closed connection on its own thread, so a call right
+        // after the exit may still reach the vanishing service.
+        let deadline = std::time::Instant::now() + WAIT;
+        while !matches!(
             client.call(&List {}, WAIT),
             Err(BusError::Remote(ErrorCode::UnknownService))
-        ));
+        ) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{signal}: still served"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 }
 
@@ -216,7 +225,12 @@ fn limits_are_applied_and_root_and_access_must_be_declared() {
         })
     };
     assert!(has("Max open files", "256"), "{limits}");
-    assert!(has("Max address space", "536870912"), "{limits}");
+    // No address-space limit of its own (review round 3, R3-B0): the
+    // group's memory.max bounds memory; the value is the inherited one.
+    assert!(has(
+        "Max address space",
+        &own_soft_limit("Max address space")
+    ));
     assert!(has("Max core file size", "0"), "{limits}");
     send_signal(child.id(), "TERM");
     assert_eq!(finish(child).0, Some(0));
@@ -249,20 +263,26 @@ fn limits_are_applied_and_root_and_access_must_be_declared() {
         stderr.starts_with("ultar-devd: The policy file is not valid:"),
         "{stderr}"
     );
-    if ultar_service::effective_uid() == 0 {
-        let command = daemon(&rig, &["--allow-all"]);
-        let args: Vec<_> = command
-            .get_args()
-            .filter(|arg| *arg != "--allow-root")
-            .map(ToOwned::to_owned)
-            .collect();
-        let output = Command::new(DAEMON).args(args).output().unwrap();
-        assert_eq!(output.status.code(), Some(71));
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            "ultar-devd: The device service does not run as root without --allow-root.\n"
-        );
+    root_must_be_declared(&rig);
+}
+
+/// As root without `--allow-root` the daemon refuses to start.
+fn root_must_be_declared(rig: &Rig) {
+    if ultar_service::effective_uid() != 0 {
+        return;
     }
+    let command = daemon(rig, &["--allow-all"]);
+    let args: Vec<_> = command
+        .get_args()
+        .filter(|arg| *arg != "--allow-root")
+        .map(ToOwned::to_owned)
+        .collect();
+    let output = Command::new(DAEMON).args(args).output().unwrap();
+    assert_eq!(output.status.code(), Some(71));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "ultar-devd: The device service does not run as root without --allow-root.\n"
+    );
 }
 
 /// A broker with token identities and the policy above, the daemon
@@ -462,4 +482,15 @@ fn the_shipped_service_definition_is_a_command_line_the_daemon_accepts() {
     );
     assert_eq!(args.config.keys, Path::new("/etc/ultar/trusted-keys"));
     assert!(args.allow_root && !args.allow_all && !args.once);
+}
+
+/// The soft limit `name` of this test process, as `/proc` shows it.
+fn own_soft_limit(name: &str) -> String {
+    let own = std::fs::read_to_string("/proc/self/limits").unwrap();
+    let line = own.lines().find(|line| line.starts_with(name)).unwrap();
+    line[name.len()..]
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned()
 }

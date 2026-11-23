@@ -93,7 +93,25 @@ impl World {
     }
 
     pub fn logd(&self, extra: &[&str]) -> Command {
-        let mut command = Command::new(LOGD);
+        let token = self.path("logd.token");
+        let key = self.path("chain.key");
+        let secrets = [
+            "--bus-token-file".as_ref(),
+            token.as_os_str(),
+            "--chain-key-file".as_ref(),
+            key.as_os_str(),
+        ];
+        self.logd_with(Command::new(LOGD), &secrets, extra)
+    }
+
+    /// The daemon's command line on `command` with the secret options
+    /// `secrets`.
+    pub fn logd_with(
+        &self,
+        mut command: Command,
+        secrets: &[&std::ffi::OsStr],
+        extra: &[&str],
+    ) -> Command {
         command
             .args(["--lang", "en", "--dir"])
             .arg(self.path("log"))
@@ -105,12 +123,9 @@ impl World {
             .arg(self.path("uids.toml"))
             .arg("--bus")
             .arg(self.path("bus.sock"))
-            .arg("--bus-token-file")
-            .arg(self.path("logd.token"))
+            .args(secrets)
             .arg("--policy")
             .arg(self.path("policy.toml"))
-            .arg("--chain-key-file")
-            .arg(self.path("chain.key"))
             .arg("--kernel-log")
             .arg(self.path("kernel.log"))
             .args([
@@ -135,15 +150,22 @@ impl World {
 
     /// Starts the daemon and waits for its ready line.
     pub fn start(&self, extra: &[&str]) -> Child {
-        let mut child = self.logd(extra).spawn().unwrap();
-        let mut line = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut line)
-            .unwrap();
-        assert_eq!(line.trim(), "Log service ready");
-        child
+        ready(self.logd(extra))
     }
+}
 
+/// Spawns `command` and waits for the daemon's ready line.
+pub fn ready(mut command: Command) -> Child {
+    let mut child = command.spawn().unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line.trim(), "Log service ready");
+    child
+}
+
+impl World {
     pub fn client(&self, identity: &str) -> Client {
         let token = TOKENS.iter().find(|(name, _)| *name == identity).unwrap().1;
         let options = ClientOptions {

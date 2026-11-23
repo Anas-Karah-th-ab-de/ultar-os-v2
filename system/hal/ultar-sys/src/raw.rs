@@ -9,9 +9,7 @@
 //! * nothing here allocates on the call path or panics.
 
 use crate::Errno;
-use std::collections::BTreeSet;
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
-use std::sync::{Mutex, PoisonError};
 
 #[cfg(target_arch = "x86_64")]
 mod nr {
@@ -221,54 +219,36 @@ pub fn is_open(fd: i32) -> bool {
     check(unsafe { raw(nr::FCNTL, [number, F_GETFD, 0, 0, 0]) }).is_ok()
 }
 
-/// Descriptor numbers already handed out by [`adopt_fd`].
-static ADOPTED: Mutex<BTreeSet<i32>> = Mutex::new(BTreeSet::new());
-
-/// Takes ownership of a descriptor this process inherited from its parent
-/// (a readiness pipe, a secret). Each number can be adopted once; the
-/// standard streams 0–2 cannot be adopted. The descriptor is marked
-/// close-on-exec so that it is not passed on to children.
-pub fn adopt_fd(fd: i32) -> Result<OwnedFd, Errno> {
-    if fd < 3 {
-        return Err(Errno::EINVAL);
-    }
-    let mut adopted = ADOPTED.lock().unwrap_or_else(PoisonError::into_inner);
-    if adopted.contains(&fd) || !is_open(fd) {
+/// Takes ownership of the inherited descriptor `fd` and marks it
+/// close-on-exec.
+///
+/// Only [`crate::inherit::take_inherited`] calls this – once per process,
+/// before the process has opened anything itself – so the number can only
+/// name a descriptor the parent passed on, and nothing else owns it.
+pub(crate) fn adopt_number(fd: i32) -> Result<OwnedFd, Errno> {
+    if fd < 3 || !is_open(fd) {
         return Err(Errno::EBADF);
     }
     // SAFETY: only integer arguments; marks the descriptor close-on-exec.
     check(unsafe { raw(nr::FCNTL, [fd as usize, F_SETFD, FD_CLOEXEC, 0, 0]) })?;
-    adopted.insert(fd);
-    // The descriptor is open (checked above) and was inherited from the
-    // parent under a contract that names its number (environment variable
-    // or command line of the service). A program that opens files *before*
-    // adopting could have had the number reused; the runtime therefore
-    // adopts during start-up, before it opens anything.
-    // SAFETY: `fd` is open, and the set above guarantees that this
-    // function creates at most one owner per number.
+    // SAFETY: `fd` is open (checked above); by this function's contract
+    // (one call per number, before anything owns a descriptor above the
+    // standard streams) no other owner exists.
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
-/// Closes every descriptor from `first` upwards that is not in `keep`.
-/// Returns how many were closed.
+/// Closes the inherited descriptor `fd`; `true` if it was open.
 ///
-/// Must run at the very start of a process, before any Rust object owns a
-/// descriptor other than the standard streams: closing a descriptor that an
-/// object still owns would let its number be reused behind that object's
-/// back. [`crate::Hardening`] calls it as its first step.
-pub fn close_inherited(first: i32, keep: &[i32], upper: i32) -> usize {
-    let mut closed = 0;
-    for fd in first.max(3)..upper {
-        if keep.contains(&fd) || !is_open(fd) {
-            continue;
-        }
-        // SAFETY: by the contract above no Rust object owns `fd`; it is a
-        // descriptor leaked into this process by its parent.
-        if check(unsafe { raw(nr::CLOSE, [fd as usize, 0, 0, 0, 0]) }).is_ok() {
-            closed += 1;
-        }
+/// Same contract as [`adopt_number`]: only called by
+/// [`crate::inherit::take_inherited`] before anything in this process owns
+/// a descriptor above the standard streams.
+pub(crate) fn close_number(fd: i32) -> bool {
+    if fd < 3 || !is_open(fd) {
+        return false;
     }
-    closed
+    // SAFETY: by the contract above no Rust object owns `fd`; it is a
+    // descriptor leaked into this process by its parent.
+    check(unsafe { raw(nr::CLOSE, [fd as usize, 0, 0, 0, 0]) }).is_ok()
 }
 
 /// `prctl` option of the Ultar kernel: read the rights of the process.

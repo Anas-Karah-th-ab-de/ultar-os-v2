@@ -56,10 +56,15 @@ pub struct Limits {
 }
 
 impl Limits {
-    /// The limits of an ordinary small daemon: 512 MiB address space,
-    /// 256 descriptors, 128 threads, no core dumps.
+    /// The limits of an ordinary small daemon: 256 descriptors, 128
+    /// threads, no core dumps. **No address-space limit:** the C library
+    /// reserves address space per thread (arenas of 64 MiB), so a limit
+    /// low enough to matter breaks thread starts long before memory is
+    /// short (review round 3, R3-B0). Memory is bounded by the service's
+    /// group instead (`memory.max` in its service file; the Ultar kernel
+    /// enforces it since its memory groups).
     pub const STANDARD: Limits = Limits {
-        address_space: Some(512 << 20),
+        address_space: None,
         open_files: Some(256),
         processes: Some(128),
         core_dumps: false,
@@ -181,10 +186,10 @@ impl std::error::Error for HardeningError {}
 /// What a service applies to itself at start. See the module documentation.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Hardening {
-    /// Close every inherited descriptor above the standard streams.
+    /// Close every inherited descriptor above the standard streams that the
+    /// service did not declare (`ServiceSpec::inherited`). Carried out by
+    /// the runtime before anything else, not by [`Hardening::apply`].
     pub close_descriptors: bool,
-    /// Descriptor numbers to keep open (readiness pipe, secret).
-    pub keep_descriptors: Vec<i32>,
     /// File creation mask; `Some(0o077)`: new files are private.
     pub umask: Option<u32>,
     /// Change the working directory to `/`.
@@ -204,7 +209,6 @@ impl Default for Hardening {
     fn default() -> Self {
         Self {
             close_descriptors: true,
-            keep_descriptors: Vec::new(),
             umask: Some(0o077),
             working_directory: true,
             allow_root: false,
@@ -217,11 +221,12 @@ impl Default for Hardening {
 
 /// Upper end of the descriptor numbers that are closed when the soft limit
 /// is larger (a table that large is not scanned at every start).
-const CLOSE_SCAN_MAX: u64 = 65_536;
+pub const CLOSE_SCAN_MAX: u64 = 65_536;
 
 impl Hardening {
-    /// Applies every step. **Call first thing in `main`**, before files or
-    /// sockets are opened and before threads are spawned.
+    /// Applies every step except the closing of inherited descriptors (the
+    /// runtime does that first, see `Runtime::start`). Call before threads
+    /// are spawned.
     pub fn apply(&self) -> Result<HardeningReport, HardeningError> {
         let platform = Platform::detect();
         let mut report = HardeningReport {
@@ -229,7 +234,6 @@ impl Hardening {
             steps: Vec::new(),
             closed_descriptors: 0,
         };
-        self.close_descriptors(&mut report);
         self.files(&mut report)?;
         self.identity(&mut report)?;
         if let Some(limits) = &self.limits {
@@ -248,21 +252,6 @@ impl Hardening {
             .steps
             .push((Step::Rights, self.drop_rights(platform)?));
         Ok(report)
-    }
-
-    fn close_descriptors(&self, report: &mut HardeningReport) {
-        if !self.close_descriptors {
-            report
-                .steps
-                .push((Step::CloseDescriptors, Outcome::Disabled));
-            return;
-        }
-        let soft = sys::limit(Resource::OpenFiles).map_or(1024, |(soft, _)| soft);
-        let upper = i32::try_from(soft.min(CLOSE_SCAN_MAX)).unwrap_or(i32::MAX);
-        report.closed_descriptors = sys::close_inherited(3, &self.keep_descriptors, upper);
-        report
-            .steps
-            .push((Step::CloseDescriptors, Outcome::Applied));
     }
 
     fn files(&self, report: &mut HardeningReport) -> Result<(), HardeningError> {
@@ -412,11 +401,15 @@ mod tests {
             plan,
             vec![
                 (Resource::Core, 0),
-                (Resource::AddressSpace, 512 << 20),
                 (Resource::OpenFiles, 256),
                 (Resource::Processes, 128),
             ]
         );
+        let bounded = Limits {
+            address_space: Some(1 << 30),
+            ..Limits::STANDARD
+        };
+        assert_eq!(limit_plan(&bounded)[1], (Resource::AddressSpace, 1 << 30));
         let open = Limits {
             address_space: None,
             open_files: Some(9),

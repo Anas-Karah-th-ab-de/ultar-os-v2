@@ -133,14 +133,25 @@ pub const MAX_KEY_LEN: usize = 48;
 pub const MAX_FIELDS: usize = 8;
 
 /// Whether `text` is a key: 1–[`MAX_KEY_LEN`] characters from
-/// `a-z 0-9 . _ -`, starting with a letter.
+/// `a-z 0-9 . _ -`, starting with a letter, without a run of more than
+/// [`ShortId::MAX_DIGIT_RUN`] digits.
+///
+/// The digit rule matters on the receiving side: the types keep a
+/// well-behaved client to text of the program, but the log service cannot
+/// know whether a word on the wire was `&'static str`. Refusing long digit
+/// runs keeps phone numbers, account numbers and the like out of words and
+/// keys too (review round 3, R3-W1). What remains possible for a
+/// non-conforming client is a short lower-case word – no free text.
 pub fn is_key(text: &str) -> bool {
     let bytes = text.as_bytes();
+    let mut run = 0;
     !bytes.is_empty()
         && bytes.len() <= MAX_KEY_LEN
         && bytes[0].is_ascii_lowercase()
         && bytes.iter().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+            run = if b.is_ascii_digit() { run + 1 } else { 0 };
+            run <= ShortId::MAX_DIGIT_RUN
+                && (b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
         })
 }
 
@@ -358,10 +369,13 @@ mod tests {
             "a\n",
             "ключ",
             "a=b",
+            "phone.9631155501",
+            "n0963115550100",
             long.as_str(),
         ] {
             assert!(!is_key(bad), "{bad:?}");
         }
+        assert!(is_key("seq.123456.ok"));
         assert!(is_key(&"a".repeat(MAX_KEY_LEN)));
     }
 

@@ -1,6 +1,6 @@
 //! The `ultar-settingsd` daemon: command line, start-up and shutdown.
 
-use crate::access::{Access, AllowAll, PolicyAccess};
+use crate::access::{Access, AllowAll, PolicyAccess, Reloadable};
 use crate::apply::{Appliers, LogApplier};
 use crate::clock::{Clock, SystemClock};
 use crate::core::{Core, CoreConfig};
@@ -21,8 +21,7 @@ use ultar_i18n::{Arg, Lang, Translator};
 use ultar_profile::{Capabilities, DeviceProfile};
 use ultar_service::log::{Level, Logger, Record};
 use ultar_service::{
-    read_secret_fd, read_secret_file, BusSession, Lifecycle, Secret, SecretError, SecretFilePolicy,
-    SessionOptions, StopCause,
+    BusSession, Lifecycle, Secret, SecretError, SecretSource, SessionOptions, StopCause,
 };
 
 /// Write delay when none is given: changes within this time become one write.
@@ -321,17 +320,28 @@ fn error_sink(logger: Logger) -> ErrorSink {
     })
 }
 
-/// The bus token from its file or inherited descriptor, if one is named.
-fn load_token(args: &DaemonArgs) -> Result<Option<Secret>, DaemonError> {
-    let token = match (&args.token_file, args.token_fd) {
-        (Some(path), _) => Some(read_secret_file(
-            path,
-            &SecretFilePolicy::for_current_user(),
-        )),
-        (None, Some(fd)) => Some(read_secret_fd(fd)),
+/// Where the bus token comes from, if one is named.
+pub fn token_source(args: &DaemonArgs) -> Option<SecretSource> {
+    match (&args.token_file, args.token_fd) {
+        (Some(path), _) => Some(SecretSource::File(path.clone())),
+        (None, Some(fd)) => Some(SecretSource::Fd(fd)),
         (None, None) => None,
-    };
-    token.transpose().map_err(DaemonError::Token)
+    }
+}
+
+/// Reads the policy again after `SIGHUP`; a faulty file keeps the old one.
+fn reload_on_hangup(args: &DaemonArgs, access: &Reloadable, hooks: &Hooks<'_>) {
+    if args.policy.is_none() {
+        return;
+    }
+    let (args, access, logger) = (args.clone(), access.clone(), hooks.logger.clone());
+    hooks.lifecycle.on_reload(move || match load_access(&args) {
+        Ok(policy) => {
+            access.replace(policy);
+            logger.log(Level::Notice, "settingsd.policy_reloaded");
+        }
+        Err(_) => logger.log(Level::Error, "settingsd.policy_reload_failed"),
+    });
 }
 
 /// What the daemon needs from the service runtime.
@@ -343,6 +353,40 @@ pub struct Hooks<'a> {
     pub logger: &'a Logger,
     /// Called once the service answers requests.
     pub ready: &'a dyn Fn(),
+    /// Reads the bus token from a checked file or a declared inherited
+    /// descriptor (the runtime's `read_secret`).
+    pub secret: &'a dyn Fn(&SecretSource) -> Result<Secret, SecretError>,
+}
+
+/// One record per store notice for the log service.
+fn log_notices(notices: &[Notice], logger: &Logger) {
+    for notice in notices {
+        let record = Record::new(Level::Warn, "settingsd.store_notice")
+            .word("kind", notice_word(notice.kind));
+        logger.emit(record);
+    }
+}
+
+/// Joins the bus. `None`: the service was stopped while the broker was
+/// awaited; that ends the start at once, cleanly (review round 3, R3-S1).
+fn connect(
+    args: &DaemonArgs,
+    token: Option<Secret>,
+    hooks: &Hooks<'_>,
+) -> Result<Option<BusSession>, DaemonError> {
+    let mut options = SessionOptions::named("ultar-settingsd");
+    options.token = token;
+    options.connect_wait = BUS_WAIT;
+    options.register_wait = BUS_WAIT;
+    options.stop = Some(hooks.lifecycle.clone());
+    let session = match BusSession::connect(&args.socket, options) {
+        Ok(session) => session,
+        Err(_) if hooks.lifecycle.is_stopping() => return Ok(None),
+        Err(error) => return Err(DaemonError::Bus(error)),
+    };
+    let client = session.client().clone();
+    hooks.lifecycle.on_stop(move || client.close());
+    Ok(Some(session))
 }
 
 /// Runs the service until a stop signal or a `settings.shutdown` call
@@ -358,24 +402,22 @@ pub fn run(
     log: &mut dyn Write,
     hooks: &Hooks<'_>,
 ) -> Result<(), DaemonError> {
-    let access = load_access(args)?;
+    let access = Reloadable::new(load_access(args)?);
+    reload_on_hangup(args, &access, hooks);
     if args.policy.is_none() {
         let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
         hooks.logger.log(Level::Warn, "settingsd.allow_all");
     }
-    let token = load_token(args)?;
+    let token = token_source(args)
+        .map(|source| (hooks.secret)(&source))
+        .transpose()
+        .map_err(DaemonError::Token)?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
     let (core, notices) = open_core(args, &clock, translator, log)?;
-    for notice in &notices {
-        let record = Record::new(Level::Warn, "settingsd.store_notice")
-            .word("kind", notice_word(notice.kind));
-        hooks.logger.emit(record);
-    }
-    let mut options = SessionOptions::named("ultar-settingsd");
-    options.token = token;
-    options.connect_wait = BUS_WAIT;
-    options.register_wait = BUS_WAIT;
-    let session = BusSession::connect(&args.socket, options).map_err(DaemonError::Bus)?;
+    log_notices(&notices, hooks.logger);
+    let Some(session) = connect(args, token, hooks)? else {
+        return Ok(());
+    };
     if !notices.is_empty() {
         // The server publishes the report once; the session publishes it
         // again whenever the broker comes back with empty memory.
@@ -387,13 +429,18 @@ pub fn run(
     let server = Server::start(ServerParts {
         bus: session.client().clone(),
         core,
-        access,
+        access: Box::new(access),
         clock,
         notices,
         register_wait: BUS_WAIT,
         on_error: error_sink(hooks.logger.clone()),
-    })
-    .map_err(DaemonError::Bus)?;
+    });
+    let server = match server {
+        Ok(server) => server,
+        // Stopped while the service was being registered.
+        Err(_) if hooks.lifecycle.is_stopping() => return Ok(()),
+        Err(error) => return Err(DaemonError::Bus(error)),
+    };
     let stopper = server.stopper();
     hooks.lifecycle.on_stop(move || stopper.stop());
     (hooks.ready)();

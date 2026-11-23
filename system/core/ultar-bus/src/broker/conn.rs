@@ -1,79 +1,31 @@
-//! One client connection inside the broker: handshake, a reader thread that
-//! feeds the router and a writer thread that drains the bounded queue.
+//! One admitted client connection inside the broker: a reader thread that
+//! feeds the router and a writer thread that drains the bounded queue. The
+//! handshake before it runs in the listener's gate (`gate.rs`).
 
 use super::observe::BrokerEvent;
 use super::route::{handle, Rules};
 use super::state::{ConnEntry, ConnId, Frame, LinkControl};
-use super::Shared;
+use super::{LiveGuard, Shared};
 use crate::error::{BusError, ErrorCode};
-use crate::identity::{Identity, PeerIdentity, PeerInfo};
-use crate::message::{decode, encode};
+use crate::identity::Identity;
+use crate::message::encode;
 use crate::sync::{lock, read};
-use crate::wire::{
-    read_envelope, read_preamble, write_envelope, write_preamble, Envelope, Hello, Kind, Welcome,
-    PROTOCOL_VERSION,
-};
-use std::io::{Read, Write};
+use crate::wire::{read_envelope, write_envelope, Envelope, Kind, Welcome, PROTOCOL_VERSION};
+use std::io::Write;
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
 
-/// Largest frame accepted before the peer is authenticated.
-const HANDSHAKE_MAX_FRAME: u32 = 4096;
+/// Stack size of the per-connection reader thread.
+const READER_STACK: usize = 256 * 1024;
 /// Stack size of the per-connection writer thread.
 const WRITER_STACK: usize = 128 * 1024;
 
-/// Serves one accepted connection until it ends.
-/// Reads with one deadline for the whole handshake instead of one timeout
-/// per read, so a peer cannot hold a slot by sending a byte now and then.
-struct UntilDeadline<'a> {
-    stream: &'a UnixStream,
-    deadline: Instant,
-}
-
-impl Read for UntilDeadline<'_> {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        let left = self.deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            return Err(std::io::ErrorKind::TimedOut.into());
-        }
-        self.stream.set_read_timeout(Some(left))?;
-        let mut stream = self.stream;
-        stream.read(buffer)
-    }
-}
-
-pub(crate) fn serve(
-    shared: &Arc<Shared>,
-    stream: UnixStream,
-    auth: &dyn PeerIdentity,
-    listener: usize,
-) {
-    let identity = match handshake(shared, &stream, auth) {
-        Ok(identity) => identity,
-        Err(err) => {
-            if matches!(err, BusError::AuthFailed) {
-                shared.observe(&BrokerEvent::AuthFailed { listener });
-            }
-            reject(&stream, &err);
-            return;
-        }
-    };
-    if let Err(err) = run_session(shared, &stream, identity, listener) {
-        if matches!(err, BusError::Remote(ErrorCode::LimitExceeded)) {
-            shared.observe(&BrokerEvent::ConnectionLimit { listener });
-        }
-        reject(&stream, &err);
-    }
-    let _ = stream.shutdown(Shutdown::Both);
-}
-
 /// Tells a peer that passed the preamble why it is turned away.
-fn reject(mut stream: &UnixStream, err: &BusError) {
+pub(crate) fn reject(mut stream: &UnixStream, err: &BusError) {
     let silent = matches!(
         err,
         BusError::BadMagic
@@ -88,53 +40,26 @@ fn reject(mut stream: &UnixStream, err: &BusError) {
     let _ = stream.shutdown(Shutdown::Both);
 }
 
-fn handshake(
-    shared: &Shared,
-    mut stream: &UnixStream,
-    auth: &dyn PeerIdentity,
-) -> Result<Identity, BusError> {
-    stream.set_write_timeout(Some(shared.config.write_timeout))?;
-    let mut input = UntilDeadline {
-        stream,
-        deadline: Instant::now() + shared.config.handshake_timeout,
-    };
-    let theirs = read_preamble(&mut input)?;
-    write_preamble(&mut stream, PROTOCOL_VERSION)?;
-    if theirs != PROTOCOL_VERSION {
-        return Err(BusError::ProtocolMismatch {
-            ours: PROTOCOL_VERSION,
-            theirs,
-        });
-    }
-    let envelope = read_envelope(&mut input, HANDSHAKE_MAX_FRAME)?;
-    if envelope.kind != Kind::Hello {
-        return Err(BusError::Remote(ErrorCode::ProtocolViolation));
-    }
-    let hello: Hello = decode(&envelope.payload)?;
-    let peer = PeerInfo {
-        stream,
-        client_name: &hello.client_name,
-        token: hello.token.as_deref(),
-    };
-    auth.identify(&peer).map_err(|_| BusError::AuthFailed)
-}
-
-/// Adds the connection to the routing state and queues its `Welcome`.
 /// What a session needs after admission: id, control, outbox, queued bytes.
-type Admitted = (ConnId, Arc<LinkControl>, Receiver<Frame>, Arc<AtomicUsize>);
+pub(crate) type Admitted = (ConnId, Arc<LinkControl>, Receiver<Frame>, Arc<AtomicUsize>);
 
-fn admit(
+/// Adds the connection to the routing state and queues its `Welcome`;
+/// `limit` is the most connections of `listener`.
+pub(crate) fn admit(
     shared: &Shared,
-    stream: &UnixStream,
+    stream: &Arc<UnixStream>,
     identity: Identity,
     listener: usize,
+    limit: usize,
 ) -> Result<Admitted, BusError> {
     let welcome = Welcome {
         identity: identity.as_str().to_owned(),
         max_frame: shared.config.max_frame,
     };
     let welcome = Envelope::new(Kind::Welcome, 0).with_payload(PROTOCOL_VERSION, encode(&welcome)?);
-    let control = Arc::new(LinkControl::new(stream.try_clone()?));
+    // One descriptor per connection (review round 3, R3-B1): reader,
+    // writer and control share it.
+    let control = Arc::new(LinkControl::new(stream.clone()));
     let (queue, outbox) = sync_channel(shared.config.queue_capacity.max(2));
     let conn = shared.next_conn.fetch_add(1, Ordering::SeqCst);
     let mut state = lock(&shared.state);
@@ -147,7 +72,7 @@ fn admit(
         .values()
         .filter(|entry| entry.listener == listener)
         .count();
-    if same_listener >= shared.config.max_connections {
+    if same_listener >= limit {
         return Err(BusError::Remote(ErrorCode::LimitExceeded));
     }
     let queued = Arc::new(AtomicUsize::new(0));
@@ -165,20 +90,51 @@ fn admit(
     Ok((conn, control, outbox, queued))
 }
 
+/// Starts the reader thread of an admitted connection. A thread that
+/// cannot be started refuses this connection; nothing panics.
+pub(crate) fn start_session(
+    shared: &Arc<Shared>,
+    stream: Arc<UnixStream>,
+    admitted: Admitted,
+    listener: usize,
+) {
+    let conn = admitted.0;
+    *lock(&shared.live_threads) += 1;
+    let guard = LiveGuard(shared.clone());
+    let session = stream.clone();
+    let started = thread::Builder::new()
+        .name("ultar-bus-conn".into())
+        .stack_size(READER_STACK)
+        .spawn(move || {
+            run_session(&guard.0, &session, admitted, listener);
+            drop(guard);
+        });
+    if started.is_err() {
+        // The closure and with it the guard are gone already.
+        lock(&shared.state).remove_conn(conn);
+        refuse(shared, &stream, listener);
+    }
+}
+
+/// Turns a client away because a thread could not be started.
+fn refuse(shared: &Shared, stream: &UnixStream, listener: usize) {
+    shared.observe(&BrokerEvent::ConnectionLimit { listener });
+    reject(stream, &BusError::Remote(ErrorCode::LimitExceeded));
+}
+
 fn run_session(
     shared: &Arc<Shared>,
-    stream: &UnixStream,
-    identity: Identity,
+    stream: &Arc<UnixStream>,
+    admitted: Admitted,
     listener: usize,
-) -> Result<(), BusError> {
-    let (conn, control, outbox, queued) = admit(shared, stream, identity, listener)?;
-    let writer = stream.try_clone().and_then(|write_half| {
-        stream.set_read_timeout(None)?;
-        let control = control.clone();
+) {
+    let (conn, control, outbox, queued) = admitted;
+    let writer = stream.set_read_timeout(None).and_then(|()| {
+        let (control, write_half) = (control.clone(), stream.clone());
         thread::Builder::new()
             .name("ultar-bus-writer".into())
             .stack_size(WRITER_STACK)
-            .spawn(move || write_loop(write_half, &outbox, &control, &queued))
+            .spawn(move || write_loop(&write_half, &outbox, &control, &queued))
     });
     if writer.is_ok() {
         read_loop(shared, stream, conn, &control);
@@ -187,10 +143,10 @@ fn run_session(
     match writer {
         Ok(handle) => {
             let _ = handle.join();
-            Ok(())
         }
-        Err(err) => Err(BusError::Io(err)),
+        Err(_) => refuse(shared, stream, listener),
     }
+    let _ = stream.shutdown(Shutdown::Both);
 }
 
 /// Reads envelopes and routes them until the connection ends.
@@ -235,7 +191,7 @@ fn protocol_error(shared: &Shared, conn: ConnId, code: ErrorCode) {
 /// accepting data, or the connection is marked as closing. The reason for
 /// closing is sent as last frame when the peer can still take it.
 fn write_loop(
-    mut stream: UnixStream,
+    mut stream: &UnixStream,
     outbox: &Receiver<Frame>,
     control: &LinkControl,
     queued: &AtomicUsize,

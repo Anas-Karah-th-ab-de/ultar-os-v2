@@ -368,7 +368,7 @@ settingsd.daemon.token_rejected = تعذّرت قراءة الرمز السري:
 settingsd.daemon.root_refused = لن تعمل خدمة الإعدادات بصلاحيات الجذر دون --allow-root
 settingsd.daemon.hardening_failed = تعذّر تطبيق قيود الحماية الذاتية: {detail}
 
-usettings.usage = الاستخدام: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
+usettings.usage = الاستخدام: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE | --token-fd N] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
 
 usettings.error.arguments = أمر غير صحيح
 usettings.error.no_socket = لم يُحدَّد مقبس الناقل (--socket أو ULTAR_BUS_SOCKET)

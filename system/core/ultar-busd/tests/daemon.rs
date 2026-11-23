@@ -122,7 +122,8 @@ fn limits_are_applied_to_the_running_broker() {
     let child = busd().arg(&socket).arg("--allow-all").spawn().unwrap();
     drop(connect(&socket, "t"));
     let limits = std::fs::read_to_string(format!("/proc/{}/limits", child.id())).unwrap();
-    let row = |name: &str| -> Vec<String> {
+    let own = std::fs::read_to_string("/proc/self/limits").unwrap();
+    let row_of = |limits: &str, name: &str| -> Vec<String> {
         let line = limits.lines().find(|l| l.starts_with(name)).unwrap();
         line[name.len()..]
             .split_whitespace()
@@ -130,8 +131,11 @@ fn limits_are_applied_to_the_running_broker() {
             .map(str::to_owned)
             .collect()
     };
+    let row = |name: &str| row_of(&limits, name);
     assert_eq!(row("Max open files"), ["1024", "1024"]);
-    assert_eq!(row("Max address space"), ["1073741824", "1073741824"]);
+    // No address-space limit of its own (review round 3, R3-B0): inherited.
+    let space = "Max address space";
+    assert_eq!(row(space), row_of(&own, space));
     assert_eq!(row("Max core file size"), ["0", "0"]);
     assert_eq!(row("Max processes"), ["1024", "1024"]);
     let status = std::fs::read_to_string(format!("/proc/{}/status", child.id())).unwrap();

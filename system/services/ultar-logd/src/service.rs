@@ -71,6 +71,8 @@ pub enum Input {
     Sync(SyncSender<()>),
     /// A record of the daemon itself.
     Internal(Level, &'static str),
+    /// A policy read again after `SIGHUP`: replaces who reads what.
+    Access(Box<dyn Access>),
     /// End the thread.
     Stop,
 }
@@ -240,6 +242,17 @@ impl Engine {
         }
     }
 
+    /// Takes a policy read again; waiting readers get their new scope at
+    /// once, so a revoked `log.read_all` ends with the reload.
+    fn replace_access(&mut self, access: Box<dyn Access>) {
+        self.access = access;
+        for follower in &mut self.followers {
+            follower.scope = self.access.scope(follower.request.caller());
+        }
+        self.core
+            .internal(Level::Info, "log.policy_reloaded", Vec::new());
+    }
+
     /// Answers followers that have a record now or whose time is over.
     fn serve_followers(&mut self) {
         let now = self.clock.mono_ms();
@@ -278,6 +291,7 @@ impl Engine {
             Input::Internal(level, key) => {
                 self.core.internal(level, key, Vec::new());
             }
+            Input::Access(access) => self.replace_access(access),
             Input::Stop => return false,
         }
         self.serve_followers();

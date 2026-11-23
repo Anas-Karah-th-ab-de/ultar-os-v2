@@ -1,7 +1,7 @@
 //! `usettings` – read and change Ultar OS settings from the command line.
 //!
 //! ```text
-//! usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE]
+//! usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE | --token-fd N]
 //!           get KEY | set KEY VALUE | reset KEY | list [PANEL]
 //!           | watch [--count N] | confirm [KEY] | revert [KEY]
 //! ```
@@ -16,7 +16,7 @@ use std::io::stdout;
 use std::process::ExitCode;
 use ultar_bus::{Client, ClientOptions};
 use ultar_i18n::{Arg, Lang, Translator};
-use ultar_service::{read_secret_file, SecretFilePolicy};
+use ultar_service::read_secret_source;
 use ultar_settingsd::cli::{
     lang_hint, parse, CliError, Command, Invocation, Session, UsageError, SOCKET_ENV,
 };
@@ -39,15 +39,16 @@ fn fail(translator: &Translator, error: &CliError) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// The bus token from the file named on the command line, if any.
+/// The bus token from the file or inherited descriptor named on the
+/// command line, if any.
 fn load_token(
     invocation: &Invocation,
     translator: &Translator,
 ) -> Result<Option<String>, ExitCode> {
-    let Some(path) = &invocation.token_file else {
+    let Some(source) = &invocation.token else {
         return Ok(None);
     };
-    match read_secret_file(path, &SecretFilePolicy::for_current_user()) {
+    match read_secret_source(source, MAX_TOKEN_LEN) {
         Ok(secret) => Ok(secret.expose_str().map(str::to_owned)),
         Err(error) => {
             let detail = error.to_string();
@@ -57,6 +58,9 @@ fn load_token(
         }
     }
 }
+
+/// Largest bus token read.
+const MAX_TOKEN_LEN: usize = 4096;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

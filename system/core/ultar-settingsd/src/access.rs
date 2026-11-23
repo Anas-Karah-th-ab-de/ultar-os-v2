@@ -3,6 +3,7 @@
 //! as administrators (asked here); the risk class of a setting decides
 //! whether administrator rights are needed.
 
+use std::sync::{Arc, Mutex, PoisonError};
 use ultar_bus::{Identity, Policy};
 
 /// The pseudo method whose call right marks an administrator: an identity
@@ -27,6 +28,33 @@ impl Access for PolicyAccess {
     fn is_admin(&self, identity: &str) -> bool {
         Identity::new(identity)
             .is_ok_and(|identity| self.0.may_call(&identity, SERVICE, ADMIN_METHOD))
+    }
+}
+
+/// An [`Access`] that is replaced while the service runs, when the policy
+/// is read again after `SIGHUP` (review round 3, R3-P1): revoking an
+/// administrator needs no restart.
+#[derive(Clone)]
+pub struct Reloadable(Arc<Mutex<Box<dyn Access>>>);
+
+impl Reloadable {
+    /// Starts with `access`.
+    pub fn new(access: Box<dyn Access>) -> Self {
+        Self(Arc::new(Mutex::new(access)))
+    }
+
+    /// Applies `access` to every following decision.
+    pub fn replace(&self, access: Box<dyn Access>) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = access;
+    }
+}
+
+impl Access for Reloadable {
+    fn is_admin(&self, identity: &str) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_admin(identity)
     }
 }
 
@@ -119,5 +147,14 @@ call = ["settings.admin", "settings.set_displays"]
                 admin: false
             }
         );
+    }
+
+    #[test]
+    fn a_replaced_policy_applies_to_the_next_decision() {
+        let access = Reloadable::new(Box::new(AllowAll));
+        let shared = access.clone();
+        assert!(access.is_admin("app.settings"));
+        shared.replace(Box::new(PolicyAccess(Policy::deny_all())));
+        assert!(!access.is_admin("app.settings"));
     }
 }

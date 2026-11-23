@@ -9,10 +9,14 @@
 //!
 //! The socket may also come from `ULTAR_BUS_SOCKET`. `SIGTERM`/`SIGINT`
 //! (or a `settings.shutdown` call from an administrator) end the service
-//! after everything pending is written to disk; the exit code is 0.
+//! after everything pending is written to disk; the exit code is 0, also
+//! when the stop comes while the broker is still awaited. `SIGHUP` reads
+//! the policy file again (a faulty file keeps the old policy).
+//! `--token-fd N` must name a descriptor the service manager passed (a pipe
+//! or a file); any other number stops the start.
 //!
 //! The service limits itself at start (`ultar_service::harden`): default
-//! resource limits, umask 077, no inherited descriptors, no kernel rights,
+//! resource limits, umask 077, no undeclared inherited descriptors, no kernel rights,
 //! and no root unless `--allow-root` declares it.
 
 #![forbid(unsafe_code)]
@@ -27,6 +31,9 @@ use ultar_settingsd::cli::{lang_hint, SOCKET_ENV};
 use ultar_settingsd::daemon::{parse, run, DaemonArgs, DaemonCommand, Hooks};
 use ultar_settingsd::i18n;
 
+/// Largest bus token read from a file or descriptor.
+const MAX_TOKEN_LEN: usize = 4096;
+
 fn translator(lang: Option<Lang>) -> Translator {
     let lang = lang.unwrap_or_else(Lang::from_env);
     // Without catalogs the keys themselves are printed.
@@ -37,7 +44,7 @@ fn start_runtime(args: &DaemonArgs, translator: &Translator) -> Result<Runtime, 
     let mut spec = ServiceSpec::new("ultar-settingsd");
     spec.hardening.allow_root = args.allow_root;
     if let Some(fd) = args.token_fd {
-        spec.hardening.keep_descriptors.push(fd);
+        spec.inherited.push(fd);
     }
     if let Some(path) = &args.log_socket {
         spec.log = LoggerConfig::to(LogTarget::Socket(path.clone()));
@@ -95,6 +102,7 @@ fn serve(args: &DaemonArgs, lang: Lang, runtime: &Runtime) -> i32 {
         lifecycle: runtime.lifecycle(),
         logger: runtime.logger(),
         ready: &|| runtime.ready(),
+        secret: &|source| runtime.read_secret(source, MAX_TOKEN_LEN),
     };
     match run(args, &translator, &mut stdout(), &mut stderr(), &hooks) {
         Ok(()) => exit::OK,

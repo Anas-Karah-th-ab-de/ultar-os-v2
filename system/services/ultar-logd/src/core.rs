@@ -83,6 +83,17 @@ fn field(name: &str, value: OwnedValue) -> (String, OwnedValue) {
     (name.to_owned(), value)
 }
 
+/// A carried record names its original position in the field `carried`
+/// when it has room for one more field.
+fn mark_carried(mut record: Stored) -> Stored {
+    if record.fields.len() < ultar_service::log::MAX_FIELDS {
+        record
+            .fields
+            .push(field("carried", OwnedValue::Count(record.seq)));
+    }
+    record
+}
+
 fn notice_record(notice: &Notice) -> (Level, &'static str, Vec<(String, OwnedValue)>) {
     match notice {
         Notice::Unreadable => (Level::Error, "log.store_unreadable", Vec::new()),
@@ -97,6 +108,8 @@ fn notice_record(notice: &Notice) -> (Level, &'static str, Vec<(String, OwnedVal
             vec![field("what", OwnedValue::Word(damage.key().to_owned()))],
         ),
         Notice::TailMissing => (Level::Error, "log.tail_missing", Vec::new()),
+        Notice::HeadMissing => (Level::Error, "log.head_missing", Vec::new()),
+        Notice::HeadInvalid => (Level::Error, "log.head_invalid", Vec::new()),
     }
 }
 
@@ -145,11 +158,28 @@ impl Core {
             })
     }
 
-    /// Puts a record into ring and store, bypassing the rate limit.
+    /// Puts a record into ring and store, bypassing the rate limit, and
+    /// then stores again what the store carried out of evicted segments.
     fn commit(&mut self, mut record: Stored) -> u64 {
+        record.time_ms = self.clock.wall_ms();
+        let seq = self.commit_one(record);
+        // Each round stores at most half a segment and only after a whole
+        // segment was freed, so this ends.
+        loop {
+            let carried = self.store.take_carried();
+            if carried.is_empty() {
+                return seq;
+            }
+            for record in carried {
+                self.commit_one(mark_carried(record));
+            }
+        }
+    }
+
+    /// Stores one record under the next position; its time is kept.
+    fn commit_one(&mut self, mut record: Stored) -> u64 {
         self.seq += 1;
         record.seq = self.seq;
-        record.time_ms = self.clock.wall_ms();
         let urgent = record.level >= Level::Error;
         let persisted = self.store.append(&record, record.time_ms);
         if urgent && persisted {

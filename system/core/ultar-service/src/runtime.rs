@@ -31,16 +31,22 @@
 //! code.
 
 use crate::exit;
-use crate::harden::{Hardening, HardeningError, HardeningReport, Outcome};
+use crate::harden::{Hardening, HardeningError, HardeningReport, Outcome, Step, CLOSE_SCAN_MAX};
 use crate::lifecycle::{Lifecycle, State};
 use crate::log::{Level, LogTarget, Logger, LoggerConfig, Record};
 use crate::ready::{ReadyEvent, ReadyNotifier};
+use crate::secret::{
+    read_secret_file_limited, read_secret_owned, Secret, SecretError, SecretFilePolicy,
+    SecretSource,
+};
 use crate::signal::{self, MainSource, SignalConfig, SignalError, Waker};
 use std::fmt;
 use std::io::Write;
+use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
+use ultar_sys::{self as sys, InheritError, Inherited, Resource};
 
 /// Time a service has to stop after `SIGTERM` unless it says otherwise.
 /// Shorter than the 3 s after which `ultar-init` kills the group.
@@ -60,6 +66,12 @@ pub struct ServiceSpec {
     pub stop_deadline: Duration,
     /// Logger settings.
     pub log: LoggerConfig,
+    /// Descriptor numbers the supervisor passes on purpose (a secret in a
+    /// pipe, …). The runtime takes them over before it opens anything –
+    /// each must be open and a pipe or a regular file, or the start fails –
+    /// and closes every other inherited descriptor. The readiness pipe
+    /// (`ULTAR_READY_FD`) is added by the runtime itself.
+    pub inherited: Vec<i32>,
 }
 
 impl ServiceSpec {
@@ -71,6 +83,7 @@ impl ServiceSpec {
             hardening: Hardening::default(),
             stop_deadline: DEFAULT_STOP_DEADLINE,
             log: LoggerConfig::to(LogTarget::Discard),
+            inherited: Vec::new(),
         }
     }
 }
@@ -82,6 +95,8 @@ pub enum StartError {
     Hardening(HardeningError),
     /// Signal handling could not be set up.
     Signals(SignalError),
+    /// A declared inherited descriptor is missing or of the wrong kind.
+    Descriptor(InheritError),
 }
 
 impl StartError {
@@ -96,6 +111,7 @@ impl StartError {
             Self::Hardening(HardeningError::RunningAsRoot) => "service.start.root_refused",
             Self::Hardening(_) => "service.start.hardening_failed",
             Self::Signals(_) => "service.start.signals_failed",
+            Self::Descriptor(_) => "service.start.descriptor_refused",
         }
     }
 }
@@ -105,6 +121,7 @@ impl fmt::Display for StartError {
         match self {
             Self::Hardening(error) => write!(f, "{}: {error}", self.key()),
             Self::Signals(error) => write!(f, "{}: {error}", self.key()),
+            Self::Descriptor(error) => write!(f, "{}: {error}", self.key()),
         }
     }
 }
@@ -122,6 +139,19 @@ pub struct Runtime {
     stop_deadline: Duration,
     /// The signal descriptors, until [`Runtime::run`] takes them.
     signals: Mutex<Option<(MainSource, Waker)>>,
+    /// Declared inherited descriptors not handed out yet.
+    inherited: Mutex<Inherited>,
+}
+
+/// Takes over the declared inherited descriptors (and the readiness pipe)
+/// and closes all others; see [`ServiceSpec::inherited`].
+fn take_descriptors(spec: &ServiceSpec) -> Result<Inherited, StartError> {
+    let mut declared = spec.inherited.clone();
+    declared.extend(ReadyNotifier::env_fd());
+    let soft = sys::limit(Resource::OpenFiles).map_or(1024, |(soft, _)| soft);
+    let upper = i32::try_from(soft.min(CLOSE_SCAN_MAX)).unwrap_or(i32::MAX);
+    sys::take_inherited(&declared, spec.hardening.close_descriptors, upper)
+        .map_err(StartError::Descriptor)
 }
 
 fn install_panic_hook(logger: &Logger) {
@@ -144,17 +174,24 @@ impl Runtime {
     /// Hardens the process and starts signal handling, logging and the
     /// panic hook. **Call first thing in `main`** (after reading the
     /// command line, before opening anything or spawning threads).
-    pub fn start(mut spec: ServiceSpec) -> Result<Self, StartError> {
+    pub fn start(spec: ServiceSpec) -> Result<Self, StartError> {
         let started = Instant::now();
-        if let Some(fd) = ReadyNotifier::env_fd() {
-            spec.hardening.keep_descriptors.push(fd);
-        }
-        let report = spec.hardening.apply().map_err(StartError::Hardening)?;
+        // First of all, before this process owns any descriptor: take over
+        // what was passed on purpose, close everything else.
+        let mut inherited = take_descriptors(&spec)?;
+        let mut report = spec.hardening.apply().map_err(StartError::Hardening)?;
+        let close = match spec.hardening.close_descriptors {
+            true => Outcome::Applied,
+            false => Outcome::Disabled,
+        };
+        report.steps.insert(0, (Step::CloseDescriptors, close));
+        report.closed_descriptors = inherited.closed();
         let lifecycle = Lifecycle::new();
         // Blocks the signals in this (the main) thread; every thread
         // created from here on inherits the mask.
         let signals = MainSource::open().map_err(StartError::Signals)?;
-        let ready = Arc::new(ReadyNotifier::from_env());
+        let ready_fd = ReadyNotifier::env_fd().and_then(|fd| inherited.take(fd));
+        let ready = Arc::new(ReadyNotifier::from_inherited(ready_fd));
         let logger = Logger::start(spec.log);
         install_panic_hook(&logger);
         let runtime = Self {
@@ -166,9 +203,32 @@ impl Runtime {
             started,
             stop_deadline: spec.stop_deadline,
             signals: Mutex::new(Some(signals)),
+            inherited: Mutex::new(inherited),
         };
         runtime.announce_start();
         Ok(runtime)
+    }
+
+    /// Hands out a descriptor declared in `ServiceSpec::inherited` (once).
+    pub fn take_inherited(&self, fd: i32) -> Option<OwnedFd> {
+        self.inherited
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take(fd)
+    }
+
+    /// Reads a secret of at most `max` bytes from its source: a checked
+    /// file, or a declared inherited descriptor.
+    pub fn read_secret(&self, source: &SecretSource, max: usize) -> Result<Secret, SecretError> {
+        match source {
+            SecretSource::File(path) => {
+                read_secret_file_limited(path, &SecretFilePolicy::for_current_user(), max)
+            }
+            SecretSource::Fd(fd) => {
+                let owned = self.take_inherited(*fd).ok_or(SecretError::BadDescriptor)?;
+                read_secret_owned(owned, max)
+            }
+        }
     }
 
     fn announce_start(&self) {

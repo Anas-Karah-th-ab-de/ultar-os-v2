@@ -2,9 +2,10 @@
 //! one ends, and what the head file says.
 
 use crate::chain::{links_equal, Chain, Link, GENESIS, LINK_LEN};
-use crate::segment::{parse_segment_name, scan, Damage, Scan};
+use crate::record::Stored;
+use crate::segment::{parse_segment_name, scan, Damage, Scan, FRAME_OVERHEAD};
 use crate::storage::Storage;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use super::{Notice, StoreConfig, HEAD_LEN, HEAD_MAGIC, HEAD_NAME};
 
@@ -14,7 +15,48 @@ pub(super) struct Meta {
     pub(super) name: String,
     pub(super) base_seq: u64,
     pub(super) bytes: u64,
+    /// Newest record time in the segment (records carried forward keep
+    /// their own, older time, so this is a maximum, not the last).
     pub(super) last_time: u64,
+    /// Bytes of each source's records in the segment.
+    pub(super) sources: BTreeMap<String, u64>,
+}
+
+/// Bytes `record` occupies in a segment.
+pub(super) fn frame_bytes(record: &Stored) -> u64 {
+    (record.encode().len() + FRAME_OVERHEAD) as u64
+}
+
+/// Bytes per source of `records`.
+pub(super) fn source_bytes(records: &[Stored]) -> BTreeMap<String, u64> {
+    let mut sources = BTreeMap::new();
+    for record in records {
+        *sources.entry(record.service.clone()).or_insert(0) += frame_bytes(record);
+    }
+    sources
+}
+
+/// What the directory says about the head file.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HeadState {
+    /// There is no head file.
+    Missing,
+    /// There is one, but it is damaged or not authentic.
+    Invalid,
+    /// Position and link of the last synced record.
+    Valid(u64, Link),
+}
+
+/// Reads the head file.
+pub fn head_state(storage: &dyn Storage, chain: &Chain) -> HeadState {
+    let exists = storage
+        .list()
+        .is_ok_and(|files| files.iter().any(|(name, _)| name == HEAD_NAME));
+    match (exists, read_head(storage, chain)) {
+        (_, Some((seq, link))) => HeadState::Valid(seq, link),
+        (true, None) => HeadState::Invalid,
+        (false, None) => HeadState::Missing,
+    }
 }
 
 /// Outcome of reading the directory at start.
@@ -69,15 +111,18 @@ pub(super) fn scan_directory(storage: &dyn Storage, chain: &Chain, config: &Stor
             .read(&name, limit)
             .ok()
             .map(|data| scan(chain, &data));
-        let last_time = scanned
-            .as_ref()
-            .and_then(|s| s.records.last())
-            .map_or(0, |record| record.time_ms);
+        let records = scanned.as_ref().map_or(&[][..], |s| s.records.as_slice());
+        let last_time = records
+            .iter()
+            .map(|record| record.time_ms)
+            .max()
+            .unwrap_or(0);
         opened.segments.push_back(Meta {
             name,
             base_seq,
             bytes,
             last_time,
+            sources: source_bytes(records),
         });
         match scanned {
             Some(result) if index + 1 == count => opened.last = Some(result),

@@ -368,7 +368,7 @@ settingsd.daemon.token_rejected = The token could not be read: {detail}
 settingsd.daemon.root_refused = The settings service does not run as root without --allow-root
 settingsd.daemon.hardening_failed = The self-limits could not be applied: {detail}
 
-usettings.usage = Usage: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
+usettings.usage = Usage: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE | --token-fd N] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
 
 usettings.error.arguments = Invalid command
 usettings.error.no_socket = No bus socket given (--socket or ULTAR_BUS_SOCKET)

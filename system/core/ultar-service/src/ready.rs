@@ -32,11 +32,11 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{PipeReader, PipeWriter, Read, Write};
+use std::os::fd::OwnedFd;
 use std::sync::mpsc::{sync_channel, RecvTimeoutError};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
-use ultar_sys as sys;
 
 /// Environment variable that names the inherited write end of the pipe.
 pub const READY_FD_ENV: &str = "ULTAR_READY_FD";
@@ -129,21 +129,18 @@ impl ReadyNotifier {
         (3..=MAX_FD).contains(&fd).then_some(fd)
     }
 
-    /// Takes over the descriptor named in the environment. Anything
-    /// unusable (no variable, not a number, descriptor not open) gives a
-    /// disabled notifier: a service must start without a supervisor too.
-    pub fn from_env() -> Self {
-        let fd = std::env::var(READY_FD_ENV)
-            .ok()
-            .and_then(|value| Self::fd_from_value(&value));
-        match fd.and_then(|fd| sys::adopt_fd(fd).ok()) {
+    /// A notifier that writes to the inherited descriptor (taken over by
+    /// the runtime at start), or a disabled one: a service must start
+    /// without a supervisor too.
+    pub fn from_inherited(fd: Option<OwnedFd>) -> Self {
+        match fd {
             Some(owned) => Self::to_writer(Box::new(File::from(owned))),
             None => Self::disabled(),
         }
     }
 
-    /// The descriptor number the environment names, to keep it open while
-    /// inherited descriptors are closed.
+    /// The descriptor number the environment names; the runtime declares
+    /// it as inherited.
     pub fn env_fd() -> Option<i32> {
         std::env::var(READY_FD_ENV)
             .ok()

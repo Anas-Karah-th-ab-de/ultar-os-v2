@@ -15,7 +15,8 @@
 //! | resource limits ([`limit`], [`set_limit`]) | `rustix::process::{getrlimit, setrlimit}` |
 //! | file creation mask ([`set_umask`]) | `rustix::process::umask` |
 //! | user and group ids ([`uid`], [`euid`], [`gid`]) | `rustix::process::get*id` |
-//! | wait for two descriptors ([`wait_readable`]) | `rustix::event::poll` |
+//! | wait for descriptors ([`wait_readable`], [`poll_readable`]) | `rustix::event::poll` |
+//! | type of an inherited descriptor ([`take_inherited`]) | `rustix::fs::fstat` |
 //! | no new privileges ([`set_no_new_privileges`]) | `rustix::thread::set_no_new_privs` |
 //!
 //! What `rustix` 1.1 cannot do safely is in the module `raw` – the only
@@ -26,7 +27,7 @@
 //! | [`block_signals`], [`signal_fd`] | no `signalfd` at all (listed under `not_implemented`); `sigprocmask` only in the unsupported `runtime` feature |
 //! | [`peer_credentials`] | `rustix::net::sockopt::socket_peercred` **panics** when the kernel returns fewer than 12 bytes and builds a non-zero process id type from whatever it got. The Ultar kernel answers unknown socket options with 4 zero bytes; this crate has to recognise that and fail closed |
 //! | [`ultar_rights`], [`ultar_drop_rights`] | `prctl` options of the Ultar kernel, unknown to `rustix` |
-//! | [`is_open`], [`adopt_fd`], [`close_inherited`] | work on descriptor *numbers* inherited from the parent; turning a number into an owned or borrowed descriptor is `unsafe` in `std` and `rustix` alike |
+//! | [`is_open`], [`take_inherited`] | work on descriptor *numbers* inherited from the parent; turning a number into an owned descriptor is `unsafe` in `std` and `rustix` alike. The safe API is one call per process ([`inherit`]) – no function hands out an owner for an arbitrary number |
 //!
 //! x86_64 and aarch64, Linux system call ABI (which the Ultar kernel
 //! implements for these calls).
@@ -39,16 +40,18 @@ mod raw;
 #[cfg(test)]
 mod tests;
 
-pub use raw::{
-    adopt_fd, block_signals, close_inherited, is_open, peer_credentials, signal_fd,
-    ultar_drop_rights, ultar_rights, Ucred,
-};
+pub mod inherit;
+mod wait;
 
-use rustix::event::{poll, PollFd, PollFlags};
+pub use inherit::{take_inherited, InheritError, Inherited};
+pub use raw::{
+    block_signals, is_open, peer_credentials, signal_fd, ultar_drop_rights, ultar_rights, Ucred,
+};
+pub use wait::{poll_readable, wait_readable};
+
 use rustix::fs::Mode;
 use rustix::process::{getrlimit, setrlimit, Rlimit};
 use std::fmt;
-use std::os::fd::BorrowedFd;
 
 /// Error number returned by the kernel.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -148,25 +151,4 @@ pub fn gid() -> u32 {
 /// `execve` (`PR_SET_NO_NEW_PRIVS`).
 pub fn set_no_new_privileges() -> Result<(), Errno> {
     rustix::thread::set_no_new_privs(true).map_err(Errno::from)
-}
-
-/// Blocks until at least one of two descriptors is readable (or broken:
-/// closed peer, error) and says which. Interrupted waits are repeated.
-pub fn wait_readable(first: BorrowedFd<'_>, second: BorrowedFd<'_>) -> Result<(bool, bool), Errno> {
-    let ready = PollFlags::IN | PollFlags::ERR | PollFlags::HUP | PollFlags::NVAL;
-    let mut fds = [
-        PollFd::new(&first, PollFlags::IN),
-        PollFd::new(&second, PollFlags::IN),
-    ];
-    loop {
-        match poll(&mut fds, None) {
-            Ok(_) => break,
-            Err(rustix::io::Errno::INTR) => {}
-            Err(errno) => return Err(errno.into()),
-        }
-    }
-    Ok((
-        fds[0].revents().intersects(ready),
-        fds[1].revents().intersects(ready),
-    ))
 }

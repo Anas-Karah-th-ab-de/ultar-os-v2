@@ -6,22 +6,20 @@
 //! again after a broker restart. `--once` is a tool mode without any of that: resolve,
 //! print, exit.
 
-use crate::access::{AdminAccess, AllowAll, PolicyAccess};
 use crate::bus::{MemoryPublisher, SessionPublisher};
 use crate::cli::{print_list, EXIT_FAILED, EXIT_OK, EXIT_USAGE};
 use crate::daemon::{Daemon, DaemonConfig};
 use crate::msg::Messages;
+use crate::sources::{load_token, reloadable_access};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use ultar_bus::messages::device_service::{DevicePhase, SERVICE};
-use ultar_bus::Policy;
 use ultar_i18n::Arg;
 use ultar_service::log::{Level, LogTarget, LoggerConfig, Record};
 use ultar_service::{
-    read_secret_fd, read_secret_file, BusSession, HardeningError, Runtime, Secret, SecretError,
-    SecretFilePolicy, ServiceSpec, SessionOptions, StartError, StopCause,
+    BusSession, HardeningError, Runtime, ServiceSpec, SessionOptions, StartError, StopCause,
 };
 
 /// How long the daemon waits for the bus broker to appear at start.
@@ -222,7 +220,7 @@ fn start_runtime(
     let mut spec = ServiceSpec::new("ultar-devd");
     spec.hardening.allow_root = args.allow_root;
     if let Some(fd) = args.token_fd {
-        spec.hardening.keep_descriptors.push(fd);
+        spec.inherited.push(fd);
     }
     if let Some(path) = &args.log_socket {
         spec.log = LoggerConfig::to(LogTarget::Socket(path.clone()));
@@ -242,23 +240,6 @@ fn start_runtime(
     })
 }
 
-fn load_access(args: &DaemonArgs) -> Result<Box<dyn AdminAccess>, String> {
-    match &args.policy {
-        None => Ok(Box::new(AllowAll)),
-        Some(path) => Policy::load(path)
-            .map(|policy| Box::new(PolicyAccess(policy)) as Box<dyn AdminAccess>)
-            .map_err(|error| error.to_string()),
-    }
-}
-
-fn load_token(args: &DaemonArgs) -> Result<Option<Secret>, SecretError> {
-    match (&args.token_file, args.token_fd) {
-        (Some(path), _) => read_secret_file(path, &SecretFilePolicy::for_current_user()).map(Some),
-        (None, Some(fd)) => read_secret_fd(fd).map(Some),
-        (None, None) => Ok(None),
-    }
-}
-
 /// Everything after the runtime is up: connect, start, serve. Returns the exit code.
 fn serve(
     parsed: DaemonArgs,
@@ -271,13 +252,16 @@ fn serve(
         log(err, &messages.t_args(key, &[("a", Arg::Str(detail))]));
         EXIT_FAILED
     };
-    let access = match load_access(&parsed) {
+    let access = match reloadable_access(&parsed, runtime.lifecycle(), runtime.logger()) {
         Ok(access) => access,
         Err(detail) => return fail("devd.daemon.policy-rejected", &detail, err),
     };
     let mut options = SessionOptions::named("ultar-devd");
     options.connect_wait = BUS_WAIT;
-    options.token = match load_token(&parsed) {
+    // A stop while the broker is awaited ends the start at once, cleanly
+    // (review round 3, R3-S1).
+    options.stop = Some(runtime.lifecycle().clone());
+    options.token = match load_token(&parsed, runtime) {
         Ok(token) => token,
         // The key of the reason, never any part of the token.
         Err(error) => return fail("devd.daemon.token-rejected", error.key(), err),
@@ -286,14 +270,17 @@ fn serve(
         runtime.logger().log(Level::Error, "devd.bus_lost");
         fail("devd.daemon.bus-lost", &error.to_string(), err)
     };
+    let stopping = || runtime.lifecycle().is_stopping();
     let session = match BusSession::connect(socket, options) {
         Ok(session) => Arc::new(session),
+        Err(_) if stopping() => return stopped(messages, runtime, err),
         Err(error) => return bus_lost(&error, err),
     };
     // Register first: a client that reacts to the retained capability message can call
     // the service at once; its request waits in the endpoint until serving starts.
     let endpoint = match session.register(SERVICE) {
         Ok(endpoint) => endpoint,
+        Err(_) if stopping() => return stopped(messages, runtime, err),
         Err(error) => return bus_lost(&error, err),
     };
     let publisher = Box::new(SessionPublisher(session.clone()));
@@ -301,7 +288,7 @@ fn serve(
         Ok(daemon) => daemon,
         Err(error) => return start_failed(&error, messages, err),
     };
-    daemon.set_access(access);
+    daemon.set_access(Box::new(access));
     daemon.set_logger(runtime.logger().clone());
     // A stop signal closes the connection, which ends the blocking wait in `serve`.
     let closer = session.client().clone();

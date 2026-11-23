@@ -9,6 +9,7 @@
 //! Everything except the kernel text is made of validated identifiers and
 //! numbers, so a line can never contain a tab or a line break from data.
 
+use crate::record::is_unsafe_char;
 use ultar_bus::messages::log::{FieldValue, LogRecord, SourceKind};
 use ultar_service::log::Level;
 
@@ -83,7 +84,10 @@ pub fn format_record(record: &LogRecord) -> String {
         line.push('\t');
         // Kernel text was cleaned of control characters when stored; a
         // record from elsewhere is cleaned again here.
-        line.extend(text.chars().map(|c| if c.is_control() { ' ' } else { c }));
+        line.extend(
+            text.chars()
+                .map(|c| if is_unsafe_char(c) { ' ' } else { c }),
+        );
     }
     line
 }

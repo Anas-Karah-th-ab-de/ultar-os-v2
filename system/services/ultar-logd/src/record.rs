@@ -99,12 +99,30 @@ pub fn is_service_name(name: &str) -> bool {
         })
 }
 
+/// Whether `character` must not reach a terminal from free text: control
+/// characters, and the invisible format characters that change how a line
+/// is shown – direction marks, embeddings, overrides and isolates
+/// (U+061C, U+200E/F, U+202A–E, U+2066–9; review round 3, R3-L4) – and the
+/// zero-width characters that hide text (U+200B–D, U+2060, U+FEFF).
+pub fn is_unsafe_char(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '\u{061c}'
+                | '\u{200b}'..='\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2060}'..='\u{2069}'
+                | '\u{feff}'
+        )
+}
+
 /// Makes a kernel line storable: at most [`MAX_TEXT_LEN`] bytes, control
-/// characters replaced by spaces, cut at a character boundary.
+/// and invisible format characters replaced by spaces (see
+/// [`is_unsafe_char`]), cut at a character boundary.
 pub fn clean_text(line: &str) -> String {
     let mut out = String::with_capacity(line.len().min(MAX_TEXT_LEN));
     for character in line.chars() {
-        let character = if character.is_control() {
+        let character = if is_unsafe_char(character) {
             ' '
         } else {
             character

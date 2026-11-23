@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use ultar_bus::SocketAccess;
+use ultar_service::SecretSource;
 
 /// Identity of peers on a socket given without explicit identity.
 pub const DEFAULT_IDENTITY: &str = "system";
@@ -42,8 +43,9 @@ pub struct Arguments {
     pub allow_all: bool,
     /// File that maps user ids to identities.
     pub uid_map: Option<PathBuf>,
-    /// File with one `identity = "token"` line per client.
-    pub token_file: Option<PathBuf>,
+    /// Table with one `identity = "token"` line per client: a checked
+    /// file (`--token-file`) or an inherited descriptor (`--token-fd`).
+    pub token: Option<SecretSource>,
     /// Ingestion socket of the log service.
     pub log_socket: Option<PathBuf>,
     /// The operator declares that the broker runs as root.
@@ -64,7 +66,8 @@ pub enum ArgumentError {
     UnknownOption,
     /// `--listen` without `PATH=IDENTITY`.
     BadListener,
-    /// A number that is not one (`--mode`, `--owner`, `--group`).
+    /// A number that is not one (`--mode`, `--owner`, `--group`,
+    /// `--max-connections`, `--token-fd`), or out of range.
     BadNumber,
     /// `--mode`, `--owner` or `--group` before any listener.
     NoListenerYet,
@@ -73,9 +76,14 @@ pub enum ArgumentError {
     /// `--policy` together with `--allow-all`.
     PolicyConflict,
     /// A credential listener without `--uid-map`, or a token listener
-    /// without `--token-file`.
+    /// without `--token-file` or `--token-fd`.
     MissingSourceFile,
+    /// `--token-file` together with `--token-fd`, or one of them twice.
+    TwoTokenSources,
 }
+
+/// Most connections one listener may be given with `--max-connections`.
+pub const MAX_CONNECTIONS_PER_LISTENER: usize = 1024;
 
 fn fixed_listener(spec: &str) -> Result<Listener, ArgumentError> {
     match spec.rsplit_once('=') {
@@ -117,6 +125,30 @@ fn parse_id(text: &str) -> Result<u32, ArgumentError> {
     text.parse().map_err(|_| ArgumentError::BadNumber)
 }
 
+/// `--max-connections`: 1 to [`MAX_CONNECTIONS_PER_LISTENER`].
+fn parse_connections(text: &str) -> Result<usize, ArgumentError> {
+    let count = usize::try_from(parse_id(text)?).map_err(|_| ArgumentError::BadNumber)?;
+    if count == 0 || count > MAX_CONNECTIONS_PER_LISTENER {
+        return Err(ArgumentError::BadNumber);
+    }
+    Ok(count)
+}
+
+/// `--token-fd`: a descriptor above the standard streams.
+fn parse_fd(text: &str) -> Result<i32, ArgumentError> {
+    match i32::try_from(parse_id(text)?) {
+        Ok(fd) if fd >= 3 => Ok(fd),
+        _ => Err(ArgumentError::BadNumber),
+    }
+}
+
+fn set_token(parsed: &mut Arguments, source: SecretSource) -> Result<(), ArgumentError> {
+    if parsed.token.replace(source).is_some() {
+        return Err(ArgumentError::TwoTokenSources);
+    }
+    Ok(())
+}
+
 fn last(parsed: &mut Arguments) -> Result<&mut SocketAccess, ArgumentError> {
     parsed
         .listeners
@@ -134,7 +166,8 @@ fn option(
     match name {
         "--policy" => parsed.policy = Some(PathBuf::from(value()?)),
         "--uid-map" => parsed.uid_map = Some(PathBuf::from(value()?)),
-        "--token-file" => parsed.token_file = Some(PathBuf::from(value()?)),
+        "--token-file" => set_token(parsed, SecretSource::File(PathBuf::from(value()?)))?,
+        "--token-fd" => set_token(parsed, SecretSource::Fd(parse_fd(&value()?)?))?,
         "--log-socket" => parsed.log_socket = Some(PathBuf::from(value()?)),
         "--lang" => parsed.lang = Some(value()?),
         "--listen" => parsed.listeners.push(fixed_listener(&value()?)?),
@@ -147,6 +180,7 @@ fn option(
         "--mode" => last(parsed)?.mode = Some(parse_mode(&value()?)?),
         "--owner" => last(parsed)?.owner = Some(parse_id(&value()?)?),
         "--group" => last(parsed)?.group = Some(parse_id(&value()?)?),
+        "--max-connections" => last(parsed)?.connections = Some(parse_connections(&value()?)?),
         _ => return Err(ArgumentError::UnknownOption),
     }
     Ok(())
@@ -166,7 +200,7 @@ fn check(parsed: &Arguments) -> Result<(), ArgumentError> {
     if needs(&IdentitySource::Credentials) && parsed.uid_map.is_none() {
         return Err(ArgumentError::MissingSourceFile);
     }
-    if needs(&IdentitySource::Token) && parsed.token_file.is_none() {
+    if needs(&IdentitySource::Token) && parsed.token.is_none() {
         return Err(ArgumentError::MissingSourceFile);
     }
     Ok(())
@@ -372,5 +406,50 @@ mod tests {
         assert!(rest.allow_root);
         assert_eq!(rest.log_socket, Some(PathBuf::from("/l")));
         assert_eq!(rest.lang.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn connection_bounds_and_token_descriptors_are_read() {
+        let parsed = parse(
+            &[
+                "--listen",
+                "/a=x",
+                "--max-connections",
+                "8",
+                "--listen-token",
+                "/t",
+                "--token-fd",
+                "3",
+                "--allow-all",
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(parsed.listeners[0].access.connections, Some(8));
+        assert_eq!(parsed.listeners[1].access.connections, None);
+        assert_eq!(parsed.token, Some(SecretSource::Fd(3)));
+        for bad in [
+            &["--max-connections", "0"][..],
+            &["--max-connections", "1025"],
+            &["--token-fd", "2"],
+        ] {
+            let words = [&["/s", "--allow-all"][..], bad].concat();
+            assert_eq!(
+                parse(&words, None),
+                Err(ArgumentError::BadNumber),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(
+            parse(
+                &["/s", "--allow-all", "--token-fd", "3", "--token-file", "/t"],
+                None
+            ),
+            Err(ArgumentError::TwoTokenSources)
+        );
+        assert_eq!(
+            parse(&["--max-connections", "4", "/s", "--allow-all"], None),
+            Err(ArgumentError::NoListenerYet)
+        );
     }
 }

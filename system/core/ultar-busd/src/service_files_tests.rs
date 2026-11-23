@@ -3,6 +3,7 @@
 //! otherwise only show on a booted device.
 
 use crate::args::{parse_arguments, IdentitySource};
+use crate::budget;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use ultar_bus::{Identity, Pattern, Policy};
@@ -147,6 +148,34 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
 
 fn id(name: &str) -> Identity {
     Identity::new(name).unwrap()
+}
+
+/// Review round 3, R3-B1: the connection bounds of all sockets together fit
+/// the broker's descriptor and thread limits and the group's `pids.max`, so
+/// the peers of one socket cannot use up what another socket needs.
+#[test]
+fn the_sum_of_the_connection_bounds_fits_the_limits() {
+    let bus = service("bus");
+    let parsed = parse_arguments(bus.args.iter().cloned(), None).unwrap();
+    let mut builder = ultar_bus::Broker::builder(Policy::allow_all()).config(budget::config());
+    for listener in &parsed.listeners {
+        // Every socket names its own bound; none relies on the default.
+        assert!(listener.access.connections.is_some(), "{:?}", listener.path);
+        let auth = std::sync::Arc::new(ultar_bus::FixedIdentity::new(id("x")));
+        builder = builder.listen_with_access(&listener.path, auth, listener.access);
+    }
+    let needs = builder.needs();
+    assert_eq!(budget::check(needs), Ok(()));
+    let total = budget::with_reserve(needs);
+    let pids: usize = bus.cgroup["pids.max"].parse().unwrap();
+    assert!(total.threads <= pids, "{total:?} > pids.max {pids}");
+    // The administrator's socket has a bound of its own.
+    let admin = parsed
+        .listeners
+        .iter()
+        .find(|listener| listener.source == IdentitySource::Fixed("system.admin".into()))
+        .unwrap();
+    assert!(admin.access.connections.unwrap() >= 8);
 }
 
 #[test]

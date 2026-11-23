@@ -96,17 +96,19 @@ Without the variable a service simply does not notify. `ultar-settingsd` and `ul
 
 ### Hardening at start (default ON, each step can only be turned off in the service's own code)
 
-close inherited descriptors (except declared ones) → umask 077 → cwd `/` → refuse root unless declared
-(`--allow-root`) → `PR_SET_NO_NEW_PRIVS` → `RLIMIT_CORE 0`, `RLIMIT_AS`, `RLIMIT_NOFILE`, `RLIMIT_NPROC`
+take the declared inherited descriptors (`ServiceSpec::inherited`, type-checked pipe/file, one owner) and close
+all others – before the signal descriptor exists (R3-S2) → umask 077 → cwd `/` → refuse root unless declared
+(`--allow-root`) → `PR_SET_NO_NEW_PRIVS` → `RLIMIT_CORE 0`, `RLIMIT_NOFILE`, `RLIMIT_NPROC` (no `RLIMIT_AS` any
+more, R3-B0: memory is bounded by the group's `memory.max`)
 (set and **read back**) → drop every Ultar kernel right the service does not declare (`prctl 0x554c5201`, read back
 with `0x554c5200`; the mask is `!keep`, so rights a later kernel adds are dropped too) → panic hook (logs
 `service.panic` with the source line, never the message; exit 70).
 
 | Daemon | AS | NOFILE | NPROC | rights |
 |---|---|---|---|---|
-| busd | 1 GiB | 1024 | 1024 | none |
-| logd | 512 MiB | 256 | 256 | none |
-| settingsd, devd | 512 MiB | 256 | 128 | none |
+| busd | – | 1024 | 1024 | none |
+| logd | – | 256 | 256 | none |
+| settingsd, devd | – | 256 | 128 | none |
 
 Paths given to a daemon must be absolute (cwd is `/`).
 
@@ -136,7 +138,7 @@ table; the `asm!` block is untested there). Everything was run on x86_64 Linux 6
   ≤ 128 connections, ≤ 4 per source.
 * **Types instead of convention:** a record is `key` + ≤ 8 fields; keys/field names/words are `&'static str`,
   values are `u64 | i64 | bool | &'static str | ShortId`. `ShortId` = ≤ 32 chars `a-z0-9._:-`, starts with a letter,
-  no run of > 6 digits. Four `compile_fail` doc tests show that a `String` cannot get in; the decoder enforces the
+  no run of > 6 digits; since R3-W1 keys and words on the wire obey the same digit-run rule. Four `compile_fail` doc tests show that a `String` cannot get in; the decoder enforces the
   same rules on the receiving side. Maximum body 1024 bytes.
 * **Rate limit per source:** token bucket (default 200 + 50/s), applied at the socket (a flood never fills the
   shared queue) and again in the core; refused records are counted and announced by one `log.dropped` record
@@ -243,3 +245,22 @@ covered by the chain. Fixed (segment seed), test added.
 * Test hygiene: the process tests of the new crates leave their scratch directories in the system temp directory
   (`usvc-*`, `ubusd-*`, `ulogd-*`); they are unique per run and never reused. `ultar-service-probe` is a test
   helper (source under `tests/helpers/`); its `--panic` option is the one deliberate `panic!`.
+
+## 8. Review round 3 (`docs/review/services-runde-3.md`) – FIX2
+
+| Finding | Fix |
+|---|---|
+| R3-B0 | Broker: one **gate thread per listener** accepts and runs every handshake non-blocking (`poll`, `ultar-sys`); threads only after handshake + admission; at most `max_handshakes` (16) per listener in the handshake, more wait in the kernel's listen queue; a thread that cannot start refuses that connection (`LimitExceeded`). No `RLIMIT_AS` in any daemon. |
+| R3-B1 | One descriptor per connection (`Arc<UnixStream>` shared by reader, writer, control). Per-listener bound `--max-connections N` (default 64; shipped: 8/8/8, admin 32). `BrokerBuilder::needs()` + `busd` start check (descriptors and threads incl. reserve ≤ 1024) – refused with `LimitsTooSmall`; `service_files_tests.rs` checks the sum against `pids.max` (now 256). |
+| R3-K1 (runtime) | `busd` reads every fixed-identity socket back after bind (socket node, mode, owner, group); a mismatch (Ultar kernel today: no node) logs `bus.identity.unenforced` (warn, `listener=N`) – detected, not assumed. Inherited-descriptor option for every secret: `busd --token-fd`, `ultar-logd --chain-key-fd/--bus-token-fd`, `ulog --key-fd/--token-fd`, `usettings --token-fd` (settingsd/devd had `--token-fd`). Kernel side open (kernel agent). |
+| R3-L1 | Size eviction carries records of other sources forward (not the largest consumer; within total/8 per source; warn+ first; ≤ half a segment per eviction; field `carried` = original position, original time kept). |
+| R3-L3 | Head written before the first segment; segments without head = `head_missing` at `ulog verify` and `log.head_missing` at start; invalid head = `log.head_invalid`. |
+| R3-S1 | `SessionOptions::stop`: connect/register end at once on stop; settingsd, devd, logd exit 0. |
+| R3-S2 | `adopt_fd`/`close_inherited` no longer public; `ultar_sys::take_inherited` (one-shot) in `Runtime::start`; `Runtime::read_secret(SecretSource, max)`; undeclared/non-pipe/non-file descriptor = start error `service.start.descriptor_refused` (exit 71). |
+| R3-B3 | Token table ≤ 256 KiB, ≤ 1024 entries. |
+| R3-L4 | `clean_text` replaces bidi controls (U+061C, 200B–200F, 202A–202E, 2060–2069, FEFF). |
+| R3-W1 | Wire keys/words: digit run ≤ 6. The review's `review3_logd.rs` constant `LONG` had a run of 10 and was adapted (run of 6). |
+| R3-P1 | `SIGHUP` reads the policy again in logd (waiting readers re-scoped), settingsd and devd (`Reloadable` access); faulty file keeps the old one, logged. |
+
+Open: kernel side of R3-K1 (connect permission check, socket nodes, real file modes); refusing `system.admin`
+on a path visible to cells; `ultar-bus` now depends on `ultar-sys` (Cargo.lock entry of `ultar-bus` changes).

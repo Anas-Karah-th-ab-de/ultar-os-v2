@@ -97,16 +97,17 @@ impl Msg {
 /// Synopsis of `ultar-logd` (language independent).
 pub const LOGD_SYNOPSIS: &str =
     "ultar-logd --dir DIR (--listen PATH | --listen PATH=NAME)... [--mode OCTAL] \
-[--uid-map FILE] [--bus PATH (--policy FILE | --allow-all) [--bus-token-file FILE]] \
-[--chain-key-file FILE] [--kernel-log PATH] [--segment-bytes N] [--total-bytes N] [--max-age-s N] \
+[--uid-map FILE] [--bus PATH (--policy FILE | --allow-all) [--bus-token-file FILE | --bus-token-fd N]] \
+[--chain-key-file FILE | --chain-key-fd N] [--kernel-log PATH] [--segment-bytes N] [--total-bytes N] [--max-age-s N] \
 [--ring-records N] [--rate-burst N] [--rate-per-second N] [--fsync always|batch|rotate] \
 [--allow-root] [--lang ar|en|de]";
 
 /// Synopsis of `ulog` (language independent).
-pub const ULOG_SYNOPSIS: &str = "ulog [--bus PATH] [--token-file FILE] [--lang ar|en|de] \
+pub const ULOG_SYNOPSIS: &str =
+    "ulog [--bus PATH] [--token-file FILE | --token-fd N] [--lang ar|en|de] \
 (query | follow [--count N] | stats) [--service NAME] [--level LEVEL] [--since MS] [--until MS] \
-[--after SEQ] [--limit N]\n  ulog verify DIR [--key-file FILE]\n  \
-ulog export DIR OUT [--key-file FILE] [--include-kernel-text]";
+[--after SEQ] [--limit N]\n  ulog verify DIR [--key-file FILE | --key-fd N]\n  \
+ulog export DIR OUT [--key-file FILE | --key-fd N] [--include-kernel-text]";
 
 fn arabic(msg: Msg) -> &'static str {
     match msg {

@@ -46,6 +46,7 @@ mod ops;
 mod probe;
 pub mod runner;
 pub mod service;
+pub mod sources;
 pub mod store;
 pub mod traits;
 pub mod types;
