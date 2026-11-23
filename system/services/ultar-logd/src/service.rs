@@ -173,7 +173,9 @@ impl Engine {
 
     fn deliver(&mut self, delivery: Delivery) {
         match delivery {
-            Delivery::Record { service, record } => {
+            Delivery::Record {
+                service, record, ..
+            } => {
                 self.core.ingest(&service, record);
             }
             Delivery::Dropped { service, count } => self.core.note_dropped(&service, count),

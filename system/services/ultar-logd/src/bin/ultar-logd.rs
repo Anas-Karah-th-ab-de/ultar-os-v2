@@ -52,6 +52,9 @@ use ultar_service::{
 
 /// Records and requests that may wait for the engine thread.
 const QUEUE: usize = 4096;
+// Every source's share of the queue fits at the same time, so a flooding
+// source never takes the room of another one.
+const _: () = assert!(IngestLimits::STANDARD.fits(QUEUE));
 /// Pause before the bus is tried again after it went away for good.
 const BUS_RETRY: Duration = Duration::from_millis(500);
 /// Largest chain key or bus token read from a file or descriptor.

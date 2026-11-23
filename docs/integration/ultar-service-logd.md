@@ -257,6 +257,7 @@ covered by the chain. Fixed (segment seed), test added.
 | R3-L3 | Head written before the first segment; segments without head = `head_missing` at `ulog verify` and `log.head_missing` at start; invalid head = `log.head_invalid`. |
 | R3-S1 | `SessionOptions::stop`: connect/register end at once on stop; settingsd, devd, logd exit 0. |
 | R3-S2 | `adopt_fd`/`close_inherited` no longer public; `ultar_sys::take_inherited` (one-shot) in `Runtime::start`; `Runtime::read_secret(SecretSource, max)`; undeclared/non-pipe/non-file descriptor = start error `service.start.descriptor_refused` (exit 71). |
+| R3 guard `a_flooding_source_does_not_starve_another_source` (failed under load, FIX3) | Fair admission to the engine queue (`ultar-logd/src/share.rs`): each source may have at most `IngestLimits::share` (32) records waiting; at its share a source's reader waits on its own connection. Shares of all sources fit the queue (128 × 32 = 4096, compile-time check). Deterministic test `tests/fair_queue.rs` stalls the engine. |
 | R3-B3 | Token table ≤ 256 KiB, ≤ 1024 entries. |
 | R3-L4 | `clean_text` replaces bidi controls (U+061C, 200B–200F, 202A–202E, 2060–2069, FEFF). |
 | R3-W1 | Wire keys/words: digit run ≤ 6. The review's `review3_logd.rs` constant `LONG` had a run of 10 and was adapted (run of 6). |

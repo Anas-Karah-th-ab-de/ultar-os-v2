@@ -42,6 +42,7 @@ pub mod record;
 pub mod ring;
 pub mod segment;
 pub mod service;
+pub mod share;
 pub mod storage;
 pub mod store;
 #[cfg(test)]

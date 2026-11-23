@@ -1,16 +1,19 @@
 //! The ingestion socket: where services deliver their records.
 //!
-//! One thread accepts, one small thread per connection reads. A reader
-//! never blocks on the rest of the service: records go into a bounded
-//! queue with `try_send`, and what does not fit is counted and reported
-//! as dropped. Connections are bounded in total and per source, so a
-//! single source cannot occupy the socket.
+//! One thread accepts, one small thread per connection reads. Records go
+//! into a bounded queue with `try_send`, and what does not fit is counted
+//! and reported as dropped. Every source has a share of that queue
+//! (`share.rs`): at its share a source's reader waits for its own records
+//! to be handled, so a flooding source never takes the room another source
+//! needs. Connections are bounded in total and per source, so a single
+//! source cannot occupy the socket.
 //!
 //! The **name** of a source is never taken from what it sends. It is
 //! either fixed per listener (the socket file's owner and mode decide who
 //! reaches it) or the identity the kernel credentials of the connection
 //! map to; a peer that cannot be identified is disconnected.
 
+use crate::share::{Share, Ticket};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::net::Shutdown;
@@ -34,6 +37,9 @@ pub enum Delivery {
         service: String,
         /// The record.
         record: OwnedRecord,
+        /// The record's place in its source's share of the queue; given
+        /// back when the delivery is dropped.
+        ticket: Ticket,
     },
     /// Records of `service` that did not fit into the queue.
     Dropped {
@@ -83,15 +89,25 @@ pub struct IngestLimits {
     /// Rate limit of one source, applied right at the socket so that a
     /// flood of one source never fills the queue all sources share.
     pub rate: RateLimit,
+    /// Records of one source that may wait in the queue at the same time.
+    pub share: usize,
 }
 
 impl IngestLimits {
-    /// 128 connections, 4 per source, the standard rate.
+    /// 128 connections, 4 per source, the standard rate, 32 waiting
+    /// records per source.
     pub const STANDARD: IngestLimits = IngestLimits {
         max_connections: 128,
         max_per_source: 4,
         rate: RateLimit::STANDARD,
+        share: 32,
     };
+
+    /// Whether the shares of all sources there can be (at most one per
+    /// connection) fit a queue of `capacity` entries.
+    pub const fn fits(&self, capacity: usize) -> bool {
+        self.max_connections.saturating_mul(self.share) <= capacity
+    }
 }
 
 #[derive(Default)]
@@ -101,6 +117,8 @@ struct Table {
     /// a source that reconnects to refill its bucket gains nothing the
     /// core's own limit would not take away again).
     buckets: BTreeMap<String, TokenBucket>,
+    /// Queue share of each connected source.
+    shares: BTreeMap<String, Share>,
     total: usize,
     streams: BTreeMap<u64, UnixStream>,
     next: u64,
@@ -146,13 +164,15 @@ impl Drop for Slot {
             if *count == 0 {
                 table.per_source.remove(&self.service);
                 table.buckets.remove(&self.service);
+                table.shares.remove(&self.service);
             }
         }
     }
 }
 
-/// Takes a slot for `service`, or `None` when a bound is reached.
-fn admit(shared: &Arc<Shared>, service: &str, stream: &UnixStream) -> Option<Slot> {
+/// Takes a slot for `service`, or `None` when a bound is reached. The slot
+/// carries the source's queue share.
+fn admit(shared: &Arc<Shared>, service: &str, stream: &UnixStream) -> Option<(Slot, Share)> {
     let mut table = shared.table();
     let own = table.per_source.get(service).copied().unwrap_or(0);
     if table.total >= shared.limits.max_connections || own >= shared.limits.max_per_source {
@@ -167,14 +187,16 @@ fn admit(shared: &Arc<Shared>, service: &str, stream: &UnixStream) -> Option<Slo
         .buckets
         .entry(service.to_owned())
         .or_insert_with(|| TokenBucket::new(rate, now));
+    let share = table.shares.entry(service.to_owned()).or_default().clone();
     if let Ok(clone) = stream.try_clone() {
         table.streams.insert(id, clone);
     }
-    Some(Slot {
+    let slot = Slot {
         shared: shared.clone(),
         service: service.to_owned(),
         id,
-    })
+    };
+    Some((slot, share))
 }
 
 /// Where deliveries go.
@@ -241,7 +263,12 @@ impl Backlog {
 }
 
 /// Reads one connection until it ends.
-fn read_connection(shared: &Shared, mut stream: UnixStream, service: &str, queue: &Queue) {
+fn read_connection(
+    shared: &Shared,
+    mut stream: UnixStream,
+    (service, share): (&str, &Share),
+    queue: &Queue,
+) {
     let mut frames = FrameReader::new();
     let mut backlog = Backlog::default();
     let mut buffer = [0u8; 4096];
@@ -260,9 +287,15 @@ fn read_connection(shared: &Shared, mut stream: UnixStream, service: &str, queue
                 backlog.dropped += 1;
                 return;
             }
+            let stopping = || shared.stopping.load(Ordering::SeqCst);
+            let Some(ticket) = share.take(shared.limits.share, stopping) else {
+                gone = true;
+                return;
+            };
             let delivery = Delivery::Record {
                 service: service.to_owned(),
                 record,
+                ticket,
             };
             match offer(queue, delivery) {
                 Ok(true) => {}
@@ -293,7 +326,7 @@ fn serve_peer(shared: &Arc<Shared>, stream: UnixStream, names: &SourceNames, que
     let slot = service
         .as_deref()
         .and_then(|service| admit(shared, service, &stream));
-    let (Some(service), Some(slot)) = (service, slot) else {
+    let (Some(service), Some((slot, share))) = (service, slot) else {
         let _ = offer(queue, Delivery::Rejected);
         let _ = stream.shutdown(Shutdown::Both);
         return;
@@ -305,7 +338,7 @@ fn serve_peer(shared: &Arc<Shared>, stream: UnixStream, names: &SourceNames, que
         .name("ultar-logd-conn".into())
         .stack_size(96 * 1024)
         .spawn(move || {
-            read_connection(&slot.shared, stream, &service, &queue);
+            read_connection(&slot.shared, stream, (&service, &share), &queue);
             drop(slot);
         });
 }
