@@ -9,7 +9,6 @@
 use crate::chain::Chain;
 use crate::core::to_bus;
 use crate::format::format_record;
-use crate::record::SourceKind;
 use crate::segment::{parse_segment_name, scan};
 use crate::storage::Storage;
 use crate::verify::{verify, Report};
@@ -111,7 +110,9 @@ pub fn export(
             continue;
         };
         for record in scan(chain, &data).records {
-            let is_kernel = record.kind == SourceKind::Kernel;
+            // Free text (kernel lines, output of services) is withheld
+            // unless asked for.
+            let is_kernel = record.kind.has_text();
             let with_text = is_kernel && options.include_kernel_text;
             if is_kernel && with_text {
                 report.kernel_text_included += 1;

@@ -15,6 +15,10 @@ pub struct ListenArg {
     pub name: Option<String>,
     /// Permission bits of the socket file.
     pub mode: Option<u32>,
+    /// Group the socket file is handed to (`--group GID`).
+    pub group: Option<u32>,
+    /// The output channel of `ultar-init` (`--listen-output PATH`).
+    pub output: bool,
 }
 
 /// The parsed command line.
@@ -83,6 +87,8 @@ fn listen(spec: &str) -> Result<ListenArg, ArgError> {
         path: PathBuf::from(path),
         name: name.map(str::to_owned),
         mode: None,
+        group: None,
+        output: false,
     })
 }
 
@@ -205,7 +211,7 @@ fn finish(raw: Raw, config: CoreConfig) -> Result<DaemonCommand, ArgError> {
     if raw.bus.is_some() && raw.policy.is_none() && !raw.allow_all {
         return Err(ArgError::NoPolicy);
     }
-    if raw.listeners.iter().any(|l| l.name.is_none()) && raw.uid_map.is_none() {
+    if raw.listeners.iter().any(|l| l.name.is_none() && !l.output) && raw.uid_map.is_none() {
         return Err(ArgError::NoUidMap);
     }
     if !config.store.is_valid() || config.ring_records == 0 {
@@ -244,9 +250,19 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<DaemonCommand, Ar
                 match name {
                     "--lang" => {}
                     "--listen" => raw.listeners.push(listen(&value)?),
+                    "--listen-output" if !value.is_empty() && !value.contains('=') => {
+                        raw.listeners.push(ListenArg {
+                            output: true,
+                            ..listen(&value)?
+                        });
+                    }
                     "--mode" => {
                         let last = raw.listeners.last_mut().ok_or(ArgError::Arguments)?;
                         last.mode = Some(mode(&value)?);
+                    }
+                    "--group" => {
+                        let last = raw.listeners.last_mut().ok_or(ArgError::Arguments)?;
+                        last.group = Some(number(&value)?);
                     }
                     _ if secret_option(&mut raw, name, &value)? => {}
                     _ if path_option(&mut raw, name, value.clone()) => {}
@@ -296,16 +312,35 @@ mod tests {
     #[test]
     fn sockets_and_files_are_read() {
         let full = words(
-            "--dir /d --listen /a.sock --mode 0666 --listen /b=c/k.sock=kernelish \
-             --uid-map /m --bus /bus --policy /p --bus-token-file /t \
+            "--dir /d --listen /a.sock --mode 0666 --group 801 --listen /b=c/k.sock=kernelish \
+             --listen-output /o.sock --uid-map /m --bus /bus --policy /p --bus-token-file /t \
              --chain-key-file /k --kernel-log /proc/x --allow-root --lang en",
         );
         let first = ListenArg {
             path: "/a.sock".into(),
             name: None,
             mode: Some(0o666),
+            group: Some(801),
+            output: false,
         };
         assert_eq!(full.listeners[0], first);
+        let output = &full.listeners[2];
+        assert!(
+            output.output
+                && output.name.is_none()
+                && output.path == std::path::Path::new("/o.sock")
+        );
+        // The output listener needs no uid map; a name on it is refused.
+        let lone = words("--dir /d --listen-output /o.sock");
+        assert!(lone.listeners[0].output && lone.uid_map.is_none());
+        assert_eq!(
+            parsed(&["--dir", "/d", "--listen-output", "/o=x"]),
+            Err(ArgError::Arguments)
+        );
+        assert_eq!(
+            parsed(&["--dir", "/d", "--listen", "/l=s", "--group", "x"]),
+            Err(ArgError::Arguments)
+        );
         assert_eq!(full.listeners[1].path, PathBuf::from("/b=c/k.sock"));
         assert_eq!(full.policy, Some(PathBuf::from("/p")));
         assert!(full.allow_root && !full.allow_all);

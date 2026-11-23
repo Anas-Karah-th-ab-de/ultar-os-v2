@@ -5,6 +5,9 @@
 # Erreichbar nur auf dem Gerät: /run/ultar/llm.sock und 127.0.0.1:8080 (OpenAI-kompatibel).
 manual = true
 exec = "/usr/bin/ultar-llm"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["serve"]
 restart = "on-failure"
 [cgroup]

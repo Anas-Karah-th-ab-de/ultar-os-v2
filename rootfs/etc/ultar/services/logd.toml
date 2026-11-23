@@ -1,12 +1,17 @@
 # Log service (review block B). Starts first: every other service writes its
 # records to its own socket here, and their loggers buffer (bounded) until
-# this service is up, so nothing has to wait for it.
+# this service is up, so nothing has to wait for it. ultar-init forwards the
+# standard output and error of every service to the output socket.
 #
-# Identity of a writer = the socket it reaches. The Ultar kernel has no peer
-# credentials yet (see ultar-service, module peercred), so every service gets
-# its own socket, mode 0600. On a kernel with SO_PEERCRED one socket is enough:
+# Runs as its own user (802) without kernel rights. Identity of a writer =
+# the socket it reaches: each socket belongs to logd and is open to the
+# writer's group only (mode 0660; logd is a member of those groups, which
+# lets it hand the socket to them). On a kernel with SO_PEERCRED one socket
+# is enough:
 #   "--listen", "/run/ultar/log/ingest.sock", "--mode", "0666",
 #   "--uid-map", "/etc/ultar/uid-map.toml"
+#
+# Ids of the system services: 801 busd, 802 logd, 803 settingsd, 804 devd.
 #
 # Bounds (all enforced, see ultar-logd): 2048 records / 1 MiB in memory,
 # 1 MiB per segment, 16 MiB on disk, 30 days, 200 records at once and
@@ -14,9 +19,11 @@
 exec = "/usr/bin/ultar-logd"
 args = [
     "--dir", "/data/ultar/log",
-    "--listen", "/run/ultar/log/busd.sock=system.busd", "--mode", "0600",
-    "--listen", "/run/ultar/log/settingsd.sock=system.settingsd", "--mode", "0600",
-    "--listen", "/run/ultar/log/devd.sock=system.devd", "--mode", "0600",
+    "--listen", "/run/ultar/log/busd.sock=system.busd", "--mode", "0660", "--group", "801",
+    "--listen", "/run/ultar/log/settingsd.sock=system.settingsd", "--mode", "0660", "--group", "803",
+    "--listen", "/run/ultar/log/devd.sock=system.devd", "--mode", "0660", "--group", "804",
+    # Standard output and error of the services, from ultar-init (root).
+    "--listen-output", "/run/ultar/log/init.sock", "--mode", "0600",
     "--bus", "/run/ultar/bus/logd.sock",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--kernel-log", "/proc/ultar/protokoll",
@@ -24,10 +31,12 @@ args = [
     "--total-bytes", "16777216",
     "--max-age-s", "2592000",
     "--fsync", "batch",
-    # ultar-init starts services as root and cannot switch users yet; the
-    # daemon refuses root unless that is declared here.
-    "--allow-root",
 ]
+user = 802
+groups = [801, 803, 804]
+dirs = ["/data/ultar/log"]
+public_dirs = ["/run/ultar/log"]
+notify = true
 restart = "always"
 
 [cgroup]

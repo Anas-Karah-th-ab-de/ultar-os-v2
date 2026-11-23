@@ -28,6 +28,9 @@ pub enum SourceKind {
     Kernel,
     /// The log service itself.
     Internal,
+    /// A line a service wrote to its standard output or error, forwarded
+    /// by `ultar-init` (free text, like the kernel's lines).
+    Output,
 }
 
 impl SourceKind {
@@ -37,6 +40,7 @@ impl SourceKind {
             Self::Service => 0,
             Self::Kernel => 1,
             Self::Internal => 2,
+            Self::Output => 3,
         }
     }
 
@@ -46,6 +50,7 @@ impl SourceKind {
             0 => Some(Self::Service),
             1 => Some(Self::Kernel),
             2 => Some(Self::Internal),
+            3 => Some(Self::Output),
             _ => None,
         }
     }
@@ -56,7 +61,13 @@ impl SourceKind {
             Self::Service => "service",
             Self::Kernel => "kernel",
             Self::Internal => "internal",
+            Self::Output => "output",
         }
+    }
+
+    /// Whether records of this kind carry free text.
+    pub const fn has_text(self) -> bool {
+        matches!(self, Self::Kernel | Self::Output)
     }
 }
 
@@ -222,7 +233,7 @@ impl Stored {
             return Err(BadPayload);
         }
         let text = std::str::from_utf8(reader.take(text_len)?).map_err(|_| BadPayload)?;
-        if !reader.bytes.is_empty() || (kind != SourceKind::Kernel && !text.is_empty()) {
+        if !reader.bytes.is_empty() || (!kind.has_text() && !text.is_empty()) {
             return Err(BadPayload);
         }
         Ok(Self {
@@ -394,11 +405,13 @@ mod tests {
             SourceKind::Service,
             SourceKind::Kernel,
             SourceKind::Internal,
+            SourceKind::Output,
         ] {
             assert_eq!(SourceKind::from_number(kind.number()), Some(kind));
             assert!(!kind.name().is_empty());
         }
-        assert_eq!(SourceKind::from_number(3), None);
+        assert_eq!(SourceKind::from_number(4), None);
+        assert!(SourceKind::Output.has_text() && !SourceKind::Service.has_text());
         assert!(is_service_name("system.settingsd") && is_service_name(KERNEL_NAME));
         assert!(is_service_name(INTERNAL_NAME));
         for bad in ["", "A", "a b", "a/b", &"a".repeat(65)] {

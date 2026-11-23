@@ -3,6 +3,9 @@
 manual = true
 compat = true
 exec = "/data/ultar/agent/llama-server"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["-m", "/data/ultar/agent/model.gguf", "--host", "127.0.0.1", "--port", "8080", "-c", "4096", "--parallel", "1"]
 restart = "on-failure"
 [cgroup]

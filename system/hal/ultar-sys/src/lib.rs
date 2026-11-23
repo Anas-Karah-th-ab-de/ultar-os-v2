@@ -18,13 +18,14 @@
 //! | wait for descriptors ([`wait_readable`], [`poll_readable`]) | `rustix::event::poll` |
 //! | type of an inherited descriptor ([`take_inherited`]) | `rustix::fs::fstat` |
 //! | no new privileges ([`set_no_new_privileges`]) | `rustix::thread::set_no_new_privs` |
+//! | ids of a launched service ([`switch_identity`]), session ([`new_session`]), inherited descriptors ([`set_inherited`]) | `rustix::thread::set_thread_*`, `rustix::process::setsid`, `rustix::io::fcntl_setfd` |
 //!
 //! What `rustix` 1.1 cannot do safely is in the module `raw` – the only
 //! file with `unsafe`, every block with a `SAFETY` comment:
 //!
 //! | Call | Why not `rustix` |
 //! |---|---|
-//! | [`block_signals`], [`signal_fd`] | no `signalfd` at all (listed under `not_implemented`); `sigprocmask` only in the unsupported `runtime` feature |
+//! | [`block_signals`], [`set_signal_mask`], [`signal_fd`] | no `signalfd` at all (listed under `not_implemented`); `sigprocmask` only in the unsupported `runtime` feature |
 //! | [`peer_credentials`] | `rustix::net::sockopt::socket_peercred` **panics** when the kernel returns fewer than 12 bytes and builds a non-zero process id type from whatever it got. The Ultar kernel answers unknown socket options with 4 zero bytes; this crate has to recognise that and fail closed |
 //! | [`ultar_rights`], [`ultar_drop_rights`] | `prctl` options of the Ultar kernel, unknown to `rustix` |
 //! | [`is_open`], [`take_inherited`] | work on descriptor *numbers* inherited from the parent; turning a number into an owned descriptor is `unsafe` in `std` and `rustix` alike. The safe API is one call per process ([`inherit`]) – no function hands out an owner for an arbitrary number |
@@ -40,12 +41,19 @@ mod raw;
 #[cfg(test)]
 mod tests;
 
+mod identity;
 pub mod inherit;
+pub mod machine;
 mod wait;
 
+pub use identity::{
+    groups, is_inherited, new_session, set_controlling_terminal, set_inherited, switch_identity,
+    Identity, IdentityError, MAX_GROUPS,
+};
 pub use inherit::{take_inherited, InheritError, Inherited};
 pub use raw::{
-    block_signals, is_open, peer_credentials, signal_fd, ultar_drop_rights, ultar_rights, Ucred,
+    block_signals, is_open, peer_credentials, set_signal_mask, signal_fd, ultar_drop_rights,
+    ultar_rights, Ucred,
 };
 pub use wait::{poll_readable, wait_readable};
 
@@ -64,6 +72,8 @@ impl Errno {
     pub const EBADF: Errno = Errno(9);
     /// Invalid argument.
     pub const EINVAL: Errno = Errno(22);
+    /// The kernel does not implement the call.
+    pub const ENOSYS: Errno = Errno(38);
     /// The kernel does not offer the requested socket option.
     pub const ENOPROTOOPT: Errno = Errno(92);
 }
@@ -145,6 +155,11 @@ pub fn euid() -> u32 {
 /// Real group id of this process.
 pub fn gid() -> u32 {
     rustix::process::getgid().as_raw()
+}
+
+/// Effective group id of the process.
+pub fn egid() -> u32 {
+    rustix::process::getegid().as_raw()
 }
 
 /// Forbids this process and its children to gain privileges through

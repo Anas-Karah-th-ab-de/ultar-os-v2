@@ -133,3 +133,54 @@ fn error_numbers_are_decoded() {
     assert_eq!(Errno::from(rustix::io::Errno::PERM), Errno::EPERM);
     assert!(!Errno::EPERM.to_string().is_empty());
 }
+
+#[test]
+fn descriptors_can_be_marked_as_inherited_and_back() {
+    let (reader, _writer) = std::io::pipe().unwrap();
+    assert_eq!(is_inherited(&reader), Ok(false));
+    set_inherited(&reader, true).unwrap();
+    assert_eq!(is_inherited(&reader), Ok(true));
+    set_inherited(&reader, false).unwrap();
+    assert_eq!(is_inherited(&reader), Ok(false));
+}
+
+#[test]
+fn ids_are_switched_and_read_back_or_refused() {
+    // The calls change the calling thread only: a thread of its own keeps
+    // the test process as it was.
+    let outcome = std::thread::spawn(|| {
+        let nobody = Identity {
+            uid: 65534,
+            gid: 65534,
+            groups: vec![65534],
+        };
+        let first = switch_identity(&nobody);
+        // Back to root is refused once the ids are dropped.
+        let back = switch_identity(&Identity::default());
+        (first, back, uid())
+    })
+    .join()
+    .unwrap();
+    if euid() == 0 {
+        assert_eq!(outcome.0, Ok(()));
+        assert_eq!(outcome.1, Err(IdentityError::Kernel(Errno::EPERM)));
+    } else {
+        assert_eq!(outcome.0, Err(IdentityError::Kernel(Errno::EPERM)));
+    }
+    let many = Identity {
+        groups: (0..=MAX_GROUPS as u32).collect(),
+        ..Identity::default()
+    };
+    assert_eq!(switch_identity(&many), Err(IdentityError::TooManyGroups));
+    assert!(!IdentityError::NotApplied.to_string().is_empty());
+}
+
+#[test]
+fn the_signal_mask_is_replaced_and_restored() {
+    std::thread::spawn(|| {
+        let before = set_signal_mask(1 << 9).unwrap();
+        assert_eq!(set_signal_mask(before).unwrap(), 1 << 9);
+    })
+    .join()
+    .unwrap();
+}

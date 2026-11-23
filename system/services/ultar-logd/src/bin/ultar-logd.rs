@@ -163,7 +163,7 @@ fn load(args: &DaemonArgs, lang: Lang, runtime: &Runtime) -> Option<Loaded> {
         }
     };
     let map = match &args.uid_map {
-        Some(path) if args.listeners.iter().any(|l| l.name.is_none()) => {
+        Some(path) if args.listeners.iter().any(|l| l.name.is_none() && !l.output) => {
             if !peercred::probe() {
                 say(text(lang, Msg::CredentialsUnsupported));
                 return None;
@@ -181,6 +181,7 @@ fn load(args: &DaemonArgs, lang: Lang, runtime: &Runtime) -> Option<Loaded> {
     let mut listeners = Vec::new();
     for listener in &args.listeners {
         let names = match (&listener.name, &map) {
+            _ if listener.output => SourceNames::Output,
             (Some(name), _) => SourceNames::Fixed(name.clone()),
             (None, Some(map)) => SourceNames::Credentials(map.clone()),
             (None, None) => return None,
@@ -189,6 +190,7 @@ fn load(args: &DaemonArgs, lang: Lang, runtime: &Runtime) -> Option<Loaded> {
             path: listener.path.clone(),
             names,
             mode: listener.mode,
+            group: listener.group,
         });
     }
     Some(Loaded {

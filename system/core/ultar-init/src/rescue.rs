@@ -388,13 +388,12 @@ fn keys_loop(vib: &str) {
     ));
     let mut buf = [0u8; 24 * 32];
     loop {
-        if devs.is_empty()
-            || last_scan.elapsed() > Duration::from_secs(if devs.is_empty() { 5 } else { 60 })
+        if (devs.is_empty()
+            || last_scan.elapsed() > Duration::from_secs(if devs.is_empty() { 5 } else { 60 }))
+            && !combo.active()
         {
-            if !combo.active() {
-                devs = open_key_devs();
-                last_scan = Instant::now();
-            }
+            devs = open_key_devs();
+            last_scan = Instant::now();
         }
         let timeout = if combo.active() { 100u16 } else { 5000 };
         if devs.is_empty() {

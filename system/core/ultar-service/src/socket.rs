@@ -37,6 +37,18 @@ impl std::error::Error for BindError {}
 /// removed. With `mode` the permission bits of the socket file are set;
 /// without it the process's umask decides (077 after hardening: private).
 pub fn bind_listener(path: &Path, mode: Option<u32>) -> Result<UnixListener, BindError> {
+    bind_listener_for(path, mode, None)
+}
+
+/// Like [`bind_listener`], and hands the socket file to the group `group`
+/// before its mode is set (so it is never open to more than the final
+/// setting allows). A process may give a file it owns to a group it is a
+/// member of; anything else needs the right to change owners.
+pub fn bind_listener_for(
+    path: &Path,
+    mode: Option<u32>,
+    group: Option<u32>,
+) -> Result<UnixListener, BindError> {
     let listener = match UnixListener::bind(path) {
         Ok(listener) => listener,
         Err(error) if error.kind() == ErrorKind::AddrInUse => {
@@ -52,6 +64,9 @@ pub fn bind_listener(path: &Path, mode: Option<u32>) -> Result<UnixListener, Bin
         }
         Err(error) => return Err(BindError::Io(error)),
     };
+    if group.is_some() {
+        std::os::unix::fs::chown(path, None, group).map_err(BindError::Io)?;
+    }
     if let Some(mode) = mode {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & 0o777))
             .map_err(BindError::Io)?;

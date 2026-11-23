@@ -2,6 +2,9 @@
 editions = ["phone", "desktop"]
 # Oberfläche (Touch): Startbildschirm, Einstellungen, Pakete, Dienste, Terminal
 exec = "/usr/bin/ultar-shell"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 # PC/Laptop: erst Grafiktreiber laden (coldplug), sonst übernimmt die Oberfläche den vorläufigen EFI-Bildschirm
 after = ["coldplug"]
 restart = "always"

@@ -34,6 +34,9 @@ pub enum SourceKind {
     Kernel,
     /// The log service itself (drop markers, gaps, rotation).
     Internal,
+    /// What a service wrote to its standard output or error, forwarded by
+    /// `ultar-init`; named by the service's name in the service files.
+    Output,
 }
 
 /// The value of a record field.
@@ -69,7 +72,9 @@ pub struct LogRecord {
     pub key: String,
     /// Typed fields.
     pub fields: Vec<(String, FieldValue)>,
-    /// The kernel's own line; only for [`SourceKind::Kernel`].
+    /// Free text: the kernel's own line ([`SourceKind::Kernel`]) or a line
+    /// of output ([`SourceKind::Output`]); only for readers with
+    /// `log.read_all`.
     pub text: Option<String>,
 }
 

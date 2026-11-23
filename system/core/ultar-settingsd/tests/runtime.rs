@@ -392,7 +392,8 @@ fn the_shipped_service_definition_is_a_command_line_the_daemon_accepts() {
         args.log_socket.as_deref(),
         Some(Path::new("/run/ultar/log/settingsd.sock"))
     );
-    assert!(args.allow_root && args.token_file.is_none() && args.token_fd.is_none());
+    // Started as its own user by ultar-init: root is neither needed nor declared.
+    assert!(!args.allow_root && args.token_file.is_none() && args.token_fd.is_none());
 }
 
 /// The soft limit `name` of this test process, as `/proc` shows it.

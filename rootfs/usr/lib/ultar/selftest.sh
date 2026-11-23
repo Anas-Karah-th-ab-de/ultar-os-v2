@@ -9,7 +9,7 @@ ultar-compat run -- /bin/bash -c '. /etc/os-release; echo "bash im Compat: $PRET
 echo "--- Offline-Installation eines .deb (wie per USB) ---"
 ultar-compat dpkg -i /opt/hello.deb >/dev/null && ultar-compat run -- hello
 echo "--- cgroup heartbeat ---"
-echo "memory.max=$(cat /sys/fs/cgroup/ultar/heartbeat/memory.max) pids.max=$(cat /sys/fs/cgroup/ultar/heartbeat/pids.max)"
+echo "memory.max=$(cat /sys/fs/cgroup/system/heartbeat/memory.max) pids.max=$(cat /sys/fs/cgroup/system/heartbeat/pids.max)"
 sleep 5
 echo "--- nach 5 s (heartbeat sollte neu gestartet sein) ---"
 ultar-ctl status

@@ -481,7 +481,8 @@ fn the_shipped_service_definition_is_a_command_line_the_daemon_accepts() {
         Some(Path::new("/run/ultar/log/devd.sock"))
     );
     assert_eq!(args.config.keys, Path::new("/etc/ultar/trusted-keys"));
-    assert!(args.allow_root && !args.allow_all && !args.once);
+    // Started as its own user by ultar-init: root is neither needed nor declared.
+    assert!(!args.allow_root && !args.allow_all && !args.once);
 }
 
 /// The soft limit `name` of this test process, as `/proc` shows it.

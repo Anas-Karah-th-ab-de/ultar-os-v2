@@ -4,5 +4,8 @@ editions = ["phone"]
 # Fingerabdruckdiensten, Vermittler-Socket /run/ultar/fp.sock. Ohne /data/android beendet sich das
 # Skript ruhig (wartet eine Stunde). Siehe docs/A30-FINGERABDRUCK.md.
 exec = "/system/bin/sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["/data/android/fp-dienst.sh"]
 after = ["drivers"]

@@ -1,7 +1,17 @@
-//! ultar-init – PID 1 von Ultar OS (KM Code Craft).
+//! `ultar-init` – PID 1 of Ultar OS.
 //!
-//! Ereignisschleife: signalfd (SIGCHLD/Shutdown) + Steuer-Socket, kein Polling.
-//! Läuft auch ohne PID 1 (Entwicklungsmodus) – dann ohne Mounts/Reboot.
+//! ```text
+//! ultar-init [--config FILE]        PID 1, or a service manager for tests
+//! ultar-init --launch …             the launcher (see `launch.rs`)
+//! ```
+//!
+//! As PID 1 it mounts the base file systems, loads modules, starts the
+//! device helpers and the emergency exit, and then runs the services
+//! (`ultar_init::daemon`). It never ends on its own: a programming error
+//! stops it in place (the USB diagnosis stays reachable), a stop signal
+//! leads to the ordered shutdown and then to power off or restart. Not as
+//! PID 1 (development, tests) it skips everything that belongs to the
+//! machine and ends after the shutdown.
 
 mod boot;
 mod config;
@@ -9,19 +19,19 @@ mod diag;
 mod fwhelper;
 mod hw;
 mod rescue;
-mod supervisor;
 
-use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
-use nix::sys::signal::{SigSet, Signal};
-use nix::sys::signalfd::{SfdFlags, SignalFd};
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
-use nix::unistd::Pid;
-use std::io::{BufRead, BufReader, Write};
-use std::os::fd::AsFd;
-use std::os::unix::net::UnixListener;
-use std::time::{Duration, Instant};
-use supervisor::Supervisor;
+use std::io::Write;
+use std::path::PathBuf;
+use std::time::Duration;
+use ultar_init::daemon::{block_signals, Daemon, Halt, Paths};
+use ultar_init::groups::GroupTree;
+use ultar_init::output::Forwarder;
+use ultar_init::spec::{load_dir, ServiceSpec};
+use ultar_init::start::{own_program, Environment};
+use ultar_init::supervisor::Supervisor;
 
+/// One journal line: standard error (the console as PID 1) and the
+/// diagnosis buffer.
 pub fn log(msg: &str) {
     let line = format!("[ultar-init {:>8.3}] {msg}\n", uptime());
     let _ = std::io::stderr().write_all(line.as_bytes());
@@ -29,250 +39,177 @@ pub fn log(msg: &str) {
 }
 
 fn uptime() -> f64 {
-    std::fs::read_to_string("/proc/uptime")
-        .ok()
-        .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse().ok()))
-        .unwrap_or(0.0)
+    ultar_sys::machine::uptime()
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum Halt {
-    PowerOff,
-    Reboot,
+fn is_phone() -> bool {
+    ultar_hal_system::current_edition() == ultar_profile::Edition::Phone
 }
 
-fn sock_path() -> String {
-    std::env::var("ULTAR_CTL_SOCK").unwrap_or_else(|_| "/run/ultar/ctl.sock".into())
+/// The machine's part of the boot (PID 1 only).
+fn boot_machine() {
+    // PID 1 must never end (a kernel panic and a restart loop would
+    // follow): on a programming error it stops here.
+    std::panic::set_hook(Box::new(|info| {
+        log(&format!("init panic: {info}"));
+        loop {
+            std::thread::sleep(Duration::from_secs(3600));
+        }
+    }));
+    boot::early_mounts();
+    // Samsung firmware (/vendor) only on phones.
+    if is_phone() {
+        boot::mount_vendor_firmware();
+    }
+    fwhelper::start();
+    boot::boot_marker();
+    let _ = nix::sys::reboot::set_cad_enabled(false);
+}
+
+fn boot_after_config(config: &config::InitConfig) {
+    boot::configure(config);
+    if !is_phone() {
+        boot::sprache_von_startpartition();
+    }
+    diag::start();
+    // Only phones: the largest eMMC partition as /data, in the background.
+    if is_phone() {
+        boot::mount_userdata_bg();
+    }
+}
+
+/// The services of this edition; `ultar.start=` names manual ones to start.
+fn services(dirs: &[PathBuf]) -> Vec<ServiceSpec> {
+    let (specs, refused) = load_dir(dirs);
+    for (path, error) in refused {
+        log(&format!("refused file={} reason={error}", path.display()));
+    }
+    let start = config::cmdline_start();
+    let edition = ultar_hal_system::current_edition();
+    specs
+        .into_iter()
+        .filter(|spec| edition.matches(&spec.life.editions) || start.contains(&spec.name))
+        .map(|mut spec| {
+            if start.contains(&spec.name) {
+                spec.life.manual = false;
+            }
+            spec
+        })
+        .collect()
+}
+
+fn environment(config: &config::InitConfig, pid1: bool) -> Environment {
+    let group_root = config
+        .group_root
+        .clone()
+        .or_else(|| pid1.then(|| PathBuf::from(ultar_sys::machine::GROUP_ROOT)));
+    let groups = group_root.map_or_else(GroupTree::none, |root| GroupTree::detect(&root));
+    let env = Environment {
+        launcher: own_program(config.launcher.as_deref()),
+        groups,
+        kernel_rights: ultar_sys::ultar_rights().is_ok(),
+        root: ultar_sys::euid() == 0,
+        stop_timeout: Duration::from_millis(config.shutdown_grace_ms),
+        edition: ultar_hal_system::current_edition().as_str().to_owned(),
+        net_allowed: config.net_allowed.clone(),
+    };
+    log(&format!(
+        "platform groups={} rights={} ids={}",
+        if env.groups.is_present() { "yes" } else { "no" },
+        if env.kernel_rights { "yes" } else { "no" },
+        if env.root { "root" } else { "own" },
+    ));
+    env
+}
+
+fn config_path(words: &[String]) -> PathBuf {
+    words
+        .iter()
+        .position(|word| word == "--config")
+        .and_then(|index| words.get(index + 1))
+        .map_or_else(|| PathBuf::from(config::INIT_CONF), PathBuf::from)
+}
+
+/// `rescue 1|2|3` on the control socket (the emergency exit).
+fn rescue_command(command: &str, argument: &str) -> Option<(String, Option<Halt>)> {
+    if command != "rescue" {
+        return None;
+    }
+    Some(match rescue::Level::from_arg(argument) {
+        Some(rescue::Level::Reboot) => ("rescue: reboot\n".to_owned(), Some(Halt::Reboot)),
+        Some(level) => (rescue::act(level, "ultar-ctl", "none"), None),
+        None => ("rescue 1|2|3\n".to_owned(), None),
+    })
 }
 
 fn main() {
-    let is_pid1 = std::process::id() == 1;
-    if is_pid1 {
-        // PID 1 darf nie enden (sonst Kernel-Panik und Neustart-Schleife): bei einem Programmfehler stehen bleiben,
-        // damit die USB-Diagnose weiter erreichbar ist.
-        std::panic::set_hook(Box::new(|info| {
-            log(&format!("PROGRAMMFEHLER in ultar-init: {info}"));
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3600));
-            }
-        }));
-        boot::early_mounts();
-        // Samsung-Firmware (/vendor) nur auf Handys – auf PCs gibt es die Partition nicht (oder sie ist fremd)
-        if ultar_hal_system::current_edition() == ultar_profile::Edition::Phone {
-            boot::mount_vendor_firmware();
+    let words: Vec<String> = std::env::args().skip(1).collect();
+    if words.first().map(String::as_str) == Some(ultar_init::launch::LAUNCH_ARG) {
+        std::process::exit(ultar_init::launch::launch(
+            words.get(1..).unwrap_or_default(),
+        ));
+    }
+    let pid1 = std::process::id() == 1;
+    // Before any thread exists: every thread inherits the blocked mask.
+    let signals = match block_signals() {
+        Ok(signals) => signals,
+        Err(error) => {
+            log(&format!("signals unavailable detail={error}"));
+            return;
         }
-        fwhelper::start();
-        boot::boot_marker();
-        let _ = nix::sys::reboot::set_cad_enabled(false); // Strg+Alt+Entf -> SIGINT
+    };
+    if pid1 {
+        boot_machine();
     }
     log(&format!(
-        "Ultar OS init {} startet (pid1={is_pid1}, Ausgabe {})",
-        env!("CARGO_PKG_VERSION"),
-        ultar_hal_system::current_edition()
+        "start version={} pid1={pid1}",
+        env!("CARGO_PKG_VERSION")
     ));
-    let cfg = config::load_init();
-    if is_pid1 {
-        boot::configure(&cfg);
-        if ultar_hal_system::current_edition() != ultar_profile::Edition::Phone {
-            boot::sprache_von_startpartition();
-        }
-        diag::start();
-        // /data erst jetzt einbinden (Watchdog läuft) und im Hintergrund, damit der
-        // langsame ext4-Mount den Boot nicht blockiert.
-        // Nur Handy: größte eMMC-Partition als /data. Auf PCs/Laptops (auch mit eMMC) NIE eine fremde
-        // Partition einbinden – dort kommt /data nur aus der Partition „ultar-data“ (init.toml).
-        if ultar_hal_system::current_edition() == ultar_profile::Edition::Phone {
-            boot::mount_userdata_bg();
-        }
+    let config = config::load(&config_path(&words));
+    if pid1 {
+        boot_after_config(&config);
     }
-
-    // Signale blockieren und über signalfd empfangen
-    let mut mask = SigSet::empty();
-    for s in [
-        Signal::SIGCHLD,
-        Signal::SIGTERM,
-        Signal::SIGINT,
-        Signal::SIGUSR1,
-        Signal::SIGUSR2,
-        Signal::SIGPWR,
-        Signal::SIGHUP,
-    ] {
-        mask.add(s);
-    }
-    mask.thread_block().expect("sigmask");
-    let mut sfd = SignalFd::with_flags(&mask, SfdFlags::SFD_NONBLOCK | SfdFlags::SFD_CLOEXEC)
-        .expect("signalfd");
-
-    let sp = sock_path();
-    let _ = std::fs::remove_file(&sp);
-    if let Some(d) = std::path::Path::new(&sp).parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let listener = match UnixListener::bind(&sp) {
-        Ok(l) => {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&sp, std::fs::Permissions::from_mode(0o600));
-            l.set_nonblocking(true).ok();
-            Some(l)
-        }
-        Err(e) => {
-            log(&format!("Steuer-Socket {sp} nicht verfügbar: {e}"));
-            None
-        }
+    let env = environment(&config, pid1);
+    let specs = services(&config.service_dirs);
+    log(&format!("services loaded={}", specs.len()));
+    let forwarder = Forwarder::new(config.output_socket.clone());
+    let supervisor = Supervisor::new(specs, env, forwarder, Box::new(log));
+    let paths = Paths {
+        services: config.service_dirs.clone(),
+        bus_socket: config.bus_socket.clone(),
+        bus_policy: config.bus_policy.clone(),
+        control_socket: config.control_socket.clone(),
     };
+    let halt = Daemon::new(supervisor, signals, paths, pid1).run(rescue_command);
+    if pid1 {
+        end_machine(halt);
+    }
+    log("end");
+}
 
-    let services = config::load_services();
-    log(&format!("{} Dienste geladen", services.len()));
-    let mut sup = Supervisor::new(services, is_pid1);
-    let grace = Duration::from_millis(cfg.shutdown_grace_ms);
-    let mut ready_reported = false;
-    let mut halt: Option<Halt> = None;
-
-    loop {
-        let all_settled = sup.tick();
-        if all_settled && !ready_reported {
-            ready_reported = true;
-            log(&format!(
-                "System bereit nach {:.0} ms seit Kernelstart",
-                uptime() * 1000.0
-            ));
-        }
-        if halt.is_some() {
+/// After the services: end everything else, unmount, power off or restart.
+fn end_machine(halt: Halt) -> ! {
+    // Everything but PID 1.
+    let _ = nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(-1),
+        nix::sys::signal::Signal::SIGKILL,
+    );
+    std::thread::sleep(Duration::from_millis(100));
+    while let Ok(status) = nix::sys::wait::waitpid(
+        nix::unistd::Pid::from_raw(-1),
+        Some(nix::sys::wait::WaitPidFlag::WNOHANG),
+    ) {
+        if status == nix::sys::wait::WaitStatus::StillAlive {
             break;
         }
-
-        // Poll NIE unendlich: der Reaper darf sich nicht allein auf signalfd verlassen. Ein
-        // Kindtod, dessen SIGCHLD der Door-Thread (cmd_server) mit seinem eigenen waitpid
-        // „verschluckt" oder der mit signalfd-Verarbeitung kollidiert, würde die Schleife sonst
-        // ewig schlafen lassen → Dienste bleiben Zombies und starten nicht neu. Darum max. 1 s,
-        // und nach JEDEM Aufwachen zusätzlich reapen (WNOHANG ist billig).
-        const MAX_IDLE_MS: i32 = 1000;
-        let timeout = match sup.next_deadline() {
-            Some(t) => PollTimeout::try_from(
-                (t.saturating_duration_since(Instant::now())
-                    .as_millis()
-                    .min(MAX_IDLE_MS as u128) as i32)
-                    .max(1),
-            )
-            .unwrap_or(PollTimeout::from(MAX_IDLE_MS as u16)),
-            None => PollTimeout::from(MAX_IDLE_MS as u16),
-        };
-        let mut fds = vec![PollFd::new(sfd.as_fd(), PollFlags::POLLIN)];
-        if let Some(l) = &listener {
-            fds.push(PollFd::new(l.as_fd(), PollFlags::POLLIN));
-        }
-        match poll(&mut fds, timeout) {
-            Ok(_) | Err(nix::errno::Errno::EINTR) => {}
-            Err(e) => log(&format!("poll: {e}")),
-        }
-        let sig_ready = fds[0]
-            .revents()
-            .is_some_and(|r| r.contains(PollFlags::POLLIN));
-        let ctl_ready = fds
-            .get(1)
-            .and_then(|f| f.revents())
-            .is_some_and(|r| r.contains(PollFlags::POLLIN));
-        drop(fds);
-
-        if sig_ready {
-            while let Ok(Some(si)) = sfd.read_signal() {
-                match Signal::try_from(si.ssi_signo as i32) {
-                    Ok(Signal::SIGCHLD) => {}
-                    Ok(Signal::SIGUSR2) | Ok(Signal::SIGPWR) => halt = Some(Halt::PowerOff),
-                    Ok(Signal::SIGTERM) | Ok(Signal::SIGINT) => halt = Some(Halt::Reboot),
-                    Ok(s) => log(&format!("Signal {s:?} ignoriert")),
-                    Err(_) => {}
-                }
-            }
-        }
-        // Immer reapen (auch bei Timeout-Aufwachen), damit ein verpasstes SIGCHLD die Dienste
-        // spätestens nach MAX_IDLE_MS wieder einsammelt und neu startet.
-        reap(&mut sup);
-        if ctl_ready {
-            if let Some(l) = &listener {
-                while let Ok((stream, _)) = l.accept() {
-                    if let Some(h) = handle_ctl(stream, &mut sup, grace) {
-                        halt = Some(h);
-                    }
-                }
-            }
-        }
     }
-
-    shutdown(&mut sup, &mut sfd, grace, halt.unwrap(), is_pid1);
-}
-
-fn reap(sup: &mut Supervisor) {
-    loop {
-        match waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG)) {
-            Ok(WaitStatus::Exited(pid, code)) => sup.on_exit(pid.as_raw(), code),
-            Ok(WaitStatus::Signaled(pid, sig, _)) => sup.on_exit(pid.as_raw(), 128 + sig as i32),
-            Ok(WaitStatus::StillAlive) | Err(_) => break,
-            Ok(_) => {}
-        }
-    }
-}
-
-fn handle_ctl(
-    stream: std::os::unix::net::UnixStream,
-    sup: &mut Supervisor,
-    grace: Duration,
-) -> Option<Halt> {
-    stream.set_nonblocking(false).ok();
-    stream.set_read_timeout(Some(Duration::from_secs(1))).ok();
-    let mut line = String::new();
-    let mut r = BufReader::new(&stream);
-    if r.read_line(&mut line).is_err() {
-        return None;
-    }
-    let mut parts = line.split_whitespace();
-    let cmd = parts.next().unwrap_or("");
-    let arg = parts.next().unwrap_or("");
-    let mut halt = None;
-    let reply = match cmd {
-        "status" => sup.status(),
-        "start" => sup.start(arg).map(|_| format!("{arg}: Start angefordert\n")).unwrap_or_else(|e| format!("Fehler: {e}\n")),
-        "stop" => sup.stop(arg, grace).map(|_| format!("{arg}: gestoppt\n")).unwrap_or_else(|e| format!("Fehler: {e}\n")),
-        "restart" => sup.restart(arg, grace).map(|_| format!("{arg}: Neustart angefordert\n")).unwrap_or_else(|e| format!("Fehler: {e}\n")),
-        "reload" => format!("{} neue Dienste\n", sup.reload(config::load_services())),
-        "uptime" => format!("{:.2}\n", uptime()),
-        "poweroff" => { halt = Some(Halt::PowerOff); "Fahre herunter …\n".into() }
-        "reboot" => { halt = Some(Halt::Reboot); "Starte neu …\n".into() }
-        // Notausstieg: 1 = Oberfläche, 2 = alle Dienste, 3 = Neustart (sauber über den Supervisor)
-        "rescue" => match rescue::Level::from_arg(arg) {
-            Some(rescue::Level::Reboot) => { halt = Some(Halt::Reboot); "Notausstieg: Neustart …\n".into() }
-            Some(l) => rescue::act(l, "ultar-ctl", "none"),
-            None => "rescue 1|2|3  (1 = Oberfläche, 2 = alle Dienste, 3 = Neustart)\n".into(),
-        },
-        _ => "Befehle: status | start <d> | stop <d> | restart <d> | reload | uptime | poweroff | reboot | rescue 1|2|3\n".into(),
-    };
-    let _ = (&stream).write_all(reply.as_bytes());
-    halt
-}
-
-fn shutdown(sup: &mut Supervisor, sfd: &mut SignalFd, grace: Duration, halt: Halt, is_pid1: bool) {
-    log(&format!("Herunterfahren: {halt:?}"));
-    sup.stop_all();
-    let deadline = Instant::now() + grace;
-    while sup.running_count() > 0 && Instant::now() < deadline {
-        let mut fds = [PollFd::new(sfd.as_fd(), PollFlags::POLLIN)];
-        let _ = poll(&mut fds, PollTimeout::from(50u8));
-        while let Ok(Some(_)) = sfd.read_signal() {}
-        reap(sup);
-    }
-    if !is_pid1 {
-        log("Entwicklungsmodus: Ende");
-        return;
-    }
-    // Alles Übrige hart beenden (kill(-1) trifft alle außer PID 1)
-    let _ = nix::sys::signal::kill(Pid::from_raw(-1), Signal::SIGKILL);
-    std::thread::sleep(Duration::from_millis(100));
-    reap(sup);
     boot::unmount_all();
-    log("Auf Wiedersehen.");
+    log(&format!("halt {halt:?}"));
     let how = match halt {
         Halt::PowerOff => nix::sys::reboot::RebootMode::RB_POWER_OFF,
-        Halt::Reboot => nix::sys::reboot::RebootMode::RB_AUTOBOOT,
+        Halt::Reboot | Halt::Exit => nix::sys::reboot::RebootMode::RB_AUTOBOOT,
     };
     let _ = nix::sys::reboot::reboot(how);
     loop {

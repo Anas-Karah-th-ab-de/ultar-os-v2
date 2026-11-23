@@ -1,5 +1,8 @@
 # Browser-Test (nur im Test): Kernel-Parameter ultar.start=webtest – hält die Oberfläche an und startet die Browser-Sitzung
 manual = true
 exec = "/bin/sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["-c", "sleep 6; /usr/bin/ultar-ctl stop ui; sleep 1; cp /usr/lib/ultar/web-session.sh /run/ultar/web-session.sh; ULTAR_WEB_DEBUG=1 /usr/bin/ultar-compat run sh /run/ultar/web-session.sh file:///data/test.html 2.0 mobil > /dev/console 2>&1; echo WEBTEST-ENDE rc=$? > /dev/console"]
 restart = "never"

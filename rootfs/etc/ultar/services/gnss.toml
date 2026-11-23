@@ -4,5 +4,8 @@ editions = ["phone"]
 # Ausgabe /run/ultar/gnss.nmea für die Oberfläche (Einstellungen -> Standort). GNSS ist nur an,
 # solange die Oberfläche /run/ultar/gnss.want berührt. Siehe docs/A30-GNSS.md.
 exec = "/system/bin/sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["/data/android/gnss-dienst.sh"]
 after = ["drivers"]

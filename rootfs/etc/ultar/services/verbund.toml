@@ -2,6 +2,9 @@
 # Der Dienst läuft immer, tut aber nichts, solange der Nutzer den Verbund nicht einschaltet
 # (Einstellungen → Verbund, `ultar-verbund an`, oder /proc/ultar/verbund auf dem Ultar-Kern).
 exec = "/usr/bin/ultar-verbund"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["dienst"]
 restart = "always"
 after = ["net"]

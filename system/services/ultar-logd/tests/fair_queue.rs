@@ -44,6 +44,7 @@ fn listener(path: PathBuf, name: &str) -> ListenerSpec {
         path,
         names: SourceNames::Fixed(name.to_owned()),
         mode: None,
+        group: None,
     }
 }
 

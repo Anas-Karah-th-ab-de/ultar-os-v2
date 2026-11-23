@@ -1,5 +1,8 @@
 # Netzwerkdienst: DHCP / statische Adresse für Kabelnetzwerk
 exec = "/usr/bin/ultar-net"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 restart = "always"
 
 [cgroup]

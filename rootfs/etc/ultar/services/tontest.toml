@@ -1,5 +1,8 @@
 # Ton-Test (nur im Test): Kernel-Parameter ultar.start=tontest – spielt eine Tonfolge und schaltet danach ab
 manual = true
 exec = "/bin/sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["-c", "sleep 3; ULTAR_AUDIO_DEBUG=1 /usr/bin/ultar-shell --beep > /dev/console 2>&1; sleep 1; /usr/bin/ultar-ctl poweroff"]
 restart = "never"

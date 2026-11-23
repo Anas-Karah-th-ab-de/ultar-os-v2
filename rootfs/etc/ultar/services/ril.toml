@@ -3,6 +3,9 @@ editions = ["phone"]
 # Funkdienst: hält den Mobilfunk-Zustand (SIM, Netz, Zellen) für die Oberfläche aktuell
 # (/run/ultar/radio/state) und führt Netzwahl-/PIN-Befehle aus. Wartet selbst, bis das Modem online ist.
 exec = "/usr/bin/ultar-ril"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["--daemon"]
 restart = "always"
 

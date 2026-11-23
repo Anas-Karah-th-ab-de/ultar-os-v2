@@ -196,12 +196,7 @@ count = 1
 [[entry]]
 rule = "paths"
 path = "system/core/ultar-init/src/boot.rs"
-count = 31
-
-[[entry]]
-rule = "paths"
-path = "system/core/ultar-init/src/config.rs"
-count = 1
+count = 29
 
 [[entry]]
 rule = "paths"
@@ -220,18 +215,8 @@ count = 18
 
 [[entry]]
 rule = "paths"
-path = "system/core/ultar-init/src/main.rs"
-count = 1
-
-[[entry]]
-rule = "paths"
 path = "system/core/ultar-init/src/rescue.rs"
 count = 11
-
-[[entry]]
-rule = "paths"
-path = "system/core/ultar-init/src/supervisor.rs"
-count = 4
 
 [[entry]]
 rule = "paths"
@@ -805,18 +790,8 @@ count = 11
 
 [[entry]]
 rule = "text"
-path = "system/core/ultar-init/src/main.rs"
-count = 2
-
-[[entry]]
-rule = "text"
 path = "system/core/ultar-init/src/rescue.rs"
 count = 10
-
-[[entry]]
-rule = "text"
-path = "system/core/ultar-init/src/supervisor.rs"
-count = 2
 
 [[entry]]
 rule = "text"
@@ -1550,17 +1525,7 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "system/core/ultar-init/src/main.rs"
-count = 1
-
-[[entry]]
-rule = "size"
 path = "system/core/ultar-init/src/rescue.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "system/core/ultar-init/src/supervisor.rs"
 count = 1
 
 [[entry]]
@@ -2085,11 +2050,6 @@ count = 2
 
 [[entry]]
 rule = "unsafe"
-path = "system/core/ultar-init/src/supervisor.rs"
-count = 1
-
-[[entry]]
-rule = "unsafe"
 path = "system/services/ultar-audio/src/codec_cod3035.rs"
 count = 3
 
@@ -2475,23 +2435,8 @@ count = 1
 
 [[entry]]
 rule = "unwrap"
-path = "system/core/ultar-init/src/config.rs"
-count = 1
-
-[[entry]]
-rule = "unwrap"
 path = "system/core/ultar-init/src/diag.rs"
 count = 1
-
-[[entry]]
-rule = "unwrap"
-path = "system/core/ultar-init/src/main.rs"
-count = 3
-
-[[entry]]
-rule = "unwrap"
-path = "system/core/ultar-init/src/supervisor.rs"
-count = 4
 
 [[entry]]
 rule = "unwrap"

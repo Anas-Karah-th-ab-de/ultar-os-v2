@@ -1,5 +1,8 @@
 # Notfall-/Entwickler-Shell auf der Konsole: ultar-ctl start shell
 exec = "/bin/sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 console = true
 manual = true
 restart = "never"

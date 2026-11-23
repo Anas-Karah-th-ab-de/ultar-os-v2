@@ -3,5 +3,8 @@ editions = ["phone"]
 # Modem (CP) starten: Firmware aus der Partition „radio", Einstellungen aus der Arbeitskopie von nv_data.bin.
 # Läuft einmal beim Systemstart; der Funkdienst (ril) wartet selbst, bis das Modem online ist.
 exec = "/usr/bin/ultar-modem"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["--auto"]
 oneshot = true

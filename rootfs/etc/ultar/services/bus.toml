@@ -1,7 +1,9 @@
 # Bus broker (review block B). One socket per identity: who can reach a socket
 # file is that identity, the policy file says what the identity may do
-# (default deny). All sockets are mode 0600 until cells mount exactly their
-# own socket; apps get their sockets from the cell manager, not from here.
+# (default deny). Runs as its own user (801) without kernel rights; each
+# service's socket is open to that service's group only (mode 0660, busd is
+# a member of those groups), the administrator's and init's to root only.
+# Apps get their sockets from the cell manager, not from here.
 #
 # On a kernel with SO_PEERCRED the per-service sockets can be replaced by
 #   "--listen-cred", "/run/ultar/bus/system.sock", "--mode", "0666",
@@ -17,15 +19,20 @@
 # SIGHUP: the policy file is read again.
 exec = "/usr/bin/ultar-busd"
 args = [
-    "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0600", "--max-connections", "8",
-    "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0600", "--max-connections", "8",
-    "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0600", "--max-connections", "8",
-    # Administration tools run by root: usettings, udevctl, ulog.
+    "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0660", "--group", "802", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0660", "--group", "803", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0660", "--group", "804", "--max-connections", "8",
+    # Administration tools run by root: usettings, udevctl, ulog, uinit.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
+    # The service manager (root).
+    "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/busd.sock",
-    "--allow-root",
 ]
+user = 801
+groups = [802, 803, 804]
+public_dirs = ["/run/ultar/bus"]
+notify = true
 after = ["logd"]
 restart = "always"
 

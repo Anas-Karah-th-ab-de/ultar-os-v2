@@ -46,6 +46,7 @@ pub const fn source_name(kind: SourceKind) -> &'static str {
         SourceKind::Service => "service",
         SourceKind::Kernel => "kernel",
         SourceKind::Internal => "internal",
+        SourceKind::Output => "output",
     }
 }
 

@@ -96,7 +96,8 @@ impl Msg {
 
 /// Synopsis of `ultar-logd` (language independent).
 pub const LOGD_SYNOPSIS: &str =
-    "ultar-logd --dir DIR (--listen PATH | --listen PATH=NAME)... [--mode OCTAL] \
+    "ultar-logd --dir DIR (--listen PATH | --listen PATH=NAME | --listen-output PATH)... \
+[--mode OCTAL] [--group GID] \
 [--uid-map FILE] [--bus PATH (--policy FILE | --allow-all) [--bus-token-file FILE | --bus-token-fd N]] \
 [--chain-key-file FILE | --chain-key-fd N] [--kernel-log PATH] [--segment-bytes N] [--total-bytes N] [--max-age-s N] \
 [--ring-records N] [--rate-burst N] [--rate-per-second N] [--fsync always|batch|rotate] \

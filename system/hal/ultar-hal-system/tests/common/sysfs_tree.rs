@@ -1,6 +1,6 @@
 //! Test support: writes a Linux-style sysfs device tree for a [`Machine`].
 
-use super::{write, KUsb, Machine};
+use super::{write, KDev, KUsb, Machine};
 use std::path::Path;
 
 fn hex_file(root: &Path, dir: &str, name: &str, value: u32, digits: usize, prefix: &str) {
@@ -92,59 +92,64 @@ impl Machine {
             write(root, &format!("{dir}/ultar_unbind"), word);
         }
         for d in &self.pci {
-            let dir = format!("sys/bus/pci/devices/0000:{}", d.slot);
-            hex_file(root, &dir, "vendor", u32::from(d.vendor), 4, "0x");
-            hex_file(root, &dir, "device", u32::from(d.device), 4, "0x");
-            hex_file(root, &dir, "class", d.class, 6, "0x");
-            hex_file(
-                root,
-                &dir,
-                "subsystem_vendor",
-                u32::from(d.subsys.0),
-                4,
-                "0x",
-            );
-            hex_file(
-                root,
-                &dir,
-                "subsystem_device",
-                u32::from(d.subsys.1),
-                4,
-                "0x",
-            );
-            let (probe, state) = match self.outcome(d) {
-                Some(Ok((name, _))) => {
-                    std::os::unix::fs::symlink(
-                        format!("../../drivers/{name}"),
-                        root.join(&dir).join("driver"),
-                    )
-                    .unwrap();
-                    ("ok".to_string(), "bound")
-                }
-                Some(Err(e)) => (
-                    format!(
-                        "failed: {} {e}",
-                        super::kernel_driver(d).map_or("-", |x| x.0)
-                    ),
-                    "failed",
-                ),
-                None => ("none".to_string(), "unbound"),
-            };
-            write(root, &format!("{dir}/ultar_probe"), &format!("{probe}\n"));
-            write(root, &format!("{dir}/ultar_state"), &format!("{state}\n"));
-            let health = if state == "bound" {
-                "probe=ok\nbus_master=on\n"
-            } else {
-                "probe=none\nbus_master=off\n"
-            };
-            write(root, &format!("{dir}/ultar_health"), health);
-            let drivers = super::kernel_driver(d)
-                .map(|x| format!("{}\n", x.0))
-                .unwrap_or_default();
-            write(root, &format!("{dir}/ultar_drivers"), &drivers);
+            self.write_ultar_pci(root, d);
         }
         for u in &self.usb {
             write_usb(root, u);
         }
+    }
+
+    /// One PCI function: ids, bound driver link, probe/state/health and candidate drivers.
+    fn write_ultar_pci(&self, root: &Path, d: &KDev) {
+        let dir = format!("sys/bus/pci/devices/0000:{}", d.slot);
+        hex_file(root, &dir, "vendor", u32::from(d.vendor), 4, "0x");
+        hex_file(root, &dir, "device", u32::from(d.device), 4, "0x");
+        hex_file(root, &dir, "class", d.class, 6, "0x");
+        hex_file(
+            root,
+            &dir,
+            "subsystem_vendor",
+            u32::from(d.subsys.0),
+            4,
+            "0x",
+        );
+        hex_file(
+            root,
+            &dir,
+            "subsystem_device",
+            u32::from(d.subsys.1),
+            4,
+            "0x",
+        );
+        let (probe, state) = match self.outcome(d) {
+            Some(Ok((name, _))) => {
+                std::os::unix::fs::symlink(
+                    format!("../../drivers/{name}"),
+                    root.join(&dir).join("driver"),
+                )
+                .unwrap();
+                ("ok".to_string(), "bound")
+            }
+            Some(Err(e)) => (
+                format!(
+                    "failed: {} {e}",
+                    super::kernel_driver(d).map_or("-", |x| x.0)
+                ),
+                "failed",
+            ),
+            None => ("none".to_string(), "unbound"),
+        };
+        write(root, &format!("{dir}/ultar_probe"), &format!("{probe}\n"));
+        write(root, &format!("{dir}/ultar_state"), &format!("{state}\n"));
+        let health = if state == "bound" {
+            "probe=ok\nbus_master=on\n"
+        } else {
+            "probe=none\nbus_master=off\n"
+        };
+        write(root, &format!("{dir}/ultar_health"), health);
+        let drivers = super::kernel_driver(d)
+            .map(|x| format!("{}\n", x.0))
+            .unwrap_or_default();
+        write(root, &format!("{dir}/ultar_drivers"), &drivers);
     }
 }

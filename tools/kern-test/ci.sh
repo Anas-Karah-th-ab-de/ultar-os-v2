@@ -12,6 +12,7 @@
 #       package through them (devd-qemu.sh; DEVD=/UDRV= for prebuilt binaries),
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
+#   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
 set -euo pipefail
@@ -62,3 +63,5 @@ for mem in ${GRENZ_MEM:-512 2048}; do
     echo "FAIL  GRENZTEST ($mem MiB)"; grep -E "FEHLER|PANIK|GRENZTEST" "$GLOG" | tail -40; tail -15 "$GLOG"; exit 1
   fi
 done
+# The service manager with the shipped system services, each as its own user.
+IMG=out/ultar-kern-esp.img bash tools/kern-test/init-e2e.sh

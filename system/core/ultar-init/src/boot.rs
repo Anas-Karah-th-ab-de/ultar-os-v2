@@ -230,12 +230,12 @@ pub fn configure(cfg: &InitConfig) {
     // mehrere Sekunden dauern (Journal-Wiederherstellung) und würde den Boot blockieren,
     // bevor der Watchdog läuft -> Reset-Schleife. Stattdessen nach dem Watchdog im Thread
     // (siehe main(): boot::mount_userdata_bg()).
-    // Eigener cgroup-Unterbaum für Dienste; Controller freischalten.
-    let _ = fs::create_dir_all("/sys/fs/cgroup/ultar");
+    // Controllers for the children of the root group; the service groups
+    // (system/<name>, session, apps) are made by the service manager
+    // (ultar_init::groups).
     if let Ok(ctrl) = fs::read_to_string("/sys/fs/cgroup/cgroup.controllers") {
         let enable: String = ctrl.split_whitespace().map(|c| format!("+{c} ")).collect();
         let _ = fs::write("/sys/fs/cgroup/cgroup.subtree_control", enable.trim());
-        let _ = fs::write("/sys/fs/cgroup/ultar/cgroup.subtree_control", enable.trim());
     }
     loopback_up();
 }
@@ -382,7 +382,7 @@ fn load_module(path: &str) {
     match fs::File::open(path) {
         Ok(f) => match nix::kmod::finit_module(&f, c"", nix::kmod::ModuleInitFlags::empty()) {
             Ok(()) => log(&format!("Modul geladen: {path}")),
-            Err(e) if e == nix::errno::Errno::EEXIST => {}
+            Err(nix::errno::Errno::EEXIST) => {}
             Err(e) => log(&format!("Modul {path} fehlgeschlagen: {e}")),
         },
         Err(e) => log(&format!("Modul {path} nicht lesbar: {e}")),

@@ -3,5 +3,8 @@
 # Nur mit Schlüssel. Ohne Einschalten (Einstellungen → System → Entwickleroptionen, `ultar-sshd an`,
 # /etc/ultar/entwickler oder Startparameter ultar.entwickler=1) beendet sich der Dienst sofort wieder.
 exec = "/usr/bin/ultar-sshd"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 after = ["net"]
 restart = "on-failure"

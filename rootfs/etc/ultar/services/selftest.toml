@@ -1,5 +1,8 @@
 # Selbsttest beim Booten (nur Entwicklungs-Image)
 exec = "/usr/lib/ultar/selftest.sh"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 oneshot = true
 manual = true
 console = true

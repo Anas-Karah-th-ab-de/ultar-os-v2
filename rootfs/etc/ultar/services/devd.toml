@@ -9,8 +9,12 @@ args = [
     "--bus", "/run/ultar/bus/devd.sock",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/devd.sock",
-    "--allow-root",
 ]
+# Its own user without kernel rights; its bus and log sockets are open to
+# its group (804).
+user = 804
+dirs = ["/data/ultar/devd"]
+notify = true
 after = ["bus"]
 restart = "always"
 

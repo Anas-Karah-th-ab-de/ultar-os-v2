@@ -5388,8 +5388,11 @@ dependencies = [
  "nix 0.29.0",
  "serde",
  "toml",
+ "ultar-bus",
  "ultar-hal-system",
  "ultar-profile",
+ "ultar-service",
+ "ultar-sys",
 ]
 
 [[package]]

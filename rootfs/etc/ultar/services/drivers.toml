@@ -1,5 +1,8 @@
 # Lädt beim Start die über die Treibersuche gefundenen Treiber (Liste: /data/ultar/drivers.list)
 exec = "/usr/bin/ultar-compat"
+# Runs as root with every kernel right: not narrowed yet (see
+# docs/integration/ultar-init.md, "Open").
+rights = ["all"]
 args = ["modules"]
 oneshot = true
 restart = "never"

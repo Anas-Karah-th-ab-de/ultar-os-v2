@@ -26,6 +26,7 @@
 //! credentials of the connection.
 
 pub mod limit;
+pub mod output;
 pub mod record;
 pub mod wire;
 

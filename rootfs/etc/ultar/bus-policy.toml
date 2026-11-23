@@ -38,6 +38,12 @@ register = ["update"]
 publish  = ["update.progress"]
 call     = ["settings.ping", "devices.ping"]
 
+# Service manager (ultar-init): offers `init` (status and control of the
+# services, for administrators only).
+[[rule]]
+identity = "system.init"
+register = ["init"]
+
 # Network service: reports whether the connection is metered (nothing else of
 # the update service; `network_identity=` in update.conf names this identity).
 [[rule]]
@@ -53,10 +59,11 @@ subscribe = ["update.progress"]
 
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.
-# `settings.*` includes settings.admin, `devices.*` includes devices.admin.
+# `settings.*` includes settings.admin, `devices.*` includes devices.admin,
+# `init.*` includes init.admin (uinit status|start|stop|restart).
 [[rule]]
 identity  = "system.admin"
-call      = ["settings.*", "devices.*", "update.*", "log.query", "log.stats", "log.read_all"]
+call      = ["settings.*", "devices.*", "update.*", "init.*", "log.query", "log.stats", "log.read_all"]
 subscribe = ["settings.*", "devices.*", "update.progress"]
 
 # The broker itself needs no rule: it is not a client of the bus.

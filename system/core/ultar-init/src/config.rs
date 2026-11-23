@@ -1,164 +1,173 @@
-//! Konfiguration: /etc/ultar/init.toml und /etc/ultar/services/*.toml
+//! `/etc/ultar/init.toml`: what PID 1 sets up at boot (host name, mounts,
+//! modules) and where the service manager finds and puts things. Every key
+//! has a default; a faulty file is reported and the defaults are used.
 
 use serde::Deserialize;
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::PathBuf;
 
+/// The configuration file.
 pub const INIT_CONF: &str = "/etc/ultar/init.toml";
+/// Service files of the system.
 pub const SERVICE_DIR: &str = "/etc/ultar/services";
-/// Dienste nachinstallierter Apps (auf der Datenpartition)
+/// Service files of installed apps (on the data partition).
 pub const USER_SERVICE_DIR: &str = "/data/ultar/services";
+/// Additional module list (one `.ko` per line), written by the image build.
+pub const MODULE_LIST: &str = "/etc/ultar/modules.list";
 
-#[derive(Debug, Deserialize, Default)]
+/// One mount after the base file systems.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MountEntry {
+    /// Device or partition (`PARTLABEL=…` and the like, see `hw.rs`).
+    pub source: String,
+    /// Mount point.
+    pub target: String,
+    /// File system type.
+    pub fstype: String,
+    /// Mount options.
+    #[serde(default)]
+    pub options: Option<String>,
+    /// Read only.
+    #[serde(default)]
+    pub readonly: bool,
+    /// A failure is ignored (an SD card that may be missing).
+    #[serde(default)]
+    pub optional: bool,
+    /// How long to wait for the source (USB stick, NVMe module loading).
+    #[serde(default)]
+    pub wait_ms: u64,
+}
+
+/// The configuration.
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InitConfig {
+    /// Host name.
     #[serde(default)]
     pub hostname: Option<String>,
-    /// Zusätzliche Mounts nach den Basis-Dateisystemen (z. B. Daten-/Compat-Partition).
+    /// Mounts after the base file systems.
     #[serde(default)]
     pub mounts: Vec<MountEntry>,
-    /// Unkomprimierte Kernel-Module (.ko), die beim Start geladen werden.
+    /// Uncompressed kernel modules loaded at boot.
     #[serde(default)]
     pub modules: Vec<String>,
-    /// Wartezeit (ms) zwischen SIGTERM und SIGKILL beim Herunterfahren.
+    /// Default deadline between stop signal and hard end of a service.
     #[serde(default = "default_grace")]
     pub shutdown_grace_ms: u64,
+    /// Directories of service files.
+    #[serde(default = "default_service_dirs")]
+    pub service_dirs: Vec<PathBuf>,
+    /// Root of the memory group tree (default: `/sys/fs/cgroup` as PID 1,
+    /// none otherwise).
+    #[serde(default)]
+    pub group_root: Option<PathBuf>,
+    /// Output socket of the log service.
+    #[serde(default = "default_output_socket")]
+    pub output_socket: Option<PathBuf>,
+    /// Bus socket of init.
+    #[serde(default = "default_bus_socket")]
+    pub bus_socket: Option<PathBuf>,
+    /// Bus policy (administrators of `init`).
+    #[serde(default = "default_bus_policy")]
+    pub bus_policy: PathBuf,
+    /// Text control socket (`ultar-ctl`).
+    #[serde(default = "default_control_socket")]
+    pub control_socket: Option<PathBuf>,
+    /// File naming services that may use the network group.
+    #[serde(default = "default_net_allowed")]
+    pub net_allowed: Option<PathBuf>,
+    /// Program executed as launcher (default: init itself).
+    #[serde(default)]
+    pub launcher: Option<PathBuf>,
 }
 
 fn default_grace() -> u64 {
     3000
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MountEntry {
-    pub source: String,
-    pub target: String,
-    pub fstype: String,
-    #[serde(default)]
-    pub options: Option<String>,
-    #[serde(default)]
-    pub readonly: bool,
-    /// Fehlschlag ignorieren (z. B. optionale SD-Karte).
-    #[serde(default)]
-    pub optional: bool,
-    /// So lange (ms) auf die Quelle warten, falls sie noch nicht da ist (USB-Stick, NVMe-Modul lädt noch).
-    #[serde(default)]
-    pub wait_ms: u64,
+fn default_service_dirs() -> Vec<PathBuf> {
+    vec![PathBuf::from(SERVICE_DIR), PathBuf::from(USER_SERVICE_DIR)]
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum Restart {
-    #[default]
-    Always,
-    OnFailure,
-    Never,
+fn default_output_socket() -> Option<PathBuf> {
+    Some(PathBuf::from("/run/ultar/log/init.sock"))
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct ServiceConfig {
-    #[serde(default)]
-    pub name: String,
-    pub exec: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default)]
-    pub env: BTreeMap<String, String>,
-    #[serde(default)]
-    pub restart: Restart,
-    /// Dienste, die vorher laufen (bzw. bei oneshot erfolgreich beendet sein) müssen.
-    #[serde(default)]
-    pub after: Vec<String>,
-    /// Einmal-Dienst: Abhängige starten erst nach erfolgreichem Ende.
-    #[serde(default)]
-    pub oneshot: bool,
-    /// stdin/stdout/stderr an /dev/console statt Logdatei.
-    #[serde(default)]
-    pub console: bool,
-    /// Im Ubuntu-Kompatibilitätsbereich (/compat) ausführen.
-    #[serde(default)]
-    pub compat: bool,
-    #[serde(default)]
-    pub workdir: Option<String>,
-    /// Beim Start nicht automatisch starten (nur per ultar-ctl).
-    #[serde(default)]
-    pub manual: bool,
-    /// Nur in diesen Ausgaben laden (`phone`, `desktop`, `server`); leer = in allen.
-    #[serde(default)]
-    pub editions: Vec<String>,
-    /// cgroup v2 Limits, z. B. memory.max = "256M", cpu.weight = "50"
-    #[serde(default)]
-    pub cgroup: BTreeMap<String, String>,
+fn default_bus_socket() -> Option<PathBuf> {
+    Some(PathBuf::from("/run/ultar/bus/init.sock"))
 }
 
-pub fn load_init() -> InitConfig {
-    match std::fs::read_to_string(INIT_CONF) {
-        Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
-            crate::log(&format!("init.toml fehlerhaft, nutze Standard: {e}"));
-            InitConfig {
-                shutdown_grace_ms: default_grace(),
-                ..Default::default()
-            }
-        }),
-        Err(_) => InitConfig {
+fn default_bus_policy() -> PathBuf {
+    PathBuf::from("/etc/ultar/bus-policy.toml")
+}
+
+fn default_control_socket() -> Option<PathBuf> {
+    Some(PathBuf::from(
+        std::env::var("ULTAR_CTL_SOCK").unwrap_or_else(|_| "/run/ultar/ctl.sock".into()),
+    ))
+}
+
+fn default_net_allowed() -> Option<PathBuf> {
+    Some(PathBuf::from("/data/ultar/netz-erlaubt"))
+}
+
+impl Default for InitConfig {
+    fn default() -> Self {
+        Self {
+            hostname: None,
+            mounts: Vec::new(),
+            modules: Vec::new(),
             shutdown_grace_ms: default_grace(),
-            ..Default::default()
-        },
+            service_dirs: default_service_dirs(),
+            group_root: None,
+            output_socket: default_output_socket(),
+            bus_socket: default_bus_socket(),
+            bus_policy: default_bus_policy(),
+            control_socket: default_control_socket(),
+            net_allowed: default_net_allowed(),
+            launcher: None,
+        }
     }
 }
 
-/// Zusätzliche Modul-Liste (eine .ko-Datei pro Zeile), vom Image-Build erzeugt.
-pub const MODULE_LIST: &str = "/etc/ultar/modules.list";
+/// Reads the configuration at `path`; a missing file gives the defaults,
+/// a faulty one is reported and gives the defaults.
+pub fn load(path: &std::path::Path) -> InitConfig {
+    match std::fs::read_to_string(path) {
+        Ok(text) => toml::from_str(&text).unwrap_or_else(|error: toml::de::Error| {
+            crate::log(&format!(
+                "config refused file={} detail={}",
+                path.display(),
+                error.message()
+            ));
+            InitConfig::default()
+        }),
+        Err(_) => InitConfig::default(),
+    }
+}
 
-/// Kernel-Parameter `ultar.start=a,b`: diese (manuellen) Dienste beim Booten starten.
+/// Kernel parameter `ultar.start=a,b`: start these (manual) services at boot.
 pub fn cmdline_start() -> Vec<String> {
-    std::fs::read_to_string("/proc/cmdline")
-        .unwrap_or_default()
-        .split_whitespace()
-        .filter_map(|a| a.strip_prefix("ultar.start="))
-        .flat_map(|v| v.split(',').map(String::from).collect::<Vec<_>>())
+    ultar_sys::machine::kernel_arguments()
+        .iter()
+        .filter_map(|word| word.strip_prefix("ultar.start="))
+        .flat_map(|value| value.split(',').map(String::from).collect::<Vec<_>>())
         .collect()
 }
 
-pub fn load_services() -> Vec<ServiceConfig> {
-    let mut out = Vec::new();
-    let mut paths: Vec<_> = [SERVICE_DIR, USER_SERVICE_DIR]
-        .iter()
-        .filter_map(|d| std::fs::read_dir(d).ok())
-        .flat_map(|rd| rd.flatten().map(|e| e.path()).collect::<Vec<_>>())
-        .collect();
-    paths.sort();
-    let start = cmdline_start();
-    let edition = ultar_hal_system::current_edition();
-    for p in paths {
-        if p.extension().and_then(|e| e.to_str()) != Some("toml") {
-            continue;
-        }
-        match parse_service(&p) {
-            Ok(mut s) => {
-                // Dienste anderer Ausgaben gar nicht erst laden (z. B. Modem/RIL auf Server und PC):
-                // spart Speicher, Startzeit und Angriffsfläche. Ausnahme: ausdrücklich per ultar.start= verlangt.
-                if !edition.matches(&s.editions) && !start.contains(&s.name) {
-                    continue;
-                }
-                if start.contains(&s.name) {
-                    s.manual = false;
-                }
-                out.push(s)
-            }
-            Err(e) => crate::log(&format!("Dienst {} ignoriert: {e}", p.display())),
-        }
-    }
-    out
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn parse_service(p: &Path) -> Result<ServiceConfig, String> {
-    let s = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
-    let mut c: ServiceConfig = toml::from_str(&s).map_err(|e| e.to_string())?;
-    if c.name.is_empty() {
-        c.name = p.file_stem().unwrap().to_string_lossy().into_owned();
+    #[test]
+    fn the_shipped_file_and_an_empty_one_parse() {
+        let shipped = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../rootfs/etc/ultar/init.toml");
+        let text = std::fs::read_to_string(shipped).unwrap();
+        let config: InitConfig = toml::from_str(&text).unwrap();
+        assert!(config.shutdown_grace_ms > 0);
+        let empty: InitConfig = toml::from_str("").unwrap();
+        assert_eq!(empty.service_dirs.len(), 2);
+        assert!(toml::from_str::<InitConfig>("frob = 1").is_err());
     }
-    Ok(c)
 }

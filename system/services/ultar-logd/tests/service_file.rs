@@ -20,15 +20,20 @@ fn the_shipped_definition_parses_with_valid_bounds() {
         panic!("the definition must run the daemon");
     };
     assert_eq!(args.dir, Path::new("/data/ultar/log"));
-    assert_eq!(args.listeners.len(), 3);
-    for listener in &args.listeners {
-        // Fixed names (no peer credentials on the Ultar kernel), private.
+    assert_eq!(args.listeners.len(), 4);
+    let (output, writers): (Vec<_>, Vec<_>) = args.listeners.iter().partition(|l| l.output);
+    for listener in &writers {
+        // Fixed names (one socket per writer), open to the writer's group only.
         assert!(listener
             .name
             .as_deref()
             .is_some_and(|name| name.starts_with("system.")));
-        assert_eq!(listener.mode, Some(0o600));
+        assert_eq!(listener.mode, Some(0o660));
+        assert!(listener.group.is_some_and(|gid| (801..=804).contains(&gid)));
     }
+    // The output channel of ultar-init: root only.
+    assert_eq!(output.len(), 1);
+    assert_eq!((output[0].mode, output[0].group), (Some(0o600), None));
     assert!(args.config.store.is_valid());
     assert_eq!(args.config.store.segment_bytes, 1 << 20);
     assert_eq!(args.config.store.total_bytes, 16 << 20);
@@ -38,7 +43,8 @@ fn the_shipped_definition_parses_with_valid_bounds() {
         args.bus.as_deref(),
         Some(Path::new("/run/ultar/bus/logd.sock"))
     );
-    assert!(args.policy.is_some() && !args.allow_all && args.allow_root);
+    // Started as its own user by ultar-init: root is neither needed nor declared.
+    assert!(args.policy.is_some() && !args.allow_all && !args.allow_root);
     assert!(
         args.chain_key.is_none(),
         "no key file is shipped; see INTEGRATION.md"

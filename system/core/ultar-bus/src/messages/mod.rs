@@ -15,11 +15,13 @@
 //! | `power.state` | topic | yes | power service |
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
+//! | `init.status` / `init.control` | calls | – | `ultar-init` |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
 pub mod device_service;
 pub mod devices;
+pub mod init;
 pub mod log;
 pub mod notify;
 pub mod power;
@@ -52,6 +54,8 @@ mod tests {
         check_topic::<super::power::PowerState>();
         check_topic::<super::shell::ShellMode>();
         check_call::<super::notify::Post>();
+        check_call::<super::init::Status>();
+        check_call::<super::init::Control>();
         check_call::<super::settings::Get>();
         check_call::<super::settings::Set>();
         check_call::<super::settings::Reset>();

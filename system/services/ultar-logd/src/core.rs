@@ -12,6 +12,7 @@ use crate::store::{Notice, SegmentStore, StoreConfig};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use ultar_bus::messages::log as contract;
+use ultar_service::log::output::{OutputLine, Stream};
 use ultar_service::log::{Level, OwnedRecord, OwnedValue, RateLimit, TokenBucket};
 
 /// Message key of the marker for records the rate limit refused.
@@ -279,6 +280,27 @@ impl Core {
         }
     }
 
+    /// Stores a line of output of a service, forwarded by `ultar-init`.
+    /// Limited like a source of its own (the service's name), so a chatty
+    /// service cannot push out other sources' records.
+    pub fn ingest_output(&mut self, line: &OutputLine) -> Option<u64> {
+        let level = match line.stream {
+            Stream::Out => Level::Info,
+            Stream::Err => Level::Warn,
+        };
+        let record = Stored {
+            seq: 0,
+            time_ms: 0,
+            kind: SourceKind::Output,
+            service: line.service.clone(),
+            level,
+            key: line.stream.key().to_owned(),
+            fields: Vec::new(),
+            text: clean_text(&line.text),
+        };
+        self.limited(&line.service, record)
+    }
+
     /// Stores a record of the log service itself.
     pub fn internal(&mut self, level: Level, key: &str, fields: Vec<(String, OwnedValue)>) -> u64 {
         self.commit(Stored {
@@ -410,8 +432,9 @@ pub fn to_bus(record: Stored, with_text: bool) -> contract::LogRecord {
         SourceKind::Service => contract::SourceKind::Service,
         SourceKind::Kernel => contract::SourceKind::Kernel,
         SourceKind::Internal => contract::SourceKind::Internal,
+        SourceKind::Output => contract::SourceKind::Output,
     };
-    let text = (with_text && record.kind == SourceKind::Kernel).then_some(record.text);
+    let text = (with_text && record.kind.has_text()).then_some(record.text);
     contract::LogRecord {
         seq: record.seq,
         time_ms: record.time_ms,

@@ -5,8 +5,12 @@ args = [
     "--socket", "/run/ultar/bus/settingsd.sock",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/settingsd.sock",
-    "--allow-root",
 ]
+# Its own user without kernel rights; its bus and log sockets are open to
+# its group (803).
+user = 803
+dirs = ["/data/ultar/settings"]
+notify = true
 after = ["bus"]
 restart = "always"
 

@@ -178,6 +178,9 @@ impl Engine {
             } => {
                 self.core.ingest(&service, record);
             }
+            Delivery::Output { line, .. } => {
+                self.core.ingest_output(&line);
+            }
             Delivery::Counts {
                 service, counts, ..
             } => self.core.note_counts(&service, counts),

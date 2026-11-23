@@ -13,10 +13,31 @@ fn etc() -> PathBuf {
 }
 
 /// The keys `ultar-init` accepts in a service file (`deny_unknown_fields`
-/// in `system/core/ultar-init/src/config.rs`).
-const INIT_KEYS: [&str; 13] = [
-    "name", "exec", "args", "env", "restart", "after", "oneshot", "console", "compat", "workdir",
-    "manual", "editions", "cgroup",
+/// in `system/core/ultar-init/src/spec.rs`).
+const INIT_KEYS: [&str; 23] = [
+    "name",
+    "exec",
+    "args",
+    "env",
+    "restart",
+    "after",
+    "oneshot",
+    "console",
+    "compat",
+    "workdir",
+    "manual",
+    "editions",
+    "cgroup",
+    "user",
+    "group",
+    "groups",
+    "rights",
+    "slice",
+    "dirs",
+    "public_dirs",
+    "notify",
+    "start_timeout_ms",
+    "stop_timeout_ms",
 ];
 
 struct Service {
@@ -25,6 +46,10 @@ struct Service {
     after: Vec<String>,
     restart: String,
     cgroup: BTreeMap<String, String>,
+    user: Option<i64>,
+    groups: Vec<i64>,
+    notify: bool,
+    rights: bool,
 }
 
 fn service(name: &str) -> Service {
@@ -55,7 +80,26 @@ fn service(name: &str) -> Service {
             .iter()
             .map(|(key, value)| (key.clone(), value.as_str().unwrap().to_owned()))
             .collect(),
+        user: table.get("user").and_then(toml::Value::as_integer),
+        groups: table.get("groups").map_or_else(Vec::new, |value| {
+            let items = value.as_array().unwrap().iter();
+            items.map(|item| item.as_integer().unwrap()).collect()
+        }),
+        notify: table.get("notify").and_then(toml::Value::as_bool) == Some(true),
+        rights: table.contains_key("rights"),
     }
+}
+
+/// User ids of the four services (their group ids are the same).
+const IDS: [(&str, i64); 4] = [
+    ("bus", 801),
+    ("logd", 802),
+    ("settingsd", 803),
+    ("devd", 804),
+];
+
+fn uid_of(name: &str) -> i64 {
+    IDS.iter().find(|(service, _)| *service == name).unwrap().1
 }
 
 /// The value after `option` in `args`.
@@ -86,33 +130,61 @@ fn the_four_services_are_ordered_restarted_and_limited() {
             .args
             .iter()
             .any(|arg| arg == "--token" || arg.contains("token=")));
-        // Root is declared, never implied.
-        assert!(file.args.iter().any(|arg| arg == "--allow-root"), "{name}");
+        // Each runs as its own user, without kernel rights, and reports
+        // readiness; root is neither needed nor declared.
+        assert_eq!(file.user, Some(uid_of(name)), "{name}");
+        assert!(!file.rights && file.notify, "{name}");
+        assert!(!file.args.iter().any(|arg| arg == "--allow-root"), "{name}");
         // Every service has a policy and nobody runs with --allow-all.
         assert!(!file.args.iter().any(|arg| arg == "--allow-all"), "{name}");
         assert_eq!(value(&file.args, "--policy"), "/etc/ultar/bus-policy.toml");
     }
 }
 
-#[test]
-fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() {
-    let bus = service("bus");
-    let parsed = parse_arguments(bus.args.iter().cloned(), None).unwrap();
-    assert!(parsed.allow_root && !parsed.allow_all);
-    assert_eq!(
-        parsed.log_socket,
-        Some(PathBuf::from("/run/ultar/log/busd.sock"))
-    );
+/// Every socket of the broker: a service's is open to its group only (and
+/// busd is a member of it), the administrator's and init's to root only.
+/// Returns identity → path.
+fn check_sockets(parsed: &crate::args::Arguments, bus: &Service) -> BTreeMap<String, PathBuf> {
     let mut sockets = BTreeMap::new();
     for listener in &parsed.listeners {
-        // Nobody but the owner reaches any socket.
-        assert_eq!(listener.access.mode, Some(0o600), "{:?}", listener.path);
         let IdentitySource::Fixed(identity) = &listener.source else {
             panic!("credential listeners need a kernel with SO_PEERCRED");
         };
         assert!(Identity::new(identity).is_ok());
         sockets.insert(identity.clone(), listener.path.clone());
+        // A service's socket is open to its group only (and busd is a member
+        // of it); the administrator's and init's sockets to root only.
+        let service = identity.strip_prefix("system.").unwrap();
+        let service = if service == "busd" { "bus" } else { service };
+        match IDS.iter().find(|(name, _)| *name == service) {
+            Some((_, gid)) => {
+                assert_eq!(listener.access.mode, Some(0o660), "{identity}");
+                assert_eq!(
+                    listener.access.group.map(i64::from),
+                    Some(*gid),
+                    "{identity}"
+                );
+                assert!(bus.groups.contains(gid), "{identity}");
+            }
+            None => {
+                assert_eq!(listener.access.mode, Some(0o600), "{identity}");
+                assert_eq!(listener.access.group, None, "{identity}");
+            }
+        }
     }
+    sockets
+}
+
+#[test]
+fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() {
+    let bus = service("bus");
+    let parsed = parse_arguments(bus.args.iter().cloned(), None).unwrap();
+    assert!(!parsed.allow_root && !parsed.allow_all);
+    assert_eq!(
+        parsed.log_socket,
+        Some(PathBuf::from("/run/ultar/log/busd.sock"))
+    );
+    let sockets = check_sockets(&parsed, &bus);
     // Each service connects to the socket of its own identity.
     let settingsd = service("settingsd");
     assert_eq!(
@@ -133,7 +205,11 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         sockets["system.admin"],
         Path::new("/run/ultar/bus/system.sock")
     );
-    assert_eq!(sockets.len(), 4);
+    assert_eq!(
+        sockets["system.init"],
+        Path::new("/run/ultar/bus/init.sock")
+    );
+    assert_eq!(sockets.len(), 5);
     // Each service writes its log to the socket the log service names it by.
     for (service_name, option, identity) in [
         ("bus", "--log-socket", "system.busd"),
@@ -142,7 +218,14 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
     ] {
         let path = value(&service(service_name).args, option).to_owned();
         let listen = format!("{path}={identity}");
-        assert!(logd.args.contains(&listen), "{listen}");
+        let index = logd.args.iter().position(|arg| *arg == listen).unwrap();
+        // Open to the writer's group, of which logd is a member.
+        let gid = uid_of(service_name);
+        assert_eq!(
+            logd.args[index + 1..index + 5],
+            ["--mode", "0660", "--group", &gid.to_string()]
+        );
+        assert!(logd.groups.contains(&gid));
     }
 }
 
@@ -263,5 +346,35 @@ fn the_policy_grants_nothing_beyond_that() {
         assert!(!policy.may_call(&stranger, "log", "query"));
         assert!(!policy.may_subscribe(&stranger, &topic("settings.changed")));
         assert!(!policy.may_register(&stranger, "log"));
+    }
+}
+
+#[test]
+fn the_service_manager_offers_init_and_only_the_administrator_steers_it() {
+    let policy = Policy::load(&etc().join("bus-policy.toml")).unwrap();
+    let init = id("system.init");
+    assert!(policy.may_register(&init, "init"));
+    for other in ["log", "settings", "devices", "update"] {
+        assert!(!policy.may_register(&init, other), "{other}");
+    }
+    let admin = id("system.admin");
+    for method in ["status", "control", "admin"] {
+        assert!(policy.may_call(&admin, "init", method), "{method}");
+    }
+    for identity in [
+        "app.phone",
+        "system.settingsd",
+        "system.devd",
+        "system.logd",
+        "system.init",
+    ] {
+        assert!(
+            !policy.may_call(&id(identity), "init", "status"),
+            "{identity}"
+        );
+        assert!(
+            !policy.may_call(&id(identity), "init", "admin"),
+            "{identity}"
+        );
     }
 }

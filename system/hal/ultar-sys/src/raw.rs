@@ -128,6 +128,32 @@ pub fn block_signals(mask: u64) -> Result<u64, Errno> {
     check(ret).map(|_| old)
 }
 
+/// `SIG_SETMASK`.
+const SIG_SETMASK: usize = 2;
+
+/// Replaces the blocked signals of the calling thread with `mask` and
+/// returns the previous mask. A launcher calls it with 0 before `execve`:
+/// the blocked mask is inherited across `execve`, and a service must not
+/// start with the supervisor's signals blocked.
+pub fn set_signal_mask(mask: u64) -> Result<u64, Errno> {
+    let mut old: u64 = 0;
+    // SAFETY: both pointers refer to local `u64` values (8 bytes each, the
+    // size passed as fourth argument) that live across the call.
+    let ret = unsafe {
+        raw(
+            nr::RT_SIGPROCMASK,
+            [
+                SIG_SETMASK,
+                std::ptr::from_ref(&mask) as usize,
+                std::ptr::from_mut(&mut old) as usize,
+                SIGSET_BYTES,
+                0,
+            ],
+        )
+    };
+    check(ret).map(|_| old)
+}
+
 /// Creates a descriptor from which the signals in `mask` can be read as
 /// 128-byte `signalfd_siginfo` records (signal number in the first four
 /// bytes). The signals must be blocked, see [`block_signals`].

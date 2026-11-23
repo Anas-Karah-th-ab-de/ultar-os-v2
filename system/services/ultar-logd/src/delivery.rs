@@ -8,6 +8,7 @@
 
 use crate::share::Ticket;
 use std::sync::mpsc::{SyncSender, TrySendError};
+use ultar_service::log::output::OutputLine;
 use ultar_service::log::OwnedRecord;
 
 /// What the ingestion side hands to the engine.
@@ -21,6 +22,13 @@ pub enum Delivery {
         record: OwnedRecord,
         /// The record's place in its source's share of the queue; given
         /// back when the delivery is dropped.
+        ticket: Ticket,
+    },
+    /// A line of output of a service, from `ultar-init`.
+    Output {
+        /// The line.
+        line: OutputLine,
+        /// Place in the share of the output channel.
         ticket: Ticket,
     },
     /// Records of `service` that were refused or malformed since the last

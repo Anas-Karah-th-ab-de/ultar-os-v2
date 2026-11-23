@@ -23,9 +23,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
+use ultar_service::log::output;
 use ultar_service::log::wire::{decode_body, FrameReader};
 use ultar_service::log::{Clock, MonotonicClock, RateLimit, TokenBucket};
-use ultar_service::socket::{bind_listener, ensure_parent, BindError};
+use ultar_service::socket::{bind_listener_for, ensure_parent, BindError};
 use ultar_service::UidMap;
 
 /// Who the peers of a listener are.
@@ -35,7 +36,15 @@ pub enum SourceNames {
     Fixed(String),
     /// Kernel credentials looked up in the map; unknown users are refused.
     Credentials(Arc<UidMap>),
+    /// The output channel of `ultar-init` (see
+    /// `ultar_service::log::output`): the peer is `system.init` (the
+    /// socket file's owner and mode decide who reaches it), its frames are
+    /// lines of output of the services it started.
+    Output,
 }
+
+/// Source name of the peer of an output listener.
+pub const OUTPUT_PEER: &str = "system.init";
 
 /// One ingestion socket.
 #[derive(Clone)]
@@ -46,6 +55,8 @@ pub struct ListenerSpec {
     pub names: SourceNames,
     /// Permission bits of the socket file.
     pub mode: Option<u32>,
+    /// Group the socket file is handed to before its mode is set.
+    pub group: Option<u32>,
 }
 
 /// Bounds of the ingestion side.
@@ -189,7 +200,7 @@ fn offer(queue: &Queue, delivery: Delivery) -> Result<bool, ()> {
 /// engine is gone or the service stops.
 fn report(
     shared: &Shared,
-    (service, share): (&str, &Share),
+    (service, share, _): Source<'_>,
     counts: &mut Counts,
     queue: &Queue,
 ) -> Result<(), ()> {
@@ -220,16 +231,59 @@ fn reject(shared: &Shared, queue: &Queue) {
     }
 }
 
-/// Reads one connection until it ends.
-fn read_connection(
+/// Turns one frame body into a delivery. `None`: counted, nothing to
+/// deliver; `Some(None)`: the service stops while the source waits for its
+/// share.
+fn make_delivery(
     shared: &Shared,
-    mut stream: UnixStream,
-    (service, share): (&str, &Share),
-    queue: &Queue,
-) {
+    (service, share, output): Source<'_>,
+    body: &[u8],
+    backlog: &mut Counts,
+) -> Option<Option<Delivery>> {
+    let content = if output {
+        output::decode_body(body).ok().map(Content::Line)
+    } else {
+        decode_body(body).ok().map(Content::Record)
+    };
+    let Some(content) = content else {
+        backlog.malformed += 1;
+        return None;
+    };
+    // Output lines are limited per service in the core (one peer forwards
+    // for all services; a bucket here would let one service's lines take
+    // the others' turn).
+    if !output && !shared.allow(service) {
+        backlog.rate += 1;
+        return None;
+    }
+    let stopping = || shared.stopping.load(Ordering::SeqCst);
+    let Some(ticket) = share.take(shared.limits.share, stopping) else {
+        return Some(None);
+    };
+    Some(Some(match content {
+        Content::Line(line) => Delivery::Output { line, ticket },
+        Content::Record(record) => Delivery::Record {
+            service: service.to_owned(),
+            record,
+            ticket,
+        },
+    }))
+}
+
+/// The peer of a connection: its source name, its share of the queue,
+/// and whether it is the output channel of `ultar-init`.
+type Source<'a> = (&'a str, &'a Share, bool);
+
+/// What a frame carried.
+enum Content {
+    Record(ultar_service::log::OwnedRecord),
+    Line(output::OutputLine),
+}
+
+/// Reads one connection until it ends.
+fn read_connection(shared: &Shared, mut stream: UnixStream, source: Source<'_>, queue: &Queue) {
     let mut frames = FrameReader::new();
     let mut backlog = Counts::default();
-    let source = (service, share);
     let mut buffer = [0u8; 4096];
     let mut gone = false;
     while !gone {
@@ -238,23 +292,12 @@ fn read_connection(
             Ok(read) => read,
         };
         let framing = frames.push(&buffer[..read], |body| {
-            let Ok(record) = decode_body(body) else {
-                backlog.malformed += 1;
+            let Some(made) = make_delivery(shared, source, body, &mut backlog) else {
                 return;
             };
-            if !shared.allow(service) {
-                backlog.rate += 1;
-                return;
-            }
-            let stopping = || shared.stopping.load(Ordering::SeqCst);
-            let Some(ticket) = share.take(shared.limits.share, stopping) else {
+            let Some(delivery) = made else {
                 gone = true;
                 return;
-            };
-            let delivery = Delivery::Record {
-                service: service.to_owned(),
-                record,
-                ticket,
             };
             match offer(queue, delivery) {
                 Ok(true) => {}
@@ -281,6 +324,7 @@ fn serve_peer(shared: &Arc<Shared>, stream: UnixStream, names: &SourceNames, que
             .identify(&stream)
             .ok()
             .map(|(identity, _)| identity.as_str().to_owned()),
+        SourceNames::Output => Some(OUTPUT_PEER.to_owned()),
     };
     let slot = service
         .as_deref()
@@ -291,13 +335,14 @@ fn serve_peer(shared: &Arc<Shared>, stream: UnixStream, names: &SourceNames, que
         return;
     };
     let queue = queue.clone();
+    let output = matches!(names, SourceNames::Output);
     // If the thread cannot be created the closure is dropped: the slot is
     // freed and the connection closed.
     let _ = thread::Builder::new()
         .name("ultar-logd-conn".into())
         .stack_size(96 * 1024)
         .spawn(move || {
-            read_connection(&slot.shared, stream, (&service, &share), &queue);
+            read_connection(&slot.shared, stream, (&service, &share, output), &queue);
             drop(slot);
         });
 }
@@ -344,7 +389,7 @@ impl Ingest {
         for spec in listeners {
             // On failure `ingest` is dropped, which stops what already runs.
             ensure_parent(&spec.path, 0o755).map_err(BindError::Io)?;
-            let listener = bind_listener(&spec.path, spec.mode)?;
+            let listener = bind_listener_for(&spec.path, spec.mode, spec.group)?;
             ingest.paths.push(spec.path.clone());
             let (shared, names, queue) = (ingest.shared.clone(), spec.names.clone(), queue.clone());
             let acceptor = thread::Builder::new()
