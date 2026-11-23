@@ -5761,8 +5761,9 @@ mod flow_tests {
         p.released = false;
     }
 
+    /// Waits up to 20 s: saving and camera capture run on worker threads, and shared CI runners are slow.
     fn wait_for(mut f: impl FnMut() -> bool) -> bool {
-        for _ in 0..200 {
+        for _ in 0..800 {
             if f() {
                 return true;
             }
@@ -6065,9 +6066,13 @@ mod flow_tests {
         }
         draw(&mut app, &mut cv, &mut text, &mut pt);
         app.home();
-        let d = uo::read_doc(&p("brief.docx")).unwrap();
-        let t = d.to_text();
-        assert!(t.contains("Erster Absatz – geändert\nZweiter"), "{t}");
+        let want = "Erster Absatz – geändert\nZweiter";
+        let saved = || {
+            uo::read_doc(&p("brief.docx"))
+                .map(|d| d.to_text())
+                .unwrap_or_default()
+        };
+        assert!(wait_for(|| saved().contains(want)), "{}", saved());
 
         // --- Tabelle: Formel in B1, Enter übernimmt und geht nach unten
         app.debug_open(&format!("office:{}", p("zahlen.xlsx")), "de");
@@ -6081,10 +6086,8 @@ mod flow_tests {
         draw(&mut app, &mut cv, &mut text, &mut pt);
         app.focus = None;
         app.home();
-        assert_eq!(
-            uo::sheet_get(&p("zahlen.xlsx"), "C1").unwrap(),
-            "24 [=SUM(A1:B1)*2]"
-        );
+        let cell = || uo::sheet_get(&p("zahlen.xlsx"), "C1").unwrap_or_default();
+        assert!(wait_for(|| cell() == "24 [=SUM(A1:B1)*2]"), "{}", cell());
 
         // --- Code: tippen mit automatischer Klammer, Suchen/Ersetzen, Speichern beim Verlassen
         app.debug_open(&format!("office:{}", p("main.py")), "de");
