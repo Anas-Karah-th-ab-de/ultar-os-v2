@@ -220,10 +220,10 @@ fn list_items_activate_select_and_keep_their_trailing_control() {
         !ui.is_item_selected(g.items[0]).unwrap(),
         "single selection"
     );
-    // Activating the selected item again reports only the activation.
+    // Again: only the activation (and a double click, the clock did not move).
     assert_eq!(
         kinds(&click(&mut ui, g.items[2])),
-        vec![ActionKind::Activated]
+        vec![ActionKind::Activated, ActionKind::DoubleActivated]
     );
     // The trailing switch is its own target and does not activate the item.
     let toggled = click(&mut ui, g.item_switch);

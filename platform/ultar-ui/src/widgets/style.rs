@@ -4,6 +4,7 @@
 use super::{Label, PaintCx};
 use crate::color::Color;
 use crate::geom::{Rect, Size};
+use crate::icon::{IconId, QuarterTurns};
 use crate::paint::{Painter, TextSpec};
 use crate::text::{Overflow, TextAlign, Weight};
 use crate::tokens::{size, state, typography, ColorRole, Radius, Space, TypeSize};
@@ -148,12 +149,19 @@ pub(crate) fn error_height(
     width: f32,
 ) -> f32 {
     match error {
-        Some(label) => Space::S4.points() + cx.text_size(label, SMALL_TEXT, Some(width)).h,
+        Some(label) => {
+            let text = (width - size::ICON_SMALL - Space::S4.points()).max(0.0);
+            Space::S4.points()
+                + cx.text_size(label, SMALL_TEXT, Some(text))
+                    .h
+                    .max(size::ICON_SMALL)
+        }
         None => 0.0,
     }
 }
 
-/// Draws the error line into the part of `rect` below the field of height `field_height`.
+/// Draws the error line into the part of `rect` below the field of height `field_height`:
+/// the error icon and the message in `danger` (boards: an error never by colour alone).
 pub(crate) fn paint_error(
     p: &mut Painter<'_>,
     cx: &PaintCx<'_>,
@@ -163,8 +171,14 @@ pub(crate) fn paint_error(
 ) {
     if let Some(label) = error {
         let top = rect.y + field_height + Space::S4.points();
-        let area = Rect::new(rect.x, top, rect.w, (rect.bottom() - top).max(0.0));
+        let mut area = Rect::new(rect.x, top, rect.w, (rect.bottom() - top).max(0.0));
+        let direction = p.env().direction;
+        let edge = size::ICON_SMALL;
+        let mut slot = take_start(&mut area, edge, direction);
+        take_start(&mut area, Space::S4.points(), direction);
+        slot.h = edge.min(slot.h);
         let color = p.color(ColorRole::Danger);
+        p.icon(IconId::Error, slot, edge, QuarterTurns::None, color);
         draw_label(p, cx, label, SMALL_TEXT, area, TextAlign::Start, color);
     }
 }

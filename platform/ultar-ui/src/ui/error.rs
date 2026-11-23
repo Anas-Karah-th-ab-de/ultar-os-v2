@@ -41,6 +41,8 @@ pub enum UiError {
     },
     /// Scale factors must be finite and between 0.5 and 8.
     InvalidScale,
+    /// Surface sizes must be finite and not negative.
+    InvalidSize,
     /// A menu is empty, has more than `MAX_MENU_ITEMS` items in one level or is nested
     /// deeper than `MAX_MENU_DEPTH`.
     InvalidMenu,
@@ -64,6 +66,7 @@ impl fmt::Display for UiError {
                 write!(f, "node {} has no option {index}", node.0)
             }
             UiError::InvalidScale => write!(f, "scale must be between 0.5 and 8"),
+            UiError::InvalidSize => write!(f, "size must be finite and not negative"),
             UiError::InvalidMenu => write!(f, "menu is empty, too long or nested too deep"),
         }
     }
@@ -109,6 +112,7 @@ mod tests {
             UiError::OptionOutOfRange { node, index: 9 },
             UiError::InvalidScale,
             UiError::InvalidMenu,
+            UiError::InvalidSize,
         ];
         for error in errors {
             assert!(!error.to_string().is_empty());

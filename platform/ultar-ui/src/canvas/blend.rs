@@ -35,10 +35,35 @@ pub(crate) fn blend_span(dst: &mut [u8], src: [u8; BPP], a: u32) {
         }
         return;
     }
-    for px in dst.chunks_exact_mut(BPP) {
-        blend_px(px, src, a);
+    // `div255` in 16-bit arithmetic (every intermediate stays below 2^16: 255 · 255 + 128 +
+    // 254), one constant per channel; the compiler turns this loop into vector code. The
+    // alpha byte blends with 255, which is `da + (255 − da) · a / 255` of `blend_px`.
+    let inv = (FULL - a) as u16;
+    let bias = [src[0], src[1], src[2], u8::MAX].map(|c| u16::from(c) * a as u16 + 128);
+    let wide: [u16; BLOCK] = std::array::from_fn(|i| bias[i % BPP]);
+    let mut blocks = dst.chunks_exact_mut(BLOCK);
+    for block in &mut blocks {
+        for (byte, add) in block.iter_mut().zip(wide) {
+            *byte = mix(*byte, inv, add);
+        }
+    }
+    for px in blocks.into_remainder().chunks_exact_mut(BPP) {
+        for (byte, add) in px.iter_mut().zip(bias) {
+            *byte = mix(*byte, inv, add);
+        }
     }
 }
+
+/// One channel of a constant blend: `(byte · inv + add) / 255` with `add` holding the
+/// colour term and the rounding, all in 16 bits.
+#[inline(always)]
+fn mix(byte: u8, inv: u16, add: u16) -> u8 {
+    let t = u16::from(byte) * inv + add;
+    ((t + (t >> 8)) >> 8) as u8
+}
+
+/// Bytes blended per step of the vector loop (eight pixels).
+const BLOCK: usize = 8 * BPP;
 
 /// Blends a constant colour through an 8-bit coverage mask row; `alpha` scales the mask.
 #[inline]
@@ -92,5 +117,24 @@ mod tests {
         assert_eq!(alpha_of(2.0, 255), 255);
         assert_eq!(alpha_of(0.5, 255), 128);
         assert_eq!(alpha_of(-1.0, 255), 0);
+    }
+
+    #[test]
+    fn long_spans_blend_exactly_like_single_pixels() {
+        // Every byte value under every coverage and several colours, against `blend_px`.
+        let mut base = vec![0u8; 256 * BPP];
+        for (i, b) in base.iter_mut().enumerate() {
+            *b = ((i / BPP + i % BPP * 61) % 256) as u8;
+        }
+        for src in [[12, 200, 77, 0], [0, 0, 0, 0], [255, 255, 255, 9]] {
+            for a in 1..255 {
+                let (mut long, mut each) = (base.clone(), base.clone());
+                blend_span(&mut long, src, a);
+                for px in each.chunks_exact_mut(BPP) {
+                    blend_px(px, src, a);
+                }
+                assert_eq!(long, each, "{src:?} {a}");
+            }
+        }
     }
 }

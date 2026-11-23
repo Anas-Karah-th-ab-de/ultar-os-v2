@@ -233,6 +233,10 @@ fn gen_typography(out: &mut String, root: &Table) -> Res<()> {
                 out,
                 "    /// Token `type.{key}`.\n    pub const {name}: super::TypeSize = super::TypeSize::S{i};"
             )?,
+            Value::Integer(i) => writeln!(
+                out,
+                "    /// Token `type.{key}`.\n    pub const {name}: u16 = {i};"
+            )?,
             _ => {}
         }
     }

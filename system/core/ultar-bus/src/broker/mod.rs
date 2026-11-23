@@ -65,7 +65,7 @@ impl Default for BrokerConfig {
     fn default() -> Self {
         Self {
             max_frame: DEFAULT_MAX_FRAME,
-            queue_capacity: 1024,
+            queue_capacity: 4096,
             queue_bytes: 8 << 20,
             max_connections: 256,
             max_handshakes: 16,

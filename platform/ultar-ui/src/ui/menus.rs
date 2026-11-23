@@ -83,6 +83,7 @@ impl Ui {
             path: Vec::new(),
             highlight,
             panels: Vec::new(),
+            scrolls: Vec::new(),
         });
         self.place_menu();
         Ok(())
@@ -168,6 +169,13 @@ impl Ui {
             let panel = level.panel_beside(&mut cx, size, parent.rect, row);
             panels.push(panel);
         }
+        for (depth, panel) in panels.iter_mut().enumerate() {
+            panel.scroll_by(state.scrolls.get(depth).copied().unwrap_or(0.0));
+        }
+        if let (Some(index), Some(deepest)) = (state.highlight, panels.last_mut()) {
+            deepest.reveal(index);
+        }
+        state.scrolls = panels.iter().map(|p| p.scroll).collect();
         state.panels = panels;
         self.damage_menu();
     }
@@ -192,6 +200,28 @@ impl Ui {
                 kind: ActionKind::Closed,
             });
         }
+    }
+
+    /// The wheel over an open menu scrolls the level under the pointer.
+    pub(crate) fn menu_wheel(&mut self, pos: Point, delta: f32) {
+        let Some(state) = self.layers.menu.as_mut() else {
+            return;
+        };
+        let level = state
+            .panels
+            .iter()
+            .rposition(|panel| panel.rect.contains(pos));
+        if let Some(level) = level {
+            if let Some(scroll) = state.scrolls.get_mut(level) {
+                *scroll += delta;
+            }
+            self.place_menu();
+        }
+    }
+
+    /// `true` when `pos` lies on an open menu level.
+    pub(crate) fn menu_contains(&self, pos: Point) -> bool {
+        self.menu_hit(pos).is_some()
     }
 
     /// The level and item under `pos`: (level, item); the level alone when the pointer is on
@@ -364,9 +394,32 @@ impl Ui {
                 }
             }
             Key::Tab => self.close_menu_with(out),
+            Key::Char(ch) => self.menu_type_ahead(ch),
             _ => {}
         }
         true
+    }
+
+    /// A letter: highlight the next enabled command of the open level starting with it.
+    fn menu_type_ahead(&mut self, ch: char) {
+        let Some(state) = self.layers.menu.as_ref() else {
+            return;
+        };
+        let Some(level) = state.menu.level(&state.path) else {
+            return;
+        };
+        let from = state
+            .highlight
+            .unwrap_or(level.items.len().saturating_sub(1));
+        let hit = crate::event::next_match(from, level.items.len(), |i| {
+            level.items.get(i).is_some_and(|item| {
+                !item.disabled && crate::event::starts_with(&item.label.resolve(&self.tr), ch)
+            })
+        });
+        if let (Some(index), Some(state)) = (hit, self.layers.menu.as_mut()) {
+            state.highlight = Some(index);
+            self.place_menu();
+        }
     }
 
     /// Paints all open menu levels.

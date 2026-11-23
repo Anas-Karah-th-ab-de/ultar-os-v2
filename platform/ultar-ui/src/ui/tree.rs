@@ -24,6 +24,7 @@ pub(super) fn new_node(widget: Widget, sizing: Sizing, parent: Option<NodeId>) -
         tooltip: None,
         context_menu: None,
         clip_parent: None,
+        draggable: false,
     }
 }
 
@@ -149,7 +150,8 @@ impl Ui {
             Some(title) => {
                 self.nodes.push(new_node(widget, sizing, None));
                 self.layers.dialogs.push(id);
-                let heading = Text::new(title).spec(TextSpec::title(TypeSize::S20));
+                let spec = TextSpec::title(TypeSize::S16).weight(crate::text::Weight::Semibold);
+                let heading = Text::new(title).spec(spec);
                 let child = NodeId(self.nodes.len() as u32);
                 self.nodes
                     .push(new_node(heading.into(), Sizing::AUTO, Some(id)));
@@ -160,7 +162,7 @@ impl Ui {
                 self.node_mut(parent)?.children.push(id);
             }
         }
-        self.invalidate_layout();
+        self.invalidate_node(id);
         Ok(id)
     }
 
@@ -225,11 +227,21 @@ impl Ui {
         Ok(())
     }
 
+    /// Lets the user drag a node that takes presses (a button, a list item, a card with an
+    /// action): a press that moves beyond the touch slop reports `DragStarted`, `Dragged`
+    /// with the distance from the press and `DragEnded` instead of activating the node.
+    pub fn set_draggable(&mut self, id: NodeId, draggable: bool) -> Result<(), UiError> {
+        self.node_mut(id)?.draggable = draggable;
+        Ok(())
+    }
+
     /// Forgets focus, hover, presses, the open list and the open menu of nodes that are
     /// disabled now.
     fn drop_interaction_inside_disabled(&mut self) {
         let inside = |ui: &Ui, node: Option<NodeId>| node.is_some_and(|n| ui.is_disabled(n));
         if inside(self, self.input.focus) {
+            // The next Tab continues from this place (not from the first widget).
+            self.input.focus_hint = self.input.focus;
             self.input.focus = None;
         }
         if inside(self, self.input.mouse.map(|p| p.node)) {
@@ -254,8 +266,9 @@ impl Ui {
         }
     }
 
-    /// Shows or hides the loading state (buttons, icon buttons, switches, selects). A loading
-    /// widget keeps focus but cannot be activated.
+    /// Shows or hides the loading state (buttons, icon buttons, switches, selects, check
+    /// boxes, list items, sliders). A loading widget keeps focus but cannot be activated.
+    /// Radio groups and tabs have no loading state (DESKTOP-SPEC §3 names the exception).
     pub fn set_loading(&mut self, id: NodeId, loading: bool) -> Result<(), UiError> {
         let node = self.node_mut(id)?;
         if !node.widget.can_load() {
@@ -265,18 +278,19 @@ impl Ui {
         if loading && self.input.popup.is_some_and(|p| p.select == id) {
             self.input.popup = None;
         }
-        self.invalidate_layout();
+        self.invalidate_node(id);
         Ok(())
     }
 
-    /// Sets or clears the error message of a text field or select.
+    /// Sets or clears the error message of a text field, select, check box, slider or list
+    /// item (shown below it with an icon; a list item shows it instead of its sublabel).
     pub fn set_error(&mut self, id: NodeId, error: Option<Label>) -> Result<(), UiError> {
         let node = self.node_mut(id)?;
         if !node.widget.can_fail() {
             return Err(UiError::NotApplicable(id));
         }
         node.error = error;
-        self.invalidate_layout();
+        self.invalidate_node(id);
         Ok(())
     }
 
@@ -394,7 +408,7 @@ impl Ui {
                 })
             }
         }
-        self.invalidate_layout();
+        self.invalidate_node(id);
         Ok(())
     }
 

@@ -4,9 +4,14 @@
 //! device input into [`Event`]s; the application reacts to the returned [`Action`]s.
 
 mod activate;
+mod data_keys;
+mod gesture;
 mod keys;
 mod pointer;
 mod scroll_input;
+
+pub(crate) use gesture::Gestures;
+pub(crate) use keys::{next_match, starts_with};
 
 use crate::geom::Point;
 use crate::ui::{NodeId, Pointer, Ui};
@@ -151,6 +156,12 @@ pub enum Event {
         /// Modifiers held.
         modifiers: Modifiers,
     },
+    /// The modifier keys held changed (pointer events use the last state reported here or
+    /// by a key event).
+    Modifiers {
+        /// Modifiers held now.
+        modifiers: Modifiers,
+    },
     /// The wheel or a two-finger scroll moved.
     Scroll {
         /// Pointer position.
@@ -185,6 +196,30 @@ pub enum ActionKind {
     MenuChosen(u32),
     /// A scroll container moved to this offset in points.
     Scrolled(f32),
+    /// A second activation of the same node within the double-click time.
+    DoubleActivated,
+    /// A hold button went down.
+    Pressed,
+    /// A hold button is still held (every `motion.repeat` after `motion.long_press`).
+    Repeated,
+    /// A hold button was released (it reports no `Activated`).
+    Released,
+    /// A draggable node started to move with the pointer.
+    DragStarted,
+    /// A dragged node moved: the offset from where the drag started (physical points).
+    Dragged(Point),
+    /// A drag ended with this total offset.
+    DragEnded(Point),
+    /// A table column header was chosen: column and ascending order.
+    Sorted(usize, bool),
+    /// A row of a table or an item of a tree was activated (Enter, double click).
+    RowActivated(usize),
+    /// A tree item was expanded (`true`) or collapsed.
+    Expanded(usize, bool),
+    /// The action button of the toast with this identifier was pressed.
+    ToastAction(u32),
+    /// The toast with this identifier went away (time, close button or Escape).
+    ToastClosed(u32),
 }
 
 /// An action emitted by a node.
@@ -201,27 +236,37 @@ pub struct Action {
 pub struct Response {
     /// `true` when the UI used the event (the platform should not pass it on).
     pub consumed: bool,
-    /// Actions emitted, in order (at most a handful per event).
+    /// Actions emitted, in order (at most a handful per event). Actions caused by the clock
+    /// (long press, held button, toast timeout) since the last event come first.
     pub actions: Vec<Action>,
+    /// Modifier keys held while the event was handled (Ctrl/Shift with a click).
+    pub modifiers: Modifiers,
 }
 
 impl Ui {
     /// Feeds one input event through the widget state machine.
     pub fn handle(&mut self, event: Event) -> Response {
         self.layout();
-        let mut actions = Vec::new();
+        let mut actions = std::mem::take(&mut self.pending);
         let consumed = match event {
-            Event::PointerMove { pos } => self.pointer_move(pos, Pointer::Mouse, &mut actions),
-            Event::PointerDown { pos, button } => match button {
-                PointerButton::Primary => self.pointer_down(pos, Pointer::Mouse, &mut actions),
-                PointerButton::Secondary => self.secondary_down(pos, &mut actions),
-                PointerButton::Middle => false,
-            },
+            Event::PointerMove { pos } => {
+                self.input.pointer = Some(pos);
+                self.pointer_move(pos, Pointer::Mouse, &mut actions)
+            }
+            Event::PointerDown { pos, button } => {
+                self.input.pointer = Some(pos);
+                match button {
+                    PointerButton::Primary => self.pointer_down(pos, Pointer::Mouse, &mut actions),
+                    PointerButton::Secondary => self.secondary_down(pos, &mut actions),
+                    PointerButton::Middle => false,
+                }
+            }
             Event::PointerUp { pos, button } => {
                 button == PointerButton::Primary
                     && self.pointer_up(pos, Pointer::Mouse, &mut actions)
             }
             Event::PointerLeave => {
+                self.input.pointer = None;
                 self.set_hover(None);
                 false
             }
@@ -230,10 +275,22 @@ impl Ui {
                 self.input.touch == Some(id) && self.pointer_move(pos, Pointer::Touch, &mut actions)
             }
             Event::TouchUp { id, pos } => self.touch_up(id, pos, &mut actions),
-            Event::TouchCancel { id } => self.touch_cancel(id),
-            Event::Key { key, modifiers } => self.key(key, modifiers, &mut actions),
+            Event::TouchCancel { id } => self.touch_cancel(id, &mut actions),
+            Event::Key { key, modifiers } => {
+                self.input.modifiers = modifiers;
+                self.key(key, modifiers, &mut actions)
+            }
+            Event::Modifiers { modifiers } => {
+                self.input.modifiers = modifiers;
+                false
+            }
             Event::Scroll { pos, lines } => self.scroll(pos, lines, &mut actions),
         };
-        Response { consumed, actions }
+        let modifiers = self.input.modifiers;
+        Response {
+            consumed,
+            actions,
+            modifiers,
+        }
     }
 }

@@ -17,6 +17,9 @@ pub enum DialogKind {
     /// Attached to an edge: the bottom on compact surfaces, the end edge otherwise. A press
     /// beside it dismisses it.
     Sheet,
+    /// A floating panel next to the widget that opened it (shell sheets above the bar), at
+    /// its end edge; no scrim. A press beside it dismisses it.
+    Panel,
 }
 
 /// A dialog or sheet. Its children are laid out below its title; it is not part of its
@@ -36,6 +39,10 @@ pub struct Dialog {
     pub(crate) cancel_action: Option<NodeId>,
     /// Where focus was before the dialog opened.
     pub(crate) return_focus: Option<NodeId>,
+    /// The node a panel hangs on.
+    pub(crate) anchor: Option<NodeId>,
+    /// `true` for a dialog that asks about something serious (role `alertdialog`).
+    pub alert: bool,
 }
 
 /// Widest dialog.
@@ -58,7 +65,31 @@ impl Dialog {
             default_action: None,
             cancel_action: None,
             return_focus: None,
+            anchor: None,
+            alert: false,
         }
+    }
+
+    /// A floating panel; open it with `Ui::open_panel` next to its anchor.
+    pub fn panel(title: Label) -> Dialog {
+        Dialog {
+            kind: DialogKind::Panel,
+            flex: Flex::column()
+                .padding(Padding::all(Space::S16))
+                .gap(Space::S12),
+            ..Dialog::new(title)
+        }
+    }
+
+    /// The same dialog announced as an alert dialog.
+    pub fn alert(mut self) -> Dialog {
+        self.alert = true;
+        self
+    }
+
+    /// `true` for surfaces that dim what is behind them.
+    pub(crate) fn has_scrim(&self) -> bool {
+        self.kind != DialogKind::Panel
     }
 
     /// A sheet.
@@ -92,13 +123,20 @@ impl Dialog {
             DialogKind::Dialog => DIALOG_W.min(surface.w - sides).max(0.0),
             DialogKind::Sheet if self.at_bottom(surface) => surface.w.max(0.0),
             DialogKind::Sheet => SHEET_W.min(surface.w).max(0.0),
+            DialogKind::Panel => SHEET_W.min(surface.w - sides).max(0.0),
         }
     }
 
     /// The frame of the panel for content of natural size `content`.
-    pub(crate) fn frame(&self, content: Size, surface: Size) -> LogicalRect {
+    pub(crate) fn frame(
+        &self,
+        content: Size,
+        surface: Size,
+        anchor: Option<LogicalRect>,
+    ) -> LogicalRect {
         let width = self.width(surface);
         match self.kind {
+            DialogKind::Panel => panel_frame(width, content, surface, anchor),
             DialogKind::Dialog => {
                 let height = content.h.min(surface.h - 2.0 * MARGIN.points()).max(0.0);
                 let (start, top) = ((surface.w - width) / 2.0, (surface.h - height) / 2.0);
@@ -112,23 +150,50 @@ impl Dialog {
         }
     }
 
-    /// Paints the scrim over `surface` and the panel at `rect`.
-    pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect, surface: Rect) {
+    /// The colour laid over everything behind the dialog.
+    pub(crate) fn scrim(p: &Painter<'_>) -> crate::color::Color {
         let alpha = match p.env().theme {
             ThemeKind::Dark => state::SCRIM_DARK,
             ThemeKind::Light => state::SCRIM_LIGHT,
         };
-        let scrim = p.color(ColorRole::Ground).with_alpha(alpha);
-        p.fill(surface, None, scrim);
+        p.color(ColorRole::Ground).with_alpha(alpha)
+    }
+
+    /// Paints the panel at `rect` (the scrim is painted once into the backdrop, see
+    /// `Ui::paint`). Boards: the raised fill.
+    pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect) {
         p.shadow(rect, Some(Radius::Card));
         let (panel, line, hairline) = (
-            p.color(ColorRole::Surface),
+            p.color(ColorRole::Raised),
             p.color(ColorRole::Line),
             p.hairline(),
         );
         p.fill(rect, Some(Radius::Card), panel);
         p.stroke(rect, Some(Radius::Card), hairline, line);
     }
+}
+
+/// A panel next to its anchor: at the anchor's end edge, above it when the anchor is in
+/// the lower half of the surface (the bar), below it otherwise; inside the surface.
+fn panel_frame(
+    width: f32,
+    content: Size,
+    surface: Size,
+    anchor: Option<LogicalRect>,
+) -> LogicalRect {
+    let margin = Space::S8.points();
+    let height = content.h.min(surface.h - 2.0 * margin).max(0.0);
+    let anchor = anchor.unwrap_or(LogicalRect::new(surface.w, surface.h, 0.0, 0.0));
+    let end = anchor.start + anchor.width;
+    let start = (end - width).min(surface.w - width - margin).max(margin);
+    let above = anchor.top + anchor.height / 2.0 > surface.h / 2.0;
+    let top = if above {
+        anchor.top - margin - height
+    } else {
+        anchor.top + anchor.height + margin
+    };
+    let top = top.min(surface.h - height - margin).max(margin);
+    LogicalRect::new(start, top, width, height)
 }
 
 #[cfg(test)]
@@ -142,24 +207,32 @@ mod tests {
         let content = Size::new(0.0, 200.0);
         let dialog = Dialog::new(Label::key("d"));
         assert!(!dialog.is_open());
-        let frame = dialog.frame(content, wide);
+        let frame = dialog.frame(content, wide, None);
         assert_eq!((frame.width, frame.height), (DIALOG_W, 200.0));
         assert_eq!(frame.start, (wide.w - DIALOG_W) / 2.0);
         assert_eq!(frame.top, 300.0);
-        let narrow = dialog.frame(content, phone);
+        let narrow = dialog.frame(content, phone, None);
         assert_eq!(narrow.width, phone.w - 2.0 * MARGIN.points());
-        let tall = dialog.frame(Size::new(0.0, 5000.0), phone);
+        let tall = dialog.frame(Size::new(0.0, 5000.0), phone, None);
         assert_eq!(tall.height, phone.h - 2.0 * MARGIN.points());
         let sheet = Dialog::sheet(Label::key("s"));
-        let side = sheet.frame(content, wide);
+        let side = sheet.frame(content, wide, None);
         assert_eq!(
             (side.start, side.top, side.height),
             (wide.w - SHEET_W, 0.0, wide.h)
         );
-        let bottom = sheet.frame(content, phone);
+        let bottom = sheet.frame(content, phone, None);
         assert_eq!((bottom.start, bottom.width), (0.0, phone.w));
         assert_eq!(bottom.top + bottom.height, phone.h);
-        let nothing = dialog.frame(content, Size::new(0.0, 0.0));
+        let nothing = dialog.frame(content, Size::new(0.0, 0.0), None);
+        let panel = Dialog::panel(Label::key("p"));
+        let bar = LogicalRect::new(1100.0, 760.0, 40.0, 40.0);
+        let above = panel.frame(content, wide, Some(bar));
+        assert_eq!(
+            (above.start + above.width, above.top + above.height),
+            (1140.0, 752.0)
+        );
+        assert!(!panel.has_scrim() && dialog.has_scrim());
         assert_eq!((nothing.width, nothing.height), (0.0, 0.0));
     }
 }

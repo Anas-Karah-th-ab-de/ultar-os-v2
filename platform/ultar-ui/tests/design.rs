@@ -81,20 +81,21 @@ fn the_shadow_reaches_as_far_as_the_css_shadow_of_the_token() {
 }
 
 #[test]
-fn the_raised_card_has_the_raised_background_and_an_accent_border() {
+fn the_raised_card_has_the_raised_background_and_no_gold_border() {
     let (mut ui, id) = card_ui(Card::padded().raised());
     let rect = ui.rect(id).unwrap();
     let canvas = paint(&mut ui);
     let (cx, cy) = (rect.center().x as i32, rect.center().y as i32);
     assert_eq!(canvas.pixel(cx, cy), Some(DARK.get(ColorRole::Raised)));
+    // Boards (REVIEW-SELF B5): no gold border, the `line` hairline of every card.
     assert_eq!(
         canvas.pixel(cx, rect.y as i32),
-        Some(DARK.get(ColorRole::Accent)),
+        Some(DARK.get(ColorRole::Line)),
         "top border"
     );
     assert_eq!(
         canvas.pixel(rect.x as i32, cy),
-        Some(DARK.get(ColorRole::Accent)),
+        Some(DARK.get(ColorRole::Line)),
         "start border"
     );
     // The plain floating card keeps surface and line.
@@ -134,7 +135,9 @@ fn hover_pressed_and_focus_use_the_state_tokens() {
         canvas.pixel(pos.x as i32, ring_y),
         Some(DARK.get(state::FOCUS_RING))
     );
-    assert_eq!(state::FOCUS_RING, ColorRole::AccentText);
+    // DESKTOP-SPEC §3: blue next to the gold (both rings reach 3:1 only against the
+    // backgrounds, not against the gold itself; the hue separates blue from gold).
+    assert_eq!(state::FOCUS_RING, ColorRole::Info);
 }
 
 #[test]
@@ -166,9 +169,9 @@ fn arabic_is_drawn_bold_and_titles_and_code_have_their_own_families() {
         }
     }
     assert!(widths[2] > widths[0], "bold Naskh is wider than regular");
-    // 600 uses the bold file as well: semibold labels are visibly heavier than regular.
+    // 600 has a file of its own: between medium and bold.
     let semibold = engine.layout(word, &style(FontRole::Text, Weight::Semibold), None);
-    assert_eq!(semibold.width, widths[2]);
+    assert!(semibold.width > widths[1] && semibold.width < widths[2]);
     assert_eq!(ultar_ui::text::missing_families(), Vec::<&str>::new());
     // A title spec selects the title family.
     let spec = TextSpec::title(TypeSize::S24);

@@ -120,7 +120,7 @@ fn theme_language_and_size_changes_repaint_everything() {
         "switching back gives the identical picture"
     );
     assert_ne!(english, dark);
-    ui.set_size(Size::new(700.0, 760.0));
+    ui.set_size(Size::new(700.0, 760.0)).unwrap();
     assert!(ui.needs_paint());
     ui.set_background(ultar_ui::tokens::ColorRole::Surface);
     ui.paint(&mut canvas);

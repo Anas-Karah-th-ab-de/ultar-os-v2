@@ -78,8 +78,8 @@ impl InfoBar {
             p.color(self.tone.role()),
             p.hairline(),
         );
-        p.fill(rect, Some(Radius::Control), bg);
-        p.stroke(rect, Some(Radius::Control), hairline, tone);
+        p.fill(rect, Some(Radius::Card), bg);
+        p.stroke(rect, Some(Radius::Card), hairline, tone);
         let direction = p.env().direction;
         let mut inner = style::inset_inline(rect, PAD_INLINE);
         if control > 0.0 {
@@ -140,9 +140,9 @@ pub struct EmptyState {
     pub message: Option<Label>,
 }
 
-const EMPTY_PAD: Space = Space::S32;
-const EMPTY_ICON: f32 = Space::S48.points();
-const EMPTY_GAP: Space = Space::S16;
+const EMPTY_PAD: Space = Space::S24;
+const EMPTY_ICON: f32 = size::ICON;
+const EMPTY_GAP: Space = Space::S12;
 const EMPTY_TITLE: TextSpec = TextSpec::new(TypeSize::S16)
     .weight(Weight::Semibold)
     .role(FontRole::Title)

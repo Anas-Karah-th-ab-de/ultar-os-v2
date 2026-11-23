@@ -98,14 +98,25 @@ impl Switch {
     ) {
         let previous = p.set_opacity(v.opacity());
         let track = style::centered(rect, Size::new(TRACK_W, TRACK_H));
-        let (track_role, knob_role) = if self.on {
-            (ColorRole::Accent, ColorRole::OnAccent)
+        // Off: an outline in `control_border` with a knob in `text`. On: a track in
+        // `accent_text` (3:1 against every background in both themes; the gold `accent`
+        // reaches only 2:1 on light ones) with a knob in `surface`.
+        let (knob_role, track_role) = if self.on {
+            (ColorRole::Surface, ColorRole::AccentText)
         } else {
-            (ColorRole::ControlBorder, ColorRole::Surface)
+            (ColorRole::Text, ColorRole::ControlBorder)
         };
         let knob_color = p.color(knob_role);
-        let track_color = style::filled(p.color(track_role), knob_color, v);
-        p.fill(track, Some(Radius::Round), track_color);
+        let border = p.hairline();
+        if self.on {
+            let fill = style::filled(p.color(ColorRole::AccentText), knob_color, v);
+            p.fill(track, Some(Radius::Round), fill);
+        } else {
+            let bg = p.color(style::neutral_background(v));
+            p.fill(track, Some(Radius::Round), bg);
+            let edge = p.color(ColorRole::ControlBorder);
+            p.stroke(track, Some(Radius::Round), border, edge);
+        }
         let inset = (TRACK_H - KNOB) / 2.0;
         let travel = TRACK_W - KNOB - 2.0 * inset;
         let from_start = inset + travel * position.clamp(0.0, 1.0);

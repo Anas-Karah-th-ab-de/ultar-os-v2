@@ -139,6 +139,27 @@
   "h": 1184,
   "title": "Zustände der Bausteine: normal, schwebend, gedrückt, fokussiert, deaktiviert, lädt, Fehler"
  },
+ "StatesLight.dc.html": {
+  "x": 5776,
+  "y": 2960,
+  "w": 1760,
+  "h": 1184,
+  "title": "Zustände der Bausteine, helles Thema"
+ },
+ "Menus.dc.html": {
+  "x": 7616,
+  "y": 2960,
+  "w": 1280,
+  "h": 800,
+  "title": "Bausteine: Menü, Kontextmenü mit Untermenü, Auswahlliste, Tooltip"
+ },
+ "Bricks.dc.html": {
+  "x": 8976,
+  "y": 2960,
+  "w": 1280,
+  "h": 800,
+  "title": "Bausteine: Tabs, Scrollleiste, Bottom Sheet, Toast (hell, Englisch)"
+ },
  "PhoneDial.dc.html": {
   "x": 0,
   "y": 4264,

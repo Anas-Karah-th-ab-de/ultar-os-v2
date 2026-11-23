@@ -6,7 +6,8 @@ use crate::geom::{Rect, Size};
 use crate::paint::Painter;
 use crate::tokens::{size, state, Radius, Space};
 use crate::widgets::{
-    focus_outset, paint_tooltip, shadow_reach, PaintCx, PopupView, Select, Widget,
+    focus_outset, paint_tooltip, shadow_reach, Dialog, PaintCx, PopupView, Select, ToastView,
+    Widget,
 };
 
 impl Ui {
@@ -37,11 +38,20 @@ impl Ui {
                 let grown = rect.inflate(reach.x);
                 Rect::new(grown.x, grown.y, grown.w, grown.h + reach.y)
             }
-            // The scrim of a dialog covers the whole surface.
-            Widget::Dialog(_) => Rect::new(0.0, 0.0, self.size().w, self.size().h),
-            _ if self.interactive(id) => rect.inflate(focus_outset().max(Space::S4.points())),
-            _ => rect,
+            Widget::Dialog(_) => {
+                let reach = shadow_reach();
+                let grown = rect.inflate(reach.x);
+                Rect::new(grown.x, grown.y, grown.w, grown.h + reach.y)
+            }
+            // Glyph side bearings and anti-aliased edges may pass the rectangle slightly.
+            _ => rect.inflate(focus_outset().max(Space::S4.points())),
         }
+    }
+
+    /// `true` for an item of a sidebar's navigation list.
+    pub(crate) fn in_navigation(&self, id: NodeId) -> bool {
+        self.parent(id)
+            .is_some_and(|p| matches!(self.widget(p), Some(Widget::List(l)) if l.navigation))
     }
 
     /// Width and size of the hosted child of a row-like widget (zero without one).
@@ -73,7 +83,7 @@ impl Ui {
             Widget::IconButton(w) => w.paint(p, cx, rect, &v),
             Widget::Switch(w) => w.paint(p, cx, rect, &v, self.knob_position(w)),
             Widget::Select(w) => w.paint(p, cx, rect, &v, error),
-            Widget::Slider(w) => w.paint(p, rect, &v),
+            Widget::Slider(w) => w.paint(p, cx, rect, &v, error),
             Widget::TextField(w) => {
                 let has_focus = self.input.focus == Some(id) && !v.disabled;
                 w.paint(p, cx, rect, &v, has_focus, error);
@@ -82,15 +92,19 @@ impl Ui {
             Widget::Card(w) => w.paint(p, rect),
             Widget::Badge(w) => w.paint(p, cx, rect),
             Widget::Progress(w) => w.paint(p, rect, cx.spin),
-            Widget::Checkbox(w) => w.paint(p, cx, rect, &v),
+            Widget::Checkbox(w) => w.paint(p, cx, rect, &v, error),
             Widget::RadioGroup(w) => w.paint(p, cx, rect, &v, parts),
             Widget::Tabs(w) => w.paint(p, cx, rect, &v, parts),
             Widget::InfoBar(w) => w.paint(p, cx, rect, self.hosted(id).w),
             Widget::EmptyState(w) => w.paint(p, cx, rect, self.hosted(id)),
-            Widget::ListItem(w) => w.paint(p, cx, rect, &v, self.hosted(id).w),
-            Widget::Dialog(w) => {
-                w.paint(p, rect, Rect::new(0.0, 0.0, self.size().w, self.size().h))
+            Widget::ListItem(w) => {
+                let nav = self.in_navigation(id);
+                w.paint(p, cx, rect, &v, (self.hosted(id).w, nav, error));
             }
+            Widget::Table(w) => w.paint(p, cx, rect, &v, parts.0),
+            Widget::Tree(w) => w.paint(p, cx, rect, &v, parts.0),
+            Widget::HeaderBar(w) => w.paint(p, cx, rect),
+            Widget::Dialog(w) => w.paint(p, rect),
         }
     }
 
@@ -98,17 +112,17 @@ impl Ui {
         let Some(rect) = self.rect(id) else {
             return;
         };
-        if !self.ink_bounds(id, rect).intersects(region) {
+        let ink = self.ink_bounds(id, rect);
+        if !ink.intersects(region) {
             return;
         }
-        match self.clip_rect(id) {
-            Some(clip) if !clip.intersects(region) => {}
-            Some(clip) => {
-                let saved = p.clip(clip);
-                self.paint_widget(p, cx, id, rect);
-                p.restore_clip(saved);
-            }
-            None => self.paint_widget(p, cx, id, rect),
+        // A widget never draws outside its ink bounds (a squeezed field drawing its icon
+        // beside it would leave pixels no damage rectangle accounts for).
+        let clip = self.clip_rect(id).map_or(ink, |c| c.intersect(&ink));
+        if clip.intersects(region) {
+            let saved = p.clip(clip);
+            self.paint_widget(p, cx, id, rect);
+            p.restore_clip(saved);
         }
     }
 
@@ -136,15 +150,27 @@ impl Ui {
         p.restore_clip(saved);
     }
 
-    fn paint_region(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, region: Rect) {
+    fn paint_region(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        region: Rect,
+        layers: &Layer<'_>,
+    ) {
         let saved = p.clip(region);
-        let background = p.color(self.background());
-        p.fill(region, None, background);
-        for step in &self.layers.steps {
-            match step {
-                PaintStep::Node(id) => self.paint_node(p, cx, *id, &region),
-                PaintStep::ScrollBar(id) => self.paint_scrollbar(p, *id, &region),
+        let first = match (layers.backdrop, self.layers.scrim_step) {
+            (Some(backdrop), Some(end)) => {
+                p.copy_from(backdrop, region);
+                end
             }
+            _ => {
+                let background = p.color(self.background());
+                p.fill(region, None, background);
+                0
+            }
+        };
+        for step in self.layers.steps.iter().skip(first) {
+            self.paint_step(p, cx, *step, &region);
         }
         if let (Some(popup), Some((id, view))) = (self.input.popup, self.popup_view()) {
             if let Ok(select) = self.select(id) {
@@ -152,6 +178,11 @@ impl Ui {
             }
         }
         self.paint_menu(p, cx);
+        for (index, view) in layers.toasts {
+            if let Some(shown) = self.layers.toasts.get(*index) {
+                shown.toast.paint(p, cx, view);
+            }
+        }
         if let Some(tip) = self.layers.tip {
             if let Some(label) = self.nodes[tip.node.index()].tooltip.as_ref() {
                 paint_tooltip(p, cx, tip.rect, label);
@@ -162,6 +193,10 @@ impl Ui {
 
     /// Paints what changed since the last call into `canvas` (everything on the first call
     /// or after a layout change). The canvas records the touched pixels in its damage list.
+    ///
+    /// While a dialog or sheet is open, everything under it is painted once into a backdrop
+    /// buffer and dimmed with the scrim there; a frame then copies the damaged part of the
+    /// backdrop and paints only the dialog on top (the scrim is never blended per frame).
     pub fn paint(&mut self, canvas: &mut Canvas) {
         self.layout();
         let surface = Rect::new(0.0, 0.0, self.size().w, self.size().h);
@@ -175,6 +210,8 @@ impl Ui {
         if regions.is_empty() {
             return;
         }
+        let toasts = self.toast_views();
+        let backdrop = self.backdrop_for(canvas);
         // Nothing else borrows the resources while a frame is painted; if that ever were
         // the case the frame is skipped instead of panicking.
         let Ok(mut resources) = self.res.try_borrow_mut() else {
@@ -187,19 +224,76 @@ impl Ui {
             mode: self.mode,
             spin: self.spin(),
         };
+        let layers = Layer {
+            toasts: &toasts,
+            backdrop: backdrop.as_ref(),
+        };
         for region in regions {
             let region = snap_out(region.intersect(&surface), self.env.scale);
             if !region.is_empty() {
-                self.paint_region(&mut painter, &cx, region);
+                self.paint_region(&mut painter, &cx, region, &layers);
             }
+        }
+        drop(resources);
+        self.layers.backdrop = backdrop;
+    }
+
+    /// The backdrop for the open scrim dialog: kept from the last frame when nothing under
+    /// the dialog changed, painted and dimmed otherwise. `None` without such a dialog.
+    fn backdrop_for(&mut self, target: &Canvas) -> Option<Canvas> {
+        let end = self.layers.scrim_step?;
+        let stale = std::mem::take(&mut self.layers.backdrop_stale);
+        let kept = self.layers.backdrop.take().filter(|b| {
+            (b.width(), b.height(), b.format())
+                == (target.width(), target.height(), target.format())
+        });
+        let mut canvas = match kept {
+            Some(kept) if !stale => return Some(kept),
+            // The buffer is reused; every pixel is painted again below.
+            Some(mut kept) => {
+                kept.reset_clip();
+                kept
+            }
+            None => Canvas::new(target.width(), target.height(), target.format()).ok()?,
+        };
+        let surface = Rect::new(0.0, 0.0, self.size().w, self.size().h);
+        let mut resources = self.res.try_borrow_mut().ok()?;
+        let mut p = Painter::new(&mut canvas, &mut resources, self.env);
+        let cx = PaintCx {
+            tr: &self.tr,
+            mode: self.mode,
+            spin: self.spin(),
+        };
+        let background = p.color(self.background());
+        p.fill(surface, None, background);
+        for step in self.layers.steps.iter().take(end) {
+            self.paint_step(&mut p, &cx, *step, &surface);
+        }
+        let scrim = Dialog::scrim(&p);
+        p.fill(surface, None, scrim);
+        canvas.take_damage();
+        Some(canvas)
+    }
+
+    fn paint_step(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, step: PaintStep, region: &Rect) {
+        match step {
+            PaintStep::Node(id) => self.paint_node(p, cx, id, region),
+            PaintStep::ScrollBar(id) => self.paint_scrollbar(p, id, region),
         }
     }
 
     /// Paints the whole surface regardless of what changed.
     pub fn paint_all(&mut self, canvas: &mut Canvas) {
-        self.repaint_all();
+        // The dimmed backdrop under a dialog holds the same pixels: it is kept.
+        self.mark_full_repaint();
         self.paint(canvas);
     }
+}
+
+/// What a frame paints above the tree: toasts and the dimmed backdrop under a dialog.
+struct Layer<'a> {
+    toasts: &'a [(usize, ToastView)],
+    backdrop: Option<&'a Canvas>,
 }
 
 /// Grows a logical rectangle so that its edges fall on device pixels.

@@ -177,6 +177,7 @@ fn fields(sheet: &mut Sheet) {
     let states = [
         State::Normal,
         State::Hovered,
+        State::Pressed,
         State::Focused,
         State::Disabled,
     ];
@@ -226,6 +227,7 @@ fn scrolling_and_cards(sheet: &mut Sheet) {
         State::Scrolled,
         State::Hovered,
         State::Focused,
+        State::Disabled,
     ];
     sheet.states("scroll", Size::new(352.0, 200.0), &states, &scroller);
     sheet.shoot(

@@ -279,7 +279,9 @@ impl Canvas {
             return;
         }
         let swap = self.format != source.format;
-        let opaque = self.format == PixelFormat::Bgrx8 || source.format == PixelFormat::Bgrx8;
+        // A BGRX target needs opaque pixels; a BGRX source has them already, so a copy
+        // between two BGRX canvases is a plain memory copy.
+        let opaque = self.format == PixelFormat::Bgrx8 && source.format != PixelFormat::Bgrx8;
         let columns = target.width() as usize;
         for row in target.y0..target.y1 {
             let (sy, sx) = (i64::from(row) - dy, i64::from(target.x0) - dx);

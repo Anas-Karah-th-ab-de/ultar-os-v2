@@ -136,7 +136,7 @@ pub struct Row {
 const ROW_PAD_INLINE: Space = Space::S16;
 const ROW_PAD_BLOCK: Space = Space::S8;
 const ROW_GAP: Space = Space::S16;
-const ROW_MIN_HEIGHT: f32 = Space::S48.points() + Space::S8.points();
+const ROW_MIN_HEIGHT: f32 = size::ROW_MIN;
 const ROW_LABEL: TextSpec = TextSpec::new(typography::BODY)
     .weight(Weight::Medium)
     .overflow(Overflow::Ellipsis);
@@ -253,7 +253,7 @@ pub struct Card {
     pub flex: Flex,
     /// `true` for a floating card (drawn with the shadow).
     pub floating: bool,
-    /// `true` for the raised look: raised background and accent border (a floating card
+    /// `true` for the raised look: raised background (a floating card
     /// that asks for a decision, such as "keep these display settings?").
     pub raised: bool,
 }
@@ -291,7 +291,7 @@ impl Card {
         self
     }
 
-    /// The same card floating, with the raised background and an accent border.
+    /// The same card floating, with the raised background.
     pub fn raised(mut self) -> Card {
         self.floating = true;
         self.raised = true;
@@ -302,8 +302,9 @@ impl Card {
         if self.floating {
             p.shadow(rect, Some(Radius::Card));
         }
+        // Boards (REVIEW-SELF B5): a raised card has the raised fill, no gold border.
         let (background, border) = if self.raised {
-            (ColorRole::Raised, ColorRole::Accent)
+            (ColorRole::Raised, ColorRole::Line)
         } else {
             (ColorRole::Surface, ColorRole::Line)
         };

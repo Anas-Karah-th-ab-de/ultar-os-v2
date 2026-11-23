@@ -2368,8 +2368,11 @@ impl App {
 
     /// Langer Druck (≥ 0,55 s ohne Bewegung) auf eine Fläche. Der folgende Loslass-Tipp wird unterdrückt.
     pub(super) fn long_press(&mut self, ui: &mut Ui, r: Rect) -> bool {
+        // Never on the frame of the press itself: a slow frame (cold font cache, slow device) must not
+        // turn a tap into a long press – the finger has to stay down across frames.
         if !ui.enabled
             || !ui.p.down
+            || ui.p.pressed
             || ui.p.moved
             || self.lp_fired
             || !r.contains(ui.p.px, ui.p.py)

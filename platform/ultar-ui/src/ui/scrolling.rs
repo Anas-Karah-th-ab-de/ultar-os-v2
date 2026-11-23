@@ -62,29 +62,43 @@ impl Ui {
             node: id,
             kind: ActionKind::Scrolled(target),
         });
+        self.rehover();
         true
     }
 
     /// Scrolls the containers above `id` so that it is visible, the innermost first.
     pub(crate) fn reveal(&mut self, id: NodeId, out: &mut Vec<Action>) {
+        if let Some(rect) = self.rect(id) {
+            self.reveal_rect(id, rect, out);
+        }
+    }
+
+    /// Scrolls the containers above `id` so that `target` (a part of it, in the current
+    /// physical coordinates) is visible.
+    pub(crate) fn reveal_rect(&mut self, id: NodeId, target: Rect, out: &mut Vec<Action>) {
         let margin = focus_outset().max(Space::S4.points());
+        let mut target = target;
         let mut above = self.nodes[id.index()].clip_parent;
         while let Some(scroller) = above {
             above = self.nodes[scroller.index()].clip_parent;
-            let (Some(target), Some(view), Ok(scroll)) =
-                (self.rect(id), self.rect(scroller), self.scroller(scroller))
-            else {
+            let (Some(view), Ok(scroll)) = (self.rect(scroller), self.scroller(scroller)) else {
                 continue;
             };
             let over_top = view.y - (target.y - margin);
             let over_bottom = (target.bottom() + margin) - view.bottom();
             let offset = scroll.offset;
-            if over_top > 0.0 || target.h + 2.0 * margin > view.h {
+            let wanted = if over_top > 0.0 || target.h + 2.0 * margin > view.h {
                 // Above the viewport, or taller than it: show its beginning.
-                self.scroll_to(scroller, offset - over_top, out);
+                offset - over_top
             } else if over_bottom > 0.0 {
-                self.scroll_to(scroller, offset + over_bottom, out);
-            }
+                offset + over_bottom
+            } else {
+                continue;
+            };
+            let before = scroll.offset;
+            self.scroll_to(scroller, wanted, out);
+            let moved = self.scroller(scroller).map_or(0.0, |s| s.offset - before);
+            target.y -= moved;
         }
     }
 

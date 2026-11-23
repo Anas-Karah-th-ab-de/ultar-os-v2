@@ -20,10 +20,7 @@ impl Ui {
                 switch.toggle(now, animate);
                 ActionKind::Toggled(switch.on)
             }
-            Widget::Checkbox(checkbox) => {
-                checkbox.checked = !checkbox.checked;
-                ActionKind::Toggled(checkbox.checked)
-            }
+            Widget::Checkbox(checkbox) => ActionKind::Toggled(checkbox.toggle()),
             Widget::Select(_) if open => return self.close_popup(out),
             Widget::Select(_) => return self.open_popup(id, out),
             Widget::RadioGroup(group) => {
@@ -42,10 +39,12 @@ impl Ui {
                 _ => return,
             },
             Widget::TextField(field) => match part {
-                Some(_) if field.clear() => ActionKind::TextChanged,
+                Some(0) if field.clear() => ActionKind::TextChanged,
                 _ => return,
             },
             Widget::ListItem(_) => return self.activate_item(id, out),
+            Widget::Table(_) => return self.activate_table(id, part, out),
+            Widget::Tree(_) => return self.activate_tree(id, part, out),
             _ => return,
         };
         out.push(Action { node: id, kind });

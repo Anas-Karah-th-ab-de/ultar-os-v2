@@ -28,7 +28,12 @@ IC_S, IC_L = _sz['icon_small'], _sz['icon']
 ic_s, ic_l = px(IC_S), px(IC_L)
 STROKE = _sz['stroke']
 RING = px(_sz['focus_ring'])
-HAIR = px(int(STROKE))        # derived: hairline = whole part of size.stroke (1 device pixel at scale 1)
+BORDER = _sz['border']
+HAIR = px(BORDER)             # size.border: every hairline (cards, fields, check box, rules)
+EDGE2 = px(2 * BORDER)        # derived: the edge of the primary button is two borders wide (3:1 next to the gold)
+ROW_MIN = px(_sz['row_min'])  # minimum height of a list or settings row
+BOX = px(_sz['box'])          # check box and radio circle
+_st = TOK['state']
 _sh = TOK['shadow']
 FF_TEXT = "'%s', '%s', sans-serif" % (_ty['family_latin'], _ty['family_arabic_text'])
 FF_TITLE = "'%s', '%s', sans-serif" % (_ty['family_latin'], _ty['family_arabic_title'])
@@ -37,6 +42,14 @@ _wg = ';'.join(str(w) for w in _ty['weights'])
 LINK = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?%s&display=swap">' % '&'.join(
     'family=%s:wght@%s' % (_ty[k].replace(' ', '+'), _wg) for k in ('family_latin', 'family_arabic_text', 'family_arabic_title', 'family_mono'))
 
+def rgba(hexcolor, alpha):
+    """A theme colour at a token alpha (scrim, state overlays)."""
+    return 'rgba(%d,%d,%d,%.2f)' % (int(hexcolor[1:3], 16), int(hexcolor[3:5], 16), int(hexcolor[5:7], 16), alpha)
+def over(base, fg, share):
+    """A filled colour with its state layer: `fg` at `share` (state.hover_overlay / pressed_overlay) over `base`."""
+    layer = rgba(fg, share)
+    return 'linear-gradient(%s, %s), %s' % (layer, layer, base)
+DIM = 'opacity: %.2f' % _st['disabled_opacity']   # state.disabled_opacity: the whole widget
 class Theme:
     def __init__(self, name):
         d = TOK['theme'][name]; self.name = name
@@ -46,7 +59,8 @@ class Theme:
         self.info, self.ok, self.warn, self.danger = d['info'], d['success'], d['warning'], d['danger']
         alpha = _sh['alpha_' + name]
         self.shadow = '0 %dpx %dpx rgba(0,0,0,%.2f)' % (_sh['offset_y'], _sh['blur'], alpha)
-        self.scrim = 'rgba(0,0,0,%.2f)' % alpha          # derived: dims the parent of a dialog with the shadow alpha
+        self.scrim = rgba(self.ground, _st['scrim_' + name])   # state.scrim_*: ground laid over what lies behind a dialog
+        self.focus = d[_st['focus_ring']]                       # state.focus_ring names the colour role of the ring
 THEMES = {'dark': Theme('dark'), 'light': Theme('light')}
 class _Cx:
     name = ''; rtl = True; lang = 'ar'; theme = THEMES['dark']; uid = 0
@@ -148,7 +162,7 @@ def out(title, w, h, body, canvas_title, row):
     boards[cx.name] = dict(w=W, h=H, title=canvas_title, row=row, theme=cx.theme.name, rtl=cx.rtl); order.append(cx.name)
 
 # ---------- building blocks (the bricks of ultar-ui, section 3) ----------
-FOCUS = lambda: 'outline: %s solid %s; outline-offset: %s' % (RING, t.info, RING)
+FOCUS = lambda: 'outline: %s solid %s; outline-offset: %s' % (RING, t.focus, RING)
 def h1(s):
     return '<h1 style="font-family: %s; font-size: %s; font-weight: %d">%s</h1>' % (FF_TITLE, f24, w7, tx(s))
 def h2(s, size=None):
@@ -161,17 +175,20 @@ def note(s):
 NA = '—'
 def _state_css(kind, state):
     bg, fg, bd = {'normal': (t.raised, t.text, t.ctl), 'primary': (t.acc, t.onacc, t.acctext), 'quiet': ('transparent', t.text, 'transparent'), 'danger': (t.raised, t.danger, t.danger)}[kind]
-    bw = HAIR; extra = ''
+    bw = EDGE2 if kind == 'primary' else HAIR; extra = ''
     if state == 'hover':
-        if kind == 'primary': bd = t.text
+        if kind == 'primary': bg = over(t.acc, t.onacc, _st['hover_overlay'])
         else: bg = t.hover
     elif state == 'pressed':
-        if kind == 'primary': bd = t.text; bw = RING
+        if kind == 'primary': bg = over(t.acc, t.onacc, _st['pressed_overlay'])
         else: bg = t.line
     elif state == 'focus': extra = '; ' + FOCUS()
-    elif state == 'disabled': bg, fg, bd = t.surface, t.ctl, t.line
+    elif state == 'disabled': extra = '; ' + DIM
     elif state == 'error': bd = t.danger; bw = RING
     return 'background: %s; color: %s; border: %s solid %s; box-sizing: border-box%s' % (bg, fg, bw, bd, extra)
+def state_extra(state):
+    """The focus ring or the disabled opacity of a brick that draws its own colours."""
+    return '; ' + FOCUS() if state == 'focus' else ('; ' + DIM if state == 'disabled' else '')
 def _aria_state(state):
     return {'disabled': ' aria-disabled="true"', 'loading': ' aria-busy="true"', 'error': ' aria-invalid="true"'}.get(state, '')
 def button(label, a, kind='normal', state='', icon=None, name=None, grow=False):
@@ -185,25 +202,25 @@ def ibtn(label, icon, a, active=False, state='', small=True, color=None, tab=Tru
     return '<button%s aria-label="%s"%s%s style="width: %s; height: %s; flex: none; border-radius: %s; display: inline-flex; align-items: center; justify-content: center; %s%s">%s</button>' % (
         act(a, label), plain(label), _aria_state(state), '' if tab else ' tabindex="-1"', size, size, r_ctl, css, '; color: %s' % color if color else '', ic('ring' if state == 'loading' else icon, small))
 def switch(on, label, a, state=''):
-    track = t.acc if on else 'transparent'; bd = t.acctext if on else t.ctl; knob = t.onacc if on else t.text
-    if state == 'hover': bd = t.text
-    if state == 'pressed': bd = t.text
-    if state == 'disabled': track, bd, knob = t.surface, t.line, t.ctl
+    # On: a track in accent_text (3:1 on every background) with a surface knob; off: an outline in control_border with a text knob.
+    track = t.acctext if on else t.raised; bd = t.acctext if on else t.ctl; knob = t.surface if on else t.text
+    layer = {'hover': 'hover_overlay', 'pressed': 'pressed_overlay'}.get(state)
+    if layer: track = over(t.acctext, t.surface, _st[layer]) if on else (t.hover if state == 'hover' else t.line)
     if state == 'error': bd = t.danger
-    bw = RING if state in ('pressed', 'error') else HAIR
+    bw = RING if state == 'error' else HAIR
     return '<button role="switch" aria-checked="%s" aria-label="%s"%s%s style="width: %s; height: %s; flex: none; display: inline-flex; align-items: center; border-radius: %s%s"><span style="width: %s; height: %s; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box; display: flex; align-items: center; justify-content: %s; padding: 0 %s">%s</span></button>' % (
-        'true' if on else 'false', plain(label), act(a, label), _aria_state(state), s7, tgt, r_round, '; ' + FOCUS() if state == 'focus' else '', s7, ic_l, r_round, track, bw, bd, 'flex-end' if on else 'flex-start', s1,
-        ic('ring', True, knob) if state == 'loading' else '<span style="width: %s; height: %s; border-radius: %s; background: %s"></span>' % (ic_s, ic_s, r_round, knob))
+        'true' if on else 'false', plain(label), act(a, label), _aria_state(state), s7, tgt, r_round, state_extra(state), s7, ic_l, r_round, track, bw, bd, 'flex-end' if on else 'flex-start', s1,
+        ic('ring', True, t.acctext if on else t.ctl) if state == 'loading' else '<span style="width: %s; height: %s; border-radius: %s; background: %s"></span>' % (ic_s, ic_s, r_round, knob))
 def select(value, label, a, state=''):
     return '<button aria-haspopup="listbox" aria-label="%s: %s"%s%s style="height: %s; padding: 0 %s; border-radius: %s; display: inline-flex; align-items: center; justify-content: space-between; gap: %s; white-space: nowrap; %s"><span>%s</span>%s</button>' % (
         plain(label), plain(value), act(a, label), _aria_state(state), tgt, s3, r_ctl, s2, _state_css('normal', state), tx(value), ic('ring' if state == 'loading' else 'chevron-down', True))
 def slider(label, pct, a, state='', icon=None, width=None):
-    fill = t.ctl if state == 'disabled' else (t.danger if state == 'error' else t.acc)
-    knob = t.ctl if state == 'disabled' else t.text
-    ring = RING if state in ('pressed', 'hover') else HAIR
+    # Filled part and knob ring in accent_text, the rest in control_border (danger with an error); the knob in text.
+    rest = t.danger if state == 'error' else t.ctl
+    fill, knob, ring = t.acctext, t.text, RING
     pre = '<span style="display: inline-flex; color: %s">%s</span>' % (t.mute, ic(icon)) if icon else ''
     return '<div style="display: flex; align-items: center; gap: %s; %s">%s<div role="slider" tabindex="0" aria-label="%s" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" aria-valuetext="%d%%"%s%s style="flex: 1; height: %s; display: flex; align-items: center; border-radius: %s%s"><span style="width: %d%%; height: %s; border-radius: %s; background: %s"></span><span style="width: %s; height: %s; flex: none; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box"></span><span style="flex: 1; height: %s; border-radius: %s; background: %s"></span></div><span style="width: %s; text-align: end; font-size: %s; color: %s">%s</span></div>' % (
-        s3, 'width: %s' % width if width else 'flex: 1', pre, plain(label), pct, pct, act(a, label), _aria_state(state), tgt, r_ctl, '; ' + FOCUS() if state == 'focus' else '', pct, s1, r_round, fill, ic_s, ic_s, r_round, knob, ring, t.acctext if state != 'disabled' else t.line, s1, r_round, t.ctl, s7, f12, t.mute, ltr('%d%%' % pct))
+        s3, 'width: %s' % width if width else 'flex: 1', pre, plain(label), pct, pct, act(a, label), _aria_state(state), tgt, r_ctl, state_extra(state), pct, s1, r_round, fill, ic_s, ic_s, r_round, knob, ring, t.acctext, s1, r_round, rest, s7, f12, t.mute, ltr('%d%%' % pct))
 def field(label, a, value='', hint='', kind='text', state='', error='', icon=None, width=None, show_label=True, direction=None):
     """Text field with a visible label and an error text. direction: fixed text direction (numbers, addresses)."""
     i = uid('f'); e = uid('e')
@@ -217,18 +234,17 @@ def field(label, a, value='', hint='', kind='text', state='', error='', icon=Non
         ' dir="%s"' % direction if direction else '', ' disabled' if state == 'disabled' else '', ' aria-invalid="true"' if state == 'error' else '', ' aria-describedby="%s"' % e if error else '', err)
 def checkrow(label, a, on, subtext='', state='', end='', icon=None, mixed=False):
     """Checkbox: the whole row is the target."""
-    bd = t.acctext if on else t.ctl; bg = t.acc if on else 'transparent'; rowbg = 'transparent'
-    if state == 'hover': rowbg = t.hover
-    if state == 'pressed': rowbg = t.line
-    if state == 'disabled': bd, bg = t.line, t.surface
+    bd = t.acctext if on else t.ctl; bg = t.acc if on else t.raised; rowbg = 'transparent'
+    layer = {'hover': 'hover_overlay', 'pressed': 'pressed_overlay'}.get(state)
+    if layer: rowbg = t.hover if state == 'hover' else t.line; bg = over(t.acc, t.onacc, _st[layer]) if on else rowbg
     if state == 'error': bd = t.danger
-    box = '<span style="width: %s; height: %s; flex: none; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; color: %s">%s</span>' % (ic_l, ic_l, r_ctl, bg, RING if state == 'error' else HAIR, bd, t.onacc if state != 'disabled' else t.ctl, ic('ring', True, t.text) if state == 'loading' else (ic('check', True) if on else ''))
+    box = '<span style="width: %s; height: %s; flex: none; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; color: %s">%s</span>' % (BOX, BOX, r_ctl, bg, HAIR, bd, t.onacc, ic('ring', True, t.mute) if state == 'loading' else (ic('check', True) if on else ''))
     pre = '<span style="display: inline-flex; color: %s">%s</span>' % (t.mute, ic(icon)) if icon else ''
     return '<button role="checkbox" aria-checked="%s"%s%s style="width: 100%%; min-height: %s; padding: %s %s; box-sizing: border-box; border-radius: %s; display: flex; align-items: center; gap: %s; background: %s; color: %s%s">%s%s<span style="flex: 1; display: block"><span style="display: block; font-weight: %d">%s</span>%s</span>%s</button>' % (
-        'mixed' if mixed else ('true' if on else 'false'), act(a, label), _aria_state(state), s7, s2, s3, r_ctl, s3, rowbg, t.ctl if state == 'disabled' else t.text, '; ' + FOCUS() if state == 'focus' else '', box, pre, w5, tx(label),
+        'mixed' if mixed else ('true' if on else 'false'), act(a, label), _aria_state(state), s7, s2, s3, r_ctl, s3, rowbg, t.text, state_extra(state), box, pre, w5, tx(label),
         '<span style="display: block; font-size: %s; color: %s">%s</span>' % (f12, t.mute, tx(subtext)) if subtext else '', end)
 def radiocard(title, subtext, on, a, grow=True, body=''):
-    dot = '<span style="width: %s; height: %s; flex: none; border-radius: %s; border: %s solid %s; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center">%s</span>' % (ic_l, ic_l, r_round, RING if on else HAIR, t.acctext if on else t.ctl, '<span style="width: %s; height: %s; border-radius: %s; background: %s"></span>' % (s2, s2, r_round, t.acctext) if on else '')
+    dot = '<span style="width: %s; height: %s; flex: none; border-radius: %s; border: %s solid %s; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center">%s</span>' % (BOX, BOX, r_round, RING if on else HAIR, t.acctext if on else t.ctl, '<span style="width: %s; height: %s; border-radius: %s; background: %s"></span>' % (s2, s2, r_round, t.acctext) if on else '')
     return '<button role="radio" aria-checked="%s"%s%s style="%spadding: %s; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box; display: flex; align-items: flex-start; gap: %s"><span style="display: inline-flex">%s</span><span style="flex: 1; display: block"><span style="display: block; font-weight: %d">%s</span><span style="display: block; font-size: %s; color: %s">%s</span>%s</span></button>' % (
         'true' if on else 'false', act(a, title), '' if on else ' tabindex="-1"', 'flex: 1; ' if grow else 'width: 100%; ', s3, r_card, t.hover if on else t.surface, RING if on else HAIR, t.acctext if on else t.ctl, s3, dot, w6, tx(title), f12, t.mute, tx(subtext), body)
 def radiogroup(label, inner, column=False):
@@ -245,7 +261,7 @@ def card(inner, pad=None, grow=False, label=None):
     return '<section%s style="border-radius: %s; background: %s; border: %s solid %s; padding: %s; overflow: hidden%s">%s</section>' % (' aria-label="%s"' % plain(label) if label else '', r_card, t.surface, HAIR, t.line, pad or '0', '; flex: 1' if grow else '', inner)
 def row(label, subtext, control, last=False, icon=None):
     pre = '<span style="display: inline-flex; color: %s">%s</span>' % (t.mute, ic(icon)) if icon else ''
-    return '<div style="min-height: %s; padding: %s %s; box-sizing: border-box; display: flex; align-items: center; gap: %s; border-bottom: %s">%s<div style="flex: 1"><div style="font-weight: %d">%s</div>%s</div>%s</div>' % (bar_h, s2, s4, s4, 'none' if last else '%s solid %s' % (HAIR, t.line), pre, w5, tx(label), sub(subtext) if subtext else '', control)
+    return '<div style="min-height: %s; padding: %s %s; box-sizing: border-box; display: flex; align-items: center; gap: %s; border-bottom: %s">%s<div style="flex: 1"><div style="font-weight: %d">%s</div>%s</div>%s</div>' % (ROW_MIN, s2, s4, s4, 'none' if last else '%s solid %s' % (HAIR, t.line), pre, w5, tx(label), sub(subtext) if subtext else '', control)
 def cardhead(title, subtext='', end=''):
     return '<div style="padding: %s; display: flex; align-items: center; gap: %s; border-bottom: %s solid %s"><div style="flex: 1">%s%s</div>%s</div>' % (s4, s4, HAIR, t.line, h2(title), sub(subtext) if subtext else '', end)
 def navitem(icon, label, a, active=False):
@@ -257,7 +273,7 @@ def sidebar(label, inner, width=70):
 def searchbox(label, a, value='', width=None, state=''):
     return field(label, a, value=value, hint=label, kind='search', icon='search', width=width, show_label=False, state=state)
 def progress(label, pct):
-    return '<div role="progressbar" aria-label="%s" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="height: %s; border-radius: %s; background: %s; display: flex"><span style="width: %d%%; border-radius: %s; background: %s"></span></div>' % (plain(label), pct, s1, r_round, t.ctl, pct, r_round, t.acc)
+    return '<div role="progressbar" aria-label="%s" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="height: %s; border-radius: %s; background: %s; display: flex"><span style="width: %d%%; border-radius: %s; background: %s"></span></div>' % (plain(label), pct, s1, r_round, t.ctl, pct, r_round, t.acctext)
 def busy(label):
     return '<div role="status" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: %s; color: %s; flex: 1">%s<span>%s</span></div>' % (s3, t.mute, ic('ring'), tx(label))
 def empty(icon, title, text, actions=''):

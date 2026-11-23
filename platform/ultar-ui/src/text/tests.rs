@@ -73,9 +73,9 @@ fn joined_word_is_narrower_than_its_isolated_letters() {
 #[test]
 fn lam_alef_is_joined_in_every_arabic_face() {
     let mut e = engine();
-    // Naskh and Kufi draw lam-alef with a pair of special forms (two clusters, so the caret
-    // can stand between them); Noto Sans Arabic substitutes one ligature glyph.
-    for role in [FontRole::Text, FontRole::Title] {
+    // Every embedded Arabic face draws lam-alef with a pair of special forms (two clusters,
+    // so the caret can stand between them).
+    for role in [FontRole::Text, FontRole::Title, FontRole::Mono] {
         let style = ar().with_role(role);
         let layout = e.layout("سلام", &style, None);
         assert_eq!(clusters(&layout), 4, "{role:?}");
@@ -90,11 +90,10 @@ fn lam_alef_is_joined_in_every_arabic_face() {
             "{role:?}: alef after lam has its own form"
         );
     }
+    // Noto Sans Arabic (fixed-width text) draws the pair the same way since 2.013.
     let mono = ar().with_role(FontRole::Mono);
     let layout = e.layout("سلام", &mono, None);
-    assert_eq!(clusters(&layout), 3, "4 letters, lam+alef share one glyph");
-    let alone = e.layout("لا", &mono, None);
-    assert_eq!((alone.glyphs.len(), clusters(&alone)), (1, 1));
+    assert_eq!(clusters(&layout), 4);
 }
 
 #[test]

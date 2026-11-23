@@ -1,6 +1,7 @@
 //! The widget tree with its interaction state: build it, feed it events, paint it.
 
 mod access;
+mod access_tree;
 mod clock;
 mod error;
 mod layers;
@@ -10,6 +11,7 @@ mod modal;
 mod render;
 mod scrolling;
 mod state;
+mod toasts;
 mod tree;
 
 pub use access::{A11yNode, A11yState, Role};
@@ -32,6 +34,8 @@ pub const MAX_NODES: usize = 4096;
 pub const MAX_DEPTH: usize = 64;
 /// Most separate dirty rectangles before the whole surface is repainted.
 const MAX_DIRTY: usize = 16;
+/// Most actions that wait for the next event.
+const MAX_PENDING: usize = 32;
 
 /// Handle of a node in a [`Ui`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -58,6 +62,8 @@ pub(crate) struct Node {
     pub(crate) tooltip: Option<Label>,
     /// Commands offered by a secondary click or the menu key.
     pub(crate) context_menu: Option<Box<Menu>>,
+    /// The node can be dragged (`Ui::set_draggable`).
+    pub(crate) draggable: bool,
     /// The nearest scroll container or dialog above this node (set by the layout): the
     /// node is drawn and hit only inside that ancestor's rectangle.
     pub(crate) clip_parent: Option<NodeId>,
@@ -86,7 +92,7 @@ pub(crate) enum Pointer {
 }
 
 /// Which nodes the user currently interacts with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct InputState {
     pub(crate) hover: Option<NodeId>,
     /// The part of the hovered widget under the pointer.
@@ -99,6 +105,14 @@ pub(crate) struct InputState {
     pub(crate) focus_visible: bool,
     pub(crate) touch: Option<u64>,
     pub(crate) popup: Option<Popup>,
+    /// Last position of the mouse pointer on the surface (for hit-testing again after the
+    /// content moved under it).
+    pub(crate) pointer: Option<crate::geom::Point>,
+    /// Where focus was before it was lost (disabled, Escape in a search field): the next
+    /// Tab continues from there.
+    pub(crate) focus_hint: Option<NodeId>,
+    /// Modifier keys held.
+    pub(crate) modifiers: crate::event::Modifiers,
 }
 
 impl InputState {
@@ -131,6 +145,8 @@ impl InputState {
 #[derive(Default)]
 struct Dirty {
     layout: bool,
+    /// Every cached measurement is stale (language, scale, input mode, catalogs).
+    remeasure: bool,
     full: bool,
     rects: Vec<Rect>,
 }
@@ -150,6 +166,8 @@ pub struct Ui {
     pub(crate) input: InputState,
     /// Everything above the plain tree: paint order, dialogs, menu, tooltip, drags.
     pub(crate) layers: Layers,
+    /// Actions caused by the clock, returned by the next `handle`.
+    pub(crate) pending: Vec<crate::event::Action>,
     dirty: Dirty,
     pub(crate) now_ms: u64,
 }
@@ -172,6 +190,10 @@ impl Ui {
         if !(env.scale.is_finite() && (0.5..=8.0).contains(&env.scale)) {
             return Err(UiError::InvalidScale);
         }
+        let valid = |v: f32| v.is_finite() && v >= 0.0;
+        if !(valid(size.w) && valid(size.h)) {
+            return Err(UiError::InvalidSize);
+        }
         for (lang, source) in TOOLKIT_CATALOGS {
             translator.add_source(lang, source)?;
         }
@@ -192,6 +214,7 @@ impl Ui {
             res: RefCell::new(res),
             input: InputState::default(),
             layers: Layers::default(),
+            pending: Vec::new(),
             dirty: Dirty::default(),
             now_ms: 0,
         };
@@ -255,11 +278,21 @@ impl Ui {
     }
 
     /// Resizes the surface.
-    pub fn set_size(&mut self, size: Size) {
+    ///
+    /// Sizes must be finite and not negative (`UiError::InvalidSize`); measurements are
+    /// kept (they depend on the available width, which they remember).
+    pub fn set_size(&mut self, size: Size) -> Result<(), UiError> {
+        let valid = |v: f32| v.is_finite() && v >= 0.0;
+        if !(valid(size.w) && valid(size.h)) {
+            return Err(UiError::InvalidSize);
+        }
         if size != self.size {
             self.size = size;
-            self.invalidate_layout();
+            self.dirty.layout = true;
+            self.dirty.full = true;
+            self.layers.backdrop_stale = true;
         }
+        Ok(())
     }
 
     /// Switches language; the direction follows the language.
@@ -275,6 +308,7 @@ impl Ui {
     /// menu or tooltip closes (its place depends on the direction).
     pub fn set_direction(&mut self, direction: Direction) {
         if self.env.direction != direction {
+            self.layers.backdrop_stale = true;
             self.env.direction = direction;
             self.layers.menu = None;
             self.layers.tip = None;
@@ -287,6 +321,7 @@ impl Ui {
         if self.env.theme != theme {
             self.env.theme = theme;
             self.dirty.full = true;
+            self.layers.backdrop_stale = true;
         }
     }
 
@@ -312,6 +347,7 @@ impl Ui {
     pub fn set_background(&mut self, role: ColorRole) {
         self.background = role;
         self.dirty.full = true;
+        self.layers.backdrop_stale = true;
     }
 
     pub(crate) fn background(&self) -> ColorRole {
@@ -323,6 +359,7 @@ impl Ui {
         if self.reduce_motion != reduce {
             self.reduce_motion = reduce;
             self.dirty.full = true;
+            self.layers.backdrop_stale = true;
         }
     }
 
@@ -330,10 +367,47 @@ impl Ui {
         self.reduce_motion
     }
 
-    /// Forces a new layout and a full repaint (after catalog changes).
+    /// Forces a new layout with every node measured again, and a full repaint (after
+    /// catalog changes).
     pub fn invalidate_layout(&mut self) {
         self.dirty.layout = true;
+        self.dirty.remeasure = true;
         self.dirty.full = true;
+        self.layers.backdrop_stale = true;
+    }
+
+    /// A node changed its size (text, state, children): it and its ancestors are measured
+    /// again at the next layout; every other node keeps its measurement.
+    pub(crate) fn invalidate_node(&mut self, id: NodeId) {
+        let mut current = Some(id);
+        while let Some(node) = current.and_then(|c| self.nodes.get_mut(c.index())) {
+            node.measured = None;
+            current = node.parent;
+        }
+        self.dirty.layout = true;
+        self.dirty.full = true;
+        if !self.inside_open_dialog(id) {
+            self.layers.backdrop_stale = true;
+        }
+    }
+
+    /// Arranges again (an opened or closed dialog) without measuring anything again.
+    pub(crate) fn relayout(&mut self) {
+        self.dirty.layout = true;
+        self.dirty.full = true;
+        self.layers.backdrop_stale = true;
+    }
+
+    /// `true` once after a full re-measure was requested; clears the request.
+    pub(crate) fn take_remeasure_request(&mut self) -> bool {
+        std::mem::take(&mut self.dirty.remeasure)
+    }
+
+    /// Queues actions caused by the clock (bounded: the oldest are dropped past 32).
+    pub(crate) fn queue(&mut self, actions: Vec<crate::event::Action>) {
+        self.pending.extend(actions);
+        let excess = self.pending.len().saturating_sub(MAX_PENDING);
+        self.pending.drain(..excess);
     }
 
     /// `true` once after a layout was requested; clears the request.
@@ -341,9 +415,16 @@ impl Ui {
         std::mem::take(&mut self.dirty.layout)
     }
 
-    /// Requests a repaint of the whole surface without a new layout.
+    /// Requests a repaint of the whole surface, keeping the backdrop under a dialog.
+    pub(crate) fn mark_full_repaint(&mut self) {
+        self.dirty.full = true;
+    }
+
+    /// Requests a repaint of the whole surface without a new layout (the backdrop under a
+    /// dialog is painted again too).
     pub(crate) fn repaint_all(&mut self) {
         self.dirty.full = true;
+        self.layers.backdrop_stale = true;
     }
 
     /// `true` when [`Ui::paint`] has something to draw.
@@ -364,8 +445,16 @@ impl Ui {
         }
     }
 
-    /// Marks a node (with its focus ring and halo) for repaint.
+    /// Marks a node (with its focus ring and halo) for repaint. A change under the scrim of
+    /// an open dialog also makes the dimmed backdrop stale.
     pub(crate) fn touch(&mut self, id: NodeId) {
+        if self.layers.backdrop.is_some()
+            && !self.layers.backdrop_stale
+            && !self.inside_open_dialog(id)
+        {
+            self.layers.backdrop_stale = true;
+            self.dirty.full = true;
+        }
         if let Some(rect) = self.rect(id) {
             self.damage(rect.inflate(Space::S8.points()));
         }

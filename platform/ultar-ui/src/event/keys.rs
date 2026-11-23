@@ -25,20 +25,23 @@ impl Ui {
     /// end. Returns `false` when focus did not move.
     pub(crate) fn move_focus(&mut self, forward: bool, wrap: bool) -> bool {
         let current = self.input.focus;
-        let position = current.and_then(|c| self.focusable().position(|id| id == c));
-        let count = self.focusable().count();
+        let list: Vec<NodeId> = self.focusable().collect();
+        let count = list.len();
         if count == 0 {
             return false;
         }
+        let position = current.and_then(|c| list.iter().position(|id| *id == c));
         let target = match (position, forward) {
-            (None, true) => Some(0),
-            (None, false) => Some(count - 1),
+            (None, _) => {
+                self.after_hint(&list, forward)
+                    .or(Some(if forward { 0 } else { count - 1 }))
+            }
             (Some(p), true) if p + 1 < count => Some(p + 1),
             (Some(p), false) if p > 0 => Some(p - 1),
             (Some(_), true) => wrap.then_some(0),
             (Some(_), false) => wrap.then_some(count - 1),
         };
-        let next = target.and_then(|t| self.focusable().nth(t));
+        let next = target.and_then(|t| list.get(t).copied());
         match next {
             Some(id) if Some(id) != current || !self.input.focus_visible => {
                 self.set_focus(Some(id), true);
@@ -46,6 +49,37 @@ impl Ui {
             }
             _ => false,
         }
+    }
+
+    /// Where focus continues after it was lost: the stop after (or before) the place of the
+    /// node that had it.
+    fn after_hint(&self, list: &[NodeId], forward: bool) -> Option<usize> {
+        let hint = self.input.focus_hint?;
+        let order = self.reachable();
+        let place = order.iter().position(|id| *id == hint)?;
+        let index_of = |id: &NodeId| order.iter().position(|o| o == id).unwrap_or(0);
+        if forward {
+            list.iter().position(|id| index_of(id) > place)
+        } else {
+            list.iter().rposition(|id| index_of(id) < place)
+        }
+    }
+
+    /// Escape in a search field that holds text: clear it and leave the field.
+    fn search_escape(&mut self, id: NodeId, out: &mut Vec<Action>) -> bool {
+        let Ok(field) = self.text_field_mut(id) else {
+            return false;
+        };
+        if !(field.is_search() && field.clear()) {
+            return false;
+        }
+        out.push(Action {
+            node: id,
+            kind: ActionKind::TextChanged,
+        });
+        self.set_focus(None, false);
+        self.input.focus_hint = Some(id);
+        true
     }
 
     /// `true` when a horizontal arrow key points towards the end edge.
@@ -65,6 +99,11 @@ impl Ui {
             return !modifiers.command() && self.move_focus(!modifiers.shift, true);
         }
         let focus = self.input.focus.filter(|id| !self.is_disabled(*id));
+        if let (Some(id), Key::Escape) = (focus, key) {
+            if self.search_escape(id, out) {
+                return true;
+            }
+        }
         if let Some(id) = focus {
             if self.widget_key(id, key, modifiers, out) {
                 // Operating a widget by keyboard shows where the focus is.
@@ -73,7 +112,24 @@ impl Ui {
                 return true;
             }
         }
+        if key == Key::Enter && modifiers.ctrl {
+            return self.toast_key(out);
+        }
         self.unclaimed_key(focus, key, out)
+    }
+
+    /// Ctrl+Enter runs the action of the newest toast.
+    fn toast_key(&mut self, out: &mut Vec<Action>) -> bool {
+        let Some(toast) = self.newest_toast().filter(|t| t.action.is_some()) else {
+            return false;
+        };
+        let id = toast.id;
+        out.push(Action {
+            node: self.root(),
+            kind: ActionKind::ToastAction(id),
+        });
+        self.close_toast(id, out);
+        true
     }
 
     /// Enter in a text field of a dialog also triggers the dialog's default action.
@@ -88,12 +144,15 @@ impl Ui {
     /// movement by arrows and scrolling.
     fn unclaimed_key(&mut self, focus: Option<NodeId>, key: Key, out: &mut Vec<Action>) -> bool {
         match key {
-            Key::Escape if self.layers.tip.is_some() => {
+            // One Escape: the tooltip goes and the layer under it closes too.
+            Key::Escape => {
+                let tip = self.layers.tip.is_some();
                 self.hide_tooltip();
                 self.layers.hover_since = None;
-                true
+                let closed = self.dismiss_modal(out);
+                let toast = !closed && self.close_newest_toast(out);
+                tip || closed || toast
             }
-            Key::Escape => self.dismiss_modal(out),
             Key::Enter => self.modal_default(out),
             Key::Menu => focus.is_some_and(|id| {
                 self.set_focus(Some(id), true);
@@ -120,6 +179,7 @@ impl Ui {
             Key::End => self.highlight(usize::MAX),
             Key::Enter | Key::Space => self.choose(popup.highlight, out),
             Key::Escape => self.close_popup(out),
+            Key::Char(ch) => self.popup_type_ahead(ch),
             Key::Tab => {
                 self.close_popup(out);
                 self.move_focus(!modifiers.shift, true);
@@ -162,6 +222,14 @@ impl Ui {
             Widget::Slider(_) => self.slider_key(id, key, out),
             Widget::TextField(_) => self.field_key(id, key, modifiers, out),
             Widget::Scroll(_) => self.scroll_key(id, key, true, out),
+            Widget::Table(_) if plain => {
+                let towards_end = self.towards_end(key);
+                self.table_key(id, key, towards_end, out)
+            }
+            Widget::Tree(_) if plain => {
+                let towards_end = self.towards_end(key);
+                self.tree_key(id, key, towards_end, out)
+            }
             _ => false,
         }
     }
@@ -243,10 +311,6 @@ impl Ui {
         let mut changed = false;
         match key {
             Key::Char(_) | Key::Space if modifiers.command() => return false,
-            // Escape empties a search field that holds text; otherwise it is not used here.
-            Key::Escape if field.is_search() && !field.content().is_empty() => {
-                changed = field.clear();
-            }
             Key::Char(ch) => changed = field.insert(ch),
             Key::Space => changed = field.insert(' '),
             Key::Backspace => changed = field.backspace(),
@@ -270,5 +334,56 @@ impl Ui {
         }
         self.touch(id);
         true
+    }
+}
+
+/// `true` when the visible text starts with `ch` (case and direction marks ignored).
+pub(crate) fn starts_with(text: &str, ch: char) -> bool {
+    let first = text
+        .chars()
+        .find(|c| !crate::text::is_bidi_control(*c) && !c.is_whitespace());
+    first.is_some_and(|f| f.to_lowercase().eq(ch.to_lowercase()))
+}
+
+/// The first index after `from` (cyclic, `count` entries) for which `matches` holds.
+pub(crate) fn next_match(
+    from: usize,
+    count: usize,
+    matches: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    (1..=count)
+        .map(|step| (from + step) % count)
+        .find(|i| matches(*i))
+}
+
+impl Ui {
+    /// A letter in the open list of a select: highlight the next option starting with it.
+    fn popup_type_ahead(&mut self, ch: char) {
+        let Some(popup) = self.input.popup else {
+            return;
+        };
+        let Ok(select) = self.select(popup.select) else {
+            return;
+        };
+        let count = select.options.len();
+        let hit = next_match(popup.highlight, count, |i| {
+            select
+                .options
+                .get(i)
+                .is_some_and(|o| starts_with(&o.resolve(&self.tr), ch))
+        });
+        if let Some(index) = hit {
+            self.highlight(index);
+        }
+    }
+
+    fn close_newest_toast(&mut self, out: &mut Vec<Action>) -> bool {
+        match self.newest_toast().map(|t| t.id) {
+            Some(id) => {
+                self.close_toast(id, out);
+                true
+            }
+            None => false,
+        }
     }
 }

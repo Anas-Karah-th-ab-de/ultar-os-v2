@@ -60,17 +60,17 @@ fn an_open_dialog_traps_focus() {
     assert_eq!(ui.open_dialog_node(), Some(g.modal.dialog));
     assert_eq!(
         ui.focused(),
-        Some(g.modal.delete),
-        "focus starts on the default action"
+        Some(g.modal.cancel),
+        "the default action deletes: focus starts on cancel (spec §13.42)"
     );
     assert_eq!(ui.focus_order(), vec![g.modal.cancel, g.modal.delete]);
     // Tab and Shift+Tab cycle inside; arrows do not leave either.
     key(&mut ui, Key::Tab);
+    assert_eq!(ui.focused(), Some(g.modal.delete));
+    key(&mut ui, Key::Tab);
     assert_eq!(ui.focused(), Some(g.modal.cancel));
     shift_tab(&mut ui);
     assert_eq!(ui.focused(), Some(g.modal.delete));
-    shift_tab(&mut ui);
-    assert_eq!(ui.focused(), Some(g.modal.cancel));
     for arrow in [
         Key::ArrowUp,
         Key::ArrowDown,
@@ -134,8 +134,9 @@ fn enter_runs_the_default_action_and_escape_the_cancel_action() {
     let (mut ui, g) = setup(Lang::En);
     focus(&mut ui, g.menu_button);
     ui.open_dialog(g.modal.dialog).unwrap();
-    // Enter on a focused button presses that button, not the default.
-    key(&mut ui, Key::Tab);
+    // Enter on a focused button presses that button, not the default. Focus starts on
+    // cancel because the default action is destructive.
+    assert_eq!(ui.focused(), Some(g.modal.cancel));
     assert_eq!(
         acts(&key(&mut ui, Key::Enter)),
         vec![(g.modal.cancel, ActionKind::Activated)]

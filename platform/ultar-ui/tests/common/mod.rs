@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod cases3;
+pub mod cases4;
 pub mod gallery;
 pub mod sheet;
 

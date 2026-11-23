@@ -44,6 +44,7 @@ impl Tabs {
     /// The rectangle of tab `index`: tabs follow each other from the start edge.
     pub(crate) fn tab(&self, rect: Rect, index: usize, direction: Direction) -> Rect {
         let width = rect.w / self.tabs.len().max(1) as f32;
+        let width = if width.is_finite() { width } else { 0.0 };
         let offset = index as f32 * width;
         let x = if direction.is_rtl() {
             rect.right() - offset - width
@@ -64,8 +65,12 @@ impl Tabs {
         for tab in &self.tabs {
             widest = widest.max(cx.text_size(tab, spec, None).w);
         }
-        let natural = (widest + 2.0 * PAD.points()) * self.tabs.len() as f32;
-        Size::new(natural.min(avail), cx.mode.min_target())
+        let count = self.tabs.len() as f32;
+        let natural = (widest + 2.0 * PAD.points()) * count;
+        // Every tab stays a full target: a bar of many tabs on a narrow surface is wider
+        // than the surface rather than below the minimum target.
+        let minimum = cx.mode.min_target() * count;
+        Size::new(natural.min(avail).max(minimum), cx.mode.min_target())
     }
 
     /// Paints the bar; `parts` are the tabs under the pointer (hovered, pressed).
@@ -104,7 +109,7 @@ impl Tabs {
             let inner = style::inset_inline(tab, Space::S8);
             style::draw_label(p, cx, label, spec, inner, TextAlign::Center, color);
             if chosen {
-                let accent = p.color(ColorRole::Accent);
+                let accent = p.color(ColorRole::AccentText);
                 let bar = style::inset_inline(tab, Space::S8);
                 let bar = Rect::new(bar.x, tab.bottom() - INDICATOR, bar.w, INDICATOR);
                 p.fill(bar, Some(Radius::Round), accent);

@@ -138,4 +138,40 @@ impl Canvas {
             1.0 - smooth(shape.dist(x, y) / blur + 0.5)
         });
     }
+
+    /// [`Canvas::shadow`] without the pixels inside `hole`, which the caller covers with an
+    /// opaque panel afterwards: a large sheet does not blend its shadow under itself.
+    /// The result after the panel is painted is the same, pixel for pixel.
+    pub fn shadow_around(
+        &mut self,
+        rect: Rect,
+        radius: f32,
+        blur: f32,
+        color: Color,
+        hole: PixelRect,
+    ) {
+        let saved = self.clip;
+        let b = self.bounds();
+        let bands = [
+            PixelRect::new(b.x0, b.y0, b.x1, hole.y0),
+            PixelRect::new(b.x0, hole.y1, b.x1, b.y1),
+            PixelRect::new(b.x0, hole.y0, hole.x0, hole.y1),
+            PixelRect::new(hole.x1, hole.y0, b.x1, hole.y1),
+        ];
+        let damage_before = self.damage.clone();
+        for band in bands {
+            let band = band.intersect(&saved);
+            if !band.is_empty() {
+                self.clip = band;
+                self.shadow(rect, radius, blur, color);
+            }
+        }
+        self.clip = saved;
+        // The damage is that of the whole shadow, as if it were painted in one piece.
+        self.damage = damage_before;
+        let bbox = PixelRect::covering(&rect.inflate(blur.max(1.0) / 2.0)).intersect(&saved);
+        if !bbox.is_empty() && color.a != 0 {
+            self.damage.add(bbox);
+        }
+    }
 }

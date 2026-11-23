@@ -6,7 +6,9 @@ use crate::color::Color;
 use crate::geom::{PixelRect, Point, Rect};
 use crate::icon::{IconCache, IconId, QuarterTurns};
 use crate::text::{FontRole, Overflow, TextAlign, TextEngine, TextLayout, TextStyle, Weight};
-use crate::tokens::{shadow, size, ColorRole, Palette, Radius, Theme, ThemeKind, TypeSize, THEME};
+use crate::tokens::{
+    shadow, size, typography, ColorRole, Palette, Radius, Theme, ThemeKind, TypeSize, THEME,
+};
 use std::f32::consts::TAU;
 use std::rc::Rc;
 use ultar_i18n::{Direction, Lang};
@@ -99,9 +101,17 @@ impl PaintEnv {
     }
 
     /// The pixel text style for a spec.
+    /// Arabic smaller than the body size is drawn one weight step heavier (token
+    /// `type.small_weight_arabic`): Naskh at 12 points has 30 % less ink than Latin.
     pub fn text_style(&self, spec: TextSpec) -> TextStyle {
+        let small_arabic = self.lang == Lang::Ar && spec.size < typography::BODY;
+        let weight = if small_arabic && spec.weight == Weight::Regular {
+            Weight::from_value(typography::SMALL_WEIGHT_ARABIC)
+        } else {
+            spec.weight
+        };
         let mut style = TextStyle::new(spec.size.points() * self.scale, self.lang)
-            .with_weight(spec.weight)
+            .with_weight(weight)
             .with_role(spec.role)
             .with_overflow(spec.overflow);
         style.direction = self.direction;
@@ -177,9 +187,9 @@ impl<'a> Painter<'a> {
         std::mem::replace(&mut self.opacity, opacity.clamp(0.0, 1.0))
     }
 
-    /// The width of one device pixel in logical points (borders and separators).
+    /// The width of borders and separators in logical points (token `size.border`).
     pub fn hairline(&self) -> f32 {
-        1.0 / self.env.scale
+        size::BORDER
     }
 
     /// Converts a logical rectangle to pixels with all edges on the pixel grid.
@@ -201,6 +211,21 @@ impl<'a> Painter<'a> {
         let wanted = PixelRect::covering(&self.snap(rect)).intersect(&previous);
         self.canvas.set_clip(wanted);
         previous
+    }
+
+    /// The part of the surface that is drawn now (the current clip), in logical points.
+    /// Widgets with many rows draw only the rows inside it.
+    pub fn visible(&self) -> Rect {
+        let clip = self.canvas.clip().to_rect();
+        let s = self.env.scale;
+        Rect::new(clip.x / s, clip.y / s, clip.w / s, clip.h / s)
+    }
+
+    /// Copies `rect` (logical points) of `source`, a canvas of the same size, into the
+    /// canvas – pixels are replaced, not blended (the backdrop under a dialog).
+    pub fn copy_from(&mut self, source: &Canvas, rect: Rect) {
+        let area = PixelRect::covering(&self.snap(rect)).intersect(&self.canvas.clip());
+        self.canvas.blit(source, area, area.x0, area.y0);
     }
 
     /// Restores a clip returned by [`Painter::clip`].
@@ -227,14 +252,32 @@ impl<'a> Painter<'a> {
     /// `box-shadow: 0 offset_y blur` of the artboards. A CSS blur of `blur` fades from full
     /// to nothing across `2 × blur`, centred on the (offset) outline, so the shadow reaches
     /// `blur` points beside and `offset_y + blur` below the rectangle.
+    ///
+    /// Every caller fills `rect` with an opaque panel right after; at full opacity the part
+    /// that panel covers (inside the rounded corners) is not shaded at all.
     pub fn shadow(&mut self, rect: Rect, radius: Option<Radius>) {
         let s = self.env.scale;
         let r = self.radius(radius);
         let alpha = Theme::shadow_alpha(self.env.theme) * self.opacity;
         let moved = self.snap(rect.offset(0.0, shadow::OFFSET_Y));
         let fade = 2.0 * shadow::BLUR * s;
-        self.canvas
-            .shadow(moved, r, fade, Color::BLACK.with_alpha(alpha));
+        let color = Color::BLACK.with_alpha(alpha);
+        if self.opacity < 1.0 {
+            self.canvas.shadow(moved, r, fade, color);
+            return;
+        }
+        let inner = self.snap(rect);
+        let hole = PixelRect::new(
+            (inner.x + r).ceil() as i32 + 1,
+            (inner.y + r).ceil() as i32 + 1,
+            (inner.right() - r).floor() as i32 - 1,
+            (inner.bottom() - r).floor() as i32 - 1,
+        );
+        if hole.is_empty() {
+            self.canvas.shadow(moved, r, fade, color);
+        } else {
+            self.canvas.shadow_around(moved, r, fade, color, hole);
+        }
     }
 
     /// Strokes a straight line with round caps.
@@ -252,7 +295,7 @@ impl<'a> Painter<'a> {
     /// (0..1 = one revolution).
     pub fn spinner(&mut self, rect: Rect, phase: f32, color: Color) {
         const STEPS: usize = 24;
-        const SWEEP: f32 = 0.75;
+        const SWEEP: f32 = crate::tokens::state::SPINNER_SWEEP;
         let s = self.env.scale;
         let width = size::STROKE * rect.w.min(rect.h) / size::ICON_SMALL * s;
         let radius = rect.w.min(rect.h) * s / 2.0 - width;

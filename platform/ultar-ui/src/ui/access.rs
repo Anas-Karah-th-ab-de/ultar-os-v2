@@ -1,8 +1,8 @@
 //! Accessibility nodes: what a screen reader needs to announce and operate the tree.
 
-use super::{NodeId, Ui};
+use super::NodeId;
 use crate::geom::Rect;
-use crate::widgets::{Label, Widget};
+use crate::widgets::Label;
 use ultar_i18n::Translator;
 
 /// What kind of thing a node is.
@@ -36,9 +36,9 @@ pub enum Role {
     RadioGroup,
     /// A tab bar.
     TabList,
-    /// An info bar.
+    /// A warning or error message that interrupts.
     Alert,
-    /// An empty state.
+    /// A message that does not interrupt (info, success, empty state, toast).
     Status,
     /// A list.
     List,
@@ -46,7 +46,7 @@ pub enum Role {
     ListItem,
     /// A scroll container.
     ScrollArea,
-    /// A dialog or sheet.
+    /// A dialog, sheet or panel.
     Dialog,
     /// A search field.
     SearchField,
@@ -54,11 +54,35 @@ pub enum Role {
     Menu,
     /// A command of an open menu.
     MenuItem,
+    /// One option of a radio group.
+    Radio,
+    /// One tab of a tab bar.
+    Tab,
+    /// One option of an open select.
+    Option,
+    /// A password field (its value is never announced).
+    PasswordField,
+    /// A dialog about something serious.
+    AlertDialog,
+    /// A table.
+    Table,
+    /// The header of a table column.
+    ColumnHeader,
+    /// A row of a table.
+    TableRow,
+    /// A tree.
+    Tree,
+    /// An item of a tree.
+    TreeItem,
+    /// The navigation list of a sidebar.
+    Navigation,
+    /// A header bar.
+    Banner,
 }
 
 impl Role {
     /// All roles.
-    pub const ALL: [Role; 23] = [
+    pub const ALL: [Role; 35] = [
         Role::Group,
         Role::Text,
         Role::Image,
@@ -82,6 +106,18 @@ impl Role {
         Role::SearchField,
         Role::Menu,
         Role::MenuItem,
+        Role::Radio,
+        Role::Tab,
+        Role::Option,
+        Role::PasswordField,
+        Role::AlertDialog,
+        Role::Table,
+        Role::ColumnHeader,
+        Role::TableRow,
+        Role::Tree,
+        Role::TreeItem,
+        Role::Navigation,
+        Role::Banner,
     ];
 
     /// Catalog key of the role's spoken name.
@@ -110,6 +146,18 @@ impl Role {
             Role::SearchField => "ui.role.search_field",
             Role::Menu => "ui.role.menu",
             Role::MenuItem => "ui.role.menu_item",
+            Role::Radio => "ui.role.radio",
+            Role::Tab => "ui.role.tab",
+            Role::Option => "ui.role.option",
+            Role::PasswordField => "ui.role.password_field",
+            Role::AlertDialog => "ui.role.alert_dialog",
+            Role::Table => "ui.role.table",
+            Role::ColumnHeader => "ui.role.column_header",
+            Role::TableRow => "ui.role.table_row",
+            Role::Tree => "ui.role.tree",
+            Role::TreeItem => "ui.role.tree_item",
+            Role::Navigation => "ui.role.navigation",
+            Role::Banner => "ui.role.banner",
         }
     }
 }
@@ -119,7 +167,7 @@ impl Role {
 pub struct A11yState {
     /// Cannot be operated.
     pub disabled: bool,
-    /// Has keyboard focus.
+    /// Has keyboard focus (for parts: the part the keyboard is on).
     pub focused: bool,
     /// Is held down.
     pub pressed: bool,
@@ -127,19 +175,26 @@ pub struct A11yState {
     pub busy: bool,
     /// Holds an invalid value.
     pub invalid: bool,
-    /// On/off for switches.
+    /// On/off for switches, checked or not for check boxes and radio options.
     pub checked: Option<bool>,
-    /// Open/closed for selects and for menu items with a submenu.
+    /// Neither checked nor unchecked (a check box standing for several things).
+    pub mixed: bool,
+    /// Open/closed for selects, menu items with a submenu and tree items with children.
     pub expanded: Option<bool>,
-    /// Selected or not, for list items.
+    /// Selected or not, for list items, tabs, options, table rows, tree items.
     pub selected: Option<bool>,
+    /// Level of a tree item (1 = top).
+    pub level: Option<usize>,
 }
 
 /// One node of the accessibility tree.
 #[derive(Debug, Clone, PartialEq)]
 pub struct A11yNode {
-    /// The UI node.
+    /// The UI node (for parts and menus: the node they belong to).
     pub id: NodeId,
+    /// For a part of a widget (radio option, tab, select option, clear button, table row,
+    /// tree item, toast): its index; `None` for the widget itself.
+    pub part: Option<usize>,
     /// Its role.
     pub role: Role,
     /// Its name (a catalog key label), if it has one.
@@ -156,10 +211,73 @@ pub struct A11yNode {
     pub rect: Rect,
     /// `true` when keyboard focus can reach it.
     pub focusable: bool,
+    /// The nearest announced ancestor (for parts: their widget).
+    pub parent: Option<NodeId>,
+    /// Position among its siblings and their count, 1-based ("2 of 3").
+    pub position: Option<(usize, usize)>,
+    /// The node whose text names it (the settings row or list item around a control).
+    pub labelled_by: Option<NodeId>,
+    /// Smallest value, largest value and step of a slider.
+    pub range: Option<(f32, f32, f32)>,
 }
 
 impl A11yNode {
-    /// The sentence a screen reader speaks: name, role, value, states.
+    /// A node of `role` for `id` with nothing else set.
+    pub fn new(id: NodeId, role: Role, rect: Rect) -> A11yNode {
+        A11yNode {
+            id,
+            part: None,
+            role,
+            name: None,
+            value: None,
+            error: None,
+            description: None,
+            state: A11yState::default(),
+            rect,
+            focusable: false,
+            parent: None,
+            position: None,
+            labelled_by: None,
+            range: None,
+        }
+    }
+
+    /// The state words of this node: checked words for check boxes and radios, on/off for
+    /// switches, then open, selected, disabled, busy, invalid.
+    fn state_keys(&self) -> Vec<&'static str> {
+        let state = &self.state;
+        let checked = match (state.checked, state.mixed, self.role) {
+            (_, true, _) => Some("ui.state.mixed"),
+            (Some(true), _, Role::Switch) => Some("ui.state.on"),
+            (Some(false), _, Role::Switch) => Some("ui.state.off"),
+            (Some(true), _, _) => Some("ui.state.checked"),
+            (Some(false), _, _) => Some("ui.state.unchecked"),
+            (None, ..) => None,
+        };
+        let expanded = state.expanded.map(|e| {
+            if e {
+                "ui.state.expanded"
+            } else {
+                "ui.state.collapsed"
+            }
+        });
+        [
+            checked,
+            expanded,
+            state
+                .selected
+                .and_then(|s| s.then_some("ui.state.selected")),
+            state.disabled.then_some("ui.state.disabled"),
+            state.busy.then_some("ui.state.busy"),
+            state.invalid.then_some("ui.state.invalid"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
+
+    /// The sentence a screen reader speaks: name, role, value, level, states, position,
+    /// error, description.
     pub fn describe(&self, tr: &Translator) -> String {
         let mut parts: Vec<String> = Vec::new();
         let mut push = |text: std::borrow::Cow<'_, str>| {
@@ -174,25 +292,27 @@ impl A11yNode {
         if let Some(value) = &self.value {
             push(value.resolve(tr));
         }
-        let flag = |on: Option<bool>, yes: &'static str, no: &'static str| {
-            on.map(|v| if v { yes } else { no })
-        };
-        let states = [
-            flag(self.state.checked, "ui.state.on", "ui.state.off"),
-            flag(
-                self.state.expanded,
-                "ui.state.expanded",
-                "ui.state.collapsed",
-            ),
-            self.state
-                .selected
-                .and_then(|s| s.then_some("ui.state.selected")),
-            self.state.disabled.then_some("ui.state.disabled"),
-            self.state.busy.then_some("ui.state.busy"),
-            self.state.invalid.then_some("ui.state.invalid"),
-        ];
-        for key in states.into_iter().flatten() {
+        if let Some(level) = self.state.level {
+            let level = level.to_string();
+            push(
+                Label::key_with("ui.a11y.level", &[("level", &level)])
+                    .resolve(tr)
+                    .into_owned()
+                    .into(),
+            );
+        }
+        for key in self.state_keys() {
             push(tr.t(key));
+        }
+        if let Some((pos, count)) = self.position {
+            let (pos, count) = (pos.to_string(), count.to_string());
+            let args = [("pos", pos.as_str()), ("count", count.as_str())];
+            push(
+                Label::key_with("ui.a11y.position", &args)
+                    .resolve(tr)
+                    .into_owned()
+                    .into(),
+            );
         }
         if let Some(error) = &self.error {
             push(error.resolve(tr));
@@ -203,169 +323,5 @@ impl A11yNode {
         let mut joiner = tr.t("ui.a11y.joiner").into_owned();
         joiner.push(' ');
         parts.join(&joiner)
-    }
-}
-
-fn number(value: f32) -> Label {
-    let text = if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-    };
-    Label::data(&text)
-}
-
-fn percent(share: f32) -> Label {
-    Label::data(&format!("{:.0}%", (share * 100.0).clamp(0.0, 100.0)))
-}
-
-/// Role, name and value of a widget; `None` for pure layout and unnamed icons.
-fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label>)> {
-    let named = |label: &Label| Some(label.clone());
-    Some(match widget {
-        Widget::Flex(_) => return None,
-        Widget::Icon(w) => (Role::Image, Some(w.name.clone()?), None),
-        Widget::Card(_) => (Role::Group, None, None),
-        Widget::Text(w) => (Role::Text, named(&w.label), None),
-        Widget::Row(w) => (Role::Row, named(&w.label), w.sublabel.clone()),
-        Widget::Button(w) => (Role::Button, named(&w.label), None),
-        Widget::IconButton(w) => (Role::Button, named(&w.name), None),
-        Widget::Switch(w) => (Role::Switch, named(&w.name), None),
-        Widget::Select(w) => (
-            Role::Select,
-            named(&w.name),
-            w.options.get(w.selected).cloned(),
-        ),
-        Widget::Slider(w) => (Role::Slider, named(&w.name), Some(number(w.value))),
-        Widget::TextField(w) => {
-            let role = if w.is_search() {
-                Role::SearchField
-            } else {
-                Role::TextField
-            };
-            (role, named(&w.name), Some(Label::data(w.content())))
-        }
-        Widget::Badge(w) => (Role::Badge, named(&w.label), None),
-        Widget::Progress(w) => (Role::Progress, named(&w.name), w.value.map(percent)),
-        Widget::Checkbox(w) => (Role::Checkbox, named(&w.label), None),
-        Widget::RadioGroup(w) => {
-            let chosen = w.selected.and_then(|i| w.options.get(i)).cloned();
-            (Role::RadioGroup, named(&w.name), chosen)
-        }
-        Widget::Tabs(w) => (
-            Role::TabList,
-            named(&w.name),
-            w.tabs.get(w.selected).cloned(),
-        ),
-        Widget::InfoBar(w) => (Role::Alert, named(&w.title), w.message.clone()),
-        Widget::EmptyState(w) => (Role::Status, named(&w.title), w.message.clone()),
-        Widget::List(w) => (Role::List, w.name.clone(), None),
-        Widget::ListItem(w) => (Role::ListItem, named(&w.label), w.sublabel.clone()),
-        Widget::Scroll(w) => (Role::ScrollArea, w.name.clone(), None),
-        Widget::Dialog(w) => (Role::Dialog, named(&w.title), None),
-    })
-}
-
-/// The tone of a badge or info bar as a spoken description.
-fn tone_of(widget: &Widget) -> Option<Label> {
-    let tone = match widget {
-        Widget::Badge(badge) => badge.tone,
-        Widget::InfoBar(bar) => bar.tone,
-        _ => return None,
-    };
-    tone.name_key().map(Label::key)
-}
-
-impl Ui {
-    /// The accessibility node of one UI node; `None` for pure layout containers and
-    /// unnamed (decorative) icons.
-    pub fn a11y_node(&self, id: NodeId) -> Option<A11yNode> {
-        let node = self.nodes.get(id.index())?;
-        let (role, name, value) = describe_widget(&node.widget)?;
-        let visual = self.visual(id);
-        let state = A11yState {
-            disabled: visual.disabled,
-            focused: self.input.focus == Some(id),
-            pressed: visual.pressed,
-            busy: node.loading || matches!(&node.widget, Widget::Progress(p) if p.value.is_none()),
-            invalid: node.error.is_some(),
-            checked: match &node.widget {
-                Widget::Switch(w) => Some(w.on),
-                Widget::Checkbox(w) => Some(w.checked),
-                _ => None,
-            },
-            expanded: matches!(node.widget, Widget::Select(_)).then(|| self.is_open(id)),
-            selected: match &node.widget {
-                Widget::ListItem(w) => Some(w.selected),
-                _ => None,
-            },
-        };
-        Some(A11yNode {
-            id,
-            role,
-            name,
-            value,
-            error: node.error.clone(),
-            description: node.tooltip.clone().or_else(|| tone_of(&node.widget)),
-            state,
-            rect: self.rect(id)?,
-            focusable: self.interactive(id) && !visual.disabled,
-        })
-    }
-
-    /// The nodes of the open menu: one per level and one per command of each level. They
-    /// carry the id of the menu's owner; the highlighted command is the focused one.
-    fn menu_nodes(&self) -> Vec<A11yNode> {
-        let Some(state) = self.layers.menu.as_ref() else {
-            return Vec::new();
-        };
-        let mut nodes = Vec::new();
-        let blank = |role: Role, rect: crate::geom::Rect| A11yNode {
-            id: state.owner,
-            role,
-            name: None,
-            value: None,
-            error: None,
-            description: None,
-            state: A11yState::default(),
-            rect,
-            focusable: false,
-        };
-        for (depth, panel) in state.panels.iter().enumerate() {
-            let Some(level) = state.menu.level(&state.path[..depth.min(state.path.len())]) else {
-                continue;
-            };
-            nodes.push(blank(Role::Menu, panel.rect));
-            let deepest = depth == state.path.len();
-            for (index, item) in level.items.iter().enumerate() {
-                let Some(row) = panel.row(index) else {
-                    continue;
-                };
-                let mut node = blank(Role::MenuItem, row);
-                node.name = Some(item.label.clone());
-                node.value = item.shortcut.clone();
-                node.focusable = !item.disabled;
-                node.state.disabled = item.disabled;
-                node.state.focused = deepest && state.highlight == Some(index);
-                node.state.checked = item.checked;
-                let open = state.path.get(depth) == Some(&index);
-                node.state.expanded = item.submenu.as_ref().map(|_| open);
-                nodes.push(node);
-            }
-        }
-        nodes
-    }
-
-    /// All accessibility nodes in logical (reading) order: the tree (only the topmost
-    /// dialog while one is open – nothing behind it can be reached), then the open menu.
-    pub fn a11y_tree(&mut self) -> Vec<A11yNode> {
-        self.layout();
-        let mut nodes: Vec<A11yNode> = self
-            .reachable()
-            .iter()
-            .filter_map(|id| self.a11y_node(*id))
-            .collect();
-        nodes.extend(self.menu_nodes());
-        nodes
     }
 }

@@ -2,14 +2,14 @@
 
 use super::{Action, Key};
 use crate::geom::Point;
-use crate::tokens::Space;
+use crate::tokens::size;
 use crate::ui::{Drag, DragKind, NodeId, Pointer, Ui};
 use crate::widgets::{Scroll, Widget};
 
 /// Points one wheel line scrolls.
-const LINE: f32 = Space::S48.points();
+const LINE: f32 = size::SCROLL_LINE;
 /// Distance a finger travels before a touch means "scroll" instead of "tap".
-const SLOP: f32 = Space::S8.points();
+const SLOP: f32 = size::TOUCH_SLOP;
 
 impl Ui {
     /// Wheel or two-finger scroll at `pos`.
@@ -18,6 +18,7 @@ impl Ui {
             return false;
         }
         if self.layers.menu.is_some() {
+            self.menu_wheel(pos, lines * LINE);
             return true;
         }
         if let (Some(mut popup), Some((id, view))) = (self.input.popup, self.popup_view()) {

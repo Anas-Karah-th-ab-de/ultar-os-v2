@@ -19,7 +19,7 @@ const BAR: f32 = Space::S4.points();
 const HEIGHT: f32 = Space::S16.points();
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
 /// Share of the track the moving segment of an indeterminate bar covers.
-const SEGMENT: f32 = 1.0 / 3.0;
+const SEGMENT: f32 = crate::tokens::state::BUSY_SEGMENT;
 
 /// A share clamped to 0..=1; anything that is not a number counts as 0.
 fn share(value: f32) -> f32 {
@@ -62,7 +62,10 @@ impl Progress {
         let track = Rect::new(rect.x, rect.y + (rect.h - BAR) / 2.0, rect.w, BAR);
         // The accent-text role keeps 3:1 against the track in both themes (the gold accent
         // itself does not on light backgrounds).
-        let (rest, accent) = (p.color(ColorRole::Line), p.color(ColorRole::AccentText));
+        let (rest, accent) = (
+            p.color(ColorRole::ControlBorder),
+            p.color(ColorRole::AccentText),
+        );
         p.fill(track, Some(Radius::Round), rest);
         let mut remaining = track;
         let done = match self.value {

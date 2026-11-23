@@ -44,6 +44,9 @@ pub struct Line {
     pub top: f32,
     /// Baseline from the top of the layout.
     pub baseline: f32,
+    /// Height of the line box: the token line height, or more when the ink of the line
+    /// (stacked marks, tall title letters) needs it.
+    pub height: f32,
 }
 
 /// Shaped, reordered and broken text, ready to measure and draw.
@@ -231,6 +234,7 @@ fn build(
         let range = para.range.start..para.range.start + content.len();
         for line in break_lines(&shaped, text, range, wrap) {
             push_line(&mut out, &bidi, para, &shaped, line, &m);
+            fit_ink(&mut out, fonts, &m);
         }
     }
     if out.lines.is_empty() {
@@ -240,9 +244,10 @@ fn build(
             width: 0.0,
             top: 0.0,
             baseline: m.baseline,
+            height: m.line_height,
         });
     }
-    out.height = out.lines.len() as f32 * m.line_height;
+    out.height = out.lines.last().map_or(m.line_height, |l| l.top + l.height);
     out.width = out.lines.iter().map(|l| l.width).fold(0.0, f32::max);
     (out, shaped)
 }
@@ -332,14 +337,44 @@ fn push_line(
             }
         }
     }
-    let top = out.lines.len() as f32 * m.line_height;
+    let top = out.lines.last().map_or(0.0, |l| l.top + l.height);
     out.lines.push(Line {
         glyphs: first..out.glyphs.len(),
         bytes: line,
         width: pen,
         top,
         baseline: top + m.baseline,
+        height: m.line_height,
     });
+}
+
+/// Grows the last line when the ink of its glyphs (stacked marks, Kufi tops, deep
+/// descenders) would leave the line box of the tokens: the baseline moves down by what
+/// sticks out above, the line becomes taller by what sticks out below. Lines that fit keep
+/// the token line height and baseline, so plain labels of one style share their baseline.
+fn fit_ink(out: &mut TextLayout, fonts: &Fonts, m: &Metrics) {
+    let Some(line) = out.lines.last() else {
+        return;
+    };
+    let (mut above, mut below) = (0.0f32, 0.0f32);
+    for g in &out.glyphs[line.glyphs.clone()] {
+        let face = fonts.face(g.font);
+        let Some(bbox) = face.glyph_bounding_box(rustybuzz::ttf_parser::GlyphId(g.id)) else {
+            continue;
+        };
+        let scale = fonts.scale(g.font, out.size);
+        above = above.max(f32::from(bbox.y_max) * scale - g.dy);
+        below = below.max(-f32::from(bbox.y_min) * scale + g.dy);
+    }
+    // One pixel for the anti-aliased edge the rasteriser may add on either side.
+    let needed_top = above.ceil() + 1.0;
+    let needed_bottom = below.ceil() + 1.0;
+    let offset = m.baseline.max(needed_top);
+    let height = m.line_height.max(offset + needed_bottom);
+    if let Some(line) = out.lines.last_mut() {
+        line.baseline = line.top + offset;
+        line.height = height;
+    }
 }
 
 /// Cuts `text` so that it fits `max` pixels on one line with an ellipsis at its end.

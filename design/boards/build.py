@@ -4,7 +4,7 @@ sys.dont_write_bytecode = True
 import gen
 for f in glob.glob(os.path.join(gen.ROOT, '*.dc.html')):
     os.remove(f)
-import b1, b2, b3, b4, b5, b6
+import b1, b2, b3, b4, b5, b6, b7
 from actions import ACTIONS
 from icons import I
 HERE = gen.HERE
@@ -46,7 +46,7 @@ for a, (text, ref) in ACTIONS.items():
     if 'NEW' in ref:
         n += 1; out.append('%d. `%s` [%s] – %s' % (n, a, SECTION[a.split('.')[0]], text))
 out += ['', 'Further additions that are not a single click:', '',
-        '%d. [§3] Tokens for states are missing: hover, pressed, disabled, focus-ring colour, border width, control height, switch size, scrim. The boards use the substitutions listed in `REVIEW-SELF.md`.' % (n + 1),
+        '%d. [§3] State tokens: `[state]` (overlays, disabled opacity, scrim, focus-ring role), `size.border`, `size.row_min`, `size.box` in `design/tokens.toml`; boards and toolkit read the same values (section 3, rows "Fokusrahmen" and "Zustände").' % (n + 1),
         '%d. [§4] Icon table: see `ICONS.md` (new and split meanings).' % (n + 2),
         '%d. [§5.1] Sheets of the shell (quick settings, calendar) take the focus when they open, keep it inside (Tab cycles) and return it to their trigger when they close.' % (n + 3),
         '%d. [§5.2] The three title-bar buttons are not Tab stops; keyboard uses the window menu (Alt+Space) and the shortcuts. In Arabic the start position of new windows is mirrored.' % (n + 4),

@@ -6,7 +6,7 @@ use crate::geom::{Rect, Size};
 use crate::icon::QuarterTurns;
 use crate::paint::{Painter, TextSpec};
 use crate::text::{TextAlign, Weight};
-use crate::tokens::{size, ColorRole, Radius, Space, TypeSize};
+use crate::tokens::{size, Radius, Space, TypeSize};
 
 /// A badge. Its tone is carried by the optional icon and by its text, not by colour alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,10 +61,9 @@ impl Badge {
     }
 
     pub(crate) fn paint(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, rect: Rect) {
-        let (bg, hairline) = (p.color(ColorRole::Raised), p.hairline());
-        let tone = p.color(self.tone.role());
-        p.fill(rect, Some(Radius::Round), bg);
-        p.stroke(rect, Some(Radius::Round), hairline, tone);
+        // Boards: the control radius, no fill, text and edge in the colour of the tone.
+        let (hairline, tone) = (p.hairline(), p.color(self.tone.role()));
+        p.stroke(rect, Some(Radius::Control), hairline, tone);
         let direction = p.env().direction;
         let mut inner = style::inset_inline(rect, PAD);
         if self.icon {
@@ -73,10 +72,7 @@ impl Badge {
             let edge = size::ICON_SMALL;
             p.icon(self.tone.icon(), slot, edge, QuarterTurns::None, tone);
         }
-        let color = match self.tone {
-            Tone::Neutral => p.color(ColorRole::Text),
-            _ => tone,
-        };
+        let color = tone;
         let spec = BADGE_TEXT.overflow(crate::text::Overflow::Ellipsis);
         style::draw_label(p, cx, &self.label, spec, inner, TextAlign::Center, color);
     }

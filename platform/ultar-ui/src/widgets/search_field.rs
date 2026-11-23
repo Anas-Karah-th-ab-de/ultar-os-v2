@@ -65,22 +65,34 @@ impl TextField {
         had_text
     }
 
-    /// `true` while the clear button shows.
-    fn has_clear(&self) -> bool {
-        self.search && !self.content().is_empty()
+    /// The button at the end of the field: 0 = clear (search field holding text),
+    /// 1 = show the password while held (password field).
+    pub(crate) fn end_button(&self) -> Option<usize> {
+        if self.password {
+            Some(1)
+        } else if self.search && !self.content().is_empty() {
+            Some(0)
+        } else {
+            None
+        }
     }
 
-    /// The parts of a field of `field` extent: search icon slot, clear slot, text area.
+    /// The parts of a field of `field` extent: search icon slot, end button (a full target
+    /// square at the end edge), text area.
     fn parts(&self, field: Rect, direction: Direction) -> (Rect, Rect, Rect) {
         let mut inner = style::inset_inline(field, PAD);
+        let mut button = Rect::default();
+        if self.search || self.password {
+            let mut whole = field;
+            button = style::take_end(&mut whole, field.h.min(field.w), direction);
+            style::take_end(&mut inner, (button.w - PAD.points()).max(0.0), direction);
+        }
         if !self.search {
-            return (Rect::default(), Rect::default(), inner);
+            return (Rect::default(), button, inner);
         }
         let icon = style::take_start(&mut inner, ICON, direction);
         style::take_start(&mut inner, ICON_GAP.points(), direction);
-        let clear = style::take_end(&mut inner, ICON, direction);
-        style::take_end(&mut inner, ICON_GAP.points(), direction);
-        (icon, clear, inner)
+        (icon, button, inner)
     }
 
     /// The area the text is drawn in.
@@ -88,25 +100,32 @@ impl TextField {
         self.parts(field, direction).2
     }
 
-    /// The part under `pos`: `Some(0)` for the clear button.
-    pub(crate) fn part_at(&self, field: Rect, pos: Point, direction: Direction) -> Option<usize> {
-        let clear = self.parts(field, direction).1;
-        // The whole end of the field is the target, not only the 16-point cross.
-        let target = clear.inflate(PAD.points());
-        (self.has_clear() && target.contains(pos)).then_some(0)
+    /// The rectangle of the end button, if the field shows one.
+    pub(crate) fn end_button_rect(&self, field: Rect, direction: Direction) -> Option<Rect> {
+        self.end_button().map(|_| self.parts(field, direction).1)
     }
 
-    /// Paints the search icon and the clear button (nothing for a plain field).
+    /// The part under `pos`: the end button (see [`TextField::end_button`]).
+    pub(crate) fn part_at(&self, field: Rect, pos: Point, direction: Direction) -> Option<usize> {
+        let button = self.end_button_rect(field, direction)?;
+        button.contains(pos).then(|| self.end_button()).flatten()
+    }
+
+    /// Paints the search icon and the end button (nothing for a plain field).
     pub(crate) fn paint_search_parts(&self, p: &mut Painter<'_>, field: Rect) {
-        if !self.search {
-            return;
-        }
-        let (icon, clear, _) = self.parts(field, p.env().direction);
+        let direction = p.env().direction;
+        let (icon, button, _) = self.parts(field, direction);
         let muted = p.color(ColorRole::TextMuted);
-        p.icon(IconId::Search, icon, ICON, QuarterTurns::None, muted);
-        if self.has_clear() {
-            p.icon(IconId::Close, clear, ICON, QuarterTurns::None, muted);
+        if self.search {
+            p.icon(IconId::Search, icon, ICON, QuarterTurns::None, muted);
         }
+        let glyph = match self.end_button() {
+            Some(0) => IconId::Close,
+            Some(_) if self.revealed => IconId::Eye,
+            Some(_) => IconId::Eye,
+            None => return,
+        };
+        p.icon(glyph, button, ICON, QuarterTurns::None, muted);
     }
 }
 
@@ -123,7 +142,8 @@ mod tests {
             .into_field();
         assert!(empty.is_search() && empty.placeholder.is_some());
         let (icon, clear, text) = empty.parts(field, Direction::Ltr);
-        assert!(icon.x < text.x && text.right() < clear.x);
+        assert!(icon.x < text.x && text.right() <= clear.x + PAD.points());
+        assert_eq!((clear.w, clear.h), (field.h, field.h), "a full target");
         assert_eq!(empty.part_at(field, clear.center(), Direction::Ltr), None);
         let mut filled = SearchField::new(Label::key("s")).text("نص").into_field();
         assert_eq!(

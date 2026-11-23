@@ -107,8 +107,8 @@ fn states_follow_interaction() {
     assert!(!ui.a11y_node(s.name).unwrap().state.invalid);
     // States that a widget does not have are refused.
     assert_eq!(
-        ui.set_loading(s.brightness, true),
-        Err(UiError::NotApplicable(s.brightness))
+        ui.set_loading(s.card, true),
+        Err(UiError::NotApplicable(s.card))
     );
     assert_eq!(
         ui.set_error(s.apply, Some(Label::key("demo.device.error"))),
@@ -269,5 +269,5 @@ fn catalogs_are_complete_in_arabic_english_and_german() {
             );
         }
     }
-    assert_eq!(roles.len(), 23);
+    assert_eq!(roles.len(), 35);
 }

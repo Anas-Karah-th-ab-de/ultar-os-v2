@@ -130,6 +130,8 @@ struct Builder {
     current: Vec<Point>,
     pen: Point,
     total: usize,
+    /// Second control point of the last cubic (for the smooth `S` command).
+    last_control: Option<Point>,
 }
 
 impl Builder {
@@ -225,6 +227,13 @@ impl Builder {
     }
 }
 
+/// A cubic curve to `end` that remembers its second control point (for a following `S`).
+fn curve_to(builder: &mut Builder, c1: Point, (c2, end): (Point, Point)) -> Result<(), PathError> {
+    builder.cubic(c1, c2, end)?;
+    builder.last_control = Some(c2);
+    Ok(())
+}
+
 /// Reads one drawing command's arguments and applies it.
 fn apply(
     reader: &mut Reader<'_>,
@@ -232,28 +241,20 @@ fn apply(
     command: u8,
     at: usize,
 ) -> Result<(), PathError> {
-    let relative = command.is_ascii_lowercase();
-    let origin = if relative {
-        builder.pen
-    } else {
-        Point::default()
-    };
+    let origin = [Point::default(), builder.pen][usize::from(command.is_ascii_lowercase())];
     let point = |reader: &mut Reader<'_>| -> Result<Point, PathError> {
         Ok(Point::new(
             origin.x + reader.number()?,
             origin.y + reader.number()?,
         ))
     };
-    match command.to_ascii_uppercase() {
-        b'M' => {
-            let p = point(reader)?;
-            builder.move_to(p);
-            Ok(())
-        }
-        b'L' => {
-            let p = point(reader)?;
-            builder.push(p)
-        }
+    let upper = command.to_ascii_uppercase();
+    if !matches!(upper, b'C' | b'S') {
+        builder.last_control = None;
+    }
+    match upper {
+        b'M' => point(reader).map(|p| builder.move_to(p)),
+        b'L' => point(reader).and_then(|p| builder.push(p)),
         b'H' => {
             let x = origin.x + reader.number()?;
             builder.push(Point::new(x, builder.pen.y))
@@ -263,8 +264,16 @@ fn apply(
             builder.push(Point::new(builder.pen.x, y))
         }
         b'C' => {
-            let (c1, c2, end) = (point(reader)?, point(reader)?, point(reader)?);
-            builder.cubic(c1, c2, end)
+            let c1 = point(reader)?;
+            curve_to(builder, c1, (point(reader)?, point(reader)?))
+        }
+        b'S' => {
+            // The first control point mirrors the last one of the previous curve.
+            let pen = builder.pen;
+            let c1 = builder
+                .last_control
+                .map_or(pen, |c| Point::new(2.0 * pen.x - c.x, 2.0 * pen.y - c.y));
+            curve_to(builder, c1, (point(reader)?, point(reader)?))
         }
         b'A' => {
             let radii = (reader.number()?, reader.number()?);

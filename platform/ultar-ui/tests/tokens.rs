@@ -163,9 +163,31 @@ fn state_and_wave_3_tokens_match_the_file() {
     assert_eq!(state::SCRIM_DARK, number("state", "scrim_dark"));
     assert_eq!(state::SCRIM_LIGHT, number("state", "scrim_light"));
     assert_eq!(state::FOCUS_RING.name(), value("state", "focus_ring"));
+    assert_eq!(state::SPINNER_SWEEP, number("state", "spinner_sweep"));
+    assert_eq!(state::BUSY_SEGMENT, number("state", "busy_segment"));
+    for key in ["border", "row_min", "box", "scroll_line", "touch_slop"] {
+        assert!(number("size", key) > 0.0, "size.{key}");
+    }
+    assert_eq!(size::BORDER, number("size", "border"));
+    assert_eq!(size::ROW_MIN, number("size", "row_min"));
+    assert_eq!(size::BOX, number("size", "box"));
+    assert_eq!(
+        motion::TOOLTIP_DELAY as f32,
+        number("motion", "tooltip_delay")
+    );
+    assert_eq!(motion::LONG_PRESS as f32, number("motion", "long_press"));
+    assert_eq!(
+        motion::DOUBLE_CLICK as f32,
+        number("motion", "double_click")
+    );
+    assert_eq!(motion::TOAST as f32, number("motion", "toast"));
+    assert_eq!(
+        typography::SMALL_WEIGHT_ARABIC as f32,
+        number("type", "small_weight_arabic")
+    );
     assert_eq!(
         section("state").len(),
-        6,
+        8,
         "every state token is checked here"
     );
 }

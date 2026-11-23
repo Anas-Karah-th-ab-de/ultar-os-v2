@@ -39,8 +39,8 @@ Rules kept: one set, stroke 1.5 at 24, two sizes (16, 24), outline. One icon = o
 | Icon | Meaning | Mirrored in RTL | Used on |
 |---|---|---|---|
 | `back` | back (towards the start side) | yes | Account, CalendarSheet, DesktopBottom, DesktopTop, Main |
-| `forward` | forward / open (towards the end side) | yes | CalendarSheet, DesktopBottom, DesktopTop, Main, QuickSettings, SettingsDisplay, SettingsDisplayLight, States |
-| `chevron-down` | opens a list of choices (select) | no | InstallerDisk, InstallerDrivers, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States |
+| `forward` | forward / open (towards the end side) | yes | CalendarSheet, DesktopBottom, DesktopTop, Main, Menus, QuickSettings, SettingsDisplay, SettingsDisplayLight, States, StatesLight |
+| `chevron-down` | opens a list of choices (select) | no | InstallerDisk, InstallerDrivers, Menus, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States, StatesLight |
 | `home` | home folder | no | DesktopTop, Main |
 | `grid` | all apps | no | CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, QuickSettings |
 | `search` | search | no | Account, CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, QuickSettings, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store, SurfaceStates |
@@ -52,16 +52,16 @@ Rules kept: one set, stroke 1.5 at 24, two sizes (16, 24), outline. One icon = o
 |---|---|---|---|
 | `min` | minimise window | no | Account, DesktopBottom, DesktopTop, Main, PhoneDial, PhoneInCall, PhoneIncoming, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |
 | `max` | maximise window | no | Account, DesktopBottom, DesktopTop, Main, PhoneDial, PhoneInCall, PhoneIncoming, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |
-| `close` | close window or dialog | no | Account, CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, PhoneDial, PhoneInCall, PhoneIncoming, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |
+| `close` | close window or dialog | no | Account, Bricks, CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, PhoneDial, PhoneInCall, PhoneIncoming, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |
 
 ### Actions
 
 | Icon | Meaning | Mirrored in RTL | Used on |
 |---|---|---|---|
-| `plus` | new / add | no | DesktopBottom, DesktopTop, Main, Overview |
-| `trash` | delete (action) | no | Account |
-| `copy` | copy | yes | Account, PhoneDial, PhoneInCall, PhoneIncoming |
-| `download` | download (action, download list) | no | DesktopBottom, InstallerDrivers, SettingsDrivers |
+| `plus` | new / add | no | DesktopBottom, DesktopTop, Main, Menus, Overview |
+| `trash` | delete (action) | no | Account, Menus |
+| `copy` | copy | yes | Account, Bricks, Menus, PhoneDial, PhoneInCall, PhoneIncoming |
+| `download` | download (action, download list) | no | DesktopBottom, InstallerDrivers, Menus, SettingsDrivers |
 | `reload` | reload | yes | DesktopBottom |
 | `eject` | eject a removable drive | no | DesktopTop, Main |
 | `backspace` | delete the last digit | yes | PhoneDial |
@@ -70,22 +70,22 @@ Rules kept: one set, stroke 1.5 at 24, two sizes (16, 24), outline. One icon = o
 
 | Icon | Meaning | Mirrored in RTL | Used on |
 |---|---|---|---|
-| `check` | done / selected | no | Account, DesktopBottom, Installer, InstallerDisk, InstallerDrivers, InstallerSummary, Login, Overview, PhoneDial, Projection, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States, Store, SurfaceStates |
-| `info` | hint | no | Installer, InstallerDisk, States, Store, SurfaceStates |
+| `check` | done / selected | no | Account, Bricks, DesktopBottom, Installer, InstallerDisk, InstallerDrivers, InstallerSummary, Login, Menus, Overview, PhoneDial, Projection, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States, StatesLight, Store, SurfaceStates |
+| `info` | hint | no | Bricks, Installer, InstallerDisk, Menus, States, StatesLight, Store, SurfaceStates |
 | `warning` | warning | no | InstallerDrivers, SettingsDrivers, SurfaceStates |
-| `error` | error | no | Account, InstallerDisk, InstallerDrivers, InstallerSummary, SettingsDrivers, States, SurfaceStates |
+| `error` | error | no | Account, InstallerDisk, InstallerDrivers, InstallerSummary, SettingsDrivers, States, StatesLight, SurfaceStates |
 | `lock` | locked / lock the screen | no | InstallerDrivers, Lock, QuickSettings, SettingsDrivers |
 | `secure` | encrypted connection or call | no | PhoneInCall, PhoneIncoming |
 | `shield` | security | no | Account, SettingsDisplay, SettingsDisplayLight, SettingsDrivers |
 | `eye` | show (password visible) | no | Account, InstallerDisk, Login |
-| `ring` | in progress (progress ring) | no | States, SurfaceStates |
+| `ring` | in progress (progress ring) | no | States, StatesLight, SurfaceStates |
 | `block` | ad and tracker blocking | no | DesktopBottom |
 
 ### Connection
 
 | Icon | Meaning | Mirrored in RTL | Used on |
 |---|---|---|---|
-| `wifi` | Wi-Fi (strength) | no | Account, CalendarSheet, DesktopBottom, DesktopTop, InstallerDrivers, Lock, Main, Overview, QuickSettings, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States |
+| `wifi` | Wi-Fi (strength) | no | Account, CalendarSheet, DesktopBottom, DesktopTop, InstallerDrivers, Lock, Main, Overview, QuickSettings, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, States, StatesLight |
 | `offline` | no connection (offline) | no | Account, SurfaceStates |
 | `cable` | wired network | no | InstallerDrivers, QuickSettings, SettingsDrivers |
 | `cell` | mobile network (signal bars) | yes | PhoneDial, PhoneInCall |
@@ -138,7 +138,7 @@ Rules kept: one set, stroke 1.5 at 24, two sizes (16, 24), outline. One icon = o
 
 | Icon | Meaning | Mirrored in RTL | Used on |
 |---|---|---|---|
-| `gear` | Settings (only that) | no | CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, PhoneDial, QuickSettings, States |
+| `gear` | Settings (only that) | no | CalendarSheet, DesktopBottom, DesktopTop, Main, Menus, Overview, PhoneDial, QuickSettings, States, StatesLight |
 | `power` | power menu | no | Lock, Login, QuickSettings |
 | `user` | account / person | no | Account, Login, PhoneDial, PhoneInCall, PhoneIncoming, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |
 | `users` | users of this device (settings area) | yes | Account, SettingsDisplay, SettingsDisplayLight, SettingsDrivers |
@@ -146,7 +146,7 @@ Rules kept: one set, stroke 1.5 at 24, two sizes (16, 24), outline. One icon = o
 | `bell-off` | do not disturb | no | QuickSettings |
 | `clock` | time | no | Account, SettingsDisplay, SettingsDisplayLight, SettingsDrivers |
 | `bag` | Ultar Store | no | CalendarSheet, DesktopBottom, DesktopTop, Lock, Main, Overview, QuickSettings |
-| `folder` | Files (app) | no | CalendarSheet, DesktopBottom, DesktopTop, Main, Overview, QuickSettings |
+| `folder` | Files (app) | no | CalendarSheet, DesktopBottom, DesktopTop, Main, Menus, Overview, QuickSettings |
 | `access` | accessibility | no | Account, Login, SettingsDisplay, SettingsDisplayLight, SettingsDrivers |
 | `spark` | Assistant | yes | Account, Installer, QuickSettings, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store, SurfaceStates |
 | `update` | updates | no | Account, CalendarSheet, SettingsDisplay, SettingsDisplayLight, SettingsDrivers, Store |

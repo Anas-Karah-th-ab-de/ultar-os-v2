@@ -12,6 +12,10 @@ use ultar_i18n::Direction;
 pub const DEFAULT_MAX_LEN: usize = 4096;
 
 pub(crate) const PAD: Space = Space::S12;
+/// The character a hidden password is drawn with.
+const MASK: char = '\u{2022}';
+/// Height of the label line above a labelled field (a 12-point line and its gap).
+const LABEL_BAND: f32 = Space::S16.points() + Space::S4.points();
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
 const FIELD_TEXT: TextSpec = TextSpec::new(typography::BODY);
 
@@ -50,6 +54,12 @@ pub struct TextField {
     pub direction: TextDirection,
     /// `true` for a search field: search icon at the start, clear button at the end.
     pub(crate) search: bool,
+    /// `true` for a password field: the content is shown as dots.
+    pub(crate) password: bool,
+    /// `true` while the password is shown (its button held).
+    pub(crate) revealed: bool,
+    /// `true` when the name is shown above the field.
+    pub(crate) show_label: bool,
     text: String,
     caret: usize,
     max_len: usize,
@@ -69,6 +79,9 @@ impl TextField {
             placeholder: None,
             direction: TextDirection::Auto,
             search: false,
+            password: false,
+            revealed: false,
+            show_label: false,
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
@@ -79,6 +92,57 @@ impl TextField {
     pub fn placeholder(mut self, placeholder: Label) -> TextField {
         self.placeholder = Some(placeholder);
         self
+    }
+
+    /// A password field: dots instead of the characters, a button at the end that shows the
+    /// password while it is held, content always left-to-right, no value for screen readers.
+    pub fn password(name: Label) -> TextField {
+        TextField {
+            password: true,
+            direction: TextDirection::Ltr,
+            ..TextField::new(name)
+        }
+    }
+
+    /// `true` for a password field.
+    pub fn is_password(&self) -> bool {
+        self.password
+    }
+
+    /// `true` while the password is shown.
+    pub fn is_revealed(&self) -> bool {
+        self.revealed
+    }
+
+    /// The text as drawn: the content, or one dot per character of a hidden password.
+    pub(crate) fn display(&self) -> std::borrow::Cow<'_, str> {
+        if self.password && !self.revealed {
+            std::borrow::Cow::Owned(MASK.to_string().repeat(self.text.chars().count()))
+        } else {
+            std::borrow::Cow::Borrowed(&self.text)
+        }
+    }
+
+    /// A byte offset of the content as an offset of the drawn text.
+    fn to_display(&self, byte: usize) -> usize {
+        if self.password && !self.revealed {
+            self.text[..byte.min(self.text.len())].chars().count() * MASK.len_utf8()
+        } else {
+            byte
+        }
+    }
+
+    /// A byte offset of the drawn text as an offset of the content.
+    fn byte_from_display(&self, byte: usize) -> usize {
+        if self.password && !self.revealed {
+            let chars = byte / MASK.len_utf8();
+            self.text
+                .char_indices()
+                .nth(chars)
+                .map_or(self.text.len(), |(i, _)| i)
+        } else {
+            byte
+        }
     }
 
     /// The same field with a fixed paragraph direction for its content.
@@ -226,8 +290,17 @@ impl TextField {
         self.caret = at;
     }
 
-    pub(crate) fn field(rect: Rect, mode: InputMode) -> Rect {
-        Rect::new(rect.x, rect.y, rect.w, mode.min_target().min(rect.h))
+    /// The field part of the node: below its visible label (if shown), above the error.
+    pub(crate) fn field(&self, rect: Rect, mode: InputMode) -> Rect {
+        let top = if self.show_label { LABEL_BAND } else { 0.0 };
+        let h = mode.min_target().min((rect.h - top).max(0.0));
+        Rect::new(rect.x, rect.y + top, rect.w, h)
+    }
+
+    /// The same field with its name shown above it (boards: label 12 / 500).
+    pub fn labelled(mut self) -> TextField {
+        self.show_label = true;
+        self
     }
 
     /// Left end of the text line so that the caret stays inside `inner`.
@@ -249,15 +322,16 @@ impl TextField {
         mode: InputMode,
         pos: Point,
     ) -> usize {
-        let inner = self.text_area(TextField::field(rect, mode), env.direction);
+        let inner = self.text_area(self.field(rect, mode), env.direction);
         let base = self.direction.resolve(env.direction);
-        let layout = layout_directed(res, env, &self.text, FIELD_TEXT, None, base);
+        let shown = self.display();
+        let layout = layout_directed(res, env, &shown, FIELD_TEXT, None, base);
         let (width, caret_x) = (
             layout.width / env.scale,
-            layout.caret_x(self.caret) / env.scale,
+            layout.caret_x(self.to_display(self.caret)) / env.scale,
         );
         let left = TextField::line_left(width, caret_x, inner, base);
-        layout.index_at_x((pos.x - left) * env.scale)
+        self.byte_from_display(layout.index_at_x((pos.x - left) * env.scale))
     }
 
     pub(crate) fn measure(
@@ -267,9 +341,10 @@ impl TextField {
         error: Option<&Label>,
     ) -> Size {
         let width = NATURAL_W.min(avail);
+        let label = if self.show_label { LABEL_BAND } else { 0.0 };
         Size::new(
             width,
-            cx.mode.min_target() + style::error_height(cx, error, width),
+            label + cx.mode.min_target() + style::error_height(cx, error, width),
         )
     }
 
@@ -284,7 +359,7 @@ impl TextField {
         error: Option<&Label>,
     ) {
         let previous = p.set_opacity(v.opacity());
-        let field = TextField::field(rect, cx.mode);
+        let field = self.field(rect, cx.mode);
         let bg = if v.hovered && !has_focus {
             ColorRole::Hover
         } else {
@@ -300,9 +375,15 @@ impl TextField {
         let border = p.color(border);
         p.stroke(field, Some(Radius::Control), width, border);
         self.paint_search_parts(p, field);
+        if self.show_label {
+            let band = Rect::new(rect.x, rect.y, rect.w, LABEL_BAND - Space::S4.points());
+            let muted = p.color(ColorRole::TextMuted);
+            let spec = style::SMALL_TEXT.weight(crate::text::Weight::Medium);
+            style::draw_label(p, cx, &self.name, spec, band, TextAlign::Start, muted);
+        }
         let inner = self.text_area(field, p.env().direction);
         self.paint_content(p, cx, inner, has_focus);
-        style::paint_error(p, cx, error, rect, field.h);
+        style::paint_error(p, cx, error, rect, field.bottom() - rect.y);
         if v.focused {
             style::focus_ring(p, field, Radius::Card);
         }
@@ -312,8 +393,10 @@ impl TextField {
     fn paint_content(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, inner: Rect, has_focus: bool) {
         let base = self.direction.resolve(p.env().direction);
         let scale = p.env().scale;
-        let layout = p.layout_directed(&self.text, FIELD_TEXT, None, base);
-        let (width, caret_x) = (layout.width / scale, layout.caret_x(self.caret) / scale);
+        let shown = self.display();
+        let layout = p.layout_directed(&shown, FIELD_TEXT, None, base);
+        let caret = self.to_display(self.caret);
+        let (width, caret_x) = (layout.width / scale, layout.caret_x(caret) / scale);
         let left = TextField::line_left(width, caret_x, inner, base);
         let saved = p.clip(inner);
         if self.text.is_empty() {

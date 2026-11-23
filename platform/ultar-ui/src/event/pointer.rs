@@ -3,7 +3,7 @@
 use super::{Action, ActionKind};
 use crate::geom::Point;
 use crate::ui::{NodeId, Pointer, Popup, Press, Ui};
-use crate::widgets::{Select, TextField, Widget};
+use crate::widgets::{Select, Widget};
 
 impl Ui {
     /// The topmost operable widget under `pos`. While a dialog is open only its widgets
@@ -24,9 +24,9 @@ impl Ui {
         match &self.nodes[id.index()].widget {
             Widget::Tabs(tabs) => tabs.part_at(rect, pos, direction),
             Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode),
-            Widget::TextField(field) => {
-                field.part_at(TextField::field(rect, self.mode), pos, direction)
-            }
+            Widget::Table(table) => table.part_at(rect, pos, self.mode, direction),
+            Widget::Tree(tree) => tree.part_at(rect, pos, self.mode, direction),
+            Widget::TextField(field) => field.part_at(field.field(rect, self.mode), pos, direction),
             _ => None,
         }
     }
@@ -41,6 +41,21 @@ impl Ui {
             self.hide_tooltip();
             self.watch_hover(hover);
         }
+    }
+
+    /// Hit-tests the resting mouse pointer again after the content moved under it (scroll,
+    /// layout), so that hover and tooltip follow what is drawn there now.
+    pub(crate) fn rehover(&mut self) {
+        let Some(pos) = self.input.pointer else {
+            return;
+        };
+        if self.input.popup.is_some() || self.layers.menu.is_some() {
+            return;
+        }
+        let hit = self.hit(pos);
+        self.set_hover(hit);
+        let part = hit.and_then(|id| self.part_at(id, pos));
+        self.set_hover_part(part);
     }
 
     fn set_hover_part(&mut self, part: Option<usize>) {
@@ -73,6 +88,9 @@ impl Ui {
         if self.input.focus != focus || self.input.focus_visible != visible {
             let previous = std::mem::replace(&mut self.input.focus, focus);
             self.input.focus_visible = visible;
+            if focus.is_some() {
+                self.input.focus_hint = None;
+            }
             for id in [previous, focus].into_iter().flatten() {
                 self.touch(id);
             }
@@ -222,7 +240,7 @@ impl Ui {
         if let Some(inside) = self.popup_move(pos) {
             return inside;
         }
-        if self.drag_move(pos, pointer, out) {
+        if self.drag_move(pos, pointer, out) || self.gesture_move(pos, pointer, out) {
             return true;
         }
         if pointer == Pointer::Mouse {
@@ -261,6 +279,9 @@ impl Ui {
         if self.layers.menu.is_some() {
             return self.menu_press(pos, out);
         }
+        if self.toast_press(pos, out) {
+            return true;
+        }
         if self.popup_down(pos, out) {
             return true;
         }
@@ -275,6 +296,7 @@ impl Ui {
         let part = self.part_at(id, pos);
         self.set_press(pointer, Some(Press { node: id, part }));
         self.set_focus(Some(id), false);
+        self.gesture_down(id, (pos, part), pointer, out);
         match &self.nodes[id.index()].widget {
             Widget::Slider(_) => self.drag_slider(id, pos, out),
             Widget::TextField(_) if part.is_none() => self.place_caret(id, pos),
@@ -289,6 +311,10 @@ impl Ui {
         pointer: Pointer,
         out: &mut Vec<Action>,
     ) -> bool {
+        if self.gesture_up(pointer, Some(pos), out) {
+            self.set_press(pointer, None);
+            return true;
+        }
         if self.layers.menu.is_some() {
             self.set_press(pointer, None);
             return self.menu_release(pos, out);
@@ -308,15 +334,30 @@ impl Ui {
         };
         self.set_press(pointer, None);
         if self.hit(pos) == Some(press.node) && self.part_at(press.node, pos) == press.part {
+            let before = out.len();
             self.activate(press.node, press.part, out);
+            // Rows of a table or tree count even when the row was selected already: the
+            // second click of a double click on it changes nothing else.
+            let rows = matches!(
+                self.widget(press.node),
+                Some(Widget::Table(_) | Widget::Tree(_))
+            );
+            if out.len() > before || rows {
+                self.detect_double(press.node, pos, out);
+            }
         }
         true
     }
 
     /// The secondary button: opens the context menu of the node under the pointer.
+    /// A second secondary click beside an open menu closes it and opens the menu of the
+    /// new place at once.
     pub(crate) fn secondary_down(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
         if self.layers.menu.is_some() {
-            return self.menu_press(pos, out);
+            if self.menu_contains(pos) {
+                return self.menu_press(pos, out);
+            }
+            self.close_menu_with(out);
         }
         if self.input.popup.is_some() {
             self.close_popup(out);
@@ -334,7 +375,9 @@ impl Ui {
         }
         self.input.touch = Some(id);
         self.set_hover(None);
-        self.pointer_down(pos, Pointer::Touch, out)
+        let used = self.pointer_down(pos, Pointer::Touch, out);
+        self.watch_long_press(id, pos);
+        used
     }
 
     pub(crate) fn touch_up(&mut self, id: u64, pos: Point, out: &mut Vec<Action>) -> bool {
@@ -345,12 +388,13 @@ impl Ui {
         self.pointer_up(pos, Pointer::Touch, out)
     }
 
-    pub(crate) fn touch_cancel(&mut self, id: u64) -> bool {
+    pub(crate) fn touch_cancel(&mut self, id: u64, out: &mut Vec<Action>) -> bool {
         if self.input.touch != Some(id) {
             return false;
         }
         self.input.touch = None;
-        let had_press = self.input.finger.is_some() || self.drag_end(Pointer::Touch);
+        let gesture = self.gesture_up(Pointer::Touch, None, out);
+        let had_press = self.input.finger.is_some() || self.drag_end(Pointer::Touch) || gesture;
         self.set_press(Pointer::Touch, None);
         had_press
     }

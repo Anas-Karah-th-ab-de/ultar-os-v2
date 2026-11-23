@@ -5,7 +5,7 @@ use super::{Label, MeasureCx, PaintCx};
 use crate::geom::{Point, Rect, Size};
 use crate::paint::Painter;
 use crate::text::TextAlign;
-use crate::tokens::{size, ColorRole, InputMode, Radius, Space};
+use crate::tokens::{size, state, ColorRole, InputMode, Radius, Space};
 
 /// A group of radio options, one below the other. The group is one focus stop; the arrow
 /// keys move the choice.
@@ -19,8 +19,10 @@ pub struct RadioGroup {
     pub selected: Option<usize>,
 }
 
-const DOT: f32 = size::ICON_SMALL;
-const GAP: Space = Space::S8;
+const DOT: f32 = size::BOX;
+/// Width of the ring of a chosen option (boards: 2).
+const RING: f32 = size::FOCUS_RING;
+const GAP: Space = Space::S12;
 
 impl RadioGroup {
     /// A group with nothing chosen.
@@ -45,7 +47,8 @@ impl RadioGroup {
         self.selected.unwrap_or(0)
     }
 
-    fn row(&self, rect: Rect, index: usize, mode: InputMode) -> Rect {
+    /// The row of option `index`.
+    pub(crate) fn row(&self, rect: Rect, index: usize, mode: InputMode) -> Rect {
         let height = mode.min_target();
         Rect::new(rect.x, rect.y + index as f32 * height, rect.w, height)
     }
@@ -65,7 +68,7 @@ impl RadioGroup {
         Size::new(natural.min(avail).max(DOT), rows * cx.mode.min_target())
     }
 
-    /// Paints the group; `hover` and `pressed` are the option under the pointer.
+    /// Paints the group; `parts` are the options under the pointer (hovered, pressed).
     pub(crate) fn paint(
         &self,
         p: &mut Painter<'_>,
@@ -82,33 +85,38 @@ impl RadioGroup {
             let slot = style::take_start(&mut inner, DOT, direction);
             style::take_start(&mut inner, GAP.points(), direction);
             let dot = style::centered(slot, Size::new(DOT, DOT));
-            let state = Visual {
+            let local = Visual {
                 hovered: v.hovered && parts.0 == Some(index),
                 pressed: v.pressed && parts.1 == Some(index),
                 ..*v
             };
-            let chosen = self.selected == Some(index);
-            if chosen {
-                // A filled accent circle with a dark dot: "chosen" is carried by the dot's
-                // contrast, as the check mark does for a checkbox.
-                let on = p.color(ColorRole::OnAccent);
-                let fill = style::filled(p.color(ColorRole::Accent), on, &state);
-                p.fill(dot, Some(Radius::Round), fill);
-                p.fill(dot.inflate(-Space::S4.points()), Some(Radius::Round), on);
-            } else {
-                let bg = p.color(style::neutral_background(&state));
-                p.fill(dot, Some(Radius::Round), bg);
-                let ring = p.color(ColorRole::ControlBorder);
-                p.stroke(dot, Some(Radius::Round), size::STROKE, ring);
-            }
+            self.paint_dot(p, dot, &local, self.selected == Some(index));
             let color = p.color(ColorRole::Text);
             let spec = style::CONTROL_TEXT;
             style::draw_label(p, cx, option, spec, inner, TextAlign::Start, color);
             if v.focused && index == self.current() {
-                style::focus_ring(p, row, Radius::Control);
+                // Inside the row: rows touch, a ring outside would cover the neighbours.
+                let ring = p.color(state::FOCUS_RING);
+                p.stroke(row, Some(Radius::Control), size::FOCUS_RING, ring);
             }
         }
         p.set_opacity(previous);
+    }
+
+    /// Boards: a 2-point `accent_text` ring with an 8-point `accent_text` dot when chosen,
+    /// a `control_border` ring otherwise.
+    fn paint_dot(&self, p: &mut Painter<'_>, dot: Rect, v: &Visual, chosen: bool) {
+        let bg = p.color(style::neutral_background(v));
+        p.fill(dot, Some(Radius::Round), bg);
+        if chosen {
+            let accent = p.color(ColorRole::AccentText);
+            p.stroke(dot, Some(Radius::Round), RING, accent);
+            let inner = style::centered(dot, Size::new(Space::S8.points(), Space::S8.points()));
+            p.fill(inner, Some(Radius::Round), accent);
+        } else {
+            let ring = p.color(ColorRole::ControlBorder);
+            p.stroke(dot, Some(Radius::Round), p.hairline(), ring);
+        }
     }
 }
 

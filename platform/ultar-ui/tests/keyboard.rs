@@ -220,10 +220,9 @@ fn select_is_operated_by_keyboard() {
         ui.a11y_node(s.orientation).unwrap().state.expanded,
         Some(true)
     );
-    key(&mut ui, Key::ArrowDown);
-    key(&mut ui, Key::ArrowDown);
-    key(&mut ui, Key::ArrowDown);
-    key(&mut ui, Key::ArrowUp);
+    for step in [Key::ArrowDown, Key::ArrowDown, Key::ArrowDown, Key::ArrowUp] {
+        key(&mut ui, step);
+    }
     let response = key(&mut ui, Key::Enter);
     assert_eq!(
         kinds(&response.actions),
@@ -231,11 +230,7 @@ fn select_is_operated_by_keyboard() {
     );
     assert_eq!(ui.selected(s.orientation).unwrap(), 1);
     assert!(!ui.is_open(s.orientation));
-    assert_eq!(
-        ui.focused(),
-        Some(s.orientation),
-        "focus stays on the select"
-    );
+    assert_eq!(ui.focused(), Some(s.orientation), "focus stays");
     // Home/End, choosing the current option again, and Escape.
     key(&mut ui, Key::Space);
     key(&mut ui, Key::End);
@@ -260,9 +255,11 @@ fn select_is_operated_by_keyboard() {
         vec![ActionKind::Closed],
         "same option: no Selected"
     );
-    // Tab closes the list and moves on; other keys are left alone while it is open.
+    // Tab closes the list and moves on; a letter jumps to an option (type-ahead) and keys
+    // the list does not know are left alone.
     key(&mut ui, Key::Enter);
-    assert!(!key(&mut ui, Key::Char('a')).consumed);
+    assert!(key(&mut ui, Key::Char('a')).consumed);
+    assert!(!key(&mut ui, Key::Backspace).consumed);
     let response = key(&mut ui, Key::Tab);
     assert_eq!(kinds(&response.actions), vec![ActionKind::Closed]);
     assert_eq!(ui.focused(), Some(s.night));

@@ -250,3 +250,78 @@ Accessibility: 14 new `Role`s (`Role::ALL`), `A11yState::selected`,
 
 The platform must call `Ui::advance_to` at `Ui::next_wake()` (tooltip delay) even when
 `animating()` is false, and map Page Up/Down and the menu key (or Shift+F10) to the new keys.
+
+---
+
+# Wave 4 (2026-11-23): review round 3 (`docs/review/ui-runde-3.md`) fixed
+
+Supersedes the wave-3 statements above where they differ.
+
+## Fonts
+All four weights of the text and title roles are real faces now (Latin and Arabic 400 / 500 /
+600 / 700; mono 400 / 700). Noto Sans Regular/Bold and Noto Sans Arabic Regular were replaced
+by the unhinted releases of the same commit (see `assets/fonts/SOURCES.md`); ultar-shell,
+ultar-wm and the kernel installer read the same file names and family names. Marks that reach
+beyond the line box grow the line (`Line::height`), so vocalised Arabic and Kufi titles are
+never clipped. 12-point Arabic is drawn at 500 (`type.small_weight_arabic`).
+
+## Tokens (both the toolkit and `design/boards` read them)
+`size.border, row_min, box, scroll_line, touch_slop`; `motion.tooltip_delay, long_press,
+repeat, double_click, spinner_period, toast`; `state.focus_ring = "info"` (reason in
+DESKTOP-SPEC §3 "Fokusrahmen"), `state.spinner_sweep, busy_segment`;
+`type.small_weight_arabic`.
+
+## Painting and speed
+- Under a dialog or sheet the background is painted and dimmed once into a backdrop buffer
+  (reused while the dialog stays open); a frame copies the damaged part and paints only the
+  dialog. Constant-colour spans blend with 16-bit vector arithmetic (exact, tested against
+  the per-pixel formula); a shadow is not painted under the opaque panel it belongs to.
+- Measured sizes are cached per node and width; `invalidate_node` re-measures one branch.
+- `[profile.release.package.ultar-ui] opt-level = 3` in the workspace `Cargo.toml`.
+- `tests/r3_perf.rs` asserts the budgets of plan §3.6 (99th percentile of 200 frames, best of
+  three rounds): 8 ms full HD, 16 ms phone 1080 × 2400, 16 ms 4K at scale 2, 2000-row list
+  8 ms. Ignored in debug builds; run `cargo test --release --test r3_perf -- --test-threads=1`
+  (CI should do this on a quiet machine). Measured on the shared x86 build machine: dialog
+  opens p99 3.3–5.4 ms, full repaint under a dialog 1.3–1.4 ms, 4K under a sheet 13.8 ms,
+  phone sheet opens 8.1–9.7 ms, 2000 rows 0.9–1.8 ms.
+
+## Input primitives (M7)
+- `Event::Modifiers`, `Response::modifiers` (Ctrl/Shift with clicks).
+- `ActionKind::DoubleActivated` (second click within `motion.double_click`, same node and
+  place; rows of tables and trees count too).
+- `Button::hold()`: `Pressed`, `Repeated` (after `motion.long_press`, every `motion.repeat`,
+  at most 8 per clock step) and `Released` instead of `Activated`.
+- `Ui::set_draggable`: `DragStarted`, `Dragged(delta)`, `DragEnded(delta)` beyond
+  `size.touch_slop`; the node is then not activated.
+- Long press by touch (`motion.long_press`) opens the context menu; the release activates
+  nothing.
+- **Clock actions:** after `Ui::advance_to`, call `Ui::take_actions()` (repeats, long press,
+  toast timeouts); what is not taken comes first in the next `Response`. `Ui::next_wake()`
+  includes gestures and toasts.
+
+## New widgets
+`TextField::password` (masked, value never in the accessibility tree, shown while its eye
+button is held), `TextField::labelled` (label above), `Dialog::panel` + `Ui::open_panel(panel,
+anchor)` (anchored, no scrim, a press beside closes it), `Dialog::alert`, `Table` (rows are
+data; headers sort: `Sorted(column, ascending)`, `RowActivated`), `Tree` / `TreeItem`
+(`Expanded(index, open)`, arrows in reading direction), `HeaderBar`, `List::navigation()`
+(sidebar), `Toast` with `Ui::show_toast / hide_toast / toasts` (status, at most 3, without an
+action it goes after `motion.toast`, Ctrl+Enter runs the action, Esc closes the newest;
+`ToastAction(id)`, `ToastClosed(id)`).
+Check box: mixed state, loading and error; list item and slider: loading and error. Radio
+groups and tabs have neither (exception written into DESKTOP-SPEC §3).
+
+## Accessibility
+35 roles. `A11yNode` gains `part`, `parent`, `position` (n of m), `labelled_by`, `range`
+(min, max, step); `A11yState` gains `mixed` and `level`. Radio options, tabs, open select
+options, table headers and rows, tree items, the clear / show button of search and password
+fields and toast buttons are nodes. Info and success are `Status`, warning and danger `Alert`.
+A dialog whose default action is a danger button opens with the focus on its cancel action.
+
+## Boards
+`design/boards` reads the same tokens (focus ring role, state overlays and disabled opacity,
+scrim, border, row minimum, box) and draws the toolkit's switch, slider, progress, check box,
+primary edge (two borders) and list row. New boards: `Menus` (menu, context menu with
+submenu, select list, tooltip), `Bricks` (tabs, scrollbar, bottom sheet, toast) and
+`StatesLight`. `python3 design/boards/build.py` regenerates `project/*.dc.html`,
+`docs/ui/CLICKS.md` and `docs/ui/ICONS.md` (move the two .md files to `docs/ui/`).

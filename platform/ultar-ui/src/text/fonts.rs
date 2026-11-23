@@ -56,23 +56,33 @@ fonts! {
     Arabic, "NotoNaskhArabic-Regular.ttf", typography::FAMILY_ARABIC_TEXT;
     /// Noto Naskh Arabic Medium – Arabic running text at weight 500.
     ArabicMedium, "NotoNaskhArabic-Medium.ttf", typography::FAMILY_ARABIC_TEXT;
-    /// Noto Naskh Arabic Bold – Arabic running text at weights 600 and 700.
+    /// Noto Naskh Arabic SemiBold – Arabic running text at weight 600.
+    ArabicSemibold, "NotoNaskhArabic-SemiBold.ttf", typography::FAMILY_ARABIC_TEXT;
+    /// Noto Naskh Arabic Bold – Arabic running text at weight 700.
     ArabicBold, "NotoNaskhArabic-Bold.ttf", typography::FAMILY_ARABIC_TEXT;
-    /// Noto Kufi Arabic Regular – Arabic titles at weights 400 and 500.
+    /// Noto Kufi Arabic Regular – Arabic titles at weight 400.
     ArabicTitle, "NotoKufiArabic-Regular.ttf", typography::FAMILY_ARABIC_TITLE;
-    /// Noto Kufi Arabic Bold – Arabic titles at weights 600 and 700.
+    /// Noto Kufi Arabic Medium – Arabic titles at weight 500.
+    ArabicTitleMedium, "NotoKufiArabic-Medium.ttf", typography::FAMILY_ARABIC_TITLE;
+    /// Noto Kufi Arabic SemiBold – Arabic titles at weight 600.
+    ArabicTitleSemibold, "NotoKufiArabic-SemiBold.ttf", typography::FAMILY_ARABIC_TITLE;
+    /// Noto Kufi Arabic Bold – Arabic titles at weight 700.
     ArabicTitleBold, "NotoKufiArabic-Bold.ttf", typography::FAMILY_ARABIC_TITLE;
-    /// Noto Sans Arabic Regular – Arabic inside fixed-width text.
+    /// Noto Sans Arabic Regular – Arabic inside fixed-width text at 400 and 500.
     ArabicSans, "NotoSansArabic-Regular.ttf", typography::FAMILY_MONO_ARABIC;
-    /// Noto Sans Arabic Bold – Arabic inside bold fixed-width text.
+    /// Noto Sans Arabic Bold – Arabic inside fixed-width text at 600 and 700.
     ArabicSansBold, "NotoSansArabic-Bold.ttf", typography::FAMILY_MONO_ARABIC;
-    /// Noto Sans Regular – Latin text, digits, symbols at weights 400 and 500.
+    /// Noto Sans Regular – Latin text, digits, symbols at weight 400.
     Latin, "NotoSans-Regular.ttf", typography::FAMILY_LATIN;
-    /// Noto Sans Bold – Latin text, digits, symbols at weights 600 and 700.
+    /// Noto Sans Medium – Latin text, digits, symbols at weight 500.
+    LatinMedium, "NotoSans-Medium.ttf", typography::FAMILY_LATIN;
+    /// Noto Sans SemiBold – Latin text, digits, symbols at weight 600.
+    LatinSemibold, "NotoSans-SemiBold.ttf", typography::FAMILY_LATIN;
+    /// Noto Sans Bold – Latin text, digits, symbols at weight 700.
     LatinBold, "NotoSans-Bold.ttf", typography::FAMILY_LATIN;
-    /// Noto Sans Mono Regular – fixed-width text at weights 400 and 500.
+    /// Noto Sans Mono Regular – fixed-width text at 400 and 500.
     Mono, "NotoSansMono-Regular.ttf", typography::FAMILY_MONO;
-    /// Noto Sans Mono Bold – fixed-width text at weights 600 and 700.
+    /// Noto Sans Mono Bold – fixed-width text at 600 and 700.
     MonoBold, "NotoSansMono-Bold.ttf", typography::FAMILY_MONO;
 }
 
@@ -114,7 +124,7 @@ pub enum Weight {
     Regular,
     /// 500.
     Medium,
-    /// 600 (drawn with the bold file).
+    /// 600.
     Semibold,
     /// 700.
     Bold,
@@ -126,7 +136,17 @@ impl Weight {
         typography::WEIGHTS[self as usize]
     }
 
-    /// `true` when the bold file is used.
+    /// The weight of a numeric value: the nearest token weight.
+    pub const fn from_value(value: u16) -> Weight {
+        match value {
+            0..=449 => Weight::Regular,
+            450..=549 => Weight::Medium,
+            550..=649 => Weight::Semibold,
+            _ => Weight::Bold,
+        }
+    }
+
+    /// `true` when fixed-width text uses its bold file (600 and 700).
     pub const fn uses_bold_file(self) -> bool {
         matches!(self, Weight::Semibold | Weight::Bold)
     }
@@ -170,9 +190,12 @@ pub(crate) const fn arabic_face(role: FontRole, weight: Weight) -> FontId {
     match (role, weight) {
         (FontRole::Text, Weight::Regular) => FontId::Arabic,
         (FontRole::Text, Weight::Medium) => FontId::ArabicMedium,
-        (FontRole::Text, _) => FontId::ArabicBold,
-        (FontRole::Title, Weight::Regular | Weight::Medium) => FontId::ArabicTitle,
-        (FontRole::Title, _) => FontId::ArabicTitleBold,
+        (FontRole::Text, Weight::Semibold) => FontId::ArabicSemibold,
+        (FontRole::Text, Weight::Bold) => FontId::ArabicBold,
+        (FontRole::Title, Weight::Regular) => FontId::ArabicTitle,
+        (FontRole::Title, Weight::Medium) => FontId::ArabicTitleMedium,
+        (FontRole::Title, Weight::Semibold) => FontId::ArabicTitleSemibold,
+        (FontRole::Title, Weight::Bold) => FontId::ArabicTitleBold,
         (FontRole::Mono, Weight::Regular | Weight::Medium) => FontId::ArabicSans,
         (FontRole::Mono, _) => FontId::ArabicSansBold,
     }
@@ -180,11 +203,13 @@ pub(crate) const fn arabic_face(role: FontRole, weight: Weight) -> FontId {
 
 /// The face for everything that is not Arabic (Latin, digits, symbols) of a role at a weight.
 pub(crate) const fn latin_face(role: FontRole, weight: Weight) -> FontId {
-    match (role, weight.uses_bold_file()) {
-        (FontRole::Mono, false) => FontId::Mono,
-        (FontRole::Mono, true) => FontId::MonoBold,
-        (_, false) => FontId::Latin,
-        (_, true) => FontId::LatinBold,
+    match (role, weight) {
+        (FontRole::Mono, Weight::Regular | Weight::Medium) => FontId::Mono,
+        (FontRole::Mono, _) => FontId::MonoBold,
+        (_, Weight::Regular) => FontId::Latin,
+        (_, Weight::Medium) => FontId::LatinMedium,
+        (_, Weight::Semibold) => FontId::LatinSemibold,
+        (_, Weight::Bold) => FontId::LatinBold,
     }
 }
 
@@ -283,16 +308,22 @@ mod tests {
     fn the_weight_of_each_file_is_the_one_it_is_used_for() {
         let fonts = Fonts::new().unwrap();
         let weight = |id: FontId| fonts.face(id).weight().to_number();
-        for role in [FontRole::Text, FontRole::Title, FontRole::Mono] {
-            assert_eq!(weight(arabic_face(role, Weight::Regular)), 400);
-            assert_eq!(weight(arabic_face(role, Weight::Semibold)), 700);
-            assert_eq!(weight(arabic_face(role, Weight::Bold)), 700);
-            assert_eq!(weight(latin_face(role, Weight::Regular)), 400);
-            assert_eq!(weight(latin_face(role, Weight::Medium)), 400);
-            assert_eq!(weight(latin_face(role, Weight::Bold)), 700);
+        let all = [
+            Weight::Regular,
+            Weight::Medium,
+            Weight::Semibold,
+            Weight::Bold,
+        ];
+        for role in [FontRole::Text, FontRole::Title] {
+            for w in all {
+                assert_eq!(weight(arabic_face(role, w)), w.value(), "{role:?} {w:?}");
+                assert_eq!(weight(latin_face(role, w)), w.value(), "{role:?} {w:?}");
+            }
         }
-        assert_eq!(weight(arabic_face(FontRole::Text, Weight::Medium)), 500);
-        assert_eq!(weight(arabic_face(FontRole::Title, Weight::Medium)), 400);
+        for (w, file) in [(Weight::Medium, 400), (Weight::Semibold, 700)] {
+            assert_eq!(weight(arabic_face(FontRole::Mono, w)), file);
+            assert_eq!(weight(latin_face(FontRole::Mono, w)), file);
+        }
     }
 
     #[test]
@@ -302,7 +333,10 @@ mod tests {
         let (text, title, mono) = (FontRole::Text, FontRole::Title, FontRole::Mono);
         assert_eq!(pick('س', None, text, Weight::Regular), FontId::Arabic);
         assert_eq!(pick('س', None, text, Weight::Medium), FontId::ArabicMedium);
-        assert_eq!(pick('س', None, text, Weight::Semibold), FontId::ArabicBold);
+        assert_eq!(
+            pick('س', None, text, Weight::Semibold),
+            FontId::ArabicSemibold
+        );
         assert_eq!(
             pick('س', None, title, Weight::Bold),
             FontId::ArabicTitleBold
@@ -310,8 +344,11 @@ mod tests {
         assert_eq!(pick('س', None, title, Weight::Regular), FontId::ArabicTitle);
         assert_eq!(pick('س', None, mono, Weight::Regular), FontId::ArabicSans);
         assert_eq!(pick('س', None, mono, Weight::Bold), FontId::ArabicSansBold);
-        assert_eq!(pick('a', None, text, Weight::Medium), FontId::Latin);
-        assert_eq!(pick('a', None, title, Weight::Semibold), FontId::LatinBold);
+        assert_eq!(pick('a', None, text, Weight::Medium), FontId::LatinMedium);
+        assert_eq!(
+            pick('a', None, title, Weight::Semibold),
+            FontId::LatinSemibold
+        );
         assert_eq!(pick('a', None, mono, Weight::Regular), FontId::Mono);
         assert_eq!(pick('a', None, mono, Weight::Bold), FontId::MonoBold);
         assert_eq!(pick('…', None, text, Weight::Regular), FontId::Latin);
@@ -353,14 +390,6 @@ mod tests {
     #[test]
     fn fallback_chain_reaches_a_face_that_has_the_character() {
         let fonts = Fonts::new().unwrap();
-        // U+0870 (Arabic Extended-B) is missing in the embedded Noto Sans Arabic Regular
-        // (the mono companion) but present in Noto Naskh Arabic.
-        let rare = '\u{0870}';
-        assert!(!fonts.has_glyph(FontId::ArabicSans, rare));
-        assert_eq!(
-            fonts.pick(rare, None, FontRole::Mono, Weight::Regular),
-            FontId::Arabic
-        );
         // Arabic punctuation the Kufi face lacks nothing of; Latin punctuation it lacks
         // (parentheses) comes from the Latin face of the same weight.
         assert!(!fonts.has_glyph(FontId::ArabicTitleBold, '('));

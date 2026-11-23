@@ -22,10 +22,12 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "Menus",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "States"
+    "States",
+    "StatesLight"
    ]
   },
   {
@@ -35,10 +37,12 @@
    "used_in": [
     "InstallerDisk",
     "InstallerDrivers",
+    "Menus",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
-    "States"
+    "States",
+    "StatesLight"
    ]
   },
   {
@@ -132,6 +136,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "Bricks",
     "CalendarSheet",
     "DesktopBottom",
     "DesktopTop",
@@ -154,6 +159,7 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "Menus",
     "Overview"
    ]
   },
@@ -162,7 +168,8 @@
    "meaning": "delete (action)",
    "mirrored_in_rtl": false,
    "used_in": [
-    "Account"
+    "Account",
+    "Menus"
    ]
   },
   {
@@ -171,6 +178,8 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "Bricks",
+    "Menus",
     "PhoneDial",
     "PhoneInCall",
     "PhoneIncoming"
@@ -183,6 +192,7 @@
    "used_in": [
     "DesktopBottom",
     "InstallerDrivers",
+    "Menus",
     "SettingsDrivers"
    ]
   },
@@ -217,12 +227,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "Bricks",
     "DesktopBottom",
     "Installer",
     "InstallerDisk",
     "InstallerDrivers",
     "InstallerSummary",
     "Login",
+    "Menus",
     "Overview",
     "PhoneDial",
     "Projection",
@@ -230,6 +242,7 @@
     "SettingsDisplayLight",
     "SettingsDrivers",
     "States",
+    "StatesLight",
     "Store",
     "SurfaceStates"
    ]
@@ -239,9 +252,12 @@
    "meaning": "hint",
    "mirrored_in_rtl": false,
    "used_in": [
+    "Bricks",
     "Installer",
     "InstallerDisk",
+    "Menus",
     "States",
+    "StatesLight",
     "Store",
     "SurfaceStates"
    ]
@@ -267,6 +283,7 @@
     "InstallerSummary",
     "SettingsDrivers",
     "States",
+    "StatesLight",
     "SurfaceStates"
    ]
   },
@@ -317,6 +334,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "States",
+    "StatesLight",
     "SurfaceStates"
    ]
   },
@@ -345,7 +363,8 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
-    "States"
+    "States",
+    "StatesLight"
    ]
   },
   {
@@ -722,10 +741,12 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "Menus",
     "Overview",
     "PhoneDial",
     "QuickSettings",
-    "States"
+    "States",
+    "StatesLight"
    ]
   },
   {
@@ -818,6 +839,7 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "Menus",
     "Overview",
     "QuickSettings"
    ]

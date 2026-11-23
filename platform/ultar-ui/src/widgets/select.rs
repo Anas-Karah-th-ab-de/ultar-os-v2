@@ -130,10 +130,10 @@ impl Select {
             );
         } else {
             p.icon(
-                IconId::ChevronEnd,
+                IconId::ChevronDown,
                 chevron,
                 CHEVRON,
-                QuarterTurns::One,
+                QuarterTurns::None,
                 muted,
             );
         }

@@ -41,108 +41,236 @@ macro_rules! icons {
 }
 
 icons! {
-    Grid, "grid", false, "Nine dots: all apps.",
-        "M5 5h.01M12 5h.01M19 5h.01M5 12h.01M12 12h.01M19 12h.01M5 19h.01M12 19h.01M19 19h.01";
-    Search, "search", false, "Magnifier: search.",
-        "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14zM20 20l-3.5-3.5";
-    Wifi, "wifi", false, "Fan: Wi-Fi.",
-        "M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01";
-    Volume, "volume", true, "Speaker: sound.",
-        "M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11";
-    Battery, "battery", false, "Battery: energy.",
-        "M3 8h15v8H3zM21 11v2M5.5 10.5h8v3h-8z";
-    Bluetooth, "bluetooth", false, "Rune: Bluetooth.",
-        "M7 7l10 10-5 4V3l5 4L7 17";
-    Moon, "moon", false, "Moon: night light / dark.",
-        "M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z";
-    Sun, "sun", false, "Sun: brightness.",
-        "M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4";
-    Gear, "gear", false, "Gear: settings (only that).",
-        "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6zM19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.5 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.5 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.5z";
-    Power, "power", false, "Power ring: power menu.",
-        "M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0";
-    Folder, "folder", false, "Folder: files.",
-        "M3 6.5h6l2 2.5h10v9.5H3z";
-    Globe, "globe", false, "Globe: browser / network.",
-        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
-    Terminal, "terminal", false, "Prompt window: terminal.",
-        "M3 5h18v14H3zM7 10l3 2.5L7 15M12.5 15H17";
-    Bag, "bag", false, "Shopping bag: Ultar Store.",
-        "M5 8h14l-1 12H6zM9 8V6.5a3 3 0 0 1 6 0V8";
-    File, "file", false, "Sheet: text document.",
-        "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6";
-    Trash, "trash", false, "Bin: delete.",
-        "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13";
-    Monitor, "monitor", false, "Screen: display.",
-        "M3 5h18v11H3zM9 20h6M12 16v4";
-    Chip, "chip", false, "Chip: drivers and hardware.",
-        "M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4";
-    Shield, "shield", false, "Shield: security.",
-        "M12 3l8 3v6c0 4.5-3.3 7.8-8 9c-4.7-1.2-8-4.5-8-9V6z";
-    Bell, "bell", false, "Bell: notifications.",
-        "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0";
-    Mesh, "mesh", false, "Two linked circles: device group.",
-        "M7 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5zM17 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5zM9.5 12h5";
-    Plane, "plane", false, "Plane: flight mode.",
-        "M3 13l18-8-6 16-3-6z";
-    Minimize, "min", false, "Dash: minimise window.",
-        "M6 12h12";
-    Maximize, "max", false, "Square: maximise window.",
-        "M6 6h12v12H6z";
-    Close, "close", false, "Cross: close window or dialog.",
-        "M6 6l12 12M18 6L6 18";
-    ChevronEnd, "chev", true, "Chevron towards the end edge: next / open.",
+    Back, "back", true, "Back (towards the start side).",
+        "M15 6l-6 6 6 6";
+    Forward, "forward", true, "Forward / open (towards the end side).",
         "M9 6l6 6-6 6";
-    Check, "check", false, "Check mark: done / selected.",
-        "M5 12.5l4.5 4.5L19 7.5";
-    Image, "image", false, "Picture: image.",
-        "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9.5h.01";
-    Download, "download", false, "Arrow onto line: download.",
-        "M12 4v11M7.5 11l4.5 4.5 4.5-4.5M5 20h14";
-    User, "user", false, "Person: account.",
-        "M12 4a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM4.5 20a7.5 7.5 0 0 1 15 0";
-    Keyboard, "keyboard", false, "Keyboard: keyboard.",
-        "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8";
-    Lock, "lock", false, "Closed lock: locked.",
-        "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3";
-    Screenshot, "shot", false, "Corner marks: screenshot.",
-        "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3";
-    Palette, "palette", false, "Palette: appearance.",
-        "M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2.2c-.6-1.4.3-2.8 2-2.8H18a3 3 0 0 0 3-3c0-5.5-4-10-9-10zM7.5 12h.01M9.5 8h.01M14 7.5h.01";
-    Window, "window", false, "Window: desktop and windows.",
-        "M4 5h16v14H4zM4 9h16";
-    Mouse, "mouse", false, "Mouse: mouse / touchpad.",
-        "M8 3h8a3 3 0 0 1 3 3v9a7 7 0 0 1-14 0V6a3 3 0 0 1 3-3zM12 3v6";
-    Update, "update", false, "Circular arrows: updates / reload.",
-        "M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5";
-    Accessibility, "access", false, "Figure: accessibility.",
-        "M12 3.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3zM5 9l7 1 7-1M12 10v5M12 15l-3 6M12 15l3 6";
-    Cable, "cable", false, "Plug: wired network.",
-        "M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4";
-    Home, "home", false, "House: home folder.",
+    ChevronDown, "chevron-down", false, "Opens a list of choices (select).",
+        "M6 9l6 6 6-6";
+    Home, "home", false, "Home folder.",
         "M4 11l8-7 8 7v9h-5v-6H9v6H4z";
-    Code, "code", false, "Angle brackets: code.",
-        "M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14";
-    Music, "music", false, "Notes: music.",
-        "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0a3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0a3 3 0 0 1 6 0z";
-    Assistant, "spark", true, "Speech bubble with spark: assistant.",
-        "M5 5h14v10H10l-5 4zM12 7.5l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9z";
-    Package, "box", false, "Box: package.",
-        "M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8";
-    Plus, "plus", false, "Plus: new / add.",
+    Grid, "grid", false, "All apps.",
+        "M5 5h.01M12 5h.01M19 5h.01M5 12h.01M12 12h.01M19 12h.01M5 19h.01M12 19h.01M19 19h.01";
+    Search, "search", false, "Search.",
+        "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14zM20 20l-3.5-3.5";
+    More, "more", false, "More actions for this element.",
+        "M5 12h.01M12 12h.01M19 12h.01";
+    Min, "min", false, "Minimise window.",
+        "M6 12h12";
+    Max, "max", false, "Maximise window.",
+        "M6 6h12v12H6z";
+    Close, "close", false, "Close window or dialog.",
+        "M6 6l12 12M18 6L6 18";
+    Plus, "plus", false, "New / add.",
         "M12 5v14M5 12h14";
-    Star, "star", false, "Star: favourite.",
-        "M12 4l2.5 5 5.5.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.5-.8z";
-    Usb, "usb", false, "Trident: USB.",
-        "M12 3v14M9 6l3-3 3 3M12 17a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM7 9v3l5 3M17 8v4l-5 3";
-    Info, "info", false, "Circle with i: information.",
+    Trash, "trash", false, "Delete (action).",
+        "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13";
+    Copy, "copy", true, "Copy.",
+        "M8 8h12v12H8zM4 16V4h12";
+    Download, "download", false, "Download (action, download list).",
+        "M12 4v11M7.5 11l4.5 4.5 4.5-4.5M5 20h14";
+    Reload, "reload", true, "Reload.",
+        "M20 12a8 8 0 1 1-2.3-5.6L20 9M20 4v5h-5";
+    Eject, "eject", false, "Eject a removable drive.",
+        "M12 5l7 9H5zM5 18h14";
+    Backspace, "backspace", true, "Delete the last digit.",
+        "M9 6h11v12H9l-5-6zM12.5 10l4 4M16.5 10l-4 4";
+    Check, "check", false, "Done / selected.",
+        "M5 12.5l4.5 4.5L19 7.5";
+    Info, "info", false, "Hint.",
         "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 11v6M12 7.5h.01";
-    Success, "success", false, "Circle with check mark: it worked.",
-        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM8 12.5l3 3 5-6";
-    Warning, "warning", false, "Triangle with exclamation mark: attention.",
-        "M12 3.5l9.5 16.5h-19zM12 10v4.5M12 17.5h.01";
-    Error, "error", false, "Circle with cross: it failed.",
-        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9 9l6 6M15 9l-6 6";
+    Warning, "warning", false, "Warning.",
+        "M12 3l10 18H2zM12 10v5M12 18h.01";
+    Error, "error", false, "Error.",
+        "M8 3h8l5 5v8l-5 5H8l-5-5V8zM12 8v5M12 16.5h.01";
+    Lock, "lock", false, "Locked / lock the screen.",
+        "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3";
+    Secure, "secure", false, "Encrypted connection or call.",
+        "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3M10 15.5l1.5 1.5 3-3";
+    Shield, "shield", false, "Security.",
+        "M12 3l8 3v6c0 4.5-3.3 7.8-8 9c-4.7-1.2-8-4.5-8-9V6z";
+    Eye, "eye", false, "Show (password visible).",
+        "M2 12c2.5-4.5 6-7 10-7s7.5 2.5 10 7c-2.5 4.5-6 7-10 7s-7.5-2.5-10-7zM12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z";
+    Ring, "ring", false, "In progress (progress ring).",
+        "M12 3a9 9 0 1 0 9 9";
+    Block, "block", false, "Ad and tracker blocking.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8";
+    Wifi, "wifi", false, "Wi-Fi (strength).",
+        "M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01";
+    Offline, "offline", false, "No connection (offline).",
+        "M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01M4 3l16 18";
+    Cable, "cable", false, "Wired network.",
+        "M9 3v5M15 3v5M7 8h10v4a5 5 0 0 1-10 0zM12 17v4";
+    Cell, "cell", true, "Mobile network (signal bars).",
+        "M4 20v-3M9 20v-7M14 20V9M19 20V4";
+    Plane, "plane", false, "Airplane mode.",
+        "M3 13l18-8-6 16-3-6z";
+    Bluetooth, "bluetooth", false, "Bluetooth.",
+        "M7 7l10 10-5 4V3l5 4L7 17";
+    Vpn, "vpn", false, "VPN (shield with key).",
+        "M12 3l8 3v6c0 4.5-3.3 7.8-8 9c-4.7-1.2-8-4.5-8-9V6zM12 8a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM12 12v5M12 15h2";
+    Mesh, "mesh", false, "Mesh (linked devices).",
+        "M7 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5zM17 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5zM9.5 12h5";
+    Cloud, "cloud", false, "Ultar account / cloud.",
+        "M7 18a4 4 0 0 1-.5-8a5.5 5.5 0 0 1 10.6-1.5A4.5 4.5 0 0 1 17 18z";
+    Network, "network", false, "Network (settings area).",
+        "M10 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4zM12 7v5M5 17v-5h14v5";
+    Sharing, "sharing", true, "Sharing services (settings area).",
+        "M5 10a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM19 4a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM19 16a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM7 11l10-4M7 13l10 4";
+    Volume, "volume", true, "Sound / volume.",
+        "M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11";
+    Speaker, "speaker", false, "Loudspeaker / output device.",
+        "M6 3h12v18H6zM12 11a3 3 0 1 0 0 6a3 3 0 0 0 0-6zM12 7h.01";
+    Mic, "mic", false, "Microphone.",
+        "M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4";
+    Sun, "sun", false, "Brightness.",
+        "M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4";
+    Moon, "moon", false, "Night light.",
+        "M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z";
+    Contrast, "contrast", false, "Dark theme.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 3v18M12 8l6.5-3M12 13l8.5-3.5M12 18l6.5-3";
+    Battery, "battery", true, "Power / battery.",
+        "M3 8h15v8H3zM21 11v2M5.5 10.5h8v3h-8z";
+    Monitor, "monitor", false, "Display.",
+        "M3 5h18v11H3zM9 20h6M12 16v4";
+    Keyboard, "keyboard", false, "Keyboard.",
+        "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8";
+    Mouse, "mouse", false, "Mouse and touchpad.",
+        "M8 3h8a3 3 0 0 1 3 3v9a7 7 0 0 1-14 0V6a3 3 0 0 1 3-3zM12 3v6";
+    Printer, "printer", false, "Printing.",
+        "M7 8V3h10v5M5 8h14v9H5zM8 14h8v7H8z";
+    Chip, "chip", false, "Drivers and hardware.",
+        "M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4";
+    Video, "video", false, "Camera / video on.",
+        "M3 6h12v12H3zM15 10l6-3v10l-6-3z";
+    CameraSwitch, "camera-switch", false, "Switch camera.",
+        "M3 7h4l2-3h6l2 3h4v12H3zM9 12a3 3 0 0 1 5-2M15 14a3 3 0 0 1-5 2";
+    ScreenShare, "screen-share", false, "Share the screen.",
+        "M3 5h18v11H3zM9 20h6M12 13V8M9.5 10.5L12 8l2.5 2.5";
+    Usb, "usb", false, "Removable drive (USB).",
+        "M12 3v14M9 6l3-3 3 3M12 17a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM7 9v3l5 3M17 8v4l-5 3";
+    Disk, "disk", false, "Internal disk / storage.",
+        "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3v12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 6c0 1.7 3.6 3 8 3s8-1.3 8-3M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3";
+    Phone, "phone", false, "Phone / voice call.",
+        "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1C10.5 20 4 13.5 4 5a1 1 0 0 1 1-1z";
+    Hangup, "hangup", false, "End or decline a call.",
+        "M3 14c5-5 13-5 18 0l-2.5 2.5-3.5-2v-2.5a9 9 0 0 0-6 0v2.5l-3.5 2z";
+    Keypad, "keypad", false, "Dial pad.",
+        "M7 4h.01M12 4h.01M17 4h.01M7 9h.01M12 9h.01M17 9h.01M7 14h.01M12 14h.01M17 14h.01M12 19h.01";
+    Pause, "pause", false, "Hold the call.",
+        "M8 5v14M16 5v14";
+    Message, "message", true, "Message.",
+        "M4 5h16v11H9l-5 4z";
+    CallIn, "call-in", true, "Incoming call (list).",
+        "M19 5L9 15M9 8v7h7";
+    CallOut, "call-out", true, "Outgoing call (list).",
+        "M6 18L16 8M9 8h7v7";
+    CallMissed, "call-missed", true, "Missed call (list).",
+        "M4 8l8 7 8-7M4 8v5M4 8h5";
+    Qr, "qr", false, "QR code.",
+        "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM18 14h.01M14 18h.01";
+    Gear, "gear", false, "Settings (only that).",
+        "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6zM19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.5 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.5 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.5z";
+    Power, "power", false, "Power menu.",
+        "M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0";
+    User, "user", false, "Account / person.",
+        "M12 4a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM4.5 20a7.5 7.5 0 0 1 15 0";
+    Users, "users", true, "Users of this device (settings area).",
+        "M9 5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7zM2.5 20a6.5 6.5 0 0 1 13 0M16 5.5a3 3 0 0 1 0 6M18 14.5a6 6 0 0 1 3.5 5.5";
+    Bell, "bell", false, "Notifications.",
+        "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0";
+    BellOff, "bell-off", false, "Do not disturb.",
+        "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0M4 3l16 18";
+    Clock, "clock", false, "Time.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 7v5l3.5 2";
+    Bag, "bag", false, "Ultar Store.",
+        "M5 8h14l-1 12H6zM9 8V6.5a3 3 0 0 1 6 0V8";
+    Folder, "folder", false, "Files (app).",
+        "M3 6.5h6l2 2.5h10v9.5H3z";
+    Access, "access", false, "Accessibility.",
+        "M12 3.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3zM5 9l7 1 7-1M12 10v5M12 15l-3 6M12 15l3 6";
+    Spark, "spark", true, "Assistant.",
+        "M5 5h14v10H10l-5 4zM12 7.5l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9z";
+    Update, "update", false, "Updates.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 16V8M8.5 11.5L12 8l3.5 3.5";
+    Shot, "shot", false, "Screenshot.",
+        "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3";
+    Palette, "palette", false, "Appearance.",
+        "M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2.2c-.6-1.4.3-2.8 2-2.8H18a3 3 0 0 0 3-3c0-5.5-4-10-9-10zM7.5 12h.01M9.5 8h.01M14 7.5h.01";
+    Colour, "colour", false, "Colour management.",
+        "M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z";
+    Dock, "dock", false, "Desktop and dock (settings area).",
+        "M3 5h18v14H3zM7 15h10";
+    Workspaces, "workspaces", false, "Windows and workspaces (settings area).",
+        "M2 8h6v8H2zM9 6h6v12H9zM16 8h6v8h-6z";
+    Apps, "apps", false, "Apps (settings area).",
+        "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM17 14v6M14 17h6";
+    Language, "language", true, "Region and language.",
+        "M5 21V4M5 5h13l-3 4 3 4H5";
+    Backup, "backup", true, "Backup.",
+        "M4 12a8 8 0 1 0 2.5-5.8L4 8M4 4v4h4M12 8v4l3 2";
+    Device, "device", false, "This device / system information.",
+        "M5 5h14v10H5zM2 19h20";
+    Cells, "cells", false, "Cells and containers.",
+        "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z";
+    Sos, "sos", false, "Emergency.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 7v10M7 12h10";
+    Play, "play", false, "Play.",
+        "M8 5l11 7-11 7z";
+    Prev, "prev", false, "Previous track.",
+        "M6 5v14M19 5L9 12l10 7z";
+    Next, "next", false, "Next track.",
+        "M18 5v14M5 5l10 7-10 7z";
+    Compass, "compass", false, "Discover (Store).",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM15.5 8.5l-2 5-5 2 2-5z";
+    Installed, "installed", false, "Installed (Store).",
+        "M4 5h16v14H4zM8 12.5l3 3 5-6";
+    PackageFile, "package-file", false, "Install from a file (Store).",
+        "M4 8l8-4 8 4v8l-8 4-8-4zM12 12v8M9 13.5l3 3 3-3";
+    Browser, "browser", false, "Ultar Browser (app).",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
+    Firefox, "firefox", false, "Firefox (fallback browser component).",
+        "M12 4a8 8 0 1 0 8 8c0-2-1-3.500-2-4.500c0 2-1 3-2 3c1-3-1-5.500-4-6.500z";
+    Terminal, "terminal", false, "Terminal (app).",
+        "M3 5h18v14H3zM7 10l3 2.5L7 15M12.5 15H17";
+    Editor, "editor", false, "Text editor (app).",
+        "M4 4h16v16H4zM8 8h8M12 8v8";
+    Office, "office", false, "Component Office tools.",
+        "M4 8h16v11H4zM9 8V5h6v3M4 13h16";
+    Code, "code", false, "Component Coder.",
+        "M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14";
+    Media, "media", false, "Component Media.",
+        "M3 5h18v14H3zM10 9l5 3-5 3z";
+    Mail, "mail", false, "Component Communication.",
+        "M3 6h18v12H3zM3 7l9 6 9-6";
+    Package, "package", false, "Component Linux programs.",
+        "M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8";
+    Windows, "windows", false, "Component Windows programs.",
+        "M4 4h16v16H4zM12 4v16M4 12h16";
+    Android, "android", false, "Component Android apps.",
+        "M6 18v-6a6 6 0 0 1 12 0v6zM8 5l1.500 2.500M16 5l-1.500 2.500M9.500 12h.01M14.500 12h.01";
+    Server, "server", false, "Component Containers and server.",
+        "M4 5h16v6H4zM4 13h16v6H4zM7.500 8h.01M7.500 16h.01";
+    Remote, "remote", false, "Component Remote access.",
+        "M3 5h18v11H3zM9 20h6M10 8l5 3-2 1 1 2";
+    PlaceDocuments, "place-documents", true, "Place: Documents.",
+        "M3 6.5h6l2 2.5h10v9.5H3zM8 12.5h8M8 15.5h5";
+    PlaceDownloads, "place-downloads", false, "Place: Downloads.",
+        "M3 6.5h6l2 2.5h10v9.5H3zM12 11v5M9.500 14l2.500 2.500 2.500-2.500";
+    PlacePictures, "place-pictures", false, "Place: Pictures.",
+        "M3 6.5h6l2 2.5h10v9.5H3zM7 16.500l3.500-3.500 2.500 2.500 2-2 2.500 3";
+    PlaceMusic, "place-music", false, "Place: Music.",
+        "M3 6.5h6l2 2.5h10v9.5H3zM11 16v-5l4-1v5M11 16a1 1 0 1 1-2 0a1 1 0 0 1 2 0zM15 15a1 1 0 1 1-2 0a1 1 0 0 1 2 0z";
+    Bin, "bin", false, "Place: Trash.",
+        "M5 8h14l-1.500 12h-11zM9 12v4M12 12v4M15 12v4";
+    KindFolder, "kind-folder", false, "File kind: folder.",
+        "M3 18.500V6.500h6l2 2.500h9v2.500M3 18.500l2.500-7h16l-2.500 7z";
+    KindText, "kind-text", true, "File kind: text document.",
+        "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6";
+    KindSheet, "kind-sheet", true, "File kind: spreadsheet.",
+        "M6 3h8l4 4v14H6zM14 3v4h4M9 11h6v6H9zM9 14h6M12 11v6";
+    KindImage, "kind-image", false, "File kind: image.",
+        "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.500 9.500h.01";
 }
 
 impl IconId {
@@ -179,7 +307,7 @@ mod tests {
         let count = names.len();
         names.dedup();
         assert_eq!(names.len(), count);
-        assert!(IconId::ChevronEnd.mirrored());
+        assert!(IconId::Forward.mirrored());
         assert!(IconId::Volume.mirrored());
         assert!(!IconId::Check.mirrored() && !IconId::Gear.mirrored() && !IconId::Close.mirrored());
     }

@@ -49,9 +49,10 @@ fn m3_switch_knob_does_not_jump_when_toggled_back_mid_animation() {
     ui.advance_to(1000);
     click(&mut ui, sw); // on; the knob starts to travel
     ui.advance_to(1010); // 10 of 120 ms
-    let travelling = knob_left(&mut ui, &mut canvas, ColorRole::OnAccent);
+                         // Wave 4: the knob of an "on" switch is `surface`, of an "off" one `text`.
+    let travelling = knob_left(&mut ui, &mut canvas, ColorRole::Surface);
     click(&mut ui, sw); // off again at the same instant
-    let after = knob_left(&mut ui, &mut canvas, ColorRole::Surface);
+    let after = knob_left(&mut ui, &mut canvas, ColorRole::Text);
     assert!(
         (after - travelling).abs() <= 2,
         "knob jumped from x={travelling} to x={after} without time passing"

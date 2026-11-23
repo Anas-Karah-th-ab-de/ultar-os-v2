@@ -56,7 +56,7 @@ impl Ui {
         }
         self.list_item_mut(id)?.selected = selected;
         // The label weight changes with the selection, and with it the item's height.
-        self.invalidate_layout();
+        self.invalidate_node(id);
         Ok(())
     }
 

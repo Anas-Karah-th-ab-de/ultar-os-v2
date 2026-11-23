@@ -31,25 +31,23 @@ fn clusters(layout: &TextLayout) -> usize {
 #[test]
 fn caret_inside_a_ligature_divides_its_advance() {
     let mut e = engine();
-    let mono = ar().with_role(FontRole::Mono);
-    let layout = e.layout("لا", &mono, None);
-    let (before, between, after) = (layout.caret_x(0), layout.caret_x(2), layout.caret_x(4));
-    assert_eq!((before, after), (layout.width, 0.0));
-    assert!((between - layout.width / 2.0).abs() < 0.01, "{between}");
-    assert_eq!(layout.index_at_x(layout.width * 0.45), 2);
-    // With a mark between lam and alef the mark does not count as a letter, and a click
-    // never lands between a letter and its mark.
-    let marked = e.layout("لَا", &mono, None);
-    assert_eq!(clusters(&marked), 1);
-    assert_eq!(
-        marked.caret_x(2),
-        marked.caret_x(4),
-        "after lam = after its fatha"
-    );
-    assert!((marked.caret_x(4) - marked.width / 2.0).abs() < 0.01);
-    for x in 0..=(marked.width.ceil() as usize) {
-        assert_ne!(marked.index_at_x(x as f32), 2, "x={x}");
+    // Naskh draws the vocalised word Allah as one ligature glyph: four letters (alef, lam,
+    // lam, heh) and two marks (shadda, superscript alef) in one cluster.
+    let word = "اللّٰه";
+    let layout = e.layout(word, &ar(), None);
+    assert_eq!(clusters(&layout), 1);
+    let w = layout.width;
+    let at = |byte: usize| layout.caret_x(byte);
+    assert_eq!((at(0), at(12)), (w, 0.0));
+    assert!((at(2) - 0.75 * w).abs() < 0.01 && (at(4) - 0.5 * w).abs() < 0.01);
+    assert!((at(6) - 0.25 * w).abs() < 0.01, "{}", at(6));
+    // Bytes: alef 0, lam 2, lam 4, shadda 6, superscript alef 8, heh 10.
+    assert_eq!((at(8), at(10)), (at(6), at(6)), "marks are no caret stops");
+    for x in 0..=(w.ceil() as usize) {
+        let index = layout.index_at_x(x as f32);
+        assert!(index != 6 && index != 8, "x={x}: {index}");
     }
+    assert_eq!(layout.index_at_x(0.45 * w), 4);
     // Latin ligature-free text keeps one position per character.
     let latin = e.layout("fi", &en(), None);
     assert!(latin.caret_x(0) < latin.caret_x(1) && latin.caret_x(1) < latin.caret_x(2));

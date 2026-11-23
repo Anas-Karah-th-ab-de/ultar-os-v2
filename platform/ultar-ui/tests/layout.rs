@@ -339,8 +339,8 @@ fn scale_and_touch_mode_change_pixels_not_logic() {
     );
     assert_eq!(ui.input_mode(), InputMode::Touch);
     assert_eq!(ui.size_class(), SizeClass::Medium);
-    ui.set_size(Size::new(390.0, 800.0));
+    ui.set_size(Size::new(390.0, 800.0)).unwrap();
     assert_eq!(ui.size_class(), SizeClass::Compact);
-    ui.set_size(Size::new(1440.0, 900.0));
+    ui.set_size(Size::new(1440.0, 900.0)).unwrap();
     assert_eq!(ui.size_class(), SizeClass::Wide);
 }

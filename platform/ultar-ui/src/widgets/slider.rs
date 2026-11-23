@@ -1,7 +1,7 @@
 //! Slider: a value on a range, growing from the start side to the end side.
 
 use super::style::{self, Visual};
-use super::{Label, MeasureCx};
+use super::{Label, MeasureCx, PaintCx};
 use crate::geom::{Rect, Size};
 use crate::paint::Painter;
 use crate::tokens::{size, ColorRole, Radius, Space};
@@ -120,19 +120,41 @@ impl Slider {
         self.snap(self.min + fraction * (self.max - self.min))
     }
 
-    pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
-        Size::new(NATURAL_W.min(avail), THUMB.max(cx.mode.min_target()))
+    pub(crate) fn measure(
+        &self,
+        cx: &mut MeasureCx<'_>,
+        avail: f32,
+        error: Option<&Label>,
+    ) -> Size {
+        let width = NATURAL_W.min(avail);
+        let band = THUMB.max(cx.mode.min_target());
+        Size::new(width, band + style::error_height(cx, error, width))
     }
 
-    pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect, v: &Visual) {
+    /// Paints the slider. Boards: track `control_border` (red with an error), filled part
+    /// `accent_text`, knob `text` with an `accent_text` ring; loading shows a progress ring
+    /// in place of the knob.
+    pub(crate) fn paint(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        rect: Rect,
+        v: &Visual,
+        error: Option<&Label>,
+    ) {
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
-        let track = Slider::track(rect);
-        let rest = p.color(ColorRole::ControlBorder);
+        let band = Rect::new(rect.x, rect.y, rect.w, cx.mode.min_target().min(rect.h));
+        let track = Slider::track(band);
+        let rest = p.color(if v.error {
+            ColorRole::Danger
+        } else {
+            ColorRole::ControlBorder
+        });
         p.fill(track, Some(Radius::Round), rest);
         let mut remaining = track;
         let filled = style::take_start(&mut remaining, track.w * self.fraction(), direction);
-        let accent = p.color(ColorRole::Accent);
+        let accent = p.color(ColorRole::AccentText);
         p.fill(filled, Some(Radius::Round), accent);
         let center_x = if direction.is_rtl() {
             filled.x
@@ -141,7 +163,7 @@ impl Slider {
         };
         let thumb = Rect::new(
             center_x - THUMB / 2.0,
-            rect.y + (rect.h - THUMB) / 2.0,
+            band.y + (band.h - THUMB) / 2.0,
             THUMB,
             THUMB,
         );
@@ -149,8 +171,14 @@ impl Slider {
             let halo = p.color(style::neutral_background(v));
             p.fill(thumb.inflate(Space::S4.points()), Some(Radius::Round), halo);
         }
-        let thumb_color = style::filled(accent, p.color(ColorRole::Text), v);
-        p.fill(thumb, Some(Radius::Round), thumb_color);
+        if v.loading {
+            p.spinner(thumb, cx.spin, accent);
+        } else {
+            let knob = p.color(ColorRole::Text);
+            p.fill(thumb, Some(Radius::Round), knob);
+            p.stroke(thumb, Some(Radius::Round), size::FOCUS_RING, accent);
+        }
+        style::paint_error(p, cx, error, rect, band.h);
         if v.focused {
             style::focus_ring(p, thumb, Radius::Round);
         }

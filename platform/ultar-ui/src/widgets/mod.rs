@@ -8,6 +8,7 @@ mod button;
 mod checkbox;
 mod containers;
 mod dialog;
+mod header_bar;
 mod info_bar;
 mod label;
 mod list;
@@ -20,16 +21,20 @@ mod select;
 mod slider;
 mod style;
 mod switch;
+mod table;
 mod tabs;
 mod text_field;
+mod toast;
 mod tone;
 mod tooltip;
+mod tree;
 
 pub use badge::Badge;
 pub use button::{Button, ButtonVariant, IconButton};
 pub use checkbox::Checkbox;
 pub use containers::{Card, Icon, Row, Text};
 pub use dialog::{Dialog, DialogKind};
+pub use header_bar::HeaderBar;
 pub use info_bar::{EmptyState, InfoBar};
 pub use label::{Label, LabelArg};
 pub use list::{List, ListItem};
@@ -42,14 +47,19 @@ pub use select::{Select, MAX_VISIBLE_OPTIONS};
 pub use slider::Slider;
 pub use style::Visual;
 pub use switch::Switch;
+pub use table::{Table, TableCursor, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS};
 pub use tabs::Tabs;
 pub use text_field::{TextDirection, TextField, DEFAULT_MAX_LEN};
+pub use toast::{Toast, MAX_TOASTS};
 pub use tone::Tone;
+pub use tree::{Tree, TreeItem, MAX_TREE_DEPTH, MAX_TREE_ITEMS};
 
 pub(crate) use containers::shadow_reach;
 pub(crate) use menu::MenuPanel;
 pub(crate) use select::PopupView;
 pub(crate) use style::focus_outset;
+pub(crate) use table::TablePart;
+pub(crate) use toast::ToastView;
 pub(crate) use tooltip::{paint_tooltip, tooltip_rect};
 
 use crate::geom::Size;
@@ -131,8 +141,14 @@ pub enum Widget {
     ListItem(ListItem),
     /// A vertical scroll container.
     Scroll(Scroll),
-    /// A dialog or sheet above everything else.
+    /// A dialog, sheet or panel above everything else.
     Dialog(Dialog),
+    /// Rows of cells under column headers.
+    Table(Table),
+    /// Items in levels that open and close.
+    Tree(Tree),
+    /// The top bar of a window or page; its children are the controls at start and end.
+    HeaderBar(HeaderBar),
 }
 
 macro_rules! widget_from {
@@ -147,7 +163,8 @@ macro_rules! widget_from {
 
 widget_from!(
     Flex, Text, Icon, Button, IconButton, Switch, Select, Slider, TextField, Row, Card, Badge,
-    Progress, Checkbox, RadioGroup, Tabs, InfoBar, EmptyState, List, ListItem, Scroll, Dialog
+    Progress, Checkbox, RadioGroup, Tabs, InfoBar, EmptyState, List, ListItem, Scroll, Dialog,
+    Table, Tree, HeaderBar
 );
 
 impl From<SearchField> for Widget {
@@ -172,6 +189,8 @@ impl Widget {
                 | Widget::RadioGroup(_)
                 | Widget::Tabs(_)
                 | Widget::ListItem(_)
+                | Widget::Table(_)
+                | Widget::Tree(_)
         )
     }
 
@@ -179,13 +198,26 @@ impl Widget {
     pub fn can_load(&self) -> bool {
         matches!(
             self,
-            Widget::Button(_) | Widget::IconButton(_) | Widget::Switch(_) | Widget::Select(_)
+            Widget::Button(_)
+                | Widget::IconButton(_)
+                | Widget::Switch(_)
+                | Widget::Select(_)
+                | Widget::Checkbox(_)
+                | Widget::ListItem(_)
+                | Widget::Slider(_)
         )
     }
 
     /// `true` for widgets that can show an error with a message.
     pub fn can_fail(&self) -> bool {
-        matches!(self, Widget::Select(_) | Widget::TextField(_))
+        matches!(
+            self,
+            Widget::Select(_)
+                | Widget::TextField(_)
+                | Widget::Checkbox(_)
+                | Widget::Slider(_)
+                | Widget::ListItem(_)
+        )
     }
 
     /// The layout container of this widget, if it lays out children as a flex.
@@ -196,6 +228,7 @@ impl Widget {
             Widget::List(list) => Some(&list.flex),
             Widget::Scroll(scroll) => Some(&scroll.flex),
             Widget::Dialog(dialog) => Some(&dialog.flex),
+            Widget::HeaderBar(bar) => Some(&bar.flex),
             _ => None,
         }
     }

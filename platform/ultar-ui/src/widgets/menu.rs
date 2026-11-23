@@ -119,6 +119,10 @@ pub(crate) struct MenuPanel {
     /// Top of each item's row, relative to the panel's top.
     tops: Vec<f32>,
     row_height: f32,
+    /// Height of all rows; more than the panel when the menu does not fit the surface.
+    content: f32,
+    /// How far the rows are moved up (a menu taller than the surface scrolls).
+    pub(crate) scroll: f32,
 }
 
 impl MenuPanel {
@@ -128,7 +132,7 @@ impl MenuPanel {
         let pad = PANEL_PAD.points();
         Some(Rect::new(
             self.rect.x + pad,
-            self.rect.y + top,
+            self.rect.y + top - self.scroll,
             self.rect.w - 2.0 * pad,
             self.row_height,
         ))
@@ -136,7 +140,34 @@ impl MenuPanel {
 
     /// The item under `pos`.
     pub(crate) fn item_at(&self, pos: Point) -> Option<usize> {
+        if !self.rect.contains(pos) {
+            return None;
+        }
         (0..self.tops.len()).find(|i| self.row(*i).is_some_and(|r| r.contains(pos)))
+    }
+
+    /// Moves the rows by `delta` points (clamped to the content).
+    pub(crate) fn scroll_by(&mut self, delta: f32) {
+        let max = (self.content - self.rect.h).max(0.0);
+        let target = self.scroll + delta;
+        self.scroll = if target.is_finite() {
+            target.clamp(0.0, max)
+        } else {
+            0.0
+        };
+    }
+
+    /// Scrolls so that item `index` is completely inside the panel.
+    pub(crate) fn reveal(&mut self, index: usize) {
+        let (Some(row), pad) = (self.row(index), PANEL_PAD.points()) else {
+            return;
+        };
+        let (top, bottom) = (self.rect.y + pad, self.rect.bottom() - pad);
+        if row.y < top {
+            self.scroll_by(row.y - top);
+        } else if row.bottom() > bottom {
+            self.scroll_by(row.bottom() - bottom);
+        }
     }
 }
 
@@ -247,15 +278,21 @@ impl Menu {
         surface: Size,
         place: impl Fn(Size) -> Point,
     ) -> MenuPanel {
-        let (size, tops) = self.measure(cx, surface);
-        let origin = place(size);
+        let (content, tops) = self.measure(cx, surface);
         let edge = PANEL_PAD.points();
+        // A menu taller than the surface shows what fits and scrolls.
+        let row_height = cx.mode.min_target();
+        let room = (surface.h - 2.0 * edge).max(row_height + 2.0 * edge);
+        let size = Size::new(content.w, content.h.min(room));
+        let origin = place(size);
         let x = fit(origin.x, edge, surface.w - size.w - edge);
         let y = fit(origin.y, edge, surface.h - size.h - edge);
         MenuPanel {
             rect: Rect::new(x, y, size.w, size.h),
             tops,
-            row_height: cx.mode.min_target(),
+            row_height,
+            content: content.h,
+            scroll: 0.0,
         }
     }
 
@@ -339,17 +376,8 @@ impl Menu {
         row: Rect,
         direction: Direction,
     ) {
-        let previous = p.set_opacity(if item.disabled {
-            state::DISABLED_OPACITY
-        } else {
-            1.0
-        });
-        let role = if item.danger {
-            ColorRole::Danger
-        } else {
-            ColorRole::Text
-        };
-        let color = p.color(role);
+        let previous = p.set_opacity([1.0, state::DISABLED_OPACITY][usize::from(item.disabled)]);
+        let color = p.color([ColorRole::Text, ColorRole::Danger][usize::from(item.danger)]);
         let mut inner = style::inset_inline(row, ROW_PAD);
         if self.has_slot() {
             let slot = style::take_start(&mut inner, SLOT, direction);
@@ -365,7 +393,7 @@ impl Menu {
             style::take_end(&mut inner, SLOT_GAP.points(), direction);
             if item.submenu.is_some() {
                 let muted = p.color(ColorRole::TextMuted);
-                p.icon(IconId::ChevronEnd, slot, SLOT, QuarterTurns::None, muted);
+                p.icon(IconId::Forward, slot, SLOT, QuarterTurns::None, muted);
             }
         }
         if let Some(shortcut) = &item.shortcut {
@@ -397,6 +425,7 @@ impl Menu {
         p.fill(panel.rect, Some(Radius::Control), bg);
         p.stroke(panel.rect, Some(Radius::Control), hairline, line);
         let direction = p.env().direction;
+        let saved = p.clip(panel.rect);
         for (index, item) in self.items.iter().enumerate() {
             let Some(row) = panel.row(index) else {
                 continue;
@@ -411,6 +440,7 @@ impl Menu {
             }
             self.paint_row(p, cx, item, row, direction);
         }
+        p.restore_clip(saved);
     }
 }
 

@@ -49,8 +49,8 @@ impl Tone {
     pub const fn icon(self) -> IconId {
         match self {
             Tone::Neutral | Tone::Info => IconId::Info,
-            Tone::Accent => IconId::Star,
-            Tone::Success => IconId::Success,
+            Tone::Accent => IconId::Check,
+            Tone::Success => IconId::Check,
             Tone::Warning => IconId::Warning,
             Tone::Danger => IconId::Error,
         }

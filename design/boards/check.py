@@ -6,7 +6,7 @@ from actions import ACTIONS
 T = gen.TOK
 SPACE = set(T['space']['values']); RADIUS = set(T['radius'].values()); SIZES = set(T['type']['sizes']); WEIGHTS = set(T['type']['weights'])
 LH = {str(T['type']['line_height_latin']), str(T['type']['line_height_arabic'])}
-BORDER = {int(T['size']['stroke']), T['size']['focus_ring']}
+BORDER = {T['size']['border'], 2 * T['size']['border'], T['size']['focus_ring']}
 ICON = {T['size']['icon_small'], T['size']['icon']}
 BASE = T['space']['values'][0]
 FAMILIES = {gen.FF_TEXT, gen.FF_TITLE, gen.FF_MONO}
@@ -24,6 +24,8 @@ class P(HTMLParser):
         self.name = name; self.th = theme; self.err = []; self.stack = []; self.ids = {}; self.bdi = 0; self.btn = None; self.clicks = 0; self.in_style = False; self.in_script = False
         self.colors = {v.lower() for k, v in vars(theme).items() if isinstance(v, str) and v.startswith('#')}
         self.focusables = []
+        st = T['state']
+        self.overlays = {gen.rgba(c, st[k]) for c in self.colors for k in ('hover_overlay', 'pressed_overlay')}
     def e(self, msg): self.err.append(msg)
     def style(self, tag, css):
         for decl in css.split(';'):
@@ -32,11 +34,11 @@ class P(HTMLParser):
             for h in HEX.findall(val):
                 if h.lower() not in self.colors: self.e('colour %s not a token of theme %s (%s)' % (h, self.th.name, prop))
             for r in RGBA.findall(val):
-                if r != self.th.scrim and r not in self.th.shadow: self.e('rgba %s not derived from the shadow token' % r)
+                if r != self.th.scrim and r not in self.th.shadow and r not in self.overlays: self.e('rgba %s is neither the scrim, the shadow nor a state overlay' % r)
             if prop == 'box-shadow':
                 if val != self.th.shadow: self.e('shadow "%s" is not the one elevation' % val)
                 continue
-            if prop == 'opacity': self.e('opacity is not a token')
+            if prop == 'opacity' and val != gen.DIM.split(': ')[1]: self.e('opacity %s is not state.disabled_opacity' % val)
             if prop == 'transform' and val != 'scaleX(-1)': self.e('transform %s' % val)
             if prop == 'font-weight' and int(val) not in WEIGHTS: self.e('font-weight %s' % val)
             if prop == 'line-height' and val not in LH: self.e('line-height %s' % val)
@@ -139,7 +141,8 @@ def contrast():
         pairs += [(fg, bg, 4.5, n) for n, fg in (('info', th.info), ('success', th.ok), ('warning', th.warn), ('danger', th.danger)) for bg in (th.surface, th.raised)]
         pairs += [(th.onacc, th.acc, 4.5, 'on_accent/accent')]
         pairs += [(th.ctl, bg, 3.0, 'control_border') for bg in (th.ground, th.bar, th.surface, th.raised)]
-        pairs += [(th.info, bg, 3.0, 'focus ring') for bg in grounds]
+        pairs += [(th.focus, bg, 3.0, 'focus ring') for bg in grounds]
+        pairs += [(th.acctext, bg, 3.0, 'accent_text graphic') for bg in grounds + [th.line]]
         for fg, bg, need, n in pairs:
             r = ratio(fg, bg); worst[(th.name, n)] = min(worst.get((th.name, n), 99), r)
             if r < need: bad.append('contrast %s %s on %s = %.2f (< %s) in theme %s' % (n, fg, bg, r, need, th.name))

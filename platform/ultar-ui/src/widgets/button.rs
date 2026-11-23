@@ -32,6 +32,9 @@ pub struct Button {
     pub variant: ButtonVariant,
     /// Icon before the label.
     pub icon: Option<IconId>,
+    /// A hold button reports `Pressed`, `Repeated` while held and `Released` instead of
+    /// `Activated` (show a password while held, delete digits while held).
+    pub hold: bool,
 }
 
 const LEAD: f32 = size::ICON_SMALL;
@@ -45,7 +48,14 @@ impl Button {
             label,
             variant: ButtonVariant::Plain,
             icon: None,
+            hold: false,
         }
+    }
+
+    /// The same button as a hold button.
+    pub fn hold(mut self) -> Button {
+        self.hold = true;
+        self
     }
 
     /// The same button of another kind.
@@ -81,10 +91,12 @@ impl Button {
         match self.variant {
             ButtonVariant::Primary => {
                 let fg = p.color(ColorRole::OnAccent);
+                // The gold fill alone has 2:1 on light backgrounds: an accent-text edge
+                // keeps the outline at 3:1 (boards: an `accent_text` edge).
                 (
                     Some(style::filled(p.color(ColorRole::Accent), fg, v)),
                     fg,
-                    None,
+                    Some(p.color(ColorRole::AccentText)),
                 )
             }
             ButtonVariant::Plain => (
@@ -111,8 +123,15 @@ impl Button {
             p.fill(rect, Some(Radius::Control), bg);
         }
         if let Some(border) = border {
-            let hairline = p.hairline();
-            p.stroke(rect, Some(Radius::Control), hairline, border);
+            // The edge of the primary button is two borders wide: it alone carries the 3:1
+            // the gold fill does not reach on light backgrounds.
+            let primary = self.variant == ButtonVariant::Primary;
+            let width = if primary {
+                2.0 * p.hairline()
+            } else {
+                p.hairline()
+            };
+            p.stroke(rect, Some(Radius::Control), width, border);
         }
         let direction = p.env().direction;
         let lead = self.lead_width(v.loading);

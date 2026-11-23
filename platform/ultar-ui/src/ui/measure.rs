@@ -31,6 +31,9 @@ fn measure(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f32) -
         Some(flex) => measure_flex(nodes, cx, id, &flex, avail),
         None => measure_leaf(nodes, cx, id, avail),
     };
+    if matches!(nodes[i].widget, Widget::HeaderBar(_)) {
+        size.h = crate::widgets::HeaderBar::height(size.h);
+    }
     let grows = nodes[i].sizing.grow > 0;
     if let Widget::Scroll(scroll) = &mut nodes[i].widget {
         // The viewport takes what its sizing gives it: a fixed height, or (growing) the
@@ -57,6 +60,9 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Some(child) => measure(nodes, cx, child, avail),
         None => Size::default(),
     };
+    let nav = nodes[i]
+        .parent
+        .is_some_and(|p| matches!(&nodes[p.index()].widget, Widget::List(l) if l.navigation));
     let node = &nodes[i];
     let error = node.error.as_ref();
     match &node.widget {
@@ -64,24 +70,27 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         | Widget::Card(_)
         | Widget::List(_)
         | Widget::Scroll(_)
+        | Widget::HeaderBar(_)
         | Widget::Dialog(_) => Size::default(),
+        Widget::Table(w) => w.measure(cx, avail),
+        Widget::Tree(w) => w.measure(cx, avail),
         Widget::Text(w) => w.measure(cx, avail),
         Widget::Icon(w) => w.measure(),
         Widget::Button(w) => w.measure(cx, avail, node.loading),
         Widget::IconButton(w) => w.measure(cx),
         Widget::Switch(w) => w.measure(cx),
         Widget::Select(w) => w.measure(cx, avail, error),
-        Widget::Slider(w) => w.measure(cx, avail),
+        Widget::Slider(w) => w.measure(cx, avail, error),
         Widget::TextField(w) => w.measure(cx, avail, error),
         Widget::Row(w) => w.measure(cx, avail, control),
         Widget::Badge(w) => w.measure(cx, avail),
         Widget::Progress(w) => w.measure(cx, avail),
-        Widget::Checkbox(w) => w.measure(cx, avail),
+        Widget::Checkbox(w) => w.measure(cx, avail, error),
         Widget::RadioGroup(w) => w.measure(cx, avail),
         Widget::Tabs(w) => w.measure(cx, avail),
         Widget::InfoBar(w) => w.measure(cx, avail, control),
         Widget::EmptyState(w) => w.measure(cx, avail, control),
-        Widget::ListItem(w) => w.measure(cx, avail, control),
+        Widget::ListItem(w) => w.measure(cx, avail, control, (nav, error.is_some())),
     }
 }
 
@@ -269,8 +278,9 @@ fn arrange_block(
     for (n, slot) in slots.iter().enumerate() {
         let child = nodes[id.index()].children[n];
         let stretch = flex.cross == CrossAlign::Stretch;
+        // A child that cannot be narrower (a tab bar keeping full targets) overflows.
         let width = if stretch {
-            inner.width
+            inner.width.max(sizes[n].w)
         } else {
             sizes[n].w.min(inner.width)
         };
@@ -307,8 +317,10 @@ impl Ui {
         if !self.take_layout_request() {
             return;
         }
-        for node in &mut self.nodes {
-            node.measured = None;
+        if self.take_remeasure_request() {
+            for node in &mut self.nodes {
+                node.measured = None;
+            }
         }
         let root = self.root();
         let size = self.size();
@@ -327,13 +339,18 @@ impl Ui {
                 continue;
             };
             let content = measure(&mut self.nodes, &mut cx, *dialog, widget.width(size));
-            let frame = widget.frame(content, size);
+            let anchor = widget
+                .anchor
+                .and_then(|a| self.nodes.get(a.index()))
+                .map(|n| n.frame);
+            let frame = widget.frame(content, size, anchor);
             arrange(&mut self.nodes, &mut cx, *dialog, frame);
         }
         self.rebuild_order();
         // What floats hangs on rectangles and text sizes that may have changed.
         self.layers.tip = None;
         self.replace_menu();
+        self.rehover();
     }
 
     /// Rebuilds the logical order and the paint steps: the main tree, then the open dialogs
@@ -344,8 +361,14 @@ impl Ui {
         let root = self.root();
         collect(self, root, None);
         self.layers.modal_start = 0;
+        self.layers.scrim_step = None;
         for dialog in self.layers.open.clone() {
             self.layers.modal_start = self.order.len();
+            let scrim =
+                matches!(&self.nodes[dialog.index()].widget, Widget::Dialog(d) if d.has_scrim());
+            if scrim {
+                self.layers.scrim_step = Some(self.layers.steps.len());
+            }
             collect(self, dialog, None);
         }
     }

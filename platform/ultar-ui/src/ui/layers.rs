@@ -36,6 +36,8 @@ pub(crate) struct MenuState {
     pub(crate) highlight: Option<usize>,
     /// Geometry of every open level (`path.len() + 1` panels).
     pub(crate) panels: Vec<MenuPanel>,
+    /// Scroll offset of every open level (kept when the levels are placed again).
+    pub(crate) scrolls: Vec<f32>,
 }
 
 /// The visible tooltip.
@@ -74,7 +76,7 @@ pub(crate) struct Drag {
 }
 
 /// See the module documentation.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(crate) struct Layers {
     /// What to paint, in order; rebuilt with the layout.
     pub(crate) steps: Vec<PaintStep>,
@@ -89,4 +91,16 @@ pub(crate) struct Layers {
     /// Since when the pointer rests on a node that has a tooltip.
     pub(crate) hover_since: Option<u64>,
     pub(crate) drag: Option<Drag>,
+    /// Long press, double click, held buttons, dragged nodes.
+    pub(crate) gestures: crate::event::Gestures,
+    /// Index in `steps` where the topmost dialog with a scrim starts; everything before it
+    /// lies under the scrim.
+    pub(crate) scrim_step: Option<usize>,
+    /// Everything under the scrim, painted once and dimmed (see `Ui::paint`).
+    pub(crate) backdrop: Option<crate::canvas::Canvas>,
+    /// Something under the scrim changed: the backdrop is painted again (into the same
+    /// buffer) before the next frame.
+    pub(crate) backdrop_stale: bool,
+    /// Visible toasts, oldest first.
+    pub(crate) toasts: Vec<super::toasts::Shown>,
 }

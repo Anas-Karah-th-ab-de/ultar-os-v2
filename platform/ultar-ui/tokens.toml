@@ -21,6 +21,7 @@ family_latin = "Noto Sans"
 family_mono = "Noto Sans Mono"
 family_mono_arabic = "Noto Sans Arabic"   # Arabic inside fixed-width text (Noto Sans Mono has no Arabic)
 weights = [400, 500, 600, 700]
+small_weight_arabic = 500  # Arabic below body size is drawn one step heavier (Naskh at 12 is light)
 
 [size]
 bar_height = 56            # the single bar at the bottom (standard)
@@ -31,11 +32,22 @@ icon_small = 16
 icon = 24
 stroke = 1.5
 focus_ring = 2
+border = 1                 # borders and separators (logical points)
+row_min = 56               # minimum height of a settings or list row
+box = 24                   # check box, radio circle
+scroll_line = 48           # one wheel step
+touch_slop = 8             # a finger that moves less still taps
 
 [motion]                   # milliseconds
 feedback = 120
 fade = 200
 overview = 300
+tooltip_delay = 600        # pointer rest before a tooltip
+long_press = 500           # touch hold = secondary click; hold buttons start repeating
+repeat = 80                # repeat interval of a held button
+double_click = 400         # second press within this time = double click
+spinner_period = 1200      # one revolution of a progress ring / pass of a busy bar
+toast = 4000               # a toast without action hides after this time
 
 [layout]                   # size classes by logical width
 compact_max = 599
@@ -89,4 +101,6 @@ hover_overlay = 0.10       # share of the foreground colour laid over a filled c
 pressed_overlay = 0.20
 scrim_dark = 0.60          # ground colour laid over everything behind a dialog or sheet
 scrim_light = 0.40
-focus_ring = "accent_text" # colour role of the focus ring
+focus_ring = "info"        # colour role of the focus ring (DESKTOP-SPEC §3: blue next to the gold)
+spinner_sweep = 0.75       # share of the circle a progress ring draws
+busy_segment = 0.33        # share of the track the segment of a busy bar covers

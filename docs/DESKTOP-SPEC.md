@@ -128,11 +128,14 @@ Fortschritt steht in `docs/ui/README.md` als Tabelle (von der CI aus dem Verzeic
 | Richtung | Anfang/Ende statt links/rechts; Symbole mit Richtung (Pfeile, Zurück, Fortschritt) werden gespiegelt, Symbole ohne Richtung (Uhr, Haken, Medien-Wiedergabe) nicht. |
 | Ziffern | immer 0–9. |
 | Ziele | Maus: Elemente mind. 32 hoch · Touch: mind. 44 · Fokusrahmen immer sichtbar bei Tastatur. |
+| Fokusrahmen | 2 Punkte breit, 2 Punkte Abstand, Farbe = Rolle **Info (Blau)** (`state.focus_ring = "info"`); Werkzeugkasten und Entwurfsbilder lesen dieselbe Marke. **Begründung (Runde 3):** Gegen den Hintergrund erreicht Info 4,3–9,0 : 1 (verlangt 3 : 1). Gegen das Gold, das er oft umschließt, erreicht *keine* Rolle 3 : 1 (Info 1,03 dunkel / 2,52 hell; Akzent-Text 1,24 / 2,58), Akzent-Text hat also dort keinen Vorteil. Ein goldener Rahmen um einen goldenen Hauptknopf liest sich aber als dessen Rand, nicht als Fokus; Blau unterscheidet sich im Farbton und ist an jeder Stelle als „hier ist der Fokus“ erkennbar. Die 2 Punkte Abstand trennen Rahmen und Gold sichtbar. |
+| Zustände | aus `[state]` der Marken: schwebend/gedrückt = 10 % / 20 % der Vordergrundfarbe über gefüllten Flächen (neutral: Fläche „schwebend“ / Linie), deaktiviert = ganzer Baustein mit 0,40 Deckkraft, Abdunkeln hinter Dialog und Blatt = Grundfarbe mit 0,60 (dunkel) / 0,40 (hell). Linienbreite `size.border`, Zeilen mind. `size.row_min`, Kästchen/Kreis `size.box`. Akzent (Gold) nur als Füllung hinter Text „auf Akzent“; Grafiken, Ränder und Markierungen („an“, „gewählt“, „wie viel“) in Akzent-Text (≥ 3 : 1 in beiden Themen). |
 
 **Bausteine in `ultar-ui`** (Apps bauen nur daraus): Knopf (Haupt · normal · leise · Gefahr), Symbolknopf, Schalter, Auswahl,
 Schieber, Eingabefeld (mit Fehlertext), Suchfeld, Liste/Zeile, Karte, Seitenleiste, Kopfleiste, Reiter, Menü, Kontextmenü,
 Dialog, Blatt (kompakt: von unten), Hinweisleiste, Fortschritt, Leerzustand, Tabelle, Baum, Tooltip, Abzeichen.
 Jeder Baustein kennt: normal, schwebend, gedrückt, fokussiert, deaktiviert, lädt, Fehler.
+Ausnahmen: Optionsgruppe und Reiter haben weder „lädt“ noch „Fehler“ – die Seite bzw. das Formular um sie zeigt beides.
 
 ---
 
@@ -577,7 +580,7 @@ Diese Festlegungen gelten verbindlich; die vollständige Klickliste aller Tafeln
 
 Further additions that are not a single click:
 
-60. [§3] Tokens for states are missing: hover, pressed, disabled, focus-ring colour, border width, control height, switch size, scrim. The boards use the substitutions listed in `REVIEW-SELF.md`.
+60. [§3] State tokens: `[state]` (overlays, disabled opacity, scrim, focus-ring role), `size.border`, `size.row_min`, `size.box` in `design/tokens.toml`; boards and toolkit read the same values (section 3, rows "Fokusrahmen" and "Zustände").
 61. [§4] Icon table: see `ICONS.md` (new and split meanings).
 62. [§5.1] Sheets of the shell (quick settings, calendar) take the focus when they open, keep it inside (Tab cycles) and return it to their trigger when they close.
 63. [§5.2] The three title-bar buttons are not Tab stops; keyboard uses the window menu (Alt+Space) and the shortcuts. In Arabic the start position of new windows is mirrored.

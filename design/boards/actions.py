@@ -185,4 +185,12 @@ ACTIONS = {
  'phone.hangup': ('Ends the call.', '§12.2'),
  # states board
  'demo': ('Sample brick on the board "States"; no behaviour of its own.', '§3'),
+ # popup and navigation bricks (boards "Menus", "Bricks")
+ 'menu.open': ('Opens the menu below the button (above it near the lower edge); a second click or Esc closes it and the focus returns to the button.', '§3'),
+ 'menu.item': ('Runs the command and closes every menu level. An item with a submenu opens it instead (pointer rest, Enter or the arrow toward the end side). Arrows move, a letter jumps to the next item starting with it, Esc closes one level. A long press opens the context menu by touch.', '§3'),
+ 'select.option': ('Chooses the option and closes the list; the select shows it. Arrows move, a letter jumps, Esc closes without a change.', '§3'),
+ 'tabs.tab': ('Shows the page of the tab. Arrows move between tabs (in reading direction), Home/End reach the first and last; a tab never shrinks below the target size.', '§3'),
+ 'sheet.close': ('Closes the sheet; the focus returns to the control that opened it. A press on the dimmed part or Esc does the same.', '§3'),
+ 'toast.action': ('Runs the action of the toast (Ctrl+Enter from the keyboard) and closes it.', '§3'),
+ 'toast.close': ('Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast.', '§3'),
 }

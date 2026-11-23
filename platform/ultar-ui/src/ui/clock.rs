@@ -5,9 +5,7 @@ use crate::tokens::{motion, Space};
 use crate::widgets::{shadow_reach, tooltip_rect, MeasureCx, Switch, Widget};
 
 /// Duration of one revolution of the progress ring and one pass of an indeterminate bar.
-const SPIN_MS: u64 = 4 * motion::OVERVIEW as u64;
-/// How long the pointer rests on a widget before its tooltip shows.
-pub(crate) const TOOLTIP_DELAY_MS: u64 = 2 * motion::OVERVIEW as u64;
+const SPIN_MS: u64 = motion::SPINNER_PERIOD as u64;
 
 /// `true` for nodes that change with the clock alone.
 fn moves(node: &super::Node) -> bool {
@@ -29,6 +27,8 @@ impl Ui {
         let was_animating = self.animating();
         self.now_ms = now_ms;
         self.show_due_tooltip();
+        self.gesture_tick();
+        self.expire_toasts();
         if !(was_animating || self.animating()) {
             return;
         }
@@ -46,6 +46,14 @@ impl Ui {
         }
     }
 
+    /// Actions the clock caused since the last event (a long press opening a context menu,
+    /// `Repeated` of a held button, a toast that timed out). Call it after
+    /// [`Ui::advance_to`]; whatever is not taken here comes first in the next
+    /// [`Response`](crate::event::Response).
+    pub fn take_actions(&mut self) -> Vec<crate::event::Action> {
+        std::mem::take(&mut self.pending)
+    }
+
     /// `true` while something moves (a knob in transit, a progress ring or bar), i.e. the
     /// caller should keep calling [`Ui::advance_to`] and [`Ui::paint`] every frame.
     pub fn animating(&self) -> bool {
@@ -53,13 +61,19 @@ impl Ui {
     }
 
     /// The clock value at which [`Ui::advance_to`] must be called even though nothing
-    /// animates: when a tooltip is due. `None` when nothing waits.
+    /// animates: a tooltip, a long press, a held button or a toast is due. `None` when
+    /// nothing waits.
     pub fn next_wake(&self) -> Option<u64> {
-        let since = self.layers.hover_since?;
-        self.layers
-            .tip
-            .is_none()
-            .then_some(since.saturating_add(TOOLTIP_DELAY_MS))
+        let tooltip = self
+            .layers
+            .hover_since
+            .filter(|_| self.layers.tip.is_none());
+        let tooltip = tooltip.map(|since| since.saturating_add(u64::from(motion::TOOLTIP_DELAY)));
+        let toast = self.toast_wake();
+        [tooltip, self.gesture_wake(), toast]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
     /// Rotation of progress rings for the current clock, 0..1.
@@ -67,7 +81,7 @@ impl Ui {
         if self.reduce_motion() {
             0.0
         } else {
-            (self.now_ms % SPIN_MS) as f32 / SPIN_MS as f32
+            (self.now_ms % SPIN_MS.max(1)) as f32 / SPIN_MS.max(1) as f32
         }
     }
 

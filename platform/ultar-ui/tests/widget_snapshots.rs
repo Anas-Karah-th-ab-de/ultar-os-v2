@@ -215,9 +215,9 @@ fn icons(sheet: &mut Sheet) {
             let root = ui.root();
             let line = ui.add(root, Flex::row().gap(Space::S16))?;
             for icon in [
-                IconId::ChevronEnd,
+                IconId::Forward,
                 IconId::Volume,
-                IconId::Assistant,
+                IconId::Spark,
                 IconId::Check,
                 IconId::Gear,
             ] {
@@ -225,7 +225,7 @@ fn icons(sheet: &mut Sheet) {
             }
             ui.add(
                 line,
-                Icon::new(IconId::ChevronEnd)
+                Icon::new(IconId::Forward)
                     .small()
                     .color(ColorRole::AccentText),
             )
@@ -266,6 +266,8 @@ fn every_widget_in_every_state_matches_its_reference() {
     icons(&mut sheet);
     let earlier = sheet.cases;
     common::cases3::all(&mut sheet);
+    let wave3 = sheet.cases;
+    common::cases4::all(&mut sheet);
     assert!(
         sheet.problems.is_empty(),
         "{} problems:\n{}",
@@ -276,7 +278,8 @@ fn every_widget_in_every_state_matches_its_reference() {
         earlier, 73,
         "number of widget/state cases of the first delivery"
     );
-    assert_eq!(sheet.cases - earlier, 56, "number of wave-3 cases");
+    assert_eq!(wave3 - earlier, 58, "number of wave-3 cases");
+    assert_eq!(sheet.cases - wave3, 28, "number of wave-4 cases");
     // No stale or missing files: every case has four references, plus the composed screen
     // (four) and its touch variant at double scale (one).
     let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");

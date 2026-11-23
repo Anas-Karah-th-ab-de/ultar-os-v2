@@ -4,7 +4,7 @@
 use super::{NodeId, Ui, UiError};
 use crate::event::{Action, ActionKind};
 use crate::geom::Point;
-use crate::widgets::{DialogKind, Widget};
+use crate::widgets::{ButtonVariant, DialogKind, Widget};
 
 impl Ui {
     /// `true` when `id` is `ancestor` or below it.
@@ -23,6 +23,20 @@ impl Ui {
     /// the topmost dialog while one is open.
     pub(crate) fn reachable(&self) -> &[NodeId] {
         self.order.get(self.layers.modal_start..).unwrap_or(&[])
+    }
+
+    /// `true` when `id` is drawn above the scrim (inside the topmost dialog with a scrim or
+    /// a surface opened above it), i.e. not part of the dimmed backdrop.
+    pub(crate) fn inside_open_dialog(&self, id: NodeId) -> bool {
+        let mut root = id;
+        while let Some(parent) = self.nodes.get(root.index()).and_then(|n| n.parent) {
+            root = parent;
+        }
+        let scrim = self.layers.open.iter().rposition(
+            |d| matches!(&self.nodes[d.index()].widget, Widget::Dialog(w) if w.has_scrim()),
+        );
+        let place = self.layers.open.iter().position(|d| *d == root);
+        matches!((scrim, place), (Some(s), Some(p)) if p >= s)
     }
 
     /// The topmost open dialog or sheet.
@@ -53,15 +67,29 @@ impl Ui {
         let dialog = self.dialog_mut(id)?;
         dialog.open = true;
         dialog.return_focus = focus;
-        let preferred = dialog.default_action;
+        let (preferred, cancel) = (dialog.default_action, dialog.cancel_action);
         self.layers.open.push(id);
-        self.invalidate_layout();
+        self.relayout();
         self.layout();
-        let first = preferred
+        // A destructive default action never has the focus first: Enter must not delete
+        // (spec §13.42); the safe cancel action has it then.
+        let dangerous = preferred.is_some_and(|b| {
+            matches!(&self.nodes[b.index()].widget, Widget::Button(w) if w.variant == ButtonVariant::Danger)
+        });
+        let start = if dangerous { cancel } else { preferred };
+        let first = start
             .filter(|target| !self.is_disabled(*target))
             .or_else(|| self.focus_order().first().copied());
         self.set_focus(first, visible);
         Ok(())
+    }
+
+    /// Opens a panel next to `anchor` (the widget that opened it, usually a button of the
+    /// bar). Like a dialog it takes the focus; a press beside it or Escape closes it.
+    pub fn open_panel(&mut self, id: NodeId, anchor: NodeId) -> Result<(), UiError> {
+        self.node(anchor)?;
+        self.dialog_mut(id)?.anchor = Some(anchor);
+        self.open_dialog(id)
     }
 
     /// Hides a dialog or sheet; focus returns to where it was before it opened. When
@@ -86,7 +114,7 @@ impl Ui {
         let place = self.layers.open.iter().position(|open| *open == id);
         let above = place.and_then(|at| self.layers.open.get(at + 1).copied());
         self.layers.open.retain(|open| *open != id);
-        self.invalidate_layout();
+        self.relayout();
         self.layout();
         if let Some(upper) = above {
             self.dialog_mut(upper)?.return_focus = back;
@@ -186,8 +214,9 @@ impl Ui {
             return false;
         };
         let beside = !self.rect(id).is_some_and(|r| r.contains(pos));
-        let sheet = self.dialog(id).is_ok_and(|d| d.kind == DialogKind::Sheet);
-        if beside && sheet {
+        // A sheet or an anchored panel closes on a press beside it; a dialog does not.
+        let light = self.dialog(id).is_ok_and(|d| d.kind != DialogKind::Dialog);
+        if beside && light {
             self.dismiss_modal(out);
         }
         true
