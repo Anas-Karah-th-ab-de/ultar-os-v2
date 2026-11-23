@@ -27,7 +27,7 @@ const NVME0: &str = "pci:01:00.0";
 pub fn switch_rig(tag: &str) -> Rig {
     let rig = Rig::new(tag);
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     rig.add_repo_drivers();
     rig.add_planned_drivers();
     let rule = "pci_class = [\"010802\"]";
@@ -137,7 +137,8 @@ fn startup_publishes_states_and_a_retained_capability_set() {
     assert_eq!(gpu.availability, Availability::Unavailable);
     let list = s.panel.call(&List {}, WAIT).unwrap();
     assert_eq!(list.devices.len(), 14);
-    assert!(!list.kernel_switch_supported);
+    // the kernel has bind/unbind control files (drivers without teardown are still refused)
+    assert!(list.kernel_switch_supported);
     let nvme = row(&list, NVME0);
     assert_eq!(nvme.active.as_ref().unwrap().version, "1.1.0");
     let alternatives: Vec<&str> = nvme.alternatives.iter().map(|a| a.id.as_str()).collect();

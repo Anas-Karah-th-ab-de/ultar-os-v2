@@ -466,6 +466,9 @@ pub fn open(path: &str) -> Option<Node> {
     if path == "/proc" || path.starts_with("/proc/") {
         return crate::procfs::open(path);
     }
+    if crate::devices::sysfs::is_tree(path) {
+        return crate::devices::sysfs::open(path);
+    }
     if crate::groups::files::is_tree(path) {
         return crate::groups::files::open(path);
     }
@@ -656,7 +659,7 @@ pub fn store_file(path: &str, data: Arc<Vec<u8>>) -> bool {
         return true;
     }
     // control files are written directly (syscall::control_write); nothing is ever stored there
-    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) {
+    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) || crate::devices::sysfs::is_tree(path) {
         return false;
     }
     if tmpfs::is_private(path) {
@@ -723,6 +726,9 @@ pub fn mounts() -> Vec<(String, &'static str)> {
 }
 
 pub fn mkdir(path: &str) -> bool {
+    if crate::devices::sysfs::is_tree(path) {
+        return false;
+    }
     if tmpfs::is_private(path) {
         return tmpfs::mkdir(path);
     }
@@ -741,6 +747,9 @@ pub fn mkdir(path: &str) -> bool {
 }
 
 pub fn unlink(path: &str) -> bool {
+    if crate::devices::sysfs::is_tree(path) {
+        return false;
+    }
     if tmpfs::is_private(path) {
         return tmpfs::unlink(path);
     }

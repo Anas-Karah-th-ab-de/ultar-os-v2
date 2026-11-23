@@ -8,6 +8,9 @@ use ultar_bus::messages::device_service::{
 use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
 use ultar_service::log::{Level, Record};
 
+/// How often the daemon looks at the kernel's device event counter between requests.
+pub const KERNEL_EVENT_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// Whether the daemon keeps serving after a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
@@ -62,12 +65,24 @@ impl Daemon {
     }
 
     /// Serves requests until `devices.shutdown` arrives (`Ok`) or the bus connection ends
-    /// for good (`Err`). Blocks without polling.
+    /// for good (`Err`). Between requests it looks at the kernel's device event counter
+    /// (every [`KERNEL_EVENT_POLL`]) and reads the hardware again when a device came, went
+    /// or changed its binding.
     pub fn serve(&mut self, endpoint: &ServiceEndpoint) -> Result<(), BusError> {
         loop {
-            let request = endpoint.recv()?;
-            if self.handle(request) == Flow::Stop {
-                return Ok(());
+            match endpoint.recv_timeout(KERNEL_EVENT_POLL) {
+                Ok(request) => {
+                    if self.handle(request) == Flow::Stop {
+                        return Ok(());
+                    }
+                    self.note_kernel_events();
+                }
+                Err(BusError::Timeout) => {
+                    if self.kernel_events_pending() {
+                        let _ = self.rescan(None);
+                    }
+                }
+                Err(error) => return Err(error),
             }
         }
     }

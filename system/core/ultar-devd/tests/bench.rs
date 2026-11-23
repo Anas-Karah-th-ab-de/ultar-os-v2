@@ -3,7 +3,7 @@
 
 mod rig;
 
-use rig::kernel_fmt::{beelink, thinkpad, write, ULTAR_VERSION};
+use rig::kernel_fmt::{beelink, thinkpad, write};
 use rig::Rig;
 use std::time::Instant;
 
@@ -27,11 +27,11 @@ fn startup_time() {
     let rig = Rig::new("bench-beelink");
     rig.standard_depot();
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
-    measure("beelink (ultar kernel log)", &rig);
+    machine.write_ultar_root(&rig.root);
+    measure("beelink (ultar kernel sysfs)", &rig);
     let rig = Rig::new("bench-thinkpad");
     rig.standard_depot();
     thinkpad().write_sysfs_root(&rig.root, true);
-    write(&rig.root, "proc/version", ULTAR_VERSION);
+    write(&rig.root, "sys/kernel/ultar/driver_abi", "1\n");
     measure("thinkpad (sysfs)", &rig);
 }

@@ -16,6 +16,7 @@ mod buddy;
 mod arch;
 mod console;
 mod cred;
+mod devices;
 mod driver;
 mod drivers;
 mod firewall;

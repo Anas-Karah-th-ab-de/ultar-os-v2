@@ -48,7 +48,7 @@ struct Setup {
 fn setup(tag: &str) -> Setup {
     let rig = Rig::new(tag);
     let machine = machine();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     rig.add_repo_drivers();
     let display = builtin_manifest("bochs-display", "1.0.0", "display", "pci = [\"1234:1111\"]");
     rig.add_builtin(&display, "gen-bochs-vga");
@@ -146,10 +146,12 @@ fn load_confirms_the_kernel_binding() {
             driver: "nvme".into()
         }
     );
-    assert_eq!(s.builtin.control_interface(), ControlInterface::None);
-    // Unloading changes nothing: the kernel has no such interface.
+    assert_eq!(s.builtin.control_interface(), ControlInterface::SysfsBind);
+    // nvme has no teardown path: unloading leaves it bound and writes nothing.
     let (device, candidate) = (s.device("pci:00:01.0"), s.candidate("pci:00:01.0", "nvme"));
     s.builtin.unload(&device, &candidate);
+    let unbind = s.rig.root.join("sys/bus/pci/drivers/nvme/unbind");
+    assert_eq!(std::fs::read_to_string(unbind).unwrap(), "");
     assert!(matches!(
         s.check("pci:00:01.0", "nvme"),
         HealthVerdict::Healthy(_)
@@ -237,6 +239,55 @@ fn kernel_probe_failures_and_unusable_packages() {
 }
 
 #[test]
+fn load_binds_through_the_kernel_control_files() {
+    let mut s = setup("activate");
+    let card = "pci:00:02.0";
+    // The kernel left the card unbound (e.g. its driver was unbound before).
+    let dir = s.rig.root.join("sys/bus/pci/devices/0000:00:02.0");
+    std::fs::remove_file(dir.join("driver")).unwrap();
+    write(
+        &s.rig.root,
+        "sys/bus/pci/devices/0000:00:02.0/ultar_probe",
+        "none\n",
+    );
+    s.builtin.refresh().unwrap();
+    let (device, candidate) = (s.device(card), s.candidate(card, "bochs-display"));
+    assert!(s.builtin.can_switch(&device, &candidate));
+    // The loader writes the device to the driver's bind file; this fake kernel does not
+    // react, so the new state shows no binding and the load is refused, not pretended.
+    let (result, detail) = s.load(card, "bochs-display");
+    let bind = s.rig.root.join("sys/bus/pci/drivers/gen-bochs-vga/bind");
+    assert_eq!(std::fs::read_to_string(bind).unwrap(), "0000:00:02.0");
+    assert_eq!(result, failed(LoadFailure::Unsupported));
+    assert_eq!(
+        detail,
+        LoadDetail::NotBound {
+            kernel_driver: "gen-bochs-vga".into(),
+            bound_to: None
+        }
+    );
+    // A device whose driver has no teardown path is never switched.
+    let nvme = s.device("pci:00:01.0");
+    let mut other = s.candidate("pci:00:01.0", "nvme");
+    other.id = "other-nvme".into();
+    assert!(s
+        .builtin
+        .can_switch(&nvme, &s.candidate("pci:00:01.0", "nvme")));
+    // the kernel health of the device decides too: a failed medium read is a failed check
+    assert_eq!(s.load("pci:00:01.0", "nvme").0, Ok(()));
+    write(
+        &s.rig.root,
+        "sys/bus/pci/devices/0000:00:01.0/ultar_health",
+        "probe=ok\nmedia=failed\n",
+    );
+    s.builtin.refresh().unwrap();
+    assert_eq!(
+        s.check("pci:00:01.0", "nvme"),
+        HealthVerdict::Unhealthy(HealthFailure::SelfTestFailed)
+    );
+}
+
+#[test]
 fn display_health_uses_the_kernel_device_description() {
     let mut s = setup("display");
     let card = "pci:00:02.0";
@@ -272,7 +323,7 @@ fn vanished_devices_and_changed_bindings() {
     // After a refresh the kernel no longer lists the device.
     let mut smaller = machine();
     smaller.pci.remove(0);
-    smaller.write_ultar_root(&s.rig.root, &smaller.selftest_log());
+    smaller.write_ultar_root(&s.rig.root);
     s.builtin.refresh().unwrap();
     assert_eq!(s.check("pci:00:01.0", "nvme"), HealthVerdict::DeviceGone);
     let (result, detail) = s.load("pci:00:01.0", "nvme");
@@ -281,8 +332,9 @@ fn vanished_devices_and_changed_bindings() {
         (Err(LoadError::DeviceGone), LoadDetail::DeviceGone)
     );
     // An unreadable system description is an error of the refresh, the old view stays.
-    std::fs::remove_file(s.rig.root.join("proc/ultar/protokoll")).unwrap();
-    std::fs::create_dir_all(s.rig.root.join("proc/ultar/protokoll")).unwrap();
+    let devices = s.rig.root.join("sys/bus/pci/devices");
+    std::fs::remove_dir_all(&devices).unwrap();
+    write(&s.rig.root, "sys/bus/pci/devices", "not a directory\n");
     assert!(s.builtin.refresh().is_err());
     assert_eq!(
         s.builtin.binding("pci:00:02.0"),

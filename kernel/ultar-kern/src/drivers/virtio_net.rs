@@ -62,6 +62,17 @@ impl Driver for Drv {
         nl.push(Box::new(Nic { name, mac, rx, tx, rxbufs, txbuf }));
         Ok(())
     }
+    fn can_remove(&self) -> core::result::Result<(), &'static str> {
+        Ok(())
+    }
+    /// Teardown: device reset (virtio 1.2 §2.1: the device stops using the queues).
+    fn remove(&self, d: &PciDev) -> Result<()> {
+        if Transport::new(d)?.reset() {
+            Ok(())
+        } else {
+            Err(String::from("reset not confirmed"))
+        }
+    }
 }
 
 impl NetDev for Nic {

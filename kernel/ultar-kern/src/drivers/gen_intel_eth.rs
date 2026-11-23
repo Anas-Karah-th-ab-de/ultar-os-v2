@@ -151,11 +151,40 @@ impl Driver for Drv {
         nl.push(Box::new(Nic { name, mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0 }));
         Ok(())
     }
+    fn can_remove(&self) -> core::result::Result<(), &'static str> {
+        Ok(())
+    }
+    /// Teardown: receiver and transmitter off, interrupts masked, then a device reset (it ends
+    /// every DMA of the rings; the device layer then turns bus mastering off).
+    fn remove(&self, d: &PciDev) -> Result<()> {
+        let m = d.bars[0].filter(|b| !b.io).ok_or("BAR0 missing")?.addr;
+        w(m, RCTL, 0);
+        w(m, TCTL, 0);
+        w(m, IMC, 0xffff_ffff);
+        w(m, CTRL, r(m, CTRL) | (1 << 26));
+        if !wait(|| r(m, CTRL) & (1 << 26) == 0, 500) {
+            return Err(String::from("reset did not finish"));
+        }
+        Ok(())
+    }
+}
+
+/// The rings and buffers go back to the allocator: only dropped after `remove` reset the device.
+impl Drop for Nic {
+    fn drop(&mut self) {
+        crate::mem::free_run(self.rx_ring, 1);
+        crate::mem::free_run(self.tx_ring, 1);
+        crate::mem::free_run(self.rx_bufs, (N * BUF / 4096) as u64);
+        crate::mem::free_run(self.tx_bufs, (N * BUF / 4096) as u64);
+    }
 }
 
 impl NetDev for Nic {
     fn name(&self) -> String {
         self.name.clone()
+    }
+    fn link(&self) -> Option<bool> {
+        Some(r(self.mmio, STATUS) & 2 != 0)
     }
     fn mac(&self) -> [u8; 6] {
         self.mac

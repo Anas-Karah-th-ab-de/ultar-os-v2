@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest rechtetest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -25,4 +25,7 @@ ausbruch: ../../../tools/kern-test/attacks/ausbruch.c
 	gcc -O2 -static -pthread -Wno-unused-result -o $@ $<
 # identities: user/group ids, file modes and owners, Unix socket nodes and SO_PEERCRED, fsync
 rechtetest: rechtetest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
+# device interfaces: device list, driver register, bind/unbind, ABI, uevents, health, rights
+geraetetest: geraetetest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<

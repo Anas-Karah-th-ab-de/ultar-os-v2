@@ -22,6 +22,12 @@ Layer rule: `system-core → system/hal/ultar-hal-system` is already allowed in 
 
 ## 2. What the Ultar kernel really exposes (read from `kernel/ultar-kern/src`, version 0.4)
 
+> **Superseded by `kernel-device-interfaces.md`:** the six interfaces listed at the end of this section now exist
+> (sysfs device tree `/sys/bus/{pci,usb,platform}`, driver register, `bind`/`unbind`/`enable`/`ultar_enabled`,
+> `/sys/kernel/ultar/driver_abi`, uevents with `SEQNUM`, `ultar_probe`/`ultar_health`). The HAL reads only that
+> tree now; the kernel-log parser (`hardware::kernel_log`, `hardware::class_names`) and `InventoryNote` are gone.
+> The rest of this section describes the kernel before that change.
+
 `procfs.rs` serves exactly `/proc/ultar/{verbund,firewall,sicherheit,geraet,anzeige,protokoll}`. **There is no device
 file and no driver file.** Device and driver facts reach user space only through:
 
@@ -53,25 +59,21 @@ The log is a 64 KiB ring (`klog.rs`); once it wraps, boot lines are gone. The ke
 ## 3. Public API
 
 ### `ultar_hal_system::hardware`
-- `HardwareReader::{running(), at(root), root(), kernel_log(), device_info(), inventory()}`.
-- `Inventory { devices: Vec<DeviceDescriptor>, machine, sources: Sources{kernel_log,sysfs_pci,sysfs_usb}, notes }`.
-  Addresses: `pci:bb:dd.f` (sysfs domain ≠ 0 kept: `pci:0001:02:00.0`), `usb:<hc>-<port>` (Ultar log), `usb:<sysfs name>`.
-  Merge by address; sysfs wins. Devices sorted by address.
-- `InventoryNote::{KernelLogWrapped, BoundDevicesOnly, ClassIncomplete(n), PciCountMismatch{announced,found}}` with `key()`
-  (`hal.hardware.note.*`) – gaps are reported, never guessed.
+- `HardwareReader::{running(), at(root), root(), device_info(), inventory()}`.
+- `Inventory { devices: Vec<DeviceDescriptor>, machine, sources: Sources{sysfs_pci,sysfs_usb} }`.
+  Addresses: `pci:bb:dd.f` (sysfs domain ≠ 0 kept: `pci:0001:02:00.0`), `usb:<sysfs name>` (`usb:1-2`). Devices sorted by address.
 - `HardwareError::{NoSource, Io{path,kind}, TooManyDevices}` with `key()`. Files are read capped at 1 MiB, directories at 4096 entries.
-- `kernel_log::KernelLog::parse(text)` → `pci: Vec<LogPciDevice{slot,vendor,device,class: PartialClass,subsys,binding}>`,
-  `usb`, `drivers`, `pci_count`, `has_device_table`, `wrapped`; `LogBinding::{Bound{driver,origin}, Failed{driver,error}, Unbound}`.
-- `class_names::class_from_name(name) -> PartialClass{code, known_digits}` – reverse of `pci::class_name`; unknown
-  digits are `f` so a longer class pattern never matches by accident (`Ethernet` → `0200ff`).
 - `device_info::KernelDeviceInfo::parse(text)` → `vendor`, `model`, `display`, `graphics`, `graphics_driver(v,d)`.
 - `sysfs::{read_pci, read_usb, machine, pci_address}`.
 
 ### `ultar_hal_system::kernel_drivers`
 - `KernelDrivers::read(&reader)` → `drivers()`, `driver(name)`, `exists(name) -> Option<bool>` (`None` = register not
   readable, absence proves nothing), `binding(address) -> BindState::{Bound{driver}, Failed{driver,error}, Unbound, Unknown}`,
-  `register_complete`, `control: ControlInterface::{None, SysfsBind}`, `device_count()`.
-- `kernel_abi(root) -> Result<Option<String>, _>` (`ultar-kern-abi-1` or `linux-<release>`), `ULTAR_KERNEL_ABI`.
+  `register_complete`, `control: ControlInterface::{None, SysfsBind}`, `device_count()`, `health(address)`
+  (`ultar_health` lines), `candidates(address)` (`ultar_drivers`), `bind_device(driver, address)`, `unbind_device(address)`;
+  `KernelDriver{name, origin, bound, failed, unbind: Option<bool>, enabled: Option<bool>}`; `sysfs_pci_name(address)`.
+- `kernel_abi(root)` (`ultar-kern-abi-<n>` from `/sys/kernel/ultar/driver_abi`, or `linux-<release>`), `ULTAR_KERNEL_ABI`;
+  `uevent_seqnum(root)` (`/sys/kernel/uevent_seqnum`).
 
 ### `ultar_devd` (new parts)
 - `store::file::FileStore::new(dir)` implements `ChoiceStore`; `take_events()`, `events()`, `saves()`, `path()`;
@@ -106,7 +108,9 @@ else the driver class (`net`, `storage`, `bus`, …). `Unavailable` + note `devd
 
 "Load" = read the package from the depot, verify its signature against the trusted keys, check that it is the
 indexed driver/version, read `builtin/<id>.toml` (`kernel_driver = "..."`, unknown keys rejected), and confirm
-through the HAL that this kernel driver is bound to the device. Nothing is written to the kernel.
+through the HAL that this kernel driver is bound to the device. If it is not, and the kernel offers
+`bind`/`unbind` (`ControlInterface::SysfsBind`), the loader binds it – after unbinding the current driver, which is only
+done when the kernel reports a teardown path (`ultar_unbind = supported`) – and reads the kernel's state again.
 
 | Situation | Result |
 |---|---|
@@ -115,13 +119,16 @@ through the HAL that this kernel driver is bound to the device. Nothing is writt
 | signature/structure/record invalid, other package under the file name | `load.package-rejected`, quarantined, reason carries the exact code |
 | package file not on the system | skipped, no quarantine |
 | package without activation record (loadable `.uko`, stage B) | `Unsupported` outcome, no quarantine, reason `devd.reason.not-loadable` |
-| package's kernel driver not bound to the device | `Unsupported` outcome, no quarantine, reason `devd.reason.not-bound` |
+| package's kernel driver not bound, kernel can bind it (driver exists, matches, current driver unbindable) | bound through sysfs, then confirmed from the kernel's new state |
+| package's kernel driver not bound and the kernel cannot bind it (or the bind did not take) | `Unsupported` outcome, no quarantine, reason `devd.reason.not-bound` |
+| kernel health of the device (`ultar_health`): `probe` not `ok` or `media=failed` | health check fails (`SelfTestFailed`) |
 | kernel runs the device with a driver that has no package (`bruecke`, `gen-smbus`, virtio) | `NoDriver`, reason `devd.reason.kernel-only` |
 | **switch / rollback** to a package for the **same** bound kernel driver (other version, machine-tuned variant) | **works** (no kernel call needed) |
-| **switch** to a package for any other kernel driver, or for an unbound device | **`Unsupported`**, refused before anything is touched |
+| **switch** to a package for another kernel driver | works when the current driver can be unbound (gen-intel-eth, virtio-net); otherwise **`Unsupported`**, refused before anything is touched |
 
-`unload` does nothing (no kernel interface). `ListReply::kernel_switch_supported` is always `false`.
-Linux `bind`/`unbind` files are detected (`ControlInterface::SysfsBind`) but **not used**.
+`unload` unbinds the package's kernel driver when it can be unbound safely. `ListReply::kernel_switch_supported` is
+`true` when the kernel has the bind/unbind files. Between requests the daemon looks at `/sys/kernel/uevent_seqnum`
+once per second and reads the hardware again when it changed (hot-plug, bindings changed by others).
 
 ## 5. How to wire it
 
@@ -184,6 +191,13 @@ profile: `ultar-devd` 2.8 MB, `udevctl` 1.0 MB (the workspace profile `opt-level
 
 ## 7. Real kernel interface versus fixtures – honest statement
 
+**Update (kernel device interfaces):** `tools/kern-test/devd-qemu.sh` (part of `ci.sh`) runs the static `ultar-devd
+--once` on the Ultar kernel in QEMU: it reads the kernel's sysfs tree and driver ABI, finds a signed test package for
+the e1000 whose driver was unbound before, binds `gen-intel-eth` through `/sys/bus/pci/drivers/gen-intel-eth/bind` and
+lists the device as working; the kernel then reports it bound. The fixtures (`kernel_fmt.rs`, `sysfs_tree.rs`) now write
+the kernel's sysfs format (`devices/sysfs.rs`) instead of log texts. The paragraphs below describe the state before.
+
+
 - **Nothing was run on the Ultar kernel** (no QEMU run, no real machine). The Ultar-side parsers were written from the
   kernel's formatting code; the test texts are produced by `tests/common/kernel_fmt.rs`, which copies those format
   strings and the `matches()` rules of `drivers::ALL` by hand. If the copy and the kernel differ, the tests would not notice.
@@ -202,10 +216,11 @@ profile: `ultar-devd` 2.8 MB, `udevctl` 1.0 MB (the workspace profile `opt-level
 
 ## 8. Not done / not tested
 
-- Switching between different kernel drivers, enabling/disabling drivers: **not possible, not faked** (see §2, §4).
-  Linux sysfs bind/unbind is not implemented.
-- No hot-plug events; no periodic health re-check; devices already active are not re-validated on `rescan`.
-- Health check = binding (+ display path). No link/sector/sound test: the kernel exposes no such result per device.
+- Switching between kernel drivers works only where the current driver has a teardown path (today gen-intel-eth,
+  virtio-net); enabling/disabling drivers (`ultar_enabled`) is not used by the daemon.
+- Hot-plug: the daemon polls the kernel's event counter once per second (no netlink socket: the crate has no `unsafe`
+  and no libc); no periodic health re-check; devices already active are not re-validated on `rescan`.
+- Health check = binding + the kernel's `ultar_health` (`probe`, `media`) + display path; link state is not judged.
 - USB on the Ultar kernel: only the xHCI log lines, one controller counter, class mostly unknown; never checked on hardware.
 - `DriverPhase::Loading` is never published (loading is synchronous inside one request).
 - Capabilities carry presence only (no counts, DPI, link speed). Capabilities without a driver class (battery, touch …)

@@ -20,7 +20,7 @@ const NVME0: &str = "pci:01:00.0";
 fn switch_rig(tag: &str) -> Rig {
     let rig = Rig::new(tag);
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     rig.add_repo_drivers();
     rig.add_planned_drivers();
     let rule = "pci_class = [\"010802\"]";
@@ -96,12 +96,15 @@ fn udevctl_lists_devices_with_reasons_and_notices() {
         "pci:ac:00.0  pci:8086:272b  [not working]",
         "reason: The driver package needs a loadable kernel module",
         "pci:00:0b.0  pci:8086:7d1d  [no driver]",
-        "notice: The class of some devices is not known exactly",
     ] {
         assert!(text.contains(expected), "missing {expected:?} in\n{text}");
     }
-    let note = "Note: the running kernel cannot switch its built-in drivers while running.\n";
-    assert!(text.ends_with(note));
+    // The kernel has bind/unbind: no note that switching is impossible, no incomplete classes.
+    assert!(
+        !text.contains("cannot switch its built-in drivers"),
+        "{text}"
+    );
+    assert!(!text.contains("notice:"), "{text}");
     let (code, text) = t.run("ar", &["list"]);
     assert_eq!(code, cli::EXIT_OK);
     assert!(text.contains("pci:01:00.0  pci:c0a9:560b  [يعمل]\n    التعريف: nvme 1.1.0\n"));
@@ -265,7 +268,7 @@ fn once_mode_prints_the_device_list_without_a_bus() {
     let list = String::from_utf8(output.stdout).unwrap();
     let nvme = "pci:01:00.0  pci:c0a9:560b  [läuft]\n    Treiber: nvme 1.1.0\n";
     assert!(list.contains(nvme), "{list}");
-    assert!(list.contains("usb:0-1  usb:1c7a:0577  [kein Treiber]"));
+    assert!(list.contains("usb:1-1  usb:1c7a:0577  [kein Treiber]"));
 }
 
 #[test]

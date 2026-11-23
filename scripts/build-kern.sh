@@ -20,7 +20,7 @@ if [ "${IMG:-0}" = 1 ] || [ "${RUN:-0}" = 1 ]; then
   mcopy -i "$OUT/ultar-kern-esp.img" "$EFI" ::/EFI/BOOT/BOOTX64.EFI
   # Testprogramme für Ring 3 (statisch) und – falls vorhanden – Ubuntus busybox-static unverändert
   mmd -i "$OUT/ultar-kern-esp.img" ::/bin
-  ( cd user && make -s ) && for p in user/hallo user/hallo-glibc user/kerntest user/ereignis user/fadentest user/blocktest user/lauscher user/zelltest user/grenztest user/ausbruch user/rechtetest; do mcopy -i "$OUT/ultar-kern-esp.img" "$p" ::/bin/; done
+  ( cd user && make -s ) && for p in user/hallo user/hallo-glibc user/kerntest user/ereignis user/fadentest user/blocktest user/lauscher user/zelltest user/grenztest user/ausbruch user/rechtetest user/geraetetest; do mcopy -i "$OUT/ultar-kern-esp.img" "$p" ::/bin/; done
   if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
     mcopy -i "$OUT/ultar-kern-esp.img" /bin/busybox ::/bin/busybox
     /bin/busybox --list > /tmp/ultar-applets && mcopy -i "$OUT/ultar-kern-esp.img" /tmp/ultar-applets ::/bin/.applets

@@ -78,7 +78,7 @@ pub fn run() {
     }
     // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc; zelltest = escape tests of the isolation;
     // grenztest = resource groups, limits and the attacks that must not stop the machine
-    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"]), ("rechtetest", vec!["rechtetest"]), ("grenztest", vec!["grenztest"])] {
+    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"]), ("rechtetest", vec!["rechtetest"]), ("geraetetest", vec!["geraetetest"]), ("grenztest", vec!["grenztest"])] {
         match programm(p) {
             Some(path) => {
                 kprintln!("[test] Programm {p}:");

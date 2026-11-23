@@ -7,26 +7,19 @@
 //! ```
 //!
 //! "Loading" such a package means: verify the package signature against the trusted
-//! keys, read the record, and confirm through the HAL system source that this kernel
-//! driver operates the device. Nothing is written to the kernel, because the Ultar kernel
-//! (0.4) has no interface for it:
+//! keys, read the record, and make that kernel driver operate the device through the
+//! kernel's control files (`/sys/bus/pci/drivers/<name>/bind`, see
+//! `docs/integration/kernel-device-interfaces.md`):
 //!
-//! * `driver.rs::bind_all` binds once at boot, first match in the order of `drivers::ALL`;
-//! * `/proc/ultar/` holds `verbund`, `firewall`, `sicherheit`, `geraet`, `anzeige`,
-//!   `protokoll` – no driver or device node, and only `verbund`/`firewall` accept writes;
-//! * no system call binds, unbinds, enables or disables a driver.
+//! * the device is unbound: bind the package's driver;
+//! * another driver operates it: unbind that one first – only if the kernel says it has a
+//!   teardown path (`ultar_unbind` = `supported`); otherwise the switch is refused as
+//!   unsupported and nothing is touched;
+//! * then the kernel's state is read again and must show the package's driver bound.
 //!
-//! Consequences implemented here, without pretending:
-//!
-//! * a package whose kernel driver did not bind the device cannot be made to work →
-//!   [`LoadFailure::Unsupported`] (no quarantine: the package is not at fault);
-//! * [`DriverLoader::unload`] changes nothing in the kernel (there is nothing to call);
-//! * [`DriverLoader::can_switch`] is `true` only when the target package activates the
-//!   kernel driver that already operates the device (another version or a machine-tuned
-//!   variant of the same driver). Every other switch is refused as unsupported.
-//!
+//! [`DriverLoader::unload`] unbinds the driver when the kernel can do that safely.
 //! Packages without activation record (loadable `.uko` modules, stage B) are answered
-//! with [`LoadFailure::Unsupported`] as well: this loader cannot load modules.
+//! with [`LoadFailure::Unsupported`]: this loader cannot load modules.
 
 use crate::caps::class_capability;
 use crate::traits::{DriverLoader, HealthCheck, HealthVerdict, LoadError};
@@ -154,8 +147,7 @@ impl Builtin {
         self.lock().drivers.binding(address)
     }
 
-    /// The interface the kernel offers for changing bindings. The loader uses none: it
-    /// reports what exists so the panel can say why switching is refused.
+    /// The interface the kernel offers for changing bindings (the loader binds through it).
     pub fn control_interface(&self) -> ControlInterface {
         self.lock().drivers.control
     }
@@ -249,11 +241,58 @@ impl Inner {
         }
     }
 
+    /// Whether the kernel can make `kernel_driver` operate the device: it exists, matches
+    /// the device, and whatever operates the device now can be unbound.
+    fn can_activate(&self, address: &str, kernel_driver: &str, bound_to: Option<&str>) -> bool {
+        if self.drivers.control != ControlInterface::SysfsBind
+            || self.drivers.exists(kernel_driver) != Some(true)
+        {
+            return false;
+        }
+        if self
+            .drivers
+            .candidates(address)
+            .is_some_and(|c| !c.iter().any(|n| n == kernel_driver))
+        {
+            return false;
+        }
+        match bound_to {
+            None => true,
+            Some(other) => self.drivers.driver(other).and_then(|d| d.unbind) == Some(true),
+        }
+    }
+
+    /// Bind the package's kernel driver (after unbinding the current one) and read the
+    /// kernel's state again. Write errors show up as "not bound" in the new state.
+    fn activate(&mut self, address: &str, kernel_driver: &str, bound_to: Option<&str>) {
+        if bound_to.is_some() {
+            let _ = self.drivers.unbind_device(address);
+        }
+        let _ = self.drivers.bind_device(kernel_driver, address);
+        if let Ok(drivers) = KernelDrivers::read(&self.reader) {
+            self.drivers = drivers;
+        }
+    }
+
     fn remember(&mut self, address: &str, driver: DriverKey, detail: LoadDetail) {
         if self.details.len() >= MAX_DETAILS {
             self.details.pop_first();
         }
         self.details.insert((address.to_string(), driver), detail);
+    }
+
+    /// The kernel's own probe and health result of the device (`ultar_health`): the probe
+    /// must have succeeded and no block medium may have failed its read. Link state is not
+    /// judged (a missing cable is not the driver's fault). Absent lines pass.
+    fn kernel_health_ok(&self, address: &str) -> bool {
+        let Some(health) = self.drivers.health(address) else {
+            return true;
+        };
+        health.lines().all(|line| match line.split_once('=') {
+            Some(("probe", value)) => value == "ok",
+            Some(("media", value)) => value != "failed",
+            _ => true,
+        })
     }
 
     /// The class-specific probe result the kernel exposes, if any: for a display driver
@@ -294,19 +333,54 @@ fn failure_of(detail: &LoadDetail) -> Result<(), LoadError> {
 impl DriverLoader for Builtin {
     fn load(&mut self, device: &DeviceDescriptor, driver: &Candidate) -> Result<(), LoadError> {
         let mut inner = self.lock();
-        let detail = inner.confirm(device, driver);
+        let mut detail = inner.confirm(device, driver);
+        if let LoadDetail::NotBound {
+            kernel_driver,
+            bound_to,
+        } = &detail
+        {
+            if inner.can_activate(&device.address, kernel_driver, bound_to.as_deref()) {
+                let (kernel_driver, bound_to) = (kernel_driver.clone(), bound_to.clone());
+                inner.activate(&device.address, &kernel_driver, bound_to.as_deref());
+                detail = inner.confirm(device, driver);
+            }
+        }
         let result = failure_of(&detail);
         inner.remember(&device.address, DriverKey::of(driver), detail);
         result
     }
 
-    /// Nothing to do: the kernel has no interface to deactivate a built-in driver, and a
-    /// stage-A package holds no state of its own.
-    fn unload(&mut self, _device: &DeviceDescriptor, _driver: &Candidate) {}
+    /// Unbinds the package's kernel driver from the device when it operates it and the
+    /// kernel can unbind it safely; a driver without a teardown path stays.
+    fn unload(&mut self, device: &DeviceDescriptor, driver: &Candidate) {
+        let mut inner = self.lock();
+        let Ok(kernel_driver) = inner.kernel_driver(driver) else {
+            return;
+        };
+        let unbindable = inner.drivers.driver(&kernel_driver).and_then(|d| d.unbind) == Some(true);
+        if unbindable
+            && inner.drivers.binding(&device.address)
+                == (BindState::Bound {
+                    driver: kernel_driver,
+                })
+        {
+            let _ = inner.drivers.unbind_device(&device.address);
+            if let Ok(drivers) = KernelDrivers::read(&inner.reader) {
+                inner.drivers = drivers;
+            }
+        }
+    }
 
     fn can_switch(&mut self, device: &DeviceDescriptor, target: &Candidate) -> bool {
         let inner = self.lock();
-        matches!(inner.confirm(device, target), LoadDetail::Loaded { .. })
+        match inner.confirm(device, target) {
+            LoadDetail::Loaded { .. } => true,
+            LoadDetail::NotBound {
+                kernel_driver,
+                bound_to,
+            } => inner.can_activate(&device.address, &kernel_driver, bound_to.as_deref()),
+            _ => false,
+        }
     }
 }
 
@@ -322,7 +396,9 @@ impl HealthCheck for Builtin {
             BindState::Unknown => return HealthVerdict::DeviceGone,
             _ => return HealthVerdict::Unhealthy(HealthFailure::NoResponse),
         }
-        if !inner.class_probe(device, driver.class, kernel_driver) {
+        if !inner.class_probe(device, driver.class, kernel_driver)
+            || !inner.kernel_health_ok(&device.address)
+        {
             return HealthVerdict::Unhealthy(HealthFailure::SelfTestFailed);
         }
         HealthVerdict::Healthy(vec![Capability::new(

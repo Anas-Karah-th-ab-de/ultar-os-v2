@@ -121,6 +121,10 @@ impl View {
 
 /// Target of the symbolic link at a resolved location, without following it.
 pub fn link_at(loc: &Loc) -> Option<String> {
+    // the device tree's `driver` links (`devices/sysfs.rs`)
+    if loc.host.starts_with("/sys/bus/") {
+        return crate::devices::sysfs::link(&loc.host);
+    }
     if tmpfs::is_private(&loc.host) {
         return tmpfs::readlink(&loc.host);
     }

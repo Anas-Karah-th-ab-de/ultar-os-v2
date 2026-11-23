@@ -384,7 +384,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),
         188..=199 => Res::Val(-95),
-        41 => Res::Val(sys_socket(a[0], a[1])),
+        41 => Res::Val(sys_socket(a[0], a[1], a[2])),
         169 => Res::Val(sys_reboot(a[2])),
         213 | 291 => Res::Val(sys_epoll_create(if nr == 291 { a[0] } else { 0 })),
         233 => Res::Val(sys_epoll_ctl(a[0], a[1], a[2] as i32 as i64, a[3])),
@@ -652,7 +652,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                         Src::Block(Wait::Net(crate::socket::gen()))
                     }
                 } else {
-                    match Pipe::pull(&mut b, n) {
+                    match pp.take(&mut b, n) {
                         Some(out) => {
                             // room for a waiting writer
                             crate::socket::bump();
@@ -839,7 +839,7 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 if !*write {
                     return Out::Res(Res::Val(-EBADF));
                 }
-                if crate::groups::files::is_inside(path) || path == PIPE_MAX_FILE {
+                if crate::groups::files::is_inside(path) || path == PIPE_MAX_FILE || crate::devices::sysfs::is_control(path) {
                     return Out::Group(path.clone());
                 }
                 if *append {
@@ -910,10 +910,16 @@ const PIPE_MAX_FILE: &str = "/proc/sys/fs/pipe-max-size";
 /// A write to a kernel control file takes effect at once and reports its error (the data is not
 /// kept in the descriptor): the group tree and `/proc/sys/fs/pipe-max-size`.
 fn control_write(path: &str, data: &[u8]) -> i64 {
+    let text = core::str::from_utf8(data).unwrap_or("").trim();
+    if crate::devices::sysfs::is_control(path) {
+        if !calls::holds(Rights::LOAD_DRIVER) {
+            return -EPERM;
+        }
+        return crate::devices::sysfs::write(path, text).map_or_else(|e| e, |()| data.len() as i64);
+    }
     if !calls::holds(Rights::MANAGE_GROUPS) {
         return -EPERM;
     }
-    let text = core::str::from_utf8(data).unwrap_or("").trim();
     if path == PIPE_MAX_FILE {
         return match text.parse::<u64>() {
             Ok(v) if crate::pipe::set_max_size(v) => data.len() as i64,
@@ -1036,6 +1042,10 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     }
     // limits are changed through the group tree and /proc/sys/fs/pipe-max-size: only with the right
     if acc != 0 && (crate::groups::files::is_tree(&path) || path == PIPE_MAX_FILE) && !rights.has(Rights::MANAGE_GROUPS) {
+        return -EACCES;
+    }
+    // drivers are bound and unbound through the device tree: only its control files, only with the right
+    if acc != 0 && crate::devices::sysfs::is_tree(&path) && !(crate::devices::sysfs::is_control(&path) && rights.has(Rights::LOAD_DRIVER)) {
         return -EACCES;
     }
     if let Err(e) = crate::perm::open_gate(&path, acc, trunc, creat) {
@@ -2149,10 +2159,13 @@ fn sys_signalfd(fd: i64, mask: u64, flags: u64) -> i64 {
     with(|p| p.add_fd(Fd { kind: FdKind::SigFd(m), cloexec: flags & 0x80000 != 0, flags: (flags as u32) & 0x800 }, 0)).unwrap_or(-EBADF)
 }
 
-fn sys_socket(domain: u64, typ: u64) -> i64 {
+fn sys_socket(domain: u64, typ: u64, proto: u64) -> i64 {
     if domain == 1 {
         let st = Arc::new(spin::Mutex::new(proc::UnixState::Unbound));
         return with(|p| p.add_fd(Fd { kind: FdKind::UnixSock(st), cloexec: typ & 0x80000 != 0, flags: 2 | (typ as u32 & 0x800) }, 0)).unwrap_or(-EBADF);
+    }
+    if domain == crate::devices::events::AF_NETLINK {
+        return crate::devices::events::socket(typ, proto);
     }
     if domain != 2 {
         return -97;
@@ -2436,6 +2449,10 @@ fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
 }
 
 fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
+    // a device event socket listens to everything from its creation on: the address is not needed
+    if crate::devices::events::is_event_fd(fd) {
+        return 0;
+    }
     if let Some(us) = unix_sock(fd) {
         let Some((path, abstract_name)) = unix_path(addr, len) else { return -22 };
         // a path gets a node in the file tree (EADDRINUSE if something is there); an abstract name

@@ -147,7 +147,11 @@ fn file_text(g: u16, file: &str) -> Option<String> {
 pub fn open(path: &str) -> Option<Node> {
     let dir = |name: &str| Node::Dir(alloc::vec![DirEnt { name: String::from(name), dir: true, size: 0 }]);
     match path {
-        "/sys" => return Some(dir("fs")),
+        "/sys" => {
+            let mut v = alloc::vec![DirEnt { name: String::from("fs"), dir: true, size: 0 }];
+            v.extend(crate::devices::sysfs::TOP.iter().map(|n| DirEnt { name: String::from(*n), dir: true, size: 0 }));
+            return Some(Node::Dir(v));
+        }
         "/sys/fs" => return Some(dir("cgroup")),
         _ => {}
     }

@@ -126,6 +126,10 @@ def erzeugen(arg):
           `read_volatile/write_volatile`. Zeit: `crate::arch::uptime_ms()`, `pause()`. Keine Interrupts (Abfragebetrieb).
         - Jede Warteschleife mit Zeitgrenze; Fehler als `Err(String)` zurückgeben, nie anhalten oder `panic!`.
         - Erfolgsmeldung mit `crate::kprintln!` so, dass dieses Muster passt: `{probe}`
+        - Abbaupfad (für `/sys/bus/pci/drivers/<name>/unbind`, siehe `docs/integration/kernel-device-interfaces.md`):
+          `can_remove` → `Ok(())` und `remove` stoppt jede DMA (Empfang/Senden aus, Gerät zurücksetzen), wenn das
+          Gerät sicher gelöst werden kann; sonst beide weglassen – der Kern meldet dann „unsupported“. Puffer aus
+          `alloc_pages` gibt ein `Drop` der Klassen-Struktur mit `crate::mem::free_run` zurück (erst nach `remove`).
 
         ## Prüfung (automatisch)
         `tools/treiber-werkstatt/werkstatt.py pruefen {p['bauplan']}` baut den Kern und startet QEMU mit

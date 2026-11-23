@@ -18,6 +18,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
 
+mod hotplug;
+pub use hotplug::hotplug;
+
 pub struct Drv;
 pub static DRV: Drv = Drv;
 
@@ -118,6 +121,8 @@ struct Kbd {
 
 struct Hc {
     index: usize,
+    /// Root ports.
+    ports: u32,
     op: u64,
     rt: u64,
     db: u64,
@@ -612,6 +617,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             BLOCK.lock().push(Box::new(disk));
         }
     }
+    hotplug::register(hc, &lage, slot, speed, &dd, &ifs);
     if let Some((nports, pwr, ss)) = hub {
         crate::kprintln!("[xhci] Port {}: {what}", lage.name());
         hub_ports(hc, slot, nports, pwr, ss, speed, lage);
@@ -871,7 +877,7 @@ impl Driver for Drv {
         }
         crate::kprintln!("[xhci] Controller {:04x}:{:04x}: {} Port(s), {} Slots, Kontext {} Byte", d.vendor, d.device, ports, max_slots, ctx);
         let index = NEXT_HC.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        let mut hc = Hc { index, op, rt, db, ctx, dcbaa, cmd, ev_base: ev, ev_idx: 0, ev_cycle: 1, rings: Vec::new(), pending: VecDeque::new(), kbds: Vec::new(), keys: VecDeque::new() };
+        let mut hc = Hc { index, ports, op, rt, db, ctx, dcbaa, cmd, ev_base: ev, ev_idx: 0, ev_cycle: 1, rings: Vec::new(), pending: VecDeque::new(), kbds: Vec::new(), keys: VecDeque::new() };
         // Anschlüsse mit Strom versorgen (falls der Controller das verlangt, HCCPARAMS1.PPC)
         if hcc1 & 8 != 0 {
             for p in 1..=ports {

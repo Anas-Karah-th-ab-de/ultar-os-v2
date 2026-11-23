@@ -1,7 +1,7 @@
 //! The Linux-compatible sysfs device tree (`/sys/bus/pci`, `/sys/bus/usb`, DMI).
 //!
-//! Second source next to the Ultar kernel log: the transitional Linux device kernels
-//! expose it today; the Ultar kernel (0.4) has no `/sys`.
+//! The Ultar kernel and the transitional Linux device kernels both expose it; the Ultar
+//! kernel names its own extensions `ultar_*` (see [`crate::kernel_drivers`]).
 
 use super::{read_capped, HardwareError};
 use std::fs;

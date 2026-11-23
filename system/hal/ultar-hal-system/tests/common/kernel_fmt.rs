@@ -1,6 +1,6 @@
-//! Test support: produces the texts the Ultar kernel exposes, with format strings copied
-//! from the kernel source (`kernel/ultar-kern/src`, version 0.4). Each function names the
-//! kernel function it mirrors. Also builds Linux-style sysfs trees.
+//! Test support: produces the files the Ultar kernel exposes, with formats copied from the
+//! kernel source (`kernel/ultar-kern/src`: `devices/sysfs.rs`, `geraet.rs`, `procfs.rs`).
+//! Also builds Linux-style sysfs trees.
 //!
 //! Shared by the tests of `ultar-hal-system` and `ultar-devd`.
 #![allow(dead_code)]
@@ -71,43 +71,8 @@ pub struct Machine {
     pub model: String,
     pub pci: Vec<KDev>,
     pub usb: Vec<KUsb>,
-    /// Probe errors by slot (the kernel then prints `FEHLER`).
+    /// Probe errors by slot (`ultar_probe` then says `failed: <driver> <error>`).
     pub probe_errors: BTreeMap<String, String>,
-}
-
-/// `pci.rs::class_name`.
-pub fn class_name(c: u8, s: u8, p: u8) -> &'static str {
-    match (c, s, p) {
-        (0x01, 0x01, _) => "IDE-Controller",
-        (0x01, 0x06, 0x01) => "SATA (AHCI)",
-        (0x01, 0x08, 0x02) => "NVMe-Speicher",
-        (0x01, 0x00, _) => "SCSI-Speicher",
-        (0x01, _, _) => "Massenspeicher",
-        (0x02, 0x00, _) => "Ethernet",
-        (0x02, 0x80, _) => "Netzwerk (WLAN u. a.)",
-        (0x02, _, _) => "Netzwerk",
-        (0x03, 0x00, _) => "Grafik (VGA)",
-        (0x03, _, _) => "Grafik",
-        (0x04, 0x03, _) => "Audio (HD Audio)",
-        (0x04, _, _) => "Multimedia",
-        (0x06, 0x00, _) => "Host-Brücke",
-        (0x06, 0x01, _) => "ISA-Brücke",
-        (0x06, 0x04, _) => "PCI-Brücke",
-        (0x06, _, _) => "Brücke",
-        (0x07, _, _) => "Kommunikation (seriell)",
-        (0x08, _, _) => "Systemperipherie",
-        (0x09, _, _) => "Eingabe",
-        (0x0c, 0x03, 0x30) => "USB 3 (xHCI)",
-        (0x0c, 0x03, 0x20) => "USB 2 (EHCI)",
-        (0x0c, 0x03, _) => "USB (alt)",
-        (0x0c, 0x05, _) => "SMBus",
-        (0x0c, _, _) => "Serieller Bus",
-        (0x0d, _, _) => "Funk (Bluetooth u. a.)",
-        (0x10, _, _) => "Verschlüsselung",
-        (0x11, _, _) => "Signalverarbeitung",
-        (0x12, _, _) => "Rechenbeschleuniger (NPU)",
-        _ => "unbekannt",
-    }
 }
 
 const INTEL_ETH: &[u16] = &[
@@ -150,28 +115,6 @@ pub fn kernel_driver(d: &KDev) -> Option<(&'static str, &'static str)> {
         Some(("gen-xhci", "werkstatt"))
     } else {
         None
-    }
-}
-
-/// `werkstatt.rs::norm` – only the blueprint kind.
-fn blueprint_kind(d: &KDev) -> &'static str {
-    let (c, s, p) = d.parts();
-    match (c, s, p) {
-        (0x01, 0x06, 0x01) => "ahci",
-        (0x01, 0x08, 0x02) => "nvme",
-        (0x0c, 0x03, 0x30) => "xhci",
-        (0x0c, 0x03, 0x20) => "ehci",
-        (0x04, 0x03, _) => "hda",
-        (0x03, _, _) if d.vendor == 0x8086 => "intel-xe-anzeige",
-        (0x03, _, _) if d.vendor == 0x1002 => "amd-dcn-anzeige",
-        (0x03, 0x00, 0x00) => "vga-fb",
-        (0x02, 0x00, _) if d.vendor == 0x8086 => "intel-eth",
-        (0x02, 0x00, _) if d.vendor == 0x10ec => "realtek-eth",
-        (0x02, 0x80, _) => "wlan",
-        (0x0c, 0x05, _) => "smbus",
-        (0x06, _, _) => "bruecke",
-        _ if d.vendor == 0x1af4 => "virtio",
-        _ => "unbekannt",
     }
 }
 
@@ -231,147 +174,6 @@ impl Machine {
         })
     }
 
-    /// The boot part of the log: `main.rs` (scan line), `driver.rs::bind_all`, xHCI ports.
-    pub fn boot_log(&self) -> String {
-        let mut s = format!("[pci] {} Gerät(e) gefunden\n", self.pci.len());
-        for d in &self.pci {
-            match (kernel_driver(d), self.outcome(d)) {
-                (Some((name, origin)), Some(Ok(_))) => {
-                    s += &format!("[treiber] {} -> {} ({}) ok\n", d.id(), name, origin);
-                }
-                (Some((name, _)), Some(Err(e))) => {
-                    s += &format!("[treiber] {} -> {} FEHLER: {e}\n", d.id(), name);
-                }
-                _ => {}
-            }
-        }
-        let controller = self
-            .pci
-            .iter()
-            .find(|d| matches!(self.outcome(d), Some(Ok(("gen-xhci", _)))));
-        if let (Some(d), false) = (controller, self.usb.is_empty()) {
-            s += &format!(
-                "[xhci] Controller {:04x}:{:04x}: {} Port(s), {} Slots, Kontext {} Byte\n",
-                d.vendor, d.device, 16, 64, 32
-            );
-            for u in &self.usb {
-                s += &format!(
-                    "[xhci] Port {}: {:04x}:{:04x}\n",
-                    u.port, u.vendor, u.product
-                );
-            }
-        }
-        s
-    }
-
-    fn state(&self, d: &KDev) -> &'static str {
-        match self.outcome(d) {
-            Some(Ok((name, _))) => name,
-            Some(Err(_)) => "FEHLER",
-            None => "-",
-        }
-    }
-
-    /// The device table of `selftest.rs::run`.
-    pub fn selftest_table(&self) -> String {
-        let mut s = String::from("[test] PCI-Geräte:\n");
-        for d in &self.pci {
-            let (c, sub, p) = d.parts();
-            s += &format!(
-                "  {}  {:<28} {}\n",
-                d.id(),
-                class_name(c, sub, p),
-                self.state(d)
-            );
-            if let Some(Err(e)) = self.outcome(d) {
-                s += &format!("      Fehler: {e}\n");
-            }
-        }
-        s + "[test] Datenträger (nur lesen):\n"
-    }
-
-    /// Console command `geraete` (`shell.rs`).
-    pub fn console_devices(&self) -> String {
-        let mut s = String::new();
-        for d in &self.pci {
-            let (c, sub, p) = d.parts();
-            s += &format!(
-                "{}  {:<26} {}\n",
-                d.id(),
-                class_name(c, sub, p),
-                self.state(d)
-            );
-        }
-        s
-    }
-
-    /// Console command `treiber` (`shell.rs`): the built-in driver register.
-    pub fn console_drivers(&self) -> String {
-        const ALL: &[(&str, &str)] = &[
-            ("virtio-blk", "hand"),
-            ("virtio-net", "hand"),
-            ("nvme", "hand"),
-            ("virtio-rng", "hand"),
-            ("bruecke", "hand"),
-            ("gen-ahci", "werkstatt"),
-            ("gen-bochs-vga", "werkstatt"),
-            ("gen-hda", "werkstatt"),
-            ("gen-intel-eth", "werkstatt"),
-            ("gen-ixgbe", "werkstatt"),
-            ("gen-smbus", "werkstatt"),
-            ("gen-xhci", "werkstatt"),
-        ];
-        let mut s = String::new();
-        for (name, origin) in ALL {
-            let n = self
-                .pci
-                .iter()
-                .filter(|d| matches!(self.outcome(d), Some(Ok((bound, _))) if bound == *name))
-                .count();
-            s += &format!("{:<14} {:<10} {} Gerät(e)\n", name, origin, n);
-        }
-        s + &format!("{:<14} {:<10} Tastatur (Abfrage)\n", "ps2kbd", "hand")
-    }
-
-    /// `werkstatt.rs::report`: blueprints of the devices without a working driver.
-    pub fn workshop_report(&self) -> String {
-        let mut lines = Vec::new();
-        for d in &self.pci {
-            let error = match self.outcome(d) {
-                Some(Ok(_)) => continue,
-                Some(Err(e)) => format!("\"{e}\""),
-                None => "null".to_string(),
-            };
-            let kind = blueprint_kind(d);
-            if kind == "bruecke" {
-                continue;
-            }
-            let (c, sub, p) = d.parts();
-            lines.push(format!(
-                "{{\"pci\":\"{}\",\"hersteller\":\"{:04x}\",\"geraet\":\"{:04x}\",\"subsystem\":\"{:04x}:{:04x}\",\"klasse\":\"{:02x}{:02x}{:02x}\",\"rev\":{},\"art\":\"{}\",\"bauplan\":\"{kind}\",\"norm\":\"{}\",\"bars\":[{}],\"faehigkeiten\":[{}],\"fehler\":{}}}",
-                d.slot, d.vendor, d.device, d.subsys.0, d.subsys.1, c, sub, p, 1,
-                class_name(c, sub, p), "keine offene Norm bekannt – Registerbeschreibung/Datenblatt nötig",
-                "{\"bar\":0,\"adresse\":\"0xfe000000\",\"groesse\":16384,\"io\":false}", "1,5,16", error
-            ));
-        }
-        if lines.is_empty() {
-            return "[werkstatt] alle Geräte haben einen Treiber\n".to_string();
-        }
-        let mut s = format!(
-            "[werkstatt] {} Gerät(e) ohne Treiber – Baupläne:\n",
-            lines.len()
-        );
-        for line in lines {
-            s += &format!("WERKSTATT {line}\n");
-        }
-        s
-    }
-
-    /// The log after a self-test boot (`main.rs`: self test, then workshop report).
-    pub fn selftest_log(&self) -> String {
-        self.boot_log() + &self.selftest_table() + &self.workshop_report()
-    }
-
     /// `/proc/ultar/geraet`: `geraet.rs::text` + `grafik.rs::text`.
     pub fn device_info(&self, kind: &str, chassis: &str) -> String {
         let mut s = format!(
@@ -396,15 +198,20 @@ impl Machine {
         s
     }
 
-    /// Writes the files of an Ultar kernel below `root` (`/proc/version`, log, description).
-    pub fn write_ultar_root(&self, root: &Path, log: &str) {
+    /// Writes the files of an Ultar kernel below `root`: `/proc/version`, the device
+    /// description and the sysfs device tree of `devices/sysfs.rs` (with the `ultar_*`
+    /// files, the driver register and the bind/unbind control files).
+    pub fn write_ultar_root(&self, root: &Path) {
+        // the tree describes the machine as it is now: nothing of an earlier one stays
+        let _ = std::fs::remove_dir_all(root.join("sys"));
         write(root, "proc/version", ULTAR_VERSION);
-        write(root, "proc/ultar/protokoll", log);
         write(
             root,
             "proc/ultar/geraet",
             &self.device_info("pc", "35 (Mini-PC)"),
         );
+        write(root, "sys/kernel/ultar/driver_abi", "1\n");
+        self.write_ultar_sysfs(root);
     }
 }
 

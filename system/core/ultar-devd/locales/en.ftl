@@ -59,10 +59,6 @@ devd.store.write-failed = writing failed
 hal.hardware.no-source = neither the kernel nor the system provides a device description
 hal.hardware.io = the device description could not be read
 hal.hardware.too-many-devices = more devices than plausible
-hal.hardware.note.log-wrapped = The kernel log has wrapped; some devices may not be shown.
-hal.hardware.note.bound-only = The kernel only shows devices that have a built-in driver; other devices are not visible.
-hal.hardware.note.class-incomplete = The class of some devices is not known exactly; drivers matched by class may not be found.
-hal.hardware.note.pci-count = The number of devices the kernel announced differs from the number described.
 
 devd.capability.no-driver = The hardware is present but no driver works for it.
 

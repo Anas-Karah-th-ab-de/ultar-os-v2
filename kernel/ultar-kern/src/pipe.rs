@@ -60,6 +60,9 @@ pub struct Pipe {
     /// Unix socket: identity of the process that writes into this direction – its process number
     /// (0 = not set: a plain pipe) and user id / group id packed into one word.
     writer: [AtomicU64; 2],
+    /// Packet mode (device events): lengths of the messages in `buf`, in order; `None`: a stream.
+    /// Always locked after `buf`.
+    lens: Mutex<Option<VecDeque<u32>>>,
 }
 
 impl Pipe {
@@ -70,7 +73,43 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)] })
+        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], lens: Mutex::new(None) })
+    }
+
+    /// Empty pipe in packet mode: every [`Pipe::push_packet`] is read back as one message.
+    pub fn packets(cap: u64) -> Arc<Pipe> {
+        let p = Pipe::with_capacity(cap);
+        *p.lens.lock() = Some(VecDeque::new());
+        p
+    }
+
+    /// Packet mode: append the whole message or nothing (`false`: no room or no memory).
+    pub fn push_packet(&self, data: &[u8]) -> bool {
+        let mut b = self.buf.lock();
+        let mut lens = self.lens.lock();
+        let Some(lens) = lens.as_mut() else { return false };
+        if b.len() as u64 + data.len() as u64 > self.capacity() || data.len() > u32::MAX as usize {
+            return false;
+        }
+        if crate::heap::fallible(|| b.try_reserve(data.len()).and(lens.try_reserve(1))).is_err() {
+            return false;
+        }
+        b.extend(data);
+        lens.push_back(data.len() as u32);
+        true
+    }
+
+    /// Take what one `read` of at most `max` bytes gets: up to `max` bytes of a stream, or the
+    /// next message in packet mode (cut to `max`, the rest of it dropped). `buf` is this pipe's
+    /// locked buffer. `None` if memory for the copy is refused – then nothing was taken.
+    pub fn take(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<alloc::vec::Vec<u8>> {
+        let mut lens = self.lens.lock();
+        let Some(lens) = lens.as_mut() else { return Pipe::pull(buf, max) };
+        let whole = lens.front().map_or(buf.len(), |&l| l as usize);
+        let out = Pipe::pull(buf, max.min(whole))?;
+        buf.drain(..whole - out.len());
+        lens.pop_front();
+        Some(out)
     }
 
     /// Unix socket: remember who writes into this direction (see `uds.rs`).

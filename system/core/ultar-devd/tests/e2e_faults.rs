@@ -22,7 +22,7 @@ const NVME1: &str = "pci:02:00.0";
 fn beelink_rig(tag: &str) -> Rig {
     let rig = Rig::new(tag);
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     rig
 }
 
@@ -183,10 +183,7 @@ fn unverifiable_depot_leaves_every_device_driverless_with_a_notice() {
     );
     let devices = daemon.rescan(None).devices.unwrap();
     assert_eq!(devices.iter().filter(|d| d.phase == Active).count(), 7);
-    assert_eq!(
-        daemon.list().notices,
-        [Text::key("hal.hardware.note.class-incomplete")]
-    );
+    assert!(daemon.list().notices.is_empty());
 }
 
 fn two_nvme_versions(tag: &str) -> Rig {
@@ -309,10 +306,10 @@ fn rescan_follows_hardware_changes() {
     machine
         .pci
         .push(KDev::new("03:00.0", 0x10de, 0x10f8, 0x04_0300));
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     let reply = daemon.rescan(None);
     assert_eq!(reply.added, ["pci:03:00.0"]);
-    assert_eq!(reply.removed, ["pci:ad:00.1", "usb:0-3"]);
+    assert_eq!(reply.removed, ["pci:ad:00.1", "usb:1-3"]);
     let devices = reply.devices.unwrap();
     assert_eq!(devices.len(), 13);
     let added = devices.iter().find(|d| d.address == "pci:03:00.0").unwrap();
@@ -327,7 +324,7 @@ fn rescan_follows_hardware_changes() {
         [
             ("pci:ad:00.1", DriverPhase::Removed),
             ("pci:03:00.0", DriverPhase::Active),
-            ("usb:0-3", DriverPhase::Removed),
+            ("usb:1-3", DriverPhase::Removed),
         ]
     );
     // Rescanning one device: only allowed for devices without working driver.
@@ -339,7 +336,7 @@ fn rescan_follows_hardware_changes() {
         RefusalKind::UnknownDevice
     );
     // The system description disappears: refused, devices stay as they were.
-    std::fs::remove_dir_all(rig.root.join("proc")).unwrap();
+    std::fs::remove_dir_all(rig.root.join("sys")).unwrap();
     let reply = daemon.rescan(None);
     assert_eq!(
         reply.devices.unwrap_err().kind,
@@ -429,7 +426,7 @@ fn start_needs_a_known_kernel() {
     );
     assert!(daemon.list().devices.is_empty());
     // A system description that exists but cannot be read is a start error.
-    std::fs::create_dir_all(rig.root.join("proc/version")).unwrap();
+    std::fs::create_dir_all(rig.root.join("sys/kernel/ultar/driver_abi")).unwrap();
     let error = start(rig.config()).err().unwrap();
     assert!(matches!(error, StartError::Hardware(_)));
     assert!(error
@@ -464,4 +461,22 @@ fn refused_bus_messages_become_a_notice() {
     assert!(list
         .notices
         .contains(&Text::key("devd.notice.publish-failed")));
+}
+
+#[test]
+fn kernel_device_events_trigger_a_new_reading() {
+    let rig = beelink_rig("kernel-events");
+    rig.standard_depot();
+    write(&rig.root, "sys/kernel/uevent_seqnum", "5\n");
+    let (mut daemon, _) = rig.start();
+    assert!(!daemon.kernel_events_pending());
+    // the kernel reports an event (a device came, went or changed its binding)
+    write(&rig.root, "sys/kernel/uevent_seqnum", "6\n");
+    assert!(daemon.kernel_events_pending());
+    assert!(daemon.rescan(None).devices.is_ok());
+    assert!(!daemon.kernel_events_pending());
+    // the daemon's own binding changes are taken as seen
+    write(&rig.root, "sys/kernel/uevent_seqnum", "8\n");
+    daemon.note_kernel_events();
+    assert!(!daemon.kernel_events_pending());
 }

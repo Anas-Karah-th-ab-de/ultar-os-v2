@@ -59,10 +59,6 @@ devd.store.write-failed = فشلت الكتابة
 hal.hardware.no-source = لا النواة ولا النظام يوفّران وصفًا للأجهزة
 hal.hardware.io = تعذّرت قراءة وصف الأجهزة
 hal.hardware.too-many-devices = عدد الأجهزة أكبر من المعقول
-hal.hardware.note.log-wrapped = سجل النواة امتلأ ودار؛ قد تكون بعض الأجهزة غير ظاهرة.
-hal.hardware.note.bound-only = النواة لا تعرض إلا الأجهزة التي لها تعريف مدمج؛ الأجهزة الأخرى غير ظاهرة.
-hal.hardware.note.class-incomplete = صنف بعض الأجهزة غير معروف بدقة، وقد لا تُطابَق تعريفات تعتمد على الصنف.
-hal.hardware.note.pci-count = عدد الأجهزة الذي أعلنته النواة يختلف عن عدد الأجهزة الموصوفة.
 
 devd.capability.no-driver = العتاد موجود لكن لا يوجد تعريف يعمل له.
 

@@ -59,10 +59,6 @@ devd.store.write-failed = Schreiben fehlgeschlagen
 hal.hardware.no-source = weder Kern noch System liefern eine Gerätebeschreibung
 hal.hardware.io = die Gerätebeschreibung war nicht lesbar
 hal.hardware.too-many-devices = mehr Geräte als plausibel
-hal.hardware.note.log-wrapped = Das Kernprotokoll ist übergelaufen; einige Geräte fehlen möglicherweise.
-hal.hardware.note.bound-only = Der Kern zeigt nur Geräte mit eingebautem Treiber; andere Geräte sind nicht sichtbar.
-hal.hardware.note.class-incomplete = Die Klasse einiger Geräte ist nicht genau bekannt; Treiber, die nach Klasse zugeordnet werden, werden eventuell nicht gefunden.
-hal.hardware.note.pci-count = Die vom Kern gemeldete Geräteanzahl weicht von der Zahl der beschriebenen Geräte ab.
 
 devd.capability.no-driver = Die Hardware ist vorhanden, aber kein Treiber funktioniert dafür.
 

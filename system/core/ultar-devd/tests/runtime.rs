@@ -64,7 +64,7 @@ fn send_signal(pid: u32, signal: &str) {
 fn switch_rig(tag: &str) -> Rig {
     let rig = Rig::new(tag);
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     rig.add_repo_drivers();
     rig.add_planned_drivers();
     let rule = "pci_class = [\"010802\"]";

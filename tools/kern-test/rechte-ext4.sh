@@ -6,7 +6,7 @@
 # Needs: mke2fs, debugfs, e2fsck (e2fsprogs), python3, the image from `IMG=1 scripts/build-kern.sh`.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-D="$(mktemp)"; DISK="$(mktemp)"; L="$(mktemp)"; LOG="${LOG:-$L}"; trap 'rm -f "$D" "$DISK" "$L"' EXIT
+D="$(mktemp)"; DISK="$(mktemp)"; L="$(mktemp)"; LOG="${ELOG:-$L}"; trap 'rm -f "$D" "$DISK" "$L"' EXIT
 mke2fs -q -t ext4 "$D" 16M
 # the kernel finds ultar-data by its GPT partition name: one partition at 1 MiB (sgdisk is not needed)
 python3 - "$D" "$DISK" <<'PY'

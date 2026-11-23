@@ -18,8 +18,8 @@
 pub mod hardware;
 pub mod kernel_drivers;
 
-pub use hardware::{HardwareError, HardwareReader, Inventory, InventoryNote};
-pub use kernel_drivers::{kernel_abi, BindState, ControlInterface, KernelDrivers};
+pub use hardware::{HardwareError, HardwareReader, Inventory};
+pub use kernel_drivers::{kernel_abi, uevent_seqnum, BindState, ControlInterface, KernelDrivers};
 
 use std::fs;
 use std::path::{Path, PathBuf};

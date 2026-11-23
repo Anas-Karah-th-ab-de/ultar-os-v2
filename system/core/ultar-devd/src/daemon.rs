@@ -35,7 +35,9 @@ use ultar_bus::messages::device_service::{
 };
 use ultar_bus::{Text, TextArg};
 use ultar_driverpkg::Version;
-use ultar_hal_system::{kernel_abi, ControlInterface, HardwareError, HardwareReader};
+use ultar_hal_system::{
+    kernel_abi, uevent_seqnum, ControlInterface, HardwareError, HardwareReader,
+};
 use ultar_service::log::Logger;
 
 /// Where the daemon finds its inputs and keeps its state.
@@ -117,6 +119,8 @@ pub struct Daemon {
     pub(crate) access: Box<dyn AdminAccess>,
     /// Where refused operations are recorded.
     pub(crate) logger: Logger,
+    /// The kernel's device event counter when the hardware was last read.
+    kernel_events: Option<u64>,
 }
 
 impl Daemon {
@@ -151,6 +155,7 @@ impl Daemon {
             publish_failed: false,
             access: Box::new(AllowAll),
             logger: Logger::discard(),
+            kernel_events: None,
         };
         // An unreadable inventory is a notice, not a start failure.
         let _ = daemon.scan();
@@ -180,11 +185,8 @@ impl Daemon {
                 return Err(refuse(RefusalKind::SystemUnreadable, error.key()));
             }
         };
-        self.hardware_notices = inventory
-            .notes
-            .iter()
-            .map(|note| Text::key(note.key()))
-            .collect();
+        self.hardware_notices = Vec::new();
+        self.kernel_events = uevent_seqnum(&self.config.root).ok().flatten();
         let known: BTreeSet<String> = self
             .manager
             .devices()
@@ -285,8 +287,9 @@ impl Daemon {
         ListReply {
             devices: self.rows(),
             notices,
-            // The loader never changes kernel bindings (see `crate::builtin`).
-            kernel_switch_supported: false,
+            // The loader binds through the kernel's control files when it has them
+            // (see `crate::builtin`); drivers without a teardown path are still refused.
+            kernel_switch_supported: self.kernel_control() == ControlInterface::SysfsBind,
         }
     }
 
@@ -305,8 +308,23 @@ impl Daemon {
         self.sink.snapshot()
     }
 
-    /// The interface the running kernel offers for changing driver bindings (reported
-    /// only; this daemon uses none).
+    /// Whether the kernel reported device events (a device came, went or changed its
+    /// binding) since the hardware was last read; then [`Daemon::rescan`] reads it again.
+    pub fn kernel_events_pending(&self) -> bool {
+        match uevent_seqnum(&self.config.root) {
+            Ok(Some(now)) => Some(now) != self.kernel_events,
+            _ => false,
+        }
+    }
+
+    /// Takes the kernel's current event counter as seen (after the daemon's own binding
+    /// changes, which it already knows about).
+    pub fn note_kernel_events(&mut self) {
+        self.kernel_events = uevent_seqnum(&self.config.root).ok().flatten();
+    }
+
+    /// The interface the running kernel offers for changing driver bindings
+    /// (`/sys/bus/pci/drivers/<name>/bind`, used by the built-in driver loader).
     pub fn kernel_control(&self) -> ControlInterface {
         self.builtin.control_interface()
     }

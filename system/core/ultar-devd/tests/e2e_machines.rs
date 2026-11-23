@@ -6,7 +6,7 @@
 
 mod rig;
 
-use rig::kernel_fmt::{beelink, thinkpad, write, ULTAR_VERSION};
+use rig::kernel_fmt::{beelink, thinkpad, write};
 use rig::{availability, last_states, row, summary, Rig};
 use std::collections::BTreeMap;
 use ultar_bus::messages::device_service::DevicePhase::{Active, Failed, NoDriver};
@@ -25,7 +25,7 @@ fn beelink_selftest(tag: &str) -> (Rig, Daemon, MemoryPublisher) {
     let rig = Rig::new(tag);
     rig.standard_depot();
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.selftest_log());
+    machine.write_ultar_root(&rig.root);
     let (daemon, memory) = rig.start();
     (rig, daemon, memory)
 }
@@ -47,9 +47,9 @@ fn beelink_rows() -> Vec<Row> {
         (s("pci:ac:00.0"), Failed, s(""), s(not_loadable)),
         (s("pci:ad:00.0"), Active, s("gen-ixgbe"), s("")),
         (s("pci:ad:00.1"), Active, s("gen-ixgbe"), s("")),
-        (s("usb:0-1"), NoDriver, s(""), s(no_package)),
-        (s("usb:0-2"), Failed, s(""), s(not_loadable)),
-        (s("usb:0-3"), NoDriver, s(""), s(no_package)),
+        (s("usb:1-1"), NoDriver, s(""), s(no_package)),
+        (s("usb:1-2"), Failed, s(""), s(not_loadable)),
+        (s("usb:1-3"), NoDriver, s(""), s(no_package)),
     ]
 }
 
@@ -62,10 +62,10 @@ fn beelink_devices_after_a_selftest_boot_of_the_ultar_kernel() {
     let wifi = &row(&list, "pci:ac:00.0").alternatives[0];
     assert_eq!(wifi.id, "intel-wifi");
     assert!(wifi.quarantined.is_none());
-    assert!(!list.kernel_switch_supported);
-    // The self-test log gives the class of bound Ethernet/audio devices only as a prefix.
-    let note = Text::key("hal.hardware.note.class-incomplete");
-    assert_eq!(list.notices, [note]);
+    // the kernel has bind/unbind control files (drivers without teardown are still refused)
+    assert!(list.kernel_switch_supported);
+    // The kernel's device tree is complete: nothing to warn about.
+    assert!(list.notices.is_empty());
     // Seven working choices are remembered, nothing is quarantined.
     assert_eq!(daemon.state().choices.len(), 7);
     assert!(daemon.state().quarantine.is_empty());
@@ -81,8 +81,10 @@ fn beelink_capabilities_and_driver_states_are_published() {
     assert_eq!(published.capabilities[0].revision, 1);
     assert_eq!(
         availability(&published.capabilities[0]),
+        // the kernel's device tree gives the USB class too: the Bluetooth adapter is seen
         [
             ("audio_out", Available),
+            ("bluetooth", Unavailable),
             ("bus", Available),
             ("gpu", Unavailable),
             ("net", Available),
@@ -100,52 +102,10 @@ fn beelink_capabilities_and_driver_states_are_published() {
     let display = (s("intel-display-xe"), DriverPhase::Failed);
     assert_eq!(state("pci:00:02.0"), display);
     assert_eq!(state("pci:ab:00.0"), (s(""), DriverPhase::Missing));
-    assert_eq!(state("usb:0-2"), (s("intel-bt-usb"), DriverPhase::Failed));
+    assert_eq!(state("usb:1-2"), (s("intel-bt-usb"), DriverPhase::Failed));
     let wifi = published.states.iter().find(|x| x.device == "pci:ac:00.0");
     let reason = Text::key("devd.reason.not-loadable");
     assert_eq!(wifi.unwrap().reason, Some(reason));
-}
-
-#[test]
-fn beelink_after_a_normal_boot_sees_only_what_the_kernel_logged() {
-    let rig = Rig::new("beelink-boot");
-    rig.standard_depot();
-    let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.boot_log());
-    let (daemon, memory) = rig.start();
-    let list = daemon.list();
-    // Bound devices appear without class code: drivers matched by id work (gen-ixgbe),
-    // drivers matched by class cannot be found (nvme, gen-xhci, gen-hda) although the
-    // kernel runs them – reported as such, with the two notices that explain it.
-    let kernel_only = "devd.reason.kernel-only";
-    assert_eq!(
-        summary(&list)[..7],
-        [
-            (s("pci:00:0d.0"), NoDriver, s(""), s(kernel_only)),
-            (s("pci:00:14.0"), NoDriver, s(""), s(kernel_only)),
-            (s("pci:00:1f.3"), Active, s("gen-hda"), s("")),
-            (s("pci:01:00.0"), NoDriver, s(""), s(kernel_only)),
-            (s("pci:02:00.0"), NoDriver, s(""), s(kernel_only)),
-            (s("pci:ad:00.0"), Active, s("gen-ixgbe"), s("")),
-            (s("pci:ad:00.1"), Active, s("gen-ixgbe"), s("")),
-        ]
-    );
-    assert_eq!(
-        row(&list, "pci:01:00.0").reason,
-        Some(Text::key(kernel_only).with(TextArg::Verbatim(s("nvme"))))
-    );
-    assert_eq!(list.devices.len(), 10);
-    assert_eq!(
-        list.notices,
-        [
-            Text::key("hal.hardware.note.bound-only"),
-            Text::key("hal.hardware.note.class-incomplete"),
-        ]
-    );
-    assert_eq!(
-        availability(&memory.published().capabilities[0]),
-        [("audio_out", Available), ("net", Available)]
-    );
 }
 
 /// ThinkPad on a sysfs tree whose `driver` links follow the Ultar kernel's match rules.
@@ -161,7 +121,7 @@ fn thinkpad_on_sysfs(tag: &str) -> ThinkPad {
     let machine = thinkpad();
     machine.write_sysfs_root(&rig.root, true);
     // Kernel identification of the Ultar kernel (the packages are built for its ABI).
-    write(&rig.root, "proc/version", ULTAR_VERSION);
+    write(&rig.root, "sys/kernel/ultar/driver_abi", "1\n");
     let (daemon, memory) = rig.start();
     let by_label = machine
         .pci

@@ -146,6 +146,19 @@ impl Transport {
         }
     }
 
+    /// Device reset (status 0): the device stops using every queue. `false`: it did not confirm.
+    pub fn reset(&self) -> bool {
+        // SAFETY: `common` is the device's common configuration in an identity-mapped BAR.
+        unsafe {
+            w8(self.common + 20, 0);
+            let mut n = 0;
+            while r8(self.common + 20) != 0 && n < 1_000_000 {
+                n += 1;
+            }
+            r8(self.common + 20) == 0
+        }
+    }
+
     pub fn ready(&self) {
         unsafe { w8(self.common + 20, ST_ACK | ST_DRIVER | ST_FEATURES_OK | ST_DRIVER_OK) }
     }

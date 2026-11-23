@@ -18,7 +18,7 @@ const WAIT: Duration = Duration::from_secs(30);
 fn malformed_requests_get_typed_errors_and_do_not_stop_the_service() {
     let rig = Rig::new("service");
     let machine = beelink();
-    machine.write_ultar_root(&rig.root, &machine.boot_log());
+    machine.write_ultar_root(&rig.root);
     rig.standard_depot();
     let socket = rig.root.parent().unwrap().join("bus.sock");
     let identity = Arc::new(FixedIdentity::new(Identity::new("test.peer").unwrap()));
@@ -57,7 +57,7 @@ fn malformed_requests_get_typed_errors_and_do_not_stop_the_service() {
         Err(BusError::Remote(ErrorCode::UnknownMethod))
     ));
     // The service is still there and stops only on a proper request.
-    assert_eq!(caller.call(&List {}, WAIT).unwrap().devices.len(), 10);
+    assert_eq!(caller.call(&List {}, WAIT).unwrap().devices.len(), 14);
     caller.call(&Shutdown {}, WAIT).unwrap();
     assert!(server.join().unwrap().is_ok());
 }

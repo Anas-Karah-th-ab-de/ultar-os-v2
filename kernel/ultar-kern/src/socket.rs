@@ -317,6 +317,8 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
 
 /// eingehende Rahmen verarbeiten, Wiederholungen senden
 pub fn poll() {
+    // USB hot-plug is looked at on the same paths (rate-limited there)
+    crate::devices::poll();
     // see `flush`; received data is charged to the owner of the socket it lands in (`Sock::take`)
     crate::heap::kernel(poll_network)
 }
