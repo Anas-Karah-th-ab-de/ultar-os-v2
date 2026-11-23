@@ -34,6 +34,6 @@ cp target/x86_64-unknown-linux-gnu/release/examples/selfcheck "$B/bin/busck"
 echo "=== machine: $(cat /sys/class/dmi/id/product_name) · $(nproc) cores · kernel under KVM with real SMBIOS ==="
 LIMIT="${LIMIT:-900}" bash tools/kern-test/kvm-on-target.sh "$B/ultar-kern-remote-test.efi" "$B/bin" | tee out/stage1-kvm.log
 echo "=== verdict ==="
-ok=1; for want in "ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "GRENZTEST: ALLES OK" "alle Geräte haben einen Treiber"; do
+ok=1; for want in "ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK" "GRENZTEST: ALLES OK" "alle Geräte haben einen Treiber"; do
   if grep -aq "$want" out/stage1-kvm.log; then echo "ok    $want"; else echo "FAIL  $want"; ok=0; fi; done
 [ "$ok" = 1 ] && echo "STAGE1 PASSED" || { echo "STAGE1 FAILED"; exit 1; }
