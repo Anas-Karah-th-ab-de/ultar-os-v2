@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest rechtetest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -23,3 +23,6 @@ grenztest: grenztest.c grenztest-grenzen.c grenztest-angriff.c grenztest.h
 # the security reviewer's attack program (its --dos modes are run by grenztest)
 ausbruch: ../../../tools/kern-test/attacks/ausbruch.c
 	gcc -O2 -static -pthread -Wno-unused-result -o $@ $<
+# identities: user/group ids, file modes and owners, Unix socket nodes and SO_PEERCRED, fsync
+rechtetest: rechtetest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<

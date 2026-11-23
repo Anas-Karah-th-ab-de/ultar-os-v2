@@ -134,9 +134,7 @@ impl Drop for Fd {
             }
             FdKind::UnixSock(s) => {
                 if Arc::strong_count(s) == 1 {
-                    if let UnixState::Listening(p, _) = &*s.lock() {
-                        crate::syscall::unix_unlisten(p);
-                    }
+                    crate::syscall::unix_unlisten(s);
                 }
             }
             FdKind::File { data, path, write: true, dirty: true, .. } => {

@@ -57,6 +57,9 @@ pub struct Pipe {
     /// Open writing ends.
     pub writers: AtomicU64,
     cap: AtomicU64,
+    /// Unix socket: identity of the process that writes into this direction – its process number
+    /// (0 = not set: a plain pipe) and user id / group id packed into one word.
+    writer: [AtomicU64; 2],
 }
 
 impl Pipe {
@@ -67,7 +70,19 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap) })
+        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)] })
+    }
+
+    /// Unix socket: remember who writes into this direction (see `uds.rs`).
+    pub fn set_writer(&self, who: crate::uds::Peer) {
+        self.writer[1].store((who.uid as u64) << 32 | who.gid as u64, Ordering::Relaxed);
+        self.writer[0].store(who.pid, Ordering::Relaxed);
+    }
+
+    /// Unix socket: who writes into this direction, if it was recorded.
+    pub fn writer(&self) -> Option<crate::uds::Peer> {
+        let (pid, ids) = (self.writer[0].load(Ordering::Relaxed), self.writer[1].load(Ordering::Relaxed));
+        (pid != 0).then_some(crate::uds::Peer { pid, uid: (ids >> 32) as u32, gid: ids as u32 })
     }
 
     /// Capacity in bytes.

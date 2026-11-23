@@ -27,7 +27,7 @@ faster (numbers: design §9).
 | `src/socket.rs` | socket buffers charged to the creator's group and fallible; per-group share of the socket table; bounded send queue and datagram backlog; network tables charged to the kernel |
 | `src/procfs.rs`, `src/shell.rs`, `src/signal.rs`, `src/percpu.rs`, `src/main.rs`, `src/selftest.rs` | `/proc/ultar/gruppen`, `/proc/<pid>/cgroup`, `/proc/sys/fs/pipe-max-size`; console command `gruppen`; partial write and signals; per-processor context; modules; `grenztest` in the hardware self test |
 | `user/grenztest*.c/.h` (new), `user/Makefile`, `scripts/build-kern.sh` | the tests (130 checks); `grenztest` and the reviewer's `ausbruch` are built and copied to the image |
-| `user/zelltest.h`, `tools/kern-test/attacks/ausbruch.c` | `R_ALL` is `0xff` now (the new right); nothing else |
+| `user/zelltest.h`, `tools/kern-test/attacks/ausbruch.c` | `R_ALL` is `0xff` now (the new right; `0x3ff` since R3-K1); nothing else |
 | `tools/kern-test/ci.sh` | step 6: `grenztest` with 512 MiB and 2 GiB (`GRENZ_MEM`, `GRENZ_LOG`) |
 
 ## System calls: added / changed behaviour
@@ -62,7 +62,7 @@ victim (design §4, §6). Nothing below panics.
 | `statfs`, `fstatfs` | a path in a RAM tree reports that tree's quota and use (`f_type` tmpfs) |
 | `socket` | `ENFILE`: 4096 sockets in all, 512 for a group below `apps`/`cells` |
 | `sendto`/`write` (UDP, TCP), `recv*` | UDP payload over 65507 bytes: `EMSGSIZE`; TCP: `ENOBUFS` when the send copy is refused; `recv`: `ENOMEM`; incoming data the owner's group has no memory for is dropped |
-| `prctl` | `PR_ULTAR_RIGHTS_GET` returns `0xff` for all rights; new bit `0x80` = `MANAGE_GROUPS`; `PR_CAPBSET_READ/DROP` know capability 24 (`CAP_SYS_RESOURCE`) |
+| `prctl` | `PR_ULTAR_RIGHTS_GET` returns `0xff` for all rights; new bit `0x80` = `MANAGE_GROUPS`; `PR_CAPBSET_READ/DROP` know capability 24 (`CAP_SYS_RESOURCE`). Since R3-K1 all rights are `0x3ff` (`SET_ID`, `FILE_ADMIN`: `kernel-identities.md`) |
 | `getrandom` | `ENOMEM` possible |
 | `sysinfo`, `/proc/meminfo` | total = memory managed by the page allocator (slightly less than before: without the page records and the emergency heap); free now includes what the former fixed heap held unused |
 

@@ -127,7 +127,10 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64
             // `size=` in the mount options sets the quota of the tree (default: see isolation::tmpfs)
             let options = if data == 0 { String::new() } else { ustr(data).ok_or(-EFAULT)? };
             let quota = crate::isolation::tmpfs::parse_size(&options).map_err(|_| -EINVAL)?;
-            Ok((Source::Tmpfs(Tmpfs::create(quota), String::new()), false, "tmpfs"))
+            let (mode, uid, gid) = crate::isolation::tmpfs::parse_root_attr(&options).map_err(|_| -EINVAL)?;
+            let tree = Tmpfs::create(quota);
+            crate::perm::store(&tree.host_root(), crate::perm::Attr { mode: crate::perm::S_IFDIR | mode, uid, gid });
+            Ok((Source::Tmpfs(tree, String::new()), false, "tmpfs"))
         }
         // the group tree, for a cell whose manager wants it visible inside
         "cgroup2" => Ok((Source::Tree(String::from(crate::groups::files::ROOT_PATH)), false, "cgroup2")),
@@ -339,7 +342,11 @@ pub fn sys_symlink(target: u64, dirfd: i64, linkpath: u64) -> i64 {
     if !matches!(fs::stat(&parent(&loc.host)), Some((1, _))) {
         return -ENOENT;
     }
+    if let Err(e) = crate::perm::may_create(&loc.host) {
+        return e;
+    }
     if tmpfs::symlink(&loc.host, &target) {
+        crate::perm::created(&loc.host, crate::perm::S_IFLNK, 0o777);
         0
     } else {
         -EEXIST

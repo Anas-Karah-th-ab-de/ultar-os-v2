@@ -218,10 +218,15 @@ pub(crate) fn locate(dirfd: i64, path: &str, follow: bool) -> Result<Loc, i64> {
         } else {
             p.g.cwd.clone()
         };
-        Ok((view, base))
+        Ok((view, base, p.g.iso.cred, p.g.iso.rights.has(Rights::FILE_ADMIN)))
     });
-    let (view, base) = snap.unwrap_or(Err(-ENOENT))?;
-    view.walk(&base, path, follow).map_err(|e| e.errno())
+    let (view, base, cred, admin) = snap.unwrap_or(Err(-ENOENT))?;
+    let loc = view.walk(&base, path, follow).map_err(|e| e.errno())?;
+    // search permission on the directories that lead there (see perm.rs)
+    if !admin {
+        crate::perm::search(&view, &loc, &cred)?;
+    }
+    Ok(loc)
 }
 
 /// Number under which the calling thread sees the kernel-wide thread number `global` (0: not visible).
@@ -308,7 +313,17 @@ pub fn dispatch(f: &mut TrapFrame) {
         8 => Res::Val(sys_lseek(a[0], a[1] as i64, a[2])),
         9 => Res::Val(sys_mmap(a[0], a[1], a[2], a[3], a[4] as i32 as i64, a[5])),
         // mlock/munlock/mlockall/munlockall (149–152): Speicher wird nie ausgelagert – nichts zu tun
-        149 | 150 | 151 | 152 | 10 | 28 | 131 | 273 | 105 | 106 | 109 | 113 | 114 => Res::Val(0),
+        // user and group ids (cred.rs)
+        102 | 104..=108 | 113..=120 | 122 | 123 => Res::Val(crate::cred::call(nr, a).unwrap_or(-ENOSYS)),
+        // modes and owners (perm.rs)
+        90 => Res::Val(crate::perm::sys_chmod(-100, a[0], a[1], 0)),
+        91 => Res::Val(crate::perm::sys_fchmod(a[0], a[1])),
+        92 | 94 => Res::Val(crate::perm::sys_chown(-100, a[0], a[1], a[2], if nr == 94 { 0x100 } else { 0 })),
+        93 => Res::Val(crate::perm::sys_fchown(a[0], a[1], a[2])),
+        260 => Res::Val(crate::perm::sys_chown(a[0] as i32 as i64, a[1], a[2], a[3], a[4])),
+        268 | 452 => Res::Val(crate::perm::sys_chmod(a[0] as i32 as i64, a[1], a[2], if nr == 452 { a[3] } else { 0 })),
+        74 | 75 => Res::Val(sys_fsync(a[0])),
+        149 | 150 | 151 | 152 | 10 | 28 | 131 | 273 | 109 => Res::Val(0),
         11 => Res::Val(sys_munmap(a[0], a[1])),
         12 => Res::Val(sys_brk(a[0])),
         13 => Res::Val(sys_sigaction(a[0], a[1], a[2])),
@@ -326,7 +341,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         18 => Res::Val(sys_pwrite(a[0], a[1], a[2], a[3])),
         19 => sys_readv(a[0], a[1], a[2]),
         20 => sys_writev(a[0], a[1], a[2]),
-        21 => Res::Val(sys_access(-100, a[0])),
+        21 => Res::Val(crate::perm::sys_access(-100, a[0], a[1], 0)),
         22 => Res::Val(sys_pipe(a[0], 0)),
         24 => {
             f.rax = 0;
@@ -355,7 +370,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         72 => Res::Val(sys_fcntl(a[0], a[1], a[2])),
         79 => Res::Val(sys_getcwd(a[0], a[1])),
         80 => Res::Val(sys_chdir(a[0])),
-        83 => Res::Val(sys_mkdir(-100, a[0])),
+        83 => Res::Val(sys_mkdir(-100, a[0], a[1])),
         87 | 84 => Res::Val(sys_unlink(-100, a[0])),
         89 => Res::Val(sys_readlink(-100, a[0], a[1], a[2])),
         267 => Res::Val(sys_readlink(a[0] as i32 as i64, a[1], a[2], a[3])),
@@ -363,16 +378,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         // prctl: PR_GET_AUXV (Linux 6.4+) gibt es hier nicht – wie ältere Kernel mit EINVAL antworten, damit glibc/Rust
         // ihren Rückfallweg nehmen (sonst lesen Ubuntu-26-Programme eine leere Hilfstabelle und stürzen ab)
         157 => Res::Val(calls::sys_prctl(a[0], a[1])),
-        // getresuid/getresgid: alles root
-        118 | 120 => {
-            for ptr in [a[0], a[1], a[2]] {
-                if ptr != 0 {
-                    put(ptr, &0u32.to_le_bytes());
-                }
-            }
-            Res::Val(0)
-        }
-        170 | 171 | 122 | 123 | 203 | 204 | 221 | 52 | 90 | 91 | 92 | 93 | 94 | 268 | 260 | 280 | 162 | 74 | 75 | 306 => Res::Val(0),
+        // sync, syncfs: nothing is ever held back – every write to a disk is done when its call returns
+        170 | 171 | 203 | 204 | 221 | 52 | 280 | 162 | 306 => Res::Val(0),
         82 => Res::Val(sys_rename(-100, a[0], -100, a[1])),
         264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),
@@ -452,7 +459,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         }
         97 => Res::Val(sys_prlimit(a[0], a[1])),
         99 => Res::Val(sys_sysinfo(a[0])),
-        102 | 104 | 107 | 108 => Res::Val(0),
+
         110 => Res::Val(with(|p| shown(p, p.ppid)).unwrap_or(0)),
         111 | 121 => Res::Val(with(|p| shown(p, p.pgid)).unwrap_or(0)),
         112 | 124 => Res::Val(with(|p| shown(p, p.pid)).unwrap_or(0)),
@@ -489,10 +496,10 @@ pub fn dispatch(f: &mut TrapFrame) {
         }
         230 => sys_sleep(a[2], a[1] & 1 != 0),
         257 => Res::Val(sys_open(a[0] as i32 as i64, a[1], a[2], a[3])),
-        258 => Res::Val(sys_mkdir(a[0] as i32 as i64, a[1])),
+        258 => Res::Val(sys_mkdir(a[0] as i32 as i64, a[1], a[2])),
         262 => Res::Val(sys_stat_path(a[0] as i32 as i64, a[1], a[2], a[3])),
         263 => Res::Val(sys_unlink(a[0] as i32 as i64, a[1])),
-        269 | 439 => Res::Val(sys_access(a[0] as i32 as i64, a[1])),
+        269 | 439 => Res::Val(crate::perm::sys_access(a[0] as i32 as i64, a[1], a[2], if nr == 439 { a[3] } else { 0 })),
         23 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()) as i64 * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) as i64 / 1000).unwrap_or(-1) }),
         270 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()) as i64 * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) as i64 / 1_000_000).unwrap_or(-1) }),
         130 | 34 => {
@@ -1031,6 +1038,9 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     if acc != 0 && (crate::groups::files::is_tree(&path) || path == PIPE_MAX_FILE) && !rights.has(Rights::MANAGE_GROUPS) {
         return -EACCES;
     }
+    if let Err(e) = crate::perm::open_gate(&path, acc, trunc, creat) {
+        return e;
+    }
     let kind = match fs::open(&path) {
         Some(_) if creat && excl => return -EEXIST,
         Some(fs::Node::Dev(d)) => match d {
@@ -1083,6 +1093,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if !fs::store_file(&path, empty.clone()) {
                 return -ENOSPC;
             }
+            crate::perm::created(&path, crate::perm::S_IFREG, _mode as u32);
             FdKind::File { data: empty, pos: 0, path: path.clone(), append, write: true, dirty: false }
         }
         None => return -ENOENT,
@@ -1122,6 +1133,45 @@ fn stat_buf(mode: u32, size: u64, ino: u64, rdev: u64) -> Vec<u8> {
     b
 }
 
+/// `struct stat` of the entry at host path `host` with its real mode, owner and group (perm.rs);
+/// `fallback` is the mode of an entry that has gone meanwhile.
+fn stat_entry(host: &str, fallback: u32, size: u64) -> Vec<u8> {
+    let a = crate::perm::of(host).unwrap_or(crate::perm::Attr { mode: fallback, uid: 0, gid: 0 });
+    let mut b = stat_buf(a.mode, size, ino(host), 0);
+    b[28..32].copy_from_slice(&a.uid.to_le_bytes());
+    b[32..36].copy_from_slice(&a.gid.to_le_bytes());
+    b
+}
+
+/// `fsync`, `fdatasync`. A file's data lives in the descriptor's buffer until it is stored: this
+/// stores it now – on a writable ext4 that writes the blocks to the disk before the call returns
+/// (every disk write of this kernel is synchronous), in the RAM layer or a tmpfs it makes the data
+/// visible to others and is "durable" only as far as memory is. Pipes and sockets: `EINVAL`.
+fn sys_fsync(fd: u64) -> i64 {
+    let job = with(|p| match p.fd(fd).map(|d| &d.kind) {
+        Some(FdKind::File { data, path, write: true, dirty: true, .. }) => Ok(Some((path.clone(), data.clone()))),
+        Some(FdKind::File { .. }) | Some(FdKind::Dir { .. }) => Ok(None),
+        Some(_) => Err(-EINVAL),
+        None => Err(-EBADF),
+    })
+    .unwrap_or(Err(-EBADF));
+    let (path, data) = match job {
+        Ok(Some(j)) => j,
+        Ok(None) => return 0,
+        Err(e) => return e,
+    };
+    if !fs::store_file(&path, data) {
+        return -ENOSPC;
+    }
+    // stored: nothing left to write back until the next write
+    with(|p| {
+        if let Some(FdKind::File { dirty, .. }) = p.fd(fd).map(|d| &mut d.kind) {
+            *dirty = false;
+        }
+    });
+    0
+}
+
 fn ino(path: &str) -> u64 {
     path.bytes().fold(1469598103934665603u64, |h, c| (h ^ c as u64).wrapping_mul(1099511628211)) | 1
 }
@@ -1138,12 +1188,12 @@ fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
     let path = loc.host.clone();
     if flags & 0x100 != 0 {
         if let Some(target) = link_at(&loc) {
-            return if put(buf, &stat_buf(0o120777, target.len() as u64, ino(&path), 0)) { 0 } else { -EFAULT };
+            return if put(buf, &stat_entry(&path, 0o120777, target.len() as u64)) { 0 } else { -EFAULT };
         }
     }
     let b = match fs::stat(&path) {
-        Some((0, size)) => stat_buf(0o100755, size, ino(&path), 0),
-        Some((1, _)) => stat_buf(0o040755, 4096, ino(&path), 0),
+        Some((0, size)) => stat_entry(&path, 0o100755, size),
+        Some((1, _)) => stat_entry(&path, 0o040755, 4096),
         Some(_) => stat_buf(0o020666, 0, ino(&path), (5 << 8) | 1),
         None => return -ENOENT,
     };
@@ -1155,25 +1205,26 @@ fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
 }
 
 fn sys_fstat(fd: u64, buf: u64) -> i64 {
+    // a file's attributes are looked up after the process lock is released (a look into /proc takes it)
     let b = with(|p| {
         let d = p.fd(fd)?;
         Some(match &d.kind {
-            FdKind::Console => stat_buf(0o020620, 0, 3, (136 << 8) | 0),
-            FdKind::Null | FdKind::Zero | FdKind::Random => stat_buf(0o020666, 0, 4, (1 << 8) | 3),
-            FdKind::File { data, path, .. } => stat_buf(0o100755, data.len() as u64, ino(path), 0),
-            FdKind::Dir { path, .. } => stat_buf(0o040755, 4096, ino(path), 0),
-            FdKind::PipeR(_) | FdKind::PipeW(_) => stat_buf(0o010600, 0, 5, 0),
-            FdKind::Sock(h) => stat_buf(0o140777, 0, 6 + h.0 as u64, 0),
-            FdKind::SigFd(_) => stat_buf(0o000600, 0, 7, 0),
-            FdKind::UnixConn(..) | FdKind::UnixSock(_) => stat_buf(0o140777, 0, 8, 0),
-            FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => stat_buf(0o000600, 0, 9, 0),
-            FdKind::Fb(_) => stat_buf(0o020660, 0, 10, 29 << 8),
-            FdKind::Eingabe(e) => stat_buf(0o020660, 0, 11, (13 << 8) | (64 + e.0 as u64)),
-            FdKind::Ns(_) => stat_buf(0o100444, 0, 12, 0),
+            FdKind::Console => Ok(stat_buf(0o020620, 0, 3, (136 << 8) | 0)),
+            FdKind::Null | FdKind::Zero | FdKind::Random => Ok(stat_buf(0o020666, 0, 4, (1 << 8) | 3)),
+            FdKind::File { data, path, .. } => Err((path.clone(), 0o100755, data.len() as u64)),
+            FdKind::Dir { path, .. } => Err((path.clone(), 0o040755, 4096)),
+            FdKind::PipeR(_) | FdKind::PipeW(_) => Ok(stat_buf(0o010600, 0, 5, 0)),
+            FdKind::Sock(h) => Ok(stat_buf(0o140777, 0, 6 + h.0 as u64, 0)),
+            FdKind::SigFd(_) => Ok(stat_buf(0o000600, 0, 7, 0)),
+            FdKind::UnixConn(..) | FdKind::UnixSock(_) => Ok(stat_buf(0o140777, 0, 8, 0)),
+            FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => Ok(stat_buf(0o000600, 0, 9, 0)),
+            FdKind::Fb(_) => Ok(stat_buf(0o020660, 0, 10, 29 << 8)),
+            FdKind::Eingabe(e) => Ok(stat_buf(0o020660, 0, 11, (13 << 8) | (64 + e.0 as u64))),
+            FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
         })
     })
     .flatten();
-    match b {
+    match b.map(|r| r.unwrap_or_else(|(path, mode, size)| stat_entry(&path, mode, size))) {
         Some(b) => {
             if put(buf, &b) {
                 0
@@ -1400,6 +1451,9 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if kernel_tree(&nl.host) || ol.confined && kernel_tree(&ol.host) {
         return -EPERM;
     }
+    if let Err(e) = crate::perm::may_remove(&ol.host).and_then(|_| crate::perm::may_remove(&nl.host)) {
+        return e;
+    }
     // a symbolic link is moved as a link (links exist on tmpfs only)
     if let Some(target) = link_at(&ol) {
         if !crate::isolation::tmpfs::is_private(&nl.host) {
@@ -1409,6 +1463,7 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
         if !crate::isolation::tmpfs::symlink(&nl.host, &target) {
             return -EEXIST;
         }
+        crate::perm::moved(&ol.host, &nl.host);
         fs::unlink(&ol.host);
         return 0;
     }
@@ -1422,6 +1477,8 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if !fs::store_file(&n, data) {
         return -ENOSPC;
     }
+    // mode and owner go with the entry (before the old name – and its record – is removed)
+    crate::perm::moved(&o, &n);
     if !fs::unlink(&o) {
         return -EROFS;
     }
@@ -1449,21 +1506,16 @@ fn sys_ftruncate(fd: u64, len: u64) -> i64 {
     .unwrap_or(-EBADF)
 }
 
-fn sys_access(dirfd: i64, path: u64) -> i64 {
-    let Some(p) = ustr(path) else { return -EFAULT };
-    match locate(dirfd, &p, true) {
-        Ok(loc) if fs::stat(&loc.host).is_some() => 0,
-        Ok(_) => -ENOENT,
-        Err(e) => e,
-    }
-}
-
-fn sys_mkdir(dirfd: i64, path: u64) -> i64 {
+fn sys_mkdir(dirfd: i64, path: u64, mode: u64) -> i64 {
     let Some(p) = ustr(path) else { return -EFAULT };
     match locate(dirfd, &p, false) {
         Ok(loc) if loc.read_only => -EROFS,
         Ok(loc) if loc.confined && kernel_tree(&loc.host) => -EPERM,
-        Ok(loc) if fs::mkdir(&loc.host) => 0,
+        Ok(loc) if fs::stat(&loc.host).is_none() && crate::perm::may_create(&loc.host).is_err() => -EACCES,
+        Ok(loc) if fs::mkdir(&loc.host) => {
+            crate::perm::created(&loc.host, crate::perm::S_IFDIR, mode as u32);
+            0
+        }
         Ok(_) => -EEXIST,
         Err(e) => e,
     }
@@ -1482,7 +1534,11 @@ fn sys_unlink(dirfd: i64, path: u64) -> i64 {
         return -EPERM;
     }
     let path = loc.host;
+    if let Err(e) = crate::perm::may_remove(&path) {
+        return e;
+    }
     if fs::unlink(&path) {
+        crate::perm::forget(&path);
         0
     } else if fs::stat(&path).is_some() {
         -EROFS
@@ -1512,6 +1568,7 @@ fn sys_chdir(path: u64) -> i64 {
         Err(e) => return e,
     };
     match fs::stat(&loc.host) {
+        Some((1, _)) if crate::perm::check(&loc.host, crate::perm::X).is_err() => -EACCES,
         Some((1, _)) => {
             with(|p| p.g.cwd = loc.view);
             0
@@ -2112,21 +2169,33 @@ fn sys_socket(domain: u64, typ: u64) -> i64 {
     with(|p| p.add_fd(Fd { kind: FdKind::Sock(h), cloexec: typ & 0x80000 != 0, flags: 2 | (typ as u32 & 0x800) }, 0)).unwrap_or(-EBADF)
 }
 
-fn unix_path(addr: u64, len: u64) -> Option<String> {
+/// Name in a `sockaddr_un` and whether it is an abstract one (leading NUL: no node in the file tree).
+fn unix_path(addr: u64, len: u64) -> Option<(String, bool)> {
     let b = get(addr, (len as usize).clamp(2, 110))?;
     if u16::from_le_bytes([b[0], b[1]]) != 1 {
         return None;
     }
     let raw = &b[2..];
-    let raw = if raw.first() == Some(&0) { &raw[1..] } else { raw };
+    let abstract_name = raw.first() == Some(&0);
+    let raw = if abstract_name { &raw[1..] } else { raw };
     let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-    Some(String::from_utf8_lossy(&raw[..end]).into_owned())
+    Some((String::from_utf8_lossy(&raw[..end]).into_owned(), abstract_name))
 }
 
-static UNIX_LISTEN: spin::Mutex<Vec<(String, Arc<spin::Mutex<proc::UnixState>>)>> = spin::Mutex::new(Vec::new());
+/// A listening Unix socket as the list sees it: weak, so the list never keeps a closed listener alive.
+type Listener = alloc::sync::Weak<spin::Mutex<proc::UnixState>>;
 
-pub fn unix_unlisten(path: &str) {
-    UNIX_LISTEN.lock().retain(|(p, _)| p != path);
+/// Listening Unix sockets: host path, the socket, and who bound it (what a connector sees as its peer).
+static UNIX_LISTEN: spin::Mutex<Vec<(String, Listener, crate::uds::Peer)>> = spin::Mutex::new(Vec::new());
+
+/// The listening socket `sock` closed (its path may meanwhile belong to a newer listener).
+pub fn unix_unlisten(sock: &Arc<spin::Mutex<proc::UnixState>>) {
+    // the path is copied first: the list is always locked before a socket, never inside one
+    let path = match &*sock.lock() {
+        proc::UnixState::Listening(p, _) => p.clone(),
+        _ => return,
+    };
+    UNIX_LISTEN.lock().retain(|(p, s, _)| s.strong_count() > 0 && !(*p == path && core::ptr::eq(s.as_ptr(), Arc::as_ptr(sock))));
 }
 
 fn unix_sock(fd: u64) -> Option<Arc<spin::Mutex<proc::UnixState>>> {
@@ -2142,6 +2211,10 @@ fn sys_socketpair(domain: u64, _typ: u64, sv: u64) -> i64 {
         return -95;
     }
     let (a, b) = proc::unix_pair();
+    // each end's peer is the creator
+    if let FdKind::UnixConn(r, w) = &a {
+        crate::uds::mark(r, w, crate::uds::me());
+    }
     let cl = _typ & 0x80000 != 0;
     let (x, y) = with(|p| (p.add_fd(Fd { kind: a, cloexec: cl, flags: 2 }, 0), p.add_fd(Fd { kind: b, cloexec: cl, flags: 2 }, 0))).unwrap_or((-1, -1));
     let mut out = Vec::new();
@@ -2156,15 +2229,18 @@ fn sys_socketpair(domain: u64, _typ: u64, sv: u64) -> i64 {
 
 fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
     if unix_sock(fd).is_some() {
-        let Some(path) = unix_path(addr, len) else { return Res::Val(-22) };
-        // socket paths live in the caller's view like every other path
-        let path = match locate(-100, &path, true) {
-            Ok(l) => l.host,
+        let Some((path, abstract_name)) = unix_path(addr, len) else { return Res::Val(-22) };
+        // socket paths live in the caller's view like every other path; the node decides who may connect
+        let path = match locate(-100, &path, true).and_then(|l| crate::uds::connect_node(&l, abstract_name).map(|_| l.host)) {
+            Ok(host) => host,
             Err(e) => return Res::Val(e),
         };
-        let l = UNIX_LISTEN.lock().iter().find(|(p, _)| *p == path).map(|(_, s)| s.clone());
-        let Some(l) = l else { return Res::Val(-111) };
+        let l = UNIX_LISTEN.lock().iter().find(|(p, _, _)| *p == path).and_then(|(_, s, who)| Some((s.upgrade()?, *who)));
+        let Some((l, listener)) = l else { return Res::Val(-111) };
         let (mine, theirs) = proc::unix_pair();
+        if let FdKind::UnixConn(from_them, to_them) = &mine {
+            crate::uds::mark(to_them, from_them, listener);
+        }
         // Die Zähler von `theirs` gehen auf den Eintrag in der Warteschlange über (FdKind hat kein Drop)
         if let (proc::UnixState::Listening(_, q), FdKind::UnixConn(r, w)) = (&mut *l.lock(), theirs) {
             q.push_back((r, w));
@@ -2361,17 +2437,23 @@ fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
 
 fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
     if let Some(us) = unix_sock(fd) {
-        let Some(path) = unix_path(addr, len) else { return -22 };
-        let path = match locate(-100, &path, true) {
-            Ok(l) => l.host,
+        let Some((path, abstract_name)) = unix_path(addr, len) else { return -22 };
+        // a path gets a node in the file tree (EADDRINUSE if something is there); an abstract name
+        // is taken while its listener lives
+        let path = match locate(-100, &path, true).and_then(|l| crate::uds::bind_node(&l, abstract_name).map(|_| l.host)) {
+            Ok(host) => host,
             Err(e) => return e,
         };
-        if UNIX_LISTEN.lock().iter().any(|(p, _)| *p == path) {
+        let mut list = UNIX_LISTEN.lock();
+        if abstract_name && list.iter().any(|(p, s, _)| *p == path && s.strong_count() > 0) {
             return -98;
         }
+        // a listener whose node was removed is no longer reachable under this path
+        list.retain(|(p, _, _)| *p != path);
         *us.lock() = proc::UnixState::Listening(path.clone(), alloc::collections::VecDeque::new());
         // the list is shared (its growth belongs to the kernel); the entry goes when the socket closes
-        crate::heap::kernel(|| UNIX_LISTEN.lock().push((path, us)));
+        let who = crate::uds::me();
+        crate::heap::kernel(|| list.push((path, Arc::downgrade(&us), who)));
         return 0;
     }
     let Some(id) = sock_id(fd) else { return -88 };
@@ -2393,7 +2475,7 @@ fn sys_sockname(fd: u64, addr: u64, lenp: u64, peer: bool) -> i64 {
 }
 
 fn sys_getsockopt(fd: u64, level: u64, opt: u64, val: u64, lenp: u64) -> i64 {
-    let Some(id) = sock_id(fd) else { return -88 };
+    let Some(id) = sock_id(fd) else { return crate::uds::getsockopt(fd, level, opt, val, lenp) };
     let v: i32 = if level == 1 && opt == 4 { -(crate::socket::pending_error(id) as i32) } else if level == 1 && opt == 3 { if crate::socket::names(id).is_some() { 1 } else { 2 } } else { 0 };
     put(val, &v.to_le_bytes());
     put(lenp, &4u32.to_le_bytes());
@@ -2736,6 +2818,9 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
         Err(e) => return e,
     };
     let full = loc.host.clone();
+    if let Err(e) = crate::perm::may_exec(&full) {
+        return e;
+    }
     let data = match fs::open(&full) {
         Some(fs::Node::File(d)) => d,
         Some(_) => return -13,
@@ -2755,6 +2840,9 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
             Ok(l) => l,
             Err(e) => return e,
         };
+        if let Err(e) = crate::perm::may_exec(&iloc.host) {
+            return e;
+        }
         let idata = match fs::read_all(&iloc.host) {
             Some(d) => d,
             None => return -ENOENT,

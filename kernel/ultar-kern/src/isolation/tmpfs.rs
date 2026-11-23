@@ -76,6 +76,25 @@ pub fn parse_size(options: &str) -> Result<Option<u64>, ()> {
     Ok(size)
 }
 
+/// `mode=<octal>`, `uid=<n>`, `gid=<n>` among the options of a tmpfs mount: permission bits, owner
+/// and group of the tree's root directory. Without them the root is `0755`, owned by root (stricter
+/// than Linux' `1777`: nobody but root writes there unless the mounter says so).
+/// `Err(())`: malformed.
+pub fn parse_root_attr(options: &str) -> Result<(u32, u32, u32), ()> {
+    let (mut mode, mut uid, mut gid) = (0o755, 0, 0);
+    for opt in options.split(',') {
+        let opt = opt.trim();
+        if let Some(v) = opt.strip_prefix("mode=") {
+            mode = u32::from_str_radix(v, 8).ok().filter(|m| *m <= 0o7777).ok_or(())?;
+        } else if let Some(v) = opt.strip_prefix("uid=") {
+            uid = v.parse().map_err(|_| ())?;
+        } else if let Some(v) = opt.strip_prefix("gid=") {
+            gid = v.parse().map_err(|_| ())?;
+        }
+    }
+    Ok((mode, uid, gid))
+}
+
 /// One private RAM tree. Dropping the last reference frees its files.
 pub struct Tmpfs {
     id: u64,
@@ -108,6 +127,7 @@ impl Drop for Tmpfs {
         let pre = format!("{PREFIX}{}/", self.id);
         RAM.lock().retain(|k, _| !k.starts_with(&pre));
         LINKS.lock().retain(|k, _| !k.starts_with(&pre));
+        crate::perm::forget_tree(&self.host_root());
     }
 }
 
@@ -207,6 +227,7 @@ pub fn discard(key: &str) -> bool {
         let was = RAM.lock().remove(key).is_some();
         if was {
             u.forget(key);
+            crate::perm::forget(key.trim_end_matches('/'));
         }
         was
     })
@@ -260,6 +281,7 @@ pub fn unlink(path: &str) -> bool {
         let was = LINKS.lock().remove(path).is_some();
         if was {
             u.forget(path);
+            crate::perm::forget(path);
         }
         was
     })

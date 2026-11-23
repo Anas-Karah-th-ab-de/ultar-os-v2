@@ -72,6 +72,11 @@ impl View {
         Loc { view, host: t.host, read_only: t.read_only, confined: self.confined, tag: self.tag }
     }
 
+    /// Host path of the absolute, already resolved view path `view_path`.
+    pub fn host_of(&self, view_path: &str) -> String {
+        self.mnt.translate(&join(&self.root, view_path)).host
+    }
+
     /// Resolve `path` relative to the view directory `base`. With `follow_last` a symbolic link in the
     /// last component is followed too.
     pub fn walk(&self, base: &str, path: &str, follow_last: bool) -> Result<Loc, PathError> {

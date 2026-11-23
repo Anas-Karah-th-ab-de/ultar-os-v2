@@ -27,6 +27,8 @@ pub const KILLED: i32 = 9;
 pub const HOLD_MS: u64 = 250;
 
 static HOLD_UNTIL: AtomicU64 = AtomicU64::new(0);
+/// One processor at a time decides about a victim.
+static DECIDING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 static KILLS: AtomicU64 = AtomicU64::new(0);
 
 /// How many times the kernel ended processes for lack of memory since start.
@@ -53,6 +55,17 @@ fn targets(ps: &[Box<Proc>], victim: Victim) -> (Vec<u64>, u16) {
 /// End the victim now. Returns the number of processes ended; 0 if there is nobody the kernel may
 /// end (only `system` is left) or the previous victim is still being released.
 fn kill_victim() -> usize {
+    // Two processors that both find memory critical must not both choose: the second would pick the
+    // *next* victim before the first one's memory is back. The loser waits like during the hold.
+    if DECIDING.swap(true, Ordering::Acquire) {
+        return usize::MAX;
+    }
+    let n = choose_and_kill();
+    DECIDING.store(false, Ordering::Release);
+    n
+}
+
+fn choose_and_kill() -> usize {
     let now = crate::arch::uptime_ms();
     if now < HOLD_UNTIL.load(Ordering::Relaxed) {
         return usize::MAX;
@@ -69,12 +82,14 @@ fn kill_victim() -> usize {
         for t in &tgids {
             proc::kill_group(&mut ps, *t, KILLED);
         }
+        if !tgids.is_empty() {
+            HOLD_UNTIL.store(now + HOLD_MS, Ordering::Relaxed);
+        }
         (tgids.len(), g, used, whole)
     };
     if n == 0 {
         return 0;
     }
-    HOLD_UNTIL.store(now + HOLD_MS, Ordering::Relaxed);
     KILLS.fetch_add(1, Ordering::Relaxed);
     groups::count_kill(g);
     crate::heap::kernel(|| {

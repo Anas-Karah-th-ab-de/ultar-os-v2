@@ -15,6 +15,7 @@ mod apic;
 mod buddy;
 mod arch;
 mod console;
+mod cred;
 mod driver;
 mod drivers;
 mod firewall;
@@ -38,6 +39,7 @@ mod oom;
 mod paging;
 mod percpu;
 mod pci;
+mod perm;
 mod pipe;
 mod proc;
 mod procfs;
@@ -49,6 +51,7 @@ mod socket;
 mod syscall;
 mod trap;
 mod trybuf;
+mod uds;
 mod verbund;
 mod werkstatt;
 
@@ -132,6 +135,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     }
     startseite::startbild(80, "p_disk");
     fs::mount();
+    perm::standard_dirs();
     sprache::laden();
     firewall::laden();
     syscall::init_clock();

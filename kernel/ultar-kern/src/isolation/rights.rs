@@ -25,10 +25,16 @@ impl Rights {
     /// Manage resource groups: create and remove groups, set or raise limits, move processes
     /// between groups (the group tree under `/sys/fs/cgroup`), raise the largest pipe size.
     pub const MANAGE_GROUPS: Rights = Rights(1 << 7);
+    /// Change user and group ids freely (`setuid`, `setgid`, `setgroups` …); without it a process
+    /// can only move between the ids it already has.
+    pub const SET_ID: Rights = Rights(1 << 8);
+    /// Act on files regardless of their owner and mode: read, write, search and remove anything,
+    /// `chown`, `chmod` of files of others. (What "being root" means for files on Linux.)
+    pub const FILE_ADMIN: Rights = Rights(1 << 9);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0xff);
+    pub const ALL: Rights = Rights(0x3ff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {
@@ -48,6 +54,10 @@ impl Rights {
     /// Right that answers to a Linux capability number, if this kernel models it.
     pub fn from_linux_cap(cap: u64) -> Option<Rights> {
         match cap {
+            // CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER
+            0..=3 => Some(Rights::FILE_ADMIN),
+            // CAP_SETGID, CAP_SETUID
+            6 | 7 => Some(Rights::SET_ID),
             5 => Some(Rights::KILL_ANY),
             12 => Some(Rights::NET_ADMIN),
             16 => Some(Rights::LOAD_DRIVER),

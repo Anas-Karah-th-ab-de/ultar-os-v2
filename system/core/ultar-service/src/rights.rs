@@ -23,11 +23,17 @@ pub enum Right {
     RawDevice,
     /// Restart or power off the machine.
     Reboot,
+    /// Create and limit resource groups (`/sys/fs/cgroup`).
+    ManageGroups,
+    /// Change user and group ids (setuid, setgid, setgroups).
+    SetId,
+    /// Bypass file permission checks and change owners (chown).
+    FileAdmin,
 }
 
 impl Right {
     /// Every right the kernel knows.
-    pub const ALL: [Right; 7] = [
+    pub const ALL: [Right; 10] = [
         Right::Mount,
         Right::NetAdmin,
         Right::LoadDriver,
@@ -35,6 +41,9 @@ impl Right {
         Right::SetTime,
         Right::RawDevice,
         Right::Reboot,
+        Right::ManageGroups,
+        Right::SetId,
+        Right::FileAdmin,
     ];
 
     /// The kernel's bit for this right.
@@ -47,6 +56,9 @@ impl Right {
             Self::SetTime => 1 << 4,
             Self::RawDevice => 1 << 5,
             Self::Reboot => 1 << 6,
+            Self::ManageGroups => 1 << 7,
+            Self::SetId => 1 << 8,
+            Self::FileAdmin => 1 << 9,
         }
     }
 }
@@ -59,7 +71,7 @@ impl RightSet {
     /// No right at all – what most services need.
     pub const NONE: RightSet = RightSet(0);
     /// Mask of all rights the kernel knows.
-    pub const ALL_BITS: u64 = 0x7f;
+    pub const ALL_BITS: u64 = 0x3ff;
 
     /// The set of the given rights.
     pub fn of(rights: &[Right]) -> Self {
@@ -98,7 +110,7 @@ mod tests {
         assert_eq!(RightSet::NONE.drop_mask(), u64::MAX);
         let driver = RightSet::of(&[Right::LoadDriver, Right::RawDevice]);
         assert!(driver.has(Right::LoadDriver) && !driver.has(Right::Reboot));
-        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x7f & !0x24);
+        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x3ff & !0x24);
         // Bits of rights a later kernel may add are dropped too.
         assert_ne!(driver.drop_mask() & (1 << 40), 0);
         assert_eq!(RightSet::default(), RightSet::NONE);

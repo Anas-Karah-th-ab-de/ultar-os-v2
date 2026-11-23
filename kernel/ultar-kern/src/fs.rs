@@ -584,6 +584,38 @@ fn with_ext4<R>(i: usize, f: impl FnOnce(&crate::ext4::Ext4) -> R) -> Option<R> 
     }
 }
 
+/// Whether the RAM layer holds a file or a directory entry at `path` (it covers what is on disk).
+pub fn ram_has(path: &str) -> bool {
+    let ram = RAM.lock();
+    ram.contains_key(path) || ram.contains_key(&alloc::format!("{path}/"))
+}
+
+/// Mode (with file type), owner and group as stored on disk – ext4 only; `None` for a path that is
+/// not on an ext4 file system (FAT has no owners) or that the RAM layer covers.
+pub fn disk_attr(path: &str) -> Option<(u32, u32, u32)> {
+    if tmpfs::is_private(path) || ram_has(path) {
+        return None;
+    }
+    let m = MOUNTS.lock();
+    let (p, mnt) = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len())?;
+    match mnt {
+        Mnt::Ext4(x, _) => x.lookup(&path[p.len().min(path.len())..]).map(|(_, i)| (i.mode as u32, i.uid, i.gid)),
+        Mnt::Fat(_) => None,
+    }
+}
+
+/// Store permission bits, owner and group on disk if `path` is a file or directory of a writable
+/// ext4 file system. `false`: it is not (the caller keeps the values in memory).
+pub fn set_disk_attr(path: &str, perm: u32, uid: u32, gid: u32) -> bool {
+    if ram_has(path) {
+        return false;
+    }
+    match ext4_target(path) {
+        Some((i, rel)) => matches!(with_ext4(i, |x| x.set_attr(&rel, perm as u16, uid, gid)), Some(Ok(()))),
+        None => false,
+    }
+}
+
 static WARNED: Mutex<bool> = Mutex::new(false);
 
 /// Datei anlegen/ersetzen: dauerhaft auf ext4, sonst in der RAM-Schicht

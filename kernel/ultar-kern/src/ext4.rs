@@ -22,6 +22,9 @@ pub struct Inode {
     pub flags: u32,
     block: [u8; 60],
     pub mtime: u32,
+    /// Owner (32 bits: low half at 2, high half at 0x78) and group (24, 0x7A).
+    pub uid: u32,
+    pub gid: u32,
 }
 
 impl Inode {
@@ -80,7 +83,8 @@ impl Ext4 {
         let i = &b[(ioff % self.bs) as usize..];
         let mut block = [0u8; 60];
         block.copy_from_slice(&i[40..100]);
-        Some(Inode { mode: le16(i, 0) as u16, size: le32(i, 4) | le32(i, 108) << 32, flags: le32(i, 32) as u32, block, mtime: le32(i, 16) as u32 })
+        let (uid, gid) = ((le16(i, 2) | le16(i, 0x78) << 16) as u32, (le16(i, 24) | le16(i, 0x7A) << 16) as u32);
+        Some(Inode { mode: le16(i, 0) as u16, size: le32(i, 4) | le32(i, 108) << 32, flags: le32(i, 32) as u32, block, mtime: le32(i, 16) as u32, uid, gid })
     }
 
     /// (logischer Block, physischer Block, Anzahl, nicht initialisiert)
@@ -1011,6 +1015,21 @@ impl Ext4 {
             self.put_inode(dino, &mut praw)?;
         }
         Ok(())
+    }
+
+    /// Set permission bits (the file type is kept), owner and group of the inode at `path`, and its
+    /// change time. Written through like every change of this driver.
+    pub fn set_attr(&self, path: &str, perm: u16, uid: u32, gid: u32) -> WResult<()> {
+        let (ino, _) = self.lookup(path).ok_or("not found")?;
+        let mut raw = self.get_raw(ino)?;
+        let kind = le16(&raw, 0) & 0xF000;
+        put16(&mut raw, 0, kind | (perm as u64 & 0o7777));
+        put16(&mut raw, 2, uid as u64 & 0xffff);
+        put16(&mut raw, 0x78, uid as u64 >> 16);
+        put16(&mut raw, 24, gid as u64 & 0xffff);
+        put16(&mut raw, 0x7A, gid as u64 >> 16);
+        put32(&mut raw, 0x0C, now_secs());
+        self.put_inode(ino, &mut raw)
     }
 
     /// Schreiben möglich? (Prüfsummen-Art bekannt, kein offenes Journal)
