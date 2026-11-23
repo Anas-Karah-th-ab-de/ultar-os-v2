@@ -14,7 +14,10 @@
 //! groups (`cred.rs`). The right `FILE_ADMIN` passes every check, like root with full capabilities
 //! on Linux – except executing a file without any execute bit. Being uid 0 *without* that right
 //! gives nothing beyond owning root's files. The kernel's own trees (`/proc`, `/dev`, `/sys`) are
-//! not subject to modes; their gates are rights.
+//! not subject to modes; their gates are rights – except the device nodes below `/dev`: they have
+//! owner, group and mode like on Linux (devtmpfs; `fb0` and input nodes start as root `0600`, the
+//! others `0666`), changed with `FILE_ADMIN` only. Root owning a node gives no access by itself
+//! (raw devices need the right `RAW_DEVICE`, `FILE_ADMIN`, or group / other bits that grant it).
 
 use crate::cred::Cred;
 use crate::fs;
@@ -66,6 +69,10 @@ pub struct Attr {
     pub gid: u32,
 }
 
+mod dev;
+use dev::{dev_gate, raw_device};
+pub use dev::{dev_node, rdev};
+
 /// Host path → attributes, for entries that do not store them on disk.
 static ATTRS: Mutex<BTreeMap<String, Attr>> = Mutex::new(BTreeMap::new());
 
@@ -83,6 +90,9 @@ fn exempt(path: &str) -> bool {
 pub fn of(path: &str) -> Option<Attr> {
     if let Some(a) = ATTRS.lock().get(path).copied() {
         return Some(a);
+    }
+    if dev_node(path) {
+        return Some(Attr { mode: S_IFCHR | if raw_device(path) { 0o600 } else { 0o666 }, uid: 0, gid: 0 });
     }
     // a link itself (only reached without following it): the disk lookup below would follow it
     if tmpfs::readlink(path).is_some() || fs::disk_link(path).is_some() {
@@ -239,6 +249,9 @@ pub fn open_gate(path: &str, acc: u64, truncate: bool, create: bool) -> Result<(
     if matches!(known, Some(a) if a.mode & S_IFMT == S_IFSOCK) {
         return Err(-6);
     }
+    if dev_node(path) {
+        return dev_gate(path, if acc == 0 { R } else if acc == 1 { W } else { R | W });
+    }
     let (_, admin, _) = subject();
     if admin || exempt(path) {
         return Ok(());
@@ -258,7 +271,8 @@ fn target(dirfd: i64, path: u64, follow: bool) -> Result<String, i64> {
     if of(&loc.host).is_none() {
         return Err(-ENOENT);
     }
-    if exempt(&loc.host) {
+    // device nodes have modes; changing them is file administration
+    if exempt(&loc.host) && !(dev_node(&loc.host) && subject().1) {
         return Err(-EPERM);
     }
     if loc.read_only {
@@ -350,7 +364,13 @@ pub fn sys_access(dirfd: i64, path: u64, mode: u64, flags: u64) -> i64 {
         (cred.uid[1], cred.gid[1]) = (cred.uid[0], cred.gid[0]);
     }
     let want = mode as u32 & 7;
-    let refused = if admin { want & X != 0 && a.mode & S_IFMT == S_IFREG && a.mode & 0o111 == 0 } else { !exempt(&loc.host) && !allows(&a, &cred, want) };
+    let refused = if dev_node(&loc.host) {
+        dev_gate(&loc.host, want).is_err()
+    } else if admin {
+        want & X != 0 && a.mode & S_IFMT == S_IFREG && a.mode & 0o111 == 0
+    } else {
+        !exempt(&loc.host) && !allows(&a, &cred, want)
+    };
     if refused {
         return -EACCES;
     }

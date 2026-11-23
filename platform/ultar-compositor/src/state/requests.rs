@@ -226,6 +226,7 @@ impl State {
                 Ok(())
             }
             Request::Activate { surface, token } => self.activate(client, surface, token),
+            Request::ListWindows => self.list_windows(client),
             Request::Capture { output } => {
                 let c = self
                     .clients
@@ -389,6 +390,7 @@ impl State {
                     return Err(ErrorCode::Limit);
                 }
                 let rects = s.apply(Some(buffer)).ok_or(ErrorCode::BadBuffer)?;
+                s.shared = matches!(buffer.storage, crate::surface::Storage::Shared { .. });
                 released = Some(BufferId(id));
                 Some(rects)
             }

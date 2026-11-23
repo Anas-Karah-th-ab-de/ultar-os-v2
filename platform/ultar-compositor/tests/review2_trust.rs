@@ -287,3 +287,41 @@ fn capture_data_never_precedes_the_indicator() {
     let px = u32::from_le_bytes([first[i], first[i + 1], first[i + 2], first[i + 3]]);
     assert_ne!(px & 0xff_ffff, before & 0xff_ffff, "indicator missing");
 }
+
+/// The window list (capture right): a window covered by another is listed
+/// as shown, with how its pixels arrived; without the right it is refused.
+#[test]
+fn the_window_list_counts_covered_windows_and_needs_the_capture_right() {
+    let mut comp = compositor(config(&[(APP, Rights::CAPTURE)]), &[(640, 480)]);
+    let mut a = Peer::hello_as(&mut comp, OTHER);
+    let mut b = Peer::hello_as(&mut comp, OTHER);
+    a.window(&mut comp, 1, 0x00ff_0000);
+    b.window(&mut comp, 1, 0x0000_ff00);
+    b.send(&Request::SetState {
+        surface: SurfaceId(1),
+        state: ultar_surface::proto::WindowState::Maximized,
+    });
+    b.pump(&mut comp);
+    let mut cap = Peer::hello_as(&mut comp, APP);
+    cap.send(&Request::ListWindows);
+    cap.pump(&mut comp);
+    let list = cap
+        .events
+        .iter()
+        .find_map(|e| match e {
+            Event::WindowList { windows } => Some(windows.clone()),
+            _ => None,
+        })
+        .expect("window list");
+    assert_eq!(list.len(), 2);
+    assert!(list.iter().all(|w| w.mapped));
+    let mut nosy = Peer::hello_as(&mut comp, OTHER);
+    nosy.send(&Request::ListWindows);
+    nosy.pump(&mut comp);
+    assert!(nosy.events.iter().any(|e| matches!(
+        e,
+        Event::Error {
+            code: ultar_surface::proto::ErrorCode::Permission
+        }
+    )));
+}

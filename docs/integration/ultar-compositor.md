@@ -124,10 +124,13 @@ Arabic decorations, shadows and the pointer. Screenshot via the QEMU monitor (`s
 `ultar-kern-compositor.png` (delivered next to the patch). Verdict line from the screenshot:
 `COMPOSITOR-CHECK: OK windows=2 frame=1280x800 pixels={'info': 3132, 'success': 300866}`.
 
-Not achieved there: the in-kernel verdict of `kerncheck` (capture over the protocol) did not
-arrive within the wait – console lines of concurrent processes were also seen to go missing, so
-the cause is open (suspected kernel gap K11). The kernel self-test entry was added but the
-self-test mode itself was **not run**.
+In-kernel verdict (since the kernel's compositor gap round, `kernel-compositor-gaps.md`): `kerncheck`
+counts the apps from the compositor's window list (`ListWindows`; a covered window counts – the screenshot
+shows only 3 132 pixels of the lower one) and prints how their frames arrived:
+`COMPOSITOR-CHECK: OK windows=2 transport=shared-memory offered=shared-memory frame=1280x800 colours=534`.
+Before, the capture never arrived (kernel gap K11, a lost wake-up) and the pixel count (10 000) could not see
+a covered window. `compositor-qemu.py` now passes only with both verdicts OK. The kernel self-test mode itself
+was **not run**.
 
 ## 6. Binary files (not in the text patch)
 
@@ -184,7 +187,8 @@ all 17 FINDING tests pass, the SOUND ones still pass. `review_bench.rs` is now a
 | m6 | recording indicator (compositor dot, 2 s after), capture paused while locked, key repeat/release to the press's surface, grab/drag/touch end on lock, shadow cache per output, fbdev `x/yoffset` + 32-bit `line_length`, rights file `u32::MAX`/duplicates | `capture_shows_the_indicator_and_pauses_while_locked`, `a_key_release_goes_where_the_press_went`, `fbdev` origin test, `rights_file` |
 
 **Protocol (breaking for nobody outside this stack, version stays 1):** requests `Unlock` (26),
-`RequestActivation` (27), `Activate` (28); events `ActivationToken` (29), `SessionLocked` (30);
+`RequestActivation` (27), `Activate` (28), `ListWindows` (29, capture right); events `ActivationToken` (29),
+`SessionLocked` (30), `WindowList` (31: app id, title, shown, shared memory per toplevel, ≤ 64);
 `Role::SystemDialog` (7), `Rights::SYSTEM_DIALOG` (32, `ALL` = 63). Client library:
 `ACTIVATION_ENV`, `Client::take_activation_token`, `Client::request_activation`.
 **Compositor API:** `Limits` gained `clients_per_uid`, `reserved_clients`, `total_bytes`, `popups`,
@@ -240,7 +244,7 @@ it accepts both outcomes (punch refused, or zeros) – the property, no SIGBUS, 
 | N9/N10 transfers | Per-transfer pull: `SendRequest` again for each next chunk while the reader has ≤ 2 MiB queued; unasked chunks held ≤ 2 MiB per transfer, then the transfer is cancelled (both sides told). The source is always read and polled (no freeze, a dead source is removed at once). `Limits::transfer` (`TransferLimits`). |
 | N11/N12 budget | `state/budget.rs`: cost = translucent content + window title/shadow band, per uid 2 screens, 3 for all non-system uids, ≤ 32 visible windows per uid; spent from the top down, the focused window never left out, popups only with their window. |
 | N13 device churn | Devices are known by node (`st_rdev`, inode); `ENOBUFS` on the uevent socket forces a rescan; every `event*` is scanned. |
-| N14 injection | `SeatPolicy`: `--seat-group GID` (nodes must belong to the seat group devd sets) and software devices (`/devices/virtual/` in sysfs = uinput) refused unless `--allow-virtual-input NAME`. Done (FIX2 of the service agent): `ultar-devd-seat` sets the seat's nodes to root:seat (812) 0660, `/dev/uinput` root 0600, refused software devices root 0600; `compositor.toml` has `--seat-group 812`, `--seat-state /run/ultar/seat/modes` (on a kernel that gates `/dev` by rights – the Ultar kernel – the state says `kernel-gated` and the group check is dropped; missing or other: kept, fail closed), `groups = [812]`, `after = ["seat"]`. An input node's `change` event now triggers a rescan (devd-seat announces a node again after giving it to the seat). See `ultar-devd-daemon.md` §9. |
+| N14 injection | `SeatPolicy`: `--seat-group GID` (nodes must belong to the seat group devd sets) and software devices (`/devices/virtual/` in sysfs = uinput) refused unless `--allow-virtual-input NAME`. Done (FIX2 of the service agent): `ultar-devd-seat` sets the seat's nodes to root:seat (812) 0660, `/dev/uinput` root 0600, refused software devices root 0600; `compositor.toml` has `--seat-group 812`, `--seat-state /run/ultar/seat/modes` (on a kernel that gates `/dev` by rights – Ultar kernels before device node modes – the state says `kernel-gated` and the group check is dropped; the current Ultar kernel keeps modes, the state is `kept` and the check applies; missing or other: kept, fail closed), `groups = [812]`, `after = ["seat"]`. An input node's `change` event now triggers a rescan (devd-seat announces a node again after giving it to the seat). See `ultar-devd-daemon.md` §9. |
 
 **API changes:** `Limits` regrouped: `share: ShareLimits {clients_per_uid, reserved_clients,
 uid_bytes, total_bytes, reserved_bytes, windows_per_uid}`, `transfer: TransferLimits {bytes, queue,

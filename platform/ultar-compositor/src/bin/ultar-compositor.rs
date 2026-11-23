@@ -110,8 +110,9 @@ fn config(args: &Args, lang: Lang) -> Result<Config, MsgKey> {
 
 /// The seat policy after the state file of `ultar-devd-seat`
 /// (`--seat-state`). On a kernel that gates device nodes by the right
-/// `raw_device` instead of owners (word `kernel-gated`; the Ultar kernel) the
-/// group of a node says nothing, so the group check is dropped there. A
+/// `raw_device` instead of owners (word `kernel-gated`; Ultar kernels before
+/// device node modes – the current one keeps them and is `kept`) the group of
+/// a node says nothing, so the group check is dropped there. A
 /// missing file, any other word, or a file or directory that someone other
 /// than root could have written keeps the check (fail closed).
 fn seat_policy(seat: &SeatPolicy, state: Option<&Path>) -> SeatPolicy {

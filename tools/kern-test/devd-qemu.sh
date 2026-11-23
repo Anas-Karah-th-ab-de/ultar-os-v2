@@ -2,9 +2,10 @@
 # ultar-devd end to end on the Ultar kernel in QEMU: the daemon reads the kernel's device tree
 # (/sys/bus, driver ABI from /sys/kernel/ultar/driver_abi), finds a signed stage-A package for the
 # e1000 whose built-in driver was unbound before, binds it through /sys/bus/pci/drivers/<d>/bind and
-# confirms the binding from the kernel's new state. Then ultar-devd-seat looks at the seat's device nodes:
-# the Ultar kernel gates /dev by rights and refuses owners and modes there, which the program has to
-# detect (verdict "kernel-gated", not "kept" and not "failed"). Verdict line: "ok    DEVD-QEMU: ALLES OK".
+# confirms the binding from the kernel's new state. Then ultar-devd-seat gives the seat's device nodes
+# (fb0, input/event0, input/event1) to the seat group: the kernel keeps owner, group and mode of device
+# nodes, so every node is "set" and the verdict is "kept" (not "kernel-gated", not "failed").
+# Verdict line: "ok    DEVD-QEMU: ALLES OK".
 # DEVD=<file>: prebuilt static ultar-devd; SEAT=<file>: prebuilt static ultar-devd-seat; UDRV=<file>:
 # prebuilt udrv (host). Image: IMG=1 scripts/build-kern.sh.
 set -euo pipefail
@@ -64,8 +65,10 @@ for want in "e1000 0000:00:" "gelöst" "pci:8086:100e  [working]" "driver: qemu-
   grep -aqF "$want" "$DLOG" || { echo "FAIL  DEVD-QEMU: missing \"$want\""; fail=1; }
 done
 grep -aF "GERAETETEST: e1000" "$DLOG" | tail -1 | grep -q " bound" || { echo "FAIL  DEVD-QEMU: e1000 not bound after ultar-devd"; fail=1; }
-grep -aqF "device modes: kernel-gated" "$DLOG" || { echo "FAIL  DEVD-QEMU: ultar-devd-seat did not detect the kernel's gating of /dev"; fail=1; }
-grep -aqE "^(fb0|input/event0) .* (set|unchanged)$" "$DLOG" && { echo "FAIL  DEVD-QEMU: a node reported as changed on a kernel without device modes"; fail=1; }
+grep -aqF "device modes: kept" "$DLOG" || { echo "FAIL  DEVD-QEMU: ultar-devd-seat did not keep the modes of the seat's nodes"; fail=1; }
+for node in fb0 input/event0 input/event1; do
+  grep -aqE "^$node seat-[a-z]+ 0:812 0660 set" "$DLOG" || { echo "FAIL  DEVD-QEMU: $node not given to the seat"; fail=1; }
+done
 if grep -aqiE "kernel panic|PANIK" "$DLOG"; then echo "FAIL  kernel panic"; fail=1; fi
 [ "$fail" = 0 ] || { tail -40 "$DLOG"; exit 1; }
 echo "ok    DEVD-QEMU: ALLES OK"

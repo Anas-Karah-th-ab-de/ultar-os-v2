@@ -12,10 +12,11 @@
 //! changing the owner of a node of root needs that right, nothing else here
 //! does. It has no bus and reads only `/sys` and its configuration.
 //!
-//! Kernels differ: Linux keeps owner and mode of device nodes; the Ultar kernel
-//! (state 23.11.2026) refuses `chown`/`chmod` below `/dev` and gates the nodes
-//! by the right `raw_device` instead. Which one runs is detected from the
-//! result of the change, never assumed, and written to the state file
+//! Kernels differ: Linux and the Ultar kernel (since the compositor gap round,
+//! `docs/integration/kernel-compositor-gaps.md`) keep owner and mode of device
+//! nodes; older Ultar kernels refused `chown`/`chmod` below `/dev` and gated
+//! the nodes by the right `raw_device` only. Which one runs is detected from
+//! the result of the change, never assumed, and written to the state file
 //! [`STATE_FILE`] for the compositor.
 
 mod apply;

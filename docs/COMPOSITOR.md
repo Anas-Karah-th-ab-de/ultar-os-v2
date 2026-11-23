@@ -57,14 +57,14 @@ DestroyBuffer · Attach · Damage{rects} · Commit{configure serial} · Frame ·
 Resize{serial,edges} · Pong · SetSelection{serial,mimes} · ReadSelection{serial,mime} ·
 SendData{transfer,chunk,last} · StartDrag{serial,mimes} · ReadDrop{mime} ·
 TextInput{surface,enabled,purpose} · ImeCommit{text} · Capture{output} · Unlock{surface} ·
-RequestActivation{serial} · Activate{surface,token}`
+RequestActivation{serial} · Activate{surface,token} · ListWindows`
 
 ### Events (compositor → client)
 `Welcome · Output · OutputRemoved · Configure{serial,w,h,scale,state,activated,rtl} ·
 BufferReleased · FrameDone · PointerEnter/Leave/Motion/Button/Axis · KeyboardFocus · Key{code,
 state,modifiers,character,serial} · TouchDown/Move/Up/Cancel · Text · CloseRequested ·
 SelectionOffer · SendRequest · Data · TransferCancelled · DropOffer · Ping · ImeState · CaptureData ·
-Error · ActivationToken{token} · SessionLocked{locked}`
+Error · ActivationToken{token} · SessionLocked{locked} · WindowList{windows}`
 
 Positions are logical points in fixed point (1/256), relative to the receiving surface's content.
 
@@ -104,6 +104,13 @@ three `ioctl`s, each block with a `SAFETY:` comment. Platform crates are `#![for
 | K11 | a process waiting in `poll` for `POLLOUT` on a Unix socket is not woken when the peer drains the buffer (observed: output queued by the compositor stayed unsent until another event woke it) | `sys_poll` wake-up, `UnixConn` | the compositor retries queued output after 10 ms (`FLUSH_RETRY_MS`); the in-kernel capture over the protocol still did not complete in QEMU (see integration notes) | wake pollers when a Unix/pipe buffer gains room |
 | K12 | `poll`/`ppoll` timeouts use whole seconds only (nanoseconds ignored); a 16 ms timeout becomes 0 | `syscall.rs` 7/271 | frame pacing busy-waits until the frame is due (bounded by one refresh interval, only while damage is pending) | honour nanoseconds (millisecond resolution suffices) |
 | K13 | `mremap` (25) missing → glibc falls back to copying on `realloc` growth | dispatch | slower growth of large buffers in apps | implement `mremap` (MAYMOVE) |
+
+**Status (compositor gap round, `docs/integration/kernel-compositor-gaps.md`):** K1–K6, K8 (keyboards, mice,
+tablets; no touch device), K11–K13 are closed in the kernel and checked by `fenstertest` (`FENSTERTEST: ALLES OK`)
+and `geraete-hotplug.py`; device nodes have owner/group/mode, so `ultar-devd-seat` reports `kept`. On the Ultar
+kernel in QEMU the apps now send their frames through shared memory (`kerncheck`:
+`COMPOSITOR-CHECK: OK windows=2 transport=shared-memory offered=shared-memory …`). Open: K7 (needs a display
+driver), touch devices (no driver), K9 (launcher side).
 
 With K1–K4 the protocol switches to shared memory without any change in apps (the transport is
 negotiated). What already works on the Ultar kernel (QEMU, `tools/kern-test/compositor-qemu.py`):
@@ -233,7 +240,7 @@ table only separates once the app launcher (`ultar-apps`) gives each app its own
 | `ui.shell` | `Panel`, `Background` |
 | `ui.input-method` | `InputPanel`, `ImeCommit` |
 | `ui.lock-screen` | `Lock` |
-| `ui.capture` | `Capture` (screenshots, screen sharing) – reads the composed output |
+| `ui.capture` | `Capture` (screenshots, screen sharing) – reads the composed output; `ListWindows` (app id, title, shown, shared memory per toplevel – test and diagnosis tools) |
 | `ui.overlay` | `Overlay` |
 | `ui.system-dialog` | `SystemDialog` (password and permission prompts of system services) |
 
@@ -370,8 +377,7 @@ them, so they redraw sharp after moving ("kein Hochrechnen").
   without `--seat-group` (any readable node; software devices still refused).
 * A window that opens without the focus is not announced (no "needs attention" event to the shell).
 
-* Kernel gaps K1–K9 above (shared memory, fd passing, vblank, more displays/input on the Ultar
-  kernel).
+* Kernel gaps K7 (more displays), touch input and K9 above (K1–K6, K8 keyboards, K11–K13 are closed).
 * GPU renderer (HAL `Renderer` trait), hardware cursor/planes, direct scan-out of a fullscreen
   client buffer, page flipping on KMS (dumb buffer is written in place).
 * Overview, workspaces, Alt+Tab switcher UI, dock integration, "not responding" dialog,

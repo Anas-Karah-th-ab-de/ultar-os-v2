@@ -2,15 +2,17 @@
 //! framebuffer): start the compositor on the real display, start two
 //! `ultar-ui` apps as separate processes, capture the composed frame as a
 //! privileged client and print one stable verdict line:
-//! `COMPOSITOR-CHECK: OK windows=2 frame=WxH colours=N` or
-//! `COMPOSITOR-CHECK: FAILED <reason>`.
+//! `COMPOSITOR-CHECK: OK windows=2 transport=shared-memory offered=shared-memory frame=WxH colours=N`
+//! or `COMPOSITOR-CHECK: FAILED <reason>`. Windows are counted from the
+//! compositor's window list (a window covered by another counts); the
+//! transport is how the apps' last frames arrived.
 
 use super::{say, ClientError};
 use std::path::Path;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 use ultar_surface::client::Client;
-use ultar_surface::proto::{Event, OutputId, Request};
+use ultar_surface::proto::{Event, OutputId, Request, Transport};
 
 const MARK: &str = "COMPOSITOR-CHECK:";
 
@@ -59,12 +61,19 @@ pub fn run(socket: &str, args: &[String]) -> Result<(), ClientError> {
         }
         std::thread::sleep(Duration::from_millis(500));
     };
-    if verdict.windows < 2 {
-        return fail(&format!("windows={}", verdict.windows));
+    if verdict.windows < 2 || verdict.visible == 0 {
+        return fail(&format!(
+            "windows={} visible={}",
+            verdict.windows, verdict.visible
+        ));
     }
+    let offered = match capture.transport() {
+        Transport::SharedMemory => "shared-memory",
+        Transport::Inline => "inline",
+    };
     say(&format!(
-        "{MARK} OK windows={} frame={}x{} colours={}",
-        verdict.windows, verdict.width, verdict.height, verdict.colours
+        "{MARK} OK windows={} transport={} offered={offered} frame={}x{} colours={}",
+        verdict.windows, verdict.transport, verdict.width, verdict.height, verdict.colours
     ));
     if stay {
         // Keep the compositor and the apps on the screen for the screenshot.
@@ -128,18 +137,43 @@ fn start_all(socket: &str, compositor: &str) -> Result<(Kids, Client), &'static 
     Ok((kids, capture))
 }
 
-/// What a captured frame shows.
+/// What the compositor shows.
 struct Shot {
     width: u32,
     height: u32,
     colours: usize,
+    /// App windows in the compositor's list that are shown.
     windows: usize,
+    /// How their last frames arrived: `shared-memory`, `inline` or `mixed`.
+    transport: &'static str,
+    /// App colours with at least 1 000 pixels on the screen.
+    visible: usize,
 }
 
-/// Captures output 0 and counts the app windows on it: each app paints its
-/// background in its own token colour (info, success); an app counts when
-/// at least 10 000 pixels of its colour are on the screen.
+/// The shown windows of the two apps, and how many of them sent their last
+/// frame through shared memory.
+fn window_list(client: &mut Client) -> Option<(usize, usize)> {
+    client.send(&Request::ListWindows).ok()?;
+    loop {
+        match client.next_event(Some(Duration::from_secs(30))).ok()?? {
+            Event::WindowList { windows } => {
+                let apps: Vec<_> = windows
+                    .iter()
+                    .filter(|w| w.mapped && w.app_id == "org.ultar.test.ui")
+                    .collect();
+                return Some((apps.len(), apps.iter().filter(|w| w.shared_memory).count()));
+            }
+            Event::Error { .. } => return None,
+            _ => {}
+        }
+    }
+}
+
+/// Lists the windows and captures output 0: the apps are counted from the
+/// list; each app paints its background in its own token colour (info,
+/// success), counted as visible from 1 000 pixels on.
 fn grab(client: &mut Client) -> Option<Shot> {
+    let (windows, shared) = window_list(client)?;
     client
         .send(&Request::Capture {
             output: OutputId(0),
@@ -177,15 +211,22 @@ fn grab(client: &mut Client) -> Option<Shot> {
         role(ultar_ui::tokens::ColorRole::Info),
         role(ultar_ui::tokens::ColorRole::Success),
     ];
-    let windows = apps
+    let visible = apps
         .iter()
-        .filter(|c| px.iter().filter(|p| *p == *c).count() >= 10_000)
+        .filter(|c| px.iter().filter(|p| *p == *c).count() >= 1_000)
         .count();
+    let transport = match shared {
+        0 => "inline",
+        n if n == windows => "shared-memory",
+        _ => "mixed",
+    };
     Some(Shot {
         width,
         height,
         colours: colours.len(),
         windows,
+        transport,
+        visible,
     })
 }
 

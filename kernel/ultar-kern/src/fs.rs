@@ -500,15 +500,21 @@ pub fn open(path: &str) -> Option<Node> {
             if let Some(n) = UI_DEVS.iter().find(|&&x| x == d) {
                 return Some(Node::Dev(n));
             }
-            if d == "input" {
-                return Some(Node::Dir(alloc::vec![DirEnt { name: "event0".into(), dir: false, size: 0 }, DirEnt { name: "event1".into(), dir: false, size: 0 }]));
-            }
+        }
+        // input nodes: the fixed ones with a screen, USB keyboards while attached
+        if d.strip_prefix("input/").and_then(crate::input::parse).is_some_and(|n| n >= crate::input::FIRST && crate::input::exists(n)) {
+            return Some(Node::Dev("input/usb"));
+        }
+        if d == "input" && !crate::input::all().is_empty() {
+            return Some(Node::Dir(crate::input::all().into_iter().map(|n| DirEnt { name: alloc::format!("event{n}"), dir: false, size: 0 }).collect()));
         }
     }
     if path == "/dev" {
         let mut v: Vec<DirEnt> = DEVS.iter().map(|n| DirEnt { name: n.to_string(), dir: false, size: 0 }).collect();
         if crate::console::framebuffer().is_some() {
             v.push(DirEnt { name: "fb0".into(), dir: false, size: 0 });
+        }
+        if !crate::input::all().is_empty() {
             v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
         }
         if !crate::rawpart::names().is_empty() {

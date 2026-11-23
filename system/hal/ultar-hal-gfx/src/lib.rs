@@ -19,10 +19,10 @@
 //! `unsafe` blocks are the memory mappings and the three device `ioctl`s,
 //! each with a `SAFETY:` comment.
 //!
-//! **Ultar kernel (state 23.11.2026):** `memfd_create`, shared file mappings
-//! and `SCM_RIGHTS` are missing there; [`shm::probe`] reports that and the
-//! compositor falls back to pixels sent inline over the socket
-//! (see `docs/COMPOSITOR.md`, "Kernel gaps").
+//! **Ultar kernel:** `memfd_create` with seals, shared mappings and
+//! `SCM_RIGHTS` exist since the compositor gap round K1–K13; on a kernel
+//! without them [`shm::probe`] reports false and the compositor falls back to
+//! pixels sent inline over the socket (see `docs/COMPOSITOR.md`, "Kernel gaps").
 
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]

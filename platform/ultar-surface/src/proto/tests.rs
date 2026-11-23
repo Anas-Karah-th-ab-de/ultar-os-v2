@@ -44,6 +44,7 @@ fn sample_requests() -> Vec<Request> {
         Request::Unlock { surface: s },
         Request::RequestActivation { serial: 4 },
         Request::Activate { surface: s, token: u64::MAX - 3 },
+        Request::ListWindows,
         Request::CreateSurface { surface: s, role: Role::SystemDialog },
     ]
 }
@@ -84,6 +85,10 @@ fn sample_events() -> Vec<Event> {
         Event::Error { code: ErrorCode::TooSlow },
         Event::ActivationToken { token: 0x1234_5678_9abc },
         Event::SessionLocked { locked: true },
+        Event::WindowList { windows: vec![] },
+        Event::WindowList {
+            windows: vec![WindowEntry { app_id: "org.ultar.test.ui".into(), title: "نافذة".into(), mapped: true, shared_memory: true }],
+        },
     ]
 }
 

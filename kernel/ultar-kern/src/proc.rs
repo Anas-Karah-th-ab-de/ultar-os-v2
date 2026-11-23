@@ -59,6 +59,8 @@ pub enum FdKind {
     Ns(crate::isolation::NsRef),
     /// Raw A/B partition `/dev/ultar/part/*` (rawpart.rs)
     RawPart(Arc<crate::rawpart::RawFd>),
+    /// Anonymous memory object (`memfd_create`) and the descriptor's position.
+    Mem(Arc<crate::memfd::MemObj>, u64),
 }
 
 pub enum UnixState {
@@ -114,6 +116,7 @@ impl Fd {
             FdKind::Fb(f) => FdKind::Fb(f.clone()),
             FdKind::Eingabe(e) => FdKind::Eingabe(e.clone()),
             FdKind::Ns(n) => FdKind::Ns(n.clone()),
+            FdKind::Mem(m, pos) => FdKind::Mem(m.clone(), *pos),
         };
         Fd { kind, cloexec: false, flags: self.flags }
     }

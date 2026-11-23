@@ -131,10 +131,15 @@ pub struct AddrSpace {
     /// no reserved range reaches up to or beyond this address (lets `unreserve` skip the search for
     /// a fresh address above everything – the usual case of `mmap` without a fixed address)
     lazy_end: AtomicU64,
+    /// shared mappings (`MAP_SHARED` of a memory object, the framebuffer): (start, end, what). Their
+    /// pages carry no ownership bit – nothing here frees them; the entry keeps the object alive.
+    pub shared: spin::Mutex<alloc::vec::Vec<(u64, u64, crate::memfd::Backing)>>,
 }
 
 /// Most reserved ranges (anonymous mappings) of one address space, like Linux' `max_map_count`.
 pub const MAX_RANGES: usize = 65530;
+
+mod shared;
 
 /// Outcome of a page fault in an address space.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -152,7 +157,7 @@ impl AddrSpace {
     pub fn new() -> Option<AddrSpace> {
         let p = crate::mem::alloc_page()?;
         tab(p).copy_from_slice(tab(kernel_pml4()));
-        Some(AddrSpace { pml4: p, lazy: spin::Mutex::new(alloc::vec::Vec::new()), resident: AtomicU64::new(0), lazy_end: AtomicU64::new(0) })
+        Some(AddrSpace { pml4: p, lazy: spin::Mutex::new(alloc::vec::Vec::new()), resident: AtomicU64::new(0), lazy_end: AtomicU64::new(0), shared: spin::Mutex::new(alloc::vec::Vec::new()) })
     }
 
     /// Eintrag der nächsten Ebene holen; geteilte Kern-Tabellen/2-MB-Seiten werden für den Prozess ersetzt
@@ -210,10 +215,14 @@ impl AddrSpace {
 
     pub fn unmap(&self, va: u64) {
         if let Some(e) = self.walk(va) {
-            if *e & P != 0 && *e & OWN != 0 {
-                crate::mem::free_page(*e & ADDR);
+            if *e & P != 0 && *e & U != 0 {
+                // an own page is freed; a shared one (no ownership bit) only leaves this address space
+                if *e & OWN != 0 {
+                    crate::mem::free_page(*e & ADDR);
+                    self.resident.fetch_sub(1, Ordering::Relaxed);
+                }
                 *e = 0;
-                self.resident.fetch_sub(1, Ordering::Relaxed);
+                // SAFETY: invalidates the translation of one user address; no memory is touched.
                 unsafe { core::arch::asm!("invlpg [{}]", in(reg) va) };
             }
         }
@@ -347,7 +356,7 @@ impl AddrSpace {
                 None => ok = false,
             }
         });
-        ok.then_some(n)
+        (ok && self.fork_shared(&n)).then_some(n)
     }
 
     pub fn activate(&self) {

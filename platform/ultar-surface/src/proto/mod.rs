@@ -12,7 +12,9 @@ mod request_decode;
 #[cfg(test)]
 mod tests;
 mod types;
+mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
 pub use request::Request;
 pub use types::*;
+pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

@@ -323,6 +323,11 @@ pub enum Event {
         /// Locked now.
         locked: bool,
     },
+    /// Answer to `ListWindows`: the toplevel windows, bottom to top.
+    WindowList {
+        /// The windows.
+        windows: Vec<super::WindowEntry>,
+    },
 }
 
 impl Event {
@@ -359,6 +364,7 @@ impl Event {
             Event::Error { .. } => 28,
             Event::ActivationToken { .. } => 29,
             Event::SessionLocked { .. } => 30,
+            Event::WindowList { .. } => 31,
         }
     }
 

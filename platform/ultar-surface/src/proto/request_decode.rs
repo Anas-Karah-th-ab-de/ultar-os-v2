@@ -135,6 +135,7 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             surface: surface(r)?,
             token: r.u64()?,
         },
+        29 => Request::ListWindows,
         _ => return Err(WireError::BadValue),
     })
 }

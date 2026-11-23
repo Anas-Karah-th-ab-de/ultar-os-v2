@@ -151,6 +151,8 @@ pub struct Surface {
     pub configure_scales: Vec<(u32, u32)>,
     /// A text field of this surface wants the on-screen keyboard (purpose).
     pub text_input: Option<u8>,
+    /// The last committed buffer was shared memory (not inline pixels).
+    pub shared: bool,
 }
 
 impl Surface {
@@ -171,6 +173,7 @@ impl Surface {
             configure_acked: 0,
             configure_scales: Vec::new(),
             text_input: None,
+            shared: false,
         }
     }
 

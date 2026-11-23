@@ -218,6 +218,9 @@ pub enum Request {
         /// The token.
         token: u64,
     },
+    /// Asks for the window list (needs [`Rights::CAPTURE`]); answered by
+    /// `WindowList`.
+    ListWindows,
 }
 
 impl Request {
@@ -252,6 +255,7 @@ impl Request {
             Request::Unlock { .. } => 26,
             Request::RequestActivation { .. } => 27,
             Request::Activate { .. } => 28,
+            Request::ListWindows => 29,
         }
     }
 

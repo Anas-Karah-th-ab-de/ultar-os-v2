@@ -1886,7 +1886,7 @@ count = 6
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/paging.rs"
-count = 10
+count = 9
 
 [[entry]]
 rule = "unsafe"
@@ -2241,7 +2241,7 @@ count = 4
 [[entry]]
 rule = "unwrap"
 path = "kernel/ultar-kern/src/syscall.rs"
-count = 26
+count = 21
 
 [[entry]]
 rule = "unwrap"

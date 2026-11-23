@@ -54,7 +54,8 @@ every token file).
 | writable ext4 (`ultar-compat`, `ultar-data`) | the inode (`Ext4::set_attr`, synchronous block write) | yes |
 | read-only ext4 | the inode (read only; `chmod`/`chown` → `EROFS`) | – |
 | tmpfs (private trees) and RAM layer (incl. the overlay over the read-only FAT) | kernel table `perm::ATTRS` (host path → mode/uid/gid), dropped with the entry or the tree | no (like the data) |
-| `/proc`, `/dev`, `/sys` (kernel trees) | none: their gates are rights; `chmod`/`chown` → `EPERM` | – |
+| `/proc`, `/sys`, the directories of `/dev` (kernel trees) | none: their gates are rights; `chmod`/`chown` → `EPERM` | – |
+| device nodes below `/dev` (`fb0`, `input/event*`, `null`, …) | kernel table `perm::ATTRS`; defaults root `0600` (`fb0`, input nodes) / `0666` (others); `chmod`/`chown` only with `FILE_ADMIN` (`kernel-compositor-gaps.md` §4) | no (`ultar-devd-seat` sets them at every start) |
 | FAT files without an entry in the table | reported as before: root, `0755` | – |
 
 * New entries: type | (`mode & ~umask`), owner = effective uid/gid of the creator (links `0777`). Entries made
@@ -83,7 +84,8 @@ every token file).
   `CAP_DAC_READ_SEARCH`, `CAP_FOWNER`: capabilities 0–3), not uid 0 as such – uid 0 without `FILE_ADMIN` is
   checked like any owner. Programs the kernel starts have every right, so behaviour without a launcher is as before.
 * Cells and memory groups: unchanged. Checks come after the view walk (a cell still sees only its view);
-  `/proc`, `/dev`, `/sys` keep their right-based gates; the attribute table belongs to the kernel (shared, not
+  `/proc`, `/sys` and the directories of `/dev` keep their right-based gates (device nodes have modes, see the
+  table); the attribute table belongs to the kernel (shared, not
   charged to a group), entries are removed with files and whole tmpfs trees.
 
 ## 3. AF_UNIX

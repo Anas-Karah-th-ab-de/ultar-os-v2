@@ -18,7 +18,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
 
+mod hid;
 mod hotplug;
+mod pointer;
 pub use hotplug::hotplug;
 
 pub struct Drv;
@@ -175,6 +177,9 @@ impl Hc {
                     self.kbd_report(k, e.code());
                     continue;
                 }
+                if pointer::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
+                    continue;
+                }
             }
             if e.typ() == EV_TRANSFER || e.typ() == EV_CMD {
                 self.pending.push_back(e);
@@ -262,10 +267,10 @@ impl Hc {
             let mut rep = [0u8; 8];
             unsafe { core::ptr::copy_nonoverlapping(buf as *const u8, rep.as_mut_ptr(), 8) };
             let last = self.kbds[k].last;
-            let shift = rep[0] & 0x22 != 0;
-            let altgr = rep[0] & 0x40 != 0;
-            let ctrl = rep[0] & 0x11 != 0;
-            for &u in &rep[2..8] {
+            let (shift, altgr, ctrl) = (rep[0] & 0x22 != 0, rep[0] & 0x40 != 0, rep[0] & 0x11 != 0);
+            // a program reads the keyboard's input node: press and release go there, not to the console
+            let raw = crate::input::usb_report(self.index, slot, &rep, crate::eingabe::roh());
+            for &u in rep[2..8].iter().filter(|_| !raw) {
                 if u > 3 && !last[2..8].contains(&u) {
                     for c in hid_chars(u, shift, altgr, ctrl) {
                         self.keys.push_back(c);
@@ -365,7 +370,7 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
 pub fn poll_key() -> Option<char> {
     let mut g = HC.try_lock()?;
     for hc in g.iter_mut() {
-        if hc.keys.is_empty() && !hc.kbds.is_empty() {
+        if hc.keys.is_empty() && (!hc.kbds.is_empty() || pointer::any(hc.index)) {
             hc.pump();
         }
         if let Some(c) = hc.keys.pop_front() {
@@ -605,6 +610,11 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             ring.push(kb, 8, (TRB_NORMAL << 10) | (1 << 5) | (1 << 2));
             w32(hc.db + slot as u64 * 4, dci);
             what = format!("Tastatur {what}");
+        } else if d.class == 3 {
+            // mouse or tablet (report descriptor with X and Y)
+            if let Some(kind) = pointer::attach(hc, slot, (inp, out, speed), d)? {
+                what = format!("{kind} {what}");
+            }
         } else if d.class == 8 && d.sub == 6 && d.proto == 0x50 {
             // Massenspeicher (Bulk-Only, SCSI)
             let Some(&(ina, _, inmp, _)) = d.eps.iter().find(|e| e.0 & 0x80 != 0 && e.1 & 3 == 2) else { continue };

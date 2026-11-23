@@ -24,11 +24,11 @@ const KERNEL_ULTAR: [&str; 4] = ["devices", "driver_abi", "drivers", "uevents"];
 
 /// Whether the host path belongs to this tree.
 pub fn is_tree(path: &str) -> bool {
-    ["/sys/bus", "/sys/kernel"].iter().any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
+    ["/sys/bus", "/sys/kernel", "/sys/class"].iter().any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
 }
 
 /// Entries this tree adds to the listing of `/sys`.
-pub const TOP: [&str; 2] = ["bus", "kernel"];
+pub const TOP: [&str; 3] = ["bus", "class", "kernel"];
 
 fn file(s: String) -> Option<Node> {
     Some(Node::File(Arc::new(s.into_bytes())))
@@ -103,6 +103,9 @@ pub fn open(path: &str) -> Option<Node> {
         ["bus", "usb", "devices", n, rest @ ..] => usb_device(n, rest),
         ["bus", bus @ ("usb" | "platform"), "drivers", d, rest @ ..] => function_driver(bus, d, rest),
         ["bus", "platform", "devices", n, rest @ ..] => platform_device(n, rest),
+        ["class"] => dir(names(&["input"]), true),
+        ["class", "input"] => dir(crate::input::all().into_iter().map(|n| format!("event{n}")), true),
+        ["class", "input", n, rest @ ..] => input_class(n, rest),
         ["kernel"] => Some(Node::Dir(alloc::vec![
             DirEnt { name: String::from("uevent_seqnum"), dir: false, size: 0 },
             DirEnt { name: String::from("ultar"), dir: true, size: 0 },
@@ -114,6 +117,27 @@ pub fn open(path: &str) -> Option<Node> {
         ["kernel", "ultar", "drivers"] => file(driver_table()),
         ["kernel", "ultar", "uevents"] => file(format!("lost {}\n{}", super::events::lost(), super::events::recent())),
         _ => None,
+    }
+}
+
+/// `/sys/class/input/eventN` and below.
+fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
+    let index = crate::input::parse(n).filter(|&i| crate::input::exists(i))?;
+    let entry = |name: &str, dir: bool| DirEnt { name: String::from(name), dir, size: 0 };
+    match rest {
+        [] => Some(Node::Dir(alloc::vec![entry("dev", false), entry("device", true), entry("uevent", false)])),
+        ["device"] => Some(Node::Dir(alloc::vec![entry("name", false), entry("uevent", false)])),
+        _ => file(crate::input::sys_file(index, rest)?),
+    }
+}
+
+/// The right a write to control file `path` needs: announcing an input node again (`uevent`) is
+/// file administration (the seat service); everything else is driver work.
+pub fn right_for(path: &str) -> crate::isolation::rights::Rights {
+    if path.starts_with("/sys/class/") {
+        crate::isolation::rights::Rights::FILE_ADMIN
+    } else {
+        crate::isolation::rights::Rights::LOAD_DRIVER
     }
 }
 
@@ -336,6 +360,9 @@ fn driver_table() -> String {
 
 /// Whether the host path is a file of this tree that takes writes.
 pub fn is_control(path: &str) -> bool {
+    if let Some(rest) = path.strip_prefix("/sys/class/input/") {
+        return matches!(rest.split_once('/'), Some((n, "uevent")) if crate::input::parse(n).is_some());
+    }
     let Some(rest) = path.strip_prefix("/sys/bus/pci/") else { return false };
     let p: Vec<&str> = rest.split('/').collect();
     matches!(p.as_slice(), ["drivers_probe"] | ["drivers", _, "bind" | "unbind" | "ultar_enabled"] | ["devices", _, "enable"])
@@ -343,6 +370,16 @@ pub fn is_control(path: &str) -> bool {
 
 /// A write to a control file (the caller checked the right `LOAD_DRIVER`).
 pub fn write(path: &str, text: &str) -> Result<(), i64> {
+    if let Some(rest) = path.strip_prefix("/sys/class/input/") {
+        let index = rest.split('/').next().and_then(crate::input::parse).filter(|&i| crate::input::exists(i)).ok_or(-ENODEV)?;
+        return match text {
+            "add" | "change" | "remove" => {
+                crate::input::uevent(index, text);
+                Ok(())
+            }
+            _ => Err(-EINVAL),
+        };
+    }
     let Some(rest) = path.strip_prefix("/sys/bus/pci/") else { return Err(-EACCES) };
     let p: Vec<&str> = rest.split('/').collect();
     match p.as_slice() {

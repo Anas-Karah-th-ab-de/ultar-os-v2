@@ -221,8 +221,8 @@ impl Drop for SealedMapping {
 }
 
 /// Whether this kernel supports sealed shared buffers end to end (create,
-/// seal, map read-only from a second descriptor). False on the Ultar kernel
-/// as of 23.11.2026 (`memfd_create` is missing).
+/// seal, map read-only from a second descriptor). False on a kernel without
+/// `memfd_create` (the Ultar kernel before the compositor gap round K1–K13).
 pub fn probe() -> bool {
     let Ok(mut buffer) = SharedBuffer::create(4096) else {
         return false;

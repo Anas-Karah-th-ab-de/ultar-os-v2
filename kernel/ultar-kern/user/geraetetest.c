@@ -5,21 +5,25 @@
  *   geraetetest              list, register, rights; the bind cycle on an e1000 (8086:100e) if one exists
  *   geraetetest --unbind-e1000 / --state-e1000   helpers of tools/kern-test/devd-qemu.sh
  *   geraetetest --hotplug    wait for a USB device to come and go (the host adds and removes it through the
- *                            QEMU monitor after "GERAETETEST: USB BEREIT …"), marker "GERAETETEST-USB: ALLES OK"
+ *                            QEMU monitor after "GERAETETEST: USB BEREIT …" and types a key after "… (taste)");
+ *                            the keyboard gets its own input node; marker "GERAETETEST-USB: ALLES OK"
  * Runs as a program started by the kernel: root, every right. */
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/input.h>
 #include <poll.h>
 #include <sched.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -386,17 +390,116 @@ static void cycle(int ev, const char *e) {
     check("Ereignisse: Verlauf /sys/kernel/ultar/uevents nennt bind", file_has("/sys/kernel/ultar/uevents", " bind /bus/pci/devices/"));
 }
 
+/* the keyboard's own input node: numbers, ids, capabilities; a key from the host arrives as press and
+ * release (the host sends it after "USB BEREIT (taste)"). Returns the open node (-1: none). */
+static int usb_keyboard(const char *node) {
+    char path[64], b[128];
+    int n = -1;
+    sscanf(node, "input/event%d", &n);
+    snprintf(path, sizeof path, "/dev/%s", node);
+    struct stat st;
+    check("USB-Tastatur: eigener Eingabeknoten ab event2 mit Ereignis add SUBSYSTEM=input", n >= 2);
+    check("USB-Tastatur: Knoten ist ein Zeichengerät 13:64+n", n >= 2 && stat(path, &st) == 0 && S_ISCHR(st.st_mode) && major(st.st_rdev) == 13 && (int)minor(st.st_rdev) == 64 + n);
+    int fd = n >= 2 ? open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC) : -1;
+    struct input_id id = {0};
+    unsigned char keys[KEY_MAX / 8 + 1] = {0};
+    check("USB-Tastatur: EVIOCGID Bus USB, 0627:0001; EVIOCGBIT hat KEY_A", fd >= 0 && ioctl(fd, EVIOCGID, &id) == 0 && id.bustype == BUS_USB && id.vendor == 0x0627 && id.product == 1 && ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keys), keys) > 0 && (keys[KEY_A / 8] >> (KEY_A % 8) & 1));
+    snprintf(path, sizeof path, "/sys/class/input/event%d/device/name", n);
+    check("USB-Tastatur: /sys/class/input/eventN/device/name", n >= 2 && strstr(slurp(path, b, sizeof b), "USB") != NULL);
+    say("GERAETETEST: USB BEREIT (taste)\n");
+    int down = 0, up = 0;
+    struct input_event e[16];
+    for (int i = 0; i < 100 && fd >= 0 && !up; i++) {
+        struct pollfd pf = {fd, POLLIN, 0};
+        poll(&pf, 1, 100);
+        long r = read(fd, e, sizeof e);
+        for (int j = 0; j < r / (long)sizeof e[0]; j++) {
+            if (e[j].type == EV_KEY && e[j].code == KEY_A && e[j].value == 1) down = 1;
+            if (e[j].type == EV_KEY && e[j].code == KEY_A && e[j].value == 0 && down) up = 1;
+        }
+    }
+    check("USB-Tastatur: Taste a kommt als Drücken und getrenntes Loslassen", down && up);
+    return fd;
+}
+
+/* input nodes named in `action` events of SUBSYSTEM=input, up to `want` of them (wait up to 30 s) */
+static int input_events(int ev, const char *action, char nodes[][32], int want) {
+    char msg[2048];
+    int got = 0;
+    for (int i = 0; i < 30 && got < want; i++) {
+        int len = next_event(ev, msg, sizeof msg, 1000);
+        if (len > 0 && strcmp(key(msg, len, "SUBSYSTEM"), "input") == 0 && strcmp(key(msg, len, "ACTION"), action) == 0)
+            snprintf(nodes[got++], 32, "%s", key(msg, len, "DEVNAME"));
+    }
+    return got;
+}
+
+static int has(const unsigned char *b, int bit) {
+    return b[bit / 8] >> (bit % 8) & 1;
+}
+
+/* a USB mouse and a USB tablet come (the host adds them after "USB BEREIT (zeiger)"), each gets its own
+ * node with the right capabilities; after "USB BEREIT (klick)" the host moves and clicks on each
+ * (QEMU `mouse_set`), the events arrive on the right node; then both go again */
+static void usb_pointers(int ev) {
+    char nodes[2][32] = {"", ""}, path[96];
+    say("GERAETETEST: USB BEREIT (zeiger)\n");
+    int n = input_events(ev, "add", nodes, 2);
+    int mouse = -1, tablet = -1;
+    for (int i = 0; i < n; i++) {
+        snprintf(path, sizeof path, "/dev/%s", nodes[i]);
+        int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        unsigned char evb[4] = {0};
+        if (fd >= 0 && ioctl(fd, EVIOCGBIT(0, sizeof evb), evb) > 0 && has(evb, EV_ABS)) tablet = fd;
+        else if (fd >= 0 && has(evb, EV_REL)) mouse = fd;
+        else if (fd >= 0) close(fd);
+    }
+    unsigned char rel[2] = {0};
+    struct input_absinfo ax = {0}, ay = {0};
+    check("USB-Maus: eigener Knoten mit EV_REL (REL_X, REL_Y, Rad)", mouse >= 0 && ioctl(mouse, EVIOCGBIT(EV_REL, sizeof rel), rel) > 0 && has(rel, REL_X) && has(rel, REL_Y) && has(rel, REL_WHEEL));
+    check("USB-Tablett: eigener Knoten mit EV_ABS, EVIOCGABS 0..32767", tablet >= 0 && ioctl(tablet, EVIOCGABS(ABS_X), &ax) == 0 && ioctl(tablet, EVIOCGABS(ABS_Y), &ay) == 0 && ax.maximum == 32767 && ay.maximum == 32767 && ax.minimum == 0);
+    say("GERAETETEST: USB BEREIT (klick)\n");
+    int moved = 0, m_down = 0, m_up = 0, abs_seen = 0, t_down = 0, t_up = 0;
+    struct input_event e[32];
+    for (int i = 0; i < 100 && !(moved && m_up && abs_seen && t_up); i++) {
+        struct pollfd pf[2] = {{mouse, POLLIN, 0}, {tablet, POLLIN, 0}};
+        poll(pf, 2, 100);
+        long r = mouse >= 0 ? read(mouse, e, sizeof e) : -1;
+        for (int j = 0; j < r / (long)sizeof e[0]; j++) {
+            moved |= e[j].type == EV_REL && (e[j].code == REL_X || e[j].code == REL_Y);
+            if (e[j].type == EV_KEY && e[j].code == BTN_LEFT) e[j].value ? (m_down = 1) : (m_up = m_down);
+        }
+        r = tablet >= 0 ? read(tablet, e, sizeof e) : -1;
+        for (int j = 0; j < r / (long)sizeof e[0]; j++) {
+            abs_seen |= e[j].type == EV_ABS && e[j].code == ABS_X;
+            if (e[j].type == EV_KEY && e[j].code == BTN_LEFT) e[j].value ? (t_down = 1) : (t_up = t_down);
+        }
+    }
+    check("USB-Maus: Bewegung (EV_REL) und Klick links drücken/loslassen", moved && m_down && m_up);
+    check("USB-Tablett: Position (EV_ABS) und Klick links drücken/loslassen", abs_seen && t_down && t_up);
+    say("GERAETETEST: USB BEREIT (zeiger weg)\n");
+    char gone[2][32] = {"", ""};
+    int g = input_events(ev, "remove", gone, 2);
+    check("USB-Zeiger: Ereignis remove für beide Knoten, Knoten weg", g == 2 && n == 2 && !in_dir("/dev/input", strchr(nodes[0], '/') + 1) && !in_dir("/dev/input", strchr(nodes[1], '/') + 1));
+    if (mouse >= 0) close(mouse);
+    if (tablet >= 0) close(tablet);
+}
+
 static int hotplug(void) {
     int ev = event_socket();
-    char msg[2048], dir[256], name[64] = "";
+    char msg[2048], dir[256], name[64] = "", node[32] = "";
+    int product = 0;
     say("GERAETETEST: USB BEREIT (add)\n");
-    int len = -1;
-    for (int i = 0; i < 30 && len < 0; i++) {
-        len = next_event(ev, msg, sizeof msg, 1000);
-        if (len > 0 && (strcmp(key(msg, len, "SUBSYSTEM"), "usb") || strcmp(key(msg, len, "ACTION"), "add"))) len = -1;
+    for (int i = 0; i < 30 && !(name[0] && node[0]); i++) {
+        int len = next_event(ev, msg, sizeof msg, 1000);
+        if (len <= 0 || strcmp(key(msg, len, "ACTION"), "add")) continue;
+        if (strcmp(key(msg, len, "SUBSYSTEM"), "usb") == 0 && !name[0]) {
+            product = strncmp(key(msg, len, "PRODUCT"), "627/1/", 6) == 0;
+            snprintf(name, sizeof name, "%s", strrchr(key(msg, len, "DEVPATH"), '/') + 1);
+        }
+        if (strcmp(key(msg, len, "SUBSYSTEM"), "input") == 0) snprintf(node, sizeof node, "%s", key(msg, len, "DEVNAME"));
     }
-    check("USB: Ereignis add mit SUBSYSTEM=usb, PRODUCT 627/1", len > 0 && strncmp(key(msg, len, "PRODUCT"), "627/1/", 6) == 0);
-    if (len > 0) snprintf(name, sizeof name, "%s", strrchr(key(msg, len, "DEVPATH"), '/') + 1);
+    check("USB: Ereignis add mit SUBSYSTEM=usb, PRODUCT 627/1", product);
     snprintf(dir, sizeof dir, "/sys/bus/usb/devices/%s/idVendor", name);
     check("USB: Gerät in /sys/bus/usb/devices (idVendor 0627)", name[0] && file_is(dir, "0627\n"));
     snprintf(dir, sizeof dir, "/sys/bus/usb/devices/%s:1.0/driver", name);
@@ -405,14 +508,22 @@ static int hotplug(void) {
     l[k > 0 ? k : 0] = 0;
     check("USB: Schnittstelle 1.0 von usbhid bedient", strcmp(l, "../../drivers/usbhid") == 0);
     check("USB: Tabelle /sys/kernel/ultar/devices nennt das Gerät", file_has("/sys/kernel/ultar/devices", "0627:0001"));
+    int kb = usb_keyboard(node);
     say("GERAETETEST: USB BEREIT (remove)\n");
-    len = -1;
-    for (int i = 0; i < 30 && len < 0; i++) {
-        len = next_event(ev, msg, sizeof msg, 1000);
-        if (len > 0 && strcmp(key(msg, len, "ACTION"), "remove")) len = -1;
+    int usb_gone = 0, node_gone = 0;
+    for (int i = 0; i < 30 && !(usb_gone && node_gone); i++) {
+        int len = next_event(ev, msg, sizeof msg, 1000);
+        if (len <= 0 || strcmp(key(msg, len, "ACTION"), "remove")) continue;
+        if (strcmp(key(msg, len, "SUBSYSTEM"), "usb") == 0 && name[0] && strstr(key(msg, len, "DEVPATH"), name)) usb_gone = 1;
+        if (strcmp(key(msg, len, "SUBSYSTEM"), "input") == 0 && node[0] && strcmp(key(msg, len, "DEVNAME"), node) == 0) node_gone = 1;
     }
-    check("USB: Ereignis remove für dasselbe Gerät", len > 0 && strstr(key(msg, len, "DEVPATH"), name) != NULL);
+    check("USB: Ereignis remove für dasselbe Gerät", usb_gone);
     check("USB: Gerät aus der Liste verschwunden", name[0] && !in_dir("/sys/bus/usb/devices", name));
+    check("USB-Tastatur: Ereignis remove für den Eingabeknoten, Knoten weg", node_gone && node[0] && !in_dir("/dev/input", strchr(node, '/') + 1));
+    char b[24];
+    check("USB-Tastatur: offener Deskriptor liest danach ENODEV", kb >= 0 && read(kb, b, sizeof b) == -1 && errno == ENODEV);
+    if (kb >= 0) close(kb);
+    usb_pointers(ev);
     check("USB: SEQNUM ohne Lücke", seq_gaps == 0);
     say("GERAETETEST-USB: %s\n", fails == 0 ? "ALLES OK" : "SIEHE OBEN");
     return fails != 0;

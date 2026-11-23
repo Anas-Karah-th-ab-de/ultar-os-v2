@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """USB hot-plug test of the Ultar kernel's device events: boots the kernel in QEMU with an xHCI controller,
 starts `/bin/geraetetest --hotplug` and adds / removes a USB keyboard through the QEMU monitor when the
-program says it is ready. Prints the serial log; the verdict is the program's marker "GERAETETEST-USB: ALLES OK".
+program says it is ready (and types one key while the keyboard's own input node is open); then adds a USB
+mouse and a USB tablet, moves and clicks each (`mouse_set`) and removes them. Prints the serial log; the verdict is the program's marker "GERAETETEST-USB: ALLES OK".
    geraete-hotplug.py <esp.img>      (environment: SMP, MEM, WAIT = seconds for the whole run)"""
-import codecs, os, socket, subprocess, sys, tempfile, time, select
+import codecs, os, re, socket, subprocess, sys, tempfile, time, select
 
 img = sys.argv[1]
 work = tempfile.mkdtemp()
@@ -38,6 +39,7 @@ def read_until(pat, timeout):
     return False
 
 def monitor(cmd):
+    """Send one monitor command; returns what the monitor answered."""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(mon_path)
     s.settimeout(5)
@@ -45,7 +47,23 @@ def monitor(cmd):
     s.recv(65536)
     s.sendall(cmd.encode() + b"\n")
     time.sleep(0.5)
+    try:
+        out = s.recv(65536).decode("utf-8", "replace")
+    except socket.timeout:
+        out = ""
     s.close()
+    return out
+
+def click_on(name):
+    """Make the mouse called `name` in `info mice` the active one, move it and click the left button."""
+    mice = monitor("info mice")
+    for line in mice.splitlines():
+        m = re.search(r"Mouse #(\d+): (.*)", line)
+        if m and name in m.group(2):
+            monitor(f"mouse_set {m.group(1)}")
+    monitor("mouse_move 7 5")
+    monitor("mouse_button 1")
+    monitor("mouse_button 0")
 
 deadline = time.time() + float(os.environ.get("WAIT", "120"))
 try:
@@ -53,8 +71,21 @@ try:
         p.stdin.write(b"/bin/geraetetest --hotplug\r"); p.stdin.flush()
         if read_until("USB BEREIT (add)", 30):
             monitor("device_add usb-kbd,bus=xhci.0,id=hotkbd")
+            # the keyboard's input node is open: one key, pressed and released (QEMU sends it to the newest keyboard)
+            if read_until("USB BEREIT (taste)", max(5, deadline - time.time())):
+                monitor("sendkey a")
             if read_until("USB BEREIT (remove)", max(5, deadline - time.time())):
                 monitor("device_del hotkbd")
+                # a mouse and a tablet: each gets its own node; moved and clicked one after the other
+                if read_until("USB BEREIT (zeiger)", max(5, deadline - time.time())):
+                    monitor("device_add usb-mouse,bus=xhci.0,id=hotmouse")
+                    monitor("device_add usb-tablet,bus=xhci.0,id=hottab")
+                if read_until("USB BEREIT (klick)", max(5, deadline - time.time())):
+                    click_on("QEMU HID Mouse")
+                    click_on("QEMU HID Tablet")
+                if read_until("USB BEREIT (zeiger weg)", max(5, deadline - time.time())):
+                    monitor("device_del hotmouse")
+                    monitor("device_del hottab")
                 # the whole verdict line and the next prompt: QEMU is stopped only after both arrived
                 if read_until("GERAETETEST-USB: ", max(5, deadline - time.time())):
                     buf = buf[buf.rfind(b"GERAETETEST-USB: "):]

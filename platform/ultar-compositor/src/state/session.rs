@@ -14,7 +14,7 @@ use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hasher};
 use ultar_hal::KeyState;
-use ultar_surface::proto::{ErrorCode, Event, Modifiers, Rights, Role, SurfaceId};
+use ultar_surface::proto::{ErrorCode, Event, Modifiers, Rights, Role, SurfaceId, WindowEntry};
 
 /// Activation tokens outstanding at most (the oldest is dropped).
 const MAX_TOKENS: usize = 16;
@@ -100,6 +100,30 @@ impl Session {
 }
 
 impl State {
+    /// `ListWindows` (capture right): every toplevel, bottom to top, with
+    /// whether it is shown and how its pixels arrived.
+    pub(super) fn list_windows(&mut self, client: ClientId) -> Result<(), ErrorCode> {
+        let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
+        if !c.rights.contains(Rights::CAPTURE) {
+            return Err(ErrorCode::Permission);
+        }
+        let windows = self
+            .windows
+            .iter()
+            .filter_map(|w| {
+                let s = self.surface(w.key)?;
+                Some(WindowEntry {
+                    app_id: self.clients.get(&w.key.client)?.app_id.clone(),
+                    title: s.title.clone(),
+                    mapped: w.mapped,
+                    shared_memory: s.shared,
+                })
+            })
+            .collect();
+        self.send(client, Event::WindowList { windows });
+        Ok(())
+    }
+
     /// True while the session is locked: only the lock screen and the
     /// on-screen keyboard are drawn and get input.
     pub fn locked(&self) -> bool {

@@ -158,6 +158,9 @@ fn encode_data(event: &Event, w: &mut Writer) {
         Event::SessionLocked { locked } => {
             w.bool(*locked);
         }
+        Event::WindowList { windows } => {
+            super::windows::encode_list(w, windows);
+        }
         _ => {}
     }
 }
@@ -322,6 +325,9 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         },
         29 => Event::ActivationToken { token: r.u64()? },
         30 => Event::SessionLocked { locked: r.bool()? },
+        31 => Event::WindowList {
+            windows: super::windows::decode_list(r)?,
+        },
         _ => return Err(WireError::BadValue),
     })
 }

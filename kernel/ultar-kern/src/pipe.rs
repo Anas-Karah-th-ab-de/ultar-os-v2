@@ -66,6 +66,11 @@ pub struct Pipe {
     /// Packet mode (device events): lengths of the messages in `buf`, in order; `None`: a stream.
     /// Always locked after `buf`.
     lens: Mutex<Option<VecDeque<u32>>>,
+    /// Descriptors in flight (`SCM_RIGHTS`): the stream offset of the byte they travel with, and the
+    /// descriptors. Always locked after `buf`.
+    rights: Mutex<VecDeque<(u64, alloc::vec::Vec<crate::proc::Fd>)>>,
+    /// Bytes taken out of `buf` so far: the stream offset of its first byte. Changed under `buf`.
+    taken: AtomicU64,
 }
 
 impl Pipe {
@@ -76,7 +81,7 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None) })
+        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None), rights: Mutex::new(VecDeque::new()), taken: AtomicU64::new(0) })
     }
 
     /// Empty pipe in packet mode: every [`Pipe::push_packet`] is read back as one message.
@@ -105,7 +110,54 @@ impl Pipe {
     /// Take what one `read` of at most `max` bytes gets: up to `max` bytes of a stream, or the
     /// next message in packet mode (cut to `max`, the rest of it dropped). `buf` is this pipe's
     /// locked buffer. `None` if memory for the copy is refused – then nothing was taken.
+    /// Descriptors that travel with the bytes taken are dropped (a plain `read` discards them).
     pub fn take(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<alloc::vec::Vec<u8>> {
+        let out = self.take_bytes(buf, max)?;
+        let end = self.taken.fetch_add(out.len() as u64, Ordering::SeqCst) + out.len() as u64;
+        let mut r = self.rights.lock();
+        while r.front().is_some_and(|e| e.0 < end) {
+            r.pop_front();
+        }
+        Some(out)
+    }
+
+    /// `recvmsg` of a stream: like [`Pipe::take`], but the descriptors that travel with the first byte
+    /// come along, and the read stops before the next byte that carries descriptors.
+    pub fn take_with_rights(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<crate::proc::Fd>)> {
+        let start = self.taken.load(Ordering::SeqCst);
+        let mut r = self.rights.lock();
+        let mut limit = max;
+        let mut i = 0;
+        if r.front().is_some_and(|e| e.0 == start) {
+            i = 1;
+        }
+        if let Some(next) = r.get(i) {
+            limit = limit.min((next.0 - start) as usize);
+        }
+        let out = self.take_bytes(buf, limit)?;
+        self.taken.fetch_add(out.len() as u64, Ordering::SeqCst);
+        let fds = if i == 1 { r.pop_front().map(|e| e.1).unwrap_or_default() } else { alloc::vec::Vec::new() };
+        Some((out, fds))
+    }
+
+    /// Append like [`Pipe::push`]; `fds` travel with the first byte. On error the descriptors come back.
+    pub fn push_with_rights(&self, data: &[u8], fds: alloc::vec::Vec<crate::proc::Fd>) -> Result<usize, (PushError, alloc::vec::Vec<crate::proc::Fd>)> {
+        let mut b = self.buf.lock();
+        let at = self.taken.load(Ordering::SeqCst) + b.len() as u64;
+        let mut r = self.rights.lock();
+        if crate::heap::fallible(|| r.try_reserve(1)).is_err() {
+            return Err((PushError::NoMemory, fds));
+        }
+        match self.push_locked(&mut b, data) {
+            Ok(n) => {
+                r.push_back((at, fds));
+                Ok(n)
+            }
+            Err(e) => Err((e, fds)),
+        }
+    }
+
+    fn take_bytes(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<alloc::vec::Vec<u8>> {
         let mut lens = self.lens.lock();
         let Some(lens) = lens.as_mut() else { return Pipe::pull(buf, max) };
         let whole = lens.front().map_or(buf.len(), |&l| l as usize);
@@ -182,6 +234,10 @@ impl Pipe {
     /// Append as much of `data` as fits and return that count (never 0 for non-empty data).
     pub fn push(&self, data: &[u8]) -> Result<usize, PushError> {
         let mut b = self.buf.lock();
+        self.push_locked(&mut b, data)
+    }
+
+    fn push_locked(&self, b: &mut VecDeque<u8>, data: &[u8]) -> Result<usize, PushError> {
         let room = self.capacity().saturating_sub(b.len() as u64) as usize;
         let n = room.min(data.len());
         if n == 0 && !data.is_empty() || data.len() <= PIPE_BUF && n < data.len() {

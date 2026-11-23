@@ -47,6 +47,7 @@ impl EingabeFd {
     pub fn neu(art: u8) -> EingabeFd {
         if ROH.fetch_add(1, Ordering::SeqCst) == 0 {
             QUEUES.lock().iter_mut().for_each(|q| q.clear());
+            crate::input::clear();
             MEREIGNIS.store(usize::MAX, Ordering::Relaxed);
         }
         if art == MAUS {
@@ -244,12 +245,18 @@ pub fn lesen(art: u8, max: usize) -> Option<alloc::vec::Vec<u8>> {
 }
 
 pub fn bereit(art: u8) -> bool {
+    if art >= crate::input::FIRST {
+        return crate::input::ready(art);
+    }
     pumpen();
     !QUEUES.lock()[art as usize].is_empty()
 }
 
 /// ioctl auf einem Eingabe-Deskriptor; None = unbekannt
 pub fn ioctl(art: u8, req: u64) -> Option<alloc::vec::Vec<u8>> {
+    if art >= crate::input::FIRST {
+        return crate::input::ioctl(art, req);
+    }
     let fb = crate::console::framebuffer()?;
     // EVIOCGABS(ABS_X/ABS_Y): input_absinfo {value, min, max, fuzz, flat, resolution}
     if art == MAUS && (req == 0x8018_4540 || req == 0x8018_4541) {
@@ -266,7 +273,7 @@ pub fn ioctl(art: u8, req: u64) -> Option<alloc::vec::Vec<u8>> {
         let name: &[u8] = if art == MAUS { b"Ultar Maus\0" } else { b"Ultar Tastatur\0" };
         return Some(name.to_vec());
     }
-    None
+    crate::input::ioctl(art, req)
 }
 
 /// ioctl auf dem Bildspeicher (FBIOGET_VSCREENINFO/FSCREENINFO); None = unbekannt
@@ -303,6 +310,13 @@ pub fn fb_ioctl(req: u64) -> Option<alloc::vec::Vec<u8>> {
             f[48..52].copy_from_slice(&(fb.stride * 4).to_le_bytes());
             Some(f)
         }
+        // FBIOGET_VBLANK: struct fb_vblank, with FB_VBLANK_HAVE_COUNT and the count of the simulated blanks
+        0x8020_4612 => {
+            let mut v = alloc::vec![0u8; 32];
+            v[0..4].copy_from_slice(&0x10u32.to_le_bytes());
+            v[4..8].copy_from_slice(&(crate::shm::vblank_count() as u32).to_le_bytes());
+            Some(v)
+        }
         0x4601 | 0x4606 | 0x4611 => Some(alloc::vec::Vec::new()),
         _ => None,
     }
@@ -336,6 +350,10 @@ pub fn fb_lesen(off: u64, n: usize) -> alloc::vec::Vec<u8> {
 /// Ereignisse einspeisen (write auf /dev/input/eventN wie unter Linux): Fernsteuerung über den Entwickler-Zugang.
 /// Je 24 Byte ein `struct input_event`; die Zeit setzt der Kern.
 pub fn einspeisen(art: u8, daten: &[u8]) -> usize {
+    if art >= crate::input::FIRST {
+        crate::input::inject(art, daten);
+        return daten.len() / 24 * 24;
+    }
     let mut n = 0;
     for e in daten.chunks_exact(24) {
         let typ = u16::from_le_bytes([e[16], e[17]]);

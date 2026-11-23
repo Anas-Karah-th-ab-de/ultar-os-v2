@@ -31,6 +31,12 @@ pub(super) fn register(hc: &Hc, lage: &Lage, slot: u32, speed: u32, dd: &[u8], i
     let (Some(vid), Some(pid), Some(bcd)) = (dd.get(8..10), dd.get(10..12), dd.get(12..14)) else { return };
     let le = |b: &[u8]| u16::from_le_bytes([b[0], b[1]]);
     let ifaces: Vec<Iface> = ifs.iter().map(|d| Iface { number: d.iface, class: d.class, sub: d.sub, proto: d.proto, driver: function(d) }).collect();
+    if hc.kbds.iter().any(|k| k.slot == slot) {
+        crate::input::usb_keyboard_added(hc.index, slot, le(vid), le(pid));
+    }
+    if let Some(abs) = super::pointer::ranges(hc, slot) {
+        crate::input::usb_pointer_added(hc.index, slot, le(vid), le(pid), abs);
+    }
     crate::devices::usb::added(UsbDev {
         hc: hc.index,
         port: lage.name(),
@@ -48,6 +54,8 @@ pub(super) fn register(hc: &Hc, lage: &Lage, slot: u32, speed: u32, dd: &[u8], i
 fn detach(hc: &mut Hc, port: u32) {
     for slot in crate::devices::usb::removed(hc.index, &format!("{port}")) {
         hc.kbds.retain(|k| k.slot != slot);
+        super::pointer::remove(hc, slot);
+        crate::input::usb_removed(hc.index, slot);
         hc.rings.retain(|r| r.0 != slot);
         hc.command(0, (TRB_DISABLE_SLOT << 10) | (slot << 24));
         w64(hc.dcbaa + slot as u64 * 8, 0);

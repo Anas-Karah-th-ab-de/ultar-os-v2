@@ -8,7 +8,8 @@ the protocol) is printed when it arrives.
    compositor-qemu.py <esp.img> <shot.ppm>
 
 The image must carry /bin/ultar-compositor and /bin/ultar-compositor-testclient (static builds,
-see docs/integration/ultar-compositor.md). Exit 0 and the line `COMPOSITOR-CHECK: OK ...` on success.
+see docs/integration/ultar-compositor.md). Exit 0 when the screenshot line and the in-kernel line
+(`kerncheck`: windows from the compositor's window list, transport of the app frames) both say `COMPOSITOR-CHECK: OK`.
 Environment: SMP (2), MEM (1024), WAIT (seconds for the verdict, 240)."""
 import os, re, select, socket, subprocess, sys, time
 
@@ -103,4 +104,5 @@ print()
 print(f"in kernel: {inner}")
 print(verdict or "COMPOSITOR-CHECK: FAILED no screenshot")
 print(f"screenshot: {shot} ({os.path.getsize(shot) if os.path.exists(shot) else 0} bytes)")
-sys.exit(0 if verdict and ": OK " in verdict else 1)
+# both: the screenshot and the in-kernel verdict (windows from the compositor's list, transport)
+sys.exit(0 if verdict and ": OK " in verdict and ": OK " in inner else 1)

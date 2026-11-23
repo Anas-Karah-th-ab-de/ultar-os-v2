@@ -14,6 +14,10 @@
 #       package through them (devd-qemu.sh; DEVD=/UDRV= for prebuilt binaries),
 #   5d. wake-ups (weckertest): posix_spawn/vfork release the parent at execve, shutdown/close wake blocked
 #       Unix-socket readers, writers and accept, signalfd in threaded processes,
+#   5e. what a compositor needs (fenstertest): memfd + seals, shared mappings across fork and processes,
+#       SCM_RIGHTS, MSG_DONTWAIT, POLLOUT wake-ups, poll timeouts below a second, mremap, fb0 mmap + vblank,
+#       owner/group/mode of device nodes, evdev capability ioctls, /sys/class/input; a USB keyboard that
+#       comes and goes gets its own event node (geraete-hotplug.py),
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
@@ -30,9 +34,9 @@ fi
 mcopy -o -i out/ultar-kern-esp.img "$BUSCK" ::/bin/busck
 LOG="${LOG:-$(mktemp)}"
 # a second network card (e1000) is the device the bind/unbind cycle of geraetetest works on
-QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" > "$LOG" 2>&1 || true
+QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" "/bin/fenstertest" > "$LOG" 2>&1 || true
 fail=0
-for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK"; do
+for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK"; do
   if grep -q "$expect" "$LOG"; then echo "ok    $expect"; else echo "FAIL  $expect"; fail=1; fi
 done
 if grep -qiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=1; fi
@@ -57,7 +61,7 @@ else
   echo "FAIL  GERAETETEST with many devices (device table ${big:-0} bytes)"; grep -aE "FEHLER|GERAETETEST" "$MLOG" | tail -20; exit 1
 fi
 HLOG="${HLOG:-$(mktemp)}"
-SMP="${SMP:-2}" WAIT=120 timeout 300 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true
+SMP="${SMP:-2}" WAIT=180 timeout 360 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true
 if grep -q "GERAETETEST-USB: ALLES OK" "$HLOG" && ! grep -qiE "kernel panic|PANIK" "$HLOG"; then
   echo "ok    GERAETETEST-USB: ALLES OK"
 else

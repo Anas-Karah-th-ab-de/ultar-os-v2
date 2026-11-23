@@ -299,6 +299,8 @@ pub fn dispatch(f: &mut TrapFrame) {
         165 => Res::Val(calls::sys_mount(a[0], a[1], a[2], a[3], a[4])),
         166 => Res::Val(calls::sys_umount(a[0], a[1])),
         272 => Res::Val(calls::sys_unshare(a[0])),
+        319 => Res::Val(crate::memfd::create(a[1])),
+        285 => Res::Val(crate::memfd::fallocate(a[0], a[1], a[2], a[3]).unwrap_or(-ENOSYS)),
         308 => Res::Val(calls::sys_setns(a[0], a[1])),
         88 => Res::Val(calls::sys_symlink(a[0], -100, a[1])),
         266 => Res::Val(calls::sys_symlink(a[0], a[1] as i32 as i64, a[2])),
@@ -336,7 +338,11 @@ pub fn dispatch(f: &mut TrapFrame) {
             Res::Keep
         }
         37 => Res::Val(0),
-        16 => Res::Val(sys_ioctl(a[0], a[1], a[2])),
+        16 => match crate::shm::vsync_wait(a[0], a[1]) {
+            Some(until) => Res::BlockWith(Wait::Sleep(until), 0),
+            None => Res::Val(sys_ioctl(a[0], a[1], a[2])),
+        },
+        25 => Res::Val(crate::shm::mremap(a[0], a[1], a[2], a[3], a[4])),
         17 => sys_read(a[0], a[1], a[2], Some(a[3])),
         18 => Res::Val(sys_pwrite(a[0], a[1], a[2], a[3])),
         19 => sys_readv(a[0], a[1], a[2]),
@@ -419,9 +425,13 @@ pub fn dispatch(f: &mut TrapFrame) {
         42 => sys_connect(a[0], a[1], a[2]),
         43 => sys_accept(a[0], a[1], a[2], 0),
         288 => sys_accept(a[0], a[1], a[2], a[3]),
+        44 if crate::scm::is_conn(a[0]) => match get(a[1], a[2].min(1 << 20) as usize) {
+            Some(d) => scm_res(crate::scm::send(a[0], &d, &[], a[3])),
+            None => Res::Val(-EFAULT),
+        },
         44 => sys_sendto(a[0], a[1], a[2], a[4], a[5]),
         45 => sys_recvfrom(a[0], a[1], a[2], a[3], a[4], a[5]),
-        46 => sys_sendmsg(a[0], a[1]),
+        46 => sys_sendmsg(a[0], a[1], a[2]),
         47 => sys_recvmsg(a[0], a[1], a[2]),
         307 => sys_sendmmsg(a[0], a[1], a[2]),
         48 => Res::Val(sys_shutdown(a[0], a[1])),
@@ -436,7 +446,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         54 => Res::Val(0),
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
         137 | 138 => Res::Val(sys_statfs(nr == 138, a[0], a[1])),
-        334 | 332 | 435 | 326 | 285 | 425 | 426 | 427 => Res::Val(-ENOSYS),
+        334 | 332 | 435 | 326 | 425 | 426 | 427 => Res::Val(-ENOSYS),
         86 | 265 => Res::Val(-1),
         95 => Res::Val(with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0)),
         96 => {
@@ -492,8 +502,9 @@ pub fn dispatch(f: &mut TrapFrame) {
         262 => Res::Val(sys_stat_path(a[0] as i32 as i64, a[1], a[2], a[3])),
         263 => Res::Val(sys_unlink(a[0] as i32 as i64, a[1])),
         269 | 439 => Res::Val(crate::perm::sys_access(a[0] as i32 as i64, a[1], a[2], if nr == 439 { a[3] } else { 0 })),
-        23 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()) as i64 * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) as i64 / 1000).unwrap_or(-1) }),
-        270 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()) as i64 * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) as i64 / 1_000_000).unwrap_or(-1) }),
+        // select: timeval (microseconds), rounded up to whole milliseconds
+        23 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])).saturating_mul(1000).saturating_add(u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])).min(999_999).div_ceil(1000)).min(i64::MAX as u64) as i64).unwrap_or(-1) }),
+        270 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| timespec_ms_up(&b) as i64).unwrap_or(-1) }),
         130 | 34 => {
             if nr == 130 {
                 let m = get(a[0], 8).map(|b| u64::from_le_bytes(b.try_into().unwrap())).unwrap_or(0);
@@ -504,7 +515,8 @@ pub fn dispatch(f: &mut TrapFrame) {
             }
             Res::BlockWith(Wait::Signal, -4)
         }
-        271 => sys_poll(a[0], a[1], if a[2] == 0 { -1 } else { get(a[2], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()) as i64 * 1000).unwrap_or(-1) }),
+        // ppoll: the timespec with its nanoseconds (rounded up to whole milliseconds, never to 0 early)
+        271 => sys_poll(a[0], a[1], if a[2] == 0 { -1 } else { get(a[2], 16).map(|b| timespec_ms_up(&b) as i64).unwrap_or(-1) }),
         292 => Res::Val(sys_dup(a[0], Some(a[1]), a[2])),
         293 => Res::Val(sys_pipe(a[0], a[1])),
         302 => Res::Val(sys_prlimit(a[1], a[3])),
@@ -577,12 +589,14 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         enum Direct {
             Fill(bool),
             File(Arc<Vec<u8>>, u64),
+            Mem(Arc<crate::memfd::MemObj>, u64),
             No,
         }
         let direct = match p.fd(fd).map(|d| &d.kind) {
             Some(FdKind::Zero) => Direct::Fill(false),
             Some(FdKind::Random) => Direct::Fill(true),
             Some(FdKind::File { data, pos, .. }) => Direct::File(data.clone(), *pos),
+            Some(FdKind::Mem(m, pos)) => Direct::Mem(m.clone(), *pos),
             _ => Direct::No,
         };
         match direct {
@@ -617,6 +631,18 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 }
                 return Src::Done((end - start) as i64);
             }
+            Direct::Mem(m, pos) => {
+                let bytes = m.read(at.unwrap_or(pos), n);
+                if !bytes.is_empty() && !proc::write_user(p.space(), buf, &bytes) {
+                    return Src::Done(-EFAULT);
+                }
+                if at.is_none() {
+                    if let Some(FdKind::Mem(_, pos)) = p.fd(fd).map(|d| &mut d.kind) {
+                        *pos += bytes.len() as u64;
+                    }
+                }
+                return Src::Done(bytes.len() as i64);
+            }
             Direct::No => {}
         }
         let Some(d) = p.fd(fd) else { return Src::Err(-EBADF) };
@@ -624,12 +650,18 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
                 Some(off) => Src::Data(crate::eingabe::fb_lesen(off, n)),
                 None => Src::Err(-EINVAL),
+            },
+            FdKind::Eingabe(e) if e.0 >= crate::input::FIRST => match crate::input::read(e.0, n) {
+                Ok(Some(d)) => Src::Data(d),
+                Ok(None) if d.flags & 0x800 != 0 => Src::Err(-11),
+                Ok(None) => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
+                Err(e) => Src::Err(e),
             },
             FdKind::Eingabe(e) => match crate::eingabe::lesen(e.0, n) {
                 Some(d) => Src::Data(d),
@@ -773,6 +805,8 @@ fn file_write(fd_data: &mut Arc<Vec<u8>>, pos: &mut u64, path: &str, data: &[u8]
 /// Put `data` into a pipe or Unix socket direction for a `write`-like call. `Ok(n)`: `n` bytes
 /// were taken (`n < data.len()`: the buffer is full now). `Err(Res)`: nothing was taken.
 fn pipe_write(pp: &Pipe, data: &[u8], nonblock: bool) -> Result<usize, Res> {
+    // read before trying: a reader that makes room right after the failed try still wakes this writer
+    let seen = crate::socket::gen();
     match pp.push(data) {
         Ok(k) => {
             crate::socket::bump();
@@ -780,7 +814,7 @@ fn pipe_write(pp: &Pipe, data: &[u8], nonblock: bool) -> Result<usize, Res> {
         }
         Err(crate::pipe::PushError::NoMemory) => Err(Res::Val(-ENOMEM)),
         Err(crate::pipe::PushError::Full) if nonblock => Err(Res::Val(-11)),
-        Err(crate::pipe::PushError::Full) => Err(Res::Block(Wait::Net(crate::socket::gen()))),
+        Err(crate::pipe::PushError::Full) => Err(Res::Block(Wait::Net(seen))),
     }
 }
 
@@ -824,6 +858,13 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
         match &mut d.kind {
             FdKind::Console => Out::Echo,
             FdKind::Null | FdKind::Zero | FdKind::Random => Out::Done(data.len()),
+            FdKind::Mem(m, pos) => match m.write(*pos, &data) {
+                Ok(k) => {
+                    *pos += k as u64;
+                    Out::Done(k)
+                }
+                Err(e) => Out::Res(Res::Val(e)),
+            },
             FdKind::File { data: fd_data, pos, write, append, dirty, path } => {
                 if !*write {
                     return Out::Res(Res::Val(-EBADF));
@@ -864,10 +905,12 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                     let done = core::mem::take(&mut p.io_done);
                     return if done > 0 { Out::Done(done as usize) } else { Out::Res(Res::Val(-EPIPE)) };
                 }
+                let seen = crate::socket::gen();
                 match pipe_write(pp, &data, nonblock) {
                     Ok(k) if k == want || nonblock => Out::Done(k + core::mem::take(&mut p.io_done) as usize),
-                    // a blocking writer waits until everything is delivered
-                    Ok(k) => Out::Res(Res::Partial(k as u64, Wait::Net(crate::socket::gen()))),
+                    // a blocking writer waits until everything is delivered (counter read before the
+                    // write: room made in between is not missed)
+                    Ok(k) => Out::Res(Res::Partial(k as u64, Wait::Net(seen))),
                     Err(Res::Val(e)) => match core::mem::take(&mut p.io_done) {
                         0 => Out::Res(Res::Val(e)),
                         done => Out::Done(done as usize),
@@ -901,7 +944,7 @@ const PIPE_MAX_FILE: &str = "/proc/sys/fs/pipe-max-size";
 fn control_write(path: &str, data: &[u8]) -> i64 {
     let text = core::str::from_utf8(data).unwrap_or("").trim();
     if crate::devices::sysfs::is_control(path) {
-        if !calls::holds(Rights::LOAD_DRIVER) {
+        if !calls::holds(crate::devices::sysfs::right_for(path)) {
             return -EPERM;
         }
         return crate::devices::sysfs::write(path, text).map_or_else(|e| e, |()| data.len() as i64);
@@ -940,15 +983,15 @@ fn sys_pwrite(fd: u64, buf: u64, n: u64, off: u64) -> i64 {
             *pos = off;
             Some(a)
         }
+        Some(FdKind::Mem(_, pos)) => Some(core::mem::replace(pos, off)),
         _ => None,
     })
     .flatten();
     let Some(alt) = alt else { return -ESPIPE };
     let r = sys_write(fd, buf, n);
-    with(|p| {
-        if let Some(FdKind::File { pos, .. }) = p.fd(fd).map(|d| &mut d.kind) {
-            *pos = alt;
-        }
+    with(|p| match p.fd(fd).map(|d| &mut d.kind) {
+        Some(FdKind::File { pos, .. }) | Some(FdKind::Mem(_, pos)) => *pos = alt,
+        _ => {}
     });
     r
 }
@@ -1037,7 +1080,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
         return -EACCES;
     }
     // drivers are bound and unbound through the device tree: only its control files, only with the right
-    if acc != 0 && crate::devices::sysfs::is_tree(&path) && !(crate::devices::sysfs::is_control(&path) && rights.has(Rights::LOAD_DRIVER)) {
+    if acc != 0 && crate::devices::sysfs::is_tree(&path) && !(crate::devices::sysfs::is_control(&path) && rights.has(crate::devices::sysfs::right_for(&path))) {
         return -EACCES;
     }
     if let Err(e) = crate::perm::open_gate(&path, acc, trunc, creat) {
@@ -1049,7 +1092,6 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             "null" => FdKind::Null,
             "zero" => FdKind::Zero,
             "urandom" | "random" => FdKind::Random,
-            "fb0" | "input/event0" | "input/event1" if !rights.has(Rights::RAW_DEVICE) => return -EACCES,
             d if d.starts_with("ultar/part/") => match crate::rawpart::open(d, acc != 0, rights.has(Rights::RAW_DEVICE)) {
                 Ok(k) => k,
                 Err(e) => return e,
@@ -1058,8 +1100,8 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,
             },
-            "input/event0" | "input/event1" => {
-                let art = if d == "input/event0" { crate::eingabe::MAUS } else { crate::eingabe::TASTATUR };
+            "input/event0" | "input/event1" | "input/usb" => {
+                let Some(art) = path.rsplit('/').next().and_then(crate::input::parse) else { return -ENOENT };
                 FdKind::Eingabe(Arc::new(if acc == 1 { crate::eingabe::EingabeFd::schreibend(art) } else { crate::eingabe::EingabeFd::neu(art) }))
             }
             _ => FdKind::Console,
@@ -1143,7 +1185,7 @@ fn stat_buf(mode: u32, size: u64, ino: u64, rdev: u64) -> Vec<u8> {
 /// `fallback` is the mode of an entry that has gone meanwhile.
 fn stat_entry(host: &str, fallback: u32, size: u64) -> Vec<u8> {
     let a = crate::perm::of(host).unwrap_or(crate::perm::Attr { mode: fallback, uid: 0, gid: 0 });
-    let mut b = stat_buf(a.mode, size, ino(host), 0);
+    let mut b = stat_buf(a.mode, size, ino(host), crate::perm::rdev(host));
     b[28..32].copy_from_slice(&a.uid.to_le_bytes());
     b[32..36].copy_from_slice(&a.gid.to_le_bytes());
     b
@@ -1223,7 +1265,7 @@ fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
     let b = match fs::stat(&path) {
         Some((0, size)) => stat_entry(&path, 0o100755, size),
         Some((1, _)) => stat_entry(&path, 0o040755, 4096),
-        Some(_) => stat_buf(0o020666, 0, ino(&path), (5 << 8) | 1),
+        Some(_) => stat_entry(&path, 0o020666, 0),
         None => return -ENOENT,
     };
     if put(buf, &b) {
@@ -1241,14 +1283,20 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Console => Ok(stat_buf(0o020620, 0, 3, (136 << 8) | 0)),
             FdKind::Null | FdKind::Zero | FdKind::Random => Ok(stat_buf(0o020666, 0, 4, (1 << 8) | 3)),
             FdKind::File { data, path, .. } => Err((path.clone(), 0o100755, data.len() as u64)),
+            // a memory object: its size, and as many 512-byte blocks as its pages hold (all of it is allocated)
+            FdKind::Mem(m, _) => {
+                let mut b = stat_buf(0o100600, m.size(), 13, 0);
+                b[64..72].copy_from_slice(&(m.pages() * 8).to_le_bytes());
+                Ok(b)
+            }
             FdKind::Dir { path, .. } => Err((path.clone(), 0o040755, 4096)),
             FdKind::PipeR(_) | FdKind::PipeW(_) => Ok(stat_buf(0o010600, 0, 5, 0)),
             FdKind::Sock(h) => Ok(stat_buf(0o140777, 0, 6 + h.0 as u64, 0)),
             FdKind::SigFd(_) => Ok(stat_buf(0o000600, 0, 7, 0)),
             FdKind::UnixConn(..) | FdKind::UnixSock(_) => Ok(stat_buf(0o140777, 0, 8, 0)),
             FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => Ok(stat_buf(0o000600, 0, 9, 0)),
-            FdKind::Fb(_) => Ok(stat_buf(0o020660, 0, 10, 29 << 8)),
-            FdKind::Eingabe(e) => Ok(stat_buf(0o020660, 0, 11, (13 << 8) | (64 + e.0 as u64))),
+            FdKind::Fb(_) => Err((String::from("/dev/fb0"), 0o020600, 0)),
+            FdKind::Eingabe(e) => Err((alloc::format!("/dev/input/event{}", e.0), 0o020600, 0)),
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
         })
@@ -1290,6 +1338,20 @@ fn sys_lseek(fd: u64, off: i64, wh: u64) -> i64 {
             FdKind::Dir { pos, .. } => {
                 *pos = off.max(0) as usize;
                 off
+            }
+            FdKind::Mem(m, pos) => {
+                let base = match wh {
+                    0 => 0,
+                    1 => *pos as i64,
+                    2 => m.size() as i64,
+                    _ => return -EINVAL,
+                };
+                let n = base.saturating_add(off);
+                if n < 0 {
+                    return -EINVAL;
+                }
+                *pos = n as u64;
+                n
             }
             FdKind::Null | FdKind::Zero | FdKind::Random => 0,
             _ => -ESPIPE,
@@ -1519,6 +1581,15 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
 }
 
 fn sys_ftruncate(fd: u64, len: u64) -> i64 {
+    let obj = with(|p| match p.fd(fd).map(|d| &d.kind) {
+        Some(FdKind::Mem(m, _)) => Some(m.clone()),
+        _ => None,
+    })
+    .flatten();
+    if let Some(m) = obj {
+        // the pages are charged to the caller's group (set for this call)
+        return m.set_size(len).map_or_else(|e| e, |()| 0);
+    }
     with(|p| match p.fd(fd).map(|d| &mut d.kind) {
         Some(FdKind::File { write: true, .. }) if len > MAX_FILE_BYTES => -EFBIG,
         Some(FdKind::File { data, write: true, dirty, path, .. }) => {
@@ -1670,6 +1741,20 @@ fn sys_fcntl(fd: u64, cmd: u64, arg: u64) -> i64 {
             }).unwrap_or(-EBADF))
             .unwrap_or(-EBADF)
         }
+        // F_ADD_SEALS / F_GET_SEALS of a memory object
+        1033 | 1034 => {
+            let obj = with(|p| match p.fd(fd).map(|d| &d.kind) {
+                Some(FdKind::Mem(m, _)) => Ok(m.clone()),
+                Some(_) => Err(-EINVAL),
+                None => Err(-EBADF),
+            })
+            .unwrap_or(Err(-EBADF));
+            match obj {
+                Ok(m) if cmd == 1034 => m.seals() as i64,
+                Ok(m) => m.add_seals(arg as u32).map_or_else(|e| e, |()| 0),
+                Err(e) => e,
+            }
+        }
         // F_SETPIPE_SZ / F_GETPIPE_SZ
         1031 | 1032 => {
             let pipe = with(|p| match p.fd(fd).map(|d| &d.kind) {
@@ -1774,11 +1859,12 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
         return match antwort {
             Some(b) if b.is_empty() => 0,
             Some(b) => {
-                // EVIOCGNAME: höchstens die angegebene Länge
-                let max = if req & 0xffff == 0x4506 && req >> 16 & 0x3fff != 0 { ((req >> 16) & 0x3fff) as usize } else { b.len() };
+                // variable-length requests (EVIOCGNAME, EVIOCGBIT, …): at most the length in the request
+                let var = crate::input::returns_len(req);
+                let max = if var { ((req >> 16) & 0x3fff) as usize } else { b.len() };
                 let b = &b[..b.len().min(max)];
                 if put(arg, b) {
-                    if req & 0xffff == 0x4506 { b.len() as i64 } else { 0 }
+                    if var { b.len() as i64 } else { 0 }
                 } else {
                     -EFAULT
                 }
@@ -1971,6 +2057,8 @@ fn sys_epoll_wait(epfd: u64, out: u64, max: u64, timeout: i64) -> Res {
     })
     .flatten();
     let Some(e) = e else { return Res::Val(-EINVAL) };
+    // the event counter before the descriptors are looked at: a change in between wakes the wait at once
+    let seen = crate::socket::gen();
     poll_input();
     crate::socket::poll();
     let inp = input_ready();
@@ -2005,13 +2093,15 @@ fn sys_epoll_wait(epfd: u64, out: u64, max: u64, timeout: i64) -> Res {
     }
     let fds: Vec<i64> = list.iter().map(|x| x.0 as i64).collect();
     let tdl = with(|p| timer_deadline(p, &fds)).unwrap_or(0);
-    poll_wait(timeout, tdl)
+    poll_wait(timeout, tdl, seen)
 }
 
 /// Warteentscheidung für poll/select/epoll_wait: bereit → None; sonst wiederholbares Warten bis Ereignis/Frist.
 /// `timeout` < 0 = unbegrenzt. Die Frist gilt für den ganzen Aufruf (über Wiederholungen hinweg).
-fn poll_wait(timeout: i64, timer_dl: u64) -> Res {
-    let g = crate::socket::gen();
+/// Wait for the next event after `seen` (the counter read before the caller looked at its descriptors – a
+/// buffer drained or filled while it looked is not missed), the timeout or a timer.
+fn poll_wait(timeout: i64, timer_dl: u64, seen: u64) -> Res {
+    let g = seen;
     let now = crate::arch::uptime_ms();
     let rip = crate::percpu::me().sys_rip;
     let dl = if timeout >= 0 {
@@ -2040,6 +2130,12 @@ fn poll_wait(timeout: i64, timer_dl: u64) -> Res {
 
 fn poll_done() {
     with(|p| p.poll_dl = None);
+}
+
+/// A wait time given as `timespec` in milliseconds, rounded up (1 ns waits 1 ms, not 0); huge values saturate.
+fn timespec_ms_up(b: &[u8]) -> u64 {
+    let (sec, ns) = (u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])), u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])));
+    sec.saturating_mul(1000).saturating_add(ns.min(999_999_999).div_ceil(1_000_000)).min(i64::MAX as u64)
 }
 
 fn timespec_ms(b: &[u8]) -> u64 {
@@ -2081,6 +2177,7 @@ fn sys_timerfd_settime(fd: u64, flags: u64, new: u64, old: u64) -> i64 {
 
 fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
     let Some(b) = get(fds, (n.min(256) * 8) as usize) else { return Res::Val(-EFAULT) };
+    let seen = crate::socket::gen();
     poll_input();
     let inp = input_ready();
     let mut out = b.clone();
@@ -2102,7 +2199,7 @@ fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
     let _ = has_sock_or_pipe(&b);
     let fdl: Vec<i64> = b.chunks(8).map(|c| i32::from_le_bytes(c[0..4].try_into().unwrap()) as i64).collect();
     let tdl = with(|p| timer_deadline(p, &fdl)).unwrap_or(0);
-    match poll_wait(timeout, tdl) {
+    match poll_wait(timeout, tdl, seen) {
         Res::Val(v) => {
             put(fds, &out);
             Res::Val(v)
@@ -2124,6 +2221,7 @@ fn sys_select(n: u64, rfds: u64, wfds: u64, timeout_ms: i64) -> Res {
     let bytes = n.div_ceil(64) * 8;
     let rd = if rfds != 0 { get(rfds, bytes) } else { None };
     let wr = if wfds != 0 { get(wfds, bytes) } else { None };
+    let seen = crate::socket::gen();
     poll_input();
     let inp = input_ready();
     let bit = |v: &Vec<u8>, i: usize| v[i / 8] & (1 << (i % 8)) != 0;
@@ -2159,7 +2257,7 @@ fn sys_select(n: u64, rfds: u64, wfds: u64, timeout_ms: i64) -> Res {
     }
     let fdl: Vec<i64> = (0..n as i64).collect();
     let tdl = with(|p| timer_deadline(p, &fdl)).unwrap_or(0);
-    match poll_wait(timeout_ms, tdl) {
+    match poll_wait(timeout_ms, tdl, seen) {
         Res::Val(v) => {
             if rfds != 0 {
                 put(rfds, &ro);
@@ -2463,6 +2561,12 @@ fn sys_sendto(fd: u64, buf: u64, len: u64, addr: u64, alen: u64) -> Res {
 }
 
 fn sys_recvfrom(fd: u64, buf: u64, len: u64, flags: u64, addr: u64, lenp: u64) -> Res {
+    if crate::scm::is_conn(fd) {
+        return match crate::scm::recv(fd, &[(buf, len)], 0, 0, flags) {
+            Ok(r) => Res::Val(r.len),
+            Err(s) => scm_res(s),
+        };
+    }
     let Some(id) = sock_id(fd) else { return sys_read(fd, buf, len, None) };
     sock_recv(id, buf, len, flags, addr, lenp)
 }
@@ -2474,7 +2578,24 @@ fn msghdr(m: u64) -> Option<(u64, u64, Vec<(u64, u64)>)> {
     Some((r(0), r(8) & 0xffff_ffff, iov(r(16), r(24))))
 }
 
-fn sys_sendmsg(fd: u64, m: u64) -> Res {
+fn scm_res(s: crate::scm::Step) -> Res {
+    match s {
+        crate::scm::Step::Val(v) => Res::Val(v),
+        crate::scm::Step::Wait(seen) => Res::Block(Wait::Net(seen)),
+    }
+}
+
+/// The control buffer of a msghdr (at most 4 KiB are read).
+fn msg_control(m: u64) -> Option<Vec<u8>> {
+    let b = get(m + 32, 16)?;
+    let (at, len) = (u64::from_le_bytes(b[0..8].try_into().ok()?), u64::from_le_bytes(b[8..16].try_into().ok()?));
+    if at == 0 || len == 0 {
+        return Some(Vec::new());
+    }
+    get(at, len.min(4096) as usize)
+}
+
+fn sys_sendmsg(fd: u64, m: u64, flags: u64) -> Res {
     let Some((name, nlen, v)) = msghdr(m) else { return Res::Val(-EFAULT) };
     // one message: at most 1 MiB in total
     let mut data = Vec::new();
@@ -2489,8 +2610,12 @@ fn sys_sendmsg(fd: u64, m: u64) -> Res {
             None => {}
         }
     }
+    if crate::scm::is_conn(fd) {
+        let Some(ctl) = msg_control(m) else { return Res::Val(-EFAULT) };
+        return scm_res(crate::scm::send(fd, &data, &ctl, flags));
+    }
     let Some(id) = sock_id(fd) else {
-        // Unix-Socket/Rohr: Daten schreiben (Begleitdaten wie SCM_RIGHTS werden nicht übertragen)
+        // pipe or other descriptor: write the bytes
         return write_bytes(fd, &data);
     };
     let to = if name != 0 { get(name, (nlen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b)) } else { None };
@@ -2501,7 +2626,7 @@ fn sys_sendmmsg(fd: u64, vec: u64, n: u64) -> Res {
     let mut done = 0;
     for i in 0..n.min(64) {
         let m = vec + i * 64;
-        match sys_sendmsg(fd, m) {
+        match sys_sendmsg(fd, m, 0) {
             Res::Val(r) if r >= 0 => {
                 put(m + 56, &(r as u32).to_le_bytes());
                 done += 1;
@@ -2515,8 +2640,21 @@ fn sys_sendmmsg(fd: u64, vec: u64, n: u64) -> Res {
 
 fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
     let Some((name, _, v)) = msghdr(m) else { return Res::Val(-EFAULT) };
+    if crate::scm::is_conn(fd) {
+        let Some(c) = get(m + 32, 16) else { return Res::Val(-EFAULT) };
+        let (ctl, room) = (u64::from_le_bytes(c[0..8].try_into().unwrap_or([0; 8])), u64::from_le_bytes(c[8..16].try_into().unwrap_or([0; 8])));
+        return match crate::scm::recv(fd, &v, ctl, if ctl == 0 { 0 } else { room }, flags) {
+            Ok(r) => {
+                put(m + 40, &r.ctl_len.to_le_bytes());
+                put(m + 48, &r.msg_flags.to_le_bytes());
+                put(m + 8, &0u32.to_le_bytes());
+                Res::Val(r.len)
+            }
+            Err(s) => scm_res(s),
+        };
+    }
     let Some(id) = sock_id(fd) else {
-        // Unix-Socket: in den ersten Puffer lesen, keine Begleitdaten
+        // other descriptors: read into the first buffer, no ancillary data
         put(m + 40, &0u64.to_le_bytes());
         return match v.first() {
             Some(&(b, l)) => sys_read(fd, b, l, None),
@@ -2638,11 +2776,45 @@ fn sys_brk(addr: u64) -> i64 {
     .unwrap_or(-ENOMEM)
 }
 
+/// Where a new mapping of `len` bytes goes: the fixed address `addr` (whatever was there is removed)
+/// or the next free one.
+pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64, i64> {
+    if flags & 0x10 == 0 {
+        let v = p.g.mmap_next;
+        if v + len + 4096 > proc::STACK_TOP - (1 << 30) {
+            return Err(-ENOMEM);
+        }
+        p.g.mmap_next += len + 4096;
+        return Ok(v);
+    }
+    // above the user half the page-table index wraps (non-canonical addresses) or names the
+    // kernel half: a mapping there would replace the kernel's own mappings in this address space
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
+        return Err(-EINVAL);
+    }
+    if !p.space().unreserve(addr, len) {
+        return Err(-ENOMEM);
+    }
+    p.space().unmap_shared(addr, len);
+    let mut a = addr;
+    while a < addr + len {
+        p.space().unmap(a);
+        a += 4096;
+    }
+    Ok(addr)
+}
+
 fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i64 {
     if len == 0 || len > 1 << 34 {
         return -EINVAL;
     }
     let len = (len + 4095) & !4095;
+    if flags & 0x20 == 0 {
+        // a memory object or the framebuffer: shared pages or a copy
+        if let Some(r) = crate::shm::mmap(addr, len, prot, flags, fd, off) {
+            return r;
+        }
+    }
     let data = if flags & 0x20 == 0 {
         match with(|p| match p.fd(fd as u64).map(|d| &d.kind) {
             Some(FdKind::File { data, .. }) => Some(data.clone()),
@@ -2657,28 +2829,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         None
     };
     with(|p| {
-        let va = if flags & 0x10 != 0 {
-            // above the user half the page-table index wraps (non-canonical addresses) or names the
-            // kernel half: a mapping there would replace the kernel's own mappings in this address space
-            if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
-                return -EINVAL;
-            }
-            if !p.space().unreserve(addr, len) {
-                return -ENOMEM;
-            }
-            let mut a = addr;
-            while a < addr + len {
-                p.space_mut().unmap(a);
-                a += 4096;
-            }
-            addr
-        } else {
-            let v = p.g.mmap_next;
-            if v + len + 4096 > proc::STACK_TOP - (1 << 30) {
-                return -ENOMEM;
-            }
-            p.g.mmap_next += len + 4096;
-            v
+        let va = match place(p, addr, len, flags) {
+            Ok(v) => v,
+            Err(e) => return e,
         };
         let (w, x) = (prot & 2 != 0 || data.is_some(), prot & 4 != 0);
         if data.is_none() {
@@ -2721,6 +2874,7 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
         if !p.space().unreserve(addr, (len + 4095) & !4095) {
             return -ENOMEM;
         }
+        p.space().unmap_shared(addr, (len + 4095) & !4095);
         let mut a = addr;
         while a < addr + ((len + 4095) & !4095) {
             p.space_mut().unmap(a);

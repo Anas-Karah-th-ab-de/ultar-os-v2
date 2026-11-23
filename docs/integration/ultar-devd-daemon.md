@@ -261,14 +261,17 @@ the single right `file_admin`, no bus, reads `/sys` and `/etc/ultar/devd-seat.to
 * Safety: only character devices, never through links, only below `/dev` directories of root that nobody else
   may change; the mode is narrowed first, then owner and group, then the final mode (no step grants more than
   start or end); every change is read back.
-* Kernels: on Linux owners and modes are kept (`modes` = `kept`). The Ultar kernel refuses `chown`/`chmod` below
-  `/dev` (it gates the nodes by `raw_device`, `kernel-identities.md` §2): detected from that refusal on the
-  Ultar kernel only (`kernel-gated`); a refusal on Linux, or any other error, is `failed` – the compositor then
-  keeps its group check and opens nothing (fail closed). `--once` prints one line per node and the verdict.
+* Kernels: on Linux and on the Ultar kernel (device node modes, `kernel-compositor-gaps.md` §4) owners and modes
+  are kept (`modes` = `kept`); the compositor's group check then applies and its `kernel-gated` relaxation is
+  unused. Older Ultar kernels refused `chown`/`chmod` below `/dev` (they gated the nodes by `raw_device` only):
+  detected from that refusal on the Ultar kernel only (`kernel-gated`); a refusal on Linux, or any other error,
+  is `failed` – the compositor then keeps its group check and opens nothing (fail closed). `--once` prints one
+  line per node and the verdict.
 * Tests: `src/seat/tests.rs` (configuration bounds, classification, real nodes via `mknod` as root, links and
   writable directories refused, verdict, state file, event parsing incl. 20 000 random messages with a fixed
   seed); `tests/seat.rs` (the program: `--once`, and as a service a node added later is set after a device
   event sent over netlink – hot-plug on Linux); `tools/kern-test/devd-qemu.sh` (Ultar kernel in QEMU:
-  `fb0`, `input/event0`, `input/event1` refused by the kernel, verdict `kernel-gated`). Not tested: hot-plug of
-  an input device on the Ultar kernel (its event nodes are fixed), a real DRM card, a real uinput device.
+  `fb0`, `input/event0`, `input/event1` set to `root:812 0660`, verdict `kept`). The Ultar kernel gives a USB
+  keyboard its own node from `event2` on with `add`/`remove` events (`geraete-hotplug.py`); not tested there: the
+  service reacting to such an event, a real DRM card, a real uinput device (the Ultar kernel has neither).
 
