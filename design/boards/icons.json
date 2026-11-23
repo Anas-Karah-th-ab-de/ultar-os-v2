@@ -1,0 +1,1298 @@
+{
+ "rule": "one icon = one meaning; stroke 1.5 at 24; sizes 16 and 24; mirroring depends on the direction at draw time",
+ "icons": [
+  {
+   "name": "back",
+   "meaning": "back (towards the start side)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "forward",
+   "meaning": "forward / open (towards the end side)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "States"
+   ]
+  },
+  {
+   "name": "chevron-down",
+   "meaning": "opens a list of choices (select)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "InstallerDisk",
+    "InstallerDrivers",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "States"
+   ]
+  },
+  {
+   "name": "home",
+   "meaning": "home folder",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "grid",
+   "meaning": "all apps",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "search",
+   "meaning": "search",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "more",
+   "meaning": "more actions for this element",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneDial"
+   ]
+  },
+  {
+   "name": "min",
+   "meaning": "minimise window",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "PhoneDial",
+    "PhoneInCall",
+    "PhoneIncoming",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "max",
+   "meaning": "maximise window",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "PhoneDial",
+    "PhoneInCall",
+    "PhoneIncoming",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "close",
+   "meaning": "close window or dialog",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "PhoneDial",
+    "PhoneInCall",
+    "PhoneIncoming",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "plus",
+   "meaning": "new / add",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview"
+   ]
+  },
+  {
+   "name": "trash",
+   "meaning": "delete (action)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account"
+   ]
+  },
+  {
+   "name": "copy",
+   "meaning": "copy",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "PhoneDial",
+    "PhoneInCall",
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "download",
+   "meaning": "download (action, download list)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopBottom",
+    "InstallerDrivers",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "reload",
+   "meaning": "reload",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "DesktopBottom"
+   ]
+  },
+  {
+   "name": "eject",
+   "meaning": "eject a removable drive",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "backspace",
+   "meaning": "delete the last digit",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneDial"
+   ]
+  },
+  {
+   "name": "check",
+   "meaning": "done / selected",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "DesktopBottom",
+    "Installer",
+    "InstallerDisk",
+    "InstallerDrivers",
+    "InstallerSummary",
+    "Login",
+    "Overview",
+    "PhoneDial",
+    "Projection",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "States",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "info",
+   "meaning": "hint",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "InstallerDisk",
+    "States",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "warning",
+   "meaning": "warning",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "InstallerDrivers",
+    "SettingsDrivers",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "error",
+   "meaning": "error",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "InstallerDisk",
+    "InstallerDrivers",
+    "InstallerSummary",
+    "SettingsDrivers",
+    "States",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "lock",
+   "meaning": "locked / lock the screen",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "InstallerDrivers",
+    "Lock",
+    "QuickSettings",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "secure",
+   "meaning": "encrypted connection or call",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall",
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "shield",
+   "meaning": "security",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "eye",
+   "meaning": "show (password visible)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "InstallerDisk",
+    "Login"
+   ]
+  },
+  {
+   "name": "ring",
+   "meaning": "in progress (progress ring)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "States",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "block",
+   "meaning": "ad and tracker blocking",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopBottom"
+   ]
+  },
+  {
+   "name": "wifi",
+   "meaning": "Wi-Fi (strength)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "InstallerDrivers",
+    "Lock",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "States"
+   ]
+  },
+  {
+   "name": "offline",
+   "meaning": "no connection (offline)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "cable",
+   "meaning": "wired network",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "InstallerDrivers",
+    "QuickSettings",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "cell",
+   "meaning": "mobile network (signal bars)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneDial",
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "plane",
+   "meaning": "airplane mode",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "bluetooth",
+   "meaning": "Bluetooth",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "InstallerDrivers",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "vpn",
+   "meaning": "VPN (shield with key)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "mesh",
+   "meaning": "Mesh (linked devices)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "Installer",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "cloud",
+   "meaning": "Ultar account / cloud",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "PhoneDial",
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "network",
+   "meaning": "network (settings area)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "sharing",
+   "meaning": "sharing services (settings area)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "volume",
+   "meaning": "sound / volume",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "InstallerDrivers",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "speaker",
+   "meaning": "loudspeaker / output device",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "mic",
+   "meaning": "microphone",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "sun",
+   "meaning": "brightness",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "moon",
+   "meaning": "night light",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "contrast",
+   "meaning": "dark theme",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "battery",
+   "meaning": "power / battery",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Lock",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "monitor",
+   "meaning": "display",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "InstallerDrivers",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "keyboard",
+   "meaning": "keyboard",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "mouse",
+   "meaning": "mouse and touchpad",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "InstallerDrivers",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "printer",
+   "meaning": "printing",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "chip",
+   "meaning": "drivers and hardware",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "video",
+   "meaning": "camera / video on",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "InstallerDrivers",
+    "PhoneDial",
+    "PhoneInCall",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "camera-switch",
+   "meaning": "switch camera",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "screen-share",
+   "meaning": "share the screen",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "usb",
+   "meaning": "removable drive (USB)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "disk",
+   "meaning": "internal disk / storage",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "phone",
+   "meaning": "phone / voice call",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "Lock",
+    "PhoneDial",
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "hangup",
+   "meaning": "end or decline a call",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall",
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "keypad",
+   "meaning": "dial pad",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "pause",
+   "meaning": "hold the call",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "PhoneInCall"
+   ]
+  },
+  {
+   "name": "message",
+   "meaning": "message",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneIncoming"
+   ]
+  },
+  {
+   "name": "call-in",
+   "meaning": "incoming call (list)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneDial"
+   ]
+  },
+  {
+   "name": "call-out",
+   "meaning": "outgoing call (list)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneDial"
+   ]
+  },
+  {
+   "name": "call-missed",
+   "meaning": "missed call (list)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "PhoneDial"
+   ]
+  },
+  {
+   "name": "qr",
+   "meaning": "QR code",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account"
+   ]
+  },
+  {
+   "name": "gear",
+   "meaning": "Settings (only that)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "PhoneDial",
+    "QuickSettings",
+    "States"
+   ]
+  },
+  {
+   "name": "power",
+   "meaning": "power menu",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Lock",
+    "Login",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "user",
+   "meaning": "account / person",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "Login",
+    "PhoneDial",
+    "PhoneInCall",
+    "PhoneIncoming",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "users",
+   "meaning": "users of this device (settings area)",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "bell",
+   "meaning": "notifications",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "bell-off",
+   "meaning": "do not disturb",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "clock",
+   "meaning": "time",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "bag",
+   "meaning": "Ultar Store",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Lock",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "folder",
+   "meaning": "Files (app)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "access",
+   "meaning": "accessibility",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "Login",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "spark",
+   "meaning": "Assistant",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "Installer",
+    "QuickSettings",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "update",
+   "meaning": "updates",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "CalendarSheet",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers",
+    "Store"
+   ]
+  },
+  {
+   "name": "shot",
+   "meaning": "screenshot",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "palette",
+   "meaning": "appearance",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "colour",
+   "meaning": "colour management",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "dock",
+   "meaning": "desktop and dock (settings area)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "workspaces",
+   "meaning": "windows and workspaces (settings area)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "apps",
+   "meaning": "apps (settings area)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "language",
+   "meaning": "region and language",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "backup",
+   "meaning": "backup",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "device",
+   "meaning": "this device / system information",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "cells",
+   "meaning": "cells and containers",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "sos",
+   "meaning": "emergency",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Account",
+    "Lock",
+    "SettingsDisplay",
+    "SettingsDisplayLight",
+    "SettingsDrivers"
+   ]
+  },
+  {
+   "name": "play",
+   "meaning": "play",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Lock"
+   ]
+  },
+  {
+   "name": "prev",
+   "meaning": "previous track",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Lock"
+   ]
+  },
+  {
+   "name": "next",
+   "meaning": "next track",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Lock"
+   ]
+  },
+  {
+   "name": "compass",
+   "meaning": "Discover (Store)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Store"
+   ]
+  },
+  {
+   "name": "installed",
+   "meaning": "installed (Store)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Store"
+   ]
+  },
+  {
+   "name": "package-file",
+   "meaning": "install from a file (Store)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Store"
+   ]
+  },
+  {
+   "name": "browser",
+   "meaning": "Ultar Browser (app)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "firefox",
+   "meaning": "Firefox (fallback browser component)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "terminal",
+   "meaning": "Terminal (app)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "editor",
+   "meaning": "Text editor (app)",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "office",
+   "meaning": "component Office tools",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "code",
+   "meaning": "component Coder",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store",
+    "SurfaceStates"
+   ]
+  },
+  {
+   "name": "media",
+   "meaning": "component Media",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "mail",
+   "meaning": "component Communication",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "package",
+   "meaning": "component Linux programs",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "windows",
+   "meaning": "component Windows programs",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "android",
+   "meaning": "component Android apps",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "server",
+   "meaning": "component Containers and server",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "remote",
+   "meaning": "component Remote access",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Installer",
+    "Store"
+   ]
+  },
+  {
+   "name": "place-documents",
+   "meaning": "place: Documents",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "place-downloads",
+   "meaning": "place: Downloads",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "place-pictures",
+   "meaning": "place: Pictures",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "place-music",
+   "meaning": "place: Music",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "bin",
+   "meaning": "place: Trash",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Main",
+    "Overview",
+    "QuickSettings"
+   ]
+  },
+  {
+   "name": "kind-folder",
+   "meaning": "file kind: folder",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "kind-text",
+   "meaning": "file kind: text document",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "kind-sheet",
+   "meaning": "file kind: spreadsheet",
+   "mirrored_in_rtl": true,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  },
+  {
+   "name": "kind-image",
+   "meaning": "file kind: image",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "DesktopTop",
+    "Main"
+   ]
+  }
+ ],
+ "pictograms": [
+  {
+   "name": "display-mode-extend",
+   "meaning": "displays extended",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Projection",
+    "SettingsDisplay",
+    "SettingsDisplayLight"
+   ]
+  },
+  {
+   "name": "display-mode-mirror",
+   "meaning": "displays mirrored",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Projection",
+    "SettingsDisplay",
+    "SettingsDisplayLight"
+   ]
+  },
+  {
+   "name": "display-mode-first",
+   "meaning": "only this device / only one display",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Projection",
+    "SettingsDisplay",
+    "SettingsDisplayLight"
+   ]
+  },
+  {
+   "name": "display-mode-second",
+   "meaning": "only the second display",
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "Projection",
+    "SettingsDisplay",
+    "SettingsDisplayLight"
+   ]
+  }
+ ],
+ "brand": [
+  {
+   "name": "mark",
+   "meaning": "brand mark = Overview button",
+   "mirrored_in_rtl": false
+  }
+ ]
+}

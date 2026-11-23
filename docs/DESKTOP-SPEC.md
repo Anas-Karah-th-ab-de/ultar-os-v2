@@ -508,3 +508,78 @@ jeden undefinierten Klick festlegen, Zustandsbilder (leer, lädt, Fehler, offlin
 | Mining | **Optional** – nicht im Grundsystem. | Eigene Komponente „Rechenleistung teilen (Mining)“ im Store, standardmäßig nicht installiert; nach Installation aus, mit Grenzen (nur am Netzteil, Temperatur, CPU-Anteil) und klarer Anzeige in der Leiste, solange es läuft. Kein Eintrag im Konto-Bildschirm. |
 | Standard-Desktop | **Eine Leiste unten wie bei Windows 11** | siehe Abschnitt 11; Entwurfsbilder umgestellt, Leiste oben + Dock bleibt als Variante |
 | Namensräume | **Werden in den Ultar-Kern eingebaut**, zusammen mit Gruppen und später Profilen mit Rechten | siehe PLAN.md §3.7 |
+
+## 13. Verhalten je Element (aus Entwurfsrunde 2 übernommen)
+
+Diese Festlegungen gelten verbindlich; die vollständige Klickliste aller Tafeln steht in `docs/ui/CLICKS.md`, die Symboltabelle in `docs/ui/ICONS.md`, die Tafeln samt Erzeuger in `design/boards/`. Die Abschnittsangabe in Klammern nennt, wozu die Festlegung gehört.
+
+
+
+1. `shell.search` [§5.1] – Opens the Overview with the caret in its search field; typing searches at once. The bar itself holds no second search.
+2. `shell.trash` [§5.1] – Click opens the Trash in Files. Files dropped on it are moved to the Trash (with undo). Right click: Open, Empty trash (asks first).
+3. `shell.drive` [§5.1] – Click opens the mounted drive in Files. Right click: Open, Eject. The tile exists only while a drive is mounted.
+4. `shell.kbd` [§5.1] – Shown only with more than one input language. Click opens a menu: the input languages (choosing one switches at once), "Keyboard settings". Super+Space switches without the menu.
+5. `shell.status` [§5.1] – Opens the quick settings sheet above the end of the bar; second click, Esc or a click outside closes it and focus returns to this button.
+6. `shell.clock` [§5.1] – Opens the calendar and notifications sheet above the end of the bar; closes like the quick settings. Only one of the two sheets is open at a time.
+7. `desk.icon` [§5.1] – Single click selects the icon; double click or Enter opens it (folder or drive in Files). Right click: Open, Rename, Move to trash, Properties; on a drive also Eject.
+8. `files.back` [§9 Files] – Goes back in the folder history of this window (Alt+Left; in Arabic the arrow points right). Disabled when there is no history.
+9. `files.forward` [§9 Files] – Goes forward in the folder history of this window. Disabled when there is nothing to go forward to.
+10. `files.place` [§9 Files] – Opens the place in this window.
+11. `files.drive` [§9 Files] – Opens the mounted drive in this window.
+12. `files.eject` [§9 Files] – Ejects the drive safely; a notification says when it may be removed. If files are open on it: names the app and offers "Eject anyway".
+13. `files.search` [§9 Files] – Typing filters the current folder by name and content at once; Esc clears and leaves the field.
+14. `files.newfolder` [§9 Files] – Creates a folder in the current folder with the name selected for typing (Ctrl+Shift+N).
+15. `files.item` [§9 Files] – Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu.
+16. `browser.tabclose` [§9/§11 Browser] – Closes this tab (Ctrl+W); closing the last tab closes the window.
+17. `browser.shield` [§9/§11 Browser] – Opens the page panel: blocked trackers and ads of this page, a switch "Protection for this site", the permissions of the site (camera, microphone, location, notifications) and the connection state. It does not switch anything by itself.
+18. `browser.downloads` [§9/§11 Browser] – Opens the download list of the browser (progress, Open, Show in folder, Clear).
+19. `qs.wifi` [§5.1 Quick settings] – Switches Wi-Fi on or off.
+20. `qs.wifi.list` [§5.1 Quick settings] – Opens the list of networks inside the sheet (strength, security, connect, "Wi-Fi settings"); Back returns to the tiles.
+21. `qs.wired` [§5.1 Quick settings] – Wired network has no switch: the tile shows the state and opens Settings > Network.
+22. `qs.bluetooth` [§5.1 Quick settings] – Switches Bluetooth on or off.
+23. `qs.bluetooth.list` [§5.1 Quick settings] – Opens the list of devices inside the sheet (connect, disconnect, "Bluetooth settings").
+24. `qs.vpn` [§5.1 Quick settings] – Switches the last used VPN on or off; with no VPN set up it opens Settings > Network > VPN.
+25. `qs.vpn.list` [§5.1 Quick settings] – Opens the list of VPN connections inside the sheet to choose which one is used.
+26. `qs.toggle` [§5.1 Quick settings] – Switches the mode on or off at once (airplane mode, night light, dark theme, do not disturb). Airplane mode on disables the Wi-Fi, Bluetooth and mobile tiles.
+27. `qs.powermode` [§5.1 Quick settings] – Steps through the power modes Performance, Balanced, Saver.
+28. `qs.powermode.list` [§5.1 Quick settings] – Opens the three power modes inside the sheet as a choice.
+29. `qs.mesh` [§5.1 Quick settings] – Switches Mesh on or off (component installed).
+30. `qs.mesh.list` [§5.1 Quick settings] – Opens the list of paired devices inside the sheet.
+31. `note.clear` [§5.1/§5.3] – Removes all notifications from the list; a bar "Undo" stays for 5 s.
+32. `note.dismiss` [§5.1/§5.3] – Removes this one notification. The body of a notification is not clickable; only its buttons act.
+33. `cal.day` [§5.1] – Selects the day and shows its appointments below the month; arrow keys move in the grid, the grid is one Tab stop.
+34. `cal.month` [§5.1] – Shows the previous or next month (in Arabic the "previous" arrow points right).
+35. `cal.event` [§5.1] – Opens the appointment in the Calendar app.
+36. `lock.unlock` [§5.3] – Shows the sign-in for the locked user (any key, click or swipe does the same).
+37. `login.show` [§5.3] – Shows or hides the typed password while pressed.
+38. `display.select` [§8 Display] – Selects the display whose settings the card on the end side shows. Dragging moves it in the arrangement (snaps to edges) and asks "Keep?". Arrow keys change the selection.
+39. `display.identify` [§8 Display] – Shows the number large on every display for 5 s.
+40. `display.detect` [§8 Display] – Looks for displays again; shows a progress ring on the button and then "n displays found" or "No new display found".
+41. `display.mode` [§8 Display] – Sets the mode and asks "Keep?". Mirror with three or more displays shows a row "Mirrored displays" with one check box per display; "Only one display" shows a choice "Display that stays on".
+42. `display.revert` [§8 Display] – Restores the previous settings and closes the dialog. The same happens after 15 s without an answer. The dialog takes the focus when it opens ("Revert" is focused); Esc = Revert.
+43. `display.keep.more` [§8 Display] – Restarts the 15 s once more (enough time for keyboard and screen-reader users).
+44. `projection.mode` [§8/§5.4] – Super+P steps through the four modes, Enter confirms, Esc cancels; a mouse click selects and confirms at once. After a change the "Keep?" dialog follows. With three or more displays "second display" is the first external one.
+45. `account.create` [§12.1] – Opens the page "Create account" (user name, password twice, optional e-mail for recovery).
+46. `account.delete` [§12.1] – Deletes the account after a dialog that names what is lost and asks for the password.
+47. `installer.step` [§6] – Jumps back to a finished step; everything entered stays. Later steps cannot be jumped to.
+48. `installer.cancel` [§6] – Asks "Cancel the installation?" and returns to the live session; nothing has been written before step 15.
+49. `installer.prev` [§6] – Goes to the previous step; entries of the current step stay.
+50. `installer.next` [§6] – Goes to the next step. Disabled while the step is not valid (not enough space, passphrases differ, erase not confirmed); the reason stands next to it. On the summary it is called "Install" and starts step 15.
+51. `installer.component` [§6] – Selects or deselects the component; the sum changes. Selecting Firefox selects Linux programs too; deselecting Linux programs deselects Firefox after a hint. A component that does not suit the device is disabled with the reason.
+52. `installer.enc.show` [§6] – Shows or hides the passphrase.
+53. `installer.edit` [§6] – Jumps to the step of this line; "Next" there returns to the summary.
+54. `store.open` [§7.3] – Opens the app page (rights in plain words, size, Install or Remove). Cards never install directly.
+55. `store.search.clear` [§7.3] – Empties the search field and shows Discover again.
+56. `store.retry` [§7.3] – Tries to load the catalogue again.
+57. `store.log` [§7.3] – Saves the error log as a file.
+58. `store.free.cancel` [§7.3] – Cancels the installation; nothing is freed.
+59. `phone.backspace` [§12.2] – Deletes the last digit; held: deletes all.
+
+Further additions that are not a single click:
+
+60. [§3] Tokens for states are missing: hover, pressed, disabled, focus-ring colour, border width, control height, switch size, scrim. The boards use the substitutions listed in `REVIEW-SELF.md`.
+61. [§4] Icon table: see `ICONS.md` (new and split meanings).
+62. [§5.1] Sheets of the shell (quick settings, calendar) take the focus when they open, keep it inside (Tab cycles) and return it to their trigger when they close.
+63. [§5.2] The three title-bar buttons are not Tab stops; keyboard uses the window menu (Alt+Space) and the shortcuts. In Arabic the start position of new windows is mirrored.
+64. [§8] Row "Main display": the main display shows a badge; every other display shows a button "Make this the main display". There is no "off".
+65. [§3/§10] Units inside Arabic text are written in Latin (GB, MB, Hz, Gbit/s) as a left-to-right island; technical words are transliterated (واي فاي, بلوتوث), acronyms stay Latin (VPN, USB, HDR, PDF, SIM, QR, TPM, PIN).

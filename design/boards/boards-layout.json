@@ -1,0 +1,163 @@
+{
+ "Main.dc.html": {
+  "x": 0,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Desktop · dunkel · Arabisch (Standard: eine Leiste unten)"
+ },
+ "DesktopBottom.dc.html": {
+  "x": 1520,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Desktop · hell · Englisch (Standard: eine Leiste unten)"
+ },
+ "DesktopTop.dc.html": {
+  "x": 3040,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Variante (umstellbar): Leiste oben + Dock"
+ },
+ "QuickSettings.dc.html": {
+  "x": 4560,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Schnelleinstellungen"
+ },
+ "CalendarSheet.dc.html": {
+  "x": 6080,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Kalender und Benachrichtigungen (Klick auf die Uhr)"
+ },
+ "Overview.dc.html": {
+  "x": 7600,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Übersicht: Suchfeld, Arbeitsflächen-Streifen, Fenster (§5.1)"
+ },
+ "Lock.dc.html": {
+  "x": 9120,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Sperrbildschirm (§5.3)"
+ },
+ "Login.dc.html": {
+  "x": 10640,
+  "y": 0,
+  "w": 1440,
+  "h": 900,
+  "title": "Anmeldebildschirm (§5.3)"
+ },
+ "SettingsDisplay.dc.html": {
+  "x": 0,
+  "y": 1020,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Anzeige · dunkel · Arabisch (mit Rückfrage „Behalten?“ 15 s)"
+ },
+ "SettingsDisplayLight.dc.html": {
+  "x": 1520,
+  "y": 1020,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Anzeige · hell · Englisch"
+ },
+ "SettingsDrivers.dc.html": {
+  "x": 3040,
+  "y": 1020,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Treiber & Hardware (§8)"
+ },
+ "Account.dc.html": {
+  "x": 4560,
+  "y": 1020,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Konten · Ultar-Konto (§12.1)"
+ },
+ "Projection.dc.html": {
+  "x": 6080,
+  "y": 1020,
+  "w": 900,
+  "h": 320,
+  "title": "Schnellwahl Bildschirm-Modus (Super+P)"
+ },
+ "Installer.dc.html": {
+  "x": 0,
+  "y": 2040,
+  "w": 1280,
+  "h": 800,
+  "title": "Installation · Schritt 8 Umfang und Komponenten"
+ },
+ "InstallerDrivers.dc.html": {
+  "x": 1360,
+  "y": 2040,
+  "w": 1280,
+  "h": 800,
+  "title": "Installation · Schritt 7 Hardware & Treiber"
+ },
+ "InstallerDisk.dc.html": {
+  "x": 2720,
+  "y": 2040,
+  "w": 1280,
+  "h": 800,
+  "title": "Installation · Schritt 10/11 Platte und Verschlüsselung"
+ },
+ "InstallerSummary.dc.html": {
+  "x": 4080,
+  "y": 2040,
+  "w": 1280,
+  "h": 800,
+  "title": "Installation · Schritt 14 Zusammenfassung (was gelöscht wird)"
+ },
+ "Store.dc.html": {
+  "x": 0,
+  "y": 2960,
+  "w": 1280,
+  "h": 800,
+  "title": "Ultar Store · Entdecken · hell · Englisch"
+ },
+ "SurfaceStates.dc.html": {
+  "x": 1360,
+  "y": 2960,
+  "w": 2496,
+  "h": 640,
+  "title": "Ultar Store · Zustände: lädt, leere Suche, offline, Fehler, zu wenig Platz (§7.3)"
+ },
+ "States.dc.html": {
+  "x": 3936,
+  "y": 2960,
+  "w": 1760,
+  "h": 1184,
+  "title": "Zustände der Bausteine: normal, schwebend, gedrückt, fokussiert, deaktiviert, lädt, Fehler"
+ },
+ "PhoneDial.dc.html": {
+  "x": 0,
+  "y": 4264,
+  "w": 1280,
+  "h": 800,
+  "title": "Telefon · Wählfeld und Anrufliste (§12.2)"
+ },
+ "PhoneIncoming.dc.html": {
+  "x": 1360,
+  "y": 4264,
+  "w": 1280,
+  "h": 800,
+  "title": "Telefon · Eingehender Anruf (§12.2)"
+ },
+ "PhoneInCall.dc.html": {
+  "x": 2720,
+  "y": 4264,
+  "w": 1280,
+  "h": 800,
+  "title": "Telefon · Gespräch mit Video-Steuerung (§12.2)"
+ }
+}
