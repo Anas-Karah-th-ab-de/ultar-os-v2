@@ -84,3 +84,39 @@ fn full_hd_frame_time() {
         );
     }
 }
+
+#[test]
+#[ignore = "measures wall time; run with --release --ignored --nocapture"]
+fn gallery_frame_time() {
+    use common::gallery::{file_menu, gallery};
+    for lang in [Lang::Ar, Lang::En] {
+        let mut ui = common::ui(lang, ThemeKind::Dark, Size::new(1920.0, 420.0));
+        let g = gallery(&mut ui).expect("gallery builds");
+        let mut canvas = Canvas::new(1920, 420, PixelFormat::Bgrx8).expect("canvas");
+        ui.paint(&mut canvas);
+        let full = average_ms(|| ui.paint_all(&mut canvas));
+        let mut down = false;
+        let scroll = average_ms(|| {
+            down = !down;
+            let offset = if down { 96.0 } else { 0.0 };
+            ui.set_scroll_offset(g.scroll, offset).expect("scroll");
+            ui.paint(&mut canvas);
+        });
+        ui.open_dialog(g.modal.dialog).expect("dialog");
+        let dialog = average_ms(|| ui.paint_all(&mut canvas));
+        ui.close_dialog(g.modal.dialog).expect("dialog");
+        let menu = average_ms(|| {
+            ui.open_menu(g.menu_button, file_menu()).expect("menu");
+            ui.paint(&mut canvas);
+            ui.close_menu();
+            ui.paint(&mut canvas);
+        });
+        println!(
+            "{} gallery 1920x420 BGRX, {} nodes: full repaint {full:.2} ms, scroll step \
+             {scroll:.2} ms, full repaint under a dialog {dialog:.2} ms, menu open + close \
+             {menu:.2} ms",
+            lang.code(),
+            ui.node_count()
+        );
+    }
+}

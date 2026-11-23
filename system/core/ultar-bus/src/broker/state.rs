@@ -2,6 +2,7 @@
 //! retained values and pending requests. Everything here runs under the one
 //! state lock, which is what gives every topic a single delivery order.
 
+use super::observe::{BrokerEvent, BrokerObserver};
 use crate::error::ErrorCode;
 use crate::identity::Identity;
 use crate::sync::lock;
@@ -119,6 +120,8 @@ pub(crate) struct State {
     pub(crate) dropped_slow: u64,
     /// Upper bound of bytes waiting for one connection.
     pub(crate) queue_bytes: usize,
+    /// Told about refusals and drops; see [`BrokerObserver`].
+    pub(crate) observer: Option<Arc<dyn BrokerObserver>>,
     last_purge: Instant,
 }
 
@@ -132,7 +135,15 @@ impl State {
             next_request: 1,
             dropped_slow: 0,
             queue_bytes: usize::MAX,
+            observer: None,
             last_purge: Instant::now(),
+        }
+    }
+
+    /// Hands `event` to the observer, if there is one.
+    pub(crate) fn observe(&self, event: &BrokerEvent<'_>) {
+        if let Some(observer) = &self.observer {
+            observer.event(event);
         }
     }
 
@@ -173,6 +184,9 @@ impl State {
         if let Some(entry) = self.conns.get(&conn) {
             if entry.control.close_with(ErrorCode::SlowConsumer) {
                 self.dropped_slow += 1;
+                self.observe(&BrokerEvent::SlowConsumer {
+                    identity: entry.identity.as_str(),
+                });
             }
         }
     }

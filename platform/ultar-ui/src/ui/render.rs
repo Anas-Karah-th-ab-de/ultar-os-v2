@@ -1,11 +1,13 @@
 //! Painting the tree: only damaged regions are redrawn.
 
-use super::{NodeId, Ui};
+use super::{DragKind, NodeId, PaintStep, Ui};
 use crate::canvas::Canvas;
-use crate::geom::Rect;
+use crate::geom::{Rect, Size};
 use crate::paint::Painter;
-use crate::tokens::Space;
-use crate::widgets::{focus_outset, shadow_reach, PaintCx, PopupView, Select, Widget};
+use crate::tokens::{size, state, Radius, Space};
+use crate::widgets::{
+    focus_outset, paint_tooltip, shadow_reach, PaintCx, PopupView, Select, Widget,
+};
 
 impl Ui {
     /// Geometry of the open options list, if one is open.
@@ -23,9 +25,7 @@ impl Ui {
     /// Marks the open options list (with its shadow) for repaint.
     pub(crate) fn touch_popup(&mut self) {
         if let Some((_, view)) = self.popup_view() {
-            let reach = shadow_reach();
-            let grown = view.rect.inflate(reach.x);
-            self.damage(Rect::new(grown.x, grown.y, grown.w, grown.h + reach.y));
+            self.damage_floating(view.rect);
         }
     }
 
@@ -37,55 +37,124 @@ impl Ui {
                 let grown = rect.inflate(reach.x);
                 Rect::new(grown.x, grown.y, grown.w, grown.h + reach.y)
             }
-            widget if widget.is_interactive() => {
-                rect.inflate(focus_outset().max(Space::S4.points()))
-            }
+            // The scrim of a dialog covers the whole surface.
+            Widget::Dialog(_) => Rect::new(0.0, 0.0, self.size().w, self.size().h),
+            _ if self.interactive(id) => rect.inflate(focus_outset().max(Space::S4.points())),
             _ => rect,
         }
     }
 
-    fn paint_node(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, id: NodeId, region: &Rect) {
+    /// Width and size of the hosted child of a row-like widget (zero without one).
+    fn hosted(&self, id: NodeId) -> Size {
+        self.nodes[id.index()]
+            .children
+            .first()
+            .map_or(Size::default(), |c| {
+                let frame = self.nodes[c.index()].frame;
+                Size::new(frame.width, frame.height)
+            })
+    }
+
+    fn paint_widget(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, id: NodeId, rect: Rect) {
         let node = &self.nodes[id.index()];
-        let rect = node.frame.resolve(self.env.direction, self.size().w);
-        if !self.ink_bounds(id, rect).intersects(region) {
-            return;
-        }
         let v = self.visual(id);
         let error = node.error.as_ref();
+        let parts = (
+            self.input
+                .hover_part
+                .filter(|_| self.input.hover == Some(id)),
+            self.input.pressed_part(id),
+        );
         match &node.widget {
-            Widget::Flex(_) => {}
+            Widget::Flex(_) | Widget::List(_) | Widget::Scroll(_) => {}
             Widget::Text(w) => w.paint(p, cx, rect),
             Widget::Icon(w) => w.paint(p, rect),
             Widget::Button(w) => w.paint(p, cx, rect, &v),
             Widget::IconButton(w) => w.paint(p, cx, rect, &v),
-            Widget::Switch(w) => w.paint(p, cx, rect, &v, self.knob_position(w.on, w.toggled_at)),
+            Widget::Switch(w) => w.paint(p, cx, rect, &v, self.knob_position(w)),
             Widget::Select(w) => w.paint(p, cx, rect, &v, error),
             Widget::Slider(w) => w.paint(p, rect, &v),
             Widget::TextField(w) => {
                 let has_focus = self.input.focus == Some(id) && !v.disabled;
                 w.paint(p, cx, rect, &v, has_focus, error);
             }
-            Widget::Row(w) => {
-                let control = node
-                    .children
-                    .first()
-                    .map_or(0.0, |c| self.nodes[c.index()].frame.width);
-                w.paint(p, cx, rect, &v, control);
-            }
+            Widget::Row(w) => w.paint(p, cx, rect, &v, self.hosted(id).w),
             Widget::Card(w) => w.paint(p, rect),
+            Widget::Badge(w) => w.paint(p, cx, rect),
+            Widget::Progress(w) => w.paint(p, rect, cx.spin),
+            Widget::Checkbox(w) => w.paint(p, cx, rect, &v),
+            Widget::RadioGroup(w) => w.paint(p, cx, rect, &v, parts),
+            Widget::Tabs(w) => w.paint(p, cx, rect, &v, parts),
+            Widget::InfoBar(w) => w.paint(p, cx, rect, self.hosted(id).w),
+            Widget::EmptyState(w) => w.paint(p, cx, rect, self.hosted(id)),
+            Widget::ListItem(w) => w.paint(p, cx, rect, &v, self.hosted(id).w),
+            Widget::Dialog(w) => {
+                w.paint(p, rect, Rect::new(0.0, 0.0, self.size().w, self.size().h))
+            }
         }
+    }
+
+    fn paint_node(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, id: NodeId, region: &Rect) {
+        let Some(rect) = self.rect(id) else {
+            return;
+        };
+        if !self.ink_bounds(id, rect).intersects(region) {
+            return;
+        }
+        match self.clip_rect(id) {
+            Some(clip) if !clip.intersects(region) => {}
+            Some(clip) => {
+                let saved = p.clip(clip);
+                self.paint_widget(p, cx, id, rect);
+                p.restore_clip(saved);
+            }
+            None => self.paint_widget(p, cx, id, rect),
+        }
+    }
+
+    /// Paints the scrollbar of a scroll container and, with keyboard focus, its focus ring
+    /// (inside the viewport, where it cannot be clipped away).
+    fn paint_scrollbar(&self, p: &mut Painter<'_>, id: NodeId, region: &Rect) {
+        let (Some(view), Ok(scroll)) = (self.rect(id), self.scroller(id)) else {
+            return;
+        };
+        if !view.intersects(region) {
+            return;
+        }
+        let v = self.visual(id);
+        // A finger that only rests on the content has not grabbed anything yet.
+        let dragged = self.layers.drag.is_some_and(|d| {
+            d.scroller == id && !matches!(d.kind, DragKind::Finger { active: false, .. })
+        });
+        let clip = self.clip_rect(id).map_or(view, |c| c.intersect(&view));
+        let saved = p.clip(clip);
+        scroll.paint_bar(p, view, v.hovered || v.pressed || dragged);
+        if v.focused {
+            let ring = p.color(state::FOCUS_RING);
+            p.stroke(view, Some(Radius::Control), size::FOCUS_RING, ring);
+        }
+        p.restore_clip(saved);
     }
 
     fn paint_region(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, region: Rect) {
         let saved = p.clip(region);
-        let background = p.color(self.background);
+        let background = p.color(self.background());
         p.fill(region, None, background);
-        for id in &self.order {
-            self.paint_node(p, cx, *id, &region);
+        for step in &self.layers.steps {
+            match step {
+                PaintStep::Node(id) => self.paint_node(p, cx, *id, &region),
+                PaintStep::ScrollBar(id) => self.paint_scrollbar(p, *id, &region),
+            }
         }
         if let (Some(popup), Some((id, view))) = (self.input.popup, self.popup_view()) {
             if let Ok(select) = self.select(id) {
                 select.paint_popup(p, cx, &view, popup.highlight);
+            }
+        }
+        self.paint_menu(p, cx);
+        if let Some(tip) = self.layers.tip {
+            if let Some(label) = self.nodes[tip.node.index()].tooltip.as_ref() {
+                paint_tooltip(p, cx, tip.rect, label);
             }
         }
         p.restore_clip(saved);

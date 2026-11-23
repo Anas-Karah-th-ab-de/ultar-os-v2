@@ -187,8 +187,13 @@ fn daemon_command(rig: &Rig) -> Command {
 }
 
 fn spawn_daemon(rig: &Rig, socket: &Path) -> Child {
-    daemon_command(rig)
-        .args(["--bus", &text(socket), "--lang", "en"])
+    let mut command = daemon_command(rig);
+    // The daemon refuses root unless that is declared (the tests may run as root).
+    if ultar_service::effective_uid() == 0 {
+        command.arg("--allow-root");
+    }
+    command
+        .args(["--bus", &text(socket), "--lang", "en", "--allow-all"])
         .stderr(Stdio::piped())
         .spawn()
         .unwrap()

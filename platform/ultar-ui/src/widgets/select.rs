@@ -157,7 +157,9 @@ impl Select {
     }
 
     /// Geometry of the popup for a field at `field` on a surface of `surface` points:
-    /// below the field when it fits, otherwise above when that fits.
+    /// below the field when it fits, otherwise above when that fits. When it fits on
+    /// neither side it goes where more rows fit and shows only those (the list scrolls),
+    /// so every visible option stays inside the surface.
     pub(crate) fn popup(
         &self,
         field: Rect,
@@ -165,16 +167,27 @@ impl Select {
         mode: InputMode,
         scroll: usize,
     ) -> PopupView {
-        let count = self.options.len().min(MAX_VISIBLE_OPTIONS);
+        let all = self.options.len().min(MAX_VISIBLE_OPTIONS);
         let row_height = mode.min_target();
-        let height = count as f32 * row_height + 2.0 * POPUP_PAD.points();
-        let gap = Space::S4.points();
-        let below = field.bottom() + gap;
-        let above = field.y - gap - height;
-        let y = if below + height > surface.h && above >= 0.0 {
-            above
+        let (pad, gap) = (POPUP_PAD.points(), Space::S4.points());
+        let rows_in = |space: f32| {
+            let rows = ((space - 2.0 * pad) / row_height).floor();
+            (rows.max(0.0) as usize).min(all)
+        };
+        let below = rows_in(surface.h - field.bottom() - gap);
+        let above = rows_in(field.y - gap);
+        let (count, under) = if below >= all || below >= above {
+            (below, true)
         } else {
-            below
+            (above, false)
+        };
+        // At least one row, even on a surface too small for it.
+        let count = count.max(all.min(1));
+        let height = count as f32 * row_height + 2.0 * pad;
+        let y = if under {
+            field.bottom() + gap
+        } else {
+            field.y - gap - height
         };
         PopupView {
             rect: Rect::new(field.x, y, field.w, height),
@@ -266,6 +279,20 @@ mod tests {
         assert_eq!(long.row(20), None);
         assert_eq!(long.option_at(Point::new(-1.0, -1.0)), None);
         assert_eq!(select(0).popup(top_field, surface, mode, 0).count, 0);
+        // Too low for six rows on either side: the side with more room, fewer rows.
+        let low = Size::new(10.0 * target, 5.0 * target);
+        let mid_field = Rect::new(0.0, target, 4.0 * target, target);
+        let squeezed = select(6).popup(mid_field, low, mode, 0);
+        assert_eq!((squeezed.first, squeezed.count), (0, 2));
+        assert!(squeezed.rect.y > mid_field.bottom() && squeezed.rect.bottom() <= low.h);
+        let scrolled = select(6).popup(mid_field, low, mode, 100);
+        assert_eq!((scrolled.first, scrolled.count), (4, 2));
+        let lower_field = Rect::new(0.0, 3.5 * target, 4.0 * target, target);
+        let up = select(6).popup(lower_field, low, mode, 0);
+        assert_eq!(up.count, 3);
+        assert!(up.rect.y >= 0.0 && up.rect.bottom() < lower_field.y);
+        let tiny = select(6).popup(top_field, Size::new(target, target), mode, 0);
+        assert_eq!(tiny.count, 1, "never less than one row");
     }
 
     #[test]

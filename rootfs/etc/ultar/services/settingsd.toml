@@ -1,0 +1,16 @@
+# Settings service. Stops on SIGTERM after writing everything pending.
+exec = "/usr/bin/ultar-settingsd"
+args = [
+    "--store", "/data/ultar/settings",
+    "--socket", "/run/ultar/bus/settingsd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/settingsd.sock",
+    "--allow-root",
+]
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "48M"
+"pids.max" = "64"
+"cpu.weight" = "50"

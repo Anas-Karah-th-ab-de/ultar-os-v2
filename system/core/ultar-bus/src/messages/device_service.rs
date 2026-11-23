@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 
 /// Name of the bus service.
 pub const SERVICE: &str = "devices";
+/// Pseudo method (never called): the permission to change which driver a
+/// device uses and to stop the service. `devd` only carries out `switch`,
+/// `rollback`, `clear_quarantine` and `shutdown` for an identity whose
+/// policy rules grant the call `devices.admin`.
+pub const ADMIN_METHOD: &str = "admin";
 
 /// Phase of one device as shown in the panel.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]

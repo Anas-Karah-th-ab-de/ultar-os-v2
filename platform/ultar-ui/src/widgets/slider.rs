@@ -28,14 +28,18 @@ const NATURAL_W: f32 = 4.0 * Space::S48.points();
 
 impl Slider {
     /// A slider over `min..=max` (swapped if given in the wrong order) with a keyboard step.
+    /// Bounds that are not finite numbers become 0; a step that is not finite means
+    /// "continuous".
     pub fn new(name: Label, min: f32, max: f32, step: f32) -> Slider {
+        let finite = |v: f32| if v.is_finite() { v } else { 0.0 };
+        let (min, max) = (finite(min), finite(max));
         let (min, max) = if min <= max { (min, max) } else { (max, min) };
         Slider {
             name,
             value: min,
             min,
             max,
-            step: step.abs(),
+            step: finite(step).abs(),
         }
     }
 
@@ -46,22 +50,33 @@ impl Slider {
     }
 
     /// `value` clamped to the range and snapped to the step grid. Not-a-number gives `min`.
+    /// The public fields may have been set to anything: a reversed or non-finite range and
+    /// a non-finite step never panic and never produce a value that is not a number.
     pub fn snap(&self, value: f32) -> f32 {
+        let low = if self.min.is_finite() { self.min } else { 0.0 };
+        let high = if self.max.is_finite() {
+            self.max.max(low)
+        } else {
+            low
+        };
         if value.is_nan() {
-            return self.min;
+            return low;
         }
-        let stepped = if self.step > 0.0 {
-            self.min + ((value - self.min) / self.step).round() * self.step
+        let stepped = if self.step.is_finite() && self.step > 0.0 {
+            low + ((value - low) / self.step).round() * self.step
         } else {
             value
         };
-        stepped.clamp(self.min, self.max)
+        if stepped.is_nan() {
+            return low;
+        }
+        stepped.max(low).min(high)
     }
 
     /// The value as a fraction of the range, 0..=1.
     pub fn fraction(&self) -> f32 {
         let span = self.max - self.min;
-        if span > 0.0 {
+        if span > 0.0 && span.is_finite() && self.value.is_finite() {
             ((self.value - self.min) / span).clamp(0.0, 1.0)
         } else {
             0.0
@@ -70,10 +85,13 @@ impl Slider {
 
     /// The step used by one key press: the step, or a hundredth of the range if continuous.
     pub fn key_step(&self) -> f32 {
-        if self.step > 0.0 {
+        let span = self.max - self.min;
+        if self.step.is_finite() && self.step > 0.0 {
             self.step
+        } else if span.is_finite() && span > 0.0 {
+            span / 100.0
         } else {
-            (self.max - self.min) / 100.0
+            0.0
         }
     }
 
@@ -165,6 +183,29 @@ mod tests {
         assert_eq!(continuous.key_step(), 0.1);
         let flat = Slider::new(Label::key("x"), 1.0, 1.0, 0.0);
         assert_eq!(flat.fraction(), 0.0);
+    }
+
+    #[test]
+    fn hostile_numbers_never_panic_or_give_nan() {
+        let nan = Slider::new(Label::key("x"), f32::NAN, 1.0, 0.1).value(0.5);
+        assert_eq!((nan.min, nan.max, nan.value), (0.0, 1.0, 0.5));
+        let infinite = Slider::new(Label::key("x"), f32::NEG_INFINITY, f32::INFINITY, 1.0);
+        assert_eq!((infinite.min, infinite.max), (0.0, 0.0));
+        let step = Slider::new(Label::key("x"), 0.0, 100.0, f32::INFINITY).value(50.0);
+        assert_eq!((step.step, step.value, step.key_step()), (0.0, 50.0, 1.0));
+        // Fields are public: break them afterwards.
+        let mut broken = slider();
+        broken.min = 10.0;
+        broken.max = -10.0;
+        assert_eq!(broken.snap(3.0), 10.0);
+        broken.max = f32::NAN;
+        broken.step = f32::INFINITY;
+        assert_eq!(broken.snap(3.0), 10.0);
+        assert_eq!(broken.fraction(), 0.0);
+        assert_eq!(broken.key_step(), 0.0);
+        broken.min = f32::NAN;
+        assert_eq!(broken.snap(f32::INFINITY), 0.0);
+        assert_eq!(broken.snap(f32::NAN), 0.0);
     }
 
     #[test]

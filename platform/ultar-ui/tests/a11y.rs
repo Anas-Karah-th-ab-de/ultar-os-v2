@@ -249,17 +249,7 @@ fn catalogs_are_complete_in_arabic_english_and_german() {
     }
     // Every role and state key the toolkit can speak exists.
     let ui = common::ui(Lang::Ar, ThemeKind::Dark, SURFACE);
-    let roles = [
-        Role::Group,
-        Role::Text,
-        Role::Image,
-        Role::Button,
-        Role::Switch,
-        Role::Select,
-        Role::Slider,
-        Role::TextField,
-        Role::Row,
-    ];
+    let roles = Role::ALL;
     for role in roles {
         for lang in [Lang::Ar, Lang::En, Lang::De] {
             assert!(
@@ -268,4 +258,16 @@ fn catalogs_are_complete_in_arabic_english_and_german() {
             );
         }
     }
+    let spoken = ["ui.state.selected", "ui.a11y.joiner"];
+    let tones = ultar_ui::widgets::Tone::ALL;
+    let tone_keys = tones.iter().filter_map(|tone| tone.name_key());
+    for key in spoken.into_iter().chain(tone_keys) {
+        for lang in [Lang::Ar, Lang::En, Lang::De] {
+            assert!(
+                ui.translator().catalog(lang).contains(key),
+                "{key} {lang:?}"
+            );
+        }
+    }
+    assert_eq!(roles.len(), 23);
 }

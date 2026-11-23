@@ -59,11 +59,28 @@ pub enum MsgKey {
     StartFailed,
     /// Warning that every client may do everything.
     AllowAllWarning,
+    /// `--policy` and `--allow-all` were given together.
+    PolicyConflict,
+    /// The kernel does not report peer credentials; a credential listener
+    /// cannot identify anybody.
+    CredentialsUnsupported,
+    /// The uid map file was rejected; details follow.
+    UidMapRejected,
+    /// The token file was rejected; details follow.
+    TokenFileRejected,
+    /// The process runs as root without `--allow-root`.
+    RootRefused,
+    /// The self-limits could not be applied; details follow.
+    HardeningFailed,
+    /// Something that is not a socket lies at a socket path.
+    PathNotSocket,
+    /// The broker stopped.
+    Stopped,
 }
 
 impl MsgKey {
     /// All keys, for completeness checks.
-    pub const ALL: [MsgKey; 7] = [
+    pub const ALL: [MsgKey; 15] = [
         MsgKey::Usage,
         MsgKey::Listening,
         MsgKey::BadArguments,
@@ -71,11 +88,21 @@ impl MsgKey {
         MsgKey::PolicyRejected,
         MsgKey::StartFailed,
         MsgKey::AllowAllWarning,
+        MsgKey::PolicyConflict,
+        MsgKey::CredentialsUnsupported,
+        MsgKey::UidMapRejected,
+        MsgKey::TokenFileRejected,
+        MsgKey::RootRefused,
+        MsgKey::HardeningFailed,
+        MsgKey::PathNotSocket,
+        MsgKey::Stopped,
     ];
 }
 
 const USAGE_SYNOPSIS: &str =
-    "ultar-busd [--listen PATH=IDENTITY]... [--policy FILE | --allow-all] [PATH]";
+    "ultar-busd [--listen PATH=IDENTITY | --listen-cred PATH | --listen-token PATH]... \
+     [--mode OCTAL] [--owner UID] [--group GID] [--uid-map FILE] [--token-file FILE] \
+     [--policy FILE | --allow-all] [--log-socket PATH] [--allow-root] [PATH]";
 
 fn arabic(key: MsgKey) -> &'static str {
     match key {
@@ -86,6 +113,16 @@ fn arabic(key: MsgKey) -> &'static str {
         MsgKey::PolicyRejected => "ملف الصلاحيات مرفوض:",
         MsgKey::StartFailed => "تعذّر تشغيل ناقل النظام:",
         MsgKey::AllowAllWarning => "تحذير: كل عميل مسموح له بكل شيء (للتطوير فقط).",
+        MsgKey::PolicyConflict => "لا يجوز الجمع بين ‎--policy‎ و‎--allow-all‎.",
+        MsgKey::CredentialsUnsupported => {
+            "النواة لا تُبلّغ عن هوية الطرف المتصل؛ استخدم مقبسًا بهوية ثابتة أو رمزًا سريًا."
+        }
+        MsgKey::UidMapRejected => "ملف ربط المستخدمين بالهويات مرفوض:",
+        MsgKey::TokenFileRejected => "ملف الرموز السرية مرفوض:",
+        MsgKey::RootRefused => "لن يعمل ناقل النظام بصلاحيات الجذر دون ‎--allow-root‎.",
+        MsgKey::HardeningFailed => "تعذّر تطبيق قيود الحماية الذاتية:",
+        MsgKey::PathNotSocket => "مسار المقبس مشغول بملف ليس مقبسًا؛ لن يُحذف.",
+        MsgKey::Stopped => "توقّف ناقل النظام.",
     }
 }
 
@@ -98,6 +135,18 @@ fn english(key: MsgKey) -> &'static str {
         MsgKey::PolicyRejected => "Policy file rejected:",
         MsgKey::StartFailed => "The system bus could not start:",
         MsgKey::AllowAllWarning => "Warning: every client may do everything (development only).",
+        MsgKey::PolicyConflict => "--policy and --allow-all cannot be combined.",
+        MsgKey::CredentialsUnsupported => {
+            "The kernel does not report peer credentials; use a fixed-identity socket or a token."
+        }
+        MsgKey::UidMapRejected => "User-to-identity map rejected:",
+        MsgKey::TokenFileRejected => "Token file rejected:",
+        MsgKey::RootRefused => "The system bus does not run as root without --allow-root.",
+        MsgKey::HardeningFailed => "The self-limits could not be applied:",
+        MsgKey::PathNotSocket => {
+            "The socket path is occupied by something that is not a socket; it is left alone."
+        }
+        MsgKey::Stopped => "The system bus stopped.",
     }
 }
 
@@ -110,6 +159,18 @@ fn german(key: MsgKey) -> &'static str {
         MsgKey::PolicyRejected => "Rechtedatei abgelehnt:",
         MsgKey::StartFailed => "Der Systembus konnte nicht starten:",
         MsgKey::AllowAllWarning => "Warnung: jeder Client darf alles (nur für die Entwicklung).",
+        MsgKey::PolicyConflict => "--policy und --allow-all schließen sich aus.",
+        MsgKey::CredentialsUnsupported => {
+            "Der Kern meldet keine Kennung des Gegenübers; festen Sockel oder Token verwenden."
+        }
+        MsgKey::UidMapRejected => "Zuordnung Benutzer → Kennung abgelehnt:",
+        MsgKey::TokenFileRejected => "Token-Datei abgelehnt:",
+        MsgKey::RootRefused => "Der Systembus läuft ohne --allow-root nicht als root.",
+        MsgKey::HardeningFailed => "Die Selbstbeschränkung ließ sich nicht anwenden:",
+        MsgKey::PathNotSocket => {
+            "Am Sockel-Pfad liegt etwas, das kein Sockel ist; es wird nicht gelöscht."
+        }
+        MsgKey::Stopped => "Der Systembus wurde beendet.",
     }
 }
 

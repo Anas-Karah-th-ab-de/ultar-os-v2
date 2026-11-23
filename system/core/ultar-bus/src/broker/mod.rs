@@ -5,6 +5,7 @@
 //! `read` or a queue until there is work, so an idle bus causes no wakeups.
 
 mod conn;
+mod observe;
 mod route;
 #[cfg(test)]
 mod route_tests;
@@ -15,9 +16,10 @@ use crate::identity::PeerIdentity;
 use crate::policy::Policy;
 use crate::sync::{lock, replace, wait_timeout};
 use crate::wire::DEFAULT_MAX_FRAME;
+pub use observe::{BrokerEvent, BrokerObserver, Operation};
 use state::State;
 use std::io::ErrorKind;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -95,8 +97,41 @@ pub(crate) struct Shared {
     pub(crate) state: Mutex<State>,
     pub(crate) stopping: AtomicBool,
     pub(crate) next_conn: AtomicU64,
+    observer: Option<Arc<dyn BrokerObserver>>,
     live_threads: Mutex<usize>,
     all_done: Condvar,
+}
+
+impl Shared {
+    /// Hands `event` to the observer, if there is one.
+    pub(crate) fn observe(&self, event: &BrokerEvent<'_>) {
+        if let Some(observer) = &self.observer {
+            observer.event(event);
+        }
+    }
+}
+
+/// Who may reach a socket file: permission bits, owner and group. Fields
+/// left `None` keep what `bind` produced under the process's umask.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct SocketAccess {
+    /// Permission bits, e.g. `0o660`.
+    pub mode: Option<u32>,
+    /// Owning user id.
+    pub owner: Option<u32>,
+    /// Owning group id.
+    pub group: Option<u32>,
+}
+
+impl SocketAccess {
+    /// Only the permission bits.
+    pub const fn mode(mode: u32) -> Self {
+        Self {
+            mode: Some(mode),
+            owner: None,
+            group: None,
+        }
+    }
 }
 
 /// Decrements the live connection thread count when dropped.
@@ -113,7 +148,7 @@ impl Drop for LiveGuard {
 struct ListenerSpec {
     path: PathBuf,
     auth: Arc<dyn PeerIdentity>,
-    mode: Option<u32>,
+    access: SocketAccess,
 }
 
 /// Collects the settings of a broker before it starts.
@@ -121,9 +156,29 @@ pub struct BrokerBuilder {
     policy: Policy,
     config: BrokerConfig,
     listeners: Vec<ListenerSpec>,
+    observer: Option<Arc<dyn BrokerObserver>>,
 }
 
 impl BrokerBuilder {
+    /// Reports refused operations, dropped clients and limits to
+    /// `observer` (see [`BrokerObserver`] for what it must not do).
+    pub fn observer(mut self, observer: Arc<dyn BrokerObserver>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
+    /// Like [`Self::listen`], and sets permission bits, owner and group of
+    /// the socket file. Owner and group are set before the mode, so the
+    /// file is never reachable by more than the final setting allows.
+    pub fn listen_with_access(
+        self,
+        path: &Path,
+        auth: Arc<dyn PeerIdentity>,
+        access: SocketAccess,
+    ) -> Self {
+        self.add(path, auth, access)
+    }
+
     /// Replaces the default limits and timeouts.
     pub fn config(mut self, config: BrokerConfig) -> Self {
         self.config = config;
@@ -132,20 +187,20 @@ impl BrokerBuilder {
 
     /// Adds a socket; peers connecting to it are identified by `auth`.
     pub fn listen(self, path: &Path, auth: Arc<dyn PeerIdentity>) -> Self {
-        self.add(path, auth, None)
+        self.add(path, auth, SocketAccess::default())
     }
 
     /// Like [`Self::listen`], and sets the permission bits of the socket
     /// file (e.g. `0o600`) so the kernel restricts who may connect.
     pub fn listen_with_mode(self, path: &Path, auth: Arc<dyn PeerIdentity>, mode: u32) -> Self {
-        self.add(path, auth, Some(mode))
+        self.add(path, auth, SocketAccess::mode(mode))
     }
 
-    fn add(mut self, path: &Path, auth: Arc<dyn PeerIdentity>, mode: Option<u32>) -> Self {
+    fn add(mut self, path: &Path, auth: Arc<dyn PeerIdentity>, access: SocketAccess) -> Self {
         self.listeners.push(ListenerSpec {
             path: path.to_owned(),
             auth,
-            mode,
+            access,
         });
         self
     }
@@ -154,7 +209,9 @@ impl BrokerBuilder {
     pub fn start(self) -> Result<Broker, BusError> {
         let mut state = State::new();
         state.queue_bytes = self.config.queue_bytes;
+        state.observer = self.observer.clone();
         let shared = Arc::new(Shared {
+            observer: self.observer,
             config: self.config,
             policy: RwLock::new(self.policy),
             state: Mutex::new(state),
@@ -177,10 +234,20 @@ impl BrokerBuilder {
 }
 
 /// Binds `path`, replacing a socket file no broker listens on any more.
+///
+/// Only a **socket** is ever removed: a regular file, a directory or a
+/// symbolic link at the path (a typo in a service file, or somebody's
+/// attempt to make a privileged broker delete a file) is left alone and
+/// reported as [`BusError::NotASocket`].
 fn bind(path: &Path) -> Result<UnixListener, BusError> {
     match UnixListener::bind(path) {
         Ok(listener) => Ok(listener),
         Err(err) if err.kind() == ErrorKind::AddrInUse => {
+            // `symlink_metadata`: a link is judged itself, not its target.
+            let meta = std::fs::symlink_metadata(path).map_err(BusError::Io)?;
+            if !meta.file_type().is_socket() {
+                return Err(BusError::NotASocket);
+            }
             if UnixStream::connect(path).is_ok() {
                 return Err(BusError::AddressInUse);
             }
@@ -189,6 +256,18 @@ fn bind(path: &Path) -> Result<UnixListener, BusError> {
         }
         Err(err) => Err(BusError::Io(err)),
     }
+}
+
+/// Applies owner, group and mode to a freshly bound socket file.
+fn restrict(path: &Path, access: &SocketAccess) -> Result<(), BusError> {
+    if access.owner.is_some() || access.group.is_some() {
+        std::os::unix::fs::chown(path, access.owner, access.group).map_err(BusError::Io)?;
+    }
+    if let Some(mode) = access.mode {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+            .map_err(BusError::Io)?;
+    }
+    Ok(())
 }
 
 /// A running broker. Dropping it shuts it down.
@@ -205,16 +284,14 @@ impl Broker {
             policy,
             config: BrokerConfig::default(),
             listeners: Vec::new(),
+            observer: None,
         }
     }
 
     fn open(&mut self, spec: ListenerSpec) -> Result<(), BusError> {
         let listener = bind(&spec.path)?;
         self.paths.push(spec.path.clone());
-        if let Some(mode) = spec.mode {
-            std::fs::set_permissions(&spec.path, std::fs::Permissions::from_mode(mode))
-                .map_err(BusError::Io)?;
-        }
+        restrict(&spec.path, &spec.access)?;
         let shared = self.shared.clone();
         let index = self.paths.len();
         let acceptor = thread::Builder::new()

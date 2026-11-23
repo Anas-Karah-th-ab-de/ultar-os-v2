@@ -5231,6 +5231,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-busd"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "toml",
+ "ultar-bus",
+ "ultar-service",
+]
+
+[[package]]
 name = "ultar-call"
 version = "0.6.0"
 dependencies = [
@@ -5254,7 +5264,11 @@ dependencies = [
 name = "ultar-cloud"
 version = "0.7.0"
 dependencies = [
+ "base64",
+ "ed25519-dalek 2.2.0",
  "hex",
+ "rand_core 0.6.4",
+ "rustix",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5290,6 +5304,7 @@ dependencies = [
  "ultar-hal-system",
  "ultar-i18n",
  "ultar-profile",
+ "ultar-service",
 ]
 
 [[package]]
@@ -5361,6 +5376,16 @@ dependencies = [
  "sha2 0.10.9",
  "toml",
  "ureq",
+]
+
+[[package]]
+name = "ultar-logd"
+version = "0.7.0"
+dependencies = [
+ "sha2 0.10.9",
+ "toml",
+ "ultar-bus",
+ "ultar-service",
 ]
 
 [[package]]
@@ -5442,6 +5467,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-service"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-sys",
+]
+
+[[package]]
 name = "ultar-settingsd"
 version = "0.7.0"
 dependencies = [
@@ -5449,6 +5483,7 @@ dependencies = [
  "ultar-bus",
  "ultar-i18n",
  "ultar-profile",
+ "ultar-service",
 ]
 
 [[package]]
@@ -5497,6 +5532,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-sys"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+]
+
+[[package]]
 name = "ultar-telegram"
 version = "0.1.0"
 dependencies = [
@@ -5515,6 +5557,23 @@ dependencies = [
  "toml",
  "ultar-i18n",
  "unicode-bidi",
+]
+
+[[package]]
+name = "ultar-update"
+version = "0.7.0"
+dependencies = [
+ "ed25519-dalek 2.2.0",
+ "getrandom 0.2.17",
+ "hex",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ultar-bus",
+ "ultar-i18n",
+ "ureq",
 ]
 
 [[package]]

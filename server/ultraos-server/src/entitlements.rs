@@ -50,26 +50,92 @@ pub fn bearer(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
-/// The account a session token stands for. The signature and expiry alone are not enough: the
-/// account must still exist, and it must not be younger than the token (account numbers of deleted
-/// accounts are given out again, and a token of the deleted account must not speak for the new one).
-pub fn account_of_token(st: &AppState, token: &str) -> Option<i64> {
-    let (id, expires) = auth::verify_token_expiry(&st.secret, token)?;
-    let issued = expires - crate::accounts::TOKEN_TTL_SECS;
-    let created: Option<i64> = st
+/// A device that authenticated with a device token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceSession {
+    /// Account of the device.
+    pub account_id: i64,
+    /// Row of the device.
+    pub device_row: i64,
+    /// Key id of the device.
+    pub device_id: String,
+}
+
+/// The account an **account token** stands for, and the time the token was issued. The signature
+/// and expiry alone are not enough: the account must still exist, it must not be younger than the
+/// token (account numbers of deleted accounts are given out again, and a token of the deleted
+/// account must not speak for the new one), and the token must carry the account's current epoch
+/// (a password change ends all earlier tokens).
+pub fn account_token_of(st: &AppState, token: &str) -> Option<(i64, i64)> {
+    let claims = auth::verify_token_claims(&st.secret, token)?;
+    let issued = claims.expires - crate::accounts::TOKEN_TTL_SECS;
+    let row: Option<(i64, i64)> = st
         .db
         .lock()
-        .query_row("SELECT created FROM accounts WHERE id=?1", [id], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT created, token_epoch FROM accounts WHERE id=?1",
+            [claims.account_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .ok();
-    created.filter(|c| *c <= issued).map(|_| id)
+    row.filter(|(created, epoch)| *created <= issued && *epoch == claims.epoch)
+        .map(|_| (claims.account_id, issued))
+}
+
+/// The device a **device token** stands for. Beyond signature and expiry, the device must still
+/// be active in that account and both the account's and the device's epoch must be the ones the
+/// token was issued under: removal, replacement and password change end the token at once.
+pub fn device_of_token(st: &AppState, token: &str) -> Option<DeviceSession> {
+    let claims = crate::devtoken::verify(&st.secret, token, st.devices.now_secs())?;
+    let row: Option<(i64, i64, i64, i64)> = st
+        .db
+        .lock()
+        .query_row(
+            "SELECT d.id, d.state, d.epoch, a.token_epoch FROM devices d
+             JOIN accounts a ON a.id = d.account_id
+             WHERE d.device_id=?1 AND d.account_id=?2",
+            rusqlite::params![claims.device_id, claims.account_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .ok();
+    let (device_row, state, device_epoch, account_epoch) = row?;
+    let live = state == crate::devices::DeviceState::Active.code()
+        && device_epoch == claims.device_epoch
+        && account_epoch == claims.account_epoch;
+    live.then_some(DeviceSession {
+        account_id: claims.account_id,
+        device_row,
+        device_id: claims.device_id,
+    })
+}
+
+/// The account a bearer token stands for: an account token, or the token of one of its devices.
+pub fn account_of_token(st: &AppState, token: &str) -> Option<i64> {
+    account_token_of(st, token)
+        .map(|(id, _)| id)
+        .or_else(|| device_of_token(st, token).map(|d| d.account_id))
 }
 
 /// The account of a request with a valid token; `auth_required` otherwise.
 pub fn require_account(st: &AppState, headers: &HeaderMap) -> Result<i64, ApiError> {
     bearer(headers)
         .and_then(|t| account_of_token(st, t))
+        .ok_or(ApiError::AuthRequired)
+}
+
+/// Account and issue time of a request that carries a valid account token (a device token is not
+/// enough); `auth_required` otherwise.
+pub fn require_account_token(st: &AppState, headers: &HeaderMap) -> Result<(i64, i64), ApiError> {
+    bearer(headers)
+        .and_then(|t| account_token_of(st, t))
+        .ok_or(ApiError::AuthRequired)
+}
+
+/// The device of a request that carries a valid device token (an account token is not enough);
+/// `auth_required` otherwise.
+pub fn require_device(st: &AppState, headers: &HeaderMap) -> Result<DeviceSession, ApiError> {
+    bearer(headers)
+        .and_then(|t| device_of_token(st, t))
         .ok_or(ApiError::AuthRequired)
 }
 

@@ -51,14 +51,17 @@ impl Stack {
     pub fn start_with(limits: LimiterConfig) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("server.sqlite");
-        let mut config = Config::new(db.to_string_lossy(), dir.path().join("files"), [0x33; 32]);
-        config.limits = limits;
-        config.wg_server_pubkey = "server-pubkey".into();
-        let clock = Arc::new(ManualClock::new(0));
-        let state = AppState::new(config, clock.clone()).unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let addr = listener.local_addr().unwrap();
+        let mut config = Config::new(db.to_string_lossy(), dir.path().join("files"), [0x33; 32]);
+        config.limits = limits;
+        config.wg_server_pubkey = "server-pubkey".into();
+        // The name devices derive from the address they are configured with.
+        config.devices.server_name = addr.to_string();
+        config.devices.max_devices = 3;
+        let clock = Arc::new(ManualClock::new(0));
+        let state = AppState::new(config, clock.clone()).unwrap();
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
         let served = state.clone();
         let thread = std::thread::spawn(move || {
@@ -97,6 +100,11 @@ impl Stack {
     /// A signed-out client.
     pub fn anonymous(&self) -> Client {
         Client::new(&self.base(), None)
+    }
+
+    /// A simulated device: its own state directory (key, registration, number).
+    pub fn device_home(&self, name: &str) -> ultar_cloud::DeviceHome {
+        ultar_cloud::DeviceHome::new(self.dir.path().join("devices").join(name))
     }
 
     /// Registers an account and returns a signed-in client.

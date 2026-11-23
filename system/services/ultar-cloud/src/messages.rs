@@ -60,6 +60,22 @@ mod tests {
             CloudError::Package(String::new()),
             CloudError::NotSignedIn,
             CloudError::Vpn(String::new()),
+            CloudError::ChallengeRejected,
+            CloudError::SignatureRejected,
+            CloudError::DeviceTaken,
+            CloudError::DeviceRetired,
+            CloudError::DeviceLimit,
+            CloudError::DeviceUnknown,
+            CloudError::UpdateRequired,
+            CloudError::LegacyNotEligible,
+            CloudError::CooldownActive {
+                retry_after_secs: 90,
+            },
+            CloudError::RecoveryPending,
+            CloudError::RecoveryUnknown,
+            CloudError::ServerIdentityMismatch,
+            CloudError::KeyStore(crate::keystore::KeyStoreError::Corrupt),
+            CloudError::NotRegistered,
         ]
     }
 

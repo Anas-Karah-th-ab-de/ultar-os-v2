@@ -1,6 +1,7 @@
 //! One client connection inside the broker: handshake, a reader thread that
 //! feeds the router and a writer thread that drains the bounded queue.
 
+use super::observe::BrokerEvent;
 use super::route::{handle, Rules};
 use super::state::{ConnEntry, ConnId, Frame, LinkControl};
 use super::Shared;
@@ -55,11 +56,17 @@ pub(crate) fn serve(
     let identity = match handshake(shared, &stream, auth) {
         Ok(identity) => identity,
         Err(err) => {
+            if matches!(err, BusError::AuthFailed) {
+                shared.observe(&BrokerEvent::AuthFailed { listener });
+            }
             reject(&stream, &err);
             return;
         }
     };
     if let Err(err) = run_session(shared, &stream, identity, listener) {
+        if matches!(err, BusError::Remote(ErrorCode::LimitExceeded)) {
+            shared.observe(&BrokerEvent::ConnectionLimit { listener });
+        }
         reject(&stream, &err);
     }
     let _ = stream.shutdown(Shutdown::Both);
@@ -193,6 +200,7 @@ fn read_loop(shared: &Shared, mut stream: &UnixStream, conn: ConnId, control: &L
             Ok(envelope) => envelope,
             Err(err @ (BusError::FrameTooLarge { .. } | BusError::Malformed)) => {
                 control.set_reason(err.code());
+                protocol_error(shared, conn, err.code());
                 return;
             }
             Err(_) => return,
@@ -205,8 +213,21 @@ fn read_loop(shared: &Shared, mut stream: &UnixStream, conn: ConnId, control: &L
         let mut state = lock(&shared.state);
         if let Err(code) = handle(&mut state, &rules, conn, envelope) {
             control.set_reason(code);
+            drop(state);
+            protocol_error(shared, conn, code);
             return;
         }
+    }
+}
+
+/// Reports a client that is disconnected for breaking the protocol.
+fn protocol_error(shared: &Shared, conn: ConnId, code: ErrorCode) {
+    let state = lock(&shared.state);
+    if let Some(entry) = state.conns.get(&conn) {
+        state.observe(&BrokerEvent::ProtocolError {
+            identity: entry.identity.as_str(),
+            code,
+        });
     }
 }
 

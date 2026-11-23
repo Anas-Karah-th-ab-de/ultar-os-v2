@@ -30,7 +30,9 @@ const READER_STACK: usize = 256 * 1024;
 const CONNECT_RETRY: Duration = Duration::from_millis(20);
 
 /// Settings of a client connection.
-#[derive(Clone, Debug)]
+///
+/// The `Debug` output never contains the token.
+#[derive(Clone)]
 pub struct ClientOptions {
     /// Diagnostic program name shown to the broker (not an identity).
     pub name: String,
@@ -63,6 +65,22 @@ impl Default for ClientOptions {
             io_timeout: Duration::from_secs(5),
             buffer: 256,
         }
+    }
+}
+
+impl std::fmt::Debug for ClientOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let token = self.token.as_ref().map(|_| "<redacted>");
+        f.debug_struct("ClientOptions")
+            .field("name", &self.name)
+            .field("token", &token)
+            .field("reconnect", &self.reconnect)
+            .field("reconnect_min", &self.reconnect_min)
+            .field("reconnect_max", &self.reconnect_max)
+            .field("connect_retry_for", &self.connect_retry_for)
+            .field("io_timeout", &self.io_timeout)
+            .field("buffer", &self.buffer)
+            .finish()
     }
 }
 
@@ -145,6 +163,35 @@ impl Client {
                 return false;
             }
             link = wait_timeout(&self.inner.link_changed, link, deadline - now);
+        }
+    }
+
+    /// Number of the current connection: `1` after [`Client::connect`],
+    /// one more after every successful reconnection. A broker that was
+    /// restarted has forgotten its retained topics; a service that sees
+    /// this number change publishes them again (see
+    /// [`Client::wait_reconnected`]).
+    pub fn generation(&self) -> u64 {
+        lock(&self.inner.link).generation
+    }
+
+    /// Blocks until the client is connected under a generation newer than
+    /// `seen` and returns it; `None` when the client is closed. Event
+    /// driven: the caller sleeps until the connection state changes.
+    pub fn wait_reconnected(&self, seen: u64) -> Option<u64> {
+        let mut link = lock(&self.inner.link);
+        loop {
+            if link.closed {
+                return None;
+            }
+            if link.is_up() && link.generation > seen {
+                return Some(link.generation);
+            }
+            link = self
+                .inner
+                .link_changed
+                .wait(link)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
     }
 

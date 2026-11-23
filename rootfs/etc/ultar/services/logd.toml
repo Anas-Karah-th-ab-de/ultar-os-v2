@@ -1,0 +1,36 @@
+# Log service (review block B). Starts first: every other service writes its
+# records to its own socket here, and their loggers buffer (bounded) until
+# this service is up, so nothing has to wait for it.
+#
+# Identity of a writer = the socket it reaches. The Ultar kernel has no peer
+# credentials yet (see ultar-service, module peercred), so every service gets
+# its own socket, mode 0600. On a kernel with SO_PEERCRED one socket is enough:
+#   "--listen", "/run/ultar/log/ingest.sock", "--mode", "0666",
+#   "--uid-map", "/etc/ultar/uid-map.toml"
+#
+# Bounds (all enforced, see ultar-logd): 2048 records / 1 MiB in memory,
+# 1 MiB per segment, 16 MiB on disk, 30 days, 200 records at once and
+# 50 per second per source.
+exec = "/usr/bin/ultar-logd"
+args = [
+    "--dir", "/data/ultar/log",
+    "--listen", "/run/ultar/log/busd.sock=system.busd", "--mode", "0600",
+    "--listen", "/run/ultar/log/settingsd.sock=system.settingsd", "--mode", "0600",
+    "--listen", "/run/ultar/log/devd.sock=system.devd", "--mode", "0600",
+    "--bus", "/run/ultar/bus/logd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--kernel-log", "/proc/ultar/protokoll",
+    "--segment-bytes", "1048576",
+    "--total-bytes", "16777216",
+    "--max-age-s", "2592000",
+    "--fsync", "batch",
+    # ultar-init starts services as root and cannot switch users yet; the
+    # daemon refuses root unless that is declared here.
+    "--allow-root",
+]
+restart = "always"
+
+[cgroup]
+"memory.max" = "48M"
+"pids.max" = "160"
+"cpu.weight" = "50"

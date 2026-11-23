@@ -135,6 +135,14 @@ icons! {
         "M12 4l2.5 5 5.5.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.5-.8z";
     Usb, "usb", false, "Trident: USB.",
         "M12 3v14M9 6l3-3 3 3M12 17a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM7 9v3l5 3M17 8v4l-5 3";
+    Info, "info", false, "Circle with i: information.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 11v6M12 7.5h.01";
+    Success, "success", false, "Circle with check mark: it worked.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM8 12.5l3 3 5-6";
+    Warning, "warning", false, "Triangle with exclamation mark: attention.",
+        "M12 3.5l9.5 16.5h-19zM12 10v4.5M12 17.5h.01";
+    Error, "error", false, "Circle with cross: it failed.",
+        "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM9 9l6 6M15 9l-6 6";
 }
 
 impl IconId {

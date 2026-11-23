@@ -12,11 +12,13 @@ impl Ui {
         self.focusable().collect()
     }
 
+    /// Operable, enabled nodes in logical order; only those of the topmost dialog while one
+    /// is open (the focus trap).
     fn focusable(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.order
+        self.reachable()
             .iter()
             .copied()
-            .filter(|id| self.nodes[id.index()].widget.is_interactive() && !self.is_disabled(*id))
+            .filter(|id| self.interactive(*id) && !self.is_disabled(*id))
     }
 
     /// Moves keyboard focus to the next or previous widget. `wrap` continues at the other
@@ -52,6 +54,10 @@ impl Ui {
     }
 
     pub(crate) fn key(&mut self, key: Key, modifiers: Modifiers, out: &mut Vec<Action>) -> bool {
+        if self.layers.menu.is_some() {
+            let towards_end = self.towards_end(key);
+            return self.menu_key(key, towards_end, out);
+        }
         if self.input.popup.is_some() {
             return self.popup_key(key, modifiers, out);
         }
@@ -63,10 +69,39 @@ impl Ui {
             if self.widget_key(id, key, modifiers, out) {
                 // Operating a widget by keyboard shows where the focus is.
                 self.set_focus(Some(id), true);
+                self.default_after_submit(id, key, out);
                 return true;
             }
         }
+        self.unclaimed_key(focus, key, out)
+    }
+
+    /// Enter in a text field of a dialog also triggers the dialog's default action.
+    fn default_after_submit(&mut self, id: NodeId, key: Key, out: &mut Vec<Action>) {
+        let field = matches!(self.nodes[id.index()].widget, Widget::TextField(_));
+        if field && key == Key::Enter {
+            self.modal_default(out);
+        }
+    }
+
+    /// Keys the focused widget did not use: Escape, the menu key, default action, focus
+    /// movement by arrows and scrolling.
+    fn unclaimed_key(&mut self, focus: Option<NodeId>, key: Key, out: &mut Vec<Action>) -> bool {
         match key {
+            Key::Escape if self.layers.tip.is_some() => {
+                self.hide_tooltip();
+                self.layers.hover_since = None;
+                true
+            }
+            Key::Escape => self.dismiss_modal(out),
+            Key::Enter => self.modal_default(out),
+            Key::Menu => focus.is_some_and(|id| {
+                self.set_focus(Some(id), true);
+                self.open_registered_menu(id, None, out)
+            }),
+            Key::PageUp | Key::PageDown | Key::Home | Key::End => {
+                focus.is_some_and(|id| self.scroll_key(id, key, false, out))
+            }
             Key::ArrowDown => self.move_focus(true, false),
             Key::ArrowUp => self.move_focus(false, false),
             Key::ArrowLeft | Key::ArrowRight => self.move_focus(self.towards_end(key), false),
@@ -102,18 +137,68 @@ impl Ui {
         modifiers: Modifiers,
         out: &mut Vec<Action>,
     ) -> bool {
+        let plain = !modifiers.command();
         match self.nodes[id.index()].widget {
-            Widget::Button(_) | Widget::IconButton(_) | Widget::Switch(_) | Widget::Select(_) => {
-                let activates = matches!(key, Key::Enter | Key::Space) && !modifiers.command();
+            Widget::Button(_)
+            | Widget::IconButton(_)
+            | Widget::Switch(_)
+            | Widget::Select(_)
+            | Widget::ListItem(_) => {
+                let activates = matches!(key, Key::Enter | Key::Space) && plain;
                 if activates {
-                    self.activate(id, out);
+                    self.activate(id, None, out);
                 }
                 activates
             }
+            // Enter is left to the default action of a dialog, as in every form.
+            Widget::Checkbox(_) => {
+                let toggles = key == Key::Space && plain;
+                if toggles {
+                    self.activate(id, None, out);
+                }
+                toggles
+            }
+            Widget::RadioGroup(_) | Widget::Tabs(_) => plain && self.choice_key(id, key, out),
             Widget::Slider(_) => self.slider_key(id, key, out),
             Widget::TextField(_) => self.field_key(id, key, modifiers, out),
+            Widget::Scroll(_) => self.scroll_key(id, key, true, out),
             _ => false,
         }
+    }
+
+    /// Arrow keys, Home and End in a radio group or tab bar choose a neighbour at once.
+    /// Radio options wrap around; tabs stop at the ends.
+    fn choice_key(&mut self, id: NodeId, key: Key, out: &mut Vec<Action>) -> bool {
+        let towards_end = self.towards_end(key);
+        let (count, current, radio) = match &self.nodes[id.index()].widget {
+            Widget::RadioGroup(group) => (group.options.len(), group.current(), true),
+            Widget::Tabs(tabs) => (tabs.tabs.len(), tabs.selected, false),
+            _ => return false,
+        };
+        if count == 0 {
+            return false;
+        }
+        let forward = match key {
+            Key::ArrowDown if radio => true,
+            Key::ArrowUp if radio => false,
+            Key::ArrowLeft | Key::ArrowRight => towards_end,
+            Key::Home => return self.choose_part(id, 0, out),
+            Key::End => return self.choose_part(id, count - 1, out),
+            Key::Space if radio => return self.choose_part(id, current, out),
+            _ => return false,
+        };
+        let target = match (forward, radio) {
+            (true, true) => (current + 1) % count,
+            (false, true) => (current + count - 1) % count,
+            (true, false) => (current + 1).min(count - 1),
+            (false, false) => current.saturating_sub(1),
+        };
+        self.choose_part(id, target, out)
+    }
+
+    fn choose_part(&mut self, id: NodeId, part: usize, out: &mut Vec<Action>) -> bool {
+        self.activate(id, Some(part), out);
+        true
     }
 
     fn slider_key(&mut self, id: NodeId, key: Key, out: &mut Vec<Action>) -> bool {
@@ -150,13 +235,18 @@ impl Ui {
         modifiers: Modifiers,
         out: &mut Vec<Action>,
     ) -> bool {
-        let base_rtl = self.env.direction.is_rtl();
+        let ui_direction = self.env.direction;
         let Ok(field) = self.text_field_mut(id) else {
             return false;
         };
+        let base_rtl = field.direction.resolve(ui_direction).is_rtl();
         let mut changed = false;
         match key {
             Key::Char(_) | Key::Space if modifiers.command() => return false,
+            // Escape empties a search field that holds text; otherwise it is not used here.
+            Key::Escape if field.is_search() && !field.content().is_empty() => {
+                changed = field.clear();
+            }
             Key::Char(ch) => changed = field.insert(ch),
             Key::Space => changed = field.insert(' '),
             Key::Backspace => changed = field.backspace(),

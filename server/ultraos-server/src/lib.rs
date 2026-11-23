@@ -4,8 +4,11 @@
 //! * **Public, no account:** store catalogue (paging, search, categories, app details), download
 //!   of free packages, newest system release of the open channels and its image.
 //! * **Account + entitlement:** premium packages and gated update channels.
-//! * **Account:** device registration with the unique Ultar number, call signalling (WebSocket),
-//!   TURN credentials, WireGuard provisioning, Ultar-Verbund (device list and end-to-end relay).
+//! * **Account:** TURN credentials, WireGuard provisioning, Ultar-Verbund (device list and
+//!   end-to-end relay), password change.
+//! * **Device key:** registration with proof of possession and the unique Ultar number, device
+//!   tokens, device list / rename / remove / replace, call signalling (WebSocket) – see
+//!   `docs/DEVICE-IDENTITY.md`.
 //!
 //! The server is never a trust anchor: packages and system images are signed by the publisher
 //! and verified on the device. The server only transports them and decides who may fetch what.
@@ -21,15 +24,26 @@ pub mod accounts;
 pub mod admin;
 pub mod auth;
 pub mod catalog;
+pub mod challenge;
 pub mod cli;
 pub mod clock;
 pub mod conditional;
 pub mod db;
+pub mod device_api;
+pub mod device_auth;
+pub mod device_error;
+pub mod device_events;
+pub mod device_moves;
+pub mod device_moves_api;
+pub mod devices;
+pub mod devtoken;
 pub mod entitlements;
 pub mod error;
 pub mod files;
 pub mod guard;
+pub mod identity;
 pub mod migrate;
+mod migrate_v2;
 pub mod msg;
 pub mod ratelimit;
 pub mod search;
@@ -73,6 +87,8 @@ pub struct Config {
     pub trusted_proxies: Vec<ProxyNet>,
     /// Rate limits.
     pub limits: LimiterConfig,
+    /// Device identity: server name, device limit, recovery cool-down.
+    pub devices: device_auth::DeviceConfig,
 }
 
 impl Config {
@@ -96,6 +112,7 @@ impl Config {
                 ProxyNet::host(IpAddr::V6(Ipv6Addr::LOCALHOST)),
             ],
             limits: LimiterConfig::default(),
+            devices: device_auth::DeviceConfig::default(),
         }
     }
 }
@@ -126,6 +143,8 @@ pub struct AppState {
     pub limiter: RateLimiter,
     /// Reverse proxies whose `X-Forwarded-For` is believed.
     pub trusted_proxies: Vec<ProxyNet>,
+    /// Device authentication: challenges, limits, time.
+    pub devices: device_auth::DeviceAuth,
 }
 
 impl AppState {
@@ -144,8 +163,9 @@ impl AppState {
             turn_secret: config.turn_secret,
             turn_host: config.turn_host,
             files: FileStore::new(config.files_dir),
-            limiter: RateLimiter::new(config.limits, clock),
+            limiter: RateLimiter::new(config.limits, clock.clone()),
             trusted_proxies: config.trusted_proxies,
+            devices: device_auth::DeviceAuth::new(config.devices, clock),
         }))
     }
 }
@@ -170,7 +190,28 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/v1/account/entitlements",
             get(accounts::account_entitlements),
         )
-        .route("/v1/device/register", post(accounts::device_register))
+        .route("/v1/account/password", post(accounts::account_password))
+        .route("/v1/device/challenge", post(device_api::challenge))
+        .route("/v1/device/register", post(device_api::register))
+        .route("/v1/device/session", post(device_api::session))
+        .route("/v1/device/upgrade", post(device_api::upgrade))
+        .route("/v1/device/rename", post(device_api::rename))
+        .route("/v1/device/remove", post(device_api::remove))
+        .route("/v1/device/replace", post(device_moves_api::replace))
+        .route(
+            "/v1/device/recover/start",
+            post(device_moves_api::recover_start),
+        )
+        .route(
+            "/v1/device/recover/cancel",
+            post(device_moves_api::recover_cancel),
+        )
+        .route(
+            "/v1/device/recover/finish",
+            post(device_moves_api::recover_finish),
+        )
+        .route("/v1/device/events", get(device_api::events))
+        .route("/v1/devices", get(device_api::list))
         .route("/v1/signal", get(signal_ws))
         .route("/v1/turn-cred", get(accounts::turn_cred))
         .route("/v1/vpn/peer", post(accounts::vpn_peer))

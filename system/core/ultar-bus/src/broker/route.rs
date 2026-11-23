@@ -1,5 +1,6 @@
 //! What the broker does with each envelope a client sends.
 
+use super::observe::{BrokerEvent, Operation};
 use super::state::{ConnId, Pending, Queued, Retained, State};
 use super::BrokerConfig;
 use crate::error::ErrorCode;
@@ -24,6 +25,13 @@ pub(crate) fn handle(
     envelope: Envelope,
 ) -> Result<(), ErrorCode> {
     let id = envelope.id;
+    let operation = match envelope.kind {
+        Kind::Register => Operation::Register,
+        Kind::Unregister => Operation::Unregister,
+        Kind::Subscribe | Kind::Unsubscribe => Operation::Subscribe,
+        Kind::Event => Operation::Publish,
+        _ => Operation::Call,
+    };
     let outcome = match envelope.kind {
         Kind::Register => register(state, rules, conn, &envelope),
         Kind::Unregister => unregister(state, conn, &envelope),
@@ -38,9 +46,21 @@ pub(crate) fn handle(
         Kind::Hello | Kind::Welcome => return Err(ErrorCode::ProtocolViolation),
     };
     if let Err(code) = outcome {
+        refused(state, conn, operation, code);
         state.reply_error(conn, id, code);
     }
     Ok(())
+}
+
+/// Reports a refused operation to the observer.
+fn refused(state: &State, conn: ConnId, operation: Operation, code: ErrorCode) {
+    if let Some(entry) = state.conns.get(&conn) {
+        state.observe(&BrokerEvent::Refused {
+            identity: entry.identity.as_str(),
+            operation,
+            code,
+        });
+    }
 }
 
 fn register(
@@ -166,6 +186,7 @@ fn publish(
 ) -> Result<(), ErrorCode> {
     let wants_ack = envelope.flags & FLAG_ACK != 0;
     if let Err(code) = check_publish(state, rules, conn, &envelope) {
+        refused(state, conn, Operation::Publish, code);
         // Unconfirmed publications have nobody waiting for an answer.
         if wants_ack {
             state.reply_error(conn, envelope.id, code);

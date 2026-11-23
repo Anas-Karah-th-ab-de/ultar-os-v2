@@ -13,7 +13,7 @@ use ultraos_server::clock::SystemClock;
 use ultraos_server::guard::ProxyNet;
 use ultraos_server::msg::{self, Lang};
 use ultraos_server::ratelimit::BucketConfig;
-use ultraos_server::{cli, db::Db, files::FileStore, AppState, Config};
+use ultraos_server::{cli, db::Db, device_auth, files::FileStore, AppState, Config};
 
 /// Log writer that never reports failure. If stderr is closed or full, log lines are dropped
 /// instead of turning into errors inside request handling.
@@ -74,6 +74,32 @@ fn limit_from_env(key: &str, bucket: &mut BucketConfig) {
     }
 }
 
+/// Device identity settings; a malformed value is reported and the default stays in force.
+fn devices_from_env(devices: &mut device_auth::DeviceConfig) {
+    fn apply<T>(key: &str, parse: impl Fn(&str) -> Option<T>, target: &mut T) {
+        let Ok(text) = std::env::var(key) else { return };
+        match parse(&text) {
+            Some(value) => *target = value,
+            None => tracing::warn!(event = "ignored_setting", key = %key),
+        }
+    }
+    apply(
+        "ULTRAOS_SERVER_NAME",
+        device_auth::normalize_server_name,
+        &mut devices.server_name,
+    );
+    apply(
+        "ULTRAOS_MAX_DEVICES",
+        device_auth::parse_max_devices,
+        &mut devices.max_devices,
+    );
+    apply(
+        "ULTRAOS_DEVICE_COOLDOWN_SECS",
+        device_auth::parse_cooldown,
+        &mut devices.recovery_cooldown_secs,
+    );
+}
+
 fn config_from_env(secret: [u8; 32]) -> Config {
     let mut config = Config::new(
         env_or("ULTRAOS_DB", "ultraos.sqlite"),
@@ -96,6 +122,7 @@ fn config_from_env(secret: [u8; 32]) -> Config {
     limit_from_env("ULTRAOS_LIMIT_GENERAL", &mut config.limits.general);
     limit_from_env("ULTRAOS_LIMIT_DOWNLOAD", &mut config.limits.download);
     limit_from_env("ULTRAOS_LIMIT_AUTH", &mut config.limits.auth);
+    devices_from_env(&mut config.devices);
     config
 }
 

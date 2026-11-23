@@ -253,6 +253,9 @@ pub struct Card {
     pub flex: Flex,
     /// `true` for a floating card (drawn with the shadow).
     pub floating: bool,
+    /// `true` for the raised look: raised background and accent border (a floating card
+    /// that asks for a decision, such as "keep these display settings?").
+    pub raised: bool,
 }
 
 impl Card {
@@ -261,6 +264,7 @@ impl Card {
         Card {
             flex: Flex::column(),
             floating: false,
+            raised: false,
         }
     }
 
@@ -271,6 +275,7 @@ impl Card {
                 .padding(Padding::all(Space::S16))
                 .gap(Space::S12),
             floating: false,
+            raised: false,
         }
     }
 
@@ -286,15 +291,23 @@ impl Card {
         self
     }
 
+    /// The same card floating, with the raised background and an accent border.
+    pub fn raised(mut self) -> Card {
+        self.floating = true;
+        self.raised = true;
+        self
+    }
+
     pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect) {
         if self.floating {
             p.shadow(rect, Some(Radius::Card));
         }
-        let (surface, line, hairline) = (
-            p.color(ColorRole::Surface),
-            p.color(ColorRole::Line),
-            p.hairline(),
-        );
+        let (background, border) = if self.raised {
+            (ColorRole::Raised, ColorRole::Accent)
+        } else {
+            (ColorRole::Surface, ColorRole::Line)
+        };
+        let (surface, line, hairline) = (p.color(background), p.color(border), p.hairline());
         p.fill(rect, Some(Radius::Card), surface);
         p.stroke(rect, Some(Radius::Card), hairline, line);
     }
@@ -306,8 +319,10 @@ impl Default for Card {
     }
 }
 
-/// Extra reach of a floating card's shadow below and beside it, for damage rectangles.
+/// Extra reach of the shadow beside (x) and below (y) a floating rectangle, for damage
+/// rectangles: the shadow fades out `blur` points outside the offset outline, as the CSS
+/// `box-shadow: 0 offset_y blur` of the artboards does.
 pub(crate) fn shadow_reach() -> Point {
     use crate::tokens::shadow;
-    Point::new(shadow::BLUR / 2.0, shadow::OFFSET_Y + shadow::BLUR / 2.0)
+    Point::new(shadow::BLUR, shadow::OFFSET_Y + shadow::BLUR)
 }

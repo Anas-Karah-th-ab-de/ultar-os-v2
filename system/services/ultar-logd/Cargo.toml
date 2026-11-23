@@ -1,0 +1,28 @@
+[package]
+name = "ultar-logd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Log service of Ultar OS: bounded, tamper-evident, policy-restricted; daemon ultar-logd and tool ulog (system services, area 4)"
+
+[lib]
+name = "ultar_logd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-logd"
+path = "src/bin/ultar-logd.rs"
+
+[[bin]]
+name = "ulog"
+path = "src/bin/ulog.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+sha2 = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+# Reads the service definition in rootfs/ to check it against the real parser.
+toml = { version = "0.8", default-features = false, features = ["parse"] }

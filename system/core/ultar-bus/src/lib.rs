@@ -10,7 +10,7 @@
 //!
 //! * [`Broker`] – accepts connections on Unix domain sockets, authenticates
 //!   peers ([`PeerIdentity`]), enforces the [`Policy`] (default deny) and
-//!   routes. The `ultar-busd` binary runs one.
+//!   routes. The `ultar-busd` binary (crate `ultar-busd`) runs one.
 //! * [`Client`] – request/response with timeouts, publish/subscribe with
 //!   hierarchical topics and prefix subscriptions, retained last values,
 //!   automatic reconnection.
@@ -70,7 +70,10 @@ mod sync;
 mod topic;
 pub mod wire;
 
-pub use broker::{Broker, BrokerBuilder, BrokerConfig, BrokerStats};
+pub use broker::{
+    Broker, BrokerBuilder, BrokerConfig, BrokerEvent, BrokerObserver, BrokerStats, Operation,
+    SocketAccess,
+};
 pub use client::{
     Client, ClientOptions, IncomingRequest, RawEvent, ServiceEndpoint, Subscription,
     TypedSubscription,

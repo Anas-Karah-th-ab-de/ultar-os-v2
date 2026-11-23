@@ -32,6 +32,21 @@ impl Publisher for Client {
     }
 }
 
+/// Publishes through a bus session, which publishes the retained capability set again
+/// whenever the broker comes back after a restart (a broker keeps retained values in
+/// memory only).
+pub struct SessionPublisher(pub std::sync::Arc<ultar_service::BusSession>);
+
+impl Publisher for SessionPublisher {
+    fn capabilities(&mut self, message: &Capabilities) -> Result<(), BusError> {
+        self.0.publish_retained(message)
+    }
+
+    fn driver_state(&mut self, message: &DriverState) -> Result<(), BusError> {
+        self.0.client().publish(message)
+    }
+}
+
 /// Everything a [`MemoryPublisher`] received.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Published {

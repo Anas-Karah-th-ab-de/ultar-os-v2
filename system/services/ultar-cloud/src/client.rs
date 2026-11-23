@@ -275,7 +275,19 @@ impl Client {
         self.credentials("/v1/account/login", username, password)
     }
 
-    fn require_token(&self) -> Result<(), CloudError> {
+    /// POST of a JSON body to the configured server.
+    pub(crate) fn post(&self, path: &str, body: &Value) -> Result<Value, CloudError> {
+        self.http.post_json(path, body)
+    }
+
+    /// GET of a JSON document from the configured server.
+    pub(crate) fn get_value(&self, path: &str) -> Result<Value, CloudError> {
+        self.http
+            .get_json(path, &[])?
+            .ok_or(CloudError::InvalidResponse)
+    }
+
+    pub(crate) fn require_token(&self) -> Result<(), CloudError> {
         if self.is_signed_in() {
             Ok(())
         } else {
@@ -287,16 +299,6 @@ impl Client {
     pub fn entitlements(&self) -> Result<Entitlements, CloudError> {
         self.require_token()?;
         self.get("/v1/account/entitlements", &[])
-    }
-
-    /// Registers the device and returns its Ultar number.
-    pub fn register_device(&self, device_id: &str, pubkey: &str) -> Result<String, CloudError> {
-        self.require_token()?;
-        let body = json!({ "device_id": device_id, "pubkey": pubkey });
-        text_field(
-            &self.http.post_json("/v1/device/register", &body)?,
-            "number",
-        )
     }
 
     /// Provisions a WireGuard peer for the given public key.

@@ -9,4 +9,4 @@
 pub mod convert;
 pub mod sink;
 
-pub use sink::{BusSink, MemoryPublisher, Published, Publisher, UnservedDevice};
+pub use sink::{BusSink, MemoryPublisher, Published, Publisher, SessionPublisher, UnservedDevice};

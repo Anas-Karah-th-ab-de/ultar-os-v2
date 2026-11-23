@@ -2,7 +2,13 @@
 
 use super::{Node, NodeId, Ui, UiError, MAX_DEPTH, MAX_NODES};
 use crate::layout::{LogicalRect, Sizing};
-use crate::widgets::{Label, Select, Slider, Switch, TextField, Visual, Widget};
+use crate::paint::TextSpec;
+use crate::tokens::TypeSize;
+use crate::widgets::Label;
+use crate::widgets::{
+    Checkbox, Dialog, ListItem, Progress, RadioGroup, Scroll, Select, Slider, Switch, Text,
+    TextField, Visual, Widget,
+};
 
 pub(super) fn new_node(widget: Widget, sizing: Sizing, parent: Option<NodeId>) -> Node {
     Node {
@@ -15,6 +21,9 @@ pub(super) fn new_node(widget: Widget, sizing: Sizing, parent: Option<NodeId>) -
         loading: false,
         error: None,
         measured: None,
+        tooltip: None,
+        context_menu: None,
+        clip_parent: None,
     }
 }
 
@@ -63,6 +72,28 @@ impl Ui {
         TextField,
         "text field"
     );
+    typed_access!(checkbox, checkbox_mut, Checkbox, Checkbox, "checkbox");
+
+    pub(crate) fn radio(&self, id: NodeId) -> Result<&RadioGroup, UiError> {
+        match &self.node(id)?.widget {
+            Widget::RadioGroup(group) => Ok(group),
+            _ => Err(UiError::WrongWidget {
+                node: id,
+                expected: "radio group",
+            }),
+        }
+    }
+
+    typed_access!(
+        progress_bar,
+        progress_bar_mut,
+        Progress,
+        Progress,
+        "progress"
+    );
+    typed_access!(list_item, list_item_mut, ListItem, ListItem, "list item");
+    typed_access!(scroller, scroller_mut, Scroll, Scroll, "scroll container");
+    typed_access!(dialog, dialog_mut, Dialog, Dialog, "dialog");
 
     fn depth(&self, id: NodeId) -> usize {
         let mut depth = 0;
@@ -81,33 +112,54 @@ impl Ui {
 
     /// Adds a widget with explicit sizing as the last child of `parent`.
     ///
-    /// Flex containers and cards take any number of children, a settings row takes exactly
-    /// one (its control); other widgets take none.
+    /// Flex containers, cards, lists, scroll containers and dialogs take any number of
+    /// children; a settings row, list item, info bar and empty state take exactly one (their
+    /// control or action); other widgets take none. A dialog or sheet may be added to any
+    /// node: it is not laid out there but floats above the surface (closed at first), and
+    /// its title becomes its first child.
     pub fn add_sized(
         &mut self,
         parent: NodeId,
         widget: impl Into<Widget>,
         sizing: Sizing,
     ) -> Result<NodeId, UiError> {
+        let widget = widget.into();
         let host = self.node(parent)?;
+        let title = match &widget {
+            Widget::Dialog(dialog) => Some(dialog.title.clone()),
+            _ => None,
+        };
         let accepts = match &host.widget {
-            Widget::Flex(_) | Widget::Card(_) => true,
-            Widget::Row(_) => host.children.is_empty(),
+            w if w.flex().is_some() => true,
+            w if w.hosts_one_child() => host.children.is_empty(),
             _ => false,
         };
-        if !accepts {
+        if !accepts && title.is_none() {
             return Err(UiError::NotAContainer(parent));
         }
-        if self.nodes.len() >= MAX_NODES {
+        let needed = if title.is_some() { 2 } else { 1 };
+        if self.nodes.len() + needed > MAX_NODES {
             return Err(UiError::TooManyNodes);
         }
-        if self.depth(parent) + 1 >= MAX_DEPTH {
+        if title.is_none() && self.depth(parent) + 1 >= MAX_DEPTH {
             return Err(UiError::TooDeep);
         }
         let id = NodeId(self.nodes.len() as u32);
-        self.nodes
-            .push(new_node(widget.into(), sizing, Some(parent)));
-        self.node_mut(parent)?.children.push(id);
+        match title {
+            Some(title) => {
+                self.nodes.push(new_node(widget, sizing, None));
+                self.layers.dialogs.push(id);
+                let heading = Text::new(title).spec(TextSpec::title(TypeSize::S20));
+                let child = NodeId(self.nodes.len() as u32);
+                self.nodes
+                    .push(new_node(heading.into(), Sizing::AUTO, Some(id)));
+                self.node_mut(id)?.children.push(child);
+            }
+            None => {
+                self.nodes.push(new_node(widget, sizing, Some(parent)));
+                self.node_mut(parent)?.children.push(id);
+            }
+        }
         self.invalidate_layout();
         Ok(id)
     }
@@ -120,6 +172,11 @@ impl Ui {
     /// The widget of a node.
     pub fn widget(&self, id: NodeId) -> Option<&Widget> {
         self.nodes.get(id.index()).map(|n| &n.widget)
+    }
+
+    /// The parent of a node; `None` for the root and for dialogs (they hang in no layout).
+    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+        self.nodes.get(id.index()).and_then(|n| n.parent)
     }
 
     /// The children of a node in logical order.
@@ -150,7 +207,7 @@ impl Ui {
         let open = self.input.popup.is_some_and(|p| p.select == id);
         Visual {
             hovered: self.input.hover == Some(id) && !disabled,
-            pressed: (self.input.pressed == Some(id) || open) && !disabled,
+            pressed: (self.input.is_pressed(id) || open) && !disabled,
             focused: self.input.focus == Some(id) && self.input.focus_visible && !disabled,
             disabled,
             loading: node.loading,
@@ -162,22 +219,39 @@ impl Ui {
     pub fn set_disabled(&mut self, id: NodeId, disabled: bool) -> Result<(), UiError> {
         self.node_mut(id)?.disabled = disabled;
         if disabled {
-            let inside = |ui: &Ui, node: Option<NodeId>| node.is_some_and(|n| ui.is_disabled(n));
-            if inside(self, self.input.focus) {
-                self.input.focus = None;
-            }
-            if inside(self, self.input.pressed) {
-                self.input.pressed = None;
-            }
-            if inside(self, self.input.hover) {
-                self.input.hover = None;
-            }
-            if inside(self, self.input.popup.map(|p| p.select)) {
-                self.input.popup = None;
-            }
+            self.drop_interaction_inside_disabled();
         }
         self.repaint_all();
         Ok(())
+    }
+
+    /// Forgets focus, hover, presses, the open list and the open menu of nodes that are
+    /// disabled now.
+    fn drop_interaction_inside_disabled(&mut self) {
+        let inside = |ui: &Ui, node: Option<NodeId>| node.is_some_and(|n| ui.is_disabled(n));
+        if inside(self, self.input.focus) {
+            self.input.focus = None;
+        }
+        if inside(self, self.input.mouse.map(|p| p.node)) {
+            self.input.mouse = None;
+        }
+        if inside(self, self.input.finger.map(|p| p.node)) {
+            self.input.finger = None;
+        }
+        if inside(self, self.input.hover) {
+            self.input.hover = None;
+            self.input.hover_part = None;
+            self.layers.hover_since = None;
+        }
+        if inside(self, self.input.popup.map(|p| p.select)) {
+            self.input.popup = None;
+        }
+        if inside(self, self.layers.menu.as_ref().map(|m| m.owner)) {
+            self.layers.menu = None;
+        }
+        if inside(self, self.layers.tip.map(|t| t.node)) {
+            self.layers.tip = None;
+        }
     }
 
     /// Shows or hides the loading state (buttons, icon buttons, switches, selects). A loading
@@ -218,9 +292,7 @@ impl Ui {
 
     /// Sets a switch without animation and without emitting an action.
     pub fn set_on(&mut self, id: NodeId, on: bool) -> Result<(), UiError> {
-        let switch = self.switch_mut(id)?;
-        switch.on = on;
-        switch.toggled_at = None;
+        self.switch_mut(id)?.set(on);
         self.touch(id);
         Ok(())
     }
@@ -238,18 +310,46 @@ impl Ui {
         Ok(())
     }
 
-    /// Chosen option of a select.
+    /// Chosen option of a select, shown tab of a tab bar, or chosen option of a radio group
+    /// (`OptionOutOfRange` with index 0 while a radio group has no choice yet; see
+    /// [`Ui::radio_selected`]).
     pub fn selected(&self, id: NodeId) -> Result<usize, UiError> {
-        Ok(self.select(id)?.selected)
+        match &self.node(id)?.widget {
+            Widget::Select(select) => Ok(select.selected),
+            Widget::Tabs(tabs) => Ok(tabs.selected),
+            Widget::RadioGroup(group) => group
+                .selected
+                .ok_or(UiError::OptionOutOfRange { node: id, index: 0 }),
+            _ => Err(UiError::WrongWidget {
+                node: id,
+                expected: "select, tabs or radio group",
+            }),
+        }
     }
 
-    /// Chooses an option of a select without emitting an action.
+    /// Chooses an option of a select, a tab or a radio option without emitting an action.
     pub fn set_selected(&mut self, id: NodeId, index: usize) -> Result<(), UiError> {
-        let select = self.select_mut(id)?;
-        if index >= select.options.len() {
+        let node = self.node_mut(id)?;
+        let count = match &node.widget {
+            Widget::Select(select) => select.options.len(),
+            Widget::Tabs(tabs) => tabs.tabs.len(),
+            Widget::RadioGroup(group) => group.options.len(),
+            _ => {
+                return Err(UiError::WrongWidget {
+                    node: id,
+                    expected: "select, tabs or radio group",
+                })
+            }
+        };
+        if index >= count {
             return Err(UiError::OptionOutOfRange { node: id, index });
         }
-        select.selected = index;
+        match &mut node.widget {
+            Widget::Select(select) => select.selected = index,
+            Widget::Tabs(tabs) => tabs.selected = index,
+            Widget::RadioGroup(group) => group.selected = Some(index),
+            _ => {}
+        }
         self.touch(id);
         if self.is_open(id) {
             // The open list shows the check mark and the bold option: repaint it too.
@@ -275,16 +375,22 @@ impl Ui {
         Ok(())
     }
 
-    /// Replaces the label of a button, text, or settings row.
+    /// Replaces the label of a button, text, settings row, checkbox, badge or list item, or
+    /// the title of an info bar or empty state.
     pub fn set_label(&mut self, id: NodeId, label: Label) -> Result<(), UiError> {
         match &mut self.node_mut(id)?.widget {
             Widget::Button(b) => b.label = label,
             Widget::Text(t) => t.label = label,
             Widget::Row(r) => r.label = label,
+            Widget::Checkbox(c) => c.label = label,
+            Widget::Badge(b) => b.label = label,
+            Widget::ListItem(i) => i.label = label,
+            Widget::InfoBar(b) => b.title = label,
+            Widget::EmptyState(e) => e.title = label,
             _ => {
                 return Err(UiError::WrongWidget {
                     node: id,
-                    expected: "button, text or row",
+                    expected: "a widget with a label",
                 })
             }
         }

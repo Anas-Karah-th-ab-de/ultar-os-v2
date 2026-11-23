@@ -94,7 +94,8 @@ to = "system-core"
 [[allow]]
 from = "system-core"
 to = "system-hal"
-crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+# ultar-sys: the system calls std does not offer, for the service runtime.
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-sys"]
 
 # services -> system core + HAL traits
 [[allow]]

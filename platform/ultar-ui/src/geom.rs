@@ -139,12 +139,12 @@ impl PixelRect {
 
     /// Width in pixels (0 when empty).
     pub fn width(&self) -> i32 {
-        (self.x1 - self.x0).max(0)
+        self.x1.saturating_sub(self.x0).max(0)
     }
 
     /// Height in pixels (0 when empty).
     pub fn height(&self) -> i32 {
-        (self.y1 - self.y0).max(0)
+        self.y1.saturating_sub(self.y0).max(0)
     }
 
     /// Number of pixels covered.

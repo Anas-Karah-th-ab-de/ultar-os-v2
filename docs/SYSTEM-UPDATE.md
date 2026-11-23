@@ -1,0 +1,256 @@
+# System update (`ultar-update`) – design
+
+Area: system core (area 3, PLAN §3.0). Closes review finding **S16** ("system images from the server are
+not verified on the device; there is no updater"). Crate: `system/core/ultar-update` (library, daemon
+`ultar-updated`, CLI `uupdate`, signing tool `uupdate-sign`).
+
+The server is **not** a trust anchor (server API.md, "Trust"). Everything the device acts on is proven by an
+Ed25519 signature of the publisher and by state stored on the device.
+
+## 1. Threat model
+
+| Attacker / fault | What it can do | Defence |
+|---|---|---|
+| Malicious or compromised server | answer `update/latest` with anything, serve any bytes | Only a manifest signed by a trusted update key is acted on. All properties (version, sizes, hashes, device, expiry) are inside the signed bytes; `size`, `sha256`, `version` of the server answer are ignored. |
+| Network attacker (no TLS, or TLS broken) | modify, truncate, replay, reorder, extend the stream | Same as above; payload SHA-256 while streaming; total size is bounded by the signed sizes before a byte of payload is stored; a byte more than signed is an error. |
+| Replay of an old signed release ("latest" from last year) | make the device install a release with known holes | (a) **rollback index** in the manifest must be ≥ the index stored on the device, which only grows; (b) manifest **expiry**; (c) version must be greater than the running version. |
+| Release for another device / edition / architecture | brick or downgrade the device | architecture, edition and device list are signed and compared with the device's own identity. |
+| Wrong or missing clock | defeat expiry, or lock the device out | "now" = max(system clock, stored time floor). The floor is the largest `created` time of any manifest whose signature verified; it never goes backwards and is not fed from the local clock (a clock set into the future cannot poison it). There is no "not yet valid" rule, so a device whose clock is behind still updates. |
+| Power loss at any byte | half-written slot is booted | The running slot is never written. The target slot is marked unbootable *before* the first byte and bootable only after a complete read-back. All state files are written atomically; recovery after restart needs no clean-up code to have run. |
+| New system does not start | device stays dead | The new slot is booted "once" with a boot counter; the old slot stays the default until the new system reports health. After N failed starts the loader returns to the old slot by itself. |
+| Stolen/retired signing key | sign malicious updates | Key rotation: a key-set document signed by a still trusted key replaces the set; its serial only grows. |
+| Hostile bundle file on a USB stick | path traversal, huge allocations | The bundle carries **no file names**; every length is bounded before allocation; parsing is fuzzed. |
+| Unprivileged local caller on the bus | trigger apply, change channel | `apply`, `cancel`, `set_policy`, `boot_previous`, offline staging: admin identities only (default: nobody). |
+
+Out of scope: an attacker who already is root on the device or holds a trusted signing key; hardware attacks.
+Until the rollback index is also kept in firmware variables/TPM (trait hook exists), an attacker who can rewrite
+the state directory offline (disk removed) can lower it – on-disk encryption of the data partition is the
+defence there.
+
+## 2. Formats
+
+All numbers decimal ASCII in text, little endian in binary. Identifiers: 1–32 characters of
+`a-z A-Z 0-9 . _ - +`, first one a letter or digit (same rule as the server).
+
+### 2.1 Manifest (canonical text, signed)
+
+```
+ultar-update-manifest 1
+version=0.7.1
+rollback_index=3
+channel=stable
+edition=desktop
+arch=x86_64
+devices=beelink-gti15,pc-uefi
+min_version=0.7.0
+notes_key=update.notes.v0_7_1
+created=1795400000
+expires=1798000000
+critical=0
+payload=kernel 1048576 <sha256 hex> -
+payload=system 734003200 <sha256 hex> <verity root hash hex>
+```
+
+* Exactly these lines in exactly this order, `\n` line ends, at most 16 KiB.
+* `version`, `min_version`: `major.minor.patch` (each < 2^32, no leading zeros).
+* `devices`: sorted, unique, at most 64 entries, or the single entry `*` (every device of that
+  architecture and edition).
+* `payload`: role `kernel`, `system` or `boot`; each role at most once, in that order; size 1 … 64 GiB without
+  leading zeros; SHA-256 of the payload; verity root hash (64 hex) or `-`.
+* `critical`: `0` or `1`. `notes_key`: i18n key of the release notes (never text).
+* **Canonical:** the device parses the bytes and encodes the result again; if the bytes differ the manifest is
+  refused. So there is exactly one byte string per manifest and nothing unparsed is signed.
+
+### 2.2 Signed manifest
+
+`"UUM1"` · u16 length · manifest bytes · key id (8 bytes) · signature (64 bytes).
+Signature: Ed25519 over `"ultar-update-v1\n"` + manifest bytes (domain separation: a signature made for an app
+package or a driver index can never be taken for an update). Key id: first 8 bytes of SHA-256(public key).
+
+### 2.3 Trust keys and rotation
+
+* Burned into the system image (read-only, verity): `/etc/ultar/update-keys/*.ed25519` – one hex public key
+  per line – and optionally `serial` (decimal, default 0). **Separate from the app keys** in
+  `/etc/ultar/trusted-keys`: an app publisher key cannot sign a system update.
+* Rotation document (canonical text): `ultar-update-keys 1`, `serial=N`, `created=T`, then 1–8 sorted
+  `key=<hex>` lines = the **complete new set**. Signed like a manifest with magic `"UUK1"` and domain
+  `"ultar-update-keys-v1\n"`, by a key of the set that is in force at that moment.
+* The device keeps the accepted rotations in `trust/chain` and the highest serial in a monotonic store.
+  On every start the chain is verified again from the burned-in set (links with a serial ≤ the burned-in serial
+  are skipped). A chain that does not reach the stored serial is an error (fail closed): removing the file
+  cannot bring a revoked key back.
+* Rotations travel inside bundles (§2.4), so they need no server support and work offline.
+
+### 2.4 Bundle `.uup` (download file and USB file are the same)
+
+`"UUP1"` · u32 length of the rotation section (0 … 64 KiB; zero or more signed rotations) · rotation section ·
+signed manifest · payload bytes in manifest order, nothing after them.
+The **header** (everything before the payloads) is at most 128 KiB. Total size = header + signed sizes.
+
+### 2.5 Slot table (boot control data, read by the boot code)
+
+Two copies, 64 bytes each (`slots.0`, `slots.1`):
+
+| Offset | Field |
+|---|---|
+| 0 | magic `"USLT"` |
+| 4 | format = 1 |
+| 5 | default slot (0 = A, 1 = B) |
+| 6 | trial slot (0, 1, 0xFF = none) |
+| 7 | trial tries left |
+| 8, 9 | flags of slot A, B: bit 0 bootable, bit 1 successful |
+| 10 | slot started last (written by the boot code; 0xFF = unknown) |
+| 12 | sequence number u32 |
+| 60 | CRC-32 (IEEE) of bytes 0 … 59 |
+
+Reader: the valid copy with the higher sequence number. Writer: overwrite the *other* copy with sequence + 1 and
+flush. A torn write damages only the copy being written; no rename is needed (works on FAT).
+
+Boot decision (`boot::select`, the code the boot path has to run, also used by the tests):
+1. Trial slot set, bootable and tries left > 0 → tries − 1, start the trial slot.
+2. Trial slot set otherwise → mark it unbootable, clear the trial.
+3. Default slot bootable → start it; else the other slot if bootable (it becomes default); else no slot (rescue).
+The slot that is started is recorded as "started last".
+
+## 3. State on the device (`/var/lib/ultar/update`)
+
+| File | Content | Written |
+|---|---|---|
+| `state/rollback.{a,b}` | rollback floor (monotonic store) | after a successful start of a new release |
+| `state/time.{a,b}` | time floor | when a manifest signature verified |
+| `state/keyserial.{a,b}` | serial of the key set | when a rotation is accepted |
+| `trust/chain` | accepted rotations | idem |
+| `journal` | apply phase: `idle`, `writing <slot>`, `trial <slot> <previous version>` | atomically |
+| `slots/{a,b}.manifest` | signed manifest of what is in each slot | before the slot becomes bootable |
+| `slots/{a,b}.factory` | version and rollback index of a slot that came from the installer (no manifest) | at the first start of the updater |
+| `staging/bundle.part`, `bundle.pos` | download in progress, flushed length | every 4 MiB |
+| `staging/bundle.uup`, `bundle.ok` | complete verified bundle + completion marker (manifest digest, size, downgrade permission) | once |
+| `policy`, `history` | policy; bounded history (200 entries) | atomically |
+
+A slot's stored manifest was verified when the slot was written. It is not verified again against
+today's keys when the updater only needs to know what its own slots hold – otherwise retiring a key
+would make the device forget its running version.
+
+**Monotonic store:** two files `value sha256(value)`; read = the larger valid one; a write is refused unless it
+is larger; both files are replaced atomically one after the other. One damaged or missing file is repaired from
+the other. Both present but damaged → `state_corrupt`, no update is accepted (fail closed). Both absent → 0
+(first start).
+
+## 4. Verification (before anything is written to a slot)
+
+In this order, the first failure wins: envelope shape → key id known (`unknown_key`) → signature
+(`bad_signature`) → canonical manifest (`manifest_invalid`) → time floor raised to `created` →
+expired (`now > expires + 24 h`) → architecture → edition → device → channel (online: must equal the channel
+asked for) → payload roles equal the roles of the slot layout → `rollback_index ≥ floor` (`rollback_refused`)
+→ `running version ≥ min_version` (`needs_intermediate`) → version greater than the running one
+(`up_to_date` / `downgrade_refused`; an administrator may allow a downgrade for an offline bundle, never below
+the floor). The result is a `VerifiedManifest`; slot writing accepts nothing else.
+
+Payloads: SHA-256 while streaming into staging, again while streaming from staging into the slot, and a third
+time by reading the slot back. The verity root hash is handed to boot control together with "bootable"; the
+start chain (stage0) uses it to open the system image.
+
+## 5. Download
+
+1. `GET /v1/update/latest?channel&arch&edition` → release id and location.
+2. `Range: bytes=0-131071` of `/v1/update/file/{id}` → header → rotations, signed manifest → full verification.
+   Nothing is stored before this succeeds.
+3. Free space ≥ bundle size + reserve (64 MiB), else `no_space`.
+4. Body with `Range: bytes=<flushed length>-`; `206` continues, `200` restarts from zero. More bytes than
+   signed → `size_exceeded`; fewer → `truncated` (kept, resumed later). After every 4 MiB: flush, then record
+   the flushed length atomically.
+5. Resume after power loss: file is cut to the recorded length, the header is compared with the freshly
+   fetched one (other release → staging is discarded), the prefix is hashed again from disk.
+6. Complete and all hashes right: flush, rename to `bundle.uup`, write `bundle.ok` (digest of the signed
+   manifest + size), flush the directory. A payload hash mismatch discards the staging area.
+
+Policy inputs: automatic yes/no, daily time window (minutes of the day, UTC – the UI converts), channel,
+metered allowed yes/no, rate limit (KiB/s). The network state "metered" is pushed by the network service;
+unknown counts as metered. Manual downloads on a metered network need an explicit flag.
+
+## 6. Apply (A/B)
+
+```
+            check          download           apply                 reboot           health ok
+ idle ───▶ available ───▶ staged ───▶ writing ───▶ trial(reboot needed) ───▶ trial(booted) ───▶ idle (new)
+                                   │ power loss        │ N failed starts / health failed
+                                   ▼                   ▼
+                                 staged             idle (old) + history "rolled back"
+```
+
+Steps of `apply` (target = the slot that is not running); each is durable before the next starts:
+
+1. Verify marker, bundle size and manifest again (§4).
+2. Journal `writing <target>`.
+3. Boot control: target **unbootable** (also clears a trial on it). Remove `slots/<target>.manifest`.
+4. Per payload: stream staging → slot, hash; flush.
+5. Per payload: read the slot back, hash, compare.
+6. Write `slots/<target>.manifest`.
+7. Boot control: target **bootable** (with verity root hash).
+8. Journal `trial <target> <running version>`.
+9. Boot control: **start target once**, N tries (default 3).
+
+After the restart (`resume_after_boot`):
+* running slot = target and already marked successful → finish the commit (idempotent);
+* running slot = target → health checks (required services answer on the bus). OK → **commit**:
+  boot control "successful" (target becomes default) → rollback floor raised to the manifest's index →
+  the other slot is marked unbootable if its index is below the new floor → staging removed → journal `idle`.
+  Not OK → target unbootable, journal `idle`, history, "restart needed" (the loader starts the old slot);
+* running slot ≠ target, target still bootable and trial not consumed → the trial is armed again (power loss
+  between steps 8 and 9) or simply not restarted yet;
+* running slot ≠ target, target unbootable → the loader fell back: history "rolled back", journal `idle`.
+
+Power loss during 2–7: the target is unbootable, the loader ignores it; on start the journal goes back to
+`idle`, the staged bundle is still complete and `apply` can run again. The rollback floor is raised **only**
+in the commit, so a release that never started successfully cannot lock out the old one.
+
+**Start previous version** (manual): allowed while the other slot is bootable, marked successful and its
+rollback index is ≥ the floor. It becomes the default slot; nothing is written.
+
+## 7. Offline update
+
+`uupdate offline <file.uup | folder>`: a folder is searched (not recursively, at most 64 entries, regular
+files ending in `.uup`); every header is verified and the newest acceptable release is chosen. The bundle is
+copied into staging with the same code as a download (same hashes, same marker) and then applied like any
+other. No network, no account.
+
+## 8. Service, CLI, texts
+
+Bus service `update` (contracts in `ultar_update::contract`, version 1): `status`, `check`, `download`,
+`apply`, `cancel`, `history`, `get_policy`, `set_policy`, `offline`, `boot_previous`, `network`; topic
+`update.progress` (retained) with phase, percentage and message key. Admin-only: `apply`, `cancel`,
+`set_policy`, `offline`, `boot_previous` (identities listed in the daemon's configuration; default nobody).
+`network` only from the configured network identity. Every state and error is an i18n key
+(`locales/{ar,en,de}.ftl`, Arabic first). Works without an account; a gated channel needs the session token.
+
+Offline bundles are only read from folders named in the daemon's configuration (`offline_root=`); the path is
+resolved (links, `..`) before it is compared and the resolved path is what is read.
+
+The updater never restarts the device by itself. After a failed health check it gives the new slot up and
+reports `update.error.unhealthy`; the restart is the user's (or the power service's) step.
+
+## 9. Limits (all enforced before memory is allocated or bytes are stored)
+
+| What | Limit |
+|---|---|
+| Manifest | 16 KiB; 64 devices; 3 payloads; identifiers 32 characters; notes key 96 |
+| Payload | 1 byte … 64 GiB each |
+| Rotation document | 1 KiB; 8 keys; 64 rotations kept on a device; 64 KiB rotation section in a bundle |
+| Bundle header | 128 KiB (probe request `Range: bytes=0-131071`) |
+| `update/latest` answer | 64 KiB; location 2048 characters; one redirect |
+| Download | exactly header + signed sizes; flushed every 4 MiB; free space ≥ missing bytes + reserve (64 MiB) |
+| Offline folder | 64 bundle files, not recursive, no links |
+| History | 200 entries; policy file 512 bytes; journal 64 bytes; key file 4 KiB |
+| Progress events | one per percent (≤ 101 per operation) |
+| Trial starts | N = 3 (configurable, ≥ 1); expiry tolerance 24 h (configurable) |
+| Automatic check | every 6 h (configurable, ≥ 15 min); one operation at a time |
+
+## 10. What this design does not protect against
+
+* A malicious server can waste bandwidth: a correctly signed header followed by wrong payload bytes costs one
+  download per automatic check (hash mismatch → discarded). It can also withhold updates (expiry only limits how
+  long an *old* "latest" stays acceptable, it cannot force a new one to appear).
+* Data that was written but not yet flushed when power is lost: the code flushes before every state change that
+  relies on the data (`fsync` of files and directories); that the medium honours the flush is assumed.
+* The rollback floor lives in files until the platform offers a firmware variable or TPM counter (trait hook
+  `firmware_rollback_index`).

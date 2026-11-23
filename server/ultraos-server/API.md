@@ -7,7 +7,8 @@ itself speaks plain HTTP on `ULTRAOS_BIND`).
 
 | Topic | Rule |
 |---|---|
-| Auth | `Authorization: Bearer <token>`; the token comes from register/login and is valid 30 days. "none" = no token needed; a token that is sent anyway is ignored on such endpoints. |
+| Auth | `Authorization: Bearer <token>`. **Account token (AT):** from register/login, valid 30 days, ended by a password change. **Device token (DT):** from device registration / `device/session`, valid 24 hours, bound to one device key, ended at once when that device is removed or replaced or the password changes. "Bearer" below accepts either; "AT" / "DT" mean exactly that kind. "none" = no token needed; a token that is sent anyway is ignored on such endpoints. |
+| Device values | Public keys (Ed25519, 32 bytes), challenges (32 bytes), challenge ids (16 bytes) and signatures (64 bytes) are base64url without padding. Device ids are 32 characters `a-z2-7`; registrations from before device keys appear as `legacy:<old id>`. What is signed: `docs/DEVICE-IDENTITY.md` §4. |
 | Errors | Every error is `{"error":"<code>"}` with the status below. Codes are stable keys, never display text. Error responses carry `Cache-Control: no-store`. |
 | Bodies | JSON, `Content-Type: application/json`, at most 16 KiB. Request target (path + query) at most 2048 bytes. |
 | Identifiers | App ids, versions, channels, architectures, editions, categories: 1–128 characters of `a-z A-Z 0-9 . _ - +`, first character a letter or digit, no `..`. Channel/arch/edition/category at most 32 characters. Anything else is `invalid_request` (query) or `not_found` (path). |
@@ -29,7 +30,22 @@ itself speaks plain HTTP on `ULTRAOS_BIND`).
 | `range_not_satisfiable` | 416 | Requested byte range lies outside the file. |
 | `invalid_credentials` | 401 | Login: unknown user or wrong password. |
 | `username_taken` | 409 | Register: name in use. |
-| `device_taken` | 409 | Device id is registered to another account. |
+| `device_taken` | 409 | The device key is registered to another account (or is in use and cannot take a second number). |
+| `device_unknown` | 404 | No such device in this account; `session` challenge for a key that is not registered. |
+| `device_retired` | 410 | The key was removed or replaced earlier; it is never registered again. |
+| `device_limit` | 409 | The account has `ULTRAOS_MAX_DEVICES` devices in use (default 10). |
+| `device_quota_exhausted` | 409 | The account registered 10 × the device limit keys over its lifetime. |
+| `device_key_required` | 426 | Registration in the form of the first release for an id that is not a legacy registration of the caller. |
+| `legacy_not_eligible` | 403 | Legacy registration unknown, owned by another account, or the account token was issued after the migration. |
+| `challenge_unknown` | 400 | No challenge with this id (never issued, or forgotten after a restart). |
+| `challenge_used` | 400 | The challenge was presented before (replay). |
+| `challenge_expired` | 400 | Older than 120 s. |
+| `challenge_mismatch` | 400 | Issued to another account or for another purpose. The challenge is used up. |
+| `challenge_capacity` | 429 | More than 8 pending challenges for the account (for `session`: the key), or 65 536 in total; `Retry-After`. |
+| `signature_invalid` | 401 | A signature does not verify for the claimed key and this exact request. |
+| `cooldown_active` | 409 | Recovery of a lost device: the cool-down is not over; `Retry-After`. |
+| `recovery_pending` | 409 | Another recovery is pending for the account. |
+| `recovery_unknown` | 404 | No matching recovery (none, cancelled, expired, other key). |
 | `invalid_wireguard_key` | 400 | VPN: not a 32-byte base64 key. |
 | `turn_not_configured` | 503 | No TURN secret on this server. |
 | `vpn_pool_exhausted` | 503 | Internal address pool 10.80.0.0/16 used up. |
@@ -152,10 +168,103 @@ Errors: `invalid_credentials`, `invalid_request`, `rate_limited`.
 ### GET `/v1/account/entitlements`
 Auth: Bearer. `200`: `{"apps":["com.kmcc.pro"],"channels":["preview"]}`. Error: `auth_required`.
 
+### POST `/v1/account/password`
+Auth: Bearer. Body `{"old_password":"…","new_password":"…"}` (new password 8–256 bytes).
+`200`: `{"account_id":1,"token":"<new AT>"}`. Every account token and device token issued before
+stops working; a pending recovery is dropped; devices stay registered (notice `password_changed`).
+Errors: `auth_required`, `invalid_credentials`, `invalid_request`.
+
+---
+
+## 3a. Devices (device identity, `docs/DEVICE-IDENTITY.md`)
+
+A device is an Ed25519 key. Device id = base32(SHA-256("ultar-device-v1" ‖ public key)[0..20]).
+Every step that binds or uses a key needs a signature over a fresh challenge.
+
+### POST `/v1/device/challenge`
+Auth: Bearer; none for purpose `session`. Body
+`{"purpose":"register|session|upgrade|replace|recover","public_key":"…"}`. `200`:
+`{"challenge_id":"…","challenge":"…","server":"<server name>","account_id":7,"expires_in":120}`.
+Single use, bound to purpose, account and key. `server` is `ULTRAOS_SERVER_NAME`; a device signs
+only when it equals the name of the server it is configured for.
+Errors: `auth_required`, `invalid_request` (purpose, malformed or weak key), `device_unknown` /
+`device_retired` (`session`), `challenge_capacity`.
+
 ### POST `/v1/device/register`
-Auth: Bearer. Body `{"device_id":"…","pubkey":"…"}` (device id 1–128 bytes, key ≤ 512 bytes).
-`200`: `{"number":"UOS-XXXX-XXXX"}`; repeated calls for the same device return the same number.
-Errors: `auth_required`, `device_taken`, `invalid_request`.
+Auth: Bearer. Body `{"challenge_id":"…","signature":"…","name":"…"}` – signature over the
+`ultar-device-register-v1` transcript; `name` optional, ≤ 64 characters, no control characters.
+`200`: `{"device_id":"…","number":"UOS-XXXX-XXXX","account_id":7,"token":"<DT>","expires_in":86400}`.
+Registering an active key of the same account again returns the same number.
+Errors: `auth_required`, `invalid_request`, `challenge_*`, `signature_invalid`, `device_taken`,
+`device_retired`, `device_limit`, `device_quota_exhausted`.
+
+*First-release form* `{"device_id":"…","pubkey":"…"}`: `200 {"number":"…"}` only if the id is a
+legacy registration of the caller's account (read only); otherwise `device_key_required`. It
+creates nothing.
+
+### POST `/v1/device/session`
+Auth: none (the signature is the authentication). Body `{"challenge_id":"…","signature":"…"}` –
+challenge of purpose `session`, transcript `ultar-device-session-v1`. `200` as for register.
+Errors: `invalid_request`, `challenge_*`, `signature_invalid`, `device_unknown`.
+
+### POST `/v1/device/upgrade`
+Auth: AT, issued before the migration to device keys. Body
+`{"legacy_device_id":"<id of the first release>","challenge_id":"…","signature":"…","name":"…"}` –
+transcript `ultar-device-upgrade-v1` with the legacy id as extra data. The legacy registration
+gets the key in place and keeps its number. `200` as for register.
+Errors: `auth_required`, `legacy_not_eligible`, `challenge_*`, `signature_invalid`,
+`device_taken`, `device_retired`, `invalid_request`.
+
+### GET `/v1/devices`
+Auth: Bearer. `200`:
+`{"devices":[{"device_id":"…","name":"…","number":"UOS-…","state":"active|legacy","added":<day>,"last_seen":<day>,"current":false}],"limit":10}`.
+`added` / `last_seen` are Unix seconds rounded down to the day (`last_seen` 0 = unknown);
+`current` marks the device of the presented device token.
+
+### POST `/v1/device/rename`
+Auth: DT. Body `{"device_id":"…","name":"…"}`. `200`: `{"ok":true}`.
+Errors: `auth_required`, `device_unknown`, `invalid_request`.
+
+### POST `/v1/device/remove`
+Auth: DT (any device of the account, also the one removed). Body `{"device_id":"…"}`.
+`200`: `{"removed":true}`. The key and its number are retired for good, the device's tokens stop
+working, its signalling socket is closed. Errors: `auth_required`, `device_unknown`.
+
+### POST `/v1/device/replace`
+Auth: Bearer. Body
+`{"challenge_id":"…","old_device_id":"…","old_signature":"…","new_signature":"…","name":"…"}` –
+challenge of purpose `replace` issued for the **new** key; `old_signature` by the old key over
+`ultar-device-replace-old-v1` (extra = new public key), `new_signature` by the new key over
+`ultar-device-replace-new-v1` (extra = old public key). The number moves to the new key; the old
+device is retired. `200` as for register.
+Errors: `auth_required`, `device_unknown`, `challenge_*`, `signature_invalid`, `device_taken`,
+`device_retired`, `device_quota_exhausted`, `invalid_request`.
+
+### POST `/v1/device/recover/start` · `/cancel` · `/finish`
+Replacement of a lost device.
+
+| Call | Auth | Body | Result |
+|---|---|---|---|
+| `start` | Bearer | `{"password":"…","old_device_id":"…","challenge_id":"…","signature":"…"}` (purpose `recover`, transcript `ultar-device-recover-v1`, extra = old device id) | `{"eligible_in":259200}`; notice `recovery_started` to all devices. Repeating the same request returns the remaining time. |
+| `cancel` | DT | `{}` | `{"cancelled":true}` |
+| `finish` | Bearer | `{"old_device_id":"…","challenge_id":"…","signature":"…","name":"…"}` (fresh challenge, same new key) | as for register; the number moves |
+
+Cool-down `ULTRAOS_DEVICE_COOLDOWN_SECS` (default 72 h); a recovery expires 7 days after the
+cool-down; a password change cancels it.
+Errors: `auth_required`, `invalid_credentials`, `device_unknown`, `device_taken`,
+`device_retired`, `recovery_pending`, `recovery_unknown`, `cooldown_active`, `challenge_*`,
+`signature_invalid`, `invalid_request`.
+
+### GET `/v1/device/events`
+Auth: DT. Query `after` (optional event id). `200`:
+`{"events":[{"id":12,"event":"recovery_started","device":"<8 characters>","at":1795390000}]}` –
+the newest 64 notices of the account: `device_added`, `device_removed`, `device_replaced`,
+`device_upgraded`, `recovery_started`, `recovery_cancelled`, `recovery_finished`,
+`password_changed`. Errors: `auth_required`, `invalid_request`.
+
+---
+
+## 3b. Calls and network
 
 ### GET `/v1/turn-cred`
 Auth: Bearer. `200`: `{"urls":["stun:…","turn:…?transport=udp","turn:…?transport=tcp"],
@@ -169,11 +278,22 @@ Auth: Bearer. Body `{"pubkey":"<WireGuard public key, base64>"}`. `200`:
 Errors: `auth_required`, `invalid_wireguard_key`, `vpn_pool_exhausted`.
 
 ### GET `/v1/signal` (WebSocket)
-Auth: first text frame `{"token":"…","number":"UOS-…"}` within 10 s; the number must belong to
-the token's account. Server answers `{"type":"ready"}` or `{"type":"error","error":"auth"}`.
+Auth: the device key, in three text frames within 10 s each:
+
+1. device → `{"type":"hello","device_id":"…"}`
+2. server → `{"type":"challenge","challenge":"…","server":"<server name>","account_id":7}`
+3. device → `{"type":"auth","signature":"…"}` (transcript `ultar-device-signal-v1`)
+
+Server answers `{"type":"ready","number":"UOS-…"}` (the number of that key) or
+`{"type":"error","error":"auth"}`. No token or password opens this socket; the frame of the
+first release (`{"token":"…","number":"…"}`) is answered with
+`{"type":"error","error":"device_key_required"}`.
 Then: `{"to":"UOS-…","type":"offer|answer|ice|bye","data":…}` is forwarded to that number with
 `"from"` set by the server; an offline or overloaded target yields
 `{"type":"unreachable","to":"…"}`. Messages ≤ 64 KiB, queue 256 messages per socket.
+The server may send `{"type":"notice","event":"…","device":"<8 characters>"}` (security notices
+of the account) and, when the device is removed or replaced,
+`{"type":"error","error":"device_removed"}` before it closes the socket.
 
 ---
 
@@ -207,3 +327,7 @@ command on the server host (see DEPLOY.md §9). There is deliberately no adminis
 | Invalid JSON body: `415`/`422` from the framework | `400 invalid_request` |
 | A device id could be re-registered by another account (returned the first account's number) | `409 device_taken` |
 | No limits | rate limits, body limit 16 KiB (was 2 MiB), URI limit |
+| Device id = any string the device sent; first sender owned it | device id derived from the device's Ed25519 key; registration, sessions and the signalling socket need a signature over a fresh challenge (§3a) |
+| `/v1/signal` opened with account token + number | opened with the device key only |
+| Tokens could not be revoked; no password change | account and device epochs: password change, device removal and replacement end tokens at once |
+| No limit of devices per account | `ULTRAOS_MAX_DEVICES` (default 10) and a lifetime quota |

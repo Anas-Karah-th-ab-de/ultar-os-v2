@@ -1,0 +1,39 @@
+[package]
+name = "ultar-update"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "System updater of Ultar OS: signed manifests, anti-rollback, resumable download, A/B slots with automatic fallback, offline bundles (system core, area 3)"
+
+[lib]
+name = "ultar_update"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-updated"
+path = "src/bin/ultar-updated.rs"
+
+[[bin]]
+name = "uupdate"
+path = "src/bin/uupdate.rs"
+
+[[bin]]
+name = "uupdate-sign"
+path = "src/bin/uupdate-sign.rs"
+
+[dependencies]
+ultar-bus = { path = "../ultar-bus" }
+ultar-i18n = { path = "../ultar-i18n" }
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+getrandom = "0.2"
+rustix = { version = "1", default-features = false, features = ["std", "fs"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+tempfile = "3"
+

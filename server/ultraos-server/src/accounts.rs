@@ -1,4 +1,5 @@
-//! Account-bound endpoints: registration, login, device number, TURN credentials, WireGuard peer.
+//! Account-bound endpoints: registration, login, password change, TURN credentials, WireGuard
+//! peer. Devices and their numbers live in [`crate::device_api`].
 //!
 //! These keep the behaviour of the first server release; an account stays required for calls via
 //! Ultar number, VPN, backup, mesh over the internet and premium content.
@@ -10,7 +11,6 @@ use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{async_trait, Json};
-use rand::Rng;
 use rusqlite::OptionalExtension;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -66,11 +66,6 @@ fn json_rejection(rejection: &JsonRejection) -> ApiError {
     }
 }
 
-fn gen_number() -> String {
-    let mut r = rand::thread_rng();
-    format!("UOS-{:04X}-{:04X}", r.gen::<u16>(), r.gen::<u16>())
-}
-
 /// Body of register and login.
 #[derive(Deserialize)]
 pub struct Credentials {
@@ -78,10 +73,46 @@ pub struct Credentials {
     password: String,
 }
 
-fn session(st: &AppState, account_id: i64) -> Result<Json<Value>, ApiError> {
-    let token =
-        auth::issue_token(&st.secret, account_id, TOKEN_TTL_SECS).ok_or(ApiError::Internal)?;
+fn session(st: &AppState, account_id: i64, epoch: i64) -> Result<Json<Value>, ApiError> {
+    let token = auth::issue_token_epoch(&st.secret, account_id, TOKEN_TTL_SECS, epoch)
+        .ok_or(ApiError::Internal)?;
     Ok(Json(json!({ "account_id": account_id, "token": token })))
+}
+
+async fn hash_new_password(password: String) -> Result<String, ApiError> {
+    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
+    tokio::task::spawn_blocking(move || auth::hash_password(&password))
+        .await
+        .map_err(|_| ApiError::Internal)?
+        .map_err(|_| ApiError::Internal)
+}
+
+/// Checks `password` against the stored hash of `account_id` (Argon2id, bounded concurrency).
+/// An unknown account costs the same work as a wrong password.
+pub async fn password_matches(
+    st: &AppState,
+    account_id: i64,
+    password: String,
+) -> Result<bool, ApiError> {
+    if password.len() > 256 {
+        return Ok(false);
+    }
+    let stored: Option<String> = st
+        .db
+        .lock()
+        .query_row(
+            "SELECT pw_hash FROM accounts WHERE id=?1",
+            [account_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let known = stored.is_some();
+    let hash = stored.unwrap_or_else(|| decoy_hash().to_string());
+    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
+    let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
+        .await
+        .map_err(|_| ApiError::Internal)?;
+    Ok(ok && known)
 }
 
 /// `POST /v1/account/register` — creates an account and returns a session token.
@@ -93,12 +124,7 @@ pub async fn account_register(
     if !(3..=64).contains(&name_len) || !(8..=256).contains(&c.password.len()) {
         return Err(ApiError::InvalidRequest);
     }
-    let password = c.password;
-    let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
-    let hash = tokio::task::spawn_blocking(move || auth::hash_password(&password))
-        .await
-        .map_err(|_| ApiError::Internal)?
-        .map_err(|_| ApiError::Internal)?;
+    let hash = hash_new_password(c.password).await?;
     let id = {
         let conn = st.db.lock();
         let inserted = conn.execute(
@@ -111,7 +137,7 @@ pub async fn account_register(
         conn.last_insert_rowid()
     };
     tracing::info!(event = "account_registered");
-    session(&st, id)
+    session(&st, id, 0)
 }
 
 /// `POST /v1/account/login` — checks the password and returns a session token.
@@ -122,18 +148,18 @@ pub async fn account_login(
     if c.username.len() > 256 || c.password.len() > 256 {
         return Err(ApiError::InvalidCredentials);
     }
-    let row: Option<(i64, String)> = st
+    let row: Option<(i64, String, i64)> = st
         .db
         .lock()
         .query_row(
-            "SELECT id, pw_hash FROM accounts WHERE username=?1",
+            "SELECT id, pw_hash, token_epoch FROM accounts WHERE username=?1",
             [&c.username],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?;
     // unknown user: the same work as for a wrong password (no timing difference to tell them apart)
     let (id, hash) = match row {
-        Some((id, hash)) => (Some(id), hash),
+        Some((id, hash, epoch)) => (Some((id, epoch)), hash),
         None => (None, decoy_hash().to_string()),
     };
     let password = c.password;
@@ -142,9 +168,59 @@ pub async fn account_login(
         .await
         .map_err(|_| ApiError::Internal)?;
     match id {
-        Some(id) if ok => session(&st, id),
+        Some((id, epoch)) if ok => session(&st, id, epoch),
         _ => Err(ApiError::InvalidCredentials),
     }
+}
+
+/// Body of the password change.
+#[derive(Deserialize)]
+pub struct PasswordChange {
+    old_password: String,
+    new_password: String,
+}
+
+/// `POST /v1/account/password` — changes the password. The account's token epoch moves on, so
+/// every account token and every device token issued before is dead at once; a pending
+/// lost-device recovery is dropped; the devices are told. Returns a new account token.
+pub async fn account_password(
+    State(st): State<Shared>,
+    h: HeaderMap,
+    ApiJson(p): ApiJson<PasswordChange>,
+) -> Result<Json<Value>, ApiError> {
+    let acc = require_account(&st, &h)?;
+    if !(8..=256).contains(&p.new_password.len()) {
+        return Err(ApiError::InvalidRequest);
+    }
+    if !password_matches(&st, acc, p.old_password).await? {
+        return Err(ApiError::InvalidCredentials);
+    }
+    let hash = hash_new_password(p.new_password).await?;
+    let now = st.devices.now_secs();
+    let epoch: i64 = {
+        let mut conn = st.db.lock();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "UPDATE accounts SET pw_hash=?1, token_epoch=token_epoch+1 WHERE id=?2",
+            rusqlite::params![hash, acc],
+        )?;
+        crate::device_moves::recovery_clear(&tx, acc)?;
+        crate::device_events::push(
+            &tx,
+            acc,
+            crate::device_events::EventKind::PasswordChanged,
+            "",
+            now,
+        )?;
+        let epoch = tx.query_row("SELECT token_epoch FROM accounts WHERE id=?1", [acc], |r| {
+            r.get(0)
+        })?;
+        tx.commit()?;
+        epoch
+    };
+    st.hub.notify_account(acc, "password_changed", "");
+    tracing::info!(event = "password_changed");
+    session(&st, acc, epoch)
 }
 
 /// `GET /v1/account/entitlements` — what the signed-in account has access to:
@@ -171,60 +247,6 @@ pub async fn account_entitlements(
         }
     }
     Ok(Json(json!({ "apps": apps, "channels": channels })))
-}
-
-/// Body of the device registration.
-#[derive(Deserialize)]
-pub struct DeviceReg {
-    device_id: String,
-    pubkey: String,
-}
-
-/// `POST /v1/device/register` — registers the device and assigns its unique Ultar number.
-/// Idempotent per device. A device id owned by another account is refused (`device_taken`).
-pub async fn device_register(
-    State(st): State<Shared>,
-    h: HeaderMap,
-    ApiJson(d): ApiJson<DeviceReg>,
-) -> Result<Json<Value>, ApiError> {
-    let acc = require_account(&st, &h)?;
-    if d.device_id.is_empty() || d.device_id.len() > 128 || d.pubkey.len() > 512 {
-        return Err(ApiError::InvalidRequest);
-    }
-    let conn = st.db.lock();
-    conn.execute(
-        "INSERT OR IGNORE INTO devices(account_id, device_id, pubkey, created) VALUES(?1,?2,?3,?4)",
-        rusqlite::params![acc, d.device_id, d.pubkey, db::now()],
-    )?;
-    let owner: i64 = conn.query_row(
-        "SELECT account_id FROM devices WHERE device_id=?1",
-        [&d.device_id],
-        |r| r.get(0),
-    )?;
-    if owner != acc {
-        return Err(ApiError::DeviceTaken);
-    }
-    let existing: Option<String> = conn
-        .query_row(
-            "SELECT number FROM numbers WHERE device_id=?1",
-            [&d.device_id],
-            |r| r.get(0),
-        )
-        .optional()?;
-    if let Some(n) = existing {
-        return Ok(Json(json!({ "number": n })));
-    }
-    for _ in 0..20 {
-        let n = gen_number();
-        let inserted = conn.execute(
-            "INSERT INTO numbers(number, account_id, device_id, created) VALUES(?1,?2,?3,?4)",
-            rusqlite::params![n, acc, d.device_id, db::now()],
-        );
-        if inserted.is_ok() {
-            return Ok(Json(json!({ "number": n })));
-        }
-    }
-    Err(ApiError::Internal)
 }
 
 /// `GET /v1/turn-cred` — short-lived TURN credentials (coturn REST scheme: user = `exp:account`,
@@ -342,17 +364,6 @@ pub fn next_wg_host(conn: &rusqlite::Connection) -> rusqlite::Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn numbers_have_the_documented_shape() {
-        let n = gen_number();
-        assert_eq!(n.len(), 13);
-        assert!(n.starts_with("UOS-") && n.as_bytes()[8] == b'-');
-        assert!(n[4..8]
-            .bytes()
-            .chain(n[9..].bytes())
-            .all(|b| b.is_ascii_hexdigit()));
-    }
 
     #[test]
     fn wireguard_key_validation() {

@@ -29,8 +29,8 @@ pub(crate) struct TwoGen<K, V> {
 }
 
 impl<K: Hash + Eq + Clone, V: Clone> TwoGen<K, V> {
-    /// `limit` is the cost one generation may hold; total held cost stays below
-    /// `2 * limit` plus one entry.
+    /// `limit` is the cost one generation may hold; total held cost never exceeds
+    /// `2 * limit`. A value that alone costs more than `limit` is returned but not kept.
     pub(crate) fn new(limit: usize) -> Self {
         TwoGen {
             young: HashMap::new(),
@@ -60,6 +60,10 @@ impl<K: Hash + Eq + Clone, V: Clone> TwoGen<K, V> {
                 make()
             }
         };
+        if cost > self.limit {
+            // Larger than a whole generation (a glyph at an absurd size): never held.
+            return value;
+        }
         if self.young_cost + cost > self.limit && !self.young.is_empty() {
             self.old = std::mem::take(&mut self.young);
             self.old_cost = self.young_cost;
@@ -72,6 +76,12 @@ impl<K: Hash + Eq + Clone, V: Clone> TwoGen<K, V> {
 
     /// Replaces the value of `key` (used when a hash key turned out to be a collision).
     pub(crate) fn replace(&mut self, key: &K, value: V, cost: usize) {
+        if cost > self.limit {
+            if let Some(previous) = self.young.remove(key) {
+                self.young_cost = self.young_cost.saturating_sub(previous.1);
+            }
+            return;
+        }
         if let Some(previous) = self.young.insert(key.clone(), (value, cost)) {
             self.young_cost = self.young_cost.saturating_sub(previous.1);
         }
@@ -135,7 +145,15 @@ mod tests {
     fn oversized_entry_is_still_returned() {
         let mut cache: TwoGen<u32, u32> = TwoGen::new(4);
         assert_eq!(cache.get_or_insert_with(&7, || (70, 1000)), 70);
+        assert_eq!(
+            cache.stats().cost,
+            0,
+            "an entry above the limit is not kept"
+        );
         cache.get_or_insert_with(&8, || (80, 1));
-        assert!(cache.stats().entries <= 2);
+        assert_eq!((cache.stats().entries, cache.stats().cost), (1, 1));
+        cache.replace(&8, 81, 1000);
+        assert_eq!((cache.stats().entries, cache.stats().cost), (0, 0));
+        assert_eq!(cache.get_or_insert_with(&8, || (82, 1)), 82);
     }
 }

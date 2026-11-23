@@ -2,6 +2,8 @@
 //! real TCP. Time for rate limiting comes from a manual clock.
 #![allow(dead_code)]
 
+pub mod device;
+
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};

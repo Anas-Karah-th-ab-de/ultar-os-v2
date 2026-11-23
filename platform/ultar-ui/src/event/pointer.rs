@@ -2,37 +2,73 @@
 
 use super::{Action, ActionKind};
 use crate::geom::Point;
-use crate::ui::{NodeId, Popup, Ui};
-use crate::widgets::{Widget, MAX_VISIBLE_OPTIONS};
+use crate::ui::{NodeId, Pointer, Popup, Press, Ui};
+use crate::widgets::{Select, TextField, Widget};
 
 impl Ui {
-    /// The topmost operable widget under `pos`.
+    /// The topmost operable widget under `pos`. While a dialog is open only its widgets
+    /// count; widgets inside a scroll container count only where they are visible.
     pub(crate) fn hit(&self, pos: Point) -> Option<NodeId> {
-        self.order.iter().rev().copied().find(|id| {
-            let interactive = self.nodes[id.index()].widget.is_interactive();
-            interactive && !self.is_disabled(*id) && self.rect(*id).is_some_and(|r| r.contains(pos))
-        })
+        self.reachable()
+            .iter()
+            .rev()
+            .copied()
+            .find(|id| self.interactive(*id) && !self.is_disabled(*id) && self.visible_at(*id, pos))
+    }
+
+    /// The part of `id` under `pos`: a tab, a radio option, the clear button of a search
+    /// field. `None` for widgets without parts.
+    pub(crate) fn part_at(&self, id: NodeId, pos: Point) -> Option<usize> {
+        let rect = self.rect(id)?;
+        let direction = self.env.direction;
+        match &self.nodes[id.index()].widget {
+            Widget::Tabs(tabs) => tabs.part_at(rect, pos, direction),
+            Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode),
+            Widget::TextField(field) => {
+                field.part_at(TextField::field(rect, self.mode), pos, direction)
+            }
+            _ => None,
+        }
     }
 
     pub(crate) fn set_hover(&mut self, hover: Option<NodeId>) {
         if self.input.hover != hover {
             let previous = std::mem::replace(&mut self.input.hover, hover);
+            self.input.hover_part = None;
             for id in [previous, hover].into_iter().flatten() {
                 self.touch(id);
             }
+            self.hide_tooltip();
+            self.watch_hover(hover);
         }
     }
 
-    pub(crate) fn set_pressed(&mut self, pressed: Option<NodeId>) {
-        if self.input.pressed != pressed {
-            let previous = std::mem::replace(&mut self.input.pressed, pressed);
-            for id in [previous, pressed].into_iter().flatten() {
+    fn set_hover_part(&mut self, part: Option<usize>) {
+        if self.input.hover_part != part {
+            self.input.hover_part = part;
+            if let Some(id) = self.input.hover {
                 self.touch(id);
             }
         }
     }
 
-    /// Moves focus; `visible` shows the focus ring (keyboard focus).
+    /// Sets what `pointer` holds down.
+    pub(crate) fn set_press(&mut self, pointer: Pointer, press: Option<Press>) {
+        let slot = match pointer {
+            Pointer::Mouse => &mut self.input.mouse,
+            Pointer::Touch => &mut self.input.finger,
+        };
+        if *slot != press {
+            let previous = std::mem::replace(slot, press);
+            for id in [previous, press].into_iter().flatten().map(|p| p.node) {
+                self.touch(id);
+            }
+        }
+    }
+
+    /// Moves focus; `visible` shows the focus ring (keyboard focus). Keyboard focus scrolls
+    /// the widget into view and shows its tooltip at once; a press never moves the content
+    /// under the pointer.
     pub(crate) fn set_focus(&mut self, focus: Option<NodeId>, visible: bool) {
         if self.input.focus != focus || self.input.focus_visible != visible {
             let previous = std::mem::replace(&mut self.input.focus, focus);
@@ -40,7 +76,21 @@ impl Ui {
             for id in [previous, focus].into_iter().flatten() {
                 self.touch(id);
             }
+            self.hide_tooltip();
+            if let (Some(id), true) = (focus, visible) {
+                self.reveal(id, &mut Vec::new());
+                self.show_tooltip(id);
+            }
         }
+    }
+
+    /// Number of options the open list shows at once.
+    fn popup_rows(&self, id: NodeId) -> usize {
+        let (Some(rect), Ok(select)) = (self.rect(id), self.select(id)) else {
+            return 0;
+        };
+        let field = Select::field(rect, self.mode);
+        select.popup(field, self.size(), self.mode, 0).count
     }
 
     /// Opens the options list of a select.
@@ -57,7 +107,8 @@ impl Ui {
             highlight,
             scroll: 0,
         };
-        keep_visible(&mut popup);
+        let rows = self.popup_rows(id);
+        keep_visible(&mut popup, rows);
         self.input.popup = Some(popup);
         self.set_hover(None);
         self.touch_popup();
@@ -108,34 +159,13 @@ impl Ui {
             return;
         }
         popup.highlight = index.min(count - 1);
-        keep_visible(&mut popup);
+        let rows = self.popup_rows(popup.select);
+        keep_visible(&mut popup, rows);
         if self.input.popup != Some(popup) {
+            self.touch_popup();
             self.input.popup = Some(popup);
             self.touch_popup();
         }
-    }
-
-    /// Performs the widget's main action (click, Enter, Space).
-    pub(crate) fn activate(&mut self, id: NodeId, out: &mut Vec<Action>) {
-        if self.is_disabled(id) || self.nodes[id.index()].loading {
-            return;
-        }
-        let now = self.now_ms;
-        let animate = !self.reduce_motion();
-        let open = self.is_open(id);
-        let kind = match &mut self.nodes[id.index()].widget {
-            Widget::Button(_) | Widget::IconButton(_) => ActionKind::Activated,
-            Widget::Switch(switch) => {
-                switch.on = !switch.on;
-                switch.toggled_at = animate.then_some(now);
-                ActionKind::Toggled(switch.on)
-            }
-            Widget::Select(_) if open => return self.close_popup(out),
-            Widget::Select(_) => return self.open_popup(id, out),
-            _ => return,
-        };
-        out.push(Action { node: id, kind });
-        self.touch(id);
     }
 
     /// Sets a slider from a pointer position.
@@ -170,66 +200,132 @@ impl Ui {
         }
     }
 
-    pub(crate) fn pointer_move(&mut self, pos: Point, hover: bool, out: &mut Vec<Action>) -> bool {
-        if let Some((_, view)) = self.popup_view() {
-            // The open list is modal: nothing beneath it is hovered.
-            self.set_hover(None);
-            if let Some(index) = view.option_at(pos) {
-                self.highlight(index);
-            }
-            return view.rect.contains(pos);
+    fn popup_move(&mut self, pos: Point) -> Option<bool> {
+        let (_, view) = self.popup_view()?;
+        // The open list is modal: nothing beneath it is hovered.
+        self.set_hover(None);
+        if let Some(index) = view.option_at(pos) {
+            self.highlight(index);
         }
-        if hover {
+        Some(view.rect.contains(pos))
+    }
+
+    pub(crate) fn pointer_move(
+        &mut self,
+        pos: Point,
+        pointer: Pointer,
+        out: &mut Vec<Action>,
+    ) -> bool {
+        if self.layers.menu.is_some() {
+            return self.menu_hover(pos);
+        }
+        if let Some(inside) = self.popup_move(pos) {
+            return inside;
+        }
+        if self.drag_move(pos, pointer, out) {
+            return true;
+        }
+        if pointer == Pointer::Mouse {
             let hit = self.hit(pos);
             self.set_hover(hit);
+            let part = hit.and_then(|id| self.part_at(id, pos));
+            self.set_hover_part(part);
         }
-        match self.input.pressed {
-            Some(id) if matches!(self.nodes[id.index()].widget, Widget::Slider(_)) => {
-                self.drag_slider(id, pos, out);
+        match self.input.press(pointer) {
+            Some(press) if matches!(self.nodes[press.node.index()].widget, Widget::Slider(_)) => {
+                self.drag_slider(press.node, pos, out);
                 true
             }
-            pressed => pressed.is_some(),
+            press => press.is_some(),
         }
     }
 
-    pub(crate) fn pointer_down(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
-        if let Some((_, view)) = self.popup_view() {
-            match view.option_at(pos) {
-                Some(index) => self.highlight(index),
-                None if !view.rect.contains(pos) => self.close_popup(out),
-                None => {}
-            }
+    fn popup_down(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
+        let Some((_, view)) = self.popup_view() else {
+            return false;
+        };
+        match view.option_at(pos) {
+            Some(index) => self.highlight(index),
+            None if !view.rect.contains(pos) => self.close_popup(out),
+            None => {}
+        }
+        true
+    }
+
+    pub(crate) fn pointer_down(
+        &mut self,
+        pos: Point,
+        pointer: Pointer,
+        out: &mut Vec<Action>,
+    ) -> bool {
+        if self.layers.menu.is_some() {
+            return self.menu_press(pos, out);
+        }
+        if self.popup_down(pos, out) {
+            return true;
+        }
+        self.hide_tooltip();
+        self.layers.hover_since = None;
+        if self.drag_start(pos, pointer) {
             return true;
         }
         let Some(id) = self.hit(pos) else {
-            return false;
+            return self.modal_press(pos, out);
         };
-        self.set_pressed(Some(id));
+        let part = self.part_at(id, pos);
+        self.set_press(pointer, Some(Press { node: id, part }));
         self.set_focus(Some(id), false);
-        match self.nodes[id.index()].widget {
+        match &self.nodes[id.index()].widget {
             Widget::Slider(_) => self.drag_slider(id, pos, out),
-            Widget::TextField(_) => self.place_caret(id, pos),
+            Widget::TextField(_) if part.is_none() => self.place_caret(id, pos),
             _ => {}
         }
         true
     }
 
-    pub(crate) fn pointer_up(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
+    pub(crate) fn pointer_up(
+        &mut self,
+        pos: Point,
+        pointer: Pointer,
+        out: &mut Vec<Action>,
+    ) -> bool {
+        if self.layers.menu.is_some() {
+            self.set_press(pointer, None);
+            return self.menu_release(pos, out);
+        }
         if let Some((_, view)) = self.popup_view() {
             if let Some(index) = view.option_at(pos) {
                 self.choose(index, out);
             }
-            self.set_pressed(None);
+            self.set_press(pointer, None);
             return true;
         }
-        let Some(id) = self.input.pressed else {
-            return false;
+        if self.drag_end(pointer) {
+            return true;
+        }
+        let Some(press) = self.input.press(pointer) else {
+            return self.open_dialog_node().is_some();
         };
-        self.set_pressed(None);
-        if self.hit(pos) == Some(id) {
-            self.activate(id, out);
+        self.set_press(pointer, None);
+        if self.hit(pos) == Some(press.node) && self.part_at(press.node, pos) == press.part {
+            self.activate(press.node, press.part, out);
         }
         true
+    }
+
+    /// The secondary button: opens the context menu of the node under the pointer.
+    pub(crate) fn secondary_down(&mut self, pos: Point, out: &mut Vec<Action>) -> bool {
+        if self.layers.menu.is_some() {
+            return self.menu_press(pos, out);
+        }
+        if self.input.popup.is_some() {
+            self.close_popup(out);
+            return true;
+        }
+        match self.node_at(pos) {
+            Some(id) => self.open_registered_menu(id, Some(pos), out),
+            None => false,
+        }
     }
 
     pub(crate) fn touch_down(&mut self, id: u64, pos: Point, out: &mut Vec<Action>) -> bool {
@@ -238,7 +334,7 @@ impl Ui {
         }
         self.input.touch = Some(id);
         self.set_hover(None);
-        self.pointer_down(pos, out)
+        self.pointer_down(pos, Pointer::Touch, out)
     }
 
     pub(crate) fn touch_up(&mut self, id: u64, pos: Point, out: &mut Vec<Action>) -> bool {
@@ -246,7 +342,7 @@ impl Ui {
             return false;
         }
         self.input.touch = None;
-        self.pointer_up(pos, out)
+        self.pointer_up(pos, Pointer::Touch, out)
     }
 
     pub(crate) fn touch_cancel(&mut self, id: u64) -> bool {
@@ -254,34 +350,18 @@ impl Ui {
             return false;
         }
         self.input.touch = None;
-        let had_press = self.input.pressed.is_some();
-        self.set_pressed(None);
+        let had_press = self.input.finger.is_some() || self.drag_end(Pointer::Touch);
+        self.set_press(Pointer::Touch, None);
         had_press
-    }
-
-    pub(crate) fn scroll(&mut self, pos: Point, lines: f32) -> bool {
-        let (Some(mut popup), Some((id, view))) = (self.input.popup, self.popup_view()) else {
-            return false;
-        };
-        if !view.rect.contains(pos) || !lines.is_finite() {
-            return false;
-        }
-        let count = self.select(id).map_or(0, |s| s.options.len());
-        let last = count.saturating_sub(MAX_VISIBLE_OPTIONS) as f32;
-        popup.scroll = (popup.scroll as f32 + lines.round()).clamp(0.0, last) as usize;
-        if self.input.popup != Some(popup) {
-            self.touch_popup();
-            self.input.popup = Some(popup);
-        }
-        true
     }
 }
 
-/// Adjusts the scroll offset so that the highlighted option is among the visible ones.
-fn keep_visible(popup: &mut Popup) {
+/// Adjusts the scroll offset so that the highlighted option is among the `rows` visible ones.
+fn keep_visible(popup: &mut Popup, rows: usize) {
+    let rows = rows.max(1);
     if popup.highlight < popup.scroll {
         popup.scroll = popup.highlight;
-    } else if popup.highlight >= popup.scroll + MAX_VISIBLE_OPTIONS {
-        popup.scroll = popup.highlight + 1 - MAX_VISIBLE_OPTIONS;
+    } else if popup.highlight >= popup.scroll + rows {
+        popup.scroll = popup.highlight + 1 - rows;
     }
 }

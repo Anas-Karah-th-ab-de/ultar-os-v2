@@ -351,7 +351,7 @@ settingsd.store.unknown_key_dropped = حُذف الإعداد {detail} من {fil
 settingsd.store.invalid_value_dropped = قيمة الإعداد {detail} في {file} غير مقبولة؛ عاد إلى قيمته الافتراضية
 settingsd.store.unreadable = تعذّرت قراءة ملف الإعدادات {file}؛ تُستخدم القيم الافتراضية
 
-settingsd.daemon.usage = الاستخدام: ultar-settingsd --store DIR [--socket PATH] [--user NAME] [--policy FILE | --allow-all] [--profile FILE] [--write-delay-ms N] [--token TOKEN] [--log-apply]
+settingsd.daemon.usage = الاستخدام: ultar-settingsd --store DIR [--socket PATH] [--user NAME] [--policy FILE | --allow-all] [--profile FILE] [--write-delay-ms N] [--token-file FILE | --token-fd N] [--log-socket PATH] [--allow-root] [--log-apply]
 settingsd.daemon.bad_arguments = خيارات غير صحيحة
 settingsd.daemon.no_policy = يجب تحديد --policy FILE أو --allow-all
 settingsd.daemon.allow_all = تحذير: كل من يصل إلى الخدمة يُعدّ مديراً (--allow-all)
@@ -363,11 +363,16 @@ settingsd.daemon.bus_error = تعذّر الاتصال بناقل النظام: 
 settingsd.daemon.write_error = تعذّرت كتابة الإعدادات: {detail}
 settingsd.daemon.ready = خدمة الإعدادات جاهزة
 settingsd.daemon.stopped = توقفت خدمة الإعدادات
+settingsd.daemon.policy_conflict = لا يجوز الجمع بين --policy و --allow-all
+settingsd.daemon.token_rejected = تعذّرت قراءة الرمز السري: {detail}
+settingsd.daemon.root_refused = لن تعمل خدمة الإعدادات بصلاحيات الجذر دون --allow-root
+settingsd.daemon.hardening_failed = تعذّر تطبيق قيود الحماية الذاتية: {detail}
 
-usettings.usage = الاستخدام: usettings [--socket PATH] [--lang ar|en|de] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
+usettings.usage = الاستخدام: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
 
 usettings.error.arguments = أمر غير صحيح
 usettings.error.no_socket = لم يُحدَّد مقبس الناقل (--socket أو ULTAR_BUS_SOCKET)
+usettings.error.token_file = تعذّرت قراءة ملف الرمز السري: {detail}
 
 usettings.get = {key} = {value}
 

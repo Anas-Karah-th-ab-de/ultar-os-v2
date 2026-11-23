@@ -43,6 +43,36 @@ cloud.error.package_rejected = رُفضت الحزمة: التوقيع مفقو�
 cloud.error.not_signed_in = لم تسجّل الدخول على هذا الجهاز.
 cloud.error.vpn = تعذّر تجهيز مفاتيح الشبكة الخاصة.
 
+# هوية الجهاز
+cloud.device.challenge_rejected = لم يقبل الخادم فحص الأمان. حاول مرة أخرى.
+cloud.device.signature_rejected = لم يقبل الخادم إثبات هوية هذا الجهاز.
+cloud.device.taken = هذا الجهاز مسجَّل من قبل في حساب آخر.
+cloud.device.retired = أُزيل هذا الجهاز من الحساب. أعد ضبط هوية الجهاز لتسجيله من جديد، وسيحصل على رقم جديد.
+cloud.device.limit = بلغ حسابك الحد الأقصى لعدد الأجهزة. أزِل جهازًا أولًا.
+cloud.device.unknown = الخادم لا يعرف هذا الجهاز.
+cloud.device.update_required = حدِّث النظام على هذا الجهاز قبل تسجيله.
+cloud.device.legacy_not_eligible = تعذّر على هذا الجهاز استلام التسجيل السابق.
+cloud.device.cooldown_active = {seconds ->
+    [zero] يمكن نقل الرقم الآن.
+    [one] يمكن نقل الرقم بعد ثانية واحدة.
+    [two] يمكن نقل الرقم بعد ثانيتين.
+    [few] يمكن نقل الرقم بعد {seconds} ثوانٍ.
+    [many] يمكن نقل الرقم بعد {seconds} ثانية.
+   *[other] يمكن نقل الرقم بعد {seconds} ثانية.
+}
+cloud.device.recovery_pending = يوجد طلب استبدال جهاز قيد الانتظار لهذا الحساب.
+cloud.device.recovery_unknown = لا يوجد طلب استبدال جهاز قيد الانتظار.
+cloud.device.server_mismatch = فحص الأمان يخصّ خادمًا آخر أو حسابًا آخر. لم يُوقَّع أي شيء.
+cloud.device.key_unusable = تعذّر استخدام مفتاح الجهاز. لم يُغيَّر المفتاح.
+cloud.device.not_registered = هذا الجهاز غير مسجَّل بعد.
+cloud.device.state.active = مسجَّل
+cloud.device.state.legacy = مسجَّل قبل اعتماد مفاتيح الأجهزة – حدِّث هذا الجهاز
+cloud.device.this_device = هذا الجهاز
+cloud.device.none = لا توجد أجهزة مسجَّلة.
+cloud.device.removed = أُزيل الجهاز.
+cloud.device.renamed = تم تغيير اسم الجهاز.
+cloud.device.reset = حُذفت هوية الجهاز. سجِّل الجهاز من جديد ليحصل على رقم جديد.
+
 # سطر الأوامر
 cloud.cli.signed_in = تم تسجيل الدخول.
 cloud.cli.number = رقم ألتار: {number}
@@ -51,4 +81,4 @@ cloud.cli.server = الخادم: {server}
 cloud.cli.account.signed_in = الحساب: مسجّل الدخول
 cloud.cli.account.signed_out = الحساب: غير مسجّل (المتجر والتحديثات يعملان بدون حساب)
 cloud.cli.unknown_command = أمر غير معروف: {command}
-cloud.cli.usage = الاستخدام: ucloud register|login <مستخدم> <كلمة-المرور> · number · vpn · store [بحث] · app <معرّف> · install <معرّف> · update [قناة] · whoami
+cloud.cli.usage = الاستخدام: ucloud register|login <مستخدم> <كلمة-المرور> · number · devices · device-rename <معرّف> <اسم> · device-remove <معرّف> · device-reset · vpn · store [بحث] · app <معرّف> · install <معرّف> · update [قناة] · whoami

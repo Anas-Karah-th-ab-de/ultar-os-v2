@@ -14,11 +14,13 @@
 //! | `settings.store_report` | topic | yes | `settingsd` |
 //! | `power.state` | topic | yes | power service |
 //! | `shell.mode` | topic | yes | shell |
+//! | `log.query` / `log.stats` | calls | – | log service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
 pub mod device_service;
 pub mod devices;
+pub mod log;
 pub mod notify;
 pub mod power;
 pub mod settings;

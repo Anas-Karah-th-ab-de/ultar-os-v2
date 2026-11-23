@@ -1,10 +1,12 @@
 //! The bus service `devices`: request dispatch for [`Daemon`].
 
+use crate::access::ADMIN_METHODS;
 use crate::daemon::Daemon;
 use ultar_bus::messages::device_service::{
     ClearQuarantine, List, Rescan, Rollback, Shutdown, ShutdownReply, Switch, SERVICE,
 };
 use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
+use ultar_service::log::{Level, Record};
 
 /// Whether the daemon keeps serving after a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +28,19 @@ impl Daemon {
     pub fn handle(&mut self, request: IncomingRequest) -> Flow {
         let mut flow = Flow::Continue;
         let method = request.method().to_string();
+        if let Some(operation) = ADMIN_METHODS.iter().find(|name| **name == method) {
+            if !self.access.is_admin(request.caller()) {
+                // Refused before the request is even decoded: a caller
+                // without the permission learns nothing about the state.
+                self.logger.emit(
+                    Record::new(Level::Warn, "devd.admin_refused")
+                        .word("op", operation)
+                        .id_or_invalid("peer", request.caller()),
+                );
+                let _ = request.fail(ErrorCode::PermissionDenied);
+                return flow;
+            }
+        }
         let _sent = match method.as_str() {
             "list" => request.respond::<List>(|_| Ok(self.list())),
             "switch" => request.respond::<Switch>(|call| {

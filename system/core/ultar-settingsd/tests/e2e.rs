@@ -11,6 +11,15 @@ use ultar_bus::{Broker, Client, ClientOptions, FixedIdentity, Identity, Policy};
 use ultar_profile::{Capabilities, Capability, CapabilitySet, DeviceProfile, Edition, FormFactor};
 use ultar_settingsd::testdir::TestDir;
 
+/// `--allow-root` when the tests run as root, nothing otherwise.
+fn root_flag() -> &'static [&'static str] {
+    if ultar_service::effective_uid() == 0 {
+        &["--allow-root"]
+    } else {
+        &[]
+    }
+}
+
 const DAEMON: &str = env!("CARGO_BIN_EXE_ultar-settingsd");
 const CLI: &str = env!("CARGO_BIN_EXE_usettings");
 const WAIT: Duration = Duration::from_secs(30);
@@ -82,6 +91,8 @@ impl World {
                 "--write-delay-ms",
                 "20",
             ])
+            // Root has to be declared (the tests may run as root).
+            .args(root_flag())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -353,6 +364,7 @@ fn daemon_reports_a_damaged_file_and_refuses_bad_command_lines() {
     let run = |args: &[&str]| {
         Command::new(DAEMON)
             .args(args)
+            .args(root_flag())
             .args(["--lang", "en"])
             .env_remove("ULTAR_BUS_SOCKET")
             .output()

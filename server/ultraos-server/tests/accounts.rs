@@ -2,6 +2,7 @@
 //! signalling and Verbund must keep working.
 
 mod common;
+use common::device::TestDevice;
 use common::TestServer;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -23,20 +24,11 @@ fn register_token_device_number_vpn_peer() {
     assert_eq!(v["account_id"], 1);
     let token = v["token"].as_str().unwrap().to_string();
 
-    let device = json!({"device_id":"device-1","pubkey":"cHVi"});
-    let number = s.post("/v1/device/register", Some(&token), &device).json()["number"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let device = TestDevice::new(1);
+    let number = device.number(&s, &token);
     assert!(number.starts_with("UOS-") && number.len() == 13, "{number}");
-    let again = s.post("/v1/device/register", Some(&token), &device).json();
-    assert_eq!(again["number"], number.as_str(), "idempotent per device");
-    let second = s.post(
-        "/v1/device/register",
-        Some(&token),
-        &json!({"device_id":"device-2","pubkey":"cHVi"}),
-    );
-    assert_ne!(second.json()["number"], number.as_str());
+    assert_eq!(device.number(&s, &token), number, "idempotent per device");
+    assert_ne!(TestDevice::new(2).number(&s, &token), number);
 
     let peer = s
         .post("/v1/vpn/peer", Some(&token), &json!({"pubkey": WG_KEY_1}))
@@ -108,6 +100,11 @@ fn account_endpoints_reject_bad_input_and_missing_tokens() {
             (401, "invalid_credentials")
         );
     }
+    closed_without_a_token_and_ids_cannot_be_claimed(&s, &token);
+}
+
+/// Second half of the test above.
+fn closed_without_a_token_and_ids_cannot_be_claimed(s: &TestServer, token: &str) {
     // Account-bound endpoints stay closed without a token.
     let device = json!({"device_id":"d","pubkey":"p"});
     for (path, body) in [
@@ -120,11 +117,19 @@ fn account_endpoints_reject_bad_input_and_missing_tokens() {
     }
     assert_eq!(s.get("/v1/turn-cred").error_code(), "auth_required");
     assert_eq!(s.get("/v1/verbund/geraete").status, 401);
-    // A device id belongs to the account that registered it first.
-    s.post("/v1/device/register", Some(&token), &device);
+    // A device id can no longer be claimed by sending it: the form of the first release creates
+    // nothing, for the first sender as little as for the second (finding S15).
+    let first = s.post("/v1/device/register", Some(token), &device);
+    assert_eq!(
+        (first.status, first.error_code().as_str()),
+        (426, "device_key_required")
+    );
     let thief = s.register("mallory");
     let r = s.post("/v1/device/register", Some(&thief), &device);
-    assert_eq!((r.status, r.error_code().as_str()), (409, "device_taken"));
+    assert_eq!(
+        (r.status, r.error_code().as_str()),
+        (426, "device_key_required")
+    );
 }
 
 #[test]
@@ -185,19 +190,6 @@ fn verbund_device_list() {
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-async fn connect(s: &TestServer, token: &str, number: &str) -> (Socket, Value) {
-    let (mut ws, _) = tokio_tungstenite::connect_async(format!("ws://{}/v1/signal", s.addr))
-        .await
-        .unwrap();
-    ws.send(Message::Text(
-        json!({"token": token, "number": number}).to_string(),
-    ))
-    .await
-    .unwrap();
-    let first = next_json(&mut ws).await;
-    (ws, first)
-}
-
 async fn next_json(ws: &mut Socket) -> Value {
     loop {
         match ws.next().await.unwrap().unwrap() {
@@ -208,34 +200,24 @@ async fn next_json(ws: &mut Socket) -> Value {
     }
 }
 
-fn number_for(s: &TestServer, token: &str, device: &str) -> String {
-    let r = s.post(
-        "/v1/device/register",
-        Some(token),
-        &json!({"device_id": device, "pubkey": "p"}),
-    );
-    r.json()["number"].as_str().unwrap().to_string()
-}
-
 #[test]
 fn signalling_relays_between_numbers_and_sets_the_sender() {
     let s = TestServer::start();
     let (anna, bert) = (s.register("anna"), s.register("bert"));
-    let (num_a, num_b) = (
-        number_for(&s, &anna, "dev-a"),
-        number_for(&s, &bert, "dev-b"),
-    );
+    let (dev_a, dev_b) = (TestDevice::new(1), TestDevice::new(2));
+    let (num_a, num_b) = (dev_a.number(&s, &anna), dev_b.number(&s, &bert));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
     rt.block_on(async {
-        let (mut a, ready_a) = connect(&s, &anna, &num_a).await;
-        let (mut b, ready_b) = connect(&s, &bert, &num_b).await;
+        let (mut a, ready_a) = dev_a.signal(&s).await;
+        let (mut b, ready_b) = dev_b.signal(&s).await;
         assert_eq!(
             (ready_a["type"].as_str(), ready_b["type"].as_str()),
             (Some("ready"), Some("ready"))
         );
+        assert_eq!(ready_a["number"], num_a.as_str());
 
         let offer =
             json!({"to": num_b, "type": "offer", "data": {"sdp": "x"}, "from": "UOS-FAKE-FAKE"});
@@ -260,11 +242,16 @@ fn signalling_relays_between_numbers_and_sets_the_sender() {
             (Some("unreachable"), Some("UOS-0000-0000"))
         );
 
-        // A number of another account, or a bad token, is refused.
-        let (_, refused) = connect(&s, &anna, &num_b).await;
+        // The key of another device, or the first release's token frame, is refused.
+        let (_, refused) = dev_b.signal_signed_by(&s, &dev_a).await;
         assert_eq!(refused["error"], "auth");
-        let (_, refused) = connect(&s, "bad-token", &num_a).await;
-        assert_eq!(refused["error"], "auth");
+        let mut old = common::device::open_signal(&s).await;
+        old.send(Message::Text(
+            json!({"token": anna, "number": num_a}).to_string(),
+        ))
+        .await
+        .unwrap();
+        assert_eq!(next_json(&mut old).await["error"], "device_key_required");
     });
 }
 

@@ -1,0 +1,20 @@
+# Device service: driver selection, health check, fallback, quarantine.
+# Changing a driver choice or stopping the service needs the permission
+# devices.admin (bus policy).
+exec = "/usr/bin/ultar-devd"
+args = [
+    "--depot", "/usr/lib/ultar/drivers",
+    "--keys", "/etc/ultar/trusted-keys",
+    "--state", "/data/ultar/devd",
+    "--bus", "/run/ultar/bus/devd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/devd.sock",
+    "--allow-root",
+]
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "64M"
+"pids.max" = "64"
+"cpu.weight" = "50"

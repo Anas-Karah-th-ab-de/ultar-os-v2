@@ -9,11 +9,14 @@
 //! **Hot-plug:** the Ultar kernel has no device event interface. Devices are read at
 //! start and again on `devices.rescan`.
 //!
-//! **Shutdown:** `std` offers no signal handling and the crate forbids `unsafe`, so the
-//! clean way to stop is the bus method `devices.shutdown`. A plain SIGTERM ends the
-//! process at once; that is safe at any moment because every state change is already on
-//! disk through an atomic replace before the reply is sent.
+//! **Shutdown:** `SIGTERM`/`SIGINT` (through `ultar_service`, see [`crate::runner`]) or
+//! the bus method `devices.shutdown` from an identity with `devices.admin`. Nothing is
+//! pending at that moment: every state change is on disk through an atomic replace
+//! before its reply is sent, so a kill is safe as well.
+//!
+//! **Who may change things:** see [`crate::access`].
 
+use crate::access::{AdminAccess, AllowAll};
 use crate::builtin::Builtin;
 use crate::bus::convert::{device_info, reason, refusal, refuse, unserved_phase};
 use crate::bus::{BusSink, Publisher, UnservedDevice};
@@ -33,6 +36,7 @@ use ultar_bus::messages::device_service::{
 use ultar_bus::{Text, TextArg};
 use ultar_driverpkg::Version;
 use ultar_hal_system::{kernel_abi, ControlInterface, HardwareError, HardwareReader};
+use ultar_service::log::Logger;
 
 /// Where the daemon finds its inputs and keeps its state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +113,10 @@ pub struct Daemon {
     recovery_notice: Option<Text>,
     /// Set once a bus message could not be published.
     publish_failed: bool,
+    /// Who has `devices.admin`.
+    pub(crate) access: Box<dyn AdminAccess>,
+    /// Where refused operations are recorded.
+    pub(crate) logger: Logger,
 }
 
 impl Daemon {
@@ -141,10 +149,24 @@ impl Daemon {
             hardware_notices: Vec::new(),
             recovery_notice: None,
             publish_failed: false,
+            access: Box::new(AllowAll),
+            logger: Logger::discard(),
         };
         // An unreadable inventory is a notice, not a start failure.
         let _ = daemon.scan();
         Ok(daemon)
+    }
+
+    /// Sets who has `devices.admin`. A daemon built with [`Daemon::start`] alone treats
+    /// every caller as administrator – right for a program that embeds the daemon and
+    /// makes that decision itself; the `ultar-devd` binary always sets an access rule.
+    pub fn set_access(&mut self, access: Box<dyn AdminAccess>) {
+        self.access = access;
+    }
+
+    /// Sets where refused operations are recorded.
+    pub fn set_logger(&mut self, logger: Logger) {
+        self.logger = logger;
     }
 
     /// Reads the hardware again and feeds the differences to the manager.

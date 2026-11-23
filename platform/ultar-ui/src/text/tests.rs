@@ -16,6 +16,14 @@ fn en() -> TextStyle {
     TextStyle::new(SIZE, Lang::En)
 }
 
+/// Number of distinct clusters of a layout.
+fn clusters(layout: &TextLayout) -> usize {
+    let mut all = layout.visual_clusters();
+    all.sort_unstable();
+    all.dedup();
+    all.len()
+}
+
 /// The first character of every glyph's cluster, in visual order from the left.
 fn visual(layout: &TextLayout) -> String {
     layout
@@ -30,7 +38,9 @@ fn arabic_word_is_shaped_not_isolated_forms() {
     let mut e = engine();
     let word = "بيت";
     let layout = e.layout(word, &ar(), None);
-    assert_eq!(layout.glyphs.len(), 3);
+    // Noto Naskh Arabic composes dotted letters from a body and separate dot glyphs, so the
+    // glyph count is a property of the font; the clusters are what the toolkit relies on.
+    assert_eq!(clusters(&layout), 3);
     let nominal: Vec<u16> = word
         .chars()
         .map(|c| e.nominal_glyph(FontId::Arabic, c).unwrap())
@@ -47,7 +57,9 @@ fn arabic_word_is_shaped_not_isolated_forms() {
         .iter()
         .all(|g| g.rtl && g.font == FontId::Arabic));
     // Visual order is reversed logical order: the first letter is the rightmost glyph.
-    assert_eq!(layout.visual_clusters(), vec![4, 2, 0]);
+    let mut order = layout.visual_clusters();
+    order.dedup();
+    assert_eq!(order, vec![4, 2, 0]);
 }
 
 #[test]
@@ -59,31 +71,48 @@ fn joined_word_is_narrower_than_its_isolated_letters() {
 }
 
 #[test]
-fn lam_alef_becomes_one_ligature_glyph() {
+fn lam_alef_is_joined_in_every_arabic_face() {
     let mut e = engine();
-    let layout = e.layout("سلام", &ar(), None);
-    assert_eq!(
-        layout.glyphs.len(),
-        3,
-        "4 letters, lam+alef share one glyph"
-    );
-    let lam = e.nominal_glyph(FontId::Arabic, 'ل').unwrap();
-    let alef = e.nominal_glyph(FontId::Arabic, 'ا').unwrap();
-    assert!(layout.glyphs.iter().all(|g| g.id != lam && g.id != alef));
-    let alone = e.layout("لا", &ar(), None);
-    assert_eq!(alone.glyphs.len(), 1);
+    // Naskh and Kufi draw lam-alef with a pair of special forms (two clusters, so the caret
+    // can stand between them); Noto Sans Arabic substitutes one ligature glyph.
+    for role in [FontRole::Text, FontRole::Title] {
+        let style = ar().with_role(role);
+        let layout = e.layout("سلام", &style, None);
+        assert_eq!(clusters(&layout), 4, "{role:?}");
+        let font = layout.glyphs[0].font;
+        let lam = e.nominal_glyph(font, 'ل').unwrap();
+        let alef = e.nominal_glyph(font, 'ا').unwrap();
+        assert!(layout.glyphs.iter().all(|g| g.id != lam && g.id != alef));
+        let plain_final_alef = e.layout("با", &style, None).glyphs[0].id;
+        let after_lam = e.layout("لا", &style, None).glyphs[0].id;
+        assert_ne!(
+            plain_final_alef, after_lam,
+            "{role:?}: alef after lam has its own form"
+        );
+    }
+    let mono = ar().with_role(FontRole::Mono);
+    let layout = e.layout("سلام", &mono, None);
+    assert_eq!(clusters(&layout), 3, "4 letters, lam+alef share one glyph");
+    let alone = e.layout("لا", &mono, None);
+    assert_eq!((alone.glyphs.len(), clusters(&alone)), (1, 1));
 }
 
 #[test]
 fn tashkeel_is_positioned_on_its_base() {
     let mut e = engine();
     let layout = e.layout("بَ", &ar(), None);
-    assert_eq!(layout.glyphs.len(), 2);
+    assert_eq!(
+        clusters(&layout),
+        1,
+        "the mark belongs to its letter's cluster"
+    );
+    let fatha = e.nominal_glyph(FontId::Arabic, '\u{064E}').unwrap();
     let mark = layout
         .glyphs
         .iter()
-        .find(|g| g.advance == 0.0)
-        .expect("a zero-advance mark");
+        .find(|g| g.id == fatha)
+        .expect("the fatha glyph");
+    assert_eq!(mark.advance, 0.0);
     assert!(
         mark.dx != 0.0 || mark.dy != 0.0,
         "GPOS moved the mark: {mark:?}"

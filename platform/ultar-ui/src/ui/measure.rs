@@ -1,9 +1,9 @@
 //! Layout of the tree: measure bottom-up, arrange top-down, all in logical coordinates.
 
-use super::{Node, NodeId, Ui};
+use super::{Node, NodeId, PaintStep, Ui};
 use crate::geom::Size;
 use crate::layout::{distribute, Axis, CrossAlign, Flex, Length, LogicalRect, Slot};
-use crate::widgets::{MeasureCx, Row, Widget};
+use crate::widgets::{EmptyState, InfoBar, ListItem, MeasureCx, Row, Widget};
 
 fn cross_offset(align: CrossAlign, free: f32) -> f32 {
     match align {
@@ -31,6 +31,15 @@ fn measure(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f32) -
         Some(flex) => measure_flex(nodes, cx, id, &flex, avail),
         None => measure_leaf(nodes, cx, id, avail),
     };
+    let grows = nodes[i].sizing.grow > 0;
+    if let Widget::Scroll(scroll) = &mut nodes[i].widget {
+        // The viewport takes what its sizing gives it: a fixed height, or (growing) the
+        // parent's left-over space, starting from nothing. The content keeps its height.
+        scroll.content = size.h;
+        if grows {
+            size.h = 0.0;
+        }
+    }
     if let Length::Points(p) = nodes[i].sizing.width {
         size.w = p;
     }
@@ -43,14 +52,19 @@ fn measure(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f32) -
 
 fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f32) -> Size {
     let i = id.index();
-    let control = match (&nodes[i].widget, nodes[i].children.first().copied()) {
-        (Widget::Row(_), Some(child)) => measure(nodes, cx, child, avail),
-        _ => Size::default(),
+    let hosted = nodes[i].children.first().copied();
+    let control = match hosted.filter(|_| nodes[i].widget.hosts_one_child()) {
+        Some(child) => measure(nodes, cx, child, avail),
+        None => Size::default(),
     };
     let node = &nodes[i];
     let error = node.error.as_ref();
     match &node.widget {
-        Widget::Flex(_) | Widget::Card(_) => Size::default(),
+        Widget::Flex(_)
+        | Widget::Card(_)
+        | Widget::List(_)
+        | Widget::Scroll(_)
+        | Widget::Dialog(_) => Size::default(),
         Widget::Text(w) => w.measure(cx, avail),
         Widget::Icon(w) => w.measure(),
         Widget::Button(w) => w.measure(cx, avail, node.loading),
@@ -60,6 +74,25 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Slider(w) => w.measure(cx, avail),
         Widget::TextField(w) => w.measure(cx, avail, error),
         Widget::Row(w) => w.measure(cx, avail, control),
+        Widget::Badge(w) => w.measure(cx, avail),
+        Widget::Progress(w) => w.measure(cx, avail),
+        Widget::Checkbox(w) => w.measure(cx, avail),
+        Widget::RadioGroup(w) => w.measure(cx, avail),
+        Widget::Tabs(w) => w.measure(cx, avail),
+        Widget::InfoBar(w) => w.measure(cx, avail, control),
+        Widget::EmptyState(w) => w.measure(cx, avail, control),
+        Widget::ListItem(w) => w.measure(cx, avail, control),
+    }
+}
+
+/// Where a widget that hosts one child puts it: (offset from its start, offset from its top).
+fn hosted_offset(widget: &Widget, size: Size, control: Size) -> Option<(f32, f32)> {
+    match widget {
+        Widget::Row(_) => Some(Row::control_offset(size, control)),
+        Widget::InfoBar(_) => Some(InfoBar::control_offset(size, control)),
+        Widget::EmptyState(_) => Some(EmptyState::control_offset(size, control)),
+        Widget::ListItem(_) => Some(ListItem::control_offset(size, control)),
+        _ => None,
     }
 }
 
@@ -137,16 +170,21 @@ fn measure_flex(
 fn arrange(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, frame: LogicalRect) {
     nodes[id.index()].frame = frame;
     if let Some(flex) = nodes[id.index()].widget.flex().copied() {
-        arrange_flex(nodes, cx, id, &flex, frame);
-    } else if let (Widget::Row(_), Some(child)) = (
-        &nodes[id.index()].widget,
-        nodes[id.index()].children.first().copied(),
-    ) {
+        let mut content = frame;
+        if let Widget::Scroll(scroll) = &mut nodes[id.index()].widget {
+            // The children keep their natural height; the viewport shows a part of it.
+            scroll.offset = scroll.clamp(scroll.offset, frame.height);
+            content.height = scroll.content.max(frame.height);
+        }
+        arrange_flex(nodes, cx, id, &flex, content);
+    } else if let Some(child) = nodes[id.index()].children.first().copied() {
         let control = measure(nodes, cx, child, frame.width);
-        let (start, top) = Row::control_offset(Size::new(frame.width, frame.height), control);
-        let child_frame =
-            LogicalRect::new(frame.start + start, frame.top + top, control.w, control.h);
-        arrange(nodes, cx, child, child_frame);
+        let size = Size::new(frame.width, frame.height);
+        if let Some((start, top)) = hosted_offset(&nodes[id.index()].widget, size, control) {
+            let child_frame =
+                LogicalRect::new(frame.start + start, frame.top + top, control.w, control.h);
+            arrange(nodes, cx, child, child_frame);
+        }
     }
 }
 
@@ -242,10 +280,23 @@ fn arrange_block(
     }
 }
 
-fn collect_order(nodes: &[Node], id: NodeId, out: &mut Vec<NodeId>) {
-    out.push(id);
-    for child in &nodes[id.index()].children {
-        collect_order(nodes, *child, out);
+/// Appends the subtree of `id` to the logical order and the paint steps, and tells every
+/// node which scroll container or dialog clips it.
+fn collect(ui: &mut Ui, id: NodeId, clip: Option<NodeId>) {
+    ui.nodes[id.index()].clip_parent = clip;
+    ui.order.push(id);
+    ui.layers.steps.push(PaintStep::Node(id));
+    let clips = matches!(
+        ui.nodes[id.index()].widget,
+        Widget::Scroll(_) | Widget::Dialog(_)
+    );
+    let inner = if clips { Some(id) } else { clip };
+    for n in 0..ui.nodes[id.index()].children.len() {
+        let child = ui.nodes[id.index()].children[n];
+        collect(ui, child, inner);
+    }
+    if matches!(ui.nodes[id.index()].widget, Widget::Scroll(_)) {
+        ui.layers.steps.push(PaintStep::ScrollBar(id));
     }
 }
 
@@ -253,15 +304,15 @@ impl Ui {
     /// Lays the tree out if anything changed since the last layout. Called by
     /// [`Ui::paint`] and [`Ui::handle`]; call it yourself before reading rectangles.
     pub fn layout(&mut self) {
-        if !self.dirty.layout {
+        if !self.take_layout_request() {
             return;
         }
-        self.dirty.layout = false;
         for node in &mut self.nodes {
             node.measured = None;
         }
         let root = self.root();
-        let size = self.size;
+        let size = self.size();
+        let open = self.layers.open.clone();
         let mut cx = MeasureCx {
             res: self.res.get_mut(),
             env: &self.env,
@@ -269,14 +320,34 @@ impl Ui {
             mode: self.mode,
         };
         measure(&mut self.nodes, &mut cx, root, size.w);
-        arrange(
-            &mut self.nodes,
-            &mut cx,
-            root,
-            LogicalRect::new(0.0, 0.0, size.w, size.h),
-        );
+        let surface = LogicalRect::new(0.0, 0.0, size.w, size.h);
+        arrange(&mut self.nodes, &mut cx, root, surface);
+        for dialog in &open {
+            let Widget::Dialog(widget) = self.nodes[dialog.index()].widget.clone() else {
+                continue;
+            };
+            let content = measure(&mut self.nodes, &mut cx, *dialog, widget.width(size));
+            let frame = widget.frame(content, size);
+            arrange(&mut self.nodes, &mut cx, *dialog, frame);
+        }
+        self.rebuild_order();
+        // What floats hangs on rectangles and text sizes that may have changed.
+        self.layers.tip = None;
+        self.replace_menu();
+    }
+
+    /// Rebuilds the logical order and the paint steps: the main tree, then the open dialogs
+    /// (the topmost last). Closed dialogs are in neither.
+    fn rebuild_order(&mut self) {
         self.order.clear();
-        collect_order(&self.nodes, root, &mut self.order);
+        self.layers.steps.clear();
+        let root = self.root();
+        collect(self, root, None);
+        self.layers.modal_start = 0;
+        for dialog in self.layers.open.clone() {
+            self.layers.modal_start = self.order.len();
+            collect(self, dialog, None);
+        }
     }
 
     /// The content size the tree would like at the current width (after layout: the root's

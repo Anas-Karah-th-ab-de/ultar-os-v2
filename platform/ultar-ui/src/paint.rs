@@ -60,6 +60,13 @@ impl TextSpec {
         self.role = role;
         self
     }
+
+    /// A title: bold, in the title family (`family_arabic_title` for Arabic).
+    pub const fn title(size: TypeSize) -> TextSpec {
+        TextSpec::new(size)
+            .weight(Weight::Bold)
+            .role(FontRole::Title)
+    }
 }
 
 /// Language, direction, theme and scale a frame is painted with.
@@ -111,6 +118,23 @@ pub fn layout_text(
     max_width: Option<f32>,
 ) -> Rc<TextLayout> {
     let style = env.text_style(spec);
+    resources
+        .text
+        .layout(text, &style, max_width.map(|w| w * env.scale))
+}
+
+/// Shapes `text` for `spec` as a paragraph of direction `base` (instead of the direction of
+/// the user interface); `max_width` is in logical points.
+pub fn layout_directed(
+    resources: &mut Resources,
+    env: &PaintEnv,
+    text: &str,
+    spec: TextSpec,
+    max_width: Option<f32>,
+    base: Direction,
+) -> Rc<TextLayout> {
+    let mut style = env.text_style(spec);
+    style.direction = base;
     resources
         .text
         .layout(text, &style, max_width.map(|w| w * env.scale))
@@ -199,14 +223,18 @@ impl<'a> Painter<'a> {
             .stroke_rrect(self.snap(rect), r, w, color.with_alpha(self.opacity));
     }
 
-    /// Paints the one shadow level under a floating rectangle.
+    /// Paints the one shadow level under a floating rectangle: the equivalent of the CSS
+    /// `box-shadow: 0 offset_y blur` of the artboards. A CSS blur of `blur` fades from full
+    /// to nothing across `2 × blur`, centred on the (offset) outline, so the shadow reaches
+    /// `blur` points beside and `offset_y + blur` below the rectangle.
     pub fn shadow(&mut self, rect: Rect, radius: Option<Radius>) {
         let s = self.env.scale;
         let r = self.radius(radius);
         let alpha = Theme::shadow_alpha(self.env.theme) * self.opacity;
         let moved = self.snap(rect.offset(0.0, shadow::OFFSET_Y));
+        let fade = 2.0 * shadow::BLUR * s;
         self.canvas
-            .shadow(moved, r, shadow::BLUR * s, Color::BLACK.with_alpha(alpha));
+            .shadow(moved, r, fade, Color::BLACK.with_alpha(alpha));
     }
 
     /// Strokes a straight line with round caps.
@@ -244,6 +272,17 @@ impl<'a> Painter<'a> {
     /// Shapes text for this frame; `max_width` in logical points.
     pub fn layout(&mut self, text: &str, spec: TextSpec, max_width: Option<f32>) -> Rc<TextLayout> {
         layout_text(self.resources, &self.env, text, spec, max_width)
+    }
+
+    /// Shapes text as a paragraph of direction `base`; `max_width` in logical points.
+    pub fn layout_directed(
+        &mut self,
+        text: &str,
+        spec: TextSpec,
+        max_width: Option<f32>,
+        base: Direction,
+    ) -> Rc<TextLayout> {
+        layout_directed(self.resources, &self.env, text, spec, max_width, base)
     }
 
     /// Draws a layout into `rect`, vertically centred, lines aligned by `align`.

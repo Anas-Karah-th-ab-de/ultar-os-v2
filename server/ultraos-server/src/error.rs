@@ -39,8 +39,44 @@ pub enum ApiError {
     InvalidWireguardKey,
     /// TURN is not configured on this server.
     TurnNotConfigured,
-    /// The device id is already registered to another account.
+    /// The device key is already registered to another account.
     DeviceTaken,
+    /// No challenge with this id (never issued, or forgotten).
+    ChallengeUnknown,
+    /// The challenge was presented before (replay).
+    ChallengeUsed,
+    /// The challenge is older than its lifetime.
+    ChallengeExpired,
+    /// The challenge was issued to another account or for another purpose.
+    ChallengeMismatch,
+    /// Too many challenges are pending; retry after the given number of seconds.
+    ChallengeCapacity {
+        /// Seconds until a new challenge can be issued.
+        retry_after_secs: u64,
+    },
+    /// A signature did not verify for the claimed key and this request.
+    SignatureInvalid,
+    /// No such device in this account.
+    DeviceUnknown,
+    /// The device key was removed or replaced and stays retired.
+    DeviceRetired,
+    /// The account already has the allowed number of devices.
+    DeviceLimit,
+    /// The account used up its lifetime number of device registrations.
+    DeviceQuotaExhausted,
+    /// The request has the form of the first server release; a device key is needed now.
+    DeviceKeyRequired,
+    /// The registration from before device keys cannot be upgraded by this caller.
+    LegacyNotEligible,
+    /// The cool-down of a recovery is not over; retry after the given number of seconds.
+    CooldownActive {
+        /// Seconds left.
+        retry_after_secs: u64,
+    },
+    /// Another recovery is pending for the account.
+    RecoveryPending,
+    /// There is no matching recovery.
+    RecoveryUnknown,
     /// VPN: the internal address pool is used up.
     VpnPoolExhausted,
     /// Unexpected server-side failure (details are only in the server log).
@@ -63,6 +99,21 @@ impl ApiError {
             ApiError::InvalidWireguardKey => "invalid_wireguard_key",
             ApiError::TurnNotConfigured => "turn_not_configured",
             ApiError::DeviceTaken => "device_taken",
+            ApiError::ChallengeUnknown => "challenge_unknown",
+            ApiError::ChallengeUsed => "challenge_used",
+            ApiError::ChallengeExpired => "challenge_expired",
+            ApiError::ChallengeMismatch => "challenge_mismatch",
+            ApiError::ChallengeCapacity { .. } => "challenge_capacity",
+            ApiError::SignatureInvalid => "signature_invalid",
+            ApiError::DeviceUnknown => "device_unknown",
+            ApiError::DeviceRetired => "device_retired",
+            ApiError::DeviceLimit => "device_limit",
+            ApiError::DeviceQuotaExhausted => "device_quota_exhausted",
+            ApiError::DeviceKeyRequired => "device_key_required",
+            ApiError::LegacyNotEligible => "legacy_not_eligible",
+            ApiError::CooldownActive { .. } => "cooldown_active",
+            ApiError::RecoveryPending => "recovery_pending",
+            ApiError::RecoveryUnknown => "recovery_unknown",
             ApiError::VpnPoolExhausted => "vpn_pool_exhausted",
             ApiError::Internal => "internal",
         }
@@ -71,11 +122,28 @@ impl ApiError {
     /// The HTTP status that goes with the code.
     pub fn status(&self) -> StatusCode {
         match self {
-            ApiError::AuthRequired | ApiError::InvalidCredentials => StatusCode::UNAUTHORIZED,
-            ApiError::NotEntitled => StatusCode::FORBIDDEN,
-            ApiError::NotFound => StatusCode::NOT_FOUND,
-            ApiError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
-            ApiError::InvalidRequest | ApiError::InvalidWireguardKey => StatusCode::BAD_REQUEST,
+            ApiError::AuthRequired | ApiError::InvalidCredentials | ApiError::SignatureInvalid => {
+                StatusCode::UNAUTHORIZED
+            }
+            ApiError::NotEntitled | ApiError::LegacyNotEligible => StatusCode::FORBIDDEN,
+            ApiError::NotFound | ApiError::DeviceUnknown | ApiError::RecoveryUnknown => {
+                StatusCode::NOT_FOUND
+            }
+            ApiError::RateLimited { .. } | ApiError::ChallengeCapacity { .. } => {
+                StatusCode::TOO_MANY_REQUESTS
+            }
+            ApiError::InvalidRequest
+            | ApiError::InvalidWireguardKey
+            | ApiError::ChallengeUnknown
+            | ApiError::ChallengeUsed
+            | ApiError::ChallengeExpired
+            | ApiError::ChallengeMismatch => StatusCode::BAD_REQUEST,
+            ApiError::DeviceRetired => StatusCode::GONE,
+            ApiError::DeviceKeyRequired => StatusCode::UPGRADE_REQUIRED,
+            ApiError::DeviceLimit
+            | ApiError::DeviceQuotaExhausted
+            | ApiError::CooldownActive { .. }
+            | ApiError::RecoveryPending => StatusCode::CONFLICT,
             ApiError::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             ApiError::RangeNotSatisfiable { .. } => StatusCode::RANGE_NOT_SATISFIABLE,
             ApiError::UsernameTaken | ApiError::DeviceTaken => StatusCode::CONFLICT,
@@ -102,6 +170,52 @@ impl From<rusqlite::Error> for ApiError {
     }
 }
 
+impl From<crate::challenge::ChallengeError> for ApiError {
+    fn from(e: crate::challenge::ChallengeError) -> Self {
+        use crate::challenge::ChallengeError as C;
+        match e {
+            C::Unknown => ApiError::ChallengeUnknown,
+            C::Used => ApiError::ChallengeUsed,
+            C::Expired => ApiError::ChallengeExpired,
+            C::Mismatch => ApiError::ChallengeMismatch,
+            C::Capacity { retry_after_secs } => ApiError::ChallengeCapacity { retry_after_secs },
+        }
+    }
+}
+
+impl From<crate::identity::PopError> for ApiError {
+    fn from(e: crate::identity::PopError) -> Self {
+        use crate::identity::PopError as P;
+        match e {
+            P::MalformedKey | P::WeakKey | P::MalformedSignature => ApiError::InvalidRequest,
+            P::BadSignature => ApiError::SignatureInvalid,
+        }
+    }
+}
+
+impl From<crate::devices::DeviceError> for ApiError {
+    fn from(e: crate::devices::DeviceError) -> Self {
+        use crate::devices::DeviceError as D;
+        match e {
+            D::Taken => ApiError::DeviceTaken,
+            D::Retired => ApiError::DeviceRetired,
+            D::Limit => ApiError::DeviceLimit,
+            D::QuotaExhausted => ApiError::DeviceQuotaExhausted,
+            D::Unknown => ApiError::DeviceUnknown,
+            D::LegacyNotEligible => ApiError::LegacyNotEligible,
+            D::InvalidName => ApiError::InvalidRequest,
+            D::RecoveryPending => ApiError::RecoveryPending,
+            D::RecoveryUnknown => ApiError::RecoveryUnknown,
+            D::CooldownActive { retry_after_secs } => ApiError::CooldownActive { retry_after_secs },
+            D::NumbersExhausted => {
+                tracing::error!(event = "numbers_exhausted");
+                ApiError::Internal
+            }
+            D::Db(e) => e.into(),
+        }
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = Json(serde_json::json!({ "error": self.code() }));
@@ -109,7 +223,9 @@ impl IntoResponse for ApiError {
         let headers = resp.headers_mut();
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
         match self {
-            ApiError::RateLimited { retry_after_secs } => {
+            ApiError::RateLimited { retry_after_secs }
+            | ApiError::ChallengeCapacity { retry_after_secs }
+            | ApiError::CooldownActive { retry_after_secs } => {
                 headers.insert(header::RETRY_AFTER, HeaderValue::from(retry_after_secs));
             }
             ApiError::RangeNotSatisfiable { size } => {
@@ -130,7 +246,26 @@ impl IntoResponse for ApiError {
 mod tests {
     use super::*;
 
-    const ALL: [ApiError; 14] = [
+    const ALL: [ApiError; 29] = [
+        ApiError::ChallengeUnknown,
+        ApiError::ChallengeUsed,
+        ApiError::ChallengeExpired,
+        ApiError::ChallengeMismatch,
+        ApiError::ChallengeCapacity {
+            retry_after_secs: 3,
+        },
+        ApiError::SignatureInvalid,
+        ApiError::DeviceUnknown,
+        ApiError::DeviceRetired,
+        ApiError::DeviceLimit,
+        ApiError::DeviceQuotaExhausted,
+        ApiError::DeviceKeyRequired,
+        ApiError::LegacyNotEligible,
+        ApiError::CooldownActive {
+            retry_after_secs: 9,
+        },
+        ApiError::RecoveryPending,
+        ApiError::RecoveryUnknown,
         ApiError::DeviceTaken,
         ApiError::AuthRequired,
         ApiError::NotEntitled,
@@ -200,5 +335,61 @@ mod tests {
     fn database_errors_become_internal() {
         let e: ApiError = rusqlite::Error::QueryReturnedNoRows.into();
         assert_eq!(e, ApiError::Internal);
+    }
+
+    #[test]
+    fn device_errors_map_to_their_codes() {
+        use crate::challenge::ChallengeError as C;
+        use crate::devices::DeviceError as D;
+        use crate::identity::PopError as P;
+        let code = |e: ApiError| e.code();
+        assert_eq!(code(C::Unknown.into()), "challenge_unknown");
+        assert_eq!(code(C::Used.into()), "challenge_used");
+        assert_eq!(code(C::Expired.into()), "challenge_expired");
+        assert_eq!(code(C::Mismatch.into()), "challenge_mismatch");
+        let full: ApiError = C::Capacity {
+            retry_after_secs: 4,
+        }
+        .into();
+        assert_eq!(full.status(), StatusCode::TOO_MANY_REQUESTS);
+        let r = full.into_response();
+        assert_eq!(
+            r.headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()),
+            Some("4")
+        );
+        assert_eq!(code(P::BadSignature.into()), "signature_invalid");
+        for malformed in [P::MalformedKey, P::WeakKey, P::MalformedSignature] {
+            assert_eq!(code(malformed.into()), "invalid_request");
+        }
+        for (error, expected) in [
+            (D::Taken, "device_taken"),
+            (D::Retired, "device_retired"),
+            (D::Limit, "device_limit"),
+            (D::QuotaExhausted, "device_quota_exhausted"),
+            (D::Unknown, "device_unknown"),
+            (D::LegacyNotEligible, "legacy_not_eligible"),
+            (D::InvalidName, "invalid_request"),
+            (D::RecoveryPending, "recovery_pending"),
+            (D::RecoveryUnknown, "recovery_unknown"),
+            (D::NumbersExhausted, "internal"),
+            (D::Db(rusqlite::Error::QueryReturnedNoRows), "internal"),
+        ] {
+            assert_eq!(code(error.into()), expected);
+        }
+        let wait: ApiError = D::CooldownActive {
+            retry_after_secs: 60,
+        }
+        .into();
+        assert_eq!(
+            (wait.code(), wait.status()),
+            ("cooldown_active", StatusCode::CONFLICT)
+        );
+        assert_eq!(ApiError::DeviceRetired.status(), StatusCode::GONE);
+        assert_eq!(
+            ApiError::DeviceKeyRequired.status(),
+            StatusCode::UPGRADE_REQUIRED
+        );
     }
 }

@@ -1,0 +1,376 @@
+//! Command line of `ultar-busd`.
+
+use std::path::PathBuf;
+use ultar_bus::SocketAccess;
+
+/// Identity of peers on a socket given without explicit identity.
+pub const DEFAULT_IDENTITY: &str = "system";
+/// Environment variable naming the default socket path (not a secret).
+pub const SOCKET_ENV: &str = "ULTAR_BUS_SOCKET";
+
+/// How the peers of one listener are identified.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentitySource {
+    /// Every peer is this identity; the socket file's owner and mode (or
+    /// the mount that exposes it in a cell) decide who can connect.
+    Fixed(String),
+    /// Kernel credentials (`SO_PEERCRED`) looked up in the uid map.
+    Credentials,
+    /// A token presented in the handshake, looked up in the token file.
+    Token,
+}
+
+/// One socket to listen on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listener {
+    /// Path of the socket file.
+    pub path: PathBuf,
+    /// Who the peers are.
+    pub source: IdentitySource,
+    /// Mode, owner and group of the socket file.
+    pub access: SocketAccess,
+}
+
+/// What the command line asked for.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Arguments {
+    /// Sockets to serve.
+    pub listeners: Vec<Listener>,
+    /// Policy file.
+    pub policy: Option<PathBuf>,
+    /// Run without policy (development).
+    pub allow_all: bool,
+    /// File that maps user ids to identities.
+    pub uid_map: Option<PathBuf>,
+    /// File with one `identity = "token"` line per client.
+    pub token_file: Option<PathBuf>,
+    /// Ingestion socket of the log service.
+    pub log_socket: Option<PathBuf>,
+    /// The operator declares that the broker runs as root.
+    pub allow_root: bool,
+    /// Language of operator messages, when given.
+    pub lang: Option<String>,
+    /// Print the usage and exit.
+    pub help: bool,
+}
+
+/// Why the command line was rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgumentError {
+    /// An option needs a value that is missing.
+    MissingValue,
+    /// An option this program does not know (this includes `--token`:
+    /// secrets are not accepted on the command line).
+    UnknownOption,
+    /// `--listen` without `PATH=IDENTITY`.
+    BadListener,
+    /// A number that is not one (`--mode`, `--owner`, `--group`).
+    BadNumber,
+    /// `--mode`, `--owner` or `--group` before any listener.
+    NoListenerYet,
+    /// No socket was named.
+    NoSocket,
+    /// `--policy` together with `--allow-all`.
+    PolicyConflict,
+    /// A credential listener without `--uid-map`, or a token listener
+    /// without `--token-file`.
+    MissingSourceFile,
+}
+
+fn fixed_listener(spec: &str) -> Result<Listener, ArgumentError> {
+    match spec.rsplit_once('=') {
+        Some((path, identity)) if !path.is_empty() && !identity.is_empty() => Ok(Listener {
+            path: PathBuf::from(path),
+            source: IdentitySource::Fixed(identity.to_owned()),
+            access: SocketAccess::default(),
+        }),
+        _ => Err(ArgumentError::BadListener),
+    }
+}
+
+fn plain_listener(path: String, source: IdentitySource) -> Result<Listener, ArgumentError> {
+    if path.is_empty() {
+        return Err(ArgumentError::BadListener);
+    }
+    Ok(Listener {
+        path: PathBuf::from(path),
+        source,
+        access: SocketAccess::default(),
+    })
+}
+
+/// Parses permission bits: one to four octal digits, at most `0o777`.
+pub fn parse_mode(text: &str) -> Result<u32, ArgumentError> {
+    let valid =
+        !text.is_empty() && text.len() <= 4 && text.bytes().all(|b| (b'0'..=b'7').contains(&b));
+    let mode = u32::from_str_radix(text, 8).map_err(|_| ArgumentError::BadNumber)?;
+    if !valid || mode > 0o777 {
+        return Err(ArgumentError::BadNumber);
+    }
+    Ok(mode)
+}
+
+fn parse_id(text: &str) -> Result<u32, ArgumentError> {
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ArgumentError::BadNumber);
+    }
+    text.parse().map_err(|_| ArgumentError::BadNumber)
+}
+
+fn last(parsed: &mut Arguments) -> Result<&mut SocketAccess, ArgumentError> {
+    parsed
+        .listeners
+        .last_mut()
+        .map(|listener| &mut listener.access)
+        .ok_or(ArgumentError::NoListenerYet)
+}
+
+fn option(
+    parsed: &mut Arguments,
+    name: &str,
+    args: &mut impl Iterator<Item = String>,
+) -> Result<(), ArgumentError> {
+    let mut value = || args.next().ok_or(ArgumentError::MissingValue);
+    match name {
+        "--policy" => parsed.policy = Some(PathBuf::from(value()?)),
+        "--uid-map" => parsed.uid_map = Some(PathBuf::from(value()?)),
+        "--token-file" => parsed.token_file = Some(PathBuf::from(value()?)),
+        "--log-socket" => parsed.log_socket = Some(PathBuf::from(value()?)),
+        "--lang" => parsed.lang = Some(value()?),
+        "--listen" => parsed.listeners.push(fixed_listener(&value()?)?),
+        "--listen-cred" => parsed
+            .listeners
+            .push(plain_listener(value()?, IdentitySource::Credentials)?),
+        "--listen-token" => parsed
+            .listeners
+            .push(plain_listener(value()?, IdentitySource::Token)?),
+        "--mode" => last(parsed)?.mode = Some(parse_mode(&value()?)?),
+        "--owner" => last(parsed)?.owner = Some(parse_id(&value()?)?),
+        "--group" => last(parsed)?.group = Some(parse_id(&value()?)?),
+        _ => return Err(ArgumentError::UnknownOption),
+    }
+    Ok(())
+}
+
+fn check(parsed: &Arguments) -> Result<(), ArgumentError> {
+    if parsed.help {
+        return Ok(());
+    }
+    if parsed.listeners.is_empty() {
+        return Err(ArgumentError::NoSocket);
+    }
+    if parsed.policy.is_some() && parsed.allow_all {
+        return Err(ArgumentError::PolicyConflict);
+    }
+    let needs = |source: &IdentitySource| parsed.listeners.iter().any(|l| l.source == *source);
+    if needs(&IdentitySource::Credentials) && parsed.uid_map.is_none() {
+        return Err(ArgumentError::MissingSourceFile);
+    }
+    if needs(&IdentitySource::Token) && parsed.token_file.is_none() {
+        return Err(ArgumentError::MissingSourceFile);
+    }
+    Ok(())
+}
+
+/// Parses the words after the program name. `env_socket` is the content
+/// of [`SOCKET_ENV`], used when no socket is named.
+pub fn parse_arguments(
+    mut args: impl Iterator<Item = String>,
+    env_socket: Option<String>,
+) -> Result<Arguments, ArgumentError> {
+    let mut parsed = Arguments::default();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--help" | "-h" => parsed.help = true,
+            "--allow-all" => parsed.allow_all = true,
+            "--allow-root" => parsed.allow_root = true,
+            name if name.starts_with('-') => option(&mut parsed, name, &mut args)?,
+            path => parsed.listeners.push(plain_listener(
+                path.to_owned(),
+                IdentitySource::Fixed(DEFAULT_IDENTITY.to_owned()),
+            )?),
+        }
+    }
+    if parsed.listeners.is_empty() {
+        if let Some(path) = env_socket.filter(|path| !path.is_empty()) {
+            parsed.listeners.push(plain_listener(
+                path,
+                IdentitySource::Fixed(DEFAULT_IDENTITY.to_owned()),
+            )?);
+        }
+    }
+    check(&parsed)?;
+    Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str], env: Option<&str>) -> Result<Arguments, ArgumentError> {
+        parse_arguments(
+            args.iter().map(|arg| (*arg).to_owned()),
+            env.map(str::to_owned),
+        )
+    }
+
+    fn fixed(identity: &str) -> IdentitySource {
+        IdentitySource::Fixed(identity.to_owned())
+    }
+
+    #[test]
+    fn positional_path_gets_the_default_identity() {
+        let parsed = parse(&["/tmp/bus.sock", "--allow-all"], None).unwrap();
+        assert_eq!(parsed.listeners.len(), 1);
+        assert_eq!(parsed.listeners[0].path, PathBuf::from("/tmp/bus.sock"));
+        assert_eq!(parsed.listeners[0].source, fixed("system"));
+        assert!(parsed.allow_all && parsed.policy.is_none());
+    }
+
+    #[test]
+    fn listen_and_policy_options_are_read() {
+        let parsed = parse(
+            &[
+                "--listen",
+                "/a/x.sock=ui",
+                "--listen",
+                "/b=c/y.sock=app.phone",
+                "--policy",
+                "p.toml",
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(parsed.listeners[0].path, PathBuf::from("/a/x.sock"));
+        assert_eq!(parsed.listeners[0].source, fixed("ui"));
+        assert_eq!(parsed.listeners[1].path, PathBuf::from("/b=c/y.sock"));
+        assert_eq!(parsed.listeners[1].source, fixed("app.phone"));
+        assert_eq!(parsed.policy, Some(PathBuf::from("p.toml")));
+    }
+
+    #[test]
+    fn environment_is_the_fallback_only() {
+        let parsed = parse(&["--allow-all"], Some("/env.sock")).unwrap();
+        assert_eq!(parsed.listeners[0].path, PathBuf::from("/env.sock"));
+        let parsed = parse(&["/arg.sock", "--allow-all"], Some("/env.sock")).unwrap();
+        assert_eq!(parsed.listeners.len(), 1);
+        assert_eq!(parsed.listeners[0].path, PathBuf::from("/arg.sock"));
+        assert_eq!(parse(&[], Some("")), Err(ArgumentError::NoSocket));
+        assert_eq!(parse(&[], None), Err(ArgumentError::NoSocket));
+        assert!(parse(&["--help"], None).unwrap().help);
+    }
+
+    #[test]
+    fn access_options_apply_to_the_listener_before_them() {
+        let parsed = parse(
+            &[
+                "--listen",
+                "/s.sock=system",
+                "--mode",
+                "0600",
+                "--owner",
+                "0",
+                "--listen-cred",
+                "/a.sock",
+                "--mode",
+                "666",
+                "--group",
+                "1500",
+                "--uid-map",
+                "/m",
+                "--policy",
+                "/p",
+            ],
+            None,
+        )
+        .unwrap();
+        let system = &parsed.listeners[0].access;
+        assert_eq!(
+            (system.mode, system.owner, system.group),
+            (Some(0o600), Some(0), None)
+        );
+        let apps = &parsed.listeners[1];
+        assert_eq!(apps.source, IdentitySource::Credentials);
+        assert_eq!(
+            (apps.access.mode, apps.access.owner, apps.access.group),
+            (Some(0o666), None, Some(1500))
+        );
+        assert_eq!(parsed.uid_map, Some(PathBuf::from("/m")));
+        for early in ["--mode", "--owner", "--group"] {
+            assert_eq!(
+                parse(&[early, "1", "/s", "--allow-all"], None),
+                Err(ArgumentError::NoListenerYet)
+            );
+        }
+    }
+
+    #[test]
+    fn modes_and_ids_are_parsed_strictly() {
+        assert_eq!(parse_mode("600"), Ok(0o600));
+        assert_eq!(parse_mode("0666"), Ok(0o666));
+        assert_eq!(parse_mode("0"), Ok(0));
+        for bad in ["", "888", "1777", "07777", "-1", "0o600", "rw", " 600"] {
+            assert_eq!(parse_mode(bad), Err(ArgumentError::BadNumber), "{bad:?}");
+        }
+        for bad in ["", "-1", "+1", "root", "99999999999"] {
+            assert_eq!(
+                parse(&["/s", "--owner", bad, "--allow-all"], None),
+                Err(ArgumentError::BadNumber),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn bad_command_lines_are_rejected() {
+        assert_eq!(parse(&["--policy"], None), Err(ArgumentError::MissingValue));
+        assert_eq!(
+            parse(&["--listen", "nopath"], None),
+            Err(ArgumentError::BadListener)
+        );
+        assert_eq!(
+            parse(&["--listen", "=x"], None),
+            Err(ArgumentError::BadListener)
+        );
+        assert_eq!(parse(&["--frob"], None), Err(ArgumentError::UnknownOption));
+        // Secrets are not accepted on the command line.
+        assert_eq!(
+            parse(&["/s", "--token", "abc"], None),
+            Err(ArgumentError::UnknownOption)
+        );
+        assert_eq!(
+            parse(&["/s", "--policy", "/p", "--allow-all"], None),
+            Err(ArgumentError::PolicyConflict)
+        );
+        assert_eq!(
+            parse(&["--listen-cred", "/s", "--allow-all"], None),
+            Err(ArgumentError::MissingSourceFile)
+        );
+        assert_eq!(
+            parse(&["--listen-token", "/s", "--allow-all"], None),
+            Err(ArgumentError::MissingSourceFile)
+        );
+        let token = parse(
+            &["--listen-token", "/s", "--token-file", "/t", "--allow-all"],
+            None,
+        )
+        .unwrap();
+        assert_eq!(token.listeners[0].source, IdentitySource::Token);
+        let rest = parse(
+            &[
+                "/s",
+                "--allow-all",
+                "--allow-root",
+                "--log-socket",
+                "/l",
+                "--lang",
+                "en",
+            ],
+            None,
+        )
+        .unwrap();
+        assert!(rest.allow_root);
+        assert_eq!(rest.log_socket, Some(PathBuf::from("/l")));
+        assert_eq!(rest.lang.as_deref(), Some("en"));
+    }
+}

@@ -110,6 +110,27 @@ impl TelephonyBackend for StubTelephony {
     }
 }
 
+/// Weist dem Signalserver den Geräteschlüssel nach; verbindet `ultar-cloud` (Schlüssel) mit `ultar-call`.
+struct DeviceProof {
+    key: ultar_cloud::FileKeyStore,
+    identity: ultar_cloud::DeviceIdentity,
+}
+
+impl ultar_call::SignalAuth for DeviceProof {
+    fn hello(&self) -> Result<String, String> {
+        ultar_cloud::signal_hello(&self.key).map_err(|e| e.to_string())
+    }
+    fn answer(&self, challenge_frame: &str) -> Result<String, String> {
+        ultar_cloud::signal_auth(
+            &self.key,
+            &self.identity.server,
+            self.identity.account_id,
+            challenge_frame,
+        )
+        .map_err(|e| e.to_string())
+    }
+}
+
 /// Telefonie über die Ultar-Cloud (Internet-Anrufe zwischen Ultar-Geräten).
 /// Setzt das `CallBackend` aus dem Crate `ultar-call` auf das `TelephonyBackend` der Oberfläche um.
 pub struct CloudTelephony {
@@ -120,9 +141,13 @@ pub struct CloudTelephony {
 impl Default for CloudTelephony {
     fn default() -> Self {
         let mut inner = ultar_call::default_backend();
-        // beim Signalserver anmelden, wenn Konto + Nummer vorhanden
-        if let (Some(num), Some(tok)) = (ultar_cloud::my_number(), ultar_cloud::token()) {
-            inner.register(&num, &tok, &ultar_cloud::base_url());
+        // beim Signalserver anmelden, wenn das Gerät registriert ist (Nachweis mit dem Geräteschlüssel)
+        let home = ultar_cloud::DeviceHome::system();
+        if let (Ok(key), Some(identity)) = (home.key_store(), home.identity()) {
+            inner.register(
+                &ultar_cloud::base_url(),
+                Box::new(DeviceProof { key, identity }),
+            );
         }
         Self {
             inner,

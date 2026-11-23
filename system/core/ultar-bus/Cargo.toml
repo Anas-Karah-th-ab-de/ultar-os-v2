@@ -10,10 +10,6 @@ description = "Typed, permission-checked, event-driven IPC of Ultar OS (system c
 name = "ultar_bus"
 path = "src/lib.rs"
 
-[[bin]]
-name = "ultar-busd"
-path = "src/bin/ultar-busd.rs"
-
 [dependencies]
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
 postcard = { version = "1", default-features = false, features = ["alloc"] }

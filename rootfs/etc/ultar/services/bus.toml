@@ -1,0 +1,29 @@
+# Bus broker (review block B). One socket per identity: who can reach a socket
+# file is that identity, the policy file says what the identity may do
+# (default deny). All sockets are mode 0600 until cells mount exactly their
+# own socket; apps get their sockets from the cell manager, not from here.
+#
+# On a kernel with SO_PEERCRED the per-service sockets can be replaced by
+#   "--listen-cred", "/run/ultar/bus/system.sock", "--mode", "0666",
+#   "--uid-map", "/etc/ultar/uid-map.toml"
+#
+# SIGTERM: clients are told, the socket files are removed, exit code 0.
+# SIGHUP: the policy file is read again.
+exec = "/usr/bin/ultar-busd"
+args = [
+    "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0600",
+    "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0600",
+    "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0600",
+    # Administration tools run by root: usettings, udevctl, ulog.
+    "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/busd.sock",
+    "--allow-root",
+]
+after = ["logd"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "64M"
+"pids.max" = "1100"
+"cpu.weight" = "100"

@@ -1,0 +1,291 @@
+//! The raw system calls: the **only** file of this crate with `unsafe`.
+//!
+//! Rules of this file:
+//!
+//! * every `unsafe` block has a `SAFETY` comment;
+//! * every public function is safe: all pointers passed to the kernel point
+//!   to local variables that outlive the call, all lengths are the sizes
+//!   of those variables;
+//! * nothing here allocates on the call path or panics.
+
+use crate::Errno;
+use std::collections::BTreeSet;
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::sync::{Mutex, PoisonError};
+
+#[cfg(target_arch = "x86_64")]
+mod nr {
+    pub const CLOSE: usize = 3;
+    pub const RT_SIGPROCMASK: usize = 14;
+    pub const GETSOCKOPT: usize = 55;
+    pub const FCNTL: usize = 72;
+    pub const PRCTL: usize = 157;
+    pub const SIGNALFD4: usize = 289;
+}
+
+#[cfg(target_arch = "aarch64")]
+mod nr {
+    pub const FCNTL: usize = 25;
+    pub const CLOSE: usize = 57;
+    pub const SIGNALFD4: usize = 74;
+    pub const RT_SIGPROCMASK: usize = 135;
+    pub const PRCTL: usize = 167;
+    pub const GETSOCKOPT: usize = 209;
+}
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+compile_error!("ultar-sys supports x86_64 and aarch64 only");
+
+/// Issues one system call with up to five arguments.
+///
+/// # Safety
+///
+/// The caller guarantees that the arguments are valid for system call `nr`:
+/// every pointer argument points to memory that is valid for the access the
+/// kernel performs and stays valid until the call returns.
+// SAFETY: an `unsafe fn`; its contract is the `# Safety` section above.
+#[cfg(target_arch = "x86_64")]
+unsafe fn raw(nr: usize, a: [usize; 5]) -> isize {
+    let ret: isize;
+    // SAFETY: the `syscall` instruction with the Linux x86_64 register
+    // convention; it clobbers only rax, rcx and r11, which are declared.
+    // Validity of the arguments is the caller's obligation (see above).
+    unsafe {
+        std::arch::asm!(
+            "syscall",
+            inlateout("rax") nr as isize => ret,
+            in("rdi") a[0],
+            in("rsi") a[1],
+            in("rdx") a[2],
+            in("r10") a[3],
+            in("r8") a[4],
+            lateout("rcx") _,
+            lateout("r11") _,
+            options(nostack),
+        );
+    }
+    ret
+}
+
+/// Issues one system call with up to five arguments.
+///
+/// # Safety
+///
+/// See the x86_64 variant.
+// SAFETY: an `unsafe fn`; its contract is the `# Safety` section above.
+#[cfg(target_arch = "aarch64")]
+unsafe fn raw(nr: usize, a: [usize; 5]) -> isize {
+    let ret: isize;
+    // SAFETY: the `svc 0` instruction with the Linux aarch64 register
+    // convention (number in x8, arguments in x0..x4, result in x0).
+    unsafe {
+        std::arch::asm!(
+            "svc 0",
+            in("x8") nr,
+            inlateout("x0") a[0] as isize => ret,
+            in("x1") a[1],
+            in("x2") a[2],
+            in("x3") a[3],
+            in("x4") a[4],
+            options(nostack),
+        );
+    }
+    ret
+}
+
+fn check(ret: isize) -> Result<usize, Errno> {
+    if (-4095..0).contains(&ret) {
+        Err(Errno(i32::try_from(-ret).unwrap_or(i32::MAX)))
+    } else {
+        Ok(ret as usize)
+    }
+}
+
+/// Size of the kernel's signal set in bytes.
+const SIGSET_BYTES: usize = 8;
+/// `SIG_BLOCK`.
+const SIG_BLOCK: usize = 0;
+/// `SFD_CLOEXEC`.
+const SFD_CLOEXEC: usize = 0o2_000_000;
+
+/// Adds the signals in `mask` (bit `n - 1` for signal `n`) to the blocked
+/// signals of the calling thread and returns the previous mask. Threads
+/// created afterwards inherit the mask.
+pub fn block_signals(mask: u64) -> Result<u64, Errno> {
+    let mut old: u64 = 0;
+    // SAFETY: both pointers refer to local `u64` values (8 bytes each, the
+    // size passed as fourth argument) that live across the call.
+    let ret = unsafe {
+        raw(
+            nr::RT_SIGPROCMASK,
+            [
+                SIG_BLOCK,
+                std::ptr::from_ref(&mask) as usize,
+                std::ptr::from_mut(&mut old) as usize,
+                SIGSET_BYTES,
+                0,
+            ],
+        )
+    };
+    check(ret).map(|_| old)
+}
+
+/// Creates a descriptor from which the signals in `mask` can be read as
+/// 128-byte `signalfd_siginfo` records (signal number in the first four
+/// bytes). The signals must be blocked, see [`block_signals`].
+pub fn signal_fd(mask: u64) -> Result<OwnedFd, Errno> {
+    // SAFETY: the mask pointer refers to a local `u64` of the stated size.
+    let ret = unsafe {
+        raw(
+            nr::SIGNALFD4,
+            [
+                usize::MAX,
+                std::ptr::from_ref(&mask) as usize,
+                SIGSET_BYTES,
+                SFD_CLOEXEC,
+                0,
+            ],
+        )
+    };
+    let fd = i32::try_from(check(ret)?).map_err(|_| Errno::EBADF)?;
+    // SAFETY: the kernel just returned `fd` as a new descriptor that nothing
+    // else in this process knows, so taking ownership is sound.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Credentials of the process on the other end of a Unix socket.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Ucred {
+    /// Process id.
+    pub pid: u32,
+    /// Effective user id at `connect` time.
+    pub uid: u32,
+    /// Effective group id at `connect` time.
+    pub gid: u32,
+}
+
+/// `SOL_SOCKET`.
+const SOL_SOCKET: usize = 1;
+/// `SO_PEERCRED`.
+const SO_PEERCRED: usize = 17;
+
+/// Reads `SO_PEERCRED` of a connected Unix socket.
+///
+/// A kernel that does not implement the option is reported as
+/// [`Errno::ENOPROTOOPT`]: that is the case when the call fails, when the
+/// kernel returns fewer than the twelve bytes of `struct ucred`, or when it
+/// reports process id 0 (no process has that id, so the answer cannot be a
+/// real credential). The Ultar kernel at the time of writing answers every
+/// unknown socket option with four zero bytes and is caught by this check.
+pub fn peer_credentials(socket: BorrowedFd<'_>) -> Result<Ucred, Errno> {
+    let mut cred = [0u32; 3];
+    let mut len: u32 = 12;
+    // SAFETY: `cred` is 12 bytes, `len` says so and is a valid in/out
+    // pointer; the descriptor is borrowed and therefore open.
+    let ret = unsafe {
+        raw(
+            nr::GETSOCKOPT,
+            [
+                socket.as_raw_fd() as usize,
+                SOL_SOCKET,
+                SO_PEERCRED,
+                std::ptr::from_mut(&mut cred) as usize,
+                std::ptr::from_mut(&mut len) as usize,
+            ],
+        )
+    };
+    check(ret)?;
+    if len != 12 || cred[0] == 0 {
+        return Err(Errno::ENOPROTOOPT);
+    }
+    Ok(Ucred {
+        pid: cred[0],
+        uid: cred[1],
+        gid: cred[2],
+    })
+}
+
+/// `F_GETFD`.
+const F_GETFD: usize = 1;
+/// `F_SETFD`.
+const F_SETFD: usize = 2;
+/// `FD_CLOEXEC`.
+const FD_CLOEXEC: usize = 1;
+
+/// Whether descriptor number `fd` is open in this process.
+pub fn is_open(fd: i32) -> bool {
+    let Ok(number) = usize::try_from(fd) else {
+        return false;
+    };
+    // SAFETY: `fcntl(F_GETFD)` only inspects the descriptor table.
+    check(unsafe { raw(nr::FCNTL, [number, F_GETFD, 0, 0, 0]) }).is_ok()
+}
+
+/// Descriptor numbers already handed out by [`adopt_fd`].
+static ADOPTED: Mutex<BTreeSet<i32>> = Mutex::new(BTreeSet::new());
+
+/// Takes ownership of a descriptor this process inherited from its parent
+/// (a readiness pipe, a secret). Each number can be adopted once; the
+/// standard streams 0–2 cannot be adopted. The descriptor is marked
+/// close-on-exec so that it is not passed on to children.
+pub fn adopt_fd(fd: i32) -> Result<OwnedFd, Errno> {
+    if fd < 3 {
+        return Err(Errno::EINVAL);
+    }
+    let mut adopted = ADOPTED.lock().unwrap_or_else(PoisonError::into_inner);
+    if adopted.contains(&fd) || !is_open(fd) {
+        return Err(Errno::EBADF);
+    }
+    // SAFETY: only integer arguments; marks the descriptor close-on-exec.
+    check(unsafe { raw(nr::FCNTL, [fd as usize, F_SETFD, FD_CLOEXEC, 0, 0]) })?;
+    adopted.insert(fd);
+    // The descriptor is open (checked above) and was inherited from the
+    // parent under a contract that names its number (environment variable
+    // or command line of the service). A program that opens files *before*
+    // adopting could have had the number reused; the runtime therefore
+    // adopts during start-up, before it opens anything.
+    // SAFETY: `fd` is open, and the set above guarantees that this
+    // function creates at most one owner per number.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Closes every descriptor from `first` upwards that is not in `keep`.
+/// Returns how many were closed.
+///
+/// Must run at the very start of a process, before any Rust object owns a
+/// descriptor other than the standard streams: closing a descriptor that an
+/// object still owns would let its number be reused behind that object's
+/// back. [`crate::Hardening`] calls it as its first step.
+pub fn close_inherited(first: i32, keep: &[i32], upper: i32) -> usize {
+    let mut closed = 0;
+    for fd in first.max(3)..upper {
+        if keep.contains(&fd) || !is_open(fd) {
+            continue;
+        }
+        // SAFETY: by the contract above no Rust object owns `fd`; it is a
+        // descriptor leaked into this process by its parent.
+        if check(unsafe { raw(nr::CLOSE, [fd as usize, 0, 0, 0, 0]) }).is_ok() {
+            closed += 1;
+        }
+    }
+    closed
+}
+
+/// `prctl` option of the Ultar kernel: read the rights of the process.
+const PR_ULTAR_RIGHTS_GET: usize = 0x554c_5200;
+/// `prctl` option of the Ultar kernel: drop the rights in the mask.
+const PR_ULTAR_RIGHTS_DROP: usize = 0x554c_5201;
+
+/// The rights of this process on the Ultar kernel, as its bit mask. Any
+/// other kernel does not know the option and answers with an error.
+pub fn ultar_rights() -> Result<u64, Errno> {
+    // SAFETY: the option takes no argument and only returns an integer.
+    check(unsafe { raw(nr::PRCTL, [PR_ULTAR_RIGHTS_GET, 0, 0, 0, 0]) }).map(|bits| bits as u64)
+}
+
+/// Drops the Ultar kernel rights in `mask` for this process (rights can
+/// only shrink).
+pub fn ultar_drop_rights(mask: u64) -> Result<(), Errno> {
+    // SAFETY: the option takes the mask as a plain integer, no pointer.
+    check(unsafe { raw(nr::PRCTL, [PR_ULTAR_RIGHTS_DROP, mask as usize, 0, 0, 0]) }).map(|_| ())
+}

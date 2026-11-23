@@ -1,0 +1,20 @@
+[package]
+name = "ultar-busd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The bus broker daemon of Ultar OS on the service runtime: signals, self-limits, peer identity, logging (system core, area 3)"
+
+[[bin]]
+name = "ultar-busd"
+path = "src/main.rs"
+
+[dependencies]
+ultar-bus = { path = "../ultar-bus" }
+ultar-service = { path = "../ultar-service" }
+
+[dev-dependencies]
+# Reads the service definitions in rootfs/ to check them against the real parsers.
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }

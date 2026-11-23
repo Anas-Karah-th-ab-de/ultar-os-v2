@@ -3,11 +3,13 @@
 //! Positions are logical points with a physical origin (top-left). The platform translates
 //! device input into [`Event`]s; the application reacts to the returned [`Action`]s.
 
+mod activate;
 mod keys;
 mod pointer;
+mod scroll_input;
 
 use crate::geom::Point;
-use crate::ui::{NodeId, Ui};
+use crate::ui::{NodeId, Pointer, Ui};
 
 /// A mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -82,6 +84,12 @@ pub enum Key {
     Backspace,
     /// Delete.
     Delete,
+    /// Page Up: scroll back by a viewport.
+    PageUp,
+    /// Page Down: scroll on by a viewport.
+    PageDown,
+    /// The menu key (or Shift+F10): open the context menu of the focused widget.
+    Menu,
     /// A character produced by the keyboard layout or input method.
     Char(char),
 }
@@ -155,11 +163,12 @@ pub enum Event {
 /// What a widget did in response to input.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActionKind {
-    /// A button was activated.
+    /// A button or list item was activated.
     Activated,
-    /// A switch changed to the given state.
+    /// A switch or checkbox changed to the given state.
     Toggled(bool),
-    /// A select's option was chosen.
+    /// An option of a select or radio group, a tab, or an item of a selectable list (reported
+    /// for the list) was chosen.
     Selected(usize),
     /// A slider moved to the given value.
     ValueChanged(f32),
@@ -167,10 +176,15 @@ pub enum ActionKind {
     TextChanged,
     /// Enter was pressed in a text field.
     Submitted,
-    /// A select's options list opened.
+    /// A select's options list, a menu or a context menu opened.
     Opened,
-    /// A select's options list closed.
+    /// A select's options list or a menu closed; a dialog or sheet was closed by the user
+    /// (Escape, or a press beside a sheet).
     Closed,
+    /// The menu item with this identifier was chosen (reported for the menu's owner).
+    MenuChosen(u32),
+    /// A scroll container moved to this offset in points.
+    Scrolled(f32),
 }
 
 /// An action emitted by a node.
@@ -197,12 +211,15 @@ impl Ui {
         self.layout();
         let mut actions = Vec::new();
         let consumed = match event {
-            Event::PointerMove { pos } => self.pointer_move(pos, true, &mut actions),
-            Event::PointerDown { pos, button } => {
-                button == PointerButton::Primary && self.pointer_down(pos, &mut actions)
-            }
+            Event::PointerMove { pos } => self.pointer_move(pos, Pointer::Mouse, &mut actions),
+            Event::PointerDown { pos, button } => match button {
+                PointerButton::Primary => self.pointer_down(pos, Pointer::Mouse, &mut actions),
+                PointerButton::Secondary => self.secondary_down(pos, &mut actions),
+                PointerButton::Middle => false,
+            },
             Event::PointerUp { pos, button } => {
-                button == PointerButton::Primary && self.pointer_up(pos, &mut actions)
+                button == PointerButton::Primary
+                    && self.pointer_up(pos, Pointer::Mouse, &mut actions)
             }
             Event::PointerLeave => {
                 self.set_hover(None);
@@ -210,12 +227,12 @@ impl Ui {
             }
             Event::TouchDown { id, pos } => self.touch_down(id, pos, &mut actions),
             Event::TouchMove { id, pos } => {
-                self.input.touch == Some(id) && self.pointer_move(pos, false, &mut actions)
+                self.input.touch == Some(id) && self.pointer_move(pos, Pointer::Touch, &mut actions)
             }
             Event::TouchUp { id, pos } => self.touch_up(id, pos, &mut actions),
             Event::TouchCancel { id } => self.touch_cancel(id),
             Event::Key { key, modifiers } => self.key(key, modifiers, &mut actions),
-            Event::Scroll { pos, lines } => self.scroll(pos, lines),
+            Event::Scroll { pos, lines } => self.scroll(pos, lines, &mut actions),
         };
         Response { consumed, actions }
     }

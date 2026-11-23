@@ -3,13 +3,13 @@
 
 mod common;
 
-use common::{center, key, snapshots, LANGS};
+use common::sheet::{Sheet, State, ACTION_STATES};
+use common::snapshots;
 use std::collections::BTreeMap;
-use ultar_ui::event::{Event, Key, PointerButton};
 use ultar_ui::icon::IconId;
-use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
+use ultar_ui::layout::{CrossAlign, Flex, Sizing};
 use ultar_ui::paint::TextSpec;
-use ultar_ui::snapshot::{render, Snapshots};
+use ultar_ui::snapshot::render;
 use ultar_ui::text::{Overflow, Weight};
 use ultar_ui::tokens::{ColorRole, Space, ThemeKind, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
@@ -18,146 +18,6 @@ use ultar_ui::widgets::{
     TextField,
 };
 use ultar_ui::{Lang, Size};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    Normal,
-    Hovered,
-    Pressed,
-    Focused,
-    Disabled,
-    Loading,
-    Error,
-    Open,
-}
-
-impl State {
-    fn name(self) -> &'static str {
-        match self {
-            State::Normal => "normal",
-            State::Hovered => "hovered",
-            State::Pressed => "pressed",
-            State::Focused => "focused",
-            State::Disabled => "disabled",
-            State::Loading => "loading",
-            State::Error => "error",
-            State::Open => "open",
-        }
-    }
-}
-
-const ACTION_STATES: [State; 6] = [
-    State::Normal,
-    State::Hovered,
-    State::Pressed,
-    State::Focused,
-    State::Disabled,
-    State::Loading,
-];
-
-fn apply(ui: &mut Ui, id: NodeId, state: State) -> Result<(), UiError> {
-    let pos = center(ui, id);
-    match state {
-        State::Normal => {}
-        State::Hovered => {
-            ui.handle(Event::PointerMove { pos });
-        }
-        State::Pressed => {
-            ui.handle(Event::PointerMove { pos });
-            ui.handle(Event::PointerDown {
-                pos,
-                button: PointerButton::Primary,
-            });
-        }
-        State::Focused => {
-            while ui.focused() != Some(id) {
-                assert!(key(ui, Key::Tab).consumed, "widget is reachable by Tab");
-            }
-        }
-        State::Disabled => ui.set_disabled(id, true)?,
-        State::Loading => {
-            ui.set_loading(id, true)?;
-            ui.advance_to(150);
-        }
-        State::Error => ui.set_error(id, Some(Label::key("demo.orientation.error")))?,
-        State::Open => {
-            while ui.focused() != Some(id) {
-                key(ui, Key::Tab);
-            }
-            key(ui, Key::Enter);
-            key(ui, Key::ArrowDown);
-        }
-    }
-    Ok(())
-}
-
-/// Runs the cases, collects every mismatch and checks that the states of a widget differ.
-struct Sheet {
-    set: Snapshots,
-    problems: Vec<String>,
-    /// Rendered pixels per case name (Arabic, dark) to prove that states look different.
-    pictures: BTreeMap<String, Vec<u8>>,
-    cases: usize,
-}
-
-impl Sheet {
-    fn shoot(
-        &mut self,
-        name: &str,
-        size: Size,
-        build: &dyn Fn(&mut Ui) -> Result<NodeId, UiError>,
-        state: State,
-    ) {
-        self.cases += 1;
-        for lang in LANGS {
-            for theme in ThemeKind::ALL {
-                let result = self.set.ui(size, lang, theme).and_then(|mut ui| {
-                    ui.set_root_flex(
-                        Flex::column()
-                            .padding(Padding::all(Space::S16))
-                            .gap(Space::S8)
-                            .cross(CrossAlign::Start),
-                    );
-                    let id = build(&mut ui)?;
-                    apply(&mut ui, id, state)?;
-                    if (lang, theme) == (Lang::Ar, ThemeKind::Dark) {
-                        self.pictures
-                            .insert(name.to_string(), render(&mut ui)?.to_rgba());
-                    }
-                    self.set.assert_ui(name, &mut ui)
-                });
-                if let Err(e) = result {
-                    self.problems
-                        .push(format!("{name} {} {}: {e}", lang.code(), theme.name()));
-                }
-            }
-        }
-    }
-
-    fn states(
-        &mut self,
-        widget: &str,
-        size: Size,
-        states: &[State],
-        build: &dyn Fn(&mut Ui) -> Result<NodeId, UiError>,
-    ) {
-        for state in states {
-            self.shoot(&format!("{widget}-{}", state.name()), size, build, *state);
-        }
-        let own: Vec<(&String, &Vec<u8>)> = self
-            .pictures
-            .iter()
-            .filter(|(k, _)| k.starts_with(&format!("{widget}-")))
-            .collect();
-        for (i, (a, pa)) in own.iter().enumerate() {
-            for (b, pb) in &own[i + 1..] {
-                if pa == pb {
-                    self.problems.push(format!("{a} and {b} look identical"));
-                }
-            }
-        }
-    }
-}
 
 const SMALL: Size = Size::new(220.0, 64.0);
 const WIDE: Size = Size::new(320.0, 88.0);
@@ -404,13 +264,19 @@ fn every_widget_in_every_state_matches_its_reference() {
     text_fields(&mut sheet);
     rows_cards_and_texts(&mut sheet);
     icons(&mut sheet);
+    let earlier = sheet.cases;
+    common::cases3::all(&mut sheet);
     assert!(
         sheet.problems.is_empty(),
         "{} problems:\n{}",
         sheet.problems.len(),
         sheet.problems.join("\n")
     );
-    assert_eq!(sheet.cases, 73, "number of widget/state cases");
+    assert_eq!(
+        earlier, 73,
+        "number of widget/state cases of the first delivery"
+    );
+    assert_eq!(sheet.cases - earlier, 56, "number of wave-3 cases");
     // No stale or missing files: every case has four references, plus the composed screen
     // (four) and its touch variant at double scale (one).
     let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");

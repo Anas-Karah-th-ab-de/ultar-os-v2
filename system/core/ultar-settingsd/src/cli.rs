@@ -48,8 +48,8 @@ pub struct Invocation {
     pub socket: Option<PathBuf>,
     /// Output language when given explicitly.
     pub lang: Option<Lang>,
-    /// Secret for bus listeners that authenticate by token.
-    pub token: Option<String>,
+    /// File with the secret for token listeners (never the secret itself).
+    pub token_file: Option<PathBuf>,
     /// The command.
     pub command: Command,
 }
@@ -110,14 +110,14 @@ pub fn parse(
     let mut socket = env_socket
         .filter(|path| !path.is_empty())
         .map(PathBuf::from);
-    let (mut lang, mut token, mut count, mut help) = (None, None, None, false);
+    let (mut lang, mut token_file, mut count, mut help) = (None, None, None, false);
     let mut words = Vec::new();
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(UsageError::Arguments);
         match arg.as_str() {
             "--help" | "-h" => help = true,
             "--socket" => socket = Some(PathBuf::from(value()?)),
-            "--token" => token = Some(value()?),
+            "--token-file" => token_file = Some(PathBuf::from(value()?)),
             "--lang" => lang = Some(Lang::parse(&value()?).ok_or(UsageError::Arguments)?),
             "--count" => {
                 let number: u64 = value()?.parse().map_err(|_| UsageError::Arguments)?;
@@ -141,7 +141,7 @@ pub fn parse(
     Ok(Invocation {
         socket,
         lang,
-        token,
+        token_file,
         command,
     })
 }
@@ -406,11 +406,12 @@ mod tests {
 
     #[test]
     fn options() {
-        let invocation =
-            parsed(&["--socket", "/tmp/s", "--lang", "de", "--token", "t", "list"]).unwrap();
+        let invocation = parsed(&["--socket", "/tmp/s", "--lang", "de", "list"]).unwrap();
         assert_eq!(invocation.socket, Some(PathBuf::from("/tmp/s")));
         assert_eq!(invocation.lang, Some(Lang::De));
-        assert_eq!(invocation.token.as_deref(), Some("t"));
+        let with_file = parsed(&["--token-file", "/t", "list"]).unwrap();
+        assert_eq!(with_file.token_file, Some(PathBuf::from("/t")));
+        assert!(parsed(&["--token", "t", "list"]).is_err());
         let env = |socket: &str| parse(["list".to_owned()], Some(socket.to_owned())).unwrap();
         assert_eq!(env("/run/bus").socket, Some(PathBuf::from("/run/bus")));
         assert_eq!(env("").socket, None);

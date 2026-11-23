@@ -1,0 +1,238 @@
+//! Checks the service definitions and the bus policy shipped in
+//! `rootfs/etc/ultar/` against the real parsers: a typo there would
+//! otherwise only show on a booted device.
+
+use crate::args::{parse_arguments, IdentitySource};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use ultar_bus::{Identity, Pattern, Policy};
+
+fn etc() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../rootfs/etc/ultar")
+}
+
+/// The keys `ultar-init` accepts in a service file (`deny_unknown_fields`
+/// in `system/core/ultar-init/src/config.rs`).
+const INIT_KEYS: [&str; 13] = [
+    "name", "exec", "args", "env", "restart", "after", "oneshot", "console", "compat", "workdir",
+    "manual", "editions", "cgroup",
+];
+
+struct Service {
+    exec: String,
+    args: Vec<String>,
+    after: Vec<String>,
+    restart: String,
+    cgroup: BTreeMap<String, String>,
+}
+
+fn service(name: &str) -> Service {
+    let text =
+        std::fs::read_to_string(etc().join("services").join(format!("{name}.toml"))).unwrap();
+    let table: toml::Table = text.parse().unwrap();
+    for key in table.keys() {
+        assert!(
+            INIT_KEYS.contains(&key.as_str()),
+            "{name}: unknown key {key}"
+        );
+    }
+    let strings = |key: &str| -> Vec<String> {
+        table.get(key).map_or_else(Vec::new, |value| {
+            let items = value.as_array().unwrap().iter();
+            items
+                .map(|item| item.as_str().unwrap().to_owned())
+                .collect()
+        })
+    };
+    let cgroup = table["cgroup"].as_table().unwrap();
+    Service {
+        exec: table["exec"].as_str().unwrap().to_owned(),
+        args: strings("args"),
+        after: strings("after"),
+        restart: table["restart"].as_str().unwrap().to_owned(),
+        cgroup: cgroup
+            .iter()
+            .map(|(key, value)| (key.clone(), value.as_str().unwrap().to_owned()))
+            .collect(),
+    }
+}
+
+/// The value after `option` in `args`.
+fn value<'a>(args: &'a [String], option: &str) -> &'a str {
+    let index = args.iter().position(|arg| arg == option).unwrap();
+    &args[index + 1]
+}
+
+#[test]
+fn the_four_services_are_ordered_restarted_and_limited() {
+    let expected = [
+        ("logd", "/usr/bin/ultar-logd", &[][..]),
+        ("bus", "/usr/bin/ultar-busd", &["logd"]),
+        ("settingsd", "/usr/bin/ultar-settingsd", &["bus"]),
+        ("devd", "/usr/bin/ultar-devd", &["bus"]),
+    ];
+    for (name, exec, after) in expected {
+        let file = service(name);
+        assert_eq!(file.exec, exec);
+        assert_eq!(file.after, after, "{name}");
+        assert_eq!(file.restart, "always", "{name}");
+        // Every service has a memory and a process limit in its group.
+        for limit in ["memory.max", "pids.max"] {
+            assert!(file.cgroup.contains_key(limit), "{name}: {limit}");
+        }
+        // No secret on any command line.
+        assert!(!file
+            .args
+            .iter()
+            .any(|arg| arg == "--token" || arg.contains("token=")));
+        // Root is declared, never implied.
+        assert!(file.args.iter().any(|arg| arg == "--allow-root"), "{name}");
+        // Every service has a policy and nobody runs with --allow-all.
+        assert!(!file.args.iter().any(|arg| arg == "--allow-all"), "{name}");
+        assert_eq!(value(&file.args, "--policy"), "/etc/ultar/bus-policy.toml");
+    }
+}
+
+#[test]
+fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() {
+    let bus = service("bus");
+    let parsed = parse_arguments(bus.args.iter().cloned(), None).unwrap();
+    assert!(parsed.allow_root && !parsed.allow_all);
+    assert_eq!(
+        parsed.log_socket,
+        Some(PathBuf::from("/run/ultar/log/busd.sock"))
+    );
+    let mut sockets = BTreeMap::new();
+    for listener in &parsed.listeners {
+        // Nobody but the owner reaches any socket.
+        assert_eq!(listener.access.mode, Some(0o600), "{:?}", listener.path);
+        let IdentitySource::Fixed(identity) = &listener.source else {
+            panic!("credential listeners need a kernel with SO_PEERCRED");
+        };
+        assert!(Identity::new(identity).is_ok());
+        sockets.insert(identity.clone(), listener.path.clone());
+    }
+    // Each service connects to the socket of its own identity.
+    let settingsd = service("settingsd");
+    assert_eq!(
+        Path::new(value(&settingsd.args, "--socket")),
+        sockets["system.settingsd"]
+    );
+    let devd = service("devd");
+    assert_eq!(
+        Path::new(value(&devd.args, "--bus")),
+        sockets["system.devd"]
+    );
+    let logd = service("logd");
+    assert_eq!(
+        Path::new(value(&logd.args, "--bus")),
+        sockets["system.logd"]
+    );
+    assert_eq!(
+        sockets["system.admin"],
+        Path::new("/run/ultar/bus/system.sock")
+    );
+    assert_eq!(sockets.len(), 4);
+    // Each service writes its log to the socket the log service names it by.
+    for (service_name, option, identity) in [
+        ("bus", "--log-socket", "system.busd"),
+        ("settingsd", "--log-socket", "system.settingsd"),
+        ("devd", "--log-socket", "system.devd"),
+    ] {
+        let path = value(&service(service_name).args, option).to_owned();
+        let listen = format!("{path}={identity}");
+        assert!(logd.args.contains(&listen), "{listen}");
+    }
+}
+
+fn id(name: &str) -> Identity {
+    Identity::new(name).unwrap()
+}
+
+#[test]
+fn the_policy_grants_each_identity_exactly_what_it_needs() {
+    let policy = Policy::load(&etc().join("bus-policy.toml")).unwrap();
+    let topic = |name: &str| Pattern::parse(name).unwrap();
+    let (logd, settingsd, devd, admin) = (
+        id("system.logd"),
+        id("system.settingsd"),
+        id("system.devd"),
+        id("system.admin"),
+    );
+    // What each service needs.
+    assert!(policy.may_register(&logd, "log"));
+    assert!(policy.may_register(&settingsd, "settings"));
+    assert!(policy.may_register(&devd, "devices"));
+    for name in [
+        "settings.changed",
+        "settings.pending",
+        "settings.pending_resolved",
+        "settings.store_report",
+    ] {
+        assert!(policy.may_publish(&settingsd, name), "{name}");
+    }
+    assert!(policy.may_subscribe(&settingsd, &topic("devices.capabilities")));
+    for name in ["devices.capabilities", "devices.driver_state"] {
+        assert!(policy.may_publish(&devd, name), "{name}");
+    }
+    for (service, method) in [
+        ("settings", "set"),
+        ("settings", "admin"),
+        ("devices", "switch"),
+        ("devices", "admin"),
+        ("log", "query"),
+        ("log", "read_all"),
+    ] {
+        assert!(
+            policy.may_call(&admin, service, method),
+            "{service}.{method}"
+        );
+    }
+}
+
+#[test]
+fn the_policy_grants_nothing_beyond_that() {
+    let policy = Policy::load(&etc().join("bus-policy.toml")).unwrap();
+    let topic = |name: &str| Pattern::parse(name).unwrap();
+    let (logd, settingsd, devd, admin) = (
+        id("system.logd"),
+        id("system.settingsd"),
+        id("system.devd"),
+        id("system.admin"),
+    );
+    for service in [&logd, &settingsd, &devd] {
+        for name in ["log", "settings", "devices", "notify"] {
+            let own = (service == &logd && name == "log")
+                || (service == &settingsd && name == "settings")
+                || (service == &devd && name == "devices");
+            assert_eq!(policy.may_register(service, name), own, "{service} {name}");
+        }
+        for (target, method) in [
+            ("settings", "set"),
+            ("devices", "switch"),
+            ("log", "read_all"),
+            ("devices", "admin"),
+            ("settings", "admin"),
+        ] {
+            assert!(
+                !policy.may_call(service, target, method),
+                "{service} {target}.{method}"
+            );
+        }
+    }
+    assert!(!policy.may_publish(&logd, "settings.changed"));
+    assert!(!policy.may_publish(&settingsd, "devices.capabilities"));
+    assert!(!policy.may_publish(&devd, "settings.changed"));
+    assert!(!policy.may_publish(&devd, "devices.other"));
+    assert!(!policy.may_subscribe(&devd, &topic("settings.changed")));
+    assert!(!policy.may_subscribe(&settingsd, &topic("devices.*")));
+    assert!(!policy.may_register(&admin, "settings"));
+    assert!(!policy.may_publish(&admin, "settings.changed"));
+    // Default deny: an identity without rule may do nothing.
+    for stranger in [id("app.phone"), id("system.busd"), id("system")] {
+        assert!(!policy.may_call(&stranger, "settings", "get"));
+        assert!(!policy.may_call(&stranger, "log", "query"));
+        assert!(!policy.may_subscribe(&stranger, &topic("settings.changed")));
+        assert!(!policy.may_register(&stranger, "log"));
+    }
+}

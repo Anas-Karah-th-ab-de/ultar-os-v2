@@ -19,6 +19,7 @@ family_arabic_text = "Noto Naskh Arabic"
 family_arabic_title = "Noto Kufi Arabic"
 family_latin = "Noto Sans"
 family_mono = "Noto Sans Mono"
+family_mono_arabic = "Noto Sans Arabic"   # Arabic inside fixed-width text (Noto Sans Mono has no Arabic)
 weights = [400, 500, 600, 700]
 
 [size]
@@ -76,8 +77,16 @@ success = "#1F7A3D"
 warning = "#8A5A00"
 danger = "#B3261E"
 
-[shadow]                   # one elevation level for everything that floats
+[shadow]                   # one elevation level for everything that floats (CSS: 0 offset_y blur)
 offset_y = 12
 blur = 32
 alpha_dark = 0.40
 alpha_light = 0.18
+
+[state]                    # how interaction states change a widget; the same for every widget
+disabled_opacity = 0.40    # whole widget
+hover_overlay = 0.10       # share of the foreground colour laid over a filled colour
+pressed_overlay = 0.20
+scrim_dark = 0.60          # ground colour laid over everything behind a dialog or sheet
+scrim_light = 0.40
+focus_ring = "accent_text" # colour role of the focus ring

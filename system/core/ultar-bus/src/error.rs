@@ -104,6 +104,9 @@ pub enum BusError {
     AuthFailed,
     /// The socket path is already served by a live broker.
     AddressInUse,
+    /// Something that is not a socket lies at the socket path; it is not
+    /// removed.
+    NotASocket,
 }
 
 impl fmt::Display for BusError {
@@ -134,6 +137,9 @@ impl fmt::Display for BusError {
             Self::Lagged(lost) => write!(f, "subscription lagged, {lost} event(s) lost"),
             Self::AuthFailed => f.write_str("peer could not be authenticated"),
             Self::AddressInUse => f.write_str("bus socket already in use"),
+            Self::NotASocket => {
+                f.write_str("socket path is occupied by something that is not a socket")
+            }
         }
     }
 }

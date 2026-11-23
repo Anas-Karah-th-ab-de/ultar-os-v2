@@ -68,14 +68,16 @@ Speicher: SQLite (sqlx) — leicht auf Postgres umstellbar. Passwörter **Argon2
 signiertem Token (PASETO v4 / HMAC). Rate-Limiting, Audit-Log.
 
 ### 2.1 Konto & eindeutige Nummer
-- Registrierung: Nutzername + Passwort → Konto. Jedes Ultar-Gerät meldet beim ersten Start seine
-  **Geräte-ID** (Hash aus Seriennummer + erzeugtem Schlüsselpaar) an `/v1/device/register`.
+- Registrierung: Nutzername + Passwort → Konto. Jedes Ultar-Gerät erzeugt beim ersten Start ein
+  eigenes Schlüsselpaar (Ed25519); die **Geräte-ID** ist aus dem öffentlichen Schlüssel abgeleitet
+  (keine Seriennummer). Bei `/v1/device/register` weist das Gerät den Besitz des Schlüssels mit
+  einer Signatur über eine frische Server-Aufgabe nach (Entwurf: `docs/DEVICE-IDENTITY.md`).
 - Server vergibt eine **eindeutige Ultar-Nummer** im Format `UOS-XXXX-XXXX` (bzw. als E.164-artige
   interne Nummer `+999 ULTAR …`). Die Nummer ↔ Konto/Gerät-Zuordnung liegt in der Tabelle `numbers`.
   Kollisionsfrei per Sequenz + Prüfziffer. Die Nummer erscheint in Systeminfo und der Telefon-App.
 
 ### 2.2 Anrufe & Video (Gerät ↔ Gerät)
-- **Signalisierung:** WebSocket `/v1/signal` (nach Token-Auth). Austausch von SDP-Offer/Answer +
+- **Signalisierung:** WebSocket `/v1/signal` (Anmeldung mit dem Geräteschlüssel, nicht mit Konto-Token). Austausch von SDP-Offer/Answer +
   ICE-Kandidaten zwischen zwei Ultar-Nummern. Server ist nur Vermittler, sieht **keine** Medien.
 - **Medien:** WebRTC, Ende-zu-Ende per **DTLS-SRTP** verschlüsselt. NAT-Durchstoß per **STUN**;
   wenn direkt nicht möglich, **TURN-Relay** (coturn auf demselben Server, Zugangsdaten kurzlebig

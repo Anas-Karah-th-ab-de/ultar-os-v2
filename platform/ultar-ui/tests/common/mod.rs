@@ -1,6 +1,10 @@
 //! Shared helpers of the integration tests: demo catalogs and the composed display screen.
 #![allow(dead_code)]
 
+pub mod cases3;
+pub mod gallery;
+pub mod sheet;
+
 use std::path::PathBuf;
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton, Response};
 use ultar_ui::icon::IconId;
@@ -209,7 +213,7 @@ pub fn display_settings(ui: &mut Ui) -> Result<DisplayScreen, UiError> {
     let padding = Padding::symmetric(Space::S32, Space::S24);
     ui.set_root_flex(Flex::column().padding(padding).gap(Space::S16));
     let root = ui.root();
-    let title = TextSpec::new(TypeSize::S24).weight(Weight::Bold);
+    let title = TextSpec::title(TypeSize::S24);
     ui.add(root, Text::new(k("demo.display.title")).spec(title))?;
     let card = ui.add(root, Card::new())?;
     header(ui, card)?;

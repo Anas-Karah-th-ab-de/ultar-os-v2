@@ -56,6 +56,37 @@ pub enum CloudError {
     NotSignedIn,
     /// Preparing the VPN keys failed (detail for logs).
     Vpn(String),
+    /// The server refused the challenge (unknown, used, expired or issued for something else).
+    ChallengeRejected,
+    /// The server did not accept the device's signature (`signature_invalid`).
+    SignatureRejected,
+    /// The device key is registered to another account (`device_taken`).
+    DeviceTaken,
+    /// The device key was removed or replaced; the device needs a new identity (`device_retired`).
+    DeviceRetired,
+    /// The account has the allowed number of devices (`device_limit`, `device_quota_exhausted`).
+    DeviceLimit,
+    /// The server does not know this device (`device_unknown`).
+    DeviceUnknown,
+    /// The server needs a device key; this request had the form of the first release.
+    UpdateRequired,
+    /// The earlier registration cannot be taken over by this device (`legacy_not_eligible`).
+    LegacyNotEligible,
+    /// The waiting time of a device replacement is not over (`cooldown_active`).
+    CooldownActive {
+        /// Seconds left.
+        retry_after_secs: u64,
+    },
+    /// Another device replacement is already waiting (`recovery_pending`).
+    RecoveryPending,
+    /// There is no device replacement to finish or cancel (`recovery_unknown`).
+    RecoveryUnknown,
+    /// A challenge named another server or account than this device talks to; nothing was signed.
+    ServerIdentityMismatch,
+    /// The device key could not be used.
+    KeyStore(crate::keystore::KeyStoreError),
+    /// This device is not registered yet.
+    NotRegistered,
 }
 
 impl CloudError {
@@ -73,6 +104,28 @@ impl CloudError {
             (Some("invalid_request" | "payload_too_large" | "invalid_wireguard_key"), _) => {
                 CloudError::InvalidRequest
             }
+            (Some("challenge_capacity"), _) => CloudError::RateLimited {
+                retry_after_secs: retry_after_secs.unwrap_or(1).max(1),
+            },
+            (
+                Some(
+                    "challenge_unknown" | "challenge_used" | "challenge_expired"
+                    | "challenge_mismatch",
+                ),
+                _,
+            ) => CloudError::ChallengeRejected,
+            (Some("signature_invalid"), _) => CloudError::SignatureRejected,
+            (Some("device_taken"), _) => CloudError::DeviceTaken,
+            (Some("device_retired"), _) => CloudError::DeviceRetired,
+            (Some("device_limit" | "device_quota_exhausted"), _) => CloudError::DeviceLimit,
+            (Some("device_unknown"), _) => CloudError::DeviceUnknown,
+            (Some("device_key_required"), _) => CloudError::UpdateRequired,
+            (Some("legacy_not_eligible"), _) => CloudError::LegacyNotEligible,
+            (Some("cooldown_active"), _) => CloudError::CooldownActive {
+                retry_after_secs: retry_after_secs.unwrap_or(1).max(1),
+            },
+            (Some("recovery_pending"), _) => CloudError::RecoveryPending,
+            (Some("recovery_unknown"), _) => CloudError::RecoveryUnknown,
             (None, 401) => CloudError::AuthRequired,
             (None, 403) => CloudError::NotEntitled,
             (None, 404) => CloudError::NotFound,
@@ -105,13 +158,29 @@ impl CloudError {
             (CloudError::Package(_), _) => "cloud.error.package_rejected",
             (CloudError::NotSignedIn, _) => "cloud.error.not_signed_in",
             (CloudError::Vpn(_), _) => "cloud.error.vpn",
+            (CloudError::ChallengeRejected, _) => "cloud.device.challenge_rejected",
+            (CloudError::SignatureRejected, _) => "cloud.device.signature_rejected",
+            (CloudError::DeviceTaken, _) => "cloud.device.taken",
+            (CloudError::DeviceRetired, _) => "cloud.device.retired",
+            (CloudError::DeviceLimit, _) => "cloud.device.limit",
+            (CloudError::DeviceUnknown, _) => "cloud.device.unknown",
+            (CloudError::UpdateRequired, _) => "cloud.device.update_required",
+            (CloudError::LegacyNotEligible, _) => "cloud.device.legacy_not_eligible",
+            (CloudError::CooldownActive { .. }, _) => "cloud.device.cooldown_active",
+            (CloudError::RecoveryPending, _) => "cloud.device.recovery_pending",
+            (CloudError::RecoveryUnknown, _) => "cloud.device.recovery_unknown",
+            (CloudError::ServerIdentityMismatch, _) => "cloud.device.server_mismatch",
+            (CloudError::KeyStore(_), _) => "cloud.device.key_unusable",
+            (CloudError::NotRegistered, _) => "cloud.device.not_registered",
         }
     }
 
-    /// Seconds to wait, for the `{seconds}` placeholder of `cloud.error.rate_limited`.
+    /// Seconds to wait, for the `{seconds}` placeholder of `cloud.error.rate_limited` and
+    /// `cloud.device.cooldown_active`.
     pub fn retry_after_secs(&self) -> Option<u64> {
         match self {
-            CloudError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
+            CloudError::RateLimited { retry_after_secs }
+            | CloudError::CooldownActive { retry_after_secs } => Some(*retry_after_secs),
             _ => None,
         }
     }
@@ -129,6 +198,10 @@ impl fmt::Display for CloudError {
             CloudError::Io(e) => write!(f, "i/o: {e}"),
             CloudError::Package(detail) => write!(f, "package rejected: {detail}"),
             CloudError::Vpn(detail) => write!(f, "vpn: {detail}"),
+            CloudError::CooldownActive { retry_after_secs } => {
+                write!(f, "cool-down active, {retry_after_secs} s left")
+            }
+            CloudError::KeyStore(e) => write!(f, "device key: {e}"),
             other => f.write_str(other.message_key(Subject::General)),
         }
     }
@@ -138,8 +211,15 @@ impl std::error::Error for CloudError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             CloudError::Io(e) => Some(e),
+            CloudError::KeyStore(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+impl From<crate::keystore::KeyStoreError> for CloudError {
+    fn from(e: crate::keystore::KeyStoreError) -> Self {
+        CloudError::KeyStore(e)
     }
 }
 
@@ -265,5 +345,82 @@ mod tests {
             .to_string()
             .contains("sig"));
         assert!(CloudError::Vpn("keys".into()).to_string().contains("keys"));
+    }
+
+    #[test]
+    fn device_codes_map_to_variants() {
+        let f = CloudError::from_response;
+        for code in [
+            "challenge_unknown",
+            "challenge_used",
+            "challenge_expired",
+            "challenge_mismatch",
+        ] {
+            assert!(matches!(
+                f(400, Some(code), None),
+                CloudError::ChallengeRejected
+            ));
+        }
+        assert!(matches!(
+            f(429, Some("challenge_capacity"), Some(120)),
+            CloudError::RateLimited {
+                retry_after_secs: 120
+            }
+        ));
+        assert!(matches!(
+            f(401, Some("signature_invalid"), None),
+            CloudError::SignatureRejected
+        ));
+        assert!(matches!(
+            f(409, Some("device_taken"), None),
+            CloudError::DeviceTaken
+        ));
+        assert!(matches!(
+            f(410, Some("device_retired"), None),
+            CloudError::DeviceRetired
+        ));
+        assert!(matches!(
+            f(409, Some("device_limit"), None),
+            CloudError::DeviceLimit
+        ));
+        assert!(matches!(
+            f(409, Some("device_quota_exhausted"), None),
+            CloudError::DeviceLimit
+        ));
+        assert!(matches!(
+            f(404, Some("device_unknown"), None),
+            CloudError::DeviceUnknown
+        ));
+    }
+
+    #[test]
+    fn upgrade_recovery_and_key_errors_map_to_variants() {
+        let f = CloudError::from_response;
+        assert!(matches!(
+            f(426, Some("device_key_required"), None),
+            CloudError::UpdateRequired
+        ));
+        assert!(matches!(
+            f(403, Some("legacy_not_eligible"), None),
+            CloudError::LegacyNotEligible
+        ));
+        let wait = f(409, Some("cooldown_active"), Some(3600));
+        assert_eq!(wait.retry_after_secs(), Some(3600));
+        assert!(wait.to_string().contains("3600"));
+        assert!(matches!(
+            f(409, Some("recovery_pending"), None),
+            CloudError::RecoveryPending
+        ));
+        assert!(matches!(
+            f(404, Some("recovery_unknown"), None),
+            CloudError::RecoveryUnknown
+        ));
+        let key = CloudError::from(crate::keystore::KeyStoreError::Corrupt);
+        assert!(std::error::Error::source(&key).is_some());
+        assert!(key.to_string().contains("damaged"));
+        assert_eq!(
+            key.message_key(Subject::General),
+            "cloud.device.key_unusable"
+        );
     }
 }

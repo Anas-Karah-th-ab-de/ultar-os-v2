@@ -39,6 +39,32 @@ cloud.error.package_rejected = Das Paket wurde abgelehnt: Die Signatur fehlt ode
 cloud.error.not_signed_in = Du bist auf diesem Gerät nicht angemeldet.
 cloud.error.vpn = Die VPN-Schlüssel konnten nicht vorbereitet werden.
 
+# Geräte-Identität
+cloud.device.challenge_rejected = Der Server hat die Sicherheitsprüfung nicht angenommen. Versuche es erneut.
+cloud.device.signature_rejected = Der Server hat den Identitätsnachweis dieses Geräts nicht angenommen.
+cloud.device.taken = Dieses Gerät ist bereits bei einem anderen Konto registriert.
+cloud.device.retired = Dieses Gerät wurde aus dem Konto entfernt. Setze die Geräte-Identität zurück, um es neu zu registrieren; es erhält dann eine neue Nummer.
+cloud.device.limit = Dein Konto hat die Höchstzahl an Geräten erreicht. Entferne zuerst ein Gerät.
+cloud.device.unknown = Der Server kennt dieses Gerät nicht.
+cloud.device.update_required = Aktualisiere das System auf diesem Gerät, bevor du es registrierst.
+cloud.device.legacy_not_eligible = Die frühere Registrierung konnte von diesem Gerät nicht übernommen werden.
+cloud.device.cooldown_active = {seconds ->
+    [one] Die Nummer kann in {seconds} Sekunde umgezogen werden.
+   *[other] Die Nummer kann in {seconds} Sekunden umgezogen werden.
+}
+cloud.device.recovery_pending = Für dieses Konto wartet bereits ein Geräte-Ersatz.
+cloud.device.recovery_unknown = Es wartet kein Geräte-Ersatz.
+cloud.device.server_mismatch = Die Sicherheitsprüfung nannte einen anderen Server oder ein anderes Konto. Es wurde nichts signiert.
+cloud.device.key_unusable = Der Geräteschlüssel kann nicht verwendet werden. Er wurde nicht verändert.
+cloud.device.not_registered = Dieses Gerät ist noch nicht registriert.
+cloud.device.state.active = registriert
+cloud.device.state.legacy = vor Einführung der Geräteschlüssel registriert – dieses Gerät aktualisieren
+cloud.device.this_device = dieses Gerät
+cloud.device.none = Es sind keine Geräte registriert.
+cloud.device.removed = Das Gerät wurde entfernt.
+cloud.device.renamed = Das Gerät wurde umbenannt.
+cloud.device.reset = Die Geräte-Identität wurde gelöscht. Registriere das Gerät neu, um eine neue Nummer zu erhalten.
+
 # Befehlszeile
 cloud.cli.signed_in = Angemeldet.
 cloud.cli.number = Ultar-Nummer: {number}
@@ -47,4 +73,4 @@ cloud.cli.server = Server: {server}
 cloud.cli.account.signed_in = Konto: angemeldet
 cloud.cli.account.signed_out = Konto: abgemeldet (Store und Updates gehen ohne Konto)
 cloud.cli.unknown_command = Unbekannter Befehl: {command}
-cloud.cli.usage = Aufruf: ucloud register|login <Benutzer> <Kennwort> · number · vpn · store [Suche] · app <Kennung> · install <Kennung> · update [Kanal] · whoami
+cloud.cli.usage = Aufruf: ucloud register|login <Benutzer> <Kennwort> · number · devices · device-rename <Kennung> <Name> · device-remove <Kennung> · device-reset · vpn · store [Suche] · app <Kennung> · install <Kennung> · update [Kanal] · whoami

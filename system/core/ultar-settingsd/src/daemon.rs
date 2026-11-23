@@ -8,16 +8,22 @@ use crate::error::SettingsError;
 use crate::i18n::store_notice_key;
 use crate::schema::{NoDefaults, SchemaError};
 use crate::seed;
-use crate::server::{ErrorSink, Server, ServerParts};
+use crate::server::{store_notice, ErrorSink, Server, ServerParts};
 use crate::store::{Notice, StoreConfig};
 use std::fmt;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use ultar_bus::{BusError, Client, ClientOptions, Policy};
+use ultar_bus::messages::settings::StoreReport;
+use ultar_bus::{BusError, Policy};
 use ultar_i18n::{Arg, Lang, Translator};
 use ultar_profile::{Capabilities, DeviceProfile};
+use ultar_service::log::{Level, Logger, Record};
+use ultar_service::{
+    read_secret_fd, read_secret_file, BusSession, Lifecycle, Secret, SecretError, SecretFilePolicy,
+    SessionOptions, StopCause,
+};
 
 /// Write delay when none is given: changes within this time become one write.
 pub const DEFAULT_WRITE_DELAY: Duration = Duration::from_millis(250);
@@ -42,8 +48,15 @@ pub struct DaemonArgs {
     pub profile: Option<PathBuf>,
     /// Longest time a change waits before it is written.
     pub write_delay: Duration,
-    /// Secret for bus listeners that authenticate by token.
-    pub token: Option<String>,
+    /// File with the secret for bus listeners that authenticate by token
+    /// (owner and mode are checked).
+    pub token_file: Option<PathBuf>,
+    /// Inherited descriptor to read the token from instead.
+    pub token_fd: Option<i32>,
+    /// Ingestion socket of the log service.
+    pub log_socket: Option<PathBuf>,
+    /// The operator declares that the service runs as root.
+    pub allow_root: bool,
     /// Log every applied value to standard error.
     pub log_apply: bool,
     /// Language of the daemon's own messages when given explicitly.
@@ -66,6 +79,10 @@ pub enum DaemonArgError {
     Arguments,
     /// Neither `--policy FILE` nor `--allow-all`.
     NoPolicy,
+    /// `--policy FILE` together with `--allow-all`: which of the two was
+    /// meant cannot be guessed, and guessing wrong makes everybody an
+    /// administrator.
+    PolicyConflict,
 }
 
 impl DaemonArgError {
@@ -74,6 +91,7 @@ impl DaemonArgError {
         match self {
             DaemonArgError::Arguments => "settingsd.daemon.bad_arguments",
             DaemonArgError::NoPolicy => "settingsd.daemon.no_policy",
+            DaemonArgError::PolicyConflict => "settingsd.daemon.policy_conflict",
         }
     }
 }
@@ -83,6 +101,7 @@ impl fmt::Display for DaemonArgError {
         f.write_str(match self {
             DaemonArgError::Arguments => "invalid options",
             DaemonArgError::NoPolicy => "--policy FILE or --allow-all is required",
+            DaemonArgError::PolicyConflict => "--policy and --allow-all cannot be combined",
         })
     }
 }
@@ -97,9 +116,12 @@ struct Raw {
     policy: Option<PathBuf>,
     profile: Option<PathBuf>,
     delay_ms: Option<u64>,
-    token: Option<String>,
+    token_file: Option<PathBuf>,
+    token_fd: Option<i32>,
+    log_socket: Option<PathBuf>,
     lang: Option<Lang>,
     allow_all: bool,
+    allow_root: bool,
     log_apply: bool,
     help: bool,
 }
@@ -122,23 +144,40 @@ pub fn parse(
         match arg.as_str() {
             "--help" | "-h" => raw.help = true,
             "--allow-all" => raw.allow_all = true,
+            "--allow-root" => raw.allow_root = true,
             "--log-apply" => raw.log_apply = true,
             "--store" => raw.store = Some(PathBuf::from(value()?)),
             "--socket" => raw.socket = Some(PathBuf::from(value()?)),
             "--user" => raw.user = Some(value()?),
             "--policy" => raw.policy = Some(PathBuf::from(value()?)),
             "--profile" => raw.profile = Some(PathBuf::from(value()?)),
-            "--token" => raw.token = Some(value()?),
+            // There is no `--token`: a secret on the command line is
+            // visible to every process on the machine.
+            "--token-file" => raw.token_file = Some(PathBuf::from(value()?)),
+            "--token-fd" => raw.token_fd = Some(value()?.parse().map_err(|_| bad.clone())?),
+            "--log-socket" => raw.log_socket = Some(PathBuf::from(value()?)),
             "--lang" => raw.lang = Some(Lang::parse(&value()?).ok_or(bad.clone())?),
             "--write-delay-ms" => raw.delay_ms = Some(value()?.parse().map_err(|_| bad.clone())?),
             _ => return Err(bad),
         }
     }
+    finish(raw)
+}
+
+/// Checks the collected options and builds the command.
+fn finish(raw: Raw) -> Result<DaemonCommand, DaemonArgError> {
+    let bad = DaemonArgError::Arguments;
     if raw.help {
         return Ok(DaemonCommand::Help);
     }
     if raw.policy.is_none() && !raw.allow_all {
         return Err(DaemonArgError::NoPolicy);
+    }
+    if raw.policy.is_some() && raw.allow_all {
+        return Err(DaemonArgError::PolicyConflict);
+    }
+    if raw.token_file.is_some() && raw.token_fd.is_some() {
+        return Err(bad);
     }
     let write_delay = raw
         .delay_ms
@@ -148,10 +187,13 @@ pub fn parse(
         store: raw.store.ok_or(bad.clone())?,
         socket: raw.socket.ok_or(bad)?,
         user: raw.user.unwrap_or_else(|| "default".to_owned()),
-        policy: raw.policy.filter(|_| !raw.allow_all),
+        policy: raw.policy,
         profile: raw.profile,
         write_delay,
-        token: raw.token,
+        token_file: raw.token_file,
+        token_fd: raw.token_fd,
+        log_socket: raw.log_socket,
+        allow_root: raw.allow_root,
         log_apply: raw.log_apply,
         lang: raw.lang,
     }))
@@ -170,6 +212,8 @@ pub enum DaemonError {
     Store(SettingsError),
     /// No connection to the bus, or the service could not be registered.
     Bus(BusError),
+    /// The bus token could not be read from its file or descriptor.
+    Token(SecretError),
 }
 
 impl DaemonError {
@@ -181,6 +225,7 @@ impl DaemonError {
             DaemonError::Schema(_) => "settingsd.daemon.schema_error",
             DaemonError::Store(_) => "settingsd.daemon.store_error",
             DaemonError::Bus(_) => "settingsd.daemon.bus_error",
+            DaemonError::Token(_) => "settingsd.daemon.token_rejected",
         }
     }
 
@@ -191,6 +236,8 @@ impl DaemonError {
             DaemonError::Schema(error) => error.to_string(),
             DaemonError::Store(error) => error.to_string(),
             DaemonError::Bus(error) => error.to_string(),
+            // The key of the reason, never any part of the token.
+            DaemonError::Token(error) => error.key().to_owned(),
         }
     }
 }
@@ -261,228 +308,121 @@ fn open_core(
     Ok((core, notices))
 }
 
-/// Reports failures nobody waits for on standard error. It runs on the
-/// service thread and therefore owns its translator.
-fn error_sink(lang: Lang) -> ErrorSink {
-    let translator = crate::i18n::translator(lang).ok();
+/// Reports failures nobody waits for (a write that failed after the
+/// request was answered) to the log service. The record carries the
+/// error's wire code, never file content.
+fn error_sink(logger: Logger) -> ErrorSink {
     Box::new(move |error| {
-        let detail = error.to_string();
-        let key = "settingsd.daemon.write_error";
-        match &translator {
-            Some(translator) => {
-                eprintln!(
-                    "{}",
-                    translator.t_args(key, &[("detail", Arg::Str(&detail))])
-                );
-            }
-            None => eprintln!("{key} {detail}"),
-        }
+        let code = match error.code() {
+            ultar_bus::ErrorCode::Service(code) => u64::from(code),
+            _ => 0,
+        };
+        logger.emit(Record::new(Level::Error, "settingsd.write_failed").count("code", code));
     })
 }
 
-/// Runs the service until a `settings.shutdown` call ends it.
+/// The bus token from its file or inherited descriptor, if one is named.
+fn load_token(args: &DaemonArgs) -> Result<Option<Secret>, DaemonError> {
+    let token = match (&args.token_file, args.token_fd) {
+        (Some(path), _) => Some(read_secret_file(
+            path,
+            &SecretFilePolicy::for_current_user(),
+        )),
+        (None, Some(fd)) => Some(read_secret_fd(fd)),
+        (None, None) => None,
+    };
+    token.transpose().map_err(DaemonError::Token)
+}
+
+/// What the daemon needs from the service runtime.
+pub struct Hooks<'a> {
+    /// State machine: the daemon declares itself ready and reacts to stop
+    /// requests (signals).
+    pub lifecycle: &'a Lifecycle,
+    /// Where operational records go.
+    pub logger: &'a Logger,
+    /// Called once the service answers requests.
+    pub ready: &'a dyn Fn(),
+}
+
+/// Runs the service until a stop signal or a `settings.shutdown` call
+/// ends it. Either way everything pending is written to disk first.
 ///
-/// Messages for the operator go to `log` (standard error in the binary);
-/// one line is written to `ready` (standard output) once the service
-/// answers requests, so a supervisor can wait for it.
+/// Start-up messages for an operator go to `log` (standard error in the
+/// binary) and, as records, to the log service; one line is written to
+/// `ready` (standard output) once the service answers requests.
 pub fn run(
     args: &DaemonArgs,
     translator: &Translator,
     ready: &mut dyn Write,
     log: &mut dyn Write,
+    hooks: &Hooks<'_>,
 ) -> Result<(), DaemonError> {
     let access = load_access(args)?;
     if args.policy.is_none() {
         let _ = writeln!(log, "{}", translator.t("settingsd.daemon.allow_all"));
+        hooks.logger.log(Level::Warn, "settingsd.allow_all");
     }
+    let token = load_token(args)?;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
     let (core, notices) = open_core(args, &clock, translator, log)?;
-    let options = ClientOptions {
-        token: args.token.clone(),
-        connect_retry_for: BUS_WAIT,
-        ..ClientOptions::named("ultar-settingsd")
-    };
-    let bus = Client::connect(&args.socket, options).map_err(DaemonError::Bus)?;
+    for notice in &notices {
+        let record = Record::new(Level::Warn, "settingsd.store_notice")
+            .word("kind", notice_word(notice.kind));
+        hooks.logger.emit(record);
+    }
+    let mut options = SessionOptions::named("ultar-settingsd");
+    options.token = token;
+    options.connect_wait = BUS_WAIT;
+    options.register_wait = BUS_WAIT;
+    let session = BusSession::connect(&args.socket, options).map_err(DaemonError::Bus)?;
+    if !notices.is_empty() {
+        // The server publishes the report once; the session publishes it
+        // again whenever the broker comes back with empty memory.
+        let report = StoreReport {
+            notices: notices.iter().map(store_notice).collect(),
+        };
+        session.remember(&report).map_err(DaemonError::Bus)?;
+    }
     let server = Server::start(ServerParts {
-        bus,
+        bus: session.client().clone(),
         core,
         access,
         clock,
         notices,
         register_wait: BUS_WAIT,
-        on_error: error_sink(translator.lang()),
+        on_error: error_sink(hooks.logger.clone()),
     })
     .map_err(DaemonError::Bus)?;
+    let stopper = server.stopper();
+    hooks.lifecycle.on_stop(move || stopper.stop());
+    (hooks.ready)();
     let _ = writeln!(ready, "{}", translator.t("settingsd.daemon.ready"));
     let _ = ready.flush();
+    // Returns after the pending writes are on disk.
     server.wait();
-    let _ = writeln!(log, "{}", translator.t("settingsd.daemon.stopped"));
+    // Ended by `settings.shutdown` rather than by a signal: tell the
+    // runtime so that the supervisor learns it, too.
+    hooks.lifecycle.request_stop(StopCause::Request);
+    hooks.logger.log(Level::Info, "settingsd.flushed");
+    drop(session);
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parsed(words: &[&str], env: Option<&str>) -> Result<DaemonCommand, DaemonArgError> {
-        parse(
-            words.iter().map(|w| (*w).to_owned()),
-            env.map(str::to_owned),
-        )
-    }
-
-    fn args(words: &[&str], env: Option<&str>) -> DaemonArgs {
-        match parsed(words, env).unwrap() {
-            DaemonCommand::Run(args) => args,
-            DaemonCommand::Help => panic!("expected a run command"),
-        }
-    }
-
-    #[test]
-    fn minimal_and_full_command_lines() {
-        let minimal = args(&["--store", "/var/lib/s", "--allow-all"], Some("/run/bus"));
-        assert_eq!(minimal.store, PathBuf::from("/var/lib/s"));
-        assert_eq!(minimal.socket, PathBuf::from("/run/bus"));
-        assert_eq!(minimal.user, "default");
-        assert_eq!(minimal.policy, None);
-        assert_eq!(minimal.write_delay, DEFAULT_WRITE_DELAY);
-        assert!(!minimal.log_apply);
-
-        let full = args(
-            &[
-                "--store",
-                "/s",
-                "--socket",
-                "/b",
-                "--user",
-                "anas",
-                "--policy",
-                "/p.toml",
-                "--profile",
-                "/d.toml",
-                "--write-delay-ms",
-                "40",
-                "--token",
-                "tk",
-                "--log-apply",
-                "--lang",
-                "en",
-            ],
-            Some("/ignored"),
-        );
-        assert_eq!(full.socket, PathBuf::from("/b"));
-        assert_eq!(full.user, "anas");
-        assert_eq!(full.policy, Some(PathBuf::from("/p.toml")));
-        assert_eq!(full.profile, Some(PathBuf::from("/d.toml")));
-        assert_eq!(full.write_delay, Duration::from_millis(40));
-        assert_eq!(full.token.as_deref(), Some("tk"));
-        assert_eq!(full.lang, Some(Lang::En));
-        assert!(full.log_apply);
-        let capped = args(
-            &[
-                "--store",
-                "/s",
-                "--allow-all",
-                "--write-delay-ms",
-                "999999999",
-            ],
-            Some("/b"),
-        );
-        assert_eq!(capped.write_delay, MAX_WRITE_DELAY);
-        // --allow-all wins over a policy file, as the warning says.
-        let both = args(
-            &["--store", "/s", "--allow-all", "--policy", "/p"],
-            Some("/b"),
-        );
-        assert_eq!(both.policy, None);
-    }
-
-    #[test]
-    fn help_and_rejections() {
-        assert_eq!(parsed(&["--help"], None), Ok(DaemonCommand::Help));
-        assert_eq!(
-            parsed(&["-h", "--frob"], None),
-            Err(DaemonArgError::Arguments)
-        );
-        assert_eq!(
-            parsed(&["--store", "/s"], Some("/b")),
-            Err(DaemonArgError::NoPolicy)
-        );
-        for words in [
-            &["--allow-all"][..],
-            &["--store"],
-            &["--store", "/s", "--allow-all", "--write-delay-ms", "soon"],
-            &["--store", "/s", "--allow-all", "--lang", "xx"],
-            &["--store", "/s", "--allow-all", "extra"],
-        ] {
-            assert_eq!(
-                parsed(words, Some("/b")),
-                Err(DaemonArgError::Arguments),
-                "{words:?}"
-            );
-        }
-        // No socket anywhere.
-        assert_eq!(
-            parsed(&["--store", "/s", "--allow-all"], None),
-            Err(DaemonArgError::Arguments)
-        );
-        assert_eq!(
-            parsed(&["--store", "/s", "--allow-all"], Some("")),
-            Err(DaemonArgError::Arguments)
-        );
-    }
-
-    #[test]
-    fn every_message_key_of_the_daemon_exists_in_all_languages() {
-        let errors = [
-            DaemonError::Policy("p".into()),
-            DaemonError::Profile("p".into()),
-            DaemonError::Schema(SchemaError::InvalidKey("k")),
-            DaemonError::Store(SettingsError::Limit),
-            DaemonError::Bus(BusError::Timeout),
-        ];
-        let mut keys: Vec<&str> = errors.iter().map(DaemonError::message_key).collect();
-        keys.extend([
-            DaemonArgError::Arguments.message_key(),
-            DaemonArgError::NoPolicy.message_key(),
-            "settingsd.daemon.usage",
-            "settingsd.daemon.allow_all",
-            "settingsd.daemon.write_error",
-            "settingsd.daemon.ready",
-            "settingsd.daemon.stopped",
-        ]);
-        for (lang, _) in crate::i18n::sources() {
-            let translator = crate::i18n::translator(lang).unwrap();
-            for key in &keys {
-                assert!(translator.catalog(lang).contains(key), "{key}");
-            }
-        }
-        for error in errors {
-            assert!(!error.detail().is_empty());
-            assert!(error.to_string().starts_with("settingsd.daemon."));
-        }
-        assert!(!DaemonArgError::NoPolicy.to_string().is_empty());
-    }
-
-    #[test]
-    fn unusable_policy_and_profile_files_stop_the_start() {
-        let dir = crate::testdir::TestDir::new("daemon-files");
-        let mut base = args(&["--store", "/s", "--allow-all"], Some("/b"));
-        assert!(load_access(&base).is_ok());
-        assert_eq!(load_capabilities(&base).unwrap(), Capabilities::default());
-        base.policy = Some(dir.path().join("missing.toml"));
-        assert!(matches!(load_access(&base), Err(DaemonError::Policy(_))));
-        let bad = dir.path().join("bad.toml");
-        std::fs::write(&bad, "this is = not [a profile").unwrap();
-        base.profile = Some(bad);
-        assert!(matches!(
-            load_capabilities(&base),
-            Err(DaemonError::Profile(_))
-        ));
-        base.profile = Some(dir.path().join("missing.toml"));
-        assert!(matches!(
-            load_capabilities(&base),
-            Err(DaemonError::Profile(_))
-        ));
+/// A fixed word for each kind of store notice (records carry no file
+/// names and no file content).
+const fn notice_word(kind: ultar_bus::messages::settings::StoreNoticeKind) -> &'static str {
+    use ultar_bus::messages::settings::StoreNoticeKind as Kind;
+    match kind {
+        Kind::Quarantined => "quarantined",
+        Kind::NewerSchema => "newer_schema",
+        Kind::Migrated => "migrated",
+        Kind::UnknownKeyDropped => "unknown_key_dropped",
+        Kind::InvalidValueDropped => "invalid_value_dropped",
+        Kind::Unreadable => "unreadable",
     }
 }
+
+#[cfg(test)]
+#[path = "daemon_tests.rs"]
+mod tests;

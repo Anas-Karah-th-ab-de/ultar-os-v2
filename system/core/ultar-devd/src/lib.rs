@@ -31,6 +31,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![deny(missing_docs)]
 
+pub mod access;
 pub mod builtin;
 pub mod bus;
 pub mod caps;

@@ -20,6 +20,7 @@ path = "src/bin/usettings.rs"
 
 [dependencies]
 ultar-bus = { path = "../ultar-bus" }
+ultar-service = { path = "../ultar-service" }
 ultar-i18n = { path = "../ultar-i18n" }
 ultar-profile = { path = "../ultar-profile" }
 toml = { version = "0.8", default-features = false, features = ["parse", "display"] }

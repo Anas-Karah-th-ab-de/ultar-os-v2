@@ -13,9 +13,8 @@ use tokio::sync::mpsc;
 
 enum Cmd {
     Register {
-        number: String,
-        token: String,
         server: String,
+        auth: Box<dyn crate::SignalAuth>,
     },
     Place {
         peer: String,
@@ -67,16 +66,10 @@ impl WebrtcCall {
 }
 
 impl CallBackend for WebrtcCall {
-    fn register(&mut self, number: &str, token: &str, server_base: &str) {
-        let (n, t, s) = (
-            number.to_string(),
-            token.to_string(),
-            server_base.to_string(),
-        );
+    fn register(&mut self, server_base: &str, auth: Box<dyn crate::SignalAuth>) {
         let _ = self.ensure_worker().send(Cmd::Register {
-            number: n,
-            token: t,
-            server: s,
+            server: server_base.to_string(),
+            auth,
         });
     }
     fn place(&mut self, peer: &str, video: bool) {
@@ -122,13 +115,9 @@ async fn worker(
     use tokio_tungstenite::tungstenite::Message;
 
     // auf Register warten
-    let (number, token, server) = loop {
+    let (server, auth) = loop {
         match rx.recv().await {
-            Some(Cmd::Register {
-                number,
-                token,
-                server,
-            }) => break (number, token, server),
+            Some(Cmd::Register { server, auth }) => break (server, auth),
             Some(_) => continue,
             None => return,
         }
@@ -146,13 +135,43 @@ async fn worker(
     };
     let (mut sink, mut stream) = ws.split();
 
-    // Anmeldung
-    let auth = serde_json::json!({"token": token, "number": number}).to_string();
-    if sink.send(Message::Text(auth)).await.is_err() {
-        evt.lock()
-            .unwrap()
-            .push(CallEvent::Error("Anmeldung fehlgeschlagen".into()));
-        return;
+    // Sign-in with the device key: hello -> challenge -> auth -> ready. Errors are reported as codes.
+    let fail = |code: &str| {
+        if let Ok(mut events) = evt.lock() {
+            events.push(CallEvent::Error(code.to_string()));
+        }
+    };
+    let wait = std::time::Duration::from_secs(15);
+    let hello = match auth.hello() {
+        Ok(h) => h,
+        Err(code) => return fail(&code),
+    };
+    if sink.send(Message::Text(hello)).await.is_err() {
+        return fail("signal_unreachable");
+    }
+    let challenge = match tokio::time::timeout(wait, stream.next()).await {
+        Ok(Some(Ok(Message::Text(t)))) => t,
+        _ => return fail("signal_no_answer"),
+    };
+    let answer = match auth.answer(&challenge) {
+        Ok(a) => a,
+        Err(code) => return fail(&code),
+    };
+    if sink.send(Message::Text(answer)).await.is_err() {
+        return fail("signal_unreachable");
+    }
+    match tokio::time::timeout(wait, stream.next()).await {
+        Ok(Some(Ok(Message::Text(t)))) => {
+            let v: serde_json::Value = serde_json::from_str(&t).unwrap_or_default();
+            if v.get("type").and_then(|x| x.as_str()) != Some("ready") {
+                return fail(
+                    v.get("error")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("signal_refused"),
+                );
+            }
+        }
+        _ => return fail("signal_no_answer"),
     }
     *ready.lock().unwrap() = true;
 
@@ -167,7 +186,12 @@ async fn worker(
                             let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
                             let from = v.get("from").and_then(|x| x.as_str()).unwrap_or("").to_string();
                             match ty {
-                                "ready" => {}
+                                "ready" | "notice" => {}
+                                "error" => {
+                                    let code = v.get("error").and_then(|x| x.as_str()).unwrap_or("signal_error");
+                                    fail(code);
+                                    break;
+                                }
                                 "offer" => {
                                     // eingehender Anruf
                                     current_peer = Some(from.clone());

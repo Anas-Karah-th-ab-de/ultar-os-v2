@@ -1529,7 +1529,11 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 name = "ultar-cloud"
 version = "0.7.0"
 dependencies = [
+ "base64",
+ "ed25519-dalek",
  "hex",
+ "rand_core",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
@@ -1543,9 +1547,12 @@ dependencies = [
 name = "ultar-cloud-e2e"
 version = "0.7.0"
 dependencies = [
+ "futures-util",
+ "rusqlite",
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "ultar-cloud",
  "ultar-i18n",
  "ultar-pkg",
@@ -1597,6 +1604,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "subtle",
  "tokio",
  "tracing",
  "tracing-subscriber",

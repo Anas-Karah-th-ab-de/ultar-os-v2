@@ -1,7 +1,7 @@
 //! `usettings` – read and change Ultar OS settings from the command line.
 //!
 //! ```text
-//! usettings [--socket PATH] [--lang ar|en|de] [--token TOKEN]
+//! usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE]
 //!           get KEY | set KEY VALUE | reset KEY | list [PANEL]
 //!           | watch [--count N] | confirm [KEY] | revert [KEY]
 //! ```
@@ -16,7 +16,10 @@ use std::io::stdout;
 use std::process::ExitCode;
 use ultar_bus::{Client, ClientOptions};
 use ultar_i18n::{Arg, Lang, Translator};
-use ultar_settingsd::cli::{lang_hint, parse, CliError, Command, Session, UsageError, SOCKET_ENV};
+use ultar_service::{read_secret_file, SecretFilePolicy};
+use ultar_settingsd::cli::{
+    lang_hint, parse, CliError, Command, Invocation, Session, UsageError, SOCKET_ENV,
+};
 use ultar_settingsd::{i18n, seed};
 
 fn translator(lang: Option<Lang>) -> Translator {
@@ -34,6 +37,25 @@ fn usage_failure(translator: &Translator, message: &str) -> ExitCode {
 fn fail(translator: &Translator, error: &CliError) -> ExitCode {
     eprintln!("{}", translator.t(error.message_key()));
     ExitCode::FAILURE
+}
+
+/// The bus token from the file named on the command line, if any.
+fn load_token(
+    invocation: &Invocation,
+    translator: &Translator,
+) -> Result<Option<String>, ExitCode> {
+    let Some(path) = &invocation.token_file else {
+        return Ok(None);
+    };
+    match read_secret_file(path, &SecretFilePolicy::for_current_user()) {
+        Ok(secret) => Ok(secret.expose_str().map(str::to_owned)),
+        Err(error) => {
+            let detail = error.to_string();
+            let args = [("detail", Arg::Str(&detail))];
+            eprintln!("{}", translator.t_args("usettings.error.token_file", &args));
+            Err(ExitCode::FAILURE)
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -64,8 +86,12 @@ fn main() -> ExitCode {
     let Ok(registry) = seed::registry() else {
         return fail(&translator, &CliError::UnknownKey);
     };
+    let token = match load_token(&invocation, &translator) {
+        Ok(token) => token,
+        Err(code) => return code,
+    };
     let options = ClientOptions {
-        token: invocation.token.clone(),
+        token,
         reconnect: false,
         ..ClientOptions::named("usettings")
     };

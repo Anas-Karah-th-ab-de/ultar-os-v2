@@ -49,6 +49,12 @@ fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// Width of the edge zones for a shape whose coverage varies within `reach` pixels of its
+/// left and right border (float-to-integer conversion saturates, the sum must too).
+fn zone_width(reach: f32) -> i32 {
+    (reach.ceil() as i32).saturating_add(2)
+}
+
 impl Canvas {
     /// Paints coverage `cov(x, y)` over `bbox`. `edge_zone` is the distance from the left and
     /// right border of `bbox` beyond which the coverage no longer depends on `x`.
@@ -64,8 +70,8 @@ impl Canvas {
             return;
         }
         let px = self.pack(color);
-        let left_end = (bbox.x0 + edge_zone).min(bbox.x1);
-        let right_start = (bbox.x1 - edge_zone).max(left_end);
+        let left_end = bbox.x0.saturating_add(edge_zone).min(bbox.x1);
+        let right_start = bbox.x1.saturating_sub(edge_zone).max(left_end);
         let zones = [
             (area.x0, left_end.min(area.x1)),
             (right_start.max(area.x0), area.x1),
@@ -99,7 +105,7 @@ impl Canvas {
             return;
         }
         let shape = RoundBox::new(&rect, radius);
-        let zone = shape.r.ceil() as i32 + 2;
+        let zone = zone_width(shape.r);
         self.paint_coverage(PixelRect::covering(&rect), zone, color, |x, y| {
             edge(shape.dist(x, y))
         });
@@ -111,7 +117,7 @@ impl Canvas {
             return;
         }
         let shape = RoundBox::new(&rect, radius);
-        let zone = (shape.r + width).ceil() as i32 + 2;
+        let zone = zone_width(shape.r + width);
         self.paint_coverage(PixelRect::covering(&rect), zone, color, |x, y| {
             let d = shape.dist(x, y);
             edge(d) - edge(d + width)
@@ -126,7 +132,7 @@ impl Canvas {
         }
         let blur = blur.max(1.0);
         let shape = RoundBox::new(&rect, radius);
-        let zone = (shape.r + blur).ceil() as i32 + 2;
+        let zone = zone_width(shape.r + blur);
         let bbox = PixelRect::covering(&rect.inflate(blur / 2.0));
         self.paint_coverage(bbox, zone, color, |x, y| {
             1.0 - smooth(shape.dist(x, y) / blur + 0.5)

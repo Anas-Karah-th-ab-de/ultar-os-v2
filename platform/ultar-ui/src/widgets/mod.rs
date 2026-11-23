@@ -3,27 +3,54 @@
 //! A widget is plain data plus a `measure` and a `paint` function; interaction state lives in
 //! [`crate::ui::Ui`] and reaches the widget as a [`Visual`].
 
+mod badge;
 mod button;
+mod checkbox;
 mod containers;
+mod dialog;
+mod info_bar;
 mod label;
+mod list;
+mod menu;
+mod progress;
+mod radio;
+mod scroll;
+mod search_field;
 mod select;
 mod slider;
 mod style;
 mod switch;
+mod tabs;
 mod text_field;
+mod tone;
+mod tooltip;
 
+pub use badge::Badge;
 pub use button::{Button, ButtonVariant, IconButton};
+pub use checkbox::Checkbox;
 pub use containers::{Card, Icon, Row, Text};
+pub use dialog::{Dialog, DialogKind};
+pub use info_bar::{EmptyState, InfoBar};
 pub use label::{Label, LabelArg};
+pub use list::{List, ListItem};
+pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
+pub use progress::Progress;
+pub use radio::RadioGroup;
+pub use scroll::Scroll;
+pub use search_field::SearchField;
 pub use select::{Select, MAX_VISIBLE_OPTIONS};
 pub use slider::Slider;
 pub use style::Visual;
 pub use switch::Switch;
-pub use text_field::{TextField, DEFAULT_MAX_LEN};
+pub use tabs::Tabs;
+pub use text_field::{TextDirection, TextField, DEFAULT_MAX_LEN};
+pub use tone::Tone;
 
 pub(crate) use containers::shadow_reach;
+pub(crate) use menu::MenuPanel;
 pub(crate) use select::PopupView;
 pub(crate) use style::focus_outset;
+pub(crate) use tooltip::{paint_tooltip, tooltip_rect};
 
 use crate::geom::Size;
 use crate::layout::Flex;
@@ -78,12 +105,34 @@ pub enum Widget {
     Select(Select),
     /// A value on a range.
     Slider(Slider),
-    /// A single-line text input.
+    /// A single-line text input (also the search field).
     TextField(TextField),
     /// A settings row: label, sublabel and one control child.
     Row(Row),
     /// A card grouping children.
     Card(Card),
+    /// A status word in a pill.
+    Badge(Badge),
+    /// A progress bar.
+    Progress(Progress),
+    /// A yes/no choice with its label.
+    Checkbox(Checkbox),
+    /// One of a few visible options.
+    RadioGroup(RadioGroup),
+    /// A tab bar.
+    Tabs(Tabs),
+    /// A message of one tone with an optional action child.
+    InfoBar(InfoBar),
+    /// What an empty view shows, with an optional action child.
+    EmptyState(EmptyState),
+    /// A column of list items.
+    List(List),
+    /// A row of a list with an optional trailing control child.
+    ListItem(ListItem),
+    /// A vertical scroll container.
+    Scroll(Scroll),
+    /// A dialog or sheet above everything else.
+    Dialog(Dialog),
 }
 
 macro_rules! widget_from {
@@ -96,10 +145,20 @@ macro_rules! widget_from {
     };
 }
 
-widget_from!(Flex, Text, Icon, Button, IconButton, Switch, Select, Slider, TextField, Row, Card);
+widget_from!(
+    Flex, Text, Icon, Button, IconButton, Switch, Select, Slider, TextField, Row, Card, Badge,
+    Progress, Checkbox, RadioGroup, Tabs, InfoBar, EmptyState, List, ListItem, Scroll, Dialog
+);
+
+impl From<SearchField> for Widget {
+    fn from(value: SearchField) -> Widget {
+        Widget::TextField(value.into_field())
+    }
+}
 
 impl Widget {
-    /// `true` for widgets the user operates (they take focus, hover and presses).
+    /// `true` for widgets the user operates (they take focus, hover and presses). A scroll
+    /// container is operable only while its content overflows; the tree decides that.
     pub fn is_interactive(&self) -> bool {
         matches!(
             self,
@@ -109,6 +168,10 @@ impl Widget {
                 | Widget::Select(_)
                 | Widget::Slider(_)
                 | Widget::TextField(_)
+                | Widget::Checkbox(_)
+                | Widget::RadioGroup(_)
+                | Widget::Tabs(_)
+                | Widget::ListItem(_)
         )
     }
 
@@ -130,7 +193,20 @@ impl Widget {
         match self {
             Widget::Flex(flex) => Some(flex),
             Widget::Card(card) => Some(&card.flex),
+            Widget::List(list) => Some(&list.flex),
+            Widget::Scroll(scroll) => Some(&scroll.flex),
+            Widget::Dialog(dialog) => Some(&dialog.flex),
             _ => None,
         }
+    }
+
+    /// `true` for widgets that hold exactly one child, placed by the widget itself (the
+    /// control of a settings row, the action of an info bar or empty state, the trailing
+    /// control of a list item).
+    pub fn hosts_one_child(&self) -> bool {
+        matches!(
+            self,
+            Widget::Row(_) | Widget::InfoBar(_) | Widget::EmptyState(_) | Widget::ListItem(_)
+        )
     }
 }

@@ -11,6 +11,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 ultar-vpn = { path = "../ultar-vpn" }
 ultar-pkg = { path = "../../core/ultar-pkg" }

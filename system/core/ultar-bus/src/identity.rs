@@ -92,10 +92,19 @@ impl PeerIdentity for FixedIdentity {
 /// Identifies peers by a secret they present in the handshake.
 ///
 /// The service manager hands each program its token through a file only that
-/// program's user can read.
-#[derive(Clone, Debug, Default)]
+/// program's user can read. The `Debug` output never contains a token.
+#[derive(Clone, Default)]
 pub struct TokenIdentity {
     tokens: Vec<(String, Identity)>,
+}
+
+impl fmt::Debug for TokenIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let identities: Vec<&str> = self.tokens.iter().map(|(_, id)| id.as_str()).collect();
+        f.debug_struct("TokenIdentity")
+            .field("identities", &identities)
+            .finish_non_exhaustive()
+    }
 }
 
 impl TokenIdentity {
@@ -251,6 +260,19 @@ mod tests {
             let result = with_peer(wrong, |peer| auth.identify(peer));
             assert!(matches!(result, Err(BusError::AuthFailed)), "{wrong:?}");
         }
+    }
+
+    #[test]
+    fn debug_output_never_contains_a_token() {
+        let auth = TokenIdentity::new().with_token("alpha-secret", id("system.devd"));
+        let text = format!("{auth:?}");
+        assert!(text.contains("system.devd") && !text.contains("alpha-secret"));
+        let options = crate::ClientOptions {
+            token: Some("beta-secret".into()),
+            ..crate::ClientOptions::named("x")
+        };
+        let text = format!("{options:?}");
+        assert!(text.contains("<redacted>") && !text.contains("beta-secret"));
     }
 
     #[test]

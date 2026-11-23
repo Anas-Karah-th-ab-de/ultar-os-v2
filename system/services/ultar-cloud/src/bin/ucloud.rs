@@ -1,6 +1,7 @@
 //! ucloud — the Ultar cloud from the shell.
 //!
-//! `register|login <user> <password>` · `number` · `vpn` · `store [search]` · `app <id>` ·
+//! `register|login <user> <password>` · `number` · `devices` · `device-rename <id> <name>` ·
+//! `device-remove <id>` · `device-reset` · `vpn` · `store [search]` · `app <id>` ·
 //! `install <id>` · `update [channel]` · `whoami`. Store and update commands work signed-out.
 //! All output goes through message keys (Arabic, English, German).
 
@@ -110,6 +111,52 @@ fn update(tr: &Translator, channel: &str) -> Result<(), Failure> {
     Ok(())
 }
 
+fn devices(tr: &Translator) -> Result<(), Failure> {
+    let list = ultar_cloud::client().devices().map_err(general)?;
+    if list.is_empty() {
+        println!("{}", tr.t("cloud.device.none"));
+    }
+    for device in &list {
+        let state = if device.state == "legacy" {
+            "cloud.device.state.legacy"
+        } else {
+            "cloud.device.state.active"
+        };
+        let mark = if device.current {
+            format!("  ({})", tr.t("cloud.device.this_device"))
+        } else {
+            String::new()
+        };
+        println!(
+            "{}  {}  {}  [{}]{mark}",
+            device.device_id,
+            device.number.as_deref().unwrap_or("-"),
+            device.name,
+            tr.t(state)
+        );
+    }
+    Ok(())
+}
+
+/// Rename or remove a device of the account, authorised by this device's key.
+fn device_change(tr: &Translator, id: &str, new_name: Option<&str>) -> Result<(), Failure> {
+    let key = ultar_cloud::DeviceHome::system()
+        .key_store()
+        .map_err(general)?;
+    let cloud = ultar_cloud::client();
+    match new_name {
+        Some(name) => {
+            cloud.rename_device(&key, id, name).map_err(general)?;
+            println!("{}", tr.t("cloud.device.renamed"));
+        }
+        None => {
+            cloud.remove_device(&key, id).map_err(general)?;
+            println!("{}", tr.t("cloud.device.removed"));
+        }
+    }
+    Ok(())
+}
+
 fn whoami(tr: &Translator) {
     let server = ultar_cloud::base_url();
     println!(
@@ -146,6 +193,13 @@ fn run(tr: &Translator, args: &[&str]) -> Result<bool, Failure> {
                 "{}",
                 tr.t_args("cloud.cli.number", &[("number", Arg::Str(&number))])
             );
+        }
+        ["devices"] => devices(tr)?,
+        ["device-rename", id, name] => device_change(tr, id, Some(name))?,
+        ["device-remove", id] => device_change(tr, id, None)?,
+        ["device-reset"] => {
+            ultar_cloud::DeviceHome::system().reset().map_err(general)?;
+            println!("{}", tr.t("cloud.device.reset"));
         }
         ["vpn"] => {
             ultar_cloud::vpn_provision().map_err(general)?;

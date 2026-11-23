@@ -222,22 +222,34 @@ impl Canvas {
         mask: &[u8],
         color: Color,
     ) -> Result<(), CanvasError> {
-        if mask.len() != width * height {
+        let expected = width.saturating_mul(height);
+        if mask.len() != expected {
             return Err(CanvasError::LengthMismatch {
-                expected: width * height,
+                expected,
                 actual: mask.len(),
             });
         }
-        let target =
-            PixelRect::new(x, y, x + width as i32, y + height as i32).intersect(&self.clip);
+        let (x64, y64) = (i64::from(x), i64::from(y));
+        let target = PixelRect::new(
+            x,
+            y,
+            saturate(x64 + width.min(SPAN_MAX) as i64),
+            saturate(y64 + height.min(SPAN_MAX) as i64),
+        )
+        .intersect(&self.clip);
         if target.is_empty() || color.a == 0 {
             return Ok(());
         }
         let px = self.pack(color);
         let alpha = u32::from(color.a);
+        let columns = target.width() as usize;
         for row in target.y0..target.y1 {
-            let m0 = (row - y) as usize * width + (target.x0 - x) as usize;
-            let line = &mask[m0..m0 + target.width() as usize];
+            // The target lies inside the mask, so both differences are small and positive.
+            let m0 =
+                (i64::from(row) - y64) as usize * width + (i64::from(target.x0) - x64) as usize;
+            let Some(line) = mask.get(m0..m0 + columns) else {
+                continue;
+            };
             blend::blend_mask_row(self.row_mut(row, target.x0, target.x1), line, px, alpha);
         }
         self.damage.add(target);
@@ -248,18 +260,36 @@ impl Canvas {
     /// Pixels are replaced, not blended; the copy is clipped on both sides.
     pub fn blit(&mut self, source: &Canvas, source_area: PixelRect, x: i32, y: i32) {
         let src = source_area.intersect(&source.bounds());
-        let (dx, dy) = (x - source_area.x0, y - source_area.y0);
-        let target = PixelRect::new(src.x0 + dx, src.y0 + dy, src.x1 + dx, src.y1 + dy)
-            .intersect(&self.clip);
+        if src.is_empty() {
+            return;
+        }
+        // Offsets from source to target coordinates; 64 bits because both operands may be
+        // anywhere in the 32-bit range.
+        let dx = i64::from(x) - i64::from(source_area.x0);
+        let dy = i64::from(y) - i64::from(source_area.y0);
+        let moved = |v: i32, d: i64| saturate(i64::from(v) + d);
+        let target = PixelRect::new(
+            moved(src.x0, dx),
+            moved(src.y0, dy),
+            moved(src.x1, dx),
+            moved(src.y1, dy),
+        )
+        .intersect(&self.clip);
         if target.is_empty() {
             return;
         }
         let swap = self.format != source.format;
         let opaque = self.format == PixelFormat::Bgrx8 || source.format == PixelFormat::Bgrx8;
+        let columns = target.width() as usize;
         for row in target.y0..target.y1 {
-            let s0 =
-                ((row - dy) as usize * source.width as usize + (target.x0 - dx) as usize) * BPP;
-            let from = &source.data[s0..s0 + target.width() as usize * BPP];
+            let (sy, sx) = (i64::from(row) - dy, i64::from(target.x0) - dx);
+            if sy < 0 || sx < 0 {
+                continue;
+            }
+            let s0 = (sy as usize * source.width as usize + sx as usize) * BPP;
+            let Some(from) = source.data.get(s0..s0 + columns * BPP) else {
+                continue;
+            };
             let to = self.row_mut(row, target.x0, target.x1);
             to.copy_from_slice(from);
             if swap || opaque {
@@ -328,4 +358,12 @@ impl Canvas {
         let _ = self.fill_mask(bbox.x0, bbox.y0, w, h, &mask, color);
         self.scratch = mask;
     }
+}
+
+/// Largest mask edge that still fits the 32-bit pixel coordinates.
+const SPAN_MAX: usize = i32::MAX as usize;
+
+/// A 64-bit coordinate clamped into the 32-bit pixel range.
+fn saturate(value: i64) -> i32 {
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }

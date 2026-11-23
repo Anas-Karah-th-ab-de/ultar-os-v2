@@ -198,3 +198,55 @@ snapshot comparisons fail with pixel counts and diff images.
 - Frame times were measured on a shared machine and vary (see ranges); no CI budget check.
 - `Ui` is single-threaded (`Rc`, `RefCell` inside).
 - The `[workspace]` table and the `ultar-i18n` copy must be removed on integration (see Wiring).
+
+---
+
+# Wave 3 (2026-11-23): fonts, typography, review findings, base widgets
+
+This section supersedes the statements above where they differ (fonts used, gaps, snapshot
+and test counts, "Not done" items that are done now). Details, measured numbers and the
+honest open list of wave 3: the agent's `INTEGRATION.md` (kept under
+`docs/integration/ultar-ui-wave3.md` if the coordinator files it).
+
+## Fonts (all token families ship; `text::missing_families()` is empty)
+`assets/fonts/SOURCES.md` records repository, commit, version, SHA-256 and licence per file.
+
+| Role | Arabic letters | Everything else (Latin, 0–9, symbols) |
+|---|---|---|
+| `FontRole::Text` | Noto Naskh Arabic 400 / 500 / 700 | Noto Sans 400 / 700 |
+| `FontRole::Title` (`TextSpec::title`) | Noto Kufi Arabic 400 / 700 | Noto Sans 400 / 700 |
+| `FontRole::Mono` | Noto Sans Arabic 400 / 700 | Noto Sans Mono 400 / 700 |
+
+Weights without a file use the nearest one (500 → 400 except Arabic text, 600 → 700).
+Digits 0–9 and Latin punctuation always come from the Latin face, also inside Arabic.
+One baseline per style: with Arabic line metrics (`TextStyle::arabic_metrics`, set for
+`Lang::Ar`) the line box is centred on the union of the role's Arabic and Latin faces; a
+Latin style is unchanged (English snapshots did not move).
+
+## New tokens
+`[type] family_mono_arabic`; `[state] disabled_opacity, hover_overlay, pressed_overlay,
+scrim_dark, scrim_light, focus_ring` (generated as `tokens::state::*`). The shadow now reaches
+`blur` beside and `offset_y + blur` below, like the CSS `0 12px 32px` of the artboards.
+
+## New widgets (`widgets::*`)
+`Checkbox`, `RadioGroup`, `Tabs`, `List` / `ListItem`, `SearchField` (a `TextField` in the
+tree), `Badge`, `Progress`, `InfoBar`, `EmptyState`, `Scroll`, `Dialog` (`Dialog::new`,
+`Dialog::sheet`), `Menu` / `MenuItem` (not nodes: `Ui::open_menu`, `open_context_menu`,
+`set_context_menu`), tooltips (`Ui::set_tooltip`), `Tone`, `TextDirection`,
+`Card::raised()`.
+
+New `Ui` API: `is_checked/set_checked`, `radio_selected`, `selected/set_selected` (also tabs
+and radio), `progress/set_progress`, `is_item_selected/set_item_selected/selected_item`,
+`scroll_offset/set_scroll_offset/scroll_into_view`, `open_dialog/close_dialog/is_dialog_open/
+open_dialog_node/set_default_action/set_cancel_action`, `open_menu/open_context_menu/
+set_context_menu/close_menu/menu_owner/menu_position/menu_rect`, `set_tooltip/tooltip/
+tooltip_shown`, `next_wake`, `parent`.
+New events and actions: `Key::{PageUp, PageDown, Menu}`, secondary button opens context
+menus, `ActionKind::{MenuChosen(u32), Scrolled(f32)}`; `Toggled` also from checkboxes,
+`Selected` also from tabs, radio groups and selectable lists, `Opened`/`Closed` also from
+menus, `Closed` from a dialog the user dismissed.
+Accessibility: 14 new `Role`s (`Role::ALL`), `A11yState::selected`,
+`A11yNode::description` (tooltip or tone); the open menu contributes `Menu`/`MenuItem` nodes.
+
+The platform must call `Ui::advance_to` at `Ui::next_wake()` (tooltip delay) even when
+`animating()` is false, and map Page Up/Down and the menu key (or Shift+F10) to the new keys.

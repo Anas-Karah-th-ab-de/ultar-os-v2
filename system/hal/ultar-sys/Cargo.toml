@@ -1,0 +1,17 @@
+[package]
+name = "ultar-sys"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Safe wrappers for the few system calls the service runtime needs and std does not offer (system HAL, area 3)"
+
+[lib]
+name = "ultar_sys"
+path = "src/lib.rs"
+
+[dependencies]
+# Pure Rust on Linux (its `linux_raw` backend issues system calls itself, no
+# C library). Used for every call it offers safely; see src/lib.rs for the
+# calls it does not have.
+rustix = { version = "1", default-features = false, features = ["std", "process", "fs", "event", "thread"] }

@@ -1,0 +1,38 @@
+# Bus policy of the system services (default deny: what is not listed here is
+# refused). Read by ultar-busd (who may do what on the bus) and by the
+# services themselves (who is an administrator of settings and devices, who
+# may read all log records). ultar-busd reads it again on SIGHUP.
+#
+# Each rule grants one identity exactly what it needs:
+#   register  = service names it may offer
+#   publish   = topics it may publish
+#   subscribe = topics or patterns it may subscribe to
+#   call      = service.method it may call ("service.*": every method)
+
+# Log service: offers `log`, nothing else.
+[[rule]]
+identity = "system.logd"
+register = ["log"]
+
+# Settings service: offers `settings`, publishes its four topics and listens
+# to the device service's capability set.
+[[rule]]
+identity  = "system.settingsd"
+register  = ["settings"]
+publish   = ["settings.changed", "settings.pending", "settings.pending_resolved", "settings.store_report"]
+subscribe = ["devices.capabilities"]
+
+# Device service: offers `devices` and publishes its two topics.
+[[rule]]
+identity = "system.devd"
+register = ["devices"]
+publish  = ["devices.capabilities", "devices.driver_state"]
+
+# The administrator's tools (usettings, udevctl, ulog on the root-only socket).
+# `settings.*` includes settings.admin, `devices.*` includes devices.admin.
+[[rule]]
+identity  = "system.admin"
+call      = ["settings.*", "devices.*", "log.query", "log.stats", "log.read_all"]
+subscribe = ["settings.*", "devices.*"]
+
+# The broker itself needs no rule: it is not a client of the bus.

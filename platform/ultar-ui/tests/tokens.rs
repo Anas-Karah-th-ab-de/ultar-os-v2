@@ -6,7 +6,7 @@ mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 use ultar_ui::tokens::{
-    self, layout, motion, shadow, size, typography, ColorRole, InputMode, Palette, Radius,
+    self, layout, motion, shadow, size, state, typography, ColorRole, InputMode, Palette, Radius,
     SizeClass, Space, ThemeKind, TypeSize, DARK, LIGHT, THEME,
 };
 use ultar_ui::widgets::{Button, IconButton, Label, Slider, Switch, TextField};
@@ -151,6 +151,26 @@ fn generated_numbers_match_the_file() {
 }
 
 #[test]
+fn state_and_wave_3_tokens_match_the_file() {
+    let number = |section: &str, key: &str| value(section, key).parse::<f32>().unwrap();
+    assert_eq!(
+        typography::FAMILY_MONO_ARABIC,
+        value("type", "family_mono_arabic")
+    );
+    assert_eq!(state::DISABLED_OPACITY, number("state", "disabled_opacity"));
+    assert_eq!(state::HOVER_OVERLAY, number("state", "hover_overlay"));
+    assert_eq!(state::PRESSED_OVERLAY, number("state", "pressed_overlay"));
+    assert_eq!(state::SCRIM_DARK, number("state", "scrim_dark"));
+    assert_eq!(state::SCRIM_LIGHT, number("state", "scrim_light"));
+    assert_eq!(state::FOCUS_RING.name(), value("state", "focus_ring"));
+    assert_eq!(
+        section("state").len(),
+        6,
+        "every state token is checked here"
+    );
+}
+
+#[test]
 fn size_classes_use_the_token_limits() {
     assert_eq!(SizeClass::for_width(360.0), SizeClass::Compact);
     assert_eq!(
@@ -283,7 +303,14 @@ fn no_colour_or_spacing_literal_outside_the_tokens() {
 }
 
 /// Text role on background role pairs the toolkit paints.
-const TEXT_PAIRS: [(ColorRole, ColorRole); 21] = [
+const TEXT_PAIRS: [(ColorRole, ColorRole); 26] = [
+    // Wave 3: badge and info-bar tones on the raised background; muted text (tabs, menu
+    // shortcuts, sublabels of list items) on the hover and pressed backgrounds.
+    (ColorRole::Info, ColorRole::Raised),
+    (ColorRole::Success, ColorRole::Raised),
+    (ColorRole::Warning, ColorRole::Raised),
+    (ColorRole::TextMuted, ColorRole::Hover),
+    (ColorRole::TextMuted, ColorRole::Line),
     (ColorRole::Text, ColorRole::Ground),
     (ColorRole::Text, ColorRole::Bar),
     (ColorRole::Text, ColorRole::Surface),
@@ -337,6 +364,15 @@ fn control_borders_and_focus_ring_reach_three_to_one() {
         (ColorRole::AccentText, ColorRole::Surface),
         (ColorRole::AccentText, ColorRole::Ground),
         (ColorRole::Danger, ColorRole::Surface),
+        // Wave 3: icon of a selected list item while hovered or pressed, the fill of a
+        // progress bar on its track, unchecked boxes and radio rings, the scrollbar thumb,
+        // the mark inside a checked box or chosen radio option.
+        (ColorRole::AccentText, ColorRole::Hover),
+        (ColorRole::AccentText, ColorRole::Line),
+        (ColorRole::ControlBorder, ColorRole::Ground),
+        (ColorRole::ControlBorder, ColorRole::Hover),
+        (ColorRole::TextMuted, ColorRole::Surface),
+        (ColorRole::OnAccent, ColorRole::Accent),
     ];
     for (kind, palette) in [(ThemeKind::Dark, &DARK), (ThemeKind::Light, &LIGHT)] {
         let failing = failing_pairs(palette, &pairs, 3.0);

@@ -1,8 +1,8 @@
 //! Line breaking, BiDi reordering per line, ellipsis and the resulting [`TextLayout`].
 
-use super::fonts::{FontId, Fonts};
+use super::fonts::{arabic_face, latin_face, FontId, Fonts};
 use super::shape::{shape, Shaped};
-use super::{Overflow, TextAlign, TextStyle};
+use super::{Overflow, TextAlign, TextStyle, Weight};
 use rustybuzz::UnicodeBuffer;
 use std::ops::Range;
 use unicode_bidi::{BidiInfo, Level, ParagraphInfo};
@@ -84,18 +84,18 @@ impl TextLayout {
     }
 
     /// Caret position for the byte offset `byte` on the first line, from the line's left end.
+    ///
+    /// Inside a cluster of several letters (a lam-alef ligature) the cluster's advance is
+    /// divided evenly among its letters, so every letter boundary has a position of its own.
+    /// Combining marks do not count: the caret between a letter and its mark stands after
+    /// the letter.
     pub fn caret_x(&self, byte: usize) -> f32 {
         let Some(line) = self.lines.first() else {
             return 0.0;
         };
         let glyphs = &self.glyphs[line.glyphs.clone()];
-        let byte = byte as u32;
-        let Some(cluster) = glyphs
-            .iter()
-            .map(|g| g.cluster)
-            .filter(|c| *c <= byte)
-            .max()
-        else {
+        let at = byte as u32;
+        let Some(cluster) = glyphs.iter().map(|g| g.cluster).filter(|c| *c <= at).max() else {
             return glyphs
                 .first()
                 .map_or(0.0, |g| if g.rtl { line.width } else { 0.0 });
@@ -106,7 +106,6 @@ impl TextLayout {
             .filter(|c| *c > cluster)
             .min()
             .unwrap_or(line.bytes.end as u32);
-        let after = byte >= cluster_end;
         let own = glyphs.iter().filter(|g| g.cluster == cluster);
         let left = own.clone().map(|g| g.x).fold(f32::MAX, f32::min);
         let right = own
@@ -114,23 +113,48 @@ impl TextLayout {
             .map(|g| g.x + g.advance)
             .fold(f32::MIN, f32::max);
         let rtl = own.clone().any(|g| g.rtl);
-        if rtl == after {
-            left
+        let share = self.share_before(cluster as usize..cluster_end as usize, byte);
+        if rtl {
+            right - (right - left) * share
         } else {
-            right
+            left + (right - left) * share
+        }
+    }
+
+    /// The share (0..=1) of the letters of the cluster `range` that lie before `byte`.
+    fn share_before(&self, range: Range<usize>, byte: usize) -> f32 {
+        if byte >= range.end {
+            return 1.0;
+        }
+        let Some(cluster) = self.text.get(range.clone()) else {
+            return 0.0;
+        };
+        let letters = |part: &str| part.chars().filter(|c| !is_mark(*c)).count();
+        let total = letters(cluster);
+        let before = cluster
+            .get(..byte.saturating_sub(range.start))
+            .map_or(0, letters);
+        if total == 0 {
+            0.0
+        } else {
+            before as f32 / total as f32
         }
     }
 
     /// The byte offset on the first line whose caret is nearest to `x` (from the line's left).
+    /// Only letter boundaries are returned, never the place between a letter and its mark.
     pub fn index_at_x(&self, x: f32) -> usize {
         let Some(line) = self.lines.first() else {
             return 0;
         };
-        let glyphs = &self.glyphs[line.glyphs.clone()];
-        let ends = std::iter::once(line.bytes.end);
-        let candidates = glyphs.iter().map(|g| g.cluster as usize).chain(ends);
+        let content = self.text.get(line.bytes.clone()).unwrap_or("");
+        let boundaries = content
+            .char_indices()
+            .filter(|(_, ch)| !is_mark(*ch))
+            .map(|(offset, _)| line.bytes.start + offset)
+            .chain(std::iter::once(line.bytes.end));
         let mut best = (line.bytes.start, f32::MAX);
-        for candidate in candidates {
+        for candidate in boundaries {
             let distance = (self.caret_x(candidate) - x).abs();
             if distance < best.1 {
                 best = (candidate, distance);
@@ -140,16 +164,38 @@ impl TextLayout {
     }
 }
 
+/// `true` for combining marks (Arabic tashkeel and Quranic marks, general combining
+/// diacritics, variation selectors) and joiners: characters that never stand alone.
+pub(crate) fn is_mark(ch: char) -> bool {
+    matches!(u32::from(ch),
+        0x0300..=0x036F | 0x0610..=0x061A | 0x064B..=0x065F | 0x0670 | 0x06D6..=0x06DC
+        | 0x06DF..=0x06E4 | 0x06E7 | 0x06E8 | 0x06EA..=0x06ED | 0x08D3..=0x08FF
+        | 0x200C | 0x200D | 0xFE00..=0xFE0F | 0x1AB0..=0x1AFF | 0x20D0..=0x20FF)
+}
+
 struct Metrics {
     line_height: f32,
     baseline: f32,
 }
 
+/// Line height and baseline of a style. They depend on the style only, never on the text, so
+/// that Arabic, Latin and mixed labels of one style share their baseline: the line box is
+/// centred on the ascent and descent of the role's Latin face and, in Arabic line metrics,
+/// of the role's Arabic face too (its deeper descenders move the baseline up).
 fn metrics(fonts: &Fonts, style: &TextStyle) -> Metrics {
-    let face = fonts.face(FontId::Latin);
-    let scale = fonts.scale(FontId::Latin, style.size);
-    let ascent = f32::from(face.ascender()) * scale;
-    let descent = -f32::from(face.descender()) * scale;
+    let extent = |id: FontId| {
+        let (face, scale) = (fonts.face(id), fonts.scale(id, style.size));
+        (
+            f32::from(face.ascender()) * scale,
+            -f32::from(face.descender()) * scale,
+        )
+    };
+    let (mut ascent, mut descent) = extent(latin_face(style.role, Weight::Regular));
+    if style.arabic_metrics {
+        let (a, d) = extent(arabic_face(style.role, Weight::Regular));
+        ascent = ascent.max(a);
+        descent = descent.max(d);
+    }
     let line_height = (style.size * style.line_height).round().max(1.0);
     Metrics {
         line_height,
@@ -303,9 +349,10 @@ fn truncate(
     text: &str,
     style: &TextStyle,
     shaped: &Shaped,
+    first_line: Range<usize>,
     max: f32,
 ) -> TextLayout {
-    let first_line = text.lines().next().unwrap_or("");
+    let first_line = text.get(..first_line.end).unwrap_or("");
     let ellipsis_width = build(
         fonts,
         buffer,
@@ -318,7 +365,11 @@ fn truncate(
     let mut cut = first_line.len();
     let fits = |cut: usize| shaped.width(0..cut) + ellipsis_width <= max;
     loop {
-        while cut > 0 && !(shaped.cluster_start.get(cut).copied().unwrap_or(false) && fits(cut)) {
+        // The end of the first line is a boundary too (no cluster starts at a line break).
+        let boundary = |cut: usize| {
+            cut == first_line.len() || shaped.cluster_start.get(cut).copied().unwrap_or(false)
+        };
+        while cut > 0 && !(boundary(cut) && fits(cut)) {
             cut -= 1;
         }
         let kept = first_line.get(..cut).unwrap_or("").trim_end();
@@ -368,7 +419,8 @@ pub(crate) fn layout_text(
             if style.overflow == Overflow::Ellipsis
                 && (layout.width > max || layout.lines.len() > 1) =>
         {
-            truncate(fonts, buffer, text, style, &shaped, max)
+            let first = layout.lines.first().map_or(0..0, |line| line.bytes.clone());
+            truncate(fonts, buffer, text, style, &shaped, first, max)
         }
         _ => layout,
     }

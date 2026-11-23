@@ -79,6 +79,21 @@ fn register(bus: &Client, wait: Duration) -> Result<ServiceEndpoint, BusError> {
     }
 }
 
+/// Stops a running [`Server`] from another thread (a signal handler's
+/// stop hook). The service writes everything to disk before it ends, and
+/// [`Server::wait`] returns.
+#[derive(Clone)]
+pub struct Stopper {
+    input: SyncSender<Input>,
+}
+
+impl Stopper {
+    /// Asks the service to end. Does nothing if it has ended already.
+    pub fn stop(&self) {
+        let _ = self.input.send(Input::Stop);
+    }
+}
+
 /// A running settings service.
 pub struct Server {
     input: SyncSender<Input>,
@@ -340,13 +355,20 @@ impl Server {
         self.input.send(Input::Tick(done)).is_ok() && wait.recv().is_ok()
     }
 
+    /// A handle that ends the service from another thread.
+    pub fn stopper(&self) -> Stopper {
+        Stopper {
+            input: self.input.clone(),
+        }
+    }
+
     /// Counters of the server.
     pub fn stats(&self) -> &ServerStats {
         &self.stats
     }
 
-    /// Blocks until the service ends (a `settings.shutdown` call), then
-    /// leaves the bus.
+    /// Blocks until the service ends (a `settings.shutdown` call or a
+    /// [`Stopper`]), then leaves the bus.
     pub fn wait(mut self) {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();

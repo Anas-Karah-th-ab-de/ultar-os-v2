@@ -11,13 +11,15 @@
 //! * new tables `store_versions` (version history), `store_filetypes`, `publishers`,
 //!   `update_channels`, `entitlements`;
 //! * `releases` is rebuilt with a numeric id, architecture and edition.
+//!
+//! Version 2 (device identity, see `docs/DEVICE-IDENTITY.md` §9): [`crate::migrate_v2`].
 
 use crate::db::DbError;
 use crate::search;
 use rusqlite::{Connection, Transaction};
 
 /// The schema version this build reads and writes.
-pub const LATEST: i64 = 1;
+pub const LATEST: i64 = 2;
 
 /// Brings the database to [`LATEST`]. Idempotent.
 pub fn run(conn: &mut Connection) -> Result<(), DbError> {
@@ -33,14 +35,23 @@ pub fn run(conn: &mut Connection) -> Result<(), DbError> {
     tx.execute_batch(crate::verbund::SCHEMA)?;
     if found < 1 {
         to_v1(&tx)?;
-        tx.pragma_update(None, "user_version", 1)?;
-        tracing::info!(event = "db_migrated", from = found, to = 1);
+    }
+    if found < 2 {
+        crate::migrate_v2::apply(&tx, crate::db::now())?;
+    }
+    if found < LATEST {
+        tx.pragma_update(None, "user_version", LATEST)?;
+        tracing::info!(event = "db_migrated", from = found, to = LATEST);
     }
     tx.commit()?;
     Ok(())
 }
 
-fn column_exists(tx: &Transaction<'_>, table: &str, column: &str) -> rusqlite::Result<bool> {
+pub(crate) fn column_exists(
+    tx: &Transaction<'_>,
+    table: &str,
+    column: &str,
+) -> rusqlite::Result<bool> {
     let n: i64 = tx.query_row(
         "SELECT COUNT(*) FROM pragma_table_info(?1) WHERE name = ?2",
         rusqlite::params![table, column],
@@ -51,7 +62,12 @@ fn column_exists(tx: &Transaction<'_>, table: &str, column: &str) -> rusqlite::R
 
 /// Adds a column unless it is already there. `table`, `column` and `decl` are compile-time
 /// constants of this module, never external input.
-fn add_column(tx: &Transaction<'_>, table: &str, column: &str, decl: &str) -> rusqlite::Result<()> {
+pub(crate) fn add_column(
+    tx: &Transaction<'_>,
+    table: &str,
+    column: &str,
+    decl: &str,
+) -> rusqlite::Result<()> {
     if !column_exists(tx, table, column)? {
         tx.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl};"))?;
     }

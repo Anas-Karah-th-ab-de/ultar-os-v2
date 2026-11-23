@@ -25,10 +25,19 @@ pub enum CallEvent {
     Error(String),
 }
 
+/// Proof of the device key towards the signalling server (docs/DEVICE-IDENTITY.md).
+/// The key belongs to the cloud service; whoever wires the two services together implements this.
+pub trait SignalAuth: Send {
+    /// First frame: names the device.
+    fn hello(&self) -> Result<String, String>;
+    /// Signed answer to the server's challenge frame.
+    fn answer(&self, challenge_frame: &str) -> Result<String, String>;
+}
+
 /// Einheitliche Schnittstelle für die Telefon-App.
 pub trait CallBackend: Send {
-    /// Beim Signalserver anmelden (eigene Nummer + Konto-Token + Serverbasis).
-    fn register(&mut self, number: &str, token: &str, server_base: &str);
+    /// Beim Signalserver anmelden: Serverbasis und Nachweis des Geräteschlüssels.
+    fn register(&mut self, server_base: &str, auth: Box<dyn SignalAuth>);
     /// Anruf starten (Video optional).
     fn place(&mut self, peer: &str, video: bool);
     /// Eingehenden Anruf annehmen.
@@ -60,7 +69,7 @@ impl Default for MockCall {
 }
 
 impl CallBackend for MockCall {
-    fn register(&mut self, _number: &str, _token: &str, _server_base: &str) {
+    fn register(&mut self, _server_base: &str, _auth: Box<dyn SignalAuth>) {
         self.registered = true;
     }
     fn place(&mut self, peer: &str, _video: bool) {

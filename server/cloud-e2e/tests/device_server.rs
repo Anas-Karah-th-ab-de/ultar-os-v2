@@ -297,16 +297,17 @@ fn account_calls_need_a_token_and_keep_working() {
         device.entitlements(),
         Err(CloudError::NotSignedIn)
     ));
+    let home = s.device_home("phone");
     assert!(matches!(
-        device.register_device("d1", "pk"),
+        home.register_number(&device, "", None),
         Err(CloudError::NotSignedIn)
     ));
     assert!(matches!(device.vpn_peer("x"), Err(CloudError::NotSignedIn)));
 
     let anna = s.signed_in("anna");
-    let number = anna.register_device("device-1", "cHVi").unwrap();
+    let number = home.register_number(&anna, "", None).unwrap();
     assert!(number.starts_with("UOS-"));
-    assert_eq!(anna.register_device("device-1", "cHVi").unwrap(), number);
+    assert_eq!(home.register_number(&anna, "", None).unwrap(), number);
     let peer = anna
         .vpn_peer("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
         .unwrap();

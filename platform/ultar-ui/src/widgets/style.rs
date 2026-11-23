@@ -6,15 +6,15 @@ use crate::color::Color;
 use crate::geom::{Rect, Size};
 use crate::paint::{Painter, TextSpec};
 use crate::text::{Overflow, TextAlign, Weight};
-use crate::tokens::{size, typography, ColorRole, Radius, Space, TypeSize};
+use crate::tokens::{size, state, typography, ColorRole, Radius, Space, TypeSize};
 use ultar_i18n::Direction;
 
 /// Opacity of a disabled widget.
-pub(crate) const DISABLED_OPACITY: f32 = 0.4;
+pub(crate) const DISABLED_OPACITY: f32 = state::DISABLED_OPACITY;
 /// Share of the foreground mixed into a filled background while hovered.
-pub(crate) const HOVER_MIX: f32 = 0.10;
+pub(crate) const HOVER_MIX: f32 = state::HOVER_OVERLAY;
 /// Share of the foreground mixed into a filled background while pressed.
-pub(crate) const PRESSED_MIX: f32 = 0.20;
+pub(crate) const PRESSED_MIX: f32 = state::PRESSED_OVERLAY;
 
 /// How far the focus ring reaches outside a widget (gap plus ring).
 pub(crate) const fn focus_outset() -> f32 {
@@ -81,7 +81,7 @@ pub(crate) fn filled(base: Color, foreground: Color, v: &Visual) -> Color {
 
 /// Draws the focus ring around `rect`. `ring` is the radius of the ring itself.
 pub(crate) fn focus_ring(p: &mut Painter<'_>, rect: Rect, ring: Radius) {
-    let color = p.color(ColorRole::AccentText);
+    let color = p.color(state::FOCUS_RING);
     p.stroke(
         rect.inflate(focus_outset()),
         Some(ring),

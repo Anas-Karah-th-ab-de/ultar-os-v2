@@ -69,6 +69,7 @@ fn main() -> Res<()> {
     )?;
     gen_numbers(&mut out, &root, "shadow", "f32", "The one elevation level.")?;
     gen_typography(&mut out, &root)?;
+    gen_state(&mut out, &root)?;
     gen_themes(&mut out, &root)?;
     let dir = std::env::var("OUT_DIR").map_err(GenError::Env)?;
     std::fs::write(PathBuf::from(dir).join("tokens_gen.rs"), out).map_err(GenError::Io)
@@ -245,6 +246,36 @@ fn gen_typography(out: &mut String, root: &Table) -> Res<()> {
         write!(out, "{}, ", w as u16)?;
     }
     writeln!(out, "];\n}}")?;
+    Ok(())
+}
+
+/// `[state]`: numbers become constants, strings name a colour role of the themes.
+fn gen_state(out: &mut String, root: &Table) -> Res<()> {
+    let roles = table(root, "theme.dark")?;
+    writeln!(
+        out,
+        "/// How interaction states change a widget (`[state]`).\npub mod state {{"
+    )?;
+    for (key, value) in table(root, "state")? {
+        let name = key.to_ascii_uppercase();
+        writeln!(out, "    /// Token `state.{key}`.")?;
+        match value {
+            Value::String(role) if roles.contains_key(role) => writeln!(
+                out,
+                "    pub const {name}: super::ColorRole = super::ColorRole::{};",
+                camel(role)
+            )?,
+            Value::String(_) => return Err(GenError::Invalid(format!("state.{key}"))),
+            other => {
+                let n = number(other, key)?;
+                if !(0.0..=1.0).contains(&n) {
+                    return Err(GenError::Invalid(format!("state.{key}")));
+                }
+                writeln!(out, "    pub const {name}: f32 = {};", float(n))?
+            }
+        }
+    }
+    writeln!(out, "}}")?;
     Ok(())
 }
 

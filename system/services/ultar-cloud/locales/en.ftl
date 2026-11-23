@@ -39,6 +39,32 @@ cloud.error.package_rejected = The package was rejected: its signature is missin
 cloud.error.not_signed_in = You are not signed in on this device.
 cloud.error.vpn = The VPN keys could not be prepared.
 
+# Device identity
+cloud.device.challenge_rejected = The server did not accept the security check. Try again.
+cloud.device.signature_rejected = The server did not accept this device's proof of identity.
+cloud.device.taken = This device is already registered to another account.
+cloud.device.retired = This device was removed from the account. Reset its device identity to register it again; it will get a new number.
+cloud.device.limit = Your account has reached its number of devices. Remove a device first.
+cloud.device.unknown = The server does not know this device.
+cloud.device.update_required = Update the system on this device before you register it.
+cloud.device.legacy_not_eligible = The earlier registration could not be taken over by this device.
+cloud.device.cooldown_active = {seconds ->
+    [one] The number can be moved in {seconds} second.
+   *[other] The number can be moved in {seconds} seconds.
+}
+cloud.device.recovery_pending = A device replacement is already waiting for this account.
+cloud.device.recovery_unknown = There is no device replacement waiting.
+cloud.device.server_mismatch = The security check named another server or account. Nothing was signed.
+cloud.device.key_unusable = The device key cannot be used. It was not changed.
+cloud.device.not_registered = This device is not registered yet.
+cloud.device.state.active = registered
+cloud.device.state.legacy = registered before device keys – update this device
+cloud.device.this_device = this device
+cloud.device.none = No devices are registered.
+cloud.device.removed = The device was removed.
+cloud.device.renamed = The device was renamed.
+cloud.device.reset = The device identity was deleted. Register again to get a new number.
+
 # Command line
 cloud.cli.signed_in = Signed in.
 cloud.cli.number = Ultar number: {number}
@@ -47,4 +73,4 @@ cloud.cli.server = Server: {server}
 cloud.cli.account.signed_in = Account: signed in
 cloud.cli.account.signed_out = Account: signed out (store and updates work without an account)
 cloud.cli.unknown_command = Unknown command: {command}
-cloud.cli.usage = Usage: ucloud register|login <user> <password> · number · vpn · store [search] · app <id> · install <id> · update [channel] · whoami
+cloud.cli.usage = Usage: ucloud register|login <user> <password> · number · devices · device-rename <id> <name> · device-remove <id> · device-reset · vpn · store [search] · app <id> · install <id> · update [channel] · whoami

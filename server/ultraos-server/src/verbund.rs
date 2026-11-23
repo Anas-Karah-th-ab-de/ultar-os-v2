@@ -13,7 +13,7 @@
 //! The identifiers of this module are German because devices in the field speak this protocol
 //! (JSON field names, routes); they are kept unchanged.
 
-use crate::{auth, db, AppState};
+use crate::{db, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
@@ -276,7 +276,7 @@ fn admit(
     st: &AppState,
     anm: &serde_json::Value,
 ) -> Result<(RelaySession, mpsc::Receiver<Message>), String> {
-    let acc = crate::entitlements::account_of_token(&st, anm["token"].as_str().unwrap_or(""))
+    let acc = crate::entitlements::account_of_token(st, anm["token"].as_str().unwrap_or(""))
         .ok_or_else(|| r#"{"typ":"fehler","text":"anmeldung"}"#.to_string())?;
     let pk = anm["pk"].as_str().unwrap_or("").to_string();
     let name = anm["name"].as_str().unwrap_or("").to_string();

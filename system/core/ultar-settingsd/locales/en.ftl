@@ -351,7 +351,7 @@ settingsd.store.unknown_key_dropped = The setting {detail} was removed from {fil
 settingsd.store.invalid_value_dropped = The value of {detail} in {file} is not accepted; the default is in use
 settingsd.store.unreadable = The settings file {file} could not be read; the defaults are in use
 
-settingsd.daemon.usage = Usage: ultar-settingsd --store DIR [--socket PATH] [--user NAME] [--policy FILE | --allow-all] [--profile FILE] [--write-delay-ms N] [--token TOKEN] [--log-apply]
+settingsd.daemon.usage = Usage: ultar-settingsd --store DIR [--socket PATH] [--user NAME] [--policy FILE | --allow-all] [--profile FILE] [--write-delay-ms N] [--token-file FILE | --token-fd N] [--log-socket PATH] [--allow-root] [--log-apply]
 settingsd.daemon.bad_arguments = Invalid options
 settingsd.daemon.no_policy = Either --policy FILE or --allow-all is required
 settingsd.daemon.allow_all = Warning: everyone who reaches the service counts as administrator (--allow-all)
@@ -363,11 +363,16 @@ settingsd.daemon.bus_error = Could not connect to the system bus: {detail}
 settingsd.daemon.write_error = The settings could not be written: {detail}
 settingsd.daemon.ready = Settings service ready
 settingsd.daemon.stopped = Settings service stopped
+settingsd.daemon.policy_conflict = --policy and --allow-all cannot be combined
+settingsd.daemon.token_rejected = The token could not be read: {detail}
+settingsd.daemon.root_refused = The settings service does not run as root without --allow-root
+settingsd.daemon.hardening_failed = The self-limits could not be applied: {detail}
 
-usettings.usage = Usage: usettings [--socket PATH] [--lang ar|en|de] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
+usettings.usage = Usage: usettings [--socket PATH] [--lang ar|en|de] [--token-file FILE] get KEY | set KEY VALUE | reset KEY | list [PANEL] | watch [--count N] | confirm [KEY] | revert [KEY]
 
 usettings.error.arguments = Invalid command
 usettings.error.no_socket = No bus socket given (--socket or ULTAR_BUS_SOCKET)
+usettings.error.token_file = The token file could not be read: {detail}
 
 usettings.get = {key} = {value}
 

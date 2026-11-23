@@ -68,6 +68,9 @@ pub struct TextStyle {
     pub overflow: Overflow,
     /// Line height as a multiple of the size.
     pub line_height: f32,
+    /// `true` for Arabic line metrics: the baseline also makes room for the role's Arabic
+    /// face (set for Arabic, where every line may hold Arabic letters).
+    pub arabic_metrics: bool,
 }
 
 impl TextStyle {
@@ -83,6 +86,7 @@ impl TextStyle {
                 Lang::Ar => typography::LINE_HEIGHT_ARABIC,
                 _ => typography::LINE_HEIGHT_LATIN,
             },
+            arabic_metrics: lang == Lang::Ar,
         }
     }
 
@@ -111,6 +115,7 @@ impl TextStyle {
         self.direction.is_rtl().hash(hasher);
         self.overflow.hash(hasher);
         self.line_height.to_bits().hash(hasher);
+        self.arabic_metrics.hash(hasher);
     }
 }
 
@@ -233,8 +238,8 @@ impl TextEngine {
                     let cost = mask.data.len() + std::mem::size_of::<GlyphMask>();
                     (Rc::new(mask), cost)
                 });
-                let x = whole as i32 + mask.left;
-                let y = (baseline + g.dy).round() as i32 + mask.top;
+                let x = (whole as i32).saturating_add(mask.left);
+                let y = ((baseline + g.dy).round() as i32).saturating_add(mask.top);
                 // The mask length always matches its dimensions.
                 let _ = canvas.fill_mask(x, y, mask.width, mask.height, &mask.data, color);
             }
@@ -258,5 +263,7 @@ impl TextEngine {
     }
 }
 
+#[cfg(test)]
+mod metrics_tests;
 #[cfg(test)]
 mod tests;

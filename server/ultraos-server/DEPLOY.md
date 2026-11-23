@@ -37,6 +37,9 @@ cargo test                     # startet den echten Server auf einem freien Port
 | `ULTRAOS_LIMIT_GENERAL` | Anfragen je Client: `Stoß,je_Minute` | `120,120` |
 | `ULTRAOS_LIMIT_DOWNLOAD` | Downloads je Client | `30,20` |
 | `ULTRAOS_LIMIT_AUTH` | Registrierung/Anmeldung je Client | `10,6` |
+| `ULTRAOS_SERVER_NAME` | Name des Servers, wie ihn die Geräte aus ihrer Server-Adresse ableiten (Rechnername, bei abweichendem Port `name:port`, klein geschrieben). Steht in jeder Geräte-Signatur; stimmt er nicht, lehnen die Geräte jede Signatur ab (kein Gerät kann sich registrieren). | `ultar.code-craft.tech` |
+| `ULTRAOS_MAX_DEVICES` | Geräte je Konto (1–100) | `10` |
+| `ULTRAOS_DEVICE_COOLDOWN_SECS` | Wartezeit beim Ersatz eines verlorenen Geräts (mindestens 3600) | `259200` (72 h) |
 
 Fehlerhafte Werte bei den Proxys und Grenzen werden im Protokoll gemeldet (`ignored_trusted_proxy`,
 `ignored_limit`) und nicht übernommen.

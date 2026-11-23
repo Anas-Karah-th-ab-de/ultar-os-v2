@@ -3,7 +3,7 @@
 use super::style::{self, Visual};
 use super::{Label, MeasureCx, PaintCx};
 use crate::geom::{Point, Rect, Size};
-use crate::paint::{layout_text, PaintEnv, Painter, Resources, TextSpec};
+use crate::paint::{layout_directed, PaintEnv, Painter, Resources, TextSpec};
 use crate::text::TextAlign;
 use crate::tokens::{size, typography, ColorRole, InputMode, Radius, Space};
 use ultar_i18n::Direction;
@@ -11,9 +11,33 @@ use ultar_i18n::Direction;
 /// Default limit of a field's content in bytes.
 pub const DEFAULT_MAX_LEN: usize = 4096;
 
-const PAD: Space = Space::S12;
+pub(crate) const PAD: Space = Space::S12;
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
 const FIELD_TEXT: TextSpec = TextSpec::new(typography::BODY);
+
+/// The paragraph direction of a field's content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum TextDirection {
+    /// The direction of the user interface (names, free text).
+    #[default]
+    Auto,
+    /// Always left-to-right: phone numbers, addresses, URLs, e-mail, code. Without it a
+    /// phone number typed in an Arabic interface shows its groups in reverse order.
+    Ltr,
+    /// Always right-to-left.
+    Rtl,
+}
+
+impl TextDirection {
+    /// The paragraph direction in a user interface of direction `ui`.
+    pub fn resolve(self, ui: Direction) -> Direction {
+        match self {
+            TextDirection::Auto => ui,
+            TextDirection::Ltr => Direction::Ltr,
+            TextDirection::Rtl => Direction::Rtl,
+        }
+    }
+}
 
 /// A text field.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,13 +46,19 @@ pub struct TextField {
     pub name: Label,
     /// Hint shown while the field is empty.
     pub placeholder: Option<Label>,
+    /// Paragraph direction of the content.
+    pub direction: TextDirection,
+    /// `true` for a search field: search icon at the start, clear button at the end.
+    pub(crate) search: bool,
     text: String,
     caret: usize,
     max_len: usize,
 }
 
+/// Characters a single-line field accepts: no control characters, no line or paragraph
+/// separators (they would start a second line), no BiDi controls.
 fn allowed(ch: char) -> bool {
-    !ch.is_control() && !crate::text::is_bidi_control(ch)
+    !ch.is_control() && !matches!(ch, '\u{2028}' | '\u{2029}') && !crate::text::is_bidi_control(ch)
 }
 
 impl TextField {
@@ -37,6 +67,8 @@ impl TextField {
         TextField {
             name,
             placeholder: None,
+            direction: TextDirection::Auto,
+            search: false,
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
@@ -46,6 +78,12 @@ impl TextField {
     /// The same field with a placeholder.
     pub fn placeholder(mut self, placeholder: Label) -> TextField {
         self.placeholder = Some(placeholder);
+        self
+    }
+
+    /// The same field with a fixed paragraph direction for its content.
+    pub fn direction(mut self, direction: TextDirection) -> TextField {
+        self.direction = direction;
         self
     }
 
@@ -211,13 +249,14 @@ impl TextField {
         mode: InputMode,
         pos: Point,
     ) -> usize {
-        let inner = style::inset_inline(TextField::field(rect, mode), PAD);
-        let layout = layout_text(res, env, &self.text, FIELD_TEXT, None);
+        let inner = self.text_area(TextField::field(rect, mode), env.direction);
+        let base = self.direction.resolve(env.direction);
+        let layout = layout_directed(res, env, &self.text, FIELD_TEXT, None, base);
         let (width, caret_x) = (
             layout.width / env.scale,
             layout.caret_x(self.caret) / env.scale,
         );
-        let left = TextField::line_left(width, caret_x, inner, env.direction);
+        let left = TextField::line_left(width, caret_x, inner, base);
         layout.index_at_x((pos.x - left) * env.scale)
     }
 
@@ -260,7 +299,8 @@ impl TextField {
         };
         let border = p.color(border);
         p.stroke(field, Some(Radius::Control), width, border);
-        let inner = style::inset_inline(field, PAD);
+        self.paint_search_parts(p, field);
+        let inner = self.text_area(field, p.env().direction);
         self.paint_content(p, cx, inner, has_focus);
         style::paint_error(p, cx, error, rect, field.h);
         if v.focused {
@@ -270,11 +310,11 @@ impl TextField {
     }
 
     fn paint_content(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, inner: Rect, has_focus: bool) {
-        let direction = p.env().direction;
+        let base = self.direction.resolve(p.env().direction);
         let scale = p.env().scale;
-        let layout = p.layout(&self.text, FIELD_TEXT, None);
+        let layout = p.layout_directed(&self.text, FIELD_TEXT, None, base);
         let (width, caret_x) = (layout.width / scale, layout.caret_x(self.caret) / scale);
-        let left = TextField::line_left(width, caret_x, inner, direction);
+        let left = TextField::line_left(width, caret_x, inner, base);
         let saved = p.clip(inner);
         if self.text.is_empty() {
             if let Some(placeholder) = &self.placeholder {
@@ -315,77 +355,4 @@ impl TextField {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn editing_keeps_the_caret_on_boundaries() {
-        let mut f = TextField::new(Label::key("f")).text("سلام");
-        assert_eq!((f.content(), f.caret()), ("سلام", 8));
-        assert!(f.backspace());
-        assert_eq!((f.content(), f.caret()), ("سلا", 6));
-        assert!(f.move_caret(false) && f.move_caret(false));
-        assert_eq!(f.caret(), 2);
-        assert!(f.insert('ـ'));
-        assert_eq!(f.content(), "سـلا");
-        assert!(f.delete());
-        assert_eq!(f.content(), "سـا");
-        f.set_caret(1);
-        assert_eq!(f.caret(), 0, "moved back to a boundary");
-        assert!(!f.backspace() && !f.move_caret(false));
-        f.set_caret(999);
-        assert_eq!(f.caret(), f.content().len());
-        assert!(!f.delete() && !f.move_caret(true));
-    }
-
-    #[test]
-    fn control_characters_and_the_limit_are_refused() {
-        let mut f = TextField::new(Label::key("f")).max_len(5);
-        assert!(!f.insert('\n') && !f.insert('\u{202E}') && !f.insert('\u{7}'));
-        f.set_text("ab\tc\u{2066}d");
-        assert_eq!(f.content(), "abcd");
-        assert!(f.insert('e'));
-        assert!(!f.insert('f'), "limit of 5 bytes reached");
-        assert!(!f.insert('ش'));
-        f.set_text("ششششش");
-        assert_eq!(
-            f.content(),
-            "شش",
-            "cut at a character boundary below the limit"
-        );
-        let shrunk = TextField::new(Label::key("f")).text("abcdef").max_len(3);
-        assert_eq!(shrunk.content(), "abc");
-        assert!(TextField::new(Label::key("f"))
-            .placeholder(Label::key("p"))
-            .placeholder
-            .is_some());
-    }
-
-    #[test]
-    fn long_text_scrolls_to_keep_the_caret_visible() {
-        let inner = Rect::new(10.0, 0.0, 100.0, 20.0);
-        assert_eq!(
-            TextField::line_left(50.0, 50.0, inner, Direction::Ltr),
-            10.0
-        );
-        assert_eq!(
-            TextField::line_left(300.0, 300.0, inner, Direction::Ltr),
-            10.0 - 200.0
-        );
-        assert_eq!(
-            TextField::line_left(300.0, 20.0, inner, Direction::Ltr),
-            10.0
-        );
-        // Right-to-left: a short line sits at the right; a long one shifts so that the caret
-        // (at x = 0 of the line, the end of the text) is at the left inner edge.
-        assert_eq!(TextField::line_left(50.0, 0.0, inner, Direction::Rtl), 60.0);
-        assert_eq!(
-            TextField::line_left(300.0, 0.0, inner, Direction::Rtl),
-            10.0
-        );
-        assert_eq!(
-            TextField::line_left(300.0, 300.0, inner, Direction::Rtl),
-            -190.0
-        );
-    }
-}
+mod tests;

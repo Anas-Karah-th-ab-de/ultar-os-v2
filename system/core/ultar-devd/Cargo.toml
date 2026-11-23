@@ -12,6 +12,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 ultar-hal-system = { path = "../../hal/ultar-hal-system" }
 ultar-bus = { path = "../ultar-bus" }
+ultar-service = { path = "../ultar-service" }
 ultar-i18n = { path = "../ultar-i18n" }
 
 [lib]

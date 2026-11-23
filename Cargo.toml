@@ -3,6 +3,11 @@
 resolver = "2"
 members = [
     "system/core/ultar-i18n",
+    "system/core/ultar-update",
+    "system/core/ultar-service",
+    "system/hal/ultar-sys",
+    "system/core/ultar-busd",
+    "system/services/ultar-logd",
     "system/core/ultar-profile",
     "system/hal/ultar-hal",
     "platform/ultar-ui",

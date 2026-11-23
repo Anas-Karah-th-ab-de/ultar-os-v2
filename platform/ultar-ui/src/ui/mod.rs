@@ -1,22 +1,30 @@
 //! The widget tree with its interaction state: build it, feed it events, paint it.
 
 mod access;
+mod clock;
+mod error;
+mod layers;
 mod measure;
+mod menus;
+mod modal;
 mod render;
+mod scrolling;
+mod state;
 mod tree;
 
 pub use access::{A11yNode, A11yState, Role};
+pub use error::UiError;
+
+pub(crate) use layers::{Drag, DragKind, Layers, MenuOrigin, MenuState, PaintStep, Tip};
 
 use crate::geom::{Rect, Size};
-use crate::icon::PathError;
 use crate::layout::{Flex, LogicalRect, Sizing};
 use crate::paint::{PaintEnv, Resources};
-use crate::text::{TextEngine, TextError};
-use crate::tokens::{motion, ColorRole, InputMode, SizeClass, Space, ThemeKind};
-use crate::widgets::{Label, Widget};
+use crate::text::TextEngine;
+use crate::tokens::{ColorRole, InputMode, SizeClass, Space, ThemeKind};
+use crate::widgets::{Label, Menu, Widget};
 use std::cell::RefCell;
-use std::fmt;
-use ultar_i18n::{Direction, Lang, ParseError, Translator};
+use ultar_i18n::{Direction, Lang, Translator};
 
 /// Most nodes one tree may hold.
 pub const MAX_NODES: usize = 4096;
@@ -35,85 +43,6 @@ impl NodeId {
     }
 }
 
-/// Why a UI operation was refused.
-#[derive(Debug, Clone, PartialEq)]
-pub enum UiError {
-    /// The text engine could not start.
-    Text(TextError),
-    /// The icon set could not be parsed.
-    Icons(PathError),
-    /// A toolkit catalog is malformed.
-    Catalog(ParseError),
-    /// The node does not exist in this tree.
-    UnknownNode(NodeId),
-    /// The node cannot have (more) children.
-    NotAContainer(NodeId),
-    /// The tree already holds [`MAX_NODES`] nodes.
-    TooManyNodes,
-    /// The tree would be nested deeper than [`MAX_DEPTH`].
-    TooDeep,
-    /// The node is not the kind of widget the operation needs.
-    WrongWidget {
-        /// The node.
-        node: NodeId,
-        /// The widget kind that was expected.
-        expected: &'static str,
-    },
-    /// The widget has no such state (for example loading on a slider).
-    NotApplicable(NodeId),
-    /// An option index beyond the select's options.
-    OptionOutOfRange {
-        /// The node.
-        node: NodeId,
-        /// The index that was asked for.
-        index: usize,
-    },
-    /// Scale factors must be finite and between 0.5 and 8.
-    InvalidScale,
-}
-
-impl fmt::Display for UiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UiError::Text(e) => write!(f, "text engine: {e}"),
-            UiError::Icons(e) => write!(f, "icon set: {e}"),
-            UiError::Catalog(e) => write!(f, "toolkit catalog: {e}"),
-            UiError::UnknownNode(id) => write!(f, "node {} does not exist", id.0),
-            UiError::NotAContainer(id) => write!(f, "node {} cannot take a child", id.0),
-            UiError::TooManyNodes => write!(f, "more than {MAX_NODES} nodes"),
-            UiError::TooDeep => write!(f, "nesting deeper than {MAX_DEPTH}"),
-            UiError::WrongWidget { node, expected } => {
-                write!(f, "node {} is not a {expected}", node.0)
-            }
-            UiError::NotApplicable(id) => write!(f, "node {} has no such state", id.0),
-            UiError::OptionOutOfRange { node, index } => {
-                write!(f, "node {} has no option {index}", node.0)
-            }
-            UiError::InvalidScale => write!(f, "scale must be between 0.5 and 8"),
-        }
-    }
-}
-
-impl std::error::Error for UiError {}
-
-impl From<TextError> for UiError {
-    fn from(e: TextError) -> UiError {
-        UiError::Text(e)
-    }
-}
-
-impl From<PathError> for UiError {
-    fn from(e: PathError) -> UiError {
-        UiError::Icons(e)
-    }
-}
-
-impl From<ParseError> for UiError {
-    fn from(e: ParseError) -> UiError {
-        UiError::Catalog(e)
-    }
-}
-
 pub(crate) struct Node {
     pub(crate) widget: Widget,
     pub(crate) sizing: Sizing,
@@ -125,6 +54,13 @@ pub(crate) struct Node {
     pub(crate) error: Option<Label>,
     /// Last measurement: available width and resulting size.
     pub(crate) measured: Option<(f32, Size)>,
+    /// Explanation shown on hover or keyboard focus.
+    pub(crate) tooltip: Option<Label>,
+    /// Commands offered by a secondary click or the menu key.
+    pub(crate) context_menu: Option<Box<Menu>>,
+    /// The nearest scroll container or dialog above this node (set by the layout): the
+    /// node is drawn and hit only inside that ancestor's rectangle.
+    pub(crate) clip_parent: Option<NodeId>,
 }
 
 /// The open options list of a select.
@@ -135,15 +71,61 @@ pub(crate) struct Popup {
     pub(crate) scroll: usize,
 }
 
+/// A widget held down by one pointer, and which of its parts (tab, radio option).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Press {
+    pub(crate) node: NodeId,
+    pub(crate) part: Option<usize>,
+}
+
+/// Which pointing device an event came from; each has its own press.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pointer {
+    Mouse,
+    Touch,
+}
+
 /// Which nodes the user currently interacts with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct InputState {
     pub(crate) hover: Option<NodeId>,
-    pub(crate) pressed: Option<NodeId>,
+    /// The part of the hovered widget under the pointer.
+    pub(crate) hover_part: Option<usize>,
+    /// The widget held down by the mouse button.
+    pub(crate) mouse: Option<Press>,
+    /// The widget held down by the finger.
+    pub(crate) finger: Option<Press>,
     pub(crate) focus: Option<NodeId>,
     pub(crate) focus_visible: bool,
     pub(crate) touch: Option<u64>,
     pub(crate) popup: Option<Popup>,
+}
+
+impl InputState {
+    /// The press of a pointer kind.
+    pub(crate) fn press(&self, pointer: Pointer) -> Option<Press> {
+        match pointer {
+            Pointer::Mouse => self.mouse,
+            Pointer::Touch => self.finger,
+        }
+    }
+
+    /// The part of `id` held down by any pointer.
+    pub(crate) fn pressed_part(&self, id: NodeId) -> Option<usize> {
+        [self.mouse, self.finger]
+            .into_iter()
+            .flatten()
+            .find(|press| press.node == id)
+            .and_then(|press| press.part)
+    }
+
+    /// `true` while any pointer holds `id` down.
+    pub(crate) fn is_pressed(&self, id: NodeId) -> bool {
+        [self.mouse, self.finger]
+            .into_iter()
+            .flatten()
+            .any(|press| press.node == id)
+    }
 }
 
 #[derive(Default)]
@@ -166,6 +148,8 @@ pub struct Ui {
     pub(crate) tr: Translator,
     pub(crate) res: RefCell<Resources>,
     pub(crate) input: InputState,
+    /// Everything above the plain tree: paint order, dialogs, menu, tooltip, drags.
+    pub(crate) layers: Layers,
     dirty: Dirty,
     pub(crate) now_ms: u64,
 }
@@ -175,9 +159,6 @@ const TOOLKIT_CATALOGS: [(Lang, &str); 3] = [
     (Lang::En, include_str!("../../locales/en.ftl")),
     (Lang::De, include_str!("../../locales/de.ftl")),
 ];
-
-/// Duration of one revolution of the progress ring.
-const SPIN_MS: u64 = 4 * motion::OVERVIEW as u64;
 
 impl Ui {
     /// A UI of `size` logical points whose root is a column. `translator` carries the app's
@@ -210,6 +191,7 @@ impl Ui {
             tr: translator,
             res: RefCell::new(res),
             input: InputState::default(),
+            layers: Layers::default(),
             dirty: Dirty::default(),
             now_ms: 0,
         };
@@ -231,6 +213,7 @@ impl Ui {
             None,
         ));
         self.input = InputState::default();
+        self.layers = Layers::default();
         self.invalidate_layout();
     }
 
@@ -288,10 +271,13 @@ impl Ui {
     }
 
     /// Overrides the layout direction without changing the language. Nothing is laid out
-    /// again: logical rectangles are resolved for the new direction when painting.
+    /// again: logical rectangles are resolved for the new direction when painting. An open
+    /// menu or tooltip closes (its place depends on the direction).
     pub fn set_direction(&mut self, direction: Direction) {
         if self.env.direction != direction {
             self.env.direction = direction;
+            self.layers.menu = None;
+            self.layers.tip = None;
             self.dirty.full = true;
         }
     }
@@ -328,75 +314,15 @@ impl Ui {
         self.dirty.full = true;
     }
 
+    pub(crate) fn background(&self) -> ColorRole {
+        self.background
+    }
+
     /// "Reduce motion": knobs jump and progress rings stand still.
     pub fn set_reduce_motion(&mut self, reduce: bool) {
         if self.reduce_motion != reduce {
             self.reduce_motion = reduce;
             self.dirty.full = true;
-        }
-    }
-
-    /// Sets the clock (milliseconds, monotonic, supplied by the caller) that drives
-    /// animations, and marks animating widgets for repaint.
-    pub fn advance_to(&mut self, now_ms: u64) {
-        if now_ms == self.now_ms {
-            return;
-        }
-        let was_animating = self.animating();
-        self.now_ms = now_ms;
-        if !(was_animating || self.animating()) {
-            return;
-        }
-        for index in 0..self.nodes.len() {
-            let node = &self.nodes[index];
-            if node.loading || matches!(&node.widget, Widget::Switch(s) if s.toggled_at.is_some()) {
-                self.touch(NodeId(index as u32));
-            }
-        }
-        for node in &mut self.nodes {
-            if let Widget::Switch(switch) = &mut node.widget {
-                let done = |t: u64| now_ms.saturating_sub(t) >= u64::from(motion::FEEDBACK);
-                if switch.toggled_at.is_some_and(done) {
-                    switch.toggled_at = None;
-                }
-            }
-        }
-    }
-
-    /// `true` while something moves (a knob in transit, a progress ring), i.e. the caller
-    /// should keep calling [`Ui::advance_to`] and [`Ui::paint`] every frame.
-    pub fn animating(&self) -> bool {
-        if self.reduce_motion {
-            return false;
-        }
-        self.nodes.iter().any(|node| {
-            node.loading || matches!(&node.widget, Widget::Switch(s) if s.toggled_at.is_some())
-        })
-    }
-
-    /// Rotation of progress rings for the current clock, 0..1.
-    pub(crate) fn spin(&self) -> f32 {
-        if self.reduce_motion {
-            0.0
-        } else {
-            (self.now_ms % SPIN_MS) as f32 / SPIN_MS as f32
-        }
-    }
-
-    /// Knob position of a switch for the current clock, 0 (off) to 1 (on).
-    pub(crate) fn knob_position(&self, on: bool, toggled_at: Option<u64>) -> f32 {
-        let target = if on { 1.0 } else { 0.0 };
-        match toggled_at {
-            Some(start) if !self.reduce_motion => {
-                let elapsed = self.now_ms.saturating_sub(start) as f32 / motion::FEEDBACK as f32;
-                let progress = elapsed.clamp(0.0, 1.0);
-                if on {
-                    progress
-                } else {
-                    1.0 - progress
-                }
-            }
-            _ => target,
         }
     }
 
@@ -408,6 +334,11 @@ impl Ui {
     pub fn invalidate_layout(&mut self) {
         self.dirty.layout = true;
         self.dirty.full = true;
+    }
+
+    /// `true` once after a layout was requested; clears the request.
+    pub(crate) fn take_layout_request(&mut self) -> bool {
+        std::mem::take(&mut self.dirty.layout)
     }
 
     /// Requests a repaint of the whole surface without a new layout.
@@ -440,14 +371,23 @@ impl Ui {
         }
     }
 
-    /// The physical rectangle of a node in logical points, for the current direction.
-    /// Meaningful after [`Ui::layout`].
+    /// The physical rectangle of a node in logical points, for the current direction and
+    /// the current scroll offsets. Meaningful after [`Ui::layout`].
     pub fn rect(&self, id: NodeId) -> Option<Rect> {
         let node = self.nodes.get(id.index())?;
-        Some(node.frame.resolve(self.env.direction, self.size.w))
+        let mut rect = node.frame.resolve(self.env.direction, self.size.w);
+        let mut above = node.clip_parent;
+        while let Some(scroller) = above.and_then(|s| self.nodes.get(s.index())) {
+            if let Widget::Scroll(scroll) = &scroller.widget {
+                rect.y -= scroll.offset;
+            }
+            above = scroller.clip_parent;
+        }
+        Some(rect)
     }
 
-    /// The logical rectangle of a node (start-relative), independent of the direction.
+    /// The logical rectangle of a node (start-relative), independent of the direction and
+    /// of scroll offsets.
     pub fn logical_rect(&self, id: NodeId) -> Option<LogicalRect> {
         self.nodes.get(id.index()).map(|n| n.frame)
     }

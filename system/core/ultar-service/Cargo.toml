@@ -1,0 +1,27 @@
+[package]
+name = "ultar-service"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Runtime of every Ultar OS daemon: signals, lifecycle, self-limits, peer identity, bus session, secrets and the logging API (system core, area 3)"
+
+[lib]
+name = "ultar_service"
+path = "src/lib.rs"
+
+# Test helper, not shipped: a minimal daemon on the runtime that the
+# integration tests start as a real process (it lives under tests/).
+[[bin]]
+name = "ultar-service-probe"
+path = "tests/helpers/probe.rs"
+test = false
+doc = false
+
+[dependencies]
+ultar-bus = { path = "../ultar-bus" }
+ultar-sys = { path = "../../hal/ultar-sys" }
+
+[dev-dependencies]
+# Only for the bus round trips of the integration tests.
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
