@@ -21,11 +21,10 @@ pub const STACK_MAX: u64 = 8 << 20;
 pub const MMAP_BASE: u64 = 0x7f00_0000_0000;
 pub const PIE_BASE: u64 = 0x5555_5555_4000;
 
-pub struct Pipe {
-    pub buf: Mutex<alloc::collections::VecDeque<u8>>,
-    pub readers: AtomicU64,
-    pub writers: AtomicU64,
-}
+pub use crate::pipe::Pipe;
+
+/// Highest descriptor number + 1 of one process (the table is a vector indexed by number).
+pub const MAX_FDS: usize = 65536;
 
 pub enum FdKind {
     Console,
@@ -35,7 +34,8 @@ pub enum FdKind {
     File { data: Arc<Vec<u8>>, pos: u64, path: String, append: bool, write: bool, dirty: bool },
     /// `path` ist der Pfad im Dateibaum des Kerns; `view`/`tag`: path as the opening process saw it and the
     /// view it was opened in (base for *at calls, see isolation::path)
-    Dir { ents: Vec<fs::DirEnt>, pos: usize, path: String, view: String, tag: crate::isolation::ViewTag },
+    /// (the listing is shared between duplicates of the descriptor – a directory can be large)
+    Dir { ents: Arc<Vec<fs::DirEnt>>, pos: usize, path: String, view: String, tag: crate::isolation::ViewTag },
     PipeR(Arc<Pipe>),
     PipeW(Arc<Pipe>),
     Sock(Arc<crate::socket::Handle>),
@@ -64,15 +64,9 @@ pub enum UnixState {
     Listening(String, alloc::collections::VecDeque<(Arc<Pipe>, Arc<Pipe>)>),
 }
 
-impl Pipe {
-    pub fn new() -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(alloc::collections::VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0) })
-    }
-}
-
 /// Unix-Verbindung als Paar von Rohren; Zähler wie bei offenen Enden
 pub fn unix_pair() -> (FdKind, FdKind) {
-    let (a, b) = (Pipe::new(), Pipe::new());
+    let (a, b) = (Pipe::with_capacity(crate::pipe::UNIX_DEFAULT), Pipe::with_capacity(crate::pipe::UNIX_DEFAULT));
     for p in [&a, &b] {
         p.readers.store(1, Ordering::SeqCst);
         p.writers.store(1, Ordering::SeqCst);
@@ -145,7 +139,10 @@ impl Drop for Fd {
                     }
                 }
             }
-            FdKind::File { data, path, write: true, dirty: true, .. } => fs::write_file(path, (**data).clone()),
+            FdKind::File { data, path, write: true, dirty: true, .. } => {
+                // the buffer itself becomes the stored file (no copy)
+                fs::store_file(path, data.clone());
+            }
             _ => {}
         }
     }
@@ -227,6 +224,8 @@ pub struct Group {
     pub iso: crate::isolation::Isolation,
     /// Host path of the running program (`exe` is the path the process itself sees)
     pub exe_host: String,
+    /// Resource group (see groups.rs) the threads of this process belong to
+    pub res: u16,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -269,6 +268,10 @@ pub struct Proc {
     pub g: Shared<Group>,
     /// Membership in the pid namespace (numbers of this thread in its namespace and all ancestors)
     pub link: crate::isolation::pid::PidLink,
+    /// This thread's count in its resource group (released when the thread is reaped)
+    pub pids: crate::groups::PidCharge,
+    /// Bytes a blocking `write` to a full pipe has delivered so far (the call continues later)
+    pub io_done: u64,
 }
 
 impl Proc {
@@ -284,11 +287,19 @@ impl Proc {
         // Deskriptoren sind `int`: obere Bits des Registers zählen nicht (glibc lässt sie stehen)
         self.g.fds.get_mut(n as u32 as usize)?.as_mut()
     }
+    /// Put `fd` at the lowest free number from `min` on. Errors: `-EMFILE` (24) beyond
+    /// [`MAX_FDS`], `-ENOMEM` (12) if the table cannot grow.
     pub fn add_fd(&mut self, fd: Fd, min: usize) -> i64 {
         let fds = &mut self.g.fds;
         let mut i = min;
         loop {
+            if i >= MAX_FDS {
+                return -24;
+            }
             if i >= fds.len() {
+                if !crate::mem::try_reserve(fds, i + 1 - fds.len()) {
+                    return -12;
+                }
                 fds.resize_with(i + 1, || None);
             }
             if fds[i].is_none() {
@@ -331,7 +342,7 @@ pub fn check_window() {
 // ------------------------------------------------------------------ Benutzerspeicher
 
 pub fn read_user(sp: &AddrSpace, va: u64, len: usize) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(len);
+    let mut out = crate::mem::try_with_capacity(len)?;
     let mut a = va;
     while out.len() < len {
         let (pa, _) = sp.translate(a)?;
@@ -379,31 +390,42 @@ pub fn read_u64(sp: &AddrSpace, va: u64) -> Option<u64> {
     read_user(sp, va, 8).map(|b| u64::from_le_bytes(b.try_into().unwrap()))
 }
 
+/// Most bytes of an argument or environment vector (the start-up stack holds 200 KiB in all).
+pub const MAX_ARG_BYTES: usize = 192 * 1024;
+
 pub fn read_strv(sp: &AddrSpace, mut va: u64) -> Option<Vec<String>> {
     let mut v = Vec::new();
     if va == 0 {
         return Some(v);
     }
+    let mut bytes = 0;
     loop {
         let p = read_u64(sp, va)?;
         if p == 0 {
             return Some(v);
         }
-        v.push(read_cstr(sp, p)?);
+        let s = read_cstr(sp, p)?;
+        bytes += s.len() + 9;
+        v.push(s);
         va += 8;
-        if v.len() > 4096 {
+        // too long for the stack anyway: stop before the copy grows without need
+        if v.len() > 4096 || bytes > MAX_ARG_BYTES {
+            crate::percpu::me().errno = 7; // E2BIG
             return None;
         }
     }
 }
 
-fn copy_to(sp: &mut AddrSpace, va: u64, data: &[u8], writable: bool, exec: bool) {
+/// Text of the error when a program cannot be loaded for lack of memory.
+pub const NO_MEMORY: &str = "kein Speicher";
+
+fn copy_to(sp: &mut AddrSpace, va: u64, data: &[u8], writable: bool, exec: bool) -> Result<(), &'static str> {
     let mut off = 0usize;
     let mut a = va;
     let end = va + data.len() as u64;
     while a < end || (off == 0 && data.is_empty()) {
         let page = a & !0xfff;
-        let pa = sp.map(page, writable, exec);
+        let pa = sp.map(page, writable, exec).ok_or(NO_MEMORY)?;
         let n = ((page + 4096).min(end) - a) as usize;
         unsafe { core::ptr::copy_nonoverlapping(data[off..].as_ptr(), (pa + (a - page)) as *mut u8, n) };
         off += n;
@@ -412,6 +434,7 @@ fn copy_to(sp: &mut AddrSpace, va: u64, data: &[u8], writable: bool, exec: bool)
             break;
         }
     }
+    Ok(())
 }
 
 // ------------------------------------------------------------------ ELF
@@ -458,20 +481,25 @@ fn load_segments(sp: &mut AddrSpace, data: &[u8], base: u64) -> Result<(u64, u64
         }
         let flags = u32le(p, 4);
         let off = u64le(p, 8) as usize;
-        let va = base + u64le(p, 16);
+        let va = base.wrapping_add(u64le(p, 16));
         let filesz = u64le(p, 32) as usize;
         let memsz = u64le(p, 40);
         if base == 0 && (va < USER_LOW || va + memsz > USER_LOW_END) {
             return Err("Programmadresse außerhalb des Benutzerfensters");
         }
-        if off + filesz > data.len() {
+        // addresses and sizes come from the file: a relocatable program must stay in the upper user
+        // area (below it lies the kernel's identity map, which a user page would replace in this
+        // address space), and a segment the user half cannot hold is refused
+        let wrapped = base.checked_add(u64le(p, 16)) != Some(va);
+        let outside = wrapped || memsz > 1 << 34 || va + memsz > STACK_TOP || base != 0 && va < 0x1000_0000_0000;
+        if outside || off + filesz > data.len() {
             return Err("ELF beschädigt");
         }
         let (w, x) = (flags & 2 != 0, flags & 1 != 0);
-        copy_to(sp, va, &data[off..off + filesz], w, x);
+        copy_to(sp, va, &data[off..off + filesz], w, x)?;
         let mut a = (va + filesz as u64 + 4095) & !4095;
         while a < va + memsz {
-            sp.map(a, w, x);
+            sp.map(a, w, x).ok_or(NO_MEMORY)?;
             a += 4096;
         }
         if phdr == 0 && off == 0 {
@@ -517,7 +545,7 @@ pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read:
         3 => PIE_BASE,
         _ => return Err("ELF-Typ nicht unterstützt"),
     };
-    let mut sp = AddrSpace::new();
+    let mut sp = AddrSpace::new().ok_or(NO_MEMORY)?;
     let (top, phdr) = load_segments(&mut sp, data, base)?;
     let mut auxv: Vec<u8> = Vec::new();
     let prog_entry = base + u64le(data, 24);
@@ -538,10 +566,11 @@ pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read:
     // Stapel: 256 KB sofort, Rest wächst bei Bedarf
     let mut a = STACK_TOP - 256 * 1024;
     while a < STACK_TOP {
-        sp.map(a, true, false);
+        sp.map(a, true, false).ok_or(NO_MEMORY)?;
         a += 4096;
     }
-    let mut strs: Vec<u8> = Vec::new();
+    let total: usize = argv.iter().chain(envp.iter()).map(|s| s.len() + 1).sum::<usize>() + path.len() + 64;
+    let mut strs: Vec<u8> = crate::mem::try_with_capacity(total).ok_or(NO_MEMORY)?;
     let mut put = |s: &[u8]| -> u64 {
         let o = strs.len() as u64;
         strs.extend_from_slice(s);
@@ -597,8 +626,8 @@ pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read:
     if STACK_TOP - start > 200 * 1024 {
         return Err("Argumente zu groß");
     }
-    copy_to(&mut sp, start, &wb, true, false);
-    copy_to(&mut sp, sbase, &strs, true, false);
+    copy_to(&mut sp, start, &wb, true, false)?;
+    copy_to(&mut sp, sbase, &strs, true, false)?;
     Ok(Image { auxv, space: sp, entry, sp: start, brk, brk_limit })
 }
 
@@ -621,13 +650,13 @@ fn console_fds() -> Vec<Option<Fd>> {
 
 /// Programm aus dem Dateibaum starten (Vordergrund der Kern-Konsole)
 pub fn spawn(path: &str, argv: Vec<String>, envp: Vec<String>) -> Result<u64, String> {
-    spawn_as(path, argv, envp, None)
+    spawn_as(path, argv, envp, None, crate::groups::SESSION)
 }
 
 /// Dienst im Hintergrund starten (z. B. Entwickler-Zugang ultar-sshd): läuft neben Konsole und Oberfläche weiter;
 /// `run_all` wartet nicht auf ihn und seine Nachkommen.
 pub fn spawn_hintergrund(path: &str, argv: Vec<String>, envp: Vec<String>) -> Result<u64, String> {
-    let pid = spawn_as(path, argv, envp, Some(new_pid()))?;
+    let pid = spawn_as(path, argv, envp, Some(new_pid()), crate::groups::SYSTEM)?;
     HINTERGRUND.lock().push(pid);
     Ok(pid)
 }
@@ -699,12 +728,25 @@ pub fn spawn_init(path: &str, argv: Vec<String>, envp: Vec<String>) -> Result<u6
     if vordergrund_aktiv() || PROCS.lock().iter().any(|p| p.pid == 1) {
         return Err(String::from("es laufen noch Prozesse"));
     }
-    spawn_as(path, argv, envp, Some(1))
+    spawn_as(path, argv, envp, Some(1), crate::groups::SYSTEM)
 }
 
-fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>) -> Result<u64, String> {
+/// Start a program from the kernel itself in resource group `res`: programs of the kernel console
+/// and the self test belong to `session`, `ultar-init` and background services to `system`.
+/// Everything the new process needs is charged to that group.
+fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>, res: u16) -> Result<u64, String> {
+    let made = crate::heap::scope(res, || spawn_in(path, argv, envp, want, res));
+    let p = made?;
+    let pid = p.pid;
+    PROCS.lock().push(p);
+    Ok(pid)
+}
+
+fn spawn_in(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>, res: u16) -> Result<Box<Proc>, String> {
     let data = fs::read_all(path).ok_or_else(|| alloc::format!("{path}: nicht gefunden"))?;
     let img = load_elf(&data, &argv, &envp, path, &|p| fs::read_all(p)).map_err(|e| alloc::format!("{path}: {e}"))?;
+    let kstack = crate::mem::try_vec(KSTACK).ok_or_else(|| alloc::format!("{path}: {NO_MEMORY}"))?;
+    let pids = crate::groups::PidCharge::new(res).ok_or_else(|| alloc::format!("{path}: zu viele Prozesse"))?;
     let pid = want.unwrap_or_else(|| NEXT_PID.fetch_add(1, Ordering::Relaxed));
     let g = Group {
         space: Some(img.space),
@@ -724,6 +766,7 @@ fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>)
         auxv: img.auxv.clone(),
         iso: crate::isolation::Isolation::host(),
         exe_host: String::from(path),
+        res,
     };
     let p = Proc {
         pid,
@@ -733,7 +776,7 @@ fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>)
         name: argv.first().cloned().unwrap_or_default(),
         state: State::Ready,
         frame: Box::new(fresh_frame(img.entry, img.sp)),
-        kstack: vec![0u8; KSTACK],
+        kstack,
         fs_base: 0,
         clear_tid: 0,
         sigmask: 0,
@@ -744,9 +787,10 @@ fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>)
         poll_dl: None,
         g: Shared::new(g),
         link: crate::isolation::pid::PidLink::new(crate::isolation::pid::PidNs::initial(), pid),
+        pids,
+        io_done: 0,
     };
-    PROCS.lock().push(Box::new(p));
-    Ok(pid)
+    Ok(Box::new(p))
 }
 
 pub fn new_pid() -> u64 {
@@ -771,6 +815,7 @@ static LAST: [AtomicU64; crate::arch::MAXCPU] = [const { AtomicU64::new(0) }; cr
 /// Einen bereiten Faden auf diesem Kern laufen lassen. None: es gibt keine Prozesse; Some(false): nichts bereit.
 /// Fäden einer Gruppe laufen immer nur auf einem Kern zugleich (gemeinsamer Adressraum ohne TLB-Abgleich).
 fn run_one() -> Option<bool> {
+    crate::oom::watch();
     let cpu = crate::percpu::id();
     let fp = {
         let mut ps = PROCS.lock();
@@ -829,6 +874,7 @@ fn run_one() -> Option<bool> {
         }
         p.space().activate();
         crate::percpu::me().current = p.pid;
+        crate::heap::set_context(p.g.res);
         fp
     };
     let _ = unsafe { ultar_resume(fp as *mut TrapFrame, sched_ctx()) };
@@ -836,6 +882,8 @@ fn run_one() -> Option<bool> {
         core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4());
     }
     let me = core::mem::replace(&mut crate::percpu::me().current, 0);
+    crate::heap::set_context(crate::groups::ROOT);
+    crate::heap::clear_refused();
     {
         let mut ps = PROCS.lock();
         if let Some(p) = ps.iter_mut().find(|p| p.pid == me) {
@@ -1119,22 +1167,33 @@ pub fn on_timer(f: &mut TrapFrame) {
 pub fn on_fault(f: &mut TrapFrame, v: u64) {
     let cr2: u64;
     unsafe { core::arch::asm!("mov {}, cr2", out(reg) cr2) };
+    crate::heap::clear_refused();
     if v == 14 && f.err & 1 == 0 {
-        // reservierter mmap-Bereich: Seite jetzt belegen
-        let ps = PROCS.lock();
-        let me = current();
-        if let Some(p) = ps.iter().find(|p| p.pid == me) {
-            if p.g.space.as_ref().map(|s| s.fault_in(cr2)).unwrap_or(false) {
-                return;
+        // reservierter mmap-Bereich oder Stapel: Seite jetzt belegen
+        use crate::paging::Fault;
+        let got = {
+            let mut ps = PROCS.lock();
+            let me = current();
+            match ps.iter_mut().find(|p| p.pid == me) {
+                Some(p) => {
+                    crate::heap::set_context(p.g.res);
+                    match p.g.space.as_ref().map(|s| s.fault_in(cr2)) {
+                        Some(Fault::NotReserved) if cr2 < STACK_TOP && cr2 >= STACK_TOP - STACK_MAX => match p.space_mut().map(cr2 & !0xfff, true, false) {
+                            Some(_) => Fault::Mapped,
+                            None => Fault::NoMemory,
+                        },
+                        Some(r) => r,
+                        None => Fault::NotReserved,
+                    }
+                }
+                None => Fault::NotReserved,
             }
-        }
-    }
-    if v == 14 && f.err & 1 == 0 && cr2 < STACK_TOP && cr2 >= STACK_TOP - STACK_MAX {
-        let mut ps = PROCS.lock();
-        let me = current();
-        if let Some(p) = ps.iter_mut().find(|p| p.pid == me) {
-            p.space_mut().map(cr2 & !0xfff, true, false);
-            return;
+        };
+        match got {
+            Fault::Mapped => return,
+            // no page to be had: the process ends or tries again later – the machine keeps running
+            Fault::NoMemory => crate::oom::fault(f),
+            Fault::NotReserved => {}
         }
     }
     let sig = match v {
@@ -1154,18 +1213,28 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
             }
         }
     }
-    let name = PROCS.lock().iter().find(|p| p.pid == current()).map(|p| p.name.clone()).unwrap_or_default();
-    crate::kprintln!("[proc] {} (pid {}): {} bei {:#x}, Adresse {:#x} – beendet", name, current(), crate::trap::name(v), f.rip, cr2);
+    // built and freed in an inner scope: nothing on this stack is dropped once the process is gone
+    crate::heap::kernel(|| {
+        let name = PROCS.lock().iter().find(|p| p.pid == current()).map(|p| p.name.clone()).unwrap_or_default();
+        crate::kprintln!("[proc] {} (pid {}): {} bei {:#x}, Adresse {:#x} – beendet", name, current(), crate::trap::name(v), f.rip, cr2);
+    });
     exit_current(sig as i32);
 }
 
 pub fn on_syscall(f: &mut TrapFrame) {
     let me = current();
-    let killed = PROCS.lock().iter().find(|p| p.pid == me).and_then(|p| p.killed);
+    let (killed, res) = PROCS.lock().iter().find(|p| p.pid == me).map(|p| (p.killed, p.g.res)).unwrap_or((None, crate::groups::ROOT));
     if let Some(st) = killed {
         exit_thread(st, true);
     }
+    // everything the call allocates is charged to the caller's group
+    crate::heap::set_context(res);
+    crate::heap::clear_refused();
+    crate::percpu::me().errno = 0;
+    // only where a `memory.max` is set somewhere: remember the charge to see what this call added
+    let before = if crate::groups::limits_set() { crate::groups::memory(res) } else { u64::MAX };
     crate::syscall::dispatch(f);
+    crate::oom::after_syscall(res, before);
     let killed = PROCS.lock().iter().find(|p| p.pid == me).and_then(|p| p.killed);
     if let Some(st) = killed {
         exit_thread(st, true);
@@ -1184,6 +1253,8 @@ pub struct Info {
     pub state: State,
     pub pages: u64,
     pub auxv: Vec<u8>,
+    /// Resource group of the process
+    pub res: u16,
 }
 
 /// Prozesse, wie der lesende Prozess sie sieht: only those visible in the reader's pid namespace, with the
@@ -1196,12 +1267,9 @@ pub fn infos() -> Vec<Info> {
         .filter(|p| p.pid == p.tgid)
         .filter_map(|p| {
             let pid = ns.local(p.pid)?;
-            let mut pages = 0;
-            if let Some(s) = &p.g.space {
-                s.for_each(|_, _, _| pages += 1);
-            }
+            let pages = p.g.space.as_ref().map(|s| s.resident.load(Ordering::Relaxed)).unwrap_or(0);
             let (ppid, pgid) = (ns.local(p.ppid).unwrap_or(0), ns.local(p.pgid).unwrap_or(0));
-            Some(Info { global: p.pid, pid, ppid, pgid, name: p.name.clone(), cmdline: p.g.cmdline.clone(), exe: p.g.exe_host.clone(), state: p.state, pages, auxv: p.g.auxv.clone() })
+            Some(Info { global: p.pid, pid, ppid, pgid, name: p.name.clone(), cmdline: p.g.cmdline.clone(), exe: p.g.exe_host.clone(), state: p.state, pages, auxv: p.g.auxv.clone(), res: p.g.res })
         })
         .collect()
 }
@@ -1237,4 +1305,51 @@ pub fn ns_ref(tgid: u64, kind: &str) -> Option<crate::isolation::NsRef> {
 
 pub fn list() -> Vec<(u64, u64, String, State)> {
     PROCS.lock().iter().map(|p| (p.pid, p.ppid, p.name.clone(), p.state)).collect()
+}
+
+/// Process ids of the thread groups that belong to resource group `g` (not its descendants), as the
+/// reader's pid namespace numbers them.
+pub fn group_members(g: u16) -> Vec<u64> {
+    let ps = PROCS.lock();
+    let me = current();
+    let ns = ps.iter().find(|p| p.pid == me).map(|p| p.link.ns().clone()).unwrap_or_else(crate::isolation::pid::PidNs::initial);
+    ps.iter().filter(|p| p.pid == p.tgid && p.g.res == g && !matches!(p.state, State::Dead)).filter_map(|p| ns.local(p.pid)).collect()
+}
+
+/// Move the thread group `tgid` (kernel-wide number) into resource group `to`: its threads are
+/// counted there from now on and new memory is charged there. Memory charged so far stays with the
+/// old group until it is freed. `Err`: negative error number (`ESRCH`, `EAGAIN` if `to` or an
+/// ancestor has no room for the threads, `ENOENT` if the group is gone).
+pub fn move_group(tgid: u64, to: u16) -> Result<(), i64> {
+    let mut ps = PROCS.lock();
+    if !crate::groups::is_live(to) {
+        return Err(-2);
+    }
+    let from = match ps.iter().find(|p| p.tgid == tgid && !matches!(p.state, State::Dead)) {
+        Some(p) => p.g.res,
+        None => return Err(-3),
+    };
+    let mut moved = 0;
+    let mut failed = false;
+    for p in ps.iter_mut().filter(|p| p.tgid == tgid) {
+        if p.pids.move_to(to).is_err() {
+            failed = true;
+            break;
+        }
+        moved += 1;
+    }
+    if failed {
+        // all or nothing: put the threads moved so far back (their old places are still free)
+        for p in ps.iter_mut().filter(|p| p.tgid == tgid).take(moved) {
+            let _ = p.pids.move_to(from);
+        }
+        return Err(-11);
+    }
+    if let Some(p) = ps.iter_mut().find(|p| p.tgid == tgid) {
+        p.g.res = to;
+    }
+    if tgid == ps.iter().find(|p| p.pid == current()).map(|p| p.tgid).unwrap_or(0) {
+        crate::heap::set_context(to);
+    }
+    Ok(())
 }

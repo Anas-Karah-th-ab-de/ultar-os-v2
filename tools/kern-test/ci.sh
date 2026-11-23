@@ -3,7 +3,9 @@
 #   1. every device has a driver, 2. the ring-3 test program passes,
 #   3. the system bus (ultar-bus) runs on the Ultar kernel,
 #   4. the escape tests of the process isolation pass (zelltest: mount/pid namespaces, rights),
-#   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs).
+#   5. the same for symbolic links on an ext4 disk (zell-ext4.sh; skipped without mke2fs),
+#   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
+#      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
 set -euo pipefail
@@ -28,3 +30,14 @@ if command -v mke2fs >/dev/null; then
 else
   echo "skip  ZELLTEST-EXT4 (mke2fs missing)"
 fi
+# Resource groups: the test brings the machine to its memory limits on purpose, so it gets its own boots
+# (GRENZ_MEM: sizes in MiB; GRENZ_LOG: keep the logs as <GRENZ_LOG>-<size>.log).
+for mem in ${GRENZ_MEM:-512 2048}; do
+  GLOG="${GRENZ_LOG:+$GRENZ_LOG-$mem.log}"; GLOG="${GLOG:-$(mktemp)}"
+  SMP="${SMP:-2}" MEM=$mem WAIT=1500 timeout 1800 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "/bin/grenztest" > "$GLOG" 2>&1 || true
+  if grep -q "GRENZTEST: ALLES OK" "$GLOG" && ! grep -qiE "kernel panic|PANIK" "$GLOG"; then
+    echo "ok    GRENZTEST: ALLES OK ($mem MiB, $(grep -c '^ok ' "$GLOG") checks)"
+  else
+    echo "FAIL  GRENZTEST ($mem MiB)"; grep -E "FEHLER|PANIK|GRENZTEST" "$GLOG" | tail -40; tail -15 "$GLOG"; exit 1
+  fi
+done

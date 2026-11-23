@@ -216,3 +216,25 @@ fn unchanged_state_is_not_rewritten() {
     control.mark_successful().unwrap();
     assert_eq!(control.table().unwrap().seq, seq);
 }
+
+#[test]
+fn sequence_number_overflow_does_not_stop_the_table() {
+    let (dir, mut control) = control();
+    let mut table = control.table().unwrap();
+    table.seq = u32::MAX - 1;
+    for copy in 0..2 {
+        fs::write(dir.path().join(format!("slots.{copy}")), table.encode()).unwrap();
+    }
+    fill(&mut control, Slot::B, 4);
+    // Four changes carry the sequence number across the end of its range.
+    control
+        .mark_bootable(Slot::B, &SlotMeta::default())
+        .unwrap();
+    control.set_next_boot_once(Slot::B, 2).unwrap();
+    assert_eq!(control.simulate_boot().unwrap(), Slot::B);
+    control.mark_successful().unwrap();
+    let table = control.table().unwrap();
+    assert_eq!(table.seq, 2);
+    assert_eq!((table.default, table.trial), (Slot::B, None));
+    assert_eq!(control.simulate_boot().unwrap(), Slot::B);
+}

@@ -8,6 +8,7 @@ use crate::bundle::Header;
 use crate::clock::{Clock, TimeFloor};
 use crate::error::UpdateError;
 use crate::fault::Checkpoint;
+use crate::fsutil::{check_private_dir, create_private_dir};
 use crate::health::SpaceProbe;
 use crate::history::{self, HistoryEntry, HistoryKind};
 use crate::journal::Journal;
@@ -20,7 +21,6 @@ use crate::source::Remote;
 use crate::stage::Staging;
 use crate::verify::{self, Admission, DeviceIdentity, VerifiedManifest};
 use crate::version::Version;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -43,6 +43,9 @@ pub struct EngineConfig {
     pub reserve_bytes: u64,
     /// Grace period after a manifest's expiry, in seconds.
     pub expiry_tolerance: u64,
+    /// When the running image was built (seconds since 1970; 0 = unknown). A lower bound for
+    /// "now" on devices whose clock is not set.
+    pub image_time: u64,
 }
 
 /// Default free-space reserve: 64 MiB.
@@ -64,6 +67,8 @@ pub struct Environment {
 /// A release a source offers and this device may install.
 #[derive(Debug, Clone)]
 pub struct Offer {
+    /// The channel that was asked for; `None` for an offline bundle.
+    pub channel: Option<String>,
     /// Where the bundle is.
     pub remote: Remote,
     /// The bundle header as fetched.
@@ -131,8 +136,14 @@ impl<B: BootControl> Engine<B> {
     /// and tidies up after an interrupted slot write (the slot stays unbootable).
     pub fn open(config: EngineConfig, env: Environment, boot: B) -> Result<Self, UpdateError> {
         let state = config.state_dir.join("state");
-        fs::create_dir_all(&state)?;
-        fs::create_dir_all(config.state_dir.join("slots"))?;
+        for dir in [state.clone(), config.state_dir.join("slots")] {
+            create_private_dir(&dir)?;
+        }
+        // Everything below is trusted because nobody else can write here.
+        check_private_dir(&config.state_dir).map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => UpdateError::StateCorrupt,
+            _ => UpdateError::Io(e),
+        })?;
         let trust = TrustStore::open(&config.keys_dir, &config.state_dir)?;
         let mut engine = Self {
             floor: MonotonicStore::new(&state, "rollback"),
@@ -254,9 +265,16 @@ impl<B: BootControl> Engine<B> {
         self.env.clock.now_unix()
     }
 
-    /// The time expiry is judged with: the clock, but never before the stored time floor.
+    /// The time expiry is judged with: the clock, but never before the stored time floor
+    /// and never before the build time of the running image.
     pub fn now(&self) -> Result<u64, UpdateError> {
-        self.time.effective_now(&*self.env.clock)
+        let now = self.time.effective_now(&*self.env.clock)?;
+        Ok(now.max(self.config.image_time))
+    }
+
+    /// The engine's time source (shared with the service for rate limits and timers).
+    pub fn clock(&self) -> Arc<dyn Clock> {
+        self.env.clock.clone()
     }
 
     /// The rollback floor in force: the largest of the stored value, the platform's value
@@ -288,9 +306,19 @@ impl<B: BootControl> Engine<B> {
         Policy::load(&self.policy_path()).0
     }
 
-    /// Validates and stores a new policy.
+    /// Validates and stores a new policy. A bundle that was fetched for another channel than
+    /// the new one is dropped from the staging area.
     pub fn set_policy(&self, policy: &Policy) -> Result<(), UpdateError> {
-        policy.store(&self.policy_path())
+        policy.store(&self.policy_path())?;
+        let other_channel = self
+            .staging
+            .staged()?
+            .and_then(|info| info.channel)
+            .is_some_and(|channel| channel != policy.channel);
+        if other_channel {
+            self.staging.purge()?;
+        }
+        Ok(())
     }
 
     /// Full verification of a bundle header: rotations are offered to the trust store, the
@@ -308,7 +336,7 @@ impl<B: BootControl> Engine<B> {
             }
         }
         let authentic = verify::authenticate(&header.signed_manifest, self.trust.keys())?;
-        self.time.witness(authentic.manifest().created)?;
+        let created = authentic.manifest().created;
         let roles = self.boot.roles();
         let facts = Admission {
             device: &self.config.device,
@@ -320,7 +348,11 @@ impl<B: BootControl> Engine<B> {
             channel,
             allow_downgrade,
         };
-        verify::admit(authentic, &facts)
+        let verified = verify::admit(authentic, &facts)?;
+        // Only a manifest this device accepts teaches it the time: a release for another
+        // board (or a publisher's slip in one) must not be able to expire everything here.
+        self.time.witness(created)?;
+        Ok(verified)
     }
 
     /// True when the other slot may be started by hand: bootable, proven, not below the

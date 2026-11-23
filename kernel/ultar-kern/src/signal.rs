@@ -72,7 +72,9 @@ fn interrupt(p: &mut Proc, restart: bool) {
             p.poll_dl = None;
             if !restart {
                 p.frame.rip += 2;
-                p.frame.rax = (-4i64) as u64;
+                // a write that already delivered part of its data reports that part
+                let done = core::mem::take(&mut p.io_done);
+                p.frame.rax = if done > 0 { done } else { (-4i64) as u64 };
             }
         }
         Wait::Vfork(_) => return,

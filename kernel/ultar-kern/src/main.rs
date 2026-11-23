@@ -12,6 +12,7 @@
 extern crate alloc;
 
 mod apic;
+mod buddy;
 mod arch;
 mod console;
 mod driver;
@@ -20,6 +21,8 @@ mod firewall;
 mod fs;
 mod geraet;
 mod grafik;
+mod groups;
+mod heap;
 mod install;
 mod isolation;
 mod power;
@@ -31,17 +34,21 @@ mod ext4;
 mod klog;
 mod mem;
 mod net;
+mod oom;
 mod paging;
 mod percpu;
 mod pci;
+mod pipe;
 mod proc;
 mod procfs;
 mod shell;
 mod selftest;
 mod signal;
+mod slab;
 mod socket;
 mod syscall;
 mod trap;
+mod trybuf;
 mod verbund;
 mod werkstatt;
 

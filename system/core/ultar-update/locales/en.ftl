@@ -65,7 +65,7 @@ update.notes.generic = Improvements and fixes for the system
 update.cli.usage = Usage: uupdate [--socket PATH] [--lang ar|en|de] [--no-wait] COMMAND
         Commands: status · check · download [--metered] · apply · cancel · history [N]
         policy · policy set KEY=VALUE… · offline PATH [--allow-downgrade] · previous
-        verify FILE.uup --keys DIR
+        verify FILE.uup --keys DIR [--state DIR]
 update.cli.current = Running version: {version} (slot {slot})
 update.cli.channel = Channel: {channel}
 update.cli.pending = Pending version: {version}

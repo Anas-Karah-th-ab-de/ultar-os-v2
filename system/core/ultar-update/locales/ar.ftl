@@ -65,7 +65,7 @@ update.notes.generic = تحسينات وإصلاحات للنظام
 update.cli.usage = الاستخدام: uupdate [--socket مسار] [--lang ar|en|de] [--no-wait] الأمر
         الأوامر: status · check · download [--metered] · apply · cancel · history [عدد]
         policy · policy set مفتاح=قيمة… · offline مسار [--allow-downgrade] · previous
-        verify ملف.uup --keys مجلد
+        verify ملف.uup --keys مجلد [--state مجلد]
 update.cli.current = النسخة العاملة: {version} (الخانة {slot})
 update.cli.channel = القناة: {channel}
 update.cli.pending = النسخة المنتظرة: {version}

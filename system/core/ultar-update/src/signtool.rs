@@ -86,6 +86,24 @@ fn hash_file(path: &Path) -> Result<(u64, [u8; 32]), UpdateError> {
     }
 }
 
+/// Longest validity (`expires − created`) the tool signs: 400 days.
+pub const MAX_VALIDITY: u64 = 400 * 86_400;
+/// How far `created` may lie ahead of the signing machine's clock: one day.
+pub const MAX_CREATED_AHEAD: u64 = 86_400;
+
+/// Refuses time stamps that can only be mistakes: `created` in the future (milliseconds
+/// instead of seconds, a typo) or a validity beyond [`MAX_VALIDITY`]. Devices learn the time
+/// from `created` of the releases they accept and never go back – a wrong value would make
+/// them refuse every later release as expired.
+pub fn check_times(created: u64, expires: u64, now: u64) -> Result<(), UpdateError> {
+    let ahead = created > now.saturating_add(MAX_CREATED_AHEAD);
+    let span = expires.checked_sub(created);
+    if ahead || !span.is_some_and(|span| span > 0 && span <= MAX_VALIDITY) {
+        return Err(UpdateError::InvalidArgument);
+    }
+    Ok(())
+}
+
 /// Fills the payload list of `manifest` from the files (sizes and SHA-256) and returns the
 /// canonical manifest bytes. Everything else in `manifest` is taken as given.
 pub fn build_manifest(

@@ -13,7 +13,7 @@ use crate::fsutil::write_atomic;
 use crate::history::HistoryKind;
 use crate::journal::Journal;
 use crate::manifest::{Payload, Role};
-use crate::stage::CHUNK;
+use crate::stage::{StagedInfo, CHUNK};
 use crate::verify::VerifiedManifest;
 use crate::version::Version;
 use sha2::{Digest, Sha256};
@@ -115,17 +115,40 @@ impl<B: BootControl> Engine<B> {
     }
 
     /// Opens the staged bundle, positioned at the first payload byte, after verifying it
-    /// again from scratch.
+    /// again from scratch. A staged bundle that is refused now (expired meanwhile, key rotated
+    /// out, floor raised, channel changed, damaged) is removed: it can never be installed and
+    /// must not stand in the way of the next download.
     fn open_verified_stage(&mut self) -> Result<(File, VerifiedManifest), UpdateError> {
         let (mut file, info) = self.staging.open_staged()?.ok_or(UpdateError::NotStaged)?;
-        let header = Header::read(&mut file)?;
-        let verified = self.inspect(&header, None, info.allow_downgrade)?;
+        let checked = self.verify_stage(&mut file, &info);
+        let keep = matches!(
+            checked,
+            Ok(_) | Err(UpdateError::Io(_) | UpdateError::StateCorrupt)
+        );
+        if !keep {
+            self.staging.purge()?;
+        }
+        Ok((file, checked?))
+    }
+
+    fn verify_stage(
+        &mut self,
+        file: &mut File,
+        info: &StagedInfo,
+    ) -> Result<VerifiedManifest, UpdateError> {
+        let header = Header::read(file)?;
+        // A bundle fetched from the network belongs to the channel it was fetched for; it is
+        // installed only while that is still the channel of the policy.
+        let channel = info.channel.as_deref();
+        if channel.is_some_and(|c| c != self.policy().channel) {
+            return Err(UpdateError::WrongChannel);
+        }
+        let verified = self.inspect(&header, channel, info.allow_downgrade)?;
         let size = header.len() + verified.manifest().payload_bytes();
         if verified.digest() != info.digest || size != info.size {
-            self.staging.purge()?;
             return Err(UpdateError::NotStaged);
         }
-        Ok((file, verified))
+        Ok(verified)
     }
 
     fn write_payload(

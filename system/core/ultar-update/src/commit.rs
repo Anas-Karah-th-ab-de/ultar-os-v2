@@ -38,7 +38,13 @@ impl<B: BootControl> Engine<B> {
         health: &dyn HealthCheck,
     ) -> Result<BootOutcome, UpdateError> {
         let active = self.boot.active_slot()?;
-        let confirmed = self.boot.slot_state(active)?.successful;
+        let state = self.boot.slot_state(active)?;
+        if !state.bootable {
+            // The running slot was already given up (failed health check) and the device has
+            // not been restarted since: nothing to judge again, the restart is still due.
+            return Ok(BootOutcome::HealthFailed);
+        }
+        let confirmed = state.successful;
         match self.journal()? {
             Journal::Trial { slot, .. } if slot != active => self.trial_elsewhere(slot),
             Journal::Trial { .. } | Journal::Idle if !confirmed => {
@@ -69,6 +75,7 @@ impl<B: BootControl> Engine<B> {
             return Ok(BootOutcome::RebootPending);
         }
         let version = self.slot_manifest(slot).map(|m| m.version);
+        self.reject_slot(slot)?;
         Journal::Idle.store(&self.journal_path())?;
         self.log(
             HistoryKind::RolledBack,
@@ -80,6 +87,7 @@ impl<B: BootControl> Engine<B> {
 
     fn give_up_running_slot(&mut self, active: Slot) -> Result<BootOutcome, UpdateError> {
         let version = self.slot_manifest(active).map(|m| m.version);
+        self.reject_slot(active)?;
         self.boot.mark_unbootable(active)?;
         Journal::Idle.store(&self.journal_path())?;
         self.log(
@@ -111,6 +119,7 @@ impl<B: BootControl> Engine<B> {
         self.staging.purge()?;
         control.reached(Step::JournalIdle)?;
         let was_pending = self.journal()? != Journal::Idle;
+        self.clear_rejected()?;
         Journal::Idle.store(&self.journal_path())?;
         let version = installed.map(|m| m.version);
         if was_pending {
@@ -129,8 +138,12 @@ impl<B: BootControl> Engine<B> {
         if !self.previous_startable()? {
             return Err(UpdateError::PreviousUnavailable);
         }
-        let other = self.boot.active_slot()?.other();
+        let active = self.boot.active_slot()?;
+        let other = active.other();
         self.boot.set_default(other)?;
+        // The administrator leaves the running release: the device must not bring it back
+        // by itself (a different release, or a manual install, still can).
+        self.reject_slot(active)?;
         let version = self.slot_facts(other).map(|(version, _)| version);
         self.log(HistoryKind::PreviousSelected, version, None);
         Ok(version)

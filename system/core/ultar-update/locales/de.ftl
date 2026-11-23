@@ -65,7 +65,7 @@ update.notes.generic = Verbesserungen und Korrekturen für das System
 update.cli.usage = Aufruf: uupdate [--socket PFAD] [--lang ar|en|de] [--no-wait] BEFEHL
         Befehle: status · check · download [--metered] · apply · cancel · history [N]
         policy · policy set SCHLÜSSEL=WERT… · offline PFAD [--allow-downgrade] · previous
-        verify DATEI.uup --keys ORDNER
+        verify DATEI.uup --keys ORDNER [--state ORDNER]
 update.cli.current = Laufende Fassung: {version} (Slot {slot})
 update.cli.channel = Kanal: {channel}
 update.cli.pending = Wartende Fassung: {version}

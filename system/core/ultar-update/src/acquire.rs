@@ -51,6 +51,7 @@ impl<B: BootControl> Engine<B> {
         drop(reader);
         let verified = self.inspect(&header, channel, allow_downgrade)?;
         Ok(Offer {
+            channel: channel.map(str::to_string),
             remote,
             header,
             verified,
@@ -99,6 +100,7 @@ impl<B: BootControl> Engine<B> {
             pacer,
             progress,
             allow_downgrade,
+            channel: offer.channel.as_deref(),
         };
         let staged = self.staging.fetch(
             &offer.header,

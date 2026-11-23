@@ -199,6 +199,7 @@ impl Device {
             trial_tries: 3,
             reserve_bytes: 1024,
             expiry_tolerance: 86_400,
+            image_time: 0,
         };
         Self {
             dir,

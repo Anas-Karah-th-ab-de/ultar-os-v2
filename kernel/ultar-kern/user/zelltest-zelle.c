@@ -170,7 +170,7 @@ static int cell_drop_rights(void) {
     struct timeval tv = {1000, 0};
     check("Rechte: Zelle hält anfangs alle", rights() == R_ALL && prctl(PR_CAPBSET_READ, 21, 0, 0, 0) == 1);
     check("Rechte: Linux-Weg PR_CAPBSET_DROP(CAP_SYS_ADMIN)", prctl(PR_CAPBSET_DROP, 21, 0, 0, 0) == 0 && rights() == (R_ALL & ~R_MOUNT));
-    check("Rechte: alle abgeben", prctl(PR_ULTAR_RIGHTS_DROP, R_ALL, 0, 0, 0) == 0 && rights() == 0);
+    check("Rechte: alle abgeben", prctl(PR_ULTAR_RIGHTS_DROP, ~0UL, 0, 0, 0) == 0 && rights() == 0);
     denied("Rechte: mount ohne Recht", mount("tmpfs", "/mnt", "tmpfs", 0, NULL), EPERM);
     denied("Rechte: umount2 ohne Recht", umount2("/bin", MNT_DETACH), EPERM);
     denied("Rechte: unshare(CLONE_NEWNS) ohne Recht", unshare(CLONE_NEWNS), EPERM);

@@ -28,11 +28,35 @@ identity = "system.devd"
 register = ["devices"]
 publish  = ["devices.capabilities", "devices.driver_state"]
 
-# The administrator's tools (usettings, udevctl, ulog on the root-only socket).
+# Update service: offers `update` and is the only one that may publish the
+# progress topic (nobody else can fake "installing" or "restart needed").
+# It asks the services named as health_service= in /etc/ultar/update.conf
+# whether they answer before it confirms a new release.
+[[rule]]
+identity = "system.updated"
+register = ["update"]
+publish  = ["update.progress"]
+call     = ["settings.ping", "devices.ping"]
+
+# Network service: reports whether the connection is metered (nothing else of
+# the update service; `network_identity=` in update.conf names this identity).
+[[rule]]
+identity = "system.net"
+call     = ["update.network"]
+
+# Apps: may look at the update state and ask for a check or a download. The
+# update service itself refuses them everything that changes the system.
+[[rule]]
+identity  = "app.*"
+call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy"]
+subscribe = ["update.progress"]
+
+# The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
+# socket). For `update.*` the identity must also be listed as admin= in update.conf.
 # `settings.*` includes settings.admin, `devices.*` includes devices.admin.
 [[rule]]
 identity  = "system.admin"
-call      = ["settings.*", "devices.*", "log.query", "log.stats", "log.read_all"]
-subscribe = ["settings.*", "devices.*"]
+call      = ["settings.*", "devices.*", "update.*", "log.query", "log.stats", "log.read_all"]
+subscribe = ["settings.*", "devices.*", "update.progress"]
 
 # The broker itself needs no rule: it is not a client of the bus.

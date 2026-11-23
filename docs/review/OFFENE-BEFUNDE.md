@@ -18,13 +18,13 @@ Punkte unten sperren den Einsatz.
 | Einstellungsdienst | startete nicht, wenn das Journal nach Absturz nicht schreibbar war | schwer |
 | Baukasten | deaktivierte Bausteine zu blass (Deckkraft doppelt), Zeichenfehler bei offener Auswahlliste, Pfeiltasten im Textfeld bei gemischter Richtung vertauscht, Auslassungspunkte am falschen Ende | schwer |
 | Gerät | Server konnte eine ältere signierte App-Fassung unterschieben; Download ohne eigene Obergrenze | schwer |
+| Kern | K5: Speichermangel war eine Kern-Panik – eine Zelle ohne Rechte hielt den Rechner an (Speicher, tmpfs, Pipe, Prozess-Lawine). Jetzt: fehlbare Speicheranforderung, Vorrat des Kerns, begrenzte Pipe, tmpfs-Kontingent, Gruppen mit Grenzen und dynamischem Schutz (`docs/integration/kernel-memory-groups.md`); Prüfung `grenztest` (130 Prüfungen, 512 MiB und 2 GiB) in `ci.sh` | **kritisch** |
 | Server | Kennwort-Hashing ohne Obergrenze (Speicher), VPN-Adressen von einem Konto aufbrauchbar, Token gelöschter Konten weiter gültig und auf das nächste Konto übertragbar, Anmelde-Zeit verriet Konten | schwer |
 
 ## Offen – sperrt den Einsatz
 
 | # | Bereich | Befund | Was nötig ist |
 |---|---|---|---|
-| K5 | Kern | Speichermangel ist eine Kern-Panik: eine Zelle hält den Rechner an (Speicher, tmpfs, Pipe, Prozess-Lawine) | fehlbare Speicheranforderung, begrenzte Pipe, tmpfs-Kontingent, Gruppen mit Grenzen (PLAN §3.7 Stufe 2) |
 | S15 | Server/Gerät | Geräte-Kennung ohne Schlüsselnachweis: wer sie zuerst sendet, besitzt sie; ohne Android-Seriennummer haben alle Geräte dieselbe Kennung | Geräteschlüssel erzeugen, Kennung = SHA-256 des Schlüssels, signierte Server-Aufgabe |
 | S16 | Gerät | System-Abbilder vom Server werden am Gerät noch nicht geprüft (kein Updater vorhanden) | Prüfung von Wurzel-Hash und Signatur + Schutz vor älterer Fassung, bevor ein Updater diesen Weg nutzt |
 | D1 | Kern ↔ devd | Der Kern bietet keine Geräte-/Treiber-Liste und kein Binden/Lösen; devd liest das Protokoll | sechs Kern-Schnittstellen (docs/integration/ultar-devd-daemon.md §2) |
@@ -33,6 +33,10 @@ Punkte unten sperren den Einsatz.
 
 ## Offen – leichter (vor Freigabe der jeweiligen Stufe)
 
+Kern (Rest von K5): einige große Kern-Puffer werden noch ohne Rückweg angefordert (Kopie der epoll-Liste, `/proc`-Listen und
+Wecktabelle des Planers je Fadenzahl, Lesen des Bildspeichers, Metadaten der Wirts-Datenträger) – begrenzt und aus dem
+Vorrat bedient, Liste in `docs/integration/kernel-memory-groups.md`; kein Prozessor-Anteil je Gruppe; nicht auf echter
+Hardware geprüft ·
 Bus: Grenzen je Kennung (beibehaltene Themen, Dienstnamen), vorhandene Datei am Sockel-Pfad nicht blind ersetzen ·
 Einstellungsdienst: Bestätigung nach Fristablauf, Bestätigung nennt nicht die Änderung, `--allow-all` neben Richtlinie,
 Budget für App-Schlüssel, Bildschirm-Kennungen von der Meldereihenfolge abhängig, keine Sperre gegen zweite Instanz ·

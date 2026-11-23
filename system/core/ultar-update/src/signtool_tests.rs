@@ -214,3 +214,30 @@ fn payload_argument_forms() {
         assert!(parse_payload_arg(bad).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn absurd_time_stamps_are_refused() {
+    let now = 1_795_000_000;
+    check_times(now, now + 30 * 86_400, now).unwrap();
+    check_times(
+        now + MAX_CREATED_AHEAD,
+        now + MAX_CREATED_AHEAD + MAX_VALIDITY,
+        now,
+    )
+    .unwrap();
+    check_times(now - 10 * 86_400, now + 86_400, now).unwrap();
+    for (created, expires) in [
+        (now * 1000, now * 1000 + 30 * 86_400_000), // milliseconds by mistake
+        (now + MAX_CREATED_AHEAD + 1, now + 2 * 86_400),
+        (now, now),
+        (now, now - 1),
+        (now, now + MAX_VALIDITY + 1),
+        (now, u64::MAX),
+    ] {
+        let refused = check_times(created, expires, now);
+        assert!(
+            matches!(refused, Err(UpdateError::InvalidArgument)),
+            "{created} {expires}"
+        );
+    }
+}

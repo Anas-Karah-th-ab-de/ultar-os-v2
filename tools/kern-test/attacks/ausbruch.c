@@ -31,7 +31,8 @@
 
 #define PR_ULTAR_RIGHTS_GET 0x554c5200
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
-#define R_ALL 0x7f
+#define R_MANAGE_GROUPS 0x80
+#define R_ALL 0xff
 #define SECRET "/tmp/sec-geheim"
 #define SECRET_TEXT "STRENG-GEHEIM"
 
@@ -321,7 +322,7 @@ static void attack_rights(void) {
         if (write(pfd[1], v, sizeof v) != sizeof v) syscall(SYS_exit, 1);
         syscall(SYS_exit, 0);
     }
-    check("Rechte: alle abgeben", prctl(PR_ULTAR_RIGHTS_DROP, R_ALL, 0, 0, 0) == 0 && rights() == 0);
+    check("Rechte: alle abgeben", prctl(PR_ULTAR_RIGHTS_DROP, ~0UL, 0, 0, 0) == 0 && rights() == 0);
     if (t > 0) {
         long v[3] = {-1, -1, -1};
         if (write(go[1], "x", 1) != 1 || read(pfd[0], v, sizeof v) != sizeof v) fails++;
@@ -463,7 +464,7 @@ static int cwd_cell(void) {
     char b[128] = "?";
     if (chdir("/tmp") != 0) return 50;
     if (!enter_root(1, 0)) return 51;
-    prctl(PR_ULTAR_RIGHTS_DROP, R_ALL, 0, 0, 0);
+    prctl(PR_ULTAR_RIGHTS_DROP, ~0UL, 0, 0, 0);
     getcwd(b, sizeof b);
     say("       (Arbeitsverzeichnis von aussen behalten: getcwd=%s)\n", b);
     int got = reads_secret("sec-geheim") | reads_secret("./sec-geheim") | reads_secret("../tmp/sec-geheim") | reads_secret("../../tmp/sec-geheim");
@@ -484,7 +485,7 @@ static int dos(const char *what) {
         return 0;
     }
     if (!enter_root(0, 1)) _exit(9);
-    prctl(PR_ULTAR_RIGHTS_DROP, R_ALL, 0, 0, 0);
+    prctl(PR_ULTAR_RIGHTS_DROP, ~0UL, 0, 0, 0);
     say("DOS %s: Zelle ohne Rechte (Rechte=%#lx) beginnt\n", what, rights());
     if (!strcmp(what, "tmpfs")) {
         static char block[1 << 20];

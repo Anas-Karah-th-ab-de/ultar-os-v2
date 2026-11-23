@@ -31,10 +31,10 @@ pub fn open(path: &str) -> Option<Node> {
     let host_reader = proc::reader_in_initial_pid_ns();
     match first {
         "" => {
-            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "self", "ultar"]
+            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "self", "sys", "ultar"]
                 .iter()
                 .filter(|n| host_reader || **n != "ultar")
-                .map(|n| DirEnt { name: String::from(*n), dir: *n == "self" || *n == "ultar", size: 0 })
+                .map(|n| DirEnt { name: String::from(*n), dir: *n == "self" || *n == "ultar" || *n == "sys", size: 0 })
                 .collect();
             for p in proc::infos() {
                 v.push(DirEnt { name: format!("{}", p.pid), dir: true, size: 0 });
@@ -43,11 +43,13 @@ pub fn open(path: &str) -> Option<Node> {
         }
         "ultar" if !host_reader => None,
         "ultar" => match sub {
-            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
+            "" => Some(Node::Dir(["verbund", "firewall", "sicherheit", "geraet", "anzeige", "protokoll", "gruppen"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
             "verbund" => file(crate::verbund::text()),
             "geraet" => file(crate::geraet::text()),
             "anzeige" => file(crate::grafik::text()),
             "firewall" => file(crate::firewall::text()),
+            // resource groups: the tree with use and limits, the dynamic rules, leak counters
+            "gruppen" => file(crate::groups::files::table()),
             "sicherheit" => file(crate::sicherheit_text()),
             // Kernprotokoll (Ringpuffer) – für den Entwickler-Zugang (`ssh ultar kernlog`) und Fehlersuche
             "protokoll" => {
@@ -55,6 +57,13 @@ pub fn open(path: &str) -> Option<Node> {
                 crate::klog::dump(|b| v.extend_from_slice(b));
                 file(String::from_utf8_lossy(&v).into_owned())
             }
+            _ => None,
+        },
+        // kernel settings in the Linux layout: only the largest pipe size (see pipe.rs)
+        "sys" => match sub {
+            "" => Some(Node::Dir(alloc::vec![DirEnt { name: String::from("fs"), dir: true, size: 0 }])),
+            "fs" => Some(Node::Dir(alloc::vec![DirEnt { name: String::from("pipe-max-size"), dir: false, size: 0 }])),
+            "fs/pipe-max-size" => file(format!("{}\n", crate::pipe::max_size())),
             _ => None,
         },
         "meminfo" => file(format!(
@@ -111,7 +120,10 @@ pub fn open(path: &str) -> Option<Node> {
                 "ns" => Some(Node::Dir(["mnt", "pid"].iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect())),
                 "ns/mnt" | "ns/pid" => file(ns_name(p.global, &sub[3..])?),
                 "auxv" => Some(Node::File(alloc::sync::Arc::new(p.auxv.clone()))),
-                "" => Some(Node::Dir(["stat", "cmdline", "status", "comm", "exe", "auxv", "ns"].iter().map(|n| DirEnt { name: String::from(*n), dir: *n == "ns", size: 0 }).collect())),
+                // resource group in the Linux form; a reader inside a pid namespace (a cell) only learns
+                // that it is in "its" group, not where that lies in the machine's tree
+                "cgroup" => file(if host_reader { format!("0::{}\n", crate::groups::files::path_of(p.res)) } else { String::from("0::/\n") }),
+                "" => Some(Node::Dir(["stat", "cmdline", "status", "comm", "exe", "auxv", "cgroup", "ns"].iter().map(|n| DirEnt { name: String::from(*n), dir: *n == "ns", size: 0 }).collect())),
                 "stat" => file(format!(
                     "{} ({}) {} {} {} {} 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 0 {} {} 0\n",
                     p.pid,

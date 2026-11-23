@@ -38,6 +38,14 @@ pub struct SlotTable {
     pub seq: u32,
 }
 
+/// True when sequence number `a` is newer than `b`. Sequence numbers wrap around: `a` is
+/// newer when it is ahead of `b` by less than half the number range (so `0` follows
+/// `u32::MAX`). Two copies never differ by more than one step.
+pub fn seq_newer(a: u32, b: u32) -> bool {
+    let ahead = a.wrapping_sub(b);
+    ahead != 0 && ahead < 1 << 31
+}
+
 /// CRC-32 (IEEE 802.3, reflected, as used by GPT and zlib).
 pub fn crc32(data: &[u8]) -> u32 {
     let mut crc = !0u32;
@@ -146,7 +154,7 @@ impl SlotTable {
     /// Picks the current table out of the two stored copies.
     pub fn newest(copies: [Option<Self>; 2]) -> Option<Self> {
         match copies {
-            [Some(a), Some(b)] => Some(if b.seq > a.seq { b } else { a }),
+            [Some(a), Some(b)] => Some(if seq_newer(b.seq, a.seq) { b } else { a }),
             [Some(t), None] | [None, Some(t)] => Some(t),
             [None, None] => None,
         }
@@ -249,6 +257,26 @@ mod tests {
             bytes[60..].copy_from_slice(&crc.to_le_bytes());
             assert!(SlotTable::decode(&bytes).is_err(), "offset {offset}");
         }
+    }
+
+    #[test]
+    fn sequence_numbers_wrap_around() {
+        assert!(seq_newer(6, 5) && !seq_newer(5, 6) && !seq_newer(5, 5));
+        assert!(seq_newer(0, u32::MAX) && !seq_newer(u32::MAX, 0));
+        assert!(seq_newer(1, u32::MAX - 1));
+        let mut old = SlotTable::factory();
+        let mut new = old;
+        old.seq = u32::MAX;
+        new.seq = 0;
+        new.default = Slot::B;
+        assert_eq!(
+            SlotTable::newest([Some(old), Some(new)]).unwrap().default,
+            Slot::B
+        );
+        assert_eq!(
+            SlotTable::newest([Some(new), Some(old)]).unwrap().default,
+            Slot::B
+        );
     }
 
     #[test]

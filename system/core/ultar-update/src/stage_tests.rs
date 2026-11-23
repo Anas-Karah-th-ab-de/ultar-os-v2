@@ -49,13 +49,27 @@ fn marker_is_strict() {
         digest: [0xAB; 32],
         size: 123_456,
         allow_downgrade: true,
+        channel: Some("beta".into()),
     };
     let text = marker_text(&info);
-    assert_eq!(parse_marker(text.as_bytes()), Some(info));
+    assert!(text.ends_with(" 123456 1 beta\n"));
+    assert_eq!(parse_marker(text.as_bytes()), Some(info.clone()));
+    let offline = StagedInfo {
+        channel: None,
+        ..info
+    };
+    assert!(marker_text(&offline).ends_with(" 1 -\n"));
+    assert_eq!(
+        parse_marker(marker_text(&offline).as_bytes()),
+        Some(offline)
+    );
     for bad in [
         text.trim_end().to_string(),
-        text.replace(" 1\n", " 2\n"),
-        text.replace(" 1\n", "\n"),
+        text.replace(" 1 beta\n", " 2 beta\n"),
+        text.replace(" 1 beta\n", " beta\n"),
+        text.replace(" beta\n", "\n"),
+        text.replace("beta", "../x"),
+        text.replace("beta", "be ta"),
         text.replace("123456", "0123456"),
         text.replace("ab", "AB"),
         format!("{text}x"),
@@ -74,13 +88,14 @@ fn marker_without_matching_file_is_not_a_staged_bundle() {
         digest: [1; 32],
         size: 10,
         allow_downgrade: false,
+        channel: None,
     };
     fs::write(staging.marker(), marker_text(&info)).unwrap();
     assert_eq!(staging.staged().unwrap(), None, "marker alone");
     fs::write(staging.done(), b"123456789").unwrap();
     assert_eq!(staging.staged().unwrap(), None, "size differs");
     fs::write(staging.done(), b"1234567890").unwrap();
-    assert_eq!(staging.staged().unwrap(), Some(info));
+    assert_eq!(staging.staged().unwrap(), Some(info.clone()));
     assert!(staging.open_staged().unwrap().is_some());
     staging.purge().unwrap();
     assert_eq!(staging.staged().unwrap(), None);

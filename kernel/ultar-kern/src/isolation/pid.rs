@@ -31,7 +31,10 @@ impl PidNs {
     pub fn initial() -> Arc<PidNs> {
         INITIAL
             .call_once(|| {
-                Arc::new(PidNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), level: 0, parent: None, next: AtomicU64::new(1), init: AtomicU64::new(0), dead: AtomicBool::new(false), map: Mutex::new(Vec::new()) })
+                // lives as long as the machine: it belongs to the kernel, not to whoever asks first
+                crate::heap::kernel(|| {
+                    Arc::new(PidNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), level: 0, parent: None, next: AtomicU64::new(1), init: AtomicU64::new(0), dead: AtomicBool::new(false), map: Mutex::new(Vec::new()) })
+                })
             })
             .clone()
     }

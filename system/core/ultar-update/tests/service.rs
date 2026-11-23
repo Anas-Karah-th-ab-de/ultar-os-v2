@@ -49,7 +49,10 @@ fn manual_flow_steps(rig: &Rig) {
         rig.core.status().unwrap().progress.error_key.as_deref(),
         Some("update.error.metered")
     );
-    rig.job(USER, DOWNLOAD).unwrap();
+    // ... and that consent is the administrator's (or the policy's), not any caller's.
+    assert!(matches!(rig.job(USER, DOWNLOAD), Err(UpdateError::Metered)));
+    rig.core.network(NET, false).unwrap();
+    rig.job(USER, DOWNLOAD_UNMETERED_ONLY).unwrap();
     assert_eq!(rig.core.status().unwrap().progress.phase, Phase::Staged);
 
     assert!(matches!(
@@ -356,7 +359,7 @@ fn cancel_stops_a_running_download_and_drops_what_was_fetched() {
     let (core, cancel) = core_on(&device, factory.clone(), events);
     *factory.1.lock().unwrap() = Some(cancel.clone());
     core.accept(
-        USER,
+        ADMIN,
         &Job::Download {
             allow_metered: true,
         },
@@ -382,7 +385,7 @@ fn cancel_while_idle_drops_the_staged_bundle_and_a_pending_restart() {
     let new = release((0, 7, 1), 2);
     rig.publish(&new);
     rig.job(
-        USER,
+        ADMIN,
         Job::Download {
             allow_metered: true,
         },
@@ -391,7 +394,7 @@ fn cancel_while_idle_drops_the_staged_bundle_and_a_pending_restart() {
     rig.core.cancel(ADMIN).unwrap();
     assert_eq!(rig.core.status().unwrap().progress.phase, Phase::Idle);
     rig.job(
-        USER,
+        ADMIN,
         Job::Download {
             allow_metered: true,
         },
@@ -451,7 +454,7 @@ fn start_reports_fallback_and_previous_version_can_be_chosen() {
     let new = release((0, 7, 1), 1);
     rig.publish(&new);
     rig.job(
-        USER,
+        ADMIN,
         Job::Download {
             allow_metered: true,
         },
@@ -468,8 +471,13 @@ fn start_reports_fallback_and_previous_version_can_be_chosen() {
         status.progress.error_key.as_deref(),
         Some("update.error.boot_failed")
     );
-    assert_eq!(status.progress.phase, Phase::Staged);
-    // Second try works; afterwards the old version can be chosen by an administrator.
+    assert_eq!(
+        status.progress.phase,
+        Phase::Available,
+        "nothing staged any more; the release is still on offer"
+    );
+    // Second try, by hand, works; afterwards the administrator can choose the old version.
+    rig.job(ADMIN, DOWNLOAD).unwrap();
     rig.job(ADMIN, Job::Apply).unwrap();
     rig.device.reboot(&[&new]);
     rig.core.resume_after_boot(&Health(true)).unwrap();

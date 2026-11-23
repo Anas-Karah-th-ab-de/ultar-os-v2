@@ -15,7 +15,7 @@ Ed25519 signature of the publisher and by state stored on the device.
 | Network attacker (no TLS, or TLS broken) | modify, truncate, replay, reorder, extend the stream | Same as above; payload SHA-256 while streaming; total size is bounded by the signed sizes before a byte of payload is stored; a byte more than signed is an error. |
 | Replay of an old signed release ("latest" from last year) | make the device install a release with known holes | (a) **rollback index** in the manifest must be ≥ the index stored on the device, which only grows; (b) manifest **expiry**; (c) version must be greater than the running version. |
 | Release for another device / edition / architecture | brick or downgrade the device | architecture, edition and device list are signed and compared with the device's own identity. |
-| Wrong or missing clock | defeat expiry, or lock the device out | "now" = max(system clock, stored time floor). The floor is the largest `created` time of any manifest whose signature verified; it never goes backwards and is not fed from the local clock (a clock set into the future cannot poison it). There is no "not yet valid" rule, so a device whose clock is behind still updates. |
+| Wrong or missing clock | defeat expiry, or lock the device out | "now" = max(system clock, stored time floor, build time of the running image). The floor is the largest `created` time of any manifest **this device accepted** (signature and admission – a release for another board, edition or channel does not move it); it never goes backwards and is not fed from the local clock (a clock set into the future cannot poison it). There is no "not yet valid" rule, so a device whose clock is behind still updates. |
 | Power loss at any byte | half-written slot is booted | The running slot is never written. The target slot is marked unbootable *before* the first byte and bootable only after a complete read-back. All state files are written atomically; recovery after restart needs no clean-up code to have run. |
 | New system does not start | device stays dead | The new slot is booted "once" with a boot counter; the old slot stays the default until the new system reports health. After N failed starts the loader returns to the old slot by itself. |
 | Stolen/retired signing key | sign malicious updates | Key rotation: a key-set document signed by a still trusted key replaces the set; its serial only grows. |
@@ -78,7 +78,9 @@ package or a driver index can never be taken for an update). Key id: first 8 byt
 * The device keeps the accepted rotations in `trust/chain` and the highest serial in a monotonic store.
   On every start the chain is verified again from the burned-in set (links with a serial ≤ the burned-in serial
   are skipped). A chain that does not reach the stored serial is an error (fail closed): removing the file
-  cannot bring a revoked key back.
+  cannot bring a revoked key back. At most 64 links are kept; when the chain is full, links not above the
+  burned-in serial of the running image are dropped (not earlier, so that a fall-back to an older image still
+  finds its way through the chain). Only if none can be dropped is a further rotation refused.
 * Rotations travel inside bundles (§2.4), so they need no server support and work offline.
 
 ### 2.4 Bundle `.uup` (download file and USB file are the same)
@@ -103,7 +105,8 @@ Two copies, 64 bytes each (`slots.0`, `slots.1`):
 | 12 | sequence number u32 |
 | 60 | CRC-32 (IEEE) of bytes 0 … 59 |
 
-Reader: the valid copy with the higher sequence number. Writer: overwrite the *other* copy with sequence + 1 and
+Reader: the valid copy with the newer sequence number. Sequence numbers wrap around (`0` follows `u32::MAX`;
+"newer" = ahead by less than 2^31, `slottable::seq_newer`). Writer: overwrite the *other* copy with sequence + 1 and
 flush. A torn write damages only the copy being written; no rename is needed (works on FAT).
 
 Boot decision (`boot::select`, the code the boot path has to run, also used by the tests):
@@ -117,14 +120,17 @@ The slot that is started is recorded as "started last".
 | File | Content | Written |
 |---|---|---|
 | `state/rollback.{a,b}` | rollback floor (monotonic store) | after a successful start of a new release |
-| `state/time.{a,b}` | time floor | when a manifest signature verified |
+| `state/time.{a,b}` | time floor | when a manifest was accepted for this device |
 | `state/keyserial.{a,b}` | serial of the key set | when a rotation is accepted |
 | `trust/chain` | accepted rotations | idem |
 | `journal` | apply phase: `idle`, `writing <slot>`, `trial <slot> <previous version>` | atomically |
 | `slots/{a,b}.manifest` | signed manifest of what is in each slot | before the slot becomes bootable |
 | `slots/{a,b}.factory` | version and rollback index of a slot that came from the installer (no manifest) | at the first start of the updater |
 | `staging/bundle.part`, `bundle.pos` | download in progress, flushed length | every 4 MiB |
-| `staging/bundle.uup`, `bundle.ok` | complete verified bundle + completion marker (manifest digest, size, downgrade permission) | once |
+| `staging/bundle.uup`, `bundle.ok` | complete verified bundle + completion marker (manifest digest, size, downgrade permission, channel it was fetched for or `-` for an offline bundle) | once |
+| `rejected` | digest of the signed manifest of the release this device gave up last (§6) | at fallback, failed health check, "start previous version"; removed at the next commit |
+| `next_check` | time the next automatic run is due | after every automatic run |
+| `lock` | exclusive lock of the running daemon | – |
 | `policy`, `history` | policy; bounded history (200 entries) | atomically |
 
 A slot's stored manifest was verified when the slot was written. It is not verified again against
@@ -139,7 +145,7 @@ the other. Both present but damaged → `state_corrupt`, no update is accepted (
 ## 4. Verification (before anything is written to a slot)
 
 In this order, the first failure wins: envelope shape → key id known (`unknown_key`) → signature
-(`bad_signature`) → canonical manifest (`manifest_invalid`) → time floor raised to `created` →
+(`bad_signature`) → canonical manifest (`manifest_invalid`) →
 expired (`now > expires + 24 h`) → architecture → edition → device → channel (online: must equal the channel
 asked for) → payload roles equal the roles of the slot layout → `rollback_index ≥ floor` (`rollback_refused`)
 → `running version ≥ min_version` (`needs_intermediate`) → version greater than the running one
@@ -166,7 +172,11 @@ start chain (stage0) uses it to open the system image.
 
 Policy inputs: automatic yes/no, daily time window (minutes of the day, UTC – the UI converts), channel,
 metered allowed yes/no, rate limit (KiB/s). The network state "metered" is pushed by the network service;
-unknown counts as metered. Manual downloads on a metered network need an explicit flag.
+unknown counts as metered. A manual download on a metered (or unknown) network needs the policy's
+`allow_metered` or the explicit flag of an **administrator**; the flag of any other caller does not count.
+A complete staged bundle is replaced by a download only for an administrator (or by the automatic run after
+the staged one was refused). Callers that are not administrators can start at most 6 checks/downloads per
+10 minutes together.
 
 ## 6. Apply (A/B)
 
@@ -194,14 +204,29 @@ After the restart (`resume_after_boot`):
 * running slot = target and already marked successful → finish the commit (idempotent);
 * running slot = target → health checks (required services answer on the bus). OK → **commit**:
   boot control "successful" (target becomes default) → rollback floor raised to the manifest's index →
-  the other slot is marked unbootable if its index is below the new floor → staging removed → journal `idle`.
-  Not OK → target unbootable, journal `idle`, history, "restart needed" (the loader starts the old slot);
+  the other slot is marked unbootable if its index is below the new floor → staging removed → record of a
+  given-up release removed → journal `idle`.
+  Not OK → the release is recorded as given up, staging removed, target unbootable, journal `idle`, history,
+  "restart needed" (the loader starts the old slot). A daemon restart without a device restart keeps that verdict;
 * running slot ≠ target, target still bootable and trial not consumed → the trial is armed again (power loss
   between steps 8 and 9) or simply not restarted yet;
-* running slot ≠ target, target unbootable → the loader fell back: history "rolled back", journal `idle`.
+* running slot ≠ target, target unbootable → the loader fell back: the release is recorded as given up, staging
+  removed, history "rolled back", journal `idle`.
+
+**Given-up release.** The device remembers the digest of the signed manifest of the release it gave up last
+(fallback, failed health check, or left by an administrator's "start previous version"). The automatic run never
+installs that release again – not from the server and not from a staged copy; another release is installed
+normally, and an administrator can still install the recorded one by hand. Any confirmed release clears the
+record.
+
+**Staged bundle that can no longer be installed.** `apply` verifies the staged bundle again; if it is refused
+(expired meanwhile, key rotated out, floor raised, channel of the policy changed, damaged) it is removed, and
+the automatic run goes on with what the source offers. Changing the channel of the policy removes a bundle that
+was fetched for another channel at once; an offline bundle belongs to no channel and stays.
 
 Power loss during 2–7: the target is unbootable, the loader ignores it; on start the journal goes back to
-`idle`, the staged bundle is still complete and `apply` can run again. The rollback floor is raised **only**
+`idle`, the staged bundle is still complete and `apply` can run again (this is an interrupted write, not a
+given-up release). The rollback floor is raised **only**
 in the commit, so a release that never started successfully cannot lock out the old one.
 
 **Start previous version** (manual): allowed while the other slot is bootable, marked successful and its
@@ -220,7 +245,11 @@ Bus service `update` (contracts in `ultar_update::contract`, version 1): `status
 `apply`, `cancel`, `history`, `get_policy`, `set_policy`, `offline`, `boot_previous`, `network`; topic
 `update.progress` (retained) with phase, percentage and message key. Admin-only: `apply`, `cancel`,
 `set_policy`, `offline`, `boot_previous` (identities listed in the daemon's configuration; default nobody).
-`network` only from the configured network identity. Every state and error is an i18n key
+`network` only from the configured network identity. The bus policy shipped in
+`rootfs/etc/ultar/bus-policy.toml` lets only `system.updated` register `update` and publish `update.progress`.
+The state directory is created with mode 0700 (files 0600) and refused when it belongs to another user or is
+writable by group or others; one daemon per state directory (lock file). The daemon's configuration must name
+at least one `health_service` (or the explicit `none`). Every state and error is an i18n key
 (`locales/{ar,en,de}.ftl`, Arabic first). Works without an account; a gated channel needs the session token.
 
 Offline bundles are only read from folders named in the daemon's configuration (`offline_root=`); the path is
@@ -235,15 +264,18 @@ reports `update.error.unhealthy`; the restart is the user's (or the power servic
 |---|---|
 | Manifest | 16 KiB; 64 devices; 3 payloads; identifiers 32 characters; notes key 96 |
 | Payload | 1 byte … 64 GiB each |
-| Rotation document | 1 KiB; 8 keys; 64 rotations kept on a device; 64 KiB rotation section in a bundle |
+| Rotation document | 1 KiB; 8 keys; 64 rotations kept on a device (when full, links not above the burned-in serial of the running image are dropped); 64 KiB rotation section in a bundle |
 | Bundle header | 128 KiB (probe request `Range: bytes=0-131071`) |
-| `update/latest` answer | 64 KiB; location 2048 characters; one redirect |
+| `update/latest` answer | 64 KiB; location 2048 characters; one redirect; an `https` server is never left for `http` |
+| Transfer | given up when slower than 256 B/s on average after 60 s (kept, resumed later) |
+| Unprivileged callers | 6 checks/downloads per 10 minutes together |
+| Signing tool | `created` at most 1 day ahead of its clock; validity at most 400 days |
 | Download | exactly header + signed sizes; flushed every 4 MiB; free space ≥ missing bytes + reserve (64 MiB) |
 | Offline folder | 64 bundle files, not recursive, no links |
 | History | 200 entries; policy file 512 bytes; journal 64 bytes; key file 4 KiB |
 | Progress events | one per percent (≤ 101 per operation) |
 | Trial starts | N = 3 (configurable, ≥ 1); expiry tolerance 24 h (configurable) |
-| Automatic check | every 6 h (configurable, ≥ 15 min); one operation at a time |
+| Automatic check | every 6 h of wall time (configurable, ≥ 15 min; the due time is stored, the timer wakes every 5 min); after a failed run again after 15 min; one operation at a time |
 
 ## 10. What this design does not protect against
 

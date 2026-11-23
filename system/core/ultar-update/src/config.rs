@@ -82,7 +82,8 @@ struct Raw {
     health_services: Vec<String>,
 }
 
-const SINGLE_KEYS: [&str; 17] = [
+const SINGLE_KEYS: [&str; 18] = [
+    "image_time",
     "device",
     "arch",
     "edition",
@@ -170,6 +171,31 @@ fn read(text: &str) -> Result<Raw, ConfigError> {
     Ok(raw)
 }
 
+/// The services whose answer decides whether a new release is confirmed. There is no
+/// default: with nothing to ask, every start would count as healthy, the rollback floor
+/// would rise and the old slot be retired as soon as the daemon runs. An image that really
+/// has nothing to check must say so with the single entry `none`.
+fn health_services(raw: &Raw) -> Result<Vec<String>, ConfigError> {
+    let listed = &raw.health_services;
+    if listed.is_empty() {
+        return Err(ConfigError {
+            line: 0,
+            kind: ConfigErrorKind::Missing("health_service"),
+        });
+    }
+    if listed.len() == 1 && listed[0] == "none" {
+        return Ok(Vec::new());
+    }
+    if listed
+        .iter()
+        .all(|name| ultar_bus::is_valid_segment_name(name) && name != "none")
+    {
+        Ok(listed.clone())
+    } else {
+        Err(value_error(0))
+    }
+}
+
 fn parse_roles(text: &str) -> Result<Vec<Role>, ConfigError> {
     let mut roles = Vec::new();
     for name in text.split(',') {
@@ -213,6 +239,7 @@ impl DaemonConfig {
             expiry_tolerance: raw
                 .number("expiry_tolerance_hours", DEFAULT_EXPIRY_TOLERANCE / 3600)?
                 .saturating_mul(3600),
+            image_time: raw.number("image_time", 0u64)?,
         };
         Ok(Self {
             engine,
@@ -225,7 +252,7 @@ impl DaemonConfig {
                 network_identity: raw.get("network_identity").map(str::to_string),
                 offline_roots: raw.offline_roots.clone(),
             },
-            health_services: raw.health_services.clone(),
+            health_services: health_services(&raw)?,
             health_wait_seconds: raw.number("health_wait_seconds", 120)?,
             check_interval_minutes: raw.number("check_interval_minutes", 360u32)?.max(15),
         })
@@ -279,13 +306,34 @@ health_service=devices
 
     #[test]
     fn minimal_file_denies_everything_by_default() {
-        let text = "device=d\narch=a\nedition=e\nversion=1.0.0\nroles=kernel\nboot_dir=/b\nstate_dir=/s\nkeys_dir=/k\n";
+        let text = "device=d\narch=a\nedition=e\nversion=1.0.0\nroles=kernel\nboot_dir=/b\nstate_dir=/s\nkeys_dir=/k\nhealth_service=none\n";
         let c = DaemonConfig::parse(text).unwrap();
         assert!(c.access.admins.is_empty());
         assert!(c.access.network_identity.is_none());
         assert!(c.access.offline_roots.is_empty());
         assert!(c.server.is_none());
         assert_eq!(c.engine.factory_rollback_index, 0);
+        assert_eq!(c.engine.image_time, 0);
+        assert!(c.health_services.is_empty(), "explicit none");
+    }
+
+    #[test]
+    fn health_services_must_be_named_or_explicitly_none() {
+        let base = "device=d\narch=a\nedition=e\nversion=1.0.0\nroles=kernel\nboot_dir=/b\nstate_dir=/s\nkeys_dir=/k\n";
+        let missing = DaemonConfig::parse(base).unwrap_err();
+        assert_eq!(missing.kind, ConfigErrorKind::Missing("health_service"));
+        for bad in ["none\nhealth_service=settings", "two words", "a.b", "../x"] {
+            let text = format!("{base}health_service={bad}\n");
+            assert_eq!(
+                DaemonConfig::parse(&text).unwrap_err().kind,
+                ConfigErrorKind::Value,
+                "{bad}"
+            );
+        }
+        let text = format!("{base}health_service=settings\nimage_time=1795000000\n");
+        let c = DaemonConfig::parse(&text).unwrap();
+        assert_eq!(c.health_services, ["settings"]);
+        assert_eq!(c.engine.image_time, 1_795_000_000);
     }
 
     #[test]

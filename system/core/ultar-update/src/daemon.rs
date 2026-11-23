@@ -9,7 +9,7 @@ use crate::engine::{Engine, Environment};
 use crate::error::UpdateError;
 use crate::fault::CancelFlag;
 use crate::filectl::FileBootControl;
-use crate::fsutil::read_bounded;
+use crate::fsutil::{create_private_dir, read_bounded};
 use crate::health::{BusHealth, FsSpace, HealthCheck};
 use crate::net::HttpSource;
 use crate::service::{Core, SourceFactory};
@@ -142,6 +142,26 @@ impl SourceFactory for ServerSources {
     }
 }
 
+/// The timer wakes at least this often (seconds) to see whether an automatic run is due.
+pub const TIMER_WAKE: u64 = 5 * 60;
+
+/// Takes the exclusive lock of the state directory (file `lock` in it, created with the
+/// directory if needed). A second daemon on the same state gets [`UpdateError::Busy`] and
+/// must not start. The lock is held as long as the returned file lives.
+pub fn lock_state_dir(state_dir: &Path) -> Result<std::fs::File, UpdateError> {
+    create_private_dir(state_dir)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state_dir.join("lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => Err(UpdateError::Busy),
+        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+    }
+}
+
 /// Repeats `check` until it passes or `attempts` are used up, calling `pause` in between.
 /// Services need a moment after a start; a new release is judged only when they had it.
 pub fn wait_healthy(
@@ -180,6 +200,7 @@ pub fn run(
     on_ready: &mut dyn FnMut(Option<BootOutcome>),
 ) -> Result<(), DaemonError> {
     let config = load_config(&args.config)?;
+    let _lock = lock_state_dir(&config.engine.state_dir)?;
     let boot = FileBootControl::open(&config.boot_dir, &config.roles)?;
     let cancel = Arc::new(CancelFlag::new());
     let env = Environment {
@@ -216,13 +237,14 @@ pub fn run(
     let endpoint = client.register(crate::contract::SERVICE)?;
     on_ready(outcome);
     let ticker = core.clone();
-    let interval = Duration::from_secs(u64::from(config.check_interval_minutes) * 60);
-    // The timer thread lives as long as the process; it holds no state of its own.
+    let interval = u64::from(config.check_interval_minutes) * 60;
+    // The timer thread lives as long as the process. It wakes often and asks whether a run
+    // is due; the due time is stored on disk, so short uptimes do not starve the check.
     let _ = std::thread::Builder::new()
         .name("update-timer".into())
         .spawn(move || loop {
-            std::thread::sleep(interval);
-            let _ = ticker.tick();
+            let _ = ticker.tick_if_due(interval);
+            std::thread::sleep(Duration::from_secs(interval.min(TIMER_WAKE)));
         });
     serve(core, endpoint);
     Ok(())
@@ -315,6 +337,16 @@ mod tests {
                 Err(UpdateError::Unhealthy)
             }
         }
+    }
+
+    #[test]
+    fn second_daemon_on_the_same_state_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        let first = lock_state_dir(&state).unwrap();
+        assert!(matches!(lock_state_dir(&state), Err(UpdateError::Busy)));
+        drop(first);
+        lock_state_dir(&state).unwrap();
     }
 
     #[test]

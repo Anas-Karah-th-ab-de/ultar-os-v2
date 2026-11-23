@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 pub const MAX_KEYS: usize = 8;
 /// Largest rotation body in bytes.
 pub const MAX_ROTATION: usize = 1024;
-/// Most rotations kept on the device; a system image with newer burned-in keys resets the need.
+/// Most rotations kept on the device. When the chain is full, the links that the burned-in key
+/// set of the running image already covers (serial not above the burned-in serial) are dropped
+/// to make room; only if none can be dropped is a further rotation refused.
 pub const MAX_CHAIN: usize = 64;
 const MAX_CHAIN_BYTES: u64 = (MAX_CHAIN * (MAX_ROTATION + sign::ENVELOPE_OVERHEAD)) as u64;
 const MAX_KEY_FILE: u64 = 4096;
@@ -162,6 +164,11 @@ pub fn load_burned(dir: &Path) -> Result<KeySet, UpdateError> {
     Ok(KeySet { serial, keys })
 }
 
+fn link_serial(link: &[u8]) -> Option<u64> {
+    let envelope = sign::open(&KEYS_MAGIC, link, MAX_ROTATION).ok()?;
+    Some(Rotation::parse(envelope.body).ok()?.set.serial)
+}
+
 /// The trust state of the device: burned-in keys plus the verified chain of rotations.
 #[derive(Debug)]
 pub struct TrustStore {
@@ -169,6 +176,7 @@ pub struct TrustStore {
     serial: MonotonicStore,
     chain: Vec<Vec<u8>>,
     current: KeySet,
+    burned_serial: u64,
 }
 
 impl TrustStore {
@@ -180,6 +188,7 @@ impl TrustStore {
         let chain_path = state_dir.join("trust").join("chain");
         let serial = MonotonicStore::new(&state_dir.join("state"), "keyserial");
         let mut current = load_burned(burned_dir)?;
+        let burned_serial = current.serial;
         let stored = read_bounded(&chain_path, MAX_CHAIN_BYTES)
             .map_err(|_| UpdateError::StateCorrupt)?
             .unwrap_or_default();
@@ -206,6 +215,7 @@ impl TrustStore {
             serial,
             chain,
             current,
+            burned_serial,
         })
     }
 
@@ -229,10 +239,17 @@ impl TrustStore {
             return Ok(false);
         }
         envelope.verify(KEYS_DOMAIN, &self.current.keys)?;
-        if self.chain.len() >= MAX_CHAIN {
+        let mut chain = self.chain.clone();
+        if chain.len() >= MAX_CHAIN {
+            // Full: links the running image's own key set makes unnecessary can go. (They
+            // are kept as long as there is room, so that a fall-back to an older image with
+            // an older burned-in set still finds its way through the chain.)
+            let burned = self.burned_serial;
+            chain.retain(|link| link_serial(link).is_some_and(|serial| serial > burned));
+        }
+        if chain.len() >= MAX_CHAIN {
             return Err(UpdateError::RotationRefused);
         }
-        let mut chain = self.chain.clone();
         chain.push(signed.to_vec());
         write_atomic(&self.chain_path, &chain.concat())?;
         self.serial.raise(rotation.set.serial)?;

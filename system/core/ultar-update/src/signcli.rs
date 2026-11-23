@@ -1,14 +1,15 @@
 //! Command line of `uupdate-sign` (the logic is in [`crate::signtool`]).
 
 use crate::args::Args;
+use crate::clock::{Clock, SystemClock};
 use crate::error::UpdateError;
 use crate::fsutil::{read_bounded, write_atomic};
 use crate::keys::{load_burned, read_secret_file};
 use crate::manifest::Manifest;
 use crate::sign::{key_id, public_of};
 use crate::signtool::{
-    build_manifest, keygen, make_bundle, make_rotation, parse_payload_arg, read_public_keys,
-    sign_manifest, verify_bundle, write_key_file, PayloadFile,
+    build_manifest, check_times, keygen, make_bundle, make_rotation, parse_payload_arg,
+    read_public_keys, sign_manifest, verify_bundle, write_key_file, PayloadFile,
 };
 use crate::version::Version;
 use std::io::Write;
@@ -107,6 +108,7 @@ impl Tool<'_> {
             critical: args.switch("--critical"),
             payloads: Vec::new(),
         };
+        check_times(spec.created, spec.expires, SystemClock.now_unix())?;
         let bytes = build_manifest(spec, &payloads(args)?)?;
         let out = args.required("--out")?;
         write_atomic(Path::new(out), &bytes)?;

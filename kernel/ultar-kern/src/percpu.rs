@@ -20,9 +20,17 @@ pub struct PerCpu {
     pub this: u64,
     /// 48: Rücksprungadresse des laufenden Systemaufrufs (Fristen von poll & Co.)
     pub sys_rip: u64,
+    /// 56: resource group that allocations on this processor are charged to (see heap.rs)
+    pub charge: u64,
+    /// 64: nesting depth of `heap::fallible` (requests may be refused by policy)
+    pub fallible: u64,
+    /// 72: reason of the last refused request + 1 (0 = none) since the system call began
+    pub denied: u64,
+    /// 80: error number a lower layer wants the running system call to report (0 = none)
+    pub errno: u64,
 }
 
-pub static mut CPUS: [PerCpu; MAXCPU] = [const { PerCpu { user_rsp: 0, kstack_top: 0, current: 0, sched_ctx: 0, id: 0, this: 0, sys_rip: 0 } }; MAXCPU];
+pub static mut CPUS: [PerCpu; MAXCPU] = [const { PerCpu { user_rsp: 0, kstack_top: 0, current: 0, sched_ctx: 0, id: 0, this: 0, sys_rip: 0, charge: 0, fallible: 0, denied: 0, errno: 0 } }; MAXCPU];
 static READY: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// GS_BASE auf den Eintrag des Kerns setzen

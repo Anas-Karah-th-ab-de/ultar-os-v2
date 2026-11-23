@@ -79,7 +79,7 @@ fn write_manifest(dir: &Path, version: &str, index: &str, payloads: &str) {
     sign_line(&format!(
         "manifest --out {out} --version {version} --rollback-index {index} --channel stable \
          --edition desktop --arch x86_64 --devices pc-uefi,vm --min-version 0.7.0 \
-         --notes-key update.notes.generic --created 1795000000 --expires 99999999999 \
+         --notes-key update.notes.generic --created 1795000000 --expires 1820000000 \
          --critical {payloads}"
     ));
     let manifest = std::fs::read_to_string(dir.join("manifest.txt")).unwrap();
@@ -255,7 +255,7 @@ impl DaemonDevice {
         let text = format!(
             "device=vm\narch=x86_64\nedition=desktop\nversion=0.7.0\nrollback_index=1\n\
              roles=kernel,system\nboot_dir={}\nstate_dir={}\nkeys_dir={}\nserver={server}\n\
-             admin=system.settings\nreserve_mib=1\n",
+             admin=system.settings\nreserve_mib=1\nhealth_service=none\n",
             boot_dir.display(),
             dir.join("state").display(),
             keys.display(),
@@ -292,7 +292,11 @@ impl DaemonDevice {
         let (code, text) = self.cli("app.files", "status");
         assert_eq!(code, 0, "{text}");
         assert!(text.contains("Running version: 0.7.0 (slot a)"), "{text}");
+        // No network service reports here: the connection counts as metered, and only the
+        // administrator can decide to use it.
         let (code, text) = self.cli("app.files", "download --metered");
+        assert_eq!(code, 1, "{text}");
+        let (code, text) = self.cli("system.settings", "download --metered");
         assert_eq!(code, 0, "{text}");
         assert!(text.contains("The update is ready to install"), "{text}");
         assert!(text.contains("Important security update"), "{text}");
@@ -370,7 +374,7 @@ fn daemon_refuses_to_start_on_bad_configuration() {
     // A valid file but no slot table: typed failure, not a guess.
     std::fs::write(
         &config,
-        format!("device=vm\narch=x86_64\nedition=desktop\nversion=0.7.0\nroles=kernel\nboot_dir={0}/b\nstate_dir={0}/s\nkeys_dir={0}/k\n", dir.path().display()),
+        format!("device=vm\narch=x86_64\nedition=desktop\nversion=0.7.0\nroles=kernel\nboot_dir={0}/b\nstate_dir={0}/s\nkeys_dir={0}/k\nhealth_service=none\n", dir.path().display()),
     )
     .unwrap();
     let (code, text) = run(

@@ -7,8 +7,8 @@
 use crate::bundle::Header;
 use crate::error::{NetworkError, UpdateError};
 use crate::fault::{Checkpoint, Step};
-use crate::fsutil::{read_bounded, remove_if_present, sync_dir, write_atomic};
-use crate::manifest::{Manifest, Role};
+use crate::fsutil::{create_private_dir, read_bounded, remove_if_present, sync_dir, write_atomic};
+use crate::manifest::{valid_ident, Manifest, Role};
 use crate::source::{Remote, UpdateSource};
 use crate::verify::VerifiedManifest;
 use sha2::{Digest, Sha256};
@@ -89,7 +89,7 @@ impl PayloadCheck {
 }
 
 /// A complete, verified bundle in the staging area.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StagedInfo {
     /// SHA-256 of the signed manifest envelope.
     pub digest: [u8; 32],
@@ -97,6 +97,9 @@ pub struct StagedInfo {
     pub size: u64,
     /// An administrator allowed this bundle although it is older than the running version.
     pub allow_downgrade: bool,
+    /// The channel it was fetched for; `None` for an offline bundle (chosen by an
+    /// administrator, any channel).
+    pub channel: Option<String>,
 }
 
 /// What a fetch needs from its surroundings.
@@ -109,6 +112,8 @@ pub struct FetchEnv<'a> {
     pub progress: &'a mut dyn FnMut(u64, u64),
     /// Recorded in the marker: the bundle was admitted with a downgrade permission.
     pub allow_downgrade: bool,
+    /// Recorded in the marker: the channel that was asked for (`None`: offline bundle).
+    pub channel: Option<&'a str>,
 }
 
 /// The staging directory.
@@ -119,7 +124,9 @@ pub struct Staging {
 
 fn marker_text(info: &StagedInfo) -> String {
     let downgrade = u8::from(info.allow_downgrade);
-    format!("{} {} {downgrade}\n", hex::encode(info.digest), info.size)
+    let channel = info.channel.as_deref().unwrap_or("-");
+    let digest = hex::encode(info.digest);
+    format!("{digest} {} {downgrade} {channel}\n", info.size)
 }
 
 fn parse_marker(bytes: &[u8]) -> Option<StagedInfo> {
@@ -133,10 +140,16 @@ fn parse_marker(bytes: &[u8]) -> Option<StagedInfo> {
         "1" => true,
         _ => return None,
     };
+    let channel = match parts.next()? {
+        "-" => None,
+        name if valid_ident(name) => Some(name.to_string()),
+        _ => return None,
+    };
     let info = StagedInfo {
         digest,
         size,
         allow_downgrade,
+        channel,
     };
     (parts.next().is_none() && marker_text(&info) == text).then_some(info)
 }
@@ -275,14 +288,21 @@ impl Staging {
         remote: &Remote,
         env: &mut FetchEnv<'_>,
     ) -> Result<StagedInfo, UpdateError> {
-        fs::create_dir_all(&self.dir)?;
+        create_private_dir(&self.dir)?;
         let wanted = StagedInfo {
             digest: verified.digest(),
             size: header.len() + verified.manifest().payload_bytes(),
             allow_downgrade: env.allow_downgrade,
+            channel: env.channel.map(str::to_string),
         };
         match self.staged()? {
             Some(info) if info == wanted => return Ok(info),
+            Some(info) if info.digest == wanted.digest && info.size == wanted.size => {
+                // Same verified bundle, admitted now under other conditions (channel,
+                // downgrade permission): only the marker changes.
+                write_atomic(&self.marker(), marker_text(&wanted).as_bytes())?;
+                return Ok(wanted);
+            }
             Some(_) => self.purge()?,
             None => self.adopt_orphan()?,
         }

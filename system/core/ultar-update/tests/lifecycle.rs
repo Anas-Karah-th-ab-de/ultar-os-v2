@@ -197,9 +197,13 @@ fn automatic_fallback_after_failed_starts() {
     );
     assert_eq!(
         status.phase,
-        EnginePhase::Staged,
-        "the verified bundle is still there"
+        EnginePhase::Idle,
+        "the staged copy of the release that failed is dropped"
     );
+    let rejected = engine
+        .rejected_digest()
+        .expect("the failed release is remembered");
+    assert_eq!(rejected, sha(&new.signed));
     let last = engine.history().last().unwrap().clone();
     assert_eq!(last.kind, HistoryKind::RolledBack);
     assert_eq!(last.detail_key.as_deref(), Some("update.error.boot_failed"));
@@ -207,9 +211,17 @@ fn automatic_fallback_after_failed_starts() {
         engine.resume_after_boot(&Health(true)).unwrap(),
         BootOutcome::Nothing
     );
-    // It can be tried again.
-    engine.apply(&mut |_, _, _| {}).unwrap();
+    // It can be tried again by hand (the engine itself never refuses the release; only the
+    // service's automatic run skips it), and a successful start clears the record.
+    assert!(matches!(
+        engine.apply(&mut |_, _, _| {}),
+        Err(UpdateError::NotStaged)
+    ));
+    install(&mut engine, &new).unwrap();
     assert_eq!(device.reboot(&[&new]), (Slot::B, 1));
+    let mut engine = device.engine();
+    engine.resume_after_boot(&Health(true)).unwrap();
+    assert_eq!(engine.rejected_digest(), None);
 }
 
 #[test]

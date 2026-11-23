@@ -22,10 +22,13 @@ impl Rights {
     pub const RAW_DEVICE: Rights = Rights(1 << 5);
     /// Restart or power off the machine.
     pub const REBOOT: Rights = Rights(1 << 6);
+    /// Manage resource groups: create and remove groups, set or raise limits, move processes
+    /// between groups (the group tree under `/sys/fs/cgroup`), raise the largest pipe size.
+    pub const MANAGE_GROUPS: Rights = Rights(1 << 7);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0x7f);
+    pub const ALL: Rights = Rights(0xff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {
@@ -51,6 +54,7 @@ impl Rights {
             17 => Some(Rights::RAW_DEVICE),
             21 => Some(Rights::MOUNT),
             22 => Some(Rights::REBOOT),
+            24 => Some(Rights::MANAGE_GROUPS),
             25 => Some(Rights::SET_TIME),
             _ => None,
         }

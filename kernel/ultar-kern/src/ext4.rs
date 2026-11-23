@@ -41,7 +41,7 @@ fn le32(b: &[u8], o: usize) -> u64 {
 }
 
 fn rd(disk: usize, lba: u64, bytes: usize) -> Option<Vec<u8>> {
-    let mut b = vec![0u8; bytes.div_ceil(512) * 512];
+    let mut b = crate::mem::try_vec(bytes.div_ceil(512) * 512)?;
     let mut bl = crate::driver::BLOCK.lock();
     bl.get_mut(disk)?.read(lba, &mut b).ok()?;
     Some(b)
@@ -134,7 +134,8 @@ impl Ext4 {
     /// ganzen Inhalt lesen (höchstens `limit` Bytes)
     pub fn read(&self, ino: &Inode, limit: u64) -> Vec<u8> {
         let size = ino.size.min(limit) as usize;
-        let mut out = vec![0u8; size];
+        // the whole file is read into memory: without memory for it the file reads as empty
+        let Some(mut out) = crate::mem::try_vec(size) else { return Vec::new() };
         if ino.flags & 0x1000_0000 != 0 {
             let n = size.min(60);
             out[..n].copy_from_slice(&ino.block[..n]);

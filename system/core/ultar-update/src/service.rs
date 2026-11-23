@@ -5,15 +5,17 @@
 //! refused with [`UpdateError::Busy`].
 
 use crate::bootctl::BootControl;
+use crate::clock::Clock;
 use crate::commit::BootOutcome;
 use crate::contract::{HistoryItem, Phase, PolicyMessage, Progress, StatusReply};
-use crate::engine::{Engine, EnginePhase, Offer};
+use crate::engine::{Engine, EnginePhase};
 use crate::error::UpdateError;
 use crate::fault::CancelFlag;
 use crate::health::HealthCheck;
 use crate::history;
-use crate::policy::{real_pacer, Policy};
+use crate::policy::Policy;
 use crate::source::UpdateSource;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -67,30 +69,56 @@ pub enum Job {
     Automatic,
 }
 
-/// A verified offer together with the source it came from.
-type Found = (Offer, Box<dyn UpdateSource + Send>);
+/// Seconds between automatic runs unless the timer says otherwise (6 hours).
+pub const DEFAULT_CHECK_INTERVAL: u64 = 6 * 60 * 60;
+/// Jobs callers without administrator rights may start per [`UNPRIVILEGED_WINDOW`].
+pub const UNPRIVILEGED_JOBS: usize = 6;
+/// Length of the rate-limit window for unprivileged callers, in seconds.
+pub const UNPRIVILEGED_WINDOW: u64 = 600;
 
-struct Snapshot {
-    progress: Progress,
-    metered: Option<bool>,
-    available: Option<(String, bool, String)>,
-    percent: u64,
-    status: Option<StatusReply>,
+pub(crate) struct Snapshot {
+    pub(crate) progress: Progress,
+    pub(crate) metered: Option<bool>,
+    pub(crate) available: Option<(String, bool, String)>,
+    pub(crate) percent: u64,
+    pub(crate) status: Option<StatusReply>,
+}
+
+/// Who started the running job, and how often unprivileged callers started one lately.
+pub(crate) struct Guard {
+    /// The running job was started by an administrator or by the service itself.
+    pub(crate) privileged: bool,
+    /// Seconds between automatic runs (set by the timer; used to schedule the next one).
+    pub(crate) interval: u64,
+    recent: VecDeque<u64>,
+}
+
+impl Guard {
+    /// Drops entries outside the window and tells whether one more unprivileged job fits.
+    fn admit_unprivileged(&mut self, now: u64) -> bool {
+        // Entries from the future (clock set back) are dropped too, so a clock change can
+        // never lock callers out for longer than one window.
+        self.recent
+            .retain(|t| *t <= now && now - *t < UNPRIVILEGED_WINDOW);
+        self.recent.len() < UNPRIVILEGED_JOBS
+    }
 }
 
 /// The update service without its transport.
 pub struct Core<B: BootControl> {
-    engine: Mutex<Engine<B>>,
-    cancel: Arc<CancelFlag>,
-    snapshot: Mutex<Snapshot>,
-    sources: Arc<dyn SourceFactory>,
+    pub(crate) engine: Mutex<Engine<B>>,
+    pub(crate) cancel: Arc<CancelFlag>,
+    pub(crate) snapshot: Mutex<Snapshot>,
+    pub(crate) sources: Arc<dyn SourceFactory>,
     publisher: Arc<dyn Publish>,
     access: Access,
-    state_dir: PathBuf,
+    pub(crate) state_dir: PathBuf,
     running: AtomicBool,
+    pub(crate) guard: Mutex<Guard>,
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -119,7 +147,14 @@ impl<B: BootControl> Core<B> {
         access: Access,
     ) -> Self {
         let state_dir = engine.config().state_dir.clone();
+        let clock = engine.clock();
         let core = Self {
+            guard: Mutex::new(Guard {
+                privileged: false,
+                interval: DEFAULT_CHECK_INTERVAL,
+                recent: VecDeque::new(),
+            }),
+            clock,
             engine: Mutex::new(engine),
             cancel,
             snapshot: Mutex::new(Snapshot {
@@ -152,7 +187,7 @@ impl<B: BootControl> Core<B> {
         }
     }
 
-    fn announce(&self, edit: impl FnOnce(&mut Snapshot)) {
+    pub(crate) fn announce(&self, edit: impl FnOnce(&mut Snapshot)) {
         let progress = {
             let mut snapshot = lock(&self.snapshot);
             edit(&mut snapshot);
@@ -161,7 +196,7 @@ impl<B: BootControl> Core<B> {
         self.publisher.publish(&progress);
     }
 
-    fn start_phase(&self, phase: Phase) {
+    pub(crate) fn start_phase(&self, phase: Phase) {
         self.announce(|s| {
             s.progress.phase = phase;
             s.progress.done = 0;
@@ -172,7 +207,7 @@ impl<B: BootControl> Core<B> {
     }
 
     /// Byte progress; published only when the percentage changes (at most 101 events).
-    fn advance(&self, done: u64, total: u64) {
+    pub(crate) fn advance(&self, done: u64, total: u64) {
         let percent = done.saturating_mul(100).checked_div(total).unwrap_or(0);
         let changed = {
             let mut snapshot = lock(&self.snapshot);
@@ -188,7 +223,7 @@ impl<B: BootControl> Core<B> {
     }
 
     /// Brings the snapshot in line with the engine and publishes it.
-    fn refresh(&self, engine: &Engine<B>, error_key: Option<&'static str>) {
+    pub(crate) fn refresh(&self, engine: &Engine<B>, error_key: Option<&'static str>) {
         let status = engine.status().ok();
         let policy = engine.policy();
         self.announce(|s| {
@@ -244,7 +279,12 @@ impl<B: BootControl> Core<B> {
 
     /// Reserves the single operation slot for `job` after checking `caller`'s rights.
     /// The caller must then hand the job to [`Core::run`] (or call [`Core::release`]).
+    ///
+    /// Callers that are not administrators may only check and download, and only
+    /// [`UNPRIVILEGED_JOBS`] times per [`UNPRIVILEGED_WINDOW`] seconds together – so that no
+    /// app can keep the single slot busy against the administrator or the automatic run.
     pub fn accept(&self, caller: &str, job: &Job) -> Result<(), UpdateError> {
+        let privileged = self.is_admin(caller) || *job == Job::Automatic;
         match job {
             Job::Apply => self.require_admin(caller)?,
             Job::Offline { path, .. } => {
@@ -253,10 +293,21 @@ impl<B: BootControl> Core<B> {
             }
             Job::Check | Job::Download { .. } | Job::Automatic => {}
         }
+        let mut guard = lock(&self.guard);
+        let now = self.clock.now_unix();
+        if !privileged && !guard.admit_unprivileged(now) {
+            return Err(UpdateError::RateLimited);
+        }
         self.running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .map(|_| ())
-            .map_err(|_| UpdateError::Busy)
+            .map_err(|_| UpdateError::Busy)?;
+        if !privileged {
+            guard.recent.push_back(now);
+        }
+        guard.privileged = privileged;
+        // A cancel request that arrived after the previous job had ended belongs to nobody.
+        self.cancel.reset();
+        Ok(())
     }
 
     /// Gives the operation slot back without running a job.
@@ -266,7 +317,7 @@ impl<B: BootControl> Core<B> {
 
     /// Resolves an offline location (links and `..` included) and checks that it lies inside
     /// one of the configured folders. Returns the resolved path, which is what is then read.
-    fn offline_path(&self, path: &Path) -> Result<PathBuf, UpdateError> {
+    pub(crate) fn offline_path(&self, path: &Path) -> Result<PathBuf, UpdateError> {
         let real = std::fs::canonicalize(path).map_err(|_| UpdateError::InvalidArgument)?;
         let allowed = self
             .access
@@ -277,110 +328,6 @@ impl<B: BootControl> Core<B> {
             Ok(real)
         } else {
             Err(UpdateError::PermissionDenied)
-        }
-    }
-
-    /// Runs an accepted job to its end and releases the operation slot. The result is also
-    /// published (state and, for failures, the error key).
-    pub fn run(&self, job: Job) -> Result<(), UpdateError> {
-        let mut engine = lock(&self.engine);
-        let result = self.run_job(&mut engine, job);
-        let error_key = match &result {
-            Ok(()) => None,
-            Err(UpdateError::Cancelled) => {
-                let _ = engine.cancel_pending();
-                lock(&self.snapshot).available = None;
-                None
-            }
-            Err(error) => Some(error.key()),
-        };
-        self.cancel.reset();
-        // The slot is free before the final state is published: a client that reacts to that
-        // event with its next request must not be told "busy".
-        self.release();
-        self.refresh(&engine, error_key);
-        result
-    }
-
-    fn run_job(&self, engine: &mut Engine<B>, job: Job) -> Result<(), UpdateError> {
-        match job {
-            Job::Check => self.check(engine).map(|_| ()),
-            Job::Download { allow_metered } => self.download(engine, allow_metered),
-            Job::Apply => self.apply(engine),
-            Job::Offline {
-                path,
-                allow_downgrade,
-            } => {
-                self.start_phase(Phase::Downloading);
-                // Checked again here and the resolved path is used: what was checked is
-                // what is read, even if the entry was swapped since the request came in.
-                let path = self.offline_path(&path)?;
-                let offer = engine.stage_offline(&path, allow_downgrade, &mut |done, total| {
-                    self.advance(done, total)
-                })?;
-                self.remember(Some(&offer));
-                Ok(())
-            }
-            Job::Automatic => self.automatic(engine),
-        }
-    }
-
-    fn remember(&self, offer: Option<&Offer>) {
-        lock(&self.snapshot).available = offer.map(|o| {
-            let m = o.verified.manifest();
-            (m.version.to_string(), m.critical, m.notes_key.clone())
-        });
-    }
-
-    fn check(&self, engine: &mut Engine<B>) -> Result<Option<Found>, UpdateError> {
-        self.start_phase(Phase::Checking);
-        let mut source = self.sources.open()?;
-        let channel = engine.policy().channel;
-        let offer = engine.check(&mut *source, &channel)?;
-        self.remember(offer.as_ref());
-        Ok(offer.map(|offer| (offer, source)))
-    }
-
-    fn download(&self, engine: &mut Engine<B>, allow_metered: bool) -> Result<(), UpdateError> {
-        // Every accepted job announces a busy phase first, so that a client that follows the
-        // progress topic always sees a beginning and an end – also when the job is refused.
-        self.start_phase(Phase::Checking);
-        if lock(&self.snapshot).metered != Some(false) && !allow_metered {
-            return Err(UpdateError::Metered);
-        }
-        let (offer, mut source) = self.check(engine)?.ok_or(UpdateError::NoUpdate)?;
-        self.start_phase(Phase::Downloading);
-        let mut pacer = real_pacer(engine.policy().rate_limit_kib);
-        engine.download(&mut *source, &offer, &mut pacer, &mut |done, total| {
-            self.advance(done, total)
-        })?;
-        Ok(())
-    }
-
-    fn apply(&self, engine: &mut Engine<B>) -> Result<(), UpdateError> {
-        self.start_phase(Phase::Applying);
-        engine.apply(&mut |_, done, total| self.advance(done, total))?;
-        Ok(())
-    }
-
-    fn automatic(&self, engine: &mut Engine<B>) -> Result<(), UpdateError> {
-        let policy = engine.policy();
-        let metered = lock(&self.snapshot).metered;
-        if policy
-            .automatic_allowed(engine.clock_now(), metered)
-            .is_err()
-        {
-            return Ok(());
-        }
-        match engine.status()?.phase {
-            EnginePhase::RebootRequired | EnginePhase::TrialRunning => return Ok(()),
-            EnginePhase::Staged => return self.apply(engine),
-            EnginePhase::Idle | EnginePhase::Partial => {}
-        }
-        match self.download(engine, true) {
-            Err(UpdateError::NoUpdate) => Ok(()),
-            Err(error) => Err(error),
-            Ok(()) => self.apply(engine),
         }
     }
 
@@ -439,7 +386,10 @@ impl<B: BootControl> Core<B> {
             allow_metered: message.allow_metered,
             rate_limit_kib: message.rate_limit_kib,
         };
-        policy.store(&self.state_dir.join("policy"))?;
+        // Through the engine (not behind its back): a staged bundle of another channel goes.
+        let engine = self.engine.try_lock().map_err(|_| UpdateError::Busy)?;
+        engine.set_policy(&policy)?;
+        self.refresh(&engine, None);
         let mut snapshot = lock(&self.snapshot);
         snapshot.available = None;
         if let Some(status) = &mut snapshot.status {
@@ -476,13 +426,5 @@ impl<B: BootControl> Core<B> {
         };
         self.refresh(&engine, error_key);
         outcome
-    }
-
-    /// Runs the automatic job if no operation is running (the daemon's timer calls this).
-    pub fn tick(&self) -> Result<(), UpdateError> {
-        match self.accept("", &Job::Automatic) {
-            Ok(()) => self.run(Job::Automatic),
-            Err(_) => Ok(()),
-        }
     }
 }

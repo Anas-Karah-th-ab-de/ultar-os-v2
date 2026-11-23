@@ -115,7 +115,7 @@ fn dir_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<String, i64> {
     }
 }
 
-fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64) -> Result<(Source, bool, &'static str), i64> {
+fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64) -> Result<(Source, bool, &'static str), i64> {
     if flags & MS_BIND != 0 {
         let from = dir_in_ns(iso, source, true)?;
         let (src, read_only) = iso.mnt.source_of(&from);
@@ -123,7 +123,14 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64) -> Result
     }
     let kind = if fstype == 0 { String::new() } else { ustr(fstype).ok_or(-EFAULT)? };
     match kind.as_str() {
-        "tmpfs" | "ramfs" => Ok((Source::Tmpfs(Tmpfs::create(), String::new()), false, "tmpfs")),
+        "tmpfs" | "ramfs" => {
+            // `size=` in the mount options sets the quota of the tree (default: see isolation::tmpfs)
+            let options = if data == 0 { String::new() } else { ustr(data).ok_or(-EFAULT)? };
+            let quota = crate::isolation::tmpfs::parse_size(&options).map_err(|_| -EINVAL)?;
+            Ok((Source::Tmpfs(Tmpfs::create(quota), String::new()), false, "tmpfs"))
+        }
+        // the group tree, for a cell whose manager wants it visible inside
+        "cgroup2" => Ok((Source::Tree(String::from(crate::groups::files::ROOT_PATH)), false, "cgroup2")),
         "proc" => Ok((Source::Tree(String::from("/proc")), false, "proc")),
         "devtmpfs" => Ok((Source::Tree(String::from("/dev")), false, "devtmpfs")),
         _ => Err(-ENODEV),
@@ -131,7 +138,7 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64) -> Result
 }
 
 /// `mount(source, target, fstype, flags, data)`.
-pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64) -> i64 {
+pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -> i64 {
     let Some(iso) = snapshot() else { return -ESRCH };
     if !iso.rights.has(Rights::MOUNT) {
         return -EPERM;
@@ -155,7 +162,7 @@ pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64) -> i64 {
     let done = if flags & MS_REMOUNT != 0 {
         iso.mnt.remount(&at, read_only)
     } else {
-        match mount_source(&iso, source, fstype, flags) {
+        match mount_source(&iso, source, fstype, flags, data) {
             Ok((src, src_ro, kind)) => iso.mnt.add(&at, src, read_only || src_ro, kind),
             Err(e) => return e,
         }

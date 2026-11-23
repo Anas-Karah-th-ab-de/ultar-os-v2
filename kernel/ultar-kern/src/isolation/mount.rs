@@ -113,8 +113,11 @@ impl MountNs {
     pub fn initial() -> Arc<MountNs> {
         INITIAL
             .call_once(|| {
-                let root = Mount { at: String::from("/"), source: Source::Tree(String::from("/")), read_only: false, fstype: "rootfs" };
-                Arc::new(MountNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), initial: true, epoch: AtomicU64::new(0), mounts: Mutex::new(vec![root]) })
+                // lives as long as the machine: it belongs to the kernel, not to whoever asks first
+                crate::heap::kernel(|| {
+                    let root = Mount { at: String::from("/"), source: Source::Tree(String::from("/")), read_only: false, fstype: "rootfs" };
+                    Arc::new(MountNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), initial: true, epoch: AtomicU64::new(0), mounts: Mutex::new(vec![root]) })
+                })
             })
             .clone()
     }

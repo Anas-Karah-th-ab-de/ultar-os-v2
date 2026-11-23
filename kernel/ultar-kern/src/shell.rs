@@ -242,6 +242,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             kprintln!("platten       Datenträger;  partitionen <n>;  lesen <n> <sektor>");
             kprintln!("netz          Netzwerk-Zustand;  dhcp;  ping <ip>;  ipfest <a.b.c.d/nn> [router]");
             kprintln!("firewall [offen|zu [tcp|udp] <port> | ping an|aus]  Brandmauer (Standard: alles zu);  sicherheit");
+            kprintln!("gruppen       Gruppen: Speicher und Prozesse je Gruppe, Grenzen, Schutzregeln");
             kprintln!("verbund [an|aus]  Ultar-Verbund: Schalter und Geräte im Netz (auch /proc/ultar/verbund)");
             kprintln!("dateien [pfad]  Dateibaum (FAT der Startpartition + RAM);  zeige <datei>");
             kprintln!("start <programm> [argumente]  Linux-Programm (statisch, x86_64) starten – auch direkt: busybox sh");
@@ -412,6 +413,8 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             Err(e) => kprintln!("{e}"),
         },
         "sicherheit" => kprint!("{}", crate::sicherheit_text()),
+        // resource groups: use, limits and the dynamic rules (same text as /proc/ultar/gruppen)
+        "gruppen" => kprint!("{}", crate::groups::files::table()),
         "verbund" => {
             match args.first().copied() {
                 Some("an") => crate::verbund::schalten(true),

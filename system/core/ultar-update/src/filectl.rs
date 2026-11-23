@@ -144,7 +144,7 @@ impl FileBootControl {
         if table == current {
             return Ok(());
         }
-        table.seq = current.seq.checked_add(1).ok_or(UpdateError::BootControl)?;
+        table.seq = current.seq.wrapping_add(1);
         // Overwrite the copy that does not hold the current table.
         let target = usize::from(copies[0] == Some(current));
         self.write_copy(target, &table.encode())

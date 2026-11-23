@@ -7,7 +7,7 @@ use crate::contract::{
     PolicyMessage, Progress, Status,
 };
 use crate::error::UpdateError;
-use crate::keys::load_burned;
+use crate::keys::{load_burned, TrustStore};
 use crate::signtool::verify_bundle;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -253,10 +253,22 @@ pub fn apply_policy_change(policy: &mut PolicyMessage, change: &str) -> Result<(
     Ok(())
 }
 
-fn verify_local(file: &str, keys_dir: &str, tr: &Translator, out: &mut dyn Write) -> u8 {
-    let result =
-        load_burned(Path::new(keys_dir)).and_then(|set| verify_bundle(Path::new(file), &set.keys));
-    match result {
+/// Verifies a bundle file without the service. With `state_dir` the keys in force on this
+/// device are used (burned-in set plus accepted rotations); without it only the burned-in
+/// set – which may still contain a key that a rotation has retired since.
+fn verify_local(
+    file: &str,
+    keys_dir: &str,
+    state_dir: Option<&str>,
+    tr: &Translator,
+    out: &mut dyn Write,
+) -> u8 {
+    let keys = match state_dir {
+        Some(state) => TrustStore::open(Path::new(keys_dir), Path::new(state))
+            .map(|trust| trust.keys().to_vec()),
+        None => load_burned(Path::new(keys_dir)).map(|set| set.keys),
+    };
+    match keys.and_then(|keys| verify_bundle(Path::new(file), &keys)) {
         Ok(authentic) => {
             let version = authentic.manifest().version.to_string();
             let line = tr.t_args("update.cli.verify_ok", &[("version", Arg::Str(&version))]);
@@ -313,7 +325,11 @@ pub fn run(
     let Ok(args) = Args::parse(words, &SWITCHES) else {
         return usage(out);
     };
-    if args.only(&["--socket", "--lang", "--keys"]).is_err() || args.positional.is_empty() {
+    if args
+        .only(&["--socket", "--lang", "--keys", "--state"])
+        .is_err()
+        || args.positional.is_empty()
+    {
         return usage(out);
     }
     if let ["verify", file] = args
@@ -322,8 +338,8 @@ pub fn run(
         .map(String::as_str)
         .collect::<Vec<_>>()[..]
     {
-        return match args.one("--keys") {
-            Ok(Some(keys)) => verify_local(file, keys, tr, out),
+        return match (args.one("--keys"), args.one("--state")) {
+            (Ok(Some(keys)), Ok(state)) => verify_local(file, keys, state, tr, out),
             _ => usage(out),
         };
     }
@@ -333,9 +349,14 @@ pub fn run(
         .flatten()
         .map(str::to_string)
         .or(socket_env);
-    let Some(socket) = socket else {
-        return usage(out);
-    };
+    match socket {
+        Some(socket) => run_on_bus(&socket, &args, tr, out),
+        None => usage(out),
+    }
+}
+
+/// Connects to the bus at `socket` and runs the service command in `args`.
+fn run_on_bus(socket: &str, args: &Args, tr: &Translator, out: &mut dyn Write) -> u8 {
     let mut options = ClientOptions::named("uupdate");
     options.reconnect = false;
     options.connect_retry_for = Duration::ZERO;
@@ -347,7 +368,7 @@ pub fn run(
         }
     };
     let mut session = Session { client, tr, out };
-    let code = match run_command(&mut session, &args) {
+    let code = match run_command(&mut session, args) {
         Ok(()) => EXIT_OK,
         Err(EXIT_USAGE) => {
             session.say("update.cli.usage", &[]);
@@ -360,93 +381,5 @@ pub fn run(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn policy() -> PolicyMessage {
-        PolicyMessage {
-            automatic: true,
-            window: None,
-            channel: "stable".into(),
-            allow_metered: false,
-            rate_limit_kib: 0,
-        }
-    }
-
-    #[test]
-    fn policy_changes() {
-        let mut p = policy();
-        for change in [
-            "automatic=no",
-            "metered=yes",
-            "channel=beta",
-            "rate=512",
-            "window=23:00-05:30",
-        ] {
-            apply_policy_change(&mut p, change).unwrap();
-        }
-        assert!(!p.automatic && p.allow_metered);
-        assert_eq!((p.channel.as_str(), p.rate_limit_kib), ("beta", 512));
-        assert_eq!(p.window, Some((23 * 60, 5 * 60 + 30)));
-        apply_policy_change(&mut p, "window=any").unwrap();
-        assert_eq!(p.window, None);
-        for bad in [
-            "automatic",
-            "automatic=maybe",
-            "window=25:00-01:00",
-            "window=1:00",
-            "window=01:60-02:00",
-            "rate=fast",
-            "colour=blue",
-        ] {
-            assert!(apply_policy_change(&mut p, bad).is_err(), "{bad}");
-        }
-    }
-
-    #[test]
-    fn bus_errors_map_to_message_keys() {
-        let code = UpdateError::Metered.code();
-        assert_eq!(
-            bus_error_key(&BusError::Remote(ErrorCode::Service(code))),
-            "update.error.metered"
-        );
-        assert_eq!(
-            bus_error_key(&BusError::Remote(ErrorCode::Service(9999))),
-            "update.error.io"
-        );
-        assert_eq!(
-            bus_error_key(&BusError::Remote(ErrorCode::PermissionDenied)),
-            "update.error.permission_denied"
-        );
-        assert_eq!(bus_error_key(&BusError::Timeout), "update.cli.timeout");
-        assert_eq!(bus_error_key(&BusError::Closed), "update.cli.no_bus");
-    }
-
-    #[test]
-    fn usage_and_unreachable_bus() {
-        let tr = crate::msg::translator(ultar_i18n::Lang::En);
-        let run_words = |text: &str, env: Option<&str>| {
-            let words: Vec<String> = text.split_whitespace().map(str::to_string).collect();
-            let mut out = Vec::new();
-            let code = run(&words, env.map(str::to_string), &tr, &mut out);
-            (code, String::from_utf8(out).unwrap())
-        };
-        for bad in [
-            "",
-            "status",
-            "--socket",
-            "frobnicate --socket /x --bogus y",
-            "verify file.uup",
-        ] {
-            let (code, text) = run_words(bad, None);
-            assert_eq!(code, EXIT_USAGE, "{bad}");
-            assert!(text.starts_with("Usage: uupdate"), "{text}");
-        }
-        let (code, text) = run_words("status", Some("/nonexistent/ultar-bus.sock"));
-        assert_eq!(code, EXIT_FAILED);
-        assert_eq!(text.trim(), "Could not reach the update service");
-        let (code, text) = run_words("verify /nonexistent.uup --keys /nonexistent-keys", None);
-        assert_eq!(code, EXIT_FAILED);
-        assert!(text.contains("storage"), "{text}");
-    }
-}
+#[path = "cli_tests.rs"]
+mod tests;

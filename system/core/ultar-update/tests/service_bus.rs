@@ -234,7 +234,11 @@ fn cli_status_check_download_apply(run: &dyn Fn(&str, &str) -> (u8, String)) {
     let (code, text) = run(USER, "download");
     assert_eq!(code, 1, "{text}");
     assert!(text.contains("metered"), "{text}");
+    // An app's own "use the metered connection" does not count; the administrator's does.
     let (code, text) = run(USER, "download --metered");
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("metered"), "{text}");
+    let (code, text) = run(ADMIN, "download --metered");
     assert_eq!(code, 0, "{text}");
     assert!(
         text.contains("100%") && text.contains("ready to install"),

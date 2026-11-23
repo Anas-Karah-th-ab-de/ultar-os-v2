@@ -20,6 +20,7 @@ const ENOENT: i64 = 2;
 const ESRCH: i64 = 3;
 const EBADF: i64 = 9;
 const ECHILD: i64 = 10;
+const EAGAIN: i64 = 11;
 const ENOMEM: i64 = 12;
 const EACCES: i64 = 13;
 const EFAULT: i64 = 14;
@@ -30,6 +31,7 @@ const EISDIR: i64 = 21;
 const EINVAL: i64 = 22;
 const ENOTTY: i64 = 25;
 const ESPIPE: i64 = 29;
+const ENOSPC: i64 = 28;
 const EROFS: i64 = 30;
 const EPIPE: i64 = 32;
 const ERANGE: i64 = 34;
@@ -56,6 +58,11 @@ fn echo(b: &[u8]) {
 
 /// Tastatur und serielle Schnittstelle abfragen
 pub fn poll_input() {
+    // the terminal's buffers belong to the kernel, whoever happens to poll
+    crate::heap::kernel(poll_terminal)
+}
+
+fn poll_terminal() {
     let mut t = TTY.lock();
     for _ in 0..64 {
         let c = match crate::console::serial_get() {
@@ -238,6 +245,23 @@ enum Res {
     Block(Wait),
     /// warten, Ergebnis steht schon fest
     BlockWith(Wait, i64),
+    /// `write` delivered this many bytes and must wait for room to deliver the rest: the call is
+    /// repeated for the remainder, its result is the sum
+    Partial(u64, Wait),
+}
+
+/// Error number of a refused request for memory.
+fn refused_errno(r: Res) -> Res {
+    match r {
+        Res::Val(v) if (-4095..0).contains(&v) => {
+            let cpu = crate::percpu::me();
+            let forced = core::mem::replace(&mut cpu.errno, 0) as i64;
+            let refused = crate::heap::take_refused();
+            // a lower layer named the error (group files), or the call failed because memory was refused
+            Res::Val(if forced != 0 { -forced } else if refused { -ENOMEM } else { v })
+        }
+        r => r,
+    }
 }
 
 fn block(f: &mut TrapFrame, w: Wait, restart: bool, val: i64) -> ! {
@@ -267,14 +291,14 @@ pub fn dispatch(f: &mut TrapFrame) {
         n if calls::gate(n).is_some() => Res::Val(-EPERM),
         155 => Res::Val(calls::sys_pivot_root(a[0], a[1])),
         161 => Res::Val(calls::sys_chroot(a[0])),
-        165 => Res::Val(calls::sys_mount(a[0], a[1], a[2], a[3])),
+        165 => Res::Val(calls::sys_mount(a[0], a[1], a[2], a[3], a[4])),
         166 => Res::Val(calls::sys_umount(a[0], a[1])),
         272 => Res::Val(calls::sys_unshare(a[0])),
         308 => Res::Val(calls::sys_setns(a[0], a[1])),
         88 => Res::Val(calls::sys_symlink(a[0], -100, a[1])),
         266 => Res::Val(calls::sys_symlink(a[0], a[1] as i32 as i64, a[2])),
         0 => sys_read(a[0], a[1], a[2], None),
-        1 => Res::Val(sys_write(a[0], a[1], a[2])),
+        1 => write_res(a[0], a[1], a[2]),
         2 => Res::Val(sys_open(-100, a[0], a[1], a[2])),
         3 => Res::Val(with(|p| if (a[0] as u32 as usize) < p.g.fds.len() && p.g.fds[a[0] as u32 as usize].take().is_some() { 0 } else { -EBADF }).unwrap_or(-EBADF)),
         4 => Res::Val(sys_stat_path(-100, a[0], a[1], 0)),
@@ -301,7 +325,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         17 => sys_read(a[0], a[1], a[2], Some(a[3])),
         18 => Res::Val(sys_pwrite(a[0], a[1], a[2], a[3])),
         19 => sys_readv(a[0], a[1], a[2]),
-        20 => Res::Val(sys_writev(a[0], a[1], a[2])),
+        20 => sys_writev(a[0], a[1], a[2]),
         21 => Res::Val(sys_access(-100, a[0])),
         22 => Res::Val(sys_pipe(a[0], 0)),
         24 => {
@@ -335,7 +359,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         87 | 84 => Res::Val(sys_unlink(-100, a[0])),
         89 => Res::Val(sys_readlink(-100, a[0], a[1], a[2])),
         267 => Res::Val(sys_readlink(a[0] as i32 as i64, a[1], a[2], a[3])),
-        40 => Res::Val(sys_sendfile(a[0], a[1], a[2], a[3])),
+        40 => sys_sendfile(a[0], a[1], a[2], a[3]),
         // prctl: PR_GET_AUXV (Linux 6.4+) gibt es hier nicht – wie ältere Kernel mit EINVAL antworten, damit glibc/Rust
         // ihren Rückfallweg nehmen (sonst lesen Ubuntu-26-Programme eine leere Hilfstabelle und stürzen ab)
         157 => Res::Val(calls::sys_prctl(a[0], a[1])),
@@ -412,7 +436,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         53 => Res::Val(sys_socketpair(a[0], a[1], a[3])),
         54 => Res::Val(0),
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
-        137 | 138 => Res::Val(sys_statfs(if nr == 137 { a[1] } else { a[1] })),
+        137 | 138 => Res::Val(sys_statfs(nr == 138, a[0], a[1])),
         334 | 332 | 435 | 326 | 285 | 425 | 426 | 427 => Res::Val(-ENOSYS),
         86 | 265 => Res::Val(-1),
         95 => Res::Val(with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0)),
@@ -487,19 +511,25 @@ pub fn dispatch(f: &mut TrapFrame) {
         302 => Res::Val(sys_prlimit(a[1], a[3])),
         318 => {
             let n = a[1].min(1 << 20) as usize;
-            let mut b = vec![0u8; n];
-            for c in b.chunks_mut(8) {
-                let r = random_u64().to_le_bytes();
-                c.copy_from_slice(&r[..c.len()]);
+            match crate::mem::try_vec(n) {
+                Some(mut b) => {
+                    for c in b.chunks_mut(8) {
+                        let r = random_u64().to_le_bytes();
+                        c.copy_from_slice(&r[..c.len()]);
+                    }
+                    Res::Val(if put(a[0], &b) { n as i64 } else { -EFAULT })
+                }
+                None => Res::Val(-ENOMEM),
             }
-            Res::Val(if put(a[0], &b) { n as i64 } else { -EFAULT })
         }
         _ => {
-            let mut u = UNKNOWN.lock();
-            if !u.contains(&nr) {
-                u.push(nr);
-                crate::kprintln!("[syscall] noch nicht umgesetzt: {nr}");
-            }
+            crate::heap::kernel(|| {
+                let mut u = UNKNOWN.lock();
+                if !u.contains(&nr) {
+                    u.push(nr);
+                    crate::kprintln!("[syscall] noch nicht umgesetzt: {nr}");
+                }
+            });
             Res::Val(-ENOSYS)
         }
     };
@@ -508,11 +538,17 @@ pub fn dispatch(f: &mut TrapFrame) {
             crate::kprintln!("[spur {}] {nr} = {v}", proc::current());
         }
     }
-    match r {
+    match refused_errno(r) {
         Res::Val(v) => f.rax = v as u64,
         Res::Keep => {}
         Res::Block(w) => block(f, w, true, 0),
         Res::BlockWith(w, v) => block(f, w, false, v),
+        Res::Partial(done, w) => {
+            with(|p| p.io_done += done);
+            f.rsi += done;
+            f.rdx -= done;
+            block(f, w, true, 0)
+        }
     }
     // offene Signale vor der Rückkehr zustellen
     if let Some(Err(sig)) = with(|p| crate::signal::deliver(p, f)) {
@@ -526,6 +562,8 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     let n = n.min(1 << 24) as usize;
     enum Src {
         Data(Vec<u8>),
+        /// already copied to the caller (or failed): the result
+        Done(i64),
         Sock(usize),
         SigFd(u64, bool),
         Console,
@@ -533,20 +571,58 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         Err(i64),
     }
     let src = with(|p| {
+        // sources that are copied straight into the caller's memory (no buffer of the caller's size)
+        enum Direct {
+            Fill(bool),
+            File(Arc<Vec<u8>>, u64),
+            No,
+        }
+        let direct = match p.fd(fd).map(|d| &d.kind) {
+            Some(FdKind::Zero) => Direct::Fill(false),
+            Some(FdKind::Random) => Direct::Fill(true),
+            Some(FdKind::File { data, pos, .. }) => Direct::File(data.clone(), *pos),
+            _ => Direct::No,
+        };
+        match direct {
+            Direct::Fill(random) => {
+                let mut page = [0u8; 4096];
+                let mut done = 0;
+                while done < n {
+                    let k = (n - done).min(4096);
+                    if random {
+                        for c in page[..k].chunks_mut(8) {
+                            let r = random_u64().to_le_bytes();
+                            c.copy_from_slice(&r[..c.len()]);
+                        }
+                    }
+                    if !proc::write_user(p.space(), buf + done as u64, &page[..k]) {
+                        return Src::Done(if done > 0 { done as i64 } else { -EFAULT });
+                    }
+                    done += k;
+                }
+                return Src::Done(n as i64);
+            }
+            Direct::File(data, pos) => {
+                let start = at.unwrap_or(pos).min(data.len() as u64) as usize;
+                let end = (start + n).min(data.len());
+                if end > start && !proc::write_user(p.space(), buf, &data[start..end]) {
+                    return Src::Done(-EFAULT);
+                }
+                if at.is_none() {
+                    if let Some(FdKind::File { pos, .. }) = p.fd(fd).map(|d| &mut d.kind) {
+                        *pos = end as u64;
+                    }
+                }
+                return Src::Done((end - start) as i64);
+            }
+            Direct::No => {}
+        }
         let Some(d) = p.fd(fd) else { return Src::Err(-EBADF) };
         match &mut d.kind {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
-            FdKind::Zero => Src::Data(vec![0; n]),
-            FdKind::Random => Src::Data((0..n).map(|_| random_u64() as u8).collect()),
-            FdKind::File { data, pos, .. } => {
-                let start = at.unwrap_or(*pos).min(data.len() as u64) as usize;
-                let end = (start + n).min(data.len());
-                if at.is_none() {
-                    *pos = end as u64;
-                }
-                Src::Data(data[start..end].to_vec())
-            }
+            // handled above (copied straight into the caller's memory)
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -569,8 +645,14 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                         Src::Block(Wait::Net(crate::socket::gen()))
                     }
                 } else {
-                    let k = n.min(b.len());
-                    Src::Data(b.drain(..k).collect())
+                    match Pipe::pull(&mut b, n) {
+                        Some(out) => {
+                            // room for a waiting writer
+                            crate::socket::bump();
+                            Src::Data(out)
+                        }
+                        None => Src::Err(-ENOMEM),
+                    }
                 }
             }
             FdKind::PipeW(_) => Src::Err(-EBADF),
@@ -616,6 +698,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     .unwrap_or(Src::Err(-EBADF));
     match src {
         Src::Data(d) => Res::Val(if put(buf, &d) || d.is_empty() { d.len() as i64 } else { -EFAULT }),
+        Src::Done(v) => Res::Val(v),
         Src::Err(e) => Res::Val(e),
         Src::Block(w) => Res::Block(w),
         Src::Sock(id) => sock_recv(id, buf, n as u64, 0, 0, 0),
@@ -661,68 +744,179 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     }
 }
 
+/// Make the buffer of an open file writable with room for `len` bytes in total. The buffer is
+/// shared with other descriptors and the stored file until the first write (copy on write).
+/// `None`: no memory – the buffer is unchanged.
+fn file_room(data: &mut Arc<Vec<u8>>, len: usize) -> Option<&mut Vec<u8>> {
+    if Arc::get_mut(data).is_none() {
+        let mut own = crate::mem::try_with_capacity(len.max(data.len()))?;
+        own.extend_from_slice(data);
+        *data = Arc::new(own);
+    }
+    let v = Arc::get_mut(data)?;
+    if len > v.len() && !crate::mem::try_reserve(v, len - v.len()) {
+        return None;
+    }
+    Some(v)
+}
+
+/// Write `data` at `*pos` into the buffer of an open file at host path `path`.
+fn file_write(fd_data: &mut Arc<Vec<u8>>, pos: &mut u64, path: &str, data: &[u8]) -> Result<(), i64> {
+    let Some(end) = pos.checked_add(data.len() as u64).filter(|&e| e <= MAX_FILE_BYTES) else { return Err(-EFBIG) };
+    // quota of the RAM tree the file lives in (tmpfs, RAM layer); other files have none
+    if !fs::grow(path, end.max(fd_data.len() as u64)) {
+        return Err(-ENOSPC);
+    }
+    let Some(v) = file_room(fd_data, end as usize) else { return Err(-ENOMEM) };
+    let s = *pos as usize;
+    if v.len() < s + data.len() {
+        v.resize(s + data.len(), 0);
+    }
+    v[s..s + data.len()].copy_from_slice(data);
+    *pos = end;
+    Ok(())
+}
+
+/// Put `data` into a pipe or Unix socket direction for a `write`-like call. `Ok(n)`: `n` bytes
+/// were taken (`n < data.len()`: the buffer is full now). `Err(Res)`: nothing was taken.
+fn pipe_write(pp: &Pipe, data: &[u8], nonblock: bool) -> Result<usize, Res> {
+    match pp.push(data) {
+        Ok(k) => {
+            crate::socket::bump();
+            Ok(k)
+        }
+        Err(crate::pipe::PushError::NoMemory) => Err(Res::Val(-ENOMEM)),
+        Err(crate::pipe::PushError::Full) if nonblock => Err(Res::Val(-11)),
+        Err(crate::pipe::PushError::Full) => Err(Res::Block(Wait::Net(crate::socket::gen()))),
+    }
+}
+
 fn sys_write(fd: u64, buf: u64, n: u64) -> i64 {
-    let Some(data) = get(buf, n.min(1 << 24) as usize) else { return -EFAULT };
+    match write_res(fd, buf, n) {
+        Res::Val(v) => v,
+        Res::Partial(done, _) => done as i64,
+        _ => -11,
+    }
+}
+
+/// `write`: the result can be "wait and repeat" (full pipe) – see [`Res::Partial`].
+fn write_res(fd: u64, buf: u64, n: u64) -> Res {
+    let want = n.min(1 << 24) as usize;
+    // a large write to a pipe is delivered in pieces (see `Res::Partial`): copy from the caller only
+    // what the pipe can hold at once, not the whole request each time the writer wakes up
+    let piece = if want > crate::pipe::PIPE_DEFAULT as usize {
+        with(|p| match p.fd(fd).map(|d| &d.kind) {
+            Some(FdKind::PipeW(pp)) | Some(FdKind::UnixConn(_, pp)) => want.min(pp.capacity() as usize),
+            _ => want,
+        })
+        .unwrap_or(want)
+    } else {
+        want
+    };
+    let Some(data) = get(buf, piece) else { return Res::Val(-EFAULT) };
+    enum Out {
+        Echo,
+        Done(usize),
+        Sock(usize),
+        Fb,
+        Group(String),
+        Res(Res),
+    }
     let r = with(|p| {
-        let Some(d) = p.fd(fd) else { return Err(-EBADF) };
+        let Some(d) = p.fd(fd) else { return Out::Res(Res::Val(-EBADF)) };
+        let nonblock = d.flags & 0x800 != 0;
         match &mut d.kind {
-            FdKind::Console => Ok(Some(())),
-            FdKind::Null | FdKind::Zero | FdKind::Random => Ok(None),
-            FdKind::File { data: fd_data, pos, write, append, dirty, .. } => {
+            FdKind::Console => Out::Echo,
+            FdKind::Null | FdKind::Zero | FdKind::Random => Out::Done(data.len()),
+            FdKind::File { data: fd_data, pos, write, append, dirty, path } => {
                 if !*write {
-                    return Err(-EBADF);
+                    return Out::Res(Res::Val(-EBADF));
+                }
+                if crate::groups::files::is_inside(path) || path == PIPE_MAX_FILE {
+                    return Out::Group(path.clone());
                 }
                 if *append {
                     *pos = fd_data.len() as u64;
                 }
-                if pos.checked_add(data.len() as u64).map_or(true, |end| end > MAX_FILE_BYTES) {
-                    return Err(-EFBIG);
+                match file_write(fd_data, pos, path, &data) {
+                    Ok(()) => {
+                        *dirty = true;
+                        Out::Done(data.len())
+                    }
+                    Err(e) => Out::Res(Res::Val(e)),
                 }
-                *dirty = true;
-                let v = Arc::make_mut(fd_data);
-                let s = *pos as usize;
-                if v.len() < s + data.len() {
-                    v.resize(s + data.len(), 0);
-                }
-                v[s..s + data.len()].copy_from_slice(&data);
-                *pos += data.len() as u64;
-                Ok(None)
             }
-            FdKind::Sock(h) => Err(h.0 as i64 + 1_000_000),
-            FdKind::Fb(_) => Err(-2_000_000),
+            FdKind::Sock(h) => Out::Sock(h.0),
+            FdKind::Fb(_) => Out::Fb,
             FdKind::Eingabe(e) => {
                 crate::eingabe::einspeisen(e.0, &data);
-                Ok(None)
+                Out::Done(data.len())
             }
             FdKind::EventFd(c, _) => {
                 if data.len() < 8 {
-                    return Err(-EINVAL);
+                    return Out::Res(Res::Val(-EINVAL));
                 }
                 *c.lock() += u64::from_le_bytes(data[0..8].try_into().unwrap());
                 crate::socket::bump();
-                Ok(None)
+                Out::Done(data.len())
             }
             FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
+                // a blocking write that was continued (see `Res::Partial`) reports everything it
+                // delivered, also when the rest fails
                 if pp.readers.load(Ordering::SeqCst) == 0 {
                     p.pending |= 1 << (crate::signal::SIGPIPE - 1);
-                    return Err(-EPIPE);
+                    let done = core::mem::take(&mut p.io_done);
+                    return if done > 0 { Out::Done(done as usize) } else { Out::Res(Res::Val(-EPIPE)) };
                 }
-                pp.buf.lock().extend(data.iter().copied());
-                crate::socket::bump();
-                Ok(None)
+                match pipe_write(pp, &data, nonblock) {
+                    Ok(k) if k == want || nonblock => Out::Done(k + core::mem::take(&mut p.io_done) as usize),
+                    // a blocking writer waits until everything is delivered
+                    Ok(k) => Out::Res(Res::Partial(k as u64, Wait::Net(crate::socket::gen()))),
+                    Err(Res::Val(e)) => match core::mem::take(&mut p.io_done) {
+                        0 => Out::Res(Res::Val(e)),
+                        done => Out::Done(done as usize),
+                    },
+                    Err(r) => Out::Res(r),
+                }
             }
-            _ => Err(-EBADF),
+            _ => Out::Res(Res::Val(-EBADF)),
         }
     })
-    .unwrap_or(Err(-EBADF));
-    match r {
-        Ok(Some(())) => {
-            echo(&data);
+    .unwrap_or(Out::Res(Res::Val(-EBADF)));
+    Res::Val(match r {
+        Out::Echo => {
+            // the console's own buffers belong to the kernel, not to the writer
+            crate::heap::kernel(|| echo(&data));
             data.len() as i64
         }
-        Ok(None) => data.len() as i64,
-        Err(e) if e >= 1_000_000 => crate::socket::send((e - 1_000_000) as usize, &data, None),
-        Err(-2_000_000) => crate::eingabe::fb_schreiben(0, &data),
+        Out::Done(k) => k as i64,
+        Out::Sock(id) => crate::socket::send(id, &data, None),
+        Out::Fb => crate::eingabe::fb_schreiben(0, &data),
+        Out::Group(path) => control_write(&path, &data),
+        Out::Res(r) => return r,
+    })
+}
+
+/// Path of the control file for the largest pipe size.
+const PIPE_MAX_FILE: &str = "/proc/sys/fs/pipe-max-size";
+
+/// A write to a kernel control file takes effect at once and reports its error (the data is not
+/// kept in the descriptor): the group tree and `/proc/sys/fs/pipe-max-size`.
+fn control_write(path: &str, data: &[u8]) -> i64 {
+    if !calls::holds(Rights::MANAGE_GROUPS) {
+        return -EPERM;
+    }
+    let text = core::str::from_utf8(data).unwrap_or("").trim();
+    if path == PIPE_MAX_FILE {
+        return match text.parse::<u64>() {
+            Ok(v) if crate::pipe::set_max_size(v) => data.len() as i64,
+            _ => -EINVAL,
+        };
+    }
+    let own_ns = with(|p| p.link.ns().clone());
+    let pid_of = |local: u64| own_ns.as_ref().and_then(|ns| ns.global(local));
+    match crate::groups::files::write(path, text, &pid_of) {
+        Ok(()) => data.len() as i64,
         Err(e) => e,
     }
 }
@@ -759,19 +953,26 @@ fn iov(base: u64, cnt: u64) -> Vec<(u64, u64)> {
     b.chunks(16).map(|c| (u64::from_le_bytes(c[0..8].try_into().unwrap()), u64::from_le_bytes(c[8..16].try_into().unwrap()))).collect()
 }
 
-fn sys_writev(fd: u64, base: u64, cnt: u64) -> i64 {
+fn sys_writev(fd: u64, base: u64, cnt: u64) -> Res {
     let mut total = 0;
     for (b, l) in iov(base, cnt) {
         if l == 0 {
             continue;
         }
-        let r = sys_write(fd, b, l);
-        if r < 0 {
-            return if total > 0 { total } else { r };
+        match write_res(fd, b, l) {
+            Res::Val(r) if r < 0 => return Res::Val(if total > 0 { total } else { r }),
+            Res::Val(r) => {
+                total += r;
+                if (r as u64) < l.min(1 << 24) {
+                    break;
+                }
+            }
+            // full pipe: what was delivered so far is the result (a short write); nothing yet: wait
+            Res::Partial(done, _) => return Res::Val(total + done as i64),
+            other => return if total > 0 { Res::Val(total) } else { other },
         }
-        total += r;
     }
-    total
+    Res::Val(total)
 }
 
 fn sys_readv(fd: u64, base: u64, cnt: u64) -> Res {
@@ -826,6 +1027,10 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             return -EACCES;
         }
     }
+    // limits are changed through the group tree and /proc/sys/fs/pipe-max-size: only with the right
+    if acc != 0 && (crate::groups::files::is_tree(&path) || path == PIPE_MAX_FILE) && !rights.has(Rights::MANAGE_GROUPS) {
+        return -EACCES;
+    }
     let kind = match fs::open(&path) {
         Some(_) if creat && excl => return -EEXIST,
         Some(fs::Node::Dev(d)) => match d {
@@ -847,7 +1052,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if acc != 0 {
                 return -EISDIR;
             }
-            FdKind::Dir { ents, pos: 0, path: path.clone(), view: loc.view.clone(), tag: loc.tag }
+            FdKind::Dir { ents: Arc::new(ents), pos: 0, path: path.clone(), view: loc.view.clone(), tag: loc.tag }
         }
         Some(fs::Node::File(data)) => {
             if dironly {
@@ -870,8 +1075,15 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if !matches!(fs::stat(&parent), Some((1, _))) {
                 return -ENOENT;
             }
-            fs::write_file(&path, Vec::new());
-            FdKind::File { data: Arc::new(Vec::new()), pos: 0, path: path.clone(), append, write: true, dirty: false }
+            // nothing can be created in the kernel's control trees; elsewhere the RAM tree may be full
+            if path.starts_with("/proc/") || crate::groups::files::is_tree(&path) {
+                return -EPERM;
+            }
+            let empty = Arc::new(Vec::new());
+            if !fs::store_file(&path, empty.clone()) {
+                return -ENOSPC;
+            }
+            FdKind::File { data: empty, pos: 0, path: path.clone(), append, write: true, dirty: false }
         }
         None => return -ENOENT,
     };
@@ -1003,28 +1215,35 @@ fn sys_lseek(fd: u64, off: i64, wh: u64) -> i64 {
 }
 
 fn sys_getdents(fd: u64, buf: u64, count: u64) -> i64 {
+    // one call fills at most 64 KiB (the caller asks again for the rest)
+    let count = count.min(65536) as usize;
     let out = with(|p| {
         let Some(d) = p.fd(fd) else { return Err(-EBADF) };
         let FdKind::Dir { ents, pos, path, .. } = &mut d.kind else { return Err(-ENOTDIR) };
-        let mut out = Vec::new();
-        let mut all: Vec<(String, u8)> = vec![(".".into(), 4), ("..".into(), 4)];
-        all.extend(ents.iter().map(|e| (e.name.clone(), if e.dir { 4 } else { 8 })));
-        while *pos < all.len() {
-            let (name, t) = &all[*pos];
+        let Some(mut out) = crate::mem::try_with_capacity::<u8>(count) else { return Err(-ENOMEM) };
+        // entries 0 and 1 are "." and "..", then the listing
+        let total = ents.len() + 2;
+        while *pos < total {
+            let (name, t) = match *pos {
+                0 => (".", 4u8),
+                1 => ("..", 4),
+                i => (ents[i - 2].name.as_str(), if ents[i - 2].dir { 4 } else { 8 }),
+            };
             let reclen = (19 + name.len() + 1 + 7) & !7;
-            if out.len() + reclen > count as usize {
+            if out.len() + reclen > count {
                 break;
             }
-            let mut r = vec![0u8; reclen];
+            let start = out.len();
+            out.resize(start + reclen, 0);
+            let r = &mut out[start..];
             r[0..8].copy_from_slice(&ino(&alloc::format!("{path}/{name}")).to_le_bytes());
             r[8..16].copy_from_slice(&((*pos + 1) as u64).to_le_bytes());
             r[16..18].copy_from_slice(&(reclen as u16).to_le_bytes());
-            r[18] = *t;
+            r[18] = t;
             r[19..19 + name.len()].copy_from_slice(name.as_bytes());
-            out.extend_from_slice(&r);
             *pos += 1;
         }
-        if out.is_empty() && *pos < all.len() {
+        if out.is_empty() && *pos < total {
             return Err(-EINVAL);
         }
         Ok(out)
@@ -1070,72 +1289,89 @@ fn sys_readlink(dirfd: i64, path: u64, buf: u64, n: u64) -> i64 {
     }
 }
 
-fn sys_sendfile(out: u64, inp: u64, offp: u64, count: u64) -> i64 {
-    let data = with(|p| match p.fd(inp).map(|d| &mut d.kind) {
-        Some(FdKind::File { data, pos, .. }) => {
-            let s = (*pos as usize).min(data.len());
-            let e = (s + count as usize).min(data.len());
-            if offp == 0 {
-                *pos = e as u64;
-            }
-            Some(data[s..e].to_vec())
-        }
+fn sys_sendfile(out: u64, inp: u64, offp: u64, count: u64) -> Res {
+    // the input file's buffer is shared, not copied
+    let src = with(|p| match p.fd(inp).map(|d| &d.kind) {
+        Some(FdKind::File { data, pos, .. }) => Some((data.clone(), *pos)),
         _ => None,
     })
     .flatten();
-    let Some(d) = data else { return -EINVAL };
-    if d.is_empty() {
-        return 0;
+    let Some((data, pos)) = src else { return Res::Val(-EINVAL) };
+    let s = (pos as usize).min(data.len());
+    let e = s.saturating_add(count.min(1 << 24) as usize).min(data.len());
+    if s == e {
+        return Res::Val(0);
     }
-    // über einen Zwischenpuffer im Benutzerspeicher wäre umständlich: direkt schreiben
-    write_bytes(out, &d)
+    let r = write_bytes(out, &data[s..e]);
+    // the position moves by what was really written
+    if let (Res::Val(n), true) = (&r, offp == 0) {
+        if *n > 0 {
+            with(|p| {
+                if let Some(FdKind::File { pos, .. }) = p.fd(inp).map(|d| &mut d.kind) {
+                    *pos = s as u64 + *n as u64;
+                }
+            });
+        }
+    }
+    r
 }
 
-/// Bytes aus dem Kern an einen Dateideskriptor schreiben
-fn write_bytes(fd: u64, data: &[u8]) -> i64 {
+/// Bytes aus dem Kern an einen Dateideskriptor schreiben. A full pipe takes what fits (short
+/// count); if nothing fits the caller waits and repeats the call, or gets `EAGAIN`.
+fn write_bytes(fd: u64, data: &[u8]) -> Res {
     let r = with(|p| {
-        let Some(d) = p.fd(fd) else { return Err(-EBADF) };
+        let Some(d) = p.fd(fd) else { return Err(Res::Val(-EBADF)) };
+        let nonblock = d.flags & 0x800 != 0;
         match &mut d.kind {
-            FdKind::Console => Ok(true),
-            FdKind::Null => Ok(false),
-            FdKind::File { data: fd_data, pos, write: true, dirty, .. } => {
-                if pos.checked_add(data.len() as u64).map_or(true, |end| end > MAX_FILE_BYTES) {
-                    return Err(-EFBIG);
+            FdKind::Console => Ok(None),
+            FdKind::Null => Ok(Some(data.len())),
+            FdKind::File { data: fd_data, pos, write: true, dirty, path, .. } => match file_write(fd_data, pos, path, data) {
+                Ok(()) => {
+                    *dirty = true;
+                    Ok(Some(data.len()))
                 }
-                *dirty = true;
-                let v = Arc::make_mut(fd_data);
-                let s = *pos as usize;
-                if v.len() < s + data.len() {
-                    v.resize(s + data.len(), 0);
-                }
-                v[s..s + data.len()].copy_from_slice(data);
-                *pos += data.len() as u64;
-                Ok(false)
-            }
+                Err(e) => Err(Res::Val(e)),
+            },
             FdKind::PipeW(pp) | FdKind::UnixConn(_, pp) => {
-                pp.buf.lock().extend(data.iter().copied());
-                Ok(false)
+                if pp.readers.load(Ordering::SeqCst) == 0 {
+                    p.pending |= 1 << (crate::signal::SIGPIPE - 1);
+                    return Err(Res::Val(-EPIPE));
+                }
+                pipe_write(pp, data, nonblock).map(Some)
             }
-            _ => Err(-EBADF),
+            _ => Err(Res::Val(-EBADF)),
         }
     })
-    .unwrap_or(Err(-EBADF));
+    .unwrap_or(Err(Res::Val(-EBADF)));
     match r {
-        Ok(true) => {
-            echo(data);
-            data.len() as i64
+        Ok(None) => {
+            crate::heap::kernel(|| echo(data));
+            Res::Val(data.len() as i64)
         }
-        Ok(false) => data.len() as i64,
-        Err(e) => e,
+        Ok(Some(n)) => Res::Val(n as i64),
+        Err(r) => r,
     }
 }
 
-fn sys_statfs(buf: u64) -> i64 {
-    let (total, _, _, _) = crate::mem::stats();
-    let free = crate::mem::free_bytes();
+/// `statfs(path, buf)` / `fstatfs(fd, buf)`: a path in a RAM tree (tmpfs, the host's RAM layer)
+/// reports that tree's quota and use; everything else the machine's memory as before.
+fn sys_statfs(by_fd: bool, what: u64, buf: u64) -> i64 {
+    let host = if by_fd {
+        with(|p| match p.fd(what).map(|d| &d.kind) {
+            Some(FdKind::File { path, .. }) | Some(FdKind::Dir { path, .. }) => Some(path.clone()),
+            _ => None,
+        })
+        .flatten()
+    } else {
+        ustr(what).and_then(|p| locate(-100, &p, true).ok()).map(|l| l.host)
+    };
+    let (mut total, mut free, mut kind) = (crate::mem::total_bytes(), crate::mem::free_bytes(), 0xEF53u64);
+    if let Some((used, quota)) = host.as_deref().and_then(fs::ram_usage) {
+        (total, free, kind) = (quota, quota.saturating_sub(used), 0x0102_1994);
+    }
     let mut b = vec![0u8; 120];
     let w = |b: &mut Vec<u8>, o: usize, v: u64| b[o..o + 8].copy_from_slice(&v.to_le_bytes());
-    w(&mut b, 0, 0xEF53);
+    w(&mut b, 0, kind);
     w(&mut b, 8, 4096);
     w(&mut b, 16, total / 4096);
     w(&mut b, 24, free / 4096);
@@ -1183,7 +1419,9 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if replaced_link {
         fs::unlink(&n);
     }
-    fs::write_file(&n, (*data).clone());
+    if !fs::store_file(&n, data) {
+        return -ENOSPC;
+    }
     if !fs::unlink(&o) {
         return -EROFS;
     }
@@ -1193,10 +1431,18 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
 fn sys_ftruncate(fd: u64, len: u64) -> i64 {
     with(|p| match p.fd(fd).map(|d| &mut d.kind) {
         Some(FdKind::File { write: true, .. }) if len > MAX_FILE_BYTES => -EFBIG,
-        Some(FdKind::File { data, write: true, dirty, .. }) => {
-            *dirty = true;
-            Arc::make_mut(data).resize(len as usize, 0);
-            0
+        Some(FdKind::File { data, write: true, dirty, path, .. }) => {
+            if len as usize > data.len() && !fs::grow(path, len) {
+                return -ENOSPC;
+            }
+            match file_room(data, len as usize) {
+                Some(v) => {
+                    v.resize(len as usize, 0);
+                    *dirty = true;
+                    0
+                }
+                None => -ENOMEM,
+            }
         }
         _ => -EINVAL,
     })
@@ -1291,6 +1537,10 @@ fn sys_dup(old: u64, new: Option<u64>, flags: u64) -> i64 {
                     return -EBADF;
                 }
                 if nf >= p.g.fds.len() {
+                    let more = nf + 1 - p.g.fds.len();
+                    if !crate::mem::try_reserve(&mut p.g.fds, more) {
+                        return -ENOMEM;
+                    }
                     p.g.fds.resize_with(nf + 1, || None);
                 }
                 p.g.fds[nf] = Some(n);
@@ -1330,21 +1580,55 @@ fn sys_fcntl(fd: u64, cmd: u64, arg: u64) -> i64 {
             }).unwrap_or(-EBADF))
             .unwrap_or(-EBADF)
         }
+        // F_SETPIPE_SZ / F_GETPIPE_SZ
+        1031 | 1032 => {
+            let pipe = with(|p| match p.fd(fd).map(|d| &d.kind) {
+                Some(FdKind::PipeR(pp)) | Some(FdKind::PipeW(pp)) => Some(pp.clone()),
+                _ => None,
+            })
+            .flatten();
+            let Some(pipe) = pipe else { return -EBADF };
+            if cmd == 1032 {
+                return pipe.capacity() as i64;
+            }
+            // above the configured maximum only with the right to manage resource groups
+            if arg > crate::pipe::PIPE_MAX_CEILING || arg > crate::pipe::max_size() && !calls::holds(Rights::MANAGE_GROUPS) {
+                return -EPERM;
+            }
+            match pipe.set_capacity(arg) {
+                Some(cap) => cap as i64,
+                None => -16,
+            }
+        }
         _ => 0,
     }
 }
 
 fn sys_pipe(fds: u64, flags: u64) -> i64 {
-    let p = Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(1), writers: AtomicU64::new(1) });
+    // both ends count as open from the start: a descriptor that cannot be placed is dropped and
+    // gives its count back
+    let p = Pipe::new();
+    p.readers.store(1, Ordering::SeqCst);
+    p.writers.store(1, Ordering::SeqCst);
     let cl = flags & 0x80000 != 0;
     let (r, w) = with(|pr| {
         // O_NONBLOCK (0x800) aus pipe2 übernehmen
         let nb = (flags & 0x800) as u32;
         let r = pr.add_fd(Fd { kind: FdKind::PipeR(p.clone()), cloexec: cl, flags: nb }, 0);
+        if r < 0 {
+            return (r, r);
+        }
         let w = pr.add_fd(Fd { kind: FdKind::PipeW(p.clone()), cloexec: cl, flags: 1 | nb }, 0);
+        if w < 0 {
+            pr.g.fds[r as usize] = None;
+            return (w, w);
+        }
         (r, w)
     })
-    .unwrap_or((-1, -1));
+    .unwrap_or((-EBADF, -EBADF));
+    if r < 0 {
+        return r;
+    }
     let mut b = Vec::new();
     b.extend_from_slice(&(r as i32).to_le_bytes());
     b.extend_from_slice(&(w as i32).to_le_bytes());
@@ -1476,13 +1760,13 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool) -> u32 {
     match &d.kind {
         FdKind::Console => r(inp) | w(true),
         FdKind::PipeR(pp) => r(!pp.buf.lock().is_empty() || pp.writers.load(Ordering::SeqCst) == 0) | if pp.writers.load(Ordering::SeqCst) == 0 { 0x10 } else { 0 },
-        FdKind::PipeW(pp) => w(true) | if pp.readers.load(Ordering::SeqCst) == 0 { 8 } else { 0 },
+        FdKind::PipeW(pp) => w(pp.writable()) | if pp.readers.load(Ordering::SeqCst) == 0 { 8 } else { 0 },
         FdKind::Sock(h) => {
             let (rr, ww) = crate::socket::readiness(h.0);
             r(rr) | w(ww)
         }
         FdKind::SigFd(m) => r(pending & *m != 0),
-        FdKind::UnixConn(rx, tx) => r(!rx.buf.lock().is_empty() || rx.writers.load(Ordering::SeqCst) == 0) | w(tx.readers.load(Ordering::SeqCst) > 0),
+        FdKind::UnixConn(rx, tx) => r(!rx.buf.lock().is_empty() || rx.writers.load(Ordering::SeqCst) == 0) | w(tx.readers.load(Ordering::SeqCst) > 0 && tx.writable()),
         FdKind::UnixSock(us) => r(matches!(&*us.lock(), proc::UnixState::Listening(_, q) if !q.is_empty())),
         FdKind::EventFd(c, _) => r(*c.lock() > 0) | w(true),
         FdKind::TimerFd(t) => {
@@ -1539,7 +1823,12 @@ fn sys_epoll_ctl(epfd: u64, op: u64, fd: i64, ev: u64) -> i64 {
     let mut l = e.lock();
     let pos = l.iter().position(|x| x.0 as i64 == fd);
     match (op, pos) {
-        (1, None) => l.push((fd as i32, events, data)),
+        (1, None) => {
+            if l.len() >= proc::MAX_FDS || !crate::mem::try_reserve(&mut l, 1) {
+                return -ENOMEM;
+            }
+            l.push((fd as i32, events, data))
+        }
         (1, Some(_)) => return -EEXIST,
         (2, Some(i)) => {
             l.remove(i);
@@ -1816,7 +2105,8 @@ fn sys_socket(domain: u64, typ: u64) -> i64 {
         2 => true,
         _ => return -93,
     };
-    let id = crate::socket::create(udp);
+    // ENFILE: the socket table is full, or this group holds its share of it
+    let Some(id) = crate::socket::create(udp) else { return -23 };
     crate::socket::set_nonblock(id, typ & 0x800 != 0);
     let h = Arc::new(crate::socket::Handle(id));
     with(|p| p.add_fd(Fd { kind: FdKind::Sock(h), cloexec: typ & 0x80000 != 0, flags: 2 | (typ as u32 & 0x800) }, 0)).unwrap_or(-EBADF)
@@ -1966,7 +2256,7 @@ fn sock_recv(id: usize, buf: u64, n: u64, flags: u64, addr: u64, lenp: u64) -> R
 }
 
 fn sys_sendto(fd: u64, buf: u64, len: u64, addr: u64, alen: u64) -> Res {
-    let Some(id) = sock_id(fd) else { return Res::Val(sys_write(fd, buf, len)) };
+    let Some(id) = sock_id(fd) else { return write_res(fd, buf, len) };
     let Some(data) = get(buf, len.min(1 << 20) as usize) else { return Res::Val(-EFAULT) };
     let to = if addr != 0 { get(addr, (alen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b)) } else { None };
     let r = crate::socket::send(id, &data, to);
@@ -1990,15 +2280,22 @@ fn msghdr(m: u64) -> Option<(u64, u64, Vec<(u64, u64)>)> {
 
 fn sys_sendmsg(fd: u64, m: u64) -> Res {
     let Some((name, nlen, v)) = msghdr(m) else { return Res::Val(-EFAULT) };
+    // one message: at most 1 MiB in total
     let mut data = Vec::new();
     for (b, l) in v {
-        if let Some(d) = get(b, l.min(1 << 20) as usize) {
-            data.extend_from_slice(&d);
+        let room = (1usize << 20) - data.len();
+        if room == 0 {
+            break;
+        }
+        match get(b, (l as usize).min(room)) {
+            Some(d) if crate::mem::try_reserve(&mut data, d.len()) => data.extend_from_slice(&d),
+            Some(_) => return Res::Val(-ENOMEM),
+            None => {}
         }
     }
     let Some(id) = sock_id(fd) else {
         // Unix-Socket/Rohr: Daten schreiben (Begleitdaten wie SCM_RIGHTS werden nicht übertragen)
-        return Res::Val(write_bytes(fd, &data));
+        return write_bytes(fd, &data);
     };
     let to = if name != 0 { get(name, (nlen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b)) } else { None };
     Res::Val(crate::socket::send(id, &data, to))
@@ -2073,7 +2370,8 @@ fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
             return -98;
         }
         *us.lock() = proc::UnixState::Listening(path.clone(), alloc::collections::VecDeque::new());
-        UNIX_LISTEN.lock().push((path, us));
+        // the list is shared (its growth belongs to the kernel); the entry goes when the socket closes
+        crate::heap::kernel(|| UNIX_LISTEN.lock().push((path, us)));
         return 0;
     }
     let Some(id) = sock_id(fd) else { return -88 };
@@ -2112,7 +2410,15 @@ fn sys_brk(addr: u64) -> i64 {
         let new = (addr + 4095) & !4095;
         let mut a = p.g.brk;
         while a < new {
-            p.space_mut().map(a, true, false);
+            if p.space_mut().map(a, true, false).is_none() {
+                // no memory: like Linux the break stays where it was
+                let old = p.g.brk;
+                while a > old {
+                    a -= 4096;
+                    p.space_mut().unmap(a);
+                }
+                return old as i64;
+            }
             a += 4096;
         }
         let mut a = new;
@@ -2151,7 +2457,9 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
             if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
                 return -EINVAL;
             }
-            p.space().unreserve(addr, len);
+            if !p.space().unreserve(addr, len) {
+                return -ENOMEM;
+            }
             let mut a = addr;
             while a < addr + len {
                 p.space_mut().unmap(a);
@@ -2169,13 +2477,21 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         let (w, x) = (prot & 2 != 0 || data.is_some(), prot & 4 != 0);
         if data.is_none() {
             // anonym: nur reservieren – Seiten entstehen beim ersten Zugriff (glibc reserviert z. B. 64 MB je Arena)
-            p.space().unreserve(va, len);
-            p.space().reserve(va, len, w || prot & 1 != 0 || prot == 0, x);
+            if !p.space().unreserve(va, len) || !p.space().reserve(va, len, w || prot & 1 != 0 || prot == 0, x) {
+                return -ENOMEM;
+            }
             return va as i64;
         }
         let mut a = va;
         while a < va + len {
-            let pa = p.space_mut().map(a, w || prot & 1 != 0 || prot == 0, x);
+            let Some(pa) = p.space_mut().map(a, w || prot & 1 != 0 || prot == 0, x) else {
+                // no memory: take back what this call mapped
+                while a > va {
+                    a -= 4096;
+                    p.space_mut().unmap(a);
+                }
+                return -ENOMEM;
+            };
             if let Some(d) = &data {
                 let s = (off + (a - va)) as usize;
                 if s < d.len() {
@@ -2196,7 +2512,9 @@ fn sys_munmap(addr: u64, len: u64) -> i64 {
         return -EINVAL;
     }
     with(|p| {
-        p.space().unreserve(addr, (len + 4095) & !4095);
+        if !p.space().unreserve(addr, (len + 4095) & !4095) {
+            return -ENOMEM;
+        }
         let mut a = addr;
         while a < addr + ((len + 4095) & !4095) {
             p.space_mut().unmap(a);
@@ -2247,6 +2565,24 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
         if child_ns.is_dead() {
             return Err(-ENOMEM);
         }
+        // resource group: a process started in new namespaces (a cell) gets its own group, every
+        // other child stays in the parent's. The thread is counted first (`pids.max`), and all
+        // that the child needs is charged to its group.
+        let res = if new_ns != 0 {
+            match crate::groups::create_cell(p.g.res, pid) {
+                Ok(g) => g,
+                Err(e) => return Err(e.errno()),
+            }
+        } else {
+            p.g.res
+        };
+        let Some(pids) = crate::groups::PidCharge::new(res) else {
+            if new_ns != 0 {
+                let _ = crate::groups::remove(res);
+            }
+            return Err(-EAGAIN);
+        };
+        crate::heap::scope(res, || {
         let g = if thread {
             // Faden: Adressraum, Dateien, Signale gemeinsam
             p.g.clone()
@@ -2256,17 +2592,17 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             if flags & calls::CLONE_NEWNS != 0 {
                 iso.mnt = iso.mnt.copy();
             }
-            let fds = if flags & FILES != 0 {
-                p.g.fds.iter().map(|o| o.as_ref().map(|d| d.dup())).collect()
-            } else {
-                p.g.fds.iter().map(|o| o.as_ref().map(|d| {
+            let mut fds: Vec<Option<Fd>> = crate::mem::try_with_capacity(p.g.fds.len()).ok_or(-ENOMEM)?;
+            for o in p.g.fds.iter() {
+                fds.push(o.as_ref().map(|d| {
                     let mut n = d.dup();
-                    n.cloexec = d.cloexec;
+                    // CLONE_FILES is not modelled as sharing: the child gets its own table either way
+                    n.cloexec = if flags & FILES != 0 { false } else { d.cloexec };
                     n
-                })).collect()
-            };
+                }));
+            }
             proc::Shared::new(proc::Group {
-                space: Some(p.space().fork()),
+                space: Some(p.space().fork().ok_or(-ENOMEM)?),
                 fds,
                 cwd: p.g.cwd.clone(),
                 brk_start: p.g.brk_start,
@@ -2280,10 +2616,13 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
                 auxv: p.g.auxv.clone(),
                 iso,
                 exe_host: p.g.exe_host.clone(),
+                res,
             })
         };
+        let kstack = crate::mem::try_vec(proc::KSTACK).ok_or(-ENOMEM)?;
         // numbers of the child: as the parent sees it (return value) and as it sees itself
-        let link = crate::isolation::pid::PidLink::new(child_ns, pid);
+        // (the tables of the namespaces are shared: they belong to the kernel)
+        let link = crate::heap::kernel(|| crate::isolation::pid::PidLink::new(child_ns, pid));
         let seen_by_parent = shown(p, pid);
         let seen_by_child = link.ns().local(pid).unwrap_or(0);
         let mut fr = f.clone();
@@ -2306,7 +2645,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             name: p.name.clone(),
             state: State::Ready,
             frame: alloc::boxed::Box::new(fr),
-            kstack: vec![0u8; proc::KSTACK],
+            kstack,
             fs_base: if flags & SETTLS != 0 { tls } else { fs_now },
             clear_tid: if flags & CHILD_CLEARTID != 0 { ctid } else { 0 },
             sigmask: p.sigmask,
@@ -2317,7 +2656,15 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             poll_dl: None,
             g,
             link,
+            pids,
+            io_done: 0,
         }))
+        })
+        .and_then(|(seen, child)| {
+            // the box is the child's (charged to its group); the process table is the kernel's
+            let boxed = crate::heap::scope(res, || alloc::boxed::Box::new(child));
+            Ok((seen, boxed))
+        })
     });
     let (seen, child) = match child {
         Some(Ok(c)) => c,
@@ -2330,7 +2677,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
         if child.link.ns().is_dead() {
             return -ENOMEM;
         }
-        ps.push(alloc::boxed::Box::new(child));
+        crate::heap::kernel(|| ps.push(child));
     }
     if flags & VFORK != 0 {
         block(f, Wait::Vfork(pid), false, seen);
@@ -2507,6 +2854,8 @@ fn sys_kill(pid: i64, sig: u64) -> i64 {
     }
     let me_dead = ps.iter().find(|p| p.pid == me).map(|p| matches!(p.state, State::Zombie(_) | State::Dead)).unwrap_or(false);
     drop(ps);
+    // nothing on this stack is dropped once the process is gone
+    drop((targets, live));
     if me_dead {
         proc::exit_thread(sig as i32, true);
     }

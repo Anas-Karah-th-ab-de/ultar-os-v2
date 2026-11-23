@@ -61,6 +61,12 @@ impl HttpSource {
         if bad {
             return Err(PROTOCOL);
         }
+        // A source configured with https never leaves https: not for the file location and
+        // not for a redirect (no clear-text transfer, no requests into the local network over
+        // plain http on the server's say-so).
+        if self.base.starts_with("https://") && location.starts_with("http://") {
+            return Err(PROTOCOL);
+        }
         if location.starts_with("http://") || location.starts_with("https://") {
             let rest = location.strip_prefix(self.base.as_str());
             let ours =
@@ -95,6 +101,44 @@ impl HttpSource {
             Err(ureq::Error::Status(status, _)) => Err(status_error(status)),
             Err(ureq::Error::Transport(_)) => Err(UpdateError::Network(NetworkError::Transport)),
         }
+    }
+}
+
+/// A transfer slower than this on average (bytes per second) is given up …
+pub const MIN_RATE: u64 = 256;
+/// … once it has run for this long. (The lowest rate limit a policy can set is 1 KiB/s.)
+pub const MIN_RATE_GRACE: Duration = Duration::from_secs(60);
+
+/// Ends a stream that only drips. The read time-out alone is per read: a server that sends
+/// one byte a minute would hold the updater's single operation slot for ever. The transfer
+/// fails with `TimedOut` instead; what was received is kept and resumed by the next attempt.
+pub struct MinRate<R, E: FnMut() -> Duration> {
+    inner: R,
+    elapsed: E,
+    bytes: u64,
+}
+
+impl<R: Read, E: FnMut() -> Duration> MinRate<R, E> {
+    /// Guards `inner`; `elapsed` returns the time since the transfer started.
+    pub fn new(inner: R, elapsed: E) -> Self {
+        Self {
+            inner,
+            elapsed,
+            bytes: 0,
+        }
+    }
+}
+
+impl<R: Read, E: FnMut() -> Duration> Read for MinRate<R, E> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.bytes += n as u64;
+        let elapsed = (self.elapsed)();
+        let too_slow = self.bytes < MIN_RATE.saturating_mul(elapsed.as_secs());
+        if n > 0 && elapsed > MIN_RATE_GRACE && too_slow {
+            return Err(std::io::ErrorKind::TimedOut.into());
+        }
+        Ok(n)
     }
 }
 
@@ -160,7 +204,8 @@ impl UpdateSource for HttpSource {
         if start != 0 && start != offset {
             return Err(PROTOCOL);
         }
-        let reader = response.into_reader();
+        let started = std::time::Instant::now();
+        let reader = MinRate::new(response.into_reader(), move || started.elapsed());
         match limit {
             Some(limit) => Ok((start, Box::new(reader.take(limit)))),
             None => Ok((start, Box::new(reader))),
@@ -203,8 +248,15 @@ mod tests {
         assert!(!s.resolve("https://u.example.evil.org/x").unwrap().1);
         assert!(!s.resolve("https://cdn.example/x").unwrap().1);
         assert!(
-            !s.resolve("http://u.example/x").unwrap().1,
-            "other scheme is another server"
+            s.resolve("http://u.example/x").is_err(),
+            "https never falls back to http"
+        );
+        assert!(s.resolve("http://127.0.0.1:8080/x").is_err());
+        let plain = HttpSource::new("http://lan.example", None).unwrap();
+        assert!(plain.resolve("http://lan.example/x").unwrap().1);
+        assert!(
+            !plain.resolve("https://cdn.example/x").unwrap().1,
+            "upgrade is allowed"
         );
         for bad in [
             "",
@@ -221,6 +273,35 @@ mod tests {
         // A token with characters that could break out of the header is dropped.
         let s = HttpSource::new("https://u.example", Some("a\r\nb".into())).unwrap();
         assert!(s.token.is_none());
+    }
+
+    #[test]
+    fn dripping_stream_is_given_up_after_the_grace_period() {
+        use std::cell::Cell;
+        let now = Cell::new(Duration::ZERO);
+        let data = vec![7u8; 100_000];
+        let mut guarded = MinRate::new(data.as_slice(), || now.get());
+        let mut byte = [0u8; 1];
+        // One byte per second: tolerated during the grace period ...
+        for second in 1..=60 {
+            now.set(Duration::from_secs(second));
+            assert_eq!(guarded.read(&mut byte).unwrap(), 1, "second {second}");
+        }
+        // ... then it is over.
+        now.set(Duration::from_secs(61));
+        let error = guarded.read(&mut byte).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+        // A stream at a healthy rate is never touched, however long it runs.
+        let mut healthy = MinRate::new(data.as_slice(), || now.get());
+        let mut chunk = [0u8; 1000];
+        for second in 1..=100 {
+            now.set(Duration::from_secs(second));
+            assert_eq!(healthy.read(&mut chunk).unwrap(), 1000);
+        }
+        // The end of a stream is not an error.
+        now.set(Duration::from_secs(10_000));
+        let mut empty = MinRate::new(&b""[..], || now.get());
+        assert_eq!(empty.read(&mut chunk).unwrap(), 0);
     }
 
     #[test]

@@ -44,7 +44,8 @@ fn table_page() -> u64 {
             return p;
         }
     }
-    crate::mem::alloc_page().expect("kein Speicher für Seitentabellen")
+    // identity map of the kernel (start-up, device windows): forced, outside every group
+    crate::mem::alloc_page_kernel().expect("kein Speicher für Seitentabellen")
 }
 
 #[inline]
@@ -125,22 +126,42 @@ pub struct AddrSpace {
     pub pml4: u64,
     /// reservierte, noch nicht belegte Bereiche (anonymes mmap): Seiten entstehen erst beim ersten Zugriff
     pub lazy: spin::Mutex<alloc::vec::Vec<(u64, u64, bool, bool)>>,
+    /// user pages mapped right now (resident size, without page tables)
+    pub resident: AtomicU64,
+    /// no reserved range reaches up to or beyond this address (lets `unreserve` skip the search for
+    /// a fresh address above everything – the usual case of `mmap` without a fixed address)
+    lazy_end: AtomicU64,
+}
+
+/// Most reserved ranges (anonymous mappings) of one address space, like Linux' `max_map_count`.
+pub const MAX_RANGES: usize = 65530;
+
+/// Outcome of a page fault in an address space.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Fault {
+    /// A page was put in place.
+    Mapped,
+    /// The address lies in no reserved range.
+    NotReserved,
+    /// The range is reserved but no page could be had (see `heap::last_denial`).
+    NoMemory,
 }
 
 impl AddrSpace {
-    pub fn new() -> AddrSpace {
-        let p = crate::mem::alloc_page().expect("kein Speicher");
+    /// Empty address space that shares the kernel's mappings; `None` without memory.
+    pub fn new() -> Option<AddrSpace> {
+        let p = crate::mem::alloc_page()?;
         tab(p).copy_from_slice(tab(kernel_pml4()));
-        AddrSpace { pml4: p, lazy: spin::Mutex::new(alloc::vec::Vec::new()) }
+        Some(AddrSpace { pml4: p, lazy: spin::Mutex::new(alloc::vec::Vec::new()), resident: AtomicU64::new(0), lazy_end: AtomicU64::new(0) })
     }
 
     /// Eintrag der nächsten Ebene holen; geteilte Kern-Tabellen/2-MB-Seiten werden für den Prozess ersetzt
-    fn next(e: &mut u64, user: bool) -> u64 {
+    fn next(e: &mut u64, user: bool) -> Option<u64> {
         if *e & P == 0 {
-            *e = crate::mem::alloc_page().expect("kein Speicher") | P | W | U | OWN;
+            *e = crate::mem::alloc_page()? | P | W | U | OWN;
         } else if *e & OWN == 0 {
             let old = *e;
-            let n = crate::mem::alloc_page().expect("kein Speicher");
+            let n = crate::mem::alloc_page()?;
             if old & HUGE == 0 {
                 // geteilte Kern-Tabelle: Kopie (Kern-Einträge bleiben ohne U)
                 tab(n).copy_from_slice(tab(old));
@@ -151,26 +172,27 @@ impl AddrSpace {
         if user {
             *e |= U;
         }
-        *e & ADDR
+        Some(*e & ADDR)
     }
 
-    fn leaf(&self, va: u64) -> &'static mut u64 {
+    fn leaf(&self, va: u64) -> Option<&'static mut u64> {
         let l4 = &mut tab(self.pml4)[((va >> 39) & 511) as usize];
-        let t3 = Self::next(l4, true);
+        let t3 = Self::next(l4, true)?;
         let l3 = &mut tab(t3)[((va >> 30) & 511) as usize];
-        let t2 = Self::next(l3, true);
+        let t2 = Self::next(l3, true)?;
         let l2 = &mut tab(t2)[((va >> 21) & 511) as usize];
-        let t1 = Self::next(l2, true);
-        &mut tab(t1)[((va >> 12) & 511) as usize]
+        let t1 = Self::next(l2, true)?;
+        Some(&mut tab(t1)[((va >> 12) & 511) as usize])
     }
 
-    /// Benutzerseite bei `va` (genullt) bereitstellen; liefert die physische Adresse
-    pub fn map(&mut self, va: u64, writable: bool, exec: bool) -> u64 {
+    /// Benutzerseite bei `va` (genullt) bereitstellen; liefert die physische Adresse.
+    /// `None`: no memory (limit of the group or the machine) – nothing was mapped at `va`.
+    pub fn map(&mut self, va: u64, writable: bool, exec: bool) -> Option<u64> {
         self.map_inner(va, writable, exec)
     }
 
-    fn map_inner(&self, va: u64, writable: bool, exec: bool) -> u64 {
-        let e = self.leaf(va);
+    fn map_inner(&self, va: u64, writable: bool, exec: bool) -> Option<u64> {
+        let e = self.leaf(va)?;
         if *e & P != 0 {
             if writable {
                 *e |= W;
@@ -178,11 +200,12 @@ impl AddrSpace {
             if exec {
                 *e &= !NX;
             }
-            return *e & ADDR;
+            return Some(*e & ADDR);
         }
-        let pa = crate::mem::alloc_page().expect("kein Speicher für Benutzerseite");
+        let pa = crate::mem::alloc_page()?;
         *e = pa | P | U | OWN | if writable { W } else { 0 } | if exec { 0 } else { nx() };
-        pa
+        self.resident.fetch_add(1, Ordering::Relaxed);
+        Some(pa)
     }
 
     pub fn unmap(&mut self, va: u64) {
@@ -190,6 +213,7 @@ impl AddrSpace {
             if *e & P != 0 && *e & OWN != 0 {
                 crate::mem::free_page(*e & ADDR);
                 *e = 0;
+                self.resident.fetch_sub(1, Ordering::Relaxed);
                 unsafe { core::arch::asm!("invlpg [{}]", in(reg) va) };
             }
         }
@@ -216,47 +240,70 @@ impl AddrSpace {
             }
         }
         // Kern greift auf eine reservierte, noch leere Seite zu → jetzt belegen
-        if self.fault_in(va) {
+        if self.fault_in(va) == Fault::Mapped {
             let e = *self.walk(va)?;
             return Some(((e & ADDR) | (va & 0xfff), e & W != 0));
         }
         None
     }
 
-    /// Bereich reservieren (Seiten beim ersten Zugriff)
-    pub fn reserve(&self, va: u64, len: u64, w: bool, x: bool) {
-        self.lazy.lock().push((va, va + len, w, x));
+    /// Bereich reservieren (Seiten beim ersten Zugriff). `false`: the address space already holds
+    /// [`MAX_RANGES`] ranges or the list cannot grow – nothing was reserved.
+    pub fn reserve(&self, va: u64, len: u64, w: bool, x: bool) -> bool {
+        let mut l = self.lazy.lock();
+        if l.len() >= MAX_RANGES || !crate::mem::try_reserve(&mut l, 1) {
+            return false;
+        }
+        l.push((va, va + len, w, x));
+        self.lazy_end.fetch_max(va + len, Ordering::Relaxed);
+        true
     }
 
-    /// Reservierung (teilweise) aufheben
-    pub fn unreserve(&self, va: u64, len: u64) {
+    /// Reservierung (teilweise) aufheben. `false`: a range would have to be split and the list
+    /// cannot grow (see `reserve`) – nothing was changed.
+    pub fn unreserve(&self, va: u64, len: u64) -> bool {
         let end = va + len;
         let mut l = self.lazy.lock();
-        let mut neu = alloc::vec::Vec::with_capacity(l.len() + 1);
-        for &(a, b, w, x) in l.iter() {
-            if b <= va || a >= end {
-                neu.push((a, b, w, x));
-                continue;
-            }
-            if a < va {
-                neu.push((a, va, w, x));
-            }
-            if b > end {
-                neu.push((end, b, w, x));
+        if va >= self.lazy_end.load(Ordering::Relaxed) {
+            return true;
+        }
+        // a range that covers the hole on both sides is split in two: one more entry each
+        let splits = l.iter().filter(|r| r.0 < va && r.1 > end).count();
+        if splits > 0 && (l.len() + splits > MAX_RANGES || !crate::mem::try_reserve(&mut l, splits)) {
+            return false;
+        }
+        for i in 0..l.len() {
+            let (a, b, w, x) = l[i];
+            if a < va && b > end {
+                l[i].1 = va;
+                l.push((end, b, w, x));
             }
         }
-        *l = neu;
+        l.retain_mut(|r| {
+            if r.1 <= va || r.0 >= end {
+                true
+            } else if r.0 < va {
+                r.1 = va;
+                true
+            } else if r.1 > end {
+                r.0 = end;
+                true
+            } else {
+                false
+            }
+        });
+        true
     }
 
     /// Seitenfehler in einem reservierten Bereich: genullte Seite einsetzen
-    pub fn fault_in(&self, va: u64) -> bool {
+    pub fn fault_in(&self, va: u64) -> Fault {
         let hit = self.lazy.lock().iter().find(|r| va >= r.0 && va < r.1).map(|r| (r.2, r.3));
         match hit {
-            Some((w, x)) => {
-                self.map_inner(va & !0xfff, w, x);
-                true
-            }
-            None => false,
+            Some((w, x)) => match self.map_inner(va & !0xfff, w, x) {
+                Some(_) => Fault::Mapped,
+                None => Fault::NoMemory,
+            },
+            None => Fault::NotReserved,
         }
     }
 
@@ -278,16 +325,29 @@ impl AddrSpace {
         rec(self.pml4, 3, 0, &mut f);
     }
 
-    /// Kopie für fork(): jede Seite wird kopiert
-    pub fn fork(&self) -> AddrSpace {
-        let mut n = AddrSpace::new();
-        *n.lazy.lock() = self.lazy.lock().clone();
+    /// Kopie für fork(): jede Seite wird kopiert. `None`: no memory for the copy (what was copied
+    /// so far is freed again).
+    pub fn fork(&self) -> Option<AddrSpace> {
+        let mut n = AddrSpace::new()?;
+        {
+            let from = self.lazy.lock();
+            let mut to = crate::mem::try_with_capacity(from.len())?;
+            to.extend_from_slice(&from);
+            *n.lazy.lock() = to;
+            n.lazy_end.store(self.lazy_end.load(Ordering::Relaxed), Ordering::Relaxed);
+        }
+        let mut ok = true;
         self.for_each(|va, pa, fl| {
+            if !ok {
+                return;
+            }
             let va = if va & (1 << 47) != 0 { va | 0xffff_0000_0000_0000 } else { va };
-            let np = n.map(va, fl & W != 0, fl & NX == 0);
-            unsafe { core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096) };
+            match n.map(va, fl & W != 0, fl & NX == 0) {
+                Some(np) => unsafe { core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096) },
+                None => ok = false,
+            }
         });
-        n
+        ok.then_some(n)
     }
 
     pub fn activate(&self) {

@@ -57,6 +57,8 @@ pub struct Sock {
     peer_win: u32,
     /// UDP: Gegenstellen, an die dieses Socket gesendet hat (deren Antworten dürfen herein)
     peers: Vec<([u8; 4], u16)>,
+    /// Resource group of the creator: the socket's buffers are charged to it
+    owner: u16,
 }
 
 impl Sock {
@@ -84,13 +86,31 @@ impl Sock {
             nonblock: false,
             peer_win: 65535,
             peers: Vec::new(),
+            owner: crate::heap::context(),
         }
+    }
+
+    /// Append received bytes to the stream buffer, charged to the socket's owner. `false`: the
+    /// owner's group gets no memory – the segment is dropped (not acknowledged, the peer repeats it).
+    fn take(&mut self, data: &[u8]) -> bool {
+        let rx = &mut self.rx;
+        let ok = crate::heap::scope(self.owner, || crate::heap::fallible(|| rx.try_reserve(data.len())).is_ok());
+        if ok {
+            rx.extend(data.iter().copied());
+        }
+        ok
     }
 }
 
 pub static SOCKS: Mutex<BTreeMap<usize, Sock>> = Mutex::new(BTreeMap::new());
 /// Obergrenzen gegen Überflutung aus dem Netz
 const MAX_SOCKS: usize = 4096;
+/// Sockets one group below `apps`/`cells` may hold (the rest of the table stays for the others)
+const MAX_SOCKS_GROUP: usize = MAX_SOCKS / 8;
+/// Bytes waiting in the send queue (packets for addresses that are still being resolved)
+const MAX_TXQ_BYTES: usize = 4 << 20;
+/// Largest UDP payload
+const MAX_DGRAM: usize = 65507;
 const MAX_HALBOFFEN: usize = 64;
 const MAX_RX: usize = 256 * 1024;
 const MAX_ARP: usize = 256;
@@ -133,10 +153,21 @@ impl Drop for Handle {
     }
 }
 
-pub fn create(udp: bool) -> usize {
+/// New socket for the calling process. `None`: the table is full, or the caller's group (a group
+/// below `apps` or `cells`) already holds its share of it.
+pub fn create(udp: bool) -> Option<usize> {
+    let sock = Sock::new(udp);
+    let mut ss = SOCKS.lock();
+    let branch = crate::groups::branch_of(sock.owner);
+    let limited = branch == crate::groups::APPS || branch == crate::groups::CELLS;
+    let unit = crate::groups::top_of(sock.owner);
+    if ss.len() >= MAX_SOCKS || limited && ss.values().filter(|s| crate::groups::top_of(s.owner) == unit).count() >= MAX_SOCKS_GROUP {
+        return None;
+    }
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed) as usize;
-    SOCKS.lock().insert(id, Sock::new(udp));
-    id
+    // the table is shared: its nodes belong to the kernel
+    crate::heap::kernel(|| ss.insert(id, sock));
+    Some(id)
 }
 
 /// zufälliger freier Port 40000–59999 (nicht vorhersagbar – erschwert das Einschleusen von Paketen)
@@ -183,16 +214,25 @@ fn send_ip(dst: [u8; 4], proto: u8, payload: &[u8]) {
         }
     }
     let src = if dst[0] == 127 { [127, 0, 0, 1] } else { my_ip() };
-    let pkt = ipv4(src, dst, proto, payload);
-    let mut q = TXQ.lock();
-    if q.len() >= MAX_TXQ {
-        q.pop_front();
-    }
-    q.push_back((crate::arch::uptime_ms(), dst, pkt));
+    // the queue is the kernel's (packets leave it within moments); it is bounded in count and bytes
+    crate::heap::kernel(|| {
+        let pkt = ipv4(src, dst, proto, payload);
+        let mut q = TXQ.lock();
+        let mut bytes: usize = q.iter().map(|e| e.2.len()).sum::<usize>() + pkt.len();
+        while q.len() >= MAX_TXQ || bytes > MAX_TXQ_BYTES && !q.is_empty() {
+            bytes -= q.pop_front().map(|e| e.2.len()).unwrap_or(0);
+        }
+        q.push_back((crate::arch::uptime_ms(), dst, pkt));
+    });
 }
 
 /// Warteschlange senden; Ziele ohne bekannte MAC per ARP erfragen (bis 3 s)
 pub fn flush() {
+    // queues, ARP table and frames belong to the kernel, whoever happens to drive the network
+    crate::heap::kernel(flush_queue)
+}
+
+fn flush_queue() {
     let now = crate::arch::uptime_ms();
     let q: Vec<(u64, [u8; 4], Vec<u8>)> = TXQ.lock().drain(..).collect();
     let Some(cfg) = *CONFIG.lock() else { return };
@@ -277,6 +317,11 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
 
 /// eingehende Rahmen verarbeiten, Wiederholungen senden
 pub fn poll() {
+    // see `flush`; received data is charged to the owner of the socket it lands in (`Sock::take`)
+    crate::heap::kernel(poll_network)
+}
+
+fn poll_network() {
     let mut frames: Vec<Vec<u8>> = LOOP.lock().drain(..).collect();
     {
         let mut buf = [0u8; 2048];
@@ -377,9 +422,21 @@ fn handle(f: &[u8]) {
                 if !antwort && !crate::firewall::eingehend_erlaubt(17, src, dp) {
                     return; // Brandmauer: niemand hat diesen Port geöffnet
                 }
-                if s.dgrams.len() < 256 {
-                    s.dgrams.push_back((src, sp, body[8..len].to_vec()));
-                    GEN.fetch_add(1, Ordering::Relaxed);
+                // bounded in count and bytes; charged to the socket's owner, dropped if that group gets no memory
+                let waiting: usize = s.dgrams.iter().map(|d| d.2.len()).sum();
+                if s.dgrams.len() < 256 && waiting + (len - 8) <= MAX_RX {
+                    let owner = s.owner;
+                    let dgrams = &mut s.dgrams;
+                    let stored = crate::heap::scope(owner, || match crate::mem::try_copy(&body[8..len]) {
+                        Some(d) if crate::heap::fallible(|| dgrams.try_reserve(1)).is_ok() => {
+                            dgrams.push_back((src, sp, d));
+                            true
+                        }
+                        _ => false,
+                    });
+                    if stored {
+                        GEN.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             } else if dp == crate::verbund::UDP_PORT {
                 drop(ss);
@@ -434,6 +491,7 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
                     c.rip = src;
                     c.rport = sp;
                     c.st = Tcp::SynRcvd;
+                    c.owner = ss[&lid].owner;
                     c.rcv_nxt = seq.wrapping_add(1);
                     let iss = crate::arch::zufall() as u32;
                     c.snd_una = iss;
@@ -466,8 +524,9 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
                         c.parent = Some(lid);
                         c.last_tx = crate::arch::uptime_ms();
                         c.peer_win = win;
-                        if !data.is_empty() {
-                            c.rx.extend(data.iter().copied());
+                        // the connection belongs to whoever listens
+                        c.owner = ss[&lid].owner;
+                        if !data.is_empty() && c.take(data) {
                             c.rcv_nxt = seq.wrapping_add(data.len() as u32);
                             tcp_out(&c, ack, ACK, &[]);
                         }
@@ -549,8 +608,7 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
     // Daten in Reihenfolge annehmen
     let mut need_ack = false;
     if !data.is_empty() {
-        if seq == s.rcv_nxt && s.rx.len() + data.len() <= MAX_RX {
-            s.rx.extend(data.iter().copied());
+        if seq == s.rcv_nxt && s.rx.len() + data.len() <= MAX_RX && s.take(data) {
             s.rcv_nxt = s.rcv_nxt.wrapping_add(data.len() as u32);
         }
         need_ack = true;
@@ -697,30 +755,43 @@ pub fn accept(id: usize) -> Option<usize> {
 }
 
 /// Daten senden; Anzahl oder Fehler
+/// Build the UDP datagram `s` sends to `to` (or its connected peer) and remember the peer, whose
+/// answers may come in. Returns the destination and the datagram, or the negative error number.
+fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>) -> Result<([u8; 4], Vec<u8>), i64> {
+    if s.lport == 0 {
+        s.lport = ephemeral();
+    }
+    let (ip, port) = to.unwrap_or((s.rip, s.rport));
+    if port == 0 {
+        return Err(-89); // EDESTADDRREQ
+    }
+    if data.len() > MAX_DGRAM {
+        return Err(-90); // EMSGSIZE
+    }
+    let ip = if ip == [0; 4] { [127, 0, 0, 1] } else { ip };
+    if !s.peers.contains(&(ip, port)) {
+        if s.peers.len() >= 16 {
+            s.peers.remove(0);
+        }
+        s.peers.push((ip, port));
+    }
+    let mut u = Vec::with_capacity(8 + data.len());
+    u.extend_from_slice(&s.lport.to_be_bytes());
+    u.extend_from_slice(&port.to_be_bytes());
+    u.extend_from_slice(&((8 + data.len()) as u16).to_be_bytes());
+    u.extend_from_slice(&[0, 0]);
+    u.extend_from_slice(data);
+    Ok((ip, u))
+}
+
 pub fn send(id: usize, data: &[u8], to: Option<([u8; 4], u16)>) -> i64 {
     let mut ss = SOCKS.lock();
     let Some(s) = ss.get_mut(&id) else { return -9 };
     if s.udp {
-        if s.lport == 0 {
-            s.lport = ephemeral();
-        }
-        let (ip, port) = to.unwrap_or((s.rip, s.rport));
-        if port == 0 {
-            return -89; // EDESTADDRREQ
-        }
-        let ip = if ip == [0; 4] { [127, 0, 0, 1] } else { ip };
-        if !s.peers.contains(&(ip, port)) {
-            if s.peers.len() >= 16 {
-                s.peers.remove(0);
-            }
-            s.peers.push((ip, port));
-        }
-        let mut u = Vec::with_capacity(8 + data.len());
-        u.extend_from_slice(&s.lport.to_be_bytes());
-        u.extend_from_slice(&port.to_be_bytes());
-        u.extend_from_slice(&((8 + data.len()) as u16).to_be_bytes());
-        u.extend_from_slice(&[0, 0]);
-        u.extend_from_slice(data);
+        let (ip, u) = match udp_datagram(s, data, to) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
         drop(ss);
         send_ip(ip, 17, &u);
         flush();
@@ -735,6 +806,10 @@ pub fn send(id: usize, data: &[u8], to: Option<([u8; 4], u16)>) -> i64 {
     let n = data.len().min(room);
     if n == 0 {
         return -EAGAIN;
+    }
+    // room for the copy kept until the peer acknowledges (charged to the sender)
+    if !crate::mem::try_reserve(&mut s.unacked, n) {
+        return -105; // ENOBUFS
     }
     let mut off = 0;
     let mut segs = Vec::new();
@@ -776,7 +851,12 @@ pub fn recv(id: usize, max: usize, peek: bool) -> Recv {
     }
     if !s.rx.is_empty() {
         let n = max.min(s.rx.len());
-        let d: Vec<u8> = if peek { s.rx.iter().take(n).copied().collect() } else { s.rx.drain(..n).collect() };
+        let Some(mut d) = crate::mem::try_with_capacity::<u8>(n) else { return Recv::Err(-12) };
+        if peek {
+            d.extend(s.rx.iter().take(n).copied());
+        } else {
+            d.extend(s.rx.drain(..n));
+        }
         return Recv::Data(d, None);
     }
     if s.fin_rcvd || s.st == Tcp::Closed {

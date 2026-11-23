@@ -51,7 +51,7 @@ static MOUNTS: Mutex<Vec<(String, Mnt)>> = Mutex::new(Vec::new());
 /// Programme, die `busybox` mitbringt (für /bin/<name> ohne eigene Datei)
 static APPLETS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// RAM-Schicht: Pfad → Inhalt; Verzeichnisse als Schlüssel mit abschließendem '/'
-pub static RAM: Mutex<BTreeMap<String, Vec<u8>>> = Mutex::new(BTreeMap::new());
+pub static RAM: Mutex<BTreeMap<String, Arc<Vec<u8>>>> = Mutex::new(BTreeMap::new());
 
 static FATCACHE: Mutex<(u64, Vec<u8>, usize)> = Mutex::new((0, Vec::new(), 0));
 
@@ -60,7 +60,8 @@ const DEVS: [&str; 6] = ["null", "zero", "tty", "console", "urandom", "random"];
 const UI_DEVS: [&str; 3] = ["fb0", "input/event0", "input/event1"];
 
 fn rd(disk: usize, lba: u64, n: usize) -> Option<Vec<u8>> {
-    let mut b = vec![0u8; n * 512];
+    // up to 4 MiB at once: refused memory reads as a failed read
+    let mut b = crate::mem::try_vec(n * 512)?;
     let mut bl = BLOCK.lock();
     bl.get_mut(disk)?.read(lba, &mut b).ok()?;
     Some(b)
@@ -204,7 +205,8 @@ impl Fat {
         let b = {
             let mut c = FATCACHE.lock();
             if c.0 != sec || c.2 != self.disk || c.1.is_empty() {
-                let Some(b) = rd(self.disk, sec, 8) else { return 0x0fff_ffff };
+                // the cached sector outlives the reader: it belongs to the kernel
+                let Some(b) = crate::heap::kernel(|| rd(self.disk, sec, 8)) else { return 0x0fff_ffff };
                 *c = (sec, b, self.disk);
             }
             c.1[..512].to_vec()
@@ -225,10 +227,14 @@ impl Fat {
         let csize = self.spc * self.bps;
         let mut clus = Vec::new();
         while (2..0x0fff_fff7).contains(&c) && (clus.len() as u64) * csize < limit.min(1 << 30) {
+            if !crate::mem::try_reserve(&mut clus, 1) {
+                return Vec::new();
+            }
             clus.push(c);
             c = self.next(c);
         }
-        let mut out = Vec::with_capacity(clus.len() * csize as usize);
+        // the whole file is read into memory: without memory for it the file reads as empty
+        let Some(mut out) = crate::mem::try_with_capacity(clus.len() * csize as usize) else { return Vec::new() };
         let mut i = 0;
         while i < clus.len() {
             // zusammenhängende Cluster in einem Zug lesen (höchstens 4 MB)
@@ -363,6 +369,15 @@ pub fn normalize(cwd: &str, p: &str) -> String {
     s
 }
 
+/// Whether `path` is a directory of the RAM layer (created there, or the parent of an entry) – the
+/// same answer as `ram_dir(path).is_some()` without building the listing.
+pub(crate) fn ram_is_dir(path: &str) -> bool {
+    let pre = if path == "/" { String::from("/") } else { alloc::format!("{path}/") };
+    let ram = RAM.lock();
+    let found = ram.range(pre.clone()..).next().is_some_and(|(k, _)| k.starts_with(&pre));
+    found
+}
+
 pub(crate) fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
     let ram = RAM.lock();
     let pre = if path == "/" { String::from("/") } else { alloc::format!("{path}/") };
@@ -384,7 +399,13 @@ pub(crate) fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
         };
         out.insert(name.to_string(), DirEnt { name: name.to_string(), dir, size: if dir { 0 } else { v.len() as u64 } });
     }
-    found.then(|| out.into_values().collect())
+    if !found {
+        return None;
+    }
+    // the listing of a large directory is one large buffer: it may be refused
+    let mut list = crate::mem::try_with_capacity(out.len())?;
+    list.extend(out.into_values());
+    Some(list)
 }
 
 fn mnt_open(m: &Mnt, rel: &str) -> Option<Node> {
@@ -445,8 +466,12 @@ pub fn open(path: &str) -> Option<Node> {
     if path == "/proc" || path.starts_with("/proc/") {
         return crate::procfs::open(path);
     }
+    if crate::groups::files::is_tree(path) {
+        return crate::groups::files::open(path);
+    }
     if let Some(v) = RAM.lock().get(path) {
-        return Some(Node::File(Arc::new(v.clone())));
+        // the stored buffer is shared with the descriptor until it is written (copy on write)
+        return Some(Node::File(v.clone()));
     }
     let ramd = ram_dir(path);
     match (fs_open(path), ramd) {
@@ -459,6 +484,7 @@ pub fn open(path: &str) -> Option<Node> {
             if path == "/" {
                 extra.push("dev".into());
                 extra.push("proc".into());
+                extra.push("sys".into());
                 if MOUNTS.lock().iter().any(|(p, _)| p.starts_with("/media/")) {
                     extra.push("media".into());
                 }
@@ -479,7 +505,7 @@ pub fn open(path: &str) -> Option<Node> {
         (None, Some(r)) => Some(Node::Dir(r)),
         (None, None) => {
             if path == "/" {
-                return Some(Node::Dir(vec![DirEnt { name: "dev".into(), dir: true, size: 0 }, DirEnt { name: "proc".into(), dir: true, size: 0 }]));
+                return Some(Node::Dir(vec![DirEnt { name: "dev".into(), dir: true, size: 0 }, DirEnt { name: "proc".into(), dir: true, size: 0 }, DirEnt { name: "sys".into(), dir: true, size: 0 }]));
             }
             // Zwischenverzeichnis eines Einhängepunkts (z. B. /boot für /boot/efi)
             if MOUNTS.lock().iter().any(|(p, _)| p.starts_with(&alloc::format!("{path}/"))) {
@@ -523,6 +549,10 @@ pub fn stat(path: &str) -> Option<(u8, u64)> {
             }
         }
     }
+    // a directory of the RAM layer: known without building its listing
+    if !path.starts_with("/dev") && !path.starts_with("/proc") && !crate::groups::files::is_tree(path) && ram_is_dir(path) {
+        return Some((1, 0));
+    }
     match open(path)? {
         Node::File(d) => Some((0, d.len() as u64)),
         Node::Dir(_) => Some((1, 0)),
@@ -558,26 +588,54 @@ static WARNED: Mutex<bool> = Mutex::new(false);
 
 /// Datei anlegen/ersetzen: dauerhaft auf ext4, sonst in der RAM-Schicht
 pub fn write_file(path: &str, data: Vec<u8>) {
+    store_file(path, Arc::new(data));
+}
+
+/// Whether a file at `path` may grow to `len` bytes: the quota of the RAM tree it would be stored in
+/// (a tmpfs or the host's RAM layer). Files that go to a writable disk and control files have none.
+pub fn grow(path: &str, len: u64) -> bool {
+    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) || !tmpfs::is_private(path) && ext4_target(path).is_some() {
+        return true;
+    }
+    tmpfs::grow(path, len)
+}
+
+/// Used and allowed bytes of the RAM tree that holds `path` (a tmpfs, or the host's RAM layer for a
+/// path that is not on a writable disk); `None` for disk files and the kernel's own trees.
+pub fn ram_usage(path: &str) -> Option<(u64, u64)> {
+    if path.starts_with("/proc") || path.starts_with("/dev") || crate::groups::files::is_tree(path) || !tmpfs::is_private(path) && ext4_target(path).is_some() {
+        return None;
+    }
+    // on the FAT test image and without a disk everything written lives in the RAM layer
+    tmpfs::usage(path)
+}
+
+/// Like [`write_file`] with a buffer that may be shared (it is stored as it is, without a copy).
+/// `false`: not stored – the quota of the RAM tree is exhausted or the tmpfs no longer exists.
+pub fn store_file(path: &str, data: Arc<Vec<u8>>) -> bool {
     if path == "/proc/ultar/verbund" {
         crate::verbund::proc_schreiben(&data);
-        return;
+        return true;
     }
     if path == "/proc/ultar/firewall" {
         for z in core::str::from_utf8(&data).unwrap_or("").lines() {
             let _ = crate::firewall::befehl(z);
         }
-        return;
+        return true;
+    }
+    // control files are written directly (syscall::control_write); nothing is ever stored there
+    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) {
+        return false;
     }
     if tmpfs::is_private(path) {
         // a file of a tree that no longer exists is dropped
-        let _ = tmpfs::write(path, data);
-        return;
+        return tmpfs::write(path, data);
     }
     if let Some((i, rel)) = ext4_target(path) {
         match with_ext4(i, |x| x.write_file(&rel, &data)) {
             Some(Ok(())) => {
-                RAM.lock().remove(path);
-                return;
+                tmpfs::discard(path);
+                return true;
             }
             Some(Err(e)) => {
                 let mut w = WARNED.lock();
@@ -589,7 +647,7 @@ pub fn write_file(path: &str, data: Vec<u8>) {
             None => {}
         }
     }
-    RAM.lock().insert(path.to_string(), data);
+    tmpfs::store(path, data)
 }
 
 /// Datei auf einer FAT-Partition an Ort überschreiben (Selbsttest-Protokoll); liefert den Pfad
@@ -636,6 +694,9 @@ pub fn mkdir(path: &str) -> bool {
     if tmpfs::is_private(path) {
         return tmpfs::mkdir(path);
     }
+    if crate::groups::files::is_tree(path) {
+        return crate::groups::files::mkdir(path);
+    }
     if stat(path).is_some() {
         return false;
     }
@@ -644,15 +705,17 @@ pub fn mkdir(path: &str) -> bool {
             return true;
         }
     }
-    RAM.lock().insert(alloc::format!("{path}/"), Vec::new());
-    true
+    tmpfs::store(&alloc::format!("{path}/"), Arc::new(Vec::new()))
 }
 
 pub fn unlink(path: &str) -> bool {
     if tmpfs::is_private(path) {
         return tmpfs::unlink(path);
     }
-    if RAM.lock().remove(path).is_some() || RAM.lock().remove(&alloc::format!("{path}/")).is_some() {
+    if crate::groups::files::is_tree(path) {
+        return crate::groups::files::rmdir(path);
+    }
+    if tmpfs::discard(path) || tmpfs::discard(&alloc::format!("{path}/")) {
         return true;
     }
     if let Some((i, rel)) = ext4_target(path) {

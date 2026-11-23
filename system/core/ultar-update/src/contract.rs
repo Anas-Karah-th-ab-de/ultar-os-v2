@@ -6,7 +6,9 @@
 //! [`Progress`]. A failed call carries `ErrorCode::Service(code)`; map the code with
 //! [`crate::error::UpdateError::key_of_code`].
 //!
-//! Administrator only: `apply`, `cancel`, `set_policy`, `offline`, `boot_previous`.
+//! Administrator only: `apply`, `cancel`, `set_policy`, `offline`, `boot_previous`, the
+//! metered override of `download`, and replacing a complete staged bundle. Other callers may
+//! start a limited number of checks and downloads (`RateLimited` beyond that).
 
 use serde::{Deserialize, Serialize};
 use ultar_bus::{Call, Message, Topic};
@@ -132,7 +134,8 @@ pub struct Check {}
 /// `update.download` – download the newest release (accepted; course on [`Progress`]).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Download {
-    /// The user agreed to use a metered (or unknown) connection for this download.
+    /// Use a metered (or unknown) connection for this download. Counts only when the caller
+    /// is an administrator; for everyone else the policy's `allow_metered` decides.
     pub allow_metered: bool,
 }
 
