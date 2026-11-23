@@ -4,6 +4,7 @@
 	servers {
 		timeouts {
 			read_header 10s
+			read_body 30s
 			idle 2m
 		}
 		max_header_size 16KB
@@ -23,8 +24,19 @@ ultar.code-craft.tech {
 		flush_interval -1
 		stream_timeout 24h
 		stream_close_delay 5s
+		transport http {
+			max_conns_per_host 1024
+		}
 	}
-	reverse_proxy ultraos:8080
+	# Behind Caddy every connection to ultraos-server comes from Caddy (a trusted proxy, exempt
+	# from the per-client cap); this keeps Caddy's connections below ULTRAOS_MAX_CONNECTIONS
+	# (default 4096). Slow and silent clients end at Caddy (timeouts above).
+	reverse_proxy ultraos:8080 {
+		transport http {
+			max_conns_per_host 2048
+			keepalive 2m
+		}
+	}
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff

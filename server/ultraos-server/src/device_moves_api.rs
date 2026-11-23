@@ -80,8 +80,12 @@ pub async fn replace(
         limits,
     )?;
     st.hub.kick(&done.number);
-    st.hub
-        .notify_account(acc, "device_replaced", &notice_prefix(&done.device_id));
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        acc,
+        "device_replaced",
+        &notice_prefix(&done.device_id),
+    );
     tracing::info!(event = "device_replaced", device = %short(&done.device_id));
     registered_reply(&st, acc, &done)
 }
@@ -101,6 +105,7 @@ pub struct RecoverStartReq {
 pub async fn recover_start(
     State(st): State<Shared>,
     h: HeaderMap,
+    client: Option<axum::Extension<crate::guard::ClientAddr>>,
     ApiJson(r): ApiJson<RecoverStartReq>,
 ) -> Reply {
     let acc = require_account(&st, &h)?;
@@ -108,7 +113,8 @@ pub async fn recover_start(
     if r.old_device_id.len() > MAX_DEVICE_ID_BYTES || r.password.len() > MAX_PASSWORD_BYTES {
         return Err(ApiError::InvalidRequest);
     }
-    if !password_matches(&st, acc, r.password).await? {
+    let asker = crate::accounts::asker_of(&st, &h, client.map(|c| c.0 .0));
+    if !password_matches(&st, acc, asker, r.password).await? {
         return Err(ApiError::InvalidCredentials);
     }
     let extra = r.old_device_id.as_bytes();
@@ -129,8 +135,12 @@ pub async fn recover_start(
         now,
         st.devices.config.recovery_cooldown_secs,
     )?;
-    st.hub
-        .notify_account(acc, "recovery_started", &notice_prefix(&r.old_device_id));
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        acc,
+        "recovery_started",
+        &notice_prefix(&r.old_device_id),
+    );
     tracing::info!(event = "recovery_started", device = %short(&r.old_device_id));
     Ok(Json(json!({ "eligible_in": (eligible_at - now).max(0) })))
 }
@@ -144,8 +154,12 @@ pub async fn recover_cancel(State(st): State<Shared>, h: HeaderMap) -> Reply {
         managing_device(&conn, &st, &me)?;
         device_moves::recovery_cancel(&mut conn, me.account_id, st.devices.now_secs())?;
     }
-    st.hub
-        .notify_account(me.account_id, "recovery_cancelled", "");
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        me.account_id,
+        "recovery_cancelled",
+        "",
+    );
     tracing::info!(event = "recovery_cancelled", device = %short(&me.device_id));
     Ok(Json(json!({ "cancelled": true })))
 }
@@ -192,8 +206,12 @@ pub async fn recover_finish(
         st.devices.limits(),
     )?;
     st.hub.kick(&done.number);
-    st.hub
-        .notify_account(acc, "recovery_finished", &notice_prefix(&done.device_id));
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        acc,
+        "recovery_finished",
+        &notice_prefix(&done.device_id),
+    );
     tracing::info!(event = "recovery_finished", device = %short(&done.device_id));
     registered_reply(&st, acc, &done)
 }
@@ -237,7 +255,7 @@ pub async fn approve(
     if identity::device_id(&bound.public_key) != me.device_id {
         return Err(ApiError::ChallengeMismatch);
     }
-    {
+    let number = {
         let mut conn = st.db.lock();
         let approver = managing_device(&conn, &st, &me)?;
         devices::approve(
@@ -247,9 +265,19 @@ pub async fn approve(
             st.devices.now_secs(),
             st.devices.config.recovery_cooldown_secs,
         )?;
+        let row = devices::in_use(&conn, acc, &r.device_id)?;
+        devices::number_of(&conn, row.row)?
+    };
+    // A socket the approved device holds right now gets the notices from now on.
+    if let Some(number) = &number {
+        st.hub.approved(number);
     }
-    st.hub
-        .notify_account(acc, "device_approved", &notice_prefix(&r.device_id));
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        acc,
+        "device_approved",
+        &notice_prefix(&r.device_id),
+    );
     tracing::info!(event = "device_approved", device = %short(&r.device_id));
     Ok(Json(json!({ "approved": true })))
 }

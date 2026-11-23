@@ -84,6 +84,11 @@ const AUTH_PATHS: [&str; 4] = [
     "/v1/device/recover/start",
 ];
 
+/// The client address of a request as [`client_ip`] determined it; put into the request's
+/// extensions by [`guard`] for handlers that need it (password budgets).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientAddr(pub IpAddr);
+
 /// The limit class a path is charged to; `None` for paths that are never limited.
 pub fn class_for(path: &str) -> Option<LimitClass> {
     if path == "/v1/health" {
@@ -128,7 +133,7 @@ pub fn client_ip(
 pub async fn guard(
     State(st): State<Arc<AppState>>,
     peer: Option<ConnectInfo<SocketAddr>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let method = request.method().clone();
@@ -141,12 +146,13 @@ pub async fn guard(
         return ApiError::PayloadTooLarge.into_response();
     }
     let class = class_for(&path);
+    let ip = client_ip(
+        peer.map(|c| c.0.ip()),
+        request.headers(),
+        &st.trusted_proxies,
+    );
+    request.extensions_mut().insert(ClientAddr(ip));
     if let Some(class) = class {
-        let ip = client_ip(
-            peer.map(|c| c.0.ip()),
-            request.headers(),
-            &st.trusted_proxies,
-        );
         if let Decision::Limited { retry_after_secs } = st.limiter.check(ip, class) {
             tracing::warn!(event = "rate_limited", class = ?class);
             return ApiError::RateLimited { retry_after_secs }.into_response();

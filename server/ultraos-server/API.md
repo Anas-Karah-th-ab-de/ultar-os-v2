@@ -24,7 +24,7 @@ itself speaks plain HTTP on `ULTRAOS_BIND`).
 | `auth_required` | 401 | Token missing, malformed, forged or expired (`WWW-Authenticate: Bearer`). |
 | `not_entitled` | 403 | Token valid, but the account has no entitlement for this premium app / gated channel. |
 | `not_found` | 404 | Unknown app, version, channel, release or route; also malformed path identifiers. |
-| `rate_limited` | 429 | Per-client limit exceeded, or the account's failed-password budget is used up (10 failed checks in 15 minutes; login, password change and recovery start share it); `Retry-After: <seconds>`. |
+| `rate_limited` | 429 | Per-client limit exceeded, or the failed-password budget of this client for this account is used up (`ULTRAOS_PASSWORD_FAILURES`, default 20 in 15 minutes; login, password change and recovery start share it), or the account has 200 failures in 15 minutes from all clients (not for a managing device's token); `Retry-After: <seconds>`. |
 | `invalid_request` | 400 | Malformed parameter or body. |
 | `payload_too_large` | 413 | Body over 16 KiB or request target over 2048 bytes. |
 | `range_not_satisfiable` | 416 | Requested byte range lies outside the file. |
@@ -41,7 +41,7 @@ itself speaks plain HTTP on `ULTRAOS_BIND`).
 | `challenge_used` | 400 | The challenge was presented before (replay). |
 | `challenge_expired` | 400 | Older than 120 s. |
 | `challenge_mismatch` | 400 | Issued to another account or for another purpose. The challenge is used up. |
-| `challenge_capacity` | 429 | More than 8 pending (not yet presented) challenges of the account, or 65 536 stored in total; `Retry-After`. (`session` challenges are never refused per key: the oldest pending one of the key is dropped instead.) |
+| `challenge_capacity` | 429 | More than 8 pending (not yet presented) challenges of the account; more than 16 accepted session challenges of one key within 120 s; or the store is full of pending challenges; `Retry-After`. Requesting a `session` challenge is never refused (it is stateless). |
 | `device_not_approved` | 403 | Management call from a device that was added to an account with other devices and is neither approved nor past the cool-down; `Retry-After` = seconds until it manages without approval. |
 | `recovery_locked` | 409 | Recovery of a registration from before device keys within 30 days of the migration; `Retry-After`. |
 | `request_timeout` | 408 | The request was not complete within 30 s. The connection is closed. |
@@ -65,10 +65,14 @@ itself speaks plain HTTP on `ULTRAOS_BIND`).
 
 Configurable with `ULTRAOS_LIMIT_GENERAL|DOWNLOAD|AUTH=burst,per_minute`.
 
-Per account, independent of the client address: 10 failed password checks in 15 minutes
-(`ULTRAOS_PASSWORD_FAILURES`), then `rate_limited` for every password check of that account
-until the window is over. Per process: request head within 10 s, whole request within 30 s
-(`request_timeout`), `ULTRAOS_MAX_CONNECTIONS` open connections (default 4096).
+Password checks (login, password change, recovery start): per account and client address
+`ULTRAOS_PASSWORD_FAILURES` failures in 15 minutes (default 20), then `rate_limited` for that
+client; per account, all clients together, the first 10 failures are free, then every check
+waits 1–8 s, and at 200 failures checks are refused – except with a managing device's token.
+Per process: request head within 10 s, whole request within 30 s (`request_timeout`),
+`ULTRAOS_MAX_CONNECTIONS` open connections (default 4096) and `ULTRAOS_MAX_CONNECTIONS_PER_PEER`
+per client (default 64, trusted proxies exempt); when full, the oldest idle connection is closed
+to make room.
 
 ---
 
@@ -192,7 +196,9 @@ Every step that binds or uses a key needs a signature over a fresh challenge.
 
 ### POST `/v1/device/challenge`
 Auth: Bearer; none for purpose `session`. Body
-`{"purpose":"register|session|upgrade|replace|recover|approve","public_key":"…"}`. `200`:
+`{"purpose":"register|session|upgrade|replace|recover|approve","public_key":"…"}`. `200`
+(`challenge_id`: 22 characters for account challenges, 108 for the stateless `session`
+challenges):
 `{"challenge_id":"…","challenge":"…","server":"<server name>","account_id":7,"expires_in":120}`.
 Single use, bound to purpose, account and key. `server` is `ULTRAOS_SERVER_NAME`; a device signs
 only when it equals the name of the server it is configured for.
@@ -203,7 +209,7 @@ Errors: `auth_required`, `invalid_request` (purpose, malformed or weak key), `de
 Auth: Bearer. Body `{"challenge_id":"…","signature":"…","name":"…"}` – signature over the
 `ultar-device-register-v1` transcript; `name` optional, ≤ 64 characters, no control characters.
 `200`: `{"device_id":"…","number":"UOS-XXXX-XXXX","account_id":7,"token":"<DT>","expires_in":86400,
-"manage":false,"manage_in":259200,"recovery":null}`.
+"manage":false,"manage_in":259200,"recovery":null,"unapproved":[]}`.
 Registering an active key of the same account again returns the same number.
 
 `manage`: the device may manage the account's other devices (rename, remove, approve, notices,
@@ -211,7 +217,9 @@ cancel a recovery). The first device of an account manages at once; a device add
 after `POST /v1/device/approve` by a managing device or `manage_in` seconds after its key was
 bound (cool-down, default 72 h). `recovery`: the pending recovery of the account,
 `{"old_device":"<device id>","eligible_in":<seconds>}`, or `null`. Every answer of this shape
-(register, session, upgrade, replace, recover/finish) carries these three fields.
+(register, session, upgrade, replace, recover/finish) carries these fields, and `unapproved`:
+the account's other devices that were added and may not manage yet,
+`[{"device":"<device id>","manage_in":<seconds>}]` – shown to the owner like a recovery.
 Errors: `auth_required`, `invalid_request`, `challenge_*`, `signature_invalid`, `device_taken`,
 `device_retired`, `device_limit`, `device_quota_exhausted`.
 
@@ -234,7 +242,7 @@ Errors: `auth_required`, `legacy_not_eligible`, `challenge_*`, `signature_invali
 
 ### GET `/v1/devices`
 Auth: Bearer. `200`:
-`{"devices":[{"device_id":"…","name":"…","number":"UOS-…","state":"active|legacy","added":<day>,"last_seen":<day>,"current":false,"manage":true,"manage_in":0,"public_key":"…"}],"limit":10,"recovery":null}`.
+`{"devices":[{"device_id":"…","name":"…","number":"UOS-…","state":"active|legacy","added":<day>,"last_seen":<day>,"current":false,"manage":true,"manage_in":0,"public_key":"…"}],"limit":10,"recovery":null,"unapproved":[]}`.
 `added` / `last_seen` are Unix seconds rounded down to the day (`last_seen` 0 = unknown);
 `current` marks the device of the presented device token; `manage` / `manage_in` as above
 (`manage_in` and `public_key` are `null` for legacy rows); `recovery` as above.
@@ -375,3 +383,6 @@ command on the server host (see DEPLOY.md §9). There is deliberately no adminis
 | (review round 3) recovery start and finish shared one label | finish signs `ultar-device-recover-finish-v1` |
 | (review round 3) a recovery was only a notice | `recovery` state in device list, session answers and `ready` |
 | (review round 3) no time limit for an unfinished request, no connection cap | 10 s / 30 s, `ULTRAOS_MAX_CONNECTIONS` |
+| (review round 4) one stranger's wrong passwords locked the owner out | budget per account **and client**; per account only waits, refused at 200; managing device exempt |
+| (review round 4) session challenges were stored and could be pushed out | stateless session challenges (HMAC-authenticated id), consumed only by a verified signature |
+| (review round 4) one client could hold every connection | per-client cap; idle connections give way |

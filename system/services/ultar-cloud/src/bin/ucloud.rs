@@ -200,6 +200,12 @@ fn alerts(tr: &Translator) -> Result<(), Failure> {
         };
         println!("{}", tr.t(hint));
     }
+    for added in &state.unapproved {
+        let device: String = added.device.chars().take(8).collect();
+        let hours = (added.manage_in.max(0) + 3599) / 3600;
+        let args = [("device", Arg::Str(&device)), ("hours", Arg::Int(hours))];
+        println!("{}", tr.t_args(ultar_cloud::watch::KEY_DEVICE_ADDED, &args));
+    }
     for notice in &state.notices {
         if let Some(key) = ultar_cloud::watch::notice_key(&notice.event) {
             let args = [("device", Arg::Str(&notice.device))];

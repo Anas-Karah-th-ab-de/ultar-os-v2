@@ -71,7 +71,11 @@ fn expiry_is_exact_and_expired_entries_are_forgotten() {
         store.take(&b.id, ChallengeUse::Register, Some(1), CHALLENGE_TTL_MS),
         Err(ChallengeError::Expired)
     );
-    assert_eq!(store.len(), 2);
+    assert_eq!(
+        store.len(),
+        1,
+        "a: marker of a presentation; b: expired, nothing kept"
+    );
     store
         .issue(ChallengeUse::Register, 2, PK, CHALLENGE_TTL_MS)
         .unwrap();
@@ -93,19 +97,56 @@ fn per_owner_and_total_bounds_hold_and_free_up_after_expiry() {
             retry_after_secs: 1
         })
     );
-    // Sessions are counted per key, not per account.
+    // Session challenges take no room at all.
     store.issue(ChallengeUse::Session, 1, PK, 300).unwrap();
+    store.issue(ChallengeUse::Register, 2, PK, 400).unwrap();
     assert!(matches!(
-        store.issue(ChallengeUse::Register, 2, PK, 400),
+        store.issue(ChallengeUse::Register, 3, PK, 400),
         Err(ChallengeError::Capacity { .. })
     ));
     assert_eq!(store.len(), 3);
     // After the lifetime of the first two, their owner has room again.
     store.issue(ChallengeUse::Register, 1, PK, 1100).unwrap();
-    store.issue(ChallengeUse::Register, 2, PK, 1100).unwrap();
+    store.issue(ChallengeUse::Register, 3, PK, 1100).unwrap();
     assert_eq!(store.len(), 3);
     assert!(!store.is_empty());
     assert_eq!(store.ttl_secs(), 1);
+}
+
+#[test]
+fn markers_of_presented_challenges_are_bounded_per_account_and_give_way_when_full() {
+    let store = ChallengeStore::new(120_000, 2, 12);
+    let mut ids = Vec::new();
+    for round in 0..30 {
+        let c = store.issue(ChallengeUse::Register, 1, PK, round).unwrap();
+        let _ = store.take(&c.id, ChallengeUse::Register, Some(1), round);
+        ids.push(c.id);
+    }
+    assert_eq!(
+        store.len(),
+        MAX_USED_PER_OWNER,
+        "the account's oldest markers went"
+    );
+    // the newest replays are named, the oldest are simply unknown – refused either way
+    assert_eq!(
+        store.take(&ids[29], ChallengeUse::Register, Some(1), 40),
+        Err(ChallengeError::Used)
+    );
+    assert_eq!(
+        store.take(&ids[0], ChallengeUse::Register, Some(1), 40),
+        Err(ChallengeError::Unknown)
+    );
+    // a full store makes room by dropping markers, never pending challenges
+    for account in 2..4 {
+        for _ in 0..2 {
+            store
+                .issue(ChallengeUse::Register, account, PK, 50)
+                .unwrap();
+        }
+    }
+    assert_eq!(store.len(), 12);
+    store.issue(ChallengeUse::Register, 9, PK, 60).unwrap();
+    assert_eq!(store.len(), 12, "a marker gave way");
 }
 
 #[test]
@@ -145,25 +186,86 @@ fn the_wait_is_that_of_the_owner_not_of_the_whole_store() {
 }
 
 #[test]
-fn session_requests_of_a_stranger_cannot_lock_a_key_out() {
+fn session_challenges_are_stateless_and_only_a_verified_presentation_uses_them() {
     let store = ChallengeStore::new(1000, 2, 100);
-    // A stranger who knows the public key keeps asking.
-    let first = store.issue(ChallengeUse::Session, 1, PK, 0).unwrap();
-    store.issue(ChallengeUse::Session, 1, PK, 1).unwrap();
-    store.issue(ChallengeUse::Session, 1, PK, 2).unwrap();
-    assert_eq!(store.len(), 2, "the oldest pending one was dropped");
+    // The device asks; a stranger who knows the public key asks again and again.
+    let own = store.issue(ChallengeUse::Session, 1, PK, 0).unwrap();
+    assert_eq!(own.id.len(), SESSION_ID_BYTES);
+    for t in 1..50 {
+        store.issue(ChallengeUse::Session, 1, PK, t).unwrap();
+    }
+    assert!(store.is_empty(), "issuing stores nothing");
+    // Opening does not consume: a failed signature check leaves the challenge usable.
+    let ticket = store
+        .open_session(&own.id, ChallengeUse::Session, None, 60)
+        .unwrap();
+    assert_eq!((ticket.bound.account_id, ticket.bound.public_key), (1, PK));
+    assert_eq!(ticket.bound.challenge, own.challenge);
+    let again = store
+        .open_session(&own.id, ChallengeUse::Session, None, 61)
+        .unwrap();
+    store.confirm(&again, 62).unwrap();
+    assert_eq!(store.confirm(&ticket, 63), Err(ChallengeError::Used));
     assert_eq!(
-        store.take(&first.id, ChallengeUse::Session, None, 3),
+        store.open_session(&own.id, ChallengeUse::Session, None, 64),
+        Err(ChallengeError::Used)
+    );
+    // purpose, account, expiry, issue time in the future, other process
+    let other = store.issue(ChallengeUse::Session, 1, PK, 100).unwrap();
+    let check = |purpose, account, now| store.open_session(&other.id, purpose, account, now);
+    assert_eq!(
+        check(ChallengeUse::Register, None, 100),
+        Err(ChallengeError::Mismatch)
+    );
+    assert_eq!(
+        check(ChallengeUse::Session, Some(2), 100),
+        Err(ChallengeError::Mismatch)
+    );
+    assert_eq!(
+        check(ChallengeUse::Session, None, 1100),
+        Err(ChallengeError::Expired)
+    );
+    assert_eq!(
+        check(ChallengeUse::Session, None, 99),
         Err(ChallengeError::Unknown)
     );
-    // The device asks in between and uses its challenge at once.
-    let own = store.issue(ChallengeUse::Session, 1, PK, 4).unwrap();
-    assert!(store.take(&own.id, ChallengeUse::Session, None, 5).is_ok());
-    // The total bound still refuses.
-    let small = ChallengeStore::new(1000, 8, 2);
-    small.issue(ChallengeUse::Session, 1, [1; 32], 0).unwrap();
-    small.issue(ChallengeUse::Session, 1, [2; 32], 0).unwrap();
-    assert!(small.issue(ChallengeUse::Session, 1, [3; 32], 0).is_err());
+    let elsewhere = ChallengeStore::new(1000, 2, 100);
+    assert_eq!(
+        elsewhere.take(&other.id, ChallengeUse::Session, None, 100),
+        Err(ChallengeError::Unknown)
+    );
+    assert_eq!(
+        store.take(&[1u8; 30], ChallengeUse::Session, None, 100),
+        Err(ChallengeError::Unknown)
+    );
+}
+
+#[test]
+fn accepted_sessions_are_bounded_per_key_and_the_wait_is_the_keys_own() {
+    let store = ChallengeStore::new(120_000, 2, 1000);
+    for t in 0..MAX_SESSIONS_PER_KEY as u64 {
+        let c = store.issue(ChallengeUse::Session, 1, PK, t * 1000).unwrap();
+        store
+            .take(&c.id, ChallengeUse::Session, None, t * 1000)
+            .unwrap();
+    }
+    let c = store.issue(ChallengeUse::Session, 1, PK, 30_000).unwrap();
+    assert_eq!(
+        store.take(&c.id, ChallengeUse::Session, None, 30_000),
+        Err(ChallengeError::Capacity {
+            retry_after_secs: 90
+        })
+    );
+    let other = store
+        .issue(ChallengeUse::Session, 1, [8; 32], 30_000)
+        .unwrap();
+    assert!(store
+        .take(&other.id, ChallengeUse::Session, None, 30_000)
+        .is_ok());
+    // still unused, it works once the oldest acceptance expired
+    assert!(store
+        .take(&c.id, ChallengeUse::Session, None, 120_000)
+        .is_ok());
 }
 
 #[test]

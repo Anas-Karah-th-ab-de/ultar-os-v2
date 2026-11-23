@@ -75,6 +75,13 @@ cloud.alert.recovery_pending = {hours ->
     [one] Someone with your password asked to move the number of device {device} to another device. It can be moved in {hours} hour.
    *[other] Someone with your password asked to move the number of device {device} to another device. It can be moved in {hours} hours.
 }
+cloud.alert.device_added_pending = {hours ->
+    [0] A device was added to your account: {device}. It can now manage your devices.
+    [one] A device was added to your account: {device}. It can manage your devices in {hours} hour unless you remove it.
+   *[other] A device was added to your account: {device}. It can manage your devices in {hours} hours unless you remove it.
+}
+cloud.alert.remove_it = This was not me – remove it
+cloud.alert.device_removed_done = The device was removed. Change your password now.
 cloud.alert.not_me = This was not me – stop it
 cloud.alert.recovery_cancelled = The move of the number was stopped. Change your password now.
 cloud.alert.cannot_cancel = This device was added recently and cannot stop it. Use one of your other devices, or change your password.

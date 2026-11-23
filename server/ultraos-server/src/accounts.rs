@@ -6,11 +6,12 @@
 
 use crate::entitlements::require_account;
 use crate::error::ApiError;
+use crate::guard::ClientAddr;
 use crate::{auth, db, AppState};
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{FromRequest, Request, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::{async_trait, Json};
+use axum::{async_trait, Extension, Json};
 use rusqlite::OptionalExtension;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -87,37 +88,58 @@ async fn hash_new_password(password: String) -> Result<String, ApiError> {
         .map_err(|_| ApiError::Internal)
 }
 
+/// Who asks for a password check: the client address, and whether the request carries the
+/// token of a managing device of the account (exempt from the account-wide budget).
+#[derive(Debug, Clone, Copy)]
+pub struct Asker {
+    /// Address of the client (as the guard determined it).
+    pub client: std::net::IpAddr,
+    /// True when the request is authenticated by a managing device of the account.
+    pub managing: bool,
+}
+
 /// Verifies `password` against `hash` (Argon2id, bounded concurrency). When the account is known
-/// the check is booked on its failed-password budget first ([`crate::pwguard`]); an exhausted
-/// budget answers `rate_limited` without looking at the password.
+/// the check is booked on its budgets first ([`crate::pwguard`]): an exhausted budget answers
+/// `rate_limited` without looking at the password; a strained account budget makes the check
+/// wait.
 async fn verify_guarded(
     st: &AppState,
     account_id: Option<i64>,
+    asker: Asker,
     hash: String,
     password: String,
 ) -> Result<bool, ApiError> {
-    if let Some(id) = account_id {
-        st.devices
-            .passwords
-            .attempt(id, st.devices.now_ms())
-            .map_err(|retry_after_secs| ApiError::RateLimited { retry_after_secs })?;
+    let booking = match account_id {
+        Some(id) => {
+            let now = st.devices.now_ms();
+            let booked = st
+                .devices
+                .passwords
+                .book(id, asker.client, asker.managing, now);
+            Some(booked.map_err(|retry_after_secs| ApiError::RateLimited { retry_after_secs })?)
+        }
+        None => None,
+    };
+    if let Some(delay) = booking.map(|b| b.delay).filter(|d| !d.is_zero()) {
+        tokio::time::sleep(delay).await;
     }
     let _slot = HASHING.acquire().await.map_err(|_| ApiError::Internal)?;
     let ok = tokio::task::spawn_blocking(move || auth::verify_password(&password, &hash))
         .await
         .map_err(|_| ApiError::Internal)?;
     let ok = ok && account_id.is_some();
-    if let (true, Some(id)) = (ok, account_id) {
-        st.devices.passwords.succeeded(id);
+    if let (true, Some(booking)) = (ok, booking) {
+        st.devices.passwords.succeeded(&booking);
     }
     Ok(ok)
 }
 
 /// Checks `password` against the stored hash of `account_id`. An unknown account costs the same
-/// work as a wrong password. Failed checks count against the account's budget.
+/// work as a wrong password. Failed checks count against the account's budgets.
 pub async fn password_matches(
     st: &AppState,
     account_id: i64,
+    asker: Asker,
     password: String,
 ) -> Result<bool, ApiError> {
     if password.len() > 256 {
@@ -134,7 +156,15 @@ pub async fn password_matches(
         .optional()?;
     let known = stored.is_some().then_some(account_id);
     let hash = stored.unwrap_or_else(|| decoy_hash().to_string());
-    verify_guarded(st, known, hash, password).await
+    verify_guarded(st, known, asker, hash, password).await
+}
+
+/// The asker of a request: client address from the guard, managing device from the token.
+pub fn asker_of(st: &AppState, headers: &HeaderMap, client: Option<std::net::IpAddr>) -> Asker {
+    Asker {
+        client: client.unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)),
+        managing: crate::device_api::is_managing_token(st, headers),
+    }
 }
 
 /// `POST /v1/account/register` — creates an account and returns a session token.
@@ -165,6 +195,7 @@ pub async fn account_register(
 /// `POST /v1/account/login` — checks the password and returns a session token.
 pub async fn account_login(
     State(st): State<Shared>,
+    client: Option<Extension<ClientAddr>>,
     ApiJson(c): ApiJson<Credentials>,
 ) -> Result<Json<Value>, ApiError> {
     if c.username.len() > 256 || c.password.len() > 256 {
@@ -184,7 +215,13 @@ pub async fn account_login(
         Some((id, hash, epoch)) => (Some((id, epoch)), hash),
         None => (None, decoy_hash().to_string()),
     };
-    let ok = verify_guarded(&st, id.map(|(id, _)| id), hash, c.password).await?;
+    let asker = Asker {
+        client: client.map_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), |c| {
+            c.0 .0
+        }),
+        managing: false,
+    };
+    let ok = verify_guarded(&st, id.map(|(id, _)| id), asker, hash, c.password).await?;
     match id {
         Some((id, epoch)) if ok => session(&st, id, epoch),
         _ => Err(ApiError::InvalidCredentials),
@@ -204,13 +241,15 @@ pub struct PasswordChange {
 pub async fn account_password(
     State(st): State<Shared>,
     h: HeaderMap,
+    client: Option<Extension<ClientAddr>>,
     ApiJson(p): ApiJson<PasswordChange>,
 ) -> Result<Json<Value>, ApiError> {
     let acc = require_account(&st, &h)?;
     if !(8..=256).contains(&p.new_password.len()) {
         return Err(ApiError::InvalidRequest);
     }
-    if !password_matches(&st, acc, p.old_password).await? {
+    let asker = asker_of(&st, &h, client.map(|c| c.0 .0));
+    if !password_matches(&st, acc, asker, p.old_password).await? {
         return Err(ApiError::InvalidCredentials);
     }
     let hash = hash_new_password(p.new_password).await?;
@@ -236,7 +275,8 @@ pub async fn account_password(
         tx.commit()?;
         epoch
     };
-    st.hub.notify_account(acc, "password_changed", "");
+    st.hub
+        .notify_account(st.devices.now_secs(), acc, "password_changed", "");
     tracing::info!(event = "password_changed");
     session(&st, acc, epoch)
 }

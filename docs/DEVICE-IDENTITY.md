@@ -91,19 +91,28 @@ sign-in: `DeviceHome::signal_proof(address)` hands out a proof only when `addres
 of the device's registration, so a device that is pointed at another server after it registered
 does not even answer that server's challenge.
 
-**Challenge**: 32 random bytes from the OS generator, valid 120 s, single use, bound at issue
-time to (purpose, account, claimed public key). It is addressed by a separate random 16-byte
-`challenge_id`; the challenge bytes themselves are never used as a lookup key and are compared
-only inside the signature check. The first presentation consumes it, whatever the outcome.
-Challenges are kept in memory only. At most 8 are **pending** (issued, not yet presented) per
-account – for `session`, per key; a presented challenge frees its place at once and is
-remembered until its 120 s are over only to tell a replay (`challenge_used`) from an unknown id.
-Beyond 8 pending ones an account is refused (`challenge_capacity`, `Retry-After` = time until
-its own oldest one expires). Session challenges are requested without authentication, by naming
-a public key; there the oldest pending one of that key is dropped instead, so that a stranger
-who knows the key cannot lock the device out of its sessions (and with them out of cancelling a
-recovery). 65 536 challenges are stored in total; beyond that every request is refused (A7).
-A restart forgets all challenges (fail closed).
+**Challenge**: 32 bytes, valid 120 s, single use, bound at issue time to (purpose, account,
+claimed public key) and addressed by a `challenge_id`; the challenge bytes are never a lookup key
+and are compared only inside the signature check. Two kinds (revised in review round 4):
+
+* **Account challenges** (register, upgrade, replace, recover, approve – requested with a
+  token): 32 random bytes, a random 16-byte id, stored while pending; at most 8 pending per
+  account (`challenge_capacity` with `Retry-After` = until the account's own oldest one
+  expires). The first presentation removes the pending entry, whatever the outcome. A small
+  marker of the presentation is kept only to answer a replay with `challenge_used`; an account
+  keeps at most 8 markers (its oldest goes first) and a full store drops markers before it
+  refuses anything. A replay is refused either way (`challenge_used` or `challenge_unknown`).
+* **Session challenges** (requested without a token, by naming a public key): **stateless**.
+  The id (81 bytes) is `0x53 ‖ account ‖ issue time ‖ public key ‖ 16-byte nonce ‖ tag`, the tag
+  being 16 bytes of HMAC-SHA256 under a per-process random key; the challenge is HMAC-SHA256
+  under a second per-process key over the same bytes. Issuing stores nothing, so requests of a
+  stranger who knows the key change nothing for the device. A session challenge is consumed only
+  by a presentation whose **signature verifies** (its nonce is then remembered for the rest of
+  its 120 s; at most 16 accepted per key and 120 s); a wrong signature leaves it usable.
+
+At most 65 536 entries are stored in total (pending account challenges, markers, accepted
+session nonces); markers give way first (A7). The per-process keys are new after a restart: every
+earlier id is unknown (fail closed).
 
 Verification uses `verify_strict` (rejects small-order keys and non-canonical signatures); weak
 public keys are refused when the challenge is requested.
@@ -181,7 +190,8 @@ A new sign-in of the same device closes its previous socket (close frame, reason
 (`{"type":"error","error":"device_removed"}`, then close). A socket relays a frame only while it
 is the table's current socket for its number; a socket that lost its place is closed with its
 next frame at the latest. `ready` carries the pending recovery (§5.7). Security notices (§5.8)
-are pushed to the connected **managing** devices of the account as
+are pushed to the connected **managing** devices of the account – a socket gets them from the
+moment its device is approved or its wait is over, without signing in again – as
 `{"type":"notice","event":"…","device":"<prefix>"}`.
 
 ### 5.5 Devices of an account
@@ -260,6 +270,10 @@ owner's objection, so a pending recovery is a *state*, not a message that can be
 * the notice `recovery_started` is pushed to connected managing devices and is **never dropped
   from the notice list while the recovery is pending**, however many notices follow (the list
   otherwise keeps the newest 64);
+* in the same way a device that was **added** and may not manage yet is a state:
+  `"unapproved":[{"device","manage_in"}]` in `GET /v1/devices` and in every register/session
+  answer of the account's other devices, until it is approved, removed or its wait is over; the
+  phone app shows it like a recovery, with "This was not me – remove it";
 * the device shows it: the call service passes notices on (`CallEvent::Notice`),
   `ultar_cloud::SecurityWatch::check` reads state and new notices at start, every 10 minutes and
   on a notice; the phone app shows a lasting banner with "This was not me" (→
@@ -286,13 +300,23 @@ token returned. Devices stay registered and fetch new device tokens with their k
 
 ### 5.10 Password checks
 The password is checked in three places: login, password change, recovery start. All three are
-in the strict rate class (`auth`, default 10 burst / 6 per minute per client address) and share
-one **failed-password budget per account**: after `ULTRAOS_PASSWORD_FAILURES` (default 10)
-failed checks within 15 minutes every further check for that account is answered
-`rate_limited` with `Retry-After` – without looking at the password – until the window is over,
-whatever address or token the requests come from. A check is booked before the password is
-verified, so parallel guesses cannot exceed the budget; right passwords do not use it up.
-The budget stops password use only: device keys, device tokens and calls are not affected.
+in the strict rate class (`auth`, default 10 burst / 6 per minute per client address). Each
+check is booked before the password is looked at (parallel guesses cannot exceed a budget); a
+right password gives its place back. Two budgets (revised in review round 4, R4-1):
+
+* **per account and client** (IPv4 address or IPv6 /64): `ULTRAOS_PASSWORD_FAILURES` (default
+  20) failed checks within 15 minutes, then this client's checks of this account are refused
+  (`rate_limited`, `Retry-After`) until the window is over. A stranger locks out only himself.
+* **per account**, all clients together: the first 10 failures cost nothing; after that every
+  check of the account **waits** 1, 2, 4, 8 s (8 s at most) before it runs. Only at 200 failures
+  within 15 minutes – many addresses guessing together – are the account's checks refused. A
+  check made with the token of a **managing device** of the account is exempt from this part
+  (no wait, never refused because of others): the owner with a device in hand can always change
+  the password and stop a recovery.
+
+The tables are bounded (100 000 entries each); a full table drops its oldest entry instead of
+refusing anyone. The budgets stop password use only: device keys, device tokens and calls are
+not affected.
 
 ## 6. State machines
 
@@ -458,7 +482,7 @@ Somebody who knows the password and has **no device of the owner** can:
 | after 72 h without the owner objecting: finish the recovery – the number moves to his device, which then manages the account | this is the designed way back for an owner who lost every device; it is the residual risk of password-only recovery |
 | after 72 h: manage the account's devices with his added device | the same window, the same visibility (`manage_in` in the device list) |
 | change the password (he knows the old one) | ends all tokens; the owner's devices stay registered and keep their numbers and management rights |
-| guess further passwords | 10 failed checks per 15 minutes and account, strict rate class |
+| guess further passwords | 20 failed checks per 15 minutes per account and client address; beyond 10 per account every check waits up to 8 s; 200 per account and 15 minutes in all; strict rate class |
 
 He cannot, at any time: open the signalling socket of an existing number or receive its calls;
 obtain a device token for a key he does not hold; remove, rename or approve devices, read the
@@ -476,11 +500,11 @@ the password – exactly as if he had lost his devices and recovered them himsel
 |---|---|---|
 | request head must arrive within | 10 s, else the connection is closed | `server::HEADER_READ_TIMEOUT` |
 | request (body, handler) must finish within | 30 s, else `408 request_timeout` and the connection is closed | `guard::REQUEST_TIMEOUT` |
-| open connections | `ULTRAOS_MAX_CONNECTIONS` (default 4096); further clients wait in the accept queue | `server::serve` |
+| open connections | `ULTRAOS_MAX_CONNECTIONS` (default 4096) in all, `ULTRAOS_MAX_CONNECTIONS_PER_PEER` (default 64) per client address or /64 (trusted proxies exempt); when full, the oldest **idle** connection (no request in flight, no response being sent) is closed for the newcomer; when all are busy, the newcomer is closed | `conntable`, `server::serve` |
 | body / request target | 16 KiB / 2048 bytes | `guard` |
 | signalling: sockets per number | 1 | `signal::Hub` |
-| challenges | 8 pending per account or key, 65 536 stored, 120 s | `challenge` |
-| failed password checks | 10 per account and 15 min | `pwguard` |
+| challenges | 8 pending and 8 markers per account; session challenges stateless, 16 accepted per key; 65 536 stored; 120 s | `challenge`, `challenge_session` |
+| failed password checks | 20 per account and client, 10 free then waits, 200 per account; 15 min | `pwguard` |
 | devices | 10 in use per account, 100 keys over its lifetime | `devices` |
 | notices | newest 64 per account (+ the one of a pending recovery) | `device_events` |
 

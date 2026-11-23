@@ -128,6 +128,15 @@ fn config_from_env(secret: [u8; 32]) -> Config {
     limit_from_env("ULTRAOS_LIMIT_DOWNLOAD", &mut config.limits.download);
     limit_from_env("ULTRAOS_LIMIT_AUTH", &mut config.limits.auth);
     devices_from_env(&mut config.devices);
+    if let Ok(text) = std::env::var("ULTRAOS_MAX_CONNECTIONS_PER_PEER") {
+        match ultraos_server::server::parse_max_connections_per_peer(&text) {
+            Some(n) => config.max_connections_per_peer = n,
+            None => tracing::warn!(
+                event = "ignored_setting",
+                key = "ULTRAOS_MAX_CONNECTIONS_PER_PEER"
+            ),
+        }
+    }
     if let Ok(text) = std::env::var("ULTRAOS_MAX_CONNECTIONS") {
         match ultraos_server::server::parse_max_connections(&text) {
             Some(n) => config.max_connections = n,

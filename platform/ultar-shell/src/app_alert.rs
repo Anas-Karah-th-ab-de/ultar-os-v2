@@ -26,15 +26,25 @@ pub enum Banner {
         hours: i64,
         can_stop: bool,
     },
+    /// A device was added to the account and may manage its devices after `hours` unless it is
+    /// approved or removed; `can_remove`: this device may remove it ("This was not me").
+    Added {
+        device_id: String,
+        hours: i64,
+        can_remove: bool,
+    },
     /// The user stopped the move on this device.
     Stopped,
+    /// The user removed an added device on this device.
+    Removed,
 }
 
 /// What the thread found last, and what the user did.
 #[derive(Default)]
 struct Shared {
     state: SecurityState,
-    stopped: bool,
+    /// The confirmation of what the user did on this device, until dismissed.
+    stopped: Option<Banner>,
     /// A pending move was seen for the first time and not yet announced.
     fresh: bool,
     /// The texts drawn last (language, banner, texts): rendered once, not every frame.
@@ -44,16 +54,23 @@ struct Shared {
 /// Decides what to show for a state. `stopped`: the user pressed "This was not me" and the
 /// server confirmed. A pending move always wins: it is shown until the server no longer
 /// reports it.
-pub fn banner_for(state: &SecurityState, stopped: bool) -> Option<Banner> {
-    match (&state.recovery, state.recovery_hours()) {
-        (Some(recovery), Some(hours)) => Some(Banner::Pending {
+/// A pending move wins over an added device, which wins over a confirmation.
+pub fn banner_for(state: &SecurityState, done: Option<&Banner>) -> Option<Banner> {
+    if let (Some(recovery), Some(hours)) = (&state.recovery, state.recovery_hours()) {
+        return Some(Banner::Pending {
             device: recovery.old_device.chars().take(8).collect(),
             hours,
             can_stop: state.manage,
-        }),
-        _ if stopped => Some(Banner::Stopped),
-        _ => None,
+        });
     }
+    if let Some(added) = state.unapproved.first() {
+        return Some(Banner::Added {
+            device_id: added.device.clone(),
+            hours: (added.manage_in.max(0) + 3599) / 3600,
+            can_remove: state.manage,
+        });
+    }
+    done.cloned()
 }
 
 /// The texts of a banner in one language: the message, and the action (or the hint that takes
@@ -70,7 +87,8 @@ pub struct BannerText {
 pub fn banner_text(lang: &str, banner: &Banner) -> BannerText {
     use ultar_cloud::messages::render;
     use ultar_cloud::watch::{
-        KEY_CANNOT_CANCEL, KEY_NOT_ME, KEY_RECOVERY_CANCELLED, KEY_RECOVERY_PENDING,
+        KEY_CANNOT_CANCEL, KEY_DEVICE_ADDED, KEY_DEVICE_REMOVED, KEY_NOT_ME,
+        KEY_RECOVERY_CANCELLED, KEY_RECOVERY_PENDING, KEY_REMOVE_IT,
     };
     match banner {
         Banner::Pending {
@@ -93,20 +111,48 @@ pub fn banner_text(lang: &str, banner: &Banner) -> BannerText {
                 can_act: *can_stop,
             }
         }
+        Banner::Added {
+            device_id,
+            hours,
+            can_remove,
+        } => {
+            let device: String = device_id.chars().take(8).collect();
+            let args = [
+                ("device", ultar_cloud::messages::Arg::Str(&device)),
+                ("hours", ultar_cloud::messages::Arg::Int(*hours)),
+            ];
+            let action = if *can_remove {
+                KEY_REMOVE_IT
+            } else {
+                KEY_CANNOT_CANCEL
+            };
+            BannerText {
+                message: render(lang, KEY_DEVICE_ADDED, &args),
+                action: render(lang, action, &[]),
+                can_act: *can_remove,
+            }
+        }
         Banner::Stopped => BannerText {
             message: render(lang, KEY_RECOVERY_CANCELLED, &[]),
+            action: String::new(),
+            can_act: true,
+        },
+        Banner::Removed => BannerText {
+            message: render(lang, KEY_DEVICE_REMOVED, &[]),
             action: String::new(),
             can_act: true,
         },
     }
 }
 
-/// Takes a new result into the shared data. Returns true when a pending move appeared that was
-/// not there before (it has to be announced).
+/// Takes a new result into the shared data. Returns true when a pending move or an added device
+/// appeared that was not there before (it has to be announced).
 fn absorb(shared: &mut Shared, found: SecurityState) -> bool {
-    let appeared = found.recovery.is_some() && shared.state.recovery.is_none();
-    if found.recovery.is_some() {
-        shared.stopped = false;
+    let known = |id: &str| shared.state.unapproved.iter().any(|d| d.device == id);
+    let new_device = found.unapproved.iter().any(|d| !known(&d.device));
+    let appeared = (found.recovery.is_some() && shared.state.recovery.is_none()) || new_device;
+    if appeared {
+        shared.stopped = None;
     }
     shared.state = found;
     shared.fresh |= appeared;
@@ -116,6 +162,7 @@ fn absorb(shared: &mut Shared, found: SecurityState) -> bool {
 enum Cmd {
     Check,
     NotMe,
+    RemoveAdded(String),
 }
 
 /// The running watch of one device.
@@ -143,13 +190,22 @@ fn run(rx: mpsc::Receiver<Cmd>, shared: Arc<Mutex<Shared>>) {
     let mut cmd = Cmd::Check;
     loop {
         let client = ultar_cloud::client();
-        let stopped_now = matches!(cmd, Cmd::NotMe) && watch.not_me(&client).is_ok();
+        let done = match &cmd {
+            Cmd::Check => None,
+            Cmd::NotMe => watch.not_me(&client).is_ok().then_some(Banner::Stopped),
+            Cmd::RemoveAdded(id) => watch
+                .remove_added(&client, id)
+                .is_ok()
+                .then_some(Banner::Removed),
+        };
         // Offline or refused: keep what is shown and try again at the next occasion.
         if let Ok(found) = watch.check(&client) {
             let _ = watch.acknowledge(&found);
             if let Ok(mut s) = shared.lock() {
                 absorb(&mut s, found);
-                s.stopped |= stopped_now;
+                if done.is_some() {
+                    s.stopped = done;
+                }
             }
         }
         cmd = match rx.recv_timeout(CHECK_EVERY) {
@@ -168,17 +224,23 @@ impl SecurityAlert {
         }
     }
 
-    /// "This was not me": stop the pending move with this device's key.
-    pub fn not_me(&self) {
+    /// "This was not me": stop the pending move, or remove the added device the banner shows,
+    /// with this device's key.
+    pub fn not_me(&self, banner: &Banner) {
+        let cmd = match banner {
+            Banner::Pending { .. } => Cmd::NotMe,
+            Banner::Added { device_id, .. } => Cmd::RemoveAdded(device_id.clone()),
+            Banner::Stopped | Banner::Removed => return,
+        };
         if let Some(tx) = &self.tx {
-            let _ = tx.send(Cmd::NotMe);
+            let _ = tx.send(cmd);
         }
     }
 
     /// What to show now, with its texts in `lang`.
     pub fn banner_with_text(&self, lang: &str) -> Option<(Banner, BannerText)> {
         let mut shared = self.shared.lock().ok()?;
-        let banner = banner_for(&shared.state, shared.stopped)?;
+        let banner = banner_for(&shared.state, shared.stopped.as_ref())?;
         if let Some((l, b, text)) = &shared.drawn {
             if l == lang && *b == banner {
                 return Some((banner, text.clone()));
@@ -200,7 +262,7 @@ impl SecurityAlert {
     /// The user closed the "stopped" confirmation.
     pub fn dismiss(&self) {
         if let Ok(mut s) = self.shared.lock() {
-            s.stopped = false;
+            s.stopped = None;
         }
     }
 }
@@ -218,14 +280,26 @@ mod tests {
             }),
             notices: Vec::new(),
             manage,
+            unapproved: Vec::new(),
+        }
+    }
+
+    fn added(id: char, manage_in: i64, manage: bool) -> SecurityState {
+        SecurityState {
+            unapproved: vec![ultar_cloud::AddedDevice {
+                device: id.to_string().repeat(32),
+                manage_in,
+            }],
+            manage,
+            ..SecurityState::default()
         }
     }
 
     #[test]
     fn a_pending_move_is_shown_until_the_server_no_longer_reports_it() {
-        assert_eq!(banner_for(&SecurityState::default(), false), None);
+        assert_eq!(banner_for(&SecurityState::default(), None), None);
         assert_eq!(
-            banner_for(&pending(71 * 3600 + 1, true), false),
+            banner_for(&pending(71 * 3600 + 1, true), None),
             Some(Banner::Pending {
                 device: "aaaaaaaa".into(),
                 hours: 72,
@@ -234,7 +308,7 @@ mod tests {
         );
         // Even after "stopped" was shown: a move that is (again) pending wins.
         assert_eq!(
-            banner_for(&pending(0, false), true),
+            banner_for(&pending(0, false), Some(&Banner::Stopped)),
             Some(Banner::Pending {
                 device: "aaaaaaaa".into(),
                 hours: 0,
@@ -242,7 +316,7 @@ mod tests {
             })
         );
         assert_eq!(
-            banner_for(&SecurityState::default(), true),
+            banner_for(&SecurityState::default(), Some(&Banner::Stopped)),
             Some(Banner::Stopped)
         );
     }
@@ -255,15 +329,15 @@ mod tests {
         assert!(!absorb(&mut shared, pending(50, true)), "the same move");
         assert!(!shared.fresh);
         // It is over (stopped by the user on this device) …
-        shared.stopped = true;
+        shared.stopped = Some(Banner::Stopped);
         assert!(!absorb(&mut shared, SecurityState::default()));
         assert_eq!(
-            banner_for(&shared.state, shared.stopped),
+            banner_for(&shared.state, shared.stopped.as_ref()),
             Some(Banner::Stopped)
         );
         // … and somebody starts another one: announced again, "stopped" is gone.
         assert!(absorb(&mut shared, pending(100, true)));
-        assert!(shared.fresh && !shared.stopped);
+        assert!(shared.fresh && shared.stopped.is_none());
     }
 
     #[test]
@@ -297,9 +371,47 @@ mod tests {
             tx: None,
         };
         alert.recheck();
-        alert.not_me();
+        alert.not_me(&Banner::Stopped);
         alert.dismiss();
         assert_eq!(alert.banner_with_text("en"), None);
         assert!(!alert.take_fresh());
+    }
+
+    #[test]
+    fn an_added_device_is_pinned_announced_once_and_removable_from_a_managing_device() {
+        let mut shared = Shared::default();
+        assert!(absorb(&mut shared, added('b', 5 * 3600, true)));
+        assert!(
+            !absorb(&mut shared, added('b', 4 * 3600, true)),
+            "the same device"
+        );
+        assert!(
+            absorb(&mut shared, added('c', 4 * 3600, true)),
+            "another one"
+        );
+        let banner = banner_for(&shared.state, None).unwrap();
+        assert_eq!(
+            banner,
+            Banner::Added {
+                device_id: "c".repeat(32),
+                hours: 4,
+                can_remove: true
+            }
+        );
+        let en = banner_text("en", &banner);
+        assert!(en.message.contains("cccccccc") && en.message.contains("4 hours"));
+        assert!(en.can_act && en.action.contains("remove"));
+        let hint = banner_text("en", &banner_for(&added('b', 60, false), None).unwrap());
+        assert!(!hint.can_act);
+        // a pending move is shown first
+        let mut both = pending(3600, true);
+        both.unapproved = added('b', 60, true).unapproved;
+        assert!(matches!(
+            banner_for(&both, None),
+            Some(Banner::Pending { .. })
+        ));
+        assert!(banner_text("de", &Banner::Removed)
+            .message
+            .contains("entfernt"));
     }
 }

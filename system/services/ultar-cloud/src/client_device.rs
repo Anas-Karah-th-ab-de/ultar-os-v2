@@ -49,6 +49,19 @@ pub struct Registration {
     /// A replacement of one of the account's devices that is waiting to be finished.
     #[serde(default)]
     pub recovery: Option<RecoveryState>,
+    /// Other devices of the account that were added and may not manage devices yet.
+    #[serde(default)]
+    pub unapproved: Vec<AddedDevice>,
+}
+
+/// A device that was added to the account and may manage its devices only after approval or
+/// when its waiting time is over. Shown to the user until then.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct AddedDevice {
+    /// Its device id.
+    pub device: String,
+    /// Seconds until it may manage the account's devices without approval.
+    pub manage_in: i64,
 }
 
 /// A pending replacement of a lost device: somebody with the account password asked to move a

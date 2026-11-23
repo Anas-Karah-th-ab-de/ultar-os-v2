@@ -32,8 +32,9 @@ const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 struct Peer {
     sender: mpsc::Sender<Message>,
     account_id: i64,
-    /// True when the device may manage the account's devices (it then gets security notices).
-    manager: bool,
+    /// From this time (Unix seconds) the device may manage the account's devices and gets
+    /// security notices; `i64::MAX` = never (legacy), set to the past when it is approved.
+    manage_at: i64,
     stop: Arc<Notify>,
 }
 
@@ -82,14 +83,22 @@ impl Hub {
         }
     }
 
-    /// Pushes a security notice to every connected managing device of an account.
-    pub fn notify_account(&self, account_id: i64, event: &str, device_prefix: &str) {
+    /// The connected device of `number` was approved: it gets notices from now on.
+    pub fn approved(&self, number: &str) {
+        if let Some(peer) = self.lock().get_mut(number) {
+            peer.manage_at = i64::MIN;
+        }
+    }
+
+    /// Pushes a security notice to every connected device of an account that may manage the
+    /// account's devices at `now` (Unix seconds).
+    pub fn notify_account(&self, now: i64, account_id: i64, event: &str, device_prefix: &str) {
         let note =
             serde_json::json!({"type":"notice","event":event,"device":device_prefix}).to_string();
         let hub = self.lock();
         for peer in hub
             .values()
-            .filter(|p| p.account_id == account_id && p.manager)
+            .filter(|p| p.account_id == account_id && p.manage_at <= now)
         {
             let _ = peer.sender.try_send(Message::Text(note.clone()));
         }
@@ -211,7 +220,7 @@ fn confirm(
     let peer = Peer {
         sender: out_tx.clone(),
         account_id,
-        manager: manage_in == Some(0),
+        manage_at: manage_in.map_or(i64::MAX, |wait| now.saturating_add(wait)),
         stop: stop.clone(),
     };
     st.hub.enter(&number, peer);

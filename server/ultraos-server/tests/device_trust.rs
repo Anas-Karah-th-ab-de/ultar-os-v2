@@ -320,8 +320,10 @@ fn notices_are_pushed_to_managing_devices_only_and_a_new_sign_in_replaces_the_so
     });
 }
 
+/// From one client: login, password change and recovery start share the client's budget for
+/// the account (`password_failures`, here 4).
 #[test]
-fn failed_password_checks_share_one_budget_per_account() {
+fn failed_password_checks_of_one_client_share_one_budget() {
     let s = TestServer::start_with(|c| c.devices.password_failures = 4);
     let token = s.register("anna");
     let other = s.register("bert");
@@ -345,7 +347,7 @@ fn failed_password_checks_share_one_budget_per_account() {
             .status,
         401
     );
-    // now even the right password is refused, on every path, with the time to wait
+    // now even the right password is refused from this client, on every path, with the wait
     let locked = login(&s, "anna", PASSWORD);
     assert_eq!(code(&locked), (429, "rate_limited".into()));
     assert_eq!(locked.header("retry-after"), Some("900"));
@@ -365,31 +367,58 @@ fn failed_password_checks_share_one_budget_per_account() {
     }
 }
 
-#[test]
-fn the_number_of_open_connections_is_bounded() {
+/// Opens a connection that is busy: its request head is complete, its body never comes.
+fn busy_connection(s: &TestServer) -> std::net::TcpStream {
+    use std::io::Write;
+    let mut stream = std::net::TcpStream::connect(s.addr).unwrap();
+    let head = "POST /v1/account/login HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 400\r\n\r\n{";
+    stream.write_all(head.as_bytes()).unwrap();
+    stream
+}
+
+/// Sends a health request on a new connection; true when it is answered.
+fn served(s: &TestServer) -> bool {
     use std::io::{Read, Write};
-    let s = TestServer::start_with(|c| c.max_connections = 2);
-    let held: Vec<std::net::TcpStream> = (0..2)
-        .map(|_| std::net::TcpStream::connect(s.addr).unwrap())
-        .collect();
-    // Both places are taken by clients that send nothing: a third client is not served.
-    let mut third = std::net::TcpStream::connect(s.addr).unwrap();
-    third
-        .write_all(b"GET /v1/health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-        .unwrap();
-    third
-        .set_read_timeout(Some(std::time::Duration::from_millis(700)))
+    let mut stream = std::net::TcpStream::connect(s.addr).unwrap();
+    let _ = stream.write_all(b"GET /v1/health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .unwrap();
     let mut buffer = [0u8; 64];
-    assert!(
-        third.read(&mut buffer).is_err(),
-        "served beyond the connection cap"
-    );
-    // One of them leaves: the waiting client is served.
-    drop(held);
-    third
-        .set_read_timeout(Some(std::time::Duration::from_secs(20)))
-        .unwrap();
-    let n = third.read(&mut buffer).unwrap();
-    assert!(String::from_utf8_lossy(&buffer[..n]).starts_with("HTTP/1.1 200"));
+    let n = stream.read(&mut buffer).unwrap_or(0);
+    String::from_utf8_lossy(&buffer[..n]).starts_with("HTTP/1.1 200")
+}
+
+#[test]
+fn the_number_of_open_connections_is_bounded_and_silent_ones_give_way() {
+    let s = TestServer::start_with(|c| c.max_connections = 2);
+    // Silent connections take no place from a client with a request: the oldest gives way.
+    let silent: Vec<std::net::TcpStream> = (0..2)
+        .map(|_| std::net::TcpStream::connect(s.addr).unwrap())
+        .collect();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(served(&s), "a silent connection kept a request out");
+    drop(silent);
+    // Two connections in the middle of a request are not closed for a newcomer.
+    let busy = [busy_connection(&s), busy_connection(&s)];
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!served(&s), "served beyond the connection cap");
+    drop(busy);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(served(&s));
+}
+
+#[test]
+fn one_client_gets_only_its_share_of_the_connections() {
+    // Without trusted proxies the loopback address is an ordinary client.
+    let s = TestServer::start_with(|c| {
+        c.max_connections_per_peer = 2;
+        c.trusted_proxies = Vec::new();
+    });
+    let busy = [busy_connection(&s), busy_connection(&s)];
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(!served(&s), "a third connection of the same client");
+    drop(busy);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(served(&s));
 }

@@ -75,6 +75,13 @@ cloud.alert.recovery_pending = {hours ->
     [one] Jemand mit deinem Kennwort will die Nummer des Geräts {device} auf ein anderes Gerät umziehen. Der Umzug ist in {hours} Stunde möglich.
    *[other] Jemand mit deinem Kennwort will die Nummer des Geräts {device} auf ein anderes Gerät umziehen. Der Umzug ist in {hours} Stunden möglich.
 }
+cloud.alert.device_added_pending = {hours ->
+    [0] Deinem Konto wurde ein Gerät hinzugefügt: {device}. Es darf jetzt deine Geräte verwalten.
+    [one] Deinem Konto wurde ein Gerät hinzugefügt: {device}. Es darf deine Geräte in {hours} Stunde verwalten, wenn du es nicht entfernst.
+   *[other] Deinem Konto wurde ein Gerät hinzugefügt: {device}. Es darf deine Geräte in {hours} Stunden verwalten, wenn du es nicht entfernst.
+}
+cloud.alert.remove_it = Das war ich nicht – entfernen
+cloud.alert.device_removed_done = Das Gerät wurde entfernt. Ändere jetzt dein Kennwort.
 cloud.alert.not_me = Das war ich nicht – abbrechen
 cloud.alert.recovery_cancelled = Der Umzug der Nummer wurde abgebrochen. Ändere jetzt dein Kennwort.
 cloud.alert.cannot_cancel = Dieses Gerät wurde vor Kurzem hinzugefügt und kann den Umzug nicht abbrechen. Nimm eines deiner anderen Geräte oder ändere dein Kennwort.

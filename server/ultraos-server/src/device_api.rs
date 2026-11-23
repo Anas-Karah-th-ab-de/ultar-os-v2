@@ -7,7 +7,7 @@
 //! before all checks passed. Logs name devices by a short prefix of their id only.
 
 use crate::accounts::ApiJson;
-use crate::challenge::{ChallengeUse, CHALLENGE_ID_BYTES};
+use crate::challenge::{ChallengeUse, MAX_ID_BYTES, SESSION_ID_BYTES};
 use crate::device_moves::{self, LegacyClaim};
 use crate::devices::{self, DeviceState, Registered};
 use crate::devtoken::{self, DeviceClaims, DEVICE_TOKEN_TTL_SECS};
@@ -41,14 +41,23 @@ pub(crate) fn notice_prefix(device_id: &str) -> String {
 
 /// A proof of possession as it arrives: which challenge, and the signature over its transcript.
 pub(crate) struct Proof {
-    pub(crate) challenge_id: [u8; CHALLENGE_ID_BYTES],
+    pub(crate) challenge_id: Vec<u8>,
     pub(crate) signature: [u8; SIGNATURE_BYTES],
 }
 
 impl Proof {
+    /// Malformed text is `invalid_request`; well-formed ids of a length the server never issues
+    /// are left to the store (`challenge_unknown`).
     pub(crate) fn parse(challenge_id: &str, signature: &str) -> Result<Self, ApiError> {
+        use base64::Engine;
+        if challenge_id.len() > MAX_ID_BYTES * 2 {
+            return Err(ApiError::InvalidRequest);
+        }
+        let id = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(challenge_id)
+            .map_err(|_| ApiError::InvalidRequest)?;
         Ok(Self {
-            challenge_id: identity::decode_fixed(challenge_id).ok_or(ApiError::InvalidRequest)?,
+            challenge_id: id,
             signature: identity::parse_signature(signature)?,
         })
     }
@@ -64,19 +73,29 @@ pub(crate) fn proven(
     purpose: Purpose,
     extra: &[u8],
 ) -> Result<crate::challenge::Bound, ApiError> {
-    let bound =
-        st.devices
-            .challenges
-            .take(&proof.challenge_id, usage, account_id, st.devices.now_ms())?;
-    let transcript = Transcript {
-        purpose,
-        server: &st.devices.config.server_name,
-        account_id: bound.account_id,
-        challenge: &bound.challenge,
-        subject_key: &bound.public_key,
-        extra,
+    let store = &st.devices.challenges;
+    let now = st.devices.now_ms();
+    let verify = |bound: &crate::challenge::Bound| {
+        let transcript = Transcript {
+            purpose,
+            server: &st.devices.config.server_name,
+            account_id: bound.account_id,
+            challenge: &bound.challenge,
+            subject_key: &bound.public_key,
+            extra,
+        };
+        transcript.verify(&proof.signature)
     };
-    transcript.verify(&proof.signature)?;
+    if proof.challenge_id.len() == SESSION_ID_BYTES {
+        // Session challenges are consumed only by a signature that verifies: a stranger who
+        // knows the key can neither use them up nor fill the device's budget.
+        let ticket = store.open_session(&proof.challenge_id, usage, account_id, now)?;
+        verify(&ticket.bound)?;
+        store.confirm(&ticket, now)?;
+        return Ok(ticket.bound);
+    }
+    let bound = store.take(&proof.challenge_id, usage, account_id, now)?;
+    verify(&bound)?;
     Ok(bound)
 }
 
@@ -101,7 +120,32 @@ pub(crate) fn registered_reply(st: &AppState, account_id: i64, done: &Registered
         "manage": done.manage_in == 0,
         "manage_in": done.manage_in,
         "recovery": recovery_json(st, account_id)?,
+        "unapproved": unapproved_json(st, account_id, &done.device_id)?,
     })))
+}
+
+/// The other devices of the account that were added and may not manage devices yet:
+/// `[{"device":"<id>","manage_in":<seconds>}]`. Like a pending recovery this is a state the
+/// owner's devices show until it is over (approved, removed, or the cool-down passed).
+pub(crate) fn unapproved_json(
+    st: &AppState,
+    account_id: i64,
+    except: &str,
+) -> Result<Value, ApiError> {
+    let (now, cooldown) = (
+        st.devices.now_secs(),
+        st.devices.config.recovery_cooldown_secs,
+    );
+    let list = devices::list(&st.db.lock(), account_id, now, cooldown)?;
+    let waiting: Vec<Value> = list
+        .into_iter()
+        .filter(|d| d.device_id != except)
+        .filter_map(|d| {
+            let wait = d.manage_in.filter(|w| *w > 0)?;
+            Some(json!({"device": d.device_id, "manage_in": wait}))
+        })
+        .collect();
+    Ok(Value::Array(waiting))
 }
 
 /// The pending recovery of the account as it is reported to its devices (`null` when none): a
@@ -112,6 +156,15 @@ pub(crate) fn recovery_json(st: &AppState, account_id: i64) -> Result<Value, Api
         Some(r) => json!({"old_device": r.old_device, "eligible_in": r.eligible_in}),
         None => Value::Null,
     })
+}
+
+/// True when the request's bearer token is the device token of a device that may manage the
+/// account's devices now.
+pub(crate) fn is_managing_token(st: &AppState, headers: &HeaderMap) -> bool {
+    let Some(me) = bearer(headers).and_then(|t| device_of_token(st, t)) else {
+        return false;
+    };
+    managing_device(&st.db.lock(), st, &me).is_ok()
 }
 
 /// The calling device's row, if it may manage other devices of its account now
@@ -225,8 +278,12 @@ pub async fn register(
         st.devices.limits(),
     )?;
     if done.created {
-        st.hub
-            .notify_account(acc, "device_added", &notice_prefix(&done.device_id));
+        st.hub.notify_account(
+            st.devices.now_secs(),
+            acc,
+            "device_added",
+            &notice_prefix(&done.device_id),
+        );
         tracing::info!(event = "device_registered", device = %short(&done.device_id));
     }
     registered_reply(&st, acc, &done)
@@ -326,8 +383,12 @@ pub async fn upgrade(
         st.devices.now_secs(),
         st.devices.limits(),
     )?;
-    st.hub
-        .notify_account(acc, "device_upgraded", &notice_prefix(&done.device_id));
+    st.hub.notify_account(
+        st.devices.now_secs(),
+        acc,
+        "device_upgraded",
+        &notice_prefix(&done.device_id),
+    );
     tracing::info!(event = "device_upgraded", device = %short(&done.device_id));
     registered_reply(&st, acc, &done)
 }
@@ -364,6 +425,7 @@ pub async fn list(State(st): State<Shared>, h: HeaderMap) -> Reply {
         "devices": entries,
         "limit": st.devices.config.max_devices,
         "recovery": recovery_json(&st, acc)?,
+        "unapproved": unapproved_json(&st, acc, "")?,
     })))
 }
 
@@ -415,6 +477,7 @@ pub async fn remove(
         st.hub.kick(number);
     }
     st.hub.notify_account(
+        st.devices.now_secs(),
         me.account_id,
         "device_removed",
         &notice_prefix(&r.device_id),

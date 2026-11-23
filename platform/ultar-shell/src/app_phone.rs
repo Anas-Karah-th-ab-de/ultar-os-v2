@@ -464,8 +464,8 @@ impl App {
         };
         let text = texts.message;
         let action: &str = match banner {
-            Banner::Stopped => self.t("Close"),
-            Banner::Pending { .. } => &texts.action,
+            Banner::Stopped | Banner::Removed => self.t("Close"),
+            Banner::Pending { .. } | Banner::Added { .. } => &texts.action,
         };
         let pad = ui.dp(12.0);
         let (tw, btn_h) = (body.w - 2.0 * pad, ui.dp(36.0));
@@ -478,8 +478,8 @@ impl App {
         let can_act = texts.can_act;
         if can_act && ui.button(button, action, crate::ui::Btn::Plain) {
             match banner {
-                Banner::Pending { .. } => self.phone.alert.not_me(),
-                Banner::Stopped => self.phone.alert.dismiss(),
+                Banner::Pending { .. } | Banner::Added { .. } => self.phone.alert.not_me(&banner),
+                Banner::Stopped | Banner::Removed => self.phone.alert.dismiss(),
             }
             ui.dirty = true;
         } else if !can_act {

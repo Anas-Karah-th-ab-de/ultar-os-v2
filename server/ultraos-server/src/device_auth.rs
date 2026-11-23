@@ -28,7 +28,7 @@ pub struct DeviceConfig {
     /// Seconds between the start of a lost-device recovery and the earliest finish; also the
     /// time after which a device added without approval may manage other devices.
     pub recovery_cooldown_secs: i64,
-    /// Failed password checks allowed per account within 15 minutes.
+    /// Failed password checks allowed per account and client within 15 minutes.
     pub password_failures: u32,
 }
 

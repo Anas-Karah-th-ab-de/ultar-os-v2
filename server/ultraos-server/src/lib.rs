@@ -25,9 +25,12 @@ pub mod admin;
 pub mod auth;
 pub mod catalog;
 pub mod challenge;
+mod challenge_purge;
+pub mod challenge_session;
 pub mod cli;
 pub mod clock;
 pub mod conditional;
+pub mod conntable;
 pub mod db;
 pub mod device_api;
 pub mod device_auth;
@@ -94,6 +97,8 @@ pub struct Config {
     pub devices: device_auth::DeviceConfig,
     /// Connections open at the same time.
     pub max_connections: usize,
+    /// Connections of one client (trusted proxies exempt).
+    pub max_connections_per_peer: usize,
 }
 
 impl Config {
@@ -119,6 +124,7 @@ impl Config {
             limits: LimiterConfig::default(),
             devices: device_auth::DeviceConfig::default(),
             max_connections: server::DEFAULT_MAX_CONNECTIONS,
+            max_connections_per_peer: server::DEFAULT_MAX_CONNECTIONS_PER_PEER,
         }
     }
 }
@@ -153,6 +159,8 @@ pub struct AppState {
     pub devices: device_auth::DeviceAuth,
     /// Connections open at the same time.
     pub max_connections: usize,
+    /// Connections of one client (trusted proxies exempt).
+    pub max_connections_per_peer: usize,
 }
 
 impl AppState {
@@ -175,6 +183,7 @@ impl AppState {
             trusted_proxies: config.trusted_proxies,
             devices: device_auth::DeviceAuth::new(config.devices, clock),
             max_connections: config.max_connections,
+            max_connections_per_peer: config.max_connections_per_peer,
         }))
     }
 }

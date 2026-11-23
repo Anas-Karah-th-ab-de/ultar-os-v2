@@ -37,8 +37,8 @@ pub mod watch;
 
 pub use client::{Client, VpnPeer};
 pub use client_device::{
-    authorize_replacement, AccountDevices, Challenge, DeviceEntry, DeviceEvent, RecoveryState,
-    Registration, ReplaceGrant, ReplaceRequest,
+    authorize_replacement, AccountDevices, AddedDevice, Challenge, DeviceEntry, DeviceEvent,
+    RecoveryState, Registration, ReplaceGrant, ReplaceRequest,
 };
 pub use device::{
     base_url, client, device_id, legacy_device_id, login, my_number, register, register_number,

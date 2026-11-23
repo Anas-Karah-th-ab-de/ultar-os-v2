@@ -9,7 +9,7 @@
 //! a notice.
 
 use crate::client::Client;
-use crate::client_device::{DeviceEvent, RecoveryState};
+use crate::client_device::{AddedDevice, DeviceEvent, RecoveryState};
 use crate::device::DeviceHome;
 use crate::error::CloudError;
 use crate::http::write_atomic;
@@ -17,6 +17,13 @@ use std::path::PathBuf;
 
 /// Message key of the lasting alert for a pending replacement (`{device}`, `{hours}`).
 pub const KEY_RECOVERY_PENDING: &str = "cloud.alert.recovery_pending";
+/// Message key of the lasting alert for a device that was added and may not manage yet
+/// (`{device}`, `{hours}`).
+pub const KEY_DEVICE_ADDED: &str = "cloud.alert.device_added_pending";
+/// Message key of the action that removes such a device.
+pub const KEY_REMOVE_IT: &str = "cloud.alert.remove_it";
+/// Message key of the confirmation after such a device was removed.
+pub const KEY_DEVICE_REMOVED: &str = "cloud.alert.device_removed_done";
 /// Message key of the title of a security alert.
 pub const KEY_ALERT_TITLE: &str = "cloud.alert.title";
 /// Message key of the hint for a device that may not cancel (added recently).
@@ -35,12 +42,14 @@ pub struct SecurityState {
     pub notices: Vec<DeviceEvent>,
     /// True when this device may manage the account's devices (and so cancel a replacement).
     pub manage: bool,
+    /// Devices added to the account that may not manage it yet; show them until that is over.
+    pub unapproved: Vec<AddedDevice>,
 }
 
 impl SecurityState {
     /// True when there is something to show.
     pub fn needs_attention(&self) -> bool {
-        self.recovery.is_some() || !self.notices.is_empty()
+        self.recovery.is_some() || !self.unapproved.is_empty() || !self.notices.is_empty()
     }
 
     /// Whole hours (rounded up) until a pending replacement can be finished.
@@ -105,7 +114,14 @@ impl SecurityWatch {
             recovery: session.recovery,
             notices,
             manage: session.manage,
+            unapproved: session.unapproved,
         })
+    }
+
+    /// "This was not me" for an added device: removes it with this device's key (this device
+    /// must be a managing device).
+    pub fn remove_added(&self, client: &Client, device_id: &str) -> Result<(), CloudError> {
+        client.remove_device(&self.home.key_store()?, device_id)
     }
 
     /// The user has seen the notices of `state`: they are not reported again. A pending
@@ -179,6 +195,17 @@ mod tests {
             eligible_in: 0,
         });
         assert_eq!(state.recovery_hours(), Some(0));
+        let added = SecurityState {
+            unapproved: vec![AddedDevice {
+                device: "b".repeat(32),
+                manage_in: 10,
+            }],
+            ..SecurityState::default()
+        };
+        assert!(
+            added.needs_attention(),
+            "an added device is pinned like a recovery"
+        );
         let only_notice = SecurityState {
             notices: vec![notice(1)],
             ..SecurityState::default()
@@ -209,6 +236,9 @@ mod tests {
                 KEY_RECOVERY_CANCELLED,
                 KEY_ALERT_TITLE,
                 KEY_CANNOT_CANCEL,
+                KEY_DEVICE_ADDED,
+                KEY_REMOVE_IT,
+                KEY_DEVICE_REMOVED,
             ];
             for key in keys.chain(fixed) {
                 assert!(tr.catalog(lang).contains(key), "{key} missing in {lang:?}");
@@ -229,6 +259,10 @@ mod tests {
         ));
         assert!(matches!(
             watch.not_me(&nowhere),
+            Err(CloudError::Transport(_))
+        ));
+        assert!(matches!(
+            watch.remove_added(&nowhere, "x"),
             Err(CloudError::Transport(_))
         ));
     }

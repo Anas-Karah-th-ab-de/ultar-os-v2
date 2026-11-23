@@ -124,15 +124,15 @@ pub enum Decision {
     },
 }
 
-/// Client key: IPv4 address or IPv6 /64 prefix.
+/// Client key: IPv4 address or IPv6 /64 prefix (also used by [`crate::pwguard`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ClientKey {
+pub(crate) enum ClientKey {
     V4([u8; 4]),
     V6Prefix([u8; 8]),
 }
 
 impl ClientKey {
-    fn from_ip(ip: IpAddr) -> Self {
+    pub(crate) fn from_ip(ip: IpAddr) -> Self {
         match ip {
             IpAddr::V4(a) => ClientKey::V4(a.octets()),
             IpAddr::V6(a) => match a.to_ipv4_mapped() {

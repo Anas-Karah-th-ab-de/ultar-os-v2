@@ -1,23 +1,42 @@
 //! Single-use challenges for proofs of possession.
 //!
-//! A challenge is 32 random bytes, bound when it is issued to a purpose, an account and the public
-//! key that claims it. It is addressed by a separate random id, lives for a short time, and the
-//! first presentation consumes it whatever the outcome. Pending challenges exist in memory only;
-//! their number is bounded per owner and in total, and nothing is evicted before it expires.
+//! A challenge is 32 bytes, bound when it is issued to a purpose, an account and the public key
+//! that claims it, and lives for [`CHALLENGE_TTL_MS`]. Two kinds exist:
+//!
+//! * **Account challenges** (register, upgrade, replace, recover, approve – requested with a
+//!   token): stored while pending, at most [`MAX_PER_OWNER`] per account. The first presentation
+//!   removes the pending entry, whatever the outcome; a small marker of it (at most
+//!   [`MAX_USED_PER_OWNER`] per account, the account's oldest dropped first) only lets a second
+//!   presentation answer `Used` instead of `Unknown`. A replay is refused either way.
+//! * **Session challenges** (requested without a token, by naming a public key): stateless.
+//!   Their id carries purpose, account, key, issue time and a random nonce, authenticated with
+//!   HMAC-SHA256 under a per-process key ([`crate::challenge_session`]); issuing stores nothing,
+//!   so requests of strangers who know a key change nothing for the device. A session challenge
+//!   is consumed only by a presentation whose signature verifies (its nonce is remembered until
+//!   it expires, at most [`MAX_SESSIONS_PER_KEY`] per key).
+//!
+//! Everything is in memory; a restart forgets all of it (fail closed: the process key is new).
 
 use crate::identity::{CHALLENGE_BYTES, PUBLIC_KEY_BYTES};
-use rand::RngCore;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::sync::{Mutex, MutexGuard};
 
-/// Length of a challenge id in bytes.
+/// Length of the id of an account challenge in bytes.
 pub const CHALLENGE_ID_BYTES: usize = 16;
+/// Length of the id of a session challenge in bytes.
+pub const SESSION_ID_BYTES: usize = crate::challenge_session::SESSION_ID_BYTES;
+/// Longest challenge id in bytes.
+pub const MAX_ID_BYTES: usize = SESSION_ID_BYTES;
 /// Lifetime of a challenge in milliseconds.
 pub const CHALLENGE_TTL_MS: u64 = 120_000;
-/// Most pending challenges of one account (or, for sessions, of one key).
+/// Most pending account challenges of one account.
 pub const MAX_PER_OWNER: u32 = 8;
-/// Most stored challenges in total (pending ones, and used ones until they expire).
+/// Most remembered presentations of account challenges per account.
+pub const MAX_USED_PER_OWNER: usize = 8;
+/// Most accepted session challenges per key within one lifetime.
+pub const MAX_SESSIONS_PER_KEY: usize = 16;
+/// Most stored entries in total (pending account challenges and markers of presented ones).
 pub const MAX_TOTAL: usize = 65_536;
 
 /// What a challenge was issued for.
@@ -63,7 +82,7 @@ pub enum ChallengeError {
     Expired,
     /// The challenge was issued for another purpose or account.
     Mismatch,
-    /// Too many challenges are pending.
+    /// Too many challenges are pending or were presented.
     Capacity {
         /// Seconds until room is certain to be free again.
         retry_after_secs: u64,
@@ -77,7 +96,7 @@ impl fmt::Display for ChallengeError {
             ChallengeError::Used => "challenge already used",
             ChallengeError::Expired => "challenge expired",
             ChallengeError::Mismatch => "challenge issued for another purpose or account",
-            ChallengeError::Capacity { .. } => "too many pending challenges",
+            ChallengeError::Capacity { .. } => "too many challenges",
         })
     }
 }
@@ -85,10 +104,10 @@ impl fmt::Display for ChallengeError {
 impl std::error::Error for ChallengeError {}
 
 /// A freshly issued challenge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issued {
-    /// Handle the device sends back.
-    pub id: [u8; CHALLENGE_ID_BYTES],
+    /// Handle the device sends back (16 bytes for account challenges, longer for sessions).
+    pub id: Vec<u8>,
     /// The bytes that enter the transcript.
     pub challenge: [u8; CHALLENGE_BYTES],
 }
@@ -104,30 +123,47 @@ pub struct Bound {
     pub challenge: [u8; CHALLENGE_BYTES],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Owner {
-    Account(i64),
-    Key([u8; PUBLIC_KEY_BYTES]),
-}
-
-struct Entry {
-    purpose: ChallengeUse,
-    owner: Owner,
-    bound: Bound,
+/// A session challenge that was opened and not yet consumed: consume it with
+/// [`ChallengeStore::confirm`] once the signature verified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ticket {
+    /// What the challenge is bound to.
+    pub bound: Bound,
+    nonce: [u8; crate::challenge_session::NONCE_BYTES],
     issued_ms: u64,
-    used: bool,
 }
 
+pub(crate) struct Pending {
+    /// What it was issued for.
+    pub(crate) purpose: ChallengeUse,
+    pub(crate) bound: Bound,
+    pub(crate) issued_ms: u64,
+}
+
+/// The store's tables.
 #[derive(Default)]
-struct Inner {
-    entries: HashMap<[u8; CHALLENGE_ID_BYTES], Entry>,
-    per_owner: HashMap<Owner, u32>,
-    oldest_ms: u64,
+pub(crate) struct Inner {
+    pub(crate) pending: HashMap<[u8; CHALLENGE_ID_BYTES], Pending>,
+    pub(crate) pending_per_account: HashMap<i64, u32>,
+    /// Presented account challenges: id -> issue time; per account in order of presentation.
+    pub(crate) used: HashMap<[u8; CHALLENGE_ID_BYTES], u64>,
+    pub(crate) used_per_account: HashMap<i64, VecDeque<([u8; CHALLENGE_ID_BYTES], u64)>>,
+    /// Accepted session challenges: nonce -> issue time; per key in order of acceptance.
+    pub(crate) sessions: HashMap<[u8; crate::challenge_session::NONCE_BYTES], u64>,
+    pub(crate) sessions_per_key: HashMap<[u8; PUBLIC_KEY_BYTES], VecDeque<u64>>,
+    pub(crate) oldest_ms: u64,
 }
 
-/// The bounded in-memory store of pending challenges.
+impl Inner {
+    pub(crate) fn total(&self) -> usize {
+        self.pending.len() + self.used.len() + self.sessions.len()
+    }
+}
+
+/// The bounded in-memory store of challenges.
 pub struct ChallengeStore {
     inner: Mutex<Inner>,
+    codec: crate::challenge_session::SessionCodec,
     ttl_ms: u64,
     max_per_owner: u32,
     max_total: usize,
@@ -139,11 +175,22 @@ impl Default for ChallengeStore {
     }
 }
 
+/// Lowers a count by one and drops it at zero.
+pub(crate) fn decrement_count<K: std::hash::Hash + Eq>(counts: &mut HashMap<K, u32>, key: &K) {
+    if let Some(n) = counts.get_mut(key) {
+        *n = n.saturating_sub(1);
+        if *n == 0 {
+            counts.remove(key);
+        }
+    }
+}
+
 impl ChallengeStore {
     /// A store with explicit lifetime and bounds.
     pub fn new(ttl_ms: u64, max_per_owner: u32, max_total: usize) -> Self {
         Self {
             inner: Mutex::new(Inner::default()),
+            codec: crate::challenge_session::SessionCodec::random(),
             ttl_ms,
             max_per_owner,
             max_total,
@@ -161,85 +208,15 @@ impl ChallengeStore {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn release(per_owner: &mut HashMap<Owner, u32>, owner: &Owner) {
-        if let Some(n) = per_owner.get_mut(owner) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                per_owner.remove(owner);
-            }
-        }
+    fn wait_secs(&self, since_ms: u64, now_ms: u64) -> u64 {
+        self.ttl_ms
+            .saturating_sub(now_ms.saturating_sub(since_ms))
+            .div_ceil(1000)
+            .max(1)
     }
 
-    fn purge(&self, inner: &mut Inner, now_ms: u64) {
-        if inner.entries.is_empty() || now_ms.saturating_sub(inner.oldest_ms) < self.ttl_ms {
-            return;
-        }
-        let ttl = self.ttl_ms;
-        let Inner {
-            entries,
-            per_owner,
-            oldest_ms,
-        } = inner;
-        let mut oldest = u64::MAX;
-        entries.retain(|_, e| {
-            let keep = now_ms.saturating_sub(e.issued_ms) < ttl;
-            if keep {
-                oldest = oldest.min(e.issued_ms);
-            } else if !e.used {
-                Self::release(per_owner, &e.owner);
-            }
-            keep
-        });
-        *oldest_ms = if oldest == u64::MAX { now_ms } else { oldest };
-    }
-
-    /// The oldest pending (unused) challenge of `owner`: its id and issue time.
-    fn oldest_pending(inner: &Inner, owner: &Owner) -> Option<([u8; CHALLENGE_ID_BYTES], u64)> {
-        inner
-            .entries
-            .iter()
-            .filter(|(_, e)| !e.used && e.owner == *owner)
-            .min_by_key(|(_, e)| e.issued_ms)
-            .map(|(id, e)| (*id, e.issued_ms))
-    }
-
-    /// Makes room for one more pending challenge of `owner`, or says how long to wait.
-    ///
-    /// Challenges of an account are refused beyond the bound (the account asked for them itself).
-    /// Session challenges are requested without authentication by naming a public key: there the
-    /// oldest pending one is dropped instead, so that requests of a stranger who merely knows the
-    /// key cannot lock the device out of its sessions.
-    fn make_room(
-        &self,
-        inner: &mut Inner,
-        owner: &Owner,
-        now_ms: u64,
-    ) -> Result<(), ChallengeError> {
-        let capacity = |since_ms: u64| ChallengeError::Capacity {
-            retry_after_secs: self
-                .ttl_ms
-                .saturating_sub(now_ms.saturating_sub(since_ms))
-                .div_ceil(1000)
-                .max(1),
-        };
-        let held = inner.per_owner.get(owner).copied().unwrap_or(0);
-        if held >= self.max_per_owner {
-            let Some((id, issued_ms)) = Self::oldest_pending(inner, owner) else {
-                return Err(capacity(now_ms));
-            };
-            if !matches!(owner, Owner::Key(_)) {
-                return Err(capacity(issued_ms));
-            }
-            inner.entries.remove(&id);
-            Self::release(&mut inner.per_owner, owner);
-        }
-        if inner.entries.len() >= self.max_total {
-            return Err(capacity(inner.oldest_ms));
-        }
-        Ok(())
-    }
-
-    /// Issues a challenge bound to `purpose`, `account_id` and `public_key`.
+    /// Issues a challenge bound to `purpose`, `account_id` and `public_key`. Session challenges
+    /// are never refused (nothing is stored for them).
     pub fn issue(
         &self,
         purpose: ChallengeUse,
@@ -247,70 +224,84 @@ impl ChallengeStore {
         public_key: [u8; PUBLIC_KEY_BYTES],
         now_ms: u64,
     ) -> Result<Issued, ChallengeError> {
-        let owner = match purpose {
-            ChallengeUse::Session => Owner::Key(public_key),
-            _ => Owner::Account(account_id),
-        };
-        let mut inner = self.lock();
-        self.purge(&mut inner, now_ms);
-        self.make_room(&mut inner, &owner, now_ms)?;
-        let mut issued = Issued {
-            id: [0; CHALLENGE_ID_BYTES],
-            challenge: [0; CHALLENGE_BYTES],
-        };
-        let mut rng = rand::rngs::OsRng;
-        rng.fill_bytes(&mut issued.challenge);
-        loop {
-            rng.fill_bytes(&mut issued.id);
-            if !inner.entries.contains_key(&issued.id) {
-                break;
-            }
+        if purpose == ChallengeUse::Session {
+            return Ok(self.codec.issue(account_id, public_key, now_ms));
         }
-        if inner.entries.is_empty() {
+        let mut inner = self.lock();
+        crate::challenge_purge::purge(&mut inner, self.ttl_ms, now_ms);
+        let held = inner
+            .pending_per_account
+            .get(&account_id)
+            .copied()
+            .unwrap_or(0);
+        if held >= self.max_per_owner {
+            let oldest = inner
+                .pending
+                .values()
+                .filter(|p| p.bound.account_id == account_id)
+                .map(|p| p.issued_ms)
+                .min()
+                .unwrap_or(now_ms);
+            return Err(ChallengeError::Capacity {
+                retry_after_secs: self.wait_secs(oldest, now_ms),
+            });
+        }
+        if inner.total() >= self.max_total
+            && !crate::challenge_purge::drop_oldest_marker(&mut inner)
+        {
+            return Err(ChallengeError::Capacity {
+                retry_after_secs: self.wait_secs(inner.oldest_ms, now_ms),
+            });
+        }
+        let issued = crate::challenge_session::random_account_challenge(&inner.pending);
+        if inner.total() == 0 {
             inner.oldest_ms = now_ms;
         }
         let bound = Bound {
             account_id,
             public_key,
-            challenge: issued.challenge,
+            challenge: issued.1,
         };
-        let entry = Entry {
+        let entry = Pending {
             purpose,
-            owner,
             bound,
             issued_ms: now_ms,
-            used: false,
         };
-        inner.entries.insert(issued.id, entry);
-        *inner.per_owner.entry(owner).or_insert(0) += 1;
-        Ok(issued)
+        inner.pending.insert(issued.0, entry);
+        *inner.pending_per_account.entry(account_id).or_insert(0) += 1;
+        Ok(Issued {
+            id: issued.0.to_vec(),
+            challenge: issued.1,
+        })
     }
 
     /// Consumes a challenge. `account_id` is `None` when the caller learns the account from the
-    /// challenge itself (sessions). Any presentation of a pending challenge uses it up and frees
-    /// its place in the owner's bound; the entry stays until it expires only to tell a replay
-    /// (`Used`) from an unknown id.
+    /// challenge itself (sessions). An account challenge is used up by any presentation; a
+    /// session challenge presented here is consumed without a signature check – the HTTP layer
+    /// uses [`ChallengeStore::open_session`] and [`ChallengeStore::confirm`] instead.
     pub fn take(
         &self,
-        id: &[u8; CHALLENGE_ID_BYTES],
+        id: &[u8],
         purpose: ChallengeUse,
         account_id: Option<i64>,
         now_ms: u64,
     ) -> Result<Bound, ChallengeError> {
+        if id.len() == SESSION_ID_BYTES {
+            let ticket = self.open_session(id, purpose, account_id, now_ms)?;
+            self.confirm(&ticket, now_ms)?;
+            return Ok(ticket.bound);
+        }
+        let id = <[u8; CHALLENGE_ID_BYTES]>::try_from(id).map_err(|_| ChallengeError::Unknown)?;
         let mut inner = self.lock();
-        let ttl = self.ttl_ms;
-        let Inner {
-            entries, per_owner, ..
-        } = &mut *inner;
-        let entry = entries.get_mut(id).ok_or(ChallengeError::Unknown)?;
-        if entry.used {
+        if inner.used.contains_key(&id) {
             return Err(ChallengeError::Used);
         }
-        entry.used = true;
-        Self::release(per_owner, &entry.owner);
-        if now_ms.saturating_sub(entry.issued_ms) >= ttl {
+        let entry = inner.pending.remove(&id).ok_or(ChallengeError::Unknown)?;
+        decrement_count(&mut inner.pending_per_account, &entry.bound.account_id);
+        if now_ms.saturating_sub(entry.issued_ms) >= self.ttl_ms {
             return Err(ChallengeError::Expired);
         }
+        crate::challenge_purge::remember_used(&mut inner, id, &entry.bound, entry.issued_ms);
         let account_ok = account_id.is_none_or(|a| a == entry.bound.account_id);
         if entry.purpose != purpose || !account_ok {
             return Err(ChallengeError::Mismatch);
@@ -318,9 +309,72 @@ impl ChallengeStore {
         Ok(entry.bound)
     }
 
-    /// Number of stored challenges (pending and used ones that have not expired yet).
+    /// Checks a session challenge without consuming it: authentic, not expired, not used, for
+    /// this purpose and (if given) account.
+    pub fn open_session(
+        &self,
+        id: &[u8],
+        purpose: ChallengeUse,
+        account_id: Option<i64>,
+        now_ms: u64,
+    ) -> Result<Ticket, ChallengeError> {
+        let opened = self.codec.open(id).ok_or(ChallengeError::Unknown)?;
+        if opened.issued_ms > now_ms {
+            return Err(ChallengeError::Unknown);
+        }
+        if now_ms - opened.issued_ms >= self.ttl_ms {
+            return Err(ChallengeError::Expired);
+        }
+        if self.lock().sessions.contains_key(&opened.nonce) {
+            return Err(ChallengeError::Used);
+        }
+        let account_ok = account_id.is_none_or(|a| a == opened.bound.account_id);
+        if purpose != ChallengeUse::Session || !account_ok {
+            return Err(ChallengeError::Mismatch);
+        }
+        Ok(Ticket {
+            bound: opened.bound,
+            nonce: opened.nonce,
+            issued_ms: opened.issued_ms,
+        })
+    }
+
+    /// Consumes an opened session challenge (after its signature verified). Exactly one of
+    /// several concurrent confirmations of the same challenge succeeds.
+    pub fn confirm(&self, ticket: &Ticket, now_ms: u64) -> Result<(), ChallengeError> {
+        let mut inner = self.lock();
+        crate::challenge_purge::purge(&mut inner, self.ttl_ms, now_ms);
+        if inner.sessions.contains_key(&ticket.nonce) {
+            return Err(ChallengeError::Used);
+        }
+        let key = ticket.bound.public_key;
+        let per_key = inner.sessions_per_key.get(&key);
+        if let Some(oldest) = per_key.filter(|q| q.len() >= MAX_SESSIONS_PER_KEY) {
+            let since = oldest.front().copied().unwrap_or(now_ms);
+            return Err(ChallengeError::Capacity {
+                retry_after_secs: self.wait_secs(since, now_ms),
+            });
+        }
+        if inner.total() >= self.max_total
+            && !crate::challenge_purge::drop_oldest_marker(&mut inner)
+        {
+            return Err(ChallengeError::Capacity {
+                retry_after_secs: self.wait_secs(inner.oldest_ms, now_ms),
+            });
+        }
+        if inner.total() == 0 {
+            inner.oldest_ms = ticket.issued_ms;
+        }
+        inner.sessions.insert(ticket.nonce, ticket.issued_ms);
+        let queue = inner.sessions_per_key.entry(key).or_default();
+        queue.push_back(ticket.issued_ms);
+        Ok(())
+    }
+
+    /// Number of stored entries (pending account challenges, markers of presented ones,
+    /// accepted session nonces).
     pub fn len(&self) -> usize {
-        self.lock().entries.len()
+        self.lock().total()
     }
 
     /// True when nothing is stored.
