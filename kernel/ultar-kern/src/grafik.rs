@@ -62,7 +62,12 @@ pub fn init_gop(fb: Option<Framebuffer>) {
 
 /// Eigener Anzeigetreiber meldet sich an; er übernimmt das Umschalten (die Firmware-Anzeige bleibt als Rückfall)
 pub fn anmelden(a: Box<dyn Anzeige>) {
-    crate::kprintln!("[anzeige] {} ({}): {} Auflösungen", a.name(), a.herkunft(), a.modi().len());
+    crate::kprintln!(
+        "[anzeige] {} ({}): {} Auflösungen",
+        a.name(),
+        a.herkunft(),
+        a.modi().len()
+    );
     ANZEIGEN.lock().push(a);
 }
 
@@ -91,7 +96,11 @@ pub fn modus(w: u32, h: u32) -> Result<Framebuffer, String> {
 /// Grafikkarten im Rechner und welcher Weg sie betreibt (für /proc/ultar/geraet und die Werkstatt)
 fn karten() -> Vec<String> {
     let mut v = Vec::new();
-    for b in crate::driver::DEVICES.lock().iter().filter(|b| b.dev.class == 0x03) {
+    for b in crate::driver::DEVICES
+        .lock()
+        .iter()
+        .filter(|b| b.dev.class == 0x03)
+    {
         let d = &b.dev;
         let weg = match (b.driver, d.vendor) {
             (Some(n), _) => format!("Treiber {n}"),
@@ -108,7 +117,12 @@ fn karten() -> Vec<String> {
 pub fn text() -> String {
     let mut s = String::new();
     if let Some(f) = crate::console::framebuffer() {
-        s += &format!("anzeige={} {}x{}\n", aktiv().unwrap_or("-"), f.width, f.height);
+        s += &format!(
+            "anzeige={} {}x{}\n",
+            aktiv().unwrap_or("-"),
+            f.width,
+            f.height
+        );
     } else {
         s += "anzeige=keine\n";
     }
@@ -147,11 +161,19 @@ pub fn befehl(arg: Option<&str>) {
         }
         Some(m) => {
             let mut it = m.split(['x', 'X', '*']);
-            let (Some(w), Some(h)) = (it.next().and_then(|x| x.parse().ok()), it.next().and_then(|x| x.parse().ok())) else {
+            let (Some(w), Some(h)) = (
+                it.next().and_then(|x| x.parse().ok()),
+                it.next().and_then(|x| x.parse().ok()),
+            ) else {
                 return crate::kprintln!("anzeige <breite>x<höhe>, z. B. anzeige 1920x1080");
             };
             match modus(w, h) {
-                Ok(f) => crate::kprintln!("[anzeige] {}x{} über {}", f.width, f.height, aktiv().unwrap_or("-")),
+                Ok(f) => crate::kprintln!(
+                    "[anzeige] {}x{} über {}",
+                    f.width,
+                    f.height,
+                    aktiv().unwrap_or("-")
+                ),
                 Err(e) => crate::kprintln!("[anzeige] {e}"),
             }
         }

@@ -29,9 +29,20 @@ fn function(d: &Desc) -> Option<&'static str> {
 
 /// Note an attached device in the kernel's device list (from `attach`, device descriptor `dd`).
 pub(super) fn register(hc: &Hc, lage: &Lage, slot: u32, speed: u32, dd: &[u8], ifs: &[Desc]) {
-    let (Some(vid), Some(pid), Some(bcd)) = (dd.get(8..10), dd.get(10..12), dd.get(12..14)) else { return };
+    let (Some(vid), Some(pid), Some(bcd)) = (dd.get(8..10), dd.get(10..12), dd.get(12..14)) else {
+        return;
+    };
     let le = |b: &[u8]| u16::from_le_bytes([b[0], b[1]]);
-    let ifaces: Vec<Iface> = ifs.iter().map(|d| Iface { number: d.iface, class: d.class, sub: d.sub, proto: d.proto, driver: function(d) }).collect();
+    let ifaces: Vec<Iface> = ifs
+        .iter()
+        .map(|d| Iface {
+            number: d.iface,
+            class: d.class,
+            sub: d.sub,
+            proto: d.proto,
+            driver: function(d),
+        })
+        .collect();
     if hc.kbds.iter().any(|k| k.slot == slot) {
         crate::input::usb_keyboard_added(hc.index, slot, le(vid), le(pid));
     }

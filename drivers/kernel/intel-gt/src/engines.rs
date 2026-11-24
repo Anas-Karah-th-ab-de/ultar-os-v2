@@ -78,6 +78,78 @@ pub fn media(hw: &mut impl Hw) -> Engines {
     Engines(field(fuse, GT_VDBOX_MASK) << VCS0 | field(fuse, GT_VEBOX_MASK) << VECS0 | 1 << GSCCS0)
 }
 
+/// Brings an engine at `base` into the state contexts can run in: no status page updates for
+/// interrupts, context mode instead of the old ring mode, and its status page (one page mapped
+/// at `status_page_ggtt`). Needs the engine's forcewake domain awake. The same three steps Linux
+/// takes (`xe_hw_engine.c`: the engine's default registers and `xe_hw_engine_enable_ring`).
+pub fn setup(hw: &mut impl Hw, base: u32, status_page_ggtt: u32) {
+    hw.write(base + RING_HWSTAM, !0);
+    hw.write(base + GFX_MODE, masked_enable(GFX_DISABLE_LEGACY_MODE));
+    hw.write(base + RING_HWS_PGA, status_page_ggtt);
+}
+
+/// Switches the compute engines on (off after reset). Needs the render forcewake domain awake.
+pub fn enable_compute(hw: &mut impl Hw) {
+    hw.write(RCU_MODE, masked_enable(RCU_MODE_CCS_ENABLE));
+}
+
+/// What an engine is doing, for reports when a job does not finish.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RingState {
+    /// Ring head.
+    pub head: u32,
+    /// Ring tail.
+    pub tail: u32,
+    /// GGTT address of the ring.
+    pub start: u32,
+    /// Ring control.
+    pub ctl: u32,
+    /// Address of the command being executed.
+    pub acthd: u32,
+    /// Execution status.
+    pub status: u32,
+    /// The context image the engine runs.
+    pub lrca: u32,
+    /// Engine mode.
+    pub mode: u32,
+    /// Error status.
+    pub esr: u32,
+    /// Error identity.
+    pub eir: u32,
+    /// The command an error was raised at.
+    pub ipehr: u32,
+}
+
+impl RingState {
+    /// Reads the registers of the engine at `base`.
+    pub fn read(hw: &mut impl Hw, base: u32) -> RingState {
+        RingState {
+            head: hw.read(base + RING_HEAD),
+            tail: hw.read(base + RING_TAIL),
+            start: hw.read(base + RING_START),
+            ctl: hw.read(base + RING_CTL),
+            acthd: hw.read(base + RING_ACTHD),
+            status: hw.read(base + RING_EXECLIST_STATUS_LO),
+            lrca: hw.read(base + RING_CURRENT_LRCA),
+            mode: hw.read(base + GFX_MODE),
+            esr: hw.read(base + RING_ESR),
+            eir: hw.read(base + RING_EIR),
+            ipehr: hw.read(base + RING_IPEHR),
+        }
+    }
+}
+
+impl core::fmt::Display for RingState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "head {:#x} tail {:#x} start {:#x} ctl {:#x} acthd {:#x} status {:#x} lrca {:#x} mode {:#x} esr {:#x} eir {:#x} ipehr {:#x}",
+            self.head, self.tail, self.start, self.ctl, self.acthd, self.status, self.lrca,
+            self.mode, self.esr, self.eir, self.ipehr
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +176,36 @@ mod tests {
         assert_eq!(e.names(), vec!["vcs0", "vcs2", "vecs0", "gsccs0"]);
         s.set(GT_VEBOX_VDBOX_DISABLE + MEDIA_GSI_OFFSET, u32::MAX);
         assert_eq!(media(&mut s), Engines(0));
+    }
+
+    #[test]
+    fn setup_writes_the_three_registers() {
+        let mut s = Sim::new();
+        setup(&mut s, 0x22000, 0x0123_4000);
+        assert_eq!(
+            s.writes,
+            [
+                (0x22098, 0xffff_ffff),
+                (0x2229c, 0x0008_0008),
+                (0x22080, 0x0123_4000)
+            ]
+        );
+    }
+
+    #[test]
+    fn compute_is_switched_on_with_a_masked_write() {
+        let mut s = Sim::new();
+        enable_compute(&mut s);
+        assert_eq!(s.writes, [(0x14800, 0x0001_0001)]);
+    }
+
+    #[test]
+    fn ring_state_reads_and_prints() {
+        let mut s = Sim::new();
+        s.set(0x22034, 0x18);
+        s.set(0x22030, 0x18);
+        let st = RingState::read(&mut s, 0x22000);
+        assert_eq!((st.head, st.tail), (0x18, 0x18));
+        assert!(alloc::format!("{st}").starts_with("head 0x18 tail 0x18"));
     }
 }

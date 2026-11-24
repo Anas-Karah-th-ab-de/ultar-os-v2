@@ -77,6 +77,11 @@ impl GgttBuf {
         out
     }
 
+    /// The memory pages of the buffer (to map them into a context's address space as well).
+    pub fn pages(&self) -> Vec<u64> {
+        (0..self.pages).map(|i| self.phys + i * 4096).collect()
+    }
+
     /// Points the entries at the scratch page again and frees the pages (the caller made sure
     /// the hardware no longer reads them).
     pub fn release(self, dev: &mut Device) {
@@ -123,5 +128,50 @@ impl Shared for Words {
         // SAFETY: as in `read`; a volatile store into pages this buffer owns.
         unsafe { core::ptr::write_volatile(addr as *mut u32, val) };
         flush(addr, 4);
+    }
+}
+
+/// Memory for the page tables of a context's address space: kernel pages, written through to
+/// memory like everything the GT reads.
+#[derive(Default)]
+pub struct TableMem {
+    pages: Vec<u64>,
+}
+
+impl TableMem {
+    /// Frees every table page (the caller made sure no context uses the tables any more).
+    pub fn release(self) {
+        for p in self.pages {
+            crate::mem::free_run(p, 1);
+        }
+    }
+}
+
+impl ultar_intel_gt::ppgtt::Tables for TableMem {
+    fn alloc(&mut self) -> Option<u64> {
+        // zeroed by the allocator
+        let page = crate::mem::alloc_pages(1)?;
+        flush(page, 4096);
+        self.pages.push(page);
+        Some(page)
+    }
+
+    fn read(&mut self, table: u64, index: usize) -> u64 {
+        if index >= 512 || !self.pages.contains(&table) {
+            return 0;
+        }
+        // SAFETY: `table` is a page this object allocated (checked above) and `index` stays
+        // inside it; the address is 8-byte aligned.
+        unsafe { core::ptr::read_volatile((table + index as u64 * 8) as *const u64) }
+    }
+
+    fn write(&mut self, table: u64, index: usize, entry: u64) {
+        if index >= 512 || !self.pages.contains(&table) {
+            return;
+        }
+        let addr = table + index as u64 * 8;
+        // SAFETY: as in `read`; a volatile store into a page this object owns.
+        unsafe { core::ptr::write_volatile(addr as *mut u64, entry) };
+        flush(addr, 8);
     }
 }

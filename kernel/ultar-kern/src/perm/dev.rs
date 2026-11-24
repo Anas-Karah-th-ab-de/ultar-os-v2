@@ -21,7 +21,9 @@ pub(super) fn raw_device(path: &str) -> bool {
 
 /// `st_rdev` of a device node (Linux numbers), 0 for anything else.
 pub fn rdev(path: &str) -> u64 {
-    let Some(d) = path.strip_prefix("/dev/") else { return 0 };
+    let Some(d) = path.strip_prefix("/dev/") else {
+        return 0;
+    };
     if let Some(n) = d.strip_prefix("input/").and_then(crate::input::parse) {
         return crate::input::rdev(n);
     }
@@ -45,7 +47,11 @@ pub(super) fn dev_gate(path: &str, want: u32) -> Result<(), i64> {
     // the service nodes: their own right and nothing else (svcdev)
     if let Some(right) = crate::svcdev::right_for(path) {
         let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::ALL);
-        return if rights.has(right) { Ok(()) } else { Err(-EACCES) };
+        return if rights.has(right) {
+            Ok(())
+        } else {
+            Err(-EACCES)
+        };
     }
     let (cred, admin, _) = subject();
     let raw = with(|p| p.g.iso.rights.has(Rights::RAW_DEVICE)).unwrap_or(true);
@@ -54,7 +60,11 @@ pub(super) fn dev_gate(path: &str, want: u32) -> Result<(), i64> {
     }
     let a = of(path).ok_or(-ENOENT)?;
     // the owner root grants nothing by itself: group and other bits decide
-    let a = if a.uid == 0 { Attr { uid: u32::MAX, ..a } } else { a };
+    let a = if a.uid == 0 {
+        Attr { uid: u32::MAX, ..a }
+    } else {
+        a
+    };
     if allows(&a, &cred, want) {
         Ok(())
     } else {

@@ -157,7 +157,13 @@ impl AddrSpace {
     pub fn new() -> Option<AddrSpace> {
         let p = crate::mem::alloc_page()?;
         tab(p).copy_from_slice(tab(kernel_pml4()));
-        Some(AddrSpace { pml4: p, lazy: spin::Mutex::new(alloc::vec::Vec::new()), resident: AtomicU64::new(0), lazy_end: AtomicU64::new(0), shared: spin::Mutex::new(alloc::vec::Vec::new()) })
+        Some(AddrSpace {
+            pml4: p,
+            lazy: spin::Mutex::new(alloc::vec::Vec::new()),
+            resident: AtomicU64::new(0),
+            lazy_end: AtomicU64::new(0),
+            shared: spin::Mutex::new(alloc::vec::Vec::new()),
+        })
     }
 
     /// Eintrag der nächsten Ebene holen; geteilte Kern-Tabellen/2-MB-Seiten werden für den Prozess ersetzt
@@ -278,7 +284,8 @@ impl AddrSpace {
         }
         // a range that covers the hole on both sides is split in two: one more entry each
         let splits = l.iter().filter(|r| r.0 < va && r.1 > end).count();
-        if splits > 0 && (l.len() + splits > MAX_RANGES || !crate::mem::try_reserve(&mut l, splits)) {
+        if splits > 0 && (l.len() + splits > MAX_RANGES || !crate::mem::try_reserve(&mut l, splits))
+        {
             return false;
         }
         for i in 0..l.len() {
@@ -306,7 +313,12 @@ impl AddrSpace {
 
     /// Seitenfehler in einem reservierten Bereich: genullte Seite einsetzen
     pub fn fault_in(&self, va: u64) -> Fault {
-        let hit = self.lazy.lock().iter().find(|r| va >= r.0 && va < r.1).map(|r| (r.2, r.3));
+        let hit = self
+            .lazy
+            .lock()
+            .iter()
+            .find(|r| va >= r.0 && va < r.1)
+            .map(|r| (r.2, r.3));
         match hit {
             Some((w, x)) => match self.map_inner(va & !0xfff, w, x) {
                 Some(_) => Fault::Mapped,
@@ -343,16 +355,23 @@ impl AddrSpace {
             let mut to = crate::mem::try_with_capacity(from.len())?;
             to.extend_from_slice(&from);
             *n.lazy.lock() = to;
-            n.lazy_end.store(self.lazy_end.load(Ordering::Relaxed), Ordering::Relaxed);
+            n.lazy_end
+                .store(self.lazy_end.load(Ordering::Relaxed), Ordering::Relaxed);
         }
         let mut ok = true;
         self.for_each(|va, pa, fl| {
             if !ok {
                 return;
             }
-            let va = if va & (1 << 47) != 0 { va | 0xffff_0000_0000_0000 } else { va };
+            let va = if va & (1 << 47) != 0 {
+                va | 0xffff_0000_0000_0000
+            } else {
+                va
+            };
             match n.map(va, fl & W != 0, fl & NX == 0) {
-                Some(np) => unsafe { core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096) },
+                Some(np) => unsafe {
+                    core::ptr::copy_nonoverlapping(pa as *const u8, np as *mut u8, 4096)
+                },
                 None => ok = false,
             }
         });

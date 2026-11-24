@@ -72,10 +72,30 @@ const RT_RESET_SYSTEM: usize = 10;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Guid(pub u32, pub u16, pub u16, pub [u8; 8]);
 
-pub const GOP_GUID: Guid = Guid(0x9042a9de, 0x23dc, 0x4a38, [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a]);
-pub const ACPI20_GUID: Guid = Guid(0x8868e871, 0xe4f1, 0x11d3, [0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81]);
-pub const SMBIOS_GUID: Guid = Guid(0xeb9d2d31, 0x2d88, 0x11d3, [0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d]);
-pub const SMBIOS3_GUID: Guid = Guid(0xf2fd1544, 0x9794, 0x4a2c, [0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94]);
+pub const GOP_GUID: Guid = Guid(
+    0x9042a9de,
+    0x23dc,
+    0x4a38,
+    [0x96, 0xfb, 0x7a, 0xde, 0xd0, 0x80, 0x51, 0x6a],
+);
+pub const ACPI20_GUID: Guid = Guid(
+    0x8868e871,
+    0xe4f1,
+    0x11d3,
+    [0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
+);
+pub const SMBIOS_GUID: Guid = Guid(
+    0xeb9d2d31,
+    0x2d88,
+    0x11d3,
+    [0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d],
+);
+pub const SMBIOS3_GUID: Guid = Guid(
+    0xf2fd1544,
+    0x9794,
+    0x4a2c,
+    [0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94],
+);
 
 #[repr(C)]
 pub struct GopModeInfo {
@@ -145,7 +165,9 @@ pub struct Boot {
 
 impl Boot {
     pub fn regions(&self) -> impl Iterator<Item = MemDesc> + '_ {
-        self.mem.chunks_exact(self.desc_size).map(|c| unsafe { core::ptr::read_unaligned(c.as_ptr() as *const MemDesc) })
+        self.mem
+            .chunks_exact(self.desc_size)
+            .map(|c| unsafe { core::ptr::read_unaligned(c.as_ptr() as *const MemDesc) })
     }
 }
 
@@ -182,16 +204,24 @@ unsafe fn bs(st: *mut SystemTable, idx: usize) -> usize {
 /// Alles Nötige von der Firmware holen und sie danach verlassen.
 pub unsafe fn take_over(image: Handle, st: *mut SystemTable) -> Boot {
     // Wachhund der Firmware aus (sonst Neustart nach 5 Minuten)
-    let wd: extern "efiapi" fn(usize, u64, usize, *const u16) -> Status = core::mem::transmute(bs(st, BS_SET_WATCHDOG));
+    let wd: extern "efiapi" fn(usize, u64, usize, *const u16) -> Status =
+        core::mem::transmute(bs(st, BS_SET_WATCHDOG));
     wd(0, 0, 0, core::ptr::null());
 
     // Grafik
-    let locate: extern "efiapi" fn(*const Guid, *mut c_void, *mut *mut c_void) -> Status = core::mem::transmute(bs(st, BS_LOCATE_PROTOCOL));
+    let locate: extern "efiapi" fn(*const Guid, *mut c_void, *mut *mut c_void) -> Status =
+        core::mem::transmute(bs(st, BS_LOCATE_PROTOCOL));
     let mut gop: *mut c_void = core::ptr::null_mut();
     let fb = if locate(&GOP_GUID, core::ptr::null_mut(), &mut gop) == 0 && !gop.is_null() {
         let m = &*(*(gop as *const Gop)).mode;
         let info = &*m.info;
-        (info.pixel_format <= 1).then_some(Framebuffer { base: m.fb_base, width: info.hres, height: info.vres, stride: info.stride, bgr: info.pixel_format == 1 })
+        (info.pixel_format <= 1).then_some(Framebuffer {
+            base: m.fb_base,
+            width: info.hres,
+            height: info.vres,
+            stride: info.stride,
+            bgr: info.pixel_format == 1,
+        })
     } else {
         None
     };
@@ -210,9 +240,17 @@ pub unsafe fn take_over(image: Handle, st: *mut SystemTable) -> Boot {
     }
 
     // Puffer für die Speicherkarte (bleibt nach dem Verlassen gültig: Lader-Daten)
-    let alloc_pool: extern "efiapi" fn(u32, usize, *mut *mut u8) -> Status = core::mem::transmute(bs(st, BS_ALLOCATE_POOL));
-    let get_map: extern "efiapi" fn(*mut usize, *mut u8, *mut usize, *mut usize, *mut u32) -> Status = core::mem::transmute(bs(st, BS_GET_MEMORY_MAP));
-    let exit: extern "efiapi" fn(Handle, usize) -> Status = core::mem::transmute(bs(st, BS_EXIT_BOOT_SERVICES));
+    let alloc_pool: extern "efiapi" fn(u32, usize, *mut *mut u8) -> Status =
+        core::mem::transmute(bs(st, BS_ALLOCATE_POOL));
+    let get_map: extern "efiapi" fn(
+        *mut usize,
+        *mut u8,
+        *mut usize,
+        *mut usize,
+        *mut u32,
+    ) -> Status = core::mem::transmute(bs(st, BS_GET_MEMORY_MAP));
+    let exit: extern "efiapi" fn(Handle, usize) -> Status =
+        core::mem::transmute(bs(st, BS_EXIT_BOOT_SERVICES));
     let cap = 64 * 1024;
     let mut buf: *mut u8 = core::ptr::null_mut();
     if alloc_pool(2, cap, &mut buf) != 0 {
@@ -229,7 +267,14 @@ pub unsafe fn take_over(image: Handle, st: *mut SystemTable) -> Boot {
         }
         // Ab hier keine Firmware-Ausgabe mehr: jeder Aufruf kann die Karte ändern
         if exit(image, key) == 0 {
-            return Boot { fb, rsdp, smbios, mem: core::slice::from_raw_parts(buf, size), desc_size: dsize, runtime };
+            return Boot {
+                fb,
+                rsdp,
+                smbios,
+                mem: core::slice::from_raw_parts(buf, size),
+                desc_size: dsize,
+                runtime,
+            };
         }
         tries += 1;
         if tries > 4 {
@@ -240,9 +285,24 @@ pub unsafe fn take_over(image: Handle, st: *mut SystemTable) -> Boot {
 
 // ------------------------------------------------------------------ Kettenstart vom Installationsmedium
 
-pub const LOADED_IMAGE_GUID: Guid = Guid(0x5b1b31a1, 0x9562, 0x11d2, [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
-pub const SIMPLE_FS_GUID: Guid = Guid(0x964e5b22, 0x6459, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
-pub const DEVICE_PATH_GUID: Guid = Guid(0x09576e91, 0x6d3f, 0x11d2, [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b]);
+pub const LOADED_IMAGE_GUID: Guid = Guid(
+    0x5b1b31a1,
+    0x9562,
+    0x11d2,
+    [0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
+);
+pub const SIMPLE_FS_GUID: Guid = Guid(
+    0x964e5b22,
+    0x6459,
+    0x11d2,
+    [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
+);
+pub const DEVICE_PATH_GUID: Guid = Guid(
+    0x09576e91,
+    0x6d3f,
+    0x11d2,
+    [0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
+);
 const BS_HANDLE_PROTOCOL: usize = 16;
 const BS_LOAD_IMAGE: usize = 22;
 const BS_START_IMAGE: usize = 23;
@@ -281,7 +341,8 @@ fn u16z(s: &str, buf: &mut [u16; 64]) -> *const u16 {
 }
 
 unsafe fn protokoll(st: *mut SystemTable, h: Handle, g: &Guid) -> *mut c_void {
-    let hp: extern "efiapi" fn(Handle, *const Guid, *mut *mut c_void) -> Status = core::mem::transmute(bs(st, BS_HANDLE_PROTOCOL));
+    let hp: extern "efiapi" fn(Handle, *const Guid, *mut *mut c_void) -> Status =
+        core::mem::transmute(bs(st, BS_HANDLE_PROTOCOL));
     let mut p: *mut c_void = core::ptr::null_mut();
     if hp(h, g, &mut p) != 0 {
         return core::ptr::null_mut();
@@ -329,7 +390,9 @@ unsafe fn platten_praefix(st: *mut SystemTable, h: Handle) -> Option<(*const u8,
 
 unsafe fn gleiche_platte(st: *mut SystemTable, a: Handle, b: Handle) -> bool {
     match (platten_praefix(st, a), platten_praefix(st, b)) {
-        (Some((pa, la)), Some((pb, lb))) => la == lb && core::slice::from_raw_parts(pa, la) == core::slice::from_raw_parts(pb, lb),
+        (Some((pa, la)), Some((pb, lb))) => {
+            la == lb && core::slice::from_raw_parts(pa, la) == core::slice::from_raw_parts(pb, lb)
+        }
         _ => false,
     }
 }
@@ -338,7 +401,8 @@ unsafe fn gleiche_platte(st: *mut SystemTable, a: Handle, b: Handle) -> bool {
 /// (\ultar\installiert oder \ultar\vmlinuz)? Dann nach 3 Sekunden deren Startprogramm starten –
 /// Taste „i“ bleibt in der Installation.
 /// vom Installationsmedium gestartet (Datei \ultar-installer auf der eigenen Startpartition)
-pub static VOM_INSTALLER: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+pub static VOM_INSTALLER: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
 
 pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
     let li = protokoll(st, image, &LOADED_IMAGE_GUID);
@@ -351,7 +415,13 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
         return;
     }
     VOM_INSTALLER.store(true, core::sync::atomic::Ordering::Relaxed);
-    let lhb: extern "efiapi" fn(u32, *const Guid, *mut c_void, *mut usize, *mut *mut Handle) -> Status = core::mem::transmute(bs(st, BS_LOCATE_HANDLE_BUFFER));
+    let lhb: extern "efiapi" fn(
+        u32,
+        *const Guid,
+        *mut c_void,
+        *mut usize,
+        *mut *mut Handle,
+    ) -> Status = core::mem::transmute(bs(st, BS_LOCATE_HANDLE_BUFFER));
     let (mut n, mut hs): (usize, *mut Handle) = (0, core::ptr::null_mut());
     if lhb(2, &SIMPLE_FS_GUID, core::ptr::null_mut(), &mut n, &mut hs) != 0 {
         return;
@@ -362,7 +432,9 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
         if h == eigenes || gleiche_platte(st, h, eigenes) {
             continue; // eigene Platte (Nutzlast-Partition des Mediums) überspringen
         }
-        if datei_da(st, h, "\\EFI\\BOOT\\BOOTX64.EFI") && (datei_da(st, h, "\\ultar\\installiert") || datei_da(st, h, "\\ultar\\vmlinuz")) {
+        if datei_da(st, h, "\\EFI\\BOOT\\BOOTX64.EFI")
+            && (datei_da(st, h, "\\ultar\\installiert") || datei_da(st, h, "\\ultar\\vmlinuz"))
+        {
             ziel = h;
             break;
         }
@@ -370,7 +442,18 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
     if ziel.is_null() {
         return;
     }
-    print(st, concat!("\n", ultar_brand::product!(), " ist bereits installiert – Start in 3 s.   Taste I: Installation\n", ultar_brand::product!(), " installed - starting in 3 s.   Key I: installer\n", ultar_brand::product!(), " مثبت – يبدأ خلال 3 ثوانٍ. اضغط I للتثبيت\n"));
+    print(
+        st,
+        concat!(
+            "\n",
+            ultar_brand::product!(),
+            " ist bereits installiert – Start in 3 s.   Taste I: Installation\n",
+            ultar_brand::product!(),
+            " installed - starting in 3 s.   Key I: installer\n",
+            ultar_brand::product!(),
+            " مثبت – يبدأ خلال 3 ثوانٍ. اضغط I للتثبيت\n"
+        ),
+    );
     let stall: extern "efiapi" fn(usize) -> Status = core::mem::transmute(bs(st, BS_STALL));
     let cin = (*st).con_in as *mut SimpleTextIn;
     for _ in 0..30 {
@@ -426,13 +509,24 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
     pfad[e] = 0x7f;
     pfad[e + 1] = 0xff;
     pfad[e + 2] = 4;
-    let load: extern "efiapi" fn(u8, Handle, *const u8, *const c_void, usize, *mut Handle) -> Status = core::mem::transmute(bs(st, BS_LOAD_IMAGE));
-    let start: extern "efiapi" fn(Handle, *mut usize, *mut *mut u16) -> Status = core::mem::transmute(bs(st, BS_START_IMAGE));
+    let load: extern "efiapi" fn(
+        u8,
+        Handle,
+        *const u8,
+        *const c_void,
+        usize,
+        *mut Handle,
+    ) -> Status = core::mem::transmute(bs(st, BS_LOAD_IMAGE));
+    let start: extern "efiapi" fn(Handle, *mut usize, *mut *mut u16) -> Status =
+        core::mem::transmute(bs(st, BS_START_IMAGE));
     let mut neu: Handle = core::ptr::null_mut();
     if load(0, image, pfad.as_ptr(), core::ptr::null(), 0, &mut neu) == 0 {
         start(neu, core::ptr::null_mut(), core::ptr::null_mut());
     }
-    print(st, "Start der installierten Platte fehlgeschlagen – Installation\n");
+    print(
+        st,
+        "Start der installierten Platte fehlgeschlagen – Installation\n",
+    );
 }
 
 /// The load options this image was started with (UTF-16 units, as the parent set them), copied
@@ -473,7 +567,12 @@ pub unsafe fn sprache_lesen(image: Handle, st: *mut SystemTable) -> Option<u8> {
 /// Liest bis zu `buf.len()` Bytes der Datei `pfad` (UEFI-Pfad) der eigenen Startpartition – vor
 /// ExitBootServices; liefert die Zahl der gelesenen Bytes.
 // SAFETY: (Aufrufer) nur in der Firmware-Phase, mit `image`/`st` so, wie die Firmware sie übergab.
-pub unsafe fn datei_lesen(image: Handle, st: *mut SystemTable, pfad: &str, buf: &mut [u8]) -> Option<usize> {
+pub unsafe fn datei_lesen(
+    image: Handle,
+    st: *mut SystemTable,
+    pfad: &str,
+    buf: &mut [u8],
+) -> Option<usize> {
     let li = protokoll(st, image, &LOADED_IMAGE_GUID);
     if li.is_null() {
         return None;
@@ -521,7 +620,8 @@ pub unsafe fn reset(rt: *mut RuntimeServices, kind: u32) {
         return;
     }
     // UEFI 2.10 §8.5.1: EFIAPI (Microsoft x64), der Rust-Aufruf richtet den Stapel auf 16 Bytes aus
-    let f: extern "efiapi" fn(u32, Status, usize, *const c_void) -> Status = core::mem::transmute(p);
+    let f: extern "efiapi" fn(u32, Status, usize, *const c_void) -> Status =
+        core::mem::transmute(p);
     let _ = f(kind, 0, 0, core::ptr::null());
 }
 

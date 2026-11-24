@@ -55,6 +55,7 @@ const KLV_G2H_CTB_SIZE: u32 = 0x0907;
 
 const HXG_ORIGIN_GUC: u32 = 1 << 31;
 const HXG_TYPE_SHIFT: u32 = 28;
+const HXG_TYPE_FAST_REQUEST: u32 = 2 << HXG_TYPE_SHIFT;
 const HXG_DATA: u32 = 0x0fff_ffff;
 
 /// How often a request the GuC asks to retry is sent again.
@@ -163,7 +164,19 @@ impl Ct {
     /// Writes a request (word 0: the action) into the H2G ring and notifies the GuC. Returns the
     /// fence the response will carry.
     pub fn send(&mut self, hw: &mut impl Hw, mem: &mut impl Shared, action: &[u32]) -> Result<u16> {
-        if action.is_empty() || action.len() > MAX_ACTION_WORDS || action[0] & !HXG_DATA != 0 {
+        if action.first().is_some_and(|a| a & !HXG_DATA != 0) {
+            return Err(Error::Invalid("CTB request"));
+        }
+        self.send_words(hw, mem, action)
+    }
+
+    fn send_words(
+        &mut self,
+        hw: &mut impl Hw,
+        mem: &mut impl Shared,
+        action: &[u32],
+    ) -> Result<u16> {
+        if action.is_empty() || action.len() > MAX_ACTION_WORDS {
             return Err(Error::Invalid("CTB request"));
         }
         if mem.read(H2G_DESC + DESC_STATUS) != 0 {
@@ -198,6 +211,53 @@ impl Ct {
         mem.write(H2G_DESC + DESC_TAIL, self.tail);
         hw.write(GUC_HOST_INTERRUPT, 0);
         Ok(self.fence)
+    }
+
+    /// Sends a request the GuC does not answer ("fast request"): it only reports a failure, and
+    /// what the request caused arrives as an event (see [`Ct::wait_event`]).
+    pub fn post(&mut self, hw: &mut impl Hw, mem: &mut impl Shared, action: &[u32]) -> Result<u16> {
+        let mut words = action.to_vec();
+        if let Some(first) = words.first_mut() {
+            if *first & !HXG_DATA != 0 {
+                return Err(Error::Invalid("CTB request"));
+            }
+            *first |= HXG_TYPE_FAST_REQUEST;
+        }
+        self.send_words(hw, mem, &words)
+    }
+
+    /// Polls for the event `action` (at most `timeout_us`) and returns its payload. A failure
+    /// the GuC reports meanwhile ends the wait with that failure; other messages are dropped.
+    pub fn wait_event(
+        &mut self,
+        hw: &mut impl Hw,
+        mem: &mut impl Shared,
+        action: u32,
+        timeout_us: u32,
+    ) -> Result<Vec<u32>> {
+        let start = hw.now_us();
+        loop {
+            match self.recv(mem)? {
+                Some(G2h::Event { action: a, payload }) if a == action => return Ok(payload),
+                Some(G2h::Failure { error, hint, .. }) => {
+                    return Err(Error::GucRequest {
+                        request: action,
+                        error,
+                        hint,
+                    })
+                }
+                Some(_) => {}
+                None => {
+                    if hw.now_us().saturating_sub(start) >= timeout_us as u64 {
+                        return Err(Error::GucProtocol {
+                            request: action,
+                            reply: 0,
+                        });
+                    }
+                    hw.delay_us(100);
+                }
+            }
+        }
     }
 
     /// Takes the next message out of the G2H ring; `None` when it is empty.

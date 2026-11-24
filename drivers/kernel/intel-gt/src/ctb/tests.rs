@@ -302,3 +302,38 @@ fn request_failure_retry_and_timeout() {
     );
     assert!(s.now_us() >= 1000);
 }
+
+#[test]
+fn post_marks_the_request_as_unanswered() {
+    let (mut s, mut m, mut ct) = enabled();
+    ct.post(&mut s, &mut m, &[0x1001, 7, 1]).unwrap();
+    assert_eq!(
+        m.0[H2G_CMDS..H2G_CMDS + 4],
+        [1 << 16 | 3, 2 << 28 | 0x1001, 7, 1]
+    );
+    assert_eq!(s.writes, [(GUC_HOST_INTERRUPT, 0)]);
+    assert!(ct.post(&mut s, &mut m, &[]).is_err());
+    assert!(ct.post(&mut s, &mut m, &[1 << 28]).is_err());
+}
+
+#[test]
+fn wait_event_finds_the_event_and_stops_at_a_failure() {
+    const EVENT: u32 = 1 << 31 | 1 << 28;
+    let (mut s, mut m, mut ct) = enabled();
+    m.guc_says(0, &[EVENT | 0x8002, 9]);
+    m.guc_says(0, &[EVENT | 0x1002, 7]);
+    assert_eq!(ct.wait_event(&mut s, &mut m, 0x1002, 1000).unwrap(), [7]);
+    // nothing more: the wait runs out
+    assert!(matches!(
+        ct.wait_event(&mut s, &mut m, 0x1002, 1000),
+        Err(Error::GucProtocol {
+            request: 0x1002,
+            reply: 0
+        })
+    ));
+    m.guc_says(3, &[1 << 31 | 6 << 28 | 0x30]);
+    assert!(matches!(
+        ct.wait_event(&mut s, &mut m, 0x1002, 1000),
+        Err(Error::GucRequest { error: 0x30, .. })
+    ));
+}

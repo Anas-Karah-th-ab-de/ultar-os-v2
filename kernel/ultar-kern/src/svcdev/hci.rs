@@ -94,7 +94,9 @@ pub fn sys_write(fd: u64, buf: u64, n: u64) -> Option<i64> {
     if n == 0 || n as usize > MAX_WRITE {
         return Some(-EINVAL);
     }
-    let Some(rec) = with(|p| proc::read_user(p.space(), buf, n as usize)).flatten() else { return Some(-EFAULT) };
+    let Some(rec) = with(|p| proc::read_user(p.space(), buf, n as usize)).flatten() else {
+        return Some(-EFAULT);
+    };
     Some(match bt::send(h.id, &rec) {
         Ok(()) => n as i64,
         Err(e) => errno(e),

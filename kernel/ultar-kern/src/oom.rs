@@ -43,10 +43,24 @@ fn alive(p: &Proc) -> bool {
 /// Thread groups to end for `victim`, with the name of what is ended.
 fn targets(ps: &[Box<Proc>], victim: Victim) -> (Vec<u64>, u16) {
     match victim {
-        Victim::Group(g) => (ps.iter().filter(|p| alive(p) && groups::within(p.g.res, g)).map(|p| p.tgid).collect(), g),
+        Victim::Group(g) => (
+            ps.iter()
+                .filter(|p| alive(p) && groups::within(p.g.res, g))
+                .map(|p| p.tgid)
+                .collect(),
+            g,
+        ),
         Victim::LargestOfSession => {
-            let size = |p: &Proc| p.g.space.as_ref().map(|s| s.resident.load(Ordering::Relaxed)).unwrap_or(0);
-            let best = ps.iter().filter(|p| alive(p) && groups::branch_of(p.g.res) == groups::SESSION).max_by_key(|p| (size(p), p.pid));
+            let size = |p: &Proc| {
+                p.g.space
+                    .as_ref()
+                    .map(|s| s.resident.load(Ordering::Relaxed))
+                    .unwrap_or(0)
+            };
+            let best = ps
+                .iter()
+                .filter(|p| alive(p) && groups::branch_of(p.g.res) == groups::SESSION)
+                .max_by_key(|p| (size(p), p.pid));
             (best.map(|p| p.tgid).into_iter().collect(), groups::SESSION)
         }
     }
@@ -77,8 +91,17 @@ fn choose_and_kill() -> usize {
         let (tgids, g) = targets(&ps, victim);
         // a group is ended as a whole; of the session only its largest process (pages × 4 KiB)
         let whole = matches!(victim, Victim::Group(_));
-        let resident = |t: &u64| ps.iter().find(|p| p.pid == *t).and_then(|p| p.g.space.as_ref()).map(|s| s.resident.load(Ordering::Relaxed) * 4096);
-        let used = if whole { groups::memory(g) } else { tgids.first().and_then(resident).unwrap_or(0) };
+        let resident = |t: &u64| {
+            ps.iter()
+                .find(|p| p.pid == *t)
+                .and_then(|p| p.g.space.as_ref())
+                .map(|s| s.resident.load(Ordering::Relaxed) * 4096)
+        };
+        let used = if whole {
+            groups::memory(g)
+        } else {
+            tgids.first().and_then(resident).unwrap_or(0)
+        };
         for t in &tgids {
             proc::kill_group(&mut ps, *t, KILLED);
         }
@@ -95,7 +118,14 @@ fn choose_and_kill() -> usize {
     crate::heap::kernel(|| {
         // log codes, not sentences: `oom-kill group` = the whole group, `oom-kill largest-of` = one process
         let what = if whole { "group" } else { "largest-of" };
-        crate::kprintln!("[mem] oom-kill {} {} free={}KiB procs={} used={}KiB", what, groups::files::path_of(g), free >> 10, n, used >> 10);
+        crate::kprintln!(
+            "[mem] oom-kill {} {} free={}KiB procs={} used={}KiB",
+            what,
+            groups::files::path_of(g),
+            free >> 10,
+            n,
+            used >> 10
+        );
     });
     n
 }
@@ -109,7 +139,12 @@ pub fn watch() {
 
 fn me_name() -> (String, u16) {
     let me = proc::current();
-    PROCS.lock().iter().find(|p| p.pid == me).map(|p| (p.name.clone(), p.g.res)).unwrap_or_default()
+    PROCS
+        .lock()
+        .iter()
+        .find(|p| p.pid == me)
+        .map(|p| (p.name.clone(), p.g.res))
+        .unwrap_or_default()
 }
 
 /// A page fault of the running process could not get a page. Never returns to the faulting
@@ -120,7 +155,11 @@ pub fn fault(f: &TrapFrame) -> ! {
         // the machine is short, not this group: end the worst offender and try again
         let n = kill_victim();
         let me = proc::current();
-        let dying = PROCS.lock().iter().find(|p| p.pid == me).and_then(|p| p.killed);
+        let dying = PROCS
+            .lock()
+            .iter()
+            .find(|p| p.pid == me)
+            .and_then(|p| p.killed);
         if let Some(st) = dying {
             proc::exit_thread(st, true);
         }
@@ -142,7 +181,13 @@ pub fn fault(f: &TrapFrame) -> ! {
 fn end_me(why: &str) -> ! {
     crate::heap::kernel(|| {
         let (name, g) = me_name();
-        crate::kprintln!("[mem] oom-end {} pid={} group={} reason={}", name, proc::current(), groups::files::path_of(g), why);
+        crate::kprintln!(
+            "[mem] oom-end {} pid={} group={} reason={}",
+            name,
+            proc::current(),
+            groups::files::path_of(g),
+            why
+        );
         groups::count_kill(g);
     });
     KILLS.fetch_add(1, Ordering::Relaxed);

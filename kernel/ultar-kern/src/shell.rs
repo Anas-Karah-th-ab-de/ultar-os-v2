@@ -21,7 +21,9 @@ pub fn run(boot_rt: *mut crate::efi::RuntimeServices) -> ! {
                     _ => 1,
                 };
                 if utf8.len() >= need {
-                    let r = core::str::from_utf8(&utf8).ok().and_then(|t| t.chars().next());
+                    let r = core::str::from_utf8(&utf8)
+                        .ok()
+                        .and_then(|t| t.chars().next());
                     utf8.clear();
                     r
                 } else {
@@ -74,21 +76,40 @@ pub fn leerlauf() {
 /// `/data/ultar/entwickler/an` (`…/aus` schaltet ab); Port aus `/data/ultar/entwickler/port` (Standard 2222). Öffnet nur diesen Port.
 pub fn entwickler_starten() {
     let an = crate::fs::stat("/data/ultar/entwickler/aus").is_none()
-        && (crate::fs::stat("/etc/ultar/entwickler").is_some() || crate::fs::stat("/data/ultar/entwickler/an").is_some());
-    let Some(prog) = ["/usr/bin/ultar-sshd", "/boot/efi/bin/ultar-sshd"].iter().find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else { return };
+        && (crate::fs::stat("/etc/ultar/entwickler").is_some()
+            || crate::fs::stat("/data/ultar/entwickler/an").is_some());
+    let Some(prog) = ["/usr/bin/ultar-sshd", "/boot/efi/bin/ultar-sshd"]
+        .iter()
+        .find(|p| matches!(crate::fs::stat(p), Some((0, _))))
+    else {
+        return;
+    };
     if !an {
         return;
     }
     let port: u16 = crate::fs::read_all("/data/ultar/entwickler/port")
-        .and_then(|d| core::str::from_utf8(&d).ok().and_then(|s| s.trim().parse().ok()))
+        .and_then(|d| {
+            core::str::from_utf8(&d)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+        })
         .unwrap_or(2222);
     let _ = crate::firewall::befehl(&alloc::format!("offen {port}"));
-    let envp: alloc::vec::Vec<String> = ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", "USER=root", "TERM=linux", "LANG=C.UTF-8", "ULTAR_KERN=1"]
-        .iter()
-        .map(|s| String::from(*s))
-        .collect();
+    let envp: alloc::vec::Vec<String> = [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME=/root",
+        "USER=root",
+        "TERM=linux",
+        "LANG=C.UTF-8",
+        "ULTAR_KERN=1",
+    ]
+    .iter()
+    .map(|s| String::from(*s))
+    .collect();
     match crate::proc::spawn_hintergrund(prog, alloc::vec![String::from("ultar-sshd")], envp) {
-        Ok(pid) => kprintln!("[entwickler] SSH-Zugang: Port {port} offen (nur Schlüssel), Prozess {pid}"),
+        Ok(pid) => {
+            kprintln!("[entwickler] SSH-Zugang: Port {port} offen (nur Schlüssel), Prozess {pid}")
+        }
         Err(e) => kprintln!("[entwickler] SSH-Zugang startet nicht: {e}"),
     }
 }
@@ -103,11 +124,16 @@ fn prompt() {
 /// Arbeitsverzeichnis der Konsole
 pub fn cwd() -> String {
     let c = crate::proc::SHELL_CWD.lock().clone();
-    if c.is_empty() { String::from("/") } else { c }
+    if c.is_empty() {
+        String::from("/")
+    } else {
+        c
+    }
 }
 
 fn is_dir(p: &str) -> bool {
-    matches!(crate::fs::stat(p), Some((1, _))) || matches!(crate::fs::open(p), Some(crate::fs::Node::Dir(_)))
+    matches!(crate::fs::stat(p), Some((1, _)))
+        || matches!(crate::fs::open(p), Some(crate::fs::Node::Dir(_)))
 }
 
 /// Buchstabenvarianten angleichen (أ إ آ → ا, ى → ي, ة → ه), Tatweel und Vokalzeichen weg
@@ -175,7 +201,9 @@ fn ar_wert(a: &str) -> String {
 
 fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
     let mut words = split_args(cmd);
-    let Some(first) = words.first().cloned() else { return };
+    let Some(first) = words.first().cloned() else {
+        return;
+    };
     // arabischer Befehl? → Kernbefehl, Schalterwerte übersetzen
     if let Some(k) = ar_befehl(&first) {
         words[0] = String::from(k);
@@ -188,7 +216,13 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
     match c {
         "cd" => {
             let ziel = match args.first().copied() {
-                None | Some("~") => if is_dir("/root") { String::from("/root") } else { String::from("/") },
+                None | Some("~") => {
+                    if is_dir("/root") {
+                        String::from("/root")
+                    } else {
+                        String::from("/")
+                    }
+                }
                 Some(a) => crate::fs::normalize(&cwd(), a),
             };
             if is_dir(&ziel) {
@@ -228,25 +262,39 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             kprintln!("لوحة عربي|ألماني|إنجليزي  تخطيط لوحة المفاتيح (tastatur) – أو Alt+Shift");
             kprintln!("سجل               سجل النواة               (protokoll)");
             kprintln!("مسح               مسح الشاشة               (clear)");
-            kprintln!(concat!("تثبيت             تثبيت ", ultar_brand::product!(), " على قرص   (installieren)"));
+            kprintln!(concat!(
+                "تثبيت             تثبيت ",
+                ultar_brand::product!(),
+                " على قرص   (installieren)"
+            ));
             kprintln!("لغة عربي|ألماني|إنجليزي  لغة النظام     (sprache)");
             kprintln!("إعادة_تشغيل | إيقاف  (neustart | aus)");
         }
-        "hilfe" | "help" | "?" if crate::sprache::get() == crate::sprache::AR => exec("hilfe-ar", rt),
+        "hilfe" | "help" | "?" if crate::sprache::get() == crate::sprache::AR => {
+            exec("hilfe-ar", rt)
+        }
         "hilfe" | "help" | "?" => {
             kprintln!("info          Prozessor, Speicher, Laufzeit");
             kprintln!("geraete       alle PCI-Geräte mit Treiber");
             kprintln!("treiber       eingebaute Treiber");
-            kprintln!("werkstatt     Geräte ohne Treiber als Bauplan (für tools/treiber-werkstatt)");
+            kprintln!(
+                "werkstatt     Geräte ohne Treiber als Bauplan (für tools/treiber-werkstatt)"
+            );
             kprintln!("anzeige [BxH]  Auflösung zeigen/umstellen (auch: bildschirm);  ton [hz] [ms]  Prüfton;  smbus [adr reg];  zufall");
             kprintln!("platten       Datenträger;  partitionen <n>;  lesen <n> <sektor>");
-            kprintln!("netz          Netzwerk-Zustand;  dhcp;  ping <ip>;  ipfest <a.b.c.d/nn> [router]");
+            kprintln!(
+                "netz          Netzwerk-Zustand;  dhcp;  ping <ip>;  ipfest <a.b.c.d/nn> [router]"
+            );
             kprintln!("firewall [offen|zu [tcp|udp] <port> | ping an|aus]  Brandmauer (Standard: alles zu);  sicherheit");
-            kprintln!("gruppen       Gruppen: Speicher und Prozesse je Gruppe, Grenzen, Schutzregeln");
+            kprintln!(
+                "gruppen       Gruppen: Speicher und Prozesse je Gruppe, Grenzen, Schutzregeln"
+            );
             kprintln!("verbund [an|aus]  Ultar-Verbund: Schalter und Geräte im Netz (auch /proc/ultar/verbund)");
             kprintln!("dateien [pfad]  Dateibaum (FAT der Startpartition + RAM);  zeige <datei>");
             kprintln!("start <programm> [argumente]  Linux-Programm (statisch, x86_64) starten – auch direkt: busybox sh");
-            kprintln!("init [pfad]   ultar-init als PID 1 starten (Dienste aus /etc/ultar/services)");
+            kprintln!(
+                "init [pfad]   ultar-init als PID 1 starten (Dienste aus /etc/ultar/services)"
+            );
             kprintln!("prozesse      laufende Prozesse;  kerne  Prozessorkerne;  spur an|aus  Systemaufrufe zeigen");
             kprintln!("cd <pfad>     Verzeichnis wechseln;  pwd  aktuelles Verzeichnis;  clear  Bild löschen");
             kprintln!("tastatur de|us|ar   (Alt+Shift schaltet Arabisch um)");
@@ -261,7 +309,11 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "info" => info(),
         "kerne" => {
             let (on, all) = crate::apic::cpu_count();
-            kprintln!("{on} von {all} Prozessorkernen aktiv, Zeitgeber {} Hz, {} Takte", crate::apic::HZ, crate::apic::ticks());
+            kprintln!(
+                "{on} von {all} Prozessorkernen aktiv, Zeitgeber {} Hz, {} Takte",
+                crate::apic::HZ,
+                crate::apic::ticks()
+            );
         }
         "dateien" => {
             let p = crate::fs::normalize(&cwd(), args.first().copied().unwrap_or("."));
@@ -299,8 +351,18 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "init" => {
             // ultar-init als PID 1 auf dem eigenen Kern
             let path = args.first().copied().unwrap_or("/sbin/ultar-init");
-            let Some(p) = find_program(path) else { return kprintln!("{path}: nicht gefunden") };
-            let envp = ["PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root", "TERM=linux", "ULTAR_EDITION=desktop"].iter().map(|s| String::from(*s)).collect();
+            let Some(p) = find_program(path) else {
+                return kprintln!("{path}: nicht gefunden");
+            };
+            let envp = [
+                "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME=/root",
+                "TERM=linux",
+                "ULTAR_EDITION=desktop",
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect();
             match crate::proc::spawn_init(&p, alloc::vec![String::from("ultar-init")], envp) {
                 Ok(_) => crate::proc::run_all(),
                 Err(e) => kprintln!("{e}"),
@@ -316,25 +378,40 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "geraete" => {
             for b in DEVICES.lock().iter() {
                 let d = &b.dev;
-                let drv = b.driver.unwrap_or(if b.error.is_some() { "FEHLER" } else { "-" });
+                let drv = b
+                    .driver
+                    .unwrap_or(if b.error.is_some() { "FEHLER" } else { "-" });
                 kprintln!("{}  {:<26} {}", d.id(), d.class_name(), drv);
             }
         }
         "treiber" => {
             for d in crate::drivers::ALL {
-                let n = DEVICES.lock().iter().filter(|b| b.driver == Some(d.name())).count();
+                let n = DEVICES
+                    .lock()
+                    .iter()
+                    .filter(|b| b.driver == Some(d.name()))
+                    .count();
                 kprintln!("{:<14} {:<10} {} Gerät(e)", d.name(), d.origin(), n);
             }
             kprintln!("{:<14} {:<10} Tastatur (Abfrage)", "ps2kbd", "hand");
         }
         "werkstatt" => crate::werkstatt::report(),
         "ton" => {
-            let hz = args.first().and_then(|a| a.parse::<u64>().ok()).unwrap_or(880);
-            let ms = args.get(1).and_then(|a| a.parse::<u64>().ok()).unwrap_or(400);
+            let hz = args
+                .first()
+                .and_then(|a| a.parse::<u64>().ok())
+                .unwrap_or(880);
+            let ms = args
+                .get(1)
+                .and_then(|a| a.parse::<u64>().ok())
+                .unwrap_or(400);
             match crate::drivers::gen_hda::info() {
                 None => kprintln!("ton: keine Tonausgabe (kein HD-Audio-Gerät mit Treiber)"),
                 Some(i) => match crate::drivers::gen_hda::ton(hz, ms) {
-                    Ok(n) => kprintln!("[ton] {hz} Hz, {} ms ({n} Byte) über {i}", n as u64 * 1000 / 192_000),
+                    Ok(n) => kprintln!(
+                        "[ton] {hz} Hz, {} ms ({n} Byte) über {i}",
+                        n as u64 * 1000 / 192_000
+                    ),
                     Err(e) => kprintln!("ton: {e}"),
                 },
             }
@@ -342,7 +419,10 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "smbus" => {
             use crate::drivers::gen_smbus as s;
             let zahl = |a: &str| u8::from_str_radix(a.trim_start_matches("0x"), 16).ok();
-            match (args.first().and_then(|a| zahl(a)), args.get(1).and_then(|a| zahl(a))) {
+            match (
+                args.first().and_then(|a| zahl(a)),
+                args.get(1).and_then(|a| zahl(a)),
+            ) {
                 (Some(adr), Some(reg)) => match s::lies(adr, reg) {
                     Some(v) => kprintln!("smbus {adr:#04x} Register {reg:#04x} = {v:#04x}"),
                     None => kprintln!("smbus: keine Antwort von {adr:#04x}"),
@@ -352,7 +432,10 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
                     Some(g) => {
                         kprintln!("{} Gerät(e) – lesen: smbus <adr-hex> <reg-hex>", g.len());
                         for (adr, typ) in g {
-                            kprintln!("{adr:#04x}  Speicherriegel-Kennung (SPD): {}", s::speichertyp(typ));
+                            kprintln!(
+                                "{adr:#04x}  Speicherriegel-Kennung (SPD): {}",
+                                s::speichertyp(typ)
+                            );
                         }
                     }
                 },
@@ -361,7 +444,8 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "zufall" => {
             let mut b = [0u8; 16];
             let n = crate::drivers::virtio_rng::fuelle(&mut b);
-            let hex: alloc::string::String = b[..n].iter().map(|x| alloc::format!("{x:02x}")).collect();
+            let hex: alloc::string::String =
+                b[..n].iter().map(|x| alloc::format!("{x:02x}")).collect();
             if n > 0 {
                 kprintln!("virtio-rng: {hex}");
             }
@@ -371,14 +455,21 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         "anzeige" | "aufloesung" | "bildschirm" => crate::grafik::befehl(args.first().copied()),
         "platten" => {
             for (i, b) in BLOCK.lock().iter().enumerate() {
-                kprintln!("{i}: {}  {} MB  Sektor {} B", b.name(), b.sectors() * b.sector_size() as u64 >> 20, b.sector_size());
+                kprintln!(
+                    "{i}: {}  {} MB  Sektor {} B",
+                    b.name(),
+                    b.sectors() * b.sector_size() as u64 >> 20,
+                    b.sector_size()
+                );
             }
         }
         "lesen" => {
             let n: usize = args.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             let lba: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
             let mut bl = BLOCK.lock();
-            let Some(d) = bl.get_mut(n) else { return kprintln!("keine Platte {n}") };
+            let Some(d) = bl.get_mut(n) else {
+                return kprintln!("keine Platte {n}");
+            };
             let mut buf = vec![0u8; d.sector_size()];
             match d.read(lba, &mut buf) {
                 Ok(()) => hexdump(&buf[..256]),
@@ -391,8 +482,17 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         }
         "netz" => {
             match *crate::net::CONFIG.lock() {
-                Some(c) => kprintln!("IP {}  Maske {}  Router {}  DNS {}", ip(c.ip), ip(c.mask), ip(c.gw), ip(c.dns)),
-                None => kprintln!("keine Adresse ({} Netzwerkgerät(e)) – `dhcp`", NET.lock().len()),
+                Some(c) => kprintln!(
+                    "IP {}  Maske {}  Router {}  DNS {}",
+                    ip(c.ip),
+                    ip(c.mask),
+                    ip(c.gw),
+                    ip(c.dns)
+                ),
+                None => kprintln!(
+                    "keine Adresse ({} Netzwerkgerät(e)) – `dhcp`",
+                    NET.lock().len()
+                ),
             }
             for l in crate::socket::list() {
                 kprintln!("  {l}");
@@ -400,13 +500,39 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         }
         "dhcp" => dhcp(),
         "ipfest" => {
-            let Some(a) = args.first() else { return kprintln!("ipfest <a.b.c.d/nn> [router]") };
+            let Some(a) = args.first() else {
+                return kprintln!("ipfest <a.b.c.d/nn> [router]");
+            };
             let (ipt, nn) = a.split_once('/').unwrap_or((a, "24"));
-            let (Some(i), Ok(nn)) = (crate::net::parse_ip(ipt), nn.parse::<u32>()) else { return kprintln!("ungültig") };
-            let m = if nn == 0 { 0 } else { u32::MAX << (32 - nn.min(32)) }.to_be_bytes();
-            let gw = args.get(1).and_then(|g| crate::net::parse_ip(g)).unwrap_or([i[0], i[1], i[2], 1]);
-            crate::net::set_static(crate::net::active_nic(), crate::net::Config { ip: i, mask: m, gw, dns: gw, ..Default::default() });
-            kprintln!("[netz] fest: IP {} Maske {} Router {}", ip(i), ip(m), ip(gw));
+            let (Some(i), Ok(nn)) = (crate::net::parse_ip(ipt), nn.parse::<u32>()) else {
+                return kprintln!("ungültig");
+            };
+            let m = if nn == 0 {
+                0
+            } else {
+                u32::MAX << (32 - nn.min(32))
+            }
+            .to_be_bytes();
+            let gw = args
+                .get(1)
+                .and_then(|g| crate::net::parse_ip(g))
+                .unwrap_or([i[0], i[1], i[2], 1]);
+            crate::net::set_static(
+                crate::net::active_nic(),
+                crate::net::Config {
+                    ip: i,
+                    mask: m,
+                    gw,
+                    dns: gw,
+                    ..Default::default()
+                },
+            );
+            kprintln!(
+                "[netz] fest: IP {} Maske {} Router {}",
+                ip(i),
+                ip(m),
+                ip(gw)
+            );
         }
         "firewall" => match crate::firewall::befehl(&args.join(" ")) {
             Ok(t) => kprint!("{t}{}", if t.ends_with('\n') { "" } else { "\n" }),
@@ -423,13 +549,28 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             }
             crate::socket::poll();
             let g = crate::verbund::geraete();
-            kprintln!("Ultar-Verbund {} – {} Gerät(e) im Netz", if crate::verbund::aktiv() { "AN" } else { "AUS" }, g.len());
+            kprintln!(
+                "Ultar-Verbund {} – {} Gerät(e) im Netz",
+                if crate::verbund::aktiv() { "AN" } else { "AUS" },
+                g.len()
+            );
             for x in g {
-                kprintln!("  {}  {:<16} {:<8} {} Port {}  {}/{} Kerne frei", x.kennung, x.name, x.ausgabe, ip(x.ip), x.port, x.frei, x.kerne);
+                kprintln!(
+                    "  {}  {:<16} {:<8} {} Port {}  {}/{} Kerne frei",
+                    x.kennung,
+                    x.name,
+                    x.ausgabe,
+                    ip(x.ip),
+                    x.port,
+                    x.frei,
+                    x.kerne
+                );
             }
         }
         "ping" => {
-            let Some(dst) = args.first().and_then(|s| crate::net::parse_ip(s)) else { return kprintln!("ping <a.b.c.d>") };
+            let Some(dst) = args.first().and_then(|s| crate::net::parse_ip(s)) else {
+                return kprintln!("ping <a.b.c.d>");
+            };
             match crate::net::ping(crate::net::active_nic(), dst) {
                 Some(ms) => kprintln!("Antwort von {} in {ms} ms", ip(dst)),
                 None => kprintln!("keine Antwort von {}", ip(dst)),
@@ -478,7 +619,11 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             if find_program(c).is_some() {
                 run_program(c, &all);
             } else {
-                kprintln!("{}: {c} ({})", crate::sprache::t("unbekannt"), crate::sprache::t("hilfe"))
+                kprintln!(
+                    "{}: {c} ({})",
+                    crate::sprache::t("unbekannt"),
+                    crate::sprache::t("hilfe")
+                )
             }
         }
     }
@@ -519,16 +664,33 @@ fn find_program(name: &str) -> Option<String> {
     let cands: alloc::vec::Vec<String> = if name.contains('/') {
         alloc::vec![crate::fs::normalize(&cwd(), name)]
     } else {
-        ["/bin/", "/usr/bin/", "/ultar/bin/", "/boot/efi/bin/", "/"].iter().map(|d| alloc::format!("{d}{name}")).collect()
+        ["/bin/", "/usr/bin/", "/ultar/bin/", "/boot/efi/bin/", "/"]
+            .iter()
+            .map(|d| alloc::format!("{d}{name}"))
+            .collect()
     };
-    cands.into_iter().find(|p| matches!(crate::fs::stat(p), Some((0, _))))
+    cands
+        .into_iter()
+        .find(|p| matches!(crate::fs::stat(p), Some((0, _))))
 }
 
 /// Programm im Vordergrund ausführen, bis es (und alle Kinder) beendet ist
 fn run_program(name: &str, args: &[&str]) {
-    let Some(path) = find_program(name) else { return kprintln!("{name}: nicht gefunden (dateien /bin)") };
+    let Some(path) = find_program(name) else {
+        return kprintln!("{name}: nicht gefunden (dateien /bin)");
+    };
     let argv: alloc::vec::Vec<String> = args.iter().map(|s| String::from(*s)).collect();
-    let envp = ["PATH=/bin:/ultar/bin", "HOME=/", "TERM=linux", "USER=root", "SHELL=/bin/sh", "PS1=ultar$ "].iter().map(|s| String::from(*s)).collect();
+    let envp = [
+        "PATH=/bin:/ultar/bin",
+        "HOME=/",
+        "TERM=linux",
+        "USER=root",
+        "SHELL=/bin/sh",
+        "PS1=ultar$ ",
+    ]
+    .iter()
+    .map(|s| String::from(*s))
+    .collect();
     match crate::proc::spawn(&path, argv, envp) {
         Ok(_) => crate::proc::run_all(),
         Err(e) => kprintln!("{e}"),
@@ -543,11 +705,16 @@ fn run_program(name: &str, args: &[&str]) {
 /// missing or does not start (the caller then goes on as before: `ultar-shell`, then the start page), and
 /// `true` after the service manager and everything it started have ended.
 pub fn init_starten() -> bool {
-    let Some(wish) = crate::fs::read_all("/etc/ultar/session") else { return false };
+    let Some(wish) = crate::fs::read_all("/etc/ultar/session") else {
+        return false;
+    };
     if String::from_utf8_lossy(&wish).trim() != "init" {
         return false;
     }
-    let Some(path) = ["/sbin/ultar-init", "/usr/bin/ultar-init"].iter().find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else {
+    let Some(path) = ["/sbin/ultar-init", "/usr/bin/ultar-init"]
+        .iter()
+        .find(|p| matches!(crate::fs::stat(p), Some((0, _))))
+    else {
         kprintln!("[oberflaeche] session=init, but ultar-init is missing");
         return false;
     };
@@ -556,7 +723,11 @@ pub fn init_starten() -> bool {
         String::from("PATH=/usr/sbin:/usr/bin:/sbin:/bin"),
         String::from("HOME=/root"),
         String::from("TERM=linux"),
-        if crate::fs::stat("/etc/ultar/edition").is_some() { String::from("ULTAR_EDITION_VON=datei") } else { alloc::format!("ULTAR_EDITION={}", crate::geraet::art().ausgabe()) },
+        if crate::fs::stat("/etc/ultar/edition").is_some() {
+            String::from("ULTAR_EDITION_VON=datei")
+        } else {
+            alloc::format!("ULTAR_EDITION={}", crate::geraet::art().ausgabe())
+        },
         String::from("ULTAR_KERN=1"),
         alloc::format!("ULTAR_LANG={code}"),
         alloc::format!("ULTAR_SYSTEMSPRACHE={code}"),
@@ -579,7 +750,15 @@ pub fn init_starten() -> bool {
 }
 
 pub fn desktop_starten() -> bool {
-    let Some(path) = ["/usr/bin/ultar-shell", "/usr/lib/ultar/ultar-shell", "/boot/efi/bin/ultar-shell"].iter().find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else { return false };
+    let Some(path) = [
+        "/usr/bin/ultar-shell",
+        "/usr/lib/ultar/ultar-shell",
+        "/boot/efi/bin/ultar-shell",
+    ]
+    .iter()
+    .find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else {
+        return false;
+    };
     if crate::console::framebuffer().is_none() {
         return false;
     }
@@ -590,7 +769,11 @@ pub fn desktop_starten() -> bool {
         String::from("USER=root"),
         String::from("TERM=linux"),
         // Ausgabe aus der Geräteart – eine feste Einstellung in /etc/ultar/edition hat Vorrang (liest ultar-edition selbst)
-        if crate::fs::stat("/etc/ultar/edition").is_some() { String::from("ULTAR_EDITION_VON=datei") } else { alloc::format!("ULTAR_EDITION={}", crate::geraet::art().ausgabe()) },
+        if crate::fs::stat("/etc/ultar/edition").is_some() {
+            String::from("ULTAR_EDITION_VON=datei")
+        } else {
+            alloc::format!("ULTAR_EDITION={}", crate::geraet::art().ausgabe())
+        },
         alloc::format!("ULTAR_GERAET={}", crate::geraet::art().name()),
         String::from("ULTAR_KERN=1"),
         alloc::format!("ULTAR_LANG={code}"),
@@ -616,9 +799,26 @@ pub fn desktop_starten() -> bool {
 pub fn info() {
     let mut nb = [0u8; 48];
     let (total, heap, used, regions) = mem::stats();
-    kprintln!(concat!("Ultar-Kern {} · ", ultar_brand::vendor!(), " · ", ultar_brand::developer!()), env!("CARGO_PKG_VERSION"));
-    kprintln!("Prozessor: {} ({} MHz)", arch::cpu_name(&mut nb), arch::tsc_khz() / 1000);
-    kprintln!("Speicher frei: {} MB in {regions} Bereichen, Kern-Heap {} MB ({} KB belegt)", total >> 20, heap >> 20, used >> 10);
+    kprintln!(
+        concat!(
+            "Ultar-Kern {} · ",
+            ultar_brand::vendor!(),
+            " · ",
+            ultar_brand::developer!()
+        ),
+        env!("CARGO_PKG_VERSION")
+    );
+    kprintln!(
+        "Prozessor: {} ({} MHz)",
+        arch::cpu_name(&mut nb),
+        arch::tsc_khz() / 1000
+    );
+    kprintln!(
+        "Speicher frei: {} MB in {regions} Bereichen, Kern-Heap {} MB ({} KB belegt)",
+        total >> 20,
+        heap >> 20,
+        used >> 10
+    );
     let (on, all) = crate::apic::cpu_count();
     kprintln!("Prozessorkerne: {on} von {all} aktiv");
     kprintln!("Laufzeit: {} ms", arch::uptime_ms());
@@ -630,12 +830,33 @@ pub fn dhcp() {
     }
     match crate::net::dhcp_all() {
         Some((n, c)) => {
-            let name = NET.lock().get(n).map(|d| d.name()).unwrap_or_else(|| alloc::format!("eth{n}"));
-            kprintln!("[netz] DHCP: {name} IP {} Router {} DNS {}", ip(c.ip), ip(c.gw), ip(c.dns));
+            let name = NET
+                .lock()
+                .get(n)
+                .map(|d| d.name())
+                .unwrap_or_else(|| alloc::format!("eth{n}"));
+            kprintln!(
+                "[netz] DHCP: {name} IP {} Router {} DNS {}",
+                ip(c.ip),
+                ip(c.gw),
+                ip(c.dns)
+            );
             // Namensauflösung für Programme (glibc liest /etc/resolv.conf)
-            crate::fs::write_file("/etc/resolv.conf", alloc::format!("nameserver {}\n", ip(c.dns)).into_bytes());
+            crate::fs::write_file(
+                "/etc/resolv.conf",
+                alloc::format!("nameserver {}\n", ip(c.dns)).into_bytes(),
+            );
             // Zustand für die Oberfläche (wie ultar-net unter Linux: /run/ultar/net/<schnittstelle>)
-            crate::fs::write_file("/run/ultar/net/eth0", alloc::format!("state=verbunden\nkind=eth\nip={}\ngw={}\ndns={}\n", ip(c.ip), ip(c.gw), ip(c.dns)).into_bytes());
+            crate::fs::write_file(
+                "/run/ultar/net/eth0",
+                alloc::format!(
+                    "state=verbunden\nkind=eth\nip={}\ngw={}\ndns={}\n",
+                    ip(c.ip),
+                    ip(c.gw),
+                    ip(c.dns)
+                )
+                .into_bytes(),
+            );
         }
         None => kprintln!("[netz] DHCP: keine Antwort"),
     }
@@ -653,7 +874,14 @@ fn hexdump(b: &[u8]) {
         }
         kprint!(" ");
         for &x in row {
-            kprint!("{}", if (0x20..0x7f).contains(&x) { x as char } else { '.' });
+            kprint!(
+                "{}",
+                if (0x20..0x7f).contains(&x) {
+                    x as char
+                } else {
+                    '.'
+                }
+            );
         }
         kprintln!();
     }
@@ -662,7 +890,9 @@ fn hexdump(b: &[u8]) {
 /// GPT lesen und Partitionen mit Namen anzeigen (findet z. B. ULTAR-EFI, ultar-compat, ultar-data)
 pub fn partitions(n: usize) {
     let mut bl = BLOCK.lock();
-    let Some(d) = bl.get_mut(n) else { return kprintln!("keine Platte {n}") };
+    let Some(d) = bl.get_mut(n) else {
+        return kprintln!("keine Platte {n}");
+    };
     let ss = d.sector_size();
     let mut h = vec![0u8; ss];
     if d.read(1, &mut h).is_err() || &h[0..8] != b"EFI PART" {
@@ -683,7 +913,19 @@ pub fn partitions(n: usize) {
         }
         let first = u64::from_le_bytes(e[32..40].try_into().unwrap());
         let last = u64::from_le_bytes(e[40..48].try_into().unwrap());
-        let name: String = char::decode_utf16(e[56..128].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0)).map(|r| r.unwrap_or('?')).collect();
-        kprintln!("  {}  {:<16} {} MB", i + 1, name, (last - first + 1) * ss as u64 >> 20);
+        let name: String = char::decode_utf16(
+            e[56..128]
+                .chunks(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .take_while(|&u| u != 0),
+        )
+        .map(|r| r.unwrap_or('?'))
+        .collect();
+        kprintln!(
+            "  {}  {:<16} {} MB",
+            i + 1,
+            name,
+            (last - first + 1) * ss as u64 >> 20
+        );
     }
 }

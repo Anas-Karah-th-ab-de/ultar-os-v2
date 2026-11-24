@@ -81,7 +81,17 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None), rights: Mutex::new(VecDeque::new()), taken: AtomicU64::new(0) })
+        Arc::new(Pipe {
+            buf: Mutex::new(VecDeque::new()),
+            readers: AtomicU64::new(0),
+            writers: AtomicU64::new(0),
+            cap: AtomicU64::new(cap),
+            writer: [AtomicU64::new(0), AtomicU64::new(0)],
+            shut: core::sync::atomic::AtomicBool::new(false),
+            lens: Mutex::new(None),
+            rights: Mutex::new(VecDeque::new()),
+            taken: AtomicU64::new(0),
+        })
     }
 
     /// Empty pipe in packet mode: every [`Pipe::push_packet`] is read back as one message.
@@ -95,7 +105,9 @@ impl Pipe {
     pub fn push_packet(&self, data: &[u8]) -> bool {
         let mut b = self.buf.lock();
         let mut lens = self.lens.lock();
-        let Some(lens) = lens.as_mut() else { return false };
+        let Some(lens) = lens.as_mut() else {
+            return false;
+        };
         if b.len() as u64 + data.len() as u64 > self.capacity() || data.len() > u32::MAX as usize {
             return false;
         }
@@ -123,7 +135,11 @@ impl Pipe {
 
     /// `recvmsg` of a stream: like [`Pipe::take`], but the descriptors that travel with the first byte
     /// come along, and the read stops before the next byte that carries descriptors.
-    pub fn take_with_rights(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<crate::proc::Fd>)> {
+    pub fn take_with_rights(
+        &self,
+        buf: &mut VecDeque<u8>,
+        max: usize,
+    ) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<crate::proc::Fd>)> {
         let start = self.taken.load(Ordering::SeqCst);
         let mut r = self.rights.lock();
         let mut limit = max;
@@ -136,12 +152,20 @@ impl Pipe {
         }
         let out = self.take_bytes(buf, limit)?;
         self.taken.fetch_add(out.len() as u64, Ordering::SeqCst);
-        let fds = if i == 1 { r.pop_front().map(|e| e.1).unwrap_or_default() } else { alloc::vec::Vec::new() };
+        let fds = if i == 1 {
+            r.pop_front().map(|e| e.1).unwrap_or_default()
+        } else {
+            alloc::vec::Vec::new()
+        };
         Some((out, fds))
     }
 
     /// Append like [`Pipe::push`]; `fds` travel with the first byte. On error the descriptors come back.
-    pub fn push_with_rights(&self, data: &[u8], fds: alloc::vec::Vec<crate::proc::Fd>) -> Result<usize, (PushError, alloc::vec::Vec<crate::proc::Fd>)> {
+    pub fn push_with_rights(
+        &self,
+        data: &[u8],
+        fds: alloc::vec::Vec<crate::proc::Fd>,
+    ) -> Result<usize, (PushError, alloc::vec::Vec<crate::proc::Fd>)> {
         let mut b = self.buf.lock();
         let at = self.taken.load(Ordering::SeqCst) + b.len() as u64;
         let mut r = self.rights.lock();
@@ -159,7 +183,9 @@ impl Pipe {
 
     fn take_bytes(&self, buf: &mut VecDeque<u8>, max: usize) -> Option<alloc::vec::Vec<u8>> {
         let mut lens = self.lens.lock();
-        let Some(lens) = lens.as_mut() else { return Pipe::pull(buf, max) };
+        let Some(lens) = lens.as_mut() else {
+            return Pipe::pull(buf, max);
+        };
         let whole = lens.front().map_or(buf.len(), |&l| l as usize);
         let out = Pipe::pull(buf, max.min(whole))?;
         buf.drain(..whole - out.len());
@@ -175,8 +201,15 @@ impl Pipe {
 
     /// Unix socket: who writes into this direction, if it was recorded.
     pub fn writer(&self) -> Option<crate::uds::Peer> {
-        let (pid, ids) = (self.writer[0].load(Ordering::Relaxed), self.writer[1].load(Ordering::Relaxed));
-        (pid != 0).then_some(crate::uds::Peer { pid, uid: (ids >> 32) as u32, gid: ids as u32 })
+        let (pid, ids) = (
+            self.writer[0].load(Ordering::Relaxed),
+            self.writer[1].load(Ordering::Relaxed),
+        );
+        (pid != 0).then_some(crate::uds::Peer {
+            pid,
+            uid: (ids >> 32) as u32,
+            gid: ids as u32,
+        })
     }
 
     /// Shut this direction down (see `shut`).

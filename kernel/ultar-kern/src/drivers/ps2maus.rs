@@ -87,8 +87,14 @@ pub fn abfragen() {
         RAD.fetch_add(z as i8 as i32, Ordering::Relaxed);
         let mx = MAX_X.load(Ordering::Relaxed) + 1;
         let my = MAX_Y.load(Ordering::Relaxed) + 1;
-        X.store(((x as i64 & 0xffff) * mx as i64 / 0x10000) as i32, Ordering::Relaxed);
-        Y.store(((y as i64 & 0xffff) * my as i64 / 0x10000) as i32, Ordering::Relaxed);
+        X.store(
+            ((x as i64 & 0xffff) * mx as i64 / 0x10000) as i32,
+            Ordering::Relaxed,
+        );
+        Y.store(
+            ((y as i64 & 0xffff) * my as i64 / 0x10000) as i32,
+            Ordering::Relaxed,
+        );
         let mut t = 0u8;
         if fl & 0x20 != 0 {
             t |= 1;
@@ -164,7 +170,9 @@ pub fn init(breite: usize, hoehe: usize) -> bool {
         outb(0x64, 0xa8); // Hilfsanschluss an
         warte_schreiben();
         outb(0x64, 0x20); // Steuerbyte lesen
-        let Some(mut c) = warte_lesen() else { return false };
+        let Some(mut c) = warte_lesen() else {
+            return false;
+        };
         c &= !0x20; // Maus-Takt nicht sperren
         c &= !0x02; // kein IRQ12 (Abfragebetrieb)
         warte_schreiben();
@@ -173,7 +181,8 @@ pub fn init(breite: usize, hoehe: usize) -> bool {
         outb(0x60, c);
     }
     // Standardwerte, 200 Meldungen/s, 8 Zählschritte/mm, Daten senden
-    let ok = befehl(0xf6) && befehl(0xf3) && befehl(200) && befehl(0xe8) && befehl(3) && befehl(0xf4);
+    let ok =
+        befehl(0xf6) && befehl(0xf3) && befehl(200) && befehl(0xe8) && befehl(3) && befehl(0xf4);
     let abs = vmmouse_an();
     ABSOLUT.store(abs, Ordering::Relaxed);
     if abs {
@@ -218,7 +227,15 @@ pub fn byte(b: u8) {
             return; // Position kommt aus der vmmouse-Schnittstelle
         }
         // Beschleunigung: langsame Bewegungen fein, schnelle weit
-        let beschl = |d: i32| if d.abs() > 12 { d * 3 } else if d.abs() > 4 { d * 2 } else { d };
+        let beschl = |d: i32| {
+            if d.abs() > 12 {
+                d * 3
+            } else if d.abs() > 4 {
+                d * 2
+            } else {
+                d
+            }
+        };
         let dx = beschl(p[1] as i32 - (((f as i32) << 4) & 0x100));
         let dy = beschl(p[2] as i32 - (((f as i32) << 3) & 0x100));
         let x = (X.load(Ordering::Relaxed) + dx).clamp(0, MAX_X.load(Ordering::Relaxed));
@@ -232,7 +249,12 @@ pub fn byte(b: u8) {
 
 /// (x, y, linke Taste gedrückt, Ereigniszähler)
 pub fn zustand() -> (i32, i32, bool, usize) {
-    (X.load(Ordering::Relaxed), Y.load(Ordering::Relaxed), TASTEN.load(Ordering::Relaxed) & 1 != 0, EREIGNIS.load(Ordering::Relaxed))
+    (
+        X.load(Ordering::Relaxed),
+        Y.load(Ordering::Relaxed),
+        TASTEN.load(Ordering::Relaxed) & 1 != 0,
+        EREIGNIS.load(Ordering::Relaxed),
+    )
 }
 
 /// Mausrad-Schritte seit dem letzten Aufruf (positiv = nach unten)

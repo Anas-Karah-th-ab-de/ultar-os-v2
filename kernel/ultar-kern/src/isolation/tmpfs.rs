@@ -55,8 +55,11 @@ pub fn default_quota() -> u64 {
 pub fn parse_size(options: &str) -> Result<Option<u64>, ()> {
     let mut size = None;
     for opt in options.split(',') {
-        let Some(v) = opt.trim().strip_prefix("size=") else { continue };
-        let (digits, unit): (&str, u64) = match v.as_bytes().last().map(|b| b.to_ascii_lowercase()) {
+        let Some(v) = opt.trim().strip_prefix("size=") else {
+            continue;
+        };
+        let (digits, unit): (&str, u64) = match v.as_bytes().last().map(|b| b.to_ascii_lowercase())
+        {
             Some(b'k') => (&v[..v.len() - 1], 1 << 10),
             Some(b'm') => (&v[..v.len() - 1], 1 << 20),
             Some(b'g') => (&v[..v.len() - 1], 1 << 30),
@@ -85,7 +88,10 @@ pub fn parse_root_attr(options: &str) -> Result<(u32, u32, u32), ()> {
     for opt in options.split(',') {
         let opt = opt.trim();
         if let Some(v) = opt.strip_prefix("mode=") {
-            mode = u32::from_str_radix(v, 8).ok().filter(|m| *m <= 0o7777).ok_or(())?;
+            mode = u32::from_str_radix(v, 8)
+                .ok()
+                .filter(|m| *m <= 0o7777)
+                .ok_or(())?;
         } else if let Some(v) = opt.strip_prefix("uid=") {
             uid = v.parse().map_err(|_| ())?;
         } else if let Some(v) = opt.strip_prefix("gid=") {
@@ -108,7 +114,14 @@ impl Tmpfs {
         let mut trees = TREES.lock();
         // the tables are shared by all trees: their nodes belong to the kernel
         crate::heap::kernel(|| {
-            trees.insert(id, Usage { used: 0, quota: quota.unwrap_or_else(default_quota), counted: BTreeMap::new() });
+            trees.insert(
+                id,
+                Usage {
+                    used: 0,
+                    quota: quota.unwrap_or_else(default_quota),
+                    counted: BTreeMap::new(),
+                },
+            );
             RAM.lock().insert(root, Arc::new(Vec::new()));
         });
         Arc::new(Tmpfs { id })
@@ -154,7 +167,16 @@ fn with_tree<R>(path: &str, f: impl FnOnce(&mut Usage) -> R) -> Option<R> {
     let id = quota_tree(path);
     let mut trees = TREES.lock();
     if id == HOST && !trees.contains_key(&HOST) {
-        crate::heap::kernel(|| trees.insert(HOST, Usage { used: 0, quota: default_quota(), counted: BTreeMap::new() }));
+        crate::heap::kernel(|| {
+            trees.insert(
+                HOST,
+                Usage {
+                    used: 0,
+                    quota: default_quota(),
+                    counted: BTreeMap::new(),
+                },
+            )
+        });
     }
     trees.get_mut(&id).map(f)
 }
@@ -165,7 +187,11 @@ impl Usage {
     fn count(&mut self, path: &str, data: u64, shrink: bool) -> bool {
         let new = cost(path, data);
         let old = self.counted.get(path).copied();
-        let new = if shrink { new } else { new.max(old.unwrap_or(0)) };
+        let new = if shrink {
+            new
+        } else {
+            new.max(old.unwrap_or(0))
+        };
         let old_bytes = old.unwrap_or(0);
         if new > old_bytes && self.used - old_bytes + new > self.quota {
             // the running system call reports "no space" whatever the file layer's yes/no becomes
@@ -274,7 +300,10 @@ pub fn mkdir(path: &str) -> bool {
 
 /// Remove a file, an (empty or not) directory entry or a symbolic link.
 pub fn unlink(path: &str) -> bool {
-    if tree_id(path).map(|id| path == format!("{PREFIX}{id}")).unwrap_or(true) {
+    if tree_id(path)
+        .map(|id| path == format!("{PREFIX}{id}"))
+        .unwrap_or(true)
+    {
         return false; // the root of a tree goes away only with its last mount
     }
     let link = with_tree(path, |u| {
