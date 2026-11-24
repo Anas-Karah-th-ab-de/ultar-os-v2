@@ -1188,6 +1188,49 @@ def bluetooth_scan(vm, m, pos):
 # ---------------------------------------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------------------------------------
+# Network pages (branch build/net): Settings > Wi-Fi and > Network each show their own interface. The machine
+# of this gate has one wired card (e1000e/e1000 on QEMU's user network, lease 10.0.2.15) and no Wi-Fi: the
+# Wi-Fi page says "no Wi-Fi adapter" (ar.ftl app.settings.status.net.no_wifi_adapter) and shows nothing of
+# the cable; the Network page shows the wired interface with its leased address. Before, both pages showed
+# the same rows. Opened with the keyboard like the pages above. Everything up to `installed` is this block.
+NO_WIFI_ADAPTER = "لا يوجد محول"
+LEASED = re.compile(r"10[.,]0[.,]2[.,]1?5")
+
+
+def network_pages(vm, m, pos):
+    st = _screen_text()
+    box = _open_settings(vm, pos, "network-pages")
+    if not box:
+        return ["settings did not open (network pages)"]
+    none = st.norm(NO_WIFI_ADAPTER)
+    focused = _goto(vm, "wifi", None)
+    wifi = _read_page(st, vm, "net-page-wifi", box)
+    focused = _goto(vm, "network", focused)
+    net = ""
+    # the lease may still be on its way right after the unlock
+    for attempt in range(6):
+        net = _read_page(st, vm, "net-page-network", box)
+        if LEASED.search(net):
+            break
+        vm.pump(5)
+    log(f"network pages: wifi no-adapter={none in wifi} leased-on-wifi={bool(LEASED.search(wifi))} "
+        f"network leased={bool(LEASED.search(net))} no-adapter-on-network={none in net}")
+    failures = []
+    if none not in wifi:
+        failures.append("settings wifi: the page does not say 'no Wi-Fi adapter' on a machine without one")
+    if LEASED.search(wifi) or "eth0" in wifi:
+        failures.append("settings wifi: the page shows the wired interface")
+    if not LEASED.search(net):
+        failures.append("settings network: the wired interface's leased address is not on the page")
+    if none in net:
+        failures.append("settings network: the page shows the Wi-Fi page's content")
+    if failures:
+        log(f"network pages read: wifi {wifi[:200]!r} network {net[:300]!r}")
+    close_all(vm)
+    return failures
+
+
 def installed(vm, m, seconds):
     """Waits until ultar-init reported every app installation as ended with code 0."""
     want = [re.compile(rb"\] exit app-" + a.encode() + rb" pid=\d+ code=0 ") for a in APPS]
@@ -1379,6 +1422,8 @@ def run(vm, m):
         failures += settings_maximized(vm, m, pos)
         failures += store_and_files(vm, m, pos)
         failures += settings_change(vm, m, pos)
+    if not failures:
+        failures += network_pages(vm, m, pos)  # build/net
     if not failures:
         failures += clipboard(vm, m, pos)
     if not failures:
