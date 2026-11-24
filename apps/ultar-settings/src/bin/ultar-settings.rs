@@ -28,8 +28,9 @@ use ultar_ui::tokens::{InputMode, ThemeKind};
 use ultar_ui::ui::Ui;
 use ultar_ui::Size;
 
-/// App id towards compositor and bus.
-const APP_ID: &str = "app.settings";
+/// App id towards compositor and bus: the desktop shell's name of Settings, so the window belongs
+/// to the bar button of Settings (found in VMware: a second, nameless button appeared).
+const APP_ID: &str = "org.ultar.settings";
 /// How often services are followed while idle.
 const POLL: Duration = Duration::from_millis(500);
 

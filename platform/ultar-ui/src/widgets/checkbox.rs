@@ -96,7 +96,7 @@ impl Checkbox {
             } else {
                 typography::LINE_HEIGHT_LATIN
             };
-            (h / line).round().max(1.0) * size.points() * factor
+            (h / line).round().max(1.0) * size.points() * cx.env.text_scale * factor
         };
         let h = cx.text_size(&self.label, spec, Some(width)).h;
         let label = exact(cx, h, TypeSize::S14);

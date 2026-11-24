@@ -34,7 +34,12 @@ pub struct UiWindow {
     key_input: bool,
     /// Keys that go to the app before the widget tree sees them.
     shortcuts: Option<fn(&UiEvent) -> bool>,
+    /// Chunks of the clipboard text a field asked for (Ctrl+V), until the last one.
+    pasting: Option<Vec<u8>>,
 }
+
+/// Largest clipboard text a field takes (more is cut off: a field holds one line).
+pub const MAX_PASTE: usize = 64 * 1024;
 
 /// The clipboard type of offered text.
 pub const TEXT_MIME: &str = "text/plain;charset=utf-8";
@@ -170,6 +175,7 @@ impl UiWindow {
             unhandled: Vec::new(),
             key_input: false,
             shortcuts: None,
+            pasting: None,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -231,8 +237,52 @@ impl UiWindow {
         self.ui
             .advance_to(self.started.elapsed().as_millis() as u64);
         actions.extend(self.ui.take_actions());
+        self.clipboard()?;
         self.draw()?;
         Ok(actions)
+    }
+
+    /// What a field asked of the clipboard: Ctrl+C/X offers its text, Ctrl+V reads the
+    /// clipboard (the compositor answers with `Data` chunks, see [`UiWindow::handle`]).
+    fn clipboard(&mut self) -> Result<(), ClientError> {
+        if let Some(text) = self.ui.take_copy() {
+            let mut cut = text;
+            while cut.len() > MAX_CHUNK {
+                cut.pop();
+            }
+            self.offer_text(cut)?;
+        }
+        if self.ui.take_paste() {
+            self.pasting = Some(Vec::new());
+            self.client.send(&Request::ReadSelection {
+                serial: self.serial,
+                mime: TEXT_MIME.to_owned(),
+            })?;
+        }
+        Ok(())
+    }
+
+    /// A chunk of the clipboard text that was asked for; at the last one it goes into the
+    /// focused field. Returns the field's actions (`None`: not a paste event).
+    fn pasted(&mut self, event: &Event) -> Option<Vec<Action>> {
+        match event {
+            Event::Data { data, last, .. } => {
+                let buffer = self.pasting.as_mut()?;
+                let room = MAX_PASTE.saturating_sub(buffer.len());
+                buffer.extend_from_slice(&data[..data.len().min(room)]);
+                if !*last {
+                    return Some(Vec::new());
+                }
+                let bytes = self.pasting.take().unwrap_or_default();
+                let text = String::from_utf8_lossy(&bytes);
+                Some(self.ui.paste(&text))
+            }
+            Event::TransferCancelled { .. } if self.pasting.is_some() => {
+                self.pasting = None;
+                Some(Vec::new())
+            }
+            _ => None,
+        }
     }
 
     /// Offers `text` on the clipboard (copy), tied to the last key or button press. The
@@ -270,6 +320,9 @@ impl UiWindow {
     fn handle(&mut self, event: &Event) -> Result<Vec<Action>, ClientError> {
         if self.send_offered(event)? {
             return Ok(Vec::new());
+        }
+        if let Some(actions) = self.pasted(event) {
+            return Ok(actions);
         }
         match event {
             Event::PointerButton {

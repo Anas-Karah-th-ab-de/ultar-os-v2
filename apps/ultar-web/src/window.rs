@@ -17,8 +17,9 @@ use ultar_ui::{Direction, Size};
 
 /// Default compositor socket.
 pub const DEFAULT_SOCKET: &str = "/run/ultar/ui/compositor.sock";
-/// The application identifier at the compositor.
-pub const APP_ID: &str = "ultar-web";
+/// The application identifier at the compositor: the desktop shell's name of the browser, so the
+/// window belongs to the browser's bar button (found in VMware: a second, nameless button appeared).
+pub const APP_ID: &str = "org.ultar.browser";
 /// Longest wait without any event (the clock of the window is advanced at least this often
 /// while something animates; idle it waits for events only).
 const IDLE: Duration = Duration::from_secs(60);

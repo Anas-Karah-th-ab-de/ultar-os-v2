@@ -371,8 +371,16 @@ fn text_field_limits_shortcuts_submit_and_leaving() {
         ctrl: true,
         ..Modifiers::NONE
     };
-    let shortcut = Event::Key {
+    // Ctrl+A selects the field's text (the field's own command, no action); a shortcut the
+    // field does not know goes to the app.
+    let select_all = ui.handle(Event::Key {
         key: Key::Char('a'),
+        modifiers: ctrl,
+    });
+    assert!(select_all.consumed && select_all.actions.is_empty());
+    assert_eq!(ui.text(field).unwrap().len(), 16);
+    let shortcut = Event::Key {
+        key: Key::Char('q'),
         modifiers: ctrl,
     };
     assert!(!ui.handle(shortcut).consumed);

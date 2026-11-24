@@ -193,6 +193,9 @@ impl State {
     /// A state with no outputs and no clients.
     pub fn new(config: Config, shm: bool) -> State {
         let decor = DecorRenderer::new(config.lang, config.theme);
+        // `--start-locked-in`: locked before any client is there (fail closed).
+        let mut session = Session::default();
+        session.locked = config.start_locked;
         State {
             shm: shm && !config.inline_only,
             config,
@@ -208,7 +211,7 @@ impl State {
             focus: None,
             pointer: input::Pointer::default(),
             keyboard: Keyboard::default(),
-            session: Session::default(),
+            session,
             damage: HashMap::new(),
             decor,
             now: 0,

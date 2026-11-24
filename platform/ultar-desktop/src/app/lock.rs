@@ -266,6 +266,9 @@ impl LockApp {
             (Some(Target::AccessSwitch(i)), ActionKind::Toggled(on)) => {
                 if let Some((key, on)) = self.state.access.toggle(usize::from(i), *on) {
                     self.service(LockCall::Accessibility(key.to_owned(), on));
+                    // The lock screen shows the change at once (and keeps it: the settings
+                    // service stores it, every start reads it again).
+                    self.apply_access();
                 }
             }
             (Some(Target::Keyboard), ActionKind::Activated) => {
@@ -315,6 +318,11 @@ impl LockApp {
                 if let Some(surface) = self.surface {
                     self.host.client.send(&Request::Unlock { surface })?;
                 }
+                // Hidden at once: the next show() removes the surface instead of drawing the
+                // sign-in once more. Every frame of a lock surface locks (COMPOSITOR.md §8a), so
+                // a frame committed after the Unlock locked the session again (found in VMware:
+                // the first right password often ended on the cover).
+                self.state.unlocked();
                 // Who signed in: the session service keeps the person in front.
                 if let Some(user) = self.state.user.as_ref().map(|u| u.name.clone()) {
                     self.service(LockCall::SignedIn(user));
@@ -334,6 +342,13 @@ impl LockApp {
     fn service(&self, call: LockCall) {
         if let Some(ports) = &self.ports {
             let _ = ports.lock_call(&call);
+        }
+    }
+
+    /// Large text and high contrast of the settings service on every surface of the lock screen.
+    fn apply_access(&mut self) {
+        if let Some(v) = self.state.access.values {
+            self.look = self.look.with_access(v[1], v[0]);
         }
     }
 
@@ -358,6 +373,12 @@ impl LockApp {
                 .or_else(|| users.first())
                 .cloned();
             self.state.users = users;
+            // "No user on this device" was shown before the list came; now there is one.
+            if self.state.user.is_some()
+                && self.state.error == Some(crate::lock::SignInError::NoUser)
+            {
+                self.state.error = None;
+            }
         }
     }
 
@@ -408,5 +429,8 @@ pub fn run(
     stop: &dyn Fn() -> bool,
 ) -> Result<(), AppError> {
     let mut app = LockApp::start(options, user, Arc::new(SystemClock::default()))?;
+    // What the accessibility switches say from the first frame on (they survive a restart).
+    app.refresh_access();
+    app.apply_access();
     app.run(stop)
 }

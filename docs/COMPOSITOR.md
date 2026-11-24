@@ -283,8 +283,10 @@ Guarantees and how they are tested:
 
 ## 8a. Trusted path and session
 
-* **Lock (fail closed, never dead)**: locked is compositor state. The first lock surface with
-  content locks, so do the secure attention keys – but only while a lock screen client is connected
+* **Lock (fail closed, never dead)**: locked is compositor state. With `--start-locked-in <profiles>`
+  (shipped: `system`; the boot profile comes from `ultar-init` as `ULTAR_PROFILE`) the session is locked
+  from the start, before any client is there: the desktop is never shown before the first unlock. The
+  first lock surface with content locks, so do the secure attention keys – but only while a lock screen client is connected
   (a client holding `ui.lock-screen` that said `Hello`): a lock that nobody could ever lift would
   end the session, so without one the keys do nothing (they are still never forwarded). The lock
   screen client should stay connected all session (started by `ultar-init` or the shell); it shows

@@ -5,7 +5,7 @@
 //! |---|---|
 //! | `network` | the cell: without it the app gets a network namespace of its own (only a loopback device) |
 //! | `background` | the launcher: the app's `[service]` starts only with it |
-//! | `ui.shell`, `ui.input-method`, `ui.lock-screen`, `ui.capture`, `ui.overlay`, `ui.system-dialog` | the compositor, through the app rights file the launcher writes (`crate::rightsfile`) |
+//! | `ui.shell`, `ui.input-method`, `ui.lock-screen`, `ui.capture`, `ui.overlay`, `ui.system-dialog`, `ui.client-header` | the compositor, through the app rights file the launcher writes (`crate::rightsfile`) |
 //!
 //! Bus calls and named file areas of a manifest are recorded and shown,
 //! not granted here (bus: the broker's policy; files: no file service yet).
@@ -31,11 +31,15 @@ pub enum Permission {
     UiOverlay,
     /// System dialogs (password and permission prompts).
     UiSystemDialog,
+    /// The window draws its own header (the phone's call screens; the compositor refuses it for
+    /// system dialogs). Without it `ClientHeader` ends the app's connection: found in VMware, the
+    /// phone closed at once.
+    UiClientHeader,
 }
 
 impl Permission {
     /// Every permission, in bit order.
-    pub const ALL: [Permission; 8] = [
+    pub const ALL: [Permission; 9] = [
         Self::Network,
         Self::Background,
         Self::UiShell,
@@ -44,6 +48,7 @@ impl Permission {
         Self::UiCapture,
         Self::UiOverlay,
         Self::UiSystemDialog,
+        Self::UiClientHeader,
     ];
 
     /// The permission's name in manifests, on the bus and on the command line.
@@ -57,6 +62,7 @@ impl Permission {
             Self::UiCapture => "ui.capture",
             Self::UiOverlay => "ui.overlay",
             Self::UiSystemDialog => "ui.system-dialog",
+            Self::UiClientHeader => "ui.client-header",
         }
     }
 
@@ -198,13 +204,13 @@ mod tests {
         assert!(set.has(Permission::UiCapture) && !set.has(Permission::Background));
         assert!(set.without(Permission::Network).within(set));
         assert!(!PermissionSet::all().within(set));
-        assert_eq!(PermissionSet::all().iter().count(), 8);
+        assert_eq!(PermissionSet::all().iter().count(), 9);
         assert_eq!(
             set.and(PermissionSet::of(&[Permission::Network])).names(),
             "network"
         );
         assert!(PermissionSet::EMPTY.is_empty() && !set.is_empty());
-        assert_eq!(PermissionSet::all().iter().filter(|p| p.is_ui()).count(), 6);
+        assert_eq!(PermissionSet::all().iter().filter(|p| p.is_ui()).count(), 7);
     }
 
     #[test]

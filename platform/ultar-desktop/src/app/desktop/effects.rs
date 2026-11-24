@@ -304,6 +304,8 @@ impl DesktopApp {
     /// Builds the bar and the popup again as the outcome says.
     pub(super) fn rebuild(&mut self, outcome: Outcome) -> Result<(), AppError> {
         self.look.theme = self.shell.d.theme;
+        let v = self.shell.d.values;
+        self.look = self.look.with_access(v.high_contrast, v.large_text);
         let screen = screen(&self.host);
         if outcome.bar {
             let view = build_bar(&self.shell, self.look, screen.w)?;

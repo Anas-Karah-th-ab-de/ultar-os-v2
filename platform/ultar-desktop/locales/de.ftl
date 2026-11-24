@@ -237,6 +237,7 @@ lock.access.large_text = Große Schrift
 lock.access.high_contrast = Hoher Kontrast
 lock.access.screen_reader = Bildschirmleser
 lock.access.on_screen_keyboard = Bildschirmtastatur
+lock.access.unavailable = Auf diesem System noch nicht verfügbar
 lock.back = Zurück
 lock.caps_lock = Feststelltaste ist an
 lock.date = {weekday}, {day}. {month} {year}

@@ -8,6 +8,7 @@ fn env(root: bool) -> Environment {
         root,
         stop_timeout: Duration::from_secs(1),
         edition: "server".into(),
+        profile: "system".into(),
         net_allowed: None,
         all_rights_allowed: Vec::new(),
     }

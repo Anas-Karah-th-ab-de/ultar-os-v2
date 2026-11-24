@@ -13,7 +13,7 @@ uid_last = 49999
 # What every cell sees of the system, read-only (missing ones are left out).
 system_view = ["/usr", "/bin", "/lib", "/lib64", "/etc/ultar/locale", "/usr/share/fonts"]
 # Socket directories every cell sees read-only: the compositor.
-shares = ["/run/ultar/ui"]
+shares = ["/run/ultar/ui", "/run/ultar/appbus"]
 
 # Isolation features the operator accepts as missing ("cell", "ids",
 # "groups", "net"). Empty: an app whose cell cannot be built does not start.

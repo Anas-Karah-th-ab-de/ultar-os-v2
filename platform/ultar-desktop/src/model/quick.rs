@@ -212,6 +212,10 @@ pub struct QuickValues {
     pub brightness: Option<u8>,
     /// Battery percent and charging, if the device has one and reports it.
     pub battery: Option<(u8, bool)>,
+    /// accessibility.high_contrast: the high-contrast palette on every surface of the shell.
+    pub high_contrast: bool,
+    /// accessibility.large_text: text 1.25 times larger on every surface of the shell.
+    pub large_text: bool,
 }
 
 /// One tile as shown.

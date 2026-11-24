@@ -124,6 +124,10 @@ pub struct Config {
     pub rights: RightsTable,
     /// Draw the pointer (off for touch-only devices and pixel tests).
     pub cursor: bool,
+    /// The session starts locked (§8a): nothing but the ground colour is drawn and no input
+    /// reaches any client until a lock screen client shows its surface and unlocks with the
+    /// password. The desktop is never visible before the first unlock.
+    pub start_locked: bool,
 }
 
 impl Default for Config {
@@ -136,6 +140,7 @@ impl Default for Config {
             inline_only: false,
             rights: RightsTable::default(),
             cursor: true,
+            start_locked: false,
         }
     }
 }

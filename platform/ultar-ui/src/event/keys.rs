@@ -435,6 +435,40 @@ impl Ui {
             field.eye_focused = false;
         }
         let mut changed = false;
+        // Ctrl+A/C/X/V/Z (the letter of the key without the layout: Arabic keys give Arabic
+        // letters, the shortcut is the same key)
+        if modifiers.ctrl && !modifiers.alt && !modifiers.meta {
+            if let Key::Char(ch) = key {
+                let (mut copy, mut paste) = (None, false);
+                match shortcut_letter(ch) {
+                    Some('a') => {
+                        field.select_all();
+                    }
+                    Some('c') => copy = field.selected_text().map(str::to_owned),
+                    Some('x') => {
+                        copy = field.cut();
+                        changed = copy.is_some();
+                    }
+                    Some('v') => paste = true,
+                    Some('z') => changed = field.undo(),
+                    _ => return false,
+                }
+                if copy.is_some() {
+                    self.clipboard.0 = copy;
+                }
+                if paste {
+                    self.clipboard.1 = Some(id);
+                }
+                if changed {
+                    out.push(Action {
+                        node: id,
+                        kind: ActionKind::TextChanged,
+                    });
+                }
+                self.touch(id);
+                return true;
+            }
+        }
         match key {
             Key::Char(_) | Key::Space if modifiers.command() => return false,
             Key::Char(ch) => changed = field.insert(ch),
@@ -460,6 +494,24 @@ impl Ui {
         }
         self.touch(id);
         true
+    }
+}
+
+/// The Latin letter of a shortcut key: `ch` itself, or the letter on the same key of the US
+/// layout when an Arabic layout produced `ch` (Ctrl+ش is Ctrl+A).
+pub(crate) fn shortcut_letter(ch: char) -> Option<char> {
+    let ch = ch.to_ascii_lowercase();
+    if ch.is_ascii_lowercase() {
+        return Some(ch);
+    }
+    // Arabic (PC) layout: the keys of A, C, X, V, Z
+    match ch {
+        'ش' => Some('a'),
+        'ؤ' => Some('c'),
+        'ء' => Some('x'),
+        'ر' => Some('v'),
+        'ئ' => Some('z'),
+        _ => None,
     }
 }
 

@@ -13,7 +13,9 @@ use ultar_ui::paint::PaintEnv;
 use ultar_ui::tokens::{InputMode, ThemeKind};
 use ultar_web::app::{Browser, FilesApp, Paths};
 use ultar_web::cell::CellSpec;
+use ultar_web::engine::offline::OfflineEngine;
 use ultar_web::engine::remote::{HostConfig, RemoteEngine};
+use ultar_web::engine::WebEngine;
 
 /// Where the engine bundle is installed.
 const BUNDLE: &str = "/usr/lib/ultar/web";
@@ -110,7 +112,24 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| home().join("Downloads"));
     std::fs::create_dir_all(&profile)?;
     std::fs::create_dir_all(&downloads)?;
-    let engine = start_engine(&a, &profile, &downloads)?;
+    match start_engine(&a, &profile, &downloads) {
+        Ok(engine) => show(engine, a, lang, Paths { profile, downloads }),
+        Err(e) => {
+            // No engine (bundle missing or refused to start): the window still opens; every
+            // page says it could not be shown (engine::offline).
+            let _ = writeln!(std::io::stderr(), "ultar-web: engine not available: {e}");
+            show(OfflineEngine::new(), a, lang, Paths { profile, downloads })
+        }
+    }
+}
+
+/// The browser window over `engine` until it is closed.
+fn show<E: WebEngine>(
+    engine: E,
+    a: Args,
+    lang: Lang,
+    paths: Paths,
+) -> Result<(), Box<dyn std::error::Error>> {
     let theme = if a.light {
         ThemeKind::Light
     } else {
@@ -126,7 +145,7 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
     let files = Box::new(FilesApp {
         program: PathBuf::from("/usr/bin/ultar-files"),
     });
-    let mut browser = Browser::new(engine, ui, Some(Paths { profile, downloads }), files)?;
+    let mut browser = Browser::new(engine, ui, Some(paths), files)?;
     if a.private {
         browser.new_tab(true)?;
         browser.close_tab(0)?;

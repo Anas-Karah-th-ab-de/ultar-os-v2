@@ -237,6 +237,7 @@ lock.access.large_text = Large text
 lock.access.high_contrast = High contrast
 lock.access.screen_reader = Screen reader
 lock.access.on_screen_keyboard = On-screen keyboard
+lock.access.unavailable = Not available on this system yet
 lock.back = Back
 lock.caps_lock = Caps Lock is on
 lock.date = {weekday} {day} {month} {year}

@@ -666,13 +666,13 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 Some(off) => Src::Data(crate::eingabe::fb_lesen(off, n)),
                 None => Src::Err(-EINVAL),
             },
-            FdKind::Eingabe(e) if e.0 >= crate::input::FIRST => match crate::input::read(e.0, n) {
+            FdKind::Eingabe(e) if e.0 >= crate::input::FIRST => match crate::input::read(e.0, e.2, n) {
                 Ok(Some(d)) => Src::Data(d),
                 Ok(None) if d.flags & 0x800 != 0 => Src::Err(-11),
                 Ok(None) => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
                 Err(e) => Src::Err(e),
             },
-            FdKind::Eingabe(e) => match crate::eingabe::lesen(e.0, n) {
+            FdKind::Eingabe(e) => match crate::eingabe::lesen(e.2, n) {
                 Some(d) => Src::Data(d),
                 None if d.flags & 0x800 != 0 => Src::Err(-11),
                 None => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
@@ -2014,7 +2014,7 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
             r(dl != 0 && crate::arch::uptime_ms() >= dl)
         }
         FdKind::Epoll(_) => 0,
-        FdKind::Eingabe(e) => r(crate::eingabe::bereit(e.0)),
+        FdKind::Eingabe(e) => r(crate::eingabe::bereit(e.0, e.2)),
         FdKind::Hci(h) => r(crate::svcdev::hci::ready(h)) | w(true),
         FdKind::Uinput(_) => w(true),
         FdKind::Fb(_) => w(true),

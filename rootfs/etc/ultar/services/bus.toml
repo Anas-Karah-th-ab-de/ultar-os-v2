@@ -50,12 +50,19 @@ args = [
     "--listen", "/run/ultar/bus/installer.sock=system.installer", "--mode", "0660", "--group", "840", "--max-connections", "2",
     # The service manager (root).
     "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
+    # The apps' socket (bound read-only into every app cell by the launcher, `shares`): one
+    # identity for all of them, `app.shared`, which has exactly the rights every app has
+    # (rule `app.*` of bus-policy.toml) and none of a named app (app.settings, app.store …).
+    # Open to everyone (apps run as their own uids 20000-49999 without groups); the
+    # connection limit bounds what they can take. Per-app identities need the launcher to
+    # hand each app its own socket (open point, docs/integration/vmware.md).
+    "--listen", "/run/ultar/appbus/bus.sock=app.shared", "--mode", "0666", "--max-connections", "32",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
 groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 840]
-public_dirs = ["/run/ultar/bus"]
+public_dirs = ["/run/ultar/bus", "/run/ultar/appbus"]
 notify = true
 after = ["logd"]
 restart = "always"

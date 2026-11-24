@@ -17,7 +17,12 @@ pub const TASTATUR: u8 = 1;
 static ROH: AtomicUsize = AtomicUsize::new(0);
 /// Zahl offener Bildspeicher-Deskriptoren
 static FB_OFFEN: AtomicUsize = AtomicUsize::new(0);
-static QUEUES: Mutex<[VecDeque<[u8; 24]>; 2]> = Mutex::new([VecDeque::new(), VecDeque::new()]);
+/// Eine Warteschlange je lesendem Deskriptor (Leser-Nummer, Gerät, Ereignisse) wie bei Linux'
+/// evdev: jeder Leser bekommt jedes Ereignis. Eine gemeinsame Schlange ließ einen zweiten Leser
+/// (die Notausstieg-Überwachung von ultar-init als PID 1) dem Compositor die Tasten wegnehmen.
+static QUEUES: Mutex<alloc::vec::Vec<(u32, u8, VecDeque<[u8; 24]>)>> = Mutex::new(alloc::vec::Vec::new());
+/// Nächste Leser-Nummer (0 = nur schreibend).
+static NAECHSTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
 static E0: AtomicBool = AtomicBool::new(false);
 /// letzter gemeldeter Mauszustand
 static MX: AtomicI32 = AtomicI32::new(-1);
@@ -37,31 +42,47 @@ pub fn roh() -> bool {
 
 /// Besitz eines Eingabe-Deskriptors (beim Schließen wieder Konsole)
 /// .1: liest (Tasten gehen roh an Programme); false = nur schreibend (Ereignisse einspeisen)
-pub struct EingabeFd(pub u8, bool);
+/// .2: Leser-Nummer (eigene Warteschlange; 0 = nur schreibend)
+pub struct EingabeFd(pub u8, bool, pub u32);
 
 impl EingabeFd {
     /// nur zum Einspeisen geöffnet (O_WRONLY): Konsole bleibt, wie sie ist
     pub fn schreibend(art: u8) -> EingabeFd {
-        EingabeFd(art, false)
+        EingabeFd(art, false, 0)
     }
     pub fn neu(art: u8) -> EingabeFd {
+        let leser = NAECHSTER.fetch_add(1, Ordering::Relaxed).max(1);
         if ROH.fetch_add(1, Ordering::SeqCst) == 0 {
-            QUEUES.lock().iter_mut().for_each(|q| q.clear());
+            QUEUES.lock().iter_mut().for_each(|(_, _, q)| q.clear());
             crate::input::clear();
             MEREIGNIS.store(usize::MAX, Ordering::Relaxed);
+        }
+        if art >= crate::input::FIRST {
+            // ohne Speicher keine Schlange: das Lesen meldet dann ENODEV (fail closed, kein Hänger)
+            crate::input::attach(art, leser);
+        } else {
+            let mut q = QUEUES.lock();
+            if crate::heap::kernel(|| crate::mem::try_reserve(&mut *q, 1)) {
+                q.push((leser, art, VecDeque::new()));
+            }
         }
         if art == MAUS {
             if let Some(fb) = crate::console::framebuffer() {
                 crate::drivers::ps2maus::init(fb.width as usize, fb.height as usize);
             }
         }
-        EingabeFd(art, true)
+        EingabeFd(art, true, leser)
     }
 }
 
 impl Drop for EingabeFd {
     fn drop(&mut self) {
         if self.1 {
+            if self.0 >= crate::input::FIRST {
+                crate::input::detach(self.0, self.2);
+            } else {
+                QUEUES.lock().retain(|(l, _, _)| *l != self.2);
+            }
             ROH.fetch_sub(1, Ordering::SeqCst);
         }
     }
@@ -102,10 +123,10 @@ fn ereignis(art: u8, typ: u16, code: u16, wert: i32) {
     e[16..18].copy_from_slice(&typ.to_le_bytes());
     e[18..20].copy_from_slice(&code.to_le_bytes());
     e[20..24].copy_from_slice(&wert.to_le_bytes());
-    let mut q = QUEUES.lock();
-    let q = &mut q[art as usize];
-    if q.len() < 4096 {
-        q.push_back(e);
+    for (_, a, q) in QUEUES.lock().iter_mut() {
+        if *a == art && q.len() < 4096 && crate::heap::kernel(|| q.try_reserve(1)).is_ok() {
+            q.push_back(e);
+        }
     }
 }
 
@@ -228,11 +249,11 @@ pub fn pumpen() {
     }
 }
 
-/// Ereignisse lesen (24 Byte je Ereignis); None = nichts da
-pub fn lesen(art: u8, max: usize) -> Option<alloc::vec::Vec<u8>> {
+/// Ereignisse des Lesers `leser` lesen (24 Byte je Ereignis); None = nichts da
+pub fn lesen(leser: u32, max: usize) -> Option<alloc::vec::Vec<u8>> {
     pumpen();
     let mut q = QUEUES.lock();
-    let q = &mut q[art as usize];
+    let q = &mut q.iter_mut().find(|(l, _, _)| *l == leser)?.2;
     if q.is_empty() {
         return None;
     }
@@ -244,12 +265,12 @@ pub fn lesen(art: u8, max: usize) -> Option<alloc::vec::Vec<u8>> {
     Some(out)
 }
 
-pub fn bereit(art: u8) -> bool {
+pub fn bereit(art: u8, leser: u32) -> bool {
     if art >= crate::input::FIRST {
-        return crate::input::ready(art);
+        return crate::input::ready(art, leser);
     }
     pumpen();
-    !QUEUES.lock()[art as usize].is_empty()
+    QUEUES.lock().iter().find(|(l, _, _)| *l == leser).is_some_and(|(_, _, q)| !q.is_empty())
 }
 
 /// ioctl auf einem Eingabe-Deskriptor; None = unbekannt

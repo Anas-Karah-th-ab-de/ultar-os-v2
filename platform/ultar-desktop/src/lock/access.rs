@@ -7,9 +7,10 @@
 use super::LockState;
 use crate::view::{Target, View};
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
-use ultar_ui::tokens::Space;
+use ultar_ui::paint::TextSpec;
+use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{Card, IconButton, Label, Switch};
+use ultar_ui::widgets::{Card, IconButton, Label, Switch, Text};
 
 /// The switches of the menu in board order: (setting key, catalog key of the name).
 pub const SWITCHES: [(&str, &str); 4] = [
@@ -21,6 +22,12 @@ pub const SWITCHES: [(&str, &str); 4] = [
         "lock.access.on_screen_keyboard",
     ),
 ];
+
+/// Which switches have something behind them: large text and high contrast change every
+/// surface of the lock screen and the shell at once (`Look::with_access`); there is no screen
+/// reader and no on-screen keyboard program in the system yet, so those two are disabled with
+/// the reason instead of switching nothing (owner: "switching has no effect").
+pub const AVAILABLE: [bool; 4] = [true, true, false, false];
 
 /// Width of the menu (`g(64)`).
 const WIDTH: f32 = 64.0 * Space::S4.points();
@@ -47,6 +54,9 @@ impl AccessState {
 
     /// Switch `index` to `on`: the call to make, or `None` (no service, no such switch).
     pub fn toggle(&mut self, index: usize, on: bool) -> Option<(&'static str, bool)> {
+        if !AVAILABLE.get(index).copied().unwrap_or(false) {
+            return None;
+        }
         let values = self.values.as_mut()?;
         let slot = values.get_mut(index)?;
         *slot = on;
@@ -85,11 +95,26 @@ pub(super) fn menu(view: &mut View, root: NodeId, s: &LockState) -> Result<(), U
     let card = Card::padded().flex(flex);
     let card = view.ui.add_sized(row, card, Sizing::width(WIDTH))?;
     for (i, ((_, name), on)) in SWITCHES.iter().zip(values).enumerate() {
-        let line = view.ui.add(card, Flex::row().cross(CrossAlign::Center))?;
-        let id = view
+        // The switch carries only its accessible name: the visible name is a text beside it
+        // (found in VMware: four switches without any word).
+        let line = view
             .ui
-            .add_sized(line, Switch::new(Label::key(*name), on), Sizing::grow(1))?;
+            .add(card, Flex::row().cross(CrossAlign::Center).gap(Space::S12))?;
+        let names = view
+            .ui
+            .add_sized(line, Flex::column().gap(Space::S4), Sizing::grow(1))?;
+        view.ui.add(names, Text::new(Label::key(*name)))?;
+        let id = view.ui.add(line, Switch::new(Label::key(*name), on))?;
         view.mark(id, Target::AccessSwitch(i as u8));
+        if !AVAILABLE[i] {
+            view.ui.add(
+                names,
+                Text::new(Label::key("lock.access.unavailable"))
+                    .spec(TextSpec::new(TypeSize::S12))
+                    .color(ColorRole::TextMuted),
+            )?;
+            view.ui.set_disabled(id, true)?;
+        }
     }
     Ok(())
 }
@@ -111,11 +136,12 @@ mod tests {
         assert_eq!(a.values, Some([false, true, false, false]));
         a.flip();
         assert!(a.open);
-        assert_eq!(
-            a.toggle(3, true),
-            Some(("accessibility.on_screen_keyboard", true))
-        );
-        assert_eq!(a.values, Some([false, true, false, true]));
+        assert_eq!(a.toggle(0, true), Some(("accessibility.large_text", true)));
+        assert_eq!(a.values, Some([true, true, false, false]));
+        // no screen reader and no on-screen keyboard program yet: those switch nothing
+        assert_eq!(a.toggle(2, true), None);
+        assert_eq!(a.toggle(3, true), None);
+        assert_eq!(a.values, Some([true, true, false, false]));
         assert_eq!(a.toggle(9, true), None);
         a.flip();
         assert!(!a.open);

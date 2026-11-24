@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The desktop session on the Ultar kernel: ultar-init (not PID 1) starts the shipped logd, bus, seat,
-# authd, compositor, lock, sysdialog and desktop definitions, each as its own user; the host locks with
-# Super+L, types the test password through the virtual USB keyboard and judges three screenshots
+# authd, compositor, lock, sysdialog and desktop definitions, each as its own user; the session starts locked,
+# the host unlocks it, locks with Super+L, types the test password through the virtual USB keyboard and judges
+# the screenshots
 # (tools/kern-test/desktop-qemu.py). Verdict line: "DESKTOP: ALLES OK".
 # IMG=<esp image> to use a built kernel image (else scripts/build-kern.sh builds one);
 # DESK_BIN=<dir> with static ultar-init, ultar-busd, ultar-logd, ultar-devd-seat, ultar-authd,

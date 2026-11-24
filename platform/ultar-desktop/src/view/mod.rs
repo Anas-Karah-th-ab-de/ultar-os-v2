@@ -242,9 +242,23 @@ pub struct Look {
     pub scale: f32,
     /// Pointer or touch targets.
     pub mode: InputMode,
+    /// accessibility.high_contrast.
+    pub high_contrast: bool,
+    /// accessibility.large_text: text this many times larger (1 = off).
+    pub text_scale: f32,
 }
 
+/// Text factor of accessibility.large_text.
+pub const LARGE_TEXT: f32 = 1.25;
+
 impl Look {
+    /// With the accessibility settings `high_contrast` and `large_text` applied.
+    pub fn with_access(mut self, high_contrast: bool, large_text: bool) -> Look {
+        self.high_contrast = high_contrast;
+        self.text_scale = if large_text { LARGE_TEXT } else { 1.0 };
+        self
+    }
+
     /// Pointer input at scale 1.
     pub fn new(lang: Lang, theme: ThemeKind) -> Look {
         Look {
@@ -252,6 +266,8 @@ impl Look {
             theme,
             scale: 1.0,
             mode: InputMode::Pointer,
+            high_contrast: false,
+            text_scale: 1.0,
         }
     }
 }
@@ -260,6 +276,8 @@ impl Look {
 pub fn new_ui(look: Look, size: Size, tr: &Translator) -> Result<Ui, UiError> {
     let mut env = PaintEnv::new(look.lang, look.theme);
     env.scale = look.scale;
+    env.high_contrast = look.high_contrast;
+    env.text_scale = look.text_scale;
     Ui::new(env, look.mode, size, tr.clone())
 }
 

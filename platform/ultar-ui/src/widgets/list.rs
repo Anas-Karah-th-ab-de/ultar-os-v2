@@ -405,5 +405,8 @@ pub(crate) fn line_box(env: &PaintEnv, size: TypeSize) -> f32 {
     } else {
         typography::LINE_HEIGHT_LATIN
     };
-    (size.points() * env.scale * height).round().max(1.0) / env.scale
+    (size.points() * env.text_scale * env.scale * height)
+        .round()
+        .max(1.0)
+        / env.scale
 }

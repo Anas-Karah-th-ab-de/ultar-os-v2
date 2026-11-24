@@ -36,6 +36,9 @@ pub struct Environment {
     pub stop_timeout: Duration,
     /// Edition word passed to every service.
     pub edition: String,
+    /// Boot profile passed to every service (`ULTAR_PROFILE`): the compositor starts the
+    /// session locked in the ordinary system, not on the installation medium.
+    pub profile: String,
     /// File naming services that may use the network group.
     pub net_allowed: Option<PathBuf>,
     /// Services the administrator allows to keep `all` rights
@@ -219,6 +222,7 @@ fn spawn(
         .env("HOME", if uid == 0 { "/root" } else { "/" })
         .env("ULTAR_SERVICE", &spec.name)
         .env("ULTAR_EDITION", &env.edition)
+        .env("ULTAR_PROFILE", &env.profile)
         .envs(&spec.program.env);
     let mut outputs = Vec::new();
     let mut writers = Vec::new();

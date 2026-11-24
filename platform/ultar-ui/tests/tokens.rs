@@ -160,6 +160,10 @@ fn state_and_wave_3_tokens_match_the_file() {
     assert_eq!(state::DISABLED_OPACITY, number("state", "disabled_opacity"));
     assert_eq!(state::HOVER_OVERLAY, number("state", "hover_overlay"));
     assert_eq!(state::PRESSED_OVERLAY, number("state", "pressed_overlay"));
+    assert_eq!(
+        state::SELECTION_OPACITY,
+        number("state", "selection_opacity")
+    );
     assert_eq!(state::SCRIM_DARK, number("state", "scrim_dark"));
     assert_eq!(state::SCRIM_LIGHT, number("state", "scrim_light"));
     assert_eq!(state::FOCUS_RING.name(), value("state", "focus_ring"));
@@ -194,7 +198,7 @@ fn state_and_wave_3_tokens_match_the_file() {
     );
     assert_eq!(
         section("state").len(),
-        8,
+        9,
         "every state token is checked here"
     );
 }

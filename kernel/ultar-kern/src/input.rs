@@ -64,7 +64,10 @@ struct Node {
     product: u16,
     /// The last boot report (modifiers, reserved, six keys).
     last: [u8; 8],
-    queue: VecDeque<[u8; 24]>,
+    /// One queue per reader (open descriptor), as Linux' evdev clients: every reader gets every
+    /// event. A single shared queue let any second reader (ultar-init's emergency key watch as
+    /// PID 1) take events away from the compositor - found in VMware: no key reached the session.
+    queues: Vec<(u32, VecDeque<[u8; 24]>)>,
     /// What a virtual device declared (one entry; empty for USB devices – a vector so that its
     /// memory can be asked for without stopping the machine when there is none).
     caps: Vec<virt::Caps>,
@@ -89,7 +92,7 @@ fn add(hc: usize, slot: u32, vendor: u16, product: u16, kind: Kind) {
             return;
         }
         let Some(index) = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i)) else { return };
-        let node = Node { index, kind, hc, slot, vendor, product, last: [0; 8], queue: VecDeque::new(), caps: Vec::new() };
+        let node = Node { index, kind, hc, slot, vendor, product, last: [0; 8], queues: Vec::new(), caps: Vec::new() };
         if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
             return;
         }
@@ -127,7 +130,7 @@ pub fn virtual_added(caps: virt::Caps) -> Option<u8> {
             return None;
         }
         held.push(caps);
-        let node = Node { index, kind: Kind::Virtual, hc: VIRTUAL_HC, slot, vendor, product, last: [0; 8], queue: VecDeque::new(), caps: held };
+        let node = Node { index, kind: Kind::Virtual, hc: VIRTUAL_HC, slot, vendor, product, last: [0; 8], queues: Vec::new(), caps: held };
         if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
             return None;
         }
@@ -169,7 +172,7 @@ pub fn virtual_events(index: u8, events: &[(u16, u16, i32)]) -> bool {
         ok.push((t, c, v));
     }
     for (t, c, v) in ok {
-        push(&mut n.queue, t, c, v);
+        push(n, t, c, v);
     }
     crate::socket::bump();
     true
@@ -218,8 +221,8 @@ pub fn usb_report(hc: usize, slot: u32, rep: &[u8; 8], raw: bool) -> bool {
         keys.push((hid_key(u), true));
     }
     for (code, down) in keys.into_iter().filter(|k| k.0 != 0) {
-        push(&mut n.queue, 1, code, down as i32);
-        push(&mut n.queue, 0, 0, 0);
+        push(n, 1, code, down as i32);
+        push(n, 0, 0, 0);
     }
     crate::socket::bump();
     true
@@ -229,12 +232,37 @@ fn hid_key(u: u8) -> u16 {
     HID_KEYS.get(u as usize).map_or(0, |&k| k as u16)
 }
 
-/// One `struct input_event` (time of now) at the end of a queue.
-fn push(q: &mut VecDeque<[u8; 24]>, typ: u16, code: u16, value: i32) {
-    if q.len() >= QUEUE || crate::heap::kernel(|| q.try_reserve(1)).is_err() {
-        return;
+/// One `struct input_event` (time of now) at the end of every reader's queue of node `n`.
+fn push(n: &mut Node, typ: u16, code: u16, value: i32) {
+    let e = record(typ, code, value);
+    for (_, q) in n.queues.iter_mut() {
+        if q.len() >= QUEUE || crate::heap::kernel(|| q.try_reserve(1)).is_err() {
+            continue;
+        }
+        q.push_back(e);
     }
-    q.push_back(record(typ, code, value));
+}
+
+/// Reader `reader` (an open descriptor) starts reading node `index`: it gets its own queue and
+/// from now on every event of the node. `false`: no such node, or no memory.
+pub fn attach(index: u8, reader: u32) -> bool {
+    let mut nodes = NODES.lock();
+    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return false };
+    if n.queues.iter().any(|(r, _)| *r == reader) {
+        return true;
+    }
+    if !crate::heap::kernel(|| crate::mem::try_reserve(&mut n.queues, 1)) {
+        return false;
+    }
+    n.queues.push((reader, VecDeque::new()));
+    true
+}
+
+/// Reader `reader` closed its descriptor: its queue goes.
+pub fn detach(index: u8, reader: u32) {
+    if let Some(n) = NODES.lock().iter_mut().find(|n| n.index == index) {
+        n.queues.retain(|(r, _)| *r != reader);
+    }
 }
 
 /// A `struct input_event` stamped with the time of now.
@@ -266,29 +294,36 @@ pub fn exists(index: u8) -> bool {
 
 /// Drop what the USB nodes hold (the first program opened an input node).
 pub fn clear() {
-    NODES.lock().iter_mut().for_each(|n| n.queue.clear());
+    NODES.lock().iter_mut().for_each(|n| n.queues.iter_mut().for_each(|(_, q)| q.clear()));
 }
 
-/// Read whole events, at most `max` bytes; `Ok(None)`: nothing there; `ENODEV`: the device left.
-pub fn read(index: u8, max: usize) -> Result<Option<Vec<u8>>, i64> {
+/// Read whole events of reader `reader`, at most `max` bytes; `Ok(None)`: nothing there;
+/// `ENODEV`: the device left (or the number belongs to a later device the reader never opened).
+pub fn read(index: u8, reader: u32, max: usize) -> Result<Option<Vec<u8>>, i64> {
     crate::eingabe::pumpen();
     let mut nodes = NODES.lock();
     let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return Err(-ENODEV) };
-    if n.queue.is_empty() {
+    let Some((_, q)) = n.queues.iter_mut().find(|(r, _)| *r == reader) else { return Err(-ENODEV) };
+    if q.is_empty() {
         return Ok(None);
     }
     let mut out = Vec::new();
     while out.len() + 24 <= max {
-        let Some(e) = n.queue.pop_front() else { break };
+        let Some(e) = q.pop_front() else { break };
         out.extend_from_slice(&e);
     }
     Ok(Some(out))
 }
 
-/// Whether a read would not wait (events there, or the device left).
-pub fn ready(index: u8) -> bool {
+/// Whether a read of reader `reader` would not wait (events there, or the device left).
+pub fn ready(index: u8, reader: u32) -> bool {
     crate::eingabe::pumpen();
-    NODES.lock().iter().find(|n| n.index == index).map_or(true, |n| !n.queue.is_empty())
+    NODES
+        .lock()
+        .iter()
+        .find(|n| n.index == index)
+        .and_then(|n| n.queues.iter().find(|(r, _)| *r == reader))
+        .map_or(true, |(_, q)| !q.is_empty())
 }
 
 /// Events written to a USB node (remote control): queued like the keyboard's own.
@@ -297,7 +332,7 @@ pub fn inject(index: u8, data: &[u8]) {
     let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return };
     for e in data.chunks_exact(24) {
         let (typ, code) = (u16::from_le_bytes([e[16], e[17]]), u16::from_le_bytes([e[18], e[19]]));
-        push(&mut n.queue, typ, code, i32::from_le_bytes([e[20], e[21], e[22], e[23]]));
+        push(n, typ, code, i32::from_le_bytes([e[20], e[21], e[22], e[23]]));
     }
     crate::socket::bump();
 }
@@ -389,30 +424,29 @@ pub fn usb_pointer(hc: usize, slot: u32, buttons: u8, x: i32, y: i32, wheel: i32
     if !raw {
         return;
     }
-    let q = &mut n.queue;
     match n.kind {
         Kind::Tablet(_) => {
-            push(q, 3, 0, x);
-            push(q, 3, 1, y);
+            push(n, 3, 0, x);
+            push(n, 3, 1, y);
         }
         _ => {
             if x != 0 {
-                push(q, 2, 0, x);
+                push(n, 2, 0, x);
             }
             if y != 0 {
-                push(q, 2, 1, y);
+                push(n, 2, 1, y);
             }
         }
     }
     for (bit, code) in [(1u8, 0x110u16), (2, 0x111), (4, 0x112)] {
         if (buttons ^ old) & bit != 0 {
-            push(q, 1, code, (buttons & bit != 0) as i32);
+            push(n, 1, code, (buttons & bit != 0) as i32);
         }
     }
     if wheel != 0 {
-        push(q, 2, 8, wheel);
+        push(n, 2, 8, wheel);
     }
-    push(q, 0, 0, 0);
+    push(n, 0, 0, 0);
     crate::socket::bump();
 }
 

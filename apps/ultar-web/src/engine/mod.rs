@@ -1,8 +1,10 @@
 //! The engine interface: the browser core talks to a web engine only through [`WebEngine`].
-//! Engines: [`remote::RemoteEngine`] (WPE WebKit in its own cell) and
+//! Engines: [`remote::RemoteEngine`] (WPE WebKit in its own cell),
+//! [`offline::OfflineEngine`] (no engine installed: the window works, pages fail) and
 //! [`test_engine::TestEngine`] (headless tests). A Servo engine (DESKTOP-SPEC §11) can
 //! implement the same trait.
 
+pub mod offline;
 pub mod remote;
 pub mod test_engine;
 

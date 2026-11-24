@@ -164,6 +164,34 @@ mod tests {
     }
 
     #[test]
+    fn high_contrast_text_reaches_7_to_1_on_every_ground() {
+        let p = HIGH_CONTRAST;
+        for text in [ColorRole::Text, ColorRole::TextMuted, ColorRole::AccentText] {
+            for ground in [
+                ColorRole::Ground,
+                ColorRole::Surface,
+                ColorRole::Raised,
+                ColorRole::Bar,
+            ] {
+                assert!(
+                    p.get(text).contrast_ratio(p.get(ground)) >= 7.0,
+                    "{text:?} on {ground:?}"
+                );
+            }
+        }
+        assert!(
+            p.get(ColorRole::OnAccent)
+                .contrast_ratio(p.get(ColorRole::Accent))
+                >= 7.0
+        );
+        assert!(
+            p.get(ColorRole::ControlBorder)
+                .contrast_ratio(p.get(ColorRole::Surface))
+                >= 7.0
+        );
+    }
+
+    #[test]
     fn palettes_and_modes() {
         assert_eq!(THEME.palette(ThemeKind::Dark), &DARK);
         assert_ne!(DARK.get(ColorRole::Ground), LIGHT.get(ColorRole::Ground));
