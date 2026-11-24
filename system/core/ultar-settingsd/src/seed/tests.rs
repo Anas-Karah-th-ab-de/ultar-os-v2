@@ -29,7 +29,7 @@ fn seed_builds_and_covers_all_ten_areas() {
             (Panel::Account, 6),
         ]
     );
-    assert_eq!(registry.defs().len(), 116);
+    assert_eq!(registry.defs().len(), 118);
 }
 
 fn required_keys() -> BTreeSet<String> {

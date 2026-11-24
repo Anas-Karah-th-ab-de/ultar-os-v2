@@ -312,7 +312,7 @@ fn list_shows_panels_and_items_the_device_has() {
     assert!(!keys
         .iter()
         .any(|key| key.contains("<id>") && key.starts_with("display.")));
-    assert_eq!(keys_of(&core, &admin(), Some("region")).len(), 9);
+    assert_eq!(keys_of(&core, &admin(), Some("region")).len(), 11);
     assert_eq!(
         core.list(&admin(), Some("nope")).unwrap_err(),
         SettingsError::BadRequest
