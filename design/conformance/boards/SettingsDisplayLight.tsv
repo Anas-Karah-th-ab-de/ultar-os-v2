@@ -1,0 +1,57 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+SettingsDisplayLight	1	win.min	button	Minimize	0	-	1332	3.5	32	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	2	win.max	button	Maximize	0	-	1368	3.5	32	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	3	win.close	button	Close	0	-	1404	3.5	32	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	4	settings.search	input	Search settings	0	-	49	53	213	30	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	5	settings.area	button	Wi-Fi	0	-	12	88	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	6	settings.area	button	Network	0	-	12	124	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	7	settings.area	button	Bluetooth	0	-	12	160	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	8	settings.area	button	Displays	0	-	12	196	263	32	230,232,238	1440	900	light	en	40
+SettingsDisplayLight	9	settings.area	button	Sound	0	-	12	232	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	10	settings.area	button	Power	0	-	12	268	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	11	settings.area	button	Desktop and dock	0	-	12	304	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	12	settings.area	button	Windows and workspaces	0	-	12	340	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	13	settings.area	button	Appearance	0	-	12	376	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	14	settings.area	button	Notifications	0	-	12	412	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	15	settings.area	button	Search	0	-	12	448	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	16	settings.area	button	Apps	0	-	12	484	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	17	settings.area	button	Mouse and touchpad	0	-	12	520	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	18	settings.area	button	Keyboard	0	-	12	556	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	19	settings.area	button	Printers and scanners	0	-	12	592	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	20	settings.area	button	Colour	0	-	12	628	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	21	settings.area	button	Accessibility	0	-	12	664	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	22	settings.area	button	Privacy and security	0	-	12	700	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	23	settings.area	button	Sharing	0	-	12	736	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	24	settings.area	button	Accounts	0	-	12	772	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	25	settings.area	button	Users	0	-	12	808	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	26	settings.area	button	Region and language	0	-	12	844	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	27	settings.area	button	Date and time	0	-	12	880	263	32	247,248,250	1440	900	light	en	40
+SettingsDisplayLight	28	settings.area	button	Storage	0	-	12	916	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	29	settings.area	button	Drivers and hardware	0	-	12	952	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	30	settings.area	button	Updates	0	-	12	988	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	31	settings.area	button	Backup	0	-	12	1024	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	32	settings.area	button	Mesh	0	-	12	1060	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	33	settings.area	button	Assistant	0	-	12	1096	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	34	settings.area	button	Cells and containers	0	-	12	1132	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	35	settings.area	button	Emergency	0	-	12	1168	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	36	settings.area	button	About	0	-	12	1204	263	32	-	1440	900	light	en	40
+SettingsDisplayLight	37	display.identify	button	Show display numbers	0	-	590.19	156	187.34	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	38	display.detect	button	Look for displays	0	-	793.53	156	149.47	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	39	display.select	radio	Display 1: Built-in 15.6″ (main)	0	true	570	261	176	112	230,232,238	1440	900	light	en	40
+SettingsDisplayLight	40	display.select	radio	Display 2: Dell 24″	0	false	418	269	144	96	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	41	display.select	radio	Display 3: Dell 24″	0	false	754	269	144	96	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	42	display.mode	radio	ExtendOne desktop across all displays	0	true	337	497	195.33	117	230,232,238	1440	900	light	en	40
+SettingsDisplayLight	43	display.mode	radio	MirrorThe same picture on the chosen displays	0	false	544.33	497	193.34	117	255,255,255	1440	900	light	en	40
+SettingsDisplayLight	44	display.mode	radio	Only one displayThe other displays are switched off	0	false	749.67	497	193.33	117	255,255,255	1440	900	light	en	40
+SettingsDisplayLight	45	display.nightlight	switch	Night light	0	true	855	659.5	48	32	120,91,0	1440	900	light	en	40
+SettingsDisplayLight	46	display.nightlight.more	button	Night light: schedule and warmth	0	-	911	659.5	32	32	255,255,255	1440	900	light	en	40
+SettingsDisplayLight	47	display.remember	switch	Remember window positions per display	0	true	895	715.5	48	32	120,91,0	1440	900	light	en	40
+SettingsDisplayLight	48	display.bar	button	Show the bar: On all displays	0	-	798.2	771.5	144.8	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	49	display.lid	button	Lid closed with an external display: Keep working on the external display	0	-	649.38	828	293.63	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	50	display.resolution	button	Resolution: 3840 × 2160 (recommended)	0	-	1153.17	277.5	237.83	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	51	display.scale	button	Size of elements: 200% (recommended)	0	-	1196.86	333.5	194.14	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	52	display.refresh	button	Refresh rate: 60 Hz	0	-	1304.38	389.5	86.63	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	53	display.orientation	button	Orientation: Landscape	0	-	1270.75	445.5	120.25	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	54	display.hdr	switch	HDR	1	false	1343	501.5	48	32	160,161,163	1440	900	light	en	40
+SettingsDisplayLight	55	display.profile	button	Colour profile: Automatic (sRGB)	0	-	1226.8	557.5	164.2	32	243,244,247	1440	900	light	en	40
+SettingsDisplayLight	56	display.brightness	slider	Brightness of the built-in display	0	-	1151	614	180	32	120,91,0	1440	900	light	en	40

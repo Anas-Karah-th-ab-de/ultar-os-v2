@@ -1,0 +1,152 @@
+//! `ultar-settings` – the Settings app as a compositor client.
+//!
+//! ```text
+//! ultar-settings [--compositor PATH] [--bus PATH] [--lang ar|en|de] [--light]
+//!                [--area ID] [--catalogs DIR] [--documents DIR]
+//! ```
+//! `--compositor` defaults to `$ULTAR_COMPOSITOR`, `--bus` to `$ULTAR_BUS_SOCKET`,
+//! `--catalogs` (service catalogs `<dir>/<service>/<lang>.ftl`) to `$ULTAR_CATALOGS`,
+//! `--documents` to `$ULTAR_DOCUMENTS`.
+#![forbid(unsafe_code)]
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::time::Duration;
+use ultar_bus::{Client as Bus, ClientOptions};
+use ultar_i18n::Lang;
+use ultar_settings::areas::{index_of, AREAS};
+use ultar_settings::service::bus::{
+    BusAccount, BusDevices, BusDisplay, BusSettings, BusUpdate, ClipboardQueue, DocumentsFiles,
+};
+use ultar_settings::service::Ports;
+use ultar_settings::{App, AppError};
+use ultar_surface::client::{Client, WindowConfig};
+use ultar_surface::ui::UiWindow;
+use ultar_ui::paint::PaintEnv;
+use ultar_ui::tokens::{InputMode, ThemeKind};
+use ultar_ui::ui::Ui;
+use ultar_ui::Size;
+
+/// App id towards compositor and bus.
+const APP_ID: &str = "app.settings";
+/// How often services are followed while idle.
+const POLL: Duration = Duration::from_millis(500);
+
+struct Options {
+    compositor: Option<PathBuf>,
+    bus: Option<PathBuf>,
+    lang: Lang,
+    light: bool,
+    area: usize,
+    catalogs: Option<PathBuf>,
+    documents: Option<PathBuf>,
+}
+
+fn parse(args: impl Iterator<Item = String>) -> Result<Options, AppError> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let mut o = Options {
+        compositor: env("ULTAR_COMPOSITOR"),
+        bus: env("ULTAR_BUS_SOCKET"),
+        lang: Lang::from_env(),
+        light: false,
+        area: index_of("displays").unwrap_or(0),
+        catalogs: env("ULTAR_CATALOGS"),
+        documents: env("ULTAR_DOCUMENTS"),
+    };
+    let mut args = args.peekable();
+    while let Some(arg) = args.next() {
+        let mut value = || args.next().ok_or(AppError::Usage);
+        match arg.as_str() {
+            "--compositor" => o.compositor = Some(value()?.into()),
+            "--bus" => o.bus = Some(value()?.into()),
+            "--lang" => o.lang = Lang::parse(&value()?).ok_or(AppError::Usage)?,
+            "--light" => o.light = true,
+            "--area" => o.area = index_of(&value()?).ok_or(AppError::Usage)?,
+            "--catalogs" => o.catalogs = Some(value()?.into()),
+            "--documents" => o.documents = Some(value()?.into()),
+            _ => return Err(AppError::Usage),
+        }
+    }
+    Ok(o)
+}
+
+fn ports(bus: &Bus, documents: PathBuf, clipboard: ClipboardQueue) -> Ports {
+    Ports {
+        settings: Box::new(BusSettings::new(bus.clone())),
+        display: Box::new(BusDisplay::new(bus.clone())),
+        devices: Box::new(BusDevices(bus.clone())),
+        update: Box::new(BusUpdate::new(bus.clone())),
+        account: Box::new(BusAccount(bus.clone())),
+        files: Box::new(DocumentsFiles { dir: documents }),
+        clipboard: Box::new(clipboard),
+    }
+}
+
+fn run(o: Options) -> Result<(), AppError> {
+    let surface_err = |e: ultar_surface::client::ClientError| AppError::Surface(e.to_string());
+    let socket = o.compositor.ok_or(AppError::Usage)?;
+    let bus_path = o.bus.ok_or(AppError::Usage)?;
+    let bus = Bus::connect(&bus_path, ClientOptions::named(APP_ID))
+        .map_err(|e| AppError::Surface(e.to_string()))?;
+    let documents = o.documents.unwrap_or_else(|| PathBuf::from("documents"));
+    let clipboard = ClipboardQueue::default();
+    let tr = ultar_settings::i18n::translator(o.lang, o.catalogs.as_deref());
+    let theme = if o.light {
+        ThemeKind::Light
+    } else {
+        ThemeKind::Dark
+    };
+    let ui = Ui::new(
+        PaintEnv::new(o.lang, theme),
+        InputMode::Pointer,
+        Size::new(1.0, 1.0),
+        tr,
+    )?;
+    let client = Client::connect(&socket, APP_ID).map_err(surface_err)?;
+    let title = ui.translator().t("app.settings.name").into_owned();
+    let mut window =
+        UiWindow::new(client, &WindowConfig::toplevel(&title), ui).map_err(surface_err)?;
+    let placeholder = Ui::new(
+        PaintEnv::new(o.lang, theme),
+        InputMode::Pointer,
+        Size::new(1.0, 1.0),
+        ultar_settings::i18n::translator(o.lang, None),
+    )?;
+    let ui = std::mem::replace(window.ui_mut(), placeholder);
+    let mut app = App::new(
+        ui,
+        ports(&bus, documents, clipboard.clone()),
+        o.area.min(AREAS.len() - 1),
+    )?;
+    std::mem::swap(window.ui_mut(), &mut app.ui);
+    loop {
+        let size = window.ui_mut().size();
+        let actions = window.dispatch(Some(POLL)).map_err(surface_err)?;
+        if window.window().close_requested() {
+            return Ok(());
+        }
+        std::mem::swap(window.ui_mut(), &mut app.ui);
+        let result = (|| {
+            if app.ui.size() != size {
+                app.resized()?;
+            }
+            app.actions(actions)?;
+            app.poll()
+        })();
+        std::mem::swap(window.ui_mut(), &mut app.ui);
+        result?;
+        if let Some(text) = clipboard.0.borrow_mut().take() {
+            window.offer_text(text).map_err(surface_err)?;
+        }
+        window.draw().map_err(surface_err)?;
+    }
+}
+
+fn main() -> ExitCode {
+    match parse(std::env::args().skip(1)).and_then(run) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(AppError::Usage) => ExitCode::from(2),
+        Err(_) => ExitCode::FAILURE,
+    }
+}

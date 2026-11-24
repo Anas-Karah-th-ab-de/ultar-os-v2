@@ -1,0 +1,12 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+CompactDisplay	1	mobile.status	button	الإعدادات السريعة	0	-	12	0	111.7	32	11,13,17	360	800	dark	ar	44
+CompactDisplay	2	settings.back	button	رجوع	0	-	300	44	44	44	11,13,17	360	800	dark	ar	44
+CompactDisplay	3	display.brightness	slider	السطوع	0	-	93	217.17	198	32	111,119,137	360	800	dark	ar	44
+CompactDisplay	4	display.autobrightness	switch	السطوع التلقائي	0	true	33	274.95	48	32	23,26,33	360	800	dark	ar	44
+CompactDisplay	5	display.nightlight	switch	الضوء الليلي	0	true	73	333.53	48	32	23,26,33	360	800	dark	ar	44
+CompactDisplay	6	display.nightlight.more	button	الضوء الليلي: الجدول ودرجة الدفء	0	-	33	333.53	32	32	23,26,33	360	800	dark	ar	44
+CompactDisplay	7	display.scale	button	حجم العناصر: 300% (موصى به)	0	-	33	390.83	145.09	32	31,35,44	360	800	dark	ar	44
+CompactDisplay	8	display.refresh	button	معدّل التحديث: 120 Hz	0	-	33	446.83	94.63	32	31,35,44	360	800	dark	ar	44
+CompactDisplay	9	display.orientation	button	الاتجاه: تلقائي	0	-	33	502.83	80.67	32	31,35,44	360	800	dark	ar	44
+CompactDisplay	10	display.hdr	switch	HDR	1	false	33	560.11	48	32	26,29,37	360	800	dark	ar	44
+CompactDisplay	11	mobile.home	button	الشاشة الرئيسية	0	-	0	756	360	44	11,13,17	360	800	dark	ar	44

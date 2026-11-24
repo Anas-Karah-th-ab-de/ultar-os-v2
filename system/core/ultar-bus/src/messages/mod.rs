@@ -20,12 +20,18 @@
 //! | `auth.users` / `verify` / `set_secret` | calls | – | `ultar-authd` |
 //! | `sysdialog.permission` / `authenticate` | calls | – | `ultar-sysdialog` |
 //! | `lock.lock` | call | – | `ultar-lock` |
+//! | `display.outputs` | topic | yes | display service (compositor) |
+//! | `display.identify` / `display.detect` | calls | – | display service (compositor) |
+//! | `account.state` | topic | yes | account service |
+//! | `account.status` / `sign_in` / `sign_out` / `create` / `set_server` / `set_service` / `change_password` / `delete` / `device_sign_out` / `device_remove` | calls | – | account service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod account_service;
 pub mod auth;
 pub mod device_service;
 pub mod devices;
+pub mod display_service;
 pub mod init;
 pub mod launcher;
 pub mod lock;
@@ -89,6 +95,11 @@ mod tests {
         check_topic::<super::settings::PendingConfirmation>();
         check_topic::<super::settings::PendingResolved>();
         check_topic::<super::settings::StoreReport>();
+        check_topic::<super::display_service::Outputs>();
+        check_call::<super::display_service::Identify>();
+        check_call::<super::display_service::Detect>();
+        check_topic::<super::account_service::AccountState>();
+        check_call::<super::account_service::SignIn>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {
