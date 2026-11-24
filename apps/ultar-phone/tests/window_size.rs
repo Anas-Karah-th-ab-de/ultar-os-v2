@@ -13,9 +13,14 @@ fn inside(app: &mut App, id: ultar_ui::ui::NodeId, size: Size, what: &str) {
     app.ui().scroll_into_view(id).unwrap();
     app.ui().layout();
     let r = app.ui().rect(id).unwrap();
+    let pad = app.built().pad.unwrap();
+    let (pr, off) = (
+        app.ui().rect(pad).unwrap(),
+        app.ui().scroll_offset(pad).unwrap(),
+    );
     assert!(
         r.y >= -0.5 && r.y + r.h <= size.h + 0.5 && r.x >= -0.5 && r.x + r.w <= size.w + 0.5,
-        "{what} at {size:?}: {r:?} outside the window"
+        "{what} at {size:?}: {r:?} outside the window (pad {pr:?}, offset {off})"
     );
 }
 
