@@ -65,6 +65,23 @@ pub fn signature_blob(pubkey: &VerifyingKey, sig: &Signature) -> String {
     format!("{kid}\n{}", B64.encode(sig.to_bytes()))
 }
 
+/// The key id of a public key (first 16 hex of sha256(pubkey), as `.uap`).
+pub fn key_id(pubkey: &VerifyingKey) -> String {
+    let mut h = Sha256::new();
+    h.update(pubkey.as_bytes());
+    hex::encode(h.finalize())[..16].to_string()
+}
+
+/// Signs a catalogue body, returning the detached signature blob. The private
+/// key never lives in the running app; this is for the publisher tool and the
+/// stick-preparation tests.
+pub fn sign_catalog(body: &[u8], signing: &ed25519_dalek::SigningKey) -> String {
+    use ed25519_dalek::Signer;
+    let msg = catalog_message(body);
+    let sig = signing.sign(&msg);
+    signature_blob(&signing.verifying_key(), &sig)
+}
+
 /// Reads the hex public keys of a trusted-keys directory (same files as `ultar-pkg`).
 fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
     let mut keys = Vec::new();
@@ -260,14 +277,123 @@ pub fn find_sources(media_dir: &Path) -> Vec<FoundSource> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::SigningKey;
+
+    fn unique_dir(tag: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "ultar-store-test-{}-{}-{}",
+            tag,
+            std::process::id(),
+            {
+                use std::sync::atomic::{AtomicU32, Ordering};
+                static N: AtomicU32 = AtomicU32::new(0);
+                N.fetch_add(1, Ordering::SeqCst)
+            }
+        ));
+        let _ = std::fs::remove_dir_all(&p);
+        p
+    }
 
     #[test]
     fn message_binds_the_domain() {
         let m = catalog_message(b"body");
-        let text = String::from_utf8(m).unwrap_or_default();
+        let text = String::from_utf8(m.clone()).unwrap_or_default();
         assert!(text.starts_with("ultar-catalog-v1\n"));
         assert!(text.ends_with('\n'));
         // magic + sha256 + trailing newline = two lines, domain-bound.
         assert_eq!(text.lines().count(), 2);
+        // The package message over the same body differs: different magic.
+        let mut h = Sha256::new();
+        h.update(b"body");
+        let pkg = format!("ultar-pkg-v1\n{}\n", hex::encode(h.finalize())).into_bytes();
+        assert_ne!(m, pkg);
+    }
+
+    #[test]
+    fn sign_verify_round_trip_and_tamper() {
+        let signing = SigningKey::from_bytes(&[7u8; 32]);
+        let body = b"format_version = 1\n";
+        let blob = sign_catalog(body, &signing);
+        let trusted = unique_dir("keys");
+        std::fs::create_dir_all(&trusted).unwrap();
+        std::fs::write(
+            trusted.join("vendor.ed25519"),
+            hex::encode(signing.verifying_key().to_bytes()) + "\n",
+        )
+        .unwrap();
+        assert_eq!(
+            verify_signature(body, &blob, &trusted).unwrap(),
+            Some(key_id(&signing.verifying_key()))
+        );
+        // Tampered body: the same blob no longer verifies.
+        assert_eq!(
+            verify_signature(b"format_version = 2\n", &blob, &trusted),
+            Err(SourceError::UnknownSigner)
+        );
+        // Unknown signer: nothing trusted in that directory.
+        let other = unique_dir("other-keys");
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(
+            verify_signature(body, &blob, &other),
+            Err(SourceError::UnknownSigner)
+        );
+        std::fs::remove_dir_all(&trusted).unwrap();
+        std::fs::remove_dir_all(&other).unwrap();
+    }
+
+    #[test]
+    fn file_source_loads_signed_and_reports_missing_signature() {
+        let signing = SigningKey::from_bytes(&[9u8; 32]);
+        let body = "format_version = 1\n\n[[app]]\nid = \"media\"\ncategory = \"media\"\nicon = \"media\"\npublisher = \"p\"\nsource = \"ultar\"\n[app.name]\nar = \"الوسائط\"\nen = \"Media\"\n[app.summary]\nar = \"s\"\nen = \"s\"\n[app.description]\nar = \"d\"\nen = \"d\"\n";
+        let dir = unique_dir("src");
+        let keys = unique_dir("keys");
+        std::fs::create_dir_all(&keys).unwrap();
+        std::fs::write(
+            keys.join("v.ed25519"),
+            hex::encode(signing.verifying_key().to_bytes()) + "\n",
+        )
+        .unwrap();
+        let blob = sign_catalog(body.as_bytes(), &signing);
+        FileCatalogSource::write_signed(&dir, body, &blob).unwrap();
+        let src = FileCatalogSource::new(&dir, &keys);
+        let loaded = src.load().unwrap();
+        assert!(loaded.verified);
+        assert_eq!(loaded.catalog.apps.len(), 1);
+        assert_eq!(loaded.dir.as_deref(), Some(dir.display().to_string().as_str()));
+        // Unsigned stick: the body exists, the .sig does not.
+        std::fs::remove_file(dir.join(format!("{CATALOG_FILE}{CATALOG_SIG_SUFFIX}"))).unwrap();
+        assert_eq!(src.load(), Err(SourceError::Unsigned));
+        // Missing directory.
+        let missing = FileCatalogSource::new(dir.join("nope"), &keys);
+        assert_eq!(missing.load(), Err(SourceError::Unreadable));
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&keys).unwrap();
+    }
+
+    #[test]
+    fn embedded_source_parses_the_built_in_catalog() {
+        let src = EmbeddedCatalogSource::new("image", crate::BUILT_IN_CATALOG);
+        let loaded = src.load().unwrap();
+        assert!(loaded.verified);
+        assert_eq!(loaded.catalog.apps.len(), 12);
+    }
+
+    #[test]
+    fn find_sources_lists_sticks_with_a_catalog_and_package_files() {
+        let media = unique_dir("media");
+        let stick = media.join("USB");
+        std::fs::create_dir_all(&stick).unwrap();
+        std::fs::write(stick.join(CATALOG_FILE), "x").unwrap();
+        std::fs::write(stick.join(format!("{CATALOG_FILE}.sig")), "y").unwrap();
+        std::fs::write(stick.join("tool.uap"), "z").unwrap();
+        std::fs::create_dir_all(media.join("EMPTY")).unwrap();
+        let found = find_sources(&media);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "USB");
+        assert!(found[0].has_catalog);
+        let files = package_files(&stick);
+        assert_eq!(files, vec!["tool.uap".to_string()]);
+        std::fs::remove_dir_all(&media).unwrap();
     }
 }

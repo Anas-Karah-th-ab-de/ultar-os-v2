@@ -63,7 +63,9 @@ pub(crate) fn wide_root(
     store: &Store,
     hits: &mut HitMap,
 ) -> Result<(), UiError> {
-    ui.set_root_flex(Flex::row());
+    // The nav and the page span the full window height (cross axis stretch;
+    // the row default centres).
+    ui.set_root_flex(Flex::row().cross(CrossAlign::Stretch));
     nav(ui, root, store, hits)?;
     let page = ui.add_sized(
         root,

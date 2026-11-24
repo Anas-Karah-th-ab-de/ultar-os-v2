@@ -49,6 +49,11 @@ impl HitMap {
         self.search
     }
 
+    /// The tab strip node of the phone layout (click tests drive it).
+    pub fn tab_bar(&self) -> Option<NodeId> {
+        self.tabs.first().map(|(n, _)| *n)
+    }
+
     /// The action bound to this node, if it is clickable.
     pub fn action_of(&self, node: NodeId) -> Option<&StoreAction> {
         self.hits.get(&node)
@@ -60,6 +65,20 @@ impl HitMap {
         out.sort_unstable();
         out.dedup();
         out
+    }
+
+    /// The first node bound to an equal action (click tests locate it).
+    pub fn node_for(&self, action: &StoreAction) -> Option<NodeId> {
+        self.hits.iter().find(|(_, a)| *a == action).map(|(n, _)| *n)
+    }
+
+    /// All nodes bound to actions with this board id, in map order.
+    pub fn nodes_for_id(&self, id: &str) -> Vec<NodeId> {
+        self.hits
+            .iter()
+            .filter(|(_, a)| a.id() == id)
+            .map(|(n, _)| *n)
+            .collect()
     }
 
     pub(crate) fn bind(&mut self, node: NodeId, action: StoreAction) {
@@ -182,8 +201,8 @@ pub(crate) fn app_name(store: &Store, id: &str, ui: &Ui) -> Label {
     }
 }
 
-/// Whether the compact (phone) layout is active.
-pub(crate) fn is_compact(ui: &Ui) -> bool {
+/// Whether the compact (phone) layout is active for the current window size.
+pub fn is_compact(ui: &Ui) -> bool {
     ui.size_class() == ultar_ui::tokens::SizeClass::Compact
 }
 

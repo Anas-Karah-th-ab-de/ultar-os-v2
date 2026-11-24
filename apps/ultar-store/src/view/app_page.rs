@@ -17,7 +17,7 @@ use ultar_ui::paint::TextSpec;
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{
-    Button, ButtonVariant, Card, Icon, IconButton, Label, ListItem, Text,
+    Button, ButtonVariant, Card, Icon, IconButton, Label, List, ListItem, Text,
 };
 
 pub(crate) fn build(
@@ -105,11 +105,26 @@ fn main_button_row(
     };
     match (main_action(store, &app.id), progress) {
         (MainAction::Install, Some(percent)) | (MainAction::Update, Some(percent)) => {
-            let (button, _) = install_button(ui, operation_key(main_action(store, &app.id)))?;
+            // Progress ring with the percent on the button (CLICKS): the
+            // button shows its ring (loading) and the percent as its label;
+            // without a percent the loading text stands in.
+            let label = match percent {
+                Some(fraction) => {
+                    let percent = (fraction.clamp(0.0, 1.0) * 100.0).round();
+                    Label::key_count(
+                        "store.progress.percent",
+                        "percent",
+                        i64::try_from(percent as i32).unwrap_or(0),
+                    )
+                }
+                None => Label::key("store.state.loading"),
+            };
+            let button = ui.add_sized(
+                line,
+                Button::new(label).variant(ButtonVariant::Primary),
+                Sizing::grow(1),
+            )?;
             ui.set_loading(button, true)?;
-            if let Some(fraction) = percent {
-                ui.set_progress(button, Some(fraction))?;
-            }
             let cancel = ui.add(
                 line,
                 Button::new(Label::key("store.app.cancel")).variant(ButtonVariant::Plain),
@@ -139,13 +154,6 @@ fn main_button_row(
         (MainAction::InstalledOnly, _) => {}
     }
     Ok(())
-}
-
-fn operation_key(action: MainAction) -> &'static str {
-    match action {
-        MainAction::Update => "store.app.update",
-        _ => "store.app.install",
-    }
 }
 
 /// Size · version · source row (board: three centred columns; unknown values
@@ -197,20 +205,23 @@ fn permissions_card(
     app: &CatalogApp,
 ) -> Result<(), UiError> {
     let card = ui.add(parent, Card::new())?;
-    let head = ui.add(
-        card,
-        Flex::row().gap(Space::S16).cross(CrossAlign::Center),
-    )?;
     ui.add(
-        head,
+        card,
         Text::new(Label::key("store.app.permissions")).spec(TextSpec::title(TypeSize::S16)),
     )?;
-    let _ = head;
+    // The board draws the rows inside the card's own list (role=list).
+    let list = ui.add(
+        card,
+        List::new().name(Label::key("store.app.permissions")),
+    )?;
     for permission in &app.permissions {
-        let row = ui.add(card, ListItem::new(permission_label(&permission.id)))?;
+        // Name in the first line, the plain-word reason as the sublabel
+        // (the board draws exactly these two lines).
         ui.add(
-            row,
-            Text::new(loc_label(&permission.reason, ui)).color(ColorRole::TextMuted),
+            list,
+            ListItem::new(permission_label(&permission.id))
+                .sublabel(loc_label(&permission.reason, ui))
+                .separator(),
         )?;
     }
     ui.add(
