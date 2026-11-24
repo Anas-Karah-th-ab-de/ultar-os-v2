@@ -5,6 +5,7 @@ mod account;
 mod bluetooth;
 mod display;
 mod drivers;
+mod panel;
 
 pub use drivers::offered as offered_drivers;
 
@@ -13,7 +14,7 @@ use crate::areas::{PageKind, AREAS};
 use crate::service::{PortError, Ports};
 use crate::state::{DialogPurpose, DialogState, State, SubPage};
 use crate::view::View;
-use ultar_bus::messages::settings::{ItemKind, SettingValue};
+use ultar_bus::messages::settings::SettingValue;
 use ultar_bus::Text;
 use ultar_ui::event::ActionKind;
 use ultar_ui::ui::{NodeId, Ui};
@@ -174,7 +175,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
                 ..Outcome::default()
             }
         }
-        Act::PanelItem(i) => panel_item(c, i, kind),
+        Act::PanelItem(i) => panel::item(c, i, node, kind),
         Act::DialogOk | Act::DialogCancel | Act::DialogField(_) => dialog(c, act, kind),
         a if display::owns(a) => display::handle(c, a, node, kind),
         a if drivers::owns(a) => drivers::handle(c, a, kind),
@@ -234,31 +235,6 @@ pub(crate) fn set(c: &mut Ctl<'_>, key: &str, value: SettingValue) -> Outcome {
             }
         }
     }
-}
-
-fn panel_item(c: &mut Ctl<'_>, index: usize, kind: ActionKind) -> Outcome {
-    let PageKind::Panel(id) = c.state.page() else {
-        return Outcome::default();
-    };
-    let Some(item) = c.state.panel(id).and_then(|p| p.items.get(index)).cloned() else {
-        return Outcome::default();
-    };
-    let value = match (&item.kind, kind) {
-        (ItemKind::Toggle, ActionKind::Toggled(on)) => SettingValue::Flag(on),
-        (ItemKind::Choice { choices }, ActionKind::Selected(i)) => match choices.get(i) {
-            Some(choice) => SettingValue::Text(choice.id.clone()),
-            None => return Outcome::default(),
-        },
-        (ItemKind::Integer { .. }, ActionKind::ValueChanged(v)) => {
-            SettingValue::Integer(v.round() as i64)
-        }
-        _ => return Outcome::default(),
-    };
-    let out = set(c, &item.key, value);
-    if out.toast.is_none() {
-        load_panels(c.state, c.ports);
-    }
-    out
 }
 
 /// Opens a dialog.

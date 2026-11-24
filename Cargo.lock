@@ -5956,6 +5956,7 @@ name = "ultar-settings"
 version = "0.8.0"
 dependencies = [
  "png 0.17.16",
+ "rustix",
  "serde",
  "ultar-brand",
  "ultar-bus",

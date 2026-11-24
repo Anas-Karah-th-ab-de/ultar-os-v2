@@ -1,10 +1,10 @@
-//! The seed schema: every setting of the areas display, appearance,
-//! desktop bar, windows and workspaces, notifications, power, region and
-//! language, date and time, privacy and security, and Ultar account, as
-//! listed in the desktop specification (§8, §11, §12.1).
+//! The seed schema: every setting of the areas of the desktop
+//! specification (§8, §11, §12.1, §12.3) – from displays to emergency.
 
 mod desktop;
+mod device;
 mod display;
+mod services;
 mod system;
 
 use crate::schema::{Registry, SchemaError, SettingDef};
@@ -29,6 +29,23 @@ pub fn definitions() -> Vec<SettingDef> {
     defs.extend(system::date_time());
     defs.extend(system::privacy());
     defs.extend(system::account());
+    defs.extend(device::mobile());
+    defs.extend(device::search());
+    defs.extend(device::apps());
+    defs.extend(device::pointer());
+    defs.extend(device::keyboard());
+    defs.extend(device::printers());
+    defs.extend(device::colour());
+    defs.extend(device::accessibility());
+    defs.extend(services::sharing());
+    defs.extend(services::users());
+    defs.extend(services::storage());
+    defs.extend(services::updates());
+    defs.extend(services::backup());
+    defs.extend(services::mesh());
+    defs.extend(services::assistant());
+    defs.extend(services::cells());
+    defs.extend(services::emergency());
     defs
 }
 

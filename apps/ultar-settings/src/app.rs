@@ -114,6 +114,13 @@ impl App {
         Ok(())
     }
 
+    /// Opens an area as a click in the sidebar or a search result would (also areas the
+    /// sidebar does not list on this size, e.g. the mobile network on a wide window).
+    pub fn open_area(&mut self, area: usize) -> Result<(), AppError> {
+        let outcome = update::open_area(&mut self.state, &mut self.ports, area);
+        self.apply(outcome)
+    }
+
     /// The surface changed size: a new size class rebuilds the window, a new width the page
     /// (pages choose their columns for the width they have: side by side when they fit, one
     /// below the other when not - a window made wider or narrower, or maximized, reflows).

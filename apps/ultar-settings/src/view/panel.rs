@@ -1,5 +1,5 @@
-//! Pages without a board of their own: a `settingsd` panel as rows, an area no service offers
-//! yet, and Displays > Night light.
+//! Pages without a board of their own: a `settingsd` panel as rows (switches, choices, sliders
+//! and text fields), an area no service offers, and Displays > Night light.
 
 use super::{k, muted, title, Cx};
 use crate::action::Act;
@@ -11,7 +11,8 @@ use ultar_ui::layout::{Flex, Sizing};
 use ultar_ui::tokens::Space;
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{
-    Card, EmptyState, IconButton, InfoBar, Label, Row, Select, Slider, Switch, Text, Tone,
+    Card, EmptyState, IconButton, InfoBar, Label, Row, Select, Slider, Switch, Text, TextDirection,
+    TextField, Tone,
 };
 
 /// Most steps a whole-number setting may have to be shown as a slider.
@@ -26,9 +27,18 @@ pub enum Control {
     Choice(Vec<String>, usize),
     /// Slider: min, max, step, value.
     Slider(f32, f32, f32, f32),
-    /// Shown, not editable here (times, paths, lists).
+    /// A text field (texts, times, paths, lists as "a, b", numbers with many steps); Enter
+    /// stores it.
+    Edit(String),
+    /// Shown, not editable here (fractional numbers).
     Value(String),
 }
+
+/// Longest text typed into a generic row (bytes; settingsd checks the real limits).
+pub const MAX_EDIT: usize = 1024;
+
+/// Separator of the entries of a list setting in its text field.
+pub const LIST_SEPARATOR: char = ',';
 
 /// Which control an item gets.
 pub fn control_of(item: &ItemInfo) -> Control {
@@ -44,6 +54,9 @@ pub fn control_of(item: &ItemInfo) -> Control {
         {
             Control::Slider(*min as f32, *max as f32, *step as f32, *v as f32)
         }
+        (ItemKind::Integer { .. }, SettingValue::Integer(v)) => Control::Edit(v.to_string()),
+        (ItemKind::Text { .. }, SettingValue::Text(v)) => Control::Edit(v.clone()),
+        (ItemKind::List { .. }, SettingValue::List(l)) => Control::Edit(l.join(", ")),
         (_, v) => Control::Value(value_text(v)),
     }
 }
@@ -88,29 +101,7 @@ pub fn generic(cx: &mut Cx<'_>, content: NodeId, id: &str) -> Result<(), UiError
             row = row.last();
         }
         let row = cx.ui.add(card, row)?;
-        let name = label(&item.label, cx.tr);
-        let id = match control_of(item) {
-            Control::Switch(on) => {
-                Some(cx.act(row, Switch::new(name, on), Act::PanelItem(index))?)
-            }
-            Control::Choice(_, selected) => {
-                let ItemKind::Choice { choices } = &item.kind else {
-                    continue;
-                };
-                let options = choices.iter().map(|c| label(&c.label, cx.tr)).collect();
-                let select = Select::new(name, options).selected(selected);
-                Some(cx.act(row, select, Act::PanelItem(index))?)
-            }
-            Control::Slider(min, max, step, value) => {
-                let slider = Slider::new(name, min, max, step).value(value);
-                let sizing = Sizing::width(super::metrics::brightness_width());
-                Some(cx.act_sized(row, slider, sizing, Act::PanelItem(index))?)
-            }
-            Control::Value(text) => {
-                cx.ui.add(row, Text::new(Label::data(&text)))?;
-                None
-            }
-        };
+        let id = control(cx, row, index, item)?;
         if let (Some(id), false) = (id, item.writable) {
             cx.ui.set_disabled(id, true)?;
             cx.ui
@@ -118,6 +109,49 @@ pub fn generic(cx: &mut Cx<'_>, content: NodeId, id: &str) -> Result<(), UiError
         }
     }
     Ok(())
+}
+
+/// The control at the end of a generic row (`None`: a value shown as text).
+fn control(
+    cx: &mut Cx<'_>,
+    row: NodeId,
+    index: usize,
+    item: &ItemInfo,
+) -> Result<Option<NodeId>, UiError> {
+    let name = label(&item.label, cx.tr);
+    let act = Act::PanelItem(index);
+    let wide = Sizing::width(super::metrics::brightness_width());
+    let id = match control_of(item) {
+        Control::Switch(on) => cx.act(row, Switch::new(name, on), act)?,
+        Control::Choice(_, selected) => {
+            let ItemKind::Choice { choices } = &item.kind else {
+                return Ok(None);
+            };
+            let options = choices.iter().map(|c| label(&c.label, cx.tr)).collect();
+            cx.act(row, Select::new(name, options).selected(selected), act)?
+        }
+        Control::Slider(min, max, step, value) => {
+            let slider = Slider::new(name, min, max, step).value(value);
+            cx.act_sized(row, slider, wide, act)?
+        }
+        Control::Edit(text) => {
+            let field = TextField::new(name).text(&text).max_len(MAX_EDIT);
+            // Free text may be Arabic; times, paths, hosts, names and numbers read left to
+            // right.
+            let free = matches!(&item.kind, ItemKind::Text { format } if format == "text");
+            let field = if free {
+                field
+            } else {
+                field.direction(TextDirection::Ltr)
+            };
+            cx.act_sized(row, field, wide, act)?
+        }
+        Control::Value(text) => {
+            cx.ui.add(row, Text::new(Label::data(&text)))?;
+            return Ok(None);
+        }
+    };
+    Ok(Some(id))
 }
 
 /// An area no service offers settings for in this version.

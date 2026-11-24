@@ -1,4 +1,5 @@
-//! The areas of the sidebar (boards: nav "أقسام الإعدادات", 32 entries) and what each opens.
+//! The areas of the sidebar (boards: nav "أقسام الإعدادات", 32 entries), what each opens, and
+//! the groups the wide sidebar shows them in.
 
 use ultar_ui::icon::IconId;
 
@@ -55,12 +56,12 @@ const fn a(id: &'static str, icon: IconId, page: PageKind) -> Area {
     Area { id, icon, page }
 }
 
-use PageKind::{NoService as N, Panel as P};
+use PageKind::Panel as P;
 
 /// Every area in board order.
 pub const AREAS: [Area; 33] = [
     a("wifi", IconId::Wifi, PageKind::Status(StatusKind::Network)),
-    a("cellular", IconId::Cell, N),
+    a("cellular", IconId::Cell, P("mobile")),
     a(
         "network",
         IconId::Network,
@@ -78,33 +79,111 @@ pub const AREAS: [Area; 33] = [
     a("windows", IconId::Workspaces, P("windows")),
     a("appearance", IconId::Palette, P("appearance")),
     a("notifications", IconId::Bell, P("notifications")),
-    a("search", IconId::Search, N),
-    a("apps", IconId::Apps, N),
-    a("mouse", IconId::Mouse, N),
-    a("keyboard", IconId::Keyboard, N),
-    a("printers", IconId::Printer, N),
-    a("colour", IconId::Colour, N),
-    a("accessibility", IconId::Access, N),
+    a("search", IconId::Search, P("search")),
+    a("apps", IconId::Apps, P("apps")),
+    a("mouse", IconId::Mouse, P("pointer")),
+    a("keyboard", IconId::Keyboard, P("keyboard")),
+    a("printers", IconId::Printer, P("printers")),
+    a("colour", IconId::Colour, P("colour")),
+    a("accessibility", IconId::Access, P("accessibility")),
     a("privacy", IconId::Shield, P("privacy")),
-    a("sharing", IconId::Sharing, N),
+    a("sharing", IconId::Sharing, P("sharing")),
     a("accounts", IconId::User, PageKind::Account),
-    a("users", IconId::Users, N),
+    a("users", IconId::Users, P("users")),
     a("region", IconId::Language, P("region")),
     a("datetime", IconId::Clock, P("date_time")),
-    a("storage", IconId::Disk, N),
+    a("storage", IconId::Disk, P("storage")),
     a("drivers", IconId::Chip, PageKind::Drivers),
-    a("updates", IconId::Update, N),
-    a("backup", IconId::Backup, N),
-    a("mesh", IconId::Mesh, N),
-    a("assistant", IconId::Spark, N),
-    a("cells", IconId::Cells, N),
-    a("emergency", IconId::Sos, N),
+    a("updates", IconId::Update, P("updates")),
+    a("backup", IconId::Backup, P("backup")),
+    a("mesh", IconId::Mesh, P("mesh")),
+    a("assistant", IconId::Spark, P("assistant")),
+    a("cells", IconId::Cells, P("cells")),
+    a("emergency", IconId::Sos, P("emergency")),
     a("about", IconId::Device, PageKind::About),
 ];
 
-/// Areas a wide sidebar shows (the mobile network only exists on compact devices).
+/// A heading of the wide sidebar and the areas under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Group {
+    /// Stable id; label key `app.settings.group.<id>`.
+    pub id: &'static str,
+    /// Area ids in the order shown.
+    pub areas: &'static [&'static str],
+}
+
+impl Group {
+    /// Catalog key of the heading.
+    pub fn label_key(&self) -> String {
+        format!("app.settings.group.{}", self.id)
+    }
+}
+
+/// The headings of the wide sidebar (owner's order of 24.11.2026; the boards still show one
+/// flat list). Every area is in exactly one group.
+pub const GROUPS: [Group; 6] = [
+    Group {
+        id: "connections",
+        areas: &[
+            "wifi",
+            "network",
+            "cellular",
+            "bluetooth",
+            "sharing",
+            "mesh",
+        ],
+    },
+    Group {
+        id: "device",
+        areas: &[
+            "displays", "sound", "power", "mouse", "keyboard", "printers", "storage", "drivers",
+        ],
+    },
+    Group {
+        id: "personal",
+        areas: &[
+            "desktop",
+            "windows",
+            "appearance",
+            "colour",
+            "notifications",
+            "search",
+        ],
+    },
+    Group {
+        id: "apps",
+        areas: &["apps", "accounts", "users", "assistant"],
+    },
+    Group {
+        id: "security",
+        areas: &["privacy", "cells", "emergency"],
+    },
+    Group {
+        id: "system",
+        areas: &[
+            "region",
+            "datetime",
+            "updates",
+            "backup",
+            "accessibility",
+            "about",
+        ],
+    },
+];
+
+/// The group an area belongs to (index into [`GROUPS`]).
+pub fn group_of(area: usize) -> Option<usize> {
+    let id = AREAS.get(area)?.id;
+    GROUPS.iter().position(|g| g.areas.contains(&id))
+}
+
+/// Areas a wide sidebar shows, group after group (the mobile network only exists on compact
+/// devices).
 pub fn wide() -> Vec<usize> {
-    (0..AREAS.len())
+    GROUPS
+        .iter()
+        .flat_map(|g| g.areas.iter())
+        .filter_map(|id| index_of(id))
         .filter(|&i| AREAS[i].id != "cellular")
         .collect()
 }
@@ -158,5 +237,24 @@ mod tests {
         assert_eq!(AREAS[c[1]].id, "cellular");
         assert_eq!(index_of("nope"), None);
         assert_eq!(AREAS[0].label_key(), "app.settings.area.wifi");
+    }
+
+    #[test]
+    fn every_area_is_in_exactly_one_group_and_has_a_page() {
+        for (i, area) in AREAS.iter().enumerate() {
+            let n = GROUPS.iter().filter(|g| g.areas.contains(&area.id)).count();
+            assert_eq!(n, 1, "{}", area.id);
+            assert!(group_of(i).is_some());
+            assert_ne!(area.page, PageKind::NoService, "{}", area.id);
+        }
+        let listed: usize = GROUPS.iter().map(|g| g.areas.len()).sum();
+        assert_eq!(listed, AREAS.len());
+        // The wide sidebar follows the groups: Wi-Fi first, About last.
+        let w = wide();
+        assert_eq!(AREAS[w[0]].id, "wifi");
+        assert_eq!(AREAS[*w.last().unwrap()].id, "about");
+        let groups: Vec<usize> = w.iter().filter_map(|&i| group_of(i)).collect();
+        assert!(groups.windows(2).all(|p| p[0] <= p[1]));
+        assert_eq!(GROUPS[0].label_key(), "app.settings.group.connections");
     }
 }

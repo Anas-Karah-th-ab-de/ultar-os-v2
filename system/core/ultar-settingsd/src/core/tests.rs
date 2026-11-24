@@ -298,9 +298,26 @@ fn list_shows_panels_and_items_the_device_has() {
             "region",
             "date_time",
             "privacy",
-            "account"
+            "account",
+            "search",
+            "apps",
+            "pointer",
+            "keyboard",
+            "printers",
+            "colour",
+            "accessibility",
+            "sharing",
+            "users",
+            "storage",
+            "updates",
+            "backup",
+            "mesh",
+            "assistant",
+            "cells",
+            "emergency"
         ]
     );
+    // No modem on this laptop: no mobile network panel.
     assert_eq!(panels[0].title.key, "settings.panel.display");
     let keys = keys_of(&core, &admin(), None);
     assert!(keys.contains(&"display.boe-ne135.scale".to_owned()));
@@ -359,7 +376,22 @@ fn without_a_display_the_display_panels_are_hidden() {
             "region",
             "date_time",
             "privacy",
-            "account"
+            "account",
+            "search",
+            "apps",
+            "pointer",
+            "keyboard",
+            "printers",
+            "accessibility",
+            "sharing",
+            "users",
+            "storage",
+            "updates",
+            "backup",
+            "mesh",
+            "assistant",
+            "cells",
+            "emergency"
         ]
     );
     // A display reported by the display service counts, too.
@@ -370,7 +402,7 @@ fn without_a_display_the_display_panels_are_hidden() {
         .into_iter()
         .map(|p| p.id)
         .collect();
-    assert_eq!(ids.len(), 10);
+    assert_eq!(ids.len(), 26);
     assert_eq!(core.capabilities().display_count, 1);
 }
 

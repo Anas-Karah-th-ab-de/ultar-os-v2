@@ -6,9 +6,11 @@ use crate::action::Act;
 use crate::areas::AREAS;
 use crate::state::State;
 use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
-use ultar_ui::tokens::{SizeClass, Space, TypeSize};
+use ultar_ui::paint::TextSpec;
+use ultar_ui::text::Weight;
+use ultar_ui::tokens::{ColorRole, SizeClass, Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{BarEdge, Card, List, ListItem, Scroll, SearchField};
+use ultar_ui::widgets::{BarEdge, Card, List, ListItem, Scroll, SearchField, Text};
 
 /// Longest search text in bytes.
 pub const MAX_QUERY: usize = 128;
@@ -112,17 +114,22 @@ pub fn matching_areas(ui: &Ui, state: &State) -> Vec<usize> {
     order
         .into_iter()
         .map(|i| (i, &AREAS[i]))
-        .filter(|(_, area)| {
+        .filter(|(i, area)| {
+            let i = *i;
             let own = tr.t(&area.label_key()).to_lowercase().contains(&query);
+            let group = crate::areas::group_of(i).is_some_and(|g| {
+                let heading = crate::areas::GROUPS[g].label_key();
+                tr.t(&heading).to_lowercase().contains(&query)
+            });
             let rows = match area.page {
                 crate::areas::PageKind::Panel(id) => state.panel(id).is_some_and(|p| {
                     p.items
                         .iter()
-                        .any(|i| tr.t(&i.label.key).to_lowercase().contains(&query))
+                        .any(|item| tr.t(&item.label.key).to_lowercase().contains(&query))
                 }),
                 _ => false,
             };
-            own || rows
+            own || group || rows
         })
         .map(|(i, _)| i)
         .collect()
@@ -136,8 +143,16 @@ fn fill_nav(
     compact: bool,
 ) -> Result<(), UiError> {
     view.nav_areas = matching_areas(ui, state);
+    let mut shown_group = None;
     for &index in &view.nav_areas {
         let area = &AREAS[index];
+        let group = crate::areas::group_of(index);
+        if !compact && group != shown_group {
+            if let Some(g) = group {
+                heading(ui, nav, g, shown_group.is_none())?;
+            }
+            shown_group = group;
+        }
         let mut item = ListItem::new(k(&area.label_key())).icon(area.icon);
         if index == state.area && !compact {
             item = item.selected();
@@ -166,6 +181,22 @@ fn fill_nav(
         };
         view.shell.add(id, Act::Area(index));
     }
+    Ok(())
+}
+
+/// The heading of a group in the wide sidebar: small, semibold, muted, aligned with the item
+/// labels; more space above it than between items, except above the first.
+fn heading(ui: &mut Ui, nav: NodeId, group: usize, first: bool) -> Result<(), UiError> {
+    let padding = Padding {
+        top: Some(if first { Space::S4 } else { Space::S12 }),
+        bottom: Some(Space::S4),
+        ..Padding::symmetric(Space::S12, Space::S4)
+    };
+    let row = ui.add(nav, Flex::column().padding(padding))?;
+    let text = Text::new(k(&crate::areas::GROUPS[group].label_key()))
+        .spec(TextSpec::new(TypeSize::S12).weight(Weight::Semibold))
+        .color(ColorRole::TextMuted);
+    ui.add(row, text)?;
     Ok(())
 }
 

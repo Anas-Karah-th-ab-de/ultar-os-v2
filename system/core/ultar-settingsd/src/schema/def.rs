@@ -1,9 +1,10 @@
 //! The declaration of one setting.
 
+use super::area::{Domain, Panel};
 use super::key::KeyTemplate;
 use super::types::{TextFormat, ValueType};
 use crate::value::Value;
-use ultar_profile::{Capability, CapabilitySet, PanelId};
+use ultar_profile::{Capability, CapabilitySet};
 
 /// How dangerous a change is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,167 +29,6 @@ pub enum Scope {
     User,
     /// One value per combination of connected displays.
     DisplayCombination,
-}
-
-/// Which component puts a setting into effect.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Domain {
-    /// Outputs, modes, night light.
-    Display,
-    /// Theme, colours, wallpaper, sizes.
-    Appearance,
-    /// Bar, dock, desktop icons.
-    Shell,
-    /// Window manager and workspaces.
-    Windows,
-    /// Notification service.
-    Notifications,
-    /// Power service.
-    Power,
-    /// Language and formats.
-    Locale,
-    /// Clock and time zone.
-    Time,
-    /// Privacy switches, lock, clean-up.
-    Privacy,
-    /// Ultar account services.
-    Account,
-}
-
-impl Domain {
-    /// Every domain.
-    pub const ALL: [Domain; 10] = [
-        Domain::Display,
-        Domain::Appearance,
-        Domain::Shell,
-        Domain::Windows,
-        Domain::Notifications,
-        Domain::Power,
-        Domain::Locale,
-        Domain::Time,
-        Domain::Privacy,
-        Domain::Account,
-    ];
-
-    /// Stable lower-case name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Domain::Display => "display",
-            Domain::Appearance => "appearance",
-            Domain::Shell => "shell",
-            Domain::Windows => "windows",
-            Domain::Notifications => "notifications",
-            Domain::Power => "power",
-            Domain::Locale => "locale",
-            Domain::Time => "time",
-            Domain::Privacy => "privacy",
-            Domain::Account => "account",
-        }
-    }
-}
-
-/// Panel of the settings app a setting is shown in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Panel {
-    /// Displays: arrangement, mode, per-display values, night light.
-    Display,
-    /// Theme, accent colour, wallpaper, text and icon size.
-    Appearance,
-    /// Desktop bar, dock and desktop icons.
-    DesktopBar,
-    /// Windows and workspaces.
-    Windows,
-    /// Notifications.
-    Notifications,
-    /// Power.
-    Power,
-    /// Region and language.
-    Region,
-    /// Date and time.
-    DateTime,
-    /// Privacy and security.
-    Privacy,
-    /// Ultar account.
-    Account,
-}
-
-impl Panel {
-    /// Every panel in display order.
-    pub const ALL: [Panel; 10] = [
-        Panel::Display,
-        Panel::Appearance,
-        Panel::DesktopBar,
-        Panel::Windows,
-        Panel::Notifications,
-        Panel::Power,
-        Panel::Region,
-        Panel::DateTime,
-        Panel::Privacy,
-        Panel::Account,
-    ];
-
-    /// Stable identifier.
-    pub const fn id(self) -> &'static str {
-        match self {
-            Panel::Display => "display",
-            Panel::Appearance => "appearance",
-            Panel::DesktopBar => "desktop_bar",
-            Panel::Windows => "windows",
-            Panel::Notifications => "notifications",
-            Panel::Power => "power",
-            Panel::Region => "region",
-            Panel::DateTime => "date_time",
-            Panel::Privacy => "privacy",
-            Panel::Account => "account",
-        }
-    }
-
-    /// Finds a panel by its identifier.
-    pub fn parse(id: &str) -> Option<Panel> {
-        Panel::ALL.into_iter().find(|panel| panel.id() == id)
-    }
-
-    /// i18n key of the panel title.
-    pub fn title_key(self) -> String {
-        format!("settings.panel.{}", self.id())
-    }
-
-    /// The panel of `ultar-profile` whose visibility rule applies, if the
-    /// profile crate knows this panel.
-    pub const fn profile_panel(self) -> Option<PanelId> {
-        match self {
-            Panel::Display => Some(PanelId::Display),
-            Panel::Appearance => Some(PanelId::Appearance),
-            Panel::Power => Some(PanelId::Power),
-            Panel::Region => Some(PanelId::Language),
-            Panel::DateTime => Some(PanelId::DateTime),
-            Panel::Privacy => Some(PanelId::Security),
-            Panel::Account => Some(PanelId::Accounts),
-            Panel::DesktopBar | Panel::Windows | Panel::Notifications => None,
-        }
-    }
-
-    /// Panels the profile crate has no rule for but which only make sense
-    /// with a display.
-    pub const fn needs_display(self) -> bool {
-        matches!(self, Panel::DesktopBar | Panel::Windows)
-    }
-
-    /// The component that puts this panel's settings into effect.
-    pub const fn domain(self) -> Domain {
-        match self {
-            Panel::Display => Domain::Display,
-            Panel::Appearance => Domain::Appearance,
-            Panel::DesktopBar => Domain::Shell,
-            Panel::Windows => Domain::Windows,
-            Panel::Notifications => Domain::Notifications,
-            Panel::Power => Domain::Power,
-            Panel::Region => Domain::Locale,
-            Panel::DateTime => Domain::Time,
-            Panel::Privacy => Domain::Privacy,
-            Panel::Account => Domain::Account,
-        }
-    }
 }
 
 /// What the `<id>` segment of a key stands for.
@@ -381,6 +221,7 @@ impl SettingDef {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ultar_profile::PanelId;
 
     #[test]
     fn panels_have_distinct_ids_and_parse_back() {

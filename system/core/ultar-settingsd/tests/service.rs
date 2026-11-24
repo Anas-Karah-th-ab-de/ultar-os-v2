@@ -399,7 +399,20 @@ fn list_follows_the_capabilities_the_device_service_reports() {
             "region",
             "date_time",
             "privacy",
-            "account"
+            "account",
+            "search",
+            "apps",
+            "printers",
+            "accessibility",
+            "sharing",
+            "users",
+            "storage",
+            "updates",
+            "backup",
+            "mesh",
+            "assistant",
+            "cells",
+            "emergency"
         ]
     );
     assert_eq!(server.stats().lost_events(), 0);

@@ -25,3 +25,5 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 [dev-dependencies]
 ultar-ui = { path = "../../platform/ultar-ui" }
 png = "0.17"
+# The end-to-end example (examples/settingstest.rs) stops the service manager.
+rustix = { version = "1", default-features = false, features = ["std", "process"] }

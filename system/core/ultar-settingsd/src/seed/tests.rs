@@ -7,7 +7,7 @@ use ultar_i18n::{Catalog, Lang};
 use ultar_profile::Capability;
 
 #[test]
-fn seed_builds_and_covers_all_ten_areas() {
+fn seed_builds_and_covers_every_area() {
     let registry = registry().unwrap();
     assert_eq!(registry.version(), SCHEMA_VERSION);
     let counts: Vec<(Panel, usize)> = Panel::ALL
@@ -18,7 +18,7 @@ fn seed_builds_and_covers_all_ten_areas() {
         counts,
         [
             (Panel::Display, 23),
-            (Panel::Appearance, 13),
+            (Panel::Appearance, 9),
             (Panel::DesktopBar, 15),
             (Panel::Windows, 8),
             (Panel::Notifications, 11),
@@ -27,9 +27,50 @@ fn seed_builds_and_covers_all_ten_areas() {
             (Panel::DateTime, 5),
             (Panel::Privacy, 14),
             (Panel::Account, 6),
+            (Panel::Mobile, 9),
+            (Panel::Search, 10),
+            (Panel::Apps, 15),
+            (Panel::Pointer, 10),
+            (Panel::Keyboard, 10),
+            (Panel::Printers, 7),
+            (Panel::Colour, 4),
+            (Panel::Accessibility, 20),
+            (Panel::Sharing, 10),
+            (Panel::Users, 7),
+            (Panel::Storage, 6),
+            (Panel::Updates, 8),
+            (Panel::Backup, 8),
+            (Panel::Mesh, 10),
+            (Panel::Assistant, 10),
+            (Panel::Cells, 6),
+            (Panel::Emergency, 8),
         ]
     );
-    assert_eq!(registry.defs().len(), 118);
+    assert_eq!(registry.defs().len(), 270);
+}
+
+#[test]
+fn every_panel_has_its_own_settings_and_sharing_offers_files_and_screen() {
+    let registry = registry().unwrap();
+    for panel in Panel::ALL {
+        assert!(registry.panel_defs(panel).count() > 0, "{panel:?}");
+    }
+    let sharing: Vec<&str> = registry
+        .panel_defs(Panel::Sharing)
+        .map(|def| def.key)
+        .collect();
+    for key in [
+        "sharing.device_name",
+        "sharing.visible",
+        "sharing.files",
+        "sharing.files.folders",
+        "sharing.screen",
+    ] {
+        assert!(sharing.contains(&key), "{key}");
+    }
+    // The sign-in screen's switches moved with every other accessibility setting.
+    let access = registry.def("accessibility.high_contrast").unwrap();
+    assert_eq!(access.panel, Panel::Accessibility);
 }
 
 fn required_keys() -> BTreeSet<String> {

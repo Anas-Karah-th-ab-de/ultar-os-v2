@@ -40,12 +40,7 @@ pub(super) fn appearance() -> Vec<SettingDef> {
         ),
         SettingDef::int("appearance.font_size", P, (80, 200, 10), 100),
         SettingDef::choice("appearance.icon_size", P, SIZES, "medium"),
-        // Accessibility (sign-in screen `login.access`, quick settings): followed by the
-        // shell, the toolkit and the on-screen keyboard (docs/integration/system-services.md).
-        SettingDef::flag("accessibility.large_text", P, false),
-        SettingDef::flag("accessibility.high_contrast", P, false),
-        SettingDef::flag("accessibility.screen_reader", P, false),
-        SettingDef::flag("accessibility.on_screen_keyboard", P, false),
+        // The accessibility switches live in their own panel (seed/device.rs).
     ]
 }
 

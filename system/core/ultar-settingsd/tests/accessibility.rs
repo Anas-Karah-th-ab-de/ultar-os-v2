@@ -46,7 +46,11 @@ fn the_lock_screen_changes_accessibility_and_nothing_else() {
     let (access, keyboard): (Vec<_>, Vec<_>) = values
         .iter()
         .partition(|(k, _)| k.starts_with(ACCESSIBILITY_PREFIX));
-    assert!(access.iter().all(|(_, v)| *v == SettingValue::Flag(false)));
+    // Every switch starts off (the panel also holds numbers and a choice).
+    assert!(access
+        .iter()
+        .filter(|(_, v)| matches!(v, SettingValue::Flag(_)))
+        .all(|(_, v)| *v == SettingValue::Flag(false)));
     assert_eq!(
         keyboard,
         vec![

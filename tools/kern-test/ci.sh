@@ -32,6 +32,7 @@
 #   7a. the app launcher runs apps as their own users in their cells, a malicious app stays in its cell
 #       (launcher-e2e.sh, LAUNCHER: ALLES OK),
 #   7b. the display and account services under the service manager (svc-e2e.sh, SVC: ALLES OK),
+#   7b2. every page of the Settings app on the real settings service (settings-e2e.sh, SETTINGS: ALLES OK),
 #   7c. the system services behind the desktop shell (dienste-e2e.sh, DIENSTE: ALLES OK),
 #   7e. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
 #   7f. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
@@ -158,6 +159,8 @@ IMG=out/ultar-kern-esp.img bash tools/kern-test/launcher-e2e.sh
 IMG=out/ultar-kern-esp.img bash tools/kern-test/desktop-e2e.sh
 # The display and account services: keep-or-revert across service crashes, accounts as their own ids.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/svc-e2e.sh
+# The Settings app on the real settings service: every page in three languages, none "not available".
+IMG=out/ultar-kern-esp.img bash tools/kern-test/settings-e2e.sh
 # The system services behind the shell: power, session, notifications, calendar, audio; power off via init.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/dienste-e2e.sh
 # The phone: the real call daemon with the test-double modem and the phone app (TELEFON: ALLES OK).

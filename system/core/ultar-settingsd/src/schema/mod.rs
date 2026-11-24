@@ -1,12 +1,14 @@
 //! Schema registry: keys, types, defaults, risk classes, scopes, migrations.
 
+mod area;
 mod def;
 mod key;
 mod migrate;
 mod registry;
 mod types;
 
-pub use def::{DefaultValue, Domain, InstanceKind, Panel, Risk, Scope, SettingDef};
+pub use area::{Domain, Panel};
+pub use def::{DefaultValue, InstanceKind, Risk, Scope, SettingDef};
 pub use key::{
     is_valid_key, is_valid_segment, sanitize_segment, KeyTemplate, INSTANCE_MARKER, MAX_KEY_LEN,
     MAX_SEGMENT_LEN,
