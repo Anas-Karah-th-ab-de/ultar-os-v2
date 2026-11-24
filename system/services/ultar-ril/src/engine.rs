@@ -179,6 +179,35 @@ impl<L: ModemLink> Engine<L> {
     pub fn answer(&mut self) -> std::io::Result<()> {
         self.send(crate::tel::CMD_CALL_ANSWER, IPC_TYPE_EXEC, &[])
     }
+    /// Halten / fortsetzen: das Modem tauscht aktiven und gehaltenen Anruf (SS_MANAGE_CALL 2).
+    pub fn hold_swap(&mut self, index: u8) -> std::io::Result<()> {
+        let data = crate::tel::build_manage_call(crate::tel::MANAGE_HOLD_SWAP, index);
+        self.send(crate::tel::CMD_SS_MANAGE_CALL, IPC_TYPE_EXEC, &data)?;
+        self.send(crate::tel::CMD_CALL_LIST, IPC_TYPE_GET, &[])
+    }
+    /// Ein Tastenton (Start und Stopp von CALL_CONT_DTMF).
+    pub fn dtmf(&mut self, key: u8) -> std::io::Result<()> {
+        let bad = || std::io::Error::from(std::io::ErrorKind::InvalidInput);
+        let start = crate::tel::build_dtmf(crate::tel::DTMF_START, key).ok_or_else(bad)?;
+        let stop = crate::tel::build_dtmf(crate::tel::DTMF_STOP, key).ok_or_else(bad)?;
+        self.send(crate::tel::CMD_CALL_CONT_DTMF, IPC_TYPE_EXEC, &start)?;
+        self.send(crate::tel::CMD_CALL_CONT_DTMF, IPC_TYPE_EXEC, &stop)
+    }
+    /// Mikrofon stumm schalten (SND_MIC_MUTE_CTRL).
+    pub fn mute(&mut self, on: bool) -> std::io::Result<()> {
+        self.send(
+            crate::tel::CMD_SND_MIC_MUTE,
+            IPC_TYPE_SET,
+            &crate::tel::build_mute(on),
+        )
+    }
+    /// Einen Anruf beenden (Samsung-IPC kennt nur „alle“: CALL_RELEASE; der Index wird geprüft).
+    pub fn release(&mut self, index: u8) -> std::io::Result<()> {
+        if !self.st.calls.iter().any(|c| c.id == index) {
+            return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        }
+        self.hangup()
+    }
     /// Auflegen / ablehnen.
     pub fn hangup(&mut self) -> std::io::Result<()> {
         self.send(crate::tel::CMD_CALL_RELEASE, IPC_TYPE_EXEC, &[])?;

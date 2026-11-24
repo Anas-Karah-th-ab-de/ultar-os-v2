@@ -16,13 +16,19 @@
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
+//! | `call.state` | topic | yes | call service (`ultar-call`, see [`call`]) |
+//! | `call.dial` / `answer` / `hangup` / … | calls | – | call service |
+//! | `modem.state` | topic | yes | modem service (`ultar-ril`, see [`modem`]) |
+//! | `modem.dial` / `answer` / `release` / `hold` / `dtmf` / `mute` | calls | – | modem service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod call;
 pub mod device_service;
 pub mod devices;
 pub mod init;
 pub mod log;
+pub mod modem;
 pub mod notify;
 pub mod power;
 pub mod settings;
@@ -53,6 +59,8 @@ mod tests {
         check_topic::<super::settings::Changed>();
         check_topic::<super::power::PowerState>();
         check_topic::<super::shell::ShellMode>();
+        check_topic::<super::call::CallState>();
+        check_call::<super::call::Dial>();
         check_call::<super::notify::Post>();
         check_call::<super::init::Status>();
         check_call::<super::init::Control>();

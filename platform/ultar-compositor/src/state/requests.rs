@@ -182,6 +182,7 @@ impl State {
                 self.set_state_by(index, state, None, false);
                 Ok(())
             }
+            Request::ClientHeader { surface, on } => self.client_header(client, surface, on),
             other => self.apply_input(client, other),
         }
     }
@@ -448,5 +449,33 @@ impl State {
                 self.damage_logical(visible);
             }
         }
+    }
+
+    /// `ClientHeader`: the toplevel draws its own header. Needs `ui.client-header`; refused
+    /// for system dialogs (their compositor title bar is the trusted mark).
+    fn client_header(&mut self, client: ClientId, surface: SurfaceId, on: bool) -> Outcome {
+        let rights = self
+            .clients
+            .get(&client)
+            .map(|c| c.rights)
+            .unwrap_or_default();
+        if !rights.contains(Rights::CLIENT_HEADER) {
+            return Err(ErrorCode::Permission);
+        }
+        let key = self.own_surface(client, surface)?;
+        let index = self.window_index(key).ok_or(ErrorCode::UnknownObject)?;
+        if self.windows[index].secure {
+            return Err(ErrorCode::Permission);
+        }
+        if self.windows[index].client_header == on {
+            return Ok(());
+        }
+        let area = self.windows[index].painted_area();
+        self.windows[index].client_header = on;
+        self.windows[index].title_cache = None;
+        self.damage_logical(area);
+        let frame = self.windows[index].frame;
+        self.configure_window(index, frame);
+        Ok(())
     }
 }

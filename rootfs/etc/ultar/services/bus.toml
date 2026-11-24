@@ -22,6 +22,9 @@ args = [
     "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0660", "--group", "802", "--max-connections", "8",
     "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0660", "--group", "803", "--max-connections", "8",
     "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0660", "--group", "804", "--max-connections", "8",
+    # Call service (813) and the modem service (ril, root on the phone).
+    "--listen", "/run/ultar/bus/calld.sock=system.calld", "--mode", "0660", "--group", "813", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/ril.sock=system.ril", "--mode", "0600", "--max-connections", "2",
     # Administration tools run by root: usettings, udevctl, ulog, uinit.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The service manager (root).
@@ -30,7 +33,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804]
+groups = [802, 803, 804, 813]
 public_dirs = ["/run/ultar/bus"]
 notify = true
 after = ["logd"]

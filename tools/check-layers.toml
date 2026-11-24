@@ -134,6 +134,12 @@ from = "apps"
 to = "platform"
 crates = ["platform/app-api", "platform/ultar-ui"]
 
+# compositor client API for app windows
+[[allow]]
+from = "apps"
+to = "platform"
+crates = ["platform/ultar-surface"]
+
 [[allow]]
 from = "apps"
 to = "system-core"

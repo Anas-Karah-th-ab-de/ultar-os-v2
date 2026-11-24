@@ -26,7 +26,10 @@ fn main() {
     let mode = args.get(1).map(|s| s.as_str()).unwrap_or("--probe");
 
     match mode {
-        "--daemon" => daemon::run(),
+        "--daemon" => daemon::run(match args.get(2).map(String::as_str) {
+            Some("--bus") => args.get(3).map(std::path::PathBuf::from),
+            _ => None,
+        }),
         "--nodes" => {
             println!("Kanal -> Knoten:");
             println!("  FMT_0  235 -> /dev/umts_ipc0  (RIL: SIM/Netz)");

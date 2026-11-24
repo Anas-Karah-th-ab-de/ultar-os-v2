@@ -253,7 +253,8 @@ fn pin_body(pin: &str) -> Option<Vec<u8>> {
     Some(b)
 }
 
-pub fn run() -> ! {
+/// `bus`: socket of the bus; with it the modem is also served as `modem.*` (call service).
+pub fn run(bus: Option<std::path::PathBuf>) -> ! {
     eprintln!("ultar-ril: Funkdienst gestartet");
     let _ = std::fs::create_dir_all("/run/ultar/radio");
     loop {
@@ -286,6 +287,13 @@ pub fn run() -> ! {
                 CH_FMT_1,
             ))
         });
+        // Bus (`modem.*`) with `--bus`: the call service drives calls there.
+        let mut modem_bus = bus.as_ref().and_then(|p| {
+            let opts = ultar_bus::ClientOptions::named("ril");
+            ultar_bus::Client::connect(p, opts)
+                .ok()
+                .and_then(|c| ultar_ril::bus::ModemService::new(c).ok())
+        });
         let mut note = String::new();
         let mut sms_join: Vec<(u8, ultar_ril::tel::InSms, Instant)> = Vec::new();
         let mut last_call: Option<(u8, ultar_ril::tel::CallEntry)> = None;
@@ -316,6 +324,13 @@ pub fn run() -> ! {
                     break 'run;
                 }
                 sl.housekeeping(on);
+            }
+            if let Some(svc) = modem_bus.as_mut() {
+                let state = ultar_ril::bus::state_of(&s1.eng.st, !on, 1);
+                if svc.serve(&mut s1.eng, state).is_err() {
+                    // The bus went away; calls still work through /run/ultar/radio/cmd.
+                    modem_bus = None;
+                }
             }
             for c in radio::take_cmds() {
                 let mut it = c.split_whitespace();
@@ -443,19 +458,12 @@ pub fn run() -> ! {
             // Aktiver Steckplatz (Netz/Daten in der Oberfläche): erste bereite SIM, sonst die mit Anmeldung, sonst SIM 1
             let ready = |sl: &Slot| sim_state(sl.eng.st.sim) == radio::SimState::Ready;
             let want_slot = radio::read_prefs().data_sim;
-            let act_no: u8 = if want_slot == 2 && s2.as_ref().is_some_and(ready) {
-                2
-            } else if want_slot == 1 && ready(&s1) {
-                1
-            } else if ready(&s1) {
-                1
-            } else if s2.as_ref().is_some_and(ready) {
-                2
-            } else if s2
+            let ready2 = s2.as_ref().is_some_and(ready);
+            let only2 = s2
                 .as_ref()
                 .is_some_and(|sl| sl.eng.st.sim.is_some() && sl.eng.st.sim != Some(0x80))
-                && s1.eng.st.sim == Some(0x80)
-            {
+                && s1.eng.st.sim == Some(0x80);
+            let act_no: u8 = if (want_slot == 2 && ready2) || (!ready(&s1) && (ready2 || only2)) {
                 2
             } else {
                 1
@@ -485,7 +493,7 @@ pub fn run() -> ! {
                 && matches!(eng.st.reg_ps.status, 2 | 6);
             if want_data && can_data {
                 if eng.st.data_ip.is_none()
-                    && data_req.map_or(true, |t| t.elapsed() >= Duration::from_secs(30))
+                    && data_req.is_none_or(|t| t.elapsed() >= Duration::from_secs(30))
                 {
                     let a = read_apn();
                     let _ = eng.data_connect(&a.apn, a.user.as_deref(), a.pass.as_deref());

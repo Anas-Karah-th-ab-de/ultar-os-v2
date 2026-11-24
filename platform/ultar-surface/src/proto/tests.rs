@@ -142,8 +142,9 @@ fn limits_are_enforced_when_decoding() {
     let mut body = 1u32.to_le_bytes().to_vec();
     body.push(9);
     assert!(Request::decode(18, &body).is_err());
-    // Unknown role, edge, state, format.
-    assert!(Request::decode(2, &[1, 0, 0, 0, 8]).is_err());
+    // Unknown role (8 is the call screen), edge, state, format.
+    assert!(Request::decode(2, &[1, 0, 0, 0, 8]).is_ok());
+    assert!(Request::decode(2, &[1, 0, 0, 0, 9]).is_err());
     assert!(Request::decode(2, &[1, 0, 0, 0, 2, 4, 0, 0, 0, 0]).is_err());
     assert!(Request::decode(14, &[1, 0, 0, 0, 4]).is_err());
     assert!(Request::decode(7, &[1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2]).is_err());
@@ -159,6 +160,8 @@ fn rights_and_roles() {
     assert_eq!(Role::InputPanel.required_rights(), Rights::INPUT_METHOD);
     assert_eq!(Role::Overlay.required_rights(), Rights::OVERLAY);
     assert_eq!(Role::SystemDialog.required_rights(), Rights::SYSTEM_DIALOG);
+    assert_eq!(Role::CallScreen.required_rights(), Rights::CALL_SCREEN);
+    assert!(Rights::ALL.contains(Rights::CALL_SCREEN));
     assert_eq!(
         Role::Panel {
             edge: Edge::Top,

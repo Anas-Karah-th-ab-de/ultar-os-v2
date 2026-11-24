@@ -55,6 +55,7 @@ fn rank(role: Role) -> u8 {
         Role::SystemDialog => 4,
         Role::InputPanel => 5,
         Role::Lock => 6,
+        Role::CallScreen => 7,
         Role::Background | Role::Popup { .. } | Role::Toplevel => 0,
     }
 }
@@ -69,7 +70,7 @@ impl State {
         let margin = Space::S16.points() as i32;
         let rect = match s.role {
             Role::Toplevel | Role::SystemDialog => return None,
-            Role::Background | Role::Lock => Rect::new(screen.x, screen.y, w, h),
+            Role::Background | Role::Lock | Role::CallScreen => Rect::new(screen.x, screen.y, w, h),
             Role::Panel { edge, size } => {
                 let strip = panel_strip(screen, edge, size as i32, self.rtl());
                 Rect::new(
@@ -137,8 +138,9 @@ impl State {
 
     /// The scene and the translucent surfaces the overdraw budget left out.
     /// Order: backgrounds, each window followed by its popups, panels,
-    /// system dialogs, overlays, on-screen keyboard, lock screen. While
-    /// locked only the lock screen and the on-screen keyboard.
+    /// system dialogs, overlays, on-screen keyboard, lock screen, call screen.
+    /// While locked only the lock screen, the on-screen keyboard and the call
+    /// screen (a ringing call is answered without unlocking).
     pub fn scene_parts(&self) -> (Vec<Placed>, Vec<SurfaceKey>) {
         let locked = self.locked();
         let mut out = Vec::new();
@@ -146,7 +148,7 @@ impl State {
         let mut popups: std::collections::HashMap<SurfaceKey, Vec<Placed>> = Default::default();
         for &key in &self.layers {
             let Some(s) = self.surface(key) else { continue };
-            if locked && !matches!(s.role, Role::Lock | Role::InputPanel) {
+            if locked && !matches!(s.role, Role::Lock | Role::InputPanel | Role::CallScreen) {
                 continue;
             }
             let Some(content) = self.layer_rect(key) else {
@@ -210,7 +212,7 @@ impl State {
         let screen = output.logical_rect();
         let scale = output.scale_milli;
         let (w, h) = match role {
-            Role::Background | Role::Lock => (screen.w, screen.h),
+            Role::Background | Role::Lock | Role::CallScreen => (screen.w, screen.h),
             Role::Panel { edge, size } => {
                 let strip = panel_strip(screen, edge, size as i32, self.rtl());
                 (strip.w, strip.h)

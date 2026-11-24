@@ -218,10 +218,10 @@ pub fn activate_data<L: ModemLink>(
     // 3) Auf IP-Konfiguration warten (kommt als CFRM auf PDP_CONTEXT oder als eigenes IP_CONFIGURATION/EVENT)
     let cfg = wait_ip_config(l, cid, 15000)?;
     if cfg.fail_cause != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("PDP-Aktivierung abgelehnt (fail_cause={})", cfg.fail_cause),
-        ));
+        return Err(io::Error::other(format!(
+            "PDP-Aktivierung abgelehnt (fail_cause={})",
+            cfg.fail_cause
+        )));
     }
     let mut dns = Vec::new();
     if !cfg.dns1.is_unspecified() {
@@ -346,10 +346,10 @@ fn wait_ip_config<L: ModemLink>(l: &mut L, cid: u8, timeout_ms: u32) -> io::Resu
             } else if i == fmt::IDX_CALL_STATUS && body.len() >= 3 && body[0] == cid && body[1] == 0
             {
                 // status 0 = getrennt/abgelehnt
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("PDP getrennt (fail_cause={})", body[2]),
-                ));
+                return Err(io::Error::other(format!(
+                    "PDP getrennt (fail_cause={})",
+                    body[2]
+                )));
             }
         }
     }

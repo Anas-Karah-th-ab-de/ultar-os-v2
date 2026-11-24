@@ -57,6 +57,26 @@ identity  = "app.*"
 call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy"]
 subscribe = ["update.progress"]
 
+# Call service: offers `call`, publishes the call state, drives the modem.
+[[rule]]
+identity  = "system.calld"
+register  = ["call"]
+publish   = ["call.state"]
+subscribe = ["modem.state"]
+call      = ["modem.*"]
+
+# Modem service (ultar-ril): offers `modem` and its state, nothing else.
+[[rule]]
+identity = "system.ril"
+register = ["modem"]
+publish  = ["modem.state"]
+
+# The phone app: every call request and the call state (numbers and names: no other app).
+[[rule]]
+identity  = "app.phone"
+call      = ["call.*"]
+subscribe = ["call.state"]
+
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.
 # `settings.*` includes settings.admin, `devices.*` includes devices.admin,

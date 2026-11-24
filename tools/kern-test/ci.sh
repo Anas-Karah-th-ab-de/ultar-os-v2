@@ -22,6 +22,7 @@
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
+#   7a. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
@@ -112,6 +113,8 @@ for mem in ${GRENZ_MEM:-512 2048}; do
 done
 # The service manager with the shipped system services, each as its own user.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/init-e2e.sh
+# The phone: the real call daemon with the test-double modem and the phone app (TELEFON: ALLES OK).
+IMG=out/ultar-kern-esp.img bash tools/kern-test/telefon-e2e.sh
 # A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
 # its own installation and about 25 starts. AB_TEST=0 skips it.
 if [ "${AB_TEST:-1}" = 0 ]; then

@@ -221,6 +221,15 @@ pub enum Request {
     /// Asks for the window list (needs [`Rights::CAPTURE`]); answered by
     /// `WindowList`.
     ListWindows,
+    /// The app draws the header of this toplevel itself (needs
+    /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
+    /// the "not responding" close stay with the compositor; system dialogs keep theirs.
+    ClientHeader {
+        /// The toplevel.
+        surface: SurfaceId,
+        /// Draws its own header.
+        on: bool,
+    },
 }
 
 impl Request {
@@ -256,6 +265,7 @@ impl Request {
             Request::RequestActivation { .. } => 27,
             Request::Activate { .. } => 28,
             Request::ListWindows => 29,
+            Request::ClientHeader { .. } => 30,
         }
     }
 
@@ -393,6 +403,9 @@ impl Request {
             }
             Request::Activate { surface, token } => {
                 w.u32(surface.0).u64(*token);
+            }
+            Request::ClientHeader { surface, on } => {
+                w.u32(surface.0).u8(u8::from(*on));
             }
             _ => {}
         }

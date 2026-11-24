@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Anrufe/Video zwischen Ultar-Geräten über die Cloud-Signalisierung (WebRTC, Ende-zu-Ende DTLS-SRTP). Mock als Standard; echtes WebRTC hinter Feature 'call-real'."
 
 [dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -20,6 +21,10 @@ real = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
 [lib]
 name = "ultar_call"
 path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-calld"
+path = "src/bin/ultar-calld.rs"
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
 tokio-tungstenite = "0.23"

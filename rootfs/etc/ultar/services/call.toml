@@ -1,0 +1,20 @@
+# Call service (ultar-calld): voice and video calls of the phone app over the Ultar number and
+# the mobile network (modem service `modem.*` of ultar-ril). Offers `call.*` on the bus and
+# keeps the call history in /data/ultar/calls (0600, at most 128 KiB).
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-calld"
+args = [
+    "--bus", "/run/ultar/bus/calld.sock",
+    "--log", "/data/ultar/calls/calls.log",
+    "--modem",
+]
+# Identity and rights: its own user (813), no kernel rights; it talks only to the bus.
+user = 813
+dirs = ["/data/ultar/calls"]
+after = ["bus"]
+restart = "on-failure"
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "16"
+"cpu.weight" = "100"

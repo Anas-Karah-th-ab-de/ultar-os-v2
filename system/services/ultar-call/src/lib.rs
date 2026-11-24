@@ -1,11 +1,29 @@
-//! Anrufe/Video zwischen Ultar-Geräten.
+//! Call service of Ultar OS (area: system services).
 //!
-//! Signalisierung läuft über den Cloud-Server (`/v1/signal`, WebSocket): Austausch von SDP-Offer/
-//! Answer und ICE-Kandidaten zwischen zwei Ultar-Nummern. Die Medien gehen Ende-zu-Ende per
-//! WebRTC (DTLS-SRTP) — der Server sieht sie nie; NAT-Durchstoß per STUN/TURN.
+//! Two parts:
+//! * The **call service** on the bus: [`service::Service`] answers the contract
+//!   `ultar_bus::messages::call` (`call.dial`, `call.answer`, … and the retained topic
+//!   `call.state`) through a [`session::Session`] over one [`Line`] per way (Ultar number,
+//!   mobile network) and an [`line::AudioRoute`]. [`fake`] is the test double of every backend.
+//! * The older device-to-device backend [`CallBackend`] (signalling over the cloud server,
+//!   media end to end via WebRTC/DTLS-SRTP; a local mock by default, the real path behind the
+//!   feature `real`). [`ultar_line::UltarLine`] makes it the Ultar-number [`Line`].
 //!
-//! Standard-Backend ist ein Mock (Zustandsmaschine, kein Netz). Der echte WebRTC-Pfad steckt
-//! hinter dem Feature `real` (webrtc + tokio-tungstenite) und wird im Gerätebau aktiviert.
+//! (Signalisierung über `/v1/signal`, WebSocket; der Server sieht die Medien nie.)
+
+pub mod calllog;
+pub mod fake;
+pub mod fake_modem;
+pub mod line;
+pub mod logstore;
+pub mod modem_line;
+pub mod msg;
+pub mod service;
+pub mod session;
+mod session_cmd;
+pub mod ultar_line;
+
+pub use line::Line;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CallState {

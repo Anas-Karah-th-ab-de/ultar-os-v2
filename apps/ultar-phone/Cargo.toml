@@ -1,0 +1,21 @@
+[package]
+name = "ultar-phone"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Phone app of Ultar OS (area apps): dial pad, call history, incoming call and in-call surfaces on ultar-ui, driven by the call service over the bus (DESKTOP-SPEC §12.2)."
+
+[lib]
+name = "ultar_phone"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-surface = { path = "../../platform/ultar-surface" }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }

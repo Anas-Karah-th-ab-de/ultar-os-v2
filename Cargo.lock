@@ -3326,6 +3326,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "phone-e2e"
+version = "0.7.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-call",
+ "ultar-compositor",
+ "ultar-phone",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "pic-scale"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5293,6 +5305,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "ultar-bus",
 ]
 
 [[package]]
@@ -5500,6 +5513,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-phone"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-pkg"
 version = "0.7.0"
 dependencies = [
@@ -5533,6 +5557,7 @@ name = "ultar-ril"
 version = "0.6.0"
 dependencies = [
  "libc",
+ "ultar-bus",
  "ultar-radio",
 ]
 

@@ -43,6 +43,8 @@ pub struct Window {
     /// Focus when mapped, if the grant is still valid then (an activation
     /// token was presented before the window had content).
     pub activate_on_map: Option<super::Grant>,
+    /// The app draws its own header (`ClientHeader`, right `ui.client-header`).
+    pub client_header: bool,
 }
 
 impl Window {
@@ -62,12 +64,13 @@ impl Window {
             title_cache: None,
             secure: false,
             activate_on_map: None,
+            client_header: false,
         }
     }
 
-    /// Has compositor decorations (not fullscreen).
+    /// Has compositor decorations (not fullscreen, not drawing its own header).
     pub fn decorated(&self) -> bool {
-        self.state != WindowState::Fullscreen
+        self.state != WindowState::Fullscreen && !self.client_header
     }
 
     /// Visible on screen.

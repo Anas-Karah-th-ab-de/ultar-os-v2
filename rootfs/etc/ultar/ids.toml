@@ -15,6 +15,7 @@ settingsd = 803
 devd = 804
 llm = 810
 compositor = 811
+calld = 813
 nobody = 65534
 
 [groups]
@@ -27,4 +28,5 @@ busd = ["logd"]
 logd = ["busd"]
 settingsd = ["busd", "logd"]
 devd = ["busd", "logd"]
+calld = ["busd"]
 seat = ["compositor"]

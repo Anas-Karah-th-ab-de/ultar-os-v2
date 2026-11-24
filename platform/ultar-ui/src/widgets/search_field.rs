@@ -80,8 +80,11 @@ impl TextField {
 
     /// The button at the end of the field: 0 = clear (search field holding text),
     /// 1 = show the password while held (password field).
+    /// 2 = the field's own action (see [`TextField::end_action`]).
     pub(crate) fn end_button(&self) -> Option<usize> {
-        if self.password && !self.reveal_outside {
+        if self.end_action.is_some() && !self.search && !self.password {
+            Some(2)
+        } else if self.password && !self.reveal_outside {
             Some(1)
         } else if self.search && !self.content().is_empty() {
             Some(0)
@@ -95,6 +98,14 @@ impl TextField {
     fn parts(&self, field: Rect, direction: Direction) -> (Rect, Rect, Rect) {
         let mut inner = style::inset_inline(field, PAD);
         let mut button = Rect::default();
+        if self.end_button() == Some(2) {
+            // A pointer target square, PAD in from the end edge, centred vertically.
+            let side = size::TARGET_POINTER_MIN.min(field.h).min(field.w);
+            let slot = style::take_end(&mut inner, side, direction);
+            style::take_end(&mut inner, ICON_GAP.points(), direction);
+            button = Rect::new(slot.x, field.y + (field.h - side) / 2.0, side, side);
+            return (Rect::default(), button, inner);
+        }
         if self.search || (self.password && !self.reveal_outside) {
             let mut whole = field;
             button = style::take_end(&mut whole, field.h.min(field.w), direction);
@@ -151,6 +162,15 @@ impl TextField {
         }
         let glyph = match self.end_button() {
             Some(0) => IconId::Close,
+            Some(2) => {
+                let Some((icon, _)) = &self.end_action else {
+                    return;
+                };
+                let text = p.color(ColorRole::Text);
+                let at = style::centered(button, crate::geom::Size::new(ICON, ICON));
+                p.icon(*icon, at, ICON, QuarterTurns::None, text);
+                return;
+            }
             Some(_) if self.revealed => IconId::Eye,
             Some(_) => IconId::Eye,
             None => return,
