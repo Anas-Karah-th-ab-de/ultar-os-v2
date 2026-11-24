@@ -37,6 +37,8 @@ ORIG=$(drv_of)
 
 # refuse if a process (desktop session) holds the DRM nodes of this GPU (checked through /proc,
 # fuser is not installed everywhere)
+# a stopped service may need a while to let go of the GPU: look again for up to 90 s
+for try in $(seq 1 30); do
 holders=""
 for n in "$SYS"/drm/card* "$SYS"/drm/renderD*; do
   [ -e "$n" ] || continue
@@ -44,6 +46,9 @@ for n in "$SYS"/drm/card* "$SYS"/drm/renderD*; do
   for fd in /proc/[0-9]*/fd/*; do
     [ "$(readlink "$fd" 2>/dev/null)" = "$node" ] && { holders="$holders $node(pid $(echo "$fd" | cut -d/ -f3))"; break; }
   done
+done
+  [ -z "$holders" ] && break
+  sleep 3
 done
 [ -z "$holders" ] || { echo "processes use$holders - stop the desktop session first; nothing was changed"; exit 1; }
 
