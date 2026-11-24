@@ -15,10 +15,23 @@ pub fn capabilities_from_bus(
     previous: &Capabilities,
     report: &devices::Capabilities,
 ) -> Capabilities {
+    // The device service reports driver classes; keyboard, pointer and touch are not among
+    // them, so what the device itself found for those stays (else the Keyboard and Mouse pages
+    // vanish as soon as the first report arrives). A working input driver ("input": PS/2, USB
+    // HID) stands for a keyboard and a pointer.
     let mut flags = CapabilitySet::EMPTY;
+    for kept in [Capability::Keyboard, Capability::Pointer, Capability::Touch] {
+        if previous.flags.contains(kept) {
+            flags.insert(kept);
+        }
+    }
     for capability in &report.capabilities {
         if capability.availability == devices::Availability::Unavailable {
             continue;
+        }
+        if capability.id == "input" {
+            flags.insert(Capability::Keyboard);
+            flags.insert(Capability::Pointer);
         }
         if let Some(known) = Capability::parse(&capability.id) {
             flags.insert(known);
@@ -120,5 +133,20 @@ mod tests {
                 TextArg::Verbatim("quarantine/system.toml.0".into())
             ]
         );
+    }
+
+    #[test]
+    fn an_input_driver_stands_for_keyboard_and_pointer_and_found_ones_stay() {
+        let report = devices::Capabilities {
+            capabilities: vec![capability("input", devices::Availability::Available)],
+            ..Default::default()
+        };
+        let caps = capabilities_from_bus(&Capabilities::default(), &report);
+        assert!(caps.flags.contains(Capability::Keyboard));
+        assert!(caps.flags.contains(Capability::Pointer));
+        let mut touch = Capabilities::default();
+        touch.flags.insert(Capability::Touch);
+        let caps = capabilities_from_bus(&touch, &devices::Capabilities::default());
+        assert!(caps.flags.contains(Capability::Touch));
     }
 }
