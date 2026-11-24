@@ -96,7 +96,7 @@ fn karten() -> Vec<String> {
         let weg = match (b.driver, d.vendor) {
             (Some(n), _) => format!("Treiber {n}"),
             (None, 0x8086) => String::from("Firmware-Bildspeicher; eigener Treiber: Bauplan intel-xe-anzeige"),
-            (None, 0x10de) => String::from("Firmware-Bildspeicher; NVIDIA: keine offene Anzeige-Norm"),
+            (None, 0x10de) => String::from("Firmware-Bildspeicher; NVIDIA: Opt-in-Erkennung vorhanden, kein Ausgabesteuerungstreiber"),
             (None, 0x1002) => String::from("Firmware-Bildspeicher; AMD: Bauplan amd-dcn-anzeige"),
             (None, _) => String::from("Firmware-Bildspeicher"),
         };
@@ -117,6 +117,9 @@ pub fn text() -> String {
     }
     if let Some(t) = crate::drivers::intel_display::text() {
         s += &format!("intel-display={t}\n");
+    }
+    if let Some(t) = crate::drivers::nvidia_display::text() {
+        s += &format!("nvidia-display={t}\n");
     }
     s
 }

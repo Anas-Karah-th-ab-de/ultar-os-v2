@@ -1,0 +1,15 @@
+# NVIDIA display discovery (read-only, opt-in probe) for Quadro RTX 4000.
+id = "nvidia-display"
+version = "0.1.0"
+class = "display"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 80
+name_key = "driver.nvidia-display.name"
+description_key = "driver.nvidia-display.description"
+
+[match]
+pci = ["10de:1eb6"]
+
+[content]
+kernel_driver = "nvidia-display"

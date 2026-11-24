@@ -5,6 +5,7 @@ pub mod intel_display;
 pub mod nvme;
 pub mod ps2kbd;
 pub mod ps2maus;
+pub mod nvidia_display;
 pub mod virtio;
 pub mod virtio_blk;
 pub mod virtio_net;
@@ -28,6 +29,7 @@ pub static ALL: &[&dyn Driver] = &[
     &virtio_rng::DRV,
     &bruecke::DRV,
     &intel_display::DRV,
+    &nvidia_display::DRV,
     // WERKSTATT-TREIBER-BEGINN
     &gen_ahci::DRV,
     &gen_bochs_vga::DRV,

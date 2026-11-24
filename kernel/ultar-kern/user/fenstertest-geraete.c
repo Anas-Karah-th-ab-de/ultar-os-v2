@@ -330,7 +330,8 @@ void input_checks(void) {
     close(m);
     close(k);
     /* event2 exists exactly when a USB input device is plugged in at the start (as in a VMware machine with
-     * its USB tablet, see tools/kern-test/vmware-like.sh): the node and the entry in /sys agree either way */
+     * its USB tablet, see tools/kern-test/vmware-like.sh): the node and the entry in /sys agree either way.
+     * PS/2-only VMware machines have no USB node and must still pass the i8042 input checks. */
     if (access("/sys/class/input/event2", F_OK) == 0) {
         int u = open("/dev/input/event2", O_RDONLY);
         check("K8 USB-Eingabe beim Start: event2 lässt sich öffnen", u >= 0);
