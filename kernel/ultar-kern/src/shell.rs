@@ -430,7 +430,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
         }
         "ping" => {
             let Some(dst) = args.first().and_then(|s| crate::net::parse_ip(s)) else { return kprintln!("ping <a.b.c.d>") };
-            match crate::net::ping(0, dst) {
+            match crate::net::ping(crate::net::active_nic(), dst) {
                 Some(ms) => kprintln!("Antwort von {} in {ms} ms", ip(dst)),
                 None => kprintln!("keine Antwort von {}", ip(dst)),
             }
@@ -628,9 +628,10 @@ pub fn dhcp() {
     if NET.lock().is_empty() {
         return kprintln!("[netz] kein Netzwerkgerät mit Treiber");
     }
-    match crate::net::dhcp(0) {
-        Some(c) => {
-            kprintln!("[netz] DHCP: IP {} Router {} DNS {}", ip(c.ip), ip(c.gw), ip(c.dns));
+    match crate::net::dhcp_all() {
+        Some((n, c)) => {
+            let name = NET.lock().get(n).map(|d| d.name()).unwrap_or_else(|| alloc::format!("eth{n}"));
+            kprintln!("[netz] DHCP: {name} IP {} Router {} DNS {}", ip(c.ip), ip(c.gw), ip(c.dns));
             // Namensauflösung für Programme (glibc liest /etc/resolv.conf)
             crate::fs::write_file("/etc/resolv.conf", alloc::format!("nameserver {}\n", ip(c.dns)).into_bytes());
             // Zustand für die Oberfläche (wie ultar-net unter Linux: /run/ultar/net/<schnittstelle>)

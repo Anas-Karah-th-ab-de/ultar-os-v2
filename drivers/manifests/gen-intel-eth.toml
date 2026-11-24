@@ -9,7 +9,7 @@ name_key = "driver.gen-intel-eth.name"
 description_key = "driver.gen-intel-eth.description"
 
 [match]
-pci = ["8086:10d3", "8086:15b8", "8086:0d4c"]
+pci = ["8086:10d3", "8086:15b8", "8086:0d4c", "8086:1533", "8086:1536", "8086:1539", "8086:157b", "8086:157c", "8086:15f2", "8086:15f3", "8086:0d9f", "8086:15f8", "8086:125b", "8086:125c", "8086:125d", "8086:125f"]
 
 [content]
 # Stage A (docs/PLAN.md §5.5): the driver is built into the Ultar kernel; the package

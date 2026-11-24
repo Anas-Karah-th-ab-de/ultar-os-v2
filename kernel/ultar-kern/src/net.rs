@@ -3,7 +3,9 @@
 use crate::driver::NET;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::string::String;
 use spin::Mutex;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Default)]
 pub struct Config {
@@ -14,6 +16,23 @@ pub struct Config {
 }
 
 pub static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
+static ACTIVE_NIC: AtomicUsize = AtomicUsize::new(0);
+
+pub fn active_nic() -> usize {
+    ACTIVE_NIC.load(Ordering::Relaxed)
+}
+
+pub fn set_active_nic(n: usize) {
+    ACTIVE_NIC.store(n, Ordering::Relaxed);
+}
+
+pub fn active_mac() -> Option<[u8; 6]> {
+    NET.lock().get(active_nic()).map(|d| d.mac())
+}
+
+pub fn active_send(frame: &[u8]) -> Result<(), String> {
+    NET.lock().get_mut(active_nic()).ok_or_else(|| String::from("no active network interface"))?.send(frame)
+}
 
 pub fn csum(data: &[u8]) -> u16 {
     let mut s: u32 = 0;
@@ -172,6 +191,22 @@ pub fn dhcp(n: usize) -> Option<Config> {
         if let Some(c) = ack {
             *CONFIG.lock() = Some(c);
             return Some(c);
+        }
+    }
+    None
+}
+
+/// Try DHCP on every present, linked network interface. This keeps Ethernet
+/// fallback working on laptops/docks when eth0 is not the cable-facing NIC.
+pub fn dhcp_all() -> Option<(usize, Config)> {
+    let count = NET.lock().len();
+    for n in 0..count {
+        let linked = NET.lock().get(n).and_then(|d| d.link()).unwrap_or(true);
+        if linked {
+            if let Some(c) = dhcp(n) {
+                set_active_nic(n);
+                return Some((n, c));
+            }
         }
     }
     None

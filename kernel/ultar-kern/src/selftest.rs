@@ -89,7 +89,7 @@ pub fn run() {
             None => kprintln!("[test] Netz: DHCP ohne Antwort (Kabel gesteckt?)"),
         }
         if let Some(c) = cfg {
-            match crate::net::ping(0, c.gw) {
+            match crate::net::ping(crate::net::active_nic(), c.gw) {
                 Some(ms) => kprintln!("[test] Ping Router: {ms} ms OK"),
                 None => kprintln!("[test] Ping Router: keine Antwort"),
             }

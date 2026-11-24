@@ -193,13 +193,11 @@ fn is_local(ip: [u8; 4]) -> bool {
 }
 
 fn mac() -> Option<[u8; 6]> {
-    NET.lock().first().map(|d| d.mac())
+    crate::net::active_mac()
 }
 
 fn raw_send(frame: &[u8]) {
-    if let Some(d) = NET.lock().first_mut() {
-        let _ = d.send(frame);
-    }
+    let _ = crate::net::active_send(frame);
 }
 
 static TXQ: Mutex<VecDeque<(u64, [u8; 4], Vec<u8>)>> = Mutex::new(VecDeque::new());
@@ -328,7 +326,7 @@ fn poll_network() {
     {
         let mut buf = [0u8; 2048];
         let mut nl = NET.lock();
-        if let Some(d) = nl.first_mut() {
+        if let Some(d) = nl.get_mut(crate::net::active_nic()) {
             for _ in 0..64 {
                 match d.recv(&mut buf) {
                     Some(n) => frames.push(buf[..n].to_vec()),

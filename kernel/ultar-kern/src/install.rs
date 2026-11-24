@@ -1342,7 +1342,8 @@ impl Ui {
         let cfg = *crate::net::CONFIG.lock();
         match cfg {
             Some(c) => {
-                let ping = crate::net::ping(0, [1, 1, 1, 1]).or_else(|| crate::net::ping(0, c.gw));
+                let nic = crate::net::active_nic();
+                let ping = crate::net::ping(nic, [1, 1, 1, 1]).or_else(|| crate::net::ping(nic, c.gw));
                 self.internet = Some(ping.is_some());
                 self.netz = alloc::format!(
                     "IP {}  ·  Router {}  ·  {}{}",
