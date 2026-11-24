@@ -43,6 +43,25 @@ pub fn run() {
             kprintln!("      Fehler: {e}");
         }
     }
+    // ECAM: jedes Gerät muss über das Speicherfenster dieselbe Kennung liefern wie über die Ports
+    if crate::pci::ecam_available() {
+        let mut gleich = 0;
+        let mut fehler = 0;
+        let mut ext = 0;
+        for b in DEVICES.lock().iter() {
+            let d = &b.dev;
+            if d.r32x(0) == Some(d.r32(0)) {
+                gleich += 1;
+            } else {
+                fehler += 1;
+                kprintln!("  ECAM-Abweichung bei {}", d.id());
+            }
+            ext += d.ext_caps().len();
+        }
+        kprintln!("[test] ECAM: {gleich} Geräte gleich, {fehler} abweichend, {ext} erweiterte Fähigkeiten {}", if fehler == 0 { "OK" } else { "FEHLER" });
+    } else {
+        kprintln!("[test] ECAM: nicht verfügbar");
+    }
     kprintln!("[test] Datenträger (nur lesen):");
     let n = BLOCK.lock().len();
     for i in 0..n {

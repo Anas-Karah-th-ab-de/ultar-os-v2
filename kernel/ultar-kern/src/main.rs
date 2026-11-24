@@ -151,6 +151,10 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     shell::info();
 
     startseite::startbild(35, "p_hw");
+    match pci::init_ecam(boot.rsdp) {
+        0 => kprintln!("[pci] kein ECAM (MCFG fehlt): erweiterter Konfigurationsraum nicht verfügbar"),
+        b => kprintln!("[pci] ECAM bei {:#x}: erweiterter Konfigurationsraum verfügbar", b),
+    }
     let devs = pci::scan();
     kprintln!("[pci] {} Gerät(e) gefunden", devs.len());
     driver::bind_all(devs);

@@ -1,8 +1,81 @@
 //! PCI/PCIe: Geräte über den Konfigurationsraum (Ports 0xCF8/0xCFC) aufzählen, BARs bestimmen,
 //! Bus-Master einschalten, Fähigkeitslisten lesen.
+//!
+//! PCIe-Erweiterung (ECAM): die ersten 256 Byte gehen weiter über die Ports; der erweiterte Raum
+//! 0x100–0xFFF (DVSEC, AER, PTM, Resizable BAR …) über das speicherabgebildete Fenster, das die
+//! ACPI-Tabelle MCFG nennt – `PciDev::r32x/w32x/ext_caps`. Ohne MCFG (alte Rechner) liefern sie `None`.
 
 use crate::arch::{inl, outl};
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU64, Ordering};
+
+/// ECAM-Fenster von Segment 0: Basis (Adresse von Bus 0), erster und letzter Bus (Bits 0–7 / 8–15).
+static ECAM_BASE: AtomicU64 = AtomicU64::new(0);
+static ECAM_BUSES: AtomicU64 = AtomicU64::new(0);
+
+/// Liest die ACPI-Tabelle MCFG und bildet das ECAM-Fenster von Segment 0 ab (Gerätespeicher,
+/// ohne Zwischenspeicher). Vor `scan()` aufrufen. Gibt die Basis zurück (0 = kein ECAM).
+pub fn init_ecam(rsdp: u64) -> u64 {
+    // SICHERHEIT: find_table liest nur die von der Firmware übergebenen ACPI-Tabellen, die im
+    // 1:1-abgebildeten Speicher liegen; MCFG-Einträge werden nur innerhalb der Tabellenlänge gelesen.
+    let Some(t) = (unsafe { crate::apic::find_table(rsdp, b"MCFG") }) else {
+        return 0;
+    };
+    let len = unsafe { core::ptr::read_unaligned((t + 4) as *const u32) } as u64;
+    let mut off = 44;
+    while off + 16 <= len {
+        // Eintrag: Basis u64, Segment u16, erster Bus u8, letzter Bus u8, reserviert u32
+        let base = unsafe { core::ptr::read_unaligned((t + off) as *const u64) };
+        let seg = unsafe { core::ptr::read_unaligned((t + off + 8) as *const u16) };
+        let (first, last) = unsafe { (*((t + off + 10) as *const u8), *((t + off + 11) as *const u8)) };
+        off += 16;
+        if seg != 0 || base == 0 || last < first || base & 0xf_ffff != 0 {
+            continue;
+        }
+        let start = base + ((first as u64) << 20);
+        let end = base + ((last as u64 + 1) << 20);
+        crate::paging::map_identity(start, end, true);
+        ECAM_BUSES.store(first as u64 | (last as u64) << 8, Ordering::Relaxed);
+        ECAM_BASE.store(base, Ordering::Release);
+        return base;
+    }
+    0
+}
+
+/// Adresse eines Registers im ECAM-Fenster, wenn Bus und Offset darin liegen.
+fn ecam_addr(b: u8, d: u8, f: u8, off: u16) -> Option<u64> {
+    let base = ECAM_BASE.load(Ordering::Acquire);
+    let buses = ECAM_BUSES.load(Ordering::Relaxed);
+    let (first, last) = ((buses & 0xff) as u8, (buses >> 8 & 0xff) as u8);
+    if base == 0 || b < first || b > last || d > 31 || f > 7 || off > 0xffc {
+        return None;
+    }
+    Some(base + ((b as u64) << 20 | (d as u64) << 15 | (f as u64) << 12 | (off as u64 & 0xffc)))
+}
+
+/// Erweiterter Konfigurationsraum lesen (0x000–0xFFF), `None` ohne ECAM.
+pub fn read32x(b: u8, d: u8, f: u8, off: u16) -> Option<u32> {
+    // SICHERHEIT: ecam_addr liefert nur Adressen im von init_ecam abgebildeten ECAM-Fenster
+    // (Gerätespeicher, PCD/PWT); 32-Bit-Zugriff auf 4-Byte-ausgerichtete Register, volatil.
+    ecam_addr(b, d, f, off).map(|a| unsafe { core::ptr::read_volatile(a as *const u32) })
+}
+
+/// Erweiterter Konfigurationsraum schreiben; `false` ohne ECAM.
+pub fn write32x(b: u8, d: u8, f: u8, off: u16, v: u32) -> bool {
+    match ecam_addr(b, d, f, off) {
+        Some(a) => {
+            // SICHERHEIT: wie read32x – nur im abgebildeten ECAM-Fenster, ausgerichtet, volatil.
+            unsafe { core::ptr::write_volatile(a as *mut u32, v) };
+            true
+        }
+        None => false,
+    }
+}
+
+/// Ist der erweiterte Konfigurationsraum (ECAM) verfügbar?
+pub fn ecam_available() -> bool {
+    ECAM_BASE.load(Ordering::Acquire) != 0
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Bar {
@@ -61,6 +134,33 @@ impl PciDev {
     }
     pub fn r8(&self, off: u8) -> u8 {
         read8(self.bus, self.dev, self.func, off)
+    }
+    /// Erweiterter Konfigurationsraum (0x000–0xFFF, PCIe/ECAM); `None` ohne ECAM.
+    pub fn r32x(&self, off: u16) -> Option<u32> {
+        read32x(self.bus, self.dev, self.func, off)
+    }
+    /// Erweiterter Konfigurationsraum schreiben; `false` ohne ECAM.
+    pub fn w32x(&self, off: u16, v: u32) -> bool {
+        write32x(self.bus, self.dev, self.func, off, v)
+    }
+    /// Erweiterte Fähigkeiten ab 0x100: (Position, Kennung, Version) – z. B. 0x23 = DVSEC,
+    /// 0x01 = AER, 0x15 = Resizable BAR. Leer ohne ECAM oder ohne erweiterte Fähigkeiten.
+    pub fn ext_caps(&self) -> Vec<(u16, u16, u8)> {
+        let mut v = Vec::new();
+        let mut p: u16 = 0x100;
+        for _ in 0..64 {
+            let Some(h) = self.r32x(p) else { break };
+            if h == 0 || h == 0xffff_ffff {
+                break;
+            }
+            v.push((p, (h & 0xffff) as u16, ((h >> 16) & 0xf) as u8));
+            let next = ((h >> 20) & 0xffc) as u16;
+            if next < 0x100 || next <= p {
+                break;
+            }
+            p = next;
+        }
+        v
     }
     /// Speicherzugriff + Bus-Master (DMA) an, alte INTx-Interrupts aus (wir fragen ab)
     pub fn enable(&self) {
