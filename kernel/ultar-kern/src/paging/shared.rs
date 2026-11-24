@@ -7,7 +7,13 @@ use super::{nx, AddrSpace, ADDR, OWN, P, U, W};
 impl AddrSpace {
     /// Map `frames` (pages this address space does not own) at `va` and remember `what` keeps them alive.
     /// `false`: no memory for a page table or the list – nothing stays mapped.
-    pub fn map_shared(&self, va: u64, frames: &[u64], writable: bool, what: crate::memfd::Backing) -> bool {
+    pub fn map_shared(
+        &self,
+        va: u64,
+        frames: &[u64],
+        writable: bool,
+        what: crate::memfd::Backing,
+    ) -> bool {
         let end = va + frames.len() as u64 * 4096;
         {
             let mut l = self.shared.lock();
@@ -63,7 +69,9 @@ impl AddrSpace {
 
     /// Move the own page at `from` (if any) to `to`, where nothing is mapped. `false`: no page table.
     pub fn move_page(&self, from: u64, to: u64) -> bool {
-        let Some(e) = self.walk(from) else { return true };
+        let Some(e) = self.walk(from) else {
+            return true;
+        };
         if *e & P == 0 || *e & OWN == 0 {
             return true;
         }
@@ -77,12 +85,19 @@ impl AddrSpace {
 
     /// Access rights (write, execute) of the reserved range holding `va`.
     pub fn reserved_at(&self, va: u64) -> Option<(bool, bool)> {
-        self.lazy.lock().iter().find(|r| va >= r.0 && va < r.1).map(|r| (r.2, r.3))
+        self.lazy
+            .lock()
+            .iter()
+            .find(|r| va >= r.0 && va < r.1)
+            .map(|r| (r.2, r.3))
     }
 
     /// Whether a shared mapping touches `[va, va + len)`.
     pub fn has_shared(&self, va: u64, len: u64) -> bool {
-        self.shared.lock().iter().any(|r| r.0 < va + len && r.1 > va)
+        self.shared
+            .lock()
+            .iter()
+            .any(|r| r.0 < va + len && r.1 > va)
     }
 
     /// The child of `fork` maps the same shared pages (they stay shared, as on Linux).
@@ -105,11 +120,12 @@ impl AddrSpace {
                 }
                 v += 4096;
             }
-            if frames.len() as u64 * 4096 == b - a && !n.map_shared(*a, &frames, writable, what.clone()) {
+            if frames.len() as u64 * 4096 == b - a
+                && !n.map_shared(*a, &frames, writable, what.clone())
+            {
                 return false;
             }
         }
         true
     }
-
 }

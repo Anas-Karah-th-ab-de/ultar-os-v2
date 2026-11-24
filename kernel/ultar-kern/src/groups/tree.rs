@@ -1,10 +1,19 @@
 //! Shape of the group tree: names, creating and removing groups, the automatic group of a cell.
 
-use super::{branch_of, chain, is_live, parent, release_if_done, slot, GroupError, CELLS, DYING, FIXED, FREE, LIMITS, LIVE, MAX_DEPTH, MAX_GROUPS, MAX_NAME, NO_LIMIT, ROOT, SESSION, SYSTEM, TREE};
+use super::{
+    branch_of, chain, is_live, parent, release_if_done, slot, GroupError, CELLS, DYING, FIXED,
+    FREE, LIMITS, LIVE, MAX_DEPTH, MAX_GROUPS, MAX_NAME, NO_LIMIT, ROOT, SESSION, SYSTEM, TREE,
+};
 use core::sync::atomic::Ordering;
 
 fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name.len() <= MAX_NAME && name != "." && name != ".." && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    !name.is_empty()
+        && name.len() <= MAX_NAME
+        && name != "."
+        && name != ".."
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
 fn name_is(g: u16, name: &str) -> bool {
@@ -21,7 +30,8 @@ pub fn name(g: u16, out: &mut [u8; MAX_NAME]) -> usize {
 
 /// Live child of `parent_group` called `name`.
 pub fn child(parent_group: u16, name: &str) -> Option<u16> {
-    (1..MAX_GROUPS as u16).find(|&g| is_live(g) && parent(g) == parent_group && g != ROOT && name_is(g, name))
+    (1..MAX_GROUPS as u16)
+        .find(|&g| is_live(g) && parent(g) == parent_group && g != ROOT && name_is(g, name))
 }
 
 /// Live children of `g`, in slot order; calls `f` for each.
@@ -52,11 +62,22 @@ pub fn create(parent_group: u16, name: &str, auto: bool) -> Result<u16, GroupErr
     if child(parent_group, name).is_some() {
         return Err(GroupError::Exists);
     }
-    let g = (FIXED..MAX_GROUPS as u16).find(|&g| slot(g).state.load(Ordering::Relaxed) == FREE).ok_or(GroupError::NoSpace)?;
+    let g = (FIXED..MAX_GROUPS as u16)
+        .find(|&g| slot(g).state.load(Ordering::Relaxed) == FREE)
+        .ok_or(GroupError::NoSpace)?;
     let s = slot(g);
     s.auto.store(auto, Ordering::Relaxed);
     s.parent.store(parent_group, Ordering::Relaxed);
-    for a in [&s.mem, &s.mem_peak, &s.pids, &s.pids_peak, &s.own, &s.events[0], &s.events[1], &s.events[2]] {
+    for a in [
+        &s.mem,
+        &s.mem_peak,
+        &s.pids,
+        &s.pids_peak,
+        &s.own,
+        &s.events[0],
+        &s.events[1],
+        &s.events[2],
+    ] {
         a.store(0, Ordering::Relaxed);
     }
     s.mem_max.store(NO_LIMIT, Ordering::Relaxed);
@@ -98,7 +119,12 @@ pub fn remove(g: u16) -> Result<(), GroupError> {
 /// belongs to the trusted branches (`system`, `session`, the kernel), otherwise a child of the
 /// starter's own group – a process can never leave the limits of its group by starting a cell.
 pub fn create_cell(of: u16, pid: u64) -> Result<u16, GroupError> {
-    let under = if matches!(of, ROOT | SYSTEM | SESSION) || matches!(branch_of(of), SYSTEM | SESSION) { CELLS } else { of };
+    let under =
+        if matches!(of, ROOT | SYSTEM | SESSION) || matches!(branch_of(of), SYSTEM | SESSION) {
+            CELLS
+        } else {
+            of
+        };
     let mut buf = [0u8; 24];
     let mut i = buf.len();
     let mut v = pid;

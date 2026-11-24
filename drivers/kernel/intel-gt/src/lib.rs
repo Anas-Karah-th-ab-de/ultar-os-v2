@@ -5,7 +5,7 @@
 //! run 3D and compute work. It is the base of hardware acceleration for the compositor and of
 //! local models on the integrated GPU (plan: `docs/integration/intel-gt.md`).
 //!
-//! Stages G0 to G1c (command buffers) of that plan live here:
+//! Stages G0 to G3 (first job on an engine) of that plan live here:
 //!
 //! * [`ident`] – which graphics and media IP the device has (GMD_ID),
 //! * [`forcewake`] – waking the GT power domains before their registers are touched,
@@ -16,6 +16,8 @@
 //! * [`ads`], [`params`], [`hxg`], [`hwconfig`] – the data block the firmware starts with, its boot
 //!   parameters, messages over registers and the hardware configuration table,
 //! * [`ctb`] – the command buffers (requests, responses, events),
+//! * [`mi`], [`lrc`], [`submit`] – commands, the context image and the messages that make the
+//!   GuC run a context on an engine,
 //! * [`state`] – a read-out of all of that for the kernel log and the self test.
 //!
 //! Hardware: graphics 12.70/12.71/12.74 (Meteor Lake / Arrow Lake, "Xe_LPG", e.g. the Arc 140T
@@ -45,9 +47,13 @@ pub mod guc;
 pub mod hwconfig;
 pub mod hxg;
 pub mod ident;
+pub mod lrc;
+pub mod mi;
 pub mod params;
+pub mod ppgtt;
 pub mod regs;
 pub mod state;
+pub mod submit;
 pub mod wopcm;
 
 #[cfg(test)]

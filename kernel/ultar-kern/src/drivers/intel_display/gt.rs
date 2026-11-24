@@ -7,11 +7,14 @@
 //! Stage G1a/G1b: the self test (GTTEST) loads the GuC firmware from the boot medium, resets the
 //! GuC, hands over signature, image and the minimal ADS block through the GGTT, waits until the
 //! firmware is ready, asks it for the hardware config table over the register message channel,
-//! switches the command buffers (CTB) on and sends a first request through them.
-//! The GuC is put back into reset afterwards: engines and submission come with stage G3.
+//! then loads a second time with the full ADS (engines, register lists, golden context slots) and
+//! all features, switches the command buffers (CTB) on and sends a first request through them.
+//! Stage G3 (`gt_job`): contexts for the copy, render and compute engine are registered and
+//! enabled, and their commands (in the ring, then in a batch in the context's own address space)
+//! must store a value in memory. The GuC is put back into reset afterwards.
 
 use super::device::Device;
-use super::gt_mem::GgttBuf;
+use super::gt_mem::{GgttBuf, TableMem, Words};
 use super::mmio::Mmio;
 use super::DEVICE;
 use crate::kprintln;
@@ -82,6 +85,8 @@ struct Loaded {
     hwconfig: Option<Result<(u32, usize), String>>,
     /// What the request over the command buffers brought, if the GuC got ready.
     ctb: Option<Result<String, String>>,
+    /// What the jobs on the engines brought, if the command buffers work.
+    jobs: Vec<(&'static str, Result<String, String>)>,
 }
 
 /// GuC action: opt into features by a list of keys in memory.
@@ -89,8 +94,38 @@ const ACTION_OPT_IN_FEATURE_KLV: u32 = 0x550e;
 /// Key (length 0): report the extended kind of a memory access fault.
 const KLV_OPT_IN_EXT_CAT_ERR_TYPE: u32 = 0x4001 << 16;
 
-/// Switches the command buffers on and sends the first request Linux sends over them.
-fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, String> {
+/// Switches the command buffers on and sends the first request Linux sends over them; then runs
+/// jobs on the engines. Returns what the request and each job brought.
+fn ctb_and_jobs(
+    dev: &mut Device,
+    mem: &mut Memory,
+) -> (
+    Result<String, String>,
+    Vec<(&'static str, Result<String, String>)>,
+) {
+    let mut channel = None;
+    let ctb = ctb_request(dev, &mut mem.bufs, &mut channel);
+    let jobs = match channel {
+        Some((mut ct, mut words)) => {
+            super::gt_job::jobs(dev, &mut mem.bufs, &mut ct, &mut words, &mut mem.tables)
+        }
+        None => Vec::new(),
+    };
+    (ctb, jobs)
+}
+
+/// What a load keeps until the GuC is back in reset: buffers and page tables.
+#[derive(Default)]
+struct Memory {
+    bufs: Vec<GgttBuf>,
+    tables: TableMem,
+}
+
+fn ctb_request(
+    dev: &mut Device,
+    bufs: &mut Vec<GgttBuf>,
+    channel: &mut Option<(Ct, Words)>,
+) -> Result<String, String> {
     let ct_gtt = buffer(dev, bufs, ctb::SIZE_BYTES as u64)?;
     let mut mem = bufs.last().map(GgttBuf::words).ok_or("no CTB buffer")?;
     let klv_gtt = buffer(dev, bufs, 4096)?;
@@ -104,6 +139,7 @@ fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, Stri
         .request(&mut dev.mmio, &mut mem, &action, 1_000_000)
         .map_err(|e| format!("request: {e}"))?;
     let us = (crate::arch::uptime_ns() - t0) / 1000;
+    *channel = Some((ct, mem));
     Ok(format!(
         "opt-in request answered in {us} µs (data {data0:#x}, {} event(s))",
         events.len()
@@ -112,7 +148,7 @@ fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, Stri
 
 /// Allocates a GuC buffer, keeps it in `bufs` (released by the caller) and returns its GGTT
 /// address.
-fn buffer(dev: &mut Device, bufs: &mut Vec<GgttBuf>, bytes: u64) -> Result<u32, String> {
+pub(super) fn buffer(dev: &mut Device, bufs: &mut Vec<GgttBuf>, bytes: u64) -> Result<u32, String> {
     let buf = GgttBuf::new(dev, bytes)?;
     let gtt = buf.gtt;
     bufs.push(buf);
@@ -142,6 +178,51 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
     Ok((size, entries.len()))
 }
 
+/// The boot parameter words for this device and load.
+fn boot_params(
+    dev: &Device,
+    img: &fw::GucImage,
+    log_ggtt: u32,
+    ads_ggtt: u32,
+    stage: Stage,
+) -> Result<[u32; guc::PARAM_WORDS], String> {
+    let (b, d, f) = dev.pci;
+    Params {
+        log_ggtt,
+        ads_ggtt,
+        devid: crate::pci::read16(b, d, f, 0x02),
+        revid: crate::pci::read8(b, d, f, 0x08),
+        release: img.release,
+    }
+    .words(stage)
+    .map_err(|e| format!("{e}"))
+}
+
+/// Builds the ADS block of `stage` in a new buffer; returns its GGTT address and size.
+fn ads_block(
+    dev: &mut Device,
+    bufs: &mut Vec<GgttBuf>,
+    img: &fw::GucImage,
+    stage: Stage,
+) -> Result<(u32, u64), String> {
+    let private = img.private_data_size;
+    let ads_size = match stage {
+        Stage::Minimal => ads::minimal_size(private),
+        Stage::Full => ads::full_size(private, &ads::XE_LPG_ENGINES),
+    } as u64;
+    let ads_gtt = buffer(dev, bufs, ads_size)?;
+    let doorbells = dev.mmio.read(regs::DIST_DBS_POPULATED);
+    let blob = match stage {
+        Stage::Minimal => ads::minimal(ads_gtt, private, doorbells),
+        Stage::Full => ads::full(ads_gtt, private, doorbells, &ads::XE_LPG_ENGINES),
+    }
+    .map_err(|e| format!("{e}"))?;
+    if let Some(b) = bufs.last_mut() {
+        b.fill(&blob);
+    }
+    Ok((ads_gtt, ads_size))
+}
+
 /// Maps image, log and the minimal ADS, resets the GuC, uploads and – if it gets ready – talks
 /// to it.
 fn load(
@@ -149,34 +230,20 @@ fn load(
     file: &[u8],
     img: &fw::GucImage,
     wopcm_size: u32,
-    bufs: &mut Vec<GgttBuf>,
+    stage: Stage,
+    mem: &mut Memory,
 ) -> Result<Loaded, String> {
+    let bufs = &mut mem.bufs;
     let image_gtt = buffer(dev, bufs, file.len() as u64)?;
     if let Some(b) = bufs.last_mut() {
         b.fill(file);
     }
     let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
-    let ads_size = ads::minimal_size(img.private_data_size) as u64;
-    let ads_gtt = buffer(dev, bufs, ads_size)?;
-    let doorbells = dev.mmio.read(regs::DIST_DBS_POPULATED);
-    let blob =
-        ads::minimal(ads_gtt, img.private_data_size, doorbells).map_err(|e| format!("{e}"))?;
-    if let Some(b) = bufs.last_mut() {
-        b.fill(&blob);
-    }
+    let (ads_gtt, ads_size) = ads_block(dev, bufs, img, stage)?;
     for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
         guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
     }
-    let (b, d, f) = dev.pci;
-    let params = Params {
-        log_ggtt: log_gtt,
-        ads_ggtt: ads_gtt,
-        devid: crate::pci::read16(b, d, f, 0x02),
-        revid: crate::pci::read8(b, d, f, 0x08),
-        release: img.release,
-    }
-    .words(Stage::Minimal)
-    .map_err(|e| format!("{e}"))?;
+    let params = boot_params(dev, img, log_gtt, ads_gtt, stage)?;
     guc::reset(&mut dev.mmio).map_err(|e| format!("{e}"))?;
     let status = match guc::upload(
         &mut dev.mmio,
@@ -191,28 +258,42 @@ fn load(
         Err(e) => return Err(format!("{e}")),
     };
     let ready = status.load() == guc::Load::Ready;
-    let hwconfig = ready.then(|| hwconfig_table(dev, bufs));
-    let ctb = ready.then(|| ctb_request(dev, bufs));
+    // first load: the register channel; second load: the command buffers
+    let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
+    let (ctb, jobs) = match ready && stage == Stage::Full {
+        true => {
+            let (ctb, jobs) = ctb_and_jobs(dev, mem);
+            (Some(ctb), jobs)
+        }
+        false => (None, Vec::new()),
+    };
     Ok(Loaded {
         status,
         hwconfig,
         ctb,
+        jobs,
     })
 }
 
 /// Loads the GuC with `file`; afterwards the GuC is back in reset and every buffer is freed.
-fn upload(dev: &mut Device, file: &[u8], img: &fw::GucImage) -> Result<Loaded, String> {
+fn upload(
+    dev: &mut Device,
+    file: &[u8],
+    img: &fw::GucImage,
+    stage: Stage,
+) -> Result<Loaded, String> {
     let layout = wopcm::init(&mut dev.mmio, wopcm::MTL_WOPCM_SIZE, img.upload_size(), 0)
         .map_err(|e| format!("{e}"))?;
-    let mut bufs: Vec<GgttBuf> = Vec::new();
-    let result = load(dev, file, img, layout.size, &mut bufs);
+    let mut mem = Memory::default();
+    let result = load(dev, file, img, layout.size, stage, &mut mem);
     // the GuC must not keep running on buffers that are about to be freed
     if let Err(e) = guc::reset(&mut dev.mmio) {
         kprintln!("GTTEST: GuC reset after the upload: {e}");
     }
-    for b in bufs {
+    for b in mem.bufs {
         b.release(dev);
     }
+    mem.tables.release();
     result
 }
 
@@ -262,32 +343,36 @@ fn guc_check(dev: &mut Device, r: &mut Report) {
     if let Err(e) = fwk.get(&mut dev.mmio, Domain::Gt) {
         return r.check(false, "GT forcewake", &format!("{e}"));
     }
-    let t0 = crate::arch::uptime_ms();
-    let res = upload(dev, &file, &img);
-    let ms = crate::arch::uptime_ms() - t0;
+    for stage in [Stage::Minimal, Stage::Full] {
+        let t0 = crate::arch::uptime_ms();
+        let res = upload(dev, &file, &img, stage);
+        let ms = crate::arch::uptime_ms() - t0;
+        match res {
+            Ok(l) => report_load(r, &l, stage, ms),
+            Err(e) => r.check(false, "GuC upload", &e),
+        }
+    }
     if let Err(e) = fwk.put(&mut dev.mmio, Domain::Gt) {
         kprintln!("GTTEST: forcewake release: {e}");
-    }
-    match res {
-        Ok(l) => report_load(r, &l, ms),
-        Err(e) => r.check(false, "GuC upload", &e),
     }
 }
 
 /// Reports what a load brought.
-fn report_load(r: &mut Report, l: &Loaded, ms: u64) {
+fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
     let st = l.status;
     let took = format!("{st} ({ms} ms)");
-    r.check(
-        st.authenticated(),
-        "GuC image transferred and signature accepted",
-        &took,
-    );
-    r.check(
-        st.load() == guc::Load::Ready,
-        "GuC ready with the minimal ADS",
-        "",
-    );
+    let (accepted, ready) = match stage {
+        Stage::Minimal => (
+            "GuC image transferred and signature accepted",
+            "GuC ready with the minimal ADS",
+        ),
+        Stage::Full => (
+            "GuC image accepted again (second load)",
+            "GuC ready with the full ADS (render, copy, compute engine; features on)",
+        ),
+    };
+    r.check(st.authenticated(), accepted, &took);
+    r.check(st.load() == guc::Load::Ready, ready, "");
     match &l.hwconfig {
         Some(Ok((size, entries))) => r.check(
             *entries > 0,
@@ -301,6 +386,12 @@ fn report_load(r: &mut Report, l: &Loaded, ms: u64) {
         Some(Ok(t)) => r.check(true, "command buffers (CTB)", t),
         Some(Err(e)) => r.check(false, "command buffers (CTB)", e),
         None => {}
+    }
+    for (what, result) in &l.jobs {
+        match result {
+            Ok(t) => r.check(true, what, t),
+            Err(e) => r.check(false, what, e),
+        }
     }
 }
 

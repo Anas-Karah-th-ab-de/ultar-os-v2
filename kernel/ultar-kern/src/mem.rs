@@ -22,7 +22,15 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Size of a page frame.
 pub const PAGE: u64 = 4096;
-static BUDDY: spin::Mutex<Buddy> = spin::Mutex::new(Buddy { head: [[0; MAX_ORDER + 1]; 2], meta: core::ptr::null_mut(), base: 0, pages: 0, free: 0, cache: [0; CACHE], cached: 0 });
+static BUDDY: spin::Mutex<Buddy> = spin::Mutex::new(Buddy {
+    head: [[0; MAX_ORDER + 1]; 2],
+    meta: core::ptr::null_mut(),
+    base: 0,
+    pages: 0,
+    free: 0,
+    cache: [0; CACHE],
+    cached: 0,
+});
 static TOTAL: AtomicU64 = AtomicU64::new(0);
 static REGIONS: AtomicU64 = AtomicU64::new(0);
 static RESERVE: AtomicU64 = AtomicU64::new(0);
@@ -32,7 +40,11 @@ static META: [AtomicU64; 3] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::
 
 /// Highest address of the working memory according to the firmware map.
 pub fn top(boot: &Boot) -> u64 {
-    boot.regions().filter(|d| matches!(d.typ, 1..=7 | 9 | 10)).map(|d| d.phys + d.pages * PAGE).max().unwrap_or(1 << 32)
+    boot.regions()
+        .filter(|d| matches!(d.typ, 1..=7 | 9 | 10))
+        .map(|d| d.phys + d.pages * PAGE)
+        .max()
+        .unwrap_or(1 << 32)
 }
 
 const MAXR: usize = 256;
@@ -43,7 +55,10 @@ const MAXR: usize = 256;
 unsafe fn usable_regions(boot: &Boot, out: &mut [(u64, u64); MAXR]) -> usize {
     let rsp: u64;
     core::arch::asm!("mov {}, rsp", out(reg) rsp);
-    let (s0, s1) = ((rsp & !0x1f_ffff).saturating_sub(0x20_0000), (rsp | 0x1f_ffff) + 1);
+    let (s0, s1) = (
+        (rsp & !0x1f_ffff).saturating_sub(0x20_0000),
+        (rsp | 0x1f_ffff) + 1,
+    );
     let low = crate::paging::USER_LOW_END;
     let mut n = 0;
     let mut add = |start: u64, end: u64| {
@@ -81,13 +96,20 @@ pub unsafe fn init(boot: &Boot) {
     let mut regions = [(0u64, 0u64); MAXR];
     let n = usable_regions(boot, &mut regions);
     let regions = &mut regions[..n];
-    let (Some(lo), Some(hi)) = (regions.iter().map(|r| r.0).min(), regions.iter().map(|r| r.1).max()) else { return };
+    let (Some(lo), Some(hi)) = (
+        regions.iter().map(|r| r.0).min(),
+        regions.iter().map(|r| r.1).max(),
+    ) else {
+        return;
+    };
     let pages = (hi - lo) / PAGE;
     let meta_bytes = (pages * core::mem::size_of::<Meta>() as u64 + PAGE - 1) & !(PAGE - 1);
     let sum: u64 = regions.iter().map(|r| r.1 - r.0).sum();
     let emergency = (sum / 256).clamp(1 << 20, 8 << 20) & !(PAGE - 1);
     // records and emergency heap come out of the largest region
-    let Some(best) = regions.iter_mut().max_by_key(|r| r.1 - r.0) else { return };
+    let Some(best) = regions.iter_mut().max_by_key(|r| r.1 - r.0) else {
+        return;
+    };
     if best.1 - best.0 < meta_bytes + emergency + (4 << 20) {
         return;
     }
@@ -109,7 +131,10 @@ pub unsafe fn init(boot: &Boot) {
     FREE_PAGES.store(b.free, Ordering::Relaxed);
     TOTAL.store(total, Ordering::Relaxed);
     REGIONS.store(n as u64, Ordering::Relaxed);
-    RESERVE.store((total / 64).clamp(4 << 20, 64 << 20).min(total / 4), Ordering::Relaxed);
+    RESERVE.store(
+        (total / 64).clamp(4 << 20, 64 << 20).min(total / 4),
+        Ordering::Relaxed,
+    );
     drop(b);
     groups::init(total);
 }
@@ -137,7 +162,9 @@ pub fn free_bytes() -> u64 {
 /// `n` contiguous zeroed pages for a driver (DMA: physical address = pointer), preferably below
 /// 4 GiB. Forced, charged to the kernel, never given back.
 pub fn alloc_pages(n: usize) -> Option<u64> {
-    let a = BUDDY.lock().take(n as u64, 0, true, ST_USED, groups::ROOT)?;
+    let a = BUDDY
+        .lock()
+        .take(n as u64, 0, true, ST_USED, groups::ROOT)?;
     groups::charge_forced(groups::ROOT, n as u64 * PAGE);
     // SAFETY: the pages were just taken from the allocator and are identity-mapped.
     unsafe { core::ptr::write_bytes(a as *mut u8, 0, n * PAGE as usize) };
@@ -206,7 +233,13 @@ pub(crate) fn free_run(addr: u64, pages: u64) {
 /// A chunk for the small-object heap: `pages` pages marked with the chunk slot. Not charged (the
 /// objects inside are). `keep_reserve`: do not go below the kernel reserve.
 pub(crate) fn alloc_chunk(pages: u64, slot: u16, keep_reserve: bool) -> Option<u64> {
-    BUDDY.lock().take(pages, if keep_reserve { reserve_pages() } else { 0 }, false, ST_HEAP, slot)
+    BUDDY.lock().take(
+        pages,
+        if keep_reserve { reserve_pages() } else { 0 },
+        false,
+        ST_HEAP,
+        slot,
+    )
 }
 
 /// Give a heap chunk back.
@@ -219,7 +252,13 @@ pub(crate) fn free_chunk(addr: u64, pages: u64) {
 /// Pages for a slab of small objects, every page marked with the size class. Not charged (the
 /// objects inside are).
 pub(crate) fn alloc_slab(pages: u64, class: u16, keep_reserve: bool) -> Option<u64> {
-    BUDDY.lock().take(pages, if keep_reserve { reserve_pages() } else { 0 }, false, ST_SLAB, class)
+    BUDDY.lock().take(
+        pages,
+        if keep_reserve { reserve_pages() } else { 0 },
+        false,
+        ST_SLAB,
+        class,
+    )
 }
 
 /// Give a slab back.
@@ -241,7 +280,11 @@ pub(crate) enum HeapPage {
 /// Whether `addr` lies in a heap chunk or a slab. Read without the allocator's lock: the record of
 /// a page cannot change while an object in it is alive, and the caller holds such an object.
 pub(crate) fn heap_page(addr: u64) -> Option<HeapPage> {
-    let (meta, base, pages) = (META[0].load(Ordering::Relaxed) as *const Meta, META[1].load(Ordering::Relaxed), META[2].load(Ordering::Relaxed));
+    let (meta, base, pages) = (
+        META[0].load(Ordering::Relaxed) as *const Meta,
+        META[1].load(Ordering::Relaxed),
+        META[2].load(Ordering::Relaxed),
+    );
     if meta.is_null() || addr < base || (addr - base) / PAGE >= pages {
         return None;
     }

@@ -53,11 +53,16 @@ impl Driver for Drv {
             }
         }
         // Empfangspuffer: je ein Deskriptor pro 2-KB-Puffer
-        let pages = alloc_pages((RXN as usize * BUFSZ as usize).div_ceil(4096)).ok_or("kein Speicher")?;
+        let pages =
+            alloc_pages((RXN as usize * BUFSZ as usize).div_ceil(4096)).ok_or("kein Speicher")?;
         let mut rxbufs = Vec::new();
         for i in 0..rx.size.min(RXN) as u64 {
             let a = pages + i * BUFSZ;
-            rx.submit(&[Buf { addr: a, len: BUFSZ as u32, write: true }]);
+            rx.submit(&[Buf {
+                addr: a,
+                len: BUFSZ as u32,
+                write: true,
+            }]);
             rxbufs.push(a);
         }
         t.ready();
@@ -65,8 +70,25 @@ impl Driver for Drv {
         let txbuf = alloc_pages(1).ok_or("kein Speicher")?;
         let mut nl = NET.lock();
         let name = format!("eth{}", nl.len());
-        crate::kprintln!("[virtio-net] {name}: MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        nl.push(Box::new(Nic { name, mac, rx, tx, rxbufs, txbuf, cfg: t.device, features: f }));
+        crate::kprintln!(
+            "[virtio-net] {name}: MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]
+        );
+        nl.push(Box::new(Nic {
+            name,
+            mac,
+            rx,
+            tx,
+            rxbufs,
+            txbuf,
+            cfg: t.device,
+            features: f,
+        }));
         Ok(())
     }
     fn can_remove(&self) -> core::result::Result<(), &'static str> {
@@ -115,18 +137,32 @@ impl NetDev for Nic {
         }
         unsafe {
             core::ptr::write_bytes(self.txbuf as *mut u8, 0, HDR);
-            core::ptr::copy_nonoverlapping(frame.as_ptr(), (self.txbuf + HDR as u64) as *mut u8, frame.len());
+            core::ptr::copy_nonoverlapping(
+                frame.as_ptr(),
+                (self.txbuf + HDR as u64) as *mut u8,
+                frame.len(),
+            );
         }
-        self.tx.submit(&[Buf { addr: self.txbuf, len: (HDR + frame.len()) as u32, write: false }]);
+        self.tx.submit(&[Buf {
+            addr: self.txbuf,
+            len: (HDR + frame.len()) as u32,
+            write: false,
+        }]);
         self.tx.kick();
         self.tx.wait(1000).ok_or("Senden: Zeitüberschreitung")?;
         Ok(())
     }
     fn recv(&mut self, buf: &mut [u8]) -> Option<usize> {
         let (head, len) = self.rx.poll()?;
-        let a = self.rxbufs.get(head as usize).copied().unwrap_or(self.rxbufs[0]);
+        let a = self
+            .rxbufs
+            .get(head as usize)
+            .copied()
+            .unwrap_or(self.rxbufs[0]);
         let n = (len as usize).saturating_sub(HDR).min(buf.len());
-        unsafe { core::ptr::copy_nonoverlapping((a + HDR as u64) as *const u8, buf.as_mut_ptr(), n) };
+        unsafe {
+            core::ptr::copy_nonoverlapping((a + HDR as u64) as *const u8, buf.as_mut_ptr(), n)
+        };
         self.rx.resubmit(head);
         self.rx.kick();
         Some(n)

@@ -79,12 +79,21 @@ static ATTRS: Mutex<BTreeMap<String, Attr>> = Mutex::new(BTreeMap::new());
 
 /// Who asks: ids, whether every check passes (`FILE_ADMIN`; the kernel console counts as that), umask.
 fn subject() -> (Cred, bool, u32) {
-    with(|p| (p.g.iso.cred, p.g.iso.rights.has(Rights::FILE_ADMIN), p.g.umask)).unwrap_or((Cred::ROOT, true, 0o22))
+    with(|p| {
+        (
+            p.g.iso.cred,
+            p.g.iso.rights.has(Rights::FILE_ADMIN),
+            p.g.umask,
+        )
+    })
+    .unwrap_or((Cred::ROOT, true, 0o22))
 }
 
 /// The kernel's own trees: no modes, their gates are rights.
 fn exempt(path: &str) -> bool {
-    ["/proc", "/dev", "/sys"].iter().any(|d| crate::isolation::mount::below(path, d).is_some())
+    ["/proc", "/dev", "/sys"]
+        .iter()
+        .any(|d| crate::isolation::mount::below(path, d).is_some())
 }
 
 /// Attributes of the entry at host path `path`; `None` if nothing is there.
@@ -95,14 +104,30 @@ pub fn of(path: &str) -> Option<Attr> {
     if dev_node(path) {
         // the installer's whole-disk nodes (rawpart.rs): root:installer, the medium read only
         if path.starts_with("/dev/ultar/disk/") || path == "/dev/ultar/medium" {
-            let mode = if path == "/dev/ultar/medium" { 0o440 } else { 0o660 };
-            return Some(Attr { mode: S_IFBLK | mode, uid: 0, gid: crate::rawpart::INSTALLER_ID });
+            let mode = if path == "/dev/ultar/medium" {
+                0o440
+            } else {
+                0o660
+            };
+            return Some(Attr {
+                mode: S_IFBLK | mode,
+                uid: 0,
+                gid: crate::rawpart::INSTALLER_ID,
+            });
         }
-        return Some(Attr { mode: S_IFCHR | if raw_device(path) { 0o600 } else { 0o666 }, uid: 0, gid: 0 });
+        return Some(Attr {
+            mode: S_IFCHR | if raw_device(path) { 0o600 } else { 0o666 },
+            uid: 0,
+            gid: 0,
+        });
     }
     // a link itself (only reached without following it): the disk lookup below would follow it
     if tmpfs::readlink(path).is_some() || fs::disk_link(path).is_some() {
-        return Some(Attr { mode: S_IFLNK | 0o777, uid: 0, gid: 0 });
+        return Some(Attr {
+            mode: S_IFLNK | 0o777,
+            uid: 0,
+            gid: 0,
+        });
     }
     if let Some((mode, uid, gid)) = fs::disk_attr(path) {
         return Some(Attr { mode, uid, gid });
@@ -112,7 +137,11 @@ pub fn of(path: &str) -> Option<Attr> {
         (1, _) => S_IFDIR | 0o755,
         _ => S_IFCHR | 0o666,
     };
-    Some(Attr { mode, uid: 0, gid: 0 })
+    Some(Attr {
+        mode,
+        uid: 0,
+        gid: 0,
+    })
 }
 
 /// Store the attributes of `path`: in the inode on a writable ext4, else in the table.
@@ -129,8 +158,20 @@ pub fn store(path: &str, attr: Attr) {
 /// them from others) and `/run` (root only). Kept in memory unless the disk already has them.
 pub fn standard_dirs() {
     for (dir, mode) in [("/tmp", 0o1777), ("/run", 0o755)] {
-        if fs::stat(dir).is_none() && tmpfs::store(&alloc::format!("{dir}/"), alloc::sync::Arc::new(alloc::vec::Vec::new())) {
-            store(dir, Attr { mode: S_IFDIR | mode, uid: 0, gid: 0 });
+        if fs::stat(dir).is_none()
+            && tmpfs::store(
+                &alloc::format!("{dir}/"),
+                alloc::sync::Arc::new(alloc::vec::Vec::new()),
+            )
+        {
+            store(
+                dir,
+                Attr {
+                    mode: S_IFDIR | mode,
+                    uid: 0,
+                    gid: 0,
+                },
+            );
         }
     }
 }
@@ -142,8 +183,19 @@ pub fn created(path: &str, kind: u32, mode: u32) {
         return;
     }
     let (cred, _, umask) = subject();
-    let perm = if kind == S_IFLNK { 0o777 } else { mode & 0o7777 & !umask };
-    store(path, Attr { mode: kind | perm, uid: cred.euid(), gid: cred.egid() });
+    let perm = if kind == S_IFLNK {
+        0o777
+    } else {
+        mode & 0o7777 & !umask
+    };
+    store(
+        path,
+        Attr {
+            mode: kind | perm,
+            uid: cred.euid(),
+            gid: cred.egid(),
+        },
+    );
 }
 
 /// The entry at `path` is gone.
@@ -153,12 +205,18 @@ pub fn forget(path: &str) {
 
 /// A whole tree (a tmpfs) is gone.
 pub fn forget_tree(root: &str) {
-    ATTRS.lock().retain(|k, _| crate::isolation::mount::below(k, root).is_none());
+    ATTRS
+        .lock()
+        .retain(|k, _| crate::isolation::mount::below(k, root).is_none());
 }
 
-/// The entry moved (`rename`).
+/// The entry moved (`rename`; called while the old name is still there). Mode and owner go with it
+/// wherever they are kept: in the table, or in the old name's inode on a writable ext4 (the new name
+/// is a new inode there, root's and `0644` – a private file, written as `.name.new` with `0600` and
+/// renamed, came out readable for everybody, and its owner was refused `chmod` on it).
 pub fn moved(from: &str, to: &str) {
-    let old = ATTRS.lock().remove(from);
+    let kept = ATTRS.lock().remove(from);
+    let old = kept.or_else(|| fs::disk_attr(from).map(|(mode, uid, gid)| Attr { mode, uid, gid }));
     match old {
         Some(a) => store(to, a),
         None => forget(to),
@@ -223,7 +281,11 @@ pub fn may_remove(path: &str) -> Result<(), i64> {
         return Ok(());
     }
     match (of(&dir), of(path)) {
-        (Some(d), Some(e)) if d.mode & STICKY != 0 && cred.euid() != e.uid && cred.euid() != d.uid => Err(-EPERM),
+        (Some(d), Some(e))
+            if d.mode & STICKY != 0 && cred.euid() != e.uid && cred.euid() != d.uid =>
+        {
+            Err(-EPERM)
+        }
         _ => Ok(()),
     }
 }
@@ -256,7 +318,16 @@ pub fn open_gate(path: &str, acc: u64, truncate: bool, create: bool) -> Result<(
         return Err(-6);
     }
     if dev_node(path) {
-        return dev_gate(path, if acc == 0 { R } else if acc == 1 { W } else { R | W });
+        return dev_gate(
+            path,
+            if acc == 0 {
+                R
+            } else if acc == 1 {
+                W
+            } else {
+                R | W
+            },
+        );
     }
     let (_, admin, _) = subject();
     if admin || exempt(path) {
@@ -304,7 +375,13 @@ fn chmod_host(path: &str, mode: u64) -> i64 {
     if !admin && cred.euid() != a.uid {
         return -EPERM;
     }
-    store(path, Attr { mode: a.mode & S_IFMT | mode as u32 & 0o7777, ..a });
+    store(
+        path,
+        Attr {
+            mode: a.mode & S_IFMT | mode as u32 & 0o7777,
+            ..a
+        },
+    );
     0
 }
 
@@ -313,13 +390,24 @@ fn chmod_host(path: &str, mode: u64) -> i64 {
 fn chown_host(path: &str, uid: u32, gid: u32) -> i64 {
     let (cred, admin, _) = subject();
     let Some(a) = of(path) else { return -ENOENT };
-    let (new_uid, new_gid) = (if uid == KEEP { a.uid } else { uid }, if gid == KEEP { a.gid } else { gid });
-    let own_group_only = cred.euid() == a.uid && new_uid == a.uid && (new_gid == a.gid || cred.in_group(new_gid));
+    let (new_uid, new_gid) = (
+        if uid == KEEP { a.uid } else { uid },
+        if gid == KEEP { a.gid } else { gid },
+    );
+    let own_group_only =
+        cred.euid() == a.uid && new_uid == a.uid && (new_gid == a.gid || cred.in_group(new_gid));
     if !admin && !own_group_only {
         return -EPERM;
     }
     let mode = if admin { a.mode } else { a.mode & !0o6000 };
-    store(path, Attr { mode, uid: new_uid, gid: new_gid });
+    store(
+        path,
+        Attr {
+            mode,
+            uid: new_uid,
+            gid: new_gid,
+        },
+    );
     0
 }
 
@@ -364,7 +452,9 @@ pub fn sys_access(dirfd: i64, path: u64, mode: u64, flags: u64) -> i64 {
         Ok(l) => l,
         Err(e) => return e,
     };
-    let Some(a) = of(&loc.host) else { return -ENOENT };
+    let Some(a) = of(&loc.host) else {
+        return -ENOENT;
+    };
     let (mut cred, admin, _) = subject();
     if flags & AT_EACCESS == 0 {
         (cred.uid[1], cred.gid[1]) = (cred.uid[0], cred.gid[0]);

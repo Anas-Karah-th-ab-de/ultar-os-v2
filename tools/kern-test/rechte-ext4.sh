@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # File modes and owners on a writable ext4 (R3-K1): boots the kernel with a second disk that holds an
 # ext4 labelled ultar-data (mounted writable as /data), runs `rechtetest --ext4 /data` (write, fsync,
-# chmod 0640, chown 1000:100, mkdir 0750 for 2000:200), stops the machine while the file is still open
+# chmod 0640, chown 1000:100, mkdir 0750 for 2000:200; as user 1000 a private file written with 0600 and
+# renamed, then chmod by its owner), stops the machine while the file is still open
 # and checks on the host that data, modes and owners are on the disk and the file system is clean.
 # Needs: mke2fs, debugfs, e2fsck (e2fsprogs), python3, the image from `IMG=1 scripts/build-kern.sh`.
 set -euo pipefail
@@ -35,7 +36,9 @@ if grep -aqiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=
 # what the disk holds after the hard stop
 dd if="$DISK" of="$D" bs=512 skip=2048 count=$(( $(stat -c %s "$D") / 512 )) conv=notrunc status=none
 st() { debugfs -R "stat $1" "$D" 2>/dev/null | tr '\n' ' '; }
-f="$(st /rt-dauer)"; s="$(st /rt-ordner)"
+f="$(st /rt-dauer)"; s="$(st /rt-ordner)"; k="$(st /rt-eigen/schluessel)"
+# a private file written as .name.new (0600) and renamed keeps mode and owner (here 0400 after its owner's chmod)
+[[ "$k" =~ Mode:\ +0400 && "$k" =~ User:\ +1000\  && "$k" =~ Group:\ +100\  ]] || { echo "FAIL  renamed private file on disk: ${k:0:160}"; fail=1; }
 [[ "$f" =~ Mode:\ +0640 && "$f" =~ User:\ +1000\  && "$f" =~ Group:\ +100\  && "$f" =~ Size:\ +8192 ]] || { echo "FAIL  file on disk: ${f:0:160}"; fail=1; }
 [[ "$s" =~ Type:\ directory && "$s" =~ Mode:\ +0750 && "$s" =~ User:\ +2000\  && "$s" =~ Group:\ +200\  ]] || { echo "FAIL  directory on disk: ${s:0:160}"; fail=1; }
 debugfs -R "cat /rt-dauer" "$D" 2>/dev/null | cmp -s - <(python3 -c "import sys; sys.stdout.write(''.join(chr(65 + i % 23) for i in range(8192)))") || { echo "FAIL  file content on disk"; fail=1; }

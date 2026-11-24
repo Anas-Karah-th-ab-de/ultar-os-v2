@@ -41,10 +41,22 @@ pub fn missing() -> alloc::vec::Vec<String> {
             .bars
             .iter()
             .enumerate()
-            .filter_map(|(i, x)| x.map(|b| format!("{{\"bar\":{i},\"adresse\":\"{:#x}\",\"groesse\":{},\"io\":{}}}", b.addr, b.size, b.io)))
+            .filter_map(|(i, x)| {
+                x.map(|b| {
+                    format!(
+                        "{{\"bar\":{i},\"adresse\":\"{:#x}\",\"groesse\":{},\"io\":{}}}",
+                        b.addr, b.size, b.io
+                    )
+                })
+            })
             .collect::<alloc::vec::Vec<_>>()
             .join(",");
-        let caps: String = d.caps().iter().map(|(_, id)| format!("{id}")).collect::<alloc::vec::Vec<_>>().join(",");
+        let caps: String = d
+            .caps()
+            .iter()
+            .map(|(_, id)| format!("{id}"))
+            .collect::<alloc::vec::Vec<_>>()
+            .join(",");
         out.push(format!(
             "{{\"pci\":\"{:02x}:{:02x}.{}\",\"hersteller\":\"{:04x}\",\"geraet\":\"{:04x}\",\"subsystem\":\"{:04x}:{:04x}\",\"klasse\":\"{:02x}{:02x}{:02x}\",\"rev\":{},\"art\":\"{}\",\"bauplan\":\"{kind}\",\"norm\":\"{spec}\",\"bars\":[{bars}],\"faehigkeiten\":[{caps}],\"fehler\":{}}}",
             d.bus, d.dev, d.func, d.vendor, d.device, d.subsys_vendor, d.subsys, d.class, d.subclass, d.prog_if, d.rev,

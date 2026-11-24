@@ -1113,6 +1113,28 @@ def _bt_switch_left_of(screen, x_text, y0, y1):
     return None
 
 
+def _bt_solid(screen, box):
+    """Whether what the recogniser boxed as a word is a control (a switch's track) and no text: a straight
+    line runs along its top and along its bottom (the track's outline, across the middle of its width);
+    letters have no such lines."""
+    x0, y0, x1, y1 = box
+    if x1 - x0 < 36 or y1 - y0 < 20:
+        return False
+
+    def px(x, y):
+        i = (y * screen.w + x) * 3
+        return screen.px[i:i + 3]
+
+    ground = px(max(0, x0 - 6), (y0 + y1) // 2)
+    xs = range(x0 + (x1 - x0) * 3 // 10, x1 - (x1 - x0) * 3 // 10)
+
+    def line(ys):
+        return any(all(sum(abs(int(p) - int(q)) for p, q in zip(px(x, y), ground)) > 30 for x in xs)
+                   for y in ys if 0 <= y < screen.h)
+
+    return line(range(y0 - 2, y0 + 4)) and line(range(y1 - 4, y1 + 2))
+
+
 def bluetooth_scan(vm, m, pos):
     """Settings > Bluetooth (opened with the keyboard), then the pointer: the search switch (found on the
     screen) is clicked, the service scans (the controller's log has its inquiry and LE scan commands) and the
@@ -1142,8 +1164,10 @@ def bluetooth_scan(vm, m, pos):
         close_all(vm)
         return [f"bluetooth: no search switch on the page (no usable controller?); read: {page[:200]}"]
     b = max(rows, key=lambda r: r[1])
-    # the row: its label and the note under it (words that start within 30 points below)
-    band = [wb for _, wb in words if b[1] - 4 <= wb[1] <= b[1] + 30]
+    # the row: its label and the note under it (words that start within 30 points below). The recogniser
+    # may read the switch itself as a "word" (a pill with a knob): what it found there is no text, the row's
+    # texts end before it
+    band = [wb for _, wb in words if b[1] - 4 <= wb[1] <= b[1] + 30 and not _bt_solid(screen, wb)]
     at = _bt_switch_left_of(screen, min(wb[0] for wb in band), b[1] - 10, max(wb[3] for wb in band) + 6)
     log(f"bluetooth: window {box}, search row at {b}, switch at {at}")
     if not at:
@@ -1384,6 +1408,28 @@ def run(vm, m):
     if os.environ.get("GATE_ONLY") == "net":
         failures = network_pages(vm, m, pos)
         log("VMWARE-INPUT: GATE_ONLY=net " + ("FEHLER " + "; ".join(failures) if failures else "ok (no verdict)"))
+        return 1
+    # GATE_ONLY=phone (for looking for a hang that shows only now and then, never a verdict): the phone is
+    # opened PHONE_OPENS times from the app grid, each time a new process, and must answer every time
+    if os.environ.get("GATE_ONLY") == "phone":
+        bad = []
+        opens = int(os.environ.get("PHONE_OPENS", "8"))
+        for n in range(1, opens + 1):
+            vm.move(vm.size[0] // 2, vm.size[1] // 2)
+            vm.pump(1)
+            before = vm.shot("before-phone")
+            vm.click(*pos["all"])
+            ok, grid = m.wait_for(vm, "allapps", lambda x: x.diff(before, work(vm)) > 0.1, 30)
+            clicked = time.time()
+            vm.click(*phone_tile(*vm.size))
+            if not ok or not app_window(vm, "app-phone", before, unlike=grid):
+                bad.append(f"open {n}: phone did not open")
+            else:
+                bad += [f"open {n}: {p}" for p in phone_responds(vm, time.time() - clicked, before)]
+            if bad:
+                break  # the screenshots of the failed open stay
+            close_all(vm)
+        log(f"VMWARE-INPUT: GATE_ONLY=phone {opens} opens " + ("FEHLER " + "; ".join(bad) if bad else "ok (no verdict)"))
         return 1
     # Bluetooth scan (only in the run with the scripted controller; that run ends with it)
     if getattr(vm, "bt_log", None):

@@ -2,7 +2,10 @@
 //! Startseite – alles in der Systemsprache (Arabisch von rechts nach links). Das Startprotokoll läuft weiter über die
 //! serielle Schnittstelle und `protokoll`; die Konsole ist eine Kachel („Terminal“), `oberflaeche` führt zurück.
 
-use crate::install::{self as gui, Canvas, Eingabe, Lang, Taste, BAR, BG, CARD, DARK, GOLD, GOLD2, GREEN, LINE, MUTED, RED, TEXT};
+use crate::install::{
+    self as gui, Canvas, Eingabe, Lang, Taste, BAR, BG, CARD, DARK, GOLD, GOLD2, GREEN, LINE,
+    MUTED, RED, TEXT,
+};
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -94,7 +97,15 @@ fn s(k: &str) -> &'static str {
 fn leinwand() -> Option<(crate::efi::Framebuffer, Canvas)> {
     let fb = crate::console::framebuffer()?;
     let (w, h) = (fb.width as usize, fb.height as usize);
-    Some((fb, Canvas { w, h, px: vec![BG; w * h], rtl: lang() == Lang::Ar }))
+    Some((
+        fb,
+        Canvas {
+            w,
+            h,
+            px: vec![BG; w * h],
+            rtl: lang() == Lang::Ar,
+        },
+    ))
 }
 
 /// Kopfleiste mit Marke (wie in der Installation)
@@ -121,7 +132,9 @@ pub fn startbild(prozent: u32, schritt: &str) {
     if !crate::sprache::FEST.load(core::sync::atomic::Ordering::Relaxed) {
         return;
     }
-    let Some((fb, mut cv)) = leinwand() else { return };
+    let Some((fb, mut cv)) = leinwand() else {
+        return;
+    };
     let (w, h) = (cv.w as i32, cv.h as i32);
     let my = h / 2 - 90;
     cv.text_c(w / 2, my, ultar_brand::product_caps!(), 6, GOLD2);
@@ -192,13 +205,15 @@ impl Seite {
         match cfg {
             Some(c) => {
                 let nic = crate::net::active_nic();
-                let ping = crate::net::ping(nic, [1, 1, 1, 1]).or_else(|| crate::net::ping(nic, c.gw));
+                let ping =
+                    crate::net::ping(nic, [1, 1, 1, 1]).or_else(|| crate::net::ping(nic, c.gw));
                 self.internet = Some(ping.is_some());
                 self.netz = alloc::format!(
                     "IP {}  ·  {}{}",
                     gui::ip_text(c.ip),
                     gui::t(l, if ping.is_some() { "inet_ok" } else { "inet_no" }),
-                    ping.map(|ms| alloc::format!(" ({ms} ms)")).unwrap_or_default()
+                    ping.map(|ms| alloc::format!(" ({ms} ms)"))
+                        .unwrap_or_default()
                 );
             }
             None => {
@@ -209,16 +224,44 @@ impl Seite {
     }
 
     /// Kachel: gerahmte Fläche mit Titel und Untertitel (primär = Gold)
-    fn kachel(&mut self, x: i32, y: i32, w: i32, h: i32, titel: &str, unter: &str, a: Aktion, primaer: bool) {
+    fn kachel(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        titel: &str,
+        unter: &str,
+        a: Aktion,
+        primaer: bool,
+    ) {
         let fokus = self.knoepfe.len() == self.fokus;
         if primaer {
-            self.cv.rrect(x, y, w, h, 16, if fokus { GOLD2 } else { GOLD });
+            self.cv
+                .rrect(x, y, w, h, 16, if fokus { GOLD2 } else { GOLD });
         } else {
-            self.cv.frame(x, y, w, h, 16, if fokus { GOLD2 } else { LINE }, CARD, if fokus { 2 } else { 1 });
+            self.cv.frame(
+                x,
+                y,
+                w,
+                h,
+                16,
+                if fokus { GOLD2 } else { LINE },
+                CARD,
+                if fokus { 2 } else { 1 },
+            );
         }
-        let (c1, c2) = if primaer { (DARK, 0x3A3010) } else { (TEXT, MUTED) };
+        let (c1, c2) = if primaer {
+            (DARK, 0x3A3010)
+        } else {
+            (TEXT, MUTED)
+        };
         let sc = Canvas::passend(titel, 2, w - 28);
-        let ty = if unter.is_empty() { y + h / 2 - 14 } else { y + h / 2 - 26 };
+        let ty = if unter.is_empty() {
+            y + h / 2 - 14
+        } else {
+            y + h / 2 - 26
+        };
         self.cv.text_c(x + w / 2, ty, titel, sc, c1);
         if !unter.is_empty() {
             let sc2 = Canvas::passend(unter, 1, w - 24);
@@ -231,7 +274,11 @@ impl Seite {
     fn zeile(&mut self, kx: i32, kw: i32, y: i32, t: &str, scale: i32, col: u32) {
         let sc = Canvas::passend(t, scale, kw - 64);
         let tw = Canvas::text_w(t, sc);
-        let x = if self.rtl() { kx + kw - 32 - tw } else { kx + 32 };
+        let x = if self.rtl() {
+            kx + kw - 32 - tw
+        } else {
+            kx + 32
+        };
         self.cv.text(x, y, t, sc, col);
     }
 
@@ -257,7 +304,12 @@ impl Seite {
         let mut nb = [0u8; 48];
         let (total, _, _, _) = crate::mem::stats();
         let (on, _) = crate::apic::cpu_count();
-        let cpu = alloc::format!("{}: {} · {on} {}", s("prozessor"), crate::arch::cpu_name(&mut nb).trim(), s("kerne"));
+        let cpu = alloc::format!(
+            "{}: {} · {on} {}",
+            s("prozessor"),
+            crate::arch::cpu_name(&mut nb).trim(),
+            s("kerne")
+        );
         self.zeile(kx, kw, ky + 86, &cpu, 1, MUTED);
         let mut lw = String::new();
         for p in gui::platten() {
@@ -266,7 +318,14 @@ impl Seite {
             }
             lw.push_str(&alloc::format!("{} {} GB", p.name, (p.mb + 512) / 1024));
         }
-        let mem = alloc::format!("{}: {} MB {}  ·  {}: {}", s("speicher"), total >> 20, s("frei"), s("laufwerke"), lw);
+        let mem = alloc::format!(
+            "{}: {} MB {}  ·  {}: {}",
+            s("speicher"),
+            total >> 20,
+            s("frei"),
+            s("laufwerke"),
+            lw
+        );
         self.zeile(kx, kw, ky + 116, &mem, 1, MUTED);
         let netz = alloc::format!("{}: {}", s("netz"), self.netz);
         let farbe = match self.internet {
@@ -276,7 +335,9 @@ impl Seite {
         };
         let netz_c = netz.clone();
         self.zeile(kx, kw, ky + 146, &netz_c, 1, farbe);
-        let wlan = gui::geraete_gruppen().iter().any(|g| g.0 == "cat_wlan" && g.2 < g.1);
+        let wlan = gui::geraete_gruppen()
+            .iter()
+            .any(|g| g.0 == "cat_wlan" && g.2 < g.1);
         if wlan {
             self.zeile(kx, kw, ky + 176, s("wlan"), 1, GOLD);
         }
@@ -289,7 +350,12 @@ impl Seite {
         let ip = self.netz.clone();
         let kacheln: [(&str, String, Aktion, bool); 6] = [
             (s("terminal"), String::new(), Aktion::Terminal, true),
-            (s("geraete"), alloc::format!("{}", crate::driver::DEVICES.lock().len()), Aktion::Geraete, false),
+            (
+                s("geraete"),
+                alloc::format!("{}", crate::driver::DEVICES.lock().len()),
+                Aktion::Geraete,
+                false,
+            ),
             (s("netz"), ip, Aktion::Netz, false),
             (s("sprache"), String::new(), Aktion::Sprache, false),
             (s("neustart"), String::new(), Aktion::Neustart, false),
@@ -327,8 +393,22 @@ impl Seite {
             .map(|b| {
                 let d = &b.dev;
                 // Geräteart in der Systemsprache (Gruppe), Kennungen und Treiber unverändert
-                let art = if l == Lang::De { String::from(d.class_name()) } else { String::from(gui::t(l, gui::kategorie(d.class, d.subclass))) };
-                (alloc::format!("{}  {:04x}:{:04x}  ·  {}", d.id(), d.vendor, d.device, b.driver.unwrap_or("–")), b.driver.is_some(), art)
+                let art = if l == Lang::De {
+                    String::from(d.class_name())
+                } else {
+                    String::from(gui::t(l, gui::kategorie(d.class, d.subclass)))
+                };
+                (
+                    alloc::format!(
+                        "{}  {:04x}:{:04x}  ·  {}",
+                        d.id(),
+                        d.vendor,
+                        d.device,
+                        b.driver.unwrap_or("–")
+                    ),
+                    b.driver.is_some(),
+                    art,
+                )
             })
             .collect();
         let unten = ky + kh - 52 - 20;
@@ -340,10 +420,18 @@ impl Seite {
             let col = if *ok { TEXT } else { MUTED };
             // Art in der Sprache (Spalte am Rand), Kennungen immer von links
             let aw = Canvas::text_w(art, 1);
-            let (ax, ix) = if self.rtl() { (kx + kw - 32 - aw, kx + 32) } else { (kx + 32, kx + 260) };
+            let (ax, ix) = if self.rtl() {
+                (kx + kw - 32 - aw, kx + 32)
+            } else {
+                (kx + 32, kx + 260)
+            };
             self.cv.text(ax, y, art, 1, col);
             self.cv.rtl = false;
-            let iw = if self.rtl() { kw - 64 - aw - 20 } else { kw - 260 - 32 };
+            let iw = if self.rtl() {
+                kw - 64 - aw - 20
+            } else {
+                kw - 260 - 32
+            };
             let sc = Canvas::passend(t, 1, iw);
             self.cv.text(ix, y, t, sc, col);
             self.cv.rtl = lang() == Lang::Ar;
@@ -352,7 +440,11 @@ impl Seite {
         // Knöpfe: Zurück, Seite weiter
         let bw = 190;
         let seite_t = alloc::format!("{} {}/{}", s("seite"), seite + 1, seiten);
-        let (zx, wx) = if self.rtl() { (kx + kw - 24 - bw, kx + 24) } else { (kx + 24, kx + kw - 24 - bw) };
+        let (zx, wx) = if self.rtl() {
+            (kx + kw - 24 - bw, kx + 24)
+        } else {
+            (kx + 24, kx + kw - 24 - bw)
+        };
         self.kachel(zx, unten, bw, 52, s("zurueck"), "", Aktion::Zurueck, false);
         if seiten > 1 {
             self.kachel(wx, unten, bw, 52, s("weiter"), "", Aktion::Seite(1), true);
@@ -361,7 +453,9 @@ impl Seite {
     }
 
     fn treffer(&self, x: i32, y: i32) -> Option<usize> {
-        self.knoepfe.iter().position(|k| x >= k.x && x < k.x + k.w && y >= k.y && y < k.y + k.h)
+        self.knoepfe
+            .iter()
+            .position(|k| x >= k.x && x < k.x + k.w && y >= k.y && y < k.y + k.h)
     }
 
     /// Aktion ausführen; true = Startseite verlassen (Terminal)
@@ -408,7 +502,16 @@ pub fn run() {
     let Some((fb, cv)) = leinwand() else { return };
     crate::drivers::ps2maus::init(cv.w, cv.h);
     crate::console::grafik(true);
-    let mut sei = Seite { fb, cv, knoepfe: Vec::new(), fokus: 0, geraete: None, netz: String::new(), internet: None, zeiger: (0, 0) };
+    let mut sei = Seite {
+        fb,
+        cv,
+        knoepfe: Vec::new(),
+        fokus: 0,
+        geraete: None,
+        netz: String::new(),
+        internet: None,
+        zeiger: (0, 0),
+    };
     sei.netz_pruefen(false);
     sei.zeichnen();
     gui::blit(&sei.fb, &sei.cv);
@@ -426,8 +529,20 @@ pub fn run() {
             match k {
                 Taste::Tab | Taste::Runter => sei.fokus = (sei.fokus + 1) % n,
                 Taste::Hoch => sei.fokus = (sei.fokus + n - 1) % n,
-                Taste::Rechts => sei.fokus = if rtl { (sei.fokus + n - 1) % n } else { (sei.fokus + 1) % n },
-                Taste::Links => sei.fokus = if rtl { (sei.fokus + 1) % n } else { (sei.fokus + n - 1) % n },
+                Taste::Rechts => {
+                    sei.fokus = if rtl {
+                        (sei.fokus + n - 1) % n
+                    } else {
+                        (sei.fokus + 1) % n
+                    }
+                }
+                Taste::Links => {
+                    sei.fokus = if rtl {
+                        (sei.fokus + 1) % n
+                    } else {
+                        (sei.fokus + n - 1) % n
+                    }
+                }
                 Taste::Enter => aktion = sei.knoepfe.get(sei.fokus).map(|k| k.a),
                 Taste::Esc => aktion = sei.geraete.map(|_| Aktion::Zurueck),
                 Taste::Zeichen(c) => {

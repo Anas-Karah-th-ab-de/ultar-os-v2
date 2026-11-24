@@ -18,7 +18,10 @@ pub fn wanted() -> bool {
 }
 
 fn programm(name: &str) -> Option<String> {
-    ["/bin/", "/boot/efi/bin/"].iter().map(|d| alloc::format!("{d}{name}")).find(|p| matches!(crate::fs::stat(p), Some((0, _))))
+    ["/bin/", "/boot/efi/bin/"]
+        .iter()
+        .map(|d| alloc::format!("{d}{name}"))
+        .find(|p| matches!(crate::fs::stat(p), Some((0, _))))
 }
 
 pub fn run() {
@@ -30,15 +33,34 @@ pub fn run() {
         }
     }
     let t0 = crate::arch::uptime_ms();
-    kprintln!("=== Ultar-Kern Selbsttest (Version {}) ===", env!("CARGO_PKG_VERSION"));
-    kprintln!("Zeit (RTC, UTC): {} s seit 1970", crate::syscall::epoch_secs());
+    kprintln!(
+        "=== Ultar-Kern Selbsttest (Version {}) ===",
+        env!("CARGO_PKG_VERSION")
+    );
+    kprintln!(
+        "Zeit (RTC, UTC): {} s seit 1970",
+        crate::syscall::epoch_secs()
+    );
     shell::info();
     let (on, all) = crate::apic::cpu_count();
-    kprintln!("[test] Prozessorkerne: {on} von {all} gestartet {}", if on as usize == all { "OK" } else { "– TEILWEISE" });
+    kprintln!(
+        "[test] Prozessorkerne: {on} von {all} gestartet {}",
+        if on as usize == all {
+            "OK"
+        } else {
+            "– TEILWEISE"
+        }
+    );
     kprintln!("[test] PCI-Geräte:");
     for b in DEVICES.lock().iter() {
         let d = &b.dev;
-        kprintln!("  {}  {:<28} {}", d.id(), d.class_name(), b.driver.unwrap_or(if b.error.is_some() { "FEHLER" } else { "-" }));
+        kprintln!(
+            "  {}  {:<28} {}",
+            d.id(),
+            d.class_name(),
+            b.driver
+                .unwrap_or(if b.error.is_some() { "FEHLER" } else { "-" })
+        );
         if let Some(e) = &b.error {
             kprintln!("      Fehler: {e}");
         }
@@ -71,9 +93,20 @@ pub fn run() {
             let mut buf = vec![0u8; d.sector_size().max(512)];
             let t = crate::arch::uptime_ms();
             let ok = d.read(0, &mut buf).is_ok();
-            (d.name(), d.sectors() * d.sector_size() as u64 >> 20, ok, crate::arch::uptime_ms() - t)
+            (
+                d.name(),
+                d.sectors() * d.sector_size() as u64 >> 20,
+                ok,
+                crate::arch::uptime_ms() - t,
+            )
         };
-        kprintln!("  {}: {} MB, Sektor 0 lesen {} ({} ms)", r.0, r.1, if r.2 { "OK" } else { "FEHLER" }, r.3);
+        kprintln!(
+            "  {}: {} MB, Sektor 0 lesen {} ({} ms)",
+            r.0,
+            r.1,
+            if r.2 { "OK" } else { "FEHLER" },
+            r.3
+        );
         shell::partitions(i);
     }
     kprintln!("[test] Dateisysteme:");
@@ -85,7 +118,13 @@ pub fn run() {
     } else {
         let cfg = *crate::net::CONFIG.lock();
         match cfg {
-            Some(c) => kprintln!("[test] Netz: DHCP OK, IP {}.{}.{}.{}", c.ip[0], c.ip[1], c.ip[2], c.ip[3]),
+            Some(c) => kprintln!(
+                "[test] Netz: DHCP OK, IP {}.{}.{}.{}",
+                c.ip[0],
+                c.ip[1],
+                c.ip[2],
+                c.ip[3]
+            ),
             None => kprintln!("[test] Netz: DHCP ohne Antwort (Kabel gesteckt?)"),
         }
         if let Some(c) = cfg {
@@ -98,7 +137,28 @@ pub fn run() {
     // Programme in Ring 3 (vom Stick): Fäden, Signale, Sockets, epoll, glibc; zelltest = escape tests of the isolation;
     // grenztest = resource groups, limits and the attacks that must not stop the machine;
     // ultar-compositor-testclient kerncheck = compositor on fb0 + two app processes (verdict COMPOSITOR-CHECK:)
-    for (p, args) in [("kerntest", vec!["kerntest"]), ("ereignis", vec!["ereignis"]), ("hallo-glibc", vec!["hallo-glibc"]), ("busck", vec!["busck"]), ("zelltest", vec!["zelltest"]), ("rechtetest", vec!["rechtetest"]), ("geraetetest", vec!["geraetetest"]), ("weckertest", vec!["weckertest"]), ("spawntest", vec!["spawntest"]), ("fenstertest", vec!["fenstertest"]), ("grenztest", vec!["grenztest"]), ("ultar-compositor-testclient", vec!["ultar-compositor-testclient", "/tmp/ultar-ui", "kerncheck", "/bin/ultar-compositor"])] {
+    for (p, args) in [
+        ("kerntest", vec!["kerntest"]),
+        ("ereignis", vec!["ereignis"]),
+        ("hallo-glibc", vec!["hallo-glibc"]),
+        ("busck", vec!["busck"]),
+        ("zelltest", vec!["zelltest"]),
+        ("rechtetest", vec!["rechtetest"]),
+        ("geraetetest", vec!["geraetetest"]),
+        ("weckertest", vec!["weckertest"]),
+        ("spawntest", vec!["spawntest"]),
+        ("fenstertest", vec!["fenstertest"]),
+        ("grenztest", vec!["grenztest"]),
+        (
+            "ultar-compositor-testclient",
+            vec![
+                "ultar-compositor-testclient",
+                "/tmp/ultar-ui",
+                "kerncheck",
+                "/bin/ultar-compositor",
+            ],
+        ),
+    ] {
         match programm(p) {
             Some(path) => {
                 kprintln!("[test] Programm {p}:");
@@ -118,13 +178,21 @@ pub fn run() {
     // Intel NPU: clock fuses, power-up to a running IP block, power-down (NPUTEST: …)
     crate::drivers::intel_npu::selftest();
     crate::werkstatt::report();
-    kprintln!("[test] Dauer des Selbsttests: {} ms, Kern läuft seit {} ms", crate::arch::uptime_ms() - t0, crate::arch::uptime_ms());
+    kprintln!(
+        "[test] Dauer des Selbsttests: {} ms, Kern läuft seit {} ms",
+        crate::arch::uptime_ms() - t0,
+        crate::arch::uptime_ms()
+    );
     // Protokoll schreiben
     let mut log = alloc::vec::Vec::new();
     crate::klog::dump(|b| log.extend_from_slice(b));
     match crate::fs::fat_overwrite(DATEI, &log) {
-        Some(p) => kprintln!("[test] Protokoll geschrieben: {p} – Stick unter Windows öffnen und Datei schicken"),
-        None => kprintln!("[test] Protokoll konnte nicht geschrieben werden (Bildschirmfoto machen)"),
+        Some(p) => kprintln!(
+            "[test] Protokoll geschrieben: {p} – Stick unter Windows öffnen und Datei schicken"
+        ),
+        None => {
+            kprintln!("[test] Protokoll konnte nicht geschrieben werden (Bildschirmfoto machen)")
+        }
     }
     #[cfg(feature = "remote-test")]
     {

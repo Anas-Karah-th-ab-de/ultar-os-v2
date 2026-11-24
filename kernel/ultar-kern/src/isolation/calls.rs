@@ -32,7 +32,8 @@ pub const CLONE_NEWNS: u64 = 0x0002_0000;
 /// `clone`/`unshare` flag: new pid namespace.
 pub const CLONE_NEWPID: u64 = 0x2000_0000;
 /// Namespace kinds this stage does not have: cgroup, uts, ipc, user, net.
-pub const CLONE_NEW_UNSUPPORTED: u64 = 0x0200_0000 | 0x0400_0000 | 0x0800_0000 | 0x1000_0000 | 0x4000_0000;
+pub const CLONE_NEW_UNSUPPORTED: u64 =
+    0x0200_0000 | 0x0400_0000 | 0x0800_0000 | 0x1000_0000 | 0x4000_0000;
 
 const MS_RDONLY: u64 = 1;
 const MS_REMOUNT: u64 = 0x20;
@@ -68,7 +69,12 @@ fn with_threads<R>(f: impl FnOnce(&mut Proc, usize) -> R) -> Option<R> {
     let mut ps = PROCS.lock();
     let me = proc::current();
     let tgid = ps.iter().find(|p| p.pid == me)?.tgid;
-    let threads = ps.iter().filter(|p| p.tgid == tgid && !matches!(p.state, State::Dead | State::Zombie(_) | State::Exiting)).count();
+    let threads = ps
+        .iter()
+        .filter(|p| {
+            p.tgid == tgid && !matches!(p.state, State::Dead | State::Zombie(_) | State::Exiting)
+        })
+        .count();
     ps.iter_mut().find(|p| p.pid == me).map(|p| f(p, threads))
 }
 
@@ -76,7 +82,7 @@ fn with_threads<R>(f: impl FnOnce(&mut Proc, usize) -> R) -> Option<R> {
 /// With the right they behave as before (the operations themselves do not exist yet).
 pub fn gate(nr: u64) -> Option<i64> {
     let right = match nr {
-        175 | 176 | 313 => Rights::LOAD_DRIVER,   // init_module, delete_module, finit_module
+        175 | 176 | 313 => Rights::LOAD_DRIVER, // init_module, delete_module, finit_module
         159 | 164 | 227 | 305 => Rights::SET_TIME, // adjtimex, settimeofday, clock_settime, clock_adjtime
         _ => return None,
     };
@@ -88,7 +94,9 @@ pub fn sys_prctl(option: u64, arg: u64) -> i64 {
     match option {
         // PR_GET_AUXV (Linux 6.4+) is not provided: EINVAL makes glibc/Rust take their fallback
         PR_GET_AUXV => -EINVAL,
-        PR_CAPBSET_READ => Rights::from_linux_cap(arg).map(|r| holds(r) as i64).unwrap_or(0),
+        PR_CAPBSET_READ => Rights::from_linux_cap(arg)
+            .map(|r| holds(r) as i64)
+            .unwrap_or(0),
         PR_CAPBSET_DROP => {
             if let Some(r) = Rights::from_linux_cap(arg) {
                 with(|p| p.g.iso.rights.drop_mask(r.bits()));
@@ -115,25 +123,51 @@ fn dir_in_ns(iso: &Isolation, path: u64, follow: bool) -> Result<String, i64> {
     }
 }
 
-fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64) -> Result<(Source, bool, &'static str), i64> {
+fn mount_source(
+    iso: &Isolation,
+    source: u64,
+    fstype: u64,
+    flags: u64,
+    data: u64,
+) -> Result<(Source, bool, &'static str), i64> {
     if flags & MS_BIND != 0 {
         let from = dir_in_ns(iso, source, true)?;
         let (src, read_only) = iso.mnt.source_of(&from);
         return Ok((src, read_only, "none"));
     }
-    let kind = if fstype == 0 { String::new() } else { ustr(fstype).ok_or(-EFAULT)? };
+    let kind = if fstype == 0 {
+        String::new()
+    } else {
+        ustr(fstype).ok_or(-EFAULT)?
+    };
     match kind.as_str() {
         "tmpfs" | "ramfs" => {
             // `size=` in the mount options sets the quota of the tree (default: see isolation::tmpfs)
-            let options = if data == 0 { String::new() } else { ustr(data).ok_or(-EFAULT)? };
+            let options = if data == 0 {
+                String::new()
+            } else {
+                ustr(data).ok_or(-EFAULT)?
+            };
             let quota = crate::isolation::tmpfs::parse_size(&options).map_err(|_| -EINVAL)?;
-            let (mode, uid, gid) = crate::isolation::tmpfs::parse_root_attr(&options).map_err(|_| -EINVAL)?;
+            let (mode, uid, gid) =
+                crate::isolation::tmpfs::parse_root_attr(&options).map_err(|_| -EINVAL)?;
             let tree = Tmpfs::create(quota);
-            crate::perm::store(&tree.host_root(), crate::perm::Attr { mode: crate::perm::S_IFDIR | mode, uid, gid });
+            crate::perm::store(
+                &tree.host_root(),
+                crate::perm::Attr {
+                    mode: crate::perm::S_IFDIR | mode,
+                    uid,
+                    gid,
+                },
+            );
             Ok((Source::Tmpfs(tree, String::new()), false, "tmpfs"))
         }
         // the group tree, for a cell whose manager wants it visible inside
-        "cgroup2" => Ok((Source::Tree(String::from(crate::groups::files::ROOT_PATH)), false, "cgroup2")),
+        "cgroup2" => Ok((
+            Source::Tree(String::from(crate::groups::files::ROOT_PATH)),
+            false,
+            "cgroup2",
+        )),
         "proc" => Ok((Source::Tree(String::from("/proc")), false, "proc")),
         "devtmpfs" => Ok((Source::Tree(String::from("/dev")), false, "devtmpfs")),
         _ => Err(-ENODEV),
@@ -186,7 +220,10 @@ pub fn sys_umount(target: u64, flags: u64) -> i64 {
         Ok(a) => a,
         Err(e) => return e,
     };
-    iso.mnt.remove(&at, flags & MNT_DETACH != 0).map(|_| 0).unwrap_or_else(|e| e.errno())
+    iso.mnt
+        .remove(&at, flags & MNT_DETACH != 0)
+        .map(|_| 0)
+        .unwrap_or_else(|e| e.errno())
 }
 
 /// `pivot_root(new_root, put_old)`: `new_root` must be a mount point, `put_old` a directory below it.
@@ -198,7 +235,10 @@ pub fn sys_pivot_root(new_root: u64, put_old: u64) -> i64 {
     if iso.mnt.is_initial() || iso.root != "/" {
         return -EINVAL;
     }
-    let (new_root, put_old) = match (dir_in_ns(&iso, new_root, true), dir_in_ns(&iso, put_old, true)) {
+    let (new_root, put_old) = match (
+        dir_in_ns(&iso, new_root, true),
+        dir_in_ns(&iso, put_old, true),
+    ) {
         (Ok(n), Ok(p)) => (n, p),
         (Err(e), _) | (_, Err(e)) => return e,
     };
@@ -212,7 +252,10 @@ pub fn sys_pivot_root(new_root: u64, put_old: u64) -> i64 {
         return e.errno();
     }
     let mut seen: Vec<Shared<proc::Group>> = Vec::new();
-    for p in ps.iter_mut().filter(|p| Arc::ptr_eq(&p.g.iso.mnt, &iso.mnt)) {
+    for p in ps
+        .iter_mut()
+        .filter(|p| Arc::ptr_eq(&p.g.iso.mnt, &iso.mnt))
+    {
         if seen.iter().any(|g| g.same(&p.g)) {
             continue;
         }
@@ -306,7 +349,10 @@ pub fn sys_setns(fd: u64, nstype: u64) -> i64 {
                 p.g.cwd = String::from("/");
             }
             NsRef::Pid(ns) => {
-                if nstype != 0 && nstype != CLONE_NEWPID || !p.link.ns().contains(&ns) || ns.is_dead() {
+                if nstype != 0 && nstype != CLONE_NEWPID
+                    || !p.link.ns().contains(&ns)
+                    || ns.is_dead()
+                {
                     return -EINVAL;
                 }
                 p.g.iso.pid_ns_children = ns;
@@ -319,7 +365,9 @@ pub fn sys_setns(fd: u64, nstype: u64) -> i64 {
 
 /// `symlinkat(target, dirfd, linkpath)`: symbolic links exist on tmpfs mounts; elsewhere `EPERM` as before.
 pub fn sys_symlink(target: u64, dirfd: i64, linkpath: u64) -> i64 {
-    let (Some(target), Some(link)) = (ustr(target), ustr(linkpath)) else { return -EFAULT };
+    let (Some(target), Some(link)) = (ustr(target), ustr(linkpath)) else {
+        return -EFAULT;
+    };
     if target.is_empty() {
         return -ENOENT;
     }

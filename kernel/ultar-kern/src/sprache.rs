@@ -49,7 +49,10 @@ pub fn laden() {
 
 /// Sprache dauerhaft speichern (ext4 der Ultar-Partition)
 pub fn speichern() {
-    crate::fs::write_file("/etc/ultar/sprache", alloc::format!("{}\n", code()).into_bytes());
+    crate::fs::write_file(
+        "/etc/ultar/sprache",
+        alloc::format!("{}\n", code()).into_bytes(),
+    );
     // auch auf der Startpartition (gilt dann schon ab dem ersten Bild; bei der Installation auf der Nutzlast)
     crate::fs::fat_overwrite_alle("ultar/sprache", alloc::format!("{}\n", code()).as_bytes());
 }
@@ -125,21 +128,69 @@ pub fn t(k: &str) -> &'static str {
 /// Name einer Prozessor-Ausnahme (Vektor 0–19) in der Systemsprache – eine Sprache je Zeile
 pub fn ausnahme_name(v: u64) -> &'static str {
     const DE_N: [&str; 20] = [
-        "Division durch null", "Einzelschritt", "NMI", "Haltepunkt", "Überlauf", "Bereichsgrenze", "ungültiger Befehl",
-        "Gleitkomma nicht verfügbar", "Doppelfehler", "?", "ungültiges TSS", "Segment fehlt", "Stapelfehler",
-        "allgemeine Schutzverletzung", "Seitenfehler", "?", "Gleitkommafehler", "Ausrichtungsfehler", "Maschinenprüfung",
+        "Division durch null",
+        "Einzelschritt",
+        "NMI",
+        "Haltepunkt",
+        "Überlauf",
+        "Bereichsgrenze",
+        "ungültiger Befehl",
+        "Gleitkomma nicht verfügbar",
+        "Doppelfehler",
+        "?",
+        "ungültiges TSS",
+        "Segment fehlt",
+        "Stapelfehler",
+        "allgemeine Schutzverletzung",
+        "Seitenfehler",
+        "?",
+        "Gleitkommafehler",
+        "Ausrichtungsfehler",
+        "Maschinenprüfung",
         "SIMD-Gleitkommafehler",
     ];
     const EN_N: [&str; 20] = [
-        "divide error", "debug", "NMI", "breakpoint", "overflow", "bound range exceeded", "invalid opcode",
-        "device not available", "double fault", "?", "invalid TSS", "segment not present", "stack fault",
-        "general protection fault", "page fault", "?", "x87 floating-point error", "alignment check", "machine check",
+        "divide error",
+        "debug",
+        "NMI",
+        "breakpoint",
+        "overflow",
+        "bound range exceeded",
+        "invalid opcode",
+        "device not available",
+        "double fault",
+        "?",
+        "invalid TSS",
+        "segment not present",
+        "stack fault",
+        "general protection fault",
+        "page fault",
+        "?",
+        "x87 floating-point error",
+        "alignment check",
+        "machine check",
         "SIMD floating-point error",
     ];
     const AR_N: [&str; 20] = [
-        "قسمة على صفر", "خطوة منفردة", "مقاطعة غير قابلة للحجب", "نقطة توقف", "فيض", "تجاوز الحدود", "تعليمة غير صالحة",
-        "الفاصلة العائمة غير متاحة", "خطأ مزدوج", "?", "TSS غير صالح", "مقطع غير موجود", "خطأ في المكدس",
-        "خرق حماية عام", "خطأ صفحة", "?", "خطأ في الفاصلة العائمة", "خطأ محاذاة", "فحص الجهاز",
+        "قسمة على صفر",
+        "خطوة منفردة",
+        "مقاطعة غير قابلة للحجب",
+        "نقطة توقف",
+        "فيض",
+        "تجاوز الحدود",
+        "تعليمة غير صالحة",
+        "الفاصلة العائمة غير متاحة",
+        "خطأ مزدوج",
+        "?",
+        "TSS غير صالح",
+        "مقطع غير موجود",
+        "خطأ في المكدس",
+        "خرق حماية عام",
+        "خطأ صفحة",
+        "?",
+        "خطأ في الفاصلة العائمة",
+        "خطأ محاذاة",
+        "فحص الجهاز",
         "خطأ فاصلة عائمة SIMD",
     ];
     let (n, sonst) = match get() {
@@ -155,9 +206,26 @@ pub fn ausnahme_zeile(v: u64, rip: u64, rsp: u64, code: Option<u64>, cr2: u64) {
     match code {
         Some(c) => crate::kprintln!(
             "\n{}: {} {} {:#x} ({} {:#x}, {} {:#x}, CR2 {:#x})",
-            t("ausnahme"), ausnahme_name(v), t("bei"), rip, t("stapel"), rsp, t("code"), c, cr2
+            t("ausnahme"),
+            ausnahme_name(v),
+            t("bei"),
+            rip,
+            t("stapel"),
+            rsp,
+            t("code"),
+            c,
+            cr2
         ),
-        None => crate::kprintln!("\n{}: {} {} {:#x} ({} {:#x}, CR2 {:#x})", t("ausnahme"), ausnahme_name(v), t("bei"), rip, t("stapel"), rsp, cr2),
+        None => crate::kprintln!(
+            "\n{}: {} {} {:#x} ({} {:#x}, CR2 {:#x})",
+            t("ausnahme"),
+            ausnahme_name(v),
+            t("bei"),
+            rip,
+            t("stapel"),
+            rsp,
+            cr2
+        ),
     }
     crate::kprintln!("{}", t("haelt"));
 }

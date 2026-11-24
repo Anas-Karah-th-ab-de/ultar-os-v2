@@ -38,7 +38,9 @@ impl Driver for Drv {
             return Err("Wirt liefert keinen Zufall".into());
         }
         for c in z.chunks(8) {
-            crate::arch::zufall_mischen(u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]));
+            crate::arch::zufall_mischen(u64::from_le_bytes([
+                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7],
+            ]));
         }
         crate::kprintln!("[virtio-rng] rng0: {n} Byte Zufall vom Wirt in den Vorrat gemischt");
         Ok(())
@@ -52,14 +54,20 @@ pub fn fuelle(aus: &mut [u8]) -> usize {
     let mut fertig = 0;
     while fertig < aus.len() {
         let want = (aus.len() - fertig).min(4096) as u32;
-        r.q.submit(&[Buf { addr: r.buf, len: want, write: true }]);
+        r.q.submit(&[Buf {
+            addr: r.buf,
+            len: want,
+            write: true,
+        }]);
         r.q.kick();
         let Some((_, n)) = r.q.wait(200) else { break };
         let n = (n.min(want)) as usize;
         if n == 0 {
             break;
         }
-        unsafe { core::ptr::copy_nonoverlapping(r.buf as *const u8, aus[fertig..].as_mut_ptr(), n) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(r.buf as *const u8, aus[fertig..].as_mut_ptr(), n)
+        };
         fertig += n;
     }
     fertig

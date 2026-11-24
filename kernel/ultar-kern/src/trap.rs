@@ -49,7 +49,6 @@ pub const VEC_TIMER: u64 = 32;
 pub const VEC_SYSCALL: u64 = 0x80;
 pub const VEC_SPURIOUS: u64 = 0xff;
 
-
 global_asm!(
     r#"
 .macro TRAP_NOERR n

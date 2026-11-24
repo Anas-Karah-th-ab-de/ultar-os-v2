@@ -52,7 +52,9 @@ struct Bochs {
 impl Bochs {
     fn wr(&self, reg: u16, v: u16) {
         match self.mmio {
-            Some(m) => unsafe { core::ptr::write_volatile((m + 0x500 + reg as u64 * 2) as *mut u16, v) },
+            Some(m) => unsafe {
+                core::ptr::write_volatile((m + 0x500 + reg as u64 * 2) as *mut u16, v)
+            },
             None => unsafe {
                 core::arch::asm!("out dx, ax", in("dx") 0x1ceu16, in("ax") reg, options(nomem, nostack));
                 core::arch::asm!("out dx, ax", in("dx") 0x1cfu16, in("ax") v, options(nomem, nostack));
@@ -61,7 +63,9 @@ impl Bochs {
     }
     fn rd(&self, reg: u16) -> u16 {
         match self.mmio {
-            Some(m) => unsafe { core::ptr::read_volatile((m + 0x500 + reg as u64 * 2) as *const u16) },
+            Some(m) => unsafe {
+                core::ptr::read_volatile((m + 0x500 + reg as u64 * 2) as *const u16)
+            },
             None => unsafe {
                 let v: u16;
                 core::arch::asm!("out dx, ax", in("dx") 0x1ceu16, in("ax") reg, options(nomem, nostack));
@@ -80,11 +84,20 @@ impl Anzeige for Bochs {
         "werkstatt"
     }
     fn modi(&self) -> Vec<(u32, u32)> {
-        MODI.iter().copied().filter(|(w, h)| (*w as u64 * *h as u64 * 4) <= self.fb_size).collect()
+        MODI.iter()
+            .copied()
+            .filter(|(w, h)| (*w as u64 * *h as u64 * 4) <= self.fb_size)
+            .collect()
     }
     fn setzen(&mut self, w: u32, h: u32) -> core::result::Result<Framebuffer, String> {
-        if !(320..=4096).contains(&w) || !(200..=4096).contains(&h) || w as u64 * h as u64 * 4 > self.fb_size {
-            return Err(format!("{w}x{h} passt nicht in den Bildspeicher ({} MB)", self.fb_size >> 20));
+        if !(320..=4096).contains(&w)
+            || !(200..=4096).contains(&h)
+            || w as u64 * h as u64 * 4 > self.fb_size
+        {
+            return Err(format!(
+                "{w}x{h} passt nicht in den Bildspeicher ({} MB)",
+                self.fb_size >> 20
+            ));
         }
         self.wr(ENABLE, 0);
         self.wr(XRES, w as u16);
@@ -98,7 +111,13 @@ impl Anzeige for Bochs {
         if self.rd(XRES) != w as u16 || self.rd(YRES) != h as u16 {
             return Err(format!("Gerät lehnt {w}x{h} ab"));
         }
-        Ok(Framebuffer { base: self.fb, width: w, height: h, stride: w, bgr: true })
+        Ok(Framebuffer {
+            base: self.fb,
+            width: w,
+            height: h,
+            stride: w,
+            bgr: true,
+        })
     }
 }
 
@@ -110,18 +129,32 @@ impl Driver for Drv {
         "werkstatt"
     }
     fn matches(&self, d: &PciDev) -> bool {
-        d.class == 0x03 && ((d.vendor == 0x1234 && d.device == 0x1111) || (d.vendor == 0x80ee && d.device == 0xbeef))
+        d.class == 0x03
+            && ((d.vendor == 0x1234 && d.device == 0x1111)
+                || (d.vendor == 0x80ee && d.device == 0xbeef))
     }
     fn probe(&self, d: &PciDev) -> Result<()> {
-        let fb = d.bars[0].filter(|b| !b.io).ok_or("BAR0 (Bildspeicher) fehlt")?;
+        let fb = d.bars[0]
+            .filter(|b| !b.io)
+            .ok_or("BAR0 (Bildspeicher) fehlt")?;
         d.enable();
-        let mmio = d.bars[2].filter(|b| !b.io && b.size >= 0x600).map(|b| b.addr);
-        let b = Bochs { fb: fb.addr, fb_size: fb.size, mmio };
+        let mmio = d.bars[2]
+            .filter(|b| !b.io && b.size >= 0x600)
+            .map(|b| b.addr);
+        let b = Bochs {
+            fb: fb.addr,
+            fb_size: fb.size,
+            mmio,
+        };
         let id = b.rd(ID);
         if !(0xb0c0..=0xb0cf).contains(&id) {
             return Err(format!("keine VBE-DISPI-Kennung ({id:#06x})"));
         }
-        crate::kprintln!("[bochs-vga] DISPI {id:#06x}, Bildspeicher {} MB, Register über {}", fb.size >> 20, if mmio.is_some() { "MMIO" } else { "E/A-Ports" });
+        crate::kprintln!(
+            "[bochs-vga] DISPI {id:#06x}, Bildspeicher {} MB, Register über {}",
+            fb.size >> 20,
+            if mmio.is_some() { "MMIO" } else { "E/A-Ports" }
+        );
         crate::grafik::anmelden(Box::new(b));
         Ok(())
     }

@@ -59,14 +59,40 @@ pub struct MeshService {
 
 /// The device's key pair in `file` (mode 0600), created on first start.
 pub fn keys_in(file: &Path) -> Option<Keys> {
-    if let Ok((private, public)) = ultar_svckit::store::load::<(Vec<u8>, Vec<u8>)>(file) {
-        return Some(Keys { private, public });
+    keys_step(file).ok()
+}
+
+/// Why the service could not start: the step and the system's error number (0: none).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StartError {
+    /// `state_dir`, `key_generate`, `key_save` or `key_mode`.
+    pub step: &'static str,
+    /// `errno` of the failed call.
+    pub errno: i32,
+}
+
+impl StartError {
+    fn at(step: &'static str, e: Option<&std::io::Error>) -> Self {
+        let errno = e.and_then(std::io::Error::raw_os_error).unwrap_or(0);
+        Self { step, errno }
     }
-    let keys = Keys::generate()?;
-    ultar_svckit::store::save(file, &(&keys.private, &keys.public)).ok()?;
+}
+
+/// [`keys_in`], naming the step that failed (for the log: a service that does not start
+/// says why).
+fn keys_step(file: &Path) -> Result<Keys, StartError> {
+    if let Ok((private, public)) = ultar_svckit::store::load::<(Vec<u8>, Vec<u8>)>(file) {
+        return Ok(Keys { private, public });
+    }
+    let keys = Keys::generate().ok_or(StartError::at("key_generate", None))?;
+    ultar_svckit::store::save(file, &(&keys.private, &keys.public)).map_err(|e| match e {
+        ultar_svckit::store::StoreError::Io(e) => StartError::at("key_save", Some(&e)),
+        _ => StartError::at("key_save", None),
+    })?;
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600)).ok()?;
-    Some(keys)
+    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| StartError::at("key_mode", Some(&e)))?;
+    Ok(keys)
 }
 
 fn serve<C: Call>(request: IncomingRequest, work: impl FnOnce(C, &str) -> C::Reply) {
@@ -84,14 +110,19 @@ fn serve<C: Call>(request: IncomingRequest, work: impl FnOnce(C, &str) -> C::Rep
 impl MeshService {
     /// The mesh of the device described by `config`, with its state below `state`.
     pub fn new(config: Config, state: &Path, listen: Listen) -> Option<Self> {
-        std::fs::create_dir_all(state).ok()?;
-        let keys = keys_in(&state.join("key"))?;
+        Self::start_in(config, state, listen).ok()
+    }
+
+    /// [`MeshService::new`], naming the step that failed.
+    pub fn start_in(config: Config, state: &Path, listen: Listen) -> Result<Self, StartError> {
+        std::fs::create_dir_all(state).map_err(|e| StartError::at("state_dir", Some(&e)))?;
+        let keys = keys_step(&state.join("key"))?;
         let trust = Trust::open(&state.join("peers"));
         let node = Node::new(config, &keys.public, trust);
         let (events, inbox) = mpsc::channel();
         let mut runtime = Runtime::new(node, events.clone());
         runtime.set_jobs(listen.jobs.clone());
-        Some(Self {
+        Ok(Self {
             runtime,
             waiting: BTreeMap::new(),
             acting: BTreeMap::new(),

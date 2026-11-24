@@ -18,6 +18,7 @@ use ultar_mesh::node::Config;
 use ultar_mesh::relay::Login;
 use ultar_mesh::service::{list, Listen};
 use ultar_mesh::MeshService;
+use ultar_service::log::{Level, Record};
 use ultar_svckit::args::CommonArgs;
 use ultar_svckit::msg::Msg;
 
@@ -97,7 +98,7 @@ fn listen(args: &CommonArgs) -> Result<Listen, Msg> {
 
 fn main() -> ExitCode {
     // No kernel right: sockets above port 1024 and its own two folders.
-    ultar_svckit::main("ultar-mesh", &OPTIONS, None, |args, _| {
+    ultar_svckit::main("ultar-mesh", &OPTIONS, None, |args, log| {
         let state = args.required_path("state").map_err(|_| Msg::BadArguments)?;
         let inbox = args.required_path("inbox").map_err(|_| Msg::BadArguments)?;
         let kind = kind_from(&kind_word(args));
@@ -113,6 +114,11 @@ fn main() -> ExitCode {
                 .collect(),
             remote_view: false,
         };
-        MeshService::new(config, &state, listen(args)?).ok_or(Msg::State)
+        MeshService::start_in(config, &state, listen(args)?).map_err(|e| {
+            // why the service does not start (init restarts it; the console has the code only)
+            let record = Record::new(Level::Warn, "mesh.start_failed").word("step", e.step);
+            log.emit(record.signed("errno", i64::from(e.errno)));
+            Msg::State
+        })
     })
 }

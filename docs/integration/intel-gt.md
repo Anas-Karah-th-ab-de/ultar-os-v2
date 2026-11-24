@@ -15,9 +15,9 @@ without Linux.
 | G1a | GuC firmware container, WOPCM layout, reset, boot parameters, RSA + DMA transfer, load status | **done, run on the Beelink**: GuC 70.53.0 transferred, `signature good`, the firmware starts and stops at `0x71 init data invalid` after 32 ms (expected without ADS); `GTTEST: ALLES OK`, i915 rebound cleanly |
 | G1b | Minimal ADS block, boot parameters for the first load, GuC **ready**, register message channel (HXG over MMIO), hardware config table | **done, run on the Beelink** (24.11.2026): `firmware 0xf0 ready` 67 ms after the reset, table of 752 bytes with 56 entries fetched and parsed; `GTTEST: ALLES OK` |
 | G1c | Command buffers (CTB): H2G/G2H rings, registration (`SELF_CFG` keys, `CONTROL_CTB`), send, receive, polled request | **done, run on the Beelink** (25.11.2026): buffers enabled, the opt-in request Linux sends first (`0x550e`) answered in 108 µs; `GTTEST: ALLES OK` |
-| G1d | Full ADS (engine mapping, register save/restore lists, golden contexts) and second load with features and workarounds; needs the context image of G3 | open – with G3 |
-| G2 | Memory: GGTT manager for the GT, PPGTT (4 levels), buffer objects, TLB invalidation | open |
-| G3 | Contexts (LRC), exec queues registered with the GuC, submission, G2H handling; proof: a batch on `ccs0`/`rcs0` writes a value | open |
+| G1d | Full ADS (enabled engines, mapping, per-engine register lists, golden context slots, empty capture list) and second load with features and workarounds | **done, run on the Beelink** (25.11.2026): `firmware 0xf0 ready` with render, copy and compute engine announced; command buffers answer after it. Golden context images are still zero (filled in G3) |
+| G2 | Memory: page tables (PPGTT) as pure logic, table memory and buffers in the kernel | **done, run on the Beelink** (25.11.2026) as part of G3: batches run in a context's own address space. Still open: TLB invalidation (needed once mappings are removed or reused) |
+| G3 | Contexts (LRC), registration with the GuC, scheduling policy, enable/submit, events, disable/deregister; proof: an engine writes a value | **done, run on the Beelink** (25.11.2026, runs 13 and 14): `bcs0` runs a store command from the ring (GGTT only); `bcs0`, `rcs0` and `ccs0` each run a batch from their own page tables that stores a value through them; every context is disabled and deregistered again; `GTTEST: ALLES OK`. Still open: golden context images in the ADS (the render image the engine saved has 150 state words set, see 2c), submitting a second job to an enabled context, engine reset handling |
 | G4 | User interface: the Linux `xe` DRM uAPI on `/dev/dri/renderD128` (device query, GEM create/mmap, VM create/bind, exec queue, exec, syncobj) | open |
 | G5 | Mesa (ANV/Vulkan, iris) from the Ubuntu packages unchanged; `vulkaninfo`, off-screen cube, llama.cpp Vulkan in `ultar-llm` | open |
 
@@ -25,16 +25,22 @@ without Linux.
    `/root/ultar-test/gt-run1.log`, checkout `/root/ultar-igpu-npu`): `INTELTEST: ALLES OK` and `GTTEST: ALLES OK`;
    the whole run takes about 20 s, the host's i915 loads its own GuC again afterwards (function level reset).
    Five runs on 24.11.2026 (logs `gt-run1.log` … `gt-run5.log`, loop script `/root/ultar-test/gt-loop.sh <log>`);
-   run 7 on 25.11.2026 with the command buffers; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
+   runs 7–12 on 25.11.2026 with the command buffers and the full ADS (run 9 failed once, see 2b), runs 13–14 with jobs on the engines; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
    on hardware: i915 had locked them, the driver kept that layout.
-2. **GuC runs, engines do not yet.** With the minimal ADS the firmware is ready and answers requests (registers
-   and command buffers), but no
-   engine is mapped and nothing can be submitted. GTTEST puts the GuC back into reset. Nothing renders or computes
-   before G3.
+2. **Engines run test jobs, nothing more yet.** With the full ADS the GuC schedules contexts on the copy, render
+   and compute engine (G3). The jobs are single store commands; there is no interface for programs (G4) and no
+   3D or compute state. GTTEST puts the GuC back into reset.
 2a. **CPU caches and memory the GT writes** (found on hardware): the table the GuC copied read as zeroes in its
-   first five cache lines until the kernel dropped those lines (`clflush`) before reading. Every buffer the GT
-   writes and the CPU reads needs that, or an uncached/write-combining mapping (kernel issue I-12 of
-   intel-display.md); buffers the CPU writes are flushed before the GT reads them.
+   first five cache lines until the kernel dropped those lines (`clflush`) before reading. The GGTT's "coherent"
+   cache attribute (index 3, what Linux uses) does not change that – tried on 25.11.2026. Buffers the GT writes are
+   read after dropping the lines; buffers the CPU writes are flushed before the GT reads them.
+2b. **One unexplained failure.** In one of ten runs a GGTT entry did not read back as written while the GuC was
+   running (`GGTT: display registers read all ones`, run 9); the next run passed. The failure message now names the
+   entry and the value read. Not understood yet.
+2c. **Golden contexts.** The ADS still announces zeroed golden context images. The images the engines saved after
+   the first job are what Linux records as the default state: render 150 of 12288 state words set, compute none,
+   copy has no engine state beyond the register page. They are read in GTTEST but not yet written into the ADS;
+   the GuC needs them when it resets an engine.
 3. **Interrupts.** The kernel has no MSI routing for PCI devices; G2H messages will be polled until it has
    (same limit as the display driver, intel-display.md §0.4).
 4. **Media GT.** Identified and read (engines, GuC status); its GuC, HuC and the GSC are not loaded. Video decode
@@ -60,7 +66,7 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
 
 | Part | Where | What |
 |---|---|---|
-| Pure logic | `drivers/kernel/intel-gt/` (crate `ultar-intel-gt`, `no_std` + `alloc`, no `unsafe`, 52 host tests) | `ctb` (command buffers), `ads` (minimal ADS block), `params` (boot parameter words per stage), `hxg` (register message channel), `hwconfig` (table parser), `ident` (GMD_ID → IP), `forcewake` (domains, references, bounded acknowledge wait), `engines` (descriptor + fuses), `fw` (CSS header, versions, RSA key position), `wopcm` (layout, locked registers, write-and-verify), `guc` (status decoding, reset, parameter words, RSA, DMA transfer, wait), `state` (read-out). Generic over `ultar_intel_display::Hw`, tested against `sim.rs`. |
+| Pure logic | `drivers/kernel/intel-gt/` (crate `ultar-intel-gt`, `no_std` + `alloc`, no `unsafe`, 59 host tests) | `ppgtt` (page tables), `ctb` (command buffers), `ads` (minimal and full block), (minimal ADS block), `params` (boot parameter words per stage), `hxg` (register message channel), `hwconfig` (table parser), `ident` (GMD_ID → IP), `forcewake` (domains, references, bounded acknowledge wait), `engines` (descriptor + fuses), `fw` (CSS header, versions, RSA key position), `wopcm` (layout, locked registers, write-and-verify), `guc` (status decoding, reset, parameter words, RSA, DMA transfer, wait), `state` (read-out). Generic over `ultar_intel_display::Hw`, tested against `sim.rs`. |
 | Kernel module | `kernel/ultar-kern/src/drivers/intel_display/gt.rs`, `gt_mem.rs` (GGTT buffers, word view for the command buffers) | probe read-out (`[intel-gt] …`, `intel-gt=` line of the display report), GGTT buffers for the GuC (`GgttBuf`: kernel pages → the display driver's GGTT window, flushed), GTTEST. Two `unsafe` (copy into and out of owned pages) with `// SAFETY:`. |
 | Test on the machine | `tools/kern-test/igpu-passthrough.sh` | copies the GuC firmware (`GUC=<file>|0`), waits for the GTTEST verdict, prints both verdicts. |
 
@@ -84,6 +90,30 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
   `GUC_HOST_INTERRUPT` (`0x1901f0`), wait for origin = GuC in word 0 (50 ms), ride out "busy" (2 s), resend on
   "retry" (bounded), failure → error + hint. `GET_HWCONFIG` (`0x4100`) with size 0 returns the table size, with a
   GGTT address copies it.
+* **Full ADS:** `[fixed part | pad | register lists 4K | golden contexts (render 56K, copy 8K, compute 56K) | capture
+  list 4K | private data]`. Enabled masks and mapping for GuC classes 0 (render), 3 (copy), 4 (compute), instance 0;
+  per engine the registers `base+0x80` (status page) and `base+0xa8` (interrupt mask); per class the golden context
+  address and the engine state size (image − status page − 96 register words); all capture lists point at one
+  empty list. Boot parameters of this load add SLPC, lite restore and the two workaround flags.
+* **Page tables:** four levels of 512 entries, entry = page address | present | writable | cache attribute 3
+  (bits 3 and 4).
+* **Context image:** `[status page 4K | register state 4K | engine state (13 pages for render and compute)]`.
+  The register state is the list of register loads the hardware replays (`lrc.rs`: copy/compute list and the
+  longer render list), ended by `MI_BATCH_BUFFER_END`; context control = "no restore" for a context that never ran;
+  ring start/head/tail/control and, with page tables, their root in PDP0. Descriptor for the GuC = GGTT address of
+  the image | valid | 64-bit addressing | (page tables: bit 8).
+* **Engine before its first context:** `RING_HWSTAM` = all ones, `GFX_MODE` legacy mode off (masked), status page
+  address into `RING_HWS_PGA`; compute additionally `RCU_MODE` enable. Render forcewake held.
+* **A job:** requests without response over the command buffers (HXG type 2): `REGISTER_CONTEXT` (`0x4502`, 12
+  words: flags, id, class, engine mask, no work queue, descriptor), `UPDATE_CONTEXT_POLICIES` (`0x100b`: priority,
+  1 ms slice, 640 ms preemption timeout, frequency request), `SCHED_CONTEXT_MODE_SET` (`0x1001`) enable – this also
+  runs what waits in the ring; the GuC confirms with event `0x1002`. On the Beelink the value is in memory by the
+  time that event has been read (about 0.1 ms). Retire: mode set disable (event `0x1002`), `DEREGISTER_CONTEXT`
+  (`0x4503`, event `0x4600`). `SCHED_CONTEXT` (`0x1000`) for further jobs of an enabled context is written but not
+  yet used on hardware.
+* **Ring and batch:** GGTT job = `MI_ARB_ON_OFF` on, `MI_STORE_DATA_IMM` (GGTT), arbitration check; page table job
+  = `MI_BATCH_BUFFER_START` (bit 8: context address space) to a batch holding `MI_STORE_DATA_IMM` and
+  `MI_BATCH_BUFFER_END`. The ring tail is a multiple of 8 bytes.
 * **Command buffers:** one GGTT buffer `[H2G descriptor | G2H descriptor (2K) | H2G ring 16K (4K) | G2H ring 128K
   (20K)]`. Registration over the register channel: six `SELF_CFG` (`0x0508`) keys `0x0902`–`0x0907` (each must be
   answered with "1 key taken"), then `CONTROL_CTB` (`0x4509`) = 1. Message = header (fence 31:16, length 7:0) +
@@ -99,5 +129,6 @@ Linux `xe` driver (MIT): `regs/xe_gt_regs.h`, `regs/xe_guc_regs.h`, `xe_force_wa
 `abi/uc_fw_abi.h`, `xe_uc_fw.c`, `xe_wopcm.c`, `xe_guc.c`, `abi/guc_errors_abi.h` (read at commit `8d7fe98`).
 `xe_guc_ads.c`, `xe_guc_fwif.h`, `xe_guc_hwconfig.c`, `abi/guc_messages_abi.h`.
 `xe_guc_ct.c`, `abi/guc_communication_ctb_abi.h`, `abi/guc_actions_abi.h`, `abi/guc_klvs_abi.h`.
-No GPL code. For G1d–G3: `xe_ggtt.c`, `xe_pt.c`, `xe_lrc.c`, `xe_guc_submit.c`;
+`xe_lrc.c`, `regs/xe_lrc_layout.h`, `regs/xe_engine_regs.h`, `instructions/xe_mi_commands.h`, `xe_ring_ops.c`,
+`xe_guc_submit.c`, `abi/guc_scheduler_abi.h` (G3). No GPL code. Also read: `xe_ggtt.c`, `xe_pt.c`;
 for G4: `include/uapi/drm/xe_drm.h`; register and command layouts: Mesa `src/intel/genxml/` (MIT).

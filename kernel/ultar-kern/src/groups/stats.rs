@@ -17,7 +17,11 @@ pub struct Usage {
 pub fn usage(g: u16) -> Usage {
     let s = slot(g);
     let l = |a: &AtomicU64| a.load(Ordering::Relaxed);
-    Usage { mem: (l(&s.mem), l(&s.mem_peak)), pids: (l(&s.pids), l(&s.pids_peak)), events: [l(&s.events[0]), l(&s.events[1]), l(&s.events[2])] }
+    Usage {
+        mem: (l(&s.mem), l(&s.mem_peak)),
+        pids: (l(&s.pids), l(&s.pids_peak)),
+        events: [l(&s.events[0]), l(&s.events[1]), l(&s.events[2])],
+    }
 }
 
 /// Note that the kernel ended processes of `g` for lack of memory.

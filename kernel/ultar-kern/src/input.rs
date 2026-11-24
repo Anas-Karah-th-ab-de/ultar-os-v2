@@ -38,8 +38,11 @@ const BUS_I8042: u16 = 0x11;
 
 /// HID usage (keyboard page) → Linux key code, usages 0x00..=0x65 (as Linux' `usbkbd`).
 const HID_KEYS: [u8; 0x66] = [
-    0, 0, 0, 0, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 28, 1, 14, 15, 57, 12, 13, 26, 27, 43, 43, 39, 40, 41, 51, 52,
-    53, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88, 99, 70, 119, 110, 102, 104, 111, 107, 109, 106, 105, 108, 103, 69, 98, 55, 74, 78, 96, 79, 80, 81, 75, 76, 77, 71, 72, 73, 82, 83, 86, 127,
+    0, 0, 0, 0, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22,
+    47, 17, 45, 21, 44, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 28, 1, 14, 15, 57, 12, 13, 26, 27, 43, 43,
+    39, 40, 41, 51, 52, 53, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88, 99, 70, 119, 110,
+    102, 104, 111, 107, 109, 106, 105, 108, 103, 69, 98, 55, 74, 78, 96, 79, 80, 81, 75, 76, 77,
+    71, 72, 73, 82, 83, 86, 127,
 ];
 /// Modifier bits of a boot report → Linux key codes (left Ctrl, Shift, Alt, Meta, then right).
 const MODIFIERS: [u16; 8] = [29, 42, 56, 125, 97, 54, 100, 126];
@@ -82,24 +85,49 @@ pub fn usb_keyboard_added(hc: usize, slot: u32, vendor: u16, product: u16) {
 
 /// A USB mouse (`abs` = `None`) or tablet (`abs` = ranges of X and Y) was attached.
 pub fn usb_pointer_added(hc: usize, slot: u32, vendor: u16, product: u16, abs: Option<[i32; 4]>) {
-    add(hc, slot, vendor, product, abs.map_or(Kind::Mouse, Kind::Tablet));
+    add(
+        hc,
+        slot,
+        vendor,
+        product,
+        abs.map_or(Kind::Mouse, Kind::Tablet),
+    );
 }
 
 fn add(hc: usize, slot: u32, vendor: u16, product: u16, kind: Kind) {
     let index = {
         let mut nodes = NODES.lock();
-        if nodes.len() >= MAX_NODES || nodes.iter().any(|n| n.hc == hc && n.slot == slot && n.kind == kind) {
+        if nodes.len() >= MAX_NODES
+            || nodes
+                .iter()
+                .any(|n| n.hc == hc && n.slot == slot && n.kind == kind)
+        {
             return;
         }
-        let Some(index) = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i)) else { return };
-        let node = Node { index, kind, hc, slot, vendor, product, last: [0; 8], queues: Vec::new(), caps: Vec::new() };
+        let Some(index) = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i)) else {
+            return;
+        };
+        let node = Node {
+            index,
+            kind,
+            hc,
+            slot,
+            vendor,
+            product,
+            last: [0; 8],
+            queues: Vec::new(),
+            caps: Vec::new(),
+        };
         if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
             return;
         }
         nodes.push(node);
         index
     };
-    crate::kprintln!("[input] event{index}: USB {} {vendor:04x}:{product:04x}", word(kind));
+    crate::kprintln!(
+        "[input] event{index}: USB {} {vendor:04x}:{product:04x}",
+        word(kind)
+    );
     uevent(index, "add");
 }
 
@@ -119,7 +147,9 @@ static NEXT_VIRTUAL: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU
 pub fn virtual_added(caps: virt::Caps) -> Option<u8> {
     let index = {
         let mut nodes = NODES.lock();
-        if nodes.len() >= MAX_NODES || nodes.iter().filter(|n| n.kind == Kind::Virtual).count() >= MAX_VIRTUAL {
+        if nodes.len() >= MAX_NODES
+            || nodes.iter().filter(|n| n.kind == Kind::Virtual).count() >= MAX_VIRTUAL
+        {
             return None;
         }
         let index = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i))?;
@@ -130,7 +160,17 @@ pub fn virtual_added(caps: virt::Caps) -> Option<u8> {
             return None;
         }
         held.push(caps);
-        let node = Node { index, kind: Kind::Virtual, hc: VIRTUAL_HC, slot, vendor, product, last: [0; 8], queues: Vec::new(), caps: held };
+        let node = Node {
+            index,
+            kind: Kind::Virtual,
+            hc: VIRTUAL_HC,
+            slot,
+            vendor,
+            product,
+            last: [0; 8],
+            queues: Vec::new(),
+            caps: held,
+        };
         if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
             return None;
         }
@@ -161,14 +201,23 @@ pub fn virtual_removed(index: u8) {
 /// (else nothing is queued and `false` returned). Time stamps are the kernel's.
 pub fn virtual_events(index: u8, events: &[(u16, u16, i32)]) -> bool {
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.index == index && n.kind == Kind::Virtual) else { return false };
-    let Some(caps) = n.caps.first() else { return false };
+    let Some(n) = nodes
+        .iter_mut()
+        .find(|n| n.index == index && n.kind == Kind::Virtual)
+    else {
+        return false;
+    };
+    let Some(caps) = n.caps.first() else {
+        return false;
+    };
     let mut ok = Vec::new();
     if crate::heap::kernel(|| ok.try_reserve(events.len()).is_err()) {
         return false;
     }
     for &(t, c, v) in events {
-        let Some(v) = caps.filter(t, c, v) else { return false };
+        let Some(v) = caps.filter(t, c, v) else {
+            return false;
+        };
         ok.push((t, c, v));
     }
     for (t, c, v) in ok {
@@ -182,7 +231,11 @@ pub fn virtual_events(index: u8, events: &[(u16, u16, i32)]) -> bool {
 pub fn usb_removed(hc: usize, slot: u32) {
     let gone: Vec<u8> = {
         let mut nodes = NODES.lock();
-        let gone = nodes.iter().filter(|n| n.hc == hc && n.slot == slot).map(|n| n.index).collect();
+        let gone = nodes
+            .iter()
+            .filter(|n| n.hc == hc && n.slot == slot)
+            .map(|n| n.index)
+            .collect();
         nodes.retain(|n| !(n.hc == hc && n.slot == slot));
         gone
     };
@@ -198,7 +251,12 @@ pub fn usb_removed(hc: usize, slot: u32) {
 /// keys went to the keyboard's node (else the caller hands them to the console).
 pub fn usb_report(hc: usize, slot: u32, rep: &[u8; 8], raw: bool) -> bool {
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.hc == hc && n.slot == slot && n.kind == Kind::Keyboard) else { return false };
+    let Some(n) = nodes
+        .iter_mut()
+        .find(|n| n.hc == hc && n.slot == slot && n.kind == Kind::Keyboard)
+    else {
+        return false;
+    };
     let last = core::mem::replace(&mut n.last, *rep);
     if !raw {
         return false;
@@ -214,10 +272,16 @@ pub fn usb_report(hc: usize, slot: u32, rep: &[u8; 8], raw: bool) -> bool {
     if rep[2..8].iter().all(|&u| u == 1) {
         return true;
     }
-    for &u in last[2..8].iter().filter(|&&u| u > 3 && !rep[2..8].contains(&u)) {
+    for &u in last[2..8]
+        .iter()
+        .filter(|&&u| u > 3 && !rep[2..8].contains(&u))
+    {
         keys.push((hid_key(u), false));
     }
-    for &u in rep[2..8].iter().filter(|&&u| u > 3 && !last[2..8].contains(&u)) {
+    for &u in rep[2..8]
+        .iter()
+        .filter(|&&u| u > 3 && !last[2..8].contains(&u))
+    {
         keys.push((hid_key(u), true));
     }
     for (code, down) in keys.into_iter().filter(|k| k.0 != 0) {
@@ -247,7 +311,9 @@ fn push(n: &mut Node, typ: u16, code: u16, value: i32) {
 /// from now on every event of the node. `false`: no such node, or no memory.
 pub fn attach(index: u8, reader: u32) -> bool {
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return false };
+    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else {
+        return false;
+    };
     if n.queues.iter().any(|(r, _)| *r == reader) {
         return true;
     }
@@ -294,7 +360,10 @@ pub fn exists(index: u8) -> bool {
 
 /// Drop what the USB nodes hold (the first program opened an input node).
 pub fn clear() {
-    NODES.lock().iter_mut().for_each(|n| n.queues.iter_mut().for_each(|(_, q)| q.clear()));
+    NODES
+        .lock()
+        .iter_mut()
+        .for_each(|n| n.queues.iter_mut().for_each(|(_, q)| q.clear()));
 }
 
 /// Read whole events of reader `reader`, at most `max` bytes; `Ok(None)`: nothing there;
@@ -302,8 +371,12 @@ pub fn clear() {
 pub fn read(index: u8, reader: u32, max: usize) -> Result<Option<Vec<u8>>, i64> {
     crate::eingabe::pumpen();
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return Err(-ENODEV) };
-    let Some((_, q)) = n.queues.iter_mut().find(|(r, _)| *r == reader) else { return Err(-ENODEV) };
+    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else {
+        return Err(-ENODEV);
+    };
+    let Some((_, q)) = n.queues.iter_mut().find(|(r, _)| *r == reader) else {
+        return Err(-ENODEV);
+    };
     if q.is_empty() {
         return Ok(None);
     }
@@ -329,10 +402,20 @@ pub fn ready(index: u8, reader: u32) -> bool {
 /// Events written to a USB node (remote control): queued like the keyboard's own.
 pub fn inject(index: u8, data: &[u8]) {
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else { return };
+    let Some(n) = nodes.iter_mut().find(|n| n.index == index) else {
+        return;
+    };
     for e in data.chunks_exact(24) {
-        let (typ, code) = (u16::from_le_bytes([e[16], e[17]]), u16::from_le_bytes([e[18], e[19]]));
-        push(n, typ, code, i32::from_le_bytes([e[20], e[21], e[22], e[23]]));
+        let (typ, code) = (
+            u16::from_le_bytes([e[16], e[17]]),
+            u16::from_le_bytes([e[18], e[19]]),
+        );
+        push(
+            n,
+            typ,
+            code,
+            i32::from_le_bytes([e[20], e[21], e[22], e[23]]),
+        );
     }
     crate::socket::bump();
 }
@@ -342,11 +425,15 @@ pub fn name(index: u8) -> Option<String> {
     match index {
         0 => Some(String::from("Ultar Maus")),
         1 => Some(String::from("Ultar Tastatur")),
-        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| match n.caps.first() {
-            Some(c) if !c.name.is_empty() => c.name.clone(),
-            Some(_) => String::from("Ultar Virtual"),
-            None => format!("USB {} {:04x}:{:04x}", word(n.kind), n.vendor, n.product),
-        }),
+        _ => NODES
+            .lock()
+            .iter()
+            .find(|n| n.index == index)
+            .map(|n| match n.caps.first() {
+                Some(c) if !c.name.is_empty() => c.name.clone(),
+                Some(_) => String::from("Ultar Virtual"),
+                None => format!("USB {} {:04x}:{:04x}", word(n.kind), n.vendor, n.product),
+            }),
     }
 }
 
@@ -354,7 +441,11 @@ pub fn name(index: u8) -> Option<String> {
 fn id(index: u8) -> Option<[u16; 4]> {
     match index {
         0 | 1 => Some([BUS_I8042, 1, 1 + index as u16, 0]),
-        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| n.caps.first().map_or([BUS_USB, n.vendor, n.product, 0x0110], |c| c.id)),
+        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| {
+            n.caps
+                .first()
+                .map_or([BUS_USB, n.vendor, n.product, 0x0110], |c| c.id)
+        }),
     }
 }
 
@@ -410,8 +501,17 @@ fn absinfo(index: u8, axis: u8) -> Option<Vec<u8>> {
     if axis > 1 {
         return None;
     }
-    let (min, max) = if axis == 0 { (r[0], r[1]) } else { (r[2], r[3]) };
-    Some([0, min, max, 0, 0, 0].iter().flat_map(|v: &i32| v.to_le_bytes()).collect())
+    let (min, max) = if axis == 0 {
+        (r[0], r[1])
+    } else {
+        (r[2], r[3])
+    };
+    Some(
+        [0, min, max, 0, 0, 0]
+            .iter()
+            .flat_map(|v: &i32| v.to_le_bytes())
+            .collect(),
+    )
 }
 
 /// A report of the USB mouse or tablet in `slot`: buttons (bit 0 left, 1 right, 2 middle), X and Y
@@ -419,7 +519,12 @@ fn absinfo(index: u8, axis: u8) -> Option<Vec<u8>> {
 pub fn usb_pointer(hc: usize, slot: u32, buttons: u8, x: i32, y: i32, wheel: i32) {
     let raw = crate::eingabe::roh();
     let mut nodes = NODES.lock();
-    let Some(n) = nodes.iter_mut().find(|n| n.hc == hc && n.slot == slot && n.kind != Kind::Keyboard) else { return };
+    let Some(n) = nodes
+        .iter_mut()
+        .find(|n| n.hc == hc && n.slot == slot && n.kind != Kind::Keyboard)
+    else {
+        return;
+    };
     let old = core::mem::replace(&mut n.last[0], buttons);
     if !raw {
         return;
@@ -473,7 +578,9 @@ pub fn ioctl(index: u8, req: u64) -> Option<Vec<u8>> {
 
 /// Whether `EVIOCG*` request `req` returns the number of bytes it wrote (variable-length requests).
 pub fn returns_len(req: u64) -> bool {
-    (req >> 8) & 0xff == 0x45 && req >> 30 == 2 && matches!(req & 0xff, 0x06..=0x09 | 0x18..=0x1b | 0x20..=0x3f)
+    (req >> 8) & 0xff == 0x45
+        && req >> 30 == 2
+        && matches!(req & 0xff, 0x06..=0x09 | 0x18..=0x1b | 0x20..=0x3f)
 }
 
 /// `dev_t` of node `index` (major 13, minor 64 + index).
@@ -489,12 +596,21 @@ pub fn uevent(index: u8, action: &str) {
         ("MINOR", format!("{}", 64 + index as u32)),
         ("NAME", format!("\"{}\"", name(index).unwrap_or_default())),
     ];
-    crate::devices::events::emit(action, &format!("/devices/ultar/input/input{index}/event{index}"), "input", &vars);
+    crate::devices::events::emit(
+        action,
+        &format!("/devices/ultar/input/input{index}/event{index}"),
+        "input",
+        &vars,
+    );
 }
 
 /// Every node that exists: the fixed ones (with a screen) and the USB keyboards.
 pub fn all() -> Vec<u8> {
-    let mut v: Vec<u8> = if crate::console::framebuffer().is_some() { alloc::vec![0, 1] } else { Vec::new() };
+    let mut v: Vec<u8> = if crate::console::framebuffer().is_some() {
+        alloc::vec![0, 1]
+    } else {
+        Vec::new()
+    };
     v.extend(usb_nodes());
     v
 }
@@ -502,7 +618,9 @@ pub fn all() -> Vec<u8> {
 /// Number of `eventN` (`None` for another name).
 pub fn parse(name: &str) -> Option<u8> {
     let n = name.strip_prefix("event")?;
-    (!n.is_empty() && n.len() <= 3 && n.bytes().all(|b| b.is_ascii_digit())).then(|| n.parse().ok()).flatten()
+    (!n.is_empty() && n.len() <= 3 && n.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| n.parse().ok())
+        .flatten()
 }
 
 /// Text of a file below `/sys/class/input/eventN` (`rest`: the path below that).
@@ -512,11 +630,21 @@ pub fn sys_file(index: u8, rest: &[&str]) -> Option<String> {
     }
     match rest {
         ["dev"] => Some(format!("13:{}\n", 64 + index as u32)),
-        ["uevent"] => Some(format!("MAJOR=13\nMINOR={}\nDEVNAME=input/event{index}\n", 64 + index as u32)),
+        ["uevent"] => Some(format!(
+            "MAJOR=13\nMINOR={}\nDEVNAME=input/event{index}\n",
+            64 + index as u32
+        )),
         ["device", "name"] => name(index).map(|n| n + "\n"),
         ["device", "uevent"] => {
             let i = id(index)?;
-            Some(format!("PRODUCT={:x}/{:x}/{:x}/{:x}\nNAME=\"{}\"\n", i[0], i[1], i[2], i[3], name(index)?))
+            Some(format!(
+                "PRODUCT={:x}/{:x}/{:x}/{:x}\nNAME=\"{}\"\n",
+                i[0],
+                i[1],
+                i[2],
+                i[3],
+                name(index)?
+            ))
         }
         _ => None,
     }

@@ -15,16 +15,53 @@ const EINVAL: i64 = 22;
 const EOPNOTSUPP: i64 = 95;
 
 const PCI_DEV_FILES: [&str; 13] = [
-    "class", "device", "enable", "revision", "subsystem_device", "subsystem_vendor", "uevent", "ultar_drivers", "ultar_health", "ultar_probe", "ultar_state", "ultar_unbind", "vendor",
+    "class",
+    "device",
+    "enable",
+    "revision",
+    "subsystem_device",
+    "subsystem_vendor",
+    "uevent",
+    "ultar_drivers",
+    "ultar_health",
+    "ultar_probe",
+    "ultar_state",
+    "ultar_unbind",
+    "vendor",
 ];
-const PCI_DRV_FILES: [&str; 6] = ["bind", "uevent", "ultar_enabled", "ultar_origin", "ultar_unbind", "unbind"];
-const USB_DEV_FILES: [&str; 9] = ["bDeviceClass", "bDeviceProtocol", "bDeviceSubClass", "bcdDevice", "busnum", "devnum", "idProduct", "idVendor", "uevent"];
-const USB_IF_FILES: [&str; 5] = ["bInterfaceClass", "bInterfaceNumber", "bInterfaceProtocol", "bInterfaceSubClass", "uevent"];
+const PCI_DRV_FILES: [&str; 6] = [
+    "bind",
+    "uevent",
+    "ultar_enabled",
+    "ultar_origin",
+    "ultar_unbind",
+    "unbind",
+];
+const USB_DEV_FILES: [&str; 9] = [
+    "bDeviceClass",
+    "bDeviceProtocol",
+    "bDeviceSubClass",
+    "bcdDevice",
+    "busnum",
+    "devnum",
+    "idProduct",
+    "idVendor",
+    "uevent",
+];
+const USB_IF_FILES: [&str; 5] = [
+    "bInterfaceClass",
+    "bInterfaceNumber",
+    "bInterfaceProtocol",
+    "bInterfaceSubClass",
+    "uevent",
+];
 const KERNEL_ULTAR: [&str; 4] = ["devices", "driver_abi", "drivers", "uevents"];
 
 /// Whether the host path belongs to this tree.
 pub fn is_tree(path: &str) -> bool {
-    ["/sys/bus", "/sys/kernel", "/sys/class"].iter().any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
+    ["/sys/bus", "/sys/kernel", "/sys/class"]
+        .iter()
+        .any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
 }
 
 /// Entries this tree adds to the listing of `/sys`.
@@ -35,7 +72,16 @@ fn file(s: String) -> Option<Node> {
 }
 
 fn dir(names: impl IntoIterator<Item = String>, dirs: bool) -> Option<Node> {
-    Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: dirs, size: 0 }).collect()))
+    Some(Node::Dir(
+        names
+            .into_iter()
+            .map(|name| DirEnt {
+                name,
+                dir: dirs,
+                size: 0,
+            })
+            .collect(),
+    ))
 }
 
 fn names(list: &[&str]) -> Vec<String> {
@@ -43,11 +89,18 @@ fn names(list: &[&str]) -> Vec<String> {
 }
 
 fn pci_names() -> Vec<String> {
-    DEVICES.lock().iter().map(|b| super::pci_name(&b.dev)).collect()
+    DEVICES
+        .lock()
+        .iter()
+        .map(|b| super::pci_name(&b.dev))
+        .collect()
 }
 
 fn pci_index(name: &str) -> Option<usize> {
-    DEVICES.lock().iter().position(|b| super::pci_name(&b.dev) == name)
+    DEVICES
+        .lock()
+        .iter()
+        .position(|b| super::pci_name(&b.dev) == name)
 }
 
 /// USB devices and their interfaces (`1-2`, `1-2:1.0`).
@@ -86,53 +139,107 @@ pub fn open(path: &str) -> Option<Node> {
     match p.as_slice() {
         ["bus"] => dir(names(&["pci", "platform", "usb"]), true),
         ["bus", "pci"] => Some(Node::Dir(alloc::vec![
-            DirEnt { name: String::from("devices"), dir: true, size: 0 },
-            DirEnt { name: String::from("drivers"), dir: true, size: 0 },
-            DirEnt { name: String::from("drivers_probe"), dir: false, size: 0 },
+            DirEnt {
+                name: String::from("devices"),
+                dir: true,
+                size: 0
+            },
+            DirEnt {
+                name: String::from("drivers"),
+                dir: true,
+                size: 0
+            },
+            DirEnt {
+                name: String::from("drivers_probe"),
+                dir: false,
+                size: 0
+            },
         ])),
         ["bus", "usb" | "platform"] => dir(names(&["devices", "drivers"]), true),
         ["bus", "pci", "drivers_probe"] => file(String::new()),
         ["bus", "pci", "devices"] => dir(pci_names(), true),
         ["bus", "usb", "devices"] => dir(usb_entries(), true),
-        ["bus", "platform", "devices"] => dir(platform::list().iter().map(|d| String::from(d.name)), true),
-        ["bus", "pci", "drivers"] => dir(crate::drivers::ALL.iter().map(|d| String::from(d.name())), true),
+        ["bus", "platform", "devices"] => {
+            dir(platform::list().iter().map(|d| String::from(d.name)), true)
+        }
+        ["bus", "pci", "drivers"] => dir(
+            crate::drivers::ALL.iter().map(|d| String::from(d.name())),
+            true,
+        ),
         ["bus", "usb", "drivers"] => dir(names(&usb::DRIVERS), true),
         ["bus", "platform", "drivers"] => dir(names(&platform::DRIVERS), true),
         ["bus", "pci", "devices", n, rest @ ..] => pci_device(n, rest),
         ["bus", "pci", "drivers", d, rest @ ..] => pci_driver(d, rest),
         ["bus", "usb", "devices", n, rest @ ..] => usb_device(n, rest),
-        ["bus", bus @ ("usb" | "platform"), "drivers", d, rest @ ..] => function_driver(bus, d, rest),
+        ["bus", bus @ ("usb" | "platform"), "drivers", d, rest @ ..] => {
+            function_driver(bus, d, rest)
+        }
         ["bus", "platform", "devices", n, rest @ ..] => platform_device(n, rest),
         ["class"] => dir(names(&["input", "net"]), true),
         ["class", "net"] => dir(net_names(), true),
         ["class", "net", n, rest @ ..] => net_class(n, rest),
-        ["class", "input"] => dir(crate::input::all().into_iter().map(|n| format!("event{n}")), true),
+        ["class", "input"] => dir(
+            crate::input::all().into_iter().map(|n| format!("event{n}")),
+            true,
+        ),
         ["class", "input", n, rest @ ..] => input_class(n, rest),
         ["kernel"] => Some(Node::Dir(alloc::vec![
-            DirEnt { name: String::from("uevent_seqnum"), dir: false, size: 0 },
-            DirEnt { name: String::from("ultar"), dir: true, size: 0 },
+            DirEnt {
+                name: String::from("uevent_seqnum"),
+                dir: false,
+                size: 0
+            },
+            DirEnt {
+                name: String::from("ultar"),
+                dir: true,
+                size: 0
+            },
         ])),
         ["kernel", "uevent_seqnum"] => file(format!("{}\n", super::events::seqnum())),
         ["kernel", "ultar"] => dir(names(&KERNEL_ULTAR), false),
         ["kernel", "ultar", "driver_abi"] => file(format!("{}\n", super::DRIVER_ABI)),
         ["kernel", "ultar", "devices"] => file(device_table()),
         ["kernel", "ultar", "drivers"] => file(driver_table()),
-        ["kernel", "ultar", "uevents"] => file(format!("lost {}\n{}", super::events::lost(), super::events::recent())),
+        ["kernel", "ultar", "uevents"] => file(format!(
+            "lost {}\n{}",
+            super::events::lost(),
+            super::events::recent()
+        )),
         _ => None,
     }
 }
 
 const NET_FILES: [&str; 13] = [
-    "address", "carrier", "duplex", "ifindex", "mtu", "operstate", "speed", "type", "uevent", "ultar_driver", "ultar_ipv4", "ultar_link_changes", "ultar_pci",
+    "address",
+    "carrier",
+    "duplex",
+    "ifindex",
+    "mtu",
+    "operstate",
+    "speed",
+    "type",
+    "uevent",
+    "ultar_driver",
+    "ultar_ipv4",
+    "ultar_link_changes",
+    "ultar_pci",
 ];
 
 /// Interfaces with a driver (placeholders of unbound devices are left out, as Linux removes them).
 fn net_names() -> Vec<String> {
-    crate::driver::NET.lock().iter().filter(|d| !d.detached()).map(|d| d.name()).collect()
+    crate::driver::NET
+        .lock()
+        .iter()
+        .filter(|d| !d.detached())
+        .map(|d| d.name())
+        .collect()
 }
 
 fn net_index(name: &str) -> Option<usize> {
-    crate::driver::NET.lock().iter().position(|d| !d.detached() && d.name() == name)
+    crate::driver::NET
+        .lock()
+        .iter()
+        .position(|d| !d.detached() && d.name() == name)
 }
 
 /// `/sys/class/net/<if>` and below (Linux layout; `ultar_*` where Linux uses netlink).
@@ -144,14 +251,25 @@ fn net_class(name: &str, rest: &[&str]) -> Option<Node> {
         (d.mac(), d.link(), d.speed_mbit(), d.driver())
     };
     let up = link.unwrap_or(true);
-    let pci = DEVICES.lock().iter().find(|b| b.driver.is_some() && b.slots.net.contains(&n)).map(|b| super::pci_name(&b.dev));
+    let pci = DEVICES
+        .lock()
+        .iter()
+        .find(|b| b.driver.is_some() && b.slots.net.contains(&n))
+        .map(|b| super::pci_name(&b.dev));
     let text = match rest {
         [] => return dir(names(&NET_FILES), false),
-        ["address"] => format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
+        ["address"] => format!(
+            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        ),
         ["carrier"] => format!("{}\n", u8::from(up)),
         ["operstate"] => String::from(if up { "up\n" } else { "down\n" }),
         ["speed"] => format!("{}\n", speed.map_or(-1, |s| s as i64)),
-        ["duplex"] => String::from(if up && speed.is_some() { "full\n" } else { "unknown\n" }),
+        ["duplex"] => String::from(if up && speed.is_some() {
+            "full\n"
+        } else {
+            "unknown\n"
+        }),
         ["mtu"] => String::from("1500\n"),
         ["type"] => String::from("1\n"),
         ["ifindex"] => format!("{}\n", n + 2),
@@ -168,10 +286,21 @@ fn net_class(name: &str, rest: &[&str]) -> Option<Node> {
 /// `/sys/class/input/eventN` and below.
 fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
     let index = crate::input::parse(n).filter(|&i| crate::input::exists(i))?;
-    let entry = |name: &str, dir: bool| DirEnt { name: String::from(name), dir, size: 0 };
+    let entry = |name: &str, dir: bool| DirEnt {
+        name: String::from(name),
+        dir,
+        size: 0,
+    };
     match rest {
-        [] => Some(Node::Dir(alloc::vec![entry("dev", false), entry("device", true), entry("uevent", false)])),
-        ["device"] => Some(Node::Dir(alloc::vec![entry("name", false), entry("uevent", false)])),
+        [] => Some(Node::Dir(alloc::vec![
+            entry("dev", false),
+            entry("device", true),
+            entry("uevent", false)
+        ])),
+        ["device"] => Some(Node::Dir(alloc::vec![
+            entry("name", false),
+            entry("uevent", false)
+        ])),
         _ => file(crate::input::sys_file(index, rest)?),
     }
 }
@@ -195,13 +324,25 @@ pub fn link(path: &str) -> Option<String> {
     match p.as_slice() {
         ["pci", "devices", n, "driver"] => {
             let i = pci_index(n)?;
-            DEVICES.lock()[i].driver.map(|d| format!("../../drivers/{d}"))
+            DEVICES.lock()[i]
+                .driver
+                .map(|d| format!("../../drivers/{d}"))
         }
         ["pci", "drivers", d, n] if bound_to(n) == Some(*d) => Some(format!("../../devices/{n}")),
-        ["usb", "devices", n, "driver"] => usb_find(n)?.1?.driver.map(|d| format!("../../drivers/{d}")),
-        ["usb", "drivers", d, n] if usb_find(n).and_then(|x| x.1).and_then(|i| i.driver) == Some(*d) => Some(format!("../../devices/{n}")),
-        ["platform", "devices", n, "driver"] => platform::get(n).map(|d| format!("../../drivers/{}", d.driver)),
-        ["platform", "drivers", d, n] if platform::get(n).is_some_and(|x| x.driver == *d) => Some(format!("../../devices/{n}")),
+        ["usb", "devices", n, "driver"] => {
+            usb_find(n)?.1?.driver.map(|d| format!("../../drivers/{d}"))
+        }
+        ["usb", "drivers", d, n]
+            if usb_find(n).and_then(|x| x.1).and_then(|i| i.driver) == Some(*d) =>
+        {
+            Some(format!("../../devices/{n}"))
+        }
+        ["platform", "devices", n, "driver"] => {
+            platform::get(n).map(|d| format!("../../drivers/{}", d.driver))
+        }
+        ["platform", "drivers", d, n] if platform::get(n).is_some_and(|x| x.driver == *d) => {
+            Some(format!("../../devices/{n}"))
+        }
         _ => None,
     }
 }
@@ -216,8 +357,18 @@ fn pci_device(n: &str, rest: &[&str]) -> Option<Node> {
     let (b, drv, disabled, state, error, slots) = {
         let devs = DEVICES.lock();
         let b = &devs[i];
-        let error = b.error.as_ref().map(|e| format!("{} {}", b.tried.unwrap_or("-"), e.replace('\n', " ")));
-        (b.dev.clone(), b.driver, b.disabled, super::state(b), error, b.slots.clone())
+        let error = b
+            .error
+            .as_ref()
+            .map(|e| format!("{} {}", b.tried.unwrap_or("-"), e.replace('\n', " ")));
+        (
+            b.dev.clone(),
+            b.driver,
+            b.disabled,
+            super::state(b),
+            error,
+            b.slots.clone(),
+        )
     };
     let class = (b.class as u32) << 16 | (b.subclass as u32) << 8 | b.prog_if as u32;
     let text = match rest {
@@ -242,7 +393,11 @@ fn pci_device(n: &str, rest: &[&str]) -> Option<Node> {
             (None, None) => String::from("none\n"),
         },
         ["ultar_health"] => super::health(i)?,
-        ["ultar_drivers"] => crate::drivers::ALL.iter().filter(|d| d.matches(&b)).map(|d| format!("{}\n", d.name())).collect(),
+        ["ultar_drivers"] => crate::drivers::ALL
+            .iter()
+            .filter(|d| d.matches(&b))
+            .map(|d| format!("{}\n", d.name()))
+            .collect(),
         ["ultar_unbind"] => match drv.and_then(super::driver) {
             None => String::from("unbound\n"),
             Some(d) => unbind_word(super::unbind_refusal(d, &slots)),
@@ -274,7 +429,12 @@ fn pci_uevent(b: &crate::pci::PciDev, drv: Option<&str>, class: u32) -> String {
 
 fn pci_driver(d: &str, rest: &[&str]) -> Option<Node> {
     let drv = super::driver(d)?;
-    let mine: Vec<String> = DEVICES.lock().iter().filter(|b| b.driver == Some(drv.name())).map(|b| super::pci_name(&b.dev)).collect();
+    let mine: Vec<String> = DEVICES
+        .lock()
+        .iter()
+        .filter(|b| b.driver == Some(drv.name()))
+        .map(|b| super::pci_name(&b.dev))
+        .collect();
     let text = match rest {
         [] => {
             let mut v = names(&PCI_DRV_FILES);
@@ -331,11 +491,22 @@ fn usb_device(n: &str, rest: &[&str]) -> Option<Node> {
 /// A driver of the USB or platform bus: part of another driver or of the kernel core.
 fn function_driver(bus: &str, d: &str, rest: &[&str]) -> Option<Node> {
     let (known, mine, why): (bool, Vec<String>, &str) = if bus == "usb" {
-        let mine = usb_entries().into_iter().filter(|n| usb_find(n).and_then(|x| x.1).and_then(|i| i.driver) == Some(d)).collect();
+        let mine = usb_entries()
+            .into_iter()
+            .filter(|n| usb_find(n).and_then(|x| x.1).and_then(|i| i.driver) == Some(d))
+            .collect();
         (usb::DRIVERS.contains(&d), mine, "part of the xhci driver")
     } else {
-        let mine = platform::list().iter().filter(|x| x.driver == d).map(|x| String::from(x.name)).collect();
-        (platform::DRIVERS.contains(&d), mine, "part of the kernel core")
+        let mine = platform::list()
+            .iter()
+            .filter(|x| x.driver == d)
+            .map(|x| String::from(x.name))
+            .collect();
+        (
+            platform::DRIVERS.contains(&d),
+            mine,
+            "part of the kernel core",
+        )
     };
     if !known {
         return None;
@@ -357,7 +528,10 @@ fn function_driver(bus: &str, d: &str, rest: &[&str]) -> Option<Node> {
 fn platform_device(n: &str, rest: &[&str]) -> Option<Node> {
     let d = platform::get(n)?;
     match rest {
-        [] => dir(names(&["driver", "modalias", "uevent", "ultar_state"]), false),
+        [] => dir(
+            names(&["driver", "modalias", "uevent", "ultar_state"]),
+            false,
+        ),
         ["uevent"] => file(platform::uevent(&d)),
         ["modalias"] => file(format!("platform:{}\n", d.driver)),
         ["ultar_state"] => file(String::from("bound\n")),
@@ -370,16 +544,39 @@ fn device_table() -> String {
     let mut s = String::new();
     for b in DEVICES.lock().iter() {
         let d = &b.dev;
-        let probe = if b.driver.is_some() { "ok" } else if b.error.is_some() { "failed" } else { "none" };
+        let probe = if b.driver.is_some() {
+            "ok"
+        } else if b.error.is_some() {
+            "failed"
+        } else {
+            "none"
+        };
         s += &format!(
             "pci {} {:04x}:{:04x} {:02x}{:02x}{:02x} {:04x}:{:04x} {} {} {probe}\n",
-            super::pci_name(d), d.vendor, d.device, d.class, d.subclass, d.prog_if, d.subsys_vendor, d.subsys, b.driver.unwrap_or("-"), super::state(b)
+            super::pci_name(d),
+            d.vendor,
+            d.device,
+            d.class,
+            d.subclass,
+            d.prog_if,
+            d.subsys_vendor,
+            d.subsys,
+            b.driver.unwrap_or("-"),
+            super::state(b)
         );
     }
     for d in usb::list() {
         let drv = d.ifaces.iter().find_map(|i| i.driver).unwrap_or("-");
         let state = if drv == "-" { "unbound" } else { "bound" };
-        s += &format!("usb {} {:04x}:{:04x} {:02x}{:02x}{:02x} - {drv} {state} -\n", d.name(), d.vendor, d.product, d.class[0], d.class[1], d.class[2]);
+        s += &format!(
+            "usb {} {:04x}:{:04x} {:02x}{:02x}{:02x} - {drv} {state} -\n",
+            d.name(),
+            d.vendor,
+            d.product,
+            d.class[0],
+            d.class[1],
+            d.class[2]
+        );
     }
     for d in platform::list() {
         s += &format!("platform {} - - - {} bound -\n", d.name, d.driver);
@@ -391,10 +588,28 @@ fn device_table() -> String {
 fn driver_table() -> String {
     let mut s = String::new();
     for drv in crate::drivers::ALL {
-        let mine: Vec<String> = DEVICES.lock().iter().filter(|b| b.driver == Some(drv.name())).map(|b| super::pci_name(&b.dev)).collect();
-        let unbind = if drv.can_remove().is_ok() { "supported" } else { "unsupported" };
-        let devs = if mine.is_empty() { String::from("-") } else { mine.join(",") };
-        s += &format!("{} pci {} {} {unbind} {devs}\n", drv.name(), drv.origin(), u8::from(super::driver_on(drv.name())));
+        let mine: Vec<String> = DEVICES
+            .lock()
+            .iter()
+            .filter(|b| b.driver == Some(drv.name()))
+            .map(|b| super::pci_name(&b.dev))
+            .collect();
+        let unbind = if drv.can_remove().is_ok() {
+            "supported"
+        } else {
+            "unsupported"
+        };
+        let devs = if mine.is_empty() {
+            String::from("-")
+        } else {
+            mine.join(",")
+        };
+        s += &format!(
+            "{} pci {} {} {unbind} {devs}\n",
+            drv.name(),
+            drv.origin(),
+            u8::from(super::driver_on(drv.name()))
+        );
     }
     for d in usb::DRIVERS {
         s += &format!("{d} usb builtin 1 unsupported -\n");
@@ -413,9 +628,16 @@ pub fn is_control(path: &str) -> bool {
     if let Some(rest) = path.strip_prefix("/sys/class/input/") {
         return matches!(rest.split_once('/'), Some((n, "uevent")) if crate::input::parse(n).is_some());
     }
-    let Some(rest) = path.strip_prefix("/sys/bus/pci/") else { return false };
+    let Some(rest) = path.strip_prefix("/sys/bus/pci/") else {
+        return false;
+    };
     let p: Vec<&str> = rest.split('/').collect();
-    matches!(p.as_slice(), ["drivers_probe"] | ["drivers", _, "bind" | "unbind" | "ultar_enabled"] | ["devices", _, "enable"])
+    matches!(
+        p.as_slice(),
+        ["drivers_probe"]
+            | ["drivers", _, "bind" | "unbind" | "ultar_enabled"]
+            | ["devices", _, "enable"]
+    )
 }
 
 /// A write to a control file (the caller checked the right `LOAD_DRIVER`).
@@ -425,7 +647,12 @@ pub fn write(path: &str, text: &str) -> Result<(), i64> {
         return crate::net::ipv4_write(n, text).map_err(|_| -EINVAL);
     }
     if let Some(rest) = path.strip_prefix("/sys/class/input/") {
-        let index = rest.split('/').next().and_then(crate::input::parse).filter(|&i| crate::input::exists(i)).ok_or(-ENODEV)?;
+        let index = rest
+            .split('/')
+            .next()
+            .and_then(crate::input::parse)
+            .filter(|&i| crate::input::exists(i))
+            .ok_or(-ENODEV)?;
         return match text {
             "add" | "change" | "remove" => {
                 crate::input::uevent(index, text);
@@ -434,7 +661,9 @@ pub fn write(path: &str, text: &str) -> Result<(), i64> {
             _ => Err(-EINVAL),
         };
     }
-    let Some(rest) = path.strip_prefix("/sys/bus/pci/") else { return Err(-EACCES) };
+    let Some(rest) = path.strip_prefix("/sys/bus/pci/") else {
+        return Err(-EACCES);
+    };
     let p: Vec<&str> = rest.split('/').collect();
     match p.as_slice() {
         ["drivers_probe"] => super::probe_any(text),
