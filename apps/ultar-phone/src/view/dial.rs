@@ -54,8 +54,11 @@ fn pad_column(
         .gap(Space::S12);
     // A scroll container: on a window lower than the pad (a PC's first window, a small
     // screen) the keys and the call button stay reachable instead of being cut off.
+    // The holder takes the column's width; the scroll container grows to the holder's height
+    // (a growing viewport starts from no height, so the pad never makes the body taller).
+    let holder = b.flex(parent, Flex::column(), sizing)?;
     let pad = Scroll::new().flex(flex).name(Label::key("phone.pad"));
-    let col = b.add(parent, pad, sizing)?;
+    let col = b.add(holder, pad, Sizing::grow(1))?;
     b.built.pad = Some(col);
     b.add(
         col,
