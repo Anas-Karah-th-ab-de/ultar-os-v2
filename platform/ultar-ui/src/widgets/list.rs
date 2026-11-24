@@ -101,6 +101,11 @@ pub struct ListItem {
     pub separator: bool,
     /// Show a forward arrow at the end: activating the item opens a page of its own.
     pub chevron: bool,
+    /// Draw the item as a tile of a grid (a file or a desktop icon): the icon in a box above
+    /// the label ([`ListItem::tile`]).
+    pub tile: bool,
+    /// A picture shown in the tile's box instead of the icon.
+    pub thumbnail: Option<super::Preview>,
 }
 
 const PAD_INLINE: Space = Space::S16;
@@ -124,6 +129,8 @@ impl ListItem {
             selected: false,
             separator: false,
             chevron: false,
+            tile: false,
+            thumbnail: None,
         }
     }
 
@@ -176,6 +183,9 @@ impl ListItem {
         control: Size,
         (nav, has_error): (bool, bool),
     ) -> Size {
+        if self.tile {
+            return self.measure_tile(cx);
+        }
         let target = cx.mode.min_target();
         let two_lines = self.sublabel.is_some() || has_error;
         if nav {
@@ -286,6 +296,9 @@ impl ListItem {
         v: &Visual,
         (control, nav, error): (f32, bool, Option<&Label>),
     ) {
+        if self.tile {
+            return self.paint_tile(p, cx, rect, v);
+        }
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
         self.paint_background(p, rect, v, nav);

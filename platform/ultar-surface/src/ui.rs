@@ -12,6 +12,9 @@ use ultar_ui::event::{Action, Event as UiEvent, Key, Modifiers, PointerButton};
 use ultar_ui::ui::Ui;
 use ultar_ui::{Direction, Point, Size};
 
+/// Most unused key presses kept between two [`UiWindow::take_unhandled_keys`] calls.
+pub const MAX_UNHANDLED: usize = 64;
+
 /// An `ultar-ui` tree shown in one window.
 pub struct UiWindow {
     client: Client,
@@ -25,6 +28,12 @@ pub struct UiWindow {
     serial: u32,
     /// Text offered on the clipboard, sent when the compositor asks for it.
     offered: Option<String>,
+    /// Key presses the widget tree did not use (app shortcuts), oldest first.
+    unhandled: Vec<UiEvent>,
+    /// The last input was a key press (not a pointer or touch).
+    key_input: bool,
+    /// Keys that go to the app before the widget tree sees them.
+    shortcuts: Option<fn(&UiEvent) -> bool>,
 }
 
 /// The clipboard type of offered text.
@@ -158,6 +167,9 @@ impl UiWindow {
             started: Instant::now(),
             serial: 0,
             offered: None,
+            unhandled: Vec::new(),
+            key_input: false,
+            shortcuts: None,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -178,6 +190,25 @@ impl UiWindow {
     /// The window.
     pub fn window(&self) -> &Window {
         &self.window
+    }
+
+    /// Key presses the widget tree did not use since the last call (the app's shortcuts:
+    /// Ctrl+C, Delete, F2 …), oldest first.
+    pub fn take_unhandled_keys(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.unhandled)
+    }
+
+    /// Key presses for which `filter` is true go straight to the app (read with
+    /// [`UiWindow::take_unhandled_keys`]), before the widget tree moves focus with them
+    /// (Alt+arrows for back and forward).
+    pub fn set_shortcuts(&mut self, filter: Option<fn(&UiEvent) -> bool>) {
+        self.shortcuts = filter;
+    }
+
+    /// `true` when the last input event was a key press: an app tells "Enter on an item"
+    /// from "a click on an item" with it.
+    pub fn last_input_was_key(&self) -> bool {
+        self.key_input
     }
 
     /// Waits up to `timeout` for one event, handles it and draws if the UI
@@ -262,7 +293,26 @@ impl UiWindow {
             self.pointer = point(*x, *y);
         }
         match translate(event, self.pointer) {
-            Some(ui_event) => Ok(self.ui.handle(ui_event).actions),
+            Some(ui_event) => {
+                if self.shortcuts.is_some_and(|f| f(&ui_event))
+                    && self.unhandled.len() < MAX_UNHANDLED
+                {
+                    self.key_input = true;
+                    self.unhandled.push(ui_event);
+                    return Ok(Vec::new());
+                }
+                if !matches!(ui_event, UiEvent::Modifiers { .. }) {
+                    self.key_input = matches!(ui_event, UiEvent::Key { .. });
+                }
+                let response = self.ui.handle(ui_event);
+                if !response.consumed && matches!(ui_event, UiEvent::Key { .. }) {
+                    // An app reads them with `take_unhandled_keys`; a bounded queue.
+                    if self.unhandled.len() < MAX_UNHANDLED {
+                        self.unhandled.push(ui_event);
+                    }
+                }
+                Ok(response.actions)
+            }
             None => Ok(Vec::new()),
         }
     }

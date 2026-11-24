@@ -5591,6 +5591,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-files"
+version = "0.7.0"
+dependencies = [
+ "png 0.17.16",
+ "rustix",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
+ "zune-jpeg",
+]
+
+[[package]]
 name = "ultar-hal"
 version = "0.7.0"
 dependencies = [

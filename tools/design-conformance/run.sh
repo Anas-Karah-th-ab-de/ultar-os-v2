@@ -51,6 +51,8 @@ ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-phone --test design_confor
 # product surfaces: boards/*.tsv against the apps (ratchet design/conformance/known-boards.txt)
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-settings --test design_conformance --test clicks --test access
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-installer-ui --test design_conformance --test clicks --test safety --test engine --test access
+# Files app against its boards.
+ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-files --test design_conformance --test clicks
 
 if [ -n "$INV" ]; then
     for b in States StatesLight; do

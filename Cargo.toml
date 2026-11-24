@@ -46,6 +46,7 @@ members = [
     "apps/ultar-settings",
     "apps/ultar-web",
     "apps/ultar-phone",
+    "apps/ultar-files",
     "external/ultar-telegram",
     "platform/ultar-ime",
     "platform/ultar-shell",
