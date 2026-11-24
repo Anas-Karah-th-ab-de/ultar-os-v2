@@ -2,12 +2,15 @@
 # Intel display driver test on the Beelink GTi15 Ultra without touching its boot: the integrated
 # GPU (00:02.0, alone in IOMMU group 0) is taken from Linux' i915, passed to the Ultar kernel under
 # KVM with VFIO, and ALWAYS given back to i915 when the script ends (also on errors and Ctrl-C).
-# The kernel runs its self test; its verdict line is printed at the end (INTELTEST: ALLES OK).
+# The kernel runs its self test; its verdict lines are printed at the end (INTELTEST: ALLES OK for
+# the display, GTTEST: ALLES OK for the render/compute side with the GuC firmware upload).
 #
 # Usage (on the target, as root):  igpu-passthrough.sh <ultar-kern.efi> [bin-dir]
 #   LIMIT=<seconds>  hard time limit of the VM (default 240)
 #   REGS=0           skip the register snapshots (taken with i915 bound and after its unbind)
 #   OPTIN=0          boot without the driver's opt-in: it must only read (verdict READ-ONLY OK)
+#   GUC=<file>|0     GuC firmware for the GT test (default: the host's /lib/firmware/i915/mtl_guc_70.bin,
+#                    also .zst/.xz); 0 = without (GTTEST then skips the upload)
 # Needs: qemu-system-x86_64 (KVM), OVMF 4M, mtools, dosfstools; intel_reg (igt-gpu-tools) for REGS.
 #
 # What it does NOT do: stop any service, change the boot, or touch other PCI devices. It refuses to
@@ -102,6 +105,28 @@ mcopy -i "$W/esp.img" "$EFI" ::/EFI/BOOT/BOOTX64.EFI
 if [ "${OPTIN:-1}" != 0 ]; then
   printf 'on\n' > "$W/intel-display"; mcopy -i "$W/esp.img" "$W/intel-display" ::/ultar/intel-display
 fi
+# GuC firmware for GTTEST (docs/integration/intel-gt.md): Intel's file, only loaded by the kernel
+GUC="${GUC:-}"
+if [ -z "$GUC" ]; then
+  for f in /lib/firmware/i915/mtl_guc_70.bin /lib/firmware/i915/mtl_guc_70.bin.zst /lib/firmware/i915/mtl_guc_70.bin.xz; do
+    [ -r "$f" ] && { GUC=$f; break; }
+  done
+fi
+if [ -n "$GUC" ] && [ "$GUC" != 0 ]; then
+  case "$GUC" in
+    *.zst) zstd -dqc "$GUC" > "$W/mtl_guc_70.bin" ;;
+    *.xz) xz -dc "$GUC" > "$W/mtl_guc_70.bin" ;;
+    *) cp "$GUC" "$W/mtl_guc_70.bin" ;;
+  esac
+  if [ -s "$W/mtl_guc_70.bin" ]; then
+    mmd -i "$W/esp.img" ::/firmware; mcopy -i "$W/esp.img" "$W/mtl_guc_70.bin" ::/firmware/mtl_guc_70.bin
+    echo "GuC firmware: $GUC ($(stat -c %s "$W/mtl_guc_70.bin") bytes, sha256 $(sha256sum "$W/mtl_guc_70.bin" | cut -c1-16))"
+  else
+    echo "GuC firmware: $GUC could not be unpacked - GTTEST will skip the upload"
+  fi
+else
+  echo "GuC firmware: none - GTTEST will skip the upload"
+fi
 if [ -n "$BINS" ]; then for f in "$BINS"/*; do mcopy -i "$W/esp.img" "$f" ::/bin/; done; fi
 head -c 262144 /dev/zero | tr '\0' ' ' > "$W/log.txt"; mcopy -i "$W/esp.img" "$W/log.txt" ::/ultar-kern/selbsttest.txt
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$W/vars.fd"
@@ -129,7 +154,8 @@ run_vm() {   # $1 = extra vfio-pci options; ends QEMU as soon as the verdict lin
     -serial "file:$W/serial.log" -monitor none 2> "$W/qemu.err" &
   local qp=$!
   while kill -0 "$qp" 2>/dev/null; do
-    if grep -aqE "INTELTEST: (ALLES OK|FEHLER|no Intel)|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
+    # GTTEST runs after INTELTEST and is the last test that uses this device
+    if grep -aqE "GTTEST: (ALLES OK|FEHLER|no Intel)|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
     sleep 1
   done
   wait "$qp" 2>/dev/null || true
@@ -142,8 +168,8 @@ if ! grep -aq "Ultar" "$W/serial.log" 2>/dev/null; then
   run_vm ""
 fi
 echo "--- QEMU: $(head -3 "$W/qemu.err" | tr '\n' ' ')"
-echo "--- kernel (intel-display, INTELTEST)"
-grep -aE "intel-display|INTELTEST|treiber\] 00:02|panic|PANIK|Ausnahme" "$W/serial.log" | head -150 || true
+echo "--- kernel (intel-display, intel-gt, INTELTEST, GTTEST)"
+grep -aE "intel-display|intel-gt|INTELTEST|GTTEST|treiber\] 00:02|panic|PANIK|Ausnahme" "$W/serial.log" | head -170 || true
 if [ "${OPTIN:-1}" = 0 ]; then
   # without opt-in: the probe reports the read-only readout and no device is bound
   if grep -aq "not driven" "$W/serial.log" && grep -aq "INTELTEST: no Intel display device bound" "$W/serial.log"; then
@@ -156,4 +182,7 @@ elif grep -aq "INTELTEST: ALLES OK" "$W/serial.log"; then
 else
   echo "VERDICT: $(grep -aE 'INTELTEST: (FEHLER|no Intel)' "$W/serial.log" | tail -1 || echo 'no verdict (see serial tail below)')"
   echo "--- serial tail"; tail -30 "$W/serial.log"
+fi
+if [ "${OPTIN:-1}" != 0 ]; then
+  echo "VERDICT: $(grep -aE 'GTTEST: (ALLES OK|FEHLER|no Intel)' "$W/serial.log" | tail -1 || echo 'GTTEST: no verdict')"
 fi

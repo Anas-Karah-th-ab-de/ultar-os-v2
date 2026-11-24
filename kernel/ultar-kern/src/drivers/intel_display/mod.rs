@@ -17,6 +17,7 @@ pub mod anzeige;
 pub mod buffer;
 pub mod connector;
 pub mod device;
+pub mod gt;
 pub mod mmio;
 pub mod opregion;
 pub mod selftest;
@@ -132,6 +133,10 @@ impl Driver for Drv {
         let mut dev = Device::takeover(mmio, plat, (d.bus, d.dev, d.func), vbt, aperture)
             .map_err(|e| format!("{e}"))?;
         dev.collect_modes();
+        // the GT with GMD_ID and GuC submission came with display 14 (Meteor Lake)
+        if plat.display_ver >= 14 {
+            gt::probe(&mut dev.mmio);
+        }
         crate::kprintln!(
             "[intel-display] {} display {}: {}",
             plat.name,

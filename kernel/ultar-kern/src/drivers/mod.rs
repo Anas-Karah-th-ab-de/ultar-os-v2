@@ -2,6 +2,7 @@
 
 pub mod bruecke;
 pub mod intel_display;
+pub mod intel_npu;
 pub mod nvidia;
 pub mod nvme;
 pub mod ps2kbd;
@@ -30,6 +31,7 @@ pub static ALL: &[&dyn Driver] = &[
     &virtio_rng::DRV,
     &bruecke::DRV,
     &intel_display::DRV,
+    &intel_npu::DRV,
     &nvidia_display::DRV,
     // WERKSTATT-TREIBER-BEGINN
     &gen_ahci::DRV,
