@@ -36,7 +36,7 @@ fn beelink_rows() -> Vec<Row> {
     let no_package = "devd.reason.no-package";
     let not_loadable = "devd.reason.not-loadable";
     vec![
-        (s("pci:00:02.0"), Failed, s(""), s(not_loadable)),
+        (s("pci:00:02.0"), Failed, s(""), s("devd.reason.not-bound")),
         (s("pci:00:0b.0"), NoDriver, s(""), s(no_package)),
         (s("pci:00:0d.0"), Active, s("gen-xhci"), s("")),
         (s("pci:00:14.0"), Active, s("gen-xhci"), s("")),
@@ -99,7 +99,7 @@ fn beelink_capabilities_and_driver_states_are_published() {
     let states = last_states(&published);
     let state = |address: &str| states[address].clone();
     assert_eq!(state("pci:ad:00.1"), (s("gen-ixgbe"), DriverPhase::Active));
-    let display = (s("intel-display-xe"), DriverPhase::Failed);
+    let display = (s("intel-display"), DriverPhase::Failed);
     assert_eq!(state("pci:00:02.0"), display);
     assert_eq!(state("pci:ab:00.0"), (s(""), DriverPhase::Missing));
     assert_eq!(state("usb:1-2"), (s("intel-bt-usb"), DriverPhase::Failed));
@@ -169,8 +169,12 @@ fn thinkpad_devices_with_packages() {
     }
     // Packages exist but need loadable modules (stage B).
     let not_loadable = (Failed, s(""), s("devd.reason.not-loadable"));
-    for label in ["intel-uhd-gen9.5", "intel-ax201"] {
-        assert_eq!(t.state(label), not_loadable, "{label}");
+    assert_eq!(t.state("intel-ax201"), not_loadable);
+    // Built into the kernel (intel-display, nvidia-display), but the recorded kernel did not
+    // bind them: the opt-in was off.
+    let not_bound = (Failed, s(""), s("devd.reason.not-bound"));
+    for label in ["intel-uhd-gen9.5", "nvidia-quadro-rtx-4000"] {
+        assert_eq!(t.state(label), not_bound, "{label}");
     }
     assert_eq!(row(&t.list, "usb:1-1").phase, Failed);
     // The gen-hda package lists the cAVS id, but the kernel's gen-hda only takes class
@@ -196,7 +200,6 @@ fn thinkpad_devices_without_packages() {
     }
     let no_package = (NoDriver, s(""), s("devd.reason.no-package"));
     for label in [
-        "nvidia-quadro-rtx-4000",
         "nvidia-usb-c-ucsi",
         "thunderbolt-controller",
         "lpss-i2c-0",
@@ -235,8 +238,8 @@ fn thinkpad_capabilities_and_driver_states_are_published() {
     assert_eq!(states.len(), 26);
     let count = |phase: DriverPhase| states.values().filter(|(_, p)| *p == phase).count();
     assert_eq!(count(DriverPhase::Active), 6);
-    assert_eq!(count(DriverPhase::Failed), 4);
-    assert_eq!(count(DriverPhase::Missing), 16);
+    assert_eq!(count(DriverPhase::Failed), 5);
+    assert_eq!(count(DriverPhase::Missing), 15);
 }
 
 #[test]

@@ -194,7 +194,7 @@ fn example_depot(dir: &TempDir) -> (String, String) {
         std::fs::copy(packed, dir.join("depot").join(format!("{id}.utr"))).unwrap();
     }
     let out = udrv(Lang::En, &["index", s(&dir.join("depot")), &keys.0]).unwrap();
-    assert!(out.contains("Index created and signed, packages: 10"));
+    assert!(out.contains("Index created and signed, packages: 11"));
     keys
 }
 
@@ -260,7 +260,7 @@ fn match_and_index_rejections() {
         &["index", s(&depot), &key, "--trusted", &stranger_trusted],
     )
     .unwrap();
-    assert!(out.contains("packages: 11"));
+    assert!(out.contains("packages: 12"));
 }
 
 #[test]
