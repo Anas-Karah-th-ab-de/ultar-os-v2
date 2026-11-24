@@ -152,6 +152,23 @@ pub fn load(path: &std::path::Path) -> InitConfig {
     }
 }
 
+/// Kernel parameter `ultar.profile=<name>` (the last valid one; the Ultar kernel names
+/// `installer` when it starts the installer session from a medium): the boot profile whose
+/// services start. Default [`ultar_init::spec::SYSTEM_PROFILE`].
+pub fn cmdline_profile() -> String {
+    profile_of(&ultar_sys::machine::kernel_arguments())
+}
+
+/// The boot profile named by kernel arguments `words`.
+pub fn profile_of(words: &[String]) -> String {
+    words
+        .iter()
+        .filter_map(|word| word.strip_prefix("ultar.profile="))
+        .rfind(|name| ultar_init::spec::valid_name(name))
+        .unwrap_or(ultar_init::spec::SYSTEM_PROFILE)
+        .to_owned()
+}
+
 /// Kernel parameter `ultar.start=a,b`: start these (manual) services at boot.
 pub fn cmdline_start() -> Vec<String> {
     ultar_sys::machine::kernel_arguments()
@@ -175,5 +192,21 @@ mod tests {
         let empty: InitConfig = toml::from_str("").unwrap();
         assert_eq!(empty.service_dirs.len(), 2);
         assert!(toml::from_str::<InitConfig>("frob = 1").is_err());
+    }
+
+    #[test]
+    fn the_boot_profile_comes_from_the_kernel_arguments() {
+        let words = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
+        assert_eq!(profile_of(&words("quiet")), "system");
+        assert_eq!(profile_of(&words("ultar.profile=installer")), "installer");
+        assert_eq!(
+            profile_of(&words("ultar.profile=a ultar.profile=installer")),
+            "installer"
+        );
+        assert_eq!(profile_of(&words("ultar.profile=../x")), "system");
+        assert_eq!(
+            profile_of(&words("ultar.profile=installer ultar.profile=")),
+            "installer"
+        );
     }
 }

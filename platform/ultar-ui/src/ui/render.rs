@@ -92,7 +92,7 @@ impl Ui {
             Widget::Card(w) => w.paint(p, rect),
             Widget::Badge(w) => w.paint(p, cx, rect),
             Widget::Progress(w) => w.paint(p, rect, cx.spin),
-            Widget::Checkbox(w) => w.paint(p, cx, rect, &v, error),
+            Widget::Checkbox(w) => w.paint(p, cx, rect, &v, error, self.hosted(id).w),
             Widget::RadioGroup(w) => w.paint(p, cx, rect, &v, parts),
             Widget::Tabs(w) => w.paint(p, cx, rect, &v, parts),
             Widget::InfoBar(w) => w.paint(p, cx, rect, self.hosted(id).w),

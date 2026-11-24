@@ -29,6 +29,9 @@
 #   7b. the display and account services under the service manager (svc-e2e.sh, SVC: ALLES OK),
 #   7c. the system services behind the desktop shell (dienste-e2e.sh, DIENSTE: ALLES OK),
 #   7e. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
+#   7f. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
+#       the graphical installation from A to Z with the first start of the installed disk (installer-e2e.sh,
+#       INSTALLER: ALLES OK; opt-in with INSTALLER_E2E=1, see docs/integration/installer-boot.md),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
@@ -130,6 +133,23 @@ IMG=out/ultar-kern-esp.img bash tools/kern-test/svc-e2e.sh
 IMG=out/ultar-kern-esp.img bash tools/kern-test/dienste-e2e.sh
 # The phone: the real call daemon with the test-double modem and the phone app (TELEFON: ALLES OK).
 IMG=out/ultar-kern-esp.img bash tools/kern-test/telefon-e2e.sh
+# Installer mode: whole-disk nodes only on an installation medium, only for the installer's identity, the
+# boot disk never a target (installer-disk.sh, INSTALLER-DISK: ALLES OK).
+IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/installer-disk.sh | tail -3
+# The graphical installation from A to Z on VMware-like hardware: medium + empty disk, the installer driven
+# by keys, then the installed disk alone with the account it was given (installer-e2e.sh). Opt-in
+# (INSTALLER_E2E=1) until the kernel's keyboard path stops losing typed characters under QEMU (TCG): the
+# account step cannot be typed reliably yet (docs/integration/installer-boot.md, open point 1).
+if [ "${INSTALLER_E2E:-0}" = 0 ]; then
+  echo "skip  INSTALLER (INSTALLER_E2E=1 runs it; open point in docs/integration/installer-boot.md)"
+else
+  ILOG="${INSTALLER_LOG:-$(mktemp)}"
+  if SMP="${SMP:-2}" bash tools/kern-test/installer-e2e.sh > "$ILOG" 2>&1 && grep -q "^INSTALLER: ALLES OK" "$ILOG"; then
+    echo "ok    INSTALLER: ALLES OK ($(grep -o 'installed through[^)]*' "$ILOG"))"
+  else
+    echo "FAIL  INSTALLER"; tail -30 "$ILOG"; exit 1
+  fi
+fi
 # A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
 # its own installation and about 25 starts. AB_TEST=0 skips it.
 if [ "${AB_TEST:-1}" = 0 ]; then

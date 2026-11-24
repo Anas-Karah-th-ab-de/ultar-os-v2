@@ -66,11 +66,18 @@ for p in $PROGRAMS; do [ "$p" = ultar-init ] || cp "$BIN/$p" "$R/usr/bin/"; done
 for f in init.toml ids.toml bus-policy.toml compositor-rights.toml devd-seat.toml; do cp "rootfs/etc/ultar/$f" "$R/etc/ultar/"; done
 cp -r rootfs/etc/ultar/trusted-keys "$R/etc/ultar/"
 for s in logd bus settingsd devd seat authd; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
-# The shipped session services are `manual` because the legacy ultar-shell would drive the same display; this
-# image has no ultar-shell, so they start with the system. Nothing else of the files changes.
+# The shipped session services are not started by the ordinary system (`manual = true`, or
+# `[profiles] system = "manual"`) because the legacy ultar-shell would drive the same display; this image
+# has no ultar-shell, so they start with the system. Nothing else of the files changes.
 for s in compositor lock sysdialog desktop; do
-  grep -q '^manual = true$' "rootfs/etc/ultar/services/$s.toml" || fail "$s.toml: no line 'manual = true'"
-  grep -v '^manual = true$' "rootfs/etc/ultar/services/$s.toml" >"$R/etc/ultar/services/$s.toml"
+  f="rootfs/etc/ultar/services/$s.toml"
+  if grep -q '^manual = true$' "$f"; then
+    grep -v '^manual = true$' "$f" >"$R/etc/ultar/services/$s.toml"
+  elif grep -q '^system = "manual"$' "$f"; then
+    sed 's/^system = "manual"$/system = "start"/' "$f" >"$R/etc/ultar/services/$s.toml"
+  else
+    fail "$s.toml: neither 'manual = true' nor 'system = \"manual\"'"
+  fi
 done
 printf 'desktop\n' >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"

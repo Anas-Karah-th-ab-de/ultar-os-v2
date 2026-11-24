@@ -9,7 +9,7 @@ use ultar_init::spec::{ServiceSpec, ALL_RIGHTS, RIGHT_NAMES};
 
 /// Services that still run as root, with the exact reason (the file
 /// repeats it in a `# root:` comment).
-const ROOT_ALLOWED: [(&str, &str); 18] = [
+const ROOT_ALLOWED: [(&str, &str); 19] = [
     ("compat-bind", "bind mount of the compat tree"),
     ("drivers", "module loading (finit_module) and /sys driver files"),
     ("entwickler", "remote administrator shell (developer access)"),
@@ -18,6 +18,7 @@ const ROOT_ALLOWED: [(&str, &str); 18] = [
     ("llm-compat", "the compat runner unshares, mounts and chroots as root"),
     ("modem", "firmware into /dev/umts_boot0, module parameters, EFS mount"),
     ("net", "addresses and routes, DHCP on port 68, wpa_supplicant via the compat runner"),
+    ("firstboot", "the raw A/B node ULTAR-BOOTCTL opens for root only (the installer's answers record)"),
     ("netzregeln", "firewall rules"),
     ("ril", "modem IPC devices, address and routes of the mobile data interface"),
     ("seat", "owner and mode of root's device nodes below /dev (ultar-devd-seat, no bus)"),

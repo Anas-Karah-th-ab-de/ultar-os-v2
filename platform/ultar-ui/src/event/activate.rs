@@ -69,7 +69,9 @@ impl Ui {
 
     /// The chosen tab is drawn semibold and so is wider: its bar is measured again.
     pub(crate) fn remeasure_tabs(&mut self, id: NodeId) {
-        if matches!(self.widget(id), Some(Widget::Tabs(_))) {
+        if matches!(self.widget(id), Some(Widget::Tabs(_)))
+            || matches!(self.widget(id), Some(Widget::Select(s)) if s.fit)
+        {
             self.invalidate_node(id);
         }
     }

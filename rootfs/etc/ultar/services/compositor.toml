@@ -1,8 +1,9 @@
 # Native compositor (ultar-compositor): shows the windows of app processes
-# (ultar-surface protocol). Started by hand until the surface (ultar-shell)
-# moves onto it - both would drive the display: ultar-ctl start compositor
+# (ultar-surface protocol). In the ordinary system it is started by hand until
+# the surface (ultar-shell) moves onto it - both would drive the display:
+# ultar-ctl start compositor. On the installation medium (profile installer)
+# it starts with the system and shows the installer.
 editions = ["phone", "desktop"]
-manual = true
 exec = "/usr/bin/ultar-compositor"
 args = [
     "--socket", "/run/ultar/ui/compositor.sock",
@@ -33,6 +34,10 @@ public_dirs = ["/run/ultar/ui"]
 rights = ["raw_device"]
 notify = true
 restart = "on-failure"
+
+[profiles]
+system = "manual"
+installer = "start"
 
 [cgroup]
 "pids.max" = "16"

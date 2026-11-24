@@ -1,0 +1,58 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+Account	1	win.min	button	تصغير	0	-	76	3.5	32	32	18,21,27	1440	900	dark	ar	40
+Account	2	win.max	button	تكبير	0	-	40	3.5	32	32	18,21,27	1440	900	dark	ar	40
+Account	3	win.close	button	إغلاق	0	-	4	3.5	32	32	18,21,27	1440	900	dark	ar	40
+Account	4	settings.search	input	ابحث في الإعدادات	0	-	1178	53	213	30	31,35,44	1440	900	dark	ar	40
+Account	5	settings.area	button	واي فاي	0	-	1165	88	263	32	18,21,27	1440	900	dark	ar	40
+Account	6	settings.area	button	الشبكة	0	-	1165	124	263	32	18,21,27	1440	900	dark	ar	40
+Account	7	settings.area	button	بلوتوث	0	-	1165	160	263	32	18,21,27	1440	900	dark	ar	40
+Account	8	settings.area	button	الشاشات	0	-	1165	196	263	32	18,21,27	1440	900	dark	ar	40
+Account	9	settings.area	button	الصوت	0	-	1165	232	263	32	18,21,27	1440	900	dark	ar	40
+Account	10	settings.area	button	الطاقة	0	-	1165	268	263	32	18,21,27	1440	900	dark	ar	40
+Account	11	settings.area	button	سطح المكتب والمرسى	0	-	1165	304	263	32	18,21,27	1440	900	dark	ar	40
+Account	12	settings.area	button	النوافذ ومساحات العمل	0	-	1165	340	263	32	18,21,27	1440	900	dark	ar	40
+Account	13	settings.area	button	المظهر	0	-	1165	376	263	32	18,21,27	1440	900	dark	ar	40
+Account	14	settings.area	button	الإشعارات	0	-	1165	412	263	32	18,21,27	1440	900	dark	ar	40
+Account	15	settings.area	button	البحث	0	-	1165	448	263	32	18,21,27	1440	900	dark	ar	40
+Account	16	settings.area	button	التطبيقات	0	-	1165	484	263	32	18,21,27	1440	900	dark	ar	40
+Account	17	settings.area	button	الفأرة ولوحة اللمس	0	-	1165	520	263	32	18,21,27	1440	900	dark	ar	40
+Account	18	settings.area	button	لوحة المفاتيح	0	-	1165	556	263	32	18,21,27	1440	900	dark	ar	40
+Account	19	settings.area	button	الطابعات والماسحات	0	-	1165	592	263	32	18,21,27	1440	900	dark	ar	40
+Account	20	settings.area	button	الألوان	0	-	1165	628	263	32	18,21,27	1440	900	dark	ar	40
+Account	21	settings.area	button	تسهيلات الاستخدام	0	-	1165	664	263	32	18,21,27	1440	900	dark	ar	40
+Account	22	settings.area	button	الخصوصية والأمان	0	-	1165	700	263	32	18,21,27	1440	900	dark	ar	40
+Account	23	settings.area	button	المشاركة	0	-	1165	736	263	32	18,21,27	1440	900	dark	ar	40
+Account	24	settings.area	button	الحسابات	0	-	1165	772	263	32	38,43,54	1440	900	dark	ar	40
+Account	25	settings.area	button	المستخدمون	0	-	1165	808	263	32	18,21,27	1440	900	dark	ar	40
+Account	26	settings.area	button	المنطقة واللغة	0	-	1165	844	263	32	18,21,27	1440	900	dark	ar	40
+Account	27	settings.area	button	التاريخ والوقت	0	-	1165	880	263	32	18,21,27	1440	900	dark	ar	40
+Account	28	settings.area	button	التخزين	0	-	1165	916	263	32	-	1440	900	dark	ar	40
+Account	29	settings.area	button	العتاد والتعريفات	0	-	1165	952	263	32	-	1440	900	dark	ar	40
+Account	30	settings.area	button	التحديثات	0	-	1165	988	263	32	-	1440	900	dark	ar	40
+Account	31	settings.area	button	النسخ الاحتياطي	0	-	1165	1024	263	32	-	1440	900	dark	ar	40
+Account	32	settings.area	button	الترابط	0	-	1165	1060	263	32	-	1440	900	dark	ar	40
+Account	33	settings.area	button	المساعد	0	-	1165	1096	263	32	-	1440	900	dark	ar	40
+Account	34	settings.area	button	الخلايا والحاويات	0	-	1165	1132	263	32	-	1440	900	dark	ar	40
+Account	35	settings.area	button	الطوارئ	0	-	1165	1168	263	32	-	1440	900	dark	ar	40
+Account	36	settings.area	button	حول النظام	0	-	1165	1204	263	32	-	1440	900	dark	ar	40
+Account	37	account.back	button	رجوع إلى الحسابات	0	-	1088	67.19	32	32	11,13,17	1440	900	dark	ar	40
+Account	38	account.username	input	اسم المستخدم	0	-	830	275.73	260	30	177,176,175	1440	900	dark	ar	40
+Account	39	account.password	input	كلمة المرور	0	-	870	342.92	220	30	31,35,44	1440	900	dark	ar	40
+Account	40	account.show	button	إظهار كلمة المرور	0	-	817	341.92	32	32	23,26,33	1440	900	dark	ar	40
+Account	41	account.signin	button	تسجيل الدخول	0	-	988.39	421.11	114.61	32	212,175,55	1440	900	dark	ar	40
+Account	42	account.create	button	إنشاء حساب	0	-	881.77	421.11	98.63	32	31,35,44	1440	900	dark	ar	40
+Account	43	account.server	input	عنوان الخادم	0	-	830	489.3	260	30	199,199,195	1440	900	dark	ar	40
+Account	44	account.copy	button	نسخ رقم Ultar	0	-	685.67	324.39	81.33	32	31,35,44	1440	900	dark	ar	40
+Account	45	account.qr	button	تكبير رمز QR	0	-	548.92	324.39	128.75	32	31,35,44	1440	900	dark	ar	40
+Account	46	account.service	switch	استقبال مكالمات Ultar	0	false	401	386.17	48	32	31,35,44	1440	900	dark	ar	40
+Account	47	account.service	switch	VPN من Ultar	0	true	401	444.75	48	32	23,26,33	1440	900	dark	ar	40
+Account	48	account.service	switch	مشتريات المتجر	0	true	401	503.33	48	32	23,26,33	1440	900	dark	ar	40
+Account	49	account.service	switch	النسخ الاحتياطي	0	false	401	561.91	48	32	31,35,44	1440	900	dark	ar	40
+Account	50	account.service	switch	الترابط عبر الإنترنت	0	true	401	620.48	48	32	23,26,33	1440	900	dark	ar	40
+Account	51	account.changepw	button	تغيير كلمة المرور	0	-	647.13	682.28	119.88	32	31,35,44	1440	900	dark	ar	40
+Account	52	account.signout	button	تسجيل الخروج	0	-	526.78	682.28	112.34	32	31,35,44	1440	900	dark	ar	40
+Account	53	account.delete	button	حذف الحساب	0	-	637.11	722.28	129.89	32	31,35,44	1440	900	dark	ar	40
+Account	54	account.device.signout	button	KM One: تسجيل الخروج منه	0	-	113.33	347.33	133.06	32	23,26,33	1440	900	dark	ar	40
+Account	55	account.device.remove	button	KM One: إزالة	0	-	49	347.33	56.33	32	31,35,44	1440	900	dark	ar	40
+Account	56	account.device.signout	button	ultar-office: تسجيل الخروج منه	0	-	113.33	445.91	133.06	32	23,26,33	1440	900	dark	ar	40
+Account	57	account.device.remove	button	ultar-office: إزالة	0	-	49	445.91	56.33	32	31,35,44	1440	900	dark	ar	40

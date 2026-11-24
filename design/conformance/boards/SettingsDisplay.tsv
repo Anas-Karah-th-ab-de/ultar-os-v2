@@ -1,0 +1,60 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+SettingsDisplay	1	win.min	button	تصغير	0	-	76	3.5	32	32	-	1440	900	dark	ar	40
+SettingsDisplay	2	win.max	button	تكبير	0	-	40	3.5	32	32	-	1440	900	dark	ar	40
+SettingsDisplay	3	win.close	button	إغلاق	0	-	4	3.5	32	32	-	1440	900	dark	ar	40
+SettingsDisplay	4	display.keep.more	button	أحتاج وقتاً أكثر	0	-	659.2	519.19	114.2	32	-	1440	900	dark	ar	40
+SettingsDisplay	5	display.revert	button	تراجع	0	-	587.34	519.19	63.86	32	-	1440	900	dark	ar	40
+SettingsDisplay	6	display.keep	button	احتفاظ	0	-	505	519.19	74.34	32	-	1440	900	dark	ar	40
+SettingsDisplay	7	settings.search	input	ابحث في الإعدادات	0	-	1178	53	213	30	-	1440	900	dark	ar	40
+SettingsDisplay	8	settings.area	button	واي فاي	0	-	1165	88	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	9	settings.area	button	الشبكة	0	-	1165	124	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	10	settings.area	button	بلوتوث	0	-	1165	160	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	11	settings.area	button	الشاشات	0	-	1165	196	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	12	settings.area	button	الصوت	0	-	1165	232	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	13	settings.area	button	الطاقة	0	-	1165	268	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	14	settings.area	button	سطح المكتب والمرسى	0	-	1165	304	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	15	settings.area	button	النوافذ ومساحات العمل	0	-	1165	340	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	16	settings.area	button	المظهر	0	-	1165	376	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	17	settings.area	button	الإشعارات	0	-	1165	412	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	18	settings.area	button	البحث	0	-	1165	448	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	19	settings.area	button	التطبيقات	0	-	1165	484	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	20	settings.area	button	الفأرة ولوحة اللمس	0	-	1165	520	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	21	settings.area	button	لوحة المفاتيح	0	-	1165	556	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	22	settings.area	button	الطابعات والماسحات	0	-	1165	592	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	23	settings.area	button	الألوان	0	-	1165	628	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	24	settings.area	button	تسهيلات الاستخدام	0	-	1165	664	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	25	settings.area	button	الخصوصية والأمان	0	-	1165	700	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	26	settings.area	button	المشاركة	0	-	1165	736	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	27	settings.area	button	الحسابات	0	-	1165	772	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	28	settings.area	button	المستخدمون	0	-	1165	808	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	29	settings.area	button	المنطقة واللغة	0	-	1165	844	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	30	settings.area	button	التاريخ والوقت	0	-	1165	880	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	31	settings.area	button	التخزين	0	-	1165	916	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	32	settings.area	button	العتاد والتعريفات	0	-	1165	952	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	33	settings.area	button	التحديثات	0	-	1165	988	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	34	settings.area	button	النسخ الاحتياطي	0	-	1165	1024	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	35	settings.area	button	الترابط	0	-	1165	1060	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	36	settings.area	button	المساعد	0	-	1165	1096	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	37	settings.area	button	الخلايا والحاويات	0	-	1165	1132	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	38	settings.area	button	الطوارئ	0	-	1165	1168	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	39	settings.area	button	حول النظام	0	-	1165	1204	263	32	-	1440	900	dark	ar	40
+SettingsDisplay	40	display.identify	button	إظهار أرقام الشاشات	0	-	639.39	141.78	139.98	32	-	1440	900	dark	ar	40
+SettingsDisplay	41	display.detect	button	البحث عن شاشات	0	-	497	141.78	126.39	32	-	1440	900	dark	ar	40
+SettingsDisplay	42	display.select	radio	الشاشة 1: المدمجة 15.6″ (الرئيسية)	0	true	730	230.17	176	112	-	1440	900	dark	ar	40
+SettingsDisplay	43	display.select	radio	الشاشة 2: Dell 24″	0	false	578	238.17	144	96	-	1440	900	dark	ar	40
+SettingsDisplay	44	display.select	radio	الشاشة 3: Dell 24″	0	false	914	238.17	144	96	-	1440	900	dark	ar	40
+SettingsDisplay	45	display.mode	radio	توسيعسطح مكتب واحد على كل الشاشات	0	true	907.67	467.77	195.33	101.58	-	1440	900	dark	ar	40
+SettingsDisplay	46	display.mode	radio	تكرارالصورة نفسها على الشاشات المختارة	0	false	702.33	467.77	193.34	101.58	-	1440	900	dark	ar	40
+SettingsDisplay	47	display.mode	radio	شاشة واحدة فقطإطفاء الشاشات الأخرى	0	false	497	467.77	193.33	101.58	-	1440	900	dark	ar	40
+SettingsDisplay	48	display.nightlight	switch	الضوء الليلي	0	true	537	616.13	48	32	-	1440	900	dark	ar	40
+SettingsDisplay	49	display.nightlight.more	button	الضوء الليلي: الجدول ودرجة الدفء	0	-	497	616.13	32	32	-	1440	900	dark	ar	40
+SettingsDisplay	50	display.remember	switch	تذكّر أماكن النوافذ لكل شاشة	0	true	497	674.7	48	32	-	1440	900	dark	ar	40
+SettingsDisplay	51	display.bar	button	إظهار الشريط: على كل الشاشات	0	-	497	732	134.17	32	-	1440	900	dark	ar	40
+SettingsDisplay	52	display.lid	button	عند إغلاق الغطاء مع شاشة خارجية: متابعة العمل على الشاشة الخارجية	0	-	497	788.5	221.28	32	-	1440	900	dark	ar	40
+SettingsDisplay	53	display.resolution	button	الدقّة: 3840 × 2160 (موصى بها)	0	-	49	286.44	191.33	32	-	1440	900	dark	ar	40
+SettingsDisplay	54	display.scale	button	حجم العناصر: 200% (موصى به)	0	-	49	343.72	145.09	32	-	1440	900	dark	ar	40
+SettingsDisplay	55	display.refresh	button	معدّل التحديث: 60 Hz	0	-	49	401.02	86.63	32	-	1440	900	dark	ar	40
+SettingsDisplay	56	display.orientation	button	الاتجاه: أفقي	0	-	49	457.02	74.25	32	-	1440	900	dark	ar	40
+SettingsDisplay	57	display.hdr	switch	HDR	1	false	49	514.3	48	32	-	1440	900	dark	ar	40
+SettingsDisplay	58	display.profile	button	ملف الألوان: تلقائي (sRGB)	0	-	49	571.59	127.42	32	-	1440	900	dark	ar	40
+SettingsDisplay	59	display.brightness	slider	سطوع الشاشة المدمجة	0	-	109	628.09	180	32	-	1440	900	dark	ar	40

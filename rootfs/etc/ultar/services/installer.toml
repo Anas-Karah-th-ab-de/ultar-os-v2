@@ -1,0 +1,33 @@
+# The graphical installer (ultar-installer-ui) on the installation medium:
+# the session of the boot profile `installer` (the Ultar kernel names it in
+# /proc/cmdline when it starts from a medium whose marker asks for it); no
+# desktop. Source and targets are the kernel's whole-disk nodes, which open
+# only for the installer's user or group (840) with the right raw_device:
+# /dev/ultar/medium (read only) and /dev/ultar/disk/<device> (never the
+# medium itself). Its lines (step and focus, never typed text) go to the
+# console with --report.
+editions = ["desktop", "phone", "server"]
+exec = "/usr/bin/ultar-installer-ui"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/installer.sock",
+    "--source", "/dev/ultar/medium",
+    "--disks-dir", "/dev/ultar/disk",
+    "--plans", "/tmp",
+    "--report",
+]
+console = true
+after = ["compositor", "bus"]
+# Identity and rights: its own user and group (840), nothing else.
+# right raw_device: the whole-disk nodes (with the installer's identity).
+user = 840
+rights = ["raw_device"]
+restart = "never"
+
+[profiles]
+installer = "start"
+
+[cgroup]
+"memory.max" = "512M"
+"pids.max" = "16"
+"cpu.weight" = "200"

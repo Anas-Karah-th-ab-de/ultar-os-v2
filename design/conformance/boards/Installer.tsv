@@ -1,0 +1,26 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+Installer	1	installer.step	button	الخطوة 1: اللغة (مكتمل)	0	-	1041	78	183	32	18,21,27	1280	800	dark	ar	0
+Installer	2	installer.step	button	الخطوة 2: تسهيلات الاستخدام (مكتمل)	0	-	1041	114	183	32	18,21,27	1280	800	dark	ar	0
+Installer	3	installer.step	button	الخطوة 3: لوحة المفاتيح (مكتمل)	0	-	1041	150	183	32	18,21,27	1280	800	dark	ar	0
+Installer	4	installer.step	button	الخطوة 4: الشبكة (مكتمل)	0	-	1041	186	183	32	18,21,27	1280	800	dark	ar	0
+Installer	5	installer.step	button	الخطوة 5: تجربة أو تثبيت (مكتمل)	0	-	1041	222	183	32	18,21,27	1280	800	dark	ar	0
+Installer	6	installer.step	button	الخطوة 6: نوع التثبيت (مكتمل)	0	-	1041	258	183	32	18,21,27	1280	800	dark	ar	0
+Installer	7	installer.step	button	الخطوة 7: العتاد والتعريفات (مكتمل)	0	-	1041	294	183	32	18,21,27	1280	800	dark	ar	0
+Installer	8	installer.scope	radio	الأساسيالنظام والتطبيقات الأساسية فقط	0	false	680.67	100.78	311.33	86.77	23,26,33	1280	800	dark	ar	0
+Installer	9	installer.scope	radio	الموسّعالأساسي مع الأدوات المكتبية والوسائط والتواصل و Firefox	0	false	357.33	100.78	311.34	86.77	23,26,33	1280	800	dark	ar	0
+Installer	10	installer.scope	radio	اختيار مخصّصاختر المكوّنات واحداً واحداً	0	true	32	100.78	313.33	86.77	38,43,54	1280	800	dark	ar	0
+Installer	11	installer.component	checkbox	الأدوات المكتبيةمستندات، جداول، عروض، أدوات PDF—	0	true	520	212.55	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	12	installer.component	checkbox	المبرمجمحرر شيفرة، Git، أدوات Rust و C و Python—	0	true	41	212.55	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	13	installer.component	checkbox	الوسائطموسيقى، فيديو، إدارة الصور وتحريرها—	0	false	520	274.13	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	14	installer.component	checkbox	التواصلبريد، تقويم، جهات اتصال، مكالمات فيديو—	0	false	41	274.13	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	15	installer.component	checkbox	الترابطربط أجهزتك: الشاشة والملفات والقدرة الحاسوبية—	0	false	520	335.7	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	16	installer.component	checkbox	المساعد والذكاء الاصطناعي المحليمساعد صوتي ونماذج تعمل على جهازكموصى به لهذا الجهاز—	0	true	41	335.7	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	17	installer.component	checkbox	برامج Linuxتثبيت حزم ‎.deb‎ في منطقة معزولةيتطلّبه Firefox—	0	true	520	397.28	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	18	installer.component	checkbox	Firefoxمتصفح احتياطي للمواقع التي لا تعمل بعد في متصفح Ultar—	0	true	41	397.28	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	19	installer.component	checkbox	برامج Windowsتشغيل ‎.exe‎ و ‎.msi‎ في خلية معزولة—	0	false	520	458.86	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	20	installer.component	checkbox	تطبيقات Androidبيئة تشغيل معزولة—	0	false	41	458.86	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	21	installer.component	checkbox	الحاويات والخادمخلايا، إدارة عبر الويب، خادم SSH—	0	false	520	520.44	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	22	installer.component	checkbox	الوصول عن بُعدعرض الشاشة والتحكّم بها—	0	false	41	520.44	463	57.58	23,26,33	1280	800	dark	ar	0
+Installer	23	installer.cancel	button	إلغاء التثبيت	0	-	893.92	752	98.08	32	18,21,27	1280	800	dark	ar	0
+Installer	24	installer.prev	button	السابق	0	-	104.34	752	66.98	32	31,35,44	1280	800	dark	ar	0
+Installer	25	installer.next	button	التالي	0	-	32	752	64.34	32	212,175,55	1280	800	dark	ar	0

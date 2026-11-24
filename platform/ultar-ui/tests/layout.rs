@@ -246,11 +246,13 @@ fn settings_row_puts_its_control_at_the_end_centred() {
             "{lang:?}"
         );
         assert!((c.top + c.height / 2.0 - (r.top + r.height / 2.0)).abs() < 0.001);
+        // The card's one-point edge lies around its content (CSS border-box, as the boards).
+        let edge = ultar_ui::tokens::size::BORDER;
         let physical = ui.rect(control).unwrap();
         if lang == Lang::Ar {
-            assert_eq!(physical.x, Space::S16.points());
+            assert_eq!(physical.x, Space::S16.points() + edge);
         } else {
-            assert_eq!(physical.right(), 500.0 - Space::S16.points());
+            assert_eq!(physical.right(), 500.0 - Space::S16.points() - edge);
         }
     }
 }

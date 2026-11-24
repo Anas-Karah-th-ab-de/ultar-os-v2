@@ -15,7 +15,7 @@ Dependencies: path crates `ultar-bus`, `ultar-i18n`, `ultar-profile` (copies nex
 |---|---|
 | Values (`Value`: bool, int, float, string, list) and conversions bus/TOML/text | `src/value.rs` |
 | Schema registry: keys and `<id>` templates, types + validation, defaults, risk, scope, panels, migrations | `src/schema/{key,types,def,registry,migrate,mod}.rs` |
-| Seed schema, 111 settings in 10 panels | `src/seed/{mod,display,desktop,system}.rs` |
+| Seed schema, 112 settings in 10 panels | `src/seed/{mod,display,desktop,system}.rs` |
 | Store: file format with CRC line, atomic writes, quarantine, load + schema check, coalescing | `src/store/{format,disk,load,mod}.rs` |
 | Clock trait, system clock, manual clock | `src/clock.rs` |
 | Display combinations (pure): stable ids, combination id, first-time defaults | `src/displays.rs` |
@@ -189,11 +189,11 @@ seed tests fail otherwise. Renaming/removing a stored key: raise `SCHEMA_VERSION
 CLI: `usettings [--socket PATH] [--lang ar|en|de] [--token T] get KEY | set KEY VALUE | reset KEY | list [PANEL] |
 watch [--count N] | confirm [KEY] | revert [KEY]`; exit 0 / 1 (service) / 2 (usage).
 
-## Seed schema (111 settings)
+## Seed schema (112 settings)
 
 | Panel | Count | Keys |
 |---|---|---|
-| display | 22 | `display.mode`, `.mirror_displays`, `.single_display`, `.primary`; per display `position_x/y`, `resolution`, `scale`, `refresh_rate`, `variable_refresh`, `orientation`, `hdr`, `color_profile`, `brightness`, `overscan`; `display.night_light.{enabled,schedule,start,end,temperature}`, `display.remember_window_positions`, `display.lid_close_with_external` |
+| display | 23 | `display.mode`, `.mirror_displays`, `.single_display`, `.primary`; per display `position_x/y`, `resolution`, `scale`, `refresh_rate`, `variable_refresh`, `orientation`, `hdr`, `color_profile`, `brightness`, `overscan`; `display.night_light.{enabled,schedule,start,end,temperature}`, `display.remember_window_positions`, `display.auto_brightness` (needs `sensors`), `display.lid_close_with_external` |
 | appearance | 9 | `appearance.theme` (dark), `.accent_color` (gold), `.wallpaper.{mode,picture,custom_path,slideshow_folder,slideshow_minutes}`, `.font_size`, `.icon_size` |
 | desktop_bar | 15 | `bar.layout` (`bottom_bar` standard, `top_bar_dock`), `bar.icon_alignment` (center/start), `bar.displays`, `bar.autohide`, `bar.show_trash`, `bar.show_volumes`, `dock.position`, `dock.size`, `desktop.icons.{enabled,size,start_corner}`, `bar.clock.show_{seconds,weekday,date,hijri}` |
 | windows | 8 | `windows.edge_snap`, `.snap_suggest`, `.switch_current_workspace_only`, `.hot_corner`, `.focus_mode`, `workspaces.{mode,count,primary_display_only}` |

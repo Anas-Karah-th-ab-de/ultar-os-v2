@@ -90,6 +90,12 @@ subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state"]
 identity = "system.net"
 call     = ["update.network"]
 
+# The graphical installer (installation medium, profile installer): looks at
+# the devices and tries another driver (step 7), nothing else.
+[[rule]]
+identity = "system.installer"
+call     = ["devices.list", "devices.switch", "devices.rescan"]
+
 # Apps: may look at the update state and ask for a check or a download. The
 # update service itself refuses them everything that changes the system.
 [[rule]]

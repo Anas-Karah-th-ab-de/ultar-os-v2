@@ -1,0 +1,26 @@
+id          = "settings"
+version     = "0.7.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.settings.name"
+description = "app.settings.desc"
+icon        = "gear"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = ["display", "external_display"]
+
+[permissions]
+# settings.*: read and change settings, confirm/revert (DESKTOP-SPEC §8); administrator for AdminOnly keys.
+# devices.*: driver list, switch, rollback, rescan (panel "Drivers and hardware").
+# display.*: display names/modes, show numbers, look for displays.
+# update.check / update.offline / update.progress: firmware updates on the drivers page.
+# account.*: the Ultar account page (§12.1).
+bus         = ["settings.*", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "display.*", "update.check", "update.offline", "update.progress", "account.*"]
+files       = ["documents"]

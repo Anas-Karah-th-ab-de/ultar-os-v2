@@ -81,6 +81,27 @@ fn check_field(field: &str) -> Result<&str, ReleaseError> {
 }
 
 /// Writes the release lines that follow [`OS_RELEASE`] in `/etc/os-release`:
+/// The value of `key` in os-release text (`KEY=value` or `KEY="value"`), at most
+/// [`FIELD_MAX`] bytes; `None` when missing, too long or not printable ASCII. For About pages
+/// and installers: version and build always come from the installed release, never a constant.
+pub fn field<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    let line = text.lines().find(|l| {
+        l.strip_prefix(key)
+            .is_some_and(|rest| rest.starts_with('='))
+    })?;
+    let raw = &line[key.len() + 1..];
+    let value = raw
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .unwrap_or(raw);
+    let ok = !value.is_empty()
+        && value.len() <= FIELD_MAX
+        && value
+            .bytes()
+            .all(|b| (0x20..0x7f).contains(&b) && b != b'"' && b != b'\\');
+    ok.then_some(value)
+}
+
 /// `PRETTY_NAME`, `VERSION_ID` and, when present, `BUILD_ID` and `VARIANT_ID`.
 pub fn write_release_fields(
     out: &mut impl Write,
@@ -181,6 +202,17 @@ pub fn user_agent(component: &str, version: &str) -> Result<Line<160>, ReleaseEr
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fields_are_read_and_checked() {
+        let t = "NAME=\"Ultar OS\"\nVERSION_ID=0.7.0\nBUILD_ID=20261124.1\nX=\"a\\\\b\"\n";
+        assert_eq!(super::field(t, "VERSION_ID"), Some("0.7.0"));
+        assert_eq!(super::field(t, "BUILD_ID"), Some("20261124.1"));
+        assert_eq!(super::field(t, "NAME"), Some("Ultar OS"));
+        assert_eq!(super::field(t, "VERSION"), None);
+        assert_eq!(super::field(t, "X"), None);
+        assert_eq!(super::field("A=\u{e9}", "A"), None);
+    }
+
     use super::*;
 
     #[test]

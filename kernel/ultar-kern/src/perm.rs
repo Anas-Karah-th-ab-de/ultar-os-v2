@@ -40,6 +40,7 @@ pub const S_IFREG: u32 = 0o100000;
 /// Directory.
 pub const S_IFDIR: u32 = 0o040000;
 const S_IFCHR: u32 = 0o020000;
+const S_IFBLK: u32 = 0o060000;
 const STICKY: u32 = 0o1000;
 /// Read permission.
 pub const R: u32 = 4;
@@ -92,6 +93,11 @@ pub fn of(path: &str) -> Option<Attr> {
         return Some(a);
     }
     if dev_node(path) {
+        // the installer's whole-disk nodes (rawpart.rs): root:installer, the medium read only
+        if path.starts_with("/dev/ultar/disk/") || path == "/dev/ultar/medium" {
+            let mode = if path == "/dev/ultar/medium" { 0o440 } else { 0o660 };
+            return Some(Attr { mode: S_IFBLK | mode, uid: 0, gid: crate::rawpart::INSTALLER_ID });
+        }
         return Some(Attr { mode: S_IFCHR | if raw_device(path) { 0o600 } else { 0o666 }, uid: 0, gid: 0 });
     }
     // a link itself (only reached without following it): the disk lookup below would follow it

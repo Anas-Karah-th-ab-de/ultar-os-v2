@@ -18,6 +18,13 @@ notify = true
 after = ["bus"]
 restart = "always"
 
+
+# Boot profiles: the ordinary system and the installation medium's session
+# (ultar.profile=installer, set by the Ultar kernel on an installer medium).
+[profiles]
+system = "start"
+installer = "start"
+
 [cgroup]
 "memory.max" = "64M"
 "pids.max" = "64"

@@ -90,7 +90,7 @@ impl Slice {
 
 /// Every key a service file may have (checked before parsing: the parts
 /// below are flattened, which `deny_unknown_fields` does not support).
-pub const KEYS: [&str; 23] = [
+pub const KEYS: [&str; 24] = [
     "name",
     "exec",
     "args",
@@ -103,6 +103,7 @@ pub const KEYS: [&str; 23] = [
     "oneshot",
     "manual",
     "editions",
+    "profiles",
     "notify",
     "start_timeout_ms",
     "stop_timeout_ms",
@@ -164,6 +165,8 @@ struct LifeFile {
     #[serde(default)]
     editions: Vec<String>,
     #[serde(default)]
+    profiles: Option<BTreeMap<String, ProfileStart>>,
+    #[serde(default)]
     notify: bool,
     #[serde(default)]
     start_timeout_ms: Option<u64>,
@@ -191,6 +194,21 @@ struct ConfineFile {
     public_dirs: Vec<String>,
 }
 
+/// How a service starts in a boot profile (`[profiles]` of a service file).
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProfileStart {
+    /// Started with the system.
+    Start,
+    /// Started only on request.
+    Manual,
+}
+
+/// The boot profile of an ordinary start.
+pub const SYSTEM_PROFILE: &str = "system";
+/// Most profiles one service file names.
+pub const MAX_PROFILES: usize = 8;
+
 /// When a service runs and how it is started and stopped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Life {
@@ -204,6 +222,10 @@ pub struct Life {
     pub manual: bool,
     /// Editions the service exists in (empty: all).
     pub editions: Vec<String>,
+    /// Boot profiles the service exists in and whether it starts there by
+    /// itself (`[profiles]`; without that table: only the profile
+    /// [`SYSTEM_PROFILE`], started unless `manual`).
+    pub profiles: BTreeMap<String, ProfileStart>,
     /// Readiness reported through the ready pipe.
     pub notify: bool,
     /// Deadline for readiness.
@@ -338,6 +360,14 @@ fn paths(list: Vec<String>) -> Vec<PathBuf> {
 }
 
 impl ServiceSpec {
+    /// The spec as it runs in boot profile `profile` (`manual` set from the
+    /// profile table); `None` when the service does not exist there.
+    pub fn in_profile(mut self, profile: &str) -> Option<Self> {
+        let start = *self.life.profiles.get(profile)?;
+        self.life.manual = start == ProfileStart::Manual;
+        Some(self)
+    }
+
     /// Checks a parsed file; `stem` names the service when the file does not.
     fn from_file(file: ServiceFile, stem: &str) -> Result<Self, SpecError> {
         let name = if file.name.is_empty() {
@@ -350,6 +380,25 @@ impl ServiceSpec {
         }
         check_lists(&file)?;
         let (life, confine) = (file.life, file.confine);
+        let profiles = match life.profiles {
+            // a profile table says everything about starting: `manual` beside it is a contradiction
+            Some(_) if life.manual => return Err(SpecError::Bound("manual beside profiles")),
+            Some(table) if table.is_empty() || table.len() > MAX_PROFILES => {
+                return Err(SpecError::Bound("profiles"))
+            }
+            Some(table) if table.keys().any(|name| !valid_name(name)) => {
+                return Err(SpecError::Name)
+            }
+            Some(table) => table,
+            None => {
+                let start = if life.manual {
+                    ProfileStart::Manual
+                } else {
+                    ProfileStart::Start
+                };
+                BTreeMap::from([(SYSTEM_PROFILE.to_owned(), start)])
+            }
+        };
         let confinement = Confinement {
             uid: confine.user,
             gid: confine.group.or(confine.user),
@@ -365,8 +414,9 @@ impl ServiceSpec {
             restart: life.restart,
             after: life.after,
             oneshot: life.oneshot,
-            manual: life.manual,
+            manual: profiles.get(SYSTEM_PROFILE) == Some(&ProfileStart::Manual),
             editions: life.editions,
+            profiles,
             notify: life.notify,
             start_timeout_ms: timeout(life.start_timeout_ms, "start_timeout_ms")?
                 .unwrap_or(DEFAULT_START_TIMEOUT_MS),

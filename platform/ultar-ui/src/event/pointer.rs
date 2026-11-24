@@ -184,6 +184,7 @@ impl Ui {
                 });
             }
         }
+        self.remeasure_tabs(popup.select);
         self.close_popup(out);
     }
 

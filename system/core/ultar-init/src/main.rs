@@ -88,8 +88,11 @@ fn services(dirs: &[PathBuf]) -> Vec<ServiceSpec> {
     }
     let start = config::cmdline_start();
     let edition = ultar_hal_system::current_edition();
+    let profile = config::cmdline_profile();
+    log(&format!("profile {profile}"));
     specs
         .into_iter()
+        .filter_map(|spec| spec.in_profile(&profile))
         .filter(|spec| edition.matches(&spec.life.editions) || start.contains(&spec.name))
         .map(|mut spec| {
             if start.contains(&spec.name) {

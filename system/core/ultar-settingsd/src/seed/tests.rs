@@ -17,7 +17,7 @@ fn seed_builds_and_covers_all_ten_areas() {
     assert_eq!(
         counts,
         [
-            (Panel::Display, 22),
+            (Panel::Display, 23),
             (Panel::Appearance, 13),
             (Panel::DesktopBar, 15),
             (Panel::Windows, 8),
@@ -29,7 +29,7 @@ fn seed_builds_and_covers_all_ten_areas() {
             (Panel::Account, 6),
         ]
     );
-    assert_eq!(registry.defs().len(), 115);
+    assert_eq!(registry.defs().len(), 116);
 }
 
 fn required_keys() -> BTreeSet<String> {

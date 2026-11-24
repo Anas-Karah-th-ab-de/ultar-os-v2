@@ -38,6 +38,9 @@ btd = 827
 volumed = 828
 # Call service (phone; docs/integration/ultar-phone.md).
 calld = 829
+# The graphical installer (profile `installer`, installation medium only): the Ultar kernel opens
+# the whole-disk nodes /dev/ultar/disk/* and /dev/ultar/medium only for this user or group (rawpart.rs).
+installer = 840
 nobody = 65534
 
 [groups]

@@ -60,7 +60,9 @@ impl InfoBar {
         if let Some(message) = &self.message {
             text += cx.text_size(message, style::SMALL_TEXT, Some(width)).h;
         }
-        let content = text.max(control.h).max(size::ICON) + 2.0 * PAD_BLOCK.points();
+        // Boards: the hairline edge lies around the padding (CSS border-box).
+        let content =
+            text.max(control.h).max(size::ICON) + 2.0 * PAD_BLOCK.points() + 2.0 * size::BORDER;
         Size::new(avail, content.max(MIN_HEIGHT))
     }
 

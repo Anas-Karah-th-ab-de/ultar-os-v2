@@ -3,6 +3,7 @@
 use super::CONFIRM_SECONDS;
 use crate::displays::MAX_DISPLAYS;
 use crate::schema::{Panel, Risk, Scope, SettingDef, TextFormat};
+use ultar_profile::Capability;
 
 const P: Panel = Panel::Display;
 const KEEP: Risk = Risk::ConfirmRevert {
@@ -99,6 +100,8 @@ fn general() -> Vec<SettingDef> {
             4000,
         ),
         SettingDef::flag("display.remember_window_positions", P, true),
+        // Brightness from the light sensor (board CompactDisplay, CLICKS display.autobrightness).
+        SettingDef::flag("display.auto_brightness", P, true).needs(&[Capability::Sensors]),
         SettingDef::choice(
             "display.lid_close_with_external",
             P,
