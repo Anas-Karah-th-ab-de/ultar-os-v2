@@ -10,6 +10,7 @@ use crate::wire::{Frame, VERSION};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
+use ultar_bus::messages::agent::Step;
 use ultar_bus::messages::mesh::{
     Activity, Capability, ClipboardRemote, DeviceKind, HandoffIncoming, HandoffProgress, MeshState,
     Peer, Right,
@@ -92,6 +93,26 @@ pub enum Effect {
         /// The answer.
         text: String,
     },
+    /// Let the local helper do this for `peer`; report with [`Node::acted`].
+    Act {
+        /// Who asked.
+        peer: String,
+        /// The request.
+        id: u64,
+        /// What to do.
+        text: String,
+    },
+    /// A paired device's helper answered a request of [`Node::act`].
+    Acted {
+        /// The request.
+        id: u64,
+        /// The device.
+        peer: String,
+        /// It took the request.
+        ok: bool,
+        /// What it did.
+        steps: Vec<Step>,
+    },
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -117,6 +138,7 @@ pub struct Node {
     pub(crate) clip_seq: u64,
     pub(crate) clip_remote: Option<String>,
     pub(crate) thinking: u64,
+    pub(crate) serving: u32,
 }
 
 impl Node {
@@ -135,6 +157,7 @@ impl Node {
             clip_seq: 0,
             clip_remote: None,
             thinking: 0,
+            serving: 0,
         }
     }
 
@@ -331,6 +354,7 @@ impl Node {
                 vec![Effect::Job(peer.to_owned(), frame)]
             }
             Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
+            Frame::Act { .. } | Frame::Acted { .. } => self.on_remote_frame(peer, frame),
             other => self.on_offer_frame(peer, other, now),
         }
     }

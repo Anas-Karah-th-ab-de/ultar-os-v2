@@ -92,7 +92,7 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the services with own bus sockets (their group ids are the same).
-const IDS: [(&str, i64); 23] = [
+const IDS: [(&str, i64); 26] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
@@ -115,11 +115,14 @@ const IDS: [(&str, i64); 23] = [
     ("btd", 827),
     ("volumed", 828),
     ("calld", 829),
+    ("mesh", 833),
+    ("agentd", 834),
+    ("llmbus", 835),
     ("installer", 840),
 ];
 
 /// The system services of docs/integration/system-services.md (own socket, own log socket).
-const SYSTEM_SERVICES: [&str; 12] = [
+const SYSTEM_SERVICES: [&str; 15] = [
     "authd",
     "displayd",
     "accountd",
@@ -132,6 +135,9 @@ const SYSTEM_SERVICES: [&str; 12] = [
     "netd",
     "btd",
     "volumed",
+    "mesh",
+    "agentd",
+    "llmbus",
 ];
 
 fn uid_of(name: &str) -> i64 {

@@ -41,6 +41,10 @@ args = [
     "--listen", "/run/ultar/bus/netd.sock=system.netd", "--mode", "0660", "--group", "826", "--max-connections", "4",
     "--listen", "/run/ultar/bus/btd.sock=system.btd", "--mode", "0660", "--group", "827", "--max-connections", "4",
     "--listen", "/run/ultar/bus/volumed.sock=system.volumed", "--mode", "0660", "--group", "828", "--max-connections", "4",
+    # Device mesh (833), helper (834), the language model's bus face (835).
+    "--listen", "/run/ultar/bus/mesh.sock=system.mesh", "--mode", "0660", "--group", "833", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/agentd.sock=system.agentd", "--mode", "0660", "--group", "834", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/llmbus.sock=system.llmbus", "--mode", "0660", "--group", "835", "--max-connections", "2",
     # Call service (829) and the modem service (ril, root on the phone).
     "--listen", "/run/ultar/bus/calld.sock=system.calld", "--mode", "0660", "--group", "829", "--max-connections", "4",
     "--listen", "/run/ultar/bus/ril.sock=system.ril", "--mode", "0600", "--max-connections", "2",
@@ -61,7 +65,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 840]
+groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 840]
 public_dirs = ["/run/ultar/bus", "/run/ultar/appbus"]
 notify = true
 after = ["logd"]
@@ -76,5 +80,5 @@ installer = "start"
 
 [cgroup]
 "memory.max" = "64M"
-"pids.max" = "384"
+"pids.max" = "448"
 "cpu.weight" = "100"

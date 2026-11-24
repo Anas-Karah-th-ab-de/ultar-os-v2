@@ -10,12 +10,15 @@ use ultar_bus::messages::launcher::{List, Role, Start};
 use ultar_bus::messages::llm::Complete;
 use ultar_bus::messages::mesh::{HandoffSend, MeshState, SendFile, SendOutcome};
 use ultar_bus::messages::mesh_model::Think;
+use ultar_bus::messages::mesh_remote::Act;
 use ultar_bus::messages::net::{NetOutcome, SetWifi};
 use ultar_bus::messages::power::{ActionOutcome, PowerOff, Restart};
 use ultar_bus::messages::sysdialog::{self, AuthResult, Authenticate};
 use ultar_bus::{Client, Text};
 
 const CALL_TIME: Duration = Duration::from_secs(5);
+/// How long another device's helper may take.
+const REMOTE_TIME: Duration = Duration::from_secs(155);
 /// How long a model may take for one answer.
 pub const THINK_TIME: Duration = Duration::from_secs(125);
 /// The helper's app id in the trusted dialog.
@@ -151,6 +154,26 @@ impl BusTools<'_> {
         Self::offered(self.client.call(&send, CALL_TIME))
     }
 
+    fn ask_device(&self, device: &str, request: &str) -> Outcome {
+        let act = Act {
+            device: device.to_owned(),
+            text: request.to_owned(),
+        };
+        match self.client.call(&act, REMOTE_TIME) {
+            Ok(reply) if reply.ok => {
+                let steps: Vec<String> = reply
+                    .steps
+                    .iter()
+                    .map(|s| format!("{} {:?}", s.tool, s.outcome))
+                    .collect();
+                let all = reply.steps.iter().all(|s| s.outcome == StepOutcome::Done);
+                done(all && !steps.is_empty(), &steps.join("; "))
+            }
+            Ok(_) => done(false, "that device is not connected or does not allow it"),
+            Err(_) => done(false, "the mesh is not reachable"),
+        }
+    }
+
     /// The person confirms a dangerous action in the system dialog (an administrator's
     /// password); without that nothing happens.
     fn confirmed(&self, tool: &str) -> bool {
@@ -193,6 +216,7 @@ impl Toolbox for BusTools<'_> {
             "devices" => self.devices(),
             "continue_on" => self.continue_on(call.arg("device")),
             "send_file" => self.send_file(call.arg("device"), call.arg("path")),
+            "ask_device" => self.ask_device(call.arg("device"), call.arg("request")),
             _ => self.power(tool.name),
         }
     }

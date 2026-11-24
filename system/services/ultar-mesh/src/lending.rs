@@ -113,7 +113,7 @@ impl MeshService {
                 self.lend(peer, id, ask, bus);
             }
             Effect::Thought { id, peer, ok, text } => self.answered(id, peer, ok, text),
-            _ => {}
+            other => self.remote_effect(other, bus),
         }
     }
 }

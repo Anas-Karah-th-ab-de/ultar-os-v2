@@ -118,3 +118,13 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
 - The clipboard owner (compositor) does not call `mesh.clipboard_set` yet; computing jobs have no bus call.
 
 Everything that is still open, in the order it should be finished: `docs/OFFEN-VERBUND-HELFER.md`.
+
+## Nachtrag 24.11.2026: auf einem anderen Gerät handeln, Abbild
+
+- `mesh.act { device, text }` → `{ ok, steps, by }` (`ultar_bus::messages::mesh_remote`): der Helfer
+  hier bittet den Helfer eines gekoppelten Geräts. Das andere Gerät nimmt nur an, wenn es diesem Gerät
+  das Recht „Dieses Gerät steuern“ gab; es ruft dann seinen eigenen Helfer (`agent.ask`). Während es
+  eine solche Bitte ausführt, nimmt es keine zweite an und gibt keine weiter. Wartezeit 150 s.
+- Im Abbild: Benutzer 833, `services/mesh.toml` (Ausgabe Desktop), Port 47810 (TCP, UDP) in
+  `rootfs/etc/ultar/firewall`. Name des Geräts: `--name`, sonst `HOSTNAME`, sonst „device“.
+- Tests: 60 (neu: `tests/remote.rs`, 2).

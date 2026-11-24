@@ -1797,7 +1797,7 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 46 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
 | 47 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
 
-## MeshDevice (45)
+## MeshDevice (46)
 
 | # | Element (accessible name) | Action | What it does | Ref |
 |---|---|---|---|---|
@@ -1809,43 +1809,44 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 6 | التحكّم بهذا الجهاز | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
 | 7 | الصوت | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
 | 8 | استعمال القدرة الحاسوبية | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
-| 9 | إلغاء الإقران مع KM One | `mesh.unpair` | Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back. | NEW |
-| 10 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
-| 11 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 12 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 13 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 14 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 15 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 16 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 17 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 18 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 19 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 20 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 21 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 22 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 23 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 24 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 25 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 26 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 27 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 28 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 29 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 30 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 31 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 32 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 33 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 34 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 35 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 36 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 37 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 38 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 39 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 40 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 41 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 42 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
-| 43 | تصغير | `win.min` | Minimises the window. | §5.2 |
-| 44 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
-| 45 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+| 9 | إعارة النموذج اللغوي | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 10 | إلغاء الإقران مع KM One | `mesh.unpair` | Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back. | NEW |
+| 11 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 12 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 43 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 44 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 45 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 46 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
 
 ## MeshIncoming (39)
 

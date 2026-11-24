@@ -77,6 +77,7 @@ members = [
     "system/services/ultar-verbund",
     "system/services/ultar-mesh",
     "system/services/ultar-agentd",
+    "system/services/ultar-llm-bus",
     "system/services/ultar-vpn",
     "system/services/ultar-zellen",
     "system/services/ultar-auth",

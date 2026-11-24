@@ -51,3 +51,11 @@ lender when it becomes unusable · nothing dangerous without confirmation · tex
 - The model service must offer the contract `messages/llm.rs` (`llm.state`, `llm.complete`).
 
 Open points of the helper and of the mesh are collected in `docs/OFFEN-VERBUND-HELFER.md`.
+
+## Nachtrag 24.11.2026: anderes Gerät, Abbild
+
+- Werkzeug `ask_device { device, request }`: bittet den Helfer eines gekoppelten Geräts (`mesh.act`).
+  Gelungen ist der Schritt nur, wenn dort jeder Schritt gelang.
+- Das eigene Modell kommt über `ultar-llm-bus` (`docs/integration/ultar-llm-bus.md`).
+- Im Abbild: Benutzer 834, `services/agentd.toml`, Regeln in `bus-policy.toml`.
+- Tests: 20 (neu: der Helfer lässt den Helfer eines anderen Geräts handeln).

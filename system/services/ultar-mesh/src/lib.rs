@@ -12,6 +12,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+mod acting;
 pub mod clipboard;
 pub mod compute;
 pub mod device;
@@ -24,6 +25,7 @@ pub mod offers;
 mod pairing;
 mod received;
 pub mod relay;
+pub mod remote;
 pub mod runtime;
 pub mod secure;
 pub mod service;

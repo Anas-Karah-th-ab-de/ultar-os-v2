@@ -21,8 +21,9 @@ fn the_shipped_definition_parses_with_valid_bounds() {
     };
     assert_eq!(args.dir, Path::new("/data/ultar/log"));
     // One socket per writing service (its group) plus the output channels of init and the launcher.
-    const WRITERS: [u32; 17] = [
-        801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828,
+    const WRITERS: [u32; 20] = [
+        801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 833,
+        834, 835,
     ];
     assert_eq!(args.listeners.len(), WRITERS.len() + 2);
     let (output, writers): (Vec<_>, Vec<_>) = args.listeners.iter().partition(|l| l.output);

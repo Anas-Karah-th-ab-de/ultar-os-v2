@@ -48,6 +48,7 @@ pub struct Listen {
 pub struct MeshService {
     pub(crate) runtime: Runtime,
     pub(crate) waiting: BTreeMap<u64, (IncomingRequest, Instant)>,
+    pub(crate) acting: BTreeMap<u64, (IncomingRequest, Instant)>,
     inbox: Option<mpsc::Receiver<NetEvent>>,
     events: mpsc::Sender<NetEvent>,
     keys: Keys,
@@ -93,6 +94,7 @@ impl MeshService {
         Some(Self {
             runtime,
             waiting: BTreeMap::new(),
+            acting: BTreeMap::new(),
             inbox: Some(inbox),
             events,
             keys,
@@ -351,6 +353,9 @@ impl Service for MeshService {
         let Some(request) = self.lending(request, bus) else {
             return;
         };
+        let Some(request) = self.remote(request, bus) else {
+            return;
+        };
         let method = request.method().to_owned();
         if method == SetEnabled::METHOD {
             serve::<SetEnabled>(request, |c, _| Done {
@@ -370,6 +375,7 @@ impl Service for MeshService {
     fn tick(&mut self, bus: &Bus<'_, Self>) {
         let now = Instant::now();
         self.expire_thinking(now);
+        self.expire_acting(now);
         let left = self.runtime.tick(now);
         self.host(left, bus);
     }

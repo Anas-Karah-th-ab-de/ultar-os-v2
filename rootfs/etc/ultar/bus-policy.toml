@@ -271,4 +271,50 @@ register  = ["volumes"]
 publish   = ["volumes.state"]
 subscribe = ["session.state", "account.users"]
 
+# Device mesh (833): offers `mesh`, publishes its state, the incoming offers and their
+# progress; lists and starts apps for what arrives, asks the person through the system
+# dialog before anything is accepted (`sysdialog.handoff`), and lets a paired device with
+# the right "model" think with this device's language model and one with the right
+# "control" ask this device's helper (`agent.ask`).
+[[rule]]
+identity  = "system.mesh"
+register  = ["mesh"]
+publish   = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
+call      = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete", "agent.ask"]
+subscribe = ["llm.state"]
+
+# The language model's bus face (835): offers `llm` (state and one answer per call).
+[[rule]]
+identity = "system.llmbus"
+register = ["llm"]
+publish  = ["llm.state"]
+
+# The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
+# off are confirmed by the person first (`sysdialog.authenticate`).
+[[rule]]
+identity  = "system.agentd"
+register  = ["agent"]
+publish   = ["agent.state"]
+subscribe = ["llm.state", "mesh.state"]
+call      = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
+             "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act", "llm.complete",
+             "sysdialog.authenticate", "power.restart", "power.off"]
+
+# The shell and the Settings app drive the mesh and ask the helper (own rules, so the
+# long lists above stay as they are).
+[[rule]]
+identity  = "system.shell"
+call      = ["mesh.*", "agent.ask"]
+subscribe = ["mesh.*", "agent.state"]
+
+[[rule]]
+identity  = "app.settings"
+call      = ["mesh.*"]
+subscribe = ["mesh.state", "mesh.handoff_progress"]
+
+# Every app may say what the person is doing in it (what a handoff continues).
+[[rule]]
+identity = "app.*"
+call     = ["mesh.set_activity"]
+
 # The broker itself needs no rule: it is not a client of the bus.

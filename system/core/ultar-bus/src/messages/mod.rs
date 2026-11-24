@@ -61,6 +61,7 @@
 //! | `mesh.handoff_incoming` / `handoff_progress` / `clipboard` | topics | no | device mesh |
 //! | `mesh.set_enabled` / `pair_begin` / `pair_join` / `unpair` / `set_rights` / `set_activity` / `handoff_targets` / `handoff_send` / `handoff_answer` / `send_file` / `clipboard_set` | calls | – | device mesh |
 //! | `mesh.think` / `mesh.models` | calls | – | device mesh (lending the language model, see [`mesh_model`]) |
+//! | `mesh.act` | call | – | device mesh (the helper of a paired device acts there, see [`mesh_remote`]) |
 //! | `llm.state` | topic | yes | language-model service (see [`llm`]) |
 //! | `llm.complete` | call | – | language-model service |
 //! | `agent.state` | topic | yes | local helper (`ultar-agentd`, see [`agent`]) |
@@ -90,6 +91,7 @@ pub mod media;
 pub mod mesh;
 pub mod mesh_dialog;
 pub mod mesh_model;
+pub mod mesh_remote;
 pub mod modem;
 pub mod net;
 pub mod notify;

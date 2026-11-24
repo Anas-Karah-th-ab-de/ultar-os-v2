@@ -36,6 +36,17 @@ const OPTIONS: [&str; 12] = [
     "relay-token-file",
 ];
 
+/// The name other devices see: the one given, else the machine's own name when the
+/// service manager passes it on (`HOSTNAME`).
+fn name(args: &CommonArgs) -> String {
+    let own = || std::env::var("HOSTNAME").ok();
+    let name = args.option("name").map(str::to_owned).or_else(own);
+    match name.as_deref().map(str::trim) {
+        Some(name) if !name.is_empty() => name.to_owned(),
+        _ => "device".to_owned(),
+    }
+}
+
 fn listen(args: &CommonArgs) -> Result<Listen, Msg> {
     let port = match args.option("port") {
         Some(text) => text.parse().map_err(|_| Msg::BadArguments)?,
@@ -63,7 +74,7 @@ fn listen(args: &CommonArgs) -> Result<Listen, Msg> {
     let relay = args.option("relay").zip(token).map(|(url, token)| Login {
         url: url.to_owned(),
         token: token.trim().to_owned(),
-        name: args.option("name").unwrap_or("device").to_owned(),
+        name: name(args),
         kind: args.option("kind").unwrap_or("desktop").to_owned(),
     });
     Ok(Listen {
@@ -83,7 +94,7 @@ fn main() -> ExitCode {
         let inbox = args.required_path("inbox").map_err(|_| Msg::BadArguments)?;
         let kind = kind_from(args.option("kind").unwrap_or("desktop"));
         let config = Config {
-            name: args.option("name").unwrap_or("device").to_owned(),
+            name: name(args),
             kind,
             capabilities: default_capabilities(kind),
             apps: Vec::new(),

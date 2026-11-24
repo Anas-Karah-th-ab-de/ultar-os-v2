@@ -4,3 +4,6 @@
 #   offen udp 5353
 #   ping an           (auf Ping antworten)
 # Verbund-Ports (47800/47801) öffnen sich nur, solange der Ultar-Verbund AN ist.
+# Geräteverbund v2 (ultar-mesh): ohne Kopplung mit sechsstelligem Code nimmt der Dienst nichts an.
+offen 47810
+offen udp 47810

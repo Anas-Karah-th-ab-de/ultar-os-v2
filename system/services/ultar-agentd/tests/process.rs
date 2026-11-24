@@ -5,11 +5,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use ultar_bus::messages::agent::{AgentState, Answer, Ask, Brain, StepOutcome};
+use ultar_bus::messages::agent::{AgentState, Answer, Ask, Brain, Step, StepOutcome};
 use ultar_bus::messages::audio::{AudioOutcome, AudioReply, SetMute};
 use ultar_bus::messages::launcher::{InstanceState, Start, StartReply};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
 use ultar_bus::messages::mesh_model::{Lender, ModelList, Models, Think, Thought};
+use ultar_bus::messages::mesh_remote::{Act, Acted};
 use ultar_bus::messages::power::{ActionOutcome, ActionReply, PowerOff};
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
@@ -22,7 +23,8 @@ register = ["agent"]
 publish = ["agent.state"]
 subscribe = ["llm.state", "mesh.state"]
 call = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
-        "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "llm.complete",
+        "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act",
+        "llm.complete",
         "sysdialog.authenticate", "power.restart", "power.off"]
 
 [[rule]]
@@ -54,6 +56,8 @@ struct Seen {
     /// What the model says next (the same script for a local and a lent model).
     script: Mutex<Vec<&'static str>>,
     asked_mesh: AtomicBool,
+    /// What the helper of another device was asked to do.
+    asked_there: Mutex<Vec<String>>,
     asked_local: AtomicBool,
     confirm: AtomicBool,
 }
@@ -132,6 +136,18 @@ fn serve_models(world: &World, seen: &Arc<Seen>, lender: Option<ModelClass>) {
                 .into_iter()
                 .collect();
             let _ = request.reply(&ModelList { lenders });
+        } else if let Ok(act) = request.decode::<Act>() {
+            // The other device's helper: it does what it was asked, when it is "desk".
+            let step = Step {
+                tool: "mute".into(),
+                outcome: StepOutcome::Done,
+            };
+            s.asked_there.lock().unwrap().push(act.text);
+            let _ = request.reply(&Acted {
+                ok: act.device == "desk",
+                steps: vec![step],
+                by: act.device,
+            });
         } else if request.decode::<Think>().is_ok() {
             s.asked_mesh.store(true, Ordering::SeqCst);
             let text = next(&s);
@@ -251,6 +267,23 @@ fn a_weak_device_thinks_with_the_model_a_paired_device_lends() {
     );
     assert!(b.seen.asked_mesh.load(Ordering::SeqCst));
     assert!(!b.seen.asked_local.load(Ordering::SeqCst));
+}
+
+#[test]
+fn the_helper_lets_the_helper_of_another_device_act_there() {
+    let b = bench("agent-remote", None, Some(ModelClass::Medium));
+    brain(&b, &Brain::Local);
+    *b.seen.script.lock().unwrap() = vec![
+        "{\"tool\":\"ask_device\",\"args\":{\"device\":\"desk\",\"request\":\"mute the sound\"}}",
+        "{\"tool\":\"ask_device\",\"args\":{\"device\":\"tv\",\"request\":\"mute the sound\"}}",
+        "{\"say\":\"The computer is muted, the television did not take it.\"}",
+    ];
+    let answer = ask(&b, "mute the computer and the television");
+    let outcomes: Vec<StepOutcome> = answer.steps.iter().map(|s| s.outcome).collect();
+    assert_eq!(outcomes, [StepOutcome::Done, StepOutcome::Failed]);
+    assert_eq!(b.seen.asked_there.lock().unwrap().len(), 2);
+    // Nothing was muted here.
+    assert!(b.seen.muted.lock().unwrap().is_empty());
 }
 
 #[test]

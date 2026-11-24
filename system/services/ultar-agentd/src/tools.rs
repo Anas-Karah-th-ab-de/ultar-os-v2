@@ -29,7 +29,7 @@ pub struct Tool {
 }
 
 /// Every tool of the helper.
-pub const TOOLS: [Tool; 10] = [
+pub const TOOLS: [Tool; 11] = [
     tool("list_apps", Risk::Reads, &[], "lists the ids of the installed apps"),
     tool("open_app", Risk::Changes, &["app"], "opens the app with this id"),
     tool("set_volume", Risk::Changes, &["percent"], "sets the sound volume, 0 to 100"),
@@ -38,6 +38,7 @@ pub const TOOLS: [Tool; 10] = [
     tool("devices", Risk::Reads, &[], "lists the person's paired devices and whether they are connected"),
     tool("continue_on", Risk::Changes, &["device"], "offers what is open here to another paired device (device id, or empty for the only one); that device asks its person"),
     tool("send_file", Risk::Changes, &["device", "path"], "offers a file to a paired device; that device asks its person"),
+    tool("ask_device", Risk::Changes, &["device", "request"], "asks the helper of a paired device (device id) to do the request there; works only when that device allows control"),
     tool("restart", Risk::Dangerous, &[], "restarts this device"),
     tool("power_off", Risk::Dangerous, &[], "switches this device off"),
 ];

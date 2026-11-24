@@ -40,6 +40,11 @@ volumed = 828
 calld = 829
 # The graphical installer (profile `installer`, installation medium only): the Ultar kernel opens
 # the whole-disk nodes /dev/ultar/disk/* and /dev/ultar/medium only for this user or group (rawpart.rs).
+# Device mesh, helper and the language model's bus face (docs/integration/ultar-mesh.md,
+# ultar-agentd.md, ultar-llm-bus.md): one user each.
+mesh = 833
+agentd = 834
+llmbus = 835
 installer = 840
 nobody = 65534
 
@@ -84,6 +89,9 @@ captured = ["busd", "logd"]
 netd = ["busd", "logd"]
 btd = ["busd", "logd"]
 volumed = ["busd", "logd"]
+mesh = ["busd", "logd"]
+agentd = ["busd", "logd"]
+llmbus = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

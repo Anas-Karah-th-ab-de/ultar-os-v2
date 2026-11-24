@@ -1,0 +1,19 @@
+# The language model on the bus (docs/integration/ultar-llm-bus.md): offers `llm.state`
+# and `llm.complete` and passes each call to the model service's socket. While the model
+# service (llm.toml, started on demand) is not running, the state says "no model".
+exec = "/usr/bin/ultar-llm-bus"
+args = [
+    "--bus", "/run/ultar/bus/llmbus.sock",
+    "--socket", "/run/ultar/llm/llm.sock",
+    "--log-socket", "/run/ultar/log/llmbus.sock",
+]
+# Its own user (835) without kernel rights; the model service's socket is open to all.
+user = 835
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"
