@@ -1,0 +1,21 @@
+# Intel display (built into the Ultar kernel, stage A of plan §5.5). Display 14 (Meteor Lake /
+# Arrow Lake): takeover of the firmware display, flips, vblank, pipe CRC, hot-plug, EDID, DP mode
+# set on the Type-C ports. 8086:7d51 = Arc 140T of the Beelink GTi15 Ultra. Display 9 (Comet Lake,
+# 8086:9bc4 of the ThinkPad P1 Gen 3): takeover only; its mode set is planned (planned/intel-display-gen9.toml).
+# Firmware: none needed (the DMC power-saving firmware is not loaded; see docs/integration/intel-display.md).
+# Opt-in: the kernel drives a device only with `ultar.intel_display=on`, the file \ultar\intel-display
+# (`on`) or its id in the driver's allowlist (empty); otherwise it only reads the firmware state.
+id = "intel-display"
+version = "1.0.0"
+class = "display"
+kernel_abi = ["ultar-kern-abi-1"]
+origin = "hand"
+rank = 50
+name_key = "driver.intel-display.name"
+description_key = "driver.intel-display.description"
+
+[match]
+pci = ["8086:7d40", "8086:7d45", "8086:7d55", "8086:7d60", "8086:7dd5", "8086:7d51", "8086:7dd1", "8086:7d41", "8086:7d67", "8086:9bc2", "8086:9bc4", "8086:9bc5", "8086:9bc6", "8086:9bc8", "8086:9be6", "8086:9bf6", "8086:9b41", "8086:9bca", "8086:9bcc"]
+
+[content]
+hal_config = "builtin/intel-display.toml"

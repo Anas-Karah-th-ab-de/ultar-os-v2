@@ -27,6 +27,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 IMG=1 bash scripts/build-kern.sh >/dev/null
+# pure display-driver logic (Intel: register layout, takeover, DP/AUX/EDID, link training, C20 PLL, mode set)
+if ! idout=$(cargo test -q --manifest-path drivers/kernel/intel-display/Cargo.toml 2>&1); then
+  echo "FAIL  intel-display unit tests"; echo "$idout" | tail -30; exit 1
+fi
+echo "ok    intel-display unit tests ($(echo "$idout" | grep -oE '[0-9]+ passed' | head -1))"
 if [ -z "${BUSCK:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -p ultar-bus --example selfcheck --target x86_64-unknown-linux-gnu
   BUSCK="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release/examples/selfcheck"

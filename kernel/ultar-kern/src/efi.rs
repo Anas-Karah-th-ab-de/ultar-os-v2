@@ -463,6 +463,16 @@ static RT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::ne
 /// Systemsprache von der eigenen Startpartition (\ultar\sprache: ar/de/en) – noch vor ExitBootServices,
 /// damit schon das erste Bild in der gewählten Sprache erscheint.
 pub unsafe fn sprache_lesen(image: Handle, st: *mut SystemTable) -> Option<u8> {
+    let mut buf = [0u8; 16];
+    let n = datei_lesen(image, st, "\\ultar\\sprache", &mut buf)?;
+    let s = core::str::from_utf8(&buf[..n.min(buf.len())]).ok()?;
+    crate::sprache::aus_code(s)
+}
+
+/// Liest bis zu `buf.len()` Bytes der Datei `pfad` (UEFI-Pfad) der eigenen Startpartition – vor
+/// ExitBootServices; liefert die Zahl der gelesenen Bytes.
+// SAFETY: (Aufrufer) nur in der Firmware-Phase, mit `image`/`st` so, wie die Firmware sie übergab.
+pub unsafe fn datei_lesen(image: Handle, st: *mut SystemTable, pfad: &str, buf: &mut [u8]) -> Option<usize> {
     let li = protokoll(st, image, &LOADED_IMAGE_GUID);
     if li.is_null() {
         return None;
@@ -479,13 +489,10 @@ pub unsafe fn sprache_lesen(image: Handle, st: *mut SystemTable) -> Option<u8> {
     let mut b = [0u16; 64];
     let mut f: *mut FileProto = core::ptr::null_mut();
     let mut erg = None;
-    if ((*root).open)(root, &mut f, u16z("\\ultar\\sprache", &mut b), 1, 0) == 0 && !f.is_null() {
-        let mut buf = [0u8; 16];
+    if ((*root).open)(root, &mut f, u16z(pfad, &mut b), 1, 0) == 0 && !f.is_null() {
         let mut n = buf.len();
         if ((*f).read)(f, &mut n, buf.as_mut_ptr() as *mut c_void) == 0 {
-            if let Ok(s) = core::str::from_utf8(&buf[..n.min(buf.len())]) {
-                erg = crate::sprache::aus_code(s);
-            }
+            erg = Some(n.min(buf.len()));
         }
         ((*f).close)(f);
     }

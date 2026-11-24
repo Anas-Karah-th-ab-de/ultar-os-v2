@@ -35,9 +35,11 @@ cp "$KERN" "$W/kernel.efi"
 # The broken release: a copy of the kernel source with one panic right after the clock is set up
 # (the product source has no such hook)
 KP=$W/kpanic
-mkdir -p "$KP/kernel" "$KP/system/core" "$KP/assets"
+mkdir -p "$KP/kernel" "$KP/system/core" "$KP/assets" "$KP/drivers/kernel"
 cp -r kernel/ultar-kern "$KP/kernel/"; rm -rf "$KP/kernel/ultar-kern/target"
 cp -r system/core/ultar-slots "$KP/system/core/"; cp -r assets/fonts "$KP/assets/"
+# path dependencies of the kernel besides ultar-slots (the Intel display logic)
+cp -r drivers/kernel/intel-display "$KP/drivers/kernel/"; rm -rf "$KP/drivers/kernel/intel-display/target"
 python3 - "$KP/kernel/ultar-kern/src/main.rs" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()

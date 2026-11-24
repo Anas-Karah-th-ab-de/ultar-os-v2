@@ -24,6 +24,8 @@ pub trait Anzeige: Send {
     fn modi(&self) -> Vec<(u32, u32)>;
     /// Auflösung einstellen, liefert den neuen Bildspeicher
     fn setzen(&mut self, w: u32, h: u32) -> Result<Framebuffer, String>;
+    /// Die Konsole zeichnet jetzt in den neuen Bildspeicher: der alte darf freigegeben werden
+    fn umgeschaltet(&mut self) {}
 }
 
 static ANZEIGEN: Mutex<Vec<Box<dyn Anzeige>>> = Mutex::new(Vec::new());
@@ -80,6 +82,9 @@ pub fn modus(w: u32, h: u32) -> Result<Framebuffer, String> {
         a.setzen(w, h)?
     };
     crate::console::screen_init(Some(fb));
+    if let Some(a) = ANZEIGEN.lock().last_mut() {
+        a.umgeschaltet();
+    }
     Ok(fb)
 }
 
@@ -109,6 +114,9 @@ pub fn text() -> String {
     }
     for (i, k) in karten().iter().enumerate() {
         s += &format!("grafik{i}={k}\n");
+    }
+    if let Some(t) = crate::drivers::intel_display::text() {
+        s += &format!("intel-display={t}\n");
     }
     s
 }
