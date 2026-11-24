@@ -162,35 +162,70 @@ def clipboard(vm, m, pos):
     return [] if ok else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
 
 
-def changes_within(vm, name, before, box, seconds, share=0.002):
-    """Seconds until box differs from before by share (None: not within seconds); shots every 0.2 s."""
+def changed_px(a, b, box):
+    """Number of differing pixels inside box (every pixel: a focus ring or one glyph is small)."""
+    x0, y0, x1, y1 = box
+    n = 0
+    for y in range(max(0, y0), min(a.h, y1)):
+        row = y * a.w * 3
+        for x in range(max(0, x0), min(a.w, x1)):
+            i = row + x * 3
+            if a.px[i:i + 3] != b.px[i:i + 3]:
+                n += 1
+    return n
+
+
+def changed_box(a, b, box):
+    """Bounding box of the pixels that differ inside box (every 2nd pixel), or None."""
+    x0, y0, x1, y1 = box
+    xs, ys = [], []
+    for y in range(y0, y1, 2):
+        row = y * a.w * 3
+        for x in range(x0, x1, 2):
+            i = row + x * 3
+            if a.px[i:i + 3] != b.px[i:i + 3]:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def changes_within(vm, name, before, box, seconds, pixels=12):
+    """Seconds until at least `pixels` pixels of box differ from before (None: not within seconds)."""
     start = time.time()
     while time.time() - start < seconds:
         vm.pump(0.2)
         s = vm.shot(name)
-        if s.diff(before, box) > share:
+        if changed_px(s, before, box) >= pixels:
             return round(time.time() - start, 2), s
     return None, vm.shot(name)
 
 
-def phone_responds(vm, opened_after):
+def phone_responds(vm, opened_after, before):
     """The phone's window (it opened opened_after seconds after the click) answers input within 2 s:
-    a click on its header gives it the focus, Tab moves the focus ring (drawn by the app), a second Tab
+    a click on its title gives it the focus, Tab moves the focus ring (drawn by the app), a second Tab
     again. A window that blocks on the call service (no modem, no call service on a PC) or that loses its
     frames shows nothing new and fails here. The no-modem state itself is checked by the phone's tests
     (apps/ultar-phone/tests/states.rs); here: it opens at once without one."""
     problems = []
     if opened_after > 10:
         problems.append(f"phone: the window took {opened_after:.1f} s to open")
-    w, h = vm.size
-    top = max(0, (h - 60 - 680) // 2)
-    vm.click(w // 2, top + 16)
+    vm.move(vm.size[0] - 2, 2)  # the pointer off the window (no hover)
     vm.pump(1)
-    box = work(vm)
+    shot = vm.shot("phone-open")
+    frame = changed_box(shot, before, work(vm))
+    log(f"phone: window at {frame}, opened after {opened_after:.1f} s")
+    if frame is None:
+        return problems + ["phone: no window found"]
+    x0, y0, x1, y1 = frame
+    vm.click((x0 + x1) // 2, y0 + 18)  # the title (drawn by the app: ClientHeader)
+    vm.move(vm.size[0] - 2, 2)
+    vm.pump(1)
     for n in (1, 2):
-        before = vm.shot(f"phone-tab{n}-before")
+        start = vm.shot(f"phone-tab{n}-before")
         vm.key("tab")
-        took, _ = changes_within(vm, f"phone-tab{n}", before, box, 2.0, 0.0005)
+        took, _ = changes_within(vm, f"phone-tab{n}", start, frame, 2.0)
         log(f"phone: Tab {n} answered after {took} s")
         if took is None:
             problems.append(f"phone: no answer to Tab {n} within 2 s (window frozen)")
@@ -231,24 +266,24 @@ def layout_switch(vm, m, pos):
     vm.pump(0.5)
     before = vm.shot("kbd-bar-before")
     vm.key("ctrl+shift")
-    took_bar, after = changes_within(vm, "kbd-bar-after", before, bar, 3.0, 0.0005)
     # the clock alone must not count: the indicator sits beside it
     rest = (clock[2], h - 56, w, h)
-    indicator = after.diff(before, rest)
+    took_bar, after = changes_within(vm, "kbd-bar-after", before, rest, 3.0)
+    indicator = changed_px(after, before, rest)
     _, second, took2 = typed("second")
     vm.key("alt+shift")
     vm.pump(1)
     _, third, took3 = typed("third")
-    d12, d13 = second.diff(first, field), third.diff(first, field)
-    log(f"layout: typed a -> {took1}/{took2}/{took3} s, field first/second differ {d12:.3f}, "
-        f"first/third {d13:.3f}, bar changed {indicator:.4f} after {took_bar} s")
+    d12, d13 = changed_px(second, first, field), changed_px(third, first, field)
+    log(f"layout: typed a -> {took1}/{took2}/{took3} s, field pixels first/second differ {d12}, "
+        f"first/third {d13}, bar indicator pixels {indicator} after {took_bar} s")
     if took1 is None or took2 is None or took3 is None:
         problems.append("layout: a typed key did not arrive in the field")
-    elif d12 < 0.004:
+    elif d12 < 20:
         problems.append("layout: Ctrl+Shift did not change the typed character (same glyph)")
     elif d13 > d12 / 2:
         problems.append("layout: Alt+Shift did not switch back (third glyph unlike the first)")
-    if indicator < 0.0005:
+    if indicator < 12:
         problems.append("layout: the bar's language indicator did not change")
     vm.key("ctrl+a")
     vm.key("backspace")
@@ -474,7 +509,7 @@ def run(vm, m):
     if not app_window(vm, "app-phone", before, unlike=grid):
         failures.append("phone did not open")
     else:
-        failures += phone_responds(vm, time.time() - clicked)
+        failures += phone_responds(vm, time.time() - clicked, before)
     # 5. the screen keeps changing by itself: the bar's clock turns within a minute
     close_all(vm)
     clock = (0, vm.size[1] - 56, 140, vm.size[1])
