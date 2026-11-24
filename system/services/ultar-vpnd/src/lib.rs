@@ -1,6 +1,7 @@
 //! `ultar-vpnd` – the VPN of Ultar OS (area 4, system services), served on the
 //! bus as `vpn` by the network service `ultar-netd` (same process: busd and
-//! logd are at the kernel's limit of 16 groups, so no own service user).
+//! logd were at the kernel's limit of 16 groups when it was written, so no
+//! own service user; the limit is 32 now).
 //!
 //! WireGuard tunnels: a standard `.conf` file is imported and checked
 //! ([`conf`]: commands such as `PostUp` are refused, never run), kept with

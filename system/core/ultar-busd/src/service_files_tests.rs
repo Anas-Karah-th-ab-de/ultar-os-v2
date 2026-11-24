@@ -91,7 +91,7 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the services with own bus sockets (their group ids are the same).
-const IDS: [(&str, i64); 21] = [
+const IDS: [(&str, i64); 22] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
@@ -113,6 +113,7 @@ const IDS: [(&str, i64); 21] = [
     ("netd", 826),
     ("btd", 827),
     ("volumed", 828),
+    ("calld", 829),
 ];
 
 /// The system services of docs/integration/system-services.md (own socket, own log socket).
@@ -260,8 +261,9 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
             "{name}"
         );
     }
-    // One per service of IDS but the broker itself, plus the administrator's and init's.
-    assert_eq!(sockets.len(), IDS.len() + 1);
+    // One per service of IDS but the broker itself, plus the administrator's,
+    // init's and the modem service's (ril: root on the phone, no group).
+    assert_eq!(sockets.len(), IDS.len() + 2);
 }
 
 #[test]
