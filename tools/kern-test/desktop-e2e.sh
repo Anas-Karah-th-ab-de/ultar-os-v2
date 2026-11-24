@@ -35,7 +35,7 @@ SMP="${SMP:-2}" MEM="${MEM:-1536}" timeout 1500 python3 tools/kern-test/desktop-
   > "$LOG" 2>&1 || true
 if grep -aq "^DESKTOP: ALLES OK" "$LOG" && ! grep -aqiE "kernel panic|PANIK" "$LOG"; then
   echo "ok    DESKTOP: ALLES OK${DESK_LABEL:+ ($DESK_LABEL)}"
-  [ "${VERBOSE:-0}" = 1 ] && grep -aE "^screen|desktoptest:" "$LOG"
+  if [ "${VERBOSE:-0}" = 1 ]; then grep -aE "^screen|desktoptest:" "$LOG"; fi
 else
   echo "FAIL  DESKTOP${DESK_LABEL:+ ($DESK_LABEL)}"; grep -aE "DESKTOP|desktoptest|screen [0-9]|ultar-init|refused|exit " "$LOG" | tail -40; exit 1
 fi
