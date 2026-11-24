@@ -100,3 +100,53 @@ fn the_shipped_service_files_parse() {
     assert!(refused.is_empty(), "{refused:?}");
     assert!(specs.len() >= 4);
 }
+
+#[test]
+fn boot_profiles_decide_which_services_exist_and_start() {
+    let plain = ServiceSpec::parse("exec = \"/usr/bin/a\"", "a").unwrap();
+    assert!(plain
+        .clone()
+        .in_profile("system")
+        .is_some_and(|s| !s.life.manual));
+    assert!(plain.in_profile("installer").is_none());
+    let manual = ServiceSpec::parse("exec = \"/usr/bin/a\"\nmanual = true", "a").unwrap();
+    assert!(manual
+        .clone()
+        .in_profile("system")
+        .is_some_and(|s| s.life.manual));
+    assert!(manual.in_profile("installer").is_none());
+    let both = "exec = \"/usr/bin/c\"\n[profiles]\nsystem = \"manual\"\ninstaller = \"start\"\n";
+    let both = ServiceSpec::parse(both, "c").unwrap();
+    assert!(both.life.manual);
+    assert!(both
+        .clone()
+        .in_profile("system")
+        .is_some_and(|s| s.life.manual));
+    assert!(both
+        .clone()
+        .in_profile("installer")
+        .is_some_and(|s| !s.life.manual));
+    assert!(both.in_profile("rescue").is_none());
+    let only = ServiceSpec::parse(
+        "exec = \"/usr/bin/i\"\n[profiles]\ninstaller = \"start\"\n",
+        "i",
+    )
+    .unwrap();
+    assert!(only.clone().in_profile("system").is_none());
+    assert!(only.in_profile("installer").is_some());
+}
+
+#[test]
+fn faulty_profile_tables_are_refused() {
+    let refused = |text: &str| ServiceSpec::parse(text, "x").is_err();
+    assert!(refused(
+        "exec = \"/a\"\nmanual = true\n[profiles]\ninstaller = \"start\"\n"
+    ));
+    assert!(refused("exec = \"/a\"\n[profiles]\n"));
+    assert!(refused(
+        "exec = \"/a\"\n[profiles]\ninstaller = \"sometimes\"\n"
+    ));
+    assert!(refused("exec = \"/a\"\n[profiles]\n\"../x\" = \"start\"\n"));
+    let many: String = (0..9).map(|i| format!("p{i} = \"start\"\n")).collect();
+    assert!(refused(&format!("exec = \"/a\"\n[profiles]\n{many}")));
+}

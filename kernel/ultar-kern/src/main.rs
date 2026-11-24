@@ -173,7 +173,9 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     kprintln!("{}", sprache::t("bereit").replace("{}", &alloc::format!("{}", arch::uptime_ms())));
     // Installationsmedium (Startpartition ULTAR-INSTALL): grafische Installation direkt starten
     if install::startmedium_ist_installer() {
-        install::run(boot.runtime);
+        if !install::sitzung_starten() {
+            install::run(boot.runtime);
+        }
     } else if !selftest::wanted() && (ruhig || fs::read_all("/etc/ultar/sprache").is_some()) {
         // installiertes System: Oberfläche in der Systemsprache; „Terminal“ führt zur Konsole
         startseite::startbild(100, "p_fertig");

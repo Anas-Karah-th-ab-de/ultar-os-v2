@@ -22,6 +22,9 @@
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
+#   7a. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
+#       the graphical installation from A to Z with the first start of the installed disk (installer-e2e.sh,
+#       INSTALLER: ALLES OK; opt-in with INSTALLER_E2E=1, see docs/integration/installer-boot.md),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
@@ -112,6 +115,23 @@ for mem in ${GRENZ_MEM:-512 2048}; do
 done
 # The service manager with the shipped system services, each as its own user.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/init-e2e.sh
+# Installer mode: whole-disk nodes only on an installation medium, only for the installer's identity, the
+# boot disk never a target (installer-disk.sh, INSTALLER-DISK: ALLES OK).
+IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/installer-disk.sh | tail -3
+# The graphical installation from A to Z on VMware-like hardware: medium + empty disk, the installer driven
+# by keys, then the installed disk alone with the account it was given (installer-e2e.sh). Opt-in
+# (INSTALLER_E2E=1) until the kernel's keyboard path stops losing typed characters under QEMU (TCG): the
+# account step cannot be typed reliably yet (docs/integration/installer-boot.md, open point 1).
+if [ "${INSTALLER_E2E:-0}" = 0 ]; then
+  echo "skip  INSTALLER (INSTALLER_E2E=1 runs it; open point in docs/integration/installer-boot.md)"
+else
+  ILOG="${INSTALLER_LOG:-$(mktemp)}"
+  if SMP="${SMP:-2}" bash tools/kern-test/installer-e2e.sh > "$ILOG" 2>&1 && grep -q "^INSTALLER: ALLES OK" "$ILOG"; then
+    echo "ok    INSTALLER: ALLES OK ($(grep -o 'installed through[^)]*' "$ILOG"))"
+  else
+    echo "FAIL  INSTALLER"; tail -30 "$ILOG"; exit 1
+  fi
+fi
 # A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
 # its own installation and about 25 starts. AB_TEST=0 skips it.
 if [ "${AB_TEST:-1}" = 0 ]; then

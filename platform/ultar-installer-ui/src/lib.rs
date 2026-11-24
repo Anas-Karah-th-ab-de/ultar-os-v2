@@ -14,6 +14,7 @@ pub mod action;
 pub mod app;
 pub mod components;
 pub mod engine;
+pub mod firstboot;
 pub mod i18n;
 pub mod model;
 pub mod ports;

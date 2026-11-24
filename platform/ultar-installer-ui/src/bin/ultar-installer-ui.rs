@@ -1,12 +1,17 @@
 //! `ultar-installer-ui` – the graphical installer as a compositor client.
 //!
 //! ```text
-//! ultar-installer-ui --source PATH --disk PATH=NAME [--disk …] [--plans DIR]
-//!                    [--compositor PATH] [--bus PATH] [--lang ar|en|de] [--light]
+//! ultar-installer-ui --source PATH (--disk PATH=NAME [--disk …] | --disks-dir DIR) [--plans DIR]
+//!                    [--compositor PATH] [--bus PATH] [--lang ar|en|de] [--light] [--report]
 //! ```
-//! The live session's launcher passes the installation medium and the disks it offers (from
-//! the device HAL). Exit status: 0 installed (restart), 3 cancelled (nothing written),
-//! 1 failure, 2 usage.
+//! The live session's launcher passes the installation medium and the disks it offers. On the
+//! Ultar kernel's installation medium (profile `installer`) these are the kernel's whole-disk
+//! nodes: `--source /dev/ultar/medium --disks-dir /dev/ultar/disk` (every entry of the
+//! directory is one disk, the boot disk is never among them; only the installer's user opens
+//! them). `--report` writes one line per change of step, focus or the Next button's state to
+//! standard error (`[installer-ui] step=… focus=… next=…`; never typed text) – the session's
+//! console and the end-to-end test follow it. Exit status: 0 installed (restart), 3 cancelled
+//! (nothing written), 1 failure, 2 usage.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
@@ -38,6 +43,22 @@ struct Options {
     source: Option<PathBuf>,
     disks: Vec<(PathBuf, String)>,
     plans: PathBuf,
+    report: bool,
+}
+
+/// Most disks taken from a `--disks-dir` directory.
+const MAX_DISKS: usize = 32;
+
+/// The entries of a disk directory (sorted by name), each named after its entry.
+fn disks_in(dir: &std::path::Path) -> Option<Vec<(PathBuf, String)>> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| !n.starts_with('.'))
+        .take(MAX_DISKS)
+        .collect();
+    names.sort();
+    Some(names.into_iter().map(|n| (dir.join(&n), n)).collect())
 }
 
 fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
@@ -50,6 +71,7 @@ fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
         source: None,
         disks: Vec::new(),
         plans: PathBuf::from("."),
+        report: false,
     };
     let mut args = args.peekable();
     while let Some(arg) = args.next() {
@@ -60,6 +82,10 @@ fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
             "--light" => o.light = true,
             "--source" => o.source = Some(args.next()?.into()),
             "--plans" => o.plans = args.next()?.into(),
+            "--report" => o.report = true,
+            "--disks-dir" => o
+                .disks
+                .extend(disks_in(std::path::Path::new(&args.next()?))?),
             "--disk" => {
                 let v = args.next()?;
                 let (path, name) = v.split_once('=').unwrap_or((v.as_str(), v.as_str()));
@@ -149,11 +175,42 @@ fn start(app: &mut InstallerApp) -> Option<mpsc::Receiver<Report>> {
     Some(rx)
 }
 
+/// The line `--report` writes when step, focus or the Next button changed.
+fn report_line(app: &InstallerApp) -> String {
+    let focus = app.ui.focused().and_then(|node| {
+        app.view
+            .registry
+            .entries()
+            .iter()
+            .find(|(n, _)| *n == node)
+            .map(|(_, act)| format!("{act:?}"))
+    });
+    let next = app.view.next.map(|n| {
+        if app.ui.is_disabled(n) {
+            // the reason's catalog key (never a value the user typed)
+            format!("off:{}", app.model.wizard.blocked().unwrap_or("-"))
+        } else {
+            "on".to_owned()
+        }
+    });
+    format!(
+        "[installer-ui] step={:?} focus={} next={}",
+        app.model.wizard.step,
+        focus.as_deref().unwrap_or("-"),
+        next.as_deref().unwrap_or("-")
+    )
+}
+
 fn run(o: Options) -> Run {
+    let report = o.report;
     let Some((mut window, mut app)) = open(o) else {
+        if report {
+            eprintln!("[installer-ui] cannot start (compositor, bus, medium or disks missing)");
+        }
         return Run::Failed;
     };
     let mut worker: Option<mpsc::Receiver<Report>> = None;
+    let mut last = String::new();
     loop {
         let Ok(actions) = window.dispatch(Some(TICK)) else {
             return Run::Failed;
@@ -170,8 +227,23 @@ fn run(o: Options) -> Run {
             while let Ok(msg) = rx.try_recv() {
                 ok &= match msg {
                     Ok((d, t)) => app.progress(d, t).is_ok(),
-                    Err(result) => app.finished(result).is_ok(),
+                    Err(result) => {
+                        if report {
+                            match &result {
+                                Ok(()) => eprintln!("[installer-ui] installation written"),
+                                Err(e) => eprintln!("[installer-ui] installation failed: {e}"),
+                            }
+                        }
+                        app.finished(result).is_ok()
+                    }
                 };
+            }
+        }
+        if report {
+            let line = report_line(&app);
+            if line != last {
+                eprintln!("{line}");
+                last = line;
             }
         }
         std::mem::swap(window.ui_mut(), &mut app.ui);

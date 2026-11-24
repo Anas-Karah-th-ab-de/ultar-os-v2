@@ -14,6 +14,11 @@ path = "src/lib.rs"
 name = "ultar-installer-ui"
 path = "src/bin/ultar-installer-ui.rs"
 
+# First start of the installed system: the installer's answers become the first account.
+[[bin]]
+name = "ultar-firstboot"
+path = "src/bin/ultar-firstboot.rs"
+
 [features]
 # In-memory services for tests and the design-conformance suite.
 testkit = []

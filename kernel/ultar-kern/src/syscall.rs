@@ -1096,6 +1096,13 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 Ok(k) => k,
                 Err(e) => return e,
             },
+            "ultar/disk" | "ultar/medium" => {
+                let dev = path.strip_prefix("/dev/").unwrap_or("");
+                match crate::rawpart::open_installer(dev, acc != 0, rights.has(Rights::RAW_DEVICE)) {
+                    Ok(k) => k,
+                    Err(e) => return e,
+                }
+            }
             "fb0" => match if acc == 0 { crate::eingabe::FbFd::lesend() } else { crate::eingabe::FbFd::neu() } {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,

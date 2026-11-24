@@ -24,17 +24,26 @@ args = [
     "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0660", "--group", "804", "--max-connections", "8",
     # Administration tools run by root: usettings, udevctl, ulog, uinit.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
+    # The graphical installer (installation medium, user and group 840).
+    "--listen", "/run/ultar/bus/installer.sock=system.installer", "--mode", "0660", "--group", "840", "--max-connections", "2",
     # The service manager (root).
     "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804]
+groups = [802, 803, 804, 840]
 public_dirs = ["/run/ultar/bus"]
 notify = true
 after = ["logd"]
 restart = "always"
+
+
+# Boot profiles: the ordinary system and the installation medium's session
+# (ultar.profile=installer, set by the Ultar kernel on an installer medium).
+[profiles]
+system = "start"
+installer = "start"
 
 [cgroup]
 "memory.max" = "64M"

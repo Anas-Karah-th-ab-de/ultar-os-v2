@@ -66,8 +66,8 @@ cp -r rootfs/etc/ultar/trusted-keys "$R/etc/ultar/"
 for s in logd bus settingsd devd seat; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
 # The shipped compositor service is `manual` because ultar-shell would drive the same display; this image
 # has no ultar-shell, so the compositor starts with the system. Nothing else of the file changes.
-grep -q '^manual = true$' rootfs/etc/ultar/services/compositor.toml || fail "compositor.toml: no line 'manual = true'"
-grep -v '^manual = true$' rootfs/etc/ultar/services/compositor.toml >"$R/etc/ultar/services/compositor.toml"
+grep -q '^system = "manual"$' rootfs/etc/ultar/services/compositor.toml || fail "compositor.toml: no line 'system = \"manual\"'"
+sed 's/^system = "manual"$/system = "start"/' rootfs/etc/ultar/services/compositor.toml >"$R/etc/ultar/services/compositor.toml"
 # two windows of the compositor's test client (not part of the product, only of this image)
 cp tools/vm/services/*.toml "$R/etc/ultar/services/"
 printf 'desktop\n' >"$R/etc/ultar/edition"
