@@ -38,17 +38,29 @@ pub(crate) fn build(
         IconButton::new(IconId::Back, Label::key("store.aria.back")),
     )?;
     hits.bind(back, StoreAction::Back);
-    // Icon tile + name + publisher.
+    // Icon tile (48 box, centred 24 icon, like the board) + name + publisher.
     let head = ui.add(parent, Flex::row().gap(Space::S12).cross(CrossAlign::Center))?;
     let tile = ui.add_sized(
         head,
+        Card::new().flex(
+            Flex::column()
+                .main(ultar_ui::layout::MainAlign::Center)
+                .cross(CrossAlign::Center),
+        ),
+        Sizing::width(48.0).with_height(48.0),
+    )?;
+    ui.add(
+        tile,
         Icon::new(icon_by_name(&app.icon)).name(Label::key_with(
             "store.aria.app-icon",
-            &[("name", &super::loc_label(&app.name, ui).resolve(ui.translator()).into_owned())],
+            &[(
+                "name",
+                &super::loc_label(&app.name, ui)
+                    .resolve(ui.translator())
+                    .into_owned(),
+            )],
         )),
-        Sizing::width(48.0),
     )?;
-    let _ = tile;
     let names = ui.add_sized(head, Flex::column().gap(Space::S4), Sizing::grow(1))?;
     ui.add(
         names,

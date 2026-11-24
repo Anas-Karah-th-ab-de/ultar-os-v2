@@ -11,7 +11,9 @@ use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
 use ultar_ui::paint::TextSpec;
 use ultar_ui::tokens::{Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
-use ultar_ui::widgets::{Button, IconButton, Label, List, ListItem, SearchField, Tabs, Text};
+use ultar_ui::widgets::{
+    BarEdge, Button, Card, IconButton, Label, List, ListItem, SearchField, Tabs, Text,
+};
 
 /// The six areas of the desktop nav, with the icons of ICONS.md.
 const WIDE_AREAS: [(Area, IconId); 6] = [
@@ -93,10 +95,20 @@ fn page_title_key(_store: &Store) -> &'static str {
 
 fn nav(ui: &mut Ui, root: NodeId, store: &Store, hits: &mut HitMap) -> Result<NodeId, UiError> {
     let current = current_nav_area(store);
-    let list = ui.add_sized(
+    // Board Store: 240 wide sidebar, `bar` fill, `line` border on the inline
+    // end, padding 12, gap 4 — that is `Card::bar(BarEdge::End)`.
+    let sidebar = ui.add_sized(
         root,
-        List::navigation().name(Label::key("store.window.title")),
+        Card::bar(BarEdge::End).flex(
+            Flex::column()
+                .gap(Space::S4)
+                .padding(Padding::all(Space::S12)),
+        ),
         Sizing::width(NAV_WIDTH),
+    )?;
+    let list = ui.add(
+        sidebar,
+        List::navigation().name(Label::key("store.window.title")),
     )?;
     for (area, icon) in WIDE_AREAS {
         let mut item = ListItem::new(Label::key(area_key(area))).icon(icon);

@@ -6,7 +6,7 @@ use crate::action::StoreAction;
 use crate::catalog::CatalogApp;
 use crate::state::Store;
 use ultar_ui::icon::IconId;
-use ultar_ui::layout::{CrossAlign, Flex, Sizing};
+use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
 use ultar_ui::tokens::{ColorRole, Space};
 use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{Badge, Button, ButtonVariant, Label, ListItem, Text, Tone};
@@ -48,14 +48,14 @@ pub(crate) fn card_of(
     store: &Store,
     app: &CatalogApp,
 ) -> Result<(), UiError> {
-    let card = ui.add_sized(
-        parent,
-        ultar_ui::widgets::Card::padded(),
-        Sizing::grow(1),
-    )?;
+    // Board Store card: radius 12 (card), padding 12, gap 8, surface fill.
     let body = ui.add_sized(
-        card,
-        Flex::column().gap(Space::S8),
+        parent,
+        ultar_ui::widgets::Card::new().flex(
+            Flex::column()
+                .gap(Space::S8)
+                .padding(Padding::all(Space::S12)),
+        ),
         Sizing::grow(1),
     )?;
     // Header: icon + name + publisher as one clickable row (the board wraps
