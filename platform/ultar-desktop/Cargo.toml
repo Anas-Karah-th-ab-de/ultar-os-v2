@@ -33,7 +33,6 @@ ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
 ultar-service = { path = "../../system/core/ultar-service" }
-ultar-agentd = { path = "../../system/services/ultar-agentd" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
 
 [dev-dependencies]

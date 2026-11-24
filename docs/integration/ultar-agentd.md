@@ -64,8 +64,16 @@ Open points of the helper and of the mesh are collected in `docs/OFFEN-VERBUND-H
 
 - Werkzeuge (18): neu `bluetooth`, `airplane`, `media` (play_pause, next, previous), `screenshot`, `lock`,
   `help`, `suspend` (mit Bestätigung der Person).
-- Hilfe-Themen (`src/help.rs`, Texte `agent.help.<thema>` in drei Sprachen): pairing, continue, files, model,
+- Hilfe-Themen (`src/help.rs`, Texte `agent.help.<thema>` in drei Sprachen unter `ultar-bus/locales/agent/`): pairing, continue, files, model,
   wifi, bluetooth, updates, helper. Ohne Modell beantwortet der Helfer Fragen dazu („wie …“, „كيف …“);
   einem Modell dient das Werkzeug `help`.
 - Die kleinste Hilfe versteht zusätzlich: Bluetooth an/aus, Flugmodus an/aus, Bildschirmfoto, Sperren.
 - Tests: 22.
+
+## Nachtrag 25.11.2026 (2): erreichbar, zusammen geprüft
+
+- Die Hülle bietet in der Suche der Übersicht als letzten Treffer „Den Helfer fragen: …“ (sobald `agent.state`
+  gesehen wurde, ab drei Zeichen). Die Antwort erscheint als Meldung der Hülle; die Texte `agent.*` lädt die
+  Hülle aus `ultar_bus::messages::agent::LOCALES`.
+- `open_app` nennt dem Starter die einteilige Kennung (`files` statt `org.ultar.files`).
+- `tests/together.rs`: zwei Geräte, echte Dienste, ausgelieferte Regeln. Tests gesamt: 23.

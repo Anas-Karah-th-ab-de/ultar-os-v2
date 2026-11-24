@@ -1,7 +1,9 @@
 //! What the helper knows about this system without any model: a few topics, each one a
-//! short text in the three languages (`locales/*.ftl`, keys `agent.help.<topic>`).
+//! short text in the three languages (`ultar-bus/locales/agent/*.ftl`, keys
+//! `agent.help.<topic>`).
 
 use crate::msg;
+use ultar_bus::messages::agent::LOCALES;
 
 /// The topics.
 pub const TOPICS: [&str; 8] = [
@@ -15,8 +17,6 @@ pub const TOPICS: [&str; 8] = [
     "helper",
 ];
 
-const ENGLISH: &str = include_str!("../locales/en.ftl");
-
 /// The catalog key of a topic.
 pub fn key(topic: &str) -> Option<String> {
     TOPICS
@@ -27,7 +27,8 @@ pub fn key(topic: &str) -> Option<String> {
 /// The English text of a topic (what a model is told).
 pub fn text(topic: &str) -> Option<&'static str> {
     let key = key(topic)?;
-    let line = ENGLISH.lines().find_map(|l| l.strip_prefix(key.as_str()))?;
+    let english = LOCALES.iter().find(|(tag, _)| *tag == "en")?.1;
+    let line = english.lines().find_map(|l| l.strip_prefix(key.as_str()))?;
     line.strip_prefix(" = ")
 }
 
@@ -46,9 +47,7 @@ mod tests {
 
     #[test]
     fn every_topic_has_a_text_in_all_three_languages() {
-        for lang in ["ar", "en", "de"] {
-            let path = format!("{}/locales/{lang}.ftl", env!("CARGO_MANIFEST_DIR"));
-            let catalog = std::fs::read_to_string(path).unwrap();
+        for (lang, catalog) in LOCALES {
             for topic in TOPICS {
                 let key = format!("{} = ", key(topic).unwrap());
                 assert!(

@@ -138,3 +138,10 @@ Everything that is still open, in the order it should be finished: `docs/OFFEN-V
 - Neu im Vertrag (`messages/mesh.rs`): `Grant` (anderer Name für `Right`, für Oberflächen-Code),
   `Peer::new`, `Peer::grants`, `Peer::set_grants`, `SetRights::of`.
 - Tests: 61.
+
+## Nachtrag 25.11.2026 (2): Kennungen, Ausgaben
+
+- Eine Aktivität wird unter der Kennung geführt, die der Starter kennt (`launcher_id`: `org.ultar.files` → `files`).
+  Der Bus-Name einer App ist dieselbe Kennung; nur unter ihr darf sie melden.
+- Geräteart ohne `--kind`: aus `ULTAR_EDITION` (phone, desktop, server). Name ohne `--name`: `HOSTNAME`, sonst die Art.
+- Die Dienstdatei gilt für Handy, Desktop und Server.
