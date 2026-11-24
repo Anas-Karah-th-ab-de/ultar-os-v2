@@ -348,7 +348,12 @@ fn first_result(s: &mut Shell) -> Outcome {
             None => Outcome::none(),
         };
     }
-    let hits = crate::model::search::search(&s.d.overview.query, &s.d.catalog, &s.tr);
+    let hits = crate::model::search::search_in(
+        &s.d.overview.query,
+        &s.d.catalog,
+        &s.tr,
+        s.d.overview.sources,
+    );
     match hits.first() {
         Some(hit) => result(s, &hit.clone()),
         None => Outcome::none(),

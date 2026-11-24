@@ -239,7 +239,7 @@ pub(crate) fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
 }
 
 fn results(view: &mut View, root: NodeId, d: &Desktop, tr: &Translator) -> Result<(), UiError> {
-    let hits = search::search(&d.overview.query, &d.catalog, tr);
+    let hits = search::search_in(&d.overview.query, &d.catalog, tr, d.overview.sources);
     let row = view.ui.add(root, Flex::row().main(MainAlign::Center))?;
     if hits.is_empty() {
         view.ui.add(

@@ -83,42 +83,109 @@ pub enum Hit {
     Command(Command),
 }
 
-fn matches(text: &str, query: &str) -> bool {
-    arabic::search_matches(text, query) || text.to_lowercase().contains(&query.to_lowercase())
+/// What the search looks through: the switches of Settings > Search (`search.source.*`,
+/// `search.arabic_variants`). Everything is on until the settings say otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sources {
+    /// Installed apps.
+    pub apps: bool,
+    /// Panels of Settings.
+    pub settings: bool,
+    /// Calculations.
+    pub calculator: bool,
+    /// Commands (lock, power, display mode, quick settings).
+    pub commands: bool,
+    /// Arabic matches without regard to vowel marks and letter variants.
+    pub arabic_variants: bool,
 }
 
-/// Searches; an empty (or only blank) query has no results.
+impl Default for Sources {
+    fn default() -> Self {
+        Sources {
+            apps: true,
+            settings: true,
+            calculator: true,
+            commands: true,
+            arabic_variants: true,
+        }
+    }
+}
+
+impl Sources {
+    /// The settings the search follows.
+    pub const KEYS: [&'static str; 5] = [
+        "search.source.apps",
+        "search.source.settings",
+        "search.source.calculator",
+        "search.source.commands",
+        "search.arabic_variants",
+    ];
+
+    /// Takes the value of one of [`Sources::KEYS`]; `false` for any other key.
+    pub fn set(&mut self, key: &str, on: bool) -> bool {
+        let field = match key {
+            "search.source.apps" => &mut self.apps,
+            "search.source.settings" => &mut self.settings,
+            "search.source.calculator" => &mut self.calculator,
+            "search.source.commands" => &mut self.commands,
+            "search.arabic_variants" => &mut self.arabic_variants,
+            _ => return false,
+        };
+        *field = on;
+        true
+    }
+}
+
+fn matches(text: &str, query: &str, variants: bool) -> bool {
+    (variants && arabic::search_matches(text, query))
+        || text.to_lowercase().contains(&query.to_lowercase())
+}
+
+/// Searches every source; an empty (or only blank) query has no results.
 pub fn search(query: &str, apps: &[AppInfo], tr: &Translator) -> Vec<Hit> {
+    search_in(query, apps, tr, Sources::default())
+}
+
+/// Searches the sources that are switched on; an empty (or only blank) query has no results.
+pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Sources) -> Vec<Hit> {
     let query: String = query.chars().take(MAX_QUERY).collect();
     let query = query.trim();
     if query.is_empty() {
         return Vec::new();
     }
-    let mut out: Vec<Hit> = apps
-        .iter()
-        .filter(|a| matches(&a.display_name(tr), query) || a.id.contains(query))
-        .take(MAX_PER_GROUP)
-        .map(|a| Hit::App(a.id.clone()))
-        .collect();
-    out.extend(
-        SETTING_PANELS
-            .iter()
-            .filter(|p| matches(&tr.t(&format!("desk.search.panel.{p}")), query))
-            .take(MAX_PER_GROUP)
-            .map(|p| Hit::Setting(p)),
-    );
-    if let Some(value) = calculate(query) {
+    let variants = sources.arabic_variants;
+    let mut out = Vec::new();
+    if sources.apps {
+        out.extend(
+            apps.iter()
+                .filter(|a| matches(&a.display_name(tr), query, variants) || a.id.contains(query))
+                .take(MAX_PER_GROUP)
+                .map(|a| Hit::App(a.id.clone())),
+        );
+    }
+    if sources.settings {
+        out.extend(
+            SETTING_PANELS
+                .iter()
+                .filter(|p| matches(&tr.t(&format!("desk.search.panel.{p}")), query, variants))
+                .take(MAX_PER_GROUP)
+                .map(|p| Hit::Setting(p)),
+        );
+    }
+    if let Some(value) = calculate(query).filter(|_| sources.calculator) {
         out.push(Hit::Calc(value));
     }
-    out.extend(
-        Command::ALL
-            .into_iter()
-            .filter(|c| {
-                matches(&tr.t(c.key()), query)
-                    || matches(&tr.t(&format!("{}.words", c.key())), query)
-            })
-            .map(Hit::Command),
-    );
+    if sources.commands {
+        out.extend(
+            Command::ALL
+                .into_iter()
+                .filter(|c| {
+                    matches(&tr.t(c.key()), query, variants)
+                        || matches(&tr.t(&format!("{}.words", c.key())), query, variants)
+                })
+                .map(Hit::Command),
+        );
+    }
     out
 }
 
@@ -258,5 +325,26 @@ mod tests {
         ] {
             assert_eq!(calculate(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn a_source_switched_off_in_settings_is_not_searched() {
+        let ar = crate::i18n::translator(Lang::Ar).unwrap();
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let files = Hit::App("org.ultar.files".into());
+        let find = |query: &str, tr: &Translator, key: &str| {
+            let mut sources = Sources::default();
+            assert!(sources.set(key, false), "{key}");
+            search_in(query, &base_apps(), tr, sources)
+        };
+        assert!(!find("الملفات", &ar, "search.source.apps").contains(&files));
+        assert!(find("الملفات", &ar, "search.source.commands").contains(&files));
+        assert!(!find("display", &en, "search.source.settings").contains(&Hit::Setting("display")));
+        assert!(!find("lock", &en, "search.source.commands").contains(&Hit::Command(Command::Lock)));
+        assert!(find("12*3", &en, "search.source.calculator").is_empty());
+        // Without the Arabic variants only the exact spelling matches.
+        assert!(find("الملفات", &ar, "search.arabic_variants").contains(&files));
+        assert!(!find("المِلفات", &ar, "search.arabic_variants").contains(&files));
+        assert!(!Sources::default().set("search.history", false));
     }
 }

@@ -18,10 +18,16 @@ use ultar_ui::tokens::ThemeKind;
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 6] = [
+pub const FOLLOWED: [&str; 12] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
+    "accessibility.reduce_motion",
+    "search.source.apps",
+    "search.source.settings",
+    "search.source.calculator",
+    "search.source.commands",
+    "search.arabic_variants",
     "notifications.do_not_disturb",
     "display.night_light.enabled",
     "power.mode",
@@ -123,6 +129,8 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
         ("notifications.do_not_disturb", SettingValue::Flag(on)) => d.values.dnd = *on,
         ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
         ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
+        ("accessibility.reduce_motion", SettingValue::Flag(on)) => d.values.reduce_motion = *on,
+        (k, SettingValue::Flag(on)) if d.overview.sources.set(k, *on) => {}
         ("display.night_light.enabled", SettingValue::Flag(on)) => d.values.night = *on,
         ("power.mode", SettingValue::Text(t)) => {
             if let Some(m) = PowerMode::parse(t) {
@@ -178,5 +186,24 @@ mod tests {
         );
         assert_eq!(d.values.brightness, Some(100));
         apply_setting(&mut d, "x", &SettingValue::Flag(true));
+    }
+
+    #[test]
+    fn the_search_and_motion_settings_reach_the_state() {
+        let mut d = Desktop::new(Lang::En);
+        assert!(d.overview.sources.apps && !d.values.reduce_motion);
+        for key in crate::model::search::Sources::KEYS {
+            assert!(FOLLOWED.contains(&key), "{key} is not read at start");
+        }
+        apply_setting(&mut d, "search.source.apps", &SettingValue::Flag(false));
+        apply_setting(&mut d, "search.arabic_variants", &SettingValue::Flag(false));
+        apply_setting(
+            &mut d,
+            "accessibility.reduce_motion",
+            &SettingValue::Flag(true),
+        );
+        let sources = d.overview.sources;
+        assert!(!sources.apps && !sources.arabic_variants && sources.settings);
+        assert!(d.values.reduce_motion);
     }
 }

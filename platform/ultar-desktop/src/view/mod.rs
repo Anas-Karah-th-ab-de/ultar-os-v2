@@ -246,6 +246,8 @@ pub struct Look {
     pub high_contrast: bool,
     /// accessibility.large_text: text this many times larger (1 = off).
     pub text_scale: f32,
+    /// accessibility.reduce_motion: knobs jump, progress rings stand still.
+    pub reduce_motion: bool,
 }
 
 /// Text factor of accessibility.large_text.
@@ -268,6 +270,7 @@ impl Look {
             mode: InputMode::Pointer,
             high_contrast: false,
             text_scale: 1.0,
+            reduce_motion: false,
         }
     }
 }
@@ -278,7 +281,9 @@ pub fn new_ui(look: Look, size: Size, tr: &Translator) -> Result<Ui, UiError> {
     env.scale = look.scale;
     env.high_contrast = look.high_contrast;
     env.text_scale = look.text_scale;
-    Ui::new(env, look.mode, size, tr.clone())
+    let mut ui = Ui::new(env, look.mode, size, tr.clone())?;
+    ui.set_reduce_motion(look.reduce_motion);
+    Ok(ui)
 }
 
 /// How a floating card is placed on the screen.

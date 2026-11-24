@@ -232,6 +232,8 @@ pub struct QuickValues {
     pub high_contrast: bool,
     /// accessibility.large_text: text 1.25 times larger on every surface of the shell.
     pub large_text: bool,
+    /// accessibility.reduce_motion: nothing of the shell moves on its own.
+    pub reduce_motion: bool,
 }
 
 /// One tile as shown.

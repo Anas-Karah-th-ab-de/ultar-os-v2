@@ -158,6 +158,8 @@ pub struct Layouts {
 pub struct OverviewState {
     /// Text of the search.
     pub query: String,
+    /// What the search looks through (Settings > Search).
+    pub sources: super::search::Sources,
     /// Shown workspace and how many there are (`Event::Workspaces`); `None` until the
     /// compositor said.
     pub workspaces: Option<(u8, u8)>,

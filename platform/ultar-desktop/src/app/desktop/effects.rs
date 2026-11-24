@@ -313,6 +313,7 @@ impl DesktopApp {
         self.look.theme = self.shell.d.theme;
         let v = self.shell.d.values;
         self.look = self.look.with_access(v.high_contrast, v.large_text);
+        self.look.reduce_motion = v.reduce_motion;
         let screen = screen(&self.host);
         if outcome.bar {
             let view = build_bar(&self.shell, self.look, screen.w)?;
