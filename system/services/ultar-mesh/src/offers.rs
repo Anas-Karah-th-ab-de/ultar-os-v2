@@ -14,6 +14,7 @@ use crate::wire::Frame;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
+use ultar_bus::messages::launcher::launcher_id;
 use ultar_bus::messages::mesh::{
     Activity, Capability, HandoffProgress, OfferState, SendOutcome, Stage, Target,
 };
@@ -40,6 +41,13 @@ pub struct Offers {
     pub(crate) received: BTreeMap<u64, Received>,
 }
 
+/// The activity under the id the launcher knows the app by (surfaces say
+/// `org.ultar.files`, the launcher and an app's bus name say `files`).
+fn known_to_launcher(mut activity: Activity) -> Activity {
+    activity.app = launcher_id(&activity.app).to_owned();
+    activity
+}
+
 pub(crate) fn progress(offer: u64, peer: &str, outgoing: bool, state: OfferState) -> Effect {
     Effect::Progress(HandoffProgress {
         offer,
@@ -64,29 +72,32 @@ impl Node {
         self.activity.as_ref()
     }
 
-    /// The app `app` says what is open in it (`None`: nothing). It is kept until the app
-    /// says otherwise, and is in front as long as nobody names another app.
-    pub fn report(&mut self, app: &str, activity: Option<Activity>) {
-        let activity = activity.filter(|a| a.app == app);
-        match &activity {
-            Some(a) if self.reported.len() < MAX_REPORTED || self.reported.contains_key(app) => {
-                self.reported.insert(app.to_owned(), a.clone());
-            }
-            Some(_) => {}
-            None => {
-                self.reported.remove(app);
-            }
+    /// The app with the bus name `name` says what is open in it (`None`: nothing). It is
+    /// kept under the app's id until the app says otherwise, and is in front as long as
+    /// nobody names another app. `false`: the app tried to speak for another one.
+    pub fn report(&mut self, name: &str, activity: Option<Activity>) -> bool {
+        let activity = activity.map(known_to_launcher);
+        if activity.as_ref().is_some_and(|a| a.app != name) {
+            return false;
         }
-        let in_front = self.activity.as_ref().is_none_or(|a| a.app == app);
+        self.reported.remove(name);
+        if let Some(a) = activity
+            .as_ref()
+            .filter(|_| self.reported.len() < MAX_REPORTED)
+        {
+            self.reported.insert(name.to_owned(), a.clone());
+        }
+        let in_front = self.activity.as_ref().is_none_or(|a| a.app == name);
         if in_front {
             self.activity = activity;
         }
+        true
     }
 
     /// The shell names the app in front. What that app itself reported counts (it knows
     /// the place or the file); without a report, the app is offered as it is.
     pub fn set_front(&mut self, front: Option<Activity>) {
-        let front = front.filter(|a| !a.app.is_empty());
+        let front = front.map(known_to_launcher).filter(|a| !a.app.is_empty());
         let reported = front.as_ref().and_then(|a| self.reported.get(&a.app));
         self.activity = reported.cloned().or(front);
     }

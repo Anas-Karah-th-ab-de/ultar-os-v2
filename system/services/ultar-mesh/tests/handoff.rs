@@ -282,10 +282,11 @@ fn copied_text_reaches_paired_devices_but_never_a_password() {
 #[test]
 fn the_app_in_front_is_offered_with_what_it_reported_itself() {
     let mut w = World::new("front", &[PHONE, PC]);
-    let place = Activity {
-        app: "org.ultar.files".into(),
+    // surfaces name an app org.ultar.<id>; the launcher and the app's bus name say <id>
+    let place = |app: &str| Activity {
+        app: app.into(),
         title: "Documents".into(),
-        uri: Some("file:///home/Documents".into()),
+        uri: Some("files://documents/".into()),
         file: None,
     };
     let bare = |app: &str| Activity {
@@ -296,18 +297,18 @@ fn the_app_in_front_is_offered_with_what_it_reported_itself() {
     };
     let node = &mut w.nodes[0];
     // an app cannot report for another one
-    node.report("org.ultar.web", Some(place.clone()));
+    assert!(!node.report("web", Some(place("org.ultar.files"))));
     assert_eq!(node.in_front(), None);
-    node.report("org.ultar.files", Some(place.clone()));
-    assert_eq!(node.in_front(), Some(&place));
+    assert!(node.report("files", Some(place("org.ultar.files"))));
+    assert_eq!(node.in_front(), Some(&place("files")));
     // the shell names another app in front: that one reported nothing
     node.set_front(Some(bare("org.ultar.web")));
-    assert_eq!(node.in_front(), Some(&bare("org.ultar.web")));
+    assert_eq!(node.in_front(), Some(&bare("web")));
     // back to Files: its own report counts, not the bare window
     node.set_front(Some(bare("org.ultar.files")));
-    assert_eq!(node.in_front(), Some(&place));
-    node.report("org.ultar.files", None);
+    assert_eq!(node.in_front(), Some(&place("files")));
+    assert!(node.report("files", None));
     assert_eq!(node.in_front(), None);
     node.set_front(Some(bare("org.ultar.files")));
-    assert_eq!(node.in_front(), Some(&bare("org.ultar.files")));
+    assert_eq!(node.in_front(), Some(&bare("files")));
 }

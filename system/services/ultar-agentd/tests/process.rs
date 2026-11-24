@@ -263,7 +263,8 @@ fn a_weak_device_thinks_with_the_model_a_paired_device_lends() {
     assert_eq!(answer.steps.len(), 1);
     assert_eq!(
         *b.seen.started.lock().unwrap(),
-        vec!["org.ultar.browser".to_owned()]
+        // the launcher knows the apps of the system by their one-part id
+        vec!["browser".to_owned()]
     );
     assert!(b.seen.asked_mesh.load(Ordering::SeqCst));
     assert!(!b.seen.asked_local.load(Ordering::SeqCst));

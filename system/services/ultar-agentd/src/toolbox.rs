@@ -6,7 +6,7 @@ use crate::tools::{self, Call, Outcome, Risk, Toolbox};
 use std::time::Duration;
 use ultar_bus::messages::agent::{Brain, StepOutcome};
 use ultar_bus::messages::audio::{AudioOutcome, SetMute, SetVolume};
-use ultar_bus::messages::launcher::{List, Role, Start};
+use ultar_bus::messages::launcher::{launcher_id, List, Role, Start};
 use ultar_bus::messages::llm::Complete;
 use ultar_bus::messages::mesh::{HandoffSend, MeshState, SendFile, SendOutcome};
 use ultar_bus::messages::mesh_model::Think;
@@ -62,7 +62,7 @@ impl BusTools<'_> {
 
     fn open(&self, app: &str) -> Outcome {
         let start = Start {
-            app: app.to_owned(),
+            app: launcher_id(app).to_owned(),
             role: Role::Ui,
             activation_token: None,
             uri: None,

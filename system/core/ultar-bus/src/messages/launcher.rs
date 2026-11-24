@@ -384,3 +384,32 @@ calls!(
 #[cfg(test)]
 #[path = "launcher_tests.rs"]
 mod tests;
+
+/// The prefix surfaces put before the id of an app of the system (`org.ultar.files`).
+pub const BASE_PREFIX: &str = "org.ultar.";
+
+/// The id the launcher knows an app by: the apps of the system have one-part ids
+/// (`files`, `settings`), while windows and surfaces name them `org.ultar.<id>`; a dotted
+/// id of a store publisher stays as it is.
+pub fn launcher_id(app: &str) -> &str {
+    app.strip_prefix(BASE_PREFIX)
+        .filter(|rest| !rest.is_empty() && !rest.contains('.'))
+        .unwrap_or(app)
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::launcher_id;
+
+    #[test]
+    fn only_the_system_prefix_before_a_one_part_id_is_dropped() {
+        assert_eq!(launcher_id("org.ultar.files"), "files");
+        assert_eq!(launcher_id("files"), "files");
+        assert_eq!(
+            launcher_id("km-code-craft.appbuilder"),
+            "km-code-craft.appbuilder"
+        );
+        assert_eq!(launcher_id("org.ultar.a.b"), "org.ultar.a.b");
+        assert_eq!(launcher_id("org.ultar."), "org.ultar.");
+    }
+}

@@ -267,13 +267,7 @@ impl MeshService {
                 // An app speaks for itself only; the shell names the app in front.
                 let node = &mut self.runtime.node;
                 let own = match ultar_svckit::access::app_name(caller) {
-                    Some(app) => {
-                        let own = c.activity.as_ref().is_none_or(|a| a.app == app);
-                        if own {
-                            node.report(app, c.activity);
-                        }
-                        own
-                    }
+                    Some(app) => node.report(app, c.activity),
                     None => {
                         node.set_front(c.activity);
                         true
