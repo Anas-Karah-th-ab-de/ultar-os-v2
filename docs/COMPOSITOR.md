@@ -135,7 +135,10 @@ lock surfaces and the input panel are drawn and get input.
 Configure/commit: the compositor sends `Configure{serial, size, scale, state, activated, rtl}`; the
 client draws that size and commits with the serial. Geometry changes (maximise, snap, resize) take
 effect **when the client commits the acknowledged serial** (atomic, like Wayland); the visual style
-(shadow, corners) changes at once. Size limits are clamped to the work area.
+(shadow, corners) changes at once. Size limits are clamped to the work area. Limits stated before a
+window's first frame also decide the size it opens with: the usual share of the work area, its
+content no smaller than the stated least size (a window that draws its own header counts the
+header as content); limits stated later leave a shown window as it is.
 
 Window states: `Normal`, `Maximized` (work area), `Fullscreen` (output, no decorations),
 `Minimized` (hidden; Alt+Tab or dock restores). Snap layouts (Windows 11 / DESKTOP-SPEC §5.2):
@@ -191,9 +194,12 @@ damage, no waiting callbacks, no ping or transfer deadline → `poll` without ti
   coordinates. A press starts an **implicit grab**: until all buttons are up, events go to that
   surface even outside it. Click focuses and raises. Super+drag moves from anywhere.
 * Keyboard: modifiers tracked by the compositor; secure attention keys first (§8a), then compositor
-  shortcuts (Super+arrows, Super+Space layout switch, Alt+F4, Alt+Tab), else the key goes **only to
+  shortcuts (Super+arrows, Alt+F4, Alt+Tab; layout switch – also on the lock screen – with Super+Space,
+  and with Ctrl+Shift or Alt+Shift when the pair is released without another key, so Ctrl+Shift+N stays a
+  shortcut; the shell sets the list from the settings `region.keyboard.layouts`/`.active` with
+  `SetKeyboardLayouts` and stores the active one), else the key goes **only to
   the text target**: the lock surface while locked (nowhere if there is none), else a system dialog,
-  else the focused surface. Repeats and the release go to the surface that got the press with the character of the active layout: **Arabic (PC 101) first**, English second,
+  else the focused surface. Repeats and the release go to the surface that got the press with the character of the active layout: **Arabic (PC 101) first**, English second, German (QWERTZ, AltGr `@ € { [ ] } \ ~ |`) on request,
   digits 0–9 in both, lam-alef keys as `Text`. Ctrl/Alt/Super chords report the Latin letter
   (Ctrl+C stays Ctrl+C in Arabic).
 * Touch: each contact belongs to the surface it went down on; decorations by touch behave like the

@@ -55,6 +55,7 @@ fn sample_requests() -> Vec<Request> {
         Request::SetDisplayMode { mode: DisplayModeRequest::Mirror },
         Request::SetDisplayMode { mode: DisplayModeRequest::Single(OutputId(2)) },
         Request::SetKeyboardLayout { index: 1 },
+        Request::SetKeyboardLayouts { names: vec!["ar".into(), "de".into()] },
         Request::WindowThumbnail { window: 7, max_width: 448, max_height: 288 },
         Request::WindowThumbnail { window: 1, max_width: MAX_THUMBNAIL_SIDE, max_height: 1 },
         Request::SwitchWorkspace { index: 2 },

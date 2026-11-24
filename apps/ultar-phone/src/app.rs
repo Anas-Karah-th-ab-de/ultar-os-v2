@@ -4,12 +4,12 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use crate::click::Click;
-use crate::model::Model;
+use crate::model::{Model, Screen};
 use crate::port::{CallPort, Host, PortError};
 use crate::text::{failure_key, translator};
 use crate::view::{self, Built};
 use std::fmt;
-use ultar_bus::messages::call::{CallError, CallState, Phase};
+use ultar_bus::messages::call::{CallError, CallState, Cellular, Phase, Ultar, Way};
 use ultar_i18n::{Lang, ParseError, Translator};
 use ultar_ui::event::{ActionKind, Event, Response};
 use ultar_ui::paint::PaintEnv;
@@ -62,6 +62,12 @@ pub struct Look {
     /// Surface size in logical points.
     pub size: Size,
 }
+
+/// Width the window opens with on a PC: the dial pad's column and as much for the history.
+pub const OPEN_WIDTH: f32 = 800.0;
+
+/// Height of the surface the dial pad is measured on (higher than any pad).
+const PROBE_HEIGHT: f32 = 4096.0;
 
 /// Identifier of the one toast the phone shows.
 const TOAST: u32 = 1;
@@ -164,6 +170,62 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
         self.ui.set_input_mode(look.mode);
         self.ui.set_size(look.size)?;
         self.rebuild()
+    }
+
+    /// The window size (logical points) at which the dial screen shows whole in its two
+    /// columns: [`OPEN_WIDTH`] wide, as high as the header and the dial pad down to the call
+    /// buttons and the pad's edge. Measured from the layout in this language, with the rows
+    /// that come and go above the keys counted in: the highest notice about a line (the
+    /// window opens before the call service answered, and the line's state changes) and the
+    /// suggestion shown while typing; so it does not depend on the state at the start.
+    /// The window asks the compositor for this size when it opens; on anything lower the
+    /// pad scrolls. `None` outside the dial screen (a call's screen fills whatever it gets).
+    pub fn whole_size(&mut self) -> Option<(u32, u32)> {
+        if self.model.screen() != Screen::Dial {
+            return None;
+        }
+        let size = self.ui.size();
+        self.ui.set_size(Size::new(OPEN_WIDTH, PROBE_HEIGHT)).ok()?;
+        let mut probe = self.model.clone();
+        probe.digits.clear();
+        let cellular = probe.cellular_way();
+        let lines = [
+            (Way::Ultar, Ultar::SignedOut, Cellular::NoModem),
+            (Way::Ultar, Ultar::Offline, Cellular::NoModem),
+            (cellular, Ultar::SignedOut, Cellular::NoModem),
+            (cellular, Ultar::SignedOut, Cellular::NoSim),
+            (cellular, Ultar::SignedOut, Cellular::Airplane),
+            (cellular, Ultar::SignedOut, Cellular::NoNetwork),
+            (cellular, Ultar::SignedOut, Cellular::EmergencyOnly),
+        ];
+        let mut bottom: Option<f32> = None;
+        for (way, ultar, cell) in lines {
+            probe.way = Some(way);
+            probe.state.lines.ultar = ultar;
+            probe.state.lines.cellular = cell;
+            let Ok(built) = view::build(&mut self.ui, &probe) else {
+                continue;
+            };
+            self.built = built;
+            self.ui.layout();
+            if let Some(b) = self.pad_bottom() {
+                bottom = Some(bottom.map_or(b, |a| a.max(b)));
+            }
+        }
+        // Back to the surface's size and the real state.
+        let restored = self.ui.set_size(size).is_ok() && self.rebuild().is_ok();
+        let suggestion = view::metrics::key_height() + view::dial::PAD_GAP.points();
+        let bottom = bottom.filter(|b| restored && b.is_finite() && *b > 0.0)? + suggestion;
+        Some((OPEN_WIDTH as u32, bottom.ceil() as u32))
+    }
+
+    /// Lower end of the dial pad's content (the call buttons and the pad's edge below them).
+    fn pad_bottom(&mut self) -> Option<f32> {
+        self.built.pad?;
+        let (call, _) = self.built.clicks.iter().find(|(_, c)| *c == Click::Call)?;
+        let r = self.ui.rect(*call)?;
+        let compact = self.ui.size_class() == ultar_ui::tokens::SizeClass::Compact;
+        Some(r.y + r.h + view::dial::pad_edge(compact).points())
     }
 
     /// Lays the tree out again for a new surface size (window configure).
@@ -285,6 +347,15 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
         Ok(())
     }
 
+    /// Takes a call history fetched elsewhere (the window's bus thread at start).
+    pub fn set_log(
+        &mut self,
+        log: Vec<ultar_bus::messages::call::LogEntry>,
+    ) -> Result<(), AppError> {
+        self.model.log = log;
+        self.rebuild()
+    }
+
     /// Fetches the history again (the service owns it).
     pub(crate) fn reload_log(&mut self) {
         if let Ok(log) = self.port.log(false) {
@@ -322,8 +393,19 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
             .focused()
             .and_then(|f| self.built.clicks.iter().find(|(id, _)| *id == f))
             .map(|(_, c)| *c);
+        // The dial pad keeps its scroll position across rebuilds (every key press rebuilds).
+        let pad = self
+            .built
+            .pad
+            .and_then(|p| self.ui.scroll_offset(p).ok())
+            .filter(|o| *o > 0.0);
         self.built = view::build(&mut self.ui, &self.model)?;
         self.ui.layout();
+        if let (Some(offset), Some(id)) = (pad, self.built.pad) {
+            if self.ui.set_scroll_offset(id, offset).is_ok() {
+                self.ui.layout();
+            }
+        }
         if let Some(c) = focused {
             if let Some((id, _)) = self.built.clicks.iter().find(|(_, x)| *x == c) {
                 // A control that became disabled cannot keep the focus; that is fine.

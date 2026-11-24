@@ -182,6 +182,8 @@ pub enum LockCall {
     Media(u8),
     /// `settings.set_accessibility {key, value}` (login.access; only `accessibility.*`).
     Accessibility(String, bool),
+    /// The same call for `region.keyboard.active` (the input language chosen at the sign-in).
+    Layout(String),
 }
 
 impl BusPorts {
@@ -210,7 +212,29 @@ impl BusPorts {
                 };
                 self.ask(&call).is_ok()
             }
+            LockCall::Layout(name) => {
+                let call = settings::SetAccessibility {
+                    key: crate::app::keyboard::ACTIVE.into(),
+                    value: settings::SettingValue::Text(name.clone()),
+                };
+                self.ask(&call).is_ok()
+            }
         })
+    }
+
+    /// The input languages from `settings.accessibility` (login.access answers them after the
+    /// switches): the list and the active index, `None` without a usable answer.
+    pub fn login_keyboard(&self) -> Result<Option<(Vec<String>, u8)>, PortError> {
+        let reply = self.ask(&settings::Accessibility {})?;
+        let text = |key: &str| {
+            reply.values.iter().find_map(|(k, v)| match v {
+                settings::SettingValue::Text(t) if k == key => Some(t.clone()),
+                _ => None,
+            })
+        };
+        let layouts = text(crate::app::keyboard::LAYOUTS);
+        let active = text(crate::app::keyboard::ACTIVE);
+        Ok(layouts.and_then(|l| crate::app::keyboard::from_values(l, active)))
     }
 
     /// `settings.accessibility`: the flags under `accessibility.*` (login.access).
@@ -219,6 +243,7 @@ impl BusPorts {
         Ok(reply
             .values
             .into_iter()
+            .filter(|(k, _)| k.starts_with(settings::ACCESSIBILITY_PREFIX))
             .map(|(k, v)| (k, v == settings::SettingValue::Flag(true)))
             .collect())
     }

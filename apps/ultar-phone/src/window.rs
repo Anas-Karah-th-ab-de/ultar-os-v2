@@ -8,6 +8,7 @@
 use crate::app::PhoneApp;
 use crate::click::WindowOp;
 use crate::port::{CallPort, Host};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use ultar_surface::client::{Client, ClientError, Window, WindowConfig};
@@ -18,6 +19,15 @@ use ultar_ui::Point;
 
 /// Time the launcher may take to start Settings (it answers after the app is ready).
 const LAUNCH_WAIT: Duration = Duration::from_secs(10);
+
+/// Smallest window (logical points): the compact layout's width, header plus a few rows.
+/// The window opens larger ([`PhoneApp::whole_size`]: the whole dial pad); the user may make
+/// it this small, the dial pad scrolls then.
+pub const MIN_SIZE: (u32, u32) = (360, 320);
+
+/// Events handled in one step before drawing (what has arrived already: a new window gets
+/// its configures in a row, and only the last one is worth a frame).
+const EVENTS_PER_STEP: usize = 32;
 
 /// MIME type of a copied number.
 const TEXT: &str = "text/plain;charset=utf-8";
@@ -98,6 +108,12 @@ pub struct PhoneWindow<P: CallPort> {
     launcher: Option<ultar_bus::Client>,
     /// Settings asked for; waiting for the activation token of that click.
     settings_pending: bool,
+    /// Answer of the launcher for the last Settings request (asked on a thread of its own:
+    /// the launcher answers only when Settings is ready, the window must not wait for it).
+    launching: Option<Receiver<bool>>,
+    /// The window asked for its opening size as its least size and has not yet told the
+    /// compositor the real least size ([`MIN_SIZE`]); done after the first frame.
+    opening: bool,
 }
 
 fn serial_of(event: &Event) -> Option<u32> {
@@ -108,15 +124,38 @@ fn serial_of(event: &Event) -> Option<u32> {
     }
 }
 
+/// The toolkit's event for a compositor event. `pointer` is where the pointer is, in the
+/// toolkit's points: the compositor reports positions in fixed point with motion only, so
+/// buttons and the wheel act where the last motion was. (Kept as the raw fixed-point number
+/// it was 256 times too far out: no click and no wheel turn reached a key of the dial pad.)
+fn toolkit_event(event: &Event, pointer: &mut Point) -> Option<ultar_ui::event::Event> {
+    let translated = translate(event, *pointer)?;
+    if let ultar_ui::event::Event::PointerMove { pos } = &translated {
+        *pointer = *pos;
+    }
+    Some(translated)
+}
+
 impl<P: CallPort> PhoneWindow<P> {
     /// Opens the window on `client`; `host` must be the host given to `app`.
     pub fn open(
         mut client: Client,
-        app: PhoneApp<P, QueuedHost>,
+        mut app: PhoneApp<P, QueuedHost>,
         host: QueuedHost,
         title: &str,
     ) -> Result<PhoneWindow<P>, ClientError> {
-        let window = Window::create(&mut client, &WindowConfig::toplevel(title))?;
+        // The window opens with the whole dial pad in it: the compositor gives a new window a
+        // share of the screen but no less than the least size stated before its first frame
+        // (and no more than the screen has). After the first frame the least size becomes
+        // MIN_SIZE (`draw`): the user may make the window smaller, the dial pad scrolls then
+        // (view/dial.rs), as it does where the screen is too small for the whole pad.
+        let whole = app.whole_size();
+        let (w, h) = whole.unwrap_or(MIN_SIZE);
+        let config = WindowConfig {
+            min_size: (w.max(MIN_SIZE.0), h.max(MIN_SIZE.1)),
+            ..WindowConfig::toplevel(title)
+        };
+        let window = Window::create(&mut client, &config)?;
         client.send(&Request::ClientHeader {
             surface: window.surface(),
             on: true,
@@ -135,6 +174,8 @@ impl<P: CallPort> PhoneWindow<P> {
             maximized: false,
             launcher: None,
             settings_pending: false,
+            launching: None,
+            opening: whole.is_some(),
         })
     }
 
@@ -142,6 +183,12 @@ impl<P: CallPort> PhoneWindow<P> {
     pub fn with_launcher(mut self, bus: ultar_bus::Client) -> Self {
         self.launcher = Some(bus);
         self
+    }
+
+    /// Uses `bus` to reach the app launcher from now on (the bus may connect after the
+    /// window opened).
+    pub fn set_launcher(&mut self, bus: ultar_bus::Client) {
+        self.launcher = Some(bus);
     }
 
     /// The app (feed it `call.state` with [`PhoneApp::set_state`]).
@@ -157,15 +204,21 @@ impl<P: CallPort> PhoneWindow<P> {
     /// Waits up to `timeout` for one event, handles it, carries out the app's requests,
     /// keeps the call screen in step with the app and draws.
     pub fn step(&mut self, timeout: Duration, wall_s: i64) -> Result<Step, ClientError> {
-        if let Some(event) = self.client.next_event(Some(timeout))? {
+        let mut wait = Some(timeout);
+        for _ in 0..EVENTS_PER_STEP {
+            let Some(event) = self.client.next_event(wait)? else {
+                break;
+            };
             if let Some(step) = self.handle(&event)? {
                 return Ok(step);
             }
+            wait = Some(Duration::ZERO);
         }
         let now = self.now_ms();
         // Clock work of the app (toasts, timer) cannot fail in a way the window could act on.
         let _ = self.app.tick(now, wall_s);
         let forward = self.carry_out()?;
+        self.launch_answer();
         self.sync_call_screen()?;
         self.draw()?;
         Ok(match forward {
@@ -210,10 +263,7 @@ impl<P: CallPort> PhoneWindow<P> {
             self.configure(c)?;
             return Ok(None);
         }
-        if let Event::PointerEnter { x, y, .. } | Event::PointerMotion { x, y, .. } = event {
-            self.pointer = Point::new(*x as f32, *y as f32);
-        }
-        if let Some(ui_event) = translate(event, self.pointer) {
+        if let Some(ui_event) = toolkit_event(event, &mut self.pointer) {
             // A failed rebuild leaves the last tree on screen; the next event retries.
             let _ = self.app.handle(ui_event);
         }
@@ -279,13 +329,36 @@ impl<P: CallPort> PhoneWindow<P> {
     }
 
     /// Opens the phone's page in Settings; without a launcher (or when it refuses) the app
-    /// shows why.
+    /// shows why. The launcher is asked on a thread of its own: it answers only once
+    /// Settings is ready (up to [`LAUNCH_WAIT`]) and the window keeps answering meanwhile.
     fn open_settings(&mut self, token: Option<u64>) {
-        let opened = self
-            .launcher
-            .as_ref()
-            .is_some_and(|bus| crate::launch::open_phone_settings(bus, token, LAUNCH_WAIT).is_ok());
-        if !opened {
+        let Some(bus) = self.launcher.clone() else {
+            self.app.notify_error("phone.error.launch");
+            return;
+        };
+        let (tx, rx) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("phone-launch".into())
+            .spawn(move || {
+                let ok = crate::launch::open_phone_settings(&bus, token, LAUNCH_WAIT).is_ok();
+                let _ = tx.send(ok);
+            });
+        match spawned {
+            Ok(_) => self.launching = Some(rx),
+            Err(_) => self.app.notify_error("phone.error.launch"),
+        }
+    }
+
+    /// Shows the launcher's refusal once it answered.
+    fn launch_answer(&mut self) {
+        let Some(rx) = &self.launching else { return };
+        let failed = match rx.try_recv() {
+            Ok(ok) => !ok,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => true,
+        };
+        self.launching = None;
+        if failed {
             self.app.notify_error("phone.error.launch");
         }
     }
@@ -309,24 +382,95 @@ impl<P: CallPort> PhoneWindow<P> {
         Ok(())
     }
 
-    /// Paints and presents when needed.
+    /// Paints and presents when needed. Nothing is painted while every surface still waits
+    /// for its last frame (`FrameDone`): a paint then would clear `needs_paint` without
+    /// reaching the screen, and the window would keep showing an old picture (it looked
+    /// frozen) until the next change.
     fn draw(&mut self) -> Result<(), ClientError> {
         let Some(canvas) = self.canvas.as_mut() else {
             return Ok(());
         };
+        let main = self.window.can_draw();
+        let screen = self.call_screen.as_ref().is_some_and(|w| w.can_draw());
         let ui = self.app.ui();
-        if !ui.needs_paint() {
+        if !ui.needs_paint() || !(main || screen) {
             return Ok(());
         }
         ui.paint_all(canvas);
         let size = (canvas.width(), canvas.height());
-        if self.window.can_draw() {
+        if main {
             self.window
                 .present(&mut self.client, canvas.data(), size, &[])?;
+            if std::mem::take(&mut self.opening) {
+                // Shown at its opening size; from now on it may be made as small as MIN_SIZE.
+                self.client.send(&Request::SetSizeLimits {
+                    surface: self.window.surface(),
+                    min: MIN_SIZE,
+                    max: (0, 0),
+                })?;
+            }
         }
         if let Some(screen) = self.call_screen.as_mut().filter(|w| w.can_draw()) {
             screen.present(&mut self.client, canvas.data(), size, &[])?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ultar_surface::proto::{SurfaceId, FIXED_ONE};
+    use ultar_ui::event::Event as UiEvent;
+
+    /// A click and a wheel turn act where the pointer is on the window (in points), not at
+    /// the fixed-point number of the compositor's motion event.
+    #[test]
+    fn buttons_and_the_wheel_act_where_the_pointer_is() {
+        let surface = SurfaceId(1);
+        let mut pointer = Point::new(0.0, 0.0);
+        let at = Point::new(412.0, 274.5);
+        let fixed = |v: f32| (v * FIXED_ONE as f32) as i32;
+        for motion in [
+            Event::PointerEnter {
+                surface,
+                x: fixed(at.x),
+                y: fixed(at.y),
+            },
+            Event::PointerMotion {
+                surface,
+                x: fixed(at.x),
+                y: fixed(at.y),
+            },
+        ] {
+            pointer = Point::new(0.0, 0.0);
+            assert_eq!(
+                toolkit_event(&motion, &mut pointer),
+                Some(UiEvent::PointerMove { pos: at })
+            );
+            assert_eq!(pointer, at);
+        }
+        let press = Event::PointerButton {
+            surface,
+            serial: 2,
+            button: 0x110,
+            pressed: true,
+        };
+        match toolkit_event(&press, &mut pointer) {
+            Some(UiEvent::PointerDown { pos, .. }) => assert_eq!(pos, at),
+            other => panic!("{other:?}"),
+        }
+        let wheel = Event::PointerAxis {
+            surface,
+            dx: 0,
+            dy: 48 * FIXED_ONE,
+        };
+        match toolkit_event(&wheel, &mut pointer) {
+            Some(UiEvent::Scroll { pos, lines }) => {
+                assert_eq!(pos, at);
+                assert!(lines > 0.0);
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }

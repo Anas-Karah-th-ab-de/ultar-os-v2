@@ -96,6 +96,15 @@ pub(super) fn region() -> Vec<SettingDef> {
             &["levantine", "alternative"],
             "levantine",
         ),
+        // Input languages (DESKTOP-SPEC §8 "Tastatur"): the layouts Ctrl+Shift, Alt+Shift and
+        // Super+Space switch through, Arabic first; the active one is stored by the shell.
+        SettingDef::choice(
+            "region.keyboard.layouts",
+            P,
+            &["ar_en", "ar_de", "ar_en_de"],
+            "ar_en",
+        ),
+        SettingDef::choice("region.keyboard.active", P, &["ar", "en", "de"], "ar"),
     ]
 }
 

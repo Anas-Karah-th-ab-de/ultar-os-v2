@@ -378,6 +378,105 @@ fn keyboard_layouts_and_caps_lock() {
     assert_eq!(app.error(), Some(ErrorCode::Permission));
 }
 
+/// Ctrl+Shift and Alt+Shift switch the layout when released without another key (also while
+/// locked); Ctrl+Shift+N stays a shortcut; the shell sets the list (settings) and the text of
+/// the keys follows the active layout.
+#[test]
+fn layout_switch_chords_and_list() {
+    let mut comp = compositor(config(), &[(800, 600)]);
+    let mut shell = Peer::hello_as(&mut comp, SHELL_UID);
+    let layouts = |p: &mut Peer, comp: &mut Compositor| {
+        p.pump(comp);
+        p.events.iter().rev().find_map(|e| match e {
+            Event::KeyboardLayouts { names, active } => Some((names.clone(), *active)),
+            _ => None,
+        })
+    };
+    let mut app = Peer::hello_as(&mut comp, APP_UID);
+    app.window(&mut comp, 1, 0xff0000);
+    let typed = |app: &mut Peer, comp: &mut Compositor| {
+        app.take();
+        key(comp, 30, true);
+        key(comp, 30, false);
+        app.pump(comp);
+        app.events.iter().find_map(|e| match e {
+            Event::Key {
+                code: 30,
+                state: 1,
+                character,
+                ..
+            } => char::from_u32(*character),
+            _ => None,
+        })
+    };
+    assert_eq!(typed(&mut app, &mut comp), Some('ش'));
+    // Ctrl+Shift: switches on the release.
+    key(&mut comp, 29, true);
+    key(&mut comp, 42, true);
+    key(&mut comp, 42, false);
+    key(&mut comp, 29, false);
+    assert_eq!(layouts(&mut shell, &mut comp).unwrap().1, 1);
+    assert_eq!(typed(&mut app, &mut comp), Some('a'));
+    // Alt+Shift (the other order) switches back.
+    key(&mut comp, 42, true);
+    key(&mut comp, 56, true);
+    key(&mut comp, 56, false);
+    key(&mut comp, 42, false);
+    assert_eq!(layouts(&mut shell, &mut comp).unwrap().1, 0);
+    // Ctrl+Shift+N is a shortcut, no switch.
+    key(&mut comp, 29, true);
+    key(&mut comp, 42, true);
+    key(&mut comp, 49, true);
+    key(&mut comp, 49, false);
+    key(&mut comp, 42, false);
+    key(&mut comp, 29, false);
+    assert_eq!(layouts(&mut shell, &mut comp).unwrap().1, 0);
+    // The shell sets Arabic + German; unknown names are left out.
+    shell.send(&Request::SetKeyboardLayouts {
+        names: vec!["ar".into(), "xx".into(), "de".into()],
+    });
+    assert_eq!(
+        layouts(&mut shell, &mut comp),
+        Some((vec!["ar".to_owned(), "de".to_owned()], 0))
+    );
+    key(&mut comp, 29, true);
+    key(&mut comp, 42, true);
+    key(&mut comp, 29, false);
+    key(&mut comp, 42, false);
+    assert_eq!(layouts(&mut shell, &mut comp).unwrap().1, 1);
+    app.take();
+    key(&mut comp, 21, true);
+    key(&mut comp, 21, false);
+    app.pump(&mut comp);
+    assert!(app.events.iter().any(
+        |e| matches!(e, Event::Key { code: 21, state: 1, character, .. } if *character == u32::from('z'))
+    ));
+    // Not for apps.
+    app.send(&Request::SetKeyboardLayouts {
+        names: vec!["en".into()],
+    });
+    app.pump(&mut comp);
+    assert_eq!(app.error(), Some(ErrorCode::Permission));
+    // The lock screen hears of a switch by the chord and may set the list (it starts first
+    // after a restart).
+    let mut lock = Peer::hello_as(&mut comp, LOCK_UID);
+    assert_eq!(layouts(&mut lock, &mut comp).unwrap().1, 1);
+    lock.send(&Request::SetKeyboardLayouts {
+        names: vec!["ar".into(), "en".into()],
+    });
+    lock.send(&Request::SetKeyboardLayout { index: 1 });
+    assert_eq!(
+        layouts(&mut lock, &mut comp),
+        Some((vec!["ar".to_owned(), "en".to_owned()], 1))
+    );
+    assert!(lock.error().is_none());
+    key(&mut comp, 56, true);
+    key(&mut comp, 42, true);
+    key(&mut comp, 42, false);
+    key(&mut comp, 56, false);
+    assert_eq!(layouts(&mut lock, &mut comp).unwrap().1, 0);
+}
+
 /// While locked nothing of the shell's reaches the keyboard: no shortcut,
 /// no sheet focus.
 #[test]

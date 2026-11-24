@@ -16,7 +16,7 @@ use ultar_ui::tokens::{size, ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{
     Button, ButtonVariant, Card, EmptyState, Icon, IconButton, Label, RadioGroup, RadioLayout,
-    Tabs, TextDirection, TextField,
+    Scroll, Tabs, TextDirection, TextField,
 };
 
 /// The dial surface.
@@ -39,6 +39,18 @@ pub(crate) fn surface(b: &mut Builder<'_>, body: NodeId, model: &Model) -> Resul
     history(b, body, model)
 }
 
+/// Gap between the dial pad's rows.
+pub(crate) const PAD_GAP: Space = Space::S12;
+
+/// Edge around the dial pad's content.
+pub(crate) fn pad_edge(compact: bool) -> Space {
+    if compact {
+        Space::S16
+    } else {
+        Space::S24
+    }
+}
+
 fn pad_column(
     b: &mut Builder<'_>,
     parent: NodeId,
@@ -46,13 +58,18 @@ fn pad_column(
     sizing: Sizing,
 ) -> Result<(), UiError> {
     let flex = Flex::column()
-        .padding(Padding::all(if b.compact() {
-            Space::S16
-        } else {
-            Space::S24
-        }))
-        .gap(Space::S12);
-    let col = b.flex(parent, flex, sizing)?;
+        .padding(Padding::all(pad_edge(b.compact())))
+        .gap(PAD_GAP);
+    // A scroll container: on a window lower than the pad (a window the user made small, a
+    // small screen) the keys and the call button stay reachable instead of being cut off.
+    // The window opens high enough for the whole pad where the screen has the room
+    // (`PhoneApp::whole_size`).
+    // The holder takes the column's width; the scroll container grows to the holder's height
+    // (a growing viewport starts from no height, so the pad never makes the body taller).
+    let holder = b.flex(parent, Flex::column(), sizing)?;
+    let pad = Scroll::new().flex(flex).name(Label::key("phone.pad"));
+    let col = b.add(holder, pad, Sizing::grow(1))?;
+    b.built.pad = Some(col);
     b.add(
         col,
         heading(
@@ -205,7 +222,11 @@ fn history(b: &mut Builder<'_>, parent: NodeId, model: &Model) -> Result<(), UiE
         )?;
         return Ok(());
     }
-    let card = b.add(col, Card::new().flex(Flex::column()), Sizing::AUTO)?;
+    // The history scrolls on its own: a long list must not make the window's body taller
+    // than the window (it pushed the dial pad's call button out of sight).
+    let list = Scroll::new().name(Label::key("phone.log.heading"));
+    let list = b.add(col, list, Sizing::grow(1))?;
+    let card = b.add(list, Card::new().flex(Flex::column()), Sizing::AUTO)?;
     for entry in entries {
         log_row(b, card, model, entry)?;
     }

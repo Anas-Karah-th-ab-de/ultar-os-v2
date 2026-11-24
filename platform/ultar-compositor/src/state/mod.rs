@@ -134,6 +134,9 @@ pub struct Keyboard {
     pub caps_lock: bool,
     /// Index into `Config::layouts`.
     pub layout_index: usize,
+    /// Ctrl+Shift or Alt+Shift is held and no other key was pressed since: releasing one
+    /// of them switches the layout.
+    pub layout_chord: bool,
     /// Key events taken from the input devices so far (press, release, repeat; never which
     /// key). The end-to-end test reads it to know a key arrived (`--input-ack`).
     pub events: u64,

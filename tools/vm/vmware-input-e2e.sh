@@ -8,7 +8,8 @@
 # Runs: usb (q35, xHCI with USB keyboard and tablet, as the .vmx, firmware screen 1280x800), ps2 (i440FX,
 # PS/2 keyboard and the VMware absolute pointer through the i8042, VMware SVGA II, no USB) and usb-hd (as usb,
 # firmware screen 1920x1080: the session must fill whatever size the firmware set) and usb-xga (as usb,
-# firmware screen 1024x768: the size VMware starts with). REPEAT=3 repeats each.
+# 1024x768: every step as on the larger screens; INPUT_RUNS chooses). REPEAT=3 repeats each. The phone must
+# open with its whole dial pad, and in a small window (a quarter of the screen) the pad must scroll.
 # On the lock screen the run also checks what the Lock board shows: the whole frame buffer covered, brand,
 # avatar, name and password field drawn (Arabic and Latin text), the accessibility menu only on a click and
 # with the names of its switches.

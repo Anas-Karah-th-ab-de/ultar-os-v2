@@ -170,6 +170,17 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
                 _ => return Err(WireError::BadValue),
             },
         },
+        43 => {
+            let n = usize::from(r.u8()?);
+            if n == 0 || n > super::MAX_LAYOUTS {
+                return Err(WireError::BadValue);
+            }
+            let mut names = Vec::with_capacity(n);
+            for _ in 0..n {
+                names.push(r.str(super::MAX_LAYOUT_NAME)?);
+            }
+            Request::SetKeyboardLayouts { names }
+        }
         _ => return Err(WireError::BadValue),
     })
 }

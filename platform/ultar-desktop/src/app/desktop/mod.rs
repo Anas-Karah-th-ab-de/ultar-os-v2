@@ -7,6 +7,7 @@ mod panels;
 mod slow;
 mod topics;
 
+use super::keyboard;
 use super::{primary, AppError, Options};
 use crate::host::{Host, HostEvent};
 use crate::model::time::{Clock, SystemClock};
@@ -60,6 +61,8 @@ pub struct DesktopApp {
     bar_fixed: bool,
     /// Service calls running on workers (scan, join, VPN).
     slow: slow::SlowCalls,
+    /// Which layout announcements are the user's switches (stored in the settings).
+    layouts: keyboard::LayoutSync,
 }
 
 impl std::fmt::Debug for DesktopApp {
@@ -145,7 +148,9 @@ impl DesktopApp {
             pending: None,
             started: Instant::now(),
             slow: slow::SlowCalls::default(),
+            layouts: keyboard::LayoutSync::default(),
         };
+        app.apply_keyboard()?;
         app.open_side_panels()?;
         app.report_displays();
         Ok(app)
@@ -220,6 +225,12 @@ impl DesktopApp {
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")
         {
             self.apply_display_mode();
+        }
+        if keys
+            .iter()
+            .any(|k| k == keyboard::LAYOUTS || k == keyboard::ACTIVE)
+        {
+            self.apply_keyboard()?;
         }
         if keys.iter().any(|k| k == link::BAR_POSITION) && !self.bar_fixed {
             let place = self.link.as_ref().and_then(Link::bar_place);
@@ -362,7 +373,9 @@ impl DesktopApp {
                 None => Outcome::none(),
             },
             Event::KeyboardLayouts { names, active } => {
+                let save = self.layouts.announced(&names, active);
                 d.layouts = crate::model::state::Layouts { names, active };
+                self.save_layout(save);
                 Outcome::surfaces()
             }
             Event::ShellFocusLost { .. } | Event::SessionLocked { locked: true } => {
@@ -379,6 +392,37 @@ impl DesktopApp {
             }
             _ => Outcome::none(),
         })
+    }
+
+    /// Gives the compositor the input languages of the settings service (list, then the
+    /// active one: the compositor takes requests in order).
+    fn apply_keyboard(&mut self) -> Result<(), AppError> {
+        let Some((names, active)) = self.link.as_ref().and_then(|l| keyboard::wanted(&l.ports))
+        else {
+            return Ok(());
+        };
+        let known = &self.shell.d.layouts;
+        self.layouts
+            .applied(&names, active, (&known.names, known.active));
+        self.host
+            .client
+            .send(&Request::SetKeyboardLayouts { names })?;
+        self.host
+            .client
+            .send(&Request::SetKeyboardLayout { index: active })?;
+        Ok(())
+    }
+
+    /// Stores the active layout when the user switched (it is the one at the next start).
+    fn save_layout(&mut self, name: Option<String>) {
+        let (Some(link), Some(name)) = (&self.link, name) else {
+            return;
+        };
+        use crate::ports::SettingsPort;
+        let value = ultar_bus::messages::settings::SettingValue::Text(name.clone());
+        if link.ports.set(keyboard::ACTIVE, value).is_ok() {
+            self.layouts.stored(name);
+        }
     }
 
     fn now_ms(&self) -> u64 {

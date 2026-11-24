@@ -5,7 +5,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 mod call;
-mod dial;
+pub(crate) mod dial;
 mod parts;
 
 use crate::click::Click;
@@ -48,6 +48,8 @@ pub struct Built {
     pub clicks: Vec<(NodeId, Click)>,
     /// The number field.
     pub number: Option<NodeId>,
+    /// The dial pad's scroll container.
+    pub pad: Option<NodeId>,
     /// The filter tabs.
     pub filter: Option<NodeId>,
     /// The way radio group.

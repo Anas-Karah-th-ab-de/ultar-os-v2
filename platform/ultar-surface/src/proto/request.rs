@@ -39,7 +39,8 @@ pub enum Request {
         /// Title (at most [`MAX_TITLE`] bytes).
         title: String,
     },
-    /// Smallest and largest content size in logical points (0 = no limit).
+    /// Smallest and largest content size in logical points (0 = no limit). Stated before
+    /// the first frame, the smallest size is also the least the window opens with.
     SetSizeLimits {
         /// The surface.
         surface: SurfaceId,
@@ -249,6 +250,14 @@ pub enum Request {
         /// Index.
         index: u8,
     },
+    /// Sets the keyboard layouts the user switches between, in order (needs
+    /// [`Rights::SHELL`] or [`Rights::LOCK_SCREEN`]; 1 ..= `MAX_LAYOUTS` names of at most `MAX_LAYOUT_NAME` bytes;
+    /// unknown names are left out by the compositor). The active one stays active when it
+    /// is in the new list, else the first becomes active. Answered by `KeyboardLayouts`.
+    SetKeyboardLayouts {
+        /// Layout names (`ar`, `en`, `de`).
+        names: Vec<String>,
+    },
     /// Asks for a scaled copy of a window's content for the overview (needs
     /// [`Rights::SHELL`]; refused while the session is locked; system
     /// dialogs and unknown ids get no answer). Answered by
@@ -361,6 +370,7 @@ impl Request {
             Request::IdentifyOutputs { .. } => 36,
             Request::DetectOutputs => 37,
             Request::ClientHeader { .. } => 42,
+            Request::SetKeyboardLayouts { .. } => 43,
         }
     }
 
@@ -533,6 +543,13 @@ impl Request {
             }
             Request::ClientHeader { surface, on } => {
                 w.u32(surface.0).u8(u8::from(*on));
+            }
+            Request::SetKeyboardLayouts { names } => {
+                let names = &names[..names.len().min(super::MAX_LAYOUTS)];
+                w.u8(names.len() as u8);
+                for name in names {
+                    w.str(name, super::MAX_LAYOUT_NAME);
+                }
             }
             _ => {}
         }
