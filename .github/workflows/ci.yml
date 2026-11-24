@@ -108,6 +108,13 @@ jobs:
           cargo clippy --locked $STRICT_PACKAGES --all-targets -- -D warnings
           cargo check --locked $WORKSPACE --all-targets
 
+      - name: Store window + launcher backend (Linux-only features)
+        run: |
+          # The store binary and its `launcher.*` bus backend need the
+          # compositor client and the bus (both Linux-only), so they are behind
+          # the `gui` feature and are type-checked here, not in the default build.
+          cargo clippy --locked -p ultar-store --features gui --all-targets -- -D warnings
+
       - name: Tests
         run: |
           cargo test --locked $WORKSPACE --exclude ultar-shell
