@@ -209,7 +209,11 @@ fn history(b: &mut Builder<'_>, parent: NodeId, model: &Model) -> Result<(), UiE
         )?;
         return Ok(());
     }
-    let card = b.add(col, Card::new().flex(Flex::column()), Sizing::AUTO)?;
+    // The history scrolls on its own: a long list must not make the window's body taller
+    // than the window (it pushed the dial pad's call button out of sight).
+    let list = Scroll::new().name(Label::key("phone.log.heading"));
+    let list = b.add(col, list, Sizing::grow(1))?;
+    let card = b.add(list, Card::new().flex(Flex::column()), Sizing::AUTO)?;
     for entry in entries {
         log_row(b, card, model, entry)?;
     }
