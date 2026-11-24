@@ -64,6 +64,27 @@ pub struct NetState {
     pub internet: Internet,
 }
 
+impl NetState {
+    /// The wired interface that speaks for "the cable" (bar icon, quick settings): one with
+    /// an address before one still asking for an address before one without a cable. `None`:
+    /// no wired adapter (or a service of the first contract version, see [`NetState::wired`]).
+    pub fn wired_link(&self) -> Option<&NetLink> {
+        let rank = |l: &NetLink| match l.state {
+            LinkState::Connected => 0,
+            LinkState::Connecting => 1,
+            LinkState::NoCarrier => 2,
+            LinkState::Off => 3,
+        };
+        self.ethernet.iter().min_by_key(|l| rank(l))
+    }
+
+    /// Whether a wired interface has its link up with an address.
+    pub fn wired_connected(&self) -> bool {
+        self.wired_link()
+            .is_some_and(|l| l.state == LinkState::Connected)
+    }
+}
+
 /// The kind of a network interface.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum LinkKind {
@@ -317,6 +338,24 @@ mod tests {
             ..NetState::default()
         };
         assert_eq!(decode::<NetState>(&encode(&links).unwrap()).unwrap(), links);
+        // the cable's interface: the one with an address wins over one without a cable
+        let mut two = links.clone();
+        two.ethernet.insert(
+            0,
+            NetLink {
+                name: "eth1".into(),
+                ..NetLink::default()
+            },
+        );
+        assert_eq!(two.wired_link().map(|l| l.name.as_str()), Some("eth0"));
+        assert!(two.wired_connected());
+        two.ethernet.truncate(1);
+        assert_eq!(
+            two.wired_link().map(|l| l.state),
+            Some(LinkState::NoCarrier)
+        );
+        assert!(!two.wired_connected());
+        assert!(NetState::default().wired_link().is_none());
         let set = SetIpv4 {
             interface: "eth0".into(),
             config: Ipv4Config::Static {

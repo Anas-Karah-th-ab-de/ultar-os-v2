@@ -35,10 +35,10 @@ pub(crate) fn net_icon(s: &Shell) -> IconId {
     let Some(net) = s.d.svc.net.as_ref() else {
         return IconId::Wifi;
     };
-    let connected = |l: &ultar_bus::messages::net::NetLink| l.state == LinkState::Connected;
-    if net.ethernet.iter().any(connected) {
+    let wifi = |l: &ultar_bus::messages::net::NetLink| l.state == LinkState::Connected;
+    if net.wired_connected() {
         IconId::Cable
-    } else if net.wifi_link.as_ref().is_some_and(connected) || net.ssid.is_some() {
+    } else if net.wifi_link.as_ref().is_some_and(wifi) || net.ssid.is_some() {
         IconId::Wifi
     } else if net.ethernet.is_empty() && net.wifi_link.is_none() && net.wired.is_some() {
         // a service of the first contract version: only the cable flag
