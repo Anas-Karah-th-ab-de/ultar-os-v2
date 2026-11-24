@@ -440,6 +440,22 @@ static void sync_tests(void) {
     check("sync: kehrt zurück", 1);
 }
 
+static const char *ext4_dir;
+
+/* a user's private file as a service stores it (written as .name.new with 0600, fsync, rename): mode and
+ * owner go with the rename, and the owner may chmod the renamed file (the device mesh keeps its key so) */
+static int ext4_private(void) {
+    char tmp[160], fin[160];
+    snprintf(tmp, sizeof tmp, "%s/rt-eigen/.schluessel.new", ext4_dir);
+    snprintf(fin, sizeof fin, "%s/rt-eigen/schluessel", ext4_dir);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    check("ext4: eigene Datei 0600 anlegen, schreiben, fsync", fd >= 0 && write(fd, "geheim", 6) == 6 && fsync(fd) == 0 && close(fd) == 0);
+    check("ext4: die neue Datei gehört dem, der sie anlegte (0600)", mode_is(tmp, S_IFREG | 0600, ALICE, STAFF));
+    check("ext4: rename nimmt Modus und Besitzer mit", rename(tmp, fin) == 0 && mode_is(fin, S_IFREG | 0600, ALICE, STAFF));
+    check("ext4: der Besitzer darf chmod nach dem rename", chmod(fin, 0400) == 0 && mode_is(fin, S_IFREG | 0400, ALICE, STAFF));
+    return fails;
+}
+
 /* write below `dir` (a writable ext4), then wait: the host looks at the disk while the file is still open */
 static int ext4_part(const char *dir) {
     char path[128], sub[128];
@@ -452,6 +468,11 @@ static int ext4_part(const char *dir) {
     check("ext4: fsync", fsync(fd) == 0);
     check("ext4: chmod 0640 und chown 1000:100 stehen im Inode (stat)", chmod(path, 0640) == 0 && chown(path, ALICE, STAFF) == 0 && mode_is(path, S_IFREG | 0640, ALICE, STAFF));
     check("ext4: Verzeichnis 0750 für 2000:200", mkdir(sub, 0750) == 0 && chown(sub, BOB, OTHERS) == 0 && mode_is(sub, S_IFDIR | 0750, BOB, OTHERS));
+    char own[128];
+    snprintf(own, sizeof own, "%s/rt-eigen", dir);
+    ext4_dir = dir;
+    check("ext4: Verzeichnis 0700 für 1000:100", mkdir(own, 0700) == 0 && chown(own, ALICE, STAFF) == 0);
+    as(ALICE, STAFF, 0, ext4_private);
     say("RECHTETEST-EXT4: %s\n", fails == 0 ? "GESCHRIEBEN" : "SIEHE OBEN");
     for (;;) pause();
     return 0;

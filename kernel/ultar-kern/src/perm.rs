@@ -156,9 +156,13 @@ pub fn forget_tree(root: &str) {
     ATTRS.lock().retain(|k, _| crate::isolation::mount::below(k, root).is_none());
 }
 
-/// The entry moved (`rename`).
+/// The entry moved (`rename`; called while the old name is still there). Mode and owner go with it
+/// wherever they are kept: in the table, or in the old name's inode on a writable ext4 (the new name
+/// is a new inode there, root's and `0644` – a private file, written as `.name.new` with `0600` and
+/// renamed, came out readable for everybody, and its owner was refused `chmod` on it).
 pub fn moved(from: &str, to: &str) {
-    let old = ATTRS.lock().remove(from);
+    let kept = ATTRS.lock().remove(from);
+    let old = kept.or_else(|| fs::disk_attr(from).map(|(mode, uid, gid)| Attr { mode, uid, gid }));
     match old {
         Some(a) => store(to, a),
         None => forget(to),
