@@ -119,6 +119,11 @@ if [ -n "${MODULES:-}" ]; then
   if printf '%s\n' "$MODULES" | grep -qw intel_vpu && [ -d "$FW/intel/vpu" ]; then
     mkdir -p "$STAGE/lib/firmware/intel"; cp -a "$FW/intel/vpu" "$STAGE/lib/firmware/intel/"
   fi
+  # Intel-Grafik (i915): DMC/GuC/HuC/GSC – ganzer Ordner ~10 MB. Hybrid-Notebooks (Panel an der
+  # iGPU, z. B. Lenovo 20SU) und Arrow-Lake-Rechner brauchen ihn für Anzeige und Stromsparen.
+  if printf '%s\n' "$MODULES" | grep -qw i915 && [ -d "$FW/i915" ]; then
+    mkdir -p "$STAGE/lib/firmware"; cp -a "$FW/i915" "$STAGE/lib/firmware/"
+  fi
   if printf '%s\n' "$MODULES" | grep -qw nouveau; then
     for c in ${NVFW:-tu102 tu104 tu106 tu116 tu117}; do
       if [ -d "$FW/nvidia/$c" ]; then mkdir -p "$STAGE/lib/firmware/nvidia"; cp -a "$FW/nvidia/$c" "$STAGE/lib/firmware/nvidia/"; fi
