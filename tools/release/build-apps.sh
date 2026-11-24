@@ -44,7 +44,7 @@ print(os.path.dirname(p["manifest_path"]))' "$crate")
   man="$dir/ultar-app.toml"
   [ -f "$man" ] || fail "$crate has no ultar-app.toml"
   [ -x "$BIN/$bin" ] || fail "binary missing: $bin"
-  file "$BIN/$bin" | grep -q "statically linked" || fail "$bin is not static"
+  file "$BIN/$bin" | grep -Eq "statically linked|static-pie linked" || fail "$bin is not static"
   id=$(sed -n 's/^id *= *"\(.*\)".*/\1/p' "$man" | head -1)
   ver=$(sed -n 's/^version *= *"\(.*\)".*/\1/p' "$man" | head -1)
   [ -n "$id" ] && [ -n "$ver" ] || fail "$man: id/version"
