@@ -134,7 +134,7 @@ fn build(s: &Shell, kind: MenuKind) -> Menu {
 /// shell.appmenu: New window, About (the app's page in the Store), App settings (its page
 /// in Settings), Quit; the three that start an app need the launcher.
 fn app_menu(s: &Shell) -> Menu {
-    if !s.d.svc.targets.is_empty() {
+    if !s.d.svc.mesh.targets.is_empty() {
         return super::handoff::targets_menu(s, HANDOFF, TARGET_BASE);
     }
     let gate = |item: MenuItem| {
@@ -153,7 +153,7 @@ fn app_menu(s: &Shell) -> Menu {
         )),
     ];
     // Shown only on a device with the mesh service.
-    if s.d.svc.mesh.is_some() {
+    if s.d.svc.mesh.state.is_some() {
         items.push(super::handoff::item(s, HANDOFF));
     }
     items.push(MenuItem::new(QUIT, Label::key("desk.menu.quit")).separated());
@@ -247,16 +247,10 @@ pub(super) fn open_for(s: &mut Shell, target: &Target) -> Outcome {
 pub(super) fn chosen(s: &mut Shell, id: u32) -> Outcome {
     let open = s.d.open;
     s.d.open = Open::None;
-    let targets = std::mem::take(&mut s.d.svc.targets);
+    if let Some(out) = super::handoff::chosen(s, open, id, HANDOFF, TARGET_BASE) {
+        return out;
+    }
     let mut out = match (open, id) {
-        (Open::AppMenu, HANDOFF) => super::handoff::send(s, None),
-        (Open::AppMenu, id) if id >= TARGET_BASE => {
-            let target = targets.get((id - TARGET_BASE) as usize);
-            match target.map(|t| t.device.clone()) {
-                Some(device) => super::handoff::send(s, Some(device)),
-                None => Outcome::none(),
-            }
-        }
         (Open::KeyboardMenu, MENU_KEYBOARD_SETTINGS) => {
             launch(s, SETTINGS, Opening::settings_page("keyboard"))
         }

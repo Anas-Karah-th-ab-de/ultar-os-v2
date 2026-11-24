@@ -12,12 +12,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod brain;
+pub mod help;
 pub mod minimal;
 pub mod model;
 mod msg;
 pub mod service;
 pub mod session;
 pub mod toolbox;
+mod toolbox_more;
 pub mod tools;
 
 pub use service::AgentService;

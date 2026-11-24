@@ -403,3 +403,42 @@ call!(HandoffAnswer, "handoff_answer", Done);
 call!(HandoffTargets, "handoff_targets", TargetList);
 call!(SendFile, "send_file", SendOutcome);
 call!(ClipboardSet, "clipboard_set", Done);
+
+/// The same as [`Right`], for user-interface code (its rule keeps the words "left" and
+/// "right" for directions).
+pub type Grant = Right;
+
+impl Peer {
+    /// A device that is neither paired nor reachable and may do nothing.
+    pub fn new(id: &str, name: &str, kind: DeviceKind) -> Self {
+        Self {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            kind,
+            capabilities: Vec::new(),
+            paired: false,
+            reachable: false,
+            rights: Vec::new(),
+        }
+    }
+
+    /// What this device may do here.
+    pub fn grants(&self) -> &[Right] {
+        &self.rights
+    }
+
+    /// Replaces what this device may do here.
+    pub fn set_grants(&mut self, grants: Vec<Right>) {
+        self.rights = grants;
+    }
+}
+
+impl SetRights {
+    /// `device` may do exactly `grants`.
+    pub fn of(device: &str, grants: Vec<Right>) -> Self {
+        Self {
+            device: device.to_owned(),
+            rights: grants,
+        }
+    }
+}

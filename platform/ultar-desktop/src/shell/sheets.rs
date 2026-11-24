@@ -245,7 +245,7 @@ fn tile(s: &mut Shell, id: TileId) -> Outcome {
             None => more(s, TileId::Bluetooth),
         },
         TileId::Vpn => super::network::vpn_tile(s),
-        TileId::Mesh => match s.d.svc.mesh.as_ref() {
+        TileId::Mesh => match s.d.svc.mesh.state.as_ref() {
             Some(m) => service(Some(Call::SetMesh(!m.enabled))),
             None => unavailable(s, id),
         },

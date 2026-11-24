@@ -3,7 +3,18 @@
 
 use super::services::Services;
 use super::{Desktop, Open};
-use ultar_bus::messages::mesh::{HandoffProgress, OfferState, SendOutcome, Stage};
+use ultar_bus::messages::mesh::{
+    HandoffProgress, MeshState, OfferState, SendOutcome, Stage, Target,
+};
+
+/// What the shell knows of the mesh.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Mesh {
+    /// `mesh.state` (`None`: no mesh service on this device).
+    pub state: Option<MeshState>,
+    /// The devices the person chooses from (the mesh asked: more than one can take it).
+    pub targets: Vec<Target>,
+}
 
 /// The shell's own notices.
 const SHELL: &str = "org.ultar.shell";
@@ -11,6 +22,7 @@ const SHELL: &str = "org.ultar.shell";
 /// The mesh is on and a paired device is connected.
 pub fn can_send(svc: &Services) -> bool {
     svc.mesh
+        .state
         .as_ref()
         .is_some_and(|m| m.enabled && m.peers.iter().any(|p| p.paired && p.reachable))
 }
@@ -39,7 +51,7 @@ pub fn sent(d: &mut Desktop, outcome: SendOutcome, now: u64) {
         SendOutcome::NoTarget => "desk.mesh.no_target",
         SendOutcome::NoActivity => "desk.mesh.no_activity",
         SendOutcome::Choose(targets) => {
-            d.svc.targets = targets;
+            d.svc.mesh.targets = targets;
             d.open = Open::AppMenu;
             return;
         }
@@ -64,7 +76,7 @@ pub fn report(d: &mut Desktop, progress: &[HandoffProgress], now: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ultar_bus::messages::mesh::{DeviceKind, MeshState, Peer, Target};
+    use ultar_bus::messages::mesh::{DeviceKind, Peer};
 
     fn peer(paired: bool, reachable: bool) -> Peer {
         Peer {
@@ -85,10 +97,9 @@ mod tests {
             name: "pc".into(),
             peers,
         };
-        Services {
-            mesh: Some(state),
-            ..Services::default()
-        }
+        let mut svc = Services::default();
+        svc.mesh.state = Some(state);
+        svc
     }
 
     #[test]
@@ -111,7 +122,7 @@ mod tests {
         };
         sent(&mut d, SendOutcome::Choose(vec![target.clone(), target]), 5);
         assert_eq!(d.open, Open::AppMenu);
-        assert_eq!(d.svc.targets.len(), 2);
+        assert_eq!(d.svc.mesh.targets.len(), 2);
         let before = d.notes.banners(5).len();
         sent(&mut d, SendOutcome::NoActivity, 5);
         assert_eq!(d.notes.banners(5).len(), before + 1);

@@ -132,10 +132,8 @@ pub struct Services {
     pub wifi: super::wifi::Wifi,
     /// `vpn.state`.
     pub vpn: Option<VpnState>,
-    /// `mesh.state`.
-    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
-    /// The devices the person chooses from (the mesh asked: more than one can take it).
-    pub targets: Vec<ultar_bus::messages::mesh::Target>,
+    /// The device mesh.
+    pub mesh: super::mesh::Mesh,
 }
 
 impl Services {

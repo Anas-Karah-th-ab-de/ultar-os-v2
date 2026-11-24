@@ -16,7 +16,7 @@ use ultar_bus::messages::power::{ActionOutcome, PowerOff, Restart};
 use ultar_bus::messages::sysdialog::{self, AuthResult, Authenticate};
 use ultar_bus::{Client, Text};
 
-const CALL_TIME: Duration = Duration::from_secs(5);
+pub(crate) const CALL_TIME: Duration = Duration::from_secs(5);
 /// How long another device's helper may take.
 const REMOTE_TIME: Duration = Duration::from_secs(155);
 /// How long a model may take for one answer.
@@ -30,7 +30,7 @@ pub struct BusTools<'a> {
     pub client: &'a Client,
 }
 
-fn done(ok: bool, told: &str) -> Outcome {
+pub(crate) fn done(ok: bool, told: &str) -> Outcome {
     let outcome = if ok {
         StepOutcome::Done
     } else {
@@ -39,7 +39,7 @@ fn done(ok: bool, told: &str) -> Outcome {
     (outcome, told.to_owned())
 }
 
-fn flag(text: &str) -> Option<bool> {
+pub(crate) fn flag(text: &str) -> Option<bool> {
     match text {
         "true" | "on" | "1" => Some(true),
         "false" | "off" | "0" => Some(false),
@@ -47,7 +47,7 @@ fn flag(text: &str) -> Option<bool> {
     }
 }
 
-const BAD: &str = "bad argument";
+pub(crate) const BAD: &str = "bad argument";
 
 impl BusTools<'_> {
     fn apps(&self) -> Outcome {
@@ -217,6 +217,13 @@ impl Toolbox for BusTools<'_> {
             "continue_on" => self.continue_on(call.arg("device")),
             "send_file" => self.send_file(call.arg("device"), call.arg("path")),
             "ask_device" => self.ask_device(call.arg("device"), call.arg("request")),
+            "bluetooth" => self.bluetooth(call.arg("on")),
+            "airplane" => self.airplane(call.arg("on")),
+            "media" => self.media(call.arg("button")),
+            "screenshot" => self.screenshot(),
+            "lock" => self.lock(),
+            "help" => Self::help(call.arg("topic")),
+            "suspend" => self.suspend(),
             _ => self.power(tool.name),
         }
     }

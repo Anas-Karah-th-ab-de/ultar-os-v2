@@ -117,8 +117,8 @@ pub enum Act {
     MeshNearPair(usize),
     /// Back from a device's page.
     MeshBack,
-    /// The right with this index ([`crate::state::mesh::RIGHTS`]).
-    MeshRight(usize),
+    /// The right with this index ([`crate::state::mesh::GRANTS`]).
+    MeshGrant(usize),
     /// Unpair the open device.
     MeshUnpair,
     /// A row of a generic settingsd panel (index into the shown items).
@@ -190,7 +190,7 @@ impl Act {
             Act::MeshDevice(_) => "mesh.device",
             Act::MeshNearPair(_) => "mesh.near.pair",
             Act::MeshBack => "mesh.back",
-            Act::MeshRight(_) => "mesh.right",
+            Act::MeshGrant(_) => "mesh.right",
             Act::MeshUnpair => "mesh.unpair",
             _ => return None,
         })

@@ -28,6 +28,27 @@ pub fn understand(request: &str) -> Option<Call> {
     if has(text, &msg::MUTE) {
         return Some(Call::new("mute", &[("on", "true")]));
     }
+    for (words, tool) in [
+        (&msg::BLUETOOTH[..], "bluetooth"),
+        (&msg::AIRPLANE[..], "airplane"),
+    ] {
+        if has(text, words) {
+            let on = if has(text, &msg::OFF) {
+                "false"
+            } else if has(text, &msg::ON) {
+                "true"
+            } else {
+                return None;
+            };
+            return Some(Call::new(tool, &[("on", on)]));
+        }
+    }
+    if has(text, &msg::SCREENSHOT) {
+        return Some(Call::new("screenshot", &[]));
+    }
+    if has(text, &msg::LOCK) {
+        return Some(Call::new("lock", &[]));
+    }
     if has(text, &msg::WIFI) {
         // "Off" is looked for first: nobody loses the network by a misread word.
         let on = if has(text, &msg::OFF) {

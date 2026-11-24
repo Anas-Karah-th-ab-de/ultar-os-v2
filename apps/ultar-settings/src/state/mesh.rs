@@ -1,18 +1,18 @@
 //! State of the page Settings › Mesh.
 
-use ultar_bus::messages::mesh::{MeshState, PairCode, Peer, Right};
+use ultar_bus::messages::mesh::{Grant, MeshState, PairCode, Peer};
 use ultar_bus::Text;
 
-/// The rights of a paired device in the order of the board *MeshDevice*.
-pub const RIGHTS: [Right; 8] = [
-    Right::Handoff,
-    Right::Files,
-    Right::Clipboard,
-    Right::View,
-    Right::Control,
-    Right::Audio,
-    Right::Compute,
-    Right::Model,
+/// The grants of a paired device in the order of the board *MeshDevice*.
+pub const GRANTS: [Grant; 8] = [
+    Grant::Handoff,
+    Grant::Files,
+    Grant::Clipboard,
+    Grant::View,
+    Grant::Control,
+    Grant::Audio,
+    Grant::Compute,
+    Grant::Model,
 ];
 
 /// What the page knows.

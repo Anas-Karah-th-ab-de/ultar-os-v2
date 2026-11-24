@@ -6,7 +6,7 @@ use super::fake::Shared;
 use super::{PortError, PortResult};
 use std::time::Duration;
 use ultar_bus::messages::mesh::{
-    Done, MeshState, PairBegin, PairCode, PairJoin, Right, SetEnabled, SetRights, Unpair,
+    Done, Grant, MeshState, PairBegin, PairCode, PairJoin, SetEnabled, Unpair,
 };
 use ultar_bus::{Client, Text};
 
@@ -25,7 +25,7 @@ pub trait MeshPort {
     /// Forgets a device.
     fn unpair(&mut self, device: &str) -> PortResult<()>;
     /// What a paired device may do.
-    fn set_rights(&mut self, device: &str, rights: Vec<Right>) -> PortResult<()>;
+    fn set_grants(&mut self, device: &str, grants: Vec<Grant>) -> PortResult<()>;
 }
 
 /// `mesh` over the bus.
@@ -88,9 +88,9 @@ impl MeshPort for BusMesh {
         done(reply, "app.settings.error.failed")
     }
 
-    fn set_rights(&mut self, device: &str, rights: Vec<Right>) -> PortResult<()> {
-        let device = device.to_owned();
-        let reply = call(&self.client, &SetRights { device, rights }, CALL_TIMEOUT);
+    fn set_grants(&mut self, device: &str, grants: Vec<Grant>) -> PortResult<()> {
+        let set = ultar_bus::messages::mesh::SetRights::of(device, grants); // physical
+        let reply = call(&self.client, &set, CALL_TIMEOUT);
         done(reply, "app.settings.error.failed")
     }
 }
@@ -98,7 +98,7 @@ impl MeshPort for BusMesh {
 /// The code the fake mesh shows and accepts.
 pub const FAKE_CODE: &str = "482913";
 
-/// The mesh of the test world ([`super::fake::World::mesh`]).
+/// The mesh of the test world (`World::system.mesh`).
 #[derive(Debug, Clone)]
 pub struct FakeMesh(pub Shared);
 
@@ -109,13 +109,23 @@ impl FakeMesh {
         if let Some(reason) = world.refuse.take() {
             return Err(PortError::Refused(reason));
         }
-        world.mesh.as_mut().map(f).ok_or(PortError::Unavailable)
+        world
+            .system
+            .mesh
+            .as_mut()
+            .map(f)
+            .ok_or(PortError::Unavailable)
     }
 }
 
 impl MeshPort for FakeMesh {
     fn state(&mut self) -> PortResult<MeshState> {
-        self.0.borrow().mesh.clone().ok_or(PortError::Unavailable)
+        self.0
+            .borrow()
+            .system
+            .mesh
+            .clone()
+            .ok_or(PortError::Unavailable)
     }
 
     fn set_enabled(&mut self, on: bool) -> PortResult<()> {
@@ -153,10 +163,10 @@ impl MeshPort for FakeMesh {
         })
     }
 
-    fn set_rights(&mut self, device: &str, rights: Vec<Right>) -> PortResult<()> {
-        self.change(format!("mesh.set_rights {device} {rights:?}"), |m| {
+    fn set_grants(&mut self, device: &str, grants: Vec<Grant>) -> PortResult<()> {
+        self.change(format!("mesh.set_grants {device} {grants:?}"), |m| {
             if let Some(p) = m.peers.iter_mut().find(|p| p.id == device) {
-                p.rights = rights;
+                p.set_grants(grants);
             }
         })
     }

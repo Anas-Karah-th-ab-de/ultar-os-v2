@@ -1,12 +1,12 @@
 //! Clicks of Settings › Mesh (docs/ui/mesh.md §2.1–2.3): the switch, pairing in both
-//! directions, the page of one paired device with its rights, and unpairing.
+//! directions, the page of one paired device with its grants, and unpairing.
 
 use super::{ask, close, dialog_error, fields, Ctl, Outcome};
 use crate::action::Act;
 use crate::service::Ports;
-use crate::state::mesh::RIGHTS;
+use crate::state::mesh::GRANTS;
 use crate::state::{DialogPurpose, State, SubPage};
-use ultar_bus::messages::mesh::Right;
+use ultar_bus::messages::mesh::Grant;
 use ultar_ui::event::ActionKind;
 use ultar_ui::widgets::Tone;
 
@@ -46,7 +46,7 @@ pub fn owns(act: Act) -> bool {
             | Act::MeshDevice(_)
             | Act::MeshNearPair(_)
             | Act::MeshBack
-            | Act::MeshRight(_)
+            | Act::MeshGrant(_)
             | Act::MeshUnpair
     )
 }
@@ -79,17 +79,22 @@ fn pair_show(c: &mut Ctl<'_>) -> Outcome {
     }
 }
 
-fn right(c: &mut Ctl<'_>, n: usize, on: bool) -> Outcome {
-    let (Some(peer), Some(right)) = (c.state.status.mesh.open(), RIGHTS.get(n)) else {
+fn grant(c: &mut Ctl<'_>, n: usize, on: bool) -> Outcome {
+    let (Some(peer), Some(grant)) = (c.state.status.mesh.open(), GRANTS.get(n)) else {
         return Outcome::default();
     };
-    let mut rights: Vec<Right> = peer.rights.iter().copied().filter(|r| r != right).collect();
+    let mut grants: Vec<Grant> = peer
+        .grants()
+        .iter()
+        .copied()
+        .filter(|r| r != grant)
+        .collect();
     if on {
-        rights.push(*right);
-        rights.sort();
+        grants.push(*grant);
+        grants.sort();
     }
     let id = peer.id.clone();
-    let result = c.ports.mesh.set_rights(&id, rights);
+    let result = c.ports.mesh.set_grants(&id, grants);
     reload(c, result)
 }
 
@@ -110,7 +115,7 @@ pub fn handle(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
             let result = c.ports.mesh.set_enabled(on);
             reload(c, result)
         }
-        (Act::MeshRight(n), ActionKind::Toggled(on)) => right(c, n, on),
+        (Act::MeshGrant(n), ActionKind::Toggled(on)) => grant(c, n, on),
         (Act::MeshCopy, ActionKind::Activated) => copy(c),
         (Act::MeshPair, ActionKind::Activated) => pair_show(c),
         (Act::MeshDevice(n), ActionKind::Activated) => open_device(c, n),

@@ -1,12 +1,12 @@
 //! Settings › Mesh (boards *SettingsMesh*, *MeshDevice*; docs/ui/mesh.md §2.1, §2.3): the
 //! switch, this device with its id, the paired devices, the devices in reach, and the page
-//! of one paired device with its eight rights. Device names are data from the network.
+//! of one paired device with its eight grants. Device names are data from the network.
 
 use super::{k, muted, section, title, Cx};
 use crate::action::Act;
 use crate::i18n::label;
-use crate::state::mesh::RIGHTS;
-use ultar_bus::messages::mesh::{DeviceKind, MeshState, Peer, Right};
+use crate::state::mesh::GRANTS;
+use ultar_bus::messages::mesh::{DeviceKind, Grant, MeshState, Peer};
 use ultar_ui::icon::IconId;
 use ultar_ui::layout::Sizing;
 use ultar_ui::tokens::ColorRole;
@@ -44,17 +44,17 @@ fn kind_icon(kind: DeviceKind) -> IconId {
     }
 }
 
-/// The word of a right (key suffix).
-pub fn right_word(right: Right) -> &'static str {
-    match right {
-        Right::Handoff => "handoff",
-        Right::Files => "files",
-        Right::Clipboard => "clipboard",
-        Right::View => "view",
-        Right::Control => "control",
-        Right::Audio => "audio",
-        Right::Compute => "compute",
-        Right::Model => "model",
+/// The word of a grant (key suffix).
+pub fn grant_word(grant: Grant) -> &'static str {
+    match grant {
+        Grant::Handoff => "handoff",
+        Grant::Files => "files",
+        Grant::Clipboard => "clipboard",
+        Grant::View => "view",
+        Grant::Control => "control",
+        Grant::Audio => "audio",
+        Grant::Compute => "compute",
+        Grant::Model => "model",
     }
 }
 
@@ -200,18 +200,18 @@ pub(crate) fn device(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         cx.ui,
         content,
         Sizing::AUTO,
-        k("app.settings.mesh.rights"),
-        Some(k("app.settings.mesh.rights.sub")),
+        k("app.settings.mesh.grants"),
+        Some(k("app.settings.mesh.grants.sub")),
     )?;
-    for (i, right) in RIGHTS.iter().enumerate() {
-        let key = format!("app.settings.mesh.right.{}", right_word(*right));
+    for (i, grant) in GRANTS.iter().enumerate() {
+        let key = format!("app.settings.mesh.grant.{}", grant_word(*grant));
         let mut row = Row::new(k(&key)).sublabel(k(&format!("{key}.sub")));
-        if i + 1 == RIGHTS.len() {
+        if i + 1 == GRANTS.len() {
             row = row.last();
         }
         let row = cx.ui.add(card, row)?;
-        let on = peer.rights.contains(right);
-        cx.act(row, Switch::new(k(&key), on), Act::MeshRight(i))?;
+        let on = peer.grants().contains(grant);
+        cx.act(row, Switch::new(k(&key), on), Act::MeshGrant(i))?;
     }
     let unpair = Button::new(k("app.settings.mesh.unpair")).variant(ButtonVariant::Danger);
     cx.act_sized(content, unpair, Sizing::AUTO, Act::MeshUnpair)

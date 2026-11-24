@@ -278,7 +278,7 @@ fn service_tile(id: TileId, presence: &Presence, svc: &Services) -> Option<Tile>
             }
         }
         TileId::Mesh => {
-            if let Some(mesh) = &svc.mesh {
+            if let Some(mesh) = &svc.mesh.state {
                 return Some(switch_tile(id, mesh.enabled, Avail::Ready));
             }
         }

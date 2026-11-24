@@ -39,8 +39,6 @@ pub struct World {
     pub audio: Option<AudioState>,
     /// Bluetooth devices (`None`: service down).
     pub bt_devices: Option<Vec<ultar_bus::messages::bluetooth::Device>>,
-    /// The device mesh (`None`: service down).
-    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
     /// Users, apps and drives (`None` each: service down).
     pub system: SystemWorld,
     /// Refuse the next call with this reason.
@@ -288,7 +286,7 @@ impl StatusPort for Fake {
     }
 }
 
-/// What the fake account service, launcher and volume service hold.
+/// What the fake account service, launcher, volume service and mesh hold.
 #[derive(Debug, Clone, Default)]
 pub struct SystemWorld {
     /// Local users (`None`: account service down).
@@ -297,6 +295,8 @@ pub struct SystemWorld {
     pub apps: Option<Vec<AppEntry>>,
     /// Mounted drives (`None`: volume service down).
     pub drives: Option<Vec<Drive>>,
+    /// The device mesh (`None`: service down).
+    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
 }
 
 fn local_user(name: &str, uid: u32) -> LocalUser {

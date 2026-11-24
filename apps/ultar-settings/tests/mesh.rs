@@ -1,10 +1,10 @@
 //! Settings › Mesh, driven by clicks: the switch, pairing in both directions, the page of
-//! one device with its rights, and unpairing (docs/ui/mesh.md §2.1–2.3).
+//! one device with its grants, and unpairing (docs/ui/mesh.md §2.1–2.3).
 
 mod common;
 
 use common::*;
-use ultar_bus::messages::mesh::{DeviceKind, MeshState, Peer, Right};
+use ultar_bus::messages::mesh::{DeviceKind, Grant, MeshState, Peer};
 use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::service::fake::Shared;
@@ -14,15 +14,11 @@ use ultar_settings::App;
 use ultar_ui::tokens::ThemeKind;
 
 fn peer(id: &str, name: &str, kind: DeviceKind, paired: bool) -> Peer {
-    Peer {
-        id: id.into(),
-        name: name.into(),
-        kind,
-        capabilities: Vec::new(),
-        paired,
-        reachable: true,
-        rights: vec![Right::Handoff, Right::Files, Right::Clipboard],
-    }
+    let mut peer = Peer::new(id, name, kind);
+    peer.paired = paired;
+    peer.reachable = true;
+    peer.set_grants(vec![Grant::Handoff, Grant::Files, Grant::Clipboard]);
+    peer
 }
 
 fn mesh(enabled: bool) -> MeshState {
@@ -39,7 +35,7 @@ fn mesh(enabled: bool) -> MeshState {
 
 fn open(lang: Lang, state: Option<MeshState>) -> (Shared, App) {
     let world = board_world(1, true);
-    world.borrow_mut().mesh = state;
+    world.borrow_mut().system.mesh = state;
     let app = app(
         &world,
         lang,
@@ -107,7 +103,7 @@ fn the_device_id_is_copied_and_a_shown_code_ends_when_the_device_is_paired() {
     assert_eq!(purpose, Some(DialogPurpose::MeshPairShow));
     assert!(shown(&app).contains("482 913"), "the code in two groups");
     // the other device typed the code: the dialog closes by itself
-    if let Some(m) = world.borrow_mut().mesh.as_mut() {
+    if let Some(m) = world.borrow_mut().system.mesh.as_mut() {
         m.peers[1].paired = true;
     }
     app.poll().unwrap();
@@ -165,24 +161,24 @@ fn a_devices_rights_change_at_once_and_unpairing_asks_first() {
     press(&mut app, Act::MeshDevice(0));
     assert_eq!(app.state.sub, SubPage::MeshDevice);
     for n in 0..8 {
-        assert!(app.view.node(Act::MeshRight(n)).is_some(), "right {n}");
+        assert!(app.view.node(Act::MeshGrant(n)).is_some(), "grant {n}");
     }
     // the eighth switch lends the language model
-    press(&mut app, Act::MeshRight(7));
+    press(&mut app, Act::MeshGrant(7));
     assert_eq!(
         last(&world),
-        "mesh.set_rights phone-id [Handoff, Files, Clipboard, Model]"
+        "mesh.set_grants phone-id [Handoff, Files, Clipboard, Model]"
     );
-    press(&mut app, Act::MeshRight(1));
+    press(&mut app, Act::MeshGrant(1));
     assert_eq!(
         last(&world),
-        "mesh.set_rights phone-id [Handoff, Clipboard, Model]"
+        "mesh.set_grants phone-id [Handoff, Clipboard, Model]"
     );
 
     press(&mut app, Act::MeshUnpair);
     assert_eq!(
         last(&world),
-        "mesh.set_rights phone-id [Handoff, Clipboard, Model]"
+        "mesh.set_grants phone-id [Handoff, Clipboard, Model]"
     );
     press(&mut app, Act::DialogCancel);
     assert_eq!(
