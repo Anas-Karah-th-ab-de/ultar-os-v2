@@ -164,7 +164,7 @@ pub(crate) fn updates_page(
         .iter()
         .filter(|a| store.update_available(&a.id))
         .collect();
-    let head = updates_head(ui, body, updates.len(), hits)?;
+    updates_head(ui, body, updates.len(), hits)?;
     if updates.is_empty() {
         ui.add(
             body,
@@ -172,7 +172,6 @@ pub(crate) fn updates_page(
         )?;
         return Ok(());
     }
-    let _ = head;
     let list = ui.add_sized(
         body,
         List::new().name(Label::key("store.updates.apps")),

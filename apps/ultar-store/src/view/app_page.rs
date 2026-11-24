@@ -5,8 +5,8 @@
 //! it into the content column.
 
 use super::{
-    app_name, icon_by_name, loc_label, main_action, muted, running_progress, size_text, spacer,
-    HitMap, MainAction,
+    app_name, icon_by_name, loc_label, main_action, muted, running_progress, size_text, HitMap,
+    MainAction,
 };
 use crate::action::StoreAction;
 use crate::catalog::CatalogApp;
@@ -337,6 +337,5 @@ fn installed_only_page(
         Button::new(Label::key("store.app.remove")).variant(ButtonVariant::Danger),
     )?;
     hits.bind(remove, StoreAction::Remove(id.to_string()));
-    let _ = spacer(ui, line);
     Ok(())
 }

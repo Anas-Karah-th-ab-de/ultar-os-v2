@@ -90,7 +90,17 @@ fn event_loop(
             dirty = true;
         }
         if dirty {
+            // Rebuilding clears the input state; keep the caret in the
+            // search field while the user types (it restarts at the end).
+            let had_focus = hits
+                .search_field()
+                .is_some_and(|field| win.ui_mut().focused() == Some(field));
             view::build(win.ui_mut(), store, hits)?;
+            if had_focus {
+                if let Some(field) = hits.search_field() {
+                    let _ = win.ui_mut().focus(field);
+                }
+            }
             dirty = false;
         }
         let actions = win.dispatch(Some(Duration::from_millis(30)))?;

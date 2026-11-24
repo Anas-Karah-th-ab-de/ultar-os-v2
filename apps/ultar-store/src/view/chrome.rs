@@ -12,7 +12,7 @@ use ultar_ui::paint::TextSpec;
 use ultar_ui::tokens::{Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{
-    BarEdge, Button, Card, IconButton, Label, List, ListItem, SearchField, Tabs, Text,
+    BarEdge, Card, IconButton, Label, List, ListItem, SearchField, Tabs, Text,
 };
 
 /// The six areas of the desktop nav, with the icons of ICONS.md.
@@ -225,6 +225,3 @@ pub(crate) fn page(
         _ => page_title_only(ui, parent),
     }
 }
-
-#[allow(unused)]
-fn unused_button(_: Button) {}

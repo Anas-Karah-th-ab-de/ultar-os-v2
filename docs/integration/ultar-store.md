@@ -43,7 +43,12 @@ Spec: DESKTOP-SPEC §7.2/§7.3 · clicks: docs/ui/CLICKS.md · rules: docs/APP-R
    `cargo check --all-targets` with **zero warnings** plus
    `cargo run -p ultar-check -- all` with no new findings; CI should confirm
    fmt/clippy on Linux.
-8. **Layers exception:** `tools/check-layers.toml` now allows apps to use
+8. **Search-field caret:** the window loop rebuilds the tree after every
+   change and restores the focus to the search field, so typing works; the
+   caret restarts at the end of the text (`TextField::set_text` behaviour),
+   mid-string editing jumps to the end. A partial-rebuild path (or caret
+   restore) is a small follow-up in `main.rs`.
+9. **Layers exception:** `tools/check-layers.toml` now allows apps to use
    `platform/ultar-surface` (the compositor client) until `platform/app-api`
    exists — exactly as docs/integration/ultar-compositor.md §4 prescribes.
    The Store binary is `required-features = ["gui"]`; the library and every
