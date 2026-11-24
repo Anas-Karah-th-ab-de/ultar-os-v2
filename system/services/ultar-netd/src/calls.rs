@@ -33,12 +33,15 @@ pub struct WifiSide {
     radio_on: Option<bool>,
     vpn_dns: Vec<String>,
     wired_dns: Vec<String>,
+    /// The running kernel's nl80211 is this service's device (see [`WifiSide::on_kernel`]).
+    kernel: bool,
 }
 
 impl WifiSide {
     /// Saved networks in `saved`, DNS below `run_dir`.
     pub fn new(saved: PathBuf, run_dir: Option<PathBuf>) -> WifiSide {
         WifiSide {
+            kernel: true,
             saved,
             run_dir,
             handle: None,
@@ -49,6 +52,14 @@ impl WifiSide {
         }
     }
 
+    /// Whether the running kernel's nl80211 belongs to this service. A service started on a
+    /// prepared tree (`--root` other than `/`) sees only that tree: the machine's own Wi-Fi
+    /// card is not part of it and is neither listed nor switched.
+    pub fn on_kernel(mut self, kernel: bool) -> WifiSide {
+        self.kernel = kernel;
+        self
+    }
+
     /// A Wi-Fi interface is driven.
     pub fn present(&self) -> bool {
         self.link.phase != WifiPhase::NoDevice
@@ -56,8 +67,10 @@ impl WifiSide {
 
     /// Starts the worker (with nl80211 when the kernel has it).
     pub fn start(&mut self, bus: &Bus<'_, NetService>) {
-        let driver = Nl80211::open()
-            .ok()
+        let driver = self
+            .kernel
+            .then(|| Nl80211::open().ok())
+            .flatten()
             .map(|n| Box::new(n) as Box<dyn WifiDriver>);
         let core = WifiCore::new(
             driver,

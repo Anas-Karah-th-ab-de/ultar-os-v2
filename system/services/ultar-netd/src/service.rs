@@ -79,7 +79,8 @@ impl NetService {
             interfaces: Interfaces::new(&root),
             rfkill: Rfkill::new(&root),
             saved: store::load(&state_file).unwrap_or_default(),
-            wifi: crate::calls::WifiSide::new(state_dir.join("wifi"), None),
+            wifi: crate::calls::WifiSide::new(state_dir.join("wifi"), None)
+                .on_kernel(root == std::path::Path::new("/")),
             state_file,
             last: None,
             fixed: store::load(&fixed_file).unwrap_or_default(),
