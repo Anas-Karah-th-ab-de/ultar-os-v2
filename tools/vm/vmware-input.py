@@ -59,6 +59,21 @@ class Vm:
             args += ["-vga", os.environ.get("VGA", "vmware" if ps2 else "std")]
         if not ps2:
             args += ["-device", "qemu-xhci,id=xh", "-device", "usb-kbd,bus=xh.0", "-device", "usb-tablet,bus=xh.0"]
+        # BT_USB=1: a scripted USB Bluetooth controller (tools/kern-test/bt-usb.py) behind usb-redir on the
+        # xHCI, as a controller passed through to the machine; its log: PREFIX-bt.log
+        self.bt, self.bt_log = None, None
+        if os.environ.get("BT_USB") == "1" and not ps2:
+            sock = os.path.join(self.dir, "bt.sock")
+            self.bt_log = prefix + "-bt.log"
+            if os.path.exists(self.bt_log):
+                os.unlink(self.bt_log)  # the emulator appends: only this run's commands count
+            emu = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "kern-test", "bt-usb.py")
+            self.bt = subprocess.Popen([sys.executable, emu, sock, self.bt_log], stdin=subprocess.DEVNULL)
+            for _ in range(100):
+                if os.path.exists(sock):
+                    break
+                time.sleep(0.1)
+            args += ["-chardev", f"socket,id=btc,path={sock}", "-device", "usb-redir,chardev=btc,bus=xh.0"]
         env = dict(os.environ, TMPDIR=self.dir)
         self.p = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
         self.buf = b""
@@ -185,6 +200,9 @@ class Vm:
                         pass
                 self.p.kill()
             self.p.wait()
+            if self.bt is not None:
+                self.bt.kill()
+                self.bt.wait()
             if logs:
                 self.logs()
         finally:

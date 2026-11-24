@@ -539,6 +539,9 @@ close the dialog when `bluetooth.state.pairing` leaves `Running`). The name is d
    name requests for the nameless ones after the inquiry (one at a time, 12 s each at most), LE scan active (names
    from scan responses) or passive (`Config::le_active`), duplicates reported so the RSSI follows; one entry per
    address, a new scan starts with a fresh list (paired and connected devices stay).
+   A command the controller does not answer within 4 s is given up (`btd.hci_refused` with status 255) and the
+   next one goes out; a controller that refuses the inquiry beside its LE scan (Command Disallowed) scans in
+   turns: LE for 10 s, then the inquiry alone (7.68 s).
    Transport: the event endpoint is read one USB packet per transfer with up to 32 transfers queued (an event whose
    length is a multiple of the packet size has no zero-length packet after it and was held back until the next
    event with one long transfer); interrupt endpoints get their Max ESIT Payload.

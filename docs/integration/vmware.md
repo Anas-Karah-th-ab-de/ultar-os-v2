@@ -149,6 +149,11 @@ Store, browser (bar) and the phone (app grid) each open a window → the clock i
 Ctrl+C in Settings' search field and Ctrl+V in Files' search field (text arrives) → Super+L, the
 accessibility menu: high contrast (black ground) and large text (more text pixels) take effect at once and
 high contrast is still on after `system_reset`.
+Run `bt` (as `usb` with a 1024x768 firmware screen and `BT_USB=1`: the scripted USB Bluetooth controller
+`tools/kern-test/bt-usb.py` behind `usb-redir` on the xHCI, as a controller passed through to the machine) goes
+from the unlock and the start menu to Settings › Bluetooth: the search switch is found on the screen and clicked,
+the page lists the controller's four devices by name (read off the screen) and the controller's log
+(`PREFIX-bt.log`) has the service's LE scan, inquiry and remote name commands.
 `VMWARE-INPUT-E2E: ALLES OK`. After a failed run (or `LOGS=1`) the log service's directory is read from the
 data partition of the run's disk layer (`PREFIX-log/`; with `ULOG=` as text) – records of the last seconds
 before QEMU is stopped may be missing (`--fsync batch`).

@@ -29,6 +29,15 @@ pub const MAX_ACL_QUEUE: usize = 64;
 pub const INQUIRY_LENGTH: u8 = 8;
 /// A remote name request is given up after this.
 pub const NAME_MS: u64 = 12_000;
+/// A command the controller does not answer is given up after this (the next one goes out;
+/// without it one lost answer would hold every later command back, a scan included).
+pub const CMD_MS: u64 = 4_000;
+/// When the controller refuses an inquiry while its LE scan runs (Command Disallowed: it
+/// cannot do both at once), the scan is done in turns: the LE scan until this time after
+/// the start, then the inquiry for [`INQUIRY_LENGTH_LATE`].
+pub const TURN_MS: u64 = 10_000;
+/// Inquiry length of the second turn in units of 1.28 s (6: 7.68 s, inside [`SCAN_MS`]).
+pub const INQUIRY_LENGTH_LATE: u8 = 6;
 /// Remote name requests waiting at most.
 pub const MAX_NAME_QUEUE: usize = 16;
 
@@ -175,10 +184,19 @@ pub(crate) enum Want {
 pub(crate) struct Tx {
     cmds: VecDeque<Vec<u8>>,
     cmd_busy: bool,
+    /// The command in flight (opcode) and when it went out.
+    cmd_sent: Option<(u16, u64)>,
     pub(crate) acl_mtu: usize,
     pub(crate) acl_free: u16,
     acl_queue: VecDeque<Vec<u8>>,
     out: Vec<Vec<u8>>,
+}
+
+impl Tx {
+    /// Opcode of the command waiting for its answer.
+    pub(crate) fn in_flight(&self) -> Option<u16> {
+        self.cmd_sent.map(|c| c.0)
+    }
 }
 
 /// The host.
@@ -199,6 +217,8 @@ pub struct Host {
     pub(crate) scanning: Option<u64>,
     /// Discovery under way: (inquiry runs, LE scan runs); both false while scanning = it failed.
     pub(crate) discovery: (bool, bool),
+    /// The controller refused the inquiry beside its LE scan: it follows the LE scan.
+    pub(crate) inquiry_later: bool,
     /// Remote name requests waiting (address, page scan repetition mode, clock offset).
     pub(crate) names: VecDeque<(Addr, u8, u16)>,
     /// The remote name request in flight and since when.
@@ -221,6 +241,7 @@ impl Host {
             tx: Tx {
                 cmds: VecDeque::new(),
                 cmd_busy: false,
+                cmd_sent: None,
                 acl_mtu: 27,
                 acl_free: 1,
                 acl_queue: VecDeque::new(),
@@ -232,6 +253,7 @@ impl Host {
             bonds,
             scanning: None,
             discovery: (false, false),
+            inquiry_later: false,
             names: VecDeque::new(),
             name_busy: None,
             version: None,
@@ -282,6 +304,7 @@ impl Host {
 
     pub(crate) fn command_done(&mut self) {
         self.tx.cmd_busy = false;
+        self.tx.cmd_sent = None;
         self.pump();
     }
 
@@ -289,6 +312,8 @@ impl Host {
         if !self.tx.cmd_busy {
             if let Some(c) = self.tx.cmds.pop_front() {
                 self.tx.cmd_busy = true;
+                let opcode = u16::from_le_bytes([c[1], c[2]]);
+                self.tx.cmd_sent = Some((opcode, self.now));
                 self.tx.out.push(c);
             }
         }
@@ -421,6 +446,7 @@ impl Host {
             // BR/EDR: general inquiry (GIAC), unlimited responses.
             self.cmd(op::INQUIRY, &[0x33, 0x8b, 0x9e, INQUIRY_LENGTH, 0]);
             self.discovery = (true, true);
+            self.inquiry_later = false;
             self.scanning = Some(self.now);
         } else {
             self.cmd(op::LE_SET_SCAN_ENABLE, &[0, 0]);
@@ -428,6 +454,7 @@ impl Host {
                 self.cmd(op::INQUIRY_CANCEL, &[]);
             }
             self.discovery = (false, false);
+            self.inquiry_later = false;
             self.names.clear();
             self.scanning = None;
         }
@@ -538,6 +565,18 @@ impl Host {
     /// The time (milliseconds since an arbitrary start, never going back).
     pub fn tick(&mut self, now: u64) {
         self.now = self.now.max(now);
+        if let Some((opcode, t)) = self.tx.cmd_sent {
+            if self.now - t >= CMD_MS {
+                self.unanswered(opcode);
+            }
+        }
+        if self.inquiry_later && self.scanning.is_some_and(|t| self.now - t >= TURN_MS) {
+            // second turn: the LE scan ends, the inquiry runs alone
+            self.inquiry_later = false;
+            self.cmd(op::LE_SET_SCAN_ENABLE, &[0, 0]);
+            self.cmd(op::INQUIRY, &[0x33, 0x8b, 0x9e, INQUIRY_LENGTH_LATE, 0]);
+            self.discovery = (true, false);
+        }
         if self.scanning.is_some_and(|t| self.now - t >= SCAN_MS) {
             self.scan(false);
         }

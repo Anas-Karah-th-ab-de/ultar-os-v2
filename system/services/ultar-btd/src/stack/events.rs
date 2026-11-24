@@ -2,7 +2,7 @@
 
 use super::bonds::Bond;
 use super::hci::{self, op, Addr, Event, Seen, H4_ACL, H4_EVT};
-use super::host::{Device, Host, Up, Want, MAX_DEVICES};
+use super::host::{Device, Host, Up, Want, MAX_DEVICES, TURN_MS};
 use super::link::Link;
 use super::smp::{reason, Ask};
 
@@ -124,8 +124,29 @@ impl Host {
             (op::LE_CREATE_CONNECTION_CANCEL, _) => {}
             _ => {}
         }
-        self.init_step(opcode);
-        self.command_done();
+        self.answered(opcode);
+    }
+
+    /// The command in flight got no answer in time: it counts as refused (status 0xFF in
+    /// the log) and the next one goes out.
+    pub(crate) fn unanswered(&mut self, opcode: u16) {
+        const NO_ANSWER: u8 = 0xFF;
+        match opcode {
+            op::INQUIRY
+            | op::REMOTE_NAME_REQUEST
+            | op::LE_CREATE_CONNECTION
+            | op::CREATE_CONNECTION => self.status(opcode, NO_ANSWER),
+            _ => self.complete(opcode, NO_ANSWER, &[]),
+        }
+    }
+
+    /// The answer to the command in flight lets the next one out; a late answer to a
+    /// command already given up changes nothing.
+    fn answered(&mut self, opcode: u16) {
+        if self.tx.in_flight() == Some(opcode) {
+            self.init_step(opcode);
+            self.command_done();
+        }
     }
 
     fn init_step(&mut self, opcode: u16) {
@@ -143,6 +164,17 @@ impl Host {
         if status != 0 {
             self.up.push(Up::Failed { opcode, status });
             match opcode {
+                // Command Disallowed beside a running LE scan: this controller does one
+                // at a time – the inquiry follows the LE scan (once)
+                op::INQUIRY
+                    if status == 0x0C
+                        && self.discovery.1
+                        && !self.inquiry_later
+                        && self.scanning.is_some_and(|t| self.now - t < TURN_MS) =>
+                {
+                    self.discovery.0 = false;
+                    self.inquiry_later = true;
+                }
                 op::INQUIRY => self.discovery_ended(true, true),
                 op::REMOTE_NAME_REQUEST => self.name_done(None),
                 op::LE_CREATE_CONNECTION | op::CREATE_CONNECTION => {
@@ -154,8 +186,7 @@ impl Host {
                 _ => {}
             }
         }
-        self.init_step(opcode);
-        self.command_done();
+        self.answered(opcode);
     }
 
     fn seen(&mut self, s: Seen) {

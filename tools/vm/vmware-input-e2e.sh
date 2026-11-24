@@ -10,6 +10,8 @@
 # firmware screen 1920x1080: the session must fill whatever size the firmware set) and usb-xga (as usb,
 # 1024x768: every step as on the larger screens; INPUT_RUNS chooses). REPEAT=3 repeats each. The phone must
 # open with its whole dial pad, and in a small window (a quarter of the screen) the pad must scroll.
+# bt (as usb, firmware screen 1024x768, a scripted USB Bluetooth controller behind usb-redir: after the unlock and
+# the start menu, Settings > Bluetooth, the search switch clicked, the devices of the controller's air listed).
 # On the lock screen the run also checks what the Lock board shows: the whole frame buffer covered, brand,
 # avatar, name and password field drawn (Arabic and Latin text), the accessibility menu only on a click and
 # with the names of its switches.
@@ -36,13 +38,14 @@ if [ -z "${VMDK:-}" ]; then
 fi
 ULOG_BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release/ulog"
 fail=0
-for run in ${INPUT_RUNS:-usb ps2 usb-hd usb-xga}; do
+for run in ${INPUT_RUNS:-usb ps2 usb-hd usb-xga bt}; do
   for n in $(seq 1 "${REPEAT:-1}"); do
     prefix=$OUT/input-$run-$n
-    input=${run%%-*}; vga=""
+    input=${run%%-*}; vga=""; bt=0
     [ "$run" = usb-hd ] && vga="VGA,xres=1920,yres=1080"
     [ "$run" = usb-xga ] && vga="VGA,xres=1024,yres=768"
-    if INPUT=$input VGA_DEVICE="$vga" PASSWORD_FILE="$VM_PASSWORD_FILE" ULOG="$ULOG_BIN" timeout 1500 \
+    if [ "$run" = bt ]; then input=usb; vga="VGA,xres=1024,yres=768"; bt=1; fi
+    if INPUT=$input VGA_DEVICE="$vga" BT_USB=$bt PASSWORD_FILE="$VM_PASSWORD_FILE" ULOG="$ULOG_BIN" timeout 1500 \
         python3 tools/vm/vmware-input.py gate "$VMDK" vmdk "$prefix" >"$prefix.out" 2>&1 \
         && grep -aq "^VMWARE-INPUT: ALLES OK" "$prefix.out"; then
       echo "ok    VMWARE-INPUT $run ($n)"

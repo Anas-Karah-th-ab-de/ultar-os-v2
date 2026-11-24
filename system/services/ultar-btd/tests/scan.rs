@@ -11,9 +11,9 @@ fn evt(code: u8, params: &[u8]) -> Vec<u8> {
     [&[0x04, code, params.len() as u8][..], params].concat()
 }
 
-/// The controller's answers: every command succeeds unless `refuse` names it (then with
-/// status 0x01, unknown command); returns what was sent.
-fn drain_with(h: &mut Host, refuse: &[u16]) -> Vec<(u16, Vec<u8>)> {
+/// The controller's answers: `how` gives the status for a command (`None`: no answer at
+/// all); returns what was sent.
+fn drain_how(h: &mut Host, how: impl Fn(u16) -> Option<u8>) -> Vec<(u16, Vec<u8>)> {
     let mut sent = Vec::new();
     for _ in 0..100 {
         let out = h.take_out();
@@ -23,7 +23,7 @@ fn drain_with(h: &mut Host, refuse: &[u16]) -> Vec<(u16, Vec<u8>)> {
         for p in out {
             let opcode = u16::from_le_bytes([p[1], p[2]]);
             sent.push((opcode, p[4..].to_vec()));
-            let st = u8::from(refuse.contains(&opcode));
+            let Some(st) = how(opcode) else { continue };
             if [op::INQUIRY, op::REMOTE_NAME_REQUEST].contains(&opcode) {
                 h.packet(&evt(0x0F, &[st, 1, p[1], p[2]]));
             } else if opcode == op::READ_BD_ADDR {
@@ -36,6 +36,12 @@ fn drain_with(h: &mut Host, refuse: &[u16]) -> Vec<(u16, Vec<u8>)> {
         }
     }
     sent
+}
+
+/// Every command succeeds unless `refuse` names it (then with status 0x01, unknown
+/// command).
+fn drain_with(h: &mut Host, refuse: &[u16]) -> Vec<(u16, Vec<u8>)> {
+    drain_how(h, |o| Some(u8::from(refuse.contains(&o))))
 }
 
 fn drain(h: &mut Host) -> Vec<(u16, Vec<u8>)> {
@@ -299,4 +305,82 @@ fn a_name_request_that_never_ends_is_given_up() {
     let sent = ops(&drain(&mut h));
     assert!(sent.contains(&op::REMOTE_NAME_REQUEST_CANCEL), "{sent:x?}");
     assert!(sent.contains(&op::REMOTE_NAME_REQUEST), "the next one");
+}
+
+#[test]
+fn a_command_without_an_answer_does_not_hold_the_scan_back() {
+    use ultar_btd::stack::host::CMD_MS;
+    // a controller that says nothing to Write Secure Connections Host Support: the set-up
+    // waits for it, gives it up and goes on
+    let silent = op::WRITE_SC_HOST_SUPPORT;
+    let mut h = Host::new(Config::default(), Default::default());
+    let sent = drain_how(&mut h, |o| (o != silent).then_some(0));
+    assert_eq!(ops(&sent).last(), Some(&silent), "waiting for its answer");
+    assert!(!h.is_ready());
+    h.tick(CMD_MS - 1);
+    assert!(drain(&mut h).is_empty(), "not yet given up");
+    h.tick(CMD_MS);
+    let sent = drain(&mut h);
+    assert!(ops(&sent).contains(&op::WRITE_INQUIRY_MODE), "{sent:x?}");
+    assert!(h.is_ready(), "set up without it");
+    assert!(h.take_up().contains(&Up::Failed {
+        opcode: silent,
+        status: 0xFF
+    }));
+
+    // the scan starts; the late answer to the command given up lets no second command out
+    h.command(Cmd::Scan(true)).unwrap();
+    let first = h.take_out();
+    assert_eq!(first.len(), 1, "one command in flight");
+    h.packet(&evt(0x0E, &[1, 0x7A, 0x0C, 0]));
+    assert!(h.take_out().is_empty(), "the late answer is not counted");
+    let p = &first[0];
+    h.packet(&evt(0x0E, &[1, p[1], p[2], 0]));
+    let sent = drain(&mut h);
+    assert!(ops(&sent).contains(&op::INQUIRY));
+    assert!(h.is_scanning());
+    h.packet(&adv(0, D, -60, Some((true, "Mouse"))));
+    assert_eq!(h.devices.len(), 1);
+}
+
+#[test]
+fn a_controller_that_cannot_do_both_at_once_scans_in_turns() {
+    use ultar_btd::stack::host::{INQUIRY_LENGTH_LATE, SCAN_MS, TURN_MS};
+    // Command Disallowed for the inquiry while the LE scan runs
+    let mut h = ready(Config::default());
+    h.command(Cmd::Scan(true)).unwrap();
+    drain_how(&mut h, |o| Some(if o == op::INQUIRY { 0x0C } else { 0 }));
+    assert!(h.is_scanning(), "the LE scan goes on");
+    h.packet(&adv(0, D, -60, Some((true, "Mouse"))));
+    h.tick(TURN_MS - 1);
+    assert!(drain(&mut h).is_empty());
+
+    // second turn: LE scan off, then the inquiry alone
+    h.tick(TURN_MS);
+    let sent = drain(&mut h);
+    assert_eq!(ops(&sent), [op::LE_SET_SCAN_ENABLE, op::INQUIRY]);
+    assert_eq!(sent[0].1, [0, 0]);
+    assert_eq!(sent[1].1, [0x33, 0x8b, 0x9e, INQUIRY_LENGTH_LATE, 0]);
+    assert!(u64::from(INQUIRY_LENGTH_LATE) * 1280 <= SCAN_MS - TURN_MS);
+    h.packet(&eir(C, 0x002540, -60, "K380"));
+    assert_eq!(h.devices.len(), 2, "both kinds found");
+    h.packet(&evt(0x01, &[0]));
+    assert!(h.is_scanning());
+    h.tick(SCAN_MS);
+    assert_eq!(
+        ops(&drain(&mut h)),
+        [op::LE_SET_SCAN_ENABLE],
+        "no second turn"
+    );
+    assert!(!h.is_scanning());
+    assert_eq!(h.devices.len(), 2);
+
+    // refused again in its own turn: the scan ends with what the LE scan found
+    h.command(Cmd::Scan(true)).unwrap();
+    drain_how(&mut h, |o| Some(if o == op::INQUIRY { 0x0C } else { 0 }));
+    h.packet(&adv(0, D, -60, Some((true, "Mouse"))));
+    h.tick(SCAN_MS + TURN_MS);
+    drain_how(&mut h, |o| Some(if o == op::INQUIRY { 0x0C } else { 0 }));
+    assert!(!h.is_scanning());
+    assert_eq!(h.devices.len(), 1);
 }

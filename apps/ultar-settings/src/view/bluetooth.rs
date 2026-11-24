@@ -1,5 +1,5 @@
-//! Settings › Bluetooth, below the service's state: the search switch, a busy bar while
-//! the service searches, the devices it found (named and nearer ones first, a nameless one
+//! Settings › Bluetooth, below the service's state: the search switch in a row with its
+//! label (under it what the search is doing), a busy bar while the service searches, the devices it found (named and nearer ones first, a nameless one
 //! by its address) – a found one pairs on click (the system dialog asks) – and, after a
 //! search without result, "no devices found". Device names are data from the air.
 
@@ -8,7 +8,7 @@ use crate::action::Act;
 use ultar_bus::messages::bluetooth::{Device, PairPhase};
 use ultar_ui::layout::Sizing;
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{Card, Label, List, ListItem, Progress, Switch, Text};
+use ultar_ui::widgets::{Card, Label, List, ListItem, Progress, Row, Switch};
 
 /// Most devices shown.
 pub const MAX_SHOWN: usize = 24;
@@ -47,9 +47,29 @@ pub(crate) fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     let Some(bt) = st.bluetooth.clone().filter(|b| b.devices_supported) else {
         return Ok(());
     };
+    let devices: Vec<Device> = order(&cx.state.status.bt_devices.0)
+        .into_iter()
+        .cloned()
+        .collect();
+    // what the search is doing, under the switch's label: searching, nothing found after a
+    // search, or how to start
+    let note = match (bt.scanning, devices.is_empty()) {
+        (true, _) => Some("app.settings.bt.searching"),
+        (false, true) if cx.state.status.bt_searched => Some("app.settings.bt.not_found"),
+        (false, true) => Some("app.settings.bt.hint"),
+        (false, false) => None,
+    };
     let card = cx.ui.add_sized(content, Card::new(), Sizing::AUTO)?;
+    let mut row = Row::new(k("app.settings.bt.search"));
+    if let Some(key) = note {
+        row = row.sublabel(k(key));
+    }
+    if devices.is_empty() && !bt.scanning {
+        row = row.last();
+    }
+    let row = cx.ui.add(card, row)?;
     cx.act(
-        card,
+        row,
         Switch::new(k("app.settings.bt.search"), bt.scanning),
         Act::BtScan,
     )?;
@@ -57,19 +77,7 @@ pub(crate) fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         cx.ui
             .add(card, Progress::new(k("app.settings.bt.searching")))?;
     }
-    let devices: Vec<Device> = order(&cx.state.status.bt_devices.0)
-        .into_iter()
-        .cloned()
-        .collect();
     if devices.is_empty() {
-        let key = if bt.scanning {
-            "app.settings.bt.searching"
-        } else if cx.state.status.bt_searched {
-            "app.settings.bt.not_found"
-        } else {
-            "app.settings.bt.hint"
-        };
-        cx.ui.add(card, Text::new(k(key)))?;
         return Ok(());
     }
     let list = cx

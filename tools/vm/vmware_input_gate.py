@@ -1066,6 +1066,125 @@ def settings_change(vm, m, pos):
 
 
 # end of the app content block (build/appbus)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Bluetooth scan (branch build/btscan; run "bt": BT_USB=1 puts the scripted controller
+# tools/kern-test/bt-usb.py behind usb-redir on the xHCI, as a controller passed through to a VMware machine).
+# Everything from here to the next line of dashes belongs to this block.
+# The controller's air: a phone (inquiry result, named by remote name request), a keyboard (extended inquiry
+# result), a mouse and a pen (LE advertising, the pen named by its scan response); names as in bt-usb.py.
+BT_NAMES = {"phone": "telefon", "keyboard": "tastatur", "mouse": "maus", "pen": "stift"}
+# commands of a scan in the controller's log: LE scan parameters, LE scan enable, inquiry, remote name request
+BT_SCAN_COMMANDS = ["0x200b", "0x200c", "0x0401", "0x0419"]
+
+
+def _bt_switch_left_of(screen, x_text, y0, y1):
+    """The control at the start (left, in Arabic) end of a settings row whose texts begin at x_text and fill
+    the band y0..y1: from there leftwards, the first group of columns with pixels other than the card's ground
+    that is 20-80 points wide (a switch); its centre or None."""
+    def px(x, y):
+        i = (y * screen.w + x) * 3
+        return screen.px[i], screen.px[i + 1], screen.px[i + 2]
+
+    ground = px(max(0, x_text - 6), y0)
+
+    def marked(x):
+        ys = [y for y in range(y0, y1) if sum(abs(int(p) - int(q)) for p, q in zip(px(x, y), ground)) > 30]
+        return ys
+
+    x, seg, gap, rows = x_text - 8, None, 0, []
+    while x > 4:
+        ys = marked(x)
+        if ys:
+            seg = seg or x
+            rows += ys
+            gap = 0
+        elif seg is not None:
+            gap += 1
+            if gap > 3:
+                width = seg - (x + gap)
+                if 20 <= width <= 80:
+                    return ((seg + x + gap) // 2, (min(rows) + max(rows)) // 2)
+                seg, rows, gap = None, [], 0
+        x -= 1
+    return None
+
+
+def bluetooth_scan(vm, m, pos):
+    """Settings > Bluetooth (opened with the keyboard), then the pointer: the search switch (found on the
+    screen) is clicked, the service scans (the controller's log has its inquiry and LE scan commands) and the
+    page lists the four devices of the controller's air by name while the search runs."""
+    st = _screen_text()
+    w, h = vm.size
+    box = _open_settings(vm, pos, "bt-settings")
+    if not box:
+        return ["bluetooth: settings did not open"]
+    _goto(vm, "bluetooth", None)
+    vm.pump(2)
+    screen = vm.shot("bt-page")
+    png = f"{vm.prefix}-bt-page.png"
+    # the page: the window without its title bar and the sidebar (at the right in Arabic)
+    x0, y0, x1, y1 = box[0], box[1] + TITLEBAR, max(box[0] + 100, box[2] - SIDEBAR), box[3]
+    words = [(x, b) for x, b, _ in st.words(png) if x0 <= b[0] < x1 and y0 <= b[1] < y1]
+    page = st.norm(" ".join(x for x, _ in words))
+    bad = [b for b in UNAVAILABLE if st.norm(b) in page]
+    if bad:
+        close_all(vm)
+        return [f"bluetooth: 'not available' on the page {bad}"]
+    # the search switch: the lowest row labelled "البحث عن أجهزة" (the state row above it has the same words;
+    # the hint under the label has "البحث" without "عن")
+    rows = [b for x, b in words if "البحث" in st.norm(x)
+            and any(st.norm(y) == "عن" and abs(c[1] - b[1]) < 12 and c[2] <= b[0] + 4 for y, c in words)]
+    if not rows:
+        close_all(vm)
+        return [f"bluetooth: no search switch on the page (no usable controller?); read: {page[:200]}"]
+    b = max(rows, key=lambda r: r[1])
+    # the row: its label and the note under it (words that start within 30 points below)
+    band = [wb for _, wb in words if b[1] - 4 <= wb[1] <= b[1] + 30]
+    at = _bt_switch_left_of(screen, min(wb[0] for wb in band), b[1] - 10, max(wb[3] for wb in band) + 6)
+    log(f"bluetooth: window {box}, search row at {b}, switch at {at}")
+    if not at:
+        close_all(vm)
+        return [f"bluetooth: the search row at {b} has no switch"]
+    vm.click(*at)
+    # the list may be longer than the window at 1024x768: each round reads the page as it is and once more
+    # after the wheel moved it down (pointer over the page, above the search row)
+    found, seen_after = set(), None
+    over = ((b[0] + b[2]) // 2, max(y0 + 20, b[1] - 60))
+    for n in range(12):
+        vm.pump(3)
+        for part in ("top", "down"):
+            vm.move(*over)
+            if part == "down":
+                for _ in range(4):
+                    vm.events([{"type": "btn", "data": {"down": True, "button": "wheel-down"}}])
+                    vm.events([{"type": "btn", "data": {"down": False, "button": "wheel-down"}}])
+                    vm.pump(0.2)
+                vm.pump(1)
+            vm.shot(f"bt-scan-{n}-{part}")
+            text = _page_text(st, f"{vm.prefix}-bt-scan-{n}-{part}.png", x1, y1).lower()
+            found |= {k for k, v in BT_NAMES.items() if v in text}
+        if len(found) == len(BT_NAMES):
+            seen_after = 3 * (n + 1)
+            break
+    log(f"bluetooth: devices on the page {sorted(found)} after {seen_after} s")
+    failures = []
+    missing = sorted(set(BT_NAMES) - found)
+    if missing:
+        failures.append(f"bluetooth: devices not listed: {missing}")
+    try:
+        with open(vm.bt_log, errors="replace") as f:
+            ctl = f.read()
+    except OSError:
+        ctl = ""
+    silent = [c for c in BT_SCAN_COMMANDS if f"BTEMU cmd {c}" not in ctl]
+    log(f"bluetooth: controller got {len(re.findall('BTEMU cmd', ctl))} commands, scan commands missing: {silent}")
+    if silent:
+        failures.append(f"bluetooth: the service did not send {silent}")
+    close_all(vm)
+    return failures
+# ---------------------------------------------------------------------------------------------------------
 # ---------------------------------------------------------------------------------------------------------
 
 
@@ -1216,6 +1335,14 @@ def run(vm, m):
         failures += settings_change(vm, m, pos)
         log("VMWARE-INPUT: GATE_ONLY=content " + ("FEHLER " + "; ".join(failures) if failures else "ok (no verdict)"))
         return 1
+    # Bluetooth scan (only in the run with the scripted controller; that run ends with it)
+    if getattr(vm, "bt_log", None):
+        failures += bluetooth_scan(vm, m, pos)
+        if failures:
+            log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
+            return 1
+        log("VMWARE-INPUT: ALLES OK (bluetooth: locked at start, keyboard, pointer, start menu, a scan from Settings lists the devices found)")
+        return 0
     # 4. every system app opens its window: Settings, Files, Store, Browser from the bar, Phone from
     #    the app grid
     for name in ("settings", "files", "store", "browser"):
