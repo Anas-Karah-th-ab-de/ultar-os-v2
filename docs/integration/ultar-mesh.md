@@ -42,7 +42,7 @@ it can take. What is missing for them is a *stage*, not a new protocol (see "Not
 | What a job may run: only a program by bare name inside the jobs folder (`--jobs`); without the folder no job runs | `src/runtime.rs` | 1 |
 | Service on the bus (`ultar-svckit`), binary `ultar-mesh` | `src/service.rs`, `src/bin/ultar-mesh.rs` | 1 (two real services) |
 
-52 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
+55 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
 without a new code, jobs with and without permission, finding each other by announcements, meeting through
 a stand-in relay that follows the server's frame rules). `tests/process.rs` starts two real `ultar-mesh`
 binaries on two brokers with a stand-in launcher: switched on by the shell, paired, a document handed
@@ -76,7 +76,8 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
 - `rootfs/etc/ultar/services/mesh.toml`: own user, **no kernel right**, `--state`, `--inbox`, `--name`, `--kind`.
 - `rootfs/etc/ultar/ids.toml`: user `mesh`.
 - `rootfs/etc/ultar/bus-policy.toml`:
-  `system.mesh` registers `mesh`, publishes `mesh.*`, calls `launcher.list`, `launcher.start`;
+  `system.mesh` registers `mesh`, publishes `mesh.*`, calls `launcher.list`, `launcher.start`,
+  `sysdialog.handoff`;
   the shell and `app.settings` call `mesh.*` and subscribe `mesh.*`; `app.*` call `mesh.set_activity` only.
 - Settings page "Mesh", quick-settings tile, the gesture on the phone shell and the window-menu entry on
   the desktop shell (each shell its own surface).
@@ -96,9 +97,10 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
   the image scripts are untouched: `build/btscan`, `build/net`, `build/settings2` and `build/appbus` change
   the same lines of `ids.toml`, `services/bus.toml`, `bus-policy.toml`, `service_files_tests.rs` and
   `make-vmware.sh`. The list above ("Wiring it in") is what has to be added once they are merged.
-- **No surface.** No settings page, no quick-settings tile, no gesture, no window-menu entry, no question
-  dialog (`sysdialog` has no handoff question yet) and no command-line tool; no app reports its activity.
-  The service can be driven over the bus only.
+- **Hardly any surface.** Built: the question on the receiving device (desktop system dialog,
+  `sysdialog.handoff`; the mesh asks through it and takes its answer). Not built: settings page,
+  quick-settings tile, gesture, window-menu entry, the phone sheets, a command-line tool; no app reports
+  its activity. Boards and description: `docs/ui/mesh.md` (approved 2026-11-24).
 - **Relay token.** The relay client reads the account's device token from a file. `ultar-accountd` keeps
   the token to itself; it needs a way to hand the mesh a ticket. The client was run against a stand-in
   relay, not against the real server.

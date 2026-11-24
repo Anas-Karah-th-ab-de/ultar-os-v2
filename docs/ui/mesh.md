@@ -1,6 +1,6 @@
 # Mesh – the surface (`settings.mesh`, `shell.mesh`)
 
-KM Code Craft · Ultar OS v2 · 2026-11-24 · status: **spec – boards await approval** (step 3 of DESKTOP-SPEC §2.2)
+KM Code Craft · Ultar OS v2 · 2026-11-24 · status: **boards approved by the owner on 2026-11-24** (step 3 of DESKTOP-SPEC §2.2); built so far: the question on the receiving device (desktop)
 Service and contract: `docs/integration/ultar-mesh.md`, `system/core/ultar-bus/src/messages/mesh.rs`
 Boards: `design/boards/b9.py` → `design/boards/project/{SettingsMesh,SettingsMeshLight,MeshPairShow,MeshPairJoin,MeshDevice,MeshIncoming,MeshSend,MeshStates,CompactMeshSend,CompactMeshIncoming}.dc.html`
 Clicks: `docs/ui/CLICKS.md` (20 actions `mesh.*`, all with a defined effect)
@@ -85,11 +85,23 @@ Keyboard: Tab order follows the reading order; radio groups move with the arrow 
 primary action, Esc the safe one. Screen reader: every device row is read as "name, kind, state"; the
 question is an alert dialog; toasts are status (warnings: alert). Pointer targets 32, touch targets 44.
 
-## 4. Open before approval
+## 4. Built
+
+| Surface | State | Where | Proof |
+|---|---|---|---|
+| `shell.mesh.incoming` (desktop) | built | `platform/ultar-desktop/src/dialog/handoff.rs`, question `sysdialog.handoff` (`messages/mesh.rs`), asked by `ultar-mesh` | reference pictures `tests/snapshots/dialog-handoff-{ar,en}-{dark,light}.png` (pixel compare), model test (accept, decline, unanswered = declined), two real mesh services with a dialog stand-in (accepted: opened; declined: nothing stored, nothing opened) |
+| everything else | not built | – | waits for `build/btscan`, `build/net`, `build/settings2`, `build/filesqs` (same files of the Settings app and the shells) |
+
+Deviations from the board, on purpose: the wait is said as "a minute" (the dialog service answers after
+55 s, the mesh gives up after 60 s); "nothing is stored or opened before you accept" moved from the system
+line into the text so the line fits one row in every language. The boards were regenerated with this
+wording and with the word the system already uses for pairing (`إقران`).
+
+## 5. Open
 
 - Device kinds reuse the icons `phone`, `device`, `monitor`, `server` (as the Account board does). A TV and
   a speaker need icons of their own (`kind-tv`, `kind-speaker`) – one icon, one meaning.
 - The medium size class (600–1023) and the high-contrast theme are not drawn; light and English exist for
   the settings page only.
-- The system dialog needs a call in `sysdialog` for this question (today: permission and authentication).
+- Shipping the question needs the rule `system.mesh` may call `sysdialog.handoff` in `bus-policy.toml` (with the rest of the wiring).
 - Wording was not read by a native speaker.

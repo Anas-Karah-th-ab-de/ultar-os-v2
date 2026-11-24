@@ -2,10 +2,12 @@
 //! one at a time, in the order asked, at most [`MAX_QUEUED`] waiting; a question nobody
 //! answers gets the safe answer (deny, cancel, revert) – never "allow".
 
+pub mod handoff;
 pub mod view;
 
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret, UserInfo};
 use ultar_bus::messages::bluetooth::{PairConfirm, PairQuestion};
+use ultar_bus::messages::mesh::AskHandoff;
 use ultar_bus::messages::settings::SettingValue;
 use ultar_bus::messages::sysdialog::{
     AskPermission, AuthResult, Authenticate, Decision, ANSWER_WITHIN_MS, MAX_QUEUED,
@@ -23,6 +25,8 @@ pub enum Question {
     Authenticate(Authenticate),
     /// Pair with a Bluetooth device? (`sysdialog.bt_pair`, asked by the Bluetooth service.)
     BtPair(PairConfirm),
+    /// Take what another device offers? (`sysdialog.handoff`, asked by the mesh.)
+    Handoff(AskHandoff),
     /// Keep the new display settings?
     Keep {
         /// Setting key.
@@ -43,6 +47,8 @@ pub enum Answer {
     Keep(bool),
     /// Pair (true) or not (false).
     BtPair(bool),
+    /// Accept the offer (true) or decline it (false).
+    Handoff(bool),
 }
 
 /// Something the dialog service asks of the world.
@@ -95,6 +101,7 @@ fn safe(question: &Question) -> Answer {
         Question::Authenticate(_) => Answer::Authenticate(AuthResult::Cancelled),
         Question::Keep { .. } => Answer::Keep(false),
         Question::BtPair(_) => Answer::BtPair(false),
+        Question::Handoff(_) => Answer::Handoff(false),
     }
 }
 
@@ -437,6 +444,38 @@ mod tests {
         assert_eq!(
             d.dismiss(),
             vec![DialogEffect::Reply(4, Answer::BtPair(false))]
+        );
+    }
+
+    fn offer() -> Question {
+        Question::Handoff(AskHandoff {
+            from_name: "KM One".into(),
+            from_kind: ultar_bus::messages::mesh::DeviceKind::Phone,
+            title: "notes.txt".into(),
+            app: "editor".into(),
+            size: Some(1_200_000),
+            stage: ultar_bus::messages::mesh::Stage::State,
+        })
+    }
+
+    #[test]
+    fn an_offer_of_another_device_is_declined_unless_the_person_accepts() {
+        let mut d = Dialogs::default();
+        d.ask(1, offer(), 0);
+        assert_eq!(
+            d.answer(Answer::Handoff(true)),
+            vec![DialogEffect::Reply(1, Answer::Handoff(true))]
+        );
+        d.ask(2, offer(), 0);
+        assert_eq!(
+            d.dismiss(),
+            vec![DialogEffect::Reply(2, Answer::Handoff(false))]
+        );
+        d.ask(3, offer(), 0);
+        assert_eq!(
+            d.tick(ANSWER_WITHIN_MS),
+            vec![DialogEffect::Reply(3, Answer::Handoff(false))],
+            "nobody answered: nothing is taken"
         );
     }
 }

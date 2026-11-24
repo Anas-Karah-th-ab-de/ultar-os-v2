@@ -8,7 +8,9 @@ use crate::transfer::{self, Step};
 use crate::wire::{FileMeta, Frame};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-use ultar_bus::messages::mesh::{Capability, HandoffIncoming, OfferState, Right, Stage};
+use ultar_bus::messages::mesh::{
+    Capability, DeviceKind, HandoffIncoming, OfferState, Right, Stage,
+};
 
 /// An offer another device made.
 pub(crate) struct Received {
@@ -57,11 +59,9 @@ impl Node {
         };
         self.offers.next += 1;
         let local = self.offers.next;
-        let from_name = self
-            .links
-            .get(peer)
-            .and_then(|l| l.device.as_ref())
-            .map_or_else(String::new, |d| d.name.clone());
+        let device = self.links.get(peer).and_then(|l| l.device.as_ref());
+        let from_name = device.map_or_else(String::new, |d| d.name.clone());
+        let from_kind = device.map_or(DeviceKind::Other, |d| d.kind);
         let incoming = HandoffIncoming {
             offer: local,
             from: peer.to_owned(),
@@ -69,6 +69,8 @@ impl Node {
             title: device::clean_name(&title),
             app: app.clone(),
             stage,
+            from_kind,
+            size: file.as_ref().map(|f| f.size),
         };
         self.offers.received.insert(
             local,

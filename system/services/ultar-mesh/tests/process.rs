@@ -7,8 +7,9 @@ use std::sync::mpsc;
 use std::time::Duration;
 use ultar_bus::messages::launcher::{AppStatus, InstanceState, List, ListReply, Start, StartReply};
 use ultar_bus::messages::mesh::{
-    Activity, Done, HandoffAnswer, HandoffIncoming, HandoffProgress, HandoffSend, MeshState,
-    OfferState, PairBegin, PairJoin, SendOutcome, SetActivity, SetEnabled, Stage,
+    Activity, AskHandoff, Done, HandoffAnswer, HandoffDecision, HandoffIncoming, HandoffProgress,
+    HandoffSend, MeshState, OfferState, PairBegin, PairJoin, SendOutcome, SetActivity, SetEnabled,
+    Stage,
 };
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
@@ -18,7 +19,11 @@ const POLICY: &str = r#"
 identity = "system.mesh"
 register = ["mesh"]
 publish = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call = ["launcher.list", "launcher.start"]
+call = ["launcher.list", "launcher.start", "sysdialog.handoff"]
+
+[[rule]]
+identity = "system.sysdialog"
+register = ["sysdialog"]
 
 [[rule]]
 identity = "system.launcher"
@@ -90,6 +95,7 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
     let identities = [
         "system.mesh",
         "system.launcher",
+        "system.sysdialog",
         "system.shell",
         "app.editor",
         "app.browser",
@@ -220,4 +226,73 @@ fn two_services_pair_and_hand_a_document_over() {
     }));
     let all = [OfferState::Asked, OfferState::Accepted, OfferState::Opened];
     assert_eq!(seen, all);
+}
+
+/// The system dialog of a device: answers every question with `accept` and records it.
+fn system_dialog(d: &Device, accept: bool) -> mpsc::Receiver<AskHandoff> {
+    let (tx, asked) = mpsc::channel();
+    d.world
+        .serve("system.sysdialog", "sysdialog", move |request| {
+            if let Ok(question) = request.decode::<AskHandoff>() {
+                let _ = tx.send(question);
+                let _ = request.reply(&HandoffDecision { accept });
+            }
+        });
+    asked
+}
+
+#[test]
+fn the_system_dialog_asks_and_its_answer_decides() {
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshd-b", "Desk", port_b, None);
+    let a = device("meshd-a", "Phone", port_a, Some(port_b));
+    let asked = system_dialog(&b, true);
+    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    // The person is asked in the trusted dialog with everything it shows.
+    let question = asked.recv_timeout(WAIT).unwrap();
+    assert_eq!(question.from_name, "Phone");
+    assert_eq!(question.title, "letter.txt");
+    assert_eq!(question.app, "editor");
+    assert_eq!(question.size, Some(300_000));
+    assert_eq!(question.stage, Stage::State);
+    // Accepted there: the launcher opens it, the sender learns it.
+    let start = b.started.recv_timeout(WAIT).unwrap();
+    assert_eq!(start.app, "editor");
+    let mut seen = Vec::new();
+    assert!(wait_until(WAIT, || {
+        while let Ok(Some(p)) = progress_a.try_recv() {
+            seen.push(p.state);
+        }
+        seen.contains(&OfferState::Opened)
+    }));
+}
+
+#[test]
+fn a_no_in_the_system_dialog_keeps_everything_out() {
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshn-b", "Desk", port_b, None);
+    let a = device("meshn-a", "Phone", port_a, Some(port_b));
+    let asked = system_dialog(&b, false);
+    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    asked.recv_timeout(WAIT).unwrap();
+    let mut seen = Vec::new();
+    assert!(wait_until(WAIT, || {
+        while let Ok(Some(p)) = progress_a.try_recv() {
+            seen.push(p.state);
+        }
+        seen.contains(&OfferState::Declined)
+    }));
+    assert!(b.started.try_recv().is_err(), "nothing was opened");
+    let inbox = b.world.subdir("inbox");
+    assert_eq!(
+        std::fs::read_dir(inbox).unwrap().count(),
+        0,
+        "nothing was stored"
+    );
 }

@@ -25,13 +25,13 @@ pub fn frame_title(d: &Dialogs, tr: &Translator) -> String {
     match d.current().map(|e| &e.question) {
         Some(Question::Permission(p)) => p.app_name.clone(),
         Some(Question::Authenticate(a)) => a.app_name.clone(),
-        Some(Question::Keep { .. } | Question::BtPair(_)) | None => {
+        Some(Question::Keep { .. } | Question::BtPair(_) | Question::Handoff(_)) | None => {
             tr.t("dialog.system").into_owned()
         }
     }
 }
 
-fn texts(view: &mut View, title: Label, text: Label) -> Result<(), UiError> {
+pub(super) fn texts(view: &mut View, title: Label, text: Label) -> Result<(), UiError> {
     let root = view.ui.root();
     let heading = TextSpec::new(TypeSize::S16).weight(Weight::Semibold);
     view.ui.add(root, Text::new(title).spec(heading))?;
@@ -40,7 +40,7 @@ fn texts(view: &mut View, title: Label, text: Label) -> Result<(), UiError> {
     Ok(())
 }
 
-fn button(
+pub(super) fn button(
     view: &mut View,
     row: NodeId,
     key: &str,
@@ -168,6 +168,7 @@ pub fn build(
     let focus = match &entry.question {
         Question::Permission(p) => permission(&mut view, root, p, tr)?,
         Question::BtPair(p) => bt_pair(&mut view, root, p)?,
+        Question::Handoff(p) => super::handoff::handoff(&mut view, root, p, tr)?,
         Question::Authenticate(a) => auth(&mut view, d, a, now_ms, tr)?,
         Question::Keep { value, .. } => keep(
             &mut view,

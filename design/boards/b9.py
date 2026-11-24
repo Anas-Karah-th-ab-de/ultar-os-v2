@@ -24,14 +24,14 @@ def mesh_page():
     inbox = row(L('مجلد الاستلام', 'Folder for received files'), L('تُحفظ فيه الملفات بعد قبولك', 'Files are stored here after you accept'), button(L('تغيير', 'Change'), 'mesh.inbox', name=L('تغيير مجلد الاستلام', 'Change the folder for received files')), last=True, icon='folder')
     def more(name):
         return ibtn(L('الصلاحيات: ', 'Rights: ') + name, 'forward', 'mesh.device')
-    paired = card(cardhead(L('أجهزتي المقترنة', 'My paired devices'), L('اقترنت مرة واحدة برمز من ستة أرقام', 'Paired once with a six-digit code'), button(L('اقتران جهاز', 'Pair a device'), 'mesh.pair', 'primary', icon='plus'))
+    paired = card(cardhead(L('أجهزتي المقترنة', 'My paired devices'), L('أُقرنت مرة واحدة برمز من ستة أرقام', 'Paired once with a six-digit code'), button(L('إقران جهاز', 'Pair a device'), 'mesh.pair', 'primary', icon='plus'))
         + '<ul role="list">'
         + peer('phone', 'KM One', L('هاتف · متصل الآن · في الشبكة المحلية', 'Phone · connected · local network'), badge(L('متصل', 'Connected'), 'ok', 'check') + more('KM One'))
         + peer('server', 'beelink', L('خادم · متصل الآن · عبر الإنترنت', 'Server · connected · over the internet'), badge(L('متصل', 'Connected'), 'ok', 'check') + more('beelink'))
         + peer('monitor', 'ultar-office', L('حاسوب مكتبي · غير متصل · آخر ظهور 20 تشرين الثاني', 'Desktop · not connected · last seen 20 Nov'), badge(L('غير متصل', 'Not connected'), 'mute', 'offline') + more('ultar-office'), True)
         + '</ul>')
-    near = card(cardhead(L('أجهزة قريبة غير مقترنة', 'Nearby devices, not paired'), L('تراها لأن الترابط مفعَّل عليها. لا تستطيع شيئاً قبل الاقتران.', 'You see them because Mesh is on there. They can do nothing before pairing.'))
-        + '<ul role="list">' + peer('device', 'lab-board', L('لوحة تطوير', 'Development board'), button(L('اقتران', 'Pair'), 'mesh.near.pair', name=L('اقتران مع lab-board', 'Pair with lab-board')), True) + '</ul>')
+    near = card(cardhead(L('أجهزة قريبة غير مقترنة', 'Nearby devices, not paired'), L('تراها لأن الترابط مفعَّل عليها. لا تستطيع شيئاً قبل الإقران.', 'You see them because Mesh is on there. They can do nothing before pairing.'))
+        + '<ul role="list">' + peer('device', 'lab-board', L('لوحة تطوير', 'Development board'), button(L('إقران', 'Pair'), 'mesh.near.pair', name=L('إقران مع lab-board', 'Pair with lab-board')), True) + '</ul>')
     return h1(L('الترابط', 'Mesh')) + card(on + this + inbox) + f'<div style="display: flex; gap: {s4}; align-items: flex-start"><div style="flex: 1; min-width: 0">{paired}</div><div style="width: {g(100)}; flex: none">{near}</div></div>'
 
 begin('SettingsMesh.dc.html')
@@ -41,15 +41,15 @@ out('Ultar OS – Mesh', W, H, settings('mesh', mesh_page()), 'Einstellungen · 
 
 # ---------- pairing ----------
 begin('MeshPairShow.dc.html')
-code = (f'<div role="group" aria-label="رمز الاقتران" style="display: flex; flex-direction: column; align-items: center; gap: {s2}; padding: {s4} 0">'
+code = (f'<div role="group" aria-label="رمز الإقران" style="display: flex; flex-direction: column; align-items: center; gap: {s2}; padding: {s4} 0">'
         f'<div style="font-family: {FF_MONO}; font-size: {f32}; font-weight: {w7}">{ltr("482 913")}</div>'
         f'<div role="timer" style="display: flex; align-items: center; gap: {s2}; font-size: {f12}; color: {t.mute}">{ic("clock", True)}<span>{tx("صالح لمدة")}</span>{mono("04:32")}</div></div>')
-show = dialog('رمز الاقتران', 'اكتب هذا الرمز على الجهاز الآخر: الإعدادات ← الترابط ← اقتران جهاز. يُقبل خمس محاولات فقط.', button('إلغاء', 'mesh.pair.cancel', name='إلغاء الاقتران الجاري'), live=code)
-out('Ultar OS – الترابط: رمز الاقتران', W, H, settings('mesh', mesh_page(), overlay=show), 'Verbund · Koppeln: dieses Gerät zeigt den Code (5 min, 5 Versuche)', 9)
+show = dialog('رمز الإقران', 'اكتب هذا الرمز على الجهاز الآخر: الإعدادات ← الترابط ← إقران جهاز. يُقبل خمس محاولات فقط.', button('إلغاء', 'mesh.pair.cancel', name='إلغاء الإقران الجاري'), live=code)
+out('Ultar OS – الترابط: رمز الإقران', W, H, settings('mesh', mesh_page(), overlay=show), 'Verbund · Koppeln: dieses Gerät zeigt den Code (5 min, 5 Versuche)', 9)
 
 begin('MeshPairJoin.dc.html')
 entry = f'<div style="padding: {s2} 0">{field("الرمز المعروض على lab-board", "mesh.pair.code", value="482 91", hint="ستة أرقام", direction="ltr", error="الرمز غير صحيح. بقيت 4 محاولات.")}</div>'
-join = dialog('الاقتران مع lab-board', 'على الجهاز الآخر: الإعدادات ← الترابط ← اقتران جهاز ← إظهار الرمز.', button('إلغاء', 'mesh.pair.cancel', name='إلغاء الاقتران الجاري') + button('اقتران', 'mesh.pair.join', 'primary'), live=entry)
+join = dialog('الإقران مع lab-board', 'على الجهاز الآخر: الإعدادات ← الترابط ← إقران جهاز ← إظهار الرمز.', button('إلغاء', 'mesh.pair.cancel', name='إلغاء الإقران الجاري') + button('إقران', 'mesh.pair.join', 'primary'), live=entry)
 out('Ultar OS – الترابط: إدخال الرمز', W, H, settings('mesh', mesh_page(), overlay=join), 'Verbund · Koppeln: Code des anderen Geräts eingeben (Fehlerzustand: falscher Code)', 9)
 
 # ---------- one paired device ----------
@@ -59,8 +59,8 @@ who = card(f'<div style="padding: {s4}; display: flex; align-items: center; gap:
 RIGHTS = [('عرض متابعة العمل', 'يعرض عليك ما تعمل عليه هناك لتكمله هنا · تُسأل في كل مرة', True), ('إرسال الملفات', 'تُسأل قبل استلام أي ملف', True),
           ('مشاركة الحافظة', 'النصوص المنسوخة · كلمات المرور لا تُرسل أبداً', True), ('رؤية شاشة هذا الجهاز', 'يظهر تنبيه ما دامت الشاشة معروضة', False),
           ('التحكّم بهذا الجهاز', 'الفأرة ولوحة المفاتيح عن بُعد', False), ('الصوت', 'التشغيل والتسجيل على هذا الجهاز', False), ('استعمال القدرة الحاسوبية', 'برامج مجلد المهامّ فقط', False)]
-rights = card(cardhead('ما يُسمح به لـ KM One على هذا الجهاز', 'الثلاثة الأولى تُمنح عند الاقتران، والباقي بيدك') + ''.join(row(a, b, switch(on, a, 'mesh.right'), last=(n == len(RIGHTS) - 1)) for n, (a, b, on) in enumerate(RIGHTS)))
-forget = card(f'<div style="padding: {s4}; display: flex; align-items: center; gap: {s4}"><div style="flex: 1">{h2("إلغاء الاقتران")}{sub("ينسى هذا الجهاز KM One. للعودة يلزم رمز جديد.")}</div>{button("إلغاء الاقتران", "mesh.unpair", "danger", icon="trash", name="إلغاء الاقتران مع KM One")}</div>')
+rights = card(cardhead('ما يُسمح به لـ KM One على هذا الجهاز', 'الثلاثة الأولى تُمنح عند الإقران، والباقي بيدك') + ''.join(row(a, b, switch(on, a, 'mesh.right'), last=(n == len(RIGHTS) - 1)) for n, (a, b, on) in enumerate(RIGHTS)))
+forget = card(f'<div style="padding: {s4}; display: flex; align-items: center; gap: {s4}"><div style="flex: 1">{h2("إلغاء الإقران")}{sub("ينسى هذا الجهاز KM One. للعودة يلزم رمز جديد.")}</div>{button("إلغاء الإقران", "mesh.unpair", "danger", icon="trash", name="إلغاء الإقران مع KM One")}</div>')
 out('Ultar OS – الترابط: KM One', W, H, settings('mesh', crumb + f'<div style="display: flex; gap: {s4}; align-items: flex-start"><div style="flex: 1; min-width: 0">{rights}</div><div style="width: {g(100)}; flex: none; display: flex; flex-direction: column; gap: {s4}">{who}{forget}</div></div>'), 'Verbund · ein gekoppeltes Gerät: Rechte je Gerät, Entkoppeln', 9)
 
 # ---------- the question on the receiving device ----------
@@ -69,10 +69,10 @@ def what(icon, title, text):
 def system_line(text):
     return f'<div style="display: flex; align-items: center; gap: {s2}; font-size: {f12}; color: {t.mute}">{ic("lock", True)}<span>{tx(text)}</span></div>'
 begin('MeshIncoming.dc.html')
-asked = (what('kind-text', 'notes.txt', 'محرر النصوص · 1.2 MB · يُفتح عند السطر نفسه')
+asked = (what('kind-text', 'notes.txt', 'محرر النصوص · 1.2 MB · يُفتح في الموضع نفسه')
          + f'<div style="display: flex; gap: {s2}">{badge("جهاز مقترن", "ok", "check")}{badge("مشفّر من طرف إلى طرف", "ok", "secure")}</div>'
-         + system_line('سؤال من النظام · يُرفض تلقائياً بعد 60 ثانية · لا يُحفظ ولا يُفتح شيء قبل قبولك'))
-question = dialog('متابعة من KM One؟', 'يريد هاتفك KM One أن تكمل هنا ما كنت تعمل عليه هناك.', button('رفض', 'mesh.decline') + button('قبول', 'mesh.accept', 'primary', icon='check'), live=asked)
+         + system_line('سؤال من النظام · يُرفض تلقائياً إن لم تُجب خلال دقيقة'))
+question = dialog('متابعة من KM One؟', 'يريد جهازك KM One أن تكمل هنا ما كنت تعمل عليه هناك. لا يُحفظ ولا يُفتح شيء قبل قبولك.', button('رفض', 'mesh.decline') + button('قبول', 'mesh.accept', 'primary', icon='check'), live=asked)
 out('Ultar OS – الترابط: سؤال الاستلام', W, H, files_window(60, 24) + desk_icons(6) + bottombar(running=(('files', 1),), active='files') + question, 'Verbund · Zielgerät fragt immer nach (Systemdialog, 60 s, sonst abgelehnt)', 10)
 
 # ---------- the choice on the sending device ----------
@@ -81,7 +81,7 @@ def target(icon, name, text, chosen=False, state=''):
     return (f'<button role="radio" aria-checked="{"true" if chosen else "false"}"{act("mesh.send.target", name)}{" aria-disabled=\"true\"" if off else ""}{"" if chosen else " tabindex=\"-1\""} style="width: 100%; min-height: {ROW_MIN}; padding: {s2} {s3}; box-sizing: border-box; border-radius: {r_ctl}; background: {t.hover if chosen else "transparent"}; border: {RING if chosen else HAIR} solid {t.acctext if chosen else t.ctl}; display: flex; align-items: center; gap: {s3}; {state_extra(state)}">'
             f'<span style="display: inline-flex; color: {t.mute}">{ic(icon)}</span><span style="flex: 1; min-width: 0; display: block; text-align: start"><span style="display: block; font-weight: {w6}">{tx(name)}</span><span style="display: block; font-size: {f12}; color: {t.mute}">{tx(text)}</span></span>{ic("check", True) if chosen else ""}</button>')
 def targets():
-    return radiogroup('الجهاز المستلِم', target('phone', 'KM One', 'محرر النصوص مثبَّت هناك · يُفتح عند السطر نفسه', True) + target('server', 'beelink', 'لا يوجد محرر النصوص هناك · يُرسل الملف فقط')
+    return radiogroup('الجهاز المستلِم', target('phone', 'KM One', 'محرر النصوص مثبَّت هناك · يُفتح في الموضع نفسه', True) + target('server', 'beelink', 'لا يوجد محرر النصوص هناك · يُرسل الملف فقط')
                       + target('monitor', 'ultar-office', 'غير متصل الآن', state='disabled'), column=True)
 begin('MeshSend.dc.html')
 choose = dialog('المتابعة على جهاز آخر', 'أكثر من جهاز يستطيع استلام «notes.txt». اختر واحداً، وسيُسأل صاحبه هناك قبل الفتح.', button('إلغاء', 'mesh.send.cancel', name='إلغاء المتابعة على جهاز آخر') + button('إرسال', 'mesh.send', 'primary', icon='mesh'), live=targets())
@@ -97,7 +97,7 @@ def spanel(caption, body):
     return f'<section aria-label="{plain(caption)}" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: {s3}"><div style="font-size: {f12}; color: {t.mute}">{tx(caption)}</div>{body}</section>'
 begin('MeshStates.dc.html')
 off = card(row('الترابط', 'مُطفأ: لا منفذ مفتوح، ولا يراك أي جهاز.', switch(False, 'الترابط', 'mesh.toggle'), last=True, icon='mesh'))
-none = card(empty('mesh', 'لا أجهزة مقترنة بعد', 'شغّل الترابط على جهازك الآخر، ثم اقترن به برمز من ستة أرقام.', button('اقتران جهاز', 'mesh.pair', 'primary', icon='plus')))
+none = card(empty('mesh', 'لا أجهزة مقترنة بعد', 'شغّل الترابط على جهازك الآخر، ثم أقرِنه برمز من ستة أرقام.', button('إقران جهاز', 'mesh.pair', 'primary', icon='plus')))
 p1 = spanel('مُطفأ', off) + spanel('مفعَّل بلا أجهزة', none)
 toasts = (mtoast('info', 'ring', 'بانتظار القبول على KM One…', 'إلغاء', 'mesh.offer.cancel') + mtoast('ok', 'check', 'فُتح «notes.txt» على KM One.')
           + mtoast('warn', 'warning', 'رفض KM One المتابعة.') + mtoast('warn', 'clock', 'لم يُجب أحد على KM One خلال دقيقة.', 'إعادة المحاولة', 'mesh.retry')
@@ -119,12 +119,12 @@ def editor_behind():
     return apptitle('notes.txt', 'mesh.back') + f'<div aria-hidden="true" style="display: flex; flex-direction: column; gap: {s3}">{lines}</div>'
 
 begin('CompactMeshSend.dc.html')
-ctargets = radiogroup('الجهاز المستلِم', target('device', 'ultar-pc', 'محرر النصوص مثبَّت هناك · يُفتح عند السطر نفسه', True) + target('server', 'beelink', 'يُرسل الملف فقط'), column=True)
+ctargets = radiogroup('الجهاز المستلِم', target('device', 'ultar-pc', 'محرر النصوص مثبَّت هناك · يُفتح في الموضع نفسه', True) + target('server', 'beelink', 'يُرسل الملف فقط'), column=True)
 send_sheet = bottom_sheet('المتابعة على جهاز آخر', h2('المتابعة على جهاز آخر', f20) + sub('اضغط مطوّلاً ثم اسحب للأعلى لفتح هذه القائمة. يُسأل صاحب الجهاز هناك قبل الفتح.') + ctargets + big('إرسال', 'mesh.send', 'primary', icon='mesh') + big('إلغاء', 'mesh.send.cancel', name='إلغاء المتابعة على جهاز آخر'))
 out('Ultar OS – الهاتف: المتابعة على جهاز آخر', PW, PH, statusbar() + screen(editor_behind()) + gesturebar() + send_sheet, 'Kompakt · Weitergeben: lange drücken + nach oben wischen → Ziel wählen', 11)
 
 begin('CompactMeshIncoming.dc.html')
-casked = (what('kind-text', 'notes.txt', 'محرر النصوص · 1.2 MB · عند السطر نفسه')
-          + f'<div style="display: flex; flex-wrap: wrap; gap: {s2}">{badge("جهاز مقترن", "ok", "check")}{badge("مشفّر من طرف إلى طرف", "ok", "secure")}</div>' + system_line('سؤال من النظام · يُرفض تلقائياً بعد 60 ثانية'))
-ask_sheet = bottom_sheet('متابعة من ultar-pc؟', h2('متابعة من ultar-pc؟', f20) + sub('يريد حاسوبك ultar-pc أن تكمل هنا ما كنت تعمل عليه هناك.') + casked + big('قبول', 'mesh.accept', 'primary', icon='check') + big('رفض', 'mesh.decline'))
+casked = (what('kind-text', 'notes.txt', 'محرر النصوص · 1.2 MB · في الموضع نفسه')
+          + f'<div style="display: flex; flex-wrap: wrap; gap: {s2}">{badge("جهاز مقترن", "ok", "check")}{badge("مشفّر من طرف إلى طرف", "ok", "secure")}</div>' + system_line('سؤال من النظام · يُرفض تلقائياً إن لم تُجب خلال دقيقة'))
+ask_sheet = bottom_sheet('متابعة من ultar-pc؟', h2('متابعة من ultar-pc؟', f20) + sub('يريد جهازك ultar-pc أن تكمل هنا ما كنت تعمل عليه هناك. لا يُحفظ ولا يُفتح شيء قبل قبولك.') + casked + big('قبول', 'mesh.accept', 'primary', icon='check') + big('رفض', 'mesh.decline'))
 out('Ultar OS – الهاتف: سؤال الاستلام', PW, PH, statusbar() + screen(apptitle('الشاشة الرئيسية')) + gesturebar() + ask_sheet, 'Kompakt · Zielgerät fragt nach (Blatt von unten, Systemfrage)', 11)

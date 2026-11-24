@@ -1604,11 +1604,11 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 1 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
 | 2 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
 | 3 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
-| 4 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 4 | إقران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
 | 5 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 6 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 7 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
-| 8 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 8 | إقران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
 | 9 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
 | 10 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
 | 11 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
@@ -1699,15 +1699,15 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 
 | # | Element (accessible name) | Action | What it does | Ref |
 |---|---|---|---|---|
-| 1 | إلغاء الاقتران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
+| 1 | إلغاء الإقران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
 | 2 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
 | 3 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
 | 4 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
-| 5 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 5 | إقران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
 | 6 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 7 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 8 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
-| 9 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 9 | إقران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
 | 10 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
 | 11 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
 | 12 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
@@ -1750,16 +1750,16 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | # | Element (accessible name) | Action | What it does | Ref |
 |---|---|---|---|---|
 | 1 | الرمز المعروض على lab-board | `mesh.pair.code` | The code field: digits only, six of them; a wrong code shows the error text below the field with the attempts left. | NEW |
-| 2 | إلغاء الاقتران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
-| 3 | اقتران | `mesh.pair.join` | Sends the typed code (mesh.pair_join). Right: the dialog closes and the device appears under "My paired devices". Wrong: the field shows the error and keeps the focus. | NEW |
+| 2 | إلغاء الإقران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
+| 3 | إقران | `mesh.pair.join` | Sends the typed code (mesh.pair_join). Right: the dialog closes and the device appears under "My paired devices". Wrong: the field shows the error and keeps the focus. | NEW |
 | 4 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
 | 5 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
 | 6 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
-| 7 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 7 | إقران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
 | 8 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 9 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
 | 10 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
-| 11 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 11 | إقران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
 | 12 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
 | 13 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
 | 14 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
@@ -1809,7 +1809,7 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 6 | التحكّم بهذا الجهاز | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
 | 7 | الصوت | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
 | 8 | استعمال القدرة الحاسوبية | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
-| 9 | إلغاء الاقتران مع KM One | `mesh.unpair` | Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back. | NEW |
+| 9 | إلغاء الإقران مع KM One | `mesh.unpair` | Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back. | NEW |
 | 10 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
 | 11 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
 | 12 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
@@ -1943,7 +1943,7 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | # | Element (accessible name) | Action | What it does | Ref |
 |---|---|---|---|---|
 | 1 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
-| 2 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 2 | إقران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
 | 3 | إلغاء | `mesh.offer.cancel` | Takes the offer back; the question on the other device disappears. | NEW |
 | 4 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
 | 5 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
