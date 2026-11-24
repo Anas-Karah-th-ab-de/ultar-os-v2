@@ -210,11 +210,12 @@ impl State {
         }
     }
 
-    /// The frame of a window that has no content yet: the usual share of the work area, no
-    /// smaller than the least size the app asked for (and never larger than the work area),
-    /// centred and cascaded. Called when the toplevel is created and again when the app
-    /// states its size limits before its first frame: a window opens large enough for what
-    /// the app says it needs instead of cutting it off.
+    /// The frame of a window that has no content yet: the usual share of the work area, its
+    /// content no smaller than the least size the app asked for (and the frame never larger
+    /// than the work area), centred and cascaded. Called when the toplevel is created and
+    /// again when the app states its size limits or takes over its header before its first
+    /// frame: a window opens large enough for what the app says it needs instead of cutting
+    /// it off. A window that draws its own header has the title bar's room in its content.
     pub(super) fn place_unmapped(&mut self, key: SurfaceKey) {
         let Some(i) = self.window_index(key) else {
             return;
@@ -223,14 +224,14 @@ impl State {
         if w.mapped || w.state != WindowState::Normal || w.snap.is_some() || w.place.bare {
             return;
         }
-        let secure = w.secure;
+        let (secure, own) = (w.secure, if w.decorated() { 0 } else { TITLEBAR });
         let Some(output) = self.layout.primary().map(|o| o.id) else {
             return;
         };
         let work = self.work_area(output);
         let size = (
             work.w * NEW_WINDOW_SHARE.0 / NEW_WINDOW_SHARE.1,
-            (work.h - TITLEBAR) * NEW_WINDOW_SHARE.0 / NEW_WINDOW_SHARE.1,
+            (work.h - TITLEBAR) * NEW_WINDOW_SHARE.0 / NEW_WINDOW_SHARE.1 + own,
         );
         let limits = self.surface(key).map(|s| s.limits).unwrap_or_default();
         let (w, h) = wm::clamp_size(size.0, size.1, limits.min, limits.max, work);
@@ -243,11 +244,8 @@ impl State {
                 fh,
             )
         } else {
-            wm::place_new(work, w, h, TITLEBAR, i)
+            wm::place_new(work, w, h - own, TITLEBAR, i)
         };
-        if self.windows[i].frame == frame && self.windows[i].pending.is_some() {
-            return;
-        }
         self.windows[i].pending = None;
         self.windows[i].frame = frame;
         self.windows[i].restore = frame;

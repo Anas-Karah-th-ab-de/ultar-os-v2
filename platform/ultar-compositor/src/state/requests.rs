@@ -71,12 +71,16 @@ impl State {
             Request::SetSizeLimits { surface, min, max } => {
                 let key = self.own_surface(client, surface)?;
                 let clamp = |(w, h): (u32, u32)| (w.min(MAX_SIDE), h.min(MAX_SIDE));
+                let before = self.surface(key).map(|s| s.limits).unwrap_or_default();
                 if let Some(s) = self.surface_mut(key) {
                     s.limits.min = clamp(min);
                     s.limits.max = clamp(max);
                 }
                 // Stated before the first frame: the window opens within them.
-                self.place_unmapped(key);
+                let unchanged = self.surface(key).is_some_and(|s| s.limits == before);
+                if !unchanged {
+                    self.place_unmapped(key);
+                }
                 Ok(())
             }
             other => self.apply_buffers(client, other),
@@ -498,8 +502,14 @@ impl State {
         self.windows[index].title.client_drawn = on;
         self.windows[index].title.cache = None;
         self.damage_logical(area);
-        let frame = self.windows[index].frame;
-        self.configure_window(index, frame);
+        // Before its first frame the window is placed again (its least size is its content's,
+        // which now has the title bar's room); a shown window keeps its frame.
+        self.windows[index].pending = None;
+        self.place_unmapped(key);
+        if self.windows[index].pending.is_none() {
+            let frame = self.windows[index].frame;
+            self.configure_window(index, frame);
+        }
         Ok(())
     }
 }

@@ -5,7 +5,9 @@
 mod common;
 
 use common::*;
-use ultar_surface::proto::{Request, Role, SurfaceId};
+use std::os::unix::net::UnixStream;
+use ultar_compositor::{Config, RightsTable};
+use ultar_surface::proto::{Request, Rights, Role, SurfaceId};
 
 fn open(screen: (u32, u32), min: (u32, u32)) -> (u32, u32) {
     let mut comp = compositor(test_config(), &[screen]);
@@ -76,4 +78,65 @@ fn limits_stated_after_the_first_frame_do_not_resize_the_window() {
     a.pump(&mut comp);
     assert_eq!(comp.state.windows[0].frame, before);
     assert!(a.last_configure(s).is_none(), "no new configure");
+}
+
+/// A client that may draw its own header (the phone).
+fn own_header_config() -> Config {
+    let (a, _b) = UnixStream::pair().unwrap();
+    let mut table = RightsTable::default();
+    table.grant(
+        ultar_compositor::server::peer_of(&a).uid,
+        Rights::CLIENT_HEADER,
+    );
+    Config {
+        rights: table,
+        ..test_config()
+    }
+}
+
+#[test]
+fn a_window_with_its_own_header_opens_with_its_least_size_as_content() {
+    for (min, header_first) in [((800, 700), false), ((800, 700), true), ((0, 0), false)] {
+        let mut comp = compositor(own_header_config(), &[(1280, 800)]);
+        let mut a = Peer::hello(&mut comp);
+        let s = SurfaceId(1);
+        a.send(&Request::CreateSurface {
+            surface: s,
+            role: Role::Toplevel,
+        });
+        let limits = Request::SetSizeLimits {
+            surface: s,
+            min,
+            max: (0, 0),
+        };
+        let header = Request::ClientHeader {
+            surface: s,
+            on: true,
+        };
+        if header_first {
+            a.send(&header);
+            a.send(&limits);
+        } else {
+            a.send(&limits);
+            a.send(&header);
+        }
+        a.pump(&mut comp);
+        assert!(a.error().is_none());
+        a.draw(&mut comp, s, 0x336699);
+        a.pump(&mut comp);
+        let w = &comp.state.windows[0];
+        assert!(w.mapped && w.content() == w.frame, "no title bar");
+        let (cw, ch) = (w.content().w, w.content().h);
+        if min == (0, 0) {
+            // The usual share, with the title bar's room in the content.
+            assert_eq!(cw, 1280 * 3 / 5);
+            assert!(ch > 400 && ch < 520, "{ch}");
+        } else {
+            // Exactly what the app needs: not a title bar higher.
+            assert_eq!((cw, ch), (800, 700), "header first: {header_first}");
+        }
+        // Centred in the work area.
+        assert_eq!(w.frame.x, (1280 - cw) / 2);
+        assert_eq!(w.frame.y, (800 - ch) / 2);
+    }
 }

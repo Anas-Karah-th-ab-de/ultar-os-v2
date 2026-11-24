@@ -125,9 +125,15 @@ def knobs(screen, h):
     return [(xs[len(xs) // 2], ys[len(ys) // 2]) for xs, ys in out if len(ys) >= 6]
 
 
+def park(vm):
+    """The pointer off the windows (no hover) and off the work area (its picture is in the screen
+    shots): the bar's corner at the end, where the bar has nothing."""
+    vm.move(vm.size[0] - 2, vm.size[1] - 2)
+
+
 def window_frame(vm, name, before):
     """What a window changed of the work area: its frame with its shadow, (x0, y0, x1, y1), or None."""
-    vm.move(vm.size[0] - 2, 2)  # the pointer off the window (no hover)
+    park(vm)
     vm.pump(1)
     return changed_box(vm.shot(name), before, work(vm))
 
@@ -167,7 +173,7 @@ def clipboard(vm, m, pos):
     vm.pump(1)
     vm.type("ultar")
     vm.pump(1)
-    vm.move(w - 2, 2)
+    park(vm)
     vm.pump(0.5)
     typed = vm.shot("clip-typed")
     in_field = changed_px(typed, clear, field)
@@ -193,7 +199,7 @@ def clipboard(vm, m, pos):
     files = (frame[0] + dx, frame[1] + dy, frame[2] + dx, frame[3] + dy)
     at, bar = files_field(files)
     vm.click(*at)
-    vm.move(w - 2, 2)
+    park(vm)
     vm.pump(1)
     before = vm.shot("clip-before-paste")
     vm.key("ctrl+v")
@@ -254,7 +260,7 @@ def phone_responds(vm, opened_after, before):
     problems = []
     if opened_after > 10:
         problems.append(f"phone: the window took {opened_after:.1f} s to open")
-    vm.move(vm.size[0] - 2, 2)  # the pointer off the window (no hover)
+    park(vm)
     vm.pump(1)
     shot = vm.shot("phone-open")
     frame = changed_box(shot, before, work(vm))
@@ -263,7 +269,7 @@ def phone_responds(vm, opened_after, before):
         return problems + ["phone: no window found"]
     x0, y0, x1, y1 = frame
     vm.click((x0 + x1) // 2, y0 + 18)  # the title (drawn by the app: ClientHeader)
-    vm.move(vm.size[0] - 2, 2)
+    park(vm)
     vm.pump(1)
     for n in (1, 2):
         start = vm.shot(f"phone-tab{n}-before")
@@ -273,10 +279,34 @@ def phone_responds(vm, opened_after, before):
         if took is None:
             problems.append(f"phone: no answer to Tab {n} within 2 s (window frozen)")
             break
+    problems += phone_key_click(vm, frame)
     problems += phone_pad_whole(vm, frame)
     if not problems:
         problems += phone_small_window(vm, before)
     return problems
+
+
+def phone_key_click(vm, frame):
+    """A click with the pointer on a key of the dial pad types its digit into the number field (the
+    window took the pointer's position 256 times too far out: no click reached a key). The keys are
+    counted from the top corner at the end of the window's frame (Arabic: the pad's column is the
+    right one, 400 points wide; the middle key of the first rows), the number field is above them."""
+    x0, y0, x1, y1 = frame
+    number = (x1 - 422, y0 + 180, x1 - 22, y0 + 342)
+    before = vm.shot("phone-click-before")
+    typed = 0
+    for dy in (365, 420, 392):
+        for _ in range(2):
+            vm.click(x1 - 222, y0 + dy)
+        park(vm)
+        vm.pump(1)
+        typed = changed_px(vm.shot("phone-click"), before, number)
+        if typed >= 40:
+            break
+    log(f"phone: clicks on a key at {(x1 - 222, y0 + dy)} changed {typed} pixels of the number field")
+    if typed < 40:
+        return ["phone: a click on a key of the dial pad types nothing"]
+    return []
 
 
 # Tab presses that walk the focus once through everything in the phone's window (header, history,
@@ -329,7 +359,7 @@ def phone_small_window(vm, desktop):
     vm.key("meta_l+left")
     vm.pump(1)
     vm.key("meta_l+up")
-    vm.move(w - 2, h // 2 + 80)
+    park(vm)
     vm.pump(2)
     small = vm.shot("phone-small")
     # the quarter at the top left; beside it the empty desktop shows again
@@ -342,11 +372,11 @@ def phone_small_window(vm, desktop):
     over = (w // 2 - 100, (h - 60) // 2 - 80)
     problems = []
     wheel(vm, *over)
-    vm.move(w - 2, h // 2 + 80)
+    park(vm)
     vm.pump(1)
     by_wheel = changed_px(vm.shot("phone-small-wheel"), small, top)
     wheel(vm, *over, down=False, n=8)
-    vm.move(w - 2, h // 2 + 80)
+    park(vm)
     vm.pump(1)
     back = vm.shot("phone-small-back")
     left = changed_px(back, small, top)

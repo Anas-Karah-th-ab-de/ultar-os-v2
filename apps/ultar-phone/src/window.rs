@@ -124,6 +124,18 @@ fn serial_of(event: &Event) -> Option<u32> {
     }
 }
 
+/// The toolkit's event for a compositor event. `pointer` is where the pointer is, in the
+/// toolkit's points: the compositor reports positions in fixed point with motion only, so
+/// buttons and the wheel act where the last motion was. (Kept as the raw fixed-point number
+/// it was 256 times too far out: no click and no wheel turn reached a key of the dial pad.)
+fn toolkit_event(event: &Event, pointer: &mut Point) -> Option<ultar_ui::event::Event> {
+    let translated = translate(event, *pointer)?;
+    if let ultar_ui::event::Event::PointerMove { pos } = &translated {
+        *pointer = *pos;
+    }
+    Some(translated)
+}
+
 impl<P: CallPort> PhoneWindow<P> {
     /// Opens the window on `client`; `host` must be the host given to `app`.
     pub fn open(
@@ -251,10 +263,7 @@ impl<P: CallPort> PhoneWindow<P> {
             self.configure(c)?;
             return Ok(None);
         }
-        if let Event::PointerEnter { x, y, .. } | Event::PointerMotion { x, y, .. } = event {
-            self.pointer = Point::new(*x as f32, *y as f32);
-        }
-        if let Some(ui_event) = translate(event, self.pointer) {
+        if let Some(ui_event) = toolkit_event(event, &mut self.pointer) {
             // A failed rebuild leaves the last tree on screen; the next event retries.
             let _ = self.app.handle(ui_event);
         }
@@ -405,5 +414,63 @@ impl<P: CallPort> PhoneWindow<P> {
             screen.present(&mut self.client, canvas.data(), size, &[])?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ultar_surface::proto::{SurfaceId, FIXED_ONE};
+    use ultar_ui::event::Event as UiEvent;
+
+    /// A click and a wheel turn act where the pointer is on the window (in points), not at
+    /// the fixed-point number of the compositor's motion event.
+    #[test]
+    fn buttons_and_the_wheel_act_where_the_pointer_is() {
+        let surface = SurfaceId(1);
+        let mut pointer = Point::new(0.0, 0.0);
+        let at = Point::new(412.0, 274.5);
+        let fixed = |v: f32| (v * FIXED_ONE as f32) as i32;
+        for motion in [
+            Event::PointerEnter {
+                surface,
+                x: fixed(at.x),
+                y: fixed(at.y),
+            },
+            Event::PointerMotion {
+                surface,
+                x: fixed(at.x),
+                y: fixed(at.y),
+            },
+        ] {
+            pointer = Point::new(0.0, 0.0);
+            assert_eq!(
+                toolkit_event(&motion, &mut pointer),
+                Some(UiEvent::PointerMove { pos: at })
+            );
+            assert_eq!(pointer, at);
+        }
+        let press = Event::PointerButton {
+            surface,
+            serial: 2,
+            button: 0x110,
+            pressed: true,
+        };
+        match toolkit_event(&press, &mut pointer) {
+            Some(UiEvent::PointerDown { pos, .. }) => assert_eq!(pos, at),
+            other => panic!("{other:?}"),
+        }
+        let wheel = Event::PointerAxis {
+            surface,
+            dx: 0,
+            dy: 48 * FIXED_ONE,
+        };
+        match toolkit_event(&wheel, &mut pointer) {
+            Some(UiEvent::Scroll { pos, lines }) => {
+                assert_eq!(pos, at);
+                assert!(lines > 0.0);
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }
