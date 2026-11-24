@@ -112,15 +112,35 @@ if [ -n "${MODULES:-}" ]; then
       echo "FEHLER: iwlwifi-Firmware-Verweise im Startabbild zeigen ins Leere" >&2; exit 1
     fi
   fi
-  # Intel AI Boost (ivpu) und NVIDIA-GSP/Nouveau-Firmware in das Startabbild übernehmen.
-  # Die Dateien stammen aus den signierten Distributionspaketen; Ultar erzeugt keine
-  # proprietäre Chip-Firmware und ersetzt keine NVIDIA-/Intel-Firmwaresignaturen.
-  for fwdir in intel/ice intel/vpu nvidia nouveau; do
-    if [ -d "$MODULES_DIR/lib/firmware/$fwdir" ]; then
-      mkdir -p "$STAGE/lib/firmware/$(dirname "$fwdir")"
-      cp -a "$MODULES_DIR/lib/firmware/$fwdir" "$STAGE/lib/firmware/$fwdir"
-    fi
-  done
+  # Intel AI Boost (ivpu) und NVIDIA-Turing-Firmware (nouveau) aus den signierten Distributionspaketen.
+  # Nur was die Zielchips anfordern: NVFW (Standard Turing tu10x/tu11x, z. B. Quadro RTX 4000 = tu104);
+  # der ganze nvidia/-Ordner wären ~100 MB mehr im Startabbild.
+  FW=$MODULES_DIR/lib/firmware
+  if printf '%s\n' "$MODULES" | grep -qw intel_vpu && [ -d "$FW/intel/vpu" ]; then
+    mkdir -p "$STAGE/lib/firmware/intel"; cp -a "$FW/intel/vpu" "$STAGE/lib/firmware/intel/"
+  fi
+  if printf '%s\n' "$MODULES" | grep -qw nouveau; then
+    for c in ${NVFW:-tu102 tu104 tu106 tu116 tu117}; do
+      if [ -d "$FW/nvidia/$c" ]; then mkdir -p "$STAGE/lib/firmware/nvidia"; cp -a "$FW/nvidia/$c" "$STAGE/lib/firmware/nvidia/"; fi
+    done
+  fi
+  # Verweise nachziehen (Turing verweist z. B. auf nvidia/gp102/acr), bis keiner mehr ins Leere zeigt
+  if [ -d "$STAGE/lib/firmware" ]; then
+    added=1
+    while [ "$added" = 1 ]; do
+      added=0
+      for l in $(find "$STAGE/lib/firmware" -xtype l); do
+        r=${l#"$STAGE"/lib/firmware/}
+        t=$(realpath -ms --relative-to="$FW" "$(dirname "$FW/$r")/$(readlink "$l")")
+        if { [ -e "$FW/$t" ] || [ -L "$FW/$t" ]; } && [ ! -e "$STAGE/lib/firmware/$t" ] && [ ! -L "$STAGE/lib/firmware/$t" ]; then
+          mkdir -p "$STAGE/lib/firmware/$(dirname "$t")"; cp -a "$FW/$t" "$STAGE/lib/firmware/$t"; added=1
+        fi
+      done
+    done
+  fi
+  if [ -d "$STAGE/lib/firmware" ] && [ -n "$(find "$STAGE/lib/firmware" -xtype l)" ]; then
+    echo "FEHLER: Firmware-Verweise im Startabbild zeigen ins Leere:" >&2; find "$STAGE/lib/firmware" -xtype l >&2; exit 1
+  fi
 fi
 # Benutzer und Gruppen aus rootfs/etc/ultar/ids.toml (feste Nummern der Dienste, Gruppe seat …)
 awk -v P="$STAGE/etc/passwd" -v G="$STAGE/etc/group" '
