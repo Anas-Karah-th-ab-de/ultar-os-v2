@@ -5,6 +5,9 @@
 # compositor runs with --allow-root (development only); every id may appear
 # once.
 #
-# Empty on purpose: the shell, lock screen and on-screen keyboard still run
-# as root inside ultar-shell. Each gets a line here when it runs as its own
-# user (see docs/integration/ultar-compositor.md, "Identities").
+# The desktop shell, the lock screen and the system dialogs run as their own
+# users (docs/integration/desktop-shell.md); the on-screen keyboard still runs
+# inside ultar-shell and gets a line when it has its own user.
+814 = "ui.lock-screen"
+815 = "ui.system-dialog"
+816 = "ui.shell"

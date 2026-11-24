@@ -1,0 +1,22 @@
+[package]
+name = "ultar-auth"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Authentication service of Ultar OS: user accounts with Argon2id hashes, password/PIN check with back-off (system services, area 4)"
+
+[lib]
+name = "ultar_auth"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-authd"
+path = "src/bin/ultar-authd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-i18n = { path = "../../core/ultar-i18n" }
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["getrandom"] }

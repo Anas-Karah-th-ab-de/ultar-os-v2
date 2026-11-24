@@ -18,6 +18,7 @@ mod nr {
     pub const GETSOCKOPT: usize = 55;
     pub const FCNTL: usize = 72;
     pub const PRCTL: usize = 157;
+    pub const UNSHARE: usize = 272;
     pub const SIGNALFD4: usize = 289;
 }
 
@@ -27,6 +28,7 @@ mod nr {
     pub const CLOSE: usize = 57;
     pub const SIGNALFD4: usize = 74;
     pub const RT_SIGPROCMASK: usize = 135;
+    pub const UNSHARE: usize = 97;
     pub const PRCTL: usize = 167;
     pub const GETSOCKOPT: usize = 209;
 }
@@ -294,4 +296,23 @@ pub fn ultar_rights() -> Result<u64, Errno> {
 pub fn ultar_drop_rights(mask: u64) -> Result<(), Errno> {
     // SAFETY: the option takes the mask as a plain integer, no pointer.
     check(unsafe { raw(nr::PRCTL, [PR_ULTAR_RIGHTS_DROP, mask as usize, 0, 0, 0]) }).map(|_| ())
+}
+
+/// `CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC | CLONE_NEWPID | CLONE_NEWNET`:
+/// the only flags [`unshare_namespaces`] passes on. Notably not
+/// `CLONE_FILES`, `CLONE_FS` or `CLONE_NEWUSER`.
+const NAMESPACE_FLAGS: usize = 0x0002_0000 | 0x0400_0000 | 0x0800_0000 | 0x2000_0000 | 0x4000_0000;
+
+/// `unshare(flags)` restricted to the namespace flags of
+/// [`NAMESPACE_FLAGS`]; any other bit is refused with `EINVAL` before the
+/// kernel is asked. (`rustix` marks its `unshare` unsafe because of
+/// `CLONE_FILES`, which this wrapper never passes.)
+pub fn unshare_namespaces(flags: usize) -> Result<(), Errno> {
+    if flags & !NAMESPACE_FLAGS != 0 || flags == 0 {
+        return Err(Errno::EINVAL);
+    }
+    // SAFETY: a single integer argument; only namespace flags (checked
+    // above), which change what the calling thread sees, never memory or
+    // the descriptor table of this process.
+    check(unsafe { raw(nr::UNSHARE, [flags, 0, 0, 0, 0]) }).map(|_| ())
 }

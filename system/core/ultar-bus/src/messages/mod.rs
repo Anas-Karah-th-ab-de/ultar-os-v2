@@ -16,18 +16,26 @@
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
+//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` | calls | – | `ultar-launcher` |
+//! | `auth.users` / `verify` / `set_secret` | calls | – | `ultar-authd` |
+//! | `sysdialog.permission` / `authenticate` | calls | – | `ultar-sysdialog` |
+//! | `lock.lock` | call | – | `ultar-lock` |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod auth;
 pub mod device_service;
 pub mod devices;
 pub mod init;
+pub mod launcher;
+pub mod lock;
 pub mod log;
 pub mod notify;
 pub mod power;
 pub mod settings;
 mod settings_ext;
 pub mod shell;
+pub mod sysdialog;
 
 #[cfg(test)]
 mod tests {
@@ -56,6 +64,20 @@ mod tests {
         check_call::<super::notify::Post>();
         check_call::<super::init::Status>();
         check_call::<super::init::Control>();
+        check_call::<super::launcher::List>();
+        check_call::<super::launcher::Start>();
+        check_call::<super::launcher::Stop>();
+        check_call::<super::launcher::Permissions>();
+        check_call::<super::launcher::Grant>();
+        check_call::<super::launcher::Revoke>();
+        check_call::<super::launcher::Install>();
+        check_call::<super::launcher::Uninstall>();
+        check_call::<super::auth::Users>();
+        check_call::<super::auth::Verify>();
+        check_call::<super::auth::SetSecret>();
+        check_call::<super::sysdialog::AskPermission>();
+        check_call::<super::sysdialog::Authenticate>();
+        check_call::<super::lock::Lock>();
         check_call::<super::settings::Get>();
         check_call::<super::settings::Set>();
         check_call::<super::settings::Reset>();

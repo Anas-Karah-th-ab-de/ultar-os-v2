@@ -278,6 +278,7 @@ impl Ui {
             }
             Widget::Button(_)
             | Widget::IconButton(_)
+            | Widget::Brick(_)
             | Widget::Switch(_)
             | Widget::Select(_)
             | Widget::ListItem(_) => {
@@ -313,7 +314,27 @@ impl Ui {
                 let towards_end = self.towards_end(key);
                 self.tree_key(id, key, towards_end, out)
             }
+            Widget::DayGrid(_) if plain => self.day_key(id, key, out),
             _ => false,
+        }
+    }
+
+    /// Arrows, Home and End move the selected day of a month grid.
+    fn day_key(&mut self, id: NodeId, key: Key, out: &mut Vec<Action>) -> bool {
+        let towards_end = self.towards_end(key);
+        let target = match &self.nodes[id.index()].widget {
+            Widget::DayGrid(grid) => grid.step(key, towards_end),
+            _ => None,
+        };
+        match target {
+            Some(day) => {
+                self.activate(id, Some(day), out);
+                true
+            }
+            None => matches!(
+                key,
+                Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown
+            ),
         }
     }
 

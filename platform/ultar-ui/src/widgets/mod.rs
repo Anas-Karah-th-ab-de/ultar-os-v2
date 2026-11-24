@@ -5,9 +5,14 @@
 
 mod arrangement;
 mod badge;
+mod brick;
+mod brick_art;
+mod brick_quick;
+mod brick_tile;
 mod button;
 mod checkbox;
 mod containers;
+mod day_grid;
 mod dialog;
 mod header_bar;
 mod info_bar;
@@ -33,9 +38,11 @@ mod tree;
 
 pub use arrangement::{ArrangedItem, Arrangement, MAX_ARRANGEMENT_ITEMS};
 pub use badge::Badge;
+pub use brick::{Brick, BrickKind, Picture};
 pub use button::{Button, ButtonVariant, IconButton};
 pub use checkbox::Checkbox;
 pub use containers::{BarEdge, Card, CardTone, Icon, Row, Text};
+pub use day_grid::{DayCell, DayGrid, MAX_DAY_CELLS, WEEK};
 pub use dialog::{Dialog, DialogKind};
 pub use header_bar::HeaderBar;
 pub use info_bar::{EmptyState, InfoBar};
@@ -164,6 +171,10 @@ pub enum Widget {
     QrCode(QrCode),
     /// Items the user drags into place on a canvas (display arrangement).
     Arrangement(Arrangement),
+    /// A brick of the desktop shell (bar tile, quick tile, clock …), operated like a button.
+    Brick(Brick),
+    /// The month grid of a calendar.
+    DayGrid(DayGrid),
 }
 
 macro_rules! widget_from {
@@ -203,7 +214,9 @@ widget_from!(
     Tree,
     HeaderBar,
     QrCode,
-    Arrangement
+    Arrangement,
+    Brick,
+    DayGrid
 );
 
 impl From<SearchField> for Widget {
@@ -231,7 +244,8 @@ impl Widget {
                 | Widget::Table(_)
                 | Widget::Tree(_)
                 | Widget::Arrangement(_)
-        )
+                | Widget::DayGrid(_)
+        ) || matches!(self, Widget::Brick(b) if !b.is_static())
     }
 
     /// `true` for widgets that can show a loading state.

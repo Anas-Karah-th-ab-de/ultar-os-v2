@@ -11,6 +11,7 @@ mod memory;
 mod outputs;
 mod requests;
 mod session;
+mod shell;
 mod text;
 mod transfer;
 mod windows;
@@ -18,6 +19,7 @@ mod windows;
 pub use input::PointerGrab;
 pub use layers::Placed;
 pub use session::{Grant, Session, INDICATOR_MS};
+pub use shell::ShellSession;
 pub use transfer::Transfers;
 pub use windows::Window;
 
@@ -133,6 +135,7 @@ pub struct Keyboard {
 struct Counters {
     client: ClientId,
     serial: u32,
+    window: u32,
 }
 
 /// The whole state.
@@ -189,6 +192,7 @@ impl State {
             counters: Counters {
                 client: 1,
                 serial: 0,
+                window: 0,
             },
             windows: Vec::new(),
             layers: Vec::new(),
@@ -217,6 +221,12 @@ impl State {
             .unwrap_or(KeyLayout::English)
     }
 
+    /// A fresh window id (never reused within the session).
+    pub(crate) fn next_window_id(&mut self) -> u32 {
+        self.counters.window = self.counters.window.wrapping_add(1).max(1);
+        self.counters.window
+    }
+
     /// A fresh serial.
     pub fn next_serial(&mut self) -> u32 {
         self.counters.serial = self.counters.serial.wrapping_add(1).max(1);
@@ -231,6 +241,7 @@ impl State {
     pub fn add_client(&mut self, conn: Conn) -> Option<ClientId> {
         let limits = self.config.limits;
         let uid = conn.peer.uid;
+        self.config.rights.refresh_apps();
         let rights = self.config.rights.rights_of(uid);
         let total = self.clients.len();
         let same = self
@@ -302,6 +313,7 @@ impl State {
         for info in infos {
             self.send(client, Event::Output(info));
         }
+        self.shell_welcome(client);
     }
 
     /// Removes a client and everything it owned. Safe at any time (a client

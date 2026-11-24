@@ -373,7 +373,9 @@ impl State {
     }
 
     fn press(&mut self, code: u16) {
-        let Some((key, part, _)) = self.hit_test(self.pointer.x, self.pointer.y) else {
+        let hit = self.hit_test(self.pointer.x, self.pointer.y);
+        self.shell_press(hit.map(|h| h.0));
+        let Some((key, part, _)) = hit else {
             return;
         };
         let on_top = self.windows.last().map(|w| w.key) == Some(key);

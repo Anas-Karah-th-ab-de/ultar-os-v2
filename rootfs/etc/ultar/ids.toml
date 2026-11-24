@@ -6,6 +6,7 @@
 # [users]: name = id; each user has its own group of the same name and id.
 # [groups]: groups that are nobody's own group: name = id.
 # [members]: supplementary members of a group (user names).
+# [ranges]: ids given out at run time, never listed one by one.
 
 [users]
 root = 0
@@ -13,8 +14,15 @@ busd = 801
 logd = 802
 settingsd = 803
 devd = 804
+launcher = 805
 llm = 810
 compositor = 811
+# Authentication (hashed passwords and PINs), lock screen, system dialogs and the
+# desktop shell (docs/integration/desktop-shell.md): one user each.
+authd = 813
+lock = 814
+sysdialog = 815
+desktop = 816
 nobody = 65534
 
 [groups]
@@ -28,3 +36,16 @@ logd = ["busd"]
 settingsd = ["busd", "logd"]
 devd = ["busd", "logd"]
 seat = ["compositor"]
+# The launcher's sockets at the bus and the log service are open to its group.
+launcher = ["busd", "logd"]
+# The authentication service's sockets at the bus and the log service.
+authd = ["busd", "logd"]
+lock = ["busd"]
+sysdialog = ["busd"]
+desktop = ["busd"]
+
+[ranges]
+# User (and group) ids of apps: one per app, given by ultar-launcher at
+# installation and kept for ever (rootfs/etc/ultar/launcher.toml uid_first,
+# uid_last). No fixed id above may lie in it.
+apps = "20000-49999"

@@ -25,6 +25,10 @@ impl State {
             return;
         }
         if state == KeyState::Pressed && self.shortcut(code) {
+            self.session.shell.super_tap_used();
+            return;
+        }
+        if self.shell_key(code, state) {
             return;
         }
         // Repeats and the release go where the press went (focus changes
@@ -38,9 +42,14 @@ impl State {
         if state == KeyState::Pressed {
             self.session.pressed.insert(code, key);
         }
-        let modifiers = Modifiers(self.keyboard.modifiers);
+        let modifiers = Modifiers(self.keyboard.modifiers | self.caps_bit());
         let output = if pressed {
-            keymap::translate(self.key_layout(), code, modifiers, self.keyboard.caps_lock)
+            keymap::translate(
+                self.key_layout(),
+                code,
+                Modifiers(self.keyboard.modifiers),
+                self.keyboard.caps_lock,
+            )
         } else {
             KeyOutput::None
         };
@@ -149,7 +158,9 @@ impl State {
 
     pub(super) fn touch_down(&mut self, id: u32, x: u16, y: u16) {
         let (lx, ly) = self.absolute(x, y);
-        let Some((key, part, content)) = self.hit_test(lx, ly) else {
+        let hit = self.hit_test(lx, ly);
+        self.shell_press(hit.map(|h| h.0));
+        let Some((key, part, content)) = hit else {
             return;
         };
         if part != Part::Content {

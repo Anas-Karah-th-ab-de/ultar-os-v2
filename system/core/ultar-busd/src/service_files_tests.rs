@@ -91,11 +91,16 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the four services (their group ids are the same).
-const IDS: [(&str, i64); 4] = [
+const IDS: [(&str, i64); 9] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
     ("devd", 804),
+    ("launcher", 805),
+    ("authd", 813),
+    ("lock", 814),
+    ("sysdialog", 815),
+    ("shell", 816),
 ];
 
 fn uid_of(name: &str) -> i64 {
@@ -209,12 +214,37 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         sockets["system.init"],
         Path::new("/run/ultar/bus/init.sock")
     );
-    assert_eq!(sockets.len(), 5);
+    let launcher = service("launcher");
+    assert_eq!(
+        Path::new(value(&launcher.args, "--log-socket")),
+        Path::new("/run/ultar/log/launcher.sock")
+    );
+    // The authentication service, the lock screen, the system dialogs and the shell.
+    for (name, option, identity) in [
+        ("authd", "--socket", "system.authd"),
+        ("lock", "--bus", "system.lock"),
+        ("sysdialog", "--bus", "system.sysdialog"),
+        ("desktop", "--bus", "system.shell"),
+    ] {
+        assert_eq!(
+            Path::new(value(&service(name).args, option)),
+            sockets[identity],
+            "{name}"
+        );
+    }
+    assert_eq!(sockets.len(), 10);
+}
+
+#[test]
+fn each_service_logs_to_the_socket_named_after_it() {
+    let logd = service("logd");
     // Each service writes its log to the socket the log service names it by.
     for (service_name, option, identity) in [
         ("bus", "--log-socket", "system.busd"),
         ("settingsd", "--log-socket", "system.settingsd"),
         ("devd", "--log-socket", "system.devd"),
+        ("launcher", "--log-socket", "system.launcher"),
+        ("authd", "--log-socket", "system.authd"),
     ] {
         let path = value(&service(service_name).args, option).to_owned();
         let listen = format!("{path}={identity}");

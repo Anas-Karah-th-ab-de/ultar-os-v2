@@ -110,6 +110,9 @@ impl State {
             client: key.client,
             surface: parent,
         };
+        if self.layers.contains(&parent) {
+            return self.panel_popup_rect(parent, (x, y), (w, h));
+        }
         let i = self
             .window_index(parent)
             .filter(|&i| self.windows[i].visible())?;
@@ -185,7 +188,12 @@ impl State {
             }
         }
         above.sort_by_key(|(r, _)| *r);
-        out.extend(above.into_iter().map(|(_, p)| p));
+        for (_, placed) in above {
+            // A shell panel's popups (sheets, menus) right above it.
+            let own = popups.remove(&placed.key).unwrap_or_default();
+            out.push(placed);
+            out.extend(own);
+        }
         self.cull(out)
     }
 

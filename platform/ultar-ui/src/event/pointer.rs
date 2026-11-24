@@ -23,6 +23,7 @@ impl Ui {
         let direction = self.env.direction;
         match &self.nodes[id.index()].widget {
             Widget::Tabs(tabs) => tabs.part_at(rect, pos, direction),
+            Widget::DayGrid(grid) => grid.part_at(rect, pos, direction),
             Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode, direction),
             Widget::Arrangement(canvas) => canvas.part_at(rect, pos),
             Widget::Table(table) => table.part_at(rect, pos, self.mode, direction),

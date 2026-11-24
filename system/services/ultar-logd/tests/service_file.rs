@@ -20,7 +20,7 @@ fn the_shipped_definition_parses_with_valid_bounds() {
         panic!("the definition must run the daemon");
     };
     assert_eq!(args.dir, Path::new("/data/ultar/log"));
-    assert_eq!(args.listeners.len(), 4);
+    assert_eq!(args.listeners.len(), 7);
     let (output, writers): (Vec<_>, Vec<_>) = args.listeners.iter().partition(|l| l.output);
     for listener in &writers {
         // Fixed names (one socket per writer), open to the writer's group only.
@@ -29,11 +29,16 @@ fn the_shipped_definition_parses_with_valid_bounds() {
             .as_deref()
             .is_some_and(|name| name.starts_with("system.")));
         assert_eq!(listener.mode, Some(0o660));
-        assert!(listener.group.is_some_and(|gid| (801..=804).contains(&gid)));
+        // 801-805 system services, 813 the authentication service.
+        assert!(listener
+            .group
+            .is_some_and(|gid| (801..=805).contains(&gid) || gid == 813));
     }
-    // The output channel of ultar-init: root only.
-    assert_eq!(output.len(), 1);
-    assert_eq!((output[0].mode, output[0].group), (Some(0o600), None));
+    // The output channel of ultar-init: root only; the app launcher's
+    // (apps' output, stored as app-<id>): its group only.
+    assert_eq!(output.len(), 2);
+    assert_eq!((output[0].mode, output[0].group), (Some(0o660), Some(805)));
+    assert_eq!((output[1].mode, output[1].group), (Some(0o600), None));
     assert!(args.config.store.is_valid());
     assert_eq!(args.config.store.segment_bytes, 1 << 20);
     assert_eq!(args.config.store.total_bytes, 16 << 20);

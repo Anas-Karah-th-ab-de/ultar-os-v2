@@ -13,6 +13,12 @@ args = [
     # other: the check stays, fail closed).
     "--seat-group", "812",
     "--seat-state", "/run/ultar/seat/modes",
+    # ui.* permissions of apps: every app has its own user id (20000-49999,
+    # ultar-launcher), so per-uid limits are per app; the launcher writes
+    # their granted rights here (owner 805, not writable by others).
+    "--app-rights", "/run/ultar/launcher/compositor-apps.toml",
+    "--app-uids", "20000-49999",
+    "--app-rights-owner", "805",
 ]
 # The seat's nodes are set before the compositor opens them.
 after = ["seat"]

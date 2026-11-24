@@ -42,7 +42,10 @@ pub struct Manifest {
     pub exec: String,
     #[serde(default)]
     pub services: Vec<String>,
-    #[serde(default)]
+    /// Legacy list of permission names. A manifest after `docs/APP-RULES.md` §3 has a
+    /// `[permissions]` table instead; it is read by the app launcher from the signed bytes
+    /// ([`verify_manifest_bytes`]) and shows up here as an empty list.
+    #[serde(default, deserialize_with = "permission_list")]
     pub permissions: Vec<String>,
     #[serde(default)]
     pub min_os: String,
@@ -50,6 +53,21 @@ pub struct Manifest {
     pub size: u64,
     #[serde(default)]
     pub publisher: String,
+}
+
+/// `permissions` as a list of names (legacy) or as the `[permissions]` table of the app rules
+/// (empty list here, see [`Manifest::permissions`]).
+fn permission_list<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        List(Vec<String>),
+        Table(#[allow(dead_code)] toml::Table),
+    }
+    Ok(match Either::deserialize(de)? {
+        Either::List(list) => list,
+        Either::Table(_) => Vec::new(),
+    })
 }
 
 fn arch_any() -> String {
@@ -216,6 +234,15 @@ fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
 /// Paket prüfen. Gibt das Manifest nur zurück, wenn die Signatur gegen einen vertrauten Schlüssel passt.
 /// Fehlt die Signatur, ist sie ungültig oder passt kein Schlüssel → Fehler (Installation verboten).
 pub fn verify(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
+    let manifest = verify_manifest_bytes(uap, trusted_dir)?;
+    toml::from_str(&String::from_utf8_lossy(&manifest))
+        .map_err(|e| format!("Manifest ungültig: {e}"))
+}
+
+/// Checks the package like [`verify`] and returns the **signed bytes** of its manifest
+/// (`ultar-manifest.toml`), for readers of manifest sections this crate does not model
+/// (the app launcher reads `[permissions]`, `[limits]`, `[service]` from them).
+pub fn verify_manifest_bytes(uap: &Path, trusted_dir: &Path) -> Result<Vec<u8>, String> {
     let p = read_parts(uap)?;
     let msg = sign_message(&p.manifest, &p.payload);
 
@@ -240,9 +267,7 @@ pub fn verify(uap: &Path, trusted_dir: &Path) -> Result<Manifest, String> {
             "Signatur ungültig oder unbekannter Herausgeber — Installation abgelehnt".into(),
         );
     }
-    let m: Manifest = toml::from_str(&String::from_utf8_lossy(&p.manifest))
-        .map_err(|e| format!("Manifest ungültig: {e}"))?;
-    Ok(m)
+    Ok(p.manifest)
 }
 
 /// Nur-Info (prüft NICHT die Signatur gegen Gerätevertrauen — nur Anzeige).

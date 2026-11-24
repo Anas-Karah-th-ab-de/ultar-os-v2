@@ -161,6 +161,27 @@ fn encode_data(event: &Event, w: &mut Writer) {
         Event::WindowList { windows } => {
             super::windows::encode_list(w, windows);
         }
+        other => encode_shell(other, w),
+    }
+}
+
+/// The events of the desktop shell (ui.shell).
+fn encode_shell(event: &Event, w: &mut Writer) {
+    match event {
+        Event::ShellKey {
+            code,
+            modifiers,
+            serial,
+        } => {
+            w.u16(*code).u8(modifiers.0).u32(*serial);
+        }
+        Event::WindowsChanged { windows } => super::shell::encode_windows(w, windows),
+        Event::KeyboardLayouts { names, active } => {
+            super::shell::encode_layouts(w, names, *active);
+        }
+        Event::ShellFocusLost { surface } => {
+            w.u32(surface.0);
+        }
         _ => {}
     }
 }
@@ -328,6 +349,19 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         31 => Event::WindowList {
             windows: super::windows::decode_list(r)?,
         },
+        32 => Event::ShellKey {
+            code: r.u16()?,
+            modifiers: Modifiers(r.u8()?),
+            serial: r.u32()?,
+        },
+        33 => Event::WindowsChanged {
+            windows: super::shell::decode_windows(r)?,
+        },
+        34 => {
+            let (names, active) = super::shell::decode_layouts(r)?;
+            Event::KeyboardLayouts { names, active }
+        }
+        35 => Event::ShellFocusLost { surface: sid(r)? },
         _ => return Err(WireError::BadValue),
     })
 }

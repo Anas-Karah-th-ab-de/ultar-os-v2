@@ -334,6 +334,8 @@ impl Modifiers {
     pub const SUPER: u8 = 8;
     /// Alt Gr.
     pub const ALT_GR: u8 = 16;
+    /// Caps Lock is on (a state, not a held key: the lock screen shows a hint).
+    pub const CAPS_LOCK: u8 = 32;
 
     /// True if the bit is held.
     pub const fn has(self, bit: u8) -> bool {

@@ -1,0 +1,32 @@
+# App launcher (ultar-launcher, docs/integration/ultar-launcher.md): every
+# app as its own user (ids 20000-49999, ids.toml [ranges]) in its own cell
+# (mount + pid namespaces, read-only system view, private /tmp, its data
+# directory 0700 as the only writable place, memory group apps/<app>), with
+# no kernel rights and only the permissions its signed manifest declares and
+# the user granted. The shell calls it over the bus (launcher.*); `ulaunch`
+# is the administrator's tool.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-launcher"
+args = [
+    "--config", "/etc/ultar/launcher.toml",
+    "--log-socket", "/run/ultar/log/launcher.sock",
+]
+after = ["logd", "bus"]
+# Identity and rights: its own user (805), not root. It needs exactly the
+# rights that build a cell for another user; everything else is dropped.
+# right mount: namespaces of a cell, its mounts and the root switch
+# right set_id: the app's own user and group ids
+# right file_admin: owner of the apps' data directories, reading packages
+# right manage_groups: the app's memory group apps/<app> and its limits
+# right kill_any: stopping an app (another user) and its cell
+user = 805
+rights = ["mount", "set_id", "file_admin", "manage_groups", "kill_any"]
+dirs = ["/data/ultar/launcher", "/data/ultar/appdata"]
+# The cells' mount points and the compositor's app rights file (read by 811).
+public_dirs = ["/run/ultar/launcher"]
+notify = true
+restart = "always"
+
+[cgroup]
+"memory.max" = "64M"
+"pids.max" = "512"

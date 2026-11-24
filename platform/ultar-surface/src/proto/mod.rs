@@ -9,6 +9,7 @@ mod event;
 mod event_codec;
 mod request;
 mod request_decode;
+mod shell;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -16,5 +17,8 @@ mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
 pub use request::Request;
+pub use shell::{
+    DisplayModeRequest, ShellWindow, WindowAction, MAX_LAYOUTS, MAX_LAYOUT_NAME, MAX_SHELL_WINDOWS,
+};
 pub use types::*;
 pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

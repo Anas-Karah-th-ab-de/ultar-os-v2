@@ -21,6 +21,9 @@ pub struct WindowConfig {
     pub title: String,
     /// Smallest content size in logical points.
     pub min_size: (u32, u32),
+    /// Pixels carry premultiplied alpha (`Argb8888`): rounded sheets with
+    /// their shadow. Opaque surfaces (`false`) are cheaper to compose.
+    pub translucent: bool,
 }
 
 impl WindowConfig {
@@ -30,6 +33,18 @@ impl WindowConfig {
             role: Role::Toplevel,
             title: title.to_owned(),
             min_size: (0, 0),
+            translucent: false,
+        }
+    }
+
+    /// A surface of another role (shell panels, popups, lock screen,
+    /// system dialogs).
+    pub fn with_role(role: Role, title: &str, translucent: bool) -> WindowConfig {
+        WindowConfig {
+            role,
+            title: title.to_owned(),
+            min_size: (0, 0),
+            translucent,
         }
     }
 }
@@ -50,6 +65,7 @@ struct Buffer {
 /// A surface of this client.
 pub struct Window {
     surface: SurfaceId,
+    format: PixelFormat,
     configure: Option<Configure>,
     buffer: Option<Buffer>,
     frame_pending: bool,
@@ -93,6 +109,11 @@ impl Window {
         }
         Ok(Window {
             surface,
+            format: if config.translucent {
+                PixelFormat::Argb8888
+            } else {
+                PixelFormat::Xrgb8888
+            },
             configure: None,
             buffer: None,
             frame_pending: false,
@@ -142,7 +163,8 @@ impl Window {
     }
 
     /// Shows `pixels` (`width × height`, rows of `width * 4` bytes,
-    /// `0xXXRRGGBB` little-endian – the BGRX canvas of `ultar-ui`). Only the
+    /// `0xXXRRGGBB` little-endian – the BGRX canvas of `ultar-ui`; for a
+    /// translucent window `0xAARRGGBB` premultiplied). Only the
     /// `damage` rectangles are transferred; an empty list sends everything.
     pub fn present(
         &mut self,
@@ -216,7 +238,7 @@ impl Window {
             client.send(&Request::DestroyBuffer { buffer: old.id })?;
         }
         let id = client.new_buffer_id();
-        let format = PixelFormat::Xrgb8888;
+        let format = self.format;
         let storage = match client.transport() {
             Transport::SharedMemory => {
                 let shared = SharedBuffer::create(width as usize * height as usize * 4)?;
@@ -343,5 +365,8 @@ mod tests {
         assert_eq!(clip(&Rect::new(i32::MAX, 0, u32::MAX, 1), 8, 8), None);
         let config = WindowConfig::toplevel("t");
         assert_eq!(config.role, Role::Toplevel);
+        assert!(!config.translucent);
+        let sheet = WindowConfig::with_role(Role::Overlay, "", true);
+        assert!(sheet.translucent && sheet.title.is_empty());
     }
 }

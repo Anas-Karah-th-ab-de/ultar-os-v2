@@ -83,7 +83,7 @@ fn tabelle(s: Sprache) -> &'static [(&'static str, &'static str)] {
             .map(|(de, en, a)| (*de, if ar { *a } else { *en }))
             .filter(|(de, _)| !de.is_empty())
             .collect();
-        v.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        v.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
         v
     };
     match s {
@@ -163,7 +163,7 @@ pub fn tr(text: &str) -> String {
 }
 
 /// Befehlswort (auch englisch/arabisch eingegeben) auf das deutsche Befehlswort abbilden
-pub fn befehl<'a>(wort: &'a str) -> &'a str {
+pub fn befehl(wort: &str) -> &str {
     tabellen::BEFEHLE
         .iter()
         .find(|(_, en, ar)| *en == wort || *ar == wort)

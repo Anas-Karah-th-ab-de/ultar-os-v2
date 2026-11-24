@@ -1,0 +1,40 @@
+[package]
+name = "ultar-desktop"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Desktop shell of Ultar OS: the bar with its sheets, the lock screen and the system dialogs as separate compositor clients (platform, area 5)"
+
+[lib]
+name = "ultar_desktop"
+path = "src/lib.rs"
+
+# The bar, its sheets, overview and Super+P (role: shell panel, right ui.shell).
+[[bin]]
+name = "ultar-desktop"
+path = "src/bin/ultar-desktop.rs"
+
+# The lock screen (role: lock screen, right ui.lock-screen).
+[[bin]]
+name = "ultar-lock"
+path = "src/bin/ultar-lock.rs"
+
+# System dialogs: permission, administrator password, "keep display settings?"
+# (role: system dialog, right ui.system-dialog).
+[[bin]]
+name = "ultar-sysdialog"
+path = "src/bin/ultar-sysdialog.rs"
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-surface = { path = "../ultar-surface" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-service = { path = "../../system/core/ultar-service" }
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+
+[dev-dependencies]
+ultar-ui = { path = "../ultar-ui" }
+ultar-compositor = { path = "../ultar-compositor" }
+ultar-hal = { path = "../../system/hal/ultar-hal" }

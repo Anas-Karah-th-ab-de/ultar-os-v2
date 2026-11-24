@@ -77,12 +77,21 @@ impl Ui {
 
     /// The colour role painted behind the tree.
     pub fn set_background(&mut self, role: ColorRole) {
-        self.background = role;
+        self.background = Some(role);
         self.dirty.full = true;
         self.layers.backdrop.ready = false;
     }
 
-    pub(crate) fn background(&self) -> ColorRole {
+    /// Nothing behind the tree: every region starts fully transparent (an `Rgba8` canvas
+    /// then holds premultiplied pixels of what the tree paints – a floating sheet with its
+    /// shadow and round corners on a translucent surface).
+    pub fn set_transparent_background(&mut self) {
+        self.background = None;
+        self.dirty.full = true;
+        self.layers.backdrop.ready = false;
+    }
+
+    pub(crate) fn background(&self) -> Option<ColorRole> {
         self.background
     }
 
