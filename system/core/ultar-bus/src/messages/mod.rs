@@ -14,6 +14,7 @@
 //! | `settings.store_report` | topic | yes | `settingsd` |
 //! | `power.state` | topic | yes | power service |
 //! | `shell.mode` | topic | yes | shell |
+//! | `launcher.list` / `start` / `stop` / `permissions` / `grant` / `revoke` / `install` / `uninstall` / `free.items` / `free` | calls | – | `ultar-launcher` (Store contract: `launcher.rs`) |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
 //!
@@ -22,6 +23,7 @@
 pub mod device_service;
 pub mod devices;
 pub mod init;
+pub mod launcher;
 pub mod log;
 pub mod notify;
 pub mod power;

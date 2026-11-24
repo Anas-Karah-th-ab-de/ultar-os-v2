@@ -24,6 +24,7 @@ members = [
     "tools/ultar-check",
     "tools/kern-test/ab-agent",
     "apps/ultar-office",
+    "apps/ultar-store",
     "apps/ultar-web",
     "external/ultar-telegram",
     "platform/ultar-ime",
@@ -112,6 +113,10 @@ opt-level = 3
 
 # Browser: Zeichnen und Zusammensetzen auf Geschwindigkeit
 [profile.release.package.ultar-web]
+opt-level = 3
+
+# Ultar Store: zeichnet jede Flächen-Bildzeit (Budget §8); Software-Rendering
+[profile.release.package.ultar-store]
 opt-level = 3
 
 # Büro-Apps: PDF-Rendern (hayro/vello_cpu) und Formel-/XML-Verarbeitung auf Geschwindigkeit
