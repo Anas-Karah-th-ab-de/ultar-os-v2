@@ -143,8 +143,14 @@ impl WifiCore {
         }
     }
 
+    /// Whether `j` needs a secured network: a password was given or the saved entry has a key.
+    fn secured(&self, j: &Join) -> bool {
+        j.secret.is_some() || self.saved.get(&j.ssid).is_some_and(|e| e.pmk.is_some())
+    }
+
     fn key_for(&self, j: &Join, security: Security) -> Result<Option<Pmk>, JoinOutcome> {
         match security {
+            Security::Open if self.secured(j) => Err(JoinOutcome::NotFound),
             Security::Open => Ok(None),
             Security::Wpa2Personal | Security::Wpa2Wpa3Personal => match &j.secret {
                 Some(s) => Pmk::from_passphrase(s, &j.ssid)
@@ -166,7 +172,15 @@ impl WifiCore {
         let Some(mut j) = self.join.take() else {
             return;
         };
-        let Some(best) = self.seen().into_iter().find(|s| s.ssid == j.ssid) else {
+        // A network known with a key (or joined with a password now) is never joined
+        // through an open access point of the same name (review security S-2: an "evil
+        // twin" without encryption would get the traffic of a saved WPA2 network).
+        let secured = self.secured(&j);
+        let Some(best) = self
+            .seen()
+            .into_iter()
+            .find(|s| s.ssid == j.ssid && !(secured && s.security == Security::Open))
+        else {
             return j.finish(JoinOutcome::NotFound);
         };
         let pmk = match self.key_for(&j, best.security) {

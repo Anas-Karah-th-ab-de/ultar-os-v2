@@ -212,3 +212,38 @@ fn a_saved_network_comes_back_by_itself_until_disconnect() {
     assert!(Saved::load(dir.join("wifi")).is_empty());
     std::mem::forget(r);
 }
+
+/// Review security S-2: an open access point named like a secured network ("evil twin",
+/// stronger signal) is never joined, neither with the password nor automatically later.
+#[test]
+fn an_open_twin_of_a_secured_network_is_never_joined() {
+    let mut r = Rig::new("twin");
+    r.air
+        .lock()
+        .unwrap()
+        .aps
+        .push(ap(9, b"home", -1000, None, None));
+    assert_eq!(
+        r.join("home", Some("correct horse battery"), true),
+        JoinOutcome::Connected
+    );
+    let secured = Some([2, 0, 0, 0, 0, 1]);
+    assert_eq!(
+        r.core.link.as_ref().map(|l| l.bssid),
+        secured,
+        "not the twin"
+    );
+    // A restart of the service: the saved network comes back through its secured access point.
+    let (dir, air) = (r.dir.clone(), r.air.clone());
+    std::mem::forget(r);
+    let mut again = Rig::open(dir, air.clone());
+    again.run(3_000);
+    assert_eq!(again.core.link.as_ref().map(|l| l.bssid), secured);
+    // Only the open twin left: nothing is joined.
+    air.lock().unwrap().aps.retain(|a| a.bss.bssid[5] != 1);
+    let dir = again.dir.clone();
+    std::mem::forget(again);
+    let mut last = Rig::open(dir, air);
+    last.run(3_000);
+    assert!(last.core.link.is_none(), "the open twin is not joined");
+}
