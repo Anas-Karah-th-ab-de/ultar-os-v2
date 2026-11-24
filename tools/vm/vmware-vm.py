@@ -6,9 +6,10 @@
        installer over the serial console; exit 0 when it reported the A/B layout with slot A active.
    vmware-vm.py check DISK raw|vmdk nvme|ahci PREFIX
        starts the disk (on a copy-on-write layer: the file is not changed), waits until the service manager
-       reports every service of the image as started and ready, takes a screenshot through the QEMU monitor
-       (PREFIX.ppm, PREFIX.png when Pillow is there; serial log PREFIX.log) and prints one verdict line:
-       "VMWARE-CHECK: OK …" when the slot, the services and the desktop session (bar, mark) are there.
+       reports every service of the image as started and every system app as installed, takes a screenshot
+       through the QEMU monitor (PREFIX.ppm, PREFIX.png when Pillow is there; serial log PREFIX.log) and prints
+       one verdict line: "VMWARE-CHECK: OK …" when the slot, the services, the apps and the locked session
+       (lock screen, no desktop bar) are there. Input is driven by tools/vm/vmware-input.py.
    vmware-vm.py zip FOLDER OUT.zip
        packs the folder (with its name as the top entry) without needing the zip program.
    Environment: SMP (4, as the .vmx), MEM (1024), WAIT (seconds per step, 600), VGA (std | vmware: the VMware
@@ -20,9 +21,14 @@ CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 WAIT = float(os.environ.get("WAIT", "600"))
 LANG_KEY = {"ar": "1", "de": "2", "en": "3"}
-SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", "lock", "sysdialog", "desktop"]
-# the desktop session on the screen: the bar (token bar, dark theme) and the brand mark on it (accent_text)
-WINDOWS = {"bar": bytes.fromhex("12151B"), "mark": bytes.fromhex("E3C55A")}
+SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", "lock", "sysdialog", "desktop",
+            "launcher", "sessiond", "powerd", "notifyd", "calendard", "audiod", "mediad", "captured", "netd", "btd",
+            "volumed", "displayd", "accountd"]
+# one-shot services: the system apps are installed with the launcher (each must end with code 0)
+APPS = ["settings", "files", "store", "phone", "browser"]
+# the session on the screen: it starts locked, so the lock screen (ground colour over the whole screen) with
+# the brand mark (accent_text) and no desktop bar (token bar, dark theme)
+WINDOWS = {"bar": bytes.fromhex("12151B"), "mark": bytes.fromhex("E3C55A"), "ground": bytes.fromhex("0B0D11")}
 
 
 class Vm:
@@ -127,23 +133,39 @@ def windows_on(path):
     return width, height, counts
 
 
+def lock_screen(width, height, counts):
+    """The lock screen covers everything: ground nearly everywhere, the mark, no desktop bar."""
+    return counts.get("ground", 0) >= 0.6 * width * height and counts.get("mark", 0) >= 10 \
+        and counts.get("bar", 0) < 0.3 * width * 56
+
+
 def check(disk, fmt, controller, prefix):
     vm = Vm([(disk, fmt, controller, True)], prefix + ".log")
     problems = []
     try:
         # the service manager's journal on the console: "ready NAME" for a service that reports readiness,
         # "start NAME" for the others, "settled" when nothing is left to start
-        def line(service):
-            word = b"start" if service in ("authd", "lock", "sysdialog", "desktop") else b"ready"
-            return re.compile(rb"\[ultar-init[^\]]*\] " + word + b" " + re.escape(service.encode()) + rb"\b")
+        def line(service, word=b"start"):
+            return re.compile(rb"\[ultar-init[^\]]*\] " + word + b" " + re.escape(service.encode()) + rb"( |$)", re.M)
         settled = re.compile(rb"\[ultar-init[^\]]*\] settled")
         if vm.read_until(settled, WAIT) is None:
             problems.append("QEMU ended")
         missing = [s for s in SERVICES if not line(s).search(vm.buf)]
         if missing:
             problems.append("services not running: " + " ".join(missing))
-        if re.search(rb"\[ultar-init[^\]]*\] (refused|exit) ", vm.buf):
-            problems.append("a service was refused or ended")
+        # the app installations end (with code 0) after "settled" was reported: wait for them
+        installed = [re.compile(rb"\[ultar-init[^\]]*\] exit app-" + a.encode() + rb" pid=\d+ code=0 ") for a in APPS]
+        end = time.time() + WAIT
+        while time.time() < end and not all(r.search(vm.buf) for r in installed):
+            if vm.read_until(None, 2) is None:
+                break
+        not_installed = [a for a, r in zip(APPS, installed) if not r.search(vm.buf)]
+        if not_installed:
+            problems.append("apps not installed: " + " ".join(not_installed))
+        ended = [m.group(0).decode(errors="replace") for m in re.finditer(rb"\[ultar-init[^\]]*\] (refused|exit|failed) [^\r\n]*", vm.buf)
+                 if not re.search(rb"\] exit app-[a-z]+ pid=\d+ code=0 ", m.group(0))]
+        if ended:
+            problems.append("a service was refused or ended: " + "; ".join(ended[:3]))
         slot = re.search(rb"\[boot\] slot ([ab])", vm.buf)
         if not slot:
             problems.append("no [boot] slot line (the loader did not start the kernel from its slot)")
@@ -161,10 +183,10 @@ def check(disk, fmt, controller, prefix):
                 vm.monitor(f"screendump {prefix}.ppm")
                 if os.path.exists(prefix + ".ppm"):
                     width, height, counts = windows_on(prefix + ".ppm")
-                    if counts.get('bar', 0) >= 20000 and counts.get('mark', 0) >= 10:
+                    if lock_screen(width, height, counts):
                         break
-            if not counts or not counts.get('bar', 0) >= 20000 and counts.get('mark', 0) >= 10:
-                problems.append(f"desktop session not on the screen: {counts}")
+            if not counts or not lock_screen(width, height, counts):
+                problems.append(f"the session's lock screen is not on the screen: {counts}")
             try:
                 from PIL import Image
                 Image.open(prefix + ".ppm").save(prefix + ".png")
@@ -176,7 +198,7 @@ def check(disk, fmt, controller, prefix):
     if problems:
         print(f"VMWARE-CHECK: FEHLER ({'; '.join(problems)}) [{detail}]")
         return 1
-    print(f"VMWARE-CHECK: OK ({len(SERVICES)} services, desktop session; {detail})")
+    print(f"VMWARE-CHECK: OK ({len(SERVICES)} services, {len(APPS)} apps installed, locked session; {detail})")
     return 0
 
 

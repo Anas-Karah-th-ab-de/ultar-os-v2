@@ -53,15 +53,21 @@ start page). No existing medium has the file.
   `ULTAR-EFI` (loader), `ULTAR-BOOTCTL`, `ultar-kernel-a/b`, `ultar-system-a/b`, `ultar-data`; then
   `qemu-img convert -O vmdk` (monolithicSparse).
 * System: `/sbin/ultar-init`, the shipped `init.toml`, `ids.toml`, `bus-policy.toml`, rights and seat files,
-  the shipped service files `logd`, `bus`, `settingsd`, `devd`, `seat`, and `compositor` without its line
-  `manual = true` (this image has no `ultar-shell` that would drive the same display); plus
-  the desktop session (authd, lock, sysdialog, desktop: the shipped definitions without `manual`; one account, password from `VM_PASSWORD_FILE` or random in `out/vmware/UltarOS-v2.password`). `/bin/busybox` when the
-  build computer has a static one. Language: `LANG_CODE` (default `ar`) on `ULTAR-EFI` and in the system.
+  the shipped service files `logd`, `bus`, `settingsd`, `devd`, `seat`, `authd`, the app launcher and the
+  services the shell talks to (`sessiond`, `powerd`, `notifyd`, `calendard`, `audiod`, `mediad`, `captured`,
+  `netd`, `btd`, `volumed`, `displayd`, `accountd`), and `compositor` without its line `manual = true` (this
+  image has no `ultar-shell` that would drive the same display); plus the desktop session (lock, sysdialog,
+  desktop: the shipped definitions without `manual`; one account, password from `VM_PASSWORD_FILE` or random
+  in `out/vmware/UltarOS-v2.password`). `/bin/busybox` when the build computer has a static one. Language:
+  `LANG_CODE` (default `ar`) on `ULTAR-EFI` and in the system.
+* System apps (§6): Settings, Files, Store, Phone and the browser, each a package (`/usr/lib/ultar/apps/<id>.uap`)
+  signed with the system key and installed by a one-shot service `app-<id>` (`ulaunch install` on the
+  administrator's socket) at every start; the launcher runs each in its cell as its own user.
 * Start: firmware → `ultar-loader` (slot A) → kernel (start picture in Arabic) → `ultar-init` (PID 1) → logd,
-  seat, bus, compositor, devd, settingsd, authd → compositor on `fb0` with the desktop session: the shell's
-  bar (Arabic: mirrored), sheets, overview; Super+L locks, the account's password unlocks. `ultar-shell`
-  (the old surface) is not in this image. The check (`vmware-vm.py check`) wants the bar and the mark on the
-  screen.
+  seat, bus, compositor, devd, settingsd, authd, launcher and the shell's services → compositor on `fb0`,
+  **locked**: the lock screen first, the account's password unlocks, then the shell's bar (Arabic: mirrored),
+  sheets, overview, app grid; Super+L locks again. `ultar-shell` (the old surface) is not in this image. The
+  check (`vmware-vm.py check`) wants the lock screen (and no bar) on the screen and every app installed.
 * `.vmx`: hardware version 16, `firmware = "efi"`, 4 GiB, 4 processors, NVMe disk, e1000e (NAT), UHCI/EHCI +
   xHCI with VMware's USB pointer on the xHCI, PS/2 keyboard, no sound, no VMCI, `serial0` → `serial.log`
   beside the `.vmx` (the kernel's whole log – the first thing to read when the screen stays black).
@@ -78,5 +84,55 @@ start page). No existing medium has the file.
 * Screen stays black or the machine restarts: read `serial.log`. Disk not found: `install-vmware.ps1 -Disk
   sata`. Pointer does not move: `install-vmware.ps1 -Ps2Mouse` (then click into the window; Ctrl+Alt frees
   the pointer).
-* Input in the compositor was not driven in the check (only that the devices get their event nodes); network
-  only as far as the kernel's DHCP line.
+* Network only as far as the kernel's DHCP line.
+
+## 6. Input, lock screen and apps in VMware (fix/vmware-input)
+
+Found in VMware Workstation 26 on the image of `b18f58b` (desktop drawn, no input, no lock screen, nothing
+opens); reproduced in QEMU with the same disk and only emulated devices (`tools/vm/vmware-input.py`).
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Keys do nothing (USB and PS/2) | the kernel's input nodes had **one** event queue each: whoever read first took the event. In this image `ultar-init` is PID 1 and watches every node with volume keys for its emergency exit (`rescue.rs`, Vol+ and Vol− held) – every keyboard has them – so it read away the keys before the compositor (in the desktop gate `ultar-init` is not PID 1: no watch, no loss). Pointer nodes have no volume keys and were not affected | kernel `input.rs`, `eingabe.rs`: one queue per open descriptor (as Linux' evdev clients); every reader gets every event; a descriptor of a number that now belongs to another device reads `ENODEV` |
+| Desktop visible at start, before any password | the compositor locked only on the first lock surface, Super+L or Ctrl+Alt+Del; nothing locked at boot (the lock screen stays hidden until told) | compositor `--start-locked-in system` (`Config::start_locked`): the session starts locked in the boot profile `system` (`ULTAR_PROFILE`, now passed to every service by `ultar-init`), not on the installation medium. Nothing but the lock screen is drawn or gets input until it unlocks with the password; a lock screen that attaches is told `SessionLocked{true}` at once and shows itself. Test `tests/start_locked.rs` |
+| Clicking Settings, Files, Store, browser, phone opens nothing | (1) no app launcher and no app in the image; (2) the shell asked the launcher for `org.ultar.settings` etc., which can never be a launcher id (system apps have one-part ids, `install.rs`); (3) apps could not reach the bus at all (every bus socket is a service's own, `0660` + its group), Settings and Files end without it; (4) the Store looked for `/run/ultar/ui/compositor`; (5) no `ultar-phone` program; (6) the browser ends when its engine bundle (WPE WebKit, aarch64 only) is missing | (1) image: launcher, the shell's services, the apps as signed packages, one-shot installs, `accept_missing = ["net"]` (the kernel has no network namespaces); (2) shell `ports/bus.rs` maps `org.ultar.<id>` ↔ `<id>`; (3) bus socket `/run/ultar/appbus/bus.sock` = identity `app.shared` (`0666`, ≤ 32 connections, only rule `app.*`), bound read-only into every cell (`launcher.toml` `shares`); (4) the shipped socket; (5) `apps/ultar-phone/src/bin/ultar-phone.rs` (without a call service every request says it is not reachable); the phone draws its own header, which needs the compositor right `ui.client-header` – the launcher did not know it, so the compositor ended the phone's connection at once: new launcher permission `ui.client-header` (system apps get it at installation), the phone's manifest asks for it; (6) `engine::offline`: the window opens, every page load fails at once |
+| The right password often ended on the cover again (found by the new gate) | after `Unlock` the lock screen drew the sign-in once more; every frame of a lock surface locks (§8a), so that late frame locked the session again | `app/lock.rs`: hidden at once when it sends `Unlock` (the surface goes, no frame); e2e regression check |
+| Lock screen: the accessibility menu shows four switches without a word (owner's VMware screenshot) | the menu added only switches; a switch carries just its accessible name, it draws no text | `lock/access.rs`: the name as text beside each switch |
+| Sign-in: "no user on this device" under the user's own name | the sign-in sets that error before the user list arrives and never cleared it | `app/lock.rs` `refresh_user` clears it once a user is known |
+| The lock screen's accessibility switches changed nothing (owner) | the settings service stored `accessibility.*`, nobody read it; no high-contrast palette, no text scale in the toolkit; no screen reader and no on-screen keyboard program exist | toolkit: palette `[theme.contrast]` (tokens.toml, ≥ 7:1) and a text factor (`Ui::set_high_contrast`, `Ui::set_text_scale`, `PaintEnv`); lock screen and shell follow `accessibility.high_contrast` / `large_text` (1.25) live (`Look::with_access`; the shell through `settings.changed`); the screen reader and on-screen keyboard switches are disabled with "not available on this system yet". Apps do not follow yet (no settings right on `app.shared`) |
+| Ctrl+A, Ctrl+C, Ctrl+V did nothing (owner) | text fields had no selection and no clipboard commands (Ctrl+letter went to the app); a paste with an empty clipboard was a protocol error that ended the app | toolkit text field: selection (drawn), Ctrl+A/C/X/V/Z (also on the Arabic layout's keys), undo (32 steps, none for passwords), nothing copied or cut out of a password field; `UiWindow` offers copies and reads pastes (compositor clipboard `SetSelection`/`ReadSelection`); compositor: an empty clipboard answers `TransferCancelled`. The shell's and the lock screen's own fields (desktop `Host`) and the browser's window loop do not take part yet |
+| A second, nameless bar button next to Settings / the browser | their windows announced `app.settings` / `ultar-web` | window app ids `org.ultar.settings`, `org.ultar.browser` |
+
+**Gate** `tools/vm/vmware-input-e2e.sh` (in `vmware-like.sh`, so in `ci.sh`; `VMWARE_INPUT=0` skips it):
+builds the disk with `make-vmware.sh` (test password, digits: the lock screen starts with the Arabic layout)
+and drives it **only** through QEMU's emulated devices with QMP `input-send-event` – no `--input-ack`, no
+developer remote control, no write into an input node: run `usb` (q35, xHCI keyboard + tablet, as the
+`.vmx`) and run `ps2` (i440FX, i8042 keyboard + VMware absolute pointer through the backdoor, VMware SVGA II,
+no USB) and run `usb-hd` (as `usb` with a 1920x1080 firmware screen). Steps, each judged on a QEMU screenshot: lock screen from the first frame (the bar must never be
+seen before the unlock) → a key opens the sign-in, which is checked against board Lock: the whole frame
+buffer covered (no black band), brand, avatar, name and password field drawn (Arabic and Latin glyphs), the
+accessibility menu closed until clicked and then with the names of its switches → a wrong password stays locked → the password shows the
+desktop at the first try and it stays → the start button (found by the brand mark on the bar) opens the overview → Settings, Files,
+Store, browser (bar) and the phone (app grid) each open a window → the clock in the bar turns → Ctrl+A,
+Ctrl+C in Settings' search field and Ctrl+V in Files' search field (text arrives) → Super+L, the
+accessibility menu: high contrast (black ground) and large text (more text pixels) take effect at once and
+high contrast is still on after `system_reset`.
+`VMWARE-INPUT-E2E: ALLES OK`. After a failed run (or `LOGS=1`) the log service's directory is read from the
+data partition of the run's disk layer (`PREFIX-log/`; with `ULOG=` as text) – records of the last seconds
+before QEMU is stopped may be missing (`--fsync batch`).
+
+Open points:
+* VMware itself is still not run by any tool. The USB pointer VMware attaches (`0e0f:0003`) was parsed as a
+  tablet; its reports were never seen in a test (QEMU's `usb-tablet` has another report descriptor). When
+  the guest turns the VMware absolute mouse on (it does: `[maus] absolute Maus (VMware-Schnittstelle)
+  aktiv`), VMware may send the pointer there instead – both paths reach the compositor (`event0` / `eventN`).
+* Apps share one bus identity (`app.shared`): what a manifest declares for the bus (`[permissions] bus`) is
+  not granted yet, so Settings shows its services as unreachable, the Store cannot list or install, the
+  phone has no call service. Per-app identities need the launcher to hand each cell its own socket.
+* Files: the user's areas are not bound into the cell on the Ultar kernel (`file_binds=false`), so Files
+  shows "this place is not available".
+* The browser has no engine on x86 (pages fail at once); the screen keeps the firmware's size (no SVGA
+  driver). In QEMU the session fills the firmware's screen at 1024x768, 1280x800 and 1920x1080; the black
+  bands of the owner's VMware screenshot were not reproduced (that picture shows the bottom start corner of
+  the sign-in with the accessibility menu opened by a click). Only the Arabic image was run; the English
+  catalogue is the same program with other strings (the fonts are inside the programs).

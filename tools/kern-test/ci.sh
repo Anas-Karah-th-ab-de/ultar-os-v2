@@ -19,11 +19,13 @@
 #       owner/group/mode of device nodes, evdev capability ioctls, /sys/class/input; a USB keyboard that
 #       comes and goes gets its own event node (geraete-hotplug.py),
 #   5e2. power off and restart from a process end the machine (ausschalten.sh, AUSSCHALTEN: ALLES OK),
-#   5f. the same programs on VMware-like hardware without virtio (vmware-like.sh),
+#   5f. the same programs on VMware-like hardware without virtio (vmware-like.sh), and the VMware machine's
+#       disk driven only through emulated USB/PS/2 input: locked at start, unlock, start menu, five apps open
+#       (tools/vm/vmware-input-e2e.sh, VMWARE-INPUT-E2E: ALLES OK; VMWARE_INPUT=0 skips it),
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
-#   7d. the desktop session runs on the kernel and unlocks with a typed password (desktop-e2e.sh,
+#   7d. the desktop session starts locked and unlocks with a typed password (desktop-e2e.sh,
 #       DESKTOP: ALLES OK; the same on VMware-like hardware in vmware-like.sh),
 #   7a. the app launcher runs apps as their own users in their cells, a malicious app stays in its cell
 #       (launcher-e2e.sh, LAUNCHER: ALLES OK),

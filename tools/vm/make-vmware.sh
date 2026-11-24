@@ -4,8 +4,10 @@
 #   out/vmware/UltarOS-v2/UltarOS-v2.vmdk    the installed disk (monolithicSparse, qemu-img)
 #   out/vmware/UltarOS-v2.zip                both files (install on the PC: tools/vm/install-vmware.ps1)
 # What the machine starts is what the tree holds today: loader (A/B) -> Ultar kernel -> ultar-init as PID 1 ->
-# logd, bus, settingsd, devd, seat, authd -> ultar-compositor on the frame buffer, Arabic, with the desktop
-# session on it: ultar-lock, ultar-sysdialog, ultar-desktop (bar, sheets, overview), each as its own user.
+# logd, bus, settingsd, devd, seat, authd, the app launcher and the shell's services -> ultar-compositor on the
+# frame buffer, Arabic, locked at start, with the desktop session on it: ultar-lock, ultar-sysdialog,
+# ultar-desktop (bar, sheets, overview), each as its own user; the system apps (Settings, Files, Store, Phone,
+# browser) as signed packages installed with the launcher (docs/integration/vmware.md §6).
 # One account: VM_USER (ultar) with the password in VM_PASSWORD_FILE, or a random one written to
 # out/vmware/UltarOS-v2.password (mode 0600) - never a fixed password in a delivered image.
 # Steps:
@@ -15,7 +17,8 @@
 #      (medium on AHCI, target on NVMe, e1000e, no virtio) - the disk is exactly what the installer creates
 #   4. the installed disk is started once (tools/vm/vmware-vm.py check): services, compositor, screenshot
 #   5. qemu-img convert -O vmdk, the .vmx, and the .vmdk is started again on NVMe and on AHCI (CHECK=0 skips)
-# Environment: DISK_MIB (4096), LANG_CODE (ar | de | en), KEEP=1 keeps out/vmware/work; for the QEMU runs
+# Environment: DISK_MIB (4096), LANG_CODE (ar | de | en), KEEP=1 keeps out/vmware/work, SYSTEM_KEY and
+# SYSTEM_KEY_PUB (the system signing key, hex files; default: a key made for this build only); for the QEMU runs
 # SMP (4), MEM (1024), WAIT, ACCEL (tcg | kvm), see tools/vm/vmware-vm.py.
 # Needs: rustc/cargo 1.97 (+ rust-src), gcc, make, qemu-system-x86, qemu-utils (qemu-img), ovmf, mtools,
 # dosfstools, e2fsprogs, python3. Nothing is downloaded and nothing outside out/ is written.
@@ -48,24 +51,98 @@ env -u CARGO_TARGET_DIR bash scripts/build-kern.sh >"$W/build-kern.log" 2>&1 || 
 env -u CARGO_TARGET_DIR bash scripts/build-loader.sh >"$W/build-loader.log" 2>&1 || { tail -20 "$W/build-loader.log"; fail "loader build"; }
 KERNEL=kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi
 LOADER=kernel/ultar-loader/target/x86_64-unknown-uefi/release/ultar-loader.efi
+# the session: service manager, bus, log, settings, devices, seat, compositor, lock, dialogs, shell
 PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd ultar-lock ultar-sysdialog ultar-desktop"
+# the services the shell talks to (wave 8) and the app launcher
+PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-displayd ultar-accountd"
+# the system apps (installed as signed packages through the launcher, step 2)
+PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web"
+SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd"
+# launcher id : program : manifest arguments (the launcher passes no environment of its own;
+# the apps reach the compositor and the apps' bus socket, app.shared, through these). The phone draws its
+# own window header: its manifest asks for ui.client-header (granted to system apps at installation).
+UI_ARGS="\"--compositor\", \"/run/ultar/ui/compositor.sock\", \"--bus\", \"/run/ultar/appbus/bus.sock\", \"--lang\", \"$LANG_CODE\""
+APPS="settings:ultar-settings:$UI_ARGS|files:ultar-files:$UI_ARGS|store:ultar-store:|phone:ultar-phone:$UI_ARGS|browser:ultar-web:\"--socket\", \"/run/ultar/ui/compositor.sock\", \"--lang\", \"$LANG_CODE\""
 if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
-    -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p ultar-desktop --bins \
+    -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p ultar-desktop \
+    -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
+    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-displayd -p ultar-accountd -p ultar-pkg \
+    -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
-for p in $PROGRAMS; do [ -x "$BIN/$p" ] || fail "program missing: $BIN/$p"; done
+for p in $PROGRAMS upkg-keygen upkg-sign; do [ -x "$BIN/$p" ] || fail "program missing: $BIN/$p"; done
 
 # 2) System tree: the shipped configuration of rootfs/etc/ultar, the services this image has programs for
 echo "== 2/5 system tree and installation medium"
 R=$W/root
-mkdir -p "$R"/{bin,sbin,usr/bin,usr/lib/ultar/drivers,etc/ultar/services,data,tmp,run,root,home,var,proc,sys,dev,media}
+mkdir -p "$R"/{bin,sbin,usr/bin,usr/lib/ultar/drivers,usr/lib/ultar/apps,etc/ultar/services,data,tmp,run,root,home,var,proc,sys,dev,media}
 cp "$BIN/ultar-init" "$R/sbin/"
 for p in $PROGRAMS; do [ "$p" = ultar-init ] || cp "$BIN/$p" "$R/usr/bin/"; done
 for f in init.toml ids.toml bus-policy.toml compositor-rights.toml devd-seat.toml; do cp "rootfs/etc/ultar/$f" "$R/etc/ultar/"; done
 cp -r rootfs/etc/ultar/trusted-keys "$R/etc/ultar/"
-for s in logd bus settingsd devd seat authd; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
+for s in $SERVICES_UP; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
+# The launcher as shipped, but accepting what the Ultar kernel does not have yet: network
+# namespaces (an app without the permission `network` gets no network of its own on Linux;
+# here it has none anyway: no app has a bus right to the network services).
+sed 's/^accept_missing = \[\]$/accept_missing = ["net"]/' rootfs/etc/ultar/launcher.toml >"$R/etc/ultar/launcher.toml"
+grep -q '^accept_missing = \["net"\]$' "$R/etc/ultar/launcher.toml" || fail "launcher.toml: accept_missing"
+# The system apps: each a package signed with the system key (profile app.system), installed
+# over the bus by the administrator's tool (ulaunch, socket system.admin) at every start
+# (same signer and version: the launcher keeps the app's user id and data). The private key
+# is SYSTEM_KEY (a file with the hex key) or made for this build only and never leaves $W.
+if [ -n "${SYSTEM_KEY:-}" ]; then
+  KEY=$SYSTEM_KEY
+  PUB=${SYSTEM_KEY_PUB:?SYSTEM_KEY_PUB: the public half of SYSTEM_KEY}
+  cp "$PUB" "$W/system.pub"
+else
+  KEY=$W/system.key
+  (umask 077; "$BIN/upkg-keygen" >"$KEY" 2>"$W/keygen.err") || fail "upkg-keygen"
+  tail -1 "$W/keygen.err" >"$W/system.pub"
+fi
+mkdir -p "$R/etc/ultar/trusted-keys/system" "$W/apps/payload"
+cp "$W/system.pub" "$R/etc/ultar/trusted-keys/system/km-code-craft.ed25519"
+printf 'Ultar OS system app (program in /usr/bin)\n' >"$W/apps/payload/README"
+# the apps carry the workspace version (one version for the whole system)
+APP_VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+[ -n "$APP_VERSION" ] || fail "workspace version"
+IFS='|' read -r -a app_list <<<"$APPS"
+for entry in "${app_list[@]}"; do
+  id=${entry%%:*}; rest=${entry#*:}; prog=${rest%%:*}; args=${rest#*:}
+  ui=""
+  [ "$id" = phone ] && ui='ui = ["ui.client-header"]'
+  cat >"$W/apps/$id.toml" <<MANIFEST
+id = "$id"
+version = "$APP_VERSION"
+publisher = "km-code-craft"
+kind = "native"
+name = "app.$id.name"
+exec = "/usr/bin/$prog"
+args = [$args]
+
+[permissions]
+$ui
+
+[limits]
+memory_mb = 384
+MANIFEST
+  "$BIN/upkg-sign" "$W/apps/$id.toml" "$W/apps/payload" "$R/usr/lib/ultar/apps/$id.uap" "$KEY" >/dev/null \
+    || fail "package $id"
+  cat >"$R/etc/ultar/services/app-$id.toml" <<SERVICE
+# Installs (or confirms) the system app $id with the launcher at every start.
+exec = "/usr/bin/ulaunch"
+args = ["--bus", "/run/ultar/bus/system.sock", "install", "/usr/lib/ultar/apps/$id.uap"]
+oneshot = true
+after = ["launcher"]
+# root with file_admin: the administrator's bus socket is root-only (0600, owner busd)
+rights = ["file_admin"]
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "8"
+SERVICE
+done
 # The shipped session services are not started by the ordinary system (`manual = true`, or
 # `[profiles] system = "manual"`) because the legacy ultar-shell would drive the same display; this image
 # has no ultar-shell, so they start with the system. Nothing else of the files changes.

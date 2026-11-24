@@ -14,6 +14,9 @@
 # IMG=<esp image> (default out/ultar-kern-esp.img, built when missing); BUSCK=<file> as in ci.sh.
 # Needs what ci.sh needs. QEMU is the test bed: VMware Workstation itself is not started here.
 # 4. the desktop session reaches DESKTOP: ALLES OK on the hardware of the .vmx (desktop-e2e.sh).
+# 5. the VMware machine's own disk (make-vmware.sh), driven only through emulated USB and PS/2 input devices:
+#    locked at start, unlock, start menu, the five system apps open (tools/vm/vmware-input-e2e.sh,
+#    VMWARE-INPUT-E2E: ALLES OK). VMWARE_INPUT=0 skips it; VMDK=<disk> uses a built disk.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 IMG="${IMG:-out/ultar-kern-esp.img}"
@@ -77,5 +80,10 @@ if [ "${DESKTOP:-1}" = 0 ]; then
 else
   IMG="$IMG" DESK_MACHINE=pc DESK_DEV="nvme,serial=ultar" DESK_NIC=e1000e DESK_VGA=vmware DESK_LABEL="VMware-like pc-nvme-svga" \
     bash tools/kern-test/desktop-e2e.sh || fail=1
+fi
+if [ "${VMWARE_INPUT:-1}" = 0 ]; then
+  echo "skip  VMWARE-LIKE input on the VMware disk (VMWARE_INPUT=0)"
+else
+  bash tools/vm/vmware-input-e2e.sh || fail=1
 fi
 [ "$fail" = 0 ] && echo "VMWARE-LIKE: ALLES OK" || { echo "VMWARE-LIKE: FEHLER"; exit 1; }
