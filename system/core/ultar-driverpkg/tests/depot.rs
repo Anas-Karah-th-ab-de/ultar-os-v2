@@ -39,7 +39,7 @@ fn write_depot(dir: &TempDir, manifests: &[String], key: &PrivateKey) {
 fn index_text_round_trip_is_stable() {
     let key = PrivateKey::generate();
     let index = index_of(&example_manifests(), &key);
-    assert_eq!(index.len(), 10);
+    assert_eq!(index.len(), 11);
     assert!(!index.is_empty());
     let text = index.to_toml().unwrap();
     let again = DriverIndex::parse(&text).unwrap();
@@ -68,7 +68,7 @@ fn signed_index_on_disk() {
     write_depot(&dir, &example_manifests(), &key);
     std::fs::write(dir.join("README.txt"), b"ignored").unwrap();
     let built = write_signed_index(dir.path(), &key, &trusted, &Limits::default()).unwrap();
-    assert_eq!(built.len(), 10);
+    assert_eq!(built.len(), 11);
     let loaded = load_signed_index(dir.path(), &trusted).unwrap();
     assert_eq!(loaded.entries(), built.entries());
     // Every package file is exactly the one recorded in the signed index.

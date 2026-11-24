@@ -92,6 +92,8 @@ impl Rig {
             "gen-hda",
             "gen-intel-eth",
             "gen-ixgbe",
+            "intel-display",
+            "nvidia-display",
             "gen-xhci",
             "nvme",
         ] {

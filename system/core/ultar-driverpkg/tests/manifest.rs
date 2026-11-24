@@ -94,7 +94,7 @@ fn defaults_and_enums() {
 #[test]
 fn every_example_manifest_is_valid() {
     let examples = example_manifests();
-    assert_eq!(examples.len(), 10);
+    assert_eq!(examples.len(), 11);
     for text in &examples {
         let m = Manifest::parse(text).unwrap();
         assert!(m.supports_kernel("ultar-kern-abi-1"), "{}", m.id);

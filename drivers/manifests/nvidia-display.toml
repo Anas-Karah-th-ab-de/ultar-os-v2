@@ -13,4 +13,4 @@ description_key = "driver.nvidia-display.description"
 pci = ["10de:1eb6"]
 
 [content]
-kernel_driver = "nvidia-display"
+hal_config = "builtin/nvidia-display.toml"
