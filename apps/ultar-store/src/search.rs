@@ -154,7 +154,10 @@ mod tests {
             file_types: fts.iter().map(|s| (*s).to_string()).collect(),
             permissions: Vec::new(),
             requires: Vec::new(),
-            package: None,
+            pin: crate::catalog::PackagePin {
+                package: None,
+                sha256: None,
+            },
         }
     }
 

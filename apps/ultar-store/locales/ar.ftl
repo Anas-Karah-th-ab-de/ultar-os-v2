@@ -150,6 +150,7 @@ store.error.unsigned = الكتالوج بلا توقيع؛ لا يؤخذ به.
 store.error.bad-signature = توقيع الكتالوج لا يطابق محتواه.
 store.error.unknown-signer = لم يوقَّع الكتالوج بمفتاح موثوق على هذا الجهاز.
 store.error.too-new = صيغة الكتالوج أحدث مما يفهمه هذا المتجر؛ حدّث النظام.
+store.error.package-mismatch = الحزمة التي نُزّلت لا تطابق البصمة الموقّعة في الفهرس؛ حُذفت ولم تُثبَّت.
 store.error.no-launcher = خدمة الإطلاق غير جاهزة على هذه الجلسة.
 store.error.package-refused = رفضت الحزمة: التوقيع غير صالح أو الناشر غير معروف.
 store.error.unknown-app = هذا التطبيق غير مثبَّت.

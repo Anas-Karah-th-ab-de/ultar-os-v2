@@ -1,6 +1,8 @@
 //! Where a catalogue comes from (DESKTOP-SPEC §7.3 "Offline-Quelle").
 //!
-//! The app never contacts the internet. A catalogue is a TOML body plus a detached
+//! Local sources never contact the internet; the optional online source
+//! ([`crate::online`], feature `online`) fetches the same signed files over HTTPS and keeps a
+//! verified copy, so it always falls back to them. A catalogue is a TOML body plus a detached
 //! Ed25519 signature, verified against the trusted keys of the device — the same key
 //! directory and the same signature blob layout as `.uap` packages (`ultar-pkg`),
 //! with its own domain prefix so a package signature is never a catalogue signature:
@@ -50,6 +52,13 @@ pub trait CatalogSource: Send + Sync {
     fn name(&self) -> String;
     /// Loads and parses the catalogue.
     fn load(&self) -> Result<LoadedCatalog, SourceError>;
+
+    /// Makes sure the package file at `path` (built from [`LoadedCatalog::dir`] and the entry's
+    /// `package`) is present before it goes to the launcher. Local sources have every file
+    /// already; the online source downloads it and checks it against the signed catalogue.
+    fn ensure_package(&self, _path: &Path) -> Result<(), SourceError> {
+        Ok(())
+    }
 }
 
 /// A catalogue read from `<dir>/ultar-catalog.toml` + `.sig` and verified against

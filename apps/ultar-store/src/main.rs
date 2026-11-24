@@ -9,7 +9,12 @@
 //! * `ULTAR_BUS_SOCKET` – bus socket for `launcher.*` (the cell manager
 //!   injects it; unset: operations honestly answer `store.error.no-launcher`).
 //! * `ULTAR_STORE_CATALOG` – directory holding `ultar-catalog.toml` + `.sig`
-//!   (the offline stick/folder). Unset: the catalogue built into the image.
+//!   (the offline stick/folder). Unset: the store server (below), falling back
+//!   to the catalogue built into the image.
+//! * `ULTAR_STORE_URL` – the store server (`https://` only; default
+//!   [`ultar_store::online::DEFAULT_URL`]); `ULTAR_STORE_OFFLINE=1` switches the
+//!   server off. The server copy is verified like a stick and cached in
+//!   `ULTAR_STORE_DATA/catalog-cache`.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -18,6 +23,7 @@ use std::time::Duration;
 use ultar_store::action::{Command, StoreAction, StoreEvent};
 use ultar_store::backend::{Backend, SystemBackend};
 use ultar_store::i18n;
+use ultar_store::online::{self, OnlineCatalogSource, UreqFetch};
 use ultar_store::source::{CatalogSource, EmbeddedCatalogSource, FileCatalogSource};
 use ultar_store::state::{Area, Store};
 use ultar_store::view::{self, HitMap};
@@ -128,17 +134,33 @@ fn event_loop(
     }
 }
 
-/// The catalogue source: the stick/folder if configured, else the image one.
+/// The catalogue source: the stick/folder if configured, else the store server
+/// (verified, cached, offline first), else the image one.
 fn catalog_source() -> Arc<dyn CatalogSource> {
-    match std::env::var("ULTAR_STORE_CATALOG") {
-        Ok(dir) => Arc::new(FileCatalogSource::new(
-            dir,
-            ultar_store::source::trusted_dir_from_env(),
-        )),
-        Err(_) => Arc::new(EmbeddedCatalogSource::new(
-            "image",
-            ultar_store::BUILT_IN_CATALOG,
-        )),
+    let trusted = ultar_store::source::trusted_dir_from_env();
+    if let Ok(dir) = std::env::var("ULTAR_STORE_CATALOG") {
+        return Arc::new(FileCatalogSource::new(dir, trusted));
+    }
+    let image: Arc<dyn CatalogSource> = Arc::new(EmbeddedCatalogSource::new(
+        "image",
+        ultar_store::BUILT_IN_CATALOG,
+    ));
+    if std::env::var("ULTAR_STORE_OFFLINE").is_ok_and(|v| v == "1") {
+        return image;
+    }
+    let (Ok(data), Some(fetch)) = (std::env::var("ULTAR_STORE_DATA"), UreqFetch::new()) else {
+        return image;
+    };
+    let url = std::env::var("ULTAR_STORE_URL").unwrap_or_else(|_| online::DEFAULT_URL.to_string());
+    match OnlineCatalogSource::new(
+        &url,
+        PathBuf::from(data).join("catalog-cache"),
+        trusted,
+        Box::new(fetch),
+        Arc::clone(&image),
+    ) {
+        Ok(source) => Arc::new(source),
+        Err(_) => image,
     }
 }
 

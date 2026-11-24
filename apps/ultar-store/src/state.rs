@@ -324,7 +324,10 @@ mod tests {
                 file_types: Vec::new(),
                 permissions: Vec::new(),
                 requires: Vec::new(),
-                package: None,
+                pin: crate::catalog::PackagePin {
+                    package: None,
+                    sha256: None,
+                },
             }],
         }
     }

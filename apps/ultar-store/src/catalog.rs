@@ -120,9 +120,22 @@ pub struct CatalogApp {
     /// Ids of other catalogue entries this one needs (Firefox → Linux programs).
     #[serde(default)]
     pub requires: Vec<String>,
-    /// Package file next to the catalogue on the stick (`None` = not offered offline).
+    /// The package file and its pinned digest (`package`, `sha256` in the file).
+    #[serde(flatten)]
+    pub pin: PackagePin,
+}
+
+/// Where an entry's package is and what it must hash to.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackagePin {
+    /// Package file next to the catalogue (`None` = not offered offline).
     #[serde(default)]
     pub package: Option<String>,
+    /// SHA-256 of the package file (64 lowercase hex). Pinned by the signed catalogue: a
+    /// downloaded package must match it before the launcher sees it (required for the
+    /// online source).
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 impl CatalogApp {
@@ -181,7 +194,11 @@ impl Catalog {
             !valid_catalog_id(&a.id)
                 || a.name.ar.is_empty()
                 || a.name.en.is_empty()
-                || a.package.as_deref().is_some_and(|p| !valid_package_file(p))
+                || a.pin
+                    .package
+                    .as_deref()
+                    .is_some_and(|p| !valid_package_file(p))
+                || a.pin.sha256.as_deref().is_some_and(|h| !valid_sha256(h))
         }) {
             return Err(crate::error::SourceError::Damaged);
         }
@@ -224,6 +241,11 @@ fn valid_catalog_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
+/// 64 lowercase hex digits.
+pub fn valid_sha256(text: &str) -> bool {
+    text.len() == 64 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// A package must be a plain `.uap` file next to the catalogue: no path
 /// separators, no `..`, no hidden names (the path is built from it).
 fn valid_package_file(name: &str) -> bool {
@@ -262,7 +284,10 @@ mod tests {
             file_types: Vec::new(),
             permissions: Vec::new(),
             requires: Vec::new(),
-            package: None,
+            pin: crate::catalog::PackagePin {
+                package: None,
+                sha256: None,
+            },
         }
     }
 

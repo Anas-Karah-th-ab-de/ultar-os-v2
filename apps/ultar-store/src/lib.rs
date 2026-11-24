@@ -10,6 +10,7 @@
 //! | Module | Job |
 //! |---|---|
 //! | [`catalog`] | the catalogue data: apps, permissions in plain words, categories, file types |
+//! | [`online`] | the store server as a catalogue source (signed, cached, offline first) |
 //! | [`source`] | [`source::CatalogSource`]: where a catalogue comes from (file, embedded, tests) |
 //! | [`search`] | tolerant search over name, description and file type (Arabic insensitive) |
 //! | [`state`], [`action`], [`update`] | the UI-independent model: every page, every state, every click |
@@ -26,6 +27,9 @@ pub mod backend;
 pub mod catalog;
 pub mod error;
 pub mod i18n;
+pub mod online;
+#[cfg(feature = "online")]
+pub mod online_https;
 pub mod scripted;
 pub mod search;
 pub mod signature;

@@ -12,6 +12,10 @@
 //! (regular file, not a symlink, no group/other write bit, owned by root or by
 //! the directory's owner; the directory itself not a symlink and not
 //! group/other-writable). Anything else is skipped.
+//!
+//! **Revocation:** lines `revoke <hex public key>` in any key file of the directory (by
+//! convention `revoked.list`, shipped with the image like the keys) remove that key from the
+//! trusted set, even when another file still lists it. Such a line is never itself a key.
 
 use crate::error::SourceError;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -83,6 +87,7 @@ fn same_owner(_file: &std::fs::Metadata, _dir: &std::fs::Metadata) -> bool {
 /// `ultar-pkg`). Writable-by-others directories and files are ignored.
 pub fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
     let mut keys = Vec::new();
+    let mut revoked = Vec::new();
     let dir_meta = match std::fs::symlink_metadata(dir) {
         Ok(meta) if meta.is_dir() && owner_only(&meta) => meta,
         _ => return keys,
@@ -105,7 +110,13 @@ pub fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
             continue;
         };
         keys.extend(text.lines().filter_map(parse_key));
+        revoked.extend(
+            text.lines()
+                .filter_map(|l| l.trim().strip_prefix("revoke "))
+                .filter_map(parse_key),
+        );
     }
+    keys.retain(|k| !revoked.contains(k));
     keys
 }
 

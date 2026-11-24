@@ -136,3 +136,29 @@ fn writable_key_files_and_dirs_are_not_trusted() {
     std::fs::remove_dir_all(&trusted).unwrap();
     std::fs::remove_dir_all(&elsewhere).unwrap();
 }
+
+#[test]
+fn revoked_key_is_no_longer_trusted() {
+    let signing = SigningKey::from_bytes(&[11u8; 32]);
+    let dir = key_dir(&signing);
+    let blob = sign_catalog(b"body", &signing);
+    assert!(verify_signature(b"body", &blob, &dir).unwrap().is_some());
+    let line = format!(
+        "revoke {}\n",
+        hex::encode(signing.verifying_key().to_bytes())
+    );
+    std::fs::write(dir.join("revoked.list"), &line).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let f = dir.join("revoked.list");
+        std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+    assert_eq!(
+        verify_signature(b"body", &blob, &dir),
+        Err(SourceError::UnknownSigner)
+    );
+    // A revoke line is never a key by itself.
+    assert!(trusted_keys(&dir).is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

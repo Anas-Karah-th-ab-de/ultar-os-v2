@@ -1,0 +1,29 @@
+[[app]]
+id = "store"
+category = "system"
+icon = "bag"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "متجر Ultar"
+en = "Ultar Store"
+de = "Ultar Store"
+[app.summary]
+ar = "استكشف التطبيقات وثبّتها وحدّثها من فهرس موقّع."
+en = "Discover, install and update apps from a signed catalogue."
+de = "Apps aus einem signierten Katalog finden, installieren und aktualisieren."
+[app.description]
+ar = "يقرأ الفهرس من خادم المتجر عبر HTTPS أو من ذاكرة USB أو من النظام نفسه، ويتحقّق من توقيع كل فهرس وكل حزمة قبل التثبيت، ويعمل دون إنترنت بآخر فهرس موثوق."
+en = "Reads the catalogue from the store server over HTTPS, from a USB stick or from the system itself, checks the signature of every catalogue and package before installing, and keeps working offline with the last trusted catalogue."
+de = "Liest den Katalog vom Store-Server über HTTPS, von einem USB-Stick oder aus dem System, prüft die Signatur jedes Katalogs und Pakets vor der Installation und arbeitet offline mit dem letzten vertrauenswürdigen Katalog weiter."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتّصل بخادم المتجر فقط لتنزيل الفهرس والحزم الموقّعة"
+en = "Connects only to the store server to download the signed catalogue and packages"
+de = "Verbindet sich nur mit dem Store-Server, um den signierten Katalog und Pakete zu laden"

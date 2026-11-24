@@ -18,7 +18,8 @@ required    = []
 optional    = []
 
 [permissions]
-# The store never touches hardware, network or files of other apps. Everything
+# The store never touches hardware or files of other apps; its only network use is
+# HTTPS to the store server (signed catalogue + packages). Everything else
 # it needs are bus calls: the launcher (install, uninstall, start, list, free),
 # and its own data area for the error log (store.log).
 bus         = [
@@ -30,8 +31,8 @@ bus         = [
     "launcher.free",
     "launcher.admin",          # the store is the installer UI (§7.3)
 ]
-files       = ["app:data:rw"]  # the saved error report only
-network     = "none"           # offline first: the catalogue is local or on a stick
+files       = ["app:data:rw"]  # the saved error report and the verified catalogue cache
+network     = "allowed"        # HTTPS to the store server only; offline first (local/stick catalogue keeps working)
 background  = false
 
 [agent]

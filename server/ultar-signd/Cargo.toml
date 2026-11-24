@@ -1,0 +1,30 @@
+# Standalone workspace (runs on the release server only, x86_64 Linux).
+[workspace]
+
+[package]
+name = "ultar-signd"
+version = "0.8.0-beta"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Release signing service: holds the Ultar OS release, system-app and store keys, signs only domain-separated digests over a local Unix socket, rate-limited and audited."
+
+[dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+tar = { version = "0.4", default-features = false }
+zeroize = "1"
+rustix = { version = "1", default-features = false, features = ["std", "net", "process", "fs"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

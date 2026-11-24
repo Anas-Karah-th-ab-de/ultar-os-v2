@@ -234,7 +234,10 @@ mod tests {
                 file_types: vec![".docx".into(), ".xlsx".into()],
                 permissions: Vec::new(),
                 requires: Vec::new(),
-                package: Some("km-office.uap".into()),
+                pin: crate::catalog::PackagePin {
+                    package: Some("km-office.uap".into()),
+                    sha256: None,
+                },
             }],
         }
     }

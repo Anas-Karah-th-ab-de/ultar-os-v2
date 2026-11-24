@@ -1,0 +1,29 @@
+[[app]]
+id = "settings"
+category = "system"
+icon = "gear"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "الإعدادات"
+en = "Settings"
+de = "Einstellungen"
+[app.summary]
+ar = "الشاشة والشبكة والحسابات والخصوصية والتحديثات في مكان واحد."
+en = "Display, network, accounts, privacy and updates in one place."
+de = "Anzeige, Netzwerk, Konten, Datenschutz und Updates an einem Ort."
+[app.description]
+ar = "تطبيق إعدادات النظام: يغيّر الإعدادات عبر خدمات النظام فقط، مع «احتفظ أو تراجع» للتغييرات الخطرة."
+en = "The system settings app: changes settings only through the system services, with keep-or-revert for risky changes."
+de = "Die Systemeinstellungen: ändern Einstellungen nur über die Systemdienste, mit „Behalten oder zurück“ bei riskanten Änderungen."
+[[app.permissions]]
+id = "devices"
+[app.permissions.reason]
+ar = "يعرض الأجهزة المتصلة ويضبطها عبر خدمات النظام"
+en = "Shows and configures connected devices through the system services"
+de = "Zeigt und konfiguriert angeschlossene Geräte über die Systemdienste"

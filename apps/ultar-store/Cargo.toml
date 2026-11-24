@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Ultar Store: discover, search, install, update and remove components from a local signed catalogue (offline first, USB stick updates)."
+description = "Ultar Store: discover, search, install, update and remove components from a signed catalogue – local, USB stick or the store server over HTTPS (offline first)."
 
 [lib]
 name = "ultar_store"
@@ -22,8 +22,10 @@ required-features = ["gui"]
 default = []
 # Talks to the launcher over `ultar-bus` (Linux: `ultar-sys`).
 bus = ["dep:ultar-bus"]
-# The full windowed app: compositor surface + bus operations.
-gui = ["bus", "dep:ultar-surface"]
+# The online catalogue source over HTTPS (rustls + Graviola, pure Rust).
+online = ["dep:ureq", "dep:rustls-graviola"]
+# The full windowed app: compositor surface + bus operations + the online source.
+gui = ["bus", "online", "dep:ultar-surface"]
 
 [dependencies]
 ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
@@ -37,8 +39,11 @@ sha2 = "0.10"
 ed25519-dalek = "2"
 base64 = "0.22"
 hex = "0.4"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"], optional = true }
+rustls-graviola = { version = "0.4", optional = true }
 
 [dev-dependencies]
+tempfile = "3"
 # Headless render + snapshots for the screen tests.
 ultar-ui = { path = "../../platform/ultar-ui", features = ["snapshot"] }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }

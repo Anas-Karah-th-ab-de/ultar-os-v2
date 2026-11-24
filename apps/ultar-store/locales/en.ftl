@@ -135,6 +135,7 @@ store.error.unsigned = The catalogue is not signed; it is not used.
 store.error.bad-signature = The catalogue signature does not match its contents.
 store.error.unknown-signer = The catalogue was not signed by a key trusted on this device.
 store.error.too-new = The catalogue format is newer than this store; update the system.
+store.error.package-mismatch = The downloaded package does not match the fingerprint signed in the catalogue; it was deleted and not installed.
 store.error.no-launcher = The launcher service is not available in this session.
 store.error.package-refused = The package was refused: invalid signature or unknown publisher.
 store.error.unknown-app = This app is not installed.

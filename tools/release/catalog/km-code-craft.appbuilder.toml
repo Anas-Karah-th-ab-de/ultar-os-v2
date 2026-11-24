@@ -1,0 +1,35 @@
+[[app]]
+id = "km-code-craft.appbuilder"
+category = "development"
+icon = "code"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "باني التطبيقات"
+en = "App-Builder"
+de = "App-Builder"
+[app.summary]
+ar = "افحص مشروع تطبيقك وحزّمه بملف ‎.uap‎ موقّع وجرّبه على جهازك."
+en = "Check your app project, package it as a signed .uap and try it on your device."
+de = "App-Projekt prüfen, als signiertes .uap verpacken und auf dem Gerät testen."
+[app.description]
+ar = "للمطوّرين: يفحص ملف ‎ultar-app.toml‎ ومجلد ‎payload‎، ويحزّم التطبيق ويوقّعه بمفتاحك الخاص الذي يبقى على جهازك، ثم يطلب تثبيته للتجربة. يقبل الجهاز الحزمة فقط إذا أضاف المسؤول مفتاحك العام إلى مفاتيح الثقة."
+en = "For developers: checks ultar-app.toml and the payload folder, packages the app and signs it with your own key that stays on your device, then asks to install it for testing. The device accepts the package only after an administrator added your public key to the trusted keys."
+de = "Für Entwickler: prüft ultar-app.toml und den Ordner payload, verpackt die App und signiert sie mit Ihrem eigenen Schlüssel, der auf dem Gerät bleibt, und lässt sie zum Testen installieren. Das Gerät nimmt das Paket erst an, wenn ein Administrator Ihren öffentlichen Schlüssel zu den vertrauenswürdigen Schlüsseln hinzugefügt hat."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يقرأ مجلد المشروع الذي تختاره ويكتب الحزمة في مجلد ‎out‎ داخله"
+en = "Reads the project folder you choose and writes the package into its out folder"
+de = "Liest den gewählten Projektordner und schreibt das Paket in dessen Ordner out"
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "لا يتّصل بالإنترنت"
+en = "Does not connect to the internet"
+de = "Verbindet sich nicht mit dem Internet"

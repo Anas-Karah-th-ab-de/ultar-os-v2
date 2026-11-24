@@ -222,7 +222,7 @@ impl Store {
 
     /// The package file the catalogue offers for this app (offline first).
     pub fn package_path(&self, app: &str) -> Option<String> {
-        let file = self.entry(app)?.package.clone()?;
+        let file = self.entry(app)?.pin.package.clone()?;
         let dir = self.catalog.dir.as_deref()?;
         Some(format!("{dir}/{file}"))
     }

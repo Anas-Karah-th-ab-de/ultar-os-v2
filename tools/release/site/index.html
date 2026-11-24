@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Ultar OS – KM Code Craft</title>
+<meta name="description" content="Ultar OS – نظام تشغيل مستقل بنواة خاصة مكتوبة بلغة Rust من KM Code Craft. العربية أولاً، خصوصية، حزم وتحديثات موقّعة.">
+<link rel="icon" href="/img/icon-192.png">
+<link rel="stylesheet" href="/style.css?v=080">
+<script src="/app.js?v=080" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/"><img src="/img/logo.png" alt="KM Code Craft" width="130" height="55"></a>
+  <nav class="lang" aria-label="Language">
+    <button type="button" data-lang="ar">العربية</button>
+    <button type="button" data-lang="en">English</button>
+    <button type="button" data-lang="de">Deutsch</button>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="badge" data-t="badge">Ultar OS 0.8 تجريبي · نواة خاصة مكتوبة بلغة Rust</p>
+    <h1 data-t="h1">نظام تشغيل مستقل، العربية أولاً.</h1>
+    <p class="lead" data-t="lead">Ultar OS نظام مبني من الأساس لدى KM Code Craft: نواة خاصة مكتوبة بلغة Rust تعمل بدون لينكس، وواجهة سطح مكتب وواجهة هاتف، ومتجر تطبيقات موقّع، وكل تطبيق في خلية معزولة بأقل الصلاحيات.</p>
+    <div class="cta">
+      <a class="btn primary" href="#download" data-t="cta1">التنزيل والتثبيت</a>
+      <a class="btn" href="#status" data-t="cta2">ما الذي يعمل اليوم؟</a>
+      <a class="btn" href="#security" data-t="cta3">الخصوصية والأمان</a>
+    </div>
+  </section>
+
+  <section class="facts" aria-label="Facts">
+    <div><b>Rust</b><span data-t="f1">نواة خاصة وكل مكوّنات النظام، بدون لينكس</span></div>
+    <div><b>‎~145 ms</b><span data-t="f2">حتى تجهز النواة في المحاكي</span></div>
+    <div><b>‎~2 450</b><span data-t="f3">اختبار آلي ينجح بدون أخطاء</span></div>
+    <div><b>AR · EN · DE</b><span data-t="f4">العربية من اليمين لليسار في كل مكان</span></div>
+  </section>
+
+  <section class="grid">
+    <h2 data-t="feat">ما هو Ultar OS اليوم</h2>
+    <article><h3 data-t="a1">نواة خاصة</h3><p data-t="a1p">نواة Ultar مكتوبة بلغة Rust: ذاكرة بحدود لكل مجموعة، مستخدمون وصلاحيات حقيقية، عزل العمليات، ومحمّل UEFI خاص بنسختين A/B يعود تلقائياً إلى النسخة السابقة إذا فشل الإقلاع.</p></article>
+    <article><h3 data-t="a2">سطح مكتب وهاتف</h3><p data-t="a2p">مركّب نوافذ خاص (compositor)، شريط وقوائم ونظرة عامة، شاشة قفل، وواجهة هاتف. النظام يتكيّف مع الجهاز: لمس، بطارية، شاشة ثانية.</p></article>
+    <article><h3 data-t="a3">متجر Ultar</h3><p data-t="a3p">فهرس موقّع من خادم المتجر عبر HTTPS أو من ذاكرة USB أو من النظام نفسه. كل حزمة تُفحص مرتين قبل التثبيت، والمتجر يعمل دون إنترنت بآخر فهرس موثوق.</p></article>
+    <article><h3 data-t="a4">كل تطبيق في خليته</h3><p data-t="a4p">كل تطبيق عملية مستقلة بمستخدم خاص ومجلد بيانات خاص، ولا يحصل إلا على الصلاحيات المذكورة في بيانه الموقّع والتي وافقت عليها.</p></article>
+    <article><h3 data-t="a5">تحديثات آمنة</h3><p data-t="a5p">تحديثات النظام موقّعة، مع حماية من الرجوع إلى نسخة أقدم، وتثبيت على النسخة الثانية A/B مع رجوع تلقائي، وحزمة بدون إنترنت عبر USB.</p></article>
+    <article><h3 data-t="a6">العربية أولاً</h3><p data-t="a6p">كل نص يُكتب بالعربية أولاً: صيغ الجمع العربية الست، التقويم الهجري، وبحث يتجاهل التشكيل واختلاف الإملاء. الأرقام دائماً 0–9.</p></article>
+  </section>
+
+  <section class="shots">
+    <h2 data-t="look">لقطات من النظام الحقيقي</h2>
+    <p class="muted" data-t="lookl">صور شاشة حقيقية من Ultar OS 0.8 في آلة افتراضية (QEMU)، وليست تصاميم.</p>
+    <div class="strip" id="shots">
+      <figure><img src="/img/v2-desktop-ar.png" alt="" loading="lazy" width="1280" height="800"><figcaption data-t="s1">سطح المكتب بعد الإقلاع: الشريط، البحث، التطبيقات، اللغة والوقت</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="status" class="sec">
+    <h2 data-t="st">الحالة بصدق: نسخة تجريبية</h2>
+    <p class="lead" data-t="stl">Ultar OS 0.8 نسخة تجريبية للتجربة على آلة افتراضية أو جهاز اختبار، وليست لجهاز العمل اليومي بعد.</p>
+    <div class="cols">
+      <div class="col"><h3 data-t="ok">يعمل</h3>
+        <ul class="checks">
+          <li data-t="ok1">الإقلاع عبر UEFI على الحاسوب في VMware وQEMU</li>
+          <li data-t="ok2">جلسة سطح المكتب: مركّب النوافذ، الشريط، شاشة القفل، حوارات النظام</li>
+          <li data-t="ok3">المتجر والإعدادات والملفات كتطبيقات مستقلة، وحزم موقّعة من خادم المتجر</li>
+          <li data-t="ok4">تحديثات النظام الموقّعة على النسختين A/B مع الرجوع التلقائي</li>
+        </ul>
+      </div>
+      <div class="col"><h3 data-t="no">لا يعمل بعد</h3>
+        <ul class="checks no">
+          <li data-t="no1">محرّك الويب: المتصفح الخاص غير جاهز بعد</li>
+          <li data-t="no2">تعريفات Wi-Fi للأجهزة الحقيقية</li>
+          <li data-t="no3">تشفير القرص: الخيار في برنامج التثبيت معطّل حتى تستطيع النواة فتح قرص مشفّر عند الإقلاع</li>
+          <li data-t="no5">برنامج التثبيت الرسومي ما زال قيد الإنهاء</li>
+          <li data-t="no4">نسخة الهاتف ليست جزءاً من هذا الإصدار، والتشغيل المباشر على الأجهزة الحقيقية ما زال قيد الاختبار</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="security" class="sec">
+    <h2 data-t="sec">الخصوصية والأمان</h2>
+    <p class="lead" data-t="secl">جهازك لا يثق بخادمنا: كل ما يُثبَّت يفحصه الجهاز بنفسه.</p>
+    <ul class="checks">
+      <li data-t="c1">التطبيقات والفهرس وصور النظام موقّعة بثلاثة مفاتيح منفصلة (النظام، تطبيقات النظام، المتجر). يحفظها على هذا الخادم برنامج توقيع مستقل بمستخدم خاص، لا يوقّع إلا بصمات بصيغة ثابتة، بحدّ لعدد التواقيع، ويسجّل كل توقيع.</li>
+      <li data-t="c2">الجهاز يتحقق من كل توقيع بمفاتيح الثقة المدمجة في النظام ويرفض كل ما هو غير موقّع أو موقّع بمفتاح ملغى – مهما قال الخادم.</li>
+      <li data-t="c3">لا يوجد على الخادم أي وصول عن بعد إلى الأجهزة: لا أوامر، لا تحكم، لا تثبيت صامت.</li>
+      <li data-t="c4">هذه الصفحة بلا ملفات تعريف ارتباط، بلا تتبّع، بلا خطوط أو نصوص من جهات خارجية، ولا نحفظ عناوين IP للزوار.</li>
+      <li data-t="c5">كل ملف للتنزيل يأتي مع بصمة SHA-256 وتوقيع Ed25519 يمكنك التحقق منهما بنفسك.</li>
+    </ul>
+  </section>
+
+  <section id="download" class="dl">
+    <h2 data-t="dl">التنزيل والتثبيت</h2>
+    <div id="releases"><p class="muted" data-t="dl0">صورة النظام 0.8 قيد الإنهاء وستظهر هنا قريباً مع بصمتها وتوقيعها.</p></div>
+    <details>
+      <summary data-t="vh">كيف أتحقق من الملف؟</summary>
+      <p data-t="vp1">١. البصمة: احسب SHA-256 وقارنها بالقيمة المعروضة هنا.</p>
+      <pre>sha256sum &lt;file&gt;                              # Linux
+shasum -a 256 &lt;file&gt;                           # macOS
+Get-FileHash &lt;file&gt; -Algorithm SHA256          # Windows PowerShell</pre>
+      <p data-t="vp2">٢. التوقيع: نزّل ملف ‎.sig‎ وملف المفاتيح ‎ultar-allowed-signers‎ ثم تحقّق بأداة ssh-keygen الموجودة في Linux وmacOS وWindows 10/11:</p>
+      <pre>ssh-keygen -Y verify -f ultar-allowed-signers -I release@ultar.code-craft.tech \
+  -n ultar-release -s &lt;file&gt;.sig &lt; &lt;file&gt;</pre>
+      <p><a href="/downloads/ultar-allowed-signers" data-t="keys">ملف المفاتيح ultar-allowed-signers</a></p>
+    </details>
+    <details>
+      <summary data-t="gv">التثبيت في VMware</summary>
+      <ol>
+        <li data-t="gv1">نزّل ملف ‎UltarOS-v2-…zip‎ وتحقّق من بصمته وتوقيعه.</li>
+        <li data-t="gv2">فكّ الضغط وافتح الملف ‎UltarOS-v2.vmx‎ في VMware Workstation أو VMware Player (الإصدار 17 أو أحدث).</li>
+        <li data-t="gv3">الآلة معدّة مسبقاً: UEFI، ذاكرة 4 GB، قرص NVMe، شبكة NAT. شغّلها فقط.</li>
+        <li data-t="gv4">بيانات الدخول الأولى مذكورة في ملاحظات الإصدار أعلاه.</li>
+      </ol>
+    </details>
+    <details>
+      <summary data-t="gu">التثبيت على حاسوب عبر USB</summary>
+      <ol>
+        <li data-t="gu1">نزّل صورة USB ‏(‎.img‎) وتحقّق من بصمتها وتوقيعها.</li>
+        <li data-t="gu2">اكتبها على ذاكرة USB (8 GB على الأقل) كصورة خام، مثلاً بالأمر dd في لينكس أو بأداة لكتابة الصور الخام. كل ما على الذاكرة سيُمسح.</li>
+        <li data-t="gu3">أقلع الحاسوب من الذاكرة عبر قائمة الإقلاع UEFI. عطّل Secure Boot لأن المحمّل غير موقّع منه بعد.</li>
+        <li data-t="gu4">برنامج التثبيت يكتب النظام على قرص فارغ ويمسح كل ما عليه – استخدم جهاز اختبار أو قرصاً فارغاً.</li>
+      </ol>
+      <pre>sudo dd if=&lt;file&gt;.img of=/dev/sdX bs=4M status=progress conv=fsync</pre>
+    </details>
+  </section>
+</main>
+
+<footer>
+  <p><b>Ultar OS</b> · <span data-t="by">تطوير</span> محمد أنس قرة محمد · Mohamad Anas Kara Mohamad</p>
+  <p><a href="https://code-craft.tech" rel="noopener noreferrer">KM Code Craft</a> · <a href="mailto:info@code-craft.tech">info@code-craft.tech</a></p>
+</footer>
+</body>
+</html>
