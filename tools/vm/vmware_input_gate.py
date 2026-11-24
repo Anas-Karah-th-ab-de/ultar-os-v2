@@ -592,9 +592,14 @@ def run(vm, m):
     ok, _ = m.wait_for(vm, "clock-2", lambda x: x.diff(first, clock) > 0.002, 75)
     if not ok:
         failures.append("the clock did not tick (static screen)")
-    if not failures:
+    # the clipboard and the layout field use positions of Settings' and Files' fields measured at
+    # 1280x800 and above; a smaller screen (usb-xga) checks the phone and the restart layout only
+    small = vm.size[0] < 1280
+    if small:
+        log(f"clipboard and typed layout: skipped at {vm.size} (field positions measured at 1280x800)")
+    if not failures and not small:
         failures += clipboard(vm, m, pos)
-    if not failures:
+    if not failures and not small:
         failures += layout_switch(vm, m, pos)
     if not failures:
         failures += accessibility(vm, m)
