@@ -147,83 +147,54 @@ fn compact_app_page_shows_permissions_in_plain_words() {
     }
 }
 
+/// Renders `store` and asserts each `(ar, en, what)` text of the board.
+fn expect_board_texts(
+    store: ultar_store::state::Store,
+    lang: Lang,
+    theme: ultar_ui::tokens::ThemeKind,
+    texts: &[(&str, &str, &str)],
+) {
+    let mut s = Scene::new(store, lang, theme, common::WIDE);
+    s.render();
+    for (ar, en, what) in texts {
+        let want = if lang == Lang::Ar { *ar } else { *en };
+        assert!(text_present(&mut s, want), "{what} ({lang:?})");
+    }
+}
+
 #[test]
 fn surface_states_match_the_board_panels() {
     for lang in LANGS {
         for theme in THEMES {
-            // Loading.
-            let mut s = Scene::new(loading_store(), lang, theme, common::WIDE);
-            s.render();
-            assert!(
-                text_present(
-                    &mut s,
-                    if lang == Lang::Ar {
-                        "يجري تحميل المتجر"
-                    } else {
-                        "Loading the store"
-                    }
+            let loading = [("يجري تحميل المتجر", "Loading the store", "loading text")];
+            expect_board_texts(loading_store(), lang, theme, &loading);
+            let offline = [
+                (
+                    "غير متصل بالإنترنت",
+                    "Not connected to the internet",
+                    "offline banner",
                 ),
-                "loading text ({lang:?})"
-            );
-            // Offline.
-            let mut s = Scene::new(offline_store(), lang, theme, common::WIDE);
-            s.render();
-            assert!(
-                text_present(
-                    &mut s,
-                    if lang == Lang::Ar {
-                        "غير متصل بالإنترنت"
-                    } else {
-                        "Not connected to the internet"
-                    }
+                ("إعادة المحاولة", "Retry", "retry"),
+            ];
+            expect_board_texts(offline_store(), lang, theme, &offline);
+            let error = [
+                (
+                    "تعذّر تحميل المتجر",
+                    "Could not load the store",
+                    "error title",
                 ),
-                "offline banner ({lang:?})"
-            );
-            assert!(
-                text_present(
-                    &mut s,
-                    if lang == Lang::Ar {
-                        "إعادة المحاولة"
-                    } else {
-                        "Retry"
-                    }
+                ("حفظ السجلّ", "Save the log", "log button"),
+            ];
+            expect_board_texts(error_store(), lang, theme, &error);
+            let no_space = [
+                ("ما يمكن تحريره", "What can be freed", "free heading"),
+                (
+                    "تحرير المساحة والمتابعة",
+                    "Free the space and continue",
+                    "free go",
                 ),
-                "retry ({lang:?})"
-            );
-            // Error with reason.
-            let mut s = Scene::new(error_store(), lang, theme, common::WIDE);
-            s.render();
-            assert!(
-                text_present(
-                    &mut s,
-                    if lang == Lang::Ar {
-                        "تعذّر تحميل المتجر"
-                    } else {
-                        "Could not load the store"
-                    }
-                ),
-                "error title ({lang:?})"
-            );
-            assert!(
-                text_present(
-                    &mut s,
-                    if lang == Lang::Ar {
-                        "حفظ السجلّ"
-                    } else {
-                        "Save the log"
-                    }
-                ),
-                "log button ({lang:?})"
-            );
-            // No space.
-            let mut s = Scene::new(no_space_store(), lang, theme, common::WIDE);
-            s.render();
-            let (heading, go) = match lang {
-                Lang::Ar => ("ما يمكن تحريره", "تحرير المساحة والمتابعة"),
-                _ => ("What can be freed", "Free the space and continue"),
-            };
-            assert!(text_present(&mut s, heading), "free heading ({lang:?})");
-            assert!(text_present(&mut s, go), "free go ({lang:?})");
+            ];
+            expect_board_texts(no_space_store(), lang, theme, &no_space);
         }
     }
 }

@@ -10,7 +10,8 @@
 //!
 //! Key files are only trusted when nobody but their owner can change them
 //! (regular file, not a symlink, no group/other write bit, owned by root or by
-//! the reading user; the directory likewise). Anything else is skipped.
+//! the directory's owner; the directory itself not a symlink and not
+//! group/other-writable). Anything else is skipped.
 
 use crate::error::SourceError;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -54,12 +55,11 @@ pub fn sign_catalog(body: &[u8], signing: &ed25519_dalek::SigningKey) -> String 
     signature_blob(&signing.verifying_key(), &sig)
 }
 
-/// Whether nobody but the owner (root or this user) can change `meta`'s file.
+/// Not writable by group or others.
 #[cfg(unix)]
 fn owner_only(meta: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
-    // std has no geteuid; the uid comes from /proc. Root-owned is always fine.
-    meta.mode() & 0o022 == 0 && (meta.uid() == 0 || Some(meta.uid()) == own_uid())
+    meta.mode() & 0o022 == 0
 }
 
 #[cfg(not(unix))]
@@ -67,22 +67,26 @@ fn owner_only(_meta: &std::fs::Metadata) -> bool {
     true
 }
 
-/// The real uid of this process (from `/proc/self/status`), if readable.
+/// A key file must belong to root or to the owner of its directory.
 #[cfg(unix)]
-fn own_uid() -> Option<u32> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let line = status.lines().find(|l| l.starts_with("Uid:"))?;
-    line.split_whitespace().nth(1)?.parse().ok()
+fn same_owner(file: &std::fs::Metadata, dir: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    file.uid() == 0 || file.uid() == dir.uid()
+}
+
+#[cfg(not(unix))]
+fn same_owner(_file: &std::fs::Metadata, _dir: &std::fs::Metadata) -> bool {
+    true
 }
 
 /// Reads the hex public keys of a trusted-keys directory (same files as
 /// `ultar-pkg`). Writable-by-others directories and files are ignored.
 pub fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
     let mut keys = Vec::new();
-    match std::fs::symlink_metadata(dir) {
-        Ok(meta) if meta.is_dir() && owner_only(&meta) => {}
+    let dir_meta = match std::fs::symlink_metadata(dir) {
+        Ok(meta) if meta.is_dir() && owner_only(&meta) => meta,
         _ => return keys,
-    }
+    };
     let Ok(rd) = std::fs::read_dir(dir) else {
         return keys;
     };
@@ -90,7 +94,11 @@ pub fn trusted_keys(dir: &Path) -> Vec<VerifyingKey> {
         let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
             continue;
         };
-        if !meta.is_file() || meta.len() > MAX_KEY_FILE || !owner_only(&meta) {
+        if !meta.is_file()
+            || meta.len() > MAX_KEY_FILE
+            || !owner_only(&meta)
+            || !same_owner(&meta, &dir_meta)
+        {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(entry.path()) else {
