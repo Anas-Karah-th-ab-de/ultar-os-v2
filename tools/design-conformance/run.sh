@@ -38,6 +38,7 @@ python3 -I "$TOOLS/static_checks.py" "$ROOT" $INV --known "$ROOT/design/conforma
 cd "$ROOT"
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-ui --test design_conformance --test design_conformance_clicks --test design_conformance_toasts
 cargo test -p ultar-compositor --test design_conformance
+cargo test -p ultar-files --test design_conformance --test clicks
 
 if [ -n "$INV" ]; then
     for b in States StatesLight; do

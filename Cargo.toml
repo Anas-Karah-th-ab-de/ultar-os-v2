@@ -25,6 +25,7 @@ members = [
     "tools/kern-test/ab-agent",
     "apps/ultar-office",
     "apps/ultar-web",
+    "apps/ultar-files",
     "external/ultar-telegram",
     "platform/ultar-ime",
     "platform/ultar-shell",

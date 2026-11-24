@@ -1,0 +1,38 @@
+id          = "org.ultar.files"
+version     = "0.7.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.files.name"
+description = "app.files.desc"
+icon        = "folder"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = ["removable_storage"]
+
+[open]
+# trash:///      the trash (shell.trash, desk icon of the trash)
+# file:///...    a folder or a mounted drive (shell.drive, volumes.state uri)
+# files://<area>/<path>  a place of the user (desktop icons, other apps)
+schemes      = ["trash", "file", "files"]
+multi_window = true
+
+[permissions]
+# launcher.start: open a file with its default app (v2, uri); launcher.list: is that app installed.
+# volumes.eject: the eject buttons; volumes.state: the drives in the sidebar.
+# notify.post: "the drive may be removed".
+bus         = ["launcher.start", "launcher.list", "volumes.eject", "volumes.state", "notify.post"]
+# The user's places; the cell binds each granted area at /areas/<name> (':' becomes '-').
+files       = ["home:rw", "documents:rw", "downloads:rw", "media:pictures:rw", "media:music:rw", "media:videos:rw", "desktop:rw", "trash:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 60
+cpu         = "foreground"

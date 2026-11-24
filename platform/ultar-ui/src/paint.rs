@@ -276,6 +276,25 @@ impl<'a> Painter<'a> {
         self.canvas.blit(source, area, area.x0, area.y0);
     }
 
+    /// Draws a picture (a thumbnail) into `rect` (logical points), scaled to fill it and
+    /// faded by the painter's opacity.
+    pub fn image(&mut self, picture: &crate::widgets::Thumbnail, rect: Rect) {
+        let area = PixelRect::covering(&self.snap(rect));
+        if self.opacity >= 1.0 {
+            self.canvas
+                .draw_rgba(picture.rgba(), picture.width(), picture.height(), area);
+            return;
+        }
+        let alpha = self.opacity.clamp(0.0, 1.0);
+        let faded: Vec<u8> = picture
+            .rgba()
+            .chunks_exact(4)
+            .flat_map(|p| [p[0], p[1], p[2], (f32::from(p[3]) * alpha).round() as u8])
+            .collect();
+        self.canvas
+            .draw_rgba(&faded, picture.width(), picture.height(), area);
+    }
+
     /// Restores a clip returned by [`Painter::clip`].
     pub fn restore_clip(&mut self, previous: PixelRect) {
         self.canvas.set_clip(previous);
