@@ -194,8 +194,7 @@ mod tests {
         // one probe file per call: the tests run in parallel and remove their probe again
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let probe =
-            std::env::temp_dir().join(format!("busd-apps-me-{}-{n}", std::process::id()));
+        let probe = std::env::temp_dir().join(format!("busd-apps-me-{}-{n}", std::process::id()));
         std::fs::write(&probe, b"").unwrap();
         let uid = std::fs::metadata(&probe).unwrap().uid();
         let _ = std::fs::remove_file(&probe);
