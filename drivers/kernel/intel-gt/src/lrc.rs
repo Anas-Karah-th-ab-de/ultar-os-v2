@@ -25,6 +25,8 @@ pub const CTX_RING_TAIL: usize = 0x07;
 pub const CTX_RING_START: usize = 0x09;
 /// Word of the register state: ring size and valid bit.
 pub const CTX_RING_CTL: usize = 0x0b;
+/// Word of the register state: how long the context ran.
+pub const CTX_TIMESTAMP: usize = 0x23;
 /// Word of the register state: upper half of the page table root.
 pub const CTX_PDP0_UDW: usize = 0x31;
 /// Word of the register state: lower half of the page table root.
@@ -166,6 +168,35 @@ impl Context {
         Ok(image)
     }
 
+    /// The image of a new context that starts from `golden`, the image a context of the same
+    /// class saved after it ran: its register and engine state are taken over, the status page
+    /// is empty, ring, page tables and run time are this context's own.
+    pub fn image_from(&self, golden: &[u8]) -> Result<Vec<u8>> {
+        self.check()?;
+        if golden.len() != self.class.lrc_size() as usize {
+            return Err(Error::Invalid("golden context size"));
+        }
+        let mut image = golden.to_vec();
+        image[..PPHWSP_SIZE].fill(0);
+        let (hi, lo) = match self.pml4 {
+            Some(root) => ((root >> 32) as u32, root as u32),
+            None => (0, 0),
+        };
+        for (index, value) in [
+            (CTX_RING_START, self.ring_ggtt),
+            (CTX_RING_HEAD, 0),
+            (CTX_RING_TAIL, self.tail),
+            (CTX_RING_CTL, (self.ring_bytes - 4096) | RING_VALID),
+            (CTX_TIMESTAMP, 0),
+            (CTX_PDP0_UDW, hi),
+            (CTX_PDP0_LDW, lo),
+        ] {
+            let at = PPHWSP_SIZE + index * 4;
+            image[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        Ok(image)
+    }
+
     /// The descriptor the GuC is given: where the image is mapped in the GGTT and how the
     /// context addresses memory.
     pub fn descriptor(&self, image_ggtt: u32) -> u64 {
@@ -253,6 +284,36 @@ mod tests {
         assert_eq!(state_word(&img, CTX_PDP0_UDW), Some(1));
         assert_eq!(state_word(&img, CTX_PDP0_LDW), Some(0x2345_6000));
         assert_eq!(state_word(&img, 1 << 20), None);
+    }
+
+    #[test]
+    fn a_context_from_a_golden_image_keeps_the_state_and_gets_its_own_ring() {
+        let mut golden = ctx().image().unwrap();
+        golden[5] = 0xaa; // status page content of the old context
+        let put = |g: &mut Vec<u8>, index: usize, v: u32| {
+            let at = PPHWSP_SIZE + index * 4;
+            g[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        };
+        put(&mut golden, CTX_RING_HEAD, 0x18);
+        put(&mut golden, CTX_TIMESTAMP, 0x1234);
+        put(&mut golden, CTX_CONTEXT_CONTROL, 0x0009_0008);
+        put(&mut golden, 0x100, 0x5555_aaaa); // some saved state
+        let new = Context {
+            ring_ggtt: 0x0400_0000,
+            tail: 48,
+            pml4: Some(0x7000),
+            ..ctx()
+        };
+        let img = new.image_from(&golden).unwrap();
+        assert!(img[..PPHWSP_SIZE].iter().all(|b| *b == 0));
+        assert_eq!(state_word(&img, CTX_RING_START), Some(0x0400_0000));
+        assert_eq!(state_word(&img, CTX_RING_HEAD), Some(0));
+        assert_eq!(state_word(&img, CTX_RING_TAIL), Some(48));
+        assert_eq!(state_word(&img, CTX_TIMESTAMP), Some(0));
+        assert_eq!(state_word(&img, CTX_PDP0_LDW), Some(0x7000));
+        assert_eq!(state_word(&img, CTX_CONTEXT_CONTROL), Some(0x0009_0008));
+        assert_eq!(state_word(&img, 0x100), Some(0x5555_aaaa));
+        assert!(new.image_from(&golden[..4096]).is_err());
     }
 
     #[test]

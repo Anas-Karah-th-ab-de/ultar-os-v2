@@ -108,3 +108,19 @@ fn full_block_refuses_bad_input() {
     let many = [XE_LPG_ENGINES[0]; 200];
     assert!(full(0x1000, 0, 0, &many).is_err());
 }
+
+#[test]
+fn golden_slots_match_the_addresses_in_the_block() {
+    let ggtt = 0x0200_0000;
+    let blob = full(ggtt, 0x1000, 0, &XE_LPG_ENGINES).unwrap();
+    let mut end = 0;
+    for e in XE_LPG_ENGINES {
+        let (at, size) = golden_slot(&XE_LPG_ENGINES, e.class).unwrap();
+        let lrca = word(&blob, ADS_GOLDEN_CONTEXT_LRCA + e.class as usize * 4);
+        assert_eq!(lrca, ggtt + at as u32);
+        assert_eq!(size, e.class.lrc_size() as usize);
+        assert!(at >= end && at + size <= blob.len());
+        end = at + size;
+    }
+    assert_eq!(golden_slot(&XE_LPG_ENGINES, Class::Video), None);
+}

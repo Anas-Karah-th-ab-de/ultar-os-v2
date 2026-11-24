@@ -221,6 +221,27 @@ pub fn full_size(private_data_size: u32, engines: &[Engine]) -> usize {
         + page_align(private_data_size as usize)
 }
 
+/// Where the golden context image of `class` lies in the full block built for `engines`: byte
+/// offset and size. `None` when no engine of that class is in the list. The image a context of
+/// the class saved after its first run is copied there while the GuC runs (Linux does the same
+/// after the load).
+pub fn golden_slot(engines: &[Engine], class: Class) -> Option<(usize, usize)> {
+    let mut at = regset_offset() + REGSET_SIZE;
+    let mut seen: Vec<Class> = Vec::new();
+    for e in engines {
+        if seen.contains(&e.class) {
+            continue;
+        }
+        let size = e.class.lrc_size() as usize;
+        if e.class == class {
+            return Some((at, size));
+        }
+        seen.push(e.class);
+        at += page_align(size);
+    }
+    None
+}
+
 /// Builds the full block. The golden context images inside it start as zeroes; they are filled
 /// once a context of each class has run (stage G3).
 pub fn full(

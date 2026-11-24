@@ -62,6 +62,22 @@ impl GgttBuf {
         flush(self.phys, n as u64);
     }
 
+    /// Copies `data` to byte `offset` of the buffer and writes it out of the CPU caches. Data
+    /// that does not fit is not written.
+    pub fn write_at(&mut self, offset: usize, data: &[u8]) -> bool {
+        let fits = offset
+            .checked_add(data.len())
+            .is_some_and(|end| end as u64 <= self.pages * 4096);
+        if fits {
+            let at = self.phys + offset as u64;
+            // SAFETY: `[at, at + data.len())` lies inside the identity-mapped kernel pages this
+            // object owns (checked above), and `data` is a separate allocation (no overlap).
+            unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), at as *mut u8, data.len()) };
+            flush(at, data.len() as u64);
+        }
+        fits
+    }
+
     /// A copy of the first `len` bytes (what the GuC wrote there).
     pub fn bytes(&self, len: usize) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
