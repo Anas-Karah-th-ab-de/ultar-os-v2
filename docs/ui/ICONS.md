@@ -231,5 +231,26 @@ main menu (three lines), restore (two squares), pen, clipboard, scissors, share/
 
 ## Open
 
-- App icons are monochrome here: the coloured app family of section 4 needs colour tokens per theme (round-1 finding D40/A1). No colour outside `tokens.toml` is used.
 - File and app icons larger than 24 need a size token (`icon_large`); the boards put a 24 icon in a 48 tile instead.
+
+## App icon families (decision 2026-11-24)
+
+App icons are coloured **by group**: the stroke drawing takes the colour role of its group, the round tile
+stays neutral (`raised`). The roles stand in `tokens.toml` for every theme (dark, light, high contrast);
+round-1 finding D40/A1 is closed by this. The dark values are the ones of the public demo
+(code-craft.tech/products/ultar-os/demo); light and high contrast are chosen for contrast.
+
+| Group | Role | Dark | Light | High contrast | Apps |
+|---|---|---|---|---|---|
+| System | `app_system` | `#D8C870` | `#7A5F00` | `#FFE680` | Settings, Ultar Store, Helper, Privacy centre, Drivers & hardware, Updates, Backup, Passwords |
+| Communication | `app_comms` | `#4ADE80` | `#12703A` | `#7DFFA6` | Phone, Messages, Contacts, Mail |
+| Web and work | `app_work` | `#7AB8FF` | `#1F5FBF` | `#B3D6FF` | Browser, Files, Documents, Text editor, Notes, Office |
+| Media | `app_media` | `#FF6B6B` | `#B5302A` | `#FFA8A0` | Camera, Pictures, Music, Videos, Screenshot |
+| Tools | `text` (no role of its own) | – | – | – | Calculator, Clock, Calendar, Terminal, System monitor, Disks, Logs, Help |
+
+Rules:
+- Contrast of every role on `ground`, `surface`, `raised` and `hover`: at least 4.5:1 (dark 5.1–11.5, light 4.9–6.2), high contrast at least 7:1 (8.4–16.9).
+- Colour never carries the meaning alone: every app drawing is unambiguous in one colour, and the name stands under it.
+- The roles are for app icons only – never for state. State keeps `info`, `success`, `warning`, `danger`; the brand red of the company logo is used nowhere else.
+- An app belongs to exactly one group; a new app names its group in the catalogue. Third-party apps keep their own icon.
+- The same roles apply on the phone shell and the desktop shell; the layout of the two shells stays separate.
