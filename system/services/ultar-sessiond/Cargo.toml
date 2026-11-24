@@ -1,0 +1,24 @@
+[package]
+name = "ultar-sessiond"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Session service of Ultar OS: who is signed in on the seat, who is in front, signing out and switching users (system services, area 4)"
+
+[lib]
+name = "ultar_sessiond"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-sessiond"
+path = "src/bin/ultar-sessiond.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

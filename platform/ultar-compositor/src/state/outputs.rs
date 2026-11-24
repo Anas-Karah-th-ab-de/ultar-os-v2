@@ -52,6 +52,7 @@ impl State {
             self.configure_layer(key);
         }
         self.damage_all();
+        self.broadcast_output_details();
         let (px, py) = (self.pointer.x.floor() as i32, self.pointer.y.floor() as i32);
         if !self
             .layout

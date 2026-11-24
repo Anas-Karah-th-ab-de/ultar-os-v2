@@ -1,0 +1,30 @@
+[package]
+name = "ultar-displayd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Display service of Ultar OS: arrangement, modes and keep-or-revert of the displays between settingsd and the compositor (platform, area 5)"
+
+[lib]
+name = "ultar_displayd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-displayd"
+path = "src/bin/ultar-displayd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-service = { path = "../../system/core/ultar-service" }
+ultar-surface = { path = "../ultar-surface", default-features = false }
+rustix = { version = "1", default-features = false, features = ["std", "event"] }
+
+[dev-dependencies]
+# The process tests run the real settings service and compositor in process.
+ultar-settingsd = { path = "../../system/core/ultar-settingsd" }
+ultar-compositor = { path = "../ultar-compositor" }
+ultar-hal = { path = "../../system/hal/ultar-hal" }
+ultar-profile = { path = "../../system/core/ultar-profile" }
+# The end-to-end example (examples/svctest.rs) signals processes.
+rustix = { version = "1", default-features = false, features = ["std", "event", "process"] }

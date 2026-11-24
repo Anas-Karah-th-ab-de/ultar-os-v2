@@ -17,11 +17,13 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use ultar_bus::messages::devices;
 use ultar_bus::messages::settings::{
-    Changed, Confirm, Get, GetReply, ListReply, ListRequest, PendingConfirmation, PendingReply,
-    PendingResolved, Reset, ResetReply, Revert, Set, SetDisplays, SetReply, Shutdown, StoreReport,
+    Accessibility, Changed, Confirm, Get, GetReply, ListReply, ListRequest, PendingConfirmation,
+    PendingReply, PendingResolved, Reset, ResetReply, Revert, Set, SetAccessibility, SetDisplays,
+    SetReply, Shutdown, StoreReport,
 };
 use ultar_bus::{BusError, Call, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
 
+mod accessibility;
 mod convert;
 mod stats;
 
@@ -185,6 +187,13 @@ impl Worker {
                 let changed = core.set(caller, &call.key, call.value.into())?;
                 Ok(SetReply { changed })
             }),
+            // login.access: only `accessibility.*` (server/accessibility.rs).
+            "set_accessibility" => {
+                self.serve::<SetAccessibility>(request, accessibility::set);
+            }
+            "accessibility" => {
+                self.serve::<Accessibility>(request, |core, _, _| Ok(accessibility::values(core)));
+            }
             "reset" => self.serve::<Reset>(request, |core, caller, call| {
                 let changed = core.reset(caller, &call.key)?;
                 Ok(ResetReply { changed })

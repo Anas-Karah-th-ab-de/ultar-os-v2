@@ -15,7 +15,11 @@ impl Ui {
         let animate = !self.reduce_motion();
         let open = self.is_open(id);
         let kind = match &mut self.nodes[id.index()].widget {
-            Widget::Button(_) | Widget::IconButton(_) => ActionKind::Activated,
+            Widget::Button(_) | Widget::IconButton(_) | Widget::Brick(_) => ActionKind::Activated,
+            Widget::DayGrid(grid) => match grid.choose(part) {
+                Some(day) => ActionKind::Selected(day),
+                None => return,
+            },
             Widget::Switch(switch) => {
                 switch.toggle(now, animate);
                 ActionKind::Toggled(switch.on)
@@ -49,6 +53,7 @@ impl Ui {
             },
             Widget::TextField(field) => match part {
                 Some(0) if field.clear() => ActionKind::TextChanged,
+                Some(2) => ActionKind::Activated,
                 _ => return,
             },
             Widget::ListItem(_) => return self.activate_item(id, out),
@@ -64,7 +69,9 @@ impl Ui {
 
     /// The chosen tab is drawn semibold and so is wider: its bar is measured again.
     pub(crate) fn remeasure_tabs(&mut self, id: NodeId) {
-        if matches!(self.widget(id), Some(Widget::Tabs(_))) {
+        if matches!(self.widget(id), Some(Widget::Tabs(_)))
+            || matches!(self.widget(id), Some(Widget::Select(s)) if s.fit)
+        {
             self.invalidate_node(id);
         }
     }

@@ -161,6 +161,10 @@ pub enum Role {
     /// everything else dimmed, title bar with the compositor's lock mark
     /// that no app can get.
     SystemDialog,
+    /// The screen of a ringing call (phone app): full screen above everything, the lock
+    /// screen included. While locked it gets pointer and touch input only – keys and the
+    /// on-screen keyboard stay with the lock screen, and it can never unlock.
+    CallScreen,
 }
 
 impl Role {
@@ -196,6 +200,9 @@ impl Role {
             Role::SystemDialog => {
                 w.u8(7);
             }
+            Role::CallScreen => {
+                w.u8(8);
+            }
         }
     }
 
@@ -225,6 +232,7 @@ impl Role {
             5 => Role::Background,
             6 => Role::Overlay,
             7 => Role::SystemDialog,
+            8 => Role::CallScreen,
             _ => return Err(WireError::BadValue),
         })
     }
@@ -238,6 +246,7 @@ impl Role {
             Role::Lock => Rights::LOCK_SCREEN,
             Role::Overlay => Rights::OVERLAY,
             Role::SystemDialog => Rights::SYSTEM_DIALOG,
+            Role::CallScreen => Rights::CALL_SCREEN,
         }
     }
 }
@@ -305,8 +314,15 @@ impl Rights {
     pub const OVERLAY: Rights = Rights(16);
     /// System dialogs (password, permission prompts) with the trusted mark.
     pub const SYSTEM_DIALOG: Rights = Rights(32);
+    /// Sets the output arrangement and learns each display's identity and
+    /// modes (the display service).
+    pub const OUTPUT_CONFIG: Rights = Rights(64);
+    /// The incoming-call screen above the lock screen ([`Role::CallScreen`]).
+    pub const CALL_SCREEN: Rights = Rights(128);
+    /// Toplevels whose header the app draws itself (`Request::ClientHeader`).
+    pub const CLIENT_HEADER: Rights = Rights(256);
     /// Every right.
-    pub const ALL: Rights = Rights(63);
+    pub const ALL: Rights = Rights(511);
 
     /// True if every bit of `other` is set.
     pub const fn contains(self, other: Rights) -> bool {
@@ -334,6 +350,8 @@ impl Modifiers {
     pub const SUPER: u8 = 8;
     /// Alt Gr.
     pub const ALT_GR: u8 = 16;
+    /// Caps Lock is on (a state, not a held key: the lock screen shows a hint).
+    pub const CAPS_LOCK: u8 = 32;
 
     /// True if the bit is held.
     pub const fn has(self, bit: u8) -> bool {

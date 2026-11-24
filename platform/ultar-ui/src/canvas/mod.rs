@@ -8,6 +8,8 @@
 mod blend;
 mod damage;
 mod group;
+mod image;
+mod pixels;
 mod shapes;
 pub(crate) mod stroke;
 
@@ -198,6 +200,40 @@ impl Canvas {
         let end = start + (x1 - x0).max(0) as usize * BPP;
         // Callers clip first; an area outside the buffer draws nothing instead of panicking.
         self.data.get_mut(start..end).unwrap_or_default()
+    }
+
+    /// Draws an opaque picture of `width` × `height` pixels (`0xXXRRGGBB` little-endian, as
+    /// the compositor sends window thumbnails) stretched onto `target` (nearest neighbour),
+    /// clipped; replaces what is there. A picture whose bytes do not match its size draws
+    /// nothing.
+    pub fn draw_scaled(&mut self, target: PixelRect, width: u32, height: u32, xrgb: &[u8]) {
+        let len = width as usize * height as usize * BPP;
+        let area = target.intersect(&self.clip).intersect(&self.bounds());
+        if width == 0 || height == 0 || xrgb.len() != len || area.is_empty() {
+            return;
+        }
+        let (tw, th) = (target.width().max(1) as u64, target.height().max(1) as u64);
+        for row in area.y0..area.y1 {
+            let sy = ((i64::from(row) - i64::from(target.y0)).max(0) as u64 * u64::from(height)
+                / th)
+                .min(u64::from(height) - 1) as usize;
+            let (x0, x1) = (area.x0, area.x1);
+            let format = self.format;
+            let line = self.row_mut(row, x0, x1);
+            for (i, px) in line.chunks_exact_mut(BPP).enumerate() {
+                let x = i64::from(x0) + i as i64 - i64::from(target.x0);
+                let sx =
+                    (x.max(0) as u64 * u64::from(width) / tw).min(u64::from(width) - 1) as usize;
+                let at = (sy * width as usize + sx) * BPP;
+                let (b, g, r) = (xrgb[at], xrgb[at + 1], xrgb[at + 2]);
+                let value = match format {
+                    PixelFormat::Rgba8 => [r, g, b, u8::MAX],
+                    PixelFormat::Bgrx8 => [b, g, r, u8::MAX],
+                };
+                px.copy_from_slice(&value);
+            }
+        }
+        self.damage.add(area);
     }
 
     /// Fills the clip area with `color`, replacing what is there (no blending).

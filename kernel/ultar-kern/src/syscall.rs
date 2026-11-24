@@ -573,6 +573,15 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     if let Some(r) = crate::rawpart::sys_read(fd, buf, n, at) {
         return Res::Val(r);
     }
+    match crate::svcdev::hci::sys_read(fd, buf, n) {
+        Some(crate::svcdev::hci::Io::Val(v)) => return Res::Val(v),
+        // the driver polls: look again in 8 ms or when something happens
+        Some(crate::svcdev::hci::Io::Block) => return Res::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
+        None => {}
+    }
+    if let Some(r) = crate::svcdev::uinput::sys_read(fd) {
+        return Res::Val(r);
+    }
     let n = n.min(1 << 24) as usize;
     enum Src {
         Data(Vec<u8>),
@@ -650,7 +659,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -829,6 +838,12 @@ fn sys_write(fd: u64, buf: u64, n: u64) -> i64 {
 /// `write`: the result can be "wait and repeat" (full pipe) – see [`Res::Partial`].
 fn write_res(fd: u64, buf: u64, n: u64) -> Res {
     if let Some(r) = crate::rawpart::sys_write(fd, buf, n, None) {
+        return Res::Val(r);
+    }
+    if let Some(r) = crate::svcdev::hci::sys_write(fd, buf, n) {
+        return Res::Val(r);
+    }
+    if let Some(r) = crate::svcdev::uinput::sys_write(fd, buf, n) {
         return Res::Val(r);
     }
     let want = n.min(1 << 24) as usize;
@@ -1096,6 +1111,17 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 Ok(k) => k,
                 Err(e) => return e,
             },
+            "ultar/disk" | "ultar/medium" => {
+                let dev = path.strip_prefix("/dev/").unwrap_or("");
+                match crate::rawpart::open_installer(dev, acc != 0, rights.has(Rights::RAW_DEVICE)) {
+                    Ok(k) => k,
+                    Err(e) => return e,
+                }
+            }
+            d if crate::svcdev::node(d).is_some() => match crate::svcdev::open(d, rights) {
+                Ok(k) => k,
+                Err(e) => return e,
+            },
             "fb0" => match if acc == 0 { crate::eingabe::FbFd::lesend() } else { crate::eingabe::FbFd::neu() } {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,
@@ -1299,6 +1325,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Eingabe(e) => Err((alloc::format!("/dev/input/event{}", e.0), 0o020600, 0)),
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
+            FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
         })
     })
     .flatten();
@@ -1845,6 +1872,9 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
         }
         _ => {}
     }
+    if let Some(r) = crate::svcdev::uinput::sys_ioctl(fd, req, arg) {
+        return r;
+    }
     let geraet = with(|p| match p.fd(fd).map(|d| &d.kind) {
         Some(FdKind::Fb(_)) => Some(None),
         Some(FdKind::Eingabe(e)) => Some(Some(e.0)),
@@ -1985,6 +2015,8 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
         }
         FdKind::Epoll(_) => 0,
         FdKind::Eingabe(e) => r(crate::eingabe::bereit(e.0)),
+        FdKind::Hci(h) => r(crate::svcdev::hci::ready(h)) | w(true),
+        FdKind::Uinput(_) => w(true),
         FdKind::Fb(_) => w(true),
         _ => ev & 5,
     }
@@ -2001,7 +2033,7 @@ fn timer_deadline(p: &mut Proc, fds: &[i64]) -> u64 {
             }
         }
         // Eingabegeräte werden abgefragt (kein Interrupt): alle 8 ms neu prüfen
-        if let Some(Fd { kind: FdKind::Eingabe(_), .. }) = p.fd(fd as u64) {
+        if let Some(Fd { kind: FdKind::Eingabe(_) | FdKind::Hci(_), .. }) = p.fd(fd as u64) {
             let dl = crate::arch::uptime_ms() + 8;
             if best == 0 || dl < best {
                 best = dl;

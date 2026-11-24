@@ -31,23 +31,55 @@ pub struct Window {
     pub mapped: bool,
     /// The app does not answer pings.
     pub unresponsive: bool,
-    /// Title bar button under the pointer / held.
-    pub hover: Option<Button>,
-    /// Title bar button held.
-    pub pressed: Option<Button>,
-    /// Rendered title bar and what it was rendered for.
-    pub title_cache: Option<(TitleKey, Image)>,
+    /// The title bar: its buttons, its rendered picture, or the app's own.
+    pub title: TitleBar,
     /// A system dialog (trusted path): stacked above the panels, modal,
     /// marked with the lock icon in a title bar apps cannot cover.
     pub secure: bool,
     /// Focus when mapped, if the grant is still valid then (an activation
     /// token was presented before the window had content).
     pub activate_on_map: Option<super::Grant>,
+    /// Id in the shell's window list (never reused in the session).
+    pub id: u32,
+    /// Its workspace and whether that one is shown.
+    pub place: Place,
+}
+
+/// A window's title bar.
+#[derive(Debug, Default)]
+pub struct TitleBar {
+    /// Buttons under the pointer and held.
+    pub buttons: TitleButtons,
+    /// Rendered title bar and what it was rendered for.
+    pub cache: Option<(TitleKey, Image)>,
+    /// The app draws its own header (`ClientHeader`, right `ui.client-header`).
+    pub client_drawn: bool,
+}
+
+/// The title bar buttons a window shows as hovered or held.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TitleButtons {
+    /// Under the pointer.
+    pub hover: Option<Button>,
+    /// Held.
+    pub pressed: Option<Button>,
+}
+
+/// Where a window lives among the workspaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Place {
+    /// Its workspace, or `ALL_WORKSPACES`.
+    pub workspace: u8,
+    /// Its workspace is the one shown (always for `ALL_WORKSPACES`).
+    pub shown: bool,
+    /// Phone mode: no title bar.
+    pub bare: bool,
 }
 
 impl Window {
-    fn new(key: SurfaceKey) -> Window {
+    fn new(key: SurfaceKey, id: u32, workspace: u8) -> Window {
         Window {
+            id,
             key,
             frame: Rect::default(),
             state: WindowState::Normal,
@@ -57,22 +89,26 @@ impl Window {
             pending: None,
             mapped: false,
             unresponsive: false,
-            hover: None,
-            pressed: None,
-            title_cache: None,
+            title: TitleBar::default(),
             secure: false,
             activate_on_map: None,
+            place: Place {
+                workspace,
+                shown: true,
+                bare: false,
+            },
         }
     }
 
-    /// Has compositor decorations (not fullscreen).
+    /// Has compositor decorations (not fullscreen, not in phone mode, not drawing its own
+    /// header).
     pub fn decorated(&self) -> bool {
-        self.state != WindowState::Fullscreen
+        self.state != WindowState::Fullscreen && !self.place.bare && !self.title.client_drawn
     }
 
     /// Visible on screen.
     pub fn visible(&self) -> bool {
-        self.mapped && self.state != WindowState::Minimized
+        self.mapped && self.state != WindowState::Minimized && self.place.shown
     }
 
     /// The content rectangle (logical).
@@ -162,7 +198,8 @@ impl State {
         let secure = self
             .surface(key)
             .is_some_and(|s| s.role == Role::SystemDialog);
-        let mut window = Window::new(key);
+        let id = self.next_window_id();
+        let mut window = Window::new(key, id, self.new_window_workspace(secure));
         window.secure = secure;
         self.windows.push(window);
         let Some(output) = self.layout.primary().map(|o| o.id) else {
@@ -191,6 +228,9 @@ impl State {
             self.windows[i].frame = frame;
             self.windows[i].restore = frame;
             self.configure_window(i, frame);
+            if self.session.shell.phone.on && !secure {
+                self.phone_window(i);
+            }
         }
     }
 
@@ -465,6 +505,7 @@ impl State {
             self.damage_logical(area);
         }
         self.layers.retain(|k| *k != key);
+        self.shell_surface_gone(key);
         let charge = self.surface(key).map_or(0, |s| s.charge());
         if let Some(c) = self.clients.get_mut(&key.client) {
             c.surfaces.remove(&key.surface);

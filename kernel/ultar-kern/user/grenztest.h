@@ -26,7 +26,7 @@
 #define PR_ULTAR_RIGHTS_GET 0x554c5200
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
 #define R_MANAGE_GROUPS 0x80UL
-#define R_ALL 0x3ffUL
+#define R_ALL 0xfffUL
 #define CG "/sys/fs/cgroup"
 #define MB (1L << 20)
 #ifndef F_SETPIPE_SZ

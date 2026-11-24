@@ -1,0 +1,198 @@
+//! Dialogs of the app: driver switch, update from a drive, change password, delete account,
+//! remove device, QR code. The "keep these display settings?" question is not here: the
+//! system dialog service asks it (it follows `settings.pending`).
+
+use super::{k, muted, View};
+use crate::action::Act;
+use crate::state::{DialogPurpose, State};
+use ultar_ui::layout::Flex;
+use ultar_ui::paint::TextSpec;
+use ultar_ui::tokens::{Space, TypeSize};
+use ultar_ui::ui::{NodeId, Ui, UiError};
+use ultar_ui::widgets::{
+    Button, ButtonVariant, Dialog, InfoBar, Label, Text, TextDirection, TextField, Tone,
+};
+
+/// Longest text typed into a dialog field.
+pub const MAX_FIELD: usize = 512;
+
+struct Spec {
+    title: &'static str,
+    message: Label,
+    fields: Vec<(&'static str, bool)>,
+    ok: &'static str,
+    danger: bool,
+}
+
+fn plain(
+    title: &'static str,
+    message: Label,
+    ok: &'static str,
+    fields: &[(&'static str, bool)],
+    danger: bool,
+) -> Spec {
+    Spec {
+        title,
+        message,
+        fields: fields.to_vec(),
+        ok,
+        danger,
+    }
+}
+
+fn driver_name(state: &State, row: usize, alt: usize) -> String {
+    let d = state.drivers.devices.get(row);
+    let offered = d.map(crate::update::offered_drivers).unwrap_or_default();
+    offered
+        .get(alt)
+        .map_or_else(String::new, |a| format!("{} {}", a.id, a.version))
+}
+
+fn device_name(state: &State, n: usize) -> String {
+    let devices = state.account.state.as_ref().map(|s| s.devices.as_slice());
+    devices
+        .and_then(|d| d.get(n))
+        .map_or_else(String::new, |d| d.name.clone())
+}
+
+const PW_FIELDS: [(&str, bool); 3] = [
+    ("app.settings.dialog.pw.old", true),
+    ("app.settings.dialog.pw.new", true),
+    ("app.settings.dialog.pw.again", true),
+];
+
+fn spec(state: &State, purpose: DialogPurpose) -> Spec {
+    let d = "app.settings.dialog.";
+    match purpose {
+        DialogPurpose::DriverSwitch { row, alt } => {
+            let name = driver_name(state, row, alt);
+            let text = Label::key_with(format!("{d}switch.text"), &[("driver", &name)]);
+            plain(
+                "app.settings.dialog.switch",
+                text,
+                "app.settings.dialog.switch.ok",
+                &[],
+                false,
+            )
+        }
+        DialogPurpose::RemoveDevice(n) => {
+            let name = device_name(state, n);
+            let text = Label::key_with(format!("{d}remove.text"), &[("name", &name)]);
+            let ok = "app.settings.account.device.remove";
+            plain("app.settings.dialog.remove", text, ok, &[], true)
+        }
+        other => fixed(other),
+    }
+}
+
+fn fixed(purpose: DialogPurpose) -> Spec {
+    let (title, text, ok, fields, danger): (_, _, _, &[(&str, bool)], _) = match purpose {
+        DialogPurpose::FirmwareUsb => (
+            "app.settings.dialog.usb",
+            "app.settings.dialog.usb.text",
+            "app.settings.dialog.usb.ok",
+            &[("app.settings.dialog.usb.path", false)],
+            false,
+        ),
+        DialogPurpose::ChangePassword => (
+            "app.settings.account.change_password",
+            "app.settings.dialog.pw.text",
+            "app.settings.dialog.pw.ok",
+            &PW_FIELDS,
+            false,
+        ),
+        DialogPurpose::DeleteAccount => (
+            "app.settings.dialog.delete",
+            "app.settings.dialog.delete.text",
+            "app.settings.account.delete",
+            &[("app.settings.account.password", true)],
+            true,
+        ),
+        _ => (
+            "app.settings.account.qr",
+            "app.settings.dialog.qr.text",
+            "app.settings.close",
+            &[],
+            false,
+        ),
+    };
+    plain(title, k(text), ok, fields, danger)
+}
+
+/// Builds and opens the dialog of `state.dialog` (closes any other first).
+pub fn open(ui: &mut Ui, state: &State, view: &mut View) -> Result<(), UiError> {
+    if let Some(old) = view.dialog.take() {
+        ui.close_dialog(old)?;
+        ui.remove(old)?;
+    }
+    view.page
+        .retain(|_, a| !matches!(a, Act::DialogOk | Act::DialogCancel | Act::DialogField(_)));
+    view.dialog_fields.clear();
+    let (Some(dialog), Some(parent)) = (state.dialog.as_ref(), view.content) else {
+        return Ok(());
+    };
+    let s = spec(state, dialog.purpose);
+    let mut widget = Dialog::new(k(s.title)).flex(Flex::column().gap(Space::S16));
+    if s.danger {
+        widget = widget.alert();
+    }
+    let id = ui.add(parent, widget)?;
+    view.dialog = Some(id);
+    muted(ui, id, s.message.clone())?;
+    if dialog.purpose == DialogPurpose::Qr {
+        let number = state
+            .account
+            .state
+            .as_ref()
+            .map_or("", |a| a.number.as_str());
+        ui.add(
+            id,
+            Text::new(Label::data(number)).spec(TextSpec::title(TypeSize::S32)),
+        )?;
+    }
+    for (i, (key, secret)) in s.fields.iter().enumerate() {
+        let field = if *secret {
+            TextField::password(k(key))
+        } else {
+            TextField::new(k(key)).direction(TextDirection::Ltr)
+        };
+        let f = ui.add(id, field.labelled().max_len(MAX_FIELD))?;
+        view.page.add(f, Act::DialogField(i));
+        view.dialog_fields.push(f);
+    }
+    if let Some(error) = &dialog.error {
+        let label = crate::i18n::label(error, ui.translator());
+        ui.add(id, InfoBar::new(Tone::Danger, label))?;
+    }
+    buttons(ui, view, id, dialog.purpose == DialogPurpose::Qr, &s)?;
+    ui.open_dialog(id)
+}
+
+/// Cancel (not for the QR code, which only closes) and the confirming button.
+fn buttons(
+    ui: &mut Ui,
+    view: &mut View,
+    id: NodeId,
+    close_only: bool,
+    s: &Spec,
+) -> Result<(), UiError> {
+    let end = Flex::row()
+        .gap(Space::S8)
+        .main(ultar_ui::layout::MainAlign::End);
+    let buttons = ui.add(id, end)?;
+    let mut cancel = None;
+    if !close_only {
+        let c = ui.add(buttons, Button::new(k("app.settings.cancel")))?;
+        view.page.add(c, Act::DialogCancel);
+        cancel = Some(c);
+    }
+    let variant = if s.danger {
+        ButtonVariant::Danger
+    } else {
+        ButtonVariant::Primary
+    };
+    let ok = ui.add(buttons, Button::new(k(s.ok)).variant(variant))?;
+    view.page.add(ok, Act::DialogOk);
+    ui.set_default_action(id, Some(ok))?;
+    ui.set_cancel_action(id, cancel.or(Some(ok)))
+}

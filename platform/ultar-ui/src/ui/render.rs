@@ -79,6 +79,8 @@ impl Ui {
             Widget::Icon(w) => w.paint(p, rect),
             Widget::Button(w) => w.paint(p, cx, rect, &v),
             Widget::IconButton(w) => w.paint(p, cx, rect, &v),
+            Widget::Brick(w) => w.paint(p, cx, rect, &v),
+            Widget::DayGrid(w) => w.paint(p, cx, rect, &v),
             Widget::Switch(w) => w.paint(p, cx, rect, &v, self.knob_position(w)),
             Widget::Select(w) => w.paint(p, cx, rect, &v, error),
             Widget::Slider(w) => w.paint(p, cx, rect, &v, error),
@@ -90,7 +92,7 @@ impl Ui {
             Widget::Card(w) => w.paint(p, rect),
             Widget::Badge(w) => w.paint(p, cx, rect),
             Widget::Progress(w) => w.paint(p, rect, cx.spin),
-            Widget::Checkbox(w) => w.paint(p, cx, rect, &v, error),
+            Widget::Checkbox(w) => w.paint(p, cx, rect, &v, error, self.hosted(id).w),
             Widget::RadioGroup(w) => w.paint(p, cx, rect, &v, parts),
             Widget::Tabs(w) => w.paint(p, cx, rect, &v, parts),
             Widget::InfoBar(w) => w.paint(p, cx, rect, self.hosted(id).w),
@@ -105,6 +107,7 @@ impl Ui {
             Widget::QrCode(w) => w.paint(p, rect),
             Widget::Arrangement(w) => w.paint(p, cx, rect, &v),
             Widget::Dialog(w) => w.paint(p, rect),
+            Widget::PixelArea(w) => w.paint(p, rect),
         }
     }
 
@@ -170,8 +173,13 @@ impl Ui {
         region: Rect,
         end: usize,
     ) {
-        let background = p.color(self.background());
-        p.fill(region, None, background);
+        match self.background() {
+            Some(role) => {
+                let background = p.color(role);
+                p.fill(region, None, background);
+            }
+            None => p.clear(crate::Color::TRANSPARENT),
+        }
         for step in self.layers.steps.iter().take(end) {
             self.paint_step(p, cx, *step, &region);
         }

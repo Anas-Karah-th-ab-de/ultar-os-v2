@@ -24,8 +24,9 @@ pub const WAIT: Duration = Duration::from_secs(20);
 pub const DELAY: Duration = Duration::from_millis(250);
 
 /// Identities of the token broker; the token is the identity name.
-pub const IDENTITIES: [&str; 6] = [
+pub const IDENTITIES: [&str; 7] = [
     "system.settingsd",
+    "system.lock",
     "system.devd",
     "system.displayd",
     "app.settings",
@@ -62,6 +63,10 @@ call      = ["settings.set", "settings.reset", "settings.confirm", "settings.rev
 [[rule]]
 identity  = "app.settings"
 call      = ["settings.*"]
+
+[[rule]]
+identity  = "system.lock"
+call      = ["settings.set_accessibility", "settings.accessibility"]
 "#;
 
 pub struct Rig {

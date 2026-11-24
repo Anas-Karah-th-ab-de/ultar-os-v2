@@ -14,8 +14,9 @@ pub const DEFAULT_MAX_LEN: usize = 4096;
 pub(crate) const PAD: Space = Space::S12;
 /// The character a hidden password is drawn with.
 const MASK: char = '\u{2022}';
-/// Height of the label line above a labelled field (a 12-point line and its gap).
-const LABEL_BAND: f32 = Space::S16.points() + Space::S4.points();
+/// Height of the label line above a labelled field (boards: a 12-point line of 1.5–1.6 line
+/// height, 18–19.2, and its 4-point gap; 24 keeps both languages within a point).
+const LABEL_BAND: f32 = Space::S16.points() + Space::S8.points();
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
 const FIELD_TEXT: TextSpec = TextSpec::new(typography::BODY);
 
@@ -68,6 +69,11 @@ pub struct TextField {
     pub(crate) reveal_outside: bool,
     /// `true` while the password is shown by that separate button (a toggle).
     pub(crate) shown: bool,
+    /// Action button inside the field at its end edge (icon, accessible name); a click on it
+    /// reports `Activated` for the field (boards: the backspace of the phone number field).
+    pub(crate) end_action: Option<(crate::icon::IconId, Label)>,
+    /// The field box fills the height its node is given (see [`TextField::fill_height`]).
+    pub(crate) fill: bool,
     text: String,
     caret: usize,
     max_len: usize,
@@ -116,10 +122,27 @@ impl TextField {
             show_label: false,
             reveal_outside: false,
             shown: false,
+            end_action: None,
+            fill: false,
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
         }
+    }
+
+    /// The same field with an action button inside it at the end edge: a 32-point target
+    /// showing `icon`, named `name`; a click on it reports [`crate::event::ActionKind::Activated`]
+    /// for the field (Enter still reports `Submitted`). Not for search or password fields.
+    pub fn end_action(mut self, icon: crate::icon::IconId, name: Label) -> TextField {
+        self.end_action = Some((icon, name));
+        self
+    }
+
+    /// The same field whose box fills the height its node is given (boards: the 48-point
+    /// phone number field); without it the box is one target high.
+    pub fn fill_height(mut self) -> TextField {
+        self.fill = true;
+        self
     }
 
     /// The same field with a placeholder.
@@ -130,12 +153,16 @@ impl TextField {
 
     /// A password field: dots instead of the characters, a button at the end that shows the
     /// password while it is held, content always left-to-right, no value for screen readers.
+    ///
+    /// The password's bytes are kept in one buffer reserved up front and overwritten with
+    /// zeros when they are replaced, deleted or the field goes, so that no copy of a typed
+    /// password stays behind in freed memory (lock screen, DESKTOP-SPEC §5.3).
     pub fn password(name: Label) -> TextField {
-        TextField {
-            password: true,
-            direction: TextDirection::Ltr,
-            ..TextField::new(name)
-        }
+        let mut field = TextField::new(name);
+        field.password = true;
+        field.direction = TextDirection::Ltr;
+        field.text = String::with_capacity(field.max_len);
+        field
     }
 
     /// `true` for a password field.
@@ -189,6 +216,9 @@ impl TextField {
     pub fn max_len(mut self, max_len: usize) -> TextField {
         self.max_len = max_len;
         let text = std::mem::take(&mut self.text);
+        if self.password {
+            self.text = String::with_capacity(max_len);
+        }
         self.set_text(&text);
         self
     }
@@ -211,6 +241,7 @@ impl TextField {
 
     /// Replaces the content (control characters dropped, cut at the limit); caret at the end.
     pub fn set_text(&mut self, text: &str) {
+        self.zero_all();
         self.text.clear();
         for ch in text.chars().filter(|c| allowed(*c)) {
             if self.text.len() + ch.len_utf8() > self.max_len {
@@ -250,7 +281,9 @@ impl TextField {
     pub fn backspace(&mut self) -> bool {
         match self.previous_boundary() {
             Some(start) => {
+                let removed = self.caret - start;
                 self.text.replace_range(start..self.caret, "");
+                self.scrub_tail(removed);
                 self.caret = start;
                 true
             }
@@ -262,7 +295,9 @@ impl TextField {
     pub fn delete(&mut self) -> bool {
         match self.next_boundary() {
             Some(end) => {
+                let removed = end - self.caret;
                 self.text.replace_range(self.caret..end, "");
+                self.scrub_tail(removed);
                 true
             }
             None => false,
@@ -327,7 +362,12 @@ impl TextField {
     /// The field part of the node: below its visible label (if shown), above the error.
     pub(crate) fn field(&self, rect: Rect, mode: InputMode) -> Rect {
         let top = if self.show_label { LABEL_BAND } else { 0.0 };
-        let h = mode.min_target().min((rect.h - top).max(0.0));
+        let room = (rect.h - top).max(0.0);
+        let h = if self.fill {
+            room
+        } else {
+            mode.min_target().min(room)
+        };
         Rect::new(rect.x, rect.y + top, rect.w, h)
     }
 
@@ -485,5 +525,6 @@ impl TextField {
     }
 }
 
+mod secret;
 #[cfg(test)]
 mod tests;

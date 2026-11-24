@@ -40,12 +40,14 @@ impl Ui {
         out.state = A11yState {
             disabled: visual.disabled,
             focused: self.input.focus == Some(id),
-            pressed: visual.pressed,
+            pressed: visual.pressed
+                || matches!(&node.widget, Widget::Button(b) if b.toggled == Some(true)),
             busy: node.loading || matches!(&node.widget, Widget::Progress(p) if p.value.is_none()),
             invalid: node.error.is_some(),
             checked: match &node.widget {
                 Widget::Switch(w) => Some(w.on),
                 Widget::Checkbox(w) => Some(w.checked),
+                Widget::Brick(w) => w.checked(),
                 _ => None,
             },
             mixed: matches!(&node.widget, Widget::Checkbox(w) if w.mixed),
@@ -56,6 +58,10 @@ impl Ui {
             },
             selected: match &node.widget {
                 Widget::ListItem(w) => Some(w.selected),
+                Widget::Button(w) => match w.variant {
+                    crate::widgets::ButtonVariant::Tab(shown) => Some(shown),
+                    _ => None,
+                },
                 _ => None,
             },
             level: None,
@@ -123,12 +129,11 @@ impl Ui {
                     field.end_button_rect(field.field(rect, self.mode), direction),
                 ) {
                     let mut node = self.part(owner, part, Role::Button, button);
-                    let key = if part == 0 {
-                        "ui.search.clear"
-                    } else {
-                        "ui.password.show"
-                    };
-                    node.name = Some(Label::key(key));
+                    node.name = Some(match (part, &field.end_action) {
+                        (2, Some((_, name))) => name.clone(),
+                        (0, _) => Label::key("ui.search.clear"),
+                        _ => Label::key("ui.password.show"),
+                    });
                     node.state.pressed = field.is_revealed();
                     // The show-password button is a Tab stop of its own (Space shows).
                     node.focusable = field.is_password();

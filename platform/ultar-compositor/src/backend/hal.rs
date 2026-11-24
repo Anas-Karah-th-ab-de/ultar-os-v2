@@ -11,11 +11,13 @@ use ultar_hal::{
     Display, DisplayEvent, DisplayId, FrameView, HalError, Input, InputEvent, InputEventKind,
     PixelFormat, Size,
 };
+use ultar_hal_gfx::edid;
 use ultar_hal_gfx::evdev::{Evdev, SeatPolicy};
 use ultar_hal_gfx::fbdev::FbDev;
 use ultar_hal_gfx::kms::Kms;
 use ultar_hal_gfx::uevent::UeventSocket;
 use ultar_hal_gfx::GfxError;
+use ultar_surface::proto::{OutputIdentity, OutputMode};
 
 /// Which display backend to open.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,21 +86,75 @@ impl HalBackend {
     }
 }
 
+impl HalBackend {
+    /// A HAL display as the compositor sees it: mode in use, every mode, and
+    /// the identity from the display's own data.
+    fn describe(&self, d: ultar_hal::DisplayInfo) -> BackendOutput {
+        let id = d.id;
+        let current = self.display.current_mode(id).unwrap_or(d.preferred_mode);
+        let to_mode = |m: ultar_hal::DisplayMode| OutputMode {
+            width: m.size.width,
+            height: m.size.height,
+            refresh_mhz: m.refresh_millihertz,
+        };
+        let edid = self
+            .display
+            .identification(id)
+            .ok()
+            .flatten()
+            .and_then(|bytes| edid::parse(&bytes));
+        let identity = edid
+            .as_ref()
+            .map_or_else(OutputIdentity::default, |e| OutputIdentity {
+                manufacturer: e.manufacturer.clone(),
+                product: e.product,
+                serial: e.serial,
+                name: e.name.clone(),
+            });
+        let (width_mm, height_mm) = match (d.physical_mm, &edid) {
+            (s, _) if s.width > 0 => (s.width, s.height),
+            (_, Some(e)) => e.size_mm,
+            _ => (0, 0),
+        };
+        let mut modes: Vec<OutputMode> = self
+            .display
+            .modes(id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(to_mode)
+            .collect();
+        modes.truncate(ultar_surface::proto::MAX_OUTPUT_MODES);
+        BackendOutput {
+            hal: id.0,
+            name: d.connector,
+            width: current.size.width,
+            height: current.size.height,
+            refresh_millihertz: current.refresh_millihertz,
+            width_mm,
+            height_mm,
+            internal: d.internal,
+            identity,
+            modes,
+        }
+    }
+}
+
 impl Backend for HalBackend {
     fn outputs(&self) -> Vec<BackendOutput> {
         self.display
             .displays()
             .unwrap_or_default()
             .into_iter()
-            .map(|d| BackendOutput {
-                hal: d.id.0,
-                name: d.connector,
-                width: d.preferred_mode.size.width,
-                height: d.preferred_mode.size.height,
-                refresh_millihertz: d.preferred_mode.refresh_millihertz,
-                width_mm: d.physical_mm.width,
-            })
+            .map(|d| self.describe(d))
             .collect()
+    }
+
+    fn set_mode(&mut self, hal: u32, mode: OutputMode) -> Result<(), HalError> {
+        let mode = ultar_hal::DisplayMode {
+            size: Size::new(mode.width, mode.height),
+            refresh_millihertz: mode.refresh_mhz,
+        };
+        self.display.set_mode(DisplayId(hal), mode)
     }
 
     fn present(&mut self, hal: u32, frame: &Image, damage: &[Rect]) -> Result<(), HalError> {

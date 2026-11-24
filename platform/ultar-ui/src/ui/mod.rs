@@ -11,6 +11,7 @@ mod layers;
 mod measure;
 mod menus;
 mod modal;
+mod picture;
 mod programmatic;
 mod render;
 mod scrolling;
@@ -191,7 +192,7 @@ pub struct Ui {
     pub(crate) mode: InputMode,
     reduce_motion: bool,
     size: Size,
-    background: ColorRole,
+    background: Option<ColorRole>,
     pub(crate) tr: Translator,
     pub(crate) res: RefCell<Resources>,
     pub(crate) input: InputState,
@@ -240,7 +241,7 @@ impl Ui {
             mode,
             reduce_motion: false,
             size,
-            background: ColorRole::Ground,
+            background: Some(ColorRole::Ground),
             tr: translator,
             res: RefCell::new(res),
             input: InputState::default(),

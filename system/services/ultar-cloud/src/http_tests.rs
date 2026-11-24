@@ -222,7 +222,13 @@ fn private_files_are_never_written_through_planted_names_or_into_open_directorie
 #[cfg(unix)]
 #[test]
 fn old_leftovers_of_interrupted_writes_are_removed_young_ones_kept() {
-    let dir = tempfile::tempdir().unwrap();
+    // Private directory: `tempdir()` follows the umask (0775 under umask 002), and a private
+    // write rightly refuses a group-writable directory.
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
     let dest = dir.path().join("device.state");
     let old = dir.path().join("device.state.new.0011223344556677");
     let young = dir.path().join("device.state.new.8899aabbccddeeff");

@@ -19,6 +19,7 @@ pub enum SettingValue {
     List(Vec<String>),
 }
 
+pub use super::settings_access::*;
 pub use super::settings_ext::*;
 
 /// `settings.get` – read one setting.

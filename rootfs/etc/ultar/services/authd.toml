@@ -1,0 +1,22 @@
+# Authentication service (docs/integration/desktop-shell.md): keeps the users'
+# passwords and PINs as Argon2id hashes (0600, its own user 813), answers
+# auth.users / auth.verify with exponential waits after wrong tries and lets
+# the administrator (auth.admin in bus-policy.toml) set secrets. No secret is
+# ever logged or passed on a command line (`ultar-authd passwd` reads stdin).
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-authd"
+args = [
+    "--dir", "/data/ultar/auth",
+    "--socket", "/run/ultar/bus/authd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/authd.sock",
+]
+user = 813
+dirs = ["/data/ultar/auth"]
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+# Argon2id with m = 19 MiB per check, one check at a time.
+"memory.max" = "64M"
+"pids.max" = "16"

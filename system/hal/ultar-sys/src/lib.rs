@@ -20,6 +20,7 @@
 //! | no new privileges ([`set_no_new_privileges`]) | `rustix::thread::set_no_new_privs` |
 //! | kernel device events ([`uevent::UeventSocket`]) | `rustix::net::{socket_with, bind, recv}` (`AF_NETLINK`, `NETLINK_KOBJECT_UEVENT`) |
 //! | ids of a launched service ([`switch_identity`]), session ([`new_session`]), inherited descriptors ([`set_inherited`]) | `rustix::thread::set_thread_*`, `rustix::process::setsid`, `rustix::io::fcntl_setfd` |
+//! | an app's cell ([`cell`]): mounts, root switch, signals | `rustix::mount::*`, `rustix::process::{pivot_root, kill_process}` |
 //!
 //! What `rustix` 1.1 cannot do safely is in the module `raw` – the only
 //! file with `unsafe`, every block with a `SAFETY` comment:
@@ -29,6 +30,7 @@
 //! | [`block_signals`], [`set_signal_mask`], [`signal_fd`] | no `signalfd` at all (listed under `not_implemented`); `sigprocmask` only in the unsupported `runtime` feature |
 //! | [`peer_credentials`] | `rustix::net::sockopt::socket_peercred` **panics** when the kernel returns fewer than 12 bytes and builds a non-zero process id type from whatever it got. The Ultar kernel answers unknown socket options with 4 zero bytes; this crate has to recognise that and fail closed |
 //! | [`ultar_rights`], [`ultar_drop_rights`] | `prctl` options of the Ultar kernel, unknown to `rustix` |
+//! | [`cell::unshare`] | `rustix` marks `unshare` unsafe because of `CLONE_FILES`; the raw call here passes namespace flags only |
 //! | [`is_open`], [`take_inherited`] | work on descriptor *numbers* inherited from the parent; turning a number into an owned descriptor is `unsafe` in `std` and `rustix` alike. The safe API is one call per process ([`inherit`]) – no function hands out an owner for an arbitrary number |
 //!
 //! x86_64 and aarch64, Linux system call ABI (which the Ultar kernel
@@ -42,6 +44,7 @@ mod raw;
 #[cfg(test)]
 mod tests;
 
+pub mod cell;
 mod identity;
 pub mod inherit;
 pub mod machine;

@@ -7,7 +7,7 @@ use crate::icon::{IconId, QuarterTurns};
 use crate::layout::{Flex, Padding};
 use crate::paint::{Painter, TextSpec};
 use crate::text::{Overflow, TextAlign, Weight};
-use crate::tokens::{size, typography, ColorRole, Radius, Space};
+use crate::tokens::{size, typography, ColorRole, Radius, Space, TypeSize};
 
 /// A block of text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +73,8 @@ pub struct Icon {
     pub color: ColorRole,
     /// Accessible name; `None` hides the icon from the screen reader.
     pub name: Option<Label>,
+    /// A size of its own in points (brand mark 48 / 96), else the small or normal size.
+    pub points: Option<u16>,
 }
 
 impl Icon {
@@ -83,7 +85,14 @@ impl Icon {
             small: false,
             color: ColorRole::Text,
             name: None,
+            points: None,
         }
+    }
+
+    /// The same icon drawn `points` large (the brand mark: 48 on login, 96 on About).
+    pub fn sized(mut self, points: u16) -> Icon {
+        self.points = Some(points);
+        self
     }
 
     /// The same icon at the small size.
@@ -105,7 +114,9 @@ impl Icon {
     }
 
     fn points(&self) -> f32 {
-        if self.small {
+        if let Some(p) = self.points {
+            f32::from(p)
+        } else if self.small {
             size::ICON_SMALL
         } else {
             size::ICON
@@ -184,7 +195,20 @@ impl Row {
 
     pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>, avail: f32, control: Size) -> Size {
         let (label, sub) = self.text_heights(cx, Row::text_width(avail, control.w));
-        let content = (label + sub).max(control.h) + 2.0 * ROW_PAD_BLOCK.points();
+        // Boards: CSS line boxes are not rounded (a card of rows would drift otherwise), and
+        // the separator is inside the row's minimum height (border-box).
+        let exact = |h: f32, size: TypeSize| {
+            let line = super::list::line_box(cx.env, size);
+            let factor = if cx.env.lang == ultar_i18n::Lang::Ar {
+                typography::LINE_HEIGHT_ARABIC
+            } else {
+                typography::LINE_HEIGHT_LATIN
+            };
+            (h / line).round() * size.points() * factor
+        };
+        let (label, sub) = (exact(label, TypeSize::S14), exact(sub, TypeSize::S12));
+        let separator = if self.separator { size::BORDER } else { 0.0 };
+        let content = (label + sub).max(control.h) + 2.0 * ROW_PAD_BLOCK.points() + separator;
         Size::new(avail, content.max(ROW_MIN_HEIGHT))
     }
 
@@ -257,6 +281,21 @@ pub enum CardTone {
     Danger,
     /// A bar or sidebar region: `bar` fill, no radius, one `line` border on one edge.
     Bar(BarEdge),
+    /// The dock of the desktop shell (board DesktopTop): a floating card in the `bar` fill
+    /// with the `line` border, radius 12.
+    Dock,
+    /// A sheet attached to the top edge of its surface (the phone's quick settings, board
+    /// CompactQuick): square top corners, no border at the top and the sides.
+    TopSheet,
+    /// A part of a card set off by a hairline (boards: the card head's `border-bottom`): no
+    /// fill of its own, one `line` border on one edge.
+    Rule(BarEdge),
+    /// A region like [`CardTone::Bar`] with another fill (a browser's tab strip on `raised`,
+    /// its toolbar on `surface`).
+    Region(ColorRole, BarEdge),
+    /// A control-sized container (radius 8) such as a closable tab: chosen = `surface` fill
+    /// with a `control_border` edge, otherwise no fill and no edge.
+    Chip(bool),
 }
 
 /// The edge of a bar region that carries its border.
@@ -316,6 +355,32 @@ impl Card {
         }
     }
 
+    /// A part of a card separated from the next by a hairline on `edge` (boards: card head
+    /// with `border-bottom`), without a fill of its own.
+    pub fn rule(edge: BarEdge) -> Card {
+        Card {
+            tone: CardTone::Rule(edge),
+            ..Card::new()
+        }
+    }
+
+    /// A region with `fill` and one `line` border on `edge` (see [`CardTone::Region`]).
+    pub fn region(fill: ColorRole, edge: BarEdge) -> Card {
+        Card {
+            tone: CardTone::Region(fill, edge),
+            ..Card::new()
+        }
+    }
+
+    /// A chip container laid out as a row (see [`CardTone::Chip`]).
+    pub fn chip(chosen: bool) -> Card {
+        Card {
+            flex: Flex::row(),
+            tone: CardTone::Chip(chosen),
+            ..Card::new()
+        }
+    }
+
     /// A card with inner spacing on all sides and a gap between children.
     pub fn padded() -> Card {
         Card {
@@ -340,6 +405,20 @@ impl Card {
         self
     }
 
+    /// The same card as the dock: floating, in the bar's colour.
+    pub fn dock(mut self) -> Card {
+        self.floating = true;
+        self.tone = CardTone::Dock;
+        self
+    }
+
+    /// The same card as a sheet attached to the top edge of its surface.
+    pub fn top_sheet(mut self) -> Card {
+        self.floating = true;
+        self.tone = CardTone::TopSheet;
+        self
+    }
+
     /// The same card floating, with the raised background.
     pub fn raised(mut self) -> Card {
         self.floating = true;
@@ -348,21 +427,34 @@ impl Card {
     }
 
     pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect) {
+        // A sheet's outline starts above and beside its node: the surface cuts the top
+        // corners and the side borders away.
+        let rect = if self.tone == CardTone::TopSheet {
+            let (up, side) = (Radius::Card.points(), p.hairline());
+            Rect::new(rect.x - side, rect.y - up, rect.w + 2.0 * side, rect.h + up)
+        } else {
+            rect
+        };
         if self.floating {
             p.shadow(rect, Some(Radius::Card));
         }
         match self.tone {
-            CardTone::Bar(edge) => return Card::paint_bar(p, rect, edge),
+            CardTone::Bar(edge) => return Card::paint_bar(p, rect, Some(ColorRole::Bar), edge),
+            CardTone::Rule(edge) => return Card::paint_bar(p, rect, None, edge),
+            CardTone::Region(fill, edge) => return Card::paint_bar(p, rect, Some(fill), edge),
+            CardTone::Chip(chosen) => return Card::paint_chip(p, rect, chosen),
             CardTone::Danger => {
                 let (fill, danger) = (p.color(ColorRole::Raised), p.color(ColorRole::Danger));
                 p.fill(rect, Some(Radius::Card), fill);
                 p.stroke(rect, Some(Radius::Card), 2.0 * p.hairline(), danger);
                 return;
             }
-            CardTone::Plain => {}
+            CardTone::Plain | CardTone::Dock | CardTone::TopSheet => {}
         }
         // Boards (REVIEW-SELF B5): a raised card has the raised fill, no gold border.
-        let (background, border) = if self.raised {
+        let (background, border) = if self.tone == CardTone::Dock {
+            (ColorRole::Bar, ColorRole::Line)
+        } else if self.raised {
             (ColorRole::Raised, ColorRole::Line)
         } else {
             (ColorRole::Surface, ColorRole::Line)
@@ -374,14 +466,27 @@ impl Card {
 }
 
 impl Card {
-    /// A bar region: `bar` fill and one `line` border on `edge` (mirrored in RTL).
-    fn paint_bar(p: &mut Painter<'_>, rect: Rect, edge: BarEdge) {
-        let (bar, line, hairline) = (
-            p.color(ColorRole::Bar),
-            p.color(ColorRole::Line),
-            p.hairline(),
-        );
-        p.fill(rect, None, bar);
+    /// A chosen chip: `surface` fill and a `control_border` edge, radius 8.
+    fn paint_chip(p: &mut Painter<'_>, rect: Rect, chosen: bool) {
+        if chosen {
+            let (fill, edge, hairline) = (
+                p.color(ColorRole::Surface),
+                p.color(ColorRole::ControlBorder),
+                p.hairline(),
+            );
+            p.fill(rect, Some(Radius::Control), fill);
+            p.stroke(rect, Some(Radius::Control), hairline, edge);
+        }
+    }
+
+    /// A bar region: `fill` (none: only the edge) and one `line` border on `edge`
+    /// (mirrored in RTL).
+    fn paint_bar(p: &mut Painter<'_>, rect: Rect, fill: Option<ColorRole>, edge: BarEdge) {
+        let (line, hairline) = (p.color(ColorRole::Line), p.hairline());
+        if let Some(fill) = fill {
+            let bar = p.color(fill);
+            p.fill(rect, None, bar);
+        }
         let rtl = p.env().direction.is_rtl();
         let border = match edge {
             BarEdge::Top => Rect::new(rect.x, rect.y, rect.w, hairline),

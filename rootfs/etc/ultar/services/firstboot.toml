@@ -1,0 +1,18 @@
+# First start of an installed system: the installer's answers record
+# (ULTAR-BOOTCTL, written by ultar-installer-ui) becomes the first account of
+# the authentication service (/data/ultar/auth/users, owner authd 813), then
+# the record is wiped. Every later start finds no record and ends at once.
+exec = "/usr/bin/ultar-firstboot"
+args = ["--bootctl", "/dev/ultar/part/ULTAR-BOOTCTL", "--auth-dir", "/data/ultar/auth", "--owner", "813"]
+oneshot = true
+console = true
+# Identity and rights:
+# root: the raw A/B nodes (ULTAR-BOOTCTL) open for root only.
+# right raw_device: the answers record in ULTAR-BOOTCTL, read and wiped.
+# right file_admin: the account file's owner (authd, 813).
+rights = ["raw_device", "file_admin"]
+dirs = ["/data/ultar/auth"]
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "4"

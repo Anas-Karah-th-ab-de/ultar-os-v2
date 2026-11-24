@@ -19,6 +19,9 @@ apt-get install -y -q lld clang musl-tools qemu-system-x86 qemu-utils ovmf mtool
 for b in cargo rustc rustfmt cargo-clippy clippy-driver rustdoc; do
   [ -e /usr/lib/rust-1.97/bin/$b ] && ln -sf /usr/lib/rust-1.97/bin/$b /usr/local/bin/$b
 done
+# The kernel's UEFI target links with rust-lld; the toolchain here ships none: the system lld
+# understands the same -flavor arguments.
+command -v rust-lld >/dev/null || ln -sf "$(command -v lld)" /usr/local/bin/rust-lld
 mkdir -p /root/ultar-build
 cd /root/ultar-build
 [ -d ultar-os-v2/.git ] || git clone -q https://github.com/Anas-Karah-th-ab-de/ultar-os-v2

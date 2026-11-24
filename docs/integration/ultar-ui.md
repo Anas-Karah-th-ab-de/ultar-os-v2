@@ -578,3 +578,41 @@ Source: `docs/integration/settings-installer.md` "Toolkit gaps"; tests `tests/w7
 All 45 ultar-ui test targets and all compositor targets green 3×; fmt, clippy `-D warnings`,
 `ultar-check all` clean (no new baseline). Snapshots re-created (385 ultar-ui, 3 compositor)
 after visual review of the changed states.
+
+---
+
+# Desktop shell additions (2026-11-24, round 2 of the shell, on top of Wave 7)
+
+Additive; `Widget::Brick`, `Widget::DayGrid` and the shell's bricks came with the shell branch.
+- `BrickKind::Mark { points }` (brand mark at any size ≥ 16, `IconId::Mark`, docs/BRAND.md),
+  `BrickKind::WindowPreview { icon, picture: Option<Rc<Thumbnail>>, card_h }`,
+  `BrickKind::WorkspaceCard { minis, chosen, new }` (board Overview); `Picture::Mark` now draws
+  `IconId::Mark` (the hand-drawn arcs are gone).
+- `Thumbnail::new(width, height, xrgb)` (bytes as the compositor's `WindowThumbnail`),
+  `Painter::image(rect, w, h, xrgb)`, `Canvas::draw_scaled(target, w, h, xrgb)` (nearest, opaque).
+- `CardTone::Dock` (`Card::dock()`), `CardTone::TopSheet` (`Card::top_sheet()`).
+- `DayGrid::choose(part)`.
+- The shell's own `Ui::focus(id, ring)` was dropped in favour of Wave 7's `Ui::focus(id)`.
+
+---
+
+# Wave 8 (2026-11-24): bricks of the phone boards (PhoneDial, PhoneInCall)
+
+Additive API, tests `tests/w8_phone_bricks.rs` (5, snapshots in `tests/snapshots/phone-bricks/`,
+ar/en × dark/light):
+- `RadioLayout::Choices` – compact choices side by side: padding 4 / 12, control radius, check
+  mark (16) before the title when chosen, no dot; chosen `hover` fill + two-border `accent_text`
+  edge, not chosen transparent + `control_border`; height = lines + padding + two-border edge
+  (min 48); widths are equal shares less the edges plus each choice's own edge (CSS border-box
+  `flex: 1`, board 170.5 / 168.5). Exhaustive matches over `RadioLayout` need an arm.
+- `TextField::end_action(icon, name)` – a 32-point action button inside the field at its end
+  edge (12 in); a click reports `ActionKind::Activated` for the field, announced as a button part
+  (part 2) with `name`; `Ui::end_action_rect(id)`. `TextField::fill_height()`: the box fills the
+  height its node is given (board: 48).
+- `Tabs::pills()` – filled pills: label + 2 × 12, 4 apart, chosen on `hover`, no rule, no
+  underline.
+- `Button::tile()` – icon (24) above the label (12, centred, wrapping), padding 8 / 4; every tile
+  reserves the two-border edge so a row stays even (board 104 × 67). `Button::toggled(on)` –
+  toggle: on = `hover` + two-border `accent_text` edge, announced `pressed`. New public fields
+  `Button::{tile, toggled}` (struct literals need them).
+No existing snapshot changed; the full suite stays green.

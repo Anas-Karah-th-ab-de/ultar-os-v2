@@ -169,7 +169,7 @@ fn system_dialogs_are_above_panels_dim_the_rest_and_are_modal() {
         "panel dimmed: {dimmed:06x}"
     );
     let w = comp.state.windows.iter().find(|w| w.secure).unwrap();
-    assert!(w.title_cache.as_ref().is_some_and(|(k, _)| k.secure));
+    assert!(w.title.cache.as_ref().is_some_and(|(k, _)| k.secure));
     assert_eq!(comp.state.text_target().map(|k| k.surface), Some(d));
     dialog.take();
     key(&mut comp, 30, true);

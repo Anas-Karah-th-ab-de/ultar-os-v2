@@ -22,6 +22,19 @@
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
 #   7. the service manager starts the system services as their own users (init-e2e.sh, INIT: ALLES OK),
+#   7d. the desktop session runs on the kernel and unlocks with a typed password (desktop-e2e.sh,
+#       DESKTOP: ALLES OK; the same on VMware-like hardware in vmware-like.sh),
+#   7a. the app launcher runs apps as their own users in their cells, a malicious app stays in its cell
+#       (launcher-e2e.sh, LAUNCHER: ALLES OK),
+#   7b. the display and account services under the service manager (svc-e2e.sh, SVC: ALLES OK),
+#   7c. the system services behind the desktop shell (dienste-e2e.sh, DIENSTE: ALLES OK),
+#   7e. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
+#   7f. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
+#       the graphical installation from A to Z with the first start of the installed disk (installer-e2e.sh,
+#       INSTALLER: ALLES OK; opt-in with INSTALLER_E2E=1, see docs/integration/installer-boot.md),
+#   7g. Bluetooth: a USB controller (usb-redir + bt-usb.py) through /dev/ultar/hci0, ultar-btd sets it up as its own
+#       user, its keyboards through /dev/ultar/uinput (bt-e2e.sh, BT: ALLES OK; virtual input devices alone:
+#       bttest uinput in the first boot, BTTEST-UINPUT: ALLES OK),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
@@ -40,9 +53,9 @@ fi
 mcopy -o -i out/ultar-kern-esp.img "$BUSCK" ::/bin/busck
 LOG="${LOG:-$(mktemp)}"
 # a second network card (e1000) is the device the bind/unbind cycle of geraetetest works on
-QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" "/bin/fenstertest" > "$LOG" 2>&1 || true
+QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" "/bin/fenstertest" "/bin/bttest uinput" > "$LOG" 2>&1 || true
 fail=0
-for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK"; do
+for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK" "BTTEST-UINPUT: ALLES OK"; do
   if grep -q "$expect" "$LOG"; then echo "ok    $expect"; else echo "FAIL  $expect"; fail=1; fi
 done
 if grep -qiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=1; fi
@@ -112,6 +125,36 @@ for mem in ${GRENZ_MEM:-512 2048}; do
 done
 # The service manager with the shipped system services, each as its own user.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/init-e2e.sh
+# The app launcher: apps in cells with their own users, groups and permissions; a malicious app.
+IMG=out/ultar-kern-esp.img bash tools/kern-test/launcher-e2e.sh
+# The desktop session: compositor, authd, lock screen, system dialogs and the shell as their own users;
+# locked with Super+L and unlocked with the test password through the virtual keyboard (DESKTOP: ALLES OK).
+IMG=out/ultar-kern-esp.img bash tools/kern-test/desktop-e2e.sh
+# The display and account services: keep-or-revert across service crashes, accounts as their own ids.
+IMG=out/ultar-kern-esp.img bash tools/kern-test/svc-e2e.sh
+# The system services behind the shell: power, session, notifications, calendar, audio; power off via init.
+IMG=out/ultar-kern-esp.img bash tools/kern-test/dienste-e2e.sh
+# The phone: the real call daemon with the test-double modem and the phone app (TELEFON: ALLES OK).
+IMG=out/ultar-kern-esp.img bash tools/kern-test/telefon-e2e.sh
+# Installer mode: whole-disk nodes only on an installation medium, only for the installer's identity, the
+# boot disk never a target (installer-disk.sh, INSTALLER-DISK: ALLES OK).
+IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/installer-disk.sh | tail -3
+# The graphical installation from A to Z on VMware-like hardware: medium + empty disk, the installer driven
+# by keys, then the installed disk alone with the account it was given (installer-e2e.sh). Opt-in
+# (INSTALLER_E2E=1) until the kernel's keyboard path stops losing typed characters under QEMU (TCG): the
+# account step cannot be typed reliably yet (docs/integration/installer-boot.md, open point 1).
+if [ "${INSTALLER_E2E:-0}" = 0 ]; then
+  echo "skip  INSTALLER (INSTALLER_E2E=1 runs it; open point in docs/integration/installer-boot.md)"
+else
+  ILOG="${INSTALLER_LOG:-$(mktemp)}"
+  if SMP="${SMP:-2}" bash tools/kern-test/installer-e2e.sh > "$ILOG" 2>&1 && grep -q "^INSTALLER: ALLES OK" "$ILOG"; then
+    echo "ok    INSTALLER: ALLES OK ($(grep -o 'installed through[^)]*' "$ILOG"))"
+  else
+    echo "FAIL  INSTALLER"; tail -30 "$ILOG"; exit 1
+  fi
+fi
+# Bluetooth: USB controller node, ultar-btd on it as its own user, virtual input devices.
+IMG=out/ultar-kern-esp.img bash tools/kern-test/bt-e2e.sh
 # A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
 # its own installation and about 25 starts. AB_TEST=0 skips it.
 if [ "${AB_TEST:-1}" = 0 ]; then

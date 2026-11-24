@@ -380,7 +380,9 @@ mod tests {
     #[test]
     fn a_call_sign_in_proof_exists_only_for_the_server_of_the_registration() {
         let dir = tempfile::tempdir().unwrap();
-        let home = DeviceHome::new(dir.path());
+        // A home of its own (created 0700): `tempdir()` follows the umask (0775 under umask
+        // 002), and private state rightly refuses a group-writable directory.
+        let home = DeviceHome::new(dir.path().join("ultar"));
         assert!(matches!(
             home.signal_proof("https://ultar.example"),
             Err(CloudError::NotRegistered)

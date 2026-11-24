@@ -110,10 +110,23 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 from = "system-services"
 to = "system-core"
 
+# ultar-hal-linux: the generic kernel backends of the system services (power
+# supplies and sleep, sound-card controls, radio switches, network links,
+# removable drives; docs/integration/system-services.md). Device paths and
+# unsafe stay in the HAL crate, every backend takes a root directory.
+# ultar-hal-netlink: netlink (nl80211, rtnetlink), TUN and the DHCP socket of
+# the network service (Wi-Fi, DHCP, VPN).
 [[allow]]
 from = "system-services"
 to = "system-hal"
-crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-linux", "system/hal/ultar-hal-netlink"]
+
+# ultar-vpnd: the VPN (library) runs inside the network service's process –
+# busd and logd were at the kernel's 16 supplementary groups when it was split off (32 now).
+[[allow]]
+from = "system-services"
+to = "system-services"
+crates = ["system/services/ultar-vpnd"]
 
 # platform -> system core + HAL traits
 [[allow]]
@@ -129,10 +142,15 @@ to = "system-hal"
 crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-gfx"]
 
 # apps -> public app API + bus/i18n/profile
+# platform/ultar-surface: the compositor client (window, input, clipboard). Allowed for apps by
+# the lead's layering decision (wave 7): there is no separate app-api crate yet, and every app
+# window is an ultar-surface client. Apps use only its client side (UiWindow, Client).
+# compositor client API for app windows: the browser window (apps/ultar-web), the files and
+# phone apps are such clients.
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface"]
 
 [[allow]]
 from = "apps"

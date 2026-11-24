@@ -1,0 +1,14 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+CompactSettings	1	mobile.status	button	الإعدادات السريعة	0	-	12	0	111.7	32	11,13,17	360	800	dark	ar	44
+CompactSettings	2	settings.search	input	ابحث في الإعدادات	0	-	29	105	278	30	31,35,44	360	800	dark	ar	44
+CompactSettings	3	settings.area	button	واي فايKM-Office	0	-	17	153	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	4	settings.area	button	الشبكة الخلويةSIM 1	0	-	17	211.58	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	5	settings.area	button	بلوتوثمُطفأ	0	-	17	270.16	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	6	settings.area	button	الشاشاتالسطوع، الضوء الليلي	0	-	17	328.73	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	7	settings.area	button	الصوت	0	-	17	387.31	326	56	23,26,33	360	800	dark	ar	44
+CompactSettings	8	settings.area	button	الطاقة87%	0	-	17	443.31	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	9	settings.area	button	الإشعارات	0	-	17	501.89	326	56	23,26,33	360	800	dark	ar	44
+CompactSettings	10	settings.area	button	المظهرداكن	0	-	17	557.89	326	58.58	23,26,33	360	800	dark	ar	44
+CompactSettings	11	settings.area	button	التطبيقات	0	-	17	616.47	326	56	23,26,33	360	800	dark	ar	44
+CompactSettings	12	settings.area	button	الخصوصية والأمان	0	-	17	672.47	326	56	23,26,33	360	800	dark	ar	44
+CompactSettings	13	mobile.home	button	الشاشة الرئيسية	0	-	0	756	360	44	11,13,17	360	800	dark	ar	44

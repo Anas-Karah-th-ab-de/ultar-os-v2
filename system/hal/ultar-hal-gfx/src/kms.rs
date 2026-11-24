@@ -43,6 +43,10 @@ struct Output {
     crtc: crtc::Handle,
     info: DisplayInfo,
     mode: DisplayMode,
+    /// Every mode of the connector (driver mode and HAL mode).
+    modes: Vec<(Mode, DisplayMode)>,
+    /// EDID bytes, when the connector has them.
+    edid: Option<Vec<u8>>,
     buffer: DumbBuffer,
     framebuffer: framebuffer::Handle,
 }
@@ -166,6 +170,7 @@ impl Kms {
             Some(mode),
         )?;
         let display_mode = DisplayMode::new(width, height, list[index].2.max(1));
+        let modes = modes_of(info, &list);
         let (mm_w, mm_h) = info.size().unwrap_or((0, 0));
         let internal = matches!(
             info.interface(),
@@ -183,9 +188,66 @@ impl Kms {
                 preferred_mode: display_mode,
             },
             mode: display_mode,
+            modes,
+            edid: self.edid(info.handle()),
             buffer,
             framebuffer,
         }))
+    }
+
+    /// The connector's `EDID` property blob (absent on virtual outputs).
+    fn edid(&self, handle: connector::Handle) -> Option<Vec<u8>> {
+        let props = self.card.get_properties(handle).ok()?;
+        let found = props.iter().find_map(|(prop, value)| {
+            let info = self.card.get_property(*prop).ok()?;
+            if info.name().to_bytes() != b"EDID" || *value == 0 {
+                return None;
+            }
+            let blob = self.card.get_property_blob(*value).ok()?;
+            (blob.len() >= crate::edid::BLOCK && blob.len() <= 32 * crate::edid::BLOCK)
+                .then_some(blob)
+        });
+        found
+    }
+
+    /// Switches one output to another of its modes: a new scan-out buffer of
+    /// the new size, then the CRTC; the old buffer goes only after the
+    /// switch worked (on failure the output keeps its old mode).
+    fn switch_mode(&self, o: &mut Output, mode: DisplayMode) -> HalResult<()> {
+        let gfx = |e: std::io::Error| HalError::from(GfxError::from(e));
+        let Some((drm_mode, _)) = o.modes.iter().find(|(_, m)| *m == mode).copied() else {
+            return Err(HalError::InvalidArgument);
+        };
+        let size = (mode.size.width, mode.size.height);
+        let buffer = self
+            .card
+            .create_dumb_buffer(size, DrmFourcc::Xrgb8888, 32)
+            .map_err(gfx)?;
+        let framebuffer = match self.card.add_framebuffer(&buffer, 24, 32) {
+            Ok(fb) => fb,
+            Err(e) => {
+                let _ = self.card.destroy_dumb_buffer(buffer);
+                return Err(gfx(e));
+            }
+        };
+        let set = self.card.set_crtc(
+            o.crtc,
+            Some(framebuffer),
+            (0, 0),
+            &[o.connector],
+            Some(drm_mode),
+        );
+        if let Err(e) = set {
+            let _ = self.card.destroy_framebuffer(framebuffer);
+            let _ = self.card.destroy_dumb_buffer(buffer);
+            return Err(gfx(e));
+        }
+        let old_fb = std::mem::replace(&mut o.framebuffer, framebuffer);
+        let old_buffer = std::mem::replace(&mut o.buffer, buffer);
+        let _ = self.card.destroy_framebuffer(old_fb);
+        let _ = self.card.destroy_dumb_buffer(old_buffer);
+        o.mode = mode;
+        Ok(())
     }
 
     fn with_output<T>(
@@ -214,6 +276,15 @@ fn mode_list(info: &connector::Info) -> Vec<(u32, u32, u32, bool)> {
         .collect()
 }
 
+/// Driver mode and HAL mode of every mode of a connector.
+fn modes_of(info: &connector::Info, list: &[(u32, u32, u32, bool)]) -> Vec<(Mode, DisplayMode)> {
+    info.modes()
+        .iter()
+        .zip(list)
+        .map(|(m, l)| (*m, DisplayMode::new(l.0, l.1, l.2.max(1))))
+        .collect()
+}
+
 fn next_id(outputs: &[Output]) -> DisplayId {
     DisplayId(outputs.iter().map(|o| o.id.0 + 1).max().unwrap_or(0))
 }
@@ -225,7 +296,7 @@ impl Display for Kms {
     }
 
     fn modes(&self, id: DisplayId) -> HalResult<Vec<DisplayMode>> {
-        self.with_output(id, |o| Ok(vec![o.mode]))
+        self.with_output(id, |o| Ok(o.modes.iter().map(|(_, m)| *m).collect()))
     }
 
     fn current_mode(&self, id: DisplayId) -> HalResult<DisplayMode> {
@@ -234,12 +305,16 @@ impl Display for Kms {
 
     fn set_mode(&self, id: DisplayId, mode: DisplayMode) -> HalResult<()> {
         self.with_output(id, |o| {
-            if o.mode.size == mode.size {
+            if o.mode == mode {
                 Ok(())
             } else {
-                Err(HalError::NotSupported)
+                self.switch_mode(o, mode)
             }
         })
+    }
+
+    fn identification(&self, id: DisplayId) -> HalResult<Option<Vec<u8>>> {
+        self.with_output(id, |o| Ok(o.edid.clone()))
     }
 
     fn present(&self, id: DisplayId, frame: &FrameView<'_>, damage: &[Rect]) -> HalResult<()> {

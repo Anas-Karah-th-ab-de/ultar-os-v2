@@ -5,9 +5,24 @@ use super::types::*;
 use crate::wire::{Reader, WireError, Writer};
 
 pub(super) fn encode_body(event: &Event, w: &mut Writer) {
-    if !encode_window(event, w) && !encode_input(event, w) {
+    if !encode_window(event, w) && !encode_input(event, w) && !encode_outputs(event, w) {
         encode_data(event, w);
     }
+}
+
+/// Output management events; false if `event` is another kind.
+fn encode_outputs(event: &Event, w: &mut Writer) -> bool {
+    match event {
+        Event::OutputDetails(d) => d.encode(w),
+        Event::OutputSetupDone { serial, outcome } => {
+            w.u32(*serial).u8(outcome.to_u8());
+        }
+        Event::OutputsDetected { count } => {
+            w.u32(*count);
+        }
+        _ => return false,
+    }
+    true
 }
 
 /// Window, output and buffer events; false if `event` is another kind.
@@ -161,8 +176,99 @@ fn encode_data(event: &Event, w: &mut Writer) {
         Event::WindowList { windows } => {
             super::windows::encode_list(w, windows);
         }
+        other => encode_shell(other, w),
+    }
+}
+
+/// The events of the desktop shell (ui.shell).
+fn encode_shell(event: &Event, w: &mut Writer) {
+    match event {
+        Event::ShellKey {
+            code,
+            modifiers,
+            serial,
+        } => {
+            w.u16(*code).u8(modifiers.0).u32(*serial);
+        }
+        Event::WindowsChanged { windows } => super::shell::encode_windows(w, windows),
+        Event::KeyboardLayouts { names, active } => {
+            super::shell::encode_layouts(w, names, *active);
+        }
+        Event::ShellFocusLost { surface } => {
+            w.u32(surface.0);
+        }
+        Event::WindowThumbnail {
+            window,
+            width,
+            height,
+            data,
+        } => {
+            w.u32(*window).u16(*width).u16(*height).bytes(data);
+        }
+        Event::Workspaces { current, count } => {
+            w.u8(*current).u8(*count);
+        }
+        Event::EdgeSwipe { edge, held } => {
+            w.u8(edge.to_u8()).bool(*held);
+        }
         _ => {}
     }
+}
+
+/// The display service's events: details (36), a setup's outcome (37), detection (38).
+fn decode_outputs(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
+    Ok(match opcode {
+        36 => Event::OutputDetails(Box::new(super::outputs::OutputDetails::decode(r)?)),
+        37 => Event::OutputSetupDone {
+            serial: r.u32()?,
+            outcome: super::outputs::SetupOutcome::from_u8(r.u8()?)?,
+        },
+        _ => Event::OutputsDetected { count: r.u32()? },
+    })
+}
+
+/// The overview's events: a thumbnail (39) or the workspaces (40); any other opcode is refused.
+fn decode_overview(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
+    match opcode {
+        39 => decode_thumbnail(r),
+        40 => decode_workspaces(r),
+        41 => Ok(Event::EdgeSwipe {
+            edge: super::shell::SwipeEdge::from_u8(r.u8()?)?,
+            held: r.bool()?,
+        }),
+        _ => Err(WireError::BadValue),
+    }
+}
+
+/// Workspaces: at least one, at most `MAX_WORKSPACES`, the shown one among them.
+fn decode_workspaces(r: &mut Reader<'_>) -> Result<Event, WireError> {
+    let (current, count) = (r.u8()?, r.u8()?);
+    let max = super::MAX_WORKSPACES as u8;
+    if count == 0 || count > max || current >= count {
+        return Err(WireError::BadValue);
+    }
+    Ok(Event::Workspaces { current, count })
+}
+
+/// A thumbnail whose pixels match its size exactly.
+fn decode_thumbnail(r: &mut Reader<'_>) -> Result<Event, WireError> {
+    let window = r.u32()?;
+    let (width, height) = (r.u16()?, r.u16()?);
+    let side = super::MAX_THUMBNAIL_SIDE;
+    if width > side || height > side {
+        return Err(WireError::BadValue);
+    }
+    let len = usize::from(width) * usize::from(height) * 4;
+    let data = r.bytes(len)?.to_vec();
+    if data.len() != len {
+        return Err(WireError::BadValue);
+    }
+    Ok(Event::WindowThumbnail {
+        window,
+        width,
+        height,
+        data,
+    })
 }
 
 fn sid(r: &mut Reader<'_>) -> Result<SurfaceId, WireError> {
@@ -328,6 +434,20 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         31 => Event::WindowList {
             windows: super::windows::decode_list(r)?,
         },
-        _ => return Err(WireError::BadValue),
+        32 => Event::ShellKey {
+            code: r.u16()?,
+            modifiers: Modifiers(r.u8()?),
+            serial: r.u32()?,
+        },
+        33 => Event::WindowsChanged {
+            windows: super::shell::decode_windows(r)?,
+        },
+        34 => {
+            let (names, active) = super::shell::decode_layouts(r)?;
+            Event::KeyboardLayouts { names, active }
+        }
+        35 => Event::ShellFocusLost { surface: sid(r)? },
+        36..=38 => decode_outputs(opcode, r)?,
+        _ => decode_overview(opcode, r)?,
     })
 }

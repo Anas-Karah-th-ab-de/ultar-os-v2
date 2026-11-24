@@ -129,7 +129,10 @@ pub fn mount() {
     let mut exts: Vec<(String, crate::ext4::Ext4, String)> = Vec::new();
     let mut installer_platten: Vec<String> = Vec::new();
     let mut fats: Vec<(Fat, String)> = Vec::new();
-    for disk in 0..n {
+    // installer mode: only the medium's file systems; the target disks stay unmounted (they are
+    // written as a whole through /dev/ultar/disk, rawpart.rs)
+    let medium = crate::rawpart::installer_medium();
+    for disk in (0..n).filter(|d| medium.is_none_or(|m| m == *d)) {
         let dname = BLOCK.lock()[disk].name();
         let mut cands: Vec<(u64, String)> = vec![(0, String::new())];
         if let Some(h) = rd(disk, 1, 1) {
@@ -473,14 +476,30 @@ fn fs_open(path: &str) -> Option<Node> {
     mnt_open(&best.1, rel)
 }
 
-/// `/dev/ultar`, `/dev/ultar/part` and the raw A/B partition nodes (rawpart.rs)
+/// `/dev/ultar`: `part` and the raw A/B partition nodes; in installer mode `medium` and
+/// `disk/<device>` (rawpart.rs); the service nodes `hciN` and `uinput` (svcdev)
 fn raw_node(d: &str) -> Option<Node> {
+    if let Some(n) = crate::svcdev::node(d) {
+        return Some(Node::Dev(n));
+    }
     let names = crate::rawpart::names();
+    let installer = crate::rawpart::installer_medium().is_some();
     match d {
-        _ if names.is_empty() => None,
-        "ultar" => Some(Node::Dir(vec![DirEnt { name: "part".into(), dir: true, size: 0 }])),
-        "ultar/part" => Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
-        _ => crate::rawpart::node(d).map(Node::Dev),
+        "ultar" => {
+            let mut v: Vec<DirEnt> = crate::svcdev::names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect();
+            if !names.is_empty() {
+                v.push(DirEnt { name: "part".into(), dir: true, size: 0 });
+            }
+            if installer {
+                v.push(DirEnt { name: "disk".into(), dir: true, size: 0 });
+                v.push(DirEnt { name: "medium".into(), dir: false, size: 0 });
+            }
+            Some(Node::Dir(v))
+        }
+        "ultar/part" if !names.is_empty() => Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
+        "ultar/disk" if installer => Some(Node::Dir(crate::rawpart::disk_names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
+        _ if d.starts_with("ultar/part/") => crate::rawpart::node(d).map(Node::Dev),
+        _ => crate::rawpart::installer_node(d).map(Node::Dev),
     }
 }
 
@@ -517,9 +536,8 @@ pub fn open(path: &str) -> Option<Node> {
         if !crate::input::all().is_empty() {
             v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
         }
-        if !crate::rawpart::names().is_empty() {
-            v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
-        }
+        // the service nodes (svcdev) are always there
+        v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
         return Some(Node::Dir(v));
     }
     if path == "/proc" || path.starts_with("/proc/") {

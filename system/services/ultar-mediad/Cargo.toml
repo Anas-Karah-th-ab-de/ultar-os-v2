@@ -1,0 +1,23 @@
+[package]
+name = "ultar-mediad"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Media service of Ultar OS: the media session for the lock screen and its buttons (system services, area 4)"
+
+[lib]
+name = "ultar_mediad"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-mediad"
+path = "src/bin/ultar-mediad.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

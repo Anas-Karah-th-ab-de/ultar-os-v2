@@ -1,0 +1,261 @@
+//! The controls that work through the system services (docs/integration/system-services.md):
+//! each is enabled from its service's report and makes exactly its contract's call; without a
+//! report it stays disabled with its reason.
+
+mod common;
+
+use common::*;
+use ultar_bus::messages::audio::AudioState;
+use ultar_bus::messages::bluetooth::BluetoothState;
+use ultar_bus::messages::net::NetState;
+use ultar_bus::messages::power::PowerActions;
+use ultar_bus::messages::session::SessionState;
+use ultar_bus::messages::volumes::Mounted;
+use ultar_desktop::model::quick::TileId;
+use ultar_desktop::model::services::Call;
+use ultar_desktop::model::{Open, QuickPage};
+use ultar_desktop::shell::{Effect, Opening, Outcome};
+use ultar_desktop::view::Target;
+use ultar_i18n::Lang;
+use ultar_ui::event::ActionKind;
+use ultar_ui::tokens::ThemeKind;
+
+fn net(wifi_on: bool, airplane: bool) -> NetState {
+    NetState {
+        wifi_present: true,
+        wifi_on,
+        wifi_switch_off: false,
+        ssid: None,
+        signal_percent: None,
+        wired: None,
+        airplane,
+        airplane_possible: true,
+        metered: false,
+        networks_supported: false,
+    }
+}
+
+fn served() -> Harness {
+    let mut d = board_desktop(Lang::Ar, ThemeKind::Dark);
+    d.svc.net = Some(net(true, false));
+    d.svc.bluetooth = Some(BluetoothState {
+        present: true,
+        on: false,
+        switch_off: false,
+        connected: 0,
+        devices_supported: false,
+        scanning: false,
+        pairing: None,
+    });
+    d.svc.audio = Some(AudioState {
+        present: true,
+        volume_percent: 40,
+        muted: false,
+        output_name: "Speakers".into(),
+        output_id: Some("hw0".into()),
+        has_volume: true,
+    });
+    d.svc.power = Some(PowerActions {
+        suspend: false,
+        restart: true,
+        power_off: true,
+        needs_admin: false,
+    });
+    d.svc.session = Some(SessionState {
+        user: Some("anas".into()),
+        signed_in: vec!["anas".into()],
+    });
+    d.presence.net_service = true;
+    d.presence.audio_service = true;
+    d.presence.bus = true;
+    let mut h = Harness::with(d, Lang::Ar, ThemeKind::Dark);
+    h.click_bar(Target::Status);
+    h.take();
+    h
+}
+
+fn enabled(h: &Harness, t: &Target) -> bool {
+    let p = h.popup.as_ref().unwrap();
+    p.view.node(t).is_some_and(|n| !p.view.ui.is_disabled(n))
+}
+
+#[test]
+fn the_radios_switch_through_their_services() {
+    let mut h = served();
+    for (tile, call) in [
+        (TileId::Wifi, Call::SetWifi(false)),
+        (TileId::Airplane, Call::SetAirplane(true)),
+        (TileId::Bluetooth, Call::SetBluetooth(true)),
+    ] {
+        assert!(enabled(&h, &Target::Tile(tile)), "{tile:?}");
+        h.click_popup(Target::Tile(tile));
+        assert_eq!(h.take(), vec![Effect::Service(call)], "{tile:?}");
+    }
+    // Choosing a network or a device waits for the service's round 2.
+    let p = h.popup.as_ref().unwrap();
+    let more = p.view.node(&Target::TileMore(TileId::Wifi)).unwrap();
+    assert!(p.view.ui.is_disabled(more) && p.view.ui.tooltip(more).is_some());
+    // Airplane mode on: Wi-Fi and Bluetooth say why they are off.
+    h.shell.d.svc.net = Some(net(false, true));
+    h.apply(Outcome::surfaces());
+    assert!(!enabled(&h, &Target::Tile(TileId::Wifi)));
+    assert!(!enabled(&h, &Target::Tile(TileId::Bluetooth)));
+}
+
+#[test]
+fn volume_output_and_screenshot() {
+    let mut h = served();
+    let out = h
+        .shell
+        .on_popup(&Target::Volume, &ActionKind::ValueChanged(65.0));
+    h.apply(out);
+    assert_eq!(h.take(), vec![Effect::Service(Call::SetVolume(65))]);
+    h.click_popup(Target::Output);
+    assert_eq!(h.shell.d.open, Open::OutputMenu);
+    assert_eq!(h.take(), vec![Effect::Service(Call::Outputs)]);
+    h.shell.d.svc.set_outputs(vec![
+        ("hw0".into(), "Speakers".into(), true),
+        ("hdmi".into(), "Display".into(), false),
+    ]);
+    let out = h.shell.on_menu(401);
+    h.apply(out);
+    assert_eq!(
+        h.take(),
+        vec![Effect::Service(Call::SetOutput("hdmi".into()))]
+    );
+    h.shell.d.open = Open::Quick(QuickPage::Tiles);
+    h.apply(Outcome::surfaces());
+    h.click_popup(Target::Screenshot);
+    assert_eq!(h.take(), vec![Effect::Service(Call::Screenshot)]);
+    // Without a sound device the controls say why.
+    h.shell.d.svc.audio.as_mut().unwrap().present = false;
+    h.shell.d.open = Open::Quick(QuickPage::Tiles);
+    h.apply(Outcome::surfaces());
+    assert!(!enabled(&h, &Target::Volume) && !enabled(&h, &Target::Output));
+}
+
+#[test]
+fn the_power_menu_follows_power_actions_and_the_session() {
+    let mut h = served();
+    h.click_popup(Target::Power);
+    assert_eq!(h.shell.d.open, Open::PowerMenu);
+    let calls: Vec<Vec<Effect>> = (200..205)
+        .map(|id| {
+            h.shell.d.open = Open::PowerMenu;
+            let out = h.shell.on_menu(id);
+            h.apply(out);
+            h.take()
+        })
+        .collect();
+    assert_eq!(calls[1], vec![Effect::Service(Call::Restart)]);
+    assert_eq!(calls[2], vec![Effect::Service(Call::PowerOff)]);
+    assert_eq!(calls[3], vec![Effect::Service(Call::SignOut)]);
+    assert_eq!(calls[4], vec![Effect::Lock], "switch user: the lock screen");
+    let entries = h.shell.d.svc.power_entries();
+    assert_eq!(
+        entries,
+        (false, true, true, true),
+        "no sleep on this machine"
+    );
+}
+
+#[test]
+fn a_mounted_drive_is_a_bar_tile_that_opens_and_ejects() {
+    let mut d = board_desktop(Lang::Ar, ThemeKind::Dark);
+    d.svc.set_drives(vec![Mounted {
+        id: "sdb1".into(),
+        name: "USB".into(),
+        uri: "file:///media/anas/USB".into(),
+    }]);
+    let mut h = Harness::with(d, Lang::Ar, ThemeKind::Dark);
+    assert!(h.bar.node(&Target::Drive(0)).is_some());
+    h.click_bar(Target::Drive(0));
+    assert_eq!(
+        h.take(),
+        vec![Effect::Launch {
+            app: "org.ultar.files".into(),
+            open: Opening::uri("file:///media/anas/USB"),
+        }]
+    );
+    let out = h.shell.on_bar_menu(&Target::Drive(0));
+    h.apply(out);
+    assert_eq!(h.shell.d.open, Open::DriveMenu(0));
+    let out = h.shell.on_menu(108);
+    h.apply(out);
+    assert_eq!(h.take(), vec![Effect::Service(Call::Eject("sdb1".into()))]);
+    // No drive service: no tile.
+    let h = Harness::with(
+        board_desktop(Lang::Ar, ThemeKind::Dark),
+        Lang::Ar,
+        ThemeKind::Dark,
+    );
+    assert!(h.bar.node(&Target::Drive(0)).is_none());
+}
+
+#[test]
+fn dismissing_a_notification_tells_the_service() {
+    let mut d = board_desktop(Lang::Ar, ThemeKind::Dark);
+    board_notes(&mut d, Lang::Ar);
+    let mut h = Harness::with(d, Lang::Ar, ThemeKind::Dark);
+    h.click_bar(Target::Clock);
+    h.take();
+    h.click_popup(Target::Dismiss(101));
+    assert_eq!(h.take(), vec![Effect::Service(Call::NoteDismiss(101))]);
+    // The board's buttons are drawn (note.action).
+    assert!(h.popup_target(&Target::NoteAction(100, 1)));
+}
+
+fn device(id: &str, paired: bool, connected: bool) -> ultar_bus::messages::bluetooth::Device {
+    ultar_bus::messages::bluetooth::Device {
+        id: id.into(),
+        name: format!("dev {id}"),
+        connected,
+        battery_percent: connected.then_some(80),
+        paired,
+        kind: ultar_bus::messages::bluetooth::DeviceKind::Keyboard,
+        rssi: None,
+        le: true,
+        input: true,
+        audio_unsupported: false,
+    }
+}
+
+#[test]
+fn the_bluetooth_devices_page_pairs_connects_and_forgets() {
+    let mut h = served();
+    {
+        let bt = h.shell.d.svc.bluetooth.as_mut().unwrap();
+        bt.on = true;
+        bt.devices_supported = true;
+    }
+    h.apply(Outcome::surfaces());
+    h.click_popup(Target::TileMore(TileId::Bluetooth));
+    assert_eq!(h.shell.d.open, Open::Quick(QuickPage::Bluetooth));
+    assert_eq!(h.take(), vec![Effect::Service(Call::BtDevices)]);
+    h.shell
+        .d
+        .svc
+        .set_bt_devices(vec![device("new", false, false), device("kbd", true, true)]);
+    h.apply(Outcome::surfaces());
+    h.click_popup(Target::BtDevice("new".into()));
+    assert_eq!(h.take(), vec![Effect::Service(Call::BtPair("new".into()))]);
+    h.click_popup(Target::BtDevice("kbd".into()));
+    assert_eq!(
+        h.take(),
+        vec![Effect::Service(Call::BtConnect("kbd".into(), false))]
+    );
+    h.click_popup(Target::BtForget("kbd".into()));
+    assert_eq!(
+        h.take(),
+        vec![Effect::Service(Call::BtForget("kbd".into()))]
+    );
+    assert!(
+        !h.popup_target(&Target::BtForget("new".into())),
+        "only paired ones"
+    );
+    let out = h
+        .shell
+        .on_popup(&Target::BtScan, &ActionKind::Toggled(true));
+    h.apply(out);
+    assert_eq!(h.take(), vec![Effect::Service(Call::BtScan(true))]);
+}

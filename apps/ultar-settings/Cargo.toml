@@ -1,0 +1,27 @@
+[package]
+name = "ultar-settings"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar OS Settings app: displays, drivers and hardware, Ultar account and the panels of settingsd (area 6, apps)"
+
+[lib]
+name = "ultar_settings"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-settings"
+path = "src/bin/ultar-settings.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }
+png = "0.17"

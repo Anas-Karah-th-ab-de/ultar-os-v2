@@ -53,6 +53,11 @@ pub struct Session {
     pub(super) swallowed: Vec<u16>,
     /// Translucent surfaces left out of the scene (overdraw budget).
     pub culled: Vec<SurfaceKey>,
+    /// The desktop shell's keyboard, list and shortcut state.
+    pub shell: super::ShellSession,
+    /// Output management of the display service (provisional setup,
+    /// display numbers).
+    pub manage: super::output_config::OutputManagement,
 }
 
 /// What an activation token allows: focus until `expiry`, as long as the
@@ -153,7 +158,9 @@ impl State {
         if self.locked() {
             return self.lock_surface();
         }
-        self.system_dialog().or(self.focus)
+        self.system_dialog()
+            .or(self.session.shell.focus)
+            .or(self.focus)
     }
 
     /// True if a client that can show a lock screen is connected (holds
@@ -177,6 +184,7 @@ impl State {
             return false;
         }
         self.session.locked = true;
+        self.drop_shell_focus();
         self.pointer.grab = None;
         if let Some(r) = self.pointer.snap_preview.take() {
             self.damage_logical(r);

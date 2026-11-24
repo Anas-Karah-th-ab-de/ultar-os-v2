@@ -56,7 +56,8 @@ fn thinkpad_p1_gen3() {
             ("thunderbolt-xhci", "gen-xhci"),
             ("nvidia-usb-c-xhci", "gen-xhci"),
             ("intel-i219-lm", "gen-intel-eth"),
-            ("intel-uhd-gen9.5", "intel-display-gen9"),
+            ("intel-uhd-gen9.5", "intel-display"),
+            ("nvidia-quadro-rtx-4000", "nvidia-display"),
             ("intel-ax201", "intel-wifi"),
             ("intel-bluetooth", "intel-bt-usb"),
             ("intel-cavs-audio", "gen-hda"),
@@ -65,7 +66,6 @@ fn thinkpad_p1_gen3() {
         &[
             "host-bridge",
             "lpc",
-            "nvidia-quadro-rtx-4000",
             "nvidia-usb-c-ucsi",
             "thunderbolt-controller",
             "thunderbolt-pcie-switch",
@@ -85,7 +85,10 @@ fn thinkpad_p1_gen3() {
         .devices
         .iter()
         .all(|d| d.device.machine.as_deref() == Some("ThinkPad P1 Gen 3")));
-    assert!(plan.devices.iter().all(|d| d.alternatives.is_empty()));
+    // Only the UHD 630 has a second candidate: the planned gen9 mode set below intel-display.
+    assert!(plan.devices.iter().all(
+        |d| d.alternatives.is_empty() || d.device.label.as_deref() == Some("intel-uhd-gen9.5")
+    ));
     let files = select_for_install(&plan, false).packages;
     assert_eq!(
         files,
@@ -94,12 +97,13 @@ fn thinkpad_p1_gen3() {
             "gen-intel-eth-1.0.0.utr",
             "gen-xhci-1.0.0.utr",
             "intel-bt-usb-1.0.0.utr",
-            "intel-display-gen9-1.0.0.utr",
+            "intel-display-1.0.0.utr",
             "intel-wifi-1.0.0.utr",
+            "nvidia-display-0.1.0.utr",
             "nvme-1.0.0.utr",
         ]
     );
-    assert_eq!(select_for_install(&plan, true).packages.len(), 10);
+    assert_eq!(select_for_install(&plan, true).packages.len(), 11);
 }
 
 #[test]
@@ -114,7 +118,7 @@ fn beelink_gti15_ultra() {
             ("crucial-e100-1", "nvme"),
             ("pch-xhci", "gen-xhci"),
             ("type-c-xhci", "gen-xhci"),
-            ("intel-arc-140t", "intel-display-xe"),
+            ("intel-arc-140t", "intel-display"),
             ("hd-audio", "gen-hda"),
             ("intel-be200", "intel-wifi"),
             ("intel-bluetooth", "intel-bt-usb"),
@@ -143,7 +147,7 @@ fn beelink_gti15_ultra() {
             "gen-ixgbe-1.0.0.utr",
             "gen-xhci-1.0.0.utr",
             "intel-bt-usb-1.0.0.utr",
-            "intel-display-xe-1.0.0.utr",
+            "intel-display-1.0.0.utr",
             "intel-wifi-1.0.0.utr",
             "nvme-1.0.0.utr",
         ]
@@ -157,8 +161,10 @@ fn drivers_do_not_cross_machines() {
     let uses = |plan: &BTreeMap<String, Option<String>>, id: &str| {
         plan.values().flatten().any(|d| d == id)
     };
-    assert!(uses(&thinkpad, "intel-display-gen9") && !uses(&thinkpad, "intel-display-xe"));
-    assert!(uses(&beelink, "intel-display-xe") && !uses(&beelink, "intel-display-gen9"));
+    // intel-display (built in) covers display 9 and 14; the planned gen9 mode set ranks below it.
+    assert!(uses(&thinkpad, "intel-display") && uses(&beelink, "intel-display"));
+    assert!(!uses(&thinkpad, "intel-display-gen9") && !uses(&beelink, "intel-display-gen9"));
+    assert!(uses(&thinkpad, "nvidia-display") && !uses(&beelink, "nvidia-display"));
     assert!(uses(&thinkpad, "gen-intel-eth") && !uses(&thinkpad, "gen-ixgbe"));
     assert!(uses(&beelink, "gen-ixgbe") && !uses(&beelink, "gen-intel-eth"));
     // Neither machine has a SATA controller; the AHCI driver is only chosen for one.

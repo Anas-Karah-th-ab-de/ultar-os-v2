@@ -1,0 +1,26 @@
+# Display service (docs/integration/display-account-services.md): follows the
+# compositor's displays and the display settings of settingsd, sends the
+# arrangement to the compositor (right ui.output-config in
+# compositor-rights.toml, by its user id 817) and answers display.* on the
+# bus. It waits for the compositor by itself (the compositor is started by
+# hand until the shell moves onto it), so it only needs the bus and settingsd.
+# A change waiting for "Keep?" goes back when this service ends: the
+# compositor takes a provisional setup back when its connection closes.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-displayd"
+args = [
+    "--bus", "/run/ultar/bus/displayd.sock",
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--log-socket", "/run/ultar/log/displayd.sock",
+]
+# Its own user without kernel rights; its bus and log sockets are open to
+# its group (817).
+user = 817
+notify = true
+after = ["bus", "settingsd"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "16"
+"cpu.weight" = "50"

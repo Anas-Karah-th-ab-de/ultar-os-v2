@@ -8,7 +8,7 @@
        starts the disk (on a copy-on-write layer: the file is not changed), waits until the service manager
        reports every service of the image as started and ready, takes a screenshot through the QEMU monitor
        (PREFIX.ppm, PREFIX.png when Pillow is there; serial log PREFIX.log) and prints one verdict line:
-       "VMWARE-CHECK: OK …" when the slot, the services and both windows of the image are there.
+       "VMWARE-CHECK: OK …" when the slot, the services and the desktop session (bar, mark) are there.
    vmware-vm.py zip FOLDER OUT.zip
        packs the folder (with its name as the top entry) without needing the zip program.
    Environment: SMP (4, as the .vmx), MEM (1024), WAIT (seconds per step, 600), VGA (std | vmware: the VMware
@@ -20,9 +20,9 @@ CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 WAIT = float(os.environ.get("WAIT", "600"))
 LANG_KEY = {"ar": "1", "de": "2", "en": "3"}
-SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "compositor", "demo-window-1", "demo-window-2"]
-# background colours of the two windows (design tokens info and success, dark theme)
-WINDOWS = {"info": bytes.fromhex("7FB2FF"), "success": bytes.fromhex("6FD08C")}
+SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", "lock", "sysdialog", "desktop"]
+# the desktop session on the screen: the bar (token bar, dark theme) and the brand mark on it (accent_text)
+WINDOWS = {"bar": bytes.fromhex("12151B"), "mark": bytes.fromhex("E3C55A")}
 
 
 class Vm:
@@ -134,7 +134,7 @@ def check(disk, fmt, controller, prefix):
         # the service manager's journal on the console: "ready NAME" for a service that reports readiness,
         # "start NAME" for the others, "settled" when nothing is left to start
         def line(service):
-            word = b"start" if service.startswith("demo-") else b"ready"
+            word = b"start" if service in ("authd", "lock", "sysdialog", "desktop") else b"ready"
             return re.compile(rb"\[ultar-init[^\]]*\] " + word + b" " + re.escape(service.encode()) + rb"\b")
         settled = re.compile(rb"\[ultar-init[^\]]*\] settled")
         if vm.read_until(settled, WAIT) is None:
@@ -154,17 +154,17 @@ def check(disk, fmt, controller, prefix):
         width = height = 0
         counts = {}
         if vm.p.poll() is None:
-            # give both windows time for their first frame, then look at the screen
+            # give the session time for its first frame, then look at the screen
             shot_end = time.time() + WAIT
             while time.time() < shot_end:
                 vm.read_until(None, 5)
                 vm.monitor(f"screendump {prefix}.ppm")
                 if os.path.exists(prefix + ".ppm"):
                     width, height, counts = windows_on(prefix + ".ppm")
-                    if all(c >= 1000 for c in counts.values()):
+                    if counts.get('bar', 0) >= 20000 and counts.get('mark', 0) >= 10:
                         break
-            if not counts or not all(c >= 1000 for c in counts.values()):
-                problems.append(f"windows not on the screen: {counts}")
+            if not counts or not counts.get('bar', 0) >= 20000 and counts.get('mark', 0) >= 10:
+                problems.append(f"desktop session not on the screen: {counts}")
             try:
                 from PIL import Image
                 Image.open(prefix + ".ppm").save(prefix + ".png")
@@ -176,7 +176,7 @@ def check(disk, fmt, controller, prefix):
     if problems:
         print(f"VMWARE-CHECK: FEHLER ({'; '.join(problems)}) [{detail}]")
         return 1
-    print(f"VMWARE-CHECK: OK ({len(SERVICES)} services, 2 windows; {detail})")
+    print(f"VMWARE-CHECK: OK ({len(SERVICES)} services, desktop session; {detail})")
     return 0
 
 

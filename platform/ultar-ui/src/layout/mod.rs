@@ -136,6 +136,9 @@ pub struct Flex {
     /// A row that runs out of room continues on a new line (the gap also separates the
     /// lines). Only for rows; children keep their natural width (growing is ignored).
     pub wrap: bool,
+    /// Overlay: every child lies in the same box, later ones on top; a growing child fills
+    /// it, the others sit where `main` (inline) and `cross` (block) put them.
+    pub stack: bool,
 }
 
 impl Flex {
@@ -148,6 +151,7 @@ impl Flex {
             main: MainAlign::Start,
             cross: CrossAlign::Center,
             wrap: false,
+            stack: false,
         }
     }
 
@@ -160,7 +164,18 @@ impl Flex {
             main: MainAlign::Start,
             cross: CrossAlign::Stretch,
             wrap: false,
+            stack: false,
         }
+    }
+
+    /// An overlay container: the children on top of each other in one box (later ones on
+    /// top). With `main(End)` and `cross(Start)` a small child sits in the top end corner
+    /// over a growing one (board Overview: the close button inside the window card).
+    pub const fn stack() -> Flex {
+        let mut flex = Flex::column();
+        flex.cross = CrossAlign::Start;
+        flex.stack = true;
+        flex
     }
 
     /// The same row wrapping onto further lines when its children do not fit

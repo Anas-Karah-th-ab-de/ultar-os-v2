@@ -11,7 +11,7 @@ use crate::isolation::rights::Rights;
 use crate::syscall::with;
 
 /// Most supplementary groups of one process.
-pub const MAX_GROUPS: usize = 16;
+pub const MAX_GROUPS: usize = 32;
 /// "Leave unchanged" in `setreuid`/`setresuid` and never a valid id.
 const KEEP: u32 = u32::MAX;
 const EPERM: i64 = 1;

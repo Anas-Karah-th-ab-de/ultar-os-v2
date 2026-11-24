@@ -118,3 +118,36 @@ fn garbage_files_and_path_like_ids_are_rejected() {
         assert!(!ultar_pkg::valid_id(bad), "{bad}");
     }
 }
+
+/// A manifest after `docs/APP-RULES.md` §3 (`[permissions]` as a table, `[limits]`) can be
+/// packed and signed, and the launcher gets exactly the signed bytes back.
+#[test]
+fn app_rules_manifest_is_signed_and_its_bytes_come_back_verified() {
+    let e = env();
+    let src = e.dir.path().join("src2");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.txt"), b"x").unwrap();
+    let manifest = e.dir.path().join("rules.toml");
+    let text =
+        "id = \"camera\"\nname = \"app.camera.name\"\nversion = \"1.4.0\"\nkind = \"native\"\n\
+                exec = \"/usr/lib/ultar/apps/camera/camera\"\n\n[permissions]\nnetwork = \"none\"\n\
+                background = false\nui = [\"ui.capture\"]\n\n[limits]\nmemory_mb = 120\n";
+    std::fs::write(&manifest, text).unwrap();
+    let out = e.dir.path().join("rules.uap");
+    ultar_pkg::pack_and_sign(&manifest, &src, &out, &e.private_key).unwrap();
+    let bytes = ultar_pkg::verify_manifest_bytes(&out, &trusted(&e)).unwrap();
+    assert_eq!(bytes, text.as_bytes());
+    let legacy = ultar_pkg::verify(&out, &trusted(&e)).unwrap();
+    assert_eq!(legacy.id, "camera");
+    assert!(legacy.permissions.is_empty());
+    let (other, _) = ultar_pkg::keygen();
+    let forged = e.dir.path().join("forged.uap");
+    ultar_pkg::pack_and_sign(&manifest, &src, &forged, &other).unwrap();
+    assert!(ultar_pkg::verify_manifest_bytes(&forged, &trusted(&e)).is_err());
+    // the verifying key is named: its id and the name of its file
+    let signed = ultar_pkg::verify_signed(&out, &trusted(&e)).unwrap();
+    assert_eq!(signed.bytes, text.as_bytes());
+    assert_eq!(signed.key_name, "publisher");
+    assert_eq!(signed.key_id.len(), 16);
+    assert!(ultar_pkg::verify_signed(&forged, &trusted(&e)).is_err());
+}

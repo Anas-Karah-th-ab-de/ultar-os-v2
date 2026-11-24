@@ -101,6 +101,11 @@ pub struct ListItem {
     pub separator: bool,
     /// Show a forward arrow at the end: activating the item opens a page of its own.
     pub chevron: bool,
+    /// Draw the item as a tile of a grid (a file or a desktop icon): the icon in a box above
+    /// the label ([`ListItem::tile`]).
+    pub tile: bool,
+    /// A picture shown in the tile's box instead of the icon.
+    pub thumbnail: Option<super::Preview>,
 }
 
 const PAD_INLINE: Space = Space::S16;
@@ -124,6 +129,8 @@ impl ListItem {
             selected: false,
             separator: false,
             chevron: false,
+            tile: false,
+            thumbnail: None,
         }
     }
 
@@ -176,6 +183,9 @@ impl ListItem {
         control: Size,
         (nav, has_error): (bool, bool),
     ) -> Size {
+        if self.tile {
+            return self.measure_tile(cx);
+        }
         let target = cx.mode.min_target();
         let two_lines = self.sublabel.is_some() || has_error;
         if nav {
@@ -237,7 +247,18 @@ impl ListItem {
         if v.pressed || v.hovered || self.selected {
             // Rounded and inside the border: the first and last item never cover the
             // rounded corner of the card around the list.
-            let bg = p.color(style::neutral_background(v));
+            // Boards (`navitem`): the open page of a sidebar is drawn in `hover`.
+            // (hovered or pressed it goes one step further, to `line`).
+            let role = if nav && self.selected {
+                if v.pressed || v.hovered {
+                    ColorRole::Line
+                } else {
+                    ColorRole::Hover
+                }
+            } else {
+                style::neutral_background(v)
+            };
+            let bg = p.color(role);
             let area = if nav {
                 rect
             } else {
@@ -275,6 +296,9 @@ impl ListItem {
         v: &Visual,
         (control, nav, error): (f32, bool, Option<&Label>),
     ) {
+        if self.tile {
+            return self.paint_tile(p, cx, rect, v);
+        }
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
         self.paint_background(p, rect, v, nav);

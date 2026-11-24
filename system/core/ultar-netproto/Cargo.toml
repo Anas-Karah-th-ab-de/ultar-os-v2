@@ -1,0 +1,15 @@
+[package]
+name = "ultar-netproto"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Network protocols of Ultar OS without sockets: WPA2-Personal supplicant (IEEE 802.11 4-way and group-key handshake), Wi-Fi information elements, DHCPv4 client (system core, area 3)"
+
+[dependencies]
+hmac = "0.12"
+sha1 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+aes-kw = "0.2"
+subtle = "2"
+zeroize = "1"

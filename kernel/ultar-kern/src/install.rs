@@ -584,6 +584,43 @@ pub fn startmedium_ist_installer() -> bool {
     crate::efi::VOM_INSTALLER.load(core::sync::atomic::Ordering::Relaxed)
 }
 
+/// The graphical installer session runs (ultar-init with the profile `installer`, `/proc/cmdline`).
+static SITZUNG: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Whether the graphical installer session was started.
+pub fn sitzung_aktiv() -> bool {
+    SITZUNG.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+/// Installation medium whose marker file `ultar-installer` (on its start partition) has the line
+/// `session=init`: the service manager starts the graphical installer (profile `installer`:
+/// compositor and `ultar-installer-ui`, no desktop) instead of the kernel's own installer.
+/// With the line `session=console` the kernel's console follows instead (installation by hand
+/// and the kernel tests; the disk nodes still need the installer's identity).
+/// Returns `false` (the kernel's installer follows) when the medium does not ask for it or the
+/// session cannot start.
+pub fn sitzung_starten() -> bool {
+    if !startmedium_ist_installer() {
+        return false;
+    }
+    let marke = ["/boot/efi/ultar-installer", "/ultar-installer"].iter().find_map(|p| crate::fs::read_all(p));
+    let zeile = |w: &str| marke.as_ref().is_some_and(|m| String::from_utf8_lossy(m).lines().any(|l| l.trim() == w));
+    if zeile("session=console") {
+        crate::kprintln!("[installer] installation medium: console (session=console)");
+        return true;
+    }
+    if !zeile("session=init") {
+        return false;
+    }
+    SITZUNG.store(true, core::sync::atomic::Ordering::Relaxed);
+    crate::kprintln!("[installer] graphical installer session (ultar-init, profile installer)");
+    let ok = crate::shell::init_starten();
+    if !ok {
+        SITZUNG.store(false, core::sync::atomic::Ordering::Relaxed);
+    }
+    ok
+}
+
 fn quelle(v: &[Platte]) -> Option<Platte> {
     v.iter().find(|p| p.teile.iter().any(|t| t.name == "ULTAR-INSTALL")).or_else(|| v.iter().find(|p| ist_quelle(p))).cloned()
 }

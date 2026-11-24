@@ -1,0 +1,32 @@
+[package]
+name = "ultar-files"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar OS Files app: places, folders, trash, drives and the desktop icons (area 6, apps)"
+
+[lib]
+name = "ultar_files"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-files"
+path = "src/bin/ultar-files.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# Every file access is relative to an open directory of a granted area, one component at a
+# time, never following a symbolic link (openat + O_NOFOLLOW).
+rustix = { version = "1", default-features = false, features = ["std", "fs"] }
+# Thumbnails: reviewed pure-Rust decoders, with explicit size limits (fs/thumb.rs).
+png = "0.17"
+zune-jpeg = "0.5"
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }
+png = "0.17"
+rustix = { version = "1", default-features = false, features = ["std", "fs", "process"] }

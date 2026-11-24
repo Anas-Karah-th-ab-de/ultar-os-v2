@@ -5,6 +5,8 @@ use crate::geom::Size;
 use crate::layout::{distribute, Axis, CrossAlign, Flex, Length, LogicalRect, Slot};
 use crate::widgets::{EmptyState, InfoBar, ListItem, MeasureCx, Row, Widget};
 
+#[path = "stack.rs"]
+mod stack;
 #[path = "wrap.rs"]
 mod wrap;
 
@@ -30,8 +32,12 @@ fn measure(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f32) -
         }
     }
     let flex = nodes[i].widget.flex().copied();
+    let edges = border_box(&nodes[i].widget);
     let mut size = match flex {
-        Some(flex) => measure_flex(nodes, cx, id, &flex, avail),
+        Some(flex) => {
+            let inner = measure_flex(nodes, cx, id, &flex, (avail - edges[0] - edges[1]).max(0.0));
+            Size::new(inner.w + edges[0] + edges[1], inner.h + edges[2] + edges[3])
+        }
         None => measure_leaf(nodes, cx, id, avail),
     };
     if matches!(nodes[i].widget, Widget::HeaderBar(_)) {
@@ -79,6 +85,7 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         | Widget::List(_)
         | Widget::Scroll(_)
         | Widget::HeaderBar(_)
+        | Widget::PixelArea(_)
         | Widget::Dialog(_) => Size::default(),
         Widget::Table(w) => w.measure(cx, avail),
         Widget::Tree(w) => w.measure(cx, avail),
@@ -86,6 +93,8 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Icon(w) => w.measure(),
         Widget::Button(w) => w.measure(cx, avail, (node.loading, error.is_some())),
         Widget::IconButton(w) => w.measure(cx),
+        Widget::Brick(w) => w.measure(cx),
+        Widget::DayGrid(w) => w.measure(cx, avail),
         Widget::Switch(w) => w.measure(cx),
         Widget::Select(w) => w.measure(cx, avail, error),
         Widget::Slider(w) => w.measure(cx, avail, error),
@@ -93,7 +102,7 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Row(w) => w.measure(cx, avail, control),
         Widget::Badge(w) => w.measure(cx, avail),
         Widget::Progress(w) => w.measure(cx, avail),
-        Widget::Checkbox(w) => w.measure(cx, avail, error),
+        Widget::Checkbox(w) => w.measure(cx, avail, error, control),
         Widget::RadioGroup(_) => Size::default(),
         Widget::Tabs(_) => Size::default(),
         Widget::QrCode(w) => w.measure(),
@@ -111,6 +120,9 @@ fn hosted_offset(widget: &Widget, size: Size, control: Size) -> Option<(f32, f32
         Widget::InfoBar(_) => Some(InfoBar::control_offset(size, control)),
         Widget::EmptyState(_) => Some(EmptyState::control_offset(size, control)),
         Widget::ListItem(_) => Some(ListItem::control_offset(size, control)),
+        Widget::Checkbox(c) if c.wide => {
+            Some(crate::widgets::Checkbox::control_offset(size, control))
+        }
         _ => None,
     }
 }
@@ -140,6 +152,30 @@ fn inline_items(
     items
 }
 
+/// The edge a card draws inside its rectangle (CSS border-box, as the boards): its children
+/// sit inside it. Logical [start, end, top, bottom] in points.
+fn border_box(widget: &Widget) -> [f32; 4] {
+    use crate::widgets::{BarEdge, CardTone};
+    let Widget::Card(card) = widget else {
+        return [0.0; 4];
+    };
+    let b = crate::tokens::size::BORDER;
+    match card.tone {
+        CardTone::Plain | CardTone::Dock => [b; 4],
+        // the sheet's top and side borders lie outside its node (Card::paint)
+        CardTone::TopSheet => [0.0, 0.0, 0.0, b],
+        CardTone::Danger => [2.0 * b; 4],
+        // a chip's edge appears only when chosen: it never moves the content
+        CardTone::Chip(_) => [0.0; 4],
+        CardTone::Bar(edge) | CardTone::Rule(edge) | CardTone::Region(_, edge) => match edge {
+            BarEdge::Start => [b, 0.0, 0.0, 0.0],
+            BarEdge::End => [0.0, b, 0.0, 0.0],
+            BarEdge::Top => [0.0, 0.0, b, 0.0],
+            BarEdge::Bottom => [0.0, 0.0, 0.0, b],
+        },
+    }
+}
+
 fn measure_flex(
     nodes: &mut [Node],
     cx: &mut MeasureCx<'_>,
@@ -152,6 +188,7 @@ fn measure_flex(
     let gaps = flex.gap_points() * count.saturating_sub(1) as f32;
     let (mut main, mut cross) = (0.0f32, 0.0f32);
     match flex.axis {
+        _ if flex.stack => stack::measure_stack(nodes, cx, id, flex, avail),
         Axis::Inline if flex.wrap => wrap::measure_wrap(nodes, cx, id, flex, avail),
         Axis::Inline => {
             let items = inline_items(nodes, cx, id, flex, inner);
@@ -196,6 +233,13 @@ fn arrange(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, frame: Logica
             scroll.offset = scroll.clamp(scroll.offset, frame.height);
             content.height = scroll.content.max(frame.height);
         }
+        let e = border_box(&nodes[id.index()].widget);
+        let content = LogicalRect {
+            start: content.start + e[0],
+            top: content.top + e[2],
+            width: (content.width - e[0] - e[1]).max(0.0),
+            height: (content.height - e[2] - e[3]).max(0.0),
+        };
         arrange_flex(nodes, cx, id, &flex, content);
     } else if let Some(child) = nodes[id.index()].children.first().copied() {
         let control = measure(nodes, cx, child, frame.width);
@@ -230,6 +274,7 @@ fn arrange_flex(
         height: (frame.height - flex.padding.block_sum()).max(0.0),
     };
     match flex.axis {
+        _ if flex.stack => stack::arrange_stack(nodes, cx, id, flex, &inner),
         Axis::Inline if flex.wrap => wrap::arrange_wrap(nodes, cx, id, flex, &inner),
         Axis::Inline => arrange_inline(nodes, cx, id, flex, &inner),
         Axis::Block => arrange_block(nodes, cx, id, flex, &inner),

@@ -31,7 +31,7 @@ pub fn open(path: &str) -> Option<Node> {
     let host_reader = proc::reader_in_initial_pid_ns();
     match first {
         "" => {
-            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "self", "sys", "ultar"]
+            let mut v: Vec<DirEnt> = ["meminfo", "uptime", "cpuinfo", "version", "loadavg", "mounts", "stat", "cmdline", "self", "sys", "ultar"]
                 .iter()
                 .filter(|n| host_reader || **n != "ultar")
                 .map(|n| DirEnt { name: String::from(*n), dir: *n == "self" || *n == "ultar" || *n == "sys", size: 0 })
@@ -74,6 +74,8 @@ pub fn open(path: &str) -> Option<Node> {
             free >> 10,
             free >> 10
         )),
+        // kernel arguments for user space: the installer session names its profile (ultar-init)
+        "cmdline" if sub.is_empty() => file(format!("{}\n", if crate::install::sitzung_aktiv() { "ultar.profile=installer" } else { "" })),
         "uptime" => file(format!("{}.{:02} {}.{:02}\n", up / 1000, up % 1000 / 10, up / 1000, up % 1000 / 10)),
         "loadavg" => {
             let (all, own) = (proc::infos(), proc::current_group());

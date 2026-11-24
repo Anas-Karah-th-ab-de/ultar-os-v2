@@ -136,7 +136,65 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             token: r.u64()?,
         },
         29 => Request::ListWindows,
+        30 => Request::ShellFocus {
+            surface: SurfaceId(r.u32()?),
+        },
+        31 => Request::WindowAction {
+            window: r.u32()?,
+            action: super::shell::WindowAction::decode(r)?,
+        },
+        32 => Request::SetDisplayMode {
+            mode: super::shell::DisplayModeRequest::decode(r)?,
+        },
+        33 => Request::SetKeyboardLayout { index: r.u8()? },
+        38..=40 => decode_overview(opcode, r)?,
+        34 => Request::ConfigureOutputs {
+            setup: super::outputs::Setup::decode(r)?,
+        },
+        35 => Request::ConfirmOutputs { serial: r.u32()? },
+        36 => {
+            let numbers = super::outputs::decode_numbers(r)?;
+            let ms = r.u32()?;
+            if ms > super::outputs::MAX_IDENTIFY_MS {
+                return Err(WireError::BadValue);
+            }
+            Request::IdentifyOutputs { numbers, ms }
+        }
+        37 => Request::DetectOutputs,
+        41 => Request::SetPhoneMode { on: r.bool()? },
+        42 => Request::ClientHeader {
+            surface: surface(r)?,
+            on: match r.u8()? {
+                0 => false,
+                1 => true,
+                _ => return Err(WireError::BadValue),
+            },
+        },
         _ => return Err(WireError::BadValue),
+    })
+}
+
+/// The overview's requests: a thumbnail (38), show (39) or move to (40) a workspace.
+fn decode_overview(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    Ok(match opcode {
+        38 => {
+            let window = r.u32()?;
+            let (max_width, max_height) = (r.u16()?, r.u16()?);
+            let side = 1..=super::MAX_THUMBNAIL_SIDE;
+            if !side.contains(&max_width) || !side.contains(&max_height) {
+                return Err(WireError::BadValue);
+            }
+            Request::WindowThumbnail {
+                window,
+                max_width,
+                max_height,
+            }
+        }
+        39 => Request::SwitchWorkspace { index: r.u8()? },
+        _ => Request::MoveToWorkspace {
+            window: r.u32()?,
+            index: r.u8()?,
+        },
     })
 }
 

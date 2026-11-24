@@ -1,6 +1,7 @@
 //! Building the tree and reading or changing widget state from application code.
 
 use super::{Node, NodeId, Slot, Ui, UiError, MAX_DEPTH, MAX_NODES};
+use crate::geom::Rect;
 use crate::layout::{LogicalRect, Sizing};
 use crate::paint::TextSpec;
 use crate::tokens::TypeSize;
@@ -446,6 +447,19 @@ impl Ui {
     /// `true` while the options list of this select is open.
     pub fn is_open(&self, id: NodeId) -> bool {
         self.input.popup.is_some_and(|p| p.select == id)
+    }
+
+    /// Rectangle of the action button inside a text field ([`crate::widgets::TextField::end_action`]);
+    /// `None` when the field has none or is not shown.
+    pub fn end_action_rect(&mut self, id: NodeId) -> Result<Option<Rect>, UiError> {
+        self.layout();
+        let rect = self.rect(id);
+        let (mode, direction) = (self.mode, self.env.direction);
+        let field = self.text_field(id)?;
+        Ok(rect.and_then(|r| {
+            let button = field.end_button_rect(field.field(r, mode), direction);
+            button.filter(|_| field.end_button() == Some(2))
+        }))
     }
 
     /// Content of a text field.

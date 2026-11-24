@@ -5,15 +5,25 @@
 
 mod arrangement;
 mod badge;
+mod brick;
+mod brick_art;
+mod brick_measure;
+mod brick_overview;
+mod brick_phone;
+mod brick_quick;
+mod brick_tile;
 mod button;
 mod checkbox;
 mod containers;
+mod day_grid;
 mod dialog;
 mod header_bar;
 mod info_bar;
 mod label;
 mod list;
+mod list_tile;
 mod menu;
+mod picture;
 mod progress;
 mod qr;
 mod radio;
@@ -26,6 +36,7 @@ mod switch;
 mod table;
 mod tabs;
 mod text_field;
+mod thumbnail;
 mod toast;
 mod tone;
 mod tooltip;
@@ -33,18 +44,23 @@ mod tree;
 
 pub use arrangement::{ArrangedItem, Arrangement, MAX_ARRANGEMENT_ITEMS};
 pub use badge::Badge;
+pub use brick::{Brick, BrickKind, Picture};
+pub use brick_overview::{Thumbnail, MAX_MINIS, MINIATURE, STRIP, WORKSPACE_WIDTH};
 pub use button::{Button, ButtonVariant, IconButton};
 pub use checkbox::Checkbox;
 pub use containers::{BarEdge, Card, CardTone, Icon, Row, Text};
+pub use day_grid::{DayCell, DayGrid, MAX_DAY_CELLS, WEEK};
 pub use dialog::{Dialog, DialogKind};
 pub use header_bar::HeaderBar;
 pub use info_bar::{EmptyState, InfoBar};
 pub use label::{Label, LabelArg};
 pub use list::{List, ListItem};
+pub use list_tile::TILE_WIDTH;
 pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
+pub use picture::PixelArea;
 pub use progress::Progress;
 pub use qr::{QrCode, QrCodeError, MAX_QR_BYTES};
-pub use radio::{RadioGroup, RadioLayout};
+pub use radio::{Pictogram, RadioGroup, RadioLayout};
 pub use scroll::Scroll;
 pub use search_field::SearchField;
 pub use select::{Select, MAX_VISIBLE_OPTIONS};
@@ -54,6 +70,7 @@ pub use switch::Switch;
 pub use table::{Table, TableCursor, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS};
 pub use tabs::Tabs;
 pub use text_field::{TextDirection, TextField, DEFAULT_MAX_LEN};
+pub use thumbnail::{Preview, MAX_THUMBNAIL_EDGE};
 pub use toast::{Toast, MAX_TOASTS};
 pub use tone::Tone;
 pub use tree::{Tree, TreeItem, MAX_TREE_DEPTH, MAX_TREE_ITEMS};
@@ -164,6 +181,12 @@ pub enum Widget {
     QrCode(QrCode),
     /// Items the user drags into place on a canvas (display arrangement).
     Arrangement(Arrangement),
+    /// A brick of the desktop shell (bar tile, quick tile, clock …), operated like a button.
+    Brick(Brick),
+    /// The month grid of a calendar.
+    DayGrid(DayGrid),
+    /// Pixels the application supplies (a web page, a video).
+    PixelArea(PixelArea),
 }
 
 macro_rules! widget_from {
@@ -203,7 +226,10 @@ widget_from!(
     Tree,
     HeaderBar,
     QrCode,
-    Arrangement
+    Arrangement,
+    Brick,
+    DayGrid,
+    PixelArea
 );
 
 impl From<SearchField> for Widget {
@@ -231,7 +257,9 @@ impl Widget {
                 | Widget::Table(_)
                 | Widget::Tree(_)
                 | Widget::Arrangement(_)
-        )
+                | Widget::DayGrid(_)
+                | Widget::PixelArea(_)
+        ) || matches!(self, Widget::Brick(b) if !b.is_static())
     }
 
     /// `true` for widgets that can show a loading state.
@@ -315,6 +343,6 @@ impl Widget {
         matches!(
             self,
             Widget::Row(_) | Widget::InfoBar(_) | Widget::EmptyState(_) | Widget::ListItem(_)
-        )
+        ) || matches!(self, Widget::Checkbox(c) if c.wide)
     }
 }

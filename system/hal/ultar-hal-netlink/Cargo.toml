@@ -1,0 +1,13 @@
+[package]
+name = "ultar-hal-netlink"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Kernel network interfaces of Ultar OS on Linux: netlink codec and sockets, nl80211 (Wi-Fi), rtnetlink (links, addresses, routes), TUN devices, the DHCP socket (hardware layer, area 2)"
+
+[dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event"] }
+libc = "0.2"
+
+[dev-dependencies]

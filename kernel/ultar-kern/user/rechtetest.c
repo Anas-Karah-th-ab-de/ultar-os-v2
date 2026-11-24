@@ -29,7 +29,7 @@
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
 #define R_SET_ID 0x100UL
 #define R_FILE_ADMIN 0x200UL
-#define R_ALL 0x3ffUL
+#define R_ALL 0xfffUL
 #define D "/tmp/rt"
 enum { ALICE = 1000, BOB = 2000, CAROL = 3000, STAFF = 100, OTHERS = 200 };
 
@@ -183,8 +183,8 @@ static void id_tests(const char *self) {
     st = -1;
     waitpid(c, &st, 0);
     check("Kennungen: fork und execve vererben alle Nummern und Zusatzgruppen", st == 0);
-    gid_t many[17] = {0};
-    denied("Kennungen: mehr als 16 Zusatzgruppen", setgroups(17, many), EINVAL);
+    gid_t many[33] = {0};
+    denied("Kennungen: mehr als 32 Zusatzgruppen", setgroups(33, many), EINVAL);
 }
 
 /* ------------------------------------------------------------------ modes and owners */

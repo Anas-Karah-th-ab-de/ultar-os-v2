@@ -25,6 +25,10 @@ pub enum RadioLayout {
     /// Tiles side by side, equal widths: centred title (with a check mark when chosen) and
     /// detail, no dot.
     Tiles,
+    /// Compact choices side by side, equal widths (board PhoneDial "way of the call"):
+    /// padding 4 / 12, control radius, check mark before the title when chosen, no dot; not
+    /// chosen = transparent with a `control_border` edge.
+    Choices,
 }
 
 /// A group of radio options. The group is one focus stop; the arrow keys move the choice
@@ -46,6 +50,24 @@ pub struct RadioGroup {
     pub unavailable: Vec<Option<Label>>,
     /// Height of each card in 1/64 points (measured; empty before the first layout).
     pub(crate) heights: Vec<u32>,
+    /// A bar of proportional parts in a card, by index (see [`RadioGroup::split`]).
+    pub splits: Vec<Option<Vec<(Label, u32)>>>,
+    /// A two-screen pictogram above the title of a tile, by index.
+    pub pictograms: Vec<Option<Pictogram>>,
+}
+
+/// The two-screen pictogram of the display-mode tiles (boards: `data-illus`, 48 × 24, a
+/// physical picture: never mirrored).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Pictogram {
+    /// Two outlined screens joined by a line (one desktop across both).
+    Extend,
+    /// Two filled screens (the same picture on both).
+    Mirror,
+    /// The left screen filled, the right one dashed (switched off).
+    First,
+    /// The left screen dashed, the right one filled.
+    Second,
 }
 
 const DOT: f32 = size::BOX;
@@ -66,7 +88,35 @@ impl RadioGroup {
             details: Vec::new(),
             unavailable: Vec::new(),
             heights: Vec::new(),
+            splits: Vec::new(),
+            pictograms: Vec::new(),
         }
+    }
+
+    /// The same group with a two-screen pictogram above the title of tile `index`
+    /// ([`RadioLayout::Tiles`] only).
+    pub fn pictogram(mut self, index: usize, picture: Pictogram) -> RadioGroup {
+        if index < self.options.len() {
+            if self.pictograms.len() <= index {
+                self.pictograms.resize(index + 1, None);
+            }
+            self.pictograms[index] = Some(picture);
+        }
+        self
+    }
+
+    /// The same group with a bar of proportional parts under the second line of card
+    /// `index` (boards: the disk split of "beside the existing system"): each part with its
+    /// label and weight; the last part is the new one (hover fill, two-point `accent_text`
+    /// edge at its start). Cards layouts only; at most 8 parts.
+    pub fn split(mut self, index: usize, parts: Vec<(Label, u32)>) -> RadioGroup {
+        if index < self.options.len() && !parts.is_empty() && parts.len() <= 8 {
+            if self.splits.len() <= index {
+                self.splits.resize(index + 1, None);
+            }
+            self.splits[index] = Some(parts);
+        }
+        self
     }
 
     /// The same group with option `index` chosen (ignored when out of range or unavailable).
@@ -153,6 +203,7 @@ impl RadioGroup {
                 let top: f32 = (0..index).map(|i| self.height_of(i, mode) + gap).sum();
                 Rect::new(rect.x, rect.y + top, rect.w, self.height_of(index, mode))
             }
+            RadioLayout::Choices => self.choice_rect(rect, index, dir),
             RadioLayout::CardRow | RadioLayout::Tiles => {
                 let count = self.options.len().max(1) as f32;
                 let width = ((rect.w - gap * (count - 1.0)) / count).max(0.0);
@@ -165,6 +216,28 @@ impl RadioGroup {
                 Rect::new(x, rect.y, width, rect.h)
             }
         }
+    }
+
+    /// A compact choice: equal shares of the row less the edges, each choice then as wide as
+    /// its share plus its own edge (the chosen one has two borders) – the CSS border-box
+    /// `flex: 1` of the boards.
+    fn choice_rect(&self, rect: Rect, index: usize, dir: Direction) -> Rect {
+        let count = self.options.len().max(1);
+        let edge = |i: usize| {
+            let wide = self.selected == Some(i) && !self.is_unavailable(i);
+            2.0 * if wide { 2.0 } else { 1.0 } * size::BORDER
+        };
+        let edges: f32 = (0..count).map(edge).sum();
+        let gaps = GAP.points() * (count as f32 - 1.0);
+        let share = ((rect.w - gaps - edges) / count as f32).max(0.0);
+        let offset: f32 = (0..index).map(|i| share + edge(i) + GAP.points()).sum();
+        let width = share + edge(index);
+        let x = if dir.is_rtl() {
+            rect.right() - offset - width
+        } else {
+            rect.x + offset
+        };
+        Rect::new(x, rect.y, width, rect.h)
     }
 
     /// The option under `pos`.

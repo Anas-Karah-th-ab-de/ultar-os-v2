@@ -3,12 +3,17 @@
 //! events and the toolkit's damaged pixels into commits.
 
 use crate::client::{Client, ClientError, Window, WindowConfig};
-use crate::proto::{Configure, Event, Modifiers as WireModifiers, Rect, FIXED_ONE};
+use crate::proto::{
+    Configure, Event, Modifiers as WireModifiers, Rect, Request, FIXED_ONE, MAX_CHUNK,
+};
 use std::time::{Duration, Instant};
 use ultar_ui::canvas::{Canvas, PixelFormat};
 use ultar_ui::event::{Action, Event as UiEvent, Key, Modifiers, PointerButton};
 use ultar_ui::ui::Ui;
 use ultar_ui::{Direction, Point, Size};
+
+/// Most unused key presses kept between two [`UiWindow::take_unhandled_keys`] calls.
+pub const MAX_UNHANDLED: usize = 64;
 
 /// An `ultar-ui` tree shown in one window.
 pub struct UiWindow {
@@ -19,7 +24,20 @@ pub struct UiWindow {
     modifiers: Modifiers,
     pointer: Point,
     started: Instant,
+    /// Serial of the last key or button press (copy needs a user action).
+    serial: u32,
+    /// Text offered on the clipboard, sent when the compositor asks for it.
+    offered: Option<String>,
+    /// Key presses the widget tree did not use (app shortcuts), oldest first.
+    unhandled: Vec<UiEvent>,
+    /// The last input was a key press (not a pointer or touch).
+    key_input: bool,
+    /// Keys that go to the app before the widget tree sees them.
+    shortcuts: Option<fn(&UiEvent) -> bool>,
 }
+
+/// The clipboard type of offered text.
+pub const TEXT_MIME: &str = "text/plain;charset=utf-8";
 
 impl std::fmt::Debug for UiWindow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -147,6 +165,11 @@ impl UiWindow {
             modifiers: Modifiers::default(),
             pointer: Point::new(0.0, 0.0),
             started: Instant::now(),
+            serial: 0,
+            offered: None,
+            unhandled: Vec::new(),
+            key_input: false,
+            shortcuts: None,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -167,6 +190,25 @@ impl UiWindow {
     /// The window.
     pub fn window(&self) -> &Window {
         &self.window
+    }
+
+    /// Key presses the widget tree did not use since the last call (the app's shortcuts:
+    /// Ctrl+C, Delete, F2 …), oldest first.
+    pub fn take_unhandled_keys(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.unhandled)
+    }
+
+    /// Key presses for which `filter` is true go straight to the app (read with
+    /// [`UiWindow::take_unhandled_keys`]), before the widget tree moves focus with them
+    /// (Alt+arrows for back and forward).
+    pub fn set_shortcuts(&mut self, filter: Option<fn(&UiEvent) -> bool>) {
+        self.shortcuts = filter;
+    }
+
+    /// `true` when the last input event was a key press: an app tells "Enter on an item"
+    /// from "a click on an item" with it.
+    pub fn last_input_was_key(&self) -> bool {
+        self.key_input
     }
 
     /// Waits up to `timeout` for one event, handles it and draws if the UI
@@ -193,7 +235,51 @@ impl UiWindow {
         Ok(actions)
     }
 
+    /// Offers `text` on the clipboard (copy), tied to the last key or button press. The
+    /// compositor asks for the data when somebody pastes; [`UiWindow::dispatch`] answers.
+    pub fn offer_text(&mut self, text: String) -> Result<(), ClientError> {
+        if text.len() > MAX_CHUNK {
+            return Err(ClientError::InvalidSize);
+        }
+        self.offered = Some(text);
+        let request = Request::SetSelection {
+            serial: self.serial,
+            mimes: vec![TEXT_MIME.to_owned()],
+        };
+        self.client.send(&request)
+    }
+
+    /// Answers the compositor's request for offered data.
+    fn send_offered(&mut self, event: &Event) -> Result<bool, ClientError> {
+        let Event::SendRequest { transfer, mime } = event else {
+            return Ok(false);
+        };
+        let data = match (&self.offered, mime.as_str()) {
+            (Some(text), TEXT_MIME) => text.as_bytes().to_vec(),
+            _ => Vec::new(),
+        };
+        let request = Request::SendData {
+            transfer: *transfer,
+            data,
+            last: true,
+        };
+        self.client.send(&request)?;
+        Ok(true)
+    }
+
     fn handle(&mut self, event: &Event) -> Result<Vec<Action>, ClientError> {
+        if self.send_offered(event)? {
+            return Ok(Vec::new());
+        }
+        match event {
+            Event::PointerButton {
+                serial,
+                pressed: true,
+                ..
+            } => self.serial = *serial,
+            Event::Key { serial, state, .. } if *state != 0 => self.serial = *serial,
+            _ => {}
+        }
         if self.window.handle(event) {
             if let Event::Configure(c) = event {
                 self.configure(c)?;
@@ -207,7 +293,26 @@ impl UiWindow {
             self.pointer = point(*x, *y);
         }
         match translate(event, self.pointer) {
-            Some(ui_event) => Ok(self.ui.handle(ui_event).actions),
+            Some(ui_event) => {
+                if self.shortcuts.is_some_and(|f| f(&ui_event))
+                    && self.unhandled.len() < MAX_UNHANDLED
+                {
+                    self.key_input = true;
+                    self.unhandled.push(ui_event);
+                    return Ok(Vec::new());
+                }
+                if !matches!(ui_event, UiEvent::Modifiers { .. }) {
+                    self.key_input = matches!(ui_event, UiEvent::Key { .. });
+                }
+                let response = self.ui.handle(ui_event);
+                if !response.consumed && matches!(ui_event, UiEvent::Key { .. }) {
+                    // An app reads them with `take_unhandled_keys`; a bounded queue.
+                    if self.unhandled.len() < MAX_UNHANDLED {
+                        self.unhandled.push(ui_event);
+                    }
+                }
+                Ok(response.actions)
+            }
             None => Ok(Vec::new()),
         }
     }

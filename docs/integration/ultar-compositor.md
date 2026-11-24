@@ -264,3 +264,29 @@ budgets), identical in three runs. fmt clean, clippy `-D warnings` clean (three 
 Ultar kernel, real hot-plug and uinput devices, sysfs-based software-device detection on a real
 seat (unit-tested only for the group check), a real lock screen client.
 
+
+## Overview protocol (desktop shell round 2)
+
+Requests 34 `WindowThumbnail`, 35 `SwitchWorkspace`, 36 `MoveToWorkspace`; events 36
+`WindowThumbnail`, 37 `Workspaces`; `ShellWindow.workspace`. Right `ui.shell` only, refused while
+locked, system dialogs on all workspaces and never copied, ≤ 512 × 512 per copy, ≤ 32 copies per
+client and second, ≤ 8 workspaces (`state/workspaces.rs`, `tests/shell_workspaces.rs`). Details:
+docs/integration/desktop-shell.md.
+
+## 10. Right `ui.call-screen` (phone app, 2026-11-24)
+
+New role `Role::CallScreen` (wire 8) and right `Rights::CALL_SCREEN` (128 since the wave-8 integration – 64 is `OUTPUT_CONFIG` of the display service), manifest
+name `ui.call-screen`. The incoming-call screen is laid out full screen and stacked above the lock
+screen (rank 7); while locked it is shown with the lock screen and the on-screen keyboard. It gets
+pointer and touch input only: keys and IME commits keep going to the lock screen (`text_target`),
+and `Unlock` is refused (it needs a lock surface of the same client). Without the right the role
+is refused with `Permission`. Tests: `tests/call_screen.rs` (2). Details:
+[ultar-phone.md](ultar-phone.md) §4.
+
+## 11. Right `ui.client-header` (phone app round 2)
+
+Request `ClientHeader { surface, on }` (opcode 42; 30 is the shell's `ShellFocus`, 41 its `SetPhoneMode`) with `Rights::CLIENT_HEADER` (256, `ALL` = 511 since the wave-8 integration),
+manifest name `ui.client-header`: the toplevel draws its own header; the compositor draws no title
+bar (`Window::client_header`, `decorated()` false) and sends a configure for the larger content.
+Refused (`Permission`) without the right and for system dialogs. Move/resize/snap, Alt+F4 and the
+"not responding" handling stay with the compositor. Tests: `tests/call_screen.rs`.

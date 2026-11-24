@@ -1,0 +1,41 @@
+[package]
+name = "ultar-launcher"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "App launcher of Ultar OS: every app as its own user in its own cell (mount + pid namespaces, memory group, private /tmp), with exactly the permissions its signed manifest declares and the user granted (system core, area 3)"
+
+[lib]
+name = "ultar_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-launcher"
+path = "src/main.rs"
+
+[[bin]]
+name = "ulaunch"
+path = "src/bin/ulaunch.rs"
+
+# Test helper, not shipped: an app that behaves well or attacks its cell
+# (tests/helpers/testapp.rs). The process tests and the QEMU run start it.
+[[bin]]
+name = "ultar-launcher-testapp"
+path = "tests/helpers/testapp.rs"
+test = false
+doc = false
+
+[[example]]
+name = "launchtest"
+path = "examples/launchtest/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+sha2 = "0.10"
+ultar-bus = { path = "../ultar-bus" }
+ultar-init = { path = "../ultar-init" }
+ultar-pkg = { path = "../ultar-pkg" }
+ultar-service = { path = "../ultar-service" }
+ultar-sys = { path = "../../hal/ultar-sys" }

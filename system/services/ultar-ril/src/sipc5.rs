@@ -72,7 +72,7 @@ pub fn build_frame(channel: u8, payload: &[u8], aligned: bool) -> Vec<u8> {
     out.extend_from_slice(&(frame_len as u16).to_le_bytes());
     out.extend_from_slice(payload);
     if aligned {
-        out.extend(std::iter::repeat(0u8).take(pad_size(frame_len)));
+        out.extend(std::iter::repeat_n(0u8, pad_size(frame_len)));
     }
     out
 }
