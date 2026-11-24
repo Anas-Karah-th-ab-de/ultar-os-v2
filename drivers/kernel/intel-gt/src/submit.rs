@@ -26,6 +26,32 @@ pub const EVENT_CONTEXT_RESET: u32 = 0x1008;
 /// Event: an engine failed (payload: class, instance, reason).
 pub const EVENT_ENGINE_FAILURE: u32 = 0x1009;
 
+/// Action: drop cached address translations.
+pub const ACTION_TLB_INVALIDATION: u32 = 0x7000;
+/// Event: cached translations were dropped (payload: the request's sequence number).
+pub const EVENT_TLB_INVALIDATION_DONE: u32 = 0x7001;
+
+/// Whose cached translations are dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TlbScope {
+    /// Everything the engines cached (GGTT and every context's address space).
+    Full = 0,
+    /// What the GuC itself cached of the GGTT.
+    Guc = 3,
+}
+
+const TLB_INVAL_FLUSH_CACHE: u32 = 1 << 31;
+
+/// Asks the GuC to drop cached translations after GGTT entries or page tables changed;
+/// answered by [`EVENT_TLB_INVALIDATION_DONE`] with `seqno` (not 0).
+pub fn tlb_invalidate(seqno: u32, scope: TlbScope) -> [u32; 3] {
+    [
+        ACTION_TLB_INVALIDATION,
+        seqno,
+        scope as u32 | TLB_INVAL_FLUSH_CACHE,
+    ]
+}
+
 /// Number of context ids the GuC knows.
 pub const MAX_CONTEXTS: u32 = 65535;
 
@@ -137,6 +163,15 @@ mod tests {
         assert_eq!(&m[..4], &[0x100b, 5, 0x2003_0001, 2]);
         assert_eq!(&m[4..8], &[0x2001_0001, 1_000, 0x2002_0001, 640_000]);
         assert_eq!(&m[8..], &[0x2005_0001, 0]);
+    }
+
+    #[test]
+    fn tlb_invalidation_names_scope_and_sequence() {
+        assert_eq!(tlb_invalidate(9, TlbScope::Guc), [0x7000, 9, 0x8000_0003]);
+        assert_eq!(
+            tlb_invalidate(10, TlbScope::Full),
+            [0x7000, 10, 0x8000_0000]
+        );
     }
 
     #[test]

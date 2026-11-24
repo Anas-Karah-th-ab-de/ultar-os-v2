@@ -106,9 +106,15 @@ fn ctb_and_jobs(
     let mut channel = None;
     let ctb = ctb_request(dev, &mut mem.bufs, &mut channel);
     let jobs = match channel {
-        Some((mut ct, mut words)) => {
-            super::gt_job::jobs(dev, &mut mem.bufs, &mut ct, &mut words, &mut mem.tables)
-        }
+        Some((mut ct, mut words)) => super::gt_job::jobs(&mut super::gt_job::Env {
+            dev,
+            bufs: &mut mem.bufs,
+            ct: &mut ct,
+            mem: &mut words,
+            tables: &mut mem.tables,
+            ads: mem.ads,
+            goldens: Vec::new(),
+        }),
         None => Vec::new(),
     };
     (ctb, jobs)
@@ -119,6 +125,8 @@ fn ctb_and_jobs(
 struct Memory {
     bufs: Vec<GgttBuf>,
     tables: TableMem,
+    /// Index of the ADS block in `bufs`.
+    ads: usize,
 }
 
 fn ctb_request(
@@ -240,6 +248,7 @@ fn load(
     }
     let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
     let (ads_gtt, ads_size) = ads_block(dev, bufs, img, stage)?;
+    let ads_index = bufs.len() - 1;
     for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
         guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
     }
@@ -262,6 +271,7 @@ fn load(
     let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
     let (ctb, jobs) = match ready && stage == Stage::Full {
         true => {
+            mem.ads = ads_index;
             let (ctb, jobs) = ctb_and_jobs(dev, mem);
             (Some(ctb), jobs)
         }
