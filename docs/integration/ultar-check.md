@@ -27,7 +27,7 @@ Dependencies: `toml 0.8`, `serde 1` (derive), `serde_json 1`. No `cargo`/shell c
 
 ```
 ultar-check [options] <command>...
-commands: all | layers | paths | edition | text | size | unsafe | unwrap | logical-layout | linux-calls | budget
+commands: all | layers | paths | edition | text | size | unsafe | unwrap | logical-layout | linux-calls | budget | brand
           baseline   (prints a baseline for the current state as TOML)
 options:  --root <dir>  --format text|json  --baseline <file>  --no-baseline  --target-dir <dir>
           --lang ar|en|de (or env ULTAR_LANG; default Arabic)  --help
@@ -64,6 +64,18 @@ summary line. JSON: `{passed, baselined, violations[], warnings[], notes[], summ
   always misses tools (mount, systemctl …). The baseline is the reduction list.
 - **budget** – `tools/budgets.toml` (`[binaries] name = max_bytes`), looks in `<target>/release/` and
   `<target>/<triple>/release/`. Missing table or unbuilt binary → note, not a failure.
+- **brand** – the product and company identity comes from `system/core/ultar-brand` only (`docs/BRAND.md`).
+  Violations: a string literal outside that crate (tests excepted) that spells the product name, the company
+  name, the developer's name, the website or a mail address at the company's host (hosts below it such as
+  `ultar.code-craft.tech` are services, not the brand); brand catalogs (`system/core/ultar-brand/locales/{ar,en,de}.ftl`)
+  with different keys, a missing language or an Arabic text without Arabic letters; a `brand.*` key in another
+  catalog, a fact key (`brand.product` …) written into any catalog, `system.name`/`system.vendor` differing from
+  the facts, a name spelled with other capitals in any `*.ftl`; `rootfs/etc/os-release` differing from
+  `ultar_brand::release::OS_RELEASE`; an `authors` entry of a manifest other than the brand's; a mail address
+  other than the public contact in scripts, configuration and documents; the `mark` entry of the `ultar-ui` icon
+  table differing from `ultar_brand::mark::PATH` or mirrored. Legacy literals are in the baseline (49 on 2026-11-24).
+- **text** (addition) – the pieces of one `concat!(…)` are one text and count once; `system/core/ultar-brand/`
+  is exempt (it holds the names in Arabic script).
 
 Test code = `#[cfg(test)]` / `#[test]` / `#[…::test]` items, `#![cfg(test)]` files, paths with `tests/` or
 `benches/`, files named `tests.rs`, `*_test.rs`, `*_tests.rs`.

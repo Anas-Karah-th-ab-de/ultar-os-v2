@@ -9,6 +9,9 @@
 Ultar OS is an independent operating system by **KM Code Craft** with its own kernel written in Rust
 (the *Ultar kernel*), Arabic as its first language, and one code base for phone, desktop/laptop and server.
 
+**KM Code Craft** · <https://code-craft.tech> · <info@code-craft.tech> · developed by Mohamad Anas Kara Mohamad
+(محمد أنس قرة محمد) · names, logo and where they appear: [docs/BRAND.md](docs/BRAND.md)
+
 > **Stand 22.11.2026 – Neuaufbau (v2) in Arbeit.** Dieses Repository ordnet Ultar OS neu in sieben klar
 > getrennte Bereiche. Der Grundbau ist fertig und geprüft, die Oberfläche und die Dienste stammen noch aus dem
 > Vorgänger-Repository und werden phasenweise umgebaut. Was fertig ist und was nicht: [docs/STATUS.md](docs/STATUS.md).

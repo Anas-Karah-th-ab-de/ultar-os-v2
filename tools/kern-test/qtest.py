@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Ultar-Kern in QEMU starten und Befehle über die serielle Konsole schicken.
-   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)"""
+   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, MACHINE=q35, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)"""
 import codecs, os, re, subprocess, sys, time, select
 
 img = sys.argv[1]
@@ -8,7 +8,7 @@ cmds = sys.argv[2:]
 code = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 vars_ = "/tmp/qtest-vars.fd"
 subprocess.run(["cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars_], check=True)
-args = ["qemu-system-x86_64", "-machine", "q35", "-m", os.environ.get("MEM", "1024"), "-smp", os.environ.get("SMP", "4"),
+args = ["qemu-system-x86_64", "-machine", os.environ.get("MACHINE", "q35"), "-m", os.environ.get("MEM", "1024"), "-smp", os.environ.get("SMP", "4"),
         "-cpu", os.environ.get("CPU", "max"), "-display", "none", "-no-reboot",
         "-drive", f"if=pflash,format=raw,readonly=on,file={code}", "-drive", f"if=pflash,format=raw,file={vars_}",
         "-drive", f"file={img},if=none,id=b,format=raw", "-device", os.environ.get("DEV", "virtio-blk-pci") + ",drive=b",

@@ -1,0 +1,15 @@
+# Only in the VMware image (tools/vm/make-vmware.sh), not part of the product: a window of the compositor's
+# test client, so that the compositor has something to show until the desktop shell runs on it.
+editions = ["desktop"]
+exec = "/usr/bin/ultar-compositor-testclient"
+args = ["/run/ultar/ui/compositor.sock", "ui", "KM Code Craft", "success"]
+after = ["compositor"]
+# Identity and rights: nobody, no right; the compositor gives a client without an entry in its rights
+# table ordinary windows only.
+user = 65534
+slice = "apps"
+restart = "on-failure"
+
+[cgroup]
+"memory.max" = "96M"
+"pids.max" = "8"

@@ -24,6 +24,7 @@ path = "src/bin/uupdate-sign.rs"
 
 [dependencies]
 ultar-bus = { path = "../ultar-bus" }
+ultar-brand = { path = "../ultar-brand" }
 ultar-i18n = { path = "../ultar-i18n" }
 ultar-service = { path = "../ultar-service" }
 ultar-slots = { path = "../ultar-slots" }

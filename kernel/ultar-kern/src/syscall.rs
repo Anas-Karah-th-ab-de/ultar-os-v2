@@ -3307,7 +3307,7 @@ fn sys_sigprocmask(how: u64, set: u64, old: u64) -> i64 {
 
 fn sys_uname(buf: u64) -> i64 {
     let mut b = vec![0u8; 65 * 6];
-    for (i, s) in ["Linux", "ultar", "6.8.0-ultar-kern", "#1 Ultar-Kern KM Code Craft", "x86_64", "(none)"].iter().enumerate() {
+    for (i, s) in ["Linux", "ultar", "6.8.0-ultar-kern", concat!("#1 Ultar-Kern ", ultar_brand::vendor!()), "x86_64", "(none)"].iter().enumerate() {
         b[i * 65..i * 65 + s.len()].copy_from_slice(s.as_bytes());
     }
     if put(buf, &b) {

@@ -24,6 +24,8 @@ spin = { version = "0.9", default-features = false, features = ["mutex", "spin_m
 ultar-slots = { path = "../../system/core/ultar-slots" }
 # Intel display engine logic (register layout, takeover, DP, PHY, mode set), tested on the host
 ultar-intel-display = { path = "../../drivers/kernel/intel-display" }
+# product and company identity: names, brand texts (one no_std source for every program)
+ultar-brand = { path = "../../system/core/ultar-brand" }
 
 [features]
 # Remote hardware test without anyone at the machine: a deadline restarts the computer if the

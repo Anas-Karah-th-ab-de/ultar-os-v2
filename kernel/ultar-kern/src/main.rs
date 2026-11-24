@@ -90,7 +90,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         sprache::set(l);
         sprache::FEST.store(true, core::sync::atomic::Ordering::Relaxed);
     }
-    efi::print(st, "Ultar OS ...\n");
+    efi::print(st, concat!(ultar_brand::product!(), " ...\n"));
     // Installationsmedium mit bereits installierter Platte: installiertes System starten (Taste I = Installation)
     unsafe { efi::kettenstart(image, st) };
     let boot = unsafe { efi::take_over(image, st) };
@@ -133,7 +133,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         apic::start_aps(boot.rsdp, tramp);
     }
     startseite::startbild(15, "p_kern");
-    kprintln!("Ultar-Kern {} – eigener Kernel von KM Code Craft (Rust, ohne Linux)", env!("CARGO_PKG_VERSION"));
+    kprintln!(concat!("Ultar-Kern {} – eigener Kernel von ", ultar_brand::vendor!(), " (Rust, ohne Linux)"), env!("CARGO_PKG_VERSION"));
     kprintln!("[schutz] Prozessor: {}, NX, Netz standardmäßig zu (nichts von außen erreichbar)", *arch::SCHUTZ.lock());
     if let Some(f) = boot.fb {
         kprintln!("[kern] Bildschirm {}x{} ({})", f.width, f.height, if f.bgr { "BGR" } else { "RGB" });
@@ -179,7 +179,10 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         startseite::startbild(100, "p_fertig");
         // Desktop-Oberfläche ohne Linux (ultar-shell als Programm auf dem Ultar-Kern); ohne sie die Startseite
         // endet sie (oder fehlt sie), folgt die Startseite des Kerns
-        let _ = shell::desktop_starten();
+        // with `/etc/ultar/session` = init the service manager owns the session (services, compositor)
+        if !shell::init_starten() {
+            let _ = shell::desktop_starten();
+        }
         startseite::run();
     }
     console::grafik(false);

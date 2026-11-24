@@ -16,6 +16,8 @@ name = "ultar-check"
 path = "src/main.rs"
 
 [dependencies]
+# the brand source the rule `brand` compares the repository with
+ultar-brand = { path = "../../system/core/ultar-brand" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

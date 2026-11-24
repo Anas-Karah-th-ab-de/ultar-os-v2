@@ -22,7 +22,7 @@ for t in /usr/share/terminfo/l/linux /lib/terminfo/l/linux; do [ -f $t ] && { mk
 printf 'root:x:0:0:root:/root:/bin/bash\n' > $R/etc/passwd
 printf 'root:x:0:\n' > $R/etc/group
 printf 'Ultar OS (Ultar-Kern, Testwurzel)\n' > $R/etc/issue
-printf 'NAME="Ultar OS"\nID=ultar\nID_LIKE=ubuntu\nVERSION_ID="0.2"\n' > $R/etc/os-release
+{ cat rootfs/etc/os-release; printf 'ID_LIKE=ubuntu\nVERSION_ID="0.2"\n'; } > $R/etc/os-release   # brand part: one source (docs/BRAND.md)
 # ultar-init (statisch) und ein Beispieldienst, falls gebaut
 UI=target/x86_64-unknown-linux-gnu/release/ultar-init
 if [ -x $UI ]; then

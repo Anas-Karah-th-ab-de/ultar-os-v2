@@ -117,7 +117,7 @@ crates = ["platform/app-api", "platform/ultar-ui"]
 [[allow]]
 from = "apps"
 to = "system-core"
-crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
 
 # third-party packages use the same API as system apps
 [[allow]]
@@ -128,4 +128,4 @@ crates = ["platform/app-api", "platform/ultar-ui"]
 [[allow]]
 from = "external"
 to = "system-core"
-crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]

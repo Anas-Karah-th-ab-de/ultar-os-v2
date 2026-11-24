@@ -135,7 +135,7 @@ pub fn grafik(an: bool) {
             fill(&f, 0, 0, f.width as usize, f.height as usize, s.bg);
             fill(&f, 0, 0, f.width as usize, CH * TOP - 4, 0x141821);
             fill(&f, 0, CH * TOP - 4, f.width as usize, 2, 0xC9A227);
-            let title = "ULTAR OS  ·  KM Code Craft  ·  Rust";
+            let title = concat!(ultar_brand::product_caps!(), "  ·  ", ultar_brand::vendor!(), "  ·  Rust");
             for (i, ch) in title.chars().enumerate() {
                 draw_char(&f, 1 + i, 0, ch, 0xE6C454, 0x141821, 8);
             }
@@ -202,7 +202,7 @@ pub fn screen_init(fb: Option<Framebuffer>) {
             // Kopfleiste: Gold der Marke KM Code Craft
             fill(&f, 0, 0, f.width as usize, CH * TOP - 4, 0x141821);
             fill(&f, 0, CH * TOP - 4, f.width as usize, 2, 0xC9A227);
-            let title = "ULTAR OS  ·  KM Code Craft  ·  Rust";
+            let title = concat!(ultar_brand::product_caps!(), "  ·  ", ultar_brand::vendor!(), "  ·  Rust");
             for (i, ch) in title.chars().enumerate() {
                 draw_char(&f, 1 + i, 0, ch, 0xE6C454, 0x141821, 8);
             }

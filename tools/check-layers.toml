@@ -74,11 +74,12 @@ to = "drivers"
 crates = ["drivers/kernel"]
 
 # kernel (kernel, UEFI loader) -> the A/B boot contract shared with the updater: slot table,
-# partition layout, load options, GPT reader (no_std, pure; one source for both sides)
+# partition layout, load options, GPT reader (no_std, pure; one source for both sides);
+# and the brand source (names, brand mark, brand texts; no_std, no dependencies)
 [[allow]]
 from = "kernel"
 to = "system-core"
-crates = ["system/core/ultar-slots"]
+crates = ["system/core/ultar-slots", "system/core/ultar-brand"]
 
 # drivers -> driver package format only
 [[allow]]
@@ -136,7 +137,7 @@ crates = ["platform/app-api", "platform/ultar-ui"]
 [[allow]]
 from = "apps"
 to = "system-core"
-crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
 
 # third-party packages use the same API as system apps
 [[allow]]
@@ -147,4 +148,4 @@ crates = ["platform/app-api", "platform/ultar-ui"]
 [[allow]]
 from = "external"
 to = "system-core"
-crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile"]
+crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]

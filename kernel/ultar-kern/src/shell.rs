@@ -228,7 +228,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             kprintln!("لوحة عربي|ألماني|إنجليزي  تخطيط لوحة المفاتيح (tastatur) – أو Alt+Shift");
             kprintln!("سجل               سجل النواة               (protokoll)");
             kprintln!("مسح               مسح الشاشة               (clear)");
-            kprintln!("تثبيت             تثبيت Ultar OS على قرص   (installieren)");
+            kprintln!(concat!("تثبيت             تثبيت ", ultar_brand::product!(), " على قرص   (installieren)"));
             kprintln!("لغة عربي|ألماني|إنجليزي  لغة النظام     (sprache)");
             kprintln!("إعادة_تشغيل | إيقاف  (neustart | aus)");
         }
@@ -537,6 +537,47 @@ fn run_program(name: &str, args: &[&str]) {
 
 /// Desktop-Oberfläche (ultar-shell im Ultar-Bereich) als Programm starten und warten, bis sie endet.
 /// false: nicht vorhanden – dann zeigt der Kern seine eigene Startseite.
+/// Installed system whose system partition asks for the service manager (`/etc/ultar/session` holds the
+/// word `init`): start `ultar-init` as PID 1; it starts the services of `/etc/ultar/services` (log, bus,
+/// settings, devices, seat, compositor). Returns `false` when the file does not ask for it or the program is
+/// missing or does not start (the caller then goes on as before: `ultar-shell`, then the start page), and
+/// `true` after the service manager and everything it started have ended.
+pub fn init_starten() -> bool {
+    let Some(wish) = crate::fs::read_all("/etc/ultar/session") else { return false };
+    if String::from_utf8_lossy(&wish).trim() != "init" {
+        return false;
+    }
+    let Some(path) = ["/sbin/ultar-init", "/usr/bin/ultar-init"].iter().find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else {
+        kprintln!("[oberflaeche] session=init, but ultar-init is missing");
+        return false;
+    };
+    let code = crate::sprache::code();
+    let envp: alloc::vec::Vec<String> = [
+        String::from("PATH=/usr/sbin:/usr/bin:/sbin:/bin"),
+        String::from("HOME=/root"),
+        String::from("TERM=linux"),
+        if crate::fs::stat("/etc/ultar/edition").is_some() { String::from("ULTAR_EDITION_VON=datei") } else { alloc::format!("ULTAR_EDITION={}", crate::geraet::art().ausgabe()) },
+        String::from("ULTAR_KERN=1"),
+        alloc::format!("ULTAR_LANG={code}"),
+        alloc::format!("ULTAR_SYSTEMSPRACHE={code}"),
+        String::from("LANG=C.UTF-8"),
+    ]
+    .into_iter()
+    .collect();
+    kprintln!("[oberflaeche] service manager: {path} ({code})");
+    match crate::proc::spawn_init(path, alloc::vec![String::from("ultar-init")], envp) {
+        Ok(_) => {
+            crate::proc::run_all();
+            kprintln!("[oberflaeche] service manager ended");
+            true
+        }
+        Err(e) => {
+            kprintln!("[oberflaeche] service manager does not start: {e}");
+            false
+        }
+    }
+}
+
 pub fn desktop_starten() -> bool {
     let Some(path) = ["/usr/bin/ultar-shell", "/usr/lib/ultar/ultar-shell", "/boot/efi/bin/ultar-shell"].iter().find(|p| matches!(crate::fs::stat(p), Some((0, _)))) else { return false };
     if crate::console::framebuffer().is_none() {
@@ -575,7 +616,7 @@ pub fn desktop_starten() -> bool {
 pub fn info() {
     let mut nb = [0u8; 48];
     let (total, heap, used, regions) = mem::stats();
-    kprintln!("Ultar-Kern {} · KM Code Craft · Mohamad Anas Kara Mohamad", env!("CARGO_PKG_VERSION"));
+    kprintln!(concat!("Ultar-Kern {} · ", ultar_brand::vendor!(), " · ", ultar_brand::developer!()), env!("CARGO_PKG_VERSION"));
     kprintln!("Prozessor: {} ({} MHz)", arch::cpu_name(&mut nb), arch::tsc_khz() / 1000);
     kprintln!("Speicher frei: {} MB in {regions} Bereichen, Kern-Heap {} MB ({} KB belegt)", total >> 20, heap >> 20, used >> 10);
     let (on, all) = crate::apic::cpu_count();

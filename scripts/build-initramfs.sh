@@ -65,7 +65,11 @@ if [ "$EDITION" != phone ]; then
 fi
 echo "$EDITION" > "$STAGE/etc/ultar/edition"
 VER=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS %s"\nID=ultar\nVERSION_ID=%s\nVARIANT_ID=%s\nHOME_URL="https://code-craft.tech"\nVENDOR_NAME="KM Code Craft"\n' "$VER" "$VER" "$EDITION" > "$STAGE/etc/os-release"
+# os-release: brand part from the one source (rootfs/etc/os-release = ultar_brand::release::OS_RELEASE,
+# compared by `ultar-check brand`), then the fields of this release
+OSNAME=$(. rootfs/etc/os-release; echo "$NAME")
+{ cat rootfs/etc/os-release; printf 'PRETTY_NAME="%s %s"\nVERSION_ID=%s\nVARIANT_ID=%s\n' "$OSNAME" "$VER" "$VER" "$EDITION"; } > "$STAGE/etc/os-release.new"
+mv "$STAGE/etc/os-release.new" "$STAGE/etc/os-release"
 ln -sf sbin/init "$STAGE/init"   # Kernel sucht im Start-Ramdisk /init (Handy-Boot-Abbilder)
 ln -sf /usr/bin/ultar-compat "$STAGE/sbin/modprobe"   # Kernel-Modul-Nachladen über den Ubuntu-Bereich
 if [ "$DEBUG" = 1 ]; then

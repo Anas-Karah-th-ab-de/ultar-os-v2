@@ -26,9 +26,9 @@ pub(crate) enum Lang {
 pub(crate) fn t(l: Lang, k: &str) -> &'static str {
     use Lang::*;
     match (k, l) {
-        ("welcome", Ar) => "مرحباً بك في Ultar OS",
-        ("welcome", De) => "Willkommen bei Ultar OS",
-        ("welcome", En) => "Welcome to Ultar OS",
+        ("welcome", Ar) => concat!("مرحباً بك في ", ultar_brand::product!()),
+        ("welcome", De) => concat!("Willkommen bei ", ultar_brand::product!()),
+        ("welcome", En) => concat!("Welcome to ", ultar_brand::product!()),
         ("welcome_sub", Ar) => "اختر لغة التثبيت",
         ("welcome_sub", De) => "Sprache der Installation wählen",
         ("welcome_sub", En) => "Choose the installation language",
@@ -53,9 +53,9 @@ pub(crate) fn t(l: Lang, k: &str) -> &'static str {
         ("of", Ar) => "من",
         ("of", De) => "von",
         ("of", En) => "of",
-        ("disk_title", Ar) => "أين نثبت Ultar OS؟",
-        ("disk_title", De) => "Wohin soll Ultar OS?",
-        ("disk_title", En) => "Where should Ultar OS go?",
+        ("disk_title", Ar) => concat!("أين نثبت ", ultar_brand::product!(), "؟"),
+        ("disk_title", De) => concat!("Wohin soll ", ultar_brand::product!(), "?"),
+        ("disk_title", En) => concat!("Where should ", ultar_brand::product!(), " go?"),
         ("disk_sub", Ar) => "اختر القرص. سيتم مسح كل محتواه.",
         ("disk_sub", De) => "Platte wählen. Ihr ganzer Inhalt wird gelöscht.",
         ("disk_sub", En) => "Choose a disk. All of its contents will be erased.",
@@ -83,9 +83,9 @@ pub(crate) fn t(l: Lang, k: &str) -> &'static str {
         ("confirm_btn", Ar) => "مسح وتثبيت",
         ("confirm_btn", De) => "Löschen und installieren",
         ("confirm_btn", En) => "Erase and install",
-        ("inst_title", Ar) => "جارٍ تثبيت Ultar OS",
-        ("inst_title", De) => "Ultar OS wird installiert",
-        ("inst_title", En) => "Installing Ultar OS",
+        ("inst_title", Ar) => concat!("جارٍ تثبيت ", ultar_brand::product!()),
+        ("inst_title", De) => concat!(ultar_brand::product!(), " wird installiert"),
+        ("inst_title", En) => concat!("Installing ", ultar_brand::product!()),
         ("inst_wait", Ar) => "لا تطفئ الجهاز.",
         ("inst_wait", De) => "Gerät nicht ausschalten.",
         ("inst_wait", En) => "Do not turn off the device.",
@@ -98,9 +98,9 @@ pub(crate) fn t(l: Lang, k: &str) -> &'static str {
         ("ph_gpt", Ar) => "كتابة جدول الأقسام",
         ("ph_gpt", De) => "Partitionstabelle schreiben",
         ("ph_gpt", En) => "Writing partition table",
-        ("done_title", Ar) => "تم تثبيت Ultar OS",
-        ("done_title", De) => "Ultar OS ist installiert",
-        ("done_title", En) => "Ultar OS is installed",
+        ("done_title", Ar) => concat!("تم تثبيت ", ultar_brand::product!()),
+        ("done_title", De) => concat!(ultar_brand::product!(), " ist installiert"),
+        ("done_title", En) => concat!(ultar_brand::product!(), " is installed"),
         ("done_text", Ar) => "أعد التشغيل الآن – حتى مع بقاء وسيط التثبيت يبدأ النظام المثبت.",
         ("done_text", De) => "Jetzt neu starten – auch mit eingestecktem Medium startet das installierte System.",
         ("done_text", En) => "Restart now – the installed system starts even with the medium attached.",
@@ -906,8 +906,8 @@ impl Ui {
         // Kopfleiste mit Marke
         self.cv.rect(0, 0, w, 60, BAR);
         self.cv.rect(0, 58, w, 2, GOLD);
-        let marke = "ULTAR OS";
-        let unter = "KM Code Craft";
+        let marke = ultar_brand::product_caps!();
+        let unter = ultar_brand::vendor!();
         if self.rtl() {
             let mw = Canvas::text_w(marke, 2);
             self.cv.text(w - 30 - mw, 14, marke, 2, GOLD2);

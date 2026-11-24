@@ -19,3 +19,7 @@ path = "src/lib.rs"
 name = "ultar-i18n-check"
 path = "src/bin/ultar-i18n-check.rs"
 required-features = ["std"]
+
+[dependencies]
+# the brand texts (`brand.*`) and the names every catalog serves: one source for all programs
+ultar-brand = { path = "../ultar-brand" }

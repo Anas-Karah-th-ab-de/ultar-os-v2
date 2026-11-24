@@ -121,7 +121,7 @@ impl Profile {
     }
 
     fn text(&self) -> String {
-        let mut s = format!("# Ultar OS – Geräteprofil (vom Geräteschalter erzeugt; löschen = beim nächsten Start neu suchen)\ndevice = \"{}\"\n", self.device);
+        let mut s = format!(concat!("# ", ultar_brand::product!(), " – Geräteprofil (vom Geräteschalter erzeugt; löschen = beim nächsten Start neu suchen)\ndevice = \"{}\"\n"), self.device);
         for (k, v) in &self.map {
             s.push_str(&format!(
                 "{k} = \"{}\"\n",

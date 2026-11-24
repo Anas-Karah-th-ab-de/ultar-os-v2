@@ -79,7 +79,7 @@ pub fn open(path: &str) -> Option<Node> {
             let (all, own) = (proc::infos(), proc::current_group());
             file(format!("0.00 0.00 0.00 1/{} {}\n", all.len(), all.iter().find(|p| p.global == own).map(|p| p.pid).unwrap_or(0)))
         }
-        "version" => file(String::from("Linux version 6.8.0-ultar-kern (Ultar-Kern 0.4, KM Code Craft) #1\n")),
+        "version" => file(String::from(concat!("Linux version 6.8.0-ultar-kern (Ultar-Kern 0.4, ", ultar_brand::vendor!(), ") #1\n"))),
         "mounts" => {
             let mut s = String::new();
             // a process in its own mount namespace reads that namespace's table
