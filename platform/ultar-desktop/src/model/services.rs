@@ -81,13 +81,21 @@ pub enum Call {
     Forget(String),
     /// `vpn.set {on, name}` (`None`: the last used one).
     SetVpn(bool, Option<String>),
+    /// `mesh.set_enabled` (qs.mesh).
+    SetMesh(bool),
+    /// `mesh.handoff_send`: continue what is in front on the device, or on the one device
+    /// that can take it; with the app and title in front for apps that report nothing.
+    MeshSend(Option<String>, Option<(String, String)>),
 }
 
 impl Call {
     /// The call may take longer than the shell's turn may wait (scan, join, tunnel):
     /// it runs on a worker and its answer comes back later.
     pub fn is_slow(&self) -> bool {
-        matches!(self, Call::Networks | Call::Join(..) | Call::SetVpn(..))
+        matches!(
+            self,
+            Call::Networks | Call::Join(..) | Call::SetVpn(..) | Call::MeshSend(..)
+        )
     }
 }
 
@@ -124,6 +132,10 @@ pub struct Services {
     pub wifi: super::wifi::Wifi,
     /// `vpn.state`.
     pub vpn: Option<VpnState>,
+    /// `mesh.state`.
+    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
+    /// The devices the person chooses from (the mesh asked: more than one can take it).
+    pub targets: Vec<ultar_bus::messages::mesh::Target>,
 }
 
 impl Services {

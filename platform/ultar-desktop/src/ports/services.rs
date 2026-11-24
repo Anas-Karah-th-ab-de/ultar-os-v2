@@ -27,6 +27,8 @@ pub enum Answer {
     Known(Vec<String>),
     /// `net.join`: how it went.
     Joined(ultar_bus::messages::net::JoinOutcome),
+    /// What became of "continue on another device".
+    Sent(ultar_bus::messages::mesh::SendOutcome),
 }
 
 /// The calls of the shell's controls.

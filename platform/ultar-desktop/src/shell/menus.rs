@@ -40,6 +40,10 @@ const EMPTY_TRASH: u32 = 105;
 const ABOUT: u32 = 106;
 const APP_SETTINGS: u32 = 107;
 const EJECT: u32 = 108;
+const HANDOFF: u32 = 109;
+
+/// The devices to continue on start here (index into `Services::targets`).
+const TARGET_BASE: u32 = 500;
 const POWER_BASE: u32 = 200;
 const WINDOW_BASE: u32 = 300;
 
@@ -130,6 +134,9 @@ fn build(s: &Shell, kind: MenuKind) -> Menu {
 /// shell.appmenu: New window, About (the app's page in the Store), App settings (its page
 /// in Settings), Quit; the three that start an app need the launcher.
 fn app_menu(s: &Shell) -> Menu {
+    if !s.d.svc.targets.is_empty() {
+        return super::handoff::targets_menu(s, HANDOFF, TARGET_BASE);
+    }
     let gate = |item: MenuItem| {
         if s.d.presence.launcher {
             item
@@ -137,15 +144,20 @@ fn app_menu(s: &Shell) -> Menu {
             item.disabled()
         }
     };
-    Menu::new(vec![
+    let mut items = vec![
         gate(MenuItem::new(NEW_WINDOW, Label::key("desk.menu.new_window")).icon(IconId::Plus)),
         gate(MenuItem::new(ABOUT, Label::key("desk.menu.about"))),
         gate(MenuItem::new(
             APP_SETTINGS,
             Label::key("desk.menu.app_settings"),
         )),
-        MenuItem::new(QUIT, Label::key("desk.menu.quit")).separated(),
-    ])
+    ];
+    // Shown only on a device with the mesh service.
+    if s.d.svc.mesh.is_some() {
+        items.push(super::handoff::item(s, HANDOFF));
+    }
+    items.push(MenuItem::new(QUIT, Label::key("desk.menu.quit")).separated());
+    Menu::new(items)
 }
 
 /// qs.power: each entry enabled when its service offers it.
@@ -235,7 +247,16 @@ pub(super) fn open_for(s: &mut Shell, target: &Target) -> Outcome {
 pub(super) fn chosen(s: &mut Shell, id: u32) -> Outcome {
     let open = s.d.open;
     s.d.open = Open::None;
+    let targets = std::mem::take(&mut s.d.svc.targets);
     let mut out = match (open, id) {
+        (Open::AppMenu, HANDOFF) => super::handoff::send(s, None),
+        (Open::AppMenu, id) if id >= TARGET_BASE => {
+            let target = targets.get((id - TARGET_BASE) as usize);
+            match target.map(|t| t.device.clone()) {
+                Some(device) => super::handoff::send(s, Some(device)),
+                None => Outcome::none(),
+            }
+        }
         (Open::KeyboardMenu, MENU_KEYBOARD_SETTINGS) => {
             launch(s, SETTINGS, Opening::settings_page("keyboard"))
         }

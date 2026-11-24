@@ -6,6 +6,7 @@ mod arrange;
 mod bar;
 mod gestures;
 mod grid;
+mod handoff;
 mod keys;
 mod menus;
 mod network;
@@ -235,6 +236,7 @@ impl Shell {
         self.d.open = Open::None;
         self.d.overview.query.clear();
         self.d.svc.wifi.joining = None;
+        self.d.svc.targets.clear();
         self.d.home.open_folder = None;
         Outcome::surfaces()
     }

@@ -129,6 +129,7 @@ impl DesktopApp {
             Ok(Answer::Networks(networks)) => d.svc.wifi.set_networks(networks),
             Ok(Answer::Known(ssids)) => d.svc.wifi.set_known(ssids),
             Ok(Answer::Joined(_)) => {}
+            Ok(Answer::Sent(outcome)) => crate::model::mesh::sent(d, outcome, now),
             Ok(Answer::NotDone) | Err(_) if *call == Call::Networks => {
                 d.svc.wifi.set_networks(Vec::new());
             }
