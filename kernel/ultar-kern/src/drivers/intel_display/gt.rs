@@ -160,7 +160,14 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
         .last()
         .map(|b| b.bytes(size as usize))
         .unwrap_or_default();
-    let entries = hwconfig::parse(&table).map_err(|e| format!("{e}"))?;
+    let entries = hwconfig::parse(&table).map_err(|e| {
+        let head: Vec<String> = table
+            .chunks_exact(4)
+            .take(16)
+            .map(|c| format!("{:x}", u32::from_le_bytes([c[0], c[1], c[2], c[3]])))
+            .collect();
+        format!("{e} ({size} bytes, first words: {})", head.join(" "))
+    })?;
     Ok((size, entries.len()))
 }
 
