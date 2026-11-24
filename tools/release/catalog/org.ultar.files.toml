@@ -1,0 +1,29 @@
+[[app]]
+id = "org.ultar.files"
+category = "system"
+icon = "folder"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "الملفات"
+en = "Files"
+de = "Dateien"
+[app.summary]
+ar = "الأماكن والمجلدات وسلة المحذوفات والأقراص."
+en = "Places, folders, trash and drives."
+de = "Orte, Ordner, Papierkorb und Laufwerke."
+[app.description]
+ar = "مدير الملفات: يفتح الأماكن المسموح بها فقط، ويحذف إلى سلة المحذوفات أولاً، ويعرض الأقراص الموصولة."
+en = "The file manager: opens only the places it was granted, deletes to the trash first and shows connected drives."
+de = "Die Dateiverwaltung: öffnet nur freigegebene Orte, löscht zuerst in den Papierkorb und zeigt angeschlossene Laufwerke."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يعرض ملفاتك في الأماكن التي سمحت بها"
+en = "Shows your files in the places you allowed"
+de = "Zeigt Ihre Dateien an den freigegebenen Orten"

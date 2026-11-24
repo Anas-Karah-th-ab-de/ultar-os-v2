@@ -1,0 +1,36 @@
+# App-Builder – app manifest (docs/APP-RULES.md §3).
+id          = "km-code-craft.appbuilder"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "development"
+name        = "app.appbuilder.name"
+description = "app.appbuilder.desc"
+icon        = "assets/icon.svg"
+exec        = "/usr/lib/ultar/apps/km-code-craft.appbuilder/ultar-appbuilder"
+
+[form]
+factors     = ["tablet", "laptop", "desktop"]
+modes       = ["desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[permissions]
+# Reads the project folder the developer chose and writes the package into its `out/`
+# folder; keeps the developer's signing key in its own data area. Installing for testing is
+# a launcher call (the launcher checks the signature and asks for an administrator).
+bus         = ["launcher.install"]
+files       = ["documents:rw", "app:data:rw"]
+network     = "none"
+background  = false
+
+[agent]
+actions     = ["check_project"]
+confirm     = ["build_package", "install_package"]
+
+[limits]
+memory_mb   = 120
+cpu         = "foreground"

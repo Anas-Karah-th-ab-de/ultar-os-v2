@@ -1,0 +1,51 @@
+# Ultar release signing service (server/ultar-signd, deploy/SIGNING.md).
+# Own user, keys 0400 in its state directory, local Unix socket only, no network at all.
+[Unit]
+Description=Ultar OS release signing service (KM Code Craft)
+After=local-fs.target
+
+[Service]
+Type=simple
+User=ultar-sign
+Group=ultar-publish
+ExecStart=/usr/local/lib/ultar-sign/ultar-signd serve /run/ultar-sign/sign.sock /var/lib/ultar-sign/keys /var/lib/ultar-sign/audit.log
+Restart=on-failure
+RestartSec=5s
+RuntimeDirectory=ultar-sign
+RuntimeDirectoryMode=0750
+StateDirectory=ultar-sign
+StateDirectoryMode=0700
+UMask=0077
+# Hardening: nothing but the state directory is writable, no network, no privileges.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+LimitCORE=0
+MemoryMax=64M
+TasksMax=4
+
+[Install]
+WantedBy=multi-user.target

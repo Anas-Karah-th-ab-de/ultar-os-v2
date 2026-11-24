@@ -45,6 +45,7 @@ members = [
     "apps/ultar-office",
     "apps/ultar-settings",
     "apps/ultar-store",
+    "apps/ultar-appbuilder",
     "apps/ultar-web",
     "apps/ultar-phone",
     "apps/ultar-files",

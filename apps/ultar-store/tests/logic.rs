@@ -58,7 +58,7 @@ fn built_in_catalog_parses_with_the_twelve_components() {
     assert_eq!(office.permissions[0].id, "files");
     assert!(office.permissions[0].reason.ar.contains("يفتح فقط الملفات"));
     // The offline stick carries a package file per component.
-    assert!(cat.apps.iter().all(|a| a.package.is_some()));
+    assert!(cat.apps.iter().all(|a| a.pin.package.is_some()));
     // And file types for the search (.xlsx finds the office component).
     assert!(office.file_types.iter().any(|f| f == ".xlsx"));
 }

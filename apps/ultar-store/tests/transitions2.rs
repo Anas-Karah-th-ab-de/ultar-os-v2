@@ -30,7 +30,10 @@ fn entry(id: &str, version: &str, requires: &[&str], package: Option<&str>) -> C
         file_types: Vec::new(),
         permissions: Vec::new(),
         requires: requires.iter().map(|s| s.to_string()).collect(),
-        package: package.map(|s| s.to_string()),
+        pin: ultar_store::catalog::PackagePin {
+            package: package.map(|s| s.to_string()),
+            sha256: None,
+        },
     }
 }
 

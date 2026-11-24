@@ -17,6 +17,9 @@ pub enum SourceError {
     UnknownSigner,
     /// The catalogue format version is newer than this app understands.
     TooNew,
+    /// A downloaded package does not match the size or SHA-256 the signed catalogue pins
+    /// (or the catalogue pins none for an online package); it was discarded.
+    PackageMismatch,
 }
 
 /// What can go wrong on an operation with the system (launcher, files).
@@ -93,6 +96,7 @@ impl StoreError {
             Self::Source(SourceError::BadSignature) => "store.error.bad-signature",
             Self::Source(SourceError::UnknownSigner) => "store.error.unknown-signer",
             Self::Source(SourceError::TooNew) => "store.error.too-new",
+            Self::Source(SourceError::PackageMismatch) => "store.error.package-mismatch",
             Self::Backend(BackendError::NoLauncher) => "store.error.no-launcher",
             Self::Backend(BackendError::PackageRefused) => "store.error.package-refused",
             Self::Backend(BackendError::UnknownApp) => "store.error.unknown-app",
@@ -133,6 +137,7 @@ mod tests {
             StoreError::Source(SourceError::BadSignature),
             StoreError::Source(SourceError::UnknownSigner),
             StoreError::Source(SourceError::TooNew),
+            StoreError::Source(SourceError::PackageMismatch),
             StoreError::Backend(BackendError::NoLauncher),
             StoreError::Backend(BackendError::PackageRefused),
             StoreError::Backend(BackendError::UnknownApp),

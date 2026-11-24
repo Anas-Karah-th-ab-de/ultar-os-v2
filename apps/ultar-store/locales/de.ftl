@@ -135,6 +135,7 @@ store.error.unsigned = Der Katalog ist nicht signiert; er wird nicht benutzt.
 store.error.bad-signature = Die Katalogsignatur passt nicht zum Inhalt.
 store.error.unknown-signer = Der Katalog wurde mit keinem vertrauten Schlüssel signiert.
 store.error.too-new = Das Katalogformat ist neuer als dieser Store; System aktualisieren.
+store.error.package-mismatch = Das heruntergeladene Paket passt nicht zum signierten Fingerabdruck im Katalog; es wurde gelöscht und nicht installiert.
 store.error.no-launcher = Der Launcher-Dienst ist in dieser Sitzung nicht erreichbar.
 store.error.package-refused = Paket abgelehnt: Signatur ungültig oder Herausgeber unbekannt.
 store.error.unknown-app = Diese App ist nicht installiert.

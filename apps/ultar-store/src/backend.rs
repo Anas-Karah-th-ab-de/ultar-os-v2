@@ -182,10 +182,18 @@ impl SystemBackend {
                 // The launcher verifies the package signature (ultar-pkg); a
                 // refused package answers ERROR_PACKAGE_REFUSED and nothing
                 // is written.
-                let result = self
-                    .call(&launcher::Install { package: path })
-                    .map(|_| ())
-                    .map_err(StoreError::Backend);
+                // The online source downloads the package first and checks it against
+                // the digest its signed catalogue pins.
+                let result = match self
+                    .source_now()
+                    .ensure_package(std::path::Path::new(&path))
+                {
+                    Ok(()) => self
+                        .call(&launcher::Install { package: path })
+                        .map(|_| ())
+                        .map_err(StoreError::Backend),
+                    Err(e) => Err(StoreError::Source(e)),
+                };
                 send(StoreEvent::OperationDone { app, result });
             }
             Command::Uninstall { app, keep_data } => {

@@ -1,0 +1,39 @@
+[package]
+name = "ultar-appbuilder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "App-Builder: check an app project, package it as a signed .uap with the developer's own key, install it locally for testing."
+
+[lib]
+name = "ultar_appbuilder"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-appbuilder"
+path = "src/bin/ultar-appbuilder.rs"
+required-features = ["gui"]
+
+[features]
+default = []
+# Local test installation through the launcher (`launcher.install`).
+bus = ["dep:ultar-bus"]
+# The window: compositor surface + bus.
+gui = ["bus", "dep:ultar-surface"]
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# The package format itself (pack, sign, verify) – no own crypto in the app.
+ultar-pkg = { path = "../../system/core/ultar-pkg" }
+ultar-bus = { path = "../../system/core/ultar-bus", optional = true }
+ultar-surface = { path = "../../platform/ultar-surface", optional = true }
+toml = "0.8"
+hex = "0.4"
+# Only to derive the public half and key id of the developer key (signing is ultar-pkg's).
+ed25519-dalek = "2"
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", features = ["snapshot"] }
+tempfile = "3"

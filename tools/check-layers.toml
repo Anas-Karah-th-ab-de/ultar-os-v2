@@ -157,6 +157,13 @@ from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
 
+# App-Builder packs and signs the developer's own packages with the package format library
+# (no own crypto in the app, APP-RULES §5); nothing else of ultar-pkg is used by apps.
+[[allow]]
+from = "apps"
+to = "system-core"
+crates = ["system/core/ultar-pkg"]
+
 # third-party packages use the same API as system apps
 [[allow]]
 from = "external"
@@ -167,3 +174,10 @@ crates = ["platform/app-api", "platform/ultar-ui"]
 from = "external"
 to = "system-core"
 crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
+
+# App-Builder packs and signs the developer's own packages with the package format library
+# (no own crypto in the app, APP-RULES §5); nothing else of ultar-pkg is used by apps.
+[[allow]]
+from = "apps"
+to = "system-core"
+crates = ["system/core/ultar-pkg"]
