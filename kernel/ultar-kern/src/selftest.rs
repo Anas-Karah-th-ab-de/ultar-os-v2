@@ -113,6 +113,10 @@ pub fn run() {
     }
     // Intel display: takeover, flips with CRC proof, vblank rate, hot-plug, EDID (INTELTEST: …)
     crate::drivers::intel_display::selftest::run();
+    // Intel GT (render/compute side): identification, engines, GuC image and signature (GTTEST: …)
+    crate::drivers::intel_display::gt::selftest();
+    // Intel NPU: clock fuses, power-up to a running IP block, power-down (NPUTEST: …)
+    crate::drivers::intel_npu::selftest();
     crate::werkstatt::report();
     kprintln!("[test] Dauer des Selbsttests: {} ms, Kern läuft seit {} ms", crate::arch::uptime_ms() - t0, crate::arch::uptime_ms());
     // Protokoll schreiben
