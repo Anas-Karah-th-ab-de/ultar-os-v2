@@ -32,6 +32,7 @@ pub struct WifiSide {
     pub link: WifiLink,
     radio_on: Option<bool>,
     vpn_dns: Vec<String>,
+    wired_dns: Vec<String>,
 }
 
 impl WifiSide {
@@ -44,6 +45,7 @@ impl WifiSide {
             link: WifiLink::default(),
             radio_on: None,
             vpn_dns: Vec::new(),
+            wired_dns: Vec::new(),
         }
     }
 
@@ -99,9 +101,25 @@ impl WifiSide {
         }
     }
 
+    /// The name servers of the wired interfaces with an address changed.
+    pub fn wired_dns(&mut self, dns: Vec<String>, bus: &Bus<'_, NetService>) {
+        if dns != self.wired_dns {
+            self.wired_dns = dns;
+            self.write_dns(bus);
+        }
+    }
+
     fn write_dns(&self, bus: &Bus<'_, NetService>) {
         let Some(dir) = &self.run_dir else { return };
-        let servers = dns::servers(&self.vpn_dns, &self.link.dns);
+        // the VPN first, then the network in use: Wi-Fi's lease, then the wired ones
+        let lease: Vec<String> = self
+            .link
+            .dns
+            .iter()
+            .chain(&self.wired_dns)
+            .cloned()
+            .collect();
+        let servers = dns::servers(&self.vpn_dns, &lease);
         if dns::write(&dir.join("resolv.conf"), &servers).is_err() {
             bus.log(Record::new(Level::Warn, "netd.dns_not_written"));
         }

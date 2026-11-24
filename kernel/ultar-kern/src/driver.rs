@@ -60,6 +60,18 @@ pub trait NetDev: Send {
     fn link(&self) -> Option<bool> {
         None
     }
+    /// Link speed in Mbit/s while the link is up; `None`: the driver cannot tell.
+    fn speed_mbit(&self) -> Option<u32> {
+        None
+    }
+    /// Name of the driver behind the interface (`/sys/class/net/<if>/ultar_driver`).
+    fn driver(&self) -> &'static str {
+        "-"
+    }
+    /// A placeholder of an unbound device: not listed as an interface.
+    fn detached(&self) -> bool {
+        false
+    }
 }
 
 pub static BLOCK: Mutex<Vec<Box<dyn BlockDev>>> = Mutex::new(Vec::new());

@@ -69,6 +69,9 @@ impl NetDev for Detached {
     fn link(&self) -> Option<bool> {
         Some(false)
     }
+    fn detached(&self) -> bool {
+        true
+    }
 }
 
 /// Run a driver's probe and note which class entries it created.

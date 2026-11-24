@@ -31,6 +31,7 @@ fn net_state() -> NetState {
         airplane_possible: true,
         metered: false,
         networks_supported: true,
+        ..NetState::default()
     }
 }
 

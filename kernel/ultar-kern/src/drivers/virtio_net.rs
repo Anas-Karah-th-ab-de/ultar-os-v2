@@ -13,6 +13,10 @@ pub struct Drv;
 pub static DRV: Drv = Drv;
 
 const F_MAC: u64 = 1 << 5;
+/// config field `status` (bit 0: link up)
+const F_STATUS: u64 = 1 << 16;
+/// config fields `speed` (Mbit/s) and `duplex`
+const F_SPEED_DUPLEX: u64 = 1 << 63;
 /// virtio_net_hdr mit num_buffers (virtio 1.0)
 const HDR: usize = 12;
 const RXN: u16 = 16;
@@ -25,6 +29,9 @@ struct Nic {
     tx: Queue,
     rxbufs: Vec<u64>,
     txbuf: u64,
+    /// device configuration (virtio-net config space) and the features taken
+    cfg: u64,
+    features: u64,
 }
 
 impl Driver for Drv {
@@ -36,7 +43,7 @@ impl Driver for Drv {
     }
     fn probe(&self, d: &PciDev) -> Result<()> {
         let t = Transport::new(d)?;
-        let f = t.negotiate(F_MAC)?;
+        let f = t.negotiate(F_MAC | F_STATUS | F_SPEED_DUPLEX)?;
         let mut rx = t.queue(0, RXN)?;
         let tx = t.queue(1, 16)?;
         let mut mac = [0u8; 6];
@@ -57,9 +64,9 @@ impl Driver for Drv {
         rx.kick();
         let txbuf = alloc_pages(1).ok_or("kein Speicher")?;
         let mut nl = NET.lock();
-        let name = format!("net{}", nl.len());
+        let name = format!("eth{}", nl.len());
         crate::kprintln!("[virtio-net] {name}: MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-        nl.push(Box::new(Nic { name, mac, rx, tx, rxbufs, txbuf }));
+        nl.push(Box::new(Nic { name, mac, rx, tx, rxbufs, txbuf, cfg: t.device, features: f }));
         Ok(())
     }
     fn can_remove(&self) -> core::result::Result<(), &'static str> {
@@ -81,6 +88,26 @@ impl NetDev for Nic {
     }
     fn mac(&self) -> [u8; 6] {
         self.mac
+    }
+    /// Without VIRTIO_NET_F_STATUS the link is always up (virtio 1.2 §5.1.4).
+    fn link(&self) -> Option<bool> {
+        if self.features & F_STATUS == 0 {
+            return Some(true);
+        }
+        // SAFETY: `cfg` is the device-specific configuration in an identity-mapped BAR.
+        let status = unsafe { core::ptr::read_volatile((self.cfg + 6) as *const u16) };
+        Some(status & 1 != 0)
+    }
+    fn speed_mbit(&self) -> Option<u32> {
+        if self.features & F_SPEED_DUPLEX == 0 || self.link() != Some(true) {
+            return None;
+        }
+        // SAFETY: as in `link`; `speed` sits at offset 12 (after mac, status, max pairs, mtu).
+        let speed = unsafe { core::ptr::read_volatile((self.cfg + 12) as *const u32) };
+        (speed != 0 && speed != u32::MAX).then_some(speed)
+    }
+    fn driver(&self) -> &'static str {
+        "virtio-net"
     }
     fn send(&mut self, frame: &[u8]) -> Result<()> {
         if frame.len() + HDR > 4096 {

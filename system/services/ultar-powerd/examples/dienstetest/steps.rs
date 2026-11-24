@@ -238,6 +238,44 @@ fn radios(shell: &Client) -> Result<(), String> {
         "DIENSTE: network wired={} wifi={} airplane possible={} ({airplane:?}); bluetooth present={} ({bt_set:?})",
         net.wired.is_some(), net.wifi_present, net.airplane_possible, bt.present
     );
+    wired(shell)
+}
+
+/// The wired network as the kernel holds it (QEMU user network): the interface with its own
+/// object (MAC, driver, DHCP address, router, DNS), no Wi-Fi object without an adapter, and
+/// the internet check under way or done.
+fn wired(shell: &Client) -> Result<(), String> {
+    use ultar_bus::messages::net::{Internet, LinkState};
+    let net = latest::<NetState>(shell, "net state with a wired address", |n| {
+        n.wired.is_some()
+            && n.ethernet
+                .iter()
+                .any(|l| l.state == LinkState::Connected && l.address.is_some())
+    })?;
+    let eth = net
+        .ethernet
+        .iter()
+        .find(|l| l.state == LinkState::Connected)
+        .ok_or("no connected wired interface")?;
+    let ok = eth.mac.len() == 17
+        && eth.driver.is_some()
+        && eth.gateway.is_some()
+        && !eth.dns.is_empty()
+        && eth.lease_secs.is_some()
+        && net.wifi_link.is_none()
+        && net.internet != Internet::Offline;
+    if !ok {
+        return Err(format!("wired {net:?}"));
+    }
+    println!(
+        "DIENSTE: ethernet {} ({}) {} via {} dns {:?}, Wi-Fi object: none, internet {:?}",
+        eth.name,
+        eth.driver.as_deref().unwrap_or("-"),
+        eth.address.as_deref().unwrap_or("-"),
+        eth.gateway.as_deref().unwrap_or("-"),
+        eth.dns,
+        net.internet
+    );
     Ok(())
 }
 

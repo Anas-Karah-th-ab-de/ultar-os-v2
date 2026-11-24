@@ -1,5 +1,10 @@
 //! Contract of the network service: Wi-Fi, wired link, airplane mode.
 //!
+//! Version 2 of [`NetState`]: every wired interface ([`NetState::ethernet`]) and the Wi-Fi
+//! interface ([`NetState::wifi_link`]) as their own [`NetLink`] (name, MAC, address, router,
+//! DNS, speed, state), and whether the internet is reachable ([`Internet`]). [`SetIpv4`]
+//! (`net.set_ipv4`) chooses DHCP or a fixed address for a wired interface.
+//!
 //! What is real: the wired link and its speed, switching the Wi-Fi radio and airplane
 //! mode (the kernel's radio switches; a hardware switch is reported, not overridden),
 //! all kept across restarts; listing and joining Wi-Fi networks (open and
@@ -51,6 +56,119 @@ pub struct NetState {
     pub metered: bool,
     /// Wi-Fi networks can be listed and joined.
     pub networks_supported: bool,
+    /// Every wired (Ethernet) interface, cable or not (version 2).
+    pub ethernet: Vec<NetLink>,
+    /// The Wi-Fi interface, if the device has one (version 2; `None`: no Wi-Fi adapter).
+    pub wifi_link: Option<NetLink>,
+    /// Whether the internet is reachable (version 2).
+    pub internet: Internet,
+}
+
+/// The kind of a network interface.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LinkKind {
+    /// Wired.
+    #[default]
+    Ethernet,
+    /// Wi-Fi.
+    Wifi,
+}
+
+/// Where an interface stands.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LinkState {
+    /// No cable (wired) or not associated (Wi-Fi).
+    #[default]
+    NoCarrier,
+    /// Link up, no address yet (DHCP asking).
+    Connecting,
+    /// Link up with an address.
+    Connected,
+    /// Switched off (Wi-Fi radio off, airplane mode).
+    Off,
+}
+
+/// How an interface got its IPv4 address.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum AddressMethod {
+    /// DHCP (the default).
+    #[default]
+    Dhcp,
+    /// A fixed address set in the settings.
+    Static,
+    /// The service cannot tell (the kernel does not say).
+    Unknown,
+}
+
+/// One network interface as the settings and the shell show it.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct NetLink {
+    /// Interface name (`eth0`, `wlan0`).
+    pub name: String,
+    /// Wired or Wi-Fi.
+    pub kind: LinkKind,
+    /// Hardware address, `aa:bb:cc:dd:ee:ff`.
+    pub mac: String,
+    /// Kernel driver (`gen-intel-eth`, `virtio-net`, `vmxnet3`), if known.
+    pub driver: Option<String>,
+    /// State.
+    pub state: LinkState,
+    /// Speed in Mbit/s while the link is up, if the driver says.
+    pub speed_mbit: Option<u32>,
+    /// How the address was set.
+    pub method: AddressMethod,
+    /// IPv4 address with prefix (`10.0.2.15/24`).
+    pub address: Option<String>,
+    /// Default router.
+    pub gateway: Option<String>,
+    /// Name servers.
+    pub dns: Vec<String>,
+    /// DHCP lease length in seconds.
+    pub lease_secs: Option<u32>,
+    /// IPv6 addresses with prefix (empty: none; the Ultar kernel has no IPv6 yet).
+    pub ipv6: Vec<String>,
+}
+
+/// Whether the internet can be reached (the service checks it after every change and every
+/// minute: a name lookup and a TCP connection to its check address).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Internet {
+    /// No interface has a link with an address.
+    #[default]
+    Offline,
+    /// An address, but the check address cannot be reached (local network only).
+    LocalOnly,
+    /// The check address answered.
+    Connected,
+    /// An address and the first check is still running.
+    Checking,
+}
+
+/// IPv4 configuration of an interface (`net.set_ipv4`).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub enum Ipv4Config {
+    /// Address by DHCP (the default).
+    Dhcp,
+    /// Ask the DHCP server again now.
+    Renew,
+    /// Fixed address.
+    Static {
+        /// Address with prefix, `192.168.1.20/24`.
+        address: String,
+        /// Default router (`None`: local network only).
+        gateway: Option<String>,
+        /// Name servers (at most two are used).
+        dns: Vec<String>,
+    },
+}
+
+/// `net.set_ipv4` – DHCP or a fixed address for a wired interface (kept across restarts).
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct SetIpv4 {
+    /// Interface name.
+    pub interface: String,
+    /// The configuration.
+    pub config: Ipv4Config,
 }
 
 /// One Wi-Fi network.
@@ -113,7 +231,8 @@ pub enum NetOutcome {
     SwitchOff,
     /// Not in this release (Wi-Fi networks need the supplicant).
     Unsupported,
-    /// The kernel refused.
+    /// The kernel refused (or the request was not valid: a bad address, an unknown
+    /// interface).
     Failed,
 }
 
@@ -129,15 +248,20 @@ macro_rules! version_one {
 }
 version_one!(
     Wired,
-    NetState,
     Network,
     SetWifi,
     SetAirplane,
     Scan,
     ScanReply,
     Connect,
-    NetReply
+    NetReply,
+    SetIpv4
 );
+
+/// Version 2: the interfaces (`ethernet`, `wifi_link`) and `internet` were added.
+impl Message for NetState {
+    const VERSION: u16 = 2;
+}
 
 impl Topic for NetState {
     const TOPIC: &'static str = "net.state";
@@ -157,6 +281,7 @@ call!(SetWifi, "set_wifi", NetReply);
 call!(SetAirplane, "set_airplane", NetReply);
 call!(Scan, "scan", ScanReply);
 call!(Connect, "connect", NetReply);
+call!(SetIpv4, "set_ipv4", NetReply);
 
 #[path = "net_wifi.rs"]
 mod wifi;
@@ -177,6 +302,32 @@ mod tests {
             ..NetState::default()
         };
         assert_eq!(decode::<NetState>(&encode(&s).unwrap()).unwrap(), s);
+        let links = NetState {
+            ethernet: vec![NetLink {
+                name: "eth0".into(),
+                mac: "52:54:00:12:34:56".into(),
+                state: LinkState::Connected,
+                address: Some("10.0.2.15/24".into()),
+                gateway: Some("10.0.2.2".into()),
+                dns: vec!["10.0.2.3".into()],
+                lease_secs: Some(86400),
+                ..NetLink::default()
+            }],
+            internet: Internet::LocalOnly,
+            ..NetState::default()
+        };
+        assert_eq!(decode::<NetState>(&encode(&links).unwrap()).unwrap(), links);
+        let set = SetIpv4 {
+            interface: "eth0".into(),
+            config: Ipv4Config::Static {
+                address: "192.168.1.20/24".into(),
+                gateway: Some("192.168.1.1".into()),
+                dns: vec![],
+            },
+        };
+        assert_eq!(decode::<SetIpv4>(&encode(&set).unwrap()).unwrap(), set);
+        assert_eq!(<SetIpv4 as Call>::METHOD, "set_ipv4");
+        assert_eq!(<NetState as Message>::VERSION, 2);
         let c = Connect {
             ssid: "home".into(),
             secret: Some(Secret::new("pass-word".into())),

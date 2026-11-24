@@ -206,6 +206,17 @@ impl NetDev for Nic {
     fn link(&self) -> Option<bool> {
         Some(r(self.mmio, STATUS) & 2 != 0)
     }
+    fn speed_mbit(&self) -> Option<u32> {
+        let s = r(self.mmio, STATUS);
+        (s & 2 != 0).then(|| match (s >> 6) & 3 {
+            0 => 10,
+            1 => 100,
+            _ => 1000,
+        })
+    }
+    fn driver(&self) -> &'static str {
+        "gen-intel-eth"
+    }
     fn mac(&self) -> [u8; 6] {
         self.mac
     }

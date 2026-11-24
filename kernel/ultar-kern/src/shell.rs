@@ -405,7 +405,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             let (Some(i), Ok(nn)) = (crate::net::parse_ip(ipt), nn.parse::<u32>()) else { return kprintln!("ungültig") };
             let m = if nn == 0 { 0 } else { u32::MAX << (32 - nn.min(32)) }.to_be_bytes();
             let gw = args.get(1).and_then(|g| crate::net::parse_ip(g)).unwrap_or([i[0], i[1], i[2], 1]);
-            *crate::net::CONFIG.lock() = Some(crate::net::Config { ip: i, mask: m, gw, dns: gw });
+            crate::net::set_static(crate::net::active_nic(), crate::net::Config { ip: i, mask: m, gw, dns: gw, ..Default::default() });
             kprintln!("[netz] fest: IP {} Maske {} Router {}", ip(i), ip(m), ip(gw));
         }
         "firewall" => match crate::firewall::befehl(&args.join(" ")) {

@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest nettest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -50,4 +50,7 @@ bttest: bttest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<
 # power off / restart from a process whose user window is in use (like ultar-init at the end)
 ausschalttest: ausschalttest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
+# the wired network: /sys/class/net, DHCP lease, renew, static address, DNS, TCP to the host, cable out/in
+nettest: nettest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<

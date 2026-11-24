@@ -32,6 +32,7 @@ fn net(wifi_on: bool, airplane: bool) -> NetState {
         airplane_possible: true,
         metered: false,
         networks_supported: false,
+        ..NetState::default()
     }
 }
 

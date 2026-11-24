@@ -337,9 +337,13 @@ fn poll_network() {
             }
         }
     }
+    crate::net::tick();
     let had = !frames.is_empty();
+    let active = crate::net::active_nic();
     for f in frames {
-        handle(&f);
+        if !crate::net::input(active, &f) {
+            handle(&f);
+        }
     }
     retransmit();
     flush();

@@ -554,6 +554,7 @@ mod tests {
                 airplane_possible: true,
                 metered: false,
                 networks_supported: false,
+                ..NetState::default()
             }),
             ..Services::default()
         };

@@ -1,4 +1,5 @@
-//! Kleiner Netzwerkstapel im Kern: Ethernet, ARP, IPv4, ICMP (Ping), UDP, DHCP-Client.
+//! Kleiner Netzwerkstapel im Kern: Ethernet, ARP, IPv4, ICMP (Ping), UDP; der DHCP-Client mit Lease,
+//! Erneuerung und festen Adressen steht in `dhcp.rs`.
 
 use crate::driver::NET;
 use alloc::vec;
@@ -13,9 +14,13 @@ pub struct Config {
     pub mask: [u8; 4],
     pub gw: [u8; 4],
     pub dns: [u8; 4],
+    /// second name server (`0.0.0.0`: none)
+    pub dns2: [u8; 4],
 }
 
 pub static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
+
+pub use crate::dhcp::{dhcp, dhcp_all, input, ipv4_text, ipv4_write, link_changes, set_static, tick};
 static ACTIVE_NIC: AtomicUsize = AtomicUsize::new(0);
 
 pub fn active_nic() -> usize {
@@ -69,7 +74,7 @@ pub fn ipv4(src: [u8; 4], dst: [u8; 4], proto: u8, payload: &[u8]) -> Vec<u8> {
     h
 }
 
-fn udp(sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
+pub(crate) fn udp(sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
     let len = 8 + payload.len();
     let mut u = Vec::with_capacity(len);
     u.extend_from_slice(&sport.to_be_bytes());
@@ -78,72 +83,6 @@ fn udp(sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
     u.extend_from_slice(&[0, 0]); // Prüfsumme optional bei IPv4
     u.extend_from_slice(payload);
     u
-}
-
-fn dhcp_msg(mac: [u8; 6], xid: u32, typ: u8, req_ip: Option<[u8; 4]>, server: Option<[u8; 4]>) -> Vec<u8> {
-    let mut m = vec![0u8; 240];
-    m[0] = 1; // Anfrage
-    m[1] = 1; // Ethernet
-    m[2] = 6;
-    m[4..8].copy_from_slice(&xid.to_be_bytes());
-    m[10] = 0x80; // Antwort als Rundsendung
-    m[28..34].copy_from_slice(&mac);
-    m[236..240].copy_from_slice(&[99, 130, 83, 99]);
-    m.extend_from_slice(&[53, 1, typ]);
-    if let Some(ip) = req_ip {
-        m.extend_from_slice(&[50, 4]);
-        m.extend_from_slice(&ip);
-    }
-    if let Some(s) = server {
-        m.extend_from_slice(&[54, 4]);
-        m.extend_from_slice(&s);
-    }
-    m.extend_from_slice(&[12, 5, b'u', b'l', b't', b'a', b'r']); // Rechnername
-    m.extend_from_slice(&[55, 3, 1, 3, 6, 255]);
-    m
-}
-
-/// DHCP-Antwort auswerten: (Typ, angebotene IP, Optionen)
-fn parse_dhcp(frame: &[u8], xid: u32) -> Option<(u8, [u8; 4], Config, [u8; 4])> {
-    if frame.len() < 14 + 20 + 8 + 240 || u16::from_be_bytes([frame[12], frame[13]]) != 0x0800 {
-        return None;
-    }
-    let ip = &frame[14..];
-    let ihl = (ip[0] & 0xf) as usize * 4;
-    if ip[9] != 17 {
-        return None;
-    }
-    let u = &ip[ihl..];
-    if u16::from_be_bytes([u[2], u[3]]) != 68 {
-        return None;
-    }
-    let d = &u[8..];
-    if d.len() < 240 || d[0] != 2 || u32::from_be_bytes([d[4], d[5], d[6], d[7]]) != xid {
-        return None;
-    }
-    let yi = [d[16], d[17], d[18], d[19]];
-    let mut cfg = Config { ip: yi, ..Default::default() };
-    let (mut typ, mut server) = (0, [0u8; 4]);
-    let mut p = 240;
-    while p + 1 < d.len() && d[p] != 255 {
-        let (o, l) = (d[p], d[p + 1] as usize);
-        let v = d.get(p + 2..p + 2 + l)?;
-        match o {
-            53 => typ = v[0],
-            1 if l >= 4 => cfg.mask.copy_from_slice(&v[..4]),
-            3 if l >= 4 => cfg.gw.copy_from_slice(&v[..4]),
-            6 if l >= 4 => cfg.dns.copy_from_slice(&v[..4]),
-            54 if l >= 4 => server.copy_from_slice(&v[..4]),
-            _ => {}
-        }
-        p += 2 + l;
-    }
-    Some((typ, yi, cfg, server))
-}
-
-fn bcast_dhcp(n: usize, mac: [u8; 6], msg: &[u8]) -> bool {
-    let f = eth([0xff; 6], mac, 0x0800, &ipv4([0; 4], [255; 4], 17, &udp(68, 67, msg)));
-    NET.lock().get_mut(n).map(|d| d.send(&f).is_ok()).unwrap_or(false)
 }
 
 fn wait_frame(n: usize, ms: u64, mut f: impl FnMut(&[u8]) -> bool) -> bool {
@@ -160,56 +99,6 @@ fn wait_frame(n: usize, ms: u64, mut f: impl FnMut(&[u8]) -> bool) -> bool {
         }
     }
     false
-}
-
-/// Adresse per DHCP holen (Discover → Offer → Request → Ack)
-pub fn dhcp(n: usize) -> Option<Config> {
-    let mac = NET.lock().get(n)?.mac();
-    let xid = 0x554c_0000 | (crate::arch::rdtsc() as u32 & 0xffff);
-    for _ in 0..3 {
-        bcast_dhcp(n, mac, &dhcp_msg(mac, xid, 1, None, None));
-        let mut offer = None;
-        wait_frame(n, 1500, |f| {
-            if let Some((2, ip, cfg, srv)) = parse_dhcp(f, xid) {
-                offer = Some((ip, cfg, srv));
-                true
-            } else {
-                false
-            }
-        });
-        let Some((ip, _cfg, srv)) = offer else { continue };
-        bcast_dhcp(n, mac, &dhcp_msg(mac, xid, 3, Some(ip), Some(srv)));
-        let mut ack = None;
-        wait_frame(n, 1500, |f| {
-            if let Some((5, _, cfg, _)) = parse_dhcp(f, xid) {
-                ack = Some(cfg);
-                true
-            } else {
-                false
-            }
-        });
-        if let Some(c) = ack {
-            *CONFIG.lock() = Some(c);
-            return Some(c);
-        }
-    }
-    None
-}
-
-/// Try DHCP on every present, linked network interface. This keeps Ethernet
-/// fallback working on laptops/docks when eth0 is not the cable-facing NIC.
-pub fn dhcp_all() -> Option<(usize, Config)> {
-    let count = NET.lock().len();
-    for n in 0..count {
-        let linked = NET.lock().get(n).and_then(|d| d.link()).unwrap_or(true);
-        if linked {
-            if let Some(c) = dhcp(n) {
-                set_active_nic(n);
-                return Some((n, c));
-            }
-        }
-    }
-    None
 }
 
 fn arp_resolve(n: usize, mac: [u8; 6], my: [u8; 4], target: [u8; 4]) -> Option<[u8; 6]> {

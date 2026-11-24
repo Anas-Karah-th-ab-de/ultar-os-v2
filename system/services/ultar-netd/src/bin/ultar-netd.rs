@@ -1,9 +1,10 @@
 //! `ultar-netd` – the network service (see the library documentation).
 //!
 //! ```text
-//! ultar-netd --bus PATH --state DIR [--run DIR] [--root DIR] [--log-socket PATH] [--token-file PATH]
+//! ultar-netd --bus PATH --state DIR [--run DIR] [--root DIR] [--probe HOST:PORT] [--log-socket PATH] [--token-file PATH]
 //! ```
 //!
+//! `--probe HOST:PORT`: where the internet check connects (default `ultar.code-craft.tech:443`).
 //! `--run DIR`: where `resolv.conf` is written (left alone without it).
 //! The VPN (`vpn` on the bus, `ultar_vpnd`) runs in the same process on its own
 //! bus connection, its tunnels below `--state DIR/vpn`.
@@ -22,7 +23,7 @@ fn main() -> ExitCode {
     let rights = Some(RightSet::of(&[Right::NetAdmin]));
     ultar_svckit::main_pair(
         "ultar-netd",
-        &["state", "root", "run"],
+        &["state", "root", "run", "probe"],
         rights,
         |args, _| {
             let state = args.required_path("state").map_err(|_| Msg::BadArguments)?;
@@ -31,8 +32,17 @@ fn main() -> ExitCode {
                 .map_err(|_| Msg::BadArguments)?
                 .unwrap_or_else(|| "/".into());
             let run = args.path("run").map_err(|_| Msg::BadArguments)?;
+            let probe = match args.option("probe") {
+                Some(p) => Some(ultar_netd::internet::Target::parse(p).ok_or(Msg::BadArguments)?),
+                None => None,
+            };
             let vpn = VpnService::new(root.clone(), state.join("vpn"));
-            Ok((NetService::new(root, state).with_run_dir(run), vpn))
+            Ok((
+                NetService::new(root, state)
+                    .with_run_dir(run)
+                    .with_probe(probe),
+                vpn,
+            ))
         },
     )
 }

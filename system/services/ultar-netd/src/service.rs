@@ -1,10 +1,13 @@
 //! The network service: state from the kernel, radio switches, the bus side.
 
+use crate::internet::{self, Prober, Target};
+use crate::wired::{self, Fixed};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 use ultar_bus::messages::net::{
-    NetOutcome, NetReply, NetState, SetAirplane, SetWifi, Wired, SERVICE,
+    Internet, LinkState, NetOutcome, NetReply, NetState, SetAirplane, SetIpv4, SetWifi, Wired,
+    SERVICE,
 };
 use ultar_bus::{Call, ErrorCode, IncomingRequest, Topic};
 use ultar_hal::HalError;
@@ -12,6 +15,16 @@ use ultar_hal_linux::net::Interfaces;
 use ultar_hal_linux::rfkill::{RadioKind, Rfkill};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{store, Bus, Service};
+
+/// A Wi-Fi adapter the kernel lists under no interface yet (only its radio switch).
+const WIFI_PRESENT: ultar_bus::messages::net::WifiLink = ultar_bus::messages::net::WifiLink {
+    phase: ultar_bus::messages::net::WifiPhase::Disconnected,
+    ssid: None,
+    signal_percent: None,
+    address: None,
+    router: None,
+    dns: Vec::new(),
+};
 
 /// How often the links and switches are read again.
 pub const TICK: Duration = Duration::from_secs(3);
@@ -43,6 +56,10 @@ pub struct NetService {
     saved: Saved,
     last: Option<NetState>,
     pub(crate) wifi: crate::calls::WifiSide,
+    fixed: Fixed,
+    fixed_file: PathBuf,
+    target: Target,
+    prober: Option<Prober>,
 }
 
 fn outcome(result: Result<(), HalError>) -> NetOutcome {
@@ -57,6 +74,7 @@ impl NetService {
     /// A service reading the kernel below `root`, keeping its wishes below `state_dir`.
     pub fn new(root: PathBuf, state_dir: PathBuf) -> Self {
         let state_file = state_dir.join("net");
+        let fixed_file = state_dir.join("ipv4");
         Self {
             interfaces: Interfaces::new(&root),
             rfkill: Rfkill::new(&root),
@@ -64,7 +82,22 @@ impl NetService {
             wifi: crate::calls::WifiSide::new(state_dir.join("wifi"), None),
             state_file,
             last: None,
+            fixed: store::load(&fixed_file).unwrap_or_default(),
+            fixed_file,
+            target: Target::parse(internet::DEFAULT_TARGET).unwrap_or(Target {
+                host: "ultar.code-craft.tech".into(),
+                port: 443,
+            }),
+            prober: None,
         }
+    }
+
+    /// The address the internet check connects to (`host:port`).
+    pub fn with_probe(mut self, target: Option<Target>) -> Self {
+        if let Some(t) = target {
+            self.target = t;
+        }
+        self
     }
 
     /// Where `resolv.conf` is written (`--run`; `None`: not written).
@@ -87,6 +120,29 @@ impl NetService {
             speed_mbit: i.speed_mbit,
         });
         let wifi_present = wifi_present || self.wifi.present();
+        let ethernet: Vec<_> = list
+            .iter()
+            .filter(|i| !i.wireless)
+            .map(wired::ethernet)
+            .collect();
+        let wifi_link = if wifi_present {
+            wired::wifi(list.iter().find(|i| i.wireless), &self.wifi.link, wifi_on)
+                .or_else(|| wired::wifi(None, &WIFI_PRESENT, wifi_on))
+        } else {
+            None
+        };
+        let online = ethernet
+            .iter()
+            .chain(wifi_link.iter())
+            .any(|l| l.state == LinkState::Connected);
+        let internet = match (&self.prober, online) {
+            (_, false) => Internet::Offline,
+            (Some(p), true) => match p.result() {
+                Internet::Offline => Internet::Checking,
+                r => r,
+            },
+            (None, true) => Internet::Checking,
+        };
         NetState {
             wifi_present,
             wifi_on,
@@ -98,12 +154,82 @@ impl NetService {
             airplane_possible: !radios.is_empty(),
             metered: false,
             networks_supported: self.wifi.present(),
+            ethernet,
+            wifi_link,
+            internet,
+        }
+    }
+
+    /// The network the internet check runs on: the wired interface with the default route,
+    /// another connected one, or Wi-Fi.
+    fn in_use(state: &NetState) -> Option<internet::Network> {
+        state
+            .ethernet
+            .iter()
+            .filter(|l| l.state == LinkState::Connected)
+            .chain(
+                state
+                    .wifi_link
+                    .iter()
+                    .filter(|l| l.state == LinkState::Connected),
+            )
+            .next()
+            .map(|l| internet::Network {
+                dns: l.dns.clone(),
+                gateway: l.gateway.clone(),
+            })
+    }
+
+    /// Sets a fixed address, DHCP or a renewal on a wired interface and keeps the wish.
+    pub fn set_ipv4(&mut self, c: &SetIpv4) -> NetOutcome {
+        let Some(request) = wired::request(&c.config) else {
+            return NetOutcome::Failed;
+        };
+        if !self
+            .interfaces
+            .list()
+            .iter()
+            .any(|i| i.name == c.interface && !i.wireless)
+        {
+            return NetOutcome::NoDevice;
+        }
+        match self.interfaces.set_ipv4(&c.interface, &request) {
+            Ok(()) => {
+                self.fixed.note(&c.interface, &c.config);
+                NetOutcome::Done
+            }
+            Err(HalError::NotSupported) => NetOutcome::Unsupported,
+            Err(HalError::NotFound) => NetOutcome::NoDevice,
+            Err(_) => NetOutcome::Failed,
+        }
+    }
+
+    /// Fixed addresses the kernel does not hold (after a restart, a re-plugged card) go back.
+    fn keep_fixed(&mut self) {
+        let list = self.interfaces.list();
+        for (name, config) in &self.fixed.entries {
+            let lost = list
+                .iter()
+                .any(|i| &i.name == name && i.ipv4.as_ref().is_some_and(|v| !v.fixed));
+            if let (true, Some(r)) = (lost, wired::request(config)) {
+                let _ = self.interfaces.set_ipv4(name, &r);
+            }
         }
     }
 
     pub(crate) fn publish(&mut self, bus: &Bus<'_, Self>) {
         let now = self.read();
         self.wifi.radio(now.wifi_on);
+        if let Some(p) = &self.prober {
+            p.network(Self::in_use(&now));
+        }
+        let wired_dns: Vec<String> = now
+            .ethernet
+            .iter()
+            .filter(|l| l.state == LinkState::Connected)
+            .flat_map(|l| l.dns.iter().cloned())
+            .collect();
+        self.wifi.wired_dns(wired_dns, bus);
         if self.last.as_ref() != Some(&now) {
             bus.retain(&now);
             self.last = Some(now);
@@ -180,6 +306,8 @@ impl Service for NetService {
             }
         }
         self.wifi.start(bus);
+        self.keep_fixed();
+        self.prober = Some(Prober::start(self.target.clone()));
         self.publish(bus);
     }
 
@@ -199,6 +327,15 @@ impl Service for NetService {
             m if m == SetAirplane::METHOD => request
                 .decode::<SetAirplane>()
                 .map(|c| self.set_airplane(c.on)),
+            m if m == SetIpv4::METHOD => request.decode::<SetIpv4>().map(|c| {
+                let outcome = self.set_ipv4(&c);
+                if outcome == NetOutcome::Done
+                    && store::save(&self.fixed_file, &self.fixed).is_err()
+                {
+                    bus.log(Record::new(Level::Warn, "netd.not_saved"));
+                }
+                outcome
+            }),
             _ => {
                 crate::calls::wifi_request(self, request, bus);
                 return;
@@ -218,6 +355,7 @@ impl Service for NetService {
     }
 
     fn tick(&mut self, bus: &Bus<'_, Self>) {
+        self.keep_fixed();
         self.publish(bus);
     }
 }

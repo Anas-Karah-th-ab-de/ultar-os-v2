@@ -93,6 +93,10 @@ struct Nic {
     tx_bufs: u64,
     rx_next: usize,
     tx_next: usize,
+    e610: bool,
+    /// E610: last link answer of the firmware (bit 31 up, low bits Mbit/s) and when it was asked
+    link_cache: core::sync::atomic::AtomicU32,
+    link_asked: core::sync::atomic::AtomicU64,
 }
 
 fn r(b: u64, o: u64) -> u32 {
@@ -365,7 +369,7 @@ impl Driver for Drv {
         };
         let mut nl = NET.lock();
         let name = format!("eth{}", nl.len());
-        let mut nic = Nic { name: name.clone(), mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0 };
+        let mut nic = Nic { name: name.clone(), mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0, e610, link_cache: core::sync::atomic::AtomicU32::new(0), link_asked: core::sync::atomic::AtomicU64::new(0) };
         let verb = if link { format!("steht ({mbit} Mbit/s)") } else { format!("fehlt – Schleifentest: {}", nic.schleifentest()) };
         crate::kprintln!(
             "[ixgbe] {name}: {:04x} {} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}{info} · Verbindung {verb}",
@@ -426,9 +430,38 @@ impl Nic {
     }
 }
 
+impl Nic {
+    /// Link and speed; the E610 firmware is asked at most every two seconds.
+    fn link_state(&self) -> (bool, u32) {
+        use core::sync::atomic::Ordering::Relaxed;
+        if !self.e610 {
+            return links(self.mmio);
+        }
+        let now = crate::arch::uptime_ms();
+        let asked = self.link_asked.load(Relaxed);
+        if asked == 0 || now.saturating_sub(asked) >= 2000 {
+            let (up, mbit) = e610_link(self.mmio).unwrap_or((false, 0));
+            self.link_cache.store(u32::from(up) << 31 | mbit, Relaxed);
+            self.link_asked.store(now.max(1), Relaxed);
+        }
+        let v = self.link_cache.load(Relaxed);
+        (v >> 31 != 0, v & 0x7fff_ffff)
+    }
+}
+
 impl NetDev for Nic {
     fn name(&self) -> String {
         self.name.clone()
+    }
+    fn link(&self) -> Option<bool> {
+        Some(self.link_state().0)
+    }
+    fn speed_mbit(&self) -> Option<u32> {
+        let (up, mbit) = self.link_state();
+        (up && mbit > 0).then_some(mbit)
+    }
+    fn driver(&self) -> &'static str {
+        "gen-ixgbe"
     }
     fn mac(&self) -> [u8; 6] {
         self.mac

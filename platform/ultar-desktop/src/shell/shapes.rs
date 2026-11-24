@@ -61,11 +61,7 @@ pub fn build_home(s: &Shell, look: Look, screen: Size) -> Result<Option<View>, U
 /// What the phone's status bar says: network, mobile network (with a modem), battery.
 fn status_text(s: &Shell) -> StatusText {
     let p = &s.d.presence;
-    let mut icons = vec![if p.net_service {
-        IconId::Wifi
-    } else {
-        IconId::Offline
-    }];
+    let mut icons = vec![super::render::net_icon(s)];
     if p.modem == Some(true) {
         icons.push(IconId::Cell);
     }

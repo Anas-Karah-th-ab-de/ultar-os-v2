@@ -24,14 +24,34 @@ pub struct Popup {
     pub inset_top: f32,
 }
 
+/// The network icon of the bar and the phone's status bar, from `net.state`: the cable while a
+/// wired interface has an address, Wi-Fi while connected to a Wi-Fi network, otherwise
+/// offline; Wi-Fi as before while the service has not reported yet.
+pub(crate) fn net_icon(s: &Shell) -> IconId {
+    use ultar_bus::messages::net::LinkState;
+    if !s.d.presence.net_service {
+        return IconId::Offline;
+    }
+    let Some(net) = s.d.svc.net.as_ref() else {
+        return IconId::Wifi;
+    };
+    let connected = |l: &ultar_bus::messages::net::NetLink| l.state == LinkState::Connected;
+    if net.ethernet.iter().any(connected) {
+        IconId::Cable
+    } else if net.wifi_link.as_ref().is_some_and(connected) || net.ssid.is_some() {
+        IconId::Wifi
+    } else if net.ethernet.is_empty() && net.wifi_link.is_none() && net.wired.is_some() {
+        // a service of the first contract version: only the cable flag
+        IconId::Cable
+    } else {
+        IconId::Offline
+    }
+}
+
 /// The status icons of the bar: what says something (§5.1 "Status").
 pub fn status_icons(s: &Shell) -> Vec<IconId> {
     let p = &s.d.presence;
-    let mut icons = vec![if p.net_service {
-        IconId::Wifi
-    } else {
-        IconId::Offline
-    }];
+    let mut icons = vec![net_icon(s)];
     if p.audio_service {
         icons.push(IconId::Volume);
     }

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Ultar-Kern in QEMU starten und Befehle über die serielle Konsole schicken.
-   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, MACHINE=q35, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)"""
-import codecs, os, re, subprocess, sys, time, select
+   qtest.py <esp.img> "befehl1" "befehl2" ...   (Umgebung: SMP=4, MEM=1024, MACHINE=q35, DEV=…, NETDEV=tap,id=n,…, NIC=e1000, WAIT=s)
+   "!befehl" geht an den QEMU-Monitor (MONITOR=<unix-socket>, z. B. "!set_link nic0 off"); QARGS braucht dann
+   "-monitor unix:<socket>,server,nowait"."""
+import codecs, os, re, socket, subprocess, sys, time, select
 
 img = sys.argv[1]
 cmds = sys.argv[2:]
@@ -40,6 +42,11 @@ def read_until(pat, timeout):
 ok = read_until("PROMPT", 60)
 for c in cmds:
     buf = b""
+    if c.startswith("!"):  # QEMU-Monitor (Kabel ziehen/stecken, Geräte)
+        m = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        m.connect(os.environ["MONITOR"]); m.sendall(c[1:].encode() + b"\n"); time.sleep(0.5); m.close()
+        print(f"\n[qtest] Monitor: {c[1:]}", flush=True)
+        continue
     if c.startswith("@"):  # Eingabe ohne auf Bereitschaft zu warten
         time.sleep(1.0)
         p.stdin.write(c[1:].encode().replace(b"\\n", b"\n") + b"\r"); p.stdin.flush()

@@ -19,7 +19,9 @@
 #       owner/group/mode of device nodes, evdev capability ioctls, /sys/class/input; a USB keyboard that
 #       comes and goes gets its own event node (geraete-hotplug.py),
 #   5e2. power off and restart from a process end the machine (ausschalten.sh, AUSSCHALTEN: ALLES OK),
-#   5f. the same programs on VMware-like hardware without virtio (vmware-like.sh), and the VMware machine's
+#   5f. the same programs on VMware-like hardware without virtio (vmware-like.sh),
+#   5g. the wired network with e1000, virtio-net, e1000e and vmxnet3: /sys/class/net, DHCP lease, DNS, TCP
+#       to the host, renew, static address, cable out and in (netz-e2e.sh, NETZ: ALLES OK), and the VMware machine's
 #       disk driven only through emulated USB/PS/2 input: locked at start, unlock, start menu, five apps open
 #       (tools/vm/vmware-input-e2e.sh, VMWARE-INPUT-E2E: ALLES OK; VMWARE_INPUT=0 skips it),
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
@@ -98,6 +100,17 @@ if [ "${VMWARE_LIKE:-1}" = 0 ]; then
   echo "skip  VMWARE-LIKE (VMWARE_LIKE=0)"
 else
   IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/vmware-like.sh
+fi
+# The wired network on every card the kernel drives in VMs (netz-e2e.sh). NETZ=0 skips it.
+if [ "${NETZ:-1}" = 0 ]; then
+  echo "skip  NETZ (NETZ=0)"
+else
+  NLOG="${NETZ_E2E_LOG:-$(mktemp)}"
+  if IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/netz-e2e.sh > "$NLOG" 2>&1 && grep -q "^NETZ: ALLES OK" "$NLOG"; then
+    grep -E "^(ok|skip)" "$NLOG"; echo "ok    NETZ: ALLES OK"
+  else
+    echo "FAIL  NETZ"; tail -40 "$NLOG"; exit 1
+  fi
 fi
 HLOG="${HLOG:-$(mktemp)}"
 SMP="${SMP:-2}" WAIT=180 timeout 360 python3 tools/kern-test/geraete-hotplug.py out/ultar-kern-esp.img > "$HLOG" 2>&1 || true

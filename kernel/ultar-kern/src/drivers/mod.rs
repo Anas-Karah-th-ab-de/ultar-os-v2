@@ -11,6 +11,7 @@ pub mod virtio;
 pub mod virtio_blk;
 pub mod virtio_net;
 pub mod virtio_rng;
+pub mod vmxnet3;
 // WERKSTATT-MODULE-BEGINN
 pub mod gen_ahci;
 pub mod gen_bochs_vga;
@@ -28,6 +29,7 @@ pub static ALL: &[&dyn Driver] = &[
     &virtio_net::DRV,
     &nvme::DRV,
     &virtio_rng::DRV,
+    &vmxnet3::DRV,
     &bruecke::DRV,
     &intel_display::DRV,
     &nvidia_display::DRV,

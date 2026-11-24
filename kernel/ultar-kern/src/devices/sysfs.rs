@@ -103,7 +103,9 @@ pub fn open(path: &str) -> Option<Node> {
         ["bus", "usb", "devices", n, rest @ ..] => usb_device(n, rest),
         ["bus", bus @ ("usb" | "platform"), "drivers", d, rest @ ..] => function_driver(bus, d, rest),
         ["bus", "platform", "devices", n, rest @ ..] => platform_device(n, rest),
-        ["class"] => dir(names(&["input"]), true),
+        ["class"] => dir(names(&["input", "net"]), true),
+        ["class", "net"] => dir(net_names(), true),
+        ["class", "net", n, rest @ ..] => net_class(n, rest),
         ["class", "input"] => dir(crate::input::all().into_iter().map(|n| format!("event{n}")), true),
         ["class", "input", n, rest @ ..] => input_class(n, rest),
         ["kernel"] => Some(Node::Dir(alloc::vec![
@@ -120,6 +122,49 @@ pub fn open(path: &str) -> Option<Node> {
     }
 }
 
+const NET_FILES: [&str; 13] = [
+    "address", "carrier", "duplex", "ifindex", "mtu", "operstate", "speed", "type", "uevent", "ultar_driver", "ultar_ipv4", "ultar_link_changes", "ultar_pci",
+];
+
+/// Interfaces with a driver (placeholders of unbound devices are left out, as Linux removes them).
+fn net_names() -> Vec<String> {
+    crate::driver::NET.lock().iter().filter(|d| !d.detached()).map(|d| d.name()).collect()
+}
+
+fn net_index(name: &str) -> Option<usize> {
+    crate::driver::NET.lock().iter().position(|d| !d.detached() && d.name() == name)
+}
+
+/// `/sys/class/net/<if>` and below (Linux layout; `ultar_*` where Linux uses netlink).
+fn net_class(name: &str, rest: &[&str]) -> Option<Node> {
+    let n = net_index(name)?;
+    let (mac, link, speed, driver) = {
+        let nl = crate::driver::NET.lock();
+        let d = nl.get(n)?;
+        (d.mac(), d.link(), d.speed_mbit(), d.driver())
+    };
+    let up = link.unwrap_or(true);
+    let pci = DEVICES.lock().iter().find(|b| b.driver.is_some() && b.slots.net.contains(&n)).map(|b| super::pci_name(&b.dev));
+    let text = match rest {
+        [] => return dir(names(&NET_FILES), false),
+        ["address"] => format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
+        ["carrier"] => format!("{}\n", u8::from(up)),
+        ["operstate"] => String::from(if up { "up\n" } else { "down\n" }),
+        ["speed"] => format!("{}\n", speed.map_or(-1, |s| s as i64)),
+        ["duplex"] => String::from(if up && speed.is_some() { "full\n" } else { "unknown\n" }),
+        ["mtu"] => String::from("1500\n"),
+        ["type"] => String::from("1\n"),
+        ["ifindex"] => format!("{}\n", n + 2),
+        ["uevent"] => format!("INTERFACE={name}\nIFINDEX={}\n", n + 2),
+        ["ultar_driver"] => format!("{driver}\n"),
+        ["ultar_pci"] => format!("{}\n", pci.unwrap_or_else(|| String::from("-"))),
+        ["ultar_ipv4"] => crate::net::ipv4_text(n),
+        ["ultar_link_changes"] => format!("{}\n", crate::net::link_changes(n)),
+        _ => return None,
+    };
+    file(text)
+}
+
 /// `/sys/class/input/eventN` and below.
 fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
     let index = crate::input::parse(n).filter(|&i| crate::input::exists(i))?;
@@ -134,7 +179,9 @@ fn input_class(n: &str, rest: &[&str]) -> Option<Node> {
 /// The right a write to control file `path` needs: announcing an input node again (`uevent`) is
 /// file administration (the seat service); everything else is driver work.
 pub fn right_for(path: &str) -> crate::isolation::rights::Rights {
-    if path.starts_with("/sys/class/") {
+    if path.starts_with("/sys/class/net/") {
+        crate::isolation::rights::Rights::NET_ADMIN
+    } else if path.starts_with("/sys/class/") {
         crate::isolation::rights::Rights::FILE_ADMIN
     } else {
         crate::isolation::rights::Rights::LOAD_DRIVER
@@ -360,6 +407,9 @@ fn driver_table() -> String {
 
 /// Whether the host path is a file of this tree that takes writes.
 pub fn is_control(path: &str) -> bool {
+    if let Some(rest) = path.strip_prefix("/sys/class/net/") {
+        return matches!(rest.split_once('/'), Some((n, "ultar_ipv4")) if net_index(n).is_some());
+    }
     if let Some(rest) = path.strip_prefix("/sys/class/input/") {
         return matches!(rest.split_once('/'), Some((n, "uevent")) if crate::input::parse(n).is_some());
     }
@@ -370,6 +420,10 @@ pub fn is_control(path: &str) -> bool {
 
 /// A write to a control file (the caller checked the right `LOAD_DRIVER`).
 pub fn write(path: &str, text: &str) -> Result<(), i64> {
+    if let Some(rest) = path.strip_prefix("/sys/class/net/") {
+        let n = rest.split('/').next().and_then(net_index).ok_or(-ENODEV)?;
+        return crate::net::ipv4_write(n, text).map_err(|_| -EINVAL);
+    }
     if let Some(rest) = path.strip_prefix("/sys/class/input/") {
         let index = rest.split('/').next().and_then(crate::input::parse).filter(|&i| crate::input::exists(i)).ok_or(-ENODEV)?;
         return match text {
