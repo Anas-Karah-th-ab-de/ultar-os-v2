@@ -214,9 +214,7 @@ impl LockState {
         let checked = self.checking.take();
         match outcome {
             Some(AuthOutcome::Granted) => {
-                let Some(name) = checked else {
-                    return None;
-                };
+                let name = checked?;
                 if self.owner.as_ref().is_some_and(|owner| *owner != name) {
                     self.error = Some(SignInError::OtherUser);
                     return None;
