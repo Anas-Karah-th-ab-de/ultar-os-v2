@@ -123,6 +123,10 @@ if [ -n "${MODULES:-}" ]; then
     for c in ${NVFW:-tu102 tu104 tu106 tu116 tu117}; do
       if [ -d "$FW/nvidia/$c" ]; then mkdir -p "$STAGE/lib/firmware/nvidia"; cp -a "$FW/nvidia/$c" "$STAGE/lib/firmware/nvidia/"; fi
     done
+    # GSP-Firmware aus nvidia-firmware-<Zweig> (Turing: gsp_tu10x.bin; gsp_ga10x.bin für Ampere+ bleibt draußen)
+    for g in "$FW"/nvidia/[0-9]*/gsp_tu10x.bin*; do
+      if [ -e "$g" ]; then d=${g#"$FW"/}; mkdir -p "$STAGE/lib/firmware/$(dirname "$d")"; cp -a "$g" "$STAGE/lib/firmware/$d"; fi
+    done
   fi
   # Verweise nachziehen (Turing verweist z. B. auf nvidia/gp102/acr), bis keiner mehr ins Leere zeigt
   if [ -d "$STAGE/lib/firmware" ]; then

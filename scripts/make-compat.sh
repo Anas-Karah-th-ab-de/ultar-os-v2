@@ -56,6 +56,12 @@ if [ "$ARCH" = "$(dpkg --print-architecture)" ]; then
   trap 'for d in dev sys proc; do umount -l "$ROOT/$d" 2>/dev/null || true; done' EXIT
   [ "$PROFILE" = desktop ] && [ "$ARCH" = amd64 ] && chroot "$ROOT" dpkg --add-architecture i386
   chroot "$ROOT" apt-get update -qq
+  # NVIDIA-GSP-Firmware (nvidia/<Version>/gsp_tu10x.bin, für nvidia_display/nouveau) aus restricted.
+  # Der Paketname trägt die Version (nvidia-firmware-570-570.211.01): neueste des Zweigs NVIDIA_FW nehmen.
+  if [ "$ARCH" = amd64 ] && printf '%s\n' $PKGS | grep -qx linux-image-generic; then
+    NVPK=$(chroot "$ROOT" apt-cache pkgnames "nvidia-firmware-${NVIDIA_FW:-570}-" 2>/dev/null | grep -v server | sort -V | tail -1 || true)
+    if [ -n "$NVPK" ]; then PKGS="$PKGS $NVPK"; else echo "Hinweis: nvidia-firmware-${NVIDIA_FW:-570} fehlt in $SUITE"; fi
+  fi
   # Pakete, die es in dieser Ubuntu-Version nicht gibt, auslassen (z. B. python3-gbinder in 26.04)
   VERFUEGBAR=""
   for pk in $PKGS; do
