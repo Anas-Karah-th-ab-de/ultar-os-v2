@@ -5,7 +5,7 @@
 //! run 3D and compute work. It is the base of hardware acceleration for the compositor and of
 //! local models on the integrated GPU (plan: `docs/integration/intel-gt.md`).
 //!
-//! Stage G0/G1a of that plan lives here:
+//! Stages G0 to G1c (command buffers) of that plan live here:
 //!
 //! * [`ident`] – which graphics and media IP the device has (GMD_ID),
 //! * [`forcewake`] – waking the GT power domains before their registers are touched,
@@ -13,6 +13,9 @@
 //! * [`fw`] – the container of the GuC firmware (CSS header, versions, RSA key position),
 //! * [`wopcm`] – the layout of the write-once protected memory the firmware runs in,
 //! * [`guc`] – reset, boot parameters, RSA and DMA transfer, load status,
+//! * [`ads`], [`params`], [`hxg`], [`hwconfig`] – the data block the firmware starts with, its boot
+//!   parameters, messages over registers and the hardware configuration table,
+//! * [`ctb`] – the command buffers (requests, responses, events),
 //! * [`state`] – a read-out of all of that for the kernel log and the self test.
 //!
 //! Hardware: graphics 12.70/12.71/12.74 (Meteor Lake / Arrow Lake, "Xe_LPG", e.g. the Arc 140T
@@ -33,6 +36,7 @@
 extern crate alloc;
 
 pub mod ads;
+pub mod ctb;
 pub mod engines;
 pub mod error;
 pub mod forcewake;

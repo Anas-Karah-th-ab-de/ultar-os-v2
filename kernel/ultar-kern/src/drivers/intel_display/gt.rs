@@ -6,11 +6,12 @@
 //! Stage G0: identification (graphics/media IP), forcewake, engines, GuC status – read at probe.
 //! Stage G1a/G1b: the self test (GTTEST) loads the GuC firmware from the boot medium, resets the
 //! GuC, hands over signature, image and the minimal ADS block through the GGTT, waits until the
-//! firmware is ready and asks it for the hardware config table over the register message channel.
+//! firmware is ready, asks it for the hardware config table over the register message channel,
+//! switches the command buffers (CTB) on and sends a first request through them.
 //! The GuC is put back into reset afterwards: engines and submission come with stage G3.
 
-use super::buffer::flush;
 use super::device::Device;
+use super::gt_mem::GgttBuf;
 use super::mmio::Mmio;
 use super::DEVICE;
 use crate::kprintln;
@@ -18,7 +19,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
-use ultar_intel_display::ggtt;
+use ultar_intel_gt::ctb::{self, Ct};
 use ultar_intel_gt::forcewake::{Domain, Forcewake};
 use ultar_intel_gt::guc::{self, Params, Stage, Status};
 use ultar_intel_gt::state::{self, GtFacts};
@@ -50,68 +51,6 @@ pub fn text() -> Option<String> {
     FACTS.lock().as_ref().map(|f| format!("{f}"))
 }
 
-/// Kernel pages mapped into the GGTT for the GuC.
-struct GgttBuf {
-    phys: u64,
-    pages: u64,
-    gtt: u32,
-}
-
-impl GgttBuf {
-    fn new(dev: &mut Device, bytes: u64) -> Result<GgttBuf, String> {
-        let pages = bytes.div_ceil(4096).max(1);
-        let phys = crate::mem::alloc_pages(pages as usize).ok_or("no memory for a GuC buffer")?;
-        let gtt = match dev.win.alloc(pages * 4096) {
-            Ok(g) => g,
-            Err(e) => {
-                crate::mem::free_run(phys, pages);
-                return Err(format!("GGTT: {e}"));
-            }
-        };
-        let list: Vec<u64> = (0..pages).map(|i| phys + i * 4096).collect();
-        let buf = GgttBuf { phys, pages, gtt };
-        // the GT does not look into the CPU's caches: write the zeroes out, and drop the lines so
-        // what the GuC writes later is read from memory
-        flush(phys, pages * 4096);
-        if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs) {
-            buf.release(dev);
-            return Err(format!("GGTT: {e}"));
-        }
-        Ok(buf)
-    }
-
-    /// Copies `data` to the start of the buffer and writes it out of the CPU caches.
-    fn fill(&mut self, data: &[u8]) {
-        let n = data.len().min((self.pages * 4096) as usize);
-        // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
-        // does not exceed it, and `data` is a separate heap allocation (no overlap).
-        unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), self.phys as *mut u8, n) };
-        flush(self.phys, n as u64);
-    }
-
-    /// A copy of the first `len` bytes (what the GuC wrote there).
-    fn bytes(&self, len: usize) -> Vec<u8> {
-        let n = len.min((self.pages * 4096) as usize);
-        // What the GT writes does not reach the CPU's caches: on the Beelink the first five lines
-        // of the table still read as the zeroes from before. Dropping the lines first makes the
-        // copy come from memory.
-        flush(self.phys, n as u64);
-        let mut out = alloc::vec![0u8; n];
-        // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
-        // does not exceed it, and `out` is a fresh heap allocation (no overlap).
-        unsafe { core::ptr::copy_nonoverlapping(self.phys as *const u8, out.as_mut_ptr(), n) };
-        out
-    }
-
-    /// Points the entries at the scratch page again and frees the pages (the caller made sure
-    /// the hardware no longer reads them).
-    fn release(self, dev: &mut Device) {
-        ggtt::unmap(&mut dev.mmio, self.gtt, self.pages as u32, dev.scratch);
-        dev.win.free(self.gtt);
-        crate::mem::free_run(self.phys, self.pages);
-    }
-}
-
 /// Failed checks, collected.
 struct Report {
     fails: Vec<&'static str>,
@@ -141,6 +80,34 @@ struct Loaded {
     status: Status,
     /// Size in bytes and number of entries of the hardware config table, if the GuC got ready.
     hwconfig: Option<Result<(u32, usize), String>>,
+    /// What the request over the command buffers brought, if the GuC got ready.
+    ctb: Option<Result<String, String>>,
+}
+
+/// GuC action: opt into features by a list of keys in memory.
+const ACTION_OPT_IN_FEATURE_KLV: u32 = 0x550e;
+/// Key (length 0): report the extended kind of a memory access fault.
+const KLV_OPT_IN_EXT_CAT_ERR_TYPE: u32 = 0x4001 << 16;
+
+/// Switches the command buffers on and sends the first request Linux sends over them.
+fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, String> {
+    let ct_gtt = buffer(dev, bufs, ctb::SIZE_BYTES as u64)?;
+    let mut mem = bufs.last().map(GgttBuf::words).ok_or("no CTB buffer")?;
+    let klv_gtt = buffer(dev, bufs, 4096)?;
+    if let Some(b) = bufs.last_mut() {
+        b.fill(&KLV_OPT_IN_EXT_CAT_ERR_TYPE.to_le_bytes());
+    }
+    let mut ct = Ct::enable(&mut dev.mmio, &mut mem, ct_gtt).map_err(|e| format!("enable: {e}"))?;
+    let t0 = crate::arch::uptime_ns();
+    let action = [ACTION_OPT_IN_FEATURE_KLV, klv_gtt, 0, 1];
+    let (data0, events) = ct
+        .request(&mut dev.mmio, &mut mem, &action, 1_000_000)
+        .map_err(|e| format!("request: {e}"))?;
+    let us = (crate::arch::uptime_ns() - t0) / 1000;
+    Ok(format!(
+        "opt-in request answered in {us} µs (data {data0:#x}, {} event(s))",
+        events.len()
+    ))
 }
 
 /// Allocates a GuC buffer, keeps it in `bufs` (released by the caller) and returns its GGTT
@@ -223,8 +190,14 @@ fn load(
         Err(ultar_intel_gt::Error::GucLoad { status }) => Status::decode(status),
         Err(e) => return Err(format!("{e}")),
     };
-    let hwconfig = (status.load() == guc::Load::Ready).then(|| hwconfig_table(dev, bufs));
-    Ok(Loaded { status, hwconfig })
+    let ready = status.load() == guc::Load::Ready;
+    let hwconfig = ready.then(|| hwconfig_table(dev, bufs));
+    let ctb = ready.then(|| ctb_request(dev, bufs));
+    Ok(Loaded {
+        status,
+        hwconfig,
+        ctb,
+    })
 }
 
 /// Loads the GuC with `file`; afterwards the GuC is back in reset and every buffer is freed.
@@ -315,6 +288,11 @@ fn guc_check(dev: &mut Device, r: &mut Report) {
                     &format!("{size} bytes, {entries} entries"),
                 ),
                 Some(Err(e)) => r.check(false, "hardware config table from the GuC", &e),
+                None => {}
+            }
+            match l.ctb {
+                Some(Ok(t)) => r.check(true, "command buffers (CTB)", &t),
+                Some(Err(e)) => r.check(false, "command buffers (CTB)", &e),
                 None => {}
             }
         }
