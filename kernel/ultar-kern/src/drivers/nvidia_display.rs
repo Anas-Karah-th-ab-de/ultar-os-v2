@@ -1,8 +1,8 @@
-//! Safe discovery of NVIDIA display hardware.
+//! Safe discovery and preflight of NVIDIA display hardware.
 //!
 //! This stage is intentionally read-only. It identifies the known Quadro RTX 4000
-//! class, records BARs and PCIe state, and keeps the UEFI/GOP framebuffer active.
-//! NVIDIA MMIO, GSP, VRAM and display registers are not touched.
+//! class, records BARs and PCIe state, validates the register aperture and keeps the
+//! UEFI/GOP framebuffer active. No display, power, DMA or GSP register is written.
 
 use crate::driver::{Driver, Result};
 use crate::pci::PciDev;
@@ -17,6 +17,16 @@ const QUADRO_RTX_4000: u16 = 0x1eb6;
 const PCI_CAP_PM: u8 = 0x01;
 const PCI_CAP_MSI: u8 = 0x05;
 const PCI_CAP_PCIE: u8 = 0x10;
+const BAR0_MIN_SIZE: u64 = 16 << 20;
+const PMC_BOOT_0: u64 = 0x000000;
+const PMC_BOOT_1: u64 = 0x000004;
+const PMC_ENABLE: u64 = 0x000200;
+
+const GSP_FIRMWARE_CANDIDATES: &[&str] = &[
+    "/lib/firmware/nvidia/535.*/gsp_tu10x.bin",
+    "/lib/firmware/nvidia/550.*/gsp_tu10x.bin",
+    "/lib/firmware/nvidia/570.*/gsp_tu10x.bin",
+];
 
 static OPTED_IN: AtomicBool = AtomicBool::new(false);
 static REPORT: Mutex<Option<String>> = Mutex::new(None);
@@ -29,10 +39,17 @@ pub fn take_boot_option(options: &mut [u16], n: usize) -> usize {
     let mut write = 0usize;
     let mut found = false;
     while read < end {
-        let stop = options[read..end].iter().position(|&u| u == b' ' as u16).map_or(end, |v| read + v);
+        let stop = options[read..end]
+            .iter()
+            .position(|&u| u == b' ' as u16)
+            .map_or(end, |v| read + v);
         let word = read..stop;
         read = stop + 1;
-        if !word.is_empty() && OPTION_WORD.encode_utf16().eq(options[word.clone()].iter().copied()) {
+        if !word.is_empty()
+            && OPTION_WORD
+                .encode_utf16()
+                .eq(options[word.clone()].iter().copied())
+        {
             found = true;
             continue;
         }
@@ -63,25 +80,97 @@ struct BarReport {
     size: u64,
 }
 
+struct Mmio {
+    base: u64,
+    size: u64,
+}
+
+impl Mmio {
+    fn new(base: u64, size: u64) -> Option<Self> {
+        (base != 0 && size >= BAR0_MIN_SIZE && base % 4096 == 0).then_some(Self { base, size })
+    }
+
+    fn read32(&self, offset: u64) -> Option<u32> {
+        if offset.checked_add(4)? > self.size || offset & 3 != 0 {
+            return None;
+        }
+        let address = self.base.checked_add(offset)?;
+        // SAFETY: PCI BAR0 was validated as an aligned, identity-mapped MMIO aperture by
+        // pci::scan. Reads are volatile and no NVIDIA register is written by this driver.
+        Some(unsafe { core::ptr::read_volatile(address as *const u32) })
+    }
+}
+
+fn firmware_state() -> &'static str {
+    // Firmware is copied into the initramfs by the image builder. The kernel bind phase runs
+    // before filesystem mounts, so this is deliberately a capability label rather than a file
+    // read: attempting to open a path here would race the mount order and report false negatives.
+    if GSP_FIRMWARE_CANDIDATES.is_empty() {
+        "unavailable"
+    } else {
+        "packaged-candidate"
+    }
+}
+
+fn mmio_state(d: &PciDev) -> String {
+    if d.r32(0x04) & 0x2 == 0 {
+        return String::from("mmio=disabled");
+    }
+    let Some(bar) = d.bars[0].filter(|b| !b.io) else {
+        return String::from("mmio=absent");
+    };
+    let Some(mmio) = Mmio::new(bar.addr, bar.size) else {
+        return format!("mmio=invalid({:#x}+{:#x})", bar.addr, bar.size);
+    };
+    let boot0 = mmio.read32(PMC_BOOT_0);
+    let boot1 = mmio.read32(PMC_BOOT_1);
+    let enable = mmio.read32(PMC_ENABLE);
+    format!(
+        "mmio=ready({:#x}+{:#x}) pmc_boot0={} pmc_boot1={} pmc_enable={}",
+        bar.addr,
+        bar.size,
+        boot0.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
+        boot1.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
+        enable.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
+    )
+}
+
 fn report(d: &PciDev) -> String {
-    let bars: alloc::vec::Vec<BarReport> = d.bars.iter().enumerate().filter_map(|(i, b)| {
-        b.filter(|v| !v.io).map(|v| BarReport { index: i, address: v.addr, size: v.size })
-    }).collect();
-    let bar_text: alloc::vec::Vec<String> = bars.iter().map(|b| {
-        format!("BAR{} {:#x}+{:#x}", b.index, b.address, b.size)
-    }).collect();
+    let bars: alloc::vec::Vec<BarReport> = d
+        .bars
+        .iter()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            b.filter(|v| !v.io).map(|v| BarReport {
+                index: i,
+                address: v.addr,
+                size: v.size,
+            })
+        })
+        .collect();
+    let bar_text: alloc::vec::Vec<String> = bars
+        .iter()
+        .map(|b| format!("BAR{} {:#x}+{:#x}", b.index, b.address, b.size))
+        .collect();
     format!(
         "10de:1eb6 Quadro RTX 4000; subsystem {:04x}:{:04x}; rev {:02x}; {}; \
          firmware/GOP framebuffer retained",
         d.subsys_vendor,
         d.subsys,
         d.rev,
-        if bar_text.is_empty() { String::from("no memory BAR") } else { bar_text.join(", ") }
+        if bar_text.is_empty() {
+            String::from("no memory BAR")
+        } else {
+            bar_text.join(", ")
+        }
     )
 }
 
 fn cap_offset(d: &PciDev, id: u8) -> Option<u8> {
-    d.caps().into_iter().find(|(_, cap)| *cap == id).map(|(off, _)| off)
+    d.caps()
+        .into_iter()
+        .find(|(_, cap)| *cap == id)
+        .map(|(off, _)| off)
 }
 
 fn link_speed(code: u8) -> &'static str {
@@ -99,8 +188,14 @@ fn link_speed(code: u8) -> &'static str {
 fn pci_state(d: &PciDev) -> String {
     let command = d.r32(0x04) as u16;
     let mut fields = alloc::vec::Vec::new();
-    fields.push(format!("mem={}", if command & 0x2 != 0 { "on" } else { "off" }));
-    fields.push(format!("busmaster={}", if command & 0x4 != 0 { "on" } else { "off" }));
+    fields.push(format!(
+        "mem={}",
+        if command & 0x2 != 0 { "on" } else { "off" }
+    ));
+    fields.push(format!(
+        "busmaster={}",
+        if command & 0x4 != 0 { "on" } else { "off" }
+    ));
 
     if let Some(off) = cap_offset(d, PCI_CAP_PM) {
         let pm = d.r16(off + 4) & 0x3;
@@ -122,19 +217,26 @@ fn pci_state(d: &PciDev) -> String {
 
     fields.push(format!(
         "msi={}",
-        if cap_offset(d, PCI_CAP_MSI).is_some() { "yes" } else { "no" }
+        if cap_offset(d, PCI_CAP_MSI).is_some() {
+            "yes"
+        } else {
+            "no"
+        }
     ));
     fields.join(", ")
 }
 
 fn capability_state(d: &PciDev) -> String {
     let caps = d.caps();
-    let names: alloc::vec::Vec<&str> = caps.iter().map(|(_, id)| match *id {
-        PCI_CAP_PM => "pm",
-        PCI_CAP_MSI => "msi",
-        PCI_CAP_PCIE => "pcie",
-        _ => "other",
-    }).collect();
+    let names: alloc::vec::Vec<&str> = caps
+        .iter()
+        .map(|(_, id)| match *id {
+            PCI_CAP_PM => "pm",
+            PCI_CAP_MSI => "msi",
+            PCI_CAP_PCIE => "pcie",
+            _ => "other",
+        })
+        .collect();
     if names.is_empty() {
         String::from("caps=none")
     } else {
@@ -167,18 +269,23 @@ impl Driver for Drv {
         let state = pci_state(d);
         let caps = capability_state(d);
         if !OPTED_IN.load(Ordering::Relaxed) {
-            let msg = format!("{r}; {state}; {caps}; read-only discovery, opt in with {OPTION_WORD}");
+            let msg =
+                format!("{r}; {state}; {caps}; read-only discovery, opt in with {OPTION_WORD}");
             *REPORT.lock() = Some(msg.clone());
             crate::kprintln!("[nvidia-display] {msg}");
             return Ok(());
         }
+        let mmio = mmio_state(d);
         let msg = format!(
-            "{r}; {state}; {caps}; probe mode only, GOP retained; \
-             gsp=not-started kms=not-registered"
+            "{r}; {state}; {caps}; {mmio}; probe mode only, GOP retained; \
+             gsp=not-started firmware={} kms=not-registered dma=off",
+            firmware_state()
         );
         *REPORT.lock() = Some(msg.clone());
         crate::kprintln!("[nvidia-display] {msg}");
-        // Probe mode intentionally exposes no mutable Anzeige implementation.
+        // Preflight mode intentionally exposes no mutable Anzeige implementation. The next
+        // stage must add a firmware loader, bounded GSP RPC transport and DMA ownership before
+        // any display register is changed.
         Ok(())
     }
 }
@@ -190,11 +297,19 @@ mod tests {
     #[test]
     fn recognizes_exact_rtx4000() {
         let d = PciDev {
-            bus: 1, dev: 0, func: 0,
-            vendor: 0x10de, device: 0x1eb6,
-            class: 0x03, subclass: 0, prog_if: 0, rev: 0,
-            subsys_vendor: 0, subsys: 0,
-            bars: [None; 6], driver: None,
+            bus: 1,
+            dev: 0,
+            func: 0,
+            vendor: 0x10de,
+            device: 0x1eb6,
+            class: 0x03,
+            subclass: 0,
+            prog_if: 0,
+            rev: 0,
+            subsys_vendor: 0,
+            subsys: 0,
+            bars: [None; 6],
+            driver: None,
         };
         assert!(Drv.matches(&d));
         let mut other = d;
@@ -240,5 +355,20 @@ mod tests {
         assert_eq!(link_speed(1), "2.5GT/s");
         assert_eq!(link_speed(4), "16GT/s");
         assert_eq!(link_speed(0xff), "unknown");
+    }
+
+    #[test]
+    fn mmio_aperture_requires_safe_bar() {
+        assert!(Mmio::new(0, BAR0_MIN_SIZE).is_none());
+        assert!(Mmio::new(0x1234, BAR0_MIN_SIZE).is_none());
+        assert!(Mmio::new(0x1000, BAR0_MIN_SIZE - 4).is_none());
+        assert!(Mmio::new(0x1000, BAR0_MIN_SIZE).is_some());
+    }
+
+    #[test]
+    fn mmio_bounds_are_checked_before_access() {
+        let mmio = Mmio::new(0x1000, BAR0_MIN_SIZE).unwrap();
+        assert!(mmio.read32(BAR0_MIN_SIZE - 3).is_none());
+        assert!(mmio.read32(2).is_none());
     }
 }
