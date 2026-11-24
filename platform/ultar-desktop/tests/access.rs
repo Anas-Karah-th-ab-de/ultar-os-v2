@@ -91,7 +91,17 @@ fn tab_stays_inside_an_open_sheet_and_esc_returns() {
         assert!(p.view.ui.focused().is_some());
     }
     assert_eq!(p.view.ui.focused(), first, "Tab cycles inside the sheet");
+    // The focused tile shows its reason as a tooltip: the first Esc dismisses it
+    // (WCAG 1.4.13), the next one closes the sheet.
+    let tip = p
+        .view
+        .ui
+        .focused()
+        .is_some_and(|n| p.view.ui.tooltip(n).is_some());
     h.key_popup(Key::Escape);
+    if tip && h.popup.is_some() {
+        h.key_popup(Key::Escape);
+    }
     assert!(h.popup.is_none() && h.shell.d.open == Open::None);
 }
 

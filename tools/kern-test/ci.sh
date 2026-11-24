@@ -39,6 +39,8 @@
 #       user, its keyboards through /dev/ultar/uinput (bt-e2e.sh, BT: ALLES OK; virtual input devices alone:
 #       bttest uinput in the first boot, BTTEST-UINPUT: ALLES OK),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
+#   0. before the boots: regressions of the owner's VMware reports – Files' list view and the quick settings by
+#      real clicks through the compositor, the launcher's page argument (ui-regress.sh, UI-REGRESS: ALLES OK).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
 set -euo pipefail
@@ -49,6 +51,8 @@ if ! idout=$(cargo test -q --manifest-path drivers/kernel/intel-display/Cargo.to
   echo "FAIL  intel-display unit tests"; echo "$idout" | tail -30; exit 1
 fi
 echo "ok    intel-display unit tests ($(echo "$idout" | grep -oE '[0-9]+ passed' | head -1))"
+# regressions of the owner's VMware reports: Files list view, quick settings by real clicks, launcher pages
+bash tools/kern-test/ui-regress.sh
 if [ -z "${BUSCK:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -p ultar-bus --example selfcheck --target x86_64-unknown-linux-gnu
   BUSCK="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release/examples/selfcheck"

@@ -49,6 +49,7 @@ pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, O
             let chosen = w.options.get(w.selected).cloned();
             (Role::Select, named(&w.name), chosen)
         }
+        Widget::Slider(w) if w.unknown => (Role::Slider, named(&w.name), None),
         Widget::Slider(w) => (Role::Slider, named(&w.name), Some(number(w.value))),
         Widget::TextField(w) if w.is_password() => (Role::PasswordField, named(&w.name), None),
         Widget::TextField(w) => {

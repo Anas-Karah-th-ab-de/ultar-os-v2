@@ -256,7 +256,9 @@ impl Table {
         hovered: bool,
     ) {
         let direction = p.env().direction;
-        let selected = self.selected == Some(row);
+        // Every marked row of a multi-selection table (select all, a range), not only the
+        // keyboard's row.
+        let selected = self.is_selected(row);
         if selected || hovered {
             let role = if selected {
                 ColorRole::Line

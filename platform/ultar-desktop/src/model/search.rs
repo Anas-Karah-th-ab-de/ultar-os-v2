@@ -58,6 +58,18 @@ pub const SETTING_PANELS: [&str; 10] = [
     "account",
 ];
 
+/// The area of the Settings app that shows a panel (`settings://<area>`): the launcher
+/// hands it to Settings as `--area <area>`, which accepts only the ids of its areas.
+pub fn panel_area(panel: &str) -> &str {
+    match panel {
+        "display" => "displays",
+        "desktop_bar" => "desktop",
+        "date_time" => "datetime",
+        "account" => "accounts",
+        other => other,
+    }
+}
+
 /// One result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Hit {

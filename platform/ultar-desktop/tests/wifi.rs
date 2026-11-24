@@ -277,7 +277,8 @@ fn the_wifi_tile_names_the_network_and_the_list_needs_a_device() {
     h.apply(Outcome::surfaces());
     let p = h.popup.as_ref().unwrap();
     let more = p.view.node(&Target::TileMore(TileId::Wifi)).unwrap();
-    assert!(p.view.ui.is_disabled(more));
+    // the arrow still opens the page (which says it); the reason is its tooltip
+    assert!(!p.view.ui.is_disabled(more));
     assert_eq!(
         p.view
             .ui
@@ -290,12 +291,21 @@ fn the_wifi_tile_names_the_network_and_the_list_needs_a_device() {
 #[test]
 fn the_vpn_tile_and_its_connections() {
     let mut h = harness(false);
-    // No VPN service: disabled with the reason.
+    // No VPN service: the reason as tooltip, and a click opens the VPN page saying it.
     let p = h.popup.as_ref().unwrap();
-    assert!(p
+    let tile = p.view.node(&Target::Tile(TileId::Vpn)).unwrap();
+    assert!(!p.view.ui.is_disabled(tile) && p.view.ui.tooltip(tile).is_some());
+    h.click_popup(Target::Tile(TileId::Vpn));
+    assert_eq!(h.shell.d.open, Open::Quick(QuickPage::Vpn));
+    assert!(h
+        .popup
+        .as_ref()
+        .unwrap()
         .view
-        .node(&Target::Tile(TileId::Vpn))
-        .is_some_and(|n| p.view.ui.is_disabled(n)));
+        .node(&Target::VpnSwitch)
+        .is_some_and(|n| { h.popup.as_ref().unwrap().view.ui.is_disabled(n) }));
+    h.click_popup(Target::QuickBack);
+    assert_eq!(h.shell.d.open, Open::Quick(QuickPage::Tiles));
     // No TUN in the kernel: disabled with that reason.
     let mut no_tun = vpn(&[], VpnStatus::Off);
     no_tun.available = false;

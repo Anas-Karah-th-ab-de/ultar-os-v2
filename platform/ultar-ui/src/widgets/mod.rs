@@ -64,7 +64,7 @@ pub use radio::{Pictogram, RadioGroup, RadioLayout};
 pub use scroll::Scroll;
 pub use search_field::SearchField;
 pub use select::{Select, MAX_VISIBLE_OPTIONS};
-pub use slider::Slider;
+pub use slider::{Slider, NO_VALUE};
 pub use style::Visual;
 pub use switch::Switch;
 pub use table::{Table, TableCursor, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS};

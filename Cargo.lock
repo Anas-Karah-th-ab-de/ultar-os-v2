@@ -5573,6 +5573,7 @@ dependencies = [
  "ultar-hal",
  "ultar-i18n",
  "ultar-service",
+ "ultar-settings",
  "ultar-surface",
  "ultar-ui",
 ]

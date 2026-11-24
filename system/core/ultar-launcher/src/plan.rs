@@ -129,7 +129,16 @@ pub(crate) fn prepare(
 ) -> Result<Prepared, LaunchError> {
     let entry = core.installed(id)?.clone();
     let manifest = core.manifest(id)?;
-    let (program, restart) = program(&manifest, role, &entry)?;
+    let (mut program, restart) = program(&manifest, role, &entry)?;
+    // `[open] page_arg`: the page of the URI as the app's own argument (checked words only).
+    if let (Role::Ui, Some(arg), Some(page)) = (
+        role,
+        manifest.open_page_arg.as_ref(),
+        opening.uri.as_deref().and_then(crate::open::page),
+    ) {
+        program.args.push(arg.clone());
+        program.args.push(page.to_owned());
+    }
     let (platform, accepted) = (&core.platform, &core.config.accept_missing);
     let cell = platform
         .require(Feature::Cell, accepted)

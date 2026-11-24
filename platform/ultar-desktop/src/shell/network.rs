@@ -28,21 +28,43 @@ fn show(s: &mut Shell, page: QuickPage, calls: Vec<Call>) -> Outcome {
 /// qs.wifi.list / qs.vpn.list: the page of the tile's list part.
 pub(super) fn more(s: &mut Shell, id: TileId) -> Option<Outcome> {
     match id {
-        // The networks page asks for a fresh list and the saved names.
-        TileId::Wifi => Some(show(s, QuickPage::Wifi, vec![Call::Networks, Call::Known])),
+        // The networks page asks for a fresh list and the saved names (without the network
+        // service the page only says so).
+        TileId::Wifi => Some(wifi_page(s)),
         TileId::Vpn => Some(show(s, QuickPage::Vpn, Vec::new())),
         _ => None,
     }
 }
 
-/// qs.vpn: the last used connection on or off; without one, Settings > Network > VPN.
+/// The Wi-Fi page; it asks the network service for the networks when there is one.
+pub(super) fn wifi_page(s: &mut Shell) -> Outcome {
+    let calls = if s.d.svc.net.is_some() {
+        vec![Call::Networks, Call::Known]
+    } else {
+        Vec::new()
+    };
+    show(s, QuickPage::Wifi, calls)
+}
+
+/// shell.status on the network symbol: the Wi-Fi page directly (again: closed).
+pub(super) fn wifi_from_bar(s: &mut Shell) -> Outcome {
+    if s.d.open == Open::Quick(QuickPage::Wifi) {
+        return s.close();
+    }
+    let mut out = wifi_page(s);
+    out.bar = true;
+    out
+}
+
+/// qs.vpn: the last used connection on or off; without one, Settings > Network > VPN;
+/// without the VPN service its page, which says so.
 pub(super) fn vpn_tile(s: &mut Shell) -> Outcome {
     match &s.d.svc.vpn {
         Some(v) if v.profiles.is_empty() => {
             launch(s, SETTINGS, Opening::settings_page(VPN_SETTINGS))
         }
         Some(v) => service(Some(Call::SetVpn(!wifi::vpn_on(v), None))),
-        None => Outcome::none(),
+        None => show(s, QuickPage::Vpn, Vec::new()),
     }
 }
 

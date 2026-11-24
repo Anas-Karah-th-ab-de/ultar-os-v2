@@ -236,7 +236,8 @@ fn the_quick_settings_have_the_boards_tiles_and_reasons() {
     }
     assert!(p.view.node(&Target::Tile(TileId::Vpn)).is_none());
     // qs.wifi / qs.mobile / qs.bluetooth / airplane and their lists: no service on the
-    // bus – disabled with the reason, never a click without effect.
+    // bus – the reason as tooltip, and a click opens their page or their place in
+    // Settings (never a click without effect); volume and output stay disabled.
     for t in [
         Target::Tile(TileId::Wifi),
         Target::TileMore(TileId::Wifi),
@@ -245,9 +246,12 @@ fn the_quick_settings_have_the_boards_tiles_and_reasons() {
         Target::Tile(TileId::Bluetooth),
         Target::TileMore(TileId::Bluetooth),
         Target::Tile(TileId::Airplane),
-        Target::Volume,
-        Target::Output,
     ] {
+        let node = p.view.node(&t).unwrap();
+        assert!(!p.view.ui.is_disabled(node), "{t:?}");
+        assert!(p.view.ui.tooltip(node).is_some(), "{t:?} says why");
+    }
+    for t in [Target::Volume, Target::Output] {
         let node = p.view.node(&t).unwrap();
         assert!(p.view.ui.is_disabled(node), "{t:?}");
         assert!(p.view.ui.tooltip(node).is_some(), "{t:?} says why");

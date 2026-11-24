@@ -64,8 +64,15 @@ impl DesktopApp {
             }
             Effect::DisplayMode(mode) => self.choose_display_mode(*mode),
             Effect::Lock => {
-                if let Some(link) = &self.link {
-                    let _ = link.ports.lock();
+                // A lock that did not happen is said, never silent (the lock screen
+                // service may be missing or refuse).
+                let locked = self.link.as_ref().is_some_and(|l| l.ports.lock().is_ok());
+                if !locked {
+                    let now = self.now_ms();
+                    self.shell
+                        .d
+                        .notes
+                        .post_notice(SHELL, "desk.service.failed", now);
                 }
             }
             Effect::Workspace(index) => {

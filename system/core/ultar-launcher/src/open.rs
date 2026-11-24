@@ -68,6 +68,33 @@ pub fn scheme_ok(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"+-.".contains(b))
 }
 
+/// Whether `arg` may be an `[open] page_arg`: an option word (`--` and 1–30 lower-case
+/// letters, digits or `-`).
+pub fn page_arg_ok(arg: &str) -> bool {
+    let Some(word) = arg.strip_prefix("--") else {
+        return false;
+    };
+    (1..=30).contains(&word.len())
+        && word
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !word.starts_with('-')
+}
+
+/// The page a URI names for an app with an `[open] page_arg`: the first part after
+/// `<scheme>://` (`settings://network/vpn` → `network`), 1–32 lower-case letters, digits,
+/// `_` or `-`. Anything else names no page (the app then opens at its start).
+pub fn page(uri: &str) -> Option<&str> {
+    let (_, rest) = uri.split_once("://")?;
+    let page = rest.split(['/', '?', '#']).next()?;
+    let ok = (1..=32).contains(&page.len())
+        && page
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+        && !page.starts_with('-');
+    ok.then_some(page)
+}
+
 /// The `[open] schemes` of a manifest, checked.
 pub fn schemes(names: Vec<String>) -> Result<Vec<String>, ManifestError> {
     if names.len() > MAX_SCHEMES || !names.iter().all(|n| scheme_ok(n)) {
@@ -144,6 +171,21 @@ impl Launcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pages_of_uris_and_page_arguments() {
+        assert_eq!(page("settings://network"), Some("network"));
+        assert_eq!(page("settings://network/vpn"), Some("network"));
+        assert_eq!(page("settings://apps/org.x?y"), Some("apps"));
+        assert_eq!(page("settings://"), None);
+        assert_eq!(page("settings://--help"), None);
+        assert_eq!(page("settings://Net"), None);
+        assert_eq!(page("settings:network"), None);
+        assert_eq!(page("settings://a b"), None);
+        assert!(page_arg_ok("--area"));
+        assert!(!page_arg_ok("area") && !page_arg_ok("---x") && !page_arg_ok("--"));
+        assert!(!page_arg_ok("--a=b"));
+    }
 
     fn declared() -> Vec<String> {
         vec!["trash".into(), "settings".into(), "file".into()]

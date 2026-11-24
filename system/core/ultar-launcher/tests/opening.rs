@@ -50,6 +50,37 @@ fn a_fresh_instance_gets_the_uri_as_data() {
     assert!(!reply.opened);
 }
 
+/// `[open] page_arg`: the page of the URI also reaches the app as its own argument (the
+/// Settings app takes `--area <page>`), only as a checked word.
+#[test]
+fn a_page_argument_follows_the_uri() {
+    let mut world = World::new("open-page");
+    let collector = Collector::listen(&world.path("out.sock"));
+    let launcher = world.open_default();
+    let open = "[open]\nschemes = [\"settings\"]\npage_arg = \"--area\"\n";
+    launcher
+        .install(&world.package_args("viewer", &["info"], open, true))
+        .unwrap();
+    let reply = launcher
+        .start_opening("viewer", Role::Ui, &uri("settings://network/vpn"))
+        .unwrap();
+    assert!(reply.opened, "{reply:?}");
+    let line = collector
+        .wait_for("app-viewer", "TESTAPP uid=")
+        .expect("no output line");
+    assert!(line.contains("uri=[settings://network/vpn]"), "{line}");
+    assert!(line.contains("args=[--area network]"), "{line}");
+    wait_state(&launcher, "viewer", Role::Ui, &[S::Stopped, S::Crashed]);
+    // a page that is no word becomes no argument
+    launcher
+        .start_opening("viewer", Role::Ui, &uri("settings://--help"))
+        .unwrap();
+    let line = collector
+        .wait_for("app-viewer", "uri=[settings://--help]")
+        .expect("no second line");
+    assert!(line.contains("args=[]"), "{line}");
+}
+
 #[test]
 fn uris_are_checked_before_anything_starts() {
     let mut world = World::new("open-refused");

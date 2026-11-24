@@ -15,6 +15,13 @@ impl Ui {
         let animate = !self.reduce_motion();
         let open = self.is_open(id);
         let kind = match &mut self.nodes[id.index()].widget {
+            // A click on one of the status icons names it (the network icon has its page).
+            Widget::Brick(b) if matches!(b.kind, crate::widgets::BrickKind::Status { .. }) => {
+                match part {
+                    Some(icon) => ActionKind::Selected(icon),
+                    None => ActionKind::Activated,
+                }
+            }
             Widget::Button(_) | Widget::IconButton(_) | Widget::Brick(_) => ActionKind::Activated,
             Widget::DayGrid(grid) => match grid.choose(part) {
                 Some(day) => ActionKind::Selected(day),

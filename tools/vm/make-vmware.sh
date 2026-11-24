@@ -125,6 +125,10 @@ for entry in "${app_list[@]}"; do
   if [ -f "apps/$prog/ultar-app.toml" ]; then
     perms=$(awk '/^\[permissions\]/{p=1;next} /^\[/{p=0} p' "apps/$prog/ultar-app.toml")
   fi
+  # Settings opens on a page (quick settings: "Wi-Fi settings", the wired tile …): the
+  # launcher accepts settings://<page> and hands the page over as `--area <page>`.
+  open=""
+  [ "$id" = settings ] && open=$'[open]\nschemes = ["settings"]\npage_arg = "--area"\n'
   cat >"$W/apps/$id.toml" <<MANIFEST
 id = "$id"
 version = "$APP_VERSION"
@@ -134,6 +138,7 @@ name = "app.$id.name"
 exec = "/usr/bin/$prog"
 args = [$args]
 
+$open
 [permissions]
 $perms
 

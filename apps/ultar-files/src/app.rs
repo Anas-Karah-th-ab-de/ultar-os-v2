@@ -52,6 +52,10 @@ pub struct App {
     pub(crate) thumbs: Option<Receiver<ThumbMsg>>,
     /// Make thumbnails on the calling thread (tests).
     pub inline_work: bool,
+    /// How often the tree was built (diagnosis, tests: an idle turn builds nothing).
+    pub(crate) builds: u64,
+    /// The folder and view the tree shows, with the scroll offset of its items.
+    pub(crate) shown: Option<(Loc, crate::model::ViewMode)>,
 }
 
 /// Seconds since 1970 from the system clock.
@@ -98,6 +102,8 @@ impl App {
             job: None,
             thumbs: None,
             inline_work: false,
+            builds: 0,
+            shown: None,
         };
         app.poll_drives();
         if let Some(loc) = uri.and_then(|u| crate::uri::parse(u, &app.state.drives)) {
@@ -122,6 +128,11 @@ impl App {
     /// What the nodes of the current tree mean.
     pub fn built(&self) -> &Built {
         &self.built
+    }
+
+    /// How often the tree was built so far.
+    pub fn builds(&self) -> u64 {
+        self.builds
     }
 
     /// Lists the folder again (search and thumbnails included).
@@ -204,6 +215,13 @@ impl App {
             .ui
             .focused()
             .and_then(|n| self.built.targets.get(&n).cloned());
+        // The same folder in the same view keeps where its items were scrolled to.
+        let here = (self.state.folder.clone(), self.state.look.view);
+        let offset = match (&self.shown, self.built.scroll) {
+            (Some(shown), Some(scroll)) if *shown == here => self.ui.scroll_offset(scroll).ok(),
+            _ => None,
+        };
+        self.builds += 1;
         self.built = match self.mode {
             Mode::Window => {
                 let compact = self.ui.size().w <= ultar_ui::tokens::layout::COMPACT_MAX;
@@ -211,10 +229,15 @@ impl App {
             }
             Mode::Desk => view::desk::build(&mut self.ui, &self.state, &self.fs)?,
         };
+        self.shown = Some(here);
         if let Some(n) = focus.and_then(|t| self.built.node(&t)) {
             if self.state.dialog.is_none() {
                 let _ = self.ui.focus(n);
             }
+        }
+        // after the focus (focusing the tall table would show its top)
+        if let (Some(scroll), Some(offset)) = (self.built.scroll, offset) {
+            let _ = self.ui.set_scroll_offset(scroll, offset);
         }
         if let Some(n) = &self.state.notice {
             let label = Label::key_with(n.key, &[("name", &n.name)]);
@@ -314,8 +337,12 @@ impl App {
         Ok(())
     }
 
-    /// Key presses the widgets did not use (shortcuts).
+    /// Key presses the widgets did not use (shortcuts). Without keys nothing happens: the
+    /// binary calls this every turn of its loop.
     pub fn keys(&mut self, events: Vec<Event>) -> Result<(), UiError> {
+        if events.is_empty() {
+            return Ok(());
+        }
         let mut effects = Vec::new();
         for e in events {
             if let Event::Key { key, modifiers } = e {
@@ -330,40 +357,60 @@ impl App {
                 }
             }
         }
-        // the selection may have changed (select all, Escape): the tiles show it
-        let changed = !effects.is_empty() || self.state.selected != self.selected_in_tree();
+        // the selection may have changed (select all, Escape): the tiles or rows show it
+        let changed = !effects.is_empty() || !self.tree_shows_selection();
         self.finish(effects, changed)
     }
 
+    /// The names the tree shows as selected: the marked tiles (grid) or the marked rows of
+    /// the table (list), in the order shown.
     fn selected_in_tree(&self) -> Vec<String> {
-        self.built
-            .item_nodes
-            .iter()
-            .filter(|(n, _)| self.ui.is_item_selected(*n).unwrap_or(false))
-            .map(|(_, name)| name.clone())
-            .collect()
-    }
-
-    pub(crate) fn read_selection(&mut self) {
-        let names: Vec<String> = match self.state.look.view {
-            _ if !self.built.item_nodes.is_empty() => self
+        if !self.built.item_nodes.is_empty() {
+            return self
                 .built
                 .item_nodes
                 .iter()
                 .filter(|(n, _)| self.ui.is_item_selected(*n).unwrap_or(false))
                 .map(|(_, name)| name.clone())
+                .collect();
+        }
+        match self.built.items {
+            Some(t) => self
+                .ui
+                .selected_rows(t)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|r| self.built.rows.get(r).cloned())
                 .collect(),
-            _ => match self.built.items {
-                Some(t) => self
-                    .ui
-                    .selected_rows(t)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|r| self.built.rows.get(r).cloned())
-                    .collect(),
-                None => Vec::new(),
-            },
-        };
+            None => Vec::new(),
+        }
+    }
+
+    /// `true` when the tree shows exactly the selection of the state (as sets; names the
+    /// tree does not show, such as those hidden by a search, do not count). A difference
+    /// that a rebuild cannot remove would otherwise rebuild the tree on every key.
+    fn tree_shows_selection(&self) -> bool {
+        let shown: std::collections::BTreeSet<&String> = self
+            .built
+            .item_nodes
+            .iter()
+            .map(|(_, n)| n)
+            .chain(self.built.rows.iter())
+            .collect();
+        let want: std::collections::BTreeSet<String> = self
+            .state
+            .selected
+            .iter()
+            .filter(|n| shown.contains(n))
+            .cloned()
+            .collect();
+        let tree: std::collections::BTreeSet<String> =
+            self.selected_in_tree().into_iter().collect();
+        want == tree
+    }
+
+    pub(crate) fn read_selection(&mut self) {
+        let names = self.selected_in_tree();
         update::select(&mut self.state, names);
     }
 

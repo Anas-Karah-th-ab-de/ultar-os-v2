@@ -225,6 +225,30 @@ impl Brick {
         matches!(self.kind, BrickKind::QuickTile { .. })
     }
 
+    /// The status icon under `pos` (its index in reading order, `icons` of
+    /// [`BrickKind::Status`]); `None` beside the icons and for other bricks. A click on an
+    /// icon reports `Selected(index)` (the network icon opens its own page), a click
+    /// beside them and the keyboard report `Activated`.
+    pub(crate) fn part_at(&self, rect: Rect, pos: crate::geom::Point, rtl: bool) -> Option<usize> {
+        let BrickKind::Status { icons, .. } = &self.kind else {
+            return None;
+        };
+        if !rect.contains(pos) {
+            return None;
+        }
+        // the same places as `paint_icon_row`: exactly the glyphs (the padding and the gaps
+        // around them are the button's own place, which opens the tiles)
+        let gap = Space::S12.points();
+        let n = icons.len();
+        let width = n as f32 * size::ICON_SMALL + (n as f32 - 1.0).max(0.0) * gap;
+        let start = rect.x + (rect.w - width) / 2.0;
+        (0..n).find_map(|slot| {
+            let x = start + slot as f32 * (size::ICON_SMALL + gap);
+            let hit = pos.x >= x && pos.x < x + size::ICON_SMALL;
+            hit.then(|| if rtl { n - 1 - slot } else { slot })
+        })
+    }
+
     /// On / chosen / open state, if the brick has one.
     pub fn checked(&self) -> Option<bool> {
         match self.kind {

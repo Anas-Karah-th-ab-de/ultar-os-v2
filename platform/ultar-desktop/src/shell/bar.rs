@@ -30,6 +30,10 @@ pub(super) fn on_bar(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outco
         }
         // mobile.home: a swipe up on the gesture bar is the home screen.
         (Target::Home, ActionKind::DragEnded { delta, .. }) if delta.y <= -SWIPE => home(s),
+        // shell.status.network: a click on the network symbol (always the first status
+        // icon) opens the Wi-Fi page; on another symbol, the tiles.
+        (Target::Status, ActionKind::Selected(0)) => super::network::wifi_from_bar(s),
+        (Target::Status, ActionKind::Selected(_)) => activated(s, target),
         (_, ActionKind::Activated) => activated(s, target),
         _ => Outcome::none(),
     }
