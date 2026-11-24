@@ -53,6 +53,19 @@ impl SearchField {
 }
 
 impl TextField {
+    /// The same password field without its own show button: the application puts an icon
+    /// button beside it (boards: `installer.enc.show`) that toggles
+    /// [`crate::ui::Ui::set_password_shown`].
+    pub fn reveal_outside(mut self) -> TextField {
+        self.reveal_outside = true;
+        self
+    }
+
+    /// `true` when the content is drawn as dots.
+    pub(crate) fn masked(&self) -> bool {
+        self.password && !self.revealed && !self.shown
+    }
+
     /// `true` for a search field.
     pub fn is_search(&self) -> bool {
         self.search
@@ -68,7 +81,7 @@ impl TextField {
     /// The button at the end of the field: 0 = clear (search field holding text),
     /// 1 = show the password while held (password field).
     pub(crate) fn end_button(&self) -> Option<usize> {
-        if self.password {
+        if self.password && !self.reveal_outside {
             Some(1)
         } else if self.search && !self.content().is_empty() {
             Some(0)
@@ -82,7 +95,7 @@ impl TextField {
     fn parts(&self, field: Rect, direction: Direction) -> (Rect, Rect, Rect) {
         let mut inner = style::inset_inline(field, PAD);
         let mut button = Rect::default();
-        if self.search || self.password {
+        if self.search || (self.password && !self.reveal_outside) {
             let mut whole = field;
             button = style::take_end(&mut whole, field.h.min(field.w), direction);
             style::take_end(&mut inner, (button.w - PAD.points()).max(0.0), direction);
@@ -98,6 +111,23 @@ impl TextField {
     /// The area the text is drawn in.
     pub(crate) fn text_area(&self, field: Rect, direction: Direction) -> Rect {
         self.parts(field, direction).2
+    }
+
+    /// The slot of the progress ring of a loading field: at the start of its text area
+    /// (boards: a 16-point ring before the value).
+    pub(crate) fn busy_slot(&self, field: Rect, direction: Direction) -> Rect {
+        let mut inner = self.text_area(field, direction);
+        let slot = style::take_start(&mut inner, ICON, direction);
+        style::centered(slot, crate::geom::Size::new(ICON, ICON))
+    }
+
+    /// The text area, less the progress ring and its gap while the field is loading.
+    pub(crate) fn text_area_busy(&self, field: Rect, direction: Direction, busy: bool) -> Rect {
+        let mut inner = self.text_area(field, direction);
+        if busy {
+            style::take_start(&mut inner, ICON + ICON_GAP.points(), direction);
+        }
+        inner
     }
 
     /// The rectangle of the end button, if the field shows one.

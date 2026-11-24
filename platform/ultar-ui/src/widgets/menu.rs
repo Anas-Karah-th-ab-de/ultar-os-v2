@@ -110,7 +110,16 @@ const SLOT: f32 = size::ICON_SMALL;
 const SLOT_GAP: Space = Space::S8;
 const SHORTCUT_GAP: Space = Space::S24;
 const SEPARATOR: Space = Space::S8;
-const MIN_W: f32 = 3.0 * Space::S48.points();
+/// Narrowest menu (boards "Menus": file and context menus 224 wide).
+const MIN_W: f32 = 4.0 * Space::S48.points() + Space::S32.points();
+/// Narrowest submenu (boards "Menus": 160 wide).
+const SUB_MIN_W: f32 = 3.0 * Space::S48.points() + Space::S16.points();
+
+/// Distance of the rows from the panel's outer edge: the border plus the padding inside it
+/// (boards: CSS border-box, the panel padding inside a one-border edge).
+fn inset() -> f32 {
+    PANEL_PAD.points() + size::BORDER
+}
 
 /// Geometry of one open menu level.
 #[derive(Debug, Clone, PartialEq)]
@@ -129,7 +138,7 @@ impl MenuPanel {
     /// The rectangle of item `index`.
     pub(crate) fn row(&self, index: usize) -> Option<Rect> {
         let top = self.tops.get(index)?;
-        let pad = PANEL_PAD.points();
+        let pad = inset();
         Some(Rect::new(
             self.rect.x + pad,
             self.rect.y + top - self.scroll,
@@ -159,7 +168,7 @@ impl MenuPanel {
 
     /// Scrolls so that item `index` is completely inside the panel.
     pub(crate) fn reveal(&mut self, index: usize) {
-        let (Some(row), pad) = (self.row(index), PANEL_PAD.points()) else {
+        let (Some(row), pad) = (self.row(index), inset()) else {
             return;
         };
         let (top, bottom) = (self.rect.y + pad, self.rect.bottom() - pad);
@@ -240,7 +249,7 @@ impl Menu {
     }
 
     /// Natural size of the panel and the top of each row.
-    fn measure(&self, cx: &mut MeasureCx<'_>, surface: Size) -> (Size, Vec<f32>) {
+    fn measure(&self, cx: &mut MeasureCx<'_>, surface: Size, min_w: f32) -> (Size, Vec<f32>) {
         let (mut labels, mut shortcuts) = (0.0f32, 0.0f32);
         for item in &self.items {
             labels = labels.max(cx.text_size(&item.label, style::CONTROL_TEXT, None).w);
@@ -248,7 +257,7 @@ impl Menu {
                 shortcuts = shortcuts.max(cx.text_size(shortcut, style::SMALL_TEXT, None).w);
             }
         }
-        let mut width = 2.0 * (PANEL_PAD.points() + ROW_PAD.points()) + labels;
+        let mut width = 2.0 * (inset() + ROW_PAD.points()) + labels;
         if self.has_slot() {
             width += SLOT + SLOT_GAP.points();
         }
@@ -260,7 +269,7 @@ impl Menu {
         }
         let limit = (surface.w - 2.0 * ROW_PAD.points()).max(0.0);
         let mut tops = Vec::with_capacity(self.items.len());
-        let mut y = PANEL_PAD.points();
+        let mut y = inset();
         for (index, item) in self.items.iter().enumerate() {
             if item.separated && index > 0 {
                 y += SEPARATOR.points();
@@ -268,17 +277,17 @@ impl Menu {
             tops.push(y);
             y += cx.mode.min_target();
         }
-        let size = Size::new(fit(width, MIN_W.min(limit), limit), y + PANEL_PAD.points());
+        let size = Size::new(fit(width, min_w.min(limit), limit), y + inset());
         (size, tops)
     }
 
     fn panel(
         &self,
         cx: &mut MeasureCx<'_>,
-        surface: Size,
+        (surface, min_w): (Size, f32),
         place: impl Fn(Size) -> Point,
     ) -> MenuPanel {
-        let (content, tops) = self.measure(cx, surface);
+        let (content, tops) = self.measure(cx, surface, min_w);
         let edge = PANEL_PAD.points();
         // A menu taller than the surface shows what fits and scrolls.
         let row_height = cx.mode.min_target();
@@ -306,7 +315,7 @@ impl Menu {
     ) -> MenuPanel {
         let rtl = cx.env.direction.is_rtl();
         let gap = PANEL_PAD.points();
-        self.panel(cx, surface, |size| {
+        self.panel(cx, (surface, MIN_W), |size| {
             let x = if rtl {
                 anchor.right() - size.w
             } else {
@@ -327,7 +336,7 @@ impl Menu {
     /// and the other way where there is no room.
     pub(crate) fn panel_at(&self, cx: &mut MeasureCx<'_>, surface: Size, pos: Point) -> MenuPanel {
         let rtl = cx.env.direction.is_rtl();
-        self.panel(cx, surface, |size| {
+        self.panel(cx, (surface, MIN_W), |size| {
             let x = match rtl {
                 true if pos.x - size.w >= 0.0 => pos.x - size.w,
                 true => pos.x,
@@ -353,10 +362,12 @@ impl Menu {
         row: Rect,
     ) -> MenuPanel {
         let rtl = cx.env.direction.is_rtl();
-        let overlap = PANEL_PAD.points();
-        self.panel(cx, surface, |size| {
-            let right = parent.right() - overlap;
-            let left = parent.x + overlap - size.w;
+        // Boards: a 4-point gap beside the parent; the first row level with the parent row.
+        let gap = Space::S4.points();
+        let lift = inset();
+        self.panel(cx, (surface, SUB_MIN_W), |size| {
+            let right = parent.right() + gap;
+            let left = parent.x - gap - size.w;
             let x = match rtl {
                 true if left >= 0.0 => left,
                 true => right,
@@ -364,7 +375,7 @@ impl Menu {
                 false if left >= 0.0 => left,
                 false => right,
             };
-            Point::new(x, row.y - overlap)
+            Point::new(x, row.y - lift)
         })
     }
 
@@ -445,50 +456,5 @@ impl Menu {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn item(id: u32) -> MenuItem {
-        MenuItem::new(id, Label::data(&id.to_string()))
-    }
-
-    #[test]
-    fn limits_levels_and_stepping() {
-        let sub = Menu::new(vec![item(10), item(11)]);
-        let menu = Menu::new(vec![
-            item(1).disabled(),
-            item(2).submenu(sub.clone()),
-            item(3).separated().danger().checked(true),
-        ]);
-        assert!(menu.within_limits());
-        assert_eq!(menu.level(&[]), Some(&menu));
-        assert_eq!(menu.level(&[1]), Some(&sub));
-        assert_eq!(menu.level(&[0]), None);
-        assert_eq!(menu.level(&[9]), None);
-        assert_eq!(menu.step(None, true), Some(1), "disabled items are skipped");
-        assert_eq!(menu.step(Some(1), true), Some(2));
-        assert_eq!(
-            menu.step(Some(2), true),
-            Some(1),
-            "wraps past the disabled one"
-        );
-        assert_eq!(menu.step(Some(1), false), Some(2));
-        assert_eq!(menu.step(None, false), Some(2));
-        let dead = Menu::new(vec![item(1).disabled()]);
-        assert_eq!(dead.step(None, true), None);
-        assert_eq!(Menu::default().step(None, true), None);
-        assert!(
-            !Menu::default().within_limits(),
-            "an empty menu cannot open"
-        );
-        let many = Menu::new((0..=MAX_MENU_ITEMS as u32).map(item).collect());
-        assert!(!many.within_limits());
-        let mut deep = Menu::new(vec![item(0)]);
-        for _ in 0..MAX_MENU_DEPTH {
-            deep = Menu::new(vec![item(0).submenu(deep)]);
-        }
-        assert!(!deep.within_limits());
-        assert_eq!(fit(5.0, 0.0, 3.0), 3.0);
-        assert_eq!(fit(5.0, 8.0, 3.0), 8.0);
-    }
-}
+#[path = "menu_tests.rs"]
+mod tests;

@@ -144,6 +144,16 @@ fn radio_arrows_follow_the_direction() {
     }
 }
 
+/// The rectangle of the tab furthest to the left.
+fn leftmost_tab(ui: &mut Ui) -> ultar_ui::Rect {
+    ui.a11y_tree()
+        .into_iter()
+        .filter(|n| n.role == Role::Tab)
+        .map(|n| n.rect)
+        .min_by(|a, b| a.x.total_cmp(&b.x))
+        .unwrap()
+}
+
 #[test]
 fn tabs_follow_the_direction_and_stop_at_the_ends() {
     for (lang, next, previous) in [
@@ -170,8 +180,9 @@ fn tabs_follow_the_direction_and_stop_at_the_ends() {
             vec![ActionKind::Selected(0)]
         );
         // The first tab is at the start edge: right in Arabic, left in English.
-        let rect = ui.rect(g.tabs).unwrap();
-        let near_left = Point::new(rect.x + 4.0, rect.center().y);
+        // Tabs are as wide as their labels and start at the start edge: the leftmost tab.
+        let leftmost = leftmost_tab(&mut ui);
+        let near_left = Point::new(leftmost.x + 4.0, leftmost.center().y);
         press(&mut ui, near_left);
         let chosen = kinds(&release(&mut ui, near_left));
         let expected = if lang == Lang::Ar {

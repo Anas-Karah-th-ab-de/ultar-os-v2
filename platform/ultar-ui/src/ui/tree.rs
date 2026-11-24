@@ -188,6 +188,10 @@ impl Ui {
         }
         let id = match title {
             Some(title) => {
+                let mut widget = widget;
+                if let Widget::Dialog(dialog) = &mut widget {
+                    dialog.host = Some(parent);
+                }
                 let id = self.store(new_node(widget, sizing, None));
                 self.layers.dialogs.push(id);
                 let spec = TextSpec::title(TypeSize::S16).weight(crate::text::Weight::Semibold);
@@ -246,7 +250,9 @@ impl Ui {
             return Visual::default();
         };
         let disabled = self.is_disabled(id);
-        let open = self.input.popup.is_some_and(|p| p.select == id);
+        // An open options list or drop-down menu keeps its owner pressed (boards "Menus":
+        // the menu button shows the pressed fill while its menu is open).
+        let open = self.input.popup.is_some_and(|p| p.select == id) || self.drop_down_owner(id);
         Visual {
             hovered: self.input.hover == Some(id) && !disabled,
             pressed: (self.input.is_pressed(id) || open) && !disabled,
@@ -326,7 +332,8 @@ impl Ui {
     }
 
     /// Shows or hides the loading state (buttons, icon buttons, switches, selects, check
-    /// boxes, list items, sliders). A loading widget keeps focus but cannot be activated.
+    /// boxes, list items, sliders, text fields). A loading widget keeps focus but cannot be
+    /// activated; a loading text field (a value being checked) can still be typed into.
     /// Radio groups and tabs have no loading state (DESKTOP-SPEC §3 names the exception).
     pub fn set_loading(&mut self, id: NodeId, loading: bool) -> Result<(), UiError> {
         let node = self.node_mut(id)?;
@@ -417,6 +424,9 @@ impl Ui {
         if index >= count {
             return Err(UiError::OptionOutOfRange { node: id, index });
         }
+        if node.widget.option_unavailable(index) {
+            return Err(UiError::OptionUnavailable { node: id, index });
+        }
         match &mut node.widget {
             Widget::Select(select) => select.selected = index,
             Widget::Tabs(tabs) => tabs.selected = index,
@@ -424,6 +434,7 @@ impl Ui {
             _ => {}
         }
         self.touch(id);
+        self.remeasure_tabs(id);
         self.keep_tab_visible(id);
         if self.is_open(id) {
             // The open list shows the check mark and the bold option: repaint it too.

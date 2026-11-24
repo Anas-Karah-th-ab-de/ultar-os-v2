@@ -9,13 +9,18 @@ use ultar_ui::canvas::{Canvas, PixelFormat};
 use ultar_ui::icon::{IconCache, IconId, QuarterTurns};
 use ultar_ui::paint::{PaintEnv, Painter, Resources, TextSpec};
 use ultar_ui::text::{Overflow, TextAlign, TextEngine};
-use ultar_ui::tokens::{size, ColorRole, Space, ThemeKind, TypeSize};
+use ultar_ui::tokens::{size, ColorRole, Radius, Space, ThemeKind, TypeSize};
 use ultar_ui::{Direction, Lang};
 
 /// Height of the title bar in logical points (token `size.titlebar_height`).
 pub const TITLEBAR: i32 = size::TITLEBAR_HEIGHT as i32;
-/// Width of a title bar button (square).
-pub const BUTTON: i32 = TITLEBAR;
+/// Edge of a title bar button (square; boards: 32, the pointer target).
+pub const BUTTON: i32 = size::TARGET_POINTER_MIN as i32;
+/// Gap between the buttons and from the end edge; also their distance from the top
+/// (boards: 4, buttons centred in the 40-point bar).
+pub const BUTTON_GAP: i32 = Space::S4.points() as i32;
+/// Width the three buttons take at the end of the bar, gaps included.
+pub const BUTTON_ROW: i32 = 3 * BUTTON + 3 * BUTTON_GAP;
 /// Width of the grab zone along window borders (DESKTOP-SPEC: 8).
 pub fn border_grab() -> i32 {
     Space::S8.points() as i32
@@ -50,9 +55,13 @@ pub enum Part {
 pub fn buttons(frame_w: i32, rtl: bool) -> [(Button, Rect); 3] {
     let order = [Button::Close, Button::Maximize, Button::Minimize];
     let place = |i: i32| {
-        let from_end = BUTTON * (i + 1);
-        let x = if rtl { BUTTON * i } else { frame_w - from_end };
-        Rect::new(x, 0, BUTTON, TITLEBAR)
+        let from_end = BUTTON_GAP + (BUTTON + BUTTON_GAP) * i + BUTTON;
+        let x = if rtl {
+            from_end - BUTTON
+        } else {
+            frame_w - from_end
+        };
+        Rect::new(x, BUTTON_GAP, BUTTON, BUTTON)
     };
     [
         (order[0], place(0)),
@@ -213,10 +222,10 @@ impl DecorRenderer {
         } else {
             ColorRole::TextMuted
         };
-        let room = (width - 2.0 * 3.0 * BUTTON as f32).max(0.0);
+        let room = (width - 2.0 * BUTTON_ROW as f32).max(0.0);
         let spec = TextSpec::new(TypeSize::S14).overflow(Overflow::Ellipsis);
         let layout = painter.layout(&key.title, spec, Some(room));
-        let text_rect = ultar_ui::Rect::new(3.0 * BUTTON as f32, 0.0, room, TITLEBAR as f32);
+        let text_rect = ultar_ui::Rect::new(BUTTON_ROW as f32, 0.0, room, TITLEBAR as f32);
         painter.text(
             &layout,
             text_rect,
@@ -231,8 +240,9 @@ impl DecorRenderer {
         if key.secure {
             // The trusted-path mark: only the compositor draws title bars,
             // and system dialogs sit above everything apps can show.
-            let x = if rtl { width - BUTTON as f32 } else { 0.0 };
-            let at = ultar_ui::Rect::new(x, 0.0, BUTTON as f32, TITLEBAR as f32 - size::BORDER);
+            let edge = (BUTTON + 2 * BUTTON_GAP) as f32;
+            let x = if rtl { width - edge } else { 0.0 };
+            let at = ultar_ui::Rect::new(x, 0.0, edge, TITLEBAR as f32 - size::BORDER);
             let accent = painter.color(ColorRole::Accent);
             painter.icon(
                 IconId::Lock,
@@ -256,12 +266,7 @@ fn draw_button(
     text_role: ColorRole,
     rtl: bool,
 ) {
-    let rect = ultar_ui::Rect::new(
-        r.x as f32,
-        0.0,
-        r.w as f32,
-        (TITLEBAR as f32) - size::BORDER,
-    );
+    let rect = ultar_ui::Rect::new(r.x as f32, r.y as f32, r.w as f32, r.h as f32);
     let active = key.hover == Some(button) || key.pressed == Some(button);
     let mut icon_role = text_role;
     if active {
@@ -270,7 +275,8 @@ fn draw_button(
         } else {
             ColorRole::Hover
         };
-        painter.fill(rect, None, painter.color(fill));
+        // Boards: a rounded control (radius 8), not a square block.
+        painter.fill(rect, Some(Radius::Control), painter.color(fill));
         if button == Button::Close {
             icon_role = ColorRole::Ground;
         }
@@ -312,11 +318,11 @@ mod tests {
     #[test]
     fn buttons_sit_at_the_end_and_mirror_in_rtl() {
         let ltr = buttons(400, false);
-        assert_eq!(ltr[0], (Button::Close, Rect::new(360, 0, 40, 40)));
-        assert_eq!(ltr[2], (Button::Minimize, Rect::new(280, 0, 40, 40)));
+        assert_eq!(ltr[0], (Button::Close, Rect::new(364, 4, 32, 32)));
+        assert_eq!(ltr[2], (Button::Minimize, Rect::new(292, 4, 32, 32)));
         let rtl = buttons(400, true);
-        assert_eq!(rtl[0], (Button::Close, Rect::new(0, 0, 40, 40)));
-        assert_eq!(rtl[2], (Button::Minimize, Rect::new(80, 0, 40, 40)));
+        assert_eq!(rtl[0], (Button::Close, Rect::new(4, 4, 32, 32)));
+        assert_eq!(rtl[2], (Button::Minimize, Rect::new(76, 4, 32, 32)));
     }
 
     #[test]
@@ -365,8 +371,11 @@ mod tests {
                 .palette()
                 .get(ColorRole::Danger),
         );
-        assert_eq!(img.pixel(2, 2), Some(danger));
-        assert_ne!(img.pixel(398, 2), Some(danger));
+        // Inside the rounded close button (4..36), not in its corner or beside it.
+        assert_eq!(img.pixel(8, 20), Some(danger));
+        assert_ne!(img.pixel(4, 4), Some(danger));
+        assert_ne!(img.pixel(2, 20), Some(danger));
+        assert_ne!(img.pixel(380, 20), Some(danger));
         let doubled = r
             .render(&TitleKey {
                 scale_milli: 2000,

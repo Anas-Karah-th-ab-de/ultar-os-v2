@@ -155,7 +155,20 @@ pub struct Painter<'a> {
     canvas: &'a mut Canvas,
     resources: &'a mut Resources,
     env: PaintEnv,
+    /// Opacity applied to every drawing call (requested opacity relative to the group).
     opacity: f32,
+    /// The opacity last asked for with [`Painter::set_opacity`].
+    requested: f32,
+    /// Opacity of the open group (1 outside a group).
+    group: f32,
+}
+
+/// A part of the surface drawn as one layer and faded at the end (see [`Painter::begin_group`]).
+#[derive(Debug)]
+pub struct Group {
+    backdrop: crate::canvas::Backdrop,
+    opacity: f32,
+    outer: f32,
 }
 
 impl<'a> Painter<'a> {
@@ -166,6 +179,8 @@ impl<'a> Painter<'a> {
             resources,
             env,
             opacity: 1.0,
+            requested: 1.0,
+            group: 1.0,
         }
     }
 
@@ -182,9 +197,42 @@ impl<'a> Painter<'a> {
     }
 
     /// Sets the opacity applied to all following drawing (disabled widgets) and returns the
-    /// previous value.
+    /// previous value. Inside a group the value is relative to the group: a widget that asks
+    /// for the group's own opacity is drawn at full strength and dimmed once, as a whole.
     pub fn set_opacity(&mut self, opacity: f32) -> f32 {
-        std::mem::replace(&mut self.opacity, opacity.clamp(0.0, 1.0))
+        let previous = std::mem::replace(&mut self.requested, opacity.clamp(0.0, 1.0));
+        self.apply_opacity();
+        previous
+    }
+
+    fn apply_opacity(&mut self) {
+        self.opacity = if self.group > 0.0 {
+            (self.requested / self.group).min(1.0)
+        } else {
+            0.0
+        };
+    }
+
+    /// Starts a group over `rect` (logical points, cut to the clip): everything drawn until
+    /// [`Painter::end_group`] is dimmed to `opacity` as one layer (CSS `opacity`), so a border
+    /// over a fill is not dimmed twice. `None` when nothing of `rect` is visible.
+    pub fn begin_group(&mut self, rect: Rect, opacity: f32) -> Option<Group> {
+        let area = PixelRect::covering(&self.snap(rect));
+        let backdrop = self.canvas.save_backdrop(area)?;
+        let outer = std::mem::replace(&mut self.group, opacity.clamp(0.0, 1.0));
+        self.apply_opacity();
+        Some(Group {
+            backdrop,
+            opacity: self.group,
+            outer,
+        })
+    }
+
+    /// Ends a group started with [`Painter::begin_group`] and dims what was drawn in it.
+    pub fn end_group(&mut self, group: Group) {
+        self.canvas.fade_to_backdrop(&group.backdrop, group.opacity);
+        self.group = group.outer;
+        self.apply_opacity();
     }
 
     /// The width of borders and separators in logical points (token `size.border`).

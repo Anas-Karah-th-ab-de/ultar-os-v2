@@ -87,6 +87,14 @@ impl Switch {
         Size::new(TRACK_W, TRACK_H.max(cx.mode.min_target()))
     }
 
+    /// Boards: an error draws a two-border `danger` edge around the track, on or off.
+    fn paint_error_edge(p: &mut Painter<'_>, track: Rect, v: &Visual) {
+        if v.error {
+            let danger = p.color(ColorRole::Danger);
+            p.stroke(track, Some(Radius::Round), 2.0 * p.hairline(), danger);
+        }
+    }
+
     /// Paints the switch; `position` is the knob position from 0 (off) to 1 (on).
     pub(crate) fn paint(
         &self,
@@ -109,14 +117,18 @@ impl Switch {
         let knob_color = p.color(knob_role);
         let border = p.hairline();
         if self.on {
-            let fill = style::filled(p.color(ColorRole::AccentText), knob_color, v);
+            let accent = p.color(ColorRole::AccentText);
+            let fill = style::filled(accent, knob_color, v);
             p.fill(track, Some(Radius::Round), fill);
+            // Boards: the state layer darkens the fill only; the edge stays `accent_text`.
+            p.stroke(track, Some(Radius::Round), border, accent);
         } else {
             let bg = p.color(style::neutral_background(v));
             p.fill(track, Some(Radius::Round), bg);
             let edge = p.color(ColorRole::ControlBorder);
             p.stroke(track, Some(Radius::Round), border, edge);
         }
+        Switch::paint_error_edge(p, track, v);
         let inset = (TRACK_H - KNOB) / 2.0;
         let travel = TRACK_W - KNOB - 2.0 * inset;
         let from_start = inset + travel * position.clamp(0.0, 1.0);
@@ -132,7 +144,12 @@ impl Switch {
             p.spinner(knob, cx.spin, ring);
         }
         if v.focused {
-            style::focus_ring(p, track, Radius::Round);
+            // Boards: the ring surrounds the whole control (48 × target), not only the track.
+            style::focus_ring(
+                p,
+                style::centered(rect, Size::new(TRACK_W, rect.h)),
+                Radius::Round,
+            );
         }
         p.set_opacity(previous);
     }

@@ -102,6 +102,10 @@ pub(crate) struct Layers {
     pub(crate) free_slots: Vec<usize>,
     /// Visible toasts, oldest first.
     pub(crate) toasts: Vec<super::toasts::Shown>,
+    /// Pointer and keyboard state of the toasts.
+    pub(crate) toast_input: super::toasts::ToastInput,
+    /// Accessible names set by the application (`Ui::set_accessible_name`).
+    pub(crate) names: std::collections::BTreeMap<NodeId, crate::widgets::Label>,
 }
 
 /// The size and contents of the last frame painted (see `Backdrop::frame`).

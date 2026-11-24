@@ -88,11 +88,12 @@ impl Checkbox {
         let slot = style::take_start(&mut inner, BOX, direction);
         style::take_start(&mut inner, GAP.points(), direction);
         let mark = style::centered(slot, Size::new(BOX, BOX));
+        self.paint_box(p, mark, v);
         if v.loading {
+            // Boards: the box keeps its state; a `text_muted` ring replaces the mark.
             let muted = p.color(ColorRole::TextMuted);
-            p.spinner(mark, cx.spin, muted);
-        } else {
-            self.paint_box(p, mark, v);
+            let ring = style::centered(mark, Size::new(size::ICON_SMALL, size::ICON_SMALL));
+            p.spinner(ring, cx.spin, muted);
         }
         let color = p.color(ColorRole::Text);
         let spec = style::CONTROL_TEXT.weight(Weight::Medium);
@@ -118,6 +119,9 @@ impl Checkbox {
                 ColorRole::AccentText
             });
             p.stroke(mark, Some(Radius::Control), border, edge);
+            if v.loading {
+                return;
+            }
             if self.mixed {
                 let middle = mark.center();
                 let half = Space::S8.points() / 2.0 + Space::S4.points() / 2.0;

@@ -99,6 +99,8 @@ pub struct ListItem {
     pub selected: bool,
     /// Draw a separator line under the item.
     pub separator: bool,
+    /// Show a forward arrow at the end: activating the item opens a page of its own.
+    pub chevron: bool,
 }
 
 const PAD_INLINE: Space = Space::S16;
@@ -121,7 +123,15 @@ impl ListItem {
             icon: None,
             selected: false,
             separator: false,
+            chevron: false,
         }
+    }
+
+    /// The same item with a forward arrow at the end (it opens a page of its own; boards:
+    /// `forward`, 16, mirrored in right-to-left layouts).
+    pub fn chevron(mut self) -> ListItem {
+        self.chevron = true;
+        self
     }
 
     /// The same item with a second line.
@@ -167,11 +177,14 @@ impl ListItem {
         (nav, has_error): (bool, bool),
     ) -> Size {
         let target = cx.mode.min_target();
+        let two_lines = self.sublabel.is_some() || has_error;
         if nav {
-            return Size::new(avail, target.max(control.h));
+            // One line: a target high (sidebar). Two lines: a full row (boards: 56).
+            let row = if two_lines { size::ROW_MIN } else { 0.0 };
+            return Size::new(avail, target.max(control.h).max(row));
         }
         let mut text = line_box(cx.env, typography::BODY);
-        if self.sublabel.is_some() || has_error {
+        if two_lines {
             text += line_box(cx.env, TypeSize::S12);
         }
         let content = text.max(control.h) + 2.0 * PAD_BLOCK.points();
@@ -265,20 +278,14 @@ impl ListItem {
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
         self.paint_background(p, rect, v, nav);
-        if v.loading {
-            let mut end = style::inset_inline(rect, PAD_INLINE);
-            let slot = style::take_end(&mut end, size::ICON_SMALL, direction);
-            let ring = style::centered(slot, Size::new(size::ICON_SMALL, size::ICON_SMALL));
-            let muted = p.color(ColorRole::TextMuted);
-            p.spinner(ring, cx.spin, muted);
-        }
         let pad = if nav { NAV_PAD } else { PAD_INLINE };
         let mut inner = style::inset_inline(rect, pad);
-        if nav {
+        if nav && !self.chevron {
             // Room for the selection mark at the end edge.
             style::take_end(&mut inner, MARK.points() + GAP.points(), direction);
         }
-        let control = if v.loading {
+        self.paint_end_mark(p, cx, &mut inner, v, error.is_some());
+        let control = if v.loading && !self.chevron {
             control.max(size::ICON_SMALL)
         } else {
             control
@@ -287,7 +294,9 @@ impl ListItem {
             style::take_end(&mut inner, control + GAP.points(), direction);
         }
         if let Some(icon) = self.icon {
-            let slot = style::take_start(&mut inner, size::ICON, direction);
+            // A sidebar or page list shows the small icon (boards: 16), other lists 24.
+            let edge = if nav { size::ICON_SMALL } else { size::ICON };
+            let slot = style::take_start(&mut inner, edge, direction);
             style::take_start(&mut inner, GAP.points(), direction);
             let role = if self.selected {
                 ColorRole::AccentText
@@ -295,15 +304,67 @@ impl ListItem {
                 ColorRole::TextMuted
             };
             let color = p.color(role);
-            p.icon(icon, slot, size::ICON, QuarterTurns::None, color);
+            p.icon(icon, slot, edge, QuarterTurns::None, color);
         }
         self.paint_texts(p, cx, inner, error);
         if v.focused {
-            // Inside the item: rows touch each other and a list may be clipped by a scroller.
-            let ring = p.color(state::FOCUS_RING);
-            p.stroke(rect, Some(Radius::Control), size::FOCUS_RING, ring);
+            if nav {
+                // Boards: the ring 2 points outside the item (the gap between items).
+                style::focus_ring(p, rect, Radius::Card);
+            } else {
+                // Inside the item: rows touch each other and a scroller may clip the list.
+                let ring = p.color(state::FOCUS_RING);
+                p.stroke(rect, Some(Radius::Control), size::FOCUS_RING, ring);
+            }
         }
         p.set_opacity(previous);
+    }
+
+    /// The forward arrow of an item that opens a page, or the progress ring of a loading
+    /// item, at the end of `inner` (which loses that slot).
+    fn paint_end_mark(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        inner: &mut Rect,
+        v: &Visual,
+        failed: bool,
+    ) {
+        let direction = p.env().direction;
+        if self.chevron {
+            let slot = style::take_end(inner, size::ICON_SMALL, direction);
+            style::take_end(inner, GAP.points(), direction);
+            let color = p.color(ColorRole::Text);
+            if failed {
+                // Boards: the error icon in `danger` takes the arrow's place.
+                let danger = p.color(ColorRole::Danger);
+                p.icon(
+                    IconId::Error,
+                    slot,
+                    size::ICON_SMALL,
+                    QuarterTurns::None,
+                    danger,
+                );
+            } else if v.loading {
+                let ring = style::centered(slot, Size::new(size::ICON_SMALL, size::ICON_SMALL));
+                p.spinner(ring, cx.spin, color);
+            } else {
+                let turns = QuarterTurns::None;
+                p.icon(IconId::Forward, slot, size::ICON_SMALL, turns, color);
+            }
+        } else if v.loading {
+            // The ring takes the place of the trailing control (room kept by the caller).
+            let mut end = *inner;
+            let slot = style::take_end(&mut end, size::ICON_SMALL, direction);
+            let ring = style::centered(slot, Size::new(size::ICON_SMALL, size::ICON_SMALL));
+            let muted = p.color(ColorRole::TextMuted);
+            p.spinner(ring, cx.spin, muted);
+        }
+    }
+
+    /// The separator under the item: part of the list, not of the item, so it keeps full
+    /// strength under a disabled item.
+    pub(crate) fn paint_separator(&self, p: &mut Painter<'_>, rect: Rect, nav: bool) {
         if self.separator && !nav {
             let (line, hairline) = (p.color(ColorRole::Line), p.hairline());
             let y = rect.bottom() - hairline;

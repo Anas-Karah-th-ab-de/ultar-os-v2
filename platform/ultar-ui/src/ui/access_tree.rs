@@ -3,95 +3,10 @@
 //! button of a search or password field, table headers and rows, tree items, toasts).
 
 use super::access::{CELL_PARTS, MENU_LEVEL_PARTS, MENU_PARTS, TOAST_PARTS};
+use super::access_describe::{describe_widget, tone_of};
 use super::{A11yNode, A11yState, NodeId, Role, Ui};
 use crate::geom::Rect;
-use crate::widgets::{
-    DialogKind, Label, Table, TableCursor, TablePart, Tone, Widget, MAX_TABLE_COLUMNS,
-};
-
-fn number(value: f32) -> Label {
-    let text = if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-    };
-    Label::data(&text)
-}
-
-fn percent(share: f32) -> Label {
-    Label::data(&format!("{:.0}%", (share * 100.0).clamp(0.0, 100.0)))
-}
-
-/// Role, name and value of a widget; `None` for pure layout and unnamed icons.
-fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label>)> {
-    let named = |label: &Label| Some(label.clone());
-    Some(match widget {
-        Widget::Flex(_) => return None,
-        Widget::Icon(w) => (Role::Image, Some(w.name.clone()?), None),
-        Widget::Card(_) => (Role::Group, None, None),
-        Widget::Text(w) => (Role::Text, named(&w.label), None),
-        Widget::Row(w) => (Role::Row, named(&w.label), w.sublabel.clone()),
-        Widget::Button(w) => (Role::Button, named(&w.label), None),
-        Widget::IconButton(w) => (Role::Button, named(&w.name), None),
-        Widget::Switch(w) => (Role::Switch, named(&w.name), None),
-        Widget::Select(w) => (
-            Role::Select,
-            named(&w.name),
-            w.options.get(w.selected).cloned(),
-        ),
-        Widget::Slider(w) => (Role::Slider, named(&w.name), Some(number(w.value))),
-        Widget::TextField(w) if w.is_password() => (Role::PasswordField, named(&w.name), None),
-        Widget::TextField(w) => {
-            let role = if w.is_search() {
-                Role::SearchField
-            } else {
-                Role::TextField
-            };
-            (role, named(&w.name), Some(Label::data(w.content())))
-        }
-        Widget::Badge(w) => (Role::Badge, named(&w.label), None),
-        Widget::Progress(w) => (Role::Progress, named(&w.name), w.value.map(percent)),
-        Widget::Checkbox(w) => (Role::Checkbox, named(&w.label), None),
-        Widget::RadioGroup(w) => {
-            let chosen = w.selected.and_then(|i| w.options.get(i)).cloned();
-            (Role::RadioGroup, named(&w.name), chosen)
-        }
-        Widget::Tabs(w) => (
-            Role::TabList,
-            named(&w.name),
-            w.tabs.get(w.selected).cloned(),
-        ),
-        Widget::InfoBar(w) => {
-            let role = match w.tone {
-                Tone::Warning | Tone::Danger => Role::Alert,
-                _ => Role::Status,
-            };
-            (role, named(&w.title), w.message.clone())
-        }
-        Widget::EmptyState(w) => (Role::Status, named(&w.title), w.message.clone()),
-        Widget::List(w) if w.navigation => (Role::Navigation, w.name.clone(), None),
-        Widget::List(w) => (Role::List, w.name.clone(), None),
-        Widget::ListItem(w) => (Role::ListItem, named(&w.label), w.sublabel.clone()),
-        Widget::Scroll(w) => (Role::ScrollArea, w.name.clone(), None),
-        Widget::Dialog(w) if w.alert && w.kind == DialogKind::Dialog => {
-            (Role::AlertDialog, named(&w.title), None)
-        }
-        Widget::Dialog(w) => (Role::Dialog, named(&w.title), None),
-        Widget::Table(w) => (Role::Table, named(&w.name), None),
-        Widget::Tree(w) => (Role::Tree, named(&w.name), None),
-        Widget::HeaderBar(w) => (Role::Banner, named(&w.title), None),
-    })
-}
-
-/// The tone of a badge or info bar as a spoken description.
-fn tone_of(widget: &Widget) -> Option<Label> {
-    let tone = match widget {
-        Widget::Badge(badge) => badge.tone,
-        Widget::InfoBar(bar) => bar.tone,
-        _ => return None,
-    };
-    tone.name_key().map(Label::key)
-}
+use crate::widgets::{Label, Table, TableCursor, TablePart, ToastPart, Widget, MAX_TABLE_COLUMNS};
 
 impl Ui {
     /// The nearest ancestor that has an accessibility node of its own.
@@ -113,7 +28,7 @@ impl Ui {
         let (role, name, value) = describe_widget(&node.widget)?;
         let visual = self.visual(id);
         let mut out = A11yNode::new(id, role, self.rect(id)?);
-        out.name = name;
+        out.name = self.layers.names.get(&id).cloned().or(name);
         out.value = value;
         out.error = node.error.clone();
         out.description = node.tooltip.clone().or_else(|| tone_of(&node.widget));
@@ -134,7 +49,11 @@ impl Ui {
                 _ => None,
             },
             mixed: matches!(&node.widget, Widget::Checkbox(w) if w.mixed),
-            expanded: matches!(node.widget, Widget::Select(_)).then(|| self.is_open(id)),
+            expanded: if matches!(node.widget, Widget::Select(_)) {
+                Some(self.is_open(id))
+            } else {
+                self.drop_down_owner(id).then_some(true)
+            },
             selected: match &node.widget {
                 Widget::ListItem(w) => Some(w.selected),
                 _ => None,
@@ -174,14 +93,18 @@ impl Ui {
             Widget::RadioGroup(group) => {
                 let count = group.options.len();
                 for (i, option) in group.options.iter().enumerate() {
-                    let mut node = self.part(owner, i, Role::Radio, group.row(rect, i, self.mode));
+                    let row = group.row(rect, i, self.mode, direction);
+                    let mut node = self.part(owner, i, Role::Radio, row);
                     node.name = Some(option.clone());
+                    node.state.disabled = group.is_unavailable(i);
+                    node.description = group.reason(i).cloned();
                     node.state.checked = Some(group.selected == Some(i));
                     node.state.focused = focused && group.current() == i;
                     node.position = Some((i + 1, count));
                     out.push(node);
                 }
             }
+            Widget::Arrangement(canvas) => self.arrangement_parts(owner, canvas, focused, out),
             Widget::Tabs(tabs) => {
                 let count = tabs.tabs.len();
                 for (i, label) in tabs.tabs.iter().enumerate() {
@@ -219,6 +142,28 @@ impl Ui {
         }
     }
 
+    /// The items of an arrangement canvas, announced as radio options.
+    fn arrangement_parts(
+        &self,
+        owner: &A11yNode,
+        canvas: &crate::widgets::Arrangement,
+        focused: bool,
+        out: &mut Vec<A11yNode>,
+    ) {
+        let (Some(rect), count) = (self.rect(owner.id), canvas.items.len()) else {
+            return;
+        };
+        for (i, item) in canvas.items.iter().enumerate() {
+            let at = canvas.item_rect(rect, i).unwrap_or_default();
+            let mut node = self.part(owner, i, Role::Radio, at);
+            node.name = Some(item.name.clone());
+            node.state.checked = Some(canvas.selected == Some(i));
+            node.state.focused = focused && canvas.current() == i;
+            node.position = Some((i + 1, count));
+            out.push(node);
+        }
+    }
+
     /// The options of an open select; the highlighted one has the focus.
     fn option_parts(&self, owner: &A11yNode, out: &mut Vec<A11yNode>) {
         let (Some(popup), Some((_, view))) = (self.input.popup, self.popup_view()) else {
@@ -236,6 +181,8 @@ impl Ui {
             let rect = view.row(i).unwrap_or_default();
             let mut node = self.part(owner, i, Role::Option, rect);
             node.name = Some(option.clone());
+            node.state.disabled = select.is_unavailable(i);
+            node.description = select.reason(i).cloned();
             node.state.selected = Some(select.selected == i);
             node.state.focused = popup.highlight == i;
             node.position = Some((i + 1, count));
@@ -418,6 +365,7 @@ impl Ui {
     fn toast_nodes(&mut self) -> Vec<A11yNode> {
         let root = self.root();
         let views = self.toast_views();
+        let focus = self.layers.toast_input.focus;
         let mut nodes = Vec::with_capacity(3 * views.len());
         for (i, view) in views {
             let Some(shown) = self.layers.toasts.get(i) else {
@@ -437,6 +385,9 @@ impl Ui {
                     let mut button = A11yNode::new(root, Role::Button, rect);
                     button.part = Some(TOAST_PARTS + 3 * i + 1 + k);
                     button.name = Some(name);
+                    let part = [ToastPart::Action, ToastPart::Close][k];
+                    button.state.focused = focus == Some((shown.toast.id, part));
+                    button.focusable = shown.toast.action.is_some();
                     nodes.push(button);
                 }
             }

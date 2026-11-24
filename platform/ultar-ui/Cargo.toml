@@ -18,6 +18,8 @@ rustybuzz = "0.20"
 unicode-bidi = { version = "0.3", default-features = false, features = ["hardcoded-data", "std"] }
 ab_glyph_rasterizer = "0.1"
 png = { version = "0.17", optional = true }
+# QR code encoding (pure Rust, no dependencies): the account and pairing codes.
+qrcode = { version = "0.14", default-features = false }
 
 [build-dependencies]
 toml = { version = "0.8", default-features = false, features = ["parse"] }

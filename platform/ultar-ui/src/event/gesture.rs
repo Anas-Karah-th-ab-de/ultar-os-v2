@@ -302,6 +302,7 @@ impl Ui {
             self.hide_password();
         }
         self.set_hover(None);
+        self.toast_hover(None);
         false
     }
 }

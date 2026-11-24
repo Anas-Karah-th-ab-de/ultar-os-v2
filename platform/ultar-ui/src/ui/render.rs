@@ -102,6 +102,8 @@ impl Ui {
             Widget::Table(w) => w.paint(p, cx, rect, &v, parts.0),
             Widget::Tree(w) => w.paint(p, cx, rect, &v, parts.0),
             Widget::HeaderBar(w) => w.paint(p, cx, rect),
+            Widget::QrCode(w) => w.paint(p, rect),
+            Widget::Arrangement(w) => w.paint(p, cx, rect, &v),
             Widget::Dialog(w) => w.paint(p, rect),
         }
     }
@@ -119,7 +121,18 @@ impl Ui {
         let clip = self.clip_rect(id).map_or(ink, |c| c.intersect(&ink));
         if clip.intersects(region) {
             let saved = p.clip(clip);
+            // A disabled brick is dimmed as a whole (DESKTOP-SPEC §3), not shape by shape.
+            let dims = self.nodes[id.index()].widget.dims_when_disabled() && self.is_disabled(id);
+            let group = dims
+                .then(|| p.begin_group(clip, state::DISABLED_OPACITY))
+                .flatten();
             self.paint_widget(p, cx, id, rect);
+            if let Some(group) = group {
+                p.end_group(group);
+            }
+            if let Widget::ListItem(item) = &self.nodes[id.index()].widget {
+                item.paint_separator(p, rect, self.in_navigation(id));
+            }
             p.restore_clip(saved);
         }
     }
@@ -184,7 +197,13 @@ impl Ui {
         self.paint_menu(p, cx);
         for (index, view) in toasts {
             if let Some(shown) = self.layers.toasts.get(*index) {
-                shown.toast.paint(p, cx, view);
+                let focus = self
+                    .layers
+                    .toast_input
+                    .focus
+                    .filter(|f| f.0 == shown.toast.id)
+                    .map(|f| f.1);
+                shown.toast.paint(p, cx, view, focus);
             }
         }
         if let Some(tip) = self.layers.tip {

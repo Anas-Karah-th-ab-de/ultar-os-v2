@@ -9,7 +9,8 @@ use crate::text::{TextAlign, Weight};
 use crate::tokens::{size, ColorRole, Radius, Space};
 use ultar_i18n::Direction;
 
-/// A tab bar. All tabs have the same width.
+/// A tab bar. Each tab is as wide as its label plus padding (boards "Bricks"); a bar that
+/// does not fit gives every tab an equal share and scrolls by whole tabs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tabs {
     /// Accessible name of the bar (catalog key).
@@ -21,7 +22,13 @@ pub struct Tabs {
     /// The first tab drawn at the start edge when the bar does not fit (the strip scrolls
     /// by whole tabs so that the chosen one is always visible).
     pub(crate) first: usize,
+    /// Natural width of each tab in 1/64 points, measured at the weight it is drawn with
+    /// (the chosen tab semibold); empty before the first layout.
+    pub(crate) widths: Vec<u32>,
 }
+
+/// Fixed-point unit of [`Tabs::widths`] (1/64 point keeps the type `Eq`).
+const UNIT: f32 = 64.0;
 
 const PAD: Space = Space::S16;
 const INDICATOR: f32 = size::FOCUS_RING;
@@ -34,6 +41,7 @@ impl Tabs {
             tabs,
             selected: 0,
             first: 0,
+            widths: Vec::new(),
         }
     }
 
@@ -56,8 +64,20 @@ impl Tabs {
         }
     }
 
+    /// The natural widths in points when they are known and the bar has room for them.
+    fn natural(&self, rect: Rect) -> Option<Vec<f32>> {
+        if self.widths.len() != self.tabs.len() || self.tabs.is_empty() {
+            return None;
+        }
+        let widths: Vec<f32> = self.widths.iter().map(|w| *w as f32 / UNIT).collect();
+        (widths.iter().sum::<f32>() <= rect.w + 0.5).then_some(widths)
+    }
+
     /// How many whole tabs the bar shows at once.
     fn visible_count(&self, rect: Rect) -> usize {
+        if self.natural(rect).is_some() {
+            return self.tabs.len().max(1);
+        }
         let width = self.tab_width(rect);
         if width > 0.0 {
             ((rect.w / width).floor() as usize).max(1)
@@ -107,8 +127,16 @@ impl Tabs {
     /// The rectangle of tab `index`: tabs follow each other from the start edge (shifted by
     /// the tabs scrolled out at the start).
     pub(crate) fn tab(&self, rect: Rect, index: usize, direction: Direction) -> Rect {
-        let width = self.tab_width(rect);
-        let offset = (index as f32 - self.first as f32) * width;
+        let (offset, width) = match self.natural(rect) {
+            Some(widths) => (
+                widths.iter().take(index).sum::<f32>(),
+                widths.get(index).copied().unwrap_or(0.0),
+            ),
+            None => {
+                let width = self.tab_width(rect);
+                ((index as f32 - self.first as f32) * width, width)
+            }
+        };
         let x = if direction.is_rtl() {
             rect.right() - offset - width
         } else {
@@ -125,14 +153,22 @@ impl Tabs {
         (0..self.tabs.len()).find(|i| self.tab(rect, *i, direction).contains(pos))
     }
 
-    pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
-        let spec = style::CONTROL_TEXT.weight(Weight::Semibold);
-        let mut widest = 0.0f32;
-        for tab in &self.tabs {
-            widest = widest.max(cx.text_size(tab, spec, None).w);
+    /// Measures every tab (label at its drawn weight plus padding 16 on both sides) and
+    /// keeps the widths for placing the tabs.
+    pub(crate) fn measure(&mut self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
+        self.widths.clear();
+        for (index, tab) in self.tabs.iter().enumerate() {
+            let weight = if index == self.selected {
+                Weight::Semibold
+            } else {
+                Weight::Regular
+            };
+            let text = cx.text_advance(tab, style::CONTROL_TEXT.weight(weight));
+            let width = text + 2.0 * PAD.points();
+            self.widths.push((width * UNIT).round().max(0.0) as u32);
         }
         let count = self.tabs.len() as f32;
-        let natural = (widest + 2.0 * PAD.points()) * count;
+        let natural = self.widths.iter().map(|w| *w as f32 / UNIT).sum::<f32>();
         // Every tab stays a full target: a bar of many tabs on a narrow surface scrolls
         // (by whole tabs, the chosen one always visible) instead of shrinking them.
         let minimum = (cx.mode.min_target() * count).min(avail.max(cx.mode.min_target()));

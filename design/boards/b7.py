@@ -6,7 +6,7 @@ W, H = 320, 200
 def panel(inner, label, role='menu', width=48):
     """Menu, context menu and select list: raised panel, line hairline, control radius, the one shadow, padding 4."""
     return f'<div role="{role}" aria-label="{plain(label)}" style="width: {g(width)}; padding: {s1}; box-sizing: border-box; border-radius: {r_ctl}; background: {t.raised}; border: {HAIR} solid {t.line}; box-shadow: {t.shadow}; display: flex; flex-direction: column">{inner}</div>'
-def mitem(label, icon=None, shortcut='', sub=False, danger=False, disabled=False, lit=False, checked=False, slot=True, chevrons=False):
+def mitem(label, icon=None, shortcut='', sub=False, danger=False, disabled=False, lit=False, checked=False, slot=True, chevrons=False, a='menu.item', checkable=False):
     """One command row: height = pointer target, padding 8, slot 16 + 8 for icon or check, shortcut muted at the end,
     a forward chevron (mirrored with the direction) for a submenu; danger in its colour, disabled as every disabled brick (state token)."""
     color = t.danger if danger else t.text
@@ -15,9 +15,9 @@ def mitem(label, icon=None, shortcut='', sub=False, danger=False, disabled=False
     end = f'<span style="font-size: {f12}; color: {t.mute}">{tx(shortcut)}</span>' if shortcut else ''
     tail = f'<span style="width: {ic_s}; height: {ic_s}; flex: none; display: inline-flex; color: {t.mute}">{ic("forward", True) if sub else ""}</span>' if chevrons else ''
     extra = (' aria-haspopup="menu" aria-expanded="%s"' % ('true' if lit else 'false')) if sub else ''
-    state = (' aria-disabled="true"' if disabled else '') + (' aria-checked="true"' if checked else '')
-    role = 'menuitemcheckbox' if checked else 'menuitem'
-    return f'<button role="{role}"{act("menu.item", label)}{extra}{state} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; color: {color}{"; " + DIM if disabled else ""}">{lead}<span style="flex: 1">{tx(label)}</span>{end}{tail}</button>'
+    state = (' aria-disabled="true"' if disabled else '') + (' aria-checked="%s"' % ('true' if checked else 'false') if (checked or checkable) else '')
+    role = 'menuitemcheckbox' if (checked or checkable) else 'menuitem'
+    return f'<button role="{role}"{act(a, label)}{extra}{state} style="height: {tgt}; flex: none; padding: 0 {s2}; box-sizing: border-box; border-radius: {r_ctl}; display: flex; align-items: center; gap: {s2}; background: {t.hover if lit else "transparent"}; color: {color}{"; " + DIM if disabled else ""}">{lead}<span style="flex: 1">{tx(label)}</span>{end}{tail}</button>'
 def msep():
     """Separator: 8 high with the hairline in its middle."""
     return f'<div role="separator" style="height: {s2}; flex: none; display: flex; align-items: center"><span style="height: {HAIR}; flex: 1; background: {t.line}"></span></div>'
@@ -50,13 +50,13 @@ body = (spot('قائمة', f'<div style="display: flex; flex-direction: column; 
 out('Ultar OS – القوائم والتلميح', W, H, f'<main style="position: absolute; inset: 0">{body}</main>', 'Bausteine: Menü, Kontextmenü mit Untermenü, Auswahlliste, Tooltip', 4)
 
 begin('Bricks.dc.html', 'light', False)
-def tab(label, chosen=False, state=''):
+def tab(label, chosen=False, state='', a='tabs.tab'):
     """Underline tab: target height, padding 16, chosen = text 600 with a 2-point accent_text bar inset 8."""
     bg = {'hover': t.hover, 'pressed': t.line}.get(state, 'transparent')
     bar = f'<span style="position: absolute; inset-inline: {s2}; bottom: 0; height: {RING}; border-radius: {r_round}; background: {t.acctext}"></span>' if chosen else ''
-    return f'<button role="tab" aria-selected="{"true" if chosen else "false"}"{"" if chosen else " tabindex=\"-1\""}{act("tabs.tab", label)} style="position: relative; height: {tgt}; min-width: {tgt}; padding: 0 {s4}; border-radius: {r_ctl}; background: {bg}; color: {t.text if chosen else t.mute}; font-weight: {w6 if chosen else w4}{state_extra(state)}">{tx(label)}{bar}</button>'
-def tablist(inner):
-    return f'<div role="tablist" aria-label="Settings pages" style="display: flex; border-bottom: {HAIR} solid {t.line}">{inner}</div>'
+    return f'<button role="tab" aria-selected="{"true" if chosen else "false"}"{"" if chosen else " tabindex=\"-1\""}{act(a, label)} style="position: relative; height: {tgt}; min-width: {tgt}; padding: 0 {s4}; border-radius: {r_ctl}; background: {bg}; color: {t.text if chosen else t.mute}; font-weight: {w6 if chosen else w4}{state_extra(state)}">{tx(label)}{bar}</button>'
+def tablist(inner, label='Settings pages'):
+    return f'<div role="tablist" aria-label="{plain(label)}" style="display: flex; border-bottom: {HAIR} solid {t.line}">{inner}</div>'
 tabs = (tablist(tab('General', True) + tab('Display') + tab('Sound', state='hover') + tab('Network'))
         + tablist(tab('General') + tab('Display', True, 'focus') + tab('Sound', state='pressed') + tab('Network', state='disabled')))
 def scrollarea(active):

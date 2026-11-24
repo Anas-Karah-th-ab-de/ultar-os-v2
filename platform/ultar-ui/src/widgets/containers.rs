@@ -246,6 +246,32 @@ impl Row {
     }
 }
 
+/// How a card looks (boards).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CardTone {
+    /// Surface (or raised) fill, `line` border, radius 12.
+    #[default]
+    Plain,
+    /// Something serious that is about to happen (boards: "what will be erased"): raised
+    /// fill, a two-border `danger` edge, radius 12; announced as an alert.
+    Danger,
+    /// A bar or sidebar region: `bar` fill, no radius, one `line` border on one edge.
+    Bar(BarEdge),
+}
+
+/// The edge of a bar region that carries its border.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BarEdge {
+    /// The start edge (right in Arabic).
+    Start,
+    /// The end edge (a sidebar: left in Arabic).
+    End,
+    /// The top edge (a footer bar).
+    Top,
+    /// The bottom edge (a header bar).
+    Bottom,
+}
+
 /// A card: a surface with border and corner radius that lays out its children as a flex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Card {
@@ -256,6 +282,8 @@ pub struct Card {
     /// `true` for the raised look: raised background (a floating card
     /// that asks for a decision, such as "keep these display settings?").
     pub raised: bool,
+    /// Plain, danger or bar look.
+    pub tone: CardTone,
 }
 
 impl Card {
@@ -265,6 +293,26 @@ impl Card {
             flex: Flex::column(),
             floating: false,
             raised: false,
+            tone: CardTone::Plain,
+        }
+    }
+
+    /// A danger-toned card (boards "InstallerSummary": padding 16, gap 12, a two-border
+    /// `danger` edge on the raised fill), announced as an alert.
+    pub fn danger() -> Card {
+        Card {
+            tone: CardTone::Danger,
+            ..Card::padded()
+        }
+    }
+
+    /// A bar or sidebar region (boards: `bar` fill and a `line` border on `edge`; settings
+    /// sidebar 288 wide with padding 12 and gap 4, installer steps, footer bars). Size and
+    /// spacing come from its sizing and flex.
+    pub fn bar(edge: BarEdge) -> Card {
+        Card {
+            tone: CardTone::Bar(edge),
+            ..Card::new()
         }
     }
 
@@ -276,6 +324,7 @@ impl Card {
                 .gap(Space::S12),
             floating: false,
             raised: false,
+            tone: CardTone::Plain,
         }
     }
 
@@ -302,6 +351,16 @@ impl Card {
         if self.floating {
             p.shadow(rect, Some(Radius::Card));
         }
+        match self.tone {
+            CardTone::Bar(edge) => return Card::paint_bar(p, rect, edge),
+            CardTone::Danger => {
+                let (fill, danger) = (p.color(ColorRole::Raised), p.color(ColorRole::Danger));
+                p.fill(rect, Some(Radius::Card), fill);
+                p.stroke(rect, Some(Radius::Card), 2.0 * p.hairline(), danger);
+                return;
+            }
+            CardTone::Plain => {}
+        }
         // Boards (REVIEW-SELF B5): a raised card has the raised fill, no gold border.
         let (background, border) = if self.raised {
             (ColorRole::Raised, ColorRole::Line)
@@ -311,6 +370,33 @@ impl Card {
         let (surface, line, hairline) = (p.color(background), p.color(border), p.hairline());
         p.fill(rect, Some(Radius::Card), surface);
         p.stroke(rect, Some(Radius::Card), hairline, line);
+    }
+}
+
+impl Card {
+    /// A bar region: `bar` fill and one `line` border on `edge` (mirrored in RTL).
+    fn paint_bar(p: &mut Painter<'_>, rect: Rect, edge: BarEdge) {
+        let (bar, line, hairline) = (
+            p.color(ColorRole::Bar),
+            p.color(ColorRole::Line),
+            p.hairline(),
+        );
+        p.fill(rect, None, bar);
+        let rtl = p.env().direction.is_rtl();
+        let border = match edge {
+            BarEdge::Top => Rect::new(rect.x, rect.y, rect.w, hairline),
+            BarEdge::Bottom => Rect::new(rect.x, rect.bottom() - hairline, rect.w, hairline),
+            BarEdge::Start | BarEdge::End => {
+                let left = (edge == BarEdge::Start) != rtl;
+                let x = if left {
+                    rect.x
+                } else {
+                    rect.right() - hairline
+                };
+                Rect::new(x, rect.y, hairline, rect.h)
+            }
+        };
+        p.fill(border, None, line);
     }
 }
 

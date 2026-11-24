@@ -39,6 +39,13 @@ pub enum UiError {
         /// The index that was asked for.
         index: usize,
     },
+    /// The option is not available (`RadioGroup::unavailable`, `Select::unavailable`).
+    OptionUnavailable {
+        /// The node.
+        node: NodeId,
+        /// The option.
+        index: usize,
+    },
     /// Scale factors must be finite and between 0.5 and 8.
     InvalidScale,
     /// Surface sizes must be finite and not negative.
@@ -64,6 +71,9 @@ impl fmt::Display for UiError {
             UiError::NotApplicable(id) => write!(f, "node {} has no such state", id.0),
             UiError::OptionOutOfRange { node, index } => {
                 write!(f, "node {} has no option {index}", node.0)
+            }
+            UiError::OptionUnavailable { node, index } => {
+                write!(f, "option {index} of node {} is not available", node.0)
             }
             UiError::InvalidScale => write!(f, "scale must be between 0.5 and 8"),
             UiError::InvalidSize => write!(f, "size must be finite and not negative"),
@@ -110,6 +120,7 @@ mod tests {
             },
             UiError::NotApplicable(node),
             UiError::OptionOutOfRange { node, index: 9 },
+            UiError::OptionUnavailable { node, index: 1 },
             UiError::InvalidScale,
             UiError::InvalidMenu,
             UiError::InvalidSize,

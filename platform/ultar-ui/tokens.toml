@@ -49,6 +49,7 @@ repeat = 80                # repeat interval of a held button
 double_click = 400         # second press within this time = double click
 spinner_period = 1200      # one revolution of a progress ring / pass of a busy bar
 toast = 4000               # a toast without action hides after this time
+toast_action = 10000       # a toast with an action: longer, paused under pointer or focus
 
 [layout]                   # size classes by logical width
 compact_max = 599

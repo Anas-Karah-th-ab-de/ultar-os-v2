@@ -12,7 +12,7 @@ use ultar_ui::ui::{NodeId, Role, Ui, UiError};
 use ultar_ui::widgets::{Button, Label, Menu, MenuItem, MAX_MENU_ITEMS};
 use ultar_ui::{Lang, Point, Size};
 
-const SURFACE: Size = Size::new(720.0, 560.0);
+const SURFACE: Size = Size::new(880.0, 560.0);
 
 fn setup(lang: Lang) -> (Ui, Gallery) {
     let mut ui = common::ui(lang, ThemeKind::Dark, SURFACE);
@@ -168,8 +168,8 @@ fn enter_escape_and_tab_in_menus_and_submenus() {
 
 #[test]
 fn a_submenu_flips_to_the_other_side_when_there_is_no_room() {
-    // 380 points: the top menu fits, a submenu beside it does not.
-    let mut ui = common::ui(Lang::En, ThemeKind::Dark, Size::new(380.0, 400.0));
+    // 480 points: the top menu (224) fits, a submenu beside it at the end edge does not.
+    let mut ui = common::ui(Lang::En, ThemeKind::Dark, Size::new(480.0, 400.0));
     let root = ui.root();
     ui.set_root_flex(Flex::column().cross(CrossAlign::End));
     let button = ui
@@ -182,14 +182,14 @@ fn a_submenu_flips_to_the_other_side_when_there_is_no_room() {
     }
     let (parent, child) = (ui.menu_rect(0).unwrap(), ui.menu_rect(1).unwrap());
     assert!(
-        child.x >= 0.0 && child.right() <= 380.0,
+        child.x >= 0.0 && child.right() <= 480.0,
         "inside the surface: {child:?}"
     );
     assert!(
         child.center().x < parent.center().x,
         "flipped to the start side"
     );
-    assert!(parent.x >= 0.0 && parent.right() <= 380.0 && parent.bottom() <= 400.0);
+    assert!(parent.x >= 0.0 && parent.right() <= 480.0 && parent.bottom() <= 400.0);
 }
 
 #[test]

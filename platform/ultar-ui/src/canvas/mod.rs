@@ -7,10 +7,12 @@
 
 mod blend;
 mod damage;
+mod group;
 mod shapes;
 pub(crate) mod stroke;
 
 pub use damage::{Damage, MAX_DAMAGE_RECTS};
+pub use group::Backdrop;
 
 use crate::color::Color;
 use crate::geom::{PixelRect, Point};

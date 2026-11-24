@@ -133,6 +133,9 @@ pub struct Flex {
     pub main: MainAlign,
     /// Cross-axis placement.
     pub cross: CrossAlign,
+    /// A row that runs out of room continues on a new line (the gap also separates the
+    /// lines). Only for rows; children keep their natural width (growing is ignored).
+    pub wrap: bool,
 }
 
 impl Flex {
@@ -144,6 +147,7 @@ impl Flex {
             padding: Padding::NONE,
             main: MainAlign::Start,
             cross: CrossAlign::Center,
+            wrap: false,
         }
     }
 
@@ -155,7 +159,15 @@ impl Flex {
             padding: Padding::NONE,
             main: MainAlign::Start,
             cross: CrossAlign::Stretch,
+            wrap: false,
         }
+    }
+
+    /// The same row wrapping onto further lines when its children do not fit
+    /// (boards: the account buttons).
+    pub const fn wrap(mut self) -> Flex {
+        self.wrap = true;
+        self
     }
 
     /// The same container with a gap between children.

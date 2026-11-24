@@ -3,6 +3,7 @@
 //! A widget is plain data plus a `measure` and a `paint` function; interaction state lives in
 //! [`crate::ui::Ui`] and reaches the widget as a [`Visual`].
 
+mod arrangement;
 mod badge;
 mod button;
 mod checkbox;
@@ -14,6 +15,7 @@ mod label;
 mod list;
 mod menu;
 mod progress;
+mod qr;
 mod radio;
 mod scroll;
 mod search_field;
@@ -29,10 +31,11 @@ mod tone;
 mod tooltip;
 mod tree;
 
+pub use arrangement::{ArrangedItem, Arrangement, MAX_ARRANGEMENT_ITEMS};
 pub use badge::Badge;
 pub use button::{Button, ButtonVariant, IconButton};
 pub use checkbox::Checkbox;
-pub use containers::{Card, Icon, Row, Text};
+pub use containers::{BarEdge, Card, CardTone, Icon, Row, Text};
 pub use dialog::{Dialog, DialogKind};
 pub use header_bar::HeaderBar;
 pub use info_bar::{EmptyState, InfoBar};
@@ -40,7 +43,8 @@ pub use label::{Label, LabelArg};
 pub use list::{List, ListItem};
 pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
 pub use progress::Progress;
-pub use radio::RadioGroup;
+pub use qr::{QrCode, QrCodeError, MAX_QR_BYTES};
+pub use radio::{RadioGroup, RadioLayout};
 pub use scroll::Scroll;
 pub use search_field::SearchField;
 pub use select::{Select, MAX_VISIBLE_OPTIONS};
@@ -59,7 +63,7 @@ pub(crate) use menu::MenuPanel;
 pub(crate) use select::PopupView;
 pub(crate) use style::focus_outset;
 pub(crate) use table::TablePart;
-pub(crate) use toast::ToastView;
+pub(crate) use toast::{ToastPart, ToastView};
 pub(crate) use tooltip::{paint_tooltip, tooltip_rect};
 
 use crate::geom::Size;
@@ -78,6 +82,13 @@ pub(crate) struct MeasureCx<'a> {
 
 impl MeasureCx<'_> {
     /// Size of a label in logical points; `max` limits the width for wrap and ellipsis.
+    /// The exact advance width of a one-line label in points (not rounded up): for rows of
+    /// labels whose rounding would add up (a tab strip).
+    pub(crate) fn text_advance(&mut self, label: &Label, spec: TextSpec) -> f32 {
+        let text = label.resolve(self.tr);
+        layout_text(self.res, self.env, &text, spec, None).width / self.env.scale
+    }
+
     pub(crate) fn text_size(&mut self, label: &Label, spec: TextSpec, max: Option<f32>) -> Size {
         let text = label.resolve(self.tr);
         let layout = layout_text(self.res, self.env, &text, spec, max);
@@ -149,6 +160,10 @@ pub enum Widget {
     Tree(Tree),
     /// The top bar of a window or page; its children are the controls at start and end.
     HeaderBar(HeaderBar),
+    /// A QR code.
+    QrCode(QrCode),
+    /// Items the user drags into place on a canvas (display arrangement).
+    Arrangement(Arrangement),
 }
 
 macro_rules! widget_from {
@@ -162,9 +177,33 @@ macro_rules! widget_from {
 }
 
 widget_from!(
-    Flex, Text, Icon, Button, IconButton, Switch, Select, Slider, TextField, Row, Card, Badge,
-    Progress, Checkbox, RadioGroup, Tabs, InfoBar, EmptyState, List, ListItem, Scroll, Dialog,
-    Table, Tree, HeaderBar
+    Flex,
+    Text,
+    Icon,
+    Button,
+    IconButton,
+    Switch,
+    Select,
+    Slider,
+    TextField,
+    Row,
+    Card,
+    Badge,
+    Progress,
+    Checkbox,
+    RadioGroup,
+    Tabs,
+    InfoBar,
+    EmptyState,
+    List,
+    ListItem,
+    Scroll,
+    Dialog,
+    Table,
+    Tree,
+    HeaderBar,
+    QrCode,
+    Arrangement
 );
 
 impl From<SearchField> for Widget {
@@ -191,6 +230,7 @@ impl Widget {
                 | Widget::ListItem(_)
                 | Widget::Table(_)
                 | Widget::Tree(_)
+                | Widget::Arrangement(_)
         )
     }
 
@@ -205,6 +245,38 @@ impl Widget {
                 | Widget::Checkbox(_)
                 | Widget::ListItem(_)
                 | Widget::Slider(_)
+                | Widget::TextField(_)
+        )
+    }
+
+    /// `true` when option `index` of a radio group or select cannot be chosen.
+    pub fn option_unavailable(&self, index: usize) -> bool {
+        match self {
+            Widget::RadioGroup(group) => group.is_unavailable(index),
+            Widget::Select(select) => select.is_unavailable(index),
+            _ => false,
+        }
+    }
+
+    /// `true` for widgets that dim themselves when disabled; the toolkit draws them as one
+    /// group so the whole brick is at the disabled opacity (fill and border dimmed once).
+    pub fn dims_when_disabled(&self) -> bool {
+        matches!(
+            self,
+            Widget::Button(_)
+                | Widget::IconButton(_)
+                | Widget::Switch(_)
+                | Widget::Select(_)
+                | Widget::Slider(_)
+                | Widget::TextField(_)
+                | Widget::Row(_)
+                | Widget::Checkbox(_)
+                | Widget::RadioGroup(_)
+                | Widget::Tabs(_)
+                | Widget::ListItem(_)
+                | Widget::Table(_)
+                | Widget::Tree(_)
+                | Widget::Arrangement(_)
         )
     }
 
@@ -217,6 +289,9 @@ impl Widget {
                 | Widget::Checkbox(_)
                 | Widget::Slider(_)
                 | Widget::ListItem(_)
+                | Widget::Button(_)
+                | Widget::IconButton(_)
+                | Widget::Switch(_)
         )
     }
 

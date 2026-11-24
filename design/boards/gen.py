@@ -107,6 +107,7 @@ def ic(name, small=False, color='currentColor'):
 def mark(small=False):
     """Brand mark = Overview button (section 5.1)."""
     s = IC_S if small else IC_L
+    ICON_USE.setdefault('mark', set()).add(cx.name)
     return '<svg aria-hidden="true" data-icon="mark" width="%d" height="%d" viewBox="0 0 24 24" fill="none" stroke="%s" stroke-width="%s" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 8a4 4 0 1 0 4 4"></path></svg>' % (s, s, t.acctext, STROKE)
 def picto(kind):
     """Two-display pictogram. Physical picture of two screens: never mirrored (decision R11), no arrow."""
@@ -222,7 +223,7 @@ def slider(label, pct, a, state='', icon=None, width=None):
     pre = '<span style="display: inline-flex; color: %s">%s</span>' % (t.mute, ic(icon)) if icon else ''
     return '<div style="display: flex; align-items: center; gap: %s; %s">%s<div role="slider" tabindex="0" aria-label="%s" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" aria-valuetext="%d%%"%s%s style="flex: 1; height: %s; display: flex; align-items: center; border-radius: %s%s"><span style="width: %d%%; height: %s; border-radius: %s; background: %s"></span><span style="width: %s; height: %s; flex: none; border-radius: %s; background: %s; border: %s solid %s; box-sizing: border-box"></span><span style="flex: 1; height: %s; border-radius: %s; background: %s"></span></div><span style="width: %s; text-align: end; font-size: %s; color: %s">%s</span></div>' % (
         s3, 'width: %s' % width if width else 'flex: 1', pre, plain(label), pct, pct, act(a, label), _aria_state(state), tgt, r_ctl, state_extra(state), pct, s1, r_round, fill, ic_s, ic_s, r_round, knob, ring, t.acctext, s1, r_round, rest, s7, f12, t.mute, ltr('%d%%' % pct))
-def field(label, a, value='', hint='', kind='text', state='', error='', icon=None, width=None, show_label=True, direction=None):
+def field(label, a, value='', hint='', kind='text', state='', error='', icon=None, width=None, show_label=True, direction=None, fit=False):
     """Text field with a visible label and an error text. direction: fixed text direction (numbers, addresses)."""
     i = uid('f'); e = uid('e')
     css = _state_css('normal', 'focus' if state == 'focus' else ('disabled' if state == 'disabled' else ('error' if state == 'error' else ('hover' if state == 'hover' else ''))))
@@ -230,8 +231,8 @@ def field(label, a, value='', hint='', kind='text', state='', error='', icon=Non
     lab = '<label for="%s" style="font-size: %s; font-weight: %d">%s</label>' % (i, f12, w5, tx(label)) if show_label else ''
     err = '<div id="%s" role="alert" style="font-size: %s; color: %s; display: flex; align-items: center; gap: %s">%s<span>%s</span></div>' % (e, f12, t.danger, s1, ic('error', True), tx(error)) if error else ''
     pre = '<span style="display: inline-flex; color: %s">%s</span>' % (t.mute, ic('ring' if state == 'loading' else icon, True)) if (icon or state == 'loading') else ''
-    return '<div style="display: flex; flex-direction: column; gap: %s; %s">%s<div style="height: %s; padding: 0 %s; border-radius: %s; display: flex; align-items: center; gap: %s; %s">%s<input id="%s" type="%s"%s%s value="%s" placeholder="%s"%s%s%s%s style="flex: 1; height: 100%%" /></div>%s</div>' % (
-        s1, 'width: %s' % width if width else 'flex: 1', lab, tgt, s3, r_ctl, s2, css, pre, i, kind, act(a, label), '' if show_label else ' aria-label="%s"' % plain(label), plain(value), plain(hint),
+    return '<div style="display: flex; flex-direction: column; gap: %s; %s">%s<div style="height: %s; padding: 0 %s; border-radius: %s; display: flex; align-items: center; gap: %s; %s">%s<input id="%s" type="%s"%s%s%s value="%s" placeholder="%s"%s%s%s%s style="flex: 1; height: 100%%" /></div>%s</div>' % (
+        s1, ('width: %s' % width if width else 'flex: 1') + ('; min-width: 0' if fit else ''), lab, tgt, s3, r_ctl, s2, css, pre, i, kind, ' size="1"' if fit else '', act(a, label), '' if show_label else ' aria-label="%s"' % plain(label), plain(value), plain(hint),
         ' dir="%s"' % direction if direction else '', ' disabled' if state == 'disabled' else '', ' aria-invalid="true"' if state == 'error' else '', ' aria-describedby="%s"' % e if error else '', err)
 def checkrow(label, a, on, subtext='', state='', end='', icon=None, mixed=False):
     """Checkbox: the whole row is the target."""
@@ -313,7 +314,7 @@ def bottombar(running=(), active=None, usb=True, open_=None):
     s = S()
     start = tile('bin', s['trash'], 'shell.trash') + (tile('usb', s['usb'], 'shell.drive') if usb else '')
     centre = '<button%s aria-label="%s" style="width: %s; height: %s; flex: none; border-radius: %s; display: inline-flex; align-items: center; justify-content: center; background: %s">%s</button>' % (act('shell.overview', s['overview']), s['overview'], touch, touch, r_ctl, t.hover if open_ == 'overview' else 'transparent', mark())
-    centre += ibtn(s['apps'], 'grid', 'shell.apps', small=False, big=True)
+    centre += ibtn(s['apps'], 'grid', 'shell.apps', active=(open_ == 'apps'), small=False, big=True)
     centre += '<button%s aria-label="%s" style="width: %s; height: %s; flex: none; padding: 0 %s; box-sizing: border-box; border-radius: %s; background: %s; border: %s solid %s; display: inline-flex; align-items: center; gap: %s; color: %s">%s<span>%s</span></button>' % (act('shell.search', s['search']), s['search'], g(50), tgt, s3, r_ctl, t.surface, HAIR, t.ctl, s2, t.mute, ic('search', True), s['search'])
     centre += ''.join(tile(i, s[k], 'shell.app', run=dict(running).get(k, 0), active=(k == active)) for i, k in APPS)
     end = kbd_button() + status_button(pressed=(open_ == 'quick'))
@@ -322,10 +323,10 @@ def bottombar(running=(), active=None, usb=True, open_=None):
 def topbar(app):
     """Variant only: bar at the top (section 5.1), height = pointer target."""
     s = S()
-    return '<nav aria-label="%s" style="position: absolute; inset-inline: 0; top: 0; height: %s; background: %s; border-bottom: %s solid %s; display: flex; align-items: center; padding: 0 %s; z-index: 4"><div style="flex: 1; display: flex; align-items: center; gap: %s"><button%s aria-label="%s" style="width: %s; height: %s; border-radius: %s; display: inline-flex; align-items: center; justify-content: center">%s</button>%s</div><button%s aria-haspopup="dialog" style="height: %s; padding: 0 %s; border-radius: %s; font-weight: %d">%s</button><div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: %s">%s%s</div></nav>' % (
+    return '<nav aria-label="%s" style="position: absolute; inset-inline: 0; top: 0; height: %s; background: %s; border-bottom: %s solid %s; display: flex; align-items: center; padding: 0 %s; z-index: 4"><div style="flex: 1; display: flex; align-items: center; gap: %s"><button%s aria-label="%s" style="width: %s; height: %s; border-radius: %s; display: inline-flex; align-items: center; justify-content: center">%s</button>%s</div><button%s aria-label="%s: %s %s" aria-haspopup="dialog" aria-expanded="false" style="height: %s; padding: 0 %s; border-radius: %s; font-weight: %d">%s</button><div style="flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: %s">%s%s</div></nav>' % (
         s['bar'], tgt, t.bar, HAIR, t.line, s2, s2, act('shell.overview', s['overview']), s['overview'], tgt, tgt, r_ctl, mark(True),
         '<button%s aria-haspopup="menu" style="height: %s; padding: 0 %s; border-radius: %s; font-weight: %d">%s</button>' % (act('shell.appmenu', app), tgt, s2, r_ctl, w6, tx(app)) if app else '',
-        act('shell.clock', s['cal']), tgt, s3, r_ctl, w5, tx(s['date'] + ' · ' + s['clock']), s1, kbd_button(), status_button())
+        act('shell.clock', s['cal']), s['cal'], plain(s['date']), s['clock'], tgt, s3, r_ctl, w5, tx(s['date'] + ' · ' + s['clock']), s1, kbd_button(), status_button())
 def dock(running=()):
     s = S()
     inner = ibtn(s['apps'], 'grid', 'shell.apps', small=False, big=True) + vsep() + ''.join(tile(i, s[k], 'shell.app', run=dict(running).get(k, 0)) for i, k in APPS) + vsep() + tile('usb', s['usb'], 'shell.drive') + tile('bin', s['trash'], 'shell.trash')

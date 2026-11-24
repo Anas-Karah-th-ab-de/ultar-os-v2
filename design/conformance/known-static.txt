@@ -1,0 +1,2 @@
+# Accepted findings of tools/design-conformance/static_checks.py (the list only shrinks).
+i18n: system/core/ultar-i18n/locales: Arabic `system.vendor` is not Arabic: 'KM Code Craft'

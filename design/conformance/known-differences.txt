@@ -1,0 +1,3 @@
+# Known differences between the boards and the implementation (design conformance ratchet).
+# Every line is a difference that exists today. The tests fail on a new difference and on a
+# line that no longer fails (remove it then) – this list only shrinks. Detail: docs/review/ui-conformance-*.md

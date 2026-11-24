@@ -5,6 +5,9 @@ use crate::geom::Size;
 use crate::layout::{distribute, Axis, CrossAlign, Flex, Length, LogicalRect, Slot};
 use crate::widgets::{EmptyState, InfoBar, ListItem, MeasureCx, Row, Widget};
 
+#[path = "wrap.rs"]
+mod wrap;
+
 fn cross_offset(align: CrossAlign, free: f32) -> f32 {
     match align {
         CrossAlign::Start | CrossAlign::Stretch => 0.0,
@@ -63,6 +66,11 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
     let nav = nodes[i]
         .parent
         .is_some_and(|p| matches!(&nodes[p.index()].widget, Widget::List(l) if l.navigation));
+    match &mut nodes[i].widget {
+        Widget::Tabs(tabs) => return tabs.measure(cx, avail),
+        Widget::RadioGroup(group) => return group.measure(cx, avail),
+        _ => {}
+    }
     let node = &nodes[i];
     let error = node.error.as_ref();
     match &node.widget {
@@ -76,7 +84,7 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Tree(w) => w.measure(cx, avail),
         Widget::Text(w) => w.measure(cx, avail),
         Widget::Icon(w) => w.measure(),
-        Widget::Button(w) => w.measure(cx, avail, node.loading),
+        Widget::Button(w) => w.measure(cx, avail, (node.loading, error.is_some())),
         Widget::IconButton(w) => w.measure(cx),
         Widget::Switch(w) => w.measure(cx),
         Widget::Select(w) => w.measure(cx, avail, error),
@@ -86,8 +94,10 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Badge(w) => w.measure(cx, avail),
         Widget::Progress(w) => w.measure(cx, avail),
         Widget::Checkbox(w) => w.measure(cx, avail, error),
-        Widget::RadioGroup(w) => w.measure(cx, avail),
-        Widget::Tabs(w) => w.measure(cx, avail),
+        Widget::RadioGroup(_) => Size::default(),
+        Widget::Tabs(_) => Size::default(),
+        Widget::QrCode(w) => w.measure(),
+        Widget::Arrangement(w) => w.measure(cx, avail),
         Widget::InfoBar(w) => w.measure(cx, avail, control),
         Widget::EmptyState(w) => w.measure(cx, avail, control),
         Widget::ListItem(w) => w.measure(cx, avail, control, (nav, error.is_some())),
@@ -142,6 +152,7 @@ fn measure_flex(
     let gaps = flex.gap_points() * count.saturating_sub(1) as f32;
     let (mut main, mut cross) = (0.0f32, 0.0f32);
     match flex.axis {
+        Axis::Inline if flex.wrap => wrap::measure_wrap(nodes, cx, id, flex, avail),
         Axis::Inline => {
             let items = inline_items(nodes, cx, id, flex, inner);
             let mut slots: Vec<Slot> = Vec::with_capacity(count);
@@ -219,6 +230,7 @@ fn arrange_flex(
         height: (frame.height - flex.padding.block_sum()).max(0.0),
     };
     match flex.axis {
+        Axis::Inline if flex.wrap => wrap::arrange_wrap(nodes, cx, id, flex, &inner),
         Axis::Inline => arrange_inline(nodes, cx, id, flex, &inner),
         Axis::Block => arrange_block(nodes, cx, id, flex, &inner),
     }

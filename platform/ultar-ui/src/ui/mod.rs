@@ -1,6 +1,7 @@
 //! The widget tree with its interaction state: build it, feed it events, paint it.
 
 mod access;
+mod access_describe;
 mod access_tree;
 mod clock;
 mod edit;
@@ -10,6 +11,7 @@ mod layers;
 mod measure;
 mod menus;
 mod modal;
+mod programmatic;
 mod render;
 mod scrolling;
 mod settings;

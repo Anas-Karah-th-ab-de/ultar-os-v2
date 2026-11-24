@@ -472,10 +472,21 @@ fn the_close_button_of_a_toast_closes_it_by_pointer() {
     let pos = close.rect.center();
     move_to(&mut ui, pos);
     let down = press(&mut ui, pos);
-    assert!(of(&down).contains(&ActionKind::ToastClosed(5)));
     assert!(
-        of(&release(&mut ui, pos)).is_empty(),
-        "the release under it activates nothing"
+        of(&down).is_empty(),
+        "a toast button acts on release, like every button"
     );
+    assert!(of(&release(&mut ui, pos)).contains(&ActionKind::ToastClosed(5)));
     assert!(ui.toasts().is_empty());
+    // A press taken back by moving away does nothing.
+    ui.show_toast(Toast::new(6, Tone::Info, k("demo.toast.saved")))
+        .expect("toast");
+    let close = ui
+        .a11y_tree()
+        .into_iter()
+        .find(|n| n.name == Some(k("ui.toast.close")))
+        .expect("close button");
+    press(&mut ui, close.rect.center());
+    assert!(of(&release(&mut ui, Point::new(1.0, 1.0))).is_empty());
+    assert_eq!(ui.toasts(), vec![6]);
 }

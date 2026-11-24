@@ -4,6 +4,7 @@
 //! device input into [`Event`]s; the application reacts to the returned [`Action`]s.
 
 mod activate;
+mod arrange;
 mod data_keys;
 mod gesture;
 mod keys;
@@ -232,6 +233,9 @@ pub enum ActionKind {
     ToastAction(u32),
     /// The toast with this identifier went away (time, close button or Escape).
     ToastClosed(u32),
+    /// Item `index` of an arrangement canvas was dragged to a new place
+    /// (`Ui::arranged_rect` tells where).
+    Arranged(usize),
 }
 
 /// An action emitted by a node.

@@ -23,7 +23,8 @@ impl Ui {
         let direction = self.env.direction;
         match &self.nodes[id.index()].widget {
             Widget::Tabs(tabs) => tabs.part_at(rect, pos, direction),
-            Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode),
+            Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode, direction),
+            Widget::Arrangement(canvas) => canvas.part_at(rect, pos),
             Widget::Table(table) => table.part_at(rect, pos, self.mode, direction),
             Widget::Tree(tree) => tree.part_at(rect, pos, self.mode, direction),
             Widget::TextField(field) => field.part_at(field.field(rect, self.mode), pos, direction),
@@ -102,6 +103,7 @@ impl Ui {
             }
             if focus.is_some() {
                 self.input.focus_hint = None;
+                self.drop_toast_focus();
             }
             for id in [previous, focus].into_iter().flatten() {
                 self.touch(id);
@@ -169,6 +171,10 @@ impl Ui {
             return;
         };
         if let Ok(select) = self.select_mut(popup.select) {
+            if select.is_unavailable(index) {
+                // Not available: nothing happens, the list stays open (as a disabled item).
+                return;
+            }
             if index < select.options.len() && select.selected != index {
                 select.selected = index;
                 out.push(Action {
@@ -222,10 +228,12 @@ impl Ui {
             return;
         };
         let res = self.res.get_mut();
-        if let Some(Widget::TextField(field)) =
-            self.nodes.get_mut(id.index()).map(|n| &mut n.widget)
-        {
-            let caret = field.caret_at(res, &env, rect, mode, pos);
+        if let Some(node) = self.nodes.get_mut(id.index()) {
+            let busy = node.loading;
+            let Widget::TextField(field) = &mut node.widget else {
+                return;
+            };
+            let caret = field.caret_at(res, &env, rect, (mode, busy), pos);
             field.set_caret(caret);
             self.touch(id);
         }
@@ -257,6 +265,7 @@ impl Ui {
             return true;
         }
         if pointer == Pointer::Mouse {
+            self.toast_hover(Some(pos));
             let hit = self.hit(pos);
             self.set_hover(hit);
             let part = hit.and_then(|id| self.part_at(id, pos));
@@ -267,6 +276,7 @@ impl Ui {
                 self.drag_slider(press.node, pos, out);
                 true
             }
+            Some(press) if self.drag_item(press.node, pos) => true,
             press => press.is_some(),
         }
     }
@@ -292,7 +302,7 @@ impl Ui {
         if self.layers.menu.is_some() {
             return self.menu_press(pos, out);
         }
-        if self.toast_press(pos, out) {
+        if self.toast_press(pos) {
             return true;
         }
         if self.popup_down(pos, out) {
@@ -312,6 +322,7 @@ impl Ui {
         self.gesture_down(id, (pos, part), pointer, out);
         match &self.nodes[id.index()].widget {
             Widget::Slider(_) => self.drag_slider(id, pos, out),
+            Widget::Arrangement(_) => self.grab_item(id, part, pos),
             Widget::TextField(_) if part.is_none() => self.place_caret(id, pos),
             _ => {}
         }
@@ -324,6 +335,9 @@ impl Ui {
         pointer: Pointer,
         out: &mut Vec<Action>,
     ) -> bool {
+        if self.toast_release(pos, out) {
+            return true;
+        }
         if self.gesture_up(pointer, Some(pos), out) {
             self.set_press(pointer, None);
             return true;
@@ -346,6 +360,7 @@ impl Ui {
             return self.open_dialog_node().is_some();
         };
         self.set_press(pointer, None);
+        self.release_item(press.node, out);
         if self.hit(pos) == Some(press.node) && self.part_at(press.node, pos) == press.part {
             let before = out.len();
             self.activate(press.node, press.part, out);

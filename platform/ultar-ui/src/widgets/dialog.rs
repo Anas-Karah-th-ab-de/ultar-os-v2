@@ -41,6 +41,8 @@ pub struct Dialog {
     pub(crate) return_focus: Option<NodeId>,
     /// The node a panel hangs on.
     pub(crate) anchor: Option<NodeId>,
+    /// The node the dialog was added to: removing it removes the dialog (and closes it).
+    pub(crate) host: Option<NodeId>,
     /// `true` for a dialog that asks about something serious (role `alertdialog`).
     pub alert: bool,
 }
@@ -66,6 +68,7 @@ impl Dialog {
             cancel_action: None,
             return_focus: None,
             anchor: None,
+            host: None,
             alert: false,
         }
     }

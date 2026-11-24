@@ -111,8 +111,8 @@ fn states_follow_interaction() {
         Err(UiError::NotApplicable(s.card))
     );
     assert_eq!(
-        ui.set_error(s.apply, Some(Label::key("demo.device.error"))),
-        Err(UiError::NotApplicable(s.apply))
+        ui.set_error(s.card, Some(Label::key("demo.device.error"))),
+        Err(UiError::NotApplicable(s.card))
     );
     assert!(matches!(
         ui.set_on(s.apply, true),

@@ -63,6 +63,11 @@ pub struct TextField {
     pub(crate) eye_focused: bool,
     /// `true` when the name is shown above the field.
     pub(crate) show_label: bool,
+    /// `true` when the show-password control is a separate button beside the field
+    /// (boards: installer passphrase); the field then has no button of its own.
+    pub(crate) reveal_outside: bool,
+    /// `true` while the password is shown by that separate button (a toggle).
+    pub(crate) shown: bool,
     text: String,
     caret: usize,
     max_len: usize,
@@ -109,6 +114,8 @@ impl TextField {
             revealed: false,
             eye_focused: false,
             show_label: false,
+            reveal_outside: false,
+            shown: false,
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
@@ -136,14 +143,14 @@ impl TextField {
         self.password
     }
 
-    /// `true` while the password is shown.
+    /// `true` while the password is shown (held, or toggled from outside).
     pub fn is_revealed(&self) -> bool {
-        self.revealed
+        self.revealed || self.shown
     }
 
     /// The text as drawn: the content, or one dot per character of a hidden password.
     pub(crate) fn display(&self) -> std::borrow::Cow<'_, str> {
-        if self.password && !self.revealed {
+        if self.masked() {
             std::borrow::Cow::Owned(MASK.to_string().repeat(self.text.chars().count()))
         } else {
             std::borrow::Cow::Borrowed(&self.text)
@@ -152,7 +159,7 @@ impl TextField {
 
     /// A byte offset of the content as an offset of the drawn text.
     fn to_display(&self, byte: usize) -> usize {
-        if self.password && !self.revealed {
+        if self.masked() {
             self.text[..byte.min(self.text.len())].chars().count() * MASK.len_utf8()
         } else {
             byte
@@ -161,7 +168,7 @@ impl TextField {
 
     /// A byte offset of the drawn text as an offset of the content.
     fn byte_from_display(&self, byte: usize) -> usize {
-        if self.password && !self.revealed {
+        if self.masked() {
             let chars = byte / MASK.len_utf8();
             self.text
                 .char_indices()
@@ -346,10 +353,10 @@ impl TextField {
         res: &mut Resources,
         env: &PaintEnv,
         rect: Rect,
-        mode: InputMode,
+        (mode, busy): (InputMode, bool),
         pos: Point,
     ) -> usize {
-        let inner = self.text_area(self.field(rect, mode), env.direction);
+        let inner = self.text_area_busy(self.field(rect, mode), env.direction, busy);
         let base = self.direction.resolve(env.direction);
         let shown = self.display();
         let layout = layout_directed(res, env, &shown, FIELD_TEXT, None, base);
@@ -394,14 +401,24 @@ impl TextField {
         };
         let bg = p.color(bg);
         p.fill(field, Some(Radius::Control), bg);
-        let (border, width) = match (v.error, has_focus) {
-            (true, _) => (ColorRole::Danger, size::STROKE),
-            (false, true) => (ColorRole::AccentText, size::STROKE),
+        // Boards: an error and the field being typed into (pressed, or focused by the
+        // pointer) have a 2-point edge in `danger` / `text`; keyboard focus keeps the
+        // `control_border` edge and adds the blue focus ring (gold is never a focus colour).
+        let typing = v.pressed || (has_focus && !v.focused);
+        let (border, width) = match (v.error, typing) {
+            (true, _) => (ColorRole::Danger, 2.0 * p.hairline()),
+            (false, true) => (ColorRole::Text, 2.0 * p.hairline()),
             (false, false) => (ColorRole::ControlBorder, p.hairline()),
         };
         let border = p.color(border);
         p.stroke(field, Some(Radius::Control), width, border);
         self.paint_search_parts(p, field);
+        if v.loading {
+            // Boards: a progress ring in `text_muted` at the start of the field.
+            let ring = self.busy_slot(field, p.env().direction);
+            let muted = p.color(ColorRole::TextMuted);
+            p.spinner(ring, cx.spin, muted);
+        }
         if self.show_label {
             let band = Rect::new(rect.x, rect.y, rect.w, LABEL_BAND - Space::S4.points());
             // Boards: the label above a field in `text`, 12/500.
@@ -409,7 +426,7 @@ impl TextField {
             let spec = style::SMALL_TEXT.weight(crate::text::Weight::Medium);
             style::draw_label(p, cx, &self.name, spec, band, TextAlign::Start, color);
         }
-        let inner = self.text_area(field, p.env().direction);
+        let inner = self.text_area_busy(field, p.env().direction, v.loading);
         self.paint_content(p, cx, inner, has_focus);
         style::paint_error(p, cx, error, rect, field.bottom() - rect.y);
         if v.focused {

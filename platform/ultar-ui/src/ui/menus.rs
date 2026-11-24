@@ -44,6 +44,14 @@ impl Ui {
         self.layers.menu.as_ref().map(|m| m.owner)
     }
 
+    /// `true` when `id` owns the open drop-down menu (not a context menu).
+    pub(crate) fn drop_down_owner(&self, id: NodeId) -> bool {
+        self.layers
+            .menu
+            .as_ref()
+            .is_some_and(|m| m.owner == id && matches!(m.origin, MenuOrigin::Below))
+    }
+
     /// The open submenu chain (item indices from the top level) and the highlighted item of
     /// the deepest open level.
     pub fn menu_position(&self) -> Option<(&[usize], Option<usize>)> {
@@ -83,6 +91,7 @@ impl Ui {
         } else {
             None
         };
+        self.touch(owner);
         self.layers.menu = Some(MenuState {
             owner,
             menu,
@@ -203,6 +212,7 @@ impl Ui {
     pub(crate) fn close_menu_with(&mut self, out: &mut Vec<Action>) {
         self.damage_menu();
         if let Some(state) = self.layers.menu.take() {
+            self.touch(state.owner);
             out.push(Action {
                 node: state.owner,
                 kind: ActionKind::Closed,

@@ -103,6 +103,8 @@ impl Ui {
         let select = self.select_mut(id)?;
         select.selected = select.selected.min(options.len() - 1);
         select.options = options;
+        // Reasons belong to the old options.
+        select.unavailable.clear();
         if self.is_open(id) {
             self.close_popup(&mut Vec::new());
         }
@@ -150,8 +152,10 @@ impl Ui {
         let had_focus = self.input.focus.is_some_and(|f| self.is_inside(f, id));
         // Disabling first ends every interaction inside the branch the way disabling does.
         self.set_disabled(id, true)?;
+        // Dialogs float outside the tree; those added to a node of the branch go with it.
+        let hosted = self.hosted_dialogs(id);
         for dialog in self.layers.open.clone() {
-            if self.is_inside(dialog, id) {
+            if self.is_inside(dialog, id) || hosted.contains(&dialog) {
                 self.close_dialog(dialog)?;
             }
         }
@@ -160,6 +164,7 @@ impl Ui {
             self.invalidate_node(parent);
         }
         let mut branch = vec![id];
+        branch.extend(hosted);
         while let Some(node) = branch.pop() {
             branch.extend(self.nodes[node.index()].children.iter().copied());
             self.forget(node);
@@ -169,6 +174,29 @@ impl Ui {
         }
         self.relayout();
         Ok(())
+    }
+
+    /// The dialogs whose host lies in the branch of `id`, and the dialogs hosted by those.
+    fn hosted_dialogs(&self, id: NodeId) -> Vec<NodeId> {
+        let mut found: Vec<NodeId> = Vec::new();
+        loop {
+            let more: Vec<NodeId> = self
+                .layers
+                .dialogs
+                .iter()
+                .copied()
+                .filter(|d| *d != id && !found.contains(d))
+                .filter(|d| {
+                    matches!(&self.nodes[d.index()].widget, Widget::Dialog(w)
+                        if w.host.is_some_and(|h| self.is_inside(h, id)
+                            || found.iter().any(|f| self.is_inside(h, *f))))
+                })
+                .collect();
+            if more.is_empty() {
+                return found;
+            }
+            found.extend(more);
+        }
     }
 
     /// Clears a removed node and every reference to it.
@@ -192,6 +220,7 @@ impl Ui {
         self.layers.drag = self.layers.drag.filter(|d| d.scroller != id);
         self.layers.dialogs.retain(|d| *d != id);
         self.layers.open.retain(|d| *d != id);
+        self.layers.names.remove(&id);
         let gone = |n: Option<NodeId>| n.filter(|n| *n != id);
         self.input.focus_hint = gone(self.input.focus_hint);
         self.input.middle = gone(self.input.middle);
@@ -201,6 +230,7 @@ impl Ui {
                 dialog.cancel_action = gone(dialog.cancel_action);
                 dialog.return_focus = gone(dialog.return_focus);
                 dialog.anchor = gone(dialog.anchor);
+                dialog.host = gone(dialog.host);
             }
         }
         self.layers.backdrop.ready = false;

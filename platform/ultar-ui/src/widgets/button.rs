@@ -70,18 +70,36 @@ impl Button {
         self
     }
 
-    fn lead_width(&self, loading: bool) -> f32 {
-        if self.icon.is_some() || loading {
+    fn lead_width(&self, busy: bool) -> f32 {
+        if self.icon.is_some() || busy {
             LEAD + LEAD_GAP.points()
         } else {
             0.0
         }
     }
 
-    pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>, avail: f32, loading: bool) -> Size {
+    /// Width of the edge: two borders for the primary button, one for every other kind
+    /// (the quiet button has a transparent one, as on the boards).
+    /// With an error every kind has a two-border `danger` edge (boards).
+    fn edge(&self, error: bool) -> f32 {
+        match (self.variant, error) {
+            (ButtonVariant::Primary, _) | (_, true) => 2.0 * size::BORDER,
+            _ => size::BORDER,
+        }
+    }
+
+    /// Size of the button; `(loading, error)` add the leading progress ring or error icon.
+    pub(crate) fn measure(
+        &self,
+        cx: &mut MeasureCx<'_>,
+        avail: f32,
+        (loading, error): (bool, bool),
+    ) -> Size {
         let target = cx.mode.min_target();
         let text = cx.text_size(&self.label, style::BUTTON_TEXT, None);
-        let natural = text.w + self.lead_width(loading) + 2.0 * PAD.points();
+        // Boards: padding 16 inside the border (CSS border-box), so the edge adds its width.
+        let lead = self.lead_width(loading || error);
+        let natural = text.w + lead + 2.0 * (PAD.points() + self.edge(error));
         Size::new(natural.min(avail).max(target), target)
     }
 
@@ -122,20 +140,20 @@ impl Button {
         if let Some(bg) = bg {
             p.fill(rect, Some(Radius::Control), bg);
         }
+        // Boards: an error gives every kind (also the quiet one) a `danger` edge.
+        let border = if v.error {
+            Some(p.color(ColorRole::Danger))
+        } else {
+            border
+        };
         if let Some(border) = border {
             // The edge of the primary button is two borders wide: it alone carries the 3:1
             // the gold fill does not reach on light backgrounds.
-            let primary = self.variant == ButtonVariant::Primary;
-            let width = if primary {
-                2.0 * p.hairline()
-            } else {
-                p.hairline()
-            };
-            p.stroke(rect, Some(Radius::Control), width, border);
+            p.stroke(rect, Some(Radius::Control), self.edge(v.error), border);
         }
         let direction = p.env().direction;
-        let lead = self.lead_width(v.loading);
-        let inner = style::inset_inline(rect, PAD);
+        let lead = self.lead_width(v.loading || v.error);
+        let inner = style::inset_inline(rect.inflate(-self.edge(v.error)), PAD);
         let text = self.label.resolve(cx.tr);
         let layout = p.layout(&text, style::BUTTON_TEXT, Some((inner.w - lead).max(0.0)));
         let text_width = layout.width / p.env().scale;
@@ -146,6 +164,7 @@ impl Button {
             let glyph = style::take_start(&mut slot, LEAD, direction);
             match (v.loading, self.icon) {
                 (true, _) => p.spinner(style::centered(glyph, Size::new(LEAD, LEAD)), cx.spin, fg),
+                (false, _) if v.error => p.icon(IconId::Error, glyph, LEAD, QuarterTurns::None, fg),
                 (false, Some(icon)) => p.icon(icon, glyph, LEAD, QuarterTurns::None, fg),
                 (false, None) => {}
             }
@@ -191,6 +210,11 @@ impl IconButton {
         if v.hovered || v.pressed {
             let bg = p.color(style::neutral_background(v));
             p.fill(rect, Some(Radius::Control), bg);
+        }
+        if v.error {
+            // Boards: a two-border `danger` edge.
+            let danger = p.color(ColorRole::Danger);
+            p.stroke(rect, Some(Radius::Control), 2.0 * p.hairline(), danger);
         }
         let fg = p.color(ColorRole::Text);
         let edge = IconButton::icon_points(cx.mode);

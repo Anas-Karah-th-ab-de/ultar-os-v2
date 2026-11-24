@@ -472,3 +472,109 @@ from the view have no accessibility node. Additive: `set_table_rows_keyed`, `Lab
   canvas is created by doubling copies. Measurements: see the report (the shared machine was
   not idle).
 - `tests/w4_backdrop.rs` bd03 asserts the median in median mode (it asserted the p99).
+
+---
+
+# Wave 7 (2026-11-24): design conformance (`docs/review` audit T1–T17, boards round 5)
+
+The toolkit now matches the boards *States*, *StatesLight* (all 12 bricks × 7 states incl. the
+error column, dark + light), *Menus* and *Bricks* at ±1 point (was ±2); the ratchet
+`design/conformance/known-differences.txt` is empty and the suite `tools/design-conformance/run.sh`
+asserts every item (tests `design_conformance`, `design_conformance_clicks`,
+`design_conformance_toasts`, compositor `design_conformance`).
+
+## Behaviour and look
+- **Disabled = the whole brick at 0.40** (DESKTOP-SPEC §3): disabled widgets are drawn as one
+  group (`Painter::begin_group` / `end_group`), so a border over a fill is no longer dimmed twice.
+  `Painter::set_opacity` inside a group is relative to the group.
+- **Buttons, selects**: width = label + padding + border on both sides (CSS border-box, as the
+  boards); the primary edge is 2 points.
+- **Text field**: keyboard focus keeps the `control_border` edge and adds the blue focus ring
+  (no gold); pressed / typing after a pointer focus = 2-point `text` edge; error = 2-point
+  `danger` edge. New **loading state**: progress ring at the start of the field (typing stays
+  possible).
+- **Check box loading** keeps the box (and its state) with a `text_muted` ring in it.
+- **Focus ring** of switch (48 × target) and slider (whole slide area) surrounds the control.
+- **Navigation list items**: two lines (sublabel or error) = `size.row_min` (56) high with the
+  hover/press fill and the focus ring (2 points outside) over the whole row; 16-point icons.
+  `ListItem::chevron()` shows the forward arrow at the end (pages); with an error the arrow
+  becomes the `danger` error icon.
+- **Error state for every brick** (boards' error column): `Ui::set_error` now also accepts
+  buttons (2-point `danger` edge + leading error icon), icon buttons (`danger` edge) and switches
+  (`danger` edge around the track). The message is the node's accessible error description.
+- **Menus**: panel rows inside border + padding (224 × 146 for the board's file menu); minimum
+  width 224 (top level) / 160 (submenu); a submenu opens 4 points beside its parent, its first
+  row level with the parent row; the owner of an open drop-down shows the pressed fill and is
+  `expanded` in the accessibility tree.
+- **Tabs**: every tab is as wide as its label (at the weight it is drawn) + 2 × 16, from the
+  start edge; only a strip that does not fit falls back to equal shares and scrolls.
+  Choosing a tab re-measures the strip (the chosen label is semibold).
+- **Toasts** (decision of round 5, DESKTOP-SPEC §3, CLICKS.md): without action they close
+  after `motion.toast` (4 s); with an action after the new token `motion.toast_action` (10 s),
+  paused while the pointer is over the toast or one of its buttons has the keyboard focus.
+  Tab past the last control enters the newest toast with an action (action → close → back to
+  the first control; Shift+Tab the other way); Enter/Space run the focused button, Esc closes.
+  Toast buttons act on **release** over the same button (was: on press). Action button padded
+  8, parts 8 apart (board *Bricks*).
+- **Icon** `IconId::Mark` (brand mark, not mirrored; docs/ui/ICONS.md).
+
+## API changes (additive unless noted)
+- `ListItem::chevron()` and the public field `ListItem::chevron` (struct literals need it).
+- `Ui::toast_focus() -> Option<(u32, bool)>` (toast id, `true` = action button).
+- `Painter::begin_group(rect, opacity) -> Option<Group>`, `Painter::end_group(Group)`;
+  `Canvas::save_backdrop(PixelRect) -> Option<Backdrop>`, `Canvas::fade_to_backdrop(&Backdrop, f32)`.
+- `Widget::dims_when_disabled()`; `Widget::can_load()` includes `TextField`;
+  `Widget::can_fail()` includes `Button`, `IconButton`, `Switch` (behaviour change: these no
+  longer answer `UiError::NotApplicable`).
+- Token `motion.toast_action = 10000` (design/tokens.toml and the crate copy).
+- `IconId::Mark` (exhaustive matches over `IconId` need an arm).
+- New `Widget::QrCode`, `Widget::Arrangement`, `ActionKind::Arranged`, `UiError::OptionUnavailable`
+  (exhaustive matches need arms); new public fields `RadioGroup::{layout, details, unavailable}`,
+  `Select::unavailable`, `Slider::unit`, `Card::tone`, `Flex::wrap`.
+- Compositor `decor`: `BUTTON` is 32 (was 40), new `BUTTON_GAP` (4) and `BUTTON_ROW`;
+  `buttons()` returns 32 × 32 rectangles at y 4, 4 apart and 4 from the end edge; hover fill
+  rounded (radius 8).
+
+## Toolkit gaps of the settings and installer surfaces (G1–G13)
+Source: `docs/integration/settings-installer.md` "Toolkit gaps"; tests `tests/w7_gaps.rs`.
+- **G1** `RadioGroup::layout(RadioLayout::{List, Cards, CardRow, Tiles})`, `RadioGroup::detail(i, Label)`:
+  cards (padding 12, radius 12, 12 apart; chosen: `hover` fill + two-border `accent_text`
+  edge, dot 24 with ring 2 + dot 8; others: `surface` + `control_border`), side by side with
+  equal widths (`CardRow`, `Tiles`: centred semibold title with a 16-point check when chosen).
+  Card heights are measured (second lines wrap). Illustrations of the display-mode tiles
+  (`data-illus`) are not part of the icon set: not drawn.
+- **G2** `Widget::Arrangement` (`Arrangement::new(name, Vec<ArrangedItem>)`, `.selected(i)`,
+  `ArrangedItem::new(name, title, rect).tag(..).caption(..)`, at most 16 items): canvas 144
+  high, `ground` with a `line` border, physical left-to-right; click/arrows choose
+  (`Selected(i)`), dragging moves the item inside the canvas, snapping within 12 points edge
+  to edge, start to start, end to end or centre to centre, and reports the new
+  `ActionKind::Arranged(i)` on release; `Ui::arranged_rect(id, i)`.
+- **G3** `Card::bar(BarEdge::{Start, End, Top, Bottom})`: `bar` fill, one `line` border on the
+  edge (mirrored); **G9** `Card::danger()`: raised fill, two-border `danger` edge, padding 16,
+  gap 12, announced as an alert. New `Card::tone: CardTone` field (struct literals need it).
+- **G4** `Ui::set_accessible_name(id, Option<Label>)`, `Ui::accessible_name(id)`.
+- **G5** `Ui::focus(id)`: focus a shown, enabled, focusable node (after a rebuild); the ring
+  shows when the user was on the keyboard.
+- **G6** `Flex::wrap()` (new field `Flex::wrap`): a row continues on new lines, the gap between
+  children and lines; grow children of a plain row already have basis 0 (equal columns with
+  `Sizing::grow(1)`).
+- **G7** `RadioGroup::unavailable(i, reason)`, `Select::unavailable(i, reason)`: shown greyed
+  with the reason (card: second line; open select: at the row end), announced disabled with
+  the reason as description, skipped by the arrow keys, never chosen; `Ui::set_selected` answers
+  the new `UiError::OptionUnavailable`.
+- **G8** `Widget::QrCode` (`QrCode::new(name, data) -> Result<_, QrCodeError>`, at most 512 bytes,
+  error correction M): 96 × 96, dark modules on the light palette's `raised` with a quiet zone
+  of four modules in both themes, whole device pixels per module; encoding by the `qrcode`
+  crate 0.14 (`default-features = false`, pure Rust, no further dependencies).
+- **G10** `Slider::unit(Label)`: the value slot writes the value with the unit ("125%",
+  decimals from the step) instead of the share of the range (kept without a unit).
+- **G11** = T1 above.
+- **G12** `TextField::reveal_outside()` + `Ui::set_password_shown(id, bool)`: no show button in
+  the field; the application's icon button beside it toggles (stays shown when the focus moves).
+- **G13** a dialog remembers the node it was added to; `Ui::remove` of that node (or an
+  ancestor) closes the dialog, ends its modal layer and removes it.
+
+## Tests (this wave)
+All 45 ultar-ui test targets and all compositor targets green 3×; fmt, clippy `-D warnings`,
+`ultar-check all` clean (no new baseline). Snapshots re-created (385 ultar-ui, 3 compositor)
+after visual review of the changed states.

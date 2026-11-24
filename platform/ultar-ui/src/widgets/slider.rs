@@ -20,6 +20,9 @@ pub struct Slider {
     pub max: f32,
     /// Keyboard step and snapping grid (0 = continuous).
     pub step: f32,
+    /// Unit written after the value (`Slider::unit`); `None` writes the share of the range
+    /// in percent.
+    pub unit: Option<Label>,
 }
 
 const THUMB: f32 = size::ICON_SMALL;
@@ -43,6 +46,39 @@ impl Slider {
             min,
             max,
             step: finite(step).abs(),
+            unit: None,
+        }
+    }
+
+    /// The same slider writing its value itself with `unit` after it ("125%", "6500 K",
+    /// `Label::data("")` for a bare number) instead of the share of the range. Decimals
+    /// follow the step (step 0.5: one decimal; continuous: up to two).
+    pub fn unit(mut self, unit: Label) -> Slider {
+        self.unit = Some(unit);
+        self
+    }
+
+    /// The value as written, with the unit resolved by `tr` (digits 0–9, a left-to-right
+    /// island in Arabic text).
+    pub(crate) fn value_label(&self, tr: &ultar_i18n::Translator) -> String {
+        match &self.unit {
+            None => self.value_text(),
+            Some(unit) => format!("{}{}", self.number(), unit.resolve(tr)),
+        }
+    }
+
+    /// The value with as many decimals as the step needs (none for whole steps).
+    fn number(&self) -> String {
+        let step = if self.step > 0.0 { self.step } else { 0.01 };
+        let mut decimals = 0usize;
+        while decimals < 3 && (step * 10f32.powi(decimals as i32)).fract().abs() > 1e-3 {
+            decimals += 1;
+        }
+        let text = format!("{:.*}", decimals, self.value);
+        if decimals > 0 && self.step <= 0.0 {
+            text.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            text
         }
     }
 
@@ -155,7 +191,7 @@ impl Slider {
         let mut slot = band;
         let slot = style::take_end(&mut slot, VALUE_W, p.env().direction);
         let muted = p.color(ColorRole::TextMuted);
-        let label = Label::data(&self.value_text());
+        let label = Label::data(&self.value_label(cx.tr));
         let align = crate::text::TextAlign::End;
         style::draw_label(p, cx, &label, style::SMALL_TEXT, slot, align, muted);
     }
@@ -213,7 +249,8 @@ impl Slider {
         }
         style::paint_error(p, cx, error, rect, band.h);
         if v.focused {
-            style::focus_ring(p, thumb, Radius::Round);
+            // Boards: the ring surrounds the whole slide area (radius 8 + 4), not the thumb.
+            style::focus_ring(p, area, Radius::Card);
         }
         p.set_opacity(previous);
     }

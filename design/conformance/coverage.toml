@@ -1,0 +1,1396 @@
+# Design conformance coverage: every action of docs/ui/CLICKS.md and where it is implemented.
+# status: ok | different | missing | dead.  `test` names the automated test that proves ok/different.
+# Checked by tools/design-conformance/static_checks.py (every CLICKS action listed, no stale entry).
+
+[action."win.min"]
+status = "ok"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "32x32 r8, 4 gap/inset, y 4 as on the boards (round 5)"
+
+[action."win.max"]
+status = "ok"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "32x32 r8, 4 gap/inset, y 4 as on the boards (round 5)"
+
+[action."win.close"]
+status = "ok"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "32x32 r8, 4 gap/inset, y 4 as on the boards (round 5)"
+
+[action."settings.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1"
+note = "no implementation on HEAD"
+
+[action."settings.area"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:32, SettingsDisplay:32, SettingsDisplayLight:32, SettingsDrivers:32"
+note = "no implementation on HEAD"
+
+[action."account.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.username"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.password"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.show"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.signin"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.create"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.server"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.copy"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1"
+note = "no implementation on HEAD"
+
+[action."account.qr"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.service"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:5"
+note = "no implementation on HEAD"
+
+[action."account.changepw"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.signout"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.delete"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:1"
+note = "no implementation on HEAD"
+
+[action."account.device.signout"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:2"
+note = "no implementation on HEAD"
+
+[action."account.device.remove"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Account:2"
+note = "no implementation on HEAD"
+
+[action."tabs.tab"]
+status = "ok"
+impl = "platform/ultar-ui/src/widgets/tabs.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:8"
+note = "click/arrows (RTL mirrored)/Home/End ok; tabs as wide as their labels, strip 327.6 (board 327.7)"
+
+[action."sheet.close"]
+status = "ok"
+impl = "platform/ultar-ui/src/ui/modal.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:2"
+note = "Esc + scrim close, focus returns"
+
+[action."toast.action"]
+status = "ok"
+impl = "platform/ultar-ui/src/ui/toasts.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:1"
+note = "runs on release over the button (press can be taken back), Ctrl+Enter, Enter on the focused button"
+
+[action."toast.close"]
+status = "ok"
+impl = "platform/ultar-ui/src/ui/toasts.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs + design_conformance_toasts.rs"
+boards = "Bricks:1"
+note = "button + Esc; no action: closes after motion.toast; with action: motion.toast_action, paused under pointer / keyboard focus (DESKTOP-SPEC §3)"
+
+[action."note.dnd"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1"
+note = "no implementation on HEAD"
+
+[action."note.clear"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1"
+note = "no implementation on HEAD"
+
+[action."note.action"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:5"
+note = "no implementation on HEAD"
+
+[action."note.dismiss"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:3"
+note = "no implementation on HEAD"
+
+[action."cal.month"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:2"
+note = "no implementation on HEAD"
+
+[action."cal.day"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:35"
+note = "no implementation on HEAD"
+
+[action."cal.event"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:2"
+note = "no implementation on HEAD"
+
+[action."shell.trash"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.drive"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.overview"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.apps"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:6, DesktopBottom:6, DesktopTop:6, Main:6, Overview:6, QuickSettings:6"
+note = "no implementation on HEAD"
+
+[action."shell.kbd"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Login:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.status"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.clock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."browser.tab"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.tabclose"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.newtab"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.forward"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.reload"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.address"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.shield"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.downloads"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."files.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.forward"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.place"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:5, Main:5"
+note = "no implementation on HEAD"
+
+[action."files.drive"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.eject"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.trashplace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.newfolder"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.item"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:6, Main:6"
+note = "no implementation on HEAD"
+
+[action."desk.icon"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:2, Main:2"
+note = "no implementation on HEAD"
+
+[action."shell.appmenu"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1"
+note = "no implementation on HEAD"
+
+[action."installer.step"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:7, InstallerDisk:9, InstallerDrivers:6, InstallerSummary:13"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.scope"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:3"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.component"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:12"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.cancel"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.prev"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.next"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.disk.select"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.disk.mode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:3"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.disk.share"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.enc.mode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:2"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.enc.pass"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:2"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.enc.show"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDisk:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.drivers.fetch"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDrivers:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.drivers.plan"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDrivers:2"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.drivers.alt"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDrivers:7"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.drivers.test"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerDrivers:7"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.edit"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerSummary:6"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."installer.confirm"]
+status = "missing"
+impl = ""
+test = ""
+boards = "InstallerSummary:1"
+note = "legacy only: kernel/ultar-kern/src/install*.rs (text installer, not the boards); no implementation on HEAD"
+
+[action."lock.unlock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.media"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:3"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.sos"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.power"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."login.user"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:2"
+note = "no implementation on HEAD"
+
+[action."login.password"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.show"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.submit"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.method"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.access"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."qs.power"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1, QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."menu.open"]
+status = "ok"
+impl = "platform/ultar-ui/src/ui/menus.rs (open_menu)"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:3"
+note = "opens below, aligned, Esc/second click close, focus returns; menu 224 x 146; owner pressed + expanded while open"
+
+[action."menu.item"]
+status = "ok"
+impl = "platform/ultar-ui/src/widgets/menu.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:10"
+note = "runs+closes, disabled inert, submenu on Enter; widths 224/160, submenu 4 beside the parent"
+
+[action."select.option"]
+status = "ok"
+impl = "platform/ultar-ui/src/widgets/select.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:3"
+note = "open/choose/Esc keeps choice; height 32"
+
+[action."overview.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:1"
+note = "no implementation on HEAD"
+
+[action."overview.workspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."overview.window"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."overview.close"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."phone.way"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:2"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.number"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.backspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.suggest"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.digit"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:12"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.call.video"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.call"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.filter"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:2"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.settings"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.callback"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:5"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.entry.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:5"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.mute"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.output"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.keypad"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.hold"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.video"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.camera"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.share"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.hangup"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.decline"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.decline.msg"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.accept"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."projection.mode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Projection:4"
+note = "backend only: ultar-settingsd display.mode; no implementation on HEAD"
+
+[action."qs.wifi"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.wifi.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.wired"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.bluetooth"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.bluetooth.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.toggle"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:4"
+note = "backend only: ultar-settingsd (desktop/system seeds); no implementation on HEAD"
+
+[action."qs.vpn"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.vpn.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.powermode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.powermode.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.mesh"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.mesh.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.volume"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.output"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.brightness"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.battery"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.assistant"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.shot"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.settings"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.lock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."display.keep.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.revert"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.keep"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.identify"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.detect"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.select"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:3, SettingsDisplayLight:3"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.mode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:3, SettingsDisplayLight:3"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.nightlight"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.nightlight.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.remember"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.bar"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.lid"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.resolution"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.scale"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.refresh"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.orientation"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.hdr"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.profile"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.brightness"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."drivers.alt"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:7"
+note = "no implementation on HEAD"
+
+[action."drivers.rollback"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:7"
+note = "no implementation on HEAD"
+
+[action."drivers.plan"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:1"
+note = "no implementation on HEAD"
+
+[action."drivers.fw.check"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:1"
+note = "no implementation on HEAD"
+
+[action."drivers.fw.usb"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:1"
+note = "no implementation on HEAD"
+
+[action."drivers.selftest"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDrivers:1"
+note = "no implementation on HEAD"
+
+[action."demo"]
+status = "ok"
+impl = "platform/ultar-ui (widgets)"
+test = "platform/ultar-ui/tests/design_conformance.rs"
+boards = "States:84, StatesLight:84"
+note = "toolkit bricks: all 12 bricks x 7 states x 2 themes match states.tsv (size ±1, colours)"
+
+[action."store.area"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:6"
+note = "no implementation on HEAD"
+
+[action."store.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:1, SurfaceStates:5"
+note = "no implementation on HEAD"
+
+[action."store.open"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:12"
+note = "no implementation on HEAD"
+
+[action."store.launch"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:5, SurfaceStates:6"
+note = "no implementation on HEAD"
+
+[action."store.search.clear"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.retry"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:2"
+note = "no implementation on HEAD"
+
+[action."store.offline"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.log"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.free.item"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:3"
+note = "no implementation on HEAD"
+
+[action."store.free.cancel"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.free.go"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."apps.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:15, CompactApps:9"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."apps.category"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:5, CompactApps:5"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."apps.details"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."apps.pin"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."apps.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:1, CompactApps:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."apps.uninstall"]
+status = "missing"
+impl = ""
+test = ""
+boards = "AppGrid:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."display.autobrightness"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactDisplay:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mobile.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactHome:7"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mobile.apps"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactHome:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mobile.home"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactApps:1, CompactDisplay:1, CompactHome:1, CompactQuick:1, CompactSettings:1, CompactStore:1, CompactStoreApp:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mobile.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactHome:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mobile.status"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactApps:1, CompactDisplay:1, CompactHome:1, CompactQuick:1, CompactSettings:1, CompactStore:1, CompactStoreApp:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."qs.mobile"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactQuick:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."qs.mobile.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactQuick:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."settings.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactDisplay:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."store.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactStoreApp:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."store.install"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactStoreApp:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."store.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CompactStore:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."win.menu.allws"]
+status = "missing"
+impl = ""
+test = ""
+boards = "WindowMenu:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."win.menu.move"]
+status = "missing"
+impl = ""
+test = ""
+boards = "WindowMenu:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."win.menu.ontop"]
+status = "missing"
+impl = ""
+test = ""
+boards = "WindowMenu:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."win.menu.resize"]
+status = "missing"
+impl = ""
+test = ""
+boards = "WindowMenu:1"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."win.menu.workspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "WindowMenu:3"
+note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"

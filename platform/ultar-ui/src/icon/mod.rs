@@ -93,6 +93,8 @@ icons! {
         "M2 12c2.5-4.5 6-7 10-7s7.5 2.5 10 7c-2.5 4.5-6 7-10 7s-7.5-2.5-10-7zM12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z";
     Ring, "ring", false, "In progress (progress ring).",
         "M12 3a9 9 0 1 0 9 9";
+    Mark, "mark", false, "Brand mark: the Overview button (two open arcs, never mirrored).",
+        "M12 3a9 9 0 1 0 9 9M12 8a4 4 0 1 0 4 4";
     Block, "block", false, "Ad and tracker blocking.",
         "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8";
     Wifi, "wifi", false, "Wi-Fi (strength).",

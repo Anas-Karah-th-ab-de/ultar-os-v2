@@ -25,10 +25,19 @@ impl Ui {
             Widget::Select(_) => return self.open_popup(id, out),
             Widget::RadioGroup(group) => {
                 let target = part.unwrap_or(group.current());
-                if group.selected == Some(target) || target >= group.options.len() {
+                let taken = group.selected == Some(target) || group.is_unavailable(target);
+                if taken || target >= group.options.len() {
                     return;
                 }
                 group.selected = Some(target);
+                ActionKind::Selected(target)
+            }
+            Widget::Arrangement(canvas) => {
+                let target = part.unwrap_or(canvas.current());
+                if canvas.selected == Some(target) || target >= canvas.items.len() {
+                    return;
+                }
+                canvas.selected = Some(target);
                 ActionKind::Selected(target)
             }
             Widget::Tabs(tabs) => match part {
@@ -49,7 +58,15 @@ impl Ui {
         };
         out.push(Action { node: id, kind });
         self.touch(id);
+        self.remeasure_tabs(id);
         self.keep_tab_visible(id);
+    }
+
+    /// The chosen tab is drawn semibold and so is wider: its bar is measured again.
+    pub(crate) fn remeasure_tabs(&mut self, id: NodeId) {
+        if matches!(self.widget(id), Some(Widget::Tabs(_))) {
+            self.invalidate_node(id);
+        }
     }
 
     /// A tab strip that does not fit scrolls so that its chosen tab is visible.

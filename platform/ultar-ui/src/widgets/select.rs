@@ -21,6 +21,9 @@ pub struct Select {
     pub options: Vec<Label>,
     /// Index of the chosen option.
     pub selected: usize,
+    /// Options that cannot be chosen, with the reason (shown in the open list, announced),
+    /// by index.
+    pub unavailable: Vec<Option<Label>>,
 }
 
 const PAD: Space = Space::S12;
@@ -66,7 +69,30 @@ impl Select {
             name,
             options,
             selected: 0,
+            unavailable: Vec::new(),
         }
+    }
+
+    /// The same select with option `index` not available, for `reason` (it stays in the
+    /// list, greyed, with the reason after it; it cannot be chosen).
+    pub fn unavailable(mut self, index: usize, reason: Label) -> Select {
+        if index < self.options.len() {
+            if self.unavailable.len() <= index {
+                self.unavailable.resize(index + 1, None);
+            }
+            self.unavailable[index] = Some(reason);
+        }
+        self
+    }
+
+    /// `true` when option `index` cannot be chosen.
+    pub fn is_unavailable(&self, index: usize) -> bool {
+        self.unavailable.get(index).is_some_and(Option::is_some)
+    }
+
+    /// The reason option `index` cannot be chosen.
+    pub fn reason(&self, index: usize) -> Option<&Label> {
+        self.unavailable.get(index).and_then(Option::as_ref)
     }
 
     /// The same select with option `index` chosen (ignored when out of range).
@@ -92,7 +118,9 @@ impl Select {
         for option in &self.options {
             widest = widest.max(cx.text_size(option, style::CONTROL_TEXT, None).w);
         }
-        let natural = widest + 2.0 * PAD.points() + CHEVRON_GAP.points() + CHEVRON;
+        // Boards: padding 12 inside the border (CSS border-box); an error edge is 2 wide.
+        let edge = if error.is_some() { 2.0 } else { 1.0 } * size::BORDER;
+        let natural = widest + 2.0 * (PAD.points() + edge) + CHEVRON_GAP.points() + CHEVRON;
         let width = natural.min(avail).max(cx.mode.min_target());
         let height = cx.mode.min_target() + style::error_height(cx, error, width);
         Size::new(width, height)
@@ -115,8 +143,8 @@ impl Select {
         } else {
             ColorRole::ControlBorder
         };
-        let (border, hairline) = (p.color(border), p.hairline());
-        p.stroke(field, Some(Radius::Control), hairline, border);
+        let width = if v.error { 2.0 } else { 1.0 } * p.hairline();
+        p.stroke(field, Some(Radius::Control), width, p.color(border));
         let direction = p.env().direction;
         let mut inner = style::inset_inline(field, PAD);
         let chevron = style::take_end(&mut inner, CHEVRON, direction);
@@ -197,6 +225,18 @@ impl Select {
         }
     }
 
+    /// The reason an option is not available, at the end of its row (12, `text_muted`);
+    /// `inner` loses that part.
+    fn paint_reason(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, inner: &mut Rect, index: usize) {
+        if let Some(reason) = self.reason(index) {
+            let muted = p.color(ColorRole::TextMuted);
+            let spec = style::SMALL_TEXT.overflow(crate::text::Overflow::Ellipsis);
+            let used = style::draw_label(p, cx, reason, spec, *inner, TextAlign::End, muted);
+            let direction = p.env().direction;
+            style::take_end(inner, used + Space::S8.points(), direction);
+        }
+    }
+
     pub(crate) fn paint_popup(
         &self,
         p: &mut Painter<'_>,
@@ -235,7 +275,13 @@ impl Select {
             } else {
                 Weight::Regular
             };
-            let color = p.color(ColorRole::Text);
+            self.paint_reason(p, cx, &mut inner, index);
+            let role = if self.is_unavailable(index) {
+                ColorRole::ControlBorder
+            } else {
+                ColorRole::Text
+            };
+            let color = p.color(role);
             style::draw_label(
                 p,
                 cx,

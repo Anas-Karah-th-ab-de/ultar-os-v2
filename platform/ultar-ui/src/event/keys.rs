@@ -23,6 +23,18 @@ impl Ui {
 
     /// Moves keyboard focus to the next or previous widget. `wrap` continues at the other
     /// end. Returns `false` when focus did not move.
+    /// `true` when Tab in this direction would wrap around (the focus is on the last
+    /// control, or the first going back) – the place where the toasts are reached.
+    fn at_focus_edge(&self, forward: bool) -> bool {
+        let list: Vec<NodeId> = self.focusable().collect();
+        let edge = if forward { list.last() } else { list.first() };
+        match (self.input.focus, edge) {
+            (Some(focus), Some(edge)) => focus == *edge && self.input.focus_visible,
+            (None, edge) => edge.is_none(),
+            (Some(_), None) => true,
+        }
+    }
+
     pub(crate) fn move_focus(&mut self, forward: bool, wrap: bool) -> bool {
         let current = self.input.focus;
         let list: Vec<NodeId> = self.focusable().collect();
@@ -143,8 +155,14 @@ impl Ui {
             return self.popup_key(key, modifiers, out);
         }
         if key == Key::Tab {
+            let forward = !modifiers.shift;
             return !modifiers.command()
-                && (self.eye_step(!modifiers.shift) || self.move_focus(!modifiers.shift, true));
+                && (self.toast_tab(forward, self.at_focus_edge(forward))
+                    || self.eye_step(forward)
+                    || self.move_focus(forward, true));
+        }
+        if self.toast_focus_key(key, out) {
+            return true;
         }
         let focus = self.input.focus.filter(|id| !self.is_disabled(*id));
         if let (Some(id), Key::Escape) = (focus, key) {
@@ -277,7 +295,9 @@ impl Ui {
                 }
                 toggles
             }
-            Widget::RadioGroup(_) | Widget::Tabs(_) => plain && self.choice_key(id, key, out),
+            Widget::RadioGroup(_) | Widget::Tabs(_) | Widget::Arrangement(_) => {
+                plain && self.choice_key(id, key, out)
+            }
             Widget::Slider(_) => self.slider_key(id, key, out),
             Widget::TextField(_) => self.field_key(id, key, modifiers, out),
             Widget::Scroll(_) => self.scroll_key(id, key, true, out),
@@ -304,6 +324,7 @@ impl Ui {
         let (count, current, radio) = match &self.nodes[id.index()].widget {
             Widget::RadioGroup(group) => (group.options.len(), group.current(), true),
             Widget::Tabs(tabs) => (tabs.tabs.len(), tabs.selected, false),
+            Widget::Arrangement(canvas) => (canvas.items.len(), canvas.current(), true),
             _ => return false,
         };
         if count == 0 {
@@ -313,18 +334,31 @@ impl Ui {
             Key::ArrowDown if radio => true,
             Key::ArrowUp if radio => false,
             Key::ArrowLeft | Key::ArrowRight => towards_end,
-            Key::Home => return self.choose_part(id, 0, out),
-            Key::End => return self.choose_part(id, count - 1, out),
+            Key::Home => return self.choose_part(id, self.first_choice(id, count, true), out),
+            Key::End => return self.choose_part(id, self.first_choice(id, count, false), out),
             Key::Space if radio => return self.choose_part(id, current, out),
             _ => return false,
         };
+        let step = |forward| match &self.nodes[id.index()].widget {
+            Widget::RadioGroup(group) => group.step(current, forward),
+            _ if forward => (current + 1) % count,
+            _ => (current + count - 1) % count,
+        };
         let target = match (forward, radio) {
-            (true, true) => (current + 1) % count,
-            (false, true) => (current + count - 1) % count,
+            (_, true) => step(forward),
             (true, false) => (current + 1).min(count - 1),
             (false, false) => current.saturating_sub(1),
         };
         self.choose_part(id, target, out)
+    }
+
+    /// The first (or last) option that can be chosen: radio options may be unavailable.
+    fn first_choice(&self, id: NodeId, count: usize, first: bool) -> usize {
+        let edge = if first { count - 1 } else { 0 };
+        match &self.nodes[id.index()].widget {
+            Widget::RadioGroup(group) => group.step(edge, first),
+            _ => count - 1 - edge,
+        }
     }
 
     fn choose_part(&mut self, id: NodeId, part: usize, out: &mut Vec<Action>) -> bool {
