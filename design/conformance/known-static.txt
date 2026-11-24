@@ -1,0 +1,7 @@
+# Accepted findings of tools/design-conformance/static_checks.py (the list only shrinks).
+icons: board icon `mark` is missing in ultar-ui
+clicks: DesktopTop: CLICKS.md names `shell.clock` 'التقويم والإشعارات', the board has no element with that name
+clicks: States: 8 clickable elements lie outside the artboard (not visible): #14 demo, #21 demo, #28 demo, #35 demo, #42 demo, #49 demo, #56 demo, #7 demo
+clicks: StatesLight: 8 clickable elements lie outside the artboard (not visible): #14 demo, #21 demo, #28 demo, #35 demo, #42 demo, #49 demo, #56 demo, #7 demo
+i18n: system/core/ultar-i18n/locales: Arabic `system.vendor` is not Arabic: 'KM Code Craft'
+i18n: system/core/ultar-settingsd/locales: Arabic `settings.region.format.paper.choice.letter` is not Arabic: 'Letter'
