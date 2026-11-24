@@ -39,6 +39,8 @@ pub struct World {
     pub audio: Option<AudioState>,
     /// Bluetooth devices (`None`: service down).
     pub bt_devices: Option<Vec<ultar_bus::messages::bluetooth::Device>>,
+    /// The device mesh (`None`: service down).
+    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
     /// Users, apps and drives (`None` each: service down).
     pub system: SystemWorld,
     /// Refuse the next call with this reason.
@@ -370,6 +372,7 @@ pub fn ports(world: &Shared) -> Ports {
         update: f(),
         account: f(),
         status: f(),
+        mesh: Box::new(super::mesh::FakeMesh(world.clone())),
         system: f(),
         files: f(),
         clipboard: f(),

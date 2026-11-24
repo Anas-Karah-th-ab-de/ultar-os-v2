@@ -3,6 +3,7 @@
 
 pub mod bus;
 pub mod fake;
+pub mod mesh;
 pub mod system;
 pub mod update_contract;
 
@@ -194,6 +195,8 @@ pub struct Ports {
     pub account: Box<dyn AccountPort>,
     /// Network, Bluetooth and sound state (read-only pages).
     pub status: Box<dyn StatusPort>,
+    /// The device mesh.
+    pub mesh: Box<dyn mesh::MeshPort>,
     /// Users, apps and drives (Users, Apps and Storage pages).
     pub system: Box<dyn system::SystemPort>,
     /// Documents.

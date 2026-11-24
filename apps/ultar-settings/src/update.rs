@@ -5,6 +5,7 @@ mod account;
 mod bluetooth;
 mod display;
 mod drivers;
+mod mesh;
 mod more;
 mod panel;
 
@@ -88,6 +89,7 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
         PageKind::Display => display::load(state, ports),
         PageKind::Drivers => drivers::load(state, ports),
         PageKind::Account => account::load(state, ports),
+        PageKind::Mesh => mesh::load(state, ports),
         PageKind::Status(kind) => load_status(state, ports, kind),
         PageKind::Panel(id) => more::load(state, ports, id),
         PageKind::NoService | PageKind::About => {}
@@ -136,6 +138,7 @@ pub fn load_page_light(state: &mut State, ports: &mut Ports) {
             state.drivers.firmware = ports.update.progress()
         }
         PageKind::Status(kind) => load_status(state, ports, kind),
+        PageKind::Mesh => mesh::load(state, ports),
         _ => {}
     }
 }
@@ -186,6 +189,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         a if more::owns(a) => more::handle(c, a, kind),
         a if account::owns(a) => account::handle(c, a, node, kind),
         a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
+        a if mesh::owns(a) => mesh::handle(c, a, kind),
         _ => Outcome::default(),
     }
 }
@@ -295,6 +299,9 @@ fn dialog(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         DialogPurpose::Qr => close(c.state),
         DialogPurpose::UserAdd | DialogPurpose::UserRemove(_) | DialogPurpose::UserPassword(_) => {
             more::dialog_ok(c, purpose)
+        }
+        DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
+            mesh::dialog_ok(c, purpose)
         }
         DialogPurpose::ChangePassword
         | DialogPurpose::DeleteAccount

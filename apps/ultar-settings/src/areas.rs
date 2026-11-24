@@ -16,6 +16,8 @@ pub enum PageKind {
     Panel(&'static str),
     /// Read-only state of a service (network, Bluetooth, sound).
     Status(StatusKind),
+    /// Boards *SettingsMesh* and *MeshDevice*.
+    Mesh,
     /// About this system (BRAND.md §4): product, version, build, company, developer, website,
     /// contact, licences.
     About,
@@ -96,7 +98,7 @@ pub const AREAS: [Area; 33] = [
     a("drivers", IconId::Chip, PageKind::Drivers),
     a("updates", IconId::Update, P("updates")),
     a("backup", IconId::Backup, P("backup")),
-    a("mesh", IconId::Mesh, P("mesh")),
+    a("mesh", IconId::Mesh, PageKind::Mesh),
     a("assistant", IconId::Spark, P("assistant")),
     a("cells", IconId::Cells, P("cells")),
     a("emergency", IconId::Sos, P("emergency")),

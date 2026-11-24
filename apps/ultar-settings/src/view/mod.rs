@@ -11,6 +11,7 @@ mod dialog;
 mod display;
 mod display_rows;
 mod drivers;
+pub mod mesh;
 pub mod metrics;
 mod more;
 pub(crate) mod panel;
@@ -127,6 +128,8 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
         (PageKind::Panel(id), _) => panel::generic(cx, content, id),
         (PageKind::NoService, _) => panel::no_service(cx, content),
         (PageKind::Status(kind), _) => status::build(cx, content, kind),
+        (PageKind::Mesh, SubPage::MeshDevice) => mesh::device(cx, content),
+        (PageKind::Mesh, _) => mesh::build(cx, content),
         (PageKind::About, _) => about::build(cx, content),
     }
 }
