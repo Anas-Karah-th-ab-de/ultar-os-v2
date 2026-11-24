@@ -6,7 +6,8 @@
 use super::view::{button, texts};
 use crate::model::apps::{base_apps, installed};
 use crate::view::{Target, View};
-use ultar_bus::messages::mesh::{AskHandoff, Stage};
+use ultar_bus::messages::mesh::Stage;
+use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_i18n::Translator;
 use ultar_ui::icon::IconId;
 use ultar_ui::layout::{Flex, MainAlign, Padding};
@@ -121,6 +122,9 @@ pub(super) fn handoff(
 #[cfg(test)]
 mod tests {
     use super::size_text;
+    use crate::dialog::{Answer, DialogEffect, Dialogs, Question};
+    use ultar_bus::messages::mesh_dialog::AskHandoff;
+    use ultar_bus::messages::sysdialog::ANSWER_WITHIN_MS;
 
     #[test]
     fn sizes_read_as_people_expect() {
@@ -131,5 +135,37 @@ mod tests {
         assert_eq!(size_text(300_000), "293.0 KB");
         assert_eq!(size_text(5 * 1024 * 1024 * 1024), "5.0 GB");
         assert_eq!(size_text(u64::MAX), "17179869184.0 GB");
+    }
+
+    fn offer() -> Question {
+        Question::Handoff(AskHandoff {
+            from_name: "KM One".into(),
+            from_kind: ultar_bus::messages::mesh::DeviceKind::Phone,
+            title: "notes.txt".into(),
+            app: "editor".into(),
+            size: Some(1_200_000),
+            stage: ultar_bus::messages::mesh::Stage::State,
+        })
+    }
+
+    #[test]
+    fn an_offer_of_another_device_is_declined_unless_the_person_accepts() {
+        let mut d = Dialogs::default();
+        d.ask(1, offer(), 0);
+        assert_eq!(
+            d.answer(Answer::Handoff(true)),
+            vec![DialogEffect::Reply(1, Answer::Handoff(true))]
+        );
+        d.ask(2, offer(), 0);
+        assert_eq!(
+            d.dismiss(),
+            vec![DialogEffect::Reply(2, Answer::Handoff(false))]
+        );
+        d.ask(3, offer(), 0);
+        assert_eq!(
+            d.tick(ANSWER_WITHIN_MS),
+            vec![DialogEffect::Reply(3, Answer::Handoff(false))],
+            "nobody answered: nothing is taken"
+        );
     }
 }

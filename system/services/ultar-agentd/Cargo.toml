@@ -1,0 +1,25 @@
+[package]
+name = "ultar-agentd"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Local helper of Ultar OS: the person asks in words, the helper acts through the system bus – with its own model, a paired device's model, or fixed commands (system services, area 4)"
+
+[lib]
+name = "ultar_agentd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-agentd"
+path = "src/bin/ultar-agentd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

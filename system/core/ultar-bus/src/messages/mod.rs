@@ -88,6 +88,7 @@ pub mod lock;
 pub mod log;
 pub mod media;
 pub mod mesh;
+pub mod mesh_dialog;
 pub mod mesh_model;
 pub mod modem;
 pub mod net;

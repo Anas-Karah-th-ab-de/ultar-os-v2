@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 use ultar_bus::messages::launcher::{List, Role, Start};
 use ultar_bus::messages::llm::LlmState;
 use ultar_bus::messages::mesh::{
-    AskHandoff, ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets,
-    MeshState, PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList,
-    Unpair, SERVICE,
+    ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets, MeshState,
+    PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList, Unpair, SERVICE,
 };
+use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_bus::messages::sysdialog;
 use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_service::log::{Level, Record};

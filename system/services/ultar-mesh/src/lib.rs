@@ -12,6 +12,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod clipboard;
 pub mod compute;
 pub mod device;
 pub mod handoff;

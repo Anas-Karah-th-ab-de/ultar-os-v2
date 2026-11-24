@@ -175,7 +175,7 @@ fn dialog_screens(lang: Lang, theme: ThemeKind, problems: &mut Vec<String>) {
         ),
         (
             "dialog-handoff",
-            Question::Handoff(ultar_bus::messages::mesh::AskHandoff {
+            Question::Handoff(ultar_bus::messages::mesh_dialog::AskHandoff {
                 from_name: "KM One".into(),
                 from_kind: ultar_bus::messages::mesh::DeviceKind::Phone,
                 title: "notes.txt".into(),

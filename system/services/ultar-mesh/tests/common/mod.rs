@@ -1,6 +1,8 @@
 //! Several nodes wired together in memory, exactly as the network would.
 #![allow(dead_code)]
 
+pub mod net;
+
 use std::path::PathBuf;
 use std::time::Instant;
 use ultar_bus::messages::mesh::DeviceKind;

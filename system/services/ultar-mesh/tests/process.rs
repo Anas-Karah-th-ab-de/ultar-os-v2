@@ -7,10 +7,10 @@ use std::sync::mpsc;
 use std::time::Duration;
 use ultar_bus::messages::launcher::{AppStatus, InstanceState, List, ListReply, Start, StartReply};
 use ultar_bus::messages::mesh::{
-    Activity, AskHandoff, Done, HandoffAnswer, HandoffDecision, HandoffIncoming, HandoffProgress,
-    HandoffSend, MeshState, OfferState, PairBegin, PairJoin, SendOutcome, SetActivity, SetEnabled,
-    Stage,
+    Activity, Done, HandoffAnswer, HandoffIncoming, HandoffProgress, HandoffSend, MeshState,
+    OfferState, PairBegin, PairJoin, SendOutcome, SetActivity, SetEnabled, Stage,
 };
+use ultar_bus::messages::mesh_dialog::{AskHandoff, HandoffDecision};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 

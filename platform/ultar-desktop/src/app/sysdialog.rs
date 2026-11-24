@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret};
 use ultar_bus::messages::bluetooth::{BluetoothState, PairConfirm, PairConfirmReply};
-use ultar_bus::messages::mesh::{AskHandoff, HandoffDecision};
+use ultar_bus::messages::mesh_dialog::{AskHandoff, HandoffDecision};
 use ultar_bus::messages::settings::{PendingConfirmation, PendingResolved};
 use ultar_bus::messages::sysdialog::{
     AskPermission, Authenticate, AuthenticateReply, Decision, PermissionReply, SERVICE,

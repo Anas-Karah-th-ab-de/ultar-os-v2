@@ -5363,6 +5363,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-agentd"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-appbuilder"
 version = "0.8.0"
 dependencies = [
