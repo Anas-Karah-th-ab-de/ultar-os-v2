@@ -1378,6 +1378,11 @@ def run(vm, m):
         failures += settings_change(vm, m, pos)
         log("VMWARE-INPUT: GATE_ONLY=content " + ("FEHLER " + "; ".join(failures) if failures else "ok (no verdict)"))
         return 1
+    # GATE_ONLY=net (build/net; for working on the gate, never a verdict): only the network pages
+    if os.environ.get("GATE_ONLY") == "net":
+        failures = network_pages(vm, m, pos)
+        log("VMWARE-INPUT: GATE_ONLY=net " + ("FEHLER " + "; ".join(failures) if failures else "ok (no verdict)"))
+        return 1
     # Bluetooth scan (only in the run with the scripted controller; that run ends with it)
     if getattr(vm, "bt_log", None):
         failures += bluetooth_scan(vm, m, pos)
