@@ -447,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn messages_round_trip_and_words_are_distinct() {
+    fn lifecycle_messages_round_trip() {
         round(&ListReply {
             apps: vec![AppStatus {
                 app: "camera".into(),
@@ -482,6 +482,10 @@ mod tests {
             app: "x".into(),
             keep_data: true,
         });
+    }
+
+    #[test]
+    fn free_space_messages_round_trip_and_words_are_distinct() {
         round(&FreeItems {
             for_app: Some("media".into()),
         });

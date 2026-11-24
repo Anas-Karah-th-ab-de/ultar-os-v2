@@ -185,6 +185,9 @@ pub struct Store {
     pub back_to: Option<Area>,
     /// The chosen category on the Categories page.
     pub category: Option<String>,
+    /// The app whose removal is waiting for the user's answer (keep or
+    /// delete the data); drives the confirmation dialog.
+    pub pending_remove: Option<String>,
     /// Current search query.
     pub query: String,
     /// Which page state is shown (loading / ready / offline / error).
@@ -222,6 +225,7 @@ impl Store {
             update_queue: Vec::new(),
             last_error: None,
             log_saved: None,
+            pending_remove: None,
         }
     }
 

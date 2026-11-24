@@ -94,65 +94,88 @@ fn main_button_row(
     hits: &mut HitMap,
 ) -> Result<(), UiError> {
     let line = ui.add(parent, Flex::row().gap(Space::S8))?;
-    let progress = running_progress(store, &app.id);
-    let install_button = |ui: &mut Ui, key: &'static str| -> Result<(NodeId, ButtonVariant), UiError> {
-        let button = ui.add_sized(
-            line,
-            Button::new(Label::key(key)).variant(ButtonVariant::Primary),
-            Sizing::grow(1),
-        )?;
-        Ok((button, ButtonVariant::Primary))
-    };
-    match (main_action(store, &app.id), progress) {
-        (MainAction::Install, Some(percent)) | (MainAction::Update, Some(percent)) => {
-            // Progress ring with the percent on the button (CLICKS): the
-            // button shows its ring (loading) and the percent as its label;
-            // without a percent the loading text stands in.
-            let label = match percent {
-                Some(fraction) => {
-                    let percent = (fraction.clamp(0.0, 1.0) * 100.0).round();
-                    Label::key_count(
-                        "store.progress.percent",
-                        "percent",
-                        i64::try_from(percent as i32).unwrap_or(0),
-                    )
-                }
-                None => Label::key("store.state.loading"),
-            };
-            let button = ui.add_sized(
-                line,
-                Button::new(label).variant(ButtonVariant::Primary),
-                Sizing::grow(1),
-            )?;
-            ui.set_loading(button, true)?;
-            let cancel = ui.add(
-                line,
-                Button::new(Label::key("store.app.cancel")).variant(ButtonVariant::Plain),
-            )?;
-            hits.bind(cancel, StoreAction::Cancel);
+    match (main_action(store, &app.id), running_progress(store, &app.id)) {
+        (MainAction::Install | MainAction::Update, Some(percent)) => {
+            progress_buttons(ui, line, percent, hits)
         }
         (MainAction::Install, None) => {
-            let (button, _) = install_button(ui, "store.app.install")?;
-            hits.bind(button, StoreAction::Install(app.id.clone()));
+            install_button(ui, line, hits, "store.app.install", &app.id)
         }
         (MainAction::Update, None) => {
-            let (button, _) = install_button(ui, "store.app.update")?;
-            hits.bind(button, StoreAction::Install(app.id.clone()));
+            install_button(ui, line, hits, "store.app.update", &app.id)
         }
-        (MainAction::Open, _) => {
-            let open = ui.add(
-                line,
-                Button::new(Label::key("store.open")).variant(ButtonVariant::Plain),
-            )?;
-            hits.bind(open, StoreAction::Launch(app.id.clone()));
-            let remove = ui.add(
-                line,
-                Button::new(Label::key("store.app.remove")).variant(ButtonVariant::Danger),
-            )?;
-            hits.bind(remove, StoreAction::Remove(app.id.clone()));
-        }
-        (MainAction::InstalledOnly, _) => {}
+        (MainAction::Open, _) => open_remove_buttons(ui, line, hits, &app.id),
+        (MainAction::InstalledOnly, _) => Ok(()),
     }
+}
+
+/// The running operation: primary button with the ring and the percent as its
+/// label (without a percent the loading text stands in), Cancel next to it.
+fn progress_buttons(
+    ui: &mut Ui,
+    line: NodeId,
+    percent: Option<f32>,
+    hits: &mut HitMap,
+) -> Result<(), UiError> {
+    let label = match percent {
+        Some(fraction) => {
+            let pct = (fraction.clamp(0.0, 1.0) * 100.0).round();
+            Label::key_count(
+                "store.progress.percent",
+                "percent",
+                i64::try_from(pct as i32).unwrap_or(0),
+            )
+        }
+        None => Label::key("store.state.loading"),
+    };
+    let button = ui.add_sized(
+        line,
+        Button::new(label).variant(ButtonVariant::Primary),
+        Sizing::grow(1),
+    )?;
+    ui.set_loading(button, true)?;
+    let cancel = ui.add(
+        line,
+        Button::new(Label::key("store.app.cancel")).variant(ButtonVariant::Plain),
+    )?;
+    hits.bind(cancel, StoreAction::Cancel);
+    Ok(())
+}
+
+/// The Install/Update button before an operation runs.
+fn install_button(
+    ui: &mut Ui,
+    line: NodeId,
+    hits: &mut HitMap,
+    key: &'static str,
+    app: &str,
+) -> Result<(), UiError> {
+    let button = ui.add_sized(
+        line,
+        Button::new(Label::key(key)).variant(ButtonVariant::Primary),
+        Sizing::grow(1),
+    )?;
+    hits.bind(button, StoreAction::Install(app.to_string()));
+    Ok(())
+}
+
+/// An installed, up-to-date app: Open and Remove.
+fn open_remove_buttons(
+    ui: &mut Ui,
+    line: NodeId,
+    hits: &mut HitMap,
+    app: &str,
+) -> Result<(), UiError> {
+    let open = ui.add(
+        line,
+        Button::new(Label::key("store.open")).variant(ButtonVariant::Plain),
+    )?;
+    hits.bind(open, StoreAction::Launch(app.to_string()));
+    let remove = ui.add(
+        line,
+        Button::new(Label::key("store.app.remove")).variant(ButtonVariant::Danger),
+    )?;
+    hits.bind(remove, StoreAction::Remove(app.to_string()));
     Ok(())
 }
 

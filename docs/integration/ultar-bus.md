@@ -14,6 +14,7 @@ Replaces state files in `/run` + polling (old `ultar-notify` log file and the 40
 | `Policy` / `Rule` (default deny) + TOML-subset reader | `src/policy.rs`, `src/policy_text.rs` |
 | Typed layer `Message` / `Topic` / `Call`, `Text` (i18n key + args) | `src/message.rs` |
 | First contracts | `src/messages/{devices,notify,settings,power,shell}.rs` |
+| Launcher contract (Store/installer: `launcher.list/start/install/uninstall/free.items/free` …) | `src/messages/launcher.rs` – documented in [ultar-launcher.md](ultar-launcher.md) |
 | Broker | `src/broker/{mod,conn,route,state}.rs` |
 | Client | `src/client/{mod,link,subscription,service}.rs` |
 | Daemon `ultar-busd` + ar/en/de message table | `src/bin/ultar-busd.rs`, `src/msg.rs` |

@@ -34,44 +34,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lang = Lang::from_env();
     let translator = i18n::full_translator(lang)?;
     let env = PaintEnv::new(lang, ThemeKind::Dark);
-    let ui = Ui::new(
-        env,
-        InputMode::Pointer,
-        Size::new(1280.0, 800.0),
-        translator,
-    )?;
+    let ui = Ui::new(env, InputMode::Pointer, Size::new(1280.0, 800.0), translator)?;
 
     let mut store = Store::new();
     let mut hits = HitMap::default();
     view::build(&mut ui, &store, &mut hits)?;
 
+    let (cmd_tx, event_rx) = spawn_worker()?;
+    let socket =
+        std::env::var("ULTAR_COMPOSITOR_SOCKET").unwrap_or_else(|_| COMPOSITOR_DEFAULT.to_string());
+    let client = Client::connect(PathBuf::from(&socket).as_path(), "org.ultar.store")?;
+    let mut win = UiWindow::new(client, &WindowConfig::toplevel(&store_title(lang)), ui)?;
+
+    // First load: catalogue; the installed list follows as its answer.
+    for cmd in store.act(StoreAction::Area(Area::Discover)) {
+        let _ = cmd_tx.send(cmd);
+    }
+    let _ = cmd_tx.send(Command::ReloadCatalog);
+    event_loop(&mut win, &mut store, &mut hits, &cmd_tx, &event_rx)
+}
+
+/// The backend worker: commands in, events out, nothing blocks the UI thread.
+fn spawn_worker() -> Result<(Sender<Command>, Receiver<StoreEvent>), Box<dyn std::error::Error>> {
     let backend = Arc::new(SystemBackend::new(
         catalog_source(),
         bus_socket().map(PathBuf::from),
     )?);
     let (event_tx, event_rx) = mpsc::channel::<StoreEvent>();
     let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
-    let worker_backend = Arc::clone(&backend);
     std::thread::spawn(move || {
         while let Ok(cmd) = cmd_rx.recv() {
             let tx = &event_tx;
-            worker_backend.run(cmd, &mut |ev| {
+            backend.run(cmd, &mut |ev| {
                 let _ = tx.send(ev);
             });
         }
     });
+    Ok((cmd_tx, event_rx))
+}
 
-    let socket = std::env::var("ULTAR_COMPOSITOR_SOCKET")
-        .unwrap_or_else(|_| COMPOSITOR_DEFAULT.to_string());
-    let client = Client::connect(PathBuf::from(&socket).as_path(), "org.ultar.store")?;
-    let mut win = UiWindow::new(client, &WindowConfig::toplevel(&store_title(lang)), ui)?;
-
-    // First load: catalogue, then the installed list follows as a command.
-    for cmd in store.act(StoreAction::Area(Area::Discover)) {
-        let _ = cmd_tx.send(cmd);
-    }
-    let _ = cmd_tx.send(Command::ReloadCatalog);
-
+/// The frame loop: answers → state, input → actions → state, redraw on change.
+fn event_loop(
+    win: &mut UiWindow,
+    store: &mut Store,
+    hits: &mut HitMap,
+    cmd_tx: &Sender<Command>,
+    event_rx: &Receiver<StoreEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut dirty = true;
     loop {
         while let Ok(ev) = event_rx.try_recv() {
@@ -81,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             dirty = true;
         }
         if dirty {
-            view::build(win.ui_mut(), &store, &mut hits)?;
+            view::build(win.ui_mut(), store, hits)?;
             dirty = false;
         }
         let actions = win.dispatch(Some(Duration::from_millis(30)))?;
@@ -92,7 +101,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             if matches!(store_action, StoreAction::More) {
                 hits.open_more(win.ui_mut(), node)?;
-                dirty = true;
             }
             for cmd in store.act(store_action) {
                 let _ = cmd_tx.send(cmd);

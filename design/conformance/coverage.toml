@@ -1158,81 +1158,81 @@ boards = "States:84, StatesLight:84"
 note = "toolkit bricks: all 12 bricks x 7 states x 2 themes match states.tsv (size ±1, colours)"
 
 [action."store.area"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/chrome.rs (nav + tabs) + update.rs (Area)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "Store:6"
-note = "no implementation on HEAD"
+note = "wide nav 6 items / compact tabs + more-menu; clears search, reloads lists"
 
 [action."store.search"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/chrome.rs (SearchField) + update.rs (Search) + search.rs"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "Store:1, SurfaceStates:5"
-note = "no implementation on HEAD"
+note = "live on typing; name/description/file-type, Arabic tolerant (normalize_for_search)"
 
 [action."store.open"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/rows.rs (card header / row) + update.rs (Open)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "Store:12"
-note = "no implementation on HEAD"
+note = "cards never install directly; opens the app page (CLICKS store.open NEW)"
 
 [action."store.launch"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/rows.rs + update.rs (Launch) -> backend.rs launcher.start"
+test = "apps/ultar-store/tests/clicks.rs + tests/flow.rs"
 boards = "Store:5, SurfaceStates:6"
-note = "no implementation on HEAD"
+note = "through the launcher service; no bus = honest error, never a fake success"
 
 [action."store.search.clear"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs (no_results_panel) + update.rs (SearchClear)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "SurfaceStates:1"
-note = "no implementation on HEAD"
+note = "empties the field and shows Discover again"
 
 [action."store.retry"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs (offline/error panels) + update.rs (Retry)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "SurfaceStates:2"
-note = "no implementation on HEAD"
+note = "ReloadCatalog; offline and error surfaces both offer it"
 
 [action."store.offline"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs (offline_panel) + update.rs (Offline)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "SurfaceStates:1"
-note = "no implementation on HEAD"
+note = "opens Offline sources; DiscoverSources lists sticks with a signed catalogue"
 
 [action."store.log"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs (error_panel) + update.rs (Log) + backend.rs SaveLog"
+test = "apps/ultar-store/tests/clicks.rs + tests/flow.rs"
 boards = "SurfaceStates:1"
-note = "no implementation on HEAD"
+note = "writes the error report into the app data area; reports the path"
 
 [action."store.free.item"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs (no_space_panel Checkbox) + update.rs (FreeItem)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "SurfaceStates:3"
-note = "no implementation on HEAD"
+note = "toggles the entry; the selected sum recomputes (board sizes are run-time `—`)"
 
 [action."store.free.cancel"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs + update.rs (FreeCancel)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "SurfaceStates:1"
-note = "no implementation on HEAD"
+note = "cancels the installation; nothing is freed"
 
 [action."store.free.go"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/states.rs + update.rs (FreeGo) -> launcher.free"
+test = "apps/ultar-store/tests/clicks.rs + tests/flow.rs"
 boards = "SurfaceStates:1"
-note = "no implementation on HEAD"
+note = "frees the selected space and continues the blocked installation"
 
 [action."apps.app"]
 status = "missing"
@@ -1340,25 +1340,25 @@ boards = "CompactDisplay:1"
 note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
 
 [action."store.back"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/app_page.rs + update.rs (Back)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "CompactStoreApp:1"
-note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+note = "returns to the list the page was opened from, same query/scroll model"
 
 [action."store.install"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/app_page.rs (main_button_row) + update.rs (Install)"
+test = "apps/ultar-store/tests/clicks.rs + tests/flow.rs"
 boards = "CompactStoreApp:1"
-note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+note = "Install -> progress ring with percent + Cancel -> Open/Remove; no extra prompt when the rights are only the shown ones"
 
 [action."store.more"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-store/src/view/chrome.rs (compact_root) + view/mod.rs (HitMap::open_more)"
+test = "apps/ultar-store/tests/clicks.rs"
 boards = "CompactStore:1"
-note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+note = "opens the menu with Install from a file, Offline sources, Account"
 
 [action."win.menu.allws"]
 status = "missing"

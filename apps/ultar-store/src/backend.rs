@@ -130,8 +130,8 @@ impl SystemBackend {
 }
 
 #[cfg(feature = "bus")]
-impl Backend for SystemBackend {
-    fn run(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
+impl SystemBackend {
+    fn run_catalog(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
         match cmd {
             Command::ReloadCatalog => send(event_catalog(self.source_now().load())),
             Command::UseSource(dir) => {
@@ -158,6 +158,12 @@ impl Backend for SystemBackend {
                     send(StoreEvent::Installed(Vec::new()));
                 }
             },
+            _ => {}
+        }
+    }
+
+    fn run_launcher(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
+        match cmd {
             Command::Launch(app) => {
                 let result = self
                     .call(&launcher::Start {
@@ -191,6 +197,15 @@ impl Backend for SystemBackend {
                     }),
                 }
             }
+            cmd @ (Command::Free { .. } | Command::FreeItems { .. }) => {
+                self.run_free_space(cmd, send)
+            }
+            _ => {}
+        }
+    }
+
+    fn run_free_space(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
+        match cmd {
             Command::Free { ids, resume } => {
                 match self.call(&launcher::Free {
                     ids,
@@ -207,9 +222,7 @@ impl Backend for SystemBackend {
                 }
             }
             Command::FreeItems { for_app } => {
-                if let Ok(reply) = self.call(&launcher::FreeItems {
-                    for_app: for_app.clone(),
-                }) {
+                if let Ok(reply) = self.call(&launcher::FreeItems { for_app }) {
                     send(StoreEvent::FreeItems(
                         reply
                             .items
@@ -227,6 +240,12 @@ impl Backend for SystemBackend {
                 // No answer: the model's placeholder list (sizes `—`, exactly
                 // as the board defines them) stays.
             }
+            _ => {}
+        }
+    }
+
+    fn run_local(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
+        match cmd {
             Command::SaveLog { report } => match &self.log_dir {
                 Some(dir) => {
                     let path = dir.join("store-error-report.txt");
@@ -247,7 +266,24 @@ impl Backend for SystemBackend {
             }
             // The removal question is a dialog; cancel and a missing package
             // file are answered by the model itself.
-            Command::AskRemove(_) | Command::CancelOp { .. } | Command::PackageMissing(_) => {}
+            _ => {}
+        }
+    }
+}
+
+#[cfg(feature = "bus")]
+impl Backend for SystemBackend {
+    fn run(&self, cmd: Command, send: &mut dyn FnMut(StoreEvent)) {
+        match cmd {
+            Command::ReloadCatalog | Command::UseSource(_) | Command::ReloadInstalled => {
+                self.run_catalog(cmd, send)
+            }
+            Command::Launch(_)
+            | Command::Install { .. }
+            | Command::Uninstall { .. }
+            | Command::Free { .. }
+            | Command::FreeItems { .. } => self.run_launcher(cmd, send),
+            _ => self.run_local(cmd, send),
         }
     }
 }

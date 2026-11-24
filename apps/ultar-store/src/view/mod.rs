@@ -167,9 +167,23 @@ pub fn build(ui: &mut Ui, store: &Store, hits: &mut HitMap) -> Result<(), UiErro
     ui.clear();
     ui.set_background(ColorRole::Ground);
     if is_compact(ui) {
-        chrome::compact_root(ui, ui.root(), store, hits)
+        chrome::compact_root(ui, ui.root(), store, hits)?;
     } else {
-        chrome::wide_root(ui, ui.root(), store, hits)
+        chrome::wide_root(ui, ui.root(), store, hits)?;
+    }
+    if let Some(app) = store.pending_remove.clone() {
+        states::remove_dialog(ui, store, hits, &app)?;
+    }
+    Ok(())
+}
+
+/// The resolved name of a catalogue app as a `String` (for message args).
+pub(crate) fn resolved_name(store: &Store, id: &str, ui: &Ui) -> String {
+    match store.entry(id) {
+        Some(app) => loc_label(&app.name, ui)
+            .resolve(ui.translator())
+            .into_owned(),
+        None => id.to_string(),
     }
 }
 

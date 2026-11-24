@@ -13,18 +13,7 @@ impl Store {
     /// Handles one user action; returns the commands the shell must run.
     pub fn act(&mut self, action: StoreAction) -> Vec<Command> {
         match action {
-            StoreAction::Area(area) => {
-                self.query.clear();
-                self.category = None;
-                self.area = area;
-                self.open_app = None;
-                self.back_to = None;
-                match area {
-                    Area::Installed | Area::Updates => vec![Command::ReloadInstalled],
-                    Area::OfflineSources => vec![Command::DiscoverSources],
-                    _ => Vec::new(),
-                }
-            }
+            StoreAction::Area(area) => self.act_area(area),
             StoreAction::Category(cat) => {
                 self.query.clear();
                 self.category = Some(cat);
@@ -32,35 +21,14 @@ impl Store {
                 self.open_app = None;
                 Vec::new()
             }
-            StoreAction::Search(q) => {
-                self.query = q;
-                if self.query.is_empty() {
-                    if self.area == Area::Search {
-                        self.area = Area::Discover;
-                    }
-                } else {
-                    self.area = Area::Search;
-                }
-                Vec::new()
-            }
+            StoreAction::Search(q) => self.act_search(q),
             StoreAction::SearchClear => {
                 self.query.clear();
                 self.area = Area::Discover;
                 Vec::new()
             }
             StoreAction::More => Vec::new(),
-            StoreAction::Open(app) => {
-                if self.area != Area::AppPage {
-                    self.back_to = Some(if self.area == Area::Search && !self.query.is_empty() {
-                        Area::Search
-                    } else {
-                        self.area
-                    });
-                    self.open_app = Some(app);
-                    self.area = Area::AppPage;
-                }
-                Vec::new()
-            }
+            StoreAction::Open(app) => self.open_app_page(app),
             StoreAction::Back => {
                 // Returns to the list the page was opened from; the list is
                 // still there with the same query (CLICKS `store.back`).
@@ -68,6 +36,54 @@ impl Store {
                 self.open_app = None;
                 Vec::new()
             }
+            action => self.act_operations(action),
+        }
+    }
+
+    /// `store.area`: the areas of the nav, the tabs and the more menu.
+    fn act_area(&mut self, area: Area) -> Vec<Command> {
+        self.query.clear();
+        self.category = None;
+        self.area = area;
+        self.open_app = None;
+        self.back_to = None;
+        match area {
+            Area::Installed | Area::Updates => vec![Command::ReloadInstalled],
+            Area::OfflineSources => vec![Command::DiscoverSources],
+            _ => Vec::new(),
+        }
+    }
+
+    /// `store.search`: live search; an empty query shows Discover again.
+    fn act_search(&mut self, query: String) -> Vec<Command> {
+        self.query = query;
+        if self.query.is_empty() {
+            if self.area == Area::Search {
+                self.area = Area::Discover;
+            }
+        } else {
+            self.area = Area::Search;
+        }
+        Vec::new()
+    }
+
+    /// `store.open`: the app page, remembering where it came from.
+    fn open_app_page(&mut self, app: String) -> Vec<Command> {
+        if self.area != Area::AppPage {
+            self.back_to = Some(if self.area == Area::Search && !self.query.is_empty() {
+                Area::Search
+            } else {
+                self.area
+            });
+            self.open_app = Some(app);
+            self.area = Area::AppPage;
+        }
+        Vec::new()
+    }
+
+    /// Install/update/remove and the surfaces around them.
+    fn act_operations(&mut self, action: StoreAction) -> Vec<Command> {
+        match action {
             StoreAction::Launch(app) => vec![Command::Launch(app)],
             StoreAction::Install(app) => {
                 let kind = if self.is_installed(&app) {
@@ -86,12 +102,21 @@ impl Store {
                     .collect();
                 self.next_in_queue()
             }
-            StoreAction::Remove(app) => vec![Command::AskRemove(app)],
+            StoreAction::Remove(app) => {
+                // Dangerous action: the confirmation dialog comes first
+                // (keep the data or delete it), nothing is removed yet.
+                self.pending_remove = Some(app.clone());
+                vec![Command::AskRemove(app)]
+            }
             StoreAction::RemoveConfirmed { app, keep_data } => {
+                self.pending_remove = None;
                 self.operation = Some(Operation::started(OpKind::Remove, &app));
                 vec![Command::Uninstall { app, keep_data }]
             }
-            StoreAction::RemoveCancelled => Vec::new(),
+            StoreAction::RemoveCancelled => {
+                self.pending_remove = None;
+                Vec::new()
+            }
             StoreAction::Cancel => match self.operation.take() {
                 Some(op) => {
                     self.free.entries.clear();
@@ -100,6 +125,13 @@ impl Store {
                 }
                 None => Vec::new(),
             },
+            action => self.act_surfaces(action),
+        }
+    }
+
+    /// The surface actions: retry, log, offline sources and freeing space.
+    fn act_surfaces(&mut self, action: StoreAction) -> Vec<Command> {
+        match action {
             StoreAction::Retry => vec![Command::ReloadCatalog],
             StoreAction::Log => match &self.last_error {
                 Some(e) => vec![Command::SaveLog {
@@ -127,15 +159,16 @@ impl Store {
                     .filter(|f| f.selected)
                     .map(|f| f.id.clone())
                     .collect();
-                let resume = self
-                    .operation
-                    .as_ref()
-                    .and_then(|o| o.no_space_for.clone());
+                let resume = self.operation.as_ref().and_then(|o| o.no_space_for.clone());
                 vec![Command::Free { ids, resume }]
             }
             StoreAction::FreeCancel => {
                 // Cancels the installation; nothing is freed (CLICKS).
-                let kind = self.operation.as_ref().map(|o| o.kind).unwrap_or(OpKind::Install);
+                let kind = self
+                    .operation
+                    .as_ref()
+                    .map(|o| o.kind)
+                    .unwrap_or(OpKind::Install);
                 self.operation = None;
                 self.free.entries.clear();
                 vec![Command::CancelOp { kind }]
@@ -147,6 +180,8 @@ impl Store {
                     path,
                 }]
             }
+            // Handled one level up; unreachable here.
+            _ => Vec::new(),
         }
     }
 
@@ -213,25 +248,7 @@ impl Store {
             }
             StoreEvent::OperationDone { app, result } => self.operation_done(app, result),
             StoreEvent::FreeItems(items, required, available) => {
-                let previous = std::mem::take(&mut self.free.entries);
-                self.free.entries = items
-                    .into_iter()
-                    .map(|f| {
-                        let selected = previous
-                            .iter()
-                            .find(|s| s.id == f.id)
-                            .map(|s| s.selected)
-                            .unwrap_or(true);
-                        FreeEntry {
-                            id: f.id,
-                            size: f.size,
-                            selected,
-                        }
-                    })
-                    .collect();
-                self.free.required = required;
-                self.free.available = available;
-                Vec::new()
+                self.apply_free_items(items, required, available)
             }
             StoreEvent::Freed { freed, resumed } => {
                 let _ = freed;
@@ -259,6 +276,35 @@ impl Store {
                 Vec::new()
             }
         }
+    }
+
+    /// Replaces the free list with the launcher's numbers, keeping the user's
+    /// selection per item id (a new item starts selected, like the board).
+    fn apply_free_items(
+        &mut self,
+        items: Vec<FreeEntry>,
+        required: Option<u64>,
+        available: Option<u64>,
+    ) -> Vec<Command> {
+        let previous = std::mem::take(&mut self.free.entries);
+        self.free.entries = items
+            .into_iter()
+            .map(|f| {
+                let selected = previous
+                    .iter()
+                    .find(|s| s.id == f.id)
+                    .map(|s| s.selected)
+                    .unwrap_or(true);
+                FreeEntry {
+                    id: f.id,
+                    size: f.size,
+                    selected,
+                }
+            })
+            .collect();
+        self.free.required = required;
+        self.free.available = available;
+        Vec::new()
     }
 
     /// The catalogue load answer: Ready, Offline or Error (never a fake list).

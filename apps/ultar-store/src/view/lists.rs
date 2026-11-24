@@ -159,23 +159,12 @@ pub(crate) fn updates_page(
         InfoBar::new(Tone::Info, Label::key("store.updates.system"))
             .message(Label::key("store.updates.system-desc")),
     )?;
-    let head = ui.add(body, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
-    ui.add(
-        head,
-        Text::new(Label::key("store.updates.apps")).spec(TextSpec::title(TypeSize::S16)),
-    )?;
-    spacer(ui, head)?;
     let updates: Vec<_> = store
         .apps()
         .iter()
         .filter(|a| store.update_available(&a.id))
         .collect();
-    let count = i64::try_from(updates.len()).unwrap_or(i64::MAX);
-    ui.add(
-        head,
-        Text::new(Label::key_count("store.updates.available", "count", count))
-            .color(ColorRole::TextMuted),
-    )?;
+    let head = updates_head(ui, body, updates.len(), hits)?;
     if updates.is_empty() {
         ui.add(
             body,
@@ -183,38 +172,73 @@ pub(crate) fn updates_page(
         )?;
         return Ok(());
     }
-    if updates.len() > 1 {
-        let all = ui.add(head, Button::new(Label::key("store.updates.update-all")))?;
-        hits.bind(all, StoreAction::UpdateAll);
-    }
+    let _ = head;
     let list = ui.add_sized(
         body,
         List::new().name(Label::key("store.updates.apps")),
         Sizing::grow(1),
     )?;
     for app in updates {
-        let Some(installed) = store.installed_app(&app.id) else {
-            continue;
-        };
-        let item = ui.add(
-            list,
-            ListItem::new(loc_label(&app.name, ui))
-                .sublabel(Label::key_with(
-                    "store.updates.version",
-                    &[
-                        ("from", &installed.version),
-                        ("to", app.version.as_deref().unwrap_or_default()),
-                    ],
-                ))
-                .icon(rows::catalog_icon(store, &app.id)),
-        )?;
-        hits.bind(item, StoreAction::Open(app.id.clone()));
-        let btn = ui.add(
-            item,
-            Button::new(Label::key("store.app.update")).variant(ButtonVariant::Plain),
-        )?;
-        hits.bind(btn, StoreAction::Install(app.id.clone()));
+        update_row(ui, list, store, app, hits)?;
     }
+    Ok(())
+}
+
+/// Title · count · "update all" row.
+fn updates_head(
+    ui: &mut Ui,
+    body: NodeId,
+    count: usize,
+    hits: &mut HitMap,
+) -> Result<(), UiError> {
+    let head = ui.add(body, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
+    ui.add(
+        head,
+        Text::new(Label::key("store.updates.apps")).spec(TextSpec::title(TypeSize::S16)),
+    )?;
+    spacer(ui, head)?;
+    let count = i64::try_from(count).unwrap_or(i64::MAX);
+    ui.add(
+        head,
+        Text::new(Label::key_count("store.updates.available", "count", count))
+            .color(ColorRole::TextMuted),
+    )?;
+    if count > 1 {
+        let all = ui.add(head, Button::new(Label::key("store.updates.update-all")))?;
+        hits.bind(all, StoreAction::UpdateAll);
+    }
+    Ok(())
+}
+
+/// One updatable app: version change as sublabel, Update button.
+fn update_row(
+    ui: &mut Ui,
+    list: NodeId,
+    store: &Store,
+    app: &crate::catalog::CatalogApp,
+    hits: &mut HitMap,
+) -> Result<(), UiError> {
+    let Some(installed) = store.installed_app(&app.id) else {
+        return Ok(());
+    };
+    let item = ui.add(
+        list,
+        ListItem::new(loc_label(&app.name, ui))
+            .sublabel(Label::key_with(
+                "store.updates.version",
+                &[
+                    ("from", &installed.version),
+                    ("to", app.version.as_deref().unwrap_or_default()),
+                ],
+            ))
+            .icon(rows::catalog_icon(store, &app.id)),
+    )?;
+    hits.bind(item, StoreAction::Open(app.id.clone()));
+    let btn = ui.add(
+        item,
+        Button::new(Label::key("store.app.update")).variant(ButtonVariant::Plain),
+    )?;
+    hits.bind(btn, StoreAction::Install(app.id.clone()));
     Ok(())
 }
 

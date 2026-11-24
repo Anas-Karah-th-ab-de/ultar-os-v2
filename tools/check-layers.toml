@@ -129,10 +129,13 @@ to = "system-hal"
 crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-gfx"]
 
 # apps -> public app API + bus/i18n/profile
+# `platform/ultar-surface` is the public compositor client every app window
+# needs (docs/integration/ultar-compositor.md §4); it is allowed until
+# `platform/app-api` exists and re-exports it, as that doc requires.
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface"]
 
 [[allow]]
 from = "apps"

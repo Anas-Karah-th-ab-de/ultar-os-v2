@@ -291,6 +291,38 @@ fn store_free_cancel_cancels_and_frees_nothing() {
     assert!(s.store.free.entries.is_empty());
 }
 
+// --- remove: dangerous action asks first --------------------------------------
+
+#[test]
+fn store_remove_asks_before_removing() {
+    // Remove lives on the app page (cards never install or remove directly).
+    let mut s = Scene::ready(Lang::Ar, ar(), true);
+    s.store.act(StoreAction::Open("km-office".into()));
+    s.rebuild();
+    let cmds = s.click(&StoreAction::Remove("km-office".into()));
+    assert_eq!(cmds, vec![Command::AskRemove("km-office".into())]);
+    assert_eq!(s.store.pending_remove.as_deref(), Some("km-office"));
+    s.rebuild();
+    // The dialog offers keep-data, delete-data and cancel; cancel does nothing.
+    s.click(&StoreAction::RemoveCancelled);
+    assert!(s.store.pending_remove.is_none());
+    s.rebuild();
+    // And keep-data goes to the launcher with keep_data=true.
+    s.click(&StoreAction::Remove("km-office".into()));
+    s.rebuild();
+    let cmds = s.click(&StoreAction::RemoveConfirmed {
+        app: "km-office".into(),
+        keep_data: true,
+    });
+    assert_eq!(
+        cmds,
+        vec![Command::Uninstall {
+            app: "km-office".into(),
+            keep_data: true
+        }]
+    );
+}
+
 // --- store.more -------------------------------------------------------------
 
 #[test]

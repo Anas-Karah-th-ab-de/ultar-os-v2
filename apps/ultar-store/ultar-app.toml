@@ -1,0 +1,43 @@
+# Ultar Store – app manifest (docs/APP-RULES.md §3).
+id          = "store"
+version     = "0.7.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.store.name"       # i18n key, never plain text (ar: متجر Ultar)
+description = "app.store.desc"
+icon        = "assets/icon.svg"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]  # both: the layout class switches with the window
+
+[needs]
+required    = []
+optional    = []
+
+[permissions]
+# The store never touches hardware, network or files of other apps. Everything
+# it needs are bus calls: the launcher (install, uninstall, start, list, free),
+# and its own data area for the error log (store.log).
+bus         = [
+    "launcher.list",
+    "launcher.start",
+    "launcher.install",
+    "launcher.uninstall",
+    "launcher.free.items",
+    "launcher.free",
+    "launcher.admin",          # the store is the installer UI (§7.3)
+]
+files       = ["app:data:rw"]  # the saved error report only
+network     = "none"           # offline first: the catalogue is local or on a stick
+background  = false
+
+[agent]
+actions     = ["search", "open_app", "show_installed", "show_updates"]
+confirm     = ["install", "update", "remove", "free_space"]
+
+[limits]
+memory_mb   = 120
+cpu         = "foreground"

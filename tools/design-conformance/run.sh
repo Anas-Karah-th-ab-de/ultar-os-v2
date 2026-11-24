@@ -38,6 +38,10 @@ python3 -I "$TOOLS/static_checks.py" "$ROOT" $INV --known "$ROOT/design/conforma
 cd "$ROOT"
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-ui --test design_conformance --test design_conformance_clicks --test design_conformance_toasts
 cargo test -p ultar-compositor --test design_conformance
+# The Ultar Store app: screens per board (Store, SurfaceStates, CompactStore,
+# CompactStoreApp) in ar+en and dark+light, and one click test per store.*
+# action of docs/ui/CLICKS.md (design/conformance/coverage.toml names them).
+cargo test -p ultar-store --test screens --test clicks --test flow --test transitions --test transitions2 --test logic
 
 if [ -n "$INV" ]; then
     for b in States StatesLight; do

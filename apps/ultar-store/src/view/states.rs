@@ -13,7 +13,7 @@ use ultar_ui::paint::TextSpec;
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{
-    Button, ButtonVariant, Card, Checkbox, Icon, InfoBar, Label, List, Text, Tone,
+    Button, ButtonVariant, Card, Checkbox, Dialog, Icon, InfoBar, Label, List, Text, Tone,
 };
 
 /// The body dispatch: which surface the user sees right now.
@@ -164,10 +164,12 @@ pub(crate) fn error_panel(
     key: &str,
 ) -> Result<(), UiError> {
     let body = column(ui, parent, Space::S12, Sizing::grow(1))?;
+    // The reason is shown resolved, never as a bare key.
+    let reason = ui.translator().t(key).into_owned();
     ui.add(
         body,
         InfoBar::new(Tone::Danger, Label::key("store.error.title"))
-            .message(Label::key_with("store.error.reason", &[("reason", key)])),
+            .message(Label::key_with("store.error.reason", &[("reason", &reason)])),
     )?;
     let row = ui.add(body, Flex::row().gap(Space::S8))?;
     let retry = ui.add(row, Button::new(Label::key("store.retry")))?;
@@ -259,4 +261,53 @@ fn no_space_name(store: &Store, ui: &Ui) -> String {
 
 pub(crate) fn free_item_key(id: &str) -> String {
     format!("store.free.item.{id}")
+}
+
+/// The removal confirmation (APP-RULES §6: dangerous actions ask first):
+/// "Remove {name}?" with keep-data / delete-data / cancel. Nothing is
+/// removed before the user answers.
+pub(crate) fn remove_dialog(
+    ui: &mut Ui,
+    store: &Store,
+    hits: &mut HitMap,
+    app: &str,
+) -> Result<(), UiError> {
+    let name = super::resolved_name(store, app, ui);
+    let dialog = ui.add(
+        ui.root(),
+        Dialog::new(Label::key_with("store.remove.dialog", &[("name", &name)])).alert(),
+    )?;
+    ui.add(
+        dialog,
+        Text::new(Label::key("store.remove.dialog.desc")).color(ColorRole::TextMuted),
+    )?;
+    let row = ui.add(dialog, Flex::row().gap(Space::S8).cross(CrossAlign::Center))?;
+    let keep = ui.add(
+        row,
+        Button::new(Label::key("store.remove.keep-data")).variant(ButtonVariant::Danger),
+    )?;
+    hits.bind(
+        keep,
+        StoreAction::RemoveConfirmed {
+            app: app.to_string(),
+            keep_data: true,
+        },
+    );
+    let delete = ui.add(
+        row,
+        Button::new(Label::key("store.remove.delete-data")).variant(ButtonVariant::Danger),
+    )?;
+    hits.bind(
+        delete,
+        StoreAction::RemoveConfirmed {
+            app: app.to_string(),
+            keep_data: false,
+        },
+    );
+    let cancel = ui.add(row, Button::new(Label::key("store.remove.cancel")))?;
+    hits.bind(cancel, StoreAction::RemoveCancelled);
+    ui.open_dialog(dialog)?;
+    // Escape and Enter both take the safe way out: nothing is removed.
+    ui.set_cancel_action(dialog, Some(cancel))?;
+    ui.set_default_action(dialog, Some(cancel))
 }
