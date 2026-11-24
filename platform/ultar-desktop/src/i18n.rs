@@ -16,6 +16,12 @@ pub fn translator(lang: Lang) -> Result<Translator, ParseError> {
     for (each, source) in SOURCES {
         tr.add_source(each, source)?;
     }
+    // The helper's answers are shown by the shell: its texts come with its service.
+    for (tag, source) in ultar_agentd::LOCALES {
+        if let Some(each) = Lang::parse(tag) {
+            tr.add_source(each, source)?;
+        }
+    }
     Ok(tr)
 }
 

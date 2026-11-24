@@ -130,6 +130,13 @@ impl DesktopApp {
             Ok(Answer::Known(ssids)) => d.svc.wifi.set_known(ssids),
             Ok(Answer::Joined(_)) => {}
             Ok(Answer::Sent(outcome)) => crate::model::mesh::sent(d, outcome, now),
+            Ok(Answer::Helper(answer)) => {
+                d.notes
+                    .post_said(SHELL, "desk.helper.title", answer.text, now)
+            }
+            Ok(Answer::NotDone) | Err(_) if matches!(call, Call::AskHelper(_)) => {
+                d.notes.post_notice(SHELL, "desk.helper.failed", now);
+            }
             Ok(Answer::NotDone) | Err(_) if *call == Call::Networks => {
                 d.svc.wifi.set_networks(Vec::new());
             }

@@ -328,6 +328,11 @@ fn result(s: &mut Shell, hit: &Hit) -> Outcome {
         }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
+        Hit::Helper(text) => {
+            s.d.open = Open::None;
+            s.d.overview.query.clear();
+            Outcome::effect_and_close(Effect::Service(Call::AskHelper(text.clone())))
+        }
         Hit::Command(Command::Lock) => {
             s.d.open = Open::None;
             Outcome::effect_and_close(Effect::Lock)

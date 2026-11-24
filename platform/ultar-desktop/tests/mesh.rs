@@ -89,3 +89,27 @@ fn the_tile_shows_and_switches_the_mesh() {
     let all = tiles(&s.d.presence, &s.d.values, &s.d.svc);
     assert!(!all.iter().find(|t| t.id == TileId::Mesh).expect("tile").on);
 }
+
+#[test]
+fn whatever_is_typed_in_the_overview_can_be_asked_of_the_helper() {
+    use ultar_desktop::model::search::{search_in, Hit, Sources};
+    let h = Harness::new(ultar_i18n::Lang::Ar, ultar_ui::tokens::ThemeKind::Dark);
+    let tr = &h.shell.tr;
+    let ask = |query: &str, helper: bool| {
+        let sources = Sources {
+            helper,
+            ..Sources::default()
+        };
+        search_in(query, &h.shell.d.catalog, tr, sources)
+    };
+    // without the helper service nothing is offered; two letters are no request
+    assert!(!ask("اكتم الصوت", false)
+        .iter()
+        .any(|x| matches!(x, Hit::Helper(_))));
+    assert!(!ask("ab", true).iter().any(|x| matches!(x, Hit::Helper(_))));
+    let hits = ask("اكتم الصوت", true);
+    assert_eq!(hits.last(), Some(&Hit::Helper("اكتم الصوت".into())));
+    // the helper's own texts are in the shell's catalogs, in the shell's language
+    assert_ne!(tr.t("agent.done"), "agent.done");
+    assert_ne!(tr.t("agent.help.pairing"), "agent.help.pairing");
+}

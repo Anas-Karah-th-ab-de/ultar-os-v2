@@ -23,3 +23,10 @@ mod toolbox_more;
 pub mod tools;
 
 pub use service::AgentService;
+
+/// The helper's texts (`agent.*`) by language tag, for the surface that shows its answers.
+pub const LOCALES: [(&str, &str); 3] = [
+    ("ar", include_str!("../locales/ar.ftl")),
+    ("en", include_str!("../locales/en.ftl")),
+    ("de", include_str!("../locales/de.ftl")),
+];

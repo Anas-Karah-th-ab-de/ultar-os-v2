@@ -31,6 +31,7 @@ pub struct ServiceTopics {
     vpn: Option<TypedSubscription<VpnState>>,
     mesh: Option<TypedSubscription<MeshState>>,
     handoff: Option<TypedSubscription<HandoffProgress>>,
+    helper: Option<TypedSubscription<ultar_bus::messages::agent::AgentState>>,
 }
 
 /// Takes every waiting message of `sub`; `true` when there was one.
@@ -60,6 +61,7 @@ impl ServiceTopics {
             vpn: client.subscribe().ok(),
             mesh: client.subscribe().ok(),
             handoff: client.subscribe().ok(),
+            helper: client.subscribe().ok(),
         }
     }
 
@@ -84,6 +86,8 @@ impl ServiceTopics {
         let mut progress = Vec::new();
         any |= drain(&self.handoff, |m| progress.push(m));
         crate::model::mesh::report(d, &progress, now);
+        let sources = &mut d.overview.sources;
+        any |= drain(&self.helper, |_| sources.helper = true);
         let notes = &mut d.notes;
         any |= drain(&self.dismissed, |m| {
             notes.dismiss(m.id);

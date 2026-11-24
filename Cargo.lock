@@ -5595,6 +5595,7 @@ name = "ultar-desktop"
 version = "0.8.0"
 dependencies = [
  "serde",
+ "ultar-agentd",
  "ultar-brand",
  "ultar-bus",
  "ultar-compositor",

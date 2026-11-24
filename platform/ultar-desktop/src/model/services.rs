@@ -86,6 +86,8 @@ pub enum Call {
     /// `mesh.handoff_send`: continue what is in front on the device, or on the one device
     /// that can take it; with the app and title in front for apps that report nothing.
     MeshSend(Option<String>, Option<(String, String)>),
+    /// `agent.ask`: the helper does or answers this.
+    AskHelper(String),
 }
 
 impl Call {
@@ -94,7 +96,11 @@ impl Call {
     pub fn is_slow(&self) -> bool {
         matches!(
             self,
-            Call::Networks | Call::Join(..) | Call::SetVpn(..) | Call::MeshSend(..)
+            Call::Networks
+                | Call::Join(..)
+                | Call::SetVpn(..)
+                | Call::MeshSend(..)
+                | Call::AskHelper(_)
         )
     }
 }

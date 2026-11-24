@@ -386,3 +386,10 @@ desk.mesh.no_target = Kein Gerät kann das gerade annehmen
 desk.mesh.no_target.body = Kopple ein Gerät unter Einstellungen › Verbund oder bring eines in Reichweite.
 desk.mesh.no_activity = Nichts im Vordergrund lässt sich fortsetzen
 desk.mesh.no_activity.body = Öffne zuerst eine App oder eine Datei.
+
+## Der Helfer in der Suche der Übersicht (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = Helfer
+desk.helper.ask = Den Helfer fragen: { $text }
+desk.helper.title = Helfer
+desk.helper.failed = Der Helfer hat nicht geantwortet
+desk.helper.failed.body = Versuche es gleich noch einmal.

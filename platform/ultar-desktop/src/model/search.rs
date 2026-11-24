@@ -10,6 +10,8 @@ use ultar_i18n::{arabic, numbers, Translator};
 pub const MAX_PER_GROUP: usize = 6;
 /// Longest query in characters.
 pub const MAX_QUERY: usize = 200;
+/// Shortest query offered to the helper (characters).
+pub const MIN_HELPER: usize = 3;
 
 /// A command the search offers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -81,6 +83,8 @@ pub enum Hit {
     Calc(String),
     /// Run a command.
     Command(Command),
+    /// Ask the helper this (the whole query, in the person's words).
+    Helper(String),
 }
 
 /// What the search looks through: the switches of Settings > Search (`search.source.*`,
@@ -97,6 +101,8 @@ pub struct Sources {
     pub commands: bool,
     /// Arabic matches without regard to vowel marks and letter variants.
     pub arabic_variants: bool,
+    /// The helper answers on this device (`agent.state` was seen).
+    pub helper: bool,
 }
 
 impl Default for Sources {
@@ -107,6 +113,7 @@ impl Default for Sources {
             calculator: true,
             commands: true,
             arabic_variants: true,
+            helper: false,
         }
     }
 }
@@ -185,6 +192,10 @@ pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Source
                 })
                 .map(Hit::Command),
         );
+    }
+    // Always last: whatever was typed can be asked of the helper.
+    if sources.helper && query.chars().count() >= MIN_HELPER {
+        out.push(Hit::Helper(query.to_owned()));
     }
     out
 }

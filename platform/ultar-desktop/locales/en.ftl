@@ -386,3 +386,10 @@ desk.mesh.no_target = No device can take this now
 desk.mesh.no_target.body = Pair a device in Settings › Mesh, or bring one into reach.
 desk.mesh.no_activity = Nothing in front can be continued
 desk.mesh.no_activity.body = Open an app or a file first.
+
+## The helper in the overview search (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = Helper
+desk.helper.ask = Ask the helper: { $text }
+desk.helper.title = Helper
+desk.helper.failed = The helper did not answer
+desk.helper.failed.body = Try again in a moment.

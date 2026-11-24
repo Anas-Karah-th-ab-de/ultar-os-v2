@@ -232,6 +232,9 @@ pub(crate) fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
         Hit::Calc(value) => ListItem::new(Label::key_with("desk.ov.calc", &[("value", value)]))
             .icon(IconId::Plus)
             .sublabel(Label::key("desk.ov.group.calc")),
+        Hit::Helper(text) => ListItem::new(Label::key_with("desk.helper.ask", &[("text", text)]))
+            .icon(IconId::Spark)
+            .sublabel(Label::key("desk.ov.group.helper")),
         Hit::Command(c) => ListItem::new(Label::key(c.key()))
             .icon(IconId::Forward)
             .sublabel(Label::key("desk.ov.group.commands")),

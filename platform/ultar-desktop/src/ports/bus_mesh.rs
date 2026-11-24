@@ -1,5 +1,5 @@
-//! The mesh calls of the shell: the switch of the quick settings and "continue on another
-//! device".
+//! The mesh and helper calls of the shell: the switch of the quick settings, "continue on
+//! another device", and a request to the helper.
 
 use super::bus::BusPorts;
 use super::services::Answer;
@@ -9,6 +9,8 @@ use std::time::Duration;
 use ultar_bus::messages::mesh::{Activity, HandoffSend, SendOutcome, SetActivity, SetEnabled};
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// The helper may think (also on another device) and act in several steps.
+const HELPER_TIMEOUT: Duration = Duration::from_secs(170);
 
 impl BusPorts {
     fn send(&self, target: &Option<String>) -> Result<SendOutcome, PortError> {
@@ -47,6 +49,13 @@ impl BusPorts {
                     self.mesh_ask(&set)?;
                 }
                 self.send(target).map(Answer::Sent)
+            }
+            Call::AskHelper(text) => {
+                let ask = ultar_bus::messages::agent::Ask { text: text.clone() };
+                let reply = self.client().call(&ask, HELPER_TIMEOUT);
+                reply
+                    .map(Answer::Helper)
+                    .map_err(|_| PortError::Unavailable)
             }
             _ => Ok(Answer::NotDone),
         }

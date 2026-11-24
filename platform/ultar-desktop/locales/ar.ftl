@@ -386,3 +386,10 @@ desk.mesh.no_target = لا جهاز يستطيع استقبال هذا الآن
 desk.mesh.no_target.body = اقرن جهازًا من الإعدادات › الترابط أو قرّب جهازًا.
 desk.mesh.no_activity = لا شيء في الواجهة يمكن متابعته
 desk.mesh.no_activity.body = افتح تطبيقًا أو ملفًا أولًا.
+
+## المساعد في بحث النظرة العامة (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = المساعد
+desk.helper.ask = اسأل المساعد: { $text }
+desk.helper.title = المساعد
+desk.helper.failed = لم يُجب المساعد
+desk.helper.failed.body = حاول مرة أخرى بعد قليل.
