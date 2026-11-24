@@ -20,8 +20,9 @@ export PATH=$PATH:/usr/sbin:/sbin
 OUT=out/vmware
 mkdir -p "$OUT"
 if [ -z "${VMDK:-}" ]; then
-  PW=$(mktemp); trap 'rm -f "$PW"' EXIT
-  printf '24680135792\n' >"$PW"
+  # the test password (digits), kept beside the image like every image's password
+  PW=$OUT/test.password
+  (umask 077; printf '24680135792\n' >"$PW")
   ACCEL=${ACCEL:-$([ -w /dev/kvm ] && echo kvm || echo tcg)} VM_PASSWORD_FILE="$PW" CHECK=0 \
     bash tools/vm/make-vmware.sh >"$OUT/input-build.log" 2>&1 || { tail -20 "$OUT/input-build.log"; echo "VMWARE-INPUT-E2E: FEHLER build"; exit 1; }
   VMDK=$OUT/UltarOS-v2/UltarOS-v2.vmdk

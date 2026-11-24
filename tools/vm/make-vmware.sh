@@ -202,6 +202,9 @@ VM_USER=${VM_USER:-ultar}
 PWFILE=${VM_PASSWORD_FILE:-}
 if [ -z "$PWFILE" ]; then
   PWFILE=$OUT/$NAME.password; (umask 077; head -c 12 /dev/urandom | base64 | tr -d '/+=' >"$PWFILE")
+elif [ "$(realpath "$PWFILE")" != "$(realpath -m "$OUT/$NAME.password")" ]; then
+  # the image's password always lies beside the image (0600, never in the zip, kept on rebuilds)
+  (umask 077; cp "$PWFILE" "$OUT/$NAME.password")
 fi
 pw=$(head -1 "$PWFILE")
 printf '%s\n%s\n' "$pw" "$pw" | "$BIN/ultar-authd" --dir "$W/data-root/ultar/auth" passwd "$VM_USER" --lang "$LANG_CODE" \
@@ -250,6 +253,6 @@ if [ "${CHECK:-1}" != 0 ]; then
 fi
 python3 tools/vm/vmware-vm.py zip "$VM" "$OUT/$NAME.zip"
 ls -la "$VM" "$OUT/$NAME.zip"
-[ -n "${VM_PASSWORD_FILE:-}" ] || echo "account $VM_USER: password in $OUT/$NAME.password (keep it; it is not in the zip)"
+echo "account $VM_USER: password in $OUT/$NAME.password (keep it; it is not in the zip)"
 (cd "$OUT" && sha256sum "$NAME.zip" | tee "$NAME.zip.sha256")
 echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME.zip)"
