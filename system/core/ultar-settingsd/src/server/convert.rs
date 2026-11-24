@@ -37,6 +37,15 @@ pub fn capabilities_from_bus(
             flags.insert(known);
         }
     }
+    // Nothing says how input works (the keyboard and pointer are the seat's, not a driver
+    // class of the device service): a keyboard and a pointer, as on every desktop machine.
+    if ![Capability::Keyboard, Capability::Pointer, Capability::Touch]
+        .into_iter()
+        .any(|c| flags.contains(c))
+    {
+        flags.insert(Capability::Keyboard);
+        flags.insert(Capability::Pointer);
+    }
     let mentions_displays =
         report.get("display").is_some() || report.get("external_display").is_some();
     let display_count = if !mentions_displays {
@@ -148,5 +157,10 @@ mod tests {
         touch.flags.insert(Capability::Touch);
         let caps = capabilities_from_bus(&touch, &devices::Capabilities::default());
         assert!(caps.flags.contains(Capability::Touch));
+        assert!(!caps.flags.contains(Capability::Pointer));
+        // no word on input at all: keyboard and pointer
+        let caps =
+            capabilities_from_bus(&Capabilities::default(), &devices::Capabilities::default());
+        assert!(caps.flags.contains(Capability::Keyboard));
     }
 }

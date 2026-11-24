@@ -260,7 +260,16 @@ fn load_access(args: &DaemonArgs) -> Result<Box<dyn Access>, DaemonError> {
 
 fn load_capabilities(args: &DaemonArgs) -> Result<Capabilities, DaemonError> {
     let Some(path) = &args.profile else {
-        return Ok(Capabilities::default());
+        // Until the device service reports: a keyboard and a pointer (the Keyboard and Mouse
+        // pages), as on every desktop machine.
+        let mut capabilities = Capabilities::default();
+        capabilities
+            .flags
+            .insert(ultar_profile::Capability::Keyboard);
+        capabilities
+            .flags
+            .insert(ultar_profile::Capability::Pointer);
+        return Ok(capabilities);
     };
     let text =
         std::fs::read_to_string(path).map_err(|error| DaemonError::Profile(error.to_string()))?;
