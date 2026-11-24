@@ -26,16 +26,18 @@ Current test devices: a Lenovo ThinkPad P1 laptop, a Beelink GTi15 Ultra mini PC
 ## New since 24 November 2026: device mesh and local helper
 
 - **Device mesh.** Your own devices find each other, are paired once with a six-digit code and hand work
-  over: what is open on the phone continues on the computer at the same place. Every connection is
-  end-to-end encrypted. Nothing arrives unasked – the receiving device always asks. The core is built and
-  tested (58 automated tests), also through a relay for devices in different networks. The surface is
-  designed and approved; of it, the question on the receiving device is built so far. The mesh is not yet
-  part of a shipped system.
-- **Local helper.** You ask in words, the helper acts through the system bus – with narrow rights of its own
-  and never without confirmation for anything dangerous. It adapts to the device: with its own language
-  model it thinks itself; a weak device uses the model of a paired device that lends it; with neither it
-  understands fixed commands in Arabic, English and German. The service is built and tested (19 tests);
-  surface, voice and the connection of the model service are still missing.
+  over: what is open on one device continues on the other. Every connection is end-to-end encrypted.
+  Nothing arrives unasked – the receiving device always asks. Built so far: the service (also through a
+  relay server for devices in different networks), the page "Mesh" in Settings with pairing and rights per
+  device, the tile in the quick settings, "Continue on another device" in the app's menu, and the question
+  on the receiving device. The mesh has not yet been tried on real devices; the phone surface and remote
+  view are still missing.
+- **Local helper.** You ask in words, the helper acts through the system bus – with narrow rights of its
+  own and never without confirmation for anything dangerous. It adapts to the device: with its own language
+  model it thinks itself; a weak device uses the model a paired device lends; without either it understands
+  fixed commands and answers questions about the system in Arabic, English and German. It can also ask the
+  helper of a paired device to act there, when that device allows it. The service is built and tested; a
+  surface of its own and voice control are still missing.
 
 ## What comes next
 

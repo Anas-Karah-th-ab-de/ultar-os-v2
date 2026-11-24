@@ -128,3 +128,13 @@ Everything that is still open, in the order it should be finished: `docs/OFFEN-V
 - Im Abbild: Benutzer 833, `services/mesh.toml` (Ausgabe Desktop), Port 47810 (TCP, UDP) in
   `rootfs/etc/ultar/firewall`. Name des Geräts: `--name`, sonst `HOSTNAME`, sonst „device“.
 - Tests: 60 (neu: `tests/remote.rs`, 2).
+
+## Nachtrag 25.11.2026: was offen ist, je App
+
+- Eine App meldet mit `mesh.set_activity`, was in ihr offen ist; der Verbund merkt es sich je App (höchstens 16).
+- Die Hülle nennt mit demselben Aufruf die App im Vordergrund (App und Titel). Hat diese App selbst etwas
+  gemeldet, gilt ihre Meldung (Ort oder Datei); sonst wird die App auf dem anderen Gerät einfach geöffnet,
+  wenn sie dort installiert ist.
+- Neu im Vertrag (`messages/mesh.rs`): `Grant` (anderer Name für `Right`, für Oberflächen-Code),
+  `Peer::new`, `Peer::grants`, `Peer::set_grants`, `SetRights::of`.
+- Tests: 61.

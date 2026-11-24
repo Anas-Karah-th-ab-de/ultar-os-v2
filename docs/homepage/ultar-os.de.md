@@ -26,16 +26,18 @@ Aktuelle Testgeräte: Laptop Lenovo ThinkPad P1, Mini-PC Beelink GTi15 Ultra und
 ## Neu seit dem 24.11.2026: Geräteverbund und lokaler Helfer
 
 - **Geräteverbund.** Die eigenen Geräte finden sich, werden einmal mit einem sechsstelligen Code gekoppelt
-  und übergeben einander die Arbeit: Was auf dem Handy offen ist, geht am Rechner an derselben Stelle weiter.
-  Jede Verbindung ist Ende-zu-Ende verschlüsselt. Nichts kommt ungefragt an – das Zielgerät fragt immer nach.
-  Der Kern ist gebaut und getestet (58 automatische Tests), auch über einen Vermittlungs-Server für Geräte
-  in verschiedenen Netzen. Die Oberfläche ist entworfen und freigegeben; gebaut ist davon bisher die Frage
-  am Zielgerät. In ein ausgeliefertes System ist der Verbund noch nicht eingebunden.
+  und übergeben einander die Arbeit: Was auf einem Gerät offen ist, geht auf dem anderen weiter. Jede
+  Verbindung ist Ende-zu-Ende verschlüsselt. Nichts kommt ungefragt an – das Zielgerät fragt immer nach.
+  Gebaut sind der Dienst (auch über einen Vermittlungs-Server für Geräte in verschiedenen Netzen), die Seite
+  „Verbund“ in den Einstellungen mit Koppeln und Rechten je Gerät, die Kachel in den Schnelleinstellungen,
+  „Auf anderem Gerät weitermachen“ im Menü der App und die Frage am Zielgerät. Auf echten Geräten ist der
+  Verbund noch nicht erprobt; die Handy-Oberfläche und die Fernansicht fehlen noch.
 - **Lokaler Helfer.** Man fragt in Worten, der Helfer handelt über den Systembus – mit eigenen, engen Rechten
   und nie ohne Bestätigung bei Gefährlichem. Er passt sich dem Gerät an: Mit eigenem Sprachmodell denkt er
   selbst; ein schwaches Gerät nutzt das Modell eines gekoppelten Geräts, das es verleiht; ohne beides
-  versteht er feste Befehle auf Arabisch, Englisch und Deutsch. Der Dienst ist gebaut und getestet
-  (19 Tests); Oberfläche, Sprache und die Anbindung des Modell-Dienstes fehlen noch.
+  versteht er feste Befehle und beantwortet Fragen zum System auf Arabisch, Englisch und Deutsch. Er kann
+  auch den Helfer eines gekoppelten Geräts bitten, dort zu handeln, wenn dieses es erlaubt. Der Dienst ist
+  gebaut und getestet; eine eigene Oberfläche und die Sprachsteuerung fehlen noch.
 
 ## Was als Nächstes kommt
 
