@@ -46,6 +46,7 @@ pub mod hwconfig;
 pub mod hxg;
 pub mod ident;
 pub mod params;
+pub mod ppgtt;
 pub mod regs;
 pub mod state;
 pub mod wopcm;

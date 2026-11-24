@@ -37,8 +37,18 @@ impl GgttBuf {
         // what the GuC writes later is read from memory
         flush(phys, pages * 4096);
         if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs) {
+            // which entry did not read back as written (seen once in ten runs on the Beelink)
+            let bad = list.iter().enumerate().find_map(|(i, p)| {
+                let read = ggtt::read_pte(&mut dev.mmio, gtt + i as u32 * 4096);
+                (ggtt::pte_page(read) != Some(*p)).then(|| {
+                    format!("entry {i} of {pages} at {gtt:#x}: wrote page {p:#x}, read {read:#x}")
+                })
+            });
             buf.release(dev);
-            return Err(format!("GGTT: {e}"));
+            return Err(format!(
+                "GGTT: {e}; {}",
+                bad.unwrap_or_else(|| "all entries read back correctly on the second look".into())
+            ));
         }
         Ok(buf)
     }
@@ -56,8 +66,9 @@ impl GgttBuf {
     pub fn bytes(&self, len: usize) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
         // What the GT writes does not reach the CPU's caches: on the Beelink the first five lines
-        // of the table still read as the zeroes from before. Dropping the lines first makes the
-        // copy come from memory.
+        // of a table still read as the zeroes from before. Dropping the lines first makes the
+        // copy come from memory. The "coherent" cache attribute of the GGTT (index 3) does not
+        // change that (tried on the Beelink, 25.11.2026).
         flush(self.phys, n as u64);
         let mut out = alloc::vec![0u8; n];
         // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`

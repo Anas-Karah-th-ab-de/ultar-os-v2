@@ -7,7 +7,8 @@
 //! Stage G1a/G1b: the self test (GTTEST) loads the GuC firmware from the boot medium, resets the
 //! GuC, hands over signature, image and the minimal ADS block through the GGTT, waits until the
 //! firmware is ready, asks it for the hardware config table over the register message channel,
-//! switches the command buffers (CTB) on and sends a first request through them.
+//! then loads a second time with the full ADS (engines, register lists, golden context slots) and
+//! all features, switches the command buffers (CTB) on and sends a first request through them.
 //! The GuC is put back into reset afterwards: engines and submission come with stage G3.
 
 use super::device::Device;
@@ -142,6 +143,26 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
     Ok((size, entries.len()))
 }
 
+/// The boot parameter words for this device and load.
+fn boot_params(
+    dev: &Device,
+    img: &fw::GucImage,
+    log_ggtt: u32,
+    ads_ggtt: u32,
+    stage: Stage,
+) -> Result<[u32; guc::PARAM_WORDS], String> {
+    let (b, d, f) = dev.pci;
+    Params {
+        log_ggtt,
+        ads_ggtt,
+        devid: crate::pci::read16(b, d, f, 0x02),
+        revid: crate::pci::read8(b, d, f, 0x08),
+        release: img.release,
+    }
+    .words(stage)
+    .map_err(|e| format!("{e}"))
+}
+
 /// Maps image, log and the minimal ADS, resets the GuC, uploads and – if it gets ready – talks
 /// to it.
 fn load(
@@ -149,6 +170,7 @@ fn load(
     file: &[u8],
     img: &fw::GucImage,
     wopcm_size: u32,
+    stage: Stage,
     bufs: &mut Vec<GgttBuf>,
 ) -> Result<Loaded, String> {
     let image_gtt = buffer(dev, bufs, file.len() as u64)?;
@@ -156,27 +178,25 @@ fn load(
         b.fill(file);
     }
     let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
-    let ads_size = ads::minimal_size(img.private_data_size) as u64;
+    let private = img.private_data_size;
+    let ads_size = match stage {
+        Stage::Minimal => ads::minimal_size(private),
+        Stage::Full => ads::full_size(private, &ads::XE_LPG_ENGINES),
+    } as u64;
     let ads_gtt = buffer(dev, bufs, ads_size)?;
     let doorbells = dev.mmio.read(regs::DIST_DBS_POPULATED);
-    let blob =
-        ads::minimal(ads_gtt, img.private_data_size, doorbells).map_err(|e| format!("{e}"))?;
+    let blob = match stage {
+        Stage::Minimal => ads::minimal(ads_gtt, private, doorbells),
+        Stage::Full => ads::full(ads_gtt, private, doorbells, &ads::XE_LPG_ENGINES),
+    }
+    .map_err(|e| format!("{e}"))?;
     if let Some(b) = bufs.last_mut() {
         b.fill(&blob);
     }
     for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
         guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
     }
-    let (b, d, f) = dev.pci;
-    let params = Params {
-        log_ggtt: log_gtt,
-        ads_ggtt: ads_gtt,
-        devid: crate::pci::read16(b, d, f, 0x02),
-        revid: crate::pci::read8(b, d, f, 0x08),
-        release: img.release,
-    }
-    .words(Stage::Minimal)
-    .map_err(|e| format!("{e}"))?;
+    let params = boot_params(dev, img, log_gtt, ads_gtt, stage)?;
     guc::reset(&mut dev.mmio).map_err(|e| format!("{e}"))?;
     let status = match guc::upload(
         &mut dev.mmio,
@@ -191,8 +211,9 @@ fn load(
         Err(e) => return Err(format!("{e}")),
     };
     let ready = status.load() == guc::Load::Ready;
-    let hwconfig = ready.then(|| hwconfig_table(dev, bufs));
-    let ctb = ready.then(|| ctb_request(dev, bufs));
+    // first load: the register channel; second load: the command buffers
+    let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
+    let ctb = (ready && stage == Stage::Full).then(|| ctb_request(dev, bufs));
     Ok(Loaded {
         status,
         hwconfig,
@@ -201,11 +222,16 @@ fn load(
 }
 
 /// Loads the GuC with `file`; afterwards the GuC is back in reset and every buffer is freed.
-fn upload(dev: &mut Device, file: &[u8], img: &fw::GucImage) -> Result<Loaded, String> {
+fn upload(
+    dev: &mut Device,
+    file: &[u8],
+    img: &fw::GucImage,
+    stage: Stage,
+) -> Result<Loaded, String> {
     let layout = wopcm::init(&mut dev.mmio, wopcm::MTL_WOPCM_SIZE, img.upload_size(), 0)
         .map_err(|e| format!("{e}"))?;
     let mut bufs: Vec<GgttBuf> = Vec::new();
-    let result = load(dev, file, img, layout.size, &mut bufs);
+    let result = load(dev, file, img, layout.size, stage, &mut bufs);
     // the GuC must not keep running on buffers that are about to be freed
     if let Err(e) = guc::reset(&mut dev.mmio) {
         kprintln!("GTTEST: GuC reset after the upload: {e}");
@@ -262,32 +288,36 @@ fn guc_check(dev: &mut Device, r: &mut Report) {
     if let Err(e) = fwk.get(&mut dev.mmio, Domain::Gt) {
         return r.check(false, "GT forcewake", &format!("{e}"));
     }
-    let t0 = crate::arch::uptime_ms();
-    let res = upload(dev, &file, &img);
-    let ms = crate::arch::uptime_ms() - t0;
+    for stage in [Stage::Minimal, Stage::Full] {
+        let t0 = crate::arch::uptime_ms();
+        let res = upload(dev, &file, &img, stage);
+        let ms = crate::arch::uptime_ms() - t0;
+        match res {
+            Ok(l) => report_load(r, &l, stage, ms),
+            Err(e) => r.check(false, "GuC upload", &e),
+        }
+    }
     if let Err(e) = fwk.put(&mut dev.mmio, Domain::Gt) {
         kprintln!("GTTEST: forcewake release: {e}");
-    }
-    match res {
-        Ok(l) => report_load(r, &l, ms),
-        Err(e) => r.check(false, "GuC upload", &e),
     }
 }
 
 /// Reports what a load brought.
-fn report_load(r: &mut Report, l: &Loaded, ms: u64) {
+fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
     let st = l.status;
     let took = format!("{st} ({ms} ms)");
-    r.check(
-        st.authenticated(),
-        "GuC image transferred and signature accepted",
-        &took,
-    );
-    r.check(
-        st.load() == guc::Load::Ready,
-        "GuC ready with the minimal ADS",
-        "",
-    );
+    let (accepted, ready) = match stage {
+        Stage::Minimal => (
+            "GuC image transferred and signature accepted",
+            "GuC ready with the minimal ADS",
+        ),
+        Stage::Full => (
+            "GuC image accepted again (second load)",
+            "GuC ready with the full ADS (render, copy, compute engine; features on)",
+        ),
+    };
+    r.check(st.authenticated(), accepted, &took);
+    r.check(st.load() == guc::Load::Ready, ready, "");
     match &l.hwconfig {
         Some(Ok((size, entries))) => r.check(
             *entries > 0,
