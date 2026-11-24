@@ -32,12 +32,16 @@
 
 extern crate alloc;
 
+pub mod ads;
 pub mod engines;
 pub mod error;
 pub mod forcewake;
 pub mod fw;
 pub mod guc;
+pub mod hwconfig;
+pub mod hxg;
 pub mod ident;
+pub mod params;
 pub mod regs;
 pub mod state;
 pub mod wopcm;

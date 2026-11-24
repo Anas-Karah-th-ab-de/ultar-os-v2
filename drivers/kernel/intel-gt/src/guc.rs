@@ -7,17 +7,16 @@
 //! while it initialises and the command buffers (CTB). Without a valid ADS a GuC that passed the
 //! signature check stops with "init data invalid"; [`Params::ads_ggtt`] takes the ADS address.
 
-use crate::fw::{GucImage, Version};
+use crate::fw::GucImage;
+pub use crate::params::{Params, Stage, PARAM_WORDS};
 use crate::regs::*;
-use crate::{field, genmask, prep, Error, Hw, Result};
+use crate::{field, Error, Hw, Result};
 use core::fmt;
 
 /// Where the boot ROM expects the image inside the GuC's protected memory (below it: stack).
 pub const WOPCM_LOAD_OFFSET: u32 = 0x2000;
 /// GGTT addresses from here on do not reach the GuC through the GGTT.
 pub const GUC_GGTT_TOP: u64 = 0xfee0_0000;
-/// Number of boot parameter words.
-pub const PARAM_WORDS: usize = 14;
 /// How long the DMA engine may take for the image (100 ms, as Linux).
 pub const DMA_TIMEOUT_US: u32 = 100_000;
 /// How long the firmware may take to become ready (3 s, as Linux).
@@ -207,77 +206,6 @@ impl fmt::Display for Status {
             },
             if self.in_reset { ", core in reset" } else { "" }
         )
-    }
-}
-
-/// What the driver tells the firmware at boot (`SOFT_SCRATCH(1..=14)`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Params {
-    /// GGTT address of the log buffer ([`LOG_BUFFER_SIZE`] bytes, page aligned).
-    pub log_ggtt: u32,
-    /// GGTT address of the ADS block (page aligned).
-    pub ads_ggtt: u32,
-    /// PCI device id.
-    pub devid: u16,
-    /// PCI revision.
-    pub revid: u8,
-    /// Release of the firmware being loaded.
-    pub release: Version,
-}
-
-const CTL_LOG_PARAMS: usize = 0;
-const CTL_WA: usize = 1;
-const CTL_FEATURE: usize = 2;
-const CTL_DEBUG: usize = 3;
-const CTL_ADS: usize = 4;
-const CTL_DEVID: usize = 5;
-
-const LOG_VALID: u32 = 1 << 0;
-const LOG_NOTIFY_ON_HALF_FULL: u32 = 1 << 1;
-const LOG_CAPTURE_ALLOC_UNITS: u32 = 1 << 2;
-const LOG_CRASH_DUMP: u32 = genmask(5, 4);
-const LOG_EVENT_DATA: u32 = genmask(9, 6);
-const LOG_STATE_CAPTURE: u32 = genmask(11, 10);
-const LOG_BUF_ADDR: u32 = genmask(31, 12);
-const WA_DUAL_QUEUE: u32 = 1 << 11;
-const WA_ENABLE_TSC_CHECK_ON_RC6: u32 = 1 << 22;
-const CTL_ENABLE_SLPC: u32 = 1 << 2;
-const CTL_ENABLE_LITE_RESTORE: u32 = 1 << 4;
-const CTL_DISABLE_MULTI_QUEUE: u32 = 1 << 24;
-const DEBUG_LOG_DISABLED: u32 = 1 << 6;
-const ADS_ADDR: u32 = genmask(21, 1);
-
-impl Params {
-    /// The parameter words for graphics 12.70–12.74 (Xe_LPG) as Linux sets them: log sections in
-    /// 4 KiB units (capture in 1 MiB units), dual-queue and RC6 time-stamp workarounds, power
-    /// management by the GuC (SLPC), lite restore, verbose logging off.
-    pub fn words(&self) -> Result<[u32; PARAM_WORDS]> {
-        if !self.log_ggtt.is_multiple_of(4096) || !self.ads_ggtt.is_multiple_of(4096) {
-            return Err(Error::Invalid("GuC buffer not page aligned"));
-        }
-        let mut p = [0u32; PARAM_WORDS];
-        p[CTL_LOG_PARAMS] = LOG_VALID
-            | LOG_NOTIFY_ON_HALF_FULL
-            | LOG_CAPTURE_ALLOC_UNITS
-            | prep(LOG_CRASH_DUMP, LOG_CRASH_DUMP_SIZE / 4096 - 1)
-            | prep(LOG_EVENT_DATA, LOG_EVENT_DATA_SIZE / 4096 - 1)
-            | prep(LOG_STATE_CAPTURE, LOG_STATE_CAPTURE_SIZE / (1 << 20) - 1)
-            | prep(LOG_BUF_ADDR, self.log_ggtt >> 12);
-        p[CTL_WA] = WA_DUAL_QUEUE | WA_ENABLE_TSC_CHECK_ON_RC6;
-        p[CTL_FEATURE] = CTL_ENABLE_LITE_RESTORE | CTL_ENABLE_SLPC;
-        if self.release
-            < (Version {
-                major: 70,
-                minor: 66,
-                patch: 0,
-            })
-        {
-            p[CTL_FEATURE] |= CTL_DISABLE_MULTI_QUEUE;
-        }
-        p[CTL_DEBUG] = DEBUG_LOG_DISABLED;
-        p[CTL_ADS] = prep(ADS_ADDR, self.ads_ggtt >> 12);
-        p[CTL_DEVID] = (self.devid as u32) << 16 | self.revid as u32;
-        Ok(p)
     }
 }
 

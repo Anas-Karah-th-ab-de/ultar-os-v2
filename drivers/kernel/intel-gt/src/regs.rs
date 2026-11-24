@@ -158,3 +158,13 @@ pub const fn masked_enable(bits: u32) -> u32 {
 pub const fn masked_disable(bits: u32) -> u32 {
     bits << 16
 }
+
+/// How many doorbells exist per SQIDI.
+pub const DIST_DBS_POPULATED: u32 = 0xd08;
+
+/// Message register `n` (0..4) of the primary GT's GuC: requests and replies.
+pub const fn vf_sw_flag(n: u32) -> u32 {
+    0x19_0240 + n * 4
+}
+/// Writing here tells the primary GT's GuC that a message waits.
+pub const GUC_HOST_INTERRUPT: u32 = 0x19_01f0;

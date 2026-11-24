@@ -42,6 +42,22 @@ pub enum Error {
         /// `GUC_STATUS` read last.
         status: u32,
     },
+    /// The GuC answered a request with a failure.
+    GucRequest {
+        /// First word of the request (the action).
+        request: u32,
+        /// The GuC's error code.
+        error: u32,
+        /// The GuC's hint to the error.
+        hint: u32,
+    },
+    /// The GuC did not answer a request, or with something that is no response.
+    GucProtocol {
+        /// First word of the request (the action).
+        request: u32,
+        /// What the reply register held.
+        reply: u32,
+    },
     /// A value is outside what the hardware or this driver accepts.
     Invalid(&'static str),
     /// The request is valid but not implemented by this driver.
@@ -75,6 +91,22 @@ impl fmt::Display for Error {
                 "GuC load failed (status {status:#010x}: {})",
                 crate::guc::Status::decode(*status)
             ),
+            Error::GucRequest {
+                request,
+                error,
+                hint,
+            } => {
+                write!(
+                    f,
+                    "GuC refused request {request:#x} (error {error:#x}, hint {hint:#x})"
+                )
+            }
+            Error::GucProtocol { request, reply } => {
+                write!(
+                    f,
+                    "no valid GuC reply to request {request:#x} (reply {reply:#010x})"
+                )
+            }
             Error::Invalid(w) => write!(f, "invalid: {w}"),
             Error::NotSupported(w) => write!(f, "not supported: {w}"),
         }
@@ -133,6 +165,15 @@ mod tests {
             Error::Wopcm("y"),
             Error::GucReset { status: 0 },
             Error::Invalid("z"),
+            Error::GucRequest {
+                request: 1,
+                error: 2,
+                hint: 3,
+            },
+            Error::GucProtocol {
+                request: 1,
+                reply: 2,
+            },
             Error::NotSupported("w"),
         ] {
             assert!(!e.to_string().is_empty());

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::fw::{parse_guc, test_image};
+use crate::prep;
 use crate::sim::Sim;
 use alloc::boxed::Box;
 use alloc::string::ToString;
@@ -84,46 +85,6 @@ fn reset_checks_the_core() {
             last: GRDOM_GUC
         })
     );
-}
-
-#[test]
-fn parameter_words() {
-    let p = Params {
-        log_ggtt: 0x0100_0000,
-        ads_ggtt: 0x0120_0000,
-        devid: 0x7d51,
-        revid: 3,
-        release: Version {
-            major: 70,
-            minor: 53,
-            patch: 0,
-        },
-    };
-    let w = p.words().unwrap();
-    // valid | notify | capture units; crash 16K → 3, events 64K → 15, capture 1M → 0
-    assert_eq!(w[0], 0x0100_0000 | 0b0111 | 3 << 4 | 15 << 6);
-    assert_eq!(w[1], 1 << 11 | 1 << 22);
-    assert_eq!(w[2], 1 << 4 | 1 << 2 | 1 << 24);
-    assert_eq!(w[3], 1 << 6);
-    assert_eq!(w[4], 0x1200 << 1);
-    assert_eq!(w[5], 0x7d51_0003);
-    assert!(w[6..].iter().all(|v| *v == 0));
-    let newer = Params {
-        release: Version {
-            major: 70,
-            minor: 66,
-            patch: 0,
-        },
-        ..p
-    };
-    assert_eq!(newer.words().unwrap()[2], 1 << 4 | 1 << 2);
-    assert!(Params {
-        log_ggtt: 0x100,
-        ..p
-    }
-    .words()
-    .is_err());
-    assert_eq!(LOG_BUFFER_SIZE, 0x11_5000);
 }
 
 #[test]
