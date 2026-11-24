@@ -99,6 +99,15 @@ if [ -n "${MODULES:-}" ]; then
     mkdir -p "$STAGE/lib/firmware/intel"
     cp -a "$MODULES_DIR/lib/firmware/intel/iwlwifi" "$STAGE/lib/firmware/intel/"
   fi
+  # Intel AI Boost (ivpu) und NVIDIA-GSP/Nouveau-Firmware in das Startabbild übernehmen.
+  # Die Dateien stammen aus den signierten Distributionspaketen; Ultar erzeugt keine
+  # proprietäre Chip-Firmware und ersetzt keine NVIDIA-/Intel-Firmwaresignaturen.
+  for fwdir in intel/ice intel/vpu nvidia nouveau; do
+    if [ -d "$MODULES_DIR/lib/firmware/$fwdir" ]; then
+      mkdir -p "$STAGE/lib/firmware/$(dirname "$fwdir")"
+      cp -a "$MODULES_DIR/lib/firmware/$fwdir" "$STAGE/lib/firmware/$fwdir"
+    fi
+  done
 fi
 # Benutzer und Gruppen aus rootfs/etc/ultar/ids.toml (feste Nummern der Dienste, Gruppe seat …)
 awk -v P="$STAGE/etc/passwd" -v G="$STAGE/etc/group" '

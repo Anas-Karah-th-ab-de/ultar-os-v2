@@ -28,7 +28,7 @@ printf 'deb %s %s main universe restricted multiverse\ndeb %s %s-updates main un
 
 PKGS="wpasupplicant iw curl ca-certificates kmod"
 # linux-image-generic zieht in noble auch linux-modules-extra (Binder für Waydroid, WLAN, Grafik) mit
-KERNEL_PKGS="linux-image-generic linux-firmware linux-firmware-intel-wireless gdisk e2fsprogs dosfstools parted cloud-guest-utils"
+KERNEL_PKGS="linux-image-generic linux-firmware linux-firmware-intel-wireless linux-firmware-intel-misc linux-firmware-intel-graphics linux-firmware-nvidia-graphics nouveau-firmware gdisk e2fsprogs dosfstools parted cloud-guest-utils"
 case "$PROFILE" in
   phone) ;;
   desktop)
