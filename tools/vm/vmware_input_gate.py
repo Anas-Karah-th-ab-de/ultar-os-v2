@@ -169,7 +169,8 @@ def clipboard(vm, m, pos):
 def window_box(screen, before):
     """(left, top, right) of the window that appeared since `before`: its title bar is the first row of
     the work area that differs clearly over a long run (windows are sized from the screen: nothing about
-    their place is assumed). None when no such row exists."""
+    their place is assumed). A window behind it that only lost the focus changes its title bar far less
+    than a new title bar over the ground or over a window's body does. None when no such row exists."""
     w, h = screen.w, screen.h
     a, b = screen.px, before.px
     for y in range(0, h - 60, 2):
@@ -177,7 +178,7 @@ def window_box(screen, before):
         if ra == rb:
             continue
         xs = [x for x in range(0, w, 2)
-              if abs(ra[x * 3] - rb[x * 3]) + abs(ra[x * 3 + 1] - rb[x * 3 + 1]) + abs(ra[x * 3 + 2] - rb[x * 3 + 2]) > 24]
+              if abs(ra[x * 3] - rb[x * 3]) + abs(ra[x * 3 + 1] - rb[x * 3 + 1]) + abs(ra[x * 3 + 2] - rb[x * 3 + 2]) > 40]
         if len(xs) * 2 >= w * 0.3:
             return (xs[0], y, xs[-1])
     return None
