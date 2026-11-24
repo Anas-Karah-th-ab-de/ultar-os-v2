@@ -51,13 +51,34 @@ pub struct OutputManagement {
 }
 
 impl State {
-    /// One of the four output requests.
+    /// One of the output requests, or the pointer and key-repeat configuration of the same
+    /// right.
     pub(super) fn output_request(&mut self, client: ClientId, r: Request) -> Result<(), ErrorCode> {
         match r {
             Request::ConfigureOutputs { setup } => self.configure_outputs(client, setup),
             Request::ConfirmOutputs { serial } => self.confirm_outputs(client, serial),
             Request::IdentifyOutputs { numbers, ms } => self.identify_outputs(client, numbers, ms),
             Request::DetectOutputs => self.detect_outputs(client),
+            Request::ConfigurePointer {
+                speed,
+                natural_scroll,
+            } => {
+                self.require_output_config(client)?;
+                self.pointer.speed = speed;
+                self.pointer.natural_scroll = natural_scroll;
+                Ok(())
+            }
+            Request::ConfigureKeyRepeat {
+                enabled,
+                delay_ms,
+                per_second,
+            } => {
+                self.require_output_config(client)?;
+                let repeat = &mut self.keyboard.repeat;
+                (repeat.enabled, repeat.delay_ms, repeat.per_second) =
+                    (enabled, delay_ms, per_second);
+                Ok(())
+            }
             _ => Ok(()),
         }
     }

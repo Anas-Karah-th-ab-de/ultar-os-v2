@@ -29,6 +29,7 @@ pub mod changes;
 pub mod core;
 pub mod daemon;
 pub mod ids;
+pub mod input;
 pub mod link;
 pub mod msg;
 pub mod plan;

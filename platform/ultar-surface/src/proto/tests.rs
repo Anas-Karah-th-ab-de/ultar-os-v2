@@ -141,7 +141,18 @@ fn every_request_round_trips_and_truncation_fails() {
             action: WindowAction::Back,
         },
     ];
-    for request in sample_requests().into_iter().chain(phone) {
+    let input = [
+        Request::ConfigurePointer {
+            speed: -4,
+            natural_scroll: true,
+        },
+        Request::ConfigureKeyRepeat {
+            enabled: true,
+            delay_ms: 500,
+            per_second: 25,
+        },
+    ];
+    for request in sample_requests().into_iter().chain(phone).chain(input) {
         let frame = request.encode().unwrap();
         let (op, body) = split(&frame);
         assert_eq!(Request::decode(op, body).unwrap(), request);

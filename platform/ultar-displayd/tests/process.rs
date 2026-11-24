@@ -12,7 +12,7 @@ use std::time::Duration;
 use ultar_bus::messages::display_service::{
     code, Apply, Change, Detect, Identify, Keep, Mode, Outputs, Projection, Revert,
 };
-use ultar_bus::messages::settings::{Get, SettingValue};
+use ultar_bus::messages::settings::{Get, Set, SettingValue};
 use ultar_bus::{BusError, Client, ErrorCode};
 
 fn apply(app: &Client, p: Projection) -> Vec<String> {
@@ -269,4 +269,43 @@ fn a_mode_change_switches_the_display_and_waits_too() {
     rig.wait_for("1024 wide", |s| s.outputs[1].1 == 1024 && s.provisional);
     app.call(&Keep { more: false }, WAIT).unwrap();
     rig.wait_for("kept", |s| !s.provisional && s.outputs[1].1 == 1024);
+}
+
+fn set(app: &Client, key: &str, value: SettingValue) {
+    let call = Set {
+        key: key.into(),
+        value,
+    };
+    app.call(&call, WAIT).unwrap();
+}
+
+#[test]
+fn pointer_and_key_repeat_settings_reach_the_compositor() {
+    let rig = Rig::new("input");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    // The schema's defaults arrive with the connection.
+    rig.wait_for("defaults", |s| {
+        s.pointer == (0, false) && s.key_repeat == (true, 500, 25)
+    });
+    set(&app, "pointer.speed", SettingValue::Integer(6));
+    set(&app, "pointer.natural_scroll", SettingValue::Flag(true));
+    rig.wait_for("pointer", |s| s.pointer == (6, true));
+    set(&app, "keyboard.repeat.delay_ms", SettingValue::Integer(300));
+    set(
+        &app,
+        "keyboard.repeat.per_second",
+        SettingValue::Integer(10),
+    );
+    rig.wait_for("repeat", |s| s.key_repeat == (true, 300, 10));
+    set(&app, "keyboard.repeat.enabled", SettingValue::Flag(false));
+    rig.wait_for("repeat off", |s| s.key_repeat == (false, 300, 10));
+    // A setting changed while the display service is away arrives when it is back.
+    drop(d);
+    set(&app, "pointer.speed", SettingValue::Integer(-3));
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.pointer == (-3, true) && s.key_repeat == (false, 300, 10)
+    });
 }

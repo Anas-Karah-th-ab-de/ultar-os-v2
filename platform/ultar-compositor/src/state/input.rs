@@ -98,6 +98,10 @@ pub struct Pointer {
     pub(super) last_title: Option<(SurfaceKey, u64)>,
     /// Where a dragged window would snap.
     pub snap_preview: Option<Rect>,
+    /// Speed of relative devices (`Request::ConfigurePointer`; 0 = as reported).
+    pub speed: i8,
+    /// Scroll deltas are reversed (`Request::ConfigurePointer`).
+    pub natural_scroll: bool,
     /// Last input was touch (pointer hidden).
     pub hidden: bool,
     /// Touch contacts and the surface each one belongs to.
@@ -108,6 +112,12 @@ pub(super) fn fixed(v: f64) -> i32 {
     (v * f64::from(FIXED_ONE))
         .round()
         .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
+/// How far the pointer moves per reported unit: speed 0 is 1, every 5 steps double or halve
+/// it (-10 a quarter, 10 four times).
+pub fn speed_factor(speed: i8) -> f64 {
+    2f64.powf(f64::from(speed.clamp(-10, 10)) / 5.0)
 }
 
 fn button_code(b: PointerButton) -> u16 {
@@ -124,9 +134,10 @@ impl State {
     pub fn input(&mut self, event: &InputEvent) {
         match event.kind {
             InputEventKind::PointerMotion { dx, dy } => {
+                let factor = speed_factor(self.pointer.speed);
                 let (x, y) = (
-                    self.pointer.x + f64::from(dx),
-                    self.pointer.y + f64::from(dy),
+                    self.pointer.x + f64::from(dx) * factor,
+                    self.pointer.y + f64::from(dy) * factor,
                 );
                 self.pointer_to(x, y);
             }
@@ -137,9 +148,19 @@ impl State {
             InputEventKind::PointerButton { button, pressed } => {
                 self.button(button_code(button), pressed)
             }
-            InputEventKind::Scroll { dx, dy } => self.scroll(f64::from(dx), f64::from(dy)),
+            InputEventKind::Scroll { dx, dy } => {
+                let sign = if self.pointer.natural_scroll {
+                    -1.0
+                } else {
+                    1.0
+                };
+                self.scroll(sign * f64::from(dx), sign * f64::from(dy))
+            }
             InputEventKind::Key { code, state } => {
                 self.keyboard.events = self.keyboard.events.wrapping_add(1);
+                if !self.keyboard.repeat.passes(code, state, event.time_us) {
+                    return;
+                }
                 self.key(code, state)
             }
             InputEventKind::TouchDown { slot, x, y } => self.touch_down(u32::from(slot), x, y),

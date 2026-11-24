@@ -69,6 +69,11 @@ pub trait SettingsPort {
     fn confirm(&self, key: &str) -> Result<u32, PortError>;
     /// Takes a waiting change back.
     fn revert(&self, key: &str) -> Result<u32, PortError>;
+    /// The values of the pointer and keyboard settings the compositor follows (a panel the
+    /// device has no hardware for is left out); `None` when the service did not answer.
+    fn input_items(&self) -> Option<Vec<(String, SettingValue)>> {
+        Some(Vec::new())
+    }
 }
 
 /// The compositor connection.
@@ -124,6 +129,19 @@ impl SettingsPort for BusSettings {
                 pending: i.pending,
             })
             .collect())
+    }
+
+    fn input_items(&self) -> Option<Vec<(String, SettingValue)>> {
+        let mut items = Vec::new();
+        for panel in crate::input::PANELS {
+            let call = ListRequest {
+                panel: Some(panel.to_owned()),
+            };
+            let reply = self.client.call(&call, SETTINGS_TIMEOUT).ok()?;
+            let listed = reply.panels.into_iter().flat_map(|p| p.items);
+            items.extend(listed.map(|i| (i.key, i.value)));
+        }
+        Some(items)
     }
 
     fn set(&self, key: &str, value: SettingValue) -> Result<(), PortError> {

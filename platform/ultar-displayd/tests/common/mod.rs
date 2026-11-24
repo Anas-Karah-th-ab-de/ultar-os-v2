@@ -45,7 +45,7 @@ call      = ["settings.set_displays", "settings.admin", "settings.list", "settin
 
 [[rule]]
 identity  = "app.settings"
-call      = ["display.*", "settings.get", "settings.list"]
+call      = ["display.*", "settings.get", "settings.list", "settings.set"]
 subscribe = ["display.outputs", "settings.*"]
 
 [[rule]]
@@ -162,6 +162,10 @@ pub struct Snap {
     pub deadline: u64,
     /// The compositor's clock.
     pub now: u64,
+    /// Pointer speed and reversed scrolling.
+    pub pointer: (i8, bool),
+    /// Key repeat: on, delay in milliseconds, per second.
+    pub key_repeat: (bool, u16, u8),
 }
 
 impl Snap {
@@ -225,6 +229,11 @@ fn snapshot(comp: &Compositor) -> Snap {
             .as_ref()
             .map_or(0, |p| p.deadline),
         now: comp.state.now,
+        pointer: (comp.state.pointer.speed, comp.state.pointer.natural_scroll),
+        key_repeat: {
+            let r = comp.state.keyboard.repeat;
+            (r.enabled, r.delay_ms, r.per_second)
+        },
         identify: comp
             .state
             .session
@@ -331,7 +340,13 @@ impl Rig {
             clock: clock.clone(),
             appliers: Appliers::new(),
             defaults: Box::new(NoDefaults),
-            capabilities: ultar_profile::Capabilities::default(),
+            capabilities: {
+                // A keyboard and a mouse: the panels whose values the compositor follows.
+                let mut c = ultar_profile::Capabilities::default();
+                c.flags.insert(ultar_profile::Capability::Keyboard);
+                c.flags.insert(ultar_profile::Capability::Pointer);
+                c
+            },
         };
         let (core, notices) = Core::open(config).unwrap();
         let server = Server::start(ServerParts {

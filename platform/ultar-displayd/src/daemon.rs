@@ -239,6 +239,9 @@ struct Loop<'a> {
     logger: &'a Logger,
     started: Instant,
     detecting: Vec<Detecting>,
+    input: crate::input::InputSettings,
+    /// The input settings were read from the settings service.
+    input_read: bool,
 }
 
 impl<'a> Loop<'a> {
@@ -249,6 +252,8 @@ impl<'a> Loop<'a> {
             logger,
             started: Instant::now(),
             detecting: Vec::new(),
+            input: crate::input::InputSettings::default(),
+            input_read: false,
         }
     }
 
@@ -293,20 +298,53 @@ impl<'a> Loop<'a> {
         }
     }
 
+    /// Reads the input settings; `true` when they differ from what was known.
+    fn read_input(&mut self, ports: &Ports<'_>) -> bool {
+        let items = ports.settings.input_items();
+        self.input_read = items.is_some();
+        let mut changed = false;
+        for (key, value) in items.unwrap_or_default() {
+            changed |= self.input.on_changed(&key, &value);
+        }
+        changed
+    }
+
+    fn send_input(&self, ports: &Ports<'_>) {
+        for request in self.input.requests() {
+            ports.compositor.send(request);
+        }
+    }
+
     fn handle(&mut self, input: Input, ports: &Ports<'_>) -> bool {
         let now = self.now();
         match input {
             Input::Stop => return false,
-            Input::Link(LinkEvent::Connected) => {}
+            // A new compositor knows nothing: tell it the input settings again.
+            Input::Link(LinkEvent::Connected) => {
+                self.read_input(ports);
+                self.send_input(ports);
+            }
             Input::Link(LinkEvent::Gone) => self.core.on_compositor_gone(),
             Input::Link(LinkEvent::Event(e)) => self.compositor_event(e, ports),
-            Input::Changed(c) => self.core.on_announced(&c.key, c.value, now),
+            Input::Changed(c) => {
+                // The settings service did not answer at the start: it does now.
+                let late = !self.input_read && self.read_input(ports);
+                if self.input.on_changed(&c.key, &c.value) || late {
+                    self.send_input(ports);
+                }
+                self.core.on_announced(&c.key, c.value, now)
+            }
             Input::Pending(p) => self.core.on_pending(&p.key, p.seconds, now),
             Input::Resolved(r) => {
                 self.core.on_changed(&r.key, r.value);
                 self.core.on_resolved(&r.key);
             }
-            Input::Resync => self.core.resync(),
+            Input::Resync => {
+                if self.read_input(ports) {
+                    self.send_input(ports);
+                }
+                self.core.resync()
+            }
             Input::Request(r) => self.request(*r, ports),
         }
         true

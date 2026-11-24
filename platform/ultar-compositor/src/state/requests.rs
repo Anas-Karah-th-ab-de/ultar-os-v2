@@ -42,7 +42,9 @@ impl State {
             r @ (Request::ConfigureOutputs { .. }
             | Request::ConfirmOutputs { .. }
             | Request::IdentifyOutputs { .. }
-            | Request::DetectOutputs) => self.output_request(client, r),
+            | Request::DetectOutputs
+            | Request::ConfigurePointer { .. }
+            | Request::ConfigureKeyRepeat { .. }) => self.output_request(client, r),
             Request::Hello { app_id, .. } => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.hello = true;

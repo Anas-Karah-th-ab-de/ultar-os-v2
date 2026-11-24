@@ -161,6 +161,7 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             Request::IdentifyOutputs { numbers, ms }
         }
         37 => Request::DetectOutputs,
+        44 | 45 => decode_input(opcode, r)?,
         41 => Request::SetPhoneMode { on: r.bool()? },
         42 => Request::ClientHeader {
             surface: surface(r)?,
@@ -186,6 +187,29 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
 }
 
 /// The overview's requests: a thumbnail (38), show (39) or move to (40) a workspace.
+/// The pointer and key-repeat configuration of the display service.
+fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    if opcode == 44 {
+        let speed = i8::from_le_bytes([r.u8()?]);
+        if !(super::MIN_POINTER_SPEED..=super::MAX_POINTER_SPEED).contains(&speed) {
+            return Err(WireError::BadValue);
+        }
+        return Ok(Request::ConfigurePointer {
+            speed,
+            natural_scroll: r.bool()?,
+        });
+    }
+    let (enabled, delay_ms, per_second) = (r.bool()?, r.u16()?, r.u8()?);
+    if delay_ms > super::MAX_KEY_REPEAT_DELAY_MS || per_second > super::MAX_KEY_REPEATS_PER_SECOND {
+        return Err(WireError::BadValue);
+    }
+    Ok(Request::ConfigureKeyRepeat {
+        enabled,
+        delay_ms,
+        per_second,
+    })
+}
+
 fn decode_overview(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
     Ok(match opcode {
         38 => {

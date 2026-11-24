@@ -313,6 +313,28 @@ pub enum Request {
     /// Looks for displays again and sends `OutputDetails` for each (needs
     /// [`Rights::OUTPUT_CONFIG`]).
     DetectOutputs,
+    /// How relative pointer devices behave (needs [`Rights::OUTPUT_CONFIG`]: the display
+    /// service passes the settings `pointer.speed` and `pointer.natural_scroll` on).
+    ConfigurePointer {
+        /// Pointer speed, [`super::MIN_POINTER_SPEED`] (slowest) to
+        /// [`super::MAX_POINTER_SPEED`]; 0 moves the pointer as far as the device reports.
+        speed: i8,
+        /// The content follows the wheel or the fingers (scroll deltas are reversed).
+        natural_scroll: bool,
+    },
+    /// How a held key repeats (needs [`Rights::OUTPUT_CONFIG`]: the display service passes
+    /// the settings `keyboard.repeat.*` on). The compositor thins out the repeats the keyboard
+    /// driver reports; it never repeats earlier or faster than the driver does.
+    ConfigureKeyRepeat {
+        /// `false`: a held key gives one character only.
+        enabled: bool,
+        /// Time a key is held before it repeats, in milliseconds, at most
+        /// [`super::MAX_KEY_REPEAT_DELAY_MS`]; 0 = as the driver reports.
+        delay_ms: u16,
+        /// Repeats per second, at most [`super::MAX_KEY_REPEATS_PER_SECOND`]; 0 = as the
+        /// driver reports.
+        per_second: u8,
+    },
     /// The app draws the header of this toplevel itself (needs
     /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
     /// the "not responding" close stay with the compositor; system dialogs keep theirs.
@@ -371,6 +393,8 @@ impl Request {
             Request::DetectOutputs => 37,
             Request::ClientHeader { .. } => 42,
             Request::SetKeyboardLayouts { .. } => 43,
+            Request::ConfigurePointer { .. } => 44,
+            Request::ConfigureKeyRepeat { .. } => 45,
         }
     }
 
@@ -550,6 +574,25 @@ impl Request {
                 for name in names {
                     w.str(name, super::MAX_LAYOUT_NAME);
                 }
+            }
+            other => other.encode_input(w),
+        }
+    }
+
+    fn encode_input(&self, w: &mut Writer) {
+        match self {
+            Request::ConfigurePointer {
+                speed,
+                natural_scroll,
+            } => {
+                w.u8(speed.to_le_bytes()[0]).bool(*natural_scroll);
+            }
+            Request::ConfigureKeyRepeat {
+                enabled,
+                delay_ms,
+                per_second,
+            } => {
+                w.bool(*enabled).u16(*delay_ms).u8(*per_second);
             }
             _ => {}
         }

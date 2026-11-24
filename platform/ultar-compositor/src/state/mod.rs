@@ -5,6 +5,7 @@
 mod budget;
 mod grabs;
 mod input;
+mod key_repeat;
 mod keys;
 mod layers;
 mod memory;
@@ -20,6 +21,7 @@ mod windows;
 mod workspaces;
 
 pub use input::PointerGrab;
+pub use key_repeat::KeyRepeat;
 pub use layers::Placed;
 pub use output_config::{Identify, OutputManagement, Provisional, MAX_QUEUED_SETUPS};
 pub use session::{Grant, Session, INDICATOR_MS};
@@ -140,6 +142,8 @@ pub struct Keyboard {
     /// Key events taken from the input devices so far (press, release, repeat; never which
     /// key). The end-to-end test reads it to know a key arrived (`--input-ack`).
     pub events: u64,
+    /// How a held key repeats (`Request::ConfigureKeyRepeat`).
+    pub repeat: KeyRepeat,
 }
 
 /// Number sources.
