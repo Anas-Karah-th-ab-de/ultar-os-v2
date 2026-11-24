@@ -3,6 +3,27 @@
 # and is listed in CLICKS.md under "Spec additions needed".
 N = 'NEW'
 ACTIONS = {
+ # mesh (device link) – contract: system/core/ultar-bus/src/messages/mesh.rs
+ 'mesh.toggle': ('Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state.', N),
+ 'mesh.copy': ('Copies the device id to the clipboard; a toast confirms it.', N),
+ 'mesh.inbox': ('Opens the system folder dialog to choose where accepted files are stored.', N),
+ 'mesh.pair': ('Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type.', N),
+ 'mesh.near.pair': ('Opens the dialog to type the code the named nearby device shows.', N),
+ 'mesh.pair.code': ('The code field: digits only, six of them; a wrong code shows the error text below the field with the attempts left.', N),
+ 'mesh.pair.join': ('Sends the typed code (mesh.pair_join). Right: the dialog closes and the device appears under "My paired devices". Wrong: the field shows the error and keeps the focus.', N),
+ 'mesh.pair.cancel': ('Closes the pairing dialog; a shown code is no longer valid.', N),
+ 'mesh.device': ('Opens the page of this paired device (rights, unpair).', N),
+ 'mesh.back': ('Goes back to the page before (Alt+Left; in Arabic the arrow points right).', N),
+ 'mesh.right': ('Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted.', N),
+ 'mesh.unpair': ('Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back.', N),
+ 'mesh.accept': ('Accepts the offer (mesh.handoff_answer): the file is received, checked and opened in the named app at the same place. Until then nothing is stored and nothing is opened.', N),
+ 'mesh.decline': ('Declines the offer; the sending device is told. No answer within 60 seconds counts as declined.', N),
+ 'mesh.send.target': ('Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen.', N),
+ 'mesh.send': ('Sends the offer to the chosen device (mesh.handoff_send with the target) and closes the dialog; a toast shows "waiting for the answer".', N),
+ 'mesh.send.cancel': ('Closes the dialog; nothing is sent.', N),
+ 'mesh.offer.cancel': ('Takes the offer back; the question on the other device disappears.', N),
+ 'mesh.retry': ('Does the failed step again (send the offer again, or switch Mesh on again).', N),
+ 'mesh.received.open': ('Opens the received file with its default app.', N),
  # shell (bar, dock, windows)
  'shell.overview': ('Opens the Overview; second click or Esc closes it. No menu, no second meaning.', '§5.1'),
  'shell.apps': ('Opens the app grid (all apps, alphabetical).', '§5.1'),

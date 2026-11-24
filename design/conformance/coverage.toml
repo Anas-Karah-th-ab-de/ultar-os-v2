@@ -1337,3 +1337,103 @@ impl = ""
 test = ""
 boards = "WindowMenu:3"
 note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
+
+[action."mesh.accept"]
+status = "missing"
+boards = "CompactMeshIncoming:1, MeshIncoming:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.back"]
+status = "missing"
+boards = "CompactMeshSend:1, MeshDevice:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.copy"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.decline"]
+status = "missing"
+boards = "CompactMeshIncoming:1, MeshIncoming:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.device"]
+status = "missing"
+boards = "MeshPairJoin:3, MeshPairShow:3, SettingsMesh:3, SettingsMeshLight:3"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.inbox"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.near.pair"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.offer.cancel"]
+status = "missing"
+boards = "MeshStates:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.pair"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1, MeshStates:1, SettingsMesh:1, SettingsMeshLight:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.pair.cancel"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.pair.code"]
+status = "missing"
+boards = "MeshPairJoin:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.pair.join"]
+status = "missing"
+boards = "MeshPairJoin:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.received.open"]
+status = "missing"
+boards = "MeshStates:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.retry"]
+status = "missing"
+boards = "MeshStates:3"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.right"]
+status = "missing"
+boards = "MeshDevice:7"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.send"]
+status = "missing"
+boards = "CompactMeshSend:1, MeshSend:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.send.cancel"]
+status = "missing"
+boards = "CompactMeshSend:1, MeshSend:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.send.target"]
+status = "missing"
+boards = "CompactMeshSend:2, MeshSend:3"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.toggle"]
+status = "missing"
+boards = "MeshPairJoin:1, MeshPairShow:1, MeshStates:1, SettingsMesh:1, SettingsMeshLight:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+
+[action."mesh.unpair"]
+status = "missing"
+boards = "MeshDevice:1"
+note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"

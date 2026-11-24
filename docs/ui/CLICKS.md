@@ -1597,6 +1597,386 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 3 | رجوع | `store.back` | Returns from the app page to the list it was opened from, at the same scroll position. | NEW |
 | 4 | الشاشة الرئيسية | `mobile.home` | Gesture bar: tap or swipe up = home screen; swipe up and hold = recent apps; swipe in from the start edge = Back. Screen readers get the three as actions of this button. | §5.5 (gestures: NEW) |
 
+## SettingsMesh (44)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
+| 2 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
+| 3 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
+| 4 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 5 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 6 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 7 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 8 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 9 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 10 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 11 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 12 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 43 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 44 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## SettingsMeshLight (44)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | Mesh | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
+| 2 | Copy device id | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
+| 3 | Change the folder for received files | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
+| 4 | Pair a device | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 5 | Rights: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 6 | Rights: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 7 | Rights: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 8 | Pair with lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 9 | Search settings | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 10 | Wi-Fi | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 11 | Network | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 12 | Bluetooth | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | Displays | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | Sound | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | Power | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | Desktop and dock | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | Windows and workspaces | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | Appearance | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | Notifications | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | Search | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | Apps | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | Mouse and touchpad | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | Keyboard | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | Printers and scanners | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | Colour | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | Accessibility | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | Privacy and security | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | Sharing | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | Accounts | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | Users | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | Region and language | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | Date and time | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | Storage | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | Drivers and hardware | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | Updates | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | Backup | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | Mesh | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | Assistant | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | Cells and containers | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | Emergency | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | About | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | Minimize | `win.min` | Minimises the window. | §5.2 |
+| 43 | Maximize | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 44 | Close | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## MeshPairShow (45)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | إلغاء الاقتران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
+| 2 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
+| 3 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
+| 4 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
+| 5 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 6 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 7 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 8 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 9 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 10 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 11 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 12 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 43 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 44 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 45 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## MeshPairJoin (47)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | الرمز المعروض على lab-board | `mesh.pair.code` | The code field: digits only, six of them; a wrong code shows the error text below the field with the attempts left. | NEW |
+| 2 | إلغاء الاقتران الجاري | `mesh.pair.cancel` | Closes the pairing dialog; a shown code is no longer valid. | NEW |
+| 3 | اقتران | `mesh.pair.join` | Sends the typed code (mesh.pair_join). Right: the dialog closes and the device appears under "My paired devices". Wrong: the field shows the error and keeps the focus. | NEW |
+| 4 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
+| 5 | نسخ معرّف الجهاز | `mesh.copy` | Copies the device id to the clipboard; a toast confirms it. | NEW |
+| 6 | تغيير مجلد الاستلام | `mesh.inbox` | Opens the system folder dialog to choose where accepted files are stored. | NEW |
+| 7 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 8 | الصلاحيات: KM One | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 9 | الصلاحيات: beelink | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 10 | الصلاحيات: ultar-office | `mesh.device` | Opens the page of this paired device (rights, unpair). | NEW |
+| 11 | اقتران مع lab-board | `mesh.near.pair` | Opens the dialog to type the code the named nearby device shows. | NEW |
+| 12 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 13 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 43 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 44 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 45 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 46 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 47 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## MeshDevice (45)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | رجوع إلى الترابط | `mesh.back` | Goes back to the page before (Alt+Left; in Arabic the arrow points right). | NEW |
+| 2 | عرض متابعة العمل | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 3 | إرسال الملفات | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 4 | مشاركة الحافظة | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 5 | رؤية شاشة هذا الجهاز | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 6 | التحكّم بهذا الجهاز | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 7 | الصوت | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 8 | استعمال القدرة الحاسوبية | `mesh.right` | Grants or takes away this right for this device at once (mesh.set_rights). Offers of activities and files are asked on this device every time, whatever is granted. | NEW |
+| 9 | إلغاء الاقتران مع KM One | `mesh.unpair` | Asks "Unpair this device?" and then forgets it (mesh.unpair): open offers fail, it needs a new code to come back. | NEW |
+| 10 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 11 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 12 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 43 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 44 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 45 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## MeshIncoming (39)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | رفض | `mesh.decline` | Declines the offer; the sending device is told. No answer within 60 seconds counts as declined. | NEW |
+| 2 | قبول | `mesh.accept` | Accepts the offer (mesh.handoff_answer): the file is received, checked and opened in the named app at the same place. Until then nothing is stored and nothing is opened. | NEW |
+| 3 | المجلد الرئيسي | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 4 | المستندات | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 5 | التنزيلات | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 6 | الصور | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 7 | الموسيقى | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 8 | إخراج ذاكرة USB | `files.eject` | Ejects the drive safely; a notification says when it may be removed. If files are open on it: names the app and offers "Eject anyway". | NEW |
+| 9 | ذاكرة USB | `files.drive` | Opens the mounted drive in this window. | §9 (click: NEW) |
+| 10 | سلة المحذوفات | `files.trashplace` | Opens the Trash; items there offer Restore and Delete permanently. | §9 |
+| 11 | ابحث في المستندات | `files.search` | Typing filters the current folder by name and content at once; Esc clears and leaves the field. | §9 (field in the toolbar: NEW) |
+| 12 | مجلد جديد | `files.newfolder` | Creates a folder in the current folder with the name selected for typing (Ctrl+Shift+N). | NEW |
+| 13 | مشاريع | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 14 | عقود | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 15 | فواتير | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 16 | تقرير.docx | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 17 | ميزانية.xlsx | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 18 | مخطط.png | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 19 | رجوع | `files.back` | Goes back in the folder history of this window (Alt+Left; in Arabic the arrow points right). Disabled when there is no history. | NEW |
+| 20 | إلى الأمام | `files.forward` | Goes forward in the folder history of this window. Disabled when there is nothing to go forward to. | NEW |
+| 21 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 22 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 23 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+| 24 | المجلد الرئيسي | `desk.icon` | Single click selects the icon; double click or Enter opens it (folder or drive in Files). Right click: Open, Rename, Move to trash, Properties; on a drive also Eject. | NEW |
+| 25 | ذاكرة USB | `desk.icon` | Single click selects the icon; double click or Enter opens it (folder or drive in Files). Right click: Open, Rename, Move to trash, Properties; on a drive also Eject. | NEW |
+| 26 | سلة المحذوفات | `shell.trash` | Click opens the Trash in Files. Files dropped on it are moved to the Trash (with undo). Right click: Open, Empty trash (asks first). | NEW |
+| 27 | ذاكرة USB | `shell.drive` | Click opens the mounted drive in Files. Right click: Open, Eject. The tile exists only while a drive is mounted. | NEW |
+| 28 | نظرة عامة | `shell.overview` | Opens the Overview; second click or Esc closes it. No menu, no second meaning. | §5.1 |
+| 29 | كل التطبيقات | `shell.apps` | Opens the app grid (all apps, alphabetical). | §5.1 |
+| 30 | بحث | `shell.search` | Opens the Overview with the caret in its search field; typing searches at once. The bar itself holds no second search. | NEW |
+| 31 | الملفات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 32 | المتصفح | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 33 | الطرفية | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 34 | محرر النصوص | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 35 | متجر Ultar | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 36 | الإعدادات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 37 | لغة الإدخال: العربية | `shell.kbd` | Shown only with more than one input language. Click opens a menu: the input languages (choosing one switches at once), "Keyboard settings". Super+Space switches without the menu. | NEW |
+| 38 | الإعدادات السريعة | `shell.status` | Opens the quick settings sheet above the end of the bar; second click, Esc or a click outside closes it and focus returns to this button. | §5.1 (focus return: NEW) |
+| 39 | التقويم والإشعارات | `shell.clock` | Opens the calendar and notifications sheet above the end of the bar; closes like the quick settings. Only one of the two sheets is open at a time. | §5.1 (one sheet at a time: NEW) |
+
+## MeshSend (42)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | إلغاء المتابعة على جهاز آخر | `mesh.send.cancel` | Closes the dialog; nothing is sent. | NEW |
+| 2 | إرسال | `mesh.send` | Sends the offer to the chosen device (mesh.handoff_send with the target) and closes the dialog; a toast shows "waiting for the answer". | NEW |
+| 3 | KM One | `mesh.send.target` | Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen. | NEW |
+| 4 | beelink | `mesh.send.target` | Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen. | NEW |
+| 5 | ultar-office | `mesh.send.target` | Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen. | NEW |
+| 6 | المجلد الرئيسي | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 7 | المستندات | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 8 | التنزيلات | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 9 | الصور | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 10 | الموسيقى | `files.place` | Opens the place in this window. | §9 (click: NEW) |
+| 11 | إخراج ذاكرة USB | `files.eject` | Ejects the drive safely; a notification says when it may be removed. If files are open on it: names the app and offers "Eject anyway". | NEW |
+| 12 | ذاكرة USB | `files.drive` | Opens the mounted drive in this window. | §9 (click: NEW) |
+| 13 | سلة المحذوفات | `files.trashplace` | Opens the Trash; items there offer Restore and Delete permanently. | §9 |
+| 14 | ابحث في المستندات | `files.search` | Typing filters the current folder by name and content at once; Esc clears and leaves the field. | §9 (field in the toolbar: NEW) |
+| 15 | مجلد جديد | `files.newfolder` | Creates a folder in the current folder with the name selected for typing (Ctrl+Shift+N). | NEW |
+| 16 | مشاريع | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 17 | عقود | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 18 | فواتير | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 19 | تقرير.docx | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 20 | ميزانية.xlsx | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 21 | مخطط.png | `files.item` | Single click selects (Ctrl/Shift: several). Double click or Enter opens: a folder in this window, a file with its default app; if that app is missing the Store offers to install it. Space: preview. Right click: context menu. | §7.2, §9 (click kinds: NEW) |
+| 22 | رجوع | `files.back` | Goes back in the folder history of this window (Alt+Left; in Arabic the arrow points right). Disabled when there is no history. | NEW |
+| 23 | إلى الأمام | `files.forward` | Goes forward in the folder history of this window. Disabled when there is nothing to go forward to. | NEW |
+| 24 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 25 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 26 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+| 27 | المجلد الرئيسي | `desk.icon` | Single click selects the icon; double click or Enter opens it (folder or drive in Files). Right click: Open, Rename, Move to trash, Properties; on a drive also Eject. | NEW |
+| 28 | ذاكرة USB | `desk.icon` | Single click selects the icon; double click or Enter opens it (folder or drive in Files). Right click: Open, Rename, Move to trash, Properties; on a drive also Eject. | NEW |
+| 29 | سلة المحذوفات | `shell.trash` | Click opens the Trash in Files. Files dropped on it are moved to the Trash (with undo). Right click: Open, Empty trash (asks first). | NEW |
+| 30 | ذاكرة USB | `shell.drive` | Click opens the mounted drive in Files. Right click: Open, Eject. The tile exists only while a drive is mounted. | NEW |
+| 31 | نظرة عامة | `shell.overview` | Opens the Overview; second click or Esc closes it. No menu, no second meaning. | §5.1 |
+| 32 | كل التطبيقات | `shell.apps` | Opens the app grid (all apps, alphabetical). | §5.1 |
+| 33 | بحث | `shell.search` | Opens the Overview with the caret in its search field; typing searches at once. The bar itself holds no second search. | NEW |
+| 34 | الملفات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 35 | المتصفح | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 36 | الطرفية | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 37 | محرر النصوص | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 38 | متجر Ultar | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 39 | الإعدادات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 40 | لغة الإدخال: العربية | `shell.kbd` | Shown only with more than one input language. Click opens a menu: the input languages (choosing one switches at once), "Keyboard settings". Super+Space switches without the menu. | NEW |
+| 41 | الإعدادات السريعة | `shell.status` | Opens the quick settings sheet above the end of the bar; second click, Esc or a click outside closes it and focus returns to this button. | §5.1 (focus return: NEW) |
+| 42 | التقويم والإشعارات | `shell.clock` | Opens the calendar and notifications sheet above the end of the bar; closes like the quick settings. Only one of the two sheets is open at a time. | §5.1 (one sheet at a time: NEW) |
+
+## MeshStates (13)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | الترابط | `mesh.toggle` | Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state. | NEW |
+| 2 | اقتران جهاز | `mesh.pair` | Opens the pairing dialog: this device shows a six-digit code (valid 5 minutes, 5 attempts) for the other device to type. | NEW |
+| 3 | إلغاء | `mesh.offer.cancel` | Takes the offer back; the question on the other device disappears. | NEW |
+| 4 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 5 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 6 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 7 | إعادة المحاولة | `mesh.retry` | Does the failed step again (send the offer again, or switch Mesh on again). | NEW |
+| 8 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 9 | إعادة المحاولة | `mesh.retry` | Does the failed step again (send the offer again, or switch Mesh on again). | NEW |
+| 10 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 11 | فتح | `mesh.received.open` | Opens the received file with its default app. | NEW |
+| 12 | إغلاق | `toast.close` | Closes the toast at once (Esc closes the newest); otherwise it closes by itself after motion.toast. | §3 |
+| 13 | إعادة المحاولة | `mesh.retry` | Does the failed step again (send the offer again, or switch Mesh on again). | NEW |
+
+## CompactMeshSend (7)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | ultar-pc | `mesh.send.target` | Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen. | NEW |
+| 2 | beelink | `mesh.send.target` | Chooses the device that receives the activity (one of a radio group; arrow keys move). A device that is not connected cannot be chosen. | NEW |
+| 3 | إرسال | `mesh.send` | Sends the offer to the chosen device (mesh.handoff_send with the target) and closes the dialog; a toast shows "waiting for the answer". | NEW |
+| 4 | إلغاء المتابعة على جهاز آخر | `mesh.send.cancel` | Closes the dialog; nothing is sent. | NEW |
+| 5 | الإعدادات السريعة | `mobile.status` | Compact: opens the quick settings sheet from the top (a swipe down on the status bar does the same); it closes with a swipe up, Back or the handle. | §5.5 |
+| 6 | رجوع | `mesh.back` | Goes back to the page before (Alt+Left; in Arabic the arrow points right). | NEW |
+| 7 | الشاشة الرئيسية | `mobile.home` | Gesture bar: tap or swipe up = home screen; swipe up and hold = recent apps; swipe in from the start edge = Back. Screen readers get the three as actions of this button. | §5.5 (gestures: NEW) |
+
+## CompactMeshIncoming (4)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | قبول | `mesh.accept` | Accepts the offer (mesh.handoff_answer): the file is received, checked and opened in the named app at the same place. Until then nothing is stored and nothing is opened. | NEW |
+| 2 | رفض | `mesh.decline` | Declines the offer; the sending device is told. No answer within 60 seconds counts as declined. | NEW |
+| 3 | الإعدادات السريعة | `mobile.status` | Compact: opens the quick settings sheet from the top (a swipe down on the status bar does the same); it closes with a swipe up, Back or the handle. | §5.5 |
+| 4 | الشاشة الرئيسية | `mobile.home` | Gesture bar: tap or swipe up = home screen; swipe up and hold = recent apps; swipe in from the start edge = Back. Screen readers get the three as actions of this button. | §5.5 (gestures: NEW) |
+
 ## Spec additions needed
 
 Behaviour the specification does not define yet. Each line is the definition the artboards assume; add it to `docs/DESKTOP-SPEC.md` (section in brackets) or change the board.

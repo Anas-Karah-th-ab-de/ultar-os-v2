@@ -4,7 +4,7 @@ sys.dont_write_bytecode = True
 import gen
 for f in glob.glob(os.path.join(gen.ROOT, '*.dc.html')):
     os.remove(f)
-import b1, b2, b3, b4, b5, b6, b7, b8
+import b1, b2, b3, b4, b5, b6, b7, b8, b9
 from actions import ACTIONS
 from icons import I
 HERE = gen.HERE
@@ -40,7 +40,7 @@ for name in gen.order:
 used = {a for rows in gen.CLICKS.values() for _, a in rows}
 assert used == set(ACTIONS), 'actions defined but unused: %s' % sorted(set(ACTIONS) - used)
 out += ['## Spec additions needed', '', 'Behaviour the specification does not define yet. Each line is the definition the artboards assume; add it to `docs/DESKTOP-SPEC.md` (section in brackets) or change the board.', '']
-SECTION = {'shell': '§5.1', 'apps': '§5.1', 'mobile': '§5.5', 'win': '§5.2', 'desk': '§5.1', 'files': '§9 Files', 'browser': '§9/§11 Browser', 'qs': '§5.1 Quick settings', 'note': '§5.1/§5.3', 'cal': '§5.1', 'overview': '§5.1', 'lock': '§5.3', 'login': '§5.3', 'settings': '§8', 'display': '§8 Display', 'projection': '§8/§5.4', 'drivers': '§8', 'account': '§12.1', 'installer': '§6', 'store': '§7.3', 'phone': '§12.2'}
+SECTION = {'shell': '§5.1', 'apps': '§5.1', 'mobile': '§5.5', 'win': '§5.2', 'desk': '§5.1', 'files': '§9 Files', 'browser': '§9/§11 Browser', 'qs': '§5.1 Quick settings', 'note': '§5.1/§5.3', 'cal': '§5.1', 'overview': '§5.1', 'lock': '§5.3', 'login': '§5.3', 'settings': '§8', 'display': '§8 Display', 'projection': '§8/§5.4', 'drivers': '§8', 'account': '§12.1', 'installer': '§6', 'store': '§7.3', 'phone': '§12.2', 'mesh': '§8 Mesh, §5.5'}
 n = 0
 for a, (text, ref) in ACTIONS.items():
     if 'NEW' in ref:
