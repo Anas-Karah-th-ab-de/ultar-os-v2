@@ -176,13 +176,14 @@ pub struct RightsTable {
 }
 
 /// Manifest name of each right.
-pub const PERMISSION_NAMES: [(&str, Rights); 6] = [
+pub const PERMISSION_NAMES: [(&str, Rights); 7] = [
     ("ui.shell", Rights::SHELL),
     ("ui.input-method", Rights::INPUT_METHOD),
     ("ui.lock-screen", Rights::LOCK_SCREEN),
     ("ui.capture", Rights::CAPTURE),
     ("ui.overlay", Rights::OVERLAY),
     ("ui.system-dialog", Rights::SYSTEM_DIALOG),
+    ("ui.output-config", Rights::OUTPUT_CONFIG),
 ];
 
 impl RightsTable {

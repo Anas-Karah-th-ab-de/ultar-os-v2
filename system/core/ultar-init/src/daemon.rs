@@ -221,7 +221,7 @@ impl Daemon {
                 let now = Instant::now();
                 match source {
                     Source::Signals => self.on_signal(&mut halt),
-                    Source::Bus => self.on_bus(now),
+                    Source::Bus => self.on_bus(&mut halt, now),
                     Source::Ctl => self.on_ctl(&mut halt, &mut extra, now),
                     Source::Pipe(watch) => self.supervisor.on_readable(&watch, now),
                 }
@@ -230,10 +230,14 @@ impl Daemon {
         }
     }
 
-    fn on_bus(&mut self, now: Instant) {
+    fn on_bus(&mut self, halt: &mut Option<Halt>, now: Instant) {
         let Some(bus) = &mut self.bus else { return };
         for request in bus.take() {
-            answer(request, &mut self.supervisor, &self.admins, now);
+            if let Some(requested) =
+                answer(request, &mut self.supervisor, &self.admins, now, self.pid1)
+            {
+                *halt = Some(requested);
+            }
         }
     }
 

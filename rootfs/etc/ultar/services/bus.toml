@@ -22,6 +22,19 @@ args = [
     "--listen", "/run/ultar/bus/logd.sock=system.logd", "--mode", "0660", "--group", "802", "--max-connections", "8",
     "--listen", "/run/ultar/bus/settingsd.sock=system.settingsd", "--mode", "0660", "--group", "803", "--max-connections", "8",
     "--listen", "/run/ultar/bus/devd.sock=system.devd", "--mode", "0660", "--group", "804", "--max-connections", "8",
+    "--listen", "/run/ultar/bus/displayd.sock=system.displayd", "--mode", "0660", "--group", "817", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/accountd.sock=system.accountd", "--mode", "0660", "--group", "818", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/authd.sock=system.authd", "--mode", "0660", "--group", "813", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/powerd.sock=system.powerd", "--mode", "0660", "--group", "819", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/sessiond.sock=system.sessiond", "--mode", "0660", "--group", "820", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/notifyd.sock=system.notifyd", "--mode", "0660", "--group", "821", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/calendard.sock=system.calendard", "--mode", "0660", "--group", "822", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/audiod.sock=system.audiod", "--mode", "0660", "--group", "823", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/mediad.sock=system.mediad", "--mode", "0660", "--group", "824", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/captured.sock=system.captured", "--mode", "0660", "--group", "825", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/netd.sock=system.netd", "--mode", "0660", "--group", "826", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/btd.sock=system.btd", "--mode", "0660", "--group", "827", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/volumed.sock=system.volumed", "--mode", "0660", "--group", "828", "--max-connections", "4",
     # Administration tools run by root: usettings, udevctl, ulog, uinit.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The service manager (root).
@@ -30,7 +43,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804]
+groups = [802, 803, 804, 817, 818, 813, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828]
 public_dirs = ["/run/ultar/bus"]
 notify = true
 after = ["logd"]

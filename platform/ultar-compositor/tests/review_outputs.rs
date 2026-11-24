@@ -46,6 +46,7 @@ fn output(hal: u32, width: u32, height: u32) -> BackendOutput {
         height,
         refresh_millihertz: 60_000,
         width_mm: 0,
+        ..BackendOutput::default()
     }
 }
 

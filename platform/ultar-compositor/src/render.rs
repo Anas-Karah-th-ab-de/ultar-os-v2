@@ -20,6 +20,8 @@ pub struct Renderer {
     cursors: HashMap<u32, Image>,
     masks: HashMap<u32, pixels::CornerMask>,
     shadow_cache: HashMap<u32, HashMap<ShadowKey, Shadow>>,
+    /// Display number cards by (number, scale) while numbers are shown.
+    numbers: HashMap<(u8, u32), Image>,
 }
 
 /// What a shadow depends on: device frame, blur, offset, opacity bits.
@@ -70,6 +72,7 @@ impl Renderer {
             return Vec::new();
         }
         refresh_titles(state, output);
+        self.refresh_numbers(state, output);
         let rects = damage.rects().to_vec();
         let Some(mut frame) = self.frames.remove(&output.id.0) else {
             return Vec::new();
@@ -90,6 +93,7 @@ impl Renderer {
     pub fn render_full(&mut self, state: &mut State, output: &Output) -> Option<Image> {
         let mut frame = Image::new(output.width, output.height, 0)?;
         refresh_titles(state, output);
+        self.refresh_numbers(state, output);
         let scene = state.scene();
         let shadows = self.shadows(state, output, &scene);
         let clip = frame.bounds();
@@ -139,6 +143,7 @@ impl Renderer {
         if state.session.indicator_shown {
             paint_indicator(state, o, frame, clip);
         }
+        self.paint_number(state, o, frame, clip);
         if let Some(preview) = state.pointer.snap_preview {
             let env = PaintEnv::new(state.config.lang, state.config.theme);
             let accent = crate::decor::to_pixel(
@@ -186,6 +191,38 @@ impl Renderer {
         list
     }
 
+    /// Makes the number cards of `o` (and drops them when none is shown).
+    fn refresh_numbers(&mut self, state: &mut State, o: &Output) {
+        let Some(number) = number_of(state, o) else {
+            if state.session.manage.identify.is_none() {
+                self.numbers.clear();
+            }
+            return;
+        };
+        let key = (number, o.scale_milli);
+        if self.numbers.contains_key(&key) {
+            return;
+        }
+        if let Some(img) = state
+            .decor
+            .as_mut()
+            .and_then(|d| d.render_number(number, o.scale_milli))
+        {
+            self.numbers.insert(key, img);
+        }
+    }
+
+    /// The display's number in the middle of the output (`display.identify`).
+    fn paint_number(&self, state: &State, o: &Output, frame: &mut Image, clip: &Rect) {
+        let Some(img) = number_of(state, o).and_then(|n| self.numbers.get(&(n, o.scale_milli)))
+        else {
+            return;
+        };
+        let x = (o.width as i32 - img.width() as i32) / 2;
+        let y = (o.height as i32 - img.height() as i32) / 2;
+        pixels::blend(frame, x, y, img, img.bounds(), clip);
+    }
+
     fn paint_cursor(&mut self, state: &State, o: &Output, frame: &mut Image, clip: &Rect) {
         if !state.config.cursor || state.pointer.hidden {
             return;
@@ -215,6 +252,16 @@ impl Renderer {
             pixels::blend(frame, at.x, at.y, img, img.bounds(), clip);
         }
     }
+}
+
+/// The number shown on an output now, if any.
+fn number_of(state: &State, o: &Output) -> Option<u8> {
+    let identify = state.session.manage.identify.as_ref()?;
+    identify
+        .numbers
+        .iter()
+        .find(|(id, _)| *id == o.id)
+        .map(|(_, n)| *n)
 }
 
 /// Draws the recording indicator (a dot in the danger colour).

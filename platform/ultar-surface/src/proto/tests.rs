@@ -46,6 +46,10 @@ fn sample_requests() -> Vec<Request> {
         Request::Activate { surface: s, token: u64::MAX - 3 },
         Request::ListWindows,
         Request::CreateSurface { surface: s, role: Role::SystemDialog },
+        Request::ConfigureOutputs { setup: Setup { serial: 3, arrangement: Arrangement::Single, provisional_ms: 15_000, outputs: vec![OutputSetup { output: OutputId(1), included: true, primary: true, mode: OutputMode { width: 800, height: 600, refresh_mhz: 60_000 }, scale_milli: 1000, position: (0, 0), transform: Transform::Rotate90 }] } },
+        Request::ConfirmOutputs { serial: 3 },
+        Request::IdentifyOutputs { numbers: vec![(OutputId(0), 1), (OutputId(1), 2)], ms: 5000 },
+        Request::DetectOutputs,
     ]
 }
 
@@ -89,6 +93,10 @@ fn sample_events() -> Vec<Event> {
         Event::WindowList {
             windows: vec![WindowEntry { app_id: "org.ultar.test.ui".into(), title: "نافذة".into(), mapped: true, shared_memory: true }],
         },
+        Event::OutputDetails(Box::new(OutputDetails { id: OutputId(2), connector: "eDP-1".into(), identity: OutputIdentity { manufacturer: "BOE".into(), product: 0x0abc, serial: 0, name: String::new() }, internal: true, size_mm: (344, 194), preferred: OutputMode { width: 1920, height: 1080, refresh_mhz: 60_000 }, current: OutputMode { width: 1920, height: 1080, refresh_mhz: 60_000 }, modes: vec![OutputMode { width: 1920, height: 1080, refresh_mhz: 60_000 }] })),
+        Event::OutputSetupDone { serial: 3, outcome: SetupOutcome::Refused(SetupRefusal::Busy) },
+        Event::OutputSetupDone { serial: 4, outcome: SetupOutcome::RevertedTimeout },
+        Event::OutputsDetected { count: 2 },
     ]
 }
 

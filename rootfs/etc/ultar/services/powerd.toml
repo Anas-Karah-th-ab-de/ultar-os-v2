@@ -1,0 +1,24 @@
+# Power service (docs/integration/system-services.md): battery and
+# temperature state (power.state), the actions of the power menu
+# (power.actions), sleep (only when the kernel offers suspend to memory; the
+# screen is locked first), restart and power off through the service manager
+# (init.power: every service ends in order). With other people signed in, an
+# administrator's password is asked for in the system dialog.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-powerd"
+args = [
+    "--bus", "/run/ultar/bus/powerd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/powerd.sock",
+]
+# Its own user without kernel rights: writing /sys/power/state needs write
+# access to that file (root:powerd 0660, set by the image), nothing else.
+user = 819
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"

@@ -1,0 +1,27 @@
+[package]
+name = "ultar-volumed"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Removable-drive service of Ultar OS: mounts USB sticks and cards for the person in front, ejects them (system services, area 4)"
+
+[lib]
+name = "ultar_volumed"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-volumed"
+path = "src/bin/ultar-volumed.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+ultar-hal = { path = "../../hal/ultar-hal" }
+rustix = { version = "1", default-features = false, features = ["std", "mount"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

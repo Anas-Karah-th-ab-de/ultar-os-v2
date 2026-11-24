@@ -16,18 +16,64 @@
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
+//! | `display.outputs` | topic | yes | display service (`ultar-displayd`) |
+//! | `display.identify` / `display.detect` / `apply` / `keep` / `revert` | calls | – | display service (`ultar-displayd`) |
+//! | `account.state` | topic | yes | account service |
+//! | `account.status` / `sign_in` / `sign_out` / `create` / `set_server` / `set_service` / `change_password` / `delete` / `device_sign_out` / `device_remove` | calls | – | account service |
+//! | `account.users` | topic | yes | account service (`ultar-accountd`) |
+//! | `account.users_list` / `user_create` / `user_rename` / `user_picture` / `user_password` / `user_kind` / `user_auto_login` / `user_remove` / `user_picture_get` / `session` | calls | – | account service |
+//! | `auth.users` / `verify` / `set_secret` | calls | – | `ultar-authd` |
+//! | `auth.update_user` / `remove_user` | calls | – | `ultar-authd` (for the account service) |
+//! | `sysdialog.permission` / `authenticate` | calls | – | `ultar-sysdialog` |
+//! | `session.state` | topic | yes | session service (`ultar-sessiond`) |
+//! | `session.users` / `signed_in` / `switch_user` / `sign_out` | calls | – | session service |
+//! | `power.actions` | topic | yes | power service (`ultar-powerd`) |
+//! | `power.suspend` / `restart` / `off` | calls | – | power service |
+//! | `init.power` | call | – | `ultar-init` (for the power service) |
+//! | `lock.lock` | call | – | `ultar-lock` (copy of the shell work's contract) |
+//! | `notify.invoke` / `dismiss` / `list` / `take_invoked` | calls | – | notification service (`ultar-notifyd`) |
+//! | `notify.dismissed` / `notify.invoked` | topics | no | notification service |
+//! | `calendar.day` / `add` / `remove` | calls | – | calendar service (`ultar-calendard`) |
+//! | `calendar.changed` | topic | no | calendar service |
+//! | `audio.state` | topic | yes | audio service (`ultar-audiod`) |
+//! | `audio.set_volume` / `set_mute` / `outputs` / `set_output` | calls | – | audio service |
+//! | `media.state` | topic | yes | media service (`ultar-mediad`) |
+//! | `media.command` | topic | no | media service |
+//! | `media.update` / `release` / `play_pause` / `next` / `previous` | calls | – | media service |
+//! | `capture.screenshot` | call | – | screenshot service (`ultar-captured`) |
+//! | `net.state` | topic | yes | network service (`ultar-netd`) |
+//! | `net.set_wifi` / `set_airplane` / `scan` / `connect` | calls | – | network service |
+//! | `bluetooth.state` | topic | yes | Bluetooth service (`ultar-btd`) |
+//! | `bluetooth.set` / `devices` / `connect` / `disconnect` | calls | – | Bluetooth service |
+//! | `volumes.state` | topic | yes | removable-drive service (`ultar-volumed`) |
+//! | `volumes.eject` | call | – | removable-drive service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod account_local;
+pub mod account_service;
+pub mod audio;
+pub mod auth;
+pub mod auth_admin;
+pub mod bluetooth;
+pub mod calendar;
+pub mod capture;
 pub mod device_service;
 pub mod devices;
+pub mod display_service;
 pub mod init;
+pub mod lock;
 pub mod log;
+pub mod media;
+pub mod net;
 pub mod notify;
 pub mod power;
+pub mod session;
 pub mod settings;
 mod settings_ext;
 pub mod shell;
+pub mod sysdialog;
+pub mod volumes;
 
 #[cfg(test)]
 mod tests {
@@ -67,6 +113,75 @@ mod tests {
         check_topic::<super::settings::PendingConfirmation>();
         check_topic::<super::settings::PendingResolved>();
         check_topic::<super::settings::StoreReport>();
+        check_topic::<super::display_service::Outputs>();
+        check_call::<super::display_service::Identify>();
+        check_call::<super::display_service::Detect>();
+        check_topic::<super::account_service::AccountState>();
+        check_call::<super::account_service::SignIn>();
+        check_call::<super::display_service::Apply>();
+        check_call::<super::display_service::Keep>();
+        check_call::<super::display_service::Revert>();
+        check_topic::<super::account_local::LocalUsers>();
+        check_call::<super::account_local::CreateUser>();
+        check_call::<super::account_local::RemoveUser>();
+        check_call::<super::account_local::SetSession>();
+        check_call::<super::auth::Users>();
+        check_call::<super::auth::Verify>();
+        check_call::<super::auth::SetSecret>();
+        check_call::<super::auth_admin::UpdateUser>();
+        check_call::<super::auth_admin::RemoveUser>();
+        check_call::<super::sysdialog::AskPermission>();
+        check_call::<super::sysdialog::Authenticate>();
+    }
+
+    #[test]
+    fn service_contract_names_are_valid() {
+        check_topic::<super::volumes::VolumesState>();
+        check_call::<super::volumes::Eject>();
+        check_topic::<super::bluetooth::BluetoothState>();
+        check_call::<super::bluetooth::Set>();
+        check_call::<super::bluetooth::Devices>();
+        check_call::<super::bluetooth::Connect>();
+        check_call::<super::bluetooth::Disconnect>();
+        check_topic::<super::net::NetState>();
+        check_call::<super::net::SetWifi>();
+        check_call::<super::net::SetAirplane>();
+        check_call::<super::net::Scan>();
+        check_call::<super::net::Connect>();
+        check_call::<super::capture::Screenshot>();
+        check_topic::<super::media::MediaState>();
+        check_topic::<super::media::Command>();
+        check_call::<super::media::Update>();
+        check_call::<super::media::Release>();
+        check_call::<super::media::PlayPause>();
+        check_call::<super::media::Next>();
+        check_call::<super::media::Previous>();
+        check_topic::<super::audio::AudioState>();
+        check_call::<super::audio::SetVolume>();
+        check_call::<super::audio::SetMute>();
+        check_call::<super::audio::Outputs>();
+        check_call::<super::audio::SetOutput>();
+        check_call::<super::calendar::Day>();
+        check_call::<super::calendar::Add>();
+        check_call::<super::calendar::Remove>();
+        check_topic::<super::calendar::Changed>();
+        check_call::<super::notify::Invoke>();
+        check_call::<super::notify::Dismiss>();
+        check_call::<super::notify::List>();
+        check_call::<super::notify::TakeInvoked>();
+        check_topic::<super::notify::Dismissed>();
+        check_topic::<super::notify::InvokedHint>();
+        check_call::<super::lock::Lock>();
+        check_topic::<super::session::SessionState>();
+        check_call::<super::session::Users>();
+        check_call::<super::session::SignedIn>();
+        check_call::<super::session::SwitchUser>();
+        check_call::<super::session::SignOut>();
+        check_topic::<super::power::PowerActions>();
+        check_call::<super::power::Suspend>();
+        check_call::<super::power::Restart>();
+        check_call::<super::power::PowerOff>();
+        check_call::<super::init::Power>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

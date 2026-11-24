@@ -346,3 +346,31 @@ fn a_failing_applier_at_start_does_not_keep_the_service_down() {
     assert_eq!(core.stats().apply_failures, 1);
     assert_eq!(core.get(MODE), Ok(Value::text("extend")));
 }
+
+#[test]
+fn setting_the_waiting_value_again_gives_the_full_time_once_more() {
+    let kit = Kit::new("confirm-more");
+    let mut core = kit.open_with_panel();
+    core.set(&user(), MODE, Value::text("mirror")).unwrap();
+    core.take_events();
+    kit.advance(10);
+    core.tick().unwrap();
+    assert_eq!(core.set(&user(), MODE, Value::text("mirror")), Ok(true));
+    assert_eq!(
+        core.take_events(),
+        [pending(MODE, Value::text("mirror"), Value::text("extend"))]
+    );
+    kit.advance(14);
+    core.tick().unwrap();
+    assert_eq!(
+        core.get(MODE),
+        Ok(Value::text("mirror")),
+        "24 s after the change"
+    );
+    assert!(core.take_events().is_empty());
+    kit.advance(1);
+    core.tick().unwrap();
+    assert_eq!(core.get(MODE), Ok(Value::text("extend")));
+    // Without anything waiting, the same value is no change at all.
+    assert_eq!(core.set(&user(), MODE, Value::text("extend")), Ok(false));
+}

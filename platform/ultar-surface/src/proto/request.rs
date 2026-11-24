@@ -221,6 +221,27 @@ pub enum Request {
     /// Asks for the window list (needs [`Rights::CAPTURE`]); answered by
     /// `WindowList`.
     ListWindows,
+    /// Sets the whole output arrangement (needs [`Rights::OUTPUT_CONFIG`]);
+    /// answered by `OutputSetupDone`.
+    ConfigureOutputs {
+        /// The arrangement.
+        setup: super::outputs::Setup,
+    },
+    /// Makes the provisional setup final (needs [`Rights::OUTPUT_CONFIG`]).
+    ConfirmOutputs {
+        /// Serial of the setup.
+        serial: u32,
+    },
+    /// Shows each output's number large on it (needs [`Rights::OUTPUT_CONFIG`]).
+    IdentifyOutputs {
+        /// Output and number (1–99).
+        numbers: Vec<(OutputId, u8)>,
+        /// How long, in milliseconds (at most `MAX_IDENTIFY_MS`).
+        ms: u32,
+    },
+    /// Looks for displays again and sends `OutputDetails` for each (needs
+    /// [`Rights::OUTPUT_CONFIG`]).
+    DetectOutputs,
 }
 
 impl Request {
@@ -256,6 +277,10 @@ impl Request {
             Request::RequestActivation { .. } => 27,
             Request::Activate { .. } => 28,
             Request::ListWindows => 29,
+            Request::ConfigureOutputs { .. } => 34,
+            Request::ConfirmOutputs { .. } => 35,
+            Request::IdentifyOutputs { .. } => 36,
+            Request::DetectOutputs => 37,
         }
     }
 
@@ -393,6 +418,14 @@ impl Request {
             }
             Request::Activate { surface, token } => {
                 w.u32(surface.0).u64(*token);
+            }
+            Request::ConfigureOutputs { setup } => setup.encode(w),
+            Request::ConfirmOutputs { serial } => {
+                w.u32(*serial);
+            }
+            Request::IdentifyOutputs { numbers, ms } => {
+                super::outputs::encode_numbers(w, numbers);
+                w.u32(*ms);
             }
             _ => {}
         }

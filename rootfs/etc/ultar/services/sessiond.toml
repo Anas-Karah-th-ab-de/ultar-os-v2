@@ -1,0 +1,23 @@
+# Session service (docs/integration/system-services.md): who is signed in on
+# the seat and who is in front (session.state), signing out and switching
+# users (both lock the screen first). Only the sign-in screen reports
+# sign-ins (pseudo method session.signin). The state lives below /run: a
+# restarted service keeps open sessions, a restarted device has none.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-sessiond"
+args = [
+    "--bus", "/run/ultar/bus/sessiond.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--state", "/run/ultar/session",
+    "--log-socket", "/run/ultar/log/sessiond.sock",
+]
+user = 820
+dirs = ["/run/ultar/session"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"

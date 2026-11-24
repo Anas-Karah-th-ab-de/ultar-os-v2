@@ -53,6 +53,9 @@ pub struct Session {
     pub(super) swallowed: Vec<u16>,
     /// Translucent surfaces left out of the scene (overdraw budget).
     pub culled: Vec<SurfaceKey>,
+    /// Output management of the display service (provisional setup,
+    /// display numbers).
+    pub manage: super::output_config::OutputManagement,
 }
 
 /// What an activation token allows: focus until `expiry`, as long as the

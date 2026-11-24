@@ -7,6 +7,7 @@
 
 mod event;
 mod event_codec;
+mod outputs;
 mod request;
 mod request_decode;
 #[cfg(test)]
@@ -15,6 +16,11 @@ mod types;
 mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
+pub use outputs::{
+    Arrangement, OutputDetails, OutputIdentity, OutputMode, OutputSetup, Setup, SetupOutcome,
+    SetupRefusal, Transform, MAX_CONNECTOR, MAX_IDENTIFY_MS, MAX_OUTPUT_MODES, MAX_PRODUCT_NAME,
+    MAX_PROVISIONAL_MS, MAX_SETUP_OUTPUTS,
+};
 pub use request::Request;
 pub use types::*;
 pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

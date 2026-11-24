@@ -1,0 +1,23 @@
+[package]
+name = "ultar-notifyd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Notification service of Ultar OS: notifications with buttons, closing, invoked buttons back to their sender (system services, area 4)"
+
+[lib]
+name = "ultar_notifyd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-notifyd"
+path = "src/bin/ultar-notifyd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

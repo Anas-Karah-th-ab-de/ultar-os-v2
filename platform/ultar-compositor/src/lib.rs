@@ -27,6 +27,7 @@ pub mod geom;
 pub mod keymap;
 pub mod msg;
 pub mod output;
+pub mod output_setup;
 pub mod pixels;
 pub mod render;
 pub mod server;

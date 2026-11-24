@@ -13,6 +13,9 @@ use serde::{Deserialize, Serialize};
 pub const SERVICE: &str = "init";
 /// Pseudo method whose call right marks an administrator of `init`.
 pub const ADMIN_METHOD: &str = "admin";
+/// Pseudo method whose call right lets an identity end the machine with
+/// [`Power`] (the power service; a rule listing only `init.power` is not enough).
+pub const SHUTDOWN_METHOD: &str = "shutdown";
 /// Most services one reply lists.
 pub const MAX_SERVICES: usize = 256;
 
@@ -129,6 +132,28 @@ pub struct ControlReply {
     pub state: ServiceState,
 }
 
+/// How the machine should end (`init.power`).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PowerAction {
+    /// Ordered shutdown, then power off.
+    PowerOff,
+    /// Ordered shutdown, then restart.
+    Reboot,
+}
+
+/// `init.power` – end every service in order, then power off or restart. Only
+/// the power service calls it (policy), after its own rules; administrators'
+/// tools may too (`init.*`).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Power {
+    /// Power off or restart.
+    pub action: PowerAction,
+}
+
+/// Answer to [`Power`]: the shutdown has begun.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct PowerReply {}
+
 /// Error code of `init.control` for a service name that is not known.
 pub const ERROR_UNKNOWN_SERVICE: u32 = 1;
 /// Error code of `init.control`: the service is already in the state.
@@ -153,6 +178,19 @@ impl Call for Status {
     const SERVICE: &'static str = SERVICE;
     const METHOD: &'static str = "status";
     type Reply = StatusReply;
+}
+
+impl Message for Power {
+    const VERSION: u16 = 1;
+}
+impl Message for PowerReply {
+    const VERSION: u16 = 1;
+}
+
+impl Call for Power {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = "power";
+    type Reply = PowerReply;
 }
 
 impl Call for Control {

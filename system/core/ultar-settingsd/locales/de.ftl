@@ -102,6 +102,14 @@ settings.appearance.icon_size.desc = Größe der App- und Dateisymbole
 settings.appearance.icon_size.choice.small = Klein
 settings.appearance.icon_size.choice.medium = Mittel
 settings.appearance.icon_size.choice.large = Groß
+settings.accessibility.large_text.label = Große Schrift
+settings.accessibility.large_text.desc = Vergrößert die Schrift der Oberfläche, damit sie leichter zu lesen ist
+settings.accessibility.high_contrast.label = Hoher Kontrast
+settings.accessibility.high_contrast.desc = Stärkere Farbunterschiede, damit Elemente leichter zu unterscheiden sind
+settings.accessibility.screen_reader.label = Bildschirmleser
+settings.accessibility.screen_reader.desc = Liest vor, was auf dem Bildschirm steht
+settings.accessibility.on_screen_keyboard.label = Bildschirmtastatur
+settings.accessibility.on_screen_keyboard.desc = Zeigt zum Schreiben eine Tastatur auf dem Bildschirm
 
 settings.bar.layout.label = Aufbau der Leiste
 settings.bar.layout.desc = Eine Leiste unten oder eine Leiste oben mit getrenntem Dock

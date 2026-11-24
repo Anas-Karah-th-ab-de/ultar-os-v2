@@ -206,6 +206,9 @@ fn kernel_credentials_give_the_mapped_identity_and_refuse_everyone_else() {
     let map = dir.join("uids.toml");
     let uid = ultar_service::effective_uid();
     std::fs::write(&map, format!("# test\n{uid} = \"system.tester\"\n")).unwrap();
+    // A trust file the group may change is refused (fail closed): explicit mode,
+    // whatever the umask of the run.
+    std::fs::set_permissions(&map, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
     let child = busd()
         .arg("--listen-cred")
         .arg(&socket)

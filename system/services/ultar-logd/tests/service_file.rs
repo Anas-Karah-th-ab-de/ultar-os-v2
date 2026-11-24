@@ -20,7 +20,11 @@ fn the_shipped_definition_parses_with_valid_bounds() {
         panic!("the definition must run the daemon");
     };
     assert_eq!(args.dir, Path::new("/data/ultar/log"));
-    assert_eq!(args.listeners.len(), 4);
+    // One socket per writing service (its group) plus init's output channel.
+    const WRITERS: [u32; 16] = [
+        801, 803, 804, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828,
+    ];
+    assert_eq!(args.listeners.len(), WRITERS.len() + 1);
     let (output, writers): (Vec<_>, Vec<_>) = args.listeners.iter().partition(|l| l.output);
     for listener in &writers {
         // Fixed names (one socket per writer), open to the writer's group only.
@@ -29,7 +33,7 @@ fn the_shipped_definition_parses_with_valid_bounds() {
             .as_deref()
             .is_some_and(|name| name.starts_with("system.")));
         assert_eq!(listener.mode, Some(0o660));
-        assert!(listener.group.is_some_and(|gid| (801..=804).contains(&gid)));
+        assert!(listener.group.is_some_and(|gid| WRITERS.contains(&gid)));
     }
     // The output channel of ultar-init: root only.
     assert_eq!(output.len(), 1);

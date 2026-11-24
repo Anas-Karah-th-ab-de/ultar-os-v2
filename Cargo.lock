@@ -5212,6 +5212,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
+name = "ultar-accountd"
+version = "0.7.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-service",
+]
+
+[[package]]
 name = "ultar-admin"
 version = "0.6.0"
 dependencies = [
@@ -5254,6 +5262,29 @@ name = "ultar-audio"
 version = "0.1.0"
 
 [[package]]
+name = "ultar-audiod"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-hal",
+ "ultar-hal-linux",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
+name = "ultar-auth"
+version = "0.7.0"
+dependencies = [
+ "argon2 0.5.3",
+ "password-hash 0.5.0",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-service",
+]
+
+[[package]]
 name = "ultar-brand"
 version = "0.7.0"
 
@@ -5262,6 +5293,18 @@ name = "ultar-bt"
 version = "0.6.0"
 dependencies = [
  "nix 0.29.0",
+]
+
+[[package]]
+name = "ultar-btd"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-hal",
+ "ultar-hal-linux",
+ "ultar-service",
+ "ultar-svckit",
 ]
 
 [[package]]
@@ -5285,6 +5328,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-calendard"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-call"
 version = "0.6.0"
 dependencies = [
@@ -5293,6 +5346,19 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "ultar-captured"
+version = "0.7.0"
+dependencies = [
+ "png 0.17.16",
+ "rustix",
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-service",
+ "ultar-surface",
+ "ultar-svckit",
 ]
 
 [[package]]
@@ -5369,6 +5435,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-displayd"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal",
+ "ultar-profile",
+ "ultar-service",
+ "ultar-settingsd",
+ "ultar-surface",
+]
+
+[[package]]
 name = "ultar-driverpkg"
 version = "0.7.0"
 dependencies = [
@@ -5403,6 +5483,14 @@ name = "ultar-hal-gfx"
 version = "0.7.0"
 dependencies = [
  "drm",
+ "rustix",
+ "ultar-hal",
+]
+
+[[package]]
+name = "ultar-hal-linux"
+version = "0.7.0"
+dependencies = [
  "rustix",
  "ultar-hal",
 ]
@@ -5466,6 +5554,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-mediad"
+version = "0.7.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-modem"
 version = "0.6.0"
 dependencies = [
@@ -5482,8 +5579,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-netd"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-hal",
+ "ultar-hal-linux",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-notify"
 version = "0.6.0"
+
+[[package]]
+name = "ultar-notifyd"
+version = "0.7.0"
+dependencies = [
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
 
 [[package]]
 name = "ultar-office"
@@ -5514,6 +5632,18 @@ dependencies = [
  "tempfile",
  "toml",
  "ultar-sprache",
+]
+
+[[package]]
+name = "ultar-powerd"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+ "ultar-bus",
+ "ultar-hal",
+ "ultar-hal-linux",
+ "ultar-service",
+ "ultar-svckit",
 ]
 
 [[package]]
@@ -5550,6 +5680,16 @@ dependencies = [
  "serde",
  "ultar-bus",
  "ultar-sys",
+]
+
+[[package]]
+name = "ultar-sessiond"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
 ]
 
 [[package]]
@@ -5622,6 +5762,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-svckit"
+version = "0.7.0"
+dependencies = [
+ "crc32fast",
+ "serde",
+ "ultar-bus",
+ "ultar-service",
+]
+
+[[package]]
 name = "ultar-sys"
 version = "0.7.0"
 dependencies = [
@@ -5688,6 +5838,19 @@ dependencies = [
  "tungstenite",
  "ultar-sprache",
  "ureq 2.12.1",
+]
+
+[[package]]
+name = "ultar-volumed"
+version = "0.7.0"
+dependencies = [
+ "rustix",
+ "serde",
+ "ultar-bus",
+ "ultar-hal",
+ "ultar-hal-linux",
+ "ultar-service",
+ "ultar-svckit",
 ]
 
 [[package]]

@@ -136,6 +136,19 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             token: r.u64()?,
         },
         29 => Request::ListWindows,
+        34 => Request::ConfigureOutputs {
+            setup: super::outputs::Setup::decode(r)?,
+        },
+        35 => Request::ConfirmOutputs { serial: r.u32()? },
+        36 => {
+            let numbers = super::outputs::decode_numbers(r)?;
+            let ms = r.u32()?;
+            if ms > super::outputs::MAX_IDENTIFY_MS {
+                return Err(WireError::BadValue);
+            }
+            Request::IdentifyOutputs { numbers, ms }
+        }
+        37 => Request::DetectOutputs,
         _ => return Err(WireError::BadValue),
     })
 }

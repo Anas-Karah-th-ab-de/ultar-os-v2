@@ -110,10 +110,14 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 from = "system-services"
 to = "system-core"
 
+# ultar-hal-linux: the generic kernel backends of the system services (power
+# supplies and sleep, sound-card controls, radio switches, network links,
+# removable drives; docs/integration/system-services.md). Device paths and
+# unsafe stay in the HAL crate, every backend takes a root directory.
 [[allow]]
 from = "system-services"
 to = "system-hal"
-crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system"]
+crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-linux"]
 
 # platform -> system core + HAL traits
 [[allow]]

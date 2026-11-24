@@ -1,0 +1,26 @@
+[package]
+name = "ultar-netd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Network service of Ultar OS: wired link, Wi-Fi radio and airplane mode through the kernel radio switches, kept across restarts (system services, area 4)"
+
+[lib]
+name = "ultar_netd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-netd"
+path = "src/bin/ultar-netd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+ultar-hal = { path = "../../hal/ultar-hal" }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

@@ -18,6 +18,7 @@ use ultar_hal::InputEvent;
 use ultar_surface::proto::{Event, OutputId};
 
 mod frames;
+mod outputs;
 
 /// Milliseconds before queued output is tried again without a wake-up.
 const FLUSH_RETRY_MS: u64 = 10;
@@ -67,13 +68,7 @@ impl Compositor {
         let shm = ultar_hal_gfx::shm::probe();
         let mut state = State::new(config, shm);
         for o in backend.outputs() {
-            state.layout.add(
-                o.hal,
-                &o.name,
-                (o.width, o.height),
-                o.refresh_millihertz,
-                o.width_mm,
-            );
+            state.layout.add_output(&o);
         }
         if let Some(p) = state.layout.primary() {
             let r = p.logical_rect();
@@ -163,6 +158,7 @@ impl Compositor {
         self.state.check_pings();
         self.state.tick_transfers();
         self.state.tick_indicator();
+        self.run_output_jobs();
         if self.frame_due() {
             self.render_now();
         }
@@ -386,16 +382,15 @@ impl Compositor {
         for e in self.backend.rescan_input() {
             self.state.input(&e);
         }
-        for change in self.backend.hotplug() {
+        let changes = self.backend.hotplug();
+        if !changes.is_empty() {
+            // A setup waiting for "Keep?" was made for other displays.
+            self.revert_provisional(ultar_surface::proto::SetupOutcome::RevertedHotplug);
+        }
+        for change in changes {
             match change {
                 Hotplug::Added(o) => {
-                    self.state.layout.add(
-                        o.hal,
-                        &o.name,
-                        (o.width, o.height),
-                        o.refresh_millihertz,
-                        o.width_mm,
-                    );
+                    self.state.layout.add_output(&o);
                 }
                 Hotplug::Removed(hal) => {
                     if let Some(id) = self.state.layout.by_hal(hal).map(|o| o.id) {

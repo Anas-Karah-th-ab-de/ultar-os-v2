@@ -5,9 +5,24 @@ use super::types::*;
 use crate::wire::{Reader, WireError, Writer};
 
 pub(super) fn encode_body(event: &Event, w: &mut Writer) {
-    if !encode_window(event, w) && !encode_input(event, w) {
+    if !encode_window(event, w) && !encode_input(event, w) && !encode_outputs(event, w) {
         encode_data(event, w);
     }
+}
+
+/// Output management events; false if `event` is another kind.
+fn encode_outputs(event: &Event, w: &mut Writer) -> bool {
+    match event {
+        Event::OutputDetails(d) => d.encode(w),
+        Event::OutputSetupDone { serial, outcome } => {
+            w.u32(*serial).u8(outcome.to_u8());
+        }
+        Event::OutputsDetected { count } => {
+            w.u32(*count);
+        }
+        _ => return false,
+    }
+    true
 }
 
 /// Window, output and buffer events; false if `event` is another kind.
@@ -328,6 +343,12 @@ fn decode_data(opcode: u16, r: &mut Reader<'_>) -> Result<Event, WireError> {
         31 => Event::WindowList {
             windows: super::windows::decode_list(r)?,
         },
+        36 => Event::OutputDetails(Box::new(super::outputs::OutputDetails::decode(r)?)),
+        37 => Event::OutputSetupDone {
+            serial: r.u32()?,
+            outcome: super::outputs::SetupOutcome::from_u8(r.u8()?)?,
+        },
+        38 => Event::OutputsDetected { count: r.u32()? },
         _ => return Err(WireError::BadValue),
     })
 }

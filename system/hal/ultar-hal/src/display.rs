@@ -137,6 +137,12 @@ pub trait Display: Send + Sync {
     fn set_rotation(&self, id: DisplayId, rotation: Rotation) -> HalResult<()>;
     /// Returns and clears the hotplug and mode events since the last call.
     fn poll_events(&self) -> HalResult<Vec<DisplayEvent>>;
+    /// The display's own identification data (EDID bytes), if it sent any.
+    /// Backends that cannot read it answer `None` (the default).
+    fn identification(&self, id: DisplayId) -> HalResult<Option<Vec<u8>>> {
+        let _ = id;
+        Ok(None)
+    }
 }
 
 /// How frames are drawn.

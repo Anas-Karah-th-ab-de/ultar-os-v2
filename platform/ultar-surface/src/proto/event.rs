@@ -328,6 +328,21 @@ pub enum Event {
         /// The windows.
         windows: Vec<super::WindowEntry>,
     },
+    /// One connected output in detail (output-config right only; sent after
+    /// `Welcome`, on every change and after `DetectOutputs`).
+    OutputDetails(Box<super::outputs::OutputDetails>),
+    /// What became of a setup (output-config right only).
+    OutputSetupDone {
+        /// Serial of the setup.
+        serial: u32,
+        /// The outcome.
+        outcome: super::outputs::SetupOutcome,
+    },
+    /// Answer to `DetectOutputs` (after the `OutputDetails`).
+    OutputsDetected {
+        /// Outputs connected now.
+        count: u32,
+    },
 }
 
 impl Event {
@@ -365,6 +380,9 @@ impl Event {
             Event::ActivationToken { .. } => 29,
             Event::SessionLocked { .. } => 30,
             Event::WindowList { .. } => 31,
+            Event::OutputDetails(_) => 36,
+            Event::OutputSetupDone { .. } => 37,
+            Event::OutputsDetected { .. } => 38,
         }
     }
 

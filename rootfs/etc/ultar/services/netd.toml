@@ -1,0 +1,23 @@
+# Network service (docs/integration/system-services.md): wired link and its
+# speed, the Wi-Fi radio and airplane mode through the kernel's radio
+# switches (dev/rfkill: root:radio 0660, group 831), the wish kept below its
+# directory and restored at start. Wi-Fi networks (scan, join) need the
+# Wi-Fi supplicant, not in this release: answered "unsupported".
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-netd"
+args = [
+    "--bus", "/run/ultar/bus/netd.sock",
+    "--state", "/data/ultar/net",
+    "--log-socket", "/run/ultar/log/netd.sock",
+]
+user = 826
+groups = [831]
+dirs = ["/data/ultar/net"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"

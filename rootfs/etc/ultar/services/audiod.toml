@@ -1,0 +1,26 @@
+# Audio service (docs/integration/system-services.md): volume, mute and
+# output of the sound cards through their control devices (ALSA control
+# ioctls), audio.state (retained). Choices are kept below its directory and
+# restored at start; cards that come and go are seen within 5 s. Without a
+# sound card (QEMU without a sound device, the Ultar kernel today) it says
+# "no device".
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-audiod"
+args = [
+    "--bus", "/run/ultar/bus/audiod.sock",
+    "--state", "/data/ultar/audio",
+    "--log-socket", "/run/ultar/log/audiod.sock",
+]
+# Its own user without kernel rights; the control devices are root:audio
+# 0660 (group 830, rootfs/etc/ultar/ids.toml), it is the group's member.
+user = 823
+groups = [830]
+dirs = ["/data/ultar/audio"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"
