@@ -237,7 +237,18 @@ impl ListItem {
         if v.pressed || v.hovered || self.selected {
             // Rounded and inside the border: the first and last item never cover the
             // rounded corner of the card around the list.
-            let bg = p.color(style::neutral_background(v));
+            // Boards (`navitem`): the open page of a sidebar is drawn in `hover`.
+            // (hovered or pressed it goes one step further, to `line`).
+            let role = if nav && self.selected {
+                if v.pressed || v.hovered {
+                    ColorRole::Line
+                } else {
+                    ColorRole::Hover
+                }
+            } else {
+                style::neutral_background(v)
+            };
+            let bg = p.color(role);
             let area = if nav {
                 rect
             } else {

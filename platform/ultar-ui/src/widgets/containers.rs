@@ -7,7 +7,7 @@ use crate::icon::{IconId, QuarterTurns};
 use crate::layout::{Flex, Padding};
 use crate::paint::{Painter, TextSpec};
 use crate::text::{Overflow, TextAlign, Weight};
-use crate::tokens::{size, typography, ColorRole, Radius, Space};
+use crate::tokens::{size, typography, ColorRole, Radius, Space, TypeSize};
 
 /// A block of text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +73,8 @@ pub struct Icon {
     pub color: ColorRole,
     /// Accessible name; `None` hides the icon from the screen reader.
     pub name: Option<Label>,
+    /// A size of its own in points (brand mark 48 / 96), else the small or normal size.
+    pub points: Option<u16>,
 }
 
 impl Icon {
@@ -83,7 +85,14 @@ impl Icon {
             small: false,
             color: ColorRole::Text,
             name: None,
+            points: None,
         }
+    }
+
+    /// The same icon drawn `points` large (the brand mark: 48 on login, 96 on About).
+    pub fn sized(mut self, points: u16) -> Icon {
+        self.points = Some(points);
+        self
     }
 
     /// The same icon at the small size.
@@ -105,7 +114,9 @@ impl Icon {
     }
 
     fn points(&self) -> f32 {
-        if self.small {
+        if let Some(p) = self.points {
+            f32::from(p)
+        } else if self.small {
             size::ICON_SMALL
         } else {
             size::ICON
@@ -184,7 +195,20 @@ impl Row {
 
     pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>, avail: f32, control: Size) -> Size {
         let (label, sub) = self.text_heights(cx, Row::text_width(avail, control.w));
-        let content = (label + sub).max(control.h) + 2.0 * ROW_PAD_BLOCK.points();
+        // Boards: CSS line boxes are not rounded (a card of rows would drift otherwise), and
+        // the separator is inside the row's minimum height (border-box).
+        let exact = |h: f32, size: TypeSize| {
+            let line = super::list::line_box(cx.env, size);
+            let factor = if cx.env.lang == ultar_i18n::Lang::Ar {
+                typography::LINE_HEIGHT_ARABIC
+            } else {
+                typography::LINE_HEIGHT_LATIN
+            };
+            (h / line).round() * size.points() * factor
+        };
+        let (label, sub) = (exact(label, TypeSize::S14), exact(sub, TypeSize::S12));
+        let separator = if self.separator { size::BORDER } else { 0.0 };
+        let content = (label + sub).max(control.h) + 2.0 * ROW_PAD_BLOCK.points() + separator;
         Size::new(avail, content.max(ROW_MIN_HEIGHT))
     }
 
@@ -257,6 +281,9 @@ pub enum CardTone {
     Danger,
     /// A bar or sidebar region: `bar` fill, no radius, one `line` border on one edge.
     Bar(BarEdge),
+    /// A part of a card set off by a hairline (boards: the card head's `border-bottom`): no
+    /// fill of its own, one `line` border on one edge.
+    Rule(BarEdge),
 }
 
 /// The edge of a bar region that carries its border.
@@ -316,6 +343,15 @@ impl Card {
         }
     }
 
+    /// A part of a card separated from the next by a hairline on `edge` (boards: card head
+    /// with `border-bottom`), without a fill of its own.
+    pub fn rule(edge: BarEdge) -> Card {
+        Card {
+            tone: CardTone::Rule(edge),
+            ..Card::new()
+        }
+    }
+
     /// A card with inner spacing on all sides and a gap between children.
     pub fn padded() -> Card {
         Card {
@@ -352,7 +388,8 @@ impl Card {
             p.shadow(rect, Some(Radius::Card));
         }
         match self.tone {
-            CardTone::Bar(edge) => return Card::paint_bar(p, rect, edge),
+            CardTone::Bar(edge) => return Card::paint_bar(p, rect, edge, true),
+            CardTone::Rule(edge) => return Card::paint_bar(p, rect, edge, false),
             CardTone::Danger => {
                 let (fill, danger) = (p.color(ColorRole::Raised), p.color(ColorRole::Danger));
                 p.fill(rect, Some(Radius::Card), fill);
@@ -375,13 +412,15 @@ impl Card {
 
 impl Card {
     /// A bar region: `bar` fill and one `line` border on `edge` (mirrored in RTL).
-    fn paint_bar(p: &mut Painter<'_>, rect: Rect, edge: BarEdge) {
+    fn paint_bar(p: &mut Painter<'_>, rect: Rect, edge: BarEdge, filled: bool) {
         let (bar, line, hairline) = (
             p.color(ColorRole::Bar),
             p.color(ColorRole::Line),
             p.hairline(),
         );
-        p.fill(rect, None, bar);
+        if filled {
+            p.fill(rect, None, bar);
+        }
         let rtl = p.env().direction.is_rtl();
         let border = match edge {
             BarEdge::Top => Rect::new(rect.x, rect.y, rect.w, hairline),

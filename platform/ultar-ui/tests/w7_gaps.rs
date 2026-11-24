@@ -159,10 +159,11 @@ fn radio_tiles_look_like_the_display_board() {
     let first = Rect::new(t.right() - (t.w - 24.0) / 3.0, t.y, (t.w - 24.0) / 3.0, t.h);
     let top = rgb(canvas.pixel((first.x + first.w / 2.0) as i32, (first.y + 1.0) as i32));
     assert!(near(top, role(ColorRole::AccentText)));
-    // Padding 12, title line, 4, one detail line: about 12 + 22 + 4 + 19 + 12.
+    // Edge 2 (chosen), padding 12, title line, 4, one detail line: about 2 + 12 + 22 + 4 +
+    // 19 + 12 + 2 (the edge lies around the padding, CSS border-box).
     assert!(t.h > 60.0 && t.h < 80.0, "tile height {}", t.h);
     let ink = (first.x as i32..first.right() as i32)
-        .filter(|x| rgb(canvas.pixel(*x, (first.y + 22.0) as i32))[0] > 200)
+        .filter(|x| rgb(canvas.pixel(*x, (first.y + 25.0) as i32))[0] > 200)
         .count();
     assert!(ink > 4, "title (and check) drawn");
 }

@@ -93,7 +93,15 @@ impl TextField {
     /// The parts of a field of `field` extent: search icon slot, end button (a full target
     /// square at the end edge), text area.
     fn parts(&self, field: Rect, direction: Direction) -> (Rect, Rect, Rect) {
+        // Boards: the padding lies inside the one-point edge (CSS border-box).
         let mut inner = style::inset_inline(field, PAD);
+        let edge = crate::tokens::size::BORDER.min(inner.w / 2.0);
+        inner = Rect::new(
+            inner.x + edge,
+            inner.y,
+            (inner.w - 2.0 * edge).max(0.0),
+            inner.h,
+        );
         let mut button = Rect::default();
         if self.search || (self.password && !self.reveal_outside) {
             let mut whole = field;

@@ -1,0 +1,37 @@
+[package]
+name = "ultar-installer-ui"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Graphical installer of Ultar OS: the 16 steps of DESKTOP-SPEC §6 as a compositor client; writes the A/B layout of ultar-slots only after the explicit erase confirmation (platform, area 5)"
+
+[lib]
+name = "ultar_installer_ui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-installer-ui"
+path = "src/bin/ultar-installer-ui.rs"
+
+[features]
+# In-memory services for tests and the design-conformance suite.
+testkit = []
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-surface = { path = "../ultar-surface" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-slots = { path = "../../system/core/ultar-slots" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+getrandom = "0.2"
+# Argon2id hash of the user password for the first start (RustCrypto, pure Rust)
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
+zeroize = "1"
+
+[dev-dependencies]
+ultar-slots = { path = "../../system/core/ultar-slots" }
+ultar-installer-ui = { path = ".", features = ["testkit"] }
+ultar-ui = { path = "../ultar-ui" }
+png = "0.17"

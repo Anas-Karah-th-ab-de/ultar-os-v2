@@ -44,7 +44,7 @@ pub use list::{List, ListItem};
 pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
 pub use progress::Progress;
 pub use qr::{QrCode, QrCodeError, MAX_QR_BYTES};
-pub use radio::{RadioGroup, RadioLayout};
+pub use radio::{Pictogram, RadioGroup, RadioLayout};
 pub use scroll::Scroll;
 pub use search_field::SearchField;
 pub use select::{Select, MAX_VISIBLE_OPTIONS};
@@ -315,6 +315,6 @@ impl Widget {
         matches!(
             self,
             Widget::Row(_) | Widget::InfoBar(_) | Widget::EmptyState(_) | Widget::ListItem(_)
-        )
+        ) || matches!(self, Widget::Checkbox(c) if c.wide)
     }
 }

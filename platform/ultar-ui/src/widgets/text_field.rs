@@ -14,8 +14,9 @@ pub const DEFAULT_MAX_LEN: usize = 4096;
 pub(crate) const PAD: Space = Space::S12;
 /// The character a hidden password is drawn with.
 const MASK: char = '\u{2022}';
-/// Height of the label line above a labelled field (a 12-point line and its gap).
-const LABEL_BAND: f32 = Space::S16.points() + Space::S4.points();
+/// Height of the label line above a labelled field (boards: a 12-point line of 1.5–1.6 line
+/// height, 18–19.2, and its 4-point gap; 24 keeps both languages within a point).
+const LABEL_BAND: f32 = Space::S16.points() + Space::S8.points();
 const NATURAL_W: f32 = 4.0 * Space::S48.points();
 const FIELD_TEXT: TextSpec = TextSpec::new(typography::BODY);
 

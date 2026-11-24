@@ -5,7 +5,7 @@
 use super::{line, RadioGroup, RadioLayout, DOT, GAP, TITLE, UNIT};
 use crate::geom::{Rect, Size};
 use crate::icon::{IconId, QuarterTurns};
-use crate::paint::Painter;
+use crate::paint::{Painter, TextSpec};
 use crate::text::TextAlign;
 use crate::tokens::{size, typography, ColorRole, Radius, Space, TypeSize};
 use crate::widgets::style::{self, Visual};
@@ -13,6 +13,8 @@ use crate::widgets::{Label, MeasureCx, PaintCx};
 
 /// Inner spacing of a card.
 const PAD: Space = Space::S12;
+/// Space above the split bar of a card (boards: 8).
+const SPLIT_GAP: Space = Space::S8;
 /// Space between the lines of a tile.
 const TILE_GAP: Space = Space::S4;
 
@@ -23,6 +25,117 @@ impl RadioGroup {
             .or_else(|| self.details.get(index).and_then(Option::as_ref))
     }
 
+    fn picture_of(&self, index: usize) -> Option<crate::widgets::Pictogram> {
+        self.pictograms.get(index).copied().flatten()
+    }
+
+    /// The pictogram of tile `index`, 48 × 24 centred at the top of `area`; returns the
+    /// area below it.
+    fn paint_picture(
+        &self,
+        p: &mut Painter<'_>,
+        area: Rect,
+        index: usize,
+        color: crate::color::Color,
+    ) -> Rect {
+        use crate::widgets::Pictogram;
+        let Some(kind) = self.picture_of(index) else {
+            return area;
+        };
+        let h = size::ICON;
+        let box_ = style::centered(Rect::new(area.x, area.y, area.w, h), Size::new(2.0 * h, h));
+        let stroke = size::STROKE;
+        let screen = |x: f32| Rect::new(box_.x + x, box_.y + 4.0, 20.0, 16.0);
+        let (left, right) = (screen(2.0), screen(26.0));
+        let draw = |p: &mut Painter<'_>, r: Rect, mode: u8| match mode {
+            1 => p.fill(r, None, color),
+            2 => {
+                // dashed outline: the four sides in 2-point dashes
+                let mut x = r.x;
+                while x < r.right() {
+                    let w = 2.0f32.min(r.right() - x);
+                    p.fill(Rect::new(x, r.y, w, stroke), None, color);
+                    p.fill(Rect::new(x, r.bottom() - stroke, w, stroke), None, color);
+                    x += 4.0;
+                }
+                let mut y = r.y;
+                while y < r.bottom() {
+                    let hh = 2.0f32.min(r.bottom() - y);
+                    p.fill(Rect::new(r.x, y, stroke, hh), None, color);
+                    p.fill(Rect::new(r.right() - stroke, y, stroke, hh), None, color);
+                    y += 4.0;
+                }
+            }
+            _ => p.stroke(r, None, stroke, color),
+        };
+        let (a, b) = match kind {
+            Pictogram::Extend => (0, 0),
+            Pictogram::Mirror => (1, 1),
+            Pictogram::First => (1, 2),
+            Pictogram::Second => (2, 1),
+        };
+        draw(p, left, a);
+        draw(p, right, b);
+        if kind == Pictogram::Extend {
+            let y = box_.y + h / 2.0;
+            p.line(
+                crate::geom::Point::new(box_.x + 16.0, y),
+                crate::geom::Point::new(box_.x + 32.0, y),
+                stroke,
+                color,
+            );
+        }
+        let gap = h + TILE_GAP.points();
+        Rect::new(area.x, area.y + gap, area.w, (area.h - gap).max(0.0))
+    }
+
+    fn split_of(&self, index: usize) -> Option<&Vec<(Label, u32)>> {
+        self.splits.get(index).and_then(Option::as_ref)
+    }
+
+    /// The split bar of card `index` in `area` (24 high, control radius, `control_border`
+    /// edge; parts in `raised`, the last in `hover` with a two-point `accent_text` start edge).
+    fn paint_split(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, area: Rect, index: usize) {
+        let Some(parts) = self.split_of(index) else {
+            return;
+        };
+        let total: u64 = parts.iter().map(|(_, w)| u64::from(*w)).sum::<u64>().max(1);
+        let rtl = p.env().direction.is_rtl();
+        let (border, ring) = (p.hairline(), 2.0 * size::BORDER);
+        let mut start = 0.0f32;
+        let scale = p.env().scale;
+        for (i, (label, weight)) in parts.iter().enumerate() {
+            let w = area.w * (*weight as f32) / total as f32;
+            let x = if rtl {
+                area.right() - start - w
+            } else {
+                area.x + start
+            };
+            let seg = Rect::new(x, area.y, w, area.h);
+            let last = i + 1 == parts.len();
+            let fill = p.color(if last {
+                ColorRole::Hover
+            } else {
+                ColorRole::Raised
+            });
+            p.fill(seg, None, fill);
+            if last && i > 0 {
+                let edge_x = if rtl { seg.right() - ring } else { seg.x };
+                let accent = p.color(ColorRole::AccentText);
+                p.fill(Rect::new(edge_x, seg.y, ring, seg.h), None, accent);
+            }
+            let text = label.resolve(cx.tr);
+            let layout = p.layout(&text, TextSpec::new(TypeSize::S12), Some(w));
+            let h = layout.height / scale;
+            let color = p.color(ColorRole::Text);
+            let at = Rect::new(seg.x, seg.y + (seg.h - h) / 2.0, seg.w, h);
+            p.text(&layout, at, TextAlign::Center, color);
+            start += w;
+        }
+        let edge = p.color(ColorRole::ControlBorder);
+        p.stroke(area, Some(Radius::Control), border, edge);
+    }
+
     /// Width the text of a card or tile has inside a card of `width`.
     fn text_width(&self, width: f32) -> f32 {
         let dot = if self.layout == RadioLayout::Tiles {
@@ -30,7 +143,17 @@ impl RadioGroup {
         } else {
             DOT + GAP.points()
         };
-        (width - 2.0 * PAD.points() - dot).max(0.0)
+        (width - 2.0 * (PAD.points() + size::BORDER) - dot).max(0.0)
+    }
+
+    /// Width of the edge of card `index` (boards: the chosen card has a two-border edge, the
+    /// others one; CSS border-box, so the edge is inside the card and around the padding).
+    fn edge(&self, index: usize) -> f32 {
+        if self.selected == Some(index) {
+            2.0 * size::BORDER
+        } else {
+            size::BORDER
+        }
     }
 
     /// Height of the card of option `index` at `width`.
@@ -44,12 +167,18 @@ impl RadioGroup {
                 text += TILE_GAP.points();
             }
         }
+        if self.split_of(index).is_some() {
+            text += SPLIT_GAP.points() + size::ICON + 2.0 * size::BORDER;
+        }
+        if self.picture_of(index).is_some() {
+            text += size::ICON + TILE_GAP.points();
+        }
         let content = if self.layout == RadioLayout::Tiles {
             text
         } else {
             text.max(DOT)
         };
-        content + 2.0 * PAD.points()
+        content + 2.0 * (PAD.points() + self.edge(index))
     }
 
     pub(super) fn measure_cards(&mut self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
@@ -109,13 +238,35 @@ impl RadioGroup {
         }
         let edge = p.color(edge);
         p.stroke(card, Some(Radius::Card), width, edge);
+        self.paint_inside(p, cx, card, index, (v, chosen, off));
+        if v.focused {
+            style::focus_ring(p, card, Radius::Card);
+        }
+    }
+
+    /// Everything inside the edge of card `index`: dot, pictogram, texts, split bar.
+    fn paint_inside(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        card: Rect,
+        index: usize,
+        (v, chosen, off): (&Visual, bool, bool),
+    ) {
+        let pad = PAD.points() + self.edge(index);
         let inner = Rect::new(
-            card.x + PAD.points(),
-            card.y + PAD.points(),
-            (card.w - 2.0 * PAD.points()).max(0.0),
-            (card.h - 2.0 * PAD.points()).max(0.0),
+            card.x + pad,
+            card.y + pad,
+            (card.w - 2.0 * pad).max(0.0),
+            (card.h - 2.0 * pad).max(0.0),
         );
         if self.layout == RadioLayout::Tiles {
+            let ink = p.color(if off {
+                ColorRole::ControlBorder
+            } else {
+                ColorRole::Text
+            });
+            let inner = self.paint_picture(p, inner, index, ink);
             self.paint_tile_text(p, cx, inner, index, (chosen, off));
         } else {
             let direction = p.env().direction;
@@ -125,9 +276,11 @@ impl RadioGroup {
             let dot = Rect::new(slot.x, slot.y, DOT, DOT);
             self.paint_dot(p, dot, v, (chosen, off));
             self.paint_lines(p, cx, text, index, (TextAlign::Start, off));
-        }
-        if v.focused {
-            style::focus_ring(p, card, Radius::Card);
+            if self.split_of(index).is_some() {
+                let h = size::ICON + 2.0 * size::BORDER;
+                let bar = Rect::new(text.x, text.bottom() - h, text.w, h);
+                self.paint_split(p, cx, bar, index);
+            }
         }
     }
 

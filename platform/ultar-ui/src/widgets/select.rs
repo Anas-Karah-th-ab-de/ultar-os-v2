@@ -24,6 +24,9 @@ pub struct Select {
     /// Options that cannot be chosen, with the reason (shown in the open list, announced),
     /// by index.
     pub unavailable: Vec<Option<Label>>,
+    /// `true` when the closed select is as wide as its chosen option (boards: the select
+    /// brick shows only its value), `false` for the width of the widest option.
+    pub fit: bool,
 }
 
 const PAD: Space = Space::S12;
@@ -70,7 +73,16 @@ impl Select {
             options,
             selected: 0,
             unavailable: Vec::new(),
+            fit: false,
         }
+    }
+
+    /// The same select sized to its chosen option (it is measured again when the choice
+    /// changes), as the select brick of the boards; without it the select keeps the width of
+    /// its widest option.
+    pub fn fit(mut self) -> Select {
+        self.fit = true;
+        self
     }
 
     /// The same select with option `index` not available, for `reason` (it stays in the
@@ -115,8 +127,10 @@ impl Select {
         error: Option<&Label>,
     ) -> Size {
         let mut widest = 0.0f32;
-        for option in &self.options {
-            widest = widest.max(cx.text_size(option, style::CONTROL_TEXT, None).w);
+        for (i, option) in self.options.iter().enumerate() {
+            if !self.fit || i == self.selected {
+                widest = widest.max(cx.text_size(option, style::CONTROL_TEXT, None).w);
+            }
         }
         // Boards: padding 12 inside the border (CSS border-box); an error edge is 2 wide.
         let edge = if error.is_some() { 2.0 } else { 1.0 } * size::BORDER;

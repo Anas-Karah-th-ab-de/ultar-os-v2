@@ -199,6 +199,28 @@ impl Slider {
     /// Paints the slider. Boards: track `control_border` (red with an error), filled part
     /// `accent_text`, knob `text` with an `accent_text` ring; loading shows a progress ring
     /// in place of the knob.
+    /// The knob (and its halo while hovered or pressed, or the ring while loading).
+    fn paint_knob(p: &mut Painter<'_>, cx: &PaintCx<'_>, band: Rect, center_x: f32, v: &Visual) {
+        let accent = p.color(ColorRole::AccentText);
+        let thumb = Rect::new(
+            center_x - THUMB / 2.0,
+            band.y + (band.h - THUMB) / 2.0,
+            THUMB,
+            THUMB,
+        );
+        if v.hovered || v.pressed {
+            let halo = p.color(style::neutral_background(v));
+            p.fill(thumb.inflate(Space::S4.points()), Some(Radius::Round), halo);
+        }
+        if v.loading {
+            p.spinner(thumb, cx.spin, accent);
+        } else {
+            let knob = p.color(ColorRole::Text);
+            p.fill(thumb, Some(Radius::Round), knob);
+            p.stroke(thumb, Some(Radius::Round), size::FOCUS_RING, accent);
+        }
+    }
+
     pub(crate) fn paint(
         &self,
         p: &mut Painter<'_>,
@@ -220,33 +242,25 @@ impl Slider {
         } else {
             ColorRole::ControlBorder
         });
-        p.fill(track, Some(Radius::Round), rest);
+        // Boards: the line runs from edge to edge of the slide area (the knob sits on it);
+        // the knob centre keeps half a knob from either end.
+        let line = Rect::new(area.x, track.y, area.w, track.h);
+        p.fill(line, Some(Radius::Round), rest);
         let mut remaining = track;
-        let filled = style::take_start(&mut remaining, track.w * self.fraction(), direction);
+        let knob_at = style::take_start(&mut remaining, track.w * self.fraction(), direction);
+        let center_x = if direction.is_rtl() {
+            knob_at.x
+        } else {
+            knob_at.right()
+        };
+        let filled = if direction.is_rtl() {
+            Rect::new(center_x, line.y, line.right() - center_x, line.h)
+        } else {
+            Rect::new(line.x, line.y, center_x - line.x, line.h)
+        };
         let accent = p.color(ColorRole::AccentText);
         p.fill(filled, Some(Radius::Round), accent);
-        let center_x = if direction.is_rtl() {
-            filled.x
-        } else {
-            filled.right()
-        };
-        let thumb = Rect::new(
-            center_x - THUMB / 2.0,
-            band.y + (band.h - THUMB) / 2.0,
-            THUMB,
-            THUMB,
-        );
-        if v.hovered || v.pressed {
-            let halo = p.color(style::neutral_background(v));
-            p.fill(thumb.inflate(Space::S4.points()), Some(Radius::Round), halo);
-        }
-        if v.loading {
-            p.spinner(thumb, cx.spin, accent);
-        } else {
-            let knob = p.color(ColorRole::Text);
-            p.fill(thumb, Some(Radius::Round), knob);
-            p.stroke(thumb, Some(Radius::Round), size::FOCUS_RING, accent);
-        }
+        Slider::paint_knob(p, cx, band, center_x, v);
         style::paint_error(p, cx, error, rect, band.h);
         if v.focused {
             // Boards: the ring surrounds the whole slide area (radius 8 + 4), not the thumb.

@@ -5442,6 +5442,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-installer-ui"
+version = "0.7.0"
+dependencies = [
+ "argon2 0.5.3",
+ "getrandom 0.2.17",
+ "png 0.17.16",
+ "ultar-brand",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-installer-ui",
+ "ultar-slots",
+ "ultar-surface",
+ "ultar-ui",
+ "zeroize",
+]
+
+[[package]]
 name = "ultar-llm"
 version = "0.6.0"
 dependencies = [
@@ -5550,6 +5567,19 @@ dependencies = [
  "serde",
  "ultar-bus",
  "ultar-sys",
+]
+
+[[package]]
+name = "ultar-settings"
+version = "0.7.0"
+dependencies = [
+ "png 0.17.16",
+ "serde",
+ "ultar-brand",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
 ]
 
 [[package]]
