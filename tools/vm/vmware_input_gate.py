@@ -134,7 +134,10 @@ def clipboard(vm, m, pos):
     vm.click(*pos["settings"])
     if not app_window(vm, "clip-settings", empty):
         return ["clipboard: Settings did not open"]
-    vm.click(cx + 240, cy - 192)  # Settings' search field (window in the middle, field at its top end)
+    box = window_box(vm.shot("clip-settings-box"), empty)
+    if box is None:
+        return ["clipboard: Settings' window not found on the screen"]
+    vm.click(box[2] - 144, box[1] + 67)  # Settings' search field (top of its side bar, at the start side)
     vm.pump(1)
     vm.type("ultar")
     vm.pump(1)
@@ -145,13 +148,14 @@ def clipboard(vm, m, pos):
     # Settings stays open (it serves the copied text), Files opens above it
     vm.click(*pos["files"])
     vm.pump(6)  # its window is above Settings (the paste below shows it is there)
-    # a second window opens 40 points down and to the side of the first (cascade): find which
-    shot = vm.shot("clip-files")
-    ground = bytes.fromhex("0B0D11")
-    off = 40 if all(shot.px[(y * w + cx + 400) * 3:(y * w + cx + 400) * 3 + 3] != ground
-                    for y in range(cy - 100, cy + 100, 20)) else 0
-    field = (cx - 300 + off, cy - 216 + off, cx - 90 + off, cy - 176 + off)  # Files' search field
-    vm.click(cx - 193 + off, cy - 196 + off)
+    # a second window opens down and to the side of the first (cascade): found on the screen
+    box = window_box(vm.shot("clip-files"), typed)
+    if box is None:
+        close_all(vm)
+        close_all(vm)
+        return ["clipboard: Files' window not found on the screen"]
+    point, field = files_search(box)
+    vm.click(*point)
     vm.pump(1)
     before = vm.shot("clip-before-paste")
     vm.key("ctrl+v")
@@ -160,6 +164,30 @@ def clipboard(vm, m, pos):
     log(f"clipboard: Files' search field changed {after.diff(before, field):.3f} after Ctrl+V")
     close_all(vm)
     return [] if ok else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
+
+
+def window_box(screen, before):
+    """(left, top, right) of the window that appeared since `before`: its title bar is the first row of
+    the work area that differs clearly over a long run (windows are sized from the screen: nothing about
+    their place is assumed). None when no such row exists."""
+    w, h = screen.w, screen.h
+    a, b = screen.px, before.px
+    for y in range(0, h - 60, 2):
+        ra, rb = a[y * w * 3:(y + 1) * w * 3], b[y * w * 3:(y + 1) * w * 3]
+        if ra == rb:
+            continue
+        xs = [x for x in range(0, w, 2)
+              if abs(ra[x * 3] - rb[x * 3]) + abs(ra[x * 3 + 1] - rb[x * 3 + 1]) + abs(ra[x * 3 + 2] - rb[x * 3 + 2]) > 24]
+        if len(xs) * 2 >= w * 0.3:
+            return (xs[0], y, xs[-1])
+    return None
+
+
+def files_search(box):
+    """Files' search field in its window (toolbar, at the end side in Arabic): the point to click and the
+    rectangle that shows typed text."""
+    left, top, _ = box
+    return (left + 191, top + 63), (left + 84, top + 43, left + 294, top + 83)
 
 
 def files_list(vm, m, pos):
@@ -181,8 +209,12 @@ def files_list(vm, m, pos):
         vm.click(cx - 60, cy + dy)
         vm.pump(1)
     vm.pump(2)
-    field = (cx - 300, cy - 216, cx - 90, cy - 176)  # Files' search field (window alone, centred)
-    vm.click(cx - 193, cy - 196)
+    box = window_box(vm.shot("list-box"), before)
+    if box is None:
+        close_all(vm)
+        return ["files list: Files' window not found on the screen"]
+    point, field = files_search(box)
+    vm.click(*point)
     vm.pump(1)
     typed_before = vm.shot("list-before-type")
     vm.type("ab")
