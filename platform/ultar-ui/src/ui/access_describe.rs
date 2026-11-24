@@ -45,11 +45,10 @@ pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, O
         Widget::Brick(w) => return describe_brick(w),
         Widget::DayGrid(w) => (Role::Table, named(&w.name), w.selected_name()),
         Widget::Switch(w) => (Role::Switch, named(&w.name), None),
-        Widget::Select(w) => (
-            Role::Select,
-            named(&w.name),
-            w.options.get(w.selected).cloned(),
-        ),
+        Widget::Select(w) => {
+            let chosen = w.options.get(w.selected).cloned();
+            (Role::Select, named(&w.name), chosen)
+        }
         Widget::Slider(w) => (Role::Slider, named(&w.name), Some(number(w.value))),
         Widget::TextField(w) if w.is_password() => (Role::PasswordField, named(&w.name), None),
         Widget::TextField(w) => {
