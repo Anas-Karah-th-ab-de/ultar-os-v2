@@ -23,7 +23,7 @@ fn seed_builds_and_covers_all_ten_areas() {
             (Panel::Windows, 8),
             (Panel::Notifications, 11),
             (Panel::Power, 12),
-            (Panel::Region, 9),
+            (Panel::Region, 11),
             (Panel::DateTime, 5),
             (Panel::Privacy, 14),
             (Panel::Account, 6),

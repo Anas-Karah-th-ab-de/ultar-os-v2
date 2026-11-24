@@ -24,6 +24,10 @@ impl State {
         if self.secure_attention(code, state) {
             return;
         }
+        if self.layout_keys(code, state) {
+            self.session.shell.super_tap_used();
+            return;
+        }
         if state == KeyState::Pressed && self.shortcut(code) {
             self.session.shell.super_tap_used();
             return;
@@ -100,6 +104,54 @@ impl State {
         }
     }
 
+    /// Layout switching (COMPOSITOR.md §7, DESKTOP-SPEC `shell.kbd`), also on the lock
+    /// screen: Super+Space at once (the key is used); Ctrl+Shift and Alt+Shift (as on Windows
+    /// and Ubuntu) when the second modifier of the pair is released and no other key was
+    /// pressed meanwhile, so Ctrl+Shift+N and Alt+Shift+Tab stay shortcuts. The modifier keys
+    /// themselves still reach the client. True if the key was used.
+    fn layout_keys(&mut self, code: u16, state: KeyState) -> bool {
+        let held = self.keyboard.modifiers & !Modifiers::ALT_GR;
+        match keymap::modifier_bit(code) {
+            Some(bit) if bit != Modifiers::ALT_GR && bit != Modifiers::SUPER => {
+                if state == KeyState::Pressed {
+                    let pair = [
+                        Modifiers::SHIFT | Modifiers::CTRL,
+                        Modifiers::SHIFT | Modifiers::ALT,
+                    ];
+                    self.keyboard.layout_chord = pair.contains(&held);
+                } else if state == KeyState::Released
+                    && std::mem::take(&mut self.keyboard.layout_chord)
+                {
+                    self.next_layout();
+                }
+                false
+            }
+            Some(_) => {
+                self.keyboard.layout_chord = false;
+                false
+            }
+            None => {
+                self.keyboard.layout_chord = false;
+                let only_super = held == Modifiers::SUPER;
+                if code == 57 && only_super && state != KeyState::Released {
+                    if state == KeyState::Pressed {
+                        self.next_layout();
+                    }
+                    return true;
+                }
+                false
+            }
+        }
+    }
+
+    /// Makes the next layout of the list active (the bar and the lock screen hear of it).
+    pub(super) fn next_layout(&mut self) {
+        if !self.config.layouts.is_empty() {
+            self.keyboard.layout_index =
+                (self.keyboard.layout_index + 1) % self.config.layouts.len();
+        }
+    }
+
     /// Compositor shortcuts (DESKTOP-SPEC §5.4). True if the key was used.
     fn shortcut(&mut self, code: u16) -> bool {
         let m = Modifiers(self.keyboard.modifiers);
@@ -119,11 +171,6 @@ impl State {
                 let (state, snap) =
                     wm::keyboard_snap(self.windows[i].state, self.windows[i].snap, arrow);
                 self.set_window_state(i, state, snap);
-                return true;
-            }
-            if code == 57 && !self.config.layouts.is_empty() {
-                self.keyboard.layout_index =
-                    (self.keyboard.layout_index + 1) % self.config.layouts.len();
                 return true;
             }
         }

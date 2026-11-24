@@ -285,6 +285,15 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
         Ok(())
     }
 
+    /// Takes a call history fetched elsewhere (the window's bus thread at start).
+    pub fn set_log(
+        &mut self,
+        log: Vec<ultar_bus::messages::call::LogEntry>,
+    ) -> Result<(), AppError> {
+        self.model.log = log;
+        self.rebuild()
+    }
+
     /// Fetches the history again (the service owns it).
     pub(crate) fn reload_log(&mut self) {
         if let Ok(log) = self.port.log(false) {

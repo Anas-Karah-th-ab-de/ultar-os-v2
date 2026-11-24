@@ -1,8 +1,10 @@
 //! Physical keyboard layouts: Linux key code + modifiers → text.
 //!
 //! Arabic (PC 101, the layout Windows and Ubuntu call "Arabic") is the
-//! default; US English is the second layout. Digits are 0–9 in both
-//! (plan §3.4b). Super+Space switches. The on-screen keyboard
+//! default; US English is the second layout, German (QWERTZ, with AltGr
+//! for `@ € { [ ] } \\ ~ |`) the third. Digits are 0–9 in all
+//! (plan §3.4b). Super+Space, Ctrl+Shift and Alt+Shift switch
+//! (`state/keys.rs`). The on-screen keyboard
 //! (`platform/ultar-ime`) does not use this table: it commits text
 //! through the input-method role.
 
@@ -15,6 +17,29 @@ pub enum Layout {
     Arabic,
     /// English (US).
     English,
+    /// German (QWERTZ).
+    German,
+}
+
+impl Layout {
+    /// Wire and settings name (`ar`, `en`, `de`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Layout::Arabic => "ar",
+            Layout::English => "en",
+            Layout::German => "de",
+        }
+    }
+
+    /// The layout of a name; `None` for unknown names.
+    pub fn parse(name: &str) -> Option<Layout> {
+        Some(match name {
+            "ar" => Layout::Arabic,
+            "en" => Layout::English,
+            "de" => Layout::German,
+            _ => return None,
+        })
+    }
 }
 
 /// What a key produces.
@@ -35,6 +60,36 @@ const US_SHIFT: [&str; 4] = [
     "ASDFGHJKL:\"~",
     "ZXCVBNM<>?",
 ];
+const DE: [&str; 4] = [
+    "1234567890\u{DF}\u{B4}",
+    "qwertzuiop\u{FC}+",
+    "asdfghjkl\u{F6}\u{E4}^",
+    "yxcvbnm,.-",
+];
+const DE_SHIFT: [&str; 4] = [
+    "!\"\u{A7}$%&/()=?`",
+    "QWERTZUIOP\u{DC}*",
+    "ASDFGHJKL\u{D6}\u{C4}\u{B0}",
+    "YXCVBNM;:_",
+];
+/// German AltGr (third level) of the keys that have one.
+fn german_altgr(code: u16) -> Option<char> {
+    Some(match code {
+        3 => '\u{B2}',
+        4 => '\u{B3}',
+        8 => '{',
+        9 => '[',
+        10 => ']',
+        11 => '}',
+        12 => '\\',
+        16 => '@',
+        18 => '\u{20AC}',
+        27 => '~',
+        50 => '\u{B5}',
+        86 => '|',
+        _ => return None,
+    })
+}
 /// Arabic rows; `#` stands for a multi-character key handled separately.
 const AR: [&str; 4] = [
     "1234567890-=",
@@ -79,11 +134,38 @@ pub fn translate(layout: Layout, code: u16, modifiers: Modifiers, caps: bool) ->
         || modifiers.has(Modifiers::ALT)
         || modifiers.has(Modifiers::SUPER)
     {
-        // Shortcuts: report the Latin letter so Ctrl+C is Ctrl+C in Arabic too.
-        return match row_char(&US, code) {
-            Some(c) if code < 58 => Output::Char(c),
-            _ => Output::None,
+        // Shortcuts: report the Latin letter so Ctrl+C is Ctrl+C in Arabic too
+        // (German: the letters where its keys have them, Ctrl+Z on the key labelled Z).
+        let rows = if layout == Layout::German { &DE } else { &US };
+        return match row_char(rows, code) {
+            Some(c) if code < 58 && c.is_ascii() => Output::Char(c),
+            _ => match row_char(&US, code) {
+                Some(c) if code < 58 => Output::Char(c),
+                _ => Output::None,
+            },
         };
+    }
+    if layout == Layout::German {
+        if modifiers.has(Modifiers::ALT_GR) {
+            return german_altgr(code).map_or(Output::None, Output::Char);
+        }
+        match code {
+            43 => {
+                return Output::Char(if modifiers.has(Modifiers::SHIFT) {
+                    '\''
+                } else {
+                    '#'
+                })
+            }
+            86 => {
+                return Output::Char(if modifiers.has(Modifiers::SHIFT) {
+                    '>'
+                } else {
+                    '<'
+                })
+            }
+            _ => {}
+        }
     }
     match code {
         57 => return Output::Char(' '),
@@ -113,6 +195,12 @@ pub fn translate(layout: Layout, code: u16, modifiers: Modifiers, caps: bool) ->
             let letter = row_char(&US, code).is_some_and(|c| c.is_ascii_alphabetic());
             let upper = shift ^ (caps && letter);
             let rows = if upper { &US_SHIFT } else { &US };
+            row_char(rows, code).map_or(Output::None, Output::Char)
+        }
+        Layout::German => {
+            let letter = row_char(&DE, code).is_some_and(char::is_alphabetic) && code != 12;
+            let upper = shift ^ (caps && letter);
+            let rows = if upper { &DE_SHIFT } else { &DE };
             row_char(rows, code).map_or(Output::None, Output::Char)
         }
         Layout::Arabic => {
@@ -248,6 +336,64 @@ mod tests {
                 "{row}"
             );
         }
+    }
+
+    #[test]
+    fn german_layout() {
+        let altgr = Modifiers(Modifiers::ALT_GR);
+        let ctrl = Modifiers(Modifiers::CTRL);
+        assert_eq!(
+            translate(Layout::German, 21, NONE, false),
+            Output::Char('z')
+        );
+        assert_eq!(
+            translate(Layout::German, 44, NONE, false),
+            Output::Char('y')
+        );
+        assert_eq!(
+            translate(Layout::German, 26, NONE, false),
+            Output::Char('ü')
+        );
+        assert_eq!(translate(Layout::German, 26, NONE, true), Output::Char('Ü'));
+        assert_eq!(translate(Layout::German, 12, NONE, true), Output::Char('ß'));
+        assert_eq!(
+            translate(Layout::German, 3, SHIFT, false),
+            Output::Char('"')
+        );
+        assert_eq!(
+            translate(Layout::German, 16, altgr, false),
+            Output::Char('@')
+        );
+        assert_eq!(
+            translate(Layout::German, 18, altgr, false),
+            Output::Char('€')
+        );
+        assert_eq!(
+            translate(Layout::German, 86, NONE, false),
+            Output::Char('<')
+        );
+        assert_eq!(
+            translate(Layout::German, 43, NONE, false),
+            Output::Char('#')
+        );
+        assert_eq!(translate(Layout::German, 2, NONE, false), Output::Char('1'));
+        // Ctrl+Z on the key labelled Z; non-letters fall back to the US letter.
+        assert_eq!(
+            translate(Layout::German, 21, ctrl, false),
+            Output::Char('z')
+        );
+        assert_eq!(
+            translate(Layout::German, 26, ctrl, false),
+            Output::Char('[')
+        );
+        for rows in [&DE, &DE_SHIFT] {
+            let n: Vec<usize> = rows.iter().map(|r| r.chars().count()).collect();
+            assert_eq!(n, [12, 12, 12, 10]);
+        }
+        for l in [Layout::Arabic, Layout::English, Layout::German] {
+            assert_eq!(Layout::parse(l.name()), Some(l));
+        }
+        assert_eq!(Layout::parse("fr"), None);
     }
 
     #[test]

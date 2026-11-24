@@ -52,10 +52,7 @@ impl ShellSession {
 
 /// Wire name of a keyboard layout.
 fn layout_name(layout: KeyLayout) -> &'static str {
-    match layout {
-        KeyLayout::Arabic => "ar",
-        KeyLayout::English => "en",
-    }
+    layout.name()
 }
 
 impl State {
@@ -301,6 +298,32 @@ impl State {
         if usize::from(index) < self.config.layouts.len() {
             self.keyboard.layout_index = usize::from(index);
         }
+        Ok(())
+    }
+
+    /// `SetKeyboardLayouts` of the shell (the user's input languages from the settings
+    /// service). Unknown names and repeats are left out; a list with no known name changes
+    /// nothing. The active layout stays active when it is still in the list.
+    pub(super) fn set_keyboard_layouts(
+        &mut self,
+        client: ClientId,
+        names: &[String],
+    ) -> Result<(), ErrorCode> {
+        self.require(client, Rights::SHELL)?;
+        let mut layouts: Vec<KeyLayout> = Vec::new();
+        for l in names.iter().filter_map(|n| KeyLayout::parse(n)) {
+            if !layouts.contains(&l) {
+                layouts.push(l);
+            }
+        }
+        if layouts.is_empty() || layouts == self.config.layouts {
+            return Ok(());
+        }
+        let active = self.key_layout();
+        self.keyboard.layout_index = layouts.iter().position(|l| *l == active).unwrap_or(0);
+        self.config.layouts = layouts;
+        // The list changed: shell and lock screen hear of it even with the same index.
+        self.session.shell.layout_sent = None;
         Ok(())
     }
 

@@ -8,6 +8,7 @@
 use crate::app::PhoneApp;
 use crate::click::WindowOp;
 use crate::port::{CallPort, Host};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use ultar_surface::client::{Client, ClientError, Window, WindowConfig};
@@ -98,6 +99,9 @@ pub struct PhoneWindow<P: CallPort> {
     launcher: Option<ultar_bus::Client>,
     /// Settings asked for; waiting for the activation token of that click.
     settings_pending: bool,
+    /// Answer of the launcher for the last Settings request (asked on a thread of its own:
+    /// the launcher answers only when Settings is ready, the window must not wait for it).
+    launching: Option<Receiver<bool>>,
 }
 
 fn serial_of(event: &Event) -> Option<u32> {
@@ -135,6 +139,7 @@ impl<P: CallPort> PhoneWindow<P> {
             maximized: false,
             launcher: None,
             settings_pending: false,
+            launching: None,
         })
     }
 
@@ -142,6 +147,12 @@ impl<P: CallPort> PhoneWindow<P> {
     pub fn with_launcher(mut self, bus: ultar_bus::Client) -> Self {
         self.launcher = Some(bus);
         self
+    }
+
+    /// Uses `bus` to reach the app launcher from now on (the bus may connect after the
+    /// window opened).
+    pub fn set_launcher(&mut self, bus: ultar_bus::Client) {
+        self.launcher = Some(bus);
     }
 
     /// The app (feed it `call.state` with [`PhoneApp::set_state`]).
@@ -166,6 +177,7 @@ impl<P: CallPort> PhoneWindow<P> {
         // Clock work of the app (toasts, timer) cannot fail in a way the window could act on.
         let _ = self.app.tick(now, wall_s);
         let forward = self.carry_out()?;
+        self.launch_answer();
         self.sync_call_screen()?;
         self.draw()?;
         Ok(match forward {
@@ -279,13 +291,36 @@ impl<P: CallPort> PhoneWindow<P> {
     }
 
     /// Opens the phone's page in Settings; without a launcher (or when it refuses) the app
-    /// shows why.
+    /// shows why. The launcher is asked on a thread of its own: it answers only once
+    /// Settings is ready (up to [`LAUNCH_WAIT`]) and the window keeps answering meanwhile.
     fn open_settings(&mut self, token: Option<u64>) {
-        let opened = self
-            .launcher
-            .as_ref()
-            .is_some_and(|bus| crate::launch::open_phone_settings(bus, token, LAUNCH_WAIT).is_ok());
-        if !opened {
+        let Some(bus) = self.launcher.clone() else {
+            self.app.notify_error("phone.error.launch");
+            return;
+        };
+        let (tx, rx) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("phone-launch".into())
+            .spawn(move || {
+                let ok = crate::launch::open_phone_settings(&bus, token, LAUNCH_WAIT).is_ok();
+                let _ = tx.send(ok);
+            });
+        match spawned {
+            Ok(_) => self.launching = Some(rx),
+            Err(_) => self.app.notify_error("phone.error.launch"),
+        }
+    }
+
+    /// Shows the launcher's refusal once it answered.
+    fn launch_answer(&mut self) {
+        let Some(rx) = &self.launching else { return };
+        let failed = match rx.try_recv() {
+            Ok(ok) => !ok,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => true,
+        };
+        self.launching = None;
+        if failed {
             self.app.notify_error("phone.error.launch");
         }
     }
@@ -309,18 +344,23 @@ impl<P: CallPort> PhoneWindow<P> {
         Ok(())
     }
 
-    /// Paints and presents when needed.
+    /// Paints and presents when needed. Nothing is painted while every surface still waits
+    /// for its last frame (`FrameDone`): a paint then would clear `needs_paint` without
+    /// reaching the screen, and the window would keep showing an old picture (it looked
+    /// frozen) until the next change.
     fn draw(&mut self) -> Result<(), ClientError> {
         let Some(canvas) = self.canvas.as_mut() else {
             return Ok(());
         };
+        let main = self.window.can_draw();
+        let screen = self.call_screen.as_ref().is_some_and(|w| w.can_draw());
         let ui = self.app.ui();
-        if !ui.needs_paint() {
+        if !ui.needs_paint() || !(main || screen) {
             return Ok(());
         }
         ui.paint_all(canvas);
         let size = (canvas.width(), canvas.height());
-        if self.window.can_draw() {
+        if main {
             self.window
                 .present(&mut self.client, canvas.data(), size, &[])?;
         }

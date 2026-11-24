@@ -226,6 +226,7 @@ impl State {
             Request::WindowAction { window, action } => self.window_action(client, window, action),
             Request::SetDisplayMode { mode } => self.set_display_mode(client, mode),
             Request::SetKeyboardLayout { index } => self.set_keyboard_layout(client, index),
+            Request::SetKeyboardLayouts { names } => self.set_keyboard_layouts(client, &names),
             Request::SetPhoneMode { on } => self.set_phone_mode(client, on),
             Request::WindowThumbnail { .. }
             | Request::SwitchWorkspace { .. }

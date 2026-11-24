@@ -282,6 +282,17 @@ settings.region.month_names.desc = The Arabic names of the Gregorian months
 settings.region.month_names.choice.levantine = Levantine (Kanun al-Thani, Shubat…)
 settings.region.month_names.choice.alternative = Yanayir, Fibrayir, Maris…
 
+settings.region.keyboard.layouts.label = Input languages
+settings.region.keyboard.layouts.desc = The layouts Ctrl+Shift, Alt+Shift or Super+Space switch between
+settings.region.keyboard.layouts.choice.ar_en = Arabic and English
+settings.region.keyboard.layouts.choice.ar_de = Arabic and German
+settings.region.keyboard.layouts.choice.ar_en_de = Arabic, English and German
+settings.region.keyboard.active.label = Current input language
+settings.region.keyboard.active.desc = The layout in use now; kept after a restart
+settings.region.keyboard.active.choice.ar = Arabic
+settings.region.keyboard.active.choice.en = English
+settings.region.keyboard.active.choice.de = German
+
 settings.datetime.automatic.label = Set time automatically
 settings.datetime.automatic.desc = Take date and time from the network
 settings.datetime.timezone.automatic.label = Time zone automatically

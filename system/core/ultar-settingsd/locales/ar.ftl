@@ -282,6 +282,17 @@ settings.region.month_names.desc = أسماء الأشهر الميلادية ب
 settings.region.month_names.choice.levantine = كانون الثاني، شباط، آذار…
 settings.region.month_names.choice.alternative = يناير، فبراير، مارس…
 
+settings.region.keyboard.layouts.label = لغات الإدخال
+settings.region.keyboard.layouts.desc = التخطيطات التي يبدّل بينها Ctrl+Shift أو Alt+Shift أو Super+مسافة
+settings.region.keyboard.layouts.choice.ar_en = العربية والإنجليزية
+settings.region.keyboard.layouts.choice.ar_de = العربية والألمانية
+settings.region.keyboard.layouts.choice.ar_en_de = العربية والإنجليزية والألمانية
+settings.region.keyboard.active.label = لغة الإدخال الحالية
+settings.region.keyboard.active.desc = التخطيط المستخدم الآن، ويبقى بعد إعادة التشغيل
+settings.region.keyboard.active.choice.ar = العربية
+settings.region.keyboard.active.choice.en = الإنجليزية
+settings.region.keyboard.active.choice.de = الألمانية
+
 settings.datetime.automatic.label = ضبط الوقت تلقائياً
 settings.datetime.automatic.desc = أخذ التاريخ والوقت من الشبكة
 settings.datetime.timezone.automatic.label = المنطقة الزمنية تلقائياً

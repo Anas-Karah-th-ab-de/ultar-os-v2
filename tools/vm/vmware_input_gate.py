@@ -162,6 +162,100 @@ def clipboard(vm, m, pos):
     return [] if ok else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
 
 
+def changes_within(vm, name, before, box, seconds, share=0.002):
+    """Seconds until box differs from before by share (None: not within seconds); shots every 0.2 s."""
+    start = time.time()
+    while time.time() - start < seconds:
+        vm.pump(0.2)
+        s = vm.shot(name)
+        if s.diff(before, box) > share:
+            return round(time.time() - start, 2), s
+    return None, vm.shot(name)
+
+
+def phone_responds(vm, opened_after):
+    """The phone's window (it opened opened_after seconds after the click) answers input within 2 s:
+    a click on its header gives it the focus, Tab moves the focus ring (drawn by the app), a second Tab
+    again. A window that blocks on the call service (no modem, no call service on a PC) or that loses its
+    frames shows nothing new and fails here. The no-modem state itself is checked by the phone's tests
+    (apps/ultar-phone/tests/states.rs); here: it opens at once without one."""
+    problems = []
+    if opened_after > 10:
+        problems.append(f"phone: the window took {opened_after:.1f} s to open")
+    w, h = vm.size
+    top = max(0, (h - 60 - 680) // 2)
+    vm.click(w // 2, top + 16)
+    vm.pump(1)
+    box = work(vm)
+    for n in (1, 2):
+        before = vm.shot(f"phone-tab{n}-before")
+        vm.key("tab")
+        took, _ = changes_within(vm, f"phone-tab{n}", before, box, 2.0, 0.0005)
+        log(f"phone: Tab {n} answered after {took} s")
+        if took is None:
+            problems.append(f"phone: no answer to Tab {n} within 2 s (window frozen)")
+            break
+    return problems
+
+
+def layout_switch(vm, m, pos):
+    """Ctrl+Shift and Alt+Shift switch the keyboard layout (the compositor's keymap): the same key typed
+    into Settings' search field gives a different character after Ctrl+Shift (Arabic sh -> Latin a), the
+    bar's language indicator changes with it, and Alt+Shift switches back (the first character again)."""
+    w, h = vm.size
+    cx, cy = w // 2, h // 2
+    vm.move(cx, cy)
+    vm.pump(1)
+    empty = vm.shot("kbd-empty")
+    vm.click(*pos["settings"])
+    if not app_window(vm, "kbd-settings", empty):
+        return ["layout: Settings did not open"]
+    field = (cx + 120, cy - 212, cx + 360, cy - 172)  # Settings' search field (see clipboard)
+    bar = (0, h - 56, w, h)
+    clock = (0, h - 56, 140, h)
+
+    def typed(name):
+        vm.click(cx + 240, cy - 192)
+        vm.pump(0.5)
+        vm.key("ctrl+a")
+        vm.key("backspace")
+        vm.pump(1)
+        clear = vm.shot(f"kbd-{name}-clear")
+        vm.key("a")
+        took, s = changes_within(vm, f"kbd-{name}", clear, field, 3.0)
+        return clear, s, took
+
+    problems = []
+    clear, first, took1 = typed("first")
+    vm.move(cx, cy)
+    vm.pump(0.5)
+    before = vm.shot("kbd-bar-before")
+    vm.key("ctrl+shift")
+    took_bar, after = changes_within(vm, "kbd-bar-after", before, bar, 3.0, 0.0005)
+    # the clock alone must not count: the indicator sits beside it
+    rest = (clock[2], h - 56, w, h)
+    indicator = after.diff(before, rest)
+    _, second, took2 = typed("second")
+    vm.key("alt+shift")
+    vm.pump(1)
+    _, third, took3 = typed("third")
+    d12, d13 = second.diff(first, field), third.diff(first, field)
+    log(f"layout: typed a -> {took1}/{took2}/{took3} s, field first/second differ {d12:.3f}, "
+        f"first/third {d13:.3f}, bar changed {indicator:.4f} after {took_bar} s")
+    if took1 is None or took2 is None or took3 is None:
+        problems.append("layout: a typed key did not arrive in the field")
+    elif d12 < 0.004:
+        problems.append("layout: Ctrl+Shift did not change the typed character (same glyph)")
+    elif d13 > d12 / 2:
+        problems.append("layout: Alt+Shift did not switch back (third glyph unlike the first)")
+    if indicator < 0.0005:
+        problems.append("layout: the bar's language indicator did not change")
+    vm.key("ctrl+a")
+    vm.key("backspace")
+    close_all(vm)
+    return problems
+
+
 def pure_black(screen):
     """Share of pixels of the high-contrast ground (#000000), every 4th pixel."""
     return black(screen)
@@ -375,9 +469,12 @@ def run(vm, m):
     if not ok:
         failures.append("the app grid did not open")
     # the phone is the fifth of "all apps" (sorted by their Arabic names), the grid's second row
+    clicked = time.time()
     vm.click(*phone_tile(*vm.size))
     if not app_window(vm, "app-phone", before, unlike=grid):
         failures.append("phone did not open")
+    else:
+        failures += phone_responds(vm, time.time() - clicked)
     # 5. the screen keeps changing by itself: the bar's clock turns within a minute
     close_all(vm)
     clock = (0, vm.size[1] - 56, 140, vm.size[1])
@@ -388,9 +485,11 @@ def run(vm, m):
     if not failures:
         failures += clipboard(vm, m, pos)
     if not failures:
+        failures += layout_switch(vm, m, pos)
+    if not failures:
         failures += accessibility(vm, m)
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, phone answers, layout switch)")
     return 0
