@@ -1,8 +1,8 @@
 //! Safe discovery of NVIDIA display hardware.
 //!
-//! This first stage is intentionally read-only. It identifies the known Quadro RTX 4000
-//! class, records BARs and keeps the UEFI/GOP framebuffer active. No NVIDIA MMIO, GSP, DPR,
-//! VRAM or display register is changed until a separate opt-in implementation is reviewed.
+//! This stage is intentionally read-only. It identifies the known Quadro RTX 4000
+//! class, records BARs and PCIe state, and keeps the UEFI/GOP framebuffer active.
+//! NVIDIA MMIO, GSP, VRAM and display registers are not touched.
 
 use crate::driver::{Driver, Result};
 use crate::pci::PciDev;
@@ -14,6 +14,9 @@ use spin::Mutex;
 pub const OPTION_WORD: &str = "ultar.nvidia_display=probe";
 pub const FILE_PATH: &str = "\\ultar\\nvidia-display";
 const QUADRO_RTX_4000: u16 = 0x1eb6;
+const PCI_CAP_PM: u8 = 0x01;
+const PCI_CAP_MSI: u8 = 0x05;
+const PCI_CAP_PCIE: u8 = 0x10;
 
 static OPTED_IN: AtomicBool = AtomicBool::new(false);
 static REPORT: Mutex<Option<String>> = Mutex::new(None);
@@ -68,9 +71,75 @@ fn report(d: &PciDev) -> String {
         format!("BAR{} {:#x}+{:#x}", b.index, b.address, b.size)
     }).collect();
     format!(
-        "10de:1eb6 Quadro RTX 4000; {}; firmware/GOP framebuffer retained",
+        "10de:1eb6 Quadro RTX 4000; subsystem {:04x}:{:04x}; rev {:02x}; {}; \
+         firmware/GOP framebuffer retained",
+        d.subsys_vendor,
+        d.subsys,
+        d.rev,
         if bar_text.is_empty() { String::from("no memory BAR") } else { bar_text.join(", ") }
     )
+}
+
+fn cap_offset(d: &PciDev, id: u8) -> Option<u8> {
+    d.caps().into_iter().find(|(_, cap)| *cap == id).map(|(off, _)| off)
+}
+
+fn link_speed(code: u8) -> &'static str {
+    match code {
+        1 => "2.5GT/s",
+        2 => "5GT/s",
+        3 => "8GT/s",
+        4 => "16GT/s",
+        5 => "32GT/s",
+        6 => "64GT/s",
+        _ => "unknown",
+    }
+}
+
+fn pci_state(d: &PciDev) -> String {
+    let command = d.r32(0x04) as u16;
+    let mut fields = alloc::vec::Vec::new();
+    fields.push(format!("mem={}", if command & 0x2 != 0 { "on" } else { "off" }));
+    fields.push(format!("busmaster={}", if command & 0x4 != 0 { "on" } else { "off" }));
+
+    if let Some(off) = cap_offset(d, PCI_CAP_PM) {
+        let pm = d.r16(off + 4) & 0x3;
+        fields.push(format!("power=D{}", pm));
+    } else {
+        fields.push(String::from("power=unknown"));
+    }
+
+    if let Some(off) = cap_offset(d, PCI_CAP_PCIE) {
+        let link = d.r16(off + 0x12);
+        fields.push(format!(
+            "link={}x{}",
+            link_speed((link & 0xf) as u8),
+            (link >> 4) & 0x3f
+        ));
+    } else {
+        fields.push(String::from("link=unknown"));
+    }
+
+    fields.push(format!(
+        "msi={}",
+        if cap_offset(d, PCI_CAP_MSI).is_some() { "yes" } else { "no" }
+    ));
+    fields.join(", ")
+}
+
+fn capability_state(d: &PciDev) -> String {
+    let caps = d.caps();
+    let names: alloc::vec::Vec<&str> = caps.iter().map(|(_, id)| match *id {
+        PCI_CAP_PM => "pm",
+        PCI_CAP_MSI => "msi",
+        PCI_CAP_PCIE => "pcie",
+        _ => "other",
+    }).collect();
+    if names.is_empty() {
+        String::from("caps=none")
+    } else {
+        format!("caps={}", names.join("/"))
+    }
 }
 
 pub fn text() -> Option<String> {
@@ -95,13 +164,18 @@ impl Driver for Drv {
 
     fn probe(&self, d: &PciDev) -> Result<()> {
         let r = report(d);
+        let state = pci_state(d);
+        let caps = capability_state(d);
         if !OPTED_IN.load(Ordering::Relaxed) {
-            let msg = format!("{r}; read-only discovery, opt in with {OPTION_WORD}");
+            let msg = format!("{r}; {state}; {caps}; read-only discovery, opt in with {OPTION_WORD}");
             *REPORT.lock() = Some(msg.clone());
             crate::kprintln!("[nvidia-display] {msg}");
             return Ok(());
         }
-        let msg = format!("{r}; probe mode only, no hardware writes");
+        let msg = format!(
+            "{r}; {state}; {caps}; probe mode only, GOP retained; \
+             gsp=not-started kms=not-registered"
+        );
         *REPORT.lock() = Some(msg.clone());
         crate::kprintln!("[nvidia-display] {msg}");
         // Probe mode intentionally exposes no mutable Anzeige implementation.
@@ -159,5 +233,12 @@ mod tests {
             String::from_utf16(&o[..n]).unwrap(),
             "ultar.nvidia_display=on ultar.slot=a"
         );
+    }
+
+    #[test]
+    fn decodes_pcie_link_speed() {
+        assert_eq!(link_speed(1), "2.5GT/s");
+        assert_eq!(link_speed(4), "16GT/s");
+        assert_eq!(link_speed(0xff), "unknown");
     }
 }

@@ -135,6 +135,9 @@ impl PciDev {
     pub fn r8(&self, off: u8) -> u8 {
         read8(self.bus, self.dev, self.func, off)
     }
+    pub fn r16(&self, off: u8) -> u16 {
+        read16(self.bus, self.dev, self.func, off)
+    }
     /// Erweiterter Konfigurationsraum (0x000–0xFFF, PCIe/ECAM); `None` ohne ECAM.
     pub fn r32x(&self, off: u16) -> Option<u32> {
         read32x(self.bus, self.dev, self.func, off)

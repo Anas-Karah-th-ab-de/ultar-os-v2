@@ -1,4 +1,5 @@
 # NVIDIA display discovery (read-only, opt-in probe) for Quadro RTX 4000.
+# Reports BARs, PCIe link/power state and capabilities; GOP remains active.
 id = "nvidia-display"
 version = "0.1.0"
 class = "display"
