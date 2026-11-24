@@ -228,7 +228,7 @@ fn exec(cmd: &str, rt: *mut crate::efi::RuntimeServices) {
             kprintln!("لوحة عربي|ألماني|إنجليزي  تخطيط لوحة المفاتيح (tastatur) – أو Alt+Shift");
             kprintln!("سجل               سجل النواة               (protokoll)");
             kprintln!("مسح               مسح الشاشة               (clear)");
-            kprintln!("تثبيت             تثبيت Ultar OS على قرص   (installieren)");
+            kprintln!(concat!("تثبيت             تثبيت ", ultar_brand::product!(), " على قرص   (installieren)"));
             kprintln!("لغة عربي|ألماني|إنجليزي  لغة النظام     (sprache)");
             kprintln!("إعادة_تشغيل | إيقاف  (neustart | aus)");
         }
@@ -575,7 +575,7 @@ pub fn desktop_starten() -> bool {
 pub fn info() {
     let mut nb = [0u8; 48];
     let (total, heap, used, regions) = mem::stats();
-    kprintln!("Ultar-Kern {} · KM Code Craft · Mohamad Anas Kara Mohamad", env!("CARGO_PKG_VERSION"));
+    kprintln!(concat!("Ultar-Kern {} · ", ultar_brand::vendor!(), " · ", ultar_brand::developer!()), env!("CARGO_PKG_VERSION"));
     kprintln!("Prozessor: {} ({} MHz)", arch::cpu_name(&mut nb), arch::tsc_khz() / 1000);
     kprintln!("Speicher frei: {} MB in {regions} Bereichen, Kern-Heap {} MB ({} KB belegt)", total >> 20, heap >> 20, used >> 10);
     let (on, all) = crate::apic::cpu_count();

@@ -100,6 +100,71 @@ messages! {
         "hardcoded text: \"{0}\" (use an i18n key)",
         "fest eingebauter Text: \"{0}\" (i18n-Schlüssel verwenden)",
     ],
+    BrandLiteral => [
+        "اسم من الهوية مكتوب في الشيفرة: {0} في \"{1}\" (استخدم ultar-brand)",
+        "brand term written in code: {0} in \"{1}\" (use ultar-brand)",
+        "Markenangabe im Code geschrieben: {0} in \"{1}\" (ultar-brand verwenden)",
+    ],
+    BrandSpelling => [
+        "المفتاح `{0}` يكتب «{1}» بدل «{2}»",
+        "key `{0}` spells \"{1}\" instead of \"{2}\"",
+        "Schlüssel `{0}` schreibt „{1}“ statt „{2}“",
+    ],
+    BrandValue => [
+        "المفتاح `{0}` يخالف مصدر الهوية؛ المطلوب: {1}",
+        "key `{0}` differs from the brand source; expected: {1}",
+        "Schlüssel `{0}` weicht von der Markenquelle ab; erwartet: {1}",
+    ],
+    BrandAddress => [
+        "العنوان {0} ليس عنوان التواصل المعلن؛ المطلوب: {1}",
+        "address {0} is not the public contact address; expected: {1}",
+        "Adresse {0} ist nicht die öffentliche Kontaktadresse; erwartet: {1}",
+    ],
+    BrandFactInCatalog => [
+        "المفتاح `{0}` لا يُترجم: مصدره ultar-brand وليس ملف ترجمة",
+        "key `{0}` is not translated: it comes from ultar-brand, not from a catalog",
+        "Schlüssel `{0}` wird nicht übersetzt: er kommt aus ultar-brand, nicht aus einem Katalog",
+    ],
+    BrandKeyOutside => [
+        "مفتاح الهوية `{0}` خارج system/core/ultar-brand/locales",
+        "brand key `{0}` outside system/core/ultar-brand/locales",
+        "Markenschlüssel `{0}` außerhalb von system/core/ultar-brand/locales",
+    ],
+    BrandKeyMissing => [
+        "مفتاح الهوية `{0}` ناقص في `{1}` (موجود في `{2}`)",
+        "brand key `{0}` is missing in `{1}` (present in `{2}`)",
+        "Markenschlüssel `{0}` fehlt in `{1}` (vorhanden in `{2}`)",
+    ],
+    BrandCatalogMissing => [
+        "ملف نصوص الهوية للغة `{0}` غير موجود",
+        "the brand catalog of language `{0}` does not exist",
+        "der Markenkatalog der Sprache `{0}` fehlt",
+    ],
+    BrandNotArabic => [
+        "نص الهوية `{0}` في العربية بلا حروف عربية",
+        "Arabic brand text `{0}` has no Arabic letters",
+        "arabischer Markentext `{0}` enthält keine arabischen Buchstaben",
+    ],
+    BrandOsReleaseMissing => [
+        "ملف os-release غير موجود (المصدر: ultar_brand::release::OS_RELEASE)",
+        "os-release does not exist (source: ultar_brand::release::OS_RELEASE)",
+        "os-release fehlt (Quelle: ultar_brand::release::OS_RELEASE)",
+    ],
+    BrandOsRelease => [
+        "os-release يخالف مصدر الهوية؛ المطلوب هنا: {0}",
+        "os-release differs from the brand source; expected here: {0}",
+        "os-release weicht von der Markenquelle ab; hier erwartet: {0}",
+    ],
+    BrandAuthors => [
+        "حقل authors يخالف مصدر الهوية؛ المطلوب: {0}",
+        "authors differs from the brand source; expected: {0}",
+        "authors weicht von der Markenquelle ab; erwartet: {0}",
+    ],
+    BrandMark => [
+        "علامة النظام في مجموعة الرموز تخالف المصدر؛ المسار المطلوب: {0} (بلا انعكاس)",
+        "the brand mark of the icon set differs from the source; expected path: {0} (never mirrored)",
+        "das Markenzeichen im Symbolsatz weicht von der Quelle ab; erwarteter Pfad: {0} (nie gespiegelt)",
+    ],
     FileTooLong => [
         "الملف طويل جدًا: {0} سطرًا (الحد {1})",
         "file too long: {0} lines (max {1})",
@@ -243,9 +308,9 @@ messages! {
         "ungültiger Wert `{1}` für Option `{0}`",
     ],
     Help => [
-        "الاستخدام: ultar-check [خيارات] <أمر>\n\nالأوامر:\n  all            تشغيل كل القواعد\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget\n  baseline       طباعة خط الأساس للحالة الحالية (TOML)\n\nالخيارات:\n  --root <مجلد>        جذر المستودع (الافتراضي: المجلد الحالي)\n  --format text|json   صيغة الإخراج\n  --baseline <ملف>     ملف خط الأساس (الافتراضي: tools/check-baseline.toml)\n  --no-baseline        تجاهل خط الأساس\n  --target-dir <مجلد>  مجلد البناء لفحص الميزانية (الافتراضي: target)\n  --lang ar|en|de      لغة الإخراج (أو المتغير ULTAR_LANG)\n  --help               هذه المساعدة",
-        "usage: ultar-check [options] <command>\n\ncommands:\n  all            run every rule\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget\n  baseline       print a baseline for the current state (TOML)\n\noptions:\n  --root <dir>         repository root (default: current directory)\n  --format text|json   output format\n  --baseline <file>    baseline file (default: tools/check-baseline.toml)\n  --no-baseline        ignore the baseline\n  --target-dir <dir>   build directory for the budget check (default: target)\n  --lang ar|en|de      output language (or ULTAR_LANG)\n  --help               this help",
-        "Aufruf: ultar-check [Optionen] <Befehl>\n\nBefehle:\n  all            alle Regeln\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget\n  baseline       Baseline des aktuellen Stands ausgeben (TOML)\n\nOptionen:\n  --root <Ordner>      Repository-Wurzel (Standard: aktueller Ordner)\n  --format text|json   Ausgabeformat\n  --baseline <Datei>   Baseline-Datei (Standard: tools/check-baseline.toml)\n  --no-baseline        Baseline ignorieren\n  --target-dir <Ordner> Bauordner für die Budgetprüfung (Standard: target)\n  --lang ar|en|de      Ausgabesprache (oder ULTAR_LANG)\n  --help               diese Hilfe",
+        "الاستخدام: ultar-check [خيارات] <أمر>\n\nالأوامر:\n  all            تشغيل كل القواعد\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget brand\n  baseline       طباعة خط الأساس للحالة الحالية (TOML)\n\nالخيارات:\n  --root <مجلد>        جذر المستودع (الافتراضي: المجلد الحالي)\n  --format text|json   صيغة الإخراج\n  --baseline <ملف>     ملف خط الأساس (الافتراضي: tools/check-baseline.toml)\n  --no-baseline        تجاهل خط الأساس\n  --target-dir <مجلد>  مجلد البناء لفحص الميزانية (الافتراضي: target)\n  --lang ar|en|de      لغة الإخراج (أو المتغير ULTAR_LANG)\n  --help               هذه المساعدة",
+        "usage: ultar-check [options] <command>\n\ncommands:\n  all            run every rule\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget brand\n  baseline       print a baseline for the current state (TOML)\n\noptions:\n  --root <dir>         repository root (default: current directory)\n  --format text|json   output format\n  --baseline <file>    baseline file (default: tools/check-baseline.toml)\n  --no-baseline        ignore the baseline\n  --target-dir <dir>   build directory for the budget check (default: target)\n  --lang ar|en|de      output language (or ULTAR_LANG)\n  --help               this help",
+        "Aufruf: ultar-check [Optionen] <Befehl>\n\nBefehle:\n  all            alle Regeln\n  layers paths edition text size unsafe unwrap logical-layout linux-calls budget brand\n  baseline       Baseline des aktuellen Stands ausgeben (TOML)\n\nOptionen:\n  --root <Ordner>      Repository-Wurzel (Standard: aktueller Ordner)\n  --format text|json   Ausgabeformat\n  --baseline <Datei>   Baseline-Datei (Standard: tools/check-baseline.toml)\n  --no-baseline        Baseline ignorieren\n  --target-dir <Ordner> Bauordner für die Budgetprüfung (Standard: target)\n  --lang ar|en|de      Ausgabesprache (oder ULTAR_LANG)\n  --help               diese Hilfe",
     ],
 }
 

@@ -54,6 +54,17 @@ pub fn speichern() {
     crate::fs::fat_overwrite_alle("ultar/sprache", alloc::format!("{}\n", code()).as_bytes());
 }
 
+/// A text of the brand source (`ultar-brand`, `brand.*`) in the system language.
+pub fn marke(key: &str) -> &'static str {
+    use ultar_brand::text::Lang;
+    let lang = match get() {
+        AR => Lang::Ar,
+        EN => Lang::En,
+        _ => Lang::De,
+    };
+    ultar_brand::text::lookup(lang, key).unwrap_or("")
+}
+
 /// Meldungen des Kerns
 pub fn t(k: &str) -> &'static str {
     match (k, get()) {
@@ -63,9 +74,8 @@ pub fn t(k: &str) -> &'static str {
         ("bei", AR) => "عند",
         ("bei", EN) => "at",
         ("bei", _) => "bei",
-        ("haelt", AR) => "*** توقفت نواة Ultar. أرسل صورة الشاشة إلى KM Code Craft.",
-        ("haelt", EN) => "*** The Ultar kernel has stopped. Please send a screenshot/log to KM Code Craft.",
-        ("haelt", _) => "*** Der Ultar-Kern hält an. Bitte Bildschirmfoto/Protokoll an KM Code Craft.",
+        // one text for every stop of the kernel, with the contact address (ultar-brand)
+        ("haelt", _) => marke("brand.crash.kernel"),
         ("panik", AR) => "*** عطل في النواة",
         ("panik", EN) => "*** KERNEL PANIC",
         ("panik", _) => "*** KERN-PANIK",

@@ -53,7 +53,8 @@ else
     # nur Ultar: kein Ubuntu – Oberfläche, Busybox für das Terminal, Grundgerüst
     echo "Ultar-Bereich ohne Ubuntu"
     SRC=$W/eigen; mkdir -p "$SRC"/{bin,usr/bin,etc/ultar,data/ultar,root,tmp,home}
-    printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS (Ultar-Kern)"\nID=ultar\nHOME_URL="https://code-craft.tech"\n' > "$SRC/etc/os-release"
+    # brand part: one source (docs/BRAND.md)
+    { cat rootfs/etc/os-release; printf 'PRETTY_NAME="%s (Ultar-Kern)"\n' "$(. rootfs/etc/os-release; echo "$NAME")"; } > "$SRC/etc/os-release"
     if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
       cp /bin/busybox "$SRC/bin/busybox"; /bin/busybox --list > "$SRC/bin/.applets"
     fi

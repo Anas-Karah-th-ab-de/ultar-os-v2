@@ -62,7 +62,7 @@ mcopy -i "$ESP" "$W/ultar.conf" "$W/ultar-safe.conf" "$W/ultar-rescue.conf" ::/l
 # Startbild mit Logo und Arabisch (systemd-stub zeigt .splash): ein UKI je Ausgabe, wenn ukify da ist
 if command -v ukify >/dev/null && [ -f "$OUT/initramfs-$EDITION/boot/splash-ar.bmp" ]; then
   ukify build --linux "$VMLINUZ" --initrd "$INITRD" --cmdline "$COMMON" --splash "$OUT/initramfs-$EDITION/boot/splash-ar.bmp" \
-    --os-release "NAME=\"Ultar OS\" ID=ultar" --output "$W/ultar.efi" >/dev/null 2>&1 && {
+    --os-release @rootfs/etc/os-release --output "$W/ultar.efi" >/dev/null 2>&1 && {
       mmd -i "$ESP" ::/EFI/Linux; mcopy -i "$ESP" "$W/ultar.efi" ::/EFI/Linux/ultar-$EDITION.efi
       printf 'timeout 2\ndefault ultar-%s.efi\nconsole-mode max\neditor no\n' "$EDITION" > "$W/loader.conf"; mcopy -o -i "$ESP" "$W/loader.conf" ::/loader/loader.conf
       echo "UKI mit Startbild (Arabisch) angelegt"; } || echo "Hinweis: ukify fehlgeschlagen – Bootmenü ohne Startbild"

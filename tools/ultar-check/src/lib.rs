@@ -19,6 +19,7 @@
 //! | `logical-layout` | no `left`/`right` identifiers in platform and apps |
 //! | `linux-calls` | calls of external programs (reduction list) |
 //! | `budget` | size budgets of built binaries |
+//! | `brand` | product and company identity only from `system/core/ultar-brand` (docs/BRAND.md) |
 //!
 //! Legacy violations are listed with a count in `tools/check-baseline.toml`;
 //! a rule + path group passes while its count does not grow (ratchet).

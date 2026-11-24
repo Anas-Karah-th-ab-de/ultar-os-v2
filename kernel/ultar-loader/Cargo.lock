@@ -3,9 +3,14 @@
 version = 4
 
 [[package]]
+name = "ultar-brand"
+version = "0.7.0"
+
+[[package]]
 name = "ultar-loader"
 version = "0.7.0"
 dependencies = [
+ "ultar-brand",
  "ultar-slots",
 ]
 

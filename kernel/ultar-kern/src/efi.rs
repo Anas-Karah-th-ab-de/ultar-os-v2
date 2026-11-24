@@ -369,7 +369,7 @@ pub unsafe fn kettenstart(image: Handle, st: *mut SystemTable) {
     if ziel.is_null() {
         return;
     }
-    print(st, "\nUltar OS ist bereits installiert – Start in 3 s.   Taste I: Installation\nUltar OS installed - starting in 3 s.   Key I: installer\nUltar OS مثبت – يبدأ خلال 3 ثوانٍ. اضغط I للتثبيت\n");
+    print(st, concat!("\n", ultar_brand::product!(), " ist bereits installiert – Start in 3 s.   Taste I: Installation\n", ultar_brand::product!(), " installed - starting in 3 s.   Key I: installer\n", ultar_brand::product!(), " مثبت – يبدأ خلال 3 ثوانٍ. اضغط I للتثبيت\n"));
     let stall: extern "efiapi" fn(usize) -> Status = core::mem::transmute(bs(st, BS_STALL));
     let cin = (*st).con_in as *mut SimpleTextIn;
     for _ in 0..30 {

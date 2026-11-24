@@ -23,7 +23,7 @@ cat > "$P/DEBIAN/control" <<C
 Package: kmpos-server
 Version: $VER
 Architecture: $ARCH
-Maintainer: KM Code Craft <ak@code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Depends: libc6
 Section: misc
 Priority: optional

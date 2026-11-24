@@ -38,7 +38,7 @@ cat > "$P/DEBIAN/control" <<CTL
 Package: ultar-llm
 Version: $VER
 Architecture: $DEB
-Maintainer: KM Code Craft <https://code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Section: utils
 Priority: optional
 Description: Ultar LLM – lokales Sprachmodell als Dienst (llama.cpp, OpenAI-kompatibel)

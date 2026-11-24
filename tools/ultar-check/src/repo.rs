@@ -18,7 +18,16 @@ pub struct Tree {
     pub rust_files: Vec<String>,
     /// Cargo manifests, repository-relative with `/` separators, sorted.
     pub manifests: Vec<String>,
+    /// Translation catalogs (`*.ftl`), repository-relative with `/` separators, sorted.
+    pub catalogs: Vec<String>,
+    /// Scripts, configuration and documents ([`TEXT_EXTENSIONS`]), sorted.
+    pub texts: Vec<String>,
 }
+
+/// Extensions of the text files listed in [`Tree::texts`].
+pub const TEXT_EXTENSIONS: [&str; 10] = [
+    "sh", "py", "md", "toml", "html", "js", "wxs", "cs", "conf", "service",
+];
 
 /// Walks the repository below `root`, skipping build output and hidden directories.
 pub fn walk(root: &Path) -> Result<Tree, CheckError> {
@@ -26,6 +35,8 @@ pub fn walk(root: &Path) -> Result<Tree, CheckError> {
     walk_dir(root, "", &mut tree)?;
     tree.rust_files.sort();
     tree.manifests.sort();
+    tree.catalogs.sort();
+    tree.texts.sort();
     Ok(tree)
 }
 
@@ -51,6 +62,13 @@ fn walk_dir(dir: &Path, relative: &str, tree: &mut Tree) -> Result<(), CheckErro
                 tree.manifests.push(child);
             } else if name.ends_with(".rs") {
                 tree.rust_files.push(child);
+            } else if name.ends_with(".ftl") {
+                tree.catalogs.push(child);
+            } else if name
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| TEXT_EXTENSIONS.contains(&ext))
+            {
+                tree.texts.push(child);
             }
         }
     }

@@ -122,9 +122,23 @@ fn tls_config(roots: &Roots) -> TlsConfig {
         .build()
 }
 
+/// Name of this program in the `User-Agent`.
+const AGENT_NAME: &str = "ultar-update";
+
+/// The `User-Agent` of every request: this program, its version and the product identity
+/// from `ultar-brand`. Nothing about the device or the user is part of it.
+pub fn user_agent() -> String {
+    match ultar_brand::release::user_agent(AGENT_NAME, env!("CARGO_PKG_VERSION")) {
+        Ok(line) => line.as_str().to_string(),
+        // The package version is fixed at build time; a refusal leaves the bare name.
+        Err(_) => AGENT_NAME.to_string(),
+    }
+}
+
 fn agent(https: bool, roots: &Roots, timeouts: &Timeouts) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .tls_config(tls_config(roots))
+        .user_agent(user_agent())
         // The source follows at most one redirect, by hand (token scope, https check).
         .max_redirects(0)
         // Statuses are mapped to typed errors here, not inside the client.
@@ -354,6 +368,20 @@ impl UpdateSource for HttpSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_agent_names_program_version_and_the_brand_source() {
+        let agent = user_agent();
+        let expected = format!(
+            "ultar-update/{} ({}; {}; +{})",
+            env!("CARGO_PKG_VERSION"),
+            ultar_brand::PRODUCT,
+            ultar_brand::VENDOR,
+            ultar_brand::WEBSITE
+        );
+        assert_eq!(agent, expected);
+        assert!(agent.is_ascii() && !agent.contains(['\r', '\n']));
+    }
 
     #[test]
     fn base_url_rules() {

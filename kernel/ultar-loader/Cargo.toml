@@ -30,3 +30,5 @@ debug = false
 
 [dependencies]
 ultar-slots = { path = "../../system/core/ultar-slots" }
+# product and company identity: names, brand texts (one no_std source for every program)
+ultar-brand = { path = "../../system/core/ultar-brand" }

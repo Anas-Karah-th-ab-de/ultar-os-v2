@@ -18,9 +18,9 @@ fn lang() -> Lang {
 fn s(k: &str) -> &'static str {
     use crate::sprache::{AR, EN};
     match (k, crate::sprache::get()) {
-        ("starte", AR) => "جارٍ تشغيل Ultar OS",
-        ("starte", EN) => "Starting Ultar OS",
-        ("starte", _) => "Ultar OS startet",
+        ("starte", AR) => concat!("جارٍ تشغيل ", ultar_brand::product!()),
+        ("starte", EN) => concat!("Starting ", ultar_brand::product!()),
+        ("starte", _) => concat!(ultar_brand::product!(), " startet"),
         ("p_kern", AR) => "تهيئة النواة",
         ("p_kern", EN) => "Preparing the kernel",
         ("p_kern", _) => "Kern wird vorbereitet",
@@ -36,9 +36,7 @@ fn s(k: &str) -> &'static str {
         ("p_fertig", AR) => "جاهز",
         ("p_fertig", EN) => "Ready",
         ("p_fertig", _) => "Bereit",
-        ("unter", AR) => "نظام KM Code Craft · نواة Rust خاصة",
-        ("unter", EN) => "KM Code Craft · own Rust kernel",
-        ("unter", _) => "KM Code Craft · eigener Rust-Kern",
+        ("unter", _) => crate::sprache::marke("brand.boot.subline"),
         ("terminal", AR) => "الطرفية",
         ("terminal", _) => "Terminal",
         ("geraete", AR) => "الأجهزة",
@@ -104,7 +102,7 @@ fn kopf(cv: &mut Canvas) {
     let w = cv.w as i32;
     cv.rect(0, 0, w, 60, BAR);
     cv.rect(0, 58, w, 2, GOLD);
-    let (marke, unter) = ("ULTAR OS", "KM Code Craft");
+    let (marke, unter) = (ultar_brand::product_caps!(), ultar_brand::vendor!());
     if cv.rtl {
         let mw = Canvas::text_w(marke, 2);
         cv.text(w - 30 - mw, 14, marke, 2, GOLD2);
@@ -126,7 +124,7 @@ pub fn startbild(prozent: u32, schritt: &str) {
     let Some((fb, mut cv)) = leinwand() else { return };
     let (w, h) = (cv.w as i32, cv.h as i32);
     let my = h / 2 - 90;
-    cv.text_c(w / 2, my, "ULTAR OS", 6, GOLD2);
+    cv.text_c(w / 2, my, ultar_brand::product_caps!(), 6, GOLD2);
     cv.text_c(w / 2, my + 96, s("unter"), 1, MUTED);
     let bw = 360.min(w - 80);
     let bx = (w - bw) / 2;
@@ -480,6 +478,6 @@ pub fn run() {
     }
     crate::console::grafik(false);
     crate::kprint!("\x1b[2J\x1b[H");
-    crate::kprintln!("Ultar OS · {}", s("unter"));
+    crate::kprintln!(concat!(ultar_brand::product!(), " · {}"), s("unter"));
     crate::kprintln!("{}", s("term_hinweis"));
 }

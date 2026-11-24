@@ -1,5 +1,6 @@
 //! The individual checks and their registry.
 
+pub mod brand;
 pub mod budget;
 pub mod edition;
 pub mod layers;
@@ -39,11 +40,13 @@ pub enum Rule {
     LinuxCalls,
     /// Size budgets of built binaries.
     Budget,
+    /// Product and company identity only from the brand source.
+    Brand,
 }
 
 impl Rule {
     /// Every rule in the order `all` runs them.
-    pub const ALL: [Rule; 10] = [
+    pub const ALL: [Rule; 11] = [
         Rule::Layers,
         Rule::Paths,
         Rule::Edition,
@@ -54,6 +57,7 @@ impl Rule {
         Rule::LogicalLayout,
         Rule::LinuxCalls,
         Rule::Budget,
+        Rule::Brand,
     ];
 
     /// Name used on the command line, in output and in the baseline.
@@ -69,6 +73,7 @@ impl Rule {
             Rule::LogicalLayout => "logical-layout",
             Rule::LinuxCalls => "linux-calls",
             Rule::Budget => "budget",
+            Rule::Brand => "brand",
         }
     }
 
@@ -88,6 +93,7 @@ impl Rule {
         let findings = match self {
             Rule::Layers => layers::check(context.root)?,
             Rule::Budget => return budget::check(context.root, context.target_dir),
+            Rule::Brand => brand::check(context)?,
             Rule::Paths => paths::check(files),
             Rule::Edition => edition::check(files),
             Rule::Text => text::check(files),

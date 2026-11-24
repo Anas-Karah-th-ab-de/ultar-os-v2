@@ -1,0 +1,17 @@
+[package]
+name = "ultar-brand"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The one source of the product and company identity of Ultar OS: names, website, contact, brand mark, logo rules, brand texts (Arabic first) and the os-release / user-agent forms – no_std, for the loader, the kernel and every program (system core, area 3)"
+
+[lib]
+name = "ultar_brand"
+path = "src/lib.rs"
+
+[features]
+# Embeds the company logo bitmaps of assets/brand (about 0.9 MB): boot splash, login, About.
+bitmaps = []
+
+[dependencies]

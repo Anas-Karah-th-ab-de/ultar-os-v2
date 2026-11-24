@@ -22,6 +22,8 @@ ab_glyph = { version = "0.2", default-features = false, features = ["libm"] }
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex", "once"] }
 # A/B boot contract shared with the loader and the updater (slot names, load options, GPT reader)
 ultar-slots = { path = "../../system/core/ultar-slots" }
+# product and company identity: names, brand texts (one no_std source for every program)
+ultar-brand = { path = "../../system/core/ultar-brand" }
 
 [features]
 # Remote hardware test without anyone at the machine: a deadline restarts the computer if the

@@ -30,7 +30,7 @@ cat > "$P/DEBIAN/control" <<EOF
 Package: ultar-wm
 Version: $VER
 Architecture: $ARCH
-Maintainer: KM Code Craft <https://code-craft.tech>
+Maintainer: KM Code Craft <info@code-craft.tech>
 Depends: libinput10, libseat1, libgbm1, libegl1, libgles2, libxkbcommon0, libudev1, libwayland-server0, libdrm2, libpixman-1-0, libgl1-mesa-dri, xwayland, dbus
 Recommends: foot, fonts-noto-core
 Section: x11

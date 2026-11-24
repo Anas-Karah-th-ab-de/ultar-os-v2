@@ -48,6 +48,12 @@ fn full_update_over_http() {
 
     let seen = server.seen();
     assert_eq!(seen.len(), 3);
+    // every request names the program and the product identity, nothing about the device
+    let agent = ultar_update::net::user_agent();
+    assert!(agent.starts_with("ultar-update/") && agent.contains(ultar_brand::VENDOR));
+    for request in &seen {
+        assert_eq!(request.user_agent.as_deref(), Some(agent.as_str()));
+    }
     assert_eq!(
         seen[0].target,
         "/v1/update/latest?channel=stable&arch=x86_64&edition=desktop"

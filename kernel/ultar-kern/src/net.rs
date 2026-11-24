@@ -205,7 +205,7 @@ pub fn ping(n: usize, dst: [u8; 4]) -> Option<u64> {
     let hop = if same_net(cfg, dst) { dst } else { cfg.gw };
     let hmac = arp_resolve(n, mac, cfg.ip, hop)?;
     let mut icmp = vec![8, 0, 0, 0, 0x55, 0x4c, 0, 1];
-    icmp.extend_from_slice(b"Ultar-Kern KM Code Craft");
+    icmp.extend_from_slice(concat!("Ultar-Kern ", ultar_brand::vendor!()).as_bytes());
     let c = csum(&icmp);
     icmp[2] = (c >> 8) as u8;
     icmp[3] = c as u8;

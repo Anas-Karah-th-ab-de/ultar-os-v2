@@ -5254,6 +5254,10 @@ name = "ultar-audio"
 version = "0.1.0"
 
 [[package]]
+name = "ultar-brand"
+version = "0.7.0"
+
+[[package]]
 name = "ultar-bt"
 version = "0.6.0"
 dependencies = [
@@ -5298,6 +5302,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+ "ultar-brand",
 ]
 
 [[package]]
@@ -5413,6 +5418,9 @@ dependencies = [
 [[package]]
 name = "ultar-i18n"
 version = "0.7.0"
+dependencies = [
+ "ultar-brand",
+]
 
 [[package]]
 name = "ultar-ime"
@@ -5425,6 +5433,7 @@ dependencies = [
  "nix 0.29.0",
  "serde",
  "toml",
+ "ultar-brand",
  "ultar-bus",
  "ultar-hal-system",
  "ultar-profile",
@@ -5655,6 +5664,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "ultar-brand",
  "ultar-bus",
  "ultar-i18n",
  "ultar-service",

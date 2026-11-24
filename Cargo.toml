@@ -2,6 +2,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "system/core/ultar-brand",
     "system/core/ultar-i18n",
     "system/core/ultar-update",
     "system/core/ultar-slots",

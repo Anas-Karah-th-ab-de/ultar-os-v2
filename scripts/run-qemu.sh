@@ -16,7 +16,9 @@ if [ "${SELFTEST:-0}" = 1 ]; then
   APPEND="$APPEND ultar.start=heartbeat,selftest"
   GFX=(-nographic)
 fi
-exec qemu-system-x86_64 -accel $ACCEL -m ${MEM:-512} -smp 2 -no-reboot \
+# Name der Maschine (Fenstertitel, Prozessname): aus der einen Quelle der Marke (docs/BRAND.md)
+VMNAME=$(. rootfs/etc/os-release; echo "$NAME")
+exec qemu-system-x86_64 -name "$VMNAME" -accel $ACCEL -m ${MEM:-512} -smp 2 -no-reboot \
   -kernel "$KERNEL" -initrd out/ultar-initramfs-x86_64.cpio.zst \
   -drive file=out/compat-amd64.ext4,if=virtio,format=raw \
   -drive file=out/data.ext4,if=virtio,format=raw \

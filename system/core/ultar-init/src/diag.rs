@@ -45,8 +45,14 @@ fn setup_configfs() -> bool {
     }
     w(&format!("{g}/idVendor"), VID);
     w(&format!("{g}/idProduct"), PID);
-    w(&format!("{g}/strings/0x409/manufacturer"), "KM Code Craft");
-    w(&format!("{g}/strings/0x409/product"), "Ultar OS");
+    w(
+        &format!("{g}/strings/0x409/manufacturer"),
+        ultar_brand::release::USB_MANUFACTURER,
+    );
+    w(
+        &format!("{g}/strings/0x409/product"),
+        ultar_brand::release::USB_PRODUCT,
+    );
     w(&format!("{g}/strings/0x409/serialnumber"), "ultar-diag");
     let _ = fs::create_dir_all(format!("{g}/configs/c.1/strings/0x409"));
     w(
@@ -90,8 +96,11 @@ fn setup_android_usb() -> bool {
     w(&format!("{a}/enable"), "0");
     w(&format!("{a}/idVendor"), &VID[2..]);
     w(&format!("{a}/idProduct"), &PID[2..]);
-    w(&format!("{a}/iManufacturer"), "KM Code Craft");
-    w(&format!("{a}/iProduct"), "Ultar OS");
+    w(
+        &format!("{a}/iManufacturer"),
+        ultar_brand::release::USB_MANUFACTURER,
+    );
+    w(&format!("{a}/iProduct"), ultar_brand::release::USB_PRODUCT);
     w(&format!("{a}/f_acm/instances"), "1");
     w(&format!("{a}/functions"), "acm");
     w(&format!("{a}/enable"), "1")

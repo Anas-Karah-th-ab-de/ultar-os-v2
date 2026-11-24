@@ -601,12 +601,12 @@ count = 123
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/sprache.rs"
-count = 13
+count = 11
 
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/startseite.rs"
-count = 28
+count = 27
 
 [[entry]]
 rule = "text"
@@ -2823,3 +2823,107 @@ rule = "linux-calls"
 path = "system/services/ultar-zellen/src/zelle.rs"
 count = 3
 
+[[entry]]
+rule = "brand"
+path = "apps/ultar-office/src/docx.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "apps/ultar-web/src/browser.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "external/ultar-telegram/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/agent.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app.rs"
+count = 8
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_buddy.rs"
+count = 3
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_cloud.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_demo.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_desktop.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_radio.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/app_sys.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/brand.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/help.rs"
+count = 7
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/i18n.rs"
+count = 6
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-shell/src/tools.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-wm/src/main.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "platform/ultar-wm/src/ultar/mod.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "server/cloud-e2e/src/lib.rs"
+count = 2
+
+[[entry]]
+rule = "brand"
+path = "system/core/ultar-apps/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "system/services/ultar-llm/src/models.rs"
+count = 1
+
+[[entry]]
+rule = "brand"
+path = "system/services/ultar-sshd/src/main.rs"
+count = 2

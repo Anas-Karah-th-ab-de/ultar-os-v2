@@ -35,6 +35,7 @@ pub struct Seen {
     pub target: String,
     pub range: Option<String>,
     pub authorization: Option<String>,
+    pub user_agent: Option<String>,
 }
 
 pub struct TestServer {
@@ -133,6 +134,7 @@ fn read_request(stream: &TcpStream) -> Option<Seen> {
         target,
         range: None,
         authorization: None,
+        user_agent: None,
     };
     loop {
         line.clear();
@@ -143,6 +145,7 @@ fn read_request(stream: &TcpStream) -> Option<Seen> {
             match name.to_ascii_lowercase().as_str() {
                 "range" => seen.range = Some(value.to_string()),
                 "authorization" => seen.authorization = Some(value.to_string()),
+                "user-agent" => seen.user_agent = Some(value.to_string()),
                 _ => {}
             }
         }
