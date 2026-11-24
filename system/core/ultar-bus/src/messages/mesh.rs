@@ -53,6 +53,12 @@ pub enum Capability {
     Clipboard,
     /// It lends computing power.
     Compute,
+    /// It has a language model small enough for short answers and simple commands.
+    ModelSmall,
+    /// Its language model manages several steps in a row.
+    ModelMedium,
+    /// Its language model manages long tasks.
+    ModelLarge,
 }
 
 /// One thing a paired device is allowed to do on this device.
@@ -72,6 +78,8 @@ pub enum Right {
     Audio,
     /// Run computing jobs here.
     Compute,
+    /// Let this device's language model think for it.
+    Model,
 }
 
 /// One device of the mesh as this device sees it.

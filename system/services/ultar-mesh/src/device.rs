@@ -78,7 +78,7 @@ pub fn kind_from(word: &str) -> DeviceKind {
     }
 }
 
-const CAPABILITIES: [(Capability, &str); 8] = [
+const CAPABILITIES: [(Capability, &str); 11] = [
     (Capability::Screen, "screen"),
     (Capability::Input, "input"),
     (Capability::AudioOut, "audio-out"),
@@ -87,6 +87,9 @@ const CAPABILITIES: [(Capability, &str); 8] = [
     (Capability::Apps, "apps"),
     (Capability::Clipboard, "clipboard"),
     (Capability::Compute, "compute"),
+    (Capability::ModelSmall, "model-small"),
+    (Capability::ModelMedium, "model-medium"),
+    (Capability::ModelLarge, "model-large"),
 ];
 
 /// The word of a capability on the wire.

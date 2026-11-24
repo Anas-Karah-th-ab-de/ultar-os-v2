@@ -146,6 +146,26 @@ pub enum Frame {
         /// The job.
         id: String,
     },
+    /// Let your language model answer this (lending the model).
+    Think {
+        /// Id chosen by the asking device.
+        id: u64,
+        /// What the model is and may do.
+        system: String,
+        /// What it is asked.
+        prompt: String,
+        /// Longest answer in tokens.
+        max_tokens: u32,
+    },
+    /// The answer to a [`Frame::Think`].
+    Thought {
+        /// The request.
+        id: u64,
+        /// The model answered.
+        ok: bool,
+        /// Its answer.
+        text: String,
+    },
     /// Anything this version does not know.
     #[serde(other)]
     Unknown,

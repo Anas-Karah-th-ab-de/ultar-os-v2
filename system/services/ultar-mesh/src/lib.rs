@@ -15,6 +15,8 @@
 pub mod compute;
 pub mod device;
 pub mod handoff;
+mod lending;
+pub mod model;
 pub mod net;
 pub mod node;
 pub mod offers;

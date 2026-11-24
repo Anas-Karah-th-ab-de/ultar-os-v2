@@ -19,7 +19,13 @@ const POLICY: &str = r#"
 identity = "system.mesh"
 register = ["mesh"]
 publish = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call = ["launcher.list", "launcher.start", "sysdialog.handoff"]
+call = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete"]
+subscribe = ["llm.state"]
+
+[[rule]]
+identity = "system.llm"
+register = ["llm"]
+publish = ["llm.state"]
 
 [[rule]]
 identity = "system.sysdialog"
@@ -96,6 +102,7 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
         "system.mesh",
         "system.launcher",
         "system.sysdialog",
+        "system.llm",
         "system.shell",
         "app.editor",
         "app.browser",
@@ -295,4 +302,62 @@ fn a_no_in_the_system_dialog_keeps_everything_out() {
         0,
         "nothing was stored"
     );
+}
+
+/// The model of a device: announces itself and answers with the prompt turned around.
+fn model(d: &Device) -> Client {
+    use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
+    d.world.serve("system.llm", "llm", |request| {
+        if let Ok(ask) = request.decode::<Complete>() {
+            let text = ask.prompt.chars().rev().collect();
+            let _ = request.reply(&Completion { ok: true, text });
+        }
+    });
+    let llm = d.world.client("system.llm");
+    let state = LlmState {
+        ready: true,
+        model: "test".into(),
+        class: ModelClass::Medium,
+    };
+    llm.publish(&state).unwrap();
+    llm
+}
+
+#[test]
+fn a_device_without_a_model_lets_a_paired_device_think_once_it_may() {
+    use ultar_bus::messages::mesh::{Right, SetRights};
+    use ultar_bus::messages::mesh_model::{Models, Think};
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshm-b", "Desk", port_b, None);
+    let a = device("meshm-a", "Phone", port_a, Some(port_b));
+    let _llm = model(&b);
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    // The phone sees that the desk has a model…
+    let mut lenders = Vec::new();
+    assert!(wait_until(WAIT, || {
+        lenders = call(&a.shell, &Models).unwrap().lenders;
+        !lenders.is_empty()
+    }));
+    assert_eq!(lenders[0].name, "Desk");
+    let think = Think {
+        device: None,
+        system: "rules".into(),
+        prompt: "abc".into(),
+        max_tokens: 16,
+    };
+    // …but may not use it before the desk allows it.
+    assert!(!call(&a.shell, &think).unwrap().ok);
+    let state_b = b.shell.subscribe::<MeshState>().unwrap();
+    let phone = state_b.recv_timeout(WAIT).unwrap().peers[0].id.clone();
+    let rights = vec![Right::Handoff, Right::Files, Right::Clipboard, Right::Model];
+    let grant = SetRights {
+        device: phone,
+        rights,
+    };
+    assert_eq!(call(&b.shell, &grant).unwrap(), Done { ok: true });
+    let thought = call(&a.shell, &think).unwrap();
+    assert!(thought.ok);
+    assert_eq!((thought.text.as_str(), thought.by), ("cba", peer));
 }

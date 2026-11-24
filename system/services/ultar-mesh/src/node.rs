@@ -71,6 +71,30 @@ pub enum Effect {
     },
     /// A job this device asked for made progress or ended.
     Job(String, Frame),
+    /// Let the local model answer for `peer`; report with [`Node::thought`].
+    Think {
+        /// Who asked.
+        peer: String,
+        /// The request.
+        id: u64,
+        /// What the model is and may do.
+        system: String,
+        /// What it is asked.
+        prompt: String,
+        /// Longest answer in tokens.
+        max_tokens: u32,
+    },
+    /// A paired device answered a request of [`Node::think`].
+    Thought {
+        /// The request.
+        id: u64,
+        /// The device.
+        peer: String,
+        /// Its model answered.
+        ok: bool,
+        /// The answer.
+        text: String,
+    },
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -95,6 +119,7 @@ pub struct Node {
     pub(crate) offers: Offers,
     clip_seq: u64,
     clip_remote: Option<String>,
+    pub(crate) thinking: u64,
 }
 
 impl Node {
@@ -112,6 +137,7 @@ impl Node {
             offers: Offers::default(),
             clip_seq: 0,
             clip_remote: None,
+            thinking: 0,
         }
     }
 
@@ -155,7 +181,7 @@ impl Node {
         self.paired(peer) && self.trust.allows(peer, right)
     }
 
-    fn hello(&self) -> Frame {
+    pub(crate) fn hello(&self) -> Frame {
         Frame::Hello {
             version: VERSION,
             name: device::clean_name(&self.config.name),
@@ -346,6 +372,7 @@ impl Node {
             Frame::JobAlive { .. } | Frame::JobDone { .. } | Frame::JobRefused { .. } => {
                 vec![Effect::Job(peer.to_owned(), frame)]
             }
+            Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
             other => self.on_offer_frame(peer, other, now),
         }
     }

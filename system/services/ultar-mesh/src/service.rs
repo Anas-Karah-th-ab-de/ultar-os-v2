@@ -6,18 +6,20 @@ use crate::node::{Config, Effect, Node};
 use crate::runtime::Runtime;
 use crate::secure::Keys;
 use crate::trust::Trust;
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::launcher::{List, Role, Start};
+use ultar_bus::messages::llm::LlmState;
 use ultar_bus::messages::mesh::{
     AskHandoff, ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets,
     MeshState, PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList,
     Unpair, SERVICE,
 };
 use ultar_bus::messages::sysdialog;
-use ultar_bus::{Call, ErrorCode, IncomingRequest};
+use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Service};
 
@@ -44,7 +46,8 @@ pub struct Listen {
 
 /// The mesh service.
 pub struct MeshService {
-    runtime: Runtime,
+    pub(crate) runtime: Runtime,
+    pub(crate) waiting: BTreeMap<u64, (IncomingRequest, Instant)>,
     inbox: Option<mpsc::Receiver<NetEvent>>,
     events: mpsc::Sender<NetEvent>,
     keys: Keys,
@@ -89,6 +92,7 @@ impl MeshService {
         runtime.set_jobs(listen.jobs.clone());
         Some(Self {
             runtime,
+            waiting: BTreeMap::new(),
             inbox: Some(inbox),
             events,
             keys,
@@ -204,7 +208,7 @@ impl MeshService {
                 Effect::Clipboard(text) => bus.publish(&text),
                 Effect::Open { offer, app, uri } => self.open(offer, app, uri, bus),
                 Effect::Changed => changed = true,
-                _ => {}
+                other => self.model_effect(other, bus),
             }
         }
         if changed {
@@ -220,7 +224,7 @@ impl MeshService {
         }
     }
 
-    fn act(&mut self, effects: Vec<Effect>, bus: &Bus<'_, Self>) {
+    pub(crate) fn act(&mut self, effects: Vec<Effect>, bus: &Bus<'_, Self>) {
         let left = self.runtime.apply(effects);
         self.host(left, bus);
     }
@@ -302,8 +306,18 @@ impl Service for MeshService {
         SERVICE
     }
 
+    fn subscriptions(&self) -> Vec<&'static str> {
+        vec![LlmState::TOPIC]
+    }
+
     fn tick_every(&self) -> Option<Duration> {
         Some(TICK)
+    }
+
+    fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        if let Ok(state) = event.decode::<LlmState>() {
+            self.model_changed(&state, bus);
+        }
     }
 
     fn start(&mut self, bus: &Bus<'_, Self>) {
@@ -334,6 +348,9 @@ impl Service for MeshService {
     }
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
+        let Some(request) = self.lending(request, bus) else {
+            return;
+        };
         let method = request.method().to_owned();
         if method == SetEnabled::METHOD {
             serve::<SetEnabled>(request, |c, _| Done {
@@ -351,7 +368,9 @@ impl Service for MeshService {
     }
 
     fn tick(&mut self, bus: &Bus<'_, Self>) {
-        let left = self.runtime.tick(Instant::now());
+        let now = Instant::now();
+        self.expire_thinking(now);
+        let left = self.runtime.tick(now);
         self.host(left, bus);
     }
 }
