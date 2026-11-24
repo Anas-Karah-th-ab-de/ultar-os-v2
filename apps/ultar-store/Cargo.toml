@@ -1,0 +1,44 @@
+[package]
+name = "ultar-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar Store: discover, search, install, update and remove components from a local signed catalogue (offline first, USB stick updates)."
+
+[lib]
+name = "ultar_store"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-store"
+path = "src/main.rs"
+# The window loop needs the compositor client and the bus (Linux-only). The
+# library and every test build and run everywhere; the binary is only built
+# when the `gui` feature is on (the image build turns it on).
+required-features = ["gui"]
+
+[features]
+default = []
+# Talks to the launcher over `ultar-bus` (Linux: `ultar-sys`).
+bus = ["dep:ultar-bus"]
+# The full windowed app: compositor surface + bus operations.
+gui = ["bus", "dep:ultar-surface"]
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+ultar-bus = { path = "../../system/core/ultar-bus", optional = true }
+ultar-surface = { path = "../../platform/ultar-surface", optional = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+ed25519-dalek = "2"
+base64 = "0.22"
+hex = "0.4"
+
+[dev-dependencies]
+# Headless render + snapshots for the screen tests.
+ultar-ui = { path = "../../platform/ultar-ui", features = ["snapshot"] }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }

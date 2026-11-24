@@ -123,6 +123,15 @@ identity  = "app.phone"
 call      = ["call.*"]
 subscribe = ["call.state"]
 
+# The Ultar Store is the installer UI (DESKTOP-SPEC §7.3): it asks the
+# launcher to list, start, install and uninstall. The launcher
+# still verifies every package signature itself (`launcher.admin` marks the
+# installer identity); the store never touches packages or cells directly.
+[[rule]]
+identity = "app.store"
+call     = ["launcher.list", "launcher.start", "launcher.install", "launcher.uninstall",
+            "launcher.admin"]
+
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.
 # `settings.*` includes settings.admin, `devices.*` includes devices.admin,

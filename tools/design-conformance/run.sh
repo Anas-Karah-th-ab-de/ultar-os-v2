@@ -56,6 +56,10 @@ ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-installer-ui --test design
 # Files app against its boards.
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-files --test design_conformance --test clicks
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-web --test design_conformance --test clicks
+# The Ultar Store app: screens per board (Store, SurfaceStates, CompactStore,
+# CompactStoreApp) in ar+en and dark+light, and one click test per store.*
+# action of docs/ui/CLICKS.md (design/conformance/coverage.toml names them).
+cargo test -p ultar-store --test screens --test clicks --test flow --test transitions --test transitions2 --test logic
 
 if [ -n "$INV" ]; then
     for b in States StatesLight; do

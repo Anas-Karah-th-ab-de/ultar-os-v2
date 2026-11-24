@@ -1,0 +1,344 @@
+# Ultar Store – the catalogue that ships with the system image.
+# Entries and texts are exactly the twelve components of DESKTOP-SPEC §7.2 as
+# the board "Store" draws them. Sizes and versions are `None` here: the board
+# footnote defines them as run-time values from the real catalogue, and the
+# store shows `—` until a signed catalogue (stick or image update) carries
+# them. The publisher is the brand fact (docs/BRAND.md); the store's own
+# package is installed through the package logic (launcher), not through
+# itself.
+
+format_version = 1
+generated = "2026-11-24"
+
+[[app]]
+id = "km-office"
+category = "office"
+icon = "office"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = [".docx", ".xlsx", ".pptx", ".pdf", ".odt", ".ods"]
+requires = []
+package = "km-office.uap"
+[app.name]
+ar = "الأدوات المكتبية"
+en = "Office tools"
+[app.summary]
+ar = "مستندات وجداول وعروض وأدوات PDF."
+en = "Documents, spreadsheets, slides and PDF tools."
+[app.description]
+ar = "مستندات وجداول وعروض وأدوات PDF، تعمل دون إنترنت وتفتح ملفات ‎.docx‏ و ‎.xlsx‏."
+en = "Documents, spreadsheets, slides and PDF tools; works without internet and opens .docx and .xlsx files."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يفتح فقط الملفات التي تختارها أنت"
+en = "Opens only the files you choose"
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "لا يتّصل بالإنترنت"
+en = "Does not connect to the internet"
+[[app.permissions]]
+id = "printing"
+[app.permissions.reason]
+ar = "يطبع على الطابعة التي تختارها"
+en = "Prints on the printer you choose"
+
+[[app]]
+id = "coder"
+category = "development"
+icon = "code"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = [".rs", ".c", ".py", ".md"]
+requires = []
+package = "coder.uap"
+[app.name]
+ar = "المبرمج"
+en = "Coder"
+[app.summary]
+ar = "محرر أكواد بمشاريع وGit وأدوات لغات."
+en = "Code editor with projects, Git and language tools."
+[app.description]
+ar = "محرر أكواد بمشاريع وGit وأدوات لغات؛ أدوات Rust وC وPython تُثبَّت كلٌّ على حدة."
+en = "Code editor with projects, Git and language tools; Rust, C and Python tools install separately."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يقرأ ويكتب ملفات المشاريع التي تفتحها"
+en = "Reads and writes the project files you open"
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتّصل فقط بجلب الحزم عند طلبك"
+en = "Connects only to fetch packages when you ask"
+
+[[app]]
+id = "media"
+category = "media"
+icon = "media"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = [".mp3", ".mp4", ".jpg", ".png"]
+requires = []
+package = "media.uap"
+[app.name]
+ar = "الوسائط"
+en = "Media"
+[app.summary]
+ar = "موسيقى وفيديو ومكتبة صور وتحرير."
+en = "Music, video, photo library and editing."
+[app.description]
+ar = "موسيقى وفيديو ومكتبة صور وتحرير؛ يفهرس ملفاتك محليًا دون إنترنت."
+en = "Music, video, photo library and editing; indexes your files locally without internet."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يقرأ وسائطك من مكتباتك التي تختارها"
+en = "Reads your media from the libraries you choose"
+
+[[app]]
+id = "communication"
+category = "communication"
+icon = "mail"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = [".eml", ".ics", ".vcf"]
+requires = []
+package = "communication.uap"
+[app.name]
+ar = "التواصل"
+en = "Communication"
+[app.summary]
+ar = "بريد وتقويم وجهات اتصال ومكالمات فيديو."
+en = "Mail, calendar, contacts and video calls."
+[app.description]
+ar = "بريد وتقويم وجهات اتصال ومكالمات فيديو؛ المزامنة من حسابات تضيفها أنت."
+en = "Mail, calendar, contacts and video calls; syncing from accounts you add."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتّصل بخدمة البريد التي تختارها"
+en = "Connects to the mail service you choose"
+[[app.permissions]]
+id = "contacts"
+[app.permissions.reason]
+ar = "يقرأ جهات الاتصال لعرضها في البريد والمكالمات"
+en = "Reads contacts to show them in mail and calls"
+[[app.permissions]]
+id = "microphone"
+[app.permissions.reason]
+ar = "يعمل فقط أثناء مكالمة تجريها أنت"
+en = "Works only during a call you place"
+[[app.permissions]]
+id = "camera"
+[app.permissions.reason]
+ar = "يعمل فقط أثناء مكالمة فيديو تجريها أنت"
+en = "Works only during a video call you place"
+
+[[app]]
+id = "mesh"
+category = "mesh"
+icon = "mesh"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = []
+requires = []
+package = "mesh.uap"
+[app.name]
+ar = "الشبكة"
+en = "Mesh"
+[app.summary]
+ar = "اربط أجهزة Ultar: شاشة وملفات وقدرة حوسبة."
+en = "Link your Ultar devices: screen, files and computing power."
+[app.description]
+ar = "اربط أجهزة Ultar: مشاركة شاشة وملفات وقدرة حوسبة؛ لا منافذ مفتوحة قبل التثبيت."
+en = "Link your Ultar devices: share screen, files and computing power; no open ports before install."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتّصل بأجهزتك فقط عبر الشبكة المحلية أو التشبيك"
+en = "Connects your devices over the local network or the link only"
+[[app.permissions]]
+id = "background"
+[app.permissions.reason]
+ar = "يبقى متاحًا للأجهزة الأخرى أثناء الربط"
+en = "Stays reachable to other devices while linked"
+
+[[app]]
+id = "assistant"
+category = "assistant"
+icon = "spark"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = []
+requires = []
+package = "assistant.uap"
+[app.name]
+ar = "المساعد والذكاء الاصطناعي المحلي"
+en = "Assistant and local AI"
+[app.summary]
+ar = "مساعد صوتي ونماذج تعمل على هذا الجهاز."
+en = "Voice assistant and models that run on this device."
+[app.description]
+ar = "مساعد صوتي ونماذج تعمل على هذا الجهاز؛ تختار النموذج ويُحمَّل من مصدر محلي أو من المتجر."
+en = "Voice assistant and models that run on this device; you choose the model, loaded from a local source or the store."
+[[app.permissions]]
+id = "microphone"
+[app.permissions.reason]
+ar = "يسمع فقط عند استدعائك للمساعد"
+en = "Listens only when you call the assistant"
+
+[[app]]
+id = "linux-programs"
+category = "linux"
+icon = "package"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = [".deb"]
+requires = []
+package = "linux-programs.uap"
+[app.name]
+ar = "برامج Linux"
+en = "Linux programs"
+[app.summary]
+ar = "ثبَّت حزم ‎.deb‏ في منطقة معزولة."
+en = "Install .deb packages in an isolated area."
+[app.description]
+ar = "ثبَّت حزم ‎.deb‏ في منطقة معزولة؛ ملفاتك المشتركة هي وحدها ما تراه هذه البرامج."
+en = "Install .deb packages in an isolated area; only your shared folder is visible to them."
+[[app.permissions]]
+id = "storage"
+[app.permissions.reason]
+ar = "يخصص مساحة لمنطقة البرامج المعزولة"
+en = "Reserves space for the isolated programs area"
+
+[[app]]
+id = "firefox"
+category = "linux"
+icon = "firefox"
+publisher = "KM Code Craft"
+source = "linux"
+file_types = [".html", ".htm"]
+requires = ["linux-programs"]
+package = "firefox.uap"
+[app.name]
+ar = "Firefox"
+en = "Firefox"
+[app.summary]
+ar = "متصفح احتياطي. يحتاج برامج Linux."
+en = "Fallback browser. Needs Linux programs."
+[app.description]
+ar = "متصفح احتياطي يعمل عبر مكوّن «برامج Linux»؛ متصفح Ultar هو الأساس."
+en = "Fallback browser running through the Linux programs component; Ultar Browser is the default."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتصفّح المواقع التي تفتحها"
+en = "Browses the sites you open"
+
+[[app]]
+id = "windows-programs"
+category = "windows"
+icon = "windows"
+publisher = "KM Code Craft"
+source = "windows"
+file_types = [".exe", ".msi"]
+requires = []
+package = "windows-programs.uap"
+[app.name]
+ar = "برامج Windows"
+en = "Windows programs"
+[app.summary]
+ar = "شغّل ‎.exe‏ و ‎.msi‏ في خلية معزولة."
+en = "Run .exe and .msi programs in an isolated cell."
+[app.description]
+ar = "شغّل برامج Windows في خلية معزولة؛ لا وصول إلى ملفاتك إلا عبر مجلد المشاركة."
+en = "Runs Windows programs in an isolated cell; no access to your files except the share folder."
+[[app.permissions]]
+id = "storage"
+[app.permissions.reason]
+ar = "يخصص مساحة لخلية البرامج"
+en = "Reserves space for the program cell"
+
+[[app]]
+id = "android-apps"
+category = "android"
+icon = "android"
+publisher = "KM Code Craft"
+source = "android"
+file_types = [".apk"]
+requires = []
+package = "android-apps.uap"
+[app.name]
+ar = "تطبيقات Android"
+en = "Android apps"
+[app.summary]
+ar = "شغّل تطبيقات Android في زمن مغلق."
+en = "Run Android apps in a sealed runtime."
+[app.description]
+ar = "شغّل تطبيقات Android في زمن مغلق؛ صلاحيات كل تطبيق تُعرض قبل التشغيل."
+en = "Runs Android apps in a sealed runtime; each app's permissions are shown before it runs."
+[[app.permissions]]
+id = "storage"
+[app.permissions.reason]
+ar = "يخصص مساحة للبيئة المغلقة"
+en = "Reserves space for the sealed runtime"
+
+[[app]]
+id = "containers-server"
+category = "server"
+icon = "server"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = []
+requires = []
+package = "containers-server.uap"
+[app.name]
+ar = "الحاويات والخادم"
+en = "Containers and server"
+[app.summary]
+ar = "خلايا وإدارة ويب وخادم SSH."
+en = "Cells, web administration and SSH server."
+[app.description]
+ar = "خلايا حاويات وإدارة عبر الويب وخادم SSH؛ كل خدمة تُشغَّل أنت يدويًا وبحدود واضحة."
+en = "Container cells, web administration and an SSH server; every service you enable by hand with clear limits."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يفتح منافذ فقط للخدمات التي تشغّلها أنت"
+en = "Opens ports only for the services you enable"
+[[app.permissions]]
+id = "background"
+[app.permissions.reason]
+ar = "تعمل الخدمات التي تشغّلها في الخلفية"
+en = "The services you enable run in the background"
+
+[[app]]
+id = "remote-access"
+category = "remote"
+icon = "remote"
+publisher = "KM Code Craft"
+source = "ultar"
+file_types = []
+requires = []
+package = "remote-access.uap"
+[app.name]
+ar = "الوصول بعدّي"
+en = "Remote access"
+[app.summary]
+ar = "شارك شاشتك أو تحكّم بشاشة أخرى."
+en = "Share your screen or control another one."
+[app.description]
+ar = "مشاركة وتحكم عن بُعد بموافقة صريحة لكل جلسة؛ لا وصول صامت."
+en = "Remote sharing and control with an explicit approval per session; never silent access."
+[[app.permissions]]
+id = "network"
+[app.permissions.reason]
+ar = "يتّصل بالطرف الذي تدعوه أنت في كل جلسة"
+en = "Connects to the peer you invite, per session"
+[[app.permissions]]
+id = "ui.capture"
+[app.permissions.reason]
+ar = "يصوّر الشاشة فقط أثناء مشاركة تجريها أنت"
+en = "Captures the screen only during a share you start"

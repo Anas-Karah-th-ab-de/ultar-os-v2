@@ -44,6 +44,7 @@ members = [
     "tools/phone-e2e",
     "apps/ultar-office",
     "apps/ultar-settings",
+    "apps/ultar-store",
     "apps/ultar-web",
     "apps/ultar-phone",
     "apps/ultar-files",
@@ -144,6 +145,10 @@ opt-level = 3
 
 # Browser: Zeichnen und Zusammensetzen auf Geschwindigkeit
 [profile.release.package.ultar-web]
+opt-level = 3
+
+# Ultar Store: zeichnet jede Flächen-Bildzeit (Budget §8); Software-Rendering
+[profile.release.package.ultar-store]
 opt-level = 3
 
 # Büro-Apps: PDF-Rendern (hayro/vello_cpu) und Formel-/XML-Verarbeitung auf Geschwindigkeit
