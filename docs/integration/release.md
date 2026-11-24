@@ -25,6 +25,20 @@ Branch `release/v0.8` · KM Code Craft · 2026-11-24
 7. **Store manifest:** `network = "allowed"` for the online catalogue (was `none`).
 8. **Signing service** has no operation for update manifests (`UUM1`) yet – SIGNING.md §6.
 
+## 0. Live state (2026-11-24, verified with curl from the owner's PC)
+
+* Website v0.8 (ar/en/de) at https://ultar.code-craft.tech/ – old site kept as `/opt/ultar/web.old-20261124-142646`
+  (`rollback-web.sh`), archive in `/root/ultar-backup-20261124-142646/`.
+* Store: https://ultar.code-craft.tech/store/v1/ultar-catalog.toml (+ `.sig`, 4 packages, `keys/`);
+  set `20261124-142640`. Checked with the device code path from B2 (`tools/release/live-check.sh`): catalogue
+  signature and all four package digests verify over HTTPS.
+* `ultar-signd` active (systemd exposure 0.4 "SAFE"); keys created on the server 2026-11-24:
+  os `39025262…52f5ae` (key id `66a1912229841a19`), system `352a24a1…98c827` (`54d9f4ea441a5da2`),
+  store `d69d4d77…3023aa` (`68b4f13ebe621352`). Release signature checked with the real `ssh-keygen -Y verify`
+  (genuine accepted, tampered refused).
+* `ultar_server`, `ultar_turn`, wg0, nginx, code-craft.tech, maps-sy unchanged and up. Backups:
+  `/root/ultar-backup-20261124-142544/` (nginx conf, snippets, web) before the setup.
+
 ## 1. What is where
 
 | Part | Path |
