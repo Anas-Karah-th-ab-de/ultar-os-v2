@@ -18,6 +18,7 @@
 //! * [`ctb`] – the command buffers (requests, responses, events),
 //! * [`mi`], [`lrc`], [`submit`] – commands, the context image and the messages that make the
 //!   GuC run a context on an engine,
+//! * [`uapi`] – the interface for programs (Linux `xe` uAPI): request numbers and device queries,
 //! * [`state`] – a read-out of all of that for the kernel log and the self test.
 //!
 //! Hardware: graphics 12.70/12.71/12.74 (Meteor Lake / Arrow Lake, "Xe_LPG", e.g. the Arc 140T
@@ -54,6 +55,7 @@ pub mod ppgtt;
 pub mod regs;
 pub mod state;
 pub mod submit;
+pub mod uapi;
 pub mod wopcm;
 
 #[cfg(test)]
