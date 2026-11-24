@@ -162,6 +162,89 @@ def clipboard(vm, m, pos):
     return [] if ok else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
 
 
+def files_list(vm, m, pos):
+    """Files in list view (owner: "show as list" hung the window): Ctrl+2 switches, clicks into the items
+    (a row, when the place has any) and the window still answers - its search field takes typed text and
+    Ctrl+1 switches back."""
+    w, h = vm.size
+    cx, cy = w // 2, h // 2
+    vm.move(cx, cy)
+    vm.pump(1)
+    before = vm.shot("list-empty")
+    vm.click(*pos["files"])
+    if not app_window(vm, "list-files", before):
+        return ["files list: Files did not open"]
+    grid = vm.shot("list-grid")
+    vm.key("ctrl+2")
+    vm.pump(2)
+    for dy in (-120, -80, -40):  # the first rows of the table, or the empty state
+        vm.click(cx - 60, cy + dy)
+        vm.pump(1)
+    vm.pump(2)
+    field = (cx - 300, cy - 216, cx - 90, cy - 176)  # Files' search field (window alone, centred)
+    vm.click(cx - 193, cy - 196)
+    vm.pump(1)
+    typed_before = vm.shot("list-before-type")
+    vm.type("ab")
+    ok, after = m.wait_for(vm, "list-typed", lambda x: x.diff(typed_before, field) > 0.03, 20)
+    log(f"files list: search field changed {after.diff(typed_before, field):.3f} in list view")
+    problems = [] if ok else ["files list view: the window stopped answering (typed text did not arrive)"]
+    close_all(vm)
+    log(f"files list: grid shot kept ({grid.w}x{grid.h})")
+    return problems
+
+
+def status_clusters(screen):
+    """The status icons on the bar (Arabic: clock at the start corner, then the status icons, then the
+    language chip): runs of columns left of the middle whose light pixels stay within the icon band around
+    the bar's centre line (the clock's two lines reach above and below it)."""
+    w, h, px = screen.w, screen.h, screen.px
+    mid = h - BAR_Y_FROM_BOTTOM
+
+    def light(x, y):
+        i = (y * w + x) * 3
+        return px[i] + px[i + 1] + px[i + 2] > 540
+
+    runs, start = [], None
+    for x in range(0, w // 2):
+        inside = any(light(x, y) for y in range(mid - 9, mid + 10))
+        outside = any(light(x, y) for y in list(range(h - 54, mid - 12)) + list(range(mid + 13, h - 2)))
+        icon = inside and not outside
+        if icon and start is None:
+            start = x
+        if not icon and start is not None:
+            if x - start >= 6:
+                runs.append((start, x - 1))
+            start = None
+    merged = []
+    for a, b in runs:
+        if merged and a - merged[-1][1] <= 6:
+            merged[-1] = (merged[-1][0], b)
+        else:
+            merged.append((a, b))
+    return [((a + b) // 2, mid) for a, b in merged]
+
+
+def quick_settings(vm, m):
+    """The quick settings by real clicks (owner: the Wi-Fi symbol and the tiles opened nothing): a click on a
+    status icon of the bar opens a sheet above the bar, Esc closes it again."""
+    vm.move(vm.size[0] // 2, vm.size[1] // 2)
+    vm.pump(1)
+    empty = vm.shot("qs-empty")
+    icons = status_clusters(empty)
+    log(f"quick settings: status icons at {icons}")
+    if not icons:
+        return ["quick settings: no status icon on the bar"]
+    vm.click(*icons[0])
+    ok, s = m.wait_for(vm, "qs-open", lambda x: x.diff(empty, work(vm)) > 0.01, 20)
+    log(f"quick settings: sheet {s.diff(empty, work(vm)):.3f} of the work area")
+    if not ok:
+        return ["quick settings: a click on the status icon opened nothing"]
+    vm.key("esc")
+    ok, _ = m.wait_for(vm, "qs-closed", lambda x: x.diff(empty, work(vm)) < 0.005, 20)
+    return [] if ok else ["quick settings: Esc did not close the sheet"]
+
+
 def pure_black(screen):
     """Share of pixels of the high-contrast ground (#000000), every 4th pixel."""
     return black(screen)
@@ -388,9 +471,13 @@ def run(vm, m):
     if not failures:
         failures += clipboard(vm, m, pos)
     if not failures:
+        failures += files_list(vm, m, pos)
+    if not failures:
+        failures += quick_settings(vm, m)
+    if not failures:
         failures += accessibility(vm, m)
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, list view, quick settings)")
     return 0

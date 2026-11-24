@@ -6,7 +6,7 @@ use super::keys::confirm_projection;
 use super::Opening;
 use super::{Effect, Outcome, Shell};
 use crate::model::calendar::Month;
-use crate::model::quick::{PowerMode, TileId};
+use crate::model::quick::{self, Avail, PowerMode, TileId};
 use crate::model::search::{Command, Hit};
 use crate::model::services::Call;
 use crate::model::{Open, QuickPage};
@@ -200,8 +200,14 @@ fn setting(s: &mut Shell, key: &str, value: SettingValue) -> Outcome {
 }
 
 /// qs.toggle / qs.powermode: the tiles that work through the settings service switch it;
-/// the new state shows when the service announces it (`settings.changed`).
+/// the new state shows when the service announces it (`settings.changed`). A tile that
+/// cannot switch now (no service, no device, airplane mode) is never a dead click: it
+/// opens its page, which says why, or its place in Settings.
 fn tile(s: &mut Shell, id: TileId) -> Outcome {
+    let shown = quick::tile_of(id, &s.d.presence, &s.d.values, &s.d.svc);
+    if shown.is_some_and(|t| matches!(t.avail, Avail::Disabled(_))) {
+        return unavailable(s, id);
+    }
     let v = s.d.values;
     match id {
         TileId::NightLight => setting(
@@ -224,22 +230,40 @@ fn tile(s: &mut Shell, id: TileId) -> Outcome {
             SettingValue::Text(v.power.next().word().into()),
         ),
         // qs.wired: no switch, opens Settings > Network.
-        TileId::Wired => launch(s, SETTINGS, Opening::settings_page("network")),
+        TileId::Wired => settings_of(s, TileId::Wired),
         // The radios through their services; the state shows when the service reports it.
-        TileId::Wifi => service(s.d.svc.net.as_ref().map(|n| Call::SetWifi(!n.wifi_on))),
-        TileId::Airplane => service(s.d.svc.net.as_ref().map(|n| Call::SetAirplane(!n.airplane))),
-        TileId::Bluetooth => service(
-            s.d.svc
-                .bluetooth
-                .as_ref()
-                .map(|b| Call::SetBluetooth(!b.on)),
-        ),
+        TileId::Wifi => match s.d.svc.net.as_ref() {
+            Some(n) => service(Some(Call::SetWifi(!n.wifi_on))),
+            None => more(s, TileId::Wifi),
+        },
+        TileId::Airplane => match s.d.svc.net.as_ref() {
+            Some(n) => service(Some(Call::SetAirplane(!n.airplane))),
+            None => settings_of(s, TileId::Airplane),
+        },
+        TileId::Bluetooth => match s.d.svc.bluetooth.as_ref() {
+            Some(b) => service(Some(Call::SetBluetooth(!b.on))),
+            None => more(s, TileId::Bluetooth),
+        },
         TileId::Vpn => super::network::vpn_tile(s),
-        // Mesh, mobile data: disabled until their service exists.
-        _ => Outcome::none(),
+        TileId::Mesh | TileId::Mobile => unavailable(s, id),
     }
 }
 
+/// A tile that cannot switch now: its page (with the reason) or its place in Settings.
+fn unavailable(s: &mut Shell, id: TileId) -> Outcome {
+    match id {
+        TileId::Wifi | TileId::Vpn | TileId::Bluetooth => more(s, id),
+        _ => settings_of(s, id),
+    }
+}
+
+/// The tile's area of the Settings app.
+fn settings_of(s: &mut Shell, id: TileId) -> Outcome {
+    launch(s, SETTINGS, Opening::settings_page(id.settings_area()))
+}
+
+/// qs.*.list: the arrow of a tile always opens its page (the page says what is missing);
+/// tiles without a page of their own open their place in Settings.
 fn more(s: &mut Shell, id: TileId) -> Outcome {
     if let Some(out) = super::network::more(s, id) {
         return out;
@@ -249,10 +273,12 @@ fn more(s: &mut Shell, id: TileId) -> Outcome {
         // qs.bluetooth.list: the devices page asks the service for its list.
         TileId::Bluetooth => {
             let mut out = page(s, QuickPage::Bluetooth);
-            out.effects.push(Effect::Service(Call::BtDevices));
+            if s.d.svc.bluetooth.is_some() {
+                out.effects.push(Effect::Service(Call::BtDevices));
+            }
             out
         }
-        _ => Outcome::none(),
+        _ => settings_of(s, id),
     }
 }
 

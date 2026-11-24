@@ -108,6 +108,22 @@ impl TileId {
         )
     }
 
+    /// The area of the Settings app where this tile's part of the system is set up
+    /// (`settings://<area>`): where a tile goes whose service cannot switch it now.
+    pub fn settings_area(self) -> &'static str {
+        match self {
+            TileId::Wifi => "wifi",
+            TileId::Wired | TileId::Airplane | TileId::Vpn => "network",
+            TileId::Bluetooth => "bluetooth",
+            TileId::NightLight => "displays",
+            TileId::Dark => "appearance",
+            TileId::Dnd => "notifications",
+            TileId::PowerMode => "power",
+            TileId::Mesh => "mesh",
+            TileId::Mobile => "cellular",
+        }
+    }
+
     /// Settings key the tile switches (the tiles that work through `settingsd`).
     pub fn setting(self) -> Option<&'static str> {
         match self {
@@ -431,6 +447,19 @@ fn setting_tile(id: TileId, presence: &Presence, v: &QuickValues) -> Tile {
         on,
         detail,
         avail: Avail::Ready,
+    }
+}
+
+/// One tile as [`tiles`] and [`compact_tiles`] show it (`None`: its hardware is absent).
+pub fn tile_of(
+    id: TileId,
+    presence: &Presence,
+    values: &QuickValues,
+    svc: &Services,
+) -> Option<Tile> {
+    match id.setting() {
+        Some(_) => Some(setting_tile(id, presence, values)),
+        None => service_tile(id, presence, svc),
     }
 }
 

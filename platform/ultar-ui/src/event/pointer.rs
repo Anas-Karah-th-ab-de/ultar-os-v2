@@ -29,6 +29,7 @@ impl Ui {
             Widget::Table(table) => table.part_at(rect, pos, self.mode, direction),
             Widget::Tree(tree) => tree.part_at(rect, pos, self.mode, direction),
             Widget::TextField(field) => field.part_at(field.field(rect, self.mode), pos, direction),
+            Widget::Brick(brick) => brick.part_at(rect, pos, direction.is_rtl()),
             _ => None,
         }
     }
@@ -111,7 +112,13 @@ impl Ui {
             }
             self.hide_tooltip();
             if let (Some(id), true) = (focus, visible) {
-                self.reveal(id, &mut Vec::new());
+                // A table or tree taller than its viewport shows its keyboard row, not its
+                // beginning (End in a list of thousands must not jump back to the top).
+                if matches!(self.widget(id), Some(Widget::Table(_) | Widget::Tree(_))) {
+                    self.reveal_row(id);
+                } else {
+                    self.reveal(id, &mut Vec::new());
+                }
                 self.show_tooltip(id);
             }
         }

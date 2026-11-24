@@ -315,7 +315,19 @@ impl Harness {
             .ui
             .rect(node)
             .unwrap_or_else(|| panic!("{target:?} not laid out"));
-        let pos = Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0);
+        // The status button: beside its icons (the network icon has its own page, see
+        // `click_status_icon`).
+        let x = if *target == Target::Status {
+            r.x + 2.0
+        } else {
+            r.x + r.w / 2.0
+        };
+        let pos = Point::new(x, r.y + r.h / 2.0);
+        Harness::press_at(view, pos, button)
+    }
+
+    /// A press and release at `pos` of `view`.
+    fn press_at(view: &mut View, pos: Point, button: PointerButton) -> Vec<Action> {
         view.ui.handle(Event::PointerMove { pos });
         let mut a = view.ui.handle(Event::PointerDown { pos, button }).actions;
         a.extend(view.ui.handle(Event::PointerUp { pos, button }).actions);
@@ -355,6 +367,30 @@ impl Harness {
 
     pub fn click_bar(&mut self, target: Target) {
         let a = Harness::press(&mut self.bar, &target, PointerButton::Primary);
+        self.dispatch_bar(a);
+    }
+
+    /// A click on the middle of the bar's status button (the network icon when it is the
+    /// only one) – or, with `icon`, on that status icon (reading order, `icons` of the
+    /// status brick).
+    pub fn click_status_icon(&mut self, icon: usize, count: usize) {
+        let node = self.bar.node(&Target::Status).expect("the status button");
+        let r = self.bar.ui.rect(node).expect("laid out");
+        // the icon row of the brick: 16-point icons, 12 apart, centred; mirrored in Arabic
+        let icon_w = ultar_ui::tokens::size::ICON_SMALL;
+        let gap = ultar_ui::tokens::Space::S12.points();
+        let width = count as f32 * icon_w + (count as f32 - 1.0) * gap;
+        let slot = if self.bar.ui.env().direction.is_rtl() {
+            count - 1 - icon
+        } else {
+            icon
+        };
+        let x = r.x + (r.w - width) / 2.0 + slot as f32 * (icon_w + gap) + icon_w / 2.0;
+        let a = Harness::press_at(
+            &mut self.bar,
+            Point::new(x, r.y + r.h / 2.0),
+            PointerButton::Primary,
+        );
         self.dispatch_bar(a);
     }
 

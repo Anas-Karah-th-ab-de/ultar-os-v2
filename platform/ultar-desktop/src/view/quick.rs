@@ -83,9 +83,9 @@ pub(crate) fn add_tile(
     );
     let main = view.ui.add_sized(cell, brick, Sizing::grow(1))?;
     view.mark(main, Target::Tile(tile.id));
-    let disabled = matches!(tile.avail, Avail::Disabled(_));
+    // A tile that cannot switch now stays operable: a click opens its page or its place
+    // in Settings, where the reason is shown (its tooltip names it too).
     if let Avail::Disabled(reason) = tile.avail {
-        view.ui.set_disabled(main, true)?;
         view.ui.set_tooltip(main, Some(Label::key(reason)))?;
     }
     if more {
@@ -93,11 +93,11 @@ pub(crate) fn add_tile(
         let part = Brick::new(BrickKind::QuickMore { on: tile.on }, name);
         let id = view.ui.add(cell, part)?;
         view.mark(id, Target::TileMore(tile.id));
+        // The arrow always opens the page; the page says what is missing.
         let reason = match tile.avail {
             Avail::Disabled(reason) => Some(reason),
             Avail::Ready => quick::list_reason(tile.id, svc),
         };
-        view.ui.set_disabled(id, disabled || reason.is_some())?;
         if let Some(reason) = reason {
             view.ui.set_tooltip(id, Some(Label::key(reason)))?;
         }
@@ -120,12 +120,12 @@ fn slider_row(
 }
 
 fn sliders(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
-    let level = d
-        .svc
-        .audio
-        .as_ref()
-        .map_or(0, |a| a.volume_percent.min(100));
-    let volume = Slider::new(Label::key("desk.qs.volume"), 0.0, 100.0, 5.0).value(f32::from(level));
+    // The real level, or "—" without a device (never a 0 % that is no value).
+    let volume = Slider::new(Label::key("desk.qs.volume"), 0.0, 100.0, 5.0);
+    let volume = match (&d.svc.audio, volume_reason(d)) {
+        (Some(a), None) => volume.value(f32::from(a.volume_percent.min(100))),
+        _ => volume.unknown(),
+    };
     let id = slider_row(view, card, IconId::Volume, volume)?;
     view.mark(id, Target::Volume);
     if let Some(reason) = volume_reason(d) {
@@ -141,8 +141,11 @@ fn sliders(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
             view.ui.set_tooltip(out, Some(Label::key(reason)))?;
         }
     }
-    let level = f32::from(d.values.brightness.unwrap_or(0));
-    let brightness = Slider::new(Label::key("desk.qs.brightness"), 0.0, 100.0, 5.0).value(level);
+    let brightness = Slider::new(Label::key("desk.qs.brightness"), 0.0, 100.0, 5.0);
+    let brightness = match d.values.brightness.filter(|_| d.presence.settings) {
+        Some(level) => brightness.value(f32::from(level.min(100))),
+        None => brightness.unknown(),
+    };
     let id = slider_row(view, card, IconId::Sun, brightness)?;
     view.mark(id, Target::Brightness);
     if d.values.brightness.is_none() || !d.presence.settings {
@@ -254,5 +257,13 @@ fn modes_page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError>
     let group = RadioGroup::new(Label::key("desk.qs.power_mode"), options).selected(current);
     let id = view.ui.add(card, group)?;
     view.mark(id, Target::PowerModeChoice(d.values.power));
+    if !d.presence.settings {
+        // The modes are shown; choosing one needs the settings service.
+        view.ui
+            .add(card, Text::new(Label::key("desk.reason.no_settings")))?;
+        view.ui.set_disabled(id, true)?;
+        view.ui
+            .set_tooltip(id, Some(Label::key("desk.reason.no_settings")))?;
+    }
     Ok(())
 }

@@ -70,6 +70,18 @@ pub fn page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         .ui
         .add(head, Switch::new(Label::key("desk.bt.search"), scanning))?;
     view.mark(scan, Target::BtScan);
+    let missing = match &d.svc.bluetooth {
+        None => Some("desk.reason.no_service"),
+        Some(b) if !b.devices_supported => Some("desk.reason.no_bt_device"),
+        Some(_) => None,
+    };
+    if let Some(reason) = missing {
+        // Nothing to search with: the page says so.
+        view.ui.set_disabled(scan, true)?;
+        view.ui.set_tooltip(scan, Some(Label::key(reason)))?;
+        view.ui.add(card, Text::new(Label::key(reason)))?;
+        return Ok(());
+    }
     let mut devices: Vec<&Device> = d.svc.bt_devices.iter().collect();
     devices.sort_by_key(|dev| (!dev.paired, !dev.connected));
     if devices.is_empty() {

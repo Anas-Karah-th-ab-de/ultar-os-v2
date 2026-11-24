@@ -23,7 +23,13 @@ pub struct Slider {
     /// Unit written after the value (`Slider::unit`); `None` writes the share of the range
     /// in percent.
     pub unit: Option<Label>,
+    /// The value is not known (no device behind it): "—" is written, no knob and no filled
+    /// part are drawn (`Slider::unknown`).
+    pub unknown: bool,
 }
+
+/// What an unknown value is written as.
+pub const NO_VALUE: &str = "—";
 
 const THUMB: f32 = size::ICON_SMALL;
 const TRACK_H: f32 = Space::S4.points();
@@ -47,6 +53,7 @@ impl Slider {
             max,
             step: finite(step).abs(),
             unit: None,
+            unknown: false,
         }
     }
 
@@ -58,9 +65,20 @@ impl Slider {
         self
     }
 
+    /// The same slider without a known value: nothing to show behind it (no device, no
+    /// service). It writes "—" and draws neither knob nor filled part; use it together with
+    /// a disabled node (the value cannot be set either).
+    pub fn unknown(mut self) -> Slider {
+        self.unknown = true;
+        self
+    }
+
     /// The value as written, with the unit resolved by `tr` (digits 0–9, a left-to-right
     /// island in Arabic text).
     pub(crate) fn value_label(&self, tr: &ultar_i18n::Translator) -> String {
+        if self.unknown {
+            return NO_VALUE.to_owned();
+        }
         match &self.unit {
             None => self.value_text(),
             Some(unit) => format!("{}{}", self.number(), unit.resolve(tr)),
@@ -246,6 +264,12 @@ impl Slider {
         // the knob centre keeps half a knob from either end.
         let line = Rect::new(area.x, track.y, area.w, track.h);
         p.fill(line, Some(Radius::Round), rest);
+        if self.unknown {
+            // Nothing is known: no knob that would claim a value.
+            style::paint_error(p, cx, error, rect, band.h);
+            p.set_opacity(previous);
+            return;
+        }
         let mut remaining = track;
         let knob_at = style::take_start(&mut remaining, track.w * self.fraction(), direction);
         let center_x = if direction.is_rtl() {
@@ -338,6 +362,8 @@ mod tests {
         );
         assert_eq!(s.value_at(rect, -500.0, Direction::Ltr), 0.0);
         assert_eq!(s.clone().value(30.0).value_text(), "30%");
+        let tr = ultar_i18n::Translator::new(ultar_i18n::Lang::En);
+        assert_eq!(s.clone().value(100.0).unknown().value_label(&tr), NO_VALUE);
         let narrow = Rect::new(0.0, 0.0, THUMB / 2.0, THUMB);
         assert_eq!(s.value_at(narrow, 3.0, Direction::Ltr), s.value);
     }

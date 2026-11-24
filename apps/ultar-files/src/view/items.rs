@@ -50,6 +50,7 @@ fn grid(
     shown: &[usize],
 ) -> Result<(), UiError> {
     let scroll = ui.add_sized(main, Scroll::new(), Sizing::grow(1))?;
+    b.scroll = Some(scroll);
     let flex = Flex::row()
         .wrap()
         .gap(Space::S8)
@@ -129,12 +130,27 @@ fn table(
         .iter()
         .position(|k| *k == s.look.sort.0)
         .map(|c| (c, s.look.sort.1));
-    let id = ui.add_sized(main, t, Sizing::grow(1))?;
+    // In a scroll container: a folder of thousands of rows stays one node, and only the
+    // rows inside the viewport are painted and given accessibility nodes.
+    let scroll = ui.add_sized(main, Scroll::new(), Sizing::grow(1))?;
+    b.scroll = Some(scroll);
+    let id = ui.add(scroll, t)?;
     b.items = Some(b.mark(id, Target::Items));
     b.rows = shown
         .iter()
         .map(|&i| s.items[i].entry.name.clone())
         .collect();
+    // The table shows the selection of the state (it survives a rebuild: select all,
+    // a sort, a new file) – the tree and the state must never disagree, or the app
+    // would build the tree again and again.
+    let marked: Vec<usize> = b
+        .rows
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| s.selected.contains(name))
+        .map(|(row, _)| row)
+        .collect();
+    ui.set_selected_rows(id, &marked)?;
     ui.set_context_menu(id, Some(item_menu(s)))?;
     Ok(())
 }

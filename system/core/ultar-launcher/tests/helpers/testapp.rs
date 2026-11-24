@@ -32,13 +32,14 @@ fn info() {
     let tmp_ok = std::fs::write(format!("{tmp}/probe"), b"x").is_ok();
     let root_ro = std::fs::write("/probe", b"x").is_err();
     out(&format!(
-        "TESTAPP uid={} gid={} pid={} rights={rights} cwd={cwd} data_writable={data_ok} tmp_writable={tmp_ok} root_readonly={root_ro} token={} app={} uri=[{}]",
+        "TESTAPP uid={} gid={} pid={} rights={rights} cwd={cwd} data_writable={data_ok} tmp_writable={tmp_ok} root_readonly={root_ro} token={} app={} uri=[{}] args=[{}]",
         ultar_sys::uid(),
         ultar_sys::gid(),
         std::process::id(),
         std::env::var("ULTAR_ACTIVATION_TOKEN").unwrap_or_default(),
         std::env::var("ULTAR_APP_ID").unwrap_or_default(),
         std::env::var("ULTAR_OPEN_URI").unwrap_or_default(),
+        std::env::args().skip(2).collect::<Vec<_>>().join(" "),
     ));
     let mut stderr = std::io::stderr();
     let _ = writeln!(stderr, "TESTAPP stderr line");

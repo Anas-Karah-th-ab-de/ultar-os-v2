@@ -76,12 +76,24 @@ pub fn page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
     let on = d.svc.net.as_ref().is_some_and(|n| n.wifi_on);
     let radio = Some((Target::WifiRadio, Label::key("desk.qs.wifi"), on));
     head(view, card, "desk.qs.wifi", radio)?;
+    // Without the network service or a Wi-Fi device the page says so (the radio cannot
+    // be switched); "Wi-Fi settings" below still leads on.
+    let missing = match &d.svc.net {
+        None => Some("desk.reason.no_service"),
+        Some(n) if !n.wifi_present => Some("desk.reason.no_wifi_device"),
+        Some(_) => None,
+    };
+    if let (Some(reason), Some(switch)) = (missing, view.node(&Target::WifiRadio)) {
+        view.ui.set_disabled(switch, true)?;
+        view.ui.set_tooltip(switch, Some(Label::key(reason)))?;
+    }
     let networks = d.svc.wifi.networks.as_deref().unwrap_or_default();
     let listed = wifi::listed(networks);
-    let empty = match &d.svc.wifi.networks {
-        None => Some("desk.wifi.searching"),
-        Some(_) if listed.is_empty() => Some("desk.wifi.none"),
-        Some(_) => None,
+    let empty = match (&d.svc.wifi.networks, missing) {
+        (_, Some(reason)) => Some(reason),
+        (None, None) => Some("desk.wifi.searching"),
+        (Some(_), None) if listed.is_empty() => Some("desk.wifi.none"),
+        (Some(_), None) => None,
     };
     if let Some(key) = empty {
         view.ui.add(card, Text::new(Label::key(key)))?;
@@ -170,13 +182,23 @@ pub fn vpn_page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiErro
     let on = d.svc.vpn.as_ref().is_some_and(wifi::vpn_on);
     let switch = Some((Target::VpnSwitch, Label::key("desk.qs.vpn"), on));
     head(view, card, "desk.qs.vpn", switch)?;
+    if d.svc.vpn.is_none() {
+        // No VPN service: the page says so; "VPN settings" below still leads on.
+        if let Some(id) = view.node(&Target::VpnSwitch) {
+            view.ui.set_disabled(id, true)?;
+            view.ui
+                .set_tooltip(id, Some(Label::key("desk.reason.no_service")))?;
+        }
+        view.ui
+            .add(card, Text::new(Label::key("desk.reason.no_service")))?;
+    }
     let profiles = d
         .svc
         .vpn
         .as_ref()
         .map(|v| v.profiles.as_slice())
         .unwrap_or_default();
-    if profiles.is_empty() {
+    if profiles.is_empty() && d.svc.vpn.is_some() {
         view.ui.add(card, Text::new(Label::key("desk.vpn.empty")))?;
     }
     let active = d.svc.vpn.as_ref().and_then(|v| v.active.as_deref());

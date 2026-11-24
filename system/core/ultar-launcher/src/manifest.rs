@@ -97,6 +97,8 @@ struct RawOpen {
     schemes: Vec<String>,
     #[serde(default)]
     multi_window: bool,
+    #[serde(default)]
+    page_arg: Option<String>,
 }
 
 /// Keys of the app rules that others read (store, shell, installer):
@@ -242,6 +244,10 @@ pub struct Manifest {
     pub open_schemes: Vec<String>,
     /// The app opens more than one window (`[open] multi_window`).
     pub multi_window: bool,
+    /// The app takes the page of a URI as an argument (`[open] page_arg`, e.g. `--area`):
+    /// a start with `<scheme>://<page>[/...]` appends `<page_arg> <page>` to its program's
+    /// arguments (see `open::page`); the URI itself is still handed over as data.
+    pub open_page_arg: Option<String>,
 }
 
 /// Whether `path` is absolute and normalised (no `.`/`..`/empty part).
@@ -378,6 +384,11 @@ impl Manifest {
             publisher,
             open_schemes: crate::open::schemes(raw.open.schemes)?,
             multi_window: raw.open.multi_window,
+            open_page_arg: match raw.open.page_arg {
+                Some(a) if crate::open::page_arg_ok(&a) => Some(a),
+                Some(_) => return Err(ManifestError::Permission),
+                None => None,
+            },
         })
     }
 }

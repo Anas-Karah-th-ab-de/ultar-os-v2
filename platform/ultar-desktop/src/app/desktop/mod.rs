@@ -156,6 +156,20 @@ impl DesktopApp {
         &self.shell
     }
 
+    /// Where the node of `target` is drawn: in the open popup (`true`) or on the bar
+    /// (`false`), in logical points of that surface (tests drive the pointer with it).
+    pub fn locate(&self, target: &Target) -> Option<(bool, ultar_ui::geom::Rect)> {
+        let popup = self.popup.map(|p| (true, p.id));
+        popup
+            .into_iter()
+            .chain(std::iter::once((false, self.bar)))
+            .find_map(|(is_popup, id)| {
+                let view = self.host.view(id)?;
+                let node = view.node(target)?;
+                view.ui.rect(node).map(|r| (is_popup, r))
+            })
+    }
+
     /// Runs until `stop` says so or the compositor goes.
     pub fn run(&mut self, stop: &dyn Fn() -> bool) -> Result<(), AppError> {
         while !stop() {

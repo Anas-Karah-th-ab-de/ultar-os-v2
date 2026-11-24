@@ -119,6 +119,10 @@ for entry in "${app_list[@]}"; do
   id=${entry%%:*}; rest=${entry#*:}; prog=${rest%%:*}; args=${rest#*:}
   ui=""
   [ "$id" = phone ] && ui='ui = ["ui.client-header"]'
+  # Settings opens on a page (quick settings: "Wi-Fi settings", the wired tile …): the
+  # launcher accepts settings://<page> and hands the page over as `--area <page>`.
+  open=""
+  [ "$id" = settings ] && open=$'[open]\nschemes = ["settings"]\npage_arg = "--area"\n'
   cat >"$W/apps/$id.toml" <<MANIFEST
 id = "$id"
 version = "$APP_VERSION"
@@ -128,6 +132,7 @@ name = "app.$id.name"
 exec = "/usr/bin/$prog"
 args = [$args]
 
+$open
 [permissions]
 $ui
 

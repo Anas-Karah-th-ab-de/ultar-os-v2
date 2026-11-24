@@ -94,12 +94,35 @@ fn the_radios_switch_through_their_services() {
     // Choosing a network or a device waits for the service's round 2.
     let p = h.popup.as_ref().unwrap();
     let more = p.view.node(&Target::TileMore(TileId::Wifi)).unwrap();
-    assert!(p.view.ui.is_disabled(more) && p.view.ui.tooltip(more).is_some());
-    // Airplane mode on: Wi-Fi and Bluetooth say why they are off.
+    assert!(!p.view.ui.is_disabled(more) && p.view.ui.tooltip(more).is_some());
+    // Airplane mode on: Wi-Fi and Bluetooth say why they are off, and a click opens
+    // their page instead of switching.
     h.shell.d.svc.net = Some(net(false, true));
     h.apply(Outcome::surfaces());
-    assert!(!enabled(&h, &Target::Tile(TileId::Wifi)));
-    assert!(!enabled(&h, &Target::Tile(TileId::Bluetooth)));
+    for (tile, page) in [
+        (TileId::Wifi, QuickPage::Wifi),
+        (TileId::Bluetooth, QuickPage::Bluetooth),
+    ] {
+        let p = h.popup.as_ref().unwrap();
+        let n = p.view.node(&Target::Tile(tile)).unwrap();
+        assert_eq!(
+            p.view
+                .ui
+                .tooltip(n)
+                .and_then(|l| l.key_name().map(str::to_owned)),
+            Some("desk.reason.airplane".to_owned()),
+            "{tile:?}"
+        );
+        h.click_popup(Target::Tile(tile));
+        assert_eq!(h.shell.d.open, Open::Quick(page), "{tile:?}");
+        assert!(
+            !h.take()
+                .iter()
+                .any(|e| matches!(e, Effect::Service(Call::SetWifi(_) | Call::SetBluetooth(_)))),
+            "{tile:?}: no switch while airplane mode is on"
+        );
+        h.click_popup(Target::QuickBack);
+    }
 }
 
 #[test]

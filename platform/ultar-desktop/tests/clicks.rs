@@ -151,9 +151,18 @@ fn bar_menus(action: &str) -> bool {
                     .is_some_and(|p| p.view.ui.focused().is_some());
             h.key_popup(Key::Escape);
             let esc = h.shell.d.open == Open::None;
+            // the network symbol (the board's only status icon) opens the Wi-Fi page,
+            // a second click closes it
+            let mut wifi = true;
+            if action == "shell.status" {
+                h.click_status_icon(0, 1);
+                wifi = h.shell.d.open == Open::Quick(QuickPage::Wifi);
+                h.click_status_icon(0, 1);
+                wifi &= h.shell.d.open == Open::None;
+            }
             h.click_bar(Target::Status);
             h.click_bar(Target::Clock);
-            opened && esc && h.shell.d.open == Open::Calendar
+            opened && esc && wifi && h.shell.d.open == Open::Calendar
         }
         _ => false,
     }
@@ -251,24 +260,29 @@ fn quick(a: &str) -> bool {
     let mut h = h();
     h.click_bar(Target::Status);
     match a {
-        "qs.wifi" | "qs.bluetooth" | "qs.vpn" => {
-            let id = match a {
-                "qs.wifi" => TileId::Wifi,
-                "qs.bluetooth" => TileId::Bluetooth,
-                _ => TileId::Vpn,
+        // Without their service (the board's state) the tiles and their arrows are no
+        // dead clicks: they open their page, which says why, and carry the reason as tooltip.
+        "qs.wifi" | "qs.bluetooth" | "qs.vpn" | "qs.wifi.list" | "qs.bluetooth.list"
+        | "qs.vpn.list" => {
+            let (id, page) = match a.trim_end_matches(".list") {
+                "qs.wifi" => (TileId::Wifi, QuickPage::Wifi),
+                "qs.bluetooth" => (TileId::Bluetooth, QuickPage::Bluetooth),
+                _ => (TileId::Vpn, QuickPage::Vpn),
             };
-            disabled(&h, Target::Tile(id)) && tile_effect(&mut h, id).is_empty()
-        }
-        "qs.wifi.list" | "qs.bluetooth.list" | "qs.vpn.list" => {
-            let id = match a {
-                "qs.wifi.list" => TileId::Wifi,
-                "qs.bluetooth.list" => TileId::Bluetooth,
-                _ => TileId::Vpn,
+            let target = if a.ends_with(".list") {
+                Target::TileMore(id)
+            } else {
+                Target::Tile(id)
             };
             let p = h.popup.as_ref().unwrap();
-            p.view
-                .node(&Target::TileMore(id))
-                .is_some_and(|n| p.view.ui.is_disabled(n))
+            let usable = p
+                .view
+                .node(&target)
+                .is_some_and(|n| !p.view.ui.is_disabled(n) && p.view.ui.tooltip(n).is_some());
+            h.click_popup(target);
+            let opened = h.shell.d.open == Open::Quick(page);
+            h.click_popup(Target::QuickBack);
+            usable && opened && h.shell.d.open == Open::Quick(QuickPage::Tiles)
         }
         "qs.wired" => {
             tile_effect(&mut h, TileId::Wired)
@@ -300,7 +314,13 @@ fn quick_tiles(a: &str, h: &mut Harness) -> bool {
                     "notifications.do_not_disturb".into(),
                     SettingValue::Flag(true),
                 )];
-            night && dark && dnd && disabled(h, Target::Tile(TileId::Airplane))
+            // airplane mode without the network service: its place in Settings
+            let airplane = tile_effect(h, TileId::Airplane)
+                == vec![Effect::Launch {
+                    app: "org.ultar.settings".into(),
+                    open: Opening::settings_page("network"),
+                }];
+            night && dark && dnd && airplane
         }
         "qs.powermode" => {
             tile_effect(h, TileId::PowerMode)
@@ -322,14 +342,22 @@ fn quick_tiles(a: &str, h: &mut Harness) -> bool {
             .view
             .node(&Target::Tile(TileId::Mesh))
             .is_none(),
-        "qs.volume" | "qs.output" => disabled(
-            h,
-            if a == "qs.volume" {
+        "qs.volume" | "qs.output" => {
+            let t = if a == "qs.volume" {
                 Target::Volume
             } else {
                 Target::Output
-            },
-        ),
+            };
+            // no audio device: disabled with its reason, and no value claimed ("—")
+            let p = h.popup.as_mut().unwrap();
+            let n = p.view.node(&Target::Volume).unwrap();
+            let tree = p.view.ui.a11y_tree();
+            let no_value = tree
+                .iter()
+                .find(|x| x.id == n && x.part.is_none())
+                .is_some_and(|x| x.value.is_none());
+            disabled(h, t) && no_value
+        }
         _ => quick_more(a, h),
     }
 }

@@ -34,6 +34,8 @@ pub struct Built {
     pub item_nodes: Vec<(NodeId, String)>,
     /// Names in the order of the table's rows (list view).
     pub rows: Vec<String>,
+    /// The scroll container of the items (its offset is kept across rebuilds).
+    pub scroll: Option<NodeId>,
     /// The search field.
     pub search: Option<NodeId>,
     /// The rename field of the open dialog.
