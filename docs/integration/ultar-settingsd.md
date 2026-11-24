@@ -15,7 +15,7 @@ Dependencies: path crates `ultar-bus`, `ultar-i18n`, `ultar-profile` (copies nex
 |---|---|
 | Values (`Value`: bool, int, float, string, list) and conversions bus/TOML/text | `src/value.rs` |
 | Schema registry: keys and `<id>` templates, types + validation, defaults, risk, scope, panels, migrations | `src/schema/{key,types,def,registry,migrate,mod}.rs` |
-| Seed schema, 112 settings in 10 panels | `src/seed/{mod,display,desktop,system}.rs` |
+| Seed schema, 270 settings in 27 panels | `src/seed/{mod,display,desktop,system,device,services}.rs`; panels and domains in `src/schema/area.rs` |
 | Store: file format with CRC line, atomic writes, quarantine, load + schema check, coalescing | `src/store/{format,disk,load,mod}.rs` |
 | Clock trait, system clock, manual clock | `src/clock.rs` |
 | Display combinations (pure): stable ids, combination id, first-time defaults | `src/displays.rs` |
@@ -189,7 +189,7 @@ seed tests fail otherwise. Renaming/removing a stored key: raise `SCHEMA_VERSION
 CLI: `usettings [--socket PATH] [--lang ar|en|de] [--token T] get KEY | set KEY VALUE | reset KEY | list [PANEL] |
 watch [--count N] | confirm [KEY] | revert [KEY]`; exit 0 / 1 (service) / 2 (usage).
 
-## Seed schema (112 settings)
+## Seed schema (270 settings)
 
 | Panel | Count | Keys |
 |---|---|---|
@@ -203,6 +203,27 @@ watch [--count N] | confirm [KEY] | revert [KEY]`; exit 0 / 1 (service) / 2 (usa
 | date_time | 5 | `datetime.automatic`†, `.timezone.automatic`†, `.timezone.name`†, `.clock_format`, `.hardware_clock`† († admin) |
 | privacy | 14 | master switches `privacy.camera`, `.microphone`, `.location`, `.sensors`, `.network` (confirm 15 s); `.tracker_blocking`, `.diagnostics`, `.allow_unsigned_packages`†, `.lock.{after,on_suspend}`, `.file_history`, `.auto_clean.{trash,temp,after_days}` |
 | account | 6 | `account.calls` (off), `.vpn`, `.store_purchases`, `.backup`, `.mesh_over_internet`, `.server`† |
+| mobile | 9 | `mobile.data`, `.roaming`, `.network_type`, `.network_selection`, `.apn`, `.data_sim`, `.data_limit.{enabled,megabytes}`, `.sim_pin`† (panel needs `modem`) |
+| search | 10 | `search.source.{apps,settings,files,calculator,characters,store,commands}`, `.file_places`, `.arabic_variants`, `.history` |
+| apps | 15 | `apps.default.{web,mail,calendar,music,video,photos,documents}`, `.removable_media`, `.autostart`; per app `apps.right.<id>.{camera,microphone,location,files,network,background}` |
+| pointer | 10 | `pointer.primary_button`, `.speed`, `.acceleration`, `.natural_scroll`, `.size`, `.touchpad.{tap_to_click,two_finger_scroll,natural_scroll,disable_while_typing,gestures}` |
+| keyboard | 10 | `keyboard.input_languages`, `.switch_shortcut`, `.per_window`, `.compose_key`, `.repeat.{enabled,delay_ms,per_second}`, `.on_screen`, `.suggestions`, `.autocorrect` |
+| printers | 7 | `printers.discover`, `.default`, `.paper`, `.duplex`, `.quality`, `.greyscale`, `.scan_resolution` |
+| colour | 4 | `colour.management`, `.profile`, `.intent`, `.calibration_reminder_days` (needs a display) |
+| accessibility | 20 | the four sign-in switches `accessibility.{large_text,high_contrast,screen_reader,on_screen_keyboard}` (moved here from appearance, keys unchanged), `.zoom`, `.zoom_percent`, `.reader_rate`, `.large_pointer`, `.reduce_motion`, `.colour_filter`, `.visual_alert`, `.mono_audio`, `.captions`, `.sticky_keys`, `.slow_keys`, `.bounce_keys`, `.mouse_keys`, `.dwell_click`, `.double_click_ms`, `.show_in_bar` |
+| sharing | 10 | `sharing.device_name` (host name), `.visible`, `.networks` (private/all), `.files`, `.files.folders`, `.files.read_only`, `.files.password`, `.media`, `.screen` (switch only), `.ssh`† |
+| users | 7 | `users.list_on_login`, `.guest`†, `.auto_login`†, `.new_kind`†, `.parental`†, `.parental.{from,until}`† |
+| storage | 6 | `storage.clean_old_updates`, `.clean_downloads`, `.clean_downloads_days`, `.low_space_percent`, `.automount`, `.trim` |
+| updates | 8 | `updates.auto_system`, `.auto_apps`, `.window.{from,until}`, `.channel`†, `.metered`, `.offline_usb`, `.notify` |
+| backup | 8 | `backup.enabled`, `.target`, `.target_path`, `.folders`, `.schedule`, `.time`, `.encrypted`, `.keep_versions` |
+| mesh | 10 | `mesh.enabled`, `.visible`, `.share_compute`, `.share_compute.{on_power_only,percent}`; per paired device `mesh.device.<id>.{view,control,files,compute,sound}` |
+| assistant | 10 | `assistant.enabled`, `.wake_word`, `.wake_phrase`, `.voice`, `.model`, `.model_place`, `.see_screen`, `.act`, `.check_links`, `.history_days` |
+| cells | 6 | `cells.enabled`, `.network`, `.gpu`, `.upload_log`, `.storage_gb`, `.containers`† |
+| emergency | 8 | `emergency.number`, `.contact_name`, `.contact_phone`, `.on_lock_screen`, `.medical`, `.sos_light`, `.key_escape`, `.power_presses` |
+
+The domains of the new panels (modem, search, apps, input, printing, sharing, users, storage, update, backup,
+mesh, assistant, cells, emergency, accessibility) have no applier in settingsd: their services follow
+`settings.changed`, as the shell already does for the desktop panels.
 
 Confirm-or-revert (15 s): mode, mirror set, single display, primary, position, resolution, scale, refresh rate,
 orientation, network master switch (11 declarations). Computed from device: primary, single display, position,
