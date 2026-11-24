@@ -181,7 +181,11 @@ fn unusable_policy_and_profile_files_stop_the_start() {
     let dir = crate::testdir::TestDir::new("daemon-files");
     let mut base = args(&["--store", "/s", "--allow-all"], Some("/b"));
     assert!(load_access(&base).is_ok());
-    assert_eq!(load_capabilities(&base).unwrap(), Capabilities::default());
+    // without a profile: a keyboard and a pointer until the device service reports
+    let start = load_capabilities(&base).unwrap();
+    assert!(start.has(ultar_profile::Capability::Keyboard));
+    assert!(start.has(ultar_profile::Capability::Pointer));
+    assert_eq!(start.display_count, Capabilities::default().display_count);
     base.policy = Some(dir.path().join("missing.toml"));
     assert!(matches!(load_access(&base), Err(DaemonError::Policy(_))));
     let bad = dir.path().join("bad.toml");
