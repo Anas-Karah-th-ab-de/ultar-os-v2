@@ -9,6 +9,7 @@
 //! * [`layout`] – partition names, where the table copies and slot records lie on the
 //!   `ULTAR-BOOTCTL` partition, the size rules, and the `ultar.slot=` load option;
 //! * [`meta`] – the per-slot record (verity root hash) written by the updater;
+//! * [`install`] – the installer's target layout, boot control image and partition table;
 //! * [`gpt`] – a strict, allocation-free reader of GUID partition tables.
 //!
 //! Everything is pure (no I/O, no allocation, `no_std`), so the same code runs in the firmware
@@ -21,6 +22,7 @@
 
 pub mod crc;
 pub mod gpt;
+pub mod install;
 pub mod layout;
 pub mod meta;
 pub mod slot;

@@ -3,7 +3,9 @@
 //! events and the toolkit's damaged pixels into commits.
 
 use crate::client::{Client, ClientError, Window, WindowConfig};
-use crate::proto::{Configure, Event, Modifiers as WireModifiers, Rect, FIXED_ONE};
+use crate::proto::{
+    Configure, Event, Modifiers as WireModifiers, Rect, Request, FIXED_ONE, MAX_CHUNK,
+};
 use std::time::{Duration, Instant};
 use ultar_ui::canvas::{Canvas, PixelFormat};
 use ultar_ui::event::{Action, Event as UiEvent, Key, Modifiers, PointerButton};
@@ -19,7 +21,14 @@ pub struct UiWindow {
     modifiers: Modifiers,
     pointer: Point,
     started: Instant,
+    /// Serial of the last key or button press (copy needs a user action).
+    serial: u32,
+    /// Text offered on the clipboard, sent when the compositor asks for it.
+    offered: Option<String>,
 }
+
+/// The clipboard type of offered text.
+pub const TEXT_MIME: &str = "text/plain;charset=utf-8";
 
 impl std::fmt::Debug for UiWindow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -147,6 +156,8 @@ impl UiWindow {
             modifiers: Modifiers::default(),
             pointer: Point::new(0.0, 0.0),
             started: Instant::now(),
+            serial: 0,
+            offered: None,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -193,7 +204,51 @@ impl UiWindow {
         Ok(actions)
     }
 
+    /// Offers `text` on the clipboard (copy), tied to the last key or button press. The
+    /// compositor asks for the data when somebody pastes; [`UiWindow::dispatch`] answers.
+    pub fn offer_text(&mut self, text: String) -> Result<(), ClientError> {
+        if text.len() > MAX_CHUNK {
+            return Err(ClientError::InvalidSize);
+        }
+        self.offered = Some(text);
+        let request = Request::SetSelection {
+            serial: self.serial,
+            mimes: vec![TEXT_MIME.to_owned()],
+        };
+        self.client.send(&request)
+    }
+
+    /// Answers the compositor's request for offered data.
+    fn send_offered(&mut self, event: &Event) -> Result<bool, ClientError> {
+        let Event::SendRequest { transfer, mime } = event else {
+            return Ok(false);
+        };
+        let data = match (&self.offered, mime.as_str()) {
+            (Some(text), TEXT_MIME) => text.as_bytes().to_vec(),
+            _ => Vec::new(),
+        };
+        let request = Request::SendData {
+            transfer: *transfer,
+            data,
+            last: true,
+        };
+        self.client.send(&request)?;
+        Ok(true)
+    }
+
     fn handle(&mut self, event: &Event) -> Result<Vec<Action>, ClientError> {
+        if self.send_offered(event)? {
+            return Ok(Vec::new());
+        }
+        match event {
+            Event::PointerButton {
+                serial,
+                pressed: true,
+                ..
+            } => self.serial = *serial,
+            Event::Key { serial, state, .. } if *state != 0 => self.serial = *serial,
+            _ => {}
+        }
         if self.window.handle(event) {
             if let Event::Configure(c) = event {
                 self.configure(c)?;

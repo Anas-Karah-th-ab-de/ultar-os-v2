@@ -1,0 +1,71 @@
+# Known differences between the boards and the implementation (design conformance ratchet).
+# Every line is a difference that exists today. The tests fail on a new difference and on a
+# line that no longer fails (remove it then) – this list only shrinks. Detail: docs/review/ui-conformance-*.md
+clicks/menu.open/size
+clicks/menu.item/submenu-gap
+clicks/menu.item/width
+clicks/tabs.tab/width
+clicks/toast.action/on-release
+clicks/toast.close/timeout
+States/checkbox/disabled: border
+States/checkbox/loading: border
+States/checkbox/loading: fill
+States/listitem/disabled: height
+States/listitem/focused: height
+States/listitem/focused: ring
+States/listitem/hovered: height
+States/listitem/loading: height
+States/listitem/normal: height
+States/listitem/pressed: height
+States/primary/disabled: border
+States/primary/disabled: width
+States/primary/focused: width
+States/primary/hovered: width
+States/primary/loading: width
+States/primary/normal: width
+States/primary/pressed: width
+States/quiet/disabled: width
+States/quiet/focused: width
+States/quiet/hovered: width
+States/quiet/loading: width
+States/quiet/normal: width
+States/quiet/pressed: width
+States/slider/disabled: fill
+States/slider/focused: ring
+States/switch-off/focused: ring
+States/switch-on/focused: ring
+States/textfield/focused: border
+States/textfield/loading: build
+States/textfield/pressed: border
+StatesLight/checkbox/disabled: border
+StatesLight/checkbox/loading: border
+StatesLight/checkbox/loading: fill
+StatesLight/listitem/disabled: height
+StatesLight/listitem/focused: height
+StatesLight/listitem/focused: ring
+StatesLight/listitem/hovered: height
+StatesLight/listitem/loading: height
+StatesLight/listitem/normal: height
+StatesLight/listitem/pressed: height
+StatesLight/primary/disabled: border
+StatesLight/primary/disabled: width
+StatesLight/primary/focused: width
+StatesLight/primary/hovered: width
+StatesLight/primary/loading: width
+StatesLight/primary/normal: width
+StatesLight/primary/pressed: width
+StatesLight/quiet/disabled: width
+StatesLight/quiet/focused: width
+StatesLight/quiet/hovered: width
+StatesLight/quiet/loading: width
+StatesLight/quiet/normal: width
+StatesLight/quiet/pressed: width
+StatesLight/slider/disabled: fill
+StatesLight/slider/focused: ring
+StatesLight/switch-off/focused: ring
+StatesLight/switch-on/focused: ring
+StatesLight/textfield/focused: border
+StatesLight/textfield/loading: build
+StatesLight/textfield/pressed: border
+decor/win.buttons/geometry-ltr
+decor/win.buttons/geometry-rtl

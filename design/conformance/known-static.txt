@@ -1,0 +1,5 @@
+# Accepted findings of tools/design-conformance/static_checks.py (the list only shrinks).
+icons: board icon `mark` is missing in ultar-ui
+i18n: system/core/ultar-i18n/locales: Arabic `system.vendor` is not Arabic: 'KM Code Craft'
+i18n: system/core/ultar-settingsd/locales: Arabic `settings.region.format.paper.choice.letter` is not Arabic: 'Letter'
+icons: ICONS.md icon `mark` is missing in ultar-ui

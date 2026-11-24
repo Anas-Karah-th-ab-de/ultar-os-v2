@@ -16,11 +16,17 @@
 //! | `shell.mode` | topic | yes | shell |
 //! | `log.query` / `log.stats` | calls | – | log service |
 //! | `init.status` / `init.control` | calls | – | `ultar-init` |
+//! | `display.outputs` | topic | yes | display service (compositor) |
+//! | `display.identify` / `display.detect` | calls | – | display service (compositor) |
+//! | `account.state` | topic | yes | account service |
+//! | `account.status` / `sign_in` / `sign_out` / `create` / `set_server` / `set_service` / `change_password` / `delete` / `device_sign_out` / `device_remove` | calls | – | account service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod account_service;
 pub mod device_service;
 pub mod devices;
+pub mod display_service;
 pub mod init;
 pub mod log;
 pub mod notify;
@@ -67,6 +73,11 @@ mod tests {
         check_topic::<super::settings::PendingConfirmation>();
         check_topic::<super::settings::PendingResolved>();
         check_topic::<super::settings::StoreReport>();
+        check_topic::<super::display_service::Outputs>();
+        check_call::<super::display_service::Identify>();
+        check_call::<super::display_service::Detect>();
+        check_topic::<super::account_service::AccountState>();
+        check_call::<super::account_service::SignIn>();
     }
 
     fn retained<T: Topic>() -> (&'static str, bool) {

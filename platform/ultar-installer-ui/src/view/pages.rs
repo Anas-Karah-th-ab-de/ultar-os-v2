@@ -1,0 +1,321 @@
+//! The pages without a board of their own (steps 1–6, 9, 12, 13, 15, 16) and step 8
+//! (components, board *Installer*).
+
+use super::{body_muted, k, label_spec, muted, Cx};
+use crate::action::Act;
+use crate::components::{Component, Scope};
+use crate::wizard::{Step, KEYBOARDS, TIMEZONES};
+use ultar_ui::layout::{CrossAlign, Flex, Padding, Sizing};
+use ultar_ui::paint::TextSpec;
+use ultar_ui::tokens::{Space, TypeSize};
+use ultar_ui::ui::{NodeId, UiError};
+use ultar_ui::widgets::{
+    Badge, Button, ButtonVariant, Card, Checkbox, Icon, InfoBar, Label, Progress, RadioGroup, Row,
+    Select, Switch, Text, TextDirection, TextField, Tone,
+};
+
+/// Title and subtitle of a page.
+pub(crate) fn header(cx: &mut Cx<'_>, content: NodeId, step: Step) -> Result<(), UiError> {
+    let n = step.page().number();
+    let col = cx.ui.add(content, Flex::column().gap(Space::S4))?;
+    let title = TextSpec::title(TypeSize::S24);
+    cx.ui.add(
+        col,
+        Text::new(k(&format!("installer.page.{n}"))).spec(title),
+    )?;
+    body_muted(cx.ui, col, k(&format!("installer.page.{n}.sub")))?;
+    Ok(())
+}
+
+/// Builds the page of the shown step.
+pub(crate) fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
+    let step = cx.model.wizard.step.page();
+    if !matches!(step, Step::Drivers) {
+        header(cx, content, step)?;
+    }
+    match step {
+        Step::Components => components(cx, content),
+        Step::Disk | Step::Encryption => super::disk::build(cx, content),
+        Step::Drivers => super::drivers::build(cx, content),
+        Step::Summary => super::summary::build(cx, content),
+        Step::Install | Step::Done => progress(cx, content, step),
+        _ => simple(cx, content, step),
+    }
+}
+
+fn choices(keys: &[&str]) -> Vec<Label> {
+    keys.iter().map(|key| k(key)).collect()
+}
+
+fn select_row(
+    cx: &mut Cx<'_>,
+    card: NodeId,
+    name: &str,
+    opts: Vec<Label>,
+    at: usize,
+    act: Act,
+) -> Result<(), UiError> {
+    let row = cx.ui.add(card, Row::new(k(name)).last())?;
+    cx.act(row, Select::new(k(name), opts).selected(at), act)?;
+    Ok(())
+}
+
+fn switch_rows(
+    cx: &mut Cx<'_>,
+    card: NodeId,
+    keys: [&str; 2],
+    on: [bool; 2],
+    act: fn(usize) -> Act,
+) -> Result<(), UiError> {
+    for (i, key) in keys.iter().enumerate() {
+        let mut row = Row::new(k(key)).sublabel(k(&format!("{key}.sub")));
+        if i == 1 {
+            row = row.last();
+        }
+        let row = cx.ui.add(card, row)?;
+        cx.act(row, Switch::new(k(key), on[i]), act(i))?;
+    }
+    Ok(())
+}
+
+fn simple(cx: &mut Cx<'_>, content: NodeId, step: Step) -> Result<(), UiError> {
+    let p = cx.model.wizard.prefs.clone();
+    let card = cx.ui.add(content, Card::new())?;
+    match step {
+        Step::Language => {
+            let opts = choices(&[
+                "installer.lang.ar",
+                "installer.lang.en",
+                "installer.lang.de",
+            ]);
+            select_row(cx, card, "installer.lang", opts, p.lang, Act::Lang)
+        }
+        Step::Access => switch_rows(
+            cx,
+            card,
+            ["installer.access.large", "installer.access.reader"],
+            p.access,
+            Act::Access,
+        ),
+        Step::Keyboard => {
+            let opts = KEYBOARDS
+                .iter()
+                .map(|id| k(&format!("installer.keyboard.{}", id.replace('+', "_"))))
+                .collect();
+            select_row(
+                cx,
+                card,
+                "installer.keyboard",
+                opts,
+                p.keyboard,
+                Act::Keyboard,
+            )
+        }
+        Step::Network => {
+            let body = cx
+                .ui
+                .add(card, Flex::column().padding(Padding::all(Space::S16)))?;
+            let bar = InfoBar::new(Tone::Info, k("installer.network.none"))
+                .message(k("installer.network.none.sub"));
+            cx.ui.add(body, bar).map(|_| ())
+        }
+        _ => simple_rest(cx, card, step, &p),
+    }
+}
+
+fn simple_rest(
+    cx: &mut Cx<'_>,
+    card: NodeId,
+    step: Step,
+    p: &crate::wizard::Prefs,
+) -> Result<(), UiError> {
+    match step {
+        Step::TryOrInstall => {
+            let opts = ["installer.try.try", "installer.try.install"];
+            radio(
+                cx,
+                card,
+                "installer.try",
+                &opts,
+                usize::from(p.install),
+                Act::TryOrInstall,
+            )
+        }
+        Step::Kind => {
+            let opts = ["installer.kind.desktop", "installer.kind.server"];
+            radio(
+                cx,
+                card,
+                "installer.kind",
+                &opts,
+                usize::from(p.server),
+                Act::Kind,
+            )
+        }
+        Step::Extras => switch_rows(
+            cx,
+            card,
+            ["installer.extra.updates", "installer.extra.codecs"],
+            p.extras,
+            Act::Extra,
+        ),
+        Step::Account => account(cx, card),
+        Step::TimeZone => {
+            let opts = TIMEZONES.iter().map(|z| Label::data(z)).collect();
+            select_row(
+                cx,
+                card,
+                "installer.timezone",
+                opts,
+                p.timezone,
+                Act::TimeZone,
+            )
+        }
+        _ => Ok(()),
+    }
+}
+
+fn radio(
+    cx: &mut Cx<'_>,
+    card: NodeId,
+    name: &str,
+    keys: &[&str],
+    selected: usize,
+    act: Act,
+) -> Result<(), UiError> {
+    let body = cx
+        .ui
+        .add(card, Flex::column().padding(Padding::all(Space::S16)))?;
+    cx.act(
+        body,
+        RadioGroup::new(k(name), choices(keys)).selected(selected),
+        act,
+    )?;
+    Ok(())
+}
+
+fn account(cx: &mut Cx<'_>, card: NodeId) -> Result<(), UiError> {
+    let body = cx.ui.add(
+        card,
+        Flex::column()
+            .padding(Padding::all(Space::S16))
+            .gap(Space::S12),
+    )?;
+    let keys = [
+        "installer.account.full",
+        "installer.account.user",
+        "installer.account.device",
+    ];
+    for (i, key) in keys.iter().enumerate() {
+        let mut f = TextField::new(k(key))
+            .labelled()
+            .max_len(crate::wizard::MAX_NAME * 4);
+        if i > 0 {
+            f = f.direction(TextDirection::Ltr);
+        }
+        let f = f.text(&cx.model.wizard.account[i]);
+        cx.act(body, f, Act::AccountField(i))?;
+    }
+    muted(cx.ui, body, k("installer.account.note"))?;
+    Ok(())
+}
+
+fn progress(cx: &mut Cx<'_>, content: NodeId, step: Step) -> Result<(), UiError> {
+    let card = cx.ui.add(content, Card::padded())?;
+    if let Some(failure) = &cx.model.failure {
+        let bar = InfoBar::new(Tone::Danger, k("installer.failed"))
+            .message(crate::i18n::label(failure, cx.tr));
+        cx.ui.add(card, bar)?;
+        return Ok(());
+    }
+    if step == Step::Done {
+        cx.ui.add(
+            card,
+            InfoBar::new(Tone::Success, k("installer.done")).message(k("installer.done.sub")),
+        )?;
+        let restart = Button::new(k("installer.restart")).variant(ButtonVariant::Primary);
+        cx.act(card, restart, Act::Restart)?;
+        return Ok(());
+    }
+    let (done, total) = cx.model.progress;
+    let value = if total == 0 {
+        0.0
+    } else {
+        done as f32 / total as f32
+    };
+    let bar = cx
+        .ui
+        .add(card, Progress::new(k("installer.progress")).value(value))?;
+    cx.view.progress = Some(bar);
+    muted(cx.ui, card, k("installer.progress.note"))?;
+    Ok(())
+}
+
+/// Step 8: scope cards and the component grid.
+fn components(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
+    let w = cx.model.wizard.clone();
+    let scopes = Scope::ALL
+        .iter()
+        .map(|s| k(&format!("installer.scope.{}", s.id())))
+        .collect();
+    let index = Scope::ALL.iter().position(|s| *s == w.scope).unwrap_or(2);
+    cx.act(
+        content,
+        RadioGroup::new(k("installer.scope"), scopes).selected(index),
+        Act::Scope,
+    )?;
+    let card = cx.ui.add(content, Card::new())?;
+    let grid = cx.ui.add(
+        card,
+        Flex::row()
+            .padding(Padding::all(Space::S8))
+            .gap(Space::S16)
+            .cross(CrossAlign::Start),
+    )?;
+    let columns = [
+        cx.ui
+            .add_sized(grid, Flex::column().gap(Space::S4), Sizing::grow(1))?,
+        cx.ui
+            .add_sized(grid, Flex::column().gap(Space::S4), Sizing::grow(1))?,
+    ];
+    for (i, c) in Component::ALL.iter().enumerate() {
+        component(cx, columns[i % 2], *c, w.components.contains(c))?;
+    }
+    Ok(())
+}
+
+fn component(cx: &mut Cx<'_>, col: NodeId, c: Component, on: bool) -> Result<(), UiError> {
+    let row = cx.ui.add(
+        col,
+        Flex::row()
+            .padding(Padding::symmetric(Space::S12, Space::S8))
+            .gap(Space::S12)
+            .cross(CrossAlign::Center),
+    )?;
+    let key = format!("installer.component.{}", c.id());
+    cx.act(row, Checkbox::new(k(&key), on), Act::Component(c))?;
+    cx.ui.add(row, Icon::new(c.icon()))?;
+    let desc = Text::new(k(&format!("{key}.sub")))
+        .spec(TextSpec::new(TypeSize::S12).overflow(ultar_ui::text::Overflow::Ellipsis))
+        .color(ultar_ui::tokens::ColorRole::TextMuted);
+    cx.ui.add_sized(row, desc, Sizing::grow(1))?;
+    let badge = match c {
+        Component::Assistant => Some(
+            Badge::new(k("installer.component.recommended"))
+                .tone(Tone::Info)
+                .with_icon(),
+        ),
+        Component::Linux => Some(
+            Badge::new(k("installer.component.needed_by_firefox"))
+                .tone(Tone::Info)
+                .with_icon(),
+        ),
+        _ => None,
+    };
+    if let Some(badge) = badge {
+        cx.ui.add(row, badge)?;
+    }
+    cx.ui
+        .add(row, Text::new(Label::data("—")).spec(label_spec()))?;
+    Ok(())
+}

@@ -1,0 +1,23 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+InstallerDisk	1	installer.step	button	الخطوة 1: اللغة (مكتمل)	0	-	1041	78	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	2	installer.step	button	الخطوة 2: تسهيلات الاستخدام (مكتمل)	0	-	1041	114	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	3	installer.step	button	الخطوة 3: لوحة المفاتيح (مكتمل)	0	-	1041	150	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	4	installer.step	button	الخطوة 4: الشبكة (مكتمل)	0	-	1041	186	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	5	installer.step	button	الخطوة 5: تجربة أو تثبيت (مكتمل)	0	-	1041	222	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	6	installer.step	button	الخطوة 6: نوع التثبيت (مكتمل)	0	-	1041	258	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	7	installer.step	button	الخطوة 7: العتاد والتعريفات (مكتمل)	0	-	1041	294	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	8	installer.step	button	الخطوة 8: المكوّنات (مكتمل)	0	-	1041	330	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	9	installer.step	button	الخطوة 9: إضافات (مكتمل)	0	-	1041	366	183	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	10	installer.disk.select	button	القرص: Samsung SSD 980 · —	0	-	537	133.77	193.2	32	31,35,44	1280	800	dark	ar	0
+InstallerDisk	11	installer.disk.mode	radio	استخدام القرص كاملاًيُمحى كل ما على القرص، ومنه Windows 11.	0	false	537	214.75	438	67.58	23,26,33	1280	800	dark	ar	0
+InstallerDisk	12	installer.disk.mode	radio	بجانب النظام الموجوديبقى Windows 11 كما هو، ويأخذ Ultar OS جزءاً من المساحة الفارغة.Windows 11 · —Ultar OS · —	0	true	537	294.33	438	103.58	38,43,54	1280	800	dark	ar	0
+InstallerDisk	13	installer.disk.mode	radio	يدويالأقسام ونقاط الضمّ ونظام الملفات وقسم الإقلاع.	0	false	537	409.91	438	67.58	23,26,33	1280	800	dark	ar	0
+InstallerDisk	14	installer.disk.share	slider	المساحة المخصّصة لـ Ultar OS	0	-	597	489.48	378	32	111,119,137	1280	800	dark	ar	0
+InstallerDisk	15	installer.enc.mode	radio	بلا تشفيريستطيع من يصل إلى القرص قراءة ملفاتك.	0	false	49	195.56	438	67.58	23,26,33	1280	800	dark	ar	0
+InstallerDisk	16	installer.enc.mode	radio	عبارة مرورتُطلب عند كل إقلاع. لا يمكن استرجاع البيانات من دونها.	0	true	49	275.14	438	69.58	38,43,54	1280	800	dark	ar	0
+InstallerDisk	17	installer.enc.pass	input	عبارة المرور	0	-	102	388.91	372	30	31,35,44	1280	800	dark	ar	0
+InstallerDisk	18	installer.enc.show	button	إظهار عبارة المرور	0	-	49	387.91	32	32	23,26,33	1280	800	dark	ar	0
+InstallerDisk	19	installer.enc.pass	input	تكرار عبارة المرور	0	-	63	453.09	410	28	31,35,44	1280	800	dark	ar	0
+InstallerDisk	20	installer.cancel	button	إلغاء التثبيت	0	-	893.92	752	98.08	32	18,21,27	1280	800	dark	ar	0
+InstallerDisk	21	installer.prev	button	السابق	0	-	104.34	752	66.98	32	31,35,44	1280	800	dark	ar	0
+InstallerDisk	22	installer.next	button	التالي	1	-	32	752	64.34	32	96,82,38	1280	800	dark	ar	0

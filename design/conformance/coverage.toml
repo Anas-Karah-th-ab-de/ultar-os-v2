@@ -1,0 +1,1339 @@
+# Design conformance coverage: every action of docs/ui/CLICKS.md and where it is implemented.
+# status: ok | different | missing | dead.  `test` names the automated test that proves ok/different.
+# Checked by tools/design-conformance/static_checks.py (every CLICKS action listed, no stale entry).
+
+[action."win.min"]
+status = "different"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "click works in compositor; buttons 40x40 flush vs board 32x32 r8, 4 gap/inset"
+
+[action."win.max"]
+status = "different"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "click works in compositor; buttons 40x40 flush vs board 32x32 r8, 4 gap/inset"
+
+[action."win.close"]
+status = "different"
+impl = "platform/ultar-compositor/src/decor.rs + state/grabs.rs:225"
+test = "platform/ultar-compositor/tests/design_conformance.rs"
+boards = "Account:1, DesktopBottom:1, DesktopTop:2, Main:2, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1, Store:1"
+note = "click works in compositor; buttons 40x40 flush vs board 32x32 r8, 4 gap/inset"
+
+[action."settings.search"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1, SettingsDisplay:1, SettingsDisplayLight:1, SettingsDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."settings.area"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:32, SettingsDisplay:32, SettingsDisplayLight:32, SettingsDrivers:32"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.back"]
+status = "ok"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "matches the boards"
+[action."account.username"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.password"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.show"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.signin"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.create"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.server"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.copy"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1, PhoneDial:1, PhoneInCall:1, PhoneIncoming:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.qr"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.service"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:5"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.changepw"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.signout"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.delete"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.device.signout"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:2"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."account.device.remove"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "Account:2"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."tabs.tab"]
+status = "different"
+impl = "platform/ultar-ui/src/widgets/tabs.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:8"
+note = "click/arrows (RTL mirrored)/Home/End ok; strip 368 vs 327.7 wide"
+
+[action."sheet.close"]
+status = "ok"
+impl = "platform/ultar-ui/src/ui/modal.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:2"
+note = "Esc + scrim close, focus returns"
+
+[action."toast.action"]
+status = "different"
+impl = "platform/ultar-ui/src/ui/toasts.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:1"
+note = "runs+closes, Ctrl+Enter ok; fires on press, not on release"
+
+[action."toast.close"]
+status = "different"
+impl = "platform/ultar-ui/src/ui/toasts.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Bricks:1"
+note = "button+Esc ok; toast with action never times out (CLICKS: closes after motion.toast)"
+
+[action."note.dnd"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1"
+note = "no implementation on HEAD"
+
+[action."note.clear"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1"
+note = "no implementation on HEAD"
+
+[action."note.action"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:5"
+note = "no implementation on HEAD"
+
+[action."note.dismiss"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:3"
+note = "no implementation on HEAD"
+
+[action."cal.month"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:2"
+note = "no implementation on HEAD"
+
+[action."cal.day"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:35"
+note = "no implementation on HEAD"
+
+[action."cal.event"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:2"
+note = "no implementation on HEAD"
+
+[action."shell.trash"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.drive"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.overview"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.apps"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:6, DesktopBottom:6, DesktopTop:6, Main:6, Overview:6, QuickSettings:6"
+note = "no implementation on HEAD"
+
+[action."shell.kbd"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Login:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.status"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."shell.clock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, QuickSettings:1"
+note = "no implementation on HEAD"
+
+[action."browser.tab"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.tabclose"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.newtab"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.forward"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.reload"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.address"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:2"
+note = "no implementation on HEAD"
+
+[action."browser.shield"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."browser.downloads"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopBottom:1"
+note = "no implementation on HEAD"
+
+[action."files.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.forward"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.place"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:5, Main:5"
+note = "no implementation on HEAD"
+
+[action."files.drive"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.eject"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.trashplace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.newfolder"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1, Main:1"
+note = "no implementation on HEAD"
+
+[action."files.item"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:6, Main:6"
+note = "no implementation on HEAD"
+
+[action."desk.icon"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:2, Main:2"
+note = "no implementation on HEAD"
+
+[action."shell.appmenu"]
+status = "missing"
+impl = ""
+test = ""
+boards = "DesktopTop:1"
+note = "no implementation on HEAD"
+
+[action."installer.step"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:7, InstallerDisk:9, InstallerDrivers:6, InstallerSummary:13"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.scope"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:3"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.component"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:12"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.cancel"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.prev"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.next"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "Installer:1, InstallerDisk:1, InstallerDrivers:1, InstallerSummary:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.disk.select"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.disk.mode"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:3"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.disk.share"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.enc.mode"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:2"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.enc.pass"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:2"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.enc.show"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDisk:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.drivers.fetch"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.drivers.plan"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDrivers:2"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.drivers.alt"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDrivers:7"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.drivers.test"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerDrivers:7"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.edit"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerSummary:6"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."installer.confirm"]
+status = "different"
+impl = "platform/ultar-installer-ui"
+test = "platform/ultar-installer-ui/tests/{clicks,safety,design_conformance,access}.rs"
+boards = "InstallerSummary:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."lock.unlock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.media"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:3"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.sos"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."lock.power"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Lock:1"
+note = "layer only: ultar-compositor Role::Lock (state/layers.rs); no implementation on HEAD"
+
+[action."login.user"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:2"
+note = "no implementation on HEAD"
+
+[action."login.password"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.show"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.submit"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.method"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."login.access"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1"
+note = "no implementation on HEAD"
+
+[action."qs.power"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Login:1, QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."menu.open"]
+status = "different"
+impl = "platform/ultar-ui/src/ui/menus.rs (open_menu)"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:3"
+note = "opens below, aligned, Esc/second click close, focus returns; menu 144 wide vs 224; owner shows no open state"
+
+[action."menu.item"]
+status = "different"
+impl = "platform/ultar-ui/src/widgets/menu.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:10"
+note = "runs+closes, disabled inert, submenu on Enter; widths 202/144 vs 224/160, submenu overlaps parent by 4"
+
+[action."select.option"]
+status = "ok"
+impl = "platform/ultar-ui/src/widgets/select.rs"
+test = "platform/ultar-ui/tests/design_conformance_clicks.rs"
+boards = "Menus:3"
+note = "open/choose/Esc keeps choice; height 32"
+
+[action."overview.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:1"
+note = "no implementation on HEAD"
+
+[action."overview.workspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."overview.window"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."overview.close"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Overview:3"
+note = "no implementation on HEAD"
+
+[action."phone.way"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:2"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.number"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.backspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.suggest"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.digit"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:12"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.call.video"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.call"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.filter"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:2"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.settings"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.callback"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:5"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.entry.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneDial:5"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.mute"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.output"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.keypad"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.hold"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.video"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.camera"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.share"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.hangup"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneInCall:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.decline"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.decline.msg"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."phone.accept"]
+status = "missing"
+impl = ""
+test = ""
+boards = "PhoneIncoming:1"
+note = "legacy only: platform/ultar-shell/src/app_phone.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."projection.mode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Projection:4"
+note = "backend only: ultar-settingsd display.mode; no implementation on HEAD"
+
+[action."qs.wifi"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.wifi.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.wired"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.bluetooth"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.bluetooth.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.toggle"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:4"
+note = "backend only: ultar-settingsd (desktop/system seeds); no implementation on HEAD"
+
+[action."qs.vpn"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.vpn.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.powermode"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.powermode.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.mesh"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.mesh.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.volume"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.output"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.brightness"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.battery"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.assistant"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.shot"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.settings"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."qs.lock"]
+status = "missing"
+impl = ""
+test = ""
+boards = "QuickSettings:1"
+note = "legacy only: platform/ultar-shell/src/quick.rs (old UI, not ultar-ui); no implementation on HEAD"
+
+[action."display.keep.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.revert"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.keep"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SettingsDisplay:1"
+note = "backend only: system/core/ultar-settingsd (seed/display.rs, displays.rs, keep/revert); no implementation on HEAD"
+
+[action."display.identify"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.detect"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.select"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:3, SettingsDisplayLight:3"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.mode"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:3, SettingsDisplayLight:3"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.nightlight"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.nightlight.more"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.remember"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.bar"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.lid"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.resolution"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.scale"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.refresh"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.orientation"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.hdr"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.profile"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."display.brightness"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDisplay:1, SettingsDisplayLight:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.alt"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:7"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.rollback"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:7"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.plan"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.fw.check"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.fw.usb"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."drivers.selftest"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "SettingsDrivers:1"
+note = "click proven; geometry/colour differences listed in design/conformance/known-boards.txt"
+[action."demo"]
+status = "different"
+impl = "platform/ultar-ui (widgets)"
+test = "platform/ultar-ui/tests/design_conformance.rs"
+boards = "States:84, StatesLight:84"
+note = "toolkit bricks; 60 known size/colour differences (states.tsv)"
+
+[action."store.area"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:6"
+note = "no implementation on HEAD"
+
+[action."store.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:1, SurfaceStates:5"
+note = "no implementation on HEAD"
+
+[action."store.open"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:12"
+note = "no implementation on HEAD"
+
+[action."store.launch"]
+status = "missing"
+impl = ""
+test = ""
+boards = "Store:5, SurfaceStates:6"
+note = "no implementation on HEAD"
+
+[action."store.search.clear"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.retry"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:2"
+note = "no implementation on HEAD"
+
+[action."store.offline"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.log"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.free.item"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:3"
+note = "no implementation on HEAD"
+
+[action."store.free.cancel"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."store.free.go"]
+status = "missing"
+impl = ""
+test = ""
+boards = "SurfaceStates:1"
+note = "no implementation on HEAD"
+
+[action."settings.back"]
+status = "different"
+impl = "apps/ultar-settings"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "CompactDisplay:1"
+note = "compact class back to the list of areas"
+
+[action."display.autobrightness"]
+status = "different"
+impl = "apps/ultar-settings + settingsd display.auto_brightness (needs sensors)"
+test = "apps/ultar-settings/tests/{clicks,design_conformance,access}.rs"
+boards = "CompactDisplay:1"
+note = "new settingsd key display.auto_brightness"
+
+[action."apps.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."apps.category"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."apps.details"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."apps.pin"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."apps.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."apps.uninstall"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."mobile.app"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."mobile.apps"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."mobile.home"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."mobile.search"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."mobile.status"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."qs.mobile"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."qs.mobile.list"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."store.back"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."store.install"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."store.more"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."win.menu.allws"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."win.menu.move"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."win.menu.ontop"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."win.menu.resize"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"
+
+[action."win.menu.workspace"]
+status = "missing"
+impl = ""
+test = ""
+boards = ""
+note = "added by the boards patch (w5/boards); not implemented on HEAD"

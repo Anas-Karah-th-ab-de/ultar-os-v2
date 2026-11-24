@@ -1,0 +1,22 @@
+# board	i	act	role	name	disabled	checked	x	y	w	h	rgb	board_w	board_h	theme	lang	offset
+SurfaceStates	1	store.search	input	ابحث عن تطبيق أو نوع ملف	0	-	2030	84.59	396	30	31,35,44	2496	640	dark	ar	0
+SurfaceStates	2	store.search	input	ابحث عن تطبيق أو نوع ملف	0	-	1534	84.59	396	30	31,35,44	2496	640	dark	ar	0
+SurfaceStates	3	store.search.clear	button	مسح البحث	0	-	1696.41	505.14	95.2	32	31,35,44	2496	640	dark	ar	0
+SurfaceStates	4	store.search	input	ابحث عن تطبيق أو نوع ملف	0	-	1038	84.59	396	30	31,35,44	2496	640	dark	ar	0
+SurfaceStates	5	store.retry	button	إعادة المحاولة	0	-	1042	322.23	106.27	32	31,35,44	2496	640	dark	ar	0
+SurfaceStates	6	store.launch	button	فتح الأدوات المكتبية	0	-	1025	414.42	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	7	store.launch	button	فتح المبرمج	0	-	1025	463.42	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	8	store.launch	button	فتح المساعد	0	-	1025	512.42	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	9	store.offline	button	تصفّح المصادر بلا إنترنت	0	-	1025	570.2	65.86	32	31,35,44	2496	640	dark	ar	0
+SurfaceStates	10	store.search	input	ابحث عن تطبيق أو نوع ملف	0	-	542	84.59	396	30	31,35,44	2496	640	dark	ar	0
+SurfaceStates	11	store.retry	button	إعادة المحاولة	0	-	868.73	393.61	106.27	32	31,35,44	2496	640	dark	ar	0
+SurfaceStates	12	store.log	button	حفظ السجلّ	0	-	762.8	393.61	97.94	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	13	store.launch	button	فتح الأدوات المكتبية	0	-	529	468	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	14	store.launch	button	فتح المبرمج	0	-	529	517	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	15	store.launch	button	فتح المساعد	0	-	529	566	54.88	32	23,26,33	2496	640	dark	ar	0
+SurfaceStates	16	store.search	input	ابحث عن تطبيق أو نوع ملف	0	-	46	84.59	396	30	31,35,44	2496	640	dark	ar	0
+SurfaceStates	17	store.free.item	checkbox	سلة المحذوفات—	0	true	33	387.81	446	48	23,26,33	2496	640	dark	ar	0
+SurfaceStates	18	store.free.item	checkbox	الملفات المؤقتة—	0	true	33	435.81	446	48	23,26,33	2496	640	dark	ar	0
+SurfaceStates	19	store.free.item	checkbox	تحديثات قديمة—	0	false	33	483.81	446	48	23,26,33	2496	640	dark	ar	0
+SurfaceStates	20	store.free.cancel	button	إلغاء	0	-	200.48	575	57.03	32	31,35,44	2496	640	dark	ar	0
+SurfaceStates	21	store.free.go	button	تحرير المساحة والمتابعة	0	-	33	575	159.48	32	212,175,55	2496	640	dark	ar	0
