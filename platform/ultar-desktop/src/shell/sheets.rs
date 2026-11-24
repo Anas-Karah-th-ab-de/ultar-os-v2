@@ -282,6 +282,9 @@ fn more(s: &mut Shell, id: TileId) -> Outcome {
             }
             out
         }
+        // The mesh tile's arrow: continue what is in front on another device (the phone's
+        // way to it); with nobody to send to, its page in Settings.
+        TileId::Mesh if crate::model::mesh::can_send(&s.d.svc) => super::handoff::send(s, None),
         _ => settings_of(s, id),
     }
 }
