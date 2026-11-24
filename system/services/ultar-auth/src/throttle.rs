@@ -16,6 +16,10 @@ pub const KIND: &str = "ultar-auth-throttle";
 pub const FILE: &str = "throttle";
 /// Key whose wait holds for every user (set when the counter file was damaged).
 pub const EVERYONE: &str = "!";
+/// Failures in a row after which a PIN is no longer checked: only the password (whose
+/// success clears the counter) unlocks again (security review S-6: a 4-digit PIN cannot
+/// be guessed through the back-off alone).
+pub const PIN_LOCKOUT: u32 = 10;
 /// Keys kept (users plus the shared key for unknown names).
 pub const MAX_KEYS: usize = 128;
 
@@ -113,13 +117,16 @@ impl Throttle {
         Ok(Throttle { entries })
     }
 
-    /// Loads the counters; a damaged file counts as the longest wait for everybody, so
-    /// that deleting or damaging it cannot reset the back-off.
+    /// Loads the counters; a damaged or unreadable file counts as the longest wait for
+    /// everybody, so that damaging it (or making it unreadable) cannot reset the back-off.
     pub fn load(dir: &Path, now: u64) -> Result<Throttle, FileError> {
-        match file::read(&dir.join(FILE), KIND) {
-            Ok(Some(body)) => Throttle::decode(&body),
+        match file::read(&dir.join(FILE), KIND).and_then(|body| match body {
+            Some(body) => Throttle::decode(&body).map(Some),
+            None => Ok(None),
+        }) {
+            Ok(Some(t)) => Ok(t),
             Ok(None) => Ok(Throttle::default()),
-            Err(FileError::Damaged) => {
+            Err(_) => {
                 let mut t = Throttle::default();
                 t.entries.insert(
                     EVERYONE.to_owned(),
@@ -130,7 +137,6 @@ impl Throttle {
                 );
                 Ok(t)
             }
-            Err(e) => Err(e),
         }
     }
 

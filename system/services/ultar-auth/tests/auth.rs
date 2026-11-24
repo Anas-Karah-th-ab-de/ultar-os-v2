@@ -351,3 +351,63 @@ fn hostile_file_contents_are_refused_not_trusted() {
         let _ = throttle::Throttle::decode(&random);
     }
 }
+
+/// Security review S-6: after `PIN_LOCKOUT` wrong tries in a row the PIN is no longer
+/// checked (even the right one is "wrong"); the password still works and clears the lock.
+#[test]
+fn a_pin_is_locked_after_too_many_failures_until_the_password_is_used() {
+    let d = dir("pinlock");
+    let clock = Arc::new(ManualClock::new(0));
+    let mut auth = open(&d, &clock);
+    create(&mut auth, "anas", "sesam-öffne-dich");
+    let pin = SetSecret {
+        user: "anas".into(),
+        display_name: "anas name".into(),
+        method: Method::Pin,
+        current: Some(secret("sesam-öffne-dich")),
+        new: secret("4711"),
+    };
+    assert_eq!(auth.set_secret(&pin, false), SetOutcome::Done);
+    for _ in 0..throttle::PIN_LOCKOUT {
+        clock.advance(throttle::MAX_WAIT_MS);
+        assert!(matches!(
+            auth.verify("anas", Method::Pin, &secret("0000")),
+            Outcome::Denied { .. }
+        ));
+    }
+    clock.advance(throttle::MAX_WAIT_MS);
+    assert!(
+        matches!(
+            auth.verify("anas", Method::Pin, &secret("4711")),
+            Outcome::Denied { .. }
+        ),
+        "the right PIN after the lockout"
+    );
+    clock.advance(throttle::MAX_WAIT_MS);
+    assert_eq!(
+        auth.verify("anas", Method::Password, &secret("sesam-öffne-dich")),
+        Outcome::Granted
+    );
+    assert_eq!(
+        auth.verify("anas", Method::Pin, &secret("4711")),
+        Outcome::Granted
+    );
+}
+
+/// Security review S-6: an unreadable counter file (not only a damaged one) holds every
+/// user back instead of starting without a back-off.
+#[test]
+fn an_unreadable_counter_file_holds_everyone_back() {
+    let d = dir("unreadable");
+    let clock = Arc::new(ManualClock::new(0));
+    let mut auth = open(&d, &clock);
+    create(&mut auth, "anas", "sesam-öffne-dich");
+    drop(auth);
+    // a directory where the file goes: reading it fails with an I/O error
+    std::fs::create_dir(d.join(throttle::FILE)).unwrap();
+    let mut auth = open(&d, &clock);
+    assert!(matches!(
+        auth.verify("anas", Method::Password, &secret("sesam-öffne-dich")),
+        Outcome::Throttled { .. }
+    ));
+}

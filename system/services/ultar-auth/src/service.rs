@@ -118,8 +118,12 @@ impl Auth {
                 retry_after_ms: waiting,
             };
         }
+        // After PIN_LOCKOUT failures in a row only the password is checked (S-6).
+        let locked =
+            method == Method::Pin && self.throttle.failures(&key) >= crate::throttle::PIN_LOCKOUT;
         let stored = list
             .iter()
+            .filter(|_| !locked)
             .find(|a| a.name == user)
             .and_then(|a| match method {
                 Method::Password => Some(a.password.clone()),
