@@ -344,6 +344,29 @@ fn capability(id: &str) -> devices::Capability {
     }
 }
 
+/// What a device without display and without other reported capabilities lists.
+const HEADLESS_PANELS: [&str; 19] = [
+    "notifications",
+    "power",
+    "region",
+    "date_time",
+    "privacy",
+    "account",
+    "search",
+    "apps",
+    "printers",
+    "accessibility",
+    "sharing",
+    "users",
+    "storage",
+    "updates",
+    "backup",
+    "mesh",
+    "assistant",
+    "cells",
+    "emergency",
+];
+
 #[test]
 fn list_follows_the_capabilities_the_device_service_reports() {
     let rig = Rig::new("svc-caps");
@@ -391,30 +414,7 @@ fn list_follows_the_capabilities_the_device_service_reports() {
         .into_iter()
         .map(|p| p.id)
         .collect();
-    assert_eq!(
-        ids,
-        [
-            "notifications",
-            "power",
-            "region",
-            "date_time",
-            "privacy",
-            "account",
-            "search",
-            "apps",
-            "printers",
-            "accessibility",
-            "sharing",
-            "users",
-            "storage",
-            "updates",
-            "backup",
-            "mesh",
-            "assistant",
-            "cells",
-            "emergency"
-        ]
-    );
+    assert_eq!(ids, HEADLESS_PANELS);
     assert_eq!(server.stats().lost_events(), 0);
     assert!(server.stats().requests() >= 4);
 }

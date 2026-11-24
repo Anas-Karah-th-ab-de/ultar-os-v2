@@ -1,6 +1,7 @@
 //! The registry: every setting is declared exactly once, here.
 
-use super::def::{InstanceKind, Panel, Scope, SettingDef};
+use super::area::Panel;
+use super::def::{InstanceKind, Scope, SettingDef};
 use super::key::{is_valid_key, is_valid_segment, KeyTemplate};
 use super::migrate::Migration;
 use super::types::{ValueError, ValueType};

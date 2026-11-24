@@ -75,6 +75,12 @@ fn all_panels() -> Vec<PanelInfo> {
     for (id, key) in first {
         panels.push(panel(id, vec![flag(key)]));
     }
+    panels.push(panel("sharing", sharing_rows()));
+    panels
+}
+
+/// Sharing as settingsd lists it: a host name, switches, a choice and a list of folders.
+fn sharing_rows() -> Vec<ItemInfo> {
     let networks = ItemKind::Choice {
         choices: ["private", "all"]
             .iter()
@@ -84,7 +90,7 @@ fn all_panels() -> Vec<PanelInfo> {
             })
             .collect(),
     };
-    let sharing = vec![
+    vec![
         row(
             "sharing.device_name",
             ItemKind::Text {
@@ -109,9 +115,7 @@ fn all_panels() -> Vec<PanelInfo> {
         ),
         flag("sharing.screen"),
         flag("sharing.ssh"),
-    ];
-    panels.push(panel("sharing", sharing));
-    panels
+    ]
 }
 
 fn panel(id: &str, items: Vec<ItemInfo>) -> PanelInfo {
