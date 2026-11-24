@@ -20,6 +20,12 @@ use ultar_ui::ui::NodeId;
 pub const SIDEBAR: f32 = 4.0 * Space::S48.points() + Space::S16.points();
 /// Width of the search field (boards: 200 = 4 × 48 + 8).
 pub const SEARCH: f32 = 4.0 * Space::S48.points() + Space::S8.points();
+/// Window width below which the folder toolbar cannot hold all of its parts at their board sizes
+/// beside the sidebar (back, forward, title, count, search field of [`SEARCH`], two buttons): the
+/// count goes and the search field takes the room that is left, so the field and the buttons after
+/// it stay inside the window (at 1024 × 768 a new window is about 614 wide: the field was cut off
+/// by the window's edge and the buttons behind it could not be reached).
+pub const TOOLBAR_WHOLE: f32 = 720.0;
 /// Height of the folder toolbar (boards: 48).
 pub const TOOLBAR: f32 = Space::S48.points();
 

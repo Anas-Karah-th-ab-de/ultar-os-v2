@@ -5467,11 +5467,14 @@ dependencies = [
  "serde",
  "subtle",
  "ultar-bus",
+ "ultar-desktop",
  "ultar-hal",
  "ultar-hal-linux",
  "ultar-hal-system",
+ "ultar-i18n",
  "ultar-service",
  "ultar-svckit",
+ "ultar-ui",
  "zeroize",
 ]
 

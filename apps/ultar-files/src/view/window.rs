@@ -133,20 +133,34 @@ fn toolbar(
     }
     let heading = TextSpec::new(typography::BODY).weight(Weight::Semibold);
     ui.add(bar, Text::new(title(s)).spec(heading))?;
-    let count = crate::update::visible(s).len() as i64;
-    let small = TextSpec::new(TypeSize::S12);
-    ui.add(
-        bar,
-        Text::new(Label::key_count("files.count", "count", count))
-            .spec(small)
-            .color(ColorRole::TextMuted),
-    )?;
-    tools(ui, b, bar, s, compact)
+    // A window too narrow for the whole toolbar: no count, the search field fills what is left.
+    let narrow = !compact && ui.size().w < super::TOOLBAR_WHOLE;
+    if !narrow {
+        let count = crate::update::visible(s).len() as i64;
+        let small = TextSpec::new(TypeSize::S12);
+        ui.add(
+            bar,
+            Text::new(Label::key_count("files.count", "count", count))
+                .spec(small)
+                .color(ColorRole::TextMuted),
+        )?;
+    }
+    tools(ui, b, bar, s, compact, narrow)
 }
 
-/// The end of the toolbar: search, new folder (or empty trash), view.
-fn tools(ui: &mut Ui, b: &mut Built, bar: NodeId, s: &State, compact: bool) -> Result<(), UiError> {
-    ui.add_sized(bar, Flex::row(), Sizing::grow(1))?;
+/// The end of the toolbar: search, new folder (or empty trash), view. `narrow`: the search field
+/// takes the room between the title and the buttons instead of its board width.
+fn tools(
+    ui: &mut Ui,
+    b: &mut Built,
+    bar: NodeId,
+    s: &State,
+    compact: bool,
+    narrow: bool,
+) -> Result<(), UiError> {
+    if !narrow {
+        ui.add_sized(bar, Flex::row(), Sizing::grow(1))?;
+    }
     let name = Label::key_with(
         "files.search",
         &[("place", &ui.translator().t(title_key(s)))],
@@ -154,7 +168,7 @@ fn tools(ui: &mut Ui, b: &mut Built, bar: NodeId, s: &State, compact: bool) -> R
     let field = SearchField::new(name.clone())
         .placeholder(name)
         .text(&s.query);
-    let width = if compact {
+    let width = if compact || narrow {
         Sizing::grow(1)
     } else {
         Sizing::width(SEARCH)

@@ -183,3 +183,36 @@ fn empty_folder_in_list_view() {
     idle(&mut app);
     assert_eq!(app.built().rows, ["neu.txt"]);
 }
+
+/// At 1024 × 768 a new Files window is about 614 points wide: the folder toolbar did not fit
+/// beside the sidebar, the search field was cut off by the window's edge and the buttons after
+/// it (new folder, view) lay outside the window. In a narrow window the whole toolbar stays
+/// inside it, in every language, and the search field keeps a usable width.
+#[test]
+fn the_toolbar_stays_inside_a_narrow_window() {
+    for lang in [Lang::Ar, Lang::En, Lang::De] {
+        let r = Root::new();
+        r.write("readme.txt", b"x");
+        let (mut app, _) = app(&r, Mode::Window, lang, None);
+        for width in [614.0_f32, 660.0, 832.0, 1152.0] {
+            app.ui.set_size(ultar_ui::Size::new(width, 443.0)).unwrap();
+            app.rebuild().unwrap();
+            app.ui.layout();
+            for target in [Target::Search, Target::NewFolder, Target::ViewMode] {
+                let rect = app.ui.rect(node(&app, &target)).unwrap();
+                assert!(
+                    rect.x >= 0.0 && rect.x + rect.w <= width,
+                    "{lang:?} {width}: {target:?} at {}..{} leaves the window",
+                    rect.x,
+                    rect.x + rect.w
+                );
+            }
+            let search = app.ui.rect(node(&app, &Target::Search)).unwrap();
+            assert!(
+                search.w >= 64.0,
+                "{lang:?} {width}: search {} wide",
+                search.w
+            );
+        }
+    }
+}

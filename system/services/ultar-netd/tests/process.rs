@@ -1,6 +1,7 @@
 //! The real `ultar-netd` on a prepared kernel tree: state, Wi-Fi and airplane switches
 //! kept across a restart, honest "no device" for Wi-Fi networks on a kernel without
-//! Wi-Fi (this host has no cfg80211), apps refused.
+//! Wi-Fi (the prepared tree has no nl80211: the service does not take the build host's own
+//! Wi-Fi card for the tree's, whatever hardware the host has), apps refused.
 
 use std::time::Duration;
 use ultar_bus::messages::net::{
@@ -63,7 +64,7 @@ fn start(world: &World) -> Daemon {
     )
 }
 
-/// This host's kernel has no cfg80211: every Wi-Fi call says "no device".
+/// The tree has no nl80211: every Wi-Fi call says "no device".
 fn no_wifi_device(shell: &Client) {
     let wifi = shell.subscribe::<WifiLink>().unwrap();
     assert_eq!(wifi.recv_timeout(WAIT).unwrap().phase, WifiPhase::NoDevice);
