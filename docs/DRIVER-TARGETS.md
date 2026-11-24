@@ -30,7 +30,7 @@ und danach der Treiber gebaut – als letzter Bauteil (Stufe 4).
 | Treiber | T1 | T2 | Stand | Unterlage / Aufwand |
 |---|---|---|---|---|
 | **Intel-Grafik Anzeige** (Modus setzen, mehrere Ausgänge, Hotplug, Helligkeit, Schlafmodus) | UHD Gen 9.5 | Arc 140T (Xe) | ⬜ zwei Generationen, ein Treiber mit zwei Plattform-Teilen | Intel PRM (öffentlich) · groß |
-| **Intel-Grafik 3D/Rechnen** (für Compositor, 4K flüssig, lokale Modelle) | ✔ | ✔ | 🔧 T2: Stufe G0/G1a am Gerät geprüft (VFIO, 24.11.2026: Erkennung, Forcewake, Engines, GuC-Firmware geladen, GuC meldet „bereit“ und beantwortet Anfragen – Hardware-Tabelle gelesen); Engines und Aufträge ab G1c/G3; Stufen bis Vulkan: `docs/integration/intel-gt.md` · T1 ⬜ | Linux `xe` (MIT), Mesa genxml · sehr groß |
+| **Intel-Grafik 3D/Rechnen** (für Compositor, 4K flüssig, lokale Modelle) | ✔ | ✔ | 🔧 T2: Stufe G0/G1a am Gerät geprüft (VFIO, 24.11.2026: Erkennung, Forcewake, Engines, GuC-Firmware geladen, GuC meldet „bereit“ und beantwortet Anfragen – Hardware-Tabelle gelesen, schneller Nachrichtenkanal CTB läuft, 25.11.2026); Engines und Aufträge ab G2/G3; Stufen bis Vulkan: `docs/integration/intel-gt.md` · T1 ⬜ | Linux `xe` (MIT), Mesa genxml · sehr groß |
 | HD Audio: Codec-Wege echter Laptops, Aufnahme, Kopfhörer-Erkennung, Schnittstelle für Programme | ALC-Codec | ALC-Codec | 🔧 `gen-hda` erweitern | HDA 1.0a |
 | I2C (LPSS) + HID-über-I2C (Touchpad, Mehrfinger-Gesten) | ✔ | – | ⬜ | HID over I2C |
 | Akku, Netzteil, Deckel, Tasten (Helligkeit/Lautstärke), Thermik, Lüfter – über ACPI/EC | ✔ | Thermik/Lüfter | ⬜ (braucht AML) | ACPI, ThinkPad-EC |
