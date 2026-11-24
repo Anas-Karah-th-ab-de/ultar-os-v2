@@ -72,6 +72,7 @@ OSNAME=$(. rootfs/etc/os-release; echo "$NAME")
 mv "$STAGE/etc/os-release.new" "$STAGE/etc/os-release"
 ln -sf sbin/init "$STAGE/init"   # Kernel sucht im Start-Ramdisk /init (Handy-Boot-Abbilder)
 ln -sf /usr/bin/ultar-compat "$STAGE/sbin/modprobe"   # Kernel-Modul-Nachladen über den Ubuntu-Bereich
+ln -sfn /run/ultar/net/resolv.conf "$STAGE/etc/resolv.conf"   # DNS schreibt ultar-netd (Wi-Fi/DHCP, VPN)
 if [ "$DEBUG" = 1 ]; then
   BB=${BUSYBOX:-/bin/busybox}
   install -m755 "$BB" "$STAGE/bin/busybox"
