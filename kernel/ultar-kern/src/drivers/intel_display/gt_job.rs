@@ -216,13 +216,8 @@ fn ring_for(
     Ok((target, mi::batch_job(BATCH_VA)))
 }
 
-/// Engine setup, target, ring and the context image.
+/// Target, ring and the context image.
 fn prepare(env: &mut Env, spec: &Spec, id: u32) -> Result<Job, String> {
-    let status_page = buffer(env.dev, env.bufs, 4096)?;
-    engines::setup(&mut env.dev.mmio, spec.base, status_page);
-    if spec.class == Class::Compute {
-        engines::enable_compute(&mut env.dev.mmio);
-    }
     let value = VALUE + id;
     let mut space = match spec.kind {
         Kind::Ggtt => None,
@@ -349,8 +344,10 @@ fn record_golden(env: &mut Env, class: Class, image: Vec<u8>) -> Result<String, 
     Ok(text)
 }
 
-/// One job from buffers to the retired context.
+/// One job from buffers to the retired context. The job's buffers are given back once the
+/// context is deregistered (after a failure they stay until the GuC is reset).
 fn one(env: &mut Env, spec: &Spec, id: u32) -> Result<String, String> {
+    let mark = env.bufs.len();
     let job = prepare(env, spec, id)?;
     let us = run(env, &job)?;
     let mut text = format!("stored {:#x} after {us} µs", job.value);
@@ -364,6 +361,11 @@ fn one(env: &mut Env, spec: &Spec, id: u32) -> Result<String, String> {
         let image = env.bufs[job.image].bytes(spec.class.lrc_size() as usize);
         text += &record_golden(env, spec.class, image)?;
     }
+    while env.bufs.len() > mark {
+        if let Some(b) = env.bufs.pop() {
+            b.release(env.dev);
+        }
+    }
     Ok(text)
 }
 
@@ -374,14 +376,21 @@ pub fn jobs(env: &mut Env) -> Vec<(&'static str, Result<String, String>)> {
         return alloc::vec![(JOBS[0].what, Err(format!("render forcewake: {e}")))];
     }
     let mut out = Vec::new();
+    // each engine gets its status page once; it stays until the GuC is reset
+    for base in [BCS, RCS, CCS] {
+        match buffer(env.dev, env.bufs, 4096) {
+            Ok(status_page) => engines::setup(&mut env.dev.mmio, base, status_page),
+            Err(e) => out.push((JOBS[0].what, Err(format!("status page: {e}")))),
+        }
+    }
+    engines::enable_compute(&mut env.dev.mmio);
     for (id, spec) in JOBS.iter().enumerate() {
-        let result = one(env, spec, id as u32);
-        let failed = result.is_err();
-        out.push((spec.what, result));
-        if failed {
-            // a context that could not be retired may still be in use: no further jobs
+        if !out.is_empty() && out.iter().any(|(_, r)| r.is_err()) {
             break;
         }
+        let result = one(env, spec, id as u32);
+        // after a failure no further jobs: its context may still be in use
+        out.push((spec.what, result));
     }
     if let Err(e) = fwk.put(&mut env.dev.mmio, Domain::Render) {
         crate::kprintln!("GTTEST: render forcewake release: {e}");
