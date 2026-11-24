@@ -243,6 +243,7 @@ lock.date = {weekday}, {day}. {month} {year}
 lock.emergency = Notfall
 lock.error.no_service = Der Anmeldedienst antwortet nicht. Erneut versuchen.
 lock.error.no_user = Auf diesem Gerät gibt es keinen Benutzer.
+lock.error.other_user = Nur die Person, der diese Sitzung gehört, kann sie entsperren.
 lock.error.unavailable = Anmeldung unmöglich: die Kontodatei ist beschädigt.
 lock.error.wait = Falsches Kennwort. Erneut in {seconds} s.
 lock.error.wrong = Falsches Kennwort.

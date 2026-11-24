@@ -92,7 +92,10 @@ impl LockApp {
         };
         Ok(LockApp {
             host,
-            state: LockState::default(),
+            state: LockState {
+                owner: user.clone(),
+                ..LockState::default()
+            },
             look: Look::new(options.lang, theme),
             surface: None,
             ports: client.map(BusPorts::new),

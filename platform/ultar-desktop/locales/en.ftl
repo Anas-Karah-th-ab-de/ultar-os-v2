@@ -243,6 +243,7 @@ lock.date = {weekday} {day} {month} {year}
 lock.emergency = Emergency
 lock.error.no_service = The sign-in service does not answer. Try again.
 lock.error.no_user = There is no user on this device.
+lock.error.other_user = Only the person whose session this is can unlock it.
 lock.error.unavailable = Sign-in impossible: the account file is damaged.
 lock.error.wait = Wrong password. Try again in {seconds} s.
 lock.error.wrong = Wrong password.

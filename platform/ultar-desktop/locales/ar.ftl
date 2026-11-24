@@ -243,6 +243,7 @@ lock.date = {weekday} {day} {month} {year}
 lock.emergency = طوارئ
 lock.error.no_service = خدمة التحقق لا تستجيب. حاول مجدداً.
 lock.error.no_user = لا يوجد مستخدم على هذا الجهاز.
+lock.error.other_user = لا يستطيع فتح هذه الجلسة إلا صاحبها.
 lock.error.unavailable = لا يمكن تسجيل الدخول: ملف الحسابات تالف.
 lock.error.wait = كلمة المرور غير صحيحة. حاول مجدداً بعد {seconds} ث.
 lock.error.wrong = كلمة المرور غير صحيحة.

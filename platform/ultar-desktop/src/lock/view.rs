@@ -159,6 +159,7 @@ fn error_label(s: &LockState, now: u64) -> Option<Label> {
         SignInError::Unavailable => Some(Label::key("lock.error.unavailable")),
         SignInError::NoService => Some(Label::key("lock.error.no_service")),
         SignInError::NoUser => Some(Label::key("lock.error.no_user")),
+        SignInError::OtherUser => Some(Label::key("lock.error.other_user")),
     }
 }
 

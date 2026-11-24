@@ -37,6 +37,10 @@ pub enum SignInError {
     NoService,
     /// No user is set up on this device.
     NoUser,
+    /// The password of another account was right, but the session belongs to its owner
+    /// (review security S-1: until each person has their own desktop, only the person whose
+    /// session is locked lifts the lock).
+    OtherUser,
 }
 
 /// Something the lock screen asks of the world.
@@ -82,6 +86,11 @@ pub struct LockState {
     pub svc: LockServices,
     /// login.access: the accessibility menu and its values.
     pub access: access::AccessState,
+    /// The account whose session this is (`None` until the first sign-in): only it unlocks.
+    pub owner: Option<String>,
+    /// The account whose secret is being checked (`Stage::Checking`; public only so that
+    /// tests can build a state with `..LockState::default()`).
+    pub checking: Option<String>,
 }
 
 impl Default for LockState {
@@ -98,6 +107,8 @@ impl Default for LockState {
             notes: Vec::new(),
             svc: LockServices::default(),
             access: access::AccessState::default(),
+            owner: None,
+            checking: None,
         }
     }
 }
@@ -115,6 +126,9 @@ impl LockState {
     /// login.user: account `index` of the list signs in (its card is chosen, the sign-in
     /// shows); `false` for an index that is not in the list.
     pub fn choose_user(&mut self, index: usize) -> bool {
+        if self.stage == Stage::Checking {
+            return false;
+        }
         let Some(user) = self.users.get(index).cloned() else {
             return false;
         };
@@ -183,6 +197,7 @@ impl LockState {
             return None;
         }
         self.stage = Stage::Checking;
+        self.checking = Some(user.clone());
         Some(LockEffect::Verify {
             user,
             method: self.method,
@@ -196,8 +211,17 @@ impl LockState {
             return None;
         }
         self.stage = Stage::SignIn;
+        let checked = self.checking.take();
         match outcome {
             Some(AuthOutcome::Granted) => {
+                let Some(name) = checked else {
+                    return None;
+                };
+                if self.owner.as_ref().is_some_and(|owner| *owner != name) {
+                    self.error = Some(SignInError::OtherUser);
+                    return None;
+                }
+                self.owner = Some(name);
                 self.error = None;
                 self.retry_until_ms = 0;
                 return Some(LockEffect::Unlock);
@@ -265,6 +289,53 @@ mod tests {
         );
         s.unlocked();
         assert_eq!(s.stage, Stage::Hidden);
+    }
+
+    /// Review security S-1: another account's right password never lifts the lock of a
+    /// session, and the account cannot be switched while a check runs.
+    #[test]
+    fn only_the_sessions_owner_unlocks() {
+        let other = UserInfo {
+            name: "guest".into(),
+            display_name: "Guest".into(),
+            has_pin: false,
+            admin: false,
+        };
+        let mut s = LockState {
+            user: Some(user(false)),
+            users: vec![user(false), other],
+            owner: Some("anas".into()),
+            ..LockState::default()
+        };
+        s.locked();
+        assert!(s.choose_user(1));
+        assert!(s.submit(Secret::new("guest-pw".into()), 0).is_some());
+        assert_eq!(s.verified(Some(AuthOutcome::Granted), 0), None);
+        assert_eq!(s.error, Some(SignInError::OtherUser));
+        // switching the card while the guest's password is checked does not help either
+        assert!(s.submit(Secret::new("guest-pw".into()), 0).is_some());
+        assert!(!s.choose_user(0), "no switch during a check");
+        assert_eq!(s.verified(Some(AuthOutcome::Granted), 0), None);
+        // the owner unlocks
+        assert!(s.choose_user(0));
+        assert!(s.submit(Secret::new("pw".into()), 0).is_some());
+        assert_eq!(
+            s.verified(Some(AuthOutcome::Granted), 0),
+            Some(LockEffect::Unlock)
+        );
+        // the first sign-in makes its account the owner
+        let mut first = LockState {
+            user: Some(user(false)),
+            ..LockState::default()
+        };
+        first.locked();
+        first.show_sign_in();
+        first.submit(Secret::new("pw".into()), 0);
+        assert_eq!(
+            first.verified(Some(AuthOutcome::Granted), 0),
+            Some(LockEffect::Unlock)
+        );
+        assert_eq!(first.owner.as_deref(), Some("anas"));
     }
 
     #[test]
