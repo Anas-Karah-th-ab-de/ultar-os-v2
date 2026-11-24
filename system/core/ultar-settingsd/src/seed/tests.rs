@@ -200,6 +200,16 @@ fn scopes_and_admin_settings() {
             "datetime.hardware_clock",
             "privacy.allow_unsigned_packages",
             "account.server",
+            "mobile.sim_pin",
+            "sharing.ssh",
+            "users.guest",
+            "users.auto_login",
+            "users.new_kind",
+            "users.parental",
+            "users.parental.from",
+            "users.parental.until",
+            "updates.channel",
+            "cells.containers",
         ]
     );
     assert!(admin.iter().all(|key| scope(key) == Scope::System));
