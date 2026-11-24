@@ -388,11 +388,16 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
 
     /// Rebuilds the tree from the model; focus and hover stay where they were.
     pub(crate) fn rebuild(&mut self) -> Result<(), AppError> {
-        let focused = self
-            .ui
-            .focused()
+        let had_focus = self.ui.focused();
+        let focused = had_focus
             .and_then(|f| self.built.clicks.iter().find(|(id, _)| *id == f))
             .map(|(_, c)| *c);
+        // What scrolls takes the focus itself (the dial pad in a small window, a long history)
+        // and is no click target: its place in the Tab order finds it again.
+        let place = match (had_focus, focused) {
+            (Some(f), None) => self.ui.focus_order().iter().position(|id| *id == f),
+            _ => None,
+        };
         // The dial pad keeps its scroll position across rebuilds (every key press rebuilds).
         let pad = self
             .built
@@ -411,6 +416,8 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
                 // A control that became disabled cannot keep the focus; that is fine.
                 let _ = self.ui.focus(*id);
             }
+        } else if let Some(id) = place.and_then(|i| self.ui.focus_order().get(i).copied()) {
+            let _ = self.ui.focus(id);
         }
         if let Some(pos) = self.pointer {
             self.ui.handle(Event::PointerMove { pos });
