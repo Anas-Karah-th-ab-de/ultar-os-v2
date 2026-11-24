@@ -10,6 +10,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::launcher::{AppStatus, InstanceState, InstanceStatus, Role, MAX_APPS};
 
+/// Longest sleep of the timer without a deadline (bounds a missed wake-up).
+const IDLE_LOOK: Duration = Duration::from_secs(1);
+/// Sleep of the timer while the launcher stops.
+const STOPPING_LOOK: Duration = Duration::from_millis(20);
 /// How often waiting output lines are pushed again.
 const OUTPUT_RETRY: Duration = Duration::from_millis(500);
 
@@ -127,13 +131,16 @@ impl Launcher {
                 output.pump(Instant::now())
             };
             let now = Instant::now();
-            let mut wait = next.map_or(Duration::from_secs(3600), |n| {
-                n.saturating_duration_since(now)
-            });
+            let mut wait = next.map_or(IDLE_LOOK, |n| n.saturating_duration_since(now));
             if waiting {
                 wait = wait.min(OUTPUT_RETRY);
             }
             let core = lock(&self.core);
+            // A change between `tick` and here (a shutdown, a stop with its deadline) woke
+            // nobody: the lock was free. Look again soon instead of sleeping on it.
+            if core.stopping {
+                wait = wait.min(STOPPING_LOOK);
+            }
             let _ = self.wake.wait_timeout(core, wait);
         }
         drop(restarts);
