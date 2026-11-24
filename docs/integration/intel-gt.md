@@ -13,7 +13,8 @@ without Linux.
 |---|---|---|
 | G0 | Identification (GMD_ID), forcewake, engines, GuC status, WOPCM read-out | **done, run on the Beelink** (iGPU through VFIO, 24.11.2026): graphics 12.74 Xe_LPG+ rev 4 `[rcs0 bcs0 ccs0]`, media 13.00 Xe_LPM+ rev 8 `[vcs0 vcs2 vecs0 gsccs0]`, WOPCM locked 2048K+832K |
 | G1a | GuC firmware container, WOPCM layout, reset, boot parameters, RSA + DMA transfer, load status | **done, run on the Beelink**: GuC 70.53.0 transferred, `signature good`, the firmware starts and stops at `0x71 init data invalid` after 32 ms (expected without ADS); `GTTEST: ALLES OK`, i915 rebound cleanly |
-| G1b | ADS block, log buffer layout, CTB (H2G/G2H), `HOST2GUC_SELF_CFG`, hardware config table → GuC **ready** | open – next |
+| G1b | Minimal ADS block, boot parameters for the first load, GuC **ready**, register message channel (HXG over MMIO), hardware config table | **done, run on the Beelink** (24.11.2026): `firmware 0xf0 ready` 67 ms after the reset, table of 752 bytes with 56 entries fetched and parsed; `GTTEST: ALLES OK` |
+| G1c | Command buffers (CTB: H2G/G2H descriptors, `HOST2GUC_SELF_CFG`, `CONTROL_CTB`), full ADS (engine mapping, register save/restore lists, golden contexts), second load with features and workarounds | open – next |
 | G2 | Memory: GGTT manager for the GT, PPGTT (4 levels), buffer objects, TLB invalidation | open |
 | G3 | Contexts (LRC), exec queues registered with the GuC, submission, G2H handling; proof: a batch on `ccs0`/`rcs0` writes a value | open |
 | G4 | User interface: the Linux `xe` DRM uAPI on `/dev/dri/renderD128` (device query, GEM create/mmap, VM create/bind, exec queue, exec, syncobj) | open |
@@ -22,10 +23,16 @@ without Linux.
 1. **Hardware run** (`tools/kern-test/igpu-run.sh` with `STOP_UNITS="udl-llm-fast.service"`, log on the Beelink:
    `/root/ultar-test/gt-run1.log`, checkout `/root/ultar-igpu-npu`): `INTELTEST: ALLES OK` and `GTTEST: ALLES OK`;
    the whole run takes about 20 s, the host's i915 loads its own GuC again afterwards (function level reset).
-   One run so far; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
+   Five runs on 24.11.2026 (logs `gt-run1.log` … `gt-run5.log`, loop script `/root/ultar-test/gt-loop.sh <log>`);
+   under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
    on hardware: i915 had locked them, the driver kept that layout.
-2. **GuC not running yet.** Without the ADS the firmware stops with "init data invalid" after the boot ROM accepted
-   it. GTTEST puts the GuC back into reset. Nothing renders or computes before G3.
+2. **GuC runs, engines do not yet.** With the minimal ADS the firmware is ready and answers requests, but no
+   engine is mapped and nothing can be submitted. GTTEST puts the GuC back into reset. Nothing renders or computes
+   before G3.
+2a. **CPU caches and memory the GT writes** (found on hardware): the table the GuC copied read as zeroes in its
+   first five cache lines until the kernel dropped those lines (`clflush`) before reading. Every buffer the GT
+   writes and the CPU reads needs that, or an uncached/write-combining mapping (kernel issue I-12 of
+   intel-display.md); buffers the CPU writes are flushed before the GT reads them.
 3. **Interrupts.** The kernel has no MSI routing for PCI devices; G2H messages will be polled until it has
    (same limit as the display driver, intel-display.md §0.4).
 4. **Media GT.** Identified and read (engines, GuC status); its GuC, HuC and the GSC are not loaded. Video decode
@@ -51,8 +58,8 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
 
 | Part | Where | What |
 |---|---|---|
-| Pure logic | `drivers/kernel/intel-gt/` (crate `ultar-intel-gt`, `no_std` + `alloc`, no `unsafe`) | `ident` (GMD_ID → IP), `forcewake` (domains, references, bounded acknowledge wait), `engines` (descriptor + fuses), `fw` (CSS header, versions, RSA key position), `wopcm` (layout, locked registers, write-and-verify), `guc` (status decoding, reset, parameter words, RSA, DMA transfer, wait), `state` (read-out). Generic over `ultar_intel_display::Hw`, tested against `sim.rs`. |
-| Kernel module | `kernel/ultar-kern/src/drivers/intel_display/gt.rs` | probe read-out (`[intel-gt] …`, `intel-gt=` line of the display report), GGTT buffers for the GuC (`GgttBuf`: kernel pages → the display driver's GGTT window, flushed), GTTEST. One `unsafe` (copy of the firmware into owned pages) with `// SAFETY:`. |
+| Pure logic | `drivers/kernel/intel-gt/` (crate `ultar-intel-gt`, `no_std` + `alloc`, no `unsafe`, 42 host tests) | `ads` (minimal ADS block), `params` (boot parameter words per stage), `hxg` (register message channel), `hwconfig` (table parser), `ident` (GMD_ID → IP), `forcewake` (domains, references, bounded acknowledge wait), `engines` (descriptor + fuses), `fw` (CSS header, versions, RSA key position), `wopcm` (layout, locked registers, write-and-verify), `guc` (status decoding, reset, parameter words, RSA, DMA transfer, wait), `state` (read-out). Generic over `ultar_intel_display::Hw`, tested against `sim.rs`. |
+| Kernel module | `kernel/ultar-kern/src/drivers/intel_display/gt.rs` | probe read-out (`[intel-gt] …`, `intel-gt=` line of the display report), GGTT buffers for the GuC (`GgttBuf`: kernel pages → the display driver's GGTT window, flushed), GTTEST. Two `unsafe` (copy into and out of owned pages) with `// SAFETY:`. |
 | Test on the machine | `tools/kern-test/igpu-passthrough.sh` | copies the GuC firmware (`GUC=<file>|0`), waits for the GTTEST verdict, prints both verdicts. |
 
 ## 3. Sequences (as implemented)
@@ -67,6 +74,14 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
   doorbells, ARAT interrupt → RSA: key > 256 bytes (Meteor Lake: 384) by its GGTT address in `UOS_RSA_SCRATCH(0)` →
   DMA from the GGTT to WOPCM offset `0x2000`, header + code in one transfer → poll `GUC_STATUS` (ready `0xF0`,
   failure codes of boot ROM and firmware, 3 s).
+* **Minimal ADS:** `[guc_ads 4572 | policies 96 | system info 640 | engine usage 16384 | um init 128 | pad | private
+  data]` – policies valid (promote time 500 ms, 15 work items), engine mapping table all "invalid" (32), doorbells
+  per SQIDI from `DIST_DBS_POPULATED`, the three addresses (policies, system info, private data); everything else 0.
+  Boot parameters of this load: log, ADS, device id, logging off; features and workarounds 0.
+* **Register messages:** request words to `VF_SW_FLAG(0..3)` (`0x190240`), posting read, write 0 to
+  `GUC_HOST_INTERRUPT` (`0x1901f0`), wait for origin = GuC in word 0 (50 ms), ride out "busy" (2 s), resend on
+  "retry" (bounded), failure → error + hint. `GET_HWCONFIG` (`0x4100`) with size 0 returns the table size, with a
+  GGTT address copies it.
 * **GGTT range of the GuC:** addresses below the WOPCM size and from `0xFEE00000` are not reachable for it; every
   buffer is checked before any register is written.
 
@@ -74,5 +89,6 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
 
 Linux `xe` driver (MIT): `regs/xe_gt_regs.h`, `regs/xe_guc_regs.h`, `xe_force_wake.c`, `xe_pci.c`, `xe_hw_engine.c`,
 `abi/uc_fw_abi.h`, `xe_uc_fw.c`, `xe_wopcm.c`, `xe_guc.c`, `abi/guc_errors_abi.h` (read at commit `8d7fe98`).
-No GPL code. For G1b–G3: `xe_guc_ads.c`, `xe_guc_ct.c`, `xe_ggtt.c`, `xe_pt.c`, `xe_lrc.c`, `xe_guc_submit.c`;
+`xe_guc_ads.c`, `xe_guc_fwif.h`, `xe_guc_hwconfig.c`, `abi/guc_messages_abi.h`.
+No GPL code. For G1c–G3: `xe_guc_ct.c`, `abi/guc_communication_ctb_abi.h`, `xe_ggtt.c`, `xe_pt.c`, `xe_lrc.c`, `xe_guc_submit.c`;
 for G4: `include/uapi/drm/xe_drm.h`; register and command layouts: Mesa `src/intel/genxml/` (MIT).

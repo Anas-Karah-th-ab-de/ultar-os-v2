@@ -92,7 +92,9 @@ impl GgttBuf {
     /// A copy of the first `len` bytes (what the GuC wrote there).
     fn bytes(&self, len: usize) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
-        // drop what the CPU still holds of these lines, so the copy comes from memory
+        // What the GT writes does not reach the CPU's caches: on the Beelink the first five lines
+        // of the table still read as the zeroes from before. Dropping the lines first makes the
+        // copy come from memory.
         flush(self.phys, n as u64);
         let mut out = alloc::vec![0u8; n];
         // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
@@ -165,7 +167,7 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
     let entries = hwconfig::parse(&table).map_err(|e| {
         let head: Vec<String> = table
             .chunks_exact(4)
-            .take(200)
+            .take(16)
             .map(|c| format!("{:x}", u32::from_le_bytes([c[0], c[1], c[2], c[3]])))
             .collect();
         format!("{e} ({size} bytes, first words: {})", head.join(" "))
