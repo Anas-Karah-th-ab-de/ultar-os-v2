@@ -198,6 +198,31 @@ fn boot_params(
     .map_err(|e| format!("{e}"))
 }
 
+/// Builds the ADS block of `stage` in a new buffer; returns its GGTT address and size.
+fn ads_block(
+    dev: &mut Device,
+    bufs: &mut Vec<GgttBuf>,
+    img: &fw::GucImage,
+    stage: Stage,
+) -> Result<(u32, u64), String> {
+    let private = img.private_data_size;
+    let ads_size = match stage {
+        Stage::Minimal => ads::minimal_size(private),
+        Stage::Full => ads::full_size(private, &ads::XE_LPG_ENGINES),
+    } as u64;
+    let ads_gtt = buffer(dev, bufs, ads_size)?;
+    let doorbells = dev.mmio.read(regs::DIST_DBS_POPULATED);
+    let blob = match stage {
+        Stage::Minimal => ads::minimal(ads_gtt, private, doorbells),
+        Stage::Full => ads::full(ads_gtt, private, doorbells, &ads::XE_LPG_ENGINES),
+    }
+    .map_err(|e| format!("{e}"))?;
+    if let Some(b) = bufs.last_mut() {
+        b.fill(&blob);
+    }
+    Ok((ads_gtt, ads_size))
+}
+
 /// Maps image, log and the minimal ADS, resets the GuC, uploads and – if it gets ready – talks
 /// to it.
 fn load(
@@ -214,21 +239,7 @@ fn load(
         b.fill(file);
     }
     let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
-    let private = img.private_data_size;
-    let ads_size = match stage {
-        Stage::Minimal => ads::minimal_size(private),
-        Stage::Full => ads::full_size(private, &ads::XE_LPG_ENGINES),
-    } as u64;
-    let ads_gtt = buffer(dev, bufs, ads_size)?;
-    let doorbells = dev.mmio.read(regs::DIST_DBS_POPULATED);
-    let blob = match stage {
-        Stage::Minimal => ads::minimal(ads_gtt, private, doorbells),
-        Stage::Full => ads::full(ads_gtt, private, doorbells, &ads::XE_LPG_ENGINES),
-    }
-    .map_err(|e| format!("{e}"))?;
-    if let Some(b) = bufs.last_mut() {
-        b.fill(&blob);
-    }
+    let (ads_gtt, ads_size) = ads_block(dev, bufs, img, stage)?;
     for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
         guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
     }
