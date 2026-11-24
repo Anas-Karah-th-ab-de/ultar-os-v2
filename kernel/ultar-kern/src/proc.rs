@@ -1268,7 +1268,7 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
     // built and freed in an inner scope: nothing on this stack is dropped once the process is gone
     crate::heap::kernel(|| {
         let name = PROCS.lock().iter().find(|p| p.pid == current()).map(|p| p.name.clone()).unwrap_or_default();
-        crate::kprintln!("[proc] {} (pid {}): {} bei {:#x}, Adresse {:#x} – beendet", name, current(), crate::trap::name(v), f.rip, cr2);
+        crate::kprintln!("[proc] {} (pid {}): {} {} {:#x}, {} {:#x} – {}", name, current(), crate::trap::name(v), crate::sprache::t("bei"), f.rip, crate::sprache::t("adresse"), cr2, crate::sprache::t("beendet"));
     });
     exit_current(sig as i32);
 }

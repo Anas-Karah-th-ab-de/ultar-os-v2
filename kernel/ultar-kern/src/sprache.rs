@@ -100,6 +100,64 @@ pub fn t(k: &str) -> &'static str {
         ("aus", AR) => "إيقاف التشغيل …",
         ("aus", EN) => "Shutting down …",
         ("aus", _) => "Ausschalten …",
+        ("von_prozess", AR) => "بطلب من العملية",
+        ("von_prozess", EN) => "requested by process",
+        ("von_prozess", _) => "angefordert von Prozess",
+        ("aus_von_hand", AR) => "تعذّر إيقاف التشغيل تلقائيًا – يمكن فصل الجهاز الآن.",
+        ("aus_von_hand", EN) => "The machine could not switch itself off – it is safe to turn it off now.",
+        ("aus_von_hand", _) => "Die Maschine konnte sich nicht selbst ausschalten – sie kann jetzt ausgeschaltet werden.",
+        ("stapel", AR) => "المكدس",
+        ("stapel", EN) => "stack",
+        ("stapel", _) => "Stapel",
+        ("code", AR) => "الرمز",
+        ("code", EN) => "code",
+        ("code", _) => "Code",
+        ("adresse", AR) => "العنوان",
+        ("adresse", EN) => "address",
+        ("adresse", _) => "Adresse",
+        ("beendet", AR) => "أُنهيت",
+        ("beendet", EN) => "terminated",
+        ("beendet", _) => "beendet",
         _ => "",
     }
+}
+
+/// Name einer Prozessor-Ausnahme (Vektor 0–19) in der Systemsprache – eine Sprache je Zeile
+pub fn ausnahme_name(v: u64) -> &'static str {
+    const DE_N: [&str; 20] = [
+        "Division durch null", "Einzelschritt", "NMI", "Haltepunkt", "Überlauf", "Bereichsgrenze", "ungültiger Befehl",
+        "Gleitkomma nicht verfügbar", "Doppelfehler", "?", "ungültiges TSS", "Segment fehlt", "Stapelfehler",
+        "allgemeine Schutzverletzung", "Seitenfehler", "?", "Gleitkommafehler", "Ausrichtungsfehler", "Maschinenprüfung",
+        "SIMD-Gleitkommafehler",
+    ];
+    const EN_N: [&str; 20] = [
+        "divide error", "debug", "NMI", "breakpoint", "overflow", "bound range exceeded", "invalid opcode",
+        "device not available", "double fault", "?", "invalid TSS", "segment not present", "stack fault",
+        "general protection fault", "page fault", "?", "x87 floating-point error", "alignment check", "machine check",
+        "SIMD floating-point error",
+    ];
+    const AR_N: [&str; 20] = [
+        "قسمة على صفر", "خطوة منفردة", "مقاطعة غير قابلة للحجب", "نقطة توقف", "فيض", "تجاوز الحدود", "تعليمة غير صالحة",
+        "الفاصلة العائمة غير متاحة", "خطأ مزدوج", "?", "TSS غير صالح", "مقطع غير موجود", "خطأ في المكدس",
+        "خرق حماية عام", "خطأ صفحة", "?", "خطأ في الفاصلة العائمة", "خطأ محاذاة", "فحص الجهاز",
+        "خطأ فاصلة عائمة SIMD",
+    ];
+    let (n, sonst) = match get() {
+        AR => (&AR_N, "مقاطعة"),
+        EN => (&EN_N, "interrupt"),
+        _ => (&DE_N, "Unterbrechung"),
+    };
+    n.get(v as usize).copied().unwrap_or(sonst)
+}
+
+/// Fehlerbild einer Ausnahme im Kern (eine Zeile, eine Sprache)
+pub fn ausnahme_zeile(v: u64, rip: u64, rsp: u64, code: Option<u64>, cr2: u64) {
+    match code {
+        Some(c) => crate::kprintln!(
+            "\n{}: {} {} {:#x} ({} {:#x}, {} {:#x}, CR2 {:#x})",
+            t("ausnahme"), ausnahme_name(v), t("bei"), rip, t("stapel"), rsp, t("code"), c, cr2
+        ),
+        None => crate::kprintln!("\n{}: {} {} {:#x} ({} {:#x}, CR2 {:#x})", t("ausnahme"), ausnahme_name(v), t("bei"), rip, t("stapel"), rsp, cr2),
+    }
+    crate::kprintln!("{}", t("haelt"));
 }

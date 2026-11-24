@@ -155,11 +155,11 @@ fn set(i: usize, h: u64, ist: u8) {
     }
 }
 
-fn fault(name: &str, f: &Frame, code: Option<u64>) -> ! {
+fn fault(v: u64, f: &Frame, code: Option<u64>) -> ! {
     let cr2: u64;
     unsafe { asm!("mov {}, cr2", out(reg) cr2) };
-    crate::kprintln!("\n{}: {name} {} {:#x} (Stapel {:#x}, Code {:?}, CR2 {:#x})", crate::sprache::t("ausnahme"), crate::sprache::t("bei"), f.rip, f.rsp, code, cr2);
-    crate::kprintln!("{}", crate::sprache::t("haelt"));
+    crate::power::firmware_fehler();
+    crate::sprache::ausnahme_zeile(v, f.rip, f.rsp, code, cr2);
     halt_forever()
 }
 
@@ -175,18 +175,18 @@ macro_rules! handler {
         }
     };
 }
-handler!(e_de, "Division durch null");
-handler!(e_ud, "ungültiger Befehl");
-handler!(e_nm, "Gleitkomma nicht verfügbar");
-handler!(e_df, "Doppelfehler", code);
-handler!(e_ts, "ungültiges TSS", code);
-handler!(e_np, "Segment fehlt", code);
-handler!(e_ss, "Stapelfehler", code);
-handler!(e_gp, "allgemeine Schutzverletzung", code);
-handler!(e_pf, "Seitenfehler", code);
-handler!(e_mf, "Gleitkommafehler");
-handler!(e_ac, "Ausrichtungsfehler", code);
-handler!(e_xm, "SIMD-Gleitkommafehler");
+handler!(e_de, 0);
+handler!(e_ud, 6);
+handler!(e_nm, 7);
+handler!(e_df, 8, code);
+handler!(e_ts, 10, code);
+handler!(e_np, 11, code);
+handler!(e_ss, 12, code);
+handler!(e_gp, 13, code);
+handler!(e_pf, 14, code);
+handler!(e_mf, 16);
+handler!(e_ac, 17, code);
+handler!(e_xm, 19);
 
 extern "x86-interrupt" fn e_bp(_f: Frame) {
     crate::kprintln!("[kern] Haltepunkt");

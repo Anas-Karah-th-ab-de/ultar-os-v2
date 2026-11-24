@@ -242,15 +242,8 @@ pub unsafe fn init() {
     init_msrs();
 }
 
-const NAMES: [&str; 20] = [
-    "Division durch null", "Einzelschritt", "NMI", "Haltepunkt", "Überlauf", "Bereichsgrenze", "ungültiger Befehl",
-    "Gleitkomma nicht verfügbar", "Doppelfehler", "?", "ungültiges TSS", "Segment fehlt", "Stapelfehler",
-    "allgemeine Schutzverletzung", "Seitenfehler", "?", "Gleitkommafehler", "Ausrichtungsfehler", "Maschinenprüfung",
-    "SIMD-Gleitkommafehler",
-];
-
 pub fn name(v: u64) -> &'static str {
-    NAMES.get(v as usize).copied().unwrap_or("Unterbrechung")
+    crate::sprache::ausnahme_name(v)
 }
 
 #[no_mangle]
@@ -269,8 +262,8 @@ extern "sysv64" fn ultar_trap_rust(f: &mut TrapFrame) {
         v => {
             let cr2: u64;
             unsafe { core::arch::asm!("mov {}, cr2", out(reg) cr2) };
-            crate::kprintln!("\n{}: {} {} {:#x} (Stapel {:#x}, Code {:#x}, CR2 {:#x})", crate::sprache::t("ausnahme"), name(v), crate::sprache::t("bei"), f.rip, f.rsp, f.err, cr2);
-            crate::kprintln!("{}", crate::sprache::t("haelt"));
+            crate::power::firmware_fehler();
+            crate::sprache::ausnahme_zeile(v, f.rip, f.rsp, Some(f.err), cr2);
             arch::halt_forever()
         }
     }

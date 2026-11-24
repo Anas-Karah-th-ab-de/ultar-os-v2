@@ -64,8 +64,9 @@ const BS_ALLOCATE_POOL: usize = 5;
 const BS_EXIT_BOOT_SERVICES: usize = 26;
 const BS_SET_WATCHDOG: usize = 29;
 const BS_LOCATE_PROTOCOL: usize = 37;
-/// ResetSystem in den Laufzeitdiensten
-const RT_RESET_SYSTEM: usize = 11;
+/// ResetSystem in den Laufzeitdiensten (UEFI 2.10 §4.5: GetTime 0 … GetNextHighMonotonicCount 9, ResetSystem 10;
+/// 11 ist UpdateCapsule – der frühere Wert rief UpdateCapsule mit unsinnigen Zeigern auf)
+const RT_RESET_SYSTEM: usize = 10;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -508,15 +509,20 @@ pub fn runtime() -> *mut RuntimeServices {
     RT.load(core::sync::atomic::Ordering::Relaxed) as *mut RuntimeServices
 }
 
-/// Neustart (0) oder Ausschalten (2) über die Laufzeitdienste der Firmware
-pub unsafe fn reset(rt: *mut RuntimeServices, kind: u32) -> ! {
-    if !rt.is_null() {
-        let f: extern "efiapi" fn(u32, Status, usize, *const c_void) -> ! = core::mem::transmute((*rt).f[RT_RESET_SYSTEM]);
-        f(kind, 0, 0, core::ptr::null());
+/// Neustart (0) oder Ausschalten (2) über die Laufzeitdienste der Firmware. Nur über `power` aufrufen:
+/// dort laufen Kern-Seitentabelle und gesperrte Unterbrechungen voraus. Kehrt zurück, wenn die Firmware
+/// den Wunsch nicht ausführt.
+pub unsafe fn reset(rt: *mut RuntimeServices, kind: u32) {
+    if rt.is_null() {
+        return;
     }
-    loop {
-        core::arch::asm!("hlt");
+    let p = (*rt).f[RT_RESET_SYSTEM];
+    if p == 0 {
+        return;
     }
+    // UEFI 2.10 §8.5.1: EFIAPI (Microsoft x64), der Rust-Aufruf richtet den Stapel auf 16 Bytes aus
+    let f: extern "efiapi" fn(u32, Status, usize, *const c_void) -> Status = core::mem::transmute(p);
+    let _ = f(kind, 0, 0, core::ptr::null());
 }
 
 pub fn _unused() -> usize {

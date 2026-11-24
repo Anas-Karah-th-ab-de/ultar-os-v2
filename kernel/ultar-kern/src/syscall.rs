@@ -2320,12 +2320,12 @@ fn sys_reboot(cmd: u64) -> i64 {
     match cmd {
         0 | 0x89AB_CDEF => 0,
         0x0123_4567 => {
-            crate::kprintln!("[kern] Neustart (angefordert von Prozess {})", proc::current());
-            unsafe { crate::efi::reset(crate::efi::runtime(), 0) }
+            crate::kprintln!("[kern] {} ({} {})", crate::sprache::t("neustart"), crate::sprache::t("von_prozess"), proc::current());
+            crate::power::neustart()
         }
         0x4321_FEDC | 0xCDEF_0123 => {
-            crate::kprintln!("[kern] Ausschalten (angefordert von Prozess {})", proc::current());
-            unsafe { crate::efi::reset(crate::efi::runtime(), 2) }
+            crate::kprintln!("[kern] {} ({} {})", crate::sprache::t("aus"), crate::sprache::t("von_prozess"), proc::current());
+            crate::power::aus()
         }
         _ => -EINVAL,
     }

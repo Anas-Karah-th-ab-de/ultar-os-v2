@@ -172,6 +172,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     fs::mount();
     perm::standard_dirs();
     sprache::laden();
+    power::optionen();
     firewall::laden();
     syscall::init_clock();
     proc::check_window();

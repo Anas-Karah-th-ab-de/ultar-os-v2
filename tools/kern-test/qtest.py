@@ -47,4 +47,9 @@ for c in cmds:
         continue
     p.stdin.write(c.encode() + b"\r"); p.stdin.flush()
     read_until("PROMPT", float(os.environ.get("WAIT", "40")))
+# QEMU ended by itself (power off, or reset with -no-reboot): report it for tools/kern-test/ausschalten.sh
+rc = p.poll()
+if rc is None:
+    time.sleep(0.5); rc = p.poll()
+print(f"\nQEMU-ENDE: {'selbst ' + str(rc) if rc is not None else 'lief noch'}", flush=True)
 p.kill()

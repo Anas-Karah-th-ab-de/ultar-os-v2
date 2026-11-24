@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest ausschalttest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -47,4 +47,7 @@ installtest: installtest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<
 # device nodes of the privileged services: /dev/ultar/uinput (virtual input devices) and /dev/ultar/hciN
 bttest: bttest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
+# power off / restart from a process whose user window is in use (like ultar-init at the end)
+ausschalttest: ausschalttest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<

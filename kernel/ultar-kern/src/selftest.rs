@@ -132,7 +132,7 @@ pub fn run() {
     if crate::fs::fat_has("ultar-kern/auto-aus") {
         kprintln!("[test] auto-aus: schalte in 5 s aus");
         crate::arch::sleep_us(5_000_000);
-        unsafe { crate::efi::reset(crate::efi::runtime(), 2) }
+        crate::power::aus()
     }
     kprintln!("[test] fertig – `aus` schaltet aus, `neustart` startet neu");
 }

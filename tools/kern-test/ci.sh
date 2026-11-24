@@ -18,6 +18,7 @@
 #       SCM_RIGHTS, MSG_DONTWAIT, POLLOUT wake-ups, poll timeouts below a second, mremap, fb0 mmap + vblank,
 #       owner/group/mode of device nodes, evdev capability ioctls, /sys/class/input; a USB keyboard that
 #       comes and goes gets its own event node (geraete-hotplug.py),
+#   5e2. power off and restart from a process end the machine (ausschalten.sh, AUSSCHALTEN: ALLES OK),
 #   5f. the same programs on VMware-like hardware without virtio (vmware-like.sh),
 #   6. resource groups and memory shortage (grenztest: limits, dynamic protection, the attacks of the
 #      security review – nothing may stop the machine), once with 512 MiB and once with 2 GiB.
@@ -78,6 +79,12 @@ if grep -aq "GERAETETEST: ALLES OK" "$MLOG" && grep -aq "alle Geräte haben eine
   echo "ok    GERAETETEST: ALLES OK with many devices (device table $big bytes, read in pieces)"
 else
   echo "FAIL  GERAETETEST with many devices (device table ${big:-0} bytes)"; grep -aE "FEHLER|GERAETETEST" "$MLOG" | tail -20; exit 1
+fi
+# Power off and restart from a process end the machine (ACPI first, UEFI ResetSystem as fallback), no exception.
+if bash tools/kern-test/ausschalten.sh > "${AUS_LOG:-/tmp/ausschalten.log}" 2>&1; then
+  echo "ok    AUSSCHALTEN: ALLES OK"
+else
+  echo "FAIL  AUSSCHALTEN"; tail -30 "${AUS_LOG:-/tmp/ausschalten.log}"; exit 1
 fi
 # The same image on VMware-like hardware without any virtio device (AHCI/NVMe, e1000/e1000e, xHCI or PS/2,
 # VMware SVGA II): tools/kern-test/vmware-like.sh. VMWARE_LIKE=0 skips it.

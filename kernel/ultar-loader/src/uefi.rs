@@ -85,7 +85,8 @@ const UNLOAD_IMAGE: usize = 25;
 const STALL: usize = 28;
 const SET_WATCHDOG: usize = 29;
 const LOCATE_HANDLE_BUFFER: usize = 36;
-const RT_RESET_SYSTEM: usize = 11;
+/// UEFI 2.10 §4.5: GetTime 0 … GetNextHighMonotonicCount 9, ResetSystem 10 (11 is UpdateCapsule).
+const RT_RESET_SYSTEM: usize = 10;
 
 static SYSTEM: AtomicPtr<SystemTable> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -254,9 +255,9 @@ pub fn reset() -> ! {
     let st = SYSTEM.load(Ordering::Relaxed);
     if !st.is_null() {
         // SAFETY: ResetSystem per UEFI 2.10 §8.5.1; runtime services stay valid.
-        let rs: extern "efiapi" fn(u32, Status, usize, *const c_void) -> ! =
+        let rs: extern "efiapi" fn(u32, Status, usize, *const c_void) -> Status =
             unsafe { core::mem::transmute((*(*st).runtime).f[RT_RESET_SYSTEM]) };
-        rs(0, 0, 0, core::ptr::null());
+        let _ = rs(0, 0, 0, core::ptr::null());
     }
     loop {
         core::hint::spin_loop();
