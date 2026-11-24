@@ -1,8 +1,10 @@
 //! Safe discovery and preflight of NVIDIA display hardware.
 //!
-//! This stage is intentionally read-only. It identifies the known Quadro RTX 4000
+//! Without opt-in this stage is read-only. It identifies the known Quadro RTX 4000
 //! class, records BARs and PCIe state, validates the register aperture and keeps the
-//! UEFI/GOP framebuffer active. No display, power, DMA or GSP register is written.
+//! UEFI/GOP framebuffer active. With opt-in it only touches PCI configuration space so the
+//! card can answer (D3hot -> D0 with BARs restored, memory decoding on – on hybrid-graphics
+//! notebooks UEFI often leaves the dGPU asleep or undecoded). No NVIDIA register is written.
 
 use crate::driver::{Driver, Result};
 use crate::pci::PciDev;
@@ -21,6 +23,8 @@ const BAR0_MIN_SIZE: u64 = 16 << 20;
 const PMC_BOOT_0: u64 = 0x000000;
 const PMC_BOOT_1: u64 = 0x000004;
 const PMC_ENABLE: u64 = 0x000200;
+/// PMC_BOOT_0 chipset field (bits 20..28) of TU104 – the Quadro RTX 4000 die.
+const CHIPSET_TU104: u32 = 0x164;
 
 const GSP_FIRMWARE_CANDIDATES: &[&str] = &[
     "/lib/firmware/nvidia/535.*/gsp_tu10x.bin",
@@ -112,6 +116,53 @@ fn firmware_state() -> &'static str {
     }
 }
 
+/// Chipset name from PMC_BOOT_0 (bits 20..28).
+fn chipset(boot0: u32) -> String {
+    if boot0 == 0xffff_ffff || boot0 == 0 {
+        return String::from("chip=not-responding");
+    }
+    let id = (boot0 >> 20) & 0x1ff;
+    match id {
+        CHIPSET_TU104 => String::from("chip=tu104"),
+        0x162 => String::from("chip=tu102(unexpected)"),
+        0x166 => String::from("chip=tu106(unexpected)"),
+        _ => format!("chip={id:#x}(unexpected)"),
+    }
+}
+
+/// Bring the card to D0 and enable memory decoding – PCI configuration space only.
+/// PME_Status and the status register are RW1C and are written as 0 (never cleared).
+fn wake(d: &PciDev) -> String {
+    let mut notes = alloc::vec::Vec::new();
+    if let Some(off) = cap_offset(d, PCI_CAP_PM) {
+        let csr = d.r32(off + 4);
+        let state = csr & 0x3;
+        if state != 0 {
+            // No_Soft_Reset (bit 3) clear: D3hot->D0 resets the function, BARs must be restored.
+            let saved: [u32; 7] = core::array::from_fn(|i| d.r32(0x10 + 4 * i as u8));
+            d.w32(off + 4, csr & !0x8003);
+            crate::arch::sleep_us(10_000); // PCIe: 10 ms recovery after D3hot -> D0
+            if csr & 0x8 == 0 {
+                for (i, v) in saved.iter().enumerate() {
+                    d.w32(0x10 + 4 * i as u8, *v);
+                }
+            }
+            notes.push(format!("wake=D{state}->D{}", d.r16(off + 4) & 0x3));
+        }
+    }
+    let cmd = d.r32(0x04);
+    let bar0 = d.bars[0].is_some_and(|b| !b.io && b.addr != 0);
+    if cmd & 0x2 == 0 && bar0 {
+        d.w32(0x04, (cmd & 0xffff) | 0x2);
+        notes.push(String::from("mem=enabled"));
+    }
+    if notes.is_empty() {
+        String::from("wake=not-needed")
+    } else {
+        notes.join(" ")
+    }
+}
+
 fn mmio_state(d: &PciDev) -> String {
     if d.r32(0x04) & 0x2 == 0 {
         return String::from("mmio=disabled");
@@ -126,9 +177,10 @@ fn mmio_state(d: &PciDev) -> String {
     let boot1 = mmio.read32(PMC_BOOT_1);
     let enable = mmio.read32(PMC_ENABLE);
     format!(
-        "mmio=ready({:#x}+{:#x}) pmc_boot0={} pmc_boot1={} pmc_enable={}",
+        "mmio=ready({:#x}+{:#x}) {} pmc_boot0={} pmc_boot1={} pmc_enable={}",
         bar.addr,
         bar.size,
+        boot0.map_or(String::from("chip=unreadable"), chipset),
         boot0.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
         boot1.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
         enable.map_or(String::from("unreadable"), |v| format!("{v:#010x}")),
@@ -275,9 +327,11 @@ impl Driver for Drv {
             crate::kprintln!("[nvidia-display] {msg}");
             return Ok(());
         }
+        let woke = wake(d);
+        let state = pci_state(d);
         let mmio = mmio_state(d);
         let msg = format!(
-            "{r}; {state}; {caps}; {mmio}; probe mode only, GOP retained; \
+            "{r}; {woke}; {state}; {caps}; {mmio}; probe mode only, GOP retained; \
              gsp=not-started firmware={} kms=not-registered dma=off",
             firmware_state()
         );
@@ -315,6 +369,13 @@ mod tests {
         let mut other = d;
         other.device = 0x10f8;
         assert!(!Drv.matches(&other));
+    }
+
+    #[test]
+    fn decodes_chipset() {
+        assert_eq!(chipset(0x164000a1), "chip=tu104");
+        assert_eq!(chipset(0xffff_ffff), "chip=not-responding");
+        assert_eq!(chipset(0x166000a1), "chip=tu106(unexpected)");
     }
 
     #[test]
