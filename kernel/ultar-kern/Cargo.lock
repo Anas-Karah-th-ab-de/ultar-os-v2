@@ -96,15 +96,15 @@ dependencies = [
 
 [[package]]
 name = "ultar-brand"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "ultar-intel-display"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "ultar-kern"
-version = "0.4.0"
+version = "0.8.0"
 dependencies = [
  "ab_glyph",
  "linked_list_allocator",
@@ -116,4 +116,4 @@ dependencies = [
 
 [[package]]
 name = "ultar-slots"
-version = "0.7.0"
+version = "0.8.0"

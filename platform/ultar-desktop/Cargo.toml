@@ -1,6 +1,6 @@
 [package]
 name = "ultar-desktop"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]

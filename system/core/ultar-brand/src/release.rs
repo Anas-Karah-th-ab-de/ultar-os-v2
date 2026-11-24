@@ -64,7 +64,7 @@ impl From<fmt::Error> for ReleaseError {
 /// The fields of one release of the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Release<'a> {
-    /// Version of the system image (`0.7.0`).
+    /// Version of the system image (`0.8.0`).
     pub version: &'a str,
     /// Build identifier, if the build has one.
     pub build: Option<&'a str>,

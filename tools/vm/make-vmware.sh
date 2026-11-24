@@ -83,7 +83,8 @@ printf 'desktop\n' >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"
 printf '%s\n' "$LANG_CODE" >"$R/etc/ultar/sprache"
 printf 'ultar\n' >"$R/etc/hostname"
-printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS v2 (Ultar kernel)"\nID=ultar\nVERSION_ID="0.7.0"\nHOME_URL="https://code-craft.tech"\n' >"$R/etc/os-release"
+ULTAR_VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS %s"\nID=ultar\nVERSION_ID="%s"\nHOME_URL="https://code-craft.tech"\n' "$ULTAR_VERSION" "$ULTAR_VERSION" >"$R/etc/os-release"
 printf '%s %s\n' "$(sed -n 's/^version = "\(.*\)"/\1/p' kernel/ultar-kern/Cargo.toml | head -1)" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" >"$R/etc/ultar/release"
 # users and groups from the fixed ids (as scripts/build-initramfs.sh writes them)
 awk -v P="$R/etc/passwd" -v G="$R/etc/group" '

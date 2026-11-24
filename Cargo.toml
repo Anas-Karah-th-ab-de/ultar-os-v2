@@ -83,7 +83,7 @@ members = [
 exclude = ["kernel", "server", "platform/ultar-wm"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.8.0"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
