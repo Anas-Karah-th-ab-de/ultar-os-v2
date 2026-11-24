@@ -163,12 +163,19 @@ pub fn down(hw: &mut impl Hw, ratios: &Ratios) -> Result<()> {
 /// The hardware version of a powered NPU.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HwVersion {
-    /// NPU generation.
+    /// Generation field (not the IP generation: the NPU 3720 reports `0x36`).
     pub generation: u32,
     /// SoC number.
     pub soc: u32,
     /// SoC revision.
     pub revision: u32,
+}
+
+impl HwVersion {
+    /// Generation and SoC number as one number, comparable with [`crate::ident::Model::sku`].
+    pub fn sku(&self) -> u32 {
+        self.generation << 8 | self.soc
+    }
 }
 
 /// Reads the hardware version (IP block: only after [`up`]).
@@ -225,7 +232,8 @@ pub(crate) mod tests {
                 r.insert(reg, 0);
             }),
         );
-        s.set(HOST_SS_HW_VERSION, 37 << 16 | 0x20 << 8 | 0x04);
+        // as read on the Beelink GTi15 Ultra
+        s.set(HOST_SS_HW_VERSION, 0x0036_3000);
         s
     }
 
@@ -262,14 +270,9 @@ pub(crate) mod tests {
         ];
         let pos: alloc::vec::Vec<_> = order.iter().map(|r| s.first_write(*r).unwrap()).collect();
         assert!(pos.windows(2).all(|w| w[0] < w[1]), "{pos:?}");
-        assert_eq!(
-            hw_version(&mut s),
-            Some(HwVersion {
-                generation: 37,
-                soc: 0x20,
-                revision: 4
-            })
-        );
+        let v = hw_version(&mut s).unwrap();
+        assert_eq!((v.generation, v.soc, v.revision), (0x36, 0x30, 0));
+        assert_eq!(v.sku(), crate::ident::lookup(0x7d1d).unwrap().sku);
     }
 
     #[test]

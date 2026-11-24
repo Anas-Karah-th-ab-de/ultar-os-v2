@@ -216,14 +216,15 @@ fn run_on(npu: &mut Npu, r: &mut Report) {
             }
             match power::hw_version(&mut npu.mmio) {
                 Some(v) => r.check(
-                    v.generation == npu.model.ip_gen,
-                    "IP block answers with its generation",
-                    &format!(
-                        "generation {}, SoC {:#x} rev {}",
-                        v.generation, v.soc, v.revision
-                    ),
+                    v.sku() == npu.model.sku,
+                    "IP block answers with the expected hardware version",
+                    &format!("{:#06x} rev {}", v.sku(), v.revision),
                 ),
-                None => r.check(false, "IP block answers with its generation", "all ones"),
+                None => r.check(
+                    false,
+                    "IP block answers with the expected hardware version",
+                    "all ones",
+                ),
             }
             match state::read(&mut npu.mmio) {
                 Ok(f) => r.check(

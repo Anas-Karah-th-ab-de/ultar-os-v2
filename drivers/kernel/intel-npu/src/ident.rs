@@ -43,6 +43,10 @@ pub struct Model {
     pub name: &'static str,
     /// IP generation (37 = NPU 3720).
     pub ip_gen: u32,
+    /// What the powered IP block reports in the generation and SoC fields of its hardware
+    /// version register, as one number (`generation << 8 | soc`). Read on the Beelink GTi15
+    /// Ultra: `0x3630`, the two-tile SKU value Linux assumes for this generation.
+    pub sku: u32,
     /// Firmware file name (linux-firmware, `intel/vpu/`).
     pub firmware: &'static str,
     /// Where the firmware image and its run-time data live.
@@ -56,6 +60,7 @@ pub struct Model {
 const NPU_3720: Model = Model {
     name: "NPU 3720",
     ip_gen: 37,
+    sku: 0x3630,
     firmware: "vpu_37xx_v1.bin",
     runtime: Range::new(0x8480_0000, 64 << 20),
     global: Range::new(0x9000_0000, 256 << 20),
