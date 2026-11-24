@@ -1,0 +1,30 @@
+# Phone – app manifest (docs/APP-RULES.md §3).
+id          = "phone"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "phone.title"
+description = "phone.title"
+icon        = "phone"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = ["modem"]
+
+[permissions]
+# call.*: dial, answer, end, the call state (the call service; numbers and names: no other app).
+bus         = ["call.*"]
+# The phone draws its own window header.
+ui          = ["ui.client-header"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 80
+cpu         = "foreground"

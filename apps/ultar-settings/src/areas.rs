@@ -13,11 +13,24 @@ pub enum PageKind {
     Account,
     /// The rows of one `settingsd` panel (generic editor).
     Panel(&'static str),
+    /// Read-only state of a service (network, Bluetooth, sound).
+    Status(StatusKind),
     /// About this system (BRAND.md §4): product, version, build, company, developer, website,
     /// contact, licences.
     About,
     /// No service offers settings for this area in this version (empty state with reason).
     NoService,
+}
+
+/// The service a status page shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StatusKind {
+    /// `net.state`: Wi-Fi and the wired connection.
+    Network,
+    /// `bluetooth.state`.
+    Bluetooth,
+    /// `audio.state`.
+    Sound,
 }
 
 /// One sidebar area.
@@ -46,12 +59,20 @@ use PageKind::{NoService as N, Panel as P};
 
 /// Every area in board order.
 pub const AREAS: [Area; 33] = [
-    a("wifi", IconId::Wifi, N),
+    a("wifi", IconId::Wifi, PageKind::Status(StatusKind::Network)),
     a("cellular", IconId::Cell, N),
-    a("network", IconId::Network, N),
-    a("bluetooth", IconId::Bluetooth, N),
+    a(
+        "network",
+        IconId::Network,
+        PageKind::Status(StatusKind::Network),
+    ),
+    a(
+        "bluetooth",
+        IconId::Bluetooth,
+        PageKind::Status(StatusKind::Bluetooth),
+    ),
     a("displays", IconId::Monitor, PageKind::Display),
-    a("sound", IconId::Volume, N),
+    a("sound", IconId::Volume, PageKind::Status(StatusKind::Sound)),
     a("power", IconId::Battery, P("power")),
     a("desktop", IconId::Dock, P("desktop_bar")),
     a("windows", IconId::Workspaces, P("windows")),

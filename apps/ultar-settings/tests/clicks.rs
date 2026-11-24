@@ -457,3 +457,47 @@ fn compact_list_back_and_display() {
         "area without service opens its empty state"
     );
 }
+
+#[test]
+fn network_bluetooth_and_sound_pages_show_what_the_services_report() {
+    use ultar_bus::messages::{audio::AudioState, net::NetState, net::Wired};
+    let world = board_world(1, true);
+    world.borrow_mut().net = Some(NetState {
+        wired: Some(Wired {
+            speed_mbit: Some(1000),
+        }),
+        ..NetState::default()
+    });
+    world.borrow_mut().audio = Some(AudioState {
+        present: true,
+        volume_percent: 40,
+        output_name: "Speakers".into(),
+        ..AudioState::default()
+    });
+    for area in ["network", "wifi", "sound"] {
+        let app = app(
+            &world,
+            Lang::En,
+            ThemeKind::Dark,
+            content_size(1440.0, 900.0),
+            area,
+        );
+        assert_eq!(app.state.status.error, None, "{area}");
+    }
+    let net = ultar_settings::view::status::net_rows(world.borrow().net.as_ref().unwrap());
+    assert!(net
+        .iter()
+        .any(|(k, v)| *k == "app.settings.status.net.wired" && format!("{v:?}").contains("1000")));
+    // a service that does not answer: the page says why (never an empty page, never invented values)
+    let app = app(
+        &world,
+        Lang::En,
+        ThemeKind::Dark,
+        content_size(1440.0, 900.0),
+        "bluetooth",
+    );
+    assert_eq!(
+        app.state.status.error.as_ref().map(|t| t.key.as_str()),
+        Some("app.settings.error.unavailable")
+    );
+}

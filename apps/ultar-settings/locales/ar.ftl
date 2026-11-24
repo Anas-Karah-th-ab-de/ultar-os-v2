@@ -271,3 +271,26 @@ app.settings.account.device.remove.name = {name}: إزالة
 app.settings.summary.no_service = غير متاح: الخدمة لا تعمل
 app.settings.about.unknown = غير معروف: لا يوجد ملف إصدار للنظام
 app.settings.about.third_party = مكوّنات من أطراف أخرى: خطوط Noto (رخصة SIL Open Font 1.1)، مكتبات Rust (MIT / Apache-2.0)
+
+# الشبكة والبلوتوث والصوت (صفحات الحالة: ما تبلّغ عنه الخدمات)
+app.settings.status.unavailable = تعذّرت قراءة حالة هذه الخدمة
+app.settings.status.yes = نعم
+app.settings.status.no = لا
+app.settings.status.none = لا يوجد
+app.settings.status.connected = متصل
+app.settings.status.not_connected = غير متصل
+app.settings.status.net.wifi_present = محوّل Wi-Fi
+app.settings.status.net.wifi_on = تشغيل Wi-Fi
+app.settings.status.net.ssid = شبكة Wi-Fi
+app.settings.status.net.signal = الإشارة
+app.settings.status.net.wired = الاتصال السلكي
+app.settings.status.net.airplane = وضع الطيران
+app.settings.status.net.metered = اتصال محدود
+app.settings.status.bt.present = محوّل البلوتوث
+app.settings.status.bt.on = تشغيل البلوتوث
+app.settings.status.bt.connected = الأجهزة المتصلة
+app.settings.status.bt.scanning = البحث عن أجهزة
+app.settings.status.sound.present = جهاز الصوت
+app.settings.status.sound.output = المخرج
+app.settings.status.sound.volume = مستوى الصوت
+app.settings.status.sound.muted = كتم الصوت

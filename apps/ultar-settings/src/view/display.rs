@@ -80,23 +80,40 @@ pub fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     if compact(cx.ui) {
         return build_compact(cx, content);
     }
-    let columns = cx.ui.add(
-        content,
-        Flex::row().gap(Space::S16).cross(CrossAlign::Start),
-    )?;
-    let main = cx.ui.add_sized(
-        columns,
-        Flex::column().gap(Space::S16),
-        Sizing::width(metrics::display_main_column()),
-    )?;
+    // the details beside the main column only when both fit; else below it, and the main
+    // column never wider than the page
+    let avail = super::content_width(cx.ui);
+    let side_by_side = avail >= metrics::display_main_column() + Space::S16.points() + SIDE_MIN;
+    let flex = if side_by_side {
+        Flex::row().gap(Space::S16).cross(CrossAlign::Start)
+    } else {
+        Flex::column().gap(Space::S16)
+    };
+    let columns = cx.ui.add(content, flex)?;
+    let main_sizing = if side_by_side {
+        Sizing::width(metrics::display_main_column())
+    } else {
+        Sizing::AUTO
+    };
+    let main = cx
+        .ui
+        .add_sized(columns, Flex::column().gap(Space::S16), main_sizing)?;
     arrangement(cx, main)?;
     if cx.state.display.displays.len() > 1 {
         mode(cx, main)?;
     }
     general(cx, main)?;
-    let side = cx.ui.add_sized(columns, Flex::column(), Sizing::grow(1))?;
+    let side_sizing = if side_by_side {
+        Sizing::grow(1)
+    } else {
+        Sizing::AUTO
+    };
+    let side = cx.ui.add_sized(columns, Flex::column(), side_sizing)?;
     details(cx, side)
 }
+
+/// Narrowest the details column may be beside the main column.
+const SIDE_MIN: f32 = 280.0;
 
 /// Compact surface (board *CompactDisplay*): one card with the rows a phone needs;
 /// arrangement and mode only with an external display.
@@ -266,7 +283,8 @@ fn arranged_items(cx: &Cx<'_>) -> (Vec<ArrangedItem>, usize) {
         .collect();
     let gap = Space::S8.points();
     let total: f32 = sizes.iter().map(|s| s.0).sum::<f32>() + gap * (sizes.len().max(1) - 1) as f32;
-    let mut x = ((metrics::display_main_column() - total) / 2.0).max(0.0) + 1.0;
+    let stage = metrics::display_main_column().min(super::content_width(cx.ui));
+    let mut x = ((stage - total) / 2.0).max(0.0) + 1.0;
     let canvas_h = metrics::arrangement_height();
     let mut items = Vec::new();
     for (n, &i) in order.iter().enumerate() {

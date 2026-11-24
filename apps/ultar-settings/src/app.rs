@@ -90,6 +90,7 @@ impl App {
         let before = (
             self.state.display.clone(),
             self.state.drivers.firmware.clone(),
+            self.state.status.clone(),
         );
         if self.ports.settings.changed() {
             update::load_panels(&mut self.state, &mut self.ports);
@@ -98,6 +99,7 @@ impl App {
         let after = (
             self.state.display.clone(),
             self.state.drivers.firmware.clone(),
+            self.state.status.clone(),
         );
         if before != after && self.state.dialog.is_none() {
             self.apply(Outcome {

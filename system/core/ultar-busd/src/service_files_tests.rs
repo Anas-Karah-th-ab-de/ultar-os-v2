@@ -183,18 +183,27 @@ fn the_four_services_are_ordered_restarted_and_limited() {
 fn check_sockets(parsed: &crate::args::Arguments, bus: &Service) -> BTreeMap<String, PathBuf> {
     let mut sockets = BTreeMap::new();
     for listener in &parsed.listeners {
+        if listener.source == IdentitySource::Apps {
+            // the apps' socket: open to every app uid (each one is its own identity by its
+            // kernel credentials), bounded, outside the services' directory, with the
+            // launcher's map of the app range
+            assert_eq!(listener.access.mode, Some(0o666));
+            assert_eq!(listener.access.group, None);
+            assert!(listener.access.connections.is_some());
+            assert!(listener.path.starts_with("/run/ultar/appbus/"));
+            assert_eq!(parsed.app_map_owner, Some(805));
+            assert_eq!(parsed.app_uids, Some((20000, 49999)));
+            assert!(parsed
+                .app_map
+                .as_ref()
+                .is_some_and(|m| m.starts_with("/run/ultar/launcher/")));
+            continue;
+        }
         let IdentitySource::Fixed(identity) = &listener.source else {
-            panic!("credential listeners need a kernel with SO_PEERCRED");
+            panic!("only fixed sockets besides the apps' socket");
         };
         assert!(Identity::new(identity).is_ok());
         sockets.insert(identity.clone(), listener.path.clone());
-        if identity == "app.shared" {
-            // the apps' socket: open to every app uid, bounded, outside the services' directory
-            assert_eq!(listener.access.mode, Some(0o666));
-            assert_eq!(listener.access.group, None);
-            assert!(listener.path.starts_with("/run/ultar/appbus/"));
-            continue;
-        }
         // A service's socket is open to its group only (and busd is a member
         // of it); the administrator's and init's sockets to root only.
         let service = identity.strip_prefix("system.").unwrap();
@@ -271,8 +280,14 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         );
     }
     // One per service of IDS but the broker itself, plus the administrator's,
-    // init's, the modem service's (ril: root on the phone, no group) and the apps'.
-    assert_eq!(sockets.len(), IDS.len() + 3);
+    // init's and the modem service's (ril: root on the phone, no group) – and one
+    // apps' socket, whose peers are named by the launcher's app map.
+    assert_eq!(sockets.len(), IDS.len() + 2);
+    let apps = parsed
+        .listeners
+        .iter()
+        .filter(|l| l.source == IdentitySource::Apps);
+    assert_eq!(apps.count(), 1);
 }
 
 #[test]
@@ -445,26 +460,79 @@ fn the_policy_grants_nothing_beyond_that() {
         assert!(!policy.may_subscribe(&stranger, &topic("settings.changed")));
         assert!(!policy.may_register(&stranger, "log"));
     }
-    // The apps' shared socket has what every app has and nothing of a named app or service.
-    let shared = id("app.shared");
-    assert!(policy.may_call(&shared, "notify", "post"));
+    // Apps: each app id gets exactly what its pages need; an app without a rule only `app.*`.
+    let settings = id("app.settings");
     for (service, method) in [
-        ("launcher", "install"),
-        ("launcher", "admin"),
-        ("launcher", "start"),
+        ("settings", "list"),
         ("settings", "set"),
-        ("settings", "get"),
-        ("account", "sign_in"),
-        ("call", "dial"),
-        ("auth", "verify"),
-        ("net", "join"),
+        ("display", "identify"),
+        ("account", "status"),
+        ("devices", "list"),
     ] {
         assert!(
-            !policy.may_call(&shared, service, method),
+            policy.may_call(&settings, service, method),
             "{service}.{method}"
         );
     }
-    assert!(!policy.may_register(&shared, "launcher"));
+    for name in [
+        "settings.changed",
+        "net.state",
+        "bluetooth.state",
+        "audio.state",
+        "display.outputs",
+        "power.state",
+    ] {
+        assert!(policy.may_subscribe(&settings, &topic(name)), "{name}");
+    }
+    let files = id("app.files");
+    assert!(policy.may_call(&files, "launcher", "start"));
+    assert!(policy.may_subscribe(&files, &topic("volumes.state")));
+    let stranger = id("app.some-store-app");
+    assert!(policy.may_call(&stranger, "notify", "post"));
+    for app in [
+        &settings,
+        &files,
+        &stranger,
+        &id("app.store"),
+        &id("app.phone"),
+    ] {
+        for (service, method) in [
+            ("settings", "admin"),
+            ("devices", "admin"),
+            ("launcher", "admin"),
+            ("auth", "verify"),
+            ("auth", "admin"),
+            ("log", "query"),
+            ("init", "control"),
+            ("sysdialog", "permission"),
+            ("lock", "lock"),
+        ] {
+            let store_admin = app.as_str() == "app.store" && service == "launcher";
+            assert!(
+                store_admin || !policy.may_call(app, service, method),
+                "{app} {service}.{method}"
+            );
+        }
+        assert!(!policy.may_register(app, "launcher"), "{app}");
+        assert!(!policy.may_register(app, "settings"), "{app}");
+        assert!(!policy.may_publish(app, "settings.changed"), "{app}");
+    }
+    for (service, method) in [
+        ("settings", "list"),
+        ("settings", "set"),
+        ("launcher", "start"),
+        ("call", "dial"),
+        ("net", "join"),
+        ("account", "sign_in"),
+    ] {
+        assert!(
+            !policy.may_call(&stranger, service, method),
+            "{service}.{method}"
+        );
+    }
+    assert!(!policy.may_call(&files, "settings", "set"));
+    assert!(!policy.may_call(&settings, "launcher", "install"));
+    assert!(!policy.may_call(&settings, "call", "dial"));
 }
 
 #[test]

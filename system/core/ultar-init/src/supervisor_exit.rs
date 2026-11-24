@@ -90,8 +90,15 @@ impl Supervisor {
             crate::groups::remove(group);
         }
         let ran = now.saturating_duration_since(run.since);
+        let step = self
+            .units
+            .get(&name)
+            .filter(|unit| unit.spec.life.oneshot)
+            .and_then(|unit| unit.spec.life.description.clone())
+            .map(|what| format!(" one-time step done: {what}"))
+            .unwrap_or_default();
         self.note(&format!(
-            "exit {name} pid={pid} {} ran_ms={}",
+            "exit {name} pid={pid} {} ran_ms={}{step}",
             exit_word(exit),
             ran.as_millis()
         ));

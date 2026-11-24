@@ -49,6 +49,12 @@ pub fn strength(password: &str) -> u8 {
     }
 }
 
+/// Narrowest the middle column (sign-in) may be beside the other two.
+const MIDDLE_MIN: f32 = 320.0;
+
+/// The account service's key of a refused password (the only failure that uses up an attempt).
+const WRONG_PASSWORD: &str = "accountd.refused.wrong_password";
+
 fn header_row(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     let row = cx.ui.add(
         content,
@@ -70,7 +76,11 @@ pub fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
         content,
         Flex::row().gap(Space::S16).cross(CrossAlign::Start),
     )?;
-    let narrow = super::shell::compact(cx.ui);
+    // three columns only when all of them fit (status, account, devices); else one below the other
+    let gaps = 2.0 * Space::S16.points();
+    let three =
+        metrics::account_status_column() + metrics::account_devices_column() + MIDDLE_MIN + gaps;
+    let narrow = super::shell::compact(cx.ui) || super::content_width(cx.ui) < three;
     let (a, b, c) = if narrow {
         (Sizing::grow(1), Sizing::grow(1), Sizing::grow(1))
     } else {
@@ -153,16 +163,19 @@ fn status_bar(cx: &mut Cx<'_>, body: NodeId, st: &AccountState) -> Result<(), Ui
                 )
             }
             _ => st.error.as_ref().map(|e| {
-                let remaining = st.attempts_remaining.to_string();
-                InfoBar::new(Tone::Danger, k("app.settings.account.failed")).message(
+                let reason = crate::i18n::label(e, cx.tr);
+                // the attempts left only after a refused password: a server that cannot be
+                // reached (or any other reason) uses none up and says only why
+                let message = if e.key == WRONG_PASSWORD {
+                    let remaining = st.attempts_remaining.to_string();
                     Label::key_with(
                         "app.settings.account.failed.sub",
-                        &[
-                            ("reason", &crate::i18n::label(e, cx.tr).resolve(cx.tr)),
-                            ("n", &remaining),
-                        ],
-                    ),
-                )
+                        &[("reason", &reason.resolve(cx.tr)), ("n", &remaining)],
+                    )
+                } else {
+                    reason
+                };
+                InfoBar::new(Tone::Danger, k("app.settings.account.failed")).message(message)
             }),
         }
     };

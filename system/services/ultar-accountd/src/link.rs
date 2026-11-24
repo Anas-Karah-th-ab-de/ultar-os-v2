@@ -13,6 +13,11 @@ use ultar_bus::{Call, Text};
 /// The server the account will use (§12.1).
 pub const DEFAULT_SERVER: &str = "ultar.code-craft.tech";
 
+/// Sign-in attempts before the sign-in is locked for a while. Nothing but a refused password
+/// uses one up: a server that cannot be reached leaves all of them (owner's VMware finding:
+/// "0 attempts left" after the first try without a server).
+pub const SIGN_IN_ATTEMPTS: u32 = 5;
+
 /// The account as this device knows it: signed out, with the reason why
 /// signing in is not possible.
 pub fn state() -> AccountState {
@@ -20,6 +25,7 @@ pub fn state() -> AccountState {
         phase: Phase::SignedOut,
         server: DEFAULT_SERVER.to_owned(),
         error: Some(Text::key(Key::NoServer.key())),
+        attempts_remaining: SIGN_IN_ATTEMPTS,
         ..AccountState::default()
     }
 }
@@ -58,6 +64,8 @@ mod tests {
     #[test]
     fn online_parts_are_refused_with_the_reason() {
         assert_eq!(answer("status").outcome, Ok(state()));
+        // no server: no attempt is used up
+        assert_eq!(state().attempts_remaining, SIGN_IN_ATTEMPTS);
         assert_eq!(answer("sign_out").outcome, Ok(state()));
         for m in [
             "sign_in",

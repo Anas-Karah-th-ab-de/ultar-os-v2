@@ -19,6 +19,12 @@ use ultar_sys::cell::Namespaces;
 
 /// Environment of the app (nothing of the launcher's own).
 pub const PATH: &str = "/usr/bin:/bin";
+/// The apps' variable naming the bus socket (only set for apps that declare bus access).
+pub const BUS_ENV: &str = "ULTAR_BUS_SOCKET";
+/// The apps' variable naming where the file areas are (only set for apps that have some).
+pub const AREAS_ENV: &str = "ULTAR_AREAS";
+/// File name of the apps' bus socket inside `app_bus`.
+pub const BUS_SOCKET: &str = "bus.sock";
 /// The compositor's variable for the activation token.
 pub const ACTIVATION_ENV: &str = "ULTAR_ACTIVATION_TOKEN";
 
@@ -151,6 +157,30 @@ pub(crate) fn prepare(
     let group_dir = group(core, id, limits.memory_bytes, limits.pids)?;
     let dev = dev_mode(cell, platform);
     let keep = manifest.kernel_rights & profile.kernel_rights;
+    // the apps' bus socket only for an app whose signed manifest declares bus access (the broker
+    // knows it by its user id from the launcher's app map; nobody else is let in there)
+    let mut shares = core.config.shares.clone();
+    let bus = core
+        .declares_bus(&manifest)
+        .then_some(())
+        .and(core.config.paths.app_bus.clone());
+    if let Some(dir) = &bus {
+        shares.push(dir.clone());
+    }
+    // the user's file areas: system apps only, each one the manifest declares (areas.rs)
+    let (mut areas, mut groups) = (Vec::new(), Vec::new());
+    if let (true, Some(root), Some(group)) = (
+        entry.profile == crate::profile::ProfileName::System && cell,
+        &core.config.paths.areas_root,
+        core.config.areas_group,
+    ) {
+        for (name, rw) in crate::areas::declared(&manifest.files) {
+            areas.push((crate::areas::host(root, &name), name, rw));
+        }
+        if !areas.is_empty() {
+            groups.push(group);
+        }
+    }
     let plan = CellPlan {
         identity: owner.map(|o| (o.uid, o.gid)),
         group_dir,
@@ -163,13 +193,24 @@ pub(crate) fn prepare(
         root,
         data: data.clone(),
         view: core.config.system_view.clone(),
-        shares: core.config.shares.clone(),
+        shares,
+        areas: areas.clone(),
+        groups,
         dev,
         tmp_bytes: limits.tmp_bytes,
         drop_rights: platform.ultar.then_some(!keep),
         nproc: Some(u64::from(limits.pids)),
         program,
     };
-    let env = environment(id, role, if cell { None } else { Some(&data) }, opening);
+    let mut env = environment(id, role, if cell { None } else { Some(&data) }, opening);
+    if let Some(dir) = bus {
+        env.push((
+            BUS_ENV.to_owned(),
+            dir.join(BUS_SOCKET).to_string_lossy().into_owned(),
+        ));
+    }
+    if !areas.is_empty() {
+        env.push((AREAS_ENV.to_owned(), view::AREAS.to_owned()));
+    }
     Ok(Prepared { plan, env, restart })
 }

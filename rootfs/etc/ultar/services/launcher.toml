@@ -21,7 +21,9 @@ after = ["logd", "bus"]
 # right kill_any: stopping an app (another user) and its cell
 user = 805
 rights = ["mount", "set_id", "file_admin", "manage_groups", "kill_any"]
-dirs = ["/data/ultar/launcher", "/data/ultar/appdata"]
+dirs = ["/data/ultar/launcher", "/data/ultar/appdata", "/data/ultar/areas"]
+# The user's files group: owner group of the file areas (/data/ultar/areas/*, launcher.toml).
+groups = [833]
 # The cells' mount points and the compositor's app rights file (read by 811).
 public_dirs = ["/run/ultar/launcher"]
 notify = true

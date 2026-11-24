@@ -271,3 +271,26 @@ app.settings.account.device.remove.name = {name}: remove
 app.settings.summary.no_service = Not available: the service is not running
 app.settings.about.unknown = Not known: the system has no release file
 app.settings.about.third_party = Third-party parts: Noto fonts (SIL Open Font License 1.1), Rust libraries (MIT / Apache-2.0)
+
+# Network, Bluetooth, Sound (status pages: what the services report)
+app.settings.status.unavailable = The state of this service could not be read
+app.settings.status.yes = Yes
+app.settings.status.no = No
+app.settings.status.none = None
+app.settings.status.connected = Connected
+app.settings.status.not_connected = Not connected
+app.settings.status.net.wifi_present = Wi-Fi adapter
+app.settings.status.net.wifi_on = Wi-Fi on
+app.settings.status.net.ssid = Wi-Fi network
+app.settings.status.net.signal = Signal
+app.settings.status.net.wired = Wired connection
+app.settings.status.net.airplane = Airplane mode
+app.settings.status.net.metered = Metered connection
+app.settings.status.bt.present = Bluetooth adapter
+app.settings.status.bt.on = Bluetooth on
+app.settings.status.bt.connected = Connected devices
+app.settings.status.bt.scanning = Searching for devices
+app.settings.status.sound.present = Sound device
+app.settings.status.sound.output = Output
+app.settings.status.sound.volume = Volume
+app.settings.status.sound.muted = Muted

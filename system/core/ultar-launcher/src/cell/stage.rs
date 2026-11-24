@@ -174,7 +174,7 @@ fn confine(plan: &CellPlan) -> Result<(), CellFailure> {
         let identity = Identity {
             uid,
             gid,
-            groups: Vec::new(),
+            groups: plan.groups.clone(),
         };
         ultar_sys::switch_identity(&identity).map_err(|_| CellFailure::Identity)?;
     }

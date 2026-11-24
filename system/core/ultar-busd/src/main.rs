@@ -1,7 +1,9 @@
 //! `ultar-busd` – runs the Ultar OS bus broker on the service runtime.
 //!
 //! ```text
-//! ultar-busd [--listen PATH=IDENTITY | --listen-cred PATH | --listen-token PATH]...
+//! ultar-busd [--listen PATH=IDENTITY | --listen-cred PATH | --listen-token PATH
+//!             | --listen-apps PATH]...
+//!            [--app-map FILE --app-map-owner UID --app-uids FIRST-LAST]
 //!            [--mode OCTAL] [--owner UID] [--group GID] [--max-connections N]
 //!            [--uid-map FILE] [--token-file FILE | --token-fd N]
 //!            [--policy FILE | --allow-all]
@@ -19,6 +21,11 @@
 //!   (the fallback for kernels without credentials) or from the table the
 //!   service manager passes on descriptor `--token-fd N` (for kernels whose
 //!   file owners and modes cannot be checked).
+//! * `--listen-apps PATH`: the apps' socket. A peer is the app whose user
+//!   id (kernel credentials) the launcher's file `--app-map` names
+//!   (`UID = "app.<id>"`, only for apps whose manifest declares bus access);
+//!   ids outside `--app-uids`, ids without line and a file that is not the
+//!   launcher's (`--app-map-owner`) or not safe are refused (`apps.rs`).
 //! * `--mode`, `--owner`, `--group`, `--max-connections` apply to the
 //!   listener named before them; the sum of all bounds must fit the
 //!   broker's limits (see `budget.rs`), or the start is refused.
@@ -40,6 +47,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+mod apps;
 mod args;
 mod budget;
 mod enforce;
@@ -145,6 +153,25 @@ fn load_sources(arguments: &Arguments, runtime: &Runtime, lang: Lang) -> Option<
     Some(sources)
 }
 
+/// The apps' authenticator: kernel credentials and the launcher's app map
+/// (checked at every connect, see `apps.rs`).
+fn app_identity(arguments: &Arguments) -> Option<Arc<dyn PeerIdentity>> {
+    match (
+        &arguments.app_map,
+        arguments.app_map_owner,
+        arguments.app_uids,
+    ) {
+        (Some(path), Some(owner), Some(uids)) => {
+            Some(Arc::new(apps::AppIdentity::new(apps::AppMapSource {
+                path: path.clone(),
+                owner,
+                uids,
+            })))
+        }
+        _ => None,
+    }
+}
+
 fn start_broker(
     arguments: &Arguments,
     policy: Policy,
@@ -163,6 +190,7 @@ fn start_broker(
                 .map(|identity| Arc::new(FixedIdentity::new(identity)) as Arc<dyn PeerIdentity>),
             IdentitySource::Credentials => sources.credentials.clone(),
             IdentitySource::Token => sources.tokens.clone(),
+            IdentitySource::Apps => app_identity(arguments),
         };
         let Some(auth) = auth else {
             say_key(lang, MsgKey::BadArguments);

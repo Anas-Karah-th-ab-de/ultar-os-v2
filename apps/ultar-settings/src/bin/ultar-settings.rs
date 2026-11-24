@@ -17,7 +17,8 @@ use ultar_bus::{Client as Bus, ClientOptions};
 use ultar_i18n::Lang;
 use ultar_settings::areas::{index_of, AREAS};
 use ultar_settings::service::bus::{
-    BusAccount, BusDevices, BusDisplay, BusSettings, BusUpdate, ClipboardQueue, DocumentsFiles,
+    BusAccount, BusDevices, BusDisplay, BusSettings, BusStatus, BusUpdate, ClipboardQueue,
+    DocumentsFiles,
 };
 use ultar_settings::service::Ports;
 use ultar_settings::{App, AppError};
@@ -74,12 +75,17 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Options, AppError> {
 
 fn ports(bus: &Bus, documents: PathBuf, clipboard: ClipboardQueue) -> Ports {
     Ports {
-        os_release: Some(PathBuf::from("/etc/os-release")),
+        // /etc/os-release, else /usr/lib/os-release (os-release(5)): an app's cell sees /usr only
+        os_release: ["/etc/os-release", "/usr/lib/os-release"]
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.is_file()),
         settings: Box::new(BusSettings::new(bus.clone())),
         display: Box::new(BusDisplay::new(bus.clone())),
         devices: Box::new(BusDevices(bus.clone())),
         update: Box::new(BusUpdate::new(bus.clone())),
         account: Box::new(BusAccount(bus.clone())),
+        status: Box::new(BusStatus::new(bus)),
         files: Box::new(DocumentsFiles { dir: documents }),
         clipboard: Box::new(clipboard),
     }

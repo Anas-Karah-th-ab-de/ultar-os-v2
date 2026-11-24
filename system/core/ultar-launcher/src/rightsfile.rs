@@ -56,6 +56,33 @@ pub fn withdraw(path: &Path) {
     }
 }
 
+/// First line of the broker's app map.
+const BUS_HEADER: &str =
+    "# Written by ultar-launcher: bus identities of app user ids (apps that declare bus access). Do not edit.\n";
+
+/// The bus identity of the app `id`: `app.<id>`.
+pub fn bus_identity(id: &str) -> String {
+    format!("app.{id}")
+}
+
+/// The broker's app map for `(uid, app id)` pairs of apps that declare bus
+/// access (`ultar-busd --app-map`): `uid = "app.<id>"`, sorted by uid.
+pub fn render_bus(apps: &[(u32, String)]) -> String {
+    let mut lines: Vec<&(u32, String)> = apps.iter().collect();
+    lines.sort_unstable();
+    let mut text = BUS_HEADER.to_owned();
+    for (uid, id) in lines {
+        text.push_str(&format!("{uid} = \"{}\"\n", bus_identity(id)));
+    }
+    text
+}
+
+/// Writes the broker's app map at `path` (mode `0644`: the broker reads it,
+/// only the launcher writes it).
+pub fn write_bus(path: &Path, apps: &[(u32, String)]) -> std::io::Result<()> {
+    crate::atomic::write(path, render_bus(apps).as_bytes(), 0o644)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +130,19 @@ mod tests {
             render(&apps)
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_bus_map_names_each_declaring_app() {
+        let apps = [(20003, "store".to_owned()), (20001, "settings".to_owned())];
+        assert_eq!(
+            render_bus(&apps),
+            format!("{BUS_HEADER}20001 = \"app.settings\"\n20003 = \"app.store\"\n")
+        );
+        assert_eq!(render_bus(&[]), BUS_HEADER);
+        // the broker's own parser accepts it
+        let map = ultar_service::UidMap::parse(&render_bus(&apps)).unwrap();
+        assert_eq!(map.identity(20001).unwrap().as_str(), "app.settings");
+        assert!(map.identity(20002).is_none());
     }
 }

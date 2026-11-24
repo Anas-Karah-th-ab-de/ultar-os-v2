@@ -4,13 +4,16 @@
 
 use super::{
     AccountPort, AccountRequest, ClipboardPort, DevicesPort, DisplayPort, FilesPort, PortError,
-    PortResult, Ports, SettingsPort, UpdatePort,
+    PortResult, Ports, SettingsPort, StatusPort, UpdatePort,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
 use ultar_bus::messages::account_service::{AccountState, Phase};
+use ultar_bus::messages::audio::AudioState;
+use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::device_service::{DeviceInfo, ListReply};
 use ultar_bus::messages::display_service::{DetectReply, Output};
+use ultar_bus::messages::net::NetState;
 use ultar_bus::messages::settings::{PanelInfo, SettingValue};
 use ultar_bus::Text;
 
@@ -27,6 +30,12 @@ pub struct World {
     pub devices: Option<Vec<DeviceInfo>>,
     /// Account (`None`: service down).
     pub account: Option<AccountState>,
+    /// Network state (`None`: service down).
+    pub net: Option<NetState>,
+    /// Bluetooth state (`None`: service down).
+    pub bluetooth: Option<BluetoothState>,
+    /// Sound state (`None`: service down).
+    pub audio: Option<AudioState>,
     /// Refuse the next call with this reason.
     pub refuse: Option<Text>,
     /// Every call in order (`service.method key/arg`).
@@ -239,6 +248,24 @@ impl ClipboardPort for Fake {
     }
 }
 
+impl StatusPort for Fake {
+    fn net(&mut self) -> PortResult<NetState> {
+        self.0.borrow().net.clone().ok_or(PortError::Unavailable)
+    }
+
+    fn bluetooth(&mut self) -> PortResult<BluetoothState> {
+        self.0
+            .borrow()
+            .bluetooth
+            .clone()
+            .ok_or(PortError::Unavailable)
+    }
+
+    fn audio(&mut self) -> PortResult<AudioState> {
+        self.0.borrow().audio.clone().ok_or(PortError::Unavailable)
+    }
+}
+
 /// Ports backed by `world`.
 pub fn ports(world: &Shared) -> Ports {
     let f = || Box::new(Fake(world.clone()));
@@ -249,6 +276,7 @@ pub fn ports(world: &Shared) -> Ports {
         devices: f(),
         update: f(),
         account: f(),
+        status: f(),
         files: f(),
         clipboard: f(),
     }

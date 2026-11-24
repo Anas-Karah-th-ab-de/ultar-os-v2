@@ -36,6 +36,11 @@ pub struct MountEntry {
     /// How long to wait for the source (USB stick, NVMe module loading).
     #[serde(default)]
     pub wait_ms: u64,
+    /// Editions this mount belongs to (empty: all). The desktop's system and
+    /// data partitions are mounted by the kernel; the phone's partitions
+    /// (/compat, /data on eMMC, /vendor, /efs) are tried on phones only.
+    #[serde(default)]
+    pub editions: Vec<String>,
 }
 
 /// The configuration.

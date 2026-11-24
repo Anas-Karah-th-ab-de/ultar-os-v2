@@ -3,7 +3,7 @@
 use super::update_contract::{Check, Offline, Progress};
 use super::{
     AccountPort, AccountRequest, ClipboardPort, DevicesPort, DisplayPort, FilesPort, PortError,
-    PortResult, SettingsPort, UpdatePort,
+    PortResult, SettingsPort, StatusPort, UpdatePort,
 };
 use std::cell::RefCell;
 use std::io::Write;
@@ -11,8 +11,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use ultar_bus::messages::account_service as acc;
+use ultar_bus::messages::audio::AudioState;
+use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::device_service as dev;
 use ultar_bus::messages::display_service as disp;
+use ultar_bus::messages::net::NetState;
 use ultar_bus::messages::settings::{
     Changed, ListRequest, PanelInfo, PendingResolved, Set, SettingValue,
 };
@@ -100,7 +103,15 @@ impl SettingsPort for BusSettings {
             key: key.to_owned(),
             value,
         };
-        call(&self.client, &set, CALL_TIMEOUT).map(|_| ())
+        let result = call(&self.client, &set, CALL_TIMEOUT).map(|_| ());
+        // one line per change for the log (`app-settings`): which key and whether settingsd took
+        // it (or the key of its refusal) - never the value
+        let verdict = match &result {
+            Ok(()) => "ok".to_owned(),
+            Err(e) => e.text().key,
+        };
+        eprintln!("ultar-settings: set {key} {verdict}");
+        result
     }
 }
 
@@ -348,5 +359,71 @@ impl ClipboardPort for ClipboardQueue {
     fn copy(&mut self, text: &str) -> PortResult<()> {
         *self.0.borrow_mut() = Some(text.to_owned());
         Ok(())
+    }
+}
+
+/// Network, Bluetooth and sound state over the bus: the services' retained topics.
+pub struct BusStatus {
+    net: Retained<NetState>,
+    bluetooth: Retained<BluetoothState>,
+    audio: Retained<AudioState>,
+}
+
+impl std::fmt::Debug for BusStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BusStatus")
+    }
+}
+
+/// The last value of a retained topic (the service sends it on subscribe).
+struct Retained<T: ultar_bus::Topic> {
+    sub: Option<TypedSubscription<T>>,
+    last: Option<T>,
+}
+
+impl<T: ultar_bus::Topic + Clone> Retained<T> {
+    fn new(client: &Client) -> Self {
+        Retained {
+            sub: client.subscribe::<T>().ok(),
+            last: None,
+        }
+    }
+
+    fn get(&mut self) -> PortResult<T> {
+        let sub = self.sub.as_ref().ok_or(PortError::Unavailable)?;
+        if self.last.is_none() {
+            if let Ok(first) = sub.recv_timeout(RETAINED_WAIT) {
+                self.last = Some(first);
+            }
+        }
+        while let Ok(Some(next)) = sub.try_recv() {
+            self.last = Some(next);
+        }
+        self.last.clone().ok_or(PortError::Unavailable)
+    }
+}
+
+impl BusStatus {
+    /// Subscribes to `net.state`, `bluetooth.state` and `audio.state`.
+    pub fn new(client: &Client) -> BusStatus {
+        BusStatus {
+            net: Retained::new(client),
+            bluetooth: Retained::new(client),
+            audio: Retained::new(client),
+        }
+    }
+}
+
+impl StatusPort for BusStatus {
+    fn net(&mut self) -> PortResult<NetState> {
+        self.net.get()
+    }
+
+    fn bluetooth(&mut self) -> PortResult<BluetoothState> {
+        self.bluetooth.get()
+    }
+
+    fn audio(&mut self) -> PortResult<AudioState> {
+        self.audio.get()
     }
 }

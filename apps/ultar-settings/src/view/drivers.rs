@@ -149,9 +149,29 @@ fn missing_bar(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
 
 /// Column shares of the device table (boards: flex 3 : 2 : 2 : 3).
 const SHARES: [u8; 4] = [3, 2, 2, 3];
+/// Narrowest page on which the four columns stay readable; below it each device is a block of
+/// lines (name, driver, state, actions) and the header row is left out.
+const TABLE_MIN: f32 = 720.0;
+
+/// The size of cell `i` of a device row: its column share, or its natural size when stacked.
+fn cell(narrow: bool, i: usize) -> Sizing {
+    if narrow {
+        Sizing::AUTO
+    } else {
+        Sizing::grow(SHARES[i])
+    }
+}
 
 fn table(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     let card = cx.ui.add(content, Card::new())?;
+    let narrow = super::content_width(cx.ui) < TABLE_MIN;
+    let devices = cx.state.drivers.devices.clone();
+    if narrow {
+        for (index, d) in devices.iter().enumerate() {
+            device_row(cx, card, index, d, index + 1 == devices.len(), true)?;
+        }
+        return Ok(());
+    }
     // Boards: header 8 / 16 padded with a hairline under it; rows 4 / 16 padded, at least
     // 48 high, a hairline under every row but the last.
     let head_h = super::lines_height(cx.ui, TypeSize::S12, 1.0) + 2.0 * Space::S8.points() + 1.0;
@@ -170,9 +190,8 @@ fn table(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
             .color(ColorRole::TextMuted);
         cx.ui.add_sized(head, text, Sizing::grow(SHARES[i]))?;
     }
-    let devices = cx.state.drivers.devices.clone();
     for (index, d) in devices.iter().enumerate() {
-        device_row(cx, card, index, d, index + 1 == devices.len())?;
+        device_row(cx, card, index, d, index + 1 == devices.len(), false)?;
     }
     Ok(())
 }
@@ -199,22 +218,34 @@ fn device_row(
     index: usize,
     d: &DeviceInfo,
     last: bool,
+    narrow: bool,
 ) -> Result<(), UiError> {
-    let flex = Flex::row()
-        .gap(Space::S16)
-        .padding(Padding::symmetric(Space::S16, Space::S4))
-        .cross(CrossAlign::Center);
-    let h = row_height(cx, d, last);
+    let flex = if narrow {
+        Flex::column()
+            .gap(Space::S8)
+            .padding(Padding::symmetric(Space::S16, Space::S12))
+            .cross(CrossAlign::Start)
+    } else {
+        Flex::row()
+            .gap(Space::S16)
+            .padding(Padding::symmetric(Space::S16, Space::S4))
+            .cross(CrossAlign::Center)
+    };
+    let sizing = if narrow {
+        Sizing::AUTO
+    } else {
+        Sizing::AUTO.with_height(row_height(cx, d, last))
+    };
     let row = if last {
-        cx.ui.add_sized(card, flex, Sizing::AUTO.with_height(h))?
+        cx.ui.add_sized(card, flex, sizing)?
     } else {
         let r = Card::rule(BarEdge::Bottom).flex(flex);
-        cx.ui.add_sized(card, r, Sizing::AUTO.with_height(h))?
+        cx.ui.add_sized(card, r, sizing)?
     };
     let first = cx.ui.add_sized(
         row,
         Flex::row().gap(Space::S12).cross(CrossAlign::Center),
-        Sizing::grow(SHARES[0]),
+        cell(narrow, 0),
     )?;
     cx.ui.add(
         first,
@@ -230,11 +261,11 @@ fn device_row(
         .map_or_else(|| Label::data("—"), |a| Label::data(&a.id));
     let mono = TextSpec::new(TypeSize::S12).role(FontRole::Mono);
     cx.ui
-        .add_sized(row, Text::new(driver).spec(mono), Sizing::grow(SHARES[1]))?;
+        .add_sized(row, Text::new(driver).spec(mono), cell(narrow, 1))?;
     let state = cx.ui.add_sized(
         row,
         Flex::column().cross(CrossAlign::Start),
-        Sizing::grow(SHARES[2]),
+        cell(narrow, 2),
     )?;
     let (tone, key) = state_badge(d);
     cx.ui
@@ -248,7 +279,7 @@ fn device_row(
             .gap(Space::S8)
             .cross(CrossAlign::Center)
             .main(MainAlign::End),
-        Sizing::grow(SHARES[3]),
+        cell(narrow, 3),
     )?;
     actions_cell(cx, actions, index, d)
 }

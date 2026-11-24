@@ -12,6 +12,8 @@ use ultar_sys::cell::{self as sys_cell, BindMode};
 /// Where the app's data directory appears (also its home and working
 /// directory).
 pub const DATA: &str = "/data";
+/// Where the user's file areas appear (`/areas/<name>`).
+pub const AREAS: &str = "/areas";
 /// The private temporary directory.
 pub const TMP: &str = "/tmp";
 /// Name of the old root during the switch.
@@ -93,6 +95,18 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
     }
     devices(root, plan.dev)?;
     bind_dirs(root, &plan.shares)?;
+    for (host, name, rw) in &plan.areas {
+        if !host.is_dir() || !super::valid_area_name(name) {
+            continue; // not made on this system: the app shows the area as missing
+        }
+        let target = mount_point(root, &Path::new(AREAS).join(name))?;
+        let mode = if *rw {
+            BindMode::WritableNoExec
+        } else {
+            BindMode::ReadOnly
+        };
+        sys_cell::bind(host, &target, mode).map_err(|_| CellFailure::Mounts)?;
+    }
     let old = root.join(OLD);
     std::fs::create_dir(&old).map_err(|_| CellFailure::Root)?;
     sys_cell::pivot_root(root, &old).map_err(|_| CellFailure::Root)?;
@@ -123,6 +137,8 @@ mod tests {
             data: "/d".into(),
             view: Vec::new(),
             shares: Vec::new(),
+            areas: Vec::new(),
+            groups: Vec::new(),
             dev: DevMode::None,
             tmp_bytes: 64 << 20,
             drop_rights: None,

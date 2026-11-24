@@ -41,8 +41,8 @@ more than its profile allows is refused at installation.
 Enforced permissions: `network` (cell without own network namespace), `background` (the `[service]` program
 starts only with it), `ui.shell | ui.input-method | ui.lock-screen | ui.capture | ui.overlay | ui.system-dialog |
 ui.client-header`
-(compositor, §5). `[permissions] bus` and `files` are recorded and reported (`launcher.permissions`), not granted
-here – see "Open".
+(compositor, §5). `[permissions] bus`: the apps' bus socket and a bus identity `app.<id>` (§8); `files`: the
+user's file areas for system apps (§8).
 
 ## 3. How a start works
 
@@ -199,10 +199,21 @@ them; stage 2 relays to the app (section 2a). 6 gate rounds since without a fail
 
 ## 8. Not done / open (honest list)
 
-* **Bus identity per app**: apps cannot reach the bus yet (no socket in their cell); the manifest's `bus` list is
-  recorded, not enforced. Needed: a credential listener (`--listen-cred … --uid-map`) fed from the launcher's ids,
-  per-app policy rules generated from `bus` ∩ grants, and the socket dir in `shares`.
-* **Named file areas** (`media:*`, `documents`, `share`): recorded only; no file service, nothing mounted.
+* **Bus identity per app – done** (VMware fix, Settings showed "service not available" everywhere): an app whose
+  signed manifest declares `[permissions] bus` gets `app_bus` (`/run/ultar/appbus`, the socket only) bound
+  read-only in its cell and `ULTAR_BUS_SOCKET`; the launcher writes `bus_apps` (`/run/ultar/launcher/bus-apps.toml`,
+  `uid = "app.<id>"`, `0644`, owner 805) after every install/uninstall/grant/revoke; `ultar-busd --listen-apps
+  … --app-map … --app-map-owner 805 --app-uids 20000-49999` names each peer by its kernel uid (`SO_PEERCRED`)
+  and re-reads the map when it changed (`ultar-busd/src/apps.rs`: ids outside the range, `system.*`/`app.shared`
+  names, a foreign or writable file → nobody). The policy then applies per app id (`app.settings`, `app.files`,
+  `app.store`, `app.phone`, `app.km-code-craft.appbuilder`, plus `app.*`); an app without declarations has
+  neither the socket nor a line. Still open: the manifest's `bus` list is a declaration, the policy is the
+  rule – policy rules are written by hand, not generated from `bus` ∩ grants (store apps get only `app.*`).
+* **File areas – system apps** (`areas.rs`): `home documents downloads media-* desktop trash` of a system app's
+  manifest are bound at `/areas/<name>` (rw noexec for `:rw`), `ULTAR_AREAS=/areas`, the app gets the group
+  `userfiles` (833), the directories below `areas_root` are `0770` launcher:userfiles. Open: store apps (need
+  the user's choice per area), `removable` (volume service), files of one app are `0600` (umask 077) for the
+  others.
 * **Ultar kernel gaps** (stop the start unless accepted): no network namespace (an app reaches the network and
   the host's loopback – `launchtest` accepts `net` explicitly there), no single-file bind (whole `devtmpfs`;
   `/dev/console` and `/dev/tty` are `0666` there – kernel default to tighten), no CPU limit, no

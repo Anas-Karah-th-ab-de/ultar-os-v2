@@ -19,6 +19,9 @@ pub enum IdentitySource {
     Credentials,
     /// A token presented in the handshake, looked up in the token file.
     Token,
+    /// Apps: kernel credentials looked up in the launcher's app map
+    /// (`--app-map`, `--app-map-owner`, `--app-uids`), see `apps.rs`.
+    Apps,
 }
 
 /// One socket to listen on.
@@ -54,6 +57,12 @@ pub struct Arguments {
     pub lang: Option<String>,
     /// Print the usage and exit.
     pub help: bool,
+    /// The launcher's map of app user ids (`--app-map`).
+    pub app_map: Option<PathBuf>,
+    /// Who besides root may own the app map (`--app-map-owner`).
+    pub app_map_owner: Option<u32>,
+    /// The app user ids (`--app-uids FIRST-LAST`).
+    pub app_uids: Option<(u32, u32)>,
 }
 
 /// Why the command line was rejected.
@@ -80,6 +89,16 @@ pub enum ArgumentError {
     MissingSourceFile,
     /// `--token-file` together with `--token-fd`, or one of them twice.
     TwoTokenSources,
+}
+
+/// `--app-uids FIRST-LAST`: a non-empty range above the system ids.
+fn parse_uid_range(text: &str) -> Result<(u32, u32), ArgumentError> {
+    let (first, last) = text.split_once('-').ok_or(ArgumentError::BadNumber)?;
+    let (first, last) = (parse_id(first)?, parse_id(last)?);
+    if first < 1000 || first > last {
+        return Err(ArgumentError::BadNumber);
+    }
+    Ok((first, last))
 }
 
 /// Most connections one listener may be given with `--max-connections`.
@@ -177,6 +196,12 @@ fn option(
         "--listen-token" => parsed
             .listeners
             .push(plain_listener(value()?, IdentitySource::Token)?),
+        "--listen-apps" => parsed
+            .listeners
+            .push(plain_listener(value()?, IdentitySource::Apps)?),
+        "--app-map" => parsed.app_map = Some(PathBuf::from(value()?)),
+        "--app-map-owner" => parsed.app_map_owner = Some(parse_id(&value()?)?),
+        "--app-uids" => parsed.app_uids = Some(parse_uid_range(&value()?)?),
         "--mode" => last(parsed)?.mode = Some(parse_mode(&value()?)?),
         "--owner" => last(parsed)?.owner = Some(parse_id(&value()?)?),
         "--group" => last(parsed)?.group = Some(parse_id(&value()?)?),
@@ -201,6 +226,10 @@ fn check(parsed: &Arguments) -> Result<(), ArgumentError> {
         return Err(ArgumentError::MissingSourceFile);
     }
     if needs(&IdentitySource::Token) && parsed.token.is_none() {
+        return Err(ArgumentError::MissingSourceFile);
+    }
+    let app_parts = (&parsed.app_map, parsed.app_map_owner, parsed.app_uids);
+    if needs(&IdentitySource::Apps) && !matches!(app_parts, (Some(_), Some(_), Some(_))) {
         return Err(ArgumentError::MissingSourceFile);
     }
     Ok(())
@@ -451,5 +480,42 @@ mod tests {
             parse(&["--max-connections", "4", "/s", "--allow-all"], None),
             Err(ArgumentError::NoListenerYet)
         );
+    }
+
+    #[test]
+    fn the_apps_listener_needs_map_owner_and_range() {
+        let full = [
+            "--listen-apps",
+            "/run/ultar/appbus/bus.sock",
+            "--mode",
+            "0666",
+            "--app-map",
+            "/run/ultar/launcher/bus-apps.toml",
+            "--app-map-owner",
+            "805",
+            "--app-uids",
+            "20000-49999",
+        ];
+        let parsed = parse(&full, None).unwrap();
+        assert_eq!(parsed.listeners[0].source, IdentitySource::Apps);
+        assert_eq!(parsed.app_uids, Some((20000, 49999)));
+        assert_eq!(parsed.app_map_owner, Some(805));
+        for drop in [4, 6, 8] {
+            let mut part: Vec<&str> = full.to_vec();
+            part.drain(drop..drop + 2);
+            assert_eq!(
+                parse(&part, None).err(),
+                Some(ArgumentError::MissingSourceFile)
+            );
+        }
+        for bad in ["0-49999", "30000-20000", "20000", "a-b", "20000-"] {
+            let mut part: Vec<&str> = full.to_vec();
+            part[9] = bad;
+            assert_eq!(
+                parse(&part, None).err(),
+                Some(ArgumentError::BadNumber),
+                "{bad}"
+            );
+        }
     }
 }

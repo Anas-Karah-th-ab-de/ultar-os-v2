@@ -50,13 +50,15 @@ args = [
     "--listen", "/run/ultar/bus/installer.sock=system.installer", "--mode", "0660", "--group", "840", "--max-connections", "2",
     # The service manager (root).
     "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
-    # The apps' socket (bound read-only into every app cell by the launcher, `shares`): one
-    # identity for all of them, `app.shared`, which has exactly the rights every app has
-    # (rule `app.*` of bus-policy.toml) and none of a named app (app.settings, app.store …).
-    # Open to everyone (apps run as their own uids 20000-49999 without groups); the
-    # connection limit bounds what they can take. Per-app identities need the launcher to
-    # hand each app its own socket (open point, docs/integration/vmware.md).
-    "--listen", "/run/ultar/appbus/bus.sock=app.shared", "--mode", "0666", "--max-connections", "32",
+    # The apps' socket (bound read-only only into the cell of an app whose signed manifest declares
+    # bus access, launcher.toml app_bus). Each app is its own identity app.<id>: busd reads the
+    # peer's user id from the kernel (SO_PEERCRED) and looks it up in the launcher's map (owner 805,
+    # only ids of the app range, only app.<id> names, re-read when it changes); an app without a
+    # line - no bus declaration - is refused. The policy then applies per app (app.settings,
+    # app.store … plus app.*). Open to everyone (apps run as their own uids 20000-49999 without
+    # groups); the connection limit bounds what they can take.
+    "--listen-apps", "/run/ultar/appbus/bus.sock", "--mode", "0666", "--max-connections", "32",
+    "--app-map", "/run/ultar/launcher/bus-apps.toml", "--app-map-owner", "805", "--app-uids", "20000-49999",
     "--policy", "/etc/ultar/bus-policy.toml",
     "--log-socket", "/run/ultar/log/busd.sock",
 ]

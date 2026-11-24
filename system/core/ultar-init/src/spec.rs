@@ -92,8 +92,9 @@ impl Slice {
 
 /// Every key a service file may have (checked before parsing: the parts
 /// below are flattened, which `deny_unknown_fields` does not support).
-pub const KEYS: [&str; 24] = [
+pub const KEYS: [&str; 25] = [
     "name",
+    "description",
     "exec",
     "args",
     "env",
@@ -163,6 +164,8 @@ struct LifeFile {
     #[serde(default)]
     oneshot: bool,
     #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
     manual: bool,
     #[serde(default)]
     editions: Vec<String>,
@@ -206,6 +209,9 @@ pub enum ProfileStart {
     Manual,
 }
 
+/// Longest `description` in bytes.
+pub const MAX_DESCRIPTION: usize = 120;
+
 /// The boot profile of an ordinary start.
 pub const SYSTEM_PROFILE: &str = "system";
 /// Most profiles one service file names.
@@ -220,6 +226,10 @@ pub struct Life {
     pub after: Vec<String>,
     /// Runs once; dependants start after it ended successfully.
     pub oneshot: bool,
+    /// What the service does, for the log (`description`, at most
+    /// [`MAX_DESCRIPTION`] bytes, no control characters): a one-shot step's
+    /// start and end lines say it, so a short run reads as the step it is.
+    pub description: Option<String>,
     /// Started only on request.
     pub manual: bool,
     /// Editions the service exists in (empty: all).
@@ -416,6 +426,16 @@ impl ServiceSpec {
             restart: life.restart,
             after: life.after,
             oneshot: life.oneshot,
+            description: match life.description {
+                Some(d)
+                    if d.is_empty()
+                        || d.len() > MAX_DESCRIPTION
+                        || d.chars().any(char::is_control) =>
+                {
+                    return Err(SpecError::Bound("description"))
+                }
+                d => d,
+            },
             manual: profiles.get(SYSTEM_PROFILE) == Some(&ProfileStart::Manual),
             editions: life.editions,
             profiles,

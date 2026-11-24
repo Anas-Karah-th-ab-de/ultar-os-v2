@@ -35,6 +35,7 @@
 #![warn(missing_docs)]
 
 pub mod appid;
+pub mod areas;
 pub mod atomic;
 pub mod cell;
 pub mod cleanup;

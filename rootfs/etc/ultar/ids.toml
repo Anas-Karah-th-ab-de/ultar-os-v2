@@ -53,6 +53,9 @@ audio = 830
 radio = 831
 # Block devices of removable disks (read-only use: partition heads); member: volumed.
 disk = 832
+# The user's file areas (/data/ultar/areas/*, 0770 launcher:userfiles): system apps that
+# declare file areas get this group in their cell (ultar-launcher areas.rs).
+userfiles = 833
 
 [members]
 busd = ["logd"]
@@ -71,6 +74,7 @@ desktop = ["busd"]
 audio = ["audiod"]
 radio = ["netd", "btd"]
 disk = ["volumed"]
+userfiles = ["launcher"]
 # Their sockets at the bus and the log service are open to their own groups.
 displayd = ["busd", "logd"]
 accountd = ["busd", "logd"]

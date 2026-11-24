@@ -216,6 +216,250 @@ def log(msg):
     print(msg, flush=True)
 
 
+def _screen_text():
+    import importlib.util
+    import os
+    spec = importlib.util.spec_from_file_location("screen_text", os.path.join(os.path.dirname(__file__), "screen_text.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Settings pages the gate opens from the sidebar (Arabic labels, ar.ftl app.settings.area.*), with a word each
+# page shows only when it has the service's real values (a row label or a value; normalised, see
+# screen_text.norm). On every page none of the "not available" messages may appear: their distinctive words
+# (ar.ftl app.settings.error.unavailable, .status.unavailable, .panel.unavailable, .no_service,
+# .display.no_outputs/no_settings, .account.unavailable) are in UNAVAILABLE, and no raw catalog key.
+SETTINGS_PAGES = [
+    # in the sidebar's order (the gate scrolls it down only)
+    ("network", "الشبكة", ["السلكي", "الطيران"]),
+    ("bluetooth", "بلوتوث", ["المتصلة", "البلوتوث"]),
+    ("displays", "الشاشات", ["اسحب", "الليلي"]),
+    ("sound", "الصوت", ["مستوى", "المخرج"]),
+    # settingsd's pages and the drivers: every text translated (no raw key such as settings.power.x)
+    ("power", "الطاقة", []),
+    ("desktop", "سطح المكتب", []),
+    ("windows", "النوافذ", []),
+    ("appearance", "المظهر", []),
+    ("notifications", "الإشعارات", []),
+    ("privacy", "الخصوصية", []),
+    ("accounts", "الحسابات", []),
+    ("region", "المنطقة واللغة", []),
+    ("datetime", "التاريخ والوقت", []),
+    ("drivers", "العتاد", []),
+    ("about", "حول النظام", ["0.8"]),
+]
+# a catalog key on the screen: lower-case words joined by dots (settings.power.button_action, accountd.link.x)
+RAW_KEY = re.compile(r"\b[a-z]{3,}\.[a-z_]{2,}(\.[a-z_]+)*\b")
+# the distinctive words of those messages (the account page's own "the account server is not available yet" is
+# the honest state of a device without account server, not a broken page)
+UNAVAILABLE = ["تعذرت", "تعذر", "لا تعمل", "لا يسمح", "غير متاح في هذا", "غير متاحة"]
+
+
+def _sidebar_hit(st, png, label, w, h):
+    """Centre of the sidebar entry `label`: the rightmost place the words appear (the sidebar is on the right
+    in Arabic; the page itself may use the same word)."""
+    want = [st.norm(x) for x in label.split()]
+    best = None
+    # the whole screen first (read best), then the right half enlarged
+    for ws in (
+        [x for x in st.words(png) if x[1][0] > w // 2 and x[1][1] < h - 60],
+        st.words(png, (w // 2, 0, w, h - 60)),
+    ):
+        for i, (word, b, _) in enumerate(ws):
+            if all(i + k < len(ws) and want[k] in st.norm(ws[i + k][0]) for k in range(len(want))):
+                if best is None or b[0] > best[0]:
+                    best = ((min(b[0], ws[i + len(want) - 1][1][0]) + max(b[2], ws[i + len(want) - 1][1][2])) // 2, (b[1] + b[3]) // 2)
+        if best:
+            return best
+    return best
+
+
+def _page_text(st, png, right, bottom):
+    """The words on the screen left of `right` and above `bottom` (the whole screen is read: the recogniser
+    does better with the full picture than with a cut-out)."""
+    return st.norm(" ".join(x for x, b, _ in st.words(png) if b[0] < right and b[1] < bottom))
+
+
+def settings_pages(vm, m, pos):
+    """Opens Settings, then each page of SETTINGS_PAGES from its sidebar entry (found on the screen): the page
+    shows real values and no "not available" message."""
+    st = _screen_text()
+    failures = []
+    vm.move(640, 400)
+    vm.pump(1)
+    before = vm.shot("before-settings-pages")
+    vm.click(*pos["settings"])
+    if not app_window(vm, "settings-pages", before):
+        return ["settings did not open (pages)"]
+    vm.pump(4)
+    w, h = vm.size
+    x_side = None
+    for area, label, expect in SETTINGS_PAGES:
+        hit = None
+        # not on the screen: scroll the sidebar (wheel over it) to its top, then down step by step
+        for step, wheel in enumerate([None] + ["wheel-down"] * 9):
+            if wheel:
+                vm.move(x_side or (w * 3) // 4, h // 2)
+                for _ in range(3 if step else 1):
+                    vm.events([{"type": "btn", "data": {"down": True, "button": wheel}}])
+                    vm.events([{"type": "btn", "data": {"down": False, "button": wheel}}])
+                    vm.pump(0.2)
+                vm.pump(1)
+            vm.shot(f"settings-find-{area}")
+            hit = _sidebar_hit(st, f"{vm.prefix}-settings-find-{area}.png", label, w, h)
+            if hit:
+                break
+        if not hit:
+            seen = [x for x, b, _ in st.words(f"{vm.prefix}-settings-find-{area}.png") if b[0] > w // 2]
+            log(f"settings: {area} not in the sidebar; read there: {seen}")
+            failures.append(f"settings: no sidebar entry {area}")
+            continue
+        x_side = hit[0]
+        vm.click(*hit)
+        vm.pump(4)
+        vm.shot(f"settings-page-{area}")
+        png = f"{vm.prefix}-settings-page-{area}.png"
+        page = _page_text(st, png, max(200, hit[0] - 70), h - 60)
+        bad = [b for b in UNAVAILABLE if st.norm(b) in page]
+        bad += [k.group(0) for k in RAW_KEY.finditer(page) if not k.group(0).endswith((".tech", ".txt"))]
+        good = not expect or any(st.norm(e) in page for e in expect)
+        log(f"settings page {area}: unavailable={bad} values={'yes' if good else 'no'} ({len(page)} chars)")
+        if bad:
+            failures.append(f"settings {area}: 'not available' or a raw key on the page {bad}")
+        if not good:
+            failures.append(f"settings {area}: no real values ({expect})")
+    close_all(vm)
+    return failures
+
+
+def store_and_files(vm, m, pos):
+    """The Store lists its catalogue (publisher and app names on the screen, no load error); Files lists the
+    home folder (its first file README.txt, no "not available")."""
+    st = _screen_text()
+    failures = []
+    w, h = vm.size
+    for name, want, wait in (("store", ["مستندات", "وجداول", "Ultar"], 10), ("files", ["README"], 4)):
+        vm.move(640, 400)
+        vm.pump(1)
+        before = vm.shot(f"before-{name}-content")
+        vm.click(*pos[name])
+        if not app_window(vm, f"{name}-content", before):
+            failures.append(f"{name} did not open (content)")
+            continue
+        vm.pump(wait)
+        vm.shot(f"{name}-content-ready")
+        page = _page_text(st, f"{vm.prefix}-{name}-content-ready.png", w, h - 60)
+        bad = [b for b in UNAVAILABLE if st.norm(b) in page]
+        good = any(st.norm(x) in page for x in want)
+        log(f"{name} content: unavailable={bad} listed={'yes' if good else 'no'} ({len(page)} chars)")
+        if bad or not good:
+            failures.append(f"{name}: " + ("'not available' shown" if bad else f"nothing listed ({want})"))
+        close_all(vm)
+    return failures
+
+
+def _switch_left_of(screen, x_text, y0, y1):
+    """The control at the start (left, in Arabic) end of a settings row whose texts begin at x_text and fill
+    the band y0..y1: from there leftwards, the first group of columns with pixels other than the card's ground
+    that is 20-80 points wide (a switch); its centre or None."""
+    def px(x, y):
+        i = (y * screen.w + x) * 3
+        return screen.px[i], screen.px[i + 1], screen.px[i + 2]
+
+    ground = px(max(0, x_text - 6), y0)
+
+    def marked(x):
+        ys = [y for y in range(y0, y1) if sum(abs(int(p) - int(q)) for p, q in zip(px(x, y), ground)) > 30]
+        return ys
+
+    x, seg, gap, rows = x_text - 8, None, 0, []
+    while x > 4:
+        ys = marked(x)
+        if ys:
+            seg = seg or x
+            rows += ys
+            gap = 0
+        elif seg is not None:
+            gap += 1
+            if gap > 3:
+                width = seg - (x + gap)
+                if 20 <= width <= 80:
+                    return ((seg + x + gap) // 2, (min(rows) + max(rows)) // 2)
+                seg, rows, gap = None, [], 0
+        x -= 1
+    return None
+
+
+def settings_change(vm, m, pos):
+    """A change takes effect and stays: on Notifications the switch of "Do not disturb" (found on the screen)
+    is clicked - the switch changes; after Settings is closed and opened again it shows the changed state
+    (settingsd stored it); a second click switches it back."""
+    st = _screen_text()
+    w, h = vm.size
+
+    def open_page(tag):
+        vm.move(640, 400)
+        vm.pump(1)
+        before = vm.shot(f"before-change-{tag}")
+        vm.click(*pos["settings"])
+        if not app_window(vm, f"change-{tag}", before):
+            return None
+        vm.pump(3)
+        vm.shot(f"change-find-{tag}")
+        hit = _sidebar_hit(st, f"{vm.prefix}-change-find-{tag}.png", "الإشعارات", w, h)
+        if not hit:
+            return None
+        vm.click(*hit)
+        vm.pump(3)
+        vm.move(hit[0], h - 80)  # the pointer off the page (no hover on the switch)
+        vm.pump(1)
+        screen = vm.shot(f"change-page-{tag}")
+        # the row "Do not disturb": its label in the page (left of the sidebar), the switch at the row's start
+        words = [(x, b) for x, b, _ in st.words(f"{vm.prefix}-change-page-{tag}.png") if b[0] < hit[0] - 70]
+        rows = [b for x, b in words if "الازعاج" in st.norm(x)]
+        if not rows:
+            return None
+        b = min(rows, key=lambda r: r[1])
+        # the row: its label and the description under it (words that start within 30 points below)
+        band = [wb for _, wb in words if b[1] - 4 <= wb[1] <= b[1] + 30]
+        y0, y1 = b[1] - 10, max(wb[3] for wb in band) + 6
+        at = _switch_left_of(screen, min(wb[0] for wb in band), y0, y1)
+        log(f"settings change ({tag}): row at {b}, switch at {at}")
+        return at
+
+    at = open_page("1")
+    if not at:
+        close_all(vm)
+        return ["settings change: the switch of Do not disturb was not found"]
+    box = (at[0] - 40, at[1] - 16, at[0] + 40, at[1] + 16)
+    a = vm.shot("change-a")
+    vm.click(*at)
+    vm.pump(2.5)
+    vm.move(at[0], h - 80)
+    vm.pump(1)
+    b = vm.shot("change-b")
+    changed = b.diff(a, box)
+    close_all(vm)
+    at2 = open_page("2")
+    if not at2:
+        close_all(vm)
+        return ["settings change: the switch was not found again"]
+    box2 = (at2[0] - 40, at2[1] - 16, at2[0] + 40, at2[1] + 16)
+    c = vm.shot("change-c")
+    kept, undone = c.diff(b, box2), c.diff(a, box2)
+    log(f"settings change: switched {changed:.3f}, after reopening like switched {kept:.3f} / like before {undone:.3f}")
+    vm.click(*at2)  # back to the start value
+    vm.pump(2)
+    close_all(vm)
+    failures = []
+    if changed < 0.05:
+        failures.append("settings change: the switch did not change")
+    elif not kept < undone:
+        failures.append("settings change: the change did not stay after reopening")
+    return failures
+
+
 def installed(vm, m, seconds):
     """Waits until ultar-init reported every app installation as ended with code 0."""
     want = [re.compile(rb"\] exit app-" + a.encode() + rb" pid=\d+ code=0 ") for a in APPS]
@@ -386,11 +630,15 @@ def run(vm, m):
     if not ok:
         failures.append("the clock did not tick (static screen)")
     if not failures:
+        failures += settings_pages(vm, m, pos)
+        failures += store_and_files(vm, m, pos)
+        failures += settings_change(vm, m, pos)
+    if not failures:
         failures += clipboard(vm, m, pos)
     if not failures:
         failures += accessibility(vm, m)
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, settings pages, a change that stays, store, files)")
     return 0

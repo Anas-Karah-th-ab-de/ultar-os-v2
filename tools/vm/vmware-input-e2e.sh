@@ -18,6 +18,10 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 export PATH=$PATH:/usr/sbin:/sbin
 OUT=out/vmware
+# the app-content steps read the screen with tesseract (Arabic + English): without it the gate cannot judge
+if ! command -v tesseract >/dev/null || ! tesseract --list-langs 2>/dev/null | grep -qx ara; then
+  echo "VMWARE-INPUT-E2E: FEHLER tesseract with the Arabic data (apt install tesseract-ocr tesseract-ocr-ara) is needed"; exit 1
+fi
 mkdir -p "$OUT"
 if [ -z "${VMDK:-}" ]; then
   # the test password (digits), kept beside the image like every image's password

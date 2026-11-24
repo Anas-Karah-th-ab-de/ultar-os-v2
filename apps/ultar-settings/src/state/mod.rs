@@ -96,6 +96,19 @@ pub struct DialogState {
     pub error: Option<Text>,
 }
 
+/// What a status page (network, Bluetooth, sound) shows.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StatusView {
+    /// `net.state`.
+    pub net: Option<ultar_bus::messages::net::NetState>,
+    /// `bluetooth.state`.
+    pub bluetooth: Option<ultar_bus::messages::bluetooth::BluetoothState>,
+    /// `audio.state`.
+    pub audio: Option<ultar_bus::messages::audio::AudioState>,
+    /// Why the open status page's service could not be read.
+    pub error: Option<Text>,
+}
+
 /// The whole app.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct State {
@@ -113,6 +126,8 @@ pub struct State {
     pub drivers: DriversState,
     /// Account page.
     pub account: AccountView,
+    /// Network, Bluetooth and sound pages: what the service reported, or why it could not be read.
+    pub status: StatusView,
     /// Panels of settingsd (for generic pages and search).
     pub panels: Vec<PanelInfo>,
     /// Why settingsd could not be read.

@@ -64,6 +64,7 @@ struct Raw {
     accept_missing: Vec<String>,
     max_running: Option<u32>,
     stop_grace_ms: Option<u64>,
+    areas_group: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +80,9 @@ struct RawPaths {
     output_socket: Option<String>,
     bus_socket: Option<String>,
     policy: Option<String>,
+    app_bus: Option<String>,
+    bus_apps: Option<String>,
+    areas_root: Option<String>,
 }
 
 impl RawPaths {
@@ -94,6 +98,9 @@ impl RawPaths {
             output_socket: optional("output_socket", self.output_socket)?,
             bus_socket: optional("bus_socket", self.bus_socket)?,
             policy: optional("policy", self.policy)?,
+            app_bus: optional("app_bus", self.app_bus)?,
+            bus_apps: optional("bus_apps", self.bus_apps)?,
+            areas_root: optional("areas_root", self.areas_root)?,
         })
     }
 }
@@ -121,6 +128,14 @@ pub struct Paths {
     pub bus_socket: Option<PathBuf>,
     /// Bus policy (who has `launcher.admin`).
     pub policy: Option<PathBuf>,
+    /// Directory of the apps' bus socket (`bus.sock`), bound read-only into
+    /// the cell of an app whose manifest declares bus access – and only there.
+    pub app_bus: Option<PathBuf>,
+    /// The broker's map of app user ids (`uid = "app.<id>"` for apps that
+    /// declare bus access), read by `ultar-busd --app-map`.
+    pub bus_apps: Option<PathBuf>,
+    /// The user's file areas (`<areas_root>/<name>`, see `areas.rs`).
+    pub areas_root: Option<PathBuf>,
 }
 
 /// The configuration.
@@ -140,6 +155,8 @@ pub struct Config {
     pub max_running: u32,
     /// Time between the stop signal and the hard end.
     pub stop_grace: std::time::Duration,
+    /// Group of the user's file areas (the only supplementary group of an app with areas).
+    pub areas_group: Option<u32>,
 }
 
 fn path(key: &'static str, text: &str) -> Result<PathBuf, ConfigError> {
@@ -192,6 +209,7 @@ impl Config {
             accept_missing,
             max_running,
             stop_grace: std::time::Duration::from_millis(grace),
+            areas_group: raw.areas_group,
         })
     }
 
@@ -242,6 +260,19 @@ mod tests {
         assert!(compositor.contains("\"--app-rights-owner\", \"805\""));
         let rights = config.paths.compositor_rights.unwrap();
         assert!(compositor.contains(&format!("\"--app-rights\", \"{}\"", rights.display())));
+        // the broker reads the launcher's app map of the same range and owner, on the apps' socket
+        let bus = include_str!("../../../../rootfs/etc/ultar/services/bus.toml");
+        let map = config.paths.bus_apps.unwrap();
+        let socket = config.paths.app_bus.unwrap().join("bus.sock");
+        assert!(bus.contains(&format!("\"--listen-apps\", \"{}\"", socket.display())));
+        assert!(bus.contains(&format!("\"--app-map\", \"{}\"", map.display())));
+        assert!(bus.contains("\"--app-map-owner\", \"805\""));
+        assert!(bus.contains(&format!("\"--app-uids\", \"{range}\"")));
+        // no cell gets the apps' socket for free: only through a declaration
+        assert!(!config
+            .shares
+            .iter()
+            .any(|s| s.starts_with("/run/ultar/appbus")));
     }
 
     #[test]

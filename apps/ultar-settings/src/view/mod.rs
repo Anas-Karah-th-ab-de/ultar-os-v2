@@ -13,6 +13,7 @@ mod drivers;
 pub mod metrics;
 mod panel;
 mod shell;
+pub mod status;
 
 use crate::action::{Act, Registry};
 use crate::areas::PageKind;
@@ -123,6 +124,7 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
         (PageKind::Account, _) => account::build(cx, content),
         (PageKind::Panel(id), _) => panel::generic(cx, content, id),
         (PageKind::NoService, _) => panel::no_service(cx, content),
+        (PageKind::Status(kind), _) => status::build(cx, content, kind),
         (PageKind::About, _) => about::build(cx, content),
     }
 }
@@ -268,6 +270,17 @@ pub(crate) fn lines_height(ui: &Ui, size: TypeSize, lines: f32) -> f32 {
 
 /// Padding of a compact page: 16 at the sides and at the bottom, none at the top (boards:
 /// the phone screen's own padding lies under the status bar).
+/// The width a page's content column has: the window less the sidebar and the page's padding at
+/// the sides. Pages lay out their columns for it (side by side only when they fit, else stacked).
+pub(crate) fn content_width(ui: &Ui) -> f32 {
+    let w = ui.size().w;
+    if shell::compact(ui) {
+        (w - 2.0 * Space::S16.points()).max(0.0)
+    } else {
+        (w - metrics::sidebar() - 2.0 * Space::S32.points()).max(0.0)
+    }
+}
+
 pub(crate) fn compact_padding() -> Padding {
     Padding {
         top: None,

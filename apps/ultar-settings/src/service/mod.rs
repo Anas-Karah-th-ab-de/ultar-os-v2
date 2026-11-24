@@ -6,8 +6,11 @@ pub mod fake;
 pub mod update_contract;
 
 use ultar_bus::messages::account_service::{AccountService, AccountState};
+use ultar_bus::messages::audio::AudioState;
+use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::device_service::{DeviceInfo, ListReply};
 use ultar_bus::messages::display_service::{DetectReply, Output};
+use ultar_bus::messages::net::NetState;
 use ultar_bus::messages::settings::{PanelInfo, SettingValue};
 use ultar_bus::Text;
 
@@ -136,6 +139,17 @@ pub trait AccountPort {
     fn request(&mut self, request: AccountRequest) -> PortResult<AccountState>;
 }
 
+/// Read-only state of the network, Bluetooth and sound services (their retained topics
+/// `net.state`, `bluetooth.state`, `audio.state`): the Network, Bluetooth and Sound pages.
+pub trait StatusPort {
+    /// The network service's state.
+    fn net(&mut self) -> PortResult<NetState>;
+    /// The Bluetooth service's state.
+    fn bluetooth(&mut self) -> PortResult<BluetoothState>;
+    /// The sound service's state.
+    fn audio(&mut self) -> PortResult<AudioState>;
+}
+
 /// Saving a file the user asked for (hardware plan) into the documents area.
 pub trait FilesPort {
     /// Writes `bytes` atomically as `name`; the place shown to the user.
@@ -160,6 +174,8 @@ pub struct Ports {
     pub update: Box<dyn UpdatePort>,
     /// Account service.
     pub account: Box<dyn AccountPort>,
+    /// Network, Bluetooth and sound state (read-only pages).
+    pub status: Box<dyn StatusPort>,
     /// Documents.
     pub files: Box<dyn FilesPort>,
     /// Clipboard.

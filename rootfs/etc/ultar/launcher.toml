@@ -12,13 +12,18 @@ uid_last = 49999
 
 # What every cell sees of the system, read-only (missing ones are left out).
 system_view = ["/usr", "/bin", "/lib", "/lib64", "/etc/ultar/locale", "/usr/share/fonts"]
-# Socket directories every cell sees read-only: the compositor.
-shares = ["/run/ultar/ui", "/run/ultar/appbus"]
+# Socket directories every cell sees read-only: the compositor. The apps' bus
+# socket is NOT here: see [paths] app_bus.
+shares = ["/run/ultar/ui"]
 
 # Isolation features the operator accepts as missing ("cell", "ids",
 # "groups", "net"). Empty: an app whose cell cannot be built does not start.
 accept_missing = []
 max_running = 32
+# The user's files group (ids.toml userfiles): the area directories below
+# [paths] areas_root are 0770 launcher:userfiles; a system app that declares
+# areas ([permissions] files) gets them at /areas/<name> and this group.
+areas_group = 833
 stop_grace_ms = 3000
 
 [paths]
@@ -38,3 +43,11 @@ compositor_rights = "/run/ultar/launcher/compositor-apps.toml"
 output_socket = "/run/ultar/log/launcher-out.sock"
 bus_socket = "/run/ultar/bus/launcher.sock"
 policy = "/etc/ultar/bus-policy.toml"
+# The apps' bus socket (app_bus/bus.sock): bound read-only into the cell of an
+# app whose signed manifest declares bus access ([permissions] bus), never into
+# others. The broker (ultar-busd --listen-apps) knows each app by its user id
+# from bus_apps (`uid = "app.<id>"`, written here after every install,
+# uninstall, grant and revoke) and applies the policy of identity app.<id>.
+app_bus = "/run/ultar/appbus"
+bus_apps = "/run/ultar/launcher/bus-apps.toml"
+areas_root = "/data/ultar/areas"

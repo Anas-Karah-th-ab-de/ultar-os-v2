@@ -10,6 +10,8 @@ all_rights_allowed = []
 # Quelle: Partition mit diesem Namen auf irgendeinem Datenträger; sonst der feste Pfad (virtuelle Maschine)
 source = "LABEL=ultar-compat|/dev/vda"
 target = "/compat"
+# not on the desktop: there the Ultar kernel mounts the system and data partitions itself
+editions = ["phone", "server"]
 fstype = "ext4"
 options = "noatime"
 optional = true
@@ -18,6 +20,8 @@ optional = true
 [[mounts]]
 source = "LABEL=ultar-data|/dev/vdb"
 target = "/data"
+# not on the desktop: there the Ultar kernel mounts the system and data partitions itself
+editions = ["phone", "server"]
 fstype = "ext4"
 options = "noatime"
 optional = true
@@ -27,6 +31,8 @@ optional = true
 [[mounts]]
 source = "LABEL=vendor|/dev/mmcblk0p26"
 target = "/vendor"
+# phone partitions only: on the desktop the kernel mounts system and data itself
+editions = ["phone"]
 fstype = "ext4"
 options = "ro,noatime"
 optional = true
@@ -35,6 +41,8 @@ optional = true
 [[mounts]]
 source = "LABEL=efs|/dev/mmcblk0p3"
 target = "/efs"
+# phone partitions only: on the desktop the kernel mounts system and data itself
+editions = ["phone"]
 fstype = "ext4"
 options = "ro,noatime"
 optional = true

@@ -77,6 +77,33 @@ fn faulty_files_are_refused_as_a_whole() {
 }
 
 #[test]
+fn a_one_time_step_says_what_it_does() {
+    let ok =
+        "exec = \"/bin/true\"\noneshot = true\ndescription = \"registers the system app files\"";
+    let spec = ServiceSpec::parse(ok, "t").unwrap();
+    assert_eq!(
+        spec.life.description.as_deref(),
+        Some("registers the system app files")
+    );
+    assert_eq!(
+        ServiceSpec::parse("exec = \"/bin/true\"", "t")
+            .unwrap()
+            .life
+            .description,
+        None
+    );
+    let long = "x".repeat(MAX_DESCRIPTION + 1);
+    for bad in ["", "a\\u001bb", long.as_str()] {
+        let text = format!("exec = \"/bin/true\"\ndescription = \"{bad}\"");
+        assert_eq!(
+            ServiceSpec::parse(&text, "t"),
+            Err(SpecError::Bound("description")),
+            "{bad:?}"
+        );
+    }
+}
+
+#[test]
 fn a_directory_is_read_in_name_order_and_a_second_name_is_refused() {
     let dir = std::env::temp_dir().join(format!("ultar-init-spec-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

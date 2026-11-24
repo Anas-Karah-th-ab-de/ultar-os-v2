@@ -145,6 +145,11 @@ pub struct CellPlan {
     pub view: Vec<PathBuf>,
     /// Host socket directories the cell sees read-only.
     pub shares: Vec<PathBuf>,
+    /// The user's file areas the app declares: host directory, name below
+    /// [`view::AREAS`], writable (never executable).
+    pub areas: Vec<(PathBuf, String, bool)>,
+    /// Supplementary groups of the app (the user's files group, when it has areas).
+    pub groups: Vec<u32>,
     /// Device nodes.
     pub dev: DevMode,
     /// Size of the private `/tmp`.
@@ -196,6 +201,28 @@ fn parse_flags(word: &str) -> Option<Namespaces> {
     Some(ns)
 }
 
+/// An area's name: lower-case letters, digits and `-`, 1 to 32 bytes.
+pub fn valid_area_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !name.starts_with('-')
+}
+
+/// `NAME:rw|ro:HOST` of `--area`.
+fn parse_area(value: &str) -> Option<(PathBuf, String, bool)> {
+    let (name, rest) = value.split_once(':')?;
+    let (mode, host) = rest.split_once(':')?;
+    let rw = match mode {
+        "rw" => true,
+        "ro" => false,
+        _ => return None,
+    };
+    (valid_area_name(name) && normalised_absolute(host))
+        .then(|| (PathBuf::from(host), name.to_owned(), rw))
+}
+
 fn text(path: &std::path::Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -228,6 +255,13 @@ impl CellPlan {
         for dir in &self.shares {
             args.extend(["--share".into(), text(dir)]);
         }
+        for (host, name, rw) in &self.areas {
+            let mode = if *rw { "rw" } else { "ro" };
+            args.extend(["--area".into(), format!("{name}:{mode}:{}", text(host))]);
+        }
+        for group in &self.groups {
+            args.extend(["--groups".into(), group.to_string()]);
+        }
         args.extend(["--dev".into(), self.dev.word().into()]);
         args.extend(["--tmp".into(), self.tmp_bytes.to_string()]);
         if let Some(mask) = self.drop_rights {
@@ -252,6 +286,8 @@ impl CellPlan {
             data: PathBuf::new(),
             view: Vec::new(),
             shares: Vec::new(),
+            areas: Vec::new(),
+            groups: Vec::new(),
             dev: DevMode::None,
             tmp_bytes: 0,
             drop_rights: None,
@@ -279,6 +315,8 @@ impl CellPlan {
                 "--data" => plan.data = path()?,
                 "--view" => plan.view.push(path()?),
                 "--share" => plan.shares.push(path()?),
+                "--area" => plan.areas.push(parse_area(value)?),
+                "--groups" => plan.groups.push(value.parse::<u32>().ok()?),
                 "--dev" => plan.dev = DevMode::from_word(value)?,
                 "--tmp" => plan.tmp_bytes = value.parse().ok()?,
                 "--drop" => plan.drop_rights = Some(u64::from_str_radix(value, 16).ok()?),

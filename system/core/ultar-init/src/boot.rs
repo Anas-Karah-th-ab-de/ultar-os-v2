@@ -179,7 +179,8 @@ pub fn configure(cfg: &InitConfig) {
             load_module(m);
         }
     }
-    for m in &cfg.mounts {
+    let edition = ultar_hal_system::current_edition();
+    for m in cfg.mounts.iter().filter(|m| edition.matches(&m.editions)) {
         let (mut flags, data) = parse_options(m.options.as_deref().unwrap_or(""));
         if m.readonly {
             flags |= MsFlags::MS_RDONLY;

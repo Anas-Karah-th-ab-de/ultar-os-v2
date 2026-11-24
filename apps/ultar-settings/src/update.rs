@@ -85,8 +85,39 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
         PageKind::Display => display::load(state, ports),
         PageKind::Drivers => drivers::load(state, ports),
         PageKind::Account => account::load(state, ports),
+        PageKind::Status(kind) => load_status(state, ports, kind),
         PageKind::Panel(_) | PageKind::NoService | PageKind::About => {}
     }
+    report_page(state);
+}
+
+/// Reads the state of the service a status page shows (its retained topic).
+pub fn load_status(state: &mut State, ports: &mut Ports, kind: crate::areas::StatusKind) {
+    use crate::areas::StatusKind;
+    let s = &mut state.status;
+    let result = match kind {
+        StatusKind::Network => ports.status.net().map(|v| s.net = Some(v)),
+        StatusKind::Bluetooth => ports.status.bluetooth().map(|v| s.bluetooth = Some(v)),
+        StatusKind::Sound => ports.status.audio().map(|v| s.audio = Some(v)),
+    };
+    s.error = result.err().map(|e| e.text());
+}
+
+/// One line on standard error (the launcher stores it in the log as `app-settings`) for every page
+/// opened: which area, and the key of the error it shows, if any (`ok` otherwise). Never a value.
+fn report_page(state: &State) {
+    let area = crate::areas::AREAS.get(state.area).map_or("?", |a| a.id);
+    let error = match state.page() {
+        PageKind::Status(_) => state.status.error.as_ref(),
+        PageKind::NoService => None,
+        _ => state.panels_error.as_ref(),
+    };
+    let verdict = match (state.page(), error) {
+        (PageKind::NoService, _) => "no_service",
+        (_, Some(e)) => e.key.as_str(),
+        (_, None) => "ok",
+    };
+    eprintln!("ultar-settings: page {area} {verdict}");
 }
 
 /// Cheap refresh while the app runs: display report and update progress (no list calls).
@@ -94,6 +125,7 @@ pub fn load_page_light(state: &mut State, ports: &mut Ports) {
     match state.page() {
         PageKind::Display => display::load(state, ports),
         PageKind::Drivers => state.drivers.firmware = ports.update.progress(),
+        PageKind::Status(kind) => load_status(state, ports, kind),
         _ => {}
     }
 }

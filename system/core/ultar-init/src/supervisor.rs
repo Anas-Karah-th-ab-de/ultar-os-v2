@@ -156,7 +156,12 @@ impl Supervisor {
         unit.note_start();
         match start(&unit.spec, &self.env, now) {
             Ok(run) => {
-                let line = format!("start {name} pid={}", run.pid);
+                let line = match (&unit.spec.life.description, unit.spec.life.oneshot) {
+                    (Some(what), true) => {
+                        format!("start {name} pid={} one-time step: {what}", run.pid)
+                    }
+                    _ => format!("start {name} pid={}", run.pid),
+                };
                 unit.state = if unit.spec.life.notify {
                     UnitState::Starting {
                         deadline: now + Duration::from_millis(unit.spec.life.start_timeout_ms),

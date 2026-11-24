@@ -117,8 +117,14 @@ APP_VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' 
 IFS='|' read -r -a app_list <<<"$APPS"
 for entry in "${app_list[@]}"; do
   id=${entry%%:*}; rest=${entry#*:}; prog=${rest%%:*}; args=${rest#*:}
-  ui=""
-  [ "$id" = phone ] && ui='ui = ["ui.client-header"]'
+  # what the app declares: the [permissions] table of its own manifest (apps/<crate>/ultar-app.toml,
+  # one source with the release packages) - bus access (the launcher binds the apps' bus socket only
+  # then and names the app to the broker as app.<id>), file areas, network, ui rights. An app without
+  # a manifest (the browser) declares nothing and gets no bus.
+  perms=""
+  if [ -f "apps/$prog/ultar-app.toml" ]; then
+    perms=$(awk '/^\[permissions\]/{p=1;next} /^\[/{p=0} p' "apps/$prog/ultar-app.toml")
+  fi
   cat >"$W/apps/$id.toml" <<MANIFEST
 id = "$id"
 version = "$APP_VERSION"
@@ -129,7 +135,7 @@ exec = "/usr/bin/$prog"
 args = [$args]
 
 [permissions]
-$ui
+$perms
 
 [limits]
 memory_mb = 384
@@ -137,7 +143,9 @@ MANIFEST
   "$BIN/upkg-sign" "$W/apps/$id.toml" "$W/apps/payload" "$R/usr/lib/ultar/apps/$id.uap" "$KEY" >/dev/null \
     || fail "package $id"
   cat >"$R/etc/ultar/services/app-$id.toml" <<SERVICE
-# Installs (or confirms) the system app $id with the launcher at every start.
+# Installs (or confirms) the system app $id with the launcher at every start: a registration step
+# that ends at once (not the app itself; the app starts when the user opens it).
+description = "registers the system app $id with the launcher (signed package; the app starts when opened)"
 exec = "/usr/bin/ulaunch"
 args = ["--bus", "/run/ultar/bus/system.sock", "install", "/usr/lib/ultar/apps/$id.uap"]
 oneshot = true
@@ -176,6 +184,7 @@ printf '%s\n' "$LANG_CODE" >"$R/etc/ultar/sprache"
 printf 'ultar\n' >"$R/etc/hostname"
 ULTAR_VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 printf 'NAME="Ultar OS"\nPRETTY_NAME="Ultar OS %s"\nID=ultar\nVERSION_ID="%s"\nHOME_URL="https://code-craft.tech"\n' "$ULTAR_VERSION" "$ULTAR_VERSION" >"$R/etc/os-release"
+mkdir -p "$R/usr/lib" && cp "$R/etc/os-release" "$R/usr/lib/os-release"
 printf '%s %s\n' "$(sed -n 's/^version = "\(.*\)"/\1/p' kernel/ultar-kern/Cargo.toml | head -1)" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" >"$R/etc/ultar/release"
 # users and groups from the fixed ids (as scripts/build-initramfs.sh writes them)
 awk -v P="$R/etc/passwd" -v G="$R/etc/group" '
@@ -211,6 +220,10 @@ SYS_MIB=$(($(du -sm "$R" | cut -f1) * 13 / 10 + 16))
 mke2fs -q -t ext4 -L ultar-compat -d "$R" "$W/system.ext4" "${SYS_MIB}M"
 root_owned "$W/system.ext4" "$R"
 mkdir -p "$W/data-root/ultar/auth"
+# the user's file areas (ultar-launcher areas.rs makes the rest; it sets group and mode at start) with a
+# first file in the home folder, so the Files app has something to list
+mkdir -p "$W/data-root/ultar/areas/home"
+printf 'Ultar OS\n' >"$W/data-root/ultar/areas/home/README.txt"
 # the account of the lock screen and the system dialogs (ultar-authd passwd reads the password on stdin)
 VM_USER=${VM_USER:-ultar}
 PWFILE=${VM_PASSWORD_FILE:-}

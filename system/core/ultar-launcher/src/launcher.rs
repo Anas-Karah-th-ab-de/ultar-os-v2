@@ -99,12 +99,16 @@ impl Core {
             if let Some(path) = &self.config.paths.compositor_rights {
                 rightsfile::withdraw(path);
             }
+            if let Some(path) = &self.config.paths.bus_apps {
+                rightsfile::withdraw(path);
+            }
         }
         written
     }
 
-    /// Writes the compositor's app rights file.
+    /// Writes the compositor's app rights file and the broker's app map.
     pub(crate) fn write_rights(&self) -> Result<(), LaunchError> {
+        self.write_bus_map()?;
         let Some(path) = &self.config.paths.compositor_rights else {
             return Ok(());
         };
@@ -116,6 +120,35 @@ impl Core {
             .map(|(_, e)| (e.uid, e.granted))
             .collect();
         rightsfile::write(path, &apps).map_err(|e| LaunchError::Storage(e.into()))
+    }
+}
+
+impl Core {
+    /// Whether the installed app `id` reaches the bus: its signed manifest
+    /// declares bus calls and the apps' socket is configured.
+    pub(crate) fn declares_bus(&self, manifest: &Manifest) -> bool {
+        self.config.paths.app_bus.is_some() && !manifest.bus.is_empty()
+    }
+
+    /// Writes the broker's map of app user ids: one line per installed app
+    /// whose signed manifest declares bus access (an app without
+    /// declarations has no bus identity: the broker refuses it).
+    fn write_bus_map(&self) -> Result<(), LaunchError> {
+        let Some(path) = &self.config.paths.bus_apps else {
+            return Ok(());
+        };
+        let apps: Vec<(u32, String)> = self
+            .store
+            .state
+            .apps()
+            .filter(|(_, e)| e.installed)
+            .filter_map(|(id, e)| {
+                let manifest = self.manifest(id).ok()?;
+                self.declares_bus(&manifest)
+                    .then(|| (e.uid, id.to_string()))
+            })
+            .collect();
+        rightsfile::write_bus(path, &apps).map_err(|e| LaunchError::Storage(e.into()))
     }
 }
 
@@ -133,6 +166,9 @@ impl Launcher {
             |_| LaunchError::Storage(StateError::Io(std::io::ErrorKind::PermissionDenied));
         datadir::ensure_private_dir(&config.paths.data_root).map_err(dir_error)?;
         datadir::ensure_private_dir(&config.paths.cell_root).map_err(dir_error)?;
+        if let (Some(root), Some(group)) = (&config.paths.areas_root, config.areas_group) {
+            crate::areas::ensure(root, group);
+        }
         let store = Store::open(&config.paths.state_dir, config.uids)?;
         // cells of a previous run (by their memory groups): no second copy
         if let (Some(root), true) = (&config.paths.group_root, platform.groups) {
