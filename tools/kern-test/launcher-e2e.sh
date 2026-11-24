@@ -30,7 +30,7 @@ SMP="${SMP:-2}" MEM="${MEM:-1024}" WAIT="${WAIT:-300}" timeout 900 python3 tools
   "/bin/launchtest --bin /bin --work /tmp/lt --groups" > "$LOG" 2>&1 || true
 if grep -aq "LAUNCHER: ALLES OK" "$LOG" && ! grep -aqiE "kernel panic|PANIK" "$LOG"; then
   echo "ok    LAUNCHER: ALLES OK"
-  [ "${VERBOSE:-0}" = 1 ] && grep -aE "^LAUNCHER" "$LOG"
+  if [ "${VERBOSE:-0}" = 1 ]; then grep -aE "^LAUNCHER" "$LOG"; fi
 else
   echo "FAIL  LAUNCHER"; grep -aE "LAUNCHER|ultar-init|refused|exit " "$LOG" | tail -40; exit 1
 fi
