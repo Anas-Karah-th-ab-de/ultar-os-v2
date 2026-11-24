@@ -127,6 +127,9 @@ fn run(o: Options) -> Result<(), AppError> {
         ports(&bus, documents, clipboard.clone()),
         o.area.min(AREAS.len() - 1),
     )?;
+    if !o.light {
+        app.apply_stored_theme();
+    }
     std::mem::swap(window.ui_mut(), &mut app.ui);
     loop {
         let size = window.ui_mut().size();

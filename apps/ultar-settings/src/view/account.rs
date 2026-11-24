@@ -52,6 +52,9 @@ pub fn strength(password: &str) -> u8 {
 /// Narrowest the middle column (sign-in) may be beside the other two.
 const MIDDLE_MIN: f32 = 320.0;
 
+/// The account service's key of "there is no account server yet".
+const NO_SERVER: &str = "accountd.link.no_server";
+
 /// The account service's key of a refused password (the only failure that uses up an attempt).
 const WRONG_PASSWORD: &str = "accountd.refused.wrong_password";
 
@@ -175,7 +178,13 @@ fn status_bar(cx: &mut Cx<'_>, body: NodeId, st: &AccountState) -> Result<(), Ui
                 } else {
                     reason
                 };
-                InfoBar::new(Tone::Danger, k("app.settings.account.failed")).message(message)
+                // no account server (the honest state of a device without one) is information,
+                // not a failed sign-in: nobody tried
+                if e.key == NO_SERVER {
+                    InfoBar::new(Tone::Info, k("app.settings.account.no_server")).message(message)
+                } else {
+                    InfoBar::new(Tone::Danger, k("app.settings.account.failed")).message(message)
+                }
             }),
         }
     };
@@ -244,14 +253,16 @@ fn account_card(cx: &mut Cx<'_>, col: NodeId) -> Result<(), UiError> {
         return Ok(());
     }
     let card = cx.ui.add(col, Card::new())?;
+    let narrow = super::narrow(cx.ui);
     let head = cx.ui.add(
         card,
-        Card::rule(BarEdge::Bottom).flex(
+        Card::rule(BarEdge::Bottom).flex(super::reflow(
             Flex::row()
                 .padding(Padding::all(Space::S16))
                 .gap(Space::S12)
                 .cross(CrossAlign::Center),
-        ),
+            narrow,
+        )),
     )?;
     // Boards: a 48-point avatar place with the cloud in its middle.
     let avatar = cx.ui.add_sized(
@@ -263,7 +274,9 @@ fn account_card(cx: &mut Cx<'_>, col: NodeId) -> Result<(), UiError> {
     )?;
     cx.ui
         .add(avatar, ultar_ui::widgets::Icon::new(IconId::Cloud))?;
-    let names = cx.ui.add_sized(head, Flex::column(), Sizing::grow(1))?;
+    let names = cx
+        .ui
+        .add_sized(head, Flex::column(), super::beside(narrow))?;
     cx.ui.add(
         names,
         Text::new(Label::data(&st.user)).spec(spec::card_title()),
@@ -325,9 +338,9 @@ fn number_block(cx: &mut Cx<'_>, card: NodeId, st: &AccountState) -> Result<(), 
                 .gap(Space::S12),
         ),
     )?;
-    let line = cx
-        .ui
-        .add(block, Flex::row().gap(Space::S16).cross(CrossAlign::Center))?;
+    let narrow = super::narrow(cx.ui);
+    let line = Flex::row().gap(Space::S16).cross(CrossAlign::Center);
+    let line = cx.ui.add(block, super::reflow(line, narrow))?;
     match ultar_ui::widgets::QrCode::new(k("app.settings.account.qr_image"), st.number.as_bytes()) {
         Ok(qr) => {
             cx.ui.add(line, qr)?;
@@ -338,7 +351,9 @@ fn number_block(cx: &mut Cx<'_>, card: NodeId, st: &AccountState) -> Result<(), 
             cx.ui.add(line, icon)?;
         }
     }
-    let texts = cx.ui.add_sized(line, Flex::column(), Sizing::grow(1))?;
+    let texts = cx
+        .ui
+        .add_sized(line, Flex::column(), super::beside(narrow))?;
     muted(cx.ui, texts, k("app.settings.account.number"))?;
     let big = ultar_ui::paint::TextSpec::new(TypeSize::S24)
         .weight(ultar_ui::text::Weight::Bold)

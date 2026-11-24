@@ -82,8 +82,7 @@ pub fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     }
     // the details beside the main column only when both fit; else below it, and the main
     // column never wider than the page
-    let avail = super::content_width(cx.ui);
-    let side_by_side = avail >= metrics::display_main_column() + Space::S16.points() + SIDE_MIN;
+    let side_by_side = side_by_side(cx.ui);
     let flex = if side_by_side {
         Flex::row().gap(Space::S16).cross(CrossAlign::Start)
     } else {
@@ -114,6 +113,20 @@ pub fn build(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
 
 /// Narrowest the details column may be beside the main column.
 const SIDE_MIN: f32 = 280.0;
+
+/// `true` when the page is wide enough for the main column and the details beside it.
+fn side_by_side(ui: &ultar_ui::ui::Ui) -> bool {
+    super::content_width(ui) >= metrics::display_main_column() + Space::S16.points() + SIDE_MIN
+}
+
+/// The width of the main column: the board's beside the details, else the whole page.
+fn main_width(ui: &ultar_ui::ui::Ui) -> f32 {
+    if side_by_side(ui) {
+        metrics::display_main_column()
+    } else {
+        super::content_width(ui)
+    }
+}
 
 /// Compact surface (board *CompactDisplay*): one card with the rows a phone needs;
 /// arrangement and mode only with an external display.
@@ -281,10 +294,30 @@ fn arranged_items(cx: &Cx<'_>) -> (Vec<ArrangedItem>, usize) {
             }
         })
         .collect();
-    let gap = Space::S8.points();
-    let total: f32 = sizes.iter().map(|s| s.0).sum::<f32>() + gap * (sizes.len().max(1) - 1) as f32;
-    let stage = metrics::display_main_column().min(super::content_width(cx.ui));
-    let mut x = ((stage - total) / 2.0).max(0.0) + 1.0;
+    let mut gap = Space::S8.points();
+    let width = |sizes: &[(f32, f32)], gap: f32| {
+        sizes.iter().map(|s| s.0).sum::<f32>() + gap * (sizes.len().max(1) - 1) as f32
+    };
+    let stage = main_width(cx.ui);
+    // a page narrower than the board: the tiles shrink together until all of them are on the
+    // stage (inside the card's padding and the stage's edge), none is cut off at the side
+    let room = (stage - 2.0 * Space::S16.points() - 4.0 * ultar_ui::tokens::size::BORDER).max(1.0);
+    let total = width(&sizes, gap);
+    let fits = total <= room;
+    let mut sizes = sizes;
+    if !fits {
+        let factor = room / total;
+        gap *= factor;
+        for s in &mut sizes {
+            *s = (s.0 * factor, s.1 * factor);
+        }
+    }
+    let total = width(&sizes, gap);
+    let mut x = if fits {
+        ((stage - total) / 2.0).max(0.0) + 1.0
+    } else {
+        1.0
+    };
     let canvas_h = metrics::arrangement_height();
     let mut items = Vec::new();
     for (n, &i) in order.iter().enumerate() {

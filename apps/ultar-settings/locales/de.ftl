@@ -221,6 +221,7 @@ app.settings.account.offline = Offline
 app.settings.account.offline.sub = Der letzte bekannte Stand wird gezeigt; nichts geht verloren.
 app.settings.account.failed = Anmeldung fehlgeschlagen
 app.settings.account.failed.sub = {reason}. Noch {n} Versuche.
+app.settings.account.no_server = Noch kein Kontoserver
 app.settings.account.locked = Das Konto ist vorübergehend gesperrt
 app.settings.account.locked.sub = Zu viele Fehlversuche. Versuche es in {n} Minuten erneut.
 app.settings.account.none = Noch keine Ultar-Nummer

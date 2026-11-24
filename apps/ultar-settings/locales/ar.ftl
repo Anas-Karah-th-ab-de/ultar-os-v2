@@ -221,6 +221,7 @@ app.settings.account.offline = غير متصل
 app.settings.account.offline.sub = تُعرض آخر حالة معروفة ولا يضيع شيء.
 app.settings.account.failed = تعذّر تسجيل الدخول
 app.settings.account.failed.sub = {reason}. بقيت {n} محاولات.
+app.settings.account.no_server = لا يوجد خادم حساب بعد
 app.settings.account.locked = الحساب مقفل مؤقتاً
 app.settings.account.locked.sub = محاولات خاطئة كثيرة. حاول بعد {n} دقيقة.
 app.settings.account.none = لا يوجد رقم Ultar بعد

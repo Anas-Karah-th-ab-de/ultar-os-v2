@@ -173,14 +173,17 @@ impl Cx<'_> {
 pub(crate) mod spec {
     use super::*;
 
-    /// Page title (h1, 24, bold, title family).
+    /// Page title (h1, 24, bold, title family); like every title it wraps between words when
+    /// the page is narrower than the text (never cut off).
     pub(crate) fn page_title() -> TextSpec {
-        TextSpec::title(TypeSize::S24)
+        TextSpec::title(TypeSize::S24).overflow(Overflow::Wrap)
     }
 
     /// Card title (h2: title family, 16, semibold).
     pub(crate) fn card_title() -> TextSpec {
-        TextSpec::title(TypeSize::S16).weight(Weight::Semibold)
+        TextSpec::title(TypeSize::S16)
+            .weight(Weight::Semibold)
+            .overflow(Overflow::Wrap)
     }
 
     /// Small explanatory text (12), wrapping.
@@ -190,7 +193,9 @@ pub(crate) mod spec {
 
     /// Row label (14, medium).
     pub(crate) fn label() -> TextSpec {
-        TextSpec::new(TypeSize::S14).weight(Weight::Medium)
+        TextSpec::new(TypeSize::S14)
+            .weight(Weight::Medium)
+            .overflow(Overflow::Wrap)
     }
 }
 
@@ -225,6 +230,35 @@ pub(crate) fn muted(ui: &mut Ui, parent: NodeId, label: Label) -> Result<NodeId,
     ui.add(parent, text)
 }
 
+/// Narrowest page on which a card header keeps its buttons beside the title (the board's
+/// main column); below it the header wraps.
+const HEADER_ROW_MIN: f32 = 640.0;
+
+/// `true` on a page too narrow for texts and controls side by side in one header or row.
+pub(crate) fn narrow(ui: &Ui) -> bool {
+    content_width(ui) < HEADER_ROW_MIN
+}
+
+/// A header or row of texts and controls: one row, or on a narrow page a wrapping row (the
+/// controls continue on the next line instead of squeezing the texts).
+pub(crate) fn reflow(row: Flex, narrow: bool) -> Flex {
+    if narrow {
+        row.wrap()
+    } else {
+        row
+    }
+}
+
+/// The size of the text column of such a row: the space the controls leave, or on a narrow
+/// page its natural size (a wrapping row keeps natural sizes).
+pub(crate) fn beside(narrow: bool) -> Sizing {
+    if narrow {
+        Sizing::AUTO
+    } else {
+        Sizing::grow(1)
+    }
+}
+
 /// A card with a header (title, optional description); returns (card, header row).
 pub(crate) fn section(
     ui: &mut Ui,
@@ -235,16 +269,16 @@ pub(crate) fn section(
 ) -> Result<(NodeId, NodeId), UiError> {
     let card = ui.add_sized(parent, Card::new(), sizing)?;
     // Boards (`cardhead`): padding 16, a hairline under it, the title in the title family.
-    let header = ui.add(
-        card,
-        Card::rule(BarEdge::Bottom).flex(
-            Flex::row()
-                .padding(Padding::all(Space::S16))
-                .gap(Space::S16)
-                .cross(CrossAlign::Center),
-        ),
-    )?;
-    let texts = ui.add_sized(header, Flex::column(), Sizing::grow(1))?;
+    // On a narrow page the header wraps: the texts take the whole line, the header's buttons
+    // (added by the caller) follow below them instead of squeezing title and description.
+    let narrow = narrow(ui);
+    let row = Flex::row()
+        .padding(Padding::all(Space::S16))
+        .gap(Space::S16)
+        .cross(CrossAlign::Center);
+    let header = ui.add(card, Card::rule(BarEdge::Bottom).flex(reflow(row, narrow)))?;
+    let texts_sizing = beside(narrow);
+    let texts = ui.add_sized(header, Flex::column(), texts_sizing)?;
     ui.add(texts, Text::new(title).spec(spec::card_title()))?;
     if let Some(desc) = desc {
         muted(ui, texts, desc)?;

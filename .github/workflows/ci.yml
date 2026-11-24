@@ -124,6 +124,12 @@ jobs:
       - name: i18n check (every key in every language)
         run: |
           cargo run --locked -p ultar-i18n --bin ultar-i18n-check -- system/core/ultar-i18n/locales
+          # Settings and the catalogs of the services whose texts its pages show (built into the app:
+          # apps/ultar-settings/src/i18n.rs SERVICE_CATALOGS) - a key missing in one language fails.
+          for dir in apps/ultar-settings system/core/ultar-settingsd system/core/ultar-devd \
+                     system/core/ultar-update system/services/ultar-accountd; do
+            cargo run --locked -p ultar-i18n --bin ultar-i18n-check -- "$dir/locales"
+          done
 
   design-conformance:
     name: Design conformance (artboards vs. implementation)

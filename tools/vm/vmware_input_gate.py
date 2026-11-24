@@ -4,6 +4,7 @@ Screen positions are those of the desktop bar in Arabic (right to left) on the f
 frame buffer: the bar fills the bottom 56 points; from the right: start (brand mark), all apps,
 search, then the pinned apps files, browser, terminal, editor, store, settings (platform/ultar-desktop
 model/apps.rs). Every click is checked on the screen, never assumed."""
+import os
 import re
 import time
 
@@ -225,54 +226,52 @@ def _screen_text():
     return mod
 
 
-# Settings pages the gate opens from the sidebar (Arabic labels, ar.ftl app.settings.area.*), with a word each
-# page shows only when it has the service's real values (a row label or a value; normalised, see
-# screen_text.norm). On every page none of the "not available" messages may appear: their distinctive words
-# (ar.ftl app.settings.error.unavailable, .status.unavailable, .panel.unavailable, .no_service,
-# .display.no_outputs/no_settings, .account.unavailable) are in UNAVAILABLE, and no raw catalog key.
-SETTINGS_PAGES = [
-    # in the sidebar's order (the gate scrolls it down only)
-    ("network", "الشبكة", ["السلكي", "الطيران"]),
-    ("bluetooth", "بلوتوث", ["المتصلة", "البلوتوث"]),
-    ("displays", "الشاشات", ["اسحب", "الليلي"]),
-    ("sound", "الصوت", ["مستوى", "المخرج"]),
-    # settingsd's pages and the drivers: every text translated (no raw key such as settings.power.x)
-    ("power", "الطاقة", []),
-    ("desktop", "سطح المكتب", []),
-    ("windows", "النوافذ", []),
-    ("appearance", "المظهر", []),
-    ("notifications", "الإشعارات", []),
-    ("privacy", "الخصوصية", []),
-    ("accounts", "الحسابات", []),
-    ("region", "المنطقة واللغة", []),
-    ("datetime", "التاريخ والوقت", []),
-    ("drivers", "العتاد", []),
-    ("about", "حول النظام", ["0.8"]),
+# ---------------------------------------------------------------------------------------------------------
+# App content (branch build/appbus): the apps reach the system services from their cells. Settings shows real
+# values on every page, a change takes effect and survives a restart; the Store and Files list their content.
+# Everything below up to `installed` belongs to this block.
+#
+# The sidebar of Settings in its order (apps/ultar-settings/src/areas.rs `wide()`: every area but the mobile
+# network). The gate moves through it with the keyboard (Tab, arrows, Enter - the test
+# `the_keyboard_alone_opens_a_page_and_changes_its_first_setting` of the app holds the same keys) and reads
+# each page from the screen.
+SETTINGS_AREAS = [
+    "wifi", "network", "bluetooth", "displays", "sound", "power", "desktop", "windows", "appearance",
+    "notifications", "search", "apps", "mouse", "keyboard", "printers", "colour", "accessibility", "privacy",
+    "sharing", "accounts", "users", "region", "datetime", "storage", "drivers", "updates", "backup", "mesh",
+    "assistant", "cells", "emergency", "about",
 ]
-# a catalog key on the screen: lower-case words joined by dots (settings.power.button_action, accountd.link.x)
-RAW_KEY = re.compile(r"\b[a-z]{3,}\.[a-z_]{2,}(\.[a-z_]+)*\b")
-# the distinctive words of those messages (the account page's own "the account server is not available yet" is
-# the honest state of a device without account server, not a broken page)
+# The pages a service stands behind, with words that tell the page is the one asked for (of its title, ar.ftl
+# app.settings.area.* and app.settings.account.title, or of its first rows: the recogniser does not read every
+# large title) and words the page shows only with the service's real values (a row label or a value;
+# normalised, see screen_text.norm). None of the "not available" messages may appear on
+# them (ar.ftl app.settings.error.unavailable, .status.unavailable, .panel.unavailable, .no_service,
+# .display.no_outputs/no_settings, .account.unavailable) and no catalog key.
+SETTINGS_PAGES = [
+    ("network", ["الشبكة", "السلكي"], ["السلكي", "الطيران"]),
+    ("bluetooth", ["بلوتوث", "البلوتوث"], ["المتصلة", "البلوتوث"]),
+    ("displays", ["الشاشات", "ترتيب"], ["ترتيب", "اسحب"]),
+    ("sound", ["الصوت", "المخرج"], ["مستوى", "المخرج"]),
+    ("power", ["الطاقة"], []),
+    ("desktop", ["المكتب", "والمرسى", "الشريط"], []),
+    ("windows", ["النوافذ"], []),
+    ("appearance", ["المظهر", "السمة"], []),
+    ("notifications", ["الإشعارات", "الإزعاج"], []),
+    ("privacy", ["الخصوصية", "والأمان", "الميكروفون", "الكاميرا"], []),
+    ("accounts", ["حساب"], []),
+    ("region", ["المنطقة", "واللغة", "لغة"], []),
+    ("datetime", ["التاريخ", "والوقت", "تلقائيا"], []),
+    ("drivers", ["العتاد", "والتعريفات", "تعريف"], []),
+    ("about", ["حول", "0.8"], ["0.8"]),
+]
+# a catalog key on the screen (settings.power.button_action, accountd.link.no_server)
+RAW_KEY = re.compile(r"\b(?:app|settings|accountd|devd|update|brand|desk)\.[a-z0-9_]{2,}(?:\.[a-z0-9_]+)+\b")
+# the distinctive words of the "not available" messages (the account page's own "there is no account server
+# yet" is the honest state of a device without account server, not a broken page)
 UNAVAILABLE = ["تعذرت", "تعذر", "لا تعمل", "لا يسمح", "غير متاح في هذا", "غير متاحة"]
-
-
-def _sidebar_hit(st, png, label, w, h):
-    """Centre of the sidebar entry `label`: the rightmost place the words appear (the sidebar is on the right
-    in Arabic; the page itself may use the same word)."""
-    want = [st.norm(x) for x in label.split()]
-    best = None
-    # the whole screen first (read best), then the right half enlarged
-    for ws in (
-        [x for x in st.words(png) if x[1][0] > w // 2 and x[1][1] < h - 60],
-        st.words(png, (w // 2, 0, w, h - 60)),
-    ):
-        for i, (word, b, _) in enumerate(ws):
-            if all(i + k < len(ws) and want[k] in st.norm(ws[i + k][0]) for k in range(len(want))):
-                if best is None or b[0] > best[0]:
-                    best = ((min(b[0], ws[i + len(want) - 1][1][0]) + max(b[2], ws[i + len(want) - 1][1][2])) // 2, (b[1] + b[3]) // 2)
-        if best:
-            return best
-    return best
+# width of Settings' sidebar (apps/ultar-settings/src/view/metrics.rs) and height of a window's title bar
+SIDEBAR = 288
+TITLEBAR = 40
 
 
 def _page_text(st, png, right, bottom):
@@ -281,54 +280,193 @@ def _page_text(st, png, right, bottom):
     return st.norm(" ".join(x for x, b, _ in st.words(png) if b[0] < right and b[1] < bottom))
 
 
+def _changed_box(a, b, box):
+    """The bounding box of what differs between two screens inside box (every 4th pixel), or None."""
+    x0, y0, x1, y1 = box
+    xs, ys = [], []
+    for y in range(y0, y1, 4):
+        row = y * a.w * 3
+        for x in range(x0, x1, 4):
+            i = row + x * 3
+            if a.px[i:i + 3] != b.px[i:i + 3]:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs) + 4, max(ys) + 4)
+
+
+def _open_settings(vm, pos, tag):
+    """Clicks Settings on the bar; the window's box on the screen once it is there, or None. The pointer is
+    left on the bar (no hover in the window), no widget of the window has the focus yet."""
+    vm.move(vm.size[0] // 2, vm.size[1] // 2)
+    vm.pump(1)
+    before = vm.shot(f"before-{tag}")
+    vm.click(*pos["settings"])
+    if not app_window(vm, tag, before):
+        return None
+    vm.move(pos["settings"][0], pos["settings"][1])
+    vm.pump(3)
+    shot = vm.shot(f"{tag}-window")
+    box = _changed_box(before, shot, work(vm))
+    if not box:
+        return None
+    # what changed includes the window's shadow: the window itself starts where its title bar does (a
+    # colour far from the screen before), found from above and from both sides
+    def far(x, y):
+        i = (y * shot.w + x) * 3
+        return sum(abs(int(p) - int(q)) for p, q in zip(shot.px[i:i + 3], before.px[i:i + 3])) > 24
+
+    x0, y0, x1, y1 = box
+    mid = (x0 + x1) // 2
+    top = next((y for y in range(y0, y1) if far(mid, y)), y0)
+    left = next((x for x in range(x0, mid) if far(x, top + 12)), x0)
+    right = next((x for x in range(x1 - 1, mid, -1) if far(x, top + 12)), x1 - 1) + 1
+    return (left, top, right, y1 - (left - x0))
+
+
+def _keys(vm, key, n):
+    for _ in range(n):
+        vm.key(key)
+
+
+def _goto(vm, area, focused):
+    """Opens the page `area` with the keyboard: from a window without focus Tab three times reaches the first
+    sidebar entry (the sidebar, the search field, the entry); the arrows move to the entry, Enter opens it
+    and the focus stays on it. Returns the entry that has the focus now."""
+    want = SETTINGS_AREAS.index(area)
+    if focused is None:
+        _keys(vm, "tab", 3)
+        focused = 0
+    _keys(vm, "down" if want > focused else "up", abs(want - focused))
+    vm.key("ret")
+    vm.pump(2.5)
+    return want
+
+
+def _first_control(vm, focused, box, tag):
+    """Moves the focus from the sidebar entry `focused` to the first control of the open page: Tab past the
+    last entry of the sidebar. A page longer than the window takes the focus itself first (it scrolls with
+    the keys; its focus ring runs along the window's edge): then one Tab more."""
+    _keys(vm, "tab", len(SETTINGS_AREAS) - focused)
+    vm.pump(0.8)
+    s = vm.shot(f"{tag}-focus")
+    y = (box[1] + box[3]) // 2
+    ring = False
+    for x in range(box[0], box[0] + 5):
+        r, g, b = s.px[(y * s.w + x) * 3:(y * s.w + x) * 3 + 3]
+        ring = ring or (b > 150 and b > r + 40)
+    if ring:
+        vm.key("tab")
+        vm.pump(0.5)
+    return ring
+
+
+def _read_page(st, vm, name, box):
+    """The text of the page part of the Settings window `box` (everything but the title bar and the sidebar,
+    which is at the right in Arabic): the whole screen read, and the page cut out and enlarged read again
+    (small text) - both, so that a word one reading misses is still found."""
+    vm.shot(name)
+    png = f"{vm.prefix}-{name}.png"
+    x0, y0, x1, y1 = box
+    page = (x0, y0 + TITLEBAR, max(x0 + 100, x1 - SIDEBAR), y1)
+    whole = " ".join(x for x, b, _ in st.words(png) if page[0] <= b[0] < page[2] and page[1] <= b[1] < page[3])
+    title = (page[0], page[1], page[2], min(page[3], page[1] + 100))
+    cut = " ".join(x for x, _, _ in st.words(png, page) + st.words(png, title, psm=6))
+    return st.norm(whole + " " + cut)
+
+
+def _on_page(st, text, title):
+    return any(st.norm(word) in text for word in title)
+
+
 def settings_pages(vm, m, pos):
-    """Opens Settings, then each page of SETTINGS_PAGES from its sidebar entry (found on the screen): the page
-    shows real values and no "not available" message."""
+    """Opens Settings and each page of SETTINGS_PAGES with the keyboard: the page is the one asked for (its
+    title), shows real values and no "not available" message or catalog key."""
     st = _screen_text()
     failures = []
-    vm.move(640, 400)
-    vm.pump(1)
-    before = vm.shot("before-settings-pages")
-    vm.click(*pos["settings"])
-    if not app_window(vm, "settings-pages", before):
+    box = _open_settings(vm, pos, "settings-pages")
+    if not box:
         return ["settings did not open (pages)"]
-    vm.pump(4)
-    w, h = vm.size
-    x_side = None
-    for area, label, expect in SETTINGS_PAGES:
-        hit = None
-        # not on the screen: scroll the sidebar (wheel over it) to its top, then down step by step
-        for step, wheel in enumerate([None] + ["wheel-down"] * 9):
-            if wheel:
-                vm.move(x_side or (w * 3) // 4, h // 2)
-                for _ in range(3 if step else 1):
-                    vm.events([{"type": "btn", "data": {"down": True, "button": wheel}}])
-                    vm.events([{"type": "btn", "data": {"down": False, "button": wheel}}])
-                    vm.pump(0.2)
-                vm.pump(1)
-            vm.shot(f"settings-find-{area}")
-            hit = _sidebar_hit(st, f"{vm.prefix}-settings-find-{area}.png", label, w, h)
-            if hit:
+    log(f"settings window: {box}")
+    focused = None
+    for area, title, expect in SETTINGS_PAGES:
+        text = ""
+        for attempt in (1, 2, 3):
+            focused = _goto(vm, area, focused)
+            text = _read_page(st, vm, f"settings-page-{area}", box)
+            if _on_page(st, text, title):
                 break
-        if not hit:
-            seen = [x for x, b, _ in st.words(f"{vm.prefix}-settings-find-{area}.png") if b[0] > w // 2]
-            log(f"settings: {area} not in the sidebar; read there: {seen}")
-            failures.append(f"settings: no sidebar entry {area}")
+            # a key was lost (or the page is still being drawn): once more from a new window
+            log(f"settings page {area}: title {title} not on the page (try {attempt}), read: {text[:120]!r}")
+            close_all(vm)
+            box = _open_settings(vm, pos, f"settings-pages-{area}-{attempt}")
+            focused = None
+            if not box:
+                return failures + [f"settings did not open again ({area})"]
+        if not _on_page(st, text, title):
+            failures.append(f"settings {area}: the page did not open")
             continue
-        x_side = hit[0]
-        vm.click(*hit)
-        vm.pump(4)
-        vm.shot(f"settings-page-{area}")
-        png = f"{vm.prefix}-settings-page-{area}.png"
-        page = _page_text(st, png, max(200, hit[0] - 70), h - 60)
-        bad = [b for b in UNAVAILABLE if st.norm(b) in page]
-        bad += [k.group(0) for k in RAW_KEY.finditer(page) if not k.group(0).endswith((".tech", ".txt"))]
-        good = not expect or any(st.norm(e) in page for e in expect)
-        log(f"settings page {area}: unavailable={bad} values={'yes' if good else 'no'} ({len(page)} chars)")
+        bad = [b for b in UNAVAILABLE if st.norm(b) in text]
+        bad += [k.group(0) for k in RAW_KEY.finditer(text)]
+        good = not expect or any(st.norm(e) in text for e in expect)
+        log(f"settings page {area}: unavailable={bad} values={'yes' if good else 'no'} ({len(text)} chars)")
         if bad:
             failures.append(f"settings {area}: 'not available' or a raw key on the page {bad}")
         if not good:
             failures.append(f"settings {area}: no real values ({expect})")
+    close_all(vm)
+    return failures
+
+
+def _ground(screen, box):
+    """Share of the desktop's ground colour (no window there) inside box, every 8th pixel."""
+    x0, y0, x1, y1 = box
+    n = g = 0
+    for y in range(y0, y1, 8):
+        row = y * screen.w * 3
+        for x in range(x0, x1, 8):
+            n += 1
+            g += screen.px[row + x * 3:row + x * 3 + 3] == bytes.fromhex("0B0D11")
+    return g / max(1, n)
+
+
+def settings_maximized(vm, m, pos):
+    """The maximize button of Settings' window (pointer): the window fills the work area and the Displays page
+    is laid out again for the new width - the card's title and texts are complete in the normal window and
+    in the maximized one, read from the screen (that nothing is cut off or squeezed at any width is the
+    app's test tests/layout.rs). A second click puts the window back."""
+    st = _screen_text()
+    w, h = vm.size
+    box = _open_settings(vm, pos, "settings-max")
+    if not box:
+        return ["settings did not open (maximize)"]
+    _goto(vm, "displays", None)
+    normal = _read_page(st, vm, "settings-max-normal", box)
+    # the title bar's buttons at its left end (Arabic): close, maximize, minimize, 36 points apart
+    vm.click(box[0] + 56, box[1] + 20)
+    vm.pump(4)
+    area = (0, 0, w, h - 60)
+    wide = _read_page(st, vm, "settings-max-wide", area)
+    big = vm.shot("settings-max-big")
+    failures = []
+    # maximized: the window's title bar runs along the top of the screen (the desktop's ground is gone there)
+    top = (0, 4, w, TITLEBAR - 4)
+    left = _ground(big, top)
+    log(f"settings maximized: window was {box}, desktop ground left along the top {left:.2f}")
+    if left > 0.1:
+        failures.append("settings: the maximize button did not maximize the window")
+    want = ["ترتيب", "اسحب"]
+    for name, text in (("normal window", normal), ("maximized", wide)):
+        missing = [x for x in want if st.norm(x) not in text]
+        log(f"settings displays, {name}: missing {missing} ({len(text)} chars)")
+        # one of the two may escape the recogniser in a small window; none of them: the page is not there
+        if len(missing) == len(want) or (name == "maximized" and missing):
+            failures.append(f"settings displays, {name}: text cut off or missing {missing}")
+    vm.click(56, 20)  # the same button of the maximized window: back to its size
+    vm.pump(3)
+    if _ground(vm.shot("settings-max-back"), top) < 0.9:
+        failures.append("settings: the window did not come back from maximized")
     close_all(vm)
     return failures
 
@@ -359,105 +497,126 @@ def store_and_files(vm, m, pos):
     return failures
 
 
-def _switch_left_of(screen, x_text, y0, y1):
-    """The control at the start (left, in Arabic) end of a settings row whose texts begin at x_text and fill
-    the band y0..y1: from there leftwards, the first group of columns with pixels other than the card's ground
-    that is 20-80 points wide (a switch); its centre or None."""
-    def px(x, y):
-        i = (y * screen.w + x) * 3
-        return screen.px[i], screen.px[i + 1], screen.px[i + 2]
+def _strip_colour(screen, y0, y1):
+    """The most frequent colour of the rows y0..y1 (every 4th pixel) and its share."""
+    seen = {}
+    n = 0
+    for y in range(y0, y1, 4):
+        row = y * screen.w * 3
+        for x in range(0, screen.w, 4):
+            c = screen.px[row + x * 3:row + x * 3 + 3]
+            seen[c] = seen.get(c, 0) + 1
+            n += 1
+    colour = max(seen, key=seen.get)
+    return colour, seen[colour] / max(1, n)
 
-    ground = px(max(0, x_text - 6), y0)
 
-    def marked(x):
-        ys = [y for y in range(y0, y1) if sum(abs(int(p) - int(q)) for p, q in zip(px(x, y), ground)) > 30]
-        return ys
+def _light_bar(screen):
+    """The colour of the desktop bar when it is drawn in the light theme, else None: the bottom 56 points are
+    mostly one light colour that is not the colour of the screen above them (a light lock screen has no bar)."""
+    bar, share = _strip_colour(screen, screen.h - 52, screen.h - 4)
+    above, _ = _strip_colour(screen, screen.h - 200, screen.h - 70)
+    return bar if share >= 0.5 and sum(bar) > 540 and bar != above else None
 
-    x, seg, gap, rows = x_text - 8, None, 0, []
-    while x > 4:
-        ys = marked(x)
-        if ys:
-            seg = seg or x
-            rows += ys
-            gap = 0
-        elif seg is not None:
-            gap += 1
-            if gap > 3:
-                width = seg - (x + gap)
-                if 20 <= width <= 80:
-                    return ((seg + x + gap) // 2, (min(rows) + max(rows)) // 2)
-                seg, rows, gap = None, [], 0
-        x -= 1
-    return None
+
+def _choose_theme(vm, pos, tag, step):
+    """Settings > Appearance, the first setting (the theme: dark, light, automatic), with the keyboard: Space
+    opens the choice, `step` (down: the next one, up: the one before) and Enter pick. False when the page
+    was not reached."""
+    st = _screen_text()
+    box = _open_settings(vm, pos, f"theme-{tag}")
+    if not box:
+        return False
+    focused = _goto(vm, "appearance", None)
+    text = _read_page(st, vm, f"theme-{tag}-page", box)
+    if not _on_page(st, text, dict((a, t) for a, t, _ in SETTINGS_PAGES)["appearance"]):
+        log(f"theme ({tag}): the Appearance page is not open, read: {text[:120]!r}")
+        close_all(vm)
+        return False
+    ring = _first_control(vm, focused, box, f"theme-{tag}")
+    log(f"theme ({tag}): Appearance open, the page {'scrolls (one Tab more)' if ring else 'fits'}")
+    vm.key("spc")
+    vm.pump(1.5)
+    vm.shot(f"theme-{tag}-choice")
+    vm.key(step)
+    vm.pump(0.5)
+    vm.key("ret")
+    vm.pump(1)
+    return True
 
 
 def settings_change(vm, m, pos):
-    """A change takes effect and stays: on Notifications the switch of "Do not disturb" (found on the screen)
-    is clicked - the switch changes; after Settings is closed and opened again it shows the changed state
-    (settingsd stored it); a second click switches it back."""
-    st = _screen_text()
-    w, h = vm.size
-
-    def open_page(tag):
-        vm.move(640, 400)
-        vm.pump(1)
-        before = vm.shot(f"before-change-{tag}")
-        vm.click(*pos["settings"])
-        if not app_window(vm, f"change-{tag}", before):
-            return None
-        vm.pump(3)
-        vm.shot(f"change-find-{tag}")
-        hit = _sidebar_hit(st, f"{vm.prefix}-change-find-{tag}.png", "الإشعارات", w, h)
-        if not hit:
-            return None
-        vm.click(*hit)
-        vm.pump(3)
-        vm.move(hit[0], h - 80)  # the pointer off the page (no hover on the switch)
-        vm.pump(1)
-        screen = vm.shot(f"change-page-{tag}")
-        # the row "Do not disturb": its label in the page (left of the sidebar), the switch at the row's start
-        words = [(x, b) for x, b, _ in st.words(f"{vm.prefix}-change-page-{tag}.png") if b[0] < hit[0] - 70]
-        rows = [b for x, b in words if "الازعاج" in st.norm(x)]
-        if not rows:
-            return None
-        b = min(rows, key=lambda r: r[1])
-        # the row: its label and the description under it (words that start within 30 points below)
-        band = [wb for _, wb in words if b[1] - 4 <= wb[1] <= b[1] + 30]
-        y0, y1 = b[1] - 10, max(wb[3] for wb in band) + 6
-        at = _switch_left_of(screen, min(wb[0] for wb in band), y0, y1)
-        log(f"settings change ({tag}): row at {b}, switch at {at}")
-        return at
-
-    at = open_page("1")
-    if not at:
-        close_all(vm)
-        return ["settings change: the switch of Do not disturb was not found"]
-    box = (at[0] - 40, at[1] - 16, at[0] + 40, at[1] + 16)
-    a = vm.shot("change-a")
-    vm.click(*at)
-    vm.pump(2.5)
-    vm.move(at[0], h - 80)
-    vm.pump(1)
-    b = vm.shot("change-b")
-    changed = b.diff(a, box)
-    close_all(vm)
-    at2 = open_page("2")
-    if not at2:
-        close_all(vm)
-        return ["settings change: the switch was not found again"]
-    box2 = (at2[0] - 40, at2[1] - 16, at2[0] + 40, at2[1] + 16)
-    c = vm.shot("change-c")
-    kept, undone = c.diff(b, box2), c.diff(a, box2)
-    log(f"settings change: switched {changed:.3f}, after reopening like switched {kept:.3f} / like before {undone:.3f}")
-    vm.click(*at2)  # back to the start value
-    vm.pump(2)
-    close_all(vm)
+    """A change in Settings takes effect and stays (settingsd stores it and tells the services): the theme
+    is switched to light on the Appearance page - the desktop shell's bar turns light at once; after a
+    restart of the machine and the sign-in the bar is light again; then the theme is switched back to dark
+    (the bar is dark again), as the image was."""
     failures = []
-    if changed < 0.05:
-        failures.append("settings change: the switch did not change")
-    elif not kept < undone:
-        failures.append("settings change: the change did not stay after reopening")
+    for attempt in (1, 2):
+        if not _choose_theme(vm, pos, f"light-{attempt}", "down"):
+            close_all(vm)
+            continue
+        ok, s = m.wait_for(vm, "theme-light", lambda x: _light_bar(x) is not None, 20)
+        if ok:
+            break
+        close_all(vm)
+        if not m.desktop(vm.shot("theme-not-light").facts()):
+            break
+    else:
+        return ["settings change: the Appearance page or its theme choice was not reached"]
+    light = _light_bar(s)
+    log(f"settings change: light theme chosen, bar {light.hex() if light else None} (dark: 12151b)")
+    if not light:
+        close_all(vm)
+        return ["settings change: choosing the light theme did not change the desktop"]
+    close_all(vm)
+    vm.pump(3)
+    # survives a restart: the machine is reset; after the sign-in the desktop is light
+    mark = len(vm.buf)
+    vm.command("system_reset")
+    end = time.time() + 300
+    while time.time() < end and b"] settled" not in vm.buf[mark:]:
+        vm.pump(1)
+    vm.pump(6)
+    after = None
+    for attempt in (1, 2, 3):
+        if _light_bar(vm.shot("theme-restart-locked")) is not None:
+            failures.append("settings change: the desktop is visible before the sign-in after the restart")
+            break
+        sign_in(vm)
+        vm.type(m.password())
+        vm.pump(0.5)
+        vm.key("ret")
+        vm.pump(1)
+        vm.click(*sign_in_button(*vm.size))
+        ok, s = m.wait_for(vm, f"theme-restart-{attempt}", lambda x: _light_bar(x) is not None or m.desktop(x.facts()), 40)
+        if ok:
+            after = _light_bar(s)
+            break
+        vm.pump(8)
+    log(f"settings change: after the restart the bar is {after.hex() if after else 'not light'}")
+    if after != light:
+        failures.append("settings change: the light theme did not survive a restart")
+    # the app registrations of this start, then back to the dark theme
+    want = [re.compile(rb"\] exit app-" + a.encode() + rb" pid=\d+ code=0 ") for a in APPS]
+    end = time.time() + 240
+    while time.time() < end and not all(r.search(vm.buf[mark:]) for r in want):
+        vm.pump(1)
+    vm.pump(3)
+    dark = m.desktop(vm.shot("theme-after-restart").facts())
+    for attempt in (1, 2):
+        if dark:
+            break
+        if _choose_theme(vm, pos, f"dark-{attempt}", "up"):
+            dark, _ = m.wait_for(vm, "theme-dark", lambda x: m.desktop(x.facts()), 20)
+        close_all(vm)
+        dark = dark or m.desktop(vm.shot("theme-is-dark").facts())
+    if not dark:
+        failures.append("settings change: switching back to the dark theme did not change the desktop")
     return failures
+
+
+# end of the app content block (build/appbus)
+# ---------------------------------------------------------------------------------------------------------
 
 
 def installed(vm, m, seconds):
@@ -601,6 +760,12 @@ def run(vm, m):
         return 1
     vm.key("esc")
     vm.pump(2)
+    # GATE_ONLY=content (for working on the gate, never a verdict): only the app content steps
+    if os.environ.get("GATE_ONLY") == "content":
+        failures = settings_pages(vm, m, pos) + settings_maximized(vm, m, pos) + store_and_files(vm, m, pos)
+        failures += settings_change(vm, m, pos)
+        log("VMWARE-INPUT: GATE_ONLY=content " + ("FEHLER " + "; ".join(failures) if failures else "ok (no verdict)"))
+        return 1
     # 4. every system app opens its window: Settings, Files, Store, Browser from the bar, Phone from
     #    the app grid
     for name in ("settings", "files", "store", "browser"):
@@ -631,6 +796,7 @@ def run(vm, m):
         failures.append("the clock did not tick (static screen)")
     if not failures:
         failures += settings_pages(vm, m, pos)
+        failures += settings_maximized(vm, m, pos)
         failures += store_and_files(vm, m, pos)
         failures += settings_change(vm, m, pos)
     if not failures:
@@ -640,5 +806,5 @@ def run(vm, m):
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, settings pages, a change that stays, store, files)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, settings pages, maximized, a change that takes effect and survives a restart, store, files)")
     return 0

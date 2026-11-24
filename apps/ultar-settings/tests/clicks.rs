@@ -501,3 +501,88 @@ fn network_bluetooth_and_sound_pages_show_what_the_services_report() {
         Some("app.settings.error.unavailable")
     );
 }
+
+/// The window follows the theme setting: a change (made here or elsewhere, settingsd reports it)
+/// switches the window at once, and the app's start takes the stored theme.
+#[test]
+fn the_window_follows_the_theme_setting() {
+    use ultar_bus::messages::settings::SettingValue;
+    let world = board_world(1, true);
+    let size = content_size(1024.0, 768.0);
+    let mut app = app(&world, Lang::Ar, ThemeKind::Dark, size, "appearance");
+    let set = |world: &ultar_settings::service::fake::Shared, theme: &str| {
+        let mut w = world.borrow_mut();
+        let panels = w.panels.as_mut().expect("panels");
+        let item = panels
+            .iter_mut()
+            .flat_map(|p| p.items.iter_mut())
+            .find(|i| i.key == "appearance.theme")
+            .expect("theme setting");
+        item.value = SettingValue::Text(theme.into());
+        w.changed = true;
+    };
+    set(&world, "light");
+    app.poll().expect("poll");
+    assert_eq!(app.ui.env().theme, ThemeKind::Light);
+    set(&world, "dark");
+    app.poll().expect("poll");
+    assert_eq!(app.ui.env().theme, ThemeKind::Dark);
+    // a start with the stored theme "light"
+    set(&world, "light");
+    let mut started = common::app(&world, Lang::Ar, ThemeKind::Dark, size, "about");
+    started.apply_stored_theme();
+    assert_eq!(started.ui.env().theme, ThemeKind::Light);
+}
+
+/// The keyboard alone opens a page and changes its first setting - the keys the VMware gate
+/// sends (tools/vm/vmware_input_gate.py `_goto`, `_first_control`): Tab three times reaches the
+/// first sidebar entry, the arrows move through the entries, Enter opens one (the focus stays on
+/// it), Tab past the last entry reaches the page's first control (after the page itself, when it
+/// is longer than the window); Space opens a choice, an arrow and Enter pick the next one.
+#[test]
+fn the_keyboard_alone_opens_a_page_and_changes_its_first_setting() {
+    let world = board_world(1, false);
+    let size = content_size(768.0, 462.0);
+    let mut app = app(&world, Lang::Ar, ThemeKind::Dark, size, "wifi");
+    let wide = ultar_settings::areas::wide();
+    let at = wide
+        .iter()
+        .position(|&i| ultar_settings::areas::AREAS[i].id == "appearance")
+        .expect("appearance in the sidebar");
+    for _ in 0..3 {
+        key(&mut app, Key::Tab);
+    }
+    for _ in 0..at {
+        key(&mut app, Key::ArrowDown);
+    }
+    key(&mut app, Key::Enter);
+    assert_eq!(
+        ultar_settings::areas::AREAS[app.state.area].id,
+        "appearance"
+    );
+    for _ in 0..wide.len() - at {
+        key(&mut app, Key::Tab);
+    }
+    // a page longer than the window is a stop of its own (it scrolls with the keys): one Tab more
+    let on_page = app.ui.focused().and_then(|id| app.ui.widget(id));
+    if matches!(on_page, Some(ultar_ui::widgets::Widget::Scroll(_))) {
+        key(&mut app, Key::Tab);
+    }
+    for step in [Key::Space, Key::ArrowDown, Key::Enter] {
+        key(&mut app, step);
+    }
+    assert_eq!(
+        log(&world),
+        ["settings.set appearance.theme=Text(\"light\")"],
+        "the first control of the page is the theme choice"
+    );
+    app.poll().expect("poll");
+    assert_eq!(app.ui.env().theme, ThemeKind::Light);
+    for step in [Key::Space, Key::ArrowUp, Key::Enter] {
+        key(&mut app, step);
+    }
+    assert_eq!(
+        log(&world).last().map(String::as_str),
+        Some("settings.set appearance.theme=Text(\"dark\")")
+    );
+}

@@ -273,14 +273,14 @@ fn device_row(
     if let Some(reason) = &d.reason {
         muted(cx.ui, state, crate::i18n::label(reason, cx.tr))?;
     }
-    let actions = cx.ui.add_sized(
-        row,
-        Flex::row()
-            .gap(Space::S8)
-            .cross(CrossAlign::Center)
-            .main(MainAlign::End),
-        cell(narrow, 3),
-    )?;
+    // stacked: the controls from the start edge, on further lines when they do not fit
+    let controls = Flex::row().gap(Space::S8).cross(CrossAlign::Center);
+    let controls = if narrow {
+        controls.wrap()
+    } else {
+        controls.main(MainAlign::End)
+    };
+    let actions = cx.ui.add_sized(row, controls, cell(narrow, 3))?;
     actions_cell(cx, actions, index, d)
 }
 
@@ -329,27 +329,39 @@ fn icon_row(
     (label, sub): (Label, Label),
     last: bool,
 ) -> Result<NodeId, UiError> {
-    let flex = Flex::row()
-        .gap(Space::S16)
-        .padding(Padding::symmetric(Space::S16, Space::S8))
-        .cross(CrossAlign::Center);
+    // on a narrow page the row wraps: the controls go below the texts, the row as high as needed
+    let narrow = super::content_width(cx.ui) < TABLE_MIN;
+    let flex = super::reflow(
+        Flex::row()
+            .gap(Space::S16)
+            .padding(Padding::symmetric(Space::S16, Space::S8))
+            .cross(CrossAlign::Center),
+        narrow,
+    );
     let texts_h = super::lines_height(cx.ui, TypeSize::S14, 1.0)
         + super::lines_height(cx.ui, TypeSize::S12, 1.0);
     let rule = if last { 0.0 } else { 1.0 };
     let h = (texts_h + 2.0 * Space::S8.points() + rule).max(ultar_ui::tokens::size::ROW_MIN);
+    let sizing = if narrow {
+        Sizing::AUTO
+    } else {
+        Sizing::AUTO.with_height(h)
+    };
     let row = if last {
-        cx.ui.add_sized(card, flex, Sizing::AUTO.with_height(h))?
+        cx.ui.add_sized(card, flex, sizing)?
     } else {
         let r = Card::rule(BarEdge::Bottom).flex(flex);
-        cx.ui.add_sized(card, r, Sizing::AUTO.with_height(h))?
+        cx.ui.add_sized(card, r, sizing)?
     };
     cx.ui
         .add(row, Icon::new(icon).color(ColorRole::TextMuted))?;
-    let texts = cx.ui.add_sized(row, Flex::column(), Sizing::grow(1))?;
+    let texts = cx
+        .ui
+        .add_sized(row, Flex::column(), super::beside(narrow))?;
     cx.ui.add(texts, Text::new(label).spec(spec::label()))?;
     muted(cx.ui, texts, sub)?;
-    cx.ui
-        .add(row, Flex::row().gap(Space::S8).cross(CrossAlign::Center))
+    let controls = Flex::row().gap(Space::S8).cross(CrossAlign::Center);
+    cx.ui.add(row, super::reflow(controls, narrow))
 }
 
 fn maintenance(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {

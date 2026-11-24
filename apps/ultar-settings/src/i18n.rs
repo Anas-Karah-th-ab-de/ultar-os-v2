@@ -241,6 +241,25 @@ mod tests {
         }
     }
 
+    /// Keys built at run time: the label of every sidebar area and the title of every settingsd
+    /// panel a page shows have a text in every language.
+    #[test]
+    fn every_area_and_panel_has_a_name_in_every_language() {
+        use crate::areas::{PageKind, AREAS};
+        for lang in Lang::ALL {
+            let tr = translator(lang, None);
+            for area in AREAS {
+                let mut keys = vec![area.label_key()];
+                if let PageKind::Panel(panel) = area.page {
+                    keys.push(format!("settings.panel.{panel}"));
+                }
+                for key in keys {
+                    assert_ne!(tr.t(&key), key.as_str(), "{lang:?}: no text for {key}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn service_text_becomes_label_with_positional_arguments() {
         let tr = translator(Lang::En, None);
