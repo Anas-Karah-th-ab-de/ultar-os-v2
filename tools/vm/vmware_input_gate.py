@@ -367,8 +367,9 @@ def phone_small_window(vm, desktop):
     if changed_px(small, wide, (0, 0, w, h - 60)) < 2000 or changed_px(small, desktop, outside) > 200:
         return ["phone: Super+Left, Super+Up did not make the window a quarter of the screen"]
     # the top of the pad (heading, notice) at the end side of the quarter, below the header and
-    # the pages' tabs of a narrow window; no control is there
-    top = (w // 4 + 16, 114, w // 2 - 24, 150)
+    # the pages' tabs of a narrow window; no control is there, and it stays inside the pad's column
+    # (the 400 points at the end of a window that is not narrow; its scrollbar is at the column's start)
+    top = (max(w // 4 + 16, w // 2 - 376), 114, w // 2 - 24, 150)
     over = (w // 2 - 100, (h - 60) // 2 - 80)
     problems = []
     wheel(vm, *over)
