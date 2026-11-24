@@ -160,7 +160,8 @@ overview's empty state 96 + "no windows". No second mark in the overview.
 VMware SVGA II): `examples/desktoptest` sets a test account with `ultar-authd passwd` on stdin, starts
 `ultar-init` with the shipped definitions of logd, bus, seat, authd, compositor, lock, sysdialog,
 desktop (paths moved, `manual`/`editions` dropped), checks every one runs as its user (801/802/0/813/
-811/814/815/816); `tools/kern-test/desktop-qemu.py` then judges screenshots: desktop bar with the mark →
+811/814/815/816); `tools/kern-test/desktop-qemu.py` then judges screenshots: the session starts locked
+(`--start-locked-in system`, docs/integration/vmware.md §6) → Space + the test password → desktop bar with the mark →
 Super+L (virtual USB keyboard, `sendkey`) → lock cover → Space, a wrong password (still locked) →
 the test password → the bar is back: `DESKTOP: ALLES OK`. Found and fixed by it: the lock screen
 stayed disabled after the wait of a wrong password (`app/lock.rs`, regression test

@@ -116,6 +116,7 @@ fn environment(config: &config::InitConfig, pid1: bool) -> Environment {
         root: ultar_sys::euid() == 0,
         stop_timeout: Duration::from_millis(config.shutdown_grace_ms),
         edition: ultar_hal_system::current_edition().as_str().to_owned(),
+        profile: config::cmdline_profile(),
         net_allowed: config.net_allowed.clone(),
         all_rights_allowed: config.all_rights_allowed.clone(),
     };

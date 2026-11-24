@@ -41,6 +41,22 @@ struct Args {
     app_rights_owner: Option<u32>,
     /// Test only (`desktoptest`): a file that holds the number of key events taken so far.
     input_ack: Option<PathBuf>,
+    /// `--start-locked-in a,b`: boot profiles in which the session starts locked.
+    start_locked_in: Vec<String>,
+}
+
+/// The boot profile `ultar-init` names (`ULTAR_PROFILE`); without one the ordinary system.
+fn boot_profile() -> String {
+    std::env::var("ULTAR_PROFILE")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "system".to_owned())
+}
+
+/// Whether the session starts locked in `profile` (fail closed: an empty list entry or an
+/// unreadable profile never unlocks a profile that is listed).
+fn starts_locked(listed: &[String], profile: &str) -> bool {
+    listed.iter().any(|p| p == profile)
 }
 
 /// `FIRST-LAST`, a range of app user ids without root and the unknown id.
@@ -77,6 +93,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--app-uids" => args.app_uids = Some(uid_range(&it.next()?)?),
             "--input-ack" => args.input_ack = Some(PathBuf::from(it.next()?)),
             "--app-rights-owner" => args.app_rights_owner = Some(it.next()?.parse().ok()?),
+            "--start-locked-in" => {
+                let list: Vec<String> = it.next()?.split(',').map(str::to_owned).collect();
+                if list.iter().any(String::is_empty) {
+                    return None;
+                }
+                args.start_locked_in.extend(list);
+            }
             _ => return None,
         }
     }
@@ -119,6 +142,7 @@ fn config(args: &Args, lang: Lang) -> Result<Config, MsgKey> {
         lang,
         inline_only: args.inline,
         cursor: !args.no_cursor,
+        start_locked: starts_locked(&args.start_locked_in, &boot_profile()),
         ..Config::default()
     };
     if args.light {
@@ -248,6 +272,21 @@ mod tests {
 
     fn args(list: &[&str]) -> Option<Args> {
         parse(list.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn the_session_starts_locked_only_in_the_listed_profiles() {
+        let a = args(&["--socket", "s", "--start-locked-in", "system,recovery"]).unwrap();
+        assert!(starts_locked(&a.start_locked_in, "system"));
+        assert!(starts_locked(&a.start_locked_in, "recovery"));
+        assert!(!starts_locked(&a.start_locked_in, "installer"));
+        assert!(
+            !starts_locked(&[], "system"),
+            "without the option: as before"
+        );
+        assert!(args(&["--socket", "s", "--start-locked-in"]).is_none());
+        assert!(args(&["--socket", "s", "--start-locked-in", "system,"]).is_none());
+        assert!(args(&["--socket", "s", "--start-locked-in", ""]).is_none());
     }
 
     #[test]

@@ -5,6 +5,8 @@ The image carries the static programs of the session and examples/desktoptest (t
 ultar-init starts logd, bus, the seat helper, authd, the compositor, the lock screen, the system
 dialogs and the desktop shell from the shipped service files. When the driver prints
 `DESKTOP-TREIBER: BEREIT` this script
+  0. takes a screenshot: the session starts locked (`--start-locked-in system`), the lock screen covers
+     everything; Space and the test password unlock it,
   1. takes a screenshot: the desktop's bar (token `bar` #12151B over the bottom 56 points) with the
      brand mark (accent_text #E3C55A) must be on the screen,
   2. presses Super+L through the virtual USB keyboard (QEMU monitor `sendkey`): the compositor
@@ -158,11 +160,21 @@ try:
         if m is None or b"FEHLER" in m.group(0):
             verdict = "DESKTOP: FEHLER " + (m.group(0).decode() if m else "driver not ready")
         else:
-            ok, f = wait_screen("desktop", desktop, 120)
-            print(f"\nscreen 1 (desktop): {f}")
+            # the session starts locked: the lock screen covers everything, no bar
+            ok, f = wait_screen("start", locked, 120)
+            print(f"\nscreen 0 (locked at start): {f}")
             if not ok:
-                verdict = f"DESKTOP: FEHLER no desktop bar {f}"
+                verdict = f"DESKTOP: FEHLER the session did not start locked {f}"
             else:
+                cover = f
+                keys(["spc"])
+                wait_screen("start-signin", lambda g: g != cover, 30)
+                keys(list(PASSWORD) + ["ret"])
+                ok, f = wait_screen("desktop", desktop, 180)
+                print(f"screen 1 (desktop after the first unlock): {f}")
+            if not ok and verdict == "DESKTOP: FEHLER no shell prompt":
+                verdict = f"DESKTOP: FEHLER no desktop bar after the first unlock {f}"
+            if ok:
                 keys(["meta_l-l"])
                 ok, f = wait_screen("locked", locked, 60)
                 print(f"screen 2 (locked): {f}")

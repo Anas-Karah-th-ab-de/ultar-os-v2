@@ -20,6 +20,11 @@ args = [
     "--app-rights", "/run/ultar/launcher/compositor-apps.toml",
     "--app-uids", "20000-49999",
     "--app-rights-owner", "805",
+    # The desktop session starts locked in the ordinary system (boot profile from
+    # ultar-init, ULTAR_PROFILE): nothing but the lock screen is drawn or gets input
+    # before the first unlock. Not on the installation medium (profile installer),
+    # which has no lock screen and no account yet.
+    "--start-locked-in", "system",
 ]
 # The seat's nodes are set before the compositor opens them.
 after = ["seat"]
