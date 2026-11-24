@@ -38,13 +38,7 @@ impl Driver for Drv {
         let mut bl = BLOCK.lock();
         let name = format!("vd{}", (b'a' + bl.len() as u8) as char);
         crate::kprintln!("[virtio-blk] {name}: {} MB", sectors / 2048);
-        bl.push(Box::new(Disk {
-            name,
-            q,
-            sectors,
-            req,
-            data,
-        }));
+        bl.push(Box::new(Disk { name, q, sectors, req, data }));
         Ok(())
     }
 }
@@ -66,36 +60,14 @@ impl BlockDev for Disk {
                 core::ptr::write_volatile((self.req + 8) as *mut u64, sector);
                 core::ptr::write_volatile((self.req + 16) as *mut u8, 0xff);
             }
-            self.q.submit(&[
-                Buf {
-                    addr: self.req,
-                    len: 16,
-                    write: false,
-                },
-                Buf {
-                    addr: self.data,
-                    len: n,
-                    write: true,
-                },
-                Buf {
-                    addr: self.req + 16,
-                    len: 1,
-                    write: true,
-                },
-            ]);
+            self.q.submit(&[Buf { addr: self.req, len: 16, write: false }, Buf { addr: self.data, len: n, write: true }, Buf { addr: self.req + 16, len: 1, write: true }]);
             self.q.kick();
             self.q.wait(2000).ok_or("Zeitüberschreitung")?;
             let st = unsafe { core::ptr::read_volatile((self.req + 16) as *const u8) };
             if st != 0 {
                 return Err(format!("Lesefehler (Status {st})"));
             }
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    self.data as *const u8,
-                    chunk.as_mut_ptr(),
-                    chunk.len(),
-                )
-            };
+            unsafe { core::ptr::copy_nonoverlapping(self.data as *const u8, chunk.as_mut_ptr(), chunk.len()) };
         }
         Ok(())
     }
@@ -110,23 +82,7 @@ impl BlockDev for Disk {
                 core::ptr::write_volatile((self.req + 8) as *mut u64, sector);
                 core::ptr::write_volatile((self.req + 16) as *mut u8, 0xff);
             }
-            self.q.submit(&[
-                Buf {
-                    addr: self.req,
-                    len: 16,
-                    write: false,
-                },
-                Buf {
-                    addr: self.data,
-                    len: n,
-                    write: false,
-                },
-                Buf {
-                    addr: self.req + 16,
-                    len: 1,
-                    write: true,
-                },
-            ]);
+            self.q.submit(&[Buf { addr: self.req, len: 16, write: false }, Buf { addr: self.data, len: n, write: false }, Buf { addr: self.req + 16, len: 1, write: true }]);
             self.q.kick();
             self.q.wait(5000).ok_or("Zeitüberschreitung")?;
             let st = unsafe { core::ptr::read_volatile((self.req + 16) as *const u8) };

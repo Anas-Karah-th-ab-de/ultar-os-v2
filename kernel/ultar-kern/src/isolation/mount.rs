@@ -115,18 +115,8 @@ impl MountNs {
             .call_once(|| {
                 // lives as long as the machine: it belongs to the kernel, not to whoever asks first
                 crate::heap::kernel(|| {
-                    let root = Mount {
-                        at: String::from("/"),
-                        source: Source::Tree(String::from("/")),
-                        read_only: false,
-                        fstype: "rootfs",
-                    };
-                    Arc::new(MountNs {
-                        id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-                        initial: true,
-                        epoch: AtomicU64::new(0),
-                        mounts: Mutex::new(vec![root]),
-                    })
+                    let root = Mount { at: String::from("/"), source: Source::Tree(String::from("/")), read_only: false, fstype: "rootfs" };
+                    Arc::new(MountNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), initial: true, epoch: AtomicU64::new(0), mounts: Mutex::new(vec![root]) })
                 })
             })
             .clone()
@@ -135,12 +125,7 @@ impl MountNs {
     /// New namespace with a copy of this one's table.
     pub fn copy(&self) -> Arc<MountNs> {
         let mounts = self.mounts.lock().clone();
-        Arc::new(MountNs {
-            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
-            initial: false,
-            epoch: AtomicU64::new(0),
-            mounts: Mutex::new(mounts),
-        })
+        Arc::new(MountNs { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), initial: false, epoch: AtomicU64::new(0), mounts: Mutex::new(mounts) })
     }
 
     /// Identity of the namespace (shown by `/proc/<pid>/ns/mnt`).
@@ -171,15 +156,9 @@ impl MountNs {
             }
         }
         match best {
-            Some((m, rest)) => Target {
-                host: join(&m.source.host_root(), rest),
-                read_only: m.read_only,
-            },
+            Some((m, rest)) => Target { host: join(&m.source.host_root(), rest), read_only: m.read_only },
             // unreachable: every table holds "/", kept as a closed door rather than a panic
-            None => Target {
-                host: String::from("/\0tmpfs"),
-                read_only: true,
-            },
+            None => Target { host: String::from("/\0tmpfs"), read_only: true },
         }
     }
 
@@ -199,9 +178,7 @@ impl MountNs {
             Some((m, rest)) => {
                 let src = match &m.source {
                     Source::Tree(p) => Source::Tree(join(p, rest)),
-                    Source::Tmpfs(t, sub) => {
-                        Source::Tmpfs(t.clone(), alloc::format!("{sub}{rest}"))
-                    }
+                    Source::Tmpfs(t, sub) => Source::Tmpfs(t.clone(), alloc::format!("{sub}{rest}")),
                 };
                 (src, m.read_only)
             }
@@ -210,34 +187,19 @@ impl MountNs {
     }
 
     /// Add a mount at the namespace path `at`.
-    pub fn add(
-        &self,
-        at: &str,
-        source: Source,
-        read_only: bool,
-        fstype: &'static str,
-    ) -> Result<(), MountError> {
+    pub fn add(&self, at: &str, source: Source, read_only: bool, fstype: &'static str) -> Result<(), MountError> {
         let mut mounts = self.mounts.lock();
         if mounts.len() >= MAX_MOUNTS {
             return Err(MountError::Full);
         }
-        mounts.push(Mount {
-            at: at.to_string(),
-            source,
-            read_only,
-            fstype,
-        });
+        mounts.push(Mount { at: at.to_string(), source, read_only, fstype });
         Ok(())
     }
 
     /// Change the read-only flag of the topmost mount at `at`.
     pub fn remount(&self, at: &str, read_only: bool) -> Result<(), MountError> {
         let mut mounts = self.mounts.lock();
-        let m = mounts
-            .iter_mut()
-            .rev()
-            .find(|m| m.at == at)
-            .ok_or(MountError::NotMountPoint)?;
+        let m = mounts.iter_mut().rev().find(|m| m.at == at).ok_or(MountError::NotMountPoint)?;
         m.read_only = read_only;
         Ok(())
     }
@@ -250,16 +212,10 @@ impl MountNs {
         let removed: Vec<Mount>;
         {
             let mut mounts = self.mounts.lock();
-            let idx = mounts
-                .iter()
-                .rposition(|m| m.at == at)
-                .ok_or(MountError::NotMountPoint)?;
-            let has_children = mounts
-                .iter()
-                .any(|m| m.at != at && below(&m.at, at).is_some());
+            let idx = mounts.iter().rposition(|m| m.at == at).ok_or(MountError::NotMountPoint)?;
+            let has_children = mounts.iter().any(|m| m.at != at && below(&m.at, at).is_some());
             if detach {
-                let (gone, kept): (Vec<Mount>, Vec<Mount>) =
-                    mounts.drain(..).partition(|m| below(&m.at, at).is_some());
+                let (gone, kept): (Vec<Mount>, Vec<Mount>) = mounts.drain(..).partition(|m| below(&m.at, at).is_some());
                 *mounts = kept;
                 removed = gone;
             } else if has_children {
@@ -284,9 +240,7 @@ impl MountNs {
             return Err(MountError::NotMountPoint);
         }
         // old-tree mounts first, so mounts of the new tree stay on top where both name the same path
-        let (mut new_tree, mut old_tree): (Vec<Mount>, Vec<Mount>) = mounts
-            .drain(..)
-            .partition(|m| below(&m.at, new_root).is_some());
+        let (mut new_tree, mut old_tree): (Vec<Mount>, Vec<Mount>) = mounts.drain(..).partition(|m| below(&m.at, new_root).is_some());
         for m in new_tree.iter_mut().chain(old_tree.iter_mut()) {
             m.at = repath(&m.at, new_root, &put_rel);
         }
@@ -299,10 +253,6 @@ impl MountNs {
 
     /// The table for `/proc/mounts`: (mount point, file system type, read-only).
     pub fn table(&self) -> Vec<(String, &'static str, bool)> {
-        self.mounts
-            .lock()
-            .iter()
-            .map(|m| (m.at.clone(), m.fstype, m.read_only))
-            .collect()
+        self.mounts.lock().iter().map(|m| (m.at.clone(), m.fstype, m.read_only)).collect()
     }
 }

@@ -78,25 +78,10 @@ fn input(st: &mut State, flags: u32, found: &mut Layout, have: &mut bool) {
     for i in 0..st.count {
         let usage = match st.range {
             Some((lo, hi)) => (lo + i).min(hi),
-            None => st
-                .usages
-                .get(i as usize)
-                .or(st.usages.last())
-                .copied()
-                .unwrap_or(0),
+            None => st.usages.get(i as usize).or(st.usages.last()).copied().unwrap_or(0),
         };
-        let usage = if usage > 0xffff {
-            usage
-        } else {
-            st.page << 16 | usage
-        };
-        let f = Field {
-            bit: st.bits,
-            size: st.size.min(32),
-            min: st.min,
-            max: st.max,
-            abs: flags & 4 == 0,
-        };
+        let usage = if usage > 0xffff { usage } else { st.page << 16 | usage };
+        let f = Field { bit: st.bits, size: st.size.min(32), min: st.min, max: st.max, abs: flags & 4 == 0 };
         st.bits += st.size;
         if !variable || (*have && found.id != st.id) {
             continue;
@@ -131,13 +116,7 @@ pub fn parse(desc: &[u8]) -> Option<Layout> {
             0x90 | 0xb0 | 0xa0 | 0xc0 => {}
             0x04 => st.page = unsigned,
             0x14 => st.min = value(data, true),
-            0x24 => {
-                st.max = if st.min < 0 {
-                    value(data, true)
-                } else {
-                    unsigned as i32
-                }
-            }
+            0x24 => st.max = if st.min < 0 { value(data, true) } else { unsigned as i32 },
             0x74 => st.size = unsigned,
             0x94 => st.count = unsigned,
             0x84 => (st.id, st.bits) = (unsigned as u8, 0),

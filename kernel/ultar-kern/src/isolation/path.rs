@@ -57,12 +57,7 @@ pub struct Loc {
 impl View {
     /// Snapshot the view of a group.
     pub fn of(iso: &Isolation) -> View {
-        View {
-            mnt: iso.mnt.clone(),
-            root: iso.root.clone(),
-            confined: iso.confined(),
-            tag: iso.view_tag(),
-        }
+        View { mnt: iso.mnt.clone(), root: iso.root.clone(), confined: iso.confined(), tag: iso.view_tag() }
     }
 
     /// Tag of this view.
@@ -74,13 +69,7 @@ impl View {
         let mut view = String::from("/");
         view.push_str(&parts.join("/"));
         let t = self.mnt.translate(&join(&self.root, &view));
-        Loc {
-            view,
-            host: t.host,
-            read_only: t.read_only,
-            confined: self.confined,
-            tag: self.tag,
-        }
+        Loc { view, host: t.host, read_only: t.read_only, confined: self.confined, tag: self.tag }
     }
 
     /// Host path of the absolute, already resolved view path `view_path`.

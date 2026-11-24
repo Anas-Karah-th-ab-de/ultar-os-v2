@@ -49,13 +49,7 @@ struct Tty {
     echo: bool,
 }
 
-static TTY: Mutex<Tty> = Mutex::new(Tty {
-    line: Vec::new(),
-    ready: VecDeque::new(),
-    eof: false,
-    icanon: true,
-    echo: true,
-});
+static TTY: Mutex<Tty> = Mutex::new(Tty { line: Vec::new(), ready: VecDeque::new(), eof: false, icanon: true, echo: true });
 
 fn echo(b: &[u8]) {
     // nicht über kprint!: Programmausgaben gehören nicht ins Kernprotokoll (siehe console::UserOut)
@@ -144,8 +138,7 @@ pub fn input_ready() -> bool {
 static RND: AtomicU64 = AtomicU64::new(0x9e37_79b9_7f4a_7c15);
 
 pub fn random_u64() -> u64 {
-    let mut x =
-        RND.load(Ordering::Relaxed) ^ crate::arch::rdtsc().rotate_left(17) ^ crate::arch::zufall();
+    let mut x = RND.load(Ordering::Relaxed) ^ crate::arch::rdtsc().rotate_left(17) ^ crate::arch::zufall();
     x ^= x << 13;
     x ^= x >> 7;
     x ^= x << 17;
@@ -169,37 +162,17 @@ pub fn init_clock() {
         n += 1;
     }
     let b = cmos(0x0B);
-    let bcd = |v: u8| {
-        if b & 4 == 0 {
-            (v & 0x0f) + (v >> 4) * 10
-        } else {
-            v
-        }
-    };
-    let (s, mi, h, d, mo, y) = (
-        bcd(cmos(0)) as u64,
-        bcd(cmos(2)) as u64,
-        bcd(cmos(4) & 0x7f) as u64,
-        bcd(cmos(7)) as u64,
-        bcd(cmos(8)) as u64,
-        bcd(cmos(9)) as u64 + 2000,
-    );
+    let bcd = |v: u8| if b & 4 == 0 { (v & 0x0f) + (v >> 4) * 10 } else { v };
+    let (s, mi, h, d, mo, y) = (bcd(cmos(0)) as u64, bcd(cmos(2)) as u64, bcd(cmos(4) & 0x7f) as u64, bcd(cmos(7)) as u64, bcd(cmos(8)) as u64, bcd(cmos(9)) as u64 + 2000);
     // Tage seit 1970 (Algorithmus nach Howard Hinnant)
-    let (y2, m2) = if mo <= 2 {
-        (y - 1, mo + 9)
-    } else {
-        (y, mo - 3)
-    };
+    let (y2, m2) = if mo <= 2 { (y - 1, mo + 9) } else { (y, mo - 3) };
     let era = y2 / 400;
     let yoe = y2 - era * 400;
     let doy = (153 * m2 + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     let days = era * 146097 + doe - 719468;
     let now = days * 86400 + h * 3600 + mi * 60 + s;
-    EPOCH.store(
-        now.saturating_sub(crate::arch::uptime_ms() / 1000),
-        Ordering::Relaxed,
-    );
+    EPOCH.store(now.saturating_sub(crate::arch::uptime_ms() / 1000), Ordering::Relaxed);
 }
 
 pub fn epoch_secs() -> u64 {
@@ -245,12 +218,7 @@ pub(crate) fn locate(dirfd: i64, path: &str, follow: bool) -> Result<Loc, i64> {
         } else {
             p.g.cwd.clone()
         };
-        Ok((
-            view,
-            base,
-            p.g.iso.cred,
-            p.g.iso.rights.has(Rights::FILE_ADMIN),
-        ))
+        Ok((view, base, p.g.iso.cred, p.g.iso.rights.has(Rights::FILE_ADMIN)))
     });
     let (view, base, cred, admin) = snap.unwrap_or(Err(-ENOENT))?;
     let loc = view.walk(&base, path, follow).map_err(|e| e.errno())?;
@@ -295,13 +263,7 @@ fn refused_errno(r: Res) -> Res {
             let forced = core::mem::replace(&mut cpu.errno, 0) as i64;
             let refused = crate::heap::take_refused();
             // a lower layer named the error (group files), or the call failed because memory was refused
-            Res::Val(if forced != 0 {
-                -forced
-            } else if refused {
-                -ENOMEM
-            } else {
-                v
-            })
+            Res::Val(if forced != 0 { -forced } else if refused { -ENOMEM } else { v })
         }
         r => r,
     }
@@ -327,14 +289,7 @@ pub fn dispatch(f: &mut TrapFrame) {
     let a = [f.rdi, f.rsi, f.rdx, f.r10, f.r8, f.r9];
     let trace = TRACE.load(Ordering::Relaxed) && nr != 1 && nr != 20;
     if trace {
-        crate::kprintln!(
-            "[spur {}] {nr}({:#x}, {:#x}, {:#x}, {:#x})",
-            proc::current(),
-            a[0],
-            a[1],
-            a[2],
-            a[3]
-        );
+        crate::kprintln!("[spur {}] {nr}({:#x}, {:#x}, {:#x}, {:#x})", proc::current(), a[0], a[1], a[2], a[3]);
     }
     let r = match nr {
         // calls guarded by a right the caller does not hold
@@ -361,33 +316,14 @@ pub fn dispatch(f: &mut TrapFrame) {
         9 => Res::Val(sys_mmap(a[0], a[1], a[2], a[3], a[4] as i32 as i64, a[5])),
         // mlock/munlock/mlockall/munlockall (149–152): Speicher wird nie ausgelagert – nichts zu tun
         // user and group ids (cred.rs)
-        102 | 104..=108 | 113..=120 | 122 | 123 => {
-            Res::Val(crate::cred::call(nr, a).unwrap_or(-ENOSYS))
-        }
+        102 | 104..=108 | 113..=120 | 122 | 123 => Res::Val(crate::cred::call(nr, a).unwrap_or(-ENOSYS)),
         // modes and owners (perm.rs)
         90 => Res::Val(crate::perm::sys_chmod(-100, a[0], a[1], 0)),
         91 => Res::Val(crate::perm::sys_fchmod(a[0], a[1])),
-        92 | 94 => Res::Val(crate::perm::sys_chown(
-            -100,
-            a[0],
-            a[1],
-            a[2],
-            if nr == 94 { 0x100 } else { 0 },
-        )),
+        92 | 94 => Res::Val(crate::perm::sys_chown(-100, a[0], a[1], a[2], if nr == 94 { 0x100 } else { 0 })),
         93 => Res::Val(crate::perm::sys_fchown(a[0], a[1], a[2])),
-        260 => Res::Val(crate::perm::sys_chown(
-            a[0] as i32 as i64,
-            a[1],
-            a[2],
-            a[3],
-            a[4],
-        )),
-        268 | 452 => Res::Val(crate::perm::sys_chmod(
-            a[0] as i32 as i64,
-            a[1],
-            a[2],
-            if nr == 452 { a[3] } else { 0 },
-        )),
+        260 => Res::Val(crate::perm::sys_chown(a[0] as i32 as i64, a[1], a[2], a[3], a[4])),
+        268 | 452 => Res::Val(crate::perm::sys_chmod(a[0] as i32 as i64, a[1], a[2], if nr == 452 { a[3] } else { 0 })),
         74 | 75 => Res::Val(sys_fsync(a[0])),
         149 | 150 | 151 | 152 | 10 | 28 | 131 | 273 | 109 => Res::Val(0),
         11 => Res::Val(sys_munmap(a[0], a[1])),
@@ -426,11 +362,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         204 => {
             let (on, _) = crate::apic::cpu_count();
             let mask: u64 = if on >= 64 { u64::MAX } else { (1u64 << on) - 1 };
-            Res::Val(if put(a[2], &mask.to_le_bytes()) {
-                8
-            } else {
-                -EFAULT
-            })
+            Res::Val(if put(a[2], &mask.to_le_bytes()) { 8 } else { -EFAULT })
         }
         56 => Res::Val(sys_fork(f, a[0], a[1], a[2], a[3], a[4])),
         57 => Res::Val(sys_fork(f, 0x11, 0, 0, 0, 0)),
@@ -456,12 +388,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         // sync, syncfs: nothing is ever held back – every write to a disk is done when its call returns
         170 | 171 | 203 | 204 | 221 | 52 | 280 | 162 | 306 => Res::Val(0),
         82 => Res::Val(sys_rename(-100, a[0], -100, a[1])),
-        264 | 316 => Res::Val(sys_rename(
-            a[0] as i32 as i64,
-            a[1],
-            a[2] as i32 as i64,
-            a[3],
-        )),
+        264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),
         188..=199 => Res::Val(-95),
         41 => Res::Val(sys_socket(a[0], a[1], a[2])),
@@ -471,31 +398,9 @@ pub fn dispatch(f: &mut TrapFrame) {
         232 | 281 | 441 => sys_epoll_wait(a[0], a[1], a[2], a[3] as i32 as i64),
         284 | 290 => Res::Val({
             let (init, fl) = (a[0] & 0xffff_ffff, if nr == 290 { a[1] } else { 0 });
-            with(|p| {
-                p.add_fd(
-                    Fd {
-                        kind: FdKind::EventFd(Arc::new(spin::Mutex::new(init)), fl & 1 != 0),
-                        cloexec: fl & 0x80000 != 0,
-                        flags: 2 | (fl as u32 & 0x800),
-                    },
-                    0,
-                )
-            })
-            .unwrap_or(-EBADF)
+            with(|p| p.add_fd(Fd { kind: FdKind::EventFd(Arc::new(spin::Mutex::new(init)), fl & 1 != 0), cloexec: fl & 0x80000 != 0, flags: 2 | (fl as u32 & 0x800) }, 0)).unwrap_or(-EBADF)
         }),
-        283 => Res::Val(
-            with(|p| {
-                p.add_fd(
-                    Fd {
-                        kind: FdKind::TimerFd(Arc::new(spin::Mutex::new((0, 0)))),
-                        cloexec: a[1] & 0x80000 != 0,
-                        flags: 2 | (a[1] as u32 & 0x800),
-                    },
-                    0,
-                )
-            })
-            .unwrap_or(-EBADF),
-        ),
+        283 => Res::Val(with(|p| p.add_fd(Fd { kind: FdKind::TimerFd(Arc::new(spin::Mutex::new((0, 0)))), cloexec: a[1] & 0x80000 != 0, flags: 2 | (a[1] as u32 & 0x800) }, 0)).unwrap_or(-EBADF)),
         286 => Res::Val(sys_timerfd_settime(a[0], a[1], a[2], a[3])),
         287 => Res::Val({
             let v = with(|p| match p.fd(a[0]).map(|d| &d.kind) {
@@ -511,20 +416,12 @@ pub fn dispatch(f: &mut TrapFrame) {
                     o[8..16].copy_from_slice(&((iv % 1000) * 1_000_000).to_le_bytes());
                     o[16..24].copy_from_slice(&(rem / 1000).to_le_bytes());
                     o[24..32].copy_from_slice(&((rem % 1000) * 1_000_000).to_le_bytes());
-                    if put(a[1], &o) {
-                        0
-                    } else {
-                        -EFAULT
-                    }
+                    if put(a[1], &o) { 0 } else { -EFAULT }
                 }
                 None => -EINVAL,
             }
         }),
-        282 | 289 => Res::Val(sys_signalfd(
-            a[0] as i32 as i64,
-            a[1],
-            if nr == 289 { a[3] } else { 0 },
-        )),
+        282 | 289 => Res::Val(sys_signalfd(a[0] as i32 as i64, a[1], if nr == 289 { a[3] } else { 0 })),
         42 => sys_connect(a[0], a[1], a[2]),
         43 => sys_accept(a[0], a[1], a[2], 0),
         288 => sys_accept(a[0], a[1], a[2], a[3]),
@@ -551,9 +448,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         137 | 138 => Res::Val(sys_statfs(nr == 138, a[0], a[1])),
         334 | 332 | 435 | 326 | 425 | 426 | 427 => Res::Val(-ENOSYS),
         86 | 265 => Res::Val(-1),
-        95 => Res::Val(
-            with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0),
-        ),
+        95 => Res::Val(with(|p| core::mem::replace(&mut p.g.umask, a[0] as u32 & 0o777) as i64).unwrap_or(0)),
         96 => {
             let ns = now_ns(0);
             if a[0] != 0 {
@@ -581,13 +476,11 @@ pub fn dispatch(f: &mut TrapFrame) {
             Res::Val(s as i64)
         }
         217 => Res::Val(sys_getdents(a[0], a[1], a[2])),
-        218 => Res::Val(
-            with(|p| {
-                p.clear_tid = a[0];
-                shown(p, p.pid)
-            })
-            .unwrap_or(0),
-        ),
+        218 => Res::Val(with(|p| {
+            p.clear_tid = a[0];
+            shown(p, p.pid)
+        })
+        .unwrap_or(0)),
         228 => {
             let ns = now_ns(a[0]);
             let mut b = Vec::new();
@@ -608,51 +501,13 @@ pub fn dispatch(f: &mut TrapFrame) {
         258 => Res::Val(sys_mkdir(a[0] as i32 as i64, a[1], a[2])),
         262 => Res::Val(sys_stat_path(a[0] as i32 as i64, a[1], a[2], a[3])),
         263 => Res::Val(sys_unlink(a[0] as i32 as i64, a[1])),
-        269 | 439 => Res::Val(crate::perm::sys_access(
-            a[0] as i32 as i64,
-            a[1],
-            a[2],
-            if nr == 439 { a[3] } else { 0 },
-        )),
+        269 | 439 => Res::Val(crate::perm::sys_access(a[0] as i32 as i64, a[1], a[2], if nr == 439 { a[3] } else { 0 })),
         // select: timeval (microseconds), rounded up to whole milliseconds
-        23 => sys_select(
-            a[0],
-            a[1],
-            a[2],
-            if a[4] == 0 {
-                -1
-            } else {
-                get(a[4], 16)
-                    .map(|b| {
-                        u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8]))
-                            .saturating_mul(1000)
-                            .saturating_add(
-                                u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8]))
-                                    .min(999_999)
-                                    .div_ceil(1000),
-                            )
-                            .min(i64::MAX as u64) as i64
-                    })
-                    .unwrap_or(-1)
-            },
-        ),
-        270 => sys_select(
-            a[0],
-            a[1],
-            a[2],
-            if a[4] == 0 {
-                -1
-            } else {
-                get(a[4], 16)
-                    .map(|b| timespec_ms_up(&b) as i64)
-                    .unwrap_or(-1)
-            },
-        ),
+        23 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])).saturating_mul(1000).saturating_add(u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])).min(999_999).div_ceil(1000)).min(i64::MAX as u64) as i64).unwrap_or(-1) }),
+        270 => sys_select(a[0], a[1], a[2], if a[4] == 0 { -1 } else { get(a[4], 16).map(|b| timespec_ms_up(&b) as i64).unwrap_or(-1) }),
         130 | 34 => {
             if nr == 130 {
-                let m = get(a[0], 8)
-                    .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
-                    .unwrap_or(0);
+                let m = get(a[0], 8).map(|b| u64::from_le_bytes(b.try_into().unwrap())).unwrap_or(0);
                 with(|p| {
                     p.sus_mask = Some(p.sigmask);
                     p.sigmask = m & !(1 << 8);
@@ -661,17 +516,7 @@ pub fn dispatch(f: &mut TrapFrame) {
             Res::BlockWith(Wait::Signal, -4)
         }
         // ppoll: the timespec with its nanoseconds (rounded up to whole milliseconds, never to 0 early)
-        271 => sys_poll(
-            a[0],
-            a[1],
-            if a[2] == 0 {
-                -1
-            } else {
-                get(a[2], 16)
-                    .map(|b| timespec_ms_up(&b) as i64)
-                    .unwrap_or(-1)
-            },
-        ),
+        271 => sys_poll(a[0], a[1], if a[2] == 0 { -1 } else { get(a[2], 16).map(|b| timespec_ms_up(&b) as i64).unwrap_or(-1) }),
         292 => Res::Val(sys_dup(a[0], Some(a[1]), a[2])),
         293 => Res::Val(sys_pipe(a[0], a[1])),
         302 => Res::Val(sys_prlimit(a[1], a[3])),
@@ -731,12 +576,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     match crate::svcdev::hci::sys_read(fd, buf, n) {
         Some(crate::svcdev::hci::Io::Val(v)) => return Res::Val(v),
         // the driver polls: look again in 8 ms or when something happens
-        Some(crate::svcdev::hci::Io::Block) => {
-            return Res::Block(Wait::Poll(
-                crate::socket::gen(),
-                crate::arch::uptime_ms() + 8,
-            ))
-        }
+        Some(crate::svcdev::hci::Io::Block) => return Res::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
         None => {}
     }
     if let Some(r) = crate::svcdev::uinput::sys_read(fd) {
@@ -814,44 +654,28 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             }
             Direct::No => {}
         }
-        let Some(d) = p.fd(fd) else {
-            return Src::Err(-EBADF);
-        };
+        let Some(d) = p.fd(fd) else { return Src::Err(-EBADF) };
         match &mut d.kind {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero
-            | FdKind::Random
-            | FdKind::File { .. }
-            | FdKind::RawPart(_)
-            | FdKind::Mem(..)
-            | FdKind::Hci(_)
-            | FdKind::Uinput(_) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
                 Some(off) => Src::Data(crate::eingabe::fb_lesen(off, n)),
                 None => Src::Err(-EINVAL),
             },
-            FdKind::Eingabe(e) if e.0 >= crate::input::FIRST => {
-                match crate::input::read(e.0, e.2, n) {
-                    Ok(Some(d)) => Src::Data(d),
-                    Ok(None) if d.flags & 0x800 != 0 => Src::Err(-11),
-                    Ok(None) => Src::Block(Wait::Poll(
-                        crate::socket::gen(),
-                        crate::arch::uptime_ms() + 8,
-                    )),
-                    Err(e) => Src::Err(e),
-                }
-            }
+            FdKind::Eingabe(e) if e.0 >= crate::input::FIRST => match crate::input::read(e.0, e.2, n) {
+                Ok(Some(d)) => Src::Data(d),
+                Ok(None) if d.flags & 0x800 != 0 => Src::Err(-11),
+                Ok(None) => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
+                Err(e) => Src::Err(e),
+            },
             FdKind::Eingabe(e) => match crate::eingabe::lesen(e.2, n) {
                 Some(d) => Src::Data(d),
                 None if d.flags & 0x800 != 0 => Src::Err(-11),
-                None => Src::Block(Wait::Poll(
-                    crate::socket::gen(),
-                    crate::arch::uptime_ms() + 8,
-                )),
+                None => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
             },
             FdKind::PipeR(pp) | FdKind::UnixConn(pp, _) => {
                 let mut b = pp.buf.lock();
@@ -916,11 +740,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     })
     .unwrap_or(Src::Err(-EBADF));
     match src {
-        Src::Data(d) => Res::Val(if put(buf, &d) || d.is_empty() {
-            d.len() as i64
-        } else {
-            -EFAULT
-        }),
+        Src::Data(d) => Res::Val(if put(buf, &d) || d.is_empty() { d.len() as i64 } else { -EFAULT }),
         Src::Done(v) => Res::Val(v),
         Src::Err(e) => Res::Val(e),
         Src::Block(w) => Res::Block(w),
@@ -928,11 +748,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         Src::SigFd(m, nb) => {
             let sig = take_signal(m);
             if sig == 0 {
-                return if nb {
-                    Res::Val(-11)
-                } else {
-                    Res::Block(Wait::Poll(crate::socket::gen(), 0))
-                };
+                return if nb { Res::Val(-11) } else { Res::Block(Wait::Poll(crate::socket::gen(), 0)) };
             }
             let mut b = vec![0u8; 128];
             b[0..4].copy_from_slice(&(sig as u32).to_le_bytes());
@@ -957,11 +773,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 }
             }
             drop(t);
-            Res::Val(if put(buf, &out) {
-                out.len() as i64
-            } else {
-                -EFAULT
-            })
+            Res::Val(if put(buf, &out) { out.len() as i64 } else { -EFAULT })
         }
     }
 }
@@ -983,25 +795,13 @@ fn file_room(data: &mut Arc<Vec<u8>>, len: usize) -> Option<&mut Vec<u8>> {
 }
 
 /// Write `data` at `*pos` into the buffer of an open file at host path `path`.
-fn file_write(
-    fd_data: &mut Arc<Vec<u8>>,
-    pos: &mut u64,
-    path: &str,
-    data: &[u8],
-) -> Result<(), i64> {
-    let Some(end) = pos
-        .checked_add(data.len() as u64)
-        .filter(|&e| e <= MAX_FILE_BYTES)
-    else {
-        return Err(-EFBIG);
-    };
+fn file_write(fd_data: &mut Arc<Vec<u8>>, pos: &mut u64, path: &str, data: &[u8]) -> Result<(), i64> {
+    let Some(end) = pos.checked_add(data.len() as u64).filter(|&e| e <= MAX_FILE_BYTES) else { return Err(-EFBIG) };
     // quota of the RAM tree the file lives in (tmpfs, RAM layer); other files have none
     if !fs::grow(path, end.max(fd_data.len() as u64)) {
         return Err(-ENOSPC);
     }
-    let Some(v) = file_room(fd_data, end as usize) else {
-        return Err(-ENOMEM);
-    };
+    let Some(v) = file_room(fd_data, end as usize) else { return Err(-ENOMEM) };
     let s = *pos as usize;
     if v.len() < s + data.len() {
         v.resize(s + data.len(), 0);
@@ -1051,18 +851,14 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
     // what the pipe can hold at once, not the whole request each time the writer wakes up
     let piece = if want > crate::pipe::PIPE_DEFAULT as usize {
         with(|p| match p.fd(fd).map(|d| &d.kind) {
-            Some(FdKind::PipeW(pp)) | Some(FdKind::UnixConn(_, pp)) => {
-                want.min(pp.capacity() as usize)
-            }
+            Some(FdKind::PipeW(pp)) | Some(FdKind::UnixConn(_, pp)) => want.min(pp.capacity() as usize),
             _ => want,
         })
         .unwrap_or(want)
     } else {
         want
     };
-    let Some(data) = get(buf, piece) else {
-        return Res::Val(-EFAULT);
-    };
+    let Some(data) = get(buf, piece) else { return Res::Val(-EFAULT) };
     enum Out {
         Echo,
         Done(usize),
@@ -1072,9 +868,7 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
         Res(Res),
     }
     let r = with(|p| {
-        let Some(d) = p.fd(fd) else {
-            return Out::Res(Res::Val(-EBADF));
-        };
+        let Some(d) = p.fd(fd) else { return Out::Res(Res::Val(-EBADF)) };
         let nonblock = d.flags & 0x800 != 0;
         match &mut d.kind {
             FdKind::Console => Out::Echo,
@@ -1086,21 +880,11 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 }
                 Err(e) => Out::Res(Res::Val(e)),
             },
-            FdKind::File {
-                data: fd_data,
-                pos,
-                write,
-                append,
-                dirty,
-                path,
-            } => {
+            FdKind::File { data: fd_data, pos, write, append, dirty, path } => {
                 if !*write {
                     return Out::Res(Res::Val(-EBADF));
                 }
-                if crate::groups::files::is_inside(path)
-                    || path == PIPE_MAX_FILE
-                    || crate::devices::sysfs::is_control(path)
-                {
+                if crate::groups::files::is_inside(path) || path == PIPE_MAX_FILE || crate::devices::sysfs::is_control(path) {
                     return Out::Group(path.clone());
                 }
                 if *append {
@@ -1134,17 +918,11 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
                 if pp.read_closed() {
                     p.pending |= 1 << (crate::signal::SIGPIPE - 1);
                     let done = core::mem::take(&mut p.io_done);
-                    return if done > 0 {
-                        Out::Done(done as usize)
-                    } else {
-                        Out::Res(Res::Val(-EPIPE))
-                    };
+                    return if done > 0 { Out::Done(done as usize) } else { Out::Res(Res::Val(-EPIPE)) };
                 }
                 let seen = crate::socket::gen();
                 match pipe_write(pp, &data, nonblock) {
-                    Ok(k) if k == want || nonblock => {
-                        Out::Done(k + core::mem::take(&mut p.io_done) as usize)
-                    }
+                    Ok(k) if k == want || nonblock => Out::Done(k + core::mem::take(&mut p.io_done) as usize),
                     // a blocking writer waits until everything is delivered (counter read before the
                     // write: room made in between is not missed)
                     Ok(k) => Out::Res(Res::Partial(k as u64, Wait::Net(seen))),
@@ -1208,12 +986,9 @@ fn sys_pwrite(fd: u64, buf: u64, n: u64, off: u64) -> i64 {
     if let Some(r) = crate::rawpart::sys_write(fd, buf, n, Some(off)) {
         return r;
     }
-    let ist_fb =
-        with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Fb(_)))).unwrap_or(false);
+    let ist_fb = with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Fb(_)))).unwrap_or(false);
     if ist_fb {
-        let Some(data) = get(buf, n.min(1 << 25) as usize) else {
-            return -EFAULT;
-        };
+        let Some(data) = get(buf, n.min(1 << 25) as usize) else { return -EFAULT };
         return crate::eingabe::fb_schreiben(off, &data);
     }
     // sonst: Position merken, schreiben, zurücksetzen
@@ -1237,17 +1012,8 @@ fn sys_pwrite(fd: u64, buf: u64, n: u64, off: u64) -> i64 {
 }
 
 fn iov(base: u64, cnt: u64) -> Vec<(u64, u64)> {
-    let Some(b) = get(base, (cnt.min(1024) * 16) as usize) else {
-        return Vec::new();
-    };
-    b.chunks(16)
-        .map(|c| {
-            (
-                u64::from_le_bytes(c[0..8].try_into().unwrap()),
-                u64::from_le_bytes(c[8..16].try_into().unwrap()),
-            )
-        })
-        .collect()
+    let Some(b) = get(base, (cnt.min(1024) * 16) as usize) else { return Vec::new() };
+    b.chunks(16).map(|c| (u64::from_le_bytes(c[0..8].try_into().unwrap()), u64::from_le_bytes(c[8..16].try_into().unwrap()))).collect()
 }
 
 fn sys_writev(fd: u64, base: u64, cnt: u64) -> Res {
@@ -1310,55 +1076,26 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     }
     let path = loc.host.clone();
     let acc = flags & 3;
-    let (creat, excl, trunc, append, dironly, cloexec) = (
-        flags & 0x40 != 0,
-        flags & 0x80 != 0,
-        flags & 0x200 != 0,
-        flags & 0x400 != 0,
-        flags & 0x10000 != 0,
-        flags & 0x80000 != 0,
-    );
+    let (creat, excl, trunc, append, dironly, cloexec) = (flags & 0x40 != 0, flags & 0x80 != 0, flags & 0x200 != 0, flags & 0x400 != 0, flags & 0x10000 != 0, flags & 0x80000 != 0);
     let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::NONE);
     // namespace handle /proc/<pid>/ns/{mnt,pid} (argument of setns)
     if path.starts_with("/proc/") {
         if let Some((tgid, entry)) = crate::procfs::pid_entry(&path) {
             if let Some(kind) = entry.strip_prefix("ns/") {
-                let Some(ns) = proc::ns_ref(tgid, kind) else {
-                    return -ENOENT;
-                };
-                return with(|p| {
-                    p.add_fd(
-                        Fd {
-                            kind: FdKind::Ns(ns),
-                            cloexec,
-                            flags: flags as u32,
-                        },
-                        0,
-                    )
-                })
-                .unwrap_or(-EBADF);
+                let Some(ns) = proc::ns_ref(tgid, kind) else { return -ENOENT };
+                return with(|p| p.add_fd(Fd { kind: FdKind::Ns(ns), cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF);
             }
         }
-        if acc != 0
-            && (path == "/proc/ultar/firewall" || path == "/proc/ultar/verbund")
-            && !rights.has(Rights::NET_ADMIN)
-        {
+        if acc != 0 && (path == "/proc/ultar/firewall" || path == "/proc/ultar/verbund") && !rights.has(Rights::NET_ADMIN) {
             return -EACCES;
         }
     }
     // limits are changed through the group tree and /proc/sys/fs/pipe-max-size: only with the right
-    if acc != 0
-        && (crate::groups::files::is_tree(&path) || path == PIPE_MAX_FILE)
-        && !rights.has(Rights::MANAGE_GROUPS)
-    {
+    if acc != 0 && (crate::groups::files::is_tree(&path) || path == PIPE_MAX_FILE) && !rights.has(Rights::MANAGE_GROUPS) {
         return -EACCES;
     }
     // drivers are bound and unbound through the device tree: only its control files, only with the right
-    if acc != 0
-        && crate::devices::sysfs::is_tree(&path)
-        && !(crate::devices::sysfs::is_control(&path)
-            && rights.has(crate::devices::sysfs::right_for(&path)))
-    {
+    if acc != 0 && crate::devices::sysfs::is_tree(&path) && !(crate::devices::sysfs::is_control(&path) && rights.has(crate::devices::sysfs::right_for(&path))) {
         return -EACCES;
     }
     if let Err(e) = crate::perm::open_gate(&path, acc, trunc, creat) {
@@ -1370,16 +1107,13 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             "null" => FdKind::Null,
             "zero" => FdKind::Zero,
             "urandom" | "random" => FdKind::Random,
-            d if d.starts_with("ultar/part/") => {
-                match crate::rawpart::open(d, acc != 0, rights.has(Rights::RAW_DEVICE)) {
-                    Ok(k) => k,
-                    Err(e) => return e,
-                }
-            }
+            d if d.starts_with("ultar/part/") => match crate::rawpart::open(d, acc != 0, rights.has(Rights::RAW_DEVICE)) {
+                Ok(k) => k,
+                Err(e) => return e,
+            },
             "ultar/disk" | "ultar/medium" => {
                 let dev = path.strip_prefix("/dev/").unwrap_or("");
-                match crate::rawpart::open_installer(dev, acc != 0, rights.has(Rights::RAW_DEVICE))
-                {
+                match crate::rawpart::open_installer(dev, acc != 0, rights.has(Rights::RAW_DEVICE)) {
                     Ok(k) => k,
                     Err(e) => return e,
                 }
@@ -1388,23 +1122,13 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 Ok(k) => k,
                 Err(e) => return e,
             },
-            "fb0" => match if acc == 0 {
-                crate::eingabe::FbFd::lesend()
-            } else {
-                crate::eingabe::FbFd::neu()
-            } {
+            "fb0" => match if acc == 0 { crate::eingabe::FbFd::lesend() } else { crate::eingabe::FbFd::neu() } {
                 Some(f) => FdKind::Fb(Arc::new(f)),
                 None => return -19,
             },
             "input/event0" | "input/event1" | "input/usb" => {
-                let Some(art) = path.rsplit('/').next().and_then(crate::input::parse) else {
-                    return -ENOENT;
-                };
-                FdKind::Eingabe(Arc::new(if acc == 1 {
-                    crate::eingabe::EingabeFd::schreibend(art)
-                } else {
-                    crate::eingabe::EingabeFd::neu(art)
-                }))
+                let Some(art) = path.rsplit('/').next().and_then(crate::input::parse) else { return -ENOENT };
+                FdKind::Eingabe(Arc::new(if acc == 1 { crate::eingabe::EingabeFd::schreibend(art) } else { crate::eingabe::EingabeFd::neu(art) }))
             }
             _ => FdKind::Console,
         },
@@ -1412,13 +1136,7 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if acc != 0 {
                 return -EISDIR;
             }
-            FdKind::Dir {
-                ents: Arc::new(ents),
-                pos: 0,
-                path: path.clone(),
-                view: loc.view.clone(),
-                tag: loc.tag,
-            }
+            FdKind::Dir { ents: Arc::new(ents), pos: 0, path: path.clone(), view: loc.view.clone(), tag: loc.tag }
         }
         Some(fs::Node::File(data)) => {
             if dironly {
@@ -1427,19 +1145,8 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
             if acc != 0 && loc.read_only {
                 return -EROFS;
             }
-            let data = if trunc && acc != 0 {
-                Arc::new(Vec::new())
-            } else {
-                data
-            };
-            FdKind::File {
-                data,
-                pos: 0,
-                path: path.clone(),
-                append,
-                write: acc != 0,
-                dirty: trunc && acc != 0,
-            }
+            let data = if trunc && acc != 0 { Arc::new(Vec::new()) } else { data };
+            FdKind::File { data, pos: 0, path: path.clone(), append, write: acc != 0, dirty: trunc && acc != 0 }
         }
         None if creat => {
             if loc.read_only {
@@ -1461,37 +1168,18 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
                 return -ENOSPC;
             }
             crate::perm::created(&path, crate::perm::S_IFREG, _mode as u32);
-            FdKind::File {
-                data: empty,
-                pos: 0,
-                path: path.clone(),
-                append,
-                write: true,
-                dirty: false,
-            }
+            FdKind::File { data: empty, pos: 0, path: path.clone(), append, write: true, dirty: false }
         }
         None => return -ENOENT,
     };
-    with(|p| {
-        p.add_fd(
-            Fd {
-                kind,
-                cloexec,
-                flags: flags as u32,
-            },
-            0,
-        )
-    })
-    .unwrap_or(-EBADF)
+    with(|p| p.add_fd(Fd { kind, cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF)
 }
 
 /// Host paths at or below `/proc` and `/dev`: the kernel's own trees. They are the same for every
 /// process, so a confined view (a cell) must not add, replace or remove entries there – such an entry
 /// would land in the host's global tree, visible to the host and to every other cell.
 fn kernel_tree(host: &str) -> bool {
-    ["/proc", "/dev"]
-        .iter()
-        .any(|d| crate::isolation::mount::below(host, d).is_some())
+    ["/proc", "/dev"].iter().any(|d| crate::isolation::mount::below(host, d).is_some())
 }
 
 /// Largest size of one file held in memory (RAM layer, tmpfs, descriptor buffers). A size beyond it
@@ -1522,11 +1210,7 @@ fn stat_buf(mode: u32, size: u64, ino: u64, rdev: u64) -> Vec<u8> {
 /// `struct stat` of the entry at host path `host` with its real mode, owner and group (perm.rs);
 /// `fallback` is the mode of an entry that has gone meanwhile.
 fn stat_entry(host: &str, fallback: u32, size: u64) -> Vec<u8> {
-    let a = crate::perm::of(host).unwrap_or(crate::perm::Attr {
-        mode: fallback,
-        uid: 0,
-        gid: 0,
-    });
+    let a = crate::perm::of(host).unwrap_or(crate::perm::Attr { mode: fallback, uid: 0, gid: 0 });
     let mut b = stat_buf(a.mode, size, ino(host), crate::perm::rdev(host));
     b[28..32].copy_from_slice(&a.uid.to_le_bytes());
     b[32..36].copy_from_slice(&a.gid.to_le_bytes());
@@ -1542,13 +1226,7 @@ fn sys_fsync(fd: u64) -> i64 {
         return r;
     }
     let job = with(|p| match p.fd(fd).map(|d| &d.kind) {
-        Some(FdKind::File {
-            data,
-            path,
-            write: true,
-            dirty: true,
-            ..
-        }) => Ok(Some((path.clone(), data.clone()))),
+        Some(FdKind::File { data, path, write: true, dirty: true, .. }) => Ok(Some((path.clone(), data.clone()))),
         Some(FdKind::File { .. }) | Some(FdKind::Dir { .. }) => Ok(None),
         Some(_) => Err(-EINVAL),
         None => Err(-EBADF),
@@ -1577,13 +1255,7 @@ fn sys_close(fd: u64) -> i64 {
     let taken = with(|p| p.g.fds.get_mut(fd as u32 as usize).and_then(Option::take)).flatten();
     let Some(mut f) = taken else { return -EBADF };
     let job = match &mut f.kind {
-        FdKind::File {
-            data,
-            path,
-            write: true,
-            dirty,
-            ..
-        } if *dirty => {
+        FdKind::File { data, path, write: true, dirty, .. } if *dirty => {
             // stored here, not again when the descriptor is dropped
             *dirty = false;
             Some((path.clone(), data.clone()))
@@ -1598,9 +1270,7 @@ fn sys_close(fd: u64) -> i64 {
 }
 
 fn ino(path: &str) -> u64 {
-    path.bytes().fold(1469598103934665603u64, |h, c| {
-        (h ^ c as u64).wrapping_mul(1099511628211)
-    }) | 1
+    path.bytes().fold(1469598103934665603u64, |h, c| (h ^ c as u64).wrapping_mul(1099511628211)) | 1
 }
 
 fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
@@ -1615,11 +1285,7 @@ fn sys_stat_path(dirfd: i64, path: u64, buf: u64, flags: u64) -> i64 {
     let path = loc.host.clone();
     if flags & 0x100 != 0 {
         if let Some(target) = link_at(&loc) {
-            return if put(buf, &stat_entry(&path, 0o120777, target.len() as u64)) {
-                0
-            } else {
-                -EFAULT
-            };
+            return if put(buf, &stat_entry(&path, 0o120777, target.len() as u64)) { 0 } else { -EFAULT };
         }
     }
     let b = match fs::stat(&path) {
@@ -1641,9 +1307,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
         let d = p.fd(fd)?;
         Some(match &d.kind {
             FdKind::Console => Ok(stat_buf(0o020620, 0, 3, (136 << 8) | 0)),
-            FdKind::Null | FdKind::Zero | FdKind::Random => {
-                Ok(stat_buf(0o020666, 0, 4, (1 << 8) | 3))
-            }
+            FdKind::Null | FdKind::Zero | FdKind::Random => Ok(stat_buf(0o020666, 0, 4, (1 << 8) | 3)),
             FdKind::File { data, path, .. } => Err((path.clone(), 0o100755, data.len() as u64)),
             // a memory object: its size, and as many 512-byte blocks as its pages hold (all of it is allocated)
             FdKind::Mem(m, _) => {
@@ -1656,9 +1320,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Sock(h) => Ok(stat_buf(0o140777, 0, 6 + h.0 as u64, 0)),
             FdKind::SigFd(_) => Ok(stat_buf(0o000600, 0, 7, 0)),
             FdKind::UnixConn(..) | FdKind::UnixSock(_) => Ok(stat_buf(0o140777, 0, 8, 0)),
-            FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => {
-                Ok(stat_buf(0o000600, 0, 9, 0))
-            }
+            FdKind::Epoll(_) | FdKind::EventFd(..) | FdKind::TimerFd(_) => Ok(stat_buf(0o000600, 0, 9, 0)),
             FdKind::Fb(_) => Err((String::from("/dev/fb0"), 0o020600, 0)),
             FdKind::Eingabe(e) => Err((alloc::format!("/dev/input/event{}", e.0), 0o020600, 0)),
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
@@ -1729,28 +1391,16 @@ fn sys_getdents(fd: u64, buf: u64, count: u64) -> i64 {
     // one call fills at most 64 KiB (the caller asks again for the rest)
     let count = count.min(65536) as usize;
     let out = with(|p| {
-        let Some(d) = p.fd(fd) else {
-            return Err(-EBADF);
-        };
-        let FdKind::Dir {
-            ents, pos, path, ..
-        } = &mut d.kind
-        else {
-            return Err(-ENOTDIR);
-        };
-        let Some(mut out) = crate::mem::try_with_capacity::<u8>(count) else {
-            return Err(-ENOMEM);
-        };
+        let Some(d) = p.fd(fd) else { return Err(-EBADF) };
+        let FdKind::Dir { ents, pos, path, .. } = &mut d.kind else { return Err(-ENOTDIR) };
+        let Some(mut out) = crate::mem::try_with_capacity::<u8>(count) else { return Err(-ENOMEM) };
         // entries 0 and 1 are "." and "..", then the listing
         let total = ents.len() + 2;
         while *pos < total {
             let (name, t) = match *pos {
                 0 => (".", 4u8),
                 1 => ("..", 4),
-                i => (
-                    ents[i - 2].name.as_str(),
-                    if ents[i - 2].dir { 4 } else { 8 },
-                ),
+                i => (ents[i - 2].name.as_str(), if ents[i - 2].dir { 4 } else { 8 }),
             };
             let reclen = (19 + name.len() + 1 + 7) & !7;
             if out.len() + reclen > count {
@@ -1791,21 +1441,13 @@ fn sys_readlink(dirfd: i64, path: u64, buf: u64, n: u64) -> i64 {
         Err(e) => return e,
     };
     // /proc/<pid>/exe (own process) and /proc/<pid>/ns/*; otherwise a symbolic link of the file tree
-    let entry = if loc.host.starts_with("/proc/") {
-        crate::procfs::pid_entry(&loc.host)
-    } else {
-        None
-    };
+    let entry = if loc.host.starts_with("/proc/") { crate::procfs::pid_entry(&loc.host) } else { None };
     let t = match entry {
-        Some((tgid, "exe")) if tgid == proc::current_group() => {
-            with(|p| p.g.exe.clone()).unwrap_or_default()
-        }
-        Some((tgid, "ns/mnt")) | Some((tgid, "ns/pid")) => {
-            match crate::procfs::ns_name(tgid, &loc.host[loc.host.len() - 3..]) {
-                Some(name) => name,
-                None => return -ENOENT,
-            }
-        }
+        Some((tgid, "exe")) if tgid == proc::current_group() => with(|p| p.g.exe.clone()).unwrap_or_default(),
+        Some((tgid, "ns/mnt")) | Some((tgid, "ns/pid")) => match crate::procfs::ns_name(tgid, &loc.host[loc.host.len() - 3..]) {
+            Some(name) => name,
+            None => return -ENOENT,
+        },
         Some(_) => return -EINVAL,
         None => match link_at(&loc) {
             Some(target) => target,
@@ -1827,13 +1469,9 @@ fn sys_sendfile(out: u64, inp: u64, offp: u64, count: u64) -> Res {
         _ => None,
     })
     .flatten();
-    let Some((data, pos)) = src else {
-        return Res::Val(-EINVAL);
-    };
+    let Some((data, pos)) = src else { return Res::Val(-EINVAL) };
     let s = (pos as usize).min(data.len());
-    let e = s
-        .saturating_add(count.min(1 << 24) as usize)
-        .min(data.len());
+    let e = s.saturating_add(count.min(1 << 24) as usize).min(data.len());
     if s == e {
         return Res::Val(0);
     }
@@ -1855,21 +1493,12 @@ fn sys_sendfile(out: u64, inp: u64, offp: u64, count: u64) -> Res {
 /// count); if nothing fits the caller waits and repeats the call, or gets `EAGAIN`.
 fn write_bytes(fd: u64, data: &[u8]) -> Res {
     let r = with(|p| {
-        let Some(d) = p.fd(fd) else {
-            return Err(Res::Val(-EBADF));
-        };
+        let Some(d) = p.fd(fd) else { return Err(Res::Val(-EBADF)) };
         let nonblock = d.flags & 0x800 != 0;
         match &mut d.kind {
             FdKind::Console => Ok(None),
             FdKind::Null => Ok(Some(data.len())),
-            FdKind::File {
-                data: fd_data,
-                pos,
-                write: true,
-                dirty,
-                path,
-                ..
-            } => match file_write(fd_data, pos, path, data) {
+            FdKind::File { data: fd_data, pos, write: true, dirty, path, .. } => match file_write(fd_data, pos, path, data) {
                 Ok(()) => {
                     *dirty = true;
                     Ok(Some(data.len()))
@@ -1907,15 +1536,9 @@ fn sys_statfs(by_fd: bool, what: u64, buf: u64) -> i64 {
         })
         .flatten()
     } else {
-        ustr(what)
-            .and_then(|p| locate(-100, &p, true).ok())
-            .map(|l| l.host)
+        ustr(what).and_then(|p| locate(-100, &p, true).ok()).map(|l| l.host)
     };
-    let (mut total, mut free, mut kind) = (
-        crate::mem::total_bytes(),
-        crate::mem::free_bytes(),
-        0xEF53u64,
-    );
+    let (mut total, mut free, mut kind) = (crate::mem::total_bytes(), crate::mem::free_bytes(), 0xEF53u64);
     if let Some((used, quota)) = host.as_deref().and_then(fs::ram_usage) {
         (total, free, kind) = (quota, quota.saturating_sub(used), 0x0102_1994);
     }
@@ -1938,9 +1561,7 @@ fn sys_statfs(by_fd: bool, what: u64, buf: u64) -> i64 {
 }
 
 fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
-    let (Some(o), Some(n)) = (ustr(op), ustr(np)) else {
-        return -EFAULT;
-    };
+    let (Some(o), Some(n)) = (ustr(op), ustr(np)) else { return -EFAULT };
     let (ol, nl) = match (locate(od, &o, false), locate(nd, &n, false)) {
         (Ok(o), Ok(n)) => (o, n),
         (Err(e), _) | (_, Err(e)) => return e,
@@ -1952,9 +1573,7 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     if kernel_tree(&nl.host) || ol.confined && kernel_tree(&ol.host) {
         return -EPERM;
     }
-    if let Err(e) =
-        crate::perm::may_remove(&ol.host).and_then(|_| crate::perm::may_remove(&nl.host))
-    {
+    if let Err(e) = crate::perm::may_remove(&ol.host).and_then(|_| crate::perm::may_remove(&nl.host)) {
         return e;
     }
     // a symbolic link is moved as a link (links exist on tmpfs only)
@@ -1973,9 +1592,7 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
     // a link at the new name is replaced, not written through
     let replaced_link = link_at(&nl).is_some();
     let (o, n) = (ol.host, nl.host);
-    let Some(data) = fs::read_all(&o) else {
-        return -ENOENT;
-    };
+    let Some(data) = fs::read_all(&o) else { return -ENOENT };
     if replaced_link {
         fs::unlink(&n);
     }
@@ -2002,13 +1619,7 @@ fn sys_ftruncate(fd: u64, len: u64) -> i64 {
     }
     with(|p| match p.fd(fd).map(|d| &mut d.kind) {
         Some(FdKind::File { write: true, .. }) if len > MAX_FILE_BYTES => -EFBIG,
-        Some(FdKind::File {
-            data,
-            write: true,
-            dirty,
-            path,
-            ..
-        }) => {
+        Some(FdKind::File { data, write: true, dirty, path, .. }) => {
             if len as usize > data.len() && !fs::grow(path, len) {
                 return -ENOSPC;
             }
@@ -2031,9 +1642,7 @@ fn sys_mkdir(dirfd: i64, path: u64, mode: u64) -> i64 {
     match locate(dirfd, &p, false) {
         Ok(loc) if loc.read_only => -EROFS,
         Ok(loc) if loc.confined && kernel_tree(&loc.host) => -EPERM,
-        Ok(loc) if fs::stat(&loc.host).is_none() && crate::perm::may_create(&loc.host).is_err() => {
-            -EACCES
-        }
+        Ok(loc) if fs::stat(&loc.host).is_none() && crate::perm::may_create(&loc.host).is_err() => -EACCES,
         Ok(loc) if fs::mkdir(&loc.host) => {
             crate::perm::created(&loc.host, crate::perm::S_IFDIR, mode as u32);
             0
@@ -2143,28 +1752,20 @@ fn sys_fcntl(fd: u64, cmd: u64, arg: u64) -> i64 {
         })
         .unwrap_or(-EBADF),
         1 => with(|p| p.fd(fd).map(|d| d.cloexec as i64).unwrap_or(-EBADF)).unwrap_or(-EBADF),
-        2 => with(|p| {
-            p.fd(fd)
-                .map(|d| {
-                    d.cloexec = arg & 1 != 0;
-                    0
-                })
-                .unwrap_or(-EBADF)
-        })
+        2 => with(|p| p.fd(fd).map(|d| {
+            d.cloexec = arg & 1 != 0;
+            0
+        }).unwrap_or(-EBADF))
         .unwrap_or(-EBADF),
         3 => with(|p| p.fd(fd).map(|d| d.flags as i64).unwrap_or(-EBADF)).unwrap_or(-EBADF),
         4 => {
             if let Some(id) = sock_id(fd) {
                 crate::socket::set_nonblock(id, arg & 0x800 != 0);
             }
-            with(|p| {
-                p.fd(fd)
-                    .map(|d| {
-                        d.flags = (d.flags & 3) | (arg as u32 & !3);
-                        0
-                    })
-                    .unwrap_or(-EBADF)
-            })
+            with(|p| p.fd(fd).map(|d| {
+                d.flags = (d.flags & 3) | (arg as u32 & !3);
+                0
+            }).unwrap_or(-EBADF))
             .unwrap_or(-EBADF)
         }
         // F_ADD_SEALS / F_GET_SEALS of a memory object
@@ -2193,9 +1794,7 @@ fn sys_fcntl(fd: u64, cmd: u64, arg: u64) -> i64 {
                 return pipe.capacity() as i64;
             }
             // above the configured maximum only with the right to manage resource groups
-            if arg > crate::pipe::PIPE_MAX_CEILING
-                || arg > crate::pipe::max_size() && !calls::holds(Rights::MANAGE_GROUPS)
-            {
+            if arg > crate::pipe::PIPE_MAX_CEILING || arg > crate::pipe::max_size() && !calls::holds(Rights::MANAGE_GROUPS) {
                 return -EPERM;
             }
             match pipe.set_capacity(arg) {
@@ -2217,25 +1816,11 @@ fn sys_pipe(fds: u64, flags: u64) -> i64 {
     let (r, w) = with(|pr| {
         // O_NONBLOCK (0x800) aus pipe2 übernehmen
         let nb = (flags & 0x800) as u32;
-        let r = pr.add_fd(
-            Fd {
-                kind: FdKind::PipeR(p.clone()),
-                cloexec: cl,
-                flags: nb,
-            },
-            0,
-        );
+        let r = pr.add_fd(Fd { kind: FdKind::PipeR(p.clone()), cloexec: cl, flags: nb }, 0);
         if r < 0 {
             return (r, r);
         }
-        let w = pr.add_fd(
-            Fd {
-                kind: FdKind::PipeW(p.clone()),
-                cloexec: cl,
-                flags: 1 | nb,
-            },
-            0,
-        );
+        let w = pr.add_fd(Fd { kind: FdKind::PipeW(p.clone()), cloexec: cl, flags: 1 | nb }, 0);
         if w < 0 {
             pr.g.fds[r as usize] = None;
             return (w, w);
@@ -2280,30 +1865,10 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
     }
     // für alle Deskriptoren: FIOCLEX/FIONCLEX (close-on-exec), FIONBIO (nicht blockierend)
     match req {
-        0x5451 | 0x5450 => {
-            return with(|p| {
-                p.fd(fd)
-                    .map(|d| d.cloexec = req == 0x5451)
-                    .map(|_| 0)
-                    .unwrap_or(-EBADF)
-            })
-            .unwrap_or(-EBADF)
-        }
+        0x5451 | 0x5450 => return with(|p| p.fd(fd).map(|d| d.cloexec = req == 0x5451).map(|_| 0).unwrap_or(-EBADF)).unwrap_or(-EBADF),
         0x5421 => {
             let v = get(arg, 4).map(|b| b != [0, 0, 0, 0]).unwrap_or(false);
-            return with(|p| {
-                p.fd(fd)
-                    .map(|d| {
-                        if v {
-                            d.flags |= 0x800
-                        } else {
-                            d.flags &= !0x800
-                        }
-                    })
-                    .map(|_| 0)
-                    .unwrap_or(-EBADF)
-            })
-            .unwrap_or(-EBADF);
+            return with(|p| p.fd(fd).map(|d| if v { d.flags |= 0x800 } else { d.flags &= !0x800 }).map(|_| 0).unwrap_or(-EBADF)).unwrap_or(-EBADF);
         }
         _ => {}
     }
@@ -2326,18 +1891,10 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             Some(b) => {
                 // variable-length requests (EVIOCGNAME, EVIOCGBIT, …): at most the length in the request
                 let var = crate::input::returns_len(req);
-                let max = if var {
-                    ((req >> 16) & 0x3fff) as usize
-                } else {
-                    b.len()
-                };
+                let max = if var { ((req >> 16) & 0x3fff) as usize } else { b.len() };
                 let b = &b[..b.len().min(max)];
                 if put(arg, b) {
-                    if var {
-                        b.len() as i64
-                    } else {
-                        0
-                    }
+                    if var { b.len() as i64 } else { 0 }
                 } else {
                     -EFAULT
                 }
@@ -2345,14 +1902,9 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             None => -EINVAL,
         };
     }
-    let console =
-        with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Console))).unwrap_or(false);
+    let console = with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Console))).unwrap_or(false);
     if !console {
-        return if with(|p| p.fd(fd).is_some()).unwrap_or(false) {
-            -ENOTTY
-        } else {
-            -EBADF
-        };
+        return if with(|p| p.fd(fd).is_some()).unwrap_or(false) { -ENOTTY } else { -EBADF };
     }
     match req {
         0x5401 => {
@@ -2373,9 +1925,7 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
             }
         }
         0x5402..=0x5404 => {
-            let Some(b) = get(arg, 36) else {
-                return -EFAULT;
-            };
+            let Some(b) = get(arg, 36) else { return -EFAULT };
             let lflag = u32::from_le_bytes(b[12..16].try_into().unwrap());
             let mut t = TTY.lock();
             t.icanon = lflag & 2 != 0;
@@ -2411,32 +1961,17 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
 /// process, those parked at any other thread (`signal::send_locked` puts a signal that every thread
 /// blocks on one of them) – what a `signalfd` sees, in whichever thread it is read.
 fn group_pending(ps: &[alloc::boxed::Box<Proc>], me: u64) -> u64 {
-    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else {
-        return 0;
-    };
-    ps.iter()
-        .filter(|p| {
-            p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead)
-        })
-        .fold(0, |a, p| a | p.pending)
+    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else { return 0 };
+    ps.iter().filter(|p| p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead)).fold(0, |a, p| a | p.pending)
 }
 
 /// Take the lowest signal of `mask` pending for the calling process (own thread first); 0: none.
 fn take_signal(mask: u64) -> u64 {
     let mut ps = proc::PROCS.lock();
     let me = proc::current();
-    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else {
-        return 0;
-    };
-    let live =
-        |p: &Proc| p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead);
-    let Some(i) = ps
-        .iter()
-        .position(|p| p.pid == me && p.pending & mask != 0)
-        .or_else(|| ps.iter().position(|p| live(p) && p.pending & mask != 0))
-    else {
-        return 0;
-    };
+    let Some(tgid) = ps.iter().find(|p| p.pid == me).map(|p| p.tgid) else { return 0 };
+    let live = |p: &Proc| p.tgid == tgid && !matches!(p.state, proc::State::Zombie(_) | proc::State::Dead);
+    let Some(i) = ps.iter().position(|p| p.pid == me && p.pending & mask != 0).or_else(|| ps.iter().position(|p| live(p) && p.pending & mask != 0)) else { return 0 };
     let sig = (ps[i].pending & mask).trailing_zeros() as u64 + 1;
     ps[i].pending &= !(1 << (sig - 1));
     sig
@@ -2447,29 +1982,17 @@ fn ready_of(fd: i64, ev: u32, inp: bool) -> u32 {
     let mut ps = proc::PROCS.lock();
     let me = proc::current();
     let pending = group_pending(&ps, me);
-    ps.iter_mut()
-        .find(|p| p.pid == me)
-        .map(|p| fd_events(p, fd, ev, inp, pending))
-        .unwrap_or(0x20)
+    ps.iter_mut().find(|p| p.pid == me).map(|p| fd_events(p, fd, ev, inp, pending)).unwrap_or(0x20)
 }
 
 /// Bereitschaft eines Deskriptors (POLLIN 1, POLLOUT 4, POLLHUP 0x10, POLLNVAL 0x20)
 fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
-    let Some(d) = p.fd(fd as u64) else {
-        return 0x20;
-    };
+    let Some(d) = p.fd(fd as u64) else { return 0x20 };
     let r = |b: bool| (ev & 1) * b as u32;
     let w = |b: bool| (ev & 4) * b as u32;
     match &d.kind {
         FdKind::Console => r(inp) | w(true),
-        FdKind::PipeR(pp) => {
-            r(!pp.buf.lock().is_empty() || pp.writers.load(Ordering::SeqCst) == 0)
-                | if pp.writers.load(Ordering::SeqCst) == 0 {
-                    0x10
-                } else {
-                    0
-                }
-        }
+        FdKind::PipeR(pp) => r(!pp.buf.lock().is_empty() || pp.writers.load(Ordering::SeqCst) == 0) | if pp.writers.load(Ordering::SeqCst) == 0 { 0x10 } else { 0 },
         FdKind::PipeW(pp) => w(pp.writable()) | if pp.read_closed() { 8 } else { 0 },
         FdKind::Sock(h) => {
             let (rr, ww) = crate::socket::readiness(h.0);
@@ -2482,15 +2005,9 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
             r(!rx.buf.lock().is_empty() || rx.write_closed())
                 | w(!tx.read_closed() && tx.writable())
                 | if rx.write_closed() { ev & 0x2000 } else { 0 }
-                | if rx.write_closed() && tx.read_closed() {
-                    0x10
-                } else {
-                    0
-                }
+                | if rx.write_closed() && tx.read_closed() { 0x10 } else { 0 }
         }
-        FdKind::UnixSock(us) => {
-            r(matches!(&*us.lock(), proc::UnixState::Listening(_, q) if !q.is_empty()))
-        }
+        FdKind::UnixSock(us) => r(matches!(&*us.lock(), proc::UnixState::Listening(_, q) if !q.is_empty())),
         FdKind::EventFd(c, _) => r(*c.lock() > 0) | w(true),
         FdKind::TimerFd(t) => {
             let (dl, _) = *t.lock();
@@ -2509,22 +2026,14 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
 fn timer_deadline(p: &mut Proc, fds: &[i64]) -> u64 {
     let mut best = 0u64;
     for &fd in fds {
-        if let Some(Fd {
-            kind: FdKind::TimerFd(t),
-            ..
-        }) = p.fd(fd as u64)
-        {
+        if let Some(Fd { kind: FdKind::TimerFd(t), .. }) = p.fd(fd as u64) {
             let dl = t.lock().0;
             if dl != 0 && (best == 0 || dl < best) {
                 best = dl;
             }
         }
         // Eingabegeräte werden abgefragt (kein Interrupt): alle 8 ms neu prüfen
-        if let Some(Fd {
-            kind: FdKind::Eingabe(_) | FdKind::Hci(_),
-            ..
-        }) = p.fd(fd as u64)
-        {
+        if let Some(Fd { kind: FdKind::Eingabe(_) | FdKind::Hci(_), .. }) = p.fd(fd as u64) {
             let dl = crate::arch::uptime_ms() + 8;
             if best == 0 || dl < best {
                 best = dl;
@@ -2535,17 +2044,7 @@ fn timer_deadline(p: &mut Proc, fds: &[i64]) -> u64 {
 }
 
 fn sys_epoll_create(flags: u64) -> i64 {
-    with(|p| {
-        p.add_fd(
-            Fd {
-                kind: FdKind::Epoll(Arc::new(spin::Mutex::new(Vec::new()))),
-                cloexec: flags & 0x80000 != 0,
-                flags: 2,
-            },
-            0,
-        )
-    })
-    .unwrap_or(-EBADF)
+    with(|p| p.add_fd(Fd { kind: FdKind::Epoll(Arc::new(spin::Mutex::new(Vec::new()))), cloexec: flags & 0x80000 != 0, flags: 2 }, 0)).unwrap_or(-EBADF)
 }
 
 fn sys_epoll_ctl(epfd: u64, op: u64, fd: i64, ev: u64) -> i64 {
@@ -2557,10 +2056,7 @@ fn sys_epoll_ctl(epfd: u64, op: u64, fd: i64, ev: u64) -> i64 {
     let Some(e) = e else { return -EINVAL };
     let (events, data) = if ev != 0 {
         match get(ev, 12) {
-            Some(b) => (
-                u32::from_le_bytes(b[0..4].try_into().unwrap()),
-                u64::from_le_bytes(b[4..12].try_into().unwrap()),
-            ),
+            Some(b) => (u32::from_le_bytes(b[0..4].try_into().unwrap()), u64::from_le_bytes(b[4..12].try_into().unwrap())),
             None => return -EFAULT,
         }
     } else {
@@ -2625,11 +2121,7 @@ fn sys_epoll_wait(epfd: u64, out: u64, max: u64, timeout: i64) -> Res {
     }
     if n > 0 || timeout == 0 {
         poll_done();
-        return Res::Val(if n == 0 || put(out, &buf) {
-            n as i64
-        } else {
-            -EFAULT
-        });
+        return Res::Val(if n == 0 || put(out, &buf) { n as i64 } else { -EFAULT });
     }
     let fds: Vec<i64> = list.iter().map(|x| x.0 as i64).collect();
     let tdl = with(|p| timer_deadline(p, &fds)).unwrap_or(0);
@@ -2674,18 +2166,12 @@ fn poll_done() {
 
 /// A wait time given as `timespec` in milliseconds, rounded up (1 ns waits 1 ms, not 0); huge values saturate.
 fn timespec_ms_up(b: &[u8]) -> u64 {
-    let (sec, ns) = (
-        u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])),
-        u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])),
-    );
-    sec.saturating_mul(1000)
-        .saturating_add(ns.min(999_999_999).div_ceil(1_000_000))
-        .min(i64::MAX as u64)
+    let (sec, ns) = (u64::from_le_bytes(b[0..8].try_into().unwrap_or([0; 8])), u64::from_le_bytes(b[8..16].try_into().unwrap_or([0; 8])));
+    sec.saturating_mul(1000).saturating_add(ns.min(999_999_999).div_ceil(1_000_000)).min(i64::MAX as u64)
 }
 
 fn timespec_ms(b: &[u8]) -> u64 {
-    u64::from_le_bytes(b[0..8].try_into().unwrap()) * 1000
-        + u64::from_le_bytes(b[8..16].try_into().unwrap()) / 1_000_000
+    u64::from_le_bytes(b[0..8].try_into().unwrap()) * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) / 1_000_000
 }
 
 fn sys_timerfd_settime(fd: u64, flags: u64, new: u64, old: u64) -> i64 {
@@ -2695,9 +2181,7 @@ fn sys_timerfd_settime(fd: u64, flags: u64, new: u64, old: u64) -> i64 {
     })
     .flatten();
     let Some(t) = t else { return -EINVAL };
-    let Some(b) = get(new, 32) else {
-        return -EFAULT;
-    };
+    let Some(b) = get(new, 32) else { return -EFAULT };
     let (iv, val) = (timespec_ms(&b[0..16]), timespec_ms(&b[16..32]));
     let now = crate::arch::uptime_ms();
     if old != 0 {
@@ -2724,9 +2208,7 @@ fn sys_timerfd_settime(fd: u64, flags: u64, new: u64, old: u64) -> i64 {
 }
 
 fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
-    let Some(b) = get(fds, (n.min(256) * 8) as usize) else {
-        return Res::Val(-EFAULT);
-    };
+    let Some(b) = get(fds, (n.min(256) * 8) as usize) else { return Res::Val(-EFAULT) };
     let seen = crate::socket::gen();
     poll_input();
     let inp = input_ready();
@@ -2747,10 +2229,7 @@ fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
         return Res::Val(ready);
     }
     let _ = has_sock_or_pipe(&b);
-    let fdl: Vec<i64> = b
-        .chunks(8)
-        .map(|c| i32::from_le_bytes(c[0..4].try_into().unwrap()) as i64)
-        .collect();
+    let fdl: Vec<i64> = b.chunks(8).map(|c| i32::from_le_bytes(c[0..4].try_into().unwrap()) as i64).collect();
     let tdl = with(|p| timer_deadline(p, &fdl)).unwrap_or(0);
     match poll_wait(timeout, tdl, seen) {
         Res::Val(v) => {
@@ -2765,13 +2244,7 @@ fn sys_poll(fds: u64, n: u64, timeout: i64) -> Res {
 fn has_sock_or_pipe(b: &[u8]) -> bool {
     b.chunks(8).any(|c| {
         let fd = i32::from_le_bytes(c[0..4].try_into().unwrap());
-        with(|p| {
-            matches!(
-                p.fd(fd as u64).map(|d| &d.kind),
-                Some(FdKind::Sock(_)) | Some(FdKind::PipeR(_))
-            )
-        })
-        .unwrap_or(false)
+        with(|p| matches!(p.fd(fd as u64).map(|d| &d.kind), Some(FdKind::Sock(_)) | Some(FdKind::PipeR(_)))).unwrap_or(false)
     })
 }
 
@@ -2789,11 +2262,7 @@ fn sys_select(n: u64, rfds: u64, wfds: u64, timeout_ms: i64) -> Res {
     let mut cnt = 0;
     for i in 0..n {
         let ev = ready_of(i as i64, 5, inp);
-        let kind = if ev & 0x20 != 0 {
-            None
-        } else {
-            Some(ev & 1 != 0)
-        };
+        let kind = if ev & 0x20 != 0 { None } else { Some(ev & 1 != 0) };
         let wready = ev & 4 != 0;
         if let Some(v) = &rd {
             if bit(v, i) && kind == Some(true) {
@@ -2851,21 +2320,11 @@ fn sys_reboot(cmd: u64) -> i64 {
     match cmd {
         0 | 0x89AB_CDEF => 0,
         0x0123_4567 => {
-            crate::kprintln!(
-                "[kern] {} ({} {})",
-                crate::sprache::t("neustart"),
-                crate::sprache::t("von_prozess"),
-                proc::current()
-            );
+            crate::kprintln!("[kern] {} ({} {})", crate::sprache::t("neustart"), crate::sprache::t("von_prozess"), proc::current());
             crate::power::neustart()
         }
         0x4321_FEDC | 0xCDEF_0123 => {
-            crate::kprintln!(
-                "[kern] {} ({} {})",
-                crate::sprache::t("aus"),
-                crate::sprache::t("von_prozess"),
-                proc::current()
-            );
+            crate::kprintln!("[kern] {} ({} {})", crate::sprache::t("aus"), crate::sprache::t("von_prozess"), proc::current());
             crate::power::aus()
         }
         _ => -EINVAL,
@@ -2873,15 +2332,10 @@ fn sys_reboot(cmd: u64) -> i64 {
 }
 
 fn sys_signalfd(fd: i64, mask: u64, flags: u64) -> i64 {
-    let Some(m) = get(mask, 8).map(|b| u64::from_le_bytes(b.try_into().unwrap())) else {
-        return -EFAULT;
-    };
+    let Some(m) = get(mask, 8).map(|b| u64::from_le_bytes(b.try_into().unwrap())) else { return -EFAULT };
     if fd >= 0 {
         return with(|p| match p.fd(fd as u64) {
-            Some(Fd {
-                kind: FdKind::SigFd(x),
-                ..
-            }) => {
+            Some(Fd { kind: FdKind::SigFd(x), .. }) => {
                 *x = m;
                 fd
             }
@@ -2889,33 +2343,13 @@ fn sys_signalfd(fd: i64, mask: u64, flags: u64) -> i64 {
         })
         .unwrap_or(-EBADF);
     }
-    with(|p| {
-        p.add_fd(
-            Fd {
-                kind: FdKind::SigFd(m),
-                cloexec: flags & 0x80000 != 0,
-                flags: (flags as u32) & 0x800,
-            },
-            0,
-        )
-    })
-    .unwrap_or(-EBADF)
+    with(|p| p.add_fd(Fd { kind: FdKind::SigFd(m), cloexec: flags & 0x80000 != 0, flags: (flags as u32) & 0x800 }, 0)).unwrap_or(-EBADF)
 }
 
 fn sys_socket(domain: u64, typ: u64, proto: u64) -> i64 {
     if domain == 1 {
         let st = Arc::new(spin::Mutex::new(proc::UnixState::Unbound));
-        return with(|p| {
-            p.add_fd(
-                Fd {
-                    kind: FdKind::UnixSock(st),
-                    cloexec: typ & 0x80000 != 0,
-                    flags: 2 | (typ as u32 & 0x800),
-                },
-                0,
-            )
-        })
-        .unwrap_or(-EBADF);
+        return with(|p| p.add_fd(Fd { kind: FdKind::UnixSock(st), cloexec: typ & 0x80000 != 0, flags: 2 | (typ as u32 & 0x800) }, 0)).unwrap_or(-EBADF);
     }
     if domain == crate::devices::events::AF_NETLINK {
         return crate::devices::events::socket(typ, proto);
@@ -2929,22 +2363,10 @@ fn sys_socket(domain: u64, typ: u64, proto: u64) -> i64 {
         _ => return -93,
     };
     // ENFILE: the socket table is full, or this group holds its share of it
-    let Some(id) = crate::socket::create(udp) else {
-        return -23;
-    };
+    let Some(id) = crate::socket::create(udp) else { return -23 };
     crate::socket::set_nonblock(id, typ & 0x800 != 0);
     let h = Arc::new(crate::socket::Handle(id));
-    with(|p| {
-        p.add_fd(
-            Fd {
-                kind: FdKind::Sock(h),
-                cloexec: typ & 0x80000 != 0,
-                flags: 2 | (typ as u32 & 0x800),
-            },
-            0,
-        )
-    })
-    .unwrap_or(-EBADF)
+    with(|p| p.add_fd(Fd { kind: FdKind::Sock(h), cloexec: typ & 0x80000 != 0, flags: 2 | (typ as u32 & 0x800) }, 0)).unwrap_or(-EBADF)
 }
 
 /// Name in a `sockaddr_un` and whether it is an abstract one (leading NUL: no node in the file tree).
@@ -2957,18 +2379,14 @@ fn unix_path(addr: u64, len: u64) -> Option<(String, bool)> {
     let abstract_name = raw.first() == Some(&0);
     let raw = if abstract_name { &raw[1..] } else { raw };
     let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-    Some((
-        String::from_utf8_lossy(&raw[..end]).into_owned(),
-        abstract_name,
-    ))
+    Some((String::from_utf8_lossy(&raw[..end]).into_owned(), abstract_name))
 }
 
 /// A listening Unix socket as the list sees it: weak, so the list never keeps a closed listener alive.
 type Listener = alloc::sync::Weak<spin::Mutex<proc::UnixState>>;
 
 /// Listening Unix sockets: host path, the socket, and who bound it (what a connector sees as its peer).
-static UNIX_LISTEN: spin::Mutex<Vec<(String, Listener, crate::uds::Peer)>> =
-    spin::Mutex::new(Vec::new());
+static UNIX_LISTEN: spin::Mutex<Vec<(String, Listener, crate::uds::Peer)>> = spin::Mutex::new(Vec::new());
 
 /// The listening socket `sock` closed (its path may meanwhile belong to a newer listener).
 pub fn unix_unlisten(sock: &Arc<spin::Mutex<proc::UnixState>>) {
@@ -2977,9 +2395,7 @@ pub fn unix_unlisten(sock: &Arc<spin::Mutex<proc::UnixState>>) {
         proc::UnixState::Listening(p, _) => p.clone(),
         _ => return,
     };
-    UNIX_LISTEN.lock().retain(|(p, s, _)| {
-        s.strong_count() > 0 && !(*p == path && core::ptr::eq(s.as_ptr(), Arc::as_ptr(sock)))
-    });
+    UNIX_LISTEN.lock().retain(|(p, s, _)| s.strong_count() > 0 && !(*p == path && core::ptr::eq(s.as_ptr(), Arc::as_ptr(sock))));
 }
 
 fn unix_sock(fd: u64) -> Option<Arc<spin::Mutex<proc::UnixState>>> {
@@ -3000,27 +2416,7 @@ fn sys_socketpair(domain: u64, _typ: u64, sv: u64) -> i64 {
         crate::uds::mark(r, w, crate::uds::me());
     }
     let cl = _typ & 0x80000 != 0;
-    let (x, y) = with(|p| {
-        (
-            p.add_fd(
-                Fd {
-                    kind: a,
-                    cloexec: cl,
-                    flags: 2,
-                },
-                0,
-            ),
-            p.add_fd(
-                Fd {
-                    kind: b,
-                    cloexec: cl,
-                    flags: 2,
-                },
-                0,
-            ),
-        )
-    })
-    .unwrap_or((-1, -1));
+    let (x, y) = with(|p| (p.add_fd(Fd { kind: a, cloexec: cl, flags: 2 }, 0), p.add_fd(Fd { kind: b, cloexec: cl, flags: 2 }, 0))).unwrap_or((-1, -1));
     let mut out = Vec::new();
     out.extend_from_slice(&(x as i32).to_le_bytes());
     out.extend_from_slice(&(y as i32).to_le_bytes());
@@ -3033,31 +2429,20 @@ fn sys_socketpair(domain: u64, _typ: u64, sv: u64) -> i64 {
 
 fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
     if unix_sock(fd).is_some() {
-        let Some((path, abstract_name)) = unix_path(addr, len) else {
-            return Res::Val(-22);
-        };
+        let Some((path, abstract_name)) = unix_path(addr, len) else { return Res::Val(-22) };
         // socket paths live in the caller's view like every other path; the node decides who may connect
-        let path = match locate(-100, &path, true)
-            .and_then(|l| crate::uds::connect_node(&l, abstract_name).map(|_| l.host))
-        {
+        let path = match locate(-100, &path, true).and_then(|l| crate::uds::connect_node(&l, abstract_name).map(|_| l.host)) {
             Ok(host) => host,
             Err(e) => return Res::Val(e),
         };
-        let l = UNIX_LISTEN
-            .lock()
-            .iter()
-            .find(|(p, _, _)| *p == path)
-            .and_then(|(_, s, who)| Some((s.upgrade()?, *who)));
-        let Some((l, listener)) = l else {
-            return Res::Val(-111);
-        };
+        let l = UNIX_LISTEN.lock().iter().find(|(p, _, _)| *p == path).and_then(|(_, s, who)| Some((s.upgrade()?, *who)));
+        let Some((l, listener)) = l else { return Res::Val(-111) };
         let (mine, theirs) = proc::unix_pair();
         if let FdKind::UnixConn(from_them, to_them) = &mine {
             crate::uds::mark(to_them, from_them, listener);
         }
         // Die Zähler von `theirs` gehen auf den Eintrag in der Warteschlange über (FdKind hat kein Drop)
-        if let (proc::UnixState::Listening(_, q), FdKind::UnixConn(r, w)) = (&mut *l.lock(), theirs)
-        {
+        if let (proc::UnixState::Listening(_, q), FdKind::UnixConn(r, w)) = (&mut *l.lock(), theirs) {
             q.push_back((r, w));
         }
         crate::socket::bump();
@@ -3068,15 +2453,9 @@ fn sys_connect(fd: u64, addr: u64, len: u64) -> Res {
         });
         return Res::Val(0);
     }
-    let Some(id) = sock_id(fd) else {
-        return Res::Val(-88);
-    };
-    let Some(b) = get(addr, (len as usize).min(128)) else {
-        return Res::Val(-EFAULT);
-    };
-    let Some((ip, port)) = crate::socket::parse_addr(&b) else {
-        return Res::Val(-97);
-    };
+    let Some(id) = sock_id(fd) else { return Res::Val(-88) };
+    let Some(b) = get(addr, (len as usize).min(128)) else { return Res::Val(-EFAULT) };
+    let Some((ip, port)) = crate::socket::parse_addr(&b) else { return Res::Val(-97) };
     match crate::socket::connect(id, ip, port) {
         Ok(true) => Res::Val(0),
         Ok(false) if crate::socket::is_nonblock(id) => Res::Val(-115),
@@ -3148,24 +2527,10 @@ fn sys_accept(fd: u64, addr: u64, lenp: u64, flags: u64) -> Res {
                     put(addr, &1u16.to_le_bytes());
                     put(lenp, &2u32.to_le_bytes());
                 }
-                Res::Val(
-                    with(|p| {
-                        p.add_fd(
-                            Fd {
-                                kind: FdKind::UnixConn(r, w),
-                                cloexec: flags & 0x80000 != 0,
-                                flags: 2 | (flags as u32 & 0x800),
-                            },
-                            0,
-                        )
-                    })
-                    .unwrap_or(-EBADF),
-                )
+                Res::Val(with(|p| p.add_fd(Fd { kind: FdKind::UnixConn(r, w), cloexec: flags & 0x80000 != 0, flags: 2 | (flags as u32 & 0x800) }, 0)).unwrap_or(-EBADF))
             }
             None => {
-                let nb = with(|p| p.fd(fd).map(|d| d.flags & 0x800 != 0))
-                    .flatten()
-                    .unwrap_or(false);
+                let nb = with(|p| p.fd(fd).map(|d| d.flags & 0x800 != 0)).flatten().unwrap_or(false);
                 if nb {
                     Res::Val(-11)
                 } else {
@@ -3174,9 +2539,7 @@ fn sys_accept(fd: u64, addr: u64, lenp: u64, flags: u64) -> Res {
             }
         };
     }
-    let Some(id) = sock_id(fd) else {
-        return Res::Val(-88);
-    };
+    let Some(id) = sock_id(fd) else { return Res::Val(-88) };
     crate::socket::poll();
     match crate::socket::accept(id) {
         Some(nid) => {
@@ -3188,19 +2551,7 @@ fn sys_accept(fd: u64, addr: u64, lenp: u64, flags: u64) -> Res {
             }
             let h = Arc::new(crate::socket::Handle(nid));
             crate::socket::set_nonblock(nid, flags & 0x800 != 0);
-            Res::Val(
-                with(|p| {
-                    p.add_fd(
-                        Fd {
-                            kind: FdKind::Sock(h),
-                            cloexec: flags & 0x80000 != 0,
-                            flags: 2,
-                        },
-                        0,
-                    )
-                })
-                .unwrap_or(-EBADF),
-            )
+            Res::Val(with(|p| p.add_fd(Fd { kind: FdKind::Sock(h), cloexec: flags & 0x80000 != 0, flags: 2 }, 0)).unwrap_or(-EBADF))
         }
         None if crate::socket::is_nonblock(id) => Res::Val(-crate::socket::EAGAIN),
         None => Res::Block(Wait::Net(crate::socket::gen())),
@@ -3216,11 +2567,7 @@ fn sock_recv(id: usize, buf: u64, n: u64, flags: u64, addr: u64, lenp: u64) -> R
                     put(lenp, &16u32.to_le_bytes());
                 }
             }
-            Res::Val(if put(buf, &d) || d.is_empty() {
-                d.len() as i64
-            } else {
-                -EFAULT
-            })
+            Res::Val(if put(buf, &d) || d.is_empty() { d.len() as i64 } else { -EFAULT })
         }
         crate::socket::Recv::Eof => Res::Val(0),
         crate::socket::Recv::Err(e) => Res::Val(e),
@@ -3235,17 +2582,9 @@ fn sock_recv(id: usize, buf: u64, n: u64, flags: u64, addr: u64, lenp: u64) -> R
 }
 
 fn sys_sendto(fd: u64, buf: u64, len: u64, addr: u64, alen: u64) -> Res {
-    let Some(id) = sock_id(fd) else {
-        return write_res(fd, buf, len);
-    };
-    let Some(data) = get(buf, len.min(1 << 20) as usize) else {
-        return Res::Val(-EFAULT);
-    };
-    let to = if addr != 0 {
-        get(addr, (alen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b))
-    } else {
-        None
-    };
+    let Some(id) = sock_id(fd) else { return write_res(fd, buf, len) };
+    let Some(data) = get(buf, len.min(1 << 20) as usize) else { return Res::Val(-EFAULT) };
+    let to = if addr != 0 { get(addr, (alen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b)) } else { None };
     let r = crate::socket::send(id, &data, to);
     if r == -crate::socket::EAGAIN && !crate::socket::is_nonblock(id) {
         return Res::Block(Wait::Net(crate::socket::gen()));
@@ -3260,9 +2599,7 @@ fn sys_recvfrom(fd: u64, buf: u64, len: u64, flags: u64, addr: u64, lenp: u64) -
             Err(s) => scm_res(s),
         };
     }
-    let Some(id) = sock_id(fd) else {
-        return sys_read(fd, buf, len, None);
-    };
+    let Some(id) = sock_id(fd) else { return sys_read(fd, buf, len, None) };
     sock_recv(id, buf, len, flags, addr, lenp)
 }
 
@@ -3283,10 +2620,7 @@ fn scm_res(s: crate::scm::Step) -> Res {
 /// The control buffer of a msghdr (at most 4 KiB are read).
 fn msg_control(m: u64) -> Option<Vec<u8>> {
     let b = get(m + 32, 16)?;
-    let (at, len) = (
-        u64::from_le_bytes(b[0..8].try_into().ok()?),
-        u64::from_le_bytes(b[8..16].try_into().ok()?),
-    );
+    let (at, len) = (u64::from_le_bytes(b[0..8].try_into().ok()?), u64::from_le_bytes(b[8..16].try_into().ok()?));
     if at == 0 || len == 0 {
         return Some(Vec::new());
     }
@@ -3294,9 +2628,7 @@ fn msg_control(m: u64) -> Option<Vec<u8>> {
 }
 
 fn sys_sendmsg(fd: u64, m: u64, flags: u64) -> Res {
-    let Some((name, nlen, v)) = msghdr(m) else {
-        return Res::Val(-EFAULT);
-    };
+    let Some((name, nlen, v)) = msghdr(m) else { return Res::Val(-EFAULT) };
     // one message: at most 1 MiB in total
     let mut data = Vec::new();
     for (b, l) in v {
@@ -3311,20 +2643,14 @@ fn sys_sendmsg(fd: u64, m: u64, flags: u64) -> Res {
         }
     }
     if crate::scm::is_conn(fd) {
-        let Some(ctl) = msg_control(m) else {
-            return Res::Val(-EFAULT);
-        };
+        let Some(ctl) = msg_control(m) else { return Res::Val(-EFAULT) };
         return scm_res(crate::scm::send(fd, &data, &ctl, flags));
     }
     let Some(id) = sock_id(fd) else {
         // pipe or other descriptor: write the bytes
         return write_bytes(fd, &data);
     };
-    let to = if name != 0 {
-        get(name, (nlen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b))
-    } else {
-        None
-    };
+    let to = if name != 0 { get(name, (nlen as usize).min(128)).and_then(|b| crate::socket::parse_addr(&b)) } else { None };
     Res::Val(crate::socket::send(id, &data, to))
 }
 
@@ -3345,17 +2671,10 @@ fn sys_sendmmsg(fd: u64, vec: u64, n: u64) -> Res {
 }
 
 fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
-    let Some((name, _, v)) = msghdr(m) else {
-        return Res::Val(-EFAULT);
-    };
+    let Some((name, _, v)) = msghdr(m) else { return Res::Val(-EFAULT) };
     if crate::scm::is_conn(fd) {
-        let Some(c) = get(m + 32, 16) else {
-            return Res::Val(-EFAULT);
-        };
-        let (ctl, room) = (
-            u64::from_le_bytes(c[0..8].try_into().unwrap_or([0; 8])),
-            u64::from_le_bytes(c[8..16].try_into().unwrap_or([0; 8])),
-        );
+        let Some(c) = get(m + 32, 16) else { return Res::Val(-EFAULT) };
+        let (ctl, room) = (u64::from_le_bytes(c[0..8].try_into().unwrap_or([0; 8])), u64::from_le_bytes(c[8..16].try_into().unwrap_or([0; 8])));
         return match crate::scm::recv(fd, &v, ctl, if ctl == 0 { 0 } else { room }, flags) {
             Ok(r) => {
                 put(m + 40, &r.ctl_len.to_le_bytes());
@@ -3412,23 +2731,15 @@ fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
         return 0;
     }
     if let Some(us) = unix_sock(fd) {
-        let Some((path, abstract_name)) = unix_path(addr, len) else {
-            return -22;
-        };
+        let Some((path, abstract_name)) = unix_path(addr, len) else { return -22 };
         // a path gets a node in the file tree (EADDRINUSE if something is there); an abstract name
         // is taken while its listener lives
-        let path = match locate(-100, &path, true)
-            .and_then(|l| crate::uds::bind_node(&l, abstract_name).map(|_| l.host))
-        {
+        let path = match locate(-100, &path, true).and_then(|l| crate::uds::bind_node(&l, abstract_name).map(|_| l.host)) {
             Ok(host) => host,
             Err(e) => return e,
         };
         let mut list = UNIX_LISTEN.lock();
-        if abstract_name
-            && list
-                .iter()
-                .any(|(p, s, _)| *p == path && s.strong_count() > 0)
-        {
+        if abstract_name && list.iter().any(|(p, s, _)| *p == path && s.strong_count() > 0) {
             return -98;
         }
         // a listener whose node was removed is no longer reachable under this path
@@ -3440,20 +2751,14 @@ fn sys_bind(fd: u64, addr: u64, len: u64) -> i64 {
         return 0;
     }
     let Some(id) = sock_id(fd) else { return -88 };
-    let Some(b) = get(addr, (len as usize).min(128)) else {
-        return -EFAULT;
-    };
-    let Some((ip, port)) = crate::socket::parse_addr(&b) else {
-        return -97;
-    };
+    let Some(b) = get(addr, (len as usize).min(128)) else { return -EFAULT };
+    let Some((ip, port)) = crate::socket::parse_addr(&b) else { return -97 };
     crate::socket::bind(id, ip, port)
 }
 
 fn sys_sockname(fd: u64, addr: u64, lenp: u64, peer: bool) -> i64 {
     let Some(id) = sock_id(fd) else { return -88 };
-    let Some((l, r)) = crate::socket::names(id) else {
-        return -EBADF;
-    };
+    let Some((l, r)) = crate::socket::names(id) else { return -EBADF };
     let (ip, port) = if peer { r } else { l };
     if peer && port == 0 {
         return -107;
@@ -3464,20 +2769,8 @@ fn sys_sockname(fd: u64, addr: u64, lenp: u64, peer: bool) -> i64 {
 }
 
 fn sys_getsockopt(fd: u64, level: u64, opt: u64, val: u64, lenp: u64) -> i64 {
-    let Some(id) = sock_id(fd) else {
-        return crate::uds::getsockopt(fd, level, opt, val, lenp);
-    };
-    let v: i32 = if level == 1 && opt == 4 {
-        -(crate::socket::pending_error(id) as i32)
-    } else if level == 1 && opt == 3 {
-        if crate::socket::names(id).is_some() {
-            1
-        } else {
-            2
-        }
-    } else {
-        0
-    };
+    let Some(id) = sock_id(fd) else { return crate::uds::getsockopt(fd, level, opt, val, lenp) };
+    let v: i32 = if level == 1 && opt == 4 { -(crate::socket::pending_error(id) as i32) } else if level == 1 && opt == 3 { if crate::socket::names(id).is_some() { 1 } else { 2 } } else { 0 };
     put(val, &v.to_le_bytes());
     put(lenp, &4u32.to_le_bytes());
     0
@@ -3528,12 +2821,7 @@ pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64
     }
     // above the user half the page-table index wraps (non-canonical addresses) or names the
     // kernel half: a mapping there would replace the kernel's own mappings in this address space
-    if addr & 0xfff != 0
-        || addr < crate::paging::USER_LOW
-        || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000)
-        || addr >= USER_TOP
-        || addr + len > USER_TOP
-    {
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || (addr >= crate::paging::USER_LOW_END && addr < 0x1000_0000_0000) || addr >= USER_TOP || addr + len > USER_TOP {
         return Err(-EINVAL);
     }
     if !p.space().unreserve(addr, len) {
@@ -3580,11 +2868,7 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
         let (w, x) = (prot & 2 != 0 || data.is_some(), prot & 4 != 0);
         if data.is_none() {
             // anonym: nur reservieren – Seiten entstehen beim ersten Zugriff (glibc reserviert z. B. 64 MB je Arena)
-            if !p.space().unreserve(va, len)
-                || !p
-                    .space()
-                    .reserve(va, len, w || prot & 1 != 0 || prot == 0, x)
-            {
+            if !p.space().unreserve(va, len) || !p.space().reserve(va, len, w || prot & 1 != 0 || prot == 0, x) {
                 return -ENOMEM;
             }
             return va as i64;
@@ -3615,12 +2899,7 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
 
 fn sys_munmap(addr: u64, len: u64) -> i64 {
     // same bound as mmap: without it one call walks up to 2^52 pages while holding the process lock
-    if addr & 0xfff != 0
-        || addr < crate::paging::USER_LOW
-        || len > 1 << 34
-        || addr >= USER_TOP
-        || addr + len > USER_TOP
-    {
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > 1 << 34 || addr >= USER_TOP || addr + len > USER_TOP {
         return -EINVAL;
     }
     with(|p| {
@@ -3696,100 +2975,84 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
             return Err(-EAGAIN);
         };
         crate::heap::scope(res, || {
-            let g = if thread {
-                // Faden: Adressraum, Dateien, Signale gemeinsam
-                p.g.clone()
-            } else {
-                let mut iso = p.g.iso.clone();
-                iso.pid_ns_children = child_ns.clone();
-                if flags & calls::CLONE_NEWNS != 0 {
-                    iso.mnt = iso.mnt.copy();
-                }
-                let mut fds: Vec<Option<Fd>> =
-                    crate::mem::try_with_capacity(p.g.fds.len()).ok_or(-ENOMEM)?;
-                for o in p.g.fds.iter() {
-                    fds.push(o.as_ref().map(|d| {
-                        let mut n = d.dup();
-                        // CLONE_FILES is not modelled as sharing: the child gets its own table either way
-                        n.cloexec = if flags & FILES != 0 { false } else { d.cloexec };
-                        n
-                    }));
-                }
-                proc::Shared::new(proc::Group {
-                    // vfork with CLONE_VM: the child runs in the parent's memory until execve/_exit
-                    // (glibc's posix_spawn reports a failed execve through it); else a copy
-                    space: Some(if flags & VM != 0 {
-                        p.g.space.clone().ok_or(-ENOMEM)?
-                    } else {
-                        Arc::new(p.space().fork().ok_or(-ENOMEM)?)
-                    }),
-                    fds,
-                    cwd: p.g.cwd.clone(),
-                    brk_start: p.g.brk_start,
-                    brk: p.g.brk,
-                    brk_limit: p.g.brk_limit,
-                    mmap_next: p.g.mmap_next,
-                    umask: p.g.umask,
-                    exe: p.g.exe.clone(),
-                    cmdline: p.g.cmdline.clone(),
-                    sigact: p.g.sigact,
-                    auxv: p.g.auxv.clone(),
-                    iso,
-                    exe_host: p.g.exe_host.clone(),
-                    res,
-                })
-            };
-            let kstack = crate::mem::try_vec(proc::KSTACK).ok_or(-ENOMEM)?;
-            // numbers of the child: as the parent sees it (return value) and as it sees itself
-            // (the tables of the namespaces are shared: they belong to the kernel)
-            let link = crate::heap::kernel(|| crate::isolation::pid::PidLink::new(child_ns, pid));
-            let seen_by_parent = shown(p, pid);
-            let seen_by_child = link.ns().local(pid).unwrap_or(0);
-            let mut fr = f.clone();
-            fr.rax = 0;
-            if stack != 0 {
-                fr.rsp = stack;
+        let g = if thread {
+            // Faden: Adressraum, Dateien, Signale gemeinsam
+            p.g.clone()
+        } else {
+            let mut iso = p.g.iso.clone();
+            iso.pid_ns_children = child_ns.clone();
+            if flags & calls::CLONE_NEWNS != 0 {
+                iso.mnt = iso.mnt.copy();
             }
-            if flags & PARENT_SETTID != 0 && ptid != 0 {
-                proc::write_user(p.space(), ptid, &(seen_by_parent as u32).to_le_bytes());
+            let mut fds: Vec<Option<Fd>> = crate::mem::try_with_capacity(p.g.fds.len()).ok_or(-ENOMEM)?;
+            for o in p.g.fds.iter() {
+                fds.push(o.as_ref().map(|d| {
+                    let mut n = d.dup();
+                    // CLONE_FILES is not modelled as sharing: the child gets its own table either way
+                    n.cloexec = if flags & FILES != 0 { false } else { d.cloexec };
+                    n
+                }));
             }
-            if flags & CHILD_SETTID != 0 && ctid != 0 {
-                proc::write_user(
-                    g.space.as_ref().unwrap(),
-                    ctid,
-                    &(seen_by_child as u32).to_le_bytes(),
-                );
-            }
-            let tgid = if thread || flags & THREAD != 0 {
-                p.tgid
-            } else {
-                pid
-            };
-            Ok((
-                seen_by_parent,
-                Proc {
-                    pid,
-                    tgid,
-                    ppid: if tgid == pid { p.tgid } else { p.ppid },
-                    pgid: p.pgid,
-                    name: p.name.clone(),
-                    state: State::Ready,
-                    frame: alloc::boxed::Box::new(fr),
-                    kstack,
-                    fs_base: if flags & SETTLS != 0 { tls } else { fs_now },
-                    clear_tid: if flags & CHILD_CLEARTID != 0 { ctid } else { 0 },
-                    sigmask: p.sigmask,
-                    pending: 0,
-                    sus_mask: None,
-                    killed: None,
-                    on_cpu: false,
-                    poll_dl: None,
-                    g,
-                    link,
-                    pids,
-                    io_done: 0,
-                },
-            ))
+            proc::Shared::new(proc::Group {
+                // vfork with CLONE_VM: the child runs in the parent's memory until execve/_exit
+                // (glibc's posix_spawn reports a failed execve through it); else a copy
+                space: Some(if flags & VM != 0 { p.g.space.clone().ok_or(-ENOMEM)? } else { Arc::new(p.space().fork().ok_or(-ENOMEM)?) }),
+                fds,
+                cwd: p.g.cwd.clone(),
+                brk_start: p.g.brk_start,
+                brk: p.g.brk,
+                brk_limit: p.g.brk_limit,
+                mmap_next: p.g.mmap_next,
+                umask: p.g.umask,
+                exe: p.g.exe.clone(),
+                cmdline: p.g.cmdline.clone(),
+                sigact: p.g.sigact,
+                auxv: p.g.auxv.clone(),
+                iso,
+                exe_host: p.g.exe_host.clone(),
+                res,
+            })
+        };
+        let kstack = crate::mem::try_vec(proc::KSTACK).ok_or(-ENOMEM)?;
+        // numbers of the child: as the parent sees it (return value) and as it sees itself
+        // (the tables of the namespaces are shared: they belong to the kernel)
+        let link = crate::heap::kernel(|| crate::isolation::pid::PidLink::new(child_ns, pid));
+        let seen_by_parent = shown(p, pid);
+        let seen_by_child = link.ns().local(pid).unwrap_or(0);
+        let mut fr = f.clone();
+        fr.rax = 0;
+        if stack != 0 {
+            fr.rsp = stack;
+        }
+        if flags & PARENT_SETTID != 0 && ptid != 0 {
+            proc::write_user(p.space(), ptid, &(seen_by_parent as u32).to_le_bytes());
+        }
+        if flags & CHILD_SETTID != 0 && ctid != 0 {
+            proc::write_user(g.space.as_ref().unwrap(), ctid, &(seen_by_child as u32).to_le_bytes());
+        }
+        let tgid = if thread || flags & THREAD != 0 { p.tgid } else { pid };
+        Ok((seen_by_parent, Proc {
+            pid,
+            tgid,
+            ppid: if tgid == pid { p.tgid } else { p.ppid },
+            pgid: p.pgid,
+            name: p.name.clone(),
+            state: State::Ready,
+            frame: alloc::boxed::Box::new(fr),
+            kstack,
+            fs_base: if flags & SETTLS != 0 { tls } else { fs_now },
+            clear_tid: if flags & CHILD_CLEARTID != 0 { ctid } else { 0 },
+            sigmask: p.sigmask,
+            pending: 0,
+            sus_mask: None,
+            killed: None,
+            on_cpu: false,
+            poll_dl: None,
+            g,
+            link,
+            pids,
+            io_done: 0,
+        }))
         })
         .and_then(|(seen, child)| {
             // the box is the child's (charged to its group); the process table is the kernel's
@@ -3819,9 +3082,7 @@ fn sys_fork(f: &mut TrapFrame, flags: u64, stack: u64, ptid: u64, ctid: u64, tls
 
 fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
     let cmd = op & 0x7f;
-    let Some(pa) = with(|p| p.space().translate(addr).map(|x| x.0)).flatten() else {
-        return Res::Val(-EFAULT);
-    };
+    let Some(pa) = with(|p| p.space().translate(addr).map(|x| x.0)).flatten() else { return Res::Val(-EFAULT) };
     match cmd {
         0 | 9 => {
             let cur = unsafe { core::ptr::read_volatile(pa as *const u32) };
@@ -3831,8 +3092,7 @@ fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
             let deadline = if timeout != 0 {
                 match get(timeout, 16) {
                     Some(b) => {
-                        let ms = u64::from_le_bytes(b[0..8].try_into().unwrap()) * 1000
-                            + u64::from_le_bytes(b[8..16].try_into().unwrap()) / 1_000_000;
+                        let ms = u64::from_le_bytes(b[0..8].try_into().unwrap()) * 1000 + u64::from_le_bytes(b[8..16].try_into().unwrap()) / 1_000_000;
                         if cmd == 9 {
                             // absolute Zeit (CLOCK_MONOTONIC bzw. REALTIME)
                             let now = now_ns(if op & 256 != 0 { 0 } else { 1 }) / 1_000_000;
@@ -3861,16 +3121,10 @@ fn sys_futex(addr: u64, op: u64, val: u64, timeout: u64) -> Res {
 fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
     let args = with(|p| {
         let sp = p.space();
-        Some((
-            proc::read_cstr(sp, path)?,
-            proc::read_strv(sp, argv)?,
-            proc::read_strv(sp, envp)?,
-        ))
+        Some((proc::read_cstr(sp, path)?, proc::read_strv(sp, argv)?, proc::read_strv(sp, envp)?))
     })
     .flatten();
-    let Some((path, argv, envp)) = args else {
-        return -EFAULT;
-    };
+    let Some((path, argv, envp)) = args else { return -EFAULT };
     // the program is looked up in the caller's view; `full` is its place in the kernel's tree
     let loc = match locate(-100, &path, true) {
         Ok(l) => l,
@@ -3911,20 +3165,10 @@ fn sys_execve(f: &mut TrapFrame, path: u64, argv: u64, envp: u64) -> i64 {
     exec_image(f, &data, argv, envp, &loc)
 }
 
-fn exec_image(
-    f: &mut TrapFrame,
-    data: &[u8],
-    argv: Vec<String>,
-    envp: Vec<String>,
-    loc: &Loc,
-) -> i64 {
+fn exec_image(f: &mut TrapFrame, data: &[u8], argv: Vec<String>, envp: Vec<String>, loc: &Loc) -> i64 {
     let path = loc.view.as_str();
     // the dynamic loader named by the program is read through the caller's view as well
-    let read = |p: &str| {
-        locate(-100, p, true)
-            .ok()
-            .and_then(|l| fs::read_all(&l.host))
-    };
+    let read = |p: &str| locate(-100, p, true).ok().and_then(|l| fs::read_all(&l.host));
     let img = match proc::load_elf(data, &argv, &envp, path, &read) {
         Ok(i) => i,
         Err(e) => {
@@ -3960,9 +3204,7 @@ fn exec_image(
 }
 
 fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
-    let Some((me, ns)) = with(|p| (p.tgid, p.link.ns().clone())) else {
-        return Res::Val(-ECHILD);
-    };
+    let Some((me, ns)) = with(|p| (p.tgid, p.link.ns().clone())) else { return Res::Val(-ECHILD) };
     // the caller names a child by the number of its own pid namespace
     let pid = if pid > 0 {
         match ns.global(pid as u64) {
@@ -3973,20 +3215,13 @@ fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
         pid
     };
     let mut ps = PROCS.lock();
-    let mine = |c: &&alloc::boxed::Box<Proc>| {
-        c.pid == c.tgid && c.ppid == me && (pid <= 0 || c.pid == pid as u64)
-    };
+    let mine = |c: &&alloc::boxed::Box<Proc>| c.pid == c.tgid && c.ppid == me && (pid <= 0 || c.pid == pid as u64);
     if !ps.iter().any(|c| mine(&c)) {
         return Res::Val(-ECHILD);
     }
-    if let Some(i) = ps
-        .iter()
-        .position(|c| mine(&c) && matches!(c.state, State::Zombie(_)) && !c.on_cpu)
-    {
+    if let Some(i) = ps.iter().position(|c| mine(&c) && matches!(c.state, State::Zombie(_)) && !c.on_cpu) {
         let c = ps.remove(i);
-        let State::Zombie(st) = c.state else {
-            unreachable!()
-        };
+        let State::Zombie(st) = c.state else { unreachable!() };
         drop(ps);
         if status != 0 {
             put(status, &st.to_le_bytes());
@@ -4005,9 +3240,7 @@ fn sys_wait4(pid: i64, status: u64, opts: u64) -> Res {
 fn sys_kill(pid: i64, sig: u64) -> i64 {
     let mut ps = PROCS.lock();
     let me = proc::current();
-    let Some(sender) = ps.iter().position(|p| p.pid == me) else {
-        return -ESRCH;
-    };
+    let Some(sender) = ps.iter().position(|p| p.pid == me) else { return -ESRCH };
     let targets = match signals::kill_targets(&ps, sender, pid) {
         Ok(t) => t,
         Err(e) => return e,
@@ -4022,11 +3255,7 @@ fn sys_kill(pid: i64, sig: u64) -> i64 {
     for t in &live {
         crate::signal::send_locked(&mut ps, *t, 0, sig);
     }
-    let me_dead = ps
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| matches!(p.state, State::Zombie(_) | State::Dead))
-        .unwrap_or(false);
+    let me_dead = ps.iter().find(|p| p.pid == me).map(|p| matches!(p.state, State::Zombie(_) | State::Dead)).unwrap_or(false);
     drop(ps);
     // nothing on this stack is dropped once the process is gone
     drop((targets, live));
@@ -4040,16 +3269,10 @@ fn sys_kill(pid: i64, sig: u64) -> i64 {
 fn sys_tgkill(tgid: Option<u64>, tid: u64, sig: u64) -> i64 {
     let mut ps = PROCS.lock();
     let me = proc::current();
-    let Some(sender) = ps.iter().position(|p| p.pid == me) else {
-        return -ESRCH;
-    };
+    let Some(sender) = ps.iter().position(|p| p.pid == me) else { return -ESRCH };
     let ns = ps[sender].link.ns().clone();
-    let Some(thread) = ns.global(tid) else {
-        return -ESRCH;
-    };
-    let Some(group) = ps.iter().find(|p| p.pid == thread).map(|p| p.tgid) else {
-        return -ESRCH;
-    };
+    let Some(thread) = ns.global(tid) else { return -ESRCH };
+    let Some(group) = ps.iter().find(|p| p.pid == thread).map(|p| p.tgid) else { return -ESRCH };
     if let Some(want) = tgid {
         if ns.global(want) != Some(group) {
             return -ESRCH;
@@ -4087,16 +3310,9 @@ fn sys_sigaction(sig: u64, act: u64, old: u64) -> i64 {
         if sig == 9 || sig == 19 {
             return -EINVAL;
         }
-        let Some(b) = get(act, 32) else {
-            return -EFAULT;
-        };
+        let Some(b) = get(act, 32) else { return -EFAULT };
         let r = |o: usize| u64::from_le_bytes(b[o..o + 8].try_into().unwrap());
-        let n = proc::SigAct {
-            handler: r(0),
-            flags: r(8),
-            restorer: r(16),
-            mask: r(24),
-        };
+        let n = proc::SigAct { handler: r(0), flags: r(8), restorer: r(16), mask: r(24) };
         with(|p| p.g.sigact[sig as usize] = n);
     }
     0
@@ -4123,17 +3339,7 @@ fn sys_sigprocmask(how: u64, set: u64, old: u64) -> i64 {
 
 fn sys_uname(buf: u64) -> i64 {
     let mut b = vec![0u8; 65 * 6];
-    for (i, s) in [
-        "Linux",
-        "ultar",
-        "6.8.0-ultar-kern",
-        concat!("#1 Ultar-Kern ", ultar_brand::vendor!()),
-        "x86_64",
-        "(none)",
-    ]
-    .iter()
-    .enumerate()
-    {
+    for (i, s) in ["Linux", "ultar", "6.8.0-ultar-kern", concat!("#1 Ultar-Kern ", ultar_brand::vendor!()), "x86_64", "(none)"].iter().enumerate() {
         b[i * 65..i * 65 + s.len()].copy_from_slice(s.as_bytes());
     }
     if put(buf, &b) {
@@ -4198,16 +3404,10 @@ fn sys_sysinfo(buf: u64) -> i64 {
 }
 
 fn sys_sleep(req: u64, abs: bool) -> Res {
-    let Some(b) = get(req, 16) else {
-        return Res::Val(-EFAULT);
-    };
+    let Some(b) = get(req, 16) else { return Res::Val(-EFAULT) };
     let s = u64::from_le_bytes(b[0..8].try_into().unwrap());
     let ns = u64::from_le_bytes(b[8..16].try_into().unwrap());
     let ms = s * 1000 + ns / 1_000_000;
-    let until = if abs {
-        ms.saturating_sub(now_ns(1) / 1_000_000) + crate::arch::uptime_ms()
-    } else {
-        crate::arch::uptime_ms() + ms
-    };
+    let until = if abs { ms.saturating_sub(now_ns(1) / 1_000_000) + crate::arch::uptime_ms() } else { crate::arch::uptime_ms() + ms };
     Res::BlockWith(Wait::Sleep(until), 0)
 }

@@ -79,13 +79,7 @@ pub fn probe_with_slots(drv: &dyn Driver, d: &PciDev) -> (DrvResult<()>, Slots) 
     let (n0, b0) = (NET.lock().len(), BLOCK.lock().len());
     let r = drv.probe(d);
     let (n1, b1) = (NET.lock().len(), BLOCK.lock().len());
-    (
-        r,
-        Slots {
-            net: (n0..n1).collect(),
-            block: (b0..b1).collect(),
-        },
-    )
+    (r, Slots { net: (n0..n1).collect(), block: (b0..b1).collect() })
 }
 
 /// Name of a PCI function as in Linux sysfs (`0000:00:03.0`).
@@ -95,10 +89,7 @@ pub fn pci_name(d: &PciDev) -> String {
 
 /// Driver by name.
 pub fn driver(name: &str) -> Option<&'static dyn Driver> {
-    crate::drivers::ALL
-        .iter()
-        .copied()
-        .find(|d| d.name() == name)
+    crate::drivers::ALL.iter().copied().find(|d| d.name() == name)
 }
 
 /// Whether the driver is turned on.
@@ -144,10 +135,7 @@ fn settle(fresh: Slots, reserved: &Slots) -> Slots {
     }
     let mut net: Vec<usize> = reserved.net[..k].to_vec();
     net.extend(fresh.net.iter().skip(k).map(|i| i - k));
-    Slots {
-        net,
-        block: fresh.block,
-    }
+    Slots { net, block: fresh.block }
 }
 
 /// Bind `driver` to the PCI function `name` (`/sys/bus/pci/drivers/<driver>/bind`).
@@ -196,10 +184,7 @@ pub fn probe_any(name: &str) -> Result<(), i64> {
         let i = find(name).ok_or(-ENODEV)?;
         DEVICES.lock()[i].dev.clone()
     };
-    let drv = crate::drivers::ALL
-        .iter()
-        .find(|d| driver_on(d.name()) && d.matches(&dev))
-        .ok_or(-ENODEV)?;
+    let drv = crate::drivers::ALL.iter().find(|d| driver_on(d.name()) && d.matches(&dev)).ok_or(-ENODEV)?;
     bind(drv.name(), name)
 }
 
@@ -292,10 +277,7 @@ pub fn set_driver_enabled(drv_name: &str, on: bool) -> Result<(), i64> {
                 return Err(-EOPNOTSUPP);
             }
         }
-        devs.iter()
-            .filter(|b| b.driver == Some(drv.name()))
-            .map(|b| pci_name(&b.dev))
-            .collect()
+        devs.iter().filter(|b| b.driver == Some(drv.name())).map(|b| pci_name(&b.dev)).collect()
     };
     for name in mine {
         unbind_locked(&name)?;
@@ -328,16 +310,7 @@ pub fn health(i: usize) -> Option<String> {
             (None, Some(_)) => "failed",
             (None, None) => "none",
         };
-        (
-            probe,
-            b.error.clone(),
-            if b.driver.is_some() {
-                b.slots.clone()
-            } else {
-                Slots::default()
-            },
-            b.dev.r32(0x04),
-        )
+        (probe, b.error.clone(), if b.driver.is_some() { b.slots.clone() } else { Slots::default() }, b.dev.r32(0x04))
     };
     let mut s = format!("probe={probe}\n");
     if let Some(e) = err {
@@ -345,14 +318,11 @@ pub fn health(i: usize) -> Option<String> {
     }
     for n in &slots.net {
         let link = NET.lock().get(*n).and_then(|d| d.link());
-        s += &format!(
-            "link={}\n",
-            match link {
-                Some(true) => "up",
-                Some(false) => "down",
-                None => "unknown",
-            }
-        );
+        s += &format!("link={}\n", match link {
+            Some(true) => "up",
+            Some(false) => "down",
+            None => "unknown",
+        });
     }
     for k in &slots.block {
         s += &format!("media={}\n", media(*k));
@@ -364,9 +334,7 @@ pub fn health(i: usize) -> Option<String> {
 /// Read the first sector of block device `k`.
 fn media(k: usize) -> &'static str {
     let mut bl = BLOCK.lock();
-    let Some(d) = bl.get_mut(k) else {
-        return "missing";
-    };
+    let Some(d) = bl.get_mut(k) else { return "missing" };
     let mut buf = alloc::vec![0u8; d.sector_size()];
     match d.read(0, &mut buf) {
         Ok(()) => "ok",

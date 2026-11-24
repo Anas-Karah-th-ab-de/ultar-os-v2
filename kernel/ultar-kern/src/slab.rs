@@ -13,9 +13,7 @@ use crate::mem::PAGE;
 use core::ptr::NonNull;
 
 /// Block sizes in bytes (each a multiple of 16).
-const CLASSES: [u32; 13] = [
-    32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048,
-];
+const CLASSES: [u32; 13] = [32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048];
 /// Largest block.
 pub const MAX_BLOCK: usize = 2048;
 const HEAD: u64 = 32;
@@ -39,11 +37,7 @@ struct Slabs {
     used: u64,
 }
 
-static SLABS: spin::Mutex<Slabs> = spin::Mutex::new(Slabs {
-    partial: [0; CLASSES.len()],
-    held: 0,
-    used: 0,
-});
+static SLABS: spin::Mutex<Slabs> = spin::Mutex::new(Slabs { partial: [0; CLASSES.len()], held: 0, used: 0 });
 
 /// Class for a block of `size` bytes, if it is small enough.
 pub fn class_for(size: usize) -> Option<usize> {
@@ -117,13 +111,7 @@ impl Slabs {
                 (block as *mut u64).write(free);
                 free = block;
             }
-            (slab as *mut Head).write(Head {
-                free,
-                used: 0,
-                class: class as u32,
-                next: 0,
-                prev: 0,
-            });
+            (slab as *mut Head).write(Head { free, used: 0, class: class as u32, next: 0, prev: 0 });
             self.link(class, slab);
         }
         self.held += pages * PAGE;

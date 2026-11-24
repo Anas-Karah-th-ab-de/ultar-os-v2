@@ -20,8 +20,7 @@ static FB_OFFEN: AtomicUsize = AtomicUsize::new(0);
 /// Eine Warteschlange je lesendem Deskriptor (Leser-Nummer, Gerät, Ereignisse) wie bei Linux'
 /// evdev: jeder Leser bekommt jedes Ereignis. Eine gemeinsame Schlange ließ einen zweiten Leser
 /// (die Notausstieg-Überwachung von ultar-init als PID 1) dem Compositor die Tasten wegnehmen.
-static QUEUES: Mutex<alloc::vec::Vec<(u32, u8, VecDeque<[u8; 24]>)>> =
-    Mutex::new(alloc::vec::Vec::new());
+static QUEUES: Mutex<alloc::vec::Vec<(u32, u8, VecDeque<[u8; 24]>)>> = Mutex::new(alloc::vec::Vec::new());
 /// Nächste Leser-Nummer (0 = nur schreibend).
 static NAECHSTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
 static E0: AtomicBool = AtomicBool::new(false);
@@ -138,12 +137,7 @@ fn taste(code: u16, gedrueckt: bool) {
 
 /// Zeichen einer USB-Tastatur (US-Belegung) → Linux-Tastencode (+ Umschalt)
 fn zeichen_code(c: char) -> Option<(u16, bool)> {
-    const REIHEN: [(u16, &str, &str); 4] = [
-        (2, "1234567890-=", "!@#$%^&*()_+"),
-        (16, "qwertyuiop[]", "QWERTYUIOP{}"),
-        (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"),
-        (44, "zxcvbnm,./", "ZXCVBNM<>?"),
-    ];
+    const REIHEN: [(u16, &str, &str); 4] = [(2, "1234567890-=", "!@#$%^&*()_+"), (16, "qwertyuiop[]", "QWERTYUIOP{}"), (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"), (44, "zxcvbnm,./", "ZXCVBNM<>?")];
     match c {
         '\n' | '\r' => return Some((28, false)),
         ' ' => return Some((57, false)),
@@ -176,9 +170,7 @@ pub fn pumpen() {
     }
     // USB-Tastaturen liefern Zeichen: als Drücken/Loslassen melden
     for _ in 0..16 {
-        let Some(c) = crate::drivers::gen_xhci::poll_key() else {
-            break;
-        };
+        let Some(c) = crate::drivers::gen_xhci::poll_key() else { break };
         if let Some((code, shift)) = zeichen_code(c) {
             if shift {
                 taste(42, true);
@@ -278,11 +270,7 @@ pub fn bereit(art: u8, leser: u32) -> bool {
         return crate::input::ready(art, leser);
     }
     pumpen();
-    QUEUES
-        .lock()
-        .iter()
-        .find(|(l, _, _)| *l == leser)
-        .is_some_and(|(_, _, q)| !q.is_empty())
+    QUEUES.lock().iter().find(|(l, _, _)| *l == leser).is_some_and(|(_, _, q)| !q.is_empty())
 }
 
 /// ioctl auf einem Eingabe-Deskriptor; None = unbekannt
@@ -293,16 +281,8 @@ pub fn ioctl(art: u8, req: u64) -> Option<alloc::vec::Vec<u8>> {
     let fb = crate::console::framebuffer()?;
     // EVIOCGABS(ABS_X/ABS_Y): input_absinfo {value, min, max, fuzz, flat, resolution}
     if art == MAUS && (req == 0x8018_4540 || req == 0x8018_4541) {
-        let max = if req & 1 == 0 {
-            fb.width as i32 - 1
-        } else {
-            fb.height as i32 - 1
-        };
-        let v = if req & 1 == 0 {
-            MX.load(Ordering::Relaxed).max(0)
-        } else {
-            MY.load(Ordering::Relaxed).max(0)
-        };
+        let max = if req & 1 == 0 { fb.width as i32 - 1 } else { fb.height as i32 - 1 };
+        let v = if req & 1 == 0 { MX.load(Ordering::Relaxed).max(0) } else { MY.load(Ordering::Relaxed).max(0) };
         let mut b = alloc::vec![0u8; 24];
         for (i, x) in [v, 0, max, 0, 0, 0].iter().enumerate() {
             b[i * 4..i * 4 + 4].copy_from_slice(&x.to_le_bytes());
@@ -311,11 +291,7 @@ pub fn ioctl(art: u8, req: u64) -> Option<alloc::vec::Vec<u8>> {
     }
     // EVIOCGNAME(len)
     if req & 0xffff == 0x4506 && req >> 30 == 2 {
-        let name: &[u8] = if art == MAUS {
-            b"Ultar Maus\0"
-        } else {
-            b"Ultar Tastatur\0"
-        };
+        let name: &[u8] = if art == MAUS { b"Ultar Maus\0" } else { b"Ultar Tastatur\0" };
         return Some(name.to_vec());
     }
     crate::input::ioctl(art, req)
@@ -369,9 +345,7 @@ pub fn fb_ioctl(req: u64) -> Option<alloc::vec::Vec<u8>> {
 
 /// in den Bildspeicher schreiben (pwrite/write ab Versatz)
 pub fn fb_schreiben(off: u64, daten: &[u8]) -> i64 {
-    let Some(fb) = crate::console::framebuffer() else {
-        return -5;
-    };
+    let Some(fb) = crate::console::framebuffer() else { return -5 };
     let groesse = (fb.stride as u64) * (fb.height as u64) * 4;
     if off >= groesse {
         return 0;
@@ -383,9 +357,7 @@ pub fn fb_schreiben(off: u64, daten: &[u8]) -> i64 {
 
 /// aus dem Bildspeicher lesen (pread ab Versatz) – Bildschirmfoto für den Entwickler-Zugang und den System-Assistenten
 pub fn fb_lesen(off: u64, n: usize) -> alloc::vec::Vec<u8> {
-    let Some(fb) = crate::console::framebuffer() else {
-        return alloc::vec::Vec::new();
-    };
+    let Some(fb) = crate::console::framebuffer() else { return alloc::vec::Vec::new() };
     let groesse = (fb.stride as u64) * (fb.height as u64) * 4;
     if off >= groesse {
         return alloc::vec::Vec::new();
@@ -409,11 +381,7 @@ pub fn einspeisen(art: u8, daten: &[u8]) -> usize {
         let code = u16::from_le_bytes([e[18], e[19]]);
         let wert = i32::from_le_bytes([e[20], e[21], e[22], e[23]]);
         if art == MAUS && typ == 3 {
-            if code == 0 {
-                MX.store(wert, Ordering::Relaxed)
-            } else if code == 1 {
-                MY.store(wert, Ordering::Relaxed)
-            }
+            if code == 0 { MX.store(wert, Ordering::Relaxed) } else if code == 1 { MY.store(wert, Ordering::Relaxed) }
         }
         ereignis(art, typ, code, wert);
         n += 24;

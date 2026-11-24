@@ -37,14 +37,7 @@ pub fn aktiv() -> bool {
 
 pub fn schalten(an: bool) {
     if AKTIV.swap(an, Ordering::SeqCst) != an {
-        crate::kprintln!(
-            "[verbund] {}",
-            if an {
-                "AN"
-            } else {
-                "AUS – Verbund-Ports gesperrt"
-            }
-        );
+        crate::kprintln!("[verbund] {}", if an { "AN" } else { "AUS – Verbund-Ports gesperrt" });
     }
     if !an {
         GERAETE.lock().clear();
@@ -79,23 +72,17 @@ pub fn meldung(src: [u8; 4], d: &[u8]) {
     if !aktiv() || d.len() > 1500 {
         return;
     }
-    let Ok(s) = core::str::from_utf8(d) else {
-        return;
-    };
+    let Ok(s) = core::str::from_utf8(d) else { return };
     if feld(s, "v") != Some("1") || feld(s, "aktiv") != Some("true") {
         return;
     }
-    let (Some(k), Some(n)) = (feld(s, "k"), feld(s, "n")) else {
-        return;
-    };
+    let (Some(k), Some(n)) = (feld(s, "k"), feld(s, "n")) else { return };
     let g = Geraet {
         kennung: k.chars().take(16).collect(),
         name: n.chars().take(32).collect(),
         ausgabe: feld(s, "a").unwrap_or("").chars().take(12).collect(),
         ip: src,
-        port: feld(s, "p")
-            .and_then(|x| x.parse().ok())
-            .unwrap_or(TCP_PORT),
+        port: feld(s, "p").and_then(|x| x.parse().ok()).unwrap_or(TCP_PORT),
         kerne: feld(s, "kerne").and_then(|x| x.parse().ok()).unwrap_or(0),
         frei: feld(s, "frei").and_then(|x| x.parse().ok()).unwrap_or(0),
         zuletzt: crate::arch::uptime_ms(),
@@ -104,16 +91,7 @@ pub fn meldung(src: [u8; 4], d: &[u8]) {
     let neu = !v.iter().any(|x| x.kennung == g.kennung);
     v.retain(|x| x.kennung != g.kennung);
     if neu {
-        crate::kprintln!(
-            "[verbund] gefunden: {} „{}“ ({}) {}.{}.{}.{}",
-            g.kennung,
-            g.name,
-            g.ausgabe,
-            src[0],
-            src[1],
-            src[2],
-            src[3]
-        );
+        crate::kprintln!("[verbund] gefunden: {} „{}“ ({}) {}.{}.{}.{}", g.kennung, g.name, g.ausgabe, src[0], src[1], src[2], src[3]);
     }
     if v.len() < 64 {
         v.push(g);
@@ -132,16 +110,7 @@ pub fn text() -> String {
     for g in geraete() {
         s += &format!(
             "{} {} {} {}.{}.{}.{}:{} {}/{}\n",
-            g.kennung,
-            g.name,
-            g.ausgabe,
-            g.ip[0],
-            g.ip[1],
-            g.ip[2],
-            g.ip[3],
-            g.port,
-            g.frei,
-            g.kerne
+            g.kennung, g.name, g.ausgabe, g.ip[0], g.ip[1], g.ip[2], g.ip[3], g.port, g.frei, g.kerne
         );
     }
     s

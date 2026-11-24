@@ -54,17 +54,7 @@ struct Tss {
 }
 
 pub const MAXCPU: usize = 32;
-static mut TSS: [Tss; MAXCPU] = [const {
-    Tss {
-        _r0: 0,
-        rsp: [0; 3],
-        _r1: 0,
-        ist: [0; 7],
-        _r2: 0,
-        _r3: 0,
-        iomap: 104,
-    }
-}; MAXCPU];
+static mut TSS: [Tss; MAXCPU] = [const { Tss { _r0: 0, rsp: [0; 3], _r1: 0, ist: [0; 7], _r2: 0, _r3: 0, iomap: 104 } }; MAXCPU];
 static mut GDT: [u64; 6 + 2 * MAXCPU] = [0; 6 + 2 * MAXCPU];
 /// eigener Stapel für Doppelfehler (IST 1) je Kern, damit auch ein übergelaufener Stapel noch gemeldet wird
 static mut DF_STACK: [[u8; 8192]; MAXCPU] = [[0; 8192]; MAXCPU];
@@ -76,11 +66,7 @@ unsafe fn set_tss(cpu: usize) {
     ist[0] = (core::ptr::addr_of!(DF_STACK[cpu]) as u64 + 8192) & !15;
     core::ptr::addr_of_mut!(TSS[cpu].ist).write_unaligned(ist);
     let lim = (core::mem::size_of::<Tss>() - 1) as u64;
-    GDT[6 + 2 * cpu] = (lim & 0xffff)
-        | ((tss_base & 0xffffff) << 16)
-        | (0x89u64 << 40)
-        | (((lim >> 16) & 0xf) << 48)
-        | (((tss_base >> 24) & 0xff) << 56);
+    GDT[6 + 2 * cpu] = (lim & 0xffff) | ((tss_base & 0xffffff) << 16) | (0x89u64 << 40) | (((lim >> 16) & 0xf) << 48) | (((tss_base >> 24) & 0xff) << 56);
     GDT[7 + 2 * cpu] = tss_base >> 32;
 }
 
@@ -103,10 +89,7 @@ pub fn set_kernel_stack(top: u64) {
 
 /// GDT (ohne TSS) erneut laden – für weitere Prozessorkerne
 pub unsafe fn load_gdt_ap() {
-    let dtr = Dtr {
-        limit: (core::mem::size_of_val(&*core::ptr::addr_of!(GDT)) - 1) as u16,
-        base: core::ptr::addr_of!(GDT) as u64,
-    };
+    let dtr = Dtr { limit: (core::mem::size_of_val(&*core::ptr::addr_of!(GDT)) - 1) as u16, base: core::ptr::addr_of!(GDT) as u64 };
     asm!(
         "lgdt [{d}]",
         "push 0x08",
@@ -121,10 +104,7 @@ pub unsafe fn load_gdt_ap() {
 }
 
 pub unsafe fn load_idt_ap() {
-    let dtr = Dtr {
-        limit: (core::mem::size_of::<[Gate; 256]>() - 1) as u16,
-        base: core::ptr::addr_of!(IDT) as u64,
-    };
+    let dtr = Dtr { limit: (core::mem::size_of::<[Gate; 256]>() - 1) as u16, base: core::ptr::addr_of!(IDT) as u64 };
     asm!("lidt [{}]", in(reg) &dtr);
 }
 
@@ -135,7 +115,7 @@ pub unsafe fn init_gdt() {
     GDT[3] = 0x00cffa000000ffff; // Benutzer-Code 32 Bit (nur Platzhalter für STAR)
     GDT[4] = 0x00cff2000000ffff; // Benutzer-Daten
     GDT[5] = 0x00affa000000ffff; // Benutzer-Code 64 Bit
-                                 // ab 6: TSS-Deskriptoren (je 16 Byte) für jeden Kern
+    // ab 6: TSS-Deskriptoren (je 16 Byte) für jeden Kern
     load_gdt_ap();
     load_tss(0);
 }
@@ -154,15 +134,7 @@ struct Gate {
     zero: u32,
 }
 
-static mut IDT: [Gate; 256] = [Gate {
-    off0: 0,
-    sel: 0,
-    ist: 0,
-    attr: 0,
-    off1: 0,
-    off2: 0,
-    zero: 0,
-}; 256];
+static mut IDT: [Gate; 256] = [Gate { off0: 0, sel: 0, ist: 0, attr: 0, off1: 0, off2: 0, zero: 0 }; 256];
 
 #[repr(C)]
 pub struct Frame {
@@ -179,15 +151,7 @@ pub fn set_gate(i: usize, h: u64) {
 
 fn set(i: usize, h: u64, ist: u8) {
     unsafe {
-        IDT[i] = Gate {
-            off0: h as u16,
-            sel: KCODE,
-            ist,
-            attr: 0x8e,
-            off1: (h >> 16) as u16,
-            off2: (h >> 32) as u32,
-            zero: 0,
-        };
+        IDT[i] = Gate { off0: h as u16, sel: KCODE, ist, attr: 0x8e, off1: (h >> 16) as u16, off2: (h >> 32) as u32, zero: 0 };
     }
 }
 
@@ -242,10 +206,7 @@ pub unsafe fn init_idt() {
     set(16, e_mf as u64, 0);
     set(17, e_ac as u64, 0);
     set(19, e_xm as u64, 0);
-    let dtr = Dtr {
-        limit: (core::mem::size_of::<[Gate; 256]>() - 1) as u16,
-        base: core::ptr::addr_of!(IDT) as u64,
-    };
+    let dtr = Dtr { limit: (core::mem::size_of::<[Gate; 256]>() - 1) as u16, base: core::ptr::addr_of!(IDT) as u64 };
     asm!("lidt [{}]", in(reg) &dtr);
     // alten 8259-Interruptcontroller stumm schalten (wir arbeiten mit Abfrage; APIC folgt)
     outb(0x21, 0xff);
@@ -321,11 +282,7 @@ unsafe fn calibrate_tsc_pit() {
     if guard > 50_000_000 {
         // PIT zählt nicht (abgeschaltet): Grundtakt des Prozessors nehmen, sonst 2 GHz annehmen
         let max = core::arch::x86_64::__cpuid(0).eax;
-        let basis = if max >= 0x16 {
-            core::arch::x86_64::__cpuid(0x16).eax as u64 & 0xffff
-        } else {
-            0
-        };
+        let basis = if max >= 0x16 { core::arch::x86_64::__cpuid(0x16).eax as u64 & 0xffff } else { 0 };
         khz = if basis != 0 { basis * 1000 } else { 2_000_000 };
         TSC_QUELLE.store(2, Ordering::Relaxed);
     }
@@ -358,10 +315,7 @@ pub fn sleep_us(us: u64) {
 /// CPU-Name über CPUID
 pub fn cpu_name(out: &mut [u8; 48]) -> &str {
     unsafe {
-        for (i, leaf) in [0x8000_0002u32, 0x8000_0003, 0x8000_0004]
-            .iter()
-            .enumerate()
-        {
+        for (i, leaf) in [0x8000_0002u32, 0x8000_0003, 0x8000_0004].iter().enumerate() {
             let r = core::arch::x86_64::__cpuid(*leaf);
             for (j, v) in [r.eax, r.ebx, r.ecx, r.edx].iter().enumerate() {
                 out[i * 16 + j * 4..i * 16 + j * 4 + 4].copy_from_slice(&v.to_le_bytes());
@@ -389,11 +343,7 @@ pub fn reboot_hw() -> ! {
 /// UMIP (Programme lesen keine Deskriptortabellen aus). Liefert die gesetzten Namen.
 pub unsafe fn haerten() -> &'static str {
     let l7 = core::arch::x86_64::__cpuid_count(7, 0);
-    let (smep, smap, umip) = (
-        l7.ebx & (1 << 7) != 0,
-        l7.ebx & (1 << 20) != 0,
-        l7.ecx & (1 << 2) != 0,
-    );
+    let (smep, smap, umip) = (l7.ebx & (1 << 7) != 0, l7.ebx & (1 << 20) != 0, l7.ecx & (1 << 2) != 0);
     let mut cr4: u64;
     core::arch::asm!("mov {}, cr4", out(reg) cr4);
     if smep {
@@ -443,11 +393,5 @@ pub fn zufall() -> u64 {
 /// Zufall von außen (virtio-rng, Hardware-Quellen) in den Vorrat mischen
 pub fn zufall_mischen(v: u64) {
     let alt = ZUSTAND.load(Ordering::Relaxed);
-    ZUSTAND.store(
-        (alt ^ v)
-            .rotate_left(29)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            ^ v,
-        Ordering::Relaxed,
-    );
+    ZUSTAND.store((alt ^ v).rotate_left(29).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ v, Ordering::Relaxed);
 }

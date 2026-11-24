@@ -87,16 +87,8 @@ fn try_fat(disk: usize, part: u64) -> Option<Fat> {
     let reserved = le16(&b, 14);
     let nfats = b[16] as u64;
     let root_ent = le16(&b, 17);
-    let total = if le16(&b, 19) != 0 {
-        le16(&b, 19)
-    } else {
-        le32(&b, 32)
-    };
-    let fatsz = if le16(&b, 22) != 0 {
-        le16(&b, 22)
-    } else {
-        le32(&b, 36)
-    };
+    let total = if le16(&b, 19) != 0 { le16(&b, 19) } else { le32(&b, 32) };
+    let fatsz = if le16(&b, 22) != 0 { le16(&b, 22) } else { le32(&b, 36) };
     if nfats == 0 || fatsz == 0 {
         return None;
     }
@@ -109,32 +101,15 @@ fn try_fat(disk: usize, part: u64) -> Option<Fat> {
         return None; // FAT12 nicht unterstützt
     }
     let fat32 = clusters >= 65525;
-    Some(Fat {
-        disk,
-        part,
-        bps,
-        spc,
-        fat_start,
-        data_start,
-        root_clus: le32(&b, 44) as u32,
-        fat32,
-        root_start,
-        root_secs,
-    })
+    Some(Fat { disk, part, bps, spc, fat_start, data_start, root_clus: le32(&b, 44) as u32, fat32, root_start, root_secs })
 }
 
 /// The running slot's system partition (on the boot disk), taken out of `exts`. Missing: the
 /// start failed (a trial restarts, see bootslot.rs).
-fn take_slot_root(
-    exts: &mut Vec<(String, crate::ext4::Ext4, String)>,
-    slot: ultar_slots::Slot,
-) -> Option<(crate::ext4::Ext4, String)> {
+fn take_slot_root(exts: &mut Vec<(String, crate::ext4::Ext4, String)>, slot: ultar_slots::Slot) -> Option<(crate::ext4::Ext4, String)> {
     let name = ultar_slots::layout::system_part(slot);
-    let at = crate::rawpart::locate(name)
-        .map(|(disk, first)| alloc::format!("{}:{first}", BLOCK.lock()[disk].name()));
-    let i = exts
-        .iter()
-        .position(|e| e.0 == name && Some(&e.2) == at.as_ref());
+    let at = crate::rawpart::locate(name).map(|(disk, first)| alloc::format!("{}:{first}", BLOCK.lock()[disk].name()));
+    let i = exts.iter().position(|e| e.0 == name && Some(&e.2) == at.as_ref());
     match i {
         Some(i) => {
             let (_, x, w) = exts.remove(i);
@@ -171,14 +146,7 @@ pub fn mount() {
                         if e[..16].iter().all(|&x| x == 0) {
                             continue;
                         }
-                        let name: String = char::decode_utf16(
-                            e[56..128]
-                                .chunks(2)
-                                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                                .take_while(|&u| u != 0),
-                        )
-                        .map(|r| r.unwrap_or('?'))
-                        .collect();
+                        let name: String = char::decode_utf16(e[56..128].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0)).map(|r| r.unwrap_or('?')).collect();
                         if name == "ULTAR-INSTALL" {
                             installer_platten.push(alloc::format!("{dname}:"));
                         }
@@ -222,17 +190,12 @@ pub fn mount() {
         .or_else(|| exts.iter().position(|e| e.0 != "ultar-data"))
         .filter(|_| legacy);
     let mut root_taken = !m.is_empty();
-    let mut root_platte = crate::rawpart::boot_disk()
-        .map(|d| alloc::format!("{}:", BLOCK.lock()[d].name()))
-        .unwrap_or_default();
+    let mut root_platte = crate::rawpart::boot_disk().map(|d| alloc::format!("{}:", BLOCK.lock()[d].name())).unwrap_or_default();
     if let Some(i) = root_idx {
         let (name, x, w) = exts.remove(i);
         root_platte = alloc::format!("{}:", w.split(':').next().unwrap_or(""));
         let rw = name.starts_with("ultar-");
-        crate::kprintln!(
-            "[fs] ext4 auf {w} als /{}",
-            if rw { "" } else { " (nur lesen)" }
-        );
+        crate::kprintln!("[fs] ext4 auf {w} als /{}", if rw { "" } else { " (nur lesen)" });
         m.push((String::from("/"), Mnt::Ext4(x, rw)));
         root_taken = true;
     }
@@ -251,24 +214,13 @@ pub fn mount() {
     let hat_kern = |f: &Fat| f.lookup("ultar-kern").is_some() || f.lookup("bin/kerntest").is_some();
     // Startpartition derselben Platte wie die Wurzel bevorzugen (installiertes System neben dem Installationsmedium)
     // A/B start: the start partition of the boot disk (it holds only the loader)
-    let ab_esp = crate::rawpart::boot_disk().and_then(|_| {
-        fats.iter()
-            .position(|(_, w)| w.starts_with(root_platte.as_str()))
-    });
+    let ab_esp = crate::rawpart::boot_disk().and_then(|_| fats.iter().position(|(_, w)| w.starts_with(root_platte.as_str())));
     let main = ab_esp
-        .or_else(|| {
-            fats.iter().position(|(f, w)| {
-                !root_platte.is_empty() && w.starts_with(root_platte.as_str()) && hat_kern(f)
-            })
-        })
+        .or_else(|| fats.iter().position(|(f, w)| !root_platte.is_empty() && w.starts_with(root_platte.as_str()) && hat_kern(f)))
         .or_else(|| fats.iter().position(|(f, _)| hat_kern(f)))
         .unwrap_or(0);
     for (i, (f, w)) in fats.into_iter().enumerate() {
-        let at = if i == main {
-            String::from(if root_taken { "/boot/efi" } else { "/" })
-        } else {
-            alloc::format!("/media/{}", w.replace(':', "-"))
-        };
+        let at = if i == main { String::from(if root_taken { "/boot/efi" } else { "/" }) } else { alloc::format!("/media/{}", w.replace(':', "-")) };
         crate::kprintln!("[fs] FAT{} auf {w} als {at}", if f.fat32 { 32 } else { 16 });
         m.push((at, Mnt::Fat(f)));
     }
@@ -279,10 +231,7 @@ pub fn mount() {
     // busybox-Programme als /bin/<name> verfügbar machen
     for list in ["/bin/.applets", "/boot/efi/bin/.applets"] {
         if let Some(Node::File(d)) = open(list) {
-            *APPLETS.lock() = String::from_utf8_lossy(&d)
-                .lines()
-                .map(String::from)
-                .collect();
+            *APPLETS.lock() = String::from_utf8_lossy(&d).lines().map(String::from).collect();
             break;
         }
     }
@@ -290,19 +239,13 @@ pub fn mount() {
 
 impl Fat {
     fn next(&self, c: u32) -> u32 {
-        let (off, sz) = if self.fat32 {
-            (c as u64 * 4, 4)
-        } else {
-            (c as u64 * 2, 2)
-        };
+        let (off, sz) = if self.fat32 { (c as u64 * 4, 4) } else { (c as u64 * 2, 2) };
         let sec = self.fat_start + off / self.bps;
         let b = {
             let mut c = FATCACHE.lock();
             if c.0 != sec || c.2 != self.disk || c.1.is_empty() {
                 // the cached sector outlives the reader: it belongs to the kernel
-                let Some(b) = crate::heap::kernel(|| rd(self.disk, sec, 8)) else {
-                    return 0x0fff_ffff;
-                };
+                let Some(b) = crate::heap::kernel(|| rd(self.disk, sec, 8)) else { return 0x0fff_ffff };
                 *c = (sec, b, self.disk);
             }
             c.1[..512].to_vec()
@@ -330,17 +273,12 @@ impl Fat {
             c = self.next(c);
         }
         // the whole file is read into memory: without memory for it the file reads as empty
-        let Some(mut out) = crate::mem::try_with_capacity(clus.len() * csize as usize) else {
-            return Vec::new();
-        };
+        let Some(mut out) = crate::mem::try_with_capacity(clus.len() * csize as usize) else { return Vec::new() };
         let mut i = 0;
         while i < clus.len() {
             // zusammenhängende Cluster in einem Zug lesen (höchstens 4 MB)
             let mut j = i + 1;
-            while j < clus.len()
-                && clus[j] == clus[j - 1] + 1
-                && ((j - i) as u64) * csize < (4 << 20)
-            {
+            while j < clus.len() && clus[j] == clus[j - 1] + 1 && ((j - i) as u64) * csize < (4 << 20) {
                 j += 1;
             }
             let lba = self.data_start + (clus[i] as u64 - 2) * self.spc;
@@ -394,26 +332,14 @@ impl Fat {
                 continue; // Datenträgername
             }
             let name = if !lfn.is_empty() {
-                let v: Vec<u16> = lfn
-                    .iter()
-                    .copied()
-                    .take_while(|&u| u != 0 && u != 0xffff)
-                    .collect();
+                let v: Vec<u16> = lfn.iter().copied().take_while(|&u| u != 0 && u != 0xffff).collect();
                 String::from_utf16_lossy(&v)
             } else {
                 let base = core::str::from_utf8(&e[0..8]).unwrap_or("").trim_end();
                 let ext = core::str::from_utf8(&e[8..11]).unwrap_or("").trim_end();
                 let (lb, le) = (e[12] & 0x08 != 0, e[12] & 0x10 != 0);
-                let base = if lb {
-                    base.to_lowercase()
-                } else {
-                    base.to_string()
-                };
-                let ext = if le {
-                    ext.to_lowercase()
-                } else {
-                    ext.to_string()
-                };
+                let base = if lb { base.to_lowercase() } else { base.to_string() };
+                let ext = if le { ext.to_lowercase() } else { ext.to_string() };
                 if ext.is_empty() {
                     base
                 } else {
@@ -431,9 +357,7 @@ impl Fat {
     }
     /// vorhandene Datei an Ort und Stelle überschreiben (Größe und Cluster bleiben, Rest mit Leerzeichen)
     fn overwrite(&self, path: &str, data: &[u8]) -> bool {
-        let Some((false, size, mut c)) = self.lookup(path) else {
-            return false;
-        };
+        let Some((false, size, mut c)) = self.lookup(path) else { return false };
         let csize = (self.spc * self.bps) as usize;
         let mut off = 0usize;
         while (2..0x0fff_fff7).contains(&c) && off < size as usize {
@@ -443,11 +367,7 @@ impl Fat {
                 blk[..end - off].copy_from_slice(&data[off..end]);
             }
             let lba = self.data_start + (c as u64 - 2) * self.spc;
-            let ok = crate::driver::BLOCK
-                .lock()
-                .get_mut(self.disk)
-                .map(|d| d.write(lba, &blk).is_ok())
-                .unwrap_or(false);
+            let ok = crate::driver::BLOCK.lock().get_mut(self.disk).map(|d| d.write(lba, &blk).is_ok()).unwrap_or(false);
             if !ok {
                 return false;
             }
@@ -473,11 +393,7 @@ impl Fat {
 /// Pfad normalisieren (absolut, ohne . und ..)
 pub fn normalize(cwd: &str, p: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
-    let full = if p.starts_with('/') {
-        String::from(p)
-    } else {
-        alloc::format!("{cwd}/{p}")
-    };
+    let full = if p.starts_with('/') { String::from(p) } else { alloc::format!("{cwd}/{p}") };
     for c in full.split('/') {
         match c {
             "" | "." => {}
@@ -495,26 +411,15 @@ pub fn normalize(cwd: &str, p: &str) -> String {
 /// Whether `path` is a directory of the RAM layer (created there, or the parent of an entry) – the
 /// same answer as `ram_dir(path).is_some()` without building the listing.
 pub(crate) fn ram_is_dir(path: &str) -> bool {
-    let pre = if path == "/" {
-        String::from("/")
-    } else {
-        alloc::format!("{path}/")
-    };
+    let pre = if path == "/" { String::from("/") } else { alloc::format!("{path}/") };
     let ram = RAM.lock();
-    let found = ram
-        .range(pre.clone()..)
-        .next()
-        .is_some_and(|(k, _)| k.starts_with(&pre));
+    let found = ram.range(pre.clone()..).next().is_some_and(|(k, _)| k.starts_with(&pre));
     found
 }
 
 pub(crate) fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
     let ram = RAM.lock();
-    let pre = if path == "/" {
-        String::from("/")
-    } else {
-        alloc::format!("{path}/")
-    };
+    let pre = if path == "/" { String::from("/") } else { alloc::format!("{path}/") };
     let mut out: BTreeMap<String, DirEnt> = BTreeMap::new();
     let mut found = ram.contains_key(&pre);
     for (k, v) in ram.range(pre.clone()..) {
@@ -531,14 +436,7 @@ pub(crate) fn ram_dir(path: &str) -> Option<Vec<DirEnt>> {
             Some(i) => (&rest[..i], true),
             None => (rest, false),
         };
-        out.insert(
-            name.to_string(),
-            DirEnt {
-                name: name.to_string(),
-                dir,
-                size: if dir { 0 } else { v.len() as u64 },
-            },
-        );
+        out.insert(name.to_string(), DirEnt { name: name.to_string(), dir, size: if dir { 0 } else { v.len() as u64 } });
     }
     if !found {
         return None;
@@ -553,16 +451,7 @@ fn mnt_open(m: &Mnt, rel: &str) -> Option<Node> {
     match m {
         Mnt::Fat(f) => match f.lookup(rel)? {
             (false, size, c) => Some(Node::File(Arc::new(f.chain(c, size)))),
-            (true, _, c) => Some(Node::Dir(
-                f.list(c)
-                    .into_iter()
-                    .map(|e| DirEnt {
-                        name: e.0,
-                        dir: e.1,
-                        size: e.2,
-                    })
-                    .collect(),
-            )),
+            (true, _, c) => Some(Node::Dir(f.list(c).into_iter().map(|e| DirEnt { name: e.0, dir: e.1, size: e.2 }).collect())),
         },
         Mnt::Ext4(x, _) => {
             let (_, ino) = x.lookup(rel)?;
@@ -570,11 +459,7 @@ fn mnt_open(m: &Mnt, rel: &str) -> Option<Node> {
                 Some(Node::Dir(
                     x.list(&ino)
                         .into_iter()
-                        .map(|(name, _, t)| DirEnt {
-                            name,
-                            dir: t == 2,
-                            size: 0,
-                        })
+                        .map(|(name, _, t)| DirEnt { name, dir: t == 2, size: 0 })
                         .collect(),
                 ))
             } else {
@@ -586,10 +471,7 @@ fn mnt_open(m: &Mnt, rel: &str) -> Option<Node> {
 
 fn fs_open(path: &str) -> Option<Node> {
     let m = MOUNTS.lock();
-    let best = m
-        .iter()
-        .filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/")))
-        .max_by_key(|(p, _)| p.len())?;
+    let best = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len())?;
     let rel = &path[best.0.len().min(path.len())..];
     mnt_open(&best.1, rel)
 }
@@ -604,55 +486,18 @@ fn raw_node(d: &str) -> Option<Node> {
     let installer = crate::rawpart::installer_medium().is_some();
     match d {
         "ultar" => {
-            let mut v: Vec<DirEnt> = crate::svcdev::names()
-                .into_iter()
-                .map(|name| DirEnt {
-                    name,
-                    dir: false,
-                    size: 0,
-                })
-                .collect();
+            let mut v: Vec<DirEnt> = crate::svcdev::names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect();
             if !names.is_empty() {
-                v.push(DirEnt {
-                    name: "part".into(),
-                    dir: true,
-                    size: 0,
-                });
+                v.push(DirEnt { name: "part".into(), dir: true, size: 0 });
             }
             if installer {
-                v.push(DirEnt {
-                    name: "disk".into(),
-                    dir: true,
-                    size: 0,
-                });
-                v.push(DirEnt {
-                    name: "medium".into(),
-                    dir: false,
-                    size: 0,
-                });
+                v.push(DirEnt { name: "disk".into(), dir: true, size: 0 });
+                v.push(DirEnt { name: "medium".into(), dir: false, size: 0 });
             }
             Some(Node::Dir(v))
         }
-        "ultar/part" if !names.is_empty() => Some(Node::Dir(
-            names
-                .into_iter()
-                .map(|name| DirEnt {
-                    name,
-                    dir: false,
-                    size: 0,
-                })
-                .collect(),
-        )),
-        "ultar/disk" if installer => Some(Node::Dir(
-            crate::rawpart::disk_names()
-                .into_iter()
-                .map(|name| DirEnt {
-                    name,
-                    dir: false,
-                    size: 0,
-                })
-                .collect(),
-        )),
+        "ultar/part" if !names.is_empty() => Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
+        "ultar/disk" if installer => Some(Node::Dir(crate::rawpart::disk_names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
         _ if d.starts_with("ultar/part/") => crate::rawpart::node(d).map(Node::Dev),
         _ => crate::rawpart::installer_node(d).map(Node::Dev),
     }
@@ -676,54 +521,23 @@ pub fn open(path: &str) -> Option<Node> {
             }
         }
         // input nodes: the fixed ones with a screen, USB keyboards while attached
-        if d.strip_prefix("input/")
-            .and_then(crate::input::parse)
-            .is_some_and(|n| n >= crate::input::FIRST && crate::input::exists(n))
-        {
+        if d.strip_prefix("input/").and_then(crate::input::parse).is_some_and(|n| n >= crate::input::FIRST && crate::input::exists(n)) {
             return Some(Node::Dev("input/usb"));
         }
         if d == "input" && !crate::input::all().is_empty() {
-            return Some(Node::Dir(
-                crate::input::all()
-                    .into_iter()
-                    .map(|n| DirEnt {
-                        name: alloc::format!("event{n}"),
-                        dir: false,
-                        size: 0,
-                    })
-                    .collect(),
-            ));
+            return Some(Node::Dir(crate::input::all().into_iter().map(|n| DirEnt { name: alloc::format!("event{n}"), dir: false, size: 0 }).collect()));
         }
     }
     if path == "/dev" {
-        let mut v: Vec<DirEnt> = DEVS
-            .iter()
-            .map(|n| DirEnt {
-                name: n.to_string(),
-                dir: false,
-                size: 0,
-            })
-            .collect();
+        let mut v: Vec<DirEnt> = DEVS.iter().map(|n| DirEnt { name: n.to_string(), dir: false, size: 0 }).collect();
         if crate::console::framebuffer().is_some() {
-            v.push(DirEnt {
-                name: "fb0".into(),
-                dir: false,
-                size: 0,
-            });
+            v.push(DirEnt { name: "fb0".into(), dir: false, size: 0 });
         }
         if !crate::input::all().is_empty() {
-            v.push(DirEnt {
-                name: "input".into(),
-                dir: true,
-                size: 0,
-            });
+            v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
         }
         // the service nodes (svcdev) are always there
-        v.push(DirEnt {
-            name: "ultar".into(),
-            dir: true,
-            size: 0,
-        });
+        v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
         return Some(Node::Dir(v));
     }
     if path == "/proc" || path.starts_with("/proc/") {
@@ -743,15 +557,10 @@ pub fn open(path: &str) -> Option<Node> {
     match (fs_open(path), ramd) {
         (Some(Node::Dir(mut v)), r) => {
             // Einhängepunkte und /dev, /proc in der Liste zeigen
-            let mut extra: Vec<String> = MOUNTS
-                .lock()
-                .iter()
-                .filter_map(|(p, _)| {
-                    let parent = normalize(p, "..");
-                    (p != "/" && parent == path)
-                        .then(|| String::from(p.rsplit('/').next().unwrap_or("")))
-                })
-                .collect();
+            let mut extra: Vec<String> = MOUNTS.lock().iter().filter_map(|(p, _)| {
+                let parent = normalize(p, "..");
+                (p != "/" && parent == path).then(|| String::from(p.rsplit('/').next().unwrap_or("")))
+            }).collect();
             if path == "/" {
                 extra.push("dev".into());
                 extra.push("proc".into());
@@ -762,11 +571,7 @@ pub fn open(path: &str) -> Option<Node> {
             }
             for e in extra {
                 if !v.iter().any(|x| x.name == e) {
-                    v.push(DirEnt {
-                        name: e,
-                        dir: true,
-                        size: 0,
-                    });
+                    v.push(DirEnt { name: e, dir: true, size: 0 });
                 }
             }
             for e in r.unwrap_or_default() {
@@ -780,30 +585,10 @@ pub fn open(path: &str) -> Option<Node> {
         (None, Some(r)) => Some(Node::Dir(r)),
         (None, None) => {
             if path == "/" {
-                return Some(Node::Dir(vec![
-                    DirEnt {
-                        name: "dev".into(),
-                        dir: true,
-                        size: 0,
-                    },
-                    DirEnt {
-                        name: "proc".into(),
-                        dir: true,
-                        size: 0,
-                    },
-                    DirEnt {
-                        name: "sys".into(),
-                        dir: true,
-                        size: 0,
-                    },
-                ]));
+                return Some(Node::Dir(vec![DirEnt { name: "dev".into(), dir: true, size: 0 }, DirEnt { name: "proc".into(), dir: true, size: 0 }, DirEnt { name: "sys".into(), dir: true, size: 0 }]));
             }
             // Zwischenverzeichnis eines Einhängepunkts (z. B. /boot für /boot/efi)
-            if MOUNTS
-                .lock()
-                .iter()
-                .any(|(p, _)| p.starts_with(&alloc::format!("{path}/")))
-            {
+            if MOUNTS.lock().iter().any(|(p, _)| p.starts_with(&alloc::format!("{path}/"))) {
                 return Some(Node::Dir(Vec::new()));
             }
             // busybox-Programm unter /bin/<name>
@@ -833,11 +618,7 @@ pub fn stat(path: &str) -> Option<(u8, u64)> {
     }
     if !path.starts_with("/dev") && !path.starts_with("/proc") {
         let m = MOUNTS.lock();
-        if let Some(best) = m
-            .iter()
-            .filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/")))
-            .max_by_key(|(p, _)| p.len())
-        {
+        if let Some(best) = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len()) {
             let rel = &path[best.0.len().min(path.len())..];
             let r = match &best.1 {
                 Mnt::Fat(f) => f.lookup(rel).map(|(d, s, _)| (d as u8, s)),
@@ -849,11 +630,7 @@ pub fn stat(path: &str) -> Option<(u8, u64)> {
         }
     }
     // a directory of the RAM layer: known without building its listing
-    if !path.starts_with("/dev")
-        && !path.starts_with("/proc")
-        && !crate::groups::files::is_tree(path)
-        && ram_is_dir(path)
-    {
+    if !path.starts_with("/dev") && !path.starts_with("/proc") && !crate::groups::files::is_tree(path) && ram_is_dir(path) {
         return Some((1, 0));
     }
     match open(path)? {
@@ -868,22 +645,13 @@ fn ext4_target(path: &str) -> Option<(usize, String)> {
     if tmpfs::is_private(path) {
         return None;
     }
-    if ["/dev", "/proc", "/tmp", "/run", "/sys"]
-        .iter()
-        .any(|d| path == *d || path.starts_with(&alloc::format!("{d}/")))
-    {
+    if ["/dev", "/proc", "/tmp", "/run", "/sys"].iter().any(|d| path == *d || path.starts_with(&alloc::format!("{d}/"))) {
         return None;
     }
     let m = MOUNTS.lock();
-    let (i, (p, mnt)) = m
-        .iter()
-        .enumerate()
-        .filter(|(_, (p, _))| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/")))
-        .max_by_key(|(_, (p, _))| p.len())?;
+    let (i, (p, mnt)) = m.iter().enumerate().filter(|(_, (p, _))| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(_, (p, _))| p.len())?;
     match mnt {
-        Mnt::Ext4(x, true) if x.writable() => {
-            Some((i, String::from(&path[p.len().min(path.len())..])))
-        }
+        Mnt::Ext4(x, true) if x.writable() => Some((i, String::from(&path[p.len().min(path.len())..]))),
         _ => None,
     }
 }
@@ -909,14 +677,9 @@ pub fn disk_attr(path: &str) -> Option<(u32, u32, u32)> {
         return None;
     }
     let m = MOUNTS.lock();
-    let (p, mnt) = m
-        .iter()
-        .filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/")))
-        .max_by_key(|(p, _)| p.len())?;
+    let (p, mnt) = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len())?;
     match mnt {
-        Mnt::Ext4(x, _) => x
-            .lookup(&path[p.len().min(path.len())..])
-            .map(|(_, i)| (i.mode as u32, i.uid, i.gid)),
+        Mnt::Ext4(x, _) => x.lookup(&path[p.len().min(path.len())..]).map(|(_, i)| (i.mode as u32, i.uid, i.gid)),
         Mnt::Fat(_) => None,
     }
 }
@@ -928,10 +691,7 @@ pub fn set_disk_attr(path: &str, perm: u32, uid: u32, gid: u32) -> bool {
         return false;
     }
     match ext4_target(path) {
-        Some((i, rel)) => matches!(
-            with_ext4(i, |x| x.set_attr(&rel, perm as u16, uid, gid)),
-            Some(Ok(()))
-        ),
+        Some((i, rel)) => matches!(with_ext4(i, |x| x.set_attr(&rel, perm as u16, uid, gid)), Some(Ok(()))),
         None => false,
     }
 }
@@ -946,10 +706,7 @@ pub fn write_file(path: &str, data: Vec<u8>) {
 /// Whether a file at `path` may grow to `len` bytes: the quota of the RAM tree it would be stored in
 /// (a tmpfs or the host's RAM layer). Files that go to a writable disk and control files have none.
 pub fn grow(path: &str, len: u64) -> bool {
-    if path.starts_with("/proc/")
-        || crate::groups::files::is_tree(path)
-        || !tmpfs::is_private(path) && ext4_target(path).is_some()
-    {
+    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) || !tmpfs::is_private(path) && ext4_target(path).is_some() {
         return true;
     }
     tmpfs::grow(path, len)
@@ -958,11 +715,7 @@ pub fn grow(path: &str, len: u64) -> bool {
 /// Used and allowed bytes of the RAM tree that holds `path` (a tmpfs, or the host's RAM layer for a
 /// path that is not on a writable disk); `None` for disk files and the kernel's own trees.
 pub fn ram_usage(path: &str) -> Option<(u64, u64)> {
-    if path.starts_with("/proc")
-        || path.starts_with("/dev")
-        || crate::groups::files::is_tree(path)
-        || !tmpfs::is_private(path) && ext4_target(path).is_some()
-    {
+    if path.starts_with("/proc") || path.starts_with("/dev") || crate::groups::files::is_tree(path) || !tmpfs::is_private(path) && ext4_target(path).is_some() {
         return None;
     }
     // on the FAT test image and without a disk everything written lives in the RAM layer
@@ -994,31 +747,19 @@ pub fn store_file_res(path: &str, data: Arc<Vec<u8>>) -> Result<(), i64> {
         return Ok(());
     }
     // control files are written directly (syscall::control_write); nothing is ever stored there
-    if path.starts_with("/proc/")
-        || crate::groups::files::is_tree(path)
-        || crate::devices::sysfs::is_tree(path)
-    {
+    if path.starts_with("/proc/") || crate::groups::files::is_tree(path) || crate::devices::sysfs::is_tree(path) {
         return Err(-ENOSPC);
     }
     if tmpfs::is_private(path) {
         // a file of a tree that no longer exists is dropped
         return ok(tmpfs::write(path, data));
     }
-    let Some((i, rel)) = ext4_target(path) else {
-        return ok(tmpfs::store(path, data));
-    };
+    let Some((i, rel)) = ext4_target(path) else { return ok(tmpfs::store(path, data)) };
     match with_ext4(i, |x| x.write_file(&rel, &data).map(|()| x.disk)) {
         Some(Ok(disk)) => {
             tmpfs::discard(path);
-            let flushed = BLOCK
-                .lock()
-                .get_mut(disk)
-                .is_some_and(|d| d.flush().is_ok());
-            if flushed {
-                Ok(())
-            } else {
-                Err(-EIO)
-            }
+            let flushed = BLOCK.lock().get_mut(disk).is_some_and(|d| d.flush().is_ok());
+            if flushed { Ok(()) } else { Err(-EIO) }
         }
         Some(Err(e)) => {
             let mut w = WARNED.lock();
@@ -1026,11 +767,7 @@ pub fn store_file_res(path: &str, data: Arc<Vec<u8>>) -> Result<(), i64> {
                 crate::kprintln!("[fs] {path}: {e} - not stored (the caller gets an error)");
                 *w = true;
             }
-            Err(if e == crate::ext4::NO_SPACE {
-                -ENOSPC
-            } else {
-                -EIO
-            })
+            Err(if e == crate::ext4::NO_SPACE { -ENOSPC } else { -EIO })
         }
         None => Err(-EIO),
     }
@@ -1065,27 +802,15 @@ pub fn fat_overwrite_alle(rel: &str, data: &[u8]) -> usize {
 
 /// FAT-Partition mit dieser Datei vorhanden?
 pub fn fat_has(rel: &str) -> bool {
-    MOUNTS
-        .lock()
-        .iter()
-        .any(|(_, mnt)| matches!(mnt, Mnt::Fat(f) if f.lookup(rel).is_some()))
+    MOUNTS.lock().iter().any(|(_, mnt)| matches!(mnt, Mnt::Fat(f) if f.lookup(rel).is_some()))
 }
 
 pub fn mounts() -> Vec<(String, &'static str)> {
-    MOUNTS
-        .lock()
-        .iter()
-        .map(|(p, m)| {
-            (
-                p.clone(),
-                match m {
-                    Mnt::Fat(_) => "vfat",
-                    Mnt::Ext4(_, true) => "ext4",
-                    Mnt::Ext4(_, false) => "ext4 (nur lesen)",
-                },
-            )
-        })
-        .collect()
+    MOUNTS.lock().iter().map(|(p, m)| (p.clone(), match m {
+        Mnt::Fat(_) => "vfat",
+        Mnt::Ext4(_, true) => "ext4",
+        Mnt::Ext4(_, false) => "ext4 (nur lesen)",
+    })).collect()
 }
 
 pub fn mkdir(path: &str) -> bool {
@@ -1142,10 +867,7 @@ pub fn read_all(path: &str) -> Option<Arc<Vec<u8>>> {
 /// path is not a link). Parent directories must already be free of links (the path walker ensures that).
 pub fn disk_link(path: &str) -> Option<String> {
     let m = MOUNTS.lock();
-    let best = m
-        .iter()
-        .filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/")))
-        .max_by_key(|(p, _)| p.len())?;
+    let best = m.iter().filter(|(p, _)| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(p, _)| p.len())?;
     match &best.1 {
         Mnt::Ext4(x, _) => x.link_at(&path[best.0.len().min(path.len())..]),
         Mnt::Fat(_) => None,

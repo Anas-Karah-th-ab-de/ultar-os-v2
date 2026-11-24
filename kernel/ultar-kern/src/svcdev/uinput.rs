@@ -70,12 +70,7 @@ impl Drop for UinputFd {
 
 /// A new descriptor (the caller holds the right).
 pub fn open() -> FdKind {
-    FdKind::Uinput(Arc::new(UinputFd(Mutex::new(State {
-        caps: Caps::default(),
-        node: None,
-        tokens: BURST * 1000,
-        filled_ms: crate::arch::uptime_ms(),
-    }))))
+    FdKind::Uinput(Arc::new(UinputFd(Mutex::new(State { caps: Caps::default(), node: None, tokens: BURST * 1000, filled_ms: crate::arch::uptime_ms() }))))
 }
 
 fn handle(fd: u64) -> Option<Arc<UinputFd>> {
@@ -103,33 +98,15 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
     let u = handle(fd)?;
     let mut st = u.0.lock();
     let r = match req {
-        UI_GET_VERSION => {
-            return Some(
-                if with(|p| proc::write_user(p.space(), arg, &VERSION.to_le_bytes()))
-                    .unwrap_or(false)
-                {
-                    0
-                } else {
-                    -EFAULT
-                },
-            )
-        }
+        UI_GET_VERSION => return Some(if with(|p| proc::write_user(p.space(), arg, &VERSION.to_le_bytes())).unwrap_or(false) { 0 } else { -EFAULT }),
         r if r & 0xc000_ffff == UI_GET_SYSNAME_NR => {
-            let Some(n) = st.node else {
-                return Some(-EINVAL);
-            };
+            let Some(n) = st.node else { return Some(-EINVAL) };
             let name = alloc::format!("input{n}\0");
             let len = ((req >> 16) & 0x3fff) as usize;
             if len < name.len() {
                 return Some(-EINVAL);
             }
-            return Some(
-                if with(|p| proc::write_user(p.space(), arg, name.as_bytes())).unwrap_or(false) {
-                    name.len() as i64
-                } else {
-                    -EFAULT
-                },
-            );
+            return Some(if with(|p| proc::write_user(p.space(), arg, name.as_bytes())).unwrap_or(false) { name.len() as i64 } else { -EFAULT });
         }
         UI_DEV_DESTROY => {
             if let Some(n) = st.node.take() {
@@ -143,19 +120,14 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
         UI_SET_RELBIT => arg <= 0xffff && st.caps.set_code(EV_REL, arg as u16),
         UI_SET_ABSBIT => arg <= 0xffff && st.caps.set_code(EV_ABS, arg as u16),
         UI_DEV_SETUP => {
-            let Some(b) = user(arg, 92) else {
-                return Some(-EFAULT);
-            };
+            let Some(b) = user(arg, 92) else { return Some(-EFAULT) };
             st.caps.id = [u16_at(&b, 0), u16_at(&b, 2), u16_at(&b, 4), u16_at(&b, 6)];
             st.caps.set_name(&b[8..88]);
             true
         }
         UI_ABS_SETUP => {
-            let Some(b) = user(arg, 28) else {
-                return Some(-EFAULT);
-            };
-            st.caps
-                .set_range(u16_at(&b, 0), i32_at(&b, 8), i32_at(&b, 12))
+            let Some(b) = user(arg, 28) else { return Some(-EFAULT) };
+            st.caps.set_range(u16_at(&b, 0), i32_at(&b, 8), i32_at(&b, 12))
         }
         UI_DEV_CREATE => {
             if !st.caps.complete() {
@@ -193,10 +165,7 @@ fn user_dev(st: &mut State, b: &[u8]) -> bool {
     st.caps.set_name(&b[..80]);
     st.caps.id = [u16_at(b, 80), u16_at(b, 82), u16_at(b, 84), u16_at(b, 86)];
     (0..64u16).all(|a| {
-        let (max, min) = (
-            i32_at(b, 92 + a as usize * 4),
-            i32_at(b, 92 + 256 + a as usize * 4),
-        );
+        let (max, min) = (i32_at(b, 92 + a as usize * 4), i32_at(b, 92 + 256 + a as usize * 4));
         (min == 0 && max == 0) || st.caps.set_range(a, min, max)
     })
 }
@@ -210,37 +179,22 @@ pub fn sys_write(fd: u64, buf: u64, n: u64) -> Option<i64> {
         if n != USER_DEV {
             return Some(-EINVAL);
         }
-        let Some(b) = user(buf, n) else {
-            return Some(-EFAULT);
-        };
-        return Some(if user_dev(&mut st, &b) {
-            n as i64
-        } else {
-            -EINVAL
-        });
+        let Some(b) = user(buf, n) else { return Some(-EFAULT) };
+        return Some(if user_dev(&mut st, &b) { n as i64 } else { -EINVAL });
     };
     if n == 0 || n % EVENT != 0 || n / EVENT > MAX_EVENTS_PER_WRITE {
         return Some(-EINVAL);
     }
-    let Some(b) = user(buf, n) else {
-        return Some(-EFAULT);
-    };
+    let Some(b) = user(buf, n) else { return Some(-EFAULT) };
     let mut events = Vec::new();
     if crate::heap::kernel(|| events.try_reserve(n / EVENT).is_err()) {
         return Some(-ENOMEM);
     }
-    events.extend(
-        b.chunks_exact(EVENT)
-            .map(|e| (u16_at(e, 16), u16_at(e, 18), i32_at(e, 20))),
-    );
+    events.extend(b.chunks_exact(EVENT).map(|e| (u16_at(e, 16), u16_at(e, 18), i32_at(e, 20))));
     if !take_tokens(&mut st, events.len() as u64) {
         return Some(-EAGAIN);
     }
-    Some(if crate::input::virtual_events(node, &events) {
-        n as i64
-    } else {
-        -EINVAL
-    })
+    Some(if crate::input::virtual_events(node, &events) { n as i64 } else { -EINVAL })
 }
 
 /// `read` on the node: there is nothing to read (no force feedback).

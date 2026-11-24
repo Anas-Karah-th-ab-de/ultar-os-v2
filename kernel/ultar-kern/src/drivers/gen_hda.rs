@@ -113,10 +113,7 @@ impl Hda {
         w16(m + CORBWP, wp);
         let rp = self.rp;
         if !wait(|| r16(m + RIRBWP) & 0xff != rp, 100) {
-            return Err(format!(
-                "Codec {} antwortet nicht (Knoten {nid}, Verb {verb:#x})",
-                self.codec
-            ));
+            return Err(format!("Codec {} antwortet nicht (Knoten {nid}, Verb {verb:#x})", self.codec));
         }
         self.rp = (self.rp + 1) % self.n_rirb;
         let v = r32(self.rirb + self.rp as u64 * 8);
@@ -130,26 +127,18 @@ impl Hda {
     /// Verbindungsliste eines Knotens (Abschnitt 7.3.3.3), Bereiche aufgelöst
     fn verbindungen(&mut self, nid: u8) -> Vec<u8> {
         let mut aus = Vec::new();
-        let Ok(len) = self.param(nid, 0x0e) else {
-            return aus;
-        };
+        let Ok(len) = self.param(nid, 0x0e) else { return aus };
         let lang = len & 0x80 != 0;
         let n = (len & 0x7f) as usize;
         let je = if lang { 2 } else { 4 };
         let mut i = 0;
         while i < n {
-            let Ok(r) = self.cmd(nid, 0xF_0200 | i as u32) else {
-                break;
-            };
+            let Ok(r) = self.cmd(nid, 0xF_0200 | i as u32) else { break };
             for k in 0..je {
                 if i + k >= n {
                     break;
                 }
-                let e = if lang {
-                    (r >> (16 * k)) & 0xffff
-                } else {
-                    (r >> (8 * k)) & 0xff
-                };
+                let e = if lang { (r >> (16 * k)) & 0xffff } else { (r >> (8 * k)) & 0xff };
                 let bereich = if lang { e & 0x8000 != 0 } else { e & 0x80 != 0 };
                 let id = (if lang { e & 0x7fff } else { e & 0x7f }) as u8;
                 match aus.last().copied() {
@@ -215,9 +204,7 @@ impl Hda {
             // Ausgänge nach Vorrang: Lautsprecher, Kopfhörer, Line-Out, dann jeder ausgabefähige Pin
             let mut pins: Vec<(u8, u8)> = Vec::new();
             for nid in start..start.saturating_add(anzahl) {
-                if (self.param(nid, 0x09).unwrap_or(0) >> 20) & 0xf != 4
-                    || self.param(nid, 0x0c).unwrap_or(0) & (1 << 4) == 0
-                {
+                if (self.param(nid, 0x09).unwrap_or(0) >> 20) & 0xf != 4 || self.param(nid, 0x0c).unwrap_or(0) & (1 << 4) == 0 {
                     continue;
                 }
                 let cfg = self.cmd(nid, 0xF_1C00).unwrap_or(0);
@@ -261,9 +248,7 @@ impl Hda {
         if bytes < 16 {
             return Ok(0);
         }
-        unsafe {
-            core::ptr::copy_nonoverlapping(werte.as_ptr() as *const u8, self.buf as *mut u8, bytes)
-        };
+        unsafe { core::ptr::copy_nonoverlapping(werte.as_ptr() as *const u8, self.buf as *mut u8, bytes) };
         let sd = self.sd;
         // Strom anhalten und zurücksetzen (3.3.35)
         w8(sd, r8(sd) & !2);
@@ -369,21 +354,7 @@ impl Driver for Drv {
             return Err("Controller hat keinen Ausgabestrom".into());
         }
         let sd = m + 0x80 + iss as u64 * 0x20;
-        let mut h = Hda {
-            m,
-            corb,
-            rirb,
-            n_corb,
-            n_rirb,
-            rp: 0,
-            sd,
-            bdl,
-            buf,
-            codec: 0,
-            dac: 0,
-            pin: 0,
-            name: String::new(),
-        };
+        let mut h = Hda { m, corb, rirb, n_corb, n_rirb, rp: 0, sd, bdl, buf, codec: 0, dac: 0, pin: 0, name: String::new() };
         let mut fehler = String::from("kein Codec mit Ausgabe");
         for c in 0..15u8 {
             if codecs & (1 << c) == 0 {
@@ -408,20 +379,12 @@ impl Driver for Drv {
 
 /// Beschreibung der Tonausgabe (für `ton` ohne Angaben und die Geräteliste)
 pub fn info() -> Option<String> {
-    HDA.lock().as_ref().map(|h| {
-        format!(
-            "{} · Pin {} ← DAC {} · 48 kHz 16 Bit Stereo",
-            h.name, h.pin, h.dac
-        )
-    })
+    HDA.lock().as_ref().map(|h| format!("{} · Pin {} ← DAC {} · 48 kHz 16 Bit Stereo", h.name, h.pin, h.dac))
 }
 
 /// Abtastwerte (16 Bit, Stereo verschachtelt, 48 kHz) ausgeben – höchstens ~1,36 s je Aufruf
 pub fn spiele(werte: &[i16]) -> Result<usize> {
-    HDA.lock()
-        .as_mut()
-        .ok_or("keine Tonausgabe (gen-hda nicht aktiv)")?
-        .spiele(werte)
+    HDA.lock().as_mut().ok_or("keine Tonausgabe (gen-hda nicht aktiv)")?.spiele(werte)
 }
 
 /// Prüfton: `hz` Hertz für `ms` Millisekunden (Sinus-Näherung, weiches Ein-/Ausblenden)
@@ -432,11 +395,7 @@ pub fn ton(hz: u64, ms: u64) -> Result<usize> {
     let mut w = Vec::with_capacity(n * 2);
     for i in 0..n {
         let ph = (i as u64 * hz) % RATE;
-        let (vz, q) = if ph < halb {
-            (1i64, ph)
-        } else {
-            (-1i64, ph - halb)
-        };
+        let (vz, q) = if ph < halb { (1i64, ph) } else { (-1i64, ph - halb) };
         let y = (4 * q * (halb - q)) as i64 * 9000 / (halb * halb) as i64;
         let rand = i.min(n - 1 - i).min(240) as i64;
         let s = (vz * y * rand / 240) as i16;

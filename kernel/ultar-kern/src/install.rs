@@ -102,12 +102,8 @@ pub(crate) fn t(l: Lang, k: &str) -> &'static str {
         ("done_title", De) => concat!(ultar_brand::product!(), " ist installiert"),
         ("done_title", En) => concat!(ultar_brand::product!(), " is installed"),
         ("done_text", Ar) => "أعد التشغيل الآن – حتى مع بقاء وسيط التثبيت يبدأ النظام المثبت.",
-        ("done_text", De) => {
-            "Jetzt neu starten – auch mit eingestecktem Medium startet das installierte System."
-        }
-        ("done_text", En) => {
-            "Restart now – the installed system starts even with the medium attached."
-        }
+        ("done_text", De) => "Jetzt neu starten – auch mit eingestecktem Medium startet das installierte System.",
+        ("done_text", En) => "Restart now – the installed system starts even with the medium attached.",
         ("restart", Ar) => "إعادة التشغيل",
         ("restart", De) => "Neu starten",
         ("restart", En) => "Restart",
@@ -260,21 +256,13 @@ fn glyphe<R>(c: char, px: u16, fett: bool, f: impl FnOnce(Option<&Bild>) -> R) -
     let s = g.as_mut().unwrap();
     if !s.cache.contains_key(&(c, px, fett)) {
         let lat = if fett { &s.fett } else { &s.lat };
-        let font = if ist_ar(c) && s.ar.glyph_id(c).0 != 0 {
-            &s.ar
-        } else {
-            lat
-        };
+        let font = if ist_ar(c) && s.ar.glyph_id(c).0 != 0 { &s.ar } else { lat };
         let gid = font.glyph_id(c);
         let bild = if gid.0 == 0 && c != ' ' {
             None
         } else {
             let lat_sc = PxScale::from(px as f32);
-            let sc = if core::ptr::eq(font, &s.ar) {
-                PxScale::from(px as f32 * 1.22)
-            } else {
-                lat_sc
-            };
+            let sc = if core::ptr::eq(font, &s.ar) { PxScale::from(px as f32 * 1.22) } else { lat_sc };
             // gemeinsame Grundlinie: Aufstieg der lateinischen Schrift
             let asc = lat.as_scaled(lat_sc).ascent();
             let adv = font.as_scaled(sc).h_advance(gid);
@@ -282,10 +270,7 @@ fn glyphe<R>(c: char, px: u16, fett: bool, f: impl FnOnce(Option<&Bild>) -> R) -
             match font.outline_glyph(glyph) {
                 Some(o) => {
                     let b = o.px_bounds();
-                    let (w, h) = (
-                        (b.max.x - b.min.x) as i32 + 1,
-                        (b.max.y - b.min.y) as i32 + 1,
-                    );
+                    let (w, h) = ((b.max.x - b.min.x) as i32 + 1, (b.max.y - b.min.y) as i32 + 1);
                     let mut cov = vec![0u8; (w * h) as usize];
                     o.draw(|x, y, v| {
                         let i = (y as i32 * w + x as i32) as usize;
@@ -293,23 +278,9 @@ fn glyphe<R>(c: char, px: u16, fett: bool, f: impl FnOnce(Option<&Bild>) -> R) -
                             cov[i] = (v.clamp(0.0, 1.0) * 255.0) as u8;
                         }
                     });
-                    Some(Bild {
-                        w,
-                        h,
-                        ox: b.min.x as i32,
-                        oy: b.min.y as i32,
-                        adv: (adv + 0.5) as i32,
-                        cov,
-                    })
+                    Some(Bild { w, h, ox: b.min.x as i32, oy: b.min.y as i32, adv: (adv + 0.5) as i32, cov })
                 }
-                None => Some(Bild {
-                    w: 0,
-                    h: 0,
-                    ox: 0,
-                    oy: 0,
-                    adv: (adv + 0.5) as i32,
-                    cov: Vec::new(),
-                }),
+                None => Some(Bild { w: 0, h: 0, ox: 0, oy: 0, adv: (adv + 0.5) as i32, cov: Vec::new() }),
             }
         };
         s.cache.insert((c, px, fett), bild);
@@ -334,20 +305,13 @@ pub(crate) struct Canvas {
 }
 
 fn sichtbar(s: &str, rtl: bool) -> Vec<char> {
-    if rtl {
-        crate::console::visual_line_rtl(s)
-    } else {
-        crate::console::visual_line(s)
-    }
+    if rtl { crate::console::visual_line_rtl(s) } else { crate::console::visual_line(s) }
 }
 
 impl Canvas {
     pub(crate) fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: u32) {
         let (x0, y0) = (x.max(0) as usize, y.max(0) as usize);
-        let (x1, y1) = (
-            ((x + w).max(0) as usize).min(self.w),
-            ((y + h).max(0) as usize).min(self.h),
-        );
+        let (x1, y1) = (((x + w).max(0) as usize).min(self.w), ((y + h).max(0) as usize).min(self.h));
         for yy in y0..y1 {
             self.px[yy * self.w + x0..yy * self.w + x1.max(x0)].fill(c);
         }
@@ -355,47 +319,18 @@ impl Canvas {
     /// Rechteck mit runden Ecken
     pub(crate) fn rrect(&mut self, x: i32, y: i32, w: i32, h: i32, r: i32, c: u32) {
         for yy in 0..h {
-            let dy = if yy < r {
-                r - yy
-            } else if yy >= h - r {
-                yy - (h - r - 1)
-            } else {
-                0
-            };
-            let inset = if dy > 0 {
-                r - isqrt(r * r - dy * dy)
-            } else {
-                0
-            };
+            let dy = if yy < r { r - yy } else if yy >= h - r { yy - (h - r - 1) } else { 0 };
+            let inset = if dy > 0 { r - isqrt(r * r - dy * dy) } else { 0 };
             self.rect(x + inset, y + yy, w - 2 * inset, 1, c);
         }
     }
     /// gerahmtes Feld: Rahmen in `b`, Fläche in `c`
-    pub(crate) fn frame(
-        &mut self,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-        r: i32,
-        b: u32,
-        c: u32,
-        dicke: i32,
-    ) {
+    pub(crate) fn frame(&mut self, x: i32, y: i32, w: i32, h: i32, r: i32, b: u32, c: u32, dicke: i32) {
         self.rrect(x, y, w, h, r, b);
-        self.rrect(
-            x + dicke,
-            y + dicke,
-            w - 2 * dicke,
-            h - 2 * dicke,
-            (r - dicke).max(0),
-            c,
-        );
+        self.rrect(x + dicke, y + dicke, w - 2 * dicke, h - 2 * dicke, (r - dicke).max(0), c);
     }
     fn glyph(&mut self, x: i32, y: i32, c: char, s: i32, col: u32) {
-        let Some(g) = crate::console::glyph(c) else {
-            return;
-        };
+        let Some(g) = crate::console::glyph(c) else { return };
         for (gy, &bits) in g.iter().enumerate() {
             for gx in 0..8 {
                 if bits & (0x80 >> gx) != 0 {
@@ -450,10 +385,7 @@ impl Canvas {
     pub(crate) fn text_w(s: &str, scale: i32) -> i32 {
         let px = px_groesse(scale);
         let fett = scale >= 3;
-        crate::console::visual_line(s)
-            .iter()
-            .map(|&c| glyphe(c, px, fett, |b| b.map(|b| b.adv).unwrap_or(8 * scale)))
-            .sum()
+        crate::console::visual_line(s).iter().map(|&c| glyphe(c, px, fett, |b| b.map(|b| b.adv).unwrap_or(8 * scale))).sum()
     }
     pub(crate) fn text_c(&mut self, cx: i32, y: i32, s: &str, scale: i32, col: u32) {
         let w = Self::text_w(s, scale);
@@ -493,11 +425,7 @@ fn isqrt(v: i32) -> i32 {
 }
 
 fn farbe(fb: &Framebuffer, v: u32) -> u32 {
-    if fb.bgr {
-        v
-    } else {
-        ((v & 0xff) << 16) | (v & 0xff00) | ((v >> 16) & 0xff)
-    }
+    if fb.bgr { v } else { ((v & 0xff) << 16) | (v & 0xff00) | ((v >> 16) & 0xff) }
 }
 
 /// Ausschnitt der Leinwand auf den Bildschirm (z. B. unter dem alten Mauszeiger)
@@ -508,56 +436,27 @@ pub(crate) fn blit_rect(fb: &Framebuffer, cv: &Canvas, x: i32, y: i32, w: i32, h
     let base = fb.base as *mut u32;
     for yy in y0..y1 {
         for xx in x0..x1 {
-            unsafe {
-                core::ptr::write_volatile(
-                    base.add(yy * fb.stride as usize + xx),
-                    farbe(fb, cv.px[yy * cv.w + xx]),
-                )
-            };
+            unsafe { core::ptr::write_volatile(base.add(yy * fb.stride as usize + xx), farbe(fb, cv.px[yy * cv.w + xx])) };
         }
     }
 }
 
 /// Mauszeiger direkt auf den Bildschirm (die Leinwand bleibt ohne Zeiger)
 const ZEIGER: [u16; 19] = [
-    0b1000000000000000,
-    0b1100000000000000,
-    0b1110000000000000,
-    0b1111000000000000,
-    0b1111100000000000,
-    0b1111110000000000,
-    0b1111111000000000,
-    0b1111111100000000,
-    0b1111111110000000,
-    0b1111111111000000,
-    0b1111111111100000,
-    0b1111111000000000,
-    0b1110111000000000,
-    0b1100011100000000,
-    0b1000011100000000,
-    0b0000001110000000,
-    0b0000001110000000,
-    0b0000000111000000,
-    0b0000000000000000,
+    0b1000000000000000, 0b1100000000000000, 0b1110000000000000, 0b1111000000000000, 0b1111100000000000,
+    0b1111110000000000, 0b1111111000000000, 0b1111111100000000, 0b1111111110000000, 0b1111111111000000,
+    0b1111111111100000, 0b1111111000000000, 0b1110111000000000, 0b1100011100000000, 0b1000011100000000,
+    0b0000001110000000, 0b0000001110000000, 0b0000000111000000, 0b0000000000000000,
 ];
 
 pub(crate) fn zeiger_malen(fb: &Framebuffer, x: i32, y: i32) {
     let base = fb.base as *mut u32;
     let (w, h) = (fb.width as i32, fb.height as i32);
-    let gesetzt = |zx: i32, zy: i32| {
-        zy >= 0
-            && (zy as usize) < ZEIGER.len()
-            && (0..16).contains(&zx)
-            && ZEIGER[zy as usize] & (0x8000 >> zx) != 0
-    };
+    let gesetzt = |zx: i32, zy: i32| zy >= 0 && (zy as usize) < ZEIGER.len() && (0..16).contains(&zx) && ZEIGER[zy as usize] & (0x8000 >> zx) != 0;
     for zy in -1..20 {
         for zx in -1..17 {
             let innen = gesetzt(zx, zy);
-            let rand = !innen
-                && (gesetzt(zx - 1, zy)
-                    || gesetzt(zx + 1, zy)
-                    || gesetzt(zx, zy - 1)
-                    || gesetzt(zx, zy + 1));
+            let rand = !innen && (gesetzt(zx - 1, zy) || gesetzt(zx + 1, zy) || gesetzt(zx, zy - 1) || gesetzt(zx, zy + 1));
             if !(innen || rand) {
                 continue;
             }
@@ -566,12 +465,7 @@ pub(crate) fn zeiger_malen(fb: &Framebuffer, x: i32, y: i32) {
                 continue;
             }
             let c = if innen { 0xFFFFFF } else { 0x000000 };
-            unsafe {
-                core::ptr::write_volatile(
-                    base.add(py as usize * fb.stride as usize + px as usize),
-                    farbe(fb, c),
-                )
-            };
+            unsafe { core::ptr::write_volatile(base.add(py as usize * fb.stride as usize + px as usize), farbe(fb, c)) };
         }
     }
 }
@@ -587,10 +481,7 @@ pub(crate) fn blit(fb: &Framebuffer, cv: &Canvas) {
                 core::ptr::copy_nonoverlapping(row.as_ptr(), dst, cv.w.min(fb.width as usize));
             } else {
                 for (x, &v) in row.iter().enumerate().take(fb.width as usize) {
-                    core::ptr::write_volatile(
-                        dst.add(x),
-                        ((v & 0xff) << 16) | (v & 0xff00) | ((v >> 16) & 0xff),
-                    );
+                    core::ptr::write_volatile(dst.add(x), ((v & 0xff) << 16) | (v & 0xff00) | ((v >> 16) & 0xff));
                 }
             }
         }
@@ -658,45 +549,25 @@ pub(crate) fn platten() -> Vec<Platte> {
                                 if e[..16].iter().all(|&x| x == 0) {
                                     continue;
                                 }
-                                let nm: String = char::decode_utf16(
-                                    e[56..128]
-                                        .chunks(2)
-                                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                                        .take_while(|&u| u != 0),
-                                )
-                                .map(|r| r.unwrap_or('?'))
-                                .collect();
+                                let nm: String = char::decode_utf16(e[56..128].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0))
+                                    .map(|r| r.unwrap_or('?'))
+                                    .collect();
                                 let mut entry = [0u8; 128];
                                 entry.copy_from_slice(e);
-                                teile.push(Teil {
-                                    first: le64(e, 32),
-                                    last: le64(e, 40),
-                                    name: nm,
-                                    entry,
-                                });
+                                teile.push(Teil { first: le64(e, 32), last: le64(e, 40), name: nm, entry });
                             }
                         }
                     }
                 }
             }
         }
-        v.push(Platte {
-            idx,
-            name,
-            mb: sectors * ss as u64 >> 20,
-            sectors,
-            ss,
-            teile,
-        });
+        v.push(Platte { idx, name, mb: sectors * ss as u64 >> 20, sectors, ss, teile });
     }
     v
 }
 
 fn ist_quelle(p: &Platte) -> bool {
-    p.teile
-        .iter()
-        .any(|t| t.name == "ULTAR-INSTALL" || t.name == "ULTAR-EFI")
-        && p.teile.iter().any(|t| t.name == "ultar-compat")
+    p.teile.iter().any(|t| t.name == "ULTAR-INSTALL" || t.name == "ULTAR-EFI") && p.teile.iter().any(|t| t.name == "ultar-compat")
 }
 
 /// Sectors the target needs for medium `q` (A/B layout or the single-root layout).
@@ -732,14 +603,8 @@ pub fn sitzung_starten() -> bool {
     if !startmedium_ist_installer() {
         return false;
     }
-    let marke = ["/boot/efi/ultar-installer", "/ultar-installer"]
-        .iter()
-        .find_map(|p| crate::fs::read_all(p));
-    let zeile = |w: &str| {
-        marke
-            .as_ref()
-            .is_some_and(|m| String::from_utf8_lossy(m).lines().any(|l| l.trim() == w))
-    };
+    let marke = ["/boot/efi/ultar-installer", "/ultar-installer"].iter().find_map(|p| crate::fs::read_all(p));
+    let zeile = |w: &str| marke.as_ref().is_some_and(|m| String::from_utf8_lossy(m).lines().any(|l| l.trim() == w));
     if zeile("session=console") {
         crate::kprintln!("[installer] installation medium: console (session=console)");
         return true;
@@ -757,10 +622,7 @@ pub fn sitzung_starten() -> bool {
 }
 
 fn quelle(v: &[Platte]) -> Option<Platte> {
-    v.iter()
-        .find(|p| p.teile.iter().any(|t| t.name == "ULTAR-INSTALL"))
-        .or_else(|| v.iter().find(|p| ist_quelle(p)))
-        .cloned()
+    v.iter().find(|p| p.teile.iter().any(|t| t.name == "ULTAR-INSTALL")).or_else(|| v.iter().find(|p| ist_quelle(p))).cloned()
 }
 
 /// Was installiert wird: (Quellpartition, erster Sektor auf dem Ziel). Hat das Medium neben ULTAR-INSTALL eine eigene
@@ -780,12 +642,7 @@ fn plan(q: &Platte) -> Vec<(Teil, u64)> {
 }
 
 fn benoetigt(q: &Platte) -> u64 {
-    plan(q)
-        .iter()
-        .map(|(t, z)| z + (t.last - t.first))
-        .max()
-        .unwrap_or(0)
-        + 34
+    plan(q).iter().map(|(t, z)| z + (t.last - t.first)).max().unwrap_or(0) + 34
 }
 
 fn crc32(d: &[u8]) -> u32 {
@@ -793,11 +650,7 @@ fn crc32(d: &[u8]) -> u32 {
     for &b in d {
         c ^= b as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 {
-                (c >> 1) ^ 0xEDB8_8320
-            } else {
-                c >> 1
-            };
+            c = if c & 1 != 0 { (c >> 1) ^ 0xEDB8_8320 } else { c >> 1 };
         }
     }
     !c
@@ -902,38 +755,14 @@ impl Eingabe {
             match (self.esc, b) {
                 (0, 0x1b) => self.esc = 1,
                 (1, b'[') => self.esc = 2,
-                (2, b'A') => {
-                    self.esc = 0;
-                    return Some(Taste::Hoch);
-                }
-                (2, b'B') => {
-                    self.esc = 0;
-                    return Some(Taste::Runter);
-                }
-                (2, b'C') => {
-                    self.esc = 0;
-                    return Some(Taste::Rechts);
-                }
-                (2, b'D') => {
-                    self.esc = 0;
-                    return Some(Taste::Links);
-                }
-                (1, _) => {
-                    self.esc = 0;
-                    return Some(Taste::Esc);
-                }
-                (_, b'\r') | (_, b'\n') => {
-                    self.esc = 0;
-                    return Some(Taste::Enter);
-                }
-                (_, b'\t') => {
-                    self.esc = 0;
-                    return Some(Taste::Tab);
-                }
-                (_, c) => {
-                    self.esc = 0;
-                    return Some(Taste::Zeichen(c as char));
-                }
+                (2, b'A') => { self.esc = 0; return Some(Taste::Hoch); }
+                (2, b'B') => { self.esc = 0; return Some(Taste::Runter); }
+                (2, b'C') => { self.esc = 0; return Some(Taste::Rechts); }
+                (2, b'D') => { self.esc = 0; return Some(Taste::Links); }
+                (1, _) => { self.esc = 0; return Some(Taste::Esc); }
+                (_, b'\r') | (_, b'\n') => { self.esc = 0; return Some(Taste::Enter); }
+                (_, b'\t') => { self.esc = 0; return Some(Taste::Tab); }
+                (_, c) => { self.esc = 0; return Some(Taste::Zeichen(c as char)); }
             }
             return None;
         }
@@ -1030,12 +859,7 @@ pub(crate) fn geraete_gruppen() -> Vec<(&'static str, usize, usize, String)> {
     for b in crate::driver::DEVICES.lock().iter() {
         let d = &b.dev;
         let k = kategorie(d.class, d.subclass);
-        let txt = alloc::format!(
-            "{:04x}:{:04x}{}",
-            d.vendor,
-            d.device,
-            b.driver.map(|n| alloc::format!(" {n}")).unwrap_or_default()
-        );
+        let txt = alloc::format!("{:04x}:{:04x}{}", d.vendor, d.device, b.driver.map(|n| alloc::format!(" {n}")).unwrap_or_default());
         match g.iter_mut().find(|e| e.0 == k) {
             Some(e) => {
                 e.1 += 1;
@@ -1048,16 +872,7 @@ pub(crate) fn geraete_gruppen() -> Vec<(&'static str, usize, usize, String)> {
             None => g.push((k, 1, b.driver.is_some() as usize, txt)),
         }
     }
-    let ordnung = [
-        "cat_net",
-        "cat_wlan",
-        "cat_disk",
-        "cat_usb",
-        "cat_gpu",
-        "cat_audio",
-        "cat_bridge",
-        "cat_other",
-    ];
+    let ordnung = ["cat_net", "cat_wlan", "cat_disk", "cat_usb", "cat_gpu", "cat_audio", "cat_bridge", "cat_other"];
     g.sort_by_key(|e| ordnung.iter().position(|o| *o == e.0).unwrap_or(9));
     g
 }
@@ -1081,10 +896,7 @@ impl Ui {
         self.quelle = quelle(&alle);
         let q = self.quelle.as_ref().map(|q| q.idx);
         let need = self.quelle.as_ref().map(bedarf).unwrap_or(u64::MAX);
-        self.ziele = alle
-            .into_iter()
-            .filter(|p| Some(p.idx) != q && p.ss == 512 && p.sectors >= need)
-            .collect();
+        self.ziele = alle.into_iter().filter(|p| Some(p.idx) != q && p.ss == 512 && p.sectors >= need).collect();
         self.wahl = None;
     }
 
@@ -1100,25 +912,10 @@ impl Ui {
         if primaer {
             cv.rrect(x, y, w, h, 12, if fokus { GOLD2 } else { GOLD });
         } else {
-            cv.frame(
-                x,
-                y,
-                w,
-                h,
-                12,
-                if fokus { GOLD2 } else { LINE },
-                CARD,
-                if fokus { 2 } else { 1 },
-            );
+            cv.frame(x, y, w, h, 12, if fokus { GOLD2 } else { LINE }, CARD, if fokus { 2 } else { 1 });
         }
         let sc = Canvas::passend(text, 2, w - 24);
-        cv.text_c(
-            x + w / 2,
-            y + if sc == 2 { 10 } else { 18 },
-            text,
-            sc,
-            if primaer { DARK } else { TEXT },
-        );
+        cv.text_c(x + w / 2, y + if sc == 2 { 10 } else { 18 }, text, sc, if primaer { DARK } else { TEXT });
         self.knopf(x, y, w, h, a);
     }
 
@@ -1126,11 +923,7 @@ impl Ui {
     fn zeile(&mut self, kx: i32, kw: i32, y: i32, s: &str, scale: i32, col: u32) {
         let scale = Canvas::passend(s, scale, kw - 80);
         let w = Canvas::text_w(s, scale);
-        let x = if self.rtl() {
-            kx + kw - 40 - w
-        } else {
-            kx + 40
-        };
+        let x = if self.rtl() { kx + kw - 40 - w } else { kx + 40 };
         self.cv.text(x, y, s, scale, col);
     }
 
@@ -1171,13 +964,7 @@ impl Ui {
             Schritt::Fertig | Schritt::Fehler => 6,
         };
         let sk = ["s1", "dev_title", "s2", "s3", "s4", "s5"];
-        let stufe = alloc::format!(
-            "{} {} {} 6 · {}",
-            t(self.lang, "step"),
-            n,
-            t(self.lang, "of"),
-            t(self.lang, sk[n - 1])
-        );
+        let stufe = alloc::format!("{} {} {} 6 · {}", t(self.lang, "step"), n, t(self.lang, "of"), t(self.lang, sk[n - 1]));
         let pw = 6 * 46;
         let px0 = (w - pw) / 2;
         for i in 0..6 {
@@ -1199,40 +986,16 @@ impl Ui {
                 self.mitte(ky + 100, t(self.lang, "welcome_sub"), 2, MUTED);
                 let bw = 360;
                 let mut y = ky + 160;
-                for (l, s) in [
-                    (Lang::Ar, "العربية"),
-                    (Lang::De, "Deutsch"),
-                    (Lang::En, "English"),
-                ] {
+                for (l, s) in [(Lang::Ar, "العربية"), (Lang::De, "Deutsch"), (Lang::En, "English")] {
                     let fokus = self.knoepfe.len() == self.fokus;
                     let aktiv = self.lang == l;
-                    let (b, f) = if fokus {
-                        (GOLD2, 0x1A1E28)
-                    } else if aktiv {
-                        (GOLD, CARD)
-                    } else {
-                        (LINE, CARD)
-                    };
-                    self.cv.frame(
-                        w / 2 - bw / 2,
-                        y,
-                        bw,
-                        56,
-                        14,
-                        b,
-                        f,
-                        if fokus || aktiv { 2 } else { 1 },
-                    );
-                    self.cv
-                        .text_c(w / 2, y + 12, s, 2, if aktiv { GOLD2 } else { TEXT });
+                    let (b, f) = if fokus { (GOLD2, 0x1A1E28) } else if aktiv { (GOLD, CARD) } else { (LINE, CARD) };
+                    self.cv.frame(w / 2 - bw / 2, y, bw, 56, 14, b, f, if fokus || aktiv { 2 } else { 1 });
+                    self.cv.text_c(w / 2, y + 12, s, 2, if aktiv { GOLD2 } else { TEXT });
                     self.knopf(w / 2 - bw / 2, y, bw, 56, Aktion::Sprache(l));
                     y += 70;
                 }
-                let bx = if self.rtl() {
-                    kx + 28
-                } else {
-                    kx + kw - 28 - 200
-                };
+                let bx = if self.rtl() { kx + 28 } else { kx + kw - 28 - 200 };
                 self.schaltflaeche(bx, unten, 200, t(self.lang, "next"), Aktion::Weiter, true);
             }
             Schritt::Geraete if self.alle.is_some() => {
@@ -1243,14 +1006,7 @@ impl Ui {
                     .map(|b| {
                         let d = &b.dev;
                         (
-                            alloc::format!(
-                                "{}  {:04x}:{:04x}  {}  ·  {}",
-                                d.id(),
-                                d.vendor,
-                                d.device,
-                                d.class_name(),
-                                b.driver.unwrap_or("–")
-                            ),
+                            alloc::format!("{}  {:04x}:{:04x}  {}  ·  {}", d.id(), d.vendor, d.device, d.class_name(), b.driver.unwrap_or("–")),
                             b.driver.is_some(),
                         )
                     })
@@ -1258,49 +1014,22 @@ impl Ui {
                 let je = 11usize;
                 let seiten = liste.len().div_ceil(je).max(1);
                 let seite = seite.min(seiten - 1);
-                let titel = alloc::format!(
-                    "{} ({})  ·  {} {}/{}",
-                    t(self.lang, "all_dev"),
-                    liste.len(),
-                    t(self.lang, "page"),
-                    seite + 1,
-                    seiten
-                );
+                let titel = alloc::format!("{} ({})  ·  {} {}/{}", t(self.lang, "all_dev"), liste.len(), t(self.lang, "page"), seite + 1, seiten);
                 self.zeile(kx, kw, ky + 24, &titel, 2, TEXT);
                 let mut y = ky + 70;
                 let rtl_alt = self.cv.rtl;
                 self.cv.rtl = false; // Gerätezeilen sind technisch (links→rechts)
                 for (txt, ok) in liste.iter().skip(seite * je).take(je) {
-                    self.cv
-                        .rrect(kx + 40, y + 7, 9, 9, 4, if *ok { GREEN } else { GOLD });
+                    self.cv.rrect(kx + 40, y + 7, 9, 9, 4, if *ok { GREEN } else { GOLD });
                     let sc = Canvas::passend(txt, 1, kw - 100);
-                    self.cv
-                        .text(kx + 60, y, txt, sc, if *ok { TEXT } else { MUTED });
+                    self.cv.text(kx + 60, y, txt, sc, if *ok { TEXT } else { MUTED });
                     y += 28;
                 }
                 self.cv.rtl = rtl_alt;
-                let (lx, mx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 200, kx + kw / 2 - 100, kx + 28)
-                } else {
-                    (kx + 28, kx + kw / 2 - 100, kx + kw - 28 - 200)
-                };
-                self.schaltflaeche(
-                    lx,
-                    unten,
-                    200,
-                    t(self.lang, "back"),
-                    Aktion::Seite(-1),
-                    false,
-                );
+                let (lx, mx, rx) = if self.rtl() { (kx + kw - 28 - 200, kx + kw / 2 - 100, kx + 28) } else { (kx + 28, kx + kw / 2 - 100, kx + kw - 28 - 200) };
+                self.schaltflaeche(lx, unten, 200, t(self.lang, "back"), Aktion::Seite(-1), false);
                 self.schaltflaeche(mx, unten, 200, "‹ ›", Aktion::Seite(1), false);
-                self.schaltflaeche(
-                    rx,
-                    unten,
-                    200,
-                    t(self.lang, "next"),
-                    Aktion::AlleGeraete,
-                    true,
-                );
+                self.schaltflaeche(rx, unten, 200, t(self.lang, "next"), Aktion::AlleGeraete, true);
             }
             Schritt::Geraete => {
                 self.zeile(kx, kw, ky + 26, t(self.lang, "dev_title"), 3, TEXT);
@@ -1319,11 +1048,7 @@ impl Ui {
                     };
                     let kopf = alloc::format!("{} ({})  ·  {}", t(self.lang, k), anz, status);
                     let rtl = self.rtl();
-                    let (pkt_x, txt_x) = if rtl {
-                        (kx + kw - 48, kx + 40)
-                    } else {
-                        (kx + 40, kx + 64)
-                    };
+                    let (pkt_x, txt_x) = if rtl { (kx + kw - 48, kx + 40) } else { (kx + 40, kx + 64) };
                     self.cv.rrect(pkt_x, y + 6, 12, 12, 6, farbe);
                     let kw2 = kw - 110;
                     let sc = Canvas::passend(&kopf, 2, kw2);
@@ -1331,8 +1056,7 @@ impl Ui {
                     let dw = Canvas::text_w(&txt, 1);
                     if rtl {
                         self.cv.text(kx + kw - 64 - tw, y, &kopf, sc, TEXT);
-                        self.cv
-                            .text(kx + kw - 64 - dw.min(kw2), y + 32, &txt, 1, MUTED);
+                        self.cv.text(kx + kw - 64 - dw.min(kw2), y + 32, &txt, 1, MUTED);
                     } else {
                         self.cv.text(txt_x, y, &kopf, sc, TEXT);
                         self.cv.text(txt_x, y + 32, &txt, 1, MUTED);
@@ -1340,11 +1064,7 @@ impl Ui {
                     y += 52;
                 }
                 // Netzwerkzustand
-                let farbe = match self.internet {
-                    Some(true) => GREEN,
-                    Some(false) => GOLD,
-                    None => MUTED,
-                };
+                let farbe = match self.internet { Some(true) => GREEN, Some(false) => GOLD, None => MUTED };
                 let nz = self.netz.clone();
                 self.cv.rrect(kx + 30, y + 4, kw - 60, 40, 10, 0x171B24);
                 self.zeile(kx, kw, y + 14, &nz, 1, farbe);
@@ -1354,28 +1074,13 @@ impl Ui {
                     y += 26;
                 }
                 let _ = y;
-                let (lx, mx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 200, kx + kw / 2 - 120, kx + 28)
-                } else {
-                    (kx + 28, kx + kw / 2 - 120, kx + kw - 28 - 200)
-                };
+                let (lx, mx, rx) = if self.rtl() { (kx + kw - 28 - 200, kx + kw / 2 - 120, kx + 28) } else { (kx + 28, kx + kw / 2 - 120, kx + kw - 28 - 200) };
                 self.schaltflaeche(lx, unten, 200, t(self.lang, "back"), Aktion::Zurueck, false);
-                self.schaltflaeche(
-                    mx,
-                    unten,
-                    240,
-                    t(self.lang, "connect"),
-                    Aktion::Verbinden,
-                    false,
-                );
+                self.schaltflaeche(mx, unten, 240, t(self.lang, "connect"), Aktion::Verbinden, false);
                 self.schaltflaeche(rx, unten, 200, t(self.lang, "next"), Aktion::Weiter, true);
                 let alle_txt = alloc::format!("{} ({})", t(self.lang, "all_dev"), anz_gesamt);
                 let aw = (Canvas::text_w(&alle_txt, 1) + 40).max(160);
-                let ax = if self.rtl() {
-                    kx + 28
-                } else {
-                    kx + kw - 28 - aw
-                };
+                let ax = if self.rtl() { kx + 28 } else { kx + kw - 28 - aw };
                 self.schaltflaeche(ax, ky + 20, aw, &alle_txt, Aktion::AlleGeraete, false);
             }
             Schritt::Ziel => {
@@ -1394,73 +1099,30 @@ impl Ui {
                     let p = self.ziele[i].clone();
                     let fokus = self.knoepfe.len() == self.fokus;
                     let gew = self.wahl == Some(i);
-                    let (b, f) = if fokus {
-                        (GOLD2, 0x1A1E28)
-                    } else if gew {
-                        (GOLD, CARD)
-                    } else {
-                        (LINE, CARD)
-                    };
-                    self.cv.frame(
-                        kx + 30,
-                        y,
-                        kw - 60,
-                        64,
-                        14,
-                        b,
-                        f,
-                        if fokus || gew { 2 } else { 1 },
-                    );
+                    let (b, f) = if fokus { (GOLD2, 0x1A1E28) } else if gew { (GOLD, CARD) } else { (LINE, CARD) };
+                    self.cv.frame(kx + 30, y, kw - 60, 64, 14, b, f, if fokus || gew { 2 } else { 1 });
                     let alt = if p.teile.is_empty() {
                         String::from("–")
                     } else {
-                        p.teile
-                            .iter()
-                            .map(|t| {
-                                if t.name.is_empty() {
-                                    String::from("?")
-                                } else {
-                                    t.name.clone()
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        p.teile.iter().map(|t| if t.name.is_empty() { String::from("?") } else { t.name.clone() }).collect::<Vec<_>>().join(", ")
                     };
                     let titel = alloc::format!("{}  ·  {} MB", p.name, p.mb);
                     let tw = Canvas::text_w(&titel, 2);
                     let aw = Canvas::text_w(&alt, 1);
                     if self.rtl() {
-                        self.cv.text(
-                            kx + kw - 56 - tw,
-                            y + 8,
-                            &titel,
-                            2,
-                            if gew { GOLD2 } else { TEXT },
-                        );
+                        self.cv.text(kx + kw - 56 - tw, y + 8, &titel, 2, if gew { GOLD2 } else { TEXT });
                         self.cv.text(kx + kw - 56 - aw, y + 42, &alt, 1, MUTED);
                     } else {
-                        self.cv
-                            .text(kx + 56, y + 8, &titel, 2, if gew { GOLD2 } else { TEXT });
+                        self.cv.text(kx + 56, y + 8, &titel, 2, if gew { GOLD2 } else { TEXT });
                         self.cv.text(kx + 56, y + 42, &alt, 1, MUTED);
                     }
                     self.knopf(kx + 30, y, kw - 60, 64, Aktion::Platte(i));
                     y += 76;
                 }
-                let (lx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 200, kx + 28)
-                } else {
-                    (kx + 28, kx + kw - 28 - 200)
-                };
+                let (lx, rx) = if self.rtl() { (kx + kw - 28 - 200, kx + 28) } else { (kx + 28, kx + kw - 28 - 200) };
                 self.schaltflaeche(lx, unten, 200, t(self.lang, "back"), Aktion::Zurueck, false);
                 if self.ziele.is_empty() {
-                    self.schaltflaeche(
-                        rx,
-                        unten,
-                        200,
-                        t(self.lang, "search"),
-                        Aktion::Suchen,
-                        true,
-                    );
+                    self.schaltflaeche(rx, unten, 200, t(self.lang, "search"), Aktion::Suchen, true);
                 } else {
                     self.schaltflaeche(rx, unten, 200, t(self.lang, "next"), Aktion::Weiter, true);
                 }
@@ -1474,33 +1136,13 @@ impl Ui {
                     self.zeile(kx, kw, ky + 170, &s, 2, TEXT);
                 }
                 if let Some(q) = self.quelle.clone() {
-                    let s = alloc::format!(
-                        "{}: {} · {}",
-                        t(self.lang, "source"),
-                        q.name,
-                        q.teile
-                            .iter()
-                            .map(|t| t.name.clone())
-                            .collect::<Vec<_>>()
-                            .join(" + ")
-                    );
+                    let s = alloc::format!("{}: {} · {}", t(self.lang, "source"), q.name, q.teile.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(" + "));
                     self.zeile(kx, kw, ky + 275, &s, 1, MUTED);
                 }
                 let bw = (Canvas::text_w(t(self.lang, "confirm_btn"), 2) + 56).clamp(240, kw - 290);
-                let (lx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 200, kx + 28)
-                } else {
-                    (kx + 28, kx + kw - 28 - bw)
-                };
+                let (lx, rx) = if self.rtl() { (kx + kw - 28 - 200, kx + 28) } else { (kx + 28, kx + kw - 28 - bw) };
                 self.schaltflaeche(lx, unten, 200, t(self.lang, "back"), Aktion::Zurueck, false);
-                self.schaltflaeche(
-                    rx,
-                    unten,
-                    bw,
-                    t(self.lang, "confirm_btn"),
-                    Aktion::Loeschen,
-                    true,
-                );
+                self.schaltflaeche(rx, unten, bw, t(self.lang, "confirm_btn"), Aktion::Loeschen, true);
             }
             Schritt::Installieren => {
                 self.mitte(ky + 40, t(self.lang, "inst_title"), 3, TEXT);
@@ -1515,8 +1157,7 @@ impl Ui {
                 } else {
                     self.cv.rrect(kx + 60, ky + 180, fw, 22, 11, GOLD);
                 }
-                self.cv
-                    .text_c(w / 2, ky + 220, &alloc::format!("{pct} %"), 2, GOLD2);
+                self.cv.text_c(w / 2, ky + 220, &alloc::format!("{pct} %"), 2, GOLD2);
                 let ph = self.phase.clone();
                 self.mitte(ky + 270, &ph, 2, TEXT);
             }
@@ -1526,27 +1167,9 @@ impl Ui {
                 self.mitte(ky + 150, t(self.lang, "done_title"), 3, TEXT);
                 self.mitte(ky + 210, t(self.lang, "verified"), 2, MUTED);
                 self.mitte(ky + 250, t(self.lang, "done_text"), 2, GOLD2);
-                let (lx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 240, kx + 28)
-                } else {
-                    (kx + 28, kx + kw - 28 - 240)
-                };
-                self.schaltflaeche(
-                    lx,
-                    unten,
-                    240,
-                    t(self.lang, "console"),
-                    Aktion::Konsole,
-                    false,
-                );
-                self.schaltflaeche(
-                    rx,
-                    unten,
-                    240,
-                    t(self.lang, "restart"),
-                    Aktion::Neustart,
-                    true,
-                );
+                let (lx, rx) = if self.rtl() { (kx + kw - 28 - 240, kx + 28) } else { (kx + 28, kx + kw - 28 - 240) };
+                self.schaltflaeche(lx, unten, 240, t(self.lang, "console"), Aktion::Konsole, false);
+                self.schaltflaeche(rx, unten, 240, t(self.lang, "restart"), Aktion::Neustart, true);
             }
             Schritt::Fehler => {
                 self.cv.rrect(w / 2 - 40, ky + 40, 80, 80, 40, RED);
@@ -1554,26 +1177,14 @@ impl Ui {
                 self.mitte(ky + 150, t(self.lang, "err_title"), 3, TEXT);
                 let f = self.fehler.clone();
                 self.mitte(ky + 210, &f, 1, GOLD2);
-                let (lx, rx) = if self.rtl() {
-                    (kx + kw - 28 - 240, kx + 28)
-                } else {
-                    (kx + 28, kx + kw - 28 - 240)
-                };
-                self.schaltflaeche(
-                    lx,
-                    unten,
-                    240,
-                    t(self.lang, "console"),
-                    Aktion::Konsole,
-                    false,
-                );
+                let (lx, rx) = if self.rtl() { (kx + kw - 28 - 240, kx + 28) } else { (kx + 28, kx + kw - 28 - 240) };
+                self.schaltflaeche(lx, unten, 240, t(self.lang, "console"), Aktion::Konsole, false);
                 self.schaltflaeche(rx, unten, 240, t(self.lang, "back"), Aktion::Zurueck, true);
             }
         }
         // Hinweis unten
         if self.schritt != Schritt::Installieren {
-            self.cv
-                .text_c(w / 2, h - 34, t(self.lang, "hint"), 1, MUTED);
+            self.cv.text_c(w / 2, h - 34, t(self.lang, "hint"), 1, MUTED);
         }
         if self.fokus >= self.knoepfe.len() && !self.knoepfe.is_empty() {
             self.fokus = self.knoepfe.len() - 1;
@@ -1681,15 +1292,8 @@ impl Ui {
 
     /// Partitionen kopieren, prüfen, GPT schreiben
     fn installieren(&mut self) -> Result<(), String> {
-        let q = self
-            .quelle
-            .clone()
-            .ok_or("kein Installationsmedium gefunden")?;
-        let z = self
-            .wahl
-            .and_then(|i| self.ziele.get(i))
-            .cloned()
-            .ok_or("keine Zielplatte gewählt")?;
+        let q = self.quelle.clone().ok_or("kein Installationsmedium gefunden")?;
+        let z = self.wahl.and_then(|i| self.ziele.get(i)).cloned().ok_or("keine Zielplatte gewählt")?;
         if z.idx == q.idx {
             return Err(String::from("Zielplatte ist das Installationsmedium"));
         }
@@ -1701,33 +1305,18 @@ impl Ui {
         }
         crate::kprintln!("[installation] {} -> {} ({} MB)", q.name, z.name, z.mb);
         let auftrag = plan(&q);
-        let gesamt: u64 = auftrag
-            .iter()
-            .map(|(t, _)| t.last - t.first + 1)
-            .sum::<u64>()
-            * 2
-            + 1;
+        let gesamt: u64 = auftrag.iter().map(|(t, _)| t.last - t.first + 1).sum::<u64>() * 2 + 1;
         let mut erledigt = 0u64;
         // alte GPT vorne zerstören, damit eine abgebrochene Installation nicht als gültig gilt
         {
             let mut b = BLOCK.lock();
-            b[z.idx]
-                .write(0, &vec![0u8; 34 * 512])
-                .map_err(|e| alloc::format!("{}: {e}", z.name))?;
+            b[z.idx].write(0, &vec![0u8; 34 * 512]).map_err(|e| alloc::format!("{}: {e}", z.name))?;
         }
         for (teil, ziel_first) in &auftrag {
             let versatz = *ziel_first as i64 - teil.first as i64;
-            let anzeige = if teil.name == "ULTAR-INSTALL" {
-                String::from("ULTAR-EFI")
-            } else {
-                teil.name.clone()
-            };
+            let anzeige = if teil.name == "ULTAR-INSTALL" { String::from("ULTAR-EFI") } else { teil.name.clone() };
             for pruefen in [false, true] {
-                let label = alloc::format!(
-                    "{} {}",
-                    t(self.lang, if pruefen { "ph_verify" } else { "ph_copy" }),
-                    anzeige
-                );
+                let label = alloc::format!("{} {}", t(self.lang, if pruefen { "ph_verify" } else { "ph_copy" }), anzeige);
                 self.phase_setzen(label);
                 let mut lba = teil.first;
                 let mut zuletzt = crate::arch::uptime_ms();
@@ -1736,23 +1325,15 @@ impl Ui {
                     let mut buf = vec![0u8; n as usize * 512];
                     {
                         let mut b = BLOCK.lock();
-                        b[q.idx]
-                            .read(lba, &mut buf)
-                            .map_err(|e| alloc::format!("{} lesen: {e}", q.name))?;
+                        b[q.idx].read(lba, &mut buf).map_err(|e| alloc::format!("{} lesen: {e}", q.name))?;
                         if pruefen {
                             let mut neu = vec![0u8; buf.len()];
-                            b[z.idx]
-                                .read((lba as i64 + versatz) as u64, &mut neu)
-                                .map_err(|e| alloc::format!("{} lesen: {e}", z.name))?;
+                            b[z.idx].read((lba as i64 + versatz) as u64, &mut neu).map_err(|e| alloc::format!("{} lesen: {e}", z.name))?;
                             if neu != buf {
-                                return Err(alloc::format!(
-                                    "Prüfung fehlgeschlagen: {anzeige}, Sektor {lba}"
-                                ));
+                                return Err(alloc::format!("Prüfung fehlgeschlagen: {anzeige}, Sektor {lba}"));
                             }
                         } else {
-                            b[z.idx]
-                                .write((lba as i64 + versatz) as u64, &buf)
-                                .map_err(|e| alloc::format!("{} schreiben: {e}", z.name))?;
+                            b[z.idx].write((lba as i64 + versatz) as u64, &buf).map_err(|e| alloc::format!("{} schreiben: {e}", z.name))?;
                         }
                     }
                     lba += n;
@@ -1770,12 +1351,8 @@ impl Ui {
         let (vorne, hinten, hinten_lba) = gpt_bauen(&q, z.sectors);
         {
             let mut b = BLOCK.lock();
-            b[z.idx]
-                .write(hinten_lba, &hinten)
-                .map_err(|e| alloc::format!("GPT hinten: {e}"))?;
-            b[z.idx]
-                .write(0, &vorne)
-                .map_err(|e| alloc::format!("GPT vorne: {e}"))?;
+            b[z.idx].write(hinten_lba, &hinten).map_err(|e| alloc::format!("GPT hinten: {e}"))?;
+            b[z.idx].write(0, &vorne).map_err(|e| alloc::format!("GPT vorne: {e}"))?;
         }
         // GPT zurücklesen und prüfen
         let h = rd(z.idx, 1, 1).ok_or("GPT lesen fehlgeschlagen")?;
@@ -1783,10 +1360,7 @@ impl Ui {
             return Err(String::from("GPT nach dem Schreiben ungültig"));
         }
         self.fortschritt = (gesamt, gesamt);
-        crate::kprintln!(
-            "[installation] fertig: {} Partition(en) kopiert und geprüft, GPT geschrieben",
-            auftrag.len()
-        );
+        crate::kprintln!("[installation] fertig: {} Partition(en) kopiert und geprüft, GPT geschrieben", auftrag.len());
         Ok(())
     }
 
@@ -1806,19 +1380,14 @@ impl Ui {
         match cfg {
             Some(c) => {
                 let nic = crate::net::active_nic();
-                let ping =
-                    crate::net::ping(nic, [1, 1, 1, 1]).or_else(|| crate::net::ping(nic, c.gw));
+                let ping = crate::net::ping(nic, [1, 1, 1, 1]).or_else(|| crate::net::ping(nic, c.gw));
                 self.internet = Some(ping.is_some());
                 self.netz = alloc::format!(
                     "IP {}  ·  Router {}  ·  {}{}",
                     ip_text(c.ip),
                     ip_text(c.gw),
-                    t(
-                        self.lang,
-                        if ping.is_some() { "inet_ok" } else { "inet_no" }
-                    ),
-                    ping.map(|ms| alloc::format!(" ({ms} ms)"))
-                        .unwrap_or_default()
+                    t(self.lang, if ping.is_some() { "inet_ok" } else { "inet_no" }),
+                    ping.map(|ms| alloc::format!(" ({ms} ms)")).unwrap_or_default()
                 );
             }
             None => {
@@ -1829,38 +1398,23 @@ impl Ui {
     }
 
     fn treffer(&self, x: i32, y: i32) -> Option<usize> {
-        self.knoepfe
-            .iter()
-            .position(|k| x >= k.x && x < k.x + k.w && y >= k.y && y < k.y + k.h)
+        self.knoepfe.iter().position(|k| x >= k.x && x < k.x + k.w && y >= k.y && y < k.y + k.h)
     }
 }
 
 /// Installation anzeigen, bis der Nutzer sie verlässt
 pub fn run(rt: *mut crate::efi::RuntimeServices) {
     let Some(fb) = crate::console::framebuffer() else {
-        crate::kprintln!(
-            "[installation] kein Bildschirm – Installation braucht eine Grafikausgabe"
-        );
+        crate::kprintln!("[installation] kein Bildschirm – Installation braucht eine Grafikausgabe");
         return;
     };
     let (w, h) = (fb.width as usize, fb.height as usize);
     crate::drivers::ps2maus::init(w, h);
     crate::console::grafik(true);
-    crate::kprintln!(
-        "[installation] gestartet ({}x{}, bgr={}, stride={})",
-        w,
-        h,
-        fb.bgr,
-        fb.stride
-    );
+    crate::kprintln!("[installation] gestartet ({}x{}, bgr={}, stride={})", w, h, fb.bgr, fb.stride);
     let mut ui = Ui {
         fb,
-        cv: Canvas {
-            w,
-            h,
-            px: vec![BG; w * h],
-            rtl: true,
-        },
+        cv: Canvas { w, h, px: vec![BG; w * h], rtl: true },
         // gespeicherte Systemsprache übernehmen (ohne Einstellung: Arabisch zuerst)
         lang: if crate::fs::read_all("/etc/ultar/sprache").is_some() {
             match crate::sprache::get() {
@@ -1898,20 +1452,8 @@ pub fn run(rt: *mut crate::efi::RuntimeServices) {
             match k {
                 Taste::Tab | Taste::Runter => ui.fokus = (ui.fokus + 1) % n,
                 Taste::Hoch => ui.fokus = (ui.fokus + n - 1) % n,
-                Taste::Rechts => {
-                    ui.fokus = if ui.rtl() {
-                        (ui.fokus + n - 1) % n
-                    } else {
-                        (ui.fokus + 1) % n
-                    }
-                }
-                Taste::Links => {
-                    ui.fokus = if ui.rtl() {
-                        (ui.fokus + 1) % n
-                    } else {
-                        (ui.fokus + n - 1) % n
-                    }
-                }
+                Taste::Rechts => ui.fokus = if ui.rtl() { (ui.fokus + n - 1) % n } else { (ui.fokus + 1) % n },
+                Taste::Links => ui.fokus = if ui.rtl() { (ui.fokus + 1) % n } else { (ui.fokus + n - 1) % n },
                 Taste::Enter => aktion = ui.knoepfe.get(ui.fokus).map(|k| k.a),
                 Taste::Esc => {
                     if ui.schritt == Schritt::Sprache {

@@ -61,14 +61,7 @@ pub struct Isolation {
 impl Isolation {
     /// State of a program started by the kernel: the host tree, the initial pid namespace, every right.
     pub fn host() -> Isolation {
-        Isolation {
-            mnt: MountNs::initial(),
-            root: String::from("/"),
-            root_id: 0,
-            pid_ns_children: PidNs::initial(),
-            rights: Rights::ALL,
-            cred: crate::cred::Cred::ROOT,
-        }
+        Isolation { mnt: MountNs::initial(), root: String::from("/"), root_id: 0, pid_ns_children: PidNs::initial(), rights: Rights::ALL, cred: crate::cred::Cred::ROOT }
     }
 
     /// Whether the view is narrower than the host tree (anything but the initial namespace with root `/`).
@@ -78,11 +71,7 @@ impl Isolation {
 
     /// Tag of the current view.
     pub fn view_tag(&self) -> ViewTag {
-        ViewTag {
-            ns: self.mnt.id(),
-            epoch: self.mnt.epoch(),
-            root: self.root_id,
-        }
+        ViewTag { ns: self.mnt.id(), epoch: self.mnt.epoch(), root: self.root_id }
     }
 
     /// Set a new root directory (namespace path).

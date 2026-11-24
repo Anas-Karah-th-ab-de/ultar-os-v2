@@ -84,11 +84,7 @@ impl Q {
                     }
                     w32(self.cq_db, self.cq_head as u32);
                     let code = st >> 1;
-                    return if code == 0 {
-                        Ok(dw0)
-                    } else {
-                        Err(format!("NVMe-Fehler {:#x}", code))
-                    };
+                    return if code == 0 { Ok(dw0) } else { Err(format!("NVMe-Fehler {:#x}", code)) };
                 }
                 if crate::arch::uptime_ms() > end {
                     return Err("NVMe: Zeitüberschreitung".into());
@@ -146,8 +142,7 @@ impl Driver for Drv {
             c[10] = 1;
             admin.run(&c)?;
             let model_raw = core::slice::from_raw_parts((ident + 24) as *const u8, 40);
-            let model =
-                alloc::string::ToString::to_string(String::from_utf8_lossy(model_raw).trim());
+            let model = alloc::string::ToString::to_string(String::from_utf8_lossy(model_raw).trim());
             // Namensraum 1 (CNS 0): Größe und Blockgröße
             c = [0u32; 16];
             c[0] = 0x06 | (2 << 16);
@@ -178,25 +173,9 @@ impl Driver for Drv {
             admin.run(&c)?;
             let prp = alloc_pages(1).ok_or("kein Speicher")?;
             let mut bl = BLOCK.lock();
-            let name = format!(
-                "nvme{}n1",
-                bl.iter().filter(|b| b.name().starts_with("nvme")).count()
-            );
-            crate::kprintln!(
-                "[nvme] {name}: {model}, {} MB, Block {lba_size} B",
-                nsze * lba_size as u64 / (1 << 20)
-            );
-            bl.push(Box::new(Nvme {
-                name,
-                admin,
-                io,
-                nsid: 1,
-                lba_size,
-                sectors: nsze,
-                data,
-                prp,
-                cid: 10,
-            }));
+            let name = format!("nvme{}n1", bl.iter().filter(|b| b.name().starts_with("nvme")).count());
+            crate::kprintln!("[nvme] {name}: {model}, {} MB, Block {lba_size} B", nsze * lba_size as u64 / (1 << 20));
+            bl.push(Box::new(Nvme { name, admin, io, nsid: 1, lba_size, sectors: nsze, data, prp, cid: 10 }));
         }
         Ok(())
     }
@@ -216,13 +195,7 @@ impl BlockDev for Nvme {
         let per = 64 * 1024 / self.lba_size;
         for (i, chunk) in buf.chunks_mut(64 * 1024).enumerate() {
             self.rw(0x02, lba + (i * per) as u64, chunk.len())?;
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    self.data as *const u8,
-                    chunk.as_mut_ptr(),
-                    chunk.len(),
-                )
-            };
+            unsafe { core::ptr::copy_nonoverlapping(self.data as *const u8, chunk.as_mut_ptr(), chunk.len()) };
         }
         let _ = &self.admin;
         Ok(())
@@ -230,9 +203,7 @@ impl BlockDev for Nvme {
     fn write(&mut self, lba: u64, buf: &[u8]) -> Result<()> {
         let per = 64 * 1024 / self.lba_size;
         for (i, chunk) in buf.chunks(64 * 1024).enumerate() {
-            unsafe {
-                core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.data as *mut u8, chunk.len())
-            };
+            unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.data as *mut u8, chunk.len()) };
             self.rw(0x01, lba + (i * per) as u64, chunk.len())?;
         }
         Ok(())

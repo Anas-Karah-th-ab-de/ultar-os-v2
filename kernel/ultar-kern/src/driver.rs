@@ -95,25 +95,13 @@ pub static DEVICES: Mutex<Vec<Bound>> = Mutex::new(Vec::new());
 pub fn bind_all(devs: Vec<PciDev>) {
     let mut out = Vec::new();
     for d in devs {
-        let mut b = Bound {
-            dev: d.clone(),
-            driver: None,
-            error: None,
-            tried: None,
-            disabled: false,
-            slots: crate::devices::Slots::default(),
-        };
+        let mut b = Bound { dev: d.clone(), driver: None, error: None, tried: None, disabled: false, slots: crate::devices::Slots::default() };
         if let Some(drv) = crate::drivers::ALL.iter().find(|x| x.matches(&d)) {
             let (r, slots) = crate::devices::probe_with_slots(*drv, &d);
             b.slots = slots;
             match r {
                 Ok(()) => {
-                    crate::kprintln!(
-                        "[treiber] {} -> {} ({}) ok",
-                        d.id(),
-                        drv.name(),
-                        drv.origin()
-                    );
+                    crate::kprintln!("[treiber] {} -> {} ({}) ok", d.id(), drv.name(), drv.origin());
                     b.driver = Some(drv.name());
                 }
                 Err(e) => {

@@ -63,8 +63,7 @@ pub fn is_tree(path: &str) -> bool {
 
 /// Whether the host path is the tree's root or lies below it.
 pub fn is_inside(path: &str) -> bool {
-    path.strip_prefix(ROOT_PATH)
-        .is_some_and(|r| r.is_empty() || r.starts_with('/'))
+    path.strip_prefix(ROOT_PATH).is_some_and(|r| r.is_empty() || r.starts_with('/'))
 }
 
 /// Group a tree path names and, if the last component is not a group, that component (a file name).
@@ -146,25 +145,11 @@ fn file_text(g: u16, file: &str) -> Option<String> {
 
 /// Node at a path of the tree (or `/sys`, `/sys/fs`).
 pub fn open(path: &str) -> Option<Node> {
-    let dir = |name: &str| {
-        Node::Dir(alloc::vec![DirEnt {
-            name: String::from(name),
-            dir: true,
-            size: 0
-        }])
-    };
+    let dir = |name: &str| Node::Dir(alloc::vec![DirEnt { name: String::from(name), dir: true, size: 0 }]);
     match path {
         "/sys" => {
-            let mut v = alloc::vec![DirEnt {
-                name: String::from("fs"),
-                dir: true,
-                size: 0
-            }];
-            v.extend(crate::devices::sysfs::TOP.iter().map(|n| DirEnt {
-                name: String::from(*n),
-                dir: true,
-                size: 0,
-            }));
+            let mut v = alloc::vec![DirEnt { name: String::from("fs"), dir: true, size: 0 }];
+            v.extend(crate::devices::sysfs::TOP.iter().map(|n| DirEnt { name: String::from(*n), dir: true, size: 0 }));
             return Some(Node::Dir(v));
         }
         "/sys/fs" => return Some(dir("cgroup")),
@@ -173,22 +158,11 @@ pub fn open(path: &str) -> Option<Node> {
     match resolve(path)? {
         (g, Some(file)) => file_text(g, file).map(|s| Node::File(Arc::new(s.into_bytes()))),
         (g, None) => {
-            let mut v: Vec<DirEnt> = FILES
-                .iter()
-                .map(|n| DirEnt {
-                    name: String::from(*n),
-                    dir: false,
-                    size: 0,
-                })
-                .collect();
+            let mut v: Vec<DirEnt> = FILES.iter().map(|n| DirEnt { name: String::from(*n), dir: false, size: 0 }).collect();
             super::for_children(g, |c| {
                 let mut buf = [0u8; MAX_NAME];
                 let n = super::name(c, &mut buf);
-                v.push(DirEnt {
-                    name: String::from_utf8_lossy(&buf[..n]).into_owned(),
-                    dir: true,
-                    size: 0,
-                });
+                v.push(DirEnt { name: String::from_utf8_lossy(&buf[..n]).into_owned(), dir: true, size: 0 });
             });
             Some(Node::Dir(v))
         }
@@ -211,12 +185,10 @@ pub fn mkdir(path: &str) -> bool {
         return fail(EPERM);
     }
     match resolve(path) {
-        Some((parent, Some(name))) => {
-            match crate::heap::kernel(|| super::create(parent, name, false)) {
-                Ok(_) => true,
-                Err(e) => fail(-e.errno()),
-            }
-        }
+        Some((parent, Some(name))) => match crate::heap::kernel(|| super::create(parent, name, false)) {
+            Ok(_) => true,
+            Err(e) => fail(-e.errno()),
+        },
         Some((_, None)) => fail(17),
         None => fail(2),
     }
@@ -248,11 +220,7 @@ fn parse_limit(text: &str, suffixes: bool) -> Option<u64> {
         Some(b'G') if suffixes => (&text[..text.len() - 1], 1 << 30),
         _ => (text, 1),
     };
-    digits
-        .parse::<u64>()
-        .ok()?
-        .checked_mul(unit)
-        .filter(|&v| v != NO_LIMIT)
+    digits.parse::<u64>().ok()?.checked_mul(unit).filter(|&v| v != NO_LIMIT)
 }
 
 /// A write to a file of the tree. The caller has checked the right `MANAGE_GROUPS`.
@@ -265,14 +233,8 @@ pub fn write(path: &str, text: &str, pid_of: &dyn Fn(u64) -> Option<u64>) -> Res
     };
     let done = |r: Result<(), GroupError>| r.map_err(|e| e.errno());
     match file {
-        "memory.max" => done(super::set_memory_max(
-            g,
-            parse_limit(text, true).ok_or(-EINVAL)?,
-        )),
-        "pids.max" => done(super::set_pids_max(
-            g,
-            parse_limit(text, false).ok_or(-EINVAL)?,
-        )),
+        "memory.max" => done(super::set_memory_max(g, parse_limit(text, true).ok_or(-EINVAL)?)),
+        "pids.max" => done(super::set_pids_max(g, parse_limit(text, false).ok_or(-EINVAL)?)),
         "cgroup.procs" => {
             // the units of the dynamic rules are the groups below `apps` and `cells`: no process
             // lives in those two or in the root itself
@@ -280,11 +242,7 @@ pub fn write(path: &str, text: &str, pid_of: &dyn Fn(u64) -> Option<u64>) -> Res
                 return Err(-EBUSY);
             }
             let local: u64 = text.parse().map_err(|_| -EINVAL)?;
-            let tgid = if local == 0 {
-                crate::proc::current_group()
-            } else {
-                pid_of(local).ok_or(-ESRCH)?
-            };
+            let tgid = if local == 0 { crate::proc::current_group() } else { pid_of(local).ok_or(-ESRCH)? };
             crate::proc::move_group(tgid, g)
         }
         f if file_text(g, f).is_some() => Err(-EACCES),
@@ -319,11 +277,7 @@ pub fn table() -> String {
             "{} {} {} {} {} {}\n",
             path_of(g),
             u.mem.0,
-            if max == NO_LIMIT {
-                String::from("max")
-            } else {
-                format!("{max}")
-            },
+            if max == NO_LIMIT { String::from("max") } else { format!("{max}") },
             u.mem.1,
             u.pids.0,
             super::pids_limit(g)

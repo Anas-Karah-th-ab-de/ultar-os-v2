@@ -70,9 +70,7 @@ impl Transport {
             let typ = d.r8(p + 3);
             let bar = d.r8(p + 4) as usize;
             let off = d.r32(p + 8) as u64;
-            let Some(Some(b)) = d.bars.get(bar) else {
-                continue;
-            };
+            let Some(Some(b)) = d.bars.get(bar) else { continue };
             if b.io {
                 continue;
             }
@@ -90,12 +88,7 @@ impl Transport {
         if common == 0 || notify == 0 {
             return Err("keine moderne virtio-Schnittstelle (nur Altgerät)".into());
         }
-        Ok(Transport {
-            common,
-            notify,
-            notify_mul: mul,
-            device,
-        })
+        Ok(Transport { common, notify, notify_mul: mul, device })
     }
 
     /// Zurücksetzen, Merkmale aushandeln. Liefert die angenommenen Merkmale.
@@ -149,16 +142,7 @@ impl Transport {
             w64(c + 48, used);
             let noff = r16(c + 30) as u64;
             w16(c + 28, 1);
-            Ok(Queue {
-                size,
-                desc,
-                avail,
-                used,
-                notify: self.notify + noff * self.notify_mul as u64,
-                idx,
-                last_used: 0,
-                free_head: 0,
-            })
+            Ok(Queue { size, desc, avail, used, notify: self.notify + noff * self.notify_mul as u64, idx, last_used: 0, free_head: 0 })
         }
     }
 
@@ -176,12 +160,7 @@ impl Transport {
     }
 
     pub fn ready(&self) {
-        unsafe {
-            w8(
-                self.common + 20,
-                ST_ACK | ST_DRIVER | ST_FEATURES_OK | ST_DRIVER_OK,
-            )
-        }
+        unsafe { w8(self.common + 20, ST_ACK | ST_DRIVER | ST_FEATURES_OK | ST_DRIVER_OK) }
     }
     pub fn dev_r8(&self, off: u64) -> u8 {
         unsafe { r8(self.device + off) }

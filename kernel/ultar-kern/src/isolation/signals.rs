@@ -31,9 +31,7 @@ fn leader(ps: &[Box<Proc>], tgid: u64) -> Option<&Proc> {
 pub fn is_descendant(ps: &[Box<Proc>], ancestor: u64, tgid: u64) -> bool {
     let mut cur = tgid;
     for _ in 0..64 {
-        let Some(p) = leader(ps, cur) else {
-            return false;
-        };
+        let Some(p) = leader(ps, cur) else { return false };
         if p.ppid == 0 {
             return false;
         }
@@ -48,16 +46,11 @@ pub fn is_descendant(ps: &[Box<Proc>], ancestor: u64, tgid: u64) -> bool {
 /// Decide a signal `sig` from the thread at index `sender` to the group `target` (global number).
 pub fn verdict(ps: &[Box<Proc>], sender: usize, target: u64, sig: u64) -> Verdict {
     let s = &ps[sender];
-    let Some(t) = leader(ps, target) else {
-        return Verdict::Invisible;
-    };
+    let Some(t) = leader(ps, target) else { return Verdict::Invisible };
     if s.link.ns().local(target).is_none() {
         return Verdict::Invisible;
     }
-    if target != s.tgid
-        && !s.g.iso.rights.has(Rights::KILL_ANY)
-        && !is_descendant(ps, s.tgid, target)
-    {
+    if target != s.tgid && !s.g.iso.rights.has(Rights::KILL_ANY) && !is_descendant(ps, s.tgid, target) {
         return Verdict::Denied;
     }
     let tns = t.link.ns();
@@ -77,37 +70,15 @@ pub fn kill_targets(ps: &[Box<Proc>], sender: usize, pid: i64) -> Result<Vec<u64
     let s = &ps[sender];
     let ns = s.link.ns();
     let visible = |p: &&Box<Proc>| p.pid == p.tgid && ns.local(p.tgid).is_some();
-    let alive = |t: &u64| {
-        ps.iter()
-            .any(|p| p.tgid == *t && !matches!(p.state, State::Zombie(_) | State::Dead))
-    };
+    let alive = |t: &u64| ps.iter().any(|p| p.tgid == *t && !matches!(p.state, State::Zombie(_) | State::Dead));
     let all: Vec<u64> = match pid {
         p if p > 0 => ns.global(p as u64).into_iter().collect(),
-        0 => ps
-            .iter()
-            .filter(visible)
-            .filter(|p| p.pgid == s.pgid)
-            .map(|p| p.tgid)
-            .collect(),
+        0 => ps.iter().filter(visible).filter(|p| p.pgid == s.pgid).map(|p| p.tgid).collect(),
         // never the sender itself and never pid 1 of the sender's own (or an enclosing) namespace
-        -1 => ps
-            .iter()
-            .filter(visible)
-            .filter(|p| {
-                p.tgid != s.tgid
-                    && !(p.link.ns().init_global() == p.tgid && p.link.ns().contains(ns))
-            })
-            .map(|p| p.tgid)
-            .collect(),
+        -1 => ps.iter().filter(visible).filter(|p| p.tgid != s.tgid && !(p.link.ns().init_global() == p.tgid && p.link.ns().contains(ns))).map(|p| p.tgid).collect(),
         p => {
-            let Some(pg) = ns.global(p.unsigned_abs()) else {
-                return Err(-ESRCH);
-            };
-            ps.iter()
-                .filter(visible)
-                .filter(|x| x.pgid == pg)
-                .map(|x| x.tgid)
-                .collect()
+            let Some(pg) = ns.global(p.unsigned_abs()) else { return Err(-ESRCH) };
+            ps.iter().filter(visible).filter(|x| x.pgid == pg).map(|x| x.tgid).collect()
         }
     };
     let live: Vec<u64> = all.into_iter().filter(alive).collect();
@@ -119,13 +90,7 @@ pub fn kill_targets(ps: &[Box<Proc>], sender: usize, pid: i64) -> Result<Vec<u64
 
 /// Apply the verdicts to a target list: the groups to really signal, or the error for the caller.
 /// A broadcast (`single == false`) skips targets the sender may not signal and fails only if none is left.
-pub fn permitted(
-    ps: &[Box<Proc>],
-    sender: usize,
-    targets: &[u64],
-    sig: u64,
-    single: bool,
-) -> Result<Vec<u64>, i64> {
+pub fn permitted(ps: &[Box<Proc>], sender: usize, targets: &[u64], sig: u64, single: bool) -> Result<Vec<u64>, i64> {
     let mut out = Vec::new();
     let mut allowed = 0;
     for &t in targets {

@@ -27,12 +27,7 @@ pub fn init_ecam(rsdp: u64) -> u64 {
         // Eintrag: Basis u64, Segment u16, erster Bus u8, letzter Bus u8, reserviert u32
         let base = unsafe { core::ptr::read_unaligned((t + off) as *const u64) };
         let seg = unsafe { core::ptr::read_unaligned((t + off + 8) as *const u16) };
-        let (first, last) = unsafe {
-            (
-                *((t + off + 10) as *const u8),
-                *((t + off + 11) as *const u8),
-            )
-        };
+        let (first, last) = unsafe { (*((t + off + 10) as *const u8), *((t + off + 11) as *const u8)) };
         off += 16;
         if seg != 0 || base == 0 || last < first || base & 0xf_ffff != 0 {
             continue;
@@ -191,14 +186,7 @@ impl PciDev {
         v
     }
     pub fn id(&self) -> alloc::string::String {
-        alloc::format!(
-            "{:02x}:{:02x}.{} {:04x}:{:04x}",
-            self.bus,
-            self.dev,
-            self.func,
-            self.vendor,
-            self.device
-        )
+        alloc::format!("{:02x}:{:02x}.{} {:04x}:{:04x}", self.bus, self.dev, self.func, self.vendor, self.device)
     }
     pub fn class_name(&self) -> &'static str {
         class_name(self.class, self.subclass, self.prog_if)
@@ -220,11 +208,7 @@ fn probe_bars(b: u8, d: u8, f: u8) -> [Option<Bar>; 6] {
             let s = read32(b, d, f, off);
             write32(b, d, f, off, v);
             let size = (!(s & 0xffff_fffc)).wrapping_add(1) & 0xffff;
-            bars[i] = Some(Bar {
-                addr: (v & 0xffff_fffc) as u64,
-                size: size as u64,
-                io: true,
-            });
+            bars[i] = Some(Bar { addr: (v & 0xffff_fffc) as u64, size: size as u64, io: true });
             i += 1;
         } else {
             let is64 = (v >> 1) & 3 == 2;
@@ -245,11 +229,7 @@ fn probe_bars(b: u8, d: u8, f: u8) -> [Option<Bar>; 6] {
             if base != 0 && size != 0 && size < 1 << 40 {
                 crate::paging::map_identity(base, base + size, true);
             }
-            bars[i] = Some(Bar {
-                addr: base,
-                size,
-                io: false,
-            });
+            bars[i] = Some(Bar { addr: base, size, io: false });
             i += if is64 { 2 } else { 1 };
         }
     }
