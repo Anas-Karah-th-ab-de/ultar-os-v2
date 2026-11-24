@@ -106,10 +106,33 @@ impl SettingsPort for BusPorts {
     }
 }
 
+/// Prefix of the shell's names of base-system apps (`org.ultar.files`).
+const BASE_PREFIX: &str = "org.ultar.";
+
+/// The launcher's id of an app the shell names `app`: base-system apps are signed with the
+/// system key and have one-part ids in the launcher (`files`, `settings`; a dotted id belongs
+/// to a store publisher, launcher `install.rs`), the shell names them `org.ultar.<id>`.
+/// Found in VMware: every click asked the launcher for `org.ultar.settings`, which it can never
+/// have (three parts are no app id), so nothing opened.
+pub fn launcher_id(app: &str) -> &str {
+    app.strip_prefix(BASE_PREFIX)
+        .filter(|rest| !rest.is_empty() && !rest.contains('.'))
+        .unwrap_or(app)
+}
+
+/// The shell's name of an app the launcher lists as `id` (the inverse of [`launcher_id`]).
+pub fn shell_id(id: &str) -> String {
+    if id.contains('.') {
+        id.to_owned()
+    } else {
+        format!("{BASE_PREFIX}{id}")
+    }
+}
+
 impl LauncherPort for BusPorts {
     fn start(&self, app: &str, open: &Opening, token: Option<u64>) -> Result<(), PortError> {
         let request = Start {
-            app: app.to_owned(),
+            app: launcher_id(app).to_owned(),
             role: Role::Ui,
             activation_token: token.filter(|t| *t != 0),
             uri: open.uri.clone(),
@@ -126,7 +149,7 @@ impl LauncherPort for BusPorts {
             .client
             .call(&List {}, CALL_TIMEOUT)
             .map_err(port_error)?;
-        Ok(reply.apps.into_iter().map(|a| a.app).collect())
+        Ok(reply.apps.into_iter().map(|a| shell_id(&a.app)).collect())
     }
 }
 
@@ -164,5 +187,30 @@ impl AuthPort for BusPorts {
             .call(&request, VERIFY_TIMEOUT)
             .map_err(port_error)?;
         Ok(reply.outcome)
+    }
+}
+
+#[cfg(test)]
+mod launcher_ids {
+    use super::{launcher_id, shell_id};
+
+    #[test]
+    fn base_apps_map_to_the_launchers_one_part_ids_and_back() {
+        for (shell, launcher) in [
+            ("org.ultar.settings", "settings"),
+            ("org.ultar.files", "files"),
+            ("org.ultar.browser", "browser"),
+            ("org.ultar.store", "store"),
+            ("org.ultar.phone", "phone"),
+        ] {
+            assert_eq!(launcher_id(shell), launcher);
+            assert_eq!(shell_id(launcher), shell);
+        }
+        // store apps keep their publisher id both ways
+        assert_eq!(launcher_id("acme.notes"), "acme.notes");
+        assert_eq!(shell_id("acme.notes"), "acme.notes");
+        // nothing else is rewritten
+        assert_eq!(launcher_id("org.ultar."), "org.ultar.");
+        assert_eq!(launcher_id("org.ultar.a.b"), "org.ultar.a.b");
     }
 }

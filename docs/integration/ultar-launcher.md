@@ -39,7 +39,8 @@ Kernel rights: none for both (manifest `kernel = [...]` is refused at installati
 more than its profile allows is refused at installation.
 
 Enforced permissions: `network` (cell without own network namespace), `background` (the `[service]` program
-starts only with it), `ui.shell | ui.input-method | ui.lock-screen | ui.capture | ui.overlay | ui.system-dialog`
+starts only with it), `ui.shell | ui.input-method | ui.lock-screen | ui.capture | ui.overlay | ui.system-dialog |
+ui.client-header`
 (compositor, §5). `[permissions] bus` and `files` are recorded and reported (`launcher.permissions`), not granted
 here – see "Open".
 

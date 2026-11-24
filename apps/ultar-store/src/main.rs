@@ -5,7 +5,7 @@
 //!
 //! Environment:
 //! * `ULTAR_COMPOSITOR_SOCKET` – compositor socket
-//!   (default `/run/ultar/ui/compositor`).
+//!   (default `/run/ultar/ui/compositor.sock`, the shipped socket).
 //! * `ULTAR_BUS_SOCKET` – bus socket for `launcher.*` (the cell manager
 //!   injects it; unset: operations honestly answer `store.error.no-launcher`).
 //! * `ULTAR_STORE_CATALOG` – directory holding `ultar-catalog.toml` + `.sig`
@@ -34,7 +34,8 @@ use ultar_ui::tokens::{InputMode, ThemeKind};
 use ultar_ui::ui::Ui;
 use ultar_ui::{Lang, Size};
 
-const COMPOSITOR_DEFAULT: &str = "/run/ultar/ui/compositor";
+/// The shipped compositor socket (rootfs/etc/ultar/services/compositor.toml `--socket`).
+const COMPOSITOR_DEFAULT: &str = "/run/ultar/ui/compositor.sock";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let lang = Lang::from_env();

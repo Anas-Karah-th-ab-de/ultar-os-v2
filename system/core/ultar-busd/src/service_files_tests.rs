@@ -188,6 +188,13 @@ fn check_sockets(parsed: &crate::args::Arguments, bus: &Service) -> BTreeMap<Str
         };
         assert!(Identity::new(identity).is_ok());
         sockets.insert(identity.clone(), listener.path.clone());
+        if identity == "app.shared" {
+            // the apps' socket: open to every app uid, bounded, outside the services' directory
+            assert_eq!(listener.access.mode, Some(0o666));
+            assert_eq!(listener.access.group, None);
+            assert!(listener.path.starts_with("/run/ultar/appbus/"));
+            continue;
+        }
         // A service's socket is open to its group only (and busd is a member
         // of it); the administrator's and init's sockets to root only.
         let service = identity.strip_prefix("system.").unwrap();
@@ -264,8 +271,8 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         );
     }
     // One per service of IDS but the broker itself, plus the administrator's,
-    // init's and the modem service's (ril: root on the phone, no group).
-    assert_eq!(sockets.len(), IDS.len() + 2);
+    // init's, the modem service's (ril: root on the phone, no group) and the apps'.
+    assert_eq!(sockets.len(), IDS.len() + 3);
 }
 
 #[test]
@@ -438,6 +445,26 @@ fn the_policy_grants_nothing_beyond_that() {
         assert!(!policy.may_subscribe(&stranger, &topic("settings.changed")));
         assert!(!policy.may_register(&stranger, "log"));
     }
+    // The apps' shared socket has what every app has and nothing of a named app or service.
+    let shared = id("app.shared");
+    assert!(policy.may_call(&shared, "notify", "post"));
+    for (service, method) in [
+        ("launcher", "install"),
+        ("launcher", "admin"),
+        ("launcher", "start"),
+        ("settings", "set"),
+        ("settings", "get"),
+        ("account", "sign_in"),
+        ("call", "dial"),
+        ("auth", "verify"),
+        ("net", "join"),
+    ] {
+        assert!(
+            !policy.may_call(&shared, service, method),
+            "{service}.{method}"
+        );
+    }
+    assert!(!policy.may_register(&shared, "launcher"));
 }
 
 #[test]
