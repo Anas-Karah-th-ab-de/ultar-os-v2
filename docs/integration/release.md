@@ -2,6 +2,12 @@
 
 Branch `release/v0.8` · KM Code Craft · 2026-11-24
 
+## Rule (owner, 2026-11-24)
+
+**Never build on the VPS.** Everything is built and tested only on the LAN builders (Beelink .18, server .8,
+server1 .12, PC WSL). The VPS (ultar.code-craft.tech) only signs the finished files (`ultar-signd`) and hosts
+them (website, downloads, store). Flow: build on a builder → copy the files to the VPS → sign there → publish.
+
 ## Open points first
 
 1. **OS image built, signed, NOT published (HOLD, 2026-11-24):** apps in launcher cells cannot reach the bus
