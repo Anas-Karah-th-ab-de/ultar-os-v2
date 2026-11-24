@@ -93,6 +93,12 @@ if [ -n "${MODULES:-}" ]; then
       fi
     done
   done
+  # Intel AX201/BE200: signierte iwlwifi-/PNVM-Dateien aus linux-firmware-intel-wireless
+  # bereits ins Startabbild kopieren. fwhelper kann dann auch nachträglich fehlende Dateien aus compat/data bedienen.
+  if printf '%s\n' "$MODULES" | grep -qw iwlwifi && [ -d "$MODULES_DIR/lib/firmware/intel/iwlwifi" ]; then
+    mkdir -p "$STAGE/lib/firmware/intel"
+    cp -a "$MODULES_DIR/lib/firmware/intel/iwlwifi" "$STAGE/lib/firmware/intel/"
+  fi
 fi
 # Benutzer und Gruppen aus rootfs/etc/ultar/ids.toml (feste Nummern der Dienste, Gruppe seat …)
 awk -v P="$STAGE/etc/passwd" -v G="$STAGE/etc/group" '

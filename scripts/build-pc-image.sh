@@ -28,13 +28,19 @@ VMLINUZ=${VMLINUZ:-$CROOT/boot/vmlinuz-$KVER}
 echo "Kernel $KVER"
 
 # 2) Ultar-Kernsystem (initramfs) mit den Treibern, die vor dem Einhängen der Partitionen nötig sind
-BOOTMODS=${BOOTMODS:-"nvme ahci sd_mod usb_storage uas xhci_pci ehci_pci ohci_pci uhci_hcd sdhci_pci sdhci_acpi mmc_block vmd virtio_blk virtio_scsi hid_generic usbhid i2c_hid_acpi nls_cp437 nls_iso8859_1"}
+BOOTMODS=${BOOTMODS:-"nvme ahci sd_mod usb_storage uas xhci_pci ehci_pci ohci_pci uhci_hcd sdhci_pci sdhci_acpi mmc_block vmd virtio_blk virtio_scsi hid_generic usbhid i2c_hid_acpi cfg80211 mac80211 iwlwifi iwlmvm nls_cp437 nls_iso8859_1"}
 # Prozessor-Grundlinie x86-64 (läuft überall, auch in VMs mit „qemu64“/„kvm64“-CPU). Für reine Hardware ab ~2009
 # schneller: RUSTFLAGS_EXTRA="-C target-cpu=x86-64-v2" – aber PID 1 mit unbekanntem Befehl = Startabbruch (SIGILL).
 # Eigenes Zielverzeichnis, damit der Handy-Bau unberührt bleibt.
 export RUSTFLAGS_EXTRA="${RUSTFLAGS_EXTRA:-}" CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target-pc}
 EDITION=$EDITION ARCH=$ARCH OUT=$OUT/initramfs-$EDITION MODULES="$BOOTMODS" MODULES_DIR="$CROOT" DEBUG=${DEBUG:-1} scripts/build-initramfs.sh
 INITRD=$OUT/initramfs-$EDITION/ultar-initramfs-$ARCH.cpio.zst
+if [ -d "$CROOT/lib/firmware/intel/iwlwifi" ]; then
+  AX201=$(find "$CROOT/lib/firmware/intel/iwlwifi" -type f -name 'iwlwifi-QuZ-*.ucode.zst' | head -1)
+  BE200_PNVM=$(find "$CROOT/lib/firmware/intel/iwlwifi" -type f -name 'iwlwifi-bz-*.pnvm.zst' | head -1)
+  [ -n "$AX201" ] || echo "WARNUNG: AX201/QuZ-iwlwifi-Firmware fehlt"
+  [ -n "$BE200_PNVM" ] || echo "WARNUNG: BE200/Bz-PNVM-Firmware fehlt"
+fi
 
 # 3) EFI-Systempartition
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
