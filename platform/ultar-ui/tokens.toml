@@ -72,6 +72,10 @@ info = "#7FB2FF"
 success = "#6FD08C"
 warning = "#F0B95A"
 danger = "#FF8A80"
+app_system = "#D8C870"   # app icon family: system (settings, store, helper, privacy, drivers, updates)
+app_comms = "#4ADE80"   # app icon family: communication (phone, messages, contacts)
+app_work = "#7AB8FF"   # app icon family: web and work (browser, files, documents, editor, notes)
+app_media = "#FF6B6B"   # app icon family: media (camera, gallery, music, video)
 
 [theme.light]
 ground = "#E9EBEF"
@@ -90,6 +94,10 @@ info = "#1E5CB9"
 success = "#1B6D36"
 warning = "#835500"
 danger = "#B3261E"
+app_system = "#7A5F00"
+app_comms = "#12703A"
+app_work = "#1F5FBF"
+app_media = "#B5302A"
 
 [theme.contrast]           # accessibility.high_contrast (over either theme): text >= 7:1 everywhere
 ground = "#000000"
@@ -108,6 +116,10 @@ info = "#A8CFFF"
 success = "#8CFFA8"
 warning = "#FFD166"
 danger = "#FFA099"
+app_system = "#FFE680"
+app_comms = "#7DFFA6"
+app_work = "#B3D6FF"
+app_media = "#FFA8A0"
 
 [shadow]                   # one elevation level for everything that floats (CSS: 0 offset_y blur)
 offset_y = 12
