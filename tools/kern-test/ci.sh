@@ -49,6 +49,14 @@ if ! idout=$(cargo test -q --manifest-path drivers/kernel/intel-display/Cargo.to
   echo "FAIL  intel-display unit tests"; echo "$idout" | tail -30; exit 1
 fi
 echo "ok    intel-display unit tests ($(echo "$idout" | grep -oE '[0-9]+ passed' | head -1))"
+# pure GT logic (Intel render/compute side: identification, forcewake, GuC container, WOPCM, upload) and
+# pure NPU logic (Intel AI Boost: work point, power sequences, firmware container)
+for crate in intel-gt intel-npu; do
+  if ! cout=$(cargo test -q --manifest-path "drivers/kernel/$crate/Cargo.toml" 2>&1); then
+    echo "FAIL  $crate unit tests"; echo "$cout" | tail -30; exit 1
+  fi
+  echo "ok    $crate unit tests ($(echo "$cout" | grep -oE '[0-9]+ passed' | head -1))"
+done
 if [ -z "${BUSCK:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release -p ultar-bus --example selfcheck --target x86_64-unknown-linux-gnu
   BUSCK="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release/examples/selfcheck"

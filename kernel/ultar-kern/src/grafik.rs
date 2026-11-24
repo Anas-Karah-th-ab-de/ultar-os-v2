@@ -118,8 +118,14 @@ pub fn text() -> String {
     if let Some(t) = crate::drivers::intel_display::text() {
         s += &format!("intel-display={t}\n");
     }
+    if let Some(t) = crate::drivers::intel_display::gt::text() {
+        s += &format!("intel-gt={t}\n");
+    }
     if let Some(t) = crate::drivers::nvidia_display::text() {
         s += &format!("nvidia-display={t}\n");
+    }
+    if let Some(t) = crate::drivers::intel_npu::text() {
+        s += &format!("intel-npu={t}\n");
     }
     s
 }

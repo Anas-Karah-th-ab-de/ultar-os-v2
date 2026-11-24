@@ -103,6 +103,17 @@ name = "ultar-intel-display"
 version = "0.8.0"
 
 [[package]]
+name = "ultar-intel-gt"
+version = "0.1.0"
+dependencies = [
+ "ultar-intel-display",
+]
+
+[[package]]
+name = "ultar-intel-npu"
+version = "0.1.0"
+
+[[package]]
 name = "ultar-kern"
 version = "0.8.0"
 dependencies = [
@@ -111,6 +122,8 @@ dependencies = [
  "spin",
  "ultar-brand",
  "ultar-intel-display",
+ "ultar-intel-gt",
+ "ultar-intel-npu",
  "ultar-slots",
 ]
 

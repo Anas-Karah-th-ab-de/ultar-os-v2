@@ -81,6 +81,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     // the display driver's opt-in word is not one of the A/B chain's (which refuses unknown ones)
     let n = drivers::intel_display::take_boot_option(&mut options, n);
     let n = drivers::nvidia_display::take_boot_option(&mut options, n);
+    let n = drivers::intel_npu::take_boot_option(&mut options, n);
     bootslot::init(&options[..n]);
     let mut schalter = [0u8; 8];
     // SAFETY: still in the firmware phase; `image`/`st` are what the firmware passed.
@@ -91,6 +92,10 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     // SAFETY: firmware image, system table and file buffer remain valid in the boot phase.
     if let Some(k) = unsafe { efi::datei_lesen(image, st, drivers::nvidia_display::FILE_PATH, &mut schalter) } {
         drivers::nvidia_display::opt_in_file(&schalter[..k]);
+    }
+    // SAFETY: firmware image, system table and file buffer remain valid in the boot phase.
+    if let Some(k) = unsafe { efi::datei_lesen(image, st, ultar_intel_npu::optin::FILE_PATH, &mut schalter) } {
+        drivers::intel_npu::opt_in_file(&schalter[..k]);
     }
     // Systemsprache von der Startpartition (installiertes System): gilt ab dem ersten Bild
     if let Some(l) = unsafe { efi::sprache_lesen(image, st) } {
