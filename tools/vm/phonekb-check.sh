@@ -11,6 +11,9 @@ case "${STEP:-checks}" in
     cargo test $CRATES 2>&1 | grep -E "^test result|FAILED|panicked|error(\[|:)" | sort | uniq -c
     echo "TESTS-EXIT ${PIPESTATUS[0]}"
     ;;
+  phone)
+    cargo test -p ultar-phone --test window_size 2>&1 | grep -aA4 "panicked" | head -20
+    ;;
   gate)
     REPEAT=${REPEAT:-3} INPUT_RUNS=${INPUT_RUNS:-usb usb-xga} bash tools/vm/vmware-input-e2e.sh
     ;;
