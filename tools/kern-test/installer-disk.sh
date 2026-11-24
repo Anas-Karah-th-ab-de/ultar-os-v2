@@ -23,7 +23,7 @@ MACHINE=q35 DEV="ide-hd,bus=ide.0" NIC=e1000e QARGS="$SATA" SMP="${SMP:-2}" WAIT
 if grep -aq "INSTALLTEST: ALLES OK" "$LOG" && ! grep -aqiE "kernel panic|PANIK" "$LOG"; then
   echo "ok    INSTALLER-DISK normal start: no installer nodes"
 else
-  echo "FAIL  INSTALLER-DISK normal start"; grep -aE "FEHLER|INSTALLTEST" "$LOG" | tail -20; fail=1
+  echo "FAIL  INSTALLER-DISK normal start"; { grep -aE "FEHLER|INSTALLTEST|installtest" "$LOG" || true; } | tail -20; fail=1
 fi
 # the medium: the test image as partition ULTAR-INSTALL, with the installer marker
 cp "$W/plain.img" "$W/install.fat"
@@ -38,7 +38,7 @@ MACHINE=q35 DEV="ide-hd,bus=ide.0" NIC=e1000e QARGS="$SATA" SMP="${SMP:-2}" WAIT
 if grep -aq "INSTALLTEST: ALLES OK" "$LOG" && ! grep -aqiE "kernel panic|PANIK" "$LOG"; then
   echo "ok    INSTALLER-DISK installer mode: $(grep -ac '^ok ' "$LOG") checks"
 else
-  echo "FAIL  INSTALLER-DISK installer mode"; grep -aE "FEHLER|INSTALLTEST|\[installer\]" "$LOG" | tail -20; tail -5 "$LOG"; fail=1
+  echo "FAIL  INSTALLER-DISK installer mode"; { grep -aE "FEHLER|INSTALLTEST|\[installer\]" "$LOG" || true; } | tail -20; tail -5 "$LOG"; fail=1
 fi
 [ -n "${KEEP_LOG:-}" ] && cp "$W"/*.log "$KEEP_LOG"/ 2>/dev/null
 [ "$fail" = 0 ] && echo "INSTALLER-DISK: ALLES OK" || { echo "INSTALLER-DISK: FEHLER"; exit 1; }

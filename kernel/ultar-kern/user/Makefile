@@ -44,6 +44,7 @@ fenstertest: fenstertest.c fenstertest-geraete.c fenstertest.h
 	gcc -O2 -Wall -Wextra -static -pthread -o $@ fenstertest.c fenstertest-geraete.c
 # installer mode: whole-disk nodes, rights, the boot disk never a target (tools/kern-test/installer-disk.sh)
 installtest: installtest.c
+	gcc -O2 -Wall -Wextra -static -o $@ $<
 # device nodes of the privileged services: /dev/ultar/uinput (virtual input devices) and /dev/ultar/hciN
 bttest: bttest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<
