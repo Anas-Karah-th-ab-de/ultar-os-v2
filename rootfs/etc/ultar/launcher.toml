@@ -23,7 +23,7 @@ max_running = 32
 # The user's files group (ids.toml userfiles): the area directories below
 # [paths] areas_root are 0770 launcher:userfiles; a system app that declares
 # areas ([permissions] files) gets them at /areas/<name> and this group.
-areas_group = 833
+areas_group = 836
 stop_grace_ms = 3000
 
 [paths]
