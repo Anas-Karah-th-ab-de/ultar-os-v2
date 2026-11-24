@@ -345,7 +345,8 @@ fn capability(id: &str) -> devices::Capability {
 }
 
 /// What a device without display and without other reported capabilities lists.
-const HEADLESS_PANELS: [&str; 19] = [
+// (a device that says nothing about input keeps a keyboard and a pointer)
+const HEADLESS_PANELS: [&str; 21] = [
     "notifications",
     "power",
     "region",
@@ -354,6 +355,8 @@ const HEADLESS_PANELS: [&str; 19] = [
     "account",
     "search",
     "apps",
+    "pointer",
+    "keyboard",
     "printers",
     "accessibility",
     "sharing",
