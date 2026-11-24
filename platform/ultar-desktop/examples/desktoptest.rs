@@ -107,11 +107,19 @@ impl Run {
             .replace("/usr/bin/", &format!("{}/", self.bin.display()))
     }
 
-    /// The shipped definition, moved, started at once on any edition.
+    /// The shipped definition, moved, started at once on any edition (`manual = true` dropped,
+    /// a `[profiles]` table's `system = "manual"` made `start`).
     fn service(&self, text: &str) -> String {
         self.moved(text)
             .lines()
             .filter(|l| !l.starts_with("manual") && !l.starts_with("editions"))
+            .map(|l| {
+                if l.trim() == "system = \"manual\"" {
+                    "system = \"start\""
+                } else {
+                    l
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }
