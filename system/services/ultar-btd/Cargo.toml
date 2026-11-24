@@ -4,7 +4,7 @@ version = "0.7.0"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
-description = "Bluetooth service of Ultar OS: whether the device has Bluetooth and its radio switch, kept across restarts (system services, area 4)"
+description = "Bluetooth service of Ultar OS: radio switch and an own host stack (HCI, L2CAP, SMP Secure Connections, GATT/HID input) (system services, area 4)"
 
 [lib]
 name = "ultar_btd"
@@ -21,6 +21,19 @@ ultar-svckit = { path = "../../core/ultar-svckit" }
 serde = { version = "1", features = ["derive"] }
 ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
 ultar-hal = { path = "../../hal/ultar-hal" }
+p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }
+aes = "0.9"
+cmac = "0.8"
+getrandom = "0.4"
+zeroize = "1"
+subtle = "2"
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# End-to-end run on the Ultar kernel with a USB controller (tools/kern-test/bt-e2e.sh).
+[[example]]
+name = "btd-e2e"
+path = "examples/btd-e2e.rs"

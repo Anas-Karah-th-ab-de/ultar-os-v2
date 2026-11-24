@@ -13,9 +13,13 @@
 //! | Network interfaces: wired link, speed, Wi-Fi interfaces | `sys/class/net` | [`net`] |
 //! | Removable drives: partitions, file system, label, mounting | `sys/block`, `dev/<name>` (superblocks), `mount(2)` | [`block`] |
 //! | Radio switches: Wi-Fi, Bluetooth, mobile, airplane mode | `sys/class/rfkill` (state), `dev/rfkill` (changes) | [`rfkill`] |
+//! | Bluetooth controllers: list, raw HCI user channel (Linux only) | `sys/class/bluetooth`, `AF_BLUETOOTH` socket | [`bluetooth`] |
+//! | Virtual keyboards and mice (Linux only) | `dev/uinput` | [`uinput`] |
 //!
-//! `unsafe` is denied everywhere but in `sound/ioctl.rs`: four ALSA control ioctls on
-//! fixed-size buffers that hold no pointers, each block with a `SAFETY` comment.
+//! `unsafe` is denied everywhere but in `sound/ioctl.rs` (four ALSA control ioctls on
+//! fixed-size buffers that hold no pointers), `bluetooth.rs` (the `sockaddr_hci` of the
+//! user channel) and `uinput.rs` (five ioctls with integer or no arguments), each block
+//! with a `SAFETY` comment.
 //!
 //! [`HalError::NotSupported`]: ultar_hal::HalError::NotSupported
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
@@ -23,11 +27,13 @@
 #![deny(unsafe_code)]
 
 pub mod block;
+pub mod bluetooth;
 pub mod net;
 pub mod power;
 pub mod rfkill;
 pub mod sound;
 mod sysfs;
+pub mod uinput;
 
 pub use power::LinuxPower;
 pub use sound::{Card, CardControls, SoundCards};

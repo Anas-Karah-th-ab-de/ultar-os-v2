@@ -61,6 +61,10 @@ pub enum FdKind {
     RawPart(Arc<crate::rawpart::RawFd>),
     /// Anonymous memory object (`memfd_create`) and the descriptor's position.
     Mem(Arc<crate::memfd::MemObj>, u64),
+    /// Raw HCI node of a Bluetooth controller `/dev/ultar/hciN` (svcdev/hci.rs)
+    Hci(Arc<crate::svcdev::hci::HciFd>),
+    /// Virtual input devices `/dev/ultar/uinput` (svcdev/uinput.rs)
+    Uinput(Arc<crate::svcdev::uinput::UinputFd>),
 }
 
 pub enum UnixState {
@@ -117,6 +121,8 @@ impl Fd {
             FdKind::Eingabe(e) => FdKind::Eingabe(e.clone()),
             FdKind::Ns(n) => FdKind::Ns(n.clone()),
             FdKind::Mem(m, pos) => FdKind::Mem(m.clone(), *pos),
+            FdKind::Hci(h) => FdKind::Hci(h.clone()),
+            FdKind::Uinput(u) => FdKind::Uinput(u.clone()),
         };
         Fd { kind, cloexec: false, flags: self.flags }
     }

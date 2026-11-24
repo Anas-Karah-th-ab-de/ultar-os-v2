@@ -654,6 +654,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmac"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac78aa94ce13e432b332a4d1bf2eff167d3a2520188ee05b337180a42fd2e62e"
+dependencies = [
+ "cipher 0.5.2",
+ "dbl",
+ "digest 0.11.3",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -947,6 +958,15 @@ name = "data-encoding"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
+
+[[package]]
+name = "dbl"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0d7a944e61df464668c5f51f56cc667396a8821434273112948ea0b66e405d7"
+dependencies = [
+ "hybrid-array",
+]
 
 [[package]]
 name = "delegate"
@@ -5299,12 +5319,20 @@ dependencies = [
 name = "ultar-btd"
 version = "0.7.0"
 dependencies = [
+ "aes 0.9.4",
+ "cmac",
+ "getrandom 0.4.3",
+ "p256",
+ "rustix",
  "serde",
+ "subtle",
  "ultar-bus",
  "ultar-hal",
  "ultar-hal-linux",
+ "ultar-hal-system",
  "ultar-service",
  "ultar-svckit",
+ "zeroize",
 ]
 
 [[package]]

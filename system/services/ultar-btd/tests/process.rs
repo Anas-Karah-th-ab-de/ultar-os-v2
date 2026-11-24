@@ -1,8 +1,8 @@
-//! The real `ultar-btd` on a machine tree without Bluetooth: it says so; devices are
-//! honestly unsupported; apps are refused.
+//! The real `ultar-btd` on a machine tree without Bluetooth: it says so; the device
+//! calls answer "no device"; apps are refused.
 
 use std::time::Duration;
-use ultar_bus::messages::bluetooth::{BluetoothState, BtOutcome, Devices, Set};
+use ultar_bus::messages::bluetooth::{BluetoothState, BtOutcome, Devices, Forget, Pair, Scan, Set};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, World, WAIT};
 
@@ -14,7 +14,7 @@ publish = ["bluetooth.state"]
 
 [[rule]]
 identity = "system.shell"
-call = ["bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect"]
+call = ["bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
 subscribe = ["bluetooth.state"]
 
 [[rule]]
@@ -46,6 +46,7 @@ fn without_bluetooth_the_service_says_so() {
         ],
     );
     let shell = world.client("system.shell");
+    let app = world.client("app.any");
     let s = shell
         .subscribe::<BluetoothState>()
         .unwrap()
@@ -58,9 +59,31 @@ fn without_bluetooth_the_service_says_so() {
     );
     assert_eq!(
         call(&shell, &Devices {}).unwrap().outcome,
-        BtOutcome::Unsupported
+        BtOutcome::NoDevice
     );
-    let app = world.client("app.any");
+    for outcome in [
+        call(&shell, &Scan { on: true }).unwrap().outcome,
+        call(
+            &shell,
+            &Pair {
+                id: "11:22:33:44:55:66".into(),
+            },
+        )
+        .unwrap()
+        .outcome,
+        call(&shell, &Forget { id: "junk".into() }).unwrap().outcome,
+    ] {
+        assert_eq!(outcome, BtOutcome::NoDevice);
+    }
+    assert!(matches!(
+        app.call(
+            &Pair {
+                id: "11:22:33:44:55:66".into()
+            },
+            WAIT
+        ),
+        Err(BusError::Remote(ErrorCode::PermissionDenied))
+    ));
     assert!(matches!(
         app.call(&Set { on: false }, WAIT),
         Err(BusError::Remote(ErrorCode::PermissionDenied))

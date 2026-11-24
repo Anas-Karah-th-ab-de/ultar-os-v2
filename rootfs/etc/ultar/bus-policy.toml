@@ -90,13 +90,13 @@ call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", 
 # confirmed by the services in the system dialog, not by this rule).
 [[rule]]
 identity  = "app.settings"
-call      = ["display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect"]
+call      = ["display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
 subscribe = ["display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state"]
 
 # The desktop shell: Super+P (display.apply), "Keep?" answers, identify.
 [[rule]]
 identity  = "system.shell"
-call      = ["display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject"]
+call      = ["display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "volumes.eject"]
 subscribe = ["display.outputs", "account.users", "power.state", "power.actions", "session.state", "notify.posted", "notify.dismissed", "calendar.changed", "audio.state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
 
 # The sign-in screen tells who signed in on the seat.
@@ -194,11 +194,13 @@ identity = "system.netd"
 register = ["net"]
 publish  = ["net.state"]
 
-# Bluetooth service (827): offers `bluetooth`, publishes its state.
+# Bluetooth service (827): offers `bluetooth`, publishes its state, asks the
+# person through the system dialog before pairing (`sysdialog.bt_pair`).
 [[rule]]
 identity = "system.btd"
 register = ["bluetooth"]
 publish  = ["bluetooth.state"]
+call     = ["sysdialog.bt_pair"]
 
 # Removable-drive service (828): offers `volumes`, follows who is in front.
 [[rule]]

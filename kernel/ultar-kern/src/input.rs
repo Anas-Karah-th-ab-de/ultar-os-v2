@@ -8,6 +8,10 @@
 //! `DEVNAME=input/eventN`); `/sys/class/input/eventN` describes it (`device/name`, `dev`,
 //! `uevent`). A descriptor of a node whose keyboard left reads `ENODEV`. While no program reads an
 //! input node, USB keys go to the console as characters (see `gen_xhci`).
+//!
+//! Virtual devices of privileged services (`/dev/ultar/uinput`, `svcdev/uinput.rs`) get nodes the
+//! same way: they answer with the capabilities they declared (`virt.rs`) and only carry events
+//! of those; at most [`MAX_VIRTUAL`] exist at once.
 
 use alloc::collections::VecDeque;
 use alloc::format;
@@ -15,10 +19,16 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
 
+pub mod virt;
+
 /// The first number of a USB keyboard's node.
 pub const FIRST: u8 = 2;
 /// Most USB keyboard nodes at once.
 pub const MAX_NODES: usize = 32;
+/// Most virtual devices at once.
+pub const MAX_VIRTUAL: usize = 8;
+/// Controller number of virtual devices (their `slot` is a serial number).
+const VIRTUAL_HC: usize = usize::MAX;
 /// Events kept per node until a program reads them.
 const QUEUE: usize = 4096;
 const ENODEV: i64 = 19;
@@ -41,6 +51,8 @@ enum Kind {
     Mouse,
     /// Absolute X and Y: minimum and maximum of each.
     Tablet([i32; 4]),
+    /// A virtual device of a service (capabilities in the node).
+    Virtual,
 }
 
 struct Node {
@@ -53,6 +65,9 @@ struct Node {
     /// The last boot report (modifiers, reserved, six keys).
     last: [u8; 8],
     queue: VecDeque<[u8; 24]>,
+    /// What a virtual device declared (one entry; empty for USB devices – a vector so that its
+    /// memory can be asked for without stopping the machine when there is none).
+    caps: Vec<virt::Caps>,
 }
 
 static NODES: Mutex<Vec<Node>> = Mutex::new(Vec::new());
@@ -74,7 +89,7 @@ fn add(hc: usize, slot: u32, vendor: u16, product: u16, kind: Kind) {
             return;
         }
         let Some(index) = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i)) else { return };
-        let node = Node { index, kind, hc, slot, vendor, product, last: [0; 8], queue: VecDeque::new() };
+        let node = Node { index, kind, hc, slot, vendor, product, last: [0; 8], queue: VecDeque::new(), caps: Vec::new() };
         if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
             return;
         }
@@ -90,7 +105,74 @@ fn word(kind: Kind) -> &'static str {
         Kind::Keyboard => "Keyboard",
         Kind::Mouse => "Mouse",
         Kind::Tablet(_) => "Tablet",
+        Kind::Virtual => "Virtual",
     }
+}
+
+static NEXT_VIRTUAL: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
+
+/// A service created a virtual device with `caps`: its node number (`None`: too many devices or
+/// no memory).
+pub fn virtual_added(caps: virt::Caps) -> Option<u8> {
+    let index = {
+        let mut nodes = NODES.lock();
+        if nodes.len() >= MAX_NODES || nodes.iter().filter(|n| n.kind == Kind::Virtual).count() >= MAX_VIRTUAL {
+            return None;
+        }
+        let index = (FIRST..=u8::MAX).find(|i| !nodes.iter().any(|n| n.index == *i))?;
+        let slot = NEXT_VIRTUAL.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        let (vendor, product) = (caps.id[1], caps.id[2]);
+        let mut held = Vec::new();
+        if !crate::heap::kernel(|| crate::mem::try_reserve(&mut held, 1)) {
+            return None;
+        }
+        held.push(caps);
+        let node = Node { index, kind: Kind::Virtual, hc: VIRTUAL_HC, slot, vendor, product, last: [0; 8], queue: VecDeque::new(), caps: held };
+        if !crate::heap::kernel(|| crate::mem::try_reserve(&mut nodes, 1)) {
+            return None;
+        }
+        nodes.push(node);
+        index
+    };
+    crate::kprintln!("[input] event{index}: virtual device");
+    uevent(index, "add");
+    Some(index)
+}
+
+/// The virtual device of node `index` was destroyed (its descriptor closed).
+pub fn virtual_removed(index: u8) {
+    let gone = {
+        let mut nodes = NODES.lock();
+        let before = nodes.len();
+        nodes.retain(|n| !(n.index == index && n.kind == Kind::Virtual));
+        nodes.len() != before
+    };
+    if gone {
+        crate::perm::forget(&format!("/dev/input/event{index}"));
+        crate::kprintln!("[input] event{index}: removed");
+        uevent(index, "remove");
+    }
+}
+
+/// Events `(type, code, value)` of the virtual device of node `index`: all of them were declared
+/// (else nothing is queued and `false` returned). Time stamps are the kernel's.
+pub fn virtual_events(index: u8, events: &[(u16, u16, i32)]) -> bool {
+    let mut nodes = NODES.lock();
+    let Some(n) = nodes.iter_mut().find(|n| n.index == index && n.kind == Kind::Virtual) else { return false };
+    let Some(caps) = n.caps.first() else { return false };
+    let mut ok = Vec::new();
+    if crate::heap::kernel(|| ok.try_reserve(events.len()).is_err()) {
+        return false;
+    }
+    for &(t, c, v) in events {
+        let Some(v) = caps.filter(t, c, v) else { return false };
+        ok.push((t, c, v));
+    }
+    for (t, c, v) in ok {
+        push(&mut n.queue, t, c, v);
+    }
+    crate::socket::bump();
+    true
 }
 
 /// The USB device in slot `slot` of controller `hc` left: its nodes go away.
@@ -225,7 +307,11 @@ pub fn name(index: u8) -> Option<String> {
     match index {
         0 => Some(String::from("Ultar Maus")),
         1 => Some(String::from("Ultar Tastatur")),
-        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| format!("USB {} {:04x}:{:04x}", word(n.kind), n.vendor, n.product)),
+        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| match n.caps.first() {
+            Some(c) if !c.name.is_empty() => c.name.clone(),
+            Some(_) => String::from("Ultar Virtual"),
+            None => format!("USB {} {:04x}:{:04x}", word(n.kind), n.vendor, n.product),
+        }),
     }
 }
 
@@ -233,7 +319,7 @@ pub fn name(index: u8) -> Option<String> {
 fn id(index: u8) -> Option<[u16; 4]> {
     match index {
         0 | 1 => Some([BUS_I8042, 1, 1 + index as u16, 0]),
-        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| [BUS_USB, n.vendor, n.product, 0x0110]),
+        _ => NODES.lock().iter().find(|n| n.index == index).map(|n| n.caps.first().map_or([BUS_USB, n.vendor, n.product, 0x0110], |c| c.id)),
     }
 }
 
@@ -255,7 +341,14 @@ fn bits(index: u8, ev: u8) -> Vec<u8> {
     let kind = match index {
         0 => Kind::Tablet([0; 4]),
         1 => Kind::Keyboard,
-        _ => NODES.lock().iter().find(|n| n.index == index).map_or(Kind::Keyboard, |n| n.kind),
+        _ => {
+            let nodes = NODES.lock();
+            let n = nodes.iter().find(|n| n.index == index);
+            if let Some(c) = n.and_then(|n| n.caps.first()) {
+                return c.bits(ev);
+            }
+            n.map_or(Kind::Keyboard, |n| n.kind)
+        }
     };
     let (pointer, abs) = (kind != Kind::Keyboard, matches!(kind, Kind::Tablet(_)));
     match ev {
@@ -273,7 +366,15 @@ fn bits(index: u8, ev: u8) -> Vec<u8> {
 
 /// `EVIOCGABS(ABS_X/ABS_Y)` of a USB tablet: `struct input_absinfo`.
 fn absinfo(index: u8, axis: u8) -> Option<Vec<u8>> {
-    let Kind::Tablet(r) = NODES.lock().iter().find(|n| n.index == index)?.kind else { return None };
+    let nodes = NODES.lock();
+    let n = nodes.iter().find(|n| n.index == index)?;
+    if let Some(c) = n.caps.first() {
+        return c.absinfo(axis);
+    }
+    let Kind::Tablet(r) = n.kind else { return None };
+    if axis > 1 {
+        return None;
+    }
     let (min, max) = if axis == 0 { (r[0], r[1]) } else { (r[2], r[3]) };
     Some([0, min, max, 0, 0, 0].iter().flat_map(|v: &i32| v.to_le_bytes()).collect())
 }
@@ -330,7 +431,7 @@ pub fn ioctl(index: u8, req: u64) -> Option<Vec<u8>> {
         (2, 0x08) => Some(alloc::vec![0u8]),
         (2, 0x09 | 0x18 | 0x19 | 0x1a | 0x1b) => Some(alloc::vec![0u8; 8]),
         (2, 0x20..=0x3f) => Some(bits(index, nr - 0x20)),
-        (2, 0x40 | 0x41) => absinfo(index, nr - 0x40),
+        (2, 0x40..=0x7f) => absinfo(index, nr - 0x40),
         (1, 0x90) => Some(Vec::new()),
         _ => None,
     }

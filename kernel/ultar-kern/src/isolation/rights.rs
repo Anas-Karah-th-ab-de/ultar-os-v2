@@ -31,10 +31,16 @@ impl Rights {
     /// Act on files regardless of their owner and mode: read, write, search and remove anything,
     /// `chown`, `chmod` of files of others. (What "being root" means for files on Linux.)
     pub const FILE_ADMIN: Rights = Rights(1 << 9);
+    /// Talk to a Bluetooth controller through its raw HCI node `/dev/ultar/hciN` (the Bluetooth
+    /// service). Neither `RAW_DEVICE` nor `FILE_ADMIN` opens that node: only this right does.
+    pub const BLUETOOTH: Rights = Rights(1 << 10);
+    /// Create virtual input devices through `/dev/ultar/uinput` (the Bluetooth service for its
+    /// keyboards and mice, remote control). Neither `RAW_DEVICE` nor `FILE_ADMIN` opens that node.
+    pub const INPUT_INJECT: Rights = Rights(1 << 11);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0x3ff);
+    pub const ALL: Rights = Rights(0xfff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {

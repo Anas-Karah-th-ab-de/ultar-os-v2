@@ -18,6 +18,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
 
+pub mod bt;
 mod hid;
 mod hotplug;
 mod pointer;
@@ -178,6 +179,9 @@ impl Hc {
                     continue;
                 }
                 if pointer::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
+                    continue;
+                }
+                if bt::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
             }
@@ -370,7 +374,7 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
 pub fn poll_key() -> Option<char> {
     let mut g = HC.try_lock()?;
     for hc in g.iter_mut() {
-        if hc.keys.is_empty() && (!hc.kbds.is_empty() || pointer::any(hc.index)) {
+        if hc.keys.is_empty() && (!hc.kbds.is_empty() || pointer::any(hc.index) || bt::any(hc.index)) {
             hc.pump();
         }
         if let Some(c) = hc.keys.pop_front() {
@@ -573,6 +577,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
     hc.control(slot, 0x00, 9, cfg_val as u16, 0, 0, 0).ok_or("Konfiguration setzen fehlgeschlagen")?;
     let mut what = format!("{vid:04x}:{pid:04x}");
     let mut hub: Option<(u32, u64, bool)> = None;
+    let mut bt_bound = false;
     for d in &ifs {
         if d.class == 9 && hub.is_none() {
             // Hub (USB 2.0 Kap. 11 / USB 3.2 Kap. 10)
@@ -614,6 +619,17 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             // mouse or tablet (report descriptor with X and Y)
             if let Some(kind) = pointer::attach(hc, slot, (inp, out, speed), d)? {
                 what = format!("{kind} {what}");
+            }
+        } else if bt::is_bt(d) && !bt_bound {
+            // Bluetooth primary controller: interface 0 (events, ACL); the SCO interface has no
+            // interrupt/bulk endpoints and is left alone
+            match bt::attach(hc, slot, (inp, out, speed), d) {
+                Ok(n) => {
+                    bt_bound = true;
+                    what = format!("Bluetooth hci{n} {what}");
+                }
+                Err(e) if d.eps.iter().any(|e| e.1 & 3 == 3) => crate::kprintln!("[xhci] {e}"),
+                Err(_) => {}
             }
         } else if d.class == 8 && d.sub == 6 && d.proto == 0x50 {
             // Massenspeicher (Bulk-Only, SCSI)

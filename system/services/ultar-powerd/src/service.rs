@@ -1,6 +1,8 @@
 //! The bus side: calls, the session topic, the regular battery reading.
 
 use crate::state;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use ultar_bus::messages::init::{Power as InitPower, PowerAction};
 use ultar_bus::messages::lock::Lock;
@@ -32,7 +34,10 @@ pub struct PowerService {
     signed_in: usize,
     state: Option<PowerState>,
     actions: PowerActions,
-    busy: bool,
+    /// An action runs. Shared with the worker: it is cleared there *before* the caller
+    /// gets its answer, so a call sent right after an answer never finds the service busy
+    /// (clearing it later on the loop raced with the next call).
+    busy: Arc<AtomicBool>,
 }
 
 /// Which action of the menu.
@@ -83,7 +88,7 @@ impl PowerService {
             signed_in: 0,
             state: None,
             actions,
-            busy: false,
+            busy: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -106,7 +111,6 @@ impl PowerService {
     }
 
     fn finish(&mut self, bus: &Bus<'_, Self>, action: Action, outcome: ActionOutcome) {
-        self.busy = false;
         bus.log(
             Record::new(Level::Info, "powerd.action")
                 .word("op", action.word())
@@ -121,13 +125,13 @@ impl PowerService {
             bus.log(Record::new(Level::Warn, "powerd.refused").word("op", action.word()));
             return answer(request, ActionOutcome::Refused);
         }
-        if self.busy {
-            return answer(request, ActionOutcome::Busy);
-        }
         if action == Action::Suspend && !self.hal.suspend_supported() {
             return answer(request, ActionOutcome::Unsupported);
         }
-        self.busy = true;
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return answer(request, ActionOutcome::Busy);
+        }
+        let busy = self.busy.clone();
         let hal = self.hal.clone();
         let lock_first = self.signed_in > 0;
         let ask_admin = self.signed_in > 1 && !admin;
@@ -138,14 +142,16 @@ impl PowerService {
                 Action::Off => end_machine(client, &caller, PowerAction::PowerOff, ask_admin),
             };
             // Answered here, not on the loop: after init accepted a power off, this
-            // service is told to stop at once and its loop may not run again.
+            // service is told to stop at once and its loop may not run again. Free
+            // before answering: the caller may ask again as soon as it has the answer.
+            busy.store(false, Ordering::SeqCst);
             answer(request, outcome);
             let done: Done<Self> =
                 Box::new(move |s: &mut Self, bus: &Bus<'_, Self>| s.finish(bus, action, outcome));
             done
         });
         if !started {
-            self.busy = false;
+            self.busy.store(false, Ordering::SeqCst);
         }
     }
 }

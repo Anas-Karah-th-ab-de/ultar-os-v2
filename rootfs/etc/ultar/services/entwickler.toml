@@ -17,6 +17,7 @@ exec = "/usr/bin/ultar-sshd"
 # right manage_groups: administrator shell: commands of the developer may need it
 # right set_id: administrator shell: commands of the developer may need it
 # right file_admin: administrator shell: commands of the developer may need it
-rights = ["mount", "net_admin", "load_driver", "kill_any", "set_time", "raw_device", "reboot", "manage_groups", "set_id", "file_admin"]
+# right input_inject: remote control – typing and pointing from the PC as a virtual input device
+rights = ["mount", "net_admin", "load_driver", "kill_any", "set_time", "raw_device", "reboot", "manage_groups", "set_id", "file_admin", "input_inject"]
 after = ["net"]
 restart = "on-failure"

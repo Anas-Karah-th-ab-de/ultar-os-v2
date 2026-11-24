@@ -1,7 +1,11 @@
 # Bluetooth service (docs/integration/system-services.md): whether the
 # device has Bluetooth and its radio switch (dev/rfkill, group 831), the
-# wish kept and restored. Devices (pairing, connecting) need a Bluetooth host
-# stack, not in this release: answered "unsupported".
+# wish kept and restored; its own host stack on the controller's raw HCI
+# transport (Linux: the HCI user channel, right net_admin; Ultar: the USB
+# controller's node /dev/ultar/hciN, right bluetooth): scan, pair (system
+# dialog), bonds (0600 below /data/ultar/bluetooth), keyboards and mice to
+# the input subsystem (Linux: /dev/uinput; Ultar: /dev/ultar/uinput, right
+# input_inject).
 editions = ["phone", "desktop"]
 exec = "/usr/bin/ultar-btd"
 args = [
@@ -11,6 +15,11 @@ args = [
 ]
 user = 827
 groups = [831]
+# right net_admin: the raw HCI user channel of the Bluetooth controller (Linux;
+# the Ultar kernel has no Bluetooth socket, the right opens nothing there).
+# right bluetooth: the raw HCI node of a USB Bluetooth controller (Ultar kernel)
+# right input_inject: Bluetooth keyboards and mice as virtual input devices (Ultar kernel)
+rights = ["net_admin", "bluetooth", "input_inject"]
 dirs = ["/data/ultar/bluetooth"]
 notify = true
 after = ["bus"]

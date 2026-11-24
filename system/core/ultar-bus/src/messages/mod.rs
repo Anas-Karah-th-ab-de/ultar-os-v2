@@ -143,6 +143,10 @@ mod tests {
         check_call::<super::bluetooth::Devices>();
         check_call::<super::bluetooth::Connect>();
         check_call::<super::bluetooth::Disconnect>();
+        check_call::<super::bluetooth::Scan>();
+        check_call::<super::bluetooth::Pair>();
+        check_call::<super::bluetooth::Forget>();
+        check_call::<super::bluetooth::PairConfirm>();
         check_topic::<super::net::NetState>();
         check_call::<super::net::SetWifi>();
         check_call::<super::net::SetAirplane>();

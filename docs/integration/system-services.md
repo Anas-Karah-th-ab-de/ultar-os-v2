@@ -11,9 +11,9 @@ power call of the service manager (`init.power`), accessibility settings and the
 1. **Not done – Wi-Fi networks:** `net.scan` / `net.connect` answer `Unsupported`, `net.state.networks_supported`
    is `false`. Joining WPA networks needs a supplicant (nl80211 over generic netlink + the EAPOL 4-way handshake);
    not built in this round. Wi-Fi radio on/off, airplane mode and the wired link are real.
-2. **Not done – Bluetooth devices:** `bluetooth.devices` / `connect` / `disconnect` answer `Unsupported`,
-   `devices_supported: false` (needs an own HCI host stack; the Ultar kernel has no HCI socket). Presence and
-   the radio switch are real.
+2. **Bluetooth devices: own host stack** – see section 3 (w8/bt). Linux: HCI user channel + `/dev/uinput`; Ultar
+   kernel: USB controllers through `/dev/ultar/hciN` and input through `/dev/ultar/uinput` (section 3a, w8/kbt).
+   Audio devices are listed but not connected (A2DP needs SBC + audio routing).
 3. **Not done – VPN:** no `vpn` service (WireGuard needs the kernel module's generic-netlink configuration and
    key handling; the legacy `system/services/ultar-vpn` shells out to `wg`). `qs.vpn` stays disabled with its reason.
 4. **Not in my list, still disabled:** `qs.mesh` (Verbund), `lock.sos` (telephony), `qs.assistant`, mobile data
@@ -76,7 +76,7 @@ power call of the service manager (`init.power`), accessibility settings and the
 | media | `system/services/ultar-mediad` | 824 | `media` | media session (heartbeat 30 s), lock-screen buttons to the player | – |
 | screenshot | `platform/ultar-captured` | 825 | `capture` | reads an output from the compositor (`ui.capture`), PNG into the person's `Pictures`, owned by them, links never followed | `file_admin` |
 | network | `system/services/ultar-netd` | 826 | `net` | wired link + speed, Wi-Fi radio, airplane mode (rfkill), wish restored; networks: open point 1 | group 831 |
-| Bluetooth | `system/services/ultar-btd` | 827 | `bluetooth` | presence, radio switch (rfkill), wish restored; devices: open point 2 | group 831 |
+| Bluetooth | `system/services/ultar-btd` | 827 | `bluetooth` | presence, radio switch (rfkill), wish restored; own host stack: scan, pair (system dialog), bonds, connect, HID keyboards/mice (section 3) | `net_admin`, group 831 |
 | removable drives | `system/services/ultar-volumed` | 828 | `volumes` | FAT/exFAT/ext4 of removable disks mounted for the person in front (`nosuid,nodev,noexec`, FAT files owner-only), eject (refused while busy), pulled drives detached | `mount`, group 832 |
 | display | `platform/ultar-displayd` | 817 | `display` | see below (w5/svc) | – |
 | accounts | `system/services/ultar-accountd` | 818 | `account` | see below (w5/svc) | `file_admin` |
@@ -134,7 +134,7 @@ sessiond 2 + 2 (only the sign-in screen signs in, unknown accounts, switch/sign-
 to sender only, refusals, flood limit, crash empties), calendard 3 + 1 + 1 (per person, read-only shell, apps
 refused, restart keeps, damaged file never overwritten), audiod 2 + 1 (fake cards: volume/mute/output/restore/
 hot-plug; no device), mediad 1 + 1, captured 5 + 1 (**real compositor, real PNG of 64×48**), netd 3 + 1 (switches,
-hardware switch, wish survives **kill -9**), btd 1 + 1, volumed 2 + 1, init +1 process (`init.power`), contracts
+hardware switch, wish survives **kill -9**), btd 28 + 1 (+ 6 stack end-to-end/trace, section 3), volumed 2 + 1, init +1 process (`init.power`), contracts
 +11. End to end: `dienstetest` (host with `--fake-root`, and **QEMU on the Ultar kernel** via `dienste-e2e.sh`).
 
 Gate (`agents/w7/svc/gate.sh`, log `gate.log`): fmt ok; clippy `-D warnings` on all touched crates ok (after one
@@ -306,3 +306,155 @@ Real DRM hardware (EDID, mode switching), turned displays drawn turned, HDR/DDC 
 Wayland-style per-window scale migration (compositor's existing behaviour unchanged), the real `ultar-authd` /
 `ultar-sysdialog` (stand-ins in the tests, see open point 1), picture decoding (only the container is checked),
 child protection / per-user language (§8 "Benutzer" – no service exists for them), online Ultar account.
+
+## 3. Bluetooth host stack (agents/w8/bt)
+
+### Bluetooth: open points (first)
+
+1. **Ultar kernel transport: done (w8/kbt, section 3a)** – `/dev/ultar/hciN` per USB controller, `ultar-btd`
+   uses it when no Linux user channel exists. Tested against an emulated controller only (QEMU 8.2 has no
+   `usb-bt-dongle`; `tools/kern-test/bt-usb.py` behind `usb-redir`), **not with a real dongle**.
+2. **Ultar kernel input for services: done (w8/kbt, section 3a)** – `/dev/ultar/uinput` (Linux `uinput`
+   interface); btd's sink picks `dev/uinput` (Linux) or `dev/ultar/uinput`. A full air-to-seat run (a paired
+   Bluetooth keyboard on Ultar) needs a real controller.
+3. **Audio sinks disabled** (`Device.audio_unsupported`, `pair`/`connect` of an audio device answer
+   `Unsupported`). A2DP needs: SDP (record search for the A2DP sink), AVDTP signalling (discover, get
+   capabilities, set configuration, open, start; PSM 0x19) and its media channel, an **SBC encoder** (A2DP
+   mandatory codec; a reviewed crate or a port – not written here), AVRCP for the buttons (optional), and audio
+   routing: `ultar-audiod` must offer the Bluetooth sink as an output and hand PCM (44.1/48 kHz, 16 bit) to
+   btd, with latency/buffer limits. HFP (headset microphone) additionally needs SCO/eSCO over HCI or the
+   controller's PCM path.
+4. **Shell agent: answer `sysdialog.bt_pair`** (contract below). Until the system dialog implements it, every
+   pairing ends "Failed" after the call fails (safe: no answer = no). The settings app should call
+   `bluetooth.scan` / `devices` / `pair` / `connect` / `disconnect` / `forget` and follow `bluetooth.state`.
+5. **Not tested with a real controller** (none here; the build machine's kernel has no Bluetooth, so neither
+   `/dev/vhci` nor `btvirt` exist): the HCI user channel and uinput are compiled and unit-tested (layouts), the
+   protocol stack is tested against the specification's sample data, hand-written traces and two hosts over a
+   **simulated** air (below). First run on hardware: `hciconfig hci0 down` (the user channel needs the
+   controller down and `CAP_NET_ADMIN`), then start `ultar-btd --root / --state DIR`.
+6. **Not in this round:** LE report-protocol HID (report maps; only boot protocol – every HID keyboard/mouse
+   must support it), battery level, LE connection parameter updates (refused politely), our own IRK/privacy
+   (we use the public address), classic HID devices that do not support boot protocol, more than one pairing
+   at a time, passkey *entry* on our side (we display; an Ultar device has no "type the number" dialog).
+
+### What exists
+
+`system/services/ultar-btd`: `stack/` is a host stack **without I/O** (fed packets, wishes and the time; answers
+packets and news), `runner.rs` the stack thread (transport, bonds file, input sink, snapshot), `service.rs` the
+bus side. Reviewed primitives only: `p256` (ECDH, point validation), `aes` (AES-128), `cmac` (AES-CMAC),
+`subtle` (constant-time compares), `zeroize`, `getrandom`; the protocol state machines are ours.
+
+| Layer | File | What |
+|---|---|---|
+| HCI | `stack/hci.rs` | H4 framing, commands, events (strict parsing, lengths checked), EIR/AD (name cleaned: no control characters, ≤ 64 octets) |
+| host | `stack/host.rs`, `events.rs` | controller setup (reset, address, buffers, event masks, SSP + SC host support, LE host, extended inquiry, page scan only with bonded classic devices, never discoverable), LE + BR/EDR scan (ends after 20 s), devices (≤ 64) with name/class/appearance/RSSI, one command in flight, ACL credits, time limits (connect 15 s, pairing 60 s) |
+| L2CAP | `stack/l2cap.rs` | reassembly (frame ≤ 1024 octets), fixed LE channels, BR/EDR signalling (connect/configure/disconnect), ≤ 4 channels/link, incoming channels only HID of encrypted bonded devices |
+| SMP | `stack/smp.rs` | **LE Secure Connections only**: Just Works, Numeric Comparison, Passkey (we display), both roles; refuses legacy pairing, keys < 128 bit, a reflected public key (CVE-2020-26558), points off the curve; Pairing Failed ends it, later PDUs dropped; IRK + identity address of the peer kept (private addresses resolved with `ah`) |
+| SSP | `stack/events.rs` | classic Secure Simple Pairing: IO capability `DisplayYesNo` + MITM, numeric comparison / consent / passkey shown – the controller does the P-256 work; PIN (legacy) refused; only SSP link keys (types 4, 5, 7, 8) kept |
+| GATT | `stack/att.rs` | HOGP client: HID service, characteristics, protocol mode → boot, CCCDs of boot keyboard/mouse input, notifications; our own GATT server is empty ("request not supported") |
+| HID | `stack/hid.rs`, `link.rs` | boot keyboard (modifiers, 6 keys, rollover kept) and mouse (3 buttons, X/Y, wheel) → Linux input events; classic HID control (`SET_PROTOCOL boot`) + interrupt channels |
+| bonds | `stack/bonds.rs` | `/data/ultar/bluetooth/bonds` (svckit state file: CRC, atomic, **0600**), ≤ 32, keys zeroed on drop, never in `Debug`/logs/bus |
+| HAL | `ultar-hal-linux/src/bluetooth.rs`, `uinput.rs` | controller list (`sys/class/bluetooth`), HCI user channel (`sockaddr_hci`, one `unsafe impl`), uinput keyboard/mouse (five integer ioctls) |
+
+**Default deny:** nothing pairs unless the person asked for that device (`bluetooth.pair`) and confirmed in the
+system dialog (also Just Works: "pair with this device?"); an incoming pairing / IO capability request nobody
+asked for is refused; incoming connections only from bonded classic devices (HID reconnect); a bonded LE device
+whose key no longer works is disconnected, never re-paired silently. Service: kernel right `net_admin` (user
+channel), group 831 (rfkill), bus calls only from `system.shell`/`app.settings` (policy) – apps are refused.
+
+### Contract (`ultar_bus::messages::bluetooth`, version 2)
+
+`bluetooth.state` (+ `scanning`, `pairing: Option<{id, phase: Running|Paired|Failed}>`), `bluetooth.devices`
+(`Device` + `paired`, `kind`, `rssi`, `le`, `input`, `audio_unsupported`), calls `scan{on}`, `pair{id}`,
+`connect{id}`, `disconnect{id}`, `forget{id}` → `BtReply{Done|NoDevice|SwitchOff|Unsupported|Failed|
+UnknownDevice|Busy}`; ids are `AA:BB:CC:DD:EE:FF` (`/r` = LE random). `pair` answers when the pairing started;
+its end shows in `bluetooth.state.pairing`.
+
+**For the shell agent – `sysdialog.bt_pair`** (`PairConfirm`, defined in `messages/bluetooth.rs`, the one place):
+`{device_name, address, kind, question: Consent | Compare(u32) | Show(u32)}` → `PairConfirmReply{accept}`.
+Called only by `system.btd` (policy rule added: `call = ["sysdialog.bt_pair"]`), timeout `CALL_TIMEOUT_MS`;
+unanswered within `ANSWER_WITHIN_MS` → `accept: false`. Show it in the trusted frame like `permission`:
+Consent: "Pair with {name}?" [Pair] [Cancel]; Compare: the number as six digits (leading zeros) "Does {name}
+show this number?" [Yes] [No]; Show: "Type {number} on {name}, then Enter" [Cancel] (the answer only cancels;
+close the dialog when `bluetooth.state.pairing` leaves `Running`). The name is data from the air: plain text.
+
+### Tests (x86_64 Linux, root, umask 002)
+
+`cargo test -p ultar-btd`: 28 unit + 1 process + 4 simulated air + 2 classic trace:
+* **Specification sample data:** f4, f5 (MacKey + LTK), f6, g2 (Core Vol 3 Part H App. D), ah (RPA resolution),
+  the two P-256 samples (Core Vol 2 Part G 7.1.2: both public keys and the DHKey) – as the Linux kernel's self test
+  carries them; points off the curve refused.
+* **SMP:** two state machines against each other: numeric comparison accepted / refused on either side, Just
+  Works with a display-less device, passkey (right and wrong number, 20 rounds), legacy/short keys/bad
+  parameters/not pairable refused, reflected public key, tampered confirm value and DHKey check fail, 3000 hostile
+  PDUs (fixed seed) never yield keys.
+* **HCI/L2CAP/ATT/HID:** events in spec layout (hand-written – no controller to record from), 20 000 hostile
+  events/ACL/AD records (fixed seed), a HOGP combo device trace, ATT refusals, 3000 hostile ATT sequences,
+  keyboard/mouse report decoding, bond file 0600 / damaged file / limit / IRK resolution.
+* **End to end (`tests/sim.rs`):** two complete hosts over two simulated LE controllers (commands answered as the
+  specification says, ACL forwarded with a 27-octet buffer = fragmentation, encryption granted only if both sides
+  hold the same LTK): scan finds the advertiser with name and RSSI, pair with numeric comparison (same number on
+  both), same LTK on both sides, disconnect, reconnect with the bond and no question, forget; a "no" on either
+  screen leaves no bond and drops the link; a non-pairable peer; a stale bond is not re-paired behind the
+  person's back. `/dev/vhci` / `btvirt` are not available here (no Bluetooth in this kernel).
+* **Classic trace (`tests/classic.rs`):** inquiry with EIR name, pair: link key negative reply, IO capability
+  reply, numeric comparison through the dialog, link key kept, encryption, HID control + interrupt channels,
+  `SET_PROTOCOL(boot)`, a key press reaches the input sink, disconnect removes it; IO capability / PIN / user
+  confirmation / connection requests nobody asked for are refused, an unasked link key is not kept.
+* `ultar-hal-linux` +2 (controller list, uinput record layouts; uinput absent → refused), `ultar-bus` contract
+  round trip + names.
+
+
+## 3a. Bluetooth and virtual input on the Ultar kernel (agents/w8/kbt)
+
+### Open points (first)
+
+1. **No real controller tested.** QEMU 8.2 has no `usb-bt-dongle`; the transport is tested with
+   `tools/kern-test/bt-usb.py` (usbredir device side, full-speed class E0/01/01: commands answered, ACL loopback,
+   events cut into 16-octet interrupt packets) behind `-device usb-redir` on qemu-xhci. First run on hardware:
+   look for `[bt] hciN: USB Bluetooth controller` in the kernel log, then `bluetooth.state.devices_supported`.
+2. SCO/eSCO (interface 1, isochronous) is not offered: HFP audio needs it (see open point 3 of section 3).
+3. One controller node is opened by one descriptor at a time; more than four controllers are not bound.
+4. The kernel's xHCI driver works by polling: an open `hciN` is pumped on `read`/`poll` (every 8 ms while a
+   reader waits), events are not interrupt-driven.
+5. **Gate:** one full `ci.sh` run on builder B2 (QEMU 11.0.3, also without `usb-bt-dongle`): every marker green incl.
+   `BTTEST-UINPUT`, `BT`, `DIENSTE`; `AB-TEST` 43/44 – "installation in the A/B layout" (the serial-console
+   driven installer's end text) missed while the following factory-table and start checks passed; not
+   investigated (budget). `ab-test.sh` also never copied the kernel's path dependency `ultar-brand` into its
+   panic-kernel build (failed on the base too) – fixed. The builders lack `rust-lld` (run with a `lld` link
+   named `rust-lld` on `PATH`). The second gate run was not done.
+
+### Kernel interface
+
+| Node | Right (only gate) | What |
+|---|---|---|
+| `/dev/ultar/hciN` (char 10:240+N) | `bluetooth` (bit 10) | one H4 record per `write` (`01` command → control request 0x20/0 on EP0, `02` ACL → bulk OUT, ≤ 1021 data octets; else `EINVAL`, not taken `EIO`), one per `read` (`04` event from interrupt IN, `02` ACL from bulk IN; streams cut by their headers; buffer too small `EINVAL`, record kept); `O_NONBLOCK`/`poll`; second opener `EBUSY`; controller gone `ENODEV`; ≤ 256 records / 128 KiB queued (more dropped, logged at close) |
+| `/dev/ultar/uinput` (char 10:223) | `input_inject` (bit 11) | Linux `uinput`: `UI_SET_EVBIT/KEYBIT/RELBIT/ABSBIT` (keys 1..0x2ff, rel 0..15, abs 0..63), `UI_DEV_SETUP`, `UI_ABS_SETUP`, legacy `uinput_user_dev` write, `UI_DEV_CREATE` → normal `/dev/input/eventN` (uevent, sysfs, `EVIOCG*` from the declaration), `UI_GET_SYSNAME` → `inputN`, `UI_GET_VERSION` 5, `UI_DEV_DESTROY`; events must be declared (else `EINVAL`, nothing delivered; abs held to range); ≤ 256 per write; rate 1000/s, burst 256 (`EAGAIN`); ≤ 8 devices (`ENOSPC`); gone with the last close / process end |
+
+`RAW_DEVICE`, `FILE_ADMIN` and node owner/mode open neither node (default deny). New rights in
+`isolation/rights.rs`, `ultar-service` (`Right::Bluetooth`, `Right::InputInject`) and `ultar-init` (`bluetooth`,
+`input_inject`); `btd.toml` keeps `net_admin, bluetooth, input_inject`; `entwickler.toml` (remote control)
+gains `input_inject`. Files: `kernel/ultar-kern/src/drivers/gen_xhci/bt.rs` (transport), `src/svcdev/`
+(nodes, gate), `src/input/virt.rs` (declared capabilities). HAL: `ultar_hal_linux::bluetooth::{ultar_nodes,
+RawNode}`, `ultar_hal_linux::uinput::{node, VirtualInput::create_at}`; btd: `runner::open` tries the Linux user
+channel, then the Ultar nodes; the `Uinput` sink uses `uinput::node(root)`.
+
+### Tests
+
+* `bttest uinput` (first ci boot, `BTTEST-UINPUT: ALLES OK`, 38 checks): rights (827 with RAW_DEVICE+FILE_ADMIN,
+  root without the right → `EACCES`; 827 with it opens and creates), keyboard seen by the seat (name, id, bits,
+  sysfs, events in order, POLLIN), undeclared / wrong values refused, legacy setup record (btd's HAL sequence),
+  rate limit, 257 events refused, destroy, tablet range + clamp, 8-device limit, empty declaration refused,
+  device gone at close and when the process ends.
+* `tools/kern-test/bt-e2e.sh` (`BT: ALLES OK`): `bttest hci` (22 checks: rights, EBUSY, EAGAIN, poll, Reset,
+  Read BD_ADDR, a 258-octet event over 17 interrupt packets, ACL 300 and 1021 octets both ways, SCO/bad length/
+  oversize refused, small buffer, dup/close) and `examples/btd-e2e` (shipped logd/bus/btd under ultar-init: btd
+  as uid 827 sets the controller up – the controller log shows its Set Event Mask/SSP/LE host commands –,
+  `bluetooth.state` present + devices supported, second opener `EBUSY`, btd's `Uinput` sink creates a keyboard
+  the seat reads, removed with it; btd ends with code 0).
+* Kernel rights now 12 bits: `R_ALL` 0xfff in rechtetest/zelltest/grenztest/ausbruch. `scripts/build-kern.sh` now
+  rebuilds the ring-3 test programs every time (`make -B`): the checked-in `fenstertest` binary was older than its
+  source (same checkout time stamp), which failed `VMWARE-LIKE q35-ahci-usb` on the base commit as well.
+* `restart_and_power_off…` (ultar-powerd) flake: the busy flag was cleared on the service loop *after* the worker
+  had already answered, so an immediate next call raced and got `Busy` (~1 in 3). Now cleared in the worker before
+  the answer (`Arc<AtomicBool>`); 40/40 runs green.

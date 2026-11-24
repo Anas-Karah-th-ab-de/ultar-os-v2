@@ -8,4 +8,4 @@ description = "Generic kernel backends of the HAL for the system services: power
 
 [dependencies]
 ultar-hal = { path = "../ultar-hal" }
-rustix = { version = "1", default-features = false, features = ["std", "fs", "mount"] }
+rustix = { version = "1", default-features = false, features = ["std", "fs", "mount", "net", "event"] }
