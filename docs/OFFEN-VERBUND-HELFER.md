@@ -62,7 +62,6 @@ nach Kennungen, die es nie gibt.
 
 Noch nicht geprüft:
 
-
 - Die neue Oberfläche (Einstellungen › Verbund, Kachel, Weitermachen) lief nur in den Tests mit Ersatz-Diensten,
   nicht gegen den echten Dienst `ultar-mesh` und auf keinem Bildschirm.
 - Kein Lauf auf dem Ultar-Kern, dem Beelink, in VMware oder auf dem A30; ARM64 nicht gebaut.
@@ -72,8 +71,10 @@ Noch nicht geprüft:
   Anfragen (`/health`, `/v1/models`, `/v1/chat/completions`). Der Modell-Dienst startet nur auf
   Anforderung (`manual = true`, Kernparameter `ultar.start=llm`). Von selbst startet ihn niemand: Der Aufruf
   dafür (`init.control`) dürfte jeden Dienst starten und stoppen – das Recht bekommt die Brücke nicht.
-- Das Abbild mit den drei neuen Diensten wurde nicht gebaut und nicht gestartet; geprüft sind die
-  Dienstdateien durch die Tests von `ultar-busd`, `ultar-init` und `ultar-logd`.
+- Das Abbild mit den drei neuen Diensten: in dieser Arbeit nicht gebaut und nicht gestartet (geprüft sind die
+  Dienstdateien durch die Tests von `ultar-busd`, `ultar-init` und `ultar-logd`). In der Integration lief der
+  Verbund im Abbild an; ein Startfehler (`mesh.start_failed step=key_mode`) führte zu einer Korrektur im Kern
+  (Commits `85ff6a91`, `e8badc92`). Ob er dort seitdem sauber startet, steht hier nicht fest.
 - Helfer mit einem echten Modell: Die Tests nutzen ein Modell-Skript. Ob ein kleines Modell die
   Antwortform zuverlässig einhält, ist offen; schlägt es fehl, bleibt die kleinste Hilfe.
 - Arabische Texte (Tafeln, Dialog, Helfer) hat kein Muttersprachler gegengelesen.
