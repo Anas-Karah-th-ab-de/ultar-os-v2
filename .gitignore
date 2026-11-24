@@ -7,3 +7,4 @@ target-*/
 *.exe
 *.msi
 kernel/ultar-kern/target/
+__pycache__/
