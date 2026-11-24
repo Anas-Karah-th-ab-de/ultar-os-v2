@@ -681,15 +681,17 @@ def _screen_text():
 # values on every page, a change takes effect and survives a restart; the Store and Files list their content.
 # Everything below up to `installed` belongs to this block.
 #
-# The sidebar of Settings in its order (apps/ultar-settings/src/areas.rs `wide()`: every area but the mobile
-# network). The gate moves through it with the keyboard (Tab, arrows, Enter - the test
+# The sidebar of Settings in its order (apps/ultar-settings/src/areas.rs `wide()`: group after group, the mobile
+# network hidden without a modem). The gate moves through it with the keyboard (Tab, arrows, Enter - the test
 # `the_keyboard_alone_opens_a_page_and_changes_its_first_setting` of the app holds the same keys) and reads
 # each page from the screen.
 SETTINGS_AREAS = [
-    "wifi", "network", "bluetooth", "displays", "sound", "power", "desktop", "windows", "appearance",
-    "notifications", "search", "apps", "mouse", "keyboard", "printers", "colour", "accessibility", "privacy",
-    "sharing", "accounts", "users", "region", "datetime", "storage", "drivers", "updates", "backup", "mesh",
-    "assistant", "cells", "emergency", "about",
+    "wifi", "network", "bluetooth", "sharing", "mesh",
+    "displays", "sound", "power", "mouse", "keyboard", "printers", "storage", "drivers",
+    "desktop", "windows", "appearance", "colour", "notifications", "search",
+    "apps", "accounts", "users", "assistant",
+    "privacy", "cells", "emergency",
+    "region", "datetime", "updates", "backup", "accessibility", "about",
 ]
 # The pages a service stands behind, with words that tell the page is the one asked for (of its title, ar.ftl
 # app.settings.area.* and app.settings.account.title, or of its first rows: the recogniser does not read every
