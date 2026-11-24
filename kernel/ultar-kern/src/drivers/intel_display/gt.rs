@@ -92,6 +92,8 @@ impl GgttBuf {
     /// A copy of the first `len` bytes (what the GuC wrote there).
     fn bytes(&self, len: usize) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
+        // drop what the CPU still holds of these lines, so the copy comes from memory
+        flush(self.phys, n as u64);
         let mut out = alloc::vec![0u8; n];
         // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
         // does not exceed it, and `out` is a fresh heap allocation (no overlap).
