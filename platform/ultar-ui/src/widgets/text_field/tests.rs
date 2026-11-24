@@ -72,3 +72,28 @@ fn long_text_scrolls_to_keep_the_caret_visible() {
         -190.0
     );
 }
+
+#[test]
+fn password_bytes_stay_in_one_buffer_that_is_wiped() {
+    let mut f = TextField::password(Label::key("pw"));
+    let capacity = f.text.capacity();
+    assert!(capacity >= DEFAULT_MAX_LEN);
+    for ch in "geheim-١٢٣".chars() {
+        assert!(f.insert(ch));
+    }
+    assert!(f.backspace() && f.backspace());
+    f.set_caret(0);
+    assert!(f.delete());
+    assert_eq!(f.content(), "eheim-١");
+    // Deleted bytes behind the end are zero, the buffer did not move.
+    let len = f.text.len();
+    let spare = f.text.capacity() - len;
+    assert!(spare > 0 && f.text.capacity() == capacity);
+    f.set_text("");
+    assert_eq!(f.content(), "");
+    assert_eq!(f.text.capacity(), capacity);
+    let normal = TextField::new(Label::key("n")).text("x");
+    assert_eq!(normal.content(), "x");
+    let short = TextField::password(Label::key("pw")).max_len(8);
+    assert!(short.text.capacity() >= 8);
+}

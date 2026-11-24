@@ -1,0 +1,17 @@
+# System dialogs (ultar-sysdialog, role ui.system-dialog as user 815):
+# permission prompts for the app launcher, administrator prompts and "keep
+# these display settings?" (15 s, then the settings service reverts).
+editions = ["phone", "desktop"]
+manual = true
+exec = "/usr/bin/ultar-sysdialog"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/sysdialog.sock",
+]
+user = 815
+after = ["compositor", "authd", "settingsd"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "96M"
+"pids.max" = "16"

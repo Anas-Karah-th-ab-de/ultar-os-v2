@@ -1,0 +1,21 @@
+# Calendar service (docs/integration/system-services.md): the events of the
+# person in front (session.state), one checked file per person below its
+# directory (atomic, CRC-32, at most 4096 events). The shell's calendar
+# sheet reads a day; the calendar app adds and removes.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-calendard"
+args = [
+    "--bus", "/run/ultar/bus/calendard.sock",
+    "--dir", "/data/ultar/calendar",
+    "--log-socket", "/run/ultar/log/calendard.sock",
+]
+user = 822
+dirs = ["/data/ultar/calendar"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"

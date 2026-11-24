@@ -1,0 +1,31 @@
+[package]
+name = "ultar-powerd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Power service of Ultar OS: battery and temperature state, sleep, restart and power off through the service manager (system services, area 4)"
+
+[lib]
+name = "ultar_powerd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-powerd"
+path = "src/bin/ultar-powerd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+ultar-hal = { path = "../../hal/ultar-hal" }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# End-to-end run of the system services under ultar-init (tools/kern-test/dienste-e2e.sh).
+[[example]]
+name = "dienstetest"
+path = "examples/dienstetest/main.rs"

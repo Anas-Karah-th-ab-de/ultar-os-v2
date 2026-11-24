@@ -90,12 +90,45 @@ fn service(name: &str) -> Service {
     }
 }
 
-/// User ids of the four services (their group ids are the same).
-const IDS: [(&str, i64); 4] = [
+/// User ids of the services with own bus sockets (their group ids are the same).
+const IDS: [(&str, i64); 21] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
     ("devd", 804),
+    ("launcher", 805),
+    ("authd", 813),
+    ("lock", 814),
+    ("sysdialog", 815),
+    ("shell", 816),
+    ("displayd", 817),
+    ("accountd", 818),
+    ("powerd", 819),
+    ("sessiond", 820),
+    ("notifyd", 821),
+    ("calendard", 822),
+    ("audiod", 823),
+    ("mediad", 824),
+    ("captured", 825),
+    ("netd", 826),
+    ("btd", 827),
+    ("volumed", 828),
+];
+
+/// The system services of docs/integration/system-services.md (own socket, own log socket).
+const SYSTEM_SERVICES: [&str; 12] = [
+    "authd",
+    "displayd",
+    "accountd",
+    "powerd",
+    "sessiond",
+    "notifyd",
+    "calendard",
+    "mediad",
+    "captured",
+    "netd",
+    "btd",
+    "volumed",
 ];
 
 fn uid_of(name: &str) -> i64 {
@@ -209,18 +242,72 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         sockets["system.init"],
         Path::new("/run/ultar/bus/init.sock")
     );
-    assert_eq!(sockets.len(), 5);
+    let launcher = service("launcher");
+    assert_eq!(
+        Path::new(value(&launcher.args, "--log-socket")),
+        Path::new("/run/ultar/log/launcher.sock")
+    );
+    // The authentication service, the lock screen, the system dialogs and the shell.
+    for (name, option, identity) in [
+        ("authd", "--socket", "system.authd"),
+        ("lock", "--bus", "system.lock"),
+        ("sysdialog", "--bus", "system.sysdialog"),
+        ("desktop", "--bus", "system.shell"),
+    ] {
+        assert_eq!(
+            Path::new(value(&service(name).args, option)),
+            sockets[identity],
+            "{name}"
+        );
+    }
+    // One per service of IDS but the broker itself, plus the administrator's and init's.
+    assert_eq!(sockets.len(), IDS.len() + 1);
+}
+
+#[test]
+fn each_service_logs_to_the_socket_named_after_it() {
+    let logd = service("logd");
     // Each service writes its log to the socket the log service names it by.
     for (service_name, option, identity) in [
         ("bus", "--log-socket", "system.busd"),
         ("settingsd", "--log-socket", "system.settingsd"),
         ("devd", "--log-socket", "system.devd"),
+        ("launcher", "--log-socket", "system.launcher"),
+        ("authd", "--log-socket", "system.authd"),
     ] {
         let path = value(&service(service_name).args, option).to_owned();
         let listen = format!("{path}={identity}");
         let index = logd.args.iter().position(|arg| *arg == listen).unwrap();
         // Open to the writer's group, of which logd is a member.
         let gid = uid_of(service_name);
+        assert_eq!(
+            logd.args[index + 1..index + 5],
+            ["--mode", "0660", "--group", &gid.to_string()]
+        );
+        assert!(logd.groups.contains(&gid));
+    }
+}
+
+#[test]
+fn the_display_and_account_services_reach_their_own_sockets() {
+    let bus = service("bus");
+    let parsed = parse_arguments(bus.args.iter().cloned(), None).unwrap();
+    let sockets = check_sockets(&parsed, &bus);
+    let logd = service("logd");
+    for name in SYSTEM_SERVICES {
+        let identity = format!("system.{name}");
+        let identity = identity.as_str();
+        let file = service(name);
+        let option = if file.args.iter().any(|a| a == "--bus") {
+            "--bus"
+        } else {
+            "--socket"
+        };
+        assert_eq!(Path::new(value(&file.args, option)), sockets[identity]);
+        // Its log socket is open to its group only; logd is a member.
+        let listen = format!("{}={identity}", value(&file.args, "--log-socket"));
+        let index = logd.args.iter().position(|arg| *arg == listen).unwrap();
+        let gid = uid_of(name);
         assert_eq!(
             logd.args[index + 1..index + 5],
             ["--mode", "0660", "--group", &gid.to_string()]

@@ -1,0 +1,25 @@
+# Screenshot service (docs/integration/system-services.md): reads one output
+# from the compositor (right ui.capture for this user only,
+# compositor-rights.toml) and saves a PNG in the Pictures folder of the
+# person in front, owned by that person (session.state, account.users).
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-captured"
+args = [
+    "--bus", "/run/ultar/bus/captured.sock",
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--homes", "/home",
+    "--log-socket", "/run/ultar/log/captured.sock",
+]
+user = 825
+# right file_admin: writing into a person's home (0700) and handing the
+# picture to the person (chown); nothing else this service does needs it.
+rights = ["file_admin"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+# One picture of up to 8K in memory while it is encoded.
+"memory.max" = "320M"
+"pids.max" = "16"
+"cpu.weight" = "50"

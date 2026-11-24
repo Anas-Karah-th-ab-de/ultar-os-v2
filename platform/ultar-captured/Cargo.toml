@@ -1,0 +1,28 @@
+[package]
+name = "ultar-captured"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Screenshot service of Ultar OS: reads an output from the compositor and saves a PNG in the Pictures folder of the person in front (platform, area 5)"
+
+[lib]
+name = "ultar_captured"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-captured"
+path = "src/bin/ultar-captured.rs"
+
+[dependencies]
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-service = { path = "../../system/core/ultar-service" }
+ultar-svckit = { path = "../../system/core/ultar-svckit" }
+ultar-surface = { path = "../ultar-surface", default-features = false }
+png = "0.17"
+rustix = { version = "1", default-features = false, features = ["std", "fs"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../system/core/ultar-svckit", features = ["testkit"] }
+ultar-compositor = { path = "../ultar-compositor" }
+png = "0.17"

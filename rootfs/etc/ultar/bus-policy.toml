@@ -44,6 +44,46 @@ call     = ["settings.ping", "devices.ping"]
 identity = "system.init"
 register = ["init"]
 
+# App launcher: offers `launcher` (apps, their instances and permissions).
+[[rule]]
+identity = "system.launcher"
+register = ["launcher"]
+
+# The surface (shell): starts, stops and lists apps and asks the user for
+# permissions (system dialogs). Not install/uninstall: those need
+# launcher.admin as well, which only the administrator has.
+[[rule]]
+identity  = "system.shell"
+call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
+subscribe = ["net.wifi", "vpn.state", "settings.changed", "notify.posted", "power.state", "devices.capabilities", "display.outputs", "account.users", "power.actions", "session.state", "notify.dismissed", "calendar.changed", "audio.state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
+
+
+# Authentication service (813): offers `auth` (hashed passwords and PINs,
+# docs/integration/desktop-shell.md). `auth.admin` is a right, not a call:
+# whoever may call it may set other users' secrets (the administrator).
+[[rule]]
+identity  = "system.authd"
+register  = ["auth"]
+
+
+# Lock screen (814): offers `lock`, checks passwords, sees how many
+# notifications wait (never their content).
+[[rule]]
+identity  = "system.lock"
+register  = ["lock"]
+call      = ["settings.set_accessibility", "settings.accessibility", "auth.users", "auth.verify", "account.users_list", "account.user_picture_get", "power.restart", "power.off", "power.system", "session.signed_in", "session.signin", "session.users", "session.system", "media.play_pause", "media.next", "media.previous", "media.system"]
+subscribe = ["notify.posted", "power.actions", "session.state", "media.state"]
+
+
+# System dialogs (815): offers `sysdialog` (permission and administrator
+# prompts) and asks to keep new display settings.
+[[rule]]
+identity  = "system.sysdialog"
+register  = ["sysdialog"]
+call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert"]
+subscribe = ["settings.pending", "settings.pending_resolved", "bluetooth.state"]
+
+
 # Network service: reports whether the connection is metered (nothing else of
 # the update service; `network_identity=` in update.conf names this identity).
 [[rule]]
@@ -54,16 +94,146 @@ call     = ["update.network"]
 # update service itself refuses them everything that changes the system.
 [[rule]]
 identity  = "app.*"
-call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy"]
-subscribe = ["update.progress"]
+call      = ["update.status", "update.check", "update.download", "update.history", "update.get_policy", "notify.post", "notify.dismiss", "notify.take_invoked", "media.update", "media.release"]
+subscribe = ["update.progress", "notify.invoked", "media.command"]
 
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.
 # `settings.*` includes settings.admin, `devices.*` includes devices.admin,
-# `init.*` includes init.admin (uinit status|start|stop|restart).
+# `init.*` includes init.admin (uinit status|start|stop|restart),
+# `launcher.*` includes launcher.admin (ulaunch install|uninstall).
 [[rule]]
 identity  = "system.admin"
-call      = ["settings.*", "devices.*", "update.*", "init.*", "log.query", "log.stats", "log.read_all"]
+call      = ["settings.*", "devices.*", "update.*", "init.*", "launcher.*", "auth.*", "log.query", "log.stats", "log.read_all"]
 subscribe = ["settings.*", "devices.*", "update.progress"]
+
+# Display service: offers `display`, publishes the connected displays,
+# follows and sets the display settings (risky ones wait for "Keep?") and
+# reports the connected displays (settings.set_displays needs settings.admin).
+[[rule]]
+identity  = "system.displayd"
+register  = ["display"]
+publish   = ["display.outputs"]
+subscribe = ["settings.changed", "settings.pending", "settings.pending_resolved"]
+call      = ["settings.set_displays", "settings.admin", "settings.list", "settings.set", "settings.confirm", "settings.revert"]
+
+# Account service: offers `account`, publishes the users and the Ultar account
+# state, stores passwords in the authentication service (auth.admin: it is
+# the administrator of auth – it asks the user in the system dialog first)
+# and asks the system dialog for an administrator's password.
+[[rule]]
+identity = "system.accountd"
+register = ["account"]
+publish  = ["account.users", "account.state"]
+call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", "auth.remove_user", "auth.admin", "sysdialog.authenticate"]
+
+# The Settings app: displays and accounts (administrator actions are
+# confirmed by the services in the system dialog, not by this rule).
+[[rule]]
+identity  = "app.settings"
+call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
+subscribe = ["net.wifi", "vpn.state", "display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state"]
+
+# The desktop shell: Super+P (display.apply), "Keep?" answers, identify.
+
+# The sign-in screen tells who signed in on the seat.
+
+# The installer / first start: the first administrator without a dialog
+# (account.setup is a pseudo method: only while no account exists).
+[[rule]]
+identity = "system.installer"
+call     = ["account.setup", "account.user_create", "account.users_list"]
+
+# Authentication service (813, shell work: docs/integration/desktop-shell.md):
+# offers `auth` (hashed passwords and PINs). `auth.admin` is a right, not a
+# call: whoever may call it may set other users' secrets and manage accounts
+# (auth.update_user / auth.remove_user) – the account service.
+
+# Power service (819): offers `power`, publishes the energy state and the
+# power menu's actions, follows who is signed in, ends the machine through
+# init (init.shutdown: the pseudo method init itself asks for), locks the
+# screen before sleep and asks the system dialog when others are signed in.
+[[rule]]
+identity  = "system.powerd"
+register  = ["power"]
+publish   = ["power.state", "power.actions"]
+subscribe = ["session.state"]
+call      = ["init.power", "init.shutdown", "lock.lock", "sysdialog.authenticate"]
+
+# Session service (820): offers `session`, publishes who is signed in,
+# checks accounts with the authentication service, locks the screen for
+# switching and signing out, tells the account service who is in front.
+[[rule]]
+identity  = "system.sessiond"
+register  = ["session"]
+publish   = ["session.state"]
+subscribe = ["account.users"]
+call      = ["auth.users", "lock.lock", "account.session"]
+
+# Notification service (821): offers `notify` and publishes its topics.
+[[rule]]
+identity = "system.notifyd"
+register = ["notify"]
+publish  = ["notify.posted", "notify.dismissed", "notify.invoked"]
+
+# Calendar service (822): offers `calendar`, follows who is in front.
+[[rule]]
+identity  = "system.calendard"
+register  = ["calendar"]
+publish   = ["calendar.changed"]
+subscribe = ["session.state"]
+
+# The calendar app: its owner's events.
+[[rule]]
+identity  = "app.calendar"
+call      = ["calendar.day", "calendar.add", "calendar.remove"]
+subscribe = ["calendar.changed"]
+
+# Audio service (823): offers `audio`, publishes its state.
+[[rule]]
+identity = "system.audiod"
+register = ["audio"]
+publish  = ["audio.state"]
+
+# System dialogs (815, shell work): offers `sysdialog` (permission and
+# administrator prompts; the services that ask translate nothing themselves)
+# and asks to keep new display settings.
+
+# Media service (824): offers `media`, publishes the session and the buttons.
+[[rule]]
+identity = "system.mediad"
+register = ["media"]
+publish  = ["media.state", "media.command"]
+
+# Screenshot service (825): offers `capture`, follows who is in front.
+[[rule]]
+identity  = "system.captured"
+register  = ["capture"]
+subscribe = ["session.state", "account.users"]
+
+# Network service (826): offers `net` and `vpn` (WireGuard runs in the same
+# process: busd and logd are at the kernel's 16 groups, no room for another
+# service user), publishes its state, the Wi-Fi connection and the VPN state,
+# follows the VPN's DNS servers for resolv.conf.
+[[rule]]
+identity  = "system.netd"
+register  = ["net", "vpn"]
+publish   = ["net.state", "net.wifi", "vpn.state"]
+subscribe = ["vpn.state"]
+
+# Bluetooth service (827): offers `bluetooth`, publishes its state, asks the
+# person through the system dialog before pairing (`sysdialog.bt_pair`).
+[[rule]]
+identity = "system.btd"
+register = ["bluetooth"]
+publish  = ["bluetooth.state"]
+call     = ["sysdialog.bt_pair"]
+
+# Removable-drive service (828): offers `volumes`, follows who is in front.
+[[rule]]
+identity  = "system.volumed"
+register  = ["volumes"]
+publish   = ["volumes.state"]
+subscribe = ["session.state", "account.users"]
 
 # The broker itself needs no rule: it is not a client of the bus.

@@ -1,0 +1,40 @@
+# App launcher (ultar-launcher, docs/integration/ultar-launcher.md). Every
+# app runs as its own user (uid_first..uid_last, reserved in ids.toml
+# [ranges] apps; an app keeps its id for ever, no id is given to another
+# app) in its own cell: mount + pid namespaces, a read-only view of the
+# system directories below, its own data directory (0700) as the only
+# writable place, a private /tmp, its memory group apps/<app>, no kernel
+# rights, and only the permissions its signed manifest declares and the
+# user granted.
+
+uid_first = 20000
+uid_last = 49999
+
+# What every cell sees of the system, read-only (missing ones are left out).
+system_view = ["/usr", "/bin", "/lib", "/lib64", "/etc/ultar/locale", "/usr/share/fonts"]
+# Socket directories every cell sees read-only: the compositor.
+shares = ["/run/ultar/ui"]
+
+# Isolation features the operator accepts as missing ("cell", "ids",
+# "groups", "net"). Empty: an app whose cell cannot be built does not start.
+accept_missing = []
+max_running = 32
+stop_grace_ms = 3000
+
+[paths]
+state_dir = "/data/ultar/launcher"
+data_root = "/data/ultar/appdata"
+cell_root = "/run/ultar/launcher/cells"
+group_root = "/sys/fs/cgroup"
+# Who signed a package decides its profile: system apps (app.system) are
+# signed with a key in system_keys, store apps (app.standard) with one in
+# store_keys; anything else is refused.
+system_keys = "/etc/ultar/trusted-keys/system"
+store_keys = "/etc/ultar/trusted-keys"
+# Lines `uid = "ui.…"` for app ids, read by the compositor
+# (--app-rights, compositor.toml).
+compositor_rights = "/run/ultar/launcher/compositor-apps.toml"
+# Standard output and error of the apps, stored as app-<id>.
+output_socket = "/run/ultar/log/launcher-out.sock"
+bus_socket = "/run/ultar/bus/launcher.sock"
+policy = "/etc/ultar/bus-policy.toml"

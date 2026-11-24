@@ -9,7 +9,7 @@ every token file).
 
 | File | Change |
 |---|---|
-| `src/cred.rs` (new) | `Cred`: real/effective/saved uid and gid, up to 16 supplementary groups; the id system calls |
+| `src/cred.rs` (new) | `Cred`: real/effective/saved uid and gid, up to 32 supplementary groups (16 until the desktop session and the system services both needed bus and log sockets of their own groups); the id system calls |
 | `src/perm.rs` (new) | mode/owner of every entry, the permission checks, `chmod`/`chown`/`access` families, `/tmp` and `/run` at boot |
 | `src/uds.rs` (new) | socket node on `bind`, permission on `connect`, peer identity, `getsockopt` for Unix sockets (`SO_PEERCRED`) |
 | `src/isolation/rights.rs` | rights `SET_ID` (bit 8) and `FILE_ADMIN` (bit 9); `Rights::ALL = 0x3ff` |
@@ -36,7 +36,7 @@ every token file).
 * Rights check: with the right **`SET_ID`** (Linux `CAP_SETUID`/`CAP_SETGID`, capabilities 6/7 in
   `PR_CAPBSET_READ/DROP`) any id may be set (`setuid` with it sets all three, as root on Linux). Without it a
   process may only move between its current real/effective/saved ids (`EPERM` otherwise), exactly as an
-  unprivileged Linux process. `setgroups` needs `SET_ID`; more than 16 groups: `EINVAL`.
+  unprivileged Linux process. `setgroups` needs `SET_ID`; more than 32 groups: `EINVAL`.
 * Ids and rights are independent: changing the uid does **not** drop rights (Linux would clear the capabilities
   on a change away from uid 0). A service that wants to be held by file modes must drop `FILE_ADMIN`; to change
   its ids it must do so **before** dropping `SET_ID`. `ultar-service` drops by default-deny mask (`!keep`), so

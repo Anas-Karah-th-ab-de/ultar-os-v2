@@ -79,6 +79,8 @@ impl Ui {
             Widget::Icon(w) => w.paint(p, rect),
             Widget::Button(w) => w.paint(p, cx, rect, &v),
             Widget::IconButton(w) => w.paint(p, cx, rect, &v),
+            Widget::Brick(w) => w.paint(p, cx, rect, &v),
+            Widget::DayGrid(w) => w.paint(p, cx, rect, &v),
             Widget::Switch(w) => w.paint(p, cx, rect, &v, self.knob_position(w)),
             Widget::Select(w) => w.paint(p, cx, rect, &v, error),
             Widget::Slider(w) => w.paint(p, cx, rect, &v, error),
@@ -170,8 +172,13 @@ impl Ui {
         region: Rect,
         end: usize,
     ) {
-        let background = p.color(self.background());
-        p.fill(region, None, background);
+        match self.background() {
+            Some(role) => {
+                let background = p.color(role);
+                p.fill(region, None, background);
+            }
+            None => p.clear(crate::Color::TRANSPARENT),
+        }
         for step in self.layers.steps.iter().take(end) {
             self.paint_step(p, cx, *step, &region);
         }

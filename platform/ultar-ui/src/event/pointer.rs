@@ -25,6 +25,7 @@ impl Ui {
             Widget::Tabs(tabs) => tabs.part_at(rect, pos, direction),
             Widget::RadioGroup(group) => group.part_at(rect, pos, self.mode, direction),
             Widget::Arrangement(canvas) => canvas.part_at(rect, pos),
+            Widget::DayGrid(grid) => grid.part_at(rect, pos, direction),
             Widget::Table(table) => table.part_at(rect, pos, self.mode, direction),
             Widget::Tree(tree) => tree.part_at(rect, pos, self.mode, direction),
             Widget::TextField(field) => field.part_at(field.field(rect, self.mode), pos, direction),

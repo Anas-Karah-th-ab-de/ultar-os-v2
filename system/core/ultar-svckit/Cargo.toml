@@ -1,0 +1,17 @@
+[package]
+name = "ultar-svckit"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Shared frame of the small system services of Ultar OS: command line, bus loop with reconnect, retained state, checked state files (system core, area 3)"
+
+[dependencies]
+ultar-bus = { path = "../ultar-bus" }
+ultar-service = { path = "../ultar-service" }
+serde = { version = "1", features = ["derive"] }
+crc32fast = "1"
+
+[features]
+# Test support for the services' process tests (in-process broker, daemons as children).
+testkit = []

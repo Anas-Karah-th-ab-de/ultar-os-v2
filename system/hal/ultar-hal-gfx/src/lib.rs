@@ -11,6 +11,7 @@
 //! | [`fdpass`] | sending a buffer descriptor over a Unix socket | `sendmsg`/`recvmsg` with `SCM_RIGHTS` |
 //! | [`kms`] | Linux DRM/KMS outputs with dumb buffers (development on Linux) | DRM ioctls through the pure-Rust `drm` crate |
 //! | [`fbdev`] | the Ultar kernel's framebuffer `fb0` (and Linux fbdev) | `FBIOGET_*SCREENINFO`, `pwrite` |
+//! | [`edid`] | what a display says about itself (maker, product, serial, name) | none (bytes from [`kms`]) |
 //! | [`evdev`] | keyboards, mice, touch screens | `input_event` records, `EVIOCGBIT`/`EVIOCGABS` |
 //!
 //! [`kms::Kms`] and [`fbdev::FbDev`] implement [`ultar_hal::Display`];
@@ -28,6 +29,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![warn(missing_docs)]
 
+pub mod edid;
 mod error;
 pub mod evdev;
 pub mod fbdev;

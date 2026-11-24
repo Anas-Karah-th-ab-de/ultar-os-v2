@@ -39,6 +39,10 @@ impl State {
 
     fn apply(&mut self, client: ClientId, request: Request) -> Outcome {
         match request {
+            r @ (Request::ConfigureOutputs { .. }
+            | Request::ConfirmOutputs { .. }
+            | Request::IdentifyOutputs { .. }
+            | Request::DetectOutputs) => self.output_request(client, r),
             Request::Hello { app_id, .. } => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.hello = true;
@@ -196,17 +200,7 @@ impl State {
                 serial,
                 edges,
             } => self.start_move_request(client, surface, serial, Some(edges.0)),
-            Request::Pong { serial } => {
-                let c = self
-                    .clients
-                    .get_mut(&client)
-                    .ok_or(ErrorCode::UnknownObject)?;
-                if c.ping.is_some_and(|(s, _)| s == serial) {
-                    c.ping = None;
-                    self.set_unresponsive(client, false);
-                }
-                Ok(())
-            }
+            Request::Pong { serial } => self.pong(client, serial),
             Request::TextInput {
                 surface,
                 enabled,
@@ -227,6 +221,14 @@ impl State {
             }
             Request::Activate { surface, token } => self.activate(client, surface, token),
             Request::ListWindows => self.list_windows(client),
+            Request::ShellFocus { surface } => self.shell_focus(client, surface),
+            Request::WindowAction { window, action } => self.window_action(client, window, action),
+            Request::SetDisplayMode { mode } => self.set_display_mode(client, mode),
+            Request::SetKeyboardLayout { index } => self.set_keyboard_layout(client, index),
+            Request::SetPhoneMode { on } => self.set_phone_mode(client, on),
+            Request::WindowThumbnail { .. }
+            | Request::SwitchWorkspace { .. }
+            | Request::MoveToWorkspace { .. } => self.apply_overview(client, request),
             Request::Capture { output } => {
                 let c = self
                     .clients
@@ -245,6 +247,19 @@ impl State {
             }
             other => self.apply_transfer(client, other),
         }
+    }
+
+    /// The client answered a ping: it is responsive again.
+    fn pong(&mut self, client: ClientId, serial: u32) -> Outcome {
+        let c = self
+            .clients
+            .get_mut(&client)
+            .ok_or(ErrorCode::UnknownObject)?;
+        if c.ping.is_some_and(|(s, _)| s == serial) {
+            c.ping = None;
+            self.set_unresponsive(client, false);
+        }
+        Ok(())
     }
 
     fn own_surface(&self, client: ClientId, surface: SurfaceId) -> Result<SurfaceKey, ErrorCode> {
@@ -269,10 +284,12 @@ impl State {
             return Err(ErrorCode::Permission);
         }
         if let Role::Popup { parent, .. } = role {
-            let ok = c
-                .surfaces
-                .get(&parent)
-                .is_some_and(|p| p.role == Role::Toplevel);
+            // A popup belongs to an own window, or (shell only) to an own
+            // panel: sheets, menus and the overview of the bar.
+            let ok = c.surfaces.get(&parent).is_some_and(|p| {
+                p.role == Role::Toplevel
+                    || (matches!(p.role, Role::Panel { .. }) && c.rights.contains(Rights::SHELL))
+            });
             if !ok {
                 return Err(ErrorCode::UnknownObject);
             }
@@ -361,6 +378,10 @@ impl State {
 
     fn commit(&mut self, client: ClientId, surface: SurfaceId, configure: u32) -> Outcome {
         let key = self.own_surface(client, surface)?;
+        // A layer that shrinks or moves must repaint where it was.
+        if let Some(old) = self.layer_rect(key) {
+            self.damage_logical(old);
+        }
         let room = self.memory_room(client);
         let c = self
             .clients

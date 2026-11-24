@@ -17,6 +17,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![warn(missing_docs)]
 
+pub mod app_rights;
 pub mod backend;
 pub mod clock;
 pub mod config;
@@ -27,6 +28,7 @@ pub mod geom;
 pub mod keymap;
 pub mod msg;
 pub mod output;
+pub mod output_setup;
 pub mod pixels;
 pub mod render;
 pub mod server;

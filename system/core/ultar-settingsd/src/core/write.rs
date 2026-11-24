@@ -151,7 +151,9 @@ impl Core {
         seconds: u32,
     ) -> Result<bool, SettingsError> {
         if new == old {
-            return Ok(false);
+            // The waiting value set again ("give me more time", §13 no. 43):
+            // the deadline starts over, the previous value stays.
+            return Ok(self.restart_pending(found, new, seconds));
         }
         let fresh = !self.pending.contains_key(&found.key);
         if fresh {
@@ -193,5 +195,24 @@ impl Core {
             seconds,
         });
         Ok(true)
+    }
+
+    fn restart_pending(&mut self, found: &Resolved<'_>, value: Value, seconds: u32) -> bool {
+        let deadline = self
+            .clock
+            .now()
+            .saturating_add(Duration::from_secs(u64::from(seconds)));
+        let Some(pending) = self.pending.get_mut(&found.key) else {
+            return false;
+        };
+        pending.deadline = deadline;
+        let previous = pending.previous.clone();
+        self.events.push(Event::Pending {
+            key: found.key.clone(),
+            value,
+            previous,
+            seconds,
+        });
+        true
     }
 }

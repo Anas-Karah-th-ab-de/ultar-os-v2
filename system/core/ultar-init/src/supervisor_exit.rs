@@ -13,6 +13,19 @@ use ultar_bus::messages::init::Exit;
 /// what is there; a grandchild that keeps the pipe open cannot hold init).
 const DRAIN_READS: usize = 64;
 
+/// The state after a failure that is restarted: the back-off `pause`, or – after a crash
+/// loop (`None`) – given up, except for an essential service, which waits the longest
+/// back-off and tries again for ever.
+fn after_failure(restart: Restart, pause: Option<Duration>, now: Instant) -> UnitState {
+    match (pause, restart) {
+        (Some(pause), _) => UnitState::Backoff { until: now + pause },
+        (None, Restart::Essential) => UnitState::Backoff {
+            until: now + crate::unit::MAX_BACKOFF,
+        },
+        (None, _) => UnitState::Failed,
+    }
+}
+
 fn exit_word(exit: Exit) -> String {
     match exit {
         Exit::Code(code) => match LaunchFailure::from_code(code) {
@@ -96,7 +109,7 @@ impl Supervisor {
         let failing = std::mem::take(&mut unit.failing);
         let requested = matches!(unit.state, UnitState::Stopping { .. }) && !failing;
         let restart = match unit.spec.life.restart {
-            Restart::Always => true,
+            Restart::Always | Restart::Essential => true,
             Restart::OnFailure => !ok || failing,
             Restart::Never => false,
         };
@@ -115,13 +128,11 @@ impl Supervisor {
         } else if ok && !failing && ran >= crate::unit::STABLE_AFTER {
             UnitState::Waiting
         } else {
-            match unit.note_failure(ran, now) {
-                Some(pause) => UnitState::Backoff { until: now + pause },
-                None => {
-                    unit.reason = Some("crash_loop".into());
-                    UnitState::Failed
-                }
+            let pause = unit.note_failure(ran, now);
+            if pause.is_none() {
+                unit.reason = Some("crash_loop".into());
             }
+            after_failure(unit.spec.life.restart, pause, now)
         };
         if unit.state == UnitState::Failed {
             let line = format!("failed {name} reason=crash_loop");
@@ -237,5 +248,26 @@ impl Supervisor {
                 .shutdown
                 .as_ref()
                 .is_some_and(|shutdown| self.wave_done(&shutdown.current, Instant::now()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_essential_service_is_never_given_up() {
+        let now = Instant::now();
+        let long = crate::unit::MAX_BACKOFF;
+        assert_eq!(
+            after_failure(Restart::Essential, None, now),
+            UnitState::Backoff { until: now + long }
+        );
+        assert_eq!(after_failure(Restart::Always, None, now), UnitState::Failed);
+        let short = Duration::from_millis(200);
+        assert_eq!(
+            after_failure(Restart::Always, Some(short), now),
+            UnitState::Backoff { until: now + short }
+        );
     }
 }

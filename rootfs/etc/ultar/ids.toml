@@ -6,6 +6,7 @@
 # [users]: name = id; each user has its own group of the same name and id.
 # [groups]: groups that are nobody's own group: name = id.
 # [members]: supplementary members of a group (user names).
+# [ranges]: ids given out at run time, never listed one by one.
 
 [users]
 root = 0
@@ -13,14 +14,40 @@ busd = 801
 logd = 802
 settingsd = 803
 devd = 804
+launcher = 805
 llm = 810
 compositor = 811
+# Authentication (hashed passwords and PINs), lock screen, system dialogs and the
+# desktop shell (docs/integration/desktop-shell.md): one user each.
+authd = 813
+lock = 814
+sysdialog = 815
+desktop = 816
+# Display service and account service (docs/integration/display-account-services.md).
+displayd = 817
+accountd = 818
+powerd = 819
+sessiond = 820
+notifyd = 821
+calendard = 822
+audiod = 823
+mediad = 824
+captured = 825
+netd = 826
+btd = 827
+volumed = 828
 nobody = 65534
 
 [groups]
 # The seat's device nodes (input events, display): root:seat 0660, set by
 # ultar-devd-seat (rootfs/etc/ultar/devd-seat.toml).
 seat = 812
+# The sound cards' control devices (root:audio 0660); member: the audio service.
+audio = 830
+# The radio switches (dev/rfkill, root:radio 0660); members: network and Bluetooth services.
+radio = 831
+# Block devices of removable disks (read-only use: partition heads); member: volumed.
+disk = 832
 
 [members]
 busd = ["logd"]
@@ -28,3 +55,35 @@ logd = ["busd"]
 settingsd = ["busd", "logd"]
 devd = ["busd", "logd"]
 seat = ["compositor"]
+# The launcher's sockets at the bus and the log service are open to its group.
+launcher = ["busd", "logd"]
+# The authentication service's sockets at the bus and the log service.
+authd = ["busd", "logd"]
+lock = ["busd"]
+sysdialog = ["busd"]
+desktop = ["busd"]
+audio = ["audiod"]
+radio = ["netd", "btd"]
+disk = ["volumed"]
+# Their sockets at the bus and the log service are open to their own groups.
+displayd = ["busd", "logd"]
+accountd = ["busd", "logd"]
+powerd = ["busd", "logd"]
+sessiond = ["busd", "logd"]
+notifyd = ["busd", "logd"]
+calendard = ["busd", "logd"]
+audiod = ["busd", "logd"]
+mediad = ["busd", "logd"]
+captured = ["busd", "logd"]
+netd = ["busd", "logd"]
+btd = ["busd", "logd"]
+volumed = ["busd", "logd"]
+
+[ranges]
+# User (and group) ids of apps: one per app, given by ultar-launcher at
+# installation and kept for ever (rootfs/etc/ultar/launcher.toml uid_first,
+# uid_last). No fixed id above may lie in it.
+apps = "20000-49999"
+# User (and group) ids of people: given by ultar-accountd (--uids), kept for
+# ever once a removed user's files were kept. No fixed id above may lie in it.
+people = "1000-19999"

@@ -276,9 +276,22 @@ impl<'a> Painter<'a> {
         self.canvas.blit(source, area, area.x0, area.y0);
     }
 
+    /// Draws an opaque picture (`0xXXRRGGBB` little-endian rows, e.g. a window thumbnail)
+    /// stretched onto `rect`; see [`Canvas::draw_scaled`].
+    pub fn image(&mut self, rect: Rect, width: u32, height: u32, xrgb: &[u8]) {
+        let area = PixelRect::covering(&self.snap(rect));
+        self.canvas.draw_scaled(area, width, height, xrgb);
+    }
+
     /// Restores a clip returned by [`Painter::clip`].
     pub fn restore_clip(&mut self, previous: PixelRect) {
         self.canvas.set_clip(previous);
+    }
+
+    /// Replaces every pixel of the current clip with `color` (no blending): the start of a
+    /// transparent region.
+    pub fn clear(&mut self, color: Color) {
+        self.canvas.clear(color);
     }
 
     /// Fills a rectangle; `radius` rounds its corners.
