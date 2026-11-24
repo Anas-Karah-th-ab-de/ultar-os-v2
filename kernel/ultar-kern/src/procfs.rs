@@ -20,7 +20,10 @@ fn state_char(s: State) -> char {
 }
 
 pub fn open(path: &str) -> Option<Node> {
-    let rest = path.strip_prefix("/proc").unwrap_or("").trim_start_matches('/');
+    let rest = path
+        .strip_prefix("/proc")
+        .unwrap_or("")
+        .trim_start_matches('/');
     let mut it = rest.splitn(2, '/');
     let first = it.next().unwrap_or("");
     let sub = it.next().unwrap_or("");
@@ -181,6 +184,10 @@ pub fn pid_entry(path: &str) -> Option<(u64, &str)> {
     }
     let own = proc::current_group();
     let infos = proc::infos();
-    let p = if pid == "self" { infos.iter().find(|p| p.global == own)? } else { infos.iter().find(|p| Some(p.pid) == pid.parse().ok())? };
+    let p = if pid == "self" {
+        infos.iter().find(|p| p.global == own)?
+    } else {
+        infos.iter().find(|p| Some(p.pid) == pid.parse().ok())?
+    };
     Some((p.global, entry))
 }

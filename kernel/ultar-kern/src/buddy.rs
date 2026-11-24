@@ -110,7 +110,8 @@ impl Buddy {
         self.free += 1 << order;
         while order < MAX_ORDER {
             let buddy = addr ^ (PAGE << order);
-            let mergeable = zone(buddy) == zone(addr) && matches!(self.meta(buddy), Some(m) if m.state == ST_FREE && m.order as usize == order);
+            let mergeable = zone(buddy) == zone(addr)
+                && matches!(self.meta(buddy), Some(m) if m.state == ST_FREE && m.order as usize == order);
             if !mergeable {
                 break;
             }
@@ -165,7 +166,14 @@ impl Buddy {
     }
 
     /// `pages` contiguous pages; fails if fewer than `keep` pages would stay free.
-    pub(crate) fn take(&mut self, pages: u64, keep: u64, low_first: bool, state: u8, owner: u16) -> Option<u64> {
+    pub(crate) fn take(
+        &mut self,
+        pages: u64,
+        keep: u64,
+        low_first: bool,
+        state: u8,
+        owner: u16,
+    ) -> Option<u64> {
         if pages == 0 || self.free < pages + keep {
             return None;
         }
@@ -188,7 +196,11 @@ impl Buddy {
             };
             if let Some(addr) = addr {
                 if let Some(m) = self.meta(addr) {
-                    *m = Meta { state, order: 0, owner };
+                    *m = Meta {
+                        state,
+                        order: 0,
+                        owner,
+                    };
                 }
                 FREE_PAGES.store(self.free, Ordering::Relaxed);
                 return Some(addr);
@@ -210,7 +222,11 @@ impl Buddy {
         let all = state != ST_USED;
         for i in 0..if all { pages } else { 1 } {
             if let Some(m) = self.meta(addr + i * PAGE) {
-                *m = Meta { state, order: 0, owner };
+                *m = Meta {
+                    state,
+                    order: 0,
+                    owner,
+                };
             }
         }
         FREE_PAGES.store(self.free, Ordering::Relaxed);

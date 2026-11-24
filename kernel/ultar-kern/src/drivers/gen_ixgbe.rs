@@ -23,8 +23,9 @@ pub static DRV: Drv = Drv;
 const E610: &[u16] = &[0x57ae, 0x57af, 0x57b0, 0x57b1, 0x57b2];
 /// 82599, X540, X550/X550EM, X552, X553 (Verbindung über LINKS)
 const ALT: &[u16] = &[
-    0x10f7, 0x10f8, 0x10f9, 0x10fb, 0x10fc, 0x1507, 0x1514, 0x1517, 0x151c, 0x1528, 0x154a, 0x154d, 0x1557, 0x1558, 0x1560, 0x1563,
-    0x15aa, 0x15ab, 0x15ac, 0x15ad, 0x15ae, 0x15c2, 0x15c3, 0x15c4, 0x15c6, 0x15c7, 0x15c8, 0x15ce, 0x15d1, 0x15e4, 0x15e5,
+    0x10f7, 0x10f8, 0x10f9, 0x10fb, 0x10fc, 0x1507, 0x1514, 0x1517, 0x151c, 0x1528, 0x154a, 0x154d,
+    0x1557, 0x1558, 0x1560, 0x1563, 0x15aa, 0x15ab, 0x15ac, 0x15ad, 0x15ae, 0x15c2, 0x15c3, 0x15c4,
+    0x15c6, 0x15c7, 0x15c8, 0x15ce, 0x15d1, 0x15e4, 0x15e5,
 ];
 
 const CTRL: u64 = 0x00000;
@@ -119,7 +120,13 @@ fn wait(mut f: impl FnMut() -> bool, ms: u64) -> bool {
 
 /// ACI-Befehl ausführen. `params` = 16 Byte Befehlsparameter (Byte 16–31 des Deskriptors).
 /// `buf`: indirekter Puffer – mit `an_fw` wird er an die Firmware geschickt, sonst füllt ihn die Antwort.
-fn aci(m: u64, op: u16, params: [u32; 4], buf: Option<&mut [u8]>, an_fw: bool) -> core::result::Result<[u32; 8], String> {
+fn aci(
+    m: u64,
+    op: u16,
+    params: [u32; 4],
+    buf: Option<&mut [u8]>,
+    an_fw: bool,
+) -> core::result::Result<[u32; 8], String> {
     let hicr = r(m, PF_HICR);
     if hicr & HICR_EN == 0 {
         return Err("ACI ausgeschaltet".into());
@@ -151,16 +158,31 @@ fn aci(m: u64, op: u16, params: [u32; 4], buf: Option<&mut [u8]>, an_fw: bool) -
             w(m, pf_hiba(i), u32::from_le_bytes(x));
         }
     }
-    let d = [flags | (op as u32) << 16, len as u32, 0, 0, params[0], params[1], params[2], params[3]];
+    let d = [
+        flags | (op as u32) << 16,
+        len as u32,
+        0,
+        0,
+        params[0],
+        params[1],
+        params[2],
+        params[3],
+    ];
     for (i, v) in d.iter().enumerate() {
         w(m, pf_hida(i), *v);
     }
     w(m, PF_HICR, (r(m, PF_HICR) | HICR_C) & !(HICR_SV | HICR_EV));
     // erst synchrone Antwort, dann ggf. verzögerte (Ereignis)
-    wait(|| r(m, PF_HICR) & HICR_SV != 0 || r(m, PF_HICR) & HICR_C == 0, 1000);
+    wait(
+        || r(m, PF_HICR) & HICR_SV != 0 || r(m, PF_HICR) & HICR_C == 0,
+        1000,
+    );
     let mut h = r(m, PF_HICR);
     if h & HICR_SV != 0 && h & HICR_C != 0 {
-        wait(|| r(m, PF_HICR) & HICR_EV != 0 || r(m, PF_HICR) & HICR_C == 0, 3000);
+        wait(
+            || r(m, PF_HICR) & HICR_EV != 0 || r(m, PF_HICR) & HICR_C == 0,
+            3000,
+        );
         h = r(m, PF_HICR);
     }
     let mut a = [0u32; 8];
@@ -239,7 +261,9 @@ impl Driver for Drv {
         "werkstatt"
     }
     fn matches(&self, d: &PciDev) -> bool {
-        d.vendor == 0x8086 && d.class == 0x02 && (E610.contains(&d.device) || ALT.contains(&d.device))
+        d.vendor == 0x8086
+            && d.class == 0x02
+            && (E610.contains(&d.device) || ALT.contains(&d.device))
     }
     fn probe(&self, d: &PciDev) -> Result<()> {
         let bar = d.bars[0].filter(|b| !b.io).ok_or("BAR0 fehlt")?;
@@ -270,7 +294,14 @@ impl Driver for Drv {
         w(m, CTRL_EXT, r(m, CTRL_EXT) | (1 << 28) | (1 << 16));
         // MAC aus Empfangsadresse 0 (beim Rücksetzen aus dem NVM geladen)
         let (lo, hi) = (r(m, RAL0), r(m, RAH0));
-        let mac = [lo as u8, (lo >> 8) as u8, (lo >> 16) as u8, (lo >> 24) as u8, hi as u8, (hi >> 8) as u8];
+        let mac = [
+            lo as u8,
+            (lo >> 8) as u8,
+            (lo >> 16) as u8,
+            (lo >> 24) as u8,
+            hi as u8,
+            (hi >> 8) as u8,
+        ];
         if mac == [0; 6] || mac == [0xff; 6] {
             return Err("keine MAC-Adresse im NVM".into());
         }
@@ -287,7 +318,10 @@ impl Driver for Drv {
         let rx_bufs = alloc_pages(N * BUF / 4096).ok_or("kein Speicher")?;
         for i in 0..N {
             unsafe {
-                core::ptr::write_volatile((rx_ring + i as u64 * 16) as *mut u64, rx_bufs + (i * BUF) as u64);
+                core::ptr::write_volatile(
+                    (rx_ring + i as u64 * 16) as *mut u64,
+                    rx_bufs + (i * BUF) as u64,
+                );
                 core::ptr::write_volatile((rx_ring + i as u64 * 16 + 8) as *mut u64, 0);
             }
         }
@@ -325,7 +359,10 @@ impl Driver for Drv {
                 Ok(a) => {
                     let fw = a[6].to_le_bytes();
                     let api = a[7].to_le_bytes();
-                    info = format!(" · Firmware {}.{}.{} API {}.{}", fw[1], fw[2], fw[3], api[1], api[2]);
+                    info = format!(
+                        " · Firmware {}.{}.{} API {}.{}",
+                        fw[1], fw[2], fw[3], api[1], api[2]
+                    );
                 }
                 Err(e) => info = format!(" · {e}"),
             }
@@ -348,7 +385,11 @@ impl Driver for Drv {
                     Ok(_) => {
                         info += &format!(
                             " · {} (Rahmen bis {} Byte)",
-                            if b[2] & (1 << 6) != 0 { "Kabel steckt" } else { "kein Kabel/keine Gegenstelle" },
+                            if b[2] & (1 << 6) != 0 {
+                                "Kabel steckt"
+                            } else {
+                                "kein Kabel/keine Gegenstelle"
+                            },
                             u16::from_le_bytes([b[6], b[7]])
                         )
                     }
@@ -369,8 +410,25 @@ impl Driver for Drv {
         };
         let mut nl = NET.lock();
         let name = format!("eth{}", nl.len());
-        let mut nic = Nic { name: name.clone(), mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0, e610, link_cache: core::sync::atomic::AtomicU32::new(0), link_asked: core::sync::atomic::AtomicU64::new(0) };
-        let verb = if link { format!("steht ({mbit} Mbit/s)") } else { format!("fehlt – Schleifentest: {}", nic.schleifentest()) };
+        let mut nic = Nic {
+            name: name.clone(),
+            mmio: m,
+            mac,
+            rx_ring,
+            rx_bufs,
+            tx_ring,
+            tx_bufs,
+            rx_next: 0,
+            tx_next: 0,
+            e610,
+            link_cache: core::sync::atomic::AtomicU32::new(0),
+            link_asked: core::sync::atomic::AtomicU64::new(0),
+        };
+        let verb = if link {
+            format!("steht ({mbit} Mbit/s)")
+        } else {
+            format!("fehlt – Schleifentest: {}", nic.schleifentest())
+        };
         crate::kprintln!(
             "[ixgbe] {name}: {:04x} {} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}{info} · Verbindung {verb}",
             d.device,
@@ -473,8 +531,13 @@ impl NetDev for Nic {
         let buf = self.tx_bufs + (i * BUF) as u64;
         unsafe {
             // vorheriger Auftrag in diesem Platz fertig? (Status DD in Byte 12)
-            if core::ptr::read_volatile((d + 8) as *const u64) != 0 && core::ptr::read_volatile((d + 12) as *const u8) & 1 == 0 {
-                if !wait(|| core::ptr::read_volatile((d + 12) as *const u8) & 1 != 0, 100) {
+            if core::ptr::read_volatile((d + 8) as *const u64) != 0
+                && core::ptr::read_volatile((d + 12) as *const u8) & 1 == 0
+            {
+                if !wait(
+                    || core::ptr::read_volatile((d + 12) as *const u8) & 1 != 0,
+                    100,
+                ) {
                     let _ = r(self.mmio, TDH);
                     return Err("Senden hängt".into());
                 }
@@ -483,7 +546,10 @@ impl NetDev for Nic {
             core::ptr::write_volatile(d as *mut u64, buf);
             core::ptr::write_volatile((d + 12) as *mut u8, 0);
             // Legacy: Länge, CMD = EOP | IFCS | RS (DEXT = 0), Status löschen
-            core::ptr::write_volatile((d + 8) as *mut u64, n.max(60) as u64 | ((1u64 | 2 | 8) << 24));
+            core::ptr::write_volatile(
+                (d + 8) as *mut u64,
+                n.max(60) as u64 | ((1u64 | 2 | 8) << 24),
+            );
         }
         self.tx_next = (i + 1) % N;
         core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
@@ -500,7 +566,11 @@ impl NetDev for Nic {
         let len = unsafe { core::ptr::read_volatile((d + 8) as *const u16) } as usize;
         let n = len.min(buf.len());
         unsafe {
-            core::ptr::copy_nonoverlapping((self.rx_bufs + (i * BUF) as u64) as *const u8, buf.as_mut_ptr(), n);
+            core::ptr::copy_nonoverlapping(
+                (self.rx_bufs + (i * BUF) as u64) as *const u8,
+                buf.as_mut_ptr(),
+                n,
+            );
             core::ptr::write_volatile(d as *mut u64, self.rx_bufs + (i * BUF) as u64);
             core::ptr::write_volatile((d + 8) as *mut u64, 0);
             core::ptr::write_volatile((d + 12) as *mut u8, 0);

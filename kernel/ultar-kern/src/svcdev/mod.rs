@@ -16,7 +16,8 @@ pub mod hci;
 pub mod uinput;
 
 /// Names below `/dev/` of the controller nodes (index = node number).
-const HCI_NODES: [&str; crate::drivers::gen_xhci::bt::MAX_CONTROLLERS] = ["ultar/hci0", "ultar/hci1", "ultar/hci2", "ultar/hci3"];
+const HCI_NODES: [&str; crate::drivers::gen_xhci::bt::MAX_CONTROLLERS] =
+    ["ultar/hci0", "ultar/hci1", "ultar/hci2", "ultar/hci3"];
 /// Name below `/dev/` of the virtual input node.
 pub const UINPUT_NODE: &str = "ultar/uinput";
 
@@ -26,12 +27,17 @@ pub fn node(d: &str) -> Option<&'static str> {
         return Some(UINPUT_NODE);
     }
     let i = HCI_NODES.iter().position(|n| *n == d)?;
-    crate::drivers::gen_xhci::bt::nodes().contains(&(i as u8)).then_some(HCI_NODES[i])
+    crate::drivers::gen_xhci::bt::nodes()
+        .contains(&(i as u8))
+        .then_some(HCI_NODES[i])
 }
 
 /// The names in `/dev/ultar` that belong to this module.
 pub fn names() -> Vec<String> {
-    let mut v: Vec<String> = crate::drivers::gen_xhci::bt::nodes().into_iter().map(|i| alloc::format!("hci{i}")).collect();
+    let mut v: Vec<String> = crate::drivers::gen_xhci::bt::nodes()
+        .into_iter()
+        .map(|i| alloc::format!("hci{i}"))
+        .collect();
     v.push(String::from("uinput"));
     v
 }

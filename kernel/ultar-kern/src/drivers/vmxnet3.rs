@@ -64,7 +64,12 @@ struct Ring {
 impl Ring {
     fn new(size: usize) -> Option<Ring> {
         let base = alloc_pages((size * 16).div_ceil(4096))?;
-        Some(Ring { base, size, next: 0, gen: 1 })
+        Some(Ring {
+            base,
+            size,
+            next: 0,
+            gen: 1,
+        })
     }
     fn desc(&self, i: usize) -> u64 {
         self.base + (i * 16) as u64
@@ -161,7 +166,10 @@ impl Queues {
             tx_data: alloc_pages((TXN * DATA_DESC).div_ceil(4096))?,
             tx_bufs: alloc_pages(TXN * BUF / 4096)?,
             rx: [Ring::new(RXN)?, Ring::new(RXN)?],
-            rx_bufs: [alloc_pages(RXN * BUF / 4096)?, alloc_pages(RXN * BUF / 4096)?],
+            rx_bufs: [
+                alloc_pages(RXN * BUF / 4096)?,
+                alloc_pages(RXN * BUF / 4096)?,
+            ],
             rx_comp: Ring::new(2 * RXN)?,
         })
     }
@@ -228,12 +236,28 @@ impl Driver for Drv {
         w(vd, VD_UVRS, 1);
         w(vd, VD_CMD, CMD_RESET);
         let (lo, hi) = (r(vd, VD_MACL), r(vd, VD_MACH));
-        let mac = [lo as u8, (lo >> 8) as u8, (lo >> 16) as u8, (lo >> 24) as u8, hi as u8, (hi >> 8) as u8];
+        let mac = [
+            lo as u8,
+            (lo >> 8) as u8,
+            (lo >> 16) as u8,
+            (lo >> 24) as u8,
+            hi as u8,
+            (hi >> 8) as u8,
+        ];
 
         let q = Queues::new().ok_or("no memory")?;
         let shared = alloc_pages(1).ok_or("no memory")?;
         q.describe(shared);
-        let Queues { qd: _, tx, tx_comp, tx_data: _, tx_bufs, rx, rx_bufs, rx_comp } = q;
+        let Queues {
+            qd: _,
+            tx,
+            tx_comp,
+            tx_data: _,
+            tx_bufs,
+            rx,
+            rx_bufs,
+            rx_comp,
+        } = q;
         // RX rings: all slots but one posted (an empty slot tells full from empty)
         for (k, ring) in rx.iter().enumerate() {
             for slot in 0..RXN - 1 {
@@ -263,7 +287,19 @@ impl Driver for Drv {
             "[vmxnet3] {name}: MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} Verbindung {} ({} Mbit/s)",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], if link & 1 != 0 { "steht" } else { "fehlt" }, link >> 16
         );
-        nl.push(Box::new(Nic { name, pt, vd, mac, tx, tx_comp, tx_bufs, tx_busy: 0, rx, rx_bufs, rx_comp }));
+        nl.push(Box::new(Nic {
+            name,
+            pt,
+            vd,
+            mac,
+            tx,
+            tx_comp,
+            tx_bufs,
+            tx_busy: 0,
+            rx,
+            rx_bufs,
+            rx_comp,
+        }));
         Ok(())
     }
     fn can_remove(&self) -> core::result::Result<(), &'static str> {
@@ -375,7 +411,11 @@ impl NetDev for Nic {
             let slot = ring.next;
             post_rx(ring, self.rx_bufs[k], k, slot);
             ring.advance();
-            w(self.pt, if k == 0 { PT_RXPROD } else { PT_RXPROD2 }, self.rx[k].next as u32);
+            w(
+                self.pt,
+                if k == 0 { PT_RXPROD } else { PT_RXPROD2 },
+                self.rx[k].next as u32,
+            );
             if got.is_some() {
                 return got;
             }

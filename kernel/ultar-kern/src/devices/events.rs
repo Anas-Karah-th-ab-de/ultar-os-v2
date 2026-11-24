@@ -71,7 +71,10 @@ fn emit_inner(action: &str, devpath: &str, subsystem: &str, vars: &[(&str, Strin
         msg += &format!("{k}={v}\0");
         line += &format!(" {k}={v}");
     }
-    list.retain(|w| w.upgrade().is_some_and(|p| p.readers.load(Ordering::SeqCst) > 0));
+    list.retain(|w| {
+        w.upgrade()
+            .is_some_and(|p| p.readers.load(Ordering::SeqCst) > 0)
+    });
     for p in list.iter().filter_map(Weak::upgrade) {
         if !p.push_packet(msg.as_bytes()) {
             LOST.fetch_add(1, Ordering::Relaxed);
@@ -91,8 +94,19 @@ pub fn pci(action: &str, i: usize) {
         let Some(b) = devs.get(i) else { return };
         let mut v = alloc::vec![
             ("PCI_SLOT_NAME", super::pci_name(&b.dev)),
-            ("PCI_ID", format!("{:04X}:{:04X}", b.dev.vendor, b.dev.device)),
-            ("PCI_CLASS", format!("{:X}", (b.dev.class as u32) << 16 | (b.dev.subclass as u32) << 8 | b.dev.prog_if as u32)),
+            (
+                "PCI_ID",
+                format!("{:04X}:{:04X}", b.dev.vendor, b.dev.device)
+            ),
+            (
+                "PCI_CLASS",
+                format!(
+                    "{:X}",
+                    (b.dev.class as u32) << 16
+                        | (b.dev.subclass as u32) << 8
+                        | b.dev.prog_if as u32
+                )
+            ),
             ("ULTAR_STATE", String::from(super::state(b))),
         ];
         if let Some(d) = b.driver {
@@ -119,14 +133,27 @@ pub fn socket(typ: u64, proto: u64) -> i64 {
     p.writers.store(1, Ordering::SeqCst);
     {
         let mut list = LISTENERS.lock();
-        list.retain(|w| w.upgrade().is_some_and(|p| p.readers.load(Ordering::SeqCst) > 0));
+        list.retain(|w| {
+            w.upgrade()
+                .is_some_and(|p| p.readers.load(Ordering::SeqCst) > 0)
+        });
         if list.len() >= MAX_LISTENERS {
             return -105;
         }
         crate::heap::kernel(|| list.push(Arc::downgrade(&p)));
     }
     let flags = 2 | (typ as u32 & 0x800);
-    crate::syscall::with(|pr| pr.add_fd(Fd { kind: FdKind::PipeR(p), cloexec: typ & 0x80000 != 0, flags }, 0)).unwrap_or(-9)
+    crate::syscall::with(|pr| {
+        pr.add_fd(
+            Fd {
+                kind: FdKind::PipeR(p),
+                cloexec: typ & 0x80000 != 0,
+                flags,
+            },
+            0,
+        )
+    })
+    .unwrap_or(-9)
 }
 
 /// Whether `fd` of the calling process is an event socket (`bind` and `setsockopt` succeed on it).
@@ -137,5 +164,8 @@ pub fn is_event_fd(fd: u64) -> bool {
     }) else {
         return false;
     };
-    LISTENERS.lock().iter().any(|w| core::ptr::eq(w.as_ptr(), Arc::as_ptr(&p)))
+    LISTENERS
+        .lock()
+        .iter()
+        .any(|w| core::ptr::eq(w.as_ptr(), Arc::as_ptr(&p)))
 }

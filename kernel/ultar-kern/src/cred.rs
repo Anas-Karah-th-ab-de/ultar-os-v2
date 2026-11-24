@@ -31,7 +31,12 @@ pub struct Cred {
 
 impl Cred {
     /// Root: what every program started by the kernel has.
-    pub const ROOT: Cred = Cred { uid: [0; 3], gid: [0; 3], groups: [0; MAX_GROUPS], ngroups: 0 };
+    pub const ROOT: Cred = Cred {
+        uid: [0; 3],
+        gid: [0; 3],
+        groups: [0; MAX_GROUPS],
+        ngroups: 0,
+    };
 
     /// Effective user id.
     pub fn euid(&self) -> u32 {
@@ -121,7 +126,12 @@ pub fn current() -> Cred {
 }
 
 fn put_ids(ptrs: [u64; 3], ids: [u32; 3]) -> i64 {
-    let ok = with(|p| ptrs.iter().zip(ids).all(|(&ptr, id)| ptr == 0 || crate::proc::write_user(p.space(), ptr, &id.to_le_bytes()))).unwrap_or(false);
+    let ok = with(|p| {
+        ptrs.iter().zip(ids).all(|(&ptr, id)| {
+            ptr == 0 || crate::proc::write_user(p.space(), ptr, &id.to_le_bytes())
+        })
+    })
+    .unwrap_or(false);
     if ok {
         0
     } else {
@@ -138,7 +148,13 @@ fn get_groups(size: u64, ptr: u64) -> i64 {
     if (size as usize) < n {
         return -EINVAL;
     }
-    let ok = with(|p| c.groups().iter().enumerate().all(|(i, g)| crate::proc::write_user(p.space(), ptr + 4 * i as u64, &g.to_le_bytes()))).unwrap_or(false);
+    let ok = with(|p| {
+        c.groups()
+            .iter()
+            .enumerate()
+            .all(|(i, g)| crate::proc::write_user(p.space(), ptr + 4 * i as u64, &g.to_le_bytes()))
+    })
+    .unwrap_or(false);
     if ok {
         n as i64
     } else {
@@ -151,7 +167,9 @@ fn set_groups(size: u64, ptr: u64) -> i64 {
     if size > MAX_GROUPS as u64 {
         return -EINVAL;
     }
-    let Some(raw) = with(|p| crate::proc::read_user(p.space(), ptr, n * 4)).flatten() else { return -EFAULT };
+    let Some(raw) = with(|p| crate::proc::read_user(p.space(), ptr, n * 4)).flatten() else {
+        return -EFAULT;
+    };
     change(|c, privileged| {
         if !privileged {
             return -EPERM;

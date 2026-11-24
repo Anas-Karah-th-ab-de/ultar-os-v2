@@ -168,3 +168,32 @@ pub const fn vf_sw_flag(n: u32) -> u32 {
 }
 /// Writing here tells the primary GT's GuC that a message waits.
 pub const GUC_HOST_INTERRUPT: u32 = 0x19_01f0;
+
+/// Engine register (offset from the engine's base): ring tail.
+pub const RING_TAIL: u32 = 0x30;
+/// Engine register: ring head.
+pub const RING_HEAD: u32 = 0x34;
+/// Engine register: GGTT address of the ring.
+pub const RING_START: u32 = 0x38;
+/// Engine register: ring size and valid bit.
+pub const RING_CTL: u32 = 0x3c;
+/// Engine register: the command that was executing when an error was raised.
+pub const RING_IPEHR: u32 = 0x68;
+/// Engine register: address of the command being executed.
+pub const RING_ACTHD: u32 = 0x74;
+/// Engine register: GGTT address of the engine's status page.
+pub const RING_HWS_PGA: u32 = 0x80;
+/// Engine register: which interrupts do not update the status page.
+pub const RING_HWSTAM: u32 = 0x98;
+/// Engine register: error identity.
+pub const RING_EIR: u32 = 0xb0;
+/// Engine register: error status.
+pub const RING_ESR: u32 = 0xb8;
+/// Engine register: execution status (lower half).
+pub const RING_EXECLIST_STATUS_LO: u32 = 0x234;
+/// Engine register: the context image the engine runs.
+pub const RING_CURRENT_LRCA: u32 = 0x240;
+/// Engine register (masked): mode of the engine.
+pub const GFX_MODE: u32 = 0x29c;
+/// The engine runs contexts, not the old ring mode.
+pub const GFX_DISABLE_LEGACY_MODE: u32 = 1 << 3;

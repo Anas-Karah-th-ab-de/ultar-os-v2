@@ -141,7 +141,9 @@ impl MemObj {
             let k = (4096 - off).min(end - at);
             let Some(&pa) = pages.get(page) else { break };
             // SAFETY: `pa` is a page of this object (identity-mapped); `off + k` stays inside it.
-            out.extend_from_slice(unsafe { core::slice::from_raw_parts((pa + off) as *const u8, k as usize) });
+            out.extend_from_slice(unsafe {
+                core::slice::from_raw_parts((pa + off) as *const u8, k as usize)
+            });
             at += k;
         }
         out
@@ -164,7 +166,9 @@ impl MemObj {
             let k = ((4096 - off) as usize).min(data.len() - done);
             let Some(&pa) = pages.get(page) else { break };
             // SAFETY: `pa` is a page of this object (identity-mapped); `off + k` stays inside it.
-            unsafe { core::ptr::copy_nonoverlapping(data[done..].as_ptr(), (pa + off) as *mut u8, k) };
+            unsafe {
+                core::ptr::copy_nonoverlapping(data[done..].as_ptr(), (pa + off) as *mut u8, k)
+            };
             done += k;
         }
         Ok(done)
@@ -277,7 +281,12 @@ pub fn fallocate(fd: u64, mode: u64, off: u64, len: u64) -> Option<i64> {
     })
     .flatten()?;
     const KEEP_SIZE: u64 = 1;
-    let Some(end) = off.checked_add(len).filter(|_| len > 0 && (off as i64) >= 0) else { return Some(-EINVAL) };
+    let Some(end) = off
+        .checked_add(len)
+        .filter(|_| len > 0 && (off as i64) >= 0)
+    else {
+        return Some(-EINVAL);
+    };
     Some(match mode {
         0 if end > obj.size() => obj.set_size(end).map_or_else(|e| e, |()| 0),
         0 | KEEP_SIZE => 0,
@@ -291,6 +300,10 @@ pub fn create(flags: u64) -> i64 {
         return -EINVAL;
     }
     let obj = Arc::new(MemObj::new(flags & MFD_ALLOW_SEALING != 0));
-    let fd = crate::proc::Fd { kind: crate::proc::FdKind::Mem(obj, 0), cloexec: flags & MFD_CLOEXEC != 0, flags: 2 };
+    let fd = crate::proc::Fd {
+        kind: crate::proc::FdKind::Mem(obj, 0),
+        cloexec: flags & MFD_CLOEXEC != 0,
+        flags: 2,
+    };
     crate::syscall::with(|p| p.add_fd(fd, 0)).unwrap_or(-9)
 }

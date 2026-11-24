@@ -9,10 +9,11 @@
 //! firmware is ready, asks it for the hardware config table over the register message channel,
 //! then loads a second time with the full ADS (engines, register lists, golden context slots) and
 //! all features, switches the command buffers (CTB) on and sends a first request through them.
-//! The GuC is put back into reset afterwards: engines and submission come with stage G3.
+//! Stage G3 (`gt_job`): a context for the copy engine is registered and enabled, and its one
+//! command must store a value in memory. The GuC is put back into reset afterwards.
 
 use super::device::Device;
-use super::gt_mem::GgttBuf;
+use super::gt_mem::{GgttBuf, Words};
 use super::mmio::Mmio;
 use super::DEVICE;
 use crate::kprintln;
@@ -83,6 +84,8 @@ struct Loaded {
     hwconfig: Option<Result<(u32, usize), String>>,
     /// What the request over the command buffers brought, if the GuC got ready.
     ctb: Option<Result<String, String>>,
+    /// What the first job on an engine brought, if the command buffers work.
+    job: Option<Result<String, String>>,
 }
 
 /// GuC action: opt into features by a list of keys in memory.
@@ -90,8 +93,24 @@ const ACTION_OPT_IN_FEATURE_KLV: u32 = 0x550e;
 /// Key (length 0): report the extended kind of a memory access fault.
 const KLV_OPT_IN_EXT_CAT_ERR_TYPE: u32 = 0x4001 << 16;
 
-/// Switches the command buffers on and sends the first request Linux sends over them.
-fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, String> {
+/// Switches the command buffers on and sends the first request Linux sends over them; then runs
+/// the first job on an engine. Returns what each of the two brought.
+fn ctb_and_job(
+    dev: &mut Device,
+    bufs: &mut Vec<GgttBuf>,
+) -> (Result<String, String>, Option<Result<String, String>>) {
+    let mut channel = None;
+    let ctb = ctb_request(dev, bufs, &mut channel);
+    let job =
+        channel.map(|(mut ct, mut mem)| super::gt_job::first_job(dev, bufs, &mut ct, &mut mem));
+    (ctb, job)
+}
+
+fn ctb_request(
+    dev: &mut Device,
+    bufs: &mut Vec<GgttBuf>,
+    channel: &mut Option<(Ct, Words)>,
+) -> Result<String, String> {
     let ct_gtt = buffer(dev, bufs, ctb::SIZE_BYTES as u64)?;
     let mut mem = bufs.last().map(GgttBuf::words).ok_or("no CTB buffer")?;
     let klv_gtt = buffer(dev, bufs, 4096)?;
@@ -105,6 +124,7 @@ fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, Stri
         .request(&mut dev.mmio, &mut mem, &action, 1_000_000)
         .map_err(|e| format!("request: {e}"))?;
     let us = (crate::arch::uptime_ns() - t0) / 1000;
+    *channel = Some((ct, mem));
     Ok(format!(
         "opt-in request answered in {us} µs (data {data0:#x}, {} event(s))",
         events.len()
@@ -113,7 +133,7 @@ fn ctb_request(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<String, Stri
 
 /// Allocates a GuC buffer, keeps it in `bufs` (released by the caller) and returns its GGTT
 /// address.
-fn buffer(dev: &mut Device, bufs: &mut Vec<GgttBuf>, bytes: u64) -> Result<u32, String> {
+pub(super) fn buffer(dev: &mut Device, bufs: &mut Vec<GgttBuf>, bytes: u64) -> Result<u32, String> {
     let buf = GgttBuf::new(dev, bytes)?;
     let gtt = buf.gtt;
     bufs.push(buf);
@@ -213,11 +233,18 @@ fn load(
     let ready = status.load() == guc::Load::Ready;
     // first load: the register channel; second load: the command buffers
     let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
-    let ctb = (ready && stage == Stage::Full).then(|| ctb_request(dev, bufs));
+    let (ctb, job) = match ready && stage == Stage::Full {
+        true => {
+            let (ctb, job) = ctb_and_job(dev, bufs);
+            (Some(ctb), job)
+        }
+        false => (None, None),
+    };
     Ok(Loaded {
         status,
         hwconfig,
         ctb,
+        job,
     })
 }
 
@@ -330,6 +357,11 @@ fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
     match &l.ctb {
         Some(Ok(t)) => r.check(true, "command buffers (CTB)", t),
         Some(Err(e)) => r.check(false, "command buffers (CTB)", e),
+        None => {}
+    }
+    match &l.job {
+        Some(Ok(t)) => r.check(true, "first job on the copy engine", t),
+        Some(Err(e)) => r.check(false, "first job on the copy engine", e),
         None => {}
     }
 }

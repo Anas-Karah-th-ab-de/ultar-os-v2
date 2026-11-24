@@ -58,14 +58,34 @@ impl Ext4 {
         }
         let bs = 1024u64 << le32(&sb, 24);
         let incompat = le32(&sb, 96);
-        let dsize = if incompat & 0x80 != 0 { le16(&sb, 254).max(32) } else { 32 };
+        let dsize = if incompat & 0x80 != 0 {
+            le16(&sb, 254).max(32)
+        } else {
+            32
+        };
         let first = le32(&sb, 20);
-        let isize = if le32(&sb, 76) >= 1 { le16(&sb, 88) } else { 128 };
-        Some(Ext4 { disk, part, bs, ipg: le32(&sb, 40), isize, dsize, gdt: first + 1 })
+        let isize = if le32(&sb, 76) >= 1 {
+            le16(&sb, 88)
+        } else {
+            128
+        };
+        Some(Ext4 {
+            disk,
+            part,
+            bs,
+            ipg: le32(&sb, 40),
+            isize,
+            dsize,
+            gdt: first + 1,
+        })
     }
 
     fn read_blocks(&self, b: u64, n: u64) -> Option<Vec<u8>> {
-        rd(self.disk, self.part + b * self.bs / 512, (n * self.bs) as usize)
+        rd(
+            self.disk,
+            self.part + b * self.bs / 512,
+            (n * self.bs) as usize,
+        )
     }
 
     pub fn inode(&self, ino: u64) -> Option<Inode> {
@@ -83,8 +103,19 @@ impl Ext4 {
         let i = &b[(ioff % self.bs) as usize..];
         let mut block = [0u8; 60];
         block.copy_from_slice(&i[40..100]);
-        let (uid, gid) = ((le16(i, 2) | le16(i, 0x78) << 16) as u32, (le16(i, 24) | le16(i, 0x7A) << 16) as u32);
-        Some(Inode { mode: le16(i, 0) as u16, size: le32(i, 4) | le32(i, 108) << 32, flags: le32(i, 32) as u32, block, mtime: le32(i, 16) as u32, uid, gid })
+        let (uid, gid) = (
+            (le16(i, 2) | le16(i, 0x78) << 16) as u32,
+            (le16(i, 24) | le16(i, 0x7A) << 16) as u32,
+        );
+        Some(Inode {
+            mode: le16(i, 0) as u16,
+            size: le32(i, 4) | le32(i, 108) << 32,
+            flags: le32(i, 32) as u32,
+            block,
+            mtime: le32(i, 16) as u32,
+            uid,
+            gid,
+        })
     }
 
     /// (logischer Block, physischer Block, Anzahl, nicht initialisiert)
@@ -112,13 +143,22 @@ impl Ext4 {
         }
     }
 
-    fn indirect(&self, blk: u64, level: u32, logical: &mut u64, max: u64, out: &mut Vec<(u64, u64, u64, bool)>) {
+    fn indirect(
+        &self,
+        blk: u64,
+        level: u32,
+        logical: &mut u64,
+        max: u64,
+        out: &mut Vec<(u64, u64, u64, bool)>,
+    ) {
         let per = self.bs / 4;
         if blk == 0 {
             *logical += per.pow(level);
             return;
         }
-        let Some(b) = self.read_blocks(blk, 1) else { return };
+        let Some(b) = self.read_blocks(blk, 1) else {
+            return;
+        };
         for k in 0..per as usize {
             if *logical >= max {
                 return;
@@ -139,7 +179,9 @@ impl Ext4 {
     pub fn read(&self, ino: &Inode, limit: u64) -> Vec<u8> {
         let size = ino.size.min(limit) as usize;
         // the whole file is read into memory: without memory for it the file reads as empty
-        let Some(mut out) = crate::mem::try_vec(size) else { return Vec::new() };
+        let Some(mut out) = crate::mem::try_vec(size) else {
+            return Vec::new();
+        };
         if ino.flags & 0x1000_0000 != 0 {
             let n = size.min(60);
             out[..n].copy_from_slice(&ino.block[..n]);
@@ -211,7 +253,11 @@ impl Ext4 {
     }
 
     fn link_target(&self, ino: &Inode) -> String {
-        let d = if ino.size < 60 && ino.flags & 0x80000 == 0 { ino.block[..ino.size as usize].to_vec() } else { self.read(ino, 4096) };
+        let d = if ino.size < 60 && ino.flags & 0x80000 == 0 {
+            ino.block[..ino.size as usize].to_vec()
+        } else {
+            self.read(ino, 4096)
+        };
         String::from_utf8_lossy(&d).into_owned()
     }
 
@@ -237,7 +283,11 @@ impl Ext4 {
 
     /// Pfad (relativ zur Wurzel dieses Dateisystems) auflösen, Verknüpfungen folgen
     pub fn lookup(&self, path: &str) -> Option<(u64, Inode)> {
-        let mut comps: Vec<String> = path.split('/').filter(|s| !s.is_empty()).map(String::from).collect();
+        let mut comps: Vec<String> = path
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
         comps.reverse();
         let mut stack: Vec<u64> = vec![2];
         let mut cur = (2u64, self.inode(2)?);
@@ -295,7 +345,11 @@ fn crc32c(mut crc: u32, data: &[u8]) -> u32 {
         for i in 0..256u32 {
             let mut c = i;
             for _ in 0..8 {
-                c = if c & 1 != 0 { (c >> 1) ^ 0x82F6_3B78 } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    (c >> 1) ^ 0x82F6_3B78
+                } else {
+                    c >> 1
+                };
             }
             t[i as usize] = c;
         }
@@ -351,7 +405,12 @@ impl Ext4 {
         wr(self.disk, self.part + b * self.bs / 512, data).ok_or("Schreibfehler")
     }
     fn groups(&self, sb: &[u8]) -> u64 {
-        let blocks = le32(sb, 4) | if le32(sb, 96) & 0x80 != 0 { le32(sb, 0x150) << 32 } else { 0 };
+        let blocks = le32(sb, 4)
+            | if le32(sb, 96) & 0x80 != 0 {
+                le32(sb, 0x150) << 32
+            } else {
+                0
+            };
         (blocks - le32(sb, 20)).div_ceil(le32(sb, 32))
     }
     /// Gruppendeskriptor lesen: (Blocknummer, Versatz, Block)
@@ -361,9 +420,17 @@ impl Ext4 {
         Ok((b, (off % self.bs) as usize, self.block(b)?))
     }
     fn gd_field(d: &[u8], o: usize, lo: usize, hi: usize, wide: bool, bits: u32) -> u64 {
-        let l = if bits == 16 { le16(d, o + lo) } else { le32(d, o + lo) };
+        let l = if bits == 16 {
+            le16(d, o + lo)
+        } else {
+            le32(d, o + lo)
+        };
         if wide {
-            l | (if bits == 16 { le16(d, o + hi) } else { le32(d, o + hi) }) << bits
+            l | (if bits == 16 {
+                le16(d, o + hi)
+            } else {
+                le32(d, o + hi)
+            }) << bits
         } else {
             l
         }
@@ -406,7 +473,12 @@ impl Ext4 {
         let (bpg, first, wide) = (le32(sb, 32), le32(sb, 20), self.dsize >= 64);
         let groups = self.groups(sb);
         let start = first + g * bpg;
-        let total = le32(sb, 4) | if le32(sb, 96) & 0x80 != 0 { le32(sb, 0x150) << 32 } else { 0 };
+        let total = le32(sb, 4)
+            | if le32(sb, 96) & 0x80 != 0 {
+                le32(sb, 0x150) << 32
+            } else {
+                0
+            };
         let in_group = bpg.min(total - start);
         let mut bm = alloc::vec![0u8; self.bs as usize];
         let mut mark = |b: u64| {
@@ -470,7 +542,11 @@ impl Ext4 {
             while i < bpg && n > 0 {
                 if bm[(i / 8) as usize] & (1 << (i % 8)) == 0 {
                     let start = i;
-                    while i < bpg && n > 0 && bm[(i / 8) as usize] & (1 << (i % 8)) == 0 && i - start < 32768 {
+                    while i < bpg
+                        && n > 0
+                        && bm[(i / 8) as usize] & (1 << (i % 8)) == 0
+                        && i - start < 32768
+                    {
                         bm[(i / 8) as usize] |= 1 << (i % 8);
                         i += 1;
                         n -= 1;
@@ -478,7 +554,9 @@ impl Ext4 {
                     }
                     let abs = first + g * bpg + start;
                     match runs.last_mut() {
-                        Some(l) if l.0 + l.1 == abs && l.1 + (i - start) <= 32768 => l.1 += i - start,
+                        Some(l) if l.0 + l.1 == abs && l.1 + (i - start) <= 32768 => {
+                            l.1 += i - start
+                        }
                         _ => runs.push((abs, i - start)),
                     }
                 } else {
@@ -568,7 +646,11 @@ impl Ext4 {
     fn alloc_inode(&self, dir: bool) -> WResult<u64> {
         let mut sb = self.sb().ok_or("Lesefehler")?;
         let ipg = self.ipg;
-        let first_ino = if le32(&sb, 76) >= 1 { le32(&sb, 84) } else { 11 };
+        let first_ino = if le32(&sb, 76) >= 1 {
+            le32(&sb, 84)
+        } else {
+            11
+        };
         let wide = self.dsize >= 64;
         for g in 0..self.groups(&sb) {
             let (db, o, mut dblk) = self.gd(g)?;
@@ -787,7 +869,12 @@ impl Ext4 {
     /// The 60-byte extent root of the inode for `runs`, and the leaf blocks it needs. Up to 4
     /// runs fit in the inode itself (depth 0); more get a tree of depth 1 with up to 4 leaf
     /// blocks (`4 × leaf_capacity` runs). Leaves are written (with checksum) before returning.
-    fn extent_tree(&self, ino: u64, raw: &[u8], runs: &[(u64, u64)]) -> WResult<([u8; 60], Vec<(u64, u64)>)> {
+    fn extent_tree(
+        &self,
+        ino: u64,
+        raw: &[u8],
+        runs: &[(u64, u64)],
+    ) -> WResult<([u8; 60], Vec<(u64, u64)>)> {
         let mut root = [0u8; 60];
         if runs.len() <= 4 {
             Self::extent_node(&mut root, runs, 0, 4, 0);
@@ -798,7 +885,11 @@ impl Ext4 {
         if leaves > 4 {
             return Err("Datei zu zerstückelt");
         }
-        let blocks: Vec<u64> = self.alloc_blocks(leaves as u64)?.iter().flat_map(|&(s, l)| s..s + l).collect();
+        let blocks: Vec<u64> = self
+            .alloc_blocks(leaves as u64)?
+            .iter()
+            .flat_map(|&(s, l)| s..s + l)
+            .collect();
         let sb = self.sb().ok_or("Lesefehler")?;
         let mut index = Vec::new();
         let mut logical = 0u64;
@@ -833,7 +924,11 @@ impl Ext4 {
     /// Writes `data` into freshly allocated blocks; returns the runs.
     fn write_runs(&self, data: &[u8]) -> WResult<Vec<(u64, u64)>> {
         let nb = (data.len() as u64).div_ceil(self.bs);
-        let runs = if nb > 0 { self.alloc_blocks(nb)? } else { Vec::new() };
+        let runs = if nb > 0 {
+            self.alloc_blocks(nb)?
+        } else {
+            Vec::new()
+        };
         let mut logical = 0u64;
         for &(start, len) in &runs {
             let s = (logical * self.bs) as usize;
@@ -964,9 +1059,17 @@ impl Ext4 {
                 if rec < 8 || o + rec > end + 12 {
                     break;
                 }
-                let used = if e_ino == 0 { 0 } else { (8 + blk[o + 6] as usize + 3) & !3 };
+                let used = if e_ino == 0 {
+                    0
+                } else {
+                    (8 + blk[o + 6] as usize + 3) & !3
+                };
                 if rec.saturating_sub(used) >= need {
-                    let (no, nrec) = if e_ino == 0 { (o, rec) } else { (o + used, rec - used) };
+                    let (no, nrec) = if e_ino == 0 {
+                        (o, rec)
+                    } else {
+                        (o + used, rec - used)
+                    };
                     if e_ino != 0 {
                         put16(&mut blk, o + 4, used as u64);
                     }

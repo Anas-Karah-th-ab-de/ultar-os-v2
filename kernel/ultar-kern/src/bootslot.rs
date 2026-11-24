@@ -71,7 +71,12 @@ pub fn report() {
     };
     let khz = crate::arch::tsc_khz().max(1);
     let micros = LOADER_TICKS.load(Ordering::Relaxed).saturating_mul(1000) / khz;
-    crate::kprintln!("[boot] slot {}{}, loader {} us", slot.letter(), if trial() { " (trial)" } else { "" }, micros);
+    crate::kprintln!(
+        "[boot] slot {}{}, loader {} us",
+        slot.letter(),
+        if trial() { " (trial)" } else { "" },
+        micros
+    );
 }
 
 /// The start cannot go on (root missing, kernel panic). A counted attempt restarts the machine
@@ -80,7 +85,10 @@ pub fn report() {
 pub fn start_failed(reason: &str) {
     crate::kprintln!("[boot] start failed: {reason}");
     if trial() {
-        crate::kprintln!("[boot] trial start of slot {} failed - restarting", slot().map_or("-", |s| s.letter()));
+        crate::kprintln!(
+            "[boot] trial start of slot {} failed - restarting",
+            slot().map_or("-", |s| s.letter())
+        );
         // the kernel's own restart (ACPI reset register, then the keyboard controller): the
         // firmware's runtime services are not safe to call from a panic
         crate::power::neustart()
