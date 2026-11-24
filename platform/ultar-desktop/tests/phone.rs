@@ -55,13 +55,13 @@ fn the_home_screen_has_the_boards_geometry() {
     assert_eq!(files.right(), 344.0);
     assert_eq!(files.x - editor.right(), 8.0);
     assert_eq!(files.y - search.bottom(), 16.0);
-    // Favourites: a card 8 inside, the last cell is "all apps", its bottom 12 above the
-    // gesture bar.
+    // Favourites: a card with a 1-point border and 8 inside (board: padding inside the
+    // border), the last cell is "all apps", its bottom 12 above the gesture bar.
     let all = rect(home, &Target::AllApps);
     let browser = rect(home, &app("org.ultar.browser"));
-    assert_eq!(all.x, 16.0 + 8.0);
-    assert_eq!(browser.right(), 344.0 - 8.0);
-    assert_eq!(all.bottom(), 800.0 - 44.0 - 12.0 - 8.0);
+    assert_eq!(all.x, 16.0 + 1.0 + 8.0);
+    assert_eq!(browser.right(), 344.0 - 1.0 - 8.0);
+    assert_eq!(all.bottom(), 800.0 - 44.0 - 12.0 - 1.0 - 8.0);
     assert!(home.node(&app("org.ultar.terminal")).is_none());
     // Status bar: the status button at the end, 32 high; gesture bar: all of its 44.
     let status = rect(&h.bar, &Target::Status);

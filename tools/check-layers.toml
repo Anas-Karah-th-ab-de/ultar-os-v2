@@ -122,7 +122,7 @@ to = "system-hal"
 crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-linux", "system/hal/ultar-hal-netlink"]
 
 # ultar-vpnd: the VPN (library) runs inside the network service's process –
-# busd and logd are at the kernel's 16 supplementary groups, no own user.
+# busd and logd were at the kernel's 16 supplementary groups when it was split off (32 now).
 [[allow]]
 from = "system-services"
 to = "system-services"
