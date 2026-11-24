@@ -315,7 +315,10 @@ pub(super) fn open_app(s: &mut Shell, app: &str) -> Outcome {
 fn result(s: &mut Shell, hit: &Hit) -> Outcome {
     match hit {
         Hit::App(id) => open_app(s, id),
-        Hit::Setting(panel) => launch(s, SETTINGS, Opening::settings_page(panel)),
+        Hit::Setting(panel) => {
+            let area = crate::model::search::panel_area(panel);
+            launch(s, SETTINGS, Opening::settings_page(area))
+        }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
         Hit::Command(Command::Lock) => {

@@ -39,6 +39,8 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 ultar-ui = { path = "../ultar-ui" }
 ultar-compositor = { path = "../ultar-compositor" }
 ultar-hal = { path = "../../system/hal/ultar-hal" }
+# only its list of areas: every settings://<page> the shell opens must be one of them
+ultar-settings = { path = "../../apps/ultar-settings" }
 
 [[example]]
 name = "desktoptest"

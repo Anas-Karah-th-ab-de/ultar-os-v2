@@ -23,6 +23,6 @@ run() {
 }
 run "Files list view (REAL-INPUT, 1500 entries, empty folder)" cargo test -q -p ultar-files --test listview
 run "quick settings by real clicks (REAL-INPUT, compositor 1024x768)" cargo test -q -p ultar-desktop --test e2e_quick
-run "quick settings clicks of CLICKS.md" cargo test -q -p ultar-desktop --test clicks --test services --test wifi
+run "quick settings clicks of CLICKS.md" cargo test -q -p ultar-desktop --test clicks --test services --test wifi --test settings_pages
 run "launcher: page of a URI as argument" cargo test -q -p ultar-launcher --test opening
 [ "$fail" = 0 ] && echo "UI-REGRESS: ALLES OK" || { echo "UI-REGRESS: FEHLER"; exit 1; }
