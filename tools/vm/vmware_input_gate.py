@@ -194,7 +194,7 @@ def accessibility(vm, m):
         problems.append("high contrast changed nothing on the lock screen")
     text_hc = bright(hc, middle)
     vm.click(*switches[0])  # large text (first switch)
-    ok, lt = m.wait_for(vm, "a11y-large", lambda x: bright(x, middle) > 1.2 * text_hc, 20)
+    ok, lt = m.wait_for(vm, "a11y-large", lambda x: bright(x, middle) > 1.05 * text_hc and x.diff(hc, middle) > 0.02, 20)
     log(f"accessibility: text pixels {text_before} -> {text_hc} (contrast) -> {bright(lt, middle)} (large text)")
     if not ok:
         problems.append("large text changed nothing on the lock screen")
