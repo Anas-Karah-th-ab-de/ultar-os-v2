@@ -36,13 +36,14 @@ it can take. What is missing for them is a *stage*, not a new protocol (see "Not
 | File transfer: 32 KiB pieces, acknowledged, part file, size + SHA-256 before the name is given, names cannot leave the inbox | `src/transfer.rs` | 3 |
 | Clipboard: text up to 16 KiB, confidential entries never leave, no echo | `src/node.rs` | in handoff tests |
 | Computing jobs: exactly one result per job, silence 8 s → requeue, 4 strikes → out, stragglers twice, own device as reserve, lending side answers a repeated id from memory | `src/compute.rs`, `src/runtime.rs` | 6 + 1 |
+| Lending the language model: a device announces the class of its model, a paired device with the right `Model` lets it think (`mesh.think`, `mesh.models`); prompt and answer in the encrypted channel | `src/model.rs`, `src/lending.rs` | 3 + 1 |
 | Network: announcements (UDP 47810 broadcast), channels (TCP 47810), `--peer` for networks without broadcast | `src/net.rs` | 1 (two devices find each other) |
 | Relay for devices in other networks: the account server forwards ciphertext, the Noise channel runs end to end inside it (`--relay`, `--relay-token-file`) | `src/relay.rs` | 1 + 1 (stand-in relay) |
 | What may be sent: only regular files inside the shared folders, links followed (`--share`) | `src/transfer.rs` | 1 |
 | What a job may run: only a program by bare name inside the jobs folder (`--jobs`); without the folder no job runs | `src/runtime.rs` | 1 |
 | Service on the bus (`ultar-svckit`), binary `ultar-mesh` | `src/service.rs`, `src/bin/ultar-mesh.rs` | 1 (two real services) |
 
-54 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
+58 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
 without a new code, jobs with and without permission, finding each other by announcements, meeting through
 a stand-in relay that follows the server's frame rules). `tests/process.rs` starts two real `ultar-mesh`
 binaries on two brokers with a stand-in launcher: switched on by the shell, paired, a document handed
@@ -65,7 +66,7 @@ over, accepted, opened through `launcher.start` at the same place (`file://…#l
 ## Rights
 
 A freshly paired device may: offer activities, offer files, share the clipboard. Seeing the screen,
-controlling, sound and computing are off until granted (`mesh.set_rights`). Unpaired devices can pair and
+controlling, sound, computing and the language model are off until granted (`mesh.set_rights`). Unpaired devices can pair and
 nothing else – every other frame is dropped.
 
 ## Wiring it in (not done here, on purpose)
@@ -115,3 +116,5 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
 - Large files are hashed on the service loop (a 4 GiB file blocks it while hashing).
 - **No real hardware**: not run on the Ultar kernel, the Beelink, a VM or the A30; ARM64 not built.
 - The clipboard owner (compositor) does not call `mesh.clipboard_set` yet; computing jobs have no bus call.
+
+Everything that is still open, in the order it should be finished: `docs/OFFEN-VERBUND-HELFER.md`.

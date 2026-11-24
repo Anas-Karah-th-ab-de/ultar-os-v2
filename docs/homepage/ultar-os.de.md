@@ -23,6 +23,20 @@ Fassung und werden phasenweise neu gebaut.
 
 Aktuelle Testgeräte: Laptop Lenovo ThinkPad P1, Mini-PC Beelink GTi15 Ultra und Handy Samsung Galaxy A30.
 
+## Neu seit dem 24.11.2026: Geräteverbund und lokaler Helfer
+
+- **Geräteverbund.** Die eigenen Geräte finden sich, werden einmal mit einem sechsstelligen Code gekoppelt
+  und übergeben einander die Arbeit: Was auf dem Handy offen ist, geht am Rechner an derselben Stelle weiter.
+  Jede Verbindung ist Ende-zu-Ende verschlüsselt. Nichts kommt ungefragt an – das Zielgerät fragt immer nach.
+  Der Kern ist gebaut und getestet (58 automatische Tests), auch über einen Vermittlungs-Server für Geräte
+  in verschiedenen Netzen. Die Oberfläche ist entworfen und freigegeben; gebaut ist davon bisher die Frage
+  am Zielgerät. In ein ausgeliefertes System ist der Verbund noch nicht eingebunden.
+- **Lokaler Helfer.** Man fragt in Worten, der Helfer handelt über den Systembus – mit eigenen, engen Rechten
+  und nie ohne Bestätigung bei Gefährlichem. Er passt sich dem Gerät an: Mit eigenem Sprachmodell denkt er
+  selbst; ein schwaches Gerät nutzt das Modell eines gekoppelten Geräts, das es verleiht; ohne beides
+  versteht er feste Befehle auf Arabisch, Englisch und Deutsch. Der Dienst ist gebaut und getestet
+  (19 Tests); Oberfläche, Sprache und die Anbindung des Modell-Dienstes fehlen noch.
+
 ## Was als Nächstes kommt
 
 Vollständige Treiber für die zwei Testrechner (Grafik, WLAN, Ton), eine neue Oberfläche, in der jede App in
