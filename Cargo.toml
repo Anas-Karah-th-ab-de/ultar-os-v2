@@ -42,6 +42,7 @@ members = [
     "tools/ultar-check",
     "tools/kern-test/ab-agent",
     "tools/phone-e2e",
+    "tools/settings-e2e",
     "apps/ultar-office",
     "apps/ultar-settings",
     "apps/ultar-store",

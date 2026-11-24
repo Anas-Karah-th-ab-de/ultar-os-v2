@@ -15,7 +15,7 @@ pub const MARK: u16 = 96;
 /// The rows: label key and value.
 pub fn rows(cx: &Cx<'_>) -> Vec<(&'static str, Label)> {
     let unknown = || k("app.settings.about.unknown");
-    let (version, build) = match &cx.state.release {
+    let (version, build) = match &cx.state.more.release {
         Some((v, b)) => (Label::data(v), Label::data(b)),
         None => (unknown(), unknown()),
     };

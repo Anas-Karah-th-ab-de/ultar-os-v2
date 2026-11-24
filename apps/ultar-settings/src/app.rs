@@ -14,6 +14,8 @@ use ultar_ui::widgets::Toast;
 
 /// The setting the window's own theme follows.
 const THEME_KEY: &str = "appearance.theme";
+/// Text factor of `accessibility.large_text` (the shell's).
+pub const LARGE_TEXT: f32 = 1.25;
 
 /// The Settings app.
 pub struct App {
@@ -55,6 +57,7 @@ impl App {
         app.state.area = area.min(crate::areas::AREAS.len() - 1);
         app.state.compact = app.ui.size_class() == SizeClass::Compact;
         update::load_page(&mut app.state, &mut app.ports);
+        app.follow_access();
         view::build(&mut app.ui, &app.state, &mut app.view)?;
         app.seen_theme = app.stored_theme();
         Ok(app)
@@ -152,6 +155,7 @@ impl App {
         );
         if self.ports.settings.changed() {
             update::load_panels(&mut self.state, &mut self.ports);
+            self.follow_access();
         }
         update::load_page_light(&mut self.state, &mut self.ports);
         let after = (
@@ -169,7 +173,32 @@ impl App {
         Ok(())
     }
 
+    /// The window follows the accessibility settings like the shell does: larger text, the
+    /// high-contrast palette, no motion. Read from the panels the service listed.
+    fn follow_access(&mut self) {
+        let flag = |key: &str| {
+            let items = &self.state.panel("accessibility")?.items;
+            match items.iter().find(|i| i.key == key)?.value {
+                SettingValue::Flag(on) => Some(on),
+                _ => None,
+            }
+        };
+        let large = flag("accessibility.large_text");
+        let contrast = flag("accessibility.high_contrast");
+        let still = flag("accessibility.reduce_motion");
+        if let Some(on) = large {
+            let _ = self.ui.set_text_scale(if on { LARGE_TEXT } else { 1.0 });
+        }
+        if let Some(on) = contrast {
+            self.ui.set_high_contrast(on);
+        }
+        if let Some(on) = still {
+            self.ui.set_reduce_motion(on);
+        }
+    }
+
     fn apply(&mut self, outcome: Outcome) -> Result<(), AppError> {
+        self.follow_access();
         if outcome.rebuild_all {
             view::build(&mut self.ui, &self.state, &mut self.view)?;
         } else if outcome.rebuild {

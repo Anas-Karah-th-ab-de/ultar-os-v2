@@ -2,6 +2,7 @@
 //! keep their data in a shared [`World`] and record every call, so a test can check that a
 //! click did what CLICKS.md says.
 
+use super::system::{AppEntry, Drive, LocalUser, SystemPort};
 use super::{
     AccountPort, AccountRequest, ClipboardPort, DevicesPort, DisplayPort, FilesPort, PortError,
     PortResult, Ports, SettingsPort, StatusPort, UpdatePort,
@@ -38,6 +39,8 @@ pub struct World {
     pub audio: Option<AudioState>,
     /// Bluetooth devices (`None`: service down).
     pub bt_devices: Option<Vec<ultar_bus::messages::bluetooth::Device>>,
+    /// Users, apps and drives (`None` each: service down).
+    pub system: SystemWorld,
     /// Refuse the next call with this reason.
     pub refuse: Option<Text>,
     /// Every call in order (`service.method key/arg`).
@@ -283,6 +286,79 @@ impl StatusPort for Fake {
     }
 }
 
+/// What the fake account service, launcher and volume service hold.
+#[derive(Debug, Clone, Default)]
+pub struct SystemWorld {
+    /// Local users (`None`: account service down).
+    pub users: Option<Vec<LocalUser>>,
+    /// Installed apps (`None`: launcher down).
+    pub apps: Option<Vec<AppEntry>>,
+    /// Mounted drives (`None`: volume service down).
+    pub drives: Option<Vec<Drive>>,
+}
+
+fn local_user(name: &str, uid: u32) -> LocalUser {
+    LocalUser {
+        name: name.to_owned(),
+        uid,
+        display_name: name.to_owned(),
+        kind: ultar_bus::messages::account_local::UserKind::Standard,
+        picture: ultar_bus::messages::account_local::PictureInfo::Initials,
+        auto_login: false,
+        current: false,
+    }
+}
+
+impl SystemPort for Fake {
+    fn users(&mut self) -> PortResult<Vec<LocalUser>> {
+        let users = self.0.borrow().system.users.clone();
+        users.ok_or(PortError::Unavailable)
+    }
+
+    fn user_create(&mut self, name: &str, _password: &str) -> PortResult<Vec<LocalUser>> {
+        self.call(format!("account.user_create {name}"))?;
+        let mut w = self.0.borrow_mut();
+        let users = w.system.users.as_mut().ok_or(PortError::Unavailable)?;
+        users.push(local_user(name, 1000 + users.len() as u32));
+        Ok(users.clone())
+    }
+
+    fn user_remove(&mut self, name: &str) -> PortResult<Vec<LocalUser>> {
+        self.call(format!("account.user_remove {name}"))?;
+        let mut w = self.0.borrow_mut();
+        let users = w.system.users.as_mut().ok_or(PortError::Unavailable)?;
+        users.retain(|u| u.name != name);
+        Ok(users.clone())
+    }
+
+    fn user_password(&mut self, name: &str, _password: &str) -> PortResult<Vec<LocalUser>> {
+        self.call(format!("account.user_password {name}"))?;
+        self.users()
+    }
+
+    fn apps(&mut self) -> PortResult<Vec<AppEntry>> {
+        let apps = self.0.borrow().system.apps.clone();
+        apps.ok_or(PortError::Unavailable)
+    }
+
+    fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool> {
+        self.call(format!("launcher.revoke {app} {permission}"))?;
+        let mut w = self.0.borrow_mut();
+        let apps = w.system.apps.as_mut().ok_or(PortError::Unavailable)?;
+        for entry in apps.iter_mut().filter(|a| a.id == app) {
+            for p in entry.permissions.iter_mut().filter(|p| p.0 == permission) {
+                p.1 = false;
+            }
+        }
+        Ok(false)
+    }
+
+    fn drives(&mut self) -> PortResult<Vec<Drive>> {
+        let drives = self.0.borrow().system.drives.clone();
+        drives.ok_or(PortError::Unavailable)
+    }
+}
+
 /// Ports backed by `world`.
 pub fn ports(world: &Shared) -> Ports {
     let f = || Box::new(Fake(world.clone()));
@@ -294,6 +370,7 @@ pub fn ports(world: &Shared) -> Ports {
         update: f(),
         account: f(),
         status: f(),
+        system: f(),
         files: f(),
         clipboard: f(),
     }

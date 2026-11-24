@@ -25,5 +25,7 @@ optional    = ["display", "external_display"]
 # update.*: firmware updates on the drivers page.
 # account.*: the Ultar account page (§12.1) and the users.
 # net.*, vpn.*, bluetooth.*, audio.*, power.*: the Network, Bluetooth, Sound pages and the energy state.
-bus         = ["settings.*", "devices.*", "display.*", "update.*", "account.*", "net.*", "vpn.*", "bluetooth.*", "audio.*", "power.*"]
+# launcher.*: the Apps page (installed apps, their permissions, taking one back).
+# volumes.*: how full the storage and the mounted drives are (Storage page).
+bus         = ["settings.*", "devices.*", "display.*", "update.*", "account.*", "net.*", "vpn.*", "bluetooth.*", "audio.*", "power.*", "launcher.*", "volumes.*"]
 files       = ["documents"]

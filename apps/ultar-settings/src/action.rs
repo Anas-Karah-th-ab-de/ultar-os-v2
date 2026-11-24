@@ -107,6 +107,14 @@ pub enum Act {
     BtPair(usize),
     /// A row of a generic settingsd panel (index into the shown items).
     PanelItem(usize),
+    /// Users: "Add user".
+    UserAdd,
+    /// Users: remove user `n`.
+    UserRemove(usize),
+    /// Users: new password for user `n`.
+    UserPassword(usize),
+    /// Apps: the switch of permission `1` of app `0` (off takes it back).
+    AppRevoke(usize, usize),
     /// A field of an open dialog (index).
     DialogField(usize),
     /// The confirming button of the open dialog.

@@ -1,6 +1,7 @@
 //! The app's state: pure data, changed only by [`crate::update`].
 
 pub mod display;
+pub mod more;
 
 use crate::areas::{PageKind, AREAS};
 use ultar_bus::messages::account_service::AccountState;
@@ -9,6 +10,7 @@ use ultar_bus::messages::settings::PanelInfo;
 use ultar_bus::Text;
 
 pub use display::{DisplayEntry, DisplayMode, DisplayState};
+pub use more::MoreState;
 
 /// A page below an area page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -85,6 +87,12 @@ pub enum DialogPurpose {
     RemoveDevice(usize),
     /// The QR code of the Ultar number, large.
     Qr,
+    /// Users: add a user (name, password, password again).
+    UserAdd,
+    /// Users: remove user `n`.
+    UserRemove(usize),
+    /// Users: new password for user `n` (password, password again).
+    UserPassword(usize),
 }
 
 /// An open dialog.
@@ -116,8 +124,6 @@ pub struct StatusView {
 /// The whole app.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct State {
-    /// Version and build of the installed release (About), `None` when unknown.
-    pub release: Option<(String, String)>,
     /// Index into [`AREAS`] of the open area.
     pub area: usize,
     /// Page below the area.
@@ -132,6 +138,8 @@ pub struct State {
     pub account: AccountView,
     /// Network, Bluetooth and sound pages: what the service reported, or why it could not be read.
     pub status: StatusView,
+    /// About, Users, Apps and Storage pages: what the system and their services reported.
+    pub more: MoreState,
     /// Panels of settingsd (for generic pages and search).
     pub panels: Vec<PanelInfo>,
     /// Why settingsd could not be read.

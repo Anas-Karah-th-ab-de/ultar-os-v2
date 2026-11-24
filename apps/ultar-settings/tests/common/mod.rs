@@ -165,6 +165,46 @@ fn display_items() -> Vec<ItemInfo> {
     ]
 }
 
+/// One switch for every other panel settingsd lists on a laptop (an area whose panel the
+/// service does not offer is hidden); the mobile network only on the phone (one display).
+fn more_panels(displays: usize) -> Vec<PanelInfo> {
+    let mut first = vec![
+        ("power", "power.charge_limit.enabled"),
+        ("windows", "windows.edge_snap"),
+        ("notifications", "notifications.do_not_disturb"),
+        ("region", "region.language"),
+        ("date_time", "datetime.automatic"),
+        ("privacy", "privacy.camera"),
+        ("search", "search.history"),
+        ("apps", "apps.autostart"),
+        ("pointer", "pointer.natural_scroll"),
+        ("keyboard", "keyboard.per_window"),
+        ("printers", "printers.discover"),
+        ("colour", "colour.management"),
+        ("accessibility", "accessibility.high_contrast"),
+        ("sharing", "sharing.screen"),
+        ("users", "users.list_on_login"),
+        ("storage", "storage.trim"),
+        ("updates", "updates.auto_system"),
+        ("backup", "backup.enabled"),
+        ("mesh", "mesh.enabled"),
+        ("assistant", "assistant.enabled"),
+        ("cells", "cells.enabled"),
+        ("emergency", "emergency.sos_light"),
+    ];
+    if displays == 1 {
+        first.push(("mobile", "mobile.data"));
+    }
+    first
+        .into_iter()
+        .map(|(id, key)| PanelInfo {
+            id: id.into(),
+            title: Text::key(&format!("settings.panel.{id}")),
+            items: vec![item(key, ItemKind::Toggle, SettingValue::Flag(false))],
+        })
+        .collect()
+}
+
 /// settingsd as on the boards (three displays, extend, night light on …).
 pub fn panels(displays: usize) -> Vec<PanelInfo> {
     let mut items = display_items();
@@ -209,11 +249,13 @@ pub fn panels(displays: usize) -> Vec<PanelInfo> {
         title: Text::key(&format!("settings.panel.{id}")),
         items,
     };
-    vec![
+    let mut all = vec![
         p("display", items),
         p("desktop_bar", bar),
         p("appearance", appearance),
-    ]
+    ];
+    all.extend(more_panels(displays));
+    all
 }
 
 pub fn outputs(displays: usize) -> Vec<Output> {

@@ -99,13 +99,26 @@ fn search_row(
     Ok(())
 }
 
-/// Area indices matching the search text (all when it is empty).
+/// `false` for an area whose page is a settingsd panel the service does not offer on this
+/// device (its hardware is absent: no modem, no pointer, no display). While the service
+/// cannot be read every area stays, so its page can say why.
+pub fn offered(state: &State, area: usize) -> bool {
+    match AREAS.get(area).map(|a| a.page) {
+        Some(crate::areas::PageKind::Panel(id)) => {
+            state.panels_error.is_some() || state.panels.is_empty() || state.panel(id).is_some()
+        }
+        _ => true,
+    }
+}
+
+/// Area indices matching the search text (all offered ones when it is empty).
 pub fn matching_areas(ui: &Ui, state: &State) -> Vec<usize> {
     let order = if compact(ui) {
         crate::areas::compact()
     } else {
         crate::areas::wide()
     };
+    let order: Vec<usize> = order.into_iter().filter(|&i| offered(state, i)).collect();
     let query = state.query.trim().to_lowercase();
     if query.is_empty() {
         return order;

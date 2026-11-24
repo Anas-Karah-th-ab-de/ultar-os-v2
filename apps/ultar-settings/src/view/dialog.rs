@@ -81,9 +81,21 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             let ok = "app.settings.account.device.remove";
             plain("app.settings.dialog.remove", text, ok, &[], true)
         }
+        DialogPurpose::UserRemove(n) => {
+            let name = state.more.users.get(n).map_or("", |u| u.name.as_str());
+            let text = Label::key_with("app.settings.users.remove.text", &[("name", name)]);
+            let ok = "app.settings.users.remove";
+            plain("app.settings.users.remove.title", text, ok, &[], true)
+        }
         other => fixed(other),
     }
 }
+
+const USER_FIELDS: [(&str, bool); 3] = [
+    ("app.settings.users.name", false),
+    ("app.settings.dialog.pw.new", true),
+    ("app.settings.dialog.pw.again", true),
+];
 
 fn fixed(purpose: DialogPurpose) -> Spec {
     let (title, text, ok, fields, danger): (_, _, _, &[(&str, bool)], _) = match purpose {
@@ -99,6 +111,20 @@ fn fixed(purpose: DialogPurpose) -> Spec {
             "app.settings.dialog.pw.text",
             "app.settings.dialog.pw.ok",
             &PW_FIELDS,
+            false,
+        ),
+        DialogPurpose::UserAdd => (
+            "app.settings.users.add",
+            "app.settings.users.add.text",
+            "app.settings.users.add",
+            &USER_FIELDS,
+            false,
+        ),
+        DialogPurpose::UserPassword(_) => (
+            "app.settings.users.password",
+            "app.settings.users.password.text",
+            "app.settings.dialog.pw.ok",
+            &USER_FIELDS[1..],
             false,
         ),
         DialogPurpose::DeleteAccount => (

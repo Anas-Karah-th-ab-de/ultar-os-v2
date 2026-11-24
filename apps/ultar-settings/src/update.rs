@@ -5,6 +5,7 @@ mod account;
 mod bluetooth;
 mod display;
 mod drivers;
+mod more;
 mod panel;
 
 pub use drivers::offered as offered_drivers;
@@ -80,7 +81,7 @@ pub struct Ctl<'a> {
 /// Loads everything the open page shows.
 pub fn load_page(state: &mut State, ports: &mut Ports) {
     if state.page() == crate::areas::PageKind::About {
-        state.release = ports.os_release.as_deref().and_then(read_release);
+        state.more.release = ports.os_release.as_deref().and_then(read_release);
     }
     load_panels(state, ports);
     match state.page() {
@@ -88,7 +89,8 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
         PageKind::Drivers => drivers::load(state, ports),
         PageKind::Account => account::load(state, ports),
         PageKind::Status(kind) => load_status(state, ports, kind),
-        PageKind::Panel(_) | PageKind::NoService | PageKind::About => {}
+        PageKind::Panel(id) => more::load(state, ports, id),
+        PageKind::NoService | PageKind::About => {}
     }
     report_page(state);
 }
@@ -130,7 +132,9 @@ fn report_page(state: &State) {
 pub fn load_page_light(state: &mut State, ports: &mut Ports) {
     match state.page() {
         PageKind::Display => display::load(state, ports),
-        PageKind::Drivers => state.drivers.firmware = ports.update.progress(),
+        PageKind::Drivers | PageKind::Panel("updates") => {
+            state.drivers.firmware = ports.update.progress()
+        }
         PageKind::Status(kind) => load_status(state, ports, kind),
         _ => {}
     }
@@ -179,6 +183,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         Act::DialogOk | Act::DialogCancel | Act::DialogField(_) => dialog(c, act, kind),
         a if display::owns(a) => display::handle(c, a, node, kind),
         a if drivers::owns(a) => drivers::handle(c, a, kind),
+        a if more::owns(a) => more::handle(c, a, kind),
         a if account::owns(a) => account::handle(c, a, node, kind),
         a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
         _ => Outcome::default(),
@@ -288,6 +293,9 @@ fn dialog(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         DialogPurpose::DriverSwitch { row, alt } => drivers::switch(c, row, alt),
         DialogPurpose::FirmwareUsb => drivers::usb(c),
         DialogPurpose::Qr => close(c.state),
+        DialogPurpose::UserAdd | DialogPurpose::UserRemove(_) | DialogPurpose::UserPassword(_) => {
+            more::dialog_ok(c, purpose)
+        }
         DialogPurpose::ChangePassword
         | DialogPurpose::DeleteAccount
         | DialogPurpose::RemoveDevice(_) => account::dialog_ok(c, purpose),

@@ -28,6 +28,7 @@ pub mod service;
 pub mod state;
 pub mod update;
 pub mod view;
+pub mod wired;
 
 pub use app::App;
 pub use error::AppError;

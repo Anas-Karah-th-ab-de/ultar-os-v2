@@ -242,6 +242,20 @@ fn device_row(
         let r = Card::rule(BarEdge::Bottom).flex(flex);
         cx.ui.add_sized(card, r, sizing)?
     };
+    device_cells(cx, row, d, narrow)?;
+    // stacked: the controls from the start edge, on further lines when they do not fit
+    let controls = Flex::row().gap(Space::S8).cross(CrossAlign::Center);
+    let controls = if narrow {
+        controls.wrap()
+    } else {
+        controls.main(MainAlign::End)
+    };
+    let actions = cx.ui.add_sized(row, controls, cell(narrow, 3))?;
+    actions_cell(cx, actions, index, d)
+}
+
+/// The first three cells of a device row: class and model, the driver, its state.
+fn device_cells(cx: &mut Cx<'_>, row: NodeId, d: &DeviceInfo, narrow: bool) -> Result<(), UiError> {
     let first = cx.ui.add_sized(
         row,
         Flex::row().gap(Space::S12).cross(CrossAlign::Center),
@@ -273,15 +287,7 @@ fn device_row(
     if let Some(reason) = &d.reason {
         muted(cx.ui, state, crate::i18n::label(reason, cx.tr))?;
     }
-    // stacked: the controls from the start edge, on further lines when they do not fit
-    let controls = Flex::row().gap(Space::S8).cross(CrossAlign::Center);
-    let controls = if narrow {
-        controls.wrap()
-    } else {
-        controls.main(MainAlign::End)
-    };
-    let actions = cx.ui.add_sized(row, controls, cell(narrow, 3))?;
-    actions_cell(cx, actions, index, d)
+    Ok(())
 }
 
 /// Driver choice and rollback, or the hardware plan for a device without driver.

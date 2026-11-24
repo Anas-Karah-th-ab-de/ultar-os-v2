@@ -3,6 +3,7 @@
 
 pub mod bus;
 pub mod fake;
+pub mod system;
 pub mod update_contract;
 
 use ultar_bus::messages::account_service::{AccountService, AccountState};
@@ -193,6 +194,8 @@ pub struct Ports {
     pub account: Box<dyn AccountPort>,
     /// Network, Bluetooth and sound state (read-only pages).
     pub status: Box<dyn StatusPort>,
+    /// Users, apps and drives (Users, Apps and Storage pages).
+    pub system: Box<dyn system::SystemPort>,
     /// Documents.
     pub files: Box<dyn FilesPort>,
     /// Clipboard.

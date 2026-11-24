@@ -4,8 +4,10 @@
 //! own user. The app runs headless with its real bus ports as `app.settings` and opens every area
 //! in Arabic, English and German: no page may say "not available in this version", every
 //! settingsd page must show its rows (no "could not be read"), no label may be an untranslated
-//! key, the wide sidebar shows the six group headings, the search finds a row of Sharing, and a
-//! switch on Sharing reaches settingsd. Last line: `SETTINGS: ALLES OK` or
+//! key, the wide sidebar shows the six group headings, the search finds a row of Sharing, a
+//! setting nothing follows yet is disabled with its note and stores nothing, and every setting
+//! that takes effect is changed through its page and checked where it takes effect
+//! (`settingstest/wired.rs`; the volume service runs too). Last line: `SETTINGS: ALLES OK` or
 //! `SETTINGS: FEHLER <what>`.
 //!
 //! ```text
@@ -14,6 +16,8 @@
 
 #[path = "settingstest/setup.rs"]
 mod setup;
+#[path = "settingstest/wired.rs"]
+mod wired;
 
 use setup::Run;
 use std::process::{Child, Command};
@@ -72,6 +76,7 @@ fn ports(bus: &Client, run: &Run) -> Ports {
         update: Box::new(BusUpdate::new(bus.clone())),
         account: Box::new(BusAccount(bus.clone())),
         status: Box::new(BusStatus::new(bus)),
+        system: Box::new(ultar_settings::service::system::BusSystem::new(bus.clone())),
         files: Box::new(DocumentsFiles {
             dir: run.at("documents"),
         }),
@@ -86,12 +91,12 @@ fn open(bus: &Client, run: &Run, lang: Lang, size: Size, area: usize) -> Result<
     App::new(ui, ports(bus, run), area).map_err(|e| format!("app {e:?}"))
 }
 
-/// Every name and value of the screen-reader tree, translated.
+/// Every name, value and description of the screen-reader tree, translated.
 fn texts(app: &mut App) -> Vec<String> {
     let tree = app.ui.a11y_tree();
     let tr = app.ui.translator().clone();
     tree.iter()
-        .flat_map(|n| [n.name.clone(), n.value.clone()])
+        .flat_map(|n| [n.name.clone(), n.value.clone(), n.description.clone()])
         .flatten()
         .map(|l| l.resolve(&tr).into_owned())
         .collect()
@@ -176,7 +181,7 @@ fn click(app: &mut App, node: ultar_ui::ui::NodeId) -> Result<(), String> {
     Ok(())
 }
 
-/// The grouped sidebar, the search and a switch that reaches settingsd.
+/// The grouped sidebar, the search and a switch nothing follows yet.
 fn sidebar(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displays = index_of("displays").ok_or("displays")?;
     let mut app = open(bus, run, Lang::En, Size::new(1280.0, 800.0), displays)?;
@@ -201,7 +206,16 @@ fn sidebar(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
         .iter()
         .position(|i| i.key == "sharing.screen")
         .ok_or("sharing.screen row")?;
+    // Nothing shares the screen in this version: the switch says so and stores nothing.
     let switch = app.view.node(Act::PanelItem(row)).ok_or("switch")?;
+    let note = app
+        .ui
+        .translator()
+        .t("app.settings.panel.not_yet")
+        .into_owned();
+    if !app.ui.is_disabled(switch) || !texts(&mut app).contains(&note) {
+        return Err("screen sharing is offered although nothing follows it".into());
+    }
     click(&mut app, switch)?;
     let get = Get {
         key: "sharing.screen".into(),
@@ -209,11 +223,11 @@ fn sidebar(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let value = admin
         .call(&get, Duration::from_secs(5))
         .map_err(|e| format!("get {e}"))?;
-    if value.value != Some(SettingValue::Flag(true)) {
+    if value.value != Some(SettingValue::Flag(false)) {
         return Err(format!("sharing.screen is {:?}", value.value));
     }
     println!(
-        "SETTINGS: grouped sidebar, search \"ssh\" -> Sharing, screen sharing on in settingsd"
+        "SETTINGS: grouped sidebar, search \"ssh\" -> Sharing, screen sharing disabled with its note"
     );
     Ok(())
 }
@@ -242,7 +256,8 @@ fn test(run: &Run, group_root: Option<&str>) -> Result<(), String> {
         })?;
         println!("SETTINGS: settingsd lists {} panels", panels.panels.len());
         every_page(&bus, run)?;
-        sidebar(&bus, &admin, run)
+        sidebar(&bus, &admin, run)?;
+        wired::wired(&bus, &admin, run)
     })();
     let stopped = stop(&init);
     let ended = wait("init ended", || init.try_wait().ok().flatten());

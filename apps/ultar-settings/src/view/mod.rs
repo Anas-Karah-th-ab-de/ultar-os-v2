@@ -12,6 +12,7 @@ mod display;
 mod display_rows;
 mod drivers;
 pub mod metrics;
+mod more;
 pub(crate) mod panel;
 mod shell;
 pub mod status;

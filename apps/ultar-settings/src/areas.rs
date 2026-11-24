@@ -177,14 +177,13 @@ pub fn group_of(area: usize) -> Option<usize> {
     GROUPS.iter().position(|g| g.areas.contains(&id))
 }
 
-/// Areas a wide sidebar shows, group after group (the mobile network only exists on compact
-/// devices).
+/// Areas a wide sidebar shows, group after group (the shell hides those whose hardware is
+/// absent: the mobile network without a modem, mouse and touchpad without a pointer).
 pub fn wide() -> Vec<usize> {
     GROUPS
         .iter()
         .flat_map(|g| g.areas.iter())
         .filter_map(|id| index_of(id))
-        .filter(|&i| AREAS[i].id != "cellular")
         .collect()
 }
 
@@ -231,7 +230,7 @@ mod tests {
         assert_eq!(index_of("displays"), Some(4));
         assert_eq!(index_of_page(PageKind::Drivers), Some(25));
         assert_eq!(index_of_page(PageKind::Account), Some(20));
-        assert_eq!(wide().len(), 32);
+        assert_eq!(wide().len(), 33);
         let c = compact();
         assert_eq!(c.len(), 33);
         assert_eq!(AREAS[c[1]].id, "cellular");

@@ -87,6 +87,7 @@ pub fn generic(cx: &mut Cx<'_>, content: NodeId, id: &str) -> Result<(), UiError
         cx.ui.add(content, bar)?;
         return Ok(());
     };
+    super::more::top(cx, content, id)?;
     let card = cx.ui.add(content, Card::new())?;
     let shown: Vec<(usize, &ItemInfo)> = panel
         .items
@@ -96,16 +97,28 @@ pub fn generic(cx: &mut Cx<'_>, content: NodeId, id: &str) -> Result<(), UiError
         .collect();
     let count = shown.len();
     for (n, (index, item)) in shown.into_iter().enumerate() {
-        let mut row = Row::new(label(&item.label, cx.tr)).sublabel(label(&item.description, cx.tr));
+        // A setting nothing follows yet says so instead of offering a switch that only
+        // stores a value.
+        let wired = crate::wired::takes_effect(id, &item.key);
+        let sub = if wired {
+            label(&item.description, cx.tr)
+        } else {
+            k("app.settings.panel.not_yet")
+        };
+        let mut row = Row::new(label(&item.label, cx.tr)).sublabel(sub);
         if n + 1 == count {
             row = row.last();
         }
         let row = cx.ui.add(card, row)?;
-        let id = control(cx, row, index, item)?;
-        if let (Some(id), false) = (id, item.writable) {
-            cx.ui.set_disabled(id, true)?;
-            cx.ui
-                .set_tooltip(id, Some(k("app.settings.panel.read_only")))?;
+        let shown_control = control(cx, row, index, item)?;
+        let note = match (wired, item.writable) {
+            (false, _) => "app.settings.panel.not_yet",
+            (true, false) => "app.settings.panel.read_only",
+            (true, true) => continue,
+        };
+        if let Some(node) = shown_control {
+            cx.ui.set_disabled(node, true)?;
+            cx.ui.set_tooltip(node, Some(k(note)))?;
         }
     }
     Ok(())

@@ -1,5 +1,5 @@
-//! The work directory of the run: the shipped definitions of logd, bus and settingsd with their
-//! paths moved below it, a socket for the Settings app's identity, a laptop-with-modem device
+//! The work directory of the run: the shipped definitions of logd, bus, settingsd and the
+//! volume service with their paths moved below it, a socket for the Settings app's identity, a laptop-with-modem device
 //! profile for settingsd, settingsd's catalogs and the init configuration.
 
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use ultar_bus::{Client, ClientOptions};
 
 /// The services of the run: name, shipped definition.
-pub const SERVICES: [(&str, &str); 3] = [
+pub const SERVICES: [(&str, &str); 4] = [
     (
         "logd",
         include_str!("../../../../rootfs/etc/ultar/services/logd.toml"),
@@ -19,6 +19,10 @@ pub const SERVICES: [(&str, &str); 3] = [
     (
         "settingsd",
         include_str!("../../../../rootfs/etc/ultar/services/settingsd.toml"),
+    ),
+    (
+        "volumed",
+        include_str!("../../../../rootfs/etc/ultar/services/volumed.toml"),
     ),
 ];
 const POLICY: &str = include_str!("../../../../rootfs/etc/ultar/bus-policy.toml");
@@ -122,11 +126,17 @@ impl Run {
 
     /// A bus client on the socket of `identity` (`system.admin`: the administrator's socket).
     pub fn client(&self, identity: &str) -> Result<Client, String> {
-        let socket = if identity == "system.admin" {
-            self.at("run/bus/system.sock")
+        if identity == "system.admin" {
+            self.client_at("system")
         } else {
-            self.at(&format!("run/bus/{identity}.sock"))
-        };
+            self.client_at(identity)
+        }
+    }
+
+    /// A bus client on the broker's socket `name` (`displayd`: the display service's).
+    pub fn client_at(&self, name: &str) -> Result<Client, String> {
+        let identity = name;
+        let socket = self.at(&format!("run/bus/{name}.sock"));
         let options = ClientOptions {
             connect_retry_for: Duration::from_secs(120),
             ..ClientOptions::named("settingstest")

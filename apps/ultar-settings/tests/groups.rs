@@ -5,6 +5,7 @@
 mod common;
 
 use common::*;
+use ultar_bus::messages::account_local::{PictureInfo, UserKind};
 use ultar_bus::messages::settings::{
     ChoiceInfo, ItemInfo, ItemKind, PanelInfo, RiskInfo, ScopeInfo, SettingValue,
 };
@@ -13,6 +14,8 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::{index_of, PageKind, AREAS, GROUPS};
 use ultar_settings::service::fake::Shared;
+use ultar_settings::service::system::{AppEntry, Drive, LocalUser};
+use ultar_settings::state::DialogPurpose;
 use ultar_settings::App;
 use ultar_ui::event::Key;
 use ultar_ui::tokens::ThemeKind;
@@ -41,40 +44,27 @@ fn flag(key: &str) -> ItemInfo {
     row(key, ItemKind::Toggle, SettingValue::Flag(false))
 }
 
-/// A panel for every settingsd page of the app, as settingsd lists it (labels from its catalog).
+/// settingsd as on a phone-capable laptop: the panels of the boards, the mobile network, a
+/// text row on Region, the two wired rows and one waiting row on Mouse, and Sharing in full.
 fn all_panels() -> Vec<PanelInfo> {
-    let mut panels = board_world(3, true)
-        .borrow()
-        .panels
-        .clone()
-        .unwrap_or_default();
-    let first: [(&str, &str); 22] = [
-        ("power", "power.charge_limit.enabled"),
-        ("windows", "windows.edge_snap"),
-        ("notifications", "notifications.do_not_disturb"),
-        ("region", "region.language"),
-        ("date_time", "datetime.automatic"),
-        ("privacy", "privacy.camera"),
-        ("mobile", "mobile.data"),
-        ("search", "search.history"),
-        ("apps", "apps.autostart"),
-        ("pointer", "pointer.acceleration"),
-        ("keyboard", "keyboard.per_window"),
-        ("printers", "printers.discover"),
-        ("colour", "colour.management"),
-        ("accessibility", "accessibility.zoom"),
-        ("users", "users.list_on_login"),
-        ("storage", "storage.trim"),
-        ("updates", "updates.auto_system"),
-        ("backup", "backup.enabled"),
-        ("mesh", "mesh.enabled"),
-        ("assistant", "assistant.enabled"),
-        ("cells", "cells.enabled"),
-        ("emergency", "emergency.sos_light"),
+    let board = board_world(3, true).borrow().panels.clone();
+    let mut panels = board.unwrap_or_default();
+    panels.retain(|p| !["sharing", "region", "pointer"].contains(&p.id.as_str()));
+    panels.push(panel("mobile", vec![flag("mobile.data")]));
+    let currency = ItemKind::Text {
+        format: "currency".into(),
+    };
+    let region = row(
+        "region.format.currency",
+        currency,
+        SettingValue::Text(String::new()),
+    );
+    panels.push(panel("region", vec![region]));
+    let pointer = vec![
+        flag("pointer.natural_scroll"),
+        flag("pointer.touchpad.gestures"),
     ];
-    for (id, key) in first {
-        panels.push(panel(id, vec![flag(key)]));
-    }
+    panels.push(panel("pointer", pointer));
     panels.push(panel("sharing", sharing_rows()));
     panels
 }
@@ -128,8 +118,46 @@ fn panel(id: &str, items: Vec<ItemInfo>) -> PanelInfo {
 
 fn world() -> Shared {
     let world = board_world(3, true);
-    world.borrow_mut().panels = Some(all_panels());
+    {
+        let mut w = world.borrow_mut();
+        w.panels = Some(all_panels());
+        w.system.users = Some(vec![user("anas", true), user("leila", false)]);
+        w.system.apps = Some(vec![AppEntry {
+            id: "org.ultar.files".into(),
+            version: "0.8.0".into(),
+            permissions: vec![("network".into(), true), ("background".into(), false)],
+        }]);
+        let gib = 1u64 << 30;
+        w.system.drives = Some(vec![
+            Drive {
+                name: String::new(),
+                total_bytes: 64 * gib,
+                free_bytes: 16 * gib,
+            },
+            Drive {
+                name: "KM-USB".into(),
+                total_bytes: 8 * gib,
+                free_bytes: 6 * gib,
+            },
+        ]);
+    }
     world
+}
+
+fn user(name: &str, current: bool) -> LocalUser {
+    LocalUser {
+        name: name.into(),
+        uid: 1000,
+        display_name: name.into(),
+        kind: if current {
+            UserKind::Administrator
+        } else {
+            UserKind::Standard
+        },
+        picture: PictureInfo::Initials,
+        auto_login: false,
+        current,
+    }
 }
 
 fn wide(world: &Shared, lang: Lang, area: &str) -> App {
@@ -142,14 +170,15 @@ fn wide(world: &Shared, lang: Lang, area: &str) -> App {
     )
 }
 
-/// Every name and value of the screen-reader tree, translated.
+/// Every name, value and description of the screen-reader tree, translated.
 fn texts(app: &mut App) -> Vec<String> {
     let tree = app.ui.a11y_tree();
     let tr = app.ui.translator().clone();
     tree.iter()
-        .flat_map(|n| [n.name.clone(), n.value.clone()])
+        .flat_map(|n| [n.name.clone(), n.value.clone(), n.description.clone()])
         .flatten()
-        .map(|l| l.resolve(&tr).into_owned())
+        // Names of users, apps and drives are shown isolated from the text direction.
+        .map(|l| l.resolve(&tr).replace(['\u{2068}', '\u{2069}'], ""))
         .collect()
 }
 
@@ -330,36 +359,188 @@ fn arrow_keys_skip_the_headings() {
 }
 
 #[test]
-fn sharing_rows_store_text_lists_and_switches() {
+fn a_text_row_stores_what_is_typed_on_enter() {
     let world = world();
-    let mut app = wide(&world, Lang::En, "sharing");
-    // Row 4: shared folders, a list typed as "a, b".
-    let folders = app.view.node(Act::PanelItem(4)).expect("folders field");
-    click(&mut app, folders);
-    type_text(&mut app, "/home/anas/Public, /srv/media");
+    let mut app = wide(&world, Lang::En, "region");
+    let currency = app.view.node(Act::PanelItem(0)).expect("currency field");
+    click(&mut app, currency);
+    type_text(&mut app, "SYP");
+    assert!(log(&world).is_empty(), "nothing stored before Enter");
     key(&mut app, Key::Enter);
-    assert!(
-        log(&world).iter().any(|l| l
-            == "settings.set sharing.files.folders=List([\"/home/anas/Public\", \"/srv/media\"])"),
-        "{:?}",
-        log(&world)
+    assert_eq!(
+        log(&world),
+        ["settings.set region.format.currency=Text(\"SYP\")"]
     );
-    // Row 5: screen sharing, a switch.
-    let screen = app.view.node(Act::PanelItem(5)).expect("screen switch");
-    click(&mut app, screen);
-    assert!(log(&world)
-        .last()
-        .is_some_and(|l| l == "settings.set sharing.screen=Flag(true)"));
-    let shown = texts(&mut app);
-    for label in [
-        "File sharing",
-        "Shared folders",
-        "Device name",
-        "Screen sharing",
-    ] {
-        assert!(
-            shown.iter().any(|t| t == label),
-            "{label} missing: {shown:?}"
-        );
+}
+
+#[test]
+fn settings_nothing_follows_are_disabled_with_a_note() {
+    let world = world();
+    for lang in [Lang::Ar, Lang::En, Lang::De] {
+        let mut app = wide(&world, lang, "sharing");
+        let note = app
+            .ui
+            .translator()
+            .t("app.settings.panel.not_yet")
+            .into_owned();
+        let shown = texts(&mut app);
+        let notes = shown.iter().filter(|t| **t == note).count();
+        assert!(notes >= 7, "{lang:?}: a note on every row, found {notes}");
+        for index in 0..7 {
+            let control = app.view.node(Act::PanelItem(index)).expect("control");
+            assert!(
+                app.ui.is_disabled(control),
+                "{lang:?}: row {index} is enabled"
+            );
+        }
+        // A click on the screen sharing switch stores nothing.
+        let screen = app.view.node(Act::PanelItem(5)).expect("screen switch");
+        click(&mut app, screen);
+        assert!(log(&world).is_empty(), "{:?}", log(&world));
     }
+    // Mouse: scrolling direction reaches the compositor, touchpad gestures nothing yet.
+    let mut app = wide(&world, Lang::En, "mouse");
+    let natural = app.view.node(Act::PanelItem(0)).expect("natural scrolling");
+    let gestures = app.view.node(Act::PanelItem(1)).expect("gestures");
+    assert!(!app.ui.is_disabled(natural));
+    assert!(app.ui.is_disabled(gestures));
+    click(&mut app, natural);
+    assert_eq!(
+        log(&world),
+        ["settings.set pointer.natural_scroll=Flag(true)"]
+    );
+}
+
+#[test]
+fn areas_without_their_hardware_are_hidden() {
+    let world = world();
+    {
+        let mut w = world.borrow_mut();
+        let panels = w.panels.as_mut().expect("panels");
+        panels.retain(|p| p.id != "mobile" && p.id != "pointer");
+    }
+    let app = wide(&world, Lang::En, "displays");
+    let ids: Vec<&str> = app.view.nav_areas.iter().map(|&i| AREAS[i].id).collect();
+    assert!(
+        !ids.contains(&"cellular") && !ids.contains(&"mouse"),
+        "{ids:?}"
+    );
+    assert!(ids.contains(&"keyboard") && ids.contains(&"sharing"));
+    assert_eq!(ids.len(), AREAS.len() - 2);
+    // While settingsd cannot be read nothing is hidden: the pages say why.
+    world.borrow_mut().panels = None;
+    let app = wide(&world, Lang::En, "displays");
+    assert_eq!(app.view.nav_areas.len(), AREAS.len());
+}
+
+#[test]
+fn users_are_added_and_removed_through_the_account_service() {
+    let world = world();
+    let mut app = wide(&world, Lang::En, "users");
+    let shown = texts(&mut app);
+    assert!(shown.iter().any(|t| t == "anas") && shown.iter().any(|t| t == "leila"));
+    // The signed-in user cannot be removed.
+    let own = app.view.node(Act::UserRemove(0)).expect("remove anas");
+    assert!(app.ui.is_disabled(own));
+    let add = app.view.node(Act::UserAdd).expect("add user");
+    click(&mut app, add);
+    assert_eq!(
+        app.state.dialog.as_ref().map(|d| d.purpose),
+        Some(DialogPurpose::UserAdd)
+    );
+    for (field, text) in [(0, "sami"), (1, "sesame-1"), (2, "sesame-2")] {
+        let node = app.view.node(Act::DialogField(field)).expect("field");
+        click(&mut app, node);
+        type_text(&mut app, text);
+    }
+    let ok = app.view.node(Act::DialogOk).expect("ok");
+    click(&mut app, ok);
+    assert!(log(&world).is_empty(), "different passwords: nothing sent");
+    assert!(app.state.dialog.as_ref().is_some_and(|d| d.error.is_some()));
+    for (field, text) in [(0, "sami"), (1, "sesame-1"), (2, "sesame-1")] {
+        let node = app.view.node(Act::DialogField(field)).expect("field");
+        click(&mut app, node);
+        type_text(&mut app, text);
+    }
+    let ok = app.view.node(Act::DialogOk).expect("ok");
+    click(&mut app, ok);
+    assert_eq!(log(&world), ["account.user_create sami"]);
+    assert!(app.state.dialog.is_none());
+    assert_eq!(app.state.more.users.len(), 3);
+    let leila = app.view.node(Act::UserRemove(1)).expect("remove leila");
+    click(&mut app, leila);
+    let ok = app.view.node(Act::DialogOk).expect("ok");
+    click(&mut app, ok);
+    assert_eq!(
+        log(&world).last().expect("call"),
+        "account.user_remove leila"
+    );
+    assert_eq!(app.state.more.users.len(), 2);
+}
+
+#[test]
+fn apps_storage_and_updates_show_their_services() {
+    let world = world();
+    let mut app = wide(&world, Lang::En, "apps");
+    let granted = app.view.node(Act::AppRevoke(0, 0)).expect("network switch");
+    let asked = app
+        .view
+        .node(Act::AppRevoke(0, 1))
+        .expect("background switch");
+    assert!(app.ui.is_disabled(asked), "granting is the system dialog's");
+    click(&mut app, granted);
+    assert_eq!(log(&world), ["launcher.revoke org.ultar.files network"]);
+    assert!(!app.state.more.apps[0].permissions[0].1);
+
+    let mut app = wide(&world, Lang::En, "storage");
+    let shown = texts(&mut app);
+    assert!(shown.iter().any(|t| t == "KM-USB"), "{shown:?}");
+    assert!(shown.iter().any(|t| t == "This device"), "{shown:?}");
+    assert!(
+        shown.iter().any(|t| t == "16.0 GB free of 64.0 GB"),
+        "{shown:?}"
+    );
+    assert!(shown.iter().any(|t| t == "6.0 GB free of 8.0 GB"));
+
+    let mut app = wide(&world, Lang::En, "updates");
+    let check = app.view.node(Act::FirmwareCheck).expect("check now");
+    click(&mut app, check);
+    assert_eq!(log(&world).last().expect("call"), "update.check");
+    let usb = app
+        .view
+        .node(Act::FirmwareUsb)
+        .expect("update from a drive");
+    click(&mut app, usb);
+    assert_eq!(
+        app.state.dialog.as_ref().map(|d| d.purpose),
+        Some(DialogPurpose::FirmwareUsb)
+    );
+}
+
+#[test]
+fn the_window_follows_the_accessibility_switches_it_shows() {
+    let world = world();
+    let mut app = wide(&world, Lang::En, "accessibility");
+    assert!(!app.ui.env().high_contrast);
+    let contrast = app.view.node(Act::PanelItem(0)).expect("high contrast");
+    assert!(!app.ui.is_disabled(contrast), "the shell follows it");
+    click(&mut app, contrast);
+    assert_eq!(
+        log(&world),
+        ["settings.set accessibility.high_contrast=Flag(true)"]
+    );
+    assert!(app.ui.env().high_contrast, "the palette changed at once");
+    // A window opened later starts with it.
+    let mut later = wide(&world, Lang::Ar, "displays");
+    assert!(later.ui.env().high_contrast);
+    // Switched off elsewhere (quick settings): the open window follows.
+    {
+        let mut w = world.borrow_mut();
+        let panels = w.panels.as_mut().expect("panels");
+        let access = panels.iter_mut().find(|p| p.id == "accessibility");
+        access.expect("panel").items[0].value = SettingValue::Flag(false);
+        w.changed = true;
+    }
+    later.poll().expect("poll");
+    assert!(!later.ui.env().high_contrast);
 }
