@@ -10,16 +10,28 @@ pub struct Mode {
     pub stride: u32,
 }
 
+/// Largest scanout the Turing display engine drives (16K); also bounds the framebuffer size.
+pub const MAX_DIMENSION: u32 = 16_384;
+
 impl Mode {
     pub fn validate(self) -> Result<()> {
+        let min_stride = self.width.checked_mul(4).ok_or(Error::InvalidArgument)?;
         if self.width == 0
             || self.height == 0
+            || self.width > MAX_DIMENSION
+            || self.height > MAX_DIMENSION
             || self.refresh_millihz == 0
-            || self.stride < self.width.saturating_mul(4)
+            || self.stride < min_stride
+            || self.stride > min_stride.saturating_add(4096).max(MAX_DIMENSION * 4)
         {
             return Err(Error::InvalidArgument);
         }
         Ok(())
+    }
+
+    /// Bytes the framebuffer must hold for this mode (32 bpp).
+    pub fn framebuffer_bytes(self) -> u64 {
+        u64::from(self.stride) * u64::from(self.height)
     }
 }
 
@@ -89,6 +101,48 @@ mod tests {
             refresh_millihz: 60_000,
             stride: 1920 * 4,
         }
+    }
+
+    #[test]
+    fn rejects_overflowing_or_oversized_modes() {
+        let huge = Mode {
+            width: u32::MAX,
+            height: 1,
+            refresh_millihz: 1,
+            stride: u32::MAX,
+        };
+        assert!(huge.validate().is_err());
+        assert!(Mode {
+            width: 16_385,
+            ..mode()
+        }
+        .validate()
+        .is_err());
+        assert!(Mode {
+            height: 0,
+            ..mode()
+        }
+        .validate()
+        .is_err());
+        assert!(Mode {
+            stride: 1920 * 4 - 1,
+            ..mode()
+        }
+        .validate()
+        .is_err());
+        assert!(Mode {
+            stride: u32::MAX,
+            ..mode()
+        }
+        .validate()
+        .is_err());
+        assert!(Mode {
+            stride: 2048 * 4,
+            ..mode()
+        }
+        .validate()
+        .is_ok());
+        assert_eq!(mode().framebuffer_bytes(), 1920 * 4 * 1080);
     }
 
     #[test]
