@@ -21,7 +21,7 @@ ultar-svckit = { path = "../../core/ultar-svckit" }
 serde = { version = "1", features = ["derive"] }
 ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
 ultar-hal = { path = "../../hal/ultar-hal" }
-rustix = { version = "1", default-features = false, features = ["std", "mount"] }
+rustix = { version = "1", default-features = false, features = ["std", "mount", "fs"] }
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

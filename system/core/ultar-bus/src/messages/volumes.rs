@@ -52,10 +52,49 @@ pub struct EjectReply {
     pub outcome: EjectOutcome,
 }
 
+/// Id of the device's own storage in [`UsageReply`].
+pub const INTERNAL: &str = "internal";
+
+/// Most places answered by [`Usage`].
+pub const MAX_USAGE: usize = 32;
+
+/// `volumes.usage` – how full the device's own storage and the mounted drives are.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Usage {}
+
+/// How full one place is.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct Space {
+    /// [`INTERNAL`] or the id of a mounted drive.
+    pub id: String,
+    /// Label of the drive (data); empty for the device's own storage.
+    pub name: String,
+    /// Size of the file system in bytes.
+    pub total_bytes: u64,
+    /// Bytes a person can still fill.
+    pub free_bytes: u64,
+}
+
+/// Answer to [`Usage`]: the device's own storage first, then the drives mounted for the
+/// person in front; a place that cannot be measured is left out. At most [`MAX_USAGE`].
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct UsageReply {
+    /// The places.
+    pub places: Vec<Space>,
+}
+
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(Mounted, VolumesState, Eject, EjectReply);
+version_one!(
+    Mounted,
+    VolumesState,
+    Eject,
+    EjectReply,
+    Usage,
+    Space,
+    UsageReply
+);
 
 impl Topic for VolumesState {
     const TOPIC: &'static str = "volumes.state";
@@ -66,6 +105,12 @@ impl Call for Eject {
     const SERVICE: &'static str = SERVICE;
     const METHOD: &'static str = "eject";
     type Reply = EjectReply;
+}
+
+impl Call for Usage {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = "usage";
+    type Reply = UsageReply;
 }
 
 #[cfg(test)]
@@ -87,5 +132,14 @@ mod tests {
             outcome: EjectOutcome::Busy,
         };
         assert_eq!(decode::<EjectReply>(&encode(&r).unwrap()).unwrap(), r);
+        let u = UsageReply {
+            places: vec![Space {
+                id: INTERNAL.into(),
+                name: String::new(),
+                total_bytes: 64 << 30,
+                free_bytes: 20 << 30,
+            }],
+        };
+        assert_eq!(decode::<UsageReply>(&encode(&u).unwrap()).unwrap(), u);
     }
 }

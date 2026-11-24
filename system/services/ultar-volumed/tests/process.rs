@@ -5,7 +5,7 @@
 use std::time::Duration;
 use ultar_bus::messages::account_local::LocalUsers;
 use ultar_bus::messages::session::SessionState;
-use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
+use ultar_bus::messages::volumes::{Eject, EjectOutcome, Usage, VolumesState, INTERNAL};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, World, WAIT};
 
@@ -22,7 +22,7 @@ publish = ["session.state"]
 
 [[rule]]
 identity = "system.shell"
-call = ["volumes.eject"]
+call = ["volumes.eject", "volumes.usage"]
 subscribe = ["volumes.state"]
 
 [[rule]]
@@ -37,6 +37,28 @@ fn call<C: Call>(client: &Client, c: &C) -> Result<C::Reply, BusError> {
         !matches!(last, Err(BusError::Remote(ErrorCode::UnknownService)))
     });
     last
+}
+
+/// How full the device is: its own storage (nothing is mounted), as the kernel says.
+fn usage_is_measured(shell: &Client, root: &std::path::Path) {
+    let usage = call(shell, &Usage {}).unwrap();
+    assert_eq!(usage.places.len(), 1, "{usage:?}");
+    let own = &usage.places[0];
+    assert_eq!(own.id, INTERNAL);
+    let measured = ultar_volumed::space_of(root).expect("statvfs");
+    assert_eq!(own.total_bytes, measured.0);
+    assert!(own.free_bytes <= own.total_bytes && own.total_bytes > 0);
+}
+
+fn an_app_without_the_right_gets_nothing(app: &Client) {
+    assert!(matches!(
+        app.call(&Eject { id: "sdz1".into() }, WAIT),
+        Err(BusError::Remote(ErrorCode::PermissionDenied))
+    ));
+    assert!(matches!(
+        app.call(&Usage {}, WAIT),
+        Err(BusError::Remote(ErrorCode::PermissionDenied))
+    ));
 }
 
 #[test]
@@ -93,10 +115,7 @@ fn nothing_is_shown_that_is_not_mounted() {
         .unwrap()
         .flatten()
         .all(|d| std::fs::read_dir(d.path()).unwrap().next().is_none()));
-    let app = world.client("app.any");
-    assert!(matches!(
-        app.call(&Eject { id: "sdz1".into() }, WAIT),
-        Err(BusError::Remote(ErrorCode::PermissionDenied))
-    ));
+    usage_is_measured(&shell, &root);
+    an_app_without_the_right_gets_nothing(&world.client("app.any"));
     assert_eq!(daemon.terminate(), Some(0));
 }

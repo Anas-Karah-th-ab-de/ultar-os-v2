@@ -14,4 +14,4 @@
 
 pub mod service;
 
-pub use service::VolumeService;
+pub use service::{space_of, VolumeService};
