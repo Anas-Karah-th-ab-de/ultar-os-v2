@@ -57,7 +57,7 @@ fn window_in_both_languages_and_themes() {
             "{lang:?} {theme:?} strip"
         );
         assert_eq!(
-            canvas.pixel(400, 300),
+            canvas.pixel(60, 500),
             Some(palette.get(ColorRole::Surface)),
             "{lang:?} {theme:?} start page"
         );
