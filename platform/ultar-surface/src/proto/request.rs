@@ -39,7 +39,8 @@ pub enum Request {
         /// Title (at most [`MAX_TITLE`] bytes).
         title: String,
     },
-    /// Smallest and largest content size in logical points (0 = no limit).
+    /// Smallest and largest content size in logical points (0 = no limit). Stated before
+    /// the first frame, the smallest size is also the least the window opens with.
     SetSizeLimits {
         /// The surface.
         surface: SurfaceId,

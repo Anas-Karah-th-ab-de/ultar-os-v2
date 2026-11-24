@@ -135,7 +135,10 @@ lock surfaces and the input panel are drawn and get input.
 Configure/commit: the compositor sends `Configure{serial, size, scale, state, activated, rtl}`; the
 client draws that size and commits with the serial. Geometry changes (maximise, snap, resize) take
 effect **when the client commits the acknowledged serial** (atomic, like Wayland); the visual style
-(shadow, corners) changes at once. Size limits are clamped to the work area.
+(shadow, corners) changes at once. Size limits are clamped to the work area. Limits stated before a
+window's first frame also decide the size it opens with: the usual share of the work area, its
+content no smaller than the stated least size (a window that draws its own header counts the
+header as content); limits stated later leave a shown window as it is.
 
 Window states: `Normal`, `Maximized` (work area), `Fullscreen` (output, no decorations),
 `Minimized` (hidden; Alt+Tab or dock restores). Snap layouts (Windows 11 / DESKTOP-SPEC §5.2):
