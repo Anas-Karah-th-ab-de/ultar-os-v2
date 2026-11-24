@@ -2,6 +2,7 @@
 
 pub mod bruecke;
 pub mod intel_display;
+pub mod nvidia;
 pub mod nvme;
 pub mod ps2kbd;
 pub mod ps2maus;
