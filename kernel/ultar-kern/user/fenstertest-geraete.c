@@ -329,6 +329,14 @@ void input_checks(void) {
     check("K8 EVIOCGNAME liefert die Länge", r == (int)strlen("Ultar Tastatur") + 1 && strcmp(name, "Ultar Tastatur") == 0);
     close(m);
     close(k);
-    denied("K8 ohne USB-Tastatur gibt es kein event2", open("/dev/input/event2", O_RDONLY), ENOENT);
+    /* event2 exists exactly when a USB input device is plugged in at the start (as in a VMware machine with
+     * its USB tablet, see tools/kern-test/vmware-like.sh): the node and the entry in /sys agree either way */
+    if (access("/sys/class/input/event2", F_OK) == 0) {
+        int u = open("/dev/input/event2", O_RDONLY);
+        check("K8 USB-Eingabe beim Start: event2 lässt sich öffnen", u >= 0);
+        if (u >= 0) close(u);
+    } else {
+        denied("K8 ohne USB-Tastatur gibt es kein event2", open("/dev/input/event2", O_RDONLY), ENOENT);
+    }
     sysfs_checks();
 }

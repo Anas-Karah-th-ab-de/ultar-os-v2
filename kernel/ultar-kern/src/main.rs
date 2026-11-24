@@ -172,7 +172,10 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         startseite::startbild(100, "p_fertig");
         // Desktop-Oberfläche ohne Linux (ultar-shell als Programm auf dem Ultar-Kern); ohne sie die Startseite
         // endet sie (oder fehlt sie), folgt die Startseite des Kerns
-        let _ = shell::desktop_starten();
+        // with `/etc/ultar/session` = init the service manager owns the session (services, compositor)
+        if !shell::init_starten() {
+            let _ = shell::desktop_starten();
+        }
         startseite::run();
     }
     console::grafik(false);
