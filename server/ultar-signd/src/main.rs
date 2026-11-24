@@ -1,5 +1,5 @@
 //! `ultar-signd` command line: the service (`serve`) and the client commands of the publish
-//! scripts. See the crate documentation and `deploy/SIGNING.md`.
+//! scripts. See the crate documentation and `server/ultar-signd/SIGNING.md`.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
