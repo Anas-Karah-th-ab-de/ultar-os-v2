@@ -42,6 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: File names that Windows cannot check out
+        run: |
+          bad=$(git ls-files | grep -iE '(^|/)(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.[^/]*)?$|[<>:"\\|?*]|[. ]$' || true)
+          if [ -n "$bad" ]; then echo "reserved or invalid Windows file names:"; echo "$bad"; exit 1; fi
+
       - name: Rust toolchain
         run: |
           rustup toolchain install 1.97.0 --profile minimal --component rustfmt
