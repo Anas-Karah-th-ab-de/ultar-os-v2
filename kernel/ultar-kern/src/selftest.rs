@@ -92,6 +92,8 @@ pub fn run() {
             None => kprintln!("[test] Programm {p}: nicht auf dem Stick"),
         }
     }
+    // Intel display: takeover, flips with CRC proof, vblank rate, hot-plug, EDID (INTELTEST: …)
+    crate::drivers::intel_display::selftest::run();
     crate::werkstatt::report();
     kprintln!("[test] Dauer des Selbsttests: {} ms, Kern läuft seit {} ms", crate::arch::uptime_ms() - t0, crate::arch::uptime_ms());
     // Protokoll schreiben

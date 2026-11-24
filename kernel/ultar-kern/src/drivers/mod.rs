@@ -1,6 +1,7 @@
 //! Alle Treiber des Ultar-Kerns. Die Treiber-Werkstatt trägt erzeugte Treiber zwischen den Markierungen ein.
 
 pub mod bruecke;
+pub mod intel_display;
 pub mod nvme;
 pub mod ps2kbd;
 pub mod ps2maus;
@@ -26,6 +27,7 @@ pub static ALL: &[&dyn Driver] = &[
     &nvme::DRV,
     &virtio_rng::DRV,
     &bruecke::DRV,
+    &intel_display::DRV,
     // WERKSTATT-TREIBER-BEGINN
     &gen_ahci::DRV,
     &gen_bochs_vga::DRV,
