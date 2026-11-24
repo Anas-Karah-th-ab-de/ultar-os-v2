@@ -9,11 +9,12 @@
 //! firmware is ready, asks it for the hardware config table over the register message channel,
 //! then loads a second time with the full ADS (engines, register lists, golden context slots) and
 //! all features, switches the command buffers (CTB) on and sends a first request through them.
-//! Stage G3 (`gt_job`): a context for the copy engine is registered and enabled, and its one
-//! command must store a value in memory. The GuC is put back into reset afterwards.
+//! Stage G3 (`gt_job`): contexts for the copy, render and compute engine are registered and
+//! enabled, and their commands (in the ring, then in a batch in the context's own address space)
+//! must store a value in memory. The GuC is put back into reset afterwards.
 
 use super::device::Device;
-use super::gt_mem::{GgttBuf, Words};
+use super::gt_mem::{GgttBuf, TableMem, Words};
 use super::mmio::Mmio;
 use super::DEVICE;
 use crate::kprintln;
@@ -84,8 +85,8 @@ struct Loaded {
     hwconfig: Option<Result<(u32, usize), String>>,
     /// What the request over the command buffers brought, if the GuC got ready.
     ctb: Option<Result<String, String>>,
-    /// What the first job on an engine brought, if the command buffers work.
-    job: Option<Result<String, String>>,
+    /// What the jobs on the engines brought, if the command buffers work.
+    jobs: Vec<(&'static str, Result<String, String>)>,
 }
 
 /// GuC action: opt into features by a list of keys in memory.
@@ -94,16 +95,30 @@ const ACTION_OPT_IN_FEATURE_KLV: u32 = 0x550e;
 const KLV_OPT_IN_EXT_CAT_ERR_TYPE: u32 = 0x4001 << 16;
 
 /// Switches the command buffers on and sends the first request Linux sends over them; then runs
-/// the first job on an engine. Returns what each of the two brought.
-fn ctb_and_job(
+/// jobs on the engines. Returns what the request and each job brought.
+fn ctb_and_jobs(
     dev: &mut Device,
-    bufs: &mut Vec<GgttBuf>,
-) -> (Result<String, String>, Option<Result<String, String>>) {
+    mem: &mut Memory,
+) -> (
+    Result<String, String>,
+    Vec<(&'static str, Result<String, String>)>,
+) {
     let mut channel = None;
-    let ctb = ctb_request(dev, bufs, &mut channel);
-    let job =
-        channel.map(|(mut ct, mut mem)| super::gt_job::first_job(dev, bufs, &mut ct, &mut mem));
-    (ctb, job)
+    let ctb = ctb_request(dev, &mut mem.bufs, &mut channel);
+    let jobs = match channel {
+        Some((mut ct, mut words)) => {
+            super::gt_job::jobs(dev, &mut mem.bufs, &mut ct, &mut words, &mut mem.tables)
+        }
+        None => Vec::new(),
+    };
+    (ctb, jobs)
+}
+
+/// What a load keeps until the GuC is back in reset: buffers and page tables.
+#[derive(Default)]
+struct Memory {
+    bufs: Vec<GgttBuf>,
+    tables: TableMem,
 }
 
 fn ctb_request(
@@ -191,8 +206,9 @@ fn load(
     img: &fw::GucImage,
     wopcm_size: u32,
     stage: Stage,
-    bufs: &mut Vec<GgttBuf>,
+    mem: &mut Memory,
 ) -> Result<Loaded, String> {
+    let bufs = &mut mem.bufs;
     let image_gtt = buffer(dev, bufs, file.len() as u64)?;
     if let Some(b) = bufs.last_mut() {
         b.fill(file);
@@ -233,18 +249,18 @@ fn load(
     let ready = status.load() == guc::Load::Ready;
     // first load: the register channel; second load: the command buffers
     let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
-    let (ctb, job) = match ready && stage == Stage::Full {
+    let (ctb, jobs) = match ready && stage == Stage::Full {
         true => {
-            let (ctb, job) = ctb_and_job(dev, bufs);
-            (Some(ctb), job)
+            let (ctb, jobs) = ctb_and_jobs(dev, mem);
+            (Some(ctb), jobs)
         }
-        false => (None, None),
+        false => (None, Vec::new()),
     };
     Ok(Loaded {
         status,
         hwconfig,
         ctb,
-        job,
+        jobs,
     })
 }
 
@@ -257,15 +273,16 @@ fn upload(
 ) -> Result<Loaded, String> {
     let layout = wopcm::init(&mut dev.mmio, wopcm::MTL_WOPCM_SIZE, img.upload_size(), 0)
         .map_err(|e| format!("{e}"))?;
-    let mut bufs: Vec<GgttBuf> = Vec::new();
-    let result = load(dev, file, img, layout.size, stage, &mut bufs);
+    let mut mem = Memory::default();
+    let result = load(dev, file, img, layout.size, stage, &mut mem);
     // the GuC must not keep running on buffers that are about to be freed
     if let Err(e) = guc::reset(&mut dev.mmio) {
         kprintln!("GTTEST: GuC reset after the upload: {e}");
     }
-    for b in bufs {
+    for b in mem.bufs {
         b.release(dev);
     }
+    mem.tables.release();
     result
 }
 
@@ -359,10 +376,11 @@ fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
         Some(Err(e)) => r.check(false, "command buffers (CTB)", e),
         None => {}
     }
-    match &l.job {
-        Some(Ok(t)) => r.check(true, "first job on the copy engine", t),
-        Some(Err(e)) => r.check(false, "first job on the copy engine", e),
-        None => {}
+    for (what, result) in &l.jobs {
+        match result {
+            Ok(t) => r.check(true, what, t),
+            Err(e) => r.check(false, what, e),
+        }
     }
 }
 

@@ -88,6 +88,11 @@ pub fn setup(hw: &mut impl Hw, base: u32, status_page_ggtt: u32) {
     hw.write(base + RING_HWS_PGA, status_page_ggtt);
 }
 
+/// Switches the compute engines on (off after reset). Needs the render forcewake domain awake.
+pub fn enable_compute(hw: &mut impl Hw) {
+    hw.write(RCU_MODE, masked_enable(RCU_MODE_CCS_ENABLE));
+}
+
 /// What an engine is doing, for reports when a job does not finish.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct RingState {
@@ -185,6 +190,13 @@ mod tests {
                 (0x22080, 0x0123_4000)
             ]
         );
+    }
+
+    #[test]
+    fn compute_is_switched_on_with_a_masked_write() {
+        let mut s = Sim::new();
+        enable_compute(&mut s);
+        assert_eq!(s.writes, [(0x14800, 0x0001_0001)]);
     }
 
     #[test]

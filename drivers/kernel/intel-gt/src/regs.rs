@@ -197,3 +197,8 @@ pub const RING_CURRENT_LRCA: u32 = 0x240;
 pub const GFX_MODE: u32 = 0x29c;
 /// The engine runs contexts, not the old ring mode.
 pub const GFX_DISABLE_LEGACY_MODE: u32 = 1 << 3;
+
+/// Mode of the compute engines (masked).
+pub const RCU_MODE: u32 = 0x1_4800;
+/// The compute engines are switched on.
+pub const RCU_MODE_CCS_ENABLE: u32 = 1 << 0;
