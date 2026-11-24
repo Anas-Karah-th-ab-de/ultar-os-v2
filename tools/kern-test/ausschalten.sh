@@ -21,7 +21,7 @@ fall() { # name what image env...
      && ! grep -aqE "AUSNAHME|KERNEL EXCEPTION|خطأ في النواة|kehrte zurück|PANIK|kernel panic" "$log"; then
     echo "ok    $was: $name"
   else
-    echo "FAIL  $was: $name"; grep -aE "AUSSCHALT|kern\]|QEMU-ENDE|AUSNAHME|EXCEPTION|خطأ" "$log" | tail -12; fail=1
+    echo "FAIL  $was: $name"; tail -25 "$log"; fail=1
   fi
 }
 for was in aus neustart; do
