@@ -230,7 +230,35 @@ def phone_responds(vm, opened_after, before):
         if took is None:
             problems.append(f"phone: no answer to Tab {n} within 2 s (window frozen)")
             break
+    problems += phone_pad_scrolls(vm, frame)
     return problems
+
+
+def wheel(vm, x, y, down=True, n=5):
+    vm.move(x, y)
+    for _ in range(n):
+        for pressed in (True, False):
+            vm.events([{"type": "btn", "data": {"down": pressed, "button": "wheel-down" if down else "wheel-up"}}])
+            vm.pump(0.05)
+
+
+def phone_pad_scrolls(vm, frame):
+    """The window a PC gives the phone is lower than the dial pad: the pad scrolls (wheel over it)
+    instead of being cut off. Only where the window is that low (screens up to 800 high); on larger
+    screens the wheel may change nothing."""
+    x0, y0, x1, y1 = frame
+    w, h = vm.size
+    # the pad is the start column: on the right in Arabic
+    px = x1 - 180 if x1 - x0 > 700 else (x0 + x1) // 2
+    before = vm.shot("phone-pad-top")
+    wheel(vm, px, (y0 + y1) // 2)
+    took, after = changes_within(vm, "phone-pad-scrolled", before, frame, 2.0, 200)
+    log(f"phone: the dial pad scrolled after {took} s ({changed_px(after, before, frame)} pixels)")
+    wheel(vm, px, (y0 + y1) // 2, down=False)
+    vm.move(w - 2, 2)
+    if took is None and h <= 800:
+        return ["phone: the dial pad does not scroll in a window lower than it (cut off)"]
+    return []
 
 
 def layout_switch(vm, m, pos):
@@ -339,6 +367,47 @@ def accessibility(vm, m):
     if not ok:
         problems.append("high contrast did not survive a restart")
     return problems
+
+
+def layout_after_restart(vm, m):
+    """The input language survives a restart: on the sign-in Ctrl+Shift switches (the chip at the
+    bottom changes), the lock screen stores it in the settings service, and after a reset of the
+    machine the sign-in shows that language again (not the first one)."""
+    w, h = vm.size
+    sign_in(vm)
+    vm.pump(2)
+    bottom = (0, h - 120, w, h)
+    first = vm.shot("lang-first")
+    vm.key("ctrl+shift")
+    took, second = changes_within(vm, "lang-second", first, bottom, 3.0)
+    box = changed_box(second, first, bottom)
+    log(f"restart layout: chip changed after {took} s at {box}")
+    if took is None or box is None:
+        return ["restart layout: Ctrl+Shift changed nothing on the sign-in"]
+    x0, y0, x1, y1 = box
+    chip = (x0 - 4, y0 - 4, x1 + 5, y1 + 5)
+    vm.pump(3)  # stored by the lock screen
+    mark = len(vm.buf)
+    vm.command("system_reset")
+    end = time.time() + 300
+    while time.time() < end and b"] settled" not in vm.buf[mark:]:
+        vm.pump(1)
+    ok, _ = m.wait_for(vm, "lang-restart", lambda x: pure_black(x) > 0.6 and x.facts()["mark"] >= 20, 120)
+    if not ok:
+        return ["restart layout: no lock screen after the restart"]
+    sign_in(vm)
+    end = time.time() + 20
+    after = vm.shot("lang-after")
+    while time.time() < end and changed_px(after, second, chip) > changed_px(after, first, chip):
+        vm.pump(1)
+        after = vm.shot("lang-after")
+    like_second, like_first = changed_px(after, second, chip), changed_px(after, first, chip)
+    log(f"restart layout: chip after the restart differs {like_second} from the saved one, {like_first} from the first")
+    if not like_second < like_first:
+        return ["restart layout: after the restart the sign-in shows the first layout, not the saved one"]
+    vm.key("alt+shift")  # back to the first (stored too)
+    vm.pump(2)
+    return []
 
 
 def log(msg):
@@ -523,8 +592,10 @@ def run(vm, m):
         failures += layout_switch(vm, m, pos)
     if not failures:
         failures += accessibility(vm, m)
+    if not failures:
+        failures += layout_after_restart(vm, m)
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, phone answers, layout switch)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, phone answers and scrolls, layout switch, layout after restart)")
     return 0

@@ -331,8 +331,19 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
             .focused()
             .and_then(|f| self.built.clicks.iter().find(|(id, _)| *id == f))
             .map(|(_, c)| *c);
+        // The dial pad keeps its scroll position across rebuilds (every key press rebuilds).
+        let pad = self
+            .built
+            .pad
+            .and_then(|p| self.ui.scroll_offset(p).ok())
+            .filter(|o| *o > 0.0);
         self.built = view::build(&mut self.ui, &self.model)?;
         self.ui.layout();
+        if let (Some(offset), Some(id)) = (pad, self.built.pad) {
+            if self.ui.set_scroll_offset(id, offset).is_ok() {
+                self.ui.layout();
+            }
+        }
         if let Some(c) = focused {
             if let Some((id, _)) = self.built.clicks.iter().find(|(_, x)| *x == c) {
                 // A control that became disabled cannot keep the focus; that is fine.

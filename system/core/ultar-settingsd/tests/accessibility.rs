@@ -42,8 +42,36 @@ fn the_lock_screen_changes_accessibility_and_nothing_else() {
     ] {
         assert!(keys.contains(&key), "{key} listed");
     }
-    assert!(keys.iter().all(|k| k.starts_with(ACCESSIBILITY_PREFIX)));
-    assert!(values.iter().all(|(_, v)| *v == SettingValue::Flag(false)));
+    // Besides the switches only the input languages (the sign-in's language chip).
+    let (access, keyboard): (Vec<_>, Vec<_>) = values
+        .iter()
+        .partition(|(k, _)| k.starts_with(ACCESSIBILITY_PREFIX));
+    assert!(access.iter().all(|(_, v)| *v == SettingValue::Flag(false)));
+    assert_eq!(
+        keyboard,
+        vec![
+            &(
+                "region.keyboard.layouts".to_owned(),
+                SettingValue::Text("ar_en".into())
+            ),
+            &(
+                "region.keyboard.active".to_owned(),
+                SettingValue::Text("ar".into())
+            ),
+        ]
+    );
+    // It may store the active input language (a choice of the schema), not the list.
+    let active = "region.keyboard.active";
+    assert!(set_access(&lock, active, SettingValue::Text("en".into())).unwrap());
+    let seen = viewer
+        .call(&Get { key: active.into() }, WAIT)
+        .unwrap()
+        .value;
+    assert_eq!(seen, Some(SettingValue::Text("en".into())));
+    assert!(matches!(
+        set_access(&lock, active, SettingValue::Text("fr".into())),
+        Err(BusError::Remote(ErrorCode::Service(_)))
+    ));
 
     // A switch takes effect at once for everybody.
     let key = "accessibility.high_contrast";
@@ -72,6 +100,8 @@ fn other_keys_are_refused(lock: &Client, viewer: &Client) {
         "accessibility..large_text",
         "xaccessibility.large_text",
         "network.proxy",
+        "region.keyboard.layouts",
+        "region.language",
     ] {
         refused(
             set_access(lock, other, SettingValue::Text("light".into())),

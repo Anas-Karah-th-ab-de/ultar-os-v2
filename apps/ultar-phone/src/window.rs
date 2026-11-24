@@ -20,6 +20,9 @@ use ultar_ui::Point;
 /// Time the launcher may take to start Settings (it answers after the app is ready).
 const LAUNCH_WAIT: Duration = Duration::from_secs(10);
 
+/// Smallest window (logical points): the compact layout's width, header plus a few rows.
+const MIN_SIZE: (u32, u32) = (360, 320);
+
 /// MIME type of a copied number.
 const TEXT: &str = "text/plain;charset=utf-8";
 
@@ -120,7 +123,13 @@ impl<P: CallPort> PhoneWindow<P> {
         host: QueuedHost,
         title: &str,
     ) -> Result<PhoneWindow<P>, ClientError> {
-        let window = Window::create(&mut client, &WindowConfig::toplevel(title))?;
+        // Smaller than this the header and one row of keys no longer fit; the dial pad scrolls
+        // on everything larger (view/dial.rs).
+        let config = WindowConfig {
+            min_size: MIN_SIZE,
+            ..WindowConfig::toplevel(title)
+        };
+        let window = Window::create(&mut client, &config)?;
         client.send(&Request::ClientHeader {
             surface: window.surface(),
             on: true,

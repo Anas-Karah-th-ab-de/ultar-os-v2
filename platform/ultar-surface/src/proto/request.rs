@@ -250,7 +250,7 @@ pub enum Request {
         index: u8,
     },
     /// Sets the keyboard layouts the user switches between, in order (needs
-    /// [`Rights::SHELL`]; 1 ..= `MAX_LAYOUTS` names of at most `MAX_LAYOUT_NAME` bytes;
+    /// [`Rights::SHELL`] or [`Rights::LOCK_SCREEN`]; 1 ..= `MAX_LAYOUTS` names of at most `MAX_LAYOUT_NAME` bytes;
     /// unknown names are left out by the compositor). The active one stays active when it
     /// is in the new list, else the first becomes active. Answered by `KeyboardLayouts`.
     SetKeyboardLayouts {

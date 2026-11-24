@@ -2,6 +2,7 @@
 //! desktop shell, the lock screen and the system dialogs.
 
 pub mod desktop;
+pub mod keyboard;
 pub mod lock;
 pub mod sysdialog;
 

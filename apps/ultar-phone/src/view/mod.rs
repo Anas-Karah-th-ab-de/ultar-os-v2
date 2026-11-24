@@ -48,6 +48,8 @@ pub struct Built {
     pub clicks: Vec<(NodeId, Click)>,
     /// The number field.
     pub number: Option<NodeId>,
+    /// The dial pad's scroll container.
+    pub pad: Option<NodeId>,
     /// The filter tabs.
     pub filter: Option<NodeId>,
     /// The way radio group.

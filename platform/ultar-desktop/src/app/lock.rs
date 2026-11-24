@@ -52,6 +52,8 @@ pub struct LockApp {
         Option<TypedSubscription<PowerActions>>,
         Option<TypedSubscription<MediaState>>,
     ),
+    /// Which layout announcements are the user's switches (stored in the settings).
+    layouts: super::keyboard::LayoutSync,
 }
 
 impl std::fmt::Debug for LockApp {
@@ -90,7 +92,7 @@ impl LockApp {
         } else {
             ThemeKind::Dark
         };
-        Ok(LockApp {
+        let mut app = LockApp {
             host,
             state: LockState {
                 owner: user.clone(),
@@ -108,7 +110,32 @@ impl LockApp {
             user,
             wait_shown: false,
             topics,
-        })
+            layouts: super::keyboard::LayoutSync::default(),
+        };
+        app.keyboard_from_settings()?;
+        Ok(app)
+    }
+
+    /// The input languages of the settings service to the compositor: after a restart the
+    /// lock screen is the first client with the right, so the last layout is active at the
+    /// sign-in already (the shell does the same when it starts).
+    fn keyboard_from_settings(&mut self) -> Result<(), AppError> {
+        let wanted = self
+            .ports
+            .as_ref()
+            .and_then(|p| p.login_keyboard().ok().flatten());
+        let Some((names, active)) = wanted else {
+            return Ok(());
+        };
+        let (known, index) = &self.state.layouts;
+        self.layouts.applied(&names, active, (known, *index));
+        self.host
+            .client
+            .send(&Request::SetKeyboardLayouts { names })?;
+        self.host
+            .client
+            .send(&Request::SetKeyboardLayout { index: active })?;
+        Ok(())
     }
 
     /// Runs until `stop`.
@@ -207,6 +234,15 @@ impl LockApp {
                 self.show()
             }
             HostEvent::Compositor(Event::KeyboardLayouts { names, active }) => {
+                if let Some(name) = self.layouts.announced(&names, active) {
+                    let stored = self
+                        .ports
+                        .as_ref()
+                        .is_some_and(|p| p.lock_call(&LockCall::Layout(name.clone())) == Ok(true));
+                    if stored {
+                        self.layouts.stored(name);
+                    }
+                }
                 self.state.layouts = (names, active);
                 self.show()
             }

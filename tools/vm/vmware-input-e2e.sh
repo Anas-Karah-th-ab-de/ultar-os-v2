@@ -7,7 +7,8 @@
 # emulated devices (QMP input-send-event), as VMware's reach the kernel's drivers; no test hook of the system.
 # Runs: usb (q35, xHCI with USB keyboard and tablet, as the .vmx, firmware screen 1280x800), ps2 (i440FX,
 # PS/2 keyboard and the VMware absolute pointer through the i8042, VMware SVGA II, no USB) and usb-hd (as usb,
-# firmware screen 1920x1080: the session must fill whatever size the firmware set). REPEAT=3 repeats each.
+# firmware screen 1920x1080: the session must fill whatever size the firmware set) and usb-xga (as usb,
+# 1024x768: the phone's dial pad must scroll, not be cut off; INPUT_RUNS chooses). REPEAT=3 repeats each.
 # On the lock screen the run also checks what the Lock board shows: the whole frame buffer covered, brand,
 # avatar, name and password field drawn (Arabic and Latin text), the accessibility menu only on a click and
 # with the names of its switches.
@@ -33,8 +34,9 @@ fail=0
 for run in ${INPUT_RUNS:-usb ps2 usb-hd}; do
   for n in $(seq 1 "${REPEAT:-1}"); do
     prefix=$OUT/input-$run-$n
-    input=${run%-hd}; vga=""
+    input=${run%%-*}; vga=""
     [ "$run" = usb-hd ] && vga="VGA,xres=1920,yres=1080"
+    [ "$run" = usb-xga ] && vga="VGA,xres=1024,yres=768"
     if INPUT=$input VGA_DEVICE="$vga" PASSWORD_FILE="$VM_PASSWORD_FILE" ULOG="$ULOG_BIN" timeout 1500 \
         python3 tools/vm/vmware-input.py gate "$VMDK" vmdk "$prefix" >"$prefix.out" 2>&1 \
         && grep -aq "^VMWARE-INPUT: ALLES OK" "$prefix.out"; then

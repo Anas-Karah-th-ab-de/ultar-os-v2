@@ -2,12 +2,12 @@
 
 mod banners;
 mod effects;
-mod keyboard;
 pub mod link;
 mod panels;
 mod slow;
 mod topics;
 
+use super::keyboard;
 use super::{primary, AppError, Options};
 use crate::host::{Host, HostEvent};
 use crate::model::time::{Clock, SystemClock};
@@ -61,11 +61,8 @@ pub struct DesktopApp {
     bar_fixed: bool,
     /// Service calls running on workers (scan, join, VPN).
     slow: slow::SlowCalls,
-    /// The active keyboard layout as the settings service has it (stored when it changes).
-    layout_saved: Option<String>,
-    /// Layouts given to the compositor that it has not confirmed yet: until it does, its
-    /// announcements are older than the settings and are not stored.
-    layout_pending: Option<(Vec<String>, u8)>,
+    /// Which layout announcements are the user's switches (stored in the settings).
+    layouts: keyboard::LayoutSync,
 }
 
 impl std::fmt::Debug for DesktopApp {
@@ -151,8 +148,7 @@ impl DesktopApp {
             pending: None,
             started: Instant::now(),
             slow: slow::SlowCalls::default(),
-            layout_saved: None,
-            layout_pending: None,
+            layouts: keyboard::LayoutSync::default(),
         };
         app.apply_keyboard()?;
         app.open_side_panels()?;
@@ -377,17 +373,9 @@ impl DesktopApp {
                 None => Outcome::none(),
             },
             Event::KeyboardLayouts { names, active } => {
-                let now = names.get(usize::from(active)).cloned();
-                let confirms = self
-                    .layout_pending
-                    .as_ref()
-                    .is_some_and(|(n, a)| *n == names && *a == active);
+                let save = self.layouts.announced(&names, active);
                 d.layouts = crate::model::state::Layouts { names, active };
-                if confirms {
-                    self.layout_pending = None;
-                } else if self.layout_pending.is_none() {
-                    self.save_layout(now);
-                }
+                self.save_layout(save);
                 Outcome::surfaces()
             }
             Event::ShellFocusLost { .. } | Event::SessionLocked { locked: true } => {
@@ -413,10 +401,9 @@ impl DesktopApp {
         else {
             return Ok(());
         };
-        self.layout_saved = names.get(usize::from(active)).cloned();
         let known = &self.shell.d.layouts;
-        self.layout_pending =
-            (known.names != names || known.active != active).then(|| (names.clone(), active));
+        self.layouts
+            .applied(&names, active, (&known.names, known.active));
         self.host
             .client
             .send(&Request::SetKeyboardLayouts { names })?;
@@ -427,23 +414,14 @@ impl DesktopApp {
     }
 
     /// Stores the active layout when the user switched (it is the one at the next start).
-    fn save_layout(&mut self, now: Option<String>) {
-        let (Some(link), Some(name)) = (&self.link, now) else {
+    fn save_layout(&mut self, name: Option<String>) {
+        let (Some(link), Some(name)) = (&self.link, name) else {
             return;
         };
-        if self.layout_saved.as_deref() == Some(name.as_str()) {
-            return;
-        }
         use crate::ports::SettingsPort;
-        if link
-            .ports
-            .set(
-                keyboard::ACTIVE,
-                ultar_bus::messages::settings::SettingValue::Text(name.clone()),
-            )
-            .is_ok()
-        {
-            self.layout_saved = Some(name);
+        let value = ultar_bus::messages::settings::SettingValue::Text(name.clone());
+        if link.ports.set(keyboard::ACTIVE, value).is_ok() {
+            self.layouts.stored(name);
         }
     }
 

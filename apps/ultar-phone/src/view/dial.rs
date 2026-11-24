@@ -16,7 +16,7 @@ use ultar_ui::tokens::{size, ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{
     Button, ButtonVariant, Card, EmptyState, Icon, IconButton, Label, RadioGroup, RadioLayout,
-    Tabs, TextDirection, TextField,
+    Scroll, Tabs, TextDirection, TextField,
 };
 
 /// The dial surface.
@@ -52,7 +52,11 @@ fn pad_column(
             Space::S24
         }))
         .gap(Space::S12);
-    let col = b.flex(parent, flex, sizing)?;
+    // A scroll container: on a window lower than the pad (a PC's first window, a small
+    // screen) the keys and the call button stay reachable instead of being cut off.
+    let pad = Scroll::new().flex(flex).name(Label::key("phone.pad"));
+    let col = b.add(parent, pad, sizing)?;
+    b.built.pad = Some(col);
     b.add(
         col,
         heading(

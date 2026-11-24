@@ -12,11 +12,11 @@ case "${STEP:-checks}" in
     echo "TESTS-EXIT ${PIPESTATUS[0]}"
     ;;
   gate)
-    REPEAT=${REPEAT:-3} INPUT_RUNS=${INPUT_RUNS:-usb} bash tools/vm/vmware-input-e2e.sh
+    REPEAT=${REPEAT:-3} INPUT_RUNS=${INPUT_RUNS:-usb usb-xga} bash tools/vm/vmware-input-e2e.sh
     ;;
 esac
 # STEP=gate-reuse: the gate on the disk built before (only the gate script changed)
 if [ "${STEP:-}" = gate-reuse ]; then
   VMDK=out/vmware/UltarOS-v2/UltarOS-v2.vmdk VM_PASSWORD_FILE=out/vmware/test.password \
-    REPEAT=${REPEAT:-3} INPUT_RUNS=${INPUT_RUNS:-usb} bash tools/vm/vmware-input-e2e.sh
+    REPEAT=${REPEAT:-3} INPUT_RUNS=${INPUT_RUNS:-usb usb-xga} bash tools/vm/vmware-input-e2e.sh
 fi

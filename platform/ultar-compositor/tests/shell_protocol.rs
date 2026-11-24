@@ -457,9 +457,19 @@ fn layout_switch_chords_and_list() {
     });
     app.pump(&mut comp);
     assert_eq!(app.error(), Some(ErrorCode::Permission));
-    // The lock screen hears of a switch by the chord.
+    // The lock screen hears of a switch by the chord and may set the list (it starts first
+    // after a restart).
     let mut lock = Peer::hello_as(&mut comp, LOCK_UID);
     assert_eq!(layouts(&mut lock, &mut comp).unwrap().1, 1);
+    lock.send(&Request::SetKeyboardLayouts {
+        names: vec!["ar".into(), "en".into()],
+    });
+    lock.send(&Request::SetKeyboardLayout { index: 1 });
+    assert_eq!(
+        layouts(&mut lock, &mut comp),
+        Some((vec!["ar".to_owned(), "en".to_owned()], 1))
+    );
+    assert!(lock.error().is_none());
     key(&mut comp, 56, true);
     key(&mut comp, 42, true);
     key(&mut comp, 42, false);

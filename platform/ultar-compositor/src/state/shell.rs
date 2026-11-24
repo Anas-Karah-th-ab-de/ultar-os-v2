@@ -301,15 +301,19 @@ impl State {
         Ok(())
     }
 
-    /// `SetKeyboardLayouts` of the shell (the user's input languages from the settings
-    /// service). Unknown names and repeats are left out; a list with no known name changes
-    /// nothing. The active layout stays active when it is still in the list.
+    /// `SetKeyboardLayouts` of the shell or the lock screen (the user's input languages from
+    /// the settings service; the lock screen is first after a restart). Unknown names and
+    /// repeats are left out; a list with no known name changes nothing. The active layout
+    /// stays active when it is still in the list.
     pub(super) fn set_keyboard_layouts(
         &mut self,
         client: ClientId,
         names: &[String],
     ) -> Result<(), ErrorCode> {
-        self.require(client, Rights::SHELL)?;
+        let rights = self.clients.get(&client).map_or(Rights::NONE, |c| c.rights);
+        if !(rights.contains(Rights::SHELL) || rights.contains(Rights::LOCK_SCREEN)) {
+            return Err(ErrorCode::Permission);
+        }
         let mut layouts: Vec<KeyLayout> = Vec::new();
         for l in names.iter().filter_map(|n| KeyLayout::parse(n)) {
             if !layouts.contains(&l) {
