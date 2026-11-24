@@ -11,7 +11,7 @@
 #
 # What it does NOT do: stop any service, change the boot, or touch other PCI devices. It refuses to
 # start when a process holds the NPU's accel node (an inference job is running).
-# Not run on hardware yet (written with the driver, stage N0): docs/integration/intel-npu.md.
+# First runs on the Beelink: 24.11.2026 (docs/integration/intel-npu.md).
 set -euo pipefail
 EFI="${1:?usage: npu-passthrough.sh <ultar-kern.efi>}"
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }

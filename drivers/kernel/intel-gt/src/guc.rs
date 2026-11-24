@@ -4,9 +4,8 @@
 //! Follows `xe_guc.c`, `xe_uc_fw.c` and `abi/guc_errors_abi.h` of the Linux `xe` driver (MIT).
 //!
 //! Not here yet (stage G1b, `docs/integration/intel-gt.md`): the ADS block the firmware reads
-//! while it initialises (engine tables, register save/restore lists, golden contexts) and the
-//! command buffers (CTB). Without a valid ADS a GuC that passed the signature check stops with
-//! "init data invalid"; [`Params::ads_ggtt`] is where the ADS address goes.
+//! while it initialises and the command buffers (CTB). Without a valid ADS a GuC that passed the
+//! signature check stops with "init data invalid"; [`Params::ads_ggtt`] takes the ADS address.
 
 use crate::fw::{GucImage, Version};
 use crate::regs::*;
@@ -35,6 +34,7 @@ pub const LOG_BUFFER_SIZE: u32 =
     4096 + LOG_EVENT_DATA_SIZE + LOG_CRASH_DUMP_SIZE + LOG_STATE_CAPTURE_SIZE;
 
 const BOOTROM_NO_KEY_FOUND: u32 = 0x13;
+const BOOTROM_AES_PROD_KEY_FOUND: u32 = 0x1a;
 const BOOTROM_PROD_KEY_CHECK_FAILURE: u32 = 0x2b;
 const BOOTROM_RSA_FAILED: u32 = 0x50;
 const BOOTROM_PAVPC_FAILED: u32 = 0x73;
@@ -151,6 +151,7 @@ impl Status {
         match self.bootrom {
             0 => "idle",
             BOOTROM_NO_KEY_FOUND => "no key found",
+            BOOTROM_AES_PROD_KEY_FOUND => "production key found",
             BOOTROM_PROD_KEY_CHECK_FAILURE => "production key check failed",
             BOOTROM_RSA_FAILED => "RSA check failed",
             BOOTROM_PAVPC_FAILED => "PAVPC failed",

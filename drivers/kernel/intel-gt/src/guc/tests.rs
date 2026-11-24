@@ -56,6 +56,11 @@ fn decodes_what_linux_logs() {
     assert!(Status::decode(GS_MIA_IN_RESET)
         .to_string()
         .contains("core in reset"));
+    // read on the Beelink GTi15 Ultra after an upload without ADS: accepted, then stopped
+    let st =
+        Status::decode(prep(GS_BOOTROM, 0x1a) | prep(GS_UKERNEL, 0x71) | prep(GS_AUTH_STATUS, 2));
+    assert!(st.authenticated() && st.load() == Load::Failed);
+    assert!(st.to_string().contains("production key found"));
 }
 
 #[test]

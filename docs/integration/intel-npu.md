@@ -8,16 +8,17 @@ kernel, without Linux.
 
 | Stage | What | State |
 |---|---|---|
-| N0 | Identification, buttress read-out (clock fuses, state), work point request, power-up to a running IP block, hardware version, power-down, firmware container checks | written, 23 host tests, kernel builds, QEMU boot unchanged; **not run on the Beelink yet** |
+| N0 | Identification, buttress read-out (clock fuses, state), work point request, power-up to a running IP block, hardware version, power-down, firmware container checks | **done, run on the Beelink** (NPU through VFIO, 24.11.2026): fuses 333–1600 MHz, nominal 700 MHz; power-up in 241–333 µs, hardware version `0x3630`, clock locked and ready, power-down; `NPUTEST: ALLES OK`, read-only boot `READ-ONLY OK`, `intel_vpu` rebound with its firmware |
 | N1 | The NPU's MMU (stream table, context descriptor, page tables), firmware image and boot parameters in NPU memory, start of the NPU's processor, IPC channel, first message (firmware version) | open – next |
 | N2 | Job interface (JSM): contexts, command queues, doorbells, heartbeat, recovery after a hang | open |
 | N3 | User interface: the Linux `ivpu` uAPI on `/dev/accel/accel0` (parameters, buffer create/info, submit, wait) | open |
 | N4 | Intel's user-space NPU driver (Level Zero, MIT) and OpenVINO unchanged; NPU backend in `ultar-llm` for small models | open |
 
-1. **Hardware run pending.** `tools/kern-test/npu-passthrough.sh <ultar-kern.efi>` on the Beelink (NPU → vfio-pci →
-   Ultar kernel under KVM, always given back to `intel_vpu`). Expected: `NPUTEST: ALLES OK` (clock fuses, power-up,
-   generation 37 from the IP block, clock locked and ready, power-down). `OPTIN=0` expects `READ-ONLY OK`.
-   The script itself is new and has not run either.
+1. **Hardware run** (`tools/kern-test/npu-passthrough.sh <ultar-kern.efi>` on the Beelink: NPU → vfio-pci → Ultar
+   kernel under KVM, always given back to `intel_vpu`; logs `/root/ultar-test/npu-run1.log`, `gt-run1.log`): two
+   runs with opt-in, one without (`OPTIN=0` → `READ-ONLY OK`). The first run showed that the IP block reports
+   `0x36`/`0x30` in the generation/SoC fields of its hardware version (the two-tile SKU `0x3630`), not the IP
+   generation 37 – the self test compares with that now. Under VFIO only (no bare-metal start).
 2. **No inference yet.** After N0 the NPU can be powered and its registers read; its processor does not run.
 3. **No public specification.** Register offsets and the order of steps come from reading the Linux `ivpu` driver
    (GPL) as a description; the code is written for the Ultar kernel and copies none of it.

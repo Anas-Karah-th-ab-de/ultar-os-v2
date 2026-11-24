@@ -11,17 +11,19 @@ without Linux.
 
 | Stage | What | State |
 |---|---|---|
-| G0 | Identification (GMD_ID), forcewake, engines, GuC status, WOPCM read-out | written, 29 host tests, kernel builds, QEMU boot unchanged; **not run on the Beelink yet** |
-| G1a | GuC firmware container, WOPCM layout, reset, boot parameters, RSA + DMA transfer, load status | written and simulated; GTTEST drives it on hardware; **not run on the Beelink yet** |
+| G0 | Identification (GMD_ID), forcewake, engines, GuC status, WOPCM read-out | **done, run on the Beelink** (iGPU through VFIO, 24.11.2026): graphics 12.74 Xe_LPG+ rev 4 `[rcs0 bcs0 ccs0]`, media 13.00 Xe_LPM+ rev 8 `[vcs0 vcs2 vecs0 gsccs0]`, WOPCM locked 2048K+832K |
+| G1a | GuC firmware container, WOPCM layout, reset, boot parameters, RSA + DMA transfer, load status | **done, run on the Beelink**: GuC 70.53.0 transferred, `signature good`, the firmware starts and stops at `0x71 init data invalid` after 32 ms (expected without ADS); `GTTEST: ALLES OK`, i915 rebound cleanly |
 | G1b | ADS block, log buffer layout, CTB (H2G/G2H), `HOST2GUC_SELF_CFG`, hardware config table → GuC **ready** | open – next |
 | G2 | Memory: GGTT manager for the GT, PPGTT (4 levels), buffer objects, TLB invalidation | open |
 | G3 | Contexts (LRC), exec queues registered with the GuC, submission, G2H handling; proof: a batch on `ccs0`/`rcs0` writes a value | open |
 | G4 | User interface: the Linux `xe` DRM uAPI on `/dev/dri/renderD128` (device query, GEM create/mmap, VM create/bind, exec queue, exec, syncobj) | open |
 | G5 | Mesa (ANV/Vulkan, iris) from the Ubuntu packages unchanged; `vulkaninfo`, off-screen cube, llama.cpp Vulkan in `ultar-llm` | open |
 
-1. **Hardware run pending.** `tools/kern-test/igpu-run.sh` on the Beelink now also runs GTTEST (the script copies the
-   host's `mtl_guc_70.bin` to the boot medium). Expected: `GTTEST: ALLES OK` with
-   `GuC image transferred and signature accepted` and the note that the firmware stops at its init data.
+1. **Hardware run** (`tools/kern-test/igpu-run.sh` with `STOP_UNITS="udl-llm-fast.service"`, log on the Beelink:
+   `/root/ultar-test/gt-run1.log`, checkout `/root/ultar-igpu-npu`): `INTELTEST: ALLES OK` and `GTTEST: ALLES OK`;
+   the whole run takes about 20 s, the host's i915 loads its own GuC again afterwards (function level reset).
+   One run so far; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
+   on hardware: i915 had locked them, the driver kept that layout.
 2. **GuC not running yet.** Without the ADS the firmware stops with "init data invalid" after the boot ROM accepted
    it. GTTEST puts the GuC back into reset. Nothing renders or computes before G3.
 3. **Interrupts.** The kernel has no MSI routing for PCI devices; G2H messages will be polled until it has
