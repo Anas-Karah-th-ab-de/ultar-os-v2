@@ -9,7 +9,7 @@ R=out/release-ci; B=$R/bundle
 rm -rf "$B" "$R/bundle.tar.gz"; mkdir -p "$B"
 cp -r tools/release/vps "$B/vps"
 cp -r tools/release/site "$B/site"
-if [ -d "$R/shots" ]; then cp "$R"/shots/*.png "$B/site/img/"; fi
+[ -f "$R/shots/v2-desktop-ar.png" ] && cp "$R/shots/v2-desktop-ar.png" "$B/site/img/"
 cp "$R/ultar-signd" "$B/ultar-signd"
 cp -r "$R/store-staging" "$B/store-staging"
 tar -C "$R" -czf "$R/bundle.tar.gz" bundle
