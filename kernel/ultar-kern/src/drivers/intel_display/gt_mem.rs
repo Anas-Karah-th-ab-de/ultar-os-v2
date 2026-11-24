@@ -20,13 +20,8 @@ pub struct GgttBuf {
 }
 
 impl GgttBuf {
-    /// Allocates zeroed pages for `bytes` and maps them with the device's default attributes.
+    /// Allocates zeroed pages for `bytes` and maps them.
     pub fn new(dev: &mut Device, bytes: u64) -> Result<GgttBuf, String> {
-        GgttBuf::with_attrs(dev, bytes, 0)
-    }
-
-    /// As [`GgttBuf::new`], with `extra` bits set in every GGTT entry (cache attribute index).
-    pub fn with_attrs(dev: &mut Device, bytes: u64, extra: u64) -> Result<GgttBuf, String> {
         let pages = bytes.div_ceil(4096).max(1);
         let phys = crate::mem::alloc_pages(pages as usize).ok_or("no memory for a GuC buffer")?;
         let gtt = match dev.win.alloc(pages * 4096) {
@@ -41,9 +36,19 @@ impl GgttBuf {
         // the GT does not look into the CPU's caches: write the zeroes out, and drop the lines so
         // what the GuC writes later is read from memory
         flush(phys, pages * 4096);
-        if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs | extra) {
+        if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs) {
+            // which entry did not read back as written (seen once in ten runs on the Beelink)
+            let bad = list.iter().enumerate().find_map(|(i, p)| {
+                let read = ggtt::read_pte(&mut dev.mmio, gtt + i as u32 * 4096);
+                (ggtt::pte_page(read) != Some(*p)).then(|| {
+                    format!("entry {i} of {pages} at {gtt:#x}: wrote page {p:#x}, read {read:#x}")
+                })
+            });
             buf.release(dev);
-            return Err(format!("GGTT: {e}"));
+            return Err(format!(
+                "GGTT: {e}; {}",
+                bad.unwrap_or_else(|| "all entries read back correctly on the second look".into())
+            ));
         }
         Ok(buf)
     }
@@ -59,23 +64,12 @@ impl GgttBuf {
 
     /// A copy of the first `len` bytes (what the GuC wrote there).
     pub fn bytes(&self, len: usize) -> Vec<u8> {
-        self.copy_out(len, true)
-    }
-
-    /// As [`GgttBuf::bytes`] without dropping the CPU's lines first: only right for a mapping
-    /// whose cache attribute makes the GT keep the CPU's caches coherent.
-    pub fn bytes_as_cached(&self, len: usize) -> Vec<u8> {
-        self.copy_out(len, false)
-    }
-
-    fn copy_out(&self, len: usize, drop_lines: bool) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
         // What the GT writes does not reach the CPU's caches: on the Beelink the first five lines
-        // of the table still read as the zeroes from before. Dropping the lines first makes the
-        // copy come from memory.
-        if drop_lines {
-            flush(self.phys, n as u64);
-        }
+        // of a table still read as the zeroes from before. Dropping the lines first makes the
+        // copy come from memory. The "coherent" cache attribute of the GGTT (index 3) does not
+        // change that (tried on the Beelink, 25.11.2026).
+        flush(self.phys, n as u64);
         let mut out = alloc::vec![0u8; n];
         // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
         // does not exceed it, and `out` is a fresh heap allocation (no overlap).
