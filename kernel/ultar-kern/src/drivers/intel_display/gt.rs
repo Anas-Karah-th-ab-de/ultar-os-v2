@@ -269,34 +269,38 @@ fn guc_check(dev: &mut Device, r: &mut Report) {
         kprintln!("GTTEST: forcewake release: {e}");
     }
     match res {
-        Ok(l) => {
-            let st = l.status;
-            r.check(
-                st.authenticated(),
-                "GuC image transferred and signature accepted",
-                &format!("{st} ({ms} ms)"),
-            );
-            r.check(
-                st.load() == guc::Load::Ready,
-                "GuC ready with the minimal ADS",
-                "",
-            );
-            match l.hwconfig {
-                Some(Ok((size, entries))) => r.check(
-                    entries > 0,
-                    "hardware config table from the GuC",
-                    &format!("{size} bytes, {entries} entries"),
-                ),
-                Some(Err(e)) => r.check(false, "hardware config table from the GuC", &e),
-                None => {}
-            }
-            match l.ctb {
-                Some(Ok(t)) => r.check(true, "command buffers (CTB)", &t),
-                Some(Err(e)) => r.check(false, "command buffers (CTB)", &e),
-                None => {}
-            }
-        }
+        Ok(l) => report_load(r, &l, ms),
         Err(e) => r.check(false, "GuC upload", &e),
+    }
+}
+
+/// Reports what a load brought.
+fn report_load(r: &mut Report, l: &Loaded, ms: u64) {
+    let st = l.status;
+    let took = format!("{st} ({ms} ms)");
+    r.check(
+        st.authenticated(),
+        "GuC image transferred and signature accepted",
+        &took,
+    );
+    r.check(
+        st.load() == guc::Load::Ready,
+        "GuC ready with the minimal ADS",
+        "",
+    );
+    match &l.hwconfig {
+        Some(Ok((size, entries))) => r.check(
+            *entries > 0,
+            "hardware config table from the GuC",
+            &format!("{size} bytes, {entries} entries"),
+        ),
+        Some(Err(e)) => r.check(false, "hardware config table from the GuC", e),
+        None => {}
+    }
+    match &l.ctb {
+        Some(Ok(t)) => r.check(true, "command buffers (CTB)", t),
+        Some(Err(e)) => r.check(false, "command buffers (CTB)", e),
+        None => {}
     }
 }
 
