@@ -8,6 +8,7 @@ use crate::node::{Effect, Node};
 use crate::secure::Sender;
 use crate::wire::Frame;
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ pub struct Runtime {
     memory: Memory,
     running: Arc<AtomicUsize>,
     run: Option<Scheduler>,
+    jobs: Option<PathBuf>,
 }
 
 fn cut(mut text: String) -> String {
@@ -40,7 +42,20 @@ fn cut(mut text: String) -> String {
     text
 }
 
-fn execute(program: &str, args: &[String]) -> (Option<i32>, String) {
+/// The program a job names, inside `jobs`: a bare file name of a file that is there.
+/// A device lends its computing power to the programs its owner put into that folder and
+/// to nothing else.
+pub fn job_program(jobs: Option<&Path>, program: &str) -> Option<PathBuf> {
+    let plain = !program.is_empty()
+        && !program.starts_with('.')
+        && program
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.');
+    let path = jobs.filter(|_| plain)?.join(program);
+    path.is_file().then_some(path)
+}
+
+fn execute(program: &Path, args: &[String]) -> (Option<i32>, String) {
     match std::process::Command::new(program).args(args).output() {
         Ok(out) => (
             out.status.code(),
@@ -60,6 +75,22 @@ impl Runtime {
             memory: Memory::default(),
             running: Arc::new(AtomicUsize::new(0)),
             run: None,
+            jobs: None,
+        }
+    }
+
+    /// The folder with the programs jobs may run (`None`: no job runs here).
+    pub fn set_jobs(&mut self, jobs: Option<PathBuf>) {
+        self.jobs = jobs;
+    }
+
+    fn refuse(&mut self, peer: &str, id: String) {
+        if peer == LOCAL {
+            if let Some(run) = self.run.as_mut() {
+                run.done(LOCAL, &id, None, String::new());
+            }
+        } else {
+            let _ = self.send(peer, &Frame::JobRefused { id });
         }
     }
 
@@ -72,10 +103,14 @@ impl Runtime {
             let _ = self.send(peer, &Frame::JobDone { id, code, output });
             return;
         }
+        let Some(program) = job_program(self.jobs.as_deref(), &program) else {
+            self.refuse(peer, id);
+            return;
+        };
         let cores = std::thread::available_parallelism().map_or(1, usize::from);
         if self.running.fetch_add(1, Ordering::SeqCst) >= cores {
             self.running.fetch_sub(1, Ordering::SeqCst);
-            let _ = self.send(peer, &Frame::JobRefused { id });
+            self.refuse(peer, id);
             return;
         }
         let (events, running) = (self.events.clone(), self.running.clone());

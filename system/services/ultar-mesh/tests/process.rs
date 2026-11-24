@@ -100,7 +100,9 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
     let inbox = world.subdir("inbox");
     let port = port.to_string();
     let peer = peer.map(|p| format!("127.0.0.1:{p}"));
+    let home = world.subdir("home");
     let mut args = vec!["--state", state.to_str().unwrap()];
+    args.extend(["--share", home.to_str().unwrap()]);
     args.extend(["--inbox", inbox.to_str().unwrap(), "--name", name]);
     args.extend(["--kind", "desktop", "--port", &port, "--announce", "off"]);
     if let Some(peer) = &peer {

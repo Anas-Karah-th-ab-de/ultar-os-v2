@@ -57,26 +57,55 @@ impl Keys {
     }
 }
 
-fn send_raw(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), ChannelError> {
-    let len = u16::try_from(bytes.len()).map_err(|_| ChannelError::Protocol)?;
-    stream.write_all(&len.to_be_bytes())?;
-    stream.write_all(bytes)?;
-    Ok(())
+/// The sending half of a connection that carries whole messages.
+pub trait Tx: Send {
+    /// Sends one message.
+    fn send(&mut self, bytes: &[u8]) -> std::io::Result<()>;
+    /// Closes the connection.
+    fn close(&mut self);
 }
 
-fn recv_raw(stream: &mut TcpStream) -> Result<Vec<u8>, ChannelError> {
-    let mut len = [0u8; 2];
-    stream.read_exact(&mut len)?;
-    let mut bytes = vec![0u8; usize::from(u16::from_be_bytes(len))];
-    stream.read_exact(&mut bytes)?;
-    Ok(bytes)
+/// The receiving half of a connection that carries whole messages.
+pub trait Rx: Send {
+    /// Waits for the next message.
+    fn recv(&mut self) -> std::io::Result<Vec<u8>>;
+    /// How long [`Rx::recv`] waits (`None`: for ever).
+    fn limit(&mut self, time: Option<Duration>);
+}
+
+struct Tcp(TcpStream);
+
+impl Tx for Tcp {
+    fn send(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        let len = u16::try_from(bytes.len()).map_err(|_| std::io::ErrorKind::InvalidInput)?;
+        self.0.write_all(&len.to_be_bytes())?;
+        self.0.write_all(bytes)
+    }
+
+    fn close(&mut self) {
+        let _ = self.0.shutdown(std::net::Shutdown::Both);
+    }
+}
+
+impl Rx for Tcp {
+    fn recv(&mut self) -> std::io::Result<Vec<u8>> {
+        let mut len = [0u8; 2];
+        self.0.read_exact(&mut len)?;
+        let mut bytes = vec![0u8; usize::from(u16::from_be_bytes(len))];
+        self.0.read_exact(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    fn limit(&mut self, time: Option<Duration>) {
+        let _ = self.0.set_read_timeout(time);
+    }
 }
 
 /// The sending half of a channel (shared between threads).
 #[derive(Clone)]
 pub struct Sender {
     state: Arc<StatelessTransportState>,
-    stream: Arc<Mutex<(TcpStream, u64)>>,
+    stream: Arc<Mutex<(Box<dyn Tx>, u64)>>,
 }
 
 impl Sender {
@@ -94,13 +123,13 @@ impl Sender {
             return false;
         };
         guard.1 += 1;
-        send_raw(&mut guard.0, &cipher[..n]).is_ok()
+        guard.0.send(&cipher[..n]).is_ok()
     }
 
     /// Closes the connection (the receiving half ends too).
     pub fn close(&self) {
-        if let Ok(guard) = self.stream.lock() {
-            let _ = guard.0.shutdown(std::net::Shutdown::Both);
+        if let Ok(mut guard) = self.stream.lock() {
+            guard.0.close();
         }
     }
 }
@@ -108,14 +137,14 @@ impl Sender {
 /// The receiving half of a channel.
 pub struct Receiver {
     state: Arc<StatelessTransportState>,
-    stream: TcpStream,
+    stream: Box<dyn Rx>,
     nonce: AtomicU64,
 }
 
 impl Receiver {
     /// Waits for the next frame; `None` when the connection ended or was tampered with.
     pub fn receive(&mut self) -> Option<Frame> {
-        let cipher = recv_raw(&mut self.stream).ok()?;
+        let cipher = self.stream.recv().ok()?;
         let mut plain = vec![0u8; cipher.len()];
         let nonce = self.nonce.fetch_add(1, Ordering::SeqCst);
         let n = self.state.read_message(nonce, &cipher, &mut plain).ok()?;
@@ -133,10 +162,26 @@ pub struct Channel {
     pub remote: Vec<u8>,
 }
 
-/// Runs the handshake on `stream` (`initiator`: this side connected).
-pub fn open(mut stream: TcpStream, keys: &Keys, initiator: bool) -> Result<Channel, ChannelError> {
+/// Runs the handshake on a TCP connection (`initiator`: this side connected).
+pub fn open(stream: TcpStream, keys: &Keys, initiator: bool) -> Result<Channel, ChannelError> {
     stream.set_nodelay(true)?;
-    stream.set_read_timeout(Some(HANDSHAKE_TIME))?;
+    let writer = stream.try_clone()?;
+    open_on(
+        Box::new(Tcp(writer)),
+        Box::new(Tcp(stream)),
+        keys,
+        initiator,
+    )
+}
+
+/// Runs the handshake on any connection that carries whole messages.
+pub fn open_on(
+    mut tx: Box<dyn Tx>,
+    mut rx: Box<dyn Rx>,
+    keys: &Keys,
+    initiator: bool,
+) -> Result<Channel, ChannelError> {
+    rx.limit(Some(HANDSHAKE_TIME));
     let builder = Builder::new(PATTERN.parse()?).local_private_key(&keys.private);
     let mut noise = if initiator {
         builder.build_initiator()?
@@ -148,9 +193,9 @@ pub fn open(mut stream: TcpStream, keys: &Keys, initiator: bool) -> Result<Chann
     while !noise.is_handshake_finished() {
         if mine {
             let n = noise.write_message(&[], &mut buffer)?;
-            send_raw(&mut stream, &buffer[..n])?;
+            tx.send(&buffer[..n])?;
         } else {
-            let message = recv_raw(&mut stream)?;
+            let message = rx.recv()?;
             noise.read_message(&message, &mut buffer)?;
         }
         mine = !mine;
@@ -160,16 +205,15 @@ pub fn open(mut stream: TcpStream, keys: &Keys, initiator: bool) -> Result<Chann
         .ok_or(ChannelError::Protocol)?
         .to_vec();
     let state = Arc::new(noise.into_stateless_transport_mode()?);
-    stream.set_read_timeout(None)?;
-    let writer = stream.try_clone()?;
+    rx.limit(None);
     Ok(Channel {
         sender: Sender {
             state: state.clone(),
-            stream: Arc::new(Mutex::new((writer, 0))),
+            stream: Arc::new(Mutex::new((tx, 0))),
         },
         receiver: Receiver {
             state,
-            stream,
+            stream: rx,
             nonce: AtomicU64::new(0),
         },
         remote,

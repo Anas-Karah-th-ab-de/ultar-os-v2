@@ -20,6 +20,7 @@ pub mod node;
 pub mod offers;
 mod pairing;
 mod received;
+pub mod relay;
 pub mod runtime;
 pub mod secure;
 pub mod service;

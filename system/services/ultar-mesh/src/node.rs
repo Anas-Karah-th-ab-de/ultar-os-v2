@@ -31,6 +31,8 @@ pub struct Config {
     pub apps: Vec<String>,
     /// Where received files go.
     pub inbox: PathBuf,
+    /// Folders whose files may be sent (the person's own folders). Empty: none.
+    pub share: Vec<PathBuf>,
     /// It can show its windows on another device.
     pub remote_view: bool,
 }

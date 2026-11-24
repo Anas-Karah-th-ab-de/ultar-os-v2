@@ -36,11 +36,15 @@ it can take. What is missing for them is a *stage*, not a new protocol (see "Not
 | File transfer: 32 KiB pieces, acknowledged, part file, size + SHA-256 before the name is given, names cannot leave the inbox | `src/transfer.rs` | 3 |
 | Clipboard: text up to 16 KiB, confidential entries never leave, no echo | `src/node.rs` | in handoff tests |
 | Computing jobs: exactly one result per job, silence 8 s → requeue, 4 strikes → out, stragglers twice, own device as reserve, lending side answers a repeated id from memory | `src/compute.rs`, `src/runtime.rs` | 6 + 1 |
-| Network: announcements (UDP 47810 broadcast), channels (TCP 47810), `--peer` for networks without broadcast | `src/net.rs` | via network tests |
+| Network: announcements (UDP 47810 broadcast), channels (TCP 47810), `--peer` for networks without broadcast | `src/net.rs` | 1 (two devices find each other) |
+| Relay for devices in other networks: the account server forwards ciphertext, the Noise channel runs end to end inside it (`--relay`, `--relay-token-file`) | `src/relay.rs` | 1 + 1 (stand-in relay) |
+| What may be sent: only regular files inside the shared folders, links followed (`--share`) | `src/transfer.rs` | 1 |
+| What a job may run: only a program by bare name inside the jobs folder (`--jobs`); without the folder no job runs | `src/runtime.rs` | 1 |
 | Service on the bus (`ultar-svckit`), binary `ultar-mesh` | `src/service.rs`, `src/bin/ultar-mesh.rs` | 1 (two real services) |
 
-47 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
-without a new code, jobs with and without permission). `tests/process.rs` starts two real `ultar-mesh`
+52 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
+without a new code, jobs with and without permission, finding each other by announcements, meeting through
+a stand-in relay that follows the server's frame rules). `tests/process.rs` starts two real `ultar-mesh`
 binaries on two brokers with a stand-in launcher: switched on by the shell, paired, a document handed
 over, accepted, opened through `launcher.start` at the same place (`file://…#line=3`).
 
@@ -78,21 +82,34 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
   the desktop shell (each shell its own surface).
 - Apps: Files, Browser, Text editor report their activity and accept `ULTAR_OPEN_URI` with a place.
 
+## Decisions taken while building (please confirm)
+
+1. **A device met through the relay is not trusted because of the account.** v1 trusted every device of
+   the same account automatically; here the server only brings devices together and the six-digit code
+   is still needed once. Reason: the server could otherwise add a device to the person's mesh.
+2. Ports 47810 (UDP and TCP) instead of v1's 47800/47801, so both can run during the change-over.
+3. Without `--share` nothing can be sent, without `--jobs` no job runs.
+
 ## Not done / not tested – honest list
 
-- **Account trust and relay.** Devices outside the local network (through the server) and automatic trust
-  between devices of one account are not ported from v1. Pairing is by code only, in the same network.
+- **Not wired into the system image.** Service file, user id, bus listener, log listener, bus policy and
+  the image scripts are untouched: `build/btscan`, `build/net`, `build/settings2` and `build/appbus` change
+  the same lines of `ids.toml`, `services/bus.toml`, `bus-policy.toml`, `service_files_tests.rs` and
+  `make-vmware.sh`. The list above ("Wiring it in") is what has to be added once they are merged.
+- **No surface.** No settings page, no quick-settings tile, no gesture, no window-menu entry, no question
+  dialog (`sysdialog` has no handoff question yet) and no command-line tool; no app reports its activity.
+  The service can be driven over the bus only.
+- **Relay token.** The relay client reads the account's device token from a file. `ultar-accountd` keeps
+  the token to itself; it needs a way to hand the mesh a ticket. The client was run against a stand-in
+  relay, not against the real server.
 - **Remote view, sound, calls and notifications across devices.** `RemoteView` is planned for in the
   stage logic and switched off (`Config::remote_view = false`): the compositor has no window sharing yet.
   A speaker or TV is found and paired but has nothing it can be handed (no "continue playing there" stage).
 - **Device identity.** The mesh has its own X25519 key; it is not yet tied to the Ed25519 device identity
   of `docs/DEVICE-IDENTITY.md`.
-- **Files are read by the service.** `Activity::file` and `mesh.send_file` name a path the service opens
-  with its own user. Before shipping, the file must come from the app as a descriptor (or through a
-  portal), otherwise the service user decides what can be read.
-- **Jobs run a program by name** for a device that was granted `Compute` – that is remote execution by
-  design; it needs a cell before the right is offered in the settings.
-- **Broadcast discovery** was not run (the test machine has no broadcast network); connections were made
-  with `--peer`. Large files are hashed on the service loop (a 4 GiB file blocks it while hashing).
+- **Files are still opened by the service** (inside the shared folders only). A descriptor from the app
+  would be better; the bus cannot pass descriptors yet.
+- **Jobs are not run in a cell** (only the programs of the jobs folder run, with the service's user).
+- Large files are hashed on the service loop (a 4 GiB file blocks it while hashing).
 - **No real hardware**: not run on the Ultar kernel, the Beelink, a VM or the A30; ARM64 not built.
 - The clipboard owner (compositor) does not call `mesh.clipboard_set` yet; computing jobs have no bus call.

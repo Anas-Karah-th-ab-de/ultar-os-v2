@@ -3,6 +3,7 @@
 //! [`NetEvent`]; while the mesh is off no socket is open.
 
 use crate::device;
+use crate::relay::{Halves, Login, Relay};
 use crate::secure::{self, Keys, Sender};
 use crate::wire::Frame;
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,25 @@ pub const PORT: u16 = 47_810;
 pub const ANNOUNCE_EVERY: Duration = Duration::from_secs(2);
 const CONNECT_TIME: Duration = Duration::from_secs(5);
 const POLL: Duration = Duration::from_millis(300);
+
+/// Where a device announces itself.
+#[derive(Clone, Copy, Debug)]
+pub struct Announcing {
+    /// UDP port it listens on for the announcements of others.
+    pub port: u16,
+    /// Where its own announcements go.
+    pub to: SocketAddr,
+}
+
+impl Announcing {
+    /// Announcements to everybody in the local network on `port`.
+    pub fn broadcast(port: u16) -> Self {
+        Self {
+            port,
+            to: SocketAddr::from((Ipv4Addr::BROADCAST, port)),
+        }
+    }
+}
 
 /// What happened on the network.
 pub enum NetEvent {
@@ -81,12 +101,22 @@ struct Shared {
 pub struct Net {
     shared: Arc<Shared>,
     port: u16,
+    relay: Option<Arc<Relay>>,
 }
 
 fn serve(shared: &Arc<Shared>, stream: TcpStream, initiator: bool) {
-    let Ok(channel) = secure::open(stream, &shared.keys, initiator) else {
-        return;
-    };
+    if let Ok(channel) = secure::open(stream, &shared.keys, initiator) {
+        run(shared, channel);
+    }
+}
+
+fn serve_on(shared: &Arc<Shared>, halves: Halves, initiator: bool) {
+    if let Ok(channel) = secure::open_on(halves.0, halves.1, &shared.keys, initiator) {
+        run(shared, channel);
+    }
+}
+
+fn run(shared: &Arc<Shared>, channel: secure::Channel) {
     let peer = device::id_of(&channel.remote);
     if peer == shared.id || shared.stop.load(Ordering::SeqCst) {
         channel.sender.close();
@@ -179,13 +209,31 @@ fn discover(shared: Arc<Shared>, socket: UdpSocket, announce_to: SocketAddr, por
     }
 }
 
+/// Opens a channel to every device at the relay that is not linked yet (the device with
+/// the smaller id opens, as in the local network).
+fn relay_dial(shared: &Arc<Shared>, relay: &Arc<Relay>) {
+    while !shared.stop.load(Ordering::SeqCst) {
+        for key in relay.devices() {
+            let id = device::id_of(&key);
+            let known = shared.linked.lock().map_or(true, |l| l.contains(&id));
+            if shared.id < id && !known {
+                if let Some(halves) = relay.open(&key) {
+                    let shared = shared.clone();
+                    spawn(move || serve_on(&shared, halves, true));
+                }
+            }
+        }
+        std::thread::sleep(ANNOUNCE_EVERY);
+    }
+}
+
 impl Net {
     /// Opens the channel port on `bind` (port 0: any) and, with `announce`, the
-    /// announcement socket on that UDP port.
+    /// announcement socket.
     pub fn start(
         keys: Keys,
         bind: SocketAddr,
-        announce: Option<u16>,
+        announce: Option<Announcing>,
         events: mpsc::Sender<NetEvent>,
     ) -> std::io::Result<Self> {
         let listener = TcpListener::bind(bind)?;
@@ -200,15 +248,18 @@ impl Net {
         });
         let for_accept = shared.clone();
         spawn(move || accept(for_accept, listener));
-        if let Some(udp) = announce {
+        if let Some(Announcing { port: udp, to }) = announce {
             let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, udp))?;
             socket.set_broadcast(true)?;
             socket.set_read_timeout(Some(POLL))?;
-            let to = SocketAddr::from((Ipv4Addr::BROADCAST, udp));
             let for_discovery = shared.clone();
             spawn(move || discover(for_discovery, socket, to, port));
         }
-        Ok(Self { shared, port })
+        Ok(Self {
+            shared,
+            port,
+            relay: None,
+        })
     }
 
     /// The TCP port the channels arrive on.
@@ -221,8 +272,27 @@ impl Net {
         dial(&self.shared, addr);
     }
 
+    /// Also reaches the account's devices in other networks through the relay.
+    pub fn use_relay(&mut self, login: Login) {
+        let (incoming, arriving) = mpsc::channel::<Halves>();
+        let relay = Relay::start(login, self.shared.keys.public.clone(), incoming);
+        let shared = self.shared.clone();
+        spawn(move || {
+            for halves in arriving {
+                let shared = shared.clone();
+                spawn(move || serve_on(&shared, halves, false));
+            }
+        });
+        let (shared, dialer) = (self.shared.clone(), relay.clone());
+        spawn(move || relay_dial(&shared, &dialer));
+        self.relay = Some(relay);
+    }
+
     /// Closes the sockets (the open channels are closed by their owner).
     pub fn stop(&self) {
+        if let Some(relay) = &self.relay {
+            relay.stop();
+        }
         self.shared.stop.store(true, Ordering::SeqCst);
         // Wakes the accepting thread.
         let _ = TcpStream::connect_timeout(

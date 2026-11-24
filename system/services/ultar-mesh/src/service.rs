@@ -1,7 +1,7 @@
 //! The bus side of the mesh: the calls of the shell, the settings and the apps, and what
 //! the mesh asks of the system (asking the person, opening an app, the clipboard).
 
-use crate::net::{Net, NetEvent};
+use crate::net::{Announcing, Net, NetEvent};
 use crate::node::{Config, Effect, Node};
 use crate::runtime::Runtime;
 use crate::secure::Keys;
@@ -28,10 +28,14 @@ const CALL_TIME: Duration = Duration::from_secs(5);
 pub struct Listen {
     /// Address of the channel port.
     pub bind: SocketAddr,
-    /// UDP port of the announcements (`None`: no announcements).
-    pub announce: Option<u16>,
+    /// The announcements (`None`: none).
+    pub announce: Option<Announcing>,
+    /// Folder with the programs computing jobs may run (`None`: no job runs here).
+    pub jobs: Option<PathBuf>,
     /// Devices at known addresses (networks without broadcast).
     pub peers: Vec<SocketAddr>,
+    /// The relay for devices in other networks (`None`: local network only).
+    pub relay: Option<crate::relay::Login>,
     /// The app that opens a received file with its default app.
     pub opener: String,
 }
@@ -79,8 +83,10 @@ impl MeshService {
         let trust = Trust::open(&state.join("peers"));
         let node = Node::new(config, &keys.public, trust);
         let (events, inbox) = mpsc::channel();
+        let mut runtime = Runtime::new(node, events.clone());
+        runtime.set_jobs(listen.jobs.clone());
         Some(Self {
-            runtime: Runtime::new(node, events.clone()),
+            runtime,
             inbox: Some(inbox),
             events,
             keys,
@@ -101,7 +107,10 @@ impl MeshService {
             self.events.clone(),
         );
         match started {
-            Ok(net) => {
+            Ok(mut net) => {
+                if let Some(login) = self.listen.relay.clone() {
+                    net.use_relay(login);
+                }
                 for peer in &self.listen.peers {
                     net.connect(*peer);
                 }

@@ -36,6 +36,7 @@ impl World {
                     capabilities: default_capabilities(*kind),
                     apps: apps.iter().map(|a| (*a).to_owned()).collect(),
                     inbox: dir.join(format!("inbox{i}")),
+                    share: vec![dir.clone()],
                     remote_view: false,
                 };
                 Node::new(config, &key(i as u8), Trust::in_memory())
