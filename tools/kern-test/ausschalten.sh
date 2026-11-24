@@ -16,6 +16,7 @@ fail=0
 fall() { # name what image env...
   local name=$1 was=$2 img=$3; shift 3
   local log="$WORK/$name-$was.log"
+  case "$name" in *"${NUR:-}"*) ;; *) return ;; esac # NUR=<part of a name>: only those cases
   env "$@" WAIT=60 timeout 300 python3 tools/kern-test/qtest.py "$img" "/bin/ausschalttest $was" > "$log" 2>&1
   if grep -aq "AUSSCHALTTEST: $was" "$log" && grep -aq "QEMU-ENDE: selbst" "$log" \
      && ! grep -aqE "AUSNAHME|KERNEL EXCEPTION|خطأ في النواة|kehrte zurück|PANIK|kernel panic" "$log"; then
