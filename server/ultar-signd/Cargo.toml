@@ -3,7 +3,7 @@
 
 [package]
 name = "ultar-signd"
-version = "0.8.0-beta"
+version = "0.8.0"
 edition = "2021"
 license = "Proprietary"
 authors = ["KM Code Craft <https://code-craft.tech>"]
