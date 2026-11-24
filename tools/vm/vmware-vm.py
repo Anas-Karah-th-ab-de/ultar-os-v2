@@ -10,6 +10,11 @@
        through the QEMU monitor (PREFIX.ppm, PREFIX.png when Pillow is there; serial log PREFIX.log) and prints
        one verdict line: "VMWARE-CHECK: OK …" when the slot, the services, the apps and the locked session
        (lock screen, no desktop bar) are there. Input is driven by tools/vm/vmware-input.py.
+   vmware-vm.py installer MEDIUM.img PREFIX
+       starts the installation image (AHCI, on a copy-on-write layer) with an empty NVMe disk, waits until the
+       graphical installer reports its first step (--report line) and takes a screenshot (PREFIX.ppm/.png);
+       "INSTALLER-CHECK: OK …" when the step line came, no service of the installer session ended and the
+       screen is not empty.
    vmware-vm.py zip FOLDER OUT.zip
        packs the folder (with its name as the top entry) without needing the zip program.
    Environment: SMP (4, as the .vmx), MEM (1024), WAIT (seconds per step, 600), VGA (std | vmware: the VMware
@@ -202,6 +207,48 @@ def check(disk, fmt, controller, prefix):
     return 0
 
 
+def installer(medium, prefix):
+    target = prefix + "-target.raw"
+    with open(target, "wb") as f:
+        f.truncate(8 << 30)
+    vm = Vm([(medium, "raw", "ahci", True), (target, "raw", "nvme", False)], prefix + ".log")
+    problems, step, colours = [], None, 0
+    try:
+        found = vm.read_until(re.compile(rb"\[installer-ui\] step=(\w+) focus=(\S+) next=(\S+)"), WAIT)
+        m = re.search(rb"\[installer-ui\] step=(\w+)", vm.buf)
+        step = m.group(1).decode() if m else None
+        if found is not True:
+            problems.append("no step line of ultar-installer-ui")
+        ended = [x.group(0).decode(errors="replace") for x in re.finditer(rb"\[ultar-init[^\]]*\] (refused|failed) [^\r\n]*", vm.buf)]
+        if ended:
+            problems.append("refused/failed: " + "; ".join(ended[:3]))
+        if re.search(rb"kernel panic|PANIK", vm.buf, re.I):
+            problems.append("kernel panic")
+        if vm.p.poll() is None:
+            vm.read_until(None, 20)  # the first frame
+            vm.monitor(f"screendump {prefix}.ppm")
+            if os.path.exists(prefix + ".ppm"):
+                with open(prefix + ".ppm", "rb") as f:
+                    data = f.read()
+                body = data[data.index(b"255\n") + 4:] if b"255\n" in data else data
+                colours = len({body[i:i + 3] for i in range(0, min(len(body), 6 << 20), 3 * 97)})
+                try:
+                    from PIL import Image
+                    Image.open(prefix + ".ppm").save(prefix + ".png")
+                except Exception:
+                    pass
+            if colours < 3:
+                problems.append(f"screen empty ({colours} colours)")
+    finally:
+        vm.end()
+        os.remove(target)
+    if problems:
+        print(f"INSTALLER-CHECK: FEHLER ({'; '.join(problems)}) [step {step}]")
+        return 1
+    print(f"INSTALLER-CHECK: OK (installer session up, first step {step}, {colours} colours on screen)")
+    return 0
+
+
 def pack(folder, out):
     folder = os.path.normpath(folder)
     top = os.path.basename(folder)
@@ -215,6 +262,8 @@ def main():
     a = sys.argv[1:]
     if len(a) == 3 and a[0] == "zip" and os.path.isdir(a[1]):
         return pack(a[1], a[2])
+    if len(a) == 3 and a[0] == "installer":
+        return installer(a[1], a[2])
     if len(a) == 5 and a[0] == "install" and a[3] in LANG_KEY:
         return install(a[1], a[2], a[3], a[4])
     if len(a) == 5 and a[0] == "check" and a[2] in ("raw", "vmdk") and a[3] in ("nvme", "ahci"):
