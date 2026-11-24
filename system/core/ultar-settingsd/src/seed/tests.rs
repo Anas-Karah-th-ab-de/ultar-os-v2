@@ -46,7 +46,7 @@ fn seed_builds_and_covers_every_area() {
             (Panel::Emergency, 8),
         ]
     );
-    assert_eq!(registry.defs().len(), 270);
+    assert_eq!(registry.defs().len(), 272);
 }
 
 #[test]
