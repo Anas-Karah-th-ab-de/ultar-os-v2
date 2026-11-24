@@ -202,6 +202,28 @@ impl State {
         let mut window = Window::new(key, id, self.new_window_workspace(secure));
         window.secure = secure;
         self.windows.push(window);
+        self.place_unmapped(key);
+        if let Some(i) = self.window_index(key) {
+            if self.session.shell.phone.on && !secure {
+                self.phone_window(i);
+            }
+        }
+    }
+
+    /// The frame of a window that has no content yet: the usual share of the work area, no
+    /// smaller than the least size the app asked for (and never larger than the work area),
+    /// centred and cascaded. Called when the toplevel is created and again when the app
+    /// states its size limits before its first frame: a window opens large enough for what
+    /// the app says it needs instead of cutting it off.
+    pub(super) fn place_unmapped(&mut self, key: SurfaceKey) {
+        let Some(i) = self.window_index(key) else {
+            return;
+        };
+        let w = &self.windows[i];
+        if w.mapped || w.state != WindowState::Normal || w.snap.is_some() || w.place.bare {
+            return;
+        }
+        let secure = w.secure;
         let Some(output) = self.layout.primary().map(|o| o.id) else {
             return;
         };
@@ -221,17 +243,15 @@ impl State {
                 fh,
             )
         } else {
-            wm::place_new(work, w, h, TITLEBAR, self.windows.len().saturating_sub(1))
+            wm::place_new(work, w, h, TITLEBAR, i)
         };
-        if let Some(i) = self.window_index(key) {
-            self.windows[i].pending = None;
-            self.windows[i].frame = frame;
-            self.windows[i].restore = frame;
-            self.configure_window(i, frame);
-            if self.session.shell.phone.on && !secure {
-                self.phone_window(i);
-            }
+        if self.windows[i].frame == frame && self.windows[i].pending.is_some() {
+            return;
         }
+        self.windows[i].pending = None;
+        self.windows[i].frame = frame;
+        self.windows[i].restore = frame;
+        self.configure_window(i, frame);
     }
 
     /// Sends a configure for the window at `index` asking for `frame`.

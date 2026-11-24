@@ -1,9 +1,11 @@
 """The steps of `vmware-input.py gate` (only emulated devices through QMP, no test hook).
 
-Screen positions are those of the desktop bar in Arabic (right to left) on the firmware's 1280x800
-frame buffer: the bar fills the bottom 56 points; from the right: start (brand mark), all apps,
-search, then the pinned apps files, browser, terminal, editor, store, settings (platform/ultar-desktop
-model/apps.rs). Every click is checked on the screen, never assumed."""
+Screen positions are those of the desktop bar in Arabic (right to left): the bar fills the bottom 56
+points; from the right: start (brand mark), all apps, search, then the pinned apps files, browser,
+terminal, editor, store, settings (platform/ultar-desktop model/apps.rs). The bar is found from its
+brand mark and every window from what it changed on the screen, so the steps do not depend on the
+screen's size (1280x800, 1024x768, 1920x1080); positions inside a window are counted from the
+window's own corners. Every click is checked on the screen, never assumed."""
 import re
 import time
 
@@ -123,6 +125,28 @@ def knobs(screen, h):
     return [(xs[len(xs) // 2], ys[len(ys) // 2]) for xs, ys in out if len(ys) >= 6]
 
 
+def window_frame(vm, name, before):
+    """What a window changed of the work area: its frame with its shadow, (x0, y0, x1, y1), or None."""
+    vm.move(vm.size[0] - 2, 2)  # the pointer off the window (no hover)
+    vm.pump(1)
+    return changed_box(vm.shot(name), before, work(vm))
+
+
+# Settings' search field, counted from the top corner at the end of its window's frame (Arabic: the
+# right one; the navigation column with the field keeps its width), and Files' search field from the
+# top corner at the start (the left one). Measured on the frames found at 1280x800 and 1024x768.
+def settings_field(frame):
+    x0, y0, x1, y1 = frame
+    return (x1 - 166, y0 + 79), (x1 - 300, y0 + 58, x1 - 34, y0 + 100)
+
+
+def files_field(frame):
+    """Files' search field and its toolbar: the field starts 115 points from the window's edge where
+    the toolbar has the room and at the edge on a narrow window; the click is where it is in both."""
+    x0, y0, x1, y1 = frame
+    return (x0 + 160, y0 + 76), (x0 + 22, y0 + 56, x0 + 330, y0 + 98)
+
+
 def clipboard(vm, m, pos):
     """Ctrl+A, Ctrl+C in Settings' search field, Ctrl+V in Files' search field: the text arrives in
     the other app (compositor clipboard, keys with Ctrl through the emulated keyboard)."""
@@ -134,32 +158,51 @@ def clipboard(vm, m, pos):
     vm.click(*pos["settings"])
     if not app_window(vm, "clip-settings", empty):
         return ["clipboard: Settings did not open"]
-    vm.click(cx + 240, cy - 192)  # Settings' search field (window in the middle, field at its top end)
+    frame = window_frame(vm, "clip-settings-frame", empty)
+    if frame is None:
+        return ["clipboard: Settings' window not found"]
+    at, field = settings_field(frame)
+    clear = vm.shot("clip-clear")
+    vm.click(*at)
     vm.pump(1)
     vm.type("ultar")
     vm.pump(1)
+    vm.move(w - 2, 2)
+    vm.pump(0.5)
+    typed = vm.shot("clip-typed")
+    in_field = changed_px(typed, clear, field)
+    log(f"clipboard: Settings at {frame}, typing changed {in_field} pixels of its search field")
+    if in_field < 40:
+        close_all(vm)
+        return ["clipboard: the typed text did not arrive in Settings' search field"]
     vm.key("ctrl+a")
     vm.key("ctrl+c")
     vm.pump(1)
-    typed = vm.shot("clip-typed")
-    # Settings stays open (it serves the copied text), Files opens above it
+    typed = vm.shot("clip-copied")
+    # Settings stays open (it serves the copied text), Files opens above it, as large as Settings
+    # and moved down and to the side by a title bar's height (cascade): by how far its frame
+    # reaches beyond Settings'
     vm.click(*pos["files"])
-    vm.pump(6)  # its window is above Settings (the paste below shows it is there)
-    # a second window opens 40 points down and to the side of the first (cascade): find which
-    shot = vm.shot("clip-files")
-    ground = bytes.fromhex("0B0D11")
-    off = 40 if all(shot.px[(y * w + cx + 400) * 3:(y * w + cx + 400) * 3 + 3] != ground
-                    for y in range(cy - 100, cy + 100, 20)) else 0
-    field = (cx - 300 + off, cy - 216 + off, cx - 90 + off, cy - 176 + off)  # Files' search field
-    vm.click(cx - 193 + off, cy - 196 + off)
+    vm.pump(6)
+    both = window_frame(vm, "clip-files", typed)
+    if both is None:
+        close_all(vm)
+        close_all(vm)
+        return ["clipboard: Files did not open above Settings"]
+    dx, dy = max(0, both[2] - frame[2]), max(0, both[3] - frame[3])
+    files = (frame[0] + dx, frame[1] + dy, frame[2] + dx, frame[3] + dy)
+    at, bar = files_field(files)
+    vm.click(*at)
+    vm.move(w - 2, 2)
     vm.pump(1)
     before = vm.shot("clip-before-paste")
     vm.key("ctrl+v")
-    ok, after = m.wait_for(vm, "clip-pasted", lambda x: x.diff(before, field) > 0.03, 15)
+    took, after = changes_within(vm, "clip-pasted", before, bar, 15.0, pixels=40)
+    log(f"clipboard: Files at {files}, its toolbar changed {changed_px(after, before, bar)} pixels "
+        f"{took} s after Ctrl+V")
     close_all(vm)
-    log(f"clipboard: Files' search field changed {after.diff(before, field):.3f} after Ctrl+V")
     close_all(vm)
-    return [] if ok else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
+    return [] if took is not None else ["clipboard: Ctrl+V in Files did not paste what Ctrl+C copied in Settings"]
 
 
 def changed_px(a, b, box):
@@ -230,11 +273,19 @@ def phone_responds(vm, opened_after, before):
         if took is None:
             problems.append(f"phone: no answer to Tab {n} within 2 s (window frozen)")
             break
-    problems += phone_pad_scrolls(vm, frame)
+    problems += phone_pad_whole(vm, frame)
+    if not problems:
+        problems += phone_small_window(vm, before)
     return problems
 
 
+# Tab presses that walk the focus once through everything in the phone's window (header, history,
+# way, number, the twelve keys)
+PHONE_TABS = 28
+
+
 def wheel(vm, x, y, down=True, n=5):
+    vm.move(x, y)
     vm.move(x, y)
     for _ in range(n):
         for pressed in (True, False):
@@ -242,29 +293,79 @@ def wheel(vm, x, y, down=True, n=5):
             vm.pump(0.05)
 
 
-def phone_pad_scrolls(vm, frame):
-    """The window a PC gives the phone is lower than the dial pad: the pad scrolls instead of being
-    cut off. Tab walks the focus down the pad (keys, call button); the focused control is scrolled
-    into view, so the pad's top (heading, notice) moves out of the window. Only where the window is
-    that low (screens up to 800 high). The wheel is tried first (it needs the input driver's wheel)."""
+def phone_pad_whole(vm, frame):
+    """The window the phone opens with shows the whole dial pad (it was lower than the pad and cut
+    the lower keys and the call button off). The pad is a scroll container that brings the focused
+    control into view: Tab walks the focus through every key, and where a key is outside the window
+    the pad scrolls and its heading at the top moves. In the opened window nothing may move (the
+    heading has no control in it). That the pad does scroll where it is cut off is shown by
+    phone_small_window."""
     x0, y0, x1, y1 = frame
-    w, h = vm.size
-    px = x1 - 180 if x1 - x0 > 700 else (x0 + x1) // 2
-    strip = ((x0 + x1) // 2, y0 + 45, x1 - 8, y0 + 130)  # the pad's heading (Arabic: right column)
-    before = vm.shot("phone-pad-top")
-    wheel(vm, px, (y0 + y1) // 2)
-    vm.move(w - 2, 2)
-    vm.pump(1)
-    by_wheel = changed_px(vm.shot("phone-pad-wheel"), before, strip)
-    for _ in range(18):
+    heading = (x1 - 300, y0 + 70, x1 - 40, y0 + 114)
+    before = vm.shot("phone-whole")
+    text = bright(before, heading)
+    moved = 0
+    for n in range(PHONE_TABS):
         vm.key("tab")
-    vm.pump(1)
-    after = vm.shot("phone-pad-scrolled")
-    moved = changed_px(after, before, strip)
-    log(f"phone: dial pad top changed by the wheel {by_wheel}, by Tab to the lower keys {moved} pixels")
-    if moved < 200 and by_wheel < 200 and h <= 800:
-        return ["phone: the dial pad does not scroll in a window lower than it (cut off)"]
+        vm.pump(0.2)
+        moved = changed_px(vm.shot("phone-whole-tab"), before, heading)
+        if moved >= 100:
+            break
+    log(f"phone: window {x1 - x0}x{y1 - y0} with its shadow, heading {text} text pixels, "
+        f"{moved} of them moved while Tab walked through the keys")
+    if text < 100:
+        return [f"phone: no heading above the dial pad at {heading}"]
+    if moved >= 100:
+        return [f"phone: the dial pad is cut off in the window it opens with (it scrolled at Tab {n + 1})"]
     return []
+
+
+def phone_small_window(vm, desktop):
+    """A small window (Super+Left, Super+Up: a quarter of the screen, lower than the dial pad): the
+    pad scrolls instead of being cut off, with the wheel over it and with the focus (Tab to the
+    lower keys); its top moves out of the window both times."""
+    w, h = vm.size
+    wide = vm.shot("phone-before-small")
+    vm.key("meta_l+left")
+    vm.pump(1)
+    vm.key("meta_l+up")
+    vm.move(w - 2, h // 2 + 80)
+    vm.pump(2)
+    small = vm.shot("phone-small")
+    # the quarter at the top left; beside it the empty desktop shows again
+    outside = (w // 2 + 40, 60, w - 40, h - 100)
+    if changed_px(small, wide, (0, 0, w, h - 60)) < 2000 or changed_px(small, desktop, outside) > 200:
+        return ["phone: Super+Left, Super+Up did not make the window a quarter of the screen"]
+    # the top of the pad (heading, notice) at the end side of the quarter, below the header and
+    # the pages' tabs of a narrow window; no control is there
+    top = (w // 4 + 16, 114, w // 2 - 24, 150)
+    over = (w // 2 - 100, (h - 60) // 2 - 80)
+    problems = []
+    wheel(vm, *over)
+    vm.move(w - 2, h // 2 + 80)
+    vm.pump(1)
+    by_wheel = changed_px(vm.shot("phone-small-wheel"), small, top)
+    wheel(vm, *over, down=False, n=8)
+    vm.move(w - 2, h // 2 + 80)
+    vm.pump(1)
+    back = vm.shot("phone-small-back")
+    left = changed_px(back, small, top)
+    by_tab = 0
+    for n in range(PHONE_TABS):
+        vm.key("tab")
+        vm.pump(0.2)
+        by_tab = changed_px(vm.shot("phone-small-tab"), back, top)
+        if by_tab >= 100:
+            break
+    log(f"phone: small window {w // 2}x{(h - 60) // 2}: the pad's top moved {by_wheel} pixels by the wheel "
+        f"({left} left after the wheel back), {by_tab} by Tab {n + 1}")
+    if by_wheel < 100:
+        problems.append("phone: the wheel does not scroll the dial pad in a small window")
+    elif left >= 100:
+        problems.append("phone: the wheel does not scroll the dial pad back")
+    if by_tab < 100:
+        problems.append("phone: the dial pad does not scroll to the focused key in a small window (cut off)")
+    return problems
 
 
 def layout_switch(vm, m, pos):
@@ -279,12 +380,14 @@ def layout_switch(vm, m, pos):
     vm.click(*pos["settings"])
     if not app_window(vm, "kbd-settings", empty):
         return ["layout: Settings did not open"]
-    field = (cx + 120, cy - 212, cx + 360, cy - 172)  # Settings' search field (see clipboard)
-    bar = (0, h - 56, w, h)
+    frame = window_frame(vm, "kbd-settings-frame", empty)
+    if frame is None:
+        return ["layout: Settings' window not found"]
+    at, field = settings_field(frame)
     clock = (0, h - 56, 140, h)
 
     def typed(name):
-        vm.click(cx + 240, cy - 192)
+        vm.click(*at)
         vm.pump(0.5)
         vm.key("ctrl+a")
         vm.key("backspace")
@@ -544,7 +647,7 @@ def run(vm, m):
         return 1
     if not installed(vm, m, 240):
         failures.append("apps not installed")
-    vm.move(640, 400)
+    vm.move(vm.size[0] // 2, vm.size[1] // 2)
     vm.pump(2)
     empty = vm.shot("empty")
     pos = bar_positions(empty)
@@ -564,14 +667,14 @@ def run(vm, m):
     # 4. every system app opens its window: Settings, Files, Store, Browser from the bar, Phone from
     #    the app grid
     for name in ("settings", "files", "store", "browser"):
-        vm.move(640, 400)
+        vm.move(vm.size[0] // 2, vm.size[1] // 2)
         vm.pump(1)
         before = vm.shot(f"before-{name}")
         vm.click(*pos[name])
         if not app_window(vm, f"app-{name}", before):
             failures.append(f"{name} did not open")
         close_all(vm)
-    vm.move(640, 400)
+    vm.move(vm.size[0] // 2, vm.size[1] // 2)
     vm.pump(1)
     before = vm.shot("before-phone")
     vm.click(*pos["all"])
@@ -592,14 +695,9 @@ def run(vm, m):
     ok, _ = m.wait_for(vm, "clock-2", lambda x: x.diff(first, clock) > 0.002, 75)
     if not ok:
         failures.append("the clock did not tick (static screen)")
-    # the clipboard and the layout field use positions of Settings' and Files' fields measured at
-    # 1280x800 and above; a smaller screen (usb-xga) checks the phone and the restart layout only
-    small = vm.size[0] < 1280
-    if small:
-        log(f"clipboard and typed layout: skipped at {vm.size} (field positions measured at 1280x800)")
-    if not failures and not small:
+    if not failures:
         failures += clipboard(vm, m, pos)
-    if not failures and not small:
+    if not failures:
         failures += layout_switch(vm, m, pos)
     if not failures:
         failures += accessibility(vm, m)
@@ -608,5 +706,6 @@ def run(vm, m):
     if failures:
         log("VMWARE-INPUT: FEHLER " + "; ".join(failures))
         return 1
-    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, phone answers and scrolls, layout switch, layout after restart)")
+    log("VMWARE-INPUT: ALLES OK (locked at start, keyboard, pointer, start menu, 5 apps, phone answers, "
+        "its dial pad whole and scrolling in a small window, clipboard, layout switch, layout after restart)")
     return 0

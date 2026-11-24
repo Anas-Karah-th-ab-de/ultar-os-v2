@@ -39,6 +39,18 @@ pub(crate) fn surface(b: &mut Builder<'_>, body: NodeId, model: &Model) -> Resul
     history(b, body, model)
 }
 
+/// Gap between the dial pad's rows.
+pub(crate) const PAD_GAP: Space = Space::S12;
+
+/// Edge around the dial pad's content.
+pub(crate) fn pad_edge(compact: bool) -> Space {
+    if compact {
+        Space::S16
+    } else {
+        Space::S24
+    }
+}
+
 fn pad_column(
     b: &mut Builder<'_>,
     parent: NodeId,
@@ -46,14 +58,12 @@ fn pad_column(
     sizing: Sizing,
 ) -> Result<(), UiError> {
     let flex = Flex::column()
-        .padding(Padding::all(if b.compact() {
-            Space::S16
-        } else {
-            Space::S24
-        }))
-        .gap(Space::S12);
-    // A scroll container: on a window lower than the pad (a PC's first window, a small
-    // screen) the keys and the call button stay reachable instead of being cut off.
+        .padding(Padding::all(pad_edge(b.compact())))
+        .gap(PAD_GAP);
+    // A scroll container: on a window lower than the pad (a window the user made small, a
+    // small screen) the keys and the call button stay reachable instead of being cut off.
+    // The window opens high enough for the whole pad where the screen has the room
+    // (`PhoneApp::whole_size`).
     // The holder takes the column's width; the scroll container grows to the holder's height
     // (a growing viewport starts from no height, so the pad never makes the body taller).
     let holder = b.flex(parent, Flex::column(), sizing)?;

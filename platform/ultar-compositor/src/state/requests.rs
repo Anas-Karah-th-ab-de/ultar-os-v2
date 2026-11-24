@@ -75,6 +75,8 @@ impl State {
                     s.limits.min = clamp(min);
                     s.limits.max = clamp(max);
                 }
+                // Stated before the first frame: the window opens within them.
+                self.place_unmapped(key);
                 Ok(())
             }
             other => self.apply_buffers(client, other),

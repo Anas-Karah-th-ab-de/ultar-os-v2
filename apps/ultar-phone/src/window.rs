@@ -21,7 +21,13 @@ use ultar_ui::Point;
 const LAUNCH_WAIT: Duration = Duration::from_secs(10);
 
 /// Smallest window (logical points): the compact layout's width, header plus a few rows.
-const MIN_SIZE: (u32, u32) = (360, 320);
+/// The window opens larger ([`PhoneApp::whole_size`]: the whole dial pad); the user may make
+/// it this small, the dial pad scrolls then.
+pub const MIN_SIZE: (u32, u32) = (360, 320);
+
+/// Events handled in one step before drawing (what has arrived already: a new window gets
+/// its configures in a row, and only the last one is worth a frame).
+const EVENTS_PER_STEP: usize = 32;
 
 /// MIME type of a copied number.
 const TEXT: &str = "text/plain;charset=utf-8";
@@ -105,6 +111,9 @@ pub struct PhoneWindow<P: CallPort> {
     /// Answer of the launcher for the last Settings request (asked on a thread of its own:
     /// the launcher answers only when Settings is ready, the window must not wait for it).
     launching: Option<Receiver<bool>>,
+    /// The window asked for its opening size as its least size and has not yet told the
+    /// compositor the real least size ([`MIN_SIZE`]); done after the first frame.
+    opening: bool,
 }
 
 fn serial_of(event: &Event) -> Option<u32> {
@@ -119,14 +128,19 @@ impl<P: CallPort> PhoneWindow<P> {
     /// Opens the window on `client`; `host` must be the host given to `app`.
     pub fn open(
         mut client: Client,
-        app: PhoneApp<P, QueuedHost>,
+        mut app: PhoneApp<P, QueuedHost>,
         host: QueuedHost,
         title: &str,
     ) -> Result<PhoneWindow<P>, ClientError> {
-        // Smaller than this the header and one row of keys no longer fit; the dial pad scrolls
-        // on everything larger (view/dial.rs).
+        // The window opens with the whole dial pad in it: the compositor gives a new window a
+        // share of the screen but no less than the least size stated before its first frame
+        // (and no more than the screen has). After the first frame the least size becomes
+        // MIN_SIZE (`draw`): the user may make the window smaller, the dial pad scrolls then
+        // (view/dial.rs), as it does where the screen is too small for the whole pad.
+        let whole = app.whole_size();
+        let (w, h) = whole.unwrap_or(MIN_SIZE);
         let config = WindowConfig {
-            min_size: MIN_SIZE,
+            min_size: (w.max(MIN_SIZE.0), h.max(MIN_SIZE.1)),
             ..WindowConfig::toplevel(title)
         };
         let window = Window::create(&mut client, &config)?;
@@ -149,6 +163,7 @@ impl<P: CallPort> PhoneWindow<P> {
             launcher: None,
             settings_pending: false,
             launching: None,
+            opening: whole.is_some(),
         })
     }
 
@@ -177,10 +192,15 @@ impl<P: CallPort> PhoneWindow<P> {
     /// Waits up to `timeout` for one event, handles it, carries out the app's requests,
     /// keeps the call screen in step with the app and draws.
     pub fn step(&mut self, timeout: Duration, wall_s: i64) -> Result<Step, ClientError> {
-        if let Some(event) = self.client.next_event(Some(timeout))? {
+        let mut wait = Some(timeout);
+        for _ in 0..EVENTS_PER_STEP {
+            let Some(event) = self.client.next_event(wait)? else {
+                break;
+            };
             if let Some(step) = self.handle(&event)? {
                 return Ok(step);
             }
+            wait = Some(Duration::ZERO);
         }
         let now = self.now_ms();
         // Clock work of the app (toasts, timer) cannot fail in a way the window could act on.
@@ -372,6 +392,14 @@ impl<P: CallPort> PhoneWindow<P> {
         if main {
             self.window
                 .present(&mut self.client, canvas.data(), size, &[])?;
+            if std::mem::take(&mut self.opening) {
+                // Shown at its opening size; from now on it may be made as small as MIN_SIZE.
+                self.client.send(&Request::SetSizeLimits {
+                    surface: self.window.surface(),
+                    min: MIN_SIZE,
+                    max: (0, 0),
+                })?;
+            }
         }
         if let Some(screen) = self.call_screen.as_mut().filter(|w| w.can_draw()) {
             screen.present(&mut self.client, canvas.data(), size, &[])?;
