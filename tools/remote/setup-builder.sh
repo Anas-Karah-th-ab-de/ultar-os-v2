@@ -15,7 +15,7 @@ else
   mkdir -p /usr/lib/rust-1.97 && ln -sfn "$HOME/.rustup/toolchains/$tc/bin" /usr/lib/rust-1.97/bin
 fi
 apt-get install -y -q lld clang musl-tools qemu-system-x86 qemu-utils ovmf mtools dosfstools e2fsprogs \
-  python3 python3-pil git build-essential pkg-config 2>&1 | tail -3
+  python3 python3-pil git build-essential pkg-config cmake 2>&1 | tail -3
 for b in cargo rustc rustfmt cargo-clippy clippy-driver rustdoc; do
   [ -e /usr/lib/rust-1.97/bin/$b ] && ln -sf /usr/lib/rust-1.97/bin/$b /usr/local/bin/$b
 done
