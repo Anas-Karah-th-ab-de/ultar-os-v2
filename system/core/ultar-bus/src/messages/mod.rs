@@ -57,6 +57,9 @@
 //! | `call.dial` / `answer` / `hangup` / … | calls | – | call service |
 //! | `modem.state` | topic | yes | modem service (`ultar-ril`, see [`modem`]) |
 //! | `modem.dial` / `answer` / `release` / `hold` / `dtmf` / `mute` | calls | – | modem service |
+//! | `mesh.state` | topic | yes | device mesh (`ultar-mesh`, see [`mesh`]) |
+//! | `mesh.handoff_incoming` / `handoff_progress` / `clipboard` | topics | no | device mesh |
+//! | `mesh.set_enabled` / `pair_begin` / `pair_join` / `unpair` / `set_rights` / `set_activity` / `handoff_targets` / `handoff_send` / `handoff_answer` / `send_file` / `clipboard_set` | calls | – | device mesh |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -77,6 +80,7 @@ pub mod launcher;
 pub mod lock;
 pub mod log;
 pub mod media;
+pub mod mesh;
 pub mod modem;
 pub mod net;
 pub mod notify;
