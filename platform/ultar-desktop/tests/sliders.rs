@@ -109,7 +109,8 @@ fn sliders_with_a_device_show_the_real_level() {
     let mut d = board_desktop(Lang::Ar, ThemeKind::Dark);
     d.svc.audio = Some(audio(40));
     d.presence.audio_service = true;
-    d.values.brightness = Some(78);
+    // (the slider moves in steps of 5: a level on a step is written as it is)
+    d.values.brightness = Some(70);
     let mut h = sheet(d);
     let (volume, disabled) = said(&mut h, &Target::Volume);
     assert!(
@@ -119,7 +120,7 @@ fn sliders_with_a_device_show_the_real_level() {
     assert!(!disabled, "the volume can be set");
     let (brightness, disabled) = said(&mut h, &Target::Brightness);
     assert!(
-        brightness.as_deref().is_some_and(|v| v.contains("78")),
+        brightness.as_deref().is_some_and(|v| v.contains("70")),
         "{brightness:?}"
     );
     assert!(!disabled, "the brightness can be set");
