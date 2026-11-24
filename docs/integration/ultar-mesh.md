@@ -42,7 +42,7 @@ it can take. What is missing for them is a *stage*, not a new protocol (see "Not
 | What a job may run: only a program by bare name inside the jobs folder (`--jobs`); without the folder no job runs | `src/runtime.rs` | 1 |
 | Service on the bus (`ultar-svckit`), binary `ultar-mesh` | `src/service.rs`, `src/bin/ultar-mesh.rs` | 1 (two real services) |
 
-55 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
+54 tests. `tests/network.rs` runs two runtimes over real sockets (pairing, a 1.5 MB document, restart
 without a new code, jobs with and without permission, finding each other by announcements, meeting through
 a stand-in relay that follows the server's frame rules). `tests/process.rs` starts two real `ultar-mesh`
 binaries on two brokers with a stand-in launcher: switched on by the shell, paired, a document handed
