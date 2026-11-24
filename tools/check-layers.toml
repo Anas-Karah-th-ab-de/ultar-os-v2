@@ -129,10 +129,12 @@ to = "system-hal"
 crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ultar-hal-gfx"]
 
 # apps -> public app API + bus/i18n/profile
+# apps -> the compositor client (ultar-surface) until platform/app-api exists; the browser
+# window (apps/ultar-web) is the first app on the compositor
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface"]
 
 [[allow]]
 from = "apps"

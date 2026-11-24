@@ -21,6 +21,10 @@ pub enum ButtonVariant {
     Quiet,
     /// A destructive action.
     Danger,
+    /// A closable tab of a document strip (browser tabs): a 1-point transparent edge at the
+    /// start (the chip's border), padding 12, the
+    /// label semibold when `true` (the tab shown), regular otherwise; announced as a tab.
+    Tab(bool),
 }
 
 /// A push button with a text label and an optional leading icon.
@@ -78,6 +82,23 @@ impl Button {
         }
     }
 
+    /// Inner padding at start and end: 12 for a tab, 16 for every other kind (boards).
+    fn pad(&self) -> Space {
+        match self.variant {
+            ButtonVariant::Tab(_) => Space::S12,
+            _ => PAD,
+        }
+    }
+
+    /// Text of the label: a tab is semibold when shown and regular otherwise.
+    fn text_spec(&self) -> crate::paint::TextSpec {
+        match self.variant {
+            ButtonVariant::Tab(true) => style::CONTROL_TEXT.weight(crate::text::Weight::Semibold),
+            ButtonVariant::Tab(false) => style::CONTROL_TEXT.weight(crate::text::Weight::Regular),
+            _ => style::BUTTON_TEXT,
+        }
+    }
+
     /// Width of the edge: two borders for the primary button, one for every other kind
     /// (the quiet button has a transparent one, as on the boards).
     /// With an error every kind has a two-border `danger` edge (boards).
@@ -96,10 +117,15 @@ impl Button {
         (loading, error): (bool, bool),
     ) -> Size {
         let target = cx.mode.min_target();
-        let text = cx.text_size(&self.label, style::BUTTON_TEXT, None);
+        let text = cx.text_size(&self.label, self.text_spec(), None);
         // Boards: padding 16 inside the border (CSS border-box), so the edge adds its width.
         let lead = self.lead_width(loading || error);
-        let natural = text.w + lead + 2.0 * (PAD.points() + self.edge(error));
+        let edges = match self.variant {
+            // A tab: the 1-point edge of its chip at the start only (the close button follows).
+            ButtonVariant::Tab(_) if !error => size::BORDER,
+            _ => 2.0 * self.edge(error),
+        };
+        let natural = text.w + lead + 2.0 * self.pad().points() + edges;
         Size::new(natural.min(avail).max(target), target)
     }
 
@@ -122,7 +148,7 @@ impl Button {
                 p.color(ColorRole::Text),
                 Some(p.color(ColorRole::ControlBorder)),
             ),
-            ButtonVariant::Quiet => {
+            ButtonVariant::Quiet | ButtonVariant::Tab(_) => {
                 let bg = (v.hovered || v.pressed).then_some(neutral);
                 (bg, p.color(ColorRole::Text), None)
             }
@@ -153,9 +179,14 @@ impl Button {
         }
         let direction = p.env().direction;
         let lead = self.lead_width(v.loading || v.error);
-        let inner = style::inset_inline(rect.inflate(-self.edge(v.error)), PAD);
+        let edged = match self.variant {
+            // The tab's edge is at its start only (see `measure`): its label has the rest.
+            ButtonVariant::Tab(_) if !v.error => rect,
+            _ => rect.inflate(-self.edge(v.error)),
+        };
+        let inner = style::inset_inline(edged, self.pad());
         let text = self.label.resolve(cx.tr);
-        let layout = p.layout(&text, style::BUTTON_TEXT, Some((inner.w - lead).max(0.0)));
+        let layout = p.layout(&text, self.text_spec(), Some((inner.w - lead).max(0.0)));
         let text_width = layout.width / p.env().scale;
         let mut content =
             style::centered(inner, Size::new((text_width + lead).min(inner.w), inner.h));
@@ -184,12 +215,25 @@ pub struct IconButton {
     pub icon: IconId,
     /// Accessible name (catalog key).
     pub name: Label,
+    /// A status button (the browser's tracking-protection button): a second icon after
+    /// the first and the colour of both, padding 8 and 4 between the icons.
+    pub status: Option<(IconId, ColorRole)>,
 }
 
 impl IconButton {
     /// An icon button.
     pub fn new(icon: IconId, name: Label) -> IconButton {
-        IconButton { icon, name }
+        IconButton {
+            icon,
+            name,
+            status: None,
+        }
+    }
+
+    /// The same button as a status button: `second` after the icon, both in `color`.
+    pub fn status(mut self, second: IconId, color: ColorRole) -> IconButton {
+        self.status = Some((second, color));
+        self
     }
 
     /// Icon edge for an input mode: the small icon with a pointer, the large one for touch.
@@ -202,6 +246,11 @@ impl IconButton {
 
     pub(crate) fn measure(&self, cx: &mut MeasureCx<'_>) -> Size {
         let target = cx.mode.min_target();
+        if self.status.is_some() {
+            let edge = IconButton::icon_points(cx.mode);
+            let width = 2.0 * (Space::S8.points() + edge) + Space::S4.points();
+            return Size::new(width.max(target), target);
+        }
         Size::new(target, target)
     }
 
@@ -216,8 +265,23 @@ impl IconButton {
             let danger = p.color(ColorRole::Danger);
             p.stroke(rect, Some(Radius::Control), 2.0 * p.hairline(), danger);
         }
-        let fg = p.color(ColorRole::Text);
         let edge = IconButton::icon_points(cx.mode);
+        if let Some((second, role)) = self.status {
+            let fg = p.color(role);
+            let inner = style::inset_inline(rect, Space::S8);
+            let first = style::take_start(&mut inner.clone(), edge, p.env().direction);
+            let mut rest = inner;
+            let _ = style::take_start(&mut rest, edge + Space::S4.points(), p.env().direction);
+            let then = style::take_start(&mut rest, edge, p.env().direction);
+            p.icon(self.icon, first, edge, QuarterTurns::None, fg);
+            p.icon(second, then, edge, QuarterTurns::None, fg);
+            if v.focused {
+                style::focus_ring(p, rect, Radius::Card);
+            }
+            p.set_opacity(previous);
+            return;
+        }
+        let fg = p.color(ColorRole::Text);
         if v.loading {
             p.spinner(style::centered(rect, Size::new(edge, edge)), cx.spin, fg);
         } else {

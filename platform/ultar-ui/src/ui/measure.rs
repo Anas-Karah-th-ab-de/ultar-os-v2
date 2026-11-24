@@ -79,6 +79,7 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         | Widget::List(_)
         | Widget::Scroll(_)
         | Widget::HeaderBar(_)
+        | Widget::Picture(_)
         | Widget::Dialog(_) => Size::default(),
         Widget::Table(w) => w.measure(cx, avail),
         Widget::Tree(w) => w.measure(cx, avail),

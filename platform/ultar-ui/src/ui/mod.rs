@@ -11,6 +11,7 @@ mod layers;
 mod measure;
 mod menus;
 mod modal;
+mod picture;
 mod programmatic;
 mod render;
 mod scrolling;

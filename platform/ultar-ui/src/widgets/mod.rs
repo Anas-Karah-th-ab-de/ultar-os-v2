@@ -14,6 +14,7 @@ mod info_bar;
 mod label;
 mod list;
 mod menu;
+mod picture;
 mod progress;
 mod qr;
 mod radio;
@@ -42,6 +43,7 @@ pub use info_bar::{EmptyState, InfoBar};
 pub use label::{Label, LabelArg};
 pub use list::{List, ListItem};
 pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
+pub use picture::Picture;
 pub use progress::Progress;
 pub use qr::{QrCode, QrCodeError, MAX_QR_BYTES};
 pub use radio::{RadioGroup, RadioLayout};
@@ -164,6 +166,8 @@ pub enum Widget {
     QrCode(QrCode),
     /// Items the user drags into place on a canvas (display arrangement).
     Arrangement(Arrangement),
+    /// Pixels the application supplies (a web page, a video).
+    Picture(Picture),
 }
 
 macro_rules! widget_from {
@@ -203,7 +207,8 @@ widget_from!(
     Tree,
     HeaderBar,
     QrCode,
-    Arrangement
+    Arrangement,
+    Picture
 );
 
 impl From<SearchField> for Widget {
@@ -231,6 +236,7 @@ impl Widget {
                 | Widget::Table(_)
                 | Widget::Tree(_)
                 | Widget::Arrangement(_)
+                | Widget::Picture(_)
         )
     }
 

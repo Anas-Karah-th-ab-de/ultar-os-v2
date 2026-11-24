@@ -105,6 +105,7 @@ impl Ui {
             Widget::QrCode(w) => w.paint(p, rect),
             Widget::Arrangement(w) => w.paint(p, cx, rect, &v),
             Widget::Dialog(w) => w.paint(p, rect),
+            Widget::Picture(w) => w.paint(p, rect),
         }
     }
 

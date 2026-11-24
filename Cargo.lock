@@ -5696,14 +5696,13 @@ version = "0.6.0"
 
 [[package]]
 name = "ultar-web"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
- "cosmic-text",
- "drm",
- "libc",
- "nix 0.29.0",
- "ultar-ime",
- "zeno",
+ "rustix",
+ "ultar-brand",
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
 ]
 
 [[package]]

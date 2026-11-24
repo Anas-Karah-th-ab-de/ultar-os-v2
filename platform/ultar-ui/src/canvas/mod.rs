@@ -8,6 +8,7 @@
 mod blend;
 mod damage;
 mod group;
+mod pixels;
 mod shapes;
 pub(crate) mod stroke;
 

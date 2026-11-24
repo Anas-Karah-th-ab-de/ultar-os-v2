@@ -276,6 +276,17 @@ impl<'a> Painter<'a> {
         self.canvas.blit(source, area, area.x0, area.y0);
     }
 
+    /// Draws `source` (device pixels, e.g. a web page frame) with its top start corner at
+    /// the device pixel of `rect`'s top-left corner, cut to `rect` and the clip. Pixels are
+    /// replaced; where `source` does not reach, nothing is drawn.
+    pub fn draw_canvas(&mut self, source: &Canvas, rect: Rect) {
+        let device = self.snap(rect);
+        let area = PixelRect::covering(&device).intersect(&self.canvas.clip());
+        let (x0, y0) = (device.x as i32, device.y as i32);
+        let from = PixelRect::new(area.x0 - x0, area.y0 - y0, area.x1 - x0, area.y1 - y0);
+        self.canvas.blit(source, from, area.x0, area.y0);
+    }
+
     /// Restores a clip returned by [`Painter::clip`].
     pub fn restore_clip(&mut self, previous: PixelRect) {
         self.canvas.set_clip(previous);

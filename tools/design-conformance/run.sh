@@ -28,6 +28,8 @@ if [ -n "$CHROME" ] && python3 -c "import playwright, PIL" 2>/dev/null; then
         echo "design/conformance/states.tsv is stale: run tools/design-conformance/make_manifest.py" >&2
         exit 1
     fi
+    # The browser window's board boxes (apps/ultar-web/tests/fixtures/browser-board.tsv).
+    python3 -I "$TOOLS/browser_boxes.py" "$ROOT" "$OUT/inventory.json" --check
 else
     echo "notice: no Chrome/playwright – board rendering and board-side checks skipped" >&2
 fi
@@ -38,6 +40,7 @@ python3 -I "$TOOLS/static_checks.py" "$ROOT" $INV --known "$ROOT/design/conforma
 cd "$ROOT"
 ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-ui --test design_conformance --test design_conformance_clicks --test design_conformance_toasts
 cargo test -p ultar-compositor --test design_conformance
+ULTAR_CONFORMANCE_OUT="$OUT/impl" cargo test -p ultar-web --test design_conformance --test clicks
 
 if [ -n "$INV" ]; then
     for b in States StatesLight; do

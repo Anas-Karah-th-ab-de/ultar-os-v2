@@ -1,16 +1,29 @@
 [package]
 name = "ultar-web"
-version.workspace = true
-edition.workspace = true
-description = "Ultar Web – Browser mit Rust-Kern (WPE WebKit ueber eigene WPEPlatform-Plattform), ohne Ubuntu"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Ultar Browser: Rust browser core and window (tabs, address bar, downloads, site permissions, tracking protection) on the compositor; web engines behind the WebEngine trait (apps, area 7)"
+
+[lib]
+name = "ultar_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-web"
+path = "src/bin/ultar-web.rs"
+
+[[bin]]
+name = "ultar-web-filter"
+path = "src/bin/ultar-web-filter.rs"
 
 [dependencies]
-cosmic-text = "0.19"
-drm = "0.15"
-nix = { version = "0.29", features = ["poll", "fs", "time"] }
-libc = "0.2"
-zeno = "0.3"
-ultar-ime = { path = "../../platform/ultar-ime" }
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event"] }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(ultar_engine)'] }
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }
