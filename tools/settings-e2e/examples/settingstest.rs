@@ -75,6 +75,7 @@ fn ports(bus: &Client, run: &Run) -> Ports {
         devices: Box::new(BusDevices(bus.clone())),
         update: Box::new(BusUpdate::new(bus.clone())),
         account: Box::new(BusAccount(bus.clone())),
+        mesh: Box::new(ultar_settings::service::mesh::BusMesh::new(bus)),
         status: Box::new(BusStatus::new(bus)),
         system: Box::new(ultar_settings::service::system::BusSystem::new(bus.clone())),
         files: Box::new(DocumentsFiles {
