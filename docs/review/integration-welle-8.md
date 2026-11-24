@@ -25,6 +25,13 @@ Branch `integ/wave8` in `/home/claude/agents/w8/integ/repo`, base **origin/main 
 | bf46cc5 | setup-builder.sh links the system lld as rust-lld (kernel gate on fresh builders). |
 | 5abe6a3 | installtest lost its static recipe in the kernel-bt merge (dynamic → "ld.so not found": INSTALLER-DISK failed); installer-disk.sh no longer dies on its own diagnostics. |
 | a315c24 | `describe_widget` back to 60 lines (ultar-check size). |
+| 07689e3 (S-6) | authd: PIN locked after 10 failures until the password is used; unreadable counter file = global wait (tests). |
+| 734498e (S-5 part) | compositor: unlocked call screen ranks below system dialogs (test). |
+| 1691463, 404857f | reference PNGs: shell's stack-corner (never committed), compositor ui_app_en (toolkit border box). |
+| 01648c1, 82966a1 | clippy in the S-1 patch; busd service-file test knows `[profiles]` and the installer socket (840). |
+| 2e71bb8 | **launcher timer lost wake-up**: a shutdown between tick and wait slept up to 1 h – `World::close` hung the process tests on B1/B2 (30+ min); now ≤ 1 s idle, 20 ms while stopping. |
+| ba4fb81 | ultar-cloud tests: private temp dirs under umask 002 (w9/cloud FIX.patch). |
+| 35b47a5 | web headless test probes the surface beside the (moved) title. |
 | 60ebc9c, b4a291f (S-1, S-2) | security reviewer's fix-1.patch (lock screen: only the session owner unlocks) and fix-2.patch (netd: no open evil twin of a secured network), applied unchanged. |
 
 Not taken: `claude/wip-integration-2` (pre-review launcher, old shell/settings).
@@ -84,6 +91,8 @@ Blocking: I-1, I-2, I-3 (fixed above). No blocking finding left.
 
 ## 4a. Open points (not blocking, not fixed – single review round)
 
+0. Security review (separate reviewer, docs/review/security-runde-welle-8.md): S-1, S-2, S-3, S-6, S-16 fixed here; S-5 fixed in part (unlocked: below system dialogs; locked: still full screen over the PIN entry); open: S-4, S-5 (locked), S-7, S-8, minors S-9…S-15 – listed in docs/review/OFFENE-BEFUNDE.md.
+
 1. Launcher R2-2…R2-5 (launcher-runde-2.md): 64-bit signer id, group kill without `cgroup.kill` (pid race, per-app not per-role group, 5 s under the core lock), the phone's settings link (`org.ultar.settings` is no launcher id, `app.phone` has no `launcher.start`), one slow start blocks the launcher's bus thread.
 2. The launcher cannot grant `ui.call-screen`, `ui.client-header`, `ui.output-config`.
 3. `ultar-web` "Show in folder" starts `ultar-files --select <file>`, but ultar-files has no `--select` option yet (it opens URIs via the launcher, `files://…`): the handoff fails as "missing/start error" until Files gets `--select` or web uses `launcher.start` with the file's `files://` URI.
@@ -94,8 +103,22 @@ Blocking: I-1, I-2, I-3 (fixed above). No blocking finding left.
 8. Phone-bricks snapshot re-recorded (field text 1 px over after the settings card border box) – phone author to confirm against the board.
 9. netd holds `net_admin` and parses Wi-Fi/DHCP/WireGuard input in one process; accountd/captured `file_admin` (see §4).
 11. busd size: the release build (`opt-level = "s"`, LTO, strip) is 500,840 bytes here, inside the 700,000 budget of tools/budgets.toml; the reported 1.47 MB is the static (`crt-static`) e2e build of the same binary, which `ultar-check budget` does not measure – no budget change.
+12. AB-TEST check "installation in the A/B layout" (abtest.py:152): the installer is driven by fixed key presses; the line `[installation] fertig: A/B layout … slot A active` is not seen as expected although the installed disk is correct – check under investigation (kept log on B2 /root/abkeep).
 10. Installer e2e stays opt-in (INSTALLER_E2E=1, typed keys lost under QEMU TCG).
 
-## 5. Gate (integ/wave8)
+## 5. Gate (integ/wave8, builders B1/B2/B4; per-package tests with a 900 s limit)
 
-GATE_RESULTS
+* fmt clean · clippy `-D warnings` on the CI strict set + every crate of this wave: clean · workspace-wide clippy:
+  only lints in untouched legacy crates (4a.6) · ultar-check: the 20 findings main 7744e78 already has, none
+  added · design-conformance run.sh: ok · i18n: ok.
+* Workspace tests (B2, 2e71bb8): **3058 passed, 4 failed, 21 ignored, no hang**. Fixed after that run: ultar-web
+  probe (35b47a5), ultar-cloud (ba4fb81, locally green). Remaining, environment-only: ultar-ui `icon-set-normal`
+  (19–21 px, B2 fonts – passes locally/B4, known), ultar-netd `radios_switch…` (B2 has a real radio: Disconnected
+  vs NoDevice; passes in a clean container), ultar-service `retained_values…` (timing, passes locally).
+* Kernel `tools/kern-test/ci.sh` (B2, rust-1.97 + RUSTC_BOOTSTRAP=1, system lld as rust-lld): intel-display 124,
+  every marker ok – BUS SELFCHECK, ZELLTEST, RECHTETEST (32 groups), GERAETETEST (+ many devices, USB),
+  WECKERTEST, SPAWNTEST, FENSTERTEST, BTTEST-UINPUT, **VMWARE-LIKE** (3 machines + DESKTOP), DEVD-QEMU,
+  ZELLTEST/RECHTETEST-EXT4, EXT4TEST, GRENZTEST 512/2048, INIT, **LAUNCHER**, **DESKTOP**, SVC, **DIENSTE**,
+  **TELEFON**, INSTALLER-DISK (installer e2e opt-in, skipped), BT. **AB-TEST: 43 of 44** – "installation in the A/B
+  layout" fails reproducibly (twice on B2, seen once by the installer agent); the installation itself is fine
+  (factory slot table, slot A start, offline update, power-loss and loader checks all pass) – see 4a.12.
