@@ -148,8 +148,12 @@ def run():
     check("installer started", vm.read_until(b"[installation] gestartet", 180) is True)
     for k, pause in (("2", 1.5), ("4", 5), ("3", 1.5), ("1", 1.5), ("3", 1.5), ("2", 1)):
         vm.key(k, pause)
-    done = vm.read_until(b"slot A active", 900)
-    check("installation in the A/B layout", done is True and b"A/B layout" in vm.buf, vm.buf[-300:].decode("utf-8", "replace"))
+    # The installer restarts the machine when it is done and QEMU (-no-reboot) then ends: the line can
+    # already have come during the key presses above, and read_until only looks at new output.
+    if b"slot A active" not in vm.buf:
+        vm.read_until(b"slot A active", 900)
+    done = re.search(rb"\[installation\] fertig: A/B layout, \d+ partitions, slot A active", vm.buf)
+    check("installation in the A/B layout", done is not None, vm.buf[-300:].decode("utf-8", "replace"))
     vm.kill()
     t = table()
     check("factory slot table on ULTAR-BOOTCTL", t is not None and t["default"] == "a" and t["trial"] is None and t["flags"] == (3, 0), str(t))
