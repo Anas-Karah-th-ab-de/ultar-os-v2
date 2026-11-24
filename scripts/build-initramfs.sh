@@ -95,9 +95,22 @@ if [ -n "${MODULES:-}" ]; then
   done
   # Intel AX201/BE200: signierte iwlwifi-/PNVM-Dateien aus linux-firmware-intel-wireless
   # bereits ins Startabbild kopieren. fwhelper kann dann auch nachträglich fehlende Dateien aus compat/data bedienen.
-  if printf '%s\n' "$MODULES" | grep -qw iwlwifi && [ -d "$MODULES_DIR/lib/firmware/intel/iwlwifi" ]; then
-    mkdir -p "$STAGE/lib/firmware/intel"
-    cp -a "$MODULES_DIR/lib/firmware/intel/iwlwifi" "$STAGE/lib/firmware/intel/"
+  # The kernel asks for /lib/firmware/iwlwifi-<name>.ucode (top level); newer linux-firmware keeps the files
+  # in intel/iwlwifi/ and only links them there – copy both, or the driver finds nothing and gives up.
+  # regulatory.db: cfg80211's country rules (without it only the restrictive world domain).
+  if printf '%s\n' "$MODULES" | grep -qw iwlwifi; then
+    FW=$MODULES_DIR/lib/firmware
+    mkdir -p "$STAGE/lib/firmware"
+    if [ -d "$FW/intel/iwlwifi" ]; then
+      mkdir -p "$STAGE/lib/firmware/intel"
+      cp -a "$FW/intel/iwlwifi" "$STAGE/lib/firmware/intel/"
+    fi
+    for f in "$FW"/iwlwifi-* "$FW"/regulatory.db "$FW"/regulatory.db.p7s; do
+      if [ -e "$f" ] || [ -L "$f" ]; then cp -a "$f" "$STAGE/lib/firmware/"; fi
+    done
+    if [ -n "$(find "$STAGE/lib/firmware" -xtype l)" ]; then
+      echo "FEHLER: iwlwifi-Firmware-Verweise im Startabbild zeigen ins Leere" >&2; exit 1
+    fi
   fi
   # Intel AI Boost (ivpu) und NVIDIA-GSP/Nouveau-Firmware in das Startabbild übernehmen.
   # Die Dateien stammen aus den signierten Distributionspaketen; Ultar erzeugt keine
