@@ -47,9 +47,13 @@ fn panel_strip(area: Rect, edge: Edge, size: i32, rtl: bool) -> Rect {
     }
 }
 
-/// Stacking rank of non-window surfaces above the windows.
-fn rank(role: Role) -> u8 {
+/// Stacking rank of non-window surfaces above the windows. The call screen is above the
+/// lock screen only while locked (a ringing call is answered without unlocking); unlocked
+/// it stays below system dialogs, so it can never hide a permission or password prompt
+/// (security review S-5).
+fn rank(role: Role, locked: bool) -> u8 {
     match role {
+        Role::CallScreen if !locked => 3,
         Role::Panel { .. } => 2,
         Role::Overlay => 3,
         Role::SystemDialog => 4,
@@ -171,7 +175,7 @@ impl State {
                     })
                     .or_default()
                     .push(placed),
-                role => above.push((rank(role), placed)),
+                role => above.push((rank(role, locked), placed)),
             }
         }
         if !locked {
@@ -182,7 +186,7 @@ impl State {
                     window: Some(i),
                 };
                 if w.secure {
-                    above.push((rank(Role::SystemDialog), placed));
+                    above.push((rank(Role::SystemDialog, locked), placed));
                     continue;
                 }
                 out.push(placed);

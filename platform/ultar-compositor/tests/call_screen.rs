@@ -176,3 +176,22 @@ fn client_header_round_trips_and_refuses_bad_values() {
     assert!(R::decode(42, &[3, 0, 0, 0, 2]).is_err());
     assert_eq!(Rights::ALL.0, 511);
 }
+
+/// Security review S-5: unlocked, a call screen never covers a system dialog (a permission
+/// or password prompt stays visible above it).
+#[test]
+fn an_unlocked_call_screen_stays_below_system_dialogs() {
+    let mut comp = compositor(
+        config_with(Rights(Rights::CALL_SCREEN.0 | Rights::SYSTEM_DIALOG.0)),
+        &[(800, 600)],
+    );
+    let mut phone = Peer::hello(&mut comp);
+    layer(&mut phone, &mut comp, 1, Role::CallScreen, 0xff0000);
+    let mut dialog = Peer::hello(&mut comp);
+    dialog.window_role(&mut comp, 1, Role::SystemDialog, 0xffffff);
+    comp.render_now();
+    let w = comp.state.windows.iter().find(|w| w.secure).unwrap();
+    let c = w.content();
+    let at = pixel(&comp, (c.x + c.w / 2) as u32, (c.y + c.h / 2) as u32);
+    assert_eq!(at, 0xffffff, "the dialog is above the call screen");
+}
