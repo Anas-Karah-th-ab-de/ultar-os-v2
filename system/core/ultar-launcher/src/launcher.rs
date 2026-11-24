@@ -235,15 +235,16 @@ impl Launcher {
             entry.granted.without(permission)
         };
         core.set_granted(&id, granted);
-        let stored = core
-            .store
-            .save()
-            .map_err(LaunchError::from)
-            .and_then(|()| core.write_rights_or_withdraw());
-        if let Err(error) = stored {
+        // the compositor's file follows the state in memory even when the
+        // state cannot be saved (review round 2: a revoke whose save failed
+        // left the right on file for the app's next start)
+        let saved = core.store.save().map_err(LaunchError::from);
+        let written = core.write_rights_or_withdraw();
+        if let Err(error) = saved.and(written) {
             if grant {
                 core.set_granted(&id, entry.granted);
                 let _ = core.store.save();
+                let _ = core.write_rights_or_withdraw();
             }
             self.note("launcher.permission_not_stored", &id);
             return Err(error);
