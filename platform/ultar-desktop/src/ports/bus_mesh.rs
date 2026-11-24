@@ -23,8 +23,8 @@ impl BusPorts {
         reply.map_err(|_| PortError::Unavailable)
     }
 
-    /// `mesh.set_enabled` and `mesh.handoff_send`. An app that reported nothing is offered
-    /// as "this app, opened there": the shell says which app and title are in front.
+    /// `mesh.set_enabled` and `mesh.handoff_send`; before sending, the shell says which app
+    /// and title are in front.
     pub(super) fn mesh(&self, call: &Call) -> Result<Answer, PortError> {
         match call {
             Call::SetMesh(enabled) => {
@@ -33,26 +33,20 @@ impl BusPorts {
                 Ok(if done { Answer::Done } else { Answer::NotDone })
             }
             Call::MeshSend(target, front) => {
-                let first = self.send(target)?;
-                let (SendOutcome::NoActivity, Some((app, title))) = (&first, front) else {
-                    return Ok(Answer::Sent(first));
-                };
-                let activity = Activity {
-                    app: app.clone(),
-                    title: title.clone(),
-                    uri: None,
-                    file: None,
-                };
-                let set = SetActivity {
-                    activity: Some(activity),
-                };
-                if !self.mesh_ask(&set)?.ok {
-                    return Ok(Answer::Sent(first));
+                // the mesh offers what that app reported, or the app as it is
+                if let Some((app, title)) = front {
+                    let activity = Activity {
+                        app: app.clone(),
+                        title: title.clone(),
+                        uri: None,
+                        file: None,
+                    };
+                    let set = SetActivity {
+                        activity: Some(activity),
+                    };
+                    self.mesh_ask(&set)?;
                 }
-                let second = self.send(target);
-                // what the shell said is taken back: the next app in front speaks for itself
-                let _ = self.mesh_ask(&SetActivity { activity: None });
-                second.map(Answer::Sent)
+                self.send(target).map(Answer::Sent)
             }
             _ => Ok(Answer::NotDone),
         }

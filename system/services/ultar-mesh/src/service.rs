@@ -264,15 +264,21 @@ impl MeshService {
         let method = request.method().to_owned();
         if method == SetActivity::METHOD {
             serve::<SetActivity>(request, |c, caller| {
-                // An app speaks for itself only; the shell may speak for any app.
-                let app = ultar_svckit::access::app_name(caller);
-                let own = c
-                    .activity
-                    .as_ref()
-                    .is_none_or(|a| app.is_none_or(|n| n == a.app));
-                if own {
-                    self.runtime.node.set_activity(c.activity);
-                }
+                // An app speaks for itself only; the shell names the app in front.
+                let node = &mut self.runtime.node;
+                let own = match ultar_svckit::access::app_name(caller) {
+                    Some(app) => {
+                        let own = c.activity.as_ref().is_none_or(|a| a.app == app);
+                        if own {
+                            node.report(app, c.activity);
+                        }
+                        own
+                    }
+                    None => {
+                        node.set_front(c.activity);
+                        true
+                    }
+                };
                 Done { ok: own }
             });
         } else if method == HandoffTargets::METHOD {

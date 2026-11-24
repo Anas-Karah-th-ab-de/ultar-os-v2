@@ -20,6 +20,8 @@ use ultar_bus::messages::mesh::{
 
 /// Offers one device may have open here at a time.
 pub const MAX_PENDING: usize = 4;
+/// Apps whose report of what is open is kept.
+pub const MAX_REPORTED: usize = 16;
 /// A transfer without a piece for this long has failed.
 pub const TRANSFER_SILENCE: Duration = Duration::from_secs(30);
 
@@ -55,6 +57,38 @@ impl Node {
     /// An app reports the activity in front (`None`: nothing to hand over).
     pub fn set_activity(&mut self, activity: Option<Activity>) {
         self.activity = activity.filter(|a| !a.app.is_empty());
+    }
+
+    /// What would be handed over now.
+    pub fn in_front(&self) -> Option<&Activity> {
+        self.activity.as_ref()
+    }
+
+    /// The app `app` says what is open in it (`None`: nothing). It is kept until the app
+    /// says otherwise, and is in front as long as nobody names another app.
+    pub fn report(&mut self, app: &str, activity: Option<Activity>) {
+        let activity = activity.filter(|a| a.app == app);
+        match &activity {
+            Some(a) if self.reported.len() < MAX_REPORTED || self.reported.contains_key(app) => {
+                self.reported.insert(app.to_owned(), a.clone());
+            }
+            Some(_) => {}
+            None => {
+                self.reported.remove(app);
+            }
+        }
+        let in_front = self.activity.as_ref().is_none_or(|a| a.app == app);
+        if in_front {
+            self.activity = activity;
+        }
+    }
+
+    /// The shell names the app in front. What that app itself reported counts (it knows
+    /// the place or the file); without a report, the app is offered as it is.
+    pub fn set_front(&mut self, front: Option<Activity>) {
+        let front = front.filter(|a| !a.app.is_empty());
+        let reported = front.as_ref().and_then(|a| self.reported.get(&a.app));
+        self.activity = reported.cloned().or(front);
     }
 
     /// The devices the activity in front can go to.
