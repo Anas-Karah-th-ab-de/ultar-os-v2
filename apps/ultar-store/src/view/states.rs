@@ -41,12 +41,15 @@ pub(crate) fn surface_body(
     }
 }
 
-/// Loading: centred ring with the store's loading line (panel 1).
+/// Loading: centred progress ring with the store's loading line (panel 1).
 pub(crate) fn loading_panel(ui: &mut Ui, parent: NodeId) -> Result<(), UiError> {
     centered(ui, parent, |ui, inner| {
-        let ring = ui.add(inner, Icon::new(IconId::Ring).color(ColorRole::TextMuted))?;
-        let _ = ring;
-        ui.add_sized(inner, ultar_ui::widgets::Progress::new(Label::key("store.state.loading")), Sizing::width(24.0))?;
+        // The indeterminate ring is the board's `ring` glyph, animating.
+        ui.add_sized(
+            inner,
+            ultar_ui::widgets::Progress::new(Label::key("store.state.loading")),
+            Sizing::width(Space::S24.points()),
+        )?;
         ui.add(
             inner,
             Text::new(Label::key("store.state.loading")).color(ColorRole::TextMuted),

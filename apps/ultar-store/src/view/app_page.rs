@@ -32,13 +32,34 @@ pub(crate) fn build(
     let Some(app) = store.entry(&id).cloned() else {
         return installed_only_page(ui, parent, store, &id, hits);
     };
-    // Back row (boards: `store.back` icon button at the start).
+    page_header(ui, parent, store, &app, hits)?;
+    main_button_row(ui, parent, store, &app, hits)?;
+    if let Some(err) = failed_reason(store, &app.id) {
+        ui.add(parent, Text::new(Label::key(err)).color(ColorRole::Danger))?;
+    }
+    stats_row(ui, parent, store, &app)?;
+    muted(ui, parent, loc_label(&app.description, ui), TypeSize::S14)?;
+    if !app.requires.is_empty() {
+        requires_row(ui, parent, store, &app, hits)?;
+    }
+    permissions_card(ui, parent, store, &app)?;
+    muted(ui, parent, Label::key("store.note.app-page"), TypeSize::S12)?;
+    Ok(())
+}
+
+/// Back button + icon tile (48 box, centred 24 icon) + name + publisher.
+fn page_header(
+    ui: &mut Ui,
+    parent: NodeId,
+    store: &Store,
+    app: &CatalogApp,
+    hits: &mut HitMap,
+) -> Result<(), UiError> {
     let back = ui.add(
         parent,
         IconButton::new(IconId::Back, Label::key("store.aria.back")),
     )?;
     hits.bind(back, StoreAction::Back);
-    // Icon tile (48 box, centred 24 icon, like the board) + name + publisher.
     let head = ui.add(parent, Flex::row().gap(Space::S12).cross(CrossAlign::Center))?;
     let tile = ui.add_sized(
         head,
@@ -49,17 +70,12 @@ pub(crate) fn build(
         ),
         Sizing::width(48.0).with_height(48.0),
     )?;
+    let name = super::loc_label(&app.name, ui)
+        .resolve(ui.translator())
+        .into_owned();
     ui.add(
         tile,
-        Icon::new(icon_by_name(&app.icon)).name(Label::key_with(
-            "store.aria.app-icon",
-            &[(
-                "name",
-                &super::loc_label(&app.name, ui)
-                    .resolve(ui.translator())
-                    .into_owned(),
-            )],
-        )),
+        Icon::new(icon_by_name(&app.icon)).name(Label::key_with("store.aria.app-icon", &[("name", &name)])),
     )?;
     let names = ui.add_sized(head, Flex::column().gap(Space::S4), Sizing::grow(1))?;
     ui.add(
@@ -68,22 +84,8 @@ pub(crate) fn build(
     )?;
     ui.add(
         names,
-        Text::new(crate::view::rows::publisher_line(store, &app)).color(ColorRole::TextMuted),
+        Text::new(crate::view::rows::publisher_line(store, app)).color(ColorRole::TextMuted),
     )?;
-    main_button_row(ui, parent, store, &app, hits)?;
-    if let Some(err) = failed_reason(store, &app.id) {
-        ui.add(
-            parent,
-            Text::new(Label::key(err)).color(ColorRole::Danger),
-        )?;
-    }
-    stats_row(ui, parent, store, &app)?;
-    muted(ui, parent, loc_label(&app.description, ui), TypeSize::S14)?;
-    if !app.requires.is_empty() {
-        requires_row(ui, parent, store, &app, hits)?;
-    }
-    permissions_card(ui, parent, store, &app)?;
-    muted(ui, parent, Label::key("store.note.app-page"), TypeSize::S12)?;
     Ok(())
 }
 
