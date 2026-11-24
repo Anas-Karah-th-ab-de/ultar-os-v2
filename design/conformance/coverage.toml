@@ -266,67 +266,67 @@ boards = "CalendarSheet:1, DesktopBottom:1, DesktopTop:1, Main:1, Overview:1, Qu
 note = "bar per Main/DesktopBottom; geometry and colours in tests/boards.rs"
 
 [action."browser.tab"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs (Chrome::add_tabs) + app/mod.rs (select_tab)"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:2"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.tabclose"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs + app/mod.rs (close_tab)"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:2"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.newtab"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs + app/mod.rs (new_tab)"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.back"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs + app/actions.rs"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.forward"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs + app/actions.rs"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.reload"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs (swap_reload) + app/actions.rs (reload_or_stop)"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.address"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/mod.rs + app/actions.rs (open_typed) + url.rs"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:2"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.shield"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/panels.rs (open_shield) + app/overlay.rs"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."browser.downloads"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "apps/ultar-web/src/chrome/panels.rs (open_downloads) + app/overlay.rs"
+test = "apps/ultar-web/tests/design_conformance.rs + apps/ultar-web/tests/clicks.rs"
 boards = "DesktopBottom:1"
-note = "no implementation on HEAD"
+note = "boxes at +-1 point and colours against DesktopBottom (tests/fixtures/browser-board.tsv); the CLICKS.md behaviour driven with the test engine"
 
 [action."files.back"]
 status = "different"

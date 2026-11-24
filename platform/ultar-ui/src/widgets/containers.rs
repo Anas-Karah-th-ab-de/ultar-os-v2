@@ -290,6 +290,12 @@ pub enum CardTone {
     /// A part of a card set off by a hairline (boards: the card head's `border-bottom`): no
     /// fill of its own, one `line` border on one edge.
     Rule(BarEdge),
+    /// A region like [`CardTone::Bar`] with another fill (a browser's tab strip on `raised`,
+    /// its toolbar on `surface`).
+    Region(ColorRole, BarEdge),
+    /// A control-sized container (radius 8) such as a closable tab: chosen = `surface` fill
+    /// with a `control_border` edge, otherwise no fill and no edge.
+    Chip(bool),
 }
 
 /// The edge of a bar region that carries its border.
@@ -358,6 +364,23 @@ impl Card {
         }
     }
 
+    /// A region with `fill` and one `line` border on `edge` (see [`CardTone::Region`]).
+    pub fn region(fill: ColorRole, edge: BarEdge) -> Card {
+        Card {
+            tone: CardTone::Region(fill, edge),
+            ..Card::new()
+        }
+    }
+
+    /// A chip container laid out as a row (see [`CardTone::Chip`]).
+    pub fn chip(chosen: bool) -> Card {
+        Card {
+            flex: Flex::row(),
+            tone: CardTone::Chip(chosen),
+            ..Card::new()
+        }
+    }
+
     /// A card with inner spacing on all sides and a gap between children.
     pub fn padded() -> Card {
         Card {
@@ -416,8 +439,10 @@ impl Card {
             p.shadow(rect, Some(Radius::Card));
         }
         match self.tone {
-            CardTone::Bar(edge) => return Card::paint_bar(p, rect, edge, true),
-            CardTone::Rule(edge) => return Card::paint_bar(p, rect, edge, false),
+            CardTone::Bar(edge) => return Card::paint_bar(p, rect, Some(ColorRole::Bar), edge),
+            CardTone::Rule(edge) => return Card::paint_bar(p, rect, None, edge),
+            CardTone::Region(fill, edge) => return Card::paint_bar(p, rect, Some(fill), edge),
+            CardTone::Chip(chosen) => return Card::paint_chip(p, rect, chosen),
             CardTone::Danger => {
                 let (fill, danger) = (p.color(ColorRole::Raised), p.color(ColorRole::Danger));
                 p.fill(rect, Some(Radius::Card), fill);
@@ -441,14 +466,25 @@ impl Card {
 }
 
 impl Card {
-    /// A bar region: `bar` fill and one `line` border on `edge` (mirrored in RTL).
-    fn paint_bar(p: &mut Painter<'_>, rect: Rect, edge: BarEdge, filled: bool) {
-        let (bar, line, hairline) = (
-            p.color(ColorRole::Bar),
-            p.color(ColorRole::Line),
-            p.hairline(),
-        );
-        if filled {
+    /// A chosen chip: `surface` fill and a `control_border` edge, radius 8.
+    fn paint_chip(p: &mut Painter<'_>, rect: Rect, chosen: bool) {
+        if chosen {
+            let (fill, edge, hairline) = (
+                p.color(ColorRole::Surface),
+                p.color(ColorRole::ControlBorder),
+                p.hairline(),
+            );
+            p.fill(rect, Some(Radius::Control), fill);
+            p.stroke(rect, Some(Radius::Control), hairline, edge);
+        }
+    }
+
+    /// A bar region: `fill` (none: only the edge) and one `line` border on `edge`
+    /// (mirrored in RTL).
+    fn paint_bar(p: &mut Painter<'_>, rect: Rect, fill: Option<ColorRole>, edge: BarEdge) {
+        let (line, hairline) = (p.color(ColorRole::Line), p.hairline());
+        if let Some(fill) = fill {
+            let bar = p.color(fill);
             p.fill(rect, None, bar);
         }
         let rtl = p.env().direction.is_rtl();

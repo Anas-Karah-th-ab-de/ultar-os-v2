@@ -58,6 +58,10 @@ impl Ui {
             },
             selected: match &node.widget {
                 Widget::ListItem(w) => Some(w.selected),
+                Widget::Button(w) => match w.variant {
+                    crate::widgets::ButtonVariant::Tab(shown) => Some(shown),
+                    _ => None,
+                },
                 _ => None,
             },
             level: None,

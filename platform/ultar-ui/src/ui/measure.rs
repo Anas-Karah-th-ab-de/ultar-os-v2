@@ -85,6 +85,7 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         | Widget::List(_)
         | Widget::Scroll(_)
         | Widget::HeaderBar(_)
+        | Widget::PixelArea(_)
         | Widget::Dialog(_) => Size::default(),
         Widget::Table(w) => w.measure(cx, avail),
         Widget::Tree(w) => w.measure(cx, avail),
@@ -164,7 +165,9 @@ fn border_box(widget: &Widget) -> [f32; 4] {
         // the sheet's top and side borders lie outside its node (Card::paint)
         CardTone::TopSheet => [0.0, 0.0, 0.0, b],
         CardTone::Danger => [2.0 * b; 4],
-        CardTone::Bar(edge) | CardTone::Rule(edge) => match edge {
+        // a chip's edge appears only when chosen: it never moves the content
+        CardTone::Chip(_) => [0.0; 4],
+        CardTone::Bar(edge) | CardTone::Rule(edge) | CardTone::Region(_, edge) => match edge {
             BarEdge::Start => [b, 0.0, 0.0, 0.0],
             BarEdge::End => [0.0, b, 0.0, 0.0],
             BarEdge::Top => [0.0, 0.0, b, 0.0],

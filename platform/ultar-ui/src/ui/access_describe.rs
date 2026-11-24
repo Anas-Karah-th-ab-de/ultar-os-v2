@@ -1,7 +1,7 @@
 //! Role, name and value of each widget for the accessibility tree.
 
 use super::Role;
-use crate::widgets::{CardTone, DialogKind, Label, Tone, Widget};
+use crate::widgets::{ButtonVariant, CardTone, DialogKind, Label, Tone, Widget};
 
 fn number(value: f32) -> Label {
     let text = if value.fract() == 0.0 {
@@ -37,6 +37,9 @@ pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, O
         Widget::Card(_) => (Role::Group, None, None),
         Widget::Text(w) => (Role::Text, named(&w.label), None),
         Widget::Row(w) => (Role::Row, named(&w.label), w.sublabel.clone()),
+        Widget::Button(w) if matches!(w.variant, ButtonVariant::Tab(_)) => {
+            (Role::Tab, named(&w.label), None)
+        }
         Widget::Button(w) => (Role::Button, named(&w.label), None),
         Widget::IconButton(w) => (Role::Button, named(&w.name), None),
         Widget::Brick(w) => return describe_brick(w),
@@ -83,6 +86,7 @@ pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, O
         Widget::Tree(w) => (Role::Tree, named(&w.name), None),
         Widget::HeaderBar(w) => (Role::Banner, named(&w.title), None),
         Widget::QrCode(w) => (Role::Image, named(&w.name), None),
+        Widget::PixelArea(w) => (Role::Image, named(&w.name), None),
     })
 }
 

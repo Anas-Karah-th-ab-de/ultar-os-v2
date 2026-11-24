@@ -1,10 +1,5 @@
 [[entry]]
 rule = "layers"
-path = "apps/ultar-web/Cargo.toml"
-count = 1
-
-[[entry]]
-rule = "layers"
 path = "platform/ultar-shell/Cargo.toml"
 count = 8
 
@@ -17,21 +12,6 @@ count = 1
 rule = "layers"
 path = "system/services/ultar-ril/Cargo.toml"
 count = 1
-
-[[entry]]
-rule = "paths"
-path = "apps/ultar-web/src/main.rs"
-count = 2
-
-[[entry]]
-rule = "paths"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 5
-
-[[entry]]
-rule = "paths"
-path = "apps/ultar-web/src/sched.rs"
-count = 10
 
 [[entry]]
 rule = "paths"
@@ -442,31 +422,6 @@ count = 1
 rule = "text"
 path = "apps/ultar-office/src/pdf.rs"
 count = 5
-
-[[entry]]
-rule = "text"
-path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
-count = 1
-
-[[entry]]
-rule = "text"
-path = "apps/ultar-web/src/browser.rs"
-count = 8
-
-[[entry]]
-rule = "text"
-path = "apps/ultar-web/src/i18n.rs"
-count = 48
-
-[[entry]]
-rule = "text"
-path = "apps/ultar-web/src/platform.rs"
-count = 1
-
-[[entry]]
-rule = "text"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 1
 
 [[entry]]
 rule = "text"
@@ -1012,31 +967,6 @@ count = 4
 rule = "size"
 path = "apps/ultar-office/src/xlsx.rs"
 count = 2
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-web/src/browser.rs"
-count = 12
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-web/src/compositor.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-web/src/main.rs"
-count = 1
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 1
 
 [[entry]]
 rule = "size"
@@ -1725,46 +1655,6 @@ count = 4
 
 [[entry]]
 rule = "unsafe"
-path = "apps/ultar-web/src/browser.rs"
-count = 39
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/compositor.rs"
-count = 3
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/engine.rs"
-count = 18
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/ffi.rs"
-count = 53
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/main.rs"
-count = 11
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/platform.rs"
-count = 29
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 4
-
-[[entry]]
-rule = "unsafe"
-path = "apps/ultar-web/src/sched.rs"
-count = 3
-
-[[entry]]
-rule = "unsafe"
 path = "kernel/ultar-kern/src/apic.rs"
 count = 14
 
@@ -2157,31 +2047,6 @@ count = 2
 rule = "unwrap"
 path = "apps/ultar-office/src/sheet.rs"
 count = 2
-
-[[entry]]
-rule = "unwrap"
-path = "apps/ultar-web/src/bin/ultar-web-filter.rs"
-count = 2
-
-[[entry]]
-rule = "unwrap"
-path = "apps/ultar-web/src/browser.rs"
-count = 1
-
-[[entry]]
-rule = "unwrap"
-path = "apps/ultar-web/src/main.rs"
-count = 2
-
-[[entry]]
-rule = "unwrap"
-path = "apps/ultar-web/src/platform.rs"
-count = 1
-
-[[entry]]
-rule = "unwrap"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 1
 
 [[entry]]
 rule = "unwrap"
@@ -2610,11 +2475,6 @@ count = 2
 
 [[entry]]
 rule = "logical-layout"
-path = "apps/ultar-web/src/browser.rs"
-count = 4
-
-[[entry]]
-rule = "logical-layout"
 path = "platform/ultar-ime/src/lib.rs"
 count = 7
 
@@ -2765,11 +2625,6 @@ count = 2
 
 [[entry]]
 rule = "linux-calls"
-path = "apps/ultar-web/src/sandbox.rs"
-count = 2
-
-[[entry]]
-rule = "linux-calls"
 path = "platform/ultar-shell/src/app_spotify.rs"
 count = 2
 
@@ -2826,11 +2681,6 @@ count = 3
 [[entry]]
 rule = "brand"
 path = "apps/ultar-office/src/docx.rs"
-count = 2
-
-[[entry]]
-rule = "brand"
-path = "apps/ultar-web/src/browser.rs"
 count = 2
 
 [[entry]]

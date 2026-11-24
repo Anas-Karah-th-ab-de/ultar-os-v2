@@ -145,16 +145,12 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 # platform/ultar-surface: the compositor client (window, input, clipboard). Allowed for apps by
 # the lead's layering decision (wave 7): there is no separate app-api crate yet, and every app
 # window is an ultar-surface client. Apps use only its client side (UiWindow, Client).
+# compositor client API for app windows: the browser window (apps/ultar-web), the files and
+# phone apps are such clients.
 [[allow]]
 from = "apps"
 to = "platform"
 crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface"]
-
-# compositor client API for app windows
-[[allow]]
-from = "apps"
-to = "platform"
-crates = ["platform/ultar-surface"]
 
 [[allow]]
 from = "apps"

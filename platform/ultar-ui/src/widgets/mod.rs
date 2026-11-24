@@ -23,6 +23,7 @@ mod label;
 mod list;
 mod list_tile;
 mod menu;
+mod picture;
 mod progress;
 mod qr;
 mod radio;
@@ -56,6 +57,7 @@ pub use label::{Label, LabelArg};
 pub use list::{List, ListItem};
 pub use list_tile::TILE_WIDTH;
 pub use menu::{Menu, MenuItem, MAX_MENU_DEPTH, MAX_MENU_ITEMS};
+pub use picture::PixelArea;
 pub use progress::Progress;
 pub use qr::{QrCode, QrCodeError, MAX_QR_BYTES};
 pub use radio::{Pictogram, RadioGroup, RadioLayout};
@@ -183,6 +185,8 @@ pub enum Widget {
     Brick(Brick),
     /// The month grid of a calendar.
     DayGrid(DayGrid),
+    /// Pixels the application supplies (a web page, a video).
+    PixelArea(PixelArea),
 }
 
 macro_rules! widget_from {
@@ -224,7 +228,8 @@ widget_from!(
     QrCode,
     Arrangement,
     Brick,
-    DayGrid
+    DayGrid,
+    PixelArea
 );
 
 impl From<SearchField> for Widget {
@@ -253,6 +258,7 @@ impl Widget {
                 | Widget::Tree(_)
                 | Widget::Arrangement(_)
                 | Widget::DayGrid(_)
+                | Widget::PixelArea(_)
         ) || matches!(self, Widget::Brick(b) if !b.is_static())
     }
 
