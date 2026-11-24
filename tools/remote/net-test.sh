@@ -31,6 +31,11 @@ case "${1:-all}" in
     git worktree add -q --detach /tmp/net-base-test FETCH_HEAD
     (cd /tmp/net-base-test && cargo test -q --locked -p "$2" --test "$3" 2>&1 | tail -25)
     git worktree remove -f /tmp/net-base-test ;;
+  # the network service's process tests on this host and the settings app's clippy with its tests
+  host)
+    cargo test -q --locked -p ultar-netd 2>&1 | grep -E "test result|FAILED|panicked"
+    cargo clippy -q --locked -p ultar-settings --all-targets -- -D warnings && echo SETTINGS-CLIPPY-OK
+    exit 0 ;;
   tests)
     cargo test --no-fail-fast --locked $P 2>&1 | grep -E "^test result|FAILED|panicked|^error" | sort | uniq -c
     exit 0 ;;
