@@ -243,20 +243,26 @@ def wheel(vm, x, y, down=True, n=5):
 
 
 def phone_pad_scrolls(vm, frame):
-    """The window a PC gives the phone is lower than the dial pad: the pad scrolls (wheel over it)
-    instead of being cut off. Only where the window is that low (screens up to 800 high); on larger
-    screens the wheel may change nothing."""
+    """The window a PC gives the phone is lower than the dial pad: the pad scrolls instead of being
+    cut off. Tab walks the focus down the pad (keys, call button); the focused control is scrolled
+    into view, so the pad's top (heading, notice) moves out of the window. Only where the window is
+    that low (screens up to 800 high). The wheel is tried first (it needs the input driver's wheel)."""
     x0, y0, x1, y1 = frame
     w, h = vm.size
-    # the pad is the start column: on the right in Arabic
     px = x1 - 180 if x1 - x0 > 700 else (x0 + x1) // 2
+    strip = ((x0 + x1) // 2, y0 + 45, x1 - 8, y0 + 130)  # the pad's heading (Arabic: right column)
     before = vm.shot("phone-pad-top")
     wheel(vm, px, (y0 + y1) // 2)
-    took, after = changes_within(vm, "phone-pad-scrolled", before, frame, 2.0, 200)
-    log(f"phone: the dial pad scrolled after {took} s ({changed_px(after, before, frame)} pixels)")
-    wheel(vm, px, (y0 + y1) // 2, down=False)
     vm.move(w - 2, 2)
-    if took is None and h <= 800:
+    vm.pump(1)
+    by_wheel = changed_px(vm.shot("phone-pad-wheel"), before, strip)
+    for _ in range(18):
+        vm.key("tab")
+    vm.pump(1)
+    after = vm.shot("phone-pad-scrolled")
+    moved = changed_px(after, before, strip)
+    log(f"phone: dial pad top changed by the wheel {by_wheel}, by Tab to the lower keys {moved} pixels")
+    if moved < 200 and by_wheel < 200 and h <= 800:
         return ["phone: the dial pad does not scroll in a window lower than it (cut off)"]
     return []
 
