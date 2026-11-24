@@ -132,6 +132,7 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
         .last()
         .map(|b| b.bytes(size as usize))
         .unwrap_or_default();
+    coherent_mapping_probe(dev, bufs, &table);
     let entries = hwconfig::parse(&table).map_err(|e| {
         let head: Vec<String> = table
             .chunks_exact(4)
@@ -141,6 +142,28 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
         format!("{e} ({size} bytes, first words: {})", head.join(" "))
     })?;
     Ok((size, entries.len()))
+}
+
+/// GGTT entry bits of cache attribute index 3 on Xe_LPG: write-back with the GT keeping the CPU's
+/// caches coherent (what Linux uses for such buffers).
+const GGTT_PAT_WB_COHERENT: u64 = 1 << 52 | 1 << 53;
+
+/// Experiment for the buffer design: fetches the table again into a buffer mapped with the
+/// coherent cache attribute and reads it without dropping the CPU's lines. Prints whether it
+/// equals `expected`; not a check of the self test.
+fn coherent_mapping_probe(dev: &mut Device, bufs: &mut Vec<GgttBuf>, expected: &[u8]) {
+    let size = expected.len() as u32;
+    let buf = match GgttBuf::with_attrs(dev, size as u64, GGTT_PAT_WB_COHERENT) {
+        Ok(b) => b,
+        Err(e) => return kprintln!("GTTEST: note: coherent mapping probe: {e}"),
+    };
+    let sent = hxg::get_hwconfig(&mut dev.mmio, buf.gtt as u64, size);
+    let same = buf.bytes_as_cached(size as usize) == expected;
+    bufs.push(buf);
+    kprintln!(
+        "GTTEST: note: coherent mapping (cache attribute 3), read without dropping lines: {} ({sent:?})",
+        if same { "table identical" } else { "table differs" }
+    );
 }
 
 /// Maps image, log and the minimal ADS, resets the GuC, uploads and – if it gets ready – talks

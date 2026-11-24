@@ -20,8 +20,13 @@ pub struct GgttBuf {
 }
 
 impl GgttBuf {
-    /// Allocates zeroed pages for `bytes` and maps them.
+    /// Allocates zeroed pages for `bytes` and maps them with the device's default attributes.
     pub fn new(dev: &mut Device, bytes: u64) -> Result<GgttBuf, String> {
+        GgttBuf::with_attrs(dev, bytes, 0)
+    }
+
+    /// As [`GgttBuf::new`], with `extra` bits set in every GGTT entry (cache attribute index).
+    pub fn with_attrs(dev: &mut Device, bytes: u64, extra: u64) -> Result<GgttBuf, String> {
         let pages = bytes.div_ceil(4096).max(1);
         let phys = crate::mem::alloc_pages(pages as usize).ok_or("no memory for a GuC buffer")?;
         let gtt = match dev.win.alloc(pages * 4096) {
@@ -36,7 +41,7 @@ impl GgttBuf {
         // the GT does not look into the CPU's caches: write the zeroes out, and drop the lines so
         // what the GuC writes later is read from memory
         flush(phys, pages * 4096);
-        if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs) {
+        if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs | extra) {
             buf.release(dev);
             return Err(format!("GGTT: {e}"));
         }
@@ -54,11 +59,23 @@ impl GgttBuf {
 
     /// A copy of the first `len` bytes (what the GuC wrote there).
     pub fn bytes(&self, len: usize) -> Vec<u8> {
+        self.copy_out(len, true)
+    }
+
+    /// As [`GgttBuf::bytes`] without dropping the CPU's lines first: only right for a mapping
+    /// whose cache attribute makes the GT keep the CPU's caches coherent.
+    pub fn bytes_as_cached(&self, len: usize) -> Vec<u8> {
+        self.copy_out(len, false)
+    }
+
+    fn copy_out(&self, len: usize, drop_lines: bool) -> Vec<u8> {
         let n = len.min((self.pages * 4096) as usize);
         // What the GT writes does not reach the CPU's caches: on the Beelink the first five lines
         // of the table still read as the zeroes from before. Dropping the lines first makes the
         // copy come from memory.
-        flush(self.phys, n as u64);
+        if drop_lines {
+            flush(self.phys, n as u64);
+        }
         let mut out = alloc::vec![0u8; n];
         // SAFETY: the buffer is `pages` identity-mapped kernel pages owned by this object, `n`
         // does not exceed it, and `out` is a fresh heap allocation (no overlap).
