@@ -6,10 +6,13 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+/// Canned answers: (request path prefix, raw response).
+type Routes = Vec<(String, Vec<u8>)>;
+
 /// One canned answer per request path prefix; records every request head.
 #[derive(Clone, Default)]
 struct Fake {
-    routes: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
+    routes: Arc<Mutex<Routes>>,
     seen: Arc<Mutex<Vec<String>>>,
 }
 
@@ -321,7 +324,7 @@ fn server_cannot_fill_the_disk_with_an_oversized_download() {
     let mut answer =
         b"HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\nconnection: close\r\n\r\n"
             .to_vec();
-    answer.extend(std::iter::repeat(0u8).take(sent));
+    answer.extend(std::iter::repeat_n(0u8, sent));
     fake.set("/v1/store/apps/com.example.big/download", answer);
     fake.set(
         "/v1/store/apps/com.example.big",
