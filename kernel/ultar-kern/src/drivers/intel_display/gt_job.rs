@@ -24,7 +24,7 @@ use ultar_intel_gt::engines::{self, RingState};
 use ultar_intel_gt::forcewake::{Domain, Forcewake};
 use ultar_intel_gt::lrc::{self, Context};
 use ultar_intel_gt::ppgtt::Ppgtt;
-use ultar_intel_gt::submit::{self, Policy};
+use ultar_intel_gt::submit::{self, Policy, TlbScope};
 use ultar_intel_gt::{mi, Hw};
 
 /// How a job's context is built.
@@ -242,6 +242,7 @@ fn prepare(env: &mut Env, spec: &Spec, id: u32) -> Result<Job, String> {
     }
     .map_err(|e| format!("{e}"))?;
     let image = env.filled(&image, 0)?;
+    invalidate(env, id)?;
     Ok(Job {
         id,
         value,
@@ -250,6 +251,29 @@ fn prepare(env: &mut Env, spec: &Spec, id: u32) -> Result<Job, String> {
         image,
         ctx,
     })
+}
+
+/// GGTT entries changed (buffers of an earlier job were given back, new ones mapped): the GuC
+/// and the engines must drop what they cached of the old entries.
+fn invalidate(env: &mut Env, id: u32) -> Result<(), String> {
+    let (hw, mem) = (&mut env.dev.mmio, &mut *env.mem);
+    for (n, scope) in [(1, TlbScope::Guc), (2, TlbScope::Full)] {
+        let seqno = id * 2 + n;
+        env.ct
+            .post(hw, mem, &submit::tlb_invalidate(seqno, scope))
+            .map_err(|e| format!("TLB invalidation: {e}"))?;
+        let event = submit::EVENT_TLB_INVALIDATION_DONE;
+        let done = env
+            .ct
+            .wait_event(hw, mem, event, STEP_TIMEOUT_US)
+            .map_err(|e| format!("TLB invalidation ({scope:?}) not confirmed: {e}"))?;
+        if done.first() != Some(&seqno) {
+            return Err(format!(
+                "TLB invalidation confirmed out of order: {done:x?}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Registers and enables the context and waits until the value is in memory. Returns the time

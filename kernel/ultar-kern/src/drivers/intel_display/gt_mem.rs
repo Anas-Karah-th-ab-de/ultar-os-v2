@@ -37,20 +37,36 @@ impl GgttBuf {
         // what the GuC writes later is read from memory
         flush(phys, pages * 4096);
         if let Err(e) = ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs) {
-            // which entry did not read back as written (seen once in ten runs on the Beelink)
-            let bad = list.iter().enumerate().find_map(|(i, p)| {
-                let read = ggtt::read_pte(&mut dev.mmio, gtt + i as u32 * 4096);
-                (ggtt::pte_page(read) != Some(*p)).then(|| {
-                    format!("entry {i} of {pages} at {gtt:#x}: wrote page {p:#x}, read {read:#x}")
-                })
-            });
+            // An entry did not read back as written. Seen in 2 of 16 runs on the Beelink while
+            // the GuC was running, and both times every entry was right on a second look: the
+            // read was wrong, not the table. Map once more (write, read back, flush).
+            let bad = Self::first_bad(dev, gtt, &list);
+            if bad.is_none() && ggtt::map(&mut dev.mmio, gtt, &list, dev.pte_attrs).is_ok() {
+                crate::kprintln!(
+                    "[intel-gt] note: GGTT read-back at {gtt:#x} failed once ({e}), second pass good"
+                );
+                return Ok(buf);
+            }
             buf.release(dev);
             return Err(format!(
                 "GGTT: {e}; {}",
-                bad.unwrap_or_else(|| "all entries read back correctly on the second look".into())
+                bad.unwrap_or_else(|| "second mapping pass failed as well".into())
             ));
         }
         Ok(buf)
+    }
+
+    /// The first entry that does not point at its page, as text.
+    fn first_bad(dev: &mut Device, gtt: u32, list: &[u64]) -> Option<String> {
+        list.iter().enumerate().find_map(|(i, p)| {
+            let read = ggtt::read_pte(&mut dev.mmio, gtt + i as u32 * 4096);
+            (ggtt::pte_page(read) != Some(*p)).then(|| {
+                format!(
+                    "entry {i} of {} at {gtt:#x}: wrote page {p:#x}, read {read:#x}",
+                    list.len()
+                )
+            })
+        })
     }
 
     /// Copies `data` to the start of the buffer and writes it out of the CPU caches.
