@@ -11,7 +11,9 @@
 #   "--listen", "/run/ultar/log/ingest.sock", "--mode", "0666",
 #   "--uid-map", "/etc/ultar/uid-map.toml"
 #
-# Ids of the system services: 801 busd, 802 logd, 803 settingsd, 804 devd.
+# Ids of the system services: 801 busd, 802 logd, 803 settingsd, 804 devd,
+# 805 launcher, 813 authd.
+# 817 displayd, 818 accountd.
 #
 # Bounds (all enforced, see ultar-logd): 2048 records / 1 MiB in memory,
 # 1 MiB per segment, 16 MiB on disk, 30 days, 200 records at once and
@@ -22,6 +24,22 @@ args = [
     "--listen", "/run/ultar/log/busd.sock=system.busd", "--mode", "0660", "--group", "801",
     "--listen", "/run/ultar/log/settingsd.sock=system.settingsd", "--mode", "0660", "--group", "803",
     "--listen", "/run/ultar/log/devd.sock=system.devd", "--mode", "0660", "--group", "804",
+    "--listen", "/run/ultar/log/launcher.sock=system.launcher", "--mode", "0660", "--group", "805",
+    "--listen", "/run/ultar/log/authd.sock=system.authd", "--mode", "0660", "--group", "813",
+    # Standard output and error of the apps (stored as app-<id>), from the launcher.
+    "--listen-output", "/run/ultar/log/launcher-out.sock", "--mode", "0660", "--group", "805",
+    "--listen", "/run/ultar/log/displayd.sock=system.displayd", "--mode", "0660", "--group", "817",
+    "--listen", "/run/ultar/log/accountd.sock=system.accountd", "--mode", "0660", "--group", "818",
+    "--listen", "/run/ultar/log/powerd.sock=system.powerd", "--mode", "0660", "--group", "819",
+    "--listen", "/run/ultar/log/sessiond.sock=system.sessiond", "--mode", "0660", "--group", "820",
+    "--listen", "/run/ultar/log/notifyd.sock=system.notifyd", "--mode", "0660", "--group", "821",
+    "--listen", "/run/ultar/log/calendard.sock=system.calendard", "--mode", "0660", "--group", "822",
+    "--listen", "/run/ultar/log/audiod.sock=system.audiod", "--mode", "0660", "--group", "823",
+    "--listen", "/run/ultar/log/mediad.sock=system.mediad", "--mode", "0660", "--group", "824",
+    "--listen", "/run/ultar/log/captured.sock=system.captured", "--mode", "0660", "--group", "825",
+    "--listen", "/run/ultar/log/netd.sock=system.netd", "--mode", "0660", "--group", "826",
+    "--listen", "/run/ultar/log/btd.sock=system.btd", "--mode", "0660", "--group", "827",
+    "--listen", "/run/ultar/log/volumed.sock=system.volumed", "--mode", "0660", "--group", "828",
     # Standard output and error of the services, from ultar-init (root).
     "--listen-output", "/run/ultar/log/init.sock", "--mode", "0600",
     "--bus", "/run/ultar/bus/logd.sock",
@@ -33,7 +51,7 @@ args = [
     "--fsync", "batch",
 ]
 user = 802
-groups = [801, 803, 804]
+groups = [801, 803, 804, 805, 813, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828]
 dirs = ["/data/ultar/log"]
 public_dirs = ["/run/ultar/log"]
 notify = true

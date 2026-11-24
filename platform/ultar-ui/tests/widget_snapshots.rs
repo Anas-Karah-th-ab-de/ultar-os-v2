@@ -177,6 +177,27 @@ fn text_card(ui: &mut Ui, floating: bool) -> Result<NodeId, UiError> {
     Ok(card)
 }
 
+/// A card with a close button over its top end corner (`Flex::stack`, inset 4).
+fn stacked_card(ui: &mut Ui) -> Result<NodeId, UiError> {
+    let root = ui.root();
+    let stack = Flex::stack().main(ultar_ui::layout::MainAlign::End);
+    let stack = ui.add_sized(root, stack, Sizing::width(300.0))?;
+    let card = ui.add_sized(stack, Card::padded(), Sizing::grow(1))?;
+    let title = TextSpec::new(TypeSize::S16).weight(Weight::Semibold);
+    ui.add(card, Text::new(Label::key("demo.card.title")).spec(title))?;
+    ui.add(
+        card,
+        Text::new(Label::key("demo.card.text")).color(ColorRole::TextMuted),
+    )?;
+    let corner = Flex::row().padding(ultar_ui::layout::Padding::all(Space::S4));
+    let corner = ui.add(stack, corner)?;
+    ui.add(
+        corner,
+        IconButton::new(IconId::Close, Label::key("demo.settings")),
+    )?;
+    Ok(stack)
+}
+
 fn rows_cards_and_texts(sheet: &mut Sheet) {
     let states = [State::Normal, State::Disabled];
     sheet.states("row", Size::new(392.0, 150.0), &states, &settings_rows);
@@ -268,6 +289,10 @@ fn every_widget_in_every_state_matches_its_reference() {
     common::cases3::all(&mut sheet);
     let wave3 = sheet.cases;
     common::cases4::all(&mut sheet);
+    let wave4 = sheet.cases;
+    // Overlay layout (Flex::stack, shell round 3): a close button inside the top end corner.
+    let card = Size::new(360.0, 190.0);
+    sheet.shoot("stack-corner-normal", card, &stacked_card, State::Normal);
     assert!(
         sheet.problems.is_empty(),
         "{} problems:\n{}",
@@ -279,7 +304,8 @@ fn every_widget_in_every_state_matches_its_reference() {
         "number of widget/state cases of the first delivery"
     );
     assert_eq!(wave3 - earlier, 58, "number of wave-3 cases");
-    assert_eq!(sheet.cases - wave3, 28, "number of wave-4 cases");
+    assert_eq!(wave4 - wave3, 28, "number of wave-4 cases");
+    assert_eq!(sheet.cases - wave4, 1, "number of shell round-3 cases");
     // No stale or missing files: every case has four references, plus the composed screen
     // (four) and its touch variant at double scale (one).
     let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");

@@ -14,4 +14,4 @@ path = "src/lib.rs"
 # Pure Rust on Linux (its `linux_raw` backend issues system calls itself, no
 # C library). Used for every call it offers safely; see src/lib.rs for the
 # calls it does not have.
-rustix = { version = "1", default-features = false, features = ["std", "process", "fs", "event", "thread", "net"] }
+rustix = { version = "1", default-features = false, features = ["std", "process", "fs", "event", "thread", "net", "mount"] }

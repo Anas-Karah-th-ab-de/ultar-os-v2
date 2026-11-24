@@ -54,13 +54,14 @@ start page). No existing medium has the file.
   `qemu-img convert -O vmdk` (monolithicSparse).
 * System: `/sbin/ultar-init`, the shipped `init.toml`, `ids.toml`, `bus-policy.toml`, rights and seat files,
   the shipped service files `logd`, `bus`, `settingsd`, `devd`, `seat`, and `compositor` without its line
-  `manual = true` (this image has no `ultar-shell` that would drive the same display); plus two windows of
-  `ultar-compositor-testclient` (`tools/vm/services/`, image only, as user nobody). `/bin/busybox` when the
+  `manual = true` (this image has no `ultar-shell` that would drive the same display); plus
+  the desktop session (authd, lock, sysdialog, desktop: the shipped definitions without `manual`; one account, password from `VM_PASSWORD_FILE` or random in `out/vmware/UltarOS-v2.password`). `/bin/busybox` when the
   build computer has a static one. Language: `LANG_CODE` (default `ar`) on `ULTAR-EFI` and in the system.
 * Start: firmware → `ultar-loader` (slot A) → kernel (start picture in Arabic) → `ultar-init` (PID 1) → logd,
-  seat, bus, compositor, devd, settingsd → compositor on `fb0` with the two windows (title bar mirrored for
-  Arabic). There is no desktop shell on the compositor yet, so that is all there is to see; `ultar-shell`
-  (the old surface) is not in this image.
+  seat, bus, compositor, devd, settingsd, authd → compositor on `fb0` with the desktop session: the shell's
+  bar (Arabic: mirrored), sheets, overview; Super+L locks, the account's password unlocks. `ultar-shell`
+  (the old surface) is not in this image. The check (`vmware-vm.py check`) wants the bar and the mark on the
+  screen.
 * `.vmx`: hardware version 16, `firmware = "efi"`, 4 GiB, 4 processors, NVMe disk, e1000e (NAT), UHCI/EHCI +
   xHCI with VMware's USB pointer on the xHCI, PS/2 keyboard, no sound, no VMCI, `serial0` → `serial.log`
   beside the `.vmx` (the kernel's whole log – the first thing to read when the screen stays black).

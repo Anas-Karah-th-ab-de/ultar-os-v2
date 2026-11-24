@@ -26,7 +26,7 @@ pub struct Identity {
 }
 
 /// Most supplementary groups (the Ultar kernel keeps 16).
-pub const MAX_GROUPS: usize = 16;
+pub const MAX_GROUPS: usize = 32;
 
 /// Why the ids could not be changed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

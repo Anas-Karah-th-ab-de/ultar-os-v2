@@ -15,7 +15,11 @@ impl Ui {
         let animate = !self.reduce_motion();
         let open = self.is_open(id);
         let kind = match &mut self.nodes[id.index()].widget {
-            Widget::Button(_) | Widget::IconButton(_) => ActionKind::Activated,
+            Widget::Button(_) | Widget::IconButton(_) | Widget::Brick(_) => ActionKind::Activated,
+            Widget::DayGrid(grid) => match grid.choose(part) {
+                Some(day) => ActionKind::Selected(day),
+                None => return,
+            },
             Widget::Switch(switch) => {
                 switch.toggle(now, animate);
                 ActionKind::Toggled(switch.on)

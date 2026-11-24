@@ -102,6 +102,14 @@ settings.appearance.icon_size.desc = حجم أيقونات التطبيقات و
 settings.appearance.icon_size.choice.small = صغير
 settings.appearance.icon_size.choice.medium = متوسط
 settings.appearance.icon_size.choice.large = كبير
+settings.accessibility.large_text.label = نص كبير
+settings.accessibility.large_text.desc = تكبير نصوص الواجهة لتسهل قراءتها
+settings.accessibility.high_contrast.label = تباين عالٍ
+settings.accessibility.high_contrast.desc = ألوان أشدّ تمايزًا لتمييز العناصر بسهولة
+settings.accessibility.screen_reader.label = قارئ الشاشة
+settings.accessibility.screen_reader.desc = قراءة ما على الشاشة بصوت مسموع
+settings.accessibility.on_screen_keyboard.label = لوحة المفاتيح على الشاشة
+settings.accessibility.on_screen_keyboard.desc = إظهار لوحة مفاتيح على الشاشة عند الكتابة
 
 settings.bar.layout.label = شكل الشريط
 settings.bar.layout.desc = شريط واحد في الأسفل، أو شريط في الأعلى مع مرسى منفصل

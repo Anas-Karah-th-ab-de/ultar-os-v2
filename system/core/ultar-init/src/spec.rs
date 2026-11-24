@@ -58,6 +58,10 @@ pub enum Restart {
     OnFailure,
     /// Never.
     Never,
+    /// Always, and never given up: a crash loop only stretches the pause to the longest
+    /// back-off (the lock screen: a session must never stay locked without one, see
+    /// docs/COMPOSITOR.md §8a).
+    Essential,
 }
 
 /// Parent of the service's memory group.

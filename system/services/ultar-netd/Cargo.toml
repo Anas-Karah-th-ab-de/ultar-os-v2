@@ -1,0 +1,34 @@
+[package]
+name = "ultar-netd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Network service of Ultar OS: wired link, Wi-Fi radio and airplane mode, Wi-Fi networks (scan, WPA2-Personal supplicant, DHCP, DNS, saved networks), kept across restarts (system services, area 4)"
+
+[lib]
+name = "ultar_netd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-netd"
+path = "src/bin/ultar-netd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+ultar-hal = { path = "../../hal/ultar-hal" }
+ultar-hal-netlink = { path = "../../hal/ultar-hal-netlink" }
+ultar-netproto = { path = "../../core/ultar-netproto" }
+ultar-vpnd = { path = "../ultar-vpnd" }
+rustix = { version = "1", default-features = false, features = ["std", "event"] }
+getrandom = "0.2"
+zeroize = "1"
+
+[dev-dependencies]
+aes-kw = "0.2"
+rustix = { version = "1", default-features = false, features = ["std", "thread", "fs"] }
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

@@ -12,6 +12,7 @@
 //! policy that lets an app call `init.status` does not make it an
 //! administrator.
 
+use crate::daemon::Halt;
 use crate::supervisor::{ControlError, Supervisor};
 use std::io::{PipeReader, PipeWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -20,8 +21,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::init::{
-    Control, ControlReply, Status, StatusReply, ADMIN_METHOD, ERROR_ALREADY, ERROR_SHUTTING_DOWN,
-    ERROR_UNKNOWN_SERVICE, MAX_SERVICES, SERVICE,
+    Control, ControlReply, Power, PowerAction, PowerReply, Status, StatusReply, ADMIN_METHOD,
+    ERROR_ALREADY, ERROR_SHUTTING_DOWN, ERROR_UNKNOWN_SERVICE, MAX_SERVICES, SERVICE,
+    SHUTDOWN_METHOD,
 };
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
 use ultar_service::{BusSession, Lifecycle, SessionOptions, StopCause};
@@ -140,6 +142,16 @@ impl Admins {
         Self::new(Policy::load(path).ok())
     }
 
+    /// Whether `identity` may end the machine (`init.power`): it needs the pseudo method
+    /// [`SHUTDOWN_METHOD`] as well (the power service; administrators with `init.*`), so
+    /// a rule that only opens the call does not let anyone power off.
+    pub fn allows_power(&self, identity: &str) -> bool {
+        let Some(policy) = &self.policy else {
+            return false;
+        };
+        Identity::new(identity).is_ok_and(|id| policy.may_call(&id, SERVICE, SHUTDOWN_METHOD))
+    }
+
     /// Whether `identity` has `init.admin`.
     pub fn allows(&self, identity: &str) -> bool {
         let Some(policy) = &self.policy else {
@@ -157,18 +169,53 @@ fn control_code(error: ControlError) -> ErrorCode {
     })
 }
 
-/// Answers one request.
+/// Answers `init.power`: the halt the main loop should begin (`pid1`: power off or
+/// restart the machine; otherwise init only ends).
+fn answer_power(
+    request: IncomingRequest,
+    supervisor: &mut Supervisor,
+    admins: &Admins,
+    pid1: bool,
+) -> Option<Halt> {
+    let caller = request.caller().to_owned();
+    if !admins.allows_power(&caller) {
+        supervisor.note(&format!("refused request caller={caller} reason=not_power"));
+        let _ = request.fail(ErrorCode::PermissionDenied);
+        return None;
+    }
+    let mut halt = None;
+    let _ = request.respond::<Power>(|power| {
+        halt = Some(match (pid1, power.action) {
+            (false, _) => Halt::Exit,
+            (true, PowerAction::PowerOff) => Halt::PowerOff,
+            (true, PowerAction::Reboot) => Halt::Reboot,
+        });
+        let word = match power.action {
+            PowerAction::PowerOff => "poweroff",
+            PowerAction::Reboot => "reboot",
+        };
+        supervisor.note(&format!("power request caller={caller} action={word}"));
+        Ok(PowerReply {})
+    });
+    halt
+}
+
+/// Answers one request; `Some` when it asked to end the machine.
 pub fn answer(
     request: IncomingRequest,
     supervisor: &mut Supervisor,
     admins: &Admins,
     now: Instant,
-) {
+    pid1: bool,
+) -> Option<Halt> {
+    if request.method() == "power" {
+        return answer_power(request, supervisor, admins, pid1);
+    }
     let caller = request.caller().to_owned();
     if !admins.allows(&caller) {
         supervisor.note(&format!("refused request caller={caller} reason=not_admin"));
         let _ = request.fail(ErrorCode::PermissionDenied);
-        return;
+        return None;
     }
     let _ = match request.method() {
         "status" => request.respond::<Status>(|_| {
@@ -184,6 +231,7 @@ pub fn answer(
         }),
         _ => request.fail(ErrorCode::UnknownMethod),
     };
+    None
 }
 
 #[cfg(test)]
@@ -200,14 +248,19 @@ call = ["init.status", "init.control", "init.admin"]
 [[rule]]
 identity = "app.viewer"
 call = ["init.status", "init.control"]
+[[rule]]
+identity = "system.powerd"
+call = ["init.power", "init.shutdown"]
 "#,
         )
         .unwrap();
         let admins = Admins::new(Some(policy));
         assert!(admins.allows("system.admin"));
+        assert!(admins.allows_power("system.powerd") && !admins.allows("system.powerd"));
         assert!(!admins.allows("app.viewer"));
         assert!(!admins.allows("Not A Name"));
         assert!(!Admins::new(None).allows("system.admin"));
+        assert!(!admins.allows_power("app.viewer") && !Admins::new(None).allows_power("x.y"));
         assert!(!Admins::load(Path::new("/nonexistent/policy.toml")).allows("system.admin"));
         assert_eq!(control_code(ControlError::Unknown), ErrorCode::Service(1));
     }

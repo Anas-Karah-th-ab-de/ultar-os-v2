@@ -1,0 +1,32 @@
+# Network service (docs/integration/system-services.md): wired link and its
+# speed, the Wi-Fi radio and airplane mode through the kernel's radio
+# switches (dev/rfkill: root:radio 0660, group 831), the wish kept below its
+# directory and restored at start. Wi-Fi networks: scan, join open and
+# WPA2-Personal networks (own supplicant over nl80211), DHCP, saved networks
+# (keys 0600 below /data/ultar/net), DNS written to /run/ultar/net/resolv.conf
+# (/etc/resolv.conf links there). Without Wi-Fi in the kernel: "no device".
+# The VPN (`vpn`, WireGuard over TUN, tunnels with their keys 0600 below
+# /data/ultar/net/vpn) runs in this process; without TUN: "unavailable".
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-netd"
+args = [
+    "--bus", "/run/ultar/bus/netd.sock",
+    "--state", "/data/ultar/net",
+    "--run", "/run/ultar/net",
+    "--log-socket", "/run/ultar/log/netd.sock",
+]
+user = 826
+groups = [831]
+dirs = ["/data/ultar/net"]
+public_dirs = ["/run/ultar/net"]
+# right net_admin: addresses and routes of a joined network, Wi-Fi keys,
+# the VPN tunnel interface.
+rights = ["net_admin"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "48M"
+"pids.max" = "24"
+"cpu.weight" = "50"

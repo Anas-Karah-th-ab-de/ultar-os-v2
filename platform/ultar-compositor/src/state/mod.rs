@@ -8,18 +8,25 @@ mod input;
 mod keys;
 mod layers;
 mod memory;
+mod output_config;
 mod outputs;
+pub mod phone;
 mod requests;
 mod session;
+mod shell;
 mod text;
 mod transfer;
 mod windows;
+mod workspaces;
 
 pub use input::PointerGrab;
 pub use layers::Placed;
+pub use output_config::{Identify, OutputManagement, Provisional, MAX_QUEUED_SETUPS};
 pub use session::{Grant, Session, INDICATOR_MS};
+pub use shell::ShellSession;
 pub use transfer::Transfers;
 pub use windows::Window;
+pub use workspaces::{fit as thumbnail_fit, Workspaces};
 
 use crate::config::Config;
 use crate::conn::{Conn, Peer};
@@ -36,12 +43,13 @@ use ultar_surface::proto::{
 /// Number of a connection.
 pub type ClientId = u32;
 
-/// Rights of the system clients (shell, lock screen, input method): they
-/// may use the reserved client slots and memory.
+/// Rights of the system clients (shell, lock screen, input method, display
+/// service): they may use the reserved client slots and memory.
 pub fn is_system(rights: Rights) -> bool {
     let system = Rights::SHELL
         .union(Rights::LOCK_SCREEN)
-        .union(Rights::INPUT_METHOD);
+        .union(Rights::INPUT_METHOD)
+        .union(Rights::OUTPUT_CONFIG);
     rights.0 & system.0 != 0
 }
 
@@ -126,6 +134,9 @@ pub struct Keyboard {
     pub caps_lock: bool,
     /// Index into `Config::layouts`.
     pub layout_index: usize,
+    /// Key events taken from the input devices so far (press, release, repeat; never which
+    /// key). The end-to-end test reads it to know a key arrived (`--input-ack`).
+    pub events: u64,
 }
 
 /// Number sources.
@@ -133,6 +144,7 @@ pub struct Keyboard {
 struct Counters {
     client: ClientId,
     serial: u32,
+    window: u32,
 }
 
 /// The whole state.
@@ -189,6 +201,7 @@ impl State {
             counters: Counters {
                 client: 1,
                 serial: 0,
+                window: 0,
             },
             windows: Vec::new(),
             layers: Vec::new(),
@@ -217,6 +230,12 @@ impl State {
             .unwrap_or(KeyLayout::English)
     }
 
+    /// A fresh window id (never reused within the session).
+    pub(crate) fn next_window_id(&mut self) -> u32 {
+        self.counters.window = self.counters.window.wrapping_add(1).max(1);
+        self.counters.window
+    }
+
     /// A fresh serial.
     pub fn next_serial(&mut self) -> u32 {
         self.counters.serial = self.counters.serial.wrapping_add(1).max(1);
@@ -231,6 +250,7 @@ impl State {
     pub fn add_client(&mut self, conn: Conn) -> Option<ClientId> {
         let limits = self.config.limits;
         let uid = conn.peer.uid;
+        self.config.rights.refresh_apps();
         let rights = self.config.rights.rights_of(uid);
         let total = self.clients.len();
         let same = self
@@ -302,6 +322,8 @@ impl State {
         for info in infos {
             self.send(client, Event::Output(info));
         }
+        self.shell_welcome(client);
+        self.send_output_details(client);
     }
 
     /// Removes a client and everything it owned. Safe at any time (a client
@@ -319,6 +341,7 @@ impl State {
             self.destroy_surface(key);
         }
         self.transfers.client_gone(client);
+        self.forget_thumbnail_budget(client);
         let cancelled = self.transfers.take_cancelled();
         for (to, id) in cancelled {
             self.send(to, Event::TransferCancelled { transfer: id });
@@ -334,6 +357,7 @@ impl State {
         }
         self.pointer.touches.retain(|_, k| k.client != client);
         self.session_forget(client);
+        self.output_client_gone(client);
     }
 
     /// Clients marked for removal.
@@ -419,9 +443,14 @@ impl State {
             .min();
         let indicator = (self.session.indicator_shown && self.session.recording_until > self.now)
             .then_some(self.session.recording_until);
-        [ping, self.transfers.next_deadline(), indicator]
-            .into_iter()
-            .flatten()
-            .min()
+        [
+            ping,
+            self.transfers.next_deadline(),
+            indicator,
+            self.output_deadline(),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 }

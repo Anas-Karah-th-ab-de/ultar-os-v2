@@ -578,3 +578,18 @@ Source: `docs/integration/settings-installer.md` "Toolkit gaps"; tests `tests/w7
 All 45 ultar-ui test targets and all compositor targets green 3×; fmt, clippy `-D warnings`,
 `ultar-check all` clean (no new baseline). Snapshots re-created (385 ultar-ui, 3 compositor)
 after visual review of the changed states.
+
+---
+
+# Desktop shell additions (2026-11-24, round 2 of the shell, on top of Wave 7)
+
+Additive; `Widget::Brick`, `Widget::DayGrid` and the shell's bricks came with the shell branch.
+- `BrickKind::Mark { points }` (brand mark at any size ≥ 16, `IconId::Mark`, docs/BRAND.md),
+  `BrickKind::WindowPreview { icon, picture: Option<Rc<Thumbnail>>, card_h }`,
+  `BrickKind::WorkspaceCard { minis, chosen, new }` (board Overview); `Picture::Mark` now draws
+  `IconId::Mark` (the hand-drawn arcs are gone).
+- `Thumbnail::new(width, height, xrgb)` (bytes as the compositor's `WindowThumbnail`),
+  `Painter::image(rect, w, h, xrgb)`, `Canvas::draw_scaled(target, w, h, xrgb)` (nearest, opaque).
+- `CardTone::Dock` (`Card::dock()`), `CardTone::TopSheet` (`Card::top_sheet()`).
+- `DayGrid::choose(part)`.
+- The shell's own `Ui::focus(id, ring)` was dropped in favour of Wave 7's `Ui::focus(id)`.

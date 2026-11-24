@@ -58,6 +58,12 @@ pub struct World {
     _broker: Broker,
 }
 
+/// Writes a file the service reads but nobody else may change (0644).
+fn write_shared(path: &std::path::Path, text: &str) {
+    std::fs::write(path, text).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+}
+
 impl World {
     pub fn new(tag: &str) -> Self {
         let dir = temp_dir(tag);
@@ -69,9 +75,11 @@ impl World {
             .listen(&dir.join("bus.sock"), Arc::new(auth))
             .start()
             .unwrap();
-        std::fs::write(dir.join("policy.toml"), POLICY).unwrap();
+        // Trust files must not be writable by the group: the service refuses them
+        // (fail closed), so they get explicit modes whatever the umask of the run.
+        write_shared(&dir.join("policy.toml"), POLICY);
         let uid = ultar_service::effective_uid();
-        std::fs::write(dir.join("uids.toml"), format!("{uid} = \"app.one\"\n")).unwrap();
+        write_shared(&dir.join("uids.toml"), &format!("{uid} = \"app.one\"\n"));
         write_private(&dir.join("logd.token"), TOKENS[0].1);
         write_private(
             &dir.join("chain.key"),

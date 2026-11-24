@@ -25,6 +25,10 @@ impl State {
             return;
         }
         if state == KeyState::Pressed && self.shortcut(code) {
+            self.session.shell.super_tap_used();
+            return;
+        }
+        if self.shell_key(code, state) {
             return;
         }
         // Repeats and the release go where the press went (focus changes
@@ -38,9 +42,14 @@ impl State {
         if state == KeyState::Pressed {
             self.session.pressed.insert(code, key);
         }
-        let modifiers = Modifiers(self.keyboard.modifiers);
+        let modifiers = Modifiers(self.keyboard.modifiers | self.caps_bit());
         let output = if pressed {
-            keymap::translate(self.key_layout(), code, modifiers, self.keyboard.caps_lock)
+            keymap::translate(
+                self.key_layout(),
+                code,
+                Modifiers(self.keyboard.modifiers),
+                self.keyboard.caps_lock,
+            )
         } else {
             KeyOutput::None
         };
@@ -57,7 +66,7 @@ impl State {
         self.deliver_key(key, code, state_code, modifiers, (output, serial));
     }
 
-    fn deliver_key(
+    pub(super) fn deliver_key(
         &mut self,
         key: SurfaceKey,
         code: u16,
@@ -138,7 +147,7 @@ impl State {
         let Some(index) = self
             .windows
             .iter()
-            .rposition(|w| Some(w.key) != focus && w.mapped)
+            .rposition(|w| Some(w.key) != focus && w.mapped && w.place.shown)
         else {
             return;
         };
@@ -149,7 +158,12 @@ impl State {
 
     pub(super) fn touch_down(&mut self, id: u32, x: u16, y: u16) {
         let (lx, ly) = self.absolute(x, y);
-        let Some((key, part, content)) = self.hit_test(lx, ly) else {
+        if self.edge_begin(super::phone::Contact::Touch(id), lx, ly) {
+            return;
+        }
+        let hit = self.hit_test(lx, ly);
+        self.shell_press(hit.map(|h| h.0));
+        let Some((key, part, content)) = hit else {
             return;
         };
         if part != Part::Content {
@@ -191,6 +205,9 @@ impl State {
 
     pub(super) fn touch_move(&mut self, id: u32, x: u16, y: u16) {
         let (lx, ly) = self.absolute(x, y);
+        if self.edge_move(super::phone::Contact::Touch(id), lx, ly) {
+            return;
+        }
         let Some(&key) = self.pointer.touches.get(&id) else {
             return;
         };
@@ -222,6 +239,9 @@ impl State {
     }
 
     pub(super) fn touch_up(&mut self, id: u32) {
+        if self.edge_end(super::phone::Contact::Touch(id)) {
+            return;
+        }
         let Some(key) = self.pointer.touches.remove(&id) else {
             return;
         };
@@ -239,6 +259,7 @@ impl State {
     }
 
     pub(super) fn touch_cancel(&mut self) {
+        self.edge_cancel();
         let keys: Vec<SurfaceKey> = self.pointer.touches.drain().map(|(_, k)| k).collect();
         let mut done = Vec::new();
         for key in keys {

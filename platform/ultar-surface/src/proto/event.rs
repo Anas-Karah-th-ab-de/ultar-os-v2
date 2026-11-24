@@ -328,6 +328,78 @@ pub enum Event {
         /// The windows.
         windows: Vec<super::WindowEntry>,
     },
+    /// A shortcut that belongs to the shell (Super alone, Super with a key
+    /// the compositor does not use itself); sent only to the shell client.
+    ShellKey {
+        /// Linux key code (125 for the Super key alone).
+        code: u16,
+        /// Modifiers held.
+        modifiers: Modifiers,
+        /// Serial of the key (a user action: activation tokens).
+        serial: u32,
+    },
+    /// The toplevel windows changed (sent to shell clients), bottom to top.
+    WindowsChanged {
+        /// The windows.
+        windows: Vec<super::ShellWindow>,
+    },
+    /// The keyboard layouts and the active one (sent to shell and lock
+    /// screen clients at the start and on every change).
+    KeyboardLayouts {
+        /// Layout names in order (`ar`, `en`, …).
+        names: Vec<String>,
+        /// Index of the active layout.
+        active: u8,
+    },
+    /// The compositor took the keyboard from a shell surface (the user
+    /// clicked a window, the session locked, a system dialog opened).
+    ShellFocusLost {
+        /// The surface that had it.
+        surface: SurfaceId,
+    },
+    /// A scaled copy of a window's content (answer to `WindowThumbnail`,
+    /// shell only): rows of `width * 4` bytes, `0xXXRRGGBB` little-endian.
+    WindowThumbnail {
+        /// Window id.
+        window: u32,
+        /// Width in pixels (≤ `MAX_THUMBNAIL_SIDE`).
+        width: u16,
+        /// Height in pixels (≤ `MAX_THUMBNAIL_SIDE`).
+        height: u16,
+        /// The pixels.
+        data: Vec<u8>,
+    },
+    /// The workspaces (sent to shell clients at the start and on every
+    /// change): which one is shown and how many there are.
+    Workspaces {
+        /// Shown workspace, from 0.
+        current: u8,
+        /// Number of workspaces (1 ..= `MAX_WORKSPACES`).
+        count: u8,
+    },
+    /// Phone mode: a swipe from a screen edge (to the shell only, never while locked).
+    /// The compositor keeps such a contact from the apps.
+    EdgeSwipe {
+        /// Where it started.
+        edge: super::shell::SwipeEdge,
+        /// Bottom edge: the finger rested at the end (recent apps) instead of letting go.
+        held: bool,
+    },
+    /// One connected output in detail (output-config right only; sent after
+    /// `Welcome`, on every change and after `DetectOutputs`).
+    OutputDetails(Box<super::outputs::OutputDetails>),
+    /// What became of a setup (output-config right only).
+    OutputSetupDone {
+        /// Serial of the setup.
+        serial: u32,
+        /// The outcome.
+        outcome: super::outputs::SetupOutcome,
+    },
+    /// Answer to `DetectOutputs` (after the `OutputDetails`).
+    OutputsDetected {
+        /// Outputs connected now.
+        count: u32,
+    },
 }
 
 impl Event {
@@ -365,6 +437,16 @@ impl Event {
             Event::ActivationToken { .. } => 29,
             Event::SessionLocked { .. } => 30,
             Event::WindowList { .. } => 31,
+            Event::ShellKey { .. } => 32,
+            Event::WindowsChanged { .. } => 33,
+            Event::KeyboardLayouts { .. } => 34,
+            Event::ShellFocusLost { .. } => 35,
+            Event::WindowThumbnail { .. } => 39,
+            Event::Workspaces { .. } => 40,
+            Event::EdgeSwipe { .. } => 41,
+            Event::OutputDetails(_) => 36,
+            Event::OutputSetupDone { .. } => 37,
+            Event::OutputsDetected { .. } => 38,
         }
     }
 

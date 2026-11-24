@@ -13,6 +13,7 @@
 # RUNS="q35-ahci-usb" limits the list; REPEAT=3 repeats every run; VL_LOG=<prefix> keeps the serial logs.
 # IMG=<esp image> (default out/ultar-kern-esp.img, built when missing); BUSCK=<file> as in ci.sh.
 # Needs what ci.sh needs. QEMU is the test bed: VMware Workstation itself is not started here.
+# 4. the desktop session reaches DESKTOP: ALLES OK on the hardware of the .vmx (desktop-e2e.sh).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 IMG="${IMG:-out/ultar-kern-esp.img}"
@@ -69,4 +70,12 @@ for r in ${RUNS:-q35-ahci-usb q35-nvme-ps2 pc-nvme-svga}; do
     *) echo "FAIL  VMWARE-LIKE unknown run: $r"; fail=1 ;;
   esac
 done
+# The desktop session (tools/kern-test/desktop-e2e.sh) on the hardware of the .vmx: NVMe, e1000e, xHCI with
+# USB keyboard and tablet, VMware SVGA II (GOP frame buffer). DESKTOP=0 skips it; DESK_BIN=<dir> prebuilt programs.
+if [ "${DESKTOP:-1}" = 0 ]; then
+  echo "skip  VMWARE-LIKE desktop (DESKTOP=0)"
+else
+  IMG="$IMG" DESK_MACHINE=pc DESK_DEV="nvme,serial=ultar" DESK_NIC=e1000e DESK_VGA=vmware DESK_LABEL="VMware-like pc-nvme-svga" \
+    bash tools/kern-test/desktop-e2e.sh || fail=1
+fi
 [ "$fail" = 0 ] && echo "VMWARE-LIKE: ALLES OK" || { echo "VMWARE-LIKE: FEHLER"; exit 1; }

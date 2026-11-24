@@ -138,7 +138,10 @@ impl State {
                 self.button(button_code(button), pressed)
             }
             InputEventKind::Scroll { dx, dy } => self.scroll(f64::from(dx), f64::from(dy)),
-            InputEventKind::Key { code, state } => self.key(code, state),
+            InputEventKind::Key { code, state } => {
+                self.keyboard.events = self.keyboard.events.wrapping_add(1);
+                self.key(code, state)
+            }
             InputEventKind::TouchDown { slot, x, y } => self.touch_down(u32::from(slot), x, y),
             InputEventKind::TouchMove { slot, x, y } => self.touch_move(u32::from(slot), x, y),
             InputEventKind::TouchUp { slot } => self.touch_up(u32::from(slot)),
@@ -235,6 +238,10 @@ impl State {
         self.pointer.x = x.clamp(f64::from(b.x), f64::from(b.max_x() - 1).max(f64::from(b.x)));
         self.pointer.y = y.clamp(f64::from(b.y), f64::from(b.max_y() - 1).max(f64::from(b.y)));
         self.damage_cursor();
+        let (px, py) = (self.pointer.x, self.pointer.y);
+        if self.edge_move(super::phone::Contact::Pointer, px, py) {
+            return;
+        }
         match self.pointer.grab {
             Some(PointerGrab::Implicit(key)) => self.send_motion(key),
             Some(PointerGrab::TitlePress { key, start }) => {
@@ -318,8 +325,8 @@ impl State {
             (Some(b), Some((k, Part::Button(h), _))) if k == key && h == b => Some(b),
             _ => None,
         };
-        if self.windows[i].hover != shown {
-            self.windows[i].hover = shown;
+        if self.windows[i].buttons.hover != shown {
+            self.windows[i].buttons.hover = shown;
             let f = self.windows[i].frame;
             self.damage_logical(Rect::new(f.x, f.y, f.w, decor::TITLEBAR));
         }
@@ -345,14 +352,28 @@ impl State {
     }
 
     pub(super) fn button(&mut self, code: u16, pressed: bool) {
+        let gesture = super::phone::Contact::Pointer;
         if pressed {
             self.pointer.held = self.pointer.held.saturating_add(1);
+            // Phone mode: a mouse drag from a screen edge is the shell's gesture too.
+            let (x, y) = (self.pointer.x, self.pointer.y);
+            let first = self.pointer.held == 1 && self.pointer.grab.is_none();
+            if first
+                && code == BTN_PRIMARY
+                && !self.pointer.hidden
+                && self.edge_begin(gesture, x, y)
+            {
+                return;
+            }
             if self.pointer.held == 1 && self.pointer.grab.is_none() {
                 self.press(code);
                 return;
             }
         } else {
             self.pointer.held = self.pointer.held.saturating_sub(1);
+            if self.edge_end(gesture) {
+                return;
+            }
         }
         let grab = self.pointer.grab;
         if let Some(PointerGrab::Implicit(key)) = grab {
@@ -373,7 +394,9 @@ impl State {
     }
 
     fn press(&mut self, code: u16) {
-        let Some((key, part, _)) = self.hit_test(self.pointer.x, self.pointer.y) else {
+        let hit = self.hit_test(self.pointer.x, self.pointer.y);
+        self.shell_press(hit.map(|h| h.0));
+        let Some((key, part, _)) = hit else {
             return;
         };
         let on_top = self.windows.last().map(|w| w.key) == Some(key);

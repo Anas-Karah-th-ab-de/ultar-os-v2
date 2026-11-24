@@ -68,7 +68,7 @@ fn faulty_files_are_refused_as_a_whole() {
         let error = ServiceSpec::parse(text, "t").unwrap_err().to_string();
         assert!(error.contains(expected), "{text:?}: {error}");
     }
-    let groups: Vec<String> = (0..17).map(|n| n.to_string()).collect();
+    let groups: Vec<String> = (0..=ultar_sys::MAX_GROUPS).map(|n| n.to_string()).collect();
     let text = format!("exec = \"/bin/true\"\ngroups = [{}]", groups.join(","));
     assert_eq!(
         ServiceSpec::parse(&text, "t"),

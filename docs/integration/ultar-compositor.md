@@ -264,3 +264,11 @@ budgets), identical in three runs. fmt clean, clippy `-D warnings` clean (three 
 Ultar kernel, real hot-plug and uinput devices, sysfs-based software-device detection on a real
 seat (unit-tested only for the group check), a real lock screen client.
 
+
+## Overview protocol (desktop shell round 2)
+
+Requests 34 `WindowThumbnail`, 35 `SwitchWorkspace`, 36 `MoveToWorkspace`; events 36
+`WindowThumbnail`, 37 `Workspaces`; `ShellWindow.workspace`. Right `ui.shell` only, refused while
+locked, system dialogs on all workspaces and never copied, ≤ 512 × 512 per copy, ≤ 32 copies per
+client and second, ≤ 8 workspaces (`state/workspaces.rs`, `tests/shell_workspaces.rs`). Details:
+docs/integration/desktop-shell.md.

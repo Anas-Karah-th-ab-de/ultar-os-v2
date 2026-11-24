@@ -5,6 +5,8 @@ use crate::geom::Size;
 use crate::layout::{distribute, Axis, CrossAlign, Flex, Length, LogicalRect, Slot};
 use crate::widgets::{EmptyState, InfoBar, ListItem, MeasureCx, Row, Widget};
 
+#[path = "stack.rs"]
+mod stack;
 #[path = "wrap.rs"]
 mod wrap;
 
@@ -86,6 +88,8 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Icon(w) => w.measure(),
         Widget::Button(w) => w.measure(cx, avail, (node.loading, error.is_some())),
         Widget::IconButton(w) => w.measure(cx),
+        Widget::Brick(w) => w.measure(cx),
+        Widget::DayGrid(w) => w.measure(cx, avail),
         Widget::Switch(w) => w.measure(cx),
         Widget::Select(w) => w.measure(cx, avail, error),
         Widget::Slider(w) => w.measure(cx, avail, error),
@@ -152,6 +156,7 @@ fn measure_flex(
     let gaps = flex.gap_points() * count.saturating_sub(1) as f32;
     let (mut main, mut cross) = (0.0f32, 0.0f32);
     match flex.axis {
+        _ if flex.stack => stack::measure_stack(nodes, cx, id, flex, avail),
         Axis::Inline if flex.wrap => wrap::measure_wrap(nodes, cx, id, flex, avail),
         Axis::Inline => {
             let items = inline_items(nodes, cx, id, flex, inner);
@@ -230,6 +235,7 @@ fn arrange_flex(
         height: (frame.height - flex.padding.block_sum()).max(0.0),
     };
     match flex.axis {
+        _ if flex.stack => stack::arrange_stack(nodes, cx, id, flex, &inner),
         Axis::Inline if flex.wrap => wrap::arrange_wrap(nodes, cx, id, flex, &inner),
         Axis::Inline => arrange_inline(nodes, cx, id, flex, &inner),
         Axis::Block => arrange_block(nodes, cx, id, flex, &inner),

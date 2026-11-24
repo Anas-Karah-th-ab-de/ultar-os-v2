@@ -256,6 +256,33 @@ impl DecorRenderer {
     }
 }
 
+/// Logical edge of a display number card (drawn 2.5 times enlarged).
+pub const NUMBER_CARD: f32 = 64.0;
+/// Enlargement of the display number card.
+pub const NUMBER_ZOOM: f32 = 2.5;
+
+impl DecorRenderer {
+    /// Renders the card with a display's number (`display.identify`):
+    /// a raised card with the number in the largest type size, enlarged.
+    pub fn render_number(&mut self, number: u8, scale_milli: u32) -> Option<Image> {
+        let scale = scale_milli as f32 / 1000.0 * NUMBER_ZOOM;
+        let edge = (NUMBER_CARD * scale).round() as u32;
+        let mut canvas = Canvas::new(edge.max(1), edge.max(1), PixelFormat::Bgrx8).ok()?;
+        let mut env = PaintEnv::new(self.lang, self.theme);
+        env.scale = scale;
+        let mut painter = Painter::new(&mut canvas, &mut self.resources, env);
+        let card = ultar_ui::Rect::new(0.0, 0.0, NUMBER_CARD, NUMBER_CARD);
+        painter.fill(card, None, painter.color(ColorRole::Raised));
+        let edge_line = ultar_ui::Rect::new(0.0, NUMBER_CARD - 4.0, NUMBER_CARD, 4.0);
+        painter.fill(edge_line, None, painter.color(ColorRole::Accent));
+        let spec = TextSpec::new(TypeSize::S32);
+        let layout = painter.layout(&number.to_string(), spec, Some(NUMBER_CARD));
+        let text = painter.color(ColorRole::Text);
+        painter.text(&layout, card, TextAlign::Center, text);
+        Image::from_bytes(canvas.width(), canvas.height(), canvas.data(), true)
+    }
+}
+
 /// Draws one title bar button (hover/press fill, icon; restore = two
 /// squares when maximised).
 fn draw_button(

@@ -1,0 +1,19 @@
+[package]
+name = "ultar-accountd"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Account service of Ultar OS: local users and the Ultar account link state, passwords through the authentication service (system services, area 4)"
+
+[lib]
+name = "ultar_accountd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-accountd"
+path = "src/bin/ultar-accountd.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }

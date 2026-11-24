@@ -9,6 +9,12 @@ use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 use ultar_bus::{Broker, BrokerConfig, FixedIdentity, Needs, Policy, SocketAccess};
 
+/// The tests of this file that start brokers run one at a time: the thread
+/// count of `silent_connections_…` is the whole process's, and a broker of
+/// another test running at the same moment adds threads to it (flake seen
+/// under load in the launcher's gate).
+static ONE_BROKER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Threads of this process whose name starts with `prefix`.
 fn threads_named(prefix: &str) -> usize {
     std::fs::read_dir("/proc/self/task")
@@ -20,6 +26,9 @@ fn threads_named(prefix: &str) -> usize {
 
 #[test]
 fn silent_connections_cost_no_thread_and_do_not_lock_out_a_client() {
+    let _alone = ONE_BROKER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let config = BrokerConfig {
         handshake_timeout: Duration::from_millis(200),
         ..BrokerConfig::default()
@@ -30,7 +39,10 @@ fn silent_connections_cost_no_thread_and_do_not_lock_out_a_client() {
         .filter_map(|_| UnixStream::connect(&path).ok())
         .collect();
     std::thread::sleep(Duration::from_millis(50));
-    assert_eq!(threads_named("ultar-bus-conn"), before);
+    // No thread was added. (Fewer is possible: connection threads of the
+    // broker of the test that ran before may still be ending – the count is
+    // the whole process's; that made the old `==` fail under load.)
+    assert!(threads_named("ultar-bus-conn") <= before);
     // The gate has 16 slots; the client waits in the listen queue until
     // the silent peers time out, then gets in.
     let started = Instant::now();
@@ -65,6 +77,9 @@ fn the_cost_of_a_configuration_is_known_before_the_start() {
 
 #[test]
 fn a_listener_limit_of_its_own_is_enforced() {
+    let _alone = ONE_BROKER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = common::socket_path("own-limit");
     let access = SocketAccess {
         connections: Some(1),

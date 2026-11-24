@@ -1,5 +1,6 @@
 //! Messages from a client to the compositor.
 
+use super::shell::{DisplayModeRequest, WindowAction};
 use super::types::*;
 use crate::wire::{Reader, WireError, Writer};
 
@@ -221,6 +222,88 @@ pub enum Request {
     /// Asks for the window list (needs [`Rights::CAPTURE`]); answered by
     /// `WindowList`.
     ListWindows,
+    /// Gives the keyboard to one of the shell's own panels or panel popups
+    /// (an open sheet or menu); `SurfaceId(0)` gives it back to the focused
+    /// window. Needs [`Rights::SHELL`]. The compositor takes it away again
+    /// (`ShellFocusLost`) when the user clicks a window or the session locks.
+    ShellFocus {
+        /// The shell surface, or 0.
+        surface: SurfaceId,
+    },
+    /// Acts on any toplevel window by the id of `WindowsChanged` (needs
+    /// [`Rights::SHELL`]).
+    WindowAction {
+        /// Window id.
+        window: u32,
+        /// What to do.
+        action: WindowAction,
+    },
+    /// Switches the display mode (needs [`Rights::SHELL`]).
+    SetDisplayMode {
+        /// The mode.
+        mode: DisplayModeRequest,
+    },
+    /// Selects the keyboard layout by its index in `KeyboardLayouts`
+    /// (needs [`Rights::SHELL`] or [`Rights::LOCK_SCREEN`]).
+    SetKeyboardLayout {
+        /// Index.
+        index: u8,
+    },
+    /// Asks for a scaled copy of a window's content for the overview (needs
+    /// [`Rights::SHELL`]; refused while the session is locked; system
+    /// dialogs and unknown ids get no answer). Answered by
+    /// `Event::WindowThumbnail`, at most [`MAX_THUMBNAIL_SIDE`](super::MAX_THUMBNAIL_SIDE)
+    /// on each side, at most [`MAX_THUMBNAILS_PER_SECOND`](super::MAX_THUMBNAILS_PER_SECOND).
+    WindowThumbnail {
+        /// Window id of `WindowsChanged`.
+        window: u32,
+        /// Largest width of the copy in pixels (1 ..= 512).
+        max_width: u16,
+        /// Largest height of the copy in pixels (1 ..= 512).
+        max_height: u16,
+    },
+    /// Shows workspace `index` (needs [`Rights::SHELL`]); `index` equal to
+    /// the number of workspaces adds one (at most
+    /// [`MAX_WORKSPACES`](super::MAX_WORKSPACES)).
+    SwitchWorkspace {
+        /// Workspace, from 0.
+        index: u8,
+    },
+    /// Moves a window to workspace `index`, or onto all of them with
+    /// [`ALL_WORKSPACES`](super::ALL_WORKSPACES) (needs [`Rights::SHELL`]).
+    MoveToWorkspace {
+        /// Window id of `WindowsChanged`.
+        window: u32,
+        /// Workspace, or `ALL_WORKSPACES`.
+        index: u8,
+    },
+    /// Phone mode on or off (needs [`Rights::SHELL`]): every window without a title bar
+    /// over the whole work area, and the edge gestures (`Event::EdgeSwipe`) for the shell.
+    SetPhoneMode {
+        /// On.
+        on: bool,
+    },
+    /// Sets the whole output arrangement (needs [`Rights::OUTPUT_CONFIG`]);
+    /// answered by `OutputSetupDone`.
+    ConfigureOutputs {
+        /// The arrangement.
+        setup: super::outputs::Setup,
+    },
+    /// Makes the provisional setup final (needs [`Rights::OUTPUT_CONFIG`]).
+    ConfirmOutputs {
+        /// Serial of the setup.
+        serial: u32,
+    },
+    /// Shows each output's number large on it (needs [`Rights::OUTPUT_CONFIG`]).
+    IdentifyOutputs {
+        /// Output and number (1–99).
+        numbers: Vec<(OutputId, u8)>,
+        /// How long, in milliseconds (at most `MAX_IDENTIFY_MS`).
+        ms: u32,
+    },
+    /// Looks for displays again and sends `OutputDetails` for each (needs
+    /// [`Rights::OUTPUT_CONFIG`]).
+    DetectOutputs,
 }
 
 impl Request {
@@ -256,6 +339,18 @@ impl Request {
             Request::RequestActivation { .. } => 27,
             Request::Activate { .. } => 28,
             Request::ListWindows => 29,
+            Request::ShellFocus { .. } => 30,
+            Request::WindowAction { .. } => 31,
+            Request::SetDisplayMode { .. } => 32,
+            Request::SetKeyboardLayout { .. } => 33,
+            Request::WindowThumbnail { .. } => 38,
+            Request::SwitchWorkspace { .. } => 39,
+            Request::MoveToWorkspace { .. } => 40,
+            Request::SetPhoneMode { .. } => 41,
+            Request::ConfigureOutputs { .. } => 34,
+            Request::ConfirmOutputs { .. } => 35,
+            Request::IdentifyOutputs { .. } => 36,
+            Request::DetectOutputs => 37,
         }
     }
 
@@ -393,6 +488,38 @@ impl Request {
             }
             Request::Activate { surface, token } => {
                 w.u32(surface.0).u64(*token);
+            }
+            Request::ShellFocus { surface } => {
+                w.u32(surface.0);
+            }
+            Request::WindowAction { window, action } => {
+                w.u32(*window);
+                action.encode(w);
+            }
+            Request::SetDisplayMode { mode } => mode.encode(w),
+            Request::SetKeyboardLayout { index } | Request::SwitchWorkspace { index } => {
+                w.u8(*index);
+            }
+            Request::WindowThumbnail {
+                window,
+                max_width,
+                max_height,
+            } => {
+                w.u32(*window).u16(*max_width).u16(*max_height);
+            }
+            Request::MoveToWorkspace { window, index } => {
+                w.u32(*window).u8(*index);
+            }
+            Request::SetPhoneMode { on } => {
+                w.bool(*on);
+            }
+            Request::ConfigureOutputs { setup } => setup.encode(w),
+            Request::ConfirmOutputs { serial } => {
+                w.u32(*serial);
+            }
+            Request::IdentifyOutputs { numbers, ms } => {
+                super::outputs::encode_numbers(w, numbers);
+                w.u32(*ms);
             }
             _ => {}
         }

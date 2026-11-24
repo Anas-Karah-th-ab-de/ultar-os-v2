@@ -1,0 +1,24 @@
+[package]
+name = "ultar-calendard"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Calendar service of Ultar OS: the events of the person in front, stored per person (system services, area 4)"
+
+[lib]
+name = "ultar_calendard"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-calendard"
+path = "src/bin/ultar-calendard.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

@@ -1,0 +1,26 @@
+[package]
+name = "ultar-audiod"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Audio service of Ultar OS: volume, mute and output of the sound cards, restored at start (system services, area 4)"
+
+[lib]
+name = "ultar_audiod"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-audiod"
+path = "src/bin/ultar-audiod.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+ultar-hal = { path = "../../hal/ultar-hal" }
+ultar-hal-linux = { path = "../../hal/ultar-hal-linux" }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

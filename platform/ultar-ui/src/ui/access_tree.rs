@@ -46,6 +46,7 @@ impl Ui {
             checked: match &node.widget {
                 Widget::Switch(w) => Some(w.on),
                 Widget::Checkbox(w) => Some(w.checked),
+                Widget::Brick(w) => w.checked(),
                 _ => None,
             },
             mixed: matches!(&node.widget, Widget::Checkbox(w) if w.mixed),

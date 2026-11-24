@@ -7,7 +7,10 @@ mod common;
 use common::{stop, World, UINIT};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
+use ultar_bus::messages::init::{Power, PowerAction};
 use ultar_bus::{Broker, FixedIdentity, Identity, Policy};
+use ultar_bus::{BusError, Client, ClientOptions, ErrorCode};
 
 const POLICY: &str = r#"
 [[rule]]
@@ -20,7 +23,11 @@ call = ["init.status", "init.control", "init.admin"]
 
 [[rule]]
 identity = "app.viewer"
-call = ["init.status", "init.control"]
+call = ["init.status", "init.control", "init.power"]
+
+[[rule]]
+identity = "system.powerd"
+call = ["init.power", "init.shutdown"]
 "#;
 
 fn broker(world: &World) -> Broker {
@@ -30,6 +37,7 @@ fn broker(world: &World) -> Broker {
         .listen(&world.path("bus-init.sock"), fixed("system.init"))
         .listen(&world.path("admin.sock"), fixed("system.admin"))
         .listen(&world.path("viewer.sock"), fixed("app.viewer"))
+        .listen(&world.path("powerd.sock"), fixed("system.powerd"))
         .start()
         .unwrap()
 }
@@ -105,4 +113,47 @@ fn an_administrator_sees_and_steers_the_services_others_are_refused() {
         stderr.contains("refused request caller=app.viewer reason=not_admin"),
         "{stderr}"
     );
+}
+
+fn power(world: &World, socket: &str, action: PowerAction) -> Result<(), BusError> {
+    let client = Client::connect(&world.path(socket), ClientOptions::named("power-test")).unwrap();
+    let deadline = std::time::Instant::now() + common::WAIT;
+    loop {
+        match client.call(&Power { action }, Duration::from_secs(5)) {
+            Err(BusError::Remote(ErrorCode::UnknownService))
+                if std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            other => return other.map(|_| ()),
+        }
+    }
+}
+
+#[test]
+fn only_the_power_service_ends_the_machine_and_init_stops_everything_in_order() {
+    let world = World::new("power");
+    let _broker = broker(&world);
+    world.service("calm", "exec = \"/bin/sleep\"\nargs = [\"60\"]");
+    let child = world.start("");
+    world.wait_status("calm", |c| c[1] == "running");
+    // The broker lets the viewer call init.power; init itself refuses it.
+    assert!(matches!(
+        power(&world, "viewer.sock", PowerAction::PowerOff),
+        Err(BusError::Remote(ErrorCode::PermissionDenied))
+    ));
+    world.wait_status("calm", |c| c[1] == "running");
+    // Not PID 1: init stops every service and ends with code 0.
+    assert!(power(&world, "powerd.sock", PowerAction::Reboot).is_ok());
+    let (code, stderr) = stop(child);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(
+        stderr.contains("refused request caller=app.viewer reason=not_power"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("power request caller=system.powerd action=reboot"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("shutdown done"), "{stderr}");
 }

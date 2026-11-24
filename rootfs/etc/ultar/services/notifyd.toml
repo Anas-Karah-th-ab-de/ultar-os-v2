@@ -1,0 +1,22 @@
+# Notification service (docs/integration/system-services.md): checks and
+# numbers notifications (up to three buttons each), names the sender by its
+# bus identity, publishes notify.posted / notify.dismissed / notify.invoked;
+# a pressed button goes back to its sender only (notify.take_invoked).
+# Open notifications live in memory (bounded: 64 open, 30 posts per minute
+# and sender).
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-notifyd"
+args = [
+    "--bus", "/run/ultar/bus/notifyd.sock",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--log-socket", "/run/ultar/log/notifyd.sock",
+]
+user = 821
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "16M"
+"pids.max" = "16"
+"cpu.weight" = "50"

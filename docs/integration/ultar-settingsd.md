@@ -93,6 +93,16 @@ Gate of the modified copy: fmt clean, clippy clean, 141 tests pass (139 + 2 new)
 `StoreNotice.text` is a `Text` with key `settingsd.store.<kind>` and the arguments in the order *file, detail*
 (the catalog entries name them `{file}` and `{detail}`).
 
+### Narrow right for the sign-in screen (round 3, `login.access`)
+
+`settings.set_accessibility {key, value}` → `SetReply` and `settings.accessibility {}` →
+`AccessibilityReply {values: [(key, value)]}` (messages in `ultar_bus::messages::settings`,
+`settings_access.rs`). Only keys under `accessibility.` (lower-case words, ≤ 128 bytes) are
+accepted; any other key answers `PermissionDenied` before the schema is asked. Types, ranges and
+risk classes are the schema's (a wrong type answers `Service(TYPE_MISMATCH)`). The bus policy
+gives these two methods – and nothing else of `settings` – to `system.lock`
+(`server/accessibility.rs`, test `tests/accessibility.rs`).
+
 ## Behaviour other crates can rely on
 
 - **Keys** are bus-style names (`a-z 0-9 _ -`, dot separated, ≤128 bytes). `<id>` in a declaration stands for one

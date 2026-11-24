@@ -16,6 +16,17 @@ fn percent(share: f32) -> Label {
     Label::data(&format!("{:.0}%", (share * 100.0).clamp(0.0, 100.0)))
 }
 
+/// A shell brick: a rule is not announced, pictures are images, quick tiles switches.
+fn describe_brick(w: &crate::widgets::Brick) -> Option<(Role, Option<Label>, Option<Label>)> {
+    let name = Some(w.accessible_name().clone());
+    Some(match w.kind {
+        crate::widgets::BrickKind::Rule => return None,
+        _ if w.is_static() => (Role::Image, name, None),
+        _ if w.is_toggle() => (Role::Switch, name, None),
+        _ => (Role::Button, name, None),
+    })
+}
+
 /// Role, name and value of a widget; `None` for pure layout and unnamed icons.
 pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label>)> {
     let named = |label: &Label| Some(label.clone());
@@ -28,6 +39,8 @@ pub(super) fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, O
         Widget::Row(w) => (Role::Row, named(&w.label), w.sublabel.clone()),
         Widget::Button(w) => (Role::Button, named(&w.label), None),
         Widget::IconButton(w) => (Role::Button, named(&w.name), None),
+        Widget::Brick(w) => return describe_brick(w),
+        Widget::DayGrid(w) => (Role::Table, named(&w.name), w.selected_name()),
         Widget::Switch(w) => (Role::Switch, named(&w.name), None),
         Widget::Select(w) => (
             Role::Select,

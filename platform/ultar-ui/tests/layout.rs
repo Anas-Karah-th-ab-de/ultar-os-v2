@@ -344,3 +344,102 @@ fn scale_and_touch_mode_change_pixels_not_logic() {
     ui.set_size(Size::new(1440.0, 900.0)).unwrap();
     assert_eq!(ui.size_class(), SizeClass::Wide);
 }
+
+#[test]
+fn a_stack_lays_its_children_over_each_other_and_the_top_one_is_hit() {
+    use ultar_ui::event::Event;
+    use ultar_ui::geom::Point;
+    use ultar_ui::icon::IconId;
+    use ultar_ui::widgets::IconButton;
+    for lang in [Lang::En, Lang::Ar] {
+        let mut ui = common::ui(lang, ThemeKind::Dark, SURFACE);
+        let root = ui.root();
+        let stack = Flex::stack().main(MainAlign::End).cross(CrossAlign::Start);
+        let stack = ui.add_sized(root, stack, Sizing::width(300.0)).unwrap();
+        let base = ui
+            .add_sized(stack, Card::padded(), Sizing::grow(1))
+            .unwrap();
+        ui.add(base, Text::new(Label::key("demo.card.title")))
+            .unwrap();
+        ui.add(base, Text::new(Label::key("demo.card.text")))
+            .unwrap();
+        let corner = ui
+            .add(stack, Flex::row().padding(Padding::all(Space::S4)))
+            .unwrap();
+        let close = ui
+            .add(
+                corner,
+                IconButton::new(IconId::Close, Label::key("demo.settings")),
+            )
+            .unwrap();
+        ui.layout();
+        let (s, b, c) = (
+            ui.rect(stack).unwrap(),
+            ui.rect(base).unwrap(),
+            ui.rect(close).unwrap(),
+        );
+        assert_eq!((b.x, b.y, b.w, b.h), (s.x, s.y, s.w, s.h), "the base fills");
+        assert!(s.h >= c.h + 8.0, "{s:?} {b:?} {c:?}");
+        assert_eq!(c.y, s.y + 4.0, "inset 4 from the top");
+        if lang == Lang::Ar {
+            assert_eq!(c.x, s.x + 4.0, "end corner is on the left in Arabic");
+        } else {
+            assert_eq!(c.x + c.w, s.x + s.w - 4.0, "end corner on the right");
+        }
+        // The button lies over the card and gets the click.
+        let pos = Point::new(c.x + c.w / 2.0, c.y + c.h / 2.0);
+        ui.handle(Event::PointerMove { pos });
+        let button = ultar_ui::event::PointerButton::Primary;
+        ui.handle(Event::PointerDown { pos, button });
+        let actions = ui.handle(Event::PointerUp { pos, button }).actions;
+        assert!(actions.iter().any(|a| a.node == close), "{actions:?}");
+    }
+}
+
+#[test]
+fn a_stack_without_a_growing_child_is_as_big_as_its_largest() {
+    let mut ui = common::ui(Lang::En, ThemeKind::Dark, SURFACE);
+    let root = ui.root();
+    let row = ui.add(root, Flex::row()).unwrap();
+    let stack = ui
+        .add(
+            row,
+            Flex::stack()
+                .main(MainAlign::Center)
+                .cross(CrossAlign::Center),
+        )
+        .unwrap();
+    let big = ui
+        .add_sized(
+            stack,
+            Flex::row(),
+            Sizing {
+                height: Length::Points(40.0),
+                ..Sizing::width(80.0)
+            },
+        )
+        .unwrap();
+    let small = ui
+        .add_sized(
+            stack,
+            Flex::row(),
+            Sizing {
+                height: Length::Points(10.0),
+                ..Sizing::width(20.0)
+            },
+        )
+        .unwrap();
+    ui.layout();
+    let (s, g, m) = (
+        ui.rect(stack).unwrap(),
+        ui.rect(big).unwrap(),
+        ui.rect(small).unwrap(),
+    );
+    assert_eq!((s.w, s.h), (80.0, 40.0));
+    assert_eq!((g.x, g.y), (s.x, s.y));
+    assert_eq!(
+        (m.x, m.y),
+        (s.x + 30.0, s.y + 15.0),
+        "centred over the big one"
+    );
+}

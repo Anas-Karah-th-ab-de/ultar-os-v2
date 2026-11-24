@@ -183,8 +183,8 @@ static void id_tests(const char *self) {
     st = -1;
     waitpid(c, &st, 0);
     check("Kennungen: fork und execve vererben alle Nummern und Zusatzgruppen", st == 0);
-    gid_t many[17] = {0};
-    denied("Kennungen: mehr als 16 Zusatzgruppen", setgroups(17, many), EINVAL);
+    gid_t many[33] = {0};
+    denied("Kennungen: mehr als 32 Zusatzgruppen", setgroups(33, many), EINVAL);
 }
 
 /* ------------------------------------------------------------------ modes and owners */

@@ -257,6 +257,12 @@ pub enum CardTone {
     Danger,
     /// A bar or sidebar region: `bar` fill, no radius, one `line` border on one edge.
     Bar(BarEdge),
+    /// The dock of the desktop shell (board DesktopTop): a floating card in the `bar` fill
+    /// with the `line` border, radius 12.
+    Dock,
+    /// A sheet attached to the top edge of its surface (the phone's quick settings, board
+    /// CompactQuick): square top corners, no border at the top and the sides.
+    TopSheet,
 }
 
 /// The edge of a bar region that carries its border.
@@ -340,6 +346,20 @@ impl Card {
         self
     }
 
+    /// The same card as the dock: floating, in the bar's colour.
+    pub fn dock(mut self) -> Card {
+        self.floating = true;
+        self.tone = CardTone::Dock;
+        self
+    }
+
+    /// The same card as a sheet attached to the top edge of its surface.
+    pub fn top_sheet(mut self) -> Card {
+        self.floating = true;
+        self.tone = CardTone::TopSheet;
+        self
+    }
+
     /// The same card floating, with the raised background.
     pub fn raised(mut self) -> Card {
         self.floating = true;
@@ -348,6 +368,14 @@ impl Card {
     }
 
     pub(crate) fn paint(&self, p: &mut Painter<'_>, rect: Rect) {
+        // A sheet's outline starts above and beside its node: the surface cuts the top
+        // corners and the side borders away.
+        let rect = if self.tone == CardTone::TopSheet {
+            let (up, side) = (Radius::Card.points(), p.hairline());
+            Rect::new(rect.x - side, rect.y - up, rect.w + 2.0 * side, rect.h + up)
+        } else {
+            rect
+        };
         if self.floating {
             p.shadow(rect, Some(Radius::Card));
         }
@@ -359,10 +387,12 @@ impl Card {
                 p.stroke(rect, Some(Radius::Card), 2.0 * p.hairline(), danger);
                 return;
             }
-            CardTone::Plain => {}
+            CardTone::Plain | CardTone::Dock | CardTone::TopSheet => {}
         }
         // Boards (REVIEW-SELF B5): a raised card has the raised fill, no gold border.
-        let (background, border) = if self.raised {
+        let (background, border) = if self.tone == CardTone::Dock {
+            (ColorRole::Bar, ColorRole::Line)
+        } else if self.raised {
             (ColorRole::Raised, ColorRole::Line)
         } else {
             (ColorRole::Surface, ColorRole::Line)

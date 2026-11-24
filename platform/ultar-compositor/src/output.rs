@@ -1,8 +1,10 @@
 //! Outputs (displays) and how they are arranged: extend, mirror, single;
 //! one primary output; a scale per output.
 
+use crate::backend::BackendOutput;
 use crate::geom::Rect;
-use ultar_surface::proto::{OutputId, OutputInfo};
+use std::collections::BTreeMap;
+use ultar_surface::proto::{OutputId, OutputInfo, Transform};
 
 /// Smallest and largest scale (DESKTOP-SPEC §5.2: 100–300 %).
 pub const MIN_SCALE_MILLI: u32 = 1000;
@@ -49,6 +51,30 @@ pub struct Output {
     pub primary: bool,
     /// Shown (false: switched off by the display mode).
     pub enabled: bool,
+    /// What the display service chose beyond mode and scale.
+    pub placement: Placement,
+}
+
+/// Where an output sits and whether it takes part (set by the display
+/// service; the defaults arrange outputs left to right, all included).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Placement {
+    /// Fixed position in logical points (`None`: placed automatically).
+    pub position: Option<(i32, i32)>,
+    /// Turn of the picture (only `Normal` is drawn today).
+    pub transform: Transform,
+    /// Part of the arrangement (false: switched off, e.g. not mirrored).
+    pub included: bool,
+}
+
+impl Default for Placement {
+    fn default() -> Self {
+        Placement {
+            position: None,
+            transform: Transform::Normal,
+            included: true,
+        }
+    }
 }
 
 impl Output {
@@ -108,9 +134,11 @@ pub fn suggested_scale(width_px: u32, width_mm: u32) -> u32 {
 /// All outputs and their arrangement.
 #[derive(Clone, Debug)]
 pub struct Layout {
-    outputs: Vec<Output>,
-    mode: DisplayMode,
+    pub(crate) outputs: Vec<Output>,
+    pub(crate) mode: DisplayMode,
     next_id: u32,
+    /// What the backend reported about each output (modes, identity).
+    pub(crate) details: BTreeMap<OutputId, BackendOutput>,
 }
 
 impl Default for Layout {
@@ -119,6 +147,7 @@ impl Default for Layout {
             outputs: Vec::new(),
             mode: DisplayMode::Extend,
             next_id: 0,
+            details: BTreeMap::new(),
         }
     }
 }
@@ -154,8 +183,22 @@ impl Layout {
             y: 0,
             primary,
             enabled: true,
+            placement: Placement::default(),
         });
         self.arrange();
+        id
+    }
+
+    /// Adds a connected display with everything the backend knows of it.
+    pub fn add_output(&mut self, b: &BackendOutput) -> OutputId {
+        let id = self.add(
+            b.hal,
+            &b.name,
+            (b.width, b.height),
+            b.refresh_millihertz,
+            b.width_mm,
+        );
+        self.details.insert(id, b.clone());
         id
     }
 
@@ -163,6 +206,7 @@ impl Layout {
     pub fn remove(&mut self, id: OutputId) -> bool {
         let before = self.outputs.len();
         self.outputs.retain(|o| o.id != id);
+        self.details.remove(&id);
         if self.mode == DisplayMode::Single(id) {
             self.mode = DisplayMode::Extend;
         }
@@ -217,26 +261,37 @@ impl Layout {
         self.mode
     }
 
-    fn arrange(&mut self) {
+    pub(crate) fn arrange(&mut self) {
         // Primary first, then the others in connection order, left to right
-        // (physical arrangement; the user can drag them in Settings later).
+        // (physical arrangement), unless the display service placed them.
         self.outputs.sort_by_key(|o| (!o.primary, o.id));
         for o in &mut self.outputs {
             o.scale_milli = o.user_scale_milli;
         }
         let primary_size = self.outputs.first().map(|o| o.logical_size());
+        let placed = self
+            .outputs
+            .iter()
+            .filter(|o| o.placement.included)
+            .all(|o| o.placement.position.is_some());
         let mut x = 0;
         for o in &mut self.outputs {
-            o.enabled = match self.mode {
-                DisplayMode::Single(id) => o.id == id,
-                _ => true,
-            };
+            o.enabled = o.placement.included
+                && match self.mode {
+                    DisplayMode::Single(id) => o.id == id,
+                    _ => true,
+                };
             o.y = 0;
             match self.mode {
-                DisplayMode::Extend => {
-                    o.x = x;
-                    x += o.logical_size().0;
-                }
+                DisplayMode::Extend => match o.placement.position {
+                    Some((px, py)) if placed => (o.x, o.y) = (px, py),
+                    _ => {
+                        o.x = x;
+                        if o.enabled {
+                            x += o.logical_size().0;
+                        }
+                    }
+                },
                 DisplayMode::Mirror => {
                     o.x = 0;
                     if let (false, Some((lw, lh))) = (o.primary, primary_size) {

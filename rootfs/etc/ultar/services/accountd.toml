@@ -1,0 +1,29 @@
+# Account service (docs/integration/display-account-services.md): local
+# users and the Ultar account link state. Keeps no secret: passwords go to
+# the authentication service (auth.*), administrator actions are confirmed
+# in the system dialog (sysdialog.authenticate), both asked by this service.
+exec = "/usr/bin/ultar-accountd"
+args = [
+    "--bus", "/run/ultar/bus/accountd.sock",
+    "--dir", "/data/ultar/accounts",
+    "--homes", "/home",
+    "--ids", "/etc/ultar/ids.toml",
+    "--policy", "/etc/ultar/bus-policy.toml",
+    "--uids", "1000-19999",
+    "--log-socket", "/run/ultar/log/accountd.sock",
+]
+# Its own user; its bus and log sockets are open to its group (818).
+user = 818
+dirs = ["/data/ultar/accounts"]
+# right file_admin: a new user's home is created and handed to the new user
+# id (chown), a removed user's home is moved to /home/.removed or deleted;
+# nothing else this service does needs it.
+rights = ["file_admin"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "32M"
+"pids.max" = "16"
+"cpu.weight" = "50"

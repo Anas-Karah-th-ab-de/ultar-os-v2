@@ -305,8 +305,11 @@ impl Rights {
     pub const OVERLAY: Rights = Rights(16);
     /// System dialogs (password, permission prompts) with the trusted mark.
     pub const SYSTEM_DIALOG: Rights = Rights(32);
+    /// Sets the output arrangement and learns each display's identity and
+    /// modes (the display service).
+    pub const OUTPUT_CONFIG: Rights = Rights(64);
     /// Every right.
-    pub const ALL: Rights = Rights(63);
+    pub const ALL: Rights = Rights(127);
 
     /// True if every bit of `other` is set.
     pub const fn contains(self, other: Rights) -> bool {
@@ -334,6 +337,8 @@ impl Modifiers {
     pub const SUPER: u8 = 8;
     /// Alt Gr.
     pub const ALT_GR: u8 = 16;
+    /// Caps Lock is on (a state, not a held key: the lock screen shows a hint).
+    pub const CAPS_LOCK: u8 = 32;
 
     /// True if the bit is held.
     pub const fn has(self, bit: u8) -> bool {

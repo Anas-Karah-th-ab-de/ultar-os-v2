@@ -65,7 +65,9 @@ fn typed_event_reaches_subscriber() {
             app_id: "tech.code-craft.phone".into(),
             title: Text::key("notify.call.incoming"),
             body: Body::Empty,
+            actions: Vec::new(),
         },
+        sender: "app.phone".into(),
     };
     service.publish(&posted).unwrap();
     assert_eq!(notifications.recv_timeout(WAIT).unwrap(), posted);

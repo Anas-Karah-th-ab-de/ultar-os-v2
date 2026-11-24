@@ -102,6 +102,14 @@ settings.appearance.icon_size.desc = Size of app and file icons
 settings.appearance.icon_size.choice.small = Small
 settings.appearance.icon_size.choice.medium = Medium
 settings.appearance.icon_size.choice.large = Large
+settings.accessibility.large_text.label = Large text
+settings.accessibility.large_text.desc = Makes the text of the interface larger and easier to read
+settings.accessibility.high_contrast.label = High contrast
+settings.accessibility.high_contrast.desc = Stronger colour differences so elements are easier to tell apart
+settings.accessibility.screen_reader.label = Screen reader
+settings.accessibility.screen_reader.desc = Reads what is on the screen aloud
+settings.accessibility.on_screen_keyboard.label = On-screen keyboard
+settings.accessibility.on_screen_keyboard.desc = Shows a keyboard on the screen for typing
 
 settings.bar.layout.label = Bar layout
 settings.bar.layout.desc = One bar at the bottom, or a bar at the top with a separate dock
