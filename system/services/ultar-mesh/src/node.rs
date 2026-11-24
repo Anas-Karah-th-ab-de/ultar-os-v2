@@ -10,13 +10,11 @@ use crate::wire::{Frame, VERSION};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
+use ultar_bus::messages::agent::Step;
 use ultar_bus::messages::mesh::{
     Activity, Capability, ClipboardRemote, DeviceKind, HandoffIncoming, HandoffProgress, MeshState,
     Peer, Right,
 };
-
-/// Longest clipboard text that travels.
-pub const MAX_CLIP: usize = 16 * 1024;
 
 /// What this device is.
 #[derive(Clone, Debug)]
@@ -31,6 +29,8 @@ pub struct Config {
     pub apps: Vec<String>,
     /// Where received files go.
     pub inbox: PathBuf,
+    /// Folders whose files may be sent (the person's own folders). Empty: none.
+    pub share: Vec<PathBuf>,
     /// It can show its windows on another device.
     pub remote_view: bool,
 }
@@ -69,6 +69,50 @@ pub enum Effect {
     },
     /// A job this device asked for made progress or ended.
     Job(String, Frame),
+    /// Let the local model answer for `peer`; report with [`Node::thought`].
+    Think {
+        /// Who asked.
+        peer: String,
+        /// The request.
+        id: u64,
+        /// What the model is and may do.
+        system: String,
+        /// What it is asked.
+        prompt: String,
+        /// Longest answer in tokens.
+        max_tokens: u32,
+    },
+    /// A paired device answered a request of [`Node::think`].
+    Thought {
+        /// The request.
+        id: u64,
+        /// The device.
+        peer: String,
+        /// Its model answered.
+        ok: bool,
+        /// The answer.
+        text: String,
+    },
+    /// Let the local helper do this for `peer`; report with [`Node::acted`].
+    Act {
+        /// Who asked.
+        peer: String,
+        /// The request.
+        id: u64,
+        /// What to do.
+        text: String,
+    },
+    /// A paired device's helper answered a request of [`Node::act`].
+    Acted {
+        /// The request.
+        id: u64,
+        /// The device.
+        peer: String,
+        /// It took the request.
+        ok: bool,
+        /// What it did.
+        steps: Vec<Step>,
+    },
     /// The picture of the mesh changed ([`Node::state`]).
     Changed,
 }
@@ -91,8 +135,10 @@ pub struct Node {
     pub(crate) shown: Option<Shown>,
     pub(crate) activity: Option<Activity>,
     pub(crate) offers: Offers,
-    clip_seq: u64,
-    clip_remote: Option<String>,
+    pub(crate) clip_seq: u64,
+    pub(crate) clip_remote: Option<String>,
+    pub(crate) thinking: u64,
+    pub(crate) serving: u32,
 }
 
 impl Node {
@@ -110,6 +156,8 @@ impl Node {
             offers: Offers::default(),
             clip_seq: 0,
             clip_remote: None,
+            thinking: 0,
+            serving: 0,
         }
     }
 
@@ -153,7 +201,7 @@ impl Node {
         self.paired(peer) && self.trust.allows(peer, right)
     }
 
-    fn hello(&self) -> Frame {
+    pub(crate) fn hello(&self) -> Frame {
         Frame::Hello {
             version: VERSION,
             name: device::clean_name(&self.config.name),
@@ -257,32 +305,6 @@ impl Node {
         (true, vec![Effect::Changed])
     }
 
-    /// The clipboard of this device changed.
-    pub fn clipboard_set(&mut self, text: &str, confidential: bool) -> Vec<Effect> {
-        let echo = self.clip_remote.as_deref() == Some(text);
-        if confidential || echo || text.is_empty() || text.len() > MAX_CLIP {
-            return Vec::new();
-        }
-        if !self.config.capabilities.contains(&Capability::Clipboard) {
-            return Vec::new();
-        }
-        self.clip_seq += 1;
-        let seq = self.clip_seq;
-        self.links
-            .iter()
-            .filter(|(id, l)| {
-                self.trust.knows(id, &l.key)
-                    && l.device
-                        .as_ref()
-                        .is_some_and(|d| d.can(Capability::Clipboard))
-            })
-            .map(|(id, _)| {
-                let text = text.to_owned();
-                Effect::Send(id.clone(), Frame::Clip { seq, text })
-            })
-            .collect()
-    }
-
     fn on_hello(&mut self, peer: &str, frame: Frame) -> Vec<Effect> {
         let Frame::Hello {
             name,
@@ -308,19 +330,6 @@ impl Node {
         vec![Effect::Changed]
     }
 
-    fn on_clip(&mut self, peer: &str, text: String) -> Vec<Effect> {
-        let fits = !text.is_empty() && text.len() <= MAX_CLIP;
-        let wanted = self.config.capabilities.contains(&Capability::Clipboard);
-        if !fits || !wanted || !self.allows(peer, Right::Clipboard) {
-            return Vec::new();
-        }
-        self.clip_remote = Some(text.clone());
-        vec![Effect::Clipboard(ClipboardRemote {
-            from: peer.to_owned(),
-            text,
-        })]
-    }
-
     /// A frame arrived from the linked device `peer`.
     pub fn frame(&mut self, peer: &str, frame: Frame, now: Instant) -> Vec<Effect> {
         if !self.enabled || !self.links.contains_key(peer) {
@@ -344,6 +353,8 @@ impl Node {
             Frame::JobAlive { .. } | Frame::JobDone { .. } | Frame::JobRefused { .. } => {
                 vec![Effect::Job(peer.to_owned(), frame)]
             }
+            Frame::Think { .. } | Frame::Thought { .. } => self.on_model_frame(peer, frame),
+            Frame::Act { .. } | Frame::Acted { .. } => self.on_remote_frame(peer, frame),
             other => self.on_offer_frame(peer, other, now),
         }
     }

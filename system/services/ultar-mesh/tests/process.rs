@@ -10,6 +10,7 @@ use ultar_bus::messages::mesh::{
     Activity, Done, HandoffAnswer, HandoffIncoming, HandoffProgress, HandoffSend, MeshState,
     OfferState, PairBegin, PairJoin, SendOutcome, SetActivity, SetEnabled, Stage,
 };
+use ultar_bus::messages::mesh_dialog::{AskHandoff, HandoffDecision};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 
@@ -18,7 +19,17 @@ const POLICY: &str = r#"
 identity = "system.mesh"
 register = ["mesh"]
 publish = ["mesh.state", "mesh.handoff_incoming", "mesh.handoff_progress", "mesh.clipboard"]
-call = ["launcher.list", "launcher.start"]
+call = ["launcher.list", "launcher.start", "sysdialog.handoff", "llm.complete"]
+subscribe = ["llm.state"]
+
+[[rule]]
+identity = "system.llm"
+register = ["llm"]
+publish = ["llm.state"]
+
+[[rule]]
+identity = "system.sysdialog"
+register = ["sysdialog"]
 
 [[rule]]
 identity = "system.launcher"
@@ -90,6 +101,8 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
     let identities = [
         "system.mesh",
         "system.launcher",
+        "system.sysdialog",
+        "system.llm",
         "system.shell",
         "app.editor",
         "app.browser",
@@ -100,7 +113,9 @@ fn device(tag: &str, name: &str, port: u16, peer: Option<u16>) -> Device {
     let inbox = world.subdir("inbox");
     let port = port.to_string();
     let peer = peer.map(|p| format!("127.0.0.1:{p}"));
+    let home = world.subdir("home");
     let mut args = vec!["--state", state.to_str().unwrap()];
+    args.extend(["--share", home.to_str().unwrap()]);
     args.extend(["--inbox", inbox.to_str().unwrap(), "--name", name]);
     args.extend(["--kind", "desktop", "--port", &port, "--announce", "off"]);
     if let Some(peer) = &peer {
@@ -218,4 +233,131 @@ fn two_services_pair_and_hand_a_document_over() {
     }));
     let all = [OfferState::Asked, OfferState::Accepted, OfferState::Opened];
     assert_eq!(seen, all);
+}
+
+/// The system dialog of a device: answers every question with `accept` and records it.
+fn system_dialog(d: &Device, accept: bool) -> mpsc::Receiver<AskHandoff> {
+    let (tx, asked) = mpsc::channel();
+    d.world
+        .serve("system.sysdialog", "sysdialog", move |request| {
+            if let Ok(question) = request.decode::<AskHandoff>() {
+                let _ = tx.send(question);
+                let _ = request.reply(&HandoffDecision { accept });
+            }
+        });
+    asked
+}
+
+#[test]
+fn the_system_dialog_asks_and_its_answer_decides() {
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshd-b", "Desk", port_b, None);
+    let a = device("meshd-a", "Phone", port_a, Some(port_b));
+    let asked = system_dialog(&b, true);
+    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    // The person is asked in the trusted dialog with everything it shows.
+    let question = asked.recv_timeout(WAIT).unwrap();
+    assert_eq!(question.from_name, "Phone");
+    assert_eq!(question.title, "letter.txt");
+    assert_eq!(question.app, "editor");
+    assert_eq!(question.size, Some(300_000));
+    assert_eq!(question.stage, Stage::State);
+    // Accepted there: the launcher opens it, the sender learns it.
+    let start = b.started.recv_timeout(WAIT).unwrap();
+    assert_eq!(start.app, "editor");
+    let mut seen = Vec::new();
+    assert!(wait_until(WAIT, || {
+        while let Ok(Some(p)) = progress_a.try_recv() {
+            seen.push(p.state);
+        }
+        seen.contains(&OfferState::Opened)
+    }));
+}
+
+#[test]
+fn a_no_in_the_system_dialog_keeps_everything_out() {
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshn-b", "Desk", port_b, None);
+    let a = device("meshn-a", "Phone", port_a, Some(port_b));
+    let asked = system_dialog(&b, false);
+    let progress_a = a.shell.subscribe::<HandoffProgress>().unwrap();
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    asked.recv_timeout(WAIT).unwrap();
+    let mut seen = Vec::new();
+    assert!(wait_until(WAIT, || {
+        while let Ok(Some(p)) = progress_a.try_recv() {
+            seen.push(p.state);
+        }
+        seen.contains(&OfferState::Declined)
+    }));
+    assert!(b.started.try_recv().is_err(), "nothing was opened");
+    let inbox = b.world.subdir("inbox");
+    assert_eq!(
+        std::fs::read_dir(inbox).unwrap().count(),
+        0,
+        "nothing was stored"
+    );
+}
+
+/// The model of a device: announces itself and answers with the prompt turned around.
+fn model(d: &Device) -> Client {
+    use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
+    d.world.serve("system.llm", "llm", |request| {
+        if let Ok(ask) = request.decode::<Complete>() {
+            let text = ask.prompt.chars().rev().collect();
+            let _ = request.reply(&Completion { ok: true, text });
+        }
+    });
+    let llm = d.world.client("system.llm");
+    let state = LlmState {
+        ready: true,
+        model: "test".into(),
+        class: ModelClass::Medium,
+    };
+    llm.publish(&state).unwrap();
+    llm
+}
+
+#[test]
+fn a_device_without_a_model_lets_a_paired_device_think_once_it_may() {
+    use ultar_bus::messages::mesh::{Right, SetRights};
+    use ultar_bus::messages::mesh_model::{Models, Think};
+    let (port_a, port_b) = (free_port(), free_port());
+    let b = device("meshm-b", "Desk", port_b, None);
+    let a = device("meshm-a", "Phone", port_a, Some(port_b));
+    let _llm = model(&b);
+    let peer = switch_on(&a, &b);
+    report_document(&a);
+    pair_and_send(&a, &b, &peer);
+    // The phone sees that the desk has a model…
+    let mut lenders = Vec::new();
+    assert!(wait_until(WAIT, || {
+        lenders = call(&a.shell, &Models).unwrap().lenders;
+        !lenders.is_empty()
+    }));
+    assert_eq!(lenders[0].name, "Desk");
+    let think = Think {
+        device: None,
+        system: "rules".into(),
+        prompt: "abc".into(),
+        max_tokens: 16,
+    };
+    // …but may not use it before the desk allows it.
+    assert!(!call(&a.shell, &think).unwrap().ok);
+    let state_b = b.shell.subscribe::<MeshState>().unwrap();
+    let phone = state_b.recv_timeout(WAIT).unwrap().peers[0].id.clone();
+    let rights = vec![Right::Handoff, Right::Files, Right::Clipboard, Right::Model];
+    let grant = SetRights {
+        device: phone,
+        rights,
+    };
+    assert_eq!(call(&b.shell, &grant).unwrap(), Done { ok: true });
+    let thought = call(&a.shell, &think).unwrap();
+    assert!(thought.ok);
+    assert_eq!((thought.text.as_str(), thought.by), ("cba", peer));
 }

@@ -1,0 +1,16 @@
+[package]
+name = "ultar-intel-npu"
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Intel NPU (AI Boost, NPU 3720 of Meteor Lake / Arrow Lake) logic for the Ultar kernel: identification, PLL work point, power-up and power-down sequences, firmware container - pure, no_std, generic over register access"
+
+[lib]
+name = "ultar_intel_npu"
+path = "src/lib.rs"
+
+[dependencies]
+
+# own workspace while it is built standalone (the kernel is its own workspace too)
+[workspace]

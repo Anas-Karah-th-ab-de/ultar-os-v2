@@ -174,6 +174,17 @@ fn dialog_screens(lang: Lang, theme: ThemeKind, problems: &mut Vec<String>) {
             }),
         ),
         (
+            "dialog-handoff",
+            Question::Handoff(ultar_bus::messages::mesh_dialog::AskHandoff {
+                from_name: "KM One".into(),
+                from_kind: ultar_bus::messages::mesh::DeviceKind::Phone,
+                title: "notes.txt".into(),
+                app: "org.ultar.editor".into(),
+                size: Some(1_258_291),
+                stage: ultar_bus::messages::mesh::Stage::State,
+            }),
+        ),
+        (
             "dialog-keep",
             Question::Keep {
                 key: "display.mode".into(),

@@ -1,0 +1,24 @@
+[package]
+name = "ultar-llm-bus"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "The language model on the system bus: offers llm.state and llm.complete and passes them to the model service's own socket (system services, area 4)"
+
+[lib]
+name = "ultar_llm_bus"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-llm-bus"
+path = "src/bin/ultar-llm-bus.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde_json = "1"
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

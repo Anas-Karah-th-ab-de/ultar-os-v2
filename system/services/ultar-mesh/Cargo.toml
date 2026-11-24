@@ -26,6 +26,8 @@ sha2 = "0.10"
 hmac = "0.12"
 rand = "0.8"
 base64 = "0.22"
+tungstenite = { version = "0.23", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+tungstenite = { version = "0.23", default-features = false, features = ["handshake"] }
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

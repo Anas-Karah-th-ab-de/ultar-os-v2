@@ -2,10 +2,12 @@
 //! one at a time, in the order asked, at most [`MAX_QUEUED`] waiting; a question nobody
 //! answers gets the safe answer (deny, cancel, revert) – never "allow".
 
+pub mod handoff;
 pub mod view;
 
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret, UserInfo};
 use ultar_bus::messages::bluetooth::{PairConfirm, PairQuestion};
+use ultar_bus::messages::mesh_dialog::AskHandoff;
 use ultar_bus::messages::settings::SettingValue;
 use ultar_bus::messages::sysdialog::{
     AskPermission, AuthResult, Authenticate, Decision, ANSWER_WITHIN_MS, MAX_QUEUED,
@@ -23,6 +25,8 @@ pub enum Question {
     Authenticate(Authenticate),
     /// Pair with a Bluetooth device? (`sysdialog.bt_pair`, asked by the Bluetooth service.)
     BtPair(PairConfirm),
+    /// Take what another device offers? (`sysdialog.handoff`, asked by the mesh.)
+    Handoff(AskHandoff),
     /// Keep the new display settings?
     Keep {
         /// Setting key.
@@ -43,6 +47,8 @@ pub enum Answer {
     Keep(bool),
     /// Pair (true) or not (false).
     BtPair(bool),
+    /// Accept the offer (true) or decline it (false).
+    Handoff(bool),
 }
 
 /// Something the dialog service asks of the world.
@@ -95,6 +101,7 @@ fn safe(question: &Question) -> Answer {
         Question::Authenticate(_) => Answer::Authenticate(AuthResult::Cancelled),
         Question::Keep { .. } => Answer::Keep(false),
         Question::BtPair(_) => Answer::BtPair(false),
+        Question::Handoff(_) => Answer::Handoff(false),
     }
 }
 

@@ -4,6 +4,7 @@
 //! know decodes as [`Frame::Unknown`] and is ignored, so newer devices can say more.
 
 use serde::{Deserialize, Serialize};
+use ultar_bus::messages::agent::Step;
 
 /// Version of this protocol (sent in [`Frame::Hello`]).
 pub const VERSION: u16 = 1;
@@ -145,6 +146,42 @@ pub enum Frame {
     JobRefused {
         /// The job.
         id: String,
+    },
+    /// Let your language model answer this (lending the model).
+    Think {
+        /// Id chosen by the asking device.
+        id: u64,
+        /// What the model is and may do.
+        system: String,
+        /// What it is asked.
+        prompt: String,
+        /// Longest answer in tokens.
+        max_tokens: u32,
+    },
+    /// The answer to a [`Frame::Think`].
+    Thought {
+        /// The request.
+        id: u64,
+        /// The model answered.
+        ok: bool,
+        /// Its answer.
+        text: String,
+    },
+    /// Let your helper do this (acting on another device).
+    Act {
+        /// Id chosen by the asking device.
+        id: u64,
+        /// The request, in the person's words.
+        text: String,
+    },
+    /// The answer to a [`Frame::Act`].
+    Acted {
+        /// The request.
+        id: u64,
+        /// The helper took it.
+        ok: bool,
+        /// What it did.
+        steps: Vec<Step>,
     },
     /// Anything this version does not know.
     #[serde(other)]

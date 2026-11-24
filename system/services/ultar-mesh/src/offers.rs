@@ -140,10 +140,13 @@ impl Node {
     ) -> (SendOutcome, Vec<Effect>) {
         let carries = target.stage != Stage::RemoteView;
         let file = match activity.file.as_deref().filter(|_| carries) {
-            Some(path) => match transfer::Outgoing::open(Path::new(path)) {
-                Ok(file) => Some(file),
-                Err(_) => return (SendOutcome::NoActivity, Vec::new()),
-            },
+            Some(path) => {
+                let real = transfer::shareable(Path::new(path), &self.config.share);
+                match real.map(|p| transfer::Outgoing::open(&p)) {
+                    Some(Ok(file)) => Some(file),
+                    _ => return (SendOutcome::NoActivity, Vec::new()),
+                }
+            }
             None => None,
         };
         self.offers.next += 1;

@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret};
 use ultar_bus::messages::bluetooth::{BluetoothState, PairConfirm, PairConfirmReply};
+use ultar_bus::messages::mesh_dialog::{AskHandoff, HandoffDecision};
 use ultar_bus::messages::settings::{PendingConfirmation, PendingResolved};
 use ultar_bus::messages::sysdialog::{
     AskPermission, Authenticate, AuthenticateReply, Decision, PermissionReply, SERVICE,
@@ -139,6 +140,8 @@ impl DialogApp {
                 self.ask(Question::Permission(p), Some(request));
             } else if let Ok(p) = request.decode::<PairConfirm>() {
                 self.ask(Question::BtPair(p), Some(request));
+            } else if let Ok(p) = request.decode::<AskHandoff>() {
+                self.ask(Question::Handoff(p), Some(request));
             } else if let Ok(a) = request.decode::<Authenticate>() {
                 self.refresh_admin();
                 self.ask(Question::Authenticate(a), Some(request));
@@ -195,6 +198,7 @@ impl DialogApp {
                             decision: Decision::Deny,
                         }),
                         Answer::BtPair(accept) => call.reply(&PairConfirmReply { accept }),
+                        Answer::Handoff(accept) => call.reply(&HandoffDecision { accept }),
                     };
                 }
             }
@@ -245,9 +249,16 @@ impl DialogApp {
             self.dialogs.current().map(|e| &e.question),
             Some(Question::BtPair(_))
         );
+        let offered = matches!(
+            self.dialogs.current().map(|e| &e.question),
+            Some(Question::Handoff(_))
+        );
         match (target, kind) {
             (Some(Target::AllowOnce), ActionKind::Activated) if pairing => {
                 self.dialogs.answer(Answer::BtPair(true))
+            }
+            (Some(Target::AllowOnce), ActionKind::Activated) if offered => {
+                self.dialogs.answer(Answer::Handoff(true))
             }
             (Some(Target::AllowOnce), ActionKind::Activated) => {
                 self.dialogs.answer(Answer::Permission(Decision::AllowOnce))

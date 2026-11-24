@@ -54,6 +54,14 @@ if ! idout=$(cargo test -q --manifest-path drivers/kernel/intel-display/Cargo.to
   echo "FAIL  intel-display unit tests"; echo "$idout" | tail -30; exit 1
 fi
 echo "ok    intel-display unit tests ($(echo "$idout" | grep -oE '[0-9]+ passed' | head -1))"
+# pure GT logic (Intel render/compute side: identification, forcewake, GuC container, WOPCM, upload) and
+# pure NPU logic (Intel AI Boost: work point, power sequences, firmware container)
+for crate in intel-gt intel-npu; do
+  if ! cout=$(cargo test -q --manifest-path "drivers/kernel/$crate/Cargo.toml" 2>&1); then
+    echo "FAIL  $crate unit tests"; echo "$cout" | tail -30; exit 1
+  fi
+  echo "ok    $crate unit tests ($(echo "$cout" | grep -oE '[0-9]+ passed' | head -1))"
+done
 # regressions of the owner's VMware reports: Files list view, quick settings by real clicks, launcher pages
 bash tools/kern-test/ui-regress.sh
 if [ -z "${BUSCK:-}" ]; then

@@ -3,7 +3,7 @@
 use super::style;
 use super::{Label, MeasureCx, PaintCx, Tone};
 use crate::geom::{Rect, Size};
-use crate::icon::QuarterTurns;
+use crate::icon::{IconId, QuarterTurns};
 use crate::paint::{Painter, TextSpec};
 use crate::text::{TextAlign, Weight};
 use crate::tokens::{size, Radius, Space, TypeSize};
@@ -17,6 +17,8 @@ pub struct Badge {
     pub tone: Tone,
     /// Show the tone's icon before the text.
     pub icon: bool,
+    /// Another icon in place of the tone's (the tone keeps the colour).
+    pub glyph: Option<IconId>,
 }
 
 const PAD: Space = Space::S8;
@@ -31,6 +33,7 @@ impl Badge {
             label,
             tone: Tone::Neutral,
             icon: false,
+            glyph: None,
         }
     }
 
@@ -43,6 +46,14 @@ impl Badge {
     /// The same badge with the tone's icon before the text.
     pub fn with_icon(mut self) -> Badge {
         self.icon = true;
+        self
+    }
+
+    /// The same badge with `icon` before the text (for a meaning the tone's icon does not
+    /// carry, such as "encrypted").
+    pub fn with(mut self, icon: IconId) -> Badge {
+        self.icon = true;
+        self.glyph = Some(icon);
         self
     }
 
@@ -70,7 +81,13 @@ impl Badge {
             let slot = style::take_start(&mut inner, size::ICON_SMALL, direction);
             style::take_start(&mut inner, ICON_GAP.points(), direction);
             let edge = size::ICON_SMALL;
-            p.icon(self.tone.icon(), slot, edge, QuarterTurns::None, tone);
+            p.icon(
+                self.glyph.unwrap_or(self.tone.icon()),
+                slot,
+                edge,
+                QuarterTurns::None,
+                tone,
+            );
         }
         let color = tone;
         let spec = BADGE_TEXT.overflow(crate::text::Overflow::Ellipsis);

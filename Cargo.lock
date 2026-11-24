@@ -5377,6 +5377,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-agentd"
+version = "0.8.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-appbuilder"
 version = "0.8.0"
 dependencies = [
@@ -5770,6 +5781,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-llm-bus"
+version = "0.8.0"
+dependencies = [
+ "serde_json",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+]
+
+[[package]]
 name = "ultar-logd"
 version = "0.8.0"
 dependencies = [
@@ -5800,6 +5821,7 @@ dependencies = [
  "sha2 0.10.9",
  "snow",
  "spake2",
+ "tungstenite",
  "ultar-bus",
  "ultar-service",
  "ultar-svckit",

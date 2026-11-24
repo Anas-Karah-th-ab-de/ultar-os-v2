@@ -9,10 +9,14 @@
     "Account",
     "CalendarSheet",
     "CompactDisplay",
+    "CompactMeshSend",
     "CompactStoreApp",
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -30,9 +34,15 @@
     "DesktopTop",
     "Main",
     "Menus",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "States",
     "StatesLight",
     "Toasts",
@@ -63,6 +73,8 @@
     "AppGrid",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -78,6 +90,8 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -99,11 +113,18 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store",
     "SurfaceStates",
     "Toasts",
@@ -128,12 +149,19 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "PhoneDial",
     "PhoneInCall",
     "PhoneIncoming",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store",
     "Toasts",
     "WindowMenu"
@@ -148,12 +176,19 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "PhoneDial",
     "PhoneInCall",
     "PhoneIncoming",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store",
     "Toasts",
     "WindowMenu"
@@ -171,6 +206,12 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
+    "MeshStates",
     "Overview",
     "PhoneDial",
     "PhoneInCall",
@@ -178,6 +219,8 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store",
     "Toasts",
     "WindowMenu"
@@ -192,7 +235,14 @@
     "DesktopTop",
     "Main",
     "Menus",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
+    "MeshStates",
     "Overview",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Toasts",
     "WindowMenu"
    ]
@@ -203,7 +253,8 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
-    "Menus"
+    "Menus",
+    "MeshDevice"
    ]
   },
   {
@@ -214,9 +265,13 @@
     "Account",
     "Bricks",
     "Menus",
+    "MeshPairJoin",
+    "MeshPairShow",
     "PhoneDial",
     "PhoneInCall",
-    "PhoneIncoming"
+    "PhoneIncoming",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -227,6 +282,7 @@
     "DesktopBottom",
     "InstallerDrivers",
     "Menus",
+    "MeshStates",
     "SettingsDrivers"
    ]
   },
@@ -245,6 +301,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -264,6 +322,8 @@
    "used_in": [
     "Account",
     "Bricks",
+    "CompactMeshIncoming",
+    "CompactMeshSend",
     "CompactStore",
     "CompactStoreApp",
     "DesktopBottom",
@@ -273,12 +333,20 @@
     "InstallerSummary",
     "Login",
     "Menus",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
+    "MeshStates",
     "Overview",
     "PhoneDial",
     "Projection",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "States",
     "StatesLight",
     "Store",
@@ -313,6 +381,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "InstallerDrivers",
+    "MeshStates",
     "SettingsDrivers",
     "SurfaceStates",
     "Toasts"
@@ -327,6 +396,8 @@
     "InstallerDisk",
     "InstallerDrivers",
     "InstallerSummary",
+    "MeshPairJoin",
+    "MeshStates",
     "SettingsDrivers",
     "States",
     "StatesLight",
@@ -339,8 +410,10 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "CompactLock",
+    "CompactMeshIncoming",
     "InstallerDrivers",
     "Lock",
+    "MeshIncoming",
     "QuickSettings",
     "SettingsDrivers"
    ]
@@ -350,6 +423,9 @@
    "meaning": "encrypted connection or call",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactMeshIncoming",
+    "MeshDevice",
+    "MeshIncoming",
     "PhoneInCall",
     "PhoneIncoming"
    ]
@@ -361,9 +437,14 @@
    "used_in": [
     "Account",
     "CompactSettings",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -381,6 +462,7 @@
    "meaning": "in progress (progress ring)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "MeshStates",
     "States",
     "StatesLight",
     "SurfaceStates"
@@ -406,6 +488,8 @@
     "CompactDisplay",
     "CompactHome",
     "CompactLock",
+    "CompactMeshIncoming",
+    "CompactMeshSend",
     "CompactQuick",
     "CompactSettings",
     "CompactStore",
@@ -415,11 +499,18 @@
     "InstallerDrivers",
     "Lock",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "States",
     "StatesLight",
     "Toasts",
@@ -432,6 +523,11 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshStates",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "SurfaceStates"
    ]
   },
@@ -454,6 +550,8 @@
     "CompactDisplay",
     "CompactHome",
     "CompactLock",
+    "CompactMeshIncoming",
+    "CompactMeshSend",
     "CompactQuick",
     "CompactSettings",
     "CompactStore",
@@ -480,10 +578,15 @@
     "CompactQuick",
     "CompactSettings",
     "InstallerDrivers",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -500,11 +603,19 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactMeshSend",
     "Installer",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
+    "MeshStates",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store"
    ]
   },
@@ -524,9 +635,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -535,9 +651,14 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -554,11 +675,18 @@
     "DesktopTop",
     "InstallerDrivers",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Toasts",
     "WindowMenu"
    ]
@@ -620,6 +748,8 @@
     "CompactDisplay",
     "CompactHome",
     "CompactLock",
+    "CompactMeshIncoming",
+    "CompactMeshSend",
     "CompactQuick",
     "CompactSettings",
     "CompactStore",
@@ -628,11 +758,18 @@
     "DesktopTop",
     "Lock",
     "Main",
+    "MeshDevice",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Toasts",
     "WindowMenu"
    ]
@@ -645,9 +782,15 @@
     "Account",
     "CompactSettings",
     "InstallerDrivers",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -656,9 +799,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -668,9 +816,14 @@
    "used_in": [
     "Account",
     "InstallerDrivers",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -679,9 +832,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -690,9 +848,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -731,6 +894,8 @@
     "CalendarSheet",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Store",
@@ -745,9 +910,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -762,8 +932,14 @@
     "CompactLock",
     "CompactQuick",
     "Lock",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "PhoneDial",
     "PhoneIncoming",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Toasts"
    ]
   },
@@ -846,6 +1022,8 @@
     "DesktopTop",
     "Main",
     "Menus",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "PhoneDial",
     "QuickSettings",
@@ -874,12 +1052,17 @@
    "used_in": [
     "Account",
     "Login",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "PhoneDial",
     "PhoneInCall",
     "PhoneIncoming",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store"
    ]
   },
@@ -889,9 +1072,14 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -901,9 +1089,14 @@
    "used_in": [
     "Account",
     "CompactSettings",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -921,9 +1114,15 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshStates",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -940,6 +1139,8 @@
     "DesktopTop",
     "Lock",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -959,8 +1160,14 @@
     "DesktopTop",
     "Main",
     "Menus",
+    "MeshIncoming",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
     "Overview",
     "QuickSettings",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Toasts",
     "WindowMenu"
    ]
@@ -972,9 +1179,14 @@
    "used_in": [
     "Account",
     "Login",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -988,10 +1200,15 @@
     "CompactHome",
     "CompactStore",
     "Installer",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store",
     "SurfaceStates"
    ]
@@ -1003,9 +1220,14 @@
    "used_in": [
     "Account",
     "CalendarSheet",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store"
    ]
   },
@@ -1024,9 +1246,14 @@
    "used_in": [
     "Account",
     "CompactSettings",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1035,9 +1262,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1046,9 +1278,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1057,9 +1294,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1069,9 +1311,14 @@
    "used_in": [
     "Account",
     "CompactSettings",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1080,9 +1327,14 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1091,9 +1343,14 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1102,9 +1359,15 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactMeshSend",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1113,9 +1376,14 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1126,9 +1394,14 @@
     "Account",
     "CompactLock",
     "Lock",
+    "MeshDevice",
+    "MeshPairJoin",
+    "MeshPairShow",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "SettingsMesh",
+    "SettingsMeshLight"
    ]
   },
   {
@@ -1194,6 +1467,8 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -1223,6 +1498,8 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -1241,6 +1518,8 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -1322,7 +1601,13 @@
    "meaning": "component Containers and server",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactMeshSend",
     "Installer",
+    "MeshPairJoin",
+    "MeshPairShow",
+    "MeshSend",
+    "SettingsMesh",
+    "SettingsMeshLight",
     "Store"
    ]
   },
@@ -1342,6 +1627,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1353,6 +1640,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1364,6 +1653,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1375,6 +1666,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1389,6 +1682,8 @@
     "DesktopBottom",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",
@@ -1402,6 +1697,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1411,8 +1708,11 @@
    "meaning": "file kind: text document",
    "mirrored_in_rtl": true,
    "used_in": [
+    "CompactMeshIncoming",
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1424,6 +1724,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1435,6 +1737,8 @@
    "used_in": [
     "DesktopTop",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Toasts",
     "WindowMenu"
    ]
@@ -1498,6 +1802,8 @@
     "InstallerSummary",
     "Login",
     "Main",
+    "MeshIncoming",
+    "MeshSend",
     "Overview",
     "QuickSettings",
     "Toasts",

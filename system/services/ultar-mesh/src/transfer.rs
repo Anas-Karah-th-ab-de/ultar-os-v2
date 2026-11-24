@@ -31,6 +31,17 @@ pub fn safe_name(name: &str) -> String {
     }
 }
 
+/// `path` as it may be sent: a regular file that, with every link followed, lies inside
+/// one of `roots`. With no root nothing may be sent.
+pub fn shareable(path: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
+    let real = std::fs::canonicalize(path).ok()?;
+    let inside = roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .any(|root| real.starts_with(&root));
+    (inside && real.is_file()).then_some(real)
+}
+
 /// Size, name and hash of the file at `path`.
 pub fn describe(path: &Path) -> std::io::Result<FileMeta> {
     let mut file = File::open(path)?;
@@ -260,6 +271,27 @@ mod tests {
         assert_eq!(
             inc.write(0, b"hello mesh, and more"),
             Err(TransferError::Corrupt)
+        );
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn only_files_inside_the_shared_folders_may_be_sent() {
+        let d = dir("share");
+        let home = d.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("a.txt"), b"a").unwrap();
+        std::fs::write(d.join("secret"), b"s").unwrap();
+        let roots = vec![home.clone()];
+        assert!(shareable(&home.join("a.txt"), &roots).is_some());
+        assert!(shareable(&d.join("secret"), &roots).is_none());
+        assert!(shareable(&home.join("../secret"), &roots).is_none());
+        assert!(shareable(&home, &roots).is_none(), "a folder is no file");
+        assert!(shareable(&home.join("a.txt"), &[]).is_none());
+        std::os::unix::fs::symlink(d.join("secret"), home.join("link")).unwrap();
+        assert!(
+            shareable(&home.join("link"), &roots).is_none(),
+            "a link out is followed"
         );
         std::fs::remove_dir_all(d).unwrap();
     }

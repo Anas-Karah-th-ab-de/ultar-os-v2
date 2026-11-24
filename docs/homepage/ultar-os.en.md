@@ -23,6 +23,20 @@ previous version and are being rebuilt in phases.
 
 Current test devices: a Lenovo ThinkPad P1 laptop, a Beelink GTi15 Ultra mini PC and a Samsung Galaxy A30 phone.
 
+## New since 24 November 2026: device mesh and local helper
+
+- **Device mesh.** Your own devices find each other, are paired once with a six-digit code and hand work
+  over: what is open on the phone continues on the computer at the same place. Every connection is
+  end-to-end encrypted. Nothing arrives unasked – the receiving device always asks. The core is built and
+  tested (58 automated tests), also through a relay for devices in different networks. The surface is
+  designed and approved; of it, the question on the receiving device is built so far. The mesh is not yet
+  part of a shipped system.
+- **Local helper.** You ask in words, the helper acts through the system bus – with narrow rights of its own
+  and never without confirmation for anything dangerous. It adapts to the device: with its own language
+  model it thinks itself; a weak device uses the model of a paired device that lends it; with neither it
+  understands fixed commands in Arabic, English and German. The service is built and tested (19 tests);
+  surface, voice and the connection of the model service are still missing.
+
 ## What comes next
 
 Complete drivers for the two test computers (graphics, Wi-Fi, sound), a new interface in which every app runs

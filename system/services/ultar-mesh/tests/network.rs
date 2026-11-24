@@ -1,122 +1,12 @@
 //! Two devices as two runtimes with real sockets and the real encrypted channel.
-
+mod common;
+use common::net::{addr, dev, dir, has, jobs_dir, linked, pair, paired, until};
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use ultar_bus::messages::mesh::{
-    Activity, DeviceKind, HandoffProgress, OfferState, Right, SendOutcome,
-};
+use ultar_bus::messages::mesh::{Activity, DeviceKind, OfferState, Right, SendOutcome};
 use ultar_mesh::compute::{Job, LOCAL};
-use ultar_mesh::device::default_capabilities;
-use ultar_mesh::net::{Net, NetEvent};
-use ultar_mesh::node::{Config, Effect, Node};
-use ultar_mesh::runtime::Runtime;
-use ultar_mesh::secure::Keys;
-use ultar_mesh::trust::Trust;
-
-struct Dev {
-    rt: Runtime,
-    rx: mpsc::Receiver<NetEvent>,
-    net: Net,
-    host: Vec<Effect>,
-    keys: Keys,
-}
-
-fn dev(dir: &Path, name: &str, kind: DeviceKind, keys: Option<Keys>) -> Dev {
-    let keys = keys.unwrap_or_else(|| Keys::generate().unwrap());
-    let config = Config {
-        name: name.to_owned(),
-        kind,
-        capabilities: default_capabilities(kind),
-        apps: vec!["editor".to_owned()],
-        inbox: dir.join(format!("inbox-{name}")),
-        remote_view: false,
-    };
-    let trust = Trust::open(&dir.join(format!("trust-{name}")));
-    let node = Node::new(config, &keys.public, trust);
-    let (tx, rx) = mpsc::channel();
-    let bind: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let net = Net::start(keys.clone(), bind, None, tx.clone()).unwrap();
-    Dev {
-        rt: Runtime::new(node, tx),
-        rx,
-        net,
-        host: Vec::new(),
-        keys,
-    }
-}
-
-fn addr(d: &Dev) -> SocketAddr {
-    format!("127.0.0.1:{}", d.net.port()).parse().unwrap()
-}
-
-/// Lets the devices work until `done` holds (at most 20 s).
-fn until(devs: &mut [&mut Dev], what: &str, done: impl Fn(&[&mut Dev]) -> bool) {
-    let end = Instant::now() + Duration::from_secs(20);
-    loop {
-        for d in devs.iter_mut() {
-            let now = Instant::now();
-            while let Ok(event) = d.rx.try_recv() {
-                let left = d.rt.handle(event, now);
-                d.host.extend(left);
-            }
-            let left = d.rt.tick(now);
-            d.host.extend(left);
-        }
-        if done(devs) {
-            return;
-        }
-        assert!(Instant::now() < end, "timeout: {what}");
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
-
-fn paired(d: &Dev, other: &Dev) -> bool {
-    let id = other.rt.node.id().to_owned();
-    d.rt.node
-        .state()
-        .peers
-        .iter()
-        .any(|p| p.id == id && p.paired && p.reachable)
-}
-
-fn linked(d: &Dev, other: &Dev) -> bool {
-    let id = other.rt.node.id().to_owned();
-    d.rt.node
-        .state()
-        .peers
-        .iter()
-        .any(|p| p.id == id && p.reachable && !p.name.is_empty())
-}
-
-fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("mesh-net-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn has(d: &Dev, state: OfferState) -> bool {
-    d.host
-        .iter()
-        .any(|e| matches!(e, Effect::Progress(HandoffProgress { state: s, .. }) if *s == state))
-}
-
-fn pair(phone: &mut Dev, pc: &mut Dev) {
-    phone.net.connect(addr(pc));
-    until(&mut [phone, pc], "link", |d| {
-        linked(d[0], d[1]) && linked(d[1], d[0])
-    });
-    let code = pc.rt.node.pair_begin(Instant::now()).code;
-    let pc_id = pc.rt.node.id().to_owned();
-    let (ok, effects) = phone.rt.node.pair_join(&pc_id, &code);
-    assert!(ok);
-    phone.rt.apply(effects);
-    until(&mut [phone, pc], "pairing", |d| {
-        paired(d[0], d[1]) && paired(d[1], d[0])
-    });
-}
+use ultar_mesh::net::Net;
+use ultar_mesh::node::Effect;
 
 #[test]
 fn a_document_continues_on_the_other_device_over_the_network() {
@@ -216,8 +106,8 @@ fn jobs_run_on_the_other_device_only_with_its_permission() {
         (0..6)
             .map(|i| Job {
                 id: format!("{tag}{i}"),
-                program: "sh".into(),
-                args: vec!["-c".into(), format!("echo $(({i} * {i}))")],
+                program: "square".into(),
+                args: vec![i.to_string()],
             })
             .collect()
     };
@@ -257,5 +147,72 @@ fn jobs_run_on_the_other_device_only_with_its_permission() {
         results.iter().all(|r| r.by == pc.rt.node.id()),
         "{results:?}"
     );
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn a_program_outside_the_jobs_folder_never_runs() {
+    use ultar_mesh::runtime::job_program;
+    let d = dir("jobs");
+    let jobs = jobs_dir(&d);
+    assert!(job_program(Some(&jobs), "square").is_some());
+    for bad in [
+        "sh",
+        "/bin/sh",
+        "../square",
+        "./square",
+        "",
+        ".hidden",
+        "a b",
+    ] {
+        assert!(job_program(Some(&jobs), bad).is_none(), "{bad}");
+    }
+    assert!(job_program(None, "square").is_none());
+    std::fs::remove_dir_all(d).unwrap();
+}
+
+#[test]
+fn two_devices_find_each_other_by_their_announcements() {
+    use std::net::UdpSocket;
+    use ultar_mesh::net::Announcing;
+    let d = dir("announce");
+    let port = |_: u8| {
+        UdpSocket::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    };
+    let (udp_a, udp_b) = (port(0), port(1));
+    let mut a = dev(&d, "a", DeviceKind::Phone, None);
+    let mut b = dev(&d, "b", DeviceKind::Desktop, None);
+    let bind: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let to = |udp: u16| -> SocketAddr { format!("127.0.0.1:{udp}").parse().unwrap() };
+    let (ta, tb) = (a.tx.clone(), b.tx.clone());
+    a.net = Net::start(
+        a.keys.clone(),
+        bind,
+        Some(Announcing {
+            port: udp_a,
+            to: to(udp_b),
+        }),
+        ta,
+    )
+    .unwrap();
+    b.net = Net::start(
+        b.keys.clone(),
+        bind,
+        Some(Announcing {
+            port: udp_b,
+            to: to(udp_a),
+        }),
+        tb,
+    )
+    .unwrap();
+    // Nobody connects by hand: the announcements do it, and only one channel is opened.
+    until(&mut [&mut a, &mut b], "found", |d| {
+        linked(d[0], d[1]) && linked(d[1], d[0])
+    });
+    assert_eq!(a.rt.node.state().peers.len(), 1);
     std::fs::remove_dir_all(d).unwrap();
 }

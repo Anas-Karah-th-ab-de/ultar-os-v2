@@ -1,21 +1,25 @@
 //! The bus side of the mesh: the calls of the shell, the settings and the apps, and what
 //! the mesh asks of the system (asking the person, opening an app, the clipboard).
 
-use crate::net::{Net, NetEvent};
+use crate::net::{Announcing, Net, NetEvent};
 use crate::node::{Config, Effect, Node};
 use crate::runtime::Runtime;
 use crate::secure::Keys;
 use crate::trust::Trust;
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::launcher::{List, Role, Start};
+use ultar_bus::messages::llm::LlmState;
 use ultar_bus::messages::mesh::{
-    ClipboardSet, Done, HandoffAnswer, HandoffSend, HandoffTargets, MeshState, PairBegin, PairJoin,
-    SendFile, SetActivity, SetEnabled, SetRights, TargetList, Unpair, SERVICE,
+    ClipboardSet, Done, HandoffAnswer, HandoffIncoming, HandoffSend, HandoffTargets, MeshState,
+    PairBegin, PairJoin, SendFile, SetActivity, SetEnabled, SetRights, TargetList, Unpair, SERVICE,
 };
-use ultar_bus::{Call, ErrorCode, IncomingRequest};
+use ultar_bus::messages::mesh_dialog::AskHandoff;
+use ultar_bus::messages::sysdialog;
+use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Service};
 
@@ -28,17 +32,23 @@ const CALL_TIME: Duration = Duration::from_secs(5);
 pub struct Listen {
     /// Address of the channel port.
     pub bind: SocketAddr,
-    /// UDP port of the announcements (`None`: no announcements).
-    pub announce: Option<u16>,
+    /// The announcements (`None`: none).
+    pub announce: Option<Announcing>,
+    /// Folder with the programs computing jobs may run (`None`: no job runs here).
+    pub jobs: Option<PathBuf>,
     /// Devices at known addresses (networks without broadcast).
     pub peers: Vec<SocketAddr>,
+    /// The relay for devices in other networks (`None`: local network only).
+    pub relay: Option<crate::relay::Login>,
     /// The app that opens a received file with its default app.
     pub opener: String,
 }
 
 /// The mesh service.
 pub struct MeshService {
-    runtime: Runtime,
+    pub(crate) runtime: Runtime,
+    pub(crate) waiting: BTreeMap<u64, (IncomingRequest, Instant)>,
+    pub(crate) acting: BTreeMap<u64, (IncomingRequest, Instant)>,
     inbox: Option<mpsc::Receiver<NetEvent>>,
     events: mpsc::Sender<NetEvent>,
     keys: Keys,
@@ -79,8 +89,12 @@ impl MeshService {
         let trust = Trust::open(&state.join("peers"));
         let node = Node::new(config, &keys.public, trust);
         let (events, inbox) = mpsc::channel();
+        let mut runtime = Runtime::new(node, events.clone());
+        runtime.set_jobs(listen.jobs.clone());
         Some(Self {
-            runtime: Runtime::new(node, events.clone()),
+            runtime,
+            waiting: BTreeMap::new(),
+            acting: BTreeMap::new(),
             inbox: Some(inbox),
             events,
             keys,
@@ -101,7 +115,10 @@ impl MeshService {
             self.events.clone(),
         );
         match started {
-            Ok(net) => {
+            Ok(mut net) => {
+                if let Some(login) = self.listen.relay.clone() {
+                    net.use_relay(login);
+                }
                 for peer in &self.listen.peers {
                     net.connect(*peer);
                 }
@@ -154,17 +171,46 @@ impl MeshService {
         }
     }
 
+    /// Asks the person in the system dialog whether to take the offer. Where no dialog
+    /// service answers, the offer stays open for the shell (`mesh.handoff_answer`) and
+    /// expires by itself.
+    fn ask(&mut self, incoming: HandoffIncoming, bus: &Bus<'_, Self>) {
+        let offer = incoming.offer;
+        let question = AskHandoff {
+            from_name: incoming.from_name,
+            from_kind: incoming.from_kind,
+            title: incoming.title,
+            app: incoming.app,
+            size: incoming.size,
+            stage: incoming.stage,
+        };
+        let _ = bus.later(move |client| {
+            let wait = Duration::from_millis(sysdialog::CALL_TIMEOUT_MS);
+            let decision = client.call(&question, wait).ok();
+            Box::new(move |service: &mut Self, bus: &Bus<'_, Self>| {
+                if let Some(decision) = decision {
+                    let now = Instant::now();
+                    let (_, effects) = service.runtime.node.answer(offer, decision.accept, now);
+                    service.act(effects, bus);
+                }
+            })
+        });
+    }
+
     /// Does what is left for the host: tell the shell, open an app, publish the state.
     fn host(&mut self, effects: Vec<Effect>, bus: &Bus<'_, Self>) {
         let mut changed = false;
         for effect in effects {
             match effect {
-                Effect::Incoming(incoming) => bus.publish(&incoming),
+                Effect::Incoming(incoming) => {
+                    bus.publish(&incoming);
+                    self.ask(incoming, bus);
+                }
                 Effect::Progress(progress) => bus.publish(&progress),
                 Effect::Clipboard(text) => bus.publish(&text),
                 Effect::Open { offer, app, uri } => self.open(offer, app, uri, bus),
                 Effect::Changed => changed = true,
-                _ => {}
+                other => self.model_effect(other, bus),
             }
         }
         if changed {
@@ -180,7 +226,7 @@ impl MeshService {
         }
     }
 
-    fn act(&mut self, effects: Vec<Effect>, bus: &Bus<'_, Self>) {
+    pub(crate) fn act(&mut self, effects: Vec<Effect>, bus: &Bus<'_, Self>) {
         let left = self.runtime.apply(effects);
         self.host(left, bus);
     }
@@ -262,8 +308,18 @@ impl Service for MeshService {
         SERVICE
     }
 
+    fn subscriptions(&self) -> Vec<&'static str> {
+        vec![LlmState::TOPIC]
+    }
+
     fn tick_every(&self) -> Option<Duration> {
         Some(TICK)
+    }
+
+    fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        if let Ok(state) = event.decode::<LlmState>() {
+            self.model_changed(&state, bus);
+        }
     }
 
     fn start(&mut self, bus: &Bus<'_, Self>) {
@@ -294,6 +350,12 @@ impl Service for MeshService {
     }
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
+        let Some(request) = self.lending(request, bus) else {
+            return;
+        };
+        let Some(request) = self.remote(request, bus) else {
+            return;
+        };
         let method = request.method().to_owned();
         if method == SetEnabled::METHOD {
             serve::<SetEnabled>(request, |c, _| Done {
@@ -311,7 +373,10 @@ impl Service for MeshService {
     }
 
     fn tick(&mut self, bus: &Bus<'_, Self>) {
-        let left = self.runtime.tick(Instant::now());
+        let now = Instant::now();
+        self.expire_thinking(now);
+        self.expire_acting(now);
+        let left = self.runtime.tick(now);
         self.host(left, bus);
     }
 }

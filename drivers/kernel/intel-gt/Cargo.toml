@@ -1,0 +1,18 @@
+[package]
+name = "ultar-intel-gt"
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Intel graphics GT logic for the Ultar kernel (render/compute side of the integrated GPU): IP identification, forcewake, engines, GuC firmware container, WOPCM layout and the GuC upload sequence - pure, no_std, generic over register access"
+
+[lib]
+name = "ultar_intel_gt"
+path = "src/lib.rs"
+
+[dependencies]
+# register access trait and bit-field helpers (one MMIO implementation in the kernel serves both crates)
+ultar-intel-display = { path = "../intel-display" }
+
+# own workspace while it is built standalone (the kernel is its own workspace too)
+[workspace]
