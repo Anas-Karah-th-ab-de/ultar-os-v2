@@ -58,6 +58,8 @@ pub enum Error {
         /// What the reply register held.
         reply: u32,
     },
+    /// A command buffer is damaged, full or holds a message that breaks the format.
+    Ctb(&'static str),
     /// A value is outside what the hardware or this driver accepts.
     Invalid(&'static str),
     /// The request is valid but not implemented by this driver.
@@ -107,6 +109,7 @@ impl fmt::Display for Error {
                     "no valid GuC reply to request {request:#x} (reply {reply:#010x})"
                 )
             }
+            Error::Ctb(w) => write!(f, "command buffer: {w}"),
             Error::Invalid(w) => write!(f, "invalid: {w}"),
             Error::NotSupported(w) => write!(f, "not supported: {w}"),
         }
@@ -165,6 +168,7 @@ mod tests {
             Error::Wopcm("y"),
             Error::GucReset { status: 0 },
             Error::Invalid("z"),
+            Error::Ctb("c"),
             Error::GucRequest {
                 request: 1,
                 error: 2,
