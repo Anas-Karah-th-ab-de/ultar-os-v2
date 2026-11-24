@@ -29,7 +29,7 @@
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
 #define R_SET_ID 0x100UL
 #define R_FILE_ADMIN 0x200UL
-#define R_ALL 0x3ffUL
+#define R_ALL 0xfffUL
 #define D "/tmp/rt"
 enum { ALICE = 1000, BOB = 2000, CAROL = 3000, STAFF = 100, OTHERS = 200 };
 

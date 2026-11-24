@@ -30,3 +30,10 @@ subtle = "2"
 
 [dev-dependencies]
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# End-to-end run on the Ultar kernel with a USB controller (tools/kern-test/bt-e2e.sh).
+[[example]]
+name = "btd-e2e"
+path = "examples/btd-e2e.rs"

@@ -1,10 +1,11 @@
 //! The stack thread: owns the transport and the [`Host`], feeds it packets, wishes and
 //! the time, saves bonds, hands input to the sink and leaves a snapshot for the service.
 //!
-//! Transports: Linux – the HCI user channel of the first controller
-//! (`ultar_hal_linux::bluetooth`); Ultar – none: its kernel drives USB only for hubs,
-//! HID boot devices and mass storage and gives services no raw USB endpoints, so the
-//! [`Transport`] trait stays unimplemented there and the service says "no device".
+//! Transports: Linux – the HCI user channel of the first controller; Ultar – the raw
+//! HCI node of the first USB controller (`dev/ultar/hciN`, kernel right `bluetooth`).
+//! Both in `ultar_hal_linux::bluetooth`; with neither the service says "no device".
+//! Input sink: virtual devices through `uinput` (Linux `dev/uinput`, Ultar
+//! `dev/ultar/uinput`, right `input_inject`).
 
 use crate::stack::bonds::{Bonds, Kind};
 use crate::stack::hci::Addr;
@@ -40,11 +41,31 @@ impl Transport for UserChannel {
     }
 }
 
-/// The first controller's transport, if the kernel offers one.
+/// The raw HCI node of the Ultar kernel.
+pub struct RawNode(ultar_hal_linux::bluetooth::RawNode);
+
+impl Transport for RawNode {
+    fn read(&mut self, timeout: Duration) -> std::io::Result<Option<Vec<u8>>> {
+        self.0.read(timeout)
+    }
+    fn write(&mut self, packet: &[u8]) -> std::io::Result<()> {
+        self.0.write(packet)
+    }
+}
+
+/// The first controller's transport, if the kernel offers one: the Linux user channel,
+/// else the first Ultar node that opens.
 pub fn open(root: &Path) -> Option<Box<dyn Transport>> {
-    let dev = *ultar_hal_linux::bluetooth::controllers(root).first()?;
-    let ch = ultar_hal_linux::bluetooth::UserChannel::open(dev).ok()?;
-    Some(Box::new(UserChannel(ch)))
+    use ultar_hal_linux::bluetooth as bt;
+    if let Some(&dev) = bt::controllers(root).first() {
+        if let Ok(ch) = bt::UserChannel::open(dev) {
+            return Some(Box::new(UserChannel(ch)));
+        }
+    }
+    bt::ultar_nodes(root)
+        .iter()
+        .find_map(|p| bt::RawNode::open(p).ok())
+        .map(|n| Box::new(RawNode(n)) as Box<dyn Transport>)
 }
 
 /// A question for the person.
@@ -295,19 +316,30 @@ fn end(shared: &Mutex<Shared>, sink: &mut Box<dyn InputSink>, inputs: &[u32]) {
     }
 }
 
-/// Input on Linux: one uinput device per Bluetooth keyboard / mouse.
+/// Input: one uinput device per Bluetooth keyboard / mouse.
 pub struct Uinput {
     root: PathBuf,
     devs: Vec<(u32, ultar_hal_linux::uinput::VirtualInput)>,
 }
 
 impl Uinput {
-    /// Devices are created below `root` (`dev/uinput`).
+    /// Devices are created below `root` (`dev/uinput` on Linux, `dev/ultar/uinput` on
+    /// the Ultar kernel).
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
             devs: Vec::new(),
         }
+    }
+
+    /// Number of devices created.
+    pub fn len(&self) -> usize {
+        self.devs.len()
+    }
+
+    /// No device created.
+    pub fn is_empty(&self) -> bool {
+        self.devs.is_empty()
     }
 }
 
@@ -319,7 +351,10 @@ impl InputSink for Uinput {
         } else {
             Shape::Mouse
         };
-        if let Ok(d) = VirtualInput::create(&self.root, shape, name) {
+        let Some(node) = ultar_hal_linux::uinput::node(&self.root) else {
+            return;
+        };
+        if let Ok(d) = VirtualInput::create_at(&node, shape, name) {
             self.devs.push((id, d));
         }
     }

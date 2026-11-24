@@ -22,6 +22,7 @@ fn function(d: &Desc) -> Option<&'static str> {
         (9, _, _) => Some("hub"),
         (3, 1, 1) => Some("usbhid"),
         (8, 6, 0x50) => Some("usb-storage"),
+        (0xE0, 1, 1) => Some("btusb"),
         _ => None,
     }
 }
@@ -55,6 +56,7 @@ fn detach(hc: &mut Hc, port: u32) {
     for slot in crate::devices::usb::removed(hc.index, &format!("{port}")) {
         hc.kbds.retain(|k| k.slot != slot);
         super::pointer::remove(hc, slot);
+        super::bt::remove(hc, slot);
         crate::input::usb_removed(hc.index, slot);
         hc.rings.retain(|r| r.0 != slot);
         hc.command(0, (TRB_DISABLE_SLOT << 10) | (slot << 24));

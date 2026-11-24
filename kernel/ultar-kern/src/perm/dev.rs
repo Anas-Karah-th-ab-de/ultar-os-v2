@@ -25,6 +25,9 @@ pub fn rdev(path: &str) -> u64 {
     if let Some(n) = d.strip_prefix("input/").and_then(crate::input::parse) {
         return crate::input::rdev(n);
     }
+    if let Some(r) = crate::svcdev::rdev(d) {
+        return r;
+    }
     match d {
         "null" => 1 << 8 | 3,
         "zero" => 1 << 8 | 5,
@@ -39,6 +42,11 @@ pub fn rdev(path: &str) -> u64 {
 
 /// May the caller open device node `path` for `want`?
 pub(super) fn dev_gate(path: &str, want: u32) -> Result<(), i64> {
+    // the service nodes: their own right and nothing else (svcdev)
+    if let Some(right) = crate::svcdev::right_for(path) {
+        let rights = with(|p| p.g.iso.rights).unwrap_or(Rights::ALL);
+        return if rights.has(right) { Ok(()) } else { Err(-EACCES) };
+    }
     let (cred, admin, _) = subject();
     let raw = with(|p| p.g.iso.rights.has(Rights::RAW_DEVICE)).unwrap_or(true);
     if admin || raw && raw_device(path) {

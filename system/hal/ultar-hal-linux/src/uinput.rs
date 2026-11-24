@@ -1,7 +1,8 @@
 //! Virtual input devices through `dev/uinput` (Linux): a keyboard or a mouse that a
 //! service feeds with `struct input_event` records – how the Bluetooth service hands
-//! keyboards and mice to the input subsystem on Linux (development). The Ultar kernel
-//! has no `uinput`: [`VirtualInput::create`] fails there with `NotFound`.
+//! keyboards and mice to the input subsystem. Linux: `dev/uinput`; the Ultar kernel offers
+//! the same interface as `dev/ultar/uinput` (right `input_inject`); [`node`] finds the one
+//! that exists.
 //!
 //! Five ioctls (`UI_SET_EVBIT`, `UI_SET_KEYBIT`, `UI_SET_RELBIT` with an integer argument,
 //! `UI_DEV_CREATE`, `UI_DEV_DESTROY` without one): no pointer reaches the kernel.
@@ -11,7 +12,7 @@ use rustix::ioctl::{ioctl, opcode, IntegerSetter, NoArg, Opcode};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const UI_DEV_CREATE: Opcode = opcode::none(b'U', 1);
 const UI_DEV_DESTROY: Opcode = opcode::none(b'U', 2);
@@ -88,13 +89,27 @@ pub fn event_record(kind: u16, code: u16, value: i32) -> [u8; 24] {
     r
 }
 
+/// The `uinput` node below `root`: Linux' `dev/uinput` if it exists, else the Ultar
+/// kernel's `dev/ultar/uinput`; `None` if neither does.
+pub fn node(root: &Path) -> Option<PathBuf> {
+    ["dev/uinput", "dev/ultar/uinput"]
+        .iter()
+        .map(|p| root.join(p))
+        .find(|p| p.exists())
+}
+
 impl VirtualInput {
     /// Creates a device below `root` (`dev/uinput`).
     pub fn create(root: &Path, shape: Shape, name: &str) -> std::io::Result<Self> {
+        Self::create_at(&root.join("dev/uinput"), shape, name)
+    }
+
+    /// Creates a device through the `uinput` node at `node` (see [`node`]).
+    pub fn create_at(node: &Path, shape: Shape, name: &str) -> std::io::Result<Self> {
         let file = OpenOptions::new()
             .write(true)
             .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
-            .open(root.join("dev/uinput"))?;
+            .open(node)?;
         set(&file, UI_SET_EVBIT, 1)?; // EV_KEY
         match shape {
             Shape::Keyboard => {
@@ -155,5 +170,19 @@ mod tests {
             VirtualInput::create(&root, Shape::Keyboard, "x").is_err(),
             "no uinput: refused"
         );
+    }
+
+    #[test]
+    fn the_linux_node_is_preferred_and_the_ultar_node_found() {
+        let root = std::env::temp_dir().join(format!("hal-uinput-node-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(node(&root), None);
+        std::fs::create_dir_all(root.join("dev/ultar")).unwrap();
+        std::fs::write(root.join("dev/ultar/uinput"), b"").unwrap();
+        assert_eq!(node(&root), Some(root.join("dev/ultar/uinput")));
+        std::fs::write(root.join("dev/uinput"), b"").unwrap();
+        assert_eq!(node(&root), Some(root.join("dev/uinput")));
+        assert!(VirtualInput::create_at(&root.join("dev/none"), Shape::Mouse, "m").is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -36,6 +36,7 @@ mod isolation;
 mod power;
 mod sprache;
 mod startseite;
+mod svcdev;
 mod efi;
 mod eingabe;
 mod ext4;

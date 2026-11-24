@@ -13,9 +13,13 @@ use ultar_service::harden::{Right, RightSet};
 use ultar_svckit::msg::Msg;
 
 fn main() -> ExitCode {
-    // The one kernel right: the raw HCI user channel of the controller (Linux:
-    // CAP_NET_ADMIN). The Ultar kernel has no Bluetooth socket; the right opens nothing there.
-    let rights = Some(RightSet::of(&[Right::NetAdmin]));
+    // Kernel rights: the raw HCI user channel of the controller (Linux: CAP_NET_ADMIN), the
+    // raw HCI node of a USB controller and virtual input devices (Ultar kernel).
+    let rights = Some(RightSet::of(&[
+        Right::NetAdmin,
+        Right::Bluetooth,
+        Right::InputInject,
+    ]));
     ultar_svckit::main("ultar-btd", &["state", "root"], rights, |args, _| {
         let state = args.required_path("state").map_err(|_| Msg::BadArguments)?;
         let root = args

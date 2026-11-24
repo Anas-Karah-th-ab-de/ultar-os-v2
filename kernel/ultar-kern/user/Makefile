@@ -1,11 +1,11 @@
 # Testprogramme für den Ultar-Kern (Ring 3, statisch, Linux-Systemaufrufe)
-all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest
+all: hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest
 hallo: hallo.c
 	gcc -Os -fno-builtin -ffreestanding -static -nostdlib -fno-pie -no-pie -fno-stack-protector -o $@ $<
 hallo-glibc: hallo-glibc.c
 	gcc -O2 -static -o $@ $<
 clean:
-	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest
+	rm -f hallo hallo-glibc kerntest ereignis fadentest blocktest lauscher zelltest grenztest ausbruch rechtetest geraetetest weckertest spawntest ext4test fenstertest installtest bttest
 kerntest: kerntest.c
 	gcc -O2 -static -pthread -o $@ $<
 ereignis: ereignis.c
@@ -44,4 +44,6 @@ fenstertest: fenstertest.c fenstertest-geraete.c fenstertest.h
 	gcc -O2 -Wall -Wextra -static -pthread -o $@ fenstertest.c fenstertest-geraete.c
 # installer mode: whole-disk nodes, rights, the boot disk never a target (tools/kern-test/installer-disk.sh)
 installtest: installtest.c
+# device nodes of the privileged services: /dev/ultar/uinput (virtual input devices) and /dev/ultar/hciN
+bttest: bttest.c
 	gcc -O2 -Wall -Wextra -static -o $@ $<

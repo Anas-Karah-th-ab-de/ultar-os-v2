@@ -34,6 +34,9 @@ pub struct PowerService {
     signed_in: usize,
     state: Option<PowerState>,
     actions: PowerActions,
+    /// An action runs. Shared with the worker: it is cleared there *before* the caller
+    /// gets its answer, so a call sent right after an answer never finds the service busy
+    /// (clearing it later on the loop raced with the next call).
     busy: Arc<AtomicBool>,
 }
 
@@ -122,13 +125,12 @@ impl PowerService {
             bus.log(Record::new(Level::Warn, "powerd.refused").word("op", action.word()));
             return answer(request, ActionOutcome::Refused);
         }
-        if self.busy.load(Ordering::SeqCst) {
-            return answer(request, ActionOutcome::Busy);
-        }
         if action == Action::Suspend && !self.hal.suspend_supported() {
             return answer(request, ActionOutcome::Unsupported);
         }
-        self.busy.store(true, Ordering::SeqCst);
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return answer(request, ActionOutcome::Busy);
+        }
         let busy = self.busy.clone();
         let hal = self.hal.clone();
         let lock_first = self.signed_in > 0;
@@ -141,7 +143,7 @@ impl PowerService {
             };
             // Answered here, not on the loop: after init accepted a power off, this
             // service is told to stop at once and its loop may not run again. Free
-            // again before the answer: a caller asking right after it is not "busy".
+            // before answering: the caller may ask again as soon as it has the answer.
             busy.store(false, Ordering::SeqCst);
             answer(request, outcome);
             let done: Done<Self> =

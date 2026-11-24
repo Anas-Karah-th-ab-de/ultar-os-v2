@@ -476,14 +476,17 @@ fn fs_open(path: &str) -> Option<Node> {
     mnt_open(&best.1, rel)
 }
 
-/// `/dev/ultar`, `/dev/ultar/part` and the raw A/B partition nodes; in installer mode
-/// `/dev/ultar/medium` and `/dev/ultar/disk/<device>` (rawpart.rs)
+/// `/dev/ultar`: `part` and the raw A/B partition nodes; in installer mode `medium` and
+/// `disk/<device>` (rawpart.rs); the service nodes `hciN` and `uinput` (svcdev)
 fn raw_node(d: &str) -> Option<Node> {
+    if let Some(n) = crate::svcdev::node(d) {
+        return Some(Node::Dev(n));
+    }
     let names = crate::rawpart::names();
     let installer = crate::rawpart::installer_medium().is_some();
     match d {
-        "ultar" if !names.is_empty() || installer => {
-            let mut v = Vec::new();
+        "ultar" => {
+            let mut v: Vec<DirEnt> = crate::svcdev::names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect();
             if !names.is_empty() {
                 v.push(DirEnt { name: "part".into(), dir: true, size: 0 });
             }
@@ -533,9 +536,8 @@ pub fn open(path: &str) -> Option<Node> {
         if !crate::input::all().is_empty() {
             v.push(DirEnt { name: "input".into(), dir: true, size: 0 });
         }
-        if !crate::rawpart::names().is_empty() || crate::rawpart::installer_medium().is_some() {
-            v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
-        }
+        // the service nodes (svcdev) are always there
+        v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
         return Some(Node::Dir(v));
     }
     if path == "/proc" || path.starts_with("/proc/") {
