@@ -2,6 +2,11 @@
 //! `devices`, `scan`, `pair`, `connect`, `disconnect`, `forget`). Paired devices first, then the
 //! ones found while searching; a click pairs, connects or disconnects, the bin forgets a paired
 //! one. The device names are data from the air: plain text, never interpreted.
+//!
+//! While a scan runs the list follows the service (`bluetooth.state` changes its
+//! `devices_revision` with every device found) under a busy bar; nearer devices (stronger
+//! signal) and named ones come first, a nameless one shows its address. A scan that ended
+//! without a device says so.
 
 use super::{Target, View};
 use crate::model::Desktop;
@@ -10,12 +15,12 @@ use ultar_ui::icon::IconId;
 use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Sizing};
 use ultar_ui::tokens::Space;
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{IconButton, Label, List, ListItem, Switch, Text};
+use ultar_ui::widgets::{IconButton, Label, List, ListItem, Progress, Switch, Text};
 
 /// Most devices listed.
 pub const MAX_DEVICES: usize = 12;
 /// Longest device name shown (characters).
-const MAX_NAME: usize = 48;
+pub const MAX_NAME: usize = 48;
 
 fn icon(kind: DeviceKind) -> IconId {
     match kind {
@@ -43,6 +48,33 @@ fn state(d: &Desktop, dev: &Device) -> Label {
         },
         (_, false, true) => Label::key("desk.bt.paired"),
         _ => Label::key("desk.bt.found"),
+    }
+}
+
+/// The devices in the order shown: paired and connected first, then named before nameless,
+/// then the stronger signal; the address keeps the order stable.
+pub fn order(devices: &[Device]) -> Vec<&Device> {
+    let mut v: Vec<&Device> = devices.iter().collect();
+    v.sort_by_key(|d| {
+        (
+            !d.paired,
+            !d.connected,
+            d.name.trim().is_empty(),
+            std::cmp::Reverse(d.rssi.unwrap_or(i8::MIN)),
+            d.id.clone(),
+        )
+    });
+    v
+}
+
+/// The name shown: the device's name (at most [`MAX_NAME`] characters) or, without one, its
+/// address.
+pub fn shown_name(dev: &Device) -> String {
+    let name = dev.name.trim();
+    if name.is_empty() {
+        dev.id.clone()
+    } else {
+        name.chars().take(MAX_NAME).collect()
     }
 }
 
@@ -82,10 +114,18 @@ pub fn page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         view.ui.add(card, Text::new(Label::key(reason)))?;
         return Ok(());
     }
-    let mut devices: Vec<&Device> = d.svc.bt_devices.iter().collect();
-    devices.sort_by_key(|dev| (!dev.paired, !dev.connected));
+    if scanning {
+        view.ui
+            .add(card, Progress::new(Label::key("desk.bt.searching")))?;
+    }
+    let devices = order(&d.svc.bt_devices);
     if devices.is_empty() {
-        view.ui.add(card, Text::new(Label::key("desk.bt.none")))?;
+        let key = match (scanning, d.svc.bt_searched) {
+            (true, _) => "desk.bt.searching",
+            (false, true) => "desk.bt.not_found",
+            (false, false) => "desk.bt.none",
+        };
+        view.ui.add(card, Text::new(Label::key(key)))?;
     }
     for dev in devices.into_iter().take(MAX_DEVICES) {
         // One row per device: the device (a list of one, for its row look) and, when
@@ -93,7 +133,7 @@ pub fn page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         let row = view
             .ui
             .add(card, Flex::row().gap(Space::S4).cross(CrossAlign::Center))?;
-        let name: String = dev.name.chars().take(MAX_NAME).collect();
+        let name = shown_name(dev);
         let list = List::new().name(Label::key("desk.bt.devices"));
         let list = view.ui.add_sized(row, list, Sizing::grow(1))?;
         let item = ListItem::new(Label::data(&name))

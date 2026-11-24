@@ -88,6 +88,7 @@ pub mod op {
     pub const AUTH_REQUESTED: u16 = 0x0411;
     pub const SET_CONN_ENCRYPTION: u16 = 0x0413;
     pub const REMOTE_NAME_REQUEST: u16 = 0x0419;
+    pub const REMOTE_NAME_REQUEST_CANCEL: u16 = 0x041A;
     pub const IO_CAPABILITY_REPLY: u16 = 0x042B;
     pub const USER_CONFIRM_REPLY: u16 = 0x042C;
     pub const USER_CONFIRM_NEG_REPLY: u16 = 0x042D;
@@ -100,6 +101,7 @@ pub mod op {
     pub const WRITE_SSP_MODE: u16 = 0x0C56;
     pub const WRITE_LE_HOST_SUPPORTED: u16 = 0x0C6D;
     pub const WRITE_SC_HOST_SUPPORT: u16 = 0x0C7A;
+    pub const READ_LOCAL_VERSION: u16 = 0x1001;
     pub const READ_BD_ADDR: u16 = 0x1009;
     pub const READ_BUFFER_SIZE: u16 = 0x1005;
     pub const LE_SET_EVENT_MASK: u16 = 0x2001;
@@ -200,6 +202,10 @@ pub struct Seen {
     pub le: bool,
     /// LE: connectable advertising.
     pub connectable: bool,
+    /// LE: a scan response (to an active scan), not an advertisement.
+    pub scan_response: bool,
+    /// BR/EDR: page scan repetition mode and clock offset (for the remote name request).
+    pub page: (u8, u16),
 }
 
 /// The events this host acts on.
@@ -404,19 +410,27 @@ fn link_event(code: u8, r: &mut Rd<'_>) -> Result<Event, Malformed> {
     })
 }
 
+/// The responses of an inquiry result event. Each response is packed after the previous
+/// one (what controllers send and BlueZ reads); `0x22` comes in two layouts, with and without
+/// the page scan mode octet (14 or 15 octets per response), told apart by the length.
 fn inquiry(code: u8, r: &mut Rd<'_>) -> Result<Vec<Seen>, Malformed> {
-    let n = r.u8()?;
+    let n = usize::from(r.u8()?);
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let rssi_pscan = code == 0x22 && r.0.len() / n == 15;
     let mut out = Vec::new();
-    for _ in 0..n {
+    for _ in 0..n.min(if code == 0x2F { 1 } else { 255 }) {
         let addr = r.addr()?;
-        let _psrm = r.u8()?;
-        if code == 0x02 {
-            r.take(2)?;
-        } else {
-            r.take(1)?;
-        }
+        let psrm = r.u8()?;
+        let skip = match code {
+            0x02 => 2,
+            0x22 if rssi_pscan => 2,
+            _ => 1,
+        };
+        r.take(skip)?;
         let class = r.u24()?;
-        let _clock = r.u16()?;
+        let clock = r.u16()?;
         let rssi = if code == 0x02 {
             None
         } else {
@@ -430,10 +444,12 @@ fn inquiry(code: u8, r: &mut Rd<'_>) -> Result<Vec<Seen>, Malformed> {
         out.push(Seen {
             addr,
             class,
-            rssi,
+            rssi: rssi.filter(|&v| v != 127),
             data,
             le: false,
             connectable: true,
+            scan_response: false,
+            page: (psrm, clock & 0x7fff),
         });
     }
     Ok(out)
@@ -477,6 +493,8 @@ fn le_meta(r: &mut Rd<'_>) -> Result<Event, Malformed> {
                     data,
                     le: true,
                     connectable: kind <= 0x01,
+                    scan_response: kind == 0x04,
+                    page: (0, 0),
                 });
             }
             Event::Seen(out)
@@ -505,6 +523,8 @@ pub fn acl_in(p: &[u8]) -> Result<(u16, bool, &[u8]), Malformed> {
 pub struct Adv {
     /// Name (lossy UTF-8, control characters removed, at most 64 octets).
     pub name: Option<String>,
+    /// The name is the complete one (0x09), not a shortened one (0x08).
+    pub name_complete: bool,
     /// LE appearance.
     pub appearance: Option<u16>,
     /// The HID service (0x1812) is listed.
@@ -524,7 +544,10 @@ pub fn adv(data: &[u8]) -> Adv {
         };
         let (kind, v) = (rec[0], &rec[1..]);
         match kind {
-            0x08 | 0x09 if out.name.is_none() || kind == 0x09 => out.name = Some(clean_name(v)),
+            0x08 | 0x09 if out.name.is_none() || kind == 0x09 => {
+                out.name = Some(clean_name(v));
+                out.name_complete = kind == 0x09;
+            }
             0x19 if v.len() == 2 => out.appearance = Some(u16::from_le_bytes([v[0], v[1]])),
             0x02 | 0x03 => out.hid |= v.chunks_exact(2).any(|c| c == [0x12, 0x18]),
             _ => {}

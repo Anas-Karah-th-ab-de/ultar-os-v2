@@ -32,6 +32,10 @@ subtle = "2"
 ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }
 ultar-hal-system = { path = "../../hal/ultar-hal-system" }
 rustix = { version = "1", default-features = false, features = ["std", "process"] }
+# btd-e2e builds the desktop's Bluetooth page from what the bus said
+ultar-desktop = { path = "../../../platform/ultar-desktop" }
+ultar-ui = { path = "../../../platform/ultar-ui", default-features = false }
+ultar-i18n = { path = "../../core/ultar-i18n" }
 
 # End-to-end run on the Ultar kernel with a USB controller (tools/kern-test/bt-e2e.sh).
 [[example]]

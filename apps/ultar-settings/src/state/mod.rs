@@ -105,6 +105,10 @@ pub struct StatusView {
     pub bluetooth: Option<ultar_bus::messages::bluetooth::BluetoothState>,
     /// `audio.state`.
     pub audio: Option<ultar_bus::messages::audio::AudioState>,
+    /// `bluetooth.devices` and the `devices_revision` it was read at (Bluetooth page).
+    pub bt_devices: (Vec<ultar_bus::messages::bluetooth::Device>, Option<u32>),
+    /// A Bluetooth search ran while the page was open (an empty list after it: "none found").
+    pub bt_searched: bool,
     /// Why the open status page's service could not be read.
     pub error: Option<Text>,
 }

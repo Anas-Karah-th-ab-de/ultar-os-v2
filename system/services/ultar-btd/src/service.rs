@@ -42,6 +42,7 @@ pub struct BtService {
     stack: Option<Stack>,
     next_try: Option<Instant>,
     pairing: Option<Pairing>,
+    version_logged: bool,
 }
 
 fn kind(k: Kind) -> DeviceKind {
@@ -78,6 +79,7 @@ impl BtService {
             stack: None,
             next_try: None,
             pairing: None,
+            version_logged: false,
         }
     }
 
@@ -107,6 +109,13 @@ impl BtService {
             devices_supported: snap.ready,
             scanning: snap.scanning,
             pairing: self.pairing.clone(),
+            found: snap
+                .devices
+                .iter()
+                .filter(|d| !d.paired)
+                .count()
+                .min(usize::from(u16::MAX)) as u16,
+            devices_revision: snap.revision,
         }
     }
 
@@ -142,6 +151,7 @@ impl BtService {
     fn keep_stack(&mut self, bus: &Bus<'_, Self>) {
         if self.stack.as_ref().is_some_and(|s| s.snapshot().ended) {
             self.stack = None;
+            self.version_logged = false;
             bus.log(Record::new(Level::Warn, "btd.controller_gone"));
         }
         let wanted = self.saved.is_none_or(|s| s.on);
@@ -163,6 +173,21 @@ impl BtService {
         let Some(stack) = self.stack.as_ref() else {
             return;
         };
+        for (opcode, status) in stack.take_failures() {
+            bus.log(
+                Record::new(Level::Warn, "btd.hci_refused")
+                    .count("opcode", u64::from(opcode))
+                    .count("status", u64::from(status)),
+            );
+        }
+        if let Some((hci, maker)) = stack.snapshot().version.filter(|_| !self.version_logged) {
+            self.version_logged = true;
+            bus.log(
+                Record::new(Level::Info, "btd.controller")
+                    .count("hci_version", u64::from(hci))
+                    .count("manufacturer", u64::from(maker)),
+            );
+        }
         let (questions, results) = stack.take_news();
         for (addr, reason) in results {
             let id = addr.text();

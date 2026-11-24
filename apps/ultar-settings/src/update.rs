@@ -2,6 +2,7 @@
 //! drawing here; the [`Outcome`] tells the app what to rebuild.
 
 mod account;
+mod bluetooth;
 mod display;
 mod drivers;
 
@@ -97,7 +98,11 @@ pub fn load_status(state: &mut State, ports: &mut Ports, kind: crate::areas::Sta
     let s = &mut state.status;
     let result = match kind {
         StatusKind::Network => ports.status.net().map(|v| s.net = Some(v)),
-        StatusKind::Bluetooth => ports.status.bluetooth().map(|v| s.bluetooth = Some(v)),
+        StatusKind::Bluetooth => ports.status.bluetooth().map(|v| {
+            s.bt_searched |= v.scanning;
+            bluetooth::load_devices(&mut s.bt_devices, &v, ports);
+            s.bluetooth = Some(v)
+        }),
         StatusKind::Sound => ports.status.audio().map(|v| s.audio = Some(v)),
     };
     s.error = result.err().map(|e| e.text());
@@ -174,6 +179,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         a if display::owns(a) => display::handle(c, a, node, kind),
         a if drivers::owns(a) => drivers::handle(c, a, kind),
         a if account::owns(a) => account::handle(c, a, node, kind),
+        a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
         _ => Outcome::default(),
     }
 }

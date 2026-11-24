@@ -5,7 +5,12 @@
 //! Checked: btd reaches the controller through `dev/ultar/hciN` and sets it up
 //! (`bluetooth.state`: present, devices supported), it holds the node (a second opener
 //! is refused), and its input sink creates a keyboard through `dev/ultar/uinput` whose
-//! keys the seat reads from the new event node. Last line: `BT: ALLES OK` or
+//! keys the seat reads from the new event node. A scan (`bluetooth.scan`) against the
+//! controller's scripted air (inquiry results, extended inquiry results, a remote name,
+//! LE advertising reports and a scan response): `bluetooth.state` follows the devices
+//! while the scan runs (`found`, `devices_revision`), `bluetooth.devices` lists each one
+//! once with its name and latest signal, and the desktop's Bluetooth page (the quick
+//! settings, built from what the bus said) shows them. Last line: `BT: ALLES OK` or
 //! `BT: FEHLER <what>`.
 //!
 //! ```text
@@ -19,7 +24,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 use ultar_btd::runner::Uinput;
 use ultar_btd::stack::hid::{InputEvent, InputKind, InputSink};
-use ultar_bus::messages::bluetooth::BluetoothState;
+use ultar_bus::messages::bluetooth::{BluetoothState, BtOutcome, Device, Devices, Scan};
 use ultar_bus::messages::init::{ServiceState, Status};
 use ultar_bus::{Client, ClientOptions};
 
@@ -177,6 +182,94 @@ fn input_through_btd_sink(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// What the scan must find: (id, name, LE, last RSSI).
+const FOUND: [(&str, &str, bool, i8); 4] = [
+    ("11:22:33:44:55:A1", "Telefon A", false, -72),
+    ("11:22:33:44:55:B2", "BT-Tastatur", false, -48),
+    ("C0:BB:AA:00:00:C3/r", "BT-Maus", true, -62),
+    ("C0:BB:AA:00:00:D4/r", "Stift", true, -74),
+];
+
+/// A scan through the service: found devices while it runs, each once, named, latest signal.
+fn scan_through_btd(
+    shell: &ultar_bus::Client,
+    sub: &ultar_bus::TypedSubscription<BluetoothState>,
+) -> Result<(BluetoothState, Vec<Device>), String> {
+    let reply = shell
+        .call(&Scan { on: true }, Duration::from_secs(5))
+        .map_err(|e| format!("bluetooth.scan {e}"))?;
+    if reply.outcome != BtOutcome::Done {
+        return Err(format!("bluetooth.scan {:?}", reply.outcome));
+    }
+    // published while the scan runs: scanning, all found
+    let live = wait("found devices published while scanning", || {
+        let mut last = None;
+        while let Ok(Some(v)) = sub.try_recv() {
+            last = Some(v);
+        }
+        last.filter(|s| s.scanning && usize::from(s.found) == FOUND.len())
+    })?;
+    let mut last_list = Vec::new();
+    let list = wait("the devices with names and latest signal", || {
+        let r = shell.call(&Devices {}, Duration::from_secs(5)).ok()?;
+        last_list = r.devices.clone();
+        let all = FOUND.iter().all(|(id, name, le, rssi)| {
+            r.devices
+                .iter()
+                .any(|d| d.id == *id && d.name == *name && d.le == *le && d.rssi == Some(*rssi))
+        });
+        (all && r.devices.len() == FOUND.len()).then_some(r.devices)
+    })
+    .map_err(|e| format!("{e}: {last_list:?}"))?;
+    println!(
+        "BT: scan: {} devices while scanning (revision {}): {}",
+        live.found,
+        live.devices_revision,
+        list.iter()
+            .map(|d| format!("{} {:?} {:?}", d.id, d.name, d.rssi))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    Ok((live, list))
+}
+
+struct Fixed;
+impl ultar_desktop::model::time::Clock for Fixed {
+    fn now_ms(&self) -> u64 {
+        1_795_366_320_000
+    }
+}
+
+/// The desktop's Bluetooth page (quick settings) built from what the bus said: one row per
+/// device, in the page's order, with the busy bar while scanning.
+fn page_shows(state: BluetoothState, devices: Vec<Device>) -> Result<(), String> {
+    use ultar_desktop::model::{Desktop, Open, QuickPage};
+    use ultar_desktop::view::{bluetooth, Look, Target};
+    let mut d = Desktop::new(ultar_i18n::Lang::En);
+    d.svc.bt_searched = true;
+    d.svc.bluetooth = Some(state);
+    d.svc.set_bt_devices(devices);
+    d.open = Open::Quick(QuickPage::Bluetooth);
+    let shown: Vec<String> = bluetooth::order(&d.svc.bt_devices)
+        .into_iter()
+        .map(bluetooth::shown_name)
+        .collect();
+    let ids: Vec<String> = d.svc.bt_devices.iter().map(|x| x.id.clone()).collect();
+    let shell = ultar_desktop::shell::Shell::new(d, std::sync::Arc::new(Fixed), "e2e");
+    let look = Look::new(ultar_i18n::Lang::En, ultar_ui::tokens::ThemeKind::Dark);
+    let popup =
+        ultar_desktop::shell::build_popup(&shell, look, ultar_ui::geom::Size::new(1440.0, 900.0))
+            .map_err(|e| format!("page {e:?}"))?
+            .ok_or("no page")?;
+    for id in &ids {
+        if popup.view.node(&Target::BtDevice(id.clone())).is_none() {
+            return Err(format!("page: no row for {id}"));
+        }
+    }
+    println!("BT: desktop page rows: {}", shown.join(", "));
+    Ok(())
+}
+
 fn test(run: &Run) -> Result<(), String> {
     let root = Path::new("/");
     let config = run.layout().map_err(|e| format!("layout {e}"))?;
@@ -218,6 +311,8 @@ fn test(run: &Run) -> Result<(), String> {
             }
             other => return Err(format!("second opener of {node:?}: {:?}", other.err())),
         }
+        let (live, list) = scan_through_btd(&shell, &sub)?;
+        page_shows(live, list)?;
         input_through_btd_sink(root)
     })();
     let pid = rustix::process::Pid::from_raw(init.id() as i32).ok_or("pid")?;

@@ -12,6 +12,9 @@
 //! Version 2 (`BluetoothState`, `Device`, `DevicesReply`, `BtReply`): new fields and
 //! outcomes; new calls `scan`, `pair`, `forget`; the pairing question
 //! `sysdialog.bt_pair` ([`PairConfirm`]) is defined here, in one place.
+//!
+//! Version 3 (`BluetoothState`): `found` and `devices_revision` – found devices are
+//! published while a scan runs.
 
 use crate::message::{Call, Message, Topic};
 use serde::{Deserialize, Serialize};
@@ -36,6 +39,12 @@ pub struct BluetoothState {
     pub scanning: bool,
     /// The last pairing, while it runs and until the next one.
     pub pairing: Option<Pairing>,
+    /// Devices found by the running or last scan that are not paired.
+    pub found: u16,
+    /// Changes whenever the device list changes (a device found, renamed, its signal,
+    /// paired, connected): a list shown follows it by asking [`Devices`] again – while a
+    /// scan runs, at most twice a second.
+    pub devices_revision: u32,
 }
 
 /// A pairing and how far it got.
@@ -235,7 +244,11 @@ version_one!(
 macro_rules! version_two {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 2; } )* };
 }
-version_two!(BluetoothState, Device, DevicesReply, BtReply);
+version_two!(Device, DevicesReply, BtReply);
+
+impl Message for BluetoothState {
+    const VERSION: u16 = 3;
+}
 
 impl Topic for BluetoothState {
     const TOPIC: &'static str = "bluetooth.state";

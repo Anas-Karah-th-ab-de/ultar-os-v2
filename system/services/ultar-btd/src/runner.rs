@@ -20,6 +20,10 @@ use std::time::{Duration, Instant};
 
 /// Questions waiting for the system dialog at most (more: refused).
 pub const MAX_ASKS: usize = 4;
+/// Packets taken from the controller in one round at most (a scan brings many).
+pub const MAX_BURST: usize = 64;
+/// Refused commands kept for the service's log at most.
+pub const MAX_FAILURES: usize = 16;
 
 /// A way to the controller (H4 packets).
 pub trait Transport: Send {
@@ -119,6 +123,13 @@ pub struct Shared {
     pub questions: VecDeque<Question>,
     /// Ended pairings (address, reason; 0 = paired).
     pub results: VecDeque<(Addr, u8)>,
+    /// Counts every change of [`Shared::devices`] (found, renamed, RSSI, paired, connected):
+    /// the service publishes it so that lists follow a scan while it runs.
+    pub revision: u32,
+    /// Commands the controller refused (opcode, status), not yet logged.
+    pub failures: VecDeque<(u16, u8)>,
+    /// Controller (HCI version, manufacturer), once read.
+    pub version: Option<(u8, u16)>,
 }
 
 type Request = (Cmd, Sender<Result<(), Refusal>>);
@@ -172,6 +183,14 @@ impl Stack {
             Err(_) => (vec![], vec![]),
         }
     }
+
+    /// Takes the refused commands not yet logged.
+    pub fn take_failures(&self) -> Vec<(u16, u8)> {
+        match self.shared.lock() {
+            Ok(mut s) => s.failures.drain(..).collect(),
+            Err(_) => vec![],
+        }
+    }
 }
 
 fn run(
@@ -191,10 +210,15 @@ fn run(
                 return end(&shared, &mut sink, &inputs);
             }
         }
-        match t.read(Duration::from_millis(50)) {
-            Ok(Some(p)) => host.packet(&p),
-            Ok(None) => {}
-            Err(_) => return end(&shared, &mut sink, &inputs),
+        // Wait for one packet, then take what else is there without waiting.
+        let mut wait = Duration::from_millis(50);
+        for _ in 0..MAX_BURST {
+            match t.read(wait) {
+                Ok(Some(p)) => host.packet(&p),
+                Ok(None) => break,
+                Err(_) => return end(&shared, &mut sink, &inputs),
+            }
+            wait = Duration::ZERO;
         }
         while let Ok((c, reply)) = rx.try_recv() {
             let _ = reply.send(host.command(c));
@@ -261,6 +285,12 @@ fn handle(
             sink.removed(id);
             inputs.retain(|&i| i != id);
         }
+        Up::Failed { opcode, status } => {
+            let seen = s.failures.iter().any(|f| f.0 == opcode);
+            if !seen && s.failures.len() < MAX_FAILURES {
+                s.failures.push_back((opcode, status));
+            }
+        }
         Up::Changed => {}
     }
 }
@@ -300,9 +330,13 @@ fn publish(host: &Host, inputs: &[u32], shared: &Mutex<Shared>) {
         }
     }
     if let Ok(mut s) = shared.lock() {
-        s.devices = list;
+        if s.devices != list {
+            s.devices = list;
+            s.revision = s.revision.wrapping_add(1);
+        }
         s.scanning = host.is_scanning();
         s.ready = host.is_ready();
+        s.version = host.version;
     }
 }
 

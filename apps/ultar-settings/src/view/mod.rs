@@ -6,6 +6,7 @@
 
 mod about;
 mod account;
+pub mod bluetooth;
 mod dialog;
 mod display;
 mod display_rows;

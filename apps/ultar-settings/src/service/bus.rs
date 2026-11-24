@@ -1,6 +1,7 @@
 //! Bus implementations of the ports – the only place of the app with bus calls.
 
 use super::update_contract::{Check, Offline, Progress};
+use super::BtCall;
 use super::{
     AccountPort, AccountRequest, ClipboardPort, DevicesPort, DisplayPort, FilesPort, PortError,
     PortResult, SettingsPort, StatusPort, UpdatePort,
@@ -364,6 +365,7 @@ impl ClipboardPort for ClipboardQueue {
 
 /// Network, Bluetooth and sound state over the bus: the services' retained topics.
 pub struct BusStatus {
+    client: Client,
     net: Retained<NetState>,
     bluetooth: Retained<BluetoothState>,
     audio: Retained<AudioState>,
@@ -407,6 +409,7 @@ impl BusStatus {
     /// Subscribes to `net.state`, `bluetooth.state` and `audio.state`.
     pub fn new(client: &Client) -> BusStatus {
         BusStatus {
+            client: client.clone(),
             net: Retained::new(client),
             bluetooth: Retained::new(client),
             audio: Retained::new(client),
@@ -425,5 +428,27 @@ impl StatusPort for BusStatus {
 
     fn audio(&mut self) -> PortResult<AudioState> {
         self.audio.get()
+    }
+
+    fn bt_devices(&mut self) -> PortResult<Vec<ultar_bus::messages::bluetooth::Device>> {
+        use ultar_bus::messages::bluetooth::{BtOutcome, Devices};
+        let r = call(&self.client, &Devices {}, CALL_TIMEOUT)?;
+        match r.outcome {
+            BtOutcome::Done => Ok(r.devices),
+            _ => Err(PortError::Unavailable),
+        }
+    }
+
+    fn bt_call(&mut self, c: BtCall) -> PortResult<()> {
+        use ultar_bus::messages::bluetooth::{BtOutcome, Pair, Scan};
+        let r = match c {
+            BtCall::Scan(on) => call(&self.client, &Scan { on }, CALL_TIMEOUT)?,
+            BtCall::Pair(id) => call(&self.client, &Pair { id }, CALL_TIMEOUT)?,
+        };
+        match r.outcome {
+            BtOutcome::Done => Ok(()),
+            BtOutcome::NoDevice => Err(PortError::Unavailable),
+            _ => Err(PortError::Failed),
+        }
     }
 }

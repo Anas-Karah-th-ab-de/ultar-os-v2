@@ -148,6 +148,23 @@ pub trait StatusPort {
     fn bluetooth(&mut self) -> PortResult<BluetoothState>;
     /// The sound service's state.
     fn audio(&mut self) -> PortResult<AudioState>;
+    /// `bluetooth.devices`: paired and found devices (Bluetooth page).
+    fn bt_devices(&mut self) -> PortResult<Vec<ultar_bus::messages::bluetooth::Device>> {
+        Err(PortError::Unavailable)
+    }
+    /// `bluetooth.scan` / `bluetooth.pair` (Bluetooth page).
+    fn bt_call(&mut self, _call: BtCall) -> PortResult<()> {
+        Err(PortError::Unavailable)
+    }
+}
+
+/// A change asked of the Bluetooth service from its page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BtCall {
+    /// Look for devices (on) or stop.
+    Scan(bool),
+    /// Pair with a found device (by id).
+    Pair(String),
 }
 
 /// Saving a file the user asked for (hardware plan) into the documents area.

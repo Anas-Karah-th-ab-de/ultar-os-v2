@@ -14,12 +14,24 @@ The controller: every HCI command is answered with Command Complete, status 0 (R
 Read Buffer Size: 1021 octets x 8, LE Read Buffer Size: 251 x 8); vendor command 0xFC77 first sends a vendor event
 with 255 parameter octets (0..254), to cut an event over 17 interrupt packets. ACL data is sent back unchanged
 (loopback). Every command is written to the log as `BTEMU cmd 0xNNNN`, every ACL packet as `BTEMU acl <len>`.
+
+The air (for a scan): Inquiry is answered with Command Status, an Inquiry Result with RSSI of a nameless phone
+(11:22:33:44:55:A1, asked for its name "Telefon A" by Remote Name Request), an Extended Inquiry Result of a keyboard
+"BT-Tastatur" twice (RSSI -60, then -48) and Inquiry Complete. LE Set Scan Enable (on) brings advertising reports:
+the mouse "BT-Maus" (ADV_IND, complete name, RSSI -70 then -62; a 32-octet event, two full interrupt packets and
+no zero-length packet), a nameless pen (ADV_IND, a 16-octet event) whose scan response names it "Stift" (only to
+an active scan) and a non-connectable beacon (not to be listed). Logged: `BTEMU scan active|passive`.
 """
 import os, socket, struct, sys, threading
 
 SOCK, LOG = sys.argv[1], sys.argv[2]
 ADDR = bytes([0x01, 0xB7, 0x00, 0xEE, 0xFF, 0xC0])  # C0:FF:EE:00:B7:01, little endian
 EV_MPS = 16
+PHONE = bytes([0xA1, 0x55, 0x44, 0x33, 0x22, 0x11])     # 11:22:33:44:55:A1
+KEYBOARD = bytes([0xB2, 0x55, 0x44, 0x33, 0x22, 0x11])  # 11:22:33:44:55:B2
+MOUSE = bytes([0xC3, 0x00, 0x00, 0xAA, 0xBB, 0xC0])     # C0:BB:AA:00:00:C3/r
+PEN = bytes([0xD4, 0x00, 0x00, 0xAA, 0xBB, 0xC0])       # C0:BB:AA:00:00:D4/r
+BEACON = bytes([0xE5, 0x00, 0x00, 0xAA, 0xBB, 0xC0])
 
 # message types (usbredirproto.h)
 HELLO, CONNECT, DISCONNECT, RESET, IFACE_INFO, EP_INFO = 0, 1, 2, 3, 4, 5
@@ -54,6 +66,7 @@ class Dev:
         self.acl_out = []      # ACL packets waiting for a bulk IN request
         self.int_on = False
         self.int_q = []        # interrupt packets waiting for start_interrupt_receiving
+        self.active = False    # the LE scan asked for scan responses
 
     def send(self, typ, ident, hdr=b"", data=b""):
         body = hdr + data
@@ -102,7 +115,43 @@ class Dev:
                0x1001: bytes([12, 0, 0, 12, 0x0a, 0, 0, 0]), 0x1003: bytes([0xff] * 8)}.get(op, b"")
         if op == 0xFC77:
             self.event(0xFF, bytes(range(255)))
+        if op in (0x0401, 0x0419):  # Inquiry, Remote Name Request: Command Status, results later
+            self.event(0x0F, bytes([0, 1, pkt[0], pkt[1]]))
+            if op == 0x0401:
+                self.inquiry()
+            elif bytes(pkt[3:9]) == PHONE:
+                self.event(0x07, (bytes([0]) + PHONE + b"Telefon A").ljust(255, b"\0"))
+            else:
+                self.event(0x07, (bytes([0x04]) + bytes(pkt[3:9])).ljust(255, b"\0"))
+            return
+        if op == 0x200B and len(pkt) > 3:
+            self.active = pkt[3] == 1
+            log("BTEMU scan", "active" if self.active else "passive")
         self.event(0x0E, bytes([1, pkt[0], pkt[1], 0]) + ret)
+        if op == 0x200C and len(pkt) > 3 and pkt[3] == 1:
+            self.advertise()
+
+    def inquiry(self):
+        # Inquiry Result with RSSI: one response (address, R1, reserved, class phone, clock offset, RSSI -72)
+        self.event(0x22, bytes([1]) + PHONE + bytes([1, 0, 0x0C, 0x02, 0x5A, 0x34, 0x12, 0xB8]))
+        for rssi in (-60, -48):
+            name = b"BT-Tastatur"
+            eir = KEYBOARD + bytes([1, 0, 0x40, 0x25, 0x00, 0x34, 0x12, rssi & 0xff, len(name) + 1, 0x09]) + name
+            self.event(0x2F, (bytes([1]) + eir).ljust(255, b"\0"))
+        self.event(0x01, bytes([0]))
+
+    def adv(self, kind, addr, data, rssi):
+        self.event(0x3E, bytes([0x02, 1, kind, 1]) + addr + bytes([len(data)]) + data + bytes([rssi & 0xff]))
+
+    def advertise(self):
+        # flags, complete name, appearance mouse, an empty manufacturer record: 18 octets, a 32-octet event
+        mouse = bytes([2, 0x01, 0x06, 8, 0x09]) + b"BT-Maus" + bytes([3, 0x19, 0xC2, 0x03, 1, 0xFF])
+        for rssi in (-70, -62):
+            self.adv(0, MOUSE, mouse, rssi)
+        self.adv(0, PEN, bytes([1, 0x01]), -75)  # an empty flags record: a 16-octet event
+        if self.active:
+            self.adv(4, PEN, bytes([6, 0x09]) + b"Stift", -74)
+        self.adv(3, BEACON, bytes([2, 0x01, 0x06, 7, 0x09]) + b"Beacon", -40)
 
     def acl(self, pkt):
         log("BTEMU acl", len(pkt))

@@ -113,6 +113,8 @@ pub struct Services {
     pub day: Option<((u16, u8, u8), Vec<DayEvent>)>,
     /// Bluetooth devices from the last `bluetooth.devices` (at most [`MAX_BT_DEVICES`]).
     pub bt_devices: Vec<ultar_bus::messages::bluetooth::Device>,
+    /// A Bluetooth scan ran since the desktop started (`bluetooth.state` said `scanning`).
+    pub bt_searched: bool,
     /// Audio outputs (id, name, active) from the last `audio.outputs`.
     pub outputs: Vec<(String, String, bool)>,
     /// Settings id of the main display (`display.<id>.*`), once the settings service knows

@@ -36,6 +36,8 @@ pub struct World {
     pub bluetooth: Option<BluetoothState>,
     /// Sound state (`None`: service down).
     pub audio: Option<AudioState>,
+    /// Bluetooth devices (`None`: service down).
+    pub bt_devices: Option<Vec<ultar_bus::messages::bluetooth::Device>>,
     /// Refuse the next call with this reason.
     pub refuse: Option<Text>,
     /// Every call in order (`service.method key/arg`).
@@ -263,6 +265,21 @@ impl StatusPort for Fake {
 
     fn audio(&mut self) -> PortResult<AudioState> {
         self.0.borrow().audio.clone().ok_or(PortError::Unavailable)
+    }
+
+    fn bt_devices(&mut self) -> PortResult<Vec<ultar_bus::messages::bluetooth::Device>> {
+        self.0
+            .borrow()
+            .bt_devices
+            .clone()
+            .ok_or(PortError::Unavailable)
+    }
+
+    fn bt_call(&mut self, c: super::BtCall) -> PortResult<()> {
+        self.call(match c {
+            super::BtCall::Scan(on) => format!("bluetooth.scan {on}"),
+            super::BtCall::Pair(id) => format!("bluetooth.pair {id}"),
+        })
     }
 }
 

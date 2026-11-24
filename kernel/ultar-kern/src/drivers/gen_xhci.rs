@@ -181,7 +181,7 @@ impl Hc {
                 if pointer::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
-                if bt::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
+                if bt::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
             }
@@ -700,9 +700,13 @@ fn config_ep_x(
             0
         };
         w32(ec, iv << 16);
-        w32(ec + 4, (3 << 1) | (typ << 3) | (mp << 16));
+        w32(ec + 4, (3 << 1) | (typ << 3) | ((mp & 0x7ff) << 16));
         w64(ec + 8, base | 1);
-        w32(ec + 16, if typ == 7 { 8 } else { 1024 });
+        // interrupt: Max ESIT Payload (bits 31:16, one packet times the high-speed multiplier) and
+        // the average TRB length; a periodic endpoint without its payload gets no bandwidth on
+        // some host controllers
+        let esit = (mp & 0x7ff) * (((mp >> 11) & 3) + 1);
+        w32(ec + 16, if typ == 7 { (esit << 16) | (mp & 0x7ff).min(8) } else { 1024 });
     }
     hc.command(inp, (TRB_CONFIG_EP << 10) | (slot << 24)).ok_or("Endpunkte einrichten fehlgeschlagen")?;
     Ok(())

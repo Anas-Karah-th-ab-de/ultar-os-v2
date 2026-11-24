@@ -25,6 +25,12 @@ pub const CONNECT_MS: u64 = 15_000;
 pub const PAIR_MS: u64 = 60_000;
 /// Queued outgoing ACL packets at most (beyond: the link is dropped).
 pub const MAX_ACL_QUEUE: usize = 64;
+/// Inquiry length in units of 1.28 s (8: 10.24 s, then the names are asked for).
+pub const INQUIRY_LENGTH: u8 = 8;
+/// A remote name request is given up after this.
+pub const NAME_MS: u64 = 12_000;
+/// Remote name requests waiting at most.
+pub const MAX_NAME_QUEUE: usize = 16;
 
 /// How the host is set up.
 #[derive(Clone, Debug)]
@@ -35,6 +41,8 @@ pub struct Config {
     pub pairable_le: bool,
     /// Advertise (connectable) under this name (only the test peripheral).
     pub advertise: Option<String>,
+    /// LE scan: active (scan requests, names from scan responses) or passive (listen only).
+    pub le_active: bool,
 }
 
 impl Default for Config {
@@ -43,6 +51,7 @@ impl Default for Config {
             io: Io::DisplayYesNo,
             pairable_le: false,
             advertise: None,
+            le_active: true,
         }
     }
 }
@@ -152,6 +161,8 @@ pub enum Up {
     Input { id: u32, events: Vec<InputEvent> },
     /// An input device left.
     InputRemoved { id: u32 },
+    /// The controller refused a command (for the log: what is not supported).
+    Failed { opcode: u16, status: u8 },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -186,6 +197,14 @@ pub struct Host {
     /// Bonds.
     pub bonds: Bonds,
     pub(crate) scanning: Option<u64>,
+    /// Discovery under way: (inquiry runs, LE scan runs); both false while scanning = it failed.
+    pub(crate) discovery: (bool, bool),
+    /// Remote name requests waiting (address, page scan repetition mode, clock offset).
+    pub(crate) names: VecDeque<(Addr, u8, u16)>,
+    /// The remote name request in flight and since when.
+    pub(crate) name_busy: Option<(Addr, u64)>,
+    /// Controller version (HCI version, manufacturer), once read.
+    pub version: Option<(u8, u16)>,
     pub(crate) want: Option<(Addr, Want, u64)>,
     pub(crate) next_token: u32,
 }
@@ -212,6 +231,10 @@ impl Host {
             links: Vec::new(),
             bonds,
             scanning: None,
+            discovery: (false, false),
+            names: VecDeque::new(),
+            name_busy: None,
+            version: None,
             want: None,
             next_token: 0,
         };
@@ -224,6 +247,7 @@ impl Host {
         let mut seq: Vec<(u16, Vec<u8>)> = vec![
             (op::RESET, vec![]),
             (op::READ_BD_ADDR, vec![]),
+            (op::READ_LOCAL_VERSION, vec![]),
             (op::READ_BUFFER_SIZE, vec![]),
             (op::LE_READ_BUFFER_SIZE, vec![]),
             (
@@ -375,21 +399,93 @@ impl Host {
         Ok(())
     }
 
-    fn scan(&mut self, on: bool) {
+    pub(crate) fn scan(&mut self, on: bool) {
         if on == self.scanning.is_some() {
             return;
         }
         if on {
-            self.cmd(op::LE_SET_SCAN_PARAMS, &[1, 0x60, 0, 0x30, 0, 0, 0]);
+            // A fresh list: what is not paired or connected is found again (or not).
+            let keep: Vec<Addr> = self
+                .devices
+                .keys()
+                .filter(|a| self.bonds.find(a).is_some() || self.connected(a))
+                .copied()
+                .collect();
+            self.devices.retain(|a, _| keep.contains(a));
+            self.names.clear();
+            // LE: active or passive, interval 60 ms, window 30 ms, public address, all
+            // advertisers, duplicates reported (the RSSI follows the device).
+            let active = u8::from(self.cfg.le_active);
+            self.cmd(op::LE_SET_SCAN_PARAMS, &[active, 0x60, 0, 0x30, 0, 0, 0]);
             self.cmd(op::LE_SET_SCAN_ENABLE, &[1, 0]);
-            self.cmd(op::INQUIRY, &[0x33, 0x8b, 0x9e, 8, 0]);
+            // BR/EDR: general inquiry (GIAC), unlimited responses.
+            self.cmd(op::INQUIRY, &[0x33, 0x8b, 0x9e, INQUIRY_LENGTH, 0]);
+            self.discovery = (true, true);
             self.scanning = Some(self.now);
         } else {
             self.cmd(op::LE_SET_SCAN_ENABLE, &[0, 0]);
-            self.cmd(op::INQUIRY_CANCEL, &[]);
+            if self.discovery.0 {
+                self.cmd(op::INQUIRY_CANCEL, &[]);
+            }
+            self.discovery = (false, false);
+            self.names.clear();
             self.scanning = None;
         }
         self.up.push(Up::Changed);
+    }
+
+    /// Part of the discovery ended (`inquiry`: the inquiry, else the LE scan; `failed`: refused).
+    /// Both refused: the scan ends at once (nothing can be found).
+    pub(crate) fn discovery_ended(&mut self, inquiry: bool, failed: bool) {
+        if self.scanning.is_none() {
+            return;
+        }
+        if inquiry {
+            self.discovery.0 = false;
+            self.next_name();
+        } else {
+            self.discovery.1 = false;
+        }
+        if failed && self.discovery == (false, false) {
+            self.scan(false);
+        }
+    }
+
+    /// Asks for a name (after the inquiry: a name request pages the device, which would
+    /// interrupt the inquiry).
+    pub(crate) fn want_name(&mut self, addr: Addr, page: (u8, u16)) {
+        let queued = self.names.iter().any(|n| n.0 == addr)
+            || self.name_busy.is_some_and(|(a, _)| a == addr);
+        if !queued && self.names.len() < MAX_NAME_QUEUE {
+            self.names.push_back((addr, page.0, page.1));
+            self.next_name();
+        }
+    }
+
+    /// Sends the next remote name request when none is in flight and no inquiry runs.
+    pub(crate) fn next_name(&mut self) {
+        if self.name_busy.is_some() || self.discovery.0 {
+            return;
+        }
+        while let Some((a, psrm, clock)) = self.names.pop_front() {
+            if self.devices.get(&a).is_some_and(|d| d.name.is_empty()) {
+                let mut p = a.bytes.to_vec();
+                p.extend_from_slice(&[psrm.min(2), 0]);
+                // clock offset with its "valid" bit (bit 15)
+                p.extend_from_slice(&(clock | if clock != 0 { 0x8000 } else { 0 }).to_le_bytes());
+                self.cmd(op::REMOTE_NAME_REQUEST, &p);
+                self.name_busy = Some((a, self.now));
+                return;
+            }
+        }
+    }
+
+    /// The remote name request for `addr` ended (answered or refused).
+    pub(crate) fn name_done(&mut self, addr: Option<Addr>) {
+        if addr.is_none() || self.name_busy.map(|b| b.0) == addr {
+            self.name_busy = None;
+            self.next_name();
+        }
     }
 
     fn begin(&mut self, a: Addr, want: Want) -> Result<(), Refusal> {
@@ -444,6 +540,12 @@ impl Host {
         self.now = self.now.max(now);
         if self.scanning.is_some_and(|t| self.now - t >= SCAN_MS) {
             self.scan(false);
+        }
+        if let Some((a, t)) = self.name_busy {
+            if self.now - t >= NAME_MS {
+                self.cmd(op::REMOTE_NAME_REQUEST_CANCEL, &a.bytes);
+                self.name_done(Some(a));
+            }
         }
         if let Some((a, w, t)) = self.want {
             let linked = self.connected(&a);

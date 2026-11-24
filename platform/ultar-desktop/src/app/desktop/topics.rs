@@ -66,7 +66,11 @@ impl ServiceTopics {
         any |= drain(&self.session, |m| svc.session = Some(m));
         any |= drain(&self.audio, |m| svc.audio = Some(m));
         any |= drain(&self.net, |m| svc.net = Some(m));
-        any |= drain(&self.bluetooth, |m| svc.bluetooth = Some(m));
+        any |= drain(&self.bluetooth, |m| {
+            // a scan ran: an empty list after it reads "no devices found"
+            svc.bt_searched |= m.scanning;
+            svc.bluetooth = Some(m);
+        });
         any |= drain(&self.volumes, |m| svc.set_drives(m.mounted));
         any |= drain(&self.media, |m| svc.media = m.now);
         any |= drain(&self.wifi, |m| svc.wifi.link = Some(m));

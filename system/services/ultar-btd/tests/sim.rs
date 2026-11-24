@@ -211,6 +211,7 @@ fn peripheral() -> Config {
         io: Io::DisplayYesNo,
         pairable_le: true,
         advertise: Some("Ultar Test Keyboard".into()),
+        ..Config::default()
     }
 }
 

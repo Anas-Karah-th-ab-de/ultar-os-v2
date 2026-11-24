@@ -46,6 +46,8 @@ fn served() -> Harness {
         devices_supported: false,
         scanning: false,
         pairing: None,
+        found: 0,
+        devices_revision: 0,
     });
     d.svc.audio = Some(AudioState {
         present: true,
@@ -281,4 +283,87 @@ fn the_bluetooth_devices_page_pairs_connects_and_forgets() {
         .on_popup(&Target::BtScan, &ActionKind::Toggled(true));
     h.apply(out);
     assert_eq!(h.take(), vec![Effect::Service(Call::BtScan(true))]);
+}
+
+/// Every widget of the popup, as text (keys and data), for "is it shown".
+fn popup_widgets(h: &Harness) -> String {
+    let ui = &h.popup.as_ref().unwrap().view.ui;
+    let mut out = String::new();
+    let mut stack = vec![ui.root()];
+    while let Some(n) = stack.pop() {
+        if let Some(w) = ui.widget(n) {
+            out.push_str(&format!("{w:?}\n"));
+        }
+        stack.extend(ui.children(n).iter().rev());
+    }
+    out
+}
+
+fn found(id: &str, name: &str, rssi: i8) -> ultar_bus::messages::bluetooth::Device {
+    ultar_bus::messages::bluetooth::Device {
+        name: name.into(),
+        connected: false,
+        battery_percent: None,
+        paired: false,
+        rssi: Some(rssi),
+        input: false,
+        ..device(id, false, false)
+    }
+}
+
+#[test]
+fn the_bluetooth_page_follows_a_scan_and_says_when_nothing_was_found() {
+    let mut h = served();
+    {
+        let bt = h.shell.d.svc.bluetooth.as_mut().unwrap();
+        bt.on = true;
+        bt.devices_supported = true;
+    }
+    h.apply(Outcome::surfaces());
+    h.click_popup(Target::TileMore(TileId::Bluetooth));
+    h.take();
+    let text = popup_widgets(&h);
+    assert!(text.contains("desk.bt.none"), "before any scan: the hint");
+    assert!(!text.contains("Progress"), "no busy bar");
+
+    // scanning, nothing yet: busy bar and "searching"
+    h.shell.d.svc.bluetooth.as_mut().unwrap().scanning = true;
+    h.shell.d.svc.bt_searched = true;
+    h.apply(Outcome::surfaces());
+    let text = popup_widgets(&h);
+    assert!(text.contains("Progress"), "busy bar while scanning");
+    assert!(text.contains("desk.bt.searching"));
+
+    // devices found while scanning: shown at once, named and nearer first, a nameless one by
+    // its address, each pairable
+    h.shell.d.svc.set_bt_devices(vec![
+        found("C0:BB:AA:00:00:D4/r", "", -50),
+        found("11:22:33:44:55:B2", "BT-Tastatur", -70),
+        found("C0:BB:AA:00:00:C3/r", "BT-Maus", -60),
+    ]);
+    h.apply(Outcome::surfaces());
+    let text = popup_widgets(&h);
+    let at = |s: &str| text.find(s).unwrap_or_else(|| panic!("{s} not shown"));
+    assert!(
+        at("BT-Maus") < at("BT-Tastatur"),
+        "the stronger signal first"
+    );
+    assert!(
+        at("BT-Tastatur") < at("C0:BB:AA:00:00:D4/r"),
+        "nameless last, by address"
+    );
+    assert!(text.contains("Progress"), "still searching");
+    h.click_popup(Target::BtDevice("C0:BB:AA:00:00:C3/r".into()));
+    assert_eq!(
+        h.take(),
+        vec![Effect::Service(Call::BtPair("C0:BB:AA:00:00:C3/r".into()))]
+    );
+
+    // the scan ended without a device: said so, no busy bar
+    h.shell.d.svc.bluetooth.as_mut().unwrap().scanning = false;
+    h.shell.d.svc.set_bt_devices(vec![]);
+    h.apply(Outcome::surfaces());
+    let text = popup_widgets(&h);
+    assert!(text.contains("desk.bt.not_found"));
+    assert!(!text.contains("Progress"));
 }

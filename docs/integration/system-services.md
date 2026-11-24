@@ -478,9 +478,12 @@ asked for is refused; incoming connections only from bonded classic devices (HID
 whose key no longer works is disconnected, never re-paired silently. Service: kernel right `net_admin` (user
 channel), group 831 (rfkill), bus calls only from `system.shell`/`app.settings` (policy) – apps are refused.
 
-### Contract (`ultar_bus::messages::bluetooth`, version 2)
+### Contract (`ultar_bus::messages::bluetooth`, version 2; `BluetoothState` version 3)
 
-`bluetooth.state` (+ `scanning`, `pairing: Option<{id, phase: Running|Paired|Failed}>`), `bluetooth.devices`
+`bluetooth.state` (+ `scanning`, `pairing: Option<{id, phase: Running|Paired|Failed}>`, `found` – unpaired
+devices of the running or last scan – and `devices_revision`, which changes with every change of the device list:
+a shown list asks `bluetooth.devices` again when it changes, so found devices appear while the scan runs; the
+service publishes at most twice a second), `bluetooth.devices`
 (`Device` + `paired`, `kind`, `rssi`, `le`, `input`, `audio_unsupported`), calls `scan{on}`, `pair{id}`,
 `connect{id}`, `disconnect{id}`, `forget{id}` → `BtReply{Done|NoDevice|SwitchOff|Unsupported|Failed|
 UnknownDevice|Busy}`; ids are `AA:BB:CC:DD:EE:FF` (`/r` = LE random). `pair` answers when the pairing started;
@@ -529,6 +532,16 @@ close the dialog when `bluetooth.state.pairing` leaves `Running`). The name is d
    `tools/kern-test/bt-usb.py` (usbredir device side, full-speed class E0/01/01: commands answered, ACL loopback,
    events cut into 16-octet interrupt packets) behind `-device usb-redir` on qemu-xhci. First run on hardware:
    look for `[bt] hciN: USB Bluetooth controller` in the kernel log, then `bluetooth.state.devices_supported`.
+   btd logs `btd.controller` (HCI version, manufacturer) and every command the controller refuses
+   (`btd.hci_refused` opcode/status) – a controller that needs vendor firmware first (Intel, some Realtek) refuses
+   the scan commands; a scan refused in both parts (inquiry and LE) ends at once.
+   Scan: inquiry (GIAC, 10.24 s, results with RSSI in both layouts, extended inquiry results with names), remote
+   name requests for the nameless ones after the inquiry (one at a time, 12 s each at most), LE scan active (names
+   from scan responses) or passive (`Config::le_active`), duplicates reported so the RSSI follows; one entry per
+   address, a new scan starts with a fresh list (paired and connected devices stay).
+   Transport: the event endpoint is read one USB packet per transfer with up to 32 transfers queued (an event whose
+   length is a multiple of the packet size has no zero-length packet after it and was held back until the next
+   event with one long transfer); interrupt endpoints get their Max ESIT Payload.
 2. SCO/eSCO (interface 1, isochronous) is not offered: HFP audio needs it (see open point 3 of section 3).
 3. One controller node is opened by one descriptor at a time; more than four controllers are not bound.
 4. The kernel's xHCI driver works by polling: an open `hciN` is pumped on `read`/`poll` (every 8 ms while a
@@ -567,7 +580,11 @@ channel, then the Ultar nodes; the `Uinput` sink uses `uinput::node(root)`.
   oversize refused, small buffer, dup/close) and `examples/btd-e2e` (shipped logd/bus/btd under ultar-init: btd
   as uid 827 sets the controller up – the controller log shows its Set Event Mask/SSP/LE host commands –,
   `bluetooth.state` present + devices supported, second opener `EBUSY`, btd's `Uinput` sink creates a keyboard
-  the seat reads, removed with it; btd ends with code 0).
+  the seat reads, removed with it; btd ends with code 0). The controller's scripted air: `bluetooth.scan` finds a
+  phone (inquiry result with RSSI, name by remote name request), a keyboard (extended inquiry result, RSSI
+  updated), a mouse (LE, 32-octet report) and a pen (LE, 16-octet report, named by its scan response), not the
+  non-connectable beacon; `bluetooth.state` publishes them while scanning, `bluetooth.devices` lists each once,
+  and the desktop's Bluetooth page built from that has a row for each.
 * Kernel rights now 12 bits: `R_ALL` 0xfff in rechtetest/zelltest/grenztest/ausbruch. `scripts/build-kern.sh` now
   rebuilds the ring-3 test programs every time (`make -B`): the checked-in `fenstertest` binary was older than its
   source (same checkout time stamp), which failed `VMWARE-LIKE q35-ahci-usb` on the base commit as well.

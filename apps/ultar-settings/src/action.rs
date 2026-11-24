@@ -101,6 +101,10 @@ pub enum Act {
     AccountDeviceSignOut(usize),
     /// `account.device.remove` of device `n`.
     AccountDeviceRemove(usize),
+    /// Bluetooth page: the search switch.
+    BtScan,
+    /// Bluetooth page: pair with found device `n` (in the order shown).
+    BtPair(usize),
     /// A row of a generic settingsd panel (index into the shown items).
     PanelItem(usize),
     /// A field of an open dialog (index).

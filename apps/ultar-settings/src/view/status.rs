@@ -113,5 +113,8 @@ pub(crate) fn build(cx: &mut Cx<'_>, content: NodeId, kind: StatusKind) -> Resul
         cx.ui
             .add(row, Text::new(value).color(ColorRole::TextMuted))?;
     }
+    if kind == StatusKind::Bluetooth {
+        super::bluetooth::build(cx, content)?;
+    }
     Ok(())
 }

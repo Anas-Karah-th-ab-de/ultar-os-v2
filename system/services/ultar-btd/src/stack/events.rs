@@ -37,16 +37,17 @@ impl Host {
             } => self.complete(opcode, status, &data),
             Event::CommandStatus { opcode, status } => self.status(opcode, status),
             Event::Seen(list) => list.into_iter().for_each(|s| self.seen(s)),
-            Event::RemoteName {
-                status: 0,
-                addr,
-                name,
-            } => {
-                if let Some(d) = self.devices.get_mut(&addr) {
-                    d.name = hci::clean_name(&name);
-                    self.up.push(Up::Changed);
+            Event::RemoteName { status, addr, name } => {
+                let name = hci::clean_name(&name);
+                if let Some(d) = self.devices.get_mut(&addr).filter(|_| status == 0) {
+                    if !name.is_empty() && d.name != name {
+                        d.name = name;
+                        self.up.push(Up::Changed);
+                    }
                 }
+                self.name_done(Some(addr));
             }
+            Event::InquiryComplete => self.discovery_ended(true, false),
             Event::ConnectionComplete {
                 status,
                 handle,
@@ -83,8 +84,20 @@ impl Host {
         if opcode == 0 {
             return; // controller's start credit
         }
+        if status != 0 {
+            self.up.push(Up::Failed { opcode, status });
+        }
         let mut r = hci::Rd(data);
         match (opcode, status) {
+            (op::READ_LOCAL_VERSION, 0) => {
+                if let (Ok(v), Ok(_), Ok(_), Ok(m)) = (r.u8(), r.u16(), r.u8(), r.u16()) {
+                    self.version = Some((v, m));
+                }
+            }
+            (op::LE_SET_SCAN_ENABLE, s) if s != 0 && self.discovery.1 => {
+                self.discovery_ended(false, true)
+            }
+            (op::INQUIRY_CANCEL, _) => {}
             (op::READ_BD_ADDR, 0) => {
                 if let Ok(a) = r.addr() {
                     self.addr = a;
@@ -128,14 +141,16 @@ impl Host {
 
     fn status(&mut self, opcode: u16, status: u8) {
         if status != 0 {
+            self.up.push(Up::Failed { opcode, status });
             match opcode {
+                op::INQUIRY => self.discovery_ended(true, true),
+                op::REMOTE_NAME_REQUEST => self.name_done(None),
                 op::LE_CREATE_CONNECTION | op::CREATE_CONNECTION => {
                     if let Some((a, _, _)) = self.want {
                         self.finish_want(&a, reason::UNSPECIFIED);
                         self.want = None;
                     }
                 }
-                op::INQUIRY => {}
                 _ => {}
             }
         }
@@ -165,16 +180,18 @@ impl Host {
         if !s.le {
             d.class = s.class;
         }
+        // a shortened name only until the complete one is known (advertisement and scan
+        // response may carry either)
         if let Some(n) = adv.name.filter(|n| !n.is_empty()) {
-            d.name = n;
+            if adv.name_complete || d.name.is_empty() {
+                d.name = n;
+            }
         }
         d.appearance = adv.appearance.or(d.appearance);
         d.hid |= adv.hid;
-        let ask_name = !s.le && d.name.is_empty() && !known;
+        let ask_name = !s.le && d.name.is_empty();
         if ask_name {
-            let mut p = s.addr.bytes.to_vec();
-            p.extend_from_slice(&[0x01, 0, 0, 0]);
-            self.cmd(op::REMOTE_NAME_REQUEST, &p);
+            self.want_name(s.addr, s.page);
         }
         self.up.push(Up::Changed);
     }

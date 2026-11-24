@@ -7,6 +7,9 @@
 #   2. btd-e2e – ultar-init starts the shipped logd, bus and btd; btd (own user, only its rights) sets the
 #      controller up through the node, bluetooth.state says present + devices supported, and btd's input sink
 #      creates a keyboard through /dev/ultar/uinput that the seat reads (BT: ALLES OK).
+#   3. the scan (inside btd-e2e): bluetooth.scan against the controller's scripted air – inquiry results, extended
+#      inquiry results, a remote name, LE advertising reports and a scan response – found devices published while
+#      scanning, listed once each with name and latest RSSI, and a row each on the desktop's Bluetooth page.
 # The controller's log must show btd's own setup commands (Set Event Mask, Write SSP Mode, Write LE Host Supported)
 # after HCI Reset and Read BD_ADDR. Verdict line: "ok    BT: ALLES OK".
 # IMG=<esp image> to use a built kernel image (else scripts/build-kern.sh builds one);
@@ -42,9 +45,13 @@ QARGS="-device qemu-xhci,id=xh -chardev socket,id=btc,path=$WORK/bt.sock -device
 setup=$(grep -a "BTEMU cmd" "$ELOG" | sed -n '/0xfc77/,$p' | tr '\n' ' ')
 btd_setup=0
 for op in 0x0c03 0x1009 0x0c01 0x0c56 0x0c6d; do echo "$setup" | grep -q "cmd $op" || btd_setup=1; done
+# ... and its scan: LE scan parameters (active), LE scan on, inquiry, a remote name request
+for op in 0x200b 0x200c 0x0401 0x0419; do echo "$setup" | grep -q "cmd $op" || btd_setup=1; done
+grep -aq "BTEMU scan active" "$ELOG" || btd_setup=1
 if grep -aq "BTTEST-HCI: ALLES OK" "$LOG" && grep -aq "^BT: ALLES OK" "$LOG" && [ "$btd_setup" = 0 ] \
+   && grep -aq "^BT: scan: 4 devices" "$LOG" && grep -aq "^BT: desktop page rows" "$LOG" \
    && grep -aqE "exit btd pid=[0-9]+ code=0 " "$LOG" && ! grep -aqiE "kernel panic|PANIK" "$LOG"; then
-  echo "ok    BT: ALLES OK (USB controller node, ultar-btd set it up as its own user, input through uinput)"
+  echo "ok    BT: ALLES OK (USB controller node, ultar-btd set it up as its own user, scan found 4 devices live, input through uinput)"
   if [ "${VERBOSE:-0}" = 1 ]; then grep -aE "^BT|BTTEST" "$LOG"; fi
   exit 0
 else
