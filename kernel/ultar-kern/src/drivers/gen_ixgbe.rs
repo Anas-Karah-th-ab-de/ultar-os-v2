@@ -78,7 +78,9 @@ const ACI_GET_VER: u16 = 0x0001;
 const ACI_RESTART_AN: u16 = 0x0605;
 const ACI_GET_LINK: u16 = 0x0607;
 
-const N: usize = 64;
+// Large descriptor rings absorb 10 Gb/s burst traffic instead of stalling
+// the packet path behind a short software ring.
+const N: usize = 256;
 const BUF: usize = 2048;
 
 struct Nic {
@@ -446,6 +448,7 @@ impl NetDev for Nic {
             }
             core::ptr::copy_nonoverlapping(frame.as_ptr(), buf as *mut u8, n);
             core::ptr::write_volatile(d as *mut u64, buf);
+            core::ptr::write_volatile((d + 12) as *mut u8, 0);
             // Legacy: Länge, CMD = EOP | IFCS | RS (DEXT = 0), Status löschen
             core::ptr::write_volatile((d + 8) as *mut u64, n.max(60) as u64 | ((1u64 | 2 | 8) << 24));
         }
@@ -467,6 +470,7 @@ impl NetDev for Nic {
             core::ptr::copy_nonoverlapping((self.rx_bufs + (i * BUF) as u64) as *const u8, buf.as_mut_ptr(), n);
             core::ptr::write_volatile(d as *mut u64, self.rx_bufs + (i * BUF) as u64);
             core::ptr::write_volatile((d + 8) as *mut u64, 0);
+            core::ptr::write_volatile((d + 12) as *mut u8, 0);
         }
         self.rx_next = (i + 1) % N;
         w(self.mmio, RDT, i as u32);

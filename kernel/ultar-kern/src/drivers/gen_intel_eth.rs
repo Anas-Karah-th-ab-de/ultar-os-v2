@@ -45,7 +45,9 @@ const MTA: u64 = 0x5200;
 const RAL: u64 = 0x5400;
 const RAH: u64 = 0x5404;
 
-const N: usize = 32;
+// Four times the old ring depth: enough for wire-rate bursts without polling
+// every packet through a 32-slot software/descriptor barrier.
+const N: usize = 128;
 const BUF: usize = 2048;
 
 struct Nic {
@@ -65,6 +67,19 @@ fn r(b: u64, o: u64) -> u32 {
 }
 fn w(b: u64, o: u64, v: u32) {
     unsafe { core::ptr::write_volatile((b + o) as *mut u32, v) }
+}
+
+fn link_speed(status: u32) -> &'static str {
+    if status & 2 == 0 {
+        "nicht verbunden"
+    } else {
+        match (status >> 6) & 3 {
+            0 => "10 Mbit/s",
+            1 => "100 Mbit/s",
+            2 => "1 Gbit/s",
+            _ => "1 Gbit/s+",
+        }
+    }
 }
 
 fn wait(mut f: impl FnMut() -> bool, ms: u64) -> bool {
@@ -145,11 +160,13 @@ impl Driver for Drv {
         w(m, TCTL, (1 << 1) | (1 << 3) | (0x0f << 4) | (0x40 << 12));
         w(m, TIPG, 0x0060_200a);
         let link = wait(|| r(m, STATUS) & 2 != 0, 1500);
+        let status = r(m, STATUS);
+        let speed = link_speed(status);
         let mut nl = NET.lock();
         let name = format!("eth{}", nl.len());
         crate::kprintln!(
-            "[intel-eth] {name}: {:04x} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} Verbindung {}",
-            d.device, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], if link { "steht" } else { "fehlt" }
+            "[intel-eth] {name}: {:04x} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} Verbindung {} {}",
+            d.device, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], if link { "steht" } else { "fehlt" }, speed
         );
         nl.push(Box::new(Nic { name, mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0 }));
         Ok(())
@@ -208,6 +225,7 @@ impl NetDev for Nic {
             }
             core::ptr::copy_nonoverlapping(frame.as_ptr(), buf as *mut u8, n);
             core::ptr::write_volatile(d as *mut u64, buf);
+            core::ptr::write_volatile((d + 12) as *mut u8, 0);
             // Länge, CMD = EOP | IFCS | RS, Status löschen
             core::ptr::write_volatile((d + 8) as *mut u64, n as u64 | ((1u64 | 2 | 8) << 24));
         }
@@ -228,6 +246,7 @@ impl NetDev for Nic {
         unsafe {
             core::ptr::copy_nonoverlapping((self.rx_bufs + (i * BUF) as u64) as *const u8, buf.as_mut_ptr(), n);
             core::ptr::write_volatile((d + 8) as *mut u64, 0);
+            core::ptr::write_volatile((d + 12) as *mut u8, 0);
         }
         self.rx_next = (i + 1) % N;
         w(self.mmio, RDT, i as u32);

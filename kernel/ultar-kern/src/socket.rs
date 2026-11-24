@@ -174,7 +174,9 @@ pub fn create(udp: bool) -> Option<usize> {
 fn ephemeral() -> u16 {
     let _ = NEXT_PORT.fetch_add(1, Ordering::Relaxed);
     let ss = SOCKS.try_lock();
-    for _ in 0..64 {
+    // Drain a full burst rather than handing only 64 frames per poll.
+    // TCP retransmit and application receive paths run after the burst.
+    for _ in 0..256 {
         let p = (40000 + crate::arch::zufall() % 20000) as u16;
         match &ss {
             Some(ss) if ss.values().any(|s| s.lport == p) => continue,
