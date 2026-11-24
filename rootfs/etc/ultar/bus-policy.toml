@@ -64,7 +64,7 @@ subscribe = ["update.progress"]
 [[rule]]
 identity = "app.store"
 call     = ["launcher.list", "launcher.start", "launcher.install", "launcher.uninstall",
-            "launcher.free.items", "launcher.free", "launcher.admin", "log.query"]
+            "launcher.free_items", "launcher.free", "launcher.admin", "log.query"]
 
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.

@@ -13,7 +13,7 @@ Spec: DESKTOP-SPEC §7.2/§7.3 · clicks: docs/ui/CLICKS.md · rules: docs/APP-R
    `UnknownService`; the Store shows `store.error.no-launcher` — it never fakes
    a successful install, launch or removal. All logic, screens and click
    behaviour are fully implemented and tested against a scripted backend.
-2. **`launcher.free.items` / `launcher.free` have no provider yet.** The
+2. **`launcher.free_items` / `launcher.free` have no provider yet.** The
    free-space sources (trash, temporary files, old update slots) belong to
    files/settings/updater; the contract and the Store side exist, the
    aggregation does not. Without an answer the Store shows the board's

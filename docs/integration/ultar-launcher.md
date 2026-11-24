@@ -33,7 +33,7 @@ change here **and** there, never somewhere else.
 | `launcher.grant` / `launcher.revoke` | `Grant/Revoke { app, permission }` | `PermissionReply { granted, stopped }` | user granted/took back a permission; dependent instances are stopped |
 | `launcher.install` | `Install { package }` | `InstallReply { app, uid, profile, declared }` | register a signed `.uap` that the package installer put in place; an update is the same call with the new package |
 | `launcher.uninstall` | `Uninstall { app, keep_data }` | `UninstallReply { stopped }` | remove an app; its data goes with it unless `keep_data` |
-| `launcher.free.items` | `FreeItems { for_app }` | `FreeItemsReply { items, required, available }` | what can be freed for the "not enough space" surface (Store, DESKTOP-SPEC §7.3) |
+| `launcher.free_items` | `FreeItems { for_app }` | `FreeItemsReply { items, required, available }` | what can be freed for the "not enough space" surface (Store, DESKTOP-SPEC §7.3) |
 | `launcher.free` | `Free { ids, resume }` | `FreeReply { freed, stopped, install_done }` | free the selected items; with `resume` continue the blocked installation |
 
 `AppStatus { app, uid, profile, version, instances, size: Option<u64>,
@@ -59,7 +59,7 @@ Store's Installed page ("Liste mit Größe, zuletzt benutzt", DESKTOP-SPEC §7.3
 | 9 | `ERROR_STORAGE` | state could not be stored |
 | 10 | `ERROR_NOT_GRANTED` | a needed permission is not granted |
 | 11 | `ERROR_INVALID` | bad app id or path |
-| 12 | `ERROR_NO_SPACE` | not enough free space – the caller shows `launcher.free.items` first (added for the Store) |
+| 12 | `ERROR_NO_SPACE` | not enough free space – the caller shows `launcher.free_items` first (added for the Store) |
 
 ## 4. How the Ultar Store uses it
 
@@ -72,7 +72,7 @@ programs or touch package files themselves):
 | `store.install` (Install/Update) | `launcher.install { package: <path from the signed catalogue> }` |
 | Installed list, updates | `launcher.list` (version compare against the catalogue) |
 | Remove (confirm dialog) | `launcher.uninstall { keep_data }` |
-| "Not enough space" surface | `launcher.free.items`, then `launcher.free { ids, resume }` |
+| "Not enough space" surface | `launcher.free_items`, then `launcher.free { ids, resume }` |
 | `store.log` | `log.query` (logd) + a file in `app:data` |
 
 Package integrity stays where it belongs: the launcher verifies every `.uap`

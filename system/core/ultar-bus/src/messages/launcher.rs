@@ -296,7 +296,7 @@ pub struct FreeItem {
     pub size: Option<u64>,
 }
 
-/// `launcher.free.items` – what can be freed for the pending operation.
+/// `launcher.free_items` – what can be freed for the pending operation.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct FreeItems {
     /// App the space is needed for; `None`: the generic list.
@@ -356,7 +356,7 @@ pub const ERROR_STORAGE: u32 = 9;
 pub const ERROR_NOT_GRANTED: u32 = 10;
 /// Error code: the request names something invalid (app id, path).
 pub const ERROR_INVALID: u32 = 11;
-/// Error code: not enough free space; the caller shows `free.items` first
+/// Error code: not enough free space; the caller shows `free_items` first
 /// (Store surface "not enough space"; added by the Store work).
 pub const ERROR_NO_SPACE: u32 = 12;
 
@@ -406,7 +406,7 @@ calls!(
     Revoke => "revoke", PermissionReply;
     Install => "install", InstallReply;
     Uninstall => "uninstall", UninstallReply;
-    FreeItems => "free.items", FreeItemsReply;
+    FreeItems => "free_items", FreeItemsReply;
     Free => "free", FreeReply;
 );
 
@@ -435,14 +435,14 @@ mod tests {
             "revoke",
             "install",
             "uninstall",
-            "free.items",
+            "free_items",
             "free",
             ADMIN_METHOD,
         ] {
             assert!(is_valid_segment_name(m), "{m}");
         }
         assert_eq!(<List as Call>::METHOD, "list");
-        assert_eq!(<FreeItems as Call>::METHOD, "free.items");
+        assert_eq!(<FreeItems as Call>::METHOD, "free_items");
         assert_eq!(<Free as Call>::SERVICE, SERVICE);
     }
 
