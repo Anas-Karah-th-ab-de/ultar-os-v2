@@ -238,7 +238,7 @@ register  = ["capture"]
 subscribe = ["session.state", "account.users"]
 
 # Network service (826): offers `net` and `vpn` (WireGuard runs in the same
-# process: busd and logd are at the kernel's 16 groups, no room for another
+# process: busd and logd were at the kernel's 16 groups (32 now), no room for another
 # service user), publishes its state, the Wi-Fi connection and the VPN state,
 # follows the VPN's DNS servers for resolv.conf.
 [[rule]]
