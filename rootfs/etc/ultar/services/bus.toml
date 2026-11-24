@@ -29,7 +29,6 @@ args = [
     "--listen", "/run/ultar/bus/lock.sock=system.lock", "--mode", "0660", "--group", "814", "--max-connections", "2",
     "--listen", "/run/ultar/bus/sysdialog.sock=system.sysdialog", "--mode", "0660", "--group", "815", "--max-connections", "2",
     "--listen", "/run/ultar/bus/desktop.sock=system.shell", "--mode", "0660", "--group", "816", "--max-connections", "4",
-    # Administration tools run by root: usettings, udevctl, ulog, uinit, ulaunch.
     "--listen", "/run/ultar/bus/displayd.sock=system.displayd", "--mode", "0660", "--group", "817", "--max-connections", "4",
     "--listen", "/run/ultar/bus/accountd.sock=system.accountd", "--mode", "0660", "--group", "818", "--max-connections", "4",
     "--listen", "/run/ultar/bus/powerd.sock=system.powerd", "--mode", "0660", "--group", "819", "--max-connections", "4",
@@ -42,7 +41,10 @@ args = [
     "--listen", "/run/ultar/bus/netd.sock=system.netd", "--mode", "0660", "--group", "826", "--max-connections", "4",
     "--listen", "/run/ultar/bus/btd.sock=system.btd", "--mode", "0660", "--group", "827", "--max-connections", "4",
     "--listen", "/run/ultar/bus/volumed.sock=system.volumed", "--mode", "0660", "--group", "828", "--max-connections", "4",
-    # Administration tools run by root: usettings, udevctl, ulog, uinit.
+    # Call service (829) and the modem service (ril, root on the phone).
+    "--listen", "/run/ultar/bus/calld.sock=system.calld", "--mode", "0660", "--group", "829", "--max-connections", "4",
+    "--listen", "/run/ultar/bus/ril.sock=system.ril", "--mode", "0600", "--max-connections", "2",
+    # Administration tools run by root: usettings, udevctl, ulog, uinit, ulaunch.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The service manager (root).
     "--listen", "/run/ultar/bus/init.sock=system.init", "--mode", "0600", "--max-connections", "2",
@@ -50,7 +52,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828]
+groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829]
 public_dirs = ["/run/ultar/bus"]
 notify = true
 after = ["logd"]

@@ -162,6 +162,14 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
         }
         37 => Request::DetectOutputs,
         41 => Request::SetPhoneMode { on: r.bool()? },
+        42 => Request::ClientHeader {
+            surface: surface(r)?,
+            on: match r.u8()? {
+                0 => false,
+                1 => true,
+                _ => return Err(WireError::BadValue),
+            },
+        },
         _ => return Err(WireError::BadValue),
     })
 }

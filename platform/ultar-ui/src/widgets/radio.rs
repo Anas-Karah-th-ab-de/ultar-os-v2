@@ -25,6 +25,10 @@ pub enum RadioLayout {
     /// Tiles side by side, equal widths: centred title (with a check mark when chosen) and
     /// detail, no dot.
     Tiles,
+    /// Compact choices side by side, equal widths (board PhoneDial "way of the call"):
+    /// padding 4 / 12, control radius, check mark before the title when chosen, no dot; not
+    /// chosen = transparent with a `control_border` edge.
+    Choices,
 }
 
 /// A group of radio options. The group is one focus stop; the arrow keys move the choice
@@ -153,6 +157,7 @@ impl RadioGroup {
                 let top: f32 = (0..index).map(|i| self.height_of(i, mode) + gap).sum();
                 Rect::new(rect.x, rect.y + top, rect.w, self.height_of(index, mode))
             }
+            RadioLayout::Choices => self.choice_rect(rect, index, dir),
             RadioLayout::CardRow | RadioLayout::Tiles => {
                 let count = self.options.len().max(1) as f32;
                 let width = ((rect.w - gap * (count - 1.0)) / count).max(0.0);
@@ -165,6 +170,28 @@ impl RadioGroup {
                 Rect::new(x, rect.y, width, rect.h)
             }
         }
+    }
+
+    /// A compact choice: equal shares of the row less the edges, each choice then as wide as
+    /// its share plus its own edge (the chosen one has two borders) – the CSS border-box
+    /// `flex: 1` of the boards.
+    fn choice_rect(&self, rect: Rect, index: usize, dir: Direction) -> Rect {
+        let count = self.options.len().max(1);
+        let edge = |i: usize| {
+            let wide = self.selected == Some(i) && !self.is_unavailable(i);
+            2.0 * if wide { 2.0 } else { 1.0 } * size::BORDER
+        };
+        let edges: f32 = (0..count).map(edge).sum();
+        let gaps = GAP.points() * (count as f32 - 1.0);
+        let share = ((rect.w - gaps - edges) / count as f32).max(0.0);
+        let offset: f32 = (0..index).map(|i| share + edge(i) + GAP.points()).sum();
+        let width = share + edge(index);
+        let x = if dir.is_rtl() {
+            rect.right() - offset - width
+        } else {
+            rect.x + offset
+        };
+        Rect::new(x, rect.y, width, rect.h)
     }
 
     /// The option under `pos`.

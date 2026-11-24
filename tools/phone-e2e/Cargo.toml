@@ -1,0 +1,19 @@
+[package]
+name = "phone-e2e"
+version = "0.7.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "End-to-end test of the phone app against the call service and its test double over a real bus (tools: may join apps and services)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+ultar-phone = { path = "../../apps/ultar-phone" }
+ultar-call = { path = "../../system/services/ultar-call" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-compositor = { path = "../../platform/ultar-compositor" }

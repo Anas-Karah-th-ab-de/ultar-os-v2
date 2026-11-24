@@ -28,6 +28,7 @@
 #       (launcher-e2e.sh, LAUNCHER: ALLES OK),
 #   7b. the display and account services under the service manager (svc-e2e.sh, SVC: ALLES OK),
 #   7c. the system services behind the desktop shell (dienste-e2e.sh, DIENSTE: ALLES OK),
+#   7e. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
 #   8. the A/B start chain with the real updater (ab-test.sh; AB_TEST=0 skips it).
 # Needs: rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools gcc e2fsprogs
 # BUSCK=<file>: use this prebuilt ultar-bus selfcheck instead of building it from the workspace.
@@ -127,6 +128,8 @@ IMG=out/ultar-kern-esp.img bash tools/kern-test/desktop-e2e.sh
 IMG=out/ultar-kern-esp.img bash tools/kern-test/svc-e2e.sh
 # The system services behind the shell: power, session, notifications, calendar, audio; power off via init.
 IMG=out/ultar-kern-esp.img bash tools/kern-test/dienste-e2e.sh
+# The phone: the real call daemon with the test-double modem and the phone app (TELEFON: ALLES OK).
+IMG=out/ultar-kern-esp.img bash tools/kern-test/telefon-e2e.sh
 # A/B start chain (installer, loader, slot table, raw partitions, the real updater, fallback, power loss):
 # its own installation and about 25 starts. AB_TEST=0 skips it.
 if [ "${AB_TEST:-1}" = 0 ]; then

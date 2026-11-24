@@ -3,6 +3,7 @@
 //! ipc (Samsung-IPC-FMT-Nachricht), sim/net (SIM/Netz-Befehle), pdp (Daten→rmnet).
 //! Voraussetzung: CP gebootet+ONLINE (crates/ultar-modem).
 
+pub mod bus;
 pub mod engine;
 pub mod ipc;
 pub mod link;

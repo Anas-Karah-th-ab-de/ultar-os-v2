@@ -8,7 +8,9 @@ exec = "/usr/bin/ultar-ril"
 #   data interface (addresses, routes); root-only on Linux. To be split like net.
 # right net_admin: address and routes of the mobile data interface
 rights = ["net_admin"]
-args = ["--daemon"]
+# --bus: the modem is also served as `modem.*` for the call service (ultar-calld).
+args = ["--daemon", "--bus", "/run/ultar/bus/ril.sock"]
+after = ["bus"]
 restart = "always"
 
 [cgroup]

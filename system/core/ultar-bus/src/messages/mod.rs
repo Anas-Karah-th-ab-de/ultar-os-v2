@@ -53,6 +53,10 @@
 //! | `bluetooth.set` / `devices` / `connect` / `disconnect` | calls | – | Bluetooth service |
 //! | `volumes.state` | topic | yes | removable-drive service (`ultar-volumed`) |
 //! | `volumes.eject` | call | – | removable-drive service |
+//! | `call.state` | topic | yes | call service (`ultar-call`, see [`call`]) |
+//! | `call.dial` / `answer` / `hangup` / … | calls | – | call service |
+//! | `modem.state` | topic | yes | modem service (`ultar-ril`, see [`modem`]) |
+//! | `modem.dial` / `answer` / `release` / `hold` / `dtmf` / `mute` | calls | – | modem service |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
@@ -63,6 +67,7 @@ pub mod auth;
 pub mod auth_admin;
 pub mod bluetooth;
 pub mod calendar;
+pub mod call;
 pub mod capture;
 pub mod device_service;
 pub mod devices;
@@ -72,6 +77,7 @@ pub mod launcher;
 pub mod lock;
 pub mod log;
 pub mod media;
+pub mod modem;
 pub mod net;
 pub mod notify;
 pub mod power;
@@ -108,6 +114,8 @@ mod tests {
         check_topic::<super::settings::Changed>();
         check_topic::<super::power::PowerState>();
         check_topic::<super::shell::ShellMode>();
+        check_topic::<super::call::CallState>();
+        check_call::<super::call::Dial>();
         check_call::<super::notify::Post>();
         check_call::<super::init::Status>();
         check_call::<super::init::Control>();

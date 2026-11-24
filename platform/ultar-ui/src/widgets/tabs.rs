@@ -25,6 +25,9 @@ pub struct Tabs {
     /// Natural width of each tab in 1/64 points, measured at the weight it is drawn with
     /// (the chosen tab semibold); empty before the first layout.
     pub(crate) widths: Vec<u32>,
+    /// Filled pills instead of an underlined strip (boards PhoneDial "filter"): label + 2 × 12,
+    /// 4 apart, the chosen pill on the `hover` fill, no rule and no underline.
+    pub(crate) pills: bool,
 }
 
 /// Fixed-point unit of [`Tabs::widths`] (1/64 point keeps the type `Eq`).
@@ -42,6 +45,31 @@ impl Tabs {
             selected: 0,
             first: 0,
             widths: Vec::new(),
+            pills: false,
+        }
+    }
+
+    /// The same bar drawn as filled pills (a filter of one list, boards PhoneDial).
+    pub fn pills(mut self) -> Tabs {
+        self.pills = true;
+        self
+    }
+
+    /// Inline padding of a tab.
+    fn pad(&self) -> f32 {
+        if self.pills {
+            Space::S12.points()
+        } else {
+            PAD.points()
+        }
+    }
+
+    /// Space between two tabs.
+    fn gap(&self) -> f32 {
+        if self.pills {
+            Space::S4.points()
+        } else {
+            0.0
         }
     }
 
@@ -70,7 +98,8 @@ impl Tabs {
             return None;
         }
         let widths: Vec<f32> = self.widths.iter().map(|w| *w as f32 / UNIT).collect();
-        (widths.iter().sum::<f32>() <= rect.w + 0.5).then_some(widths)
+        let gaps = self.gap() * (widths.len() as f32 - 1.0);
+        (widths.iter().sum::<f32>() + gaps <= rect.w + 0.5).then_some(widths)
     }
 
     /// How many whole tabs the bar shows at once.
@@ -129,7 +158,7 @@ impl Tabs {
     pub(crate) fn tab(&self, rect: Rect, index: usize, direction: Direction) -> Rect {
         let (offset, width) = match self.natural(rect) {
             Some(widths) => (
-                widths.iter().take(index).sum::<f32>(),
+                widths.iter().take(index).sum::<f32>() + self.gap() * index as f32,
                 widths.get(index).copied().unwrap_or(0.0),
             ),
             None => {
@@ -164,11 +193,12 @@ impl Tabs {
                 Weight::Regular
             };
             let text = cx.text_advance(tab, style::CONTROL_TEXT.weight(weight));
-            let width = text + 2.0 * PAD.points();
+            let width = text + 2.0 * self.pad();
             self.widths.push((width * UNIT).round().max(0.0) as u32);
         }
         let count = self.tabs.len() as f32;
-        let natural = self.widths.iter().map(|w| *w as f32 / UNIT).sum::<f32>();
+        let natural = self.widths.iter().map(|w| *w as f32 / UNIT).sum::<f32>()
+            + self.gap() * (count - 1.0).max(0.0);
         // Every tab stays a full target: a bar of many tabs on a narrow surface scrolls
         // (by whole tabs, the chosen one always visible) instead of shrinking them.
         let minimum = (cx.mode.min_target() * count).min(avail.max(cx.mode.min_target()));
@@ -187,8 +217,10 @@ impl Tabs {
         let previous = p.set_opacity(v.opacity());
         let direction = p.env().direction;
         let (line, hairline) = (p.color(ColorRole::Line), p.hairline());
-        let rule = Rect::new(rect.x, rect.bottom() - hairline, rect.w, hairline);
-        p.fill(rule, None, line);
+        if !self.pills {
+            let rule = Rect::new(rect.x, rect.bottom() - hairline, rect.w, hairline);
+            p.fill(rule, None, line);
+        }
         // Tabs scrolled out of the strip are cut at its edges.
         let saved = p.clip(rect.inflate(style::focus_outset()));
         for (index, label) in self.tabs.iter().enumerate() {
@@ -198,11 +230,14 @@ impl Tabs {
                 pressed: v.pressed && parts.1 == Some(index),
                 ..*v
             };
+            let chosen = index == self.selected;
             if state.hovered || state.pressed {
                 let bg = p.color(style::neutral_background(&state));
                 p.fill(tab, Some(Radius::Control), bg);
+            } else if chosen && self.pills {
+                let bg = p.color(ColorRole::Hover);
+                p.fill(tab, Some(Radius::Control), bg);
             }
-            let chosen = index == self.selected;
             let (role, weight) = if chosen {
                 (ColorRole::Text, Weight::Semibold)
             } else {
@@ -212,7 +247,9 @@ impl Tabs {
             let spec = style::CONTROL_TEXT.weight(weight);
             let inner = style::inset_inline(tab, Space::S8);
             style::draw_label(p, cx, label, spec, inner, TextAlign::Center, color);
-            if chosen {
+            if chosen && self.pills && v.focused {
+                style::focus_ring(p, tab.inflate(-style::focus_outset()), Radius::Control);
+            } else if chosen && !self.pills {
                 let accent = p.color(ColorRole::AccentText);
                 let bar = style::inset_inline(tab, Space::S8);
                 let bar = Rect::new(bar.x, tab.bottom() - INDICATOR, bar.w, INDICATOR);

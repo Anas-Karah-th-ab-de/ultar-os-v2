@@ -36,6 +36,8 @@ captured = 825
 netd = 826
 btd = 827
 volumed = 828
+# Call service (phone; docs/integration/ultar-phone.md).
+calld = 829
 nobody = 65534
 
 [groups]
@@ -54,6 +56,7 @@ busd = ["logd"]
 logd = ["busd"]
 settingsd = ["busd", "logd"]
 devd = ["busd", "logd"]
+calld = ["busd"]
 seat = ["compositor"]
 # The launcher's sockets at the bus and the log service are open to its group.
 launcher = ["busd", "logd"]

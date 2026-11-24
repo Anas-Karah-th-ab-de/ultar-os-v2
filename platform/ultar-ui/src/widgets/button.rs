@@ -35,7 +35,17 @@ pub struct Button {
     /// A hold button reports `Pressed`, `Repeated` while held and `Released` instead of
     /// `Activated` (show a password while held, delete digits while held).
     pub hold: bool,
+    /// Icon above the label in a tile (boards PhoneInCall controls) instead of a leading icon.
+    pub tile: bool,
+    /// A toggle: `Some(on)`; on = `hover` fill with a two-border `accent_text` edge, announced
+    /// as pressed. `None` for an ordinary button.
+    pub toggled: Option<bool>,
 }
+
+/// Inner spacing of a tile (inline, block).
+const TILE_PAD: (Space, Space) = (Space::S4, Space::S8);
+/// Space between the icon and the label of a tile.
+const TILE_GAP: Space = Space::S4;
 
 const LEAD: f32 = size::ICON_SMALL;
 const LEAD_GAP: Space = Space::S8;
@@ -49,7 +59,21 @@ impl Button {
             variant: ButtonVariant::Plain,
             icon: None,
             hold: false,
+            tile: false,
+            toggled: None,
         }
+    }
+
+    /// The same button as a tile: icon (24) above the label (small text, centred, wrapping).
+    pub fn tile(mut self) -> Button {
+        self.tile = true;
+        self
+    }
+
+    /// The same button as a toggle in state `on` (announced as pressed when on).
+    pub fn toggled(mut self, on: bool) -> Button {
+        self.toggled = Some(on);
+        self
     }
 
     /// The same button as a hold button.
@@ -82,8 +106,11 @@ impl Button {
     /// (the quiet button has a transparent one, as on the boards).
     /// With an error every kind has a two-border `danger` edge (boards).
     fn edge(&self, error: bool) -> f32 {
+        let wide =
+            self.toggled == Some(true) || (self.tile && self.variant == ButtonVariant::Danger);
         match (self.variant, error) {
             (ButtonVariant::Primary, _) | (_, true) => 2.0 * size::BORDER,
+            _ if wide => 2.0 * size::BORDER,
             _ => size::BORDER,
         }
     }
@@ -96,6 +123,9 @@ impl Button {
         (loading, error): (bool, bool),
     ) -> Size {
         let target = cx.mode.min_target();
+        if self.tile {
+            return self.measure_tile(cx, avail);
+        }
         let text = cx.text_size(&self.label, style::BUTTON_TEXT, None);
         // Boards: padding 16 inside the border (CSS border-box), so the edge adds its width.
         let lead = self.lead_width(loading || error);
@@ -106,6 +136,15 @@ impl Button {
     /// Background, foreground and border colour for the state.
     fn colors(&self, p: &Painter<'_>, v: &Visual) -> (Option<Color>, Color, Option<Color>) {
         let neutral = p.color(style::neutral_background(v));
+        if self.toggled == Some(true) && self.variant != ButtonVariant::Danger {
+            let fill = if v.hovered || v.pressed {
+                neutral
+            } else {
+                p.color(ColorRole::Hover)
+            };
+            let text = p.color(ColorRole::Text);
+            return (Some(fill), text, Some(p.color(ColorRole::AccentText)));
+        }
         match self.variant {
             ButtonVariant::Primary => {
                 let fg = p.color(ColorRole::OnAccent);
@@ -135,6 +174,9 @@ impl Button {
     }
 
     pub(crate) fn paint(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, rect: Rect, v: &Visual) {
+        if self.tile {
+            return self.paint_tile(p, cx, rect, v);
+        }
         let previous = p.set_opacity(v.opacity());
         let (bg, fg, border) = self.colors(p, v);
         if let Some(bg) = bg {
@@ -170,6 +212,79 @@ impl Button {
             }
         }
         p.text(&layout, content, TextAlign::Center, fg);
+        if v.focused {
+            style::focus_ring(p, rect, Radius::Card);
+        }
+        p.set_opacity(previous);
+    }
+}
+
+impl Button {
+    /// Size of a tile: the wider of icon and label plus padding, icon + gap + label high.
+    fn measure_tile(&self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
+        let edge = self.edge(false);
+        let inner_w = (avail - 2.0 * (TILE_PAD.0.points() + edge)).max(size::ICON);
+        let label = cx.text_size(&self.label, style::SMALL_TEXT, Some(inner_w));
+        let content_w = label.w.max(size::ICON);
+        let w = content_w + 2.0 * (TILE_PAD.0.points() + edge);
+        // A row of tiles is as high as its tile with the two-border edge (toggle on, danger):
+        // every tile reserves that edge so that the row stays even (boards PhoneInCall).
+        let wide = 2.0 * size::BORDER;
+        let h = size::ICON + TILE_GAP.points() + label.h + 2.0 * (TILE_PAD.1.points() + wide);
+        let target = cx.mode.min_target();
+        Size::new(w.min(avail).max(target), h.max(target))
+    }
+
+    /// A tile: fill and edge as the button kind (toggle on: `hover` + `accent_text` edge),
+    /// the icon centred at the top, the label centred below it.
+    fn paint_tile(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, rect: Rect, v: &Visual) {
+        let previous = p.set_opacity(v.opacity());
+        let (bg, fg, border) = self.colors(p, v);
+        if let Some(bg) = bg {
+            p.fill(rect, Some(Radius::Control), bg);
+        }
+        let border = if v.error {
+            Some(p.color(ColorRole::Danger))
+        } else {
+            border
+        };
+        if let Some(border) = border {
+            p.stroke(rect, Some(Radius::Control), self.edge(v.error), border);
+        }
+        let edge = self.edge(v.error);
+        let inner = Rect::new(
+            rect.x + TILE_PAD.0.points() + edge,
+            rect.y + TILE_PAD.1.points() + edge,
+            (rect.w - 2.0 * (TILE_PAD.0.points() + edge)).max(0.0),
+            (rect.h - 2.0 * (TILE_PAD.1.points() + edge)).max(0.0),
+        );
+        let icon = match (v.loading, v.error, self.icon) {
+            (_, true, _) => Some(IconId::Error),
+            (false, false, icon) => icon,
+            (true, false, _) => None,
+        };
+        let slot = Rect::new(
+            inner.x + (inner.w - size::ICON) / 2.0,
+            inner.y,
+            size::ICON,
+            size::ICON,
+        );
+        match icon {
+            Some(icon) => p.icon(icon, slot, size::ICON, QuarterTurns::None, fg),
+            None if v.loading => p.spinner(slot, cx.spin, fg),
+            None => {}
+        }
+        let top = inner.y + size::ICON + TILE_GAP.points();
+        let area = Rect::new(inner.x, top, inner.w, (inner.bottom() - top).max(0.0));
+        style::draw_label(
+            p,
+            cx,
+            &self.label,
+            style::SMALL_TEXT,
+            area,
+            TextAlign::Center,
+            fg,
+        );
         if v.focused {
             style::focus_ring(p, rect, Radius::Card);
         }

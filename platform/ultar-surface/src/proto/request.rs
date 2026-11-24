@@ -304,6 +304,15 @@ pub enum Request {
     /// Looks for displays again and sends `OutputDetails` for each (needs
     /// [`Rights::OUTPUT_CONFIG`]).
     DetectOutputs,
+    /// The app draws the header of this toplevel itself (needs
+    /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
+    /// the "not responding" close stay with the compositor; system dialogs keep theirs.
+    ClientHeader {
+        /// The toplevel.
+        surface: SurfaceId,
+        /// Draws its own header.
+        on: bool,
+    },
 }
 
 impl Request {
@@ -351,6 +360,7 @@ impl Request {
             Request::ConfirmOutputs { .. } => 35,
             Request::IdentifyOutputs { .. } => 36,
             Request::DetectOutputs => 37,
+            Request::ClientHeader { .. } => 42,
         }
     }
 
@@ -520,6 +530,9 @@ impl Request {
             Request::IdentifyOutputs { numbers, ms } => {
                 super::outputs::encode_numbers(w, numbers);
                 w.u32(*ms);
+            }
+            Request::ClientHeader { surface, on } => {
+                w.u32(surface.0).u8(u8::from(*on));
             }
             _ => {}
         }

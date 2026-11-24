@@ -53,6 +53,7 @@ impl Ui {
             },
             Widget::TextField(field) => match part {
                 Some(0) if field.clear() => ActionKind::TextChanged,
+                Some(2) => ActionKind::Activated,
                 _ => return,
             },
             Widget::ListItem(_) => return self.activate_item(id, out),

@@ -15,6 +15,10 @@ use crate::widgets::{Label, MeasureCx, PaintCx};
 const PAD: Space = Space::S12;
 /// Space between the lines of a tile.
 const TILE_GAP: Space = Space::S4;
+/// Inner spacing of a compact choice (inline, block).
+const CHOICE_PAD: (Space, Space) = (Space::S12, Space::S4);
+/// Smallest height of a compact choice (board: `space.48`).
+const CHOICE_MIN: Space = Space::S48;
 
 impl RadioGroup {
     /// The second line of option `index`: the reason it is not available, else its detail.
@@ -23,14 +27,22 @@ impl RadioGroup {
             .or_else(|| self.details.get(index).and_then(Option::as_ref))
     }
 
+    /// Inner spacing (inline, block) of a card of this layout.
+    fn pads(&self) -> (f32, f32) {
+        match self.layout {
+            RadioLayout::Choices => (CHOICE_PAD.0.points(), CHOICE_PAD.1.points()),
+            _ => (PAD.points(), PAD.points()),
+        }
+    }
+
     /// Width the text of a card or tile has inside a card of `width`.
     fn text_width(&self, width: f32) -> f32 {
-        let dot = if self.layout == RadioLayout::Tiles {
-            0.0
-        } else {
-            DOT + GAP.points()
+        let lead = match self.layout {
+            RadioLayout::Tiles => 0.0,
+            RadioLayout::Choices => size::ICON_SMALL + Space::S8.points(),
+            _ => DOT + GAP.points(),
         };
-        (width - 2.0 * PAD.points() - dot).max(0.0)
+        (width - 2.0 * self.pads().0 - lead).max(0.0)
     }
 
     /// Height of the card of option `index` at `width`.
@@ -44,18 +56,24 @@ impl RadioGroup {
                 text += TILE_GAP.points();
             }
         }
-        let content = if self.layout == RadioLayout::Tiles {
-            text
-        } else {
-            text.max(DOT)
-        };
-        content + 2.0 * PAD.points()
+        match self.layout {
+            RadioLayout::Tiles => text + 2.0 * PAD.points(),
+            // Boards: border-box with the two-border edge of the chosen choice.
+            RadioLayout::Choices => {
+                let edge = 4.0 * size::BORDER;
+                (text + 2.0 * self.pads().1 + edge).max(CHOICE_MIN.points())
+            }
+            _ => text.max(DOT) + 2.0 * PAD.points(),
+        }
     }
 
     pub(super) fn measure_cards(&mut self, cx: &mut MeasureCx<'_>, avail: f32) -> Size {
         let count = self.options.len();
         let gap = GAP.points();
-        let row = matches!(self.layout, RadioLayout::CardRow | RadioLayout::Tiles);
+        let row = matches!(
+            self.layout,
+            RadioLayout::CardRow | RadioLayout::Tiles | RadioLayout::Choices
+        );
         let width = if row && count > 0 {
             ((avail - gap * (count as f32 - 1.0)) / count as f32).max(0.0)
         } else {
@@ -87,6 +105,10 @@ impl RadioGroup {
         v: &Visual,
     ) {
         let (chosen, off) = (self.selected == Some(index), self.is_unavailable(index));
+        if self.layout == RadioLayout::Choices {
+            self.paint_choice(p, cx, card, index, v);
+            return;
+        }
         let (fill, edge, width) = match (chosen, off) {
             (_, true) => (None, ColorRole::Line, p.hairline()),
             (true, false) => (
@@ -220,5 +242,72 @@ impl RadioGroup {
             let at = Rect::new(below.x, below.y + TILE_GAP.points(), below.w, h);
             p.text(&layout, at, TextAlign::Center, muted);
         }
+    }
+
+    /// A compact choice: check mark (when chosen) and the two lines from the start edge.
+    fn paint_choice(
+        &self,
+        p: &mut Painter<'_>,
+        cx: &PaintCx<'_>,
+        card: Rect,
+        index: usize,
+        v: &Visual,
+    ) {
+        let (chosen, off) = (self.selected == Some(index), self.is_unavailable(index));
+        let hair = p.hairline();
+        let (fill, edge, width) = match (chosen, off) {
+            (_, true) => (None, ColorRole::Line, hair),
+            (true, false) => (Some(ColorRole::Hover), ColorRole::AccentText, 2.0 * hair),
+            (false, false) => {
+                let fill = (v.hovered || v.pressed).then(|| style::neutral_background(v));
+                (fill, ColorRole::ControlBorder, hair)
+            }
+        };
+        if let Some(fill) = fill {
+            let color = p.color(fill);
+            p.fill(card, Some(Radius::Control), color);
+        }
+        let color = p.color(edge);
+        p.stroke(card, Some(Radius::Control), width, color);
+        let (pi, pb) = self.pads();
+        let mut inner = Rect::new(
+            card.x + pi,
+            card.y + pb,
+            (card.w - 2.0 * pi).max(0.0),
+            (card.h - 2.0 * pb).max(0.0),
+        );
+        let direction = p.env().direction;
+        let slot = style::take_start(&mut inner, size::ICON_SMALL, direction);
+        style::take_start(&mut inner, Space::S8.points(), direction);
+        if chosen {
+            let mark = style::centered(slot, Size::new(size::ICON_SMALL, size::ICON_SMALL));
+            let text = p.color(ColorRole::Text);
+            p.icon(
+                IconId::Check,
+                mark,
+                size::ICON_SMALL,
+                QuarterTurns::None,
+                text,
+            );
+        }
+        let lines = self.lines_height(p, cx, index, inner.w);
+        let top = inner.y + ((inner.h - lines) / 2.0).max(0.0);
+        let area = Rect::new(inner.x, top, inner.w, lines);
+        self.paint_lines(p, cx, area, index, (TextAlign::Start, off));
+        if v.focused {
+            style::focus_ring(p, card, Radius::Control);
+        }
+    }
+
+    /// Height of the two lines of option `index` at `width` (painting scale).
+    fn lines_height(&self, p: &mut Painter<'_>, cx: &PaintCx<'_>, index: usize, width: f32) -> f32 {
+        let scale = p.env().scale;
+        let title = self.options[index].resolve(cx.tr);
+        let mut h = p.layout(&title, TITLE, Some(width)).height / scale;
+        if let Some(second) = self.second_line(index) {
+            let text = second.resolve(cx.tr);
+            h += p.layout(&text, style::SMALL_TEXT, Some(width)).height / scale;
+        }
+        h
     }
 }

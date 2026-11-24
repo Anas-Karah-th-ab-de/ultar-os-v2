@@ -68,6 +68,11 @@ pub struct TextField {
     pub(crate) reveal_outside: bool,
     /// `true` while the password is shown by that separate button (a toggle).
     pub(crate) shown: bool,
+    /// Action button inside the field at its end edge (icon, accessible name); a click on it
+    /// reports `Activated` for the field (boards: the backspace of the phone number field).
+    pub(crate) end_action: Option<(crate::icon::IconId, Label)>,
+    /// The field box fills the height its node is given (see [`TextField::fill_height`]).
+    pub(crate) fill: bool,
     text: String,
     caret: usize,
     max_len: usize,
@@ -116,10 +121,27 @@ impl TextField {
             show_label: false,
             reveal_outside: false,
             shown: false,
+            end_action: None,
+            fill: false,
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
         }
+    }
+
+    /// The same field with an action button inside it at the end edge: a 32-point target
+    /// showing `icon`, named `name`; a click on it reports [`crate::event::ActionKind::Activated`]
+    /// for the field (Enter still reports `Submitted`). Not for search or password fields.
+    pub fn end_action(mut self, icon: crate::icon::IconId, name: Label) -> TextField {
+        self.end_action = Some((icon, name));
+        self
+    }
+
+    /// The same field whose box fills the height its node is given (boards: the 48-point
+    /// phone number field); without it the box is one target high.
+    pub fn fill_height(mut self) -> TextField {
+        self.fill = true;
+        self
     }
 
     /// The same field with a placeholder.
@@ -339,7 +361,12 @@ impl TextField {
     /// The field part of the node: below its visible label (if shown), above the error.
     pub(crate) fn field(&self, rect: Rect, mode: InputMode) -> Rect {
         let top = if self.show_label { LABEL_BAND } else { 0.0 };
-        let h = mode.min_target().min((rect.h - top).max(0.0));
+        let room = (rect.h - top).max(0.0);
+        let h = if self.fill {
+            room
+        } else {
+            mode.min_target().min(room)
+        };
         Rect::new(rect.x, rect.y + top, rect.w, h)
     }
 

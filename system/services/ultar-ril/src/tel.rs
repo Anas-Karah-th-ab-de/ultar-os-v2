@@ -14,6 +14,32 @@ pub const CMD_CALL_ANSWER: u16 = 0x0204;
 pub const CMD_CALL_STATUS: u16 = 0x0205;
 pub const CMD_CALL_LIST: u16 = 0x0206;
 pub const CMD_CALL_CONT_DTMF: u16 = 0x0208;
+/// SS_MANAGE_CALL (libsamsung-ipc ss.h: hold, swap, release held) – // VERIFY am Gerät.
+pub const CMD_SS_MANAGE_CALL: u16 = 0x0C07;
+/// SND_MIC_MUTE_CTRL (libsamsung-ipc snd.h) – // VERIFY am Gerät.
+pub const CMD_SND_MIC_MUTE: u16 = 0x0901;
+/// Manage-call command "hold the active call and accept / resume the other" (3GPP TS 22.030 "2").
+pub const MANAGE_HOLD_SWAP: u8 = 2;
+/// CONT_DTMF state: tone starts (1) / stops (2) – // VERIFY.
+pub const DTMF_START: u8 = 1;
+/// See [`DTMF_START`].
+pub const DTMF_STOP: u8 = 2;
+
+/// SS_MANAGE_CALL payload: command, call index.
+pub fn build_manage_call(command: u8, index: u8) -> Vec<u8> {
+    vec![command, index]
+}
+
+/// CALL_CONT_DTMF payload: state (start / stop) and the key as ASCII; `None` for a key a tone
+/// cannot have.
+pub fn build_dtmf(state: u8, key: u8) -> Option<Vec<u8>> {
+    (key.is_ascii_digit() || key == b'*' || key == b'#').then(|| vec![state, key])
+}
+
+/// SND_MIC_MUTE_CTRL payload: 1 muted, 0 not.
+pub fn build_mute(on: bool) -> Vec<u8> {
+    vec![u8::from(on)]
+}
 pub const CMD_SS_USSD: u16 = 0x0C08;
 pub const CMD_SMS_SEND_MSG: u16 = 0x0401;
 pub const CMD_SMS_INCOMING_MSG: u16 = 0x0402;

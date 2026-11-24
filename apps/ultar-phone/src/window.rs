@@ -1,0 +1,332 @@
+//! The phone in a compositor window (`ultar-surface`): a toplevel whose header the app draws
+//! itself (`ClientHeader`, right `ui.client-header`), the incoming-call screen above the lock
+//! screen while a call rings (`Role::CallScreen`, right `ui.call-screen`), input translated
+//! for the toolkit, painting with damage, and the platform requests of [`Host`]
+//! (clipboard, window operations) carried out on the connection.
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
+use crate::app::PhoneApp;
+use crate::click::WindowOp;
+use crate::port::{CallPort, Host};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use ultar_surface::client::{Client, ClientError, Window, WindowConfig};
+use ultar_surface::proto::{Configure, Event, Request, Role, WindowState};
+use ultar_surface::ui::{device_size, translate};
+use ultar_ui::canvas::{Canvas, PixelFormat};
+use ultar_ui::Point;
+
+/// Time the launcher may take to start Settings (it answers after the app is ready).
+const LAUNCH_WAIT: Duration = Duration::from_secs(10);
+
+/// MIME type of a copied number.
+const TEXT: &str = "text/plain;charset=utf-8";
+
+/// A request of the app to the platform, carried out by [`PhoneWindow`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostOp {
+    /// Offer this text on the clipboard.
+    Copy(String),
+    /// Window operation.
+    Window(WindowOp),
+    /// Open the phone settings (through the launcher, `launcher.start` v2).
+    Settings,
+    /// Create a contact for this number (no Contacts app yet: reported to the caller).
+    Contact(String),
+}
+
+/// [`Host`] that queues its requests for the window.
+#[derive(Clone, Default)]
+pub struct QueuedHost {
+    ops: Arc<Mutex<Vec<HostOp>>>,
+}
+
+impl QueuedHost {
+    fn push(&self, op: HostOp) {
+        let mut ops = self.ops.lock().unwrap_or_else(|e| e.into_inner());
+        if ops.len() < 64 {
+            ops.push(op);
+        }
+    }
+
+    /// Takes the queued requests.
+    pub fn take(&self) -> Vec<HostOp> {
+        std::mem::take(&mut *self.ops.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+}
+
+impl Host for QueuedHost {
+    fn copy_text(&mut self, text: &str) -> bool {
+        self.push(HostOp::Copy(text.to_owned()));
+        true
+    }
+    fn window(&mut self, op: WindowOp) {
+        self.push(HostOp::Window(op));
+    }
+    fn open_settings(&mut self) {
+        self.push(HostOp::Settings);
+    }
+    fn create_contact(&mut self, number: &str) {
+        self.push(HostOp::Contact(number.to_owned()));
+    }
+}
+
+/// What one step of the window loop ended with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Step {
+    /// Keep going.
+    Running,
+    /// The user closed the window.
+    Closed,
+    /// Requests only another program can carry out (settings, contacts).
+    Forward(Vec<HostOp>),
+}
+
+/// The phone app in a window.
+pub struct PhoneWindow<P: CallPort> {
+    client: Client,
+    window: Window,
+    call_screen: Option<Window>,
+    canvas: Option<Canvas>,
+    app: PhoneApp<P, QueuedHost>,
+    host: QueuedHost,
+    pointer: Point,
+    serial: u32,
+    copied: Option<String>,
+    started: Instant,
+    maximized: bool,
+    launcher: Option<ultar_bus::Client>,
+    /// Settings asked for; waiting for the activation token of that click.
+    settings_pending: bool,
+}
+
+fn serial_of(event: &Event) -> Option<u32> {
+    match event {
+        Event::PointerButton { serial, .. } | Event::Key { serial, .. } => Some(*serial),
+        Event::TouchDown { serial, .. } => Some(*serial),
+        _ => None,
+    }
+}
+
+impl<P: CallPort> PhoneWindow<P> {
+    /// Opens the window on `client`; `host` must be the host given to `app`.
+    pub fn open(
+        mut client: Client,
+        app: PhoneApp<P, QueuedHost>,
+        host: QueuedHost,
+        title: &str,
+    ) -> Result<PhoneWindow<P>, ClientError> {
+        let window = Window::create(&mut client, &WindowConfig::toplevel(title))?;
+        client.send(&Request::ClientHeader {
+            surface: window.surface(),
+            on: true,
+        })?;
+        Ok(PhoneWindow {
+            client,
+            window,
+            call_screen: None,
+            canvas: None,
+            app,
+            host,
+            pointer: Point::new(0.0, 0.0),
+            serial: 0,
+            copied: None,
+            started: Instant::now(),
+            maximized: false,
+            launcher: None,
+            settings_pending: false,
+        })
+    }
+
+    /// Uses `bus` to reach the app launcher (settings page).
+    pub fn with_launcher(mut self, bus: ultar_bus::Client) -> Self {
+        self.launcher = Some(bus);
+        self
+    }
+
+    /// The app (feed it `call.state` with [`PhoneApp::set_state`]).
+    pub fn app(&mut self) -> &mut PhoneApp<P, QueuedHost> {
+        &mut self.app
+    }
+
+    /// Milliseconds since the window opened (the app's clock).
+    pub fn now_ms(&self) -> u64 {
+        u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    /// Waits up to `timeout` for one event, handles it, carries out the app's requests,
+    /// keeps the call screen in step with the app and draws.
+    pub fn step(&mut self, timeout: Duration, wall_s: i64) -> Result<Step, ClientError> {
+        if let Some(event) = self.client.next_event(Some(timeout))? {
+            if let Some(step) = self.handle(&event)? {
+                return Ok(step);
+            }
+        }
+        let now = self.now_ms();
+        // Clock work of the app (toasts, timer) cannot fail in a way the window could act on.
+        let _ = self.app.tick(now, wall_s);
+        let forward = self.carry_out()?;
+        self.sync_call_screen()?;
+        self.draw()?;
+        Ok(match forward {
+            Some(step) => step,
+            None => Step::Running,
+        })
+    }
+
+    fn handle(&mut self, event: &Event) -> Result<Option<Step>, ClientError> {
+        if let Some(s) = serial_of(event) {
+            self.serial = s;
+        }
+        if let Event::ActivationToken { token } = event {
+            if std::mem::take(&mut self.settings_pending) {
+                self.open_settings(Some(*token));
+            }
+            return Ok(None);
+        }
+        if let Event::SendRequest { transfer, mime } = event {
+            let data = match (&self.copied, mime.as_str()) {
+                (Some(text), TEXT) => text.as_bytes().to_vec(),
+                _ => Vec::new(),
+            };
+            self.client.send(&Request::SendData {
+                transfer: *transfer,
+                data,
+                last: true,
+            })?;
+            return Ok(None);
+        }
+        let screen = self.call_screen.as_mut().is_some_and(|w| w.handle(event));
+        if !screen && self.window.handle(event) {
+            if self.window.close_requested() {
+                return Ok(Some(Step::Closed));
+            }
+            if let Event::Configure(c) = event {
+                self.configure(c)?;
+            }
+            return Ok(None);
+        }
+        if let Event::Configure(c) = event {
+            self.configure(c)?;
+            return Ok(None);
+        }
+        if let Event::PointerEnter { x, y, .. } | Event::PointerMotion { x, y, .. } = event {
+            self.pointer = Point::new(*x as f32, *y as f32);
+        }
+        if let Some(ui_event) = translate(event, self.pointer) {
+            // A failed rebuild leaves the last tree on screen; the next event retries.
+            let _ = self.app.handle(ui_event);
+        }
+        Ok(None)
+    }
+
+    fn configure(&mut self, c: &Configure) -> Result<(), ClientError> {
+        let ui = self.app.ui();
+        ui.set_scale(c.scale_milli as f32 / 1000.0)
+            .map_err(|_| ClientError::InvalidSize)?;
+        ui.set_size(ultar_ui::Size::new(c.width as f32, c.height as f32))
+            .map_err(|_| ClientError::InvalidSize)?;
+        let (w, h) = device_size(c);
+        let keep = self
+            .canvas
+            .as_ref()
+            .is_some_and(|k| k.width() == w && k.height() == h);
+        if !keep {
+            let canvas =
+                Canvas::new(w, h, PixelFormat::Bgrx8).map_err(|_| ClientError::InvalidSize)?;
+            self.canvas = Some(canvas);
+        }
+        self.maximized = c.state == WindowState::Maximized;
+        // The new size needs a new layout of the tree.
+        self.app.relayout().map_err(|_| ClientError::InvalidSize)
+    }
+
+    /// Carries out the app's platform requests; returns what only others can do.
+    fn carry_out(&mut self) -> Result<Option<Step>, ClientError> {
+        let mut forward = Vec::new();
+        let surface = self.window.surface();
+        for op in self.host.take() {
+            match op {
+                HostOp::Copy(text) => {
+                    self.copied = Some(text);
+                    let mimes = vec![TEXT.to_owned()];
+                    self.client.send(&Request::SetSelection {
+                        serial: self.serial,
+                        mimes,
+                    })?;
+                }
+                HostOp::Window(WindowOp::Close) => return Ok(Some(Step::Closed)),
+                HostOp::Window(op) => {
+                    let state = match op {
+                        WindowOp::Minimize => WindowState::Minimized,
+                        _ if self.maximized => WindowState::Normal,
+                        _ => WindowState::Maximized,
+                    };
+                    self.client.send(&Request::SetState { surface, state })?;
+                }
+                // The click's activation token lets Settings take the focus; it comes back as
+                // an event, then the launcher is asked (`open_settings`).
+                // Without a user action of the compositor (serial 0) there is no token to ask for.
+                HostOp::Settings if self.serial == 0 => self.open_settings(None),
+                HostOp::Settings => {
+                    self.settings_pending = true;
+                    self.client.request_activation(self.serial)?;
+                }
+                other => forward.push(other),
+            }
+        }
+        Ok((!forward.is_empty()).then_some(Step::Forward(forward)))
+    }
+
+    /// Opens the phone's page in Settings; without a launcher (or when it refuses) the app
+    /// shows why.
+    fn open_settings(&mut self, token: Option<u64>) {
+        let opened = self
+            .launcher
+            .as_ref()
+            .is_some_and(|bus| crate::launch::open_phone_settings(bus, token, LAUNCH_WAIT).is_ok());
+        if !opened {
+            self.app.notify_error("phone.error.launch");
+        }
+    }
+
+    /// While a call rings the app is shown on a call-screen surface too (above the lock
+    /// screen); it goes when the call stops ringing. Without the right the compositor
+    /// refuses the role and the ordinary window stays the only one.
+    fn sync_call_screen(&mut self) -> Result<(), ClientError> {
+        let wanted = self.app.wants_call_screen();
+        match (wanted, self.call_screen.take()) {
+            (true, None) => {
+                let config = WindowConfig {
+                    role: Role::CallScreen,
+                    ..WindowConfig::toplevel("")
+                };
+                self.call_screen = Window::create(&mut self.client, &config).ok();
+            }
+            (false, Some(w)) => w.destroy(&mut self.client)?,
+            (_, keep) => self.call_screen = keep,
+        }
+        Ok(())
+    }
+
+    /// Paints and presents when needed.
+    fn draw(&mut self) -> Result<(), ClientError> {
+        let Some(canvas) = self.canvas.as_mut() else {
+            return Ok(());
+        };
+        let ui = self.app.ui();
+        if !ui.needs_paint() {
+            return Ok(());
+        }
+        ui.paint_all(canvas);
+        let size = (canvas.width(), canvas.height());
+        if self.window.can_draw() {
+            self.window
+                .present(&mut self.client, canvas.data(), size, &[])?;
+        }
+        if let Some(screen) = self.call_screen.as_mut().filter(|w| w.can_draw()) {
+            screen.present(&mut self.client, canvas.data(), size, &[])?;
+        }
+        Ok(())
+    }
+}

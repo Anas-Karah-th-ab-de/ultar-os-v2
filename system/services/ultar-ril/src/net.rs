@@ -60,7 +60,7 @@ fn map_rat(act: u8) -> Rat {
         0 | 1 => Rat::Gsm,
         3 => Rat::Edge,
         2 => Rat::Umts,
-        4 | 5 | 6 => Rat::Hspa,
+        4..=6 => Rat::Hspa,
         7 => Rat::Lte,
         _ => Rat::Unknown,
     }
@@ -108,7 +108,7 @@ pub fn signal<L: ModemLink>(
                 Ok((Some(dbm), Some(raw)))
             } else if raw <= 31 {
                 let dbm = -113 + 2 * raw as i32; // ASU
-                let bars = (raw * 5 / 31) as u8;
+                let bars = raw * 5 / 31;
                 Ok((Some(dbm), Some(bars)))
             } else {
                 Ok((None, None))
