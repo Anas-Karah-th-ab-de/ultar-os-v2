@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Power off and restart from a process (reboot(2), like ultar-init at its end) must end the virtual machine:
 # ACPI S5 / ACPI reset first, the firmware's ResetSystem as fallback (forced here with the file
-# ultar-kern/aus-firmware, 256 MiB RAM: the firmware's runtime code then lies in the process's user window).
+# ultar-kern/aus-firmware; the kernel does not start with 256 MiB, so the runtime code is not in the user window here).
 # q35 with 1 and 4 processors, pc (PIIX4 ACPI), VMware-like (pc, NVMe, e1000e, SVGA). -no-reboot turns a
 # restart into the end of QEMU. Never an exception screen. Verdict line: "AUSSCHALTEN: ALLES OK".
 # IMG=<esp image> (default out/ultar-kern-esp.img, built by scripts/build-kern.sh with /bin/ausschalttest).
@@ -30,7 +30,8 @@ for was in aus neustart; do
   fall q35-smp4 "$was" "$IMG" MACHINE=q35 SMP=4
   fall pc-piix4 "$was" "$IMG" MACHINE=pc SMP=2
   fall vmware-like-smp4 "$was" "$IMG" MACHINE=pc SMP=4 DEV="nvme,serial=ultar" NIC=e1000e "QARGS=-vga vmware"
-  fall uefi-fallback-256m "$was" "$WORK/fw.img" MACHINE=q35 SMP=4 MEM=256
+  fall uefi-fallback "$was" "$WORK/fw.img" MACHINE=q35 SMP=4
+  fall uefi-fallback-vmware-like "$was" "$WORK/fw.img" MACHINE=pc SMP=4 DEV="nvme,serial=ultar" NIC=e1000e "QARGS=-vga vmware"
 done
 [ "$fail" = 0 ] && echo "AUSSCHALTEN: ALLES OK"
 exit "$fail"
