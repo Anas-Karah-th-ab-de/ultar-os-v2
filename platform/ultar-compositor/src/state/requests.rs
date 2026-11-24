@@ -488,12 +488,12 @@ impl State {
         if self.windows[index].secure {
             return Err(ErrorCode::Permission);
         }
-        if self.windows[index].client_header == on {
+        if self.windows[index].title.client_drawn == on {
             return Ok(());
         }
         let area = self.windows[index].painted_area();
-        self.windows[index].client_header = on;
-        self.windows[index].title_cache = None;
+        self.windows[index].title.client_drawn = on;
+        self.windows[index].title.cache = None;
         self.damage_logical(area);
         let frame = self.windows[index].frame;
         self.configure_window(index, frame);

@@ -303,7 +303,7 @@ fn paint(
         if let Some(shadow) = shadow {
             shadow.paint(frame, clip, &f);
         }
-        if let Some((_, title)) = w.title_cache.as_ref().filter(|_| w.decorated()) {
+        if let Some((_, title)) = w.title.cache.as_ref().filter(|_| w.decorated()) {
             let t = Rect::new(f.x, f.y, f.w, content.y - f.y);
             let piece = Piece {
                 dest: t,
@@ -439,20 +439,20 @@ fn refresh_titles(state: &mut State, o: &Output) {
             scale_milli: o.scale_milli,
             title,
             focused: focus == Some(w.key),
-            hover: w.buttons.hover,
-            pressed: w.buttons.pressed,
+            hover: w.title.buttons.hover,
+            pressed: w.title.buttons.pressed,
             maximized: w.state == ultar_surface::proto::WindowState::Maximized,
             unresponsive: w.unresponsive,
             secure: w.secure,
         };
-        if w.title_cache.as_ref().is_none_or(|(k, _)| *k != key) {
+        if w.title.cache.as_ref().is_none_or(|(k, _)| *k != key) {
             work.push((i, key));
         }
     }
     for (i, key) in work {
         let image = state.decor.as_mut().and_then(|d| d.render(&key));
         if let (Some(image), Some(w)) = (image, state.windows.get_mut(i)) {
-            w.title_cache = Some((key, image));
+            w.title.cache = Some((key, image));
         }
     }
     let _ = TITLEBAR;

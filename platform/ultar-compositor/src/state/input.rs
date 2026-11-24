@@ -325,8 +325,8 @@ impl State {
             (Some(b), Some((k, Part::Button(h), _))) if k == key && h == b => Some(b),
             _ => None,
         };
-        if self.windows[i].buttons.hover != shown {
-            self.windows[i].buttons.hover = shown;
+        if self.windows[i].title.buttons.hover != shown {
+            self.windows[i].title.buttons.hover = shown;
             let f = self.windows[i].frame;
             self.damage_logical(Rect::new(f.x, f.y, f.w, decor::TITLEBAR));
         }

@@ -31,22 +31,29 @@ pub struct Window {
     pub mapped: bool,
     /// The app does not answer pings.
     pub unresponsive: bool,
-    /// Title bar buttons under the pointer and held.
-    pub buttons: TitleButtons,
-    /// Rendered title bar and what it was rendered for.
-    pub title_cache: Option<(TitleKey, Image)>,
+    /// The title bar: its buttons, its rendered picture, or the app's own.
+    pub title: TitleBar,
     /// A system dialog (trusted path): stacked above the panels, modal,
     /// marked with the lock icon in a title bar apps cannot cover.
     pub secure: bool,
     /// Focus when mapped, if the grant is still valid then (an activation
     /// token was presented before the window had content).
     pub activate_on_map: Option<super::Grant>,
-    /// The app draws its own header (`ClientHeader`, right `ui.client-header`).
-    pub client_header: bool,
     /// Id in the shell's window list (never reused in the session).
     pub id: u32,
     /// Its workspace and whether that one is shown.
     pub place: Place,
+}
+
+/// A window's title bar.
+#[derive(Debug, Default)]
+pub struct TitleBar {
+    /// Buttons under the pointer and held.
+    pub buttons: TitleButtons,
+    /// Rendered title bar and what it was rendered for.
+    pub cache: Option<(TitleKey, Image)>,
+    /// The app draws its own header (`ClientHeader`, right `ui.client-header`).
+    pub client_drawn: bool,
 }
 
 /// The title bar buttons a window shows as hovered or held.
@@ -82,11 +89,9 @@ impl Window {
             pending: None,
             mapped: false,
             unresponsive: false,
-            buttons: TitleButtons::default(),
-            title_cache: None,
+            title: TitleBar::default(),
             secure: false,
             activate_on_map: None,
-            client_header: false,
             place: Place {
                 workspace,
                 shown: true,
@@ -98,7 +103,7 @@ impl Window {
     /// Has compositor decorations (not fullscreen, not in phone mode, not drawing its own
     /// header).
     pub fn decorated(&self) -> bool {
-        self.state != WindowState::Fullscreen && !self.place.bare && !self.client_header
+        self.state != WindowState::Fullscreen && !self.place.bare && !self.title.client_drawn
     }
 
     /// Visible on screen.
