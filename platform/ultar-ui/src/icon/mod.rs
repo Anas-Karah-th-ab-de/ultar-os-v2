@@ -191,6 +191,8 @@ icons! {
         "M12 3.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3zM5 9l7 1 7-1M12 10v5M12 15l-3 6M12 15l3 6";
     Spark, "spark", true, "Assistant.",
         "M5 5h14v10H10l-5 4zM12 7.5l.9 1.9 1.9.9-1.9.9-.9 1.9-.9-1.9-1.9-.9 1.9-.9z";
+    Mark, "mark", false, "Brand mark: the overview button (two open arcs, drawn in the accent text colour).",
+        "M12 3a9 9 0 1 0 9 9M12 8a4 4 0 1 0 4 4";
     Update, "update", false, "Updates.",
         "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 16V8M8.5 11.5L12 8l3.5 3.5";
     Shot, "shot", false, "Screenshot.",

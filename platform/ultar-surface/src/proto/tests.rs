@@ -45,6 +45,16 @@ fn sample_requests() -> Vec<Request> {
         Request::RequestActivation { serial: 4 },
         Request::Activate { surface: s, token: u64::MAX - 3 },
         Request::ListWindows,
+        Request::ShellFocus { surface: s },
+        Request::ShellFocus { surface: SurfaceId(0) },
+        Request::WindowAction { window: 7, action: WindowAction::Activate },
+        Request::WindowAction { window: 7, action: WindowAction::Minimize },
+        Request::WindowAction { window: 7, action: WindowAction::ToggleMaximize },
+        Request::WindowAction { window: u32::MAX, action: WindowAction::Close },
+        Request::SetDisplayMode { mode: DisplayModeRequest::Extend },
+        Request::SetDisplayMode { mode: DisplayModeRequest::Mirror },
+        Request::SetDisplayMode { mode: DisplayModeRequest::Single(OutputId(2)) },
+        Request::SetKeyboardLayout { index: 1 },
         Request::CreateSurface { surface: s, role: Role::SystemDialog },
     ]
 }
@@ -89,6 +99,14 @@ fn sample_events() -> Vec<Event> {
         Event::WindowList {
             windows: vec![WindowEntry { app_id: "org.ultar.test.ui".into(), title: "نافذة".into(), mapped: true, shared_memory: true }],
         },
+        Event::ShellKey { code: 125, modifiers: Modifiers(Modifiers::SUPER), serial: 9 },
+        Event::WindowsChanged { windows: vec![] },
+        Event::WindowsChanged {
+            windows: vec![ShellWindow { id: 4, app_id: "org.ultar.files".into(), title: "الملفات".into(), state: WindowState::Minimized, focused: false, unresponsive: true, output: OutputId(1) }],
+        },
+        Event::KeyboardLayouts { names: vec![], active: 0 },
+        Event::KeyboardLayouts { names: vec!["ar".into(), "en".into()], active: 1 },
+        Event::ShellFocusLost { surface: s },
     ]
 }
 
@@ -147,6 +165,36 @@ fn limits_are_enforced_when_decoding() {
     assert!(Request::decode(2, &[1, 0, 0, 0, 2, 4, 0, 0, 0, 0]).is_err());
     assert!(Request::decode(14, &[1, 0, 0, 0, 4]).is_err());
     assert!(Request::decode(7, &[1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2]).is_err());
+}
+
+#[test]
+fn shell_messages_refuse_bad_values() {
+    // Unknown window action and display mode.
+    assert!(Request::decode(31, &[1, 0, 0, 0, 4]).is_err());
+    assert!(Request::decode(32, &[3, 0, 0, 0, 0]).is_err());
+    // 65 shell windows, 9 layouts, active layout out of range.
+    assert!(Event::decode(33, &[65]).is_err());
+    assert!(Event::decode(34, &[9]).is_err());
+    assert!(Event::decode(34, &[1, 2, 0, b'a', b'r', 1]).is_err());
+    // A list longer than the limit is cut when encoding.
+    let many: Vec<ShellWindow> = (0..70)
+        .map(|i| ShellWindow {
+            id: i,
+            app_id: String::new(),
+            title: String::new(),
+            state: WindowState::Normal,
+            focused: false,
+            unresponsive: false,
+            output: OutputId(0),
+        })
+        .collect();
+    let frame = Event::WindowsChanged { windows: many }.encode().unwrap();
+    let (op, body) = split(&frame);
+    match Event::decode(op, body).unwrap() {
+        Event::WindowsChanged { windows } => assert_eq!(windows.len(), MAX_SHELL_WINDOWS),
+        other => panic!("{other:?}"),
+    }
+    assert!(Modifiers(Modifiers::CAPS_LOCK).has(Modifiers::CAPS_LOCK));
 }
 
 #[test]

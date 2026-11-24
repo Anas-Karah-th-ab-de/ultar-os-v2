@@ -8,9 +8,13 @@
    "used_in": [
     "Account",
     "CalendarSheet",
+    "CompactDisplay",
+    "CompactStoreApp",
     "DesktopBottom",
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -19,6 +23,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "CalendarSheet",
+    "CompactDisplay",
+    "CompactQuick",
+    "CompactSettings",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -27,7 +34,9 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "States",
-    "StatesLight"
+    "StatesLight",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -35,6 +44,7 @@
    "meaning": "opens a list of choices (select)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactDisplay",
     "InstallerDisk",
     "InstallerDrivers",
     "Menus",
@@ -50,8 +60,11 @@
    "meaning": "home folder",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -59,12 +72,16 @@
    "meaning": "all apps",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactHome",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -73,7 +90,12 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
+    "CompactSettings",
+    "CompactStore",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -83,7 +105,9 @@
     "SettingsDisplayLight",
     "SettingsDrivers",
     "Store",
-    "SurfaceStates"
+    "SurfaceStates",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -91,6 +115,7 @@
    "meaning": "more actions for this element",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactStore",
     "PhoneDial"
    ]
   },
@@ -109,7 +134,9 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
-    "Store"
+    "Store",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -127,7 +154,9 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
-    "Store"
+    "Store",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -138,6 +167,7 @@
     "Account",
     "Bricks",
     "CalendarSheet",
+    "CompactQuick",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -148,7 +178,9 @@
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers",
-    "Store"
+    "Store",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -160,7 +192,9 @@
     "DesktopTop",
     "Main",
     "Menus",
-    "Overview"
+    "Overview",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -210,7 +244,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -228,6 +264,8 @@
    "used_in": [
     "Account",
     "Bricks",
+    "CompactStore",
+    "CompactStoreApp",
     "DesktopBottom",
     "Installer",
     "InstallerDisk",
@@ -244,7 +282,9 @@
     "States",
     "StatesLight",
     "Store",
-    "SurfaceStates"
+    "SurfaceStates",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -252,14 +292,19 @@
    "meaning": "hint",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "Bricks",
+    "CompactApps",
+    "CompactDisplay",
+    "CompactStoreApp",
     "Installer",
     "InstallerDisk",
     "Menus",
     "States",
     "StatesLight",
     "Store",
-    "SurfaceStates"
+    "SurfaceStates",
+    "Toasts"
    ]
   },
   {
@@ -269,7 +314,8 @@
    "used_in": [
     "InstallerDrivers",
     "SettingsDrivers",
-    "SurfaceStates"
+    "SurfaceStates",
+    "Toasts"
    ]
   },
   {
@@ -292,6 +338,7 @@
    "meaning": "locked / lock the screen",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactLock",
     "InstallerDrivers",
     "Lock",
     "QuickSettings",
@@ -313,6 +360,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers"
@@ -352,7 +400,16 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactDisplay",
+    "CompactHome",
+    "CompactLock",
+    "CompactQuick",
+    "CompactSettings",
+    "CompactStore",
+    "CompactStoreApp",
     "DesktopBottom",
     "DesktopTop",
     "InstallerDrivers",
@@ -364,7 +421,9 @@
     "SettingsDisplayLight",
     "SettingsDrivers",
     "States",
-    "StatesLight"
+    "StatesLight",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -391,6 +450,14 @@
    "meaning": "mobile network (signal bars)",
    "mirrored_in_rtl": true,
    "used_in": [
+    "CompactApps",
+    "CompactDisplay",
+    "CompactHome",
+    "CompactLock",
+    "CompactQuick",
+    "CompactSettings",
+    "CompactStore",
+    "CompactStoreApp",
     "PhoneDial",
     "PhoneInCall"
    ]
@@ -400,6 +467,7 @@
    "meaning": "airplane mode",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactQuick",
     "QuickSettings"
    ]
   },
@@ -409,6 +477,8 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactQuick",
+    "CompactSettings",
     "InstallerDrivers",
     "QuickSettings",
     "SettingsDisplay",
@@ -476,7 +546,10 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AppGrid",
     "CalendarSheet",
+    "CompactQuick",
+    "CompactSettings",
     "DesktopBottom",
     "DesktopTop",
     "InstallerDrivers",
@@ -485,7 +558,9 @@
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -493,6 +568,7 @@
    "meaning": "loudspeaker / output device",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactQuick",
     "PhoneInCall",
     "QuickSettings"
    ]
@@ -510,6 +586,8 @@
    "meaning": "brightness",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactDisplay",
+    "CompactQuick",
     "QuickSettings"
    ]
   },
@@ -518,6 +596,7 @@
    "meaning": "night light",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactQuick",
     "QuickSettings"
    ]
   },
@@ -535,7 +614,16 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactDisplay",
+    "CompactHome",
+    "CompactLock",
+    "CompactQuick",
+    "CompactSettings",
+    "CompactStore",
+    "CompactStoreApp",
     "DesktopBottom",
     "DesktopTop",
     "Lock",
@@ -544,7 +632,9 @@
     "QuickSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
-    "SettingsDrivers"
+    "SettingsDrivers",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -553,6 +643,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactSettings",
     "InstallerDrivers",
     "SettingsDisplay",
     "SettingsDisplayLight",
@@ -636,13 +727,16 @@
    "meaning": "removable drive (USB)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
     "DesktopTop",
     "Main",
     "Overview",
     "QuickSettings",
     "Store",
-    "SurfaceStates"
+    "SurfaceStates",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -662,9 +756,15 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AppGrid",
+    "CompactApps",
+    "CompactHome",
+    "CompactLock",
+    "CompactQuick",
     "Lock",
     "PhoneDial",
-    "PhoneIncoming"
+    "PhoneIncoming",
+    "Toasts"
    ]
   },
   {
@@ -737,7 +837,11 @@
    "meaning": "Settings (only that)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
+    "CompactQuick",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -746,7 +850,9 @@
     "PhoneDial",
     "QuickSettings",
     "States",
-    "StatesLight"
+    "StatesLight",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -754,6 +860,8 @@
    "meaning": "power menu",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactLock",
+    "CompactQuick",
     "Lock",
     "Login",
     "QuickSettings"
@@ -792,6 +900,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers"
@@ -802,6 +911,7 @@
    "meaning": "do not disturb",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactQuick",
     "QuickSettings"
    ]
   },
@@ -821,13 +931,19 @@
    "meaning": "Ultar Store",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
+    "CompactLock",
     "DesktopBottom",
     "DesktopTop",
     "Lock",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -835,13 +951,18 @@
    "meaning": "Files (app)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Menus",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -862,6 +983,10 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AppGrid",
+    "CompactApps",
+    "CompactHome",
+    "CompactStore",
     "Installer",
     "QuickSettings",
     "SettingsDisplay",
@@ -898,6 +1023,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers"
@@ -942,6 +1068,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactSettings",
     "SettingsDisplay",
     "SettingsDisplayLight",
     "SettingsDrivers"
@@ -997,6 +1124,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "CompactLock",
     "Lock",
     "SettingsDisplay",
     "SettingsDisplayLight",
@@ -1008,6 +1136,7 @@
    "meaning": "play",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactLock",
     "Lock"
    ]
   },
@@ -1016,6 +1145,7 @@
    "meaning": "previous track",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactLock",
     "Lock"
    ]
   },
@@ -1024,6 +1154,7 @@
    "meaning": "next track",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactLock",
     "Lock"
    ]
   },
@@ -1056,12 +1187,17 @@
    "meaning": "Ultar Browser (app)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1069,6 +1205,9 @@
    "meaning": "Firefox (fallback browser component)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
+    "CompactApps",
+    "CompactStore",
     "Installer",
     "Store"
    ]
@@ -1078,12 +1217,16 @@
    "meaning": "Terminal (app)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1091,12 +1234,17 @@
    "meaning": "Text editor (app)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
+    "CompactApps",
+    "CompactHome",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1104,6 +1252,8 @@
    "meaning": "component Office tools",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactStore",
+    "CompactStoreApp",
     "Installer",
     "Store",
     "SurfaceStates"
@@ -1114,6 +1264,7 @@
    "meaning": "component Coder",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactStore",
     "Installer",
     "Store",
     "SurfaceStates"
@@ -1124,6 +1275,7 @@
    "meaning": "component Media",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactStore",
     "Installer",
     "Store"
    ]
@@ -1133,6 +1285,7 @@
    "meaning": "component Communication",
    "mirrored_in_rtl": false,
    "used_in": [
+    "CompactStore",
     "Installer",
     "Store"
    ]
@@ -1188,7 +1341,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1197,7 +1352,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1206,7 +1363,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1215,7 +1374,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1223,12 +1384,15 @@
    "meaning": "place: Trash",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AppGrid",
     "CalendarSheet",
     "DesktopBottom",
     "DesktopTop",
     "Main",
     "Overview",
-    "QuickSettings"
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1237,7 +1401,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1246,7 +1412,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1255,7 +1423,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   },
   {
@@ -1264,7 +1434,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "DesktopTop",
-    "Main"
+    "Main",
+    "Toasts",
+    "WindowMenu"
    ]
   }
  ],
@@ -1314,7 +1486,23 @@
   {
    "name": "mark",
    "meaning": "brand mark = Overview button",
-   "mirrored_in_rtl": false
+   "mirrored_in_rtl": false,
+   "used_in": [
+    "AppGrid",
+    "CalendarSheet",
+    "DesktopBottom",
+    "DesktopTop",
+    "Installer",
+    "InstallerDisk",
+    "InstallerDrivers",
+    "InstallerSummary",
+    "Login",
+    "Main",
+    "Overview",
+    "QuickSettings",
+    "Toasts",
+    "WindowMenu"
+   ]
   }
  ]
 }

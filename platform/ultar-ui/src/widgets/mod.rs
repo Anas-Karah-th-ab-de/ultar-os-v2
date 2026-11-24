@@ -4,9 +4,14 @@
 //! [`crate::ui::Ui`] and reaches the widget as a [`Visual`].
 
 mod badge;
+mod brick;
+mod brick_art;
+mod brick_quick;
+mod brick_tile;
 mod button;
 mod checkbox;
 mod containers;
+mod day_grid;
 mod dialog;
 mod header_bar;
 mod info_bar;
@@ -30,9 +35,11 @@ mod tooltip;
 mod tree;
 
 pub use badge::Badge;
+pub use brick::{Brick, BrickKind, Picture};
 pub use button::{Button, ButtonVariant, IconButton};
 pub use checkbox::Checkbox;
 pub use containers::{Card, Icon, Row, Text};
+pub use day_grid::{DayCell, DayGrid, MAX_DAY_CELLS, WEEK};
 pub use dialog::{Dialog, DialogKind};
 pub use header_bar::HeaderBar;
 pub use info_bar::{EmptyState, InfoBar};
@@ -149,6 +156,10 @@ pub enum Widget {
     Tree(Tree),
     /// The top bar of a window or page; its children are the controls at start and end.
     HeaderBar(HeaderBar),
+    /// A brick of the desktop shell (bar tile, quick tile, clock …), operated like a button.
+    Brick(Brick),
+    /// The month grid of a calendar.
+    DayGrid(DayGrid),
 }
 
 macro_rules! widget_from {
@@ -164,7 +175,7 @@ macro_rules! widget_from {
 widget_from!(
     Flex, Text, Icon, Button, IconButton, Switch, Select, Slider, TextField, Row, Card, Badge,
     Progress, Checkbox, RadioGroup, Tabs, InfoBar, EmptyState, List, ListItem, Scroll, Dialog,
-    Table, Tree, HeaderBar
+    Table, Tree, HeaderBar, Brick, DayGrid
 );
 
 impl From<SearchField> for Widget {
@@ -191,7 +202,8 @@ impl Widget {
                 | Widget::ListItem(_)
                 | Widget::Table(_)
                 | Widget::Tree(_)
-        )
+                | Widget::DayGrid(_)
+        ) || matches!(self, Widget::Brick(b) if !b.is_static())
     }
 
     /// `true` for widgets that can show a loading state.

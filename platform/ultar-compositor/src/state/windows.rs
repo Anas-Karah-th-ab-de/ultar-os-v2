@@ -43,11 +43,14 @@ pub struct Window {
     /// Focus when mapped, if the grant is still valid then (an activation
     /// token was presented before the window had content).
     pub activate_on_map: Option<super::Grant>,
+    /// Id in the shell's window list (never reused in the session).
+    pub id: u32,
 }
 
 impl Window {
-    fn new(key: SurfaceKey) -> Window {
+    fn new(key: SurfaceKey, id: u32) -> Window {
         Window {
+            id,
             key,
             frame: Rect::default(),
             state: WindowState::Normal,
@@ -162,7 +165,8 @@ impl State {
         let secure = self
             .surface(key)
             .is_some_and(|s| s.role == Role::SystemDialog);
-        let mut window = Window::new(key);
+        let id = self.next_window_id();
+        let mut window = Window::new(key, id);
         window.secure = secure;
         self.windows.push(window);
         let Some(output) = self.layout.primary().map(|o| o.id) else {
@@ -465,6 +469,7 @@ impl State {
             self.damage_logical(area);
         }
         self.layers.retain(|k| *k != key);
+        self.shell_surface_gone(key);
         let charge = self.surface(key).map_or(0, |s| s.charge());
         if let Some(c) = self.clients.get_mut(&key.client) {
             c.surfaces.remove(&key.surface);

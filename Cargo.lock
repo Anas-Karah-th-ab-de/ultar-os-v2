@@ -5248,6 +5248,17 @@ name = "ultar-audio"
 version = "0.1.0"
 
 [[package]]
+name = "ultar-auth"
+version = "0.7.0"
+dependencies = [
+ "argon2 0.5.3",
+ "password-hash 0.5.0",
+ "ultar-bus",
+ "ultar-i18n",
+ "ultar-service",
+]
+
+[[package]]
 name = "ultar-bt"
 version = "0.6.0"
 dependencies = [
@@ -5342,6 +5353,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-desktop"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal",
+ "ultar-i18n",
+ "ultar-service",
+ "ultar-surface",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-devd"
 version = "0.7.0"
 dependencies = [
@@ -5422,6 +5447,20 @@ dependencies = [
  "ultar-bus",
  "ultar-hal-system",
  "ultar-profile",
+ "ultar-service",
+ "ultar-sys",
+]
+
+[[package]]
+name = "ultar-launcher"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "sha2 0.10.9",
+ "toml",
+ "ultar-bus",
+ "ultar-init",
+ "ultar-pkg",
  "ultar-service",
  "ultar-sys",
 ]

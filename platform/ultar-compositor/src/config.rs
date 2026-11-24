@@ -173,6 +173,8 @@ impl std::error::Error for RightsError {}
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RightsTable {
     by_uid: HashMap<u32, Rights>,
+    /// The app launcher's file for app user ids (`--app-rights`).
+    apps: Option<Box<crate::app_rights::AppRights>>,
 }
 
 /// Manifest name of each right.
@@ -234,9 +236,31 @@ impl RightsTable {
         *entry = entry.union(rights);
     }
 
-    /// The rights of a user id.
+    /// The rights of a user id: from this table, else from the app
+    /// launcher's file for app ids.
     pub fn rights_of(&self, uid: u32) -> Rights {
-        self.by_uid.get(&uid).copied().unwrap_or(Rights::NONE)
+        match (self.by_uid.get(&uid), &self.apps) {
+            (Some(rights), _) => *rights,
+            (None, Some(apps)) => apps.rights_of(uid),
+            (None, None) => Rights::NONE,
+        }
+    }
+
+    /// The user ids this table names.
+    pub fn uids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.by_uid.keys().copied()
+    }
+
+    /// Adds the app launcher's rights file for app user ids.
+    pub fn set_apps(&mut self, apps: crate::app_rights::AppRights) {
+        self.apps = Some(Box::new(apps));
+    }
+
+    /// Reads the app launcher's file again if it changed (at every hello).
+    pub fn refresh_apps(&mut self) {
+        if let Some(apps) = &mut self.apps {
+            apps.refresh();
+        }
     }
 }
 

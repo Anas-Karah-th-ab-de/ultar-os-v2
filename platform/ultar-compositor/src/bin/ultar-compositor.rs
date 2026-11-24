@@ -12,6 +12,7 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use ultar_compositor::app_rights::AppRights;
 use ultar_compositor::backend::{Backend, HalBackend, Headless, OutputKind};
 use ultar_compositor::msg::{text, MsgKey};
 use ultar_compositor::{Compositor, Config, MonotonicClock, RightsTable};
@@ -35,6 +36,16 @@ struct Args {
     allow_root: bool,
     seat: SeatPolicy,
     seat_state: Option<PathBuf>,
+    app_rights: Option<PathBuf>,
+    app_uids: Option<(u32, u32)>,
+    app_rights_owner: Option<u32>,
+}
+
+/// `FIRST-LAST`, a range of app user ids without root and the unknown id.
+fn uid_range(value: &str) -> Option<(u32, u32)> {
+    let (first, last) = value.split_once('-')?;
+    let (first, last): (u32, u32) = (first.parse().ok()?, last.parse().ok()?);
+    (first > 0 && first <= last && last < u32::MAX).then_some((first, last))
 }
 
 fn size(value: &str) -> Option<(u32, u32)> {
@@ -60,10 +71,20 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--seat-group" => args.seat.group = Some(it.next()?.parse().ok()?),
             "--allow-virtual-input" => args.seat.virtual_allowed.push(it.next()?),
             "--seat-state" => args.seat_state = Some(PathBuf::from(it.next()?)),
+            "--app-rights" => args.app_rights = Some(PathBuf::from(it.next()?)),
+            "--app-uids" => args.app_uids = Some(uid_range(&it.next()?)?),
+            "--app-rights-owner" => args.app_rights_owner = Some(it.next()?.parse().ok()?),
             _ => return None,
         }
     }
-    args.socket.is_some().then_some(args)
+    // the app rights file needs its range and its owner, and only with it
+    let apps = [
+        args.app_rights.is_some(),
+        args.app_uids.is_some(),
+        args.app_rights_owner.is_some(),
+    ];
+    let complete = apps.iter().all(|a| *a) || apps.iter().all(|a| !*a);
+    (args.socket.is_some() && complete).then_some(args)
 }
 
 fn main() {
@@ -104,6 +125,13 @@ fn config(args: &Args, lang: Lang) -> Result<Config, MsgKey> {
         let body = std::fs::read_to_string(path).map_err(|_| MsgKey::RightsRejected)?;
         config.rights =
             RightsTable::parse_with(&body, args.allow_root).map_err(|_| MsgKey::RightsRejected)?;
+    }
+    if let (Some(path), Some((first, last)), Some(owner)) =
+        (&args.app_rights, args.app_uids, args.app_rights_owner)
+    {
+        config
+            .rights
+            .set_apps(AppRights::new(path.clone(), first, last, owner));
     }
     Ok(config)
 }
@@ -263,6 +291,30 @@ mod tests {
         a.write_all(b"x").unwrap();
         b.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, b"x");
+    }
+
+    #[test]
+    fn app_rights_need_their_range_and_owner() {
+        let apps = args(&[
+            "--socket",
+            "s",
+            "--app-rights",
+            "/r",
+            "--app-uids",
+            "20000-49999",
+            "--app-rights-owner",
+            "805",
+        ])
+        .unwrap();
+        assert_eq!(apps.app_uids, Some((20000, 49999)));
+        assert!(config(&apps, Lang::Ar).is_ok());
+        assert!(args(&["--socket", "s", "--app-rights", "/r"]).is_none());
+        let owner = ["--app-rights", "/r", "--app-rights-owner", "1"];
+        for range in ["5-1", "0-9", "x-9", "1"] {
+            let mut words = vec!["--socket", "s", "--app-uids", range];
+            words.extend(owner);
+            assert!(args(&words).is_none(), "{range}");
+        }
     }
 
     #[test]

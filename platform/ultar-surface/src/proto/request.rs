@@ -1,5 +1,6 @@
 //! Messages from a client to the compositor.
 
+use super::shell::{DisplayModeRequest, WindowAction};
 use super::types::*;
 use crate::wire::{Reader, WireError, Writer};
 
@@ -221,6 +222,33 @@ pub enum Request {
     /// Asks for the window list (needs [`Rights::CAPTURE`]); answered by
     /// `WindowList`.
     ListWindows,
+    /// Gives the keyboard to one of the shell's own panels or panel popups
+    /// (an open sheet or menu); `SurfaceId(0)` gives it back to the focused
+    /// window. Needs [`Rights::SHELL`]. The compositor takes it away again
+    /// (`ShellFocusLost`) when the user clicks a window or the session locks.
+    ShellFocus {
+        /// The shell surface, or 0.
+        surface: SurfaceId,
+    },
+    /// Acts on any toplevel window by the id of `WindowsChanged` (needs
+    /// [`Rights::SHELL`]).
+    WindowAction {
+        /// Window id.
+        window: u32,
+        /// What to do.
+        action: WindowAction,
+    },
+    /// Switches the display mode (needs [`Rights::SHELL`]).
+    SetDisplayMode {
+        /// The mode.
+        mode: DisplayModeRequest,
+    },
+    /// Selects the keyboard layout by its index in `KeyboardLayouts`
+    /// (needs [`Rights::SHELL`] or [`Rights::LOCK_SCREEN`]).
+    SetKeyboardLayout {
+        /// Index.
+        index: u8,
+    },
 }
 
 impl Request {
@@ -256,6 +284,10 @@ impl Request {
             Request::RequestActivation { .. } => 27,
             Request::Activate { .. } => 28,
             Request::ListWindows => 29,
+            Request::ShellFocus { .. } => 30,
+            Request::WindowAction { .. } => 31,
+            Request::SetDisplayMode { .. } => 32,
+            Request::SetKeyboardLayout { .. } => 33,
         }
     }
 
@@ -393,6 +425,17 @@ impl Request {
             }
             Request::Activate { surface, token } => {
                 w.u32(surface.0).u64(*token);
+            }
+            Request::ShellFocus { surface } => {
+                w.u32(surface.0);
+            }
+            Request::WindowAction { window, action } => {
+                w.u32(*window);
+                action.encode(w);
+            }
+            Request::SetDisplayMode { mode } => mode.encode(w),
+            Request::SetKeyboardLayout { index } => {
+                w.u8(*index);
             }
             _ => {}
         }

@@ -123,12 +123,16 @@ impl TextField {
 
     /// A password field: dots instead of the characters, a button at the end that shows the
     /// password while it is held, content always left-to-right, no value for screen readers.
+    ///
+    /// The password's bytes are kept in one buffer reserved up front and overwritten with
+    /// zeros when they are replaced, deleted or the field goes, so that no copy of a typed
+    /// password stays behind in freed memory (lock screen, DESKTOP-SPEC §5.3).
     pub fn password(name: Label) -> TextField {
-        TextField {
-            password: true,
-            direction: TextDirection::Ltr,
-            ..TextField::new(name)
-        }
+        let mut field = TextField::new(name);
+        field.password = true;
+        field.direction = TextDirection::Ltr;
+        field.text = String::with_capacity(field.max_len);
+        field
     }
 
     /// `true` for a password field.
@@ -182,6 +186,9 @@ impl TextField {
     pub fn max_len(mut self, max_len: usize) -> TextField {
         self.max_len = max_len;
         let text = std::mem::take(&mut self.text);
+        if self.password {
+            self.text = String::with_capacity(max_len);
+        }
         self.set_text(&text);
         self
     }
@@ -204,6 +211,7 @@ impl TextField {
 
     /// Replaces the content (control characters dropped, cut at the limit); caret at the end.
     pub fn set_text(&mut self, text: &str) {
+        self.zero_all();
         self.text.clear();
         for ch in text.chars().filter(|c| allowed(*c)) {
             if self.text.len() + ch.len_utf8() > self.max_len {
@@ -243,7 +251,9 @@ impl TextField {
     pub fn backspace(&mut self) -> bool {
         match self.previous_boundary() {
             Some(start) => {
+                let removed = self.caret - start;
                 self.text.replace_range(start..self.caret, "");
+                self.scrub_tail(removed);
                 self.caret = start;
                 true
             }
@@ -255,7 +265,9 @@ impl TextField {
     pub fn delete(&mut self) -> bool {
         match self.next_boundary() {
             Some(end) => {
+                let removed = end - self.caret;
                 self.text.replace_range(self.caret..end, "");
+                self.scrub_tail(removed);
                 true
             }
             None => false,
@@ -468,5 +480,6 @@ impl TextField {
     }
 }
 
+mod secret;
 #[cfg(test)]
 mod tests;

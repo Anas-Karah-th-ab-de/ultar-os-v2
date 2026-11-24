@@ -87,6 +87,20 @@ impl Ui {
         self.list_items(list).position(|(id, _)| id == item)
     }
 
+    /// Moves the keyboard focus to `id` (an operable node), with the focus ring when `ring`:
+    /// a sheet or dialog that opens takes the focus (DESKTOP-SPEC §13 no. 62).
+    pub fn focus(&mut self, id: NodeId, ring: bool) -> Result<(), UiError> {
+        self.node(id)?;
+        if !self.interactive(id) {
+            return Err(UiError::WrongWidget {
+                node: id,
+                expected: "an operable node",
+            });
+        }
+        self.set_focus(Some(id), ring);
+        Ok(())
+    }
+
     /// Sets or removes the tooltip of an operable widget: a short explanation shown after
     /// the pointer rests on it and at once when keyboard focus reaches it. It is also the
     /// widget's accessible description.

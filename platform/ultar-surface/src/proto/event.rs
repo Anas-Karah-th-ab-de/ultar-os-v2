@@ -328,6 +328,35 @@ pub enum Event {
         /// The windows.
         windows: Vec<super::WindowEntry>,
     },
+    /// A shortcut that belongs to the shell (Super alone, Super with a key
+    /// the compositor does not use itself); sent only to the shell client.
+    ShellKey {
+        /// Linux key code (125 for the Super key alone).
+        code: u16,
+        /// Modifiers held.
+        modifiers: Modifiers,
+        /// Serial of the key (a user action: activation tokens).
+        serial: u32,
+    },
+    /// The toplevel windows changed (sent to shell clients), bottom to top.
+    WindowsChanged {
+        /// The windows.
+        windows: Vec<super::ShellWindow>,
+    },
+    /// The keyboard layouts and the active one (sent to shell and lock
+    /// screen clients at the start and on every change).
+    KeyboardLayouts {
+        /// Layout names in order (`ar`, `en`, …).
+        names: Vec<String>,
+        /// Index of the active layout.
+        active: u8,
+    },
+    /// The compositor took the keyboard from a shell surface (the user
+    /// clicked a window, the session locked, a system dialog opened).
+    ShellFocusLost {
+        /// The surface that had it.
+        surface: SurfaceId,
+    },
 }
 
 impl Event {
@@ -365,6 +394,10 @@ impl Event {
             Event::ActivationToken { .. } => 29,
             Event::SessionLocked { .. } => 30,
             Event::WindowList { .. } => 31,
+            Event::ShellKey { .. } => 32,
+            Event::WindowsChanged { .. } => 33,
+            Event::KeyboardLayouts { .. } => 34,
+            Event::ShellFocusLost { .. } => 35,
         }
     }
 

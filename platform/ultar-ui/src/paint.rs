@@ -233,6 +233,12 @@ impl<'a> Painter<'a> {
         self.canvas.set_clip(previous);
     }
 
+    /// Replaces every pixel of the current clip with `color` (no blending): the start of a
+    /// transparent region.
+    pub fn clear(&mut self, color: Color) {
+        self.canvas.clear(color);
+    }
+
     /// Fills a rectangle; `radius` rounds its corners.
     pub fn fill(&mut self, rect: Rect, radius: Option<Radius>, color: Color) {
         let r = self.radius(radius);

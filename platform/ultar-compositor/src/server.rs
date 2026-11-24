@@ -167,6 +167,7 @@ impl Compositor {
             self.render_now();
         }
         self.stream_captures();
+        self.state.shell_refresh();
         self.flush();
         Ok(())
     }

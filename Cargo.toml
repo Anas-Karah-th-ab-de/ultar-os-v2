@@ -30,6 +30,7 @@ members = [
     "system/core/ultar-apps",
     "system/core/ultar-ctl",
     "system/core/ultar-init",
+    "system/core/ultar-launcher",
     "system/core/ultar-pkg",
     "system/core/ultar-secure",
     "system/core/ultar-sprache",
@@ -50,6 +51,8 @@ members = [
     "system/services/ultar-verbund",
     "system/services/ultar-vpn",
     "system/services/ultar-zellen",
+    "system/services/ultar-auth",
+    "platform/ultar-desktop",
 ]
 # own workspaces: kernel (no std), server (x86 only), legacy window manager
 exclude = ["kernel", "server", "platform/ultar-wm"]
@@ -66,6 +69,12 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Kennwort-Prüfung (Argon2id): auch im Testbau schnell genug (sonst Sekunden je Prüfung)
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
 
 # Oberfläche: auf Geschwindigkeit optimiert (Software-Rendering); alles andere auf Größe
 [profile.release.package.ultar-shell]

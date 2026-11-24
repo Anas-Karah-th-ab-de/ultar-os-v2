@@ -1,0 +1,17 @@
+# Desktop shell (ultar-desktop, role ui.shell as user 816): the bar and its
+# sheets, the app grid, the overview, Super+P and the notification banners.
+# Starts apps only through the app launcher (launcher.start).
+editions = ["phone", "desktop"]
+manual = true
+exec = "/usr/bin/ultar-desktop"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/desktop.sock",
+]
+user = 816
+after = ["compositor", "launcher", "settingsd", "lock"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "128M"
+"pids.max" = "32"

@@ -78,6 +78,8 @@ fn measure_leaf(nodes: &mut [Node], cx: &mut MeasureCx<'_>, id: NodeId, avail: f
         Widget::Icon(w) => w.measure(),
         Widget::Button(w) => w.measure(cx, avail, node.loading),
         Widget::IconButton(w) => w.measure(cx),
+        Widget::Brick(w) => w.measure(cx),
+        Widget::DayGrid(w) => w.measure(cx, avail),
         Widget::Switch(w) => w.measure(cx),
         Widget::Select(w) => w.measure(cx, avail, error),
         Widget::Slider(w) => w.measure(cx, avail, error),

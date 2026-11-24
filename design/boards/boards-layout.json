@@ -180,5 +180,82 @@
   "w": 1280,
   "h": 800,
   "title": "Telefon · Gespräch mit Video-Steuerung (§12.2)"
+ },
+ "AppGrid.dc.html": {
+  "x": 0,
+  "y": 5184,
+  "w": 1440,
+  "h": 900,
+  "title": "Hülle · Alle Apps (Super+A): Suche, Kategorien, angeheftet, Rechtsklick-Menü (§5.1)"
+ },
+ "WindowMenu.dc.html": {
+  "x": 1520,
+  "y": 5184,
+  "w": 1440,
+  "h": 900,
+  "title": "Hülle · Fenstermenü (Alt+Leertaste / Rechtsklick Titelleiste) mit Untermenü (§5.2)"
+ },
+ "Toasts.dc.html": {
+  "x": 3040,
+  "y": 5184,
+  "w": 1440,
+  "h": 900,
+  "title": "Hülle · Benachrichtigungs-Banner (normal, mit Aktion, wichtig) und Toast mit Rückgängig (§5.3)"
+ },
+ "CompactHome.dc.html": {
+  "x": 0,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt 360×800 · Startbildschirm: Statusleiste, Suche, Favoritenzeile, Gestenleiste (§5.5)"
+ },
+ "CompactApps.dc.html": {
+  "x": 440,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Alle Apps: Suche, Kategorien (Reiter rollen), Raster 4 Spalten (§5.1/§5.5)"
+ },
+ "CompactQuick.dc.html": {
+  "x": 880,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Schnelleinstellungen + Benachrichtigungen (Wisch von oben, §5.1/§5.5)"
+ },
+ "CompactLock.dc.html": {
+  "x": 1320,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Sperrbildschirm (§5.3)"
+ },
+ "CompactSettings.dc.html": {
+  "x": 1760,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Einstellungen: Liste der Bereiche (§8: Liste → Seite)"
+ },
+ "CompactDisplay.dc.html": {
+  "x": 2200,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Einstellungen › Anzeige (Seite mit Zurück)"
+ },
+ "CompactStore.dc.html": {
+  "x": 2640,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Ultar Store: Entdecken als Liste, Bereiche als Reiter + Menü (§7.3)"
+ },
+ "CompactStoreApp.dc.html": {
+  "x": 3080,
+  "y": 6204,
+  "w": 360,
+  "h": 800,
+  "title": "Kompakt · Ultar Store: App-Seite (Rechte in Klartext, Installieren)"
  }
 }

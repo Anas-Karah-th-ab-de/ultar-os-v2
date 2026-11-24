@@ -136,6 +136,17 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             token: r.u64()?,
         },
         29 => Request::ListWindows,
+        30 => Request::ShellFocus {
+            surface: SurfaceId(r.u32()?),
+        },
+        31 => Request::WindowAction {
+            window: r.u32()?,
+            action: super::shell::WindowAction::decode(r)?,
+        },
+        32 => Request::SetDisplayMode {
+            mode: super::shell::DisplayModeRequest::decode(r)?,
+        },
+        33 => Request::SetKeyboardLayout { index: r.u8()? },
         _ => return Err(WireError::BadValue),
     })
 }

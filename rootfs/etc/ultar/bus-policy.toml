@@ -44,6 +44,43 @@ call     = ["settings.ping", "devices.ping"]
 identity = "system.init"
 register = ["init"]
 
+# App launcher: offers `launcher` (apps, their instances and permissions).
+[[rule]]
+identity = "system.launcher"
+register = ["launcher"]
+
+# The surface (shell): starts, stops and lists apps and asks the user for
+# permissions (system dialogs). Not install/uninstall: those need
+# launcher.admin as well, which only the administrator has.
+[[rule]]
+identity = "system.shell"
+call = ["launcher.start", "launcher.stop", "launcher.list", "launcher.permissions", "launcher.grant", "launcher.revoke",
+        "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission"]
+subscribe = ["settings.changed", "notify.posted", "power.state", "devices.capabilities"]
+
+# Authentication service (813): offers `auth` (hashed passwords and PINs,
+# docs/integration/desktop-shell.md). `auth.admin` is a right, not a call:
+# whoever may call it may set other users' secrets (the administrator).
+[[rule]]
+identity = "system.authd"
+register = ["auth"]
+
+# Lock screen (814): offers `lock`, checks passwords, sees how many
+# notifications wait (never their content).
+[[rule]]
+identity  = "system.lock"
+register  = ["lock"]
+call      = ["auth.users", "auth.verify"]
+subscribe = ["notify.posted"]
+
+# System dialogs (815): offers `sysdialog` (permission and administrator
+# prompts) and asks to keep new display settings.
+[[rule]]
+identity  = "system.sysdialog"
+register  = ["sysdialog"]
+call      = ["auth.users", "auth.verify", "settings.confirm", "settings.revert"]
+subscribe = ["settings.pending", "settings.pending_resolved"]
+
 # Network service: reports whether the connection is metered (nothing else of
 # the update service; `network_identity=` in update.conf names this identity).
 [[rule]]
@@ -60,10 +97,11 @@ subscribe = ["update.progress"]
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.
 # `settings.*` includes settings.admin, `devices.*` includes devices.admin,
-# `init.*` includes init.admin (uinit status|start|stop|restart).
+# `init.*` includes init.admin (uinit status|start|stop|restart),
+# `launcher.*` includes launcher.admin (ulaunch install|uninstall).
 [[rule]]
 identity  = "system.admin"
-call      = ["settings.*", "devices.*", "update.*", "init.*", "log.query", "log.stats", "log.read_all"]
+call      = ["settings.*", "devices.*", "update.*", "init.*", "launcher.*", "auth.*", "log.query", "log.stats", "log.read_all"]
 subscribe = ["settings.*", "devices.*", "update.progress"]
 
 # The broker itself needs no rule: it is not a client of the bus.

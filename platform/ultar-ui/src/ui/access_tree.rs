@@ -33,12 +33,10 @@ fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label
         Widget::Row(w) => (Role::Row, named(&w.label), w.sublabel.clone()),
         Widget::Button(w) => (Role::Button, named(&w.label), None),
         Widget::IconButton(w) => (Role::Button, named(&w.name), None),
+        Widget::Brick(w) => return describe_brick(w),
+        Widget::DayGrid(w) => (Role::Table, named(&w.name), w.selected_name()),
         Widget::Switch(w) => (Role::Switch, named(&w.name), None),
-        Widget::Select(w) => (
-            Role::Select,
-            named(&w.name),
-            w.options.get(w.selected).cloned(),
-        ),
+        Widget::Select(w) => (Role::Select, named(&w.name), choice(&w.options, w.selected)),
         Widget::Slider(w) => (Role::Slider, named(&w.name), Some(number(w.value))),
         Widget::TextField(w) if w.is_password() => (Role::PasswordField, named(&w.name), None),
         Widget::TextField(w) => {
@@ -56,11 +54,7 @@ fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label
             let chosen = w.selected.and_then(|i| w.options.get(i)).cloned();
             (Role::RadioGroup, named(&w.name), chosen)
         }
-        Widget::Tabs(w) => (
-            Role::TabList,
-            named(&w.name),
-            w.tabs.get(w.selected).cloned(),
-        ),
+        Widget::Tabs(w) => (Role::TabList, named(&w.name), choice(&w.tabs, w.selected)),
         Widget::InfoBar(w) => {
             let role = match w.tone {
                 Tone::Warning | Tone::Danger => Role::Alert,
@@ -80,6 +74,22 @@ fn describe_widget(widget: &Widget) -> Option<(Role, Option<Label>, Option<Label
         Widget::Table(w) => (Role::Table, named(&w.name), None),
         Widget::Tree(w) => (Role::Tree, named(&w.name), None),
         Widget::HeaderBar(w) => (Role::Banner, named(&w.title), None),
+    })
+}
+
+/// The chosen one of `options`, if any.
+fn choice(options: &[Label], selected: usize) -> Option<Label> {
+    options.get(selected).cloned()
+}
+
+/// A shell brick: a rule is not announced, pictures are images, quick tiles switches.
+fn describe_brick(w: &crate::widgets::Brick) -> Option<(Role, Option<Label>, Option<Label>)> {
+    let name = Some(w.accessible_name().clone());
+    Some(match w.kind {
+        crate::widgets::BrickKind::Rule => return None,
+        _ if w.is_static() => (Role::Image, name, None),
+        _ if w.is_toggle() => (Role::Switch, name, None),
+        _ => (Role::Button, name, None),
     })
 }
 
@@ -131,6 +141,7 @@ impl Ui {
             checked: match &node.widget {
                 Widget::Switch(w) => Some(w.on),
                 Widget::Checkbox(w) => Some(w.checked),
+                Widget::Brick(w) => w.checked(),
                 _ => None,
             },
             mixed: matches!(&node.widget, Widget::Checkbox(w) if w.mixed),
