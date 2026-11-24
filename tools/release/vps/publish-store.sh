@@ -26,14 +26,14 @@ while IFS=$'\t' read -r id ver role stem; do
   sed -i -e "s|@SIZE:$stem.uap@|$size|g" -e "s|@SHA256:$stem.uap@|$sum|g" "$NEW/ultar-catalog.toml.in"
   echo "PUBLISH-STORE: $stem.uap $size $sum ($role)"
 done <"$IN/apps.tsv"
-grep -q '@SIZE:\|@SHA256:' "$NEW/ultar-catalog.toml.in" && fail "unfilled placeholders"
+grep -v '^#' "$NEW/ultar-catalog.toml.in" | grep -q '@SIZE:\|@SHA256:' && fail "unfilled placeholders"
 mv "$NEW/ultar-catalog.toml.in" "$NEW/ultar-catalog.toml"
 "$SIGN" sign-catalog "$SOCK" "$NEW/ultar-catalog.toml" >/dev/null || fail "signing catalogue"
 # Public keys next to the catalogue (devices get them from the image; these are for checking).
 mkdir -p "$NEW/keys"
 "$SIGN" pubkey "$SOCK" store >"$NEW/keys/km-code-craft.ed25519"
 "$SIGN" pubkey "$SOCK" system >"$NEW/keys/system-km-code-craft.ed25519"
-chmod -R a+rX "$NEW"; chmod 0644 "$NEW"/* "$NEW"/keys/*
+find "$NEW" -type d -exec chmod 0755 {} +; find "$NEW" -type f -exec chmod 0644 {} +
 mkdir -p "$WEB"
 ln -sfn "$NEW" "$WEB/v1.new" && mv -T "$WEB/v1.new" "$WEB/v1"
 echo "$TS" >>"$BASE/published.log"
