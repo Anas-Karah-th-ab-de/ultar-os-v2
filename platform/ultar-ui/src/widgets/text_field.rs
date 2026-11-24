@@ -5,7 +5,7 @@ use super::{Label, MeasureCx, PaintCx};
 use crate::geom::{Point, Rect, Size};
 use crate::paint::{layout_directed, PaintEnv, Painter, Resources, TextSpec};
 use crate::text::TextAlign;
-use crate::tokens::{size, typography, ColorRole, InputMode, Radius, Space};
+use crate::tokens::{size, state, typography, ColorRole, InputMode, Radius, Space};
 use ultar_i18n::Direction;
 
 /// Default limit of a field's content in bytes.
@@ -77,7 +77,14 @@ pub struct TextField {
     text: String,
     caret: usize,
     max_len: usize,
+    /// The other end of the selection (byte offset); `None`: nothing selected.
+    anchor: Option<usize>,
+    /// Earlier contents and carets for Ctrl+Z (at most [`UNDO_STEPS`]; empty for passwords).
+    history: Vec<(String, usize)>,
 }
+
+/// Steps Ctrl+Z goes back.
+pub const UNDO_STEPS: usize = 32;
 
 /// The content of a password field never reaches `Debug` output (logs, panics).
 impl std::fmt::Debug for TextField {
@@ -127,6 +134,8 @@ impl TextField {
             text: String::new(),
             caret: 0,
             max_len: DEFAULT_MAX_LEN,
+            anchor: None,
+            history: Vec::new(),
         }
     }
 
@@ -241,6 +250,8 @@ impl TextField {
 
     /// Replaces the content (control characters dropped, cut at the limit); caret at the end.
     pub fn set_text(&mut self, text: &str) {
+        self.anchor = None;
+        self.forget_history();
         self.zero_all();
         self.text.clear();
         for ch in text.chars().filter(|c| allowed(*c)) {
@@ -255,9 +266,12 @@ impl TextField {
     /// Inserts a character at the caret. Returns `false` when it was refused (control
     /// character or limit reached).
     pub fn insert(&mut self, ch: char) -> bool {
-        if !allowed(ch) || self.text.len() + ch.len_utf8() > self.max_len {
+        let selected = self.selection().map_or(0, |(a, b)| b - a);
+        if !allowed(ch) || self.text.len() - selected + ch.len_utf8() > self.max_len {
             return false;
         }
+        self.remember();
+        self.delete_selection_now();
         self.text.insert(self.caret, ch);
         self.caret += ch.len_utf8();
         true
@@ -279,6 +293,13 @@ impl TextField {
 
     /// Deletes the character before the caret; `false` at the beginning.
     pub fn backspace(&mut self) -> bool {
+        if self.selection().is_some() {
+            self.remember();
+            return self.delete_selection_now();
+        }
+        if self.previous_boundary().is_some() {
+            self.remember();
+        }
         match self.previous_boundary() {
             Some(start) => {
                 let removed = self.caret - start;
@@ -293,6 +314,13 @@ impl TextField {
 
     /// Deletes the character after the caret; `false` at the end.
     pub fn delete(&mut self) -> bool {
+        if self.selection().is_some() {
+            self.remember();
+            return self.delete_selection_now();
+        }
+        if self.next_boundary().is_some() {
+            self.remember();
+        }
         match self.next_boundary() {
             Some(end) => {
                 let removed = end - self.caret;
@@ -307,6 +335,7 @@ impl TextField {
     /// Moves the caret one character forward (towards the end of the text) or backward;
     /// `false` when it cannot move.
     pub fn move_caret(&mut self, forward: bool) -> bool {
+        self.anchor = None;
         let target = if forward {
             self.next_boundary()
         } else {
@@ -352,11 +381,105 @@ impl TextField {
 
     /// Puts the caret at `byte` (moved back to a character boundary, clamped to the content).
     pub fn set_caret(&mut self, byte: usize) {
+        self.anchor = None;
         let mut at = byte.min(self.text.len());
         while !self.text.is_char_boundary(at) {
             at -= 1;
         }
         self.caret = at;
+    }
+
+    /// The selected range as byte offsets `(start, end)`, `None` when nothing is selected.
+    pub fn selection(&self) -> Option<(usize, usize)> {
+        let anchor = self.anchor?.min(self.text.len());
+        (anchor != self.caret).then(|| (anchor.min(self.caret), anchor.max(self.caret)))
+    }
+
+    /// Ctrl+A: selects the whole content (caret at the end).
+    pub fn select_all(&mut self) -> bool {
+        if self.text.is_empty() {
+            return false;
+        }
+        self.anchor = Some(0);
+        self.caret = self.text.len();
+        true
+    }
+
+    /// The selected text for Ctrl+C / Ctrl+X; never for a password field (nothing leaves it).
+    pub fn selected_text(&self) -> Option<&str> {
+        if self.password {
+            return None;
+        }
+        self.selection().map(|(a, b)| &self.text[a..b])
+    }
+
+    /// Ctrl+X: the selected text, removed from the field (`None` for passwords or no selection).
+    pub fn cut(&mut self) -> Option<String> {
+        let text = self.selected_text()?.to_owned();
+        self.remember();
+        self.delete_selection_now();
+        Some(text)
+    }
+
+    /// Ctrl+V: inserts `text` at the caret in place of the selection (control characters and
+    /// line breaks dropped, cut at the length limit). `false` when nothing was inserted.
+    pub fn paste(&mut self, text: &str) -> bool {
+        let clean: Vec<char> = text.chars().filter(|c| allowed(*c)).collect();
+        if clean.is_empty() {
+            return false;
+        }
+        self.remember();
+        self.delete_selection_now();
+        let mut inserted = false;
+        for ch in clean {
+            if self.text.len() + ch.len_utf8() > self.max_len {
+                break;
+            }
+            self.text.insert(self.caret, ch);
+            self.caret += ch.len_utf8();
+            inserted = true;
+        }
+        inserted
+    }
+
+    /// Ctrl+Z: back to the content before the last change; `false` when there is none.
+    pub fn undo(&mut self) -> bool {
+        let Some((text, caret)) = self.history.pop() else {
+            return false;
+        };
+        self.zero_all();
+        self.text = text;
+        self.caret = caret.min(self.text.len());
+        self.anchor = None;
+        true
+    }
+
+    /// Keeps the content for Ctrl+Z (never for a password: no copy of a secret is kept).
+    fn remember(&mut self) {
+        if self.password {
+            return;
+        }
+        if self.history.len() >= UNDO_STEPS {
+            self.history.remove(0);
+        }
+        self.history.push((self.text.clone(), self.caret));
+    }
+
+    fn forget_history(&mut self) {
+        self.history.clear();
+    }
+
+    /// Removes the selected range (no history step); `false` when nothing was selected.
+    fn delete_selection_now(&mut self) -> bool {
+        let Some((a, b)) = self.selection() else {
+            self.anchor = None;
+            return false;
+        };
+        self.text.replace_range(a..b, "");
+        self.scrub_tail(b - a);
+        self.caret = a;
+        self.anchor = None;
+        true
     }
 
     /// The field part of the node: below its visible label (if shown), above the error.
@@ -501,6 +624,25 @@ impl TextField {
                 );
             }
         } else {
+            if let Some((a, b)) = self.selection() {
+                // The selected run, behind the text (accent at a third, as the boards' selection).
+                let (xa, xb) = (
+                    layout.caret_x(self.to_display(a)) / scale,
+                    layout.caret_x(self.to_display(b)) / scale,
+                );
+                let reach = layout.height / scale / 2.0;
+                let middle = inner.y + inner.h / 2.0;
+                let band = Rect::new(
+                    left + xa.min(xb),
+                    middle - reach,
+                    (xa - xb).abs(),
+                    reach * 2.0,
+                );
+                let before = p.set_opacity(state::SELECTION_OPACITY);
+                let accent = p.color(ColorRole::Accent);
+                p.fill(band, None, accent);
+                p.set_opacity(before);
+            }
             let color = p.color(ColorRole::Text);
             p.text(
                 &layout,

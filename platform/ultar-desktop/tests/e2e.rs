@@ -351,6 +351,14 @@ fn the_same_lock_screen_takes_the_password_after_the_wait() {
     w.type_text(&GEHEIM1);
     w.key(ENTER);
     w.until("unlocked by the same lock screen", |c| !c.state.locked());
+    // It stays unlocked: the lock screen draws no frame after its Unlock (found in VMware: the
+    // last frame of the sign-in, committed after the Unlock, locked the session again).
+    w.pump(1500);
+    assert!(!w.comp.state.locked(), "a late lock frame locked again");
+    assert!(
+        w.comp.state.lock_surface().is_none(),
+        "the lock surface is gone"
+    );
     lock_stop.store(true, Ordering::SeqCst);
     let _ = w.join(lock);
     w.stop.store(true, Ordering::SeqCst);

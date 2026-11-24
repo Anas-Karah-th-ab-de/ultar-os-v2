@@ -97,3 +97,39 @@ fn password_bytes_stay_in_one_buffer_that_is_wiped() {
     let short = TextField::password(Label::key("pw")).max_len(8);
     assert!(short.text.capacity() >= 8);
 }
+
+#[test]
+fn select_all_cut_paste_and_undo() {
+    let mut f = TextField::new(Label::key("f")).text("hello");
+    assert!(f.select_all());
+    assert_eq!(f.selection(), Some((0, 5)));
+    assert_eq!(f.selected_text(), Some("hello"));
+    assert!(f.insert('x'), "typing replaces the selection");
+    assert_eq!(f.content(), "x");
+    assert!(f.undo());
+    assert_eq!(f.content(), "hello");
+    f.select_all();
+    assert_eq!(f.cut().as_deref(), Some("hello"));
+    assert_eq!(f.content(), "");
+    assert!(f.paste("a\nb\u{202E}c"), "line breaks and controls dropped");
+    assert_eq!(f.content(), "abc");
+    assert!(f.undo() && f.undo());
+    assert_eq!(f.content(), "hello");
+    f.set_caret(0);
+    assert_eq!(f.selection(), None, "moving the caret ends the selection");
+}
+
+#[test]
+fn nothing_leaves_a_password_field_and_no_copy_is_kept() {
+    let mut f = TextField::password(Label::key("p"));
+    for ch in "geheim".chars() {
+        assert!(f.insert(ch));
+    }
+    assert!(f.select_all());
+    assert_eq!(f.selected_text(), None);
+    assert_eq!(f.cut(), None);
+    assert_eq!(f.content(), "geheim", "cut refused: nothing removed");
+    assert!(!f.undo(), "no history of a secret");
+    assert!(f.paste("x"), "pasting into a password field is allowed");
+    assert_eq!(f.content(), "x");
+}

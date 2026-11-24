@@ -237,6 +237,7 @@ lock.access.large_text = نص كبير
 lock.access.high_contrast = تباين عالٍ
 lock.access.screen_reader = قارئ الشاشة
 lock.access.on_screen_keyboard = لوحة المفاتيح على الشاشة
+lock.access.unavailable = غير متاح بعد على هذا النظام
 lock.back = رجوع
 lock.caps_lock = مفتاح الأحرف الكبيرة مفعّل
 lock.date = {weekday} {day} {month} {year}

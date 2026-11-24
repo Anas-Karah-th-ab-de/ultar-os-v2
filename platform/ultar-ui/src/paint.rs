@@ -82,6 +82,10 @@ pub struct PaintEnv {
     pub theme: ThemeKind,
     /// Device pixels per logical point.
     pub scale: f32,
+    /// accessibility.high_contrast: [`crate::tokens::HIGH_CONTRAST`] instead of the theme's palette.
+    pub high_contrast: bool,
+    /// accessibility.large_text: every text (and its line box) this many times larger (1 = off).
+    pub text_scale: f32,
 }
 
 impl PaintEnv {
@@ -92,11 +96,16 @@ impl PaintEnv {
             direction: lang.direction(),
             theme,
             scale: 1.0,
+            high_contrast: false,
+            text_scale: 1.0,
         }
     }
 
     /// The palette of the active theme.
     pub fn palette(&self) -> &'static Palette {
+        if self.high_contrast {
+            return &crate::tokens::HIGH_CONTRAST;
+        }
         THEME.palette(self.theme)
     }
 
@@ -110,10 +119,11 @@ impl PaintEnv {
         } else {
             spec.weight
         };
-        let mut style = TextStyle::new(spec.size.points() * self.scale, self.lang)
-            .with_weight(weight)
-            .with_role(spec.role)
-            .with_overflow(spec.overflow);
+        let mut style =
+            TextStyle::new(spec.size.points() * self.text_scale * self.scale, self.lang)
+                .with_weight(weight)
+                .with_role(spec.role)
+                .with_overflow(spec.overflow);
         style.direction = self.direction;
         style
     }

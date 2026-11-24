@@ -127,6 +127,12 @@ impl Transfers {
             .min()
     }
 
+    /// A transfer number that is answered at once with `TransferCancelled` (nothing to read).
+    fn empty(&mut self) -> TransferId {
+        self.next = self.next.wrapping_add(1).max(1);
+        TransferId(self.next)
+    }
+
     fn start(
         &mut self,
         (source, dest): (ClientId, ClientId),
@@ -183,8 +189,18 @@ impl State {
                 if !self.user_action(client, serial) || self.focused_client() != Some(client) {
                     return Err(ErrorCode::Permission);
                 }
-                let Some((owner, mimes)) = self.transfers.selection.clone() else {
-                    return Err(ErrorCode::UnknownObject);
+                // An empty clipboard, or one without the wanted type, is not the reader's fault:
+                // it gets a cancelled transfer instead of losing its connection (found in
+                // VMware: Ctrl+V with nothing copied ended the app).
+                let offered = self
+                    .transfers
+                    .selection
+                    .clone()
+                    .filter(|(_, mimes)| mime.len() <= MAX_MIME && mimes.contains(&mime));
+                let Some((owner, mimes)) = offered else {
+                    let transfer = self.transfers.empty();
+                    self.send(client, Event::TransferCancelled { transfer });
+                    return Ok(());
                 };
                 self.begin_transfer(owner, client, &mimes, mime)
             }

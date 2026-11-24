@@ -95,6 +95,60 @@ impl Ui {
         self.background
     }
 
+    /// accessibility.high_contrast: the high-contrast palette over the theme.
+    pub fn set_high_contrast(&mut self, on: bool) {
+        if self.env.high_contrast != on {
+            self.env.high_contrast = on;
+            self.dirty.full = true;
+            self.layers.backdrop.ready = false;
+        }
+    }
+
+    /// accessibility.large_text: text this many times larger (1 to 2; 1 = off). Laid out again.
+    pub fn set_text_scale(&mut self, factor: f32) -> Result<(), UiError> {
+        if !(factor.is_finite() && (1.0..=2.0).contains(&factor)) {
+            return Err(UiError::InvalidScale);
+        }
+        if self.env.text_scale != factor {
+            self.env.text_scale = factor;
+            self.invalidate_layout();
+        }
+        Ok(())
+    }
+
+    /// Text a field put on the clipboard (Ctrl+C, Ctrl+X) since the last call; the window offers
+    /// it to the compositor. Never the content of a password field.
+    pub fn take_copy(&mut self) -> Option<String> {
+        self.clipboard.0.take()
+    }
+
+    /// `true` once after a field asked for the clipboard (Ctrl+V); the window then reads the
+    /// clipboard and hands the text to [`Ui::paste`].
+    pub fn take_paste(&mut self) -> bool {
+        self.clipboard
+            .1
+            .is_some_and(|id| self.focused() == Some(id))
+            && std::mem::take(&mut self.clipboard.1).is_some()
+    }
+
+    /// The clipboard's text for the focused field that asked for it (Ctrl+V); its actions.
+    pub fn paste(&mut self, text: &str) -> Vec<crate::event::Action> {
+        let mut out = Vec::new();
+        let Some(id) = self.focused() else {
+            return out;
+        };
+        if let Ok(field) = self.text_field_mut(id) {
+            if field.paste(text) {
+                out.push(crate::event::Action {
+                    node: id,
+                    kind: crate::event::ActionKind::TextChanged,
+                });
+            }
+            self.touch(id);
+        }
+        out
+    }
+
     /// "Reduce motion": knobs jump and progress rings stand still.
     pub fn set_reduce_motion(&mut self, reduce: bool) {
         if self.reduce_motion != reduce {

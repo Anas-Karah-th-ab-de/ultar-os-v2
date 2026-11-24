@@ -202,6 +202,9 @@ pub struct Ui {
     pub(crate) pending: Vec<crate::event::Action>,
     dirty: Dirty,
     pub(crate) now_ms: u64,
+    /// Clipboard work for the window: text to offer (Ctrl+C, Ctrl+X) and the field that asked
+    /// for the clipboard's text (Ctrl+V). Read with [`Ui::take_copy`] and [`Ui::take_paste`].
+    pub(crate) clipboard: (Option<String>, Option<NodeId>),
 }
 
 const TOOLKIT_CATALOGS: [(Lang, &str); 3] = [
@@ -247,6 +250,7 @@ impl Ui {
             input: InputState::default(),
             layers: Layers::default(),
             pending: Vec::new(),
+            clipboard: (None, None),
             dirty: Dirty::default(),
             now_ms: 0,
         };

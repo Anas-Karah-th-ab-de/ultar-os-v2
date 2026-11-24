@@ -18,8 +18,10 @@ use ultar_ui::tokens::ThemeKind;
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 4] = [
+pub const FOLLOWED: [&str; 6] = [
     "appearance.theme",
+    "accessibility.high_contrast",
+    "accessibility.large_text",
     "notifications.do_not_disturb",
     "display.night_light.enabled",
     "power.mode",
@@ -119,6 +121,8 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
             };
         }
         ("notifications.do_not_disturb", SettingValue::Flag(on)) => d.values.dnd = *on,
+        ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
+        ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
         ("display.night_light.enabled", SettingValue::Flag(on)) => d.values.night = *on,
         ("power.mode", SettingValue::Text(t)) => {
             if let Some(m) = PowerMode::parse(t) {

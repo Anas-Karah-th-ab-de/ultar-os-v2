@@ -304,6 +304,12 @@ fn gen_themes(out: &mut String, root: &Table) -> Res<()> {
             "theme.light (roles differ from theme.dark)".into(),
         ));
     }
+    let contrast = table(root, "theme.contrast")?;
+    if !dark.keys().eq(contrast.keys()) {
+        return Err(GenError::Invalid(
+            "theme.contrast (roles differ from theme.dark)".into(),
+        ));
+    }
     writeln!(
         out,
         "/// Colour roles from `[theme.*]`; code names roles, never values."
@@ -335,12 +341,12 @@ fn gen_themes(out: &mut String, root: &Table) -> Res<()> {
         writeln!(out, "            ColorRole::{} => {key:?},", camel(key))?;
     }
     writeln!(out, "        }}\n    }}\n}}")?;
-    for (name, theme) in [("DARK", dark), ("LIGHT", light)] {
-        writeln!(
-            out,
-            "/// Palette of `[theme.{}]`.",
-            name.to_ascii_lowercase()
-        )?;
+    for (name, table_name, theme) in [
+        ("DARK", "dark", dark),
+        ("LIGHT", "light", light),
+        ("HIGH_CONTRAST", "contrast", contrast),
+    ] {
+        writeln!(out, "/// Palette of `[theme.{table_name}]`.")?;
         write!(out, "pub const {name}: Palette = Palette::from_roles([")?;
         for (key, value) in theme {
             let text = value

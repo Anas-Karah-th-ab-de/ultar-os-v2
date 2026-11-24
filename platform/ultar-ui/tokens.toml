@@ -91,6 +91,24 @@ success = "#1B6D36"
 warning = "#835500"
 danger = "#B3261E"
 
+[theme.contrast]           # accessibility.high_contrast (over either theme): text >= 7:1 everywhere
+ground = "#000000"
+bar = "#000000"
+surface = "#000000"
+raised = "#0A0A0A"
+hover = "#242424"
+line = "#FFFFFF"
+control_border = "#FFFFFF"
+text = "#FFFFFF"
+text_muted = "#E6E6E6"
+accent = "#FFD400"
+on_accent = "#000000"
+accent_text = "#FFE14D"
+info = "#A8CFFF"
+success = "#8CFFA8"
+warning = "#FFD166"
+danger = "#FFA099"
+
 [shadow]                   # one elevation level for everything that floats (CSS: 0 offset_y blur)
 offset_y = 12
 blur = 32
@@ -101,6 +119,7 @@ alpha_light = 0.18
 disabled_opacity = 0.40    # whole widget
 hover_overlay = 0.10       # share of the foreground colour laid over a filled colour
 pressed_overlay = 0.20
+selection_opacity = 0.35  # accent behind selected text in a field
 scrim_dark = 0.60          # ground colour laid over everything behind a dialog or sheet
 scrim_light = 0.40
 focus_ring = "info"        # colour role of the focus ring (DESKTOP-SPEC §3: blue next to the gold)

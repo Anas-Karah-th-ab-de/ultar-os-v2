@@ -204,7 +204,7 @@ impl Row {
             } else {
                 typography::LINE_HEIGHT_LATIN
             };
-            (h / line).round() * size.points() * factor
+            (h / line).round() * size.points() * cx.env.text_scale * factor
         };
         let (label, sub) = (exact(label, TypeSize::S14), exact(sub, TypeSize::S12));
         let separator = if self.separator { size::BORDER } else { 0.0 };
