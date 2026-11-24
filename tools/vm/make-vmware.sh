@@ -17,6 +17,11 @@
 #      (medium on AHCI, target on NVMe, e1000e, no virtio) - the disk is exactly what the installer creates
 #   4. the installed disk is started once (tools/vm/vmware-vm.py check): services, compositor, screenshot
 #   5. qemu-img convert -O vmdk, the .vmx, and the .vmdk is started again on NVMe and on AHCI (CHECK=0 skips)
+# INSTALLER_IMG=1 builds the public installation image instead (out/vmware/UltarOS-v2-installer.img, raw UEFI GPT
+# for a USB stick): the same system tree plus ultar-installer-ui and ultar-firstboot, the medium's marker asks for
+# the graphical installer session (session=init, docs/integration/installer-boot.md), NO account and no password
+# in the image (the installer's account step creates it, ultar-firstboot writes it at the first start); its check
+# boots it in QEMU with an empty NVMe disk until the installer reports its first step (screenshot).
 # Environment: DISK_MIB (4096), LANG_CODE (ar | de | en), KEEP=1 keeps out/vmware/work, SYSTEM_KEY and
 # SYSTEM_KEY_PUB (the system signing key, hex files; default: a key made for this build only); for the QEMU runs
 # SMP (4), MEM (1024), WAIT, ACCEL (tcg | kvm), see tools/vm/vmware-vm.py.
@@ -40,7 +45,7 @@ for tool in qemu-system-x86_64 qemu-img mke2fs debugfs mkfs.vfat mcopy mmd pytho
 done
 for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do [ -f "$f" ] || fail "firmware missing: $f"; done
 case "$LANG_CODE" in ar | de | en) ;; *) fail "LANG_CODE must be ar, de or en" ;; esac
-rm -rf "$W" "$VM" "$OUT/$NAME.zip"
+rm -rf "$W" "$VM" "$OUT/$NAME.zip" "$OUT/$NAME-installer.img"
 mkdir -p "$W" "$VM"
 cleanup() { [ -n "${KEEP:-}" ] || rm -rf "$W"; }
 trap cleanup EXIT
@@ -57,6 +62,8 @@ PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings 
 PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-displayd ultar-accountd"
 # the system apps (installed as signed packages through the launcher, step 2)
 PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web"
+INSTALLER_IMG=${INSTALLER_IMG:-}
+[ -n "$INSTALLER_IMG" ] && PROGRAMS="$PROGRAMS ultar-installer-ui ultar-firstboot"
 SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd"
 # launcher id : program : manifest arguments (the launcher passes no environment of its own;
 # the apps reach the compositor and the apps' bus socket, app.shared, through these). The phone draws its
@@ -68,7 +75,7 @@ if [ -z "${BIN:-}" ]; then
     -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p ultar-desktop \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
     -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-displayd -p ultar-accountd -p ultar-pkg \
-    -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web --features ultar-store/gui --bins \
+    -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
@@ -156,6 +163,13 @@ for s in compositor lock sysdialog desktop; do
     fail "$s.toml: neither 'manual = true' nor 'system = \"manual\"'"
   fi
 done
+if [ -n "$INSTALLER_IMG" ]; then
+  # the installer (profile installer only) and the first start (profile system); the authentication
+  # service starts after the first start has written the account the installer was given
+  for s in installer firstboot; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
+  sed -i 's/^after = \["bus"\]$/after = ["bus", "firstboot"]/' "$R/etc/ultar/services/authd.toml"
+  grep -q '^after = \["bus", "firstboot"\]$' "$R/etc/ultar/services/authd.toml" || fail "authd.toml: after"
+fi
 printf 'desktop\n' >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"
 printf '%s\n' "$LANG_CODE" >"$R/etc/ultar/sprache"
@@ -200,16 +214,20 @@ mkdir -p "$W/data-root/ultar/auth"
 # the account of the lock screen and the system dialogs (ultar-authd passwd reads the password on stdin)
 VM_USER=${VM_USER:-ultar}
 PWFILE=${VM_PASSWORD_FILE:-}
-if [ -z "$PWFILE" ]; then
+if [ -n "$INSTALLER_IMG" ]; then
+  : # no account: the installer asks for it
+elif [ -z "$PWFILE" ]; then
   PWFILE=$OUT/$NAME.password; (umask 077; head -c 12 /dev/urandom | base64 | tr -d '/+=' >"$PWFILE")
 elif [ "$(realpath "$PWFILE")" != "$(realpath -m "$OUT/$NAME.password")" ]; then
   # the image's password always lies beside the image (0600, never in the zip, kept on rebuilds)
   (umask 077; cp "$PWFILE" "$OUT/$NAME.password")
 fi
-pw=$(head -1 "$PWFILE")
-printf '%s\n%s\n' "$pw" "$pw" | "$BIN/ultar-authd" --dir "$W/data-root/ultar/auth" passwd "$VM_USER" --lang "$LANG_CODE" \
-  >/dev/null 2>&1 || fail "account $VM_USER"
-unset pw
+if [ -z "$INSTALLER_IMG" ]; then
+  pw=$(head -1 "$PWFILE")
+  printf '%s\n%s\n' "$pw" "$pw" | "$BIN/ultar-authd" --dir "$W/data-root/ultar/auth" passwd "$VM_USER" --lang "$LANG_CODE" \
+    >/dev/null 2>&1 || fail "account $VM_USER"
+  unset pw
+fi
 mke2fs -q -t ext4 -L ultar-data -d "$W/data-root" "$W/data.ext4" 512M
 root_owned "$W/data.ext4" "$W/data-root"
 # the authentication service (813) owns its directory and files
@@ -219,7 +237,11 @@ debugfs -w -f "$auth_cmds" "$W/data.ext4" >/dev/null 2>&1; rm -f "$auth_cmds"
 # installation medium (GPT): installer, start partition with the loader, kernel, system, data
 truncate -s 16M "$W/install.fat"; mkfs.vfat -n ULTAR-INST "$W/install.fat" >/dev/null
 mmd -i "$W/install.fat" ::/EFI ::/EFI/BOOT; mcopy -i "$W/install.fat" "$KERNEL" ::/EFI/BOOT/BOOTX64.EFI
-printf 'Ultar OS installation medium\n' >"$W/marker"; mcopy -i "$W/install.fat" "$W/marker" ::/ultar-installer
+if [ -n "$INSTALLER_IMG" ]; then
+  printf 'Ultar OS installation medium\nsession=init\n' >"$W/marker"
+else
+  printf 'Ultar OS installation medium\n' >"$W/marker"
+fi; mcopy -i "$W/install.fat" "$W/marker" ::/ultar-installer
 truncate -s 64M "$W/esp.fat"; mkfs.vfat -F 32 -n ULTAR-EFI "$W/esp.fat" >/dev/null
 mmd -i "$W/esp.fat" ::/EFI ::/EFI/BOOT ::/ultar; mcopy -i "$W/esp.fat" "$LOADER" ::/EFI/BOOT/BOOTX64.EFI
 printf 'Ultar OS\n' >"$W/inst"; mcopy -i "$W/esp.fat" "$W/inst" ::/ultar/installiert
@@ -227,6 +249,16 @@ printf '%s\n' "$LANG_CODE" >"$W/lang"; mcopy -i "$W/esp.fat" "$W/lang" ::/ultar/
 python3 tools/kern-test/gptimg.py "$W/medium.img" "ULTAR-INSTALL:esp:$W/install.fat" "ULTAR-EFI:esp:$W/esp.fat" \
   "ultar-kernel:raw:$KERNEL" "ultar-compat:linux:$W/system.ext4" "ultar-data:linux:$W/data.ext4" >/dev/null
 rm -rf "$R" "$W/data-root" "$W"/*.fat "$W"/*.ext4
+if [ -n "$INSTALLER_IMG" ]; then
+  echo "== installer image: start in QEMU with an empty NVMe disk"
+  mv "$W/medium.img" "$OUT/$NAME-installer.img"
+  if [ "${CHECK:-1}" != 0 ]; then
+    python3 tools/vm/vmware-vm.py installer "$OUT/$NAME-installer.img" "$OUT/$NAME-installer" || fail "the installer image does not reach the installer"
+  fi
+  (cd "$OUT" && sha256sum "$NAME-installer.img" | tee "$NAME-installer.img.sha256")
+  echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME-installer.img)"
+  exit 0
+fi
 
 # 3) Installation on VMware-like hardware
 echo "== 3/5 installation (the kernel's installer, A/B layout)"
