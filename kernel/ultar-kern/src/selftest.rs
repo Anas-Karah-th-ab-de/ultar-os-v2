@@ -37,26 +37,20 @@ fn extra_program() {
     for l in lines {
         if l == "spur" {
             trace = true;
-        } else if let Some(n) = l.strip_prefix("gpu-pat=").and_then(|n| n.parse::<u8>().ok()) {
-            crate::drivers::intel_display::gt_exec::FORCE_PAT.store(n, core::sync::atomic::Ordering::Relaxed);
-            kprintln!("[test] GPU cache attribute forced to {n} (measuring only)");
-        } else if l == "gpu-wc-all" {
-            crate::drivers::intel_display::gt_exec::WC_ALL.store(true, core::sync::atomic::Ordering::Relaxed);
-            kprintln!("[test] every GPU buffer write-combining, not coherent (measuring only)");
         } else if l == "abgewiesen" {
             crate::svcdev::dri::LOG_REFUSED.store(true, core::sync::atomic::Ordering::Relaxed);
         } else {
             env.push(String::from(l));
         }
     }
-    kprintln!("[test] Zusatzprogramm {path}:");
+    kprintln!("[test] extra program {path}:");
     crate::syscall::TRACE.store(trace, core::sync::atomic::Ordering::Relaxed);
     match crate::proc::spawn(&path, argv, env) {
         Ok(_) => crate::proc::run_all(),
-        Err(e) => kprintln!("  Fehler: {e}"),
+        Err(e) => kprintln!("  error: {e}"),
     }
     crate::syscall::TRACE.store(false, core::sync::atomic::Ordering::Relaxed);
-    kprintln!("[test] Zusatzprogramm beendet");
+    kprintln!("[test] extra program done");
 }
 
 pub fn run() {

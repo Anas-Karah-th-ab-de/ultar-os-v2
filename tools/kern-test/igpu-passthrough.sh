@@ -181,7 +181,7 @@ run_vm() {   # $1 = extra vfio-pci options; ends QEMU as soon as the verdict lin
     # render node runs right after it and is the last test that uses this device
     local done_re="GTTEST: (ALLES OK|FEHLER|no Intel)"
     [ -n "$BINS" ] && [ -e "$BINS/dritest" ] && done_re="DRITEST: |GTTEST: no Intel|Programm dritest: nicht"
-    [ -n "${TESTPROG:-}" ] && done_re="Zusatzprogramm beendet|GTTEST: no Intel"
+    [ -n "${TESTPROG:-}" ] && done_re="extra program done|GTTEST: no Intel"
     if grep -aqE "$done_re|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
     sleep 1
   done
@@ -221,7 +221,7 @@ fi
 if [ -n "${TESTPROG:-}" ]; then
   echo "--- extra program"
   # the serial log ends its lines with CR LF
-  tr -d '\r' < "$W/serial.log" | sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' > "$W/extra.txt"
+  tr -d '\r' < "$W/serial.log" | sed -n '/\[test\] extra program .*:$/,/extra program done/p' > "$W/extra.txt"
   head -"${EXTRA_LINES:-400}" "$W/extra.txt"
   # the program's own verdict line (e.g. VKRECHNEN: ALLES OK ...), if it prints one
   echo "VERDICT: $(grep -aE '^[A-Z]+: (ALLES OK|FEHLER)' "$W/extra.txt" | tail -1 | grep . || echo 'extra program: no verdict')"
