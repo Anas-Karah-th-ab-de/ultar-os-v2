@@ -114,8 +114,15 @@ fn workarounds(dev: &mut Device) {
         return;
     }
     let ok = wa::apply(&mut dev.mmio);
-    let names: alloc::vec::Vec<&str> = wa::XE_LPG.iter().zip(ok).map(|(w, o)| if o { w.name } else { "-" }).collect();
-    crate::kprintln!("[intel-gt] workarounds for graphics {ver} set: {}", names.join(" "));
+    let names: alloc::vec::Vec<&str> = wa::XE_LPG
+        .iter()
+        .zip(ok)
+        .map(|(w, o)| if o { w.name } else { "-" })
+        .collect();
+    crate::kprintln!(
+        "[intel-gt] workarounds for graphics {ver} set: {}",
+        names.join(" ")
+    );
 }
 
 /// Asks for the GT's highest frequency (it would stay near the lowest and compute several times
@@ -196,7 +203,10 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
         }
     };
     match super::gt_irq::setup(dev) {
-        Ok(()) => crate::kprintln!("[intel-gt] interrupts: MSI vector {:#x} to this core", super::gt_irq::VECTOR),
+        Ok(()) => crate::kprintln!(
+            "[intel-gt] interrupts: MSI vector {:#x} to this core",
+            super::gt_irq::VECTOR
+        ),
         Err(e) => crate::kprintln!("[intel-gt] interrupts: {e}; waits stay on the timer"),
     }
     let ms = (crate::arch::uptime_ns() - t0) / 1_000_000;

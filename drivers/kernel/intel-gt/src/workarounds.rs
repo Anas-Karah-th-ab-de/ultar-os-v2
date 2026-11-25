@@ -35,10 +35,30 @@ const MCR_MULTICAST: u32 = 1 << 31;
 
 /// The workarounds for graphics 12.70–12.74 (GT, then first render/compute engine).
 pub const XE_LPG: [Wa; 4] = [
-    Wa { name: "14018575942", reg: COMP_MOD_CTRL, bits: 1 << 3, masked: false },
-    Wa { name: "22016670082", reg: SQCNT1, bits: 1 << 23, masked: false },
-    Wa { name: "14017856879", reg: ROW_CHICKEN3, bits: 1 << 9, masked: true },
-    Wa { name: "14020495402", reg: ROW_CHICKEN2, bits: 1 << 1, masked: true },
+    Wa {
+        name: "14018575942",
+        reg: COMP_MOD_CTRL,
+        bits: 1 << 3,
+        masked: false,
+    },
+    Wa {
+        name: "22016670082",
+        reg: SQCNT1,
+        bits: 1 << 23,
+        masked: false,
+    },
+    Wa {
+        name: "14017856879",
+        reg: ROW_CHICKEN3,
+        bits: 1 << 9,
+        masked: true,
+    },
+    Wa {
+        name: "14020495402",
+        reg: ROW_CHICKEN2,
+        bits: 1 << 1,
+        masked: true,
+    },
 ];
 
 /// Whether the workarounds apply to graphics version `ver` (×100, e.g. 1274).
