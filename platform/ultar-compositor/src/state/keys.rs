@@ -15,17 +15,7 @@ impl State {
             return;
         }
         let pressed = state != KeyState::Released;
-        let bit = keymap::modifier_bit(code);
-        // Sticky keys: a latched modifier applies to this key; a non-modifier press consumes it.
-        let sticky = self.keyboard.helpers.sticky.on_key(bit, state);
-        if let Some(bit) = bit {
-            if pressed {
-                self.keyboard.modifiers |= bit;
-            } else {
-                self.keyboard.modifiers &= !bit;
-            }
-        }
-        let mods = self.keyboard.modifiers | sticky;
+        let mods = self.key_modifiers(code, state);
         if code == 58 && state == KeyState::Pressed {
             self.keyboard.caps_lock = !self.keyboard.caps_lock;
         }
@@ -76,6 +66,23 @@ impl State {
             KeyState::Repeated => 2,
         };
         self.deliver_key(key, code, state_code, modifiers, (output, serial));
+    }
+
+    /// The modifiers in effect for a key: physical holding plus sticky keys (a latched
+    /// modifier applies to this key; a non-modifier press consumes the latch). Updates the
+    /// physical modifier state.
+    fn key_modifiers(&mut self, code: u16, state: KeyState) -> u8 {
+        let pressed = state != KeyState::Released;
+        let bit = keymap::modifier_bit(code);
+        let sticky = self.keyboard.helpers.sticky.on_key(bit, state);
+        if let Some(bit) = bit {
+            if pressed {
+                self.keyboard.modifiers |= bit;
+            } else {
+                self.keyboard.modifiers &= !bit;
+            }
+        }
+        self.keyboard.modifiers | sticky
     }
 
     pub(super) fn deliver_key(

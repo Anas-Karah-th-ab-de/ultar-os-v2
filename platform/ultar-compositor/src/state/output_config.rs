@@ -95,25 +95,31 @@ impl State {
                     (enabled, delay_ms, per_second);
                 Ok(())
             }
-            Request::ConfigureKeyHelpers {
+            Request::ConfigureKeyHelpers { .. } => self.apply_key_helpers(client, r),
+            _ => Ok(()),
+        }
+    }
+
+    /// `ConfigureKeyHelpers`: the keyboard helpers and the compose key of the same right.
+    fn apply_key_helpers(&mut self, client: ClientId, r: Request) -> Result<(), ErrorCode> {
+        self.require_output_config(client)?;
+        if let Request::ConfigureKeyHelpers {
+            sticky_keys,
+            slow_keys,
+            bounce_keys,
+            mouse_keys,
+            compose_key,
+        } = r
+        {
+            self.configure_key_helpers(
                 sticky_keys,
                 slow_keys,
                 bounce_keys,
                 mouse_keys,
                 compose_key,
-            } => {
-                self.require_output_config(client)?;
-                self.configure_key_helpers(
-                    sticky_keys,
-                    slow_keys,
-                    bounce_keys,
-                    mouse_keys,
-                    compose_key,
-                );
-                Ok(())
-            }
-            _ => Ok(()),
+            );
         }
+        Ok(())
     }
 
     fn require_output_config(&self, client: ClientId) -> Result<(), ErrorCode> {

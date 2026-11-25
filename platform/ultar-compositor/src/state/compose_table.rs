@@ -47,22 +47,22 @@ pub const TABLE: &[(&str, &str)] = &[
     ("~A", "Ã"),
     ("~N", "Ñ"),
     ("~O", "Õ"),
-    // Diaeresis.
-    ("\"a", "ä"),
+    // Diaeresis (the German letters are escaped, as in keymap.rs: data, not UI text).
+    ("\"a", "\u{E4}"),
     ("\"e", "ë"),
     ("\"i", "ï"),
-    ("\"o", "ö"),
-    ("\"u", "ü"),
+    ("\"o", "\u{F6}"),
+    ("\"u", "\u{FC}"),
     ("\"y", "ÿ"),
-    ("\"A", "Ä"),
+    ("\"A", "\u{C4}"),
     ("\"E", "Ë"),
     ("\"I", "Ï"),
-    ("\"O", "Ö"),
-    ("\"U", "Ü"),
+    ("\"O", "\u{D6}"),
+    ("\"U", "\u{DC}"),
     // Cedilla, ligatures and sharp s.
     (",c", "ç"),
     (",C", "Ç"),
-    ("ss", "ß"),
+    ("ss", "\u{DF}"),
     ("ae", "æ"),
     ("AE", "Æ"),
     ("oe", "œ"),
@@ -98,13 +98,13 @@ pub const TABLE: &[(&str, &str)] = &[
     ("\"\"", "¨"),
     ("~~", "˜"),
     (",,", "¸"),
-    // Arabic: hamza carriers and madda (ء is the hamza key, ا و ي the letters).
-    ("ءا", "أ"),
-    ("ءو", "ؤ"),
-    ("ءي", "ئ"),
-    ("~ا", "آ"),
-    // Arabic: the rial sign.
-    ("ري", "﷼"),
+    // Arabic: hamza carriers and madda (hamza U+0621 with alef U+0627, waw U+0648, yeh U+064A).
+    ("\u{621}\u{627}", "\u{623}"),
+    ("\u{621}\u{648}", "\u{624}"),
+    ("\u{621}\u{64A}", "\u{626}"),
+    ("~\u{627}", "\u{622}"),
+    // Arabic: the rial sign (reh U+0631, yeh U+064A).
+    ("\u{631}\u{64A}", "\u{FDFC}"),
 ];
 
 /// What the sequence `a` then `b` produces, if the table has it.
