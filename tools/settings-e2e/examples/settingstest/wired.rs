@@ -5,7 +5,7 @@
 //! looks through and how its surfaces look; the Settings window follows the accessibility
 //! switches itself. The Storage page shows what the volume service measured.
 
-use super::{click, open, setup::Run, texts};
+use super::{click, open, setup::Run};
 use std::time::Duration;
 use ultar_bus::messages::settings::{Changed, Get, SettingValue};
 use ultar_bus::{Client, TypedSubscription};
@@ -20,6 +20,9 @@ use ultar_settings::App;
 use ultar_surface::proto::Request;
 use ultar_ui::event::{Event, PointerButton};
 use ultar_ui::Size;
+
+#[path = "storage.rs"]
+mod storage;
 
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -264,34 +267,13 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
     Ok(())
 }
 
-/// Storage: the page shows the size the kernel reports for this device's storage, as the
-/// volume service measured it.
-fn storage(bus: &Client, run: &Run) -> Result<(), String> {
-    let own = if std::path::Path::new("/data").is_dir() {
-        "/data"
-    } else {
-        "/"
-    };
-    let stat = rustix::fs::statvfs(own).map_err(|e| format!("statvfs {e}"))?;
-    let total = stat.f_blocks.saturating_mul(stat.f_frsize);
-    let mut app = page(bus, run, "storage")?;
-    let size = ultar_i18n::units::format_size(total, app.ui.translator());
-    let shown = texts(&mut app);
-    let this = app.ui.translator().t("app.settings.storage.internal");
-    if !shown.iter().any(|t| *t == this) || !shown.iter().any(|t| t.contains(&size)) {
-        return Err(format!(
-            "storage page without {size} of this device: {shown:?}"
-        ));
-    }
-    println!("SETTINGS: storage page shows the volume service's measurement ({size})");
-    Ok(())
-}
-
 /// Everything above.
 pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displayd = Follower::connect(run, "the display service", "displayd")?;
     let desktop = Follower::connect(run, "the shell", "desktop")?;
+    let volumed = Follower::connect(run, "the volume service", "volumed")?;
     input(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop)?;
-    storage(bus, run)
+    storage::storage(bus, run)?;
+    storage::storage_settings(bus, admin, run, &volumed)
 }

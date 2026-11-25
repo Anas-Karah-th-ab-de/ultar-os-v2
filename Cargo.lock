@@ -4413,6 +4413,7 @@ dependencies = [
  "ultar-settings",
  "ultar-surface",
  "ultar-ui",
+ "ultar-volumed",
 ]
 
 [[package]]
