@@ -4,8 +4,10 @@
 //! ultar-paketbau check    <recipe.toml>            is the recipe sound?
 //! ultar-paketbau fetch    <recipe.toml> <workdir>  download the archives, compare or print hashes
 //! ultar-paketbau outdated <recipe.toml>            which parts have a newer upstream release?
-//! ultar-paketbau build    <recipe.toml> <workdir>  build every part, then prove the closure
-//! ultar-paketbau closure  <recipe.toml>            prove that the built package needs nothing outside
+//! ultar-paketbau build    <recipe.toml> <workdir>  build every part, then pack
+//! ultar-paketbau pack     <recipe.toml> <workdir>  the shipped copy: trimmed, closure proven, checks run
+//!                                                   in a system that holds nothing but the package
+//! ultar-paketbau closure  <recipe.toml>            closure of the built tree
 //! ```
 //! The package is built at its final place (`/pkg/<id>`) on the build machine; signing and
 //! packing into a `.uap` is `upkg`'s job (`system/core/ultar-pkg`).
@@ -78,10 +80,10 @@ fn outdated(recipe: &Recipe) -> Result<(), String> {
     Ok(())
 }
 
-fn closure(recipe: &Recipe) -> Result<(), String> {
-    let (count, leaks) = work::closure_of(&recipe.prefix);
+fn closure(recipe: &Recipe, tree: &Path) -> Result<(), String> {
+    let (count, leaks) = work::closure_of(tree, &recipe.prefix);
     if count == 0 {
-        return Err(format!("{}: nothing built there", recipe.prefix));
+        return Err(format!("{}: nothing built there", tree.display()));
     }
     if leaks.is_empty() {
         println!(
@@ -97,7 +99,7 @@ fn closure(recipe: &Recipe) -> Result<(), String> {
     ))
 }
 
-fn build(recipe: &Recipe, site: &Site) -> Result<(), String> {
+fn host_ready(recipe: &Recipe) -> Result<(), String> {
     for tool in &recipe.host_needs {
         let found = std::process::Command::new("sh")
             .args(["-c", &format!("command -v {tool} >/dev/null")])
@@ -107,22 +109,34 @@ fn build(recipe: &Recipe, site: &Site) -> Result<(), String> {
             return Err(format!("the build machine has no `{tool}` (host_needs)"));
         }
     }
+    Ok(())
+}
+
+/// Builds every part, then packs: the shipped copy, its closure, its checks.
+fn build(recipe: &Recipe, site: &Site) -> Result<(), String> {
+    host_ready(recipe)?;
     for part in &recipe.parts {
         let t0 = std::time::Instant::now();
         let built = work::build(site, recipe, part)?;
-        let state = if built {
-            format!("built in {} s", t0.elapsed().as_secs())
-        } else {
-            "already built".into()
+        let state = match built {
+            true => format!("built in {} s", t0.elapsed().as_secs()),
+            false => "already built".into(),
         };
-        println!("{:<18} {:<12} {state}", part.name, part.version);
+        println!("{:<22} {:<12} {state}", part.name, part.version);
     }
-    work::trim(recipe)?;
-    let list = Path::new(&recipe.prefix).join("share/ultar");
-    std::fs::create_dir_all(&list).map_err(|e| e.to_string())?;
-    std::fs::write(list.join("contents.toml"), work::contents(recipe))
-        .map_err(|e| e.to_string())?;
-    closure(recipe)
+    pack(recipe, site)
+}
+
+fn pack(recipe: &Recipe, site: &Site) -> Result<(), String> {
+    work::build_checks(site, recipe)?;
+    let out = work::pack(site, recipe)?;
+    closure(recipe, &out)?;
+    for check in &recipe.checks {
+        let text = work::run_check(site, recipe, check)?;
+        println!("check ok: {}\n{}", check.name, text.trim_end());
+    }
+    println!("package tree: {}", out.display());
+    Ok(())
 }
 
 fn main() {
@@ -131,10 +145,11 @@ fn main() {
     let result = load(arg(2)).and_then(|recipe| match (arg(1), arg(3)) {
         ("check", _) => sound(&recipe, false).map(|_| println!("recipe ok: {} parts", recipe.parts.len())),
         ("outdated", _) => sound(&recipe, false).and_then(|_| outdated(&recipe)),
-        ("closure", _) => closure(&recipe),
+        ("closure", _) => closure(&recipe, Path::new(&recipe.prefix)),
+        ("pack", dir) if !dir.is_empty() => sound(&recipe, true).and_then(|_| pack(&recipe, &site(arg(2), dir))),
         ("fetch", dir) if !dir.is_empty() => sound(&recipe, false).and_then(|_| fetch(&recipe, &site(arg(2), dir))),
         ("build", dir) if !dir.is_empty() => sound(&recipe, true).and_then(|_| build(&recipe, &site(arg(2), dir))),
-        _ => Err("usage: ultar-paketbau check|outdated|closure <recipe.toml>  |  fetch|build <recipe.toml> <workdir>".into()),
+        _ => Err("usage: ultar-paketbau check|outdated|closure <recipe.toml>  |  fetch|build|pack <recipe.toml> <workdir>".into()),
     });
     if let Err(e) = result {
         eprintln!("{e}");

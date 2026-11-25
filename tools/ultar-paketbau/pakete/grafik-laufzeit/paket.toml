@@ -30,7 +30,7 @@ runtime_env = [
   ["LDFLAGS", "-L{prefix}/lib -Wl,-rpath,{prefix}/lib -Wl,--dynamic-linker={prefix}/lib/ld-linux-x86-64.so.2 -static-libstdc++ -static-libgcc"],
 ]
 # needed to build against the package, not to run it
-remove = ["include", "lib/*.a", "lib/*.o", "lib/pkgconfig", "share/pkgconfig", "share/i18n", "share/locale", "share/info", "share/man", "share/cmake", "lib/cmake", "var", "sbin", "libexec", "etc/rpc"]
+remove = ["include", "lib/*.a", "lib/*.o", "lib/pkgconfig", "share/pkgconfig", "share/i18n", "share/locale", "share/info", "share/man", "share/cmake", "lib/cmake", "var", "sbin", "libexec", "etc/rpc", "share/drirc.d"]
 
 # ---- build tools (not shipped) -------------------------------------------------------------
 
@@ -326,3 +326,15 @@ build = [
   "ninja -C build -j{jobs}",
   "ninja -C build install",
 ]
+
+# ---- proof that the package works alone ---------------------------------------------------
+
+[[check]]
+name = "Vulkan with nothing but the package (GPU of the build machine)"
+build = [
+  "mkdir -p {prefix}/share/ultar/pruefung",
+  "$CC -O2 -o {prefix}/share/ultar/pruefung/vk-probe {recipe}/pruefung/vk-probe.c $LDFLAGS -lvulkan",
+]
+run = "{prefix}/share/ultar/pruefung/vk-probe"
+expect = "vulkan: instance ok"
+gpu = true

@@ -74,6 +74,26 @@ pub struct Recipe {
     pub remove: Vec<String>,
     #[serde(rename = "part")]
     pub parts: Vec<Part>,
+    /// Programs that prove the package works with nothing but itself.
+    #[serde(default, rename = "check")]
+    pub checks: Vec<Check>,
+}
+
+/// A program built against the package and run in a system that holds only the package.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Check {
+    pub name: String,
+    /// Commands that build the program into the package (the variables and the environment of
+    /// the shipped parts apply).
+    pub build: Vec<String>,
+    /// The program and its arguments.
+    pub run: String,
+    /// What its output must contain.
+    pub expect: String,
+    /// Whether the GPU of the build machine is handed in (`/dev/dri`, `/sys`).
+    #[serde(default)]
+    pub gpu: bool,
 }
 
 fn plain_name(s: &str) -> bool {
@@ -183,6 +203,14 @@ impl Recipe {
         {
             out.push("remove: paths below the prefix only".into());
         }
+        for c in &self.checks {
+            if !c.run.starts_with(&format!("{}/", self.prefix)) || c.expect.is_empty() {
+                out.push(format!(
+                    "check {:?}: runs a program of the package and expects output",
+                    c.name
+                ));
+            }
+        }
         if !self.parts.iter().any(|p| p.kind == Kind::Runtime) {
             out.push("no runtime part: the package would be empty".into());
         }
@@ -193,13 +221,18 @@ impl Recipe {
     /// `{tools}` (build tools), `{jobs}`, `{arch}`, `{version}` (of `part`), `{recipe}` (directory of the
     /// recipe, for patches and extra files), `{build}` (where the parts are unpacked: `{build}/<name>`).
     pub fn expand(&self, text: &str, part: &Part, dirs: &Dirs) -> String {
+        self.expand_plain(text, dirs)
+            .replace("{version}", &part.version)
+    }
+
+    /// [`Recipe::expand`] without a part (no `{version}`).
+    pub fn expand_plain(&self, text: &str, dirs: &Dirs) -> String {
         text.replace("{prefix}", &self.prefix)
             .replace("{tools}", &dirs.tools)
             .replace("{recipe}", &dirs.recipe)
             .replace("{build}", &dirs.build)
             .replace("{jobs}", &dirs.jobs.to_string())
             .replace("{arch}", &self.arch)
-            .replace("{version}", &part.version)
     }
 }
 

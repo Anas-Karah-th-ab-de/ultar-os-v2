@@ -1,7 +1,7 @@
 //! The steps that touch the machine: fetching archives, running builds, walking the package.
 
 use crate::closure::{self, Elf};
-use crate::recipe::{Dirs, Kind, Part, Recipe};
+use crate::recipe::{Check, Dirs, Kind, Part, Recipe};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -180,15 +180,96 @@ pub fn build(site: &Site, recipe: &Recipe, part: &Part) -> Result<bool, String> 
     Ok(true)
 }
 
-/// Deletes what the recipe lists under `remove` from the built package.
-pub fn trim(recipe: &Recipe) -> Result<(), String> {
+/// Where the package as it is shipped lies after [`pack`].
+pub fn shipped(site: &Site, recipe: &Recipe) -> PathBuf {
+    site.root
+        .join("out")
+        .join(recipe.prefix.trim_start_matches('/'))
+}
+
+/// Copies the built package and deletes from the copy what the recipe lists under `remove`.
+/// The built tree itself stays whole: later parts and the next update build against it.
+pub fn pack(site: &Site, recipe: &Recipe) -> Result<PathBuf, String> {
+    let out = shipped(site, recipe);
+    let _ = std::fs::remove_dir_all(&out);
+    let parent = out.parent().ok_or("bad prefix")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let mut cp = Command::new("cp");
+    cp.arg("-a").arg(&recipe.prefix).arg(&out);
+    run(&mut cp, "copy of the built package")?;
     for pattern in &recipe.remove {
         let mut sh = Command::new("sh");
         sh.arg("-c")
-            .arg(format!("rm -rf -- {}/{pattern}", recipe.prefix));
+            .arg(format!("rm -rf -- {}/{pattern}", out.display()));
         run(&mut sh, &format!("remove {pattern}"))?;
     }
+    let list = out.join("share/ultar");
+    std::fs::create_dir_all(&list).map_err(|e| e.to_string())?;
+    std::fs::write(list.join("contents.toml"), contents(recipe)).map_err(|e| e.to_string())?;
+    Ok(out)
+}
+
+/// Runs the build commands of the recipe's checks (against the whole built tree).
+pub fn build_checks(site: &Site, recipe: &Recipe) -> Result<(), String> {
+    let dirs = site.dirs();
+    for check in &recipe.checks {
+        for step in &check.build {
+            let line = recipe.expand_plain(step, &dirs);
+            let mut sh = Command::new("sh");
+            sh.arg("-c").arg(&line);
+            sh.env(
+                "PATH",
+                format!(
+                    "{}/bin:{}",
+                    dirs.tools,
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            );
+            for (key, value) in recipe.env.iter().chain(&recipe.runtime_env) {
+                sh.env(key, recipe.expand_plain(value, &dirs));
+            }
+            run(&mut sh, &format!("check {:?}: `{line}`", check.name))?;
+        }
+    }
     Ok(())
+}
+
+/// Runs a check in a system that holds nothing but the shipped package (its own mount
+/// namespace: an empty root with the package at its prefix, read-only). Needs root.
+pub fn run_check(site: &Site, recipe: &Recipe, check: &Check) -> Result<String, String> {
+    let dirs = site.dirs();
+    let root = site.root.join("empty");
+    let at = root.join(recipe.prefix.trim_start_matches('/'));
+    let gpu = match check.gpu {
+        true => "mkdir -p $R/dev/dri $R/sys && mount --rbind /dev/dri $R/dev/dri && mount --rbind /sys $R/sys &&",
+        false => "",
+    };
+    let script = format!(
+        "R='{}'; rm -rf \"$R\"; mkdir -p '{}' && mount --bind '{}' '{}' && mount -o remount,ro,bind '{}' && {gpu} chroot \"$R\" {}",
+        root.display(),
+        at.display(),
+        shipped(site, recipe).display(),
+        at.display(),
+        at.display(),
+        recipe.expand_plain(&check.run, &dirs)
+    );
+    let out = Command::new("unshare")
+        .args(["-m", "sh", "-c", &script])
+        .output()
+        .map_err(|e| format!("unshare: {e}"))?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if text.contains(&check.expect) {
+        Ok(text)
+    } else {
+        Err(format!(
+            "check {:?}: expected {:?}, got:\n{text}",
+            check.name, check.expect
+        ))
+    }
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -205,12 +286,13 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every way the files under the package's prefix reach outside it, and how many programs and
-/// libraries were looked at.
-pub fn closure_of(prefix: &str) -> (usize, Vec<String>) {
+/// Every way the files of the package reach outside it, and how many programs and libraries
+/// were looked at. `tree` is where the package lies now, `prefix` where it will live.
+pub fn closure_of(tree: &Path, prefix: &str) -> (usize, Vec<String>) {
     let mut files = Vec::new();
-    walk(Path::new(prefix), &mut files);
-    let exists = |f: &str| Path::new(f).exists();
+    walk(tree, &mut files);
+    let here = |f: &str| tree.join(f.strip_prefix(prefix).unwrap_or(f).trim_start_matches('/'));
+    let exists = |f: &str| f.starts_with(prefix) && here(f).exists();
     let mut leaks = Vec::new();
     let mut count = 0;
     for f in files {
@@ -220,7 +302,12 @@ pub fn closure_of(prefix: &str) -> (usize, Vec<String>) {
         if !bytes.starts_with(b"\x7fELF") {
             continue;
         }
-        let Some(elf): Option<Elf> = closure::read(&f.to_string_lossy(), &bytes) else {
+        let inside = f
+            .strip_prefix(tree)
+            .unwrap_or(&f)
+            .to_string_lossy()
+            .into_owned();
+        let Some(elf): Option<Elf> = closure::read(&format!("{prefix}/{inside}"), &bytes) else {
             continue;
         };
         // static programs and plain objects ask the loader for nothing
