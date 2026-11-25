@@ -7,6 +7,7 @@ use super::gt;
 use super::gt_run::Runtime;
 use alloc::format;
 use alloc::string::String;
+use ultar_intel_gt::submit::{self, TlbScope};
 use ultar_intel_gt::{freq, slpc};
 
 /// How long SLPC may take to report that it runs.
@@ -21,12 +22,41 @@ fn send(dev: &mut Device, rt: &mut Runtime, action: &[u32], what: &str) -> Resul
         .map_err(|e| format!("SLPC {what}: {e}"))
 }
 
+/// The shared page was mapped while the GuC runs: it must drop what it cached of the GGTT, or it
+/// refuses the address (error 0x80, invalid GGTT address; seen on the Beelink).
+fn guc_forgets_ggtt(dev: &mut Device, rt: &mut Runtime) -> Result<(), String> {
+    const SEQNO: u32 = 0x2000_0001;
+    let hw = &mut dev.mmio;
+    rt.ct
+        .post(
+            hw,
+            &mut rt.words,
+            &submit::tlb_invalidate(SEQNO, TlbScope::Guc),
+        )
+        .map_err(|e| format!("SLPC: TLB invalidation: {e}"))?;
+    let event = submit::EVENT_TLB_INVALIDATION_DONE;
+    let done = rt
+        .ct
+        .wait_event(hw, &mut rt.words, event, REQUEST_TIMEOUT_US)
+        .map_err(|e| format!("SLPC: TLB invalidation not confirmed: {e}"))?;
+    match done.first() {
+        Some(&SEQNO) => Ok(()),
+        _ => Err(format!("SLPC: TLB invalidation answered {done:x?}")),
+    }
+}
+
 /// Starts SLPC and returns what it reports as text.
 pub(super) fn start(dev: &mut Device, rt: &mut Runtime) -> Result<String, String> {
     let at = gt::buffer(dev, &mut rt.mem.bufs, slpc::SHARED_BYTES as u64)?;
     let idx = rt.mem.bufs.len() - 1;
     rt.mem.bufs[idx].fill(&slpc::shared_init());
-    send(dev, rt, &slpc::reset(at), "reset")?;
+    guc_forgets_ggtt(dev, rt)?;
+    send(
+        dev,
+        rt,
+        &slpc::reset(at),
+        &format!("reset (shared data at {at:#x})"),
+    )?;
     let t0 = crate::arch::uptime_ns();
     let mut state = 0;
     while (crate::arch::uptime_ns() - t0) / 1000 < START_TIMEOUT_US {
