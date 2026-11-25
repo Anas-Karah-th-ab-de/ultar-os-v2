@@ -48,6 +48,8 @@ pub struct LockProgram {
     minute: u64,
     /// The torch: `None` without one, else whether it is on.
     torch: Option<bool>,
+    /// This lock already asked whether the phone has any account.
+    accounts_checked: bool,
 }
 
 impl std::fmt::Debug for LockProgram {
@@ -88,6 +90,7 @@ impl LockProgram {
             wait_shown: false,
             minute: 0,
             torch: None,
+            accounts_checked: false,
         })
     }
 
@@ -127,7 +130,7 @@ impl LockProgram {
         self.wait_shown = waiting;
         self.host.draw()?;
         self.answer_waiting();
-        Ok(())
+        self.open_without_accounts()
     }
 
     fn bus(&mut self) -> Result<(), ProgramError> {
@@ -248,6 +251,34 @@ impl LockProgram {
                 self.state.error = None;
             }
         }
+    }
+
+    /// A phone set up without any account (the A30 image has no installer) has nobody to sign
+    /// in: the authentication service answers with an empty list – not an error, not a damaged
+    /// store – and the lock opens. Any account, or no answer, keeps it closed.
+    fn open_without_accounts(&mut self) -> Result<(), ProgramError> {
+        if self.state.stage == Stage::Hidden {
+            self.accounts_checked = false;
+            return Ok(());
+        }
+        let drawn = self
+            .surface
+            .and_then(|id| self.host.surface(id))
+            .is_some_and(|s| s.window.configure().is_some());
+        if self.accounts_checked || !drawn {
+            return Ok(());
+        }
+        self.accounts_checked = true;
+        let none = self
+            .link
+            .as_ref()
+            .and_then(LockLink::users)
+            .is_some_and(|users| users.is_empty());
+        if none {
+            self.effect(Some(LockEffect::Unlock))?;
+            return self.show();
+        }
+        Ok(())
     }
 
     /// Takes the typed secret out of the field (the field is wiped) and checks it.

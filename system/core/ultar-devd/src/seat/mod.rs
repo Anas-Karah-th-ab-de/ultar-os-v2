@@ -156,12 +156,14 @@ impl Reason {
 }
 
 /// True for a name below `/dev` this program looks after: `uinput`,
-/// `input/event<n>`, `dri/card<n>`, `fb<n>`.
+/// `input/event<n>`, `dri/card<n>`, `fb<n>`, and `ion` (the Exynos buffer
+/// allocator the compositor's DECON output needs on the Galaxy A30).
 pub fn is_seat_node(devname: &str) -> bool {
     let digits = |rest: &str| {
         !rest.is_empty() && rest.len() <= 4 && rest.bytes().all(|b| b.is_ascii_digit())
     };
     devname == "uinput"
+        || devname == "ion"
         || devname.strip_prefix("input/event").is_some_and(digits)
         || devname.strip_prefix("dri/card").is_some_and(digits)
         || devname.strip_prefix("fb").is_some_and(digits)

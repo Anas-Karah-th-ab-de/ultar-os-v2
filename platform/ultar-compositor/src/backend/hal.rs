@@ -11,6 +11,7 @@ use ultar_hal::{
     Display, DisplayEvent, DisplayId, FrameView, HalError, Input, InputEvent, InputEventKind,
     PixelFormat, Size,
 };
+use ultar_hal_gfx::decon::{self, Decon};
 use ultar_hal_gfx::edid;
 use ultar_hal_gfx::evdev::{Evdev, SeatPolicy};
 use ultar_hal_gfx::fbdev::FbDev;
@@ -28,6 +29,8 @@ pub enum OutputKind {
     Kms(Option<PathBuf>),
     /// A framebuffer device (None = default device).
     Framebuffer(Option<PathBuf>),
+    /// Samsung Exynos DECON through a framebuffer device (None = default device).
+    Decon(Option<PathBuf>),
 }
 
 /// HAL display + evdev input with hot-plug (kernel uevents; a rescan on
@@ -49,6 +52,19 @@ impl std::fmt::Debug for HalBackend {
     }
 }
 
+/// DRM/KMS first; on an Exynos phone DECON (plain fbdev shows nothing there); else the framebuffer.
+fn auto_display() -> Result<Box<dyn Display>, GfxError> {
+    if let Ok(kms) = Kms::open(None) {
+        return Ok(Box::new(kms));
+    }
+    if decon::present() {
+        if let Ok(d) = Decon::open(None) {
+            return Ok(Box::new(d));
+        }
+    }
+    Ok(Box::new(FbDev::open(None)?))
+}
+
 impl HalBackend {
     /// Opens the display and the seat's input devices (`seat`: which
     /// event nodes belong to the session; input is optional).
@@ -56,10 +72,8 @@ impl HalBackend {
         let display: Box<dyn Display> = match kind {
             OutputKind::Kms(path) => Box::new(Kms::open(path.as_deref())?),
             OutputKind::Framebuffer(path) => Box::new(FbDev::open(path.as_deref())?),
-            OutputKind::Auto => match Kms::open(None) {
-                Ok(kms) => Box::new(kms),
-                Err(_) => Box::new(FbDev::open(None)?),
-            },
+            OutputKind::Decon(path) => Box::new(Decon::open(path.as_deref())?),
+            OutputKind::Auto => auto_display()?,
         };
         let input = Evdev::open_seat(seat).unwrap_or_else(|_| Evdev::empty());
         let input_fds = input.poll_handles();

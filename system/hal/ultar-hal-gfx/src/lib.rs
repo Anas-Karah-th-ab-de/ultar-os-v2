@@ -11,10 +11,11 @@
 //! | [`fdpass`] | sending a buffer descriptor over a Unix socket | `sendmsg`/`recvmsg` with `SCM_RIGHTS` |
 //! | [`kms`] | Linux DRM/KMS outputs with dumb buffers (development on Linux) | DRM ioctls through the pure-Rust `drm` crate |
 //! | [`fbdev`] | the Ultar kernel's framebuffer `fb0` (and Linux fbdev) | `FBIOGET_*SCREENINFO`, `pwrite` |
+//! | [`decon`] | Samsung Exynos DECON (Galaxy A30 on its Linux kernel): ION buffer + `S3CFB_WIN_CONFIG` | `/dev/ion`, DECON ioctls |
 //! | [`edid`] | what a display says about itself (maker, product, serial, name) | none (bytes from [`kms`]) |
 //! | [`evdev`] | keyboards, mice, touch screens | `input_event` records, `EVIOCGBIT`/`EVIOCGABS` |
 //!
-//! [`kms::Kms`] and [`fbdev::FbDev`] implement [`ultar_hal::Display`];
+//! [`kms::Kms`], [`decon::Decon`] and [`fbdev::FbDev`] implement [`ultar_hal::Display`];
 //! [`evdev::Evdev`] implements [`ultar_hal::Input`]. All system calls go
 //! through `rustix` (its `linux_raw` backend, no C library). The only
 //! `unsafe` blocks are the memory mappings and the three device `ioctl`s,
@@ -29,6 +30,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![warn(missing_docs)]
 
+pub mod decon;
 pub mod edid;
 mod error;
 pub mod evdev;
