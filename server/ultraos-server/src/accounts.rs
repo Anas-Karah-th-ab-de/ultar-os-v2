@@ -307,16 +307,20 @@ pub async fn account_entitlements(
     Ok(Json(json!({ "apps": apps, "channels": channels })))
 }
 
-/// `GET /v1/turn-cred` — short-lived TURN credentials (coturn REST scheme: user = `exp:account`,
-/// password = base64(HMAC-SHA1(shared secret, user))).
+/// `GET /v1/turn-cred` — short-lived TURN credentials (coturn REST scheme: user = `exp:tag`,
+/// password = base64(HMAC-SHA1(shared secret, user))). The tag is random for every credential:
+/// the TURN server learns nothing about the account, and two calls of one account cannot be
+/// linked through it.
 pub async fn turn_cred(State(st): State<Shared>, h: HeaderMap) -> Result<Json<Value>, ApiError> {
     use hmac::{Hmac, Mac};
-    let acc = require_account(&st, &h)?;
+    require_account(&st, &h)?;
     if st.turn_secret.is_empty() {
         return Err(ApiError::TurnNotConfigured);
     }
     let exp = db::now() + 3600;
-    let user = format!("{exp}:{acc}");
+    let mut tag = [0u8; 12];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut tag);
+    let user = format!("{exp}:{}", hex::encode(tag));
     let mut mac = <Hmac<sha1::Sha1> as Mac>::new_from_slice(st.turn_secret.as_bytes())
         .map_err(|_| ApiError::Internal)?;
     mac.update(user.as_bytes());

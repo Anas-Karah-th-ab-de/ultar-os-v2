@@ -9,7 +9,7 @@
 //! is not the hub's current one for its number relays nothing.
 
 use crate::devices::{self, DeviceState};
-use crate::identity::{self, Purpose, Transcript, CHALLENGE_BYTES, LOG_PREFIX_LEN};
+use crate::identity::{self, Purpose, Transcript, CHALLENGE_BYTES};
 use crate::AppState;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::stream::{SplitSink, SplitStream};
@@ -223,11 +223,8 @@ fn confirm(
         manage_at: manage_in.map_or(i64::MAX, |wait| now.saturating_add(wait)),
         stop: stop.clone(),
     };
+    // Nothing about calls is logged or stored: not who is online, not who calls whom.
     st.hub.enter(&number, peer);
-    tracing::info!(
-        event = "signal_connected",
-        device = %identity::id_prefix(device_id, LOG_PREFIX_LEN)
-    );
     Ok(Authed {
         number,
         out_tx,

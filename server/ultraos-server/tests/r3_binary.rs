@@ -281,7 +281,11 @@ fn the_log_of_a_whole_device_life_shows_no_secret_and_no_identifier() {
         log.iter().any(|l| l.contains("device_registered")),
         "{log:?}"
     );
-    assert!(log.iter().any(|l| l.contains("signal_connected")));
+    // calls leave no trace: the signalling socket logs nothing
+    assert!(
+        !log.iter().any(|l| l.contains("signal_connected")),
+        "{log:?}"
+    );
     assert!(log.iter().any(|l| l.contains("recovery_started")));
     assert!(
         seen.0.len() > 30,

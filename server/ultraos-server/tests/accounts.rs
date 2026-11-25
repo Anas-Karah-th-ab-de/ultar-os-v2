@@ -142,7 +142,14 @@ fn turn_credentials_follow_the_coturn_scheme() {
     assert_eq!(v["ttl"], 3600);
     assert_eq!(v["urls"].as_array().unwrap().len(), 3);
     let user = v["username"].as_str().unwrap();
-    assert!(user.ends_with(":1"));
+    // expiry and a random tag, never the account
+    let (_, tag) = user.split_once(':').unwrap();
+    assert!(
+        tag.len() == 24 && tag.bytes().all(|b| b.is_ascii_hexdigit()),
+        "{user}"
+    );
+    let again = s.get_as("/v1/turn-cred", &token).json();
+    assert_ne!(again["username"], v["username"]);
     let mut mac = <hmac::Hmac<sha1::Sha1> as Mac>::new_from_slice(b"turn-secret").unwrap();
     mac.update(user.as_bytes());
     let expected = base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes());
