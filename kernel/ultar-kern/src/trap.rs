@@ -47,6 +47,10 @@ impl TrapFrame {
 
 pub const VEC_TIMER: u64 = 32;
 pub const VEC_SYSCALL: u64 = 0x80;
+/// Message signalled interrupt of the GPU (`drivers::intel_display::gt_irq`).
+pub const VEC_GPU: u64 = 0x41;
+/// Sent between cores: an idle core looks for threads that became ready.
+pub const VEC_WAKE: u64 = 0x42;
 pub const VEC_SPURIOUS: u64 = 0xff;
 
 
@@ -84,6 +88,8 @@ TRAP_ERR 17
 TRAP_NOERR 18
 TRAP_NOERR 19
 TRAP_NOERR 32
+TRAP_NOERR 65
+TRAP_NOERR 66
 TRAP_NOERR 255
 
 ultar_trap_common:
@@ -197,6 +203,8 @@ extern "sysv64" {
     fn ultar_trap18();
     fn ultar_trap19();
     fn ultar_trap32();
+    fn ultar_trap65();
+    fn ultar_trap66();
     fn ultar_trap255();
     fn ultar_syscall();
     /// Prozess fortsetzen: `frame` liegt auf seinem Kernstapel; kehrt mit dem Grund aus `back` zurück
@@ -214,7 +222,7 @@ pub unsafe fn init_msrs() {
 }
 
 pub unsafe fn init() {
-    let v: [(usize, unsafe extern "sysv64" fn()); 19] = [
+    let v: [(usize, unsafe extern "sysv64" fn()); 21] = [
         (0, ultar_trap0),
         (1, ultar_trap1),
         (2, ultar_trap2),
@@ -233,6 +241,8 @@ pub unsafe fn init() {
         (18, ultar_trap18),
         (19, ultar_trap19),
         (32, ultar_trap32),
+        (65, ultar_trap65),
+        (66, ultar_trap66),
         (255, ultar_trap255),
     ];
     for (i, h) in v {
@@ -256,6 +266,11 @@ extern "sysv64" fn ultar_trap_rust(f: &mut TrapFrame) {
                 crate::proc::on_timer(f);
             }
         }
+        VEC_GPU => {
+            crate::drivers::intel_display::gt_irq::on_interrupt();
+            crate::apic::eoi();
+        }
+        VEC_WAKE => crate::apic::eoi(),
         VEC_SPURIOUS => {}
         VEC_SYSCALL => crate::proc::on_syscall(f),
         v if f.from_user() => crate::proc::on_fault(f, v),

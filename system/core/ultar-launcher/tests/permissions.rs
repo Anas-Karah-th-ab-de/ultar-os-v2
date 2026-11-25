@@ -86,3 +86,24 @@ fn store_apps_get_nothing_without_the_user() {
         Err(LaunchError::UnknownApp)
     );
 }
+
+#[test]
+fn base_apps_of_the_system_are_never_uninstalled() {
+    let mut world = World::new("base");
+    let launcher = world.open_default();
+    launcher
+        .install(&world.package("files", "1.0.0", "", true))
+        .unwrap();
+    assert_eq!(
+        launcher.uninstall("files", false),
+        Err(LaunchError::Protected)
+    );
+    assert_eq!(
+        launcher.uninstall("files", true),
+        Err(LaunchError::Protected)
+    );
+    // an update still replaces it
+    launcher
+        .install(&world.package("files", "1.0.1", "", true))
+        .unwrap();
+}

@@ -27,7 +27,7 @@
 #define R_NET_ADMIN 2
 #define R_KILL_ANY 8
 #define R_MANAGE_GROUPS 0x80
-#define R_ALL 0xfff
+#define R_ALL 0x3fff
 #define SECRET "/tmp/zell-geheim"
 
 /* number of failed checks in this process */

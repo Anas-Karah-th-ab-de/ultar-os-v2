@@ -1,8 +1,9 @@
 //! Live check of a call through the release server and its TURN relay (not part of the normal
 //! run): two devices of the check account call each other, the caller with `relay_only` – its
-//! voice and picture go sealed through the relay, the server and the relay see ciphertext only.
-//! (Both sides relay-only would need relay-to-relay on one server, which the relay refuses: it
-//! denies its own address as a peer.)
+//! voice and picture go sealed through the relay, the server and the relay see ciphertext only –
+//! and once both with `relay_only`: relay to relay on the same server (the relay allows its own
+//! address as a peer, its firewall lets it reach only its relay ports there), so neither side
+//! learns the other's address.
 //!
 //! ```text
 //! ULTAR_LIVE_USER=<account> ULTAR_LIVE_PASSWORD=<password> ULTAR_LIVE_HOME=<dir that persists> \
@@ -188,9 +189,20 @@ fn power(s: &[i16], hz: f32) -> f64 {
 #[test]
 #[ignore = "needs the network and an account on the live server"]
 fn a_video_call_through_the_live_server_and_its_relay() {
+    live_call(true, false);
+}
+
+#[test]
+#[ignore = "needs the network and an account on the live server"]
+fn both_sides_relay_only_meet_relay_to_relay() {
+    live_call(true, true);
+}
+
+/// One call between two devices; `relay_only` of the caller and of the callee.
+fn live_call(a_relay: bool, b_relay: bool) {
     let t = token();
-    let (mut a, _, room_a) = device("call-a", 440.0, &t, true);
-    let (mut b, number_b, room_b) = device("call-b", 300.0, &t, false);
+    let (mut a, _, room_a) = device("call-a", 440.0, &t, a_relay);
+    let (mut b, number_b, room_b) = device("call-b", 300.0, &t, b_relay);
     let start = Instant::now();
     while !(a.ready() && b.ready()) && start.elapsed() < Duration::from_secs(20) {
         std::thread::sleep(Duration::from_millis(100));

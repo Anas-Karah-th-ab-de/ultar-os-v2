@@ -35,6 +35,7 @@ path = "examples/launchtest/main.rs"
 rustix = { version = "1", default-features = false, features = ["std", "process"] }
 
 [dependencies]
+ultar-brand = { path = "../ultar-brand" }
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 sha2 = "0.10"

@@ -260,7 +260,11 @@ pub fn file_kind(entry: &Entry) -> FileKind {
     match ext {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" => FileKind::Image,
         "xlsx" | "xls" | "ods" | "csv" => FileKind::Sheet,
-        "docx" | "doc" | "odt" | "txt" | "md" | "rtf" | "pdf" => FileKind::Text,
+        "docx" | "doc" | "odt" | "rtf" | "pdf" => FileKind::Text,
+        "txt" | "md" | "log" | "ini" | "conf" | "cfg" | "toml" | "json" | "yaml" | "yml"
+        | "xml" | "rs" | "py" | "sh" | "c" | "h" | "cpp" | "js" | "ts" | "css" | "ftl" => {
+            FileKind::Plain
+        }
         "mp3" | "ogg" | "flac" | "wav" | "m4a" | "opus" => FileKind::Audio,
         "mp4" | "mkv" | "webm" | "avi" | "mov" => FileKind::Video,
         "zip" | "tar" | "gz" | "xz" | "zst" | "7z" | "uap" | "deb" => FileKind::Archive,
@@ -274,8 +278,10 @@ pub fn file_kind(entry: &Entry) -> FileKind {
 pub enum FileKind {
     /// A folder.
     Folder,
-    /// A text document.
+    /// A text document (Word, PDF …).
     Text,
+    /// Plain text: notes, settings files, code.
+    Plain,
     /// A spreadsheet.
     Sheet,
     /// A picture.
@@ -299,7 +305,7 @@ impl FileKind {
     pub fn key(self) -> &'static str {
         match self {
             FileKind::Folder => "files.kind.folder",
-            FileKind::Text => "files.kind.text",
+            FileKind::Text | FileKind::Plain => "files.kind.text",
             FileKind::Sheet => "files.kind.sheet",
             FileKind::Image => "files.kind.image",
             FileKind::Audio => "files.kind.audio",

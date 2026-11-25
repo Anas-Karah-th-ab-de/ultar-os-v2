@@ -50,6 +50,30 @@ const FAST_DIV: u64 = 40;
 /// Fast interrupts of core 0 since its last counted tick.
 static FAST_SUB: AtomicU64 = AtomicU64::new(0);
 
+/// Cores sleeping in `idle` (one bit per core).
+static IDLE: AtomicU64 = AtomicU64::new(0);
+
+/// This core sleeps (`true`) or works again; see [`wake_waiters`].
+pub fn set_idle(on: bool) {
+    let bit = 1u64 << (crate::percpu::id() % 64);
+    if on {
+        IDLE.fetch_or(bit, Ordering::Relaxed);
+    } else {
+        IDLE.fetch_and(!bit, Ordering::Relaxed);
+    }
+}
+
+/// Something that threads wait for happened (the GPU finished a job): their waits end at the
+/// next look, and sleeping cores are woken to look now.
+pub fn wake_waiters() {
+    EPOCH.fetch_add(1, Ordering::Relaxed);
+    let others = IDLE.load(Ordering::Relaxed) & !(1u64 << (crate::percpu::id() % 64));
+    if others != 0 {
+        // fixed delivery, assert, to all cores but this one
+        icr(0, crate::trap::VEC_WAKE as u32 | 1 << 14 | 0b11 << 18);
+    }
+}
+
 /// Number of timer interrupts so far on any core (see [`fast_timer`]).
 pub fn epoch() -> u64 {
     EPOCH.load(Ordering::Relaxed)

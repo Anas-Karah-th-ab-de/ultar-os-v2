@@ -196,6 +196,11 @@ pub fn open_item(s: &mut State, name: &str) -> Vec<Effect> {
     }
 }
 
+/// A notice about one item (no undo).
+pub fn notice_of(key: &'static str, name: &str) -> Notice {
+    notice(key, 1, name, false)
+}
+
 fn notice(key: &'static str, count: usize, name: &str, undo: bool) -> Notice {
     Notice {
         key,
@@ -338,8 +343,11 @@ pub fn key(s: &mut State, key: Key, m: Modifiers) -> Vec<Effect> {
             ('n', true) => command(s, Command::NewFolder),
             ('1', false) => set_view(s, ViewMode::Grid),
             ('2', false) => set_view(s, ViewMode::List),
+            ('r', false) => reload(s),
             _ => Vec::new(),
         },
+        Key::F(5) if !m.command() => reload(s),
+        Key::F(2) if !m.command() => command(s, Command::Rename),
         Key::Delete if !m.command() => command(s, Command::Trash),
         Key::ArrowLeft if m.alt => back(s), // physical: Alt+Left is back in every language
         Key::ArrowRight if m.alt => forward(s), // physical
@@ -356,6 +364,14 @@ pub fn key(s: &mut State, key: Key, m: Modifiers) -> Vec<Effect> {
         }
         _ => Vec::new(),
     }
+}
+
+/// F5 / Ctrl+R: read the folder again (a search is run again on the new list).
+fn reload(s: &mut State) -> Vec<Effect> {
+    if s.job.is_some() {
+        return Vec::new();
+    }
+    vec![Effect::Reload, Effect::FocusItems]
 }
 
 fn set_view(s: &mut State, view: ViewMode) -> Vec<Effect> {

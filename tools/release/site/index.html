@@ -8,8 +8,8 @@
 <title>Ultar OS – KM Code Craft</title>
 <meta name="description" content="Ultar OS – نظام تشغيل مستقل بنواة خاصة مكتوبة بلغة Rust من KM Code Craft. العربية أولاً، خصوصية، حزم وتحديثات موقّعة.">
 <link rel="icon" href="/img/icon-192.png">
-<link rel="stylesheet" href="/style.css?v=080">
-<script src="/app.js?v=080" defer></script>
+<link rel="stylesheet" href="/style.css?v=081">
+<script src="/app.js?v=081" defer></script>
 </head>
 <body>
 <header class="top">
@@ -47,6 +47,8 @@
     <article><h3 data-t="a3">متجر Ultar</h3><p data-t="a3p">فهرس موقّع من خادم المتجر عبر HTTPS أو من ذاكرة USB أو من النظام نفسه. كل حزمة تُفحص مرتين قبل التثبيت، والمتجر يعمل دون إنترنت بآخر فهرس موثوق.</p></article>
     <article><h3 data-t="a4">كل تطبيق في خليته</h3><p data-t="a4p">كل تطبيق عملية مستقلة بمستخدم خاص ومجلد بيانات خاص، ولا يحصل إلا على الصلاحيات المذكورة في بيانه الموقّع والتي وافقت عليها.</p></article>
     <article><h3 data-t="a5">تحديثات آمنة</h3><p data-t="a5p">تحديثات النظام موقّعة، مع حماية من الرجوع إلى نسخة أقدم، وتثبيت على النسخة الثانية A/B مع رجوع تلقائي، وحزمة بدون إنترنت عبر USB.</p></article>
+    <article><h3 data-t="a7">مكالمات مشفّرة من طرف إلى طرف</h3><p data-t="a7p">مكالمات صوت وصورة عبر رقم Ultar: المفاتيح والصوت والصورة بين الجهازين فقط، ويرى الطرفان رقم أمان واحداً للمقارنة. الخادم يوصل الطرفين فقط ولا يعرف ولا يحفظ شيئاً عن المكالمة، ويمكن للطرفين إخفاء عنوانيهما عبر المرحِّل.</p></article>
+    <article><h3 data-t="a8">تطبيقات للعمل اليومي</h3><p data-t="a8p">الملفات، محرّر النصوص (العربية والشيفرة في ملف واحد)، الطرفية بأوامر عربية وإنجليزية، متصفح يعرض الصفحات في وضع القراءة، والهاتف مع الكاميرا – كلها من محرّك Ultar الخاص بلغة Rust.</p></article>
     <article><h3 data-t="a6">العربية أولاً</h3><p data-t="a6p">كل نص يُكتب بالعربية أولاً: صيغ الجمع العربية الست، التقويم الهجري، وبحث يتجاهل التشكيل واختلاف الإملاء. الأرقام دائماً 0–9.</p></article>
   </section>
 
@@ -68,11 +70,13 @@
           <li data-t="ok2">جلسة سطح المكتب: مركّب النوافذ، الشريط، شاشة القفل، حوارات النظام</li>
           <li data-t="ok3">المتجر والإعدادات والملفات كتطبيقات مستقلة، وحزم موقّعة من خادم المتجر</li>
           <li data-t="ok4">تحديثات النظام الموقّعة على النسختين A/B مع الرجوع التلقائي</li>
+          <li data-t="ok5">مكالمات صوت وصورة مشفّرة من طرف إلى طرف عبر خادمنا ومرحِّله، مع الصوت وكاميرات USB في النواة</li>
+          <li data-t="ok6">الملفات ومحرّر النصوص والطرفية ومتصفح وضع القراءة</li>
         </ul>
       </div>
       <div class="col"><h3 data-t="no">لا يعمل بعد</h3>
         <ul class="checks no">
-          <li data-t="no1">محرّك الويب: المتصفح الخاص غير جاهز بعد</li>
+          <li data-t="no1">محرّك الويب الكامل: المتصفح يعرض الصفحات حالياً في وضع القراءة فقط</li>
           <li data-t="no2">تعريفات Wi-Fi للأجهزة الحقيقية</li>
           <li data-t="no3">تشفير القرص: الخيار في برنامج التثبيت معطّل حتى تستطيع النواة فتح قرص مشفّر عند الإقلاع</li>
           <li data-t="no5">برنامج التثبيت الرسومي ما زال قيد الإنهاء</li>
@@ -96,7 +100,7 @@
 
   <section id="download" class="dl">
     <h2 data-t="dl">التنزيل والتثبيت</h2>
-    <div id="releases"><p class="muted" data-t="dl0">صورة النظام 0.8 قيد الإنهاء وستظهر هنا قريباً مع بصمتها وتوقيعها.</p></div>
+    <div id="releases"><p class="muted" data-t="dl0">تحميل قائمة الإصدارات… إذا لم تظهر، فافتح ‎/downloads/‎ مباشرة.</p></div>
     <details>
       <summary data-t="vh">كيف أتحقق من الملف؟</summary>
       <p data-t="vp1">١. البصمة: احسب SHA-256 وقارنها بالقيمة المعروضة هنا.</p>
@@ -107,15 +111,6 @@ Get-FileHash &lt;file&gt; -Algorithm SHA256          # Windows PowerShell</pre>
       <pre>ssh-keygen -Y verify -f ultar-allowed-signers -I release@ultar.code-craft.tech \
   -n ultar-release -s &lt;file&gt;.sig &lt; &lt;file&gt;</pre>
       <p><a href="/downloads/ultar-allowed-signers" data-t="keys">ملف المفاتيح ultar-allowed-signers</a></p>
-    </details>
-    <details>
-      <summary data-t="gv">التثبيت في VMware</summary>
-      <ol>
-        <li data-t="gv1">نزّل ملف ‎UltarOS-v2-…zip‎ وتحقّق من بصمته وتوقيعه.</li>
-        <li data-t="gv2">فكّ الضغط وافتح الملف ‎UltarOS-v2.vmx‎ في VMware Workstation أو VMware Player (الإصدار 17 أو أحدث).</li>
-        <li data-t="gv3">الآلة معدّة مسبقاً: UEFI، ذاكرة 4 GB، قرص NVMe، شبكة NAT. شغّلها فقط.</li>
-        <li data-t="gv4">بيانات الدخول الأولى مذكورة في ملاحظات الإصدار أعلاه.</li>
-      </ol>
     </details>
     <details>
       <summary data-t="gu">التثبيت على حاسوب عبر USB</summary>

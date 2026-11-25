@@ -15,20 +15,12 @@ pub const STORE: &str = "org.ultar.store";
 /// The launcher's and the drive service's own contracts.
 pub mod contract {
     pub use ultar_bus::messages::launcher::{
-        Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP,
+        launcher_id, Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP,
     };
     pub use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
 }
 
-/// The launcher's id of an app Files names `app`: base-system apps have one-part ids in
-/// the launcher (`office`), Files names them `org.ultar.<id>`; a dotted store id stays.
-fn launcher_id(app: &str) -> &str {
-    app.strip_prefix("org.ultar.")
-        .filter(|rest| !rest.is_empty() && !rest.contains('.'))
-        .unwrap_or(app)
-}
-
-/// Files' name of an app the launcher resolves as `id` (the inverse of [`launcher_id`]).
+/// Files' name of an app the launcher resolves as `id` (the inverse of [`contract::launcher_id`]).
 fn shell_id(id: &str) -> String {
     if id.contains('.') {
         id.to_owned()
@@ -66,7 +58,8 @@ impl LauncherPort for BusLauncher {
         activation_token: Option<u64>,
     ) -> Result<(), PortError> {
         let start = contract::Start {
-            app: launcher_id(app).to_owned(),
+            // the launcher knows the system apps by their one-part id (`org.ultar.editor` → `editor`)
+            app: contract::launcher_id(app).to_owned(),
             role: contract::Role::Ui,
             activation_token,
             uri: Some(uri.to_owned()),

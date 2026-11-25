@@ -87,7 +87,8 @@ pub fn apply(job: &mut Job<'_>, fs: &Fs, step: &Undo, now: i64) -> Report {
             report
         }
         Undo::Copied(copies) => trash::put(job, fs, copies, now),
-        Undo::Renamed(from, to) => single(to, fs.rename(to, from, false), from),
+        // a folder may only move by copy and delete (the kernel answers EXDEV): move_as does both
+        Undo::Renamed(from, to) => single(to, job.move_as(to, from), from),
         Undo::Created(loc) => single(loc, fs.remove_one(loc, true), loc),
     }
 }

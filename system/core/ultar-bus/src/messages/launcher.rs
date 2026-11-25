@@ -332,6 +332,9 @@ pub const ERROR_INVALID: u32 = 11;
 pub const ERROR_NO_OPEN: u32 = 12;
 /// Error code: the app is being uninstalled or its cell did not end.
 pub const ERROR_BUSY: u32 = 13;
+/// Error code: the app is a base app of the system and is never uninstalled
+/// (updates replace it; `ultar_brand::base_apps`).
+pub const ERROR_PROTECTED: u32 = 14;
 
 /// A kind of thing a person opens, for which the settings name a default app
 /// (`apps.default.<word>`). The launcher resolves a URI to the app of its kind

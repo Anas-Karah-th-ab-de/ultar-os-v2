@@ -1,6 +1,6 @@
 # App-Builder – app manifest (docs/APP-RULES.md §3).
 id          = "km-code-craft.appbuilder"
-version     = "0.8.0"
+version     = "0.8.1"
 publisher   = "km-code-craft"
 kind        = "native"
 min_os      = "2.0"

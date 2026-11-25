@@ -458,3 +458,21 @@ fn opening_a_file_follows_the_default_app_setting() {
         "files.notice.no_app"
     );
 }
+
+#[test]
+fn f5_and_ctrl_r_read_the_folder_again_f2_renames() {
+    let r = board_root();
+    let (mut app, _) = app(&r, Mode::Window, Lang::Ar, None);
+    docs(&mut app);
+    assert_eq!(app.state.items.len(), 6);
+    r.write("documents/جديد.txt", b"new from outside");
+    key(&mut app, Key::F(5), Modifiers::default());
+    assert_eq!(app.state.items.len(), 7, "F5 shows what changed outside");
+    std::fs::remove_file(r.path("documents/جديد.txt")).unwrap();
+    key(&mut app, Key::Char('r'), ctrl());
+    assert_eq!(app.state.items.len(), 6, "Ctrl+R too");
+    let item = node(&app, &Target::Item("عقود".into()));
+    click(&mut app, item);
+    key(&mut app, Key::F(2), Modifiers::default());
+    assert!(matches!(app.state.dialog, Some(Dialog::Rename(_))));
+}
