@@ -67,6 +67,9 @@ impl Runtime {
             .get(&mut dev.mmio, Domain::Render)
             .map_err(|e| format!("render forcewake: {e}"))?;
         ultar_intel_gt::engines::program_pat(&mut dev.mmio);
+        let before = ultar_intel_gt::engines::program_mocs(&mut dev.mmio);
+        let after = ultar_intel_gt::Hw::read(&mut dev.mmio, ultar_intel_gt::engines::LNCFCMOCS0);
+        crate::kprintln!("[intel-gt] cache settings (MOCS) programmed: L3 of index 0/1 {before:#010x} -> {after:#010x}");
         full_speed(dev);
         let first = self.next_id;
         let ran = self.with_env(dev, |env| {
