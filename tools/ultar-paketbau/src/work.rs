@@ -130,10 +130,24 @@ fn marker(site: &Site, part: &Part) -> PathBuf {
     site.root.join("done").join(name)
 }
 
-/// Unpacks, patches and builds `part` (skipped if exactly this release was built before).
+/// How `part` is built: its commands, patches and environment as one hash. A part is built
+/// again when this changes (the release alone does not say whether an option was turned off).
+fn way(recipe: &Recipe, part: &Part) -> String {
+    let mut h = Sha256::new();
+    let env = recipe.env.iter().chain((part.kind == Kind::Runtime).then_some(&recipe.runtime_env).into_iter().flatten());
+    for text in part.build.iter().chain(&part.patches).cloned().chain(env.map(|(k, v)| format!("{k}={v}"))) {
+        h.update(text.as_bytes());
+        h.update([0]);
+    }
+    h.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+/// Unpacks, patches and builds `part` (skipped if exactly this release was built this way
+/// before; a marker from before the way was recorded counts as built).
 pub fn build(site: &Site, recipe: &Recipe, part: &Part) -> Result<bool, String> {
     let done = marker(site, part);
-    if done.exists() {
+    let way = way(recipe, part);
+    if std::fs::read_to_string(&done).is_ok_and(|was| was.is_empty() || was == way) {
         return Ok(false);
     }
     fetch(site, part)?;
@@ -155,6 +169,7 @@ pub fn build(site: &Site, recipe: &Recipe, part: &Part) -> Result<bool, String> 
     }
     let dirs = site.dirs();
     let log = site.root.join("build").join(format!("{}.log", part.name));
+    let _ = std::fs::remove_file(&log);
     for step in &part.build {
         let line = recipe.expand(step, part, &dirs);
         let mut sh = Command::new("sh");
@@ -179,7 +194,7 @@ pub fn build(site: &Site, recipe: &Recipe, part: &Part) -> Result<bool, String> 
         )?;
     }
     std::fs::create_dir_all(site.root.join("done")).map_err(|e| e.to_string())?;
-    std::fs::write(&done, "").map_err(|e| e.to_string())?;
+    std::fs::write(&done, way).map_err(|e| e.to_string())?;
     Ok(true)
 }
 
