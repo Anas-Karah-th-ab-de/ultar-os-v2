@@ -159,6 +159,9 @@ pub enum Target {
     VpnProfile(String),
     /// Quick settings: "VPN settings" (Settings > Network > VPN).
     VpnSettings,
+    /// Quick settings: the accessibility button (Settings > Accessibility), shown
+    /// while `accessibility.show_in_bar` is on.
+    AccessSettings,
     /// Phone, all apps: a folder (its number).
     Folder(u32),
     /// Phone, all apps: closes the open folder.

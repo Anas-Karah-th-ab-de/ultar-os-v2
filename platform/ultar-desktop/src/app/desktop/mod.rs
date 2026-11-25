@@ -29,6 +29,8 @@ pub const APP_ID: &str = "org.ultar.desktop";
 const BUS_POLL: Duration = Duration::from_millis(500);
 /// How long a launch waits for its activation token.
 const TOKEN_WAIT_MS: u64 = 300;
+/// How long the visual-alert flash stays (the compositor's limit is 1000 ms).
+const FLASH_MS: u32 = 200;
 
 /// The open popup surface.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -215,8 +217,20 @@ impl DesktopApp {
                 ..Outcome::none()
             })?;
         }
+        self.send_visual_alert();
         self.host.draw()?;
         Ok(())
+    }
+
+    /// A notification alerted while `accessibility.visual_alert` is on: flash the
+    /// screen through the compositor (the shell cannot draw over other windows).
+    fn send_visual_alert(&mut self) {
+        if self.shell.d.notes.take_flash() {
+            let _ = self
+                .host
+                .client
+                .send(&Request::VisualAlert { ms: FLASH_MS });
+        }
     }
 
     fn poll_bus(&mut self) -> Result<(), AppError> {

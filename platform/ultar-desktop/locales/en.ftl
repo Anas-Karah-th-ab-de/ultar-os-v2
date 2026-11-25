@@ -402,6 +402,7 @@ desk.helper.failed = The helper did not answer
 desk.helper.failed.body = Try again in a moment.
 desk.helper.title.cloud = Helper · thought with the cloud model
 desk.qs.assistant = Assistant
+desk.qs.access = Accessibility
 desk.helper.reach = What the assistant reaches
 desk.helper.field = Ask the assistant
 desk.helper.field.hint = Write what you want, in your own words

@@ -19,12 +19,14 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 15] = [
+pub const FOLLOWED: [&str; 17] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
     "accessibility.reduce_motion",
     "accessibility.double_click_ms",
+    "accessibility.visual_alert",
+    "accessibility.show_in_bar",
     "search.source.apps",
     "search.source.settings",
     "search.source.calculator",
@@ -134,6 +136,8 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
         ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
         ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
         ("accessibility.reduce_motion", SettingValue::Flag(on)) => d.values.reduce_motion = *on,
+        ("accessibility.visual_alert", SettingValue::Flag(on)) => d.notes.visual_alert = *on,
+        ("accessibility.show_in_bar", SettingValue::Flag(on)) => d.values.show_in_bar = *on,
         // Off keeps nothing: the remembered entries go (the file is deleted by the app).
         ("search.history", SettingValue::Flag(on)) => {
             d.overview.sources.history = *on;
@@ -264,5 +268,42 @@ mod tests {
         let sources = d.overview.sources;
         assert!(!sources.apps && !sources.arabic_variants && sources.settings);
         assert!(d.values.reduce_motion);
+    }
+
+    #[test]
+    fn the_visual_alert_and_bar_button_settings_reach_the_state() {
+        let mut d = Desktop::new(Lang::En);
+        assert!(FOLLOWED.contains(&"accessibility.visual_alert"));
+        assert!(FOLLOWED.contains(&"accessibility.show_in_bar"));
+        assert!(!d.notes.visual_alert && !d.values.show_in_bar);
+        apply_setting(
+            &mut d,
+            "accessibility.visual_alert",
+            &SettingValue::Flag(true),
+        );
+        apply_setting(
+            &mut d,
+            "accessibility.show_in_bar",
+            &SettingValue::Flag(true),
+        );
+        assert!(d.notes.visual_alert && d.values.show_in_bar);
+        // A wrong type changes nothing; off turns them off again.
+        apply_setting(
+            &mut d,
+            "accessibility.visual_alert",
+            &SettingValue::Integer(1),
+        );
+        assert!(d.notes.visual_alert);
+        apply_setting(
+            &mut d,
+            "accessibility.visual_alert",
+            &SettingValue::Flag(false),
+        );
+        apply_setting(
+            &mut d,
+            "accessibility.show_in_bar",
+            &SettingValue::Flag(false),
+        );
+        assert!(!d.notes.visual_alert && !d.values.show_in_bar);
     }
 }

@@ -46,6 +46,10 @@ pub struct Notes {
     banners: Vec<(u64, u64)>,
     /// Counter of the shell's own notices.
     local: u64,
+    /// accessibility.visual_alert: a banner also flashes the screen.
+    pub visual_alert: bool,
+    /// A flash is owed (a banner appeared while `visual_alert` is on).
+    flash: bool,
 }
 
 impl Notes {
@@ -128,7 +132,15 @@ impl Notes {
         self.banners.retain(|(b, _)| *b != id);
         self.banners.insert(0, (id, until));
         self.banners.truncate(MAX_BANNERS);
+        // The visual alert: a banner that appears flashes the screen too.
+        self.flash |= self.visual_alert;
         true
+    }
+
+    /// Whether a visual-alert flash is owed (a banner appeared while
+    /// `accessibility.visual_alert` is on); takes it, so it fires once.
+    pub fn take_flash(&mut self) -> bool {
+        std::mem::replace(&mut self.flash, false)
     }
 
     /// The banners shown at `now`, newest first.
@@ -306,5 +318,29 @@ mod tests {
         n.hold(700);
         assert_eq!(n.next_expiry(), Some(before + 700));
         assert!(n.hide_banners() && n.banners(2).is_empty() && !n.hide_newest_banner());
+    }
+
+    #[test]
+    fn a_banner_flashes_the_screen_only_with_the_visual_alert_on() {
+        let mut n = Notes::default();
+        n.add(posted(1, "a"));
+        // Off (the default): a banner appears, no flash is owed.
+        assert!(n.show_banner(1, 0));
+        assert!(!n.take_flash());
+        // On: the next banner owes a flash, taken once.
+        n.visual_alert = true;
+        n.add(posted(2, "a"));
+        assert!(n.show_banner(2, 0));
+        assert!(n.take_flash());
+        assert!(!n.take_flash(), "the flash fires once");
+        // A low notification never shows a banner, so never flashes.
+        let mut low = posted(3, "a");
+        low.post.urgency = Urgency::Low;
+        n.add(low);
+        assert!(!n.show_banner(3, 0));
+        assert!(!n.take_flash());
+        // The shell's own notice flashes too (it shows a banner).
+        n.post_notice("org.ultar.shell", "desk.service.failed", 10);
+        assert!(n.take_flash());
     }
 }

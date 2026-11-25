@@ -206,11 +206,7 @@ fn footer(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         }
     }
     let actions = view.ui.add(row, Flex::row().gap(Space::S4))?;
-    if d.overview.sources.helper {
-        let spark = IconButton::new(IconId::Spark, Label::key("desk.qs.assistant"));
-        let id = view.ui.add(actions, spark)?;
-        view.mark(id, Target::Assistant);
-    }
+    extra_actions(view, actions, d)?;
     let items = [
         (
             IconId::Shot,
@@ -235,6 +231,29 @@ fn footer(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         if let Some(reason) = reason {
             view.ui.set_disabled(id, true)?;
             view.ui.set_tooltip(id, Some(Label::key(reason)))?;
+        }
+    }
+    Ok(())
+}
+
+/// The conditional footer buttons: the assistant (when the search offers it) and
+/// the accessibility button (while `accessibility.show_in_bar` is on). The
+/// accessibility button opens Settings > Accessibility; without the launcher it
+/// is disabled with the reason, like the Settings button beside it.
+fn extra_actions(view: &mut View, actions: NodeId, d: &Desktop) -> Result<(), UiError> {
+    if d.overview.sources.helper {
+        let spark = IconButton::new(IconId::Spark, Label::key("desk.qs.assistant"));
+        let id = view.ui.add(actions, spark)?;
+        view.mark(id, Target::Assistant);
+    }
+    if d.values.show_in_bar {
+        let access = IconButton::new(IconId::Access, Label::key("desk.qs.access"));
+        let id = view.ui.add(actions, access)?;
+        view.mark(id, Target::AccessSettings);
+        if !d.presence.launcher {
+            view.ui.set_disabled(id, true)?;
+            view.ui
+                .set_tooltip(id, Some(Label::key("desk.reason.no_launcher")))?;
         }
     }
     Ok(())
@@ -271,4 +290,37 @@ fn modes_page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError>
             .set_tooltip(id, Some(Label::key("desk.reason.no_settings")))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ultar_i18n::Lang;
+    use ultar_ui::tokens::ThemeKind;
+
+    fn tiles(d: &Desktop) -> View {
+        let tr = crate::i18n::translator(Lang::En).unwrap();
+        let look = Look::new(Lang::En, ThemeKind::Dark);
+        let (view, _) = build(d, QuickPage::Tiles, look, Size::new(420.0, 760.0), &tr).unwrap();
+        view
+    }
+
+    #[test]
+    fn the_accessibility_button_follows_show_in_bar() {
+        let mut d = Desktop::new(Lang::En);
+        d.presence.settings = true;
+        d.presence.launcher = true;
+        // Off (the default): no button.
+        assert!(tiles(&d).node(&Target::AccessSettings).is_none());
+        // On: the button is there and operable.
+        d.values.show_in_bar = true;
+        let view = tiles(&d);
+        let node = view.node(&Target::AccessSettings).expect("button");
+        assert!(!view.ui.is_disabled(node));
+        // Without the launcher it is disabled with the reason (like Settings).
+        d.presence.launcher = false;
+        let view = tiles(&d);
+        let node = view.node(&Target::AccessSettings).expect("button");
+        assert!(view.ui.is_disabled(node));
+    }
 }
