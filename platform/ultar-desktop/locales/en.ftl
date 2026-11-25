@@ -108,6 +108,7 @@ desk.month.long.7 = July
 desk.month.long.8 = August
 desk.month.long.9 = September
 desk.note.app.power = Power
+desk.note.app.volumed = Storage
 desk.note.important = Important
 desk.note.now = now
 desk.note.verbatim = {arg0}
@@ -423,3 +424,10 @@ desk.helper.area.notifications = Notifications
 desk.helper.area.storage = Storage
 desk.helper.area.devices = Other devices
 desk.helper.area.power = Power
+
+# The volume service's notifications (removable drives, low space).
+volumed.low_space.title = Storage is almost full
+volumed.low_space.body = Only {arg0}% of the storage is free. Remove what you no longer need.
+volumed.drive.title = Drive "{arg0}" connected
+volumed.drive.body = Mount it to open its files.
+volumed.drive.mount = Mount

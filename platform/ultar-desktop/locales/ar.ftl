@@ -108,6 +108,7 @@ desk.month.long.7 = تموز
 desk.month.long.8 = آب
 desk.month.long.9 = أيلول
 desk.note.app.power = الطاقة
+desk.note.app.volumed = التخزين
 desk.note.important = مهم
 desk.note.now = الآن
 desk.note.verbatim = {arg0}
@@ -423,3 +424,10 @@ desk.helper.area.notifications = الإشعارات
 desk.helper.area.storage = التخزين
 desk.helper.area.devices = الأجهزة الأخرى
 desk.helper.area.power = الطاقة
+
+# إشعارات خدمة الأقراص (الأقراص القابلة للإزالة، المساحة المنخفضة).
+volumed.low_space.title = مساحة التخزين على وشك الامتلاء
+volumed.low_space.body = بقي {arg0}% فقط من مساحة التخزين. احذف ما لم تعد بحاجة إليه.
+volumed.drive.title = تم توصيل محرك الأقراص "{arg0}"
+volumed.drive.body = ضمّه لفتح ملفاته.
+volumed.drive.mount = ضمّ

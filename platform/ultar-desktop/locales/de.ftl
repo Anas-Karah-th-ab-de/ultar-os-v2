@@ -108,6 +108,7 @@ desk.month.long.7 = Juli
 desk.month.long.8 = August
 desk.month.long.9 = September
 desk.note.app.power = Energie
+desk.note.app.volumed = Speicher
 desk.note.important = Wichtig
 desk.note.now = jetzt
 desk.note.verbatim = {arg0}
@@ -423,3 +424,10 @@ desk.helper.area.notifications = Benachrichtigungen
 desk.helper.area.storage = Speicher
 desk.helper.area.devices = Andere Geräte
 desk.helper.area.power = Energie
+
+# Die Benachrichtigungen des Volumedienstes (Wechseldatenträger, wenig Speicher).
+volumed.low_space.title = Speicher fast voll
+volumed.low_space.body = Nur {arg0}% des Speichers sind frei. Entferne, was du nicht mehr brauchst.
+volumed.drive.title = Laufwerk „{arg0}“ verbunden
+volumed.drive.body = Einhängen, um seine Dateien zu öffnen.
+volumed.drive.mount = Einhängen
