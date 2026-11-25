@@ -290,6 +290,15 @@ pub fn dispatch(f: &mut TrapFrame) {
     let trace = TRACE.load(Ordering::Relaxed) && nr != 1 && nr != 20;
     if trace {
         crate::kprintln!("[spur {}] {nr}({:#x}, {:#x}, {:#x}, {:#x})", proc::current(), a[0], a[1], a[2], a[3]);
+        // calls that name a file: show the name (first or, with a directory descriptor, second argument)
+        let named = match nr {
+            2 | 4 | 6 | 21 | 59 | 89 => Some(a[0]),
+            257 | 262 | 267 | 269 | 332 | 439 => Some(a[1]),
+            _ => None,
+        };
+        if let Some(name) = named.and_then(ustr) {
+            crate::kprintln!("[spur {}] {nr}: {name}", proc::current());
+        }
     }
     let r = match nr {
         // calls guarded by a right the caller does not hold

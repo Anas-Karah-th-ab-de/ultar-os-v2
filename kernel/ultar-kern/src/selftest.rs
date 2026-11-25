@@ -7,6 +7,7 @@ use crate::driver::{BLOCK, DEVICES, NET};
 use crate::{kprintln, shell};
 use alloc::string::String;
 use alloc::vec;
+use alloc::vec::Vec;
 
 const DATEI: &str = "ultar-kern/selbsttest.txt";
 
@@ -19,6 +20,34 @@ pub fn wanted() -> bool {
 
 fn programm(name: &str) -> Option<String> {
     ["/bin/", "/boot/efi/bin/"].iter().map(|d| alloc::format!("{d}{name}")).find(|p| matches!(crate::fs::stat(p), Some((0, _))))
+}
+
+/// One more program, named by the test medium in `ultar/testprogramm`: the first line is the
+/// command line, every further line `NAME=value` for its environment or the word `spur` (log its
+/// system calls). Runs after the graphics tests, e.g. a Vulkan probe from a package disk.
+fn extra_program() {
+    let Some(text) = ["/ultar/testprogramm", "/boot/efi/ultar/testprogramm"].iter().find_map(|p| crate::fs::read_all(p)) else { return };
+    let text = String::from_utf8_lossy(&text).into_owned();
+    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty());
+    let argv: Vec<String> = lines.next().unwrap_or("").split_whitespace().map(String::from).collect();
+    let Some(path) = argv.first().cloned() else { return };
+    let mut env = Vec::new();
+    let mut trace = false;
+    for l in lines {
+        if l == "spur" {
+            trace = true;
+        } else {
+            env.push(String::from(l));
+        }
+    }
+    kprintln!("[test] Zusatzprogramm {path}:");
+    crate::syscall::TRACE.store(trace, core::sync::atomic::Ordering::Relaxed);
+    match crate::proc::spawn(&path, argv, env) {
+        Ok(_) => crate::proc::run_all(),
+        Err(e) => kprintln!("  Fehler: {e}"),
+    }
+    crate::syscall::TRACE.store(false, core::sync::atomic::Ordering::Relaxed);
+    kprintln!("[test] Zusatzprogramm beendet");
 }
 
 pub fn run() {
@@ -123,6 +152,7 @@ pub fn run() {
             Err(e) => kprintln!("  Fehler: {e}"),
         }
     }
+    extra_program();
     // Intel NPU: clock fuses, power-up to a running IP block, power-down (NPUTEST: …)
     crate::drivers::intel_npu::selftest();
     crate::werkstatt::report();
