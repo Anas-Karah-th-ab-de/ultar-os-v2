@@ -272,11 +272,7 @@ impl DesktopApp {
                 });
             }
         }
-        // search.source.store changed: read the Store's cached catalogue again (a fresh
-        // verified cache may have appeared); the switch itself gates what is offered.
-        if keys.iter().any(|k| k == "search.source.store") {
-            self.shell.d.overview.store = crate::model::store::load_from_env();
-        }
+        self.sync_store_catalog(&keys);
         self.sync_history(&keys)?;
         if any {
             if self.look.theme != self.shell.d.theme {
@@ -285,6 +281,14 @@ impl DesktopApp {
             self.rebuild(Outcome::surfaces())?;
         }
         Ok(())
+    }
+
+    /// search.source.store changed: read the Store's cached catalogue again (a fresh verified
+    /// cache may have appeared); the switch itself gates what is offered.
+    fn sync_store_catalog(&mut self, keys: &[String]) {
+        if keys.iter().any(|k| k == "search.source.store") {
+            self.shell.d.overview.store = crate::model::store::load_from_env();
+        }
     }
 
     /// search.history changed: keep the file beside the shell in step (save when on, delete

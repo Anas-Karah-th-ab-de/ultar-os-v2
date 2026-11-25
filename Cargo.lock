@@ -4288,12 +4288,16 @@ dependencies = [
 name = "settings-e2e"
 version = "0.8.0"
 dependencies = [
+ "ed25519-dalek 2.2.0",
+ "hex",
  "rustix",
  "ultar-bus",
+ "ultar-catalog",
  "ultar-desktop",
  "ultar-displayd",
  "ultar-i18n",
  "ultar-settings",
+ "ultar-store",
  "ultar-surface",
  "ultar-ui",
  "ultar-update",

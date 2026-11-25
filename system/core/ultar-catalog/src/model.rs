@@ -306,7 +306,10 @@ mod tests {
     #[test]
     fn newer_format_is_refused() {
         let text = "format_version = 2\n";
-        assert_eq!(Catalog::parse(text), Err(crate::source::SourceError::TooNew));
+        assert_eq!(
+            Catalog::parse(text),
+            Err(crate::source::SourceError::TooNew)
+        );
     }
 
     #[test]

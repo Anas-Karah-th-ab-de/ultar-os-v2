@@ -129,9 +129,7 @@ impl AppUpdateSettings {
     /// (`None` = unknown, treated as metered). Off, outside the window, or a metered
     /// connection that is not allowed all block it.
     pub fn allowed_now(&self, now: u64, metered: Option<bool>) -> bool {
-        self.auto_apps
-            && self.in_window(now)
-            && (metered == Some(false) || self.metered)
+        self.auto_apps && self.in_window(now) && (metered == Some(false) || self.metered)
     }
 }
 
@@ -179,7 +177,7 @@ mod tests {
     #[test]
     fn the_window_and_metered_gate_automatic_work() {
         let mut s = AppUpdateSettings::default(); // 02:00–05:00, metered off
-        // Inside the window, unmetered: allowed.
+                                                  // Inside the window, unmetered: allowed.
         assert!(s.allowed_now(at(3, 0), Some(false)));
         // Outside the window: blocked.
         assert!(!s.allowed_now(at(12, 0), Some(false)));

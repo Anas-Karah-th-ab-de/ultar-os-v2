@@ -19,11 +19,13 @@ before and are not part of this rule.
 | Accessibility | `accessibility.large_text`, `.high_contrast`, `.reduce_motion` | shell (bar, sheets, lock screen) and the Settings window | `Look::with_access`, `Ui::set_reduce_motion`; Settings: `App::follow_access` | desktop `link.rs` tests, settings-e2e |
 | Accessibility | `accessibility.large_pointer`, `accessibility.double_click_ms` (200…1000 ms) | compositor; the shell and the Settings window follow the double-click time in their own widgets too | displayd sends both in `Request::ConfigurePointer`: a large pointer forces at least the large cursor size (`pointer.size` never shrinks below it); the interval replaces the 400 ms token in title-bar double clicks and in the toolkit (`Ui::set_double_click_ms`, kept across rebuilds) | the same three, desktop `view/mod.rs` and `link.rs` tests, settings `tests/groups.rs` |
 | Search | `search.source.apps`, `.settings`, `.calculator`, `.commands`, `.characters`, `search.history`, `search.arabic_variants` | the shell's overview search | `model/search.rs` `Sources`, read at start and on `settings.changed`; characters from the shell's own table (`model/characters.rs`, ar+en names), choosing one inserts it; history kept beside the shell per person (`model/history.rs`, bounded, off deletes it), matching entries offered and run again | desktop `model/search.rs`, `model/characters.rs`, `model/history.rs`, `link.rs` tests, settings-e2e |
+| Search | `search.source.store` | the shell's overview search | `model/store.rs` reads the Store's cached, signature-checked catalogue through the shared `system/core/ultar-catalog` crate (`FileCatalogSource`) — no network; offers catalogue apps that are **not installed**, choosing one opens the Store on that app (`store://app/<id>`, the Store's `[open] schemes` + `src/deeplink.rs`); read at start and on `settings.changed`, an absent/unsigned/tampered cache offers nothing | desktop `model/store.rs`, `model/search.rs`, `link.rs` tests, store `deeplink.rs` + `online_tests.rs`, settings-e2e |
 | Storage | "Space used": this device and every mounted drive, free of total with a bar | volume service | new call `volumes.usage` (statvfs of the data partition and of each mount of the person in front) | volumed unit + `tests/process.rs`, settings `tests/groups.rs`, settings-e2e (real volumed; `tools/settings-e2e`) |
 | Apps | installed apps with their declared permissions; switching one off takes it back | launcher | `launcher.list`, `launcher.permissions`, `launcher.revoke` (granting stays with the system dialog) | settings `tests/groups.rs` (fake service) |
 | Users | add, remove, change password | account service | `account.users_list`, `account.user_create`, `account.user_remove`, `account.user_password`; the account service asks for the administrator in the system dialog | settings `tests/groups.rs` (fake service) |
 | Updates | "Check now", "Update from a drive", state line | update service | `update.check`, `update.offline`, `update.progress` | settings `tests/groups.rs` (fake service) |
 | Updates | `updates.auto_system`, `.window.from`, `.window.until`, `.channel`, `.metered`, `.offline_usb`, `.notify` | update service | reads them at start and on `settings.changed` and maps them onto its policy under the ceiling of `/etc/ultar/update.conf`; `notify` posts through notifyd, `offline_usb` offers a bundle from a plugged-in drive | ultar-update `tests/settings_follow.rs` (real bus), settings-e2e |
+| Updates | `updates.auto_apps` | the Store | `apps/ultar-store` follows it (and the shared `updates.metered`, `updates.window.from`/`.until`) at start and on `settings.changed` (`src/settings.rs`, `src/follow.rs`); installs available app updates by itself under the same window and metered rules as the system updater — off = only offer updates; `net.state` gives the metered flag | store `settings.rs` + `tests/transitions2.rs`, settings-e2e |
 
 Limits that are part of the truth:
 
@@ -53,6 +55,18 @@ Limits that are part of the truth:
   the first allowed one. The rate limit and `uupdate policy set` remain for what the page does
   not offer. The window is UTC, as the policy and the system clock are (the time zone setting
   is not wired yet). `updates.notify` also gates the drive offer (it is a notification).
+- The Store source reads the Store's **published** catalogue cache, not its private one: the
+  Store's own cache lives in its data area (`ULTAR_STORE_DATA/catalog-cache`, `0700`, the app's
+  user), which the shell (its own user) cannot read. The Store therefore also writes the verified
+  bytes to a shared, world-readable directory (`ULTAR_STORE_CACHE`, default `/data/ultar/store-cache`),
+  and the shell reads and re-verifies them there. The image must provision that directory (writable
+  by the Store, readable by the shell); until it does, Store results appear only where a verified
+  cache is readable (tests, dev images, `ULTAR_STORE_CACHE`). The switch always gates what is
+  offered; no network is involved on either side, and an unsigned or tampered cache offers nothing.
+- Automatic app updates (`updates.auto_apps`) run while the Store window is open (the Store is an
+  app, not a background service): the follower reads the settings and `net.state`, and the window
+  loop installs available updates when the window and the connection allow it. A metered connection
+  blocks them unless `updates.metered` is on; an unknown connection is treated as metered.
 
 ## 2. Shown disabled with the note "Not yet available in this version"
 
@@ -78,11 +92,9 @@ Nothing in the system follows these yet. Each line says what it waits for.
 | Keyboard | `keyboard.compose_key`, `.on_screen`, `.suggestions`, `.autocorrect` | compose table in the compositor; the on-screen keyboard (`ultar-ime`, build/phonekb) |
 | Accessibility | `screen_reader`, `on_screen_keyboard`, `zoom`, `zoom_percent`, `reader_rate`, `colour_filter`, `visual_alert`, `mono_audio`, `captions`, `sticky_keys`, `slow_keys`, `bounce_keys`, `mouse_keys`, `dwell_click`, `show_in_bar` | no screen reader or on-screen keyboard program yet; zoom and colour filter in the compositor; key and pointer helpers in the compositor's input path; mono audio in audiod |
 | Search | `search.source.files`, `search.file_places` | no bus service may read the person's home: it is `0700`, owned by the person, while the shell (uid 816) and the volume service (828) run as their own users, and no file-search service exists. Wiring needs a service that searches the person's own places (the home folders named by `search.file_places`) and answers the shell – bounded in count and time, no root access for the caller, nothing outside the person's places |
-| Search | `search.source.store` | the catalogue parser lives in `apps/ultar-store`; the platform shell may not depend on the apps area (`tools/check-layers.toml`), and the parser must be reused, not duplicated. Wiring needs the catalogue data and parser extracted into a shared `system/core` crate that both the Store and the shell use |
 | Apps | `apps.default.*`, `apps.removable_media`, `apps.autostart` | the launcher's bus contract has no table of default apps and no autostart list |
 | Users | `users.list_on_login`, `.guest`, `.auto_login`, `.new_kind`, `.parental*` | the lock screen and the account service do not read them (automatic sign-in is `account.user_auto_login` per user; not on the page yet) |
 | Storage | `storage.clean_*`, `.low_space_percent`, `.automount`, `.trim` | a clean-up job; volumed mounts every removable drive of the person in front |
-| Updates | `updates.auto_apps` | app updates belong to the launcher and the Store; the system updater installs only system images (kernel/system/boot roles) and the launcher has no automatic app-update path |
 
 ### SSH
 
@@ -120,6 +132,9 @@ they say when their service or adapter is missing.
 | `volumes.usage` → `UsageReply { places: [{id, name, total_bytes, free_bytes}] }` (`internal` first) | `ultar-bus/src/messages/volumes.rs`, `ultar-volumed/src/service.rs` | bus rule `app.settings` |
 | Bus rule `app.settings` | `rootfs/etc/ultar/bus-policy.toml` | new calls: `update.check`, `launcher.list`, `launcher.permissions`, `launcher.revoke` (never `launcher.grant`), `volumes.usage`; new topic: `update.progress` |
 | Bus rule `system.updated` | `rootfs/etc/ultar/bus-policy.toml`, `services/bus.toml` | `settings.get` + `settings.changed` (the `updates.*` policy), `notify.post` (the notifications), `volumes.state` (the drive offer); own root-only socket `updated.sock` |
+| Bus rule `app.store` (extended) | `rootfs/etc/ultar/bus-policy.toml` | new call `settings.get`; new topics `settings.changed` (the `updates.*` app-update rules) and `net.state` (the metered flag) |
+| `store://app/<id>[?action=remove]` deep link | `apps/ultar-store/ultar-app.toml` (`[open] schemes = ["store"]`), `src/deeplink.rs` | the shell (`launcher.start` v2 with the URI); the launcher hands it to a fresh Store as `ULTAR_OPEN_URI` |
+| Shared catalogue crate `ultar-catalog` | `system/core/ultar-catalog` (model, parser, signature check, `FileCatalogSource`) | the Store (`apps/ultar-store`) and the shell (`platform/ultar-desktop`); layer rule `apps -> system/core/ultar-catalog` in `tools/check-layers.toml` |
 
 Adding a wired setting: make its service follow it, add the key to `WIRED`, add the change through
 its page and the check of its effect to `tools/settings-e2e/examples/settingstest/wired.rs`, and move

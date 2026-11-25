@@ -19,6 +19,12 @@ ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-update = { path = "../../system/core/ultar-update" }
+# The Store follows updates.auto_apps; the shell's Store source reads the shared catalogue.
+ultar-store = { path = "../../apps/ultar-store", features = ["bus"] }
+ultar-catalog = { path = "../../system/core/ultar-catalog" }
+# Signing a catalogue fixture for the Store-source check (already in the workspace).
+ed25519-dalek = "2"
+hex = "0.4"
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

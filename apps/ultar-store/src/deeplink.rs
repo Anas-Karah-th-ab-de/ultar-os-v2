@@ -49,7 +49,10 @@ impl DeepLink {
     pub fn actions(&self) -> Vec<StoreAction> {
         match self {
             Self::App(id) => vec![StoreAction::Open(id.clone())],
-            Self::Remove(id) => vec![StoreAction::Open(id.clone()), StoreAction::Remove(id.clone())],
+            Self::Remove(id) => vec![
+                StoreAction::Open(id.clone()),
+                StoreAction::Remove(id.clone()),
+            ],
         }
     }
 }
@@ -74,7 +77,10 @@ mod tests {
         );
         assert_eq!(
             DeepLink::Remove("x".into()).actions(),
-            vec![StoreAction::Open("x".into()), StoreAction::Remove("x".into())]
+            vec![
+                StoreAction::Open("x".into()),
+                StoreAction::Remove("x".into())
+            ]
         );
     }
 

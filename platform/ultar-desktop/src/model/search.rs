@@ -372,11 +372,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn store_apps_are_offered_when_not_installed_and_the_switch_gates_them() {
+    /// A catalogue with one app not installed (km-office) and one already installed (files,
+    /// which the shell names org.ultar.files).
+    fn store_fixture() -> Catalog {
         use ultar_catalog::{CatalogApp, Loc, PackagePin, Source};
-        let en = crate::i18n::translator(Lang::En).unwrap();
-        let ar = crate::i18n::translator(Lang::Ar).unwrap();
         let loc = |ar: &str, en: &str| Loc {
             ar: ar.into(),
             en: en.into(),
@@ -399,31 +398,69 @@ mod tests {
             requires: Vec::new(),
             pin: PackagePin::default(),
         };
-        let catalog = Catalog {
+        Catalog {
             format_version: ultar_catalog::FORMAT_VERSION,
             generated: None,
             apps: vec![
                 entry("km-office", "مكتب", "Office"),
-                // Already installed (the shell names it org.ultar.files): not offered again.
                 entry("files", "الملفات", "Files"),
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn store_apps_are_offered_by_name_and_installed_ones_are_left_out() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let ar = crate::i18n::translator(Lang::Ar).unwrap();
+        let catalog = store_fixture();
         let hit = Hit::Store("km-office".into());
         let sources = Sources::default();
-        // Found by its English and its real Arabic name; the installed one is left out.
-        let hits = search_in_with_history("office", &base_apps(), &en, sources, &Default::default(), Some(&catalog));
-        assert!(hits.contains(&hit));
-        assert!(search_in_with_history("مكتب", &base_apps(), &ar, sources, &Default::default(), Some(&catalog)).contains(&hit));
+        let find = |query: &str, tr: &Translator| {
+            search_in_with_history(
+                query,
+                &base_apps(),
+                tr,
+                sources,
+                &Default::default(),
+                Some(&catalog),
+            )
+        };
+        // Found by its English and its real Arabic name.
+        assert!(find("office", &en).contains(&hit));
+        assert!(find("مكتب", &ar).contains(&hit));
         // The installed Files app is offered as an app, never again as a Store hit.
-        let files = search_in_with_history("files", &base_apps(), &en, sources, &Default::default(), Some(&catalog));
+        let files = find("files", &en);
         assert!(files.contains(&Hit::App("org.ultar.files".into())));
         assert!(!files.contains(&Hit::Store("files".into())));
-        // Switched off in Settings: no Store hits.
+    }
+
+    #[test]
+    fn the_store_source_switch_gates_the_hits() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let catalog = store_fixture();
+        let hit = Hit::Store("km-office".into());
         let mut off = Sources::default();
         assert!(off.set("search.source.store", false));
-        assert!(!search_in_with_history("office", &base_apps(), &en, off, &Default::default(), Some(&catalog)).contains(&hit));
-        // No catalogue (no verified cache): nothing offered, apps still work.
-        assert!(!search_in_with_history("office", &base_apps(), &en, sources, &Default::default(), None).contains(&hit));
+        // Switched off in Settings: no Store hits.
+        assert!(!search_in_with_history(
+            "office",
+            &base_apps(),
+            &en,
+            off,
+            &Default::default(),
+            Some(&catalog)
+        )
+        .contains(&hit));
+        // No catalogue (no verified cache): nothing offered.
+        assert!(!search_in_with_history(
+            "office",
+            &base_apps(),
+            &en,
+            Sources::default(),
+            &Default::default(),
+            None
+        )
+        .contains(&hit));
     }
 
     #[test]

@@ -51,6 +51,9 @@ display_count = 1\nmemory_mb = 8192\n";
 
 /// The identity of the Settings app: one socket, root only.
 pub const APP: &str = "app.settings";
+/// The identity of the Store app: its own root-only socket for the run (apps normally get
+/// theirs from the cell manager; the run starts no launcher, so the broker listens here).
+pub const STORE_APP: &str = "app.store";
 
 /// Where the run happens.
 pub struct Run {
@@ -73,7 +76,7 @@ impl Run {
 
     fn bus(&self, text: &str) -> String {
         let extra = format!(
-            "    \"--listen\", \"/run/ultar/bus/{APP}.sock={APP}\", \"--mode\", \"0600\", \"--max-connections\", \"4\",\n"
+            "    \"--listen\", \"/run/ultar/bus/{APP}.sock={APP}\", \"--mode\", \"0600\", \"--max-connections\", \"4\",\n    \"--listen\", \"/run/ultar/bus/store.sock={STORE_APP}\", \"--mode\", \"0600\", \"--max-connections\", \"4\",\n"
         );
         let anchor = "    \"--policy\"";
         self.moved(&text.replacen(anchor, &format!("{extra}{anchor}"), 1))

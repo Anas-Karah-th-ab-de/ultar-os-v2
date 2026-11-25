@@ -270,7 +270,10 @@ mod tests {
     #[test]
     fn the_store_source_switch_reaches_the_state() {
         let mut d = Desktop::new(Lang::En);
-        assert!(d.overview.sources.store, "on until the settings say otherwise");
+        assert!(
+            d.overview.sources.store,
+            "on until the settings say otherwise"
+        );
         assert!(FOLLOWED.contains(&"search.source.store"));
         apply_setting(&mut d, "search.source.store", &SettingValue::Flag(false));
         assert!(!d.overview.sources.store);

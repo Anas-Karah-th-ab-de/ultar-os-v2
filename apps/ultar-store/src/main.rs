@@ -77,7 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    event_loop(&mut win, &mut store, &mut hits, &cmd_tx, &event_rx, &mut auto)
+    event_loop(
+        &mut win, &mut store, &mut hits, &cmd_tx, &event_rx, &mut auto,
+    )
 }
 
 /// Automatic app updates (`updates.auto_apps`): the shared settings and metered flag the

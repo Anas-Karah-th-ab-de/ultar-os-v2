@@ -65,16 +65,23 @@ pub const WIRED: &[(&str, &str)] = &[
     // The search of the shell's overview (model/search.rs `Sources`, read at start and on
     // settings.changed); the characters come from the shell's own table (model/characters.rs),
     // the history is kept beside the shell per person (model/history.rs); off deletes it.
+    // search.source.store offers the Store's catalogue apps that are not installed, read from
+    // the Store's cached, signature-checked catalogue (model/store.rs, shared ultar-catalog).
     ("search.source.apps", "shell"),
+    ("search.source.store", "shell"),
     ("search.source.settings", "shell"),
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.source.characters", "shell"),
     ("search.history", "shell"),
     ("search.arabic_variants", "shell"),
+    // The Store (apps/ultar-store) follows updates.auto_apps: it installs available app
+    // updates by itself under the shared updates.metered / updates.window.* rules (the
+    // system updater installs only system images). Off = only offer updates.
+    ("updates.auto_apps", "store"),
     // The update service (ultar-updated) maps these onto its policy under the ceiling of
     // /etc/ultar/update.conf, notifies through notifyd and offers updates from a plugged-in
-    // drive. updates.auto_apps stays out: app updates belong to the launcher/Store.
+    // drive.
     ("updates.auto_system", "updated"),
     ("updates.window.from", "updated"),
     ("updates.window.until", "updated"),
@@ -116,9 +123,9 @@ mod tests {
         assert!(!takes_effect("keyboard", "keyboard.compose_key"));
         assert!(takes_effect("search", "search.source.apps"));
         assert!(takes_effect("search", "search.source.characters"));
+        assert!(takes_effect("search", "search.source.store"));
         assert!(takes_effect("search", "search.history"));
         assert!(!takes_effect("search", "search.source.files"));
-        assert!(!takes_effect("search", "search.source.store"));
         assert!(!takes_effect("search", "search.file_places"));
         assert!(takes_effect("updates", "updates.auto_system"));
         assert!(takes_effect("updates", "updates.window.from"));
@@ -127,8 +134,8 @@ mod tests {
         assert!(takes_effect("updates", "updates.metered"));
         assert!(takes_effect("updates", "updates.offline_usb"));
         assert!(takes_effect("updates", "updates.notify"));
-        // App updates belong to the launcher/Store, not the system updater.
-        assert!(!takes_effect("updates", "updates.auto_apps"));
+        // App updates belong to the Store, not the system updater.
+        assert!(takes_effect("updates", "updates.auto_apps"));
         assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
         assert!(!takes_effect(
             "accessibility",

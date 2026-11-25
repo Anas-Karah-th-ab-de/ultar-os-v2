@@ -1,0 +1,18 @@
+format_version = 1
+
+[[app]]
+id = "km-office"
+category = "office"
+icon = "office"
+publisher = "p"
+source = "ultar"
+version = "1.0.0"
+[app.name]
+ar = "مكتب"
+en = "Office"
+[app.summary]
+ar = "s"
+en = "s"
+[app.description]
+ar = "d"
+en = "d"
