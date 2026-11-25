@@ -321,6 +321,14 @@ impl Backend for Gpu {
             .map_err(|_| Errno::NoMem)
     }
 
+    fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
+        let (_, rt) = self.parts()?;
+        let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
+        space
+            .map_null(&mut rt.mem.tables, va, pages)
+            .map_err(|_| Errno::NoMem)
+    }
+
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
         let (dev, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
