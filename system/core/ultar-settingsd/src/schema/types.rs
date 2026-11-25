@@ -79,6 +79,9 @@ pub enum TextFormat {
     DisplayId,
     /// Lower-case identifier (`a-z`, `0-9`, `_`, `-`).
     Name,
+    /// An app id: one or two lower-case segments (`a-z`, `0-9`, `-`) joined by a dot,
+    /// as the launcher names an installed app (`browser`, `store.web`).
+    AppId,
     /// Currency code of three capital letters.
     Currency,
     /// Time zone name such as `Asia/Damascus`, or `UTC`.
@@ -144,6 +147,25 @@ fn is_host(text: &str) -> bool {
     port_ok && !host.is_empty() && host.len() <= 253 && host.split('.').all(label)
 }
 
+/// Whether `text` is an app id as the launcher names one: 1–28 bytes, one or two segments
+/// joined by a dot, each starting with a lower-case letter, `a-z 0-9 -`, no `--`, not ending
+/// with `-` (the rules of `ultar-launcher`'s `AppId`).
+fn is_app_id(text: &str) -> bool {
+    let segment = |s: &str| {
+        let b = s.as_bytes();
+        b.first().is_some_and(u8::is_ascii_lowercase)
+            && b.last().is_some_and(|c| *c != b'-')
+            && !s.contains("--")
+            && b
+                .iter()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
+    };
+    !text.is_empty()
+        && text.len() <= 28
+        && text.split('.').count() <= 2
+        && text.split('.').all(segment)
+}
+
 impl TextFormat {
     /// Stable name of the format (also sent to clients).
     pub const fn name(&self) -> &'static str {
@@ -153,6 +175,7 @@ impl TextFormat {
             TextFormat::Resolution => "resolution",
             TextFormat::DisplayId => "display",
             TextFormat::Name => "name",
+            TextFormat::AppId => "app_id",
             TextFormat::Currency => "currency",
             TextFormat::TimeZone => "time_zone",
             TextFormat::Host => "host",
@@ -169,6 +192,7 @@ impl TextFormat {
             TextFormat::Resolution => is_resolution(text),
             TextFormat::DisplayId => text.is_empty() || is_valid_segment(text),
             TextFormat::Name => is_valid_segment(text),
+            TextFormat::AppId => is_app_id(text),
             TextFormat::Currency => {
                 text.len() == 3 && text.bytes().all(|byte| byte.is_ascii_uppercase())
             }
