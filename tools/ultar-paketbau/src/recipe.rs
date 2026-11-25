@@ -32,6 +32,10 @@ pub struct Part {
     /// Where upstream publishes its tags, and what a release tag looks like (`v{version}`).
     pub upstream: String,
     pub tag: String,
+    /// Tags that match but are no releases end like this (glibc marks its development
+    /// branch `2.44.9000`).
+    #[serde(default)]
+    pub not_ending: String,
     pub license: String,
     /// Why the part is in the package (one line, shown in the list of contents).
     pub why: String,

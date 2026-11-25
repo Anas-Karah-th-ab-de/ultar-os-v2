@@ -83,6 +83,7 @@ pub fn newer_upstream(part: &Part) -> Result<Option<String>, String> {
     let tags: Vec<String> = text
         .lines()
         .filter_map(|l| l.split("refs/tags/").nth(1))
+        .filter(|t| part.not_ending.is_empty() || !t.ends_with(&part.not_ending))
         .map(str::to_string)
         .collect();
     let newest = crate::version::newest(&tags, &part.tag);

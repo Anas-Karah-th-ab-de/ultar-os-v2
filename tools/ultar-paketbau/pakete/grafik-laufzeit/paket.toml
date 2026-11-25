@@ -36,7 +36,7 @@ remove = ["include", "lib/*.a", "lib/*.o", "lib/pkgconfig", "share/pkgconfig", "
 [[part]]
 name = "pkgconf"
 kind = "tool"
-version = "0"
+version = "3.0.11"
 source = "https://distfiles.ariadne.space/pkgconf/pkgconf-{version}.tar.xz"
 upstream = "https://github.com/pkgconf/pkgconf"
 tag = "pkgconf-{version}"
@@ -47,7 +47,7 @@ build = ["./configure --prefix={tools}", "make -j{jobs}", "make install", "ln -s
 [[part]]
 name = "m4"
 kind = "tool"
-version = "0"
+version = "1.4.21"
 source = "https://ftp.gnu.org/gnu/m4/m4-{version}.tar.xz"
 upstream = "https://git.savannah.gnu.org/git/m4.git"
 tag = "v{version}"
@@ -58,7 +58,7 @@ build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
 [[part]]
 name = "bison"
 kind = "tool"
-version = "0"
+version = "3.8.2"
 source = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz"
 upstream = "https://git.savannah.gnu.org/git/bison.git"
 tag = "v{version}"
@@ -69,7 +69,7 @@ build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
 [[part]]
 name = "flex"
 kind = "tool"
-version = "0"
+version = "2.7.9"
 source = "https://github.com/westes/flex/releases/download/v{version}/flex-{version}.tar.gz"
 upstream = "https://github.com/westes/flex"
 tag = "v{version}"
@@ -80,7 +80,7 @@ build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
 [[part]]
 name = "gawk"
 kind = "tool"
-version = "0"
+version = "5.4.2"
 source = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz"
 upstream = "https://git.savannah.gnu.org/git/gawk.git"
 tag = "gawk-{version}"
@@ -91,7 +91,7 @@ build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
 [[part]]
 name = "ninja"
 kind = "tool"
-version = "0"
+version = "1.13.2"
 source = "https://github.com/ninja-build/ninja/archive/refs/tags/v{version}.tar.gz"
 upstream = "https://github.com/ninja-build/ninja"
 tag = "v{version}"
@@ -102,7 +102,7 @@ build = ["python3 configure.py --bootstrap", "install -Dm755 ninja {tools}/bin/n
 [[part]]
 name = "meson"
 kind = "tool"
-version = "0"
+version = "1.12.1"
 source = "https://github.com/mesonbuild/meson/releases/download/{version}/meson-{version}.tar.gz"
 upstream = "https://github.com/mesonbuild/meson"
 tag = "{version}"
@@ -116,7 +116,7 @@ build = [
 [[part]]
 name = "cmake"
 kind = "tool"
-version = "0"
+version = "4.5.1"
 source = "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}.tar.gz"
 upstream = "https://github.com/Kitware/CMake"
 tag = "v{version}"
@@ -129,10 +129,11 @@ build = ["./bootstrap --prefix={tools} --parallel={jobs} -- -DCMAKE_USE_OPENSSL=
 [[part]]
 name = "glibc"
 kind = "runtime"
-version = "0"
+version = "2.44"
 source = "https://ftp.gnu.org/gnu/glibc/glibc-{version}.tar.xz"
 upstream = "https://sourceware.org/git/glibc.git"
 tag = "glibc-{version}"
+not_ending = ".9000"
 license = "LGPL-2.1-or-later"
 why = "C library and program loader of the package"
 build = [
@@ -146,7 +147,7 @@ build = [
 [[part]]
 name = "zlib"
 kind = "runtime"
-version = "0"
+version = "1.4"
 source = "https://github.com/madler/zlib/releases/download/v{version}/zlib-{version}.tar.gz"
 upstream = "https://github.com/madler/zlib"
 tag = "v{version}"
@@ -157,7 +158,7 @@ build = ["./configure --prefix={prefix}", "make -j{jobs}", "make install"]
 [[part]]
 name = "libdrm"
 kind = "runtime"
-version = "0"
+version = "2.4.134"
 source = "https://dri.freedesktop.org/libdrm/libdrm-{version}.tar.xz"
 upstream = "https://gitlab.freedesktop.org/mesa/libdrm.git"
 tag = "libdrm-{version}"
@@ -171,7 +172,7 @@ build = [
 [[part]]
 name = "vulkan-headers"
 kind = "runtime"
-version = "0"
+version = "1.4.369"
 source = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v{version}.tar.gz"
 upstream = "https://github.com/KhronosGroup/Vulkan-Headers"
 tag = "v{version}"
@@ -182,7 +183,7 @@ build = ["cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX={prefix} -DVULKAN_
 [[part]]
 name = "vulkan-loader"
 kind = "runtime"
-version = "0"
+version = "1.4.369"
 source = "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/v{version}.tar.gz"
 upstream = "https://github.com/KhronosGroup/Vulkan-Loader"
 tag = "v{version}"
