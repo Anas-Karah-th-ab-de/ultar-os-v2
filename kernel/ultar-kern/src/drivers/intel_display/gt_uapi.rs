@@ -107,7 +107,12 @@ fn query(query: u32) -> Result<Vec<u8>, String> {
     };
     let mut arg = [0u8; 40];
     arg[8..12].copy_from_slice(&query.to_le_bytes());
-    let ret = crate::svcdev::dri::request(IOCTL_DEVICE_QUERY, &mut arg, &mut user);
+    let ret = crate::svcdev::dri::request(
+        &crate::svcdev::dri::selftest_file(),
+        IOCTL_DEVICE_QUERY,
+        &mut arg,
+        &mut user,
+    );
     let size = u32::from_le_bytes([arg[12], arg[13], arg[14], arg[15]]) as usize;
     if ret != 0 || size == 0 {
         return Err(format!(
@@ -116,7 +121,12 @@ fn query(query: u32) -> Result<Vec<u8>, String> {
     }
     user.data = alloc::vec![0; size];
     arg[16..24].copy_from_slice(&ADDR.to_le_bytes());
-    match crate::svcdev::dri::request(IOCTL_DEVICE_QUERY, &mut arg, &mut user) {
+    match crate::svcdev::dri::request(
+        &crate::svcdev::dri::selftest_file(),
+        IOCTL_DEVICE_QUERY,
+        &mut arg,
+        &mut user,
+    ) {
         0 => Ok(user.data),
         e => Err(format!("query {query}: returned {e}")),
     }
@@ -132,7 +142,12 @@ pub fn selfcheck() -> Result<String, String> {
     let mut arg = [0u8; 64];
     arg[16] = 8;
     arg[24..32].copy_from_slice(&ADDR.to_le_bytes());
-    let ret = crate::svcdev::dri::request(IOCTL_VERSION, &mut arg, &mut user);
+    let ret = crate::svcdev::dri::request(
+        &crate::svcdev::dri::selftest_file(),
+        IOCTL_VERSION,
+        &mut arg,
+        &mut user,
+    );
     if ret != 0 || &user.data[..2] != drm::DRIVER_NAME.as_bytes() {
         return Err(format!("version request returned {ret}"));
     }

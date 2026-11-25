@@ -430,37 +430,51 @@ fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
 /// GTTEST – the GT's self test on real hardware. Ends with `GTTEST: ALLES OK` or
 /// `GTTEST: FEHLER (<list>)`.
 pub fn selftest() {
-    let mut guard = DEVICE.lock();
-    let Some(dev) = guard.as_mut() else {
-        kprintln!("GTTEST: no Intel display device bound");
-        return;
-    };
     let mut r = Report { fails: Vec::new() };
-    run_on(dev, &mut r);
-    let facts = *FACTS.lock();
-    if let (true, Some(f)) = (r.fails.is_empty(), facts) {
-        // everything a program is told has been seen on this device: the render node appears
-        match super::gt_run::start(dev) {
-            Ok(t) => r.check(true, "GT stays in operation", &t),
-            Err(e) => r.check(false, "GT stays in operation", &e),
-        }
-        if super::gt_run::running() {
-            match super::gt_run::compute_probe(dev) {
-                Ok(t) => r.check(true, "compute job on the GT in operation", &t),
-                Err(e) => r.check(false, "compute job on the GT in operation", &e),
-            }
-        }
-        if let Ok(t) = super::gt_uapi::publish(dev, &f) {
-            r.check(true, "render node published", &t);
-            match super::gt_uapi::selfcheck() {
-                Ok(t) => r.check(true, "program interface answers the first questions", &t),
-                Err(e) => r.check(false, "program interface answers the first questions", &e),
-            }
+    let published = {
+        let mut guard = DEVICE.lock();
+        let Some(dev) = guard.as_mut() else {
+            kprintln!("GTTEST: no Intel display device bound");
+            return;
+        };
+        run_on(dev, &mut r);
+        r.fails.is_empty() && operate(dev, &mut r)
+    };
+    // the node takes the device itself: asked only after it was let go here
+    if published {
+        match super::gt_uapi::selfcheck() {
+            Ok(t) => r.check(true, "program interface answers the first questions", &t),
+            Err(e) => r.check(false, "program interface answers the first questions", &e),
         }
     }
     if r.fails.is_empty() {
         kprintln!("GTTEST: ALLES OK");
     } else {
         kprintln!("GTTEST: FEHLER ({})", r.fails.join("; "));
+    }
+}
+
+/// After every check passed: the GT goes into operation and the render node appears (all a
+/// program is told has been seen on this device). Returns whether the node was published.
+fn operate(dev: &mut Device, r: &mut Report) -> bool {
+    let Some(f) = *FACTS.lock() else {
+        return false;
+    };
+    match super::gt_run::start(dev) {
+        Ok(t) => r.check(true, "GT stays in operation", &t),
+        Err(e) => r.check(false, "GT stays in operation", &e),
+    }
+    if super::gt_run::running() {
+        match super::gt_run::compute_probe(dev) {
+            Ok(t) => r.check(true, "compute job on the GT in operation", &t),
+            Err(e) => r.check(false, "compute job on the GT in operation", &e),
+        }
+    }
+    match super::gt_uapi::publish(dev, &f) {
+        Ok(t) => {
+            r.check(true, "render node published", &t);
+            true
+        }
+        Err(_) => false,
     }
 }

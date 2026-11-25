@@ -1,13 +1,16 @@
 //! The requests every DRM driver answers (version, capabilities) and the entry point that
 //! takes any request on the device file. Layouts: `include/uapi/drm/drm.h` (MIT-style licence).
 
-use super::{Answer, Device, DeviceQuery, Errno, Request, XE_DEVICE_QUERY};
+use super::file::{Backend, File};
+use super::{Answer, Device, DeviceQuery, Errno, Request};
 use alloc::vec::Vec;
 
 /// Request: driver name and version.
 pub const DRM_VERSION: u32 = 0x00;
 /// Request: one capability.
 pub const DRM_GET_CAP: u32 = 0x0c;
+/// Request: give up a buffer handle.
+pub const DRM_GEM_CLOSE: u32 = 0x09;
 
 /// Capability: time stamps are monotonic.
 pub const CAP_TIMESTAMP_MONOTONIC: u64 = 0x6;
@@ -95,19 +98,44 @@ fn device_query(dev: &Device, arg: &mut [u8], user: &mut impl User) -> Result<()
     Ok(())
 }
 
-/// Handles request `req` on the device file. `arg` is the request's structure, copied from the
-/// program ([`Request::size`] bytes); the caller copies it back when the request reads
-/// ([`Request::read`]) and this returns `Ok`. A number that is not DRM's is refused with
-/// [`Errno::NoTty`], a DRM request the kernel does not have yet with [`Errno::Inval`].
-pub fn ioctl(dev: &Device, req: u32, arg: &mut [u8], user: &mut impl User) -> Result<(), Errno> {
+/// Handles request `req` on the device file for the open `file`. `arg` is the request's
+/// structure, copied from the program ([`Request::size`] bytes); the caller copies it back
+/// when the request reads ([`Request::read`]) and this returns `Ok`. A number that is not DRM's
+/// is refused with [`Errno::NoTty`], a DRM request the kernel does not have with
+/// [`Errno::Inval`]. [`Errno::Again`] from a wait means: let the program sleep and ask again.
+/// `gpu` is `None` while the GT is not in operation: then only questions are answered.
+pub fn ioctl<B: Backend>(
+    dev: &Device,
+    file: &mut File<B>,
+    gpu: Option<&mut B>,
+    req: u32,
+    arg: &mut [u8],
+    user: &mut impl User,
+) -> Result<(), Errno> {
     let r = Request::decode(req).ok_or(Errno::NoTty)?;
     if arg.len() < r.size as usize {
         return Err(Errno::Inval);
     }
     match (r.nr, r.driver()) {
-        (DRM_VERSION, _) => version(arg, user),
-        (DRM_GET_CAP, _) => get_cap(arg),
-        (_, Some(XE_DEVICE_QUERY)) => device_query(dev, arg, user),
+        (DRM_VERSION, _) => return version(arg, user),
+        (DRM_GET_CAP, _) => return get_cap(arg),
+        (_, Some(super::XE_DEVICE_QUERY)) => return device_query(dev, arg, user),
+        _ => {}
+    }
+    let be = gpu.ok_or(Errno::NoDev)?;
+    file.reap(be, user);
+    match (r.nr, r.driver()) {
+        (DRM_GEM_CLOSE, _) => file.gem_close(arg),
+        (_, Some(super::XE_GEM_CREATE)) => file.gem_create(be, arg),
+        (_, Some(super::XE_GEM_MMAP_OFFSET)) => file.gem_mmap_offset(arg),
+        (_, Some(super::XE_VM_CREATE)) => file.vm_create(be, arg),
+        (_, Some(super::XE_VM_DESTROY)) => file.vm_destroy(be, arg),
+        (_, Some(super::XE_VM_BIND)) => file.vm_bind(be, arg, user),
+        (_, Some(super::XE_EXEC_QUEUE_CREATE)) => file.queue_create(be, arg, user),
+        (_, Some(super::XE_EXEC_QUEUE_DESTROY)) => file.queue_destroy(be, arg),
+        (_, Some(super::XE_EXEC_QUEUE_GET_PROPERTY)) => file.queue_get_property(arg),
+        (_, Some(super::XE_EXEC)) => file.exec(be, arg, user),
+        (_, Some(super::XE_WAIT_USER_FENCE)) => file.wait_user_fence(be, arg, user),
         _ => Err(Errno::Inval),
     }
 }

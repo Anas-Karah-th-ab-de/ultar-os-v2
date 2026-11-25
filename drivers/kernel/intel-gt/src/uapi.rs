@@ -10,6 +10,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 pub mod drm;
+pub mod file;
 
 /// First driver request number of DRM.
 pub const DRM_COMMAND_BASE: u32 = 0x40;
@@ -29,6 +30,8 @@ pub const XE_VM_BIND: u32 = 0x05;
 pub const XE_EXEC_QUEUE_CREATE: u32 = 0x06;
 /// Driver request: destroy an exec queue.
 pub const XE_EXEC_QUEUE_DESTROY: u32 = 0x07;
+/// Driver request: read a property of an exec queue.
+pub const XE_EXEC_QUEUE_GET_PROPERTY: u32 = 0x08;
 /// Driver request: run a batch.
 pub const XE_EXEC: u32 = 0x09;
 /// Driver request: wait for a value a batch stores.
@@ -80,6 +83,18 @@ pub enum Errno {
     Fault = 14,
     /// Not a request for this kind of file.
     NoTty = 25,
+    /// No such object (unknown handle or id).
+    NoEnt = 2,
+    /// Not now: ask again.
+    Again = 11,
+    /// Out of memory or over a limit.
+    NoMem = 12,
+    /// Still in use.
+    Busy = 16,
+    /// The time of a wait is over.
+    Time = 62,
+    /// Not supported (yet).
+    OpNotSupp = 95,
 }
 
 /// Engine classes as programs name them.

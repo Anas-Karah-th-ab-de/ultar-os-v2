@@ -23,19 +23,21 @@ use ultar_intel_gt::guc::{self, Stage};
 use ultar_intel_gt::{fw, wopcm};
 
 /// Everything the running GT owns.
-struct Runtime {
-    mem: Memory,
-    ct: Ct,
-    words: Words,
+pub(super) struct Runtime {
+    pub(super) mem: Memory,
+    pub(super) ct: Ct,
+    pub(super) words: Words,
     /// Golden images by class.
-    goldens: Vec<(Class, Vec<u8>)>,
+    pub(super) goldens: Vec<(Class, Vec<u8>)>,
     /// Holds the GT and the render domain awake.
     fwk: Forcewake,
     /// The next context id (and base of the sequence numbers).
-    next_id: u32,
+    pub(super) next_id: u32,
+    /// What programs created: address spaces and queues (`gt_exec`).
+    pub(super) programs: super::gt_exec::Programs,
 }
 
-static RUNTIME: Mutex<Option<Runtime>> = Mutex::new(None);
+pub(super) static RUNTIME: Mutex<Option<Runtime>> = Mutex::new(None);
 
 /// Whether the GT is in operation.
 pub fn running() -> bool {
@@ -64,6 +66,7 @@ impl Runtime {
         self.fwk
             .get(&mut dev.mmio, Domain::Render)
             .map_err(|e| format!("render forcewake: {e}"))?;
+        ultar_intel_gt::engines::program_pat(&mut dev.mmio);
         let first = self.next_id;
         let ran = self.with_env(dev, |env| {
             gt_job::engines_up(env)?;
@@ -135,6 +138,7 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
         goldens: Vec::new(),
         fwk,
         next_id: 0,
+        programs: Default::default(),
     };
     let ran = match rt.prepare(dev) {
         Ok(n) => n,
