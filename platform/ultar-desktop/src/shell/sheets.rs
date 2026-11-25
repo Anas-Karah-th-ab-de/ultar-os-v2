@@ -58,6 +58,10 @@ pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Out
             launch(s, SETTINGS, Opening::settings_page("power"))
         }
         (Target::Settings, ActionKind::Activated) => launch(s, SETTINGS, Opening::start()),
+        // qs.access: the accessibility button opens Settings > Accessibility.
+        (Target::AccessSettings, ActionKind::Activated) => {
+            launch(s, SETTINGS, Opening::settings_page("accessibility"))
+        }
         (Target::Lock, ActionKind::Activated) => {
             s.d.open = Open::None;
             Outcome::effect_and_close(Effect::Lock)

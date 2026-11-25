@@ -17,6 +17,9 @@ pub use crate::cursor::{cursor_image, cursor_rect, CURSOR};
 #[derive(Debug, Default)]
 pub struct Renderer {
     frames: HashMap<u32, Image>,
+    /// The frame to present with the accessibility view effects applied (only
+    /// while an effect is active; the clean `frames` keep the incremental composition).
+    shown: HashMap<u32, Image>,
     /// Pointer images by output scale and pointer size.
     cursors: HashMap<(u32, ultar_surface::proto::PointerSize), Image>,
     masks: HashMap<u32, pixels::CornerMask>,
@@ -33,20 +36,39 @@ pub fn to_device(o: &Output, r: Rect) -> Rect {
     r.translate(-o.x, -o.y).scale_round(o.scale())
 }
 
+/// The pointer in device pixels of `o`, clamped into the frame: the magnifier's
+/// centre (a pointer on another output clamps to the nearest edge).
+fn pointer_center(state: &State, o: &Output) -> (i32, i32) {
+    let at = to_device(
+        o,
+        Rect::new(
+            state.pointer.x.floor() as i32,
+            state.pointer.y.floor() as i32,
+            1,
+            1,
+        ),
+    );
+    (
+        at.x.clamp(0, o.width as i32 - 1),
+        at.y.clamp(0, o.height as i32 - 1),
+    )
+}
+
 impl Renderer {
     /// An empty renderer.
     pub fn new() -> Renderer {
         Renderer::default()
     }
 
-    /// The last frame of an output.
+    /// The last frame of an output (with the accessibility view effects, when active).
     pub fn frame(&self, output: u32) -> Option<&Image> {
-        self.frames.get(&output)
+        self.shown.get(&output).or_else(|| self.frames.get(&output))
     }
 
     /// Forgets the frame of a removed output.
     pub fn forget(&mut self, output: u32) {
         self.frames.remove(&output);
+        self.shown.remove(&output);
         self.shadow_cache.remove(&output);
     }
 
@@ -85,8 +107,32 @@ impl Renderer {
                 self.compose(state, output, (&scene, &shadows), &mut frame, &tile);
             }
         }
+        let damage = self.apply_effects(state, output, &frame, rects);
         self.frames.insert(output.id.0, frame);
-        rects
+        damage
+    }
+
+    /// Stores the frame to present (with the accessibility view effects) and returns
+    /// the damage to present: the whole output while an effect is active (the magnifier
+    /// spreads every source pixel over a block), else the composed damage.
+    fn apply_effects(
+        &mut self,
+        state: &State,
+        o: &Output,
+        frame: &Image,
+        rects: Vec<Rect>,
+    ) -> Vec<Rect> {
+        let center = pointer_center(state, o);
+        match crate::effects::transformed(&state.session.visual, state.now, center, frame) {
+            Some(shown) => {
+                self.shown.insert(o.id.0, shown);
+                vec![Rect::new(0, 0, o.width as i32, o.height as i32)]
+            }
+            None => {
+                self.shown.remove(&o.id.0);
+                rects
+            }
+        }
     }
 
     /// Composes the whole output into a new image (reference for tests:
@@ -99,7 +145,11 @@ impl Renderer {
         let shadows = self.shadows(state, output, &scene);
         let clip = frame.bounds();
         self.compose(state, output, (&scene, &shadows), &mut frame, &clip);
-        Some(frame)
+        let center = pointer_center(state, output);
+        Some(
+            crate::effects::transformed(&state.session.visual, state.now, center, &frame)
+                .unwrap_or(frame),
+        )
     }
 
     fn compose(

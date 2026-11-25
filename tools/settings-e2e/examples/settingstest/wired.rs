@@ -35,14 +35,14 @@ mod storage;
 pub(super) const WAIT: Duration = Duration::from_secs(20);
 
 /// A service that follows the settings: its connection and what it was told.
-pub(super) struct Follower {
+pub(crate) struct Follower {
     name: &'static str,
     changes: TypedSubscription<Changed>,
     _client: Client,
 }
 
 impl Follower {
-    pub(super) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
+    pub(crate) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
         let client = run.client_at(socket)?;
         let changes = client
             .subscribe::<Changed>()
@@ -55,7 +55,7 @@ impl Follower {
     }
 
     /// Waits until this service is told that `key` is now `value`.
-    pub(super) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
+    pub(crate) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
         loop {
             let change = self
                 .changes
@@ -97,7 +97,7 @@ pub(super) fn control(
 
 /// Clicks the switch of `key`, or its slider at `at` of its width; the value the settings
 /// service holds afterwards.
-pub(super) fn change(
+pub(crate) fn change(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     at: Option<f32>,
@@ -127,7 +127,7 @@ pub(super) fn change(
 
 /// Chooses an option of the select of `key`: a click opens the list, `steps` times
 /// ArrowDown moves the highlight, Enter takes it; the value the service holds afterwards.
-fn choose(
+pub(crate) fn choose(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     steps: usize,
@@ -146,7 +146,7 @@ fn choose(
     reply.value.ok_or(format!("{key}: no value"))
 }
 
-pub(super) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
+pub(crate) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
     let area = index_of(area).ok_or(format!("area {area}"))?;
     open(bus, run, Lang::En, Size::new(1280.0, 800.0), area)
 }
@@ -167,7 +167,7 @@ impl Display<'_> {
     }
 }
 
-fn whole(key: &str, value: &SettingValue) -> Result<i64, String> {
+pub(crate) fn whole(key: &str, value: &SettingValue) -> Result<i64, String> {
     match value {
         SettingValue::Integer(n) => Ok(*n),
         other => Err(format!("{key} is {other:?}")),
@@ -557,5 +557,6 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     updates(bus, admin, run)?;
     super::apps::apps(bus, admin, run, &desktop)?;
     wired_store::auto_apps(bus, admin, run)?;
+    super::access_visual::check(bus, admin, run, &desktop, &displayd)?;
     crate::wired_users::users_emergency(bus, admin, run)
 }

@@ -25,6 +25,7 @@ mod slow_keys;
 mod sticky_keys;
 mod text;
 mod transfer;
+mod visual;
 mod windows;
 mod workspaces;
 
@@ -37,6 +38,7 @@ pub use output_config::{Identify, OutputManagement, Provisional, MAX_QUEUED_SETU
 pub use session::{Grant, Session, INDICATOR_MS};
 pub use shell::ShellSession;
 pub use transfer::Transfers;
+pub use visual::Visual;
 pub use windows::Window;
 pub use workspaces::{fit as thumbnail_fit, Workspaces};
 

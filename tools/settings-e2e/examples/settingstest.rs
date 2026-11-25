@@ -14,6 +14,8 @@
 //! settingstest --bin DIR --work DIR [--group-root DIR]
 //! ```
 
+#[path = "settingstest/access_visual.rs"]
+mod access_visual;
 #[path = "settingstest/apps.rs"]
 mod apps;
 #[path = "settingstest/setup.rs"]

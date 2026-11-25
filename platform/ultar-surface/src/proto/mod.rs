@@ -16,6 +16,7 @@ mod shell;
 #[cfg(test)]
 mod tests;
 mod types;
+mod visual;
 mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
@@ -36,4 +37,7 @@ pub use shell::{
     MAX_WORKSPACES,
 };
 pub use types::*;
+pub use visual::{
+    ColourFilter, DEFAULT_ZOOM_PERCENT, MAX_FLASH_MS, MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT,
+};
 pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

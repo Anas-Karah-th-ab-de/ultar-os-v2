@@ -420,6 +420,7 @@ desk.helper.failed = لم يُجب المساعد
 desk.helper.failed.body = حاول مرة أخرى بعد قليل.
 desk.helper.title.cloud = المساعد · فكّر بالنموذج السحابي
 desk.qs.assistant = المساعد
+desk.qs.access = تسهيلات الاستخدام
 desk.helper.reach = ما يصل إليه المساعد
 desk.helper.field = اسأل المساعد
 desk.helper.field.hint = اكتب ما تريد، بكلماتك

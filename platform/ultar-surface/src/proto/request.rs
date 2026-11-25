@@ -348,6 +348,26 @@ pub enum Request {
         /// driver reports.
         per_second: u8,
     },
+    /// The accessibility view of the output (needs [`Rights::OUTPUT_CONFIG`]: the display
+    /// service passes `accessibility.zoom`, `accessibility.zoom_percent` and
+    /// `accessibility.colour_filter` on). The magnifier scales the output around the
+    /// pointer; the colour filter is a final colour matrix over every pixel.
+    ConfigureVisual {
+        /// The magnifier is on (`accessibility.zoom`).
+        zoom: bool,
+        /// Magnification in percent, [`super::MIN_ZOOM_PERCENT`] (the output as it is) to
+        /// [`super::MAX_ZOOM_PERCENT`] (`accessibility.zoom_percent`).
+        zoom_percent: u16,
+        /// The colour filter (`accessibility.colour_filter`).
+        filter: super::ColourFilter,
+    },
+    /// A short flash over the whole output, for the visual alert (needs [`Rights::SHELL`]:
+    /// the shell asks for it when a notification alerts and `accessibility.visual_alert`
+    /// is on). Answered by nothing; the flash goes by itself after `ms`.
+    VisualAlert {
+        /// How long the flash stays, in milliseconds, 1 to [`super::MAX_FLASH_MS`].
+        ms: u32,
+    },
     /// The keyboard helpers of the accessibility page and the compose key (needs
     /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
     /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
@@ -425,6 +445,8 @@ impl Request {
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
             Request::ConfigureKeyHelpers { .. } => 46,
+            Request::ConfigureVisual { .. } => 56,
+            Request::VisualAlert { .. } => 57,
         }
     }
 
@@ -632,6 +654,17 @@ impl Request {
                 per_second,
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
+            }
+            Request::ConfigureVisual {
+                zoom,
+                zoom_percent,
+                filter,
+            } => {
+                w.bool(*zoom).u16(*zoom_percent);
+                filter.encode(w);
+            }
+            Request::VisualAlert { ms } => {
+                w.u32(*ms);
             }
             Request::ConfigureKeyHelpers {
                 sticky_keys,

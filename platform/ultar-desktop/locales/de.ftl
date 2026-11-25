@@ -420,6 +420,7 @@ desk.helper.failed = Der Helfer hat nicht geantwortet
 desk.helper.failed.body = Versuche es gleich noch einmal.
 desk.helper.title.cloud = Helfer · mit dem Cloud-Modell gedacht
 desk.qs.assistant = Assistent
+desk.qs.access = Barrierefreiheit
 desk.helper.reach = Was der Assistent erreicht
 desk.helper.field = Den Assistenten fragen
 desk.helper.field.hint = Schreib, was du willst, mit deinen Worten

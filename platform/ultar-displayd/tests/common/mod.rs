@@ -25,7 +25,7 @@ use ultar_settingsd::schema::NoDefaults;
 use ultar_settingsd::seed;
 use ultar_settingsd::server::{Server, ServerParts};
 use ultar_settingsd::store::StoreConfig;
-use ultar_surface::proto::{OutputIdentity, OutputMode, Rights};
+use ultar_surface::proto::{ColourFilter, OutputIdentity, OutputMode, Rights};
 
 pub const DAEMON: &str = env!("CARGO_BIN_EXE_ultar-displayd");
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -174,6 +174,25 @@ impl Default for PointerSnap {
     }
 }
 
+/// The accessibility view the compositor was told (`Request::ConfigureVisual`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VisualSnap {
+    pub zoom: bool,
+    pub zoom_percent: u16,
+    pub filter: ColourFilter,
+}
+
+impl Default for VisualSnap {
+    /// The schema's defaults.
+    fn default() -> Self {
+        VisualSnap {
+            zoom: false,
+            zoom_percent: 200,
+            filter: ColourFilter::None,
+        }
+    }
+}
+
 /// What the compositor shows, read by the test.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snap {
@@ -191,6 +210,8 @@ pub struct Snap {
     pub pointer: PointerSnap,
     /// Key repeat: on, delay in milliseconds, per second.
     pub key_repeat: (bool, u16, u8),
+    /// The accessibility view (magnifier, colour filter).
+    pub visual: VisualSnap,
     /// Keyboard helpers: sticky, slow, bounce, mouse, and the compose key.
     pub key_helpers: (bool, bool, bool, bool, ultar_surface::proto::ComposeKey),
 }
@@ -271,16 +292,8 @@ fn snapshot(comp: &Compositor) -> Snap {
             let r = comp.state.keyboard.repeat;
             (r.enabled, r.delay_ms, r.per_second)
         },
-        key_helpers: {
-            let h = &comp.state.keyboard.helpers;
-            (
-                h.sticky.on,
-                h.slow.on,
-                h.bounce.on,
-                h.mouse.on,
-                h.compose.key,
-            )
-        },
+        visual: visual_snap(comp),
+        key_helpers: helpers_snap(comp),
         identify: comp
             .state
             .session
@@ -289,6 +302,28 @@ fn snapshot(comp: &Compositor) -> Snap {
             .as_ref()
             .map_or(0, |i| i.numbers.len()),
     }
+}
+
+/// The accessibility view as the compositor holds it.
+fn visual_snap(comp: &Compositor) -> VisualSnap {
+    let v = comp.state.session.visual;
+    VisualSnap {
+        zoom: v.zoom,
+        zoom_percent: v.zoom_percent,
+        filter: v.filter,
+    }
+}
+
+/// The keyboard helpers as the compositor holds them.
+fn helpers_snap(comp: &Compositor) -> (bool, bool, bool, bool, ultar_surface::proto::ComposeKey) {
+    let h = &comp.state.keyboard.helpers;
+    (
+        h.sticky.on,
+        h.slow.on,
+        h.bounce.on,
+        h.mouse.on,
+        h.compose.key,
+    )
 }
 
 /// What the compositor thread shares with the test.

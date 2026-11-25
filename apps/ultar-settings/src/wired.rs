@@ -55,6 +55,12 @@ pub const WIRED: &[(&str, &str)] = &[
     ("pointer.size", "compositor"),
     ("accessibility.large_pointer", "compositor"),
     ("accessibility.double_click_ms", "compositor"),
+    // displayd passes the accessibility view to the compositor as well
+    // (`Request::ConfigureVisual`): the magnifier scales the output around the
+    // pointer, the colour filter is a final colour matrix over every pixel.
+    ("accessibility.zoom", "compositor"),
+    ("accessibility.zoom_percent", "compositor"),
+    ("accessibility.colour_filter", "compositor"),
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
@@ -70,6 +76,11 @@ pub const WIRED: &[(&str, &str)] = &[
     ("accessibility.large_text", "shell"),
     ("accessibility.high_contrast", "shell"),
     ("accessibility.reduce_motion", "shell"),
+    // The shell flashes the screen when a notification alerts (visual_alert,
+    // through the compositor's `Request::VisualAlert`) and keeps an accessibility
+    // button in the quick settings that opens this page (show_in_bar).
+    ("accessibility.visual_alert", "shell"),
+    ("accessibility.show_in_bar", "shell"),
     // The search of the shell's overview (model/search.rs `Sources`, read at start and on
     // settings.changed); the characters come from the shell's own table (model/characters.rs),
     // the history is kept beside the shell per person (model/history.rs); off deletes it.
@@ -173,6 +184,13 @@ mod tests {
             "accessibility.slow_keys",
             "accessibility.bounce_keys",
             "accessibility.mouse_keys",
+            // the accessibility view: magnifier and colour filter in the compositor,
+            // the visual alert and the bar button in the shell
+            "accessibility.zoom",
+            "accessibility.zoom_percent",
+            "accessibility.colour_filter",
+            "accessibility.visual_alert",
+            "accessibility.show_in_bar",
             "keyboard.repeat.delay_ms",
             "keyboard.compose_key",
             "search.source.apps",
@@ -227,6 +245,8 @@ mod tests {
             // a pointer helper that is not built yet; no screen reader yet
             "accessibility.dwell_click",
             "accessibility.screen_reader",
+            // audiod has no sample path to mix to mono
+            "accessibility.mono_audio",
             // a per-person file-search service
             "search.source.files",
             "search.file_places",

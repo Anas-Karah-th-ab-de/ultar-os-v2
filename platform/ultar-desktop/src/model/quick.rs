@@ -238,6 +238,8 @@ pub struct QuickValues {
     /// accessibility.double_click_ms: two clicks of a double click this far apart, if the
     /// setting is known (the windows keep the toolkit's 400 ms until then).
     pub double_click_ms: Option<u16>,
+    /// accessibility.show_in_bar: the accessibility button stays in the quick settings.
+    pub show_in_bar: bool,
     /// apps.removable_media: what a newly plugged-in drive does.
     pub removable_media: RemovableMedia,
 }

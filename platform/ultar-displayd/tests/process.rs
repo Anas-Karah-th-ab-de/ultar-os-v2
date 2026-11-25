@@ -380,6 +380,55 @@ fn pointer_tuning_and_the_large_pointer_reach_the_compositor() {
 }
 
 #[test]
+fn the_accessibility_view_settings_reach_the_compositor() {
+    use ultar_surface::proto::ColourFilter;
+    let rig = Rig::new("visual");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    // The schema's defaults arrive with the connection.
+    rig.wait_for("view defaults", |s| s.visual == VisualSnap::default());
+    set(&app, "accessibility.zoom", SettingValue::Flag(true));
+    set(
+        &app,
+        "accessibility.zoom_percent",
+        SettingValue::Integer(400),
+    );
+    set(&app, "accessibility.colour_filter", text("deuteranopia"));
+    let wanted = VisualSnap {
+        zoom: true,
+        zoom_percent: 400,
+        filter: ColourFilter::Deuteranopia,
+    };
+    rig.wait_for("magnifier and filter", |s| s.visual == wanted);
+    // A runtime change of one setting keeps the others.
+    set(&app, "accessibility.colour_filter", text("invert"));
+    rig.wait_for("filter changed", |s| {
+        s.visual
+            == VisualSnap {
+                filter: ColourFilter::Invert,
+                ..wanted
+            }
+    });
+    // Changed while the display service is away: read again when it is back.
+    drop(d);
+    set(
+        &app,
+        "accessibility.zoom_percent",
+        SettingValue::Integer(250),
+    );
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.visual
+            == VisualSnap {
+                zoom_percent: 250,
+                filter: ColourFilter::Invert,
+                ..wanted
+            }
+    });
+}
+
+#[test]
 fn keyboard_helpers_and_the_compose_key_reach_the_compositor() {
     use ultar_surface::proto::ComposeKey;
     let rig = Rig::new("helpers");
