@@ -2,7 +2,10 @@
 # exFAT and ext4 partitions of removable disks for the person in front below
 # /run/ultar/media/<name>/<label> (nosuid,nodev,noexec; FAT files belong to
 # that person only), ejects them for the shell's drive tile, detaches pulled
-# drives. Reads partition heads from /dev (disk group 832).
+# drives. Reads partition heads from /dev (disk group 832). Follows the Storage
+# page settings: low-space warning, automount off offers a "Mount" button. The
+# daily clean-up of the person's downloads folder is the launcher's (it owns the
+# areas; this service handles untrusted USB file systems and must not reach them).
 editions = ["phone", "desktop"]
 exec = "/usr/bin/ultar-volumed"
 args = [

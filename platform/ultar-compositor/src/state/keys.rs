@@ -10,14 +10,12 @@ use ultar_surface::proto::{Event, Modifiers, SwitchShortcut};
 
 impl State {
     pub(super) fn key(&mut self, code: u16, state: KeyState) {
-        let pressed = state != KeyState::Released;
-        if let Some(bit) = keymap::modifier_bit(code) {
-            if pressed {
-                self.keyboard.modifiers |= bit;
-            } else {
-                self.keyboard.modifiers &= !bit;
-            }
+        // The compose key takes the key (and its sequence) before anything else.
+        if self.compose_event(code, state) {
+            return;
         }
+        let pressed = state != KeyState::Released;
+        let mods = self.key_modifiers(code, state);
         if code == 58 && state == KeyState::Pressed {
             self.keyboard.caps_lock = !self.keyboard.caps_lock;
         }
@@ -28,7 +26,7 @@ impl State {
             self.session.shell.super_tap_used();
             return;
         }
-        if state == KeyState::Pressed && self.shortcut(code) {
+        if state == KeyState::Pressed && self.shortcut(code, Modifiers(mods)) {
             self.session.shell.super_tap_used();
             return;
         }
@@ -46,12 +44,12 @@ impl State {
         if state == KeyState::Pressed {
             self.session.pressed.insert(code, key);
         }
-        let modifiers = Modifiers(self.keyboard.modifiers | self.caps_bit());
+        let modifiers = Modifiers(mods | self.caps_bit());
         let output = if pressed {
             keymap::translate(
                 self.key_layout(),
                 code,
-                Modifiers(self.keyboard.modifiers),
+                Modifiers(mods),
                 self.keyboard.caps_lock,
             )
         } else {
@@ -68,6 +66,23 @@ impl State {
             KeyState::Repeated => 2,
         };
         self.deliver_key(key, code, state_code, modifiers, (output, serial));
+    }
+
+    /// The modifiers in effect for a key: physical holding plus sticky keys (a latched
+    /// modifier applies to this key; a non-modifier press consumes the latch). Updates the
+    /// physical modifier state.
+    fn key_modifiers(&mut self, code: u16, state: KeyState) -> u8 {
+        let pressed = state != KeyState::Released;
+        let bit = keymap::modifier_bit(code);
+        let sticky = self.keyboard.helpers.sticky.on_key(bit, state);
+        if let Some(bit) = bit {
+            if pressed {
+                self.keyboard.modifiers |= bit;
+            } else {
+                self.keyboard.modifiers &= !bit;
+            }
+        }
+        self.keyboard.modifiers | sticky
     }
 
     pub(super) fn deliver_key(
@@ -118,11 +133,13 @@ impl State {
             Some(bit) if bit != Modifiers::ALT_GR && bit != Modifiers::SUPER => {
                 if state == KeyState::Pressed {
                     let pair = [
-                        (SwitchShortcut::CtrlShift, Modifiers::SHIFT | Modifiers::CTRL),
+                        (
+                            SwitchShortcut::CtrlShift,
+                            Modifiers::SHIFT | Modifiers::CTRL,
+                        ),
                         (SwitchShortcut::AltShift, Modifiers::SHIFT | Modifiers::ALT),
                     ];
-                    self.keyboard.layout_chord =
-                        pair.iter().any(|(s, p)| wants(*s) && *p == held);
+                    self.keyboard.layout_chord = pair.iter().any(|(s, p)| wants(*s) && *p == held);
                 } else if state == KeyState::Released
                     && std::mem::take(&mut self.keyboard.layout_chord)
                 {
@@ -160,9 +177,9 @@ impl State {
         }
     }
 
-    /// Compositor shortcuts (DESKTOP-SPEC §5.4). True if the key was used.
-    fn shortcut(&mut self, code: u16) -> bool {
-        let m = Modifiers(self.keyboard.modifiers);
+    /// Compositor shortcuts (DESKTOP-SPEC §5.4), with the modifiers in effect (sticky keys
+    /// included). True if the key was used.
+    fn shortcut(&mut self, code: u16, m: Modifiers) -> bool {
         if self.locked() {
             return false;
         }

@@ -147,6 +147,18 @@ fn work(args: &Args, runtime: &Runtime, lang: Lang) -> i32 {
         return exit::FAILURE;
     };
     if let Some(socket) = config.paths.bus_socket {
+        let follow = {
+            let (launcher, life) = (Arc::clone(&launcher), runtime.lifecycle().clone());
+            let socket = socket.clone();
+            std::thread::Builder::new()
+                .name("ultar-launcher-follow".into())
+                .spawn(move || ultar_launcher::follow::serve(socket, launcher, life))
+        };
+        if follow.is_err() {
+            launcher.shutdown();
+            let _ = timer.join();
+            return exit::FAILURE;
+        }
         let (served, admins, life) = (
             Arc::clone(&launcher),
             Arc::clone(&admins),

@@ -97,6 +97,8 @@ pub enum Key {
     PageDown,
     /// The menu key (or Shift+F10): open the context menu of the focused widget.
     Menu,
+    /// A function key, `F(1)` to `F(12)` (F5: reload, F2: rename …; apps decide).
+    F(u8),
     /// A character produced by the keyboard layout or input method.
     Char(char),
 }

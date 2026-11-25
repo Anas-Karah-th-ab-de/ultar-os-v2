@@ -12,19 +12,20 @@ import time
 
 # the bar (bottom 56 points, Arabic: right to left): start (the brand mark), 52 points further the app grid,
 # then the search field (200 wide), then the pinned apps that are installed, 52 points apart, in the order
-# files, browser, terminal, editor, store, settings (the image has no terminal and no editor)
+# files, browser, terminal, editor, store, settings
 BAR_Y_FROM_BOTTOM = 28
 STEP = 52
-PINNED_ORDER = ["files", "browser", "store", "settings"]
+PINNED_ORDER = ["files", "browser", "terminal", "editor", "store", "settings"]
 # the lock screen's sign-in button (centred, 132 points below the middle) and the phone's tile in the
-# app grid (not pinned: the grid lists it under "all apps"; 48 left of the middle, 345 from the top),
+# app grid (not pinned: the grid lists it under "all apps", seventh of seven in Arabic order – after
+# settings, terminal, store, browser, editor, files –, 237 left of the middle, 345 from the top),
 # both measured at 1280x800 and kept relative to the screen's size
 def sign_in_button(w, h):
     return (w // 2, h // 2 + 132)
 
 
 def phone_tile(w, h):
-    return (w // 2 - 48, 345)
+    return (w // 2 - 237, 345)
 def work(vm):
     """The work area above the bar (where windows and menus open)."""
     w, h = vm.size

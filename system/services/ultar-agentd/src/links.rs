@@ -66,7 +66,7 @@ pub fn links_in(text: &str) -> Vec<String> {
         while url.ends_with(')') && url.matches(')').count() > url.matches('(').count() {
             url.pop();
         }
-        if url.len() <= MAX_LINK && !out.iter().any(|u| *u == url) {
+        if url.len() <= MAX_LINK && !out.contains(&url) {
             out.push(url);
         }
     }
@@ -100,9 +100,9 @@ pub fn suspicious(url: &str) -> bool {
     }
     let parts: Vec<&str> = host.split('.').collect();
     parts.len() == 4
-        && parts.iter().all(|p| {
-            !p.is_empty() && p.len() <= 3 && p.chars().all(|c| c.is_ascii_digit())
-        })
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.len() <= 3 && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// The first suspicious link of a text (`None`: nothing to warn about).
@@ -126,10 +126,16 @@ mod tests {
             links_in("run javascript:alert(1) now"),
             vec!["javascript:alert(1)"]
         );
-        assert_eq!(links_in("data:text/plain,hello"), vec!["data:text/plain,hello"]);
+        assert_eq!(
+            links_in("data:text/plain,hello"),
+            vec!["data:text/plain,hello"]
+        );
         // A scheme inside a word does not start a second link; a plain word with a colon
         // is not one.
-        assert_eq!(links_in("foxhttp://example.com"), vec!["foxhttp://example.com"]);
+        assert_eq!(
+            links_in("foxhttp://example.com"),
+            vec!["foxhttp://example.com"]
+        );
         assert!(links_in("note: nothing here").is_empty());
         assert!(links_in("").is_empty());
         // The parenthesis of the sentence is not part of the link; one of the link is.

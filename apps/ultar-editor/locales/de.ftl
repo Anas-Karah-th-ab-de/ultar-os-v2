@@ -1,0 +1,27 @@
+# ultar-editor – Texte des Texteditors (Arabisch ist die Vorlage)
+app.editor.name = Texteditor
+app.editor.desc = Notizen, Einstellungsdateien und Code auf Arabisch und Englisch schreiben.
+editor.untitled = Neues Dokument
+editor.text = Text des Dokuments
+editor.new = Neu
+editor.save = Speichern
+editor.undo = Rückgängig
+editor.redo = Wiederholen
+editor.status = Zeile {line}, Spalte {col}
+editor.saved = „{name}“ gespeichert
+editor.save_failed = „{name}“ ließ sich nicht speichern: {reason}
+editor.open_failed = Die Datei ließ sich nicht öffnen: {reason}
+editor.too_big = Die Datei ist zu groß, um sie hier zu öffnen (Grenze {mb} MB)
+editor.ask.title = Änderungen an „{name}“ speichern?
+editor.ask.message = Ohne Speichern gehen die Änderungen verloren.
+editor.ask.save = Speichern
+editor.ask.discard = Nicht speichern
+editor.ask.cancel = Abbrechen
+editor.name.title = Speichern unter
+editor.name.field = Dateiname (in Dokumente)
+editor.name.ok = Speichern
+editor.reason.denied = hier darf nicht geschrieben werden
+editor.reason.missing = die Datei oder der Ordner fehlt
+editor.reason.exists = eine Datei mit diesem Namen gibt es schon
+editor.reason.name = der Name ist ungültig
+editor.reason.io = Lesen oder Schreiben fehlgeschlagen

@@ -26,6 +26,12 @@ impl Mmio {
         (base != 0 && size >= BAR0_SIZE && base % 4096 == 0).then_some(Mmio { base })
     }
 
+    /// A second handle on the same BAR0, for the interrupt handler (it touches only the
+    /// interrupt registers, which nothing else uses).
+    pub fn alias(&self) -> Mmio {
+        Mmio { base: self.base }
+    }
+
     fn store(&mut self, reg: u32, val: u32) {
         // SAFETY: callers pass a 4-byte aligned offset inside the 16 MiB BAR0 (checked by
         // `write`/`write_gtt`), which is identity-mapped and uncached through the MTRRs (module

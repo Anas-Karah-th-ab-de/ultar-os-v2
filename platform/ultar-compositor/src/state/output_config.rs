@@ -95,23 +95,54 @@ impl State {
                     (enabled, delay_ms, per_second);
                 Ok(())
             }
+            Request::ConfigureKeyHelpers { .. } => self.apply_key_helpers(client, r),
             Request::ConfigureKeyboard {
                 switch_shortcut,
                 per_window,
-            } => {
-                self.require_output_config(client)?;
-                self.keyboard.switch = Some(switch_shortcut);
-                self.keyboard.per_window = per_window;
-                if !per_window {
-                    // Switched off: no window keeps a language of its own any more.
-                    for w in &mut self.windows {
-                        w.layout = None;
-                    }
-                }
-                Ok(())
-            }
+            } => self.apply_keyboard(client, switch_shortcut, per_window),
             _ => Ok(()),
         }
+    }
+
+    /// `ConfigureKeyboard`: the keys that switch the input language and whether every
+    /// window keeps its own (switched off: no window keeps a language of its own any more).
+    fn apply_keyboard(
+        &mut self,
+        client: ClientId,
+        switch_shortcut: ultar_surface::proto::SwitchShortcut,
+        per_window: bool,
+    ) -> Result<(), ErrorCode> {
+        self.require_output_config(client)?;
+        self.keyboard.switch = Some(switch_shortcut);
+        self.keyboard.per_window = per_window;
+        if !per_window {
+            for w in &mut self.windows {
+                w.layout = None;
+            }
+        }
+        Ok(())
+    }
+
+    /// `ConfigureKeyHelpers`: the keyboard helpers and the compose key of the same right.
+    fn apply_key_helpers(&mut self, client: ClientId, r: Request) -> Result<(), ErrorCode> {
+        self.require_output_config(client)?;
+        if let Request::ConfigureKeyHelpers {
+            sticky_keys,
+            slow_keys,
+            bounce_keys,
+            mouse_keys,
+            compose_key,
+        } = r
+        {
+            self.configure_key_helpers(
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            );
+        }
+        Ok(())
     }
 
     fn require_output_config(&self, client: ClientId) -> Result<(), ErrorCode> {

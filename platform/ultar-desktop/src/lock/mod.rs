@@ -9,6 +9,8 @@
 
 pub mod access;
 mod compact;
+pub mod emergency;
+pub mod prefs;
 pub mod view;
 
 use ultar_bus::messages::auth::{Method, Outcome as AuthOutcome, Secret, UserInfo};
@@ -41,6 +43,8 @@ pub enum SignInError {
     /// (review security S-1: until each person has their own desktop, only the person whose
     /// session is locked lifts the lock).
     OtherUser,
+    /// A standard user may sign in only in the parental time window (`users.parental`).
+    OutsideHours,
 }
 
 /// Something the lock screen asks of the world.
@@ -91,6 +95,10 @@ pub struct LockState {
     /// The account whose secret is being checked (`Stage::Checking`; public only so that
     /// tests can build a state with `..LockState::default()`).
     pub checking: Option<String>,
+    /// The settings the lock screen follows (`users.*`, `emergency.*`).
+    pub prefs: prefs::LockPrefs,
+    /// The emergency panel and its call.
+    pub emergency: emergency::EmergencyState,
 }
 
 impl Default for LockState {
@@ -109,6 +117,8 @@ impl Default for LockState {
             access: access::AccessState::default(),
             owner: None,
             checking: None,
+            prefs: prefs::LockPrefs::default(),
+            emergency: emergency::EmergencyState::default(),
         }
     }
 }
@@ -126,7 +136,7 @@ impl LockState {
     /// login.user: account `index` of the list signs in (its card is chosen, the sign-in
     /// shows); `false` for an index that is not in the list.
     pub fn choose_user(&mut self, index: usize) -> bool {
-        if self.stage == Stage::Checking {
+        if self.stage == Stage::Checking || !self.prefs.list_on_login {
             return false;
         }
         let Some(user) = self.users.get(index).cloned() else {
@@ -190,16 +200,22 @@ impl LockState {
     }
 
     /// login.submit / Enter: checks the typed secret – not during a wait, not empty, not
-    /// twice at once. The secret is consumed either way.
-    pub fn submit(&mut self, secret: Secret, now_ms: u64) -> Option<LockEffect> {
-        let user = self.user.as_ref()?.name.clone();
+    /// twice at once, and (while `users.parental` is on) a standard user only in the time
+    /// window; `local_min` is the local time in minutes since midnight. The secret is
+    /// consumed either way.
+    pub fn submit(&mut self, secret: Secret, now_ms: u64, local_min: u16) -> Option<LockEffect> {
+        let user = self.user.as_ref()?.clone();
         if self.stage != Stage::SignIn || secret.is_empty() || self.wait_ms(now_ms) > 0 {
             return None;
         }
+        if !self.prefs.allows(local_min, user.admin) {
+            self.error = Some(SignInError::OutsideHours);
+            return None;
+        }
         self.stage = Stage::Checking;
-        self.checking = Some(user.clone());
+        self.checking = Some(user.name.clone());
         Some(LockEffect::Verify {
-            user,
+            user: user.name,
             method: self.method,
             secret,
         })
@@ -262,13 +278,13 @@ mod tests {
         s.show_sign_in();
         assert_eq!(s.stage, Stage::SignIn);
         assert!(
-            s.submit(Secret::default(), 0).is_none(),
+            s.submit(Secret::default(), 0, 720).is_none(),
             "empty is not sent"
         );
-        let effect = s.submit(Secret::new("pw".into()), 0).unwrap();
+        let effect = s.submit(Secret::new("pw".into()), 0, 720).unwrap();
         assert!(format!("{effect:?}").contains("<hidden>"));
         assert!(
-            s.submit(Secret::new("pw".into()), 0).is_none(),
+            s.submit(Secret::new("pw".into()), 0, 720).is_none(),
             "one check at a time"
         );
         let denied = AuthOutcome::Denied {
@@ -277,10 +293,10 @@ mod tests {
         assert_eq!(s.verified(Some(denied), 100), None);
         assert_eq!((s.error, s.wait_ms(1100)), (Some(SignInError::Wrong), 1000));
         assert!(
-            s.submit(Secret::new("pw".into()), 1500).is_none(),
+            s.submit(Secret::new("pw".into()), 1500, 720).is_none(),
             "waiting"
         );
-        assert!(s.submit(Secret::new("pw".into()), 2100).is_some());
+        assert!(s.submit(Secret::new("pw".into()), 2100, 720).is_some());
         assert_eq!(
             s.verified(Some(AuthOutcome::Granted), 2200),
             Some(LockEffect::Unlock)
@@ -307,16 +323,16 @@ mod tests {
         };
         s.locked();
         assert!(s.choose_user(1));
-        assert!(s.submit(Secret::new("guest-pw".into()), 0).is_some());
+        assert!(s.submit(Secret::new("guest-pw".into()), 0, 720).is_some());
         assert_eq!(s.verified(Some(AuthOutcome::Granted), 0), None);
         assert_eq!(s.error, Some(SignInError::OtherUser));
         // switching the card while the guest's password is checked does not help either
-        assert!(s.submit(Secret::new("guest-pw".into()), 0).is_some());
+        assert!(s.submit(Secret::new("guest-pw".into()), 0, 720).is_some());
         assert!(!s.choose_user(0), "no switch during a check");
         assert_eq!(s.verified(Some(AuthOutcome::Granted), 0), None);
         // the owner unlocks
         assert!(s.choose_user(0));
-        assert!(s.submit(Secret::new("pw".into()), 0).is_some());
+        assert!(s.submit(Secret::new("pw".into()), 0, 720).is_some());
         assert_eq!(
             s.verified(Some(AuthOutcome::Granted), 0),
             Some(LockEffect::Unlock)
@@ -328,7 +344,7 @@ mod tests {
         };
         first.locked();
         first.show_sign_in();
-        first.submit(Secret::new("pw".into()), 0);
+        first.submit(Secret::new("pw".into()), 0, 720);
         assert_eq!(
             first.verified(Some(AuthOutcome::Granted), 0),
             Some(LockEffect::Unlock)
@@ -342,7 +358,7 @@ mod tests {
         s.locked();
         s.show_sign_in();
         assert_eq!(s.error, Some(SignInError::NoUser));
-        assert!(s.submit(Secret::new("x".into()), 0).is_none());
+        assert!(s.submit(Secret::new("x".into()), 0, 720).is_none());
         let mut p = LockState {
             user: Some(user(false)),
             ..LockState::default()
@@ -357,10 +373,10 @@ mod tests {
         p.back();
         assert_eq!(p.stage, Stage::Cover);
         p.show_sign_in();
-        p.submit(Secret::new("1234".into()), 0);
+        p.submit(Secret::new("1234".into()), 0, 720);
         p.verified(None, 0);
         assert_eq!(p.error, Some(SignInError::NoService));
-        p.submit(Secret::new("1234".into()), 0);
+        p.submit(Secret::new("1234".into()), 0, 720);
         p.verified(Some(AuthOutcome::Unavailable), 0);
         assert_eq!(p.error, Some(SignInError::Unavailable));
         assert_eq!(
@@ -368,5 +384,75 @@ mod tests {
             None,
             "no check pending"
         );
+    }
+
+    /// users.parental: a standard user signs in only in the window; the message says
+    /// when. Administrators are never restricted; switching the setting at runtime
+    /// changes the next try.
+    #[test]
+    fn parental_window_refuses_standard_users_outside_it() {
+        let child = UserInfo {
+            name: "layla".into(),
+            display_name: "ليلى".into(),
+            has_pin: false,
+            admin: false,
+        };
+        let mut s = LockState {
+            user: Some(child),
+            prefs: prefs::LockPrefs {
+                parental: true,
+                ..prefs::LockPrefs::default()
+            },
+            ..LockState::default()
+        };
+        s.locked();
+        s.show_sign_in();
+        // 22:00 is outside 07:00–21:00: refused with the window, no check sent.
+        assert_eq!(s.submit(Secret::new("pw".into()), 0, 22 * 60), None);
+        assert_eq!(s.error, Some(SignInError::OutsideHours));
+        assert_eq!(s.stage, Stage::SignIn);
+        // Inside the window the same secret is checked.
+        assert!(s.submit(Secret::new("pw".into()), 0, 12 * 60).is_some());
+        s.verified(Some(AuthOutcome::Granted), 0);
+        // An administrator outside the window: checked.
+        let mut admin = LockState {
+            user: Some(user(false)),
+            prefs: s.prefs.clone(),
+            ..LockState::default()
+        };
+        admin.locked();
+        admin.show_sign_in();
+        assert!(admin.submit(Secret::new("pw".into()), 0, 23 * 60).is_some());
+        // Runtime change: the restriction off, the next try goes through.
+        s.unlocked();
+        s.locked();
+        s.show_sign_in();
+        assert!(s.prefs.on_changed(
+            prefs::PARENTAL,
+            &ultar_bus::messages::settings::SettingValue::Flag(false)
+        ));
+        assert!(s.submit(Secret::new("pw".into()), 0, 22 * 60).is_some());
+    }
+
+    /// users.list_on_login off: no account is chosen from a list (the app shows only
+    /// the session user's name field).
+    #[test]
+    fn without_the_user_list_no_card_can_be_chosen() {
+        let mut s = LockState {
+            user: Some(user(false)),
+            users: vec![user(false)],
+            prefs: prefs::LockPrefs {
+                list_on_login: false,
+                ..prefs::LockPrefs::default()
+            },
+            ..LockState::default()
+        };
+        s.locked();
+        assert!(!s.choose_user(0));
+        assert!(s.prefs.on_changed(
+            prefs::LIST_ON_LOGIN,
+            &ultar_bus::messages::settings::SettingValue::Flag(true)
+        ));
+        assert!(s.choose_user(0));
     }
 }

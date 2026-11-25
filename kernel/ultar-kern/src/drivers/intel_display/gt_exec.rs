@@ -52,12 +52,19 @@ struct Usage {
     busy_from: u64,
     /// Looks at the frequency while busy: below 1000, below 1700, below 2200 MHz, above.
     mhz: [u64; 4],
+    /// Of those looks, how many saw the GT held back by heat, by the power budget, by other
+    /// limits.
+    limited: [u64; 3],
 }
 
 impl Usage {
-    fn working(&mut self, mhz: u32) {
+    fn working(&mut self, mhz: u32, reasons: u32) {
+        use ultar_intel_gt::freq::{LIMIT_HEAT, LIMIT_OTHER, LIMIT_POWER};
         let bucket = [1000, 1700, 2200].iter().take_while(|b| mhz >= **b).count();
         self.mhz[bucket] += 1;
+        for (i, bits) in [LIMIT_HEAT, LIMIT_POWER, LIMIT_OTHER].iter().enumerate() {
+            self.limited[i] += u64::from(reasons & bits != 0);
+        }
     }
 
     fn idle(&mut self, now: u64) {
@@ -275,9 +282,21 @@ fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String>
 /// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
 /// resets the engine when the context does not give way; the queue takes no more jobs.
 fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
-    let Some(id) = rt.programs.queues.get(&key).map(|q| q.id) else {
+    let Some((id, class, seen, submitted)) = rt.programs.queues.get(&key).map(|q| (q.id, q.class, q.seen, q.submitted)) else {
         return;
     };
+    // where the engine stands, read before the GuC resets it (Linux: RING_ACTHD, RING_IPEHR,
+    // RING_BBADDR); offsets from the engine's base
+    let base = match class {
+        Class::Render => 0x2000,
+        Class::Blitter => 0x22000,
+        _ => 0x1a000,
+    };
+    let mut reg = |off: u32| ultar_intel_gt::Hw::read(&mut dev.mmio, base + off);
+    let (acthd, ipehr, bbaddr, bbaddr_hi) = (reg(0x74), reg(0x68), reg(0x140), reg(0x168));
+    crate::kprintln!(
+        "[intel-gt] hung job on {class:?}: jobs {seen}/{submitted} done, ACTHD {acthd:#x}, IPEHR {ipehr:#x}, batch {bbaddr_hi:#x}{bbaddr:08x}"
+    );
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
     let reset = events
@@ -342,9 +361,11 @@ impl Backend for Gpu {
         b.frames(0, b.size()).unwrap_or_default()
     }
 
-    fn vm_new(&mut self) -> Result<u32, Errno> {
+    fn vm_new(&mut self, scratch: bool) -> Result<u32, Errno> {
         let (_, rt) = self.parts()?;
-        let space = Ppgtt::new(&mut rt.mem.tables).map_err(|_| Errno::NoMem)?;
+        let tables = &mut rt.mem.tables;
+        let space = if scratch { Ppgtt::new_scratch(tables) } else { Ppgtt::new(tables) };
+        let space = space.map_err(|_| Errno::NoMem)?;
         rt.programs.next += 1;
         rt.programs.vms.insert(rt.programs.next, space);
         Ok(rt.programs.next)
@@ -405,6 +426,7 @@ impl Backend for Gpu {
         }
         rt.programs.next += 1;
         rt.programs.queues.insert(rt.programs.next, queue);
+        super::gt_slpc::boost(dev, rt, true);
         Ok(rt.programs.next)
     }
 
@@ -431,6 +453,7 @@ impl Backend for Gpu {
             Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
             class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
         }
+        job.push(mi::USER_INTERRUPT);
         job.push(mi::ARB_CHECK);
         job.resize(JOB_BYTES as usize / 4, mi::NOOP);
         let tail = (q.tail + JOB_BYTES) % RING_BYTES;
@@ -465,7 +488,8 @@ impl Backend for Gpu {
         if finished == q.submitted {
             q.usage.idle(now);
         } else {
-            q.usage.working(ultar_intel_gt::freq::current(&mut dev.mmio).mhz());
+            let mhz = ultar_intel_gt::freq::current(&mut dev.mmio).mhz();
+            q.usage.working(mhz, ultar_intel_gt::freq::limit_reasons(&mut dev.mmio));
         }
         if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
             ban(dev, rt, queue);
@@ -486,14 +510,19 @@ impl Backend for Gpu {
                 let m = q.usage.mhz;
                 let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
                 crate::kprintln!(
-                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
                     q.submitted,
                     q.usage.busy_ns / 1_000_000,
                     m[0], m[1], m[2], m[3],
+                    q.usage.limited,
+                    super::gt_irq::counts(),
                     HUGE_ENTRIES.load(Ordering::Relaxed)
                 );
             }
             retire(dev, rt, q);
+            if rt.programs.queues.is_empty() {
+                super::gt_slpc::boost(dev, rt, false);
+            }
         }
     }
 

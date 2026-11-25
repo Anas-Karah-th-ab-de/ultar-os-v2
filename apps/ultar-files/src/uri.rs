@@ -15,6 +15,30 @@ pub fn of_loc(loc: &Loc) -> String {
     out
 }
 
+/// The shown name of the item a `files://` URI names (its last part, decoded).
+pub fn name_of(uri: &str) -> String {
+    let last = uri.trim_end_matches('/').rsplit('/').next().unwrap_or(uri);
+    let raw = last.as_bytes();
+    let mut out = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        let hex = raw
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok());
+        match (raw[i], hex.and_then(|h| u8::from_str_radix(h, 16).ok())) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn encode(part: &str) -> String {
     let mut out = Vec::with_capacity(part.len());
     for b in part.bytes() {

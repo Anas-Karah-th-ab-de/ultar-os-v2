@@ -403,3 +403,35 @@ fn pointer_tuning_and_the_large_pointer_reach_the_compositor() {
             }
     });
 }
+
+#[test]
+fn keyboard_helpers_and_the_compose_key_reach_the_compositor() {
+    use ultar_surface::proto::ComposeKey;
+    let rig = Rig::new("helpers");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    // The schema's defaults arrive with the connection.
+    rig.wait_for("defaults", |s| {
+        s.key_helpers == (false, false, false, false, ComposeKey::None)
+    });
+    set(&app, "accessibility.sticky_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.slow_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.bounce_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.mouse_keys", SettingValue::Flag(true));
+    set(&app, "keyboard.compose_key", text("menu"));
+    rig.wait_for("helpers on", |s| {
+        s.key_helpers == (true, true, true, true, ComposeKey::Menu)
+    });
+    // A runtime change of the compose key.
+    set(&app, "keyboard.compose_key", text("alt_gr"));
+    rig.wait_for("compose alt_gr", |s| s.key_helpers.4 == ComposeKey::AltGr);
+    // Changed while the display service is away: read again when it is back.
+    drop(d);
+    set(&app, "accessibility.sticky_keys", SettingValue::Flag(false));
+    set(&app, "keyboard.compose_key", text("caps_lock"));
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.key_helpers == (false, true, true, true, ComposeKey::CapsLock)
+    });
+}

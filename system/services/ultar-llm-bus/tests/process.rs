@@ -133,7 +133,10 @@ fn the_model_of_the_device_is_on_the_bus() {
     let helper = world.client("system.agentd");
     // Without the settings service the schema's default counts: the largest small model.
     let state = state_of(&helper, true);
-    assert_eq!((state.model.as_str(), state.class), ("tiny", ModelClass::Small));
+    assert_eq!(
+        (state.model.as_str(), state.class),
+        ("tiny", ModelClass::Small)
+    );
     let ask = Complete {
         system: "rules".into(),
         prompt: "hello".into(),
@@ -223,23 +226,28 @@ fn the_model_service_runs_while_the_person_has_the_assistant_switched_on() {
     ])));
 }
 
-#[test]
-fn the_model_size_the_person_chose_answers_and_is_reported() {
-    use std::sync::{Arc, Mutex};
-    use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
-    let ids = ["system.llm", "system.agentd", "system.settingsd"];
-    let world = World::new("llmbus-model", POLICY, &ids);
-    let size = Arc::new(Mutex::new("medium".to_owned()));
-    let asked = size.clone();
+/// The settings service of the test: the assistant is on, `assistant.model` is `size`.
+fn serve_model_setting(world: &World, size: &str) {
+    use ultar_bus::messages::settings::{Get, GetReply, SettingValue};
+    let size = size.to_owned();
     world.serve("system.settingsd", "settings", move |request| {
         let key = request.decode::<Get>().map(|g| g.key).unwrap_or_default();
         let value = match key.as_str() {
             "assistant.enabled" => Some(SettingValue::Flag(true)),
-            "assistant.model" => Some(SettingValue::Text(asked.lock().unwrap().clone())),
+            "assistant.model" => Some(SettingValue::Text(size.clone())),
             other => panic!("unexpected setting {other}"),
         };
         let _ = request.reply(&GetReply { value });
     });
+}
+
+#[test]
+fn the_model_size_the_person_chose_answers_and_is_reported() {
+    use std::sync::{Arc, Mutex};
+    use ultar_bus::messages::settings::{Changed, SettingValue};
+    let ids = ["system.llm", "system.agentd", "system.settingsd"];
+    let world = World::new("llmbus-model", POLICY, &ids);
+    serve_model_setting(&world, "medium");
     let socket = world.subdir("llm").join("llm.sock");
     let seen = Arc::new(Mutex::new(None));
     model_service(&socket, seen.clone());

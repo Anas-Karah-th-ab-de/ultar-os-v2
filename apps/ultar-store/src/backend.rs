@@ -296,6 +296,7 @@ fn bus_error(e: BusError) -> BackendError {
             launcher::ERROR_SHUTTING_DOWN => BackendError::ShuttingDown,
             launcher::ERROR_STORAGE => BackendError::Storage,
             launcher::ERROR_INVALID => BackendError::Invalid,
+            launcher::ERROR_PROTECTED => BackendError::Protected,
             _ => BackendError::Protocol,
         },
         BusError::Timeout | BusError::NotConnected | BusError::Closed => BackendError::Unreachable,

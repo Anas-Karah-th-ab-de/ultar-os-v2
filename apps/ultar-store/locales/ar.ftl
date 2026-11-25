@@ -209,3 +209,5 @@ store.tab.updates = التحديثات
 store.aria.window = متجر Ultar
 store.aria.back = رجوع
 store.aria.app-icon = رمز {name}
+store.app.system = تطبيق أساسي في النظام
+store.error.protected = هذا تطبيق أساسي في النظام ولا يمكن إزالته. التحديثات تستبدله.

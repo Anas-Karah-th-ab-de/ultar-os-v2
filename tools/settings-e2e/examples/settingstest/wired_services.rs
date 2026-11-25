@@ -33,7 +33,11 @@ pub(super) fn keyboard_layouts(
     };
     let mut app = page(bus, run, "keyboard")?;
     // super_space -> alt_shift -> ctrl_shift (the list starts at the selected option).
-    let shortcut = choose((&mut app, admin), ("keyboard", "keyboard.switch_shortcut"), 2)?;
+    let shortcut = choose(
+        (&mut app, admin),
+        ("keyboard", "keyboard.switch_shortcut"),
+        2,
+    )?;
     d.follow("keyboard.switch_shortcut", shortcut)?;
     let per = change((&mut app, admin), ("keyboard", "keyboard.per_window"), None)?;
     d.follow("keyboard.per_window", per)?;
@@ -45,10 +49,18 @@ pub(super) fn keyboard_layouts(
         return Err("no keyboard configuration".into());
     };
     if switch_shortcut != SwitchShortcut::CtrlShift || !per_window {
-        return Err(format!("keyboard configuration {switch_shortcut:?}, {per_window}"));
+        return Err(format!(
+            "keyboard configuration {switch_shortcut:?}, {per_window}"
+        ));
     }
     // The input languages: the shell's own list code follows the page's list.
-    let langs = edit(&mut app, admin, "keyboard", "keyboard.input_languages", "de, en")?;
+    let langs = edit(
+        &mut app,
+        admin,
+        "keyboard",
+        "keyboard.input_languages",
+        "de, en",
+    )?;
     desktop.told("keyboard.input_languages", &langs)?;
     let SettingValue::List(l) = langs else {
         return Err(format!("input_languages is {langs:?}"));
@@ -105,7 +117,11 @@ pub(super) fn assistant(bus: &Client, admin: &Client, run: &Run) -> Result<(), S
         return Err(format!("picked {}", picked.0));
     }
     // Seeing the screen: off (the default) closes the tool, on opens it.
-    let see = change((&mut app, admin), ("assistant", "assistant.see_screen"), None)?;
+    let see = change(
+        (&mut app, admin),
+        ("assistant", "assistant.see_screen"),
+        None,
+    )?;
     agentd.told("assistant.see_screen", &see)?;
     let tool = tools::find("see_screen").ok_or("no see_screen tool")?;
     let on = Limits {
@@ -115,8 +131,22 @@ pub(super) fn assistant(bus: &Client, admin: &Client, run: &Run) -> Result<(), S
     if Limits::default().closes(tool).is_none() || on.closes(tool).is_some() {
         return Err("seeing the screen does not follow its switch".into());
     }
-    // Checking links: the warning is appended while it is on, gone when off.
-    let checking = change((&mut app, admin), ("assistant", "assistant.check_links"), None)?;
+    check_links(&mut app, admin, &agentd)?;
+    println!(
+        "SETTINGS: assistant page -> model bridge and helper: medium model chosen, seeing the \
+         screen opened by its switch, link warning follows its switch"
+    );
+    Ok(())
+}
+
+/// Checking links: the warning is appended while it is on, gone when off (the helper's own
+/// code).
+fn check_links(
+    app: &mut ultar_settings::App,
+    admin: &Client,
+    agentd: &Follower,
+) -> Result<(), String> {
+    let checking = change((app, admin), ("assistant", "assistant.check_links"), None)?;
     agentd.told("assistant.check_links", &checking)?;
     if links::first_suspicious("open http://203.0.113.7/login").is_none() {
         return Err("the link checker does not see the suspicious link".into());
@@ -129,11 +159,10 @@ pub(super) fn assistant(bus: &Client, admin: &Client, run: &Run) -> Result<(), S
     };
     let plain = session::answer("x", Brain::Local, &Say(WORDS), &NoTools, &off);
     if warned.text.key != "agent.says_checked" || plain.text.key != "agent.says" {
-        return Err(format!("link warning: {} / {}", warned.text.key, plain.text.key));
+        return Err(format!(
+            "link warning: {} / {}",
+            warned.text.key, plain.text.key
+        ));
     }
-    println!(
-        "SETTINGS: assistant page -> model bridge and helper: medium model chosen, seeing the \
-         screen opened by its switch, link warning follows its switch"
-    );
     Ok(())
 }

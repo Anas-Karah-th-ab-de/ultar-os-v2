@@ -38,14 +38,21 @@ pub struct Drive {
 pub trait SystemPort {
     /// The local users.
     fn users(&mut self) -> PortResult<Vec<LocalUser>>;
-    /// Adds a standard user; the users afterwards.
-    fn user_create(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>>;
+    /// Adds a user of `kind` (the Users page proposes `users.new_kind`); the users afterwards.
+    fn user_create(
+        &mut self,
+        name: &str,
+        password: &str,
+        kind: users::UserKind,
+    ) -> PortResult<Vec<LocalUser>>;
     /// Removes a user (the files stay); the users afterwards.
     fn user_remove(&mut self, name: &str) -> PortResult<Vec<LocalUser>>;
     /// Sets a new password; the users afterwards.
     fn user_password(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>>;
     /// The installed apps with their permissions.
     fn apps(&mut self) -> PortResult<Vec<AppEntry>>;
+    /// The installed apps that declare `kind` (the choices of `apps.default.<kind>`).
+    fn candidates(&mut self, kind: launcher::Kind) -> PortResult<Vec<String>>;
     /// Takes a granted permission back; whether it is still granted.
     fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool>;
     /// The device's own storage first, then the mounted drives.
@@ -86,11 +93,16 @@ impl SystemPort for BusSystem {
         Self::users_of(reply.map_err(port_error))
     }
 
-    fn user_create(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>> {
+    fn user_create(
+        &mut self,
+        name: &str,
+        password: &str,
+        kind: users::UserKind,
+    ) -> PortResult<Vec<LocalUser>> {
         let call = users::CreateUser {
             name: name.to_owned(),
             display_name: name.to_owned(),
-            kind: users::UserKind::Standard,
+            kind,
             password: users::Secret::new(password.to_owned()),
             confirm: users::Secret::new(password.to_owned()),
         };
@@ -138,6 +150,12 @@ impl SystemPort for BusSystem {
             });
         }
         Ok(apps)
+    }
+
+    fn candidates(&mut self, kind: launcher::Kind) -> PortResult<Vec<String>> {
+        let ask = launcher::Candidates { kind };
+        let reply = self.client.call(&ask, CALL_TIMEOUT).map_err(port_error)?;
+        Ok(reply.apps)
     }
 
     fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool> {

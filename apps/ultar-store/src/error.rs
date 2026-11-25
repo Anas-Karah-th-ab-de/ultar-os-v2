@@ -54,6 +54,8 @@ pub enum BackendError {
     Io,
     /// The service answered with something this app cannot understand.
     Protocol,
+    /// The app is a base app of the system and stays installed (bus error 14).
+    Protected,
 }
 
 /// Everything the Store can fail with. Each variant maps to one catalog key.
@@ -109,6 +111,7 @@ impl StoreError {
             Self::Backend(BackendError::Unreachable) => "store.error.unreachable",
             Self::Backend(BackendError::Io) => "store.error.io",
             Self::Backend(BackendError::Protocol) => "store.error.protocol",
+            Self::Backend(BackendError::Protected) => "store.error.protected",
         }
     }
 

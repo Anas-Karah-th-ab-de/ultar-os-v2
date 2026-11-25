@@ -413,3 +413,49 @@ fn a_damaged_account_file_refuses_everything() {
     assert!(acc.view(false).users.is_empty());
     assert!(rig.homes.0.borrow().is_empty());
 }
+
+/// users.auto_login: the device setting and the per-user flag say the same thing.
+/// A good value marks exactly that user, an unknown or invalid one nobody; a runtime
+/// change moves the flag.
+#[test]
+fn the_auto_login_setting_marks_one_user_and_invalid_ones_nobody() {
+    use crate::settings::{auto_login_user, AUTO_LOGIN};
+    use ultar_bus::messages::settings::SettingValue;
+    let (rig, mut acc) = Rig::new("auto-setting");
+    acc.perform(create("anas", UserKind::Administrator), &rig.ports(), 0)
+        .unwrap();
+    acc.perform(create("leila", UserKind::Standard), &rig.ports(), 0)
+        .unwrap();
+    let flags = |acc: &Accounts| -> Vec<bool> {
+        acc.view(true).users.iter().map(|u| u.auto_login).collect()
+    };
+    let apply = |acc: &mut Accounts, value: SettingValue| {
+        assert_eq!(AUTO_LOGIN, "users.auto_login");
+        acc.apply_auto_login(auto_login_user(&value)).unwrap();
+    };
+    assert_eq!(flags(&acc), vec![false, false]);
+    apply(&mut acc, SettingValue::Text("leila".into()));
+    assert_eq!(flags(&acc), vec![false, true]);
+    // Runtime change to the other user.
+    apply(&mut acc, SettingValue::Text("anas".into()));
+    assert_eq!(flags(&acc), vec![true, false]);
+    // An unknown user, an empty name, a wrong type: nobody.
+    for bad in [
+        SettingValue::Text("ghost".into()),
+        SettingValue::Text(String::new()),
+        SettingValue::Flag(true),
+    ] {
+        apply(&mut acc, bad);
+        assert_eq!(flags(&acc), vec![false, false]);
+    }
+    // The per-user call still works and stays consistent with the setting path.
+    acc.perform(
+        Op::AutoLogin(SetAutoLogin {
+            user: Some("leila".into()),
+        }),
+        &rig.ports(),
+        0,
+    )
+    .unwrap();
+    assert_eq!(flags(&acc), vec![false, true]);
+}

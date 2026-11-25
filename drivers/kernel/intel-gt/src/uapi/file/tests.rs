@@ -35,7 +35,7 @@ impl Backend for Fake {
     fn buffer_pages(&self, b: &Self::Buffer) -> Vec<u64> {
         b.to_vec()
     }
-    fn vm_new(&mut self) -> Result<u32, Errno> {
+    fn vm_new(&mut self, _scratch: bool) -> Result<u32, Errno> {
         self.vms += 1;
         Ok(100 + self.vms)
     }

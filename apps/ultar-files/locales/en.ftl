@@ -107,6 +107,7 @@ files.notice.undone = Undone
 files.notice.cancelled = Stopped
 files.notice.ejected = The {name} drive can be removed safely now
 files.notice.no_app = No app can open “{name}”
+files.notice.open_failed = Couldn’t open “{name}”: the app did not start
 files.error.not_found = The item does not exist
 files.error.exists = An item with this name exists
 files.error.permission = You have no permission for this place

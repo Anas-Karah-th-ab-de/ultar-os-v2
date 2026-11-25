@@ -136,9 +136,15 @@ mod tests {
 
     #[test]
     fn the_input_languages_win_over_the_regions_layouts() {
-        assert_eq!(combined(&langs(&["de", "ar"]), "ar_en"), langs(&["de", "ar"]));
+        assert_eq!(
+            combined(&langs(&["de", "ar"]), "ar_en"),
+            langs(&["de", "ar"])
+        );
         // Unknown names and repeats are left out; an empty list leaves the region's.
-        assert_eq!(combined(&langs(&["xx", "ar", "ar"]), "ar_en"), langs(&["ar"]));
+        assert_eq!(
+            combined(&langs(&["xx", "ar", "ar"]), "ar_en"),
+            langs(&["ar"])
+        );
         assert_eq!(combined(&[], "ar_de_en"), langs(&["ar", "de", "en"]));
         assert_eq!(combined(&langs(&["xx"]), "ar_en"), langs(&["ar", "en"]));
         assert!(combined(&[], "").is_empty());

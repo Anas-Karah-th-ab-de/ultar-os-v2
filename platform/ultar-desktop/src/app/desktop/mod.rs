@@ -248,6 +248,7 @@ impl DesktopApp {
                 })?;
             }
         }
+        self.react_media()?;
         if keys
             .iter()
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")
@@ -283,6 +284,15 @@ impl DesktopApp {
     fn sync_history(&mut self, keys: &[String]) -> Result<(), AppError> {
         if keys.iter().any(|k| k == "search.history") {
             self.apply(Outcome::effect(crate::shell::Effect::History))?;
+        }
+        Ok(())
+    }
+
+    /// A drive with media was plugged in: `apps.removable_media` decides what happens.
+    fn react_media(&mut self) -> Result<(), AppError> {
+        let media = self.shell.media_inserted();
+        if media.bar || media.popup || !media.effects.is_empty() {
+            self.apply(media)?;
         }
         Ok(())
     }

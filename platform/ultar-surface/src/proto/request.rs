@@ -348,6 +348,22 @@ pub enum Request {
         /// driver reports.
         per_second: u8,
     },
+    /// The keyboard helpers of the accessibility page and the compose key (needs
+    /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
+    /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
+    /// The compositor's key input path follows them; the values are the settings schema's.
+    ConfigureKeyHelpers {
+        /// A modifier pressed and released alone stays active for the next key (twice locks).
+        sticky_keys: bool,
+        /// A key counts only after being held for a moment.
+        slow_keys: bool,
+        /// Repeats of the same key within a moment are dropped.
+        bounce_keys: bool,
+        /// The numeric keypad moves the pointer and clicks.
+        mouse_keys: bool,
+        /// The key that starts a compose sequence.
+        compose_key: super::ComposeKey,
+    },
     /// Which keys switch the input language and whether every window keeps its own
     /// (needs [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
     /// `keyboard.switch_shortcut` and `keyboard.per_window` on).
@@ -417,7 +433,8 @@ impl Request {
             Request::SetKeyboardLayouts { .. } => 43,
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
-            Request::ConfigureKeyboard { .. } => 46,
+            Request::ConfigureKeyHelpers { .. } => 46,
+            Request::ConfigureKeyboard { .. } => 47,
         }
     }
 
@@ -625,6 +642,19 @@ impl Request {
                 per_second,
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
+            }
+            Request::ConfigureKeyHelpers {
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            } => {
+                w.bool(*sticky_keys)
+                    .bool(*slow_keys)
+                    .bool(*bounce_keys)
+                    .bool(*mouse_keys);
+                compose_key.encode(w);
             }
             Request::ConfigureKeyboard {
                 switch_shortcut,
