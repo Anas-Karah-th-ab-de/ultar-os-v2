@@ -5,7 +5,8 @@
 //! [`start`] is called by the GT self-test after everything passed. A normal boot does not call
 //! it yet: the kernel has never run this on bare metal, only under device passthrough.
 //!
-//! Not there yet: power management (the GT and render forcewake domains are simply held), interrupts
+//! Not there yet: the GT and render forcewake domains are simply held (the GuC's power management
+//! runs, `gt_slpc`), interrupts
 //! (events are polled), and what to do when the GuC reports a hung engine.
 
 use super::device::Device;
@@ -70,7 +71,13 @@ impl Runtime {
         let before = ultar_intel_gt::engines::program_mocs(&mut dev.mmio);
         let after = ultar_intel_gt::Hw::read(&mut dev.mmio, ultar_intel_gt::engines::LNCFCMOCS0);
         crate::kprintln!("[intel-gt] cache settings (MOCS) programmed: L3 of index 0/1 {before:#010x} -> {after:#010x}");
-        full_speed(dev);
+        match super::gt_slpc::start(dev, self) {
+            Ok(text) => crate::kprintln!("[intel-gt] power management by the GuC (SLPC): {text}"),
+            Err(e) => {
+                crate::kprintln!("[intel-gt] {e}; asking for the highest frequency instead");
+                full_speed(dev);
+            }
+        }
         let first = self.next_id;
         let ran = self.with_env(dev, |env| {
             gt_job::engines_up(env)?;
@@ -101,7 +108,10 @@ fn full_speed(dev: &mut Device) {
     let (low, high) = freq::limits(&mut dev.mmio);
     let before = freq::current(&mut dev.mmio);
     if high.0 == 0 {
-        crate::kprintln!("[intel-gt] frequency: no limits readable, left as it is ({} MHz)", before.mhz());
+        crate::kprintln!(
+            "[intel-gt] frequency: no limits readable, left as it is ({} MHz)",
+            before.mhz()
+        );
         return;
     }
     freq::request(&mut dev.mmio, high);

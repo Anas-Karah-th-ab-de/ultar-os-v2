@@ -21,6 +21,7 @@ pub mod gt;
 pub mod gt_exec;
 pub mod gt_job;
 pub mod gt_run;
+pub mod gt_slpc;
 pub mod gt_uapi;
 pub mod gt_mem;
 pub mod mmio;
