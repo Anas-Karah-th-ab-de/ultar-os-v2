@@ -46,6 +46,15 @@ pub const WIRED: &[(&str, &str)] = &[
     // `Request::ConfigureKeyRepeat`).
     ("pointer.speed", "compositor"),
     ("pointer.natural_scroll", "compositor"),
+    // displayd passes these to the compositor too (`Request::ConfigurePointer`): the
+    // button swap, the acceleration profile, the cursor size (a large pointer forces at
+    // least `large`) and the double-click time, which the shell and this window follow
+    // in their own widgets as well.
+    ("pointer.primary_button", "compositor"),
+    ("pointer.acceleration", "compositor"),
+    ("pointer.size", "compositor"),
+    ("accessibility.large_pointer", "compositor"),
+    ("accessibility.double_click_ms", "compositor"),
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
@@ -88,10 +97,21 @@ mod tests {
     fn old_panels_are_untouched_and_new_ones_need_a_consumer() {
         assert!(takes_effect("power", "power.mode"));
         assert!(takes_effect("pointer", "pointer.speed"));
+        assert!(takes_effect("pointer", "pointer.primary_button"));
+        assert!(takes_effect("pointer", "pointer.acceleration"));
+        assert!(takes_effect("pointer", "pointer.size"));
+        assert!(takes_effect("accessibility", "accessibility.large_pointer"));
+        assert!(takes_effect(
+            "accessibility",
+            "accessibility.double_click_ms"
+        ));
         assert!(takes_effect("accessibility", "accessibility.high_contrast"));
         assert!(!takes_effect("sharing", "sharing.files"));
         assert!(!takes_effect("sharing", "sharing.screen"));
+        // The touchpad options wait for an input layer that tells touchpads apart.
         assert!(!takes_effect("pointer", "pointer.touchpad.gestures"));
+        assert!(!takes_effect("pointer", "pointer.touchpad.tap_to_click"));
+        assert!(!takes_effect("pointer", "pointer.touchpad.natural_scroll"));
         assert!(takes_effect("keyboard", "keyboard.repeat.delay_ms"));
         assert!(!takes_effect("keyboard", "keyboard.compose_key"));
         assert!(takes_effect("search", "search.source.apps"));

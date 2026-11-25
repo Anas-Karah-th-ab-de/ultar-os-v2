@@ -358,6 +358,9 @@ impl DesktopApp {
         let v = self.shell.d.values;
         self.look = self.look.with_access(v.high_contrast, v.large_text);
         self.look.reduce_motion = v.reduce_motion;
+        if let Some(ms) = v.double_click_ms {
+            self.look.double_click_ms = ms;
+        }
         let screen = screen(&self.host);
         if outcome.bar {
             let view = build_bar(&self.shell, self.look, screen.w)?;

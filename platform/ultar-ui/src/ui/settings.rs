@@ -151,14 +151,35 @@ impl Ui {
 
     /// "Reduce motion": knobs jump and progress rings stand still.
     pub fn set_reduce_motion(&mut self, reduce: bool) {
-        if self.reduce_motion != reduce {
-            self.reduce_motion = reduce;
+        if self.access.reduce_motion != reduce {
+            self.access.reduce_motion = reduce;
             self.dirty.full = true;
             self.layers.backdrop.ready = false;
         }
     }
 
     pub(crate) fn reduce_motion(&self) -> bool {
-        self.reduce_motion
+        self.access.reduce_motion
+    }
+
+    /// `accessibility.double_click_ms`: two clicks of a double click may be this many
+    /// milliseconds apart ([`MIN_DOUBLE_CLICK_MS`] to [`MAX_DOUBLE_CLICK_MS`]; anything
+    /// else falls back to the token `motion.double_click`, 400 ms).
+    pub fn set_double_click_ms(&mut self, ms: u16) {
+        self.access.double_click_ms = if (MIN_DOUBLE_CLICK_MS..=MAX_DOUBLE_CLICK_MS).contains(&ms) {
+            ms
+        } else {
+            crate::tokens::motion::DOUBLE_CLICK as u16
+        };
+    }
+
+    /// The double-click interval in effect, in milliseconds.
+    pub fn double_click_ms(&self) -> u16 {
+        self.access.double_click_ms
     }
 }
+
+/// Shortest double-click interval a window accepts (`accessibility.double_click_ms`), ms.
+pub const MIN_DOUBLE_CLICK_MS: u16 = 200;
+/// Longest double-click interval a window accepts, ms.
+pub const MAX_DOUBLE_CLICK_MS: u16 = 1000;

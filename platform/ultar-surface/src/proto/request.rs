@@ -314,13 +314,26 @@ pub enum Request {
     /// [`Rights::OUTPUT_CONFIG`]).
     DetectOutputs,
     /// How relative pointer devices behave (needs [`Rights::OUTPUT_CONFIG`]: the display
-    /// service passes the settings `pointer.speed` and `pointer.natural_scroll` on).
+    /// service passes the settings `pointer.*` and the pointer parts of `accessibility.*`
+    /// on). The body grew with the settings: a decoder accepts the old two-field form and
+    /// fills the rest with the schema's defaults.
     ConfigurePointer {
         /// Pointer speed, [`super::MIN_POINTER_SPEED`] (slowest) to
         /// [`super::MAX_POINTER_SPEED`]; 0 moves the pointer as far as the device reports.
         speed: i8,
         /// The content follows the wheel or the fingers (scroll deltas are reversed).
         natural_scroll: bool,
+        /// The right button is the primary one (`pointer.primary_button` = `right`):
+        /// primary and secondary clicks are swapped.
+        swap_buttons: bool,
+        /// Faster movements travel farther (`pointer.acceleration`).
+        acceleration: bool,
+        /// Edge of the pointer image (`pointer.size`, `accessibility.large_pointer`).
+        size: super::PointerSize,
+        /// Milliseconds between two clicks of a double click
+        /// (`accessibility.double_click_ms`), [`super::MIN_DOUBLE_CLICK_MS`] to
+        /// [`super::MAX_DOUBLE_CLICK_MS`].
+        double_click_ms: u16,
     },
     /// How a held key repeats (needs [`Rights::OUTPUT_CONFIG`]: the display service passes
     /// the settings `keyboard.repeat.*` on). The compositor thins out the repeats the keyboard
@@ -584,8 +597,17 @@ impl Request {
             Request::ConfigurePointer {
                 speed,
                 natural_scroll,
+                swap_buttons,
+                acceleration,
+                size,
+                double_click_ms,
             } => {
-                w.u8(speed.to_le_bytes()[0]).bool(*natural_scroll);
+                w.u8(speed.to_le_bytes()[0])
+                    .bool(*natural_scroll)
+                    .bool(*swap_buttons)
+                    .bool(*acceleration);
+                size.encode(w);
+                w.u16(*double_click_ms);
             }
             Request::ConfigureKeyRepeat {
                 enabled,

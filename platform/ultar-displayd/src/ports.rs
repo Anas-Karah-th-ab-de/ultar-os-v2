@@ -69,8 +69,9 @@ pub trait SettingsPort {
     fn confirm(&self, key: &str) -> Result<u32, PortError>;
     /// Takes a waiting change back.
     fn revert(&self, key: &str) -> Result<u32, PortError>;
-    /// The values of the pointer and keyboard settings the compositor follows (a panel the
-    /// device has no hardware for is left out); `None` when the service did not answer.
+    /// The values of the pointer, keyboard and accessibility settings the compositor
+    /// follows (a panel the device has no hardware for is left out); `None` when the
+    /// service did not answer.
     fn input_items(&self) -> Option<Vec<(String, SettingValue)>> {
         Some(Vec::new())
     }

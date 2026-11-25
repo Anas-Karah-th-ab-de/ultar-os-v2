@@ -2,6 +2,7 @@
 //! Independent of the backend and of the event loop, so it can be driven
 //! by tests directly.
 
+mod accel;
 mod budget;
 mod grabs;
 mod input;
@@ -20,6 +21,7 @@ mod transfer;
 mod windows;
 mod workspaces;
 
+pub use accel::Acceleration;
 pub use input::PointerGrab;
 pub use key_repeat::KeyRepeat;
 pub use layers::Placed;

@@ -145,6 +145,10 @@ fn every_request_round_trips_and_truncation_fails() {
         Request::ConfigurePointer {
             speed: -4,
             natural_scroll: true,
+            swap_buttons: true,
+            acceleration: false,
+            size: PointerSize::Larger,
+            double_click_ms: 700,
         },
         Request::ConfigureKeyRepeat {
             enabled: true,
@@ -168,6 +172,59 @@ fn every_request_round_trips_and_truncation_fails() {
     }
     assert!(Request::decode(0, &[]).is_err());
     assert!(Request::decode(999, &[]).is_err());
+}
+
+#[test]
+fn the_pointer_configuration_accepts_the_old_and_the_new_form() {
+    // The old form: speed and scroll direction only; the rest are the schema's defaults.
+    let old = Request::decode(44, &[(-4i8) as u8, 1]).unwrap();
+    assert_eq!(
+        old,
+        Request::ConfigurePointer {
+            speed: -4,
+            natural_scroll: true,
+            swap_buttons: false,
+            acceleration: true,
+            size: PointerSize::Normal,
+            double_click_ms: DEFAULT_DOUBLE_CLICK_MS,
+        }
+    );
+    // The new form carries every field.
+    let new = Request::ConfigurePointer {
+        speed: 3,
+        natural_scroll: false,
+        swap_buttons: true,
+        acceleration: false,
+        size: PointerSize::Large,
+        double_click_ms: 250,
+    };
+    let frame = new.encode().unwrap();
+    let (op, body) = split(&frame);
+    assert_eq!(body.len(), 7);
+    assert_eq!(Request::decode(op, body).unwrap(), new);
+    // Bad values of either form are refused.
+    assert!(
+        Request::decode(44, &[11, 0]).is_err(),
+        "speed above the limit"
+    );
+    assert!(Request::decode(44, &[0, 2]).is_err(), "not a bool");
+    assert!(Request::decode(44, &[0, 0, 0, 0, 3, 0, 0]).is_err(), "size");
+    assert!(
+        Request::decode(44, &[0, 0, 0, 2, 0, 0, 0]).is_err(),
+        "not a bool"
+    );
+    assert!(
+        Request::decode(44, &[0, 0, 0, 0, 0, 199, 0]).is_err(),
+        "double-click time below the limit"
+    );
+    assert!(
+        Request::decode(44, &[0, 0, 0, 0, 0, 0xe9, 0x03]).is_err(),
+        "double-click time above the limit (1001)"
+    );
+    // A new form cut in the middle of its added fields is truncated, not an old form.
+    for len in 3..7 {
+        assert!(Request::decode(44, &body[..len]).is_err(), "len {len}");
+    }
 }
 
 #[test]

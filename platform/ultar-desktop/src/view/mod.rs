@@ -257,6 +257,8 @@ pub struct Look {
     pub text_scale: f32,
     /// accessibility.reduce_motion: knobs jump, progress rings stand still.
     pub reduce_motion: bool,
+    /// accessibility.double_click_ms: two clicks of a double click this far apart (ms).
+    pub double_click_ms: u16,
 }
 
 /// Text factor of accessibility.large_text.
@@ -280,6 +282,7 @@ impl Look {
             high_contrast: false,
             text_scale: 1.0,
             reduce_motion: false,
+            double_click_ms: ultar_ui::tokens::motion::DOUBLE_CLICK as u16,
         }
     }
 }
@@ -292,6 +295,7 @@ pub fn new_ui(look: Look, size: Size, tr: &Translator) -> Result<Ui, UiError> {
     env.text_scale = look.text_scale;
     let mut ui = Ui::new(env, look.mode, size, tr.clone())?;
     ui.set_reduce_motion(look.reduce_motion);
+    ui.set_double_click_ms(look.double_click_ms);
     Ok(ui)
 }
 
@@ -335,4 +339,19 @@ pub fn card_sheet(
         }));
     view.ui.set_size(placement.surface)?;
     Ok((view, placement))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_look_carries_the_double_click_time_into_the_window() {
+        let tr = crate::i18n::translator(Lang::En).expect("catalogs");
+        let mut look = Look::new(Lang::En, ThemeKind::Dark);
+        assert_eq!(look.double_click_ms, 400);
+        look.double_click_ms = 700;
+        let ui = new_ui(look, Size::new(100.0, 100.0), &tr).expect("ui");
+        assert_eq!(ui.double_click_ms(), 700);
+    }
 }
