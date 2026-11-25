@@ -439,6 +439,7 @@ impl Backend for Gpu {
             Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
             class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
         }
+        job.push(mi::USER_INTERRUPT);
         job.push(mi::ARB_CHECK);
         job.resize(JOB_BYTES as usize / 4, mi::NOOP);
         let tail = (q.tail + JOB_BYTES) % RING_BYTES;
@@ -495,11 +496,12 @@ impl Backend for Gpu {
                 let m = q.usage.mhz;
                 let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
                 crate::kprintln!(
-                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
                     q.submitted,
                     q.usage.busy_ns / 1_000_000,
                     m[0], m[1], m[2], m[3],
                     q.usage.limited,
+                    super::gt_irq::counts(),
                     HUGE_ENTRIES.load(Ordering::Relaxed)
                 );
             }

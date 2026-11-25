@@ -954,11 +954,14 @@ pub fn run_all() {
 }
 
 /// Nothing to run on this core: sleep until the next interrupt – soon if threads wait for the GPU.
+/// With interrupts from the GPU the waiting threads are woken by those, not by the timer.
 fn idle() {
-    if crate::svcdev::dri::waiting() {
+    if crate::svcdev::dri::waiting() && !crate::drivers::intel_display::gt_irq::working() {
         crate::apic::fast_timer(true);
     }
+    crate::apic::set_idle(true);
     unsafe { core::arch::asm!("sti; hlt") };
+    crate::apic::set_idle(false);
 }
 
 /// Planer der weiteren Kerne

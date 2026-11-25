@@ -33,19 +33,25 @@ pub const RETRY: i64 = i64::MIN;
 
 static DEVICE: Mutex<Option<Arc<uapi::Device>>> = Mutex::new(None);
 /// Threads waiting for the GPU now: thread id and when their wait began (ns). While there are
-/// any, idle cores wake every 250 µs (`apic::fast_timer`); there are no GPU interrupts yet.
+/// any and the GPU's interrupts do not work, idle cores wake every 250 µs (`apic::fast_timer`).
 static WAITING: Mutex<Vec<(u64, u64)>> = Mutex::new(Vec::new());
 /// A wait older than this no longer keeps the fast timer (its thread may be gone).
 const FAST_FOR_NS: u64 = 10_000_000_000;
 
-/// What a thread whose GPU wait is not over waits for: the next timer interrupt, then it asks again.
+/// Per core: the wake-up count when the request now running on it began. A wait counts from
+/// there, so that a job that ended (and woke) while the request looked is not missed.
+static ENTRY_EPOCH: [core::sync::atomic::AtomicU64; 64] = [const { core::sync::atomic::AtomicU64::new(0) }; 64];
+
+/// What a thread whose GPU wait is not over waits for: the next wake-up (a GPU interrupt or the
+/// timer), then it asks again.
 pub fn retry_wait() -> proc::Wait {
     let (me, now) = (proc::current(), crate::arch::uptime_ns());
     let mut w = WAITING.lock();
     if !w.iter().any(|x| x.0 == me) {
         w.push((me, now));
     }
-    proc::Wait::Tick(crate::apic::epoch())
+    let core = crate::percpu::id() % 64;
+    proc::Wait::Tick(ENTRY_EPOCH[core].load(core::sync::atomic::Ordering::Relaxed))
 }
 
 /// Whether threads wait for the GPU (young waits only).
@@ -156,6 +162,8 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
             None => return Some(-EFAULT),
         },
     };
+    let core = crate::percpu::id() % 64;
+    ENTRY_EPOCH[core].store(crate::apic::epoch(), core::sync::atomic::Ordering::Relaxed);
     let ret = request(&node, req as u32, &mut buf, &mut user);
     if ret != RETRY {
         wait_over();
