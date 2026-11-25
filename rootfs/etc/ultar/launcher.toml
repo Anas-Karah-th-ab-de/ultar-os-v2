@@ -25,6 +25,11 @@ max_running = 32
 # areas ([permissions] files) gets them at /areas/<name> and this group.
 areas_group = 836
 stop_grace_ms = 3000
+# System apps that get a publish directory ([paths] publish_root/<id>, 0755, owned by the
+# app, at /publish in its cell, ULTAR_PUBLISH): what they write there every other user may
+# read. Only apps whose readers check what they read: the Store publishes its verified
+# catalogue, the shell's search reads it and checks the signature again (fail closed).
+publishers = ["store"]
 
 [paths]
 state_dir = "/data/ultar/launcher"
@@ -51,3 +56,4 @@ policy = "/etc/ultar/bus-policy.toml"
 app_bus = "/run/ultar/appbus"
 bus_apps = "/run/ultar/launcher/bus-apps.toml"
 areas_root = "/data/ultar/areas"
+publish_root = "/data/ultar/publish"

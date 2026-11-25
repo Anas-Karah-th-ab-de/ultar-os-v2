@@ -62,6 +62,20 @@ pub fn ensure_private_dir(path: &Path) -> Result<(), DirError> {
     Ok(())
 }
 
+/// Like [`ensure_private_dir`], but `0755`: others may pass through (the publish root).
+pub fn ensure_public_dir(path: &Path) -> Result<(), DirError> {
+    create_dir(path, 0o755)?;
+    let meta = std::fs::symlink_metadata(path)?;
+    if !meta.file_type().is_dir() {
+        return Err(DirError::NotADirectory);
+    }
+    if meta.uid() != ultar_sys::euid() || meta.mode() & 0o022 != 0 {
+        return Err(DirError::Untrusted);
+    }
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
 /// Who owns an app's data directory.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Owner {
@@ -75,11 +89,25 @@ pub struct Owner {
 /// `0700`, owned by `owner` (`None`: this process's user – only where the
 /// platform cannot switch ids and the operator accepted that).
 pub fn ensure_app_dir(root: &Path, name: &str, owner: Option<Owner>) -> Result<PathBuf, DirError> {
+    app_dir(root, name, owner, 0o700)
+}
+
+/// Creates (or checks) the publish directory of an app below `root`: like its data
+/// directory, but `0755` – the app writes, every other user may read.
+pub fn ensure_publish_dir(
+    root: &Path,
+    name: &str,
+    owner: Option<Owner>,
+) -> Result<PathBuf, DirError> {
+    app_dir(root, name, owner, 0o755)
+}
+
+fn app_dir(root: &Path, name: &str, owner: Option<Owner>, mode: u32) -> Result<PathBuf, DirError> {
     if name.is_empty() || name.contains('/') || name.starts_with('.') {
         return Err(DirError::NotADirectory);
     }
     let path = root.join(name);
-    create_dir(&path, 0o700)?;
+    create_dir(&path, mode)?;
     let meta = std::fs::symlink_metadata(&path)?;
     if !meta.file_type().is_dir() {
         return Err(DirError::NotADirectory);
@@ -89,10 +117,10 @@ pub fn ensure_app_dir(root: &Path, name: &str, owner: Option<Owner>) -> Result<P
             std::os::unix::fs::lchown(&path, Some(owner.uid), Some(owner.gid))?;
         }
     }
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
     let meta = std::fs::symlink_metadata(&path)?;
     let wanted = owner.map_or(ultar_sys::euid(), |o| o.uid);
-    if meta.uid() != wanted || meta.mode() & 0o7777 != 0o700 {
+    if meta.uid() != wanted || meta.mode() & 0o7777 != mode {
         return Err(DirError::Untrusted);
     }
     Ok(path)
@@ -187,5 +215,23 @@ mod tests {
         let meta = std::fs::metadata(&path).unwrap();
         assert_eq!((meta.uid(), meta.gid()), (20999, 20999));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn publish_dirs_are_readable_by_others_and_their_root_is_checked() {
+        let root = scratch("pub");
+        ensure_public_dir(&root).unwrap();
+        assert_eq!(std::fs::metadata(&root).unwrap().mode() & 0o777, 0o755);
+        let dir = ensure_publish_dir(&root, "store", None).unwrap();
+        assert_eq!(std::fs::metadata(&dir).unwrap().mode() & 0o777, 0o755);
+        // the data directory of the same name rule stays private
+        let data = ensure_app_dir(&root, "data", None).unwrap();
+        assert_eq!(std::fs::metadata(&data).unwrap().mode() & 0o777, 0o700);
+        assert!(ensure_publish_dir(&root, "../x", None).is_err());
+        assert!(ensure_publish_dir(&root, ".hidden", None).is_err());
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert_eq!(ensure_public_dir(&root), Err(DirError::Untrusted));
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

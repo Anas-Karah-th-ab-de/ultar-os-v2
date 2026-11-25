@@ -123,9 +123,18 @@ impl FileCatalogSource {
     }
 }
 
-/// Reads at most `max` bytes; `Ok(None)` when the file is larger.
+/// Reads at most `max` bytes; `Ok(None)` when the file is larger. Only a plain file: the
+/// directory may belong to someone else (the Store's publish directory, a stick), so a link
+/// is not followed and a pipe or device (which could block the reader) is refused.
 fn read_capped(path: &Path, max: u64) -> std::io::Result<Option<Vec<u8>>> {
-    let file = std::fs::File::open(path)?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::ErrorKind::InvalidInput.into());
+    }
     let mut out = Vec::new();
     file.take(max + 1).read_to_end(&mut out)?;
     Ok((out.len() as u64 <= max).then_some(out))
@@ -141,16 +150,28 @@ pub fn trusted_dir_from_env() -> PathBuf {
 /// The shared, world-readable directory the Store publishes its verified catalogue cache to
 /// and the shell's overview search reads it from (`search.source.store`). The Store's own
 /// cache lives in its private data area (`ULTAR_STORE_DATA/catalog-cache`, `0700`); the shell
-/// (its own user) cannot read that, so the verified bytes are also published here. The image
-/// provisions this directory (writable by the Store, readable by the shell); `ULTAR_STORE_CACHE`
-/// overrides it (tests, dev images). No network is involved on either side.
-pub const STORE_CACHE_DIR: &str = "/data/ultar/store-cache";
+/// (its own user) cannot read that, so the verified bytes are also published here: the
+/// launcher gives the Store (named in `launcher.toml` `publishers`) this directory, `0755` and
+/// owned by the Store, at `/publish` in its cell (`ULTAR_PUBLISH`). The shell checks the
+/// signature again. `ULTAR_STORE_CACHE` overrides it (tests, dev images). No network is
+/// involved on either side.
+pub const STORE_CACHE_DIR: &str = "/data/ultar/publish/store";
+/// The Store's variable naming its publish directory inside its cell (set by the launcher).
+pub const PUBLISH_ENV: &str = "ULTAR_PUBLISH";
 
 /// The shared catalogue cache directory; `ULTAR_STORE_CACHE` overrides (tests, dev images).
 pub fn store_cache_dir_from_env() -> PathBuf {
     std::env::var("ULTAR_STORE_CACHE")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(STORE_CACHE_DIR))
+}
+
+/// Where the Store publishes: its publish directory in the cell ([`PUBLISH_ENV`]), else
+/// [`store_cache_dir_from_env`] (outside a cell: tests, dev images).
+pub fn store_publish_dir_from_env() -> PathBuf {
+    std::env::var(PUBLISH_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| store_cache_dir_from_env())
 }
 
 #[cfg(test)]
@@ -205,5 +226,20 @@ mod tests {
         assert_eq!(missing.load(), Err(SourceError::Unreadable));
         std::fs::remove_dir_all(&dir).unwrap();
         std::fs::remove_dir_all(&keys).unwrap();
+    }
+
+    #[test]
+    fn only_a_plain_file_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("plain");
+        std::fs::write(&file, b"body").unwrap();
+        assert_eq!(read_capped(&file, 16).unwrap(), Some(b"body".to_vec()));
+        assert_eq!(read_capped(&file, 2).unwrap(), None);
+        // a link planted in someone else's directory is not followed
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&file, &link).unwrap();
+        assert!(read_capped(&link, 16).is_err());
+        // a directory is not a file
+        assert!(read_capped(dir.path(), 16).is_err());
     }
 }

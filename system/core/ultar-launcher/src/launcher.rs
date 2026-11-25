@@ -175,6 +175,10 @@ impl Launcher {
         if let (Some(root), Some(group)) = (&config.paths.areas_root, config.areas_group) {
             crate::areas::ensure(root, group);
         }
+        if let Some(root) = &config.paths.publish_root {
+            // not made: no app gets a publish directory (`plan::publish_dir`), nothing else fails
+            let _ = datadir::ensure_public_dir(root);
+        }
         let store = Store::open(&config.paths.state_dir, config.uids)?;
         // cells of a previous run (by their memory groups): no second copy
         if let (Some(root), true) = (&config.paths.group_root, platform.groups) {
@@ -343,6 +347,10 @@ impl Launcher {
             // before the entry changes: a failure leaves the app installed
             datadir::remove_app_dir(&core.config.paths.data_root, id.as_str())
                 .map_err(|_| LaunchError::Storage(StateError::Io(std::io::ErrorKind::Other)))?;
+        }
+        // what it published goes with it (a cache: the readers fall back to nothing)
+        if let Some(root) = &core.config.paths.publish_root {
+            let _ = datadir::remove_app_dir(root, id.as_str());
         }
         core.store.remove_manifest(id)?;
         if let Some(e) = core.store.state.get_mut(id) {

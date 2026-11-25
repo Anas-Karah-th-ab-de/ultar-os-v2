@@ -1,5 +1,5 @@
 //! The Store-side wired setting `updates.auto_apps` (the Store installs available app updates
-//! by itself). `search.source.store` waits (settings-wiring.md section 2). Split out of
+//! by itself). `search.source.store` is checked with the shell (`search_sources`). Split out of
 //! `wired.rs` to keep both files within the size limit.
 
 use super::{change, page, Follower, Run};

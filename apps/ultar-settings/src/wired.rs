@@ -38,6 +38,9 @@ pub const WIRED: &[(&str, &str)] = &[
     // the largest installed model of the chosen size answer (`assistant.model`).
     ("assistant.enabled", "llm-bus"),
     ("assistant.model", "llm-bus"),
+    // ultar-llm-bus checks the folder and passes it to the model service, which reads it
+    // with every model search (`/run/ultar/llmbus/model-place`).
+    ("assistant.model_place", "llm-bus + llm"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
     // how long the list of what it did is kept, whether it may see the screen when asked
     // (with the person's consent in the system dialog, through the capture service), and
@@ -109,6 +112,9 @@ pub const WIRED: &[(&str, &str)] = &[
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.source.characters", "shell"),
+    // Store results: the Store publishes its verified catalogue in its publish directory
+    // (launcher `publishers`), the shell reads it and checks the signature again.
+    ("search.source.store", "shell + Store"),
     ("search.history", "shell"),
     ("search.arabic_variants", "shell"),
     // The Store (apps/ultar-store) follows updates.auto_apps: it installs available app
@@ -219,6 +225,7 @@ mod tests {
         "accessibility.on_screen_keyboard",
         "search.source.apps",
         "search.source.characters",
+        "search.source.store",
         "search.history",
         // the Store installs app updates by itself
         "updates.auto_apps",
@@ -278,8 +285,6 @@ mod tests {
             // a per-person file-search service
             "search.source.files",
             "search.file_places",
-            // the Store (in its cell) has no area the shell may read
-            "search.source.store",
             // no FITRIM in the kernel; the updater keeps no superseded images
             "storage.trim",
             "storage.clean_old_updates",
@@ -300,8 +305,8 @@ mod tests {
         assert!(takes_effect("assistant", "assistant.model"));
         assert!(takes_effect("assistant", "assistant.see_screen"));
         assert!(takes_effect("assistant", "assistant.check_links"));
-        // No speech component and no runtime model-folder contract yet.
-        assert!(!takes_effect("assistant", "assistant.model_place"));
+        assert!(takes_effect("assistant", "assistant.model_place"));
+        // No speech component yet.
         assert!(!takes_effect("assistant", "assistant.voice"));
         assert!(!takes_effect("assistant", "assistant.wake_word"));
         assert!(!takes_effect("assistant", "assistant.wake_phrase"));

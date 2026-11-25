@@ -100,12 +100,12 @@ impl OnlineCatalogSource {
             fetch,
             fallback,
             last: Mutex::new(None),
-            shared: ultar_catalog::source::store_cache_dir_from_env(),
+            shared: ultar_catalog::source::store_publish_dir_from_env(),
         })
     }
 
     /// Where the verified catalogue is published for the shell's overview search
-    /// (default [`ultar_catalog::source::store_cache_dir_from_env`]; tests point it at a
+    /// (default [`ultar_catalog::source::store_publish_dir_from_env`]; tests point it at a
     /// temporary directory).
     pub fn with_shared_cache(mut self, dir: impl Into<PathBuf>) -> Self {
         self.shared = dir.into();

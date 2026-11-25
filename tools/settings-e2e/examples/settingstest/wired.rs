@@ -373,7 +373,7 @@ fn shell(
     Ok(())
 }
 
-/// Search page: the shell's overview stops searching apps and the calculator.
+/// Search page: the shell's overview stops searching apps, the calculator and the Store.
 fn search_sources(
     bus: &Client,
     admin: &Client,
@@ -392,13 +392,18 @@ fn search_sources(
         return Err("the shell's search does not find the Files app".into());
     }
     let mut app = page(bus, run, "search")?;
-    for key in ["search.source.apps", "search.source.calculator"] {
+    for key in [
+        "search.source.apps",
+        "search.source.calculator",
+        "search.source.store",
+    ] {
         let off = change((&mut app, admin), ("search", key), None)?;
         shell.told(key, &off)?;
         apply_setting(desk, key, &off);
     }
     let sources = desk.overview.sources;
-    if finds_files(desk) || sources.apps || sources.calculator || !sources.settings {
+    if finds_files(desk) || sources.apps || sources.calculator || sources.store || !sources.settings
+    {
         return Err(format!("the shell still searches {sources:?}"));
     }
     search_tables(&mut app, admin, shell, desk, &apps, &tr)
