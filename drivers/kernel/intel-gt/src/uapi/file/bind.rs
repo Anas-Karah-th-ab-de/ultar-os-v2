@@ -21,49 +21,8 @@ impl<B: Backend> File<B> {
         }
         let null = flags & BIND_FLAG_NULL != 0;
         match kind {
-            0 if null => {
-                let aligned = (range | addr) % PAGE == 0 && range != 0;
-                let fits = addr.checked_add(range).is_some_and(|e| e <= VA_END);
-                if !aligned || !fits || handle != 0 || offset != 0 {
-                    return Err(Errno::Inval);
-                }
-                self.unbind(be, vm_id, addr, range)?;
-                let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
-                if vm.binds.len() >= MAX_BINDS {
-                    return Err(Errno::NoMem);
-                }
-                be.vm_map_null(vm.backend, addr, range / PAGE)?;
-                vm.binds.push(Bind { va: addr, pages: range / PAGE, handle: 0, buffer: None });
-                Ok(())
-            }
-            0 => {
-                let (buffer, size, owner) = self.buffers.get(&handle).ok_or(Errno::NoEnt)?;
-                let aligned = (range | addr | offset) % PAGE == 0 && range != 0;
-                let fits = offset.checked_add(range).is_some_and(|e| e <= *size)
-                    && addr.checked_add(range).is_some_and(|e| e <= VA_END);
-                if !aligned || !fits || (*owner != 0 && *owner != vm_id) {
-                    return Err(Errno::Inval);
-                }
-                let buffer = buffer.clone();
-                let first = (offset / PAGE) as usize;
-                let all = be.buffer_pages(&buffer);
-                let pages = all
-                    .get(first..first + (range / PAGE) as usize)
-                    .ok_or(Errno::Inval)?;
-                self.unbind(be, vm_id, addr, range)?;
-                let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
-                if vm.binds.len() >= MAX_BINDS {
-                    return Err(Errno::NoMem);
-                }
-                be.vm_map(vm.backend, addr, pages)?;
-                vm.binds.push(Bind {
-                    va: addr,
-                    pages: range / PAGE,
-                    handle,
-                    buffer: Some(buffer),
-                });
-                Ok(())
-            }
+            0 if null => self.bind_null(be, vm_id, addr, range, handle, offset),
+            0 => self.bind_buffer(be, vm_id, handle, (offset, range, addr)),
             1 => {
                 if (range | addr) % PAGE != 0 || range == 0 || handle != 0 || null {
                     return Err(Errno::Inval);
@@ -84,6 +43,57 @@ impl<B: Backend> File<B> {
             }
             _ => Err(Errno::Inval),
         }
+    }
+
+    /// Maps `[addr, addr + range)` to nothing.
+    fn bind_null(&mut self, be: &mut B, vm_id: u32, addr: u64, range: u64, handle: u32, offset: u64) -> Result<(), Errno> {
+
+        let aligned = (range | addr) % PAGE == 0 && range != 0;
+        let fits = addr.checked_add(range).is_some_and(|e| e <= VA_END);
+        if !aligned || !fits || handle != 0 || offset != 0 {
+            return Err(Errno::Inval);
+        }
+        self.unbind(be, vm_id, addr, range)?;
+        let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
+        if vm.binds.len() >= MAX_BINDS {
+            return Err(Errno::NoMem);
+        }
+        be.vm_map_null(vm.backend, addr, range / PAGE)?;
+        vm.binds.push(Bind { va: addr, pages: range / PAGE, handle: 0, buffer: None });
+        Ok(())
+
+    }
+
+    /// Maps `range` bytes of buffer `handle` from `offset` at `addr`.
+    fn bind_buffer(&mut self, be: &mut B, vm_id: u32, handle: u32, (offset, range, addr): (u64, u64, u64)) -> Result<(), Errno> {
+
+        let (buffer, size, owner) = self.buffers.get(&handle).ok_or(Errno::NoEnt)?;
+        let aligned = (range | addr | offset) % PAGE == 0 && range != 0;
+        let fits = offset.checked_add(range).is_some_and(|e| e <= *size)
+            && addr.checked_add(range).is_some_and(|e| e <= VA_END);
+        if !aligned || !fits || (*owner != 0 && *owner != vm_id) {
+            return Err(Errno::Inval);
+        }
+        let buffer = buffer.clone();
+        let first = (offset / PAGE) as usize;
+        let all = be.buffer_pages(&buffer);
+        let pages = all
+            .get(first..first + (range / PAGE) as usize)
+            .ok_or(Errno::Inval)?;
+        self.unbind(be, vm_id, addr, range)?;
+        let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
+        if vm.binds.len() >= MAX_BINDS {
+            return Err(Errno::NoMem);
+        }
+        be.vm_map(vm.backend, addr, pages)?;
+        vm.binds.push(Bind {
+            va: addr,
+            pages: range / PAGE,
+            handle,
+            buffer: Some(buffer),
+        });
+        Ok(())
+
     }
 
     /// Removes what is bound inside `[addr, addr + range)`. A binding that only partly lies

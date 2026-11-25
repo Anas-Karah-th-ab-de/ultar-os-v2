@@ -211,8 +211,10 @@ if [ "${OPTIN:-1}" != 0 ]; then
 fi
 if [ -n "${TESTPROG:-}" ]; then
   echo "--- extra program"
-  sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' "$W/serial.log" | head -"${EXTRA_LINES:-400}"
+  # the serial log ends its lines with CR LF
+  tr -d '\r' < "$W/serial.log" | sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' > "$W/extra.txt"
+  head -"${EXTRA_LINES:-400}" "$W/extra.txt"
   # the program's own verdict line (e.g. VKRECHNEN: ALLES OK ...), if it prints one
-  echo "VERDICT: $(sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' "$W/serial.log" | grep -aE '^[A-Z]+: (ALLES OK|FEHLER)' | tail -1 | grep . || echo 'extra program: no verdict')"
+  echo "VERDICT: $(grep -aE '^[A-Z]+: (ALLES OK|FEHLER)' "$W/extra.txt" | tail -1 | grep . || echo 'extra program: no verdict')"
   [ -n "${SERIAL_OUT:-}" ] && cp "$W/serial.log" "$SERIAL_OUT"
 fi

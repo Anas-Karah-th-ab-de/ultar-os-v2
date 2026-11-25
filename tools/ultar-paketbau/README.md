@@ -56,11 +56,15 @@ LLVM tool chain Mesa needs – is built from source by the recipe.
 ## State of the first package
 
 `pakete/grafik-laufzeit` (24 parts) builds on the build server in about 25 minutes, most of it
-LLVM. Result: 86 MB, 290 programs and libraries, none of them reaching outside
+LLVM. Result: 86 MB, 291 programs and libraries, none of them reaching outside
 `/pkg/grafik-laufzeit`; the check program, run in an empty root with only the package and the
 graphics device node, gets a Vulkan instance and the Intel device with a compute queue.
-Measured on Linux with its `i915` driver; on Ultar the same driver talks to our render node
-through the `xe` interface – that run is the next step.
+A second check, `vk-rechnen`, runs a compute shader and compares all 4096 results.
+
+Both checks run on Linux (driver `i915`) when the package is built. `vk-rechnen` also runs on the
+Ultar kernel on the same machine, with the package as a read-only disk and Mesa talking to the
+kernel's render node through the `xe` interface: `VKRECHNEN: ALLES OK`
+(`PKGROOT=<work>/out TESTPROG=<file> tools/kern-test/igpu-run.sh`, see `igpu-passthrough.sh`).
 
 Still taken from the build machine and to be replaced by parts of our own later: the compiler
 itself (and with it the C++ standard library, linked statically into the shipped C++ code),
