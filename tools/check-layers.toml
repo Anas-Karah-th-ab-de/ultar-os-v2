@@ -164,6 +164,14 @@ from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-profile", "system/core/ultar-brand"]
 
+# The Store and the shell's overview search share one catalogue data model, parser and
+# signature check (system/core/ultar-catalog); the shell may not depend on the apps area,
+# so the catalogue lives in system/core and both use it (docs/integration/settings-wiring.md).
+[[allow]]
+from = "apps"
+to = "system-core"
+crates = ["system/core/ultar-catalog"]
+
 # App-Builder packs and signs the developer's own packages with the package format library
 # (no own crypto in the app, APP-RULES §5); nothing else of ultar-pkg is used by apps.
 [[allow]]

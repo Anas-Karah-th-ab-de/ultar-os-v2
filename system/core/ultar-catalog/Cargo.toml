@@ -1,0 +1,23 @@
+[package]
+name = "ultar-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "The signed Ultar catalogue: data model, TOML parser and Ed25519 signature check, shared by the Store and the shell's overview search (system/core)."
+
+[lib]
+name = "ultar_catalog"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-i18n = { path = "../ultar-i18n" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+ed25519-dalek = "2"
+base64 = "0.22"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

@@ -7,7 +7,7 @@ fn unique_dir(tag: &str) -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);
     let mut p = std::env::temp_dir();
     p.push(format!(
-        "ultar-store-sig-{}-{}-{}",
+        "ultar-catalog-sig-{}-{}-{}",
         tag,
         std::process::id(),
         N.fetch_add(1, Ordering::SeqCst)
