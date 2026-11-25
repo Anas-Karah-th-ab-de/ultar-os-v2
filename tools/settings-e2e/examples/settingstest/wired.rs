@@ -5,20 +5,27 @@
 //! looks through and how its surfaces look; the Settings window follows the accessibility
 //! switches itself. The Storage page shows what the volume service measured.
 
-use super::{click, open, setup::Run, texts};
+use super::{click, open, press, setup::Run, texts, wait};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use ultar_bus::messages::launcher::{
+    kind_of_uri, Candidates, CandidatesReply, Kind, List, ListReply, Resolve, ResolveReply,
+};
+use ultar_bus::messages::session::SessionState;
 use ultar_bus::messages::settings::{Changed, Get, SettingValue};
-use ultar_bus::{Client, TypedSubscription};
+use ultar_bus::{Client, ErrorCode, TypedSubscription};
 use ultar_desktop::app::desktop::link::apply_setting;
+use ultar_desktop::model::quick::RemovableMedia;
 use ultar_desktop::model::search::{search_in, Hit};
 use ultar_desktop::model::Desktop;
 use ultar_displayd::input::InputSettings;
 use ultar_i18n::Lang;
+use ultar_launcher::defaults::{Autostart, Defaults, AUTOSTART};
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
 use ultar_surface::proto::Request;
-use ultar_ui::event::{Event, PointerButton};
+use ultar_ui::event::{Event, Key, PointerButton};
 use ultar_ui::Size;
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -287,11 +294,178 @@ fn storage(bus: &Client, run: &Run) -> Result<(), String> {
     Ok(())
 }
 
+/// Opens the choice of `key` and takes the option `down` steps below the selected one; the
+/// value the settings service holds afterwards.
+fn choose(
+    app: &mut App,
+    admin: &Client,
+    (panel, key): (&str, &str),
+    down: usize,
+) -> Result<SettingValue, String> {
+    let node = control(app, panel, key)?;
+    click(app, node)?;
+    if !app.ui.is_open(node) {
+        return Err(format!("{key}: the choice did not open"));
+    }
+    for _ in 0..down {
+        press(app, Key::ArrowDown)?;
+    }
+    press(app, Key::Enter)?;
+    let reply = admin
+        .call(&Get { key: key.into() }, WAIT)
+        .map_err(|e| format!("get {e}"))?;
+    reply.value.ok_or(format!("{key}: no value"))
+}
+
+/// Types `text` into the field of `key` and submits it; the value afterwards.
+fn edit(
+    app: &mut App,
+    admin: &Client,
+    (panel, key): (&str, &str),
+    text: &str,
+) -> Result<SettingValue, String> {
+    let node = control(app, panel, key)?;
+    click(app, node)?;
+    app.ui
+        .set_text(node, text)
+        .map_err(|e| format!("set_text {e:?}"))?;
+    press(app, Key::Enter)?;
+    let reply = admin
+        .call(&Get { key: key.into() }, WAIT)
+        .map_err(|e| format!("get {e}"))?;
+    reply.value.ok_or(format!("{key}: no value"))
+}
+
+/// The installed apps a kind offers in this run (the launcher's `candidates` answer).
+fn candidates(kind: Kind) -> Vec<String> {
+    let ids: &[&str] = match kind {
+        Kind::Web => &["browser", "store.web"],
+        Kind::Mail => &["mail"],
+        Kind::Calendar => &["calendar"],
+        Kind::Music | Kind::Video => &["media"],
+        Kind::Photos => &["images"],
+        Kind::Documents => &["documents", "office"],
+    };
+    ids.iter().map(|s| (*s).to_owned()).collect()
+}
+
+/// A stand-in launcher on the launcher's socket: it answers the default-app calls (so the
+/// page offers candidates) and follows `settings.changed` into the launcher's own
+/// [`Defaults`] and [`Autostart`], where the effect of a change is checked.
+struct FakeLauncher {
+    defaults: Arc<Mutex<Defaults>>,
+    autostart: Arc<Mutex<Autostart>>,
+    _client: Client,
+}
+
+impl FakeLauncher {
+    fn start(run: &Run) -> Result<FakeLauncher, String> {
+        let client = run.client_at("launcher")?;
+        let defaults = Arc::new(Mutex::new(Defaults::default()));
+        let autostart = Arc::new(Mutex::new(Autostart::default()));
+        let changes = client
+            .subscribe::<Changed>()
+            .map_err(|e| format!("launcher subscribe: {e}"))?;
+        let endpoint = client
+            .register("launcher")
+            .map_err(|e| format!("launcher register: {e}"))?;
+        {
+            let (d, a) = (Arc::clone(&defaults), Arc::clone(&autostart));
+            std::thread::spawn(move || {
+                while let Ok(c) = changes.recv() {
+                    if c.key == AUTOSTART {
+                        a.lock().unwrap().set_list(&c.value);
+                    } else {
+                        d.lock().unwrap().on_changed(&c.key, &c.value);
+                    }
+                }
+            });
+        }
+        {
+            let d = Arc::clone(&defaults);
+            std::thread::spawn(move || {
+                while let Ok(req) = endpoint.recv() {
+                    let _ = match req.method() {
+                        "candidates" => req.respond::<Candidates>(|c| {
+                            Ok(CandidatesReply {
+                                apps: candidates(c.kind),
+                            })
+                        }),
+                        "resolve" => req.respond::<Resolve>(|r| {
+                            let app = kind_of_uri(&r.uri)
+                                .map(|k| d.lock().unwrap().app(k).to_owned());
+                            Ok(ResolveReply { app })
+                        }),
+                        "list" => req.respond::<List>(|_| Ok(ListReply::default())),
+                        _ => req.fail(ErrorCode::UnknownMethod),
+                    };
+                }
+            });
+        }
+        Ok(FakeLauncher {
+            defaults,
+            autostart,
+            _client: client,
+        })
+    }
+}
+
+/// Apps: the default-app choices come from the launcher and a change reaches its table; the
+/// autostart list is handed out once after a sign-in; removable media reaches the shell.
+fn apps(
+    bus: &Client,
+    admin: &Client,
+    run: &Run,
+    launcher: &FakeLauncher,
+    shell: &Follower,
+) -> Result<(), String> {
+    let mut app = page(bus, run, "apps")?;
+    // the default web app: browser -> store.web (a candidate the launcher offered)
+    let web = choose(&mut app, admin, ("apps", "apps.default.web"), 1)?;
+    if web != SettingValue::Text("store.web".into()) {
+        return Err(format!("apps.default.web is {web:?}, not the chosen candidate"));
+    }
+    // removable media: ask -> open_files; the shell's state follows
+    let mut desk = Desktop::new(Lang::En);
+    let media = choose(&mut app, admin, ("apps", "apps.removable_media"), 1)?;
+    shell.told("apps.removable_media", &media)?;
+    apply_setting(&mut desk, "apps.removable_media", &media);
+    if desk.values.removable_media != RemovableMedia::OpenFiles {
+        return Err(format!(
+            "the shell did not follow removable_media: {:?}",
+            desk.values.removable_media
+        ));
+    }
+    wait("the launcher's default web app", || {
+        (launcher.defaults.lock().unwrap().app(Kind::Web) == "store.web").then_some(())
+    })?;
+    // the autostart list: typed, then handed out once after a sign-in
+    edit(&mut app, admin, ("apps", "apps.autostart"), "browser, mail")?;
+    wait("the launcher's autostart list", || {
+        (launcher.autostart.lock().unwrap().list() == ["browser", "mail"]).then_some(())
+    })?;
+    let signed_in = SessionState {
+        user: Some("amal".into()),
+        signed_in: vec!["amal".into()],
+    };
+    let due = launcher.autostart.lock().unwrap().on_session(&signed_in);
+    if due != ["browser", "mail"] {
+        return Err(format!("autostart hands out {due:?}"));
+    }
+    println!(
+        "SETTINGS: apps page -> launcher (default web app store.web, autostart browser+mail) \
+         and shell (removable media opens Files)"
+    );
+    Ok(())
+}
+
 /// Everything above.
 pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displayd = Follower::connect(run, "the display service", "displayd")?;
     let desktop = Follower::connect(run, "the shell", "desktop")?;
     input(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop)?;
-    storage(bus, run)
+    storage(bus, run)?;
+    let launcher = FakeLauncher::start(run)?;
+    apps(bus, admin, run, &launcher, &desktop)
 }
