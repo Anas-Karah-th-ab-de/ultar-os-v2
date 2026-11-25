@@ -190,7 +190,8 @@ impl Builder {
         if rx == 0.0 || ry == 0.0 || start == end {
             return self.push(end);
         }
-        let (sin, cos) = rotation.to_radians().sin_cos();
+        // libm, not the system maths library: the same pixels on every machine (snapshot tests).
+        let (sin, cos) = libm::sincosf(rotation.to_radians());
         let (hx, hy) = ((start.x - end.x) / 2.0, (start.y - end.y) / 2.0);
         let (x1, y1) = (cos * hx + sin * hy, -sin * hx + cos * hy);
         let lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
@@ -205,8 +206,8 @@ impl Builder {
         let (cx1, cy1) = (coef * rx * y1 / ry, -coef * ry * x1 / rx);
         let cx = cos * cx1 - sin * cy1 + (start.x + end.x) / 2.0;
         let cy = sin * cx1 + cos * cy1 + (start.y + end.y) / 2.0;
-        let theta = ((y1 - cy1) / ry).atan2((x1 - cx1) / rx);
-        let mut delta = ((-y1 - cy1) / ry).atan2((-x1 - cx1) / rx) - theta;
+        let theta = libm::atan2f((y1 - cy1) / ry, (x1 - cx1) / rx);
+        let mut delta = libm::atan2f((-y1 - cy1) / ry, (-x1 - cx1) / rx) - theta;
         if flags.1 && delta < 0.0 {
             delta += 2.0 * PI;
         } else if !flags.1 && delta > 0.0 {
@@ -216,7 +217,7 @@ impl Builder {
             .ceil()
             .max(2.0) as usize;
         for step in 1..steps {
-            let (s, c) = (theta + delta * step as f32 / steps as f32).sin_cos();
+            let (s, c) = libm::sincosf(theta + delta * step as f32 / steps as f32);
             let (ex, ey) = (rx * c, ry * s);
             self.push(Point::new(
                 cos * ex - sin * ey + cx,

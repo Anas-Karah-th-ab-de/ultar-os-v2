@@ -6139,6 +6139,7 @@ name = "ultar-ui"
 version = "0.8.0"
 dependencies = [
  "ab_glyph_rasterizer",
+ "libm",
  "png 0.17.16",
  "qrcode",
  "rustybuzz",
