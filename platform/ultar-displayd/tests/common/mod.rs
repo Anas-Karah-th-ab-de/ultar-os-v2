@@ -191,6 +191,8 @@ pub struct Snap {
     pub pointer: PointerSnap,
     /// Key repeat: on, delay in milliseconds, per second.
     pub key_repeat: (bool, u16, u8),
+    /// Keyboard helpers: sticky, slow, bounce, mouse, and the compose key.
+    pub key_helpers: (bool, bool, bool, bool, ultar_surface::proto::ComposeKey),
 }
 
 impl Snap {
@@ -268,6 +270,10 @@ fn snapshot(comp: &Compositor) -> Snap {
         key_repeat: {
             let r = comp.state.keyboard.repeat;
             (r.enabled, r.delay_ms, r.per_second)
+        },
+        key_helpers: {
+            let h = &comp.state.keyboard.helpers;
+            (h.sticky.on, h.slow.on, h.bounce.on, h.mouse.on, h.compose.key)
         },
         identify: comp
             .state
