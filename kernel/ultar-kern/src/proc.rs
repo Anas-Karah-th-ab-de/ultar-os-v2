@@ -176,6 +176,8 @@ pub enum Wait {
     Signal,
     /// poll/select: Ereigniszähler und Frist (0 = keine)
     Poll(u64, u64),
+    /// Warten auf die Grafik: bis zur nächsten Zeitgeber-Unterbrechung (Stand von `apic::epoch`)
+    Tick(u64),
 }
 
 /// Gemeinsam genutzter Zustand (Fäden einer Gruppe teilen ihn). Zugriff nur unter der Sperre `PROCS`.
@@ -937,10 +939,18 @@ pub fn run_all() {
             }
         }
         if !ran {
-            unsafe { core::arch::asm!("sti; hlt") };
+            idle();
         }
     }
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
+}
+
+/// Nothing to run on this core: sleep until the next interrupt – soon if threads wait for the GPU.
+fn idle() {
+    if crate::svcdev::dri::waiting() {
+        crate::apic::fast_timer(true);
+    }
+    unsafe { core::arch::asm!("sti; hlt") };
 }
 
 /// Planer der weiteren Kerne
@@ -948,7 +958,7 @@ pub fn ap_loop() -> ! {
     loop {
         match run_one() {
             Some(true) => {}
-            _ => unsafe { core::arch::asm!("sti; hlt") },
+            _ => idle(),
         }
     }
 }
@@ -993,6 +1003,7 @@ fn wake(ps: &mut [Box<Proc>]) {
                     all.iter().filter(mine).any(|x| x.2) || !all.iter().any(|x| mine(&x))
                 }
                 Wait::Vfork(c) => vfork_done(c, alive.contains(&c)),
+                Wait::Tick(e) => crate::apic::epoch() != e,
             };
             if go {
                 p.state = State::Ready;

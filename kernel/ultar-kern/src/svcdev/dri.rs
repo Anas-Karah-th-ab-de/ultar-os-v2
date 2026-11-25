@@ -32,32 +32,31 @@ pub const RIGHT: Rights = Rights::RAW_DEVICE;
 pub const RETRY: i64 = i64::MIN;
 
 static DEVICE: Mutex<Option<Arc<uapi::Device>>> = Mutex::new(None);
-/// How long a program that waits for the GPU polls it through the scheduler (it is ready again
-/// at once and repeats its request) before it sleeps a timer tick between looks. Jobs of a
-/// language model finish within milliseconds: a tick (10 ms) per wait made it several times
-/// slower. There are no GPU interrupts yet.
-const POLL_NS: u64 = 200_000_000;
-/// Threads waiting for the GPU now: thread id and when their wait began (ns).
+/// Threads waiting for the GPU now: thread id and when their wait began (ns). While there are
+/// any, idle cores wake every 250 µs (`apic::fast_timer`); there are no GPU interrupts yet.
 static WAITING: Mutex<Vec<(u64, u64)>> = Mutex::new(Vec::new());
+/// A wait older than this no longer keeps the fast timer (its thread may be gone).
+const FAST_FOR_NS: u64 = 10_000_000_000;
 
-/// When the waiting thread asks again: at once while its wait is young, else after a tick.
-pub fn retry_at() -> u64 {
+/// What a thread whose GPU wait is not over waits for: the next timer interrupt, then it asks again.
+pub fn retry_wait() -> proc::Wait {
     let (me, now) = (proc::current(), crate::arch::uptime_ns());
     let mut w = WAITING.lock();
-    let since = match w.iter().find(|x| x.0 == me) {
-        Some(x) => x.1,
-        None => {
-            // a thread that ended while it waited leaves its entry: such entries are old
-            w.retain(|x| now - x.1 < 60_000_000_000);
-            w.push((me, now));
-            now
-        }
-    };
-    if now - since < POLL_NS {
-        0
-    } else {
-        crate::arch::uptime_ms() + 1
+    if !w.iter().any(|x| x.0 == me) {
+        w.push((me, now));
     }
+    proc::Wait::Tick(crate::apic::epoch())
+}
+
+/// Whether threads wait for the GPU (young waits only).
+pub fn waiting() -> bool {
+    let Some(mut w) = WAITING.try_lock() else { return true };
+    if w.is_empty() {
+        return false;
+    }
+    let now = crate::arch::uptime_ns();
+    w.retain(|x| now - x.1 < FAST_FOR_NS);
+    !w.is_empty()
 }
 
 /// The calling thread's wait is over (its request was answered).

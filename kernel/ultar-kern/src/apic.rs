@@ -41,8 +41,47 @@ pub fn eoi() {
     wr(0xB0, 0);
 }
 
+/// Timer interrupts on all cores, fast or slow: a thread waiting for the GPU looks again after each.
+static EPOCH: AtomicU64 = AtomicU64::new(0);
+/// Cores whose timer runs fast (one bit per core).
+static FAST: AtomicU64 = AtomicU64::new(0);
+/// The fast timer: `FAST_DIV` interrupts per normal tick (100 Hz × 40 = every 250 µs).
+const FAST_DIV: u64 = 40;
+/// Fast interrupts of core 0 since its last counted tick.
+static FAST_SUB: AtomicU64 = AtomicU64::new(0);
+
+/// Number of timer interrupts so far on any core (see [`fast_timer`]).
+pub fn epoch() -> u64 {
+    EPOCH.load(Ordering::Relaxed)
+}
+
+/// This core's timer every 250 µs (`on`) or at [`HZ`] again. An idle core uses it while threads
+/// wait for the GPU: it sleeps in `hlt` and looks again soon, instead of polling with full power
+/// (that took power from the GPU) or sleeping a whole tick (that made each wait 10 ms long).
+pub fn fast_timer(on: bool) {
+    let bit = 1u64 << (crate::percpu::id() % 64);
+    let was = FAST.load(Ordering::Relaxed) & bit != 0;
+    if was == on {
+        return;
+    }
+    let count = TIMER_COUNT.load(Ordering::Relaxed);
+    if on {
+        FAST.fetch_or(bit, Ordering::Relaxed);
+        wr(0x380, (count as u64 / FAST_DIV).max(1) as u32);
+    } else {
+        FAST.fetch_and(!bit, Ordering::Relaxed);
+        wr(0x380, count);
+    }
+}
+
 pub fn tick() {
-    if crate::percpu::id() == 0 {
+    EPOCH.fetch_add(1, Ordering::Relaxed);
+    let fast = FAST.load(Ordering::Relaxed) & (1u64 << (crate::percpu::id() % 64)) != 0;
+    if fast && !crate::svcdev::dri::waiting() {
+        fast_timer(false);
+    }
+    // core 0 counts ticks of the normal rate also while its timer runs fast
+    if crate::percpu::id() == 0 && (!fast || FAST_SUB.fetch_add(1, Ordering::Relaxed) % FAST_DIV == FAST_DIV - 1) {
         TICKS.fetch_add(1, Ordering::Relaxed);
         let deadline = DEADLINE_MS.load(Ordering::Relaxed);
         if deadline != 0 && crate::arch::uptime_ms() > deadline {

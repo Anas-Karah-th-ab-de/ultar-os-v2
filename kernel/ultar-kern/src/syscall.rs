@@ -352,7 +352,7 @@ pub fn dispatch(f: &mut TrapFrame) {
             None => match sys_ioctl(a[0], a[1], a[2]) {
                 // a wait on the GPU node that is not over: the call repeats – at once while the wait
                 // is young (other threads run in between), later after a timer tick
-                crate::svcdev::dri::RETRY => Res::Block(Wait::Sleep(crate::svcdev::dri::retry_at())),
+                crate::svcdev::dri::RETRY => Res::Block(crate::svcdev::dri::retry_wait()),
                 r => Res::Val(r),
             },
         },
