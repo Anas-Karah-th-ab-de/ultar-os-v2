@@ -3,10 +3,13 @@
 //! This module is the part without hardware: request numbers and the device queries, as bytes
 //! in the layout of `include/uapi/drm/xe_drm.h` (MIT). Answers follow Linux' `xe_query.c` (MIT).
 //!
-//! Stage G4a: device queries. Buffers, address spaces, exec queues and exec follow.
+//! Stages G4a/G4b: device queries and the requests of DRM itself ([`drm`]). Buffers, address
+//! spaces, exec queues and exec follow.
 
 use alloc::vec;
 use alloc::vec::Vec;
+
+pub mod drm;
 
 /// First driver request number of DRM.
 pub const DRM_COMMAND_BASE: u32 = 0x40;
@@ -73,6 +76,10 @@ pub enum Errno {
     Inval = 22,
     /// No such device (the part asked about is not there).
     NoDev = 19,
+    /// The program's address is not its memory.
+    Fault = 14,
+    /// Not a request for this kind of file.
+    NoTty = 25,
 }
 
 /// Engine classes as programs name them.

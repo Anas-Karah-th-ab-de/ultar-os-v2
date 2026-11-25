@@ -496,6 +496,7 @@ fn raw_node(d: &str) -> Option<Node> {
             }
             Some(Node::Dir(v))
         }
+        "dri" if crate::svcdev::dri::present() => Some(Node::Dir(alloc::vec![DirEnt { name: "renderD128".into(), dir: false, size: 0 }])),
         "ultar/part" if !names.is_empty() => Some(Node::Dir(names.into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
         "ultar/disk" if installer => Some(Node::Dir(crate::rawpart::disk_names().into_iter().map(|name| DirEnt { name, dir: false, size: 0 }).collect())),
         _ if d.starts_with("ultar/part/") => crate::rawpart::node(d).map(Node::Dev),
@@ -538,6 +539,9 @@ pub fn open(path: &str) -> Option<Node> {
         }
         // the service nodes (svcdev) are always there
         v.push(DirEnt { name: "ultar".into(), dir: true, size: 0 });
+        if crate::svcdev::dri::present() {
+            v.push(DirEnt { name: "dri".into(), dir: true, size: 0 });
+        }
         return Some(Node::Dir(v));
     }
     if path == "/proc" || path.starts_with("/proc/") {
