@@ -117,6 +117,11 @@ pub enum Outcome {
     Disabled,
     /// The running kernel has no such mechanism (see the module table).
     Unsupported,
+    /// The limit on the processes of the service's user was left as inherited: that user
+    /// already runs so many that the service could not start its own threads. A service
+    /// with a user of its own never gets here; a test bench that starts services as the
+    /// developer's user does.
+    Crowded,
 }
 
 /// Result of [`Hardening::apply`]: one entry per step, in order.
@@ -143,7 +148,7 @@ impl HardeningReport {
     pub fn unsupported(&self) -> impl Iterator<Item = Step> + '_ {
         self.steps
             .iter()
-            .filter(|(_, outcome)| *outcome == Outcome::Unsupported)
+            .filter(|(_, outcome)| matches!(outcome, Outcome::Unsupported | Outcome::Crowded))
             .map(|(step, _)| *step)
     }
 }
@@ -353,6 +358,35 @@ fn limit_plan(limits: &Limits) -> Vec<(Resource, u64)> {
     plan
 }
 
+/// Threads a service must be able to start under the limit on its user's processes.
+const THREAD_ROOM: usize = 16;
+
+/// Whether [`THREAD_ROOM`] threads can be started right now (they end at once).
+fn room_for_threads() -> bool {
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let wait = std::sync::Arc::new(std::sync::Mutex::new(wait));
+    let mut started = Vec::new();
+    for _ in 0..THREAD_ROOM {
+        let wait = wait.clone();
+        let thread = std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(move || {
+                // held until all are started, so they count at the same time
+                let _ = wait.lock().map(|w| w.recv());
+            });
+        match thread {
+            Ok(handle) => started.push(handle),
+            Err(_) => break,
+        }
+    }
+    let room = started.len() == THREAD_ROOM;
+    drop(go);
+    for handle in started {
+        let _ = handle.join();
+    }
+    room
+}
+
 /// Sets soft = hard = `value` (never above the inherited hard limit, which
 /// an unprivileged process cannot raise) and reads the result back.
 fn apply_limit(
@@ -362,8 +396,18 @@ fn apply_limit(
 ) -> Result<Outcome, HardeningError> {
     let step = Step::Limit(resource);
     let refused = |errno| HardeningError::Refused(step, errno);
-    let (_, hard) = sys::limit(resource).map_err(refused)?;
+    let (soft, hard) = sys::limit(resource).map_err(refused)?;
     let target = value.min(hard);
+    if resource == Resource::Processes {
+        // The limit counts every process and thread of the user, not only this service's.
+        // Soft first: when the service cannot start threads under it, it is taken back
+        // (a lowered hard limit could not be).
+        sys::set_limit(resource, target, hard).map_err(refused)?;
+        if !room_for_threads() {
+            sys::set_limit(resource, soft, hard).map_err(refused)?;
+            return Ok(Outcome::Crowded);
+        }
+    }
     sys::set_limit(resource, target, target).map_err(refused)?;
     let now = sys::limit(resource).map_err(refused)?;
     if now == (target, target) {
@@ -379,6 +423,15 @@ fn apply_limit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_service_with_room_keeps_its_process_limit() {
+        // Threads can be started here, so the limit would be applied in full; the other
+        // way (a crowded user: the limit is taken back) needs a second user and is
+        // shown by the account service's tests on a runner that shares one user.
+        assert!(room_for_threads());
+        assert_ne!(Outcome::Crowded, Outcome::Applied);
+    }
 
     #[test]
     fn defaults_are_everything_on_and_no_rights() {
