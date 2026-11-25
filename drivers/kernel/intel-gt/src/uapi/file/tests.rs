@@ -11,6 +11,7 @@ pub struct Fake {
     pub unmaps: Vec<(u32, u64, u64)>,
     pub vms: u32,
     pub freed_vms: Vec<u32>,
+    pub null_maps: Vec<(u32, u64, u64)>,
     pub queues: Vec<(u32, EngineClass)>,
     pub freed_queues: Vec<u32>,
     pub runs: Vec<(u32, u64)>,
@@ -37,6 +38,10 @@ impl Backend for Fake {
     }
     fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno> {
         self.maps.push((vm, va, pages.to_vec()));
+        Ok(())
+    }
+    fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
+        self.null_maps.push((vm, va, pages));
         Ok(())
     }
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
@@ -210,12 +215,42 @@ fn bind_maps_the_pages_and_unbind_removes_them() {
     let mut close = [0u8; 8];
     put32(&mut close, 0, h);
     f.gem_close(&close).unwrap();
-    // part of a binding cannot be removed
+    // removing part of a binding leaves the rest
     let part = bind_arg(v, 0, 0, 4096, 1 << 30, 1);
-    assert_eq!(f.vm_bind(&mut be, &part, &mut mem), Err(Errno::Inval));
+    f.vm_bind(&mut be, &part, &mut mem).unwrap();
+    assert_eq!(be.unmaps, [(101, 1 << 30, 1)]);
     let whole = bind_arg(v, 0, 0, 1 << 20, 1 << 30, 1);
     f.vm_bind(&mut be, &whole, &mut mem).unwrap();
-    assert_eq!(be.unmaps, [(101, 1 << 30, 2)]);
+    assert_eq!(be.unmaps[1..], [(101, (1 << 30) + 4096, 1)]);
+    // nothing is left: removing again touches nothing
+    f.vm_bind(&mut be, &whole, &mut mem).unwrap();
+    assert_eq!(be.unmaps.len(), 2);
+}
+
+#[test]
+fn a_range_bound_to_nothing_is_split_by_what_is_bound_into_it() {
+    let (mut f, mut be, mut mem) = (File::<Fake>::default(), Fake::default(), Mem::default());
+    let v = vm(&mut f, &mut be);
+    // what Mesa does first: 8 GiB of nothing at 17 GiB
+    let (base, len) = (17u64 << 30, 8u64 << 30);
+    let mut null = bind_arg(v, 0, 0, len, base, 0);
+    put32(&mut null, 24 + 44, 1 << 2);
+    f.vm_bind(&mut be, &null, &mut mem).unwrap();
+    assert_eq!(be.null_maps, [(101, base, len / 4096)]);
+    // a buffer in the middle takes its pages out of the null range
+    let h = create(&mut f, &mut be, 8192).unwrap();
+    f.vm_bind(&mut be, &bind_arg(v, h, 0, 8192, base + 0x10000, 0), &mut mem).unwrap();
+    assert_eq!(be.unmaps, [(101, base + 0x10000, 2)]);
+    assert_eq!(be.maps.len(), 1);
+    // removing the whole range removes the three pieces: the buffer and both null parts
+    f.vm_bind(&mut be, &bind_arg(v, 0, 0, len, base, 1), &mut mem).unwrap();
+    let mut removed = be.unmaps[1..].to_vec();
+    removed.sort();
+    assert_eq!(removed, [(101, base, 16), (101, base + 0x10000, 2), (101, base + 0x12000, len / 4096 - 18)]);
+    // a null binding names no buffer
+    let mut bad = bind_arg(v, h, 0, 4096, 0x10000, 0);
+    put32(&mut bad, 24 + 44, 1 << 2);
+    assert_eq!(f.vm_bind(&mut be, &bad, &mut mem), Err(Errno::Inval));
 }
 
 #[test]
@@ -453,4 +488,38 @@ fn a_stopped_queue_releases_its_fences_and_takes_no_more_jobs() {
         Err(Errno::Canceled)
     );
     assert_eq!(be.runs.len(), 1);
+}
+
+#[test]
+fn a_bind_queue_names_binds_and_an_empty_exec_follows_the_last_job() {
+    let (mut f, mut be, mut mem) = (File::<Fake>::default(), Fake::default(), Mem::default());
+    let v = vm(&mut f, &mut be);
+    // class 5 is no engine: nothing is asked of the GPU
+    let bq = queue(&mut f, &mut be, v, 5).unwrap();
+    assert!(be.queues.is_empty());
+    let h = create(&mut f, &mut be, 4096).unwrap();
+    let mut arg = bind_arg(v, h, 0, 4096, 0x10000, 0);
+    put32(&mut arg, 12, bq);
+    f.vm_bind(&mut be, &arg, &mut mem).unwrap();
+    // an engine queue or a queue of another address space cannot be named for a bind
+    let q = queue(&mut f, &mut be, v, 0).unwrap();
+    put32(&mut arg, 12, q);
+    assert_eq!(f.vm_bind(&mut be, &arg, &mut mem), Err(Errno::Inval));
+    // and a bind queue runs nothing
+    assert_eq!(f.exec(&mut be, &exec_arg(bq, 0x10000, 0, 0), &mut mem), Err(Errno::Inval));
+    // waiting for idle: the fence of an exec without batch is stored when the last job is over
+    f.exec(&mut be, &exec_arg(q, 0x10000, 0, 0), &mut mem).unwrap();
+    let mut mem = fence_mem(9);
+    let mut idle = exec_arg(q, 0, 0x7000, 1);
+    idle[32] = 0;
+    f.exec(&mut be, &idle, &mut mem).unwrap();
+    f.reap(&mut be, &mut mem);
+    assert_eq!((be.runs.len(), u64_at(&mem.0[1].1, 0)), (1, 0));
+    be.done = 1;
+    f.reap(&mut be, &mut mem);
+    assert_eq!(u64_at(&mem.0[1].1, 0), 9);
+    let mut destroy = [0u8; 24];
+    put32(&mut destroy, 0, bq);
+    f.queue_destroy(&mut be, &destroy).unwrap();
+    assert!(be.freed_queues.is_empty());
 }

@@ -1,0 +1,17 @@
+[package]
+name = "ultar-paketbau"
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Builds Ultar packages from pinned upstream sources: fetch, build, prove the package depends on nothing outside itself"
+publish = false
+
+# a host tool with its own lock file (not part of the device workspace)
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+goblin = { version = "0.9", default-features = false, features = ["std", "elf64", "elf32", "endian_fd"] }

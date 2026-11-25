@@ -28,6 +28,8 @@ pub trait Backend {
     fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno>;
     /// Removes `pages` pages at `va` and makes the GPU forget them.
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno>;
+    /// Maps `pages` pages at `va` of address space `vm` to nothing (writes vanish, reads give 0).
+    fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno>;
     /// Ends an address space (no queue uses it any more).
     fn vm_free(&mut self, vm: u32);
     /// A new queue on an engine of `class` running in address space `vm`; returns its number.
@@ -54,13 +56,15 @@ const MAX_BINDS: usize = 16384;
 const MAX_BIND_OPS: u32 = 256;
 const MAX_FENCES: usize = 1024;
 const VA_END: u64 = 1 << 48;
+/// `DRM_XE_ENGINE_CLASS_VM_BIND`: not an engine – a queue that only takes binds.
+const ENGINE_CLASS_VM_BIND: u16 = 5;
 
 struct Bind<B: Backend> {
     va: u64,
     pages: u64,
     handle: u32,
-    /// Keeps the memory alive while the GPU can reach it.
-    _buffer: B::Buffer,
+    /// Keeps the memory alive while the GPU can reach it; `None`: the range maps to nothing.
+    buffer: Option<B::Buffer>,
 }
 
 struct Vm<B: Backend> {
@@ -69,8 +73,12 @@ struct Vm<B: Backend> {
 }
 
 struct Queue {
-    backend: u32,
+    /// The engine queue behind it; `None` for a bind queue (class "VM bind"): binds take effect
+    /// at once here, so such a queue only orders them by name.
+    backend: Option<u32>,
     vm: u32,
+    /// Number of the queue's last job (0: none yet).
+    last: u64,
 }
 
 /// A value to store in the program's memory once a job finished.
@@ -136,7 +144,7 @@ fn fields(arg: &[u8], len: usize, zero_from: usize, no_ext: bool) -> Result<&[u8
 impl<B: Backend> File<B> {
     /// The backend's number of queue `id`, if the file has it.
     pub(super) fn queue_backend(&self, id: u32) -> Option<u32> {
-        self.queues.get(&id).map(|q| q.backend)
+        self.queues.get(&id).and_then(|q| q.backend)
     }
 
     /// A new handle or id.
@@ -166,9 +174,9 @@ impl<B: Backend> File<B> {
             let queues = &self.queues;
             done.entry(f.queue)
                 .or_insert_with(|| match queues.get(&f.queue) {
-                    Some(q) => be.queue_done(q.backend),
+                    Some(Queue { backend: Some(q), .. }) => be.queue_done(*q),
                     // the queue is gone: its jobs will not finish any more
-                    None => u64::MAX,
+                    _ => u64::MAX,
                 });
         }
         self.fences.retain(|f| {
@@ -265,112 +273,6 @@ impl<B: Backend> File<B> {
         Ok(())
     }
 
-    /// One bind operation (80 bytes of `struct drm_xe_vm_bind_op`).
-    fn bind_op(&mut self, be: &mut B, vm_id: u32, op: &[u8]) -> Result<(), Errno> {
-        let b = fields(op, 80, 52, true)?;
-        let (handle, pat, offset) = (u32_at(b, 8), u16_at(b, 12), u64_at(b, 16));
-        let (range, addr, kind, flags) =
-            (u64_at(b, 24), u64_at(b, 32), u32_at(b, 40), u32_at(b, 44));
-        // flags: read-only, immediate and dumpable change nothing here; the others are not there
-        if u16_at(b, 14) != 0 || flags & !0b1011 != 0 || pat > 4 {
-            return Err(Errno::Inval);
-        }
-        match kind {
-            0 => {
-                let (buffer, size, owner) = self.buffers.get(&handle).ok_or(Errno::NoEnt)?;
-                let aligned = (range | addr | offset) % PAGE == 0 && range != 0;
-                let fits = offset.checked_add(range).is_some_and(|e| e <= *size)
-                    && addr.checked_add(range).is_some_and(|e| e <= VA_END);
-                if !aligned || !fits || (*owner != 0 && *owner != vm_id) {
-                    return Err(Errno::Inval);
-                }
-                let buffer = buffer.clone();
-                let first = (offset / PAGE) as usize;
-                let all = be.buffer_pages(&buffer);
-                let pages = all
-                    .get(first..first + (range / PAGE) as usize)
-                    .ok_or(Errno::Inval)?;
-                self.unbind(be, vm_id, addr, range)?;
-                let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
-                if vm.binds.len() >= MAX_BINDS {
-                    return Err(Errno::NoMem);
-                }
-                be.vm_map(vm.backend, addr, pages)?;
-                vm.binds.push(Bind {
-                    va: addr,
-                    pages: range / PAGE,
-                    handle,
-                    _buffer: buffer,
-                });
-                Ok(())
-            }
-            1 => {
-                if (range | addr) % PAGE != 0 || range == 0 || handle != 0 {
-                    return Err(Errno::Inval);
-                }
-                self.unbind(be, vm_id, addr, range)
-            }
-            3 => {
-                let vm = self.vms.get(&vm_id).ok_or(Errno::NoEnt)?;
-                let ranges: Vec<(u64, u64)> = vm
-                    .binds
-                    .iter()
-                    .filter(|x| x.handle == handle)
-                    .map(|x| (x.va, x.pages * PAGE))
-                    .collect();
-                ranges
-                    .into_iter()
-                    .try_for_each(|(va, len)| self.unbind(be, vm_id, va, len))
-            }
-            _ => Err(Errno::Inval),
-        }
-    }
-
-    /// Removes every binding inside `[addr, addr + range)`; one that only partly lies inside
-    /// is refused.
-    fn unbind(&mut self, be: &mut B, vm_id: u32, addr: u64, range: u64) -> Result<(), Errno> {
-        let vm = self.vms.get_mut(&vm_id).ok_or(Errno::NoEnt)?;
-        let end = addr + range;
-        let inside = |x: &Bind<B>| x.va >= addr && x.va + x.pages * PAGE <= end;
-        let touches = |x: &Bind<B>| x.va < end && x.va + x.pages * PAGE > addr;
-        if vm.binds.iter().any(|x| touches(x) && !inside(x)) {
-            return Err(Errno::Inval);
-        }
-        for x in vm.binds.iter().filter(|x| inside(x)) {
-            be.vm_unmap(vm.backend, x.va, x.pages)?;
-        }
-        vm.binds.retain(|x| !inside(x));
-        Ok(())
-    }
-
-    /// `DRM_IOCTL_XE_VM_BIND`. The operations take effect before this returns, so the fences
-    /// are stored right away.
-    pub fn vm_bind(&mut self, be: &mut B, arg: &[u8], user: &mut impl User) -> Result<(), Errno> {
-        let b = fields(arg, 136, 120, true)?;
-        let (vm_id, queue, count) = (u32_at(b, 8), u32_at(b, 12), u32_at(b, 20));
-        if queue != 0 || u32_at(b, 16) != 0 || u32_at(b, 104) != 0 {
-            return Err(Errno::Inval);
-        }
-        if count == 0 || count > MAX_BIND_OPS {
-            return Err(Errno::Inval);
-        }
-        if !self.vms.contains_key(&vm_id) {
-            return Err(Errno::NoEnt);
-        }
-        let syncs = sync::read(user, u64_at(b, 112), u32_at(b, 108))?;
-        self.syncs_ready(be, &syncs)?;
-        if count == 1 {
-            self.bind_op(be, vm_id, &b[24..104])?;
-        } else {
-            let vector = u64_at(b, 24);
-            for i in 0..count as u64 {
-                let op = user.read(vector + i * 80, 80).ok_or(Errno::Fault)?;
-                self.bind_op(be, vm_id, &op)?;
-            }
-        }
-        self.finish_now(&syncs, user)
-    }
-
     /// Everything the request's syncs signal is done right now.
     fn finish_now(&mut self, syncs: &[Sync], user: &mut impl User) -> Result<(), Errno> {
         self.syncs_signal(syncs, Point::Signaled);
@@ -417,9 +319,10 @@ impl<B: Backend> File<B> {
         Self::queue_extensions(user, u64_at(b, 0))?;
         let inst = user.read(u64_at(b, 24), 8).ok_or(Errno::Fault)?;
         let class = match u16_at(&inst, 0) {
-            0 => EngineClass::Render,
-            1 => EngineClass::Copy,
-            4 => EngineClass::Compute,
+            0 => Some(EngineClass::Render),
+            1 => Some(EngineClass::Copy),
+            4 => Some(EngineClass::Compute),
+            ENGINE_CLASS_VM_BIND => None,
             _ => return Err(Errno::Inval),
         };
         // instance, GT and padding: there is one engine of each class on GT 0
@@ -430,9 +333,12 @@ impl<B: Backend> File<B> {
         if self.queues.len() >= MAX_QUEUES {
             return Err(Errno::NoMem);
         }
-        let backend = be.queue_new(vm, class)?;
+        let backend = match class {
+            Some(class) => Some(be.queue_new(vm, class)?),
+            None => None,
+        };
         let id = self.id();
-        self.queues.insert(id, Queue { backend, vm: vm_id });
+        self.queues.insert(id, Queue { backend, vm: vm_id, last: 0 });
         put32(arg, 20, id);
         Ok(())
     }
@@ -441,7 +347,9 @@ impl<B: Backend> File<B> {
     pub fn queue_destroy(&mut self, be: &mut B, arg: &[u8]) -> Result<(), Errno> {
         let b = fields(arg, 24, 4, false)?;
         let q = self.queues.remove(&u32_at(b, 0)).ok_or(Errno::NoEnt)?;
-        be.queue_free(q.backend);
+        if let Some(backend) = q.backend {
+            be.queue_free(backend);
+        }
         Ok(())
     }
 
@@ -452,32 +360,38 @@ impl<B: Backend> File<B> {
             return Err(Errno::Inval);
         }
         let q = self.queues.get(&u32_at(b, 8)).ok_or(Errno::NoEnt)?;
-        put64(arg, 16, be.queue_banned(q.backend) as u64);
+        put64(arg, 16, q.backend.is_some_and(|x| be.queue_banned(x)) as u64);
         Ok(())
     }
 
     /// `DRM_IOCTL_XE_EXEC`: runs one batch; its user fences are stored when it finished.
-    /// Without a batch only the fences are stored.
+    /// Without a batch the fences and sync objects follow the queue's last job (how a program
+    /// waits for a queue to become idle).
     pub fn exec(&mut self, be: &mut B, arg: &[u8], user: &mut impl User) -> Result<(), Errno> {
         let b = fields(arg, 56, 34, true)?;
         let (id, batches) = (u32_at(b, 8), u16_at(b, 32));
         let q = self.queues.get(&id).ok_or(Errno::NoEnt)?;
+        // a bind queue runs no batches
+        let backend = q.backend.ok_or(Errno::Inval)?;
         if batches > 1 {
             return Err(Errno::Inval);
         }
-        if be.queue_banned(q.backend) {
+        if be.queue_banned(backend) {
             return Err(Errno::Canceled);
         }
-        let (backend, batch) = (q.backend, u64_at(b, 24));
+        let (last, batch) = (q.last, u64_at(b, 24));
         let syncs = sync::read(user, u64_at(b, 16), u32_at(b, 12))?;
         self.syncs_ready(be, &syncs)?;
         if self.fences.len() + syncs.len() > MAX_FENCES {
             return Err(Errno::Again);
         }
-        if batches == 0 {
+        if batches == 0 && (last == 0 || be.queue_done(backend) >= last) {
             return self.finish_now(&syncs, user);
         }
-        let seqno = be.queue_run(backend, batch)?;
+        let seqno = if batches == 0 { last } else { be.queue_run(backend, batch)? };
+        if let Some(q) = self.queues.get_mut(&id) {
+            q.last = seqno;
+        }
         self.syncs_signal(&syncs, Point::Job { queue: id, seqno });
         for s in &syncs {
             if let Sync::UserFence { addr, value } = s {
@@ -536,8 +450,8 @@ impl<B: Backend> File<B> {
 
     /// Ends everything the file owns (the node was closed).
     pub fn close(&mut self, be: &mut B) {
-        for (_, q) in core::mem::take(&mut self.queues) {
-            be.queue_free(q.backend);
+        for backend in core::mem::take(&mut self.queues).into_values().filter_map(|q| q.backend) {
+            be.queue_free(backend);
         }
         for (_, vm) in core::mem::take(&mut self.vms) {
             be.vm_free(vm.backend);
@@ -548,5 +462,6 @@ impl<B: Backend> File<B> {
     }
 }
 
+mod bind;
 #[cfg(test)]
 pub(crate) mod tests;
