@@ -51,7 +51,8 @@ use crate::output::Layout;
 use crate::surface::{Buffer, Surface};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use ultar_surface::proto::{
-    BufferId, ErrorCode, Event, OutputId, Rights, SurfaceId, Transport, PROTOCOL_VERSION,
+    BufferId, ErrorCode, Event, OutputId, Rights, SurfaceId, SwitchShortcut, Transport,
+    PROTOCOL_VERSION,
 };
 
 /// Number of a connection.
@@ -151,6 +152,11 @@ pub struct Keyboard {
     /// Ctrl+Shift or Alt+Shift is held and no other key was pressed since: releasing one
     /// of them switches the layout.
     pub layout_chord: bool,
+    /// Which combination switches the layout (`Request::ConfigureKeyboard`); `None`:
+    /// unconfigured, all three switch (Super+Space, Ctrl+Shift, Alt+Shift).
+    pub switch: Option<SwitchShortcut>,
+    /// Every window remembers its own input language (`keyboard.per_window`).
+    pub per_window: bool,
     /// Key events taken from the input devices so far (press, release, repeat; never which
     /// key). The end-to-end test reads it to know a key arrived (`--input-ack`).
     pub events: u64,

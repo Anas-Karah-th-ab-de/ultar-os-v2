@@ -96,8 +96,31 @@ impl State {
                 Ok(())
             }
             Request::ConfigureKeyHelpers { .. } => self.apply_key_helpers(client, r),
+            Request::ConfigureKeyboard {
+                switch_shortcut,
+                per_window,
+            } => self.apply_keyboard(client, switch_shortcut, per_window),
             _ => Ok(()),
         }
+    }
+
+    /// `ConfigureKeyboard`: the keys that switch the input language and whether every
+    /// window keeps its own (switched off: no window keeps a language of its own any more).
+    fn apply_keyboard(
+        &mut self,
+        client: ClientId,
+        switch_shortcut: ultar_surface::proto::SwitchShortcut,
+        per_window: bool,
+    ) -> Result<(), ErrorCode> {
+        self.require_output_config(client)?;
+        self.keyboard.switch = Some(switch_shortcut);
+        self.keyboard.per_window = per_window;
+        if !per_window {
+            for w in &mut self.windows {
+                w.layout = None;
+            }
+        }
+        Ok(())
     }
 
     /// `ConfigureKeyHelpers`: the keyboard helpers and the compose key of the same right.

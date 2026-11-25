@@ -150,7 +150,8 @@ schmale Liste seiner Regel. Ein Test liest die ausgelieferten Regeln und hält d
 - **Dateien** lesen, suchen, verschieben: die Bereiche der Person erreicht nur der Starter (OFFEN B6).
 - **Apps installieren, Aktualisierungen, Treiber**: diese Dienste haben keinen Vertrag in `ultar-bus/messages`.
 - **Konten, Benutzer, WLAN-Netz mit Passwort beitreten, VPN**: bewusst nicht – Geheimnisse gehen nicht durch ein Modell.
-- **Bildschirm sehen** (`assistant.see_screen`), Sprache, Zwischenablage.
+- **Bildschirm sehen**: inzwischen geknüpft als `see_screen` mit Zustimmung je Blick (Nachtrag 5);
+  das Bild selbst erreicht das Modell noch nicht. Sprache, Zwischenablage: weiter nicht.
 - Ohne Modell sagt der Helfer Zustände (Akku, Speicher, Geräte) als rohe englische Zeile.
 
 ### Tests
@@ -181,4 +182,24 @@ Abweichungen von den Tafeln: Anfragen als einfache Zeilen statt Sprechblasen; da
 Lupe); der wartende Schritt steht als Hinweis, nicht als eigene Zeile mit Plakette; keine Referenzbilder.
 
 Tests: `platform/ultar-desktop/tests/helper.rs` (4), `model/helper.rs` (1), `ultar-agentd/tests/reach.rs`
-(Fortschritt am Bus; „nur nachsehen“ bis zum Einschalten).
+(Fortschritt am Bus; „nur nachsehen” bis zum Einschalten).
+
+## Nachtrag 25.11.2026 (5): Bildschirm sehen, Links prüfen
+
+- `assistant.see_screen` (Vorgabe **aus**): Werkzeug `see_screen` (Bereich Bildschirm, nur nachsehen).
+  Aus: dem Modell wird das Werkzeug gar nicht erst genannt. An: fragt es die Person **jedes Mal** im
+  Systemdialog (`sysdialog.authenticate`, Text `agent.action.see_screen`); erst nach der Zustimmung
+  nimmt der Aufnahme-Dienst (`capture.screenshot`) das Bildschirmfoto auf und der Helfer sagt, wo es
+  liegt. Das Bild selbst erreicht das Modell nicht – der Bus-Vertrag trägt nur Text; der Helfer
+  nennt den Ort des Bildes.
+- `assistant.check_links` (Vorgabe **an**): enthält die Antwort des Modells einen verdächtigen Link,
+  hängt der Helfer die übersetzte Warnung `agent.link_warning` an die Worte (`agent.says_checked`).
+  Die Prüfung ist lokal und heuristisch (`src/links.rs`, kein Aufruf ins Netz): Schema außer
+  http/https (javascript:, data:, file: …), Benutzerinfo (`http://name@host`), Host als Zahlenadresse,
+  Punycode (`xn--`). Warnen, nicht sperren: die Worte bleiben wörtlich.
+- Beide Schalter liest der Helfer beim Start und folgt `settings.changed` sofort; seine eigenen
+  Schalter setzt er weiterhin nie (`assistant.*` ist für `setting_set` gesperrt).
+- Texte: `agent.action.see_screen`, `agent.link_warning`, `agent.says_checked` in drei Sprachen
+  (`ultar-bus/locales/agent/`).
+- Tests: `links.rs`, `session.rs`, `tools.rs`, `model.rs` (Unit); `tests/reach.rs` (echter Bus:
+  Zustimmung vor jedem Blick, Schalter zur Laufzeit; Warnung an/aus).

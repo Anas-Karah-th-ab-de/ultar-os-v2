@@ -161,6 +161,10 @@ fn every_request_round_trips_and_truncation_fails() {
             filter: ColourFilter::Tritanopia,
         },
         Request::VisualAlert { ms: 200 },
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::CtrlShift,
+            per_window: true,
+        },
     ];
     for request in sample_requests().into_iter().chain(phone).chain(input) {
         let frame = request.encode().unwrap();
@@ -231,6 +235,20 @@ fn the_pointer_configuration_accepts_the_old_and_the_new_form() {
     for len in 3..7 {
         assert!(Request::decode(44, &body[..len]).is_err(), "len {len}");
     }
+}
+
+#[test]
+fn the_keyboard_configuration_refuses_unknown_keys() {
+    assert_eq!(
+        Request::decode(47, &[1, 1]).unwrap(),
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::AltShift,
+            per_window: true,
+        }
+    );
+    assert!(Request::decode(47, &[3, 0]).is_err(), "unknown shortcut");
+    assert!(Request::decode(47, &[0, 2]).is_err(), "not a bool");
+    assert!(Request::decode(47, &[0]).is_err(), "truncated");
 }
 
 #[test]

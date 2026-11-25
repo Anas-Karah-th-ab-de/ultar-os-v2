@@ -325,6 +325,11 @@ impl State {
         }
         let active = self.key_layout();
         self.keyboard.layout_index = layouts.iter().position(|l| *l == active).unwrap_or(0);
+        // The windows keep their own language when it is still in the new list.
+        for w in &mut self.windows {
+            let old = w.layout.and_then(|i| self.config.layouts.get(i).copied());
+            w.layout = old.and_then(|l| layouts.iter().position(|n| *n == l));
+        }
         self.config.layouts = layouts;
         // The list changed: shell and lock screen hear of it even with the same index.
         self.session.shell.layout_sent = None;

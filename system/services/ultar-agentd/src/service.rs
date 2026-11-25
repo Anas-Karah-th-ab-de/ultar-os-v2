@@ -43,6 +43,10 @@ pub struct AgentService {
 
 /// The setting that says how many days the list of what was done is kept.
 pub const HISTORY_KEY: &str = "assistant.history_days";
+/// The setting that lets the helper see the screen when asked (off until then).
+pub const SEE_SCREEN_KEY: &str = "assistant.see_screen";
+/// The setting that warns about suspicious links in the model's answers.
+pub const CHECK_LINKS_KEY: &str = "assistant.check_links";
 
 fn now() -> u64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH);
@@ -54,10 +58,11 @@ impl AgentService {
     pub fn new(dir: Option<&Path>) -> Self {
         Self {
             log: Log::open(dir),
-            // Acting is off until the person switched it on (`assistant.act`).
+            // Acting is off until the person switched it on (`assistant.act`); seeing the
+            // screen is off until the person allowed it (`assistant.see_screen`).
             limits: Limits {
-                off: Vec::new(),
                 read_only: true,
+                ..Limits::default()
             },
             ..Self::default()
         }
@@ -89,6 +94,13 @@ impl AgentService {
                 self.log.keep_days(u64::try_from(*days).unwrap_or(0), now());
                 bus.retain(self.log.list());
             }
+            (None, SettingValue::Flag(on)) if key == SEE_SCREEN_KEY => {
+                self.limits.see_screen = *on;
+                self.publish_reach(bus);
+            }
+            (None, SettingValue::Flag(on)) if key == CHECK_LINKS_KEY => {
+                self.limits.check_links = *on;
+            }
             _ => {}
         }
     }
@@ -102,7 +114,12 @@ impl AgentService {
         }
         let _ = bus.later(|client| {
             let mut keys: Vec<String> = Area::ALL.into_iter().filter_map(Area::setting).collect();
-            keys.extend([HISTORY_KEY.to_owned(), ACT_KEY.to_owned()]);
+            keys.extend([
+                HISTORY_KEY.to_owned(),
+                ACT_KEY.to_owned(),
+                SEE_SCREEN_KEY.to_owned(),
+                CHECK_LINKS_KEY.to_owned(),
+            ]);
             let mut answered = false;
             let mut values: Vec<(String, SettingValue)> = Vec::new();
             for key in keys {

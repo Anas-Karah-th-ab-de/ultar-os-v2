@@ -1,9 +1,10 @@
 //! The input languages (keyboard layouts) as the settings service keeps them: the list the
-//! user switches through (`region.keyboard.layouts`, e.g. `ar_en`) and the active one
+//! user switches through – the Keyboard page's `keyboard.input_languages` when it names any,
+//! else `region.keyboard.layouts` (e.g. `ar_en`) – and the active one
 //! (`region.keyboard.active`). The shell (and the lock screen, which starts first after a
 //! restart) gives both to the compositor at start and on every change, and stores the active
-//! one when the user switched (Ctrl+Shift, Alt+Shift, Super+Space, the bar's language menu or
-//! the sign-in's chip), so it survives a restart.
+//! one when the user switched (the chosen shortcut, the bar's language menu or the sign-in's
+//! chip), so it survives a restart.
 
 use crate::ports::SettingsPort;
 use ultar_bus::messages::settings::SettingValue;
@@ -12,6 +13,8 @@ use ultar_bus::messages::settings::SettingValue;
 pub const LAYOUTS: &str = "region.keyboard.layouts";
 /// The active layout (`ar`, `en`, `de`).
 pub const ACTIVE: &str = "region.keyboard.active";
+/// The input languages of the Keyboard page, in order (empty: the region's layouts).
+pub const INPUT_LANGUAGES: &str = "keyboard.input_languages";
 
 /// Layout names of a `region.keyboard.layouts` value (only known names, no repeats).
 pub fn names(value: &str) -> Vec<String> {
@@ -24,6 +27,17 @@ pub fn names(value: &str) -> Vec<String> {
     out
 }
 
+/// The list to switch through: the Keyboard page's input languages when it names any
+/// (only known names, no repeats), else the region's layouts.
+pub fn combined(input_languages: &[String], region_layouts: &str) -> Vec<String> {
+    let langs = names(&input_languages.join("_"));
+    if langs.is_empty() {
+        names(region_layouts)
+    } else {
+        langs
+    }
+}
+
 /// The list and the index of the active layout in it, as the settings say
 /// (`None`: no answer or nothing usable).
 pub fn wanted(settings: &dyn SettingsPort) -> Option<(Vec<String>, u8)> {
@@ -31,7 +45,11 @@ pub fn wanted(settings: &dyn SettingsPort) -> Option<(Vec<String>, u8)> {
         Ok(SettingValue::Text(v)) => Some(v),
         _ => None,
     };
-    from_values(text(LAYOUTS)?, text(ACTIVE))
+    let langs = match settings.get(INPUT_LANGUAGES) {
+        Ok(SettingValue::List(l)) => l,
+        _ => Vec::new(),
+    };
+    from_values(combined(&langs, &text(LAYOUTS)?).join("_"), text(ACTIVE))
 }
 
 /// The list and the active index of the two values (`None`: no usable list).
@@ -85,6 +103,72 @@ impl LayoutSync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::PortError;
+    use ultar_bus::messages::settings::DisplayDescriptor;
+
+    /// A settings service that holds a few values.
+    struct Fake(Vec<(&'static str, SettingValue)>);
+    impl SettingsPort for Fake {
+        fn get(&self, key: &str) -> Result<SettingValue, PortError> {
+            self.0
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.clone())
+                .ok_or(PortError::Unavailable)
+        }
+        fn set(&self, _: &str, _: SettingValue) -> Result<(), PortError> {
+            Err(PortError::Refused)
+        }
+        fn confirm(&self, _: &str) -> Result<(), PortError> {
+            Err(PortError::Refused)
+        }
+        fn revert(&self, _: &str) -> Result<(), PortError> {
+            Err(PortError::Refused)
+        }
+        fn set_displays(&self, _: &[DisplayDescriptor]) -> Result<Vec<String>, PortError> {
+            Err(PortError::Refused)
+        }
+    }
+
+    fn langs(l: &[&str]) -> Vec<String> {
+        l.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn the_input_languages_win_over_the_regions_layouts() {
+        assert_eq!(
+            combined(&langs(&["de", "ar"]), "ar_en"),
+            langs(&["de", "ar"])
+        );
+        // Unknown names and repeats are left out; an empty list leaves the region's.
+        assert_eq!(
+            combined(&langs(&["xx", "ar", "ar"]), "ar_en"),
+            langs(&["ar"])
+        );
+        assert_eq!(combined(&[], "ar_de_en"), langs(&["ar", "de", "en"]));
+        assert_eq!(combined(&langs(&["xx"]), "ar_en"), langs(&["ar", "en"]));
+        assert!(combined(&[], "").is_empty());
+        // As the settings service holds them: the list wins, the active one is found in it.
+        let s = Fake(vec![
+            (INPUT_LANGUAGES, SettingValue::List(langs(&["de", "en"]))),
+            (LAYOUTS, SettingValue::Text("ar_en".into())),
+            (ACTIVE, SettingValue::Text("en".into())),
+        ]);
+        assert_eq!(wanted(&s), Some((langs(&["de", "en"]), 1)));
+        // Empty list: the region's layouts, as before.
+        let s = Fake(vec![
+            (INPUT_LANGUAGES, SettingValue::List(Vec::new())),
+            (LAYOUTS, SettingValue::Text("ar_en".into())),
+            (ACTIVE, SettingValue::Text("ar".into())),
+        ]);
+        assert_eq!(wanted(&s), Some((langs(&["ar", "en"]), 0)));
+        // A wrong type of the list changes nothing.
+        let s = Fake(vec![
+            (INPUT_LANGUAGES, SettingValue::Text("de_en".into())),
+            (LAYOUTS, SettingValue::Text("ar_en".into())),
+        ]);
+        assert_eq!(wanted(&s), Some((langs(&["ar", "en"]), 0)));
+    }
 
     #[test]
     fn layout_lists() {

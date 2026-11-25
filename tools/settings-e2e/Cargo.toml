@@ -29,6 +29,8 @@ ultar-volumed = { path = "../../system/services/ultar-volumed" }
 ultar-accountd = { path = "../../system/services/ultar-accountd" }
 ultar-sessiond = { path = "../../system/services/ultar-sessiond" }
 ultar-call = { path = "../../system/services/ultar-call" }
+ultar-agentd = { path = "../../system/services/ultar-agentd" }
+ultar-llm-bus = { path = "../../system/services/ultar-llm-bus" }
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

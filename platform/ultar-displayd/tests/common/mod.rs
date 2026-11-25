@@ -25,7 +25,7 @@ use ultar_settingsd::schema::NoDefaults;
 use ultar_settingsd::seed;
 use ultar_settingsd::server::{Server, ServerParts};
 use ultar_settingsd::store::StoreConfig;
-use ultar_surface::proto::{ColourFilter, OutputIdentity, OutputMode, Rights};
+use ultar_surface::proto::{ColourFilter, OutputIdentity, OutputMode, Rights, SwitchShortcut};
 
 pub const DAEMON: &str = env!("CARGO_BIN_EXE_ultar-displayd");
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -214,6 +214,8 @@ pub struct Snap {
     pub visual: VisualSnap,
     /// Keyboard helpers: sticky, slow, bounce, mouse, and the compose key.
     pub key_helpers: (bool, bool, bool, bool, ultar_surface::proto::ComposeKey),
+    /// The switch combination (`None`: unconfigured) and per-window languages.
+    pub keyboard: (Option<SwitchShortcut>, bool),
 }
 
 impl Snap {
@@ -294,6 +296,7 @@ fn snapshot(comp: &Compositor) -> Snap {
         },
         visual: visual_snap(comp),
         key_helpers: helpers_snap(comp),
+        keyboard: (comp.state.keyboard.switch, comp.state.keyboard.per_window),
         identify: comp
             .state
             .session

@@ -23,7 +23,7 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
-use ultar_surface::proto::{ComposeKey, PointerSize, Request};
+use ultar_surface::proto::{ComposeKey, PointerSize, Request, SwitchShortcut};
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
 use ultar_ui::Size;
 use ultar_update::policy::Policy;
@@ -248,6 +248,10 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
             bounce_keys: false,
             mouse_keys: false,
             compose_key: ComposeKey::None,
+        },
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::SuperSpace,
+            per_window: false,
         },
     ];
     let requests = d.service.requests();
@@ -558,5 +562,10 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     super::apps::apps(bus, admin, run, &desktop)?;
     wired_store::auto_apps(bus, admin, run)?;
     super::access_visual::check(bus, admin, run, &desktop, &displayd)?;
+    services::keyboard_layouts(bus, admin, run, &displayd, &desktop)?;
+    services::assistant(bus, admin, run)?;
     crate::wired_users::users_emergency(bus, admin, run)
 }
+
+#[path = "wired_services.rs"]
+mod services;
