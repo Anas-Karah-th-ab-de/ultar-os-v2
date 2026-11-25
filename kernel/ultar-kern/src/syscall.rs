@@ -1339,7 +1339,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
             FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
-            FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
+            FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::dri::NODE).unwrap_or(0))),
         })
     })
     .flatten();
