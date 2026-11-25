@@ -301,3 +301,49 @@ fn the_model_size_the_person_chose_answers_and_is_reported() {
     assert!(call(&helper, &ask).unwrap().ok);
     assert_eq!(seen.lock().unwrap().as_deref(), Some("tiny"));
 }
+
+#[test]
+fn the_model_place_is_passed_on_only_when_checked() {
+    use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
+    let ids = ["system.llm", "system.settingsd"];
+    let world = World::new("llmbus-place", POLICY, &ids);
+    world.serve("system.settingsd", "settings", |request| {
+        let key = request.decode::<Get>().map(|g| g.key).unwrap_or_default();
+        let value = match key.as_str() {
+            "assistant.enabled" => SettingValue::Flag(false),
+            "assistant.model" => SettingValue::Text("small".into()),
+            "assistant.model_place" => SettingValue::Text("/data/ultar/models/mine".into()),
+            other => panic!("unexpected setting {other}"),
+        };
+        let _ = request.reply(&GetReply { value: Some(value) });
+    });
+    let socket = world.subdir("llm").join("llm.sock");
+    let place = world.subdir("llmbus").join("model-place");
+    let args = [
+        "--socket",
+        socket.to_str().unwrap(),
+        "--place-file",
+        place.to_str().unwrap(),
+    ];
+    let _daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-llm-bus"), "system.llm", &args);
+    let reads = |want: &str| {
+        wait_until(WAIT, || {
+            std::fs::read_to_string(&place).is_ok_and(|text| text == want)
+        })
+    };
+    // At start the setting is read and passed on.
+    assert!(reads("/data/ultar/models/mine"));
+    let settings = world.client("system.settingsd");
+    let say = |text: &str| {
+        let changed = Changed {
+            key: "assistant.model_place".into(),
+            value: SettingValue::Text(text.into()),
+        };
+        settings.publish(&changed).unwrap();
+    };
+    // A stick at runtime; then a path that leads out of the roots empties the place.
+    say("/run/ultar/media/stick/models");
+    assert!(reads("/run/ultar/media/stick/models"));
+    say("/data/ultar/models/../../etc");
+    assert!(reads(""));
+}

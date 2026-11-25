@@ -11,6 +11,7 @@
 
 pub mod backend;
 pub mod choice;
+pub mod place;
 pub mod service;
 
 pub use service::LlmBus;

@@ -5,6 +5,8 @@
 
 use crate::backend::Backend;
 use crate::choice::{self, MODEL_KEY};
+use crate::place::{self, PLACE_KEY};
+use std::path::PathBuf;
 use std::time::Duration;
 use ultar_bus::messages::init::Switch;
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass, MAX_PROMPT, SERVICE};
@@ -36,6 +38,10 @@ pub struct LlmBus {
     choice: ModelClass,
     /// The model size was read from the settings service.
     choice_read: bool,
+    /// Where the model place is passed to the model service (`None`: not passed on).
+    place_file: Option<PathBuf>,
+    /// The model place was read from the settings service.
+    place_read: bool,
 }
 
 impl LlmBus {
@@ -49,7 +55,43 @@ impl LlmBus {
             switched: None,
             choice: ModelClass::default(),
             choice_read: false,
+            place_file: None,
+            place_read: false,
         }
+    }
+
+    /// Also passes the person's model place (`assistant.model_place`) on in `file`.
+    pub fn with_place_file(mut self, file: PathBuf) -> Self {
+        self.place_file = Some(file);
+        self
+    }
+
+    /// Writes the place for the model service; a wrong type changes nothing.
+    fn set_place(&mut self, value: &SettingValue) {
+        let (Some(file), Some(text)) = (&self.place_file, place::of(value)) else {
+            return;
+        };
+        // not written: the model service keeps the last place; tried again with the next change
+        let _ = place::publish(file, &text);
+    }
+
+    /// Reads the model place once (at start, and again until the settings service answered).
+    fn read_place(&mut self, bus: &Bus<'_, Self>) {
+        if self.place_read || self.place_file.is_none() {
+            return;
+        }
+        let _ = bus.later(move |client| {
+            let key = PLACE_KEY.to_owned();
+            let value = client
+                .call(&Get { key }, CALL_TIME)
+                .ok()
+                .and_then(|r| r.value);
+            Box::new(move |service: &mut Self, _: &Bus<'_, Self>| {
+                let Some(value) = value else { return };
+                service.place_read = true;
+                service.set_place(&value);
+            })
+        });
     }
 
     fn look(&mut self, bus: &Bus<'_, Self>) {
@@ -179,6 +221,7 @@ impl Service for LlmBus {
         self.last = Some(LlmState::default());
         self.follow_setting(bus);
         self.read_choice(bus);
+        self.read_place(bus);
         self.look(bus);
     }
 
@@ -200,6 +243,7 @@ impl Service for LlmBus {
                     }
                 }
             }
+            (PLACE_KEY, value) => self.set_place(value),
             _ => {}
         }
     }
@@ -222,6 +266,7 @@ impl Service for LlmBus {
     fn tick(&mut self, bus: &Bus<'_, Self>) {
         self.follow_setting(bus);
         self.read_choice(bus);
+        self.read_place(bus);
         self.look(bus);
     }
 }

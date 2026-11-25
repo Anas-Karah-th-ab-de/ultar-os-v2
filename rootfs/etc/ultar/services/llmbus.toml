@@ -5,10 +5,14 @@ exec = "/usr/bin/ultar-llm-bus"
 args = [
     "--bus", "/run/ultar/bus/llmbus.sock",
     "--socket", "/run/ultar/llm/llm.sock",
+    "--place-file", "/run/ultar/llmbus/model-place",
     "--log-socket", "/run/ultar/log/llmbus.sock",
 ]
 # Its own user (835) without kernel rights; the model service's socket is open to all.
 user = 835
+# Its own directory (mode 0755): the checked model place (assistant.model_place) for the
+# model service to read; nothing else is written there.
+public_dirs = ["/run/ultar/llmbus"]
 notify = true
 after = ["bus"]
 restart = "always"

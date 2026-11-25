@@ -11,11 +11,11 @@ use ultar_agentd::tools::{Call, Limits, Outcome, Toolbox};
 use ultar_agentd::{links, session, tools};
 use ultar_bus::messages::agent::{Brain, StepOutcome};
 use ultar_bus::messages::llm::ModelClass;
-use ultar_bus::messages::settings::SettingValue;
+use ultar_bus::messages::settings::{Set, SettingValue};
 use ultar_bus::Client;
 use ultar_desktop::app::keyboard;
 use ultar_displayd::input::InputSettings;
-use ultar_llm_bus::{backend, choice};
+use ultar_llm_bus::{backend, choice, place};
 use ultar_surface::proto::{Request, SwitchShortcut};
 
 /// Keyboard page: the switch combination and the per-window languages reach the compositor
@@ -132,10 +132,32 @@ pub(super) fn assistant(bus: &Client, admin: &Client, run: &Run) -> Result<(), S
         return Err("seeing the screen does not follow its switch".into());
     }
     check_links(&mut app, admin, &agentd)?;
+    model_place(admin, &llmbus)?;
     println!(
         "SETTINGS: assistant page -> model bridge and helper: medium model chosen, seeing the \
-         screen opened by its switch, link warning follows its switch"
+         screen opened by its switch, link warning follows its switch, model place passed on \
+         only when checked"
     );
+    Ok(())
+}
+
+/// The model place: the bridge is told and passes only a plain folder below the model
+/// folders or removable media on to the model service (the bridge's own code).
+fn model_place(admin: &Client, llmbus: &Follower) -> Result<(), String> {
+    const MINE: &str = "/data/ultar/models/mine";
+    let value = SettingValue::Text(MINE.into());
+    let set = Set {
+        key: "assistant.model_place".into(),
+        value: value.clone(),
+    };
+    admin
+        .call(&set, std::time::Duration::from_secs(20))
+        .map_err(|e| format!("set assistant.model_place: {e}"))?;
+    llmbus.told("assistant.model_place", &value)?;
+    let outside = SettingValue::Text("/data/ultar/models/../../etc".into());
+    if place::of(&value).as_deref() != Some(MINE) || place::of(&outside).as_deref() != Some("") {
+        return Err("the model place is not checked".into());
+    }
     Ok(())
 }
 
