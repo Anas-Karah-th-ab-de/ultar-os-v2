@@ -22,22 +22,7 @@ fn main() {
                 .to_string_lossy()
                 .into_owned()
         });
-    let mut f = match std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(0o4000)
-        .open(&node)
-    {
-        Ok(f) => f,
-        Err(e) => {
-            println!("PCM: FEHLER open {node}: {e}");
-            std::process::exit(1);
-        }
-    };
-    if std::fs::OpenOptions::new().read(true).open(&node).is_ok() {
-        println!("PCM: FEHLER a second open was allowed");
-        std::process::exit(1);
-    }
+    let mut f = open_streams(&node);
     if mono {
         mono_switch(b"1");
     }
@@ -71,6 +56,27 @@ fn main() {
         println!("PCM: FEHLER paced={paced} recorded={heard}");
         std::process::exit(1);
     }
+}
+
+/// Opens the streams without blocking; a second open must be refused (one opener).
+fn open_streams(node: &str) -> std::fs::File {
+    let f = match std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(0o4000)
+        .open(node)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            println!("PCM: FEHLER open {node}: {e}");
+            std::process::exit(1);
+        }
+    };
+    if std::fs::OpenOptions::new().read(true).open(node).is_ok() {
+        println!("PCM: FEHLER a second open was allowed");
+        std::process::exit(1);
+    }
+    f
 }
 
 /// Writes `byte` to the kernel's mono switch (a second descriptor beside the open streams).
