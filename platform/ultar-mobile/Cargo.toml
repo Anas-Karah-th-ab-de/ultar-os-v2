@@ -1,0 +1,18 @@
+[package]
+name = "ultar-mobile"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Phone shell of Ultar OS (platform, area 5): lock screen, home screen with pages and dock, quick settings, recent apps, search and the navigation bar – built on its own, separate from the desktop shell"
+
+[lib]
+name = "ultar_mobile"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+
+[dev-dependencies]
+ultar-ui = { path = "../ultar-ui" }

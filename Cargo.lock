@@ -6003,6 +6003,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-mobile"
+version = "0.8.0"
+dependencies = [
+ "ultar-i18n",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-modem"
 version = "0.8.0"
 dependencies = [

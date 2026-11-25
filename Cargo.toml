@@ -56,6 +56,7 @@ members = [
     "external/ultar-telegram",
     "platform/ultar-ime",
     "platform/ultar-shell",
+    "platform/ultar-mobile",
     "platform/ultar-installer-ui",
     "system/core/ultar-apps",
     "system/core/ultar-ctl",

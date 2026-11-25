@@ -1,0 +1,70 @@
+# ultar-mobile – ar (Arabic is the reference)
+mobile.app.appbuilder = منشئ التطبيقات
+mobile.app.assistant = المساعد
+mobile.app.browser = المتصفح
+mobile.app.editor = محرر النصوص
+mobile.app.files = الملفات
+mobile.app.office = المكتب
+mobile.app.phone = الهاتف
+mobile.app.settings = الإعدادات
+mobile.app.store = متجر Ultar
+mobile.app.terminal = الطرفية
+mobile.brand = Ultar OS
+mobile.card.battery = البطارية
+mobile.card.calendar = التقويم
+mobile.card.cpu = المعالج
+mobile.card.device = الجهاز
+mobile.card.next = القادم
+mobile.card.nothing = لا شيء مخطط
+mobile.card.ram = الذاكرة
+mobile.date = {weekday}، {day}.{month}.
+mobile.hijri = {day} {month} {year} هـ
+mobile.lock.camera = الكاميرا
+mobile.lock.emergency = طوارئ
+mobile.lock.hidden = {count ->
+    [zero] لا إشعارات
+    [one] إشعار واحد · المحتوى مخفي
+    [two] إشعاران · المحتوى مخفي
+    [few] {count} إشعارات · المحتوى مخفي
+    [many] {count} إشعارًا · المحتوى مخفي
+   *[other] {count} إشعار · المحتوى مخفي
+}
+mobile.lock.swipe = أو اسحب للأعلى
+mobile.lock.unlock = فتح القفل
+mobile.nav.back = رجوع
+mobile.nav.home = الشاشة الرئيسية
+mobile.nav.recents = التطبيقات الأخيرة
+mobile.page = الصفحة {number}
+mobile.percent = ‎{value}%‎
+mobile.qs.airplane = وضع الطيران
+mobile.qs.bluetooth = بلوتوث
+mobile.qs.brightness = السطوع
+mobile.qs.clear = مسح الكل
+mobile.qs.close = إغلاق الإعدادات السريعة
+mobile.qs.data = بيانات الجوال
+mobile.qs.dismiss = تجاهل
+mobile.qs.dnd = عدم الإزعاج
+mobile.qs.location = الموقع
+mobile.qs.more = المزيد
+mobile.qs.night = الإضاءة الليلية
+mobile.qs.no_notes = لا إشعارات
+mobile.qs.not_connected = غير متصل
+mobile.qs.notes = الإشعارات
+mobile.qs.off = متوقف
+mobile.qs.on = مفعّل
+mobile.qs.power = التشغيل
+mobile.qs.saver = توفير الطاقة
+mobile.qs.settings = الإعدادات
+mobile.qs.torch = المصباح
+mobile.qs.volume = الصوت
+mobile.qs.vpn = VPN
+mobile.qs.wifi = واي فاي
+mobile.recents.clear = إغلاق الكل
+mobile.recents.close = إغلاق
+mobile.recents.none = لا توجد تطبيقات حديثة
+mobile.recents.title = التطبيقات الأخيرة
+mobile.search = ابحث عن تطبيقات وملفات
+mobile.search.hint = اكتب اسم تطبيق
+mobile.search.none = لا نتائج لـ «{query}»
+mobile.status = الإعدادات السريعة
+mobile.voice = بحث صوتي
