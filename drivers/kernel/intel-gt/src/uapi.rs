@@ -147,6 +147,8 @@ pub struct Device {
     pub hwconfig: Vec<u8>,
     /// Version of the GuC's submission interface: branch, major, minor, patch.
     pub guc_submission: (u32, u32, u32, u32),
+    /// The topology records of all GTs ([`crate::topology::Topology::encode`]); empty: unknown.
+    pub topology: Vec<u8>,
 }
 
 /// Query: engines.
@@ -159,6 +161,8 @@ pub const QUERY_CONFIG: u32 = 2;
 pub const QUERY_GT_LIST: u32 = 3;
 /// Query: hardware config table.
 pub const QUERY_HWCONFIG: u32 = 4;
+/// Query: slices, execution units and cache banks.
+pub const QUERY_GT_TOPOLOGY: u32 = 5;
 /// Query: firmware versions.
 pub const QUERY_UC_FW_VERSION: u32 = 7;
 
@@ -275,6 +279,7 @@ impl Device {
             QUERY_CONFIG => self.config(),
             QUERY_GT_LIST => self.gt_list(),
             QUERY_HWCONFIG => self.hwconfig.clone(),
+            QUERY_GT_TOPOLOGY if !self.topology.is_empty() => self.topology.clone(),
             _ => return Err(Errno::Inval),
         };
         match size {

@@ -38,6 +38,13 @@ pub fn publish(dev: &mut Device, facts: &GtFacts) -> Result<String, String> {
         clock
     };
     let clock = clock.ok_or("unknown crystal frequency")?;
+    // the fuses read in the same domain; without the GT in operation the topology stays unknown
+    let topology = if super::gt_run::running() {
+        let fuses = ultar_intel_gt::topology::Fuses::read(&mut dev.mmio);
+        ultar_intel_gt::topology::Topology::from_fuses(facts.graphics.verx100, &fuses)
+    } else {
+        None
+    };
     let (b, d, f) = dev.pci;
     let classes = [
         (RCS0, EngineClass::Render),
@@ -65,9 +72,20 @@ pub fn publish(dev: &mut Device, facts: &GtFacts) -> Result<String, String> {
         memory_used: used,
         hwconfig,
         guc_submission: (0, sub.major as u32, sub.minor as u32, sub.patch as u32),
+        topology: topology.map(|t| t.encode(0)).unwrap_or_default(),
+    };
+    let slices = match topology {
+        Some(t) => format!(
+            "{} geometry / {} compute slice(s) with {} execution units each, {} L3 bank(s)",
+            t.geometry_dss.count_ones(),
+            t.compute_dss.count_ones(),
+            t.eu_per_dss.count_ones(),
+            t.l3_banks.count_ones()
+        ),
+        None => String::from("topology unknown"),
     };
     let text = format!(
-        "/dev/{}: {} engine(s), time stamps at {clock} Hz, {} MiB memory",
+        "/dev/{}: {} engine(s), time stamps at {clock} Hz, {} MiB memory, {slices}",
         crate::svcdev::dri::NODE,
         record.engines.len(),
         total >> 20

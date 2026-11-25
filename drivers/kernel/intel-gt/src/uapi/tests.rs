@@ -22,6 +22,7 @@ fn beelink() -> Device {
         memory_bytes: 32 << 30,
         memory_used: 4096,
         hwconfig: vec![1, 0, 0, 0, 1, 0, 0, 0, 7, 0, 0, 0],
+        topology: vec![0, 0, 1, 0, 4, 0, 0, 0, 0xf, 0, 0, 0],
         guc_submission: (0, 1, 26, 0),
     }
 }
@@ -371,4 +372,13 @@ fn other_requests_are_refused() {
         ),
         Err(Errno::Inval)
     );
+}
+
+#[test]
+fn topology_query_answers_or_is_refused() {
+    let d = beelink();
+    assert_eq!(d.query(QUERY_GT_TOPOLOGY, 0, &[]), Ok(Answer::Size(12)));
+    assert_eq!(d.query(QUERY_GT_TOPOLOGY, 12, &[]), Ok(Answer::Data(d.topology.clone())));
+    let unknown = Device { topology: Vec::new(), ..beelink() };
+    assert_eq!(unknown.query(QUERY_GT_TOPOLOGY, 0, &[]), Err(Errno::Inval));
 }
