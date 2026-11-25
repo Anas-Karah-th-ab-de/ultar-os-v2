@@ -99,6 +99,9 @@ pub fn fetch(site: &Site, part: &Part) -> Result<String, String> {
 
 /// The newest release upstream has tagged, if it is newer than the pinned one.
 pub fn newer_upstream(part: &Part) -> Result<Option<String>, String> {
+    if !part.follows.is_empty() {
+        return Err(format!("follows {}", part.follows));
+    }
     let out = Command::new("git")
         .args(["ls-remote", "--tags", "--refs", &part.upstream])
         .output()

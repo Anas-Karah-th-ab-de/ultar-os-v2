@@ -35,6 +35,11 @@ pub struct Part {
     /// Where upstream publishes its tags, and what a release tag looks like (`v{version}`).
     pub upstream: String,
     pub tag: String,
+    /// Name of the part this one is tied to: its source is the exact state that part asks
+    /// for (a commit upstream names, not a release of its own), its version is that part's
+    /// version, and it is updated together with it.
+    #[serde(default)]
+    pub follows: String,
     /// Tags that match but are no releases end like this (glibc marks its development
     /// branch `2.44.9000`).
     #[serde(default)]
@@ -143,7 +148,8 @@ impl Part {
                 self.version
             ));
         }
-        if !self.source.starts_with("https://") || !self.source.contains("{version") {
+        let tied = !self.follows.is_empty();
+        if !self.source.starts_with("https://") || !(tied || self.source.contains("{version")) {
             out.push(format!("{p}: source must be https and contain {{version}}"));
         }
         if !self.mirror.is_empty() && !self.mirror.starts_with("https://") {
@@ -153,7 +159,7 @@ impl Part {
         if !self.sha256.is_empty() && !hex {
             out.push(format!("{p}: sha256 is not 64 hex digits"));
         }
-        if !self.upstream.starts_with("https://") || !self.tag.contains("{version") {
+        if !self.upstream.starts_with("https://") || !(tied || self.tag.contains("{version")) {
             out.push(format!(
                 "{p}: upstream must be https, tag must contain {{version}}"
             ));
@@ -192,6 +198,13 @@ impl Recipe {
             part.problems(&mut out);
             if !seen.insert(&part.name) {
                 out.push(format!("part {} appears twice", part.name));
+            }
+            let leader = self.parts.iter().find(|p| p.name == part.follows);
+            if !part.follows.is_empty() && leader.is_none_or(|l| l.version != part.version) {
+                out.push(format!(
+                    "{}: follows {:?}, which must exist and have the same version",
+                    part.name, part.follows
+                ));
             }
             if pinned && part.sha256.is_empty() {
                 out.push(format!("{}: no sha256 – run `fetch` and pin it", part.name));
@@ -327,6 +340,33 @@ build = ["./configure --prefix={prefix}", "make -j{jobs} install"]
         let r = Recipe::parse(&open).unwrap();
         assert!(r.problems(false).is_empty());
         assert_eq!(r.problems(true).len(), 1);
+    }
+
+    #[test]
+    fn a_part_can_be_tied_to_another() {
+        let tied = r#"
+[[part]]
+name = "zlib-data"
+kind = "tool"
+version = "1.3.1"
+follows = "zlib"
+source = "https://example.org/archive/0123abcd.tar.gz"
+upstream = "https://example.org/data"
+tag = ""
+license = "MIT"
+why = "the state zlib 1.3.1 asks for"
+build = ["true"]
+"#;
+        let r = Recipe::parse(&format!("{GOOD}{tied}")).unwrap();
+        assert_eq!(r.problems(false), Vec::<String>::new());
+        assert_eq!(r.parts[1].archive(), "zlib-data-1.3.1.tar.gz");
+        // the version must move together with the part it follows
+        let stale = Recipe::parse(&format!(
+            "{GOOD}{}",
+            tied.replace("1.3.1\"\nfollows", "1.3.0\"\nfollows")
+        ))
+        .unwrap();
+        assert_eq!(stale.problems(false).len(), 1);
     }
 
     #[test]
