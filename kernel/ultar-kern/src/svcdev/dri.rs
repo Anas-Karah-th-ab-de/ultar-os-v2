@@ -32,6 +32,43 @@ pub const RIGHT: Rights = Rights::RAW_DEVICE;
 pub const RETRY: i64 = i64::MIN;
 
 static DEVICE: Mutex<Option<Arc<uapi::Device>>> = Mutex::new(None);
+/// How long a program that waits for the GPU polls it through the scheduler (it is ready again
+/// at once and repeats its request) before it sleeps a timer tick between looks. Jobs of a
+/// language model finish within milliseconds: a tick (10 ms) per wait made it several times
+/// slower. There are no GPU interrupts yet.
+const POLL_NS: u64 = 200_000_000;
+/// Threads waiting for the GPU now: thread id and when their wait began (ns).
+static WAITING: Mutex<Vec<(u64, u64)>> = Mutex::new(Vec::new());
+
+/// When the waiting thread asks again: at once while its wait is young, else after a tick.
+pub fn retry_at() -> u64 {
+    let (me, now) = (proc::current(), crate::arch::uptime_ns());
+    let mut w = WAITING.lock();
+    let since = match w.iter().find(|x| x.0 == me) {
+        Some(x) => x.1,
+        None => {
+            // a thread that ended while it waited leaves its entry: such entries are old
+            w.retain(|x| now - x.1 < 60_000_000_000);
+            w.push((me, now));
+            now
+        }
+    };
+    if now - since < POLL_NS {
+        0
+    } else {
+        crate::arch::uptime_ms() + 1
+    }
+}
+
+/// The calling thread's wait is over (its request was answered).
+fn wait_over() {
+    let me = proc::current();
+    let mut w = WAITING.lock();
+    if !w.is_empty() {
+        w.retain(|x| x.0 != me);
+    }
+}
+
 /// Log every refused request (set by the test medium's extra program, line `abgewiesen`).
 pub static LOG_REFUSED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
@@ -121,6 +158,9 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
         },
     };
     let ret = request(&node, req as u32, &mut buf, &mut user);
+    if ret != RETRY {
+        wait_over();
+    }
     // with the call trace on (or asked for alone), a refused request shows what the program asked for
     let show = LOG_REFUSED.load(core::sync::atomic::Ordering::Relaxed) || crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed);
     // a wait that ran out of time is an answer, not a refusal

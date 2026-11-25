@@ -350,8 +350,9 @@ pub fn dispatch(f: &mut TrapFrame) {
         16 => match crate::shm::vsync_wait(a[0], a[1]) {
             Some(until) => Res::BlockWith(Wait::Sleep(until), 0),
             None => match sys_ioctl(a[0], a[1], a[2]) {
-                // a wait on the GPU node that is not over: sleep a moment, then the call repeats
-                crate::svcdev::dri::RETRY => Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 1)),
+                // a wait on the GPU node that is not over: the call repeats – at once while the wait
+                // is young (other threads run in between), later after a timer tick
+                crate::svcdev::dri::RETRY => Res::Block(Wait::Sleep(crate::svcdev::dri::retry_at())),
                 r => Res::Val(r),
             },
         },
