@@ -12,6 +12,8 @@ use alloc::vec::Vec;
 
 /// Device number of the render node (`svcdev`: 226:128).
 const RENDER: &str = "226:128";
+/// Name of the render node inside its directory.
+const NODE_NAME: &str = "renderD128";
 const PCI_CLASS_DISPLAY: u8 = 0x03;
 const VENDOR_INTEL: u16 = 0x8086;
 
@@ -46,6 +48,9 @@ pub fn open(rest: &[&str]) -> Option<Node> {
                     let text = format!("MAJOR=226\nMINOR=128\nDEVNAME={}\nDEVTYPE=drm_minor\n", crate::svcdev::dri::NODE);
                     Some(Node::File(Arc::new(text.into_bytes())))
                 }
+                // the device's graphics nodes by name, as the DRM class lists them
+                ["device", "drm"] => dir(&[NODE_NAME], true),
+                ["device", "drm", name] if *name == NODE_NAME => dir(&[], true),
                 ["device", below @ ..] => super::sysfs::pci_device(&pci, below),
                 _ => None,
             }
