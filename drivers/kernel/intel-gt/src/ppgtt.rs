@@ -30,6 +30,16 @@ const MAX_HUGE_LEVEL: u32 = 2;
 /// Cache attribute index 3 of Xe_LPG: write-back, and the GT keeps the CPU's caches coherent.
 const CACHE_WB_COHERENT: u64 = PAT0 | PAT1;
 const ENTRY_FLAGS: u64 = PRESENT | RW | CACHE_WB_COHERENT;
+/// Bit 2 of a page's cache attribute index (bits 0 and 1 are PAT0, PAT1).
+const PAT2: u64 = 1 << 7;
+/// Index of write-back with the GT coherent to the CPU's caches.
+pub const PAT_WB_COHERENT: u8 = 3;
+
+/// The bits of a page entry (4 KiB) for cache attribute index `pat` (`xelp_pte_encode_pat`).
+fn pat_bits(pat: u8) -> u64 {
+    let bit = |n: u8, b: u64| if pat & (1 << n) != 0 { b } else { 0 };
+    bit(0, PAT0) | bit(1, PAT1) | bit(2, PAT2)
+}
 
 /// Access to the pages that hold the tables.
 pub trait Tables {
@@ -136,6 +146,15 @@ impl Ppgtt {
     /// Maps the memory pages `phys` (page-aligned addresses) at `va` and following. Refuses a
     /// range that is mapped already.
     pub fn map(&mut self, mem: &mut impl Tables, va: u64, phys: &[u64]) -> Result<()> {
+        self.map_cached(mem, va, phys, PAT_WB_COHERENT)
+    }
+
+    /// [`Ppgtt::map`] with cache attribute `pat` (index 0–4 of the GT's PAT table; programs name
+    /// it in their bind requests).
+    pub fn map_cached(&mut self, mem: &mut impl Tables, va: u64, phys: &[u64], pat: u8) -> Result<()> {
+        if pat > 4 {
+            return Err(Error::Invalid("PPGTT cache attribute"));
+        }
         check(va, phys.len() as u64)?;
         if phys.iter().any(|p| p & !ADDR != 0) {
             return Err(Error::Invalid("PPGTT page address"));
@@ -146,7 +165,7 @@ impl Ppgtt {
         for (i, p) in phys.iter().enumerate() {
             let at = va + i as u64 * PAGE;
             if let Some(leaf) = self.leaf(mem, at, true)? {
-                mem.write(leaf, index(at, 0), p | ENTRY_FLAGS);
+                mem.write(leaf, index(at, 0), p | PRESENT | RW | pat_bits(pat));
             }
         }
         Ok(())

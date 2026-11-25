@@ -25,7 +25,8 @@ pub trait Backend {
     /// A new address space; returns its number.
     fn vm_new(&mut self) -> Result<u32, Errno>;
     /// Maps memory pages at `va` of address space `vm`.
-    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno>;
+    /// `pat`: the cache attribute the program asked for (index of the GT's PAT table, 0–4).
+    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno>;
     /// Removes `pages` pages at `va` and makes the GPU forget them.
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno>;
     /// Maps `pages` pages at `va` of address space `vm` to nothing (writes vanish, reads give 0).

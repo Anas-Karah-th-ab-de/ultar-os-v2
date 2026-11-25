@@ -37,6 +37,9 @@ fn extra_program() {
     for l in lines {
         if l == "spur" {
             trace = true;
+        } else if let Some(n) = l.strip_prefix("gpu-pat=").and_then(|n| n.parse::<u8>().ok()) {
+            crate::drivers::intel_display::gt_exec::FORCE_PAT.store(n, core::sync::atomic::Ordering::Relaxed);
+            kprintln!("[test] GPU cache attribute forced to {n} (measuring only)");
         } else if l == "abgewiesen" {
             crate::svcdev::dri::LOG_REFUSED.store(true, core::sync::atomic::Ordering::Relaxed);
         } else {

@@ -36,7 +36,7 @@ impl Backend for Fake {
         self.vms += 1;
         Ok(100 + self.vms)
     }
-    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno> {
+    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], _pat: u8) -> Result<(), Errno> {
         self.maps.push((vm, va, pages.to_vec()));
         Ok(())
     }

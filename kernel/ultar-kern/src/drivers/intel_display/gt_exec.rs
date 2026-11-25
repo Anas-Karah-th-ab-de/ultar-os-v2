@@ -15,6 +15,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use spin::MutexGuard;
 use ultar_intel_gt::ads::Class;
 use ultar_intel_gt::lrc::{self, Context};
@@ -29,6 +30,12 @@ const RING_BYTES: u32 = 16384;
 const JOB_BYTES: u32 = 32;
 /// Jobs that may wait in one ring (the ring holds 512).
 const MAX_PENDING: u64 = 400;
+/// Test switch (`gpu-pat=N` on the test medium): every buffer gets cache attribute N on the GT.
+/// Only for measuring – the CPU still caches write-back, so a non-coherent N may show stale data.
+pub static FORCE_PAT: AtomicU8 = AtomicU8::new(0xff);
+/// Pages bound per cache attribute the programs asked for (for the log).
+pub static PAT_ASKED: [AtomicU64; 5] = [const { AtomicU64::new(0) }; 5];
+
 /// A queue that ran at least this many jobs gets a line in the log when it ends.
 const USAGE_LOG_JOBS: u64 = 50;
 const STEP_TIMEOUT_US: u32 = 500_000;
@@ -44,13 +51,14 @@ const JOB_TIMEOUT_NS: u64 = 5_000_000_000;
 struct Usage {
     busy_ns: u64,
     busy_from: u64,
-    mhz: Option<(u32, u32)>,
+    /// Looks at the frequency while busy: below 1000, below 1700, below 2200 MHz, above.
+    mhz: [u64; 4],
 }
 
 impl Usage {
     fn working(&mut self, mhz: u32) {
-        let (low, high) = self.mhz.unwrap_or((mhz, mhz));
-        self.mhz = Some((low.min(mhz), high.max(mhz)));
+        let bucket = [1000, 1700, 2200].iter().take_while(|b| mhz >= **b).count();
+        self.mhz[bucket] += 1;
     }
 
     fn idle(&mut self, now: u64) {
@@ -341,11 +349,20 @@ impl Backend for Gpu {
         Ok(rt.programs.next)
     }
 
-    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno> {
+    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno> {
         let (_, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
+        if let Some(n) = PAT_ASKED.get(pat as usize) {
+            n.fetch_add(pages.len() as u64, Ordering::Relaxed);
+        }
+        // the CPU maps every buffer write-back: the GT has to look into its caches (coherent),
+        // whatever the program asked for – unless a test forces another attribute
+        let used = match FORCE_PAT.load(Ordering::Relaxed) {
+            forced @ 0..=4 => forced,
+            _ => ultar_intel_gt::ppgtt::PAT_WB_COHERENT,
+        };
         space
-            .map(&mut rt.mem.tables, va, pages)
+            .map_cached(&mut rt.mem.tables, va, pages, used)
             .map_err(|_| Errno::NoMem)
     }
 
@@ -461,8 +478,14 @@ impl Backend for Gpu {
         let Ok((dev, rt)) = self.parts() else { return };
         if let Some(q) = rt.programs.queues.remove(&queue) {
             if q.submitted >= USAGE_LOG_JOBS {
-                let (low, high) = q.usage.mhz.unwrap_or((0, 0));
-                crate::kprintln!("[intel-gt] queue ends: {} jobs, engine busy {} ms, GT seen at {low}–{high} MHz while busy", q.submitted, q.usage.busy_ns / 1_000_000);
+                let m = q.usage.mhz;
+                let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
+                crate::kprintln!(
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks; pages bound per cache attribute asked 0..4: {asked:?}",
+                    q.submitted,
+                    q.usage.busy_ns / 1_000_000,
+                    m[0], m[1], m[2], m[3]
+                );
             }
             retire(dev, rt, q);
         }

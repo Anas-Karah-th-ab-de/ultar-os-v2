@@ -166,3 +166,16 @@ fn a_hole_in_a_null_range_splits_it_and_takes_memory() {
     assert!(!pt.is_null(&mut m, GIB) && pt.lookup(&mut m, hole).is_none());
     pt.map_null(&mut m, GIB, GIB / PAGE).unwrap();
 }
+
+#[test]
+fn a_page_gets_the_cache_attribute_asked_for() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new(&mut m).unwrap();
+    pt.map_cached(&mut m, 0x1000, &[0xaaaa_0000], 0).unwrap();
+    pt.map_cached(&mut m, 0x2000, &[0xbbbb_0000], 4).unwrap();
+    pt.map(&mut m, 0x3000, &[0xcccc_0000]).unwrap();
+    assert_eq!(m.read(0x10_3000, 1), 0xaaaa_0000 | 0x3);
+    assert_eq!(m.read(0x10_3000, 2), 0xbbbb_0000 | 0x83);
+    assert_eq!(m.read(0x10_3000, 3), 0xcccc_0000 | 0x1b);
+    assert!(pt.map_cached(&mut m, 0x4000, &[0xdddd_0000], 5).is_err());
+}
