@@ -234,6 +234,7 @@ follows = "spirv-llvm-translator"
 # the commit named in the translator's `spirv-headers-tag.conf`: it needs a newer state of the
 # headers than the last released one
 source = "https://github.com/KhronosGroup/SPIRV-Headers/archive/cb42dec3830d3ac67fa449ecdc0c0f73d5e74498.tar.gz"
+sha256 = "117010e525fe36b1ce006e0e58a6e0a3b415aabc9179d912b92737f41f3f994f"
 upstream = "https://github.com/KhronosGroup/SPIRV-Headers"
 tag = ""
 license = "MIT"
