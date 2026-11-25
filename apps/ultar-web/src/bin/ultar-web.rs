@@ -36,7 +36,13 @@ struct Args {
 }
 
 fn parse() -> Option<Args> {
-    let mut a = Args::default();
+    let mut a = Args {
+        // a link another app opened (the launcher hands it over); an argument wins
+        url: std::env::var("ULTAR_OPEN_URI")
+            .ok()
+            .filter(|u| !u.is_empty()),
+        ..Args::default()
+    };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {

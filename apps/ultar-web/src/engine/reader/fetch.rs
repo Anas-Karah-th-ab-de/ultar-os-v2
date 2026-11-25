@@ -4,12 +4,15 @@
 //! decoded with the charset the server or the page names (UTF-8, Windows-1256, …).
 
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
 /// Largest page read.
 pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
+/// Largest sound or video file fetched for playing.
+pub const MAX_MEDIA: u64 = 300 * 1024 * 1024;
 /// Time for each step (name lookup, connect, answer, every read).
 const TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -112,21 +115,21 @@ impl Client {
             use ureq::ResponseExt;
             response.get_uri().to_string()
         };
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("text/html")
+        let content_type = header(&response, "content-type")
+            .unwrap_or_else(|| "text/html".into())
             .to_ascii_lowercase();
         if !(200..300).contains(&status) {
             return Err(FetchError::Status(status));
         }
-        let mime = content_type
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_owned();
+        let mime = mime_of(&content_type);
+        if is_media(&mime) {
+            // played by the media player, which fetches it itself (Client::get_media)
+            return Ok(Fetched {
+                url: final_url,
+                mime,
+                text: String::new(),
+            });
+        }
         let texty = mime.is_empty()
             || mime.starts_with("text/")
             || mime.contains("xml")
@@ -150,6 +153,86 @@ impl Client {
             mime,
             text: decode(&bytes, charset.as_deref()),
         })
+    }
+}
+
+/// A header of `response` as text.
+fn header(response: &ureq::http::Response<ureq::Body>, name: &str) -> Option<String> {
+    response
+        .headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+}
+
+/// The media type of a `Content-Type` value (lower case, without parameters).
+fn mime_of(content_type: &str) -> String {
+    content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_owned()
+}
+
+/// `true` for a sound or video type.
+pub fn is_media(mime: &str) -> bool {
+    mime.starts_with("audio/") || mime.starts_with("video/")
+}
+
+impl Client {
+    /// Fetches a sound or video file for playing (up to [`MAX_MEDIA`]): fills `progress` with
+    /// per mille done (when the size is known) and stops early when `stop` is set. Gives the
+    /// bytes and the media type.
+    pub fn get_media(
+        &self,
+        url: &str,
+        progress: &AtomicU32,
+        stop: &AtomicBool,
+    ) -> Result<(Vec<u8>, String), FetchError> {
+        let response = self
+            .agent
+            .get(url)
+            .call()
+            .map_err(|e| FetchError::Unreachable(e.to_string()))?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            return Err(FetchError::Status(status));
+        }
+        let mime = mime_of(
+            &header(&response, "content-type")
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+        );
+        let total = header(&response, "content-length").and_then(|v| v.parse::<u64>().ok());
+        if total.is_some_and(|t| t > MAX_MEDIA) {
+            return Err(FetchError::TooLarge);
+        }
+        let mut reader = response.into_body().into_reader();
+        let mut bytes = Vec::with_capacity(total.unwrap_or(0).min(MAX_MEDIA) as usize);
+        let mut chunk = vec![0u8; 64 * 1024];
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                return Err(FetchError::Unreachable("stopped".into()));
+            }
+            let n = reader
+                .read(&mut chunk)
+                .map_err(|e| FetchError::Unreachable(e.to_string()))?;
+            if n == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&chunk[..n]);
+            if bytes.len() as u64 > MAX_MEDIA {
+                return Err(FetchError::TooLarge);
+            }
+            if let Some(t) = total.filter(|t| *t > 0) {
+                progress.store(
+                    (bytes.len() as u64 * 1000 / t).min(1000) as u32,
+                    Ordering::Relaxed,
+                );
+            }
+        }
+        Ok((bytes, mime))
     }
 }
 

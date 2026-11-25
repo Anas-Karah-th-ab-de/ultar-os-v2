@@ -12,6 +12,7 @@ fn base_app_manifests_parse() {
         "ultar-store",
         "ultar-editor",
         "ultar-terminal",
+        "ultar-web",
     ] {
         let file = apps.join(app).join("ultar-app.toml");
         let text = std::fs::read_to_string(&file).unwrap();

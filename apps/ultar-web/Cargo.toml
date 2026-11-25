@@ -31,6 +31,13 @@ ureq = { version = "3", default-features = false, features = ["rustls-no-provide
 rustls-graviola = "0.4"
 rustls-rustcrypto = "0.0.2-alpha"
 encoding_rs = "0.8"
+# Sound and video of pages (media::): audio decoders in pure Rust (MP3, AAC, FLAC, Vorbis, WAV in
+# MP4/M4A, Ogg, Matroska/WebM, WAV), the MP4 container in pure Rust, H.264 by OpenH264 (BSD,
+# built from source and linked statically).
+ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "mkv"] }
+mp4 = "0.14"
+openh264 = { version = "0.9", default-features = false, features = ["source"] }
 
 [dev-dependencies]
 ultar-ui = { path = "../../platform/ultar-ui" }

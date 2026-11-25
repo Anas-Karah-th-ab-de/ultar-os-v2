@@ -1,0 +1,35 @@
+# Ultar browser – app manifest (docs/APP-RULES.md §3). The release bundle carries the full
+# engine (aarch64); without it the browser shows pages with its reader engine.
+id          = "browser"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "web.app.name"
+description = "web.app.desc"
+icon        = "browser"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+# http(s) links of other apps; a page's own files://… is not opened here
+schemes      = ["http", "https"]
+multi_window = true
+
+[permissions]
+files       = ["downloads:rw"]
+network     = "allowed"
+background  = false
+# sound and videos of pages play through the sound card (/dev/ultar/pcm)
+kernel      = ["sound"]
+
+[limits]
+memory_mb   = 768
+cpu         = "foreground"

@@ -171,6 +171,12 @@ from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-pkg"]
 
+# The browser plays the sound of pages through the sound card: the node's path from the HAL.
+[[allow]]
+from = "apps"
+to = "system-hal"
+crates = ["system/hal/ultar-hal-system"]
+
 # The office library (text buffer with encodings and undo, documents, sheets, PDF) is shared by
 # the editor and the office apps; it has no window and no process of its own.
 [[allow]]

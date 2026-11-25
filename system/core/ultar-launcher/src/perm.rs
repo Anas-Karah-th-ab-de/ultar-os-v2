@@ -161,7 +161,7 @@ impl PermissionSet {
 
 /// Names of the kernel rights in bit order (the Ultar kernel's
 /// `PR_ULTAR_RIGHTS_*` bits, the same as `ultar_service::Right`).
-pub const KERNEL_RIGHT_NAMES: [&str; 10] = [
+pub const KERNEL_RIGHT_NAMES: [&str; 14] = [
     "mount",
     "net_admin",
     "load_driver",
@@ -172,7 +172,14 @@ pub const KERNEL_RIGHT_NAMES: [&str; 10] = [
     "manage_groups",
     "set_id",
     "file_admin",
+    "bluetooth",
+    "input_inject",
+    "sound",
+    "camera",
 ];
+
+/// The kernel right `sound`: the sound card's running streams `/dev/ultar/pcm`.
+pub const KERNEL_SOUND: u64 = 1 << 12;
 
 /// The bit mask of the kernel rights named in `names`; `None` for an
 /// unknown name.
@@ -222,6 +229,8 @@ mod tests {
             Some(0x300)
         );
         assert_eq!(kernel_rights(&["root".into()]), None);
+        assert_eq!(kernel_rights(&["sound".into()]), Some(KERNEL_SOUND));
+        assert_eq!(KERNEL_RIGHT_NAMES.len(), ultar_service::Right::ALL.len());
         for (bit, right) in ultar_service::Right::ALL.iter().enumerate() {
             assert_eq!(right.bit(), 1 << bit);
         }
