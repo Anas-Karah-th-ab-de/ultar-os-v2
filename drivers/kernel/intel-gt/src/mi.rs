@@ -44,6 +44,39 @@ pub const fn store_imm_ggtt(addr: u32, value: u32) -> [u32; 4] {
     [STORE_DATA_IMM | SDI_GGTT | 2, addr, 0, value]
 }
 
+/// `MI_FLUSH_DW` (copy engine): waits for the engine's writes to reach memory.
+const FLUSH_DW: u32 = instr(0x26);
+const FLUSH_DW_OP_STOREDW: u32 = 1 << 14;
+const FLUSH_DW_USE_GTT: u32 = 1 << 2;
+/// `PIPE_CONTROL` of six words (render and compute engine).
+const PIPE_CONTROL: u32 = (3 << 29) | (3 << 27) | (2 << 24) | (6 - 2);
+const PC0_HDC_PIPELINE_FLUSH: u32 = 1 << 9;
+const PC_DEPTH_CACHE_FLUSH: u32 = 1 << 0;
+const PC_DC_FLUSH: u32 = 1 << 5;
+const PC_FLUSH_ENABLE: u32 = 1 << 7;
+const PC_RENDER_TARGET_CACHE_FLUSH: u32 = 1 << 12;
+const PC_QW_WRITE: u32 = 1 << 14;
+const PC_CS_STALL: u32 = 1 << 20;
+const PC_GLOBAL_GTT: u32 = 1 << 24;
+const PC_TILE_CACHE_FLUSH: u32 = 1 << 28;
+
+/// End of a job on the copy engine: once its writes reached memory, `value` is stored at the
+/// GGTT address `addr` (as Linux' `emit_flush_imm_ggtt`).
+pub const fn flush_store_ggtt_copy(addr: u32, value: u32) -> [u32; 4] {
+    [FLUSH_DW | FLUSH_DW_OP_STOREDW | (4 - 2), addr | FLUSH_DW_USE_GTT, 0, value]
+}
+
+/// End of a job on the render or compute engine: the engine stalls until the job is done, its
+/// caches are written to memory, then `value` is stored (8 bytes, upper half zero) at the GGTT
+/// address `addr`. Without this a program could see the job's number before its data. Flags as
+/// Linux' `emit_render_cache_flush` and `emit_pipe_imm_ggtt`; the compute engine leaves out the
+/// flushes of the 3D caches.
+pub const fn flush_store_ggtt_render(addr: u32, value: u32, compute: bool) -> [u32; 6] {
+    let three_d = if compute { 0 } else { PC_RENDER_TARGET_CACHE_FLUSH | PC_DEPTH_CACHE_FLUSH | PC_TILE_CACHE_FLUSH };
+    let flags = PC_CS_STALL | PC_DC_FLUSH | PC_FLUSH_ENABLE | PC_QW_WRITE | PC_GLOBAL_GTT | three_d;
+    [PIPE_CONTROL | PC0_HDC_PIPELINE_FLUSH, flags, addr, 0, value, 0]
+}
+
 /// Stores `value` at the address `addr` of the context's own address space.
 pub const fn store_imm(addr: u64, value: u32) -> [u32; 4] {
     [STORE_DATA_IMM | 2, addr as u32, (addr >> 32) as u32, value]
@@ -130,5 +163,18 @@ mod tests {
         assert_eq!(job.len() % 2, 0);
         assert_eq!(job[0], ARB_ON);
         assert_eq!(job[4], 0xc0de);
+    }
+
+    #[test]
+    fn job_ends_flush_before_they_store() {
+        // MI_FLUSH_DW, store dword, length 2; address with the GGTT bit
+        assert_eq!(flush_store_ggtt_copy(0x1000, 5), [0x1300_4002, 0x1004, 0, 5]);
+        // PIPE_CONTROL (0x7a00_0004) with the HDC flush; CS stall, DC flush, flush enable,
+        // immediate write, GGTT; the render engine also flushes the 3D caches
+        let compute = flush_store_ggtt_render(0x2000, 9, true);
+        assert_eq!(compute[0], 0x7a00_0204);
+        assert_eq!(compute[1], 0x0110_40a0);
+        assert_eq!(compute[2..], [0x2000, 0, 9, 0]);
+        assert_eq!(flush_store_ggtt_render(0x2000, 9, false)[1], 0x1110_50a1);
     }
 }

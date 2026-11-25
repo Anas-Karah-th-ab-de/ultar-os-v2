@@ -350,8 +350,9 @@ pub fn dispatch(f: &mut TrapFrame) {
         16 => match crate::shm::vsync_wait(a[0], a[1]) {
             Some(until) => Res::BlockWith(Wait::Sleep(until), 0),
             None => match sys_ioctl(a[0], a[1], a[2]) {
-                // a wait on the GPU node that is not over: sleep a moment, then the call repeats
-                crate::svcdev::dri::RETRY => Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 1)),
+                // a wait on the GPU node that is not over: the call repeats – at once while the wait
+                // is young (other threads run in between), later after a timer tick
+                crate::svcdev::dri::RETRY => Res::Block(crate::svcdev::dri::retry_wait()),
                 r => Res::Val(r),
             },
         },
@@ -1128,6 +1129,11 @@ fn sys_open(dirfd: i64, path: u64, flags: u64, _mode: u64) -> i64 {
     }
     if let Err(e) = crate::perm::open_gate(&path, acc, trunc, creat) {
         return e;
+    }
+    // a large file of a disk, read only: not read as a whole (bigfile.rs)
+    let big = if acc == 0 && !creat && !trunc && !dironly { crate::bigfile::open(&path) } else { None };
+    if let Some(obj) = big {
+        return with(|p| p.add_fd(Fd { kind: FdKind::Mem(obj, 0), cloexec, flags: flags as u32 }, 0)).unwrap_or(-EBADF);
     }
     let kind = match fs::open(&path) {
         Some(_) if creat && excl => return -EEXIST,
@@ -2873,8 +2879,11 @@ pub(crate) fn place(p: &mut Proc, addr: u64, len: u64, flags: u64) -> Result<u64
     Ok(addr)
 }
 
+/// Largest mapping (a language model file is mapped as a whole: tens of gigabytes).
+const MMAP_MAX: u64 = 1 << 36;
+
 fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i64 {
-    if len == 0 || len > 1 << 34 {
+    if len == 0 || len > MMAP_MAX {
         return -EINVAL;
     }
     let len = (len + 4095) & !4095;
@@ -2936,7 +2945,7 @@ fn sys_mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> i6
 
 fn sys_munmap(addr: u64, len: u64) -> i64 {
     // same bound as mmap: without it one call walks up to 2^52 pages while holding the process lock
-    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > 1 << 34 || addr >= USER_TOP || addr + len > USER_TOP {
+    if addr & 0xfff != 0 || addr < crate::paging::USER_LOW || len > MMAP_MAX || addr >= USER_TOP || addr + len > USER_TOP {
         return -EINVAL;
     }
     with(|p| {

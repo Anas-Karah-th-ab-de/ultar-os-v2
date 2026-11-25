@@ -94,6 +94,57 @@ pub fn setup(hw: &mut impl Hw, base: u32, status_page_ggtt: u32) {
 /// programs with index 3, so nothing has to be flushed by hand.
 pub const XE_LPG_PAT: [u32; 5] = [0, 1 << 2, 3 << 2, 2, 3];
 
+/// `GLOBAL_MOCS(0)`: the first of the sixteen cache settings a command or surface names by index
+/// ("MOCS"); the L4 part (control).
+pub const GLOBAL_MOCS0: u32 = 0x4000;
+/// `LNCFCMOCS(0)`: the L3 part of the same settings, two entries per register.
+pub const LNCFCMOCS0: u32 = 0xb020;
+
+/// The MOCS table of Xe_LPG as Linux programs it (`mtl_mocs_desc` in `xe_mocs.c`): control
+/// (L4) and L3 setting of index 0–15. Unused indexes get the value of index 1 (cached). Mesa
+/// names index 1 for ordinary memory; left at the reset value the GT does not cache in L3.
+pub const XE_LPG_MOCS: [(u32, u16); 16] = {
+    const IG_PAT: u32 = 1 << 8;
+    const L4_WT: u32 = 1 << 2;
+    const L4_UC: u32 = 3 << 2;
+    const LKUP: u16 = 1 << 7;
+    const GLBGO: u16 = 1 << 6;
+    const L3_UC: u16 = 1 << 4;
+    const L3_WB: u16 = 3 << 4;
+    const CACHED: (u32, u16) = (IG_PAT, LKUP | L3_WB);
+    [
+        (0, LKUP | L3_WB),
+        CACHED,
+        (IG_PAT, LKUP | L3_UC),
+        (IG_PAT | L4_UC, LKUP | L3_UC),
+        (IG_PAT, LKUP | GLBGO | L3_UC),
+        (IG_PAT | L4_UC, LKUP | GLBGO | L3_UC),
+        (IG_PAT, L3_UC),
+        (IG_PAT | L4_UC, L3_UC),
+        (IG_PAT, GLBGO | L3_UC),
+        (IG_PAT | L4_UC, GLBGO | L3_UC),
+        CACHED,
+        CACHED,
+        CACHED,
+        CACHED,
+        (IG_PAT | L4_WT, LKUP | L3_WB),
+        (IG_PAT, GLBGO | L3_UC),
+    ]
+};
+
+/// Writes [`XE_LPG_MOCS`]; returns the L3 register of index 0/1 as it was before (for the
+/// log). Needs the GT and render forcewake domains awake.
+pub fn program_mocs(hw: &mut impl Hw) -> u32 {
+    let before = hw.read(LNCFCMOCS0);
+    for (i, (control, _)) in XE_LPG_MOCS.iter().enumerate() {
+        hw.write(GLOBAL_MOCS0 + 4 * i as u32, *control);
+    }
+    for (i, pair) in XE_LPG_MOCS.chunks(2).enumerate() {
+        hw.write(LNCFCMOCS0 + 4 * i as u32, pair[0].1 as u32 | (pair[1].1 as u32) << 16);
+    }
+    before
+}
+
 /// Writes [`XE_LPG_PAT`]. Needs the GT forcewake domain awake.
 pub fn program_pat(hw: &mut impl Hw) {
     for (i, value) in XE_LPG_PAT.iter().enumerate() {
@@ -263,5 +314,19 @@ mod tests {
         let st = RingState::read(&mut s, 0x22000);
         assert_eq!((st.head, st.tail), (0x18, 0x18));
         assert!(alloc::format!("{st}").starts_with("head 0x18 tail 0x18"));
+    }
+
+    #[test]
+    fn mocs_table_as_linux_programs_it() {
+        let mut hw = crate::sim::Sim::default();
+        program_mocs(&mut hw);
+        assert_eq!(hw.get(GLOBAL_MOCS0), 0);
+        assert_eq!(hw.get(GLOBAL_MOCS0 + 4), 0x100);
+        assert_eq!(hw.get(GLOBAL_MOCS0 + 4 * 3), 0x10c);
+        assert_eq!(hw.get(GLOBAL_MOCS0 + 4 * 14), 0x104);
+        // index 0 and 1 cached in L3 (lookup, write-back), 2 and 3 not
+        assert_eq!(hw.get(LNCFCMOCS0), 0x00b0_00b0);
+        assert_eq!(hw.get(LNCFCMOCS0 + 4), 0x0090_0090);
+        assert_eq!(hw.get(LNCFCMOCS0 + 4 * 7), 0x0050_00b0);
     }
 }

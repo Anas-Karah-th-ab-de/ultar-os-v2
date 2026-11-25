@@ -54,6 +54,7 @@ mod proc;
 mod procfs;
 mod rawpart;
 mod shell;
+mod bigfile;
 mod selftest;
 mod signal;
 mod slab;
@@ -125,6 +126,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         let fb = boot.fb.map(|f| (f.base, f.stride as u64 * f.height as u64 * 4));
         // Prozessor-Schutz an: SMEP/SMAP/UMIP (der Kern greift auf Benutzerspeicher nur über die Seitentabelle zu)
         arch::haerten();
+        arch::pat_setzen();
         paging::init(mem::top(&boot), fb);
         mem::init(&boot);
         apic::init();

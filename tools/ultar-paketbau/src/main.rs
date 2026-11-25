@@ -81,7 +81,7 @@ fn outdated(recipe: &Recipe) -> Result<(), String> {
 }
 
 fn closure(recipe: &Recipe, tree: &Path) -> Result<(), String> {
-    let (count, leaks) = work::closure_of(tree, &recipe.prefix);
+    let (count, leaks) = work::closure_of(tree, &recipe.prefix, &recipe.uses);
     if count == 0 {
         return Err(format!("{}: nothing built there", tree.display()));
     }

@@ -66,6 +66,11 @@ Ultar kernel on the same machine, with the package as a read-only disk and Mesa 
 kernel's render node through the `xe` interface: `VKRECHNEN: ALLES OK`
 (`PKGROOT=<work>/out TESTPROG=<file> tools/kern-test/igpu-run.sh`, see `igpu-passthrough.sh`).
 
+The second package, `pakete/llama` (llama.cpp with its Vulkan backend), stands on the first
+(`uses = ["/pkg/grafik-laufzeit"]`: its C library, loader and Vulkan driver). On the Ultar kernel
+it runs Qwen3.6-35B-A3B (21 GB) on the GPU as fast as on Linux; numbers in
+`docs/integration/intel-gt.md` (G5).
+
 Still taken from the build machine and to be replaced by parts of our own later: the compiler
 itself (and with it the C++ standard library, linked statically into the shipped C++ code),
 the kernel interface headers.

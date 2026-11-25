@@ -32,6 +32,44 @@ pub const RIGHT: Rights = Rights::RAW_DEVICE;
 pub const RETRY: i64 = i64::MIN;
 
 static DEVICE: Mutex<Option<Arc<uapi::Device>>> = Mutex::new(None);
+/// Threads waiting for the GPU now: thread id and when their wait began (ns). While there are
+/// any, idle cores wake every 250 µs (`apic::fast_timer`); there are no GPU interrupts yet.
+static WAITING: Mutex<Vec<(u64, u64)>> = Mutex::new(Vec::new());
+/// A wait older than this no longer keeps the fast timer (its thread may be gone).
+const FAST_FOR_NS: u64 = 10_000_000_000;
+
+/// What a thread whose GPU wait is not over waits for: the next timer interrupt, then it asks again.
+pub fn retry_wait() -> proc::Wait {
+    let (me, now) = (proc::current(), crate::arch::uptime_ns());
+    let mut w = WAITING.lock();
+    if !w.iter().any(|x| x.0 == me) {
+        w.push((me, now));
+    }
+    proc::Wait::Tick(crate::apic::epoch())
+}
+
+/// Whether threads wait for the GPU (young waits only).
+pub fn waiting() -> bool {
+    let Some(mut w) = WAITING.try_lock() else { return true };
+    if w.is_empty() {
+        return false;
+    }
+    let now = crate::arch::uptime_ns();
+    w.retain(|x| now - x.1 < FAST_FOR_NS);
+    !w.is_empty()
+}
+
+/// The calling thread's wait is over (its request was answered).
+fn wait_over() {
+    let me = proc::current();
+    let mut w = WAITING.lock();
+    if !w.is_empty() {
+        w.retain(|x| x.0 != me);
+    }
+}
+
+/// Log every refused request (set by the test medium's extra program, line `abgewiesen`).
+pub static LOG_REFUSED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// Makes the node appear: `device` is what the queries answer from.
 pub fn publish(device: uapi::Device) {
@@ -119,8 +157,13 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
         },
     };
     let ret = request(&node, req as u32, &mut buf, &mut user);
-    // with the call trace on, a refused request shows what the program asked for
-    if ret < 0 && ret != RETRY && crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed) {
+    if ret != RETRY {
+        wait_over();
+    }
+    // with the call trace on (or asked for alone), a refused request shows what the program asked for
+    let show = LOG_REFUSED.load(core::sync::atomic::Ordering::Relaxed) || crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed);
+    // a wait that ran out of time is an answer, not a refusal
+    if ret < 0 && ret != RETRY && ret != -(Errno::Time as i64) && show {
         let words: Vec<alloc::string::String> = buf.chunks(8).map(|c| c.iter().rev().map(|b| alloc::format!("{b:02x}")).collect()).collect();
         crate::kprintln!("[dri] request {req:#x} refused ({ret}): {}", words.join(" "));
     }

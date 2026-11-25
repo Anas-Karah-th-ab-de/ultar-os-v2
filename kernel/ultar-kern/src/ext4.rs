@@ -16,6 +16,14 @@ pub struct Ext4 {
     gdt: u64,
 }
 
+/// Where a file lies on the disk.
+pub struct Layout {
+    /// Size of the file in bytes.
+    pub size: u64,
+    /// Runs of blocks, sorted: first block in the file, first block on the disk, number of blocks.
+    pub runs: Vec<(u64, u64, u64)>,
+}
+
 pub struct Inode {
     pub mode: u16,
     pub size: u64,
@@ -67,6 +75,27 @@ impl Ext4 {
 
     fn read_blocks(&self, b: u64, n: u64) -> Option<Vec<u8>> {
         rd(self.disk, self.part + b * self.bs / 512, (n * self.bs) as usize)
+    }
+
+    /// `n` blocks from disk block `b` on (for [`crate::bigfile`]).
+    pub fn blocks(&self, b: u64, n: u64) -> Option<Vec<u8>> {
+        self.read_blocks(b, n)
+    }
+
+    /// Where the regular file at `path` lies on the disk, if it has at least `min` bytes and this
+    /// file system has 4 KiB blocks and keeps the file in extents – so that parts of it can be
+    /// read without reading all of it.
+    pub fn layout(&self, path: &str, min: u64) -> Option<Layout> {
+        let (_, ino) = self.lookup(path)?;
+        let regular = ino.mode & 0xf000 == 0x8000;
+        if !regular || ino.size < min || self.bs != 4096 || ino.flags & 0x80000 == 0 || ino.flags & 0x1000_0000 != 0 {
+            return None;
+        }
+        let mut found = Vec::new();
+        self.extents(&ino.block, &mut found, 0);
+        let mut runs: Vec<(u64, u64, u64)> = found.into_iter().filter(|e| !e.3).map(|e| (e.0, e.1, e.2)).collect();
+        runs.sort_unstable();
+        Some(Layout { size: ino.size, runs })
     }
 
     pub fn inode(&self, ino: u64) -> Option<Inode> {

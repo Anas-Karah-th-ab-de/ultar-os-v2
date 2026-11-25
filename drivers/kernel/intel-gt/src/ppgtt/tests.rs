@@ -166,3 +166,53 @@ fn a_hole_in_a_null_range_splits_it_and_takes_memory() {
     assert!(!pt.is_null(&mut m, GIB) && pt.lookup(&mut m, hole).is_none());
     pt.map_null(&mut m, GIB, GIB / PAGE).unwrap();
 }
+
+#[test]
+fn a_page_gets_the_cache_attribute_asked_for() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new(&mut m).unwrap();
+    pt.map_cached(&mut m, 0x1000, &[0xaaaa_0000], 0).unwrap();
+    pt.map_cached(&mut m, 0x2000, &[0xbbbb_0000], 4).unwrap();
+    pt.map(&mut m, 0x3000, &[0xcccc_0000]).unwrap();
+    assert_eq!(m.read(0x10_3000, 1), 0xaaaa_0000 | 0x3);
+    assert_eq!(m.read(0x10_3000, 2), 0xbbbb_0000 | 0x83);
+    assert_eq!(m.read(0x10_3000, 3), 0xcccc_0000 | 0x1b);
+    assert!(pt.map_cached(&mut m, 0x4000, &[0xdddd_0000], 5).is_err());
+}
+
+#[test]
+fn two_megabytes_of_contiguous_memory_take_one_entry() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new(&mut m).unwrap();
+    // 2 MiB at 6 MiB (aligned) from memory at 0x4000_0000, then one more page
+    let phys: Vec<u64> = (0..513).map(|k| 0x4000_0000 + k * PAGE).collect();
+    assert_eq!(pt.map_cached(&mut m, 3 * MIB2, &phys, 1), Ok(1));
+    // root, one table for the 1 GiB, one for the 2 MiB entries, one page table for the last page
+    assert_eq!(pt.table_pages().len(), 4);
+    assert_eq!(m.read(0x10_2000, 3), 0x4000_0000 | 0x80 | 0xb);
+    assert_eq!(pt.lookup(&mut m, 3 * MIB2 + 5 * PAGE), Some(0x4000_5000));
+    assert_eq!(pt.lookup(&mut m, 4 * MIB2), Some(0x4020_0000));
+    // cache attribute 4 puts its third bit at bit 12 in a 2 MiB entry
+    pt.map_cached(&mut m, 5 * MIB2, &phys[..512], 4).unwrap();
+    assert_eq!(m.read(0x10_2000, 5), 0x4000_0000 | 0x1000 | 0x83);
+    // not aligned in memory: page entries
+    pt.map_cached(&mut m, 8 * MIB2, &phys[1..513], 3).unwrap();
+    assert_eq!(m.read(0x10_2000, 8) & 0x80, 0);
+}
+
+#[test]
+fn removing_part_of_a_two_megabyte_entry_keeps_the_rest() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new(&mut m).unwrap();
+    let phys: Vec<u64> = (0..512).map(|k| 0x4000_0000 + k * PAGE).collect();
+    pt.map_cached(&mut m, MIB2, &phys, 4).unwrap();
+    pt.unmap(&mut m, MIB2 + 10 * PAGE, 1).unwrap();
+    assert_eq!(pt.lookup(&mut m, MIB2 + 10 * PAGE), None);
+    assert_eq!(pt.lookup(&mut m, MIB2 + 11 * PAGE), Some(0x4000_b000));
+    // the pages keep the cache attribute (bit 2 now at bit 7)
+    let leaf = m.read(0x10_2000, 1) & 0x000f_ffff_ffff_f000;
+    assert_eq!(m.read(leaf, 9), 0x4000_9000 | 0x83);
+    pt.unmap(&mut m, MIB2, 512).unwrap();
+    assert_eq!(pt.lookup(&mut m, MIB2), None);
+    pt.map_cached(&mut m, MIB2, &phys, 0).unwrap();
+}

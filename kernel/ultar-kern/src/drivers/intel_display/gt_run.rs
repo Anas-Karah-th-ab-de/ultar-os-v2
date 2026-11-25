@@ -67,6 +67,10 @@ impl Runtime {
             .get(&mut dev.mmio, Domain::Render)
             .map_err(|e| format!("render forcewake: {e}"))?;
         ultar_intel_gt::engines::program_pat(&mut dev.mmio);
+        let before = ultar_intel_gt::engines::program_mocs(&mut dev.mmio);
+        let after = ultar_intel_gt::Hw::read(&mut dev.mmio, ultar_intel_gt::engines::LNCFCMOCS0);
+        crate::kprintln!("[intel-gt] cache settings (MOCS) programmed: L3 of index 0/1 {before:#010x} -> {after:#010x}");
+        full_speed(dev);
         let first = self.next_id;
         let ran = self.with_env(dev, |env| {
             gt_job::engines_up(env)?;
@@ -88,6 +92,22 @@ impl Runtime {
         }
         self.mem.release(dev);
     }
+}
+
+/// Asks for the GT's highest frequency (it would stay near the lowest and compute several times
+/// slower) and logs what the GT runs at before and after.
+fn full_speed(dev: &mut Device) {
+    use ultar_intel_gt::freq;
+    let (low, high) = freq::limits(&mut dev.mmio);
+    let before = freq::current(&mut dev.mmio);
+    if high.0 == 0 {
+        crate::kprintln!("[intel-gt] frequency: no limits readable, left as it is ({} MHz)", before.mhz());
+        return;
+    }
+    freq::request(&mut dev.mmio, high);
+    crate::arch::sleep_us(5_000);
+    let after = freq::current(&mut dev.mmio);
+    crate::kprintln!("[intel-gt] frequency: {} MHz requested (range {}–{} MHz), running at {} MHz, before {} MHz", high.mhz(), low.mhz(), high.mhz(), after.mhz(), before.mhz());
 }
 
 /// Loads the GuC and switches the command buffers on; the pieces of a [`Runtime`].

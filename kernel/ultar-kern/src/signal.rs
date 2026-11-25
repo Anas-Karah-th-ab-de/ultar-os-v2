@@ -69,7 +69,7 @@ pub fn send_locked(ps: &mut Vec<Box<Proc>>, tgid: u64, tid: u64, sig: u64) -> bo
 fn interrupt(p: &mut Proc, restart: bool) {
     let State::Blocked(w) = p.state else { return };
     match w {
-        Wait::Input | Wait::Child(_) | Wait::Pipe | Wait::Net(_) | Wait::Poll(_, _) => {
+        Wait::Input | Wait::Child(_) | Wait::Pipe | Wait::Net(_) | Wait::Poll(_, _) | Wait::Tick(_) => {
             p.poll_dl = None;
             if !restart {
                 p.frame.rip += 2;

@@ -15,6 +15,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicU64, Ordering};
 use spin::MutexGuard;
 use ultar_intel_gt::ads::Class;
 use ultar_intel_gt::lrc::{self, Context};
@@ -26,17 +27,52 @@ use ultar_intel_gt::uapi::{EngineClass, Errno};
 
 const RING_BYTES: u32 = 16384;
 /// Bytes of one job in a ring.
-const JOB_BYTES: u32 = 32;
-/// Jobs that may wait in one ring (the ring holds 512).
-const MAX_PENDING: u64 = 400;
+const JOB_BYTES: u32 = 64;
+/// Jobs that may wait in one ring (the ring holds 256).
+const MAX_PENDING: u64 = 200;
+/// 2 MiB entries the GT got for buffers (for the log).
+pub static HUGE_ENTRIES: AtomicU64 = AtomicU64::new(0);
+/// Pages bound per cache attribute the programs asked for (for the log).
+pub static PAT_ASKED: [AtomicU64; 5] = [const { AtomicU64::new(0) }; 5];
+
+/// A queue that ran at least this many jobs gets a line in the log when it ends.
+const USAGE_LOG_JOBS: u64 = 50;
 const STEP_TIMEOUT_US: u32 = 500_000;
 /// How long the GuC gets to stop a context (it waits 640 ms for a hung one, then resets).
 const STOP_TIMEOUT_US: u32 = 3_000_000;
 /// How long one job may take before its queue is stopped (Linux: 5 s).
 const JOB_TIMEOUT_NS: u64 = 5_000_000_000;
 
+/// What a queue did, for the log when it ends: how many jobs, how long the engine worked for it
+/// (from a job handed to an idle queue until the queue was seen idle again) and the range of
+/// frequencies the GT was seen at while it worked.
+#[derive(Default)]
+struct Usage {
+    busy_ns: u64,
+    busy_from: u64,
+    /// Looks at the frequency while busy: below 1000, below 1700, below 2200 MHz, above.
+    mhz: [u64; 4],
+}
+
+impl Usage {
+    fn working(&mut self, mhz: u32) {
+        let bucket = [1000, 1700, 2200].iter().take_while(|b| mhz >= **b).count();
+        self.mhz[bucket] += 1;
+    }
+
+    fn idle(&mut self, now: u64) {
+        if self.busy_from != 0 {
+            self.busy_ns += now - self.busy_from;
+            self.busy_from = 0;
+        }
+    }
+}
+
 /// A context of a program on one engine.
 struct Queue {
+    usage: Usage,
+    /// Engine class: how a job ends (flush and store).
+    class: Class,
     /// Context id at the GuC.
     id: u32,
     ring: GgttBuf,
@@ -167,15 +203,16 @@ fn build_queue(
         }
     };
     let descriptor = ctx.descriptor(image.gtt);
-    let id = rt.next_id;
     rt.next_id += 1;
     let queue = Queue {
-        id,
+        id: rt.next_id - 1,
         ring,
         image,
         seqno,
         tail: JOB_BYTES,
         submitted: 0,
+        class,
+        usage: Usage::default(),
         seen: 0,
         since_ns: 0,
         banned: false,
@@ -295,8 +332,8 @@ fn done(q: &Queue) -> u64 {
 impl Backend for Gpu {
     type Buffer = Arc<crate::memfd::MemObj>;
 
-    fn buffer_new(&mut self, size: u64) -> Result<Self::Buffer, Errno> {
-        let obj = crate::memfd::MemObj::new(false);
+    fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno> {
+        let obj = crate::memfd::MemObj::new_gpu(write_combining);
         obj.set_size(size).map_err(|_| Errno::NoMem)?;
         Ok(Arc::new(obj))
     }
@@ -313,12 +350,19 @@ impl Backend for Gpu {
         Ok(rt.programs.next)
     }
 
-    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno> {
+    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno> {
         let (_, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
-        space
-            .map(&mut rt.mem.tables, va, pages)
-            .map_err(|_| Errno::NoMem)
+        if let Some(n) = PAT_ASKED.get(pat as usize) {
+            n.fetch_add(pages.len() as u64, Ordering::Relaxed);
+        }
+        // what the program asked for (the logic refused attributes that do not fit how the CPU
+        // maps the buffer)
+        let huge = space
+            .map_cached(&mut rt.mem.tables, va, pages, pat)
+            .map_err(|_| Errno::NoMem)?;
+        HUGE_ENTRIES.fetch_add(huge as u64, Ordering::Relaxed);
+        Ok(())
     }
 
     fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
@@ -377,11 +421,18 @@ impl Backend for Gpu {
         if q.submitted == finished {
             // the queue was idle: the hang check measures this job from now
             q.since_ns = crate::arch::uptime_ns();
+            q.usage.busy_from = q.since_ns;
         }
         let seqno = q.submitted + 1;
+        // the job's number is stored once its writes reached memory: a program that sees the
+        // number sees the data
         let mut job = mi::batch_start(batch_va, false).to_vec();
-        job.extend_from_slice(&mi::store_imm_ggtt(q.seqno.gtt, seqno as u32));
+        match q.class {
+            Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
+            class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
+        }
         job.push(mi::ARB_CHECK);
+        job.resize(JOB_BYTES as usize / 4, mi::NOOP);
         let tail = (q.tail + JOB_BYTES) % RING_BYTES;
         let tail_at = lrc::PPHWSP_SIZE + lrc::CTX_RING_TAIL * 4;
         let written = q.ring.write_at(q.tail as usize, &words_to_bytes(&job))
@@ -411,6 +462,11 @@ impl Backend for Gpu {
         if finished != q.seen {
             (q.seen, q.since_ns) = (finished, now);
         }
+        if finished == q.submitted {
+            q.usage.idle(now);
+        } else {
+            q.usage.working(ultar_intel_gt::freq::current(&mut dev.mmio).mhz());
+        }
         if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
             ban(dev, rt, queue);
             return u64::MAX;
@@ -426,6 +482,17 @@ impl Backend for Gpu {
     fn queue_free(&mut self, queue: u32) {
         let Ok((dev, rt)) = self.parts() else { return };
         if let Some(q) = rt.programs.queues.remove(&queue) {
+            if q.submitted >= USAGE_LOG_JOBS {
+                let m = q.usage.mhz;
+                let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
+                crate::kprintln!(
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
+                    q.submitted,
+                    q.usage.busy_ns / 1_000_000,
+                    m[0], m[1], m[2], m[3],
+                    HUGE_ENTRIES.load(Ordering::Relaxed)
+                );
+            }
             retire(dev, rt, q);
         }
     }

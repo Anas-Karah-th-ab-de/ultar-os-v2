@@ -12,6 +12,8 @@ pub struct Fake {
     pub vms: u32,
     pub freed_vms: Vec<u32>,
     pub null_maps: Vec<(u32, u64, u64)>,
+    pub pats: Vec<u8>,
+    pub wc: Vec<bool>,
     pub queues: Vec<(u32, EngineClass)>,
     pub freed_queues: Vec<u32>,
     pub runs: Vec<(u32, u64)>,
@@ -23,7 +25,8 @@ pub struct Fake {
 
 impl Backend for Fake {
     type Buffer = Rc<Vec<u64>>;
-    fn buffer_new(&mut self, size: u64) -> Result<Self::Buffer, Errno> {
+    fn buffer_new(&mut self, size: u64, wc: bool) -> Result<Self::Buffer, Errno> {
+        self.wc.push(wc);
         let n = size / 4096;
         let first = 0x10_0000 + self.next_page * 4096;
         self.next_page += n;
@@ -36,7 +39,8 @@ impl Backend for Fake {
         self.vms += 1;
         Ok(100 + self.vms)
     }
-    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64]) -> Result<(), Errno> {
+    fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno> {
+        self.pats.push(pat);
         self.maps.push((vm, va, pages.to_vec()));
         Ok(())
     }
@@ -123,6 +127,8 @@ pub fn bind_arg(vm: u32, handle: u32, offset: u64, range: u64, addr: u64, op: u3
     put64(&mut arg, 24 + 24, range);
     put64(&mut arg, 24 + 32, addr);
     put32(&mut arg, 24 + 40, op);
+    // write-back, coherent: what a buffer the CPU caches needs
+    arg[24 + 12] = 3;
     arg
 }
 
@@ -185,7 +191,7 @@ fn bad_buffer_requests_are_refused() {
     let (mut f, mut be) = (File::<Fake>::default(), Fake::default());
     assert_eq!(create(&mut f, &mut be, 0), Err(Errno::Inval));
     assert_eq!(create(&mut f, &mut be, 100), Err(Errno::Inval));
-    assert_eq!(create(&mut f, &mut be, 2 << 30), Err(Errno::Inval));
+    assert_eq!(create(&mut f, &mut be, 8 << 30), Err(Errno::Inval));
     let mut arg = [0u8; 56];
     put64(&mut arg, 8, 4096);
     put32(&mut arg, 16, 2); // a region that does not exist
@@ -522,4 +528,29 @@ fn a_bind_queue_names_binds_and_an_empty_exec_follows_the_last_job() {
     put32(&mut destroy, 0, bq);
     f.queue_destroy(&mut be, &destroy).unwrap();
     assert!(be.freed_queues.is_empty());
+}
+
+#[test]
+fn the_cache_attribute_must_fit_how_the_cpu_maps_the_buffer() {
+    let (mut f, mut be, mut mem) = (File::<Fake>::default(), Fake::default(), Mem::default());
+    let v = vm(&mut f, &mut be);
+    let wb = create(&mut f, &mut be, 4096).unwrap();
+    let mut arg = [0u8; 56];
+    put64(&mut arg, 8, 4096);
+    put32(&mut arg, 16, 1);
+    arg[32] = 2;
+    f.gem_create(&mut be, &mut arg).unwrap();
+    let wc = u32_at(&arg, 28);
+    assert_eq!(be.wc, [false, true]);
+    // a buffer the CPU caches: only the coherent attributes 3 and 4
+    let mut bind = bind_arg(v, wb, 0, 4096, 0x10000, 0);
+    bind[24 + 12] = 1;
+    assert_eq!(f.vm_bind(&mut be, &bind, &mut mem), Err(Errno::Inval));
+    bind[24 + 12] = 4;
+    f.vm_bind(&mut be, &bind, &mut mem).unwrap();
+    // a write-combining one: whatever the program asks for
+    let mut bind = bind_arg(v, wc, 0, 4096, 0x20000, 0);
+    bind[24 + 12] = 1;
+    f.vm_bind(&mut be, &bind, &mut mem).unwrap();
+    assert_eq!(be.pats, [4, 1]);
 }

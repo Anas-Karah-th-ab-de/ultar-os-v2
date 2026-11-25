@@ -1,0 +1,150 @@
+# Ultar Sprachmodell-Laufzeit: llama.cpp with its Vulkan backend – local language models on the
+# GPU. Built from the unmodified upstream release; stands on the package `grafik-laufzeit`
+# (C library, loader, Vulkan loader and driver come from there, nothing from a distribution).
+#
+# Build it in the same work directory as `grafik-laufzeit` and after it: the build tools both
+# recipes name (cmake, ninja, the SPIR-V tools) are then built only once.
+#
+# Update from upstream: `ultar-paketbau outdated` lists newer releases; change `version` and
+# `sha256` of the part, build, run the checks. No patches.
+
+id = "llama"
+name = "Ultar Sprachmodell-Laufzeit"
+version = "1"
+arch = "x86_64"
+prefix = "/pkg/llama"
+uses = ["/pkg/grafik-laufzeit"]
+host_needs = ["gcc", "g++", "make", "python3", "git", "curl", "tar", "patch", "xz"]
+
+env = [
+  ["PKG_CONFIG_LIBDIR", "{prefix}/lib/pkgconfig:/pkg/grafik-laufzeit/lib/pkgconfig:/pkg/grafik-laufzeit/share/pkgconfig:{tools}/lib/pkgconfig:{tools}/share/pkgconfig"],
+  ["PKG_CONFIG_ALLOW_SYSTEM_CFLAGS", "1"],
+  ["PKG_CONFIG_ALLOW_SYSTEM_LIBS", "1"],
+]
+# compiled against the C library of the package below and started by its loader
+runtime_env = [
+  ["CC", "gcc -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib"],
+  ["CXX", "g++ -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib"],
+  ["LDFLAGS", "-L/pkg/grafik-laufzeit/lib -Wl,-rpath,{prefix}/lib:/pkg/grafik-laufzeit/lib -Wl,--dynamic-linker=/pkg/grafik-laufzeit/lib/ld-linux-x86-64.so.2 -static-libstdc++ -static-libgcc"],
+]
+remove = ["include", "lib/*.a", "lib/cmake", "lib/pkgconfig"]
+
+# ---- build tools (not shipped; the same parts as in grafik-laufzeit) -------------------------
+
+[[part]]
+name = "ninja"
+kind = "tool"
+version = "1.13.2"
+source = "https://github.com/ninja-build/ninja/archive/refs/tags/v{version}.tar.gz"
+sha256 = "974d6b2f4eeefa25625d34da3cb36bdcebe7fbce40f4c16ac0835fd1c0cbae17"
+upstream = "https://github.com/ninja-build/ninja"
+tag = "v{version}"
+license = "Apache-2.0"
+why = "runs the builds meson and cmake describe"
+build = ["python3 configure.py --bootstrap", "install -Dm755 ninja {tools}/bin/ninja"]
+
+[[part]]
+name = "cmake"
+kind = "tool"
+version = "4.5.1"
+source = "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}.tar.gz"
+sha256 = "a79bf33cbe05686fdf79c2bbbcfe5e8e62ad16d3d540fa737cbedfeed41fb69e"
+upstream = "https://github.com/Kitware/CMake"
+tag = "v{version}"
+license = "BSD-3-Clause"
+why = "build system of the Vulkan loader"
+build = ["./bootstrap --prefix={tools} --parallel={jobs} -- -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "spirv-headers"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+sha256 = "5b3a0d099f5c7649e29c0938476c462e71d66ad89a0bde42fa1ba3eb476956c9"
+upstream = "https://github.com/KhronosGroup/SPIRV-Headers"
+tag = "vulkan-sdk-{version}"
+license = "MIT"
+why = "the SPIR-V format (for the shader tools)"
+build = ["cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX={tools}", "cmake --install build"]
+
+[[part]]
+name = "spirv-tools"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+sha256 = "e6c83a215538fbfd265ccf398d3877985055df1273dbed73912bd05307664688"
+upstream = "https://github.com/KhronosGroup/SPIRV-Tools"
+tag = "vulkan-sdk-{version}"
+license = "Apache-2.0"
+why = "checks and links the shaders Mesa builds into the driver"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DSPIRV-Headers_SOURCE_DIR={build}/spirv-headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF -DBUILD_SHARED_LIBS=OFF",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
+[[part]]
+name = "glslang"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/glslang/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+sha256 = "cda24ec765e6d2845d106b7caa593f34127195a88524cf87821ff0088fb6edec"
+upstream = "https://github.com/KhronosGroup/glslang"
+tag = "vulkan-sdk-{version}"
+license = "BSD-3-Clause"
+why = "translates the shaders Mesa builds into the driver (glslangValidator)"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DBUILD_SHARED_LIBS=OFF",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
+[[part]]
+name = "shaderc"
+kind = "tool"
+version = "2026.4"
+source = "https://github.com/google/shaderc/archive/refs/tags/v{version}.tar.gz"
+sha256 = "f06ce5bcca94e5df7f34e115743597d0ad2e13c5fe9213c67dc8c76031241947"
+upstream = "https://github.com/google/shaderc"
+tag = "v{version}"
+license = "Apache-2.0"
+why = "glslc: compiles the compute shaders llama.cpp carries for its Vulkan backend"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON -DSHADERC_SKIP_COPYRIGHT_CHECK=ON -DSHADERC_SPIRV_HEADERS_DIR={build}/spirv-headers -DSHADERC_SPIRV_TOOLS_DIR={build}/spirv-tools -DSHADERC_GLSLANG_DIR={build}/glslang -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF -DGLSLANG_TESTS=OFF -DBUILD_SHARED_LIBS=OFF",
+  "cmake --build build -j{jobs} --target glslc_exe",
+  "install -m 755 build/glslc/glslc {tools}/bin/glslc",
+]
+
+# ---- the package ----------------------------------------------------------------------------
+
+[[part]]
+name = "llama-cpp"
+kind = "runtime"
+version = "12723"
+source = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b{version}.tar.gz"
+sha256 = "ba8399e93113af057e79307fa6365a77a096a121a027ffe1125e46b28813c269"
+upstream = "https://github.com/ggml-org/llama.cpp"
+tag = "b{version}"
+license = "MIT"
+why = "runs language models (GGUF files); the Vulkan backend computes on the GPU"
+# Processor: built for SSE4.2 only. The Ultar kernel does not save the wider registers (AVX) of a
+# program yet, so code using them is stopped there; the model runs on the GPU, the processor
+# only feeds it. To be widened when the kernel can (see docs/integration/intel-gt.md, G5).
+# The C++ headers of the compiler must come before the C headers of the package below: the C++
+# library wraps <math.h>, and found in the other order the wrapper is skipped (signbit, isnan
+# are then missing). The first command asks the compiler where its C++ headers are.
+build = [
+  "echo | g++ -xc++ -E -v - 2>&1 | grep '^ /.*c++' | sed 's/^ / -isystem /' | tr -d '\\n' > cxx-dirs",
+  "CXX=\"g++ $(cat cxx-dirs) -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib\" cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=ON -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX_VNNI=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_AVX512=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_NUMBER={version} -DVulkan_INCLUDE_DIR=/pkg/grafik-laufzeit/include -DVulkan_LIBRARY=/pkg/grafik-laufzeit/lib/libvulkan.so -DVulkan_GLSLC_EXECUTABLE={tools}/bin/glslc",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
+# ---- proof that the package works with nothing but itself and the package below ------------
+
+[[check]]
+name = "llama.cpp sees the GPU through Vulkan (GPU of the build machine)"
+build = []
+run = "{prefix}/bin/llama-cli --list-devices"
+expect = "Vulkan0"
+share = ["/dev/dri", "/sys"]

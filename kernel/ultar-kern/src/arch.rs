@@ -365,6 +365,21 @@ pub unsafe fn haerten() -> &'static str {
     name
 }
 
+/// Belegt die Speichertyp-Tabelle des Prozessors (IA32_PAT) wie Linux: Eintrag 1 (nur PWT gesetzt)
+/// wird write-combining, die übrigen behalten ihre Bedeutung (0 und 4 write-back, 3 und 7 uncached,
+/// PCD|PWT bleibt also uncached). Für Grafikpuffer, die an den Caches vorbei geschrieben werden.
+/// Auf jedem Kern einmal beim Start, vor der ersten solchen Abbildung.
+pub unsafe fn pat_setzen() {
+    const IA32_PAT: u32 = 0x277;
+    const LINUX_PAT: u64 = 0x0007_0506_0007_0106;
+    crate::paging::wrmsr(IA32_PAT, LINUX_PAT);
+    // neue Typen gelten erst nach Leeren der Caches und der Übersetzungen
+    core::arch::asm!("wbinvd");
+    let cr3: u64;
+    core::arch::asm!("mov {}, cr3", out(reg) cr3);
+    core::arch::asm!("mov cr3, {}", in(reg) cr3);
+}
+
 /// gesetzte Prozessor-Schutzbits (für Anzeige und /proc/ultar/sicherheit)
 pub static SCHUTZ: spin::Mutex<&'static str> = spin::Mutex::new("–");
 

@@ -32,6 +32,24 @@ pub const MFD_ALLOW_SEALING: u64 = 2;
 /// Largest object (the same bound as a file of the RAM layer).
 pub const MAX_BYTES: u64 = 1 << 32;
 
+/// Reads the content of `pages` pages from page `first` on (`None`: the read failed).
+pub type Reader = alloc::boxed::Box<dyn Fn(u64, usize) -> Option<Vec<u8>> + Send + Sync>;
+/// Pages a [`Reader`] is asked for at once (4 MiB).
+const READ_AHEAD: usize = 1024;
+
+/// Writes the zeroed page `p` out of the CPU's caches: it was zeroed through the kernel's
+/// cached view, and a write-combining user or a non-coherent GPU must not miss those zeros nor
+/// have a cache line written over its data later.
+fn flush_page(p: u64) {
+    for line in (p..p + 4096).step_by(64) {
+        // SAFETY: `line` lies in the page just allocated, identity-mapped in the kernel.
+        unsafe { core::arch::x86_64::_mm_clflush(line as *const u8) };
+    }
+}
+
+/// Pages of a contiguous run of a GPU buffer (2 MiB).
+const RUN_PAGES: usize = 512;
+
 /// A page of an object that has no memory yet.
 const HOLE: u64 = 0;
 
@@ -41,6 +59,14 @@ const HOLE: u64 = 0;
 pub struct MemObj {
     /// One entry per page of the size: the page's address, or [`HOLE`].
     pages: Mutex<Vec<u64>>,
+    /// Where the content of a hole comes from (a file on a disk); `None`: holes are zero.
+    source: Option<Reader>,
+    /// Mapped write-combining, past the CPU's caches (GPU buffers the GT reads without looking
+    /// into them): new pages are flushed out of the caches before anyone sees them.
+    write_combining: bool,
+    /// GPU buffers: their memory comes in contiguous 2 MiB runs where it can (the GPU maps a run
+    /// with one entry and needs far fewer translations). First page index → address of the run.
+    runs: Option<Mutex<alloc::collections::BTreeMap<usize, u64>>>,
     size: AtomicU64,
     seals: AtomicU32,
     /// Mappings of the object in any address space; `writable_maps`: those with write access.
@@ -53,11 +79,54 @@ impl MemObj {
     pub fn new(sealing: bool) -> MemObj {
         MemObj {
             pages: Mutex::new(Vec::new()),
+            source: None,
+            write_combining: false,
+            runs: None,
             size: AtomicU64::new(0),
             seals: AtomicU32::new(if sealing { 0 } else { SEAL_SEAL }),
             maps: AtomicU64::new(0),
             writable_maps: AtomicU64::new(0),
         }
+    }
+
+    /// A read-only object of `size` bytes whose pages come from `source` when they are first
+    /// read or mapped (a large file of a disk). `None`: no memory for the page list.
+    pub fn from_source(size: u64, source: Reader) -> Option<MemObj> {
+        let mut pages = Vec::new();
+        let n = size.div_ceil(4096) as usize;
+        if pages.try_reserve_exact(n).is_err() {
+            return None;
+        }
+        pages.resize(n, HOLE);
+        Some(MemObj {
+            pages: Mutex::new(pages),
+            source: Some(source),
+            write_combining: false,
+            runs: None,
+            size: AtomicU64::new(size),
+            seals: AtomicU32::new(SEALS_ALL),
+            maps: AtomicU64::new(0),
+            writable_maps: AtomicU64::new(0),
+        })
+    }
+
+    /// An empty GPU buffer: memory in 2 MiB runs where it can; `write_combining` as the field says.
+    pub fn new_gpu(write_combining: bool) -> MemObj {
+        MemObj {
+            pages: Mutex::new(Vec::new()),
+            source: None,
+            write_combining,
+            runs: Some(Mutex::new(alloc::collections::BTreeMap::new())),
+            size: AtomicU64::new(0),
+            seals: AtomicU32::new(SEAL_SEAL),
+            maps: AtomicU64::new(0),
+            writable_maps: AtomicU64::new(0),
+        }
+    }
+
+    /// Whether mappings of this object bypass the CPU's caches.
+    pub fn write_combining(&self) -> bool {
+        self.write_combining
     }
 
     pub fn size(&self) -> u64 {
@@ -73,14 +142,90 @@ impl MemObj {
         self.pages.lock().iter().filter(|p| **p != HOLE).count() as u64
     }
 
-    /// Gives every hole in `pages[first..first + n]` a zeroed page (charged to the caller's
-    /// group). `false`: memory is out; the pages filled so far stay.
-    fn fill(pages: &mut [u64], first: usize, n: usize) -> bool {
-        for slot in pages[first..first + n].iter_mut().filter(|p| **p == HOLE) {
-            let Some(p) = crate::mem::alloc_page() else { return false };
-            *slot = p;
+    /// Gives every hole in `pages[first..first + n]` a page (charged to the caller's group):
+    /// zeroed, or with what the source reads. `false`: memory is out or the read failed; the
+    /// pages filled so far stay.
+    fn fill(&self, pages: &mut [u64], first: usize, n: usize) -> bool {
+        let Some(read) = &self.source else {
+            let mut i = first;
+            while i < first + n {
+                if pages[i] != HOLE {
+                    i += 1;
+                    continue;
+                }
+                if self.fill_run(pages, i) {
+                    i += RUN_PAGES;
+                    continue;
+                }
+                let Some(p) = crate::mem::alloc_page() else { return false };
+                if self.write_combining {
+                    flush_page(p);
+                }
+                pages[i] = p;
+                i += 1;
+            }
+            if self.write_combining {
+                // SAFETY: orders the flushes before the pages are handed out.
+                unsafe { core::arch::x86_64::_mm_mfence() };
+            }
+            return true;
+        };
+        let (mut i, end) = (first, first + n);
+        while i < end {
+            if pages[i] != HOLE {
+                i += 1;
+                continue;
+            }
+            // a run of holes, read at once
+            let stop = (i..end.min(i + READ_AHEAD)).find(|k| pages[*k] != HOLE).unwrap_or(end.min(i + READ_AHEAD));
+            let Some(data) = read(i as u64, stop - i).filter(|d| d.len() >= (stop - i) * 4096) else { return false };
+            for (k, chunk) in (i..stop).zip(data.chunks_exact(4096)) {
+                let Some(p) = crate::mem::alloc_page() else { return false };
+                // SAFETY: `p` is a fresh page (identity-mapped); `chunk` is 4096 bytes.
+                unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), p as *mut u8, 4096) };
+                pages[k] = p;
+            }
+            i = stop;
         }
         true
+    }
+
+    /// For a GPU buffer: one contiguous run for the pages from `i` on, if `i` starts a run of the
+    /// object, all its pages are holes and memory for it is there. `false`: not done.
+    fn fill_run(&self, pages: &mut [u64], i: usize) -> bool {
+        let Some(runs) = &self.runs else { return false };
+        if i % RUN_PAGES != 0 || i + RUN_PAGES > pages.len() || pages[i..i + RUN_PAGES].iter().any(|p| *p != HOLE) {
+            return false;
+        }
+        let Ok(base) = crate::mem::alloc_run(RUN_PAGES as u64, crate::heap::context(), true) else { return false };
+        let bytes = RUN_PAGES as u64 * 4096;
+        // SAFETY: the run was just taken from the allocator and is identity-mapped in the kernel.
+        unsafe { core::ptr::write_bytes(base as *mut u8, 0, bytes as usize) };
+        if self.write_combining {
+            (base..base + bytes).step_by(4096).for_each(flush_page);
+        }
+        for (k, slot) in pages[i..i + RUN_PAGES].iter_mut().enumerate() {
+            *slot = base + k as u64 * 4096;
+        }
+        runs.lock().insert(i, base);
+        true
+    }
+
+    /// Shrinking a GPU buffer to `want` pages: its runs beyond go back whole (their pages become
+    /// holes); a run the new end cuts is refused.
+    fn drop_runs(&self, pages: &mut [u64], want: usize) -> Result<(), i64> {
+        let Some(runs) = &self.runs else { return Ok(()) };
+        let mut runs = runs.lock();
+        if runs.keys().any(|s| *s < want && want < s + RUN_PAGES) {
+            return Err(-EBUSY);
+        }
+        let gone: Vec<(usize, u64)> = runs.range(want..).map(|(s, b)| (*s, *b)).collect();
+        for (start, base) in gone {
+            runs.remove(&start);
+            pages[start..start + RUN_PAGES].fill(HOLE);
+            crate::mem::free_run(base, RUN_PAGES as u64);
+        }
+        Ok(())
     }
 
     /// `ftruncate`: grow with holes or shrink.
@@ -105,6 +250,9 @@ impl MemObj {
         }
         if pages.len() < want {
             pages.resize(want, HOLE);
+        }
+        if want < pages.len() {
+            self.drop_runs(&mut pages, want)?;
         }
         while pages.len() > want {
             if let Some(p) = pages.pop().filter(|p| *p != HOLE) {
@@ -147,7 +295,12 @@ impl MemObj {
         if pos >= end || !crate::mem::try_reserve(&mut out, (end - pos) as usize) {
             return out;
         }
-        let pages = self.pages.lock();
+        let mut pages = self.pages.lock();
+        if self.source.is_some() {
+            // what a disk file holds is read now; a failed read leaves the rest as it reads: zero
+            let (first, last) = ((pos / 4096) as usize, (end.div_ceil(4096) as usize).min(pages.len()));
+            let _ = first < last && self.fill(&mut pages, first, last - first);
+        }
         let mut at = pos;
         while at < end {
             let (page, off) = ((at / 4096) as usize, at % 4096);
@@ -176,7 +329,7 @@ impl MemObj {
         }
         let mut pages = self.pages.lock();
         let (first, last) = ((pos / 4096) as usize, (end.div_ceil(4096) as usize).min(pages.len()));
-        if first < last && !Self::fill(&mut pages, first, last - first) {
+        if first < last && !self.fill(&mut pages, first, last - first) {
             return Err(-ENOMEM);
         }
         let mut done = 0usize;
@@ -199,7 +352,7 @@ impl MemObj {
         let mut pages = self.pages.lock();
         let first = ((off / 4096) as usize).min(pages.len());
         let n = ((len / 4096) as usize).min(pages.len() - first);
-        if !Self::fill(&mut pages, first, n) {
+        if !self.fill(&mut pages, first, n) {
             return None;
         }
         let slice = &pages[first..first + n];
@@ -229,7 +382,14 @@ impl MemObj {
 
 impl Drop for MemObj {
     fn drop(&mut self) {
-        for p in self.pages.get_mut().drain(..).filter(|p| *p != HOLE) {
+        let pages = self.pages.get_mut();
+        if let Some(runs) = self.runs.as_mut() {
+            for (start, base) in core::mem::take(runs.get_mut()) {
+                pages[start..start + RUN_PAGES].fill(HOLE);
+                crate::mem::free_run(base, RUN_PAGES as u64);
+            }
+        }
+        for p in pages.drain(..).filter(|p| *p != HOLE) {
             crate::mem::free_page(p);
         }
     }
