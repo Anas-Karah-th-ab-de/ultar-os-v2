@@ -1,10 +1,14 @@
-//! The bus side of the removable-drive service.
+//! The bus side of the removable-drive service: the drives themselves (mount, eject,
+//! pull, usage) and the `Service` loop. The Storage settings it follows live in
+//! [`crate::follow`], the drive offers of automount-off in [`crate::offer`].
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use ultar_bus::messages::account_local::LocalUsers;
+use ultar_bus::messages::notify::InvokedHint;
 use ultar_bus::messages::session::SessionState;
+use ultar_bus::messages::settings::Changed;
 use ultar_bus::messages::volumes::{
     Eject, EjectOutcome, EjectReply, Mounted, Space, Usage, UsageReply, VolumesState, INTERNAL,
     MAX_USAGE, SERVICE,
@@ -15,28 +19,41 @@ use ultar_hal_linux::block::{Drives, Volume};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::{Bus, Service};
 
+use crate::jobs::Jobs;
+use crate::offer::Offer;
+use crate::settings::StorageSettings;
+
 /// How often the drives are looked at.
 pub const TICK: Duration = Duration::from_secs(2);
+/// Timeout of a call to another service (settings, notifications).
+pub(crate) const CALL_TIME: Duration = Duration::from_secs(2);
 
 /// One mounted drive.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Mount {
-    volume: Volume,
-    target: PathBuf,
-    owner: String,
+pub(crate) struct Mount {
+    pub volume: Volume,
+    pub target: PathBuf,
+    pub owner: String,
 }
 
 /// The removable-drive service.
 pub struct VolumeService {
-    drives: Drives,
-    root: PathBuf,
-    media: PathBuf,
-    user: Option<String>,
-    uids: BTreeMap<String, u32>,
-    mounts: BTreeMap<String, Mount>,
+    pub(crate) drives: Drives,
+    pub(crate) root: PathBuf,
+    pub(crate) media: PathBuf,
+    pub(crate) downloads: PathBuf,
+    pub(crate) user: Option<String>,
+    pub(crate) uids: BTreeMap<String, u32>,
+    pub(crate) mounts: BTreeMap<String, Mount>,
     /// Drives that failed to mount (not tried again until they are pulled).
-    failed: Vec<String>,
-    last: Option<VolumesState>,
+    pub(crate) failed: Vec<String>,
+    /// Drives offered with a "Mount" button while automount is off.
+    pub(crate) offered: BTreeMap<String, Offer>,
+    pub(crate) last: Option<VolumesState>,
+    pub(crate) settings: StorageSettings,
+    /// The settings service answered (until then the schema defaults are used).
+    pub(crate) settings_known: bool,
+    pub(crate) jobs: Jobs,
 }
 
 /// Size and free bytes (for a person without special rights) of the file system at `path`.
@@ -63,7 +80,7 @@ pub fn folder(label: &str, device: &str) -> String {
     }
 }
 
-fn plain(name: &str) -> bool {
+pub(crate) fn plain(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 32
         && !name.starts_with('-')
@@ -72,22 +89,33 @@ fn plain(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
 }
 
+pub(crate) fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 impl VolumeService {
-    /// Drives below `root`, mounted below `media`.
-    pub fn new(root: PathBuf, media: PathBuf) -> Self {
+    /// Drives below `root`, mounted below `media`, downloads cleaned in `downloads`.
+    pub fn new(root: PathBuf, media: PathBuf, downloads: PathBuf) -> Self {
         Self {
             drives: Drives::new(root.clone()),
             root,
             media,
+            downloads,
             user: None,
             uids: BTreeMap::new(),
             mounts: BTreeMap::new(),
             failed: Vec::new(),
+            offered: BTreeMap::new(),
             last: None,
+            settings: StorageSettings::default(),
+            settings_known: false,
+            jobs: Jobs::default(),
         }
     }
 
-    fn state(&self) -> VolumesState {
+    pub(crate) fn state(&self) -> VolumesState {
         VolumesState {
             mounted: self
                 .mounts
@@ -108,7 +136,7 @@ impl VolumeService {
 
     /// Where the person's own files of this device are kept: the data partition when the
     /// system has one, the root file system otherwise.
-    fn internal(&self) -> PathBuf {
+    pub(crate) fn internal(&self) -> PathBuf {
         let data = self.root.join("data");
         if data.is_dir() {
             data
@@ -144,7 +172,7 @@ impl VolumeService {
         UsageReply { places }
     }
 
-    fn publish(&mut self, bus: &Bus<'_, Self>) {
+    pub(crate) fn publish(&mut self, bus: &Bus<'_, Self>) {
         let now = self.state();
         if self.last.as_ref() != Some(&now) {
             bus.retain(&now);
@@ -152,55 +180,72 @@ impl VolumeService {
         }
     }
 
-    fn mount_new(&mut self, present: &[Volume], bus: &Bus<'_, Self>) {
+    /// Mounts one drive for the person in front; `false` (and a note in `failed`) when the
+    /// kernel refuses it. Without a person or their id nothing is tried.
+    pub(crate) fn mount_one(&mut self, volume: &Volume, bus: &Bus<'_, Self>) -> bool {
         let Some(user) = self.user.clone() else {
-            return;
+            return false;
         };
         let Some(uid) = self.uids.get(&user).copied() else {
-            return;
+            return false;
         };
-        for volume in present {
-            if self.mounts.contains_key(&volume.device) || self.failed.contains(&volume.device) {
-                continue;
+        let target = self
+            .media
+            .join(&user)
+            .join(folder(&volume.label, &volume.device));
+        let made = std::fs::create_dir_all(&target);
+        match made
+            .map_err(|_| HalError::Io(0))
+            .and_then(|()| self.drives.mount(volume, &target, uid))
+        {
+            Ok(()) => {
+                bus.log(Record::new(Level::Info, "volumed.mounted").word("fs", volume.fs.name()));
+                let mount = Mount {
+                    volume: volume.clone(),
+                    target,
+                    owner: user,
+                };
+                self.mounts.insert(volume.device.clone(), mount);
+                true
             }
-            let target = self
-                .media
-                .join(&user)
-                .join(folder(&volume.label, &volume.device));
-            let made = std::fs::create_dir_all(&target);
-            match made
-                .map_err(|_| HalError::Io(0))
-                .and_then(|()| self.drives.mount(volume, &target, uid))
-            {
-                Ok(()) => {
-                    bus.log(
-                        Record::new(Level::Info, "volumed.mounted").word("fs", volume.fs.name()),
-                    );
-                    let mount = Mount {
-                        volume: volume.clone(),
-                        target,
-                        owner: user.clone(),
-                    };
-                    self.mounts.insert(volume.device.clone(), mount);
-                }
-                Err(_) => {
-                    let _ = std::fs::remove_dir(&target);
-                    bus.log(
-                        Record::new(Level::Warn, "volumed.mount_failed")
-                            .word("fs", volume.fs.name()),
-                    );
-                    self.failed.push(volume.device.clone());
-                }
+            Err(_) => {
+                let _ = std::fs::remove_dir(&target);
+                bus.log(
+                    Record::new(Level::Warn, "volumed.mount_failed").word("fs", volume.fs.name()),
+                );
+                self.failed.push(volume.device.clone());
+                false
             }
         }
     }
 
-    fn scan(&mut self, bus: &Bus<'_, Self>) {
+    pub(crate) fn mount_new(&mut self, present: &[Volume], bus: &Bus<'_, Self>) {
+        if self.user.is_none() {
+            return;
+        }
+        for volume in present {
+            let id = &volume.device;
+            if self.mounts.contains_key(id)
+                || self.failed.contains(id)
+                || self.offered.contains_key(id)
+            {
+                continue;
+            }
+            if self.settings.automount {
+                self.mount_one(volume, bus);
+            } else {
+                self.offer(volume, bus);
+            }
+        }
+    }
+
+    pub(crate) fn scan(&mut self, bus: &Bus<'_, Self>) {
         let present = self.drives.volumes();
-        // Pulled out: detach what is left of them.
+        // Pulled out: detach what is left of them, withdraw their offers.
         let gone: Vec<String> = self
             .mounts
             .keys()
+            .chain(self.offered.keys())
             .filter(|id| !present.iter().any(|v| &&v.device == id))
             .cloned()
             .collect();
@@ -210,6 +255,9 @@ impl VolumeService {
                 let _ = std::fs::remove_dir(&m.target);
                 bus.log(Record::new(Level::Info, "volumed.pulled"));
             }
+            if let Some(o) = self.offered.remove(&id) {
+                o.withdraw(bus);
+            }
         }
         self.failed
             .retain(|id| present.iter().any(|v| &v.device == id));
@@ -217,7 +265,7 @@ impl VolumeService {
         self.publish(bus);
     }
 
-    fn eject(&mut self, id: &str) -> EjectOutcome {
+    pub(crate) fn eject(&mut self, id: &str) -> EjectOutcome {
         let Some(m) = self.mounts.get(id) else {
             return EjectOutcome::Unknown;
         };
@@ -244,7 +292,12 @@ impl Service for VolumeService {
     }
 
     fn subscriptions(&self) -> Vec<&'static str> {
-        vec![SessionState::TOPIC, LocalUsers::TOPIC]
+        vec![
+            SessionState::TOPIC,
+            LocalUsers::TOPIC,
+            Changed::TOPIC,
+            InvokedHint::TOPIC,
+        ]
     }
 
     fn tick_every(&self) -> Option<Duration> {
@@ -252,6 +305,7 @@ impl Service for VolumeService {
     }
 
     fn start(&mut self, bus: &Bus<'_, Self>) {
+        self.read_settings(bus);
         self.scan(bus);
     }
 
@@ -280,6 +334,20 @@ impl Service for VolumeService {
     }
 
     fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        if event.topic == Changed::TOPIC {
+            if let Ok(changed) = event.decode::<Changed>() {
+                self.apply_setting(&changed.key, &changed.value, bus);
+            }
+            return;
+        }
+        if event.topic == InvokedHint::TOPIC {
+            if let Ok(hint) = event.decode::<InvokedHint>() {
+                if hint.sender == bus.client().identity() {
+                    self.invoked(bus);
+                }
+            }
+            return;
+        }
         if let Ok(state) = event.decode::<SessionState>() {
             self.user = state.user.filter(|u| plain(u));
         } else if let Ok(users) = event.decode::<LocalUsers>() {
@@ -289,46 +357,12 @@ impl Service for VolumeService {
     }
 
     fn tick(&mut self, bus: &Bus<'_, Self>) {
+        self.read_settings(bus);
         self.scan(bus);
+        self.run_jobs(bus);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn labels_become_safe_folder_names() {
-        assert_eq!(folder("STICK", "sdb1"), "STICK");
-        assert_eq!(folder("../../etc", "sdb1"), "etc");
-        assert_eq!(folder("", "sdb1"), "sdb1");
-        assert_eq!(folder("/ /", "sdc"), "sdc");
-        assert_eq!(folder("صور", "sdb1"), "صور");
-        assert!(plain("amal") && !plain("../x"));
-    }
-
-    #[test]
-    fn eject_of_an_unknown_drive() {
-        let mut s = VolumeService::new("/nonexistent".into(), "/nonexistent".into());
-        assert_eq!(s.eject("sdb1"), EjectOutcome::Unknown);
-        assert_eq!(s.state(), VolumesState::default());
-    }
-
-    #[test]
-    fn usage_measures_the_own_storage_first() {
-        let dir = std::env::temp_dir();
-        let s = VolumeService::new(dir.clone(), "/nonexistent".into());
-        let usage = s.usage();
-        assert_eq!(usage.places.len(), 1, "no drives mounted");
-        let own = &usage.places[0];
-        assert_eq!((own.id.as_str(), own.name.as_str()), (INTERNAL, ""));
-        assert!(own.total_bytes > 0 && own.free_bytes <= own.total_bytes);
-        assert_eq!(
-            space_of(&dir).map(|(total, _)| total),
-            Some(own.total_bytes)
-        );
-        // A place that cannot be measured is left out.
-        let gone = VolumeService::new("/nonexistent/ultar".into(), "/nonexistent".into());
-        assert!(gone.usage().places.is_empty());
-    }
-}
+#[path = "service_tests.rs"]
+mod tests;
