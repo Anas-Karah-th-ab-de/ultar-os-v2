@@ -9,6 +9,7 @@ pub mod calendar;
 pub mod characters;
 pub mod helper;
 pub mod history;
+pub mod media;
 pub mod mesh;
 pub mod notes;
 pub mod quick;

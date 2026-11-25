@@ -16,10 +16,14 @@
 
 #[path = "settingstest/access_visual.rs"]
 mod access_visual;
+#[path = "settingstest/apps.rs"]
+mod apps;
 #[path = "settingstest/setup.rs"]
 mod setup;
 #[path = "settingstest/wired.rs"]
 mod wired;
+#[path = "settingstest/wired_users.rs"]
+mod wired_users;
 
 use setup::Run;
 use std::process::{Child, Command};

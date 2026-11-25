@@ -89,8 +89,8 @@ fn notes(view: &mut View, main: NodeId, s: &LockState) -> Result<(), UiError> {
     Ok(())
 }
 
-/// Emergency (no telephony service yet: disabled with the reason) and emergency power-off
-/// (the power service).
+/// Emergency (`emergency.on_lock_screen`: the panel with the contact and medical details)
+/// and emergency power-off (the power service).
 fn emergency(view: &mut View, main: NodeId, s: &LockState) -> Result<(), UiError> {
     let row = Flex::row().gap(Space::S8).main(MainAlign::SpaceBetween);
     let row = view.ui.add(main, row)?;
@@ -99,7 +99,7 @@ fn emergency(view: &mut View, main: NodeId, s: &LockState) -> Result<(), UiError
             "lock.emergency",
             IconId::Sos,
             Target::Emergency,
-            "lock.reason.no_emergency",
+            "lock.reason.emergency_off",
         ),
         (
             "lock.power_off",
@@ -114,7 +114,7 @@ fn emergency(view: &mut View, main: NodeId, s: &LockState) -> Result<(), UiError
         view.mark(id, target);
         if power {
             super::view::power_gate(view, id, s)?;
-        } else {
+        } else if !s.prefs.emergency_on {
             view.ui.set_disabled(id, true)?;
             view.ui.set_tooltip(id, Some(Label::key(reason)))?;
         }

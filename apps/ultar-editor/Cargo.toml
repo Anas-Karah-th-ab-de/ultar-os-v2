@@ -1,0 +1,26 @@
+[package]
+name = "ultar-editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS text editor: notes, settings files and code in Arabic and English, UTF-8 / UTF-16 / Windows-1256, undo, line numbers (area 6, apps)"
+
+[lib]
+name = "ultar_editor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-editor"
+path = "src/bin/ultar-editor.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-textview = { path = "../../platform/ultar-textview" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# The text buffer of the office library: caret, selection, undo, encodings (Windows-1256 for Arabic).
+ultar-office = { path = "../ultar-office" }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }

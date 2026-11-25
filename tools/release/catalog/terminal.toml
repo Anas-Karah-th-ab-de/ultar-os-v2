@@ -1,0 +1,29 @@
+[[app]]
+id = "terminal"
+category = "system"
+icon = "terminal"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "الطرفية"
+en = "Terminal"
+de = "Terminal"
+[app.summary]
+ar = "أوامر بالعربية والإنجليزية لملفاتك وبرامج النظام."
+en = "Arabic and English commands for your files and the system's programs."
+de = "Befehle auf Arabisch und Englisch für deine Dateien und die Programme des Systems."
+[app.description]
+ar = "طرفية بأوامر عربية وإنجليزية (اعرض/ls، انتقل/cd، اقرأ/cat …)، تشغّل برامج النظام وتعرض مخرجاتها، مع سجل الأوامر وإيقاف بـ Ctrl+C."
+en = "A terminal with Arabic and English commands (اعرض/ls, انتقل/cd, اقرأ/cat …); runs the system's programs and shows their output, with command history and Ctrl+C to stop."
+de = "Ein Terminal mit arabischen und englischen Befehlen (اعرض/ls, انتقل/cd, اقرأ/cat …); startet Programme des Systems und zeigt ihre Ausgabe, mit Befehlsverlauf und Strg+C zum Anhalten."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "تعمل الأوامر في الأماكن التي سمحت بها"
+en = "The commands work in the places you allowed"
+de = "Die Befehle arbeiten an den freigegebenen Orten"

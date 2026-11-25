@@ -30,6 +30,12 @@ pub(crate) struct Core {
     pub(crate) stopping: bool,
     /// Apps being uninstalled (no start meanwhile).
     pub(crate) removing: std::collections::BTreeSet<AppId>,
+    /// Default apps (`apps.default.*`), read at start and on `settings.changed`.
+    pub(crate) defaults: crate::defaults::Defaults,
+    /// The autostart list and what was started this session.
+    pub(crate) autostart: crate::defaults::Autostart,
+    /// The downloads clean-up (`storage.clean_downloads`, `_days`) and when it last ran.
+    pub(crate) clean: crate::clean::Clean,
 }
 
 /// The app launcher.
@@ -188,6 +194,9 @@ impl Launcher {
             generation: 0,
             stopping: false,
             removing: std::collections::BTreeSet::new(),
+            defaults: crate::defaults::Defaults::default(),
+            autostart: crate::defaults::Autostart::default(),
+            clean: crate::clean::Clean::default(),
         };
         core.write_rights_or_withdraw()?;
         let record = Record::new(Level::Info, "launcher.platform")
@@ -306,6 +315,9 @@ impl Launcher {
         let id = app_id(app)?;
         let mut core = lock(&self.core);
         core.installed(&id)?;
+        if ultar_brand::base_apps::is_base_app(id.as_str()) {
+            return Err(LaunchError::Protected);
+        }
         if !core.removing.insert(id.clone()) {
             return Err(LaunchError::Busy);
         }

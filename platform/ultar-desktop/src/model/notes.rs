@@ -107,6 +107,34 @@ impl Notes {
         self.show_banner(id, now);
     }
 
+    /// The shell's own notice that a drive with media was plugged in (`apps.removable_media`
+    /// = ask): a banner with an "Open" button. The action carries the drive's URI; the shell
+    /// opens Files there itself (a local notice never goes to the notification service).
+    pub fn post_media(&mut self, name: &str, uri: &str, now: u64) {
+        self.local = self.local.wrapping_add(1) % 1024;
+        let id = LOCAL_IDS - self.local;
+        self.add(Posted {
+            id,
+            timestamp_ms: now,
+            sender: "system.shell".to_owned(),
+            post: Post {
+                urgency: Urgency::Normal,
+                category: Category::System,
+                app_id: "org.ultar.files".to_owned(),
+                title: Text::key("desk.media.title"),
+                body: Body::Localized(
+                    Text::key("desk.media.body")
+                        .with(ultar_bus::TextArg::Verbatim(name.to_owned())),
+                ),
+                actions: vec![Action {
+                    id: uri.to_owned(),
+                    label: Text::key("desk.media.open"),
+                }],
+            },
+        });
+        self.show_banner(id, now);
+    }
+
     /// The id of button `index` of notification `id` (note.action).
     pub fn action(&self, id: u64, index: usize) -> Option<String> {
         let note = self.list.iter().find(|n| n.id == id)?;

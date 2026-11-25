@@ -44,7 +44,8 @@ impl State {
             | Request::IdentifyOutputs { .. }
             | Request::DetectOutputs
             | Request::ConfigurePointer { .. }
-            | Request::ConfigureKeyRepeat { .. }) => self.output_request(client, r),
+            | Request::ConfigureKeyRepeat { .. }
+            | Request::ConfigureKeyHelpers { .. }) => self.output_request(client, r),
             r @ (Request::ConfigureVisual { .. } | Request::VisualAlert { .. }) => {
                 self.visual_request(client, r)
             }

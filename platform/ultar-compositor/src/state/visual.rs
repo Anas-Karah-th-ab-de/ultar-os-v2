@@ -55,14 +55,14 @@ impl State {
                 zoom_percent,
                 filter,
             } => {
-                self.require_visual_right(client, Rights::OUTPUT_CONFIG)?;
+                self.require_visual_permission(client, Rights::OUTPUT_CONFIG)?;
                 let v = &mut self.session.visual;
                 (v.zoom, v.zoom_percent, v.filter) = (zoom, zoom_percent, filter);
                 self.damage_all();
                 Ok(())
             }
             Request::VisualAlert { ms } => {
-                self.require_visual_right(client, Rights::SHELL)?;
+                self.require_visual_permission(client, Rights::SHELL)?;
                 self.session.visual.flash_until = self.now.saturating_add(u64::from(ms));
                 self.damage_all();
                 Ok(())
@@ -71,9 +71,9 @@ impl State {
         }
     }
 
-    fn require_visual_right(&self, client: ClientId, right: Rights) -> Result<(), ErrorCode> {
+    fn require_visual_permission(&self, client: ClientId, needed: Rights) -> Result<(), ErrorCode> {
         match self.clients.get(&client) {
-            Some(c) if c.rights.contains(right) => Ok(()),
+            Some(c) if c.rights.contains(needed) => Ok(()),
             Some(_) => Err(ErrorCode::Permission),
             None => Err(ErrorCode::UnknownObject),
         }

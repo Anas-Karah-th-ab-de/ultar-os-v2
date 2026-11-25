@@ -57,7 +57,7 @@ pub(super) fn search() -> Vec<SettingDef> {
 pub(super) fn apps() -> Vec<SettingDef> {
     const P: Panel = Panel::Apps;
     let name =
-        |key: &'static str, default: &str| SettingDef::text(key, P, TextFormat::Name, default);
+        |key: &'static str, default: &str| SettingDef::text(key, P, TextFormat::AppId, default);
     vec![
         name("apps.default.web", "browser"),
         name("apps.default.mail", "mail"),
@@ -72,7 +72,7 @@ pub(super) fn apps() -> Vec<SettingDef> {
             &["ask", "open_files", "nothing"],
             "ask",
         ),
-        SettingDef::list("apps.autostart", P, TextFormat::Name, 64),
+        SettingDef::list("apps.autostart", P, TextFormat::AppId, 64),
         // Rights per app (the launcher asks on first use, the answer lands here).
         SettingDef::flag("apps.right.<id>.camera", P, false),
         SettingDef::flag("apps.right.<id>.microphone", P, false),

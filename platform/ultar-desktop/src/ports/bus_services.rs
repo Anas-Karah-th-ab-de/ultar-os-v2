@@ -6,7 +6,8 @@ use super::PortError;
 use crate::model::services::Call;
 use std::time::Duration;
 use ultar_bus::messages::{
-    audio, bluetooth, calendar, capture, media, net, notify, power, session, settings, volumes, vpn,
+    audio, bluetooth, calendar, call, capture, media, net, notify, power, session, settings,
+    volumes, vpn,
 };
 use ultar_bus::{BusError, ErrorCode};
 
@@ -235,6 +236,20 @@ impl BusPorts {
         let layouts = text(crate::app::keyboard::LAYOUTS);
         let active = text(crate::app::keyboard::ACTIVE);
         Ok(layouts.and_then(|l| crate::app::keyboard::from_values(l, active)))
+    }
+
+    /// `call.emergency`: the call service reads and dials the configured emergency
+    /// number itself (the lock screen never sends a number). The call's id, or `None`
+    /// when it could not be placed (no call service, no modem, refused).
+    pub fn emergency_call(&self) -> Option<u32> {
+        self.ask(&call::Emergency {}).ok().map(|r| r.id)
+    }
+
+    /// `session.users`: who is signed in on the seat (empty at a fresh start – the only
+    /// moment automatic sign-in may happen).
+    pub fn session_users(&self) -> Result<Vec<String>, PortError> {
+        let reply = self.ask(&session::Users {})?;
+        Ok(reply.users.into_iter().map(|u| u.name).collect())
     }
 
     /// `settings.accessibility`: the flags under `accessibility.*` (login.access).

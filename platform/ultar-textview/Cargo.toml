@@ -1,0 +1,15 @@
+[package]
+name = "ultar-textview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS – many lines of text drawn into a picture: per-line direction (Arabic right to left), caret, selection, line numbers, hit testing; the text area of the editor and the terminal (area 6, platform)"
+
+[lib]
+name = "ultar_textview"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }

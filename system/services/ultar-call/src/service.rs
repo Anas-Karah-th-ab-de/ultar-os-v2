@@ -3,14 +3,16 @@
 //! (retained) whenever it changed. Lines are polled every `tick` while waiting for requests.
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+use crate::emergency;
 use crate::session::Session;
 use std::time::Duration;
 use ultar_bus::messages::call::{
     self as contract, Answer, Block, CallError, CallState, ClearLog, Decline, Dial, DialReply,
-    Done, Dtmf, Forget, Hangup, Hold, Log, LogReply, Mute, NextCamera, SendText, SetOutput,
-    SetVideo, Share, Snapshot,
+    Done, Dtmf, Emergency, Forget, Hangup, Hold, Log, LogReply, Mute, NextCamera, SendText,
+    SetOutput, SetVideo, Share, Snapshot, Way,
 };
-use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
+use ultar_bus::messages::settings::{Changed, Get};
+use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint, TypedSubscription};
 
 /// Poll interval of the lines while no request comes.
 pub const DEFAULT_TICK: Duration = Duration::from_millis(50);
@@ -22,10 +24,28 @@ pub struct Service {
     endpoint: ServiceEndpoint,
     tick: Duration,
     published: Option<CallState>,
+    /// `emergency.number`, validated (the default until the settings service answers).
+    emergency_number: String,
+    /// The settings service answered at least once.
+    settings_known: bool,
+    /// `settings.changed`.
+    settings_changes: Option<TypedSubscription<Changed>>,
+    /// Throttle of the settings read until it answers (ticks).
+    settings_try: u32,
 }
 
 fn code(e: CallError) -> ErrorCode {
     ErrorCode::Service(e.code())
+}
+
+/// Dials the emergency number on the mobile network: slot 1, else slot 2.
+fn emergency_dial(s: &mut Session, number: &str) -> Result<u32, CallError> {
+    let dial = |slot: u8| Dial {
+        way: Way::Cellular(slot),
+        number: number.to_owned(),
+        video: false,
+    };
+    s.dial(&dial(1)).or_else(|_| s.dial(&dial(2)))
 }
 
 /// Two states differ in something other than the clock.
@@ -39,12 +59,17 @@ impl Service {
     /// Registers the service `call` on `bus`.
     pub fn new(bus: Client, session: Session, tick: Duration) -> Result<Service, BusError> {
         let endpoint = bus.register(contract::SERVICE)?;
+        let settings_changes = bus.subscribe::<Changed>().ok();
         Ok(Service {
             session,
             bus,
             endpoint,
             tick,
             published: None,
+            emergency_number: emergency::DEFAULT.to_owned(),
+            settings_known: false,
+            settings_changes,
+            settings_try: 0,
         })
     }
 
@@ -70,6 +95,7 @@ impl Service {
 
     /// One step: wait up to one tick for a request, answer it, poll the lines, publish.
     pub fn step(&mut self) -> Result<(), BusError> {
+        self.follow_settings();
         match self.endpoint.recv_timeout(self.tick) {
             Ok(request) => self.handle(request),
             Err(BusError::Timeout) => {}
@@ -78,6 +104,35 @@ impl Service {
         self.session.pump();
         self.publish_if_changed()?;
         Ok(())
+    }
+
+    /// `emergency.number`: read once at start (again until the settings service
+    /// answers), then follow every change. Until then the default 112 is in effect.
+    fn follow_settings(&mut self) {
+        if self.settings_changes.is_none() {
+            self.settings_changes = self.bus.subscribe::<Changed>().ok();
+        }
+        while let Some(Ok(Some(c))) = self.settings_changes.as_ref().map(|s| s.try_recv()) {
+            if c.key == emergency::KEY {
+                self.emergency_number = emergency::of(&c.value);
+                self.settings_known = true;
+            }
+        }
+        if !self.settings_known {
+            self.settings_try = self.settings_try.wrapping_add(1);
+            // About every two seconds (40 ticks of 50 ms), not every tick.
+            if self.settings_try % 40 == 1 {
+                let get = Get {
+                    key: emergency::KEY.to_owned(),
+                };
+                if let Ok(reply) = self.bus.call(&get, Duration::from_millis(200)) {
+                    self.settings_known = true;
+                    if let Some(value) = reply.value {
+                        self.emergency_number = emergency::of(&value);
+                    }
+                }
+            }
+        }
     }
 
     /// Runs until the bus connection ends.
@@ -94,6 +149,16 @@ impl Service {
         let outcome = match request.method() {
             "dial" => {
                 request.respond::<Dial>(|d| s.dial(&d).map(|id| DialReply { id }).map_err(code))
+            }
+            // The lock screen's emergency call: the number is this service's own
+            // (read from the settings, validated); the request carries none.
+            "emergency" => {
+                let number = self.emergency_number.clone();
+                request.respond::<Emergency>(|_| {
+                    emergency_dial(s, &number)
+                        .map(|id| DialReply { id })
+                        .map_err(code)
+                })
             }
             "answer" => request.respond::<Answer>(|a| done(s.answer(a.id, a.others))),
             "decline" => request.respond::<Decline>(|d| done(s.decline(d.id))),

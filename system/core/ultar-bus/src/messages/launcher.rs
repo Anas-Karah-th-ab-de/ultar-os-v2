@@ -332,6 +332,161 @@ pub const ERROR_INVALID: u32 = 11;
 pub const ERROR_NO_OPEN: u32 = 12;
 /// Error code: the app is being uninstalled or its cell did not end.
 pub const ERROR_BUSY: u32 = 13;
+/// Error code: the app is a base app of the system and is never uninstalled
+/// (updates replace it; `ultar_brand::base_apps`).
+pub const ERROR_PROTECTED: u32 = 14;
+
+/// A kind of thing a person opens, for which the settings name a default app
+/// (`apps.default.<word>`). The launcher resolves a URI to the app of its kind
+/// ([`Resolve`]) and lists the installed apps that declare a kind ([`Candidates`]).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]
+pub enum Kind {
+    /// A web page (`http`, `https`).
+    Web,
+    /// A mail address (`mailto`).
+    Mail,
+    /// An appointment (`calendar`, `webcal`).
+    Calendar,
+    /// Sound (`file://…` with a sound extension).
+    Music,
+    /// A film (`file://…` with a film extension).
+    Video,
+    /// A picture (`file://…` with a picture extension).
+    Photos,
+    /// A document (`file://…` with a document extension).
+    Documents,
+}
+
+impl Kind {
+    /// Every kind, in the order of the settings rows.
+    pub const ALL: [Kind; 7] = [
+        Kind::Web,
+        Kind::Mail,
+        Kind::Calendar,
+        Kind::Music,
+        Kind::Video,
+        Kind::Photos,
+        Kind::Documents,
+    ];
+
+    /// Stable lower-case word (the last part of its settings key).
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Mail => "mail",
+            Self::Calendar => "calendar",
+            Self::Music => "music",
+            Self::Video => "video",
+            Self::Photos => "photos",
+            Self::Documents => "documents",
+        }
+    }
+
+    /// The kind of a word, if it names one.
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.word() == word)
+    }
+
+    /// The settings key whose value names this kind's default app.
+    pub fn key(self) -> String {
+        format!("apps.default.{}", self.word())
+    }
+
+    /// The system default app (the settings schema's default): used when the stored
+    /// value names no installed app that declares the kind.
+    pub const fn default_app(self) -> &'static str {
+        match self {
+            Self::Web => "browser",
+            Self::Mail => "mail",
+            Self::Calendar => "calendar",
+            Self::Music | Self::Video => "media",
+            Self::Photos => "images",
+            Self::Documents => "documents",
+        }
+    }
+
+    /// The URI schemes whose declaration in a manifest makes an app a candidate for
+    /// this kind. The four file kinds share the `file`/`files` schemes: an app that opens
+    /// files declares one of them, and the extension tells the kinds apart.
+    pub const fn schemes(self) -> &'static [&'static str] {
+        match self {
+            Self::Web => &["http", "https"],
+            Self::Mail => &["mailto"],
+            Self::Calendar => &["calendar", "webcal"],
+            Self::Music | Self::Video | Self::Photos | Self::Documents => &["file", "files"],
+        }
+    }
+}
+
+/// The kind of thing a URI names: its scheme tells the web, mail and calendar kinds; a
+/// `file://` URI's extension tells the four file kinds apart. Anything else names no kind.
+/// The launcher resolves through this ([`Resolve`]); openers use it to ask for a default.
+pub fn kind_of_uri(uri: &str) -> Option<Kind> {
+    let (scheme, rest) = uri.split_once(':')?;
+    match scheme {
+        "http" | "https" => Some(Kind::Web),
+        "mailto" => Some(Kind::Mail),
+        "calendar" | "webcal" => Some(Kind::Calendar),
+        "file" | "files" => kind_of_extension(rest),
+        _ => None,
+    }
+}
+
+/// The file kind of a `file://` URI's path (its extension, lower case).
+fn kind_of_extension(rest: &str) -> Option<Kind> {
+    let path = rest.split(['?', '#']).next()?;
+    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
+    let kind = match ext.as_str() {
+        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "wma" | "mid"
+        | "midi" => Kind::Music,
+        "mp4" | "m4v" | "mkv" | "webm" | "avi" | "mov" | "wmv" | "flv" | "mpg" | "mpeg" | "ts" => {
+            Kind::Video
+        }
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "avif"
+        | "heic" | "ico" => Kind::Photos,
+        "pdf" | "txt" | "md" | "rtf" | "odt" | "ods" | "odp" | "doc" | "docx" | "xls" | "xlsx"
+        | "ppt" | "pptx" | "csv" | "epub" | "html" | "htm" => Kind::Documents,
+        _ => return None,
+    };
+    Some(kind)
+}
+
+/// Most apps [`CandidatesReply`] lists for one kind.
+pub const MAX_CANDIDATES: usize = 256;
+
+/// `launcher.resolve` – the default app for a URI: the launcher reads `apps.default.*`
+/// (at start and on `settings.changed`), takes the app of the URI's kind, and keeps it
+/// only when it is installed and its manifest declares the URI's scheme; an invalid
+/// value falls back to the system default ([`Kind::default_app`]). The answer is the
+/// launcher's app id, or `None` when no installed app declares the URI. The caller
+/// starts the app (`start`, with its activation token); the launcher only resolves.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct Resolve {
+    /// The URI to open (at most [`MAX_URI`] bytes, no control character).
+    pub uri: String,
+}
+
+/// Answer to [`Resolve`].
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct ResolveReply {
+    /// The app that opens the URI, or `None` when none is installed for it.
+    pub app: Option<String>,
+}
+
+/// `launcher.candidates` – the installed apps that declare a kind (their manifests list
+/// one of its schemes). The Settings page offers these as the choices of `apps.default.*`.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Candidates {
+    /// The kind.
+    pub kind: Kind,
+}
+
+/// Answer to [`Candidates`]: app ids, at most [`MAX_CANDIDATES`].
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug, Default)]
+pub struct CandidatesReply {
+    /// The installed apps that declare the kind.
+    pub apps: Vec<String>,
+}
 
 macro_rules! messages {
     ($($t:ty),*) => {$(impl Message for $t { const VERSION: u16 = 1; })*};
@@ -357,7 +512,11 @@ messages!(
     Install,
     InstallReply,
     Uninstall,
-    UninstallReply
+    UninstallReply,
+    Resolve,
+    ResolveReply,
+    Candidates,
+    CandidatesReply
 );
 
 macro_rules! calls {
@@ -378,7 +537,9 @@ calls!(
     Grant => "grant", PermissionReply;
     Revoke => "revoke", PermissionReply;
     Install => "install", InstallReply;
-    Uninstall => "uninstall", UninstallReply
+    Uninstall => "uninstall", UninstallReply;
+    Resolve => "resolve", ResolveReply;
+    Candidates => "candidates", CandidatesReply
 );
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 //! The bus side of the session service.
 
+use crate::parental::{self, Due, Parental};
 use crate::sessions::Sessions;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -10,6 +11,7 @@ use ultar_bus::messages::session::{
     SessionOutcome, SessionReply, SessionUser, SignOut, SignedIn, SwitchUser, Users, UsersReply,
     SERVICE,
 };
+use ultar_bus::messages::settings::Changed;
 use ultar_bus::{Call, Client, ErrorCode, IncomingRequest, RawEvent, Topic};
 use ultar_service::log::{Level, Record};
 use ultar_svckit::serve::Done;
@@ -18,31 +20,41 @@ use ultar_svckit::{store, Access, Bus, Service};
 /// Pseudo method of the sign-in screen: the only identity that reports sign-ins.
 pub const SIGNIN_METHOD: &str = "signin";
 /// Longest wait for another service.
-const WAIT: Duration = Duration::from_secs(5);
+pub(crate) const WAIT: Duration = Duration::from_secs(5);
+/// How often the parental window is checked (and the settings read again until the
+/// settings service answers).
+pub const TICK: Duration = Duration::from_secs(30);
 
 /// The session service.
 pub struct SessionService {
-    sessions: Sessions,
+    pub(crate) sessions: Sessions,
     access: Access,
     policy: Option<ultar_bus::Policy>,
     state_file: PathBuf,
+    /// `users.parental`: the time window of standard users.
+    pub(crate) parental: Parental,
+    /// The settings service answered at least once.
+    pub(crate) settings_known: bool,
+    /// Standard users already warned about the end of the window (once per window).
+    pub(crate) warned: Vec<String>,
 }
 
 fn reply(request: IncomingRequest, outcome: SessionOutcome) {
     let _ = request.reply(&SessionReply { outcome });
 }
 
-fn accounts(client: &Client) -> Option<Vec<(String, String)>> {
+/// The accounts: name, display name, administrator.
+pub(crate) fn accounts(client: &Client) -> Option<Vec<(String, String, bool)>> {
     let users = client.call(&AuthUsers {}, WAIT).ok()?.users;
     Some(
         users
             .into_iter()
-            .map(|u| (u.name, u.display_name))
+            .map(|u| (u.name, u.display_name, u.admin))
             .collect(),
     )
 }
 
-fn lock(client: &Client) -> bool {
+pub(crate) fn lock(client: &Client) -> bool {
     client.call(&Lock {}, WAIT).is_ok_and(|r| r.locked)
 }
 
@@ -60,6 +72,9 @@ impl SessionService {
             access: Access::new(SERVICE, policy.clone()),
             policy,
             state_file,
+            parental: Parental::default(),
+            settings_known: false,
+            warned: Vec::new(),
         }
     }
 
@@ -71,7 +86,7 @@ impl SessionService {
             .is_ok_and(|id| policy.may_call(&id, SERVICE, SIGNIN_METHOD))
     }
 
-    fn changed(&mut self, bus: &Bus<'_, Self>) {
+    pub(crate) fn changed(&mut self, bus: &Bus<'_, Self>) {
         if store::save(&self.state_file, &self.sessions).is_err() {
             bus.log(Record::new(Level::Warn, "sessiond.state_not_saved"));
         }
@@ -98,17 +113,30 @@ impl SessionService {
             let done: Done<Self> = Box::new(move |s: &mut Self, bus: &Bus<'_, Self>| {
                 let outcome = match known {
                     None => SessionOutcome::Unavailable,
-                    Some(list) if !list.iter().any(|(n, _)| *n == call.user) => {
+                    Some(list) if !list.iter().any(|(n, _, _)| *n == call.user) => {
                         SessionOutcome::Unknown
                     }
-                    Some(_) => match s.sessions.sign_in(&call.user) {
-                        Ok(()) => {
-                            s.changed(bus);
-                            bus.log(Record::new(Level::Info, "sessiond.signed_in"));
-                            SessionOutcome::Done
+                    Some(list) => {
+                        // users.parental: a standard user signs in only in the window
+                        // (the lock screen refuses too; this is the second check).
+                        let admin = list
+                            .iter()
+                            .find(|(n, _, _)| *n == call.user)
+                            .is_some_and(|(_, _, a)| *a);
+                        if !admin && s.parental.due(parental::minute_now()) == Due::End {
+                            SessionOutcome::Refused
+                        } else {
+                            match s.sessions.sign_in(&call.user) {
+                                Ok(()) => {
+                                    s.warned.retain(|w| *w != call.user);
+                                    s.changed(bus);
+                                    bus.log(Record::new(Level::Info, "sessiond.signed_in"));
+                                    SessionOutcome::Done
+                                }
+                                Err(_) => SessionOutcome::Invalid,
+                            }
                         }
-                        Err(_) => SessionOutcome::Invalid,
-                    },
+                    }
                 };
                 reply(request, outcome);
             });
@@ -128,7 +156,9 @@ impl SessionService {
         bus.later(move |client| {
             let outcome = match accounts(client) {
                 None => SessionOutcome::Unavailable,
-                Some(list) if !list.iter().any(|(n, _)| *n == call.user) => SessionOutcome::Unknown,
+                Some(list) if !list.iter().any(|(n, _, _)| *n == call.user) => {
+                    SessionOutcome::Unknown
+                }
                 Some(_) if lock(client) => SessionOutcome::Done,
                 Some(_) => SessionOutcome::Unavailable,
             };
@@ -182,8 +212,8 @@ impl SessionService {
                 .map(|name| SessionUser {
                     display_name: names
                         .iter()
-                        .find(|(n, _)| *n == name)
-                        .map_or_else(|| name.clone(), |(_, d)| d.clone()),
+                        .find(|(n, _, _)| *n == name)
+                        .map_or_else(|| name.clone(), |(_, d, _)| d.clone()),
                     active: active.as_deref() == Some(name.as_str()),
                     name,
                 })
@@ -202,11 +232,21 @@ impl Service for SessionService {
     }
 
     fn subscriptions(&self) -> Vec<&'static str> {
-        vec![LocalUsers::TOPIC]
+        vec![LocalUsers::TOPIC, Changed::TOPIC]
+    }
+
+    fn tick_every(&self) -> Option<Duration> {
+        Some(TICK)
     }
 
     fn start(&mut self, bus: &Bus<'_, Self>) {
         bus.retain(&self.sessions.state());
+        self.read_settings(bus);
+    }
+
+    fn tick(&mut self, bus: &Bus<'_, Self>) {
+        self.read_settings(bus);
+        self.enforce_parental(bus);
     }
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
@@ -235,6 +275,16 @@ impl Service for SessionService {
     }
 
     fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
+        if event.topic == Changed::TOPIC {
+            if let Ok(changed) = event.decode::<Changed>() {
+                if self.parental.on_changed(&changed.key, &changed.value) {
+                    self.warned.clear();
+                    // A new window applies at once, not only at the next tick.
+                    self.enforce_parental(bus);
+                }
+            }
+            return;
+        }
         let Ok(users) = event.decode::<LocalUsers>() else {
             return;
         };

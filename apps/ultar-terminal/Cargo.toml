@@ -1,0 +1,25 @@
+[package]
+name = "ultar-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS terminal: a shell with Arabic and English commands (اعرض/ls, انتقل/cd …), programs of the system with their output, history (area 6, apps)"
+
+[lib]
+name = "ultar_terminal"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-terminal"
+path = "src/bin/ultar-terminal.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-textview = { path = "../../platform/ultar-textview" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }

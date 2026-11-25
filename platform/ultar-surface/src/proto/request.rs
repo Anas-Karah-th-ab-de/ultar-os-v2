@@ -368,6 +368,22 @@ pub enum Request {
         /// How long the flash stays, in milliseconds, 1 to [`super::MAX_FLASH_MS`].
         ms: u32,
     },
+    /// The keyboard helpers of the accessibility page and the compose key (needs
+    /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
+    /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
+    /// The compositor's key input path follows them; the values are the settings schema's.
+    ConfigureKeyHelpers {
+        /// A modifier pressed and released alone stays active for the next key (twice locks).
+        sticky_keys: bool,
+        /// A key counts only after being held for a moment.
+        slow_keys: bool,
+        /// Repeats of the same key within a moment are dropped.
+        bounce_keys: bool,
+        /// The numeric keypad moves the pointer and clicks.
+        mouse_keys: bool,
+        /// The key that starts a compose sequence.
+        compose_key: super::ComposeKey,
+    },
     /// The app draws the header of this toplevel itself (needs
     /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
     /// the "not responding" close stay with the compositor; system dialogs keep theirs.
@@ -428,6 +444,7 @@ impl Request {
             Request::SetKeyboardLayouts { .. } => 43,
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
+            Request::ConfigureKeyHelpers { .. } => 46,
             Request::ConfigureVisual { .. } => 56,
             Request::VisualAlert { .. } => 57,
         }
@@ -648,6 +665,19 @@ impl Request {
             }
             Request::VisualAlert { ms } => {
                 w.u32(*ms);
+            }
+            Request::ConfigureKeyHelpers {
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            } => {
+                w.bool(*sticky_keys)
+                    .bool(*slow_keys)
+                    .bool(*bounce_keys)
+                    .bool(*mouse_keys);
+                compose_key.encode(w);
             }
             _ => {}
         }

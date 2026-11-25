@@ -107,6 +107,7 @@ files.notice.undone = Rückgängig gemacht
 files.notice.cancelled = Angehalten
 files.notice.ejected = Der Speicher {name} kann jetzt sicher entfernt werden
 files.notice.no_app = Keine App kann „{name}“ öffnen
+files.notice.open_failed = „{name}“ ließ sich nicht öffnen: die App ist nicht gestartet
 files.error.not_found = Das Element gibt es nicht
 files.error.exists = Ein Element mit diesem Namen gibt es schon
 files.error.permission = Keine Berechtigung für diesen Ort

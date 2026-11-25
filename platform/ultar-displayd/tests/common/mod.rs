@@ -212,6 +212,8 @@ pub struct Snap {
     pub key_repeat: (bool, u16, u8),
     /// The accessibility view (magnifier, colour filter).
     pub visual: VisualSnap,
+    /// Keyboard helpers: sticky, slow, bounce, mouse, and the compose key.
+    pub key_helpers: (bool, bool, bool, bool, ultar_surface::proto::ComposeKey),
 }
 
 impl Snap {
@@ -290,14 +292,8 @@ fn snapshot(comp: &Compositor) -> Snap {
             let r = comp.state.keyboard.repeat;
             (r.enabled, r.delay_ms, r.per_second)
         },
-        visual: {
-            let v = comp.state.session.visual;
-            VisualSnap {
-                zoom: v.zoom,
-                zoom_percent: v.zoom_percent,
-                filter: v.filter,
-            }
-        },
+        visual: visual_snap(comp),
+        key_helpers: helpers_snap(comp),
         identify: comp
             .state
             .session
@@ -306,6 +302,28 @@ fn snapshot(comp: &Compositor) -> Snap {
             .as_ref()
             .map_or(0, |i| i.numbers.len()),
     }
+}
+
+/// The accessibility view as the compositor holds it.
+fn visual_snap(comp: &Compositor) -> VisualSnap {
+    let v = comp.state.session.visual;
+    VisualSnap {
+        zoom: v.zoom,
+        zoom_percent: v.zoom_percent,
+        filter: v.filter,
+    }
+}
+
+/// The keyboard helpers as the compositor holds them.
+fn helpers_snap(comp: &Compositor) -> (bool, bool, bool, bool, ultar_surface::proto::ComposeKey) {
+    let h = &comp.state.keyboard.helpers;
+    (
+        h.sticky.on,
+        h.slow.on,
+        h.bounce.on,
+        h.mouse.on,
+        h.compose.key,
+    )
 }
 
 /// What the compositor thread shares with the test.

@@ -127,6 +127,10 @@ pub enum Target {
     Unlock,
     /// Lock: emergency.
     Emergency,
+    /// Lock: emergency panel – call the emergency number (`call.emergency`).
+    EmergencyCall,
+    /// Lock: emergency panel – back to the cover.
+    EmergencyBack,
     /// Lock: emergency power-off.
     EmergencyOff,
     /// Lock, dialogs: the password field.

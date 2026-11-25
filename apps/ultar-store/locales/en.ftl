@@ -190,3 +190,5 @@ store.tab.updates = Updates
 store.aria.window = Ultar Store
 store.aria.back = Back
 store.aria.app-icon = {name} icon
+store.app.system = System app
+store.error.protected = This is a base app of the system and cannot be removed. Updates replace it.

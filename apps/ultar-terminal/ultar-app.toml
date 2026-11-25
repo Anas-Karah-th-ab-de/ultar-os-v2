@@ -1,0 +1,31 @@
+# Ultar terminal – app manifest (docs/APP-RULES.md §3).
+id          = "terminal"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.terminal.name"
+description = "app.terminal.desc"
+icon        = "terminal"
+
+[form]
+factors     = ["tablet", "laptop", "desktop"]
+modes       = ["desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+multi_window = true
+
+[permissions]
+# The user's places (the cell binds each at /areas/<name>); the commands work there.
+files       = ["home:rw", "documents:rw", "downloads:rw", "desktop:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 120
+cpu         = "foreground"

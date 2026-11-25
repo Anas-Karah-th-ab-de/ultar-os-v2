@@ -4,3 +4,5 @@ ultar-store          ultar-store        gui       system
 ultar-settings       ultar-settings     -         system
 ultar-files          ultar-files        -         system
 ultar-appbuilder     ultar-appbuilder   gui       store
+ultar-editor         ultar-editor       -         system
+ultar-terminal       ultar-terminal     -         system

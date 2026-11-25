@@ -5,7 +5,10 @@
 //! looks through and how its surfaces look; the Settings window follows the accessibility
 //! switches itself. The Storage page shows what the volume service measured.
 
-use super::{click, open, setup::Run, texts};
+#[path = "wired_helpers.rs"]
+mod wired_helpers;
+
+use super::{click, open, setup::Run};
 use std::time::Duration;
 use ultar_bus::messages::settings::{Changed, Get, Set, SettingValue};
 use ultar_bus::{Client, TypedSubscription};
@@ -18,13 +21,16 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
-use ultar_surface::proto::{PointerSize, Request};
+use ultar_surface::proto::{ComposeKey, PointerSize, Request};
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
 use ultar_ui::Size;
 use ultar_update::policy::Policy;
 use ultar_update::settings::{Ceiling, UpdateSettings};
 
-const WAIT: Duration = Duration::from_secs(20);
+#[path = "storage.rs"]
+mod storage;
+
+pub(super) const WAIT: Duration = Duration::from_secs(20);
 
 /// A service that follows the settings: its connection and what it was told.
 pub(crate) struct Follower {
@@ -63,7 +69,11 @@ impl Follower {
 }
 
 /// The node of the row of `key` on the open page, which must be usable.
-fn control(app: &mut App, panel: &str, key: &str) -> Result<ultar_ui::ui::NodeId, String> {
+pub(super) fn control(
+    app: &mut App,
+    panel: &str,
+    key: &str,
+) -> Result<ultar_ui::ui::NodeId, String> {
     let items = &app
         .state
         .panel(panel)
@@ -229,6 +239,13 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
             enabled: false,
             delay_ms: u16::try_from(delay_ms).map_err(|_| "delay")?,
             per_second: u8::try_from(per_second).map_err(|_| "rate")?,
+        },
+        Request::ConfigureKeyHelpers {
+            sticky_keys: false,
+            slow_keys: false,
+            bounce_keys: false,
+            mouse_keys: false,
+            compose_key: ComposeKey::None,
         },
     ];
     let requests = d.service.requests();
@@ -429,29 +446,6 @@ fn access_pointer(
     Ok(())
 }
 
-/// Storage: the page shows the size the kernel reports for this device's storage, as the
-/// volume service measured it.
-fn storage(bus: &Client, run: &Run) -> Result<(), String> {
-    let own = if std::path::Path::new("/data").is_dir() {
-        "/data"
-    } else {
-        "/"
-    };
-    let stat = rustix::fs::statvfs(own).map_err(|e| format!("statvfs {e}"))?;
-    let total = stat.f_blocks.saturating_mul(stat.f_frsize);
-    let mut app = page(bus, run, "storage")?;
-    let size = ultar_i18n::units::format_size(total, app.ui.translator());
-    let shown = texts(&mut app);
-    let this = app.ui.translator().t("app.settings.storage.internal");
-    if !shown.iter().any(|t| *t == this) || !shown.iter().any(|t| t.contains(&size)) {
-        return Err(format!(
-            "storage page without {size} of this device: {shown:?}"
-        ));
-    }
-    println!("SETTINGS: storage page shows the volume service's measurement ({size})");
-    Ok(())
-}
-
 /// Types `text` into the row's field (select all, type, Enter) and returns the stored value.
 fn edit(
     app: &mut App,
@@ -551,9 +545,14 @@ fn updates(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
 pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displayd = Follower::connect(run, "the display service", "displayd")?;
     let desktop = Follower::connect(run, "the shell", "desktop")?;
+    let volumed = Follower::connect(run, "the volume service", "volumed")?;
     input(bus, admin, run, &displayd)?;
+    wired_helpers::key_helpers(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop, &displayd)?;
-    storage(bus, run)?;
+    storage::storage(bus, run)?;
+    storage::storage_settings(bus, admin, run, &volumed)?;
     updates(bus, admin, run)?;
-    super::access_visual::check(bus, admin, run, &desktop, &displayd)
+    super::apps::apps(bus, admin, run, &desktop)?;
+    super::access_visual::check(bus, admin, run, &desktop, &displayd)?;
+    crate::wired_users::users_emergency(bus, admin, run)
 }

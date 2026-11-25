@@ -158,6 +158,7 @@ impl Compositor {
         self.state.check_pings();
         self.state.tick_transfers();
         self.state.tick_indicator();
+        self.state.tick_slow_keys();
         self.run_output_jobs();
         if self.frame_due() {
             self.render_now();

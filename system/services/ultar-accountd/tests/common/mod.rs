@@ -16,6 +16,7 @@ use ultar_bus::messages::auth::{
     Method, Outcome, SetOutcome, SetSecret, UserInfo, Users, UsersReply, Verify, VerifyReply,
 };
 use ultar_bus::messages::auth_admin::{ManageOutcome, ManageReply, RemoveUser, UpdateUser};
+use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
 use ultar_bus::{Broker, Call, Client, ClientOptions, Identity, Policy, TokenIdentity};
 
@@ -27,7 +28,13 @@ pub const POLICY: &str = r#"
 identity = "system.accountd"
 register = ["account"]
 publish  = ["account.users", "account.state"]
-call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", "auth.remove_user", "auth.admin", "sysdialog.authenticate"]
+call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", "auth.remove_user", "auth.admin", "sysdialog.authenticate", "settings.get"]
+subscribe = ["settings.changed"]
+
+[[rule]]
+identity = "system.settingsd"
+register = ["settings"]
+publish  = ["settings.changed"]
 
 [[rule]]
 identity = "system.authd"
@@ -55,8 +62,9 @@ identity = "app.evil"
 call     = ["account.users_list"]
 "#;
 
-const IDENTITIES: [&str; 7] = [
+const IDENTITIES: [&str; 8] = [
     "system.accountd",
+    "system.settingsd",
     "system.authd",
     "system.sysdialog",
     "app.settings",
@@ -87,6 +95,8 @@ pub struct Shared {
     pub creds: BTreeMap<String, Cred>,
     pub answers: VecDeque<Answer>,
     pub asked: Vec<String>,
+    /// What the settings stand-in answers for `users.auto_login`.
+    pub auto_login: Option<String>,
 }
 
 pub struct World {
@@ -258,6 +268,28 @@ fn serve_dialog(
     );
 }
 
+/// The settings stand-in: answers `settings.get` for `users.auto_login`.
+fn serve_settings(socket: &Path, stop: &Arc<AtomicBool>, s: Arc<Mutex<Shared>>) {
+    serve(
+        socket.to_path_buf(),
+        "system.settingsd",
+        "settings",
+        stop.clone(),
+        move |r| {
+            let s = s.lock().unwrap();
+            let _ = match r.method() {
+                m if m == Get::METHOD => r.respond::<Get>(|g| {
+                    let value = (g.key == "users.auto_login")
+                        .then(|| s.auto_login.clone().map(SettingValue::Text))
+                        .flatten();
+                    Ok(GetReply { value })
+                }),
+                _ => r.fail(ultar_bus::ErrorCode::UnknownMethod),
+            };
+        },
+    );
+}
+
 impl World {
     pub fn new(tag: &str) -> World {
         let dir = std::env::temp_dir().join(format!("ultar-accd-{tag}-{}", std::process::id()));
@@ -297,6 +329,7 @@ impl World {
             move |r| auth_answer(&s, r),
         );
         serve_dialog(&socket, &stop, shared.clone(), held.clone());
+        serve_settings(&socket, &stop, shared.clone());
         World {
             broker: Some(broker),
             socket,
@@ -387,6 +420,19 @@ impl World {
 
     pub fn home(&self, name: &str) -> PathBuf {
         self.dir.join("home").join(name)
+    }
+
+    /// The settings service tells accountd that `users.auto_login` is now `user`
+    /// (empty: nobody); a restart reads the same value.
+    pub fn tell_auto_login(&self, user: &str) {
+        self.shared.lock().unwrap().auto_login = (!user.is_empty()).then(|| user.to_owned());
+        let client = connect(&self.socket, "system.settingsd");
+        client
+            .publish(&Changed {
+                key: "users.auto_login".into(),
+                value: SettingValue::Text(user.into()),
+            })
+            .unwrap();
     }
 }
 

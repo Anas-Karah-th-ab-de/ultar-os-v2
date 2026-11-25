@@ -1,0 +1,27 @@
+# ultar-editor – نصوص محرر النصوص (العربية هي المرجع)
+app.editor.name = محرر النصوص
+app.editor.desc = اكتب الملاحظات وملفات الإعداد والبرمجة بالعربية والإنجليزية.
+editor.untitled = مستند جديد
+editor.text = نص المستند
+editor.new = جديد
+editor.save = حفظ
+editor.undo = تراجع
+editor.redo = إعادة
+editor.status = سطر {line}، عمود {col}
+editor.saved = حُفظ «{name}»
+editor.save_failed = تعذّر حفظ «{name}»: {reason}
+editor.open_failed = تعذّر فتح الملف: {reason}
+editor.too_big = الملف أكبر من أن يُفتح هنا (الحد {mb} ميغابايت)
+editor.ask.title = حفظ التغييرات في «{name}»؟
+editor.ask.message = إن لم تحفظ تضيع التغييرات.
+editor.ask.save = حفظ
+editor.ask.discard = عدم الحفظ
+editor.ask.cancel = إلغاء
+editor.name.title = حفظ باسم
+editor.name.field = اسم الملف (في المستندات)
+editor.name.ok = حفظ
+editor.reason.denied = لا يُسمح بالكتابة هنا
+editor.reason.missing = الملف أو المجلد غير موجود
+editor.reason.exists = يوجد ملف بهذا الاسم
+editor.reason.name = اسم غير صالح
+editor.reason.io = خطأ في القراءة أو الكتابة

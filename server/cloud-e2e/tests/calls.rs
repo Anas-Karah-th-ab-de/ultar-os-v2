@@ -185,12 +185,24 @@ fn safety(ev: &[CallEvent]) -> Option<String> {
 fn both_heard_and_saw(anna_room: &Room, ben_room: &Room) {
     let heard = ben_room.heard.lock().unwrap().clone();
     let tail = &heard[heard.len() / 3..];
-    assert!(power(tail, 440.0) > 50.0 * power(tail, 300.0), "ben hears anna");
+    assert!(
+        power(tail, 440.0) > 50.0 * power(tail, 300.0),
+        "ben hears anna"
+    );
     let heard = anna_room.heard.lock().unwrap().clone();
     let tail = &heard[heard.len() / 3..];
-    assert!(power(tail, 300.0) > 50.0 * power(tail, 440.0), "anna hears ben");
-    assert!(ben_room.seen.load(Ordering::Relaxed) >= 10, "ben sees anna's picture");
-    assert!(anna_room.seen.load(Ordering::Relaxed) >= 10, "anna sees ben's picture");
+    assert!(
+        power(tail, 300.0) > 50.0 * power(tail, 440.0),
+        "anna hears ben"
+    );
+    assert!(
+        ben_room.seen.load(Ordering::Relaxed) >= 10,
+        "ben sees anna's picture"
+    );
+    assert!(
+        anna_room.seen.load(Ordering::Relaxed) >= 10,
+        "anna sees ben's picture"
+    );
 }
 
 #[test]

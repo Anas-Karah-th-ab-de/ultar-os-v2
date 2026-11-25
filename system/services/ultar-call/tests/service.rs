@@ -5,9 +5,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use ultar_bus::messages::call::{
-    Answer, CallError, CallState, Cellular, Dial, Hangup, Hold, Log, Mute, Others, Phase, Snapshot,
-    Ultar, Way,
+    Answer, CallError, CallState, Cellular, Dial, Emergency, Hangup, Hold, Log, Mute, Others,
+    Phase, Snapshot, Ultar, Way,
 };
+use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
 use ultar_bus::{
     Broker, BusError, Client, ClientOptions, ErrorCode, FixedIdentity, Identity, Policy,
 };
@@ -23,6 +24,7 @@ struct Rig {
     line: FakeControl,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
+    path: std::path::PathBuf,
 }
 
 impl Drop for Rig {
@@ -67,6 +69,7 @@ fn rig(tag: &str) -> Rig {
         line,
         stop,
         worker: Some(worker),
+        path,
     }
 }
 
@@ -144,4 +147,87 @@ fn typed_errors_and_hostile_payloads() {
         video: false,
     };
     assert!(r.app.call(&ok, WAIT).is_ok());
+}
+
+/// A settings stand-in on the rig's bus: answers `settings.get` with `value`.
+fn settings_stand_in(path: &std::path::Path, value: Arc<std::sync::Mutex<SettingValue>>) -> Client {
+    let settings = Client::connect(path, ClientOptions::named("settingsd")).unwrap();
+    let endpoint = settings.register("settings").unwrap();
+    thread::spawn(move || loop {
+        match endpoint.recv_timeout(Duration::from_millis(20)) {
+            Ok(req) => {
+                let _ = req.respond::<Get>(|_| {
+                    Ok(GetReply {
+                        value: Some(value.lock().unwrap().clone()),
+                    })
+                });
+            }
+            Err(BusError::Timeout) => {}
+            Err(_) => return,
+        }
+    });
+    settings
+}
+
+/// Places an emergency call and reads the number it dialed.
+fn emergency_number(app: &Client) -> String {
+    let reply = app.call(&Emergency {}, WAIT).unwrap();
+    let st = app.call(&Snapshot, WAIT).unwrap();
+    let number = st
+        .calls
+        .iter()
+        .find(|c| c.id == reply.id)
+        .unwrap()
+        .number
+        .clone();
+    app.call(&Hangup { id: reply.id }, WAIT).unwrap();
+    number
+}
+
+/// Waits until an emergency call dials `want`.
+fn until_number(app: &Client, want: &str) {
+    let start = std::time::Instant::now();
+    loop {
+        let n = emergency_number(app);
+        if n == want {
+            return;
+        }
+        assert!(start.elapsed() < WAIT, "emergency number stuck at {n}");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// call.emergency: the service dials the number it read from the settings itself
+/// (the request carries none), follows changes at runtime, falls back to 112 for an
+/// invalid value, and fails when the mobile way is not available.
+#[test]
+fn emergency_calls_the_configured_number_and_follows_changes() {
+    let r = rig("emergency");
+    wait_state(&r.app, |s| s.lines.cellular == Cellular::Ready);
+    let value = Arc::new(std::sync::Mutex::new(SettingValue::Text("999".into())));
+    let settings = settings_stand_in(&r.path, value.clone());
+    let tell = |text: &str| {
+        *value.lock().unwrap() = SettingValue::Text(text.into());
+        settings
+            .publish(&Changed {
+                key: "emergency.number".into(),
+                value: SettingValue::Text(text.into()),
+            })
+            .unwrap();
+    };
+    // The start read brings 999 (until then the default 112).
+    until_number(&r.app, "999");
+    // A runtime change is followed; an invalid value falls back to 112.
+    tell("110");
+    until_number(&r.app, "110");
+    tell("not-a-number");
+    until_number(&r.app, "112");
+    // Without the mobile way the call fails (the lock screen shows the reason).
+    r.line.set_cellular(Cellular::NoModem, &[]);
+    wait_state(&r.app, |s| s.lines.cellular == Cellular::NoModem);
+    let err = r.app.call(&Emergency {}, WAIT).unwrap_err();
+    assert!(matches!(
+        service_error(err),
+        Some(CallError::Unavailable(_))
+    ));
 }

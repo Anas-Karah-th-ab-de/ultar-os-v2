@@ -24,6 +24,20 @@ pub(super) fn item(c: &mut Ctl<'_>, index: usize, node: NodeId, kind: ActionKind
             Some(choice) => SettingValue::Text(choice.id.clone()),
             None => return Outcome::default(),
         },
+        // a default app chosen from the launcher's candidates (the row is a Select)
+        (ItemKind::Text { .. }, ActionKind::Selected(i))
+            if item.key.starts_with("apps.default.") =>
+        {
+            let current = match &item.value {
+                SettingValue::Text(t) => t.clone(),
+                _ => String::new(),
+            };
+            let options = crate::view::panel::default_options(&c.state.more, &item.key, &current);
+            match options.get(i) {
+                Some(app) => SettingValue::Text(app.clone()),
+                None => return Outcome::default(),
+            }
+        }
         (ItemKind::Integer { .. }, ActionKind::ValueChanged(v)) => {
             SettingValue::Integer(v.round() as i64)
         }

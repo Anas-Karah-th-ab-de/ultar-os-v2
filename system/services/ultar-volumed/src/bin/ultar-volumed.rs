@@ -1,7 +1,8 @@
 //! `ultar-volumed` – the removable-drive service (see the library documentation).
 //!
 //! ```text
-//! ultar-volumed --bus PATH --media DIR [--root DIR] [--log-socket PATH] [--token-file PATH]
+//! ultar-volumed --bus PATH --media DIR [--root DIR]
+//!               [--log-socket PATH] [--token-file PATH]
 //! ```
 
 #![forbid(unsafe_code)]
