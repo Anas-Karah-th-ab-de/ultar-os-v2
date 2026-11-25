@@ -34,7 +34,7 @@ Dazu sechs Stellen, die nur die laufende Hülle benutzt und der Testbau nicht (`
 
 ## Kern (`kernel/ultar-kern`)
 
-Der Kern meldete 68 Warnungen. Hier lässt er sich nicht bauen (keine Rust-Quellen für `build-std`), geprüft
+Der Kern meldete 68 Warnungen, jetzt keine mehr. Hier lässt er sich nicht bauen (keine Rust-Quellen für `build-std`), geprüft
 wird diese Änderung deshalb **nur vom Kern-Lauf der CI**.
 
 Behoben (ohne das Verhalten zu ändern):
@@ -49,13 +49,14 @@ Markiert wie oben, nicht gelöscht: `arm_deadline`, `reboot_hw`, `absolut`, `ver
 `UsbDev::speed`, `Fat::part`, `Inode::mtime`, `PciDev::driver`. Die Nvidia-Schnittstellen (`drivers/nvidia`)
 ruft noch niemand; dort gilt die Erlaubnis für das ganze Modul.
 
-### Eine Warnung bleibt mit Absicht: `getpeername` (Systemaufruf 52) tut nichts
+### `getpeername` (Systemaufruf 52) – ein echter Fehler hinter der letzten Warnung
 
-`syscall.rs` führt 52 in der Liste „tut nichts, meldet Erfolg“ und weiter unten noch einmal mit der echten
-Antwort (`51 | 52 => sys_sockname(…)`). Der erste Eintrag gewinnt: Ein Programm, das fragt, mit wem es
-verbunden ist, bekommt Erfolg und einen unbeschriebenen Puffer. Das ist vermutlich ein Fehler. Es zu
-berichtigen ändert das Verhalten des Kerns für alle Programme und gehört dem, der den Kern prüfen kann – darum
-steht die Warnung noch da.
+`syscall.rs` führte 52 in der Liste „tut nichts, meldet Erfolg“ und weiter unten noch einmal mit der echten
+Antwort. Der erste Eintrag gewann: Ein Programm, das fragte, mit wem es verbunden ist, bekam Erfolg und einen
+unbeschriebenen Puffer. Jetzt antwortet der Kern für Internet-Sockets richtig (Adresse der Gegenstelle, oder
+„nicht verbunden“). Für alle anderen Sockets (lokale) bleibt es beim Bisherigen – Erfolg ohne Adresse –, weil
+die echte Antwort dort „kein Socket“ wäre und Programme, die sich auf das alte Verhalten stützen, brechen
+könnten. Offen für den Zuständigen des Kerns: `getpeername` für lokale Sockets richtig beantworten.
 
 Die C-Prüfprogramme (`kerntest.c`, `ereignis.c`, `lauscher.c`, `nettest.c`) melden ignorierte Rückgabewerte
 und zwei mögliche Kürzungen bei `snprintf`; nicht angefasst.

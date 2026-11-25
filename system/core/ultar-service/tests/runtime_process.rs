@@ -65,7 +65,11 @@ fn limits_umask_and_working_directory_are_applied_and_read_back() {
         probe.value("limit.as"),
         Some("18446744073709551615/18446744073709551615")
     );
-    assert_eq!(probe.value("limit.nproc"), Some("128/128"));
+    // The probe is a build run by its owner, not an installed service under a user of its
+    // own: the limit on that user's processes would count cargo and every other test too
+    // (seen on the CI runner: services could not start their threads). It is left alone.
+    assert_ne!(probe.value("limit.nproc"), Some("128/128"));
+    assert_eq!(probe.value("step.limit_nproc"), Some("SharedUser"));
     assert_eq!(probe.value("limit.core"), Some("0/0"));
     assert_eq!(probe.value("cwd"), Some("/"));
     for step in [
@@ -75,7 +79,6 @@ fn limits_umask_and_working_directory_are_applied_and_read_back() {
         "no_new_privs",
         "limit_core",
         "limit_nofile",
-        "limit_nproc",
     ] {
         assert_eq!(
             probe.value(&format!("step.{step}")),

@@ -390,7 +390,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         // ihren Rückfallweg nehmen (sonst lesen Ubuntu-26-Programme eine leere Hilfstabelle und stürzen ab)
         157 => Res::Val(calls::sys_prctl(a[0], a[1])),
         // sync, syncfs: nothing is ever held back – every write to a disk is done when its call returns
-        170 | 171 | 203 | 221 | 52 | 280 | 162 | 306 => Res::Val(0),
+        170 | 171 | 203 | 221 | 280 | 162 | 306 => Res::Val(0),
         82 => Res::Val(sys_rename(-100, a[0], -100, a[1])),
         264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),
@@ -445,7 +445,11 @@ pub fn dispatch(f: &mut TrapFrame) {
             None if unix_sock(a[0]).is_some() => 0,
             None => -88,
         }),
-        51 | 52 => Res::Val(sys_sockname(a[0], a[1], a[2], nr == 52)),
+        51 => Res::Val(sys_sockname(a[0], a[1], a[2], false)),
+        // getpeername: the real answer for an internet socket. For every other socket (local
+        // ones) it stays what it always was here – success without an address –, because
+        // call 52 used to stand in the "does nothing" list above and hid this line.
+        52 => Res::Val(if sock_id(a[0]).is_some() { sys_sockname(a[0], a[1], a[2], true) } else { 0 }),
         53 => Res::Val(sys_socketpair(a[0], a[1], a[3])),
         54 => Res::Val(0),
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
