@@ -314,6 +314,27 @@
   "h": 440,
   "title": "Verbund · Zustände: aus, leer, wartet, geöffnet, abgelehnt, abgelaufen, getrennt, empfangen, kein Ziel, Fehler"
  },
+ "AssistantCloud.dc.html": {
+  "x": 4560,
+  "y": 8144,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Assistent: Cloud-Modell als letzter Weg (Reihenfolge, Anbieter, Schlüssel, Modell, Kosten) · dunkel · Arabisch"
+ },
+ "AssistantCloudLight.dc.html": {
+  "x": 6080,
+  "y": 8144,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Assistent: Cloud-Modell, noch kein Schlüssel · hell · Englisch"
+ },
+ "AssistantCloudKey.dc.html": {
+  "x": 7600,
+  "y": 8144,
+  "w": 1440,
+  "h": 900,
+  "title": "Assistent · Cloud-Modell: Schlüssel verdeckt eingeben (Fehlerzustand: vom Anbieter abgelehnt)"
+ },
  "CompactMeshSend.dc.html": {
   "x": 0,
   "y": 9164,

@@ -29,7 +29,7 @@ pub fn choose_with_cloud(
     cloud: &CloudState,
 ) -> (Brain, String) {
     match choose(local, lenders) {
-        (Brain::Minimal, _) if cloud.configured => (Brain::Cloud, cloud.provider.clone()),
+        (Brain::Minimal, _) if cloud.configured => (Brain::Cloud, cloud.provider_name().to_owned()),
         own => own,
     }
 }
@@ -38,6 +38,7 @@ pub fn choose_with_cloud(
 mod tests {
     use super::*;
     use ultar_bus::messages::llm::ModelClass;
+    use ultar_bus::messages::llm_cloud::ProviderInfo;
 
     fn local(ready: bool, class: ModelClass) -> LlmState {
         LlmState {
@@ -92,8 +93,13 @@ mod tests {
     fn the_cloud_is_the_last_way_and_needs_the_persons_key() {
         let cloud = |configured| CloudState {
             configured,
-            provider: "Claude".into(),
-            model: "m".into(),
+            provider: "claude".into(),
+            providers: vec![ProviderInfo {
+                id: "claude".into(),
+                name: "Claude".into(),
+                needs_endpoint: false,
+            }],
+            ..CloudState::default()
         };
         let none = local(false, ModelClass::Small);
         let small = local(true, ModelClass::Small);

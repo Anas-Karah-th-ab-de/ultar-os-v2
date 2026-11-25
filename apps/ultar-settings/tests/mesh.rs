@@ -215,41 +215,85 @@ fn every_text_of_the_page_exists_in_all_three_languages() {
     assert_eq!(keys(&read("de")), english);
 }
 
+fn cloud() -> ultar_bus::messages::llm_cloud::CloudState {
+    use ultar_bus::messages::llm_cloud::{CloudState, ProviderInfo};
+    let provider = |id: &str, name: &str, needs_endpoint| ProviderInfo {
+        id: id.into(),
+        name: name.into(),
+        needs_endpoint,
+    };
+    CloudState {
+        provider: "claude".into(),
+        providers: vec![
+            provider("claude", "Claude", false),
+            provider("compatible", "OpenAI-compatible", true),
+        ],
+        ..CloudState::default()
+    }
+}
+
+/// Chooses the option `index` of the select behind `act`.
+fn choose(app: &mut App, act: Act, index: usize) {
+    let node = app
+        .view
+        .node(act)
+        .unwrap_or_else(|| panic!("{act:?} not shown"));
+    let kind = ultar_ui::event::ActionKind::Selected(index);
+    app.actions(vec![ultar_ui::event::Action { node, kind }])
+        .unwrap();
+}
+
+fn type_in_dialog(app: &mut App, text: &str) {
+    let field = app.view.dialog_fields[0];
+    app.ui.set_text(field, text).unwrap();
+    press(app, Act::DialogOk);
+}
+
+fn dialog_error(app: &App) -> Option<String> {
+    let error = app.state.dialog.as_ref().and_then(|d| d.error.clone());
+    error.map(|e| e.key)
+}
+
 #[test]
 fn the_key_of_the_cloud_model_goes_in_hidden_and_is_never_shown() {
-    use ultar_bus::messages::llm_cloud::CloudState;
     let world = board_world(1, true);
     // a device without the cloud-model service shows no such section
     let size = content_size(1440.0, 900.0);
     let plain = app(&world, Lang::En, ThemeKind::Dark, size, "assistant");
     assert!(plain.view.node(Act::CloudKey).is_none());
-    world.borrow_mut().system.cloud = Some(CloudState {
-        configured: false,
-        provider: "Claude".into(),
-        model: "m".into(),
-    });
+    world.borrow_mut().system.cloud = Some(cloud());
     let mut app = app(&world, Lang::Ar, ThemeKind::Dark, size, "assistant");
+    let text = shown(&app);
     assert!(
-        shown(&app).contains("app.settings.cloud.leaves"),
+        text.contains("app.settings.cloud.leaves"),
         "says what leaves the device"
+    );
+    assert!(text.contains("app.settings.cloud.cost"), "says who bills");
+    // the order of the four ways, with the mark on the one in use: no key, so the fixed commands
+    assert_eq!(text.matches("app.settings.cloud.order.now").count(), 1);
+    assert_eq!(
+        app.state.status.brain,
+        Some(ultar_bus::messages::agent::Brain::Minimal)
     );
     assert!(
         app.view.node(Act::CloudClear).is_none(),
         "nothing to forget yet"
     );
+    assert!(
+        app.view.node(Act::CloudModel).is_none(),
+        "no models before a key"
+    );
 
     press(&mut app, Act::CloudKey);
-    let field = app.view.dialog_fields[0];
-    app.ui.set_text(field, "two words").unwrap();
-    press(&mut app, Act::DialogOk);
-    let error = app.state.dialog.as_ref().and_then(|d| d.error.clone());
-    assert_eq!(
-        error.map(|e| e.key),
-        Some("app.settings.cloud.error.key".into())
-    );
-    let field = app.view.dialog_fields[0];
-    app.ui.set_text(field, "sk-secret-123").unwrap();
-    press(&mut app, Act::DialogOk);
+    type_in_dialog(&mut app, "two words");
+    let invalid = Some("app.settings.cloud.error.invalid".to_owned());
+    assert_eq!(dialog_error(&app), invalid);
+    // a key the provider refuses is said and not stored
+    type_in_dialog(&mut app, ultar_settings::service::cloud::REFUSED_KEY);
+    let refused = Some("app.settings.cloud.error.refused".to_owned());
+    assert_eq!(dialog_error(&app), refused);
+    assert!(!world.borrow().system.cloud.as_ref().unwrap().configured);
+    type_in_dialog(&mut app, "sk-secret-123");
     assert!(app.state.dialog.is_none());
     assert_eq!(last(&world), "llmcloud.set_key (13 characters)");
     let text = shown(&app);
@@ -257,9 +301,61 @@ fn the_key_of_the_cloud_model_goes_in_hidden_and_is_never_shown() {
         text.contains("app.settings.cloud.on") && !text.contains("sk-secret"),
         "{text}"
     );
+    let cloud = Some(ultar_bus::messages::agent::Brain::Cloud);
+    assert_eq!(app.state.status.brain, cloud);
 
     press(&mut app, Act::CloudClear);
     press(&mut app, Act::DialogOk);
     assert_eq!(last(&world), "llmcloud.clear_key");
     assert!(shown(&app).contains("app.settings.cloud.off"));
+}
+
+#[test]
+fn the_person_chooses_the_model_and_a_server_of_their_own() {
+    let world = board_world(1, true);
+    world.borrow_mut().system.cloud = Some(cloud());
+    let size = content_size(1440.0, 900.0);
+    let mut app = app(&world, Lang::En, ThemeKind::Dark, size, "assistant");
+    press(&mut app, Act::CloudKey);
+    type_in_dialog(&mut app, "sk-secret-123");
+    assert!(
+        app.view.node(Act::CloudModel).is_some(),
+        "the provider's models are offered"
+    );
+    choose(&mut app, Act::CloudModel, 0);
+    assert_eq!(
+        last(&world),
+        "llmcloud.configure (\"claude\", \"\", \"model-big\")"
+    );
+    assert!(
+        world.borrow().system.cloud.as_ref().unwrap().configured,
+        "the key stays"
+    );
+
+    // a server of one's own asks for its address; only https, and the key is forgotten
+    assert!(app.view.node(Act::CloudAddress).is_none());
+    choose(&mut app, Act::CloudProvider, 1);
+    assert_eq!(
+        app.state.dialog.as_ref().map(|d| d.purpose),
+        Some(DialogPurpose::CloudAddress)
+    );
+    type_in_dialog(&mut app, "http://example.org");
+    let invalid = Some("app.settings.cloud.error.invalid".to_owned());
+    assert_eq!(dialog_error(&app), invalid);
+    type_in_dialog(&mut app, "https://llm.example.org");
+    assert!(app.state.dialog.is_none());
+    let now = world.borrow().system.cloud.clone().unwrap();
+    assert_eq!(
+        (now.provider.as_str(), now.configured),
+        ("compatible", false)
+    );
+    assert!(shown(&app).contains("https://llm.example.org"));
+    assert!(app.view.node(Act::CloudAddress).is_some());
+    // back to the provider with a fixed address: at once, without a dialog
+    choose(&mut app, Act::CloudProvider, 0);
+    assert!(app.state.dialog.is_none());
+    assert_eq!(
+        world.borrow().system.cloud.as_ref().unwrap().provider,
+        "claude"
+    );
 }

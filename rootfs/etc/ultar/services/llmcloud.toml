@@ -1,17 +1,20 @@
 # The cloud model (docs/integration/ultar-llm-cloud.md): a provider's language model as
 # the helper's LAST way to think - used only while neither this device nor a paired one
 # has a model, and only after the person entered a key of their own (Settings >
-# Assistant). Without a key it sends nothing. The key lies in --state, readable for this
-# service only; no call gives it out. Provider today: Claude (api.anthropic.com).
+# Assistant). Without a key it sends nothing. The key lies sealed in --state; what opens
+# it lies in --seal, so a copy of one folder alone is worthless. No call gives the key
+# out. Providers: Claude (api.anthropic.com), or a server with the chat-completions
+# interface at an address the person gives (https only).
 exec = "/usr/bin/ultar-llm-cloud"
 args = [
     "--bus", "/run/ultar/bus/llmcloud.sock",
     "--state", "/data/ultar/llm-cloud",
+    "--seal", "/data/ultar/llm-cloud-seal",
     "--log-socket", "/run/ultar/log/llmcloud.sock",
 ]
 # Its own user (837) without kernel rights: one bus connection, its folder, the way out.
 user = 837
-dirs = ["/data/ultar/llm-cloud"]
+dirs = ["/data/ultar/llm-cloud", "/data/ultar/llm-cloud-seal"]
 notify = true
 after = ["bus"]
 restart = "always"

@@ -1469,3 +1469,52 @@ impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
 test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshDevice:1"
 note = ""
+
+[action."assistant.cloud.provider"]
+status = "ok"
+impl = "apps/ultar-settings/src/view/cloud.rs + src/update/cloud.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = ""
+
+[action."assistant.cloud.key"]
+status = "ok"
+impl = "apps/ultar-settings/src/view/cloud.rs + src/update/cloud.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = ""
+
+[action."assistant.cloud.model"]
+status = "ok"
+impl = "apps/ultar-settings/src/view/cloud.rs + src/update/cloud.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = ""
+
+[action."assistant.cloud.clear"]
+status = "ok"
+impl = "apps/ultar-settings/src/view/cloud.rs + src/update/cloud.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = ""
+
+[action."assistant.cloud.key.field"]
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = "generic dialog field"
+
+[action."assistant.cloud.key.save"]
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = "generic dialog action"
+
+[action."assistant.cloud.key.cancel"]
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
+boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
+note = "generic dialog action"

@@ -325,8 +325,8 @@ publish  = ["llmcloud.state"]
 
 [[rule]]
 identity  = "app.settings"
-call      = ["llmcloud.set_key", "llmcloud.clear_key"]
-subscribe = ["llmcloud.state"]
+call      = ["llmcloud.set_key", "llmcloud.clear_key", "llmcloud.configure"]
+subscribe = ["llmcloud.state", "agent.state"]
 
 # The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
 # off are confirmed by the person first (`sysdialog.authenticate`).

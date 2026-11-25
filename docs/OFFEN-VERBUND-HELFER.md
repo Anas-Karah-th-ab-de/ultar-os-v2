@@ -50,7 +50,7 @@ Nicht begonnen sind C1, C2, C4, C6, C8, C12; C5 ist eine Entscheidung des Eigent
 | C10 | Helfer: Wissen. ~~Acht Themen (Koppeln, Weitermachen, Dateien, Modell, WLAN, Bluetooth, Aktualisierungen, Helfer) in drei Sprachen, ohne Modell beantwortet, als Werkzeug `help` für das Modell~~ – erledigt. Offen: die Themen des alten Hilfe-Systems übernehmen |
 | ~~C11~~ | ~~Helfer: auf einem anderen Gerät handeln~~ – erledigt: Werkzeug `ask_device`, Aufruf `mesh.act`; das andere Gerät nimmt es nur mit dem Recht „Dieses Gerät steuern“ an, sein eigener Helfer führt aus, Gefährliches bestätigt die Person dort. Keine Ketten, keine Kreise. Offen: Text der Antwort des anderen Helfers (heute nur seine Schritte) |
 | C12 | Helfer: Antwort Stück für Stück anzeigen (heute kommt sie am Ende) |
-| ~~C13~~ | ~~Cloud-Modell als letzter Weg, mit eigenem Schlüssel der Person (Beispiel: Claude)~~ – erledigt: Dienst `ultar-llm-cloud`, Abschnitt in Einstellungen › Assistent, Reihenfolge eigenes Modell → verliehenes → Cloud → kleinste Hilfe. Offen: gegen den echten Anbieter prüfen, Schlüssel verschlüsselt ablegen, weitere Anbieter (`docs/integration/ultar-llm-cloud.md`) |
+| ~~C13~~ | ~~Cloud-Modell als letzter Weg, mit eigenem Schlüssel der Person (Beispiel: Claude)~~ – erledigt: Dienst `ultar-llm-cloud`, Abschnitt in Einstellungen › Assistent, Reihenfolge eigenes Modell → verliehenes → Cloud → kleinste Hilfe. Schlüssel versiegelt abgelegt, zwei Anbieter (Claude, OpenAI-kompatibel), Modellwahl aus der Liste des Anbieters, Kosten-Hinweis, Tafeln `AssistantCloud*`. Offen: gegen den echten Anbieter prüfen, Schlüsselspeicher in der Hardware, Freigabe der Tafeln (`docs/integration/ultar-llm-cloud.md`) |
 
 ## D. Geprüft und noch nicht geprüft
 

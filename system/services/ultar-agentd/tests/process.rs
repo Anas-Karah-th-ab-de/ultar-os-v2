@@ -363,8 +363,8 @@ fn the_cloud_model_is_used_only_while_no_model_is_on_the_persons_devices() {
     // the person entered a key: the provider's model is the last way
     let cloud = CloudState {
         configured: true,
-        provider: "Claude".into(),
-        model: "m".into(),
+        provider: "claude".into(),
+        ..CloudState::default()
     };
     b.stand_in.publish(&cloud).unwrap();
     brain(&b, &Brain::Cloud);

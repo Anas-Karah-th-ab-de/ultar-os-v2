@@ -98,6 +98,13 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             &[("app.settings.cloud.key.field", true)],
             false,
         ),
+        DialogPurpose::CloudAddress => plain(
+            "app.settings.cloud.address.title",
+            k("app.settings.cloud.address.text"),
+            "app.settings.cloud.key.save",
+            &[("app.settings.cloud.address", false)],
+            false,
+        ),
         DialogPurpose::CloudClear => plain(
             "app.settings.cloud.clear.title",
             k("app.settings.cloud.clear.text"),

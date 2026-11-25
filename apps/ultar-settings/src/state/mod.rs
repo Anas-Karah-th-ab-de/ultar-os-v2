@@ -106,6 +106,8 @@ pub enum DialogPurpose {
     CloudKey,
     /// "Forget the key?".
     CloudClear,
+    /// The address of a provider of the person's own choice is typed.
+    CloudAddress,
 }
 
 /// An open dialog.
@@ -134,6 +136,8 @@ pub struct StatusView {
     pub mesh: mesh::MeshView,
     /// The cloud model (Settings › Assistant; `None`: no such service).
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
+    /// What the helper thinks with right now (`None`: no helper).
+    pub brain: Option<ultar_bus::messages::agent::Brain>,
     /// Why the open status page's service could not be read.
     pub error: Option<Text>,
 }

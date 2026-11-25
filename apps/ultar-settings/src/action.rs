@@ -109,6 +109,12 @@ pub enum Act {
     CloudKey,
     /// Forget the key of the cloud model.
     CloudClear,
+    /// Choose the provider of the cloud model.
+    CloudProvider,
+    /// Choose the model.
+    CloudModel,
+    /// Type the address of the provider.
+    CloudAddress,
     /// Mesh on or off.
     MeshToggle,
     /// Copy this device's id.
@@ -190,6 +196,9 @@ impl Act {
             Act::AccountDeviceRemove(_) => "account.device.remove",
             Act::CloudKey => "assistant.cloud.key",
             Act::CloudClear => "assistant.cloud.clear",
+            Act::CloudProvider => "assistant.cloud.provider",
+            Act::CloudModel => "assistant.cloud.model",
+            Act::CloudAddress => "assistant.cloud.address",
             Act::MeshToggle => "mesh.toggle",
             Act::MeshCopy => "mesh.copy",
             Act::MeshPair => "mesh.pair",

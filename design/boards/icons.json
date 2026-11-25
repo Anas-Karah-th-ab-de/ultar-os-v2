@@ -54,6 +54,9 @@
    "meaning": "opens a list of choices (select)",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactDisplay",
     "InstallerDisk",
     "InstallerDrivers",
@@ -105,6 +108,9 @@
    "used_in": [
     "Account",
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CalendarSheet",
     "CompactApps",
     "CompactHome",
@@ -146,6 +152,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -173,6 +182,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "DesktopBottom",
     "DesktopTop",
     "Main",
@@ -200,6 +212,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "Bricks",
     "CalendarSheet",
     "CompactQuick",
@@ -321,6 +336,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "Bricks",
     "CompactMeshIncoming",
     "CompactMeshSend",
@@ -361,6 +379,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "Bricks",
     "CompactApps",
     "CompactDisplay",
@@ -393,6 +414,7 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloudKey",
     "InstallerDisk",
     "InstallerDrivers",
     "InstallerSummary",
@@ -409,6 +431,9 @@
    "meaning": "locked / lock the screen",
    "mirrored_in_rtl": false,
    "used_in": [
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactLock",
     "CompactMeshIncoming",
     "InstallerDrivers",
@@ -436,6 +461,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactSettings",
     "MeshDevice",
     "MeshPairJoin",
@@ -483,6 +511,9 @@
    "used_in": [
     "Account",
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CalendarSheet",
     "CompactApps",
     "CompactDisplay",
@@ -575,6 +606,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactQuick",
     "CompactSettings",
     "InstallerDrivers",
@@ -603,6 +637,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactMeshSend",
     "Installer",
     "MeshDevice",
@@ -625,6 +662,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "PhoneDial",
     "PhoneIncoming"
    ]
@@ -635,6 +675,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -651,6 +694,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -668,6 +714,9 @@
    "used_in": [
     "Account",
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CalendarSheet",
     "CompactQuick",
     "CompactSettings",
@@ -743,6 +792,9 @@
    "used_in": [
     "Account",
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CalendarSheet",
     "CompactApps",
     "CompactDisplay",
@@ -780,6 +832,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactSettings",
     "InstallerDrivers",
     "MeshDevice",
@@ -799,6 +854,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -815,6 +873,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "InstallerDrivers",
     "MeshDevice",
     "MeshPairJoin",
@@ -832,6 +893,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -848,6 +912,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -910,6 +977,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1051,6 +1121,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "Login",
     "MeshDevice",
     "MeshPairJoin",
@@ -1072,6 +1145,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1088,6 +1164,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactSettings",
     "MeshDevice",
     "MeshPairJoin",
@@ -1114,6 +1193,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1178,6 +1260,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "Login",
     "MeshDevice",
     "MeshPairJoin",
@@ -1196,6 +1281,9 @@
    "used_in": [
     "Account",
     "AppGrid",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactApps",
     "CompactHome",
     "CompactStore",
@@ -1219,6 +1307,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CalendarSheet",
     "MeshDevice",
     "MeshPairJoin",
@@ -1245,6 +1336,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactSettings",
     "MeshDevice",
     "MeshPairJoin",
@@ -1262,6 +1356,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1278,6 +1375,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1294,6 +1394,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1310,6 +1413,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactSettings",
     "MeshDevice",
     "MeshPairJoin",
@@ -1327,6 +1433,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1343,6 +1452,9 @@
    "mirrored_in_rtl": true,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1359,6 +1471,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactMeshSend",
     "MeshDevice",
     "MeshPairJoin",
@@ -1376,6 +1491,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "MeshDevice",
     "MeshPairJoin",
     "MeshPairShow",
@@ -1392,6 +1510,9 @@
    "mirrored_in_rtl": false,
    "used_in": [
     "Account",
+    "AssistantCloud",
+    "AssistantCloudKey",
+    "AssistantCloudLight",
     "CompactLock",
     "Lock",
     "MeshDevice",

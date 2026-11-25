@@ -3,6 +3,14 @@
 # and is listed in CLICKS.md under "Spec additions needed".
 N = 'NEW'
 ACTIONS = {
+ # assistant · cloud model as the last way – contract: system/core/ultar-bus/src/messages/llm_cloud.rs
+ 'assistant.cloud.provider': ('Chooses the provider (llmcloud.configure). One with a fixed address is chosen at once; a server of the person\'s own choice first asks for its address (https only). Another provider or address forgets the stored key.', N),
+ 'assistant.cloud.key': ('Opens the dialog to type the key. It is typed hidden and never shown again.', N),
+ 'assistant.cloud.key.field': ('The key field: hidden, no spaces, at most 512 characters; an error text below the field says why a key was not stored.', N),
+ 'assistant.cloud.key.save': ('Asks the provider once with the key (llmcloud.set_key). Accepted: stored sealed, the dialog closes, the models the key may use appear. Refused: nothing is stored and the field shows the error. Provider not reachable: stored, marked "not checked yet".', N),
+ 'assistant.cloud.key.cancel': ('Closes the dialog; nothing is stored.', N),
+ 'assistant.cloud.model': ('Chooses one of the models the provider offered for the key (llmcloud.configure); the key stays.', N),
+ 'assistant.cloud.clear': ('Asks "Forget the key?" and then removes it (llmcloud.clear_key). Without a key the helper sends nothing to the provider.', N),
  # mesh (device link) – contract: system/core/ultar-bus/src/messages/mesh.rs
  'mesh.toggle': ('Switches Mesh on or off at once (mesh.set_enabled). Off: no port is open and no device sees this one; paired devices stay paired. The quick-settings tile shows the same state.', N),
  'mesh.copy': ('Copies the device id to the clipboard; a toast confirms it.', N),
