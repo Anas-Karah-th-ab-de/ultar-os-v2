@@ -127,8 +127,12 @@ upstream = "https://github.com/ggml-org/llama.cpp"
 tag = "b{version}"
 license = "MIT"
 why = "runs language models (GGUF files); the Vulkan backend computes on the GPU"
+# The C++ headers of the compiler must come before the C headers of the package below: the C++
+# library wraps <math.h>, and found in the other order the wrapper is skipped (signbit, isnan
+# are then missing). The first command asks the compiler where its C++ headers are.
 build = [
-  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=ON -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_NUMBER={version} -DVulkan_INCLUDE_DIR=/pkg/grafik-laufzeit/include -DVulkan_LIBRARY=/pkg/grafik-laufzeit/lib/libvulkan.so -DVulkan_GLSLC_EXECUTABLE={tools}/bin/glslc",
+  "echo | g++ -xc++ -E -v - 2>&1 | grep '^ /.*c++' | sed 's/^ / -isystem /' | tr -d '\\n' > cxx-dirs",
+  "CXX=\"g++ $(cat cxx-dirs) -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib\" cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=ON -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_NUMBER={version} -DVulkan_INCLUDE_DIR=/pkg/grafik-laufzeit/include -DVulkan_LIBRARY=/pkg/grafik-laufzeit/lib/libvulkan.so -DVulkan_GLSLC_EXECUTABLE={tools}/bin/glslc",
   "cmake --build build -j{jobs}",
   "cmake --install build",
 ]
