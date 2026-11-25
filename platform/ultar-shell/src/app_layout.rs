@@ -18,6 +18,7 @@ use std::time::Instant;
 use ultar_radio as radio;
 
 /// Reihenfolge der Apps auf dem Startbildschirm (nach den gelernten Lieblings-Apps).
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 const DOCK: [&str; 12] = [
     "Phone",
     "Messages",
@@ -36,7 +37,9 @@ const DOCK: [&str; 12] = [
 /// Aktuelle Down-/Upload-Rate aller Schnittstellen (außer lo) in Byte/s.
 #[derive(Default)]
 pub struct Rates {
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     prev: Option<(Instant, u64, u64)>,
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     last: Option<(f32, f32)>,
     /// Prozessorlast für das Geräte-Widget: (Zeitpunkt, gesamt, Leerlauf), letzter Wert 0..1
     cpu_prev: Option<(Instant, u64, u64)>,
@@ -111,6 +114,7 @@ pub fn badge(ui: &mut Ui, ir: Rect, n: usize) {
 }
 
 impl Rates {
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn sample(&mut self) -> Option<(f32, f32)> {
         let txt = std::fs::read_to_string("/proc/net/dev").ok()?;
         let (mut rx, mut tx) = (0u64, 0u64);
@@ -137,6 +141,7 @@ impl Rates {
 }
 
 /// Rate lesbar: „48 Mbit/s“, „320 kbit/s“.
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 fn rate(bps: f32) -> (String, &'static str) {
     let bits = bps * 8.0;
     if bits >= 1_000_000.0 {
@@ -674,6 +679,7 @@ impl App {
     }
 
     /// Verbindungskarte: Mobilfunk (bevorzugt) oder WLAN, Live-Rate, Signal, zwei Aktionen.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn conn_card(&mut self, ui: &mut Ui, r: Rect) {
         let st = self.radio();
         let p = self.rprefs();
@@ -1430,6 +1436,7 @@ impl App {
     }
 
     /// Große Schnellschalter-Kachel: Symbol, AN/AUS, Name, Zustandszeile.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn big_tile(&mut self, ui: &mut Ui, r: Rect, ic: Ic, name: &str, sub: &str, on: bool) -> bool {
         let held = ui.held(r);
         let rad = ui.dp(18.0);

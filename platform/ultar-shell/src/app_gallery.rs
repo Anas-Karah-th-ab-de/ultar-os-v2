@@ -29,6 +29,7 @@ pub fn camera_dir() -> String {
 
 const MEDIA_DIRS: [&str; 5] = ["DCIM", "Pictures", "media", "Download", "ultar/media"];
 const THUMB: u32 = 320;
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub const MONTHS: [&str; 12] = [
     "January",
     "February",

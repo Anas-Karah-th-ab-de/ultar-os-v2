@@ -26,6 +26,7 @@ pub struct State {
 /// Ausschnitt der Monitor-Statistik (net-usage.toml): Tag -> (empfangen, gesendet)
 #[derive(Deserialize, Default)]
 #[serde(default)]
+#[cfg_attr(test, allow(dead_code))] // only the running shell uses it, tests do not start it
 struct Usage {
     days: std::collections::BTreeMap<String, (u64, u64)>,
 }
@@ -36,8 +37,12 @@ pub const HISTORY: &str = "notify-history.log";
 #[derive(Clone, Debug)]
 pub enum SysMsg {
     /// Energiesparen automatisch an/aus
+    #[cfg_attr(test, allow(dead_code))]
+    // only the running shell uses it, tests do not start it
     Saver(bool),
     /// Uhrzeit wurde gestellt (Abweichung in Sekunden)
+    #[cfg_attr(test, allow(dead_code))]
+    // only the running shell uses it, tests do not start it
     TimeSynced(i64),
     /// Meldung des Fingerabdruck-Dienstes
     Fp(crate::fp::FpEv),
@@ -45,6 +50,7 @@ pub enum SysMsg {
     Face(u32, crate::face::FaceEv),
 }
 
+#[cfg_attr(test, allow(dead_code))] // only the running shell uses it, tests do not start it
 fn text(lang: &str, de: &str, en: &str, ar: &str) -> String {
     match lang {
         "de" => de,
@@ -131,6 +137,7 @@ pub fn clear_history() {
     let _ = std::fs::remove_file(format!("{}/{HISTORY}", sys::data_dir()));
 }
 
+#[cfg_attr(test, allow(dead_code))] // only the running shell uses it, tests do not start it
 pub fn start(bg: Bg) {
     if std::env::var("ULTAR_DRY").is_ok() {
         return;
@@ -138,6 +145,7 @@ pub fn start(bg: Bg) {
     std::thread::spawn(move || run(bg));
 }
 
+#[cfg_attr(test, allow(dead_code))] // only the running shell uses it, tests do not start it
 fn run(bg: Bg) {
     let mut prev_batt: Option<(u8, bool)> = None;
     let mut last_hot: Option<Instant> = None;

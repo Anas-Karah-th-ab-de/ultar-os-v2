@@ -123,6 +123,7 @@ pub fn parse_desktop(s: &str) -> Option<DeskApp> {
     })
 }
 
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 fn initial(name: &str) -> String {
     name.trim()
         .chars()
@@ -556,6 +557,7 @@ impl App {
 
     // ------------------------------------------------------------ Kontakte
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn s_contacts(&mut self, ui: &mut Ui, area: Rect, sc: &mut f32) {
         self.extra_load();
         let area = self.header(ui, area, self.t("Contacts"));
@@ -661,6 +663,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn s_contact_edit(&mut self, ui: &mut Ui, area: Rect, idx: Option<usize>) {
         self.extra_load();
         let area = self.header(

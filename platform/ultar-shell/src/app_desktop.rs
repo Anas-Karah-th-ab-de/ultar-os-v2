@@ -420,7 +420,7 @@ impl App {
             );
             // Knöpfe: schließen, maximieren, minimieren (am Ende; Arabisch links)
             let bw = ui.dp(40.0);
-            let mut knopf = |k: usize| {
+            let knopf = |k: usize| {
                 Rect::new(
                     if rtl {
                         tr.x + k as f32 * bw

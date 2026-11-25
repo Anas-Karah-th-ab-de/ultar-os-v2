@@ -45,6 +45,7 @@ impl Dev {
         }
     }
     /// Modem-Tonweg (SND_AUDIO_PATH_CTRL): Hörer 1, Kopfhörer 2, Lautsprecher 6, Kopfhörer ohne Mikro 7
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn modem_path(self) -> u8 {
         match self {
             Dev::Handset => 1,

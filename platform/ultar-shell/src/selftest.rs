@@ -15,6 +15,7 @@ pub enum Stat {
     Ok,
     Warn,
     Fail,
+    #[allow(dead_code)] // never constructed; kept, see docs/OFFEN-WARNUNGEN.md
     Info,
 }
 
@@ -49,6 +50,7 @@ impl Check {
             detail: d.into(),
         }
     }
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn info(comp: &'static str, d: impl Into<String>) -> Self {
         Check {
             comp,

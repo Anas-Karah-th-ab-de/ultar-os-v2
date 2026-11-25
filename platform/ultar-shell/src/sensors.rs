@@ -30,6 +30,7 @@ pub struct SensorReading {
     pub values: Vec<f32>,
     pub unit: &'static str,
     pub enabled: Option<bool>,
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     pub present: bool,
 }
 
@@ -305,6 +306,7 @@ impl App {
     }
 
     /// true, wenn der Sensoren-Bildschirm offen ist (für laufende Aktualisierung).
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn sensors_open(&self) -> bool {
         matches!(self.stack.last().map(|s| &s.0), Some(Screen::Sensors))
     }

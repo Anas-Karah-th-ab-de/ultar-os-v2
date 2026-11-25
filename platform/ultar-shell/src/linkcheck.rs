@@ -25,6 +25,7 @@ pub enum Verdict {
 
 #[derive(Clone, Debug)]
 pub struct Report {
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     pub url: String,
     pub host: String,
     pub verdict: Verdict,

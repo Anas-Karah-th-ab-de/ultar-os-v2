@@ -634,6 +634,7 @@ impl App {
         self.mx.shot_at = Some(Instant::now() + Duration::from_secs(3));
     }
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn shade_row2(&mut self, ui: &mut Ui, m: f32, y: f32, gap: f32) -> f32 {
         let caf = self.caffeine_on();
         let items: [(Ic, &str, bool); 4] = [
@@ -678,6 +679,7 @@ impl App {
     }
 
     /// Kleine Schalter-Kachel (Schnelleinstellungen)
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn small_tile(
         &mut self,
         ui: &mut Ui,

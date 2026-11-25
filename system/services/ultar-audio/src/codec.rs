@@ -8,12 +8,14 @@ pub trait Codec {
     /// Lautsprecher-Ausgang am Codec einschalten (DAC/AMP entsperren).
     fn enable_speaker(&self);
     /// Mikrofon-Eingang am Codec einschalten.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn enable_mic(&self);
     /// Lautsprecher-Lautstärke 0..1.
     fn set_speaker_volume(&self, v: f32);
 }
 
 /// Schlanker Stub über die rohen Cod3035-Mixer-Controls (bis Audio-2 den echten Codec liefert).
+#[allow(dead_code)] // never constructed; kept, see docs/OFFEN-WARNUNGEN.md
 pub struct StubCodec;
 
 impl Codec for StubCodec {

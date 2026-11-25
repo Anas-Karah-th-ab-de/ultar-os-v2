@@ -7,6 +7,7 @@
 /// Ecken eines Blatts, normiert auf 0..1: oben links, oben rechts, unten rechts, unten links.
 pub type Quad = [(f32, f32); 4];
 
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub const FULL: Quad = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
 
 #[inline]

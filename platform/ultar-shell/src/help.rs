@@ -380,6 +380,7 @@ pub fn digest() -> String {
 /// Vollständige Wissensbasis als Markdown nach `dir` schreiben: ein Index plus
 /// eine Datei je Thema (alle drei Sprachen). Basis für den lokalen Agenten und
 /// externe Werkzeuge. Fehler werden still verschluckt (best effort).
+#[cfg_attr(test, allow(dead_code))] // only the running shell uses it, tests do not start it
 pub fn export(dir: &str) {
     if std::fs::create_dir_all(dir).is_err() {
         return;

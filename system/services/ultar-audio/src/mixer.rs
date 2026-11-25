@@ -9,6 +9,7 @@ const fn ioc(dir: u64, ty: u8, nr: u64, sz: usize) -> u64 {
 }
 const CTL_LIST: u64 = ioc(3, b'U', 0x10, 80);
 const CTL_INFO: u64 = ioc(3, b'U', 0x11, 272);
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 const CTL_READ: u64 = ioc(3, b'U', 0x12, 1224);
 const CTL_WRITE: u64 = ioc(3, b'U', 0x13, 1224);
 
@@ -34,6 +35,7 @@ impl Mixer {
         Mixer { f }
     }
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn each<R>(&self, mut cb: impl FnMut(i32, u32, &str)) -> Option<R> {
         let f = self.f.as_ref()?;
         let fd = f.as_raw_fd();

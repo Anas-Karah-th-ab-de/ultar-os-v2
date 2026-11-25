@@ -13,6 +13,7 @@ use crate::ui::{Btn, Ui};
 
 #[derive(Default)]
 pub struct SpotifyState {
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     pub note: Option<String>,
 }
 

@@ -549,7 +549,7 @@ fn main() {
     // SIGUSR1 -> Bildschirmfoto (Live-Entwicklung ohne Kamera): `kill -USR1 $(pidof ultar-shell)`
     WAKE_FD.store(std::os::fd::AsRawFd::as_raw_fd(&wfd), Ordering::SeqCst);
     unsafe {
-        nix::libc::signal(nix::libc::SIGUSR1, on_sigusr1 as usize);
+        nix::libc::signal(nix::libc::SIGUSR1, on_sigusr1 as *const () as usize);
     }
     fern::start(std::os::fd::AsRawFd::as_raw_fd(&wfd));
     let bg = sys::Bg {

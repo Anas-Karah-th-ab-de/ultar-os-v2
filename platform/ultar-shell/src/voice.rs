@@ -337,6 +337,7 @@ impl Profile {
         self.refit();
     }
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn forget(&mut self, name: &str) {
         self.phrases.retain(|p| p.name != name);
         self.refit();

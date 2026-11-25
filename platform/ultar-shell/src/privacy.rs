@@ -20,6 +20,7 @@ pub enum Cap {
 
 impl Cap {
     /// Kurzschlüssel für die Status-Datei.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn key(self) -> &'static str {
         match self {
             Cap::Network => "net",
@@ -48,6 +49,7 @@ pub fn allowed(set: &Settings, cap: Cap) -> bool {
 }
 
 /// Anzahl der gerade gesperrten Gruppen (für die Anzeige).
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn blocked_count(set: &Settings) -> usize {
     [
         Cap::Network,

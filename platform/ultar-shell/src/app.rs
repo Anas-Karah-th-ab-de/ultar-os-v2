@@ -267,6 +267,7 @@ pub struct App {
     /// Hintergrundbild des Startbildschirms (None = noch nicht nachgesehen)
     wall: Option<Option<tools::Pic>>,
     tg: app_telegram::TelegramState,
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     spotify: app_spotify::SpotifyState,
     cloud: app_cloud::CloudState,
     mon_tab: usize,
@@ -5702,6 +5703,7 @@ fn tz_label(m: i32) -> String {
 
 /// Benachrichtigungen lesen: eine je Zeile, Format "Titel\tText" (Text optional), neueste zuerst.
 /// Quellen: /run/ultar/notify.log (flüchtig) und /data/ultar/notify.log. Dienste/Apps hängen an.
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 fn read_notifications() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for p in ["/run/ultar/notify.log", "/data/ultar/notify.log"] {

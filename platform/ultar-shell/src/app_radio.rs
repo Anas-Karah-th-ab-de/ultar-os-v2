@@ -367,6 +367,7 @@ impl App {
     // ------------------------------------------------------------ Schnelleinstellungen
 
     /// Netz-Leiste im Schnelleinstellungs-Panel; liefert die belegte Höhe.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn shade_radio(&mut self, ui: &mut Ui, x: f32, y: f32, w: f32) -> f32 {
         let st = self.radio();
         let mut p = self.rprefs();

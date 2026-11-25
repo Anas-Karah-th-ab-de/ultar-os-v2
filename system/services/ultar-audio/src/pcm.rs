@@ -8,6 +8,7 @@ const fn ioc(dir: u64, ty: u8, nr: u64, sz: usize) -> u64 {
     (dir << 30) | ((sz as u64) << 16) | ((ty as u64) << 8) | nr
 }
 const PCM_HW_PARAMS: u64 = ioc(3, b'A', 0x11, 608);
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 const PCM_SW_PARAMS: u64 = ioc(3, b'A', 0x13, 136);
 const PCM_PREPARE: u64 = ioc(0, b'A', 0x40, 0);
 const PCM_START: u64 = ioc(0, b'A', 0x42, 0);

@@ -169,6 +169,7 @@ pub enum Ic {
     Spark,
     Music,
     Video,
+    #[allow(dead_code)] // never constructed; kept, see docs/OFFEN-WARNUNGEN.md
     Star,
     Search,
     Wall,

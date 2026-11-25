@@ -78,6 +78,7 @@ impl Ctl {
         self.names.iter().position(|n| n == name)
     }
 
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn has(&self, name: &str) -> bool {
         self.idx(name).is_some()
     }
@@ -182,6 +183,7 @@ impl Ctl {
     }
 
     /// Zahl-Regler anteilig (0..1) zwischen min und max setzen.
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn set_frac(&self, name: &str, f: f32) -> bool {
         let Some(i) = self.idx(name) else {
             return false;

@@ -57,6 +57,7 @@ pub struct SxState {
     msg: String,
     confirm: u8,
     cleanup: Vec<(String, u64)>,
+    #[allow(dead_code)] // written but never read; kept, see docs/OFFEN-WARNUNGEN.md
     hist_tab: usize,
     snooze: Option<(Instant, String)>,
     pub rssi: Option<i32>,
@@ -163,6 +164,7 @@ impl SxState {
     }
 }
 
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 const DAYS_SHORT: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 pub(super) const MONTHS: [&str; 12] = [
     "January",

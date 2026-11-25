@@ -84,6 +84,7 @@ pub fn file_kind(name: &str, is_dir: bool) -> (Ic, u32) {
 }
 
 /// „gerade eben“, „vor 5 min“, „vor 3 h“, „gestern“, sonst Datum.
+#[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn age(app: &App, secs_ago: i64, unix: i64) -> String {
     match secs_ago {
         s if s < 60 => app.t_pub("just now").to_string(),
@@ -98,6 +99,7 @@ pub fn age(app: &App, secs_ago: i64, unix: i64) -> String {
 }
 
 impl App {
+    #[allow(dead_code)] // not used by anything yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub(super) fn t_pub(&self, k: &'static str) -> &'static str {
         self.t(k)
     }

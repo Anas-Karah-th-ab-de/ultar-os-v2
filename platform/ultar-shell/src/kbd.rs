@@ -129,6 +129,7 @@ pub enum KbOut {
     Backspace,
     Enter,
     Hide,
+    #[allow(dead_code)] // never constructed; kept, see docs/OFFEN-WARNUNGEN.md
     Helper,
     Paste(usize),
     CopyField,
