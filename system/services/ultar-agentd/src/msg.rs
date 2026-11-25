@@ -57,3 +57,80 @@ pub const CONTINUE: [&str; 7] = [
 ];
 /// Words that ask for the paired devices.
 pub const DEVICES: [&str; 5] = ["أجهزتي", "اجهزتي", "الأجهزة", "devices", "geräte"];
+
+/// Words for Bluetooth.
+pub const BLUETOOTH: [&str; 3] = ["بلوتوث", "البلوتوث", "bluetooth"];
+/// Words for airplane mode.
+pub const AIRPLANE: [&str; 5] = [
+    "وضع الطيران",
+    "الطيران",
+    "airplane",
+    "flight mode",
+    "flugmodus",
+];
+/// Words that ask for a screenshot.
+pub const SCREENSHOT: [&str; 5] = [
+    "لقطة شاشة",
+    "لقطة",
+    "screenshot",
+    "bildschirmfoto",
+    "صوّر الشاشة",
+];
+/// Words that lock the screen.
+pub const LOCK: [&str; 6] = ["اقفل", "أقفل", "قفل الشاشة", "lock", "sperre", "sperren"];
+/// Words that make a request a question about this system.
+pub const HOW: [&str; 9] = [
+    "كيف",
+    "ما هو",
+    "ماذا",
+    "how",
+    "what",
+    "help",
+    "wie",
+    "was ",
+    "hilfe",
+];
+/// Help topics by the words people use for them: `(words, topic)`. The first match counts.
+pub const HELP_TOPICS: [(&[&str], &str); 8] = [
+    (
+        &[
+            "أقرن",
+            "اقرن",
+            "إقران",
+            "اقتران",
+            "pair",
+            "koppel",
+            "kopple",
+        ],
+        "pairing",
+    ),
+    (
+        &[
+            "أكمل",
+            "اكمل",
+            "أتابع",
+            "متابعة",
+            "continue",
+            "hand over",
+            "weiter",
+        ],
+        "continue",
+    ),
+    (&["ملف", "ملفات", "file", "datei"], "files"),
+    (&["النموذج", "نموذج", "model", "modell"], "model"),
+    (&["واي فاي", "الواي فاي", "wi-fi", "wifi", "wlan"], "wifi"),
+    (&["بلوتوث", "bluetooth"], "bluetooth"),
+    (&["تحديث", "التحديث", "update", "aktualis"], "updates"),
+    (
+        &[
+            "تستطيع",
+            "تفعل",
+            "can you",
+            "help",
+            "kannst du",
+            "hilfe",
+            "مساعدة",
+        ],
+        "helper",
+    ),
+];

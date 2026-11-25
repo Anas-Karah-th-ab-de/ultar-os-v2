@@ -87,7 +87,58 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             let ok = "app.settings.users.remove";
             plain("app.settings.users.remove.title", text, ok, &[], true)
         }
+        DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
+            mesh(state, purpose)
+        }
         other => fixed(other),
+    }
+}
+
+/// The three dialogs of Settings › Mesh (boards *MeshPairShow*, *MeshPairJoin*; unpair).
+fn mesh(state: &State, purpose: DialogPurpose) -> Spec {
+    let m = &state.status.mesh;
+    let near = m.near();
+    let joined = near.iter().find(|p| Some(&p.id) == m.join.as_ref());
+    let name = match purpose {
+        DialogPurpose::MeshPairJoin => joined.map_or("", |p| p.name.as_str()),
+        _ => m.open().map_or("", |p| p.name.as_str()),
+    };
+    let text = |key: &str| Label::key_with(key, &[("name", name)]);
+    match purpose {
+        DialogPurpose::MeshPairShow => plain(
+            "app.settings.mesh.pair.show",
+            k("app.settings.mesh.pair.show.text"),
+            "app.settings.cancel",
+            &[],
+            false,
+        ),
+        DialogPurpose::MeshPairJoin => plain(
+            "app.settings.mesh.pair.join.title",
+            text("app.settings.mesh.pair.join.text"),
+            "app.settings.mesh.pair.join",
+            &[("app.settings.mesh.pair.code", false)],
+            false,
+        ),
+        _ => plain(
+            "app.settings.mesh.unpair.title",
+            text("app.settings.mesh.unpair.text"),
+            "app.settings.mesh.unpair",
+            &[],
+            true,
+        ),
+    }
+}
+
+/// What a dialog shows large: the account number, or the pairing code in two groups.
+fn large(state: &State, purpose: DialogPurpose) -> Option<String> {
+    match purpose {
+        DialogPurpose::Qr => state.account.state.as_ref().map(|a| a.number.clone()),
+        DialogPurpose::MeshPairShow => {
+            let code = &state.status.mesh.code.as_ref()?.code;
+            let (a, b) = code.split_at(code.len().min(3));
+            Some(format!("{a} {b}"))
+        }
+        _ => None,
     }
 }
 
@@ -165,16 +216,9 @@ pub fn open(ui: &mut Ui, state: &State, view: &mut View) -> Result<(), UiError> 
     let id = ui.add(parent, widget)?;
     view.dialog = Some(id);
     muted(ui, id, s.message.clone())?;
-    if dialog.purpose == DialogPurpose::Qr {
-        let number = state
-            .account
-            .state
-            .as_ref()
-            .map_or("", |a| a.number.as_str());
-        ui.add(
-            id,
-            Text::new(Label::data(number)).spec(TextSpec::title(TypeSize::S32)),
-        )?;
+    if let Some(text) = large(state, dialog.purpose) {
+        let big = Text::new(Label::data(&text)).spec(TextSpec::title(TypeSize::S32));
+        ui.add(id, big)?;
     }
     for (i, (key, secret)) in s.fields.iter().enumerate() {
         let field = if *secret {
@@ -190,7 +234,11 @@ pub fn open(ui: &mut Ui, state: &State, view: &mut View) -> Result<(), UiError> 
         let label = crate::i18n::label(error, ui.translator());
         ui.add(id, InfoBar::new(Tone::Danger, label))?;
     }
-    buttons(ui, view, id, dialog.purpose == DialogPurpose::Qr, &s)?;
+    let one_button = matches!(
+        dialog.purpose,
+        DialogPurpose::Qr | DialogPurpose::MeshPairShow
+    );
+    buttons(ui, view, id, one_button, &s)?;
     ui.open_dialog(id)
 }
 

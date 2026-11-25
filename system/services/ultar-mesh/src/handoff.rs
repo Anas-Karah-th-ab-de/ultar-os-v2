@@ -40,9 +40,10 @@ pub fn uri_ok(uri: &str) -> bool {
 /// `remote_view`: this device can show its windows on another device.
 pub fn stage_for(activity: &Activity, target: &Device, remote_view: bool) -> Option<Stage> {
     let has_file = activity.file.is_some();
-    let has_place = activity.uri.as_deref().is_some_and(uri_ok);
     let same_app = target.can(Capability::Apps) && target.apps.contains(&activity.app);
-    if same_app && (has_file || has_place) && (!has_file || target.can(Capability::Files)) {
+    // The same app continues: at the place, with the file, or - when the app reported
+    // neither - simply opened there.
+    if same_app && (!has_file || target.can(Capability::Files)) {
         return Some(Stage::State);
     }
     if has_file && target.can(Capability::Files) {
@@ -123,13 +124,15 @@ mod tests {
     }
 
     #[test]
-    fn nothing_to_continue_means_no_target() {
+    fn an_app_without_a_place_is_opened_where_it_is_installed() {
         let pc = device(DeviceKind::Desktop, &["clock"]);
         let empty = Activity {
             app: "clock".into(),
             ..Activity::default()
         };
-        assert_eq!(stage_for(&empty, &pc, false), None);
+        assert_eq!(stage_for(&empty, &pc, false), Some(Stage::State));
+        let without = device(DeviceKind::Desktop, &["editor"]);
+        assert_eq!(stage_for(&empty, &without, false), None);
     }
 
     #[test]

@@ -37,14 +37,22 @@ const OPTIONS: [&str; 12] = [
     "relay-token-file",
 ];
 
+/// The kind of this device: the one given, else what the edition of the system says
+/// (the service manager passes `ULTAR_EDITION`: phone, desktop or server).
+fn kind_word(args: &CommonArgs) -> String {
+    let edition = || std::env::var("ULTAR_EDITION").ok();
+    let word = args.option("kind").map(str::to_owned).or_else(edition);
+    word.unwrap_or_else(|| "desktop".to_owned())
+}
+
 /// The name other devices see: the one given, else the machine's own name when the
-/// service manager passes it on (`HOSTNAME`).
+/// service manager passes it on (`HOSTNAME`), else the kind of device.
 fn name(args: &CommonArgs) -> String {
     let own = || std::env::var("HOSTNAME").ok();
     let name = args.option("name").map(str::to_owned).or_else(own);
     match name.as_deref().map(str::trim) {
         Some(name) if !name.is_empty() => name.to_owned(),
-        _ => "device".to_owned(),
+        _ => kind_word(args),
     }
 }
 
@@ -76,7 +84,7 @@ fn listen(args: &CommonArgs) -> Result<Listen, Msg> {
         url: url.to_owned(),
         token: token.trim().to_owned(),
         name: name(args),
-        kind: args.option("kind").unwrap_or("desktop").to_owned(),
+        kind: kind_word(args),
     });
     Ok(Listen {
         bind: SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)),
@@ -93,7 +101,7 @@ fn main() -> ExitCode {
     ultar_svckit::main("ultar-mesh", &OPTIONS, None, |args, log| {
         let state = args.required_path("state").map_err(|_| Msg::BadArguments)?;
         let inbox = args.required_path("inbox").map_err(|_| Msg::BadArguments)?;
-        let kind = kind_from(args.option("kind").unwrap_or("desktop"));
+        let kind = kind_from(&kind_word(args));
         let config = Config {
             name: name(args),
             kind,

@@ -37,3 +37,15 @@ einen Ersatz der Buchse (Zustand, weitergereichter Aufruf, ohne Modell-Dienst).
 
 Siehe `docs/OFFEN-VERBUND-HELFER.md` (Gerät in die Klasse einrechnen, Start des Modell-Dienstes, Lauf
 gegen den echten Dienst).
+
+## Nachtrag 25.11.2026: der Modell-Dienst läuft, wenn die Person ihn eingeschaltet hat
+
+- Entscheidung des Eigentümers: Der Modell-Dienst ist aktiv, wenn die Person es aktiviert hat.
+- Schalter: `assistant.enabled` (Einstellungen › Assistent). Voreinstellung jetzt **aus**.
+- `ultar-llm-bus` liest die Einstellung beim Start (`settings.get`) und folgt `settings.changed`; es sagt dem
+  Dienst-Verwalter `init.switch { service: "llm", on }`.
+- `init.switch` ist neu und eng: kein Verwalter-Recht, wirkt nur auf Dienste, deren Dienstdatei `switch = true`
+  sagt (heute nur `llm.toml`). Jeder andere Dienst ist dafür unbekannt. „Schon an“ und „schon aus“ gelten als erledigt.
+- Aus: der Modell-Dienst wird beendet, `llm.state` meldet „kein Modell“, der Helfer fällt auf ein verliehenes
+  Modell oder die kleinste Hilfe zurück.
+- Tests: 6 (neu: Schalter als echter Prozess); im Dienst-Verwalter: nur markierte Dienste lassen sich schalten.

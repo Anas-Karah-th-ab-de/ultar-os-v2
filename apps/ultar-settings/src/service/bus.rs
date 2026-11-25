@@ -48,7 +48,11 @@ pub fn port_error(error: BusError) -> PortError {
     }
 }
 
-fn call<C: Call>(client: &Client, message: &C, timeout: Duration) -> PortResult<C::Reply> {
+pub(crate) fn call<C: Call>(
+    client: &Client,
+    message: &C,
+    timeout: Duration,
+) -> PortResult<C::Reply> {
     client.call(message, timeout).map_err(port_error)
 }
 
@@ -378,20 +382,20 @@ impl std::fmt::Debug for BusStatus {
 }
 
 /// The last value of a retained topic (the service sends it on subscribe).
-struct Retained<T: ultar_bus::Topic> {
+pub(crate) struct Retained<T: ultar_bus::Topic> {
     sub: Option<TypedSubscription<T>>,
     last: Option<T>,
 }
 
 impl<T: ultar_bus::Topic + Clone> Retained<T> {
-    fn new(client: &Client) -> Self {
+    pub(crate) fn new(client: &Client) -> Self {
         Retained {
             sub: client.subscribe::<T>().ok(),
             last: None,
         }
     }
 
-    fn get(&mut self) -> PortResult<T> {
+    pub(crate) fn get(&mut self) -> PortResult<T> {
         let sub = self.sub.as_ref().ok_or(PortError::Unavailable)?;
         if self.last.is_none() {
             if let Ok(first) = sub.recv_timeout(RETAINED_WAIT) {

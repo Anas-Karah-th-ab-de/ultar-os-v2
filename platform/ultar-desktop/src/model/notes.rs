@@ -79,6 +79,12 @@ impl Notes {
     /// launch, a service that could not do what was asked, a saved screenshot), shown as a
     /// banner.
     pub fn post_notice(&mut self, app: &str, key: &str, now: u64) {
+        self.post_said(app, key, Text::key(&format!("{key}.body")), now);
+    }
+
+    /// The shell's own notice with the title `key` and `body` as its text (an answer of
+    /// the helper), shown as a banner and kept in the list.
+    pub fn post_said(&mut self, app: &str, key: &str, body: Text, now: u64) {
         self.local = self.local.wrapping_add(1) % 1024;
         let id = LOCAL_IDS - self.local;
         self.add(Posted {
@@ -90,7 +96,7 @@ impl Notes {
                 category: Category::System,
                 app_id: app.to_owned(),
                 title: Text::key(key),
-                body: Body::Localized(Text::key(&format!("{key}.body"))),
+                body: Body::Localized(body),
                 actions: Vec::new(),
             },
         });

@@ -21,9 +21,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::init::{
-    Control, ControlReply, Power, PowerAction, PowerReply, Status, StatusReply, ADMIN_METHOD,
-    ERROR_ALREADY, ERROR_SHUTTING_DOWN, ERROR_UNKNOWN_SERVICE, MAX_SERVICES, SERVICE,
-    SHUTDOWN_METHOD,
+    Control, ControlReply, Power, PowerAction, PowerReply, Status, StatusReply, Switch,
+    ADMIN_METHOD, ERROR_ALREADY, ERROR_SHUTTING_DOWN, ERROR_UNKNOWN_SERVICE, MAX_SERVICES, SERVICE,
+    SHUTDOWN_METHOD, SWITCH_METHOD,
 };
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
 use ultar_service::{BusSession, Lifecycle, SessionOptions, StopCause};
@@ -210,6 +210,17 @@ pub fn answer(
 ) -> Option<Halt> {
     if request.method() == "power" {
         return answer_power(request, supervisor, admins, pid1);
+    }
+    if request.method() == SWITCH_METHOD {
+        // No administrator right: the policy names who may call it, and only services
+        // whose file says `switch = true` can be switched.
+        let _ = request.respond::<Switch>(|switch| {
+            supervisor
+                .switch(&switch.service, switch.on, now)
+                .map(|state| ControlReply { state })
+                .map_err(control_code)
+        });
+        return None;
     }
     let caller = request.caller().to_owned();
     if !admins.allows(&caller) {

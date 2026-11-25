@@ -92,3 +92,11 @@ impl Call for Ask {
     const METHOD: &'static str = "ask";
     type Reply = Answer;
 }
+
+/// The helper's texts (keys `agent.*`, in [`Answer::text`]) by language tag, for the
+/// surface that shows its answers and for the helper itself.
+pub const LOCALES: [(&str, &str); 3] = [
+    ("ar", include_str!("../../locales/agent/ar.ftl")),
+    ("en", include_str!("../../locales/agent/en.ftl")),
+    ("de", include_str!("../../locales/agent/de.ftl")),
+];

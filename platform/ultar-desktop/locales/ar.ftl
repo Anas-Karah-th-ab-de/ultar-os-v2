@@ -365,3 +365,31 @@ desk.vpn.settings = إعدادات VPN
 desk.folder.name = مجلد {number}
 desk.folder.close = رجوع إلى كل التطبيقات
 desk.folder.out = اسحب تطبيقًا إلى هنا لإخراجه من المجلد
+
+## الترابط: المتابعة على جهاز آخر (docs/ui/mesh.md §2.5, §2.6)
+desk.mesh.continue = المتابعة على جهاز آخر…
+desk.mesh.choose = المتابعة على
+desk.mesh.target.state = { $name } · يُفتح عند الموضع نفسه
+desk.mesh.target.file = { $name } · الملف فقط
+desk.mesh.target.view = { $name } · يُعرض من هنا
+desk.mesh.waiting = بانتظار الجهاز الآخر
+desk.mesh.waiting.body = يسأل صاحبه. لا يُفتح شيء قبل الموافقة.
+desk.mesh.opened = فُتح على الجهاز الآخر
+desk.mesh.opened.body = يمكنك المتابعة هناك.
+desk.mesh.declined = رُفض
+desk.mesh.declined.body = رفض الجهاز الآخر. لم يُرسل شيء.
+desk.mesh.expired = لم يُجب أحد
+desk.mesh.expired.body = لم يُجب الجهاز الآخر خلال دقيقة.
+desk.mesh.failed = لم يُرسل
+desk.mesh.failed.body = انقطع الاتصال. لم يُحفظ شيء هناك.
+desk.mesh.no_target = لا جهاز يستطيع استقبال هذا الآن
+desk.mesh.no_target.body = اقرن جهازًا من الإعدادات › الترابط أو قرّب جهازًا.
+desk.mesh.no_activity = لا شيء في الواجهة يمكن متابعته
+desk.mesh.no_activity.body = افتح تطبيقًا أو ملفًا أولًا.
+
+## المساعد في بحث النظرة العامة (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = المساعد
+desk.helper.ask = اسأل المساعد: { $text }
+desk.helper.title = المساعد
+desk.helper.failed = لم يُجب المساعد
+desk.helper.failed.body = حاول مرة أخرى بعد قليل.

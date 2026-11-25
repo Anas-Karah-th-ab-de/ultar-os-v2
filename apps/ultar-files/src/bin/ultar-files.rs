@@ -95,6 +95,28 @@ fn open_window(
     Ok(window)
 }
 
+/// Tells the device mesh which folder is open, so it can be continued on another device
+/// ("continue on another device"); said again only when the folder changed. Without the
+/// mesh nothing happens.
+fn report_folder(bus: &Bus, app: &App, title: &str, reported: &mut Option<String>) {
+    use ultar_bus::messages::mesh::{Activity, SetActivity};
+    let uri = ultar_files::uri::of_loc(&app.state.folder);
+    if reported.as_ref() == Some(&uri) {
+        return;
+    }
+    let activity = Activity {
+        app: APP_ID.to_owned(),
+        title: title.to_owned(),
+        uri: Some(uri.clone()),
+        file: None,
+    };
+    let set = SetActivity {
+        activity: Some(activity),
+    };
+    let _ = bus.call(&set, std::time::Duration::from_millis(300));
+    *reported = Some(uri);
+}
+
 fn run(o: Options) -> Result<(), String> {
     let socket = o.compositor.ok_or("compositor")?;
     let bus = Bus::connect(&o.bus.ok_or("bus")?, ClientOptions::named(APP_ID))
@@ -110,6 +132,7 @@ fn run(o: Options) -> Result<(), String> {
     let ui =
         Ui::new(env, InputMode::Pointer, Size::new(1.0, 1.0), tr).map_err(|e| e.to_string())?;
     let mut window = open_window(&socket, o.desktop, &title, ui)?;
+    let mesh = bus.clone();
     let ports = Ports {
         launcher: Box::new(BusLauncher(bus.clone())),
         volumes: Box::new(BusVolumes::new(bus)),
@@ -127,7 +150,11 @@ fn run(o: Options) -> Result<(), String> {
     let mut app = App::new(ui, fs, Some(o.areas), ports, mode, o.uri.as_deref())
         .map_err(|e| e.to_string())?;
     std::mem::swap(window.ui_mut(), &mut app.ui);
+    let mut reported = None;
     loop {
+        if !o.desktop {
+            report_folder(&mesh, &app, &title, &mut reported);
+        }
         let size = window.ui_mut().size();
         let actions = window.dispatch(Some(POLL)).map_err(|e| e.to_string())?;
         if window.window().close_requested() {

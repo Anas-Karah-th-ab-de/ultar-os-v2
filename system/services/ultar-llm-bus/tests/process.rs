@@ -15,6 +15,17 @@ const POLICY: &str = r#"
 identity = "system.llm"
 register = ["llm"]
 publish = ["llm.state"]
+call = ["settings.get", "init.switch"]
+subscribe = ["settings.changed"]
+
+[[rule]]
+identity = "system.settingsd"
+register = ["settings"]
+publish = ["settings.changed"]
+
+[[rule]]
+identity = "system.init"
+register = ["init"]
 
 [[rule]]
 identity = "system.agentd"
@@ -144,4 +155,62 @@ fn without_the_model_service_there_is_no_model() {
         max_tokens: 8,
     };
     assert!(!call(&helper, &ask).unwrap().ok);
+}
+
+#[test]
+fn the_model_service_runs_while_the_person_has_the_assistant_switched_on() {
+    use std::sync::{Arc, Mutex};
+    use ultar_bus::messages::init::{ControlReply, ServiceState, Switch};
+    use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
+    let ids = [
+        "system.llm",
+        "system.agentd",
+        "system.settingsd",
+        "system.init",
+    ];
+    let world = World::new("llmbus-switch", POLICY, &ids);
+    world.serve("system.settingsd", "settings", |request| {
+        let asked = request.decode::<Get>().map(|g| g.key).unwrap_or_default();
+        assert_eq!(asked, "assistant.enabled");
+        let value = Some(SettingValue::Flag(true));
+        let _ = request.reply(&GetReply { value });
+    });
+    let switched = Arc::new(Mutex::new(Vec::new()));
+    let seen = switched.clone();
+    world.serve("system.init", "init", move |request| {
+        if let Ok(switch) = request.decode::<Switch>() {
+            seen.lock().unwrap().push((switch.service, switch.on));
+        }
+        let state = ServiceState::Running;
+        let _ = request.reply(&ControlReply { state });
+    });
+    let socket = world.subdir("llm").join("llm.sock");
+    let args = ["--socket", socket.to_str().unwrap()];
+    let _daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-llm-bus"), "system.llm", &args);
+    let is = |wanted: &[(&str, bool)]| {
+        let got = switched.lock().unwrap().clone();
+        got.iter()
+            .map(|(s, on)| (s.as_str(), *on))
+            .eq(wanted.iter().copied())
+    };
+    // at start it reads the setting: on
+    assert!(wait_until(WAIT, || is(&[("llm", true)])));
+    // the person switches the assistant off, then on again; another key is not its business
+    let settings = world.client("system.settingsd");
+    let say = |key: &str, on: bool| {
+        let changed = Changed {
+            key: key.into(),
+            value: SettingValue::Flag(on),
+        };
+        settings.publish(&changed).unwrap();
+    };
+    say("assistant.wake_word", false);
+    say("assistant.enabled", false);
+    assert!(wait_until(WAIT, || is(&[("llm", true), ("llm", false)])));
+    say("assistant.enabled", true);
+    assert!(wait_until(WAIT, || is(&[
+        ("llm", true),
+        ("llm", false),
+        ("llm", true)
+    ])));
 }

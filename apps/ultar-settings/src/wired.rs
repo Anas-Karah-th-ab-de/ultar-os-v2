@@ -26,7 +26,9 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 13] = [
+pub const WIRED: [(&str, &str); 14] = [
+    // ultar-llm-bus starts and stops the model service with it (`init.switch`).
+    ("assistant.enabled", "llm-bus"),
     // displayd passes these to the compositor (`Request::ConfigurePointer`,
     // `Request::ConfigureKeyRepeat`).
     ("pointer.speed", "compositor"),

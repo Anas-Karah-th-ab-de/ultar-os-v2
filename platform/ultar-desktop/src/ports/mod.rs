@@ -3,6 +3,7 @@
 //! authentication service.
 
 pub mod bus;
+mod bus_mesh;
 mod bus_services;
 pub mod services;
 pub use bus_services::LockCall;

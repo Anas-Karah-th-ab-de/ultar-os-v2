@@ -277,6 +277,11 @@ fn service_tile(id: TileId, presence: &Presence, svc: &Services) -> Option<Tile>
                 return bluetooth_tile(bt, svc.net.as_ref().is_some_and(|n| n.airplane));
             }
         }
+        TileId::Mesh => {
+            if let Some(mesh) = &svc.mesh.state {
+                return Some(switch_tile(id, mesh.enabled, Avail::Ready));
+            }
+        }
         _ => {}
     }
     // No service on the bus (VPN, mobile data, or one that never reported).

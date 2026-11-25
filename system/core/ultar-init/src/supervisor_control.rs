@@ -44,6 +44,28 @@ impl Supervisor {
             .ok_or(ControlError::Unknown)
     }
 
+    /// Switches a service the person may switch (`switch = true` in its file) on or off;
+    /// already on or already off is done. Any other service is unknown here.
+    pub fn switch(
+        &mut self,
+        name: &str,
+        on: bool,
+        now: Instant,
+    ) -> Result<ServiceState, ControlError> {
+        let switchable = self.units.get(name).is_some_and(|u| u.spec.life.switch);
+        if !switchable {
+            return Err(ControlError::Unknown);
+        }
+        let action = if on { Action::Start } else { Action::Stop };
+        match self.control(action, name, now) {
+            Err(ControlError::Already) => {
+                let unit = self.units.get(name).ok_or(ControlError::Unknown)?;
+                Ok(unit.state.public())
+            }
+            other => other,
+        }
+    }
+
     /// The table of the control socket (`ultar-ctl status`): a header and
     /// one line per service – name, state, pid, restarts, uptime.
     pub fn status_text(&self) -> String {

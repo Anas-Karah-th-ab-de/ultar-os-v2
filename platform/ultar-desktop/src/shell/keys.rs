@@ -1,6 +1,6 @@
 //! Keys of the shell (DESKTOP-SPEC §5.4): Super = overview, Super+A = all apps,
 //! Super+P = display modes (steps; Enter confirms, Esc cancels), Super+1…9 = app n of the
-//! bar, Super+I = Settings, Super+E = Files, Super+V clipboard history (no service yet),
+//! bar, Super+I = Settings, Super+E = Files, Super+M = continue on another device, Super+V clipboard history (no service yet),
 //! Esc closes what is open.
 
 use super::bar::{launch, FILES, SETTINGS};
@@ -18,6 +18,7 @@ mod code {
     pub const P: u16 = 25;
     pub const I: u16 = 23;
     pub const E: u16 = 18;
+    pub const M: u16 = 50;
     pub const ONE: u16 = 2;
     pub const NINE: u16 = 10;
 }
@@ -29,6 +30,7 @@ pub(super) fn on_shell_key(s: &mut Shell, key: u16) -> Outcome {
         code::P => step_projection(s),
         code::I => launch(s, SETTINGS, Opening::start()),
         code::E => launch(s, FILES, Opening::start()),
+        code::M => super::handoff::send(s, None),
         n @ code::ONE..=code::NINE => {
             let index = usize::from(n - code::ONE);
             match s.d.bar_apps().get(index) {

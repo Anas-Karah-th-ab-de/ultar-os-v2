@@ -365,3 +365,31 @@ desk.vpn.settings = VPN-Einstellungen
 desk.folder.name = Ordner {number}
 desk.folder.close = Zurück zu allen Apps
 desk.folder.out = App hierher ziehen, um sie aus dem Ordner zu nehmen
+
+## Verbund: auf anderem Gerät weitermachen (docs/ui/mesh.md §2.5, §2.6)
+desk.mesh.continue = Auf anderem Gerät weitermachen…
+desk.mesh.choose = Weitermachen auf
+desk.mesh.target.state = { $name } · öffnet an derselben Stelle
+desk.mesh.target.file = { $name } · nur die Datei
+desk.mesh.target.view = { $name } · von hier gezeigt
+desk.mesh.waiting = Warte auf das andere Gerät
+desk.mesh.waiting.body = Es fragt seine Person. Vor einem Ja wird nichts geöffnet.
+desk.mesh.opened = Auf dem anderen Gerät geöffnet
+desk.mesh.opened.body = Du kannst dort weitermachen.
+desk.mesh.declined = Abgelehnt
+desk.mesh.declined.body = Das andere Gerät hat Nein gesagt. Nichts wurde gesendet.
+desk.mesh.expired = Niemand hat geantwortet
+desk.mesh.expired.body = Das andere Gerät hat innerhalb einer Minute nicht geantwortet.
+desk.mesh.failed = Nicht gesendet
+desk.mesh.failed.body = Die Verbindung ging verloren. Dort wurde nichts gespeichert.
+desk.mesh.no_target = Kein Gerät kann das gerade annehmen
+desk.mesh.no_target.body = Kopple ein Gerät unter Einstellungen › Verbund oder bring eines in Reichweite.
+desk.mesh.no_activity = Nichts im Vordergrund lässt sich fortsetzen
+desk.mesh.no_activity.body = Öffne zuerst eine App oder eine Datei.
+
+## Der Helfer in der Suche der Übersicht (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = Helfer
+desk.helper.ask = Den Helfer fragen: { $text }
+desk.helper.title = Helfer
+desk.helper.failed = Der Helfer hat nicht geantwortet
+desk.helper.failed.body = Versuche es gleich noch einmal.

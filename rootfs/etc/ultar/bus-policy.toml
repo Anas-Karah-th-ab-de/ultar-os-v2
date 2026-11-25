@@ -307,9 +307,14 @@ subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
 [[rule]]
-identity = "system.llmbus"
-register = ["llm"]
-publish  = ["llm.state"]
+identity  = "system.llmbus"
+register  = ["llm"]
+publish   = ["llm.state"]
+# The model service runs while the person has the assistant switched on: it reads that
+# one setting and tells the service manager (`init.switch` reaches only services whose
+# file says `switch = true`).
+call      = ["settings.get", "init.switch"]
+subscribe = ["settings.changed"]
 
 # The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
 # off are confirmed by the person first (`sysdialog.authenticate`).
@@ -320,6 +325,8 @@ publish   = ["agent.state"]
 subscribe = ["llm.state", "mesh.state"]
 call      = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
              "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act", "llm.complete",
+             "bluetooth.set", "net.set_airplane", "media.play_pause", "media.next", "media.previous",
+             "capture.screenshot", "lock.lock", "power.suspend",
              "sysdialog.authenticate", "power.restart", "power.off"]
 
 # The shell and the Settings app drive the mesh and ask the helper (own rules, so the

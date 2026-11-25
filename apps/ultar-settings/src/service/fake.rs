@@ -286,7 +286,7 @@ impl StatusPort for Fake {
     }
 }
 
-/// What the fake account service, launcher and volume service hold.
+/// What the fake account service, launcher, volume service and mesh hold.
 #[derive(Debug, Clone, Default)]
 pub struct SystemWorld {
     /// Local users (`None`: account service down).
@@ -295,6 +295,8 @@ pub struct SystemWorld {
     pub apps: Option<Vec<AppEntry>>,
     /// Mounted drives (`None`: volume service down).
     pub drives: Option<Vec<Drive>>,
+    /// The device mesh (`None`: service down).
+    pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
 }
 
 fn local_user(name: &str, uid: u32) -> LocalUser {
@@ -370,6 +372,7 @@ pub fn ports(world: &Shared) -> Ports {
         update: f(),
         account: f(),
         status: f(),
+        mesh: Box::new(super::mesh::FakeMesh(world.clone())),
         system: f(),
         files: f(),
         clipboard: f(),

@@ -3,16 +3,19 @@
 # and the clipboard – nothing arrives without a yes on this device. Listens on port 47810
 # (TCP and UDP; /etc/ultar/firewall). Its key and the paired devices lie in --state.
 #
-# Open (docs/OFFEN-VERBUND-HELFER.md): what arrives lies in one inbox of the device, not
-# yet in the folder of the person in front; without --share no file can be sent, without
-# --jobs no job of another device runs, without --relay there is no way over the internet.
-editions = ["desktop"]
+# The kind of device follows the edition (ULTAR_EDITION: phone, desktop, server).
+#
+# Open (docs/OFFEN-VERBUND-HELFER.md): files. The person's file areas (/data/ultar/areas)
+# are reachable for the launcher only, so this service can neither read a file to send
+# (no --share) nor put a received one where the Files app shows it (the inbox is its
+# own folder). Handing over what is open in an app works without files. Without --jobs
+# no job of another device runs, without --relay there is no way over the internet.
+editions = ["phone", "desktop", "server"]
 exec = "/usr/bin/ultar-mesh"
 args = [
     "--bus", "/run/ultar/bus/mesh.sock",
     "--state", "/data/ultar/mesh/state",
     "--inbox", "/data/ultar/mesh/inbox",
-    "--kind", "desktop",
     "--log-socket", "/run/ultar/log/mesh.sock",
 ]
 # Its own user (833) without kernel rights: ports above 1024 and its own folders.

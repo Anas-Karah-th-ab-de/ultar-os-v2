@@ -263,7 +263,8 @@ fn a_weak_device_thinks_with_the_model_a_paired_device_lends() {
     assert_eq!(answer.steps.len(), 1);
     assert_eq!(
         *b.seen.started.lock().unwrap(),
-        vec!["org.ultar.browser".to_owned()]
+        // the launcher knows the apps of the system by their one-part id
+        vec!["browser".to_owned()]
     );
     assert!(b.seen.asked_mesh.load(Ordering::SeqCst));
     assert!(!b.seen.asked_local.load(Ordering::SeqCst));
@@ -336,9 +337,7 @@ fn every_text_the_helper_can_say_exists_in_all_three_languages() {
         "agent.action.restart",
         "agent.action.power_off",
     ];
-    for lang in ["ar", "en", "de"] {
-        let path = format!("{}/locales/{lang}.ftl", env!("CARGO_MANIFEST_DIR"));
-        let catalogue = std::fs::read_to_string(path).unwrap();
+    for (lang, catalogue) in ultar_bus::messages::agent::LOCALES {
         for key in keys {
             assert!(catalogue.contains(&format!("\n{key} = ")), "{lang}: {key}");
         }

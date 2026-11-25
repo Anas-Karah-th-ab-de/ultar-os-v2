@@ -26,7 +26,10 @@ fn outcome_key(outcome: StepOutcome) -> &'static str {
 /// The smallest help: one fixed command, or the list of what it understands.
 fn smallest(request: &str, toolbox: &dyn Toolbox) -> (Text, Vec<Step>) {
     let Some(call) = minimal::understand(request) else {
-        return (says("agent.minimal.help"), Vec::new());
+        // A question about this system is answered from the help topics.
+        let topic = crate::help::topic_of(request).and_then(crate::help::key);
+        let key = topic.as_deref().unwrap_or("agent.minimal.help");
+        return (says(key), Vec::new());
     };
     let (outcome, told) = toolbox.run(&call);
     let step = Step {

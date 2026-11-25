@@ -92,7 +92,7 @@ impl Slice {
 
 /// Every key a service file may have (checked before parsing: the parts
 /// below are flattened, which `deny_unknown_fields` does not support).
-pub const KEYS: [&str; 25] = [
+pub const KEYS: [&str; 26] = [
     "name",
     "description",
     "exec",
@@ -105,6 +105,7 @@ pub const KEYS: [&str; 25] = [
     "after",
     "oneshot",
     "manual",
+    "switch",
     "editions",
     "profiles",
     "notify",
@@ -167,6 +168,8 @@ struct LifeFile {
     description: Option<String>,
     #[serde(default)]
     manual: bool,
+    #[serde(default)]
+    switch: bool,
     #[serde(default)]
     editions: Vec<String>,
     #[serde(default)]
@@ -232,6 +235,8 @@ pub struct Life {
     pub description: Option<String>,
     /// Started only on request.
     pub manual: bool,
+    /// The person may switch it on and off (`init.switch`, without administrator rights).
+    pub switch: bool,
     /// Editions the service exists in (empty: all).
     pub editions: Vec<String>,
     /// Boot profiles the service exists in and whether it starts there by
@@ -437,6 +442,7 @@ impl ServiceSpec {
                 d => d,
             },
             manual: profiles.get(SYSTEM_PROFILE) == Some(&ProfileStart::Manual),
+            switch: life.switch,
             editions: life.editions,
             profiles,
             notify: life.notify,

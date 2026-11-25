@@ -245,7 +245,11 @@ fn tile(s: &mut Shell, id: TileId) -> Outcome {
             None => more(s, TileId::Bluetooth),
         },
         TileId::Vpn => super::network::vpn_tile(s),
-        TileId::Mesh | TileId::Mobile => unavailable(s, id),
+        TileId::Mesh => match s.d.svc.mesh.state.as_ref() {
+            Some(m) => service(Some(Call::SetMesh(!m.enabled))),
+            None => unavailable(s, id),
+        },
+        TileId::Mobile => unavailable(s, id),
     }
 }
 
@@ -278,6 +282,9 @@ fn more(s: &mut Shell, id: TileId) -> Outcome {
             }
             out
         }
+        // The mesh tile's arrow: continue what is in front on another device (the phone's
+        // way to it); with nobody to send to, its page in Settings.
+        TileId::Mesh if crate::model::mesh::can_send(&s.d.svc) => super::handoff::send(s, None),
         _ => settings_of(s, id),
     }
 }
@@ -321,6 +328,11 @@ fn result(s: &mut Shell, hit: &Hit) -> Outcome {
         }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
+        Hit::Helper(text) => {
+            s.d.open = Open::None;
+            s.d.overview.query.clear();
+            Outcome::effect_and_close(Effect::Service(Call::AskHelper(text.clone())))
+        }
         Hit::Command(Command::Lock) => {
             s.d.open = Open::None;
             Outcome::effect_and_close(Effect::Lock)

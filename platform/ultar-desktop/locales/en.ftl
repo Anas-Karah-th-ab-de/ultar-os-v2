@@ -365,3 +365,31 @@ desk.vpn.settings = VPN settings
 desk.folder.name = Folder {number}
 desk.folder.close = Back to all apps
 desk.folder.out = Drag an app here to take it out of the folder
+
+## Mesh: continue on another device (docs/ui/mesh.md §2.5, §2.6)
+desk.mesh.continue = Continue on another device…
+desk.mesh.choose = Continue on
+desk.mesh.target.state = { $name } · opens at the same place
+desk.mesh.target.file = { $name } · the file only
+desk.mesh.target.view = { $name } · shown from here
+desk.mesh.waiting = Waiting for the other device
+desk.mesh.waiting.body = It asks its person. Nothing is opened before a yes.
+desk.mesh.opened = Opened on the other device
+desk.mesh.opened.body = You can continue there.
+desk.mesh.declined = Declined
+desk.mesh.declined.body = The other device said no. Nothing was sent.
+desk.mesh.expired = Nobody answered
+desk.mesh.expired.body = The other device did not answer within a minute.
+desk.mesh.failed = Not sent
+desk.mesh.failed.body = The connection was lost. Nothing was stored there.
+desk.mesh.no_target = No device can take this now
+desk.mesh.no_target.body = Pair a device in Settings › Mesh, or bring one into reach.
+desk.mesh.no_activity = Nothing in front can be continued
+desk.mesh.no_activity.body = Open an app or a file first.
+
+## The helper in the overview search (docs/integration/ultar-agentd.md)
+desk.ov.group.helper = Helper
+desk.helper.ask = Ask the helper: { $text }
+desk.helper.title = Helper
+desk.helper.failed = The helper did not answer
+desk.helper.failed.body = Try again in a moment.

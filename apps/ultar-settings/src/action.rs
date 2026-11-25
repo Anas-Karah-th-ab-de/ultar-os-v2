@@ -105,6 +105,22 @@ pub enum Act {
     BtScan,
     /// Bluetooth page: pair with found device `n` (in the order shown).
     BtPair(usize),
+    /// Mesh on or off.
+    MeshToggle,
+    /// Copy this device's id.
+    MeshCopy,
+    /// Show a pairing code.
+    MeshPair,
+    /// Open the page of the paired device with this index.
+    MeshDevice(usize),
+    /// Type the code of the nearby device with this index.
+    MeshNearPair(usize),
+    /// Back from a device's page.
+    MeshBack,
+    /// The right with this index ([`crate::state::mesh::GRANTS`]).
+    MeshGrant(usize),
+    /// Unpair the open device.
+    MeshUnpair,
     /// A row of a generic settingsd panel (index into the shown items).
     PanelItem(usize),
     /// Users: "Add user".
@@ -168,6 +184,14 @@ impl Act {
             Act::AccountDelete => "account.delete",
             Act::AccountDeviceSignOut(_) => "account.device.signout",
             Act::AccountDeviceRemove(_) => "account.device.remove",
+            Act::MeshToggle => "mesh.toggle",
+            Act::MeshCopy => "mesh.copy",
+            Act::MeshPair => "mesh.pair",
+            Act::MeshDevice(_) => "mesh.device",
+            Act::MeshNearPair(_) => "mesh.near.pair",
+            Act::MeshBack => "mesh.back",
+            Act::MeshGrant(_) => "mesh.right",
+            Act::MeshUnpair => "mesh.unpair",
             _ => return None,
         })
     }

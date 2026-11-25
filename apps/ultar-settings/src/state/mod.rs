@@ -1,6 +1,7 @@
 //! The app's state: pure data, changed only by [`crate::update`].
 
 pub mod display;
+pub mod mesh;
 pub mod more;
 
 use crate::areas::{PageKind, AREAS};
@@ -22,6 +23,8 @@ pub enum SubPage {
     NightLight,
     /// Accounts > Ultar account > Create account.
     CreateAccount,
+    /// The page of one paired device (Settings › Mesh).
+    MeshDevice,
 }
 
 /// State of the Drivers page.
@@ -93,6 +96,12 @@ pub enum DialogPurpose {
     UserRemove(usize),
     /// Users: new password for user `n` (password, password again).
     UserPassword(usize),
+    /// This device shows a pairing code.
+    MeshPairShow,
+    /// The code of a nearby device is typed.
+    MeshPairJoin,
+    /// "Unpair this device?".
+    MeshUnpair,
 }
 
 /// An open dialog.
@@ -117,6 +126,8 @@ pub struct StatusView {
     pub bt_devices: (Vec<ultar_bus::messages::bluetooth::Device>, Option<u32>),
     /// A Bluetooth search ran while the page was open (an empty list after it: "none found").
     pub bt_searched: bool,
+    /// The device mesh (Settings › Mesh).
+    pub mesh: mesh::MeshView,
     /// Why the open status page's service could not be read.
     pub error: Option<Text>,
 }

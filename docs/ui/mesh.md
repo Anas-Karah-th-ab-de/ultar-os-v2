@@ -90,12 +90,28 @@ question is an alert dialog; toasts are status (warnings: alert). Pointer target
 | Surface | State | Where | Proof |
 |---|---|---|---|
 | `shell.mesh.incoming` (desktop) | built | `platform/ultar-desktop/src/dialog/handoff.rs`, question `sysdialog.handoff` (`messages/mesh.rs`), asked by `ultar-mesh` | reference pictures `tests/snapshots/dialog-handoff-{ar,en}-{dark,light}.png` (pixel compare), model test (accept, decline, unanswered = declined), two real mesh services with a dialog stand-in (accepted: opened; declined: nothing stored, nothing opened) |
-| everything else | not built | – | waits for `build/btscan`, `build/net`, `build/settings2`, `build/filesqs` (same files of the Settings app and the shells) |
+| `settings.mesh`, `settings.mesh.device`, both pairing dialogs | built (2026-11-25) | `apps/ultar-settings/src/{service,state,update,view}/mesh.rs`, dialogs in `view/dialog.rs` | `apps/ultar-settings/tests/mesh.rs` (5, driven by clicks) |
+| quick-settings tile `qs.mesh` | built | `platform/ultar-desktop/src/model/quick.rs`, `shell/sheets.rs` | `platform/ultar-desktop/tests/mesh.rs` |
+| `shell.mesh.send` | built differently | `platform/ultar-desktop/src/shell/handoff.rs`, `model/mesh.rs`, `ports/bus_mesh.rs` | `tests/mesh.rs`, unit tests in `model/mesh.rs` |
+| `shell.mesh.toasts` | partly | `model/mesh.rs` (notices: waiting, opened, declined, nobody answered, not sent, no device, nothing in front) | unit tests |
+| phone sheets (`CompactMeshSend`, `CompactMeshIncoming`) | not built | – | the phone reaches sending through the tile's arrow and gets the desktop question |
 
 Deviations from the board, on purpose: the wait is said as "a minute" (the dialog service answers after
 55 s, the mesh gives up after 60 s); "nothing is stored or opened before you accept" moved from the system
 line into the text so the line fits one row in every language. The boards were regenerated with this
 wording and with the word the system already uses for pairing (`إقران`).
+
+Further deviations (2026-11-25), to be settled with the owner:
+
+- The choice on the sending device is a **menu** of the active app ("Continue on" + one line per device);
+  choosing a device sends at once. The board shows a dialog with a radio group and Send / Cancel.
+- Reached by the active app's menu and **Super+M** (the board says window menu and Super+Shift+M: the
+  shell has no window menu yet and its key handler does not see Shift).
+- The tile's arrow (`qs.mesh.list`) continues what is in front; the board opens the list of paired devices.
+- Toasts are the shell's notices without buttons: no Cancel, Retry or Open on them yet.
+- Settings: the row "folder for received files" (`mesh.inbox`) is not there (the service has no call for
+  it); the pairing dialog does not show the attempts left; the device page has no state badge.
+- Reference pictures of the settings page do not exist yet.
 
 ## 5. Open
 

@@ -1339,101 +1339,133 @@ boards = "WindowMenu:3"
 note = "board added in round 5 (AppGrid, Compact*, WindowMenu, Toasts); no implementation"
 
 [action."mesh.accept"]
-status = "missing"
+status = "different"
+impl = "platform/ultar-desktop/src/dialog/handoff.rs"
+test = "platform/ultar-desktop/tests/screens.rs"
 boards = "CompactMeshIncoming:1, MeshIncoming:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "desktop system dialog built; the phone sheet is missing"
 
 [action."mesh.back"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "CompactMeshSend:1, MeshDevice:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.copy"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.decline"]
-status = "missing"
+status = "different"
+impl = "platform/ultar-desktop/src/dialog/handoff.rs"
+test = "platform/ultar-desktop/tests/screens.rs"
 boards = "CompactMeshIncoming:1, MeshIncoming:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "desktop system dialog built; the phone sheet is missing"
 
 [action."mesh.device"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:3, MeshPairShow:3, SettingsMesh:3, SettingsMeshLight:3"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.inbox"]
 status = "missing"
 boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
 
 [action."mesh.near.pair"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1, MeshPairShow:1, SettingsMesh:1, SettingsMeshLight:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.offer.cancel"]
 status = "missing"
 boards = "MeshStates:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
 
 [action."mesh.pair"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1, MeshPairShow:1, MeshStates:1, SettingsMesh:1, SettingsMeshLight:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.pair.cancel"]
-status = "missing"
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1, MeshPairShow:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "the dialog's one button (generic dialog action)"
 
 [action."mesh.pair.code"]
-status = "missing"
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "generic dialog field; attempts left are not shown"
 
 [action."mesh.pair.join"]
-status = "missing"
+status = "different"
+impl = "apps/ultar-settings/src/view/dialog.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "generic dialog action"
 
 [action."mesh.received.open"]
 status = "missing"
 boards = "MeshStates:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
 
 [action."mesh.retry"]
 status = "missing"
 boards = "MeshStates:3"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "mesh surface (boards approved 2026-11-24): not built yet, see docs/OFFEN-VERBUND-HELFER.md"
 
 [action."mesh.right"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshDevice:7"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "eight switches: the eighth lends the language model"
 
 [action."mesh.send"]
-status = "missing"
+status = "different"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh.rs"
 boards = "CompactMeshSend:1, MeshSend:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "the choice is a menu of the active app: choosing a device sends at once"
 
 [action."mesh.send.cancel"]
-status = "missing"
+status = "different"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh.rs"
 boards = "CompactMeshSend:1, MeshSend:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "closing the menu cancels"
 
 [action."mesh.send.target"]
-status = "missing"
+status = "different"
+impl = "platform/ultar-desktop/src/shell/handoff.rs + src/model/mesh.rs"
+test = "platform/ultar-desktop/tests/mesh.rs"
 boards = "CompactMeshSend:2, MeshSend:3"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = "menu items instead of a radio group"
 
 [action."mesh.toggle"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshPairJoin:1, MeshPairShow:1, MeshStates:1, SettingsMesh:1, SettingsMeshLight:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
 
 [action."mesh.unpair"]
-status = "missing"
+status = "ok"
+impl = "apps/ultar-settings/src/view/mesh.rs + src/update/mesh.rs"
+test = "apps/ultar-settings/tests/mesh.rs"
 boards = "MeshDevice:1"
-note = "mesh surface: boards of 2026-11-24 await approval; the service side is system/services/ultar-mesh"
+note = ""
