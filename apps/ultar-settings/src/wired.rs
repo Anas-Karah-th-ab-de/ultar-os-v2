@@ -82,6 +82,18 @@ pub const WIRED: &[(&str, &str)] = &[
     ("updates.metered", "updated"),
     ("updates.offline_usb", "updated"),
     ("updates.notify", "updated"),
+    // The launcher resolves a link/file through the default apps (and offers the installed
+    // apps that declare each kind as the choices); it starts the autostart list after sign-in.
+    ("apps.default.web", "launcher"),
+    ("apps.default.mail", "launcher"),
+    ("apps.default.calendar", "launcher"),
+    ("apps.default.music", "launcher"),
+    ("apps.default.video", "launcher"),
+    ("apps.default.photos", "launcher"),
+    ("apps.default.documents", "launcher"),
+    ("apps.autostart", "launcher"),
+    // The shell asks, opens Files, or does nothing when a drive with media is plugged in.
+    ("apps.removable_media", "shell"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -129,6 +141,10 @@ mod tests {
         assert!(takes_effect("updates", "updates.notify"));
         // App updates belong to the launcher/Store, not the system updater.
         assert!(!takes_effect("updates", "updates.auto_apps"));
+        assert!(takes_effect("apps", "apps.default.web"));
+        assert!(takes_effect("apps", "apps.default.documents"));
+        assert!(takes_effect("apps", "apps.removable_media"));
+        assert!(takes_effect("apps", "apps.autostart"));
         assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
         assert!(!takes_effect(
             "accessibility",

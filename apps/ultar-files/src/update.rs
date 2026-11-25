@@ -187,16 +187,12 @@ pub fn open_item(s: &mut State, name: &str) -> Vec<Effect> {
             s.dialog = Some(Dialog::Failed(FsError::Link, 1));
             Vec::new()
         }
-        kind => match kind.default_app() {
-            Some(app) => vec![Effect::Launch {
-                app: app.to_owned(),
-                uri: crate::uri::of_loc(&loc),
-            }],
-            None => {
-                s.notice = Some(notice("files.notice.no_app", 1, name, false));
-                Vec::new()
-            }
-        },
+        // A file opens with its default app: the launcher resolves the URI through
+        // apps.default.* (Effect::Open); "no app" is said when none is installed for it.
+        _ => vec![Effect::Open {
+            uri: crate::uri::of_loc(&loc),
+            name: name.to_owned(),
+        }],
     }
 }
 

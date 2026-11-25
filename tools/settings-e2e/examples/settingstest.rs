@@ -14,6 +14,8 @@
 //! settingstest --bin DIR --work DIR [--group-root DIR]
 //! ```
 
+#[path = "settingstest/apps.rs"]
+mod apps;
 #[path = "settingstest/setup.rs"]
 mod setup;
 #[path = "settingstest/wired.rs"]

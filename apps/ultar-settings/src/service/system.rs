@@ -46,6 +46,8 @@ pub trait SystemPort {
     fn user_password(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>>;
     /// The installed apps with their permissions.
     fn apps(&mut self) -> PortResult<Vec<AppEntry>>;
+    /// The installed apps that declare `kind` (the choices of `apps.default.<kind>`).
+    fn candidates(&mut self, kind: launcher::Kind) -> PortResult<Vec<String>>;
     /// Takes a granted permission back; whether it is still granted.
     fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool>;
     /// The device's own storage first, then the mounted drives.
@@ -138,6 +140,12 @@ impl SystemPort for BusSystem {
             });
         }
         Ok(apps)
+    }
+
+    fn candidates(&mut self, kind: launcher::Kind) -> PortResult<Vec<String>> {
+        let ask = launcher::Candidates { kind };
+        let reply = self.client.call(&ask, CALL_TIMEOUT).map_err(port_error)?;
+        Ok(reply.apps)
     }
 
     fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool> {

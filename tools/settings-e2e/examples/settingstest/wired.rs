@@ -24,17 +24,17 @@ use ultar_ui::Size;
 use ultar_update::policy::Policy;
 use ultar_update::settings::{Ceiling, UpdateSettings};
 
-const WAIT: Duration = Duration::from_secs(20);
+pub(super) const WAIT: Duration = Duration::from_secs(20);
 
 /// A service that follows the settings: its connection and what it was told.
-struct Follower {
+pub(super) struct Follower {
     name: &'static str,
     changes: TypedSubscription<Changed>,
     _client: Client,
 }
 
 impl Follower {
-    fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
+    pub(super) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
         let client = run.client_at(socket)?;
         let changes = client
             .subscribe::<Changed>()
@@ -47,7 +47,7 @@ impl Follower {
     }
 
     /// Waits until this service is told that `key` is now `value`.
-    fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
+    pub(super) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
         loop {
             let change = self
                 .changes
@@ -63,7 +63,11 @@ impl Follower {
 }
 
 /// The node of the row of `key` on the open page, which must be usable.
-fn control(app: &mut App, panel: &str, key: &str) -> Result<ultar_ui::ui::NodeId, String> {
+pub(super) fn control(
+    app: &mut App,
+    panel: &str,
+    key: &str,
+) -> Result<ultar_ui::ui::NodeId, String> {
     let items = &app
         .state
         .panel(panel)
@@ -134,7 +138,7 @@ fn choose(
     reply.value.ok_or(format!("{key}: no value"))
 }
 
-fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
+pub(super) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
     let area = index_of(area).ok_or(format!("area {area}"))?;
     open(bus, run, Lang::En, Size::new(1280.0, 800.0), area)
 }
@@ -554,5 +558,6 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     input(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop, &displayd)?;
     storage(bus, run)?;
-    updates(bus, admin, run)
+    updates(bus, admin, run)?;
+    super::apps::apps(bus, admin, run, &desktop)
 }

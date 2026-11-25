@@ -53,6 +53,11 @@ fn text_formats_of_values_people_type() {
 fn text_formats_of_identifiers() {
     check_format(TextFormat::DisplayId, &["", "edp-1"], &["EDP", "a.b"]);
     check_format(TextFormat::Name, &["ultar-noir"], &["", "Noir", "a b"]);
+    check_format(
+        TextFormat::AppId,
+        &["browser", "store.web", "km-code-craft.appbuilder", "a1-b2"],
+        &["", "Noir", "a b", "a.b.c", "a.", "-a", "a-", "a--b", "a_b"],
+    );
     check_format(TextFormat::Currency, &["SYP", "EUR"], &["syp", "EURO", ""]);
     check_format(
         TextFormat::TimeZone,
