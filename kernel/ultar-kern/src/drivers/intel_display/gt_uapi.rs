@@ -19,25 +19,49 @@ pub static HWCONFIG: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 /// Submission interface version of the GuC firmware that was loaded.
 pub static SUBMISSION: Mutex<Option<Version>> = Mutex::new(None);
 
+/// The frequency of the GT's time stamps. The clock configuration only reads while the GT domain
+/// is awake; the GT in operation keeps it awake itself (and a second holder here would put it to
+/// sleep on release).
+fn reference_clock(dev: &mut Device) -> Result<Option<u32>, String> {
+    if super::gt_run::running() {
+        return Ok(engines::reference_clock(&mut dev.mmio));
+    }
+    let mut fwk = Forcewake::new(0);
+    fwk.get(&mut dev.mmio, Domain::Gt).map_err(|e| format!("GT forcewake: {e}"))?;
+    let clock = engines::reference_clock(&mut dev.mmio);
+    if let Err(e) = fwk.put(&mut dev.mmio, Domain::Gt) {
+        crate::kprintln!("[intel-gt] GT forcewake release: {e}");
+    }
+    Ok(clock)
+}
+
+/// What the fuses say, for the log.
+fn slices_text(topology: Option<ultar_intel_gt::topology::Topology>) -> String {
+    match topology {
+        Some(t) => format!(
+            "{} geometry / {} compute slice(s) with {} execution units each, {} L3 bank(s)",
+            t.geometry_dss.count_ones(),
+            t.compute_dss.count_ones(),
+            t.eu_per_dss.count_ones(),
+            t.l3_banks.count_ones()
+        ),
+        None => String::from("topology unknown"),
+    }
+}
+
 /// Builds the device record from what the driver found and publishes the render node.
 pub fn publish(dev: &mut Device, facts: &GtFacts) -> Result<String, String> {
     let hwconfig = HWCONFIG.lock().clone().ok_or("no hardware config table")?;
     let sub = (*SUBMISSION.lock()).ok_or("no GuC firmware version")?;
-    // the clock configuration only reads while the GT domain is awake; the GT in operation
-    // keeps it awake itself (and a second holder here would put it to sleep on release)
-    let clock = if super::gt_run::running() {
-        engines::reference_clock(&mut dev.mmio)
-    } else {
-        let mut fwk = Forcewake::new(0);
-        fwk.get(&mut dev.mmio, Domain::Gt)
-            .map_err(|e| format!("GT forcewake: {e}"))?;
-        let clock = engines::reference_clock(&mut dev.mmio);
-        if let Err(e) = fwk.put(&mut dev.mmio, Domain::Gt) {
-            crate::kprintln!("[intel-gt] GT forcewake release: {e}");
-        }
-        clock
-    };
+    let clock = reference_clock(dev)?;
     let clock = clock.ok_or("unknown crystal frequency")?;
+    // the fuses read in the same domain; without the GT in operation the topology stays unknown
+    let topology = if super::gt_run::running() {
+        let fuses = ultar_intel_gt::topology::Fuses::read(&mut dev.mmio);
+        ultar_intel_gt::topology::Topology::from_fuses(facts.graphics.verx100, &fuses)
+    } else {
+        None
+    };
     let (b, d, f) = dev.pci;
     let classes = [
         (RCS0, EngineClass::Render),
@@ -65,9 +89,11 @@ pub fn publish(dev: &mut Device, facts: &GtFacts) -> Result<String, String> {
         memory_used: used,
         hwconfig,
         guc_submission: (0, sub.major as u32, sub.minor as u32, sub.patch as u32),
+        topology: topology.map(|t| t.encode(0)).unwrap_or_default(),
     };
+    let slices = slices_text(topology);
     let text = format!(
-        "/dev/{}: {} engine(s), time stamps at {clock} Hz, {} MiB memory",
+        "/dev/{}: {} engine(s), time stamps at {clock} Hz, {} MiB memory, {slices}",
         crate::svcdev::dri::NODE,
         record.engines.len(),
         total >> 20

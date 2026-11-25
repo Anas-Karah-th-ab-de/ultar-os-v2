@@ -13,6 +13,7 @@
 pub mod events;
 pub mod platform;
 pub mod sysfs;
+mod sysfs_char;
 pub mod usb;
 
 use crate::driver::{Driver, NetDev, Result as DrvResult, BLOCK, DEVICES, NET};

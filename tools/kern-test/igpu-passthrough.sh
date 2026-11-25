@@ -9,6 +9,10 @@
 #   LIMIT=<seconds>  hard time limit of the VM (default 240)
 #   REGS=0           skip the register snapshots (taken with i915 bound and after its unbind)
 #   OPTIN=0          boot without the driver's opt-in: it must only read (verdict READ-ONLY OK)
+#   PKGROOT=<dir>   a directory tree given to the kernel as a second, read-only disk (ext4): it
+#                   becomes `/`, e.g. a tree with `pkg/<package>` from ultar-paketbau
+#   TESTPROG=<file> one more program to run after the graphics tests: first line the command line,
+#                   further lines NAME=value for its environment or `spur` (log its system calls)
 #   GUC=<file>|0     GuC firmware for the GT test (default: the host's /lib/firmware/i915/mtl_guc_70.bin,
 #                    also .zst/.xz); 0 = without (GTTEST then skips the upload)
 # Needs: qemu-system-x86_64 (KVM), OVMF 4M, mtools, dosfstools; intel_reg (igt-gpu-tools) for REGS.
@@ -127,6 +131,16 @@ if [ -n "$GUC" ] && [ "$GUC" != 0 ]; then
 else
   echo "GuC firmware: none - GTTEST will skip the upload"
 fi
+EXTRA_DISK=""
+if [ -n "${PKGROOT:-}" ]; then
+  command -v mkfs.ext4 >/dev/null || { echo "mkfs.ext4 missing"; exit 1; }
+  mb=$(( $(du -sm "$PKGROOT" | cut -f1) * 13 / 10 + 64 ))
+  truncate -s "${mb}M" "$W/root.img"
+  mkfs.ext4 -q -L pakete -O ^metadata_csum,^64bit,^has_journal -d "$PKGROOT" "$W/root.img"
+  EXTRA_DISK="-drive file=$W/root.img,if=none,id=r,format=raw,readonly=on -device virtio-blk-pci,drive=r,addr=06.0"
+  echo "package disk: $PKGROOT (${mb} MB, ext4, read only)"
+fi
+if [ -n "${TESTPROG:-}" ]; then mcopy -i "$W/esp.img" "$TESTPROG" ::/ultar/testprogramm; echo "extra program: $(head -1 "$TESTPROG")"; fi
 if [ -n "$BINS" ]; then for f in "$BINS"/*; do mcopy -i "$W/esp.img" "$f" ::/bin/; done; fi
 head -c 262144 /dev/zero | tr '\0' ' ' > "$W/log.txt"; mcopy -i "$W/esp.img" "$W/log.txt" ::/ultar-kern/selbsttest.txt
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$W/vars.fd"
@@ -150,7 +164,7 @@ run_vm() {   # $1 = extra vfio-pci options; ends QEMU as soon as the verdict lin
     -display none -vga none -nodefaults -no-reboot \
     -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive "if=pflash,format=raw,file=$W/vars.fd" \
     -drive "file=$W/esp.img,if=none,id=b,format=raw" -device virtio-blk-pci,drive=b,addr=05.0 \
-    -device "vfio-pci,host=$DEV,id=igd,addr=02.0,rombar=0$1" \
+    $EXTRA_DISK -device "vfio-pci,host=$DEV,id=igd,addr=02.0,rombar=0$1" \
     -serial "file:$W/serial.log" -monitor none 2> "$W/qemu.err" &
   local qp=$!
   while kill -0 "$qp" 2>/dev/null; do
@@ -158,6 +172,7 @@ run_vm() {   # $1 = extra vfio-pci options; ends QEMU as soon as the verdict lin
     # render node runs right after it and is the last test that uses this device
     local done_re="GTTEST: (ALLES OK|FEHLER|no Intel)"
     [ -n "$BINS" ] && [ -e "$BINS/dritest" ] && done_re="DRITEST: |GTTEST: no Intel|Programm dritest: nicht"
+    [ -n "${TESTPROG:-}" ] && done_re="Zusatzprogramm beendet|GTTEST: no Intel"
     if grep -aqE "$done_re|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
     sleep 1
   done
@@ -193,4 +208,13 @@ if [ "${OPTIN:-1}" != 0 ]; then
     sed -n '/Programm dritest/,/DRITEST: /p' "$W/serial.log" | head -140
     echo "VERDICT: $(grep -aE 'DRITEST: ' "$W/serial.log" | tail -1 || echo 'DRITEST: no verdict')"
   fi
+fi
+if [ -n "${TESTPROG:-}" ]; then
+  echo "--- extra program"
+  # the serial log ends its lines with CR LF
+  tr -d '\r' < "$W/serial.log" | sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' > "$W/extra.txt"
+  head -"${EXTRA_LINES:-400}" "$W/extra.txt"
+  # the program's own verdict line (e.g. VKRECHNEN: ALLES OK ...), if it prints one
+  echo "VERDICT: $(grep -aE '^[A-Z]+: (ALLES OK|FEHLER)' "$W/extra.txt" | tail -1 | grep . || echo 'extra program: no verdict')"
+  [ -n "${SERIAL_OUT:-}" ] && cp "$W/serial.log" "$SERIAL_OUT"
 fi

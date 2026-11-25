@@ -24,11 +24,11 @@ const KERNEL_ULTAR: [&str; 4] = ["devices", "driver_abi", "drivers", "uevents"];
 
 /// Whether the host path belongs to this tree.
 pub fn is_tree(path: &str) -> bool {
-    ["/sys/bus", "/sys/kernel", "/sys/class"].iter().any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
+    ["/sys/bus", "/sys/kernel", "/sys/class", "/sys/dev"].iter().any(|r| path == *r || path.strip_prefix(r).is_some_and(|x| x.starts_with('/')))
 }
 
 /// Entries this tree adds to the listing of `/sys`.
-pub const TOP: [&str; 3] = ["bus", "class", "kernel"];
+pub const TOP: [&str; 4] = ["bus", "class", "dev", "kernel"];
 
 fn file(s: String) -> Option<Node> {
     Some(Node::File(Arc::new(s.into_bytes())))
@@ -108,6 +108,7 @@ pub fn open(path: &str) -> Option<Node> {
         ["class", "net", n, rest @ ..] => net_class(n, rest),
         ["class", "input"] => dir(crate::input::all().into_iter().map(|n| format!("event{n}")), true),
         ["class", "input", n, rest @ ..] => input_class(n, rest),
+        ["dev", rest @ ..] => super::sysfs_char::open(rest),
         ["kernel"] => Some(Node::Dir(alloc::vec![
             DirEnt { name: String::from("uevent_seqnum"), dir: false, size: 0 },
             DirEnt { name: String::from("ultar"), dir: true, size: 0 },
@@ -190,6 +191,9 @@ pub fn right_for(path: &str) -> crate::isolation::rights::Rights {
 
 /// Target of a symbolic link of the tree (`driver` of a device, a device in a driver's directory).
 pub fn link(path: &str) -> Option<String> {
+    if let Some(rest) = path.strip_prefix("/sys/dev/") {
+        return super::sysfs_char::link(rest);
+    }
     let rest = path.strip_prefix("/sys/bus/")?;
     let p: Vec<&str> = rest.split('/').collect();
     match p.as_slice() {
@@ -211,7 +215,7 @@ fn bound_to(name: &str) -> Option<&'static str> {
     DEVICES.lock()[i].driver
 }
 
-fn pci_device(n: &str, rest: &[&str]) -> Option<Node> {
+pub(super) fn pci_device(n: &str, rest: &[&str]) -> Option<Node> {
     let i = pci_index(n)?;
     let (b, drv, disabled, state, error, slots) = {
         let devs = DEVICES.lock();

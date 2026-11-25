@@ -119,6 +119,11 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
         },
     };
     let ret = request(&node, req as u32, &mut buf, &mut user);
+    // with the call trace on, a refused request shows what the program asked for
+    if ret < 0 && ret != RETRY && crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed) {
+        let words: Vec<alloc::string::String> = buf.chunks(8).map(|c| c.iter().rev().map(|b| alloc::format!("{b:02x}")).collect()).collect();
+        crate::kprintln!("[dri] request {req:#x} refused ({ret}): {}", words.join(" "));
+    }
     if ret == 0 && r.read && !buf.is_empty() && !drm::User::write(&mut user, arg, &buf) {
         return Some(-EFAULT);
     }

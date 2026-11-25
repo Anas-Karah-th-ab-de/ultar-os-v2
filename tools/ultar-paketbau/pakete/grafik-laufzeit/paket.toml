@@ -380,3 +380,13 @@ build = [
 run = "{prefix}/share/ultar/pruefung/vk-probe"
 expect = "vulkan: instance ok"
 share = ["/dev/dri", "/sys"]
+
+[[check]]
+name = "A compute shader through Vulkan with nothing but the package (GPU of the build machine)"
+build = [
+  "{tools}/bin/glslangValidator -V --quiet --vn rechnen_spv -o {build}/rechnen_spv.h {recipe}/pruefung/rechnen.comp",
+  "$CC -O2 -I{build} -o {prefix}/share/ultar/pruefung/vk-rechnen {recipe}/pruefung/vk-rechnen.c $LDFLAGS -lvulkan",
+]
+run = "{prefix}/share/ultar/pruefung/vk-rechnen"
+expect = "VKRECHNEN: ALLES OK"
+share = ["/dev/dri", "/sys"]

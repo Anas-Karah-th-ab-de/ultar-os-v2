@@ -290,6 +290,15 @@ pub fn dispatch(f: &mut TrapFrame) {
     let trace = TRACE.load(Ordering::Relaxed) && nr != 1 && nr != 20;
     if trace {
         crate::kprintln!("[spur {}] {nr}({:#x}, {:#x}, {:#x}, {:#x})", proc::current(), a[0], a[1], a[2], a[3]);
+        // calls that name a file: show the name (first or, with a directory descriptor, second argument)
+        let named = match nr {
+            2 | 4 | 6 | 21 | 59 | 89 => Some(a[0]),
+            257 | 262 | 267 | 269 | 332 | 439 => Some(a[1]),
+            _ => None,
+        };
+        if let Some(name) = named.and_then(ustr) {
+            crate::kprintln!("[spur {}] {nr}: {name}", proc::current());
+        }
     }
     let r = match nr {
         // calls guarded by a right the caller does not hold
@@ -1330,7 +1339,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
             FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
-            FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
+            FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::dri::NODE).unwrap_or(0))),
         })
     })
     .flatten();
