@@ -149,6 +149,31 @@ impl Clock for TestClock {
     }
 }
 
+/// The pointer configuration the compositor was told (`Request::ConfigurePointer`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerSnap {
+    pub speed: i8,
+    pub natural_scroll: bool,
+    pub swap_buttons: bool,
+    pub acceleration: bool,
+    pub size: ultar_surface::proto::PointerSize,
+    pub double_click_ms: u16,
+}
+
+impl Default for PointerSnap {
+    /// The schema's defaults.
+    fn default() -> Self {
+        PointerSnap {
+            speed: 0,
+            natural_scroll: false,
+            swap_buttons: false,
+            acceleration: true,
+            size: ultar_surface::proto::PointerSize::Normal,
+            double_click_ms: 400,
+        }
+    }
+}
+
 /// What the compositor shows, read by the test.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snap {
@@ -162,8 +187,8 @@ pub struct Snap {
     pub deadline: u64,
     /// The compositor's clock.
     pub now: u64,
-    /// Pointer speed and reversed scrolling.
-    pub pointer: (i8, bool),
+    /// The pointer configuration.
+    pub pointer: PointerSnap,
     /// Key repeat: on, delay in milliseconds, per second.
     pub key_repeat: (bool, u16, u8),
 }
@@ -229,7 +254,17 @@ fn snapshot(comp: &Compositor) -> Snap {
             .as_ref()
             .map_or(0, |p| p.deadline),
         now: comp.state.now,
-        pointer: (comp.state.pointer.speed, comp.state.pointer.natural_scroll),
+        pointer: {
+            let p = &comp.state.pointer;
+            PointerSnap {
+                speed: p.speed,
+                natural_scroll: p.natural_scroll,
+                swap_buttons: p.swap_buttons,
+                acceleration: p.accel.on,
+                size: p.size,
+                double_click_ms: p.double_click_ms,
+            }
+        },
         key_repeat: {
             let r = comp.state.keyboard.repeat;
             (r.enabled, r.delay_ms, r.per_second)

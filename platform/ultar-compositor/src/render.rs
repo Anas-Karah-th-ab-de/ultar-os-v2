@@ -17,7 +17,8 @@ pub use crate::cursor::{cursor_image, cursor_rect, CURSOR};
 #[derive(Debug, Default)]
 pub struct Renderer {
     frames: HashMap<u32, Image>,
-    cursors: HashMap<u32, Image>,
+    /// Pointer images by output scale and pointer size.
+    cursors: HashMap<(u32, ultar_surface::proto::PointerSize), Image>,
     masks: HashMap<u32, pixels::CornerMask>,
     shadow_cache: HashMap<u32, HashMap<ShadowKey, Shadow>>,
     /// Display number cards by (number, scale) while numbers are shown.
@@ -240,11 +241,12 @@ impl Renderer {
             return;
         }
         let env = PaintEnv::new(state.config.lang, state.config.theme);
-        let key = o.scale_milli;
+        let size = state.pointer.size;
+        let key = (o.scale_milli, size);
         if let std::collections::hash_map::Entry::Vacant(slot) = self.cursors.entry(key) {
             let fill = crate::decor::to_pixel(env.palette().get(ColorRole::Text));
             let outline = crate::decor::to_pixel(env.palette().get(ColorRole::Ground));
-            if let Some(img) = cursor_image(o.scale(), fill, outline) {
+            if let Some(img) = cursor_image(o.scale() * size.factor(), fill, outline) {
                 slot.insert(img);
             }
         }

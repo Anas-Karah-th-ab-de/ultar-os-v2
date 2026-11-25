@@ -17,8 +17,8 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
-use ultar_surface::proto::Request;
-use ultar_ui::event::{Event, PointerButton};
+use ultar_surface::proto::{PointerSize, Request};
+use ultar_ui::event::{Event, Key, PointerButton};
 use ultar_ui::Size;
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -110,6 +110,27 @@ fn change(
     reply.value.ok_or(format!("{key}: no value"))
 }
 
+/// Chooses an option of the select of `key`: a click opens the list, `steps` times
+/// ArrowDown moves the highlight, Enter takes it; the value the service holds afterwards.
+fn choose(
+    (app, admin): (&mut App, &Client),
+    (panel, key): (&str, &str),
+    steps: usize,
+) -> Result<SettingValue, String> {
+    let node = control(app, panel, key)?;
+    click(app, node)?;
+    if !app.ui.is_open(node) {
+        return Err(format!("{key}: the list did not open"));
+    }
+    for _ in 0..steps {
+        super::press(app, Key::ArrowDown)?;
+    }
+    super::press(app, Key::Enter)?;
+    let get = Get { key: key.into() };
+    let reply = admin.call(&get, WAIT).map_err(|e| format!("get {e}"))?;
+    reply.value.ok_or(format!("{key}: no value"))
+}
+
 fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
     let area = index_of(area).ok_or(format!("area {area}"))?;
     open(bus, run, Lang::En, Size::new(1280.0, 800.0), area)
@@ -138,7 +159,8 @@ fn whole(key: &str, value: &SettingValue) -> Result<i64, String> {
     }
 }
 
-/// Mouse page: faster pointer, natural scrolling. Returns the speed set.
+/// Mouse page: faster pointer, natural scrolling, the right button primary, no
+/// acceleration, a larger cursor. Returns the speed set.
 fn pointer(bus: &Client, admin: &Client, run: &Run, d: &mut Display<'_>) -> Result<i64, String> {
     let mut app = page(bus, run, "mouse")?;
     let natural = change(
@@ -150,6 +172,14 @@ fn pointer(bus: &Client, admin: &Client, run: &Run, d: &mut Display<'_>) -> Resu
     let speed = change((&mut app, admin), ("pointer", "pointer.speed"), Some(0.9))?;
     let fast = whole("pointer.speed", &speed)?;
     d.follow("pointer.speed", speed)?;
+    // The choices: left -> right, normal -> large -> larger (the list starts at the
+    // selected option, one ArrowDown per step).
+    let primary = choose((&mut app, admin), ("pointer", "pointer.primary_button"), 1)?;
+    d.follow("pointer.primary_button", primary)?;
+    let accel = change((&mut app, admin), ("pointer", "pointer.acceleration"), None)?;
+    d.follow("pointer.acceleration", accel)?;
+    let size = choose((&mut app, admin), ("pointer", "pointer.size"), 2)?;
+    d.follow("pointer.size", size)?;
     Ok(fast)
 }
 
@@ -187,6 +217,10 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
         Request::ConfigurePointer {
             speed: i8::try_from(fast).map_err(|_| "speed")?,
             natural_scroll: true,
+            swap_buttons: true,
+            acceleration: false,
+            size: PointerSize::Larger,
+            double_click_ms: 400,
         },
         Request::ConfigureKeyRepeat {
             enabled: false,
@@ -200,38 +234,23 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
     }
     println!(
         "SETTINGS: mouse and keyboard pages -> display service -> compositor: speed {fast}, \
-         natural scrolling, repeat off ({delay_ms} ms, {per_second}/s)"
+         natural scrolling, right button primary, no acceleration, larger cursor, \
+         repeat off ({delay_ms} ms, {per_second}/s)"
     );
     Ok(())
 }
 
-/// Search and accessibility: the shell's own state follows, and the Settings window too.
-fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<(), String> {
+/// Search and accessibility: the shell's own state follows, and the Settings window too;
+/// the pointer parts of the page reach the compositor through the display service.
+fn shell(
+    bus: &Client,
+    admin: &Client,
+    run: &Run,
+    shell: &Follower,
+    displayd: &Follower,
+) -> Result<(), String> {
     let mut desk = Desktop::new(Lang::En);
-    let follow = |desk: &mut Desktop, key: &str, value: SettingValue| {
-        shell.told(key, &value)?;
-        apply_setting(desk, key, &value);
-        Ok::<(), String>(())
-    };
-    let tr = ultar_desktop::i18n::translator(Lang::En).map_err(|e| format!("{e:?}"))?;
-    let apps = ultar_desktop::model::apps::base_apps();
-    let finds_files = |desk: &Desktop| {
-        search_in("files", &apps, &tr, desk.overview.sources)
-            .iter()
-            .any(|hit| matches!(hit, Hit::App(_)))
-    };
-    if !finds_files(&desk) {
-        return Err("the shell's search does not find the Files app".into());
-    }
-    let mut app = page(bus, run, "search")?;
-    for key in ["search.source.apps", "search.source.calculator"] {
-        let off = change((&mut app, admin), ("search", key), None)?;
-        follow(&mut desk, key, off)?;
-    }
-    let sources = desk.overview.sources;
-    if finds_files(&desk) || sources.apps || sources.calculator || !sources.settings {
-        return Err(format!("the shell still searches {sources:?}"));
-    }
+    search_sources(bus, admin, run, &mut desk, shell)?;
     let mut app = page(bus, run, "accessibility")?;
     for key in [
         "accessibility.large_text",
@@ -239,7 +258,8 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
         "accessibility.reduce_motion",
     ] {
         let on = change((&mut app, admin), ("accessibility", key), None)?;
-        follow(&mut desk, key, on)?;
+        shell.told(key, &on)?;
+        apply_setting(&mut desk, key, &on);
     }
     let v = desk.values;
     if !(v.large_text && v.high_contrast && v.reduce_motion) {
@@ -249,6 +269,7 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
     if !(env.high_contrast && env.text_scale > 1.0) {
         return Err("the Settings window did not follow the accessibility switches".into());
     }
+    access_pointer(&mut app, admin, &mut desk, shell, displayd)?;
     // Back to the usual look for whoever runs after this.
     for key in [
         "accessibility.large_text",
@@ -260,6 +281,88 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
     println!(
         "SETTINGS: search and accessibility pages -> shell: apps and calculator not searched, \
          large text, high contrast, no motion (the Settings window too)"
+    );
+    Ok(())
+}
+
+/// Search page: the shell's overview stops searching apps and the calculator.
+fn search_sources(
+    bus: &Client,
+    admin: &Client,
+    run: &Run,
+    desk: &mut Desktop,
+    shell: &Follower,
+) -> Result<(), String> {
+    let tr = ultar_desktop::i18n::translator(Lang::En).map_err(|e| format!("{e:?}"))?;
+    let apps = ultar_desktop::model::apps::base_apps();
+    let finds_files = |desk: &Desktop| {
+        search_in("files", &apps, &tr, desk.overview.sources)
+            .iter()
+            .any(|hit| matches!(hit, Hit::App(_)))
+    };
+    if !finds_files(desk) {
+        return Err("the shell's search does not find the Files app".into());
+    }
+    let mut app = page(bus, run, "search")?;
+    for key in ["search.source.apps", "search.source.calculator"] {
+        let off = change((&mut app, admin), ("search", key), None)?;
+        shell.told(key, &off)?;
+        apply_setting(desk, key, &off);
+    }
+    let sources = desk.overview.sources;
+    if finds_files(desk) || sources.apps || sources.calculator || !sources.settings {
+        return Err(format!("the shell still searches {sources:?}"));
+    }
+    Ok(())
+}
+
+/// The pointer parts of the accessibility page: a large pointer and a longer double-click
+/// time reach the compositor through the display service; the shell's widgets and this
+/// window follow the time. Restores both afterwards.
+fn access_pointer(
+    app: &mut App,
+    admin: &Client,
+    desk: &mut Desktop,
+    shell: &Follower,
+    displayd: &Follower,
+) -> Result<(), String> {
+    let mut d = Display {
+        told: displayd,
+        service: InputSettings::default(),
+    };
+    let large_key = "accessibility.large_pointer";
+    let ms_key = "accessibility.double_click_ms";
+    let large = change((app, admin), ("accessibility", large_key), None)?;
+    d.follow(large_key, large)?;
+    let ms_value = change((app, admin), ("accessibility", ms_key), Some(0.9))?;
+    let ms = whole(ms_key, &ms_value)?;
+    d.follow(ms_key, ms_value)?;
+    let Request::ConfigurePointer {
+        size,
+        double_click_ms,
+        ..
+    } = d.service.requests()[0].clone()
+    else {
+        return Err("no pointer configuration".into());
+    };
+    if size != PointerSize::Large || i64::from(double_click_ms) != ms {
+        return Err(format!(
+            "large + {ms} ms became {size:?}, {double_click_ms} ms"
+        ));
+    }
+    let value = SettingValue::Integer(ms);
+    shell.told(ms_key, &value)?;
+    apply_setting(desk, ms_key, &value);
+    if desk.values.double_click_ms.map(i64::from) != Some(ms)
+        || i64::from(app.ui.double_click_ms()) != ms
+    {
+        return Err("the shell or the Settings window kept the old double-click time".into());
+    }
+    change((app, admin), ("accessibility", large_key), None)?;
+    change((app, admin), ("accessibility", ms_key), Some(0.25))?;
+    println!(
+        "SETTINGS: accessibility page -> compositor and shell: a large pointer, \
+         {ms} ms double-click time (the Settings window too)"
     );
     Ok(())
 }
@@ -292,6 +395,6 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displayd = Follower::connect(run, "the display service", "displayd")?;
     let desktop = Follower::connect(run, "the shell", "desktop")?;
     input(bus, admin, run, &displayd)?;
-    shell(bus, admin, run, &desktop)?;
+    shell(bus, admin, run, &desktop, &displayd)?;
     storage(bus, run)
 }

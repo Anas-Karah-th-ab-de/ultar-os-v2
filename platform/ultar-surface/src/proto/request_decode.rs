@@ -194,9 +194,31 @@ fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
         if !(super::MIN_POINTER_SPEED..=super::MAX_POINTER_SPEED).contains(&speed) {
             return Err(WireError::BadValue);
         }
+        let natural_scroll = r.bool()?;
+        // The old form ends here; the fields added later carry the schema's defaults.
+        if r.remaining() == 0 {
+            return Ok(Request::ConfigurePointer {
+                speed,
+                natural_scroll,
+                swap_buttons: false,
+                acceleration: true,
+                size: super::PointerSize::Normal,
+                double_click_ms: super::DEFAULT_DOUBLE_CLICK_MS,
+            });
+        }
+        let (swap_buttons, acceleration) = (r.bool()?, r.bool()?);
+        let size = super::PointerSize::decode(r)?;
+        let double_click_ms = r.u16()?;
+        if !(super::MIN_DOUBLE_CLICK_MS..=super::MAX_DOUBLE_CLICK_MS).contains(&double_click_ms) {
+            return Err(WireError::BadValue);
+        }
         return Ok(Request::ConfigurePointer {
             speed,
-            natural_scroll: r.bool()?,
+            natural_scroll,
+            swap_buttons,
+            acceleration,
+            size,
+            double_click_ms,
         });
     }
     let (enabled, delay_ms, per_second) = (r.bool()?, r.u16()?, r.u8()?);
