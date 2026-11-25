@@ -77,7 +77,7 @@ impl SystemBackend {
             location: Mutex::new(CatalogLocation::BuiltIn),
             bus,
             media_dir: PathBuf::from("/media"),
-            log_dir: std::env::var("ULTAR_STORE_DATA").ok().map(PathBuf::from),
+            log_dir: crate::data_dir(),
             trusted_dir: trusted_dir_from_env(),
         })
     }
@@ -89,7 +89,7 @@ impl SystemBackend {
             location: Mutex::new(CatalogLocation::BuiltIn),
             bus: None,
             media_dir: PathBuf::from("/media"),
-            log_dir: std::env::var("ULTAR_STORE_DATA").ok().map(PathBuf::from),
+            log_dir: crate::data_dir(),
             trusted_dir: trusted_dir_from_env(),
         }
     }
@@ -296,6 +296,7 @@ fn bus_error(e: BusError) -> BackendError {
             launcher::ERROR_SHUTTING_DOWN => BackendError::ShuttingDown,
             launcher::ERROR_STORAGE => BackendError::Storage,
             launcher::ERROR_INVALID => BackendError::Invalid,
+            launcher::ERROR_PROTECTED => BackendError::Protected,
             _ => BackendError::Protocol,
         },
         BusError::Timeout | BusError::NotConnected | BusError::Closed => BackendError::Unreachable,

@@ -14,7 +14,8 @@
 //! * `ULTAR_STORE_URL` – the store server (`https://` only; default
 //!   [`ultar_store::online::DEFAULT_URL`]); `ULTAR_STORE_OFFLINE=1` switches the
 //!   server off. The server copy is verified like a stick and cached in
-//!   `ULTAR_STORE_DATA/catalog-cache`.
+//!   `<data area>/catalog-cache` ([`ultar_store::data_dir`]: `ULTAR_STORE_DATA`, else the
+//!   `HOME` the launcher gives every app – its own data area).
 //! * `ULTAR_OPEN_URI` – a `store://app/<id>[?action=remove]` deep link the launcher
 //!   hands a fresh instance (the shell's "Details in Store" / overview search).
 
@@ -239,7 +240,7 @@ fn catalog_source() -> Arc<dyn CatalogSource> {
     if std::env::var("ULTAR_STORE_OFFLINE").is_ok_and(|v| v == "1") {
         return image;
     }
-    let (Ok(data), Some(fetch)) = (std::env::var("ULTAR_STORE_DATA"), UreqFetch::new()) else {
+    let (Some(data), Some(fetch)) = (ultar_store::data_dir(), UreqFetch::new()) else {
         return image;
     };
     let url = std::env::var("ULTAR_STORE_URL").unwrap_or_else(|_| online::DEFAULT_URL.to_string());

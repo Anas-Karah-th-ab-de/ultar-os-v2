@@ -61,7 +61,9 @@ radio = 831
 # Block devices of removable disks (read-only use: partition heads); member: volumed.
 disk = 832
 # The user's file areas (/data/ultar/areas/*, 0770 launcher:userfiles): system apps that
-# declare file areas get this group in their cell (ultar-launcher areas.rs).
+# declare file areas get this group in their cell (ultar-launcher areas.rs); the launcher
+# cleans the person's downloads folder (storage.clean_downloads). The volume service does
+# not have it: it handles untrusted USB file systems and must not reach the areas.
 userfiles = 836
 # The relay token of the Ultar account (/data/ultar/account-relay, 0750/0640 accountd:accountrelay):
 # written by the account service after sign-in, read by the mesh service for the Verbund relay.

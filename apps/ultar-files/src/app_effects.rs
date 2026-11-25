@@ -2,12 +2,12 @@
 
 use crate::action::Effect;
 use crate::action::Target;
-use crate::app::{drive_of, port_failed, running, App};
+use crate::app::{drive_of, running, App};
 use crate::fs::copy::Cancel;
 use crate::fs::undo::Undo;
 use crate::fs::{free_name, AreaId, Fs, FsError, Loc};
 use crate::jobs::{self, JobMsg};
-use crate::model::{Dialog, JobKind};
+use crate::model::{Dialog, JobKind, Notice};
 use crate::service::bus::STORE;
 use crate::service::PortError;
 use crate::update;
@@ -27,6 +27,7 @@ impl App {
                 Effect::Reload => self.reload(),
                 Effect::Job(kind) => self.start_job(kind),
                 Effect::Launch { app, uri } => self.launch(&app, &uri),
+                Effect::Open { uri, name } => self.open_default(&uri, &name),
                 Effect::Eject(id) => {
                     let done = self.ports.volumes.eject(&id).map_err(|_| FsError::Busy);
                     let more = update::ejected(&mut self.state, &id, done);
@@ -41,17 +42,38 @@ impl App {
         }
     }
 
+    /// Opens a file with its default app: the launcher resolves the URI through
+    /// `apps.default.*`; no installed app for it says so, a service that cannot is a dialog.
+    fn open_default(&mut self, uri: &str, name: &str) {
+        match self.ports.launcher.resolve(uri) {
+            Ok(Some(app)) => self.launch(&app, uri),
+            Ok(None) => {
+                self.state.notice = Some(Notice {
+                    key: "files.notice.no_app",
+                    count: 1,
+                    name: name.to_owned(),
+                    undo: false,
+                });
+            }
+            Err(e) => self.state.dialog = Some(port_failed(e)),
+        }
+    }
+
     fn launch(&mut self, app: &str, uri: &str) {
+        // a failed start is about the app, never about this place: no permission dialog
+        let name = crate::uri::name_of(uri);
         match self.ports.launcher.open(app, uri, None) {
             Ok(()) => {}
             Err(PortError::NotInstalled) => {
                 // The Store offers to install the missing app.
                 let page = format!("store://app/{app}");
-                if let Err(e) = self.ports.launcher.open(STORE, &page, None) {
-                    self.state.dialog = Some(port_failed(e));
+                if self.ports.launcher.open(STORE, &page, None).is_err() {
+                    self.state.notice = Some(update::notice_of("files.notice.no_app", &name));
                 }
             }
-            Err(e) => self.state.dialog = Some(port_failed(e)),
+            Err(_) => {
+                self.state.notice = Some(update::notice_of("files.notice.open_failed", &name));
+            }
         }
     }
 
@@ -79,7 +101,11 @@ impl App {
             .parent()
             .ok_or(FsError::BadName)
             .and_then(|p| p.child(name));
-        match to.and_then(|to| self.fs.rename(loc, &to, false).map(|()| to)) {
+        // a rename where the kernel can, else copy and delete (folders on the Ultar kernel)
+        let fs = self.fs.clone();
+        let mut sink = |_| {};
+        let mut job = crate::fs::copy::Job::new(&fs, Cancel::default(), &mut sink);
+        match to.and_then(|to| job.move_as(loc, &to).map(|()| to)) {
             Ok(to) => {
                 self.state
                     .edit
@@ -290,4 +316,13 @@ impl App {
             _ => Vec::new(),
         }
     }
+}
+
+/// A launcher service that cannot answer is shown as a failed dialog (not about this place).
+fn port_failed(e: PortError) -> Dialog {
+    let fs_error = match e {
+        PortError::Unavailable => FsError::Io,
+        PortError::NotInstalled | PortError::Refused => FsError::Permission,
+    };
+    Dialog::Failed(fs_error, 1)
 }

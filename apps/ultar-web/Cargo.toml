@@ -23,7 +23,14 @@ ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
 ultar-surface = { path = "../../platform/ultar-surface" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
-rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event"] }
+rustix = { version = "1", default-features = false, features = ["std", "net", "fs", "event", "pipe"] }
+# The reader engine (engine::reader): pages fetched in pure Rust. TLS through rustls with the
+# Graviola provider where the CPU and the kernel offer AVX2, else the pure-Rust RustCrypto
+# provider (the Ultar kernel does not keep AVX registers yet); Mozilla roots compiled in.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+rustls-graviola = "0.4"
+rustls-rustcrypto = "0.0.2-alpha"
+encoding_rs = "0.8"
 
 [dev-dependencies]
 ultar-ui = { path = "../../platform/ultar-ui" }

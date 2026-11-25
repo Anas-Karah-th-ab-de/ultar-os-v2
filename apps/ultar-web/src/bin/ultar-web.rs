@@ -14,6 +14,7 @@ use ultar_ui::tokens::{InputMode, ThemeKind};
 use ultar_web::app::{Browser, FilesApp, Paths};
 use ultar_web::cell::CellSpec;
 use ultar_web::engine::offline::OfflineEngine;
+use ultar_web::engine::reader::ReaderEngine;
 use ultar_web::engine::remote::{HostConfig, RemoteEngine};
 use ultar_web::engine::WebEngine;
 
@@ -115,10 +116,31 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
     match start_engine(&a, &profile, &downloads) {
         Ok(engine) => show(engine, a, lang, Paths { profile, downloads }),
         Err(e) => {
-            // No engine (bundle missing or refused to start): the window still opens; every
-            // page says it could not be shown (engine::offline).
-            let _ = writeln!(std::io::stderr(), "ultar-web: engine not available: {e}");
-            show(OfflineEngine::new(), a, lang, Paths { profile, downloads })
+            // No full engine (bundle missing or refused to start, e.g. on the PC image): pages
+            // are shown by the reader engine in pure Rust (text, links, Arabic); only if even
+            // that cannot start, the window opens without pages (engine::offline).
+            let _ = writeln!(
+                std::io::stderr(),
+                "ultar-web: full engine not available: {e}"
+            );
+            let mut agent = ultar_brand::release::Line::<160>::new();
+            let named = ultar_brand::release::write_user_agent(
+                &mut agent,
+                "UltarWeb",
+                env!("CARGO_PKG_VERSION"),
+            );
+            let agent = if named.is_ok() {
+                agent.as_str()
+            } else {
+                "UltarWeb"
+            };
+            match ReaderEngine::new(lang, agent) {
+                Ok(reader) => show(reader, a, lang, Paths { profile, downloads }),
+                Err(e) => {
+                    let _ = writeln!(std::io::stderr(), "ultar-web: reader engine: {e}");
+                    show(OfflineEngine::new(), a, lang, Paths { profile, downloads })
+                }
+            }
         }
     }
 }

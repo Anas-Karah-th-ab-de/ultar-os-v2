@@ -20,6 +20,14 @@ pub const RP_STATE_CAP: u32 = 0x13_8000;
 /// `MTL_MIRROR_TARGET_WP1`: the ratio the GT runs at now, bits 8:0.
 pub const MIRROR_TARGET_WP1: u32 = 0xc60;
 const RATIO_MASK: u32 = 0x1ff;
+/// `GT0_PERF_LIMIT_REASONS` (`xe_gt_throttle.c`): why the GT runs below what was asked.
+pub const PERF_LIMIT_REASONS: u32 = 0x13_81a8;
+/// Prochot, thermal, VR thermal alert: heat.
+pub const LIMIT_HEAT: u32 = 1 << 0 | 1 << 1 | 1 << 6;
+/// Power limits 1, 2 and 4: the package's power budget.
+pub const LIMIT_POWER: u32 = 1 << 8 | 1 << 10 | 1 << 11;
+/// Ratio limit (RATL) and VR current (TDC).
+pub const LIMIT_OTHER: u32 = 1 << 5 | 1 << 7;
 
 /// A frequency as the hardware counts it: units of 50/3 MHz.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -41,6 +49,11 @@ pub fn limits(hw: &mut impl Hw) -> (Ratio, Ratio) {
 /// What the GT runs at now (0 while it sleeps).
 pub fn current(hw: &mut impl Hw) -> Ratio {
     Ratio(hw.read(MIRROR_TARGET_WP1) & RATIO_MASK)
+}
+
+/// Why the GT runs below what was asked now (`LIMIT_*` bits; 0: nothing holds it back).
+pub fn limit_reasons(hw: &mut impl Hw) -> u32 {
+    hw.read(PERF_LIMIT_REASONS) & (LIMIT_HEAT | LIMIT_POWER | LIMIT_OTHER)
 }
 
 /// Asks the power unit for `ratio`: software requests are let through, the request is written,

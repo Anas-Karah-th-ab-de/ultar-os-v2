@@ -1,7 +1,7 @@
 //! The desktop's bus connection: ports and the topics it follows (settings, notifications,
 //! power, device capabilities). Without a bus every service part stays disabled.
 
-use crate::model::quick::PowerMode;
+use crate::model::quick::{PowerMode, RemovableMedia};
 use crate::model::Desktop;
 use crate::ports::bus::BusPorts;
 use crate::ports::SettingsPort;
@@ -19,7 +19,7 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 16] = [
+pub const FOLLOWED: [&str; 17] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
@@ -36,6 +36,7 @@ pub const FOLLOWED: [&str; 16] = [
     "notifications.do_not_disturb",
     "display.night_light.enabled",
     "power.mode",
+    "apps.removable_media",
 ];
 
 /// Ports and subscriptions.
@@ -154,6 +155,9 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
                 d.values.power = m;
             }
         }
+        ("apps.removable_media", SettingValue::Text(t)) => {
+            d.values.removable_media = RemovableMedia::parse(t);
+        }
         (k, SettingValue::Integer(v)) if Some(k) == brightness_key(d).as_deref() => {
             d.values.brightness = Some((*v).clamp(0, 100) as u8);
         }
@@ -246,6 +250,33 @@ mod tests {
             &SettingValue::Flag(true),
         );
         assert_eq!(d.values.double_click_ms, Some(700));
+    }
+
+    #[test]
+    fn the_removable_media_setting_reaches_the_state() {
+        use crate::model::quick::RemovableMedia;
+        let mut d = Desktop::new(Lang::En);
+        assert!(FOLLOWED.contains(&"apps.removable_media"));
+        assert_eq!(d.values.removable_media, RemovableMedia::Ask);
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("open_files".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::OpenFiles);
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("nothing".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::Nothing);
+        // an unknown word keeps the default (ask)
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("nonsense".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::Ask);
     }
 
     #[test]

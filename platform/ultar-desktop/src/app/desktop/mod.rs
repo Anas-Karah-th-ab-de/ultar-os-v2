@@ -251,6 +251,7 @@ impl DesktopApp {
                 })?;
             }
         }
+        self.react_media()?;
         if keys
             .iter()
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")
@@ -272,8 +273,7 @@ impl DesktopApp {
                 });
             }
         }
-        self.sync_store_catalog(&keys);
-        self.sync_history(&keys)?;
+        self.sync_local(&keys)?;
         if any {
             if self.look.theme != self.shell.d.theme {
                 self.look.theme = self.shell.d.theme;
@@ -281,6 +281,12 @@ impl DesktopApp {
             self.rebuild(Outcome::surfaces())?;
         }
         Ok(())
+    }
+
+    /// What the shell keeps or reads beside the settings: the Store's catalogue, the history.
+    fn sync_local(&mut self, keys: &[String]) -> Result<(), AppError> {
+        self.sync_store_catalog(keys);
+        self.sync_history(keys)
     }
 
     /// search.source.store changed: read the Store's cached catalogue again (a fresh verified
@@ -296,6 +302,15 @@ impl DesktopApp {
     fn sync_history(&mut self, keys: &[String]) -> Result<(), AppError> {
         if keys.iter().any(|k| k == "search.history") {
             self.apply(Outcome::effect(crate::shell::Effect::History))?;
+        }
+        Ok(())
+    }
+
+    /// A drive with media was plugged in: `apps.removable_media` decides what happens.
+    fn react_media(&mut self) -> Result<(), AppError> {
+        let media = self.shell.media_inserted();
+        if media.bar || media.popup || !media.effects.is_empty() {
+            self.apply(media)?;
         }
         Ok(())
     }

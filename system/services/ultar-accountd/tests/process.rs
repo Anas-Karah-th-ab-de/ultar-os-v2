@@ -360,3 +360,32 @@ fn a_damaged_account_file_fails_closed() {
     refused(r, "accountd.refused.store_damaged");
     assert!(w.cred("anas").is_none() && !w.home("anas").exists());
 }
+
+/// users.auto_login: the setting reaches the account service at runtime and marks
+/// exactly the named user (the per-user flag); an empty name marks nobody.
+#[test]
+fn the_auto_login_setting_marks_the_named_user() {
+    let w = seeded("auto-login");
+    let _d = w.start();
+    let app = connect(&w.socket, "app.settings");
+    let flagged = |name: &str| {
+        let start = std::time::Instant::now();
+        loop {
+            let users = users(&app);
+            if users.users.iter().all(|u| u.auto_login == (u.name == name)) {
+                return;
+            }
+            assert!(start.elapsed() < WAIT, "auto_login did not reach {name}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    // Nobody at start (the settings stand-in answers with no value).
+    assert!(users(&app).users.iter().all(|u| !u.auto_login));
+    w.tell_auto_login("leila");
+    flagged("leila");
+    // Runtime change to the other user, then to nobody.
+    w.tell_auto_login("anas");
+    flagged("anas");
+    w.tell_auto_login("");
+    flagged("");
+}

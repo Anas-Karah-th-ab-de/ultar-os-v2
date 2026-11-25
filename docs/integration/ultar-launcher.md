@@ -92,6 +92,31 @@ in `accept_missing` (shipped: empty).
 | `grant / revoke {app, permission}` | shell, admin | `{granted, stopped}` – revoking stops the app's running instances |
 | `install {package}` | admin (+ `launcher.admin`) | `{app, uid, profile, declared}` – verifies the `.uap` signature itself |
 | `uninstall {app, keep_data}` | admin (+ `launcher.admin`) | `{stopped}` |
+| `resolve {uri}` | shell, files, admin | `{app: Option<id>}` – the default app for the URI (below); the caller starts it |
+| `candidates {kind}` | settings, shell, admin | `{apps: [id]}` – the installed apps that declare the kind (≤ 256), the choices of `apps.default.*` |
+
+**Default apps and autostart** (`apps.default.*`, `apps.autostart`; added for the Settings wiring,
+`docs/integration/settings-wiring.md`). The launcher reads these settings at start (`settings.get`)
+and follows `settings.changed` on a bus connection of its own (`src/follow.rs`); without the bus the
+schema's defaults stay and no autostart happens. `Kind` (`web mail calendar music video photos
+documents`, `ultar_bus::messages::launcher`) names a kind of thing to open; `kind_of_uri` maps a URI
+to its kind (the scheme for web/mail/calendar, the extension of a `file`/`files` URI for the four file
+kinds). `resolve` takes the app stored for the URI's kind, keeps it only when it is **installed and its
+manifest declares the URI's scheme** (`file` and `files` both mean "opens files"), else falls back to
+the kind's system default (`browser mail calendar media media images documents`); an invalid setting
+value (no app id) falls back too; `None` when no installed app declares the URI. It only resolves –
+the caller starts the app with its activation token. `candidates` lists the installed apps whose
+manifests declare one of the kind's schemes, which the Settings page offers as the choices of
+`apps.default.<kind>`. The launcher also follows `session.state`: when someone signs in it starts each
+app of `apps.autostart` (its window, `Ui`) **once** – only installed apps (a start refuses the rest),
+nothing again while the session runs, a fresh start after the next sign-in once everyone signed out.
+The launcher also follows the downloads clean-up (`storage.clean_downloads`, `.clean_downloads_days`,
+`src/clean.rs`): it owns the person's file areas, so it – not the volume service, which handles
+untrusted USB file systems and must not reach the areas – removes the person in front's regular files
+older than N days in `areas_root/downloads` once a day (only that folder, never through a link, their
+id from `account.users`). Bus policy: `system.launcher` gains `settings.get` and the topics
+`settings.changed`, `session.state`, `account.users`; `app.files` gains `launcher.resolve`,
+`app.settings` gains `launcher.candidates`.
 
 States: `Starting Running Stopping Backoff Stopped Crashed Failed`. Ends: `Code(n)`, `Signal(n)`, `Setup(n)`.
 Windows are never restarted (a crash is `Crashed`); a `[service]` follows `restart = never|on-failure|always`,

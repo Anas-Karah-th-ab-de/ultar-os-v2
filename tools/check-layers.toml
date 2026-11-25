@@ -157,7 +157,7 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface", "platform/ultar-textview"]
 
 [[allow]]
 from = "apps"
@@ -178,6 +178,13 @@ crates = ["system/core/ultar-catalog"]
 from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-pkg"]
+
+# The office library (text buffer with encodings and undo, documents, sheets, PDF) is shared by
+# the editor and the office apps; it has no window and no process of its own.
+[[allow]]
+from = "apps"
+to = "apps"
+crates = ["apps/ultar-office"]
 
 # third-party packages use the same API as system apps
 [[allow]]

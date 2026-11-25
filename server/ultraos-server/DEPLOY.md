@@ -104,6 +104,27 @@ no-stdout-log
 (Server gibt kurzlebige Zugangsdaten über `/v1/turn-cred` aus; der Benutzer ist `<Ablauf>:<Zufall>`,
 nie das Konto. Im Container zusätzlich `logging: driver: none`.)
 
+**Relais zu Relais (beide Seiten „nur Relais“):** private und Sondernetze als Gegenstelle sperren
+(`denied-peer-ip=…` für 0/8, 10/8, 100.64/10, 127/8, 169.254/16, 172.16/12, 192.0.0/24, 192.168/16,
+198.18/15, 224/3, ::1, fc00::/7, fe80::/10), die **eigene** Adresse aber erlauben, damit sich zwei
+Relais-Zuteilungen desselben Servers erreichen:
+```
+allowed-peer-ip=<eigene IP>
+min-port=42000
+max-port=42999
+```
+Das öffnet nur zusammen mit einer Firewall-Regel: coturn (Benutzer `nobody`, uid 65534, Host-Netz)
+darf an die eigene Adresse ausschließlich die Relais-Ports senden – sonst erreichte jeder mit
+TURN-Zugang SSH, nginx, Signierdienst usw. an der Firewall vorbei. In `/etc/ufw/before.rules` direkt
+nach `# End required lines` (vor `-o lo -j ACCEPT`):
+```
+-A ufw-before-output -m owner --uid-owner 65534 -d <eigene IP> -p udp --dport 42000:42999 -j ACCEPT
+-A ufw-before-output -m owner --uid-owner 65534 -d <eigene IP> -j DROP
+-A ufw-before-output -m owner --uid-owner 65534 -o lo -j DROP
+```
+Prüfen: `setpriv --reuid=65534 --regid=65534 --clear-groups bash -c 'exec 3<>/dev/tcp/<eigene IP>/22'`
+muss scheitern; `server/cloud-e2e/tests/live_call.rs` (`both_sides_relay_only_meet_relay_to_relay`).
+
 ## 6. WireGuard-Server `/etc/wireguard/wg0.conf`
 ```
 [Interface]

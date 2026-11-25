@@ -5,6 +5,7 @@
 //! implement the same trait.
 
 pub mod offline;
+pub mod reader;
 pub mod remote;
 pub mod test_engine;
 

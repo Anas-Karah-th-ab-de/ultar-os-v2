@@ -10,20 +10,17 @@ them (website, downloads, store). Flow: build on a builder → copy the files to
 
 ## Open points first
 
-1. **OS image built, signed, NOT published (HOLD, 2026-11-24):** apps in launcher cells cannot reach the bus
-   (Settings shows "service not available"); publish after that fix with a rebuild. Public download = the USB
-   installer `ultar-os-<ver>-installer-x86_64.img.xz` (`tools/release/build-release.sh` on B2:
-   `make-vmware.sh` with `INSTALLER_IMG=1` – same system tree + `ultar-installer-ui`/`ultar-firstboot`, marker
-   `session=init`, **no preset account/password**; `vmware-vm.py installer` boots it in QEMU with an empty NVMe
-   disk until the installer reports its first step + screenshot). The VMware zip is **not** public: it has a
-   preset account (random per-build password) and no first-start account setup exists for it (`ultar-firstboot`
-   only consumes the installer's answers record); `VMWARE=1` builds it for internal tests only.
-   Staged + signed on the VPS: `/root/ultar-publish/0.8.0/` (`.sig` verified with `ssh-keygen -Y verify`
-   against the public allowed-signers). Publish when released:
-   `bash /root/ultar-publish/bundle/vps/publish-release.sh 0.8.0 beta notes/0.8.0.json /root/ultar-publish/0.8.0/ultar-os-0.8.0-installer-x86_64.img.xz`
-   (`tools/release/notes/0.8.0.json`, ar/en/de). Known gaps: graphical installation not verified end to end
-   (installer-e2e opt-in), no encryption, no automatic restart, image's system apps are signed with a
-   per-build key (not the server's system key) so store updates of system apps will not verify on it.
+1. **OS image published (2026-11-25):** the HOLD of 2026-11-24 (apps in launcher cells could not reach the bus)
+   is fixed by `1017f8e` (each cell gets the bus as its own identity); `launcher-e2e` and `settings-e2e` pass on
+   `d706e16`, and the installer image from that commit passed `INSTALLER-CHECK` (installer session up, first
+   step Language). Public download = the USB installer `ultar-os-0.8.0-installer-x86_64.img.xz`
+   (`tools/release/build-release.sh`: `make-vmware.sh` with `INSTALLER_IMG=1` – same system tree +
+   `ultar-installer-ui`/`ultar-firstboot`, marker `session=init`, **no preset account/password**). Signed and
+   published on the VPS with `publish-release.sh 0.8.0 beta notes/0.8.0.json …` (`/downloads/0.8.0/`, listed in
+   `/downloads/releases.json`, shown on the website). The VMware zip stays **not** public (preset account with a
+   random per-build password, no first-start account setup). Known gaps (in the notes): graphical installation not
+   verified end to end (installer-e2e opt-in), no encryption, no automatic restart, image's system apps are signed
+   with a per-build key (not the server's system key) so store updates of system apps will not verify on it.
 2. **Version:** one source `tools/release/VERSION` = `0.8.0` (VERSION file says `0.8.0-beta`; workspace, kernel, loader, signd all 0.8.0). The workspace (`0.6.0`), kernel
    (`0.4.0`) and brand/os-release (`0.7.0`) are aligned in the image step (deliverable 1), not yet.
 3. **Device trust:** the public keys created on the server must be put into

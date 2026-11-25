@@ -14,6 +14,9 @@ use super::{EngineClass, Errno};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
+/// `DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE`.
+const VM_CREATE_SCRATCH_PAGE: u32 = 1 << 0;
+
 /// The GPU as the requests need it.
 pub trait Backend {
     /// A buffer: memory pages that stay where they are while a clone of this lives.
@@ -24,8 +27,9 @@ pub trait Backend {
     fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno>;
     /// The buffer's memory pages, in order.
     fn buffer_pages(&self, b: &Self::Buffer) -> Vec<u64>;
-    /// A new address space; returns its number.
-    fn vm_new(&mut self) -> Result<u32, Errno>;
+    /// A new address space; returns its number. `scratch`: addresses without a mapping read
+    /// zero and drop writes instead of faulting.
+    fn vm_new(&mut self, scratch: bool) -> Result<u32, Errno>;
     /// Maps memory pages at `va` of address space `vm`.
     /// `pat`: the cache attribute the program asked for (index of the GT's PAT table, 0–4).
     fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno>;
@@ -247,8 +251,8 @@ impl<B: Backend> File<B> {
         Ok(())
     }
 
-    /// `DRM_IOCTL_XE_VM_CREATE`. Scratch-page and long-running mode are accepted; fault mode
-    /// is refused.
+    /// `DRM_IOCTL_XE_VM_CREATE`. Scratch page (null entries: reads zero, writes dropped) and
+    /// long-running mode are accepted; fault mode is refused.
     pub fn vm_create(&mut self, be: &mut B, arg: &mut [u8]) -> Result<(), Errno> {
         let b = fields(arg, 32, 16, true)?;
         if u32_at(b, 8) & !0b11 != 0 {
@@ -257,7 +261,7 @@ impl<B: Backend> File<B> {
         if self.vms.len() >= MAX_VMS {
             return Err(Errno::NoMem);
         }
-        let backend = be.vm_new()?;
+        let backend = be.vm_new(u32_at(b, 8) & VM_CREATE_SCRATCH_PAGE != 0)?;
         let id = self.id();
         self.vms.insert(
             id,

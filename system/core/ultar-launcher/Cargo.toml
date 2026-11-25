@@ -30,7 +30,12 @@ doc = false
 name = "launchtest"
 path = "examples/launchtest/main.rs"
 
+[dev-dependencies]
+# The clean-up tests ask for the person's own id (and, as root, another owner's).
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
 [dependencies]
+ultar-brand = { path = "../ultar-brand" }
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 sha2 = "0.10"

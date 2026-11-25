@@ -1,7 +1,8 @@
 //! Mouse, touchpad and keyboard settings on their way to the compositor: the `pointer.*`
 //! settings and the pointer parts of `accessibility.*` become `Request::ConfigurePointer`,
-//! `keyboard.repeat.*` become `Request::ConfigureKeyRepeat` (the display service already
-//! holds the compositor's configuration right).
+//! `keyboard.repeat.*` become `Request::ConfigureKeyRepeat`, the keyboard helpers of
+//! `accessibility.*` and `keyboard.compose_key` become `Request::ConfigureKeyHelpers`
+//! (the display service already holds the compositor's configuration right).
 
 use ultar_bus::messages::settings::SettingValue;
 use ultar_surface::proto::{
@@ -56,6 +57,8 @@ pub struct InputSettings {
     pub repeat_delay_ms: u16,
     /// Repeats per second.
     pub repeats_per_second: u8,
+    /// The keyboard helpers and the compose key (`accessibility.*`, `keyboard.compose_key`).
+    pub helpers: crate::key_helpers::HelperSettings,
 }
 
 impl Default for InputSettings {
@@ -72,6 +75,7 @@ impl Default for InputSettings {
             repeat: true,
             repeat_delay_ms: 500,
             repeats_per_second: 25,
+            helpers: crate::key_helpers::HelperSettings::default(),
         }
     }
 }
@@ -95,6 +99,8 @@ impl InputSettings {
     /// words and numbers outside their schema fall back to the default or the nearest end.
     pub fn on_changed(&mut self, key: &str, value: &SettingValue) -> bool {
         let before = *self;
+        // The keyboard helpers and the compose key are a group of their own.
+        self.helpers.on_changed(key, value);
         match (key, value) {
             (SPEED, SettingValue::Integer(v)) => {
                 let limits = (i64::from(MIN_POINTER_SPEED), i64::from(MAX_POINTER_SPEED));
@@ -137,7 +143,7 @@ impl InputSettings {
     }
 
     /// The requests that put these values into effect.
-    pub fn requests(&self) -> [Request; 2] {
+    pub fn requests(&self) -> [Request; 3] {
         [
             Request::ConfigurePointer {
                 speed: self.speed,
@@ -152,6 +158,7 @@ impl InputSettings {
                 delay_ms: self.repeat_delay_ms,
                 per_second: self.repeats_per_second,
             },
+            self.helpers.request(),
         ]
     }
 }
@@ -272,5 +279,36 @@ mod tests {
         );
         assert!(p.on_changed(REPEAT_RATE, &SettingValue::Integer(1_000)));
         assert_eq!(p.repeats_per_second, MAX_KEY_REPEATS_PER_SECOND);
+    }
+
+    #[test]
+    fn the_keyboard_helpers_are_a_third_request_of_their_own() {
+        use crate::key_helpers::{COMPOSE, STICKY};
+        use ultar_surface::proto::ComposeKey;
+        let mut p = InputSettings::default();
+        assert_eq!(
+            p.requests()[2],
+            Request::ConfigureKeyHelpers {
+                sticky_keys: false,
+                slow_keys: false,
+                bounce_keys: false,
+                mouse_keys: false,
+                compose_key: ComposeKey::None,
+            }
+        );
+        assert!(p.on_changed(STICKY, &SettingValue::Flag(true)));
+        assert!(p.on_changed(COMPOSE, &SettingValue::Text("caps_lock".into())));
+        assert_eq!(
+            p.requests()[2],
+            Request::ConfigureKeyHelpers {
+                sticky_keys: true,
+                slow_keys: false,
+                bounce_keys: false,
+                mouse_keys: false,
+                compose_key: ComposeKey::CapsLock,
+            }
+        );
+        // The pointer and key-repeat requests are untouched by the helpers.
+        assert_eq!(p.requests()[0], pointer(&InputSettings::default()));
     }
 }

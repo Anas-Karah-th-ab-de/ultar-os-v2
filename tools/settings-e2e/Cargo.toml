@@ -14,17 +14,21 @@ path = "src/lib.rs"
 ultar-settings = { path = "../../apps/ultar-settings" }
 ultar-displayd = { path = "../../platform/ultar-displayd" }
 ultar-desktop = { path = "../../platform/ultar-desktop" }
+ultar-launcher = { path = "../../system/core/ultar-launcher" }
 ultar-surface = { path = "../../platform/ultar-surface" }
 ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-update = { path = "../../system/core/ultar-update" }
-# The Store follows updates.auto_apps; the shell's Store source reads the shared catalogue.
+# The Store follows updates.auto_apps (the example checks the Store's own code).
 ultar-store = { path = "../../apps/ultar-store", features = ["bus"] }
-ultar-catalog = { path = "../../system/core/ultar-catalog" }
-# Signing a catalogue fixture for the Store-source check (already in the workspace).
-ed25519-dalek = "2"
-hex = "0.4"
+# The volume service follows the Storage page settings; the example checks its own code.
+ultar-volumed = { path = "../../system/services/ultar-volumed" }
+# The services that follow the Users and Emergency settings (their own code checks
+# the effect, with their own identity on the bus).
+ultar-accountd = { path = "../../system/services/ultar-accountd" }
+ultar-sessiond = { path = "../../system/services/ultar-sessiond" }
+ultar-call = { path = "../../system/services/ultar-call" }
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

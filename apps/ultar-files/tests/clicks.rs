@@ -425,3 +425,54 @@ fn desk_icon_selects_opens_and_has_its_menu() {
     act(&mut app, item, ActionKind::MenuChosen(Command::Trash.id()));
     assert!(!r.path("desktop/ملاحظة.txt").exists());
 }
+
+#[test]
+fn opening_a_file_follows_the_default_app_setting() {
+    use ultar_bus::messages::launcher::Kind;
+    let r = board_root();
+    let (mut app, fake) = app(&r, Mode::Window, Lang::Ar, None);
+    docs(&mut app);
+    let item = node(&app, &Target::Item("تقرير.docx".into()));
+    double_click(&mut app, item);
+    assert_eq!(fake.borrow().opened.last().unwrap().0, "org.ultar.office");
+    // the default document app changes (as apps.default.documents would): the same file
+    // now opens in the newly chosen app
+    for (kind, app) in fake.borrow_mut().defaults.iter_mut() {
+        if *kind == Kind::Documents {
+            *app = "org.ultar.editor".to_owned();
+        }
+    }
+    let item = node(&app, &Target::Item("تقرير.docx".into()));
+    double_click(&mut app, item);
+    assert_eq!(fake.borrow().opened.last().unwrap().0, "org.ultar.editor");
+    // no app for the kind: "no app can open it", nothing launched
+    fake.borrow_mut()
+        .defaults
+        .retain(|(k, _)| *k != Kind::Documents);
+    let before = fake.borrow().opened.len();
+    let item = node(&app, &Target::Item("تقرير.docx".into()));
+    double_click(&mut app, item);
+    assert_eq!(fake.borrow().opened.len(), before);
+    assert_eq!(
+        app.state.notice.as_ref().unwrap().key,
+        "files.notice.no_app"
+    );
+}
+
+#[test]
+fn f5_and_ctrl_r_read_the_folder_again_f2_renames() {
+    let r = board_root();
+    let (mut app, _) = app(&r, Mode::Window, Lang::Ar, None);
+    docs(&mut app);
+    assert_eq!(app.state.items.len(), 6);
+    r.write("documents/جديد.txt", b"new from outside");
+    key(&mut app, Key::F(5), Modifiers::default());
+    assert_eq!(app.state.items.len(), 7, "F5 shows what changed outside");
+    std::fs::remove_file(r.path("documents/جديد.txt")).unwrap();
+    key(&mut app, Key::Char('r'), ctrl());
+    assert_eq!(app.state.items.len(), 6, "Ctrl+R too");
+    let item = node(&app, &Target::Item("عقود".into()));
+    click(&mut app, item);
+    key(&mut app, Key::F(2), Modifiers::default());
+    assert!(matches!(app.state.dialog, Some(Dialog::Rename(_))));
+}

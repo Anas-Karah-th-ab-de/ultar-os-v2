@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ultar_bus::messages::launcher::{
-    Grant, Install, List, ListReply, Permissions, Revoke, Start, StartReplyV1, StartV1, Stop,
-    Uninstall, UninstallReply, ADMIN_METHOD, SERVICE,
+    Candidates, CandidatesReply, Grant, Install, List, ListReply, Permissions, Resolve,
+    ResolveReply, Revoke, Start, StartReplyV1, StartV1, Stop, Uninstall, UninstallReply,
+    ADMIN_METHOD, SERVICE,
 };
 use ultar_bus::Message;
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
@@ -93,6 +94,16 @@ pub fn answer(request: IncomingRequest, launcher: &Arc<Launcher>, admins: &Mutex
         "list" => request.respond::<List>(|_| {
             Ok(ListReply {
                 apps: launcher.list(),
+            })
+        }),
+        "resolve" => request.respond::<Resolve>(|r| {
+            Ok(ResolveReply {
+                app: launcher.resolve(&r.uri),
+            })
+        }),
+        "candidates" => request.respond::<Candidates>(|c| {
+            Ok(CandidatesReply {
+                apps: launcher.candidates(c.kind),
             })
         }),
         "start" => start(request, launcher),

@@ -12,6 +12,7 @@ fn check<C: Call>() -> &'static str {
 fn every_call_has_a_valid_unique_name() {
     let mut names = vec![
         check::<Dial>(),
+        check::<Emergency>(),
         check::<Answer>(),
         check::<Decline>(),
         check::<Hangup>(),
@@ -35,6 +36,18 @@ fn every_call_has_a_valid_unique_name() {
     assert_eq!(names.len(), n);
     assert!(is_valid_name(CallState::TOPIC));
     const { assert!(CallState::RETAINED) };
+}
+
+#[test]
+fn emergency_carries_no_number_and_answers_like_dial() {
+    let call = Emergency {};
+    assert_eq!(decode::<Emergency>(&encode(&call).unwrap()).unwrap(), call);
+    assert_eq!(Emergency::METHOD, "emergency");
+    let reply = DialReply { id: 7 };
+    assert_eq!(
+        decode::<DialReply>(&encode(&reply).unwrap()).unwrap(),
+        reply
+    );
 }
 
 #[test]

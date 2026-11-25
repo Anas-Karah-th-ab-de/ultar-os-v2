@@ -102,6 +102,10 @@ impl Store {
                     .collect();
                 self.next_in_queue()
             }
+            StoreAction::Remove(app) if ultar_brand::base_apps::is_base_app(&app) => {
+                // a base app of the system: never removed (no button is shown for it)
+                Vec::new()
+            }
             StoreAction::Remove(app) => {
                 // Dangerous action: the confirmation dialog comes first
                 // (keep the data or delete it), nothing is removed yet.

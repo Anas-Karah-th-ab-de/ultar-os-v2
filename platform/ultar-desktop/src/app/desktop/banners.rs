@@ -85,6 +85,9 @@ impl DesktopApp {
                 self.shell.d.notes.dismiss(*id);
                 Outcome::surfaces()
             }
+            (Target::NoteAction(id, index), ActionKind::Activated) => {
+                self.shell.note_action(*id, *index)
+            }
             _ => Outcome::none(),
         }
     }

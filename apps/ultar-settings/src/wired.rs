@@ -58,6 +58,14 @@ pub const WIRED: &[(&str, &str)] = &[
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
+    // displayd passes the keyboard helpers and the compose key to the compositor too
+    // (`Request::ConfigureKeyHelpers`): sticky, slow, bounce and mouse keys and the compose
+    // key in the compositor's key input path.
+    ("accessibility.sticky_keys", "compositor"),
+    ("accessibility.slow_keys", "compositor"),
+    ("accessibility.bounce_keys", "compositor"),
+    ("accessibility.mouse_keys", "compositor"),
+    ("keyboard.compose_key", "compositor"),
     // The shell (bar, sheets, lock screen) and this window follow these.
     ("accessibility.large_text", "shell"),
     ("accessibility.high_contrast", "shell"),
@@ -65,10 +73,7 @@ pub const WIRED: &[(&str, &str)] = &[
     // The search of the shell's overview (model/search.rs `Sources`, read at start and on
     // settings.changed); the characters come from the shell's own table (model/characters.rs),
     // the history is kept beside the shell per person (model/history.rs); off deletes it.
-    // search.source.store offers the Store's catalogue apps that are not installed, read from
-    // the Store's cached, signature-checked catalogue (model/store.rs, shared ultar-catalog).
     ("search.source.apps", "shell"),
-    ("search.source.store", "shell"),
     ("search.source.settings", "shell"),
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
@@ -89,6 +94,43 @@ pub const WIRED: &[(&str, &str)] = &[
     ("updates.metered", "updated"),
     ("updates.offline_usb", "updated"),
     ("updates.notify", "updated"),
+    // The launcher resolves a link/file through the default apps (and offers the installed
+    // apps that declare each kind as the choices); it starts the autostart list after sign-in.
+    ("apps.default.web", "launcher"),
+    ("apps.default.mail", "launcher"),
+    ("apps.default.calendar", "launcher"),
+    ("apps.default.music", "launcher"),
+    ("apps.default.video", "launcher"),
+    ("apps.default.photos", "launcher"),
+    ("apps.default.documents", "launcher"),
+    ("apps.autostart", "launcher"),
+    // The shell asks, opens Files, or does nothing when a drive with media is plugged in.
+    ("apps.removable_media", "shell"),
+    // The volume service (ultar-volumed) follows these: it warns once when the data
+    // partition runs low and offers a drive with a "Mount" button when automount is off.
+    ("storage.low_space_percent", "volumed"),
+    ("storage.automount", "volumed"),
+    // The launcher owns the person's file areas and cleans their downloads folder once a
+    // day (the volume service handles untrusted USB file systems and must not reach them).
+    ("storage.clean_downloads", "launcher"),
+    ("storage.clean_downloads_days", "launcher"),
+    // The lock screen (ultar-lock) follows these: the user list at the sign-in,
+    // automatic sign-in at a fresh start, the parental time window (the session
+    // service ends open sessions at its end), and the emergency panel on the cover
+    // with its call (the call service dials the number itself) and SOS light.
+    ("users.list_on_login", "lock"),
+    ("users.auto_login", "accountd + lock"),
+    ("users.parental", "lock + sessiond"),
+    ("users.parental.from", "lock + sessiond"),
+    ("users.parental.until", "lock + sessiond"),
+    ("emergency.on_lock_screen", "lock"),
+    ("emergency.contact_name", "lock"),
+    ("emergency.contact_phone", "lock"),
+    ("emergency.medical", "lock"),
+    ("emergency.number", "calld + lock"),
+    ("emergency.sos_light", "lock"),
+    // The Users page of this app proposes the configured kind when adding a user.
+    ("users.new_kind", "settings"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -100,53 +142,105 @@ pub fn takes_effect(panel: &str, key: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// The panel of a key: its first word (`pointer` for the mouse page).
+    fn panel(key: &str) -> &str {
+        key.split('.').next().unwrap_or_default()
+    }
+
     #[test]
-    fn old_panels_are_untouched_and_new_ones_need_a_consumer() {
+    fn old_panels_are_untouched_and_wired_keys_belong_to_checked_panels() {
+        // The ten panels of the first seed are followed as before.
         assert!(takes_effect("power", "power.mode"));
-        assert!(takes_effect("pointer", "pointer.speed"));
-        assert!(takes_effect("pointer", "pointer.primary_button"));
-        assert!(takes_effect("pointer", "pointer.acceleration"));
-        assert!(takes_effect("pointer", "pointer.size"));
-        assert!(takes_effect("accessibility", "accessibility.large_pointer"));
-        assert!(takes_effect(
-            "accessibility",
-            "accessibility.double_click_ms"
-        ));
-        assert!(takes_effect("accessibility", "accessibility.high_contrast"));
-        assert!(!takes_effect("sharing", "sharing.files"));
-        assert!(!takes_effect("sharing", "sharing.screen"));
-        // The touchpad options wait for an input layer that tells touchpads apart.
-        assert!(!takes_effect("pointer", "pointer.touchpad.gestures"));
-        assert!(!takes_effect("pointer", "pointer.touchpad.tap_to_click"));
-        assert!(!takes_effect("pointer", "pointer.touchpad.natural_scroll"));
-        assert!(takes_effect("keyboard", "keyboard.repeat.delay_ms"));
-        assert!(!takes_effect("keyboard", "keyboard.compose_key"));
-        assert!(takes_effect("search", "search.source.apps"));
-        assert!(takes_effect("search", "search.source.characters"));
-        assert!(takes_effect("search", "search.source.store"));
-        assert!(takes_effect("search", "search.history"));
-        assert!(!takes_effect("search", "search.source.files"));
-        assert!(!takes_effect("search", "search.file_places"));
-        assert!(takes_effect("updates", "updates.auto_system"));
-        assert!(takes_effect("updates", "updates.window.from"));
-        assert!(takes_effect("updates", "updates.window.until"));
-        assert!(takes_effect("updates", "updates.channel"));
-        assert!(takes_effect("updates", "updates.metered"));
-        assert!(takes_effect("updates", "updates.offline_usb"));
-        assert!(takes_effect("updates", "updates.notify"));
-        // App updates belong to the Store, not the system updater.
-        assert!(takes_effect("updates", "updates.auto_apps"));
-        assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
-        assert!(!takes_effect(
-            "accessibility",
-            "accessibility.screen_reader"
-        ));
-        // Every wired key belongs to a checked panel (its first word, `pointer` for the
-        // mouse page).
         for (key, _) in WIRED {
-            let panel = key.split('.').next().unwrap_or_default();
-            assert!(CHECKED_PANELS.contains(&panel), "{key}");
+            assert!(CHECKED_PANELS.contains(&panel(key)), "{key}");
+            assert!(takes_effect(panel(key), key), "{key}");
         }
-        assert!(!takes_effect("printers", "printers.paper"));
+    }
+
+    #[test]
+    fn these_settings_take_effect() {
+        for key in [
+            "pointer.speed",
+            "pointer.primary_button",
+            "pointer.acceleration",
+            "pointer.size",
+            "accessibility.large_pointer",
+            "accessibility.double_click_ms",
+            "accessibility.high_contrast",
+            "accessibility.reduce_motion",
+            // the keyboard helpers reach the compositor's key input path
+            "accessibility.sticky_keys",
+            "accessibility.slow_keys",
+            "accessibility.bounce_keys",
+            "accessibility.mouse_keys",
+            "keyboard.repeat.delay_ms",
+            "keyboard.compose_key",
+            "search.source.apps",
+            "search.source.characters",
+            "search.history",
+            // the Store installs app updates by itself
+            "updates.auto_apps",
+            "updates.auto_system",
+            "updates.window.from",
+            "updates.window.until",
+            "updates.channel",
+            "updates.metered",
+            "updates.offline_usb",
+            "updates.notify",
+            "apps.default.web",
+            "apps.default.documents",
+            "apps.removable_media",
+            "apps.autostart",
+            // volumed: low-space warning and automount; the launcher: the downloads clean-up
+            "storage.low_space_percent",
+            "storage.automount",
+            "storage.clean_downloads",
+            "storage.clean_downloads_days",
+            // the lock screen, the account, session and call services and this app
+            "users.list_on_login",
+            "users.auto_login",
+            "users.new_kind",
+            "users.parental",
+            "users.parental.from",
+            "users.parental.until",
+            "emergency.on_lock_screen",
+            "emergency.contact_name",
+            "emergency.contact_phone",
+            "emergency.medical",
+            "emergency.number",
+            "emergency.sos_light",
+        ] {
+            assert!(takes_effect(panel(key), key), "{key}");
+        }
+    }
+
+    #[test]
+    fn these_still_wait_and_say_so() {
+        for key in [
+            "sharing.files",
+            "sharing.screen",
+            "printers.paper",
+            // an input layer that tells touchpads apart
+            "pointer.touchpad.gestures",
+            "pointer.touchpad.tap_to_click",
+            "pointer.touchpad.natural_scroll",
+            // a pointer helper that is not built yet; no screen reader yet
+            "accessibility.dwell_click",
+            "accessibility.screen_reader",
+            // a per-person file-search service
+            "search.source.files",
+            "search.file_places",
+            // the Store (in its cell) has no area the shell may read
+            "search.source.store",
+            // no FITRIM in the kernel; the updater keeps no superseded images
+            "storage.trim",
+            "storage.clean_old_updates",
+            // per-user desktops (review S-1); the power and volume keys reach no handler
+            "users.guest",
+            "emergency.power_presses",
+            "emergency.key_escape",
+        ] {
+            assert!(!takes_effect(panel(key), key), "{key}");
+        }
     }
 }

@@ -1,0 +1,33 @@
+# Ultar text editor – app manifest (docs/APP-RULES.md §3).
+id          = "editor"
+version     = "0.8.0"
+publisher   = "km-code-craft"
+kind        = "native"
+min_os      = "2.0"
+category    = "system"
+name        = "app.editor.name"
+description = "app.editor.desc"
+icon        = "editor"
+
+[form]
+factors     = ["phone", "tablet", "laptop", "desktop"]
+modes       = ["mobile", "desktop"]
+
+[needs]
+required    = []
+optional    = []
+
+[open]
+# files://<area>/<path>  a text file of the user (Files opens .txt, .md, code with it)
+schemes      = ["files"]
+multi_window = true
+
+[permissions]
+# The user's places: open and save text files (the cell binds each at /areas/<name>).
+files       = ["home:rw", "documents:rw", "downloads:rw", "desktop:rw", "removable:rw"]
+network     = "none"
+background  = false
+
+[limits]
+memory_mb   = 120
+cpu         = "foreground"

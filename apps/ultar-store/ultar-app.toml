@@ -1,6 +1,6 @@
 # Ultar Store – app manifest (docs/APP-RULES.md §3).
 id          = "store"
-version     = "0.7.0"
+version     = "0.7.1"
 publisher   = "km-code-craft"
 kind        = "native"
 min_os      = "2.0"

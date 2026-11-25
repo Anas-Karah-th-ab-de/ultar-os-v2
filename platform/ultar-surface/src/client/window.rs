@@ -136,6 +136,12 @@ impl Window {
         self.close_requested
     }
 
+    /// Forgets a close request the app answered by staying open (it asks first: unsaved
+    /// changes); the next click on the close button asks again.
+    pub fn keep_open(&mut self) {
+        self.close_requested = false;
+    }
+
     /// False while a frame is on its way to the screen: drawing now would
     /// be wasted work (frame pacing).
     pub fn can_draw(&self) -> bool {

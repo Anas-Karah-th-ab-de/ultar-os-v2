@@ -165,17 +165,18 @@ impl Shared for Words {
 
 /// Memory for the page tables of a context's address space: kernel pages, written through to
 /// memory like everything the GT reads.
+/// A set: a scratch address space alone has 513 table pages, and every entry access checks
+/// its page.
 #[derive(Default)]
 pub struct TableMem {
-    pages: Vec<u64>,
+    pages: alloc::collections::BTreeSet<u64>,
 }
 
 impl TableMem {
     /// Frees the table pages `pages` of one address space that ended.
     pub fn free(&mut self, pages: &[u64]) {
         for p in pages {
-            if let Some(i) = self.pages.iter().position(|x| x == p) {
-                self.pages.swap_remove(i);
+            if self.pages.remove(p) {
                 crate::mem::free_run(*p, 1);
             }
         }
@@ -194,7 +195,7 @@ impl ultar_intel_gt::ppgtt::Tables for TableMem {
         // zeroed by the allocator
         let page = crate::mem::alloc_pages(1)?;
         flush(page, 4096);
-        self.pages.push(page);
+        self.pages.insert(page);
         Some(page)
     }
 

@@ -1,0 +1,29 @@
+[[app]]
+id = "editor"
+category = "system"
+icon = "editor"
+publisher = "KM Code Craft"
+source = "ultar"
+version = "@VERSION@"
+size_download = @SIZE@
+package = "@PACKAGE@"
+sha256 = "@SHA256@"
+requires = []
+[app.name]
+ar = "محرر النصوص"
+en = "Text editor"
+de = "Texteditor"
+[app.summary]
+ar = "الملاحظات وملفات الإعداد والبرمجة بالعربية والإنجليزية."
+en = "Notes, settings files and code in Arabic and English."
+de = "Notizen, Einstellungsdateien und Code auf Arabisch und Englisch."
+[app.description]
+ar = "محرر نصوص: كل سطر باتجاهه (العربي من اليمين)، تراجع وإعادة، أرقام الأسطر، يحفظ الترميز (UTF-8 وUTF-16 وWindows-1256) ونهايات الأسطر."
+en = "A text editor: each line in its own direction (Arabic from the right), undo and redo, line numbers; keeps the encoding (UTF-8, UTF-16, Windows-1256) and line ends."
+de = "Ein Texteditor: jede Zeile in ihrer Richtung (Arabisch von rechts), Rückgängig und Wiederholen, Zeilennummern; behält Kodierung (UTF-8, UTF-16, Windows-1256) und Zeilenenden."
+[[app.permissions]]
+id = "files"
+[app.permissions.reason]
+ar = "يفتح ملفاتك النصية ويحفظها في الأماكن التي سمحت بها"
+en = "Opens and saves your text files in the places you allowed"
+de = "Öffnet und speichert Ihre Textdateien an den freigegebenen Orten"

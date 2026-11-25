@@ -84,6 +84,9 @@ pub trait Tables {
 pub struct Ppgtt {
     root: u64,
     pages: Vec<u64>,
+    /// Every address without a mapping is mapped to nothing (reads zero, writes dropped) instead
+    /// of faulting: Linux' scratch page, which Mesa asks for.
+    scratch: bool,
 }
 
 fn index(va: u64, level: u32) -> usize {
@@ -133,6 +136,48 @@ impl Ppgtt {
         Ok(Ppgtt {
             root,
             pages: alloc::vec![root],
+            scratch: false,
+        })
+    }
+
+    /// An address space in which every address without a mapping reads zero and drops writes
+    /// (`DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE`): 1 GiB null entries everywhere, 512 table pages.
+    /// A job that touches memory outside its buffers then does not fault (and hang its engine).
+    pub fn new_scratch(mem: &mut impl Tables) -> Result<Ppgtt> {
+        let mut p = Ppgtt::new(mem)?;
+        p.scratch = true;
+        let root = p.root;
+        p.fill_null(mem, root, 3, 0, ADDRESS_SPACE)?;
+        Ok(p)
+    }
+
+    /// Whether this is a scratch address space ([`Ppgtt::new_scratch`]).
+    pub fn is_scratch(&self) -> bool {
+        self.scratch
+    }
+
+    /// Checks that `[va, end)` holds no mapping and, in a scratch space, removes the null
+    /// entries there so the range can be mapped.
+    fn make_room(&mut self, mem: &mut impl Tables, va: u64, end: u64) -> Result<()> {
+        let root = self.root;
+        let taken = if self.scratch { self.real_in(mem, root, 3, va, end) } else { self.mapped_in(mem, root, 3, va, end) };
+        if taken {
+            return Err(Error::Invalid("PPGTT range already mapped"));
+        }
+        if self.scratch {
+            self.clear_in(mem, root, 3, va, end)?;
+        }
+        Ok(())
+    }
+
+    /// Whether memory (not nothing) is mapped in `[start, end)` below `table`.
+    fn real_in(&mut self, mem: &mut impl Tables, table: u64, level: u32, start: u64, end: u64) -> bool {
+        entries(level, start, end).any(|(i, from, to)| {
+            let entry = mem.read(table, i);
+            if entry & PRESENT == 0 || entry & NULL != 0 {
+                return false;
+            }
+            level == 0 || entry & HUGE != 0 || self.real_in(mem, entry & ADDR, level - 1, from, to)
         })
     }
 
@@ -187,9 +232,7 @@ impl Ppgtt {
         if phys.iter().any(|p| p & !ADDR != 0) {
             return Err(Error::Invalid("PPGTT page address"));
         }
-        if self.mapped_in(mem, self.root, 3, va, va + phys.len() as u64 * PAGE) {
-            return Err(Error::Invalid("PPGTT range already mapped"));
-        }
+        self.make_room(mem, va, va + phys.len() as u64 * PAGE)?;
         let (mut i, mut huge) = (0, 0);
         while i < phys.len() {
             let at = va + i as u64 * PAGE;
@@ -215,7 +258,12 @@ impl Ppgtt {
     /// invalidates the GT's TLB before it reuses the memory.
     pub fn unmap(&mut self, mem: &mut impl Tables, va: u64, pages: u64) -> Result<()> {
         check(va, pages)?;
-        self.clear_in(mem, self.root, 3, va, va + pages * PAGE)
+        let (root, end) = (self.root, va + pages * PAGE);
+        self.clear_in(mem, root, 3, va, end)?;
+        if self.scratch {
+            self.fill_null(mem, root, 3, va, end)?;
+        }
+        Ok(())
     }
 
     /// Maps `pages` pages at `va` to nothing: what a job writes there is dropped, what it reads
@@ -223,9 +271,7 @@ impl Ppgtt {
     pub fn map_null(&mut self, mem: &mut impl Tables, va: u64, pages: u64) -> Result<()> {
         check(va, pages)?;
         let end = va + pages * PAGE;
-        if self.mapped_in(mem, self.root, 3, va, end) {
-            return Err(Error::Invalid("PPGTT range already mapped"));
-        }
+        self.make_room(mem, va, end)?;
         self.fill_null(mem, self.root, 3, va, end)
     }
 
