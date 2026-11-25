@@ -67,6 +67,13 @@ pub struct DialReply {
     pub id: u32,
 }
 
+/// `call.emergency` – call the emergency number of this device. The call service reads
+/// `emergency.number` from the settings service itself and validates it; the request
+/// carries no number, so the lock screen can start an emergency call but never dial an
+/// arbitrary one. Answered like [`Dial`]; fails when the mobile way is not available.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Emergency {}
+
 /// `call.answer` – accept a ringing or waiting call.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Answer {
@@ -215,6 +222,7 @@ impl Topic for CallState {
 
 calls! {
     Dial => "dial", DialReply;
+    Emergency => "emergency", DialReply;
     Answer => "answer", Done;
     Decline => "decline", Done;
     Hangup => "hangup", Done;
