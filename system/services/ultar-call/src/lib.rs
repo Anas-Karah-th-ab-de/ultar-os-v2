@@ -12,6 +12,7 @@
 //! (Signalisierung über `/v1/signal`, WebSocket; der Server sieht die Medien nie.)
 
 pub mod calllog;
+pub mod emergency;
 pub mod fake;
 pub mod fake_modem;
 pub mod line;
