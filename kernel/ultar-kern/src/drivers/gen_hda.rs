@@ -400,6 +400,19 @@ impl Hda {
     }
 }
 
+/// Both channels summed into each (`/dev/ultar/pcm-mono`, setting `accessibility.mono_audio`).
+static MONO: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Sums both channels into each from now on (`true`) or plays them apart (`false`).
+pub fn set_mono(on: bool) {
+    MONO.store(on, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether both channels are summed into each.
+pub fn mono() -> bool {
+    MONO.load(core::sync::atomic::Ordering::Relaxed)
+}
+
 /// Why `/dev/ultar/pcm` cannot be opened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PcmError {

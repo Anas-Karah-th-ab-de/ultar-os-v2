@@ -23,6 +23,7 @@ pub mod fake_modem;
 pub mod line;
 pub mod logstore;
 pub mod modem_line;
+pub mod mono;
 pub mod msg;
 pub mod pcm;
 pub mod service;
