@@ -32,8 +32,14 @@ pub const MFD_ALLOW_SEALING: u64 = 2;
 /// Largest object (the same bound as a file of the RAM layer).
 pub const MAX_BYTES: u64 = 1 << 32;
 
-/// One memory object.
+/// A page of an object that has no memory yet.
+const HOLE: u64 = 0;
+
+/// One memory object. It is sparse like Linux' memory files: a page gets memory when it is first
+/// written or mapped; until then it is a hole that reads as zero and costs nothing (Mesa makes
+/// 1 GiB objects and uses a few megabytes of them).
 pub struct MemObj {
+    /// One entry per page of the size: the page's address, or [`HOLE`].
     pages: Mutex<Vec<u64>>,
     size: AtomicU64,
     seals: AtomicU32,
@@ -64,10 +70,20 @@ impl MemObj {
 
     /// Pages that hold data (for `st_blocks`).
     pub fn pages(&self) -> u64 {
-        self.pages.lock().len() as u64
+        self.pages.lock().iter().filter(|p| **p != HOLE).count() as u64
     }
 
-    /// `ftruncate`: grow with zeroed pages (charged to the caller's group) or shrink.
+    /// Gives every hole in `pages[first..first + n]` a zeroed page (charged to the caller's
+    /// group). `false`: memory is out; the pages filled so far stay.
+    fn fill(pages: &mut [u64], first: usize, n: usize) -> bool {
+        for slot in pages[first..first + n].iter_mut().filter(|p| **p == HOLE) {
+            let Some(p) = crate::mem::alloc_page() else { return false };
+            *slot = p;
+        }
+        true
+    }
+
+    /// `ftruncate`: grow with holes or shrink.
     pub fn set_size(&self, len: u64) -> Result<(), i64> {
         if len > MAX_BYTES {
             return Err(-EFBIG);
@@ -87,20 +103,17 @@ impl MemObj {
         if pages.try_reserve(more).is_err() {
             return Err(-ENOMEM);
         }
-        while pages.len() < want {
-            let Some(p) = crate::mem::alloc_page() else {
-                return Err(-ENOMEM);
-            };
-            pages.push(p);
+        if pages.len() < want {
+            pages.resize(want, HOLE);
         }
         while pages.len() > want {
-            if let Some(p) = pages.pop() {
+            if let Some(p) = pages.pop().filter(|p| *p != HOLE) {
                 crate::mem::free_page(p);
             }
         }
         // the bytes of a partly used last page beyond the new end read as zero again
         if len % 4096 != 0 {
-            if let Some(&last) = pages.last() {
+            if let Some(&last) = pages.last().filter(|p| **p != HOLE) {
                 let from = (len % 4096) as usize;
                 // SAFETY: `last` is a page of this object, identity-mapped in the kernel; the range lies in it.
                 unsafe { core::ptr::write_bytes((last + from as u64) as *mut u8, 0, 4096 - from) };
@@ -140,6 +153,11 @@ impl MemObj {
             let (page, off) = ((at / 4096) as usize, at % 4096);
             let k = (4096 - off).min(end - at);
             let Some(&pa) = pages.get(page) else { break };
+            if pa == HOLE {
+                out.resize(out.len() + k as usize, 0);
+                at += k;
+                continue;
+            }
             // SAFETY: `pa` is a page of this object (identity-mapped); `off + k` stays inside it.
             out.extend_from_slice(unsafe { core::slice::from_raw_parts((pa + off) as *const u8, k as usize) });
             at += k;
@@ -156,7 +174,11 @@ impl MemObj {
         if end > self.size() {
             self.set_size(end)?;
         }
-        let pages = self.pages.lock();
+        let mut pages = self.pages.lock();
+        let (first, last) = ((pos / 4096) as usize, (end.div_ceil(4096) as usize).min(pages.len()));
+        if first < last && !Self::fill(&mut pages, first, last - first) {
+            return Err(-ENOMEM);
+        }
         let mut done = 0usize;
         while done < data.len() {
             let at = pos + done as u64;
@@ -171,11 +193,15 @@ impl MemObj {
     }
 
     /// Physical addresses of the object's pages in `[off, off + len)` (both page-aligned); a range that
-    /// reaches beyond the object yields only the pages it has. `None`: no memory for the list.
+    /// reaches beyond the object yields only the pages it has. Holes in the range get their memory
+    /// now: what is mapped is real. `None`: no memory for the pages or the list.
     pub fn frames(&self, off: u64, len: u64) -> Option<Vec<u64>> {
-        let pages = self.pages.lock();
+        let mut pages = self.pages.lock();
         let first = ((off / 4096) as usize).min(pages.len());
         let n = ((len / 4096) as usize).min(pages.len() - first);
+        if !Self::fill(&mut pages, first, n) {
+            return None;
+        }
         let slice = &pages[first..first + n];
         let mut out = Vec::new();
         if !crate::mem::try_reserve(&mut out, n) {
@@ -203,7 +229,7 @@ impl MemObj {
 
 impl Drop for MemObj {
     fn drop(&mut self) {
-        for p in self.pages.get_mut().drain(..) {
+        for p in self.pages.get_mut().drain(..).filter(|p| *p != HOLE) {
             crate::mem::free_page(p);
         }
     }
@@ -267,9 +293,9 @@ impl Drop for Backing {
     }
 }
 
-/// `fallocate(fd, mode, off, len)` on a memory object (`None`: `fd` is none). Every page of an object
-/// is allocated when it comes to exist, so mode 0 only grows the object to `off + len` (seals
-/// permitting) and `FALLOC_FL_KEEP_SIZE` changes nothing; other modes are not supported.
+/// `fallocate(fd, mode, off, len)` on a memory object (`None`: `fd` is none). Mode 0 grows the object
+/// to `off + len` (seals permitting) and gives the range its memory; `FALLOC_FL_KEEP_SIZE` does the
+/// same without growing; other modes are not supported.
 pub fn fallocate(fd: u64, mode: u64, off: u64, len: u64) -> Option<i64> {
     let obj = crate::syscall::with(|p| match p.fd(fd).map(|d| &d.kind) {
         Some(crate::proc::FdKind::Mem(m, _)) => Some(m.clone()),
@@ -278,11 +304,16 @@ pub fn fallocate(fd: u64, mode: u64, off: u64, len: u64) -> Option<i64> {
     .flatten()?;
     const KEEP_SIZE: u64 = 1;
     let Some(end) = off.checked_add(len).filter(|_| len > 0 && (off as i64) >= 0) else { return Some(-EINVAL) };
-    Some(match mode {
-        0 if end > obj.size() => obj.set_size(end).map_or_else(|e| e, |()| 0),
-        0 | KEEP_SIZE => 0,
-        _ => -95,
-    })
+    if mode & !KEEP_SIZE != 0 {
+        return Some(-95);
+    }
+    if mode == 0 && end > obj.size() {
+        if let Err(e) = obj.set_size(end) {
+            return Some(e);
+        }
+    }
+    let first = off / 4096 * 4096;
+    Some(if obj.frames(first, end.div_ceil(4096) * 4096 - first).is_some() { 0 } else { -ENOMEM })
 }
 
 /// `memfd_create(name, flags)`: the descriptor of a new object.
