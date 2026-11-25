@@ -435,8 +435,8 @@ impl<'a> Painter<'a> {
         for (i, p) in points.iter_mut().enumerate() {
             let angle = (phase + SWEEP * i as f32 / STEPS as f32) * TAU;
             *p = Point::new(
-                center.x * s + radius * angle.cos(),
-                center.y * s + radius * angle.sin(),
+                center.x * s + radius * libm::cosf(angle),
+                center.y * s + radius * libm::sinf(angle),
             );
         }
         self.canvas
