@@ -5,7 +5,7 @@
 //! [`start`] is called by the GT self-test after everything passed. A normal boot does not call
 //! it yet: the kernel has never run this on bare metal, only under device passthrough.
 //!
-//! Not there yet: power management (the render forcewake domain is simply held), interrupts
+//! Not there yet: power management (the GT and render forcewake domains are simply held), interrupts
 //! (events are polled), and what to do when the GuC reports a hung engine.
 
 use super::device::Device;
@@ -29,7 +29,7 @@ struct Runtime {
     words: Words,
     /// Golden images by class.
     goldens: Vec<(Class, Vec<u8>)>,
-    /// Holds the render domain awake.
+    /// Holds the GT and the render domain awake.
     fwk: Forcewake,
     /// The next context id (and base of the sequence numbers).
     next_id: u32,
@@ -78,8 +78,10 @@ impl Runtime {
         if let Err(e) = guc::reset(&mut dev.mmio) {
             crate::kprintln!("[intel-gt] GuC reset: {e}");
         }
-        if let Err(e) = self.fwk.put(&mut dev.mmio, Domain::Render) {
-            crate::kprintln!("[intel-gt] render forcewake release: {e}");
+        for domain in [Domain::Render, Domain::Gt] {
+            if let Err(e) = self.fwk.put(&mut dev.mmio, domain) {
+                crate::kprintln!("[intel-gt] forcewake release: {e}");
+            }
         }
         self.mem.release(dev);
     }
@@ -108,12 +110,19 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
         return Ok("already in operation".into());
     }
     let t0 = crate::arch::uptime_ns();
+    // the GuC's registers only answer while the GT domain is awake; it stays awake from here
+    let mut fwk = Forcewake::new(0);
+    fwk.get(&mut dev.mmio, Domain::Gt)
+        .map_err(|e| format!("GT forcewake: {e}"))?;
     let mut mem = Memory::default();
     let (ct, words, what) = match load(dev, &mut mem) {
         Ok(parts) => parts,
         Err(e) => {
             if let Err(r) = guc::reset(&mut dev.mmio) {
                 crate::kprintln!("[intel-gt] GuC reset: {r}");
+            }
+            if let Err(r) = fwk.put(&mut dev.mmio, Domain::Gt) {
+                crate::kprintln!("[intel-gt] GT forcewake release: {r}");
             }
             mem.release(dev);
             return Err(e);
@@ -124,7 +133,7 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
         ct,
         words,
         goldens: Vec::new(),
-        fwk: Forcewake::new(0),
+        fwk,
         next_id: 0,
     };
     let ran = match rt.prepare(dev) {

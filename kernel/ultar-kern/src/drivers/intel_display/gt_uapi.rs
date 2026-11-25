@@ -9,6 +9,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
 use ultar_intel_gt::engines::{self, BCS0, CCS0, RCS0};
+use ultar_intel_gt::forcewake::{Domain, Forcewake};
 use ultar_intel_gt::fw::Version;
 use ultar_intel_gt::state::GtFacts;
 use ultar_intel_gt::uapi::{self, drm, EngineClass};
@@ -22,7 +23,21 @@ pub static SUBMISSION: Mutex<Option<Version>> = Mutex::new(None);
 pub fn publish(dev: &mut Device, facts: &GtFacts) -> Result<String, String> {
     let hwconfig = HWCONFIG.lock().clone().ok_or("no hardware config table")?;
     let sub = (*SUBMISSION.lock()).ok_or("no GuC firmware version")?;
-    let clock = engines::reference_clock(&mut dev.mmio).ok_or("unknown crystal frequency")?;
+    // the clock configuration only reads while the GT domain is awake; the GT in operation
+    // keeps it awake itself (and a second holder here would put it to sleep on release)
+    let clock = if super::gt_run::running() {
+        engines::reference_clock(&mut dev.mmio)
+    } else {
+        let mut fwk = Forcewake::new(0);
+        fwk.get(&mut dev.mmio, Domain::Gt)
+            .map_err(|e| format!("GT forcewake: {e}"))?;
+        let clock = engines::reference_clock(&mut dev.mmio);
+        if let Err(e) = fwk.put(&mut dev.mmio, Domain::Gt) {
+            crate::kprintln!("[intel-gt] GT forcewake release: {e}");
+        }
+        clock
+    };
+    let clock = clock.ok_or("unknown crystal frequency")?;
     let (b, d, f) = dev.pci;
     let classes = [
         (RCS0, EngineClass::Render),
