@@ -341,10 +341,7 @@ mod tests {
         assert_eq!(config.publishers, ["store"]);
         let root = config.paths.publish_root.unwrap();
         assert_eq!(root, PathBuf::from("/data/ultar/publish"));
-        let bad = SHIPPED.replace(
-            "publishers = [\"store\"]",
-            "publishers = [\"../etc\"]",
-        );
+        let bad = SHIPPED.replace("publishers = [\"store\"]", "publishers = [\"../etc\"]");
         assert_eq!(Config::parse(&bad), Err(ConfigError::Bound("publishers")));
         let none = SHIPPED.replace("publishers = [\"store\"]", "");
         assert!(Config::parse(&none).unwrap().publishers.is_empty());
