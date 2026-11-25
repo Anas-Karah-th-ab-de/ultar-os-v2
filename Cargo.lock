@@ -5639,6 +5639,7 @@ dependencies = [
 name = "ultar-launcher"
 version = "0.8.0"
 dependencies = [
+ "rustix",
  "serde",
  "sha2 0.10.9",
  "toml",

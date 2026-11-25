@@ -1,13 +1,11 @@
 //! The periodic work of the volume service and the notifications it posts: the low-space
-//! warning (once per drop, re-armed only after the free space rose again) and the daily
-//! clean-up of the downloads folder. The decisions here are pure so they can be tested
-//! without a bus; the service posts the notifications they ask for.
+//! warning (once per drop, re-armed only after the free space rose again) and the drive
+//! offer of automount-off. The decisions here are pure so they can be tested without a
+//! bus; the service posts the notifications they ask for. The daily downloads clean-up is
+//! the launcher's (it owns the person's file areas).
 
 use ultar_bus::messages::notify::{Action, Body, Category, Post, Urgency};
 use ultar_bus::{Text, TextArg};
-
-/// Seconds of one day (the clean-up runs at most once a day).
-pub const DAY: u64 = 86_400;
 
 /// The sender identity of the volume service's notifications (the shell names it).
 pub const APP_ID: &str = "org.ultar.volumed";
@@ -20,8 +18,6 @@ pub const MOUNT_ACTION: &str = "mount";
 pub struct Jobs {
     /// A low-space warning is out (not posted again until the space rose).
     low_warned: bool,
-    /// When the downloads folder was last cleaned (`None`: never).
-    last_clean: Option<u64>,
 }
 
 impl Jobs {
@@ -44,20 +40,6 @@ impl Jobs {
             self.low_warned = false;
             None
         }
-    }
-
-    /// Whether the daily clean-up should run now: it is switched on and either never ran
-    /// or a day has passed since the last run.
-    pub fn clean_due(&self, enabled: bool, now: u64) -> bool {
-        enabled
-            && self
-                .last_clean
-                .is_none_or(|last| now.saturating_sub(last) >= DAY)
-    }
-
-    /// Records that the clean-up ran at `now`.
-    pub fn cleaned(&mut self, now: u64) {
-        self.last_clean = Some(now);
     }
 }
 
@@ -123,17 +105,6 @@ mod tests {
         // Full: re-armed.
         assert_eq!(j.low_space(20, 20, 10), None);
         assert_eq!(j.low_space(20, 0, 10), Some(0));
-    }
-
-    #[test]
-    fn clean_up_is_daily_and_only_when_switched_on() {
-        let mut j = Jobs::default();
-        assert!(!j.clean_due(false, 100));
-        assert!(j.clean_due(true, 100)); // never ran
-        j.cleaned(100);
-        assert!(!j.clean_due(true, 100 + DAY - 1));
-        assert!(j.clean_due(true, 100 + DAY));
-        assert!(!j.clean_due(false, 100 + 2 * DAY));
     }
 
     #[test]

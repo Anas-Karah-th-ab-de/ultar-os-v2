@@ -150,13 +150,14 @@ fn declares(core: &Core, app: &str, scheme: &str) -> bool {
 }
 
 impl Launcher {
-    /// Takes a settings change (read at start and on `settings.changed`): a default app or
-    /// the autostart list. An invalid value falls back to the default ([`Defaults`]).
+    /// Takes a settings change (read at start and on `settings.changed`): a default app,
+    /// the autostart list or the downloads clean-up ([`crate::clean`]). An invalid value
+    /// falls back to the default ([`Defaults`]).
     pub fn follow_setting(&self, key: &str, value: &SettingValue) {
         let mut core = lock(&self.core);
         if key == AUTOSTART {
             core.autostart.set_list(value);
-        } else {
+        } else if !core.clean.on_changed(key, value) {
             core.defaults.on_changed(key, value);
         }
     }

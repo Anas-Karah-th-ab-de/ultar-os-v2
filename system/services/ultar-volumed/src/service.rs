@@ -41,7 +41,6 @@ pub struct VolumeService {
     pub(crate) drives: Drives,
     pub(crate) root: PathBuf,
     pub(crate) media: PathBuf,
-    pub(crate) downloads: PathBuf,
     pub(crate) user: Option<String>,
     pub(crate) uids: BTreeMap<String, u32>,
     pub(crate) mounts: BTreeMap<String, Mount>,
@@ -89,20 +88,13 @@ pub(crate) fn plain(name: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
 }
 
-pub(crate) fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
 impl VolumeService {
-    /// Drives below `root`, mounted below `media`, downloads cleaned in `downloads`.
-    pub fn new(root: PathBuf, media: PathBuf, downloads: PathBuf) -> Self {
+    /// Drives below `root`, mounted below `media`.
+    pub fn new(root: PathBuf, media: PathBuf) -> Self {
         Self {
             drives: Drives::new(root.clone()),
             root,
             media,
-            downloads,
             user: None,
             uids: BTreeMap::new(),
             mounts: BTreeMap::new(),

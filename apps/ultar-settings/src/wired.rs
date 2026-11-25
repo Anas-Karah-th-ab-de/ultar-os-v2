@@ -95,12 +95,13 @@ pub const WIRED: &[(&str, &str)] = &[
     // The shell asks, opens Files, or does nothing when a drive with media is plugged in.
     ("apps.removable_media", "shell"),
     // The volume service (ultar-volumed) follows these: it warns once when the data
-    // partition runs low, offers a drive with a "Mount" button when automount is off,
-    // and cleans the person's downloads folder once a day.
+    // partition runs low and offers a drive with a "Mount" button when automount is off.
     ("storage.low_space_percent", "volumed"),
     ("storage.automount", "volumed"),
-    ("storage.clean_downloads", "volumed"),
-    ("storage.clean_downloads_days", "volumed"),
+    // The launcher owns the person's file areas and cleans their downloads folder once a
+    // day (the volume service handles untrusted USB file systems and must not reach them).
+    ("storage.clean_downloads", "launcher"),
+    ("storage.clean_downloads_days", "launcher"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -157,8 +158,8 @@ mod tests {
             "accessibility",
             "accessibility.screen_reader"
         ));
-        // The volume service follows the low-space warning, automount and the downloads
-        // clean-up; trim and old-update clean-up have no effect in this version.
+        // The volume service follows the low-space warning and automount, the launcher the
+        // downloads clean-up; trim and old-update clean-up have no effect in this version.
         assert!(takes_effect("storage", "storage.low_space_percent"));
         assert!(takes_effect("storage", "storage.automount"));
         assert!(takes_effect("storage", "storage.clean_downloads"));

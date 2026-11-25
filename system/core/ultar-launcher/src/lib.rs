@@ -38,6 +38,7 @@ pub mod appid;
 pub mod areas;
 pub mod atomic;
 pub mod cell;
+pub mod clean;
 pub mod cleanup;
 pub mod config;
 pub mod datadir;

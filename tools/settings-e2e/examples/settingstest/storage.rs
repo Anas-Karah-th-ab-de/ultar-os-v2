@@ -1,12 +1,14 @@
 //! The Storage page checks (included as `wired::storage`): the page shows what the volume
-//! service measured, and the volume service follows the low-space warning, automount and
-//! the downloads clean-up – each change reaches it with its own identity and its own code
+//! service measured, the volume service follows the low-space warning and automount, and
+//! the launcher – the owner of the person's file areas – follows the downloads clean-up.
+//! Each change reaches its service with that service's own identity and its own code
 //! turns the change into the effect.
 
 use super::super::{click, setup::Run, texts};
 use super::{change, control, page, whole, Follower, WAIT};
 use ultar_bus::messages::settings::{Get, SettingValue};
 use ultar_bus::Client;
+use ultar_launcher::clean::{Clean, CLEAN_DAYS, CLEAN_DOWNLOADS};
 use ultar_settings::App;
 use ultar_ui::event::{Event, Key, Modifiers};
 
@@ -51,14 +53,13 @@ fn low_space_hysteresis(threshold: u8) -> Result<(), String> {
 }
 
 /// Types `7` into the days row (365 steps: a text field, not a slider), stores it on Enter
-/// and confirms the volume service was told and follows it.
+/// and confirms the launcher was told and follows it.
 fn set_clean_days(
     app: &mut App,
     admin: &Client,
-    volumed: &Follower,
-    s: &mut ultar_volumed::settings::StorageSettings,
+    launcher: &Follower,
+    c: &mut Clean,
 ) -> Result<(), String> {
-    use ultar_volumed::settings::CLEAN_DAYS;
     let node = control(app, "storage", CLEAN_DAYS)?;
     click(app, node)?;
     let key = |k| Event::Key {
@@ -86,14 +87,14 @@ fn set_clean_days(
         .map_err(|e| format!("get {e}"))?
         .value
         .ok_or("clean_downloads_days: no value")?;
-    volumed.told(CLEAN_DAYS, &days)?;
-    s.on_changed(CLEAN_DAYS, &days);
-    (s.clean_downloads_days == 7)
+    launcher.told(CLEAN_DAYS, &days)?;
+    c.on_changed(CLEAN_DAYS, &days);
+    (c.days == 7)
         .then_some(())
-        .ok_or(format!("days {:?}", s.clean_downloads_days))
+        .ok_or(format!("days {:?}", c.days))
 }
 
-/// Runs the service's own clean-up on a temp folder: the person's old download goes, the
+/// Runs the launcher's own clean-up on a temp folder: the person's old download goes, the
 /// fresh one stays.
 fn clean_check(run: &Run, days: u16) -> Result<(), String> {
     let dir = run.at("downloads-check");
@@ -114,7 +115,7 @@ fn clean_check(run: &Run, days: u16) -> Result<(), String> {
         .set_modified(long_ago)
         .map_err(|e| format!("{e}"))?;
     let me = rustix::process::getuid().as_raw();
-    let removed = ultar_volumed::clean::clean_downloads(&dir, me, days, now);
+    let removed = ultar_launcher::clean::clean_downloads(&dir, me, days, now);
     if removed != 1 || old.exists() || !fresh.exists() {
         return Err(format!(
             "clean-up removed {removed} (old {}, fresh {})",
@@ -125,7 +126,8 @@ fn clean_check(run: &Run, days: u16) -> Result<(), String> {
     Ok(())
 }
 
-/// The volume service follows the low-space warning, automount and the downloads clean-up.
+/// The volume service follows the low-space warning and automount; the launcher (the owner
+/// of the person's file areas) follows the downloads clean-up.
 pub(super) fn storage_settings(
     bus: &Client,
     admin: &Client,
@@ -133,7 +135,7 @@ pub(super) fn storage_settings(
     volumed: &Follower,
 ) -> Result<(), String> {
     use ultar_volumed::jobs::{drive_post, MOUNT_ACTION};
-    use ultar_volumed::settings::{StorageSettings, AUTOMOUNT, CLEAN_DOWNLOADS, LOW_SPACE};
+    use ultar_volumed::settings::{StorageSettings, AUTOMOUNT, LOW_SPACE};
 
     let mut app = page(bus, run, "storage")?;
     let mut s = StorageSettings::default();
@@ -156,18 +158,22 @@ pub(super) fn storage_settings(
         return Err(format!("automount off offer {:?}", offer.actions));
     }
 
-    // Clean-up on with a shorter window: the person's old download goes, the fresh stays.
+    // Clean-up on with a shorter window: the launcher owns the areas and follows these;
+    // the person's old download goes, the fresh stays.
+    let launcher = Follower::connect(run, "the launcher", "launcher")?;
+    let mut c = Clean::default();
     let on = change((&mut app, admin), ("storage", CLEAN_DOWNLOADS), None)?;
-    follow(&mut s, CLEAN_DOWNLOADS, on)?;
-    set_clean_days(&mut app, admin, volumed, &mut s)?;
-    if !s.clean_downloads {
+    launcher.told(CLEAN_DOWNLOADS, &on)?;
+    c.on_changed(CLEAN_DOWNLOADS, &on);
+    set_clean_days(&mut app, admin, &launcher, &mut c)?;
+    if !c.enabled {
         return Err("the clean-up is still off".into());
     }
-    clean_check(run, s.clean_downloads_days)?;
+    clean_check(run, c.days)?;
     println!(
-        "SETTINGS: storage page -> volume service: low-space {threshold}%, automount off \
-         (Mount offer), downloads cleaned after {} days",
-        s.clean_downloads_days
+        "SETTINGS: storage page -> volume service (low-space {threshold}%, automount off, \
+         Mount offer) and launcher (downloads cleaned after {} days)",
+        c.days
     );
     Ok(())
 }

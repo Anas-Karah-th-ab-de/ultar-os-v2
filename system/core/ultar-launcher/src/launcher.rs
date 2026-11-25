@@ -34,6 +34,8 @@ pub(crate) struct Core {
     pub(crate) defaults: crate::defaults::Defaults,
     /// The autostart list and what was started this session.
     pub(crate) autostart: crate::defaults::Autostart,
+    /// The downloads clean-up (`storage.clean_downloads`, `_days`) and when it last ran.
+    pub(crate) clean: crate::clean::Clean,
 }
 
 /// The app launcher.
@@ -194,6 +196,7 @@ impl Launcher {
             removing: std::collections::BTreeSet::new(),
             defaults: crate::defaults::Defaults::default(),
             autostart: crate::defaults::Autostart::default(),
+            clean: crate::clean::Clean::default(),
         };
         core.write_rights_or_withdraw()?;
         let record = Record::new(Level::Info, "launcher.platform")

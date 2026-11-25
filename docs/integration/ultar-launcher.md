@@ -110,8 +110,13 @@ manifests declare one of the kind's schemes, which the Settings page offers as t
 `apps.default.<kind>`. The launcher also follows `session.state`: when someone signs in it starts each
 app of `apps.autostart` (its window, `Ui`) **once** – only installed apps (a start refuses the rest),
 nothing again while the session runs, a fresh start after the next sign-in once everyone signed out.
-Bus policy: `system.launcher` gains `settings.get` and the topics `settings.changed`, `session.state`;
-`app.files` gains `launcher.resolve`, `app.settings` gains `launcher.candidates`.
+The launcher also follows the downloads clean-up (`storage.clean_downloads`, `.clean_downloads_days`,
+`src/clean.rs`): it owns the person's file areas, so it – not the volume service, which handles
+untrusted USB file systems and must not reach the areas – removes the person in front's regular files
+older than N days in `areas_root/downloads` once a day (only that folder, never through a link, their
+id from `account.users`). Bus policy: `system.launcher` gains `settings.get` and the topics
+`settings.changed`, `session.state`, `account.users`; `app.files` gains `launcher.resolve`,
+`app.settings` gains `launcher.candidates`.
 
 States: `Starting Running Stopping Backoff Stopped Crashed Failed`. Ends: `Code(n)`, `Signal(n)`, `Setup(n)`.
 Windows are never restarted (a crash is `Crashed`); a `[service]` follows `restart = never|on-failure|always`,

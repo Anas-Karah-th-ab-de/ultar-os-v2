@@ -152,11 +152,6 @@ fn settings_map() -> Values {
         SettingValue::Integer(10),
     );
     m.insert("storage.automount".into(), SettingValue::Flag(false));
-    m.insert("storage.clean_downloads".into(), SettingValue::Flag(false));
-    m.insert(
-        "storage.clean_downloads_days".into(),
-        SettingValue::Integer(30),
-    );
     std::sync::Arc::new(std::sync::Mutex::new(m))
 }
 
@@ -260,54 +255,17 @@ fn check_offer(posts: &Posts) {
     assert_eq!(offer.actions[0].id, "mount");
 }
 
-/// The clean-up is off (an old download stays); switched on through `settings.changed`, the
-/// old one goes and the fresh stays.
-fn check_clean(downloads: &std::path::Path, values: &Values, stand_in: &Client) {
-    use ultar_bus::messages::settings::{Changed, SettingValue};
-    let (old, fresh) = (downloads.join("old.bin"), downloads.join("fresh.bin"));
-    std::fs::write(&old, b"old").unwrap();
-    std::fs::write(&fresh, b"fresh").unwrap();
-    let long_ago = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000 - 40 * 86_400);
-    std::fs::File::options()
-        .write(true)
-        .open(&old)
-        .unwrap()
-        .set_modified(long_ago)
-        .unwrap();
-    std::thread::sleep(Duration::from_secs(3));
-    assert!(old.exists(), "clean-up is off, nothing goes");
-    values
-        .lock()
-        .unwrap()
-        .insert("storage.clean_downloads".into(), SettingValue::Flag(true));
-    stand_in
-        .publish(&Changed {
-            key: "storage.clean_downloads".into(),
-            value: SettingValue::Flag(true),
-        })
-        .unwrap();
-    assert!(
-        wait_until(WAIT, || !old.exists()),
-        "the old download was not cleaned"
-    );
-    assert!(fresh.exists(), "the fresh download stays");
-}
-
 /// The real daemon follows `settings.changed`: with automount off a drive is offered with
-/// a "Mount" button instead of mounted, and switching the clean-up on removes the person's
-/// old downloads (only theirs, only regular files).
+/// a "Mount" button instead of mounted. (The downloads clean-up is the launcher's now –
+/// ultar-launcher `tests/clean.rs` checks it.)
 #[test]
-fn settings_changed_drive_the_offer_and_the_clean_up() {
+fn settings_changed_drive_the_offer() {
     let world = World::new(
         "volset",
         SETTINGS_POLICY,
         &["system.volumed", "system.stand_in"],
     );
-    let (root, media, downloads) = (
-        world.subdir("root"),
-        world.subdir("media"),
-        world.subdir("downloads"),
-    );
+    let (root, media) = (world.subdir("root"), world.subdir("media"));
     let me = rustix::process::getuid().as_raw();
     let (values, posts) = (
         settings_map(),
@@ -322,8 +280,6 @@ fn settings_changed_drive_the_offer_and_the_clean_up() {
             root.to_str().unwrap(),
             "--media",
             media.to_str().unwrap(),
-            "--downloads",
-            downloads.to_str().unwrap(),
         ],
     );
     let stand_in = world.client("system.stand_in");
@@ -332,6 +288,5 @@ fn settings_changed_drive_the_offer_and_the_clean_up() {
     std::thread::sleep(Duration::from_secs(2));
     make_drive(&root);
     check_offer(&posts);
-    check_clean(&downloads, &values, &stand_in);
     assert_eq!(daemon.terminate(), Some(0));
 }

@@ -1,16 +1,14 @@
 //! Following the Storage page settings: read at start (`settings.get`, again until the
 //! settings service answered) and at runtime (`settings.changed`), and the periodic work
-//! they drive – the low-space warning and the daily downloads clean-up – plus the "Mount"
-//! button of a drive offer.
+//! they drive – the low-space warning – plus the "Mount" button of a drive offer. The
+//! downloads clean-up is the launcher's (it owns the person's file areas).
 
 use ultar_bus::messages::notify::TakeInvoked;
 use ultar_bus::messages::settings::{Get, SettingValue};
-use ultar_service::log::{Level, Record};
 use ultar_svckit::Bus;
 
-use crate::clean::clean_downloads;
 use crate::jobs::{self, MOUNT_ACTION};
-use crate::service::{now, space_of, VolumeService, CALL_TIME};
+use crate::service::{space_of, VolumeService, CALL_TIME};
 use crate::settings::{AUTOMOUNT, KEYS};
 
 impl VolumeService {
@@ -56,8 +54,7 @@ impl VolumeService {
         }
     }
 
-    /// The periodic work: warn once when the data partition runs low, and clean up the
-    /// downloads folder once a day while that is switched on.
+    /// The periodic work: warn once when the data partition runs low.
     pub(crate) fn run_jobs(&mut self, bus: &Bus<'_, Self>) {
         if let Some((total, free)) = space_of(&self.internal()) {
             if let Some(percent) = self
@@ -69,19 +66,6 @@ impl VolumeService {
                     let _ = client.call(&post, CALL_TIME);
                     Box::new(|_, _| {})
                 });
-            }
-        }
-        let now = now();
-        if self.jobs.clean_due(self.settings.clean_downloads, now) {
-            if let Some(uid) = self.user.as_ref().and_then(|u| self.uids.get(u).copied()) {
-                let days = self.settings.clean_downloads_days;
-                let removed = clean_downloads(&self.downloads, uid, days, now);
-                self.jobs.cleaned(now);
-                if removed > 0 {
-                    bus.log(
-                        Record::new(Level::Info, "volumed.cleaned").count("files", removed as u64),
-                    );
-                }
             }
         }
     }

@@ -14,11 +14,7 @@ fn labels_become_safe_folder_names() {
 
 #[test]
 fn eject_of_an_unknown_drive() {
-    let mut s = VolumeService::new(
-        "/nonexistent".into(),
-        "/nonexistent".into(),
-        "/nonexistent".into(),
-    );
+    let mut s = VolumeService::new("/nonexistent".into(), "/nonexistent".into());
     assert_eq!(s.eject("sdb1"), EjectOutcome::Unknown);
     assert_eq!(s.state(), VolumesState::default());
 }
@@ -26,7 +22,7 @@ fn eject_of_an_unknown_drive() {
 #[test]
 fn usage_measures_the_own_storage_first() {
     let dir = std::env::temp_dir();
-    let s = VolumeService::new(dir.clone(), "/nonexistent".into(), "/nonexistent".into());
+    let s = VolumeService::new(dir.clone(), "/nonexistent".into());
     let usage = s.usage();
     assert_eq!(usage.places.len(), 1, "no drives mounted");
     let own = &usage.places[0];
@@ -37,10 +33,6 @@ fn usage_measures_the_own_storage_first() {
         Some(own.total_bytes)
     );
     // A place that cannot be measured is left out.
-    let gone = VolumeService::new(
-        "/nonexistent/ultar".into(),
-        "/nonexistent".into(),
-        "/nonexistent".into(),
-    );
+    let gone = VolumeService::new("/nonexistent/ultar".into(), "/nonexistent".into());
     assert!(gone.usage().places.is_empty());
 }

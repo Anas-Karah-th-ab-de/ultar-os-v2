@@ -1,11 +1,13 @@
-//! The Storage page settings the volume service follows: the low-space warning level,
-//! whether removable drives mount by themselves, and the daily clean-up of the downloads
-//! folder. Read at start (`settings.get`) and followed at runtime (`settings.changed`).
-//! A value of the wrong type is ignored; one outside its range falls back to the default
-//! of the settings schema, never used as it is.
+//! The Storage page settings the volume service follows: the low-space warning level and
+//! whether removable drives mount by themselves. Read at start (`settings.get`) and
+//! followed at runtime (`settings.changed`). A value of the wrong type is ignored; one
+//! outside its range falls back to the default of the settings schema, never used as it is.
 //!
-//! `storage.trim` and `storage.clean_old_updates` are **not** followed here: nothing in
-//! this service can put them into effect (docs/integration/settings-wiring.md says why).
+//! The downloads clean-up (`storage.clean_downloads`, `_days`) is the launcher's: it owns
+//! the person's file areas, while this service handles untrusted USB file systems and must
+//! not reach them. `storage.trim` and `storage.clean_old_updates` are **not** followed
+//! here either: nothing in this service can put them into effect
+//! (docs/integration/settings-wiring.md says why).
 
 use ultar_bus::messages::settings::SettingValue;
 
@@ -13,18 +15,12 @@ use ultar_bus::messages::settings::SettingValue;
 pub const LOW_SPACE: &str = "storage.low_space_percent";
 /// Setting: removable drives mount by themselves (off: they are offered).
 pub const AUTOMOUNT: &str = "storage.automount";
-/// Setting: clean up the downloads folder daily.
-pub const CLEAN_DOWNLOADS: &str = "storage.clean_downloads";
-/// Setting: days before a download is deleted.
-pub const CLEAN_DAYS: &str = "storage.clean_downloads_days";
 
 /// The keys this service reads at start.
-pub const KEYS: [&str; 4] = [LOW_SPACE, AUTOMOUNT, CLEAN_DOWNLOADS, CLEAN_DAYS];
+pub const KEYS: [&str; 2] = [LOW_SPACE, AUTOMOUNT];
 
 /// Default of `storage.low_space_percent` (the settings schema).
 pub const DEFAULT_LOW_SPACE: u8 = 10;
-/// Default of `storage.clean_downloads_days`.
-pub const DEFAULT_CLEAN_DAYS: u16 = 30;
 
 /// The Storage settings in effect. The defaults are those of the settings schema, so a
 /// service that has not heard from the settings service yet behaves like the fresh system.
@@ -34,10 +30,6 @@ pub struct StorageSettings {
     pub low_space_percent: u8,
     /// Removable drives mount without asking.
     pub automount: bool,
-    /// The downloads folder is cleaned up daily.
-    pub clean_downloads: bool,
-    /// Days a download is kept before the clean-up removes it (1..=365).
-    pub clean_downloads_days: u16,
 }
 
 impl Default for StorageSettings {
@@ -45,8 +37,6 @@ impl Default for StorageSettings {
         Self {
             low_space_percent: DEFAULT_LOW_SPACE,
             automount: true,
-            clean_downloads: false,
-            clean_downloads_days: DEFAULT_CLEAN_DAYS,
         }
     }
 }
@@ -69,12 +59,6 @@ impl StorageSettings {
                     .unwrap_or(DEFAULT_LOW_SPACE);
             }
             (AUTOMOUNT, SettingValue::Flag(on)) => self.automount = *on,
-            (CLEAN_DOWNLOADS, SettingValue::Flag(on)) => self.clean_downloads = *on,
-            (CLEAN_DAYS, SettingValue::Integer(v)) => {
-                self.clean_downloads_days = whole(*v, 1, 365, 1)
-                    .and_then(|n| u16::try_from(n).ok())
-                    .unwrap_or(DEFAULT_CLEAN_DAYS);
-            }
             _ => {}
         }
         *self != before
@@ -89,8 +73,7 @@ mod tests {
     fn defaults_are_the_schema_defaults() {
         let s = StorageSettings::default();
         assert_eq!(s.low_space_percent, 10);
-        assert!(s.automount && !s.clean_downloads);
-        assert_eq!(s.clean_downloads_days, 30);
+        assert!(s.automount);
     }
 
     #[test]
@@ -100,10 +83,7 @@ mod tests {
         assert_eq!(s.low_space_percent, 20);
         assert!(!s.on_changed(LOW_SPACE, &SettingValue::Integer(20)));
         assert!(s.on_changed(AUTOMOUNT, &SettingValue::Flag(false)));
-        assert!(s.on_changed(CLEAN_DOWNLOADS, &SettingValue::Flag(true)));
-        assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
-        assert_eq!(s.clean_downloads_days, 7);
-        assert!(!s.automount && s.clean_downloads);
+        assert!(!s.automount);
     }
 
     #[test]
@@ -116,17 +96,9 @@ mod tests {
             assert_eq!(s.low_space_percent, DEFAULT_LOW_SPACE, "{bad}");
             assert!(s.on_changed(LOW_SPACE, &SettingValue::Integer(20)));
         }
-        assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
-        for bad in [0, 366, -1, 1000] {
-            assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(bad)));
-            assert_eq!(s.clean_downloads_days, DEFAULT_CLEAN_DAYS, "{bad}");
-            assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
-        }
         // The edges themselves are valid.
         assert!(s.on_changed(LOW_SPACE, &SettingValue::Integer(5)));
         assert!(s.on_changed(LOW_SPACE, &SettingValue::Integer(30)));
-        assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(1)));
-        assert!(s.on_changed(CLEAN_DAYS, &SettingValue::Integer(365)));
     }
 
     #[test]
@@ -134,7 +106,9 @@ mod tests {
         let mut s = StorageSettings::default();
         assert!(!s.on_changed(LOW_SPACE, &SettingValue::Text("20".into())));
         assert!(!s.on_changed(AUTOMOUNT, &SettingValue::Integer(0)));
-        assert!(!s.on_changed(CLEAN_DAYS, &SettingValue::Flag(true)));
+        // The downloads clean-up is the launcher's, not this service's.
+        assert!(!s.on_changed("storage.clean_downloads", &SettingValue::Flag(true)));
+        assert!(!s.on_changed("storage.clean_downloads_days", &SettingValue::Integer(7)));
         assert!(!s.on_changed("storage.trim", &SettingValue::Flag(false)));
         assert!(!s.on_changed("display.scale", &SettingValue::Decimal(1.5)));
         assert_eq!(s, StorageSettings::default());

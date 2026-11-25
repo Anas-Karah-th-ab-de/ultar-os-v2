@@ -49,13 +49,16 @@ identity = "system.init"
 register = ["init"]
 
 # App launcher: offers `launcher` (apps, their instances and permissions). It reads the
-# default apps and the autostart list (settings.get) and follows their changes and who
-# signs in (settings.changed, session.state) to start the autostart apps once.
+# default apps, the autostart list and the downloads clean-up (settings.get) and follows
+# their changes and who signs in (settings.changed, session.state) to start the autostart
+# apps once; with account.users it knows the person's id and cleans their downloads folder
+# once a day (storage.clean_downloads – the launcher owns the areas; the volume service
+# handles untrusted USB file systems and must not reach them).
 [[rule]]
 identity  = "system.launcher"
 register  = ["launcher"]
 call      = ["settings.get"]
-subscribe = ["settings.changed", "session.state"]
+subscribe = ["settings.changed", "session.state", "account.users"]
 
 # The surface (shell): starts, stops and lists apps and asks the user for
 # permissions (system dialogs). Not install/uninstall: those need

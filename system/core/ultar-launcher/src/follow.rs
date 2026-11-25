@@ -1,18 +1,26 @@
 //! The launcher follows the settings and the session on a bus connection of its own: it
-//! reads `apps.default.*` and `apps.autostart` at start, takes `settings.changed` at runtime
-//! ([`crate::defaults`]), and starts the autostart apps once after a sign-in (`session.state`).
-//! Without the bus the launcher still starts apps on request; only the defaults stay at the
-//! schema's and no autostart happens.
+//! reads `apps.default.*`, `apps.autostart` and the downloads clean-up
+//! (`storage.clean_downloads`, `_days`) at start, takes `settings.changed` at runtime
+//! ([`crate::defaults`], [`crate::clean`]), starts the autostart apps once after a sign-in
+//! (`session.state`) and cleans the person in front's downloads folder once a day (their
+//! id from `account.users`). The launcher owns the file areas, so this work is its own –
+//! the volume service handles untrusted USB file systems and must not reach the areas.
+//! Without the bus the launcher still starts apps on request; only the defaults stay at
+//! the schema's, no autostart happens and nothing is cleaned.
 
+use crate::clean::{CLEAN_DAYS, CLEAN_DOWNLOADS};
 use crate::defaults::AUTOSTART;
 use crate::launcher::Launcher;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use ultar_bus::messages::account_local::LocalUsers;
 use ultar_bus::messages::launcher::{Kind, Role};
 use ultar_bus::messages::session::SessionState;
 use ultar_bus::messages::settings::{Changed, Get};
 use ultar_bus::{BusError, Client, TypedSubscription};
+use ultar_service::log::{Level, Record};
 use ultar_service::{BusSession, Lifecycle, SessionOptions, State};
 
 /// Pause before the bus is tried again.
@@ -31,10 +39,12 @@ fn read_start(client: &Client, launcher: &Launcher) {
             }
         }
     }
-    let key = AUTOSTART.to_owned();
-    if let Ok(reply) = client.call(&Get { key: key.clone() }, RETRY) {
-        if let Some(value) = reply.value {
-            launcher.follow_setting(&key, &value);
+    for key in [AUTOSTART, CLEAN_DOWNLOADS, CLEAN_DAYS] {
+        let key = key.to_owned();
+        if let Ok(reply) = client.call(&Get { key: key.clone() }, RETRY) {
+            if let Some(value) = reply.value {
+                launcher.follow_setting(&key, &value);
+            }
         }
     }
 }
@@ -44,6 +54,23 @@ fn read_start(client: &Client, launcher: &Launcher) {
 fn sign_in(launcher: &Arc<Launcher>, state: &SessionState) {
     for app in launcher.autostart_due(state) {
         let _ = launcher.start(&app, Role::Ui, None);
+    }
+}
+
+/// The daily downloads clean-up for the person in front (their id from `account.users`):
+/// only their regular files in the downloads area, once a day while it is switched on.
+fn clean(launcher: &Launcher, user: Option<&str>, uids: &BTreeMap<String, u32>) {
+    let Some(uid) = user.and_then(|u| uids.get(u).copied()) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let removed = launcher.clean_downloads_due(uid, now);
+    if removed > 0 {
+        launcher
+            .logger
+            .emit(Record::new(Level::Info, "launcher.cleaned").count("files", removed as u64));
     }
 }
 
@@ -76,12 +103,22 @@ pub fn serve(socket: PathBuf, launcher: Arc<Launcher>, lifecycle: Lifecycle) {
         read_start(&client, &launcher);
         let changed = client.subscribe::<Changed>().ok();
         let sessions = client.subscribe::<SessionState>().ok();
+        let users = client.subscribe::<LocalUsers>().ok();
+        let mut user: Option<String> = None;
+        let mut uids: BTreeMap<String, u32> = BTreeMap::new();
         while !lifecycle.is_stopping() {
             let alive = drain(&changed, |c| launcher.follow_setting(&c.key, &c.value));
-            let alive = drain(&sessions, |s| sign_in(&launcher, &s)) && alive;
+            let alive = drain(&sessions, |s| {
+                user = s.user.clone();
+                sign_in(&launcher, &s);
+            }) && alive;
+            let alive = drain(&users, |u| {
+                uids = u.users.into_iter().map(|u| (u.name, u.uid)).collect();
+            }) && alive;
             if !alive {
                 break;
             }
+            clean(&launcher, user.as_deref(), &uids);
             lifecycle.wait_for_timeout(State::Stopping, POLL);
         }
         session.close();

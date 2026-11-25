@@ -2,16 +2,88 @@
 //! `storage.clean_downloads_days`): regular files older than the given number of days,
 //! owned by the person in front, are removed. Only that one folder – never recursive,
 //! never through a symbolic link, never a file of someone else.
+//!
+//! The launcher owns the person's file areas (`areas_root`, the userfiles group), so the
+//! clean-up lives here and not in the volume service: that one handles untrusted USB file
+//! systems and must not reach the areas.
 
+use crate::launcher::{lock, Launcher};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use ultar_bus::messages::settings::SettingValue;
 
+/// Setting: clean up the downloads folder daily.
+pub const CLEAN_DOWNLOADS: &str = "storage.clean_downloads";
+/// Setting: days before a download is deleted.
+pub const CLEAN_DAYS: &str = "storage.clean_downloads_days";
+/// Default of `storage.clean_downloads_days` (the settings schema).
+pub const DEFAULT_CLEAN_DAYS: u16 = 30;
 /// Most entries examined in one run (a bound, like the update service's offline folder).
 pub const MAX_ENTRIES: usize = 4096;
-
-/// Seconds of one day.
+/// Seconds of one day (the clean-up runs at most once a day).
 const DAY: u64 = 86_400;
+
+/// The clean-up settings and when it last ran. The defaults are those of the settings
+/// schema, so a launcher that has not heard from the settings service yet behaves like
+/// the fresh system: the clean-up is off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Clean {
+    /// The downloads folder is cleaned up daily.
+    pub enabled: bool,
+    /// Days a download is kept before the clean-up removes it (1..=365).
+    pub days: u16,
+    /// When the folder was last cleaned (`None`: never).
+    last_clean: Option<u64>,
+}
+
+impl Default for Clean {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            days: DEFAULT_CLEAN_DAYS,
+            last_clean: None,
+        }
+    }
+}
+
+/// A whole number the schema accepts: within `min..=max` and on a step from `min`.
+fn whole(value: i64, min: i64, max: i64, step: i64) -> Option<i64> {
+    (value >= min && value <= max && (value - min) % step == 0).then_some(value)
+}
+
+impl Clean {
+    /// Takes a setting that changed; `true` when it was one of these two and the value in
+    /// effect differs from before. A wrong type changes nothing; an out-of-range number
+    /// falls back to the schema default.
+    pub fn on_changed(&mut self, key: &str, value: &SettingValue) -> bool {
+        let before = *self;
+        match (key, value) {
+            (CLEAN_DOWNLOADS, SettingValue::Flag(on)) => self.enabled = *on,
+            (CLEAN_DAYS, SettingValue::Integer(v)) => {
+                self.days = whole(*v, 1, 365, 1)
+                    .and_then(|n| u16::try_from(n).ok())
+                    .unwrap_or(DEFAULT_CLEAN_DAYS);
+            }
+            _ => {}
+        }
+        *self != before
+    }
+
+    /// Whether the daily clean-up should run now: it is switched on and either never ran
+    /// or a day has passed since the last run.
+    pub fn due(&self, now: u64) -> bool {
+        self.enabled
+            && self
+                .last_clean
+                .is_none_or(|last| now.saturating_sub(last) >= DAY)
+    }
+
+    /// Records that the clean-up ran at `now`.
+    pub fn ran(&mut self, now: u64) {
+        self.last_clean = Some(now);
+    }
+}
 
 /// Removes the regular files in `dir` that are older than `days` days and belong to `uid`;
 /// returns how many were removed. `now` is seconds since 1970. The folder itself must be a
@@ -50,6 +122,26 @@ pub fn clean_downloads(dir: &Path, uid: u32, days: u16, now: u64) -> usize {
         }
     }
     removed
+}
+
+impl Launcher {
+    /// The daily clean-up of the person in front's downloads folder when it is due
+    /// (`storage.clean_downloads`, kept for `storage.clean_downloads_days` days): only
+    /// that folder below the areas root, only their regular files, never through a link.
+    /// Returns how many were removed and records the run, so the next is a day away.
+    pub fn clean_downloads_due(&self, uid: u32, now: u64) -> usize {
+        let mut core = lock(&self.core);
+        if !core.clean.due(now) {
+            return 0;
+        }
+        let Some(root) = core.config.paths.areas_root.clone() else {
+            return 0;
+        };
+        let days = core.clean.days;
+        let removed = clean_downloads(&crate::areas::host(&root, "downloads"), uid, days, now);
+        core.clean.ran(now);
+        removed
+    }
 }
 
 #[cfg(test)]
@@ -159,5 +251,53 @@ mod tests {
         assert_eq!(clean_downloads(&dir, me(), 30, NOW), 1);
         assert!(!old.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clean_up_is_daily_and_only_when_switched_on() {
+        let mut c = Clean::default();
+        assert!(!c.due(100));
+        assert!(c.on_changed(CLEAN_DOWNLOADS, &SettingValue::Flag(true)));
+        assert!(c.due(100)); // never ran
+        c.ran(100);
+        assert!(!c.due(100 + DAY - 1));
+        assert!(c.due(100 + DAY));
+        assert!(c.on_changed(CLEAN_DOWNLOADS, &SettingValue::Flag(false)));
+        assert!(!c.due(100 + 2 * DAY));
+    }
+
+    #[test]
+    fn the_settings_start_at_the_schema_and_follow_valid_values() {
+        let mut c = Clean::default();
+        assert!(!c.enabled && c.days == DEFAULT_CLEAN_DAYS);
+        assert!(c.on_changed(CLEAN_DOWNLOADS, &SettingValue::Flag(true)));
+        assert!(!c.on_changed(CLEAN_DOWNLOADS, &SettingValue::Flag(true)));
+        assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
+        assert_eq!(c.days, 7);
+        assert!(!c.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
+    }
+
+    #[test]
+    fn out_of_range_days_fall_back_to_the_default() {
+        let mut c = Clean::default();
+        assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
+        for bad in [0, 366, -1, 1000] {
+            assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(bad)));
+            assert_eq!(c.days, DEFAULT_CLEAN_DAYS, "{bad}");
+            assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(7)));
+        }
+        // The edges themselves are valid.
+        assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(1)));
+        assert!(c.on_changed(CLEAN_DAYS, &SettingValue::Integer(365)));
+    }
+
+    #[test]
+    fn a_wrong_type_or_another_key_changes_nothing() {
+        let mut c = Clean::default();
+        assert!(!c.on_changed(CLEAN_DAYS, &SettingValue::Flag(true)));
+        assert!(!c.on_changed(CLEAN_DOWNLOADS, &SettingValue::Integer(1)));
+        assert!(!c.on_changed("storage.trim", &SettingValue::Flag(false)));
+        assert!(!c.on_changed("apps.default.web", &SettingValue::Text("browser".into())));
+        assert_eq!(c, Clean::default());
     }
 }

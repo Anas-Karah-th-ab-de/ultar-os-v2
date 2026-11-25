@@ -10,16 +10,16 @@
 //! right `mount`; without it nothing is mounted and nothing is shown.
 //!
 //! It follows the Storage page settings (`settings.get` at start, `settings.changed` at
-//! runtime): `storage.low_space_percent` warns once when the data partition runs low,
-//! `storage.automount` off offers a drive with a "Mount" button instead of mounting it,
-//! and `storage.clean_downloads` (+ `_days`) cleans the person's downloads folder once a
-//! day. `storage.trim` and `storage.clean_old_updates` are not followed (nothing here can
-//! put them into effect; docs/integration/settings-wiring.md says why).
+//! runtime): `storage.low_space_percent` warns once when the data partition runs low and
+//! `storage.automount` off offers a drive with a "Mount" button instead of mounting it.
+//! The downloads clean-up (`storage.clean_downloads`, `_days`) is the launcher's: it owns
+//! the person's file areas, while this service handles untrusted USB file systems and must
+//! not reach them. `storage.trim` and `storage.clean_old_updates` are not followed (nothing
+//! here can put them into effect; docs/integration/settings-wiring.md says why).
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-pub mod clean;
 mod follow;
 pub mod jobs;
 mod offer;
