@@ -10,14 +10,22 @@ use ultar_surface::proto::{Event, Modifiers};
 
 impl State {
     pub(super) fn key(&mut self, code: u16, state: KeyState) {
+        // The compose key takes the key (and its sequence) before anything else.
+        if self.compose_event(code, state) {
+            return;
+        }
         let pressed = state != KeyState::Released;
-        if let Some(bit) = keymap::modifier_bit(code) {
+        let bit = keymap::modifier_bit(code);
+        // Sticky keys: a latched modifier applies to this key; a non-modifier press consumes it.
+        let sticky = self.keyboard.helpers.sticky.on_key(bit, state);
+        if let Some(bit) = bit {
             if pressed {
                 self.keyboard.modifiers |= bit;
             } else {
                 self.keyboard.modifiers &= !bit;
             }
         }
+        let mods = self.keyboard.modifiers | sticky;
         if code == 58 && state == KeyState::Pressed {
             self.keyboard.caps_lock = !self.keyboard.caps_lock;
         }
@@ -28,7 +36,7 @@ impl State {
             self.session.shell.super_tap_used();
             return;
         }
-        if state == KeyState::Pressed && self.shortcut(code) {
+        if state == KeyState::Pressed && self.shortcut(code, Modifiers(mods)) {
             self.session.shell.super_tap_used();
             return;
         }
@@ -46,14 +54,9 @@ impl State {
         if state == KeyState::Pressed {
             self.session.pressed.insert(code, key);
         }
-        let modifiers = Modifiers(self.keyboard.modifiers | self.caps_bit());
+        let modifiers = Modifiers(mods | self.caps_bit());
         let output = if pressed {
-            keymap::translate(
-                self.key_layout(),
-                code,
-                Modifiers(self.keyboard.modifiers),
-                self.keyboard.caps_lock,
-            )
+            keymap::translate(self.key_layout(), code, Modifiers(mods), self.keyboard.caps_lock)
         } else {
             KeyOutput::None
         };
@@ -152,9 +155,9 @@ impl State {
         }
     }
 
-    /// Compositor shortcuts (DESKTOP-SPEC §5.4). True if the key was used.
-    fn shortcut(&mut self, code: u16) -> bool {
-        let m = Modifiers(self.keyboard.modifiers);
+    /// Compositor shortcuts (DESKTOP-SPEC §5.4), with the modifiers in effect (sticky keys
+    /// included). True if the key was used.
+    fn shortcut(&mut self, code: u16, m: Modifiers) -> bool {
         if self.locked() {
             return false;
         }

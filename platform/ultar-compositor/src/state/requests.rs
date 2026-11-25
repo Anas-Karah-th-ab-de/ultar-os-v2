@@ -44,7 +44,8 @@ impl State {
             | Request::IdentifyOutputs { .. }
             | Request::DetectOutputs
             | Request::ConfigurePointer { .. }
-            | Request::ConfigureKeyRepeat { .. }) => self.output_request(client, r),
+            | Request::ConfigureKeyRepeat { .. }
+            | Request::ConfigureKeyHelpers { .. }) => self.output_request(client, r),
             Request::Hello { app_id, .. } => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.hello = true;

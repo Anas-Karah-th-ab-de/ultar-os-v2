@@ -95,6 +95,23 @@ impl State {
                     (enabled, delay_ms, per_second);
                 Ok(())
             }
+            Request::ConfigureKeyHelpers {
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            } => {
+                self.require_output_config(client)?;
+                self.configure_key_helpers(
+                    sticky_keys,
+                    slow_keys,
+                    bounce_keys,
+                    mouse_keys,
+                    compose_key,
+                );
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
