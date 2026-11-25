@@ -8,6 +8,7 @@
 use crate::engine::{EngineConfig, DEFAULT_RESERVE, DEFAULT_TRIAL_TRIES};
 use crate::manifest::{valid_ident, Role};
 use crate::service::Access;
+use crate::settings::Ceiling;
 use crate::verify::{DeviceIdentity, DEFAULT_EXPIRY_TOLERANCE};
 use crate::version::Version;
 use std::fmt;
@@ -72,6 +73,8 @@ pub struct DaemonConfig {
     pub health_wait_seconds: u32,
     /// Pause between automatic checks, in minutes.
     pub check_interval_minutes: u32,
+    /// The administrator's ceiling on the `updates.*` settings (see [`Ceiling`]).
+    pub ceiling: Ceiling,
 }
 
 /// Which boot control backend the daemon uses.
@@ -97,7 +100,7 @@ struct Raw {
     health_services: Vec<String>,
 }
 
-const SINGLE_KEYS: [&str; 20] = [
+const SINGLE_KEYS: [&str; 23] = [
     "image_time",
     "device",
     "arch",
@@ -118,6 +121,9 @@ const SINGLE_KEYS: [&str; 20] = [
     "expiry_tolerance_hours",
     "health_wait_seconds",
     "check_interval_minutes",
+    "allow_automatic",
+    "allow_metered",
+    "channels",
 ];
 
 impl Raw {
@@ -295,6 +301,7 @@ impl DaemonConfig {
             health_services: health_services(&raw)?,
             health_wait_seconds: raw.number("health_wait_seconds", 120)?,
             check_interval_minutes: raw.number("check_interval_minutes", 360u32)?.max(15),
+            ceiling: Ceiling::parse(|key| raw.get(key))?,
         })
     }
 }
@@ -430,6 +437,24 @@ health_service=devices
         }
         .to_string()
         .contains("missing x"));
+    }
+
+    #[test]
+    fn the_ceiling_keys_parse_and_bound_the_settings() {
+        let c = DaemonConfig::parse(GOOD).unwrap();
+        assert_eq!(c.ceiling, Ceiling::default());
+        let text = format!("{GOOD}allow_automatic=0\nallow_metered=0\nchannels=stable\n");
+        let c = DaemonConfig::parse(&text).unwrap();
+        assert!(!c.ceiling.allow_automatic && !c.ceiling.allow_metered);
+        assert_eq!(c.ceiling.channels, ["stable"]);
+        for bad in ["allow_automatic=2", "channels=stable,stable", "channels="] {
+            let text = format!("{GOOD}{bad}\n");
+            assert_eq!(
+                DaemonConfig::parse(&text).unwrap_err().kind,
+                ConfigErrorKind::Value,
+                "{bad}"
+            );
+        }
     }
 
     #[test]

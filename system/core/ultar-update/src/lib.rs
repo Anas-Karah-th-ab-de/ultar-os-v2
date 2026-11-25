@@ -28,6 +28,9 @@
 //!   the Ultar loader starts from).
 //! * [`service::Core`] + [`busfront`] – the bus service `update` ([`contract`]) with policy,
 //!   permissions (default deny) and progress events; [`daemon`] is the `ultar-updated` program.
+//! * [`settings`] + [`follow`] – the `updates.*` settings of `settingsd` mapped onto the policy
+//!   under the administrator's ceiling (`/etc/ultar/update.conf`), followed at start and on
+//!   `settings.changed`; [`notify`] posts the update notifications and the drive offer.
 //! * [`cli`] – the `uupdate` command; [`signtool`] / [`signcli`] – the publisher's
 //!   `uupdate-sign`.
 //! * [`msg`] – message catalogues (Arabic first, English, German); every state and error is a
@@ -53,6 +56,7 @@ pub mod engine;
 pub mod error;
 pub mod fault;
 pub mod filectl;
+pub mod follow;
 pub mod fsutil;
 pub mod health;
 pub mod history;
@@ -63,10 +67,12 @@ pub mod manifest;
 pub mod monotonic;
 pub mod msg;
 pub mod net;
+pub mod notify;
 pub mod partctl;
 pub mod policy;
 pub mod reject;
 pub mod service;
+pub mod settings;
 pub mod sign;
 pub mod signcli;
 pub mod signtool;
