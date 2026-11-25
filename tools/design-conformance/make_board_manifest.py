@@ -45,6 +45,26 @@ def sample(img, box):
     return f"{r},{g},{b}"
 
 
+# A sample point can lie on the edge of a glyph (the typed value of a left-to-right field):
+# there the anti-aliased colour differs a little between Chrome builds. Everything else of a
+# row must be equal; the colour may differ by this much per channel.
+RGB_TOLERANCE = 12
+RGB_COLUMN = 11
+
+
+def same_row(a, b):
+    if a == b:
+        return True
+    x, y = a.split("\t"), b.split("\t")
+    if len(x) != len(y) or len(x) <= RGB_COLUMN or x[:RGB_COLUMN] != y[:RGB_COLUMN] or x[RGB_COLUMN + 1:] != y[RGB_COLUMN + 1:]:
+        return False
+    try:
+        c, d = [int(v) for v in x[RGB_COLUMN].split(",")], [int(v) for v in y[RGB_COLUMN].split(",")]
+    except ValueError:
+        return False
+    return len(c) == len(d) and all(abs(m - n) <= RGB_TOLERANCE for m, n in zip(c, d))
+
+
 def rows(board, data, img, meta):
     theme, lang, offset = meta
     out = [HEAD]
@@ -74,14 +94,15 @@ def main():
         text = rows(board, inv[board], img, meta)
         path = target / f"{board}.tsv"
         if check:
-            if not path.exists() or path.read_text() != text:
+            have = path.read_text().splitlines() if path.exists() else []
+            want = text.splitlines()
+            pairs = [(a, b) for a, b in zip(have, want) if not same_row(a, b)]
+            if pairs or len(have) != len(want):
                 stale.append(f"{path}: stale")
                 # which rows differ (manifest | boards), so a log says why
-                have = path.read_text().splitlines() if path.exists() else []
-                pairs = [(a, b) for a, b in zip(have, text.splitlines()) if a != b]
                 for a, b in pairs[:5]:
                     stale.append(f"  manifest: {a}\n  boards:   {b}")
-                stale.append(f"  {len(pairs)} rows differ, {len(have)} rows in the manifest, {len(text.splitlines())} on the board")
+                stale.append(f"  {len(pairs)} rows differ, {len(have)} rows in the manifest, {len(want)} on the board")
         else:
             path.write_text(text)
     if stale:
