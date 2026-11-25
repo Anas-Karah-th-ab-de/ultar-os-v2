@@ -405,6 +405,7 @@ impl Backend for Gpu {
         }
         rt.programs.next += 1;
         rt.programs.queues.insert(rt.programs.next, queue);
+        super::gt_slpc::boost(dev, rt, true);
         Ok(rt.programs.next)
     }
 
@@ -494,6 +495,9 @@ impl Backend for Gpu {
                 );
             }
             retire(dev, rt, q);
+            if rt.programs.queues.is_empty() {
+                super::gt_slpc::boost(dev, rt, false);
+            }
         }
     }
 

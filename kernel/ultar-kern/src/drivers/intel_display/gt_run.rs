@@ -36,6 +36,8 @@ pub(super) struct Runtime {
     pub(super) next_id: u32,
     /// What programs created: address spaces and queues (`gt_exec`).
     pub(super) programs: super::gt_exec::Programs,
+    /// The GuC's power management, once started.
+    pub(super) slpc: Option<super::gt_slpc::Pc>,
 }
 
 pub(super) static RUNTIME: Mutex<Option<Runtime>> = Mutex::new(None);
@@ -169,6 +171,7 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
         fwk,
         next_id: 0,
         programs: Default::default(),
+        slpc: None,
     };
     let ran = match rt.prepare(dev) {
         Ok(n) => n,
