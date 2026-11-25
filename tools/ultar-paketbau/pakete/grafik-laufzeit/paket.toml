@@ -1,8 +1,9 @@
 # Ultar Grafik-Laufzeit: what a program needs to compute on the GPU through Vulkan – built
 # from unmodified upstream releases, nothing taken from a distribution.
 #
-# Stage A (this file): build tools, the C library, zlib, libdrm, the Vulkan loader.
-# Stage B (next): the LLVM tool chain Mesa needs at build time, Mesa's Intel Vulkan driver.
+# Stage A: build tools, the C library, zlib, libdrm, the Vulkan loader.
+# Stage B: the LLVM tool chain Mesa needs at build time (not shipped), Mesa's Intel Vulkan
+#          driver.
 #
 # The build machine provides only: a C/C++ compiler, make, python3 and the headers of the
 # Linux kernel interface (`/usr/include/linux`). Everything else is built here.
@@ -20,7 +21,7 @@ host_needs = ["gcc", "g++", "make", "python3", "git", "curl", "tar", "patch", "x
 
 env = [
   # only what was built here is found, never a library of the build machine
-  ["PKG_CONFIG_LIBDIR", "{prefix}/lib/pkgconfig:{prefix}/share/pkgconfig"],
+  ["PKG_CONFIG_LIBDIR", "{prefix}/lib/pkgconfig:{prefix}/share/pkgconfig:{tools}/lib/pkgconfig:{tools}/share/pkgconfig"],
   ["PYTHONPATH", "{tools}/py"],
 ]
 runtime_env = [
@@ -135,6 +136,104 @@ license = "BSD-3-Clause"
 why = "build system of the Vulkan loader"
 build = ["./bootstrap --prefix={tools} --parallel={jobs} -- -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF", "make -j{jobs}", "make install"]
 
+# ---- build tools of Mesa (not shipped) --------------------------------------------------------
+
+[[part]]
+name = "markupsafe"
+kind = "tool"
+version = "3.0.4"
+source = "https://github.com/pallets/markupsafe/archive/refs/tags/{version}.tar.gz"
+upstream = "https://github.com/pallets/markupsafe"
+tag = "{version}"
+license = "BSD-3-Clause"
+why = "needed by mako"
+build = ["mkdir -p {tools}/py && rm -rf {tools}/py/markupsafe && cp -r src/markupsafe {tools}/py/"]
+
+[[part]]
+name = "mako"
+kind = "tool"
+version = "1.4.3"
+source = "https://github.com/sqlalchemy/mako/archive/refs/tags/rel_{version_}.tar.gz"
+upstream = "https://github.com/sqlalchemy/mako"
+tag = "rel_{version_}"
+license = "MIT"
+why = "templates Mesa generates code with"
+build = ["mkdir -p {tools}/py && rm -rf {tools}/py/mako && cp -r mako {tools}/py/"]
+
+[[part]]
+name = "pyyaml"
+kind = "tool"
+version = "6.0.4"
+source = "https://github.com/yaml/pyyaml/archive/refs/tags/{version}.tar.gz"
+upstream = "https://github.com/yaml/pyyaml"
+tag = "{version}"
+license = "MIT"
+why = "Mesa's build scripts"
+build = ["mkdir -p {tools}/py && rm -rf {tools}/py/yaml && cp -r lib/yaml {tools}/py/"]
+
+[[part]]
+name = "packaging"
+kind = "tool"
+version = "26.4"
+source = "https://github.com/pypa/packaging/archive/refs/tags/{version}.tar.gz"
+upstream = "https://github.com/pypa/packaging"
+tag = "{version}"
+license = "Apache-2.0 OR BSD-2-Clause"
+why = "Mesa's build scripts"
+build = ["mkdir -p {tools}/py && rm -rf {tools}/py/packaging && cp -r src/packaging {tools}/py/"]
+
+[[part]]
+name = "spirv-headers"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+upstream = "https://github.com/KhronosGroup/SPIRV-Headers"
+tag = "vulkan-sdk-{version}"
+license = "MIT"
+why = "the SPIR-V format (for the shader tools)"
+build = ["cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX={tools}", "cmake --install build"]
+
+[[part]]
+name = "spirv-tools"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+upstream = "https://github.com/KhronosGroup/SPIRV-Tools"
+tag = "vulkan-sdk-{version}"
+license = "Apache-2.0"
+why = "checks and links the shaders Mesa builds into the driver"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DSPIRV-Headers_SOURCE_DIR={build}/spirv-headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF -DBUILD_SHARED_LIBS=OFF",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
+[[part]]
+name = "spirv-llvm-translator"
+kind = "tool"
+version = "23.1.3"
+source = "https://github.com/KhronosGroup/SPIRV-LLVM-Translator/archive/refs/tags/v{version}.tar.gz"
+upstream = "https://github.com/KhronosGroup/SPIRV-LLVM-Translator"
+tag = "v{version}"
+license = "NCSA"
+why = "turns compiler output into SPIR-V; built inside LLVM (next part), its major version must match LLVM's"
+build = ["test -f CMakeLists.txt"]
+
+[[part]]
+name = "llvm"
+kind = "tool"
+version = "23.1.6"
+source = "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/llvm-project-{version}.src.tar.xz"
+upstream = "https://github.com/llvm/llvm-project"
+tag = "llvmorg-{version}"
+license = "Apache-2.0 WITH LLVM-exception"
+why = "compiler for the small programs Mesa's Intel driver carries (clang, libclc); only used while building"
+build = [
+  "cmake -S llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RUNTIMES=libclc -DLIBCLC_TARGETS_TO_BUILD='spirv-mesa3d-;spirv64-mesa3d-' -DLLVM_EXTERNAL_PROJECTS=llvm-spirv -DLLVM_EXTERNAL_LLVM_SPIRV_SOURCE_DIR={build}/spirv-llvm-translator -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR={build}/spirv-headers -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_RTTI=ON -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_DOCS=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_BINDINGS=OFF -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_DOCS=OFF",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
 # ---- the package ----------------------------------------------------------------------------
 
 [[part]]
@@ -210,4 +309,20 @@ build = [
   "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_PREFIX_PATH={prefix} -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_TESTS=OFF -DFALLBACK_DATA_DIRS={prefix}/share -DFALLBACK_CONFIG_DIRS={prefix}/etc/xdg -DCMAKE_INSTALL_SYSCONFDIR={prefix}/etc",
   "cmake --build build -j{jobs}",
   "cmake --install build",
+]
+
+[[part]]
+name = "mesa"
+kind = "runtime"
+version = "26.3.1"
+source = "https://archive.mesa3d.org/mesa-{version}.tar.xz"
+sha256 = "4e4e438eac7b840a9383988cbb7c08dad8041da544b9319fc26d319fa7348961"
+upstream = "https://gitlab.freedesktop.org/mesa/mesa.git"
+tag = "mesa-{version}"
+license = "MIT"
+why = "the Vulkan driver for Intel graphics"
+build = [
+  "meson setup build --prefix={prefix} --libdir=lib --buildtype=release -Dplatforms= -Dgallium-drivers= -Dvulkan-drivers=intel -Dvulkan-layers= -Dtools= -Dvideo-codecs= -Dllvm=enabled -Dshared-llvm=disabled -Dopengl=false -Dgles1=disabled -Dgles2=disabled -Degl=disabled -Dglx=disabled -Dgbm=disabled -Dglvnd=disabled -Dxmlconfig=disabled -Dexpat=disabled -Dzstd=disabled -Dintel-rt=disabled -Dvalgrind=disabled -Dlibunwind=disabled -Dlmsensors=disabled -Dbuild-tests=false",
+  "ninja -C build -j{jobs}",
+  "ninja -C build install",
 ]

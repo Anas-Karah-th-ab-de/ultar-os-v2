@@ -21,6 +21,7 @@ impl Site {
         Dirs {
             tools: self.root.join("tools").to_string_lossy().into_owned(),
             recipe: self.recipe_dir.to_string_lossy().into_owned(),
+            build: self.root.join("build").to_string_lossy().into_owned(),
             jobs: self.jobs,
         }
     }

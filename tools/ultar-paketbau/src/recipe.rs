@@ -191,11 +191,12 @@ impl Recipe {
 
     /// Replaces the variables in a build command or environment value: `{prefix}` (package),
     /// `{tools}` (build tools), `{jobs}`, `{arch}`, `{version}` (of `part`), `{recipe}` (directory of the
-    /// recipe, for patches and extra files).
+    /// recipe, for patches and extra files), `{build}` (where the parts are unpacked: `{build}/<name>`).
     pub fn expand(&self, text: &str, part: &Part, dirs: &Dirs) -> String {
         text.replace("{prefix}", &self.prefix)
             .replace("{tools}", &dirs.tools)
             .replace("{recipe}", &dirs.recipe)
+            .replace("{build}", &dirs.build)
             .replace("{jobs}", &dirs.jobs.to_string())
             .replace("{arch}", &self.arch)
             .replace("{version}", &part.version)
@@ -209,6 +210,9 @@ pub struct Dirs {
     pub tools: String,
     /// Directory of the recipe.
     pub recipe: String,
+    /// Directory the parts are unpacked and built in (`{build}/<part name>`): a later part
+    /// may use the source of an earlier one.
+    pub build: String,
     /// Parallel jobs.
     pub jobs: usize,
 }
@@ -252,6 +256,7 @@ build = ["./configure --prefix={prefix}", "make -j{jobs} install"]
         let dirs = Dirs {
             tools: "/t".into(),
             recipe: "/r".into(),
+            build: "/b".into(),
             jobs: 8,
         };
         assert_eq!(
