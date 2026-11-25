@@ -49,6 +49,8 @@ args = [
     # Call service (829) and the modem service (ril, root on the phone).
     "--listen", "/run/ultar/bus/calld.sock=system.calld", "--mode", "0660", "--group", "829", "--max-connections", "4",
     "--listen", "/run/ultar/bus/ril.sock=system.ril", "--mode", "0600", "--max-connections", "2",
+    # The update service (root: it writes the slots and the boot control).
+    "--listen", "/run/ultar/bus/updated.sock=system.updated", "--mode", "0600", "--max-connections", "4",
     # Administration tools run by root: usettings, udevctl, ulog, uinit, ulaunch.
     "--listen", "/run/ultar/bus/system.sock=system.admin", "--mode", "0600", "--max-connections", "32",
     # The graphical installer (installation medium, user and group 840).

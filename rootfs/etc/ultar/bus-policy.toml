@@ -31,12 +31,16 @@ publish  = ["devices.capabilities", "devices.driver_state"]
 # Update service: offers `update` and is the only one that may publish the
 # progress topic (nobody else can fake "installing" or "restart needed").
 # It asks the services named as health_service= in /etc/ultar/update.conf
-# whether they answer before it confirms a new release.
+# whether they answer before it confirms a new release. It reads the updates.*
+# settings (settings.get, settings.changed) and maps them onto its policy under
+# the ceiling of update.conf; it notifies through notifyd (notify.post) and
+# watches the mounted drives (volumes.state) to offer an update from a stick.
 [[rule]]
 identity = "system.updated"
 register = ["update"]
 publish  = ["update.progress"]
-call     = ["settings.ping", "devices.ping"]
+subscribe = ["settings.changed", "volumes.state"]
+call     = ["settings.ping", "devices.ping", "settings.get", "notify.post"]
 
 # Service manager (ultar-init): offers `init` (status and control of the
 # services, for administrators only).
