@@ -2,9 +2,7 @@
 //! CLICKS.md). The controller changes the [`Desktop`] state and returns [`Effect`]s for
 //! the world outside (compositor, services); it never draws.
 
-mod arrange;
 mod bar;
-mod gestures;
 mod grid;
 mod handoff;
 mod helper;
@@ -17,7 +15,7 @@ mod sheets;
 
 pub use menus::{open_menu, MenuKind, MENU_KEYBOARD_SETTINGS};
 pub use render::{build_bar, build_popup, status_icons, Popup};
-pub use shapes::{bar_panel, build_home, build_second, second_panel};
+pub use shapes::{bar_panel, build_second, second_panel};
 
 use crate::model::time::{Clock, LocalTime};
 use crate::model::{Desktop, Open, Shape};
@@ -155,7 +153,7 @@ pub struct Shell {
     pub clock: Arc<dyn Clock>,
     /// Name shown for the signed-in user.
     pub user: String,
-    /// Phone or desktop, bar at the bottom or at the top.
+    /// Bar at the bottom or at the top.
     pub shape: Shape,
     /// The display mode chosen last (where Super+P starts).
     pub projection: usize,
@@ -238,7 +236,6 @@ impl Shell {
         self.d.overview.query.clear();
         self.d.svc.wifi.joining = None;
         self.d.svc.mesh.targets.clear();
-        self.d.home.open_folder = None;
         Outcome::surfaces()
     }
 
@@ -254,14 +251,12 @@ impl Shell {
                 grid::app_menu(self, &app.clone(), *id)
             }
             (Target::Categories, ActionKind::Selected(i)) => grid::category(self, *i),
-            (Target::Folder(id), ActionKind::Activated) => self.folder(Some(*id)),
-            (Target::FolderClose, ActionKind::Activated) => self.folder(None),
             _ => sheets::on_popup(self, target, kind),
         }
     }
 
-    /// An action of a tree that is neither the bar nor the popup (the dock, the phone's
-    /// home screen and gesture bar): by what the node means.
+    /// An action of a tree that is neither the bar nor the popup (the dock): by what the
+    /// node means.
     pub fn on_surface(&mut self, target: &Target, kind: &ActionKind) -> Outcome {
         match target {
             Target::Trash
@@ -272,14 +267,12 @@ impl Shell {
             | Target::Keyboard
             | Target::Status
             | Target::Clock
-            | Target::Home
             | Target::AppMenu => self.on_bar(target, kind),
             _ => self.on_popup(target, kind),
         }
     }
 
-    /// The compositor's window list changed. (On a phone the compositor keeps every app
-    /// window maximised without a title bar: phone mode, `SetPhoneMode`.)
+    /// The compositor's window list changed.
     pub fn on_windows(&mut self, windows: Vec<ShellWindow>) -> Outcome {
         let mut out = Outcome::surfaces();
         let ids: Vec<u32> = windows.iter().map(|w| w.id).collect();

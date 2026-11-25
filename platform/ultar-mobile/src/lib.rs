@@ -22,6 +22,7 @@ pub mod app;
 pub mod click;
 pub mod i18n;
 pub mod model;
+pub mod program;
 pub mod view;
 
 pub use app::{Effect, Look, MobileApp};

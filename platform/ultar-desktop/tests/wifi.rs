@@ -1,6 +1,6 @@
 //! qs.wifi.list, the join dialog, qs.vpn and qs.vpn.list (docs/integration/system-services.md
 //! §3): each click makes exactly its contract's call; the password goes from the field into
-//! `net.join` only; the networks and connections follow the service; desktop and phone sheet.
+//! `net.join` only; the networks and connections follow the service.
 
 mod common;
 
@@ -76,21 +76,8 @@ fn vpn(profiles: &[&str], status: VpnStatus) -> VpnState {
     }
 }
 
-fn harness(phone: bool) -> Harness {
-    let (d, shape, screen) = if phone {
-        (
-            board_phone(Lang::Ar, ThemeKind::Dark),
-            ultar_desktop::model::Shape::COMPACT,
-            PHONE,
-        )
-    } else {
-        (
-            board_desktop(Lang::Ar, ThemeKind::Dark),
-            ultar_desktop::model::Shape::default(),
-            SCREEN,
-        )
-    };
-    let mut d = d;
+fn harness() -> Harness {
+    let mut d = board_desktop(Lang::Ar, ThemeKind::Dark);
     d.svc.net = Some(net_state());
     d.svc.wifi.link = Some(WifiLink {
         phase: WifiPhase::Connected,
@@ -103,7 +90,7 @@ fn harness(phone: bool) -> Harness {
     d.presence.net_service = true;
     d.presence.bus = true;
     d.presence.launcher = true;
-    let mut h = Harness::shaped(d, Lang::Ar, ThemeKind::Dark, shape, screen);
+    let mut h = Harness::with(d, Lang::Ar, ThemeKind::Dark);
     h.shell.d.open = Open::Quick(QuickPage::Tiles);
     h.apply(Outcome::surfaces());
     h.take();
@@ -146,8 +133,9 @@ fn open_networks_page(h: &mut Harness) {
     h.apply(Outcome::surfaces());
 }
 
-fn flow(phone: bool) {
-    let mut h = harness(phone);
+#[test]
+fn the_networks_page_joins_asks_for_the_password_and_forgets() {
+    let mut h = harness();
     open_networks(&mut h);
     // Open network: joined at once; the connected one is left; a saved one is forgotten.
     h.click_popup(Target::WifiNetwork("Cafe".into()));
@@ -255,18 +243,8 @@ fn dialog(h: &mut Harness) {
 }
 
 #[test]
-fn the_networks_page_joins_asks_for_the_password_and_forgets() {
-    flow(false);
-}
-
-#[test]
-fn the_phone_sheet_shows_the_same_rows() {
-    flow(true);
-}
-
-#[test]
 fn the_wifi_tile_names_the_network_and_the_list_needs_a_device() {
-    let mut h = harness(false);
+    let mut h = harness();
     let tiles =
         ultar_desktop::model::quick::tiles(&h.shell.d.presence, &h.shell.d.values, &h.shell.d.svc);
     let wifi = tiles.iter().find(|t| t.id == TileId::Wifi).unwrap();
@@ -291,7 +269,7 @@ fn the_wifi_tile_names_the_network_and_the_list_needs_a_device() {
 
 #[test]
 fn the_vpn_tile_and_its_connections() {
-    let mut h = harness(false);
+    let mut h = harness();
     // No VPN service: the reason as tooltip, and a click opens the VPN page saying it.
     let p = h.popup.as_ref().unwrap();
     let tile = p.view.node(&Target::Tile(TileId::Vpn)).unwrap();

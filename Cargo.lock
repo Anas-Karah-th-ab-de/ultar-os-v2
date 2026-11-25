@@ -5744,8 +5744,10 @@ dependencies = [
  "ultar-compositor",
  "ultar-hal",
  "ultar-i18n",
+ "ultar-lock-core",
  "ultar-service",
  "ultar-settings",
+ "ultar-shell-host",
  "ultar-surface",
  "ultar-ui",
 ]
@@ -5966,6 +5968,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-lock-core"
+version = "0.8.0"
+dependencies = [
+ "ultar-bus",
+]
+
+[[package]]
 name = "ultar-logd"
 version = "0.8.0"
 dependencies = [
@@ -6006,7 +6015,15 @@ dependencies = [
 name = "ultar-mobile"
 version = "0.8.0"
 dependencies = [
+ "ultar-bus",
+ "ultar-compositor",
+ "ultar-hal",
+ "ultar-hal-system",
  "ultar-i18n",
+ "ultar-lock-core",
+ "ultar-service",
+ "ultar-shell-host",
+ "ultar-surface",
  "ultar-ui",
 ]
 
@@ -6222,6 +6239,15 @@ dependencies = [
  "ultar-telegram",
  "ultar-vpn",
  "zeno",
+]
+
+[[package]]
+name = "ultar-shell-host"
+version = "0.8.0"
+dependencies = [
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-ui",
 ]
 
 [[package]]

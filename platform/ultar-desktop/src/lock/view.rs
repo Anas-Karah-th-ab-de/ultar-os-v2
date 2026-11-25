@@ -2,7 +2,6 @@
 
 use super::{LockState, SignInError, Stage};
 use crate::model::time::{self, LocalTime};
-use crate::model::Form;
 use crate::view::{new_ui, Look, Target, View};
 use ultar_bus::messages::auth::Method;
 use ultar_i18n::datefmt::ClockStyle;
@@ -43,13 +42,6 @@ pub fn build(
     ui.set_background(ColorRole::Ground);
     ui.set_root_flex(Flex::column().padding(Padding::all(Space::S24)));
     let mut view = View::new(ui);
-    // A phone-size screen shows the cover of board CompactLock.
-    let wish = std::env::var("ULTAR_OBERFLAECHE").ok();
-    let phone = Form::choose(wish.as_deref(), size.w) == Form::Compact;
-    if phone && s.stage == Stage::Cover {
-        super::compact::cover(&mut view, s, now.1, tr)?;
-        return Ok(Some(view));
-    }
     let root = view.ui.root();
     let status = view
         .ui
@@ -321,7 +313,7 @@ fn sign_in_tools(view: &mut View, root: NodeId, s: &LockState) -> Result<(), UiE
 
 /// lock.media: what plays (title, artist) and its three buttons, from `media.state`;
 /// absent while nothing plays.
-pub(crate) fn media_card(view: &mut View, parent: NodeId, s: &LockState) -> Result<(), UiError> {
+fn media_card(view: &mut View, parent: NodeId, s: &LockState) -> Result<(), UiError> {
     let Some((title, artist, playing, back, on)) = &s.svc.media else {
         return Ok(());
     };
@@ -359,7 +351,7 @@ pub(crate) fn media_card(view: &mut View, parent: NodeId, s: &LockState) -> Resu
 }
 
 /// lock.power: enabled when the power service can switch the device off.
-pub(crate) fn power_gate(view: &mut View, id: NodeId, s: &LockState) -> Result<(), UiError> {
+fn power_gate(view: &mut View, id: NodeId, s: &LockState) -> Result<(), UiError> {
     if !s.svc.power_off {
         view.ui.set_disabled(id, true)?;
         view.ui

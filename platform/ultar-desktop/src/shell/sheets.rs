@@ -23,13 +23,6 @@ pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Out
         (Target::Tile(id), ActionKind::Activated) => tile(s, *id),
         (Target::TileMore(id), ActionKind::Activated) => more(s, *id),
         (Target::QuickBack, ActionKind::Activated) => page(s, QuickPage::Tiles),
-        // sheet.close: the handle (tap or swipe up) and the dimmed part.
-        (Target::SheetClose, ActionKind::Activated) => s.close(),
-        (Target::SheetClose, ActionKind::DragEnded { delta, .. })
-            if delta.y <= -super::bar::SWIPE =>
-        {
-            s.close()
-        }
         (Target::PowerModeChoice(_), ActionKind::Selected(i)) => match PowerMode::ALL.get(*i) {
             Some(m) => setting(s, "power.mode", SettingValue::Text(m.word().into())),
             None => Outcome::none(),
@@ -256,7 +249,6 @@ fn tile(s: &mut Shell, id: TileId) -> Outcome {
             Some(m) => service(Some(Call::SetMesh(!m.enabled))),
             None => unavailable(s, id),
         },
-        TileId::Mobile => unavailable(s, id),
     }
 }
 

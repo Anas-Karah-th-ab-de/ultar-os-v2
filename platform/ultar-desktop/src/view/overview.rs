@@ -217,7 +217,7 @@ fn window_card(
     Ok(())
 }
 
-pub(crate) fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
+fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
     match hit {
         Hit::App(id) => {
             let app = d.catalog.iter().find(|a| &a.id == id);

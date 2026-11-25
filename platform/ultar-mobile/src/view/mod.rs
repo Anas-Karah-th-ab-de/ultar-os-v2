@@ -9,6 +9,7 @@ pub mod lock;
 pub mod quick;
 pub mod recents;
 pub mod search;
+pub mod signin;
 
 use crate::click::Click;
 use crate::model::apps::App;
@@ -72,6 +73,8 @@ pub struct Built {
     pub search: Option<NodeId>,
     /// The app grid (swipes turn its pages).
     pub grid: Option<NodeId>,
+    /// The password or PIN field (sign-in).
+    pub password: Option<NodeId>,
     /// Dot-matrix pictures to paint after layout: the node and the time.
     pub clocks: Vec<(NodeId, String)>,
 }
@@ -155,8 +158,97 @@ pub fn app_name(app: &App, ui: &Ui) -> String {
     }
 }
 
-/// Builds the tree of `model` into `ui` (cleared first) and paints the dot-matrix clocks.
-pub fn build(ui: &mut Ui, model: &Mobile) -> Result<Built, UiError> {
+/// Which part of the screen a tree shows. On the phone the bars and the body are separate
+/// compositor surfaces (the bars stay while an app is open); tests and the lock screen use
+/// the whole screen in one tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    /// Status bar, body and navigation bar in one tree.
+    Full,
+    /// Only the status bar.
+    Status,
+    /// Only the navigation bar.
+    Nav,
+    /// Only what lies between the bars.
+    Body,
+    /// The body with room for the bars above and below it (the home screen is the
+    /// background behind the bar panels).
+    Background,
+}
+
+/// The status bar shows the time (not on the lock screen and the quick settings, which show
+/// it large themselves).
+pub fn status_time(screen: Screen) -> bool {
+    !matches!(screen, Screen::Lock | Screen::Quick)
+}
+
+/// The navigation bar is there (not while locked).
+pub fn has_nav(screen: Screen) -> bool {
+    screen != Screen::Lock
+}
+
+/// Builds `part` of `model`'s screen into `ui` (cleared first) and paints its clocks.
+pub fn build(ui: &mut Ui, model: &Mobile, part: Part) -> Result<Built, UiError> {
+    start(ui, |b, root| {
+        let screen = model.screen;
+        if matches!(part, Part::Full | Part::Status) {
+            bars::status(b, root, model, status_time(screen))?;
+        }
+        if part == Part::Background {
+            let top = Sizing::AUTO.with_height(metrics::status());
+            b.add(root, Flex::row(), top)?;
+        }
+        if matches!(part, Part::Full | Part::Body | Part::Background) {
+            body(b, root, model)?;
+            if model.power_menu {
+                quick::power_menu(b, root)?;
+            }
+        }
+        if matches!(part, Part::Full | Part::Nav) && has_nav(screen) {
+            bars::nav(b, root)?;
+        }
+        if part == Part::Background {
+            b.add(root, Flex::row(), Sizing::AUTO.with_height(metrics::nav()))?;
+        }
+        Ok(())
+    })
+}
+
+fn body(b: &mut Builder<'_>, root: NodeId, model: &Mobile) -> Result<(), UiError> {
+    match model.screen {
+        Screen::Lock => lock::body(b, root, model),
+        Screen::Home => home::body(b, root, model),
+        Screen::Quick => quick::body(b, root, model),
+        Screen::Recents => recents::body(b, root, model),
+        Screen::Search => search::body(b, root, model),
+    }
+}
+
+/// What the phone's lock program shows: the cover, or the sign-in while it runs.
+pub fn build_lock(
+    ui: &mut Ui,
+    state: &ultar_lock_core::LockState,
+    cover: &lock::Cover<'_>,
+    status: &Mobile,
+    now_ms: u64,
+) -> Result<Built, UiError> {
+    start(ui, |b, root| {
+        bars::status(b, root, status, false)?;
+        match state.stage {
+            ultar_lock_core::Stage::Cover | ultar_lock_core::Stage::Hidden => {
+                lock::cover(b, root, cover)
+            }
+            ultar_lock_core::Stage::SignIn | ultar_lock_core::Stage::Checking => {
+                signin::body(b, root, state, now_ms)
+            }
+        }
+    })
+}
+
+fn start(
+    ui: &mut Ui,
+    fill: impl FnOnce(&mut Builder<'_>, NodeId) -> Result<(), UiError>,
+) -> Result<Built, UiError> {
     ui.clear();
     ui.set_root_flex(Flex::column());
     let root = ui.root();
@@ -164,13 +256,7 @@ pub fn build(ui: &mut Ui, model: &Mobile) -> Result<Built, UiError> {
         ui,
         built: Built::default(),
     };
-    match model.screen {
-        Screen::Lock => lock::build(&mut b, root, model)?,
-        Screen::Home => home::build(&mut b, root, model)?,
-        Screen::Quick => quick::build(&mut b, root, model)?,
-        Screen::Recents => recents::build(&mut b, root, model)?,
-        Screen::Search => search::build(&mut b, root, model)?,
-    }
+    fill(&mut b, root)?;
     let built = b.built;
     paint_clocks(ui, &built)?;
     Ok(built)

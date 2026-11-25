@@ -6,31 +6,8 @@ use super::notes::Notes;
 use super::quick::{Presence, QuickValues};
 use ultar_i18n::Lang;
 use ultar_surface::proto::{OutputInfo, ShellWindow};
-use ultar_ui::tokens::{SizeClass, ThemeKind};
+use ultar_ui::tokens::ThemeKind;
 use ultar_ui::widgets::Thumbnail;
-
-/// Which shell a device shows (DESKTOP-SPEC §5.5: the same shell on phone and desktop).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Form {
-    /// Bar, sheets, windows (medium and wide screens).
-    #[default]
-    Desktop,
-    /// Status bar, home screen, gesture bar; apps full screen (compact screens).
-    Compact,
-}
-
-impl Form {
-    /// The form for a screen of `width` logical points; `word` is the session's wish
-    /// (`ULTAR_OBERFLAECHE`: `handy`/`compact`/`phone` or `desktop`) and wins when known.
-    pub fn choose(word: Option<&str>, width: f32) -> Form {
-        match word.map(str::trim) {
-            Some("handy" | "compact" | "phone") => Form::Compact,
-            Some("desktop") => Form::Desktop,
-            _ if SizeClass::for_width(width) == SizeClass::Compact => Form::Compact,
-            _ => Form::Desktop,
-        }
-    }
-}
 
 /// Where the desktop's bar is (DESKTOP-SPEC §11: one bar at the bottom is the standard; a
 /// top bar with a dock is the variant of board DesktopTop).
@@ -64,35 +41,20 @@ impl BarPlace {
     }
 }
 
-/// The shell's shape: its form and, on a desktop, where the bar is.
+/// The shell's shape: where the bar is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Shape {
-    /// Phone or desktop.
-    pub form: Form,
-    /// Bar at the bottom or at the top (desktop only).
+    /// Bar at the bottom or at the top.
     pub bar: BarPlace,
 }
 
 impl Shape {
-    /// The phone shell.
-    pub const COMPACT: Shape = Shape {
-        form: Form::Compact,
-        bar: BarPlace::Bottom,
-    };
     /// The desktop with the top bar and the dock.
-    pub const TOP: Shape = Shape {
-        form: Form::Desktop,
-        bar: BarPlace::Top,
-    };
-
-    /// The phone shell.
-    pub fn is_compact(self) -> bool {
-        self.form == Form::Compact
-    }
+    pub const TOP: Shape = Shape { bar: BarPlace::Top };
 
     /// The desktop with the top bar and the dock.
     pub fn is_top(self) -> bool {
-        self.form == Form::Desktop && self.bar == BarPlace::Top
+        self.bar == BarPlace::Top
     }
 }
 
@@ -228,9 +190,6 @@ pub struct Desktop {
     pub calendar: Option<(Month, usize)>,
     /// The overview: its search text, the workspaces, the window thumbnails.
     pub overview: OverviewState,
-    /// The phone's arrangement: the home screen's apps in order (the favourites row shows
-    /// `pinned`) and the folders of all apps.
-    pub home: super::arrange::Home,
     /// What the system services report (and the main display's settings id).
     pub svc: super::services::Services,
 }
@@ -255,7 +214,6 @@ impl Desktop {
             open: Open::None,
             calendar: None,
             overview: OverviewState::default(),
-            home: super::arrange::Home::with(apps::phone_home()),
             svc: super::services::Services::default(),
         }
     }
@@ -290,21 +248,13 @@ mod tests {
     }
 
     #[test]
-    fn the_form_follows_the_wish_then_the_width() {
-        assert_eq!(Form::choose(None, 360.0), Form::Compact);
-        assert_eq!(Form::choose(None, 599.0), Form::Compact);
-        assert_eq!(Form::choose(None, 600.0), Form::Desktop);
-        assert_eq!(Form::choose(Some("desktop"), 360.0), Form::Desktop);
-        assert_eq!(Form::choose(Some("handy"), 1440.0), Form::Compact);
-        assert_eq!(Form::choose(Some(" phone "), 1440.0), Form::Compact);
-        assert_eq!(Form::choose(Some("?"), 1440.0), Form::Desktop);
+    fn the_bar_place_follows_the_option_and_the_setting() {
         assert_eq!(BarPlace::parse("top"), Some(BarPlace::Top));
         assert_eq!(BarPlace::parse("bottom"), Some(BarPlace::Bottom));
         assert_eq!(BarPlace::parse("left"), None);
         assert_eq!(BarPlace::from_setting("top_bar_dock"), Some(BarPlace::Top));
         assert_eq!(BarPlace::from_setting("bottom_bar"), Some(BarPlace::Bottom));
         assert_eq!(BarPlace::from_setting("top"), None);
-        assert!(Shape::COMPACT.is_compact() && !Shape::COMPACT.is_top());
         assert!(Shape::TOP.is_top() && !Shape::default().is_top());
     }
 }

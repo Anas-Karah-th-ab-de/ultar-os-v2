@@ -63,12 +63,16 @@ pub enum Effect {
     Volume(u8),
     /// Open Settings, on a page (`network/wifi`) or the start page.
     Settings(Option<&'static str>),
-    /// The power menu (restart, power off).
-    Power,
     /// A notification was dismissed.
     Dismiss(u64),
-    /// All notifications were dismissed.
-    ClearNotes,
+    /// All notifications were dismissed (their numbers).
+    ClearNotes(Vec<u64>),
+    /// Restart the phone.
+    Restart,
+    /// Switch the phone off.
+    PowerOff,
+    /// Lock the screen now (`lock.lock`).
+    LockNow,
 }
 
 /// Errors of the shell.
@@ -92,7 +96,7 @@ impl MobileApp {
         env.scale = look.scale;
         let tr = crate::i18n::translator_or_keys(look.lang);
         let mut ui = Ui::new(env, look.mode, size, tr)?;
-        let built = view::build(&mut ui, &model)?;
+        let built = view::build(&mut ui, &model, view::Part::Full)?;
         Ok(MobileApp { model, ui, built })
     }
 
@@ -108,7 +112,7 @@ impl MobileApp {
 
     /// Builds the tree again after the model changed.
     pub fn rebuild(&mut self) -> Result<(), AppError> {
-        self.built = view::build(&mut self.ui, &self.model)?;
+        self.built = view::build(&mut self.ui, &self.model, view::Part::Full)?;
         if self.model.screen == Screen::Search {
             if let Some(id) = self.built.search {
                 self.ui.focus(id)?;
@@ -153,26 +157,12 @@ impl MobileApp {
     /// A swipe the host recognised, from `from` by `delta` points (the toolkit reports
     /// presses on nothing operable that were released elsewhere).
     pub fn swipe(&mut self, from: Point, delta: Point) -> Result<Vec<Effect>, AppError> {
-        let (dx, dy) = (delta.x, delta.y);
-        let vertical = dy.abs() >= dx.abs();
-        let mut effects = Vec::new();
-        match self.model.screen {
-            Screen::Lock if vertical && dy <= -SWIPE => effects.push(Effect::Unlock),
-            Screen::Home if vertical && dy >= SWIPE && from.y <= view::metrics::status() * 2.0 => {
-                self.model.go(Screen::Quick);
-            }
-            Screen::Home if vertical && dy <= -SWIPE => self.model.go(Screen::Search),
-            Screen::Home if !vertical && dx.abs() >= SWIPE => {
-                // Pages run in reading direction: in Arabic a swipe to the right goes on.
-                let rtl = self.ui.env().direction == ultar_ui::Direction::Rtl;
-                let forward = (dx < 0.0) != rtl;
-                let per = view::per_page(self.ui.size().h);
-                self.model.turn_page(forward, per);
-            }
-            Screen::Quick if vertical && dy <= -SWIPE => self.model.go(Screen::Home),
-            _ => return Ok(effects),
+        let rtl = self.ui.env().direction == ultar_ui::Direction::Rtl;
+        let per = view::per_page(self.ui.size().h);
+        let (changed, effects) = apply_swipe(&mut self.model, from, delta, rtl, per);
+        if changed {
+            self.rebuild()?;
         }
-        self.rebuild()?;
         Ok(effects)
     }
 
@@ -194,6 +184,11 @@ impl MobileApp {
                 }
                 ActionKind::TextChanged if Some(node) == self.built.search => {
                     self.model.query = self.ui.text(node)?.to_owned();
+                    changed = true;
+                }
+                // A press beside the power menu or Escape closes it.
+                ActionKind::Closed if self.model.power_menu => {
+                    self.model.power_menu = false;
                     changed = true;
                 }
                 ActionKind::Activated | ActionKind::Toggled(_) => {
@@ -218,64 +213,110 @@ impl MobileApp {
 
     /// Carries out `click`; `true` when the model changed.
     pub fn click(&mut self, click: Click, effects: &mut Vec<Effect>) -> bool {
-        if let Some(effect) = platform_only(&click) {
-            effects.push(effect);
-            return false;
+        let per = view::per_page(self.ui.size().h);
+        apply_click(&mut self.model, click, per, effects)
+    }
+}
+
+/// A swipe on the shell: `rtl` = Arabic reading direction, `per_page` = apps on a grid page.
+/// Returns whether the model changed and what the platform has to do.
+pub fn apply_swipe(
+    m: &mut Mobile,
+    from: Point,
+    delta: Point,
+    rtl: bool,
+    per_page: usize,
+) -> (bool, Vec<Effect>) {
+    let (dx, dy) = (delta.x, delta.y);
+    let vertical = dy.abs() >= dx.abs();
+    match m.screen {
+        Screen::Lock if vertical && dy <= -SWIPE => return (false, vec![Effect::Unlock]),
+        Screen::Home if vertical && dy >= SWIPE && from.y <= view::metrics::status() * 2.0 => {
+            m.go(Screen::Quick);
         }
-        match click {
-            Click::Torch => self.switch(Toggle::Torch, effects),
-            Click::Toggle(t) => self.switch(t, effects),
-            Click::Dismiss(id) => {
-                self.model.dismiss(id);
-                effects.push(Effect::Dismiss(id));
-            }
-            Click::ClearAll => {
-                self.model.notes.clear();
-                effects.push(Effect::ClearNotes);
-            }
-            Click::CloseRecent(id) => {
-                self.model.forget_recent(&id);
+        Screen::Home if vertical && dy <= -SWIPE => m.go(Screen::Search),
+        Screen::Home if !vertical && dx.abs() >= SWIPE => {
+            // Pages run in reading direction: in Arabic a swipe to the right goes on.
+            let forward = (dx < 0.0) != rtl;
+            m.turn_page(forward, per_page);
+        }
+        Screen::Quick if vertical && dy <= -SWIPE => m.go(Screen::Home),
+        _ => return (false, Vec::new()),
+    }
+    (true, Vec::new())
+}
+
+/// Carries out `click` on the model; `true` when it changed. What only the platform can do
+/// goes to `effects`.
+pub fn apply_click(
+    m: &mut Mobile,
+    click: Click,
+    per_page: usize,
+    effects: &mut Vec<Effect>,
+) -> bool {
+    if let Some(effect) = platform_only(&click) {
+        effects.push(effect);
+        if matches!(
+            click,
+            Click::PowerRestart | Click::PowerOff | Click::LockNow
+        ) {
+            m.power_menu = false;
+            return true;
+        }
+        return false;
+    }
+    match click {
+        Click::Torch => switch(m, Toggle::Torch, effects),
+        Click::Toggle(t) => switch(m, t, effects),
+        Click::Dismiss(id) => {
+            m.dismiss(id);
+            effects.push(Effect::Dismiss(id));
+        }
+        Click::ClearAll => {
+            let ids = m.notes.drain(..).map(|n| n.id).collect();
+            effects.push(Effect::ClearNotes(ids));
+        }
+        Click::CloseRecent(id) => {
+            m.forget_recent(&id);
+            effects.push(Effect::Close(id));
+        }
+        Click::ClearRecents => {
+            for id in std::mem::take(&mut m.recents) {
                 effects.push(Effect::Close(id));
             }
-            Click::ClearRecents => {
-                for id in std::mem::take(&mut self.model.recents) {
-                    effects.push(Effect::Close(id));
-                }
-            }
-            Click::App(id) => {
-                effects.push(Effect::Launch(id.clone()));
-                self.model.started(&id);
-            }
-            other => self.navigate(other),
         }
-        true
+        Click::App(id) => {
+            effects.push(Effect::Launch(id.clone()));
+            m.started(&id);
+        }
+        Click::Power => m.power_menu = true,
+        Click::PowerCancel => m.power_menu = false,
+        other => navigate(m, other, per_page),
     }
+    true
+}
 
-    fn switch(&mut self, t: Toggle, effects: &mut Vec<Effect>) {
-        if let Some(on) = self.model.toggle(t) {
-            effects.push(Effect::Set(t, on));
-        }
+fn switch(m: &mut Mobile, t: Toggle, effects: &mut Vec<Effect>) {
+    if let Some(on) = m.toggle(t) {
+        effects.push(Effect::Set(t, on));
     }
+}
 
-    /// Clicks that only move between the screens.
-    fn navigate(&mut self, click: Click) {
-        let m = &mut self.model;
-        let toggle = |m: &Mobile, s: Screen| if m.screen == s { Screen::Home } else { s };
-        match click {
-            Click::Status => m.go(toggle(m, Screen::Quick)),
-            Click::Recents => m.go(toggle(m, Screen::Recents)),
-            Click::Search => m.go(Screen::Search),
-            Click::Back => m.back(),
-            Click::Home => {
-                m.go(Screen::Home);
-                m.page = 0;
-            }
-            Click::Page(p) => {
-                let per = view::per_page(self.ui.size().h);
-                self.model.show_page(p, per);
-            }
-            _ => {}
+/// Clicks that only move between the screens.
+fn navigate(m: &mut Mobile, click: Click, per_page: usize) {
+    let toggle = |m: &Mobile, s: Screen| if m.screen == s { Screen::Home } else { s };
+    match click {
+        Click::Status => m.go(toggle(m, Screen::Quick)),
+        Click::Recents => m.go(toggle(m, Screen::Recents)),
+        Click::Search => m.go(Screen::Search),
+        Click::Back if m.power_menu => m.power_menu = false,
+        Click::Back => m.back(),
+        Click::Home => {
+            m.go(Screen::Home);
+            m.page = 0;
         }
+        Click::Page(p) => m.show_page(p, per_page),
+        _ => {}
     }
 }
 
@@ -288,7 +329,9 @@ fn platform_only(click: &Click) -> Option<Effect> {
         Click::Voice => Effect::Voice,
         Click::ToggleMore(t) => Effect::Settings(Some(settings_page(*t))),
         Click::Settings => Effect::Settings(None),
-        Click::Power => Effect::Power,
+        Click::PowerRestart => Effect::Restart,
+        Click::PowerOff => Effect::PowerOff,
+        Click::LockNow => Effect::LockNow,
         _ => return None,
     })
 }

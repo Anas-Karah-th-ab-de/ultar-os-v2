@@ -60,12 +60,7 @@ fn tiles_page(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError>
     footer(view, card, d)
 }
 
-pub(crate) fn add_tile(
-    view: &mut View,
-    row: NodeId,
-    tile: &Tile,
-    svc: &Services,
-) -> Result<(), UiError> {
+fn add_tile(view: &mut View, row: NodeId, tile: &Tile, svc: &Services) -> Result<(), UiError> {
     let more = tile.id.has_list();
     let cell = view.ui.add_sized(row, Flex::row(), Sizing::grow(1))?;
     let brick = Brick::new(
@@ -161,7 +156,7 @@ fn sliders(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
 }
 
 /// Why the volume cannot be set: no audio service, no device, or a device without a volume.
-pub(crate) fn volume_reason(d: &Desktop) -> Option<&'static str> {
+fn volume_reason(d: &Desktop) -> Option<&'static str> {
     match &d.svc.audio {
         None => Some("desk.reason.no_service"),
         Some(a) if !a.present => Some("desk.reason.no_audio_device"),
@@ -171,7 +166,7 @@ pub(crate) fn volume_reason(d: &Desktop) -> Option<&'static str> {
 }
 
 /// Why no output can be chosen: no audio service or no device.
-pub(crate) fn output_reason(d: &Desktop) -> Option<&'static str> {
+fn output_reason(d: &Desktop) -> Option<&'static str> {
     match &d.svc.audio {
         None => Some("desk.reason.no_service"),
         Some(a) if !a.present => Some("desk.reason.no_audio_device"),

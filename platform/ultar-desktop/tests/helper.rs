@@ -200,13 +200,6 @@ fn asking_from_the_search_opens_the_sheet_and_the_quick_settings_have_its_button
     h.apply(out);
     assert_eq!(h.shell.d.overview.helper.turns.len(), 1);
     assert!(calls(&h.take()).contains(&Call::AskHelper("and louder".into())));
-    // a phone has no sheet yet: it keeps asking from the search
-    let mut phone = Harness::phone(Lang::Ar, ThemeKind::Dark);
-    phone.shell.d.overview.sources.helper = true;
-    phone.shell.d.open = Open::Helper;
-    let out = ultar_desktop::shell::Outcome::surfaces();
-    phone.apply(out);
-    assert!(phone.popup.is_none());
 }
 
 #[test]

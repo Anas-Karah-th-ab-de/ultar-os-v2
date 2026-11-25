@@ -11,8 +11,6 @@ use ultar_ui::event::ActionKind;
 pub const FILES: &str = "org.ultar.files";
 /// The trash, as Files opens it (`[open] schemes` of Files).
 pub const TRASH_URI: &str = "trash:///";
-/// How far a drag must go to count as a swipe (logical points).
-pub const SWIPE: f32 = 24.0;
 /// App id of Settings.
 pub const SETTINGS: &str = "org.ultar.settings";
 /// The Calendar app (appointments, `calendar://event/<id>`).
@@ -23,13 +21,6 @@ pub const STORE: &str = "org.ultar.store";
 pub(super) fn on_bar(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outcome {
     match (target, kind) {
         (Target::App(i), ActionKind::MiddleClicked) => new_window(s, *i),
-        // mobile.status: a swipe down on the status bar opens the quick settings.
-        (Target::Status, ActionKind::DragEnded { delta, .. }) if delta.y >= SWIPE => {
-            s.d.open = Open::Quick(QuickPage::Tiles);
-            Outcome::surfaces()
-        }
-        // mobile.home: a swipe up on the gesture bar is the home screen.
-        (Target::Home, ActionKind::DragEnded { delta, .. }) if delta.y <= -SWIPE => home(s),
         // shell.status.network: a click on the network symbol (always the first status
         // icon) opens the Wi-Fi page; on another symbol, the tiles.
         (Target::Status, ActionKind::Selected(0)) => super::network::wifi_from_bar(s),
@@ -64,7 +55,6 @@ fn activated(s: &mut Shell, target: &Target) -> Outcome {
         }
         Target::App(i) => app_clicked(s, *i),
         Target::Keyboard => s.toggle(Open::KeyboardMenu),
-        Target::Home => home(s),
         // shell.appmenu: the menu of the active app.
         Target::AppMenu => s.toggle(Open::AppMenu),
         Target::Status => s.toggle(Open::Quick(QuickPage::Tiles)),
@@ -75,19 +65,6 @@ fn activated(s: &mut Shell, target: &Target) -> Outcome {
         }
         _ => Outcome::none(),
     }
-}
-
-/// The home screen: closes what is open and puts every window away (the phone's home
-/// screen lies behind the apps).
-pub(super) fn home(s: &mut Shell) -> Outcome {
-    let mut out = s.close();
-    out.effects =
-        s.d.windows
-            .iter()
-            .filter(|w| w.state != WindowState::Minimized)
-            .map(|w| Effect::Window(w.id, WindowAction::Minimize))
-            .collect();
-    out
 }
 
 /// Starts an app (the click's token goes with it); closes what is open.

@@ -11,7 +11,7 @@ use super::keyboard;
 use super::{primary, AppError, Options};
 use crate::host::{Host, HostEvent};
 use crate::model::time::{Clock, SystemClock};
-use crate::model::{Desktop, Form, Open, Shape};
+use crate::model::{Desktop, Open, Shape};
 use crate::ports::LauncherPort;
 use crate::shell::{build_bar, Opening, Outcome, Shell};
 use crate::view::{Look, Target};
@@ -44,10 +44,8 @@ pub struct DesktopApp {
     shell: Shell,
     look: Look,
     bar: SurfaceId,
-    /// The dock or the phone's gesture bar.
+    /// The dock.
     second: Option<SurfaceId>,
-    /// The phone's home screen.
-    home: Option<SurfaceId>,
     popup: Option<PopupSurface>,
     /// The banners' surface and its offset.
     banners: Option<(SurfaceId, (i32, i32))>,
@@ -119,16 +117,12 @@ impl DesktopApp {
             read_services(link, &mut d);
         }
         let size = screen(&host);
-        let form = Form::choose(options.form.as_deref(), size.w);
         let place = options
             .bar
             .or_else(|| link.as_ref().and_then(Link::bar_place))
             .unwrap_or_default();
-        if form == Form::Compact {
-            d.pinned = crate::model::apps::phone_favourites();
-        }
         let mut shell = Shell::new(d, clock, user);
-        shell.shape = Shape { form, bar: place };
+        shell.shape = Shape { bar: place };
         let look = Look::new(options.lang, shell.d.theme);
         let view = build_bar(&shell, look, size.w)?;
         let bar = host.open(&panels::bar_config(shell.shape), view, None)?;
@@ -138,7 +132,6 @@ impl DesktopApp {
             look,
             bar,
             second: None,
-            home: None,
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: None,
@@ -249,10 +242,7 @@ impl DesktopApp {
         if keys.iter().any(|k| k == link::BAR_POSITION) && !self.bar_fixed {
             let place = self.link.as_ref().and_then(Link::bar_place);
             if let Some(place) = place {
-                return self.reshape(Shape {
-                    bar: place,
-                    ..self.shell.shape
-                });
+                return self.reshape(Shape { bar: place });
             }
         }
         if any {
@@ -293,11 +283,6 @@ impl DesktopApp {
                 }
             }
             HostEvent::Resized(id, _) if id == self.bar => self.resized()?,
-            // mobile.apps: a swipe up on the home screen opens all apps.
-            HostEvent::Swipe(id, delta) if Some(id) == self.home && -delta.y >= delta.x.abs() => {
-                self.shell.d.open = Open::Apps(None);
-                Outcome::surfaces()
-            }
             HostEvent::Compositor(e) => self.compositor(e)?,
             _ => Outcome::none(),
         };
@@ -312,17 +297,6 @@ impl DesktopApp {
         let Some(target) = self.target(id, node) else {
             return Outcome::none();
         };
-        // An app dropped onto another app, a folder or the favourites row (phone).
-        if let (
-            ActionKind::DragEnded {
-                target: Some(t), ..
-            },
-            Target::AppItem(_),
-        ) = (kind, &target)
-        {
-            let onto = self.target(id, *t);
-            return self.shell.on_drop(&target, onto.as_ref());
-        }
         if id == self.bar {
             return self.shell.on_bar(&target, kind);
         }
@@ -369,7 +343,6 @@ impl DesktopApp {
         Ok(match event {
             Event::ShellKey { code, .. } => self.shell.on_shell_key(code),
             Event::WindowsChanged { windows } => self.shell.on_windows(windows),
-            Event::EdgeSwipe { edge, held } => self.shell.on_edge(edge, held),
             Event::Workspaces { current, count } => {
                 d.overview.workspaces = Some((current, count));
                 Outcome::surfaces()

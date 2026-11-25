@@ -23,6 +23,15 @@ previous version and are being rebuilt in phases.
 
 Current test devices: a Lenovo ThinkPad P1 laptop, a Beelink GTi15 Ultra mini PC and a Samsung Galaxy A30 phone.
 
+## New on 25 November 2026: the phone's own surface
+
+- **A phone surface of its own.** The phone now has its own shell, separate from the desktop's: the lock
+  screen with a dot-matrix clock and the Hijri date, the home screen with app pages, dock and the cards
+  "Next" and "Device", quick settings with the Wi-Fi and mobile-data tiles, recent apps, search and the
+  navigation bar. Unlocking always goes through the authentication service, with the same decision as on the
+  desktop. Tested in Arabic, English and German, dark and light, every button tapped; not yet tried on a
+  real phone.
+
 ## New since 24 November 2026: device mesh and local helper
 
 - **Device mesh.** Your own devices find each other, are paired once with a six-digit code and hand work

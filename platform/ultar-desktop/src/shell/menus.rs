@@ -236,8 +236,6 @@ pub(super) fn open_for(s: &mut Shell, target: &Target) -> Outcome {
         Target::Trash => Open::TileMenu(usize::MAX),
         Target::Drive(i) => Open::DriveMenu(*i),
         Target::Keyboard => Open::KeyboardMenu,
-        // mobile.home held: the recent apps (with the search).
-        Target::Home => Open::Overview,
         _ => return Outcome::none(),
     };
     Outcome::surfaces()

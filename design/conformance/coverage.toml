@@ -1179,10 +1179,10 @@ note = "frees the selected space and continues the blocked installation"
 
 [action."apps.app"]
 status = "ok"
-impl = "platform/ultar-desktop/src/view/apps.rs + src/shell/grid.rs + src/view/compact/apps.rs + src/shell/arrange.rs"
-test = "platform/ultar-desktop/tests/clicks_grid.rs + platform/ultar-desktop/tests/arrange.rs"
+impl = "platform/ultar-desktop/src/view/apps.rs + src/shell/grid.rs"
+test = "platform/ultar-desktop/tests/clicks_grid.rs"
 boards = "AppGrid:15, CompactApps:9"
-note = "starts or raises; menu Open, New window, favourites, Details, Remove (Store); on the phone drag onto another app = folder (opens, takes more, gives back); the hint wraps"
+note = "starts or raises; menu Open, New window, Pin, Details, Remove (Store); the hint wraps; the phone (CompactApps) is platform/ultar-mobile"
 
 [action."apps.category"]
 status = "ok"
@@ -1227,53 +1227,53 @@ boards = "CompactDisplay:1"
 note = "new settingsd key display.auto_brightness"
 
 [action."mobile.app"]
-status = "ok"
-impl = "platform/ultar-desktop/src/view/compact/home.rs + src/shell/arrange.rs + platform/ultar-compositor/src/state/phone.rs"
-test = "platform/ultar-desktop/tests/arrange.rs + platform/ultar-desktop/tests/phone.rs + platform/ultar-compositor/tests/phone_mode.rs"
+status = "different"
+impl = "platform/ultar-mobile/src/view/home.rs + src/app.rs + platform/ultar-compositor/src/state/phone.rs"
+test = "platform/ultar-mobile/tests/clicks.rs + platform/ultar-compositor/tests/phone_mode.rs"
 boards = "CompactHome:7"
-note = "starts the app full screen (compositor phone mode: no title bar, the whole work area, maximise does nothing); long press opens its menu; drag moves it on the home screen or into the favourites row"
+note = "tap starts the app full screen (compositor phone mode); long-press menu, moving on the home screen, favourites row and folders are not in ultar-mobile yet"
 
 [action."mobile.apps"]
-status = "ok"
-impl = "platform/ultar-desktop/src/view/compact/apps.rs + src/shell/bar.rs"
-test = "platform/ultar-desktop/tests/phone.rs"
+status = "different"
+impl = "platform/ultar-mobile/src/view/home.rs + src/app.rs"
+test = "platform/ultar-mobile/tests/clicks.rs"
 boards = "CompactHome:1"
-note = "button and swipe up on the home screen (host swipe: app/desktop/mod.rs)"
+note = "ultar-mobile shows every app on the home pages (page dots, sideways swipe); swipe up on home opens the search; no separate all-apps sheet"
 
 [action."mobile.home"]
-status = "ok"
-impl = "platform/ultar-desktop/src/view/compact/mod.rs + src/shell/bar.rs + src/shell/gestures.rs + platform/ultar-compositor/src/state/phone.rs"
-test = "platform/ultar-desktop/tests/phone.rs + platform/ultar-compositor/tests/phone_mode.rs"
+status = "different"
+impl = "platform/ultar-mobile/src/view/bars.rs + src/app.rs + platform/ultar-compositor/src/state/phone.rs"
+test = "platform/ultar-mobile/tests/clicks.rs + platform/ultar-compositor/tests/phone_mode.rs"
 boards = "CompactApps:1, CompactDisplay:1, CompactHome:1, CompactQuick:1, CompactSettings:1, CompactStore:1, CompactStoreApp:1"
-note = "tap or swipe up on the gesture bar = home; the compositor's edge gestures in phone mode (touch or mouse drag, shell clients only, never while locked): up from the bottom edge = home, up and held = recent apps, in from a side edge = back (the shell's sheet first, else WindowAction Back = Escape to the app)"
+note = "ultar-mobile: navigation bar with home, back and recent apps on every screen instead of the gesture bar; the compositor edge gestures of phone mode stay"
 
 [action."mobile.search"]
 status = "ok"
-impl = "platform/ultar-desktop/src/view/compact/search.rs"
-test = "platform/ultar-desktop/tests/phone.rs"
+impl = "platform/ultar-mobile/src/view/search.rs + src/app.rs"
+test = "platform/ultar-mobile/tests/clicks.rs"
 boards = "CompactHome:1"
-note = "same sources as the overview search; the on-screen keyboard is the input method's"
+note = "finds apps as one types; the on-screen keyboard is the input method's"
 
 [action."mobile.status"]
 status = "ok"
-impl = "platform/ultar-desktop/src/view/compact/quick.rs + src/shell/bar.rs"
-test = "platform/ultar-desktop/tests/phone.rs"
+impl = "platform/ultar-mobile/src/view/bars.rs + src/view/quick.rs + src/app.rs"
+test = "platform/ultar-mobile/tests/clicks.rs"
 boards = "CompactApps:1, CompactDisplay:1, CompactHome:1, CompactQuick:1, CompactSettings:1, CompactStore:1, CompactStoreApp:1"
-note = "tap or swipe down opens; handle (tap, swipe up), dimmed part, Esc, home close"
+note = "tap or swipe down from the top opens the quick settings; tap again or swipe up closes"
 
 [action."qs.mobile"]
 status = "missing"
-impl = "platform/ultar-desktop/src/view/compact/quick.rs"
-test = "platform/ultar-desktop/tests/phone.rs"
+impl = "platform/ultar-mobile/src/view/quick.rs"
+test = "platform/ultar-mobile/tests/clicks.rs"
 boards = "CompactQuick:1"
-note = "tile drawn only with a modem, disabled with the reason: no modem service on the bus (Needed services)"
+note = "tile drawn only with a modem; no modem service on the bus yet (Needed services)"
 
 [action."qs.mobile.list"]
 status = "missing"
-impl = "platform/ultar-desktop/src/view/compact/quick.rs"
-test = "platform/ultar-desktop/tests/phone.rs"
+impl = "platform/ultar-mobile/src/view/quick.rs"
+test = "platform/ultar-mobile/tests/clicks.rs"
 boards = "CompactQuick:1"
-note = "drawn, disabled with the reason: no modem service on the bus (Needed services)"
+note = "no SIM choice yet: no modem service on the bus (Needed services)"
 
 [action."settings.back"]
 status = "different"

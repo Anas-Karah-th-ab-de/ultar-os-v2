@@ -13,6 +13,25 @@ path = "src/lib.rs"
 [dependencies]
 ultar-ui = { path = "../ultar-ui", default-features = false }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-lock-core = { path = "../ultar-lock-core" }
+ultar-surface = { path = "../ultar-surface" }
+ultar-shell-host = { path = "../ultar-shell-host" }
+ultar-service = { path = "../../system/core/ultar-service" }
+ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
+
+# The phone shell: status bar and navigation bar, home screen, sheets (role ui.shell).
+[[bin]]
+name = "ultar-mobile"
+path = "src/bin/ultar-mobile.rs"
+
+# The phone's lock screen: cover and sign-in (role ui.lock-screen).
+[[bin]]
+name = "ultar-mobile-lock"
+path = "src/bin/ultar-mobile-lock.rs"
 
 [dev-dependencies]
+ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-ui = { path = "../ultar-ui" }
+ultar-compositor = { path = "../ultar-compositor" }
+ultar-hal = { path = "../../system/hal/ultar-hal" }

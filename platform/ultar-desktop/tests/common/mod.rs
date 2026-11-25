@@ -11,9 +11,7 @@ use ultar_desktop::model::quick::Presence;
 use ultar_desktop::model::state::Layouts;
 use ultar_desktop::model::time::Clock;
 use ultar_desktop::model::{Desktop, Shape};
-use ultar_desktop::shell::{
-    build_bar, build_home, build_popup, build_second, Effect, Outcome, Popup, Shell,
-};
+use ultar_desktop::shell::{build_bar, build_popup, build_second, Effect, Outcome, Popup, Shell};
 use ultar_desktop::view::{Look, Target, View};
 use ultar_i18n::Lang;
 use ultar_surface::proto::{OutputId, OutputInfo, ShellWindow, WindowState};
@@ -97,50 +95,6 @@ pub fn board_desktop(lang: Lang, theme: ThemeKind) -> Desktop {
     // Board Overview: two workspaces, the first shown.
     d.overview.workspaces = Some((0, 2));
     d
-}
-
-/// The phone boards' size.
-pub const PHONE: Size = Size::new(360.0, 800.0);
-
-/// The state of the Compact boards: nothing running, battery 87 %, a modem, the launcher
-/// and the settings service answer; the home screen and favourites of the board.
-pub fn board_phone(lang: Lang, theme: ThemeKind) -> Desktop {
-    let mut d = board_desktop(lang, theme);
-    d.windows.clear();
-    d.pinned = ultar_desktop::model::apps::phone_favourites();
-    d.presence.modem = Some(true);
-    d.values.battery = Some((87, false));
-    d.values.night = true;
-    d.outputs = vec![OutputInfo {
-        width: 360,
-        height: 800,
-        ..output(0, "DSI-1", true)
-    }];
-    d
-}
-
-/// The one notification of board CompactQuick (a missed call at 16:20).
-pub fn phone_note(d: &mut Desktop, lang: Lang) {
-    use ultar_bus::messages::notify::{Body, Category as Kind, Post, Posted, Urgency};
-    use ultar_bus::{Text, TextArg};
-    let (title, body) = if lang == Lang::Ar {
-        ("مكالمة فائتة من ليلى حداد", "عبر رقم Ultar")
-    } else {
-        ("Missed call from Layla Haddad", "via Ultar number")
-    };
-    d.notes.add(Posted {
-        id: 7,
-        timestamp_ms: BOARD_MS - 32 * 60_000,
-        post: Post {
-            urgency: Urgency::Normal,
-            category: Kind::App,
-            app_id: "org.ultar.phone".into(),
-            title: Text::key("desk.note.verbatim").with(TextArg::Verbatim(title.into())),
-            body: Body::Verbatim(body.into()),
-            actions: Vec::new(),
-        },
-        sender: "app.org.ultar.phone".into(),
-    });
 }
 
 /// Sender, urgency, title and body (ar, en), buttons (id, ar, en).
@@ -227,10 +181,8 @@ pub struct Harness {
     pub popup: Option<Popup>,
     pub effects: Vec<Effect>,
     pub clock: Arc<FixedClock>,
-    /// The dock or the phone's gesture bar.
+    /// The dock.
     pub second: Option<View>,
-    /// The phone's home screen.
-    pub home: Option<View>,
     pub screen: Size,
 }
 
@@ -241,12 +193,6 @@ impl Harness {
 
     pub fn with(d: Desktop, lang: Lang, theme: ThemeKind) -> Harness {
         Harness::shaped(d, lang, theme, Shape::default(), SCREEN)
-    }
-
-    /// The phone shell in the state of the Compact boards.
-    pub fn phone(lang: Lang, theme: ThemeKind) -> Harness {
-        let d = board_phone(lang, theme);
-        Harness::shaped(d, lang, theme, Shape::COMPACT, PHONE)
     }
 
     /// The desktop with the top bar and the dock (board DesktopTop).
@@ -269,7 +215,6 @@ impl Harness {
             effects: Vec::new(),
             clock,
             second: None,
-            home: None,
             screen,
         };
         h.apply(Outcome::surfaces());
@@ -281,7 +226,6 @@ impl Harness {
         for v in [
             self.popup.as_mut().map(|p| &mut p.view),
             self.second.as_mut(),
-            self.home.as_mut(),
         ]
         .into_iter()
         .flatten()
@@ -295,7 +239,6 @@ impl Harness {
         if out.bar {
             self.bar = build_bar(&self.shell, self.look, self.screen.w).unwrap();
             self.second = build_second(&self.shell, self.look, self.screen.w).unwrap();
-            self.home = build_home(&self.shell, self.look, self.screen).unwrap();
         }
         if out.popup {
             self.popup = build_popup(&self.shell, self.look, self.screen).unwrap();
@@ -394,52 +337,18 @@ impl Harness {
         self.dispatch_bar(a);
     }
 
-    /// A click on the second panel (dock, gesture bar) or the home screen.
+    /// A click on the second panel (the dock).
     pub fn click_side(&mut self, target: Target) {
-        let view = [self.second.as_mut(), self.home.as_mut()]
-            .into_iter()
-            .flatten()
-            .find(|v| v.node(&target).is_some())
+        let view = self
+            .second
+            .as_mut()
+            .filter(|v| v.node(&target).is_some())
             .unwrap_or_else(|| panic!("no side panel shows {target:?}"));
         let actions = Harness::press(view, &target, PointerButton::Primary);
         for a in actions {
             let out = self.shell.on_surface(&target, &a.kind);
             self.apply(out);
         }
-    }
-
-    /// A secondary click (a long press of touch) on the home screen: the toolkit opens
-    /// the node's context menu; true when a menu is open afterwards.
-    pub fn right_home(&mut self, target: Target) -> bool {
-        let home = self.home.as_mut().expect("a home screen");
-        let _ = Harness::press(home, &target, PointerButton::Secondary);
-        home.ui.menu_rect(0).is_some()
-    }
-
-    /// A drag with the primary button from `from` to the middle of `to` in `view` (home
-    /// screen or popup, like the toolkit sees it): the dragged node's target and the target
-    /// of the node under the drop, as the app resolves them.
-    pub fn drag_in(view: &mut View, from: &Target, to: &Target) -> Option<Target> {
-        let centre = |v: &View, t: &Target| {
-            let r = v.ui.rect(v.node(t).unwrap()).unwrap();
-            Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
-        };
-        let (a, b) = (centre(view, from), centre(view, to));
-        let button = PointerButton::Primary;
-        view.ui.handle(Event::PointerMove { pos: a });
-        view.ui.handle(Event::PointerDown { pos: a, button });
-        for i in 1..=8 {
-            let t = i as f32 / 8.0;
-            let pos = Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-            view.ui.handle(Event::PointerMove { pos });
-        }
-        let actions = view.ui.handle(Event::PointerUp { pos: b, button }).actions;
-        actions.iter().find_map(|act| match act.kind {
-            ActionKind::DragEnded {
-                target: Some(n), ..
-            } => view.target(n).cloned(),
-            _ => None,
-        })
     }
 
     /// An action of a node given directly (drags, menu items).

@@ -2,7 +2,7 @@
 //! grid's four columns, or a hint while nothing is typed.
 
 use super::home::{cell_rows, small};
-use super::{app_name, bars, Builder};
+use super::{app_name, Builder};
 use crate::click::Click;
 use crate::model::Mobile;
 use ultar_ui::icon::IconId;
@@ -11,9 +11,8 @@ use ultar_ui::tokens::Space;
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{IconButton, Label, SearchField};
 
-/// Builds the search.
-pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
-    bars::status(b, root, m, true)?;
+/// Builds the body of the search.
+pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
     let main = Flex::column()
         .gap(Space::S16)
         .padding(Padding::symmetric(Space::S16, Space::S8));
@@ -46,5 +45,5 @@ pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiErro
         cell_rows(b, main, &hits)?;
     }
     b.spacer(main)?;
-    bars::nav(b, root)
+    Ok(())
 }

@@ -1,0 +1,18 @@
+# Phone shell (ultar-mobile, role ui.shell as user 816): status bar and navigation bar,
+# home screen with pages and dock, quick settings, recent apps and search
+# (docs/MOBILE.md). Separate from the desktop shell (desktop.toml). Starts apps only
+# through the app launcher (launcher.start).
+editions = ["phone"]
+manual = true
+exec = "/usr/bin/ultar-mobile"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/desktop.sock",
+]
+user = 816
+after = ["compositor", "launcher", "settingsd", "mobile-lock"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "96M"
+"pids.max" = "16"

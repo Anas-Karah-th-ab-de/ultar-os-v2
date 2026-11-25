@@ -1,7 +1,7 @@
 //! The recent apps: newest first, each to open again or to close, and "close all".
 
 use super::home::small;
-use super::{app_label, bars, Builder};
+use super::{app_label, Builder};
 use crate::click::Click;
 use crate::model::Mobile;
 use ultar_ui::icon::IconId;
@@ -12,9 +12,8 @@ use ultar_ui::tokens::{Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
 use ultar_ui::widgets::{Button, ButtonVariant, Card, Icon, IconButton, Label, Scroll, Text};
 
-/// Builds the recent apps.
-pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
-    bars::status(b, root, m, true)?;
+/// Builds the body of the recent apps.
+pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
     let head = b.flex(
         root,
         Flex::row()
@@ -57,7 +56,7 @@ pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiErro
     for app in apps {
         entry(b, list, app)?;
     }
-    bars::nav(b, root)
+    Ok(())
 }
 
 /// One recent app: open it again, or close it.

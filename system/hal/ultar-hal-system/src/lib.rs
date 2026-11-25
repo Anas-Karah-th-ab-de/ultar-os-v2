@@ -11,12 +11,14 @@
 //! [`hardware`] enumerates the devices of the running system for driver matching and
 //! [`kernel_drivers`] reads which built-in kernel drivers exist and what they operate.
 //! This crate is the only place where hardware paths (`/proc/ultar/…`, `/sys/…`) appear.
+//! [`load`] reads processor load and memory in use.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod hardware;
 pub mod kernel_drivers;
+pub mod load;
 pub mod seat_nodes;
 
 pub use hardware::{HardwareError, HardwareReader, Inventory};

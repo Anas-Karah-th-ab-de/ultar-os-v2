@@ -88,6 +88,8 @@ pub struct Mobile {
     pub next: Option<String>,
     /// Text in the search field.
     pub query: String,
+    /// The power menu is open (over the quick settings).
+    pub power_menu: bool,
 }
 
 impl Default for Mobile {
@@ -106,6 +108,7 @@ impl Default for Mobile {
             notes: Vec::new(),
             next: None,
             query: String::new(),
+            power_menu: false,
         }
     }
 }
@@ -158,12 +161,14 @@ impl Mobile {
         if screen != Screen::Search {
             self.query.clear();
         }
+        self.power_menu = false;
         self.screen = screen;
     }
 
     /// The screen locks (power button, time-out).
     pub fn lock(&mut self) {
         self.locked = true;
+        self.power_menu = false;
         self.screen = Screen::Lock;
         self.query.clear();
     }

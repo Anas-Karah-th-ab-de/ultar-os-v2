@@ -141,7 +141,31 @@ fn every_switch_of_the_quick_settings_switches_and_says_so() {
         vec![Effect::Settings(Some("network/wifi"))]
     );
     assert_eq!(tap(&mut a, &Click::Settings), vec![Effect::Settings(None)]);
-    assert_eq!(tap(&mut a, &Click::Power), vec![Effect::Power]);
+    assert!(tap(&mut a, &Click::Power).is_empty());
+    assert!(a.model.power_menu);
+    assert_eq!(tap(&mut a, &Click::PowerRestart), vec![Effect::Restart]);
+    assert!(!a.model.power_menu);
+    tap(&mut a, &Click::Power);
+    assert_eq!(tap(&mut a, &Click::PowerOff), vec![Effect::PowerOff]);
+    tap(&mut a, &Click::Power);
+    assert_eq!(tap(&mut a, &Click::LockNow), vec![Effect::LockNow]);
+    tap(&mut a, &Click::Power);
+    tap(&mut a, &Click::PowerCancel);
+    assert!(!a.model.power_menu);
+    // Escape is the menu's cancel.
+    tap(&mut a, &Click::Power);
+    a.handle(ultar_ui::event::Event::Key {
+        key: ultar_ui::event::Key::Escape,
+        modifiers: ultar_ui::event::Modifiers::NONE,
+    })
+    .unwrap();
+    assert!(!a.model.power_menu);
+    // The navigation bar's back (its own surface on the phone) closes the menu first.
+    let mut m = a.model.clone();
+    m.power_menu = true;
+    let mut fx = Vec::new();
+    ultar_mobile::app::apply_click(&mut m, Click::Back, 12, &mut fx);
+    assert_eq!((m.power_menu, m.screen), (false, Screen::Quick));
 }
 
 #[test]
@@ -176,7 +200,10 @@ fn notifications_are_dismissed_one_by_one_and_all_at_once() {
     tap(&mut a, &Click::Status);
     assert_eq!(tap(&mut a, &Click::Dismiss(1)), vec![Effect::Dismiss(1)]);
     assert_eq!(a.model.notes.len(), 1);
-    assert_eq!(tap(&mut a, &Click::ClearAll), vec![Effect::ClearNotes]);
+    assert_eq!(
+        tap(&mut a, &Click::ClearAll),
+        vec![Effect::ClearNotes(vec![2])]
+    );
     assert!(a.model.notes.is_empty());
     assert!(a.built().node(&Click::ClearAll).is_none());
 }

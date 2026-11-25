@@ -17,9 +17,8 @@ use ultar_ui::widgets::{Brick, BrickKind, Card, IconButton, Label, Progress, Tex
 /// Height of the home screen's clock (points).
 pub const CLOCK_HEIGHT: f32 = 48.0;
 
-/// Builds the home screen.
-pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
-    bars::status(b, root, m, true)?;
+/// Builds the body of the home screen.
+pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
     let main = Flex::column()
         .padding(Padding::symmetric(Space::S16, Space::S8))
         .gap(Space::S12);
@@ -29,7 +28,7 @@ pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiErro
     search(b, main)?;
     grid(b, main, m)?;
     dock(b, main, m)?;
-    bars::nav(b, root)
+    Ok(())
 }
 
 /// Brand mark at the start, the clock and the date lines at the end.

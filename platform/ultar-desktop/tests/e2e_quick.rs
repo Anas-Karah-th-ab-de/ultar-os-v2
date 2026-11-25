@@ -117,7 +117,6 @@ impl World {
             bus: Some(bus),
             lang: ultar_i18n::Lang::Ar,
             light: false,
-            form: Some("desktop".into()),
             bar: None,
         };
         let (stop2, seen2) = (stop.clone(), seen.clone());

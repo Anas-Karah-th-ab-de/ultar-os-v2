@@ -57,6 +57,8 @@ members = [
     "platform/ultar-ime",
     "platform/ultar-shell",
     "platform/ultar-mobile",
+    "platform/ultar-shell-host",
+    "platform/ultar-lock-core",
     "platform/ultar-installer-ui",
     "system/core/ultar-apps",
     "system/core/ultar-ctl",

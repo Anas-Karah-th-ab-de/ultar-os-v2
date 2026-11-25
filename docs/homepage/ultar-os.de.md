@@ -23,6 +23,15 @@ Fassung und werden phasenweise neu gebaut.
 
 Aktuelle Testgeräte: Laptop Lenovo ThinkPad P1, Mini-PC Beelink GTi15 Ultra und Handy Samsung Galaxy A30.
 
+## Neu am 25.11.2026: eigene Handy-Oberfläche
+
+- **Eigene Oberfläche fürs Handy.** Das Handy hat jetzt seine eigene Oberfläche, getrennt von der des
+  Desktops: Sperrbildschirm mit Punktmatrix-Uhr und Hijri-Datum, Startbildschirm mit App-Seiten, Dock und den
+  Karten „Als Nächstes“ und „Gerät“, Schnelleinstellungen mit den Kacheln WLAN und mobile Daten, zuletzt
+  verwendete Apps, Suche und Navigationsleiste. Entsperren geht immer über den Anmeldedienst, mit derselben
+  Entscheidung wie am Desktop. Getestet auf Arabisch, Englisch und Deutsch, hell und dunkel, jeder Knopf
+  angetippt; auf einem echten Handy noch nicht erprobt.
+
 ## Neu seit dem 24.11.2026: Geräteverbund und lokaler Helfer
 
 - **Geräteverbund.** Die eigenen Geräte finden sich, werden einmal mit einem sechsstelligen Code gekoppelt

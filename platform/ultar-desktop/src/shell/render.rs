@@ -24,10 +24,10 @@ pub struct Popup {
     pub inset_top: f32,
 }
 
-/// The network icon of the bar and the phone's status bar, from `net.state`: the cable while a
+/// The network icon of the bar, from `net.state`: the cable while a
 /// wired interface has an address, Wi-Fi while connected to a Wi-Fi network, otherwise
 /// offline; Wi-Fi as before while the service has not reported yet.
-pub(crate) fn net_icon(s: &Shell) -> IconId {
+fn net_icon(s: &Shell) -> IconId {
     use ultar_bus::messages::net::LinkState;
     if !s.d.presence.net_service {
         return IconId::Offline;
@@ -62,7 +62,7 @@ pub fn status_icons(s: &Shell) -> Vec<IconId> {
 }
 
 /// The time and date lines and the status icons of the bar.
-pub(super) fn bar_text(s: &Shell) -> BarText {
+fn bar_text(s: &Shell) -> BarText {
     let (time, date) = s
         .local_time()
         .map(|t| time::bar_lines(t, ClockStyle::H24, &s.tr))
@@ -74,12 +74,9 @@ pub(super) fn bar_text(s: &Shell) -> BarText {
     }
 }
 
-/// The shell's first panel for a screen width: the bar at the bottom, the top bar of the
-/// variant with a dock, or the phone's status bar.
+/// The shell's first panel for a screen width: the bar at the bottom or the top bar of the
+/// variant with a dock.
 pub fn build_bar(s: &Shell, look: Look, width: f32) -> Result<View, UiError> {
-    if s.shape.is_compact() {
-        return super::shapes::status_bar(s, look, width);
-    }
     let text = bar_text(s);
     if s.shape.is_top() {
         return view::dock::top_bar(&s.d, &text, look, width, &s.tr);
@@ -112,12 +109,7 @@ fn sheet(view: View, placement: view::geometry::Placement) -> Popup {
 
 /// The open popup, if any, with the keyboard focus on its first control (§13 no. 62).
 pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, UiError> {
-    let built = if s.shape.is_compact() {
-        super::shapes::compact_popup(s, look, screen)?
-    } else {
-        desktop_popup(s, look, screen)?
-    };
-    let Some(mut popup) = built else {
+    let Some(mut popup) = desktop_popup(s, look, screen)? else {
         return Ok(None);
     };
     if s.shape.is_top() {
@@ -143,12 +135,7 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
 }
 
 /// The popup of a menu that is open.
-pub(super) fn menu_popup(
-    s: &Shell,
-    look: Look,
-    screen: Size,
-    anchor: f32,
-) -> Result<Option<Popup>, UiError> {
+fn menu_popup(s: &Shell, look: Look, screen: Size, anchor: f32) -> Result<Option<Popup>, UiError> {
     let Some((_, menu)) = super::open_menu(s) else {
         return Ok(None);
     };

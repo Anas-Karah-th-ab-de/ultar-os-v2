@@ -3,7 +3,7 @@
 //! brightness and volume, the notifications, and the handle that closes them.
 
 use super::home::small;
-use super::{bars, metrics, Builder};
+use super::{metrics, Builder};
 use crate::click::Click;
 use crate::model::quick::{Quick, Toggle};
 use crate::model::Mobile;
@@ -17,9 +17,8 @@ use ultar_ui::widgets::{
     Brick, BrickKind, Button, ButtonVariant, Card, Icon, IconButton, Label, Scroll, Slider, Text,
 };
 
-/// Builds the quick settings.
-pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
-    bars::status(b, root, m, false)?;
+/// Builds the body of the quick settings.
+pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError> {
     let main = Flex::column()
         .padding(Padding::symmetric(Space::S16, Space::S8))
         .gap(Space::S16);
@@ -42,7 +41,7 @@ pub fn build(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiErro
         Sizing::AUTO.with_height(Space::S24.points()),
         Click::Home,
     )?;
-    bars::nav(b, root)
+    Ok(())
 }
 
 /// Time and date at the start, Settings and the power menu at the end.
@@ -217,5 +216,25 @@ fn notes(b: &mut Builder<'_>, parent: NodeId, m: &Mobile) -> Result<(), UiError>
         let close = IconButton::new(IconId::Close, Label::key("mobile.qs.dismiss"));
         b.click(card, close, Sizing::AUTO, Click::Dismiss(n.id))?;
     }
+    Ok(())
+}
+
+/// The power menu over the quick settings: restart, power off, lock now, cancel.
+pub fn power_menu(b: &mut Builder<'_>, root: NodeId) -> Result<(), UiError> {
+    let column = Flex::column().gap(Space::S8);
+    let dialog = ultar_ui::widgets::Dialog::new(Label::key("mobile.power.title")).flex(column);
+    let d = b.add(root, dialog, Sizing::AUTO)?;
+    for (icon, key, click) in [
+        (IconId::Reload, "mobile.power.restart", Click::PowerRestart),
+        (IconId::Power, "mobile.power.off", Click::PowerOff),
+        (IconId::Lock, "mobile.power.lock", Click::LockNow),
+    ] {
+        let item = Button::new(Label::key(key)).icon(icon);
+        b.click(d, item, Sizing::grow(1), click)?;
+    }
+    let cancel = Button::new(Label::key("mobile.power.cancel")).variant(ButtonVariant::Quiet);
+    let cancel = b.click(d, cancel, Sizing::AUTO, Click::PowerCancel)?;
+    b.ui.set_cancel_action(d, Some(cancel))?;
+    b.ui.open_dialog(d)?;
     Ok(())
 }

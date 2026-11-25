@@ -45,4 +45,18 @@ pub enum Click {
     CloseRecent(String),
     /// Recents: close all.
     ClearRecents,
+    /// Power menu: restart.
+    PowerRestart,
+    /// Power menu: power off.
+    PowerOff,
+    /// Power menu: lock the screen now.
+    LockNow,
+    /// Power menu: close it.
+    PowerCancel,
+    /// Sign-in: check the typed password or PIN.
+    Submit,
+    /// Sign-in: password ↔ PIN.
+    Method,
+    /// Sign-in: back to the cover.
+    SignInBack,
 }

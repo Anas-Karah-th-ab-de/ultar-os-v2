@@ -43,11 +43,11 @@ pub(super) fn send(s: &mut Shell) -> Outcome {
     ask(s, &text)
 }
 
-/// "Ask the helper" in the search: on a desktop the sheet opens and shows the steps; a
-/// phone (no sheet yet) reads the answer as a notification.
+/// "Ask the helper" in the search: the sheet opens and shows the steps; while the helper
+/// is still busy the answer comes as a notification.
 pub(super) fn ask_from_search(s: &mut Shell, text: &str) -> Outcome {
     s.d.overview.query.clear();
-    if s.shape.is_compact() || s.d.overview.helper.busy() {
+    if s.d.overview.helper.busy() {
         s.d.open = Open::None;
         return Outcome::effect_and_close(Effect::Service(Call::AskHelper(text.to_owned())));
     }

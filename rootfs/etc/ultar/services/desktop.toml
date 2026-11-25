@@ -1,7 +1,7 @@
-# Desktop shell (ultar-desktop, role ui.shell as user 816): the bar and its
+# Desktop shell (ultar-desktop, role ui.shell as user 816; the phone has its own: mobile.toml): the bar and its
 # sheets, the app grid, the overview, Super+P and the notification banners.
 # Starts apps only through the app launcher (launcher.start).
-editions = ["phone", "desktop"]
+editions = ["desktop"]
 manual = true
 exec = "/usr/bin/ultar-desktop"
 args = [

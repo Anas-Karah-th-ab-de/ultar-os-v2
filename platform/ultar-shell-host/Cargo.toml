@@ -1,0 +1,16 @@
+[package]
+name = "ultar-shell-host"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Compositor side shared by the shells of Ultar OS (platform, area 5): surfaces running widget trees, input, swipes, damaged commits – no view of its own"
+
+[lib]
+name = "ultar_shell_host"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-surface = { path = "../ultar-surface" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }

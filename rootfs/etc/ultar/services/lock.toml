@@ -1,9 +1,9 @@
-# Lock screen (ultar-lock, role ui.lock-screen as user 814): connected for
+# Lock screen of the desktop (ultar-lock, role ui.lock-screen as user 814; the phone: mobile-lock.toml): connected for
 # the whole session; shows itself on SessionLocked and lifts the lock only
 # after auth.verify said yes. "essential": never given up after crashes – a
 # locked session without a lock screen could never be unlocked
 # (docs/COMPOSITOR.md §8a); it stays locked meanwhile (fail closed).
-editions = ["phone", "desktop"]
+editions = ["desktop"]
 manual = true
 exec = "/usr/bin/ultar-lock"
 args = [

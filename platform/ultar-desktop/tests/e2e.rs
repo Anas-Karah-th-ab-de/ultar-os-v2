@@ -131,7 +131,6 @@ impl World {
             bus: Some(self.bus.clone()),
             lang: ultar_i18n::Lang::En,
             light: false,
-            form: Some("desktop".into()),
             bar: None,
         }
     }

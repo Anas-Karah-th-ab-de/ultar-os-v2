@@ -48,6 +48,13 @@ if [ -f "$BIN/ultar-shell" ]; then install -m755 "$BIN/ultar-shell" "$STAGE/usr/
 # Gerätedateien des Arbeitsplatzes (Gruppe seat) und Compositor
 [ -f "$BIN/ultar-devd-seat" ] && install -m755 "$BIN/ultar-devd-seat" "$STAGE/usr/bin/"
 [ -f "$BIN/ultar-compositor" ] && install -m755 "$BIN/ultar-compositor" "$STAGE/usr/bin/"
+# Shells: the phone has its own (ultar-mobile + ultar-mobile-lock), the desktop its own
+# (ultar-desktop, ultar-lock, ultar-sysdialog) – only the edition's go into the image
+if [ "$EDITION" = phone ]; then
+  for p in ultar-mobile ultar-mobile-lock ultar-sysdialog; do [ -f "$BIN/$p" ] && install -m755 "$BIN/$p" "$STAGE/usr/bin/"; done
+else
+  for p in ultar-desktop ultar-lock ultar-sysdialog; do [ -f "$BIN/$p" ] && install -m755 "$BIN/$p" "$STAGE/usr/bin/"; done
+fi
 cp -a rootfs/. "$STAGE/"
 # Entwicklungs-Abbild: ENTWICKLER=1 schaltet den SSH-Zugang ein, ENTWICKLER_SCHLUESSEL=<datei.pub …> erlaubt diese
 # Schlüssel (z. B. ~/.ssh/ultar_dev_ed25519.pub vom PC, tools/entwickler/ultar-dev.sh einrichten)

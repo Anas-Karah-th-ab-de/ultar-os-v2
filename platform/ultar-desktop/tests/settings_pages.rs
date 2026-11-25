@@ -23,7 +23,6 @@ fn area(page: &str) -> &str {
 fn every_page_the_shell_opens_is_an_area_of_settings() {
     let mut pages: Vec<&str> = vec!["wifi", "power", "keyboard", "apps/org.x", "network/vpn"];
     pages.extend(TileId::ALL.iter().map(|t| t.settings_area()));
-    pages.extend(TileId::COMPACT.iter().map(|t| t.settings_area()));
     pages.extend(SETTING_PANELS.iter().map(|p| panel_area(p)));
     for page in pages {
         assert!(

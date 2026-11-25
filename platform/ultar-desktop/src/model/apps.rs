@@ -185,34 +185,6 @@ pub fn default_pinned() -> Vec<String> {
     base_apps().into_iter().map(|a| a.id).collect()
 }
 
-/// The favourites row of the phone's home screen (board CompactHome); apps that are not
-/// installed are left out when it is shown.
-pub fn phone_favourites() -> Vec<String> {
-    ["org.ultar.browser", "org.ultar.store", "org.ultar.phone"]
-        .map(String::from)
-        .to_vec()
-}
-
-/// The apps on the phone's home screen above the favourites (board CompactHome).
-pub fn phone_home() -> Vec<String> {
-    [
-        "org.ultar.files",
-        "org.ultar.editor",
-        "org.ultar.settings",
-        "org.ultar.assistant",
-    ]
-    .map(String::from)
-    .to_vec()
-}
-
-/// The apps of `ids` that are in the catalog, in the order of `ids`.
-pub fn listed(ids: &[String], catalog: &[AppInfo]) -> Vec<AppInfo> {
-    ids.iter()
-        .filter_map(|id| catalog.iter().find(|a| &a.id == id))
-        .cloned()
-        .collect()
-}
-
 /// One tile of the bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BarApp {

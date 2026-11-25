@@ -8,7 +8,6 @@ pub mod banners;
 pub mod bar;
 pub mod bluetooth;
 pub mod calendar;
-pub mod compact;
 pub mod dock;
 pub mod geometry;
 pub mod helper;
@@ -159,14 +158,6 @@ pub enum Target {
     VpnProfile(String),
     /// Quick settings: "VPN settings" (Settings > Network > VPN).
     VpnSettings,
-    /// Phone, all apps: a folder (its number).
-    Folder(u32),
-    /// Phone, all apps: closes the open folder.
-    FolderClose,
-    /// Phone, all apps: the place that takes an app out of the open folder (drop target).
-    FolderOut,
-    /// Phone home screen: the favourites row (drop target).
-    Favourites,
     /// Lock: accessibility menu.
     Access,
     /// Lock: a switch of the accessibility menu (index into `lock::access::SWITCHES`).
@@ -183,10 +174,6 @@ pub enum Target {
     Confirm,
     /// Dialogs: more time for "keep?".
     MoreTime,
-    /// Phone: the gesture bar (home; held: recent apps).
-    Home,
-    /// A sheet's handle or the dimmed part beside it: close the sheet.
-    SheetClose,
     /// Top bar: the menu of the active app.
     AppMenu,
     /// A notification's action button (notification id, action index).

@@ -1,0 +1,19 @@
+# Lock screen of the phone (ultar-mobile-lock, role ui.lock-screen as user 814): connected
+# for the whole session; shows itself on SessionLocked and lifts the lock only after
+# auth.verify said yes and the shared lock state (ultar-lock-core) agreed. "essential":
+# never given up after crashes – a locked session without a lock screen could never be
+# unlocked (docs/COMPOSITOR.md §8a); it stays locked meanwhile (fail closed).
+editions = ["phone"]
+manual = true
+exec = "/usr/bin/ultar-mobile-lock"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/lock.sock",
+]
+user = 814
+after = ["compositor", "authd"]
+restart = "essential"
+
+[cgroup]
+"memory.max" = "64M"
+"pids.max" = "16"

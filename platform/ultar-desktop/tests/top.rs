@@ -32,7 +32,7 @@ fn the_bottom_bar_is_the_standard_and_the_setting_chooses_the_top_bar() {
         second_panel(h.shell.shape),
         Some((Edge::Bottom, 68.0, true))
     );
-    assert!(h.second.is_some() && h.home.is_none());
+    assert!(h.second.is_some());
     assert!(Harness::new(Lang::Ar, ThemeKind::Dark).second.is_none());
 }
 

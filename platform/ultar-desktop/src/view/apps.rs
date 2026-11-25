@@ -133,7 +133,7 @@ pub fn build(
     Ok((view, place))
 }
 
-pub(crate) fn tabs(
+fn tabs(
     view: &mut View,
     card: NodeId,
     d: &Desktop,
@@ -199,18 +199,12 @@ fn section(
 
 /// The context menu of an app cell.
 pub fn menu(d: &Desktop, app: &AppInfo) -> Menu {
-    menu_for(d, app, false)
-}
-
-/// The context menu of an app cell; on a phone the bar is the favourites row.
-pub fn menu_for(d: &Desktop, app: &AppInfo, phone: bool) -> Menu {
     let launcher = d.presence.launcher;
     let gate = |i: MenuItem| if launcher { i } else { i.disabled() };
-    let pin = match (d.pinned.contains(&app.id), phone) {
-        (true, false) => "desk.menu.unpin",
-        (false, false) => "desk.menu.pin",
-        (true, true) => "desk.menu.unfavourite",
-        (false, true) => "desk.menu.favourite",
+    let pin = if d.pinned.contains(&app.id) {
+        "desk.menu.unpin"
+    } else {
+        "desk.menu.pin"
     };
     // Details and removal open the app's page in the Store (`store://app/<id>`, with
     // `?action=remove` its removal dialog: the Store holds the right to uninstall). Apps of

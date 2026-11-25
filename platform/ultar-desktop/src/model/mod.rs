@@ -3,7 +3,6 @@
 //! that the views and the click handling can be tested without a compositor.
 
 pub mod apps;
-pub mod arrange;
 pub mod calendar;
 pub mod helper;
 pub mod mesh;
@@ -15,4 +14,4 @@ pub mod state;
 pub mod time;
 pub mod wifi;
 
-pub use state::{BarPlace, Desktop, Form, Open, QuickPage, Shape};
+pub use state::{BarPlace, Desktop, Open, QuickPage, Shape};

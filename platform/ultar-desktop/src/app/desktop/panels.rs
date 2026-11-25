@@ -1,11 +1,10 @@
-//! The shell's panels by its shape: the bar (bottom), the top bar and the dock, or the
-//! phone's status bar, gesture bar and home screen – opened, rebuilt and replaced when
-//! the shape changes.
+//! The shell's panels by its shape: the bar (bottom), or the top bar and the dock –
+//! opened, rebuilt and replaced when the shape changes.
 
 use super::{screen, DesktopApp};
 use crate::app::AppError;
 use crate::model::Shape;
-use crate::shell::{bar_panel, build_bar, build_home, build_second, second_panel, Outcome};
+use crate::shell::{bar_panel, build_bar, build_second, second_panel, Outcome};
 use ultar_surface::client::WindowConfig;
 use ultar_surface::proto::{Request, Role, SurfaceId};
 use ultar_ui::geom::Size;
@@ -22,12 +21,12 @@ pub(super) fn bar_config(shape: Shape) -> WindowConfig {
 }
 
 impl DesktopApp {
-    /// A panel besides the bar (the dock, the gesture bar, the home screen).
+    /// A panel besides the bar (the dock).
     pub(super) fn is_panel(&self, id: SurfaceId) -> bool {
-        self.second == Some(id) || self.home == Some(id)
+        self.second == Some(id)
     }
 
-    /// Opens the second panel and the home screen of the shape.
+    /// Opens the second panel of the shape.
     pub(super) fn open_side_panels(&mut self) -> Result<(), AppError> {
         let area = screen(&self.host);
         if let Some((edge, thickness, translucent)) = second_panel(self.shell.shape) {
@@ -40,26 +39,18 @@ impl DesktopApp {
                 self.second = Some(self.host.open(&config, view, None)?);
             }
         }
-        if let Some(view) = build_home(&self.shell, self.look, area)? {
-            let config = WindowConfig::with_role(Role::Background, "", false);
-            self.home = Some(self.host.open(&config, view, None)?);
-        }
-        // Phone mode of the compositor: app windows without title bars over the work area,
-        // the edge gestures for the shell (mobile.home, back).
-        let on = self.shell.shape.is_compact();
-        self.host.client.send(&Request::SetPhoneMode { on })?;
+        // The desktop never uses the compositor's phone mode (app windows without title
+        // bars, edge gestures): that is the phone shell's (`ultar-mobile`).
+        self.host
+            .client
+            .send(&Request::SetPhoneMode { on: false })?;
         Ok(())
     }
 
-    /// Builds the second panel and the home screen again.
+    /// Builds the second panel again.
     pub(super) fn rebuild_side_panels(&mut self, area: Size) -> Result<(), AppError> {
         if let Some(id) = self.second {
             if let Some(view) = build_second(&self.shell, self.look, area.w)? {
-                self.host.replace(id, view, None);
-            }
-        }
-        if let Some(id) = self.home {
-            if let Some(view) = build_home(&self.shell, self.look, area)? {
                 self.host.replace(id, view, None);
             }
         }
@@ -80,10 +71,7 @@ impl DesktopApp {
         self.shell.d.open = crate::model::Open::None;
         let popup = self.popup.take().map(|p| p.id);
         let banners = self.banners.take().map(|b| b.0);
-        for id in [popup, banners, self.second.take(), self.home.take()]
-            .into_iter()
-            .flatten()
-        {
+        for id in [popup, banners, self.second.take()].into_iter().flatten() {
             self.host.close(id)?;
         }
         self.host.close(self.bar)?;

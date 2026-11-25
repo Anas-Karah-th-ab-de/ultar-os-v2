@@ -52,6 +52,9 @@ Plan, Regeln und Fahrplan: [docs/PLAN.md](docs/PLAN.md).
 | `system/core/ultar-driverpkg` | Treiberpaket `.utr`, Signaturprüfung, Depot, Zuordnung Gerät → Treiber (Werkzeug `udrv`) |
 | `system/core/ultar-devd` | Treiberwahl zur Laufzeit: probieren, prüfen, Rückfall, Quarantäne, merken |
 | `tools/ultar-check` | Regelprüfung des Repositories (Bereiche, Hardwarepfade, Texte, Größe, `unsafe` …) |
+| `platform/ultar-mobile` | eigene Handy-Oberfläche und Handy-Sperrbildschirm, getrennt vom Desktop ([docs/MOBILE.md](docs/MOBILE.md)) |
+| `platform/ultar-shell-host` | Compositor-Anbindung für beide Oberflächen (Flächen, Eingabe, Wischen) – ohne eigene Ansicht |
+| `platform/ultar-lock-core` | Zustand der Sperre für alle Geräte: wer entsperren darf, Wartezeit nach Fehlversuchen |
 
 ## Bauen und prüfen
 

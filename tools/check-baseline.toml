@@ -1125,11 +1125,6 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "platform/ultar-desktop/src/app/desktop/mod.rs"
-count = 1
-
-[[entry]]
-rule = "size"
 path = "platform/ultar-desktop/src/view/bluetooth.rs"
 count = 1
 

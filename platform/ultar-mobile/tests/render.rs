@@ -99,3 +99,73 @@ fn german_builds_too() {
         check(&mut a, Lang::De, ThemeKind::Dark, &name);
     }
 }
+
+/// The phone lock program's screens: cover without camera and emergency, sign-in plain, with
+/// a wrong password, while waiting and with PIN – in both languages.
+#[test]
+fn the_lock_program_screens() {
+    use ultar_bus::messages::auth::Method;
+    use ultar_lock_core::{LockState, SignInError, Stage};
+    use ultar_mobile::view::{build_lock, lock::Cover};
+    let user = anas();
+    let apps = ultar_mobile::model::apps::system_apps();
+    let mut problems = Vec::new();
+    for lang in [Lang::Ar, Lang::En] {
+        let states = [
+            ("cover", Stage::Cover, None, 0, Method::Password),
+            ("signin", Stage::SignIn, None, 0, Method::Password),
+            (
+                "wrong",
+                Stage::SignIn,
+                Some(SignInError::Wrong),
+                0,
+                Method::Password,
+            ),
+            (
+                "wait",
+                Stage::SignIn,
+                Some(SignInError::Wrong),
+                5_000,
+                Method::Password,
+            ),
+            ("pin", Stage::SignIn, None, 0, Method::Pin),
+        ];
+        for (name, stage, error, retry, method) in states {
+            let state = LockState {
+                stage,
+                error,
+                retry_until_ms: retry,
+                method,
+                user: Some(user.clone()),
+                ..LockState::default()
+            };
+            let cover = Cover {
+                now: ultar_mobile::model::time::LocalTime::at(SAMPLE_MS, 0),
+                counts: vec![("org.ultar.phone".into(), 2)],
+                torch: None,
+                apps: &apps,
+                camera: false,
+                emergency: false,
+            };
+            let m = sample(true);
+            let mut a = app(lang, ThemeKind::Dark, m.clone());
+            let built = build_lock(a.ui(), &state, &cover, &m, 0).unwrap();
+            let shown = built.password.is_some();
+            assert_eq!(shown, stage == Stage::SignIn, "{name}");
+            let label = format!("lockprog-{name}-{lang:?}").to_lowercase();
+            dump(&mut a, &label);
+            check_into(&mut a, lang, ThemeKind::Dark, &label, &mut problems);
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// The account of the lock screen tests (with a PIN).
+fn anas() -> ultar_bus::messages::auth::UserInfo {
+    ultar_bus::messages::auth::UserInfo {
+        name: "anas".into(),
+        display_name: "أنس".into(),
+        has_pin: true,
+        admin: true,
+    }
+}

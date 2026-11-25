@@ -32,8 +32,6 @@ pub enum TileId {
     PowerMode,
     /// Mesh (component).
     Mesh,
-    /// Mobile data on/off (+ SIM choice); phones only, with a modem.
-    Mobile,
 }
 
 impl TileId {
@@ -51,16 +49,6 @@ impl TileId {
         TileId::Mesh,
     ];
 
-    /// The tiles of the phone's quick settings in board order (CompactQuick).
-    pub const COMPACT: [TileId; 6] = [
-        TileId::Wifi,
-        TileId::Mobile,
-        TileId::Bluetooth,
-        TileId::Airplane,
-        TileId::NightLight,
-        TileId::Dnd,
-    ];
-
     /// Icon (ICONS.md).
     pub fn icon(self) -> IconId {
         match self {
@@ -74,7 +62,6 @@ impl TileId {
             TileId::Dnd => IconId::BellOff,
             TileId::PowerMode => IconId::Battery,
             TileId::Mesh => IconId::Mesh,
-            TileId::Mobile => IconId::Cell,
         }
     }
 
@@ -91,7 +78,6 @@ impl TileId {
             TileId::Dnd => "desk.qs.dnd",
             TileId::PowerMode => "desk.qs.power_mode",
             TileId::Mesh => "desk.qs.mesh",
-            TileId::Mobile => "desk.qs.mobile",
         }
     }
 
@@ -99,12 +85,7 @@ impl TileId {
     pub fn has_list(self) -> bool {
         matches!(
             self,
-            TileId::Wifi
-                | TileId::Bluetooth
-                | TileId::Vpn
-                | TileId::PowerMode
-                | TileId::Mesh
-                | TileId::Mobile
+            TileId::Wifi | TileId::Bluetooth | TileId::Vpn | TileId::PowerMode | TileId::Mesh
         )
     }
 
@@ -120,7 +101,6 @@ impl TileId {
             TileId::Dnd => "notifications",
             TileId::PowerMode => "power",
             TileId::Mesh => "mesh",
-            TileId::Mobile => "cellular",
         }
     }
 
@@ -209,8 +189,6 @@ pub struct Presence {
     /// The shell is on the bus (calls without a state topic, such as the screenshot, are
     /// tried; a failure says so).
     pub bus: bool,
-    /// Modem present (`None` = not known yet).
-    pub modem: Option<bool>,
 }
 
 /// Values of the settings-backed tiles and sliders.
@@ -254,7 +232,6 @@ fn service_tile(id: TileId, presence: &Presence, svc: &Services) -> Option<Tile>
         TileId::Wifi => presence.wifi,
         TileId::Bluetooth => presence.bluetooth,
         TileId::Mesh => Some(presence.mesh),
-        TileId::Mobile => presence.modem,
         _ => None,
     };
     if hardware == Some(false) {
@@ -457,7 +434,7 @@ fn setting_tile(id: TileId, presence: &Presence, v: &QuickValues) -> Tile {
     }
 }
 
-/// One tile as [`tiles`] and [`compact_tiles`] show it (`None`: its hardware is absent).
+/// One tile as [`tiles`] shows it (`None`: its hardware is absent).
 pub fn tile_of(
     id: TileId,
     presence: &Presence,
@@ -468,17 +445,6 @@ pub fn tile_of(
         Some(_) => Some(setting_tile(id, presence, values)),
         None => service_tile(id, presence, svc),
     }
-}
-
-/// The phone's tiles (board CompactQuick), by hardware and services like [`tiles`].
-pub fn compact_tiles(presence: &Presence, values: &QuickValues, svc: &Services) -> Vec<Tile> {
-    TileId::COMPACT
-        .into_iter()
-        .filter_map(|id| match id.setting() {
-            Some(_) => Some(setting_tile(id, presence, values)),
-            None => service_tile(id, presence, svc),
-        })
-        .collect()
 }
 
 /// The tiles shown, in board order.
@@ -529,18 +495,6 @@ mod tests {
         assert_eq!(PowerMode::parse("saver"), Some(PowerMode::Saver));
         assert_eq!(PowerMode::parse("x"), None);
         assert!(TileId::ALL.iter().all(|t| !t.name_key().is_empty()));
-        let phone = compact_tiles(&p, &v, &none);
-        assert_eq!(phone.len(), 6);
-        assert_eq!(phone[1].id, TileId::Mobile);
-        assert!(TileId::Mobile.has_list() && TileId::Mobile.setting().is_none());
-        let no_modem = Presence {
-            modem: Some(false),
-            ..p
-        };
-        assert!(!compact_tiles(&no_modem, &v, &none)
-            .iter()
-            .any(|t| t.id == TileId::Mobile));
-        assert!(!all.iter().any(|t| t.id == TileId::Mobile), "desktop: none");
     }
 
     #[test]
