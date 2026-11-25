@@ -120,11 +120,6 @@ pub struct Services {
     pub bluetooth: Option<BluetoothState>,
     /// `volumes.state`: mounted drives (at most [`MAX_DRIVES`]); `None`: no service.
     pub drives: Option<Vec<Mounted>>,
-    /// Ids of the drives in the last report (to spot a newly plugged-in one).
-    pub seen_drives: Option<Vec<String>>,
-    /// Drives that appeared since the shell last looked (`apps.removable_media` reacts to
-    /// them); a first report after start is not an insertion. The shell drains this.
-    pub media_inserted: Vec<Mounted>,
     /// `media.state` (`None`: nothing plays or no service).
     pub media: Option<NowPlaying>,
     /// The appointments of the day the calendar shows: ((year, month, day), events); `None`:
@@ -148,17 +143,8 @@ pub struct Services {
 }
 
 impl Services {
-    /// Keeps `drives`, at most [`MAX_DRIVES`], and notes which ones appeared since the last
-    /// report (a first report is not an insertion: those drives were already there).
+    /// Keeps `drives`, at most [`MAX_DRIVES`].
     pub fn set_drives(&mut self, mut drives: Vec<Mounted>) {
-        if let Some(seen) = &self.seen_drives {
-            for d in &drives {
-                if !seen.contains(&d.id) && !self.media_inserted.iter().any(|m| m.id == d.id) {
-                    self.media_inserted.push(d.clone());
-                }
-            }
-        }
-        self.seen_drives = Some(drives.iter().map(|d| d.id.clone()).collect());
         drives.truncate(MAX_DRIVES);
         self.drives = Some(drives);
     }

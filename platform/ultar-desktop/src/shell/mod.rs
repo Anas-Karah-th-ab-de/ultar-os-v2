@@ -160,6 +160,9 @@ pub struct Shell {
     pub shape: Shape,
     /// The display mode chosen last (where Super+P starts).
     pub projection: usize,
+    /// The drive ids last seen in `volumes.state` (`None` until the first report): a new id
+    /// is a drive plugged in, which `apps.removable_media` reacts to.
+    pub media_seen: Option<Vec<String>>,
 }
 
 impl std::fmt::Debug for Shell {
@@ -181,6 +184,7 @@ impl Shell {
             user: user.to_owned(),
             shape: Shape::default(),
             projection: 0,
+            media_seen: None,
         }
     }
 

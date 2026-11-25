@@ -234,11 +234,7 @@ impl DesktopApp {
                 })?;
             }
         }
-        // A drive with media was plugged in: apps.removable_media decides what happens.
-        let media = self.shell.media_inserted();
-        if media.bar || media.popup || !media.effects.is_empty() {
-            self.apply(media)?;
-        }
+        self.react_media()?;
         if keys
             .iter()
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")
@@ -265,6 +261,15 @@ impl DesktopApp {
                 self.look.theme = self.shell.d.theme;
             }
             self.rebuild(Outcome::surfaces())?;
+        }
+        Ok(())
+    }
+
+    /// A drive with media was plugged in: `apps.removable_media` decides what happens.
+    fn react_media(&mut self) -> Result<(), AppError> {
+        let media = self.shell.media_inserted();
+        if media.bar || media.popup || !media.effects.is_empty() {
+            self.apply(media)?;
         }
         Ok(())
     }

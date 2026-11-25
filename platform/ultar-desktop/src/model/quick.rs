@@ -4,6 +4,7 @@
 //! know about yet counts as present. A tile whose service is missing is shown disabled with
 //! the reason as its state line – never a click without effect.
 
+pub use super::media::RemovableMedia;
 use super::services::Services;
 use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::net::NetState;
@@ -176,29 +177,6 @@ impl PowerMode {
             PowerMode::Performance => PowerMode::Balanced,
             PowerMode::Balanced => PowerMode::Saver,
             PowerMode::Saver => PowerMode::Performance,
-        }
-    }
-}
-
-/// What happens when a drive with media is plugged in (`apps.removable_media`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum RemovableMedia {
-    /// Ask the person (a notice with an "Open" button).
-    #[default]
-    Ask,
-    /// Open the drive in Files at once.
-    OpenFiles,
-    /// Do nothing.
-    Nothing,
-}
-
-impl RemovableMedia {
-    /// From the setting's value; an unknown word keeps the default (ask).
-    pub fn parse(word: &str) -> RemovableMedia {
-        match word {
-            "open_files" => RemovableMedia::OpenFiles,
-            "nothing" => RemovableMedia::Nothing,
-            _ => RemovableMedia::Ask,
         }
     }
 }

@@ -5,16 +5,27 @@ use super::bar::FILES;
 use super::{Effect, Opening, Outcome, Shell};
 use crate::model::quick::RemovableMedia;
 
-/// Reacts to the drives that appeared since the last look and drains them. A first report
-/// after start is not an insertion (the volume service marks those, `Services::set_drives`).
+/// Reacts to the drives that appeared since the last look. A first report after start is
+/// not an insertion (those drives were already there); the shell remembers the ids it saw.
 pub(super) fn inserted(s: &mut Shell) -> Outcome {
-    let drives = std::mem::take(&mut s.d.svc.media_inserted);
-    if drives.is_empty() {
+    let Some(drives) = s.d.svc.drives.clone() else {
+        return Outcome::none();
+    };
+    let fresh: Vec<_> = match &s.media_seen {
+        None => Vec::new(),
+        Some(seen) => drives
+            .iter()
+            .filter(|d| !seen.contains(&d.id))
+            .cloned()
+            .collect(),
+    };
+    s.media_seen = Some(drives.iter().map(|d| d.id.clone()).collect());
+    if fresh.is_empty() {
         return Outcome::none();
     }
     let now = s.clock.now_ms();
     let mut out = Outcome::surfaces();
-    for drive in drives {
+    for drive in fresh {
         match s.d.values.removable_media {
             RemovableMedia::Ask => s.d.notes.post_media(&drive.name, &drive.uri, now),
             RemovableMedia::OpenFiles => out.effects.push(Effect::Launch {
@@ -63,6 +74,7 @@ mod tests {
         let mut s = shell();
         s.d.values.removable_media = RemovableMedia::OpenFiles;
         s.d.svc.set_drives(vec![]);
+        assert!(inserted(&mut s).effects.is_empty());
         s.d.svc.set_drives(vec![drive("sdb1")]);
         let out = inserted(&mut s);
         assert_eq!(
@@ -72,13 +84,15 @@ mod tests {
                 open: Opening::uri("file:///media/sdb1"),
             }]
         );
-        assert!(s.d.svc.media_inserted.is_empty());
+        // looked at again: nothing new
+        assert!(inserted(&mut s).effects.is_empty());
     }
 
     #[test]
     fn ask_posts_a_notice_with_an_open_button() {
         let mut s = shell();
         s.d.svc.set_drives(vec![]);
+        assert!(inserted(&mut s).effects.is_empty());
         s.d.svc.set_drives(vec![drive("sdb1")]);
         let out = inserted(&mut s);
         assert!(out.effects.is_empty());
