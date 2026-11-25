@@ -1,5 +1,7 @@
 //! Per-process page tables of the GT (PPGTT): the address space a context's batches and buffers
 //! live in. Four levels of 512 entries map 48-bit addresses to 4 KiB pages, like the CPU's.
+//! Memory that is contiguous over an aligned 2 MiB gets one entry of the third level instead of
+//! 512 page entries: the GT needs far fewer translations for large buffers.
 //! A range can also be mapped to *nothing* ("null": writes vanish, reads give zero); such a range
 //! uses one entry per 1 GiB or 2 MiB where it is aligned, so gigabytes cost a handful of entries.
 //! Entry encoding follows `xe_vm.c` (`xelp_pte_encode_*`) and `regs/xe_gtt_defs.h` of the Linux
@@ -35,10 +37,36 @@ const PAT2: u64 = 1 << 7;
 /// Index of write-back with the GT coherent to the CPU's caches.
 pub const PAT_WB_COHERENT: u8 = 3;
 
+/// Bit 2 of the cache attribute index in an entry that maps 2 MiB itself.
+const PAT2_HUGE: u64 = 1 << 12;
+/// Pages one 2 MiB entry maps.
+const HUGE_PAGES: usize = 512;
+
 /// The bits of a page entry (4 KiB) for cache attribute index `pat` (`xelp_pte_encode_pat`).
 fn pat_bits(pat: u8) -> u64 {
     let bit = |n: u8, b: u64| if pat & (1 << n) != 0 { b } else { 0 };
     bit(0, PAT0) | bit(1, PAT1) | bit(2, PAT2)
+}
+
+/// The same for an entry that maps 2 MiB (bit 2 of the index sits elsewhere there).
+fn pat_bits_huge(pat: u8) -> u64 {
+    let low = pat_bits(pat) & (PAT0 | PAT1);
+    low | if pat & 4 != 0 { PAT2_HUGE } else { 0 }
+}
+
+/// The 4 KiB entries that together map what the 2 MiB entry `entry` maps.
+fn split_huge(entry: u64, k: u64) -> u64 {
+    let base = entry & ADDR & !(span(1) - 1);
+    let pat = (entry & (PAT0 | PAT1)) | if entry & PAT2_HUGE != 0 { PAT2 } else { 0 };
+    (base + k * PAGE) | PRESENT | RW | pat
+}
+
+/// Whether `phys[i..]` starts 512 pages that are contiguous and aligned to 2 MiB, at an address
+/// `at` that is aligned as well.
+fn huge_run(phys: &[u64], i: usize, at: u64) -> bool {
+    let big = span(1);
+    let Some(run) = phys.get(i..i + HUGE_PAGES) else { return false };
+    at % big == 0 && run[0] % big == 0 && run.iter().enumerate().all(|(k, p)| *p == run[0] + k as u64 * PAGE)
 }
 
 /// Access to the pages that hold the tables.
@@ -162,11 +190,22 @@ impl Ppgtt {
         if self.mapped_in(mem, self.root, 3, va, va + phys.len() as u64 * PAGE) {
             return Err(Error::Invalid("PPGTT range already mapped"));
         }
-        for (i, p) in phys.iter().enumerate() {
+        let mut i = 0;
+        while i < phys.len() {
             let at = va + i as u64 * PAGE;
-            if let Some(leaf) = self.leaf(mem, at, true)? {
-                mem.write(leaf, index(at, 0), p | PRESENT | RW | pat_bits(pat));
+            if huge_run(phys, i, at) {
+                let mut table = self.root;
+                for level in [3, 2] {
+                    table = self.child(mem, table, index(at, level))?;
+                }
+                mem.write(table, index(at, 1), phys[i] | PRESENT | RW | HUGE | pat_bits_huge(pat));
+                i += HUGE_PAGES;
+                continue;
             }
+            if let Some(leaf) = self.leaf(mem, at, true)? {
+                mem.write(leaf, index(at, 0), phys[i] | PRESENT | RW | pat_bits(pat));
+            }
+            i += 1;
         }
         Ok(())
     }
@@ -235,9 +274,13 @@ impl Ppgtt {
                 continue;
             }
             let next = if entry & HUGE != 0 {
+                // a 2 MiB or 1 GiB entry partly removed: first the same as a table of smaller ones
                 let next = mem.alloc().ok_or(Error::Invalid("no memory for a page table"))?;
                 self.pages.push(next);
-                (0..512).for_each(|k| mem.write(next, k, null_entry(level - 1)));
+                for k in 0..512 {
+                    let small = if entry & NULL != 0 { null_entry(level - 1) } else { split_huge(entry, k) };
+                    mem.write(next, k as usize, small);
+                }
                 mem.write(table, i, next | ENTRY_FLAGS);
                 next
             } else {
@@ -269,9 +312,22 @@ impl Ppgtt {
         if va >= ADDRESS_SPACE {
             return None;
         }
-        let leaf = self.leaf(mem, va, false).ok()??;
-        let entry = mem.read(leaf, index(va, 0));
-        (entry & PRESENT != 0 && entry & NULL == 0).then_some(entry & ADDR)
+        let mut table = self.root;
+        for level in (0..=3).rev() {
+            let entry = mem.read(table, index(va, level));
+            if entry & PRESENT == 0 || entry & NULL != 0 {
+                return None;
+            }
+            if level == 0 {
+                return Some(entry & ADDR);
+            }
+            if entry & HUGE != 0 {
+                let base = entry & ADDR & !(span(level) - 1);
+                return Some(base + (va & (span(level) - 1) & !(PAGE - 1)));
+            }
+            table = entry & ADDR;
+        }
+        None
     }
 }
 

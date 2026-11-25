@@ -335,7 +335,7 @@ impl Backend for Gpu {
     type Buffer = Arc<crate::memfd::MemObj>;
 
     fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno> {
-        let obj = if write_combining { crate::memfd::MemObj::new_write_combining() } else { crate::memfd::MemObj::new(false) };
+        let obj = crate::memfd::MemObj::new_gpu(write_combining);
         obj.set_size(size).map_err(|_| Errno::NoMem)?;
         Ok(Arc::new(obj))
     }
