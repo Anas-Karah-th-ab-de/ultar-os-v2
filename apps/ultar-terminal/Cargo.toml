@@ -19,6 +19,7 @@ ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
 ultar-surface = { path = "../../platform/ultar-surface" }
 ultar-textview = { path = "../../platform/ultar-textview" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
+ultar-brand = { path = "../../system/core/ultar-brand" }
 
 [dev-dependencies]
 ultar-ui = { path = "../../platform/ultar-ui" }

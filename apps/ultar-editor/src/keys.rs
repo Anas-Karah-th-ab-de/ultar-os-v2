@@ -27,134 +27,98 @@ pub enum Effect {
 
 /// Applies `key` to `doc`; `rtl` tells whether the caret's line runs right to left.
 pub fn apply(doc: &mut Doc, key: Key, m: Modifiers, rtl: bool) -> Effect {
-    let b = &mut doc.buffer;
-    let shift = m.shift;
     let effect = if m.ctrl && !m.alt {
-        match key {
-            Key::Char(c) => match c.to_ascii_lowercase() {
-                's' => return Effect::Save,
-                'n' => return Effect::New,
-                'a' => {
-                    b.select_all();
-                    Effect::Moved
-                }
-                'z' if shift => changed(b.redo()),
-                'z' => changed(b.undo()),
-                'y' => changed(b.redo()),
-                'c' => return copy(b.selected_text()),
-                'x' => {
-                    let text = b.selected_text();
-                    if text.is_empty() {
-                        return Effect::None;
-                    }
-                    b.backspace();
-                    doc.reindex();
-                    return Effect::Copy(text);
-                }
-                'v' => return Effect::Paste,
-                'd' => {
-                    b.duplicate_line();
-                    Effect::Changed
-                }
-                _ => Effect::None,
-            },
-            Key::Home => {
-                b.anchor = if shift {
-                    b.anchor.or(Some(b.cur))
-                } else {
-                    None
-                };
-                b.cur = 0;
-                Effect::Moved
-            }
-            Key::End => {
-                b.anchor = if shift {
-                    b.anchor.or(Some(b.cur))
-                } else {
-                    None
-                };
-                b.cur = b.text.len();
-                Effect::Moved
-            }
-            _ => Effect::None,
-        }
+        ctrl_key(doc, key, m.shift)
     } else if m.alt || m.meta {
         Effect::None
     } else {
-        match key {
-            Key::Char(c) => {
-                b.insert(c.encode_utf8(&mut [0; 4]));
-                Effect::Changed
-            }
-            Key::Space => {
-                b.insert(" ");
-                Effect::Changed
-            }
-            Key::Enter => {
-                b.newline(INDENT);
-                Effect::Changed
-            }
-            Key::Tab if shift => {
-                b.indent(INDENT, true);
-                Effect::Changed
-            }
-            Key::Tab => {
-                if b.selection().is_some() {
-                    b.indent(INDENT, false);
-                } else {
-                    b.insert(INDENT);
-                }
-                Effect::Changed
-            }
-            Key::Backspace => {
-                b.backspace();
-                Effect::Changed
-            }
-            Key::Delete => {
-                b.delete();
-                Effect::Changed
-            }
-            Key::ArrowLeft => {
-                if rtl {
-                    b.right(shift)
-                } else {
-                    b.left(shift)
-                }
-                Effect::Moved
-            }
-            Key::ArrowRight => {
-                if rtl {
-                    b.left(shift)
-                } else {
-                    b.right(shift)
-                }
-                Effect::Moved
-            }
-            Key::ArrowUp => {
-                b.up(shift);
-                Effect::Moved
-            }
-            Key::ArrowDown => {
-                b.down(shift);
-                Effect::Moved
-            }
-            Key::Home => {
-                b.home(shift);
-                Effect::Moved
-            }
-            Key::End => {
-                b.end(shift);
-                Effect::Moved
-            }
-            Key::PageUp => return Effect::Page(false),
-            Key::PageDown => return Effect::Page(true),
-            _ => Effect::None,
-        }
+        plain_key(doc, key, m.shift, rtl)
     };
     if effect == Effect::Changed {
         doc.reindex();
     }
     effect
+}
+
+/// Ctrl with a key: save, new, select all, undo/redo, clipboard, start and end of the text.
+fn ctrl_key(doc: &mut Doc, key: Key, shift: bool) -> Effect {
+    let b = &mut doc.buffer;
+    match key {
+        Key::Char(c) => match c.to_ascii_lowercase() {
+            's' => Effect::Save,
+            'n' => Effect::New,
+            'a' => {
+                b.select_all();
+                Effect::Moved
+            }
+            'z' if shift => changed(b.redo()),
+            'z' => changed(b.undo()),
+            'y' => changed(b.redo()),
+            'c' => copy(b.selected_text()),
+            'x' => {
+                let text = b.selected_text();
+                if text.is_empty() {
+                    return Effect::None;
+                }
+                b.backspace();
+                doc.reindex();
+                Effect::Copy(text)
+            }
+            'v' => Effect::Paste,
+            'd' => {
+                b.duplicate_line();
+                Effect::Changed
+            }
+            _ => Effect::None,
+        },
+        Key::Home | Key::End => {
+            b.anchor = if shift {
+                b.anchor.or(Some(b.cur))
+            } else {
+                None
+            };
+            b.cur = if key == Key::Home { 0 } else { b.text.len() };
+            Effect::Moved
+        }
+        _ => Effect::None,
+    }
+}
+
+/// A key without Ctrl: typing, deleting, moving.
+fn plain_key(doc: &mut Doc, key: Key, shift: bool, rtl: bool) -> Effect {
+    let b = &mut doc.buffer;
+    match key {
+        Key::Char(c) => b.insert(c.encode_utf8(&mut [0; 4])),
+        Key::Space => b.insert(" "),
+        Key::Enter => b.newline(INDENT),
+        Key::Tab if shift => b.indent(INDENT, true),
+        Key::Tab if b.selection().is_some() => b.indent(INDENT, false),
+        Key::Tab => b.insert(INDENT),
+        Key::Backspace => b.backspace(),
+        Key::Delete => b.delete(),
+        Key::PageUp => return Effect::Page(false),
+        Key::PageDown => return Effect::Page(true),
+        _ => return move_caret(doc, key, shift, rtl),
+    }
+    Effect::Changed
+}
+
+/// Arrows, Home and End. The arrows are physical: on a right-to-left line the left arrow
+/// moves on in the text.
+fn move_caret(doc: &mut Doc, key: Key, shift: bool, rtl: bool) -> Effect {
+    let b = &mut doc.buffer;
+    let on = |b: &mut ultar_office::code::Buffer| b.right(shift); // physical: the buffer's "next"
+    let back = |b: &mut ultar_office::code::Buffer| b.left(shift); // physical: the buffer's "previous"
+    match (key, rtl) {
+        (Key::ArrowLeft, true) | (Key::ArrowRight, false) => on(b), // physical arrow keys
+        (Key::ArrowLeft, false) | (Key::ArrowRight, true) => back(b), // physical arrow keys
+        (Key::ArrowUp, _) => b.up(shift),
+        (Key::ArrowDown, _) => b.down(shift),
+        (Key::Home, _) => b.home(shift),
+        (Key::End, _) => b.end(shift),
+        _ => return Effect::None,
+    }
+    Effect::Moved
 }
 
 fn changed(did: bool) -> Effect {

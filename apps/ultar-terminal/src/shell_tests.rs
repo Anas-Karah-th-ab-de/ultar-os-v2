@@ -30,10 +30,12 @@ fn words_keep_quotes_and_escapes() {
 
 #[test]
 fn arabic_and_english_names_are_the_same_command() {
-    assert_eq!(builtin("اعرض"), Some(Builtin::Ls));
-    assert_eq!(builtin("LS"), Some(Builtin::Ls));
-    assert_eq!(builtin("انتقل"), builtin("cd"));
-    assert_eq!(builtin("nothing"), None);
+    let names = Names::load();
+    assert_eq!(names.find("اعرض"), Some(Builtin::Ls));
+    assert_eq!(names.find("LS"), Some(Builtin::Ls));
+    assert_eq!(names.find("انتقل"), names.find("cd"));
+    assert_eq!(names.find("خروج"), Some(Builtin::Exit));
+    assert_eq!(names.find("nothing"), None);
 }
 
 #[test]

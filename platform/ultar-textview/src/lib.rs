@@ -139,7 +139,8 @@ impl TextView {
 
     /// Height of one line in device pixels.
     pub fn line_height(&mut self) -> f32 {
-        let probe = self.layout("Ag عربي", Direction::Ltr);
+        // Latin capitals and descenders with Arabic letters: the tallest line of either script
+        let probe = self.layout("Ag \u{639}\u{631}\u{628}\u{64A}", Direction::Ltr);
         probe.height.max(1.0).ceil()
     }
 
@@ -189,7 +190,7 @@ impl TextView {
     }
 
     /// Where the text of `line` starts (left edge of its layout) in a column.
-    fn line_left(layout: &TextLayout, column: (f32, f32)) -> f32 {
+    fn line_origin(layout: &TextLayout, column: (f32, f32)) -> f32 {
         if layout.rtl {
             column.1 - layout.width
         } else {
@@ -208,84 +209,36 @@ impl TextView {
         let mut canvas = Canvas::new(width.max(1), height.max(1), PixelFormat::Bgrx8)
             .map_err(|e| ViewError(format!("{e:?}")))?;
         let total = source.lines();
-        let line_h = self.line_height();
-        let rows = self.rows(height);
-        let column = self.column(width, total);
-        let gutter = self.gutter(total);
-        let s = self.env.scale;
-        let top_pad = PAD * s;
-        let selection = marks
-            .selection
-            .map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
-        let last = (self.first + rows + 1).min(total);
-        let mut lines = Vec::with_capacity(last.saturating_sub(self.first));
+        let g = Geometry {
+            column: self.column(width, total),
+            gutter: self.gutter(total),
+            width: width as f32,
+            height: height as f32,
+            line_h: self.line_height(),
+            scale: self.env.scale,
+            rtl: self.env.direction == Direction::Rtl,
+        };
+        let last = (self.first + self.rows(height) + 1).min(total);
+        let mut rows = Vec::with_capacity(last.saturating_sub(self.first));
         for i in self.first..last {
             let text = source.line(i);
             let dir = direction_of(text, self.env.direction);
-            lines.push((i, self.layout(text, dir)));
+            let number = self
+                .numbers
+                .then(|| self.layout(&(i + 1).to_string(), Direction::Ltr));
+            rows.push(Row {
+                line: i,
+                layout: self.layout(text, dir),
+                number,
+            });
         }
-        let numbers: Vec<Rc<TextLayout>> = if self.numbers {
-            (self.first..last)
-                .map(|i| self.layout(&(i + 1).to_string(), Direction::Ltr))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let env = self.env;
-        let mut p = Painter::new(&mut canvas, &mut self.resources, env);
-        let ground = p.color(ColorRole::Surface);
-        p.clear(ground);
-        let pt = |px: f32| px / s;
-        if gutter > 0.0 {
-            let gx = if env.direction == Direction::Rtl {
-                width as f32 - gutter
-            } else {
-                0.0
-            };
-            let bar = p.color(ColorRole::Raised);
-            p.fill(
-                Rect::new(pt(gx), 0.0, pt(gutter), pt(height as f32)),
-                None,
-                bar,
-            );
-        }
-        let text_color = p.color(ColorRole::Text);
-        let muted = p.color(ColorRole::TextMuted);
-        let accent = p.color(ColorRole::Accent);
-        let select = accent.with_alpha(0.30);
-        for (row, (i, layout)) in lines.iter().enumerate() {
-            let top = top_pad + row as f32 * line_h;
-            let left = Self::line_left(layout, column);
-            if let Some((a, b)) = selection {
-                if let Some((x0, x1)) = selected_span(layout, *i, a, b, column) {
-                    p.fill(
-                        Rect::new(pt(x0), pt(top), pt(x1 - x0), pt(line_h)),
-                        None,
-                        select,
-                    );
-                }
-            }
-            let rect = Rect::new(pt(left), pt(top), pt(layout.width + 2.0), pt(line_h));
-            p.text(layout, rect, TextAlign::Start, text_color);
-            if let Some(n) = numbers.get(row) {
-                let nx = if env.direction == Direction::Rtl {
-                    width as f32 - gutter + PAD * s
-                } else {
-                    gutter - PAD * s - n.width
-                };
-                p.text(
-                    n,
-                    Rect::new(pt(nx), pt(top), pt(n.width + 2.0), pt(line_h)),
-                    TextAlign::Start,
-                    muted,
-                );
-            }
-            if let Some(caret) = marks.caret.filter(|c| c.line == *i) {
-                let x = left + layout.caret_x(caret.byte.min(layout.text.len()));
-                p.fill(Rect::new(pt(x), pt(top), CARET_W, pt(line_h)), None, accent);
+        {
+            let mut p = Painter::new(&mut canvas, &mut self.resources, self.env);
+            g.ground(&mut p);
+            for (n, row) in rows.iter().enumerate() {
+                g.row(&mut p, n, row, marks);
             }
         }
-        drop(p);
         canvas.take_damage();
         Ok(canvas)
     }
@@ -300,8 +253,8 @@ impl TextView {
         let dir = direction_of(text, self.env.direction);
         let layout = self.layout(text, dir);
         let column = self.column(width, total);
-        let left = Self::line_left(&layout, column);
-        let byte = layout.index_at_x(x - left).min(text.len());
+        let origin = Self::line_origin(&layout, column);
+        let byte = layout.index_at_x(x - origin).min(text.len());
         Pos::new(line, byte)
     }
 
@@ -313,6 +266,100 @@ impl TextView {
     /// The colour of the view's ground (for the part a picture does not cover).
     pub fn ground(&self) -> Color {
         self.env.palette().get(ColorRole::Surface)
+    }
+}
+
+/// One visible line, shaped.
+struct Row {
+    line: usize,
+    layout: Rc<TextLayout>,
+    number: Option<Rc<TextLayout>>,
+}
+
+/// Where things go in one frame (pixels).
+struct Geometry {
+    column: (f32, f32),
+    gutter: f32,
+    width: f32,
+    height: f32,
+    line_h: f32,
+    scale: f32,
+    rtl: bool,
+}
+
+impl Geometry {
+    fn pt(&self, px: f32) -> f32 {
+        px / self.scale
+    }
+
+    /// The ground and the band of the line numbers.
+    fn ground(&self, p: &mut Painter<'_>) {
+        let ground = p.color(ColorRole::Surface);
+        p.clear(ground);
+        if self.gutter > 0.0 {
+            let gx = if self.rtl {
+                self.width - self.gutter
+            } else {
+                0.0
+            };
+            let band = p.color(ColorRole::Raised);
+            let rect = Rect::new(self.pt(gx), 0.0, self.pt(self.gutter), self.pt(self.height));
+            p.fill(rect, None, band);
+        }
+    }
+
+    /// Selection, text, line number and caret of the `n`-th visible row.
+    fn row(&self, p: &mut Painter<'_>, n: usize, row: &Row, marks: &Marks) {
+        let top = PAD * self.scale + n as f32 * self.line_h;
+        let layout = &row.layout;
+        let origin = TextView::line_origin(layout, self.column);
+        let selection = marks
+            .selection
+            .map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
+        if let Some((a, b)) = selection {
+            if let Some((x0, x1)) = selected_span(layout, row.line, a, b, self.column) {
+                let select = p.color(ColorRole::Accent).with_alpha(0.30);
+                let rect = Rect::new(
+                    self.pt(x0),
+                    self.pt(top),
+                    self.pt(x1 - x0),
+                    self.pt(self.line_h),
+                );
+                p.fill(rect, None, select);
+            }
+        }
+        let text = p.color(ColorRole::Text);
+        let rect = Rect::new(
+            self.pt(origin),
+            self.pt(top),
+            self.pt(layout.width + 2.0),
+            self.pt(self.line_h),
+        );
+        p.text(layout, rect, TextAlign::Start, text);
+        if let Some(number) = &row.number {
+            let nx = if self.rtl {
+                self.width - self.gutter + PAD * self.scale
+            } else {
+                self.gutter - PAD * self.scale - number.width
+            };
+            let muted = p.color(ColorRole::TextMuted);
+            let rect = Rect::new(
+                self.pt(nx),
+                self.pt(top),
+                self.pt(number.width + 2.0),
+                self.pt(self.line_h),
+            );
+            p.text(number, rect, TextAlign::Start, muted);
+        }
+        if let Some(caret) = marks.caret.filter(|c| c.line == row.line) {
+            let x = origin + layout.caret_x(caret.byte.min(layout.text.len()));
+            let accent = p.color(ColorRole::Accent);
+            p.fill(
+                Rect::new(self.pt(x), self.pt(top), CARET_W, self.pt(self.line_h)),
+                None,
+                accent,
+            );
+        }
     }
 }
 
@@ -336,11 +383,11 @@ fn selected_span(
     if i < a.line || i > b.line {
         return None;
     }
-    let left = TextView::line_left(layout, column);
+    let origin = TextView::line_origin(layout, column);
     let len = layout.text.len();
     let start = if i == a.line { a.byte.min(len) } else { 0 };
     let end = if i == b.line { b.byte.min(len) } else { len };
-    let (mut x0, mut x1) = (left + layout.caret_x(start), left + layout.caret_x(end));
+    let (mut x0, mut x1) = (origin + layout.caret_x(start), origin + layout.caret_x(end));
     if x0 > x1 {
         std::mem::swap(&mut x0, &mut x1);
     }

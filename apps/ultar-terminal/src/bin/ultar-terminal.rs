@@ -81,7 +81,8 @@ fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
     Some(o)
 }
 
-fn run(o: Options) -> Result<(), String> {
+/// The window and the terminal in it.
+fn open(o: Options) -> Result<(UiWindow, Terminal), String> {
     let socket = o.compositor.ok_or("compositor")?;
     let theme = if o.light {
         ThemeKind::Light
@@ -89,58 +90,60 @@ fn run(o: Options) -> Result<(), String> {
         ThemeKind::Dark
     };
     let env = PaintEnv::new(o.lang, theme);
+    let tr = ultar_terminal::i18n::translator;
     let ui = || {
-        Ui::new(
-            env,
-            InputMode::Pointer,
-            Size::new(1.0, 1.0),
-            ultar_terminal::i18n::translator(o.lang),
-        )
-        .map_err(|e| e.to_string())
+        Ui::new(env, InputMode::Pointer, Size::new(1.0, 1.0), tr(o.lang)).map_err(|e| e.to_string())
     };
-    let title = ultar_terminal::i18n::translator(o.lang)
-        .t("app.terminal.name")
-        .into_owned();
+    let title = tr(o.lang).t("app.terminal.name").into_owned();
     let client = Client::connect(&socket, APP_ID).map_err(|e| e.to_string())?;
-    let mut window =
-        UiWindow::new(client, &WindowConfig::toplevel(&title), ui()?).map_err(|e| e.to_string())?;
+    let config = WindowConfig::toplevel(&title);
+    let mut window = UiWindow::new(client, &config, ui()?).map_err(|e| e.to_string())?;
     window.set_shortcuts(Some(shortcut));
     let tree = std::mem::replace(window.ui_mut(), ui()?);
     let mut term = Terminal::new(tree, o.home).map_err(|e| e.to_string())?;
     std::mem::swap(window.ui_mut(), &mut term.ui);
-    let mut size = Size::new(0.0, 0.0);
-    loop {
-        let actions = window.dispatch(Some(POLL)).map_err(|e| e.to_string())?;
-        if window.window().close_requested() {
-            return Ok(());
-        }
-        let keys = window.take_unhandled_keys();
-        let pointer = window.take_pointer_events();
-        std::mem::swap(window.ui_mut(), &mut term.ui);
-        let result = (|| {
-            if term.ui.size() != size {
-                size = term.ui.size();
-                term.rebuild()?;
-            }
-            term.actions(actions)?;
-            for e in pointer {
-                term.pointer(e)?;
-            }
-            for k in keys {
-                term.key(k)?;
-            }
-            term.poll()?;
-            Ok::<(), ultar_ui::ui::UiError>(())
-        })();
-        RUNNING.store(term.busy(), Ordering::Relaxed);
-        let closed = term.closed();
-        std::mem::swap(window.ui_mut(), &mut term.ui);
-        result.map_err(|e| format!("{e:?}"))?;
-        if closed {
-            return Ok(());
-        }
-        window.draw().map_err(|e| e.to_string())?;
+    Ok((window, term))
+}
+
+/// One event and the program's output; `false` when the window closes.
+fn turn(window: &mut UiWindow, term: &mut Terminal, size: &mut Size) -> Result<bool, String> {
+    let actions = window.dispatch(Some(POLL)).map_err(|e| e.to_string())?;
+    if window.window().close_requested() {
+        return Ok(false);
     }
+    let keys = window.take_unhandled_keys();
+    let pointer = window.take_pointer_events();
+    std::mem::swap(window.ui_mut(), &mut term.ui);
+    let result = (|| {
+        if term.ui.size() != *size {
+            *size = term.ui.size();
+            term.rebuild()?;
+        }
+        term.actions(actions)?;
+        for e in pointer {
+            term.pointer(e)?;
+        }
+        for k in keys {
+            term.key(k)?;
+        }
+        term.poll()?;
+        Ok::<(), ultar_ui::ui::UiError>(())
+    })();
+    RUNNING.store(term.busy(), Ordering::Relaxed);
+    std::mem::swap(window.ui_mut(), &mut term.ui);
+    result.map_err(|e| format!("{e:?}"))?;
+    if term.closed() {
+        return Ok(false);
+    }
+    window.draw().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+fn run(o: Options) -> Result<(), String> {
+    let (mut window, mut term) = open(o)?;
+    let mut size = Size::new(0.0, 0.0);
+    while turn(&mut window, &mut term, &mut size)? {}
+    Ok(())
 }
 
 fn main() -> ExitCode {

@@ -32,34 +32,51 @@ pub enum Builtin {
     Exit,
 }
 
-/// Each built-in with its Arabic and English names.
+/// Each built-in with the catalog key of its Arabic name (`locales/ar.ftl`) and its English name.
 const NAMES: [(&str, &str, Builtin); 17] = [
-    ("مساعدة", "help", Builtin::Help),
-    ("اعرض", "ls", Builtin::Ls),
-    ("انتقل", "cd", Builtin::Cd),
-    ("أين", "pwd", Builtin::Pwd),
-    ("اقرأ", "cat", Builtin::Cat),
-    ("اطبع", "echo", Builtin::Echo),
-    ("أنشئ", "mkdir", Builtin::Mkdir),
-    ("احذف", "rm", Builtin::Rm),
-    ("انسخ", "cp", Builtin::Cp),
-    ("انقل", "mv", Builtin::Mv),
-    ("امسح", "clear", Builtin::Clear),
-    ("التاريخ", "date", Builtin::Date),
-    ("من", "whoami", Builtin::Whoami),
-    ("النظام", "uname", Builtin::Uname),
-    ("السجل", "history", Builtin::History),
-    ("بيئة", "env", Builtin::Env),
-    ("خروج", "exit", Builtin::Exit),
+    ("term.cmd.help", "help", Builtin::Help),
+    ("term.cmd.ls", "ls", Builtin::Ls),
+    ("term.cmd.cd", "cd", Builtin::Cd),
+    ("term.cmd.pwd", "pwd", Builtin::Pwd),
+    ("term.cmd.cat", "cat", Builtin::Cat),
+    ("term.cmd.echo", "echo", Builtin::Echo),
+    ("term.cmd.mkdir", "mkdir", Builtin::Mkdir),
+    ("term.cmd.rm", "rm", Builtin::Rm),
+    ("term.cmd.cp", "cp", Builtin::Cp),
+    ("term.cmd.mv", "mv", Builtin::Mv),
+    ("term.cmd.clear", "clear", Builtin::Clear),
+    ("term.cmd.date", "date", Builtin::Date),
+    ("term.cmd.whoami", "whoami", Builtin::Whoami),
+    ("term.cmd.uname", "uname", Builtin::Uname),
+    ("term.cmd.history", "history", Builtin::History),
+    ("term.cmd.env", "env", Builtin::Env),
+    ("term.cmd.exit", "exit", Builtin::Exit),
 ];
 
-/// The built-in called `name` (Arabic or English; English in any case).
-pub fn builtin(name: &str) -> Option<Builtin> {
-    let lower = name.to_lowercase();
-    NAMES
-        .iter()
-        .find(|(ar, en, _)| *ar == name || *en == lower)
-        .map(|(_, _, b)| *b)
+/// The names of the built-ins: Arabic (from the Arabic catalog, whatever the language of the
+/// interface) and English.
+pub struct Names(Vec<(String, Builtin)>);
+
+impl Names {
+    /// The names of every built-in.
+    pub fn load() -> Names {
+        let ar = crate::i18n::translator(ultar_i18n::Lang::Ar);
+        let mut all = Vec::with_capacity(NAMES.len() * 2);
+        for (key, en, b) in NAMES {
+            all.push((ar.t(key).into_owned(), b));
+            all.push((en.to_owned(), b));
+        }
+        Names(all)
+    }
+
+    /// The built-in called `name` (Arabic, or English in any case).
+    pub fn find(&self, name: &str) -> Option<Builtin> {
+        let lower = name.to_lowercase();
+        self.0
+            .iter()
+            .find(|(n, _)| *n == name || *n == lower)
+            .map(|(_, b)| *b)
+    }
 }
 
 /// Splits a command line into words: spaces separate, "…" and '…' keep spaces, a backslash
@@ -123,6 +140,7 @@ pub struct Shell {
     pub history: Vec<String>,
     /// Where programs are looked for.
     pub path: Vec<PathBuf>,
+    names: Names,
 }
 
 impl Shell {
@@ -139,6 +157,7 @@ impl Shell {
             home,
             history: Vec::new(),
             path,
+            names: Names::load(),
         }
     }
 
@@ -194,7 +213,7 @@ impl Shell {
         let Some((name, args)) = words.split_first() else {
             return Next::Done;
         };
-        match builtin(name) {
+        match self.names.find(name) {
             Some(b) => self.builtin(b, args, tr, out),
             None => match self.find(name) {
                 Some(program) => Next::Program(program, args.to_vec()),
@@ -229,159 +248,16 @@ impl Shell {
         tr: &Translator,
         out: &mut Vec<String>,
     ) -> Next {
-        let say = |key: &str, path: &Path| {
-            tr.t_args(key, &[("path", Arg::Str(&path.display().to_string()))])
-        };
         match b {
-            Builtin::Help => {
-                for key in [
-                    "term.help.title",
-                    "term.help.ls",
-                    "term.help.cd",
-                    "term.help.pwd",
-                    "term.help.cat",
-                    "term.help.echo",
-                    "term.help.mkdir",
-                    "term.help.rm",
-                    "term.help.cp",
-                    "term.help.mv",
-                    "term.help.clear",
-                    "term.help.date",
-                    "term.help.whoami",
-                    "term.help.uname",
-                    "term.help.history",
-                    "term.help.env",
-                    "term.help.exit",
-                    "term.help.programs",
-                ] {
-                    out.push(tr.t(key).into_owned());
-                }
-            }
-            Builtin::Ls => {
-                let dir = args
-                    .first()
-                    .map_or_else(|| self.cwd.clone(), |a| self.resolve(a));
-                match std::fs::read_dir(&dir) {
-                    Ok(entries) => {
-                        let mut names: Vec<String> = entries
-                            .filter_map(Result::ok)
-                            .map(|e| {
-                                let name = e.file_name().to_string_lossy().into_owned();
-                                if e.file_type().is_ok_and(|t| t.is_dir()) {
-                                    format!("{name}/")
-                                } else {
-                                    name
-                                }
-                            })
-                            .collect();
-                        names.sort_by_key(|n| n.to_lowercase());
-                        if names.is_empty() {
-                            out.push(tr.t("term.empty").into_owned());
-                        }
-                        out.extend(names);
-                    }
-                    Err(e) => out.push(io_message(tr, &dir, &e)),
-                }
-            }
-            Builtin::Cd => {
-                let to = args
-                    .first()
-                    .map_or_else(|| self.home.clone(), |a| self.resolve(a));
-                match std::fs::metadata(&to) {
-                    Ok(m) if m.is_dir() => self.cwd = to,
-                    Ok(_) => out.push(say("term.not_dir", &to)),
-                    Err(e) => out.push(io_message(tr, &to, &e)),
-                }
-            }
+            Builtin::Help => out.extend(HELP.iter().map(|k| tr.t(k).into_owned())),
+            Builtin::Ls => self.ls(args, tr, out),
+            Builtin::Cd => self.cd(args, tr, out),
             Builtin::Pwd => out.push(self.cwd.display().to_string()),
-            Builtin::Cat => {
-                if args.is_empty() {
-                    out.push(usage(tr, "cat <file>"));
-                }
-                for a in args {
-                    let p = self.resolve(a);
-                    match std::fs::read(&p) {
-                        Ok(bytes) if bytes.iter().take(4096).any(|b| *b == 0) => {
-                            out.push(say("term.binary", &p))
-                        }
-                        Ok(bytes) => out.extend(
-                            String::from_utf8_lossy(&bytes)
-                                .lines()
-                                .take(MAX_CAT_LINES)
-                                .map(str::to_owned),
-                        ),
-                        Err(e) => out.push(io_message(tr, &p, &e)),
-                    }
-                }
-            }
+            Builtin::Cat => self.cat(args, tr, out),
             Builtin::Echo => out.push(args.join(" ")),
-            Builtin::Mkdir => {
-                if args.is_empty() {
-                    out.push(usage(tr, "mkdir <folder>"));
-                }
-                for a in args {
-                    let p = self.resolve(a);
-                    if let Err(e) = std::fs::create_dir(&p) {
-                        out.push(io_message(tr, &p, &e));
-                    }
-                }
-            }
-            Builtin::Rm => {
-                let recursive = args.iter().any(|a| a == "-r" || a == "-rf");
-                let paths: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
-                if paths.is_empty() {
-                    out.push(usage(tr, "rm [-r] <path>"));
-                }
-                for a in paths {
-                    let p = self.resolve(a);
-                    let is_dir = std::fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir());
-                    let done = match (is_dir, recursive) {
-                        (true, false) => {
-                            out.push(say("term.is_dir", &p));
-                            continue;
-                        }
-                        (true, true) => std::fs::remove_dir_all(&p),
-                        (false, _) => std::fs::remove_file(&p),
-                    };
-                    if let Err(e) = done {
-                        out.push(io_message(tr, &p, &e));
-                    }
-                }
-            }
-            Builtin::Cp | Builtin::Mv => {
-                let [from, to] = args else {
-                    out.push(usage(
-                        tr,
-                        if b == Builtin::Cp {
-                            "cp <from> <to>"
-                        } else {
-                            "mv <from> <to>"
-                        },
-                    ));
-                    return Next::Done;
-                };
-                let (from, mut to) = (self.resolve(from), self.resolve(to));
-                if to.is_dir() {
-                    if let Some(name) = from.file_name() {
-                        to = to.join(name);
-                    }
-                }
-                let done = if b == Builtin::Cp {
-                    copy_tree(&from, &to)
-                } else {
-                    // a folder may only move by copy and delete (the kernel answers EXDEV)
-                    std::fs::rename(&from, &to).or_else(|e| {
-                        if e.raw_os_error() == Some(18) {
-                            copy_tree(&from, &to).and_then(|()| remove_tree(&from))
-                        } else {
-                            Err(e)
-                        }
-                    })
-                };
-                if let Err(e) = done {
-                    out.push(io_message(tr, &from, &e));
-                }
-            }
+            Builtin::Mkdir => self.mkdir(args, tr, out),
+            Builtin::Rm => self.rm(args, tr, out),
+            Builtin::Cp | Builtin::Mv => self.copy_or_move(b == Builtin::Mv, args, tr, out),
             Builtin::Clear => return Next::Clear,
             Builtin::Date => out.push(utc_now()),
             Builtin::Whoami => out.push(
@@ -406,6 +282,160 @@ impl Shell {
         }
         Next::Done
     }
+
+    fn ls(&self, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        let dir = args
+            .first()
+            .map_or_else(|| self.cwd.clone(), |a| self.resolve(a));
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(e) => return out.push(io_message(tr, &dir, &e)),
+        };
+        let mut names: Vec<String> = entries
+            .filter_map(Result::ok)
+            .map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
+                    format!("{name}/")
+                } else {
+                    name
+                }
+            })
+            .collect();
+        names.sort_by_key(|n| n.to_lowercase());
+        if names.is_empty() {
+            out.push(tr.t("term.empty").into_owned());
+        }
+        out.extend(names);
+    }
+
+    fn cd(&mut self, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        let to = args
+            .first()
+            .map_or_else(|| self.home.clone(), |a| self.resolve(a));
+        match std::fs::metadata(&to) {
+            Ok(m) if m.is_dir() => self.cwd = to,
+            Ok(_) => out.push(say(tr, "term.not_dir", &to)),
+            Err(e) => out.push(io_message(tr, &to, &e)),
+        }
+    }
+
+    fn cat(&self, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        if args.is_empty() {
+            out.push(usage(tr, "cat <file>"));
+        }
+        for a in args {
+            let p = self.resolve(a);
+            match std::fs::read(&p) {
+                Ok(bytes) if bytes.iter().take(4096).any(|b| *b == 0) => {
+                    out.push(say(tr, "term.binary", &p))
+                }
+                Ok(bytes) => out.extend(
+                    String::from_utf8_lossy(&bytes)
+                        .lines()
+                        .take(MAX_CAT_LINES)
+                        .map(str::to_owned),
+                ),
+                Err(e) => out.push(io_message(tr, &p, &e)),
+            }
+        }
+    }
+
+    fn mkdir(&self, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        if args.is_empty() {
+            out.push(usage(tr, "mkdir <folder>"));
+        }
+        for a in args {
+            let p = self.resolve(a);
+            if let Err(e) = std::fs::create_dir(&p) {
+                out.push(io_message(tr, &p, &e));
+            }
+        }
+    }
+
+    fn rm(&self, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        let recursive = args.iter().any(|a| a == "-r" || a == "-rf");
+        let paths: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
+        if paths.is_empty() {
+            out.push(usage(tr, "rm [-r] <path>"));
+        }
+        for a in paths {
+            let p = self.resolve(a);
+            let is_dir = std::fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir());
+            let done = match (is_dir, recursive) {
+                (true, false) => {
+                    out.push(say(tr, "term.is_dir", &p));
+                    continue;
+                }
+                (true, true) => std::fs::remove_dir_all(&p),
+                (false, _) => std::fs::remove_file(&p),
+            };
+            if let Err(e) = done {
+                out.push(io_message(tr, &p, &e));
+            }
+        }
+    }
+
+    fn copy_or_move(&self, moving: bool, args: &[String], tr: &Translator, out: &mut Vec<String>) {
+        let [from, to] = args else {
+            let shown = if moving {
+                "mv <from> <to>"
+            } else {
+                "cp <from> <to>"
+            };
+            return out.push(usage(tr, shown));
+        };
+        let (from, mut to) = (self.resolve(from), self.resolve(to));
+        if to.is_dir() {
+            if let Some(name) = from.file_name() {
+                to = to.join(name);
+            }
+        }
+        let done = if moving {
+            // a folder may only move by copy and delete (the kernel answers EXDEV)
+            std::fs::rename(&from, &to).or_else(|e| {
+                if e.raw_os_error() == Some(EXDEV) {
+                    copy_tree(&from, &to).and_then(|()| remove_tree(&from))
+                } else {
+                    Err(e)
+                }
+            })
+        } else {
+            copy_tree(&from, &to)
+        };
+        if let Err(e) = done {
+            out.push(io_message(tr, &from, &e));
+        }
+    }
+}
+
+/// `rename` across file systems (and of a folder on the Ultar kernel).
+const EXDEV: i32 = 18;
+
+/// The lines of `help`.
+const HELP: [&str; 18] = [
+    "term.help.title",
+    "term.help.ls",
+    "term.help.cd",
+    "term.help.pwd",
+    "term.help.cat",
+    "term.help.echo",
+    "term.help.mkdir",
+    "term.help.rm",
+    "term.help.cp",
+    "term.help.mv",
+    "term.help.clear",
+    "term.help.date",
+    "term.help.whoami",
+    "term.help.uname",
+    "term.help.history",
+    "term.help.env",
+    "term.help.exit",
+    "term.help.programs",
+];
+
+fn say(tr: &Translator, key: &str, path: &Path) -> String {
+    tr.t_args(key, &[("path", Arg::Str(&path.display().to_string()))])
 }
 
 fn usage(tr: &Translator, usage: &str) -> String {
@@ -474,7 +504,7 @@ fn os_name() -> String {
                 .find_map(|l| l.strip_prefix("PRETTY_NAME="))
                 .map(|v| v.trim_matches('"').to_owned())
         })
-        .unwrap_or_else(|| "Ultar OS".into())
+        .unwrap_or_else(|| ultar_brand::PRODUCT.into())
 }
 
 /// The time now as `YYYY-MM-DD HH:MM:SS UTC`.

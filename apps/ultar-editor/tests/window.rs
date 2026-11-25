@@ -17,7 +17,7 @@ fn areas(name: &str) -> PathBuf {
     d
 }
 
-fn editor(uri: Option<&str>, areas: &PathBuf) -> Editor {
+fn editor(uri: Option<&str>, areas: &std::path::Path) -> Editor {
     let ui = Ui::new(
         PaintEnv::new(Lang::Ar, ThemeKind::Dark),
         InputMode::Pointer,
@@ -27,7 +27,7 @@ fn editor(uri: Option<&str>, areas: &PathBuf) -> Editor {
     .unwrap();
     let (doc, failed) = Editor::open(uri, areas);
     assert_eq!(failed, None);
-    Editor::new(ui, doc, areas.clone()).unwrap()
+    Editor::new(ui, doc, areas.to_path_buf()).unwrap()
 }
 
 fn key(e: &mut Editor, key: Key, ctrl: bool) {
