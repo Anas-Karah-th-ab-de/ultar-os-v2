@@ -58,6 +58,14 @@ pub const WIRED: &[(&str, &str)] = &[
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
+    // displayd passes the keyboard helpers and the compose key to the compositor too
+    // (`Request::ConfigureKeyHelpers`): sticky, slow, bounce and mouse keys and the compose
+    // key in the compositor's key input path.
+    ("accessibility.sticky_keys", "compositor"),
+    ("accessibility.slow_keys", "compositor"),
+    ("accessibility.bounce_keys", "compositor"),
+    ("accessibility.mouse_keys", "compositor"),
+    ("keyboard.compose_key", "compositor"),
     // The shell (bar, sheets, lock screen) and this window follow these.
     ("accessibility.large_text", "shell"),
     ("accessibility.high_contrast", "shell"),
@@ -113,7 +121,14 @@ mod tests {
         assert!(!takes_effect("pointer", "pointer.touchpad.tap_to_click"));
         assert!(!takes_effect("pointer", "pointer.touchpad.natural_scroll"));
         assert!(takes_effect("keyboard", "keyboard.repeat.delay_ms"));
-        assert!(!takes_effect("keyboard", "keyboard.compose_key"));
+        assert!(takes_effect("keyboard", "keyboard.compose_key"));
+        // The keyboard helpers reach the compositor's key input path.
+        assert!(takes_effect("accessibility", "accessibility.sticky_keys"));
+        assert!(takes_effect("accessibility", "accessibility.slow_keys"));
+        assert!(takes_effect("accessibility", "accessibility.bounce_keys"));
+        assert!(takes_effect("accessibility", "accessibility.mouse_keys"));
+        // dwell_click still waits for a pointer helper that is not built yet.
+        assert!(!takes_effect("accessibility", "accessibility.dwell_click"));
         assert!(takes_effect("search", "search.source.apps"));
         assert!(takes_effect("search", "search.source.characters"));
         assert!(takes_effect("search", "search.history"));
