@@ -48,7 +48,7 @@ pub trait Backend {
 }
 
 const PAGE: u64 = 4096;
-const MAX_BUFFER_BYTES: u64 = 1 << 30;
+const MAX_BUFFER_BYTES: u64 = 1 << 32;
 const MAX_BUFFERS: usize = 4096;
 const MAX_VMS: usize = 16;
 const MAX_QUEUES: usize = 64;

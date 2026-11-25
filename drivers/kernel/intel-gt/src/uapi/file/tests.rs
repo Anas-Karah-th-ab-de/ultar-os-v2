@@ -185,7 +185,7 @@ fn bad_buffer_requests_are_refused() {
     let (mut f, mut be) = (File::<Fake>::default(), Fake::default());
     assert_eq!(create(&mut f, &mut be, 0), Err(Errno::Inval));
     assert_eq!(create(&mut f, &mut be, 100), Err(Errno::Inval));
-    assert_eq!(create(&mut f, &mut be, 2 << 30), Err(Errno::Inval));
+    assert_eq!(create(&mut f, &mut be, 8 << 30), Err(Errno::Inval));
     let mut arg = [0u8; 56];
     put64(&mut arg, 8, 4096);
     put32(&mut arg, 16, 2); // a region that does not exist

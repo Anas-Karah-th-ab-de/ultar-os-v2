@@ -54,6 +54,7 @@ mod proc;
 mod procfs;
 mod rawpart;
 mod shell;
+mod bigfile;
 mod selftest;
 mod signal;
 mod slab;

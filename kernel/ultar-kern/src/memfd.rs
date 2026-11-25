@@ -32,6 +32,11 @@ pub const MFD_ALLOW_SEALING: u64 = 2;
 /// Largest object (the same bound as a file of the RAM layer).
 pub const MAX_BYTES: u64 = 1 << 32;
 
+/// Reads the content of `pages` pages from page `first` on (`None`: the read failed).
+pub type Reader = alloc::boxed::Box<dyn Fn(u64, usize) -> Option<Vec<u8>> + Send + Sync>;
+/// Pages a [`Reader`] is asked for at once (4 MiB).
+const READ_AHEAD: usize = 1024;
+
 /// A page of an object that has no memory yet.
 const HOLE: u64 = 0;
 
@@ -41,6 +46,8 @@ const HOLE: u64 = 0;
 pub struct MemObj {
     /// One entry per page of the size: the page's address, or [`HOLE`].
     pages: Mutex<Vec<u64>>,
+    /// Where the content of a hole comes from (a file on a disk); `None`: holes are zero.
+    source: Option<Reader>,
     size: AtomicU64,
     seals: AtomicU32,
     /// Mappings of the object in any address space; `writable_maps`: those with write access.
@@ -53,11 +60,31 @@ impl MemObj {
     pub fn new(sealing: bool) -> MemObj {
         MemObj {
             pages: Mutex::new(Vec::new()),
+            source: None,
             size: AtomicU64::new(0),
             seals: AtomicU32::new(if sealing { 0 } else { SEAL_SEAL }),
             maps: AtomicU64::new(0),
             writable_maps: AtomicU64::new(0),
         }
+    }
+
+    /// A read-only object of `size` bytes whose pages come from `source` when they are first
+    /// read or mapped (a large file of a disk). `None`: no memory for the page list.
+    pub fn from_source(size: u64, source: Reader) -> Option<MemObj> {
+        let mut pages = Vec::new();
+        let n = size.div_ceil(4096) as usize;
+        if pages.try_reserve_exact(n).is_err() {
+            return None;
+        }
+        pages.resize(n, HOLE);
+        Some(MemObj {
+            pages: Mutex::new(pages),
+            source: Some(source),
+            size: AtomicU64::new(size),
+            seals: AtomicU32::new(SEALS_ALL),
+            maps: AtomicU64::new(0),
+            writable_maps: AtomicU64::new(0),
+        })
     }
 
     pub fn size(&self) -> u64 {
@@ -73,12 +100,33 @@ impl MemObj {
         self.pages.lock().iter().filter(|p| **p != HOLE).count() as u64
     }
 
-    /// Gives every hole in `pages[first..first + n]` a zeroed page (charged to the caller's
-    /// group). `false`: memory is out; the pages filled so far stay.
-    fn fill(pages: &mut [u64], first: usize, n: usize) -> bool {
-        for slot in pages[first..first + n].iter_mut().filter(|p| **p == HOLE) {
-            let Some(p) = crate::mem::alloc_page() else { return false };
-            *slot = p;
+    /// Gives every hole in `pages[first..first + n]` a page (charged to the caller's group):
+    /// zeroed, or with what the source reads. `false`: memory is out or the read failed; the
+    /// pages filled so far stay.
+    fn fill(&self, pages: &mut [u64], first: usize, n: usize) -> bool {
+        let Some(read) = &self.source else {
+            for slot in pages[first..first + n].iter_mut().filter(|p| **p == HOLE) {
+                let Some(p) = crate::mem::alloc_page() else { return false };
+                *slot = p;
+            }
+            return true;
+        };
+        let (mut i, end) = (first, first + n);
+        while i < end {
+            if pages[i] != HOLE {
+                i += 1;
+                continue;
+            }
+            // a run of holes, read at once
+            let stop = (i..end.min(i + READ_AHEAD)).find(|k| pages[*k] != HOLE).unwrap_or(end.min(i + READ_AHEAD));
+            let Some(data) = read(i as u64, stop - i).filter(|d| d.len() >= (stop - i) * 4096) else { return false };
+            for (k, chunk) in (i..stop).zip(data.chunks_exact(4096)) {
+                let Some(p) = crate::mem::alloc_page() else { return false };
+                // SAFETY: `p` is a fresh page (identity-mapped); `chunk` is 4096 bytes.
+                unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), p as *mut u8, 4096) };
+                pages[k] = p;
+            }
+            i = stop;
         }
         true
     }
@@ -147,7 +195,12 @@ impl MemObj {
         if pos >= end || !crate::mem::try_reserve(&mut out, (end - pos) as usize) {
             return out;
         }
-        let pages = self.pages.lock();
+        let mut pages = self.pages.lock();
+        if self.source.is_some() {
+            // what a disk file holds is read now; a failed read leaves the rest as it reads: zero
+            let (first, last) = ((pos / 4096) as usize, (end.div_ceil(4096) as usize).min(pages.len()));
+            let _ = first < last && self.fill(&mut pages, first, last - first);
+        }
         let mut at = pos;
         while at < end {
             let (page, off) = ((at / 4096) as usize, at % 4096);
@@ -176,7 +229,7 @@ impl MemObj {
         }
         let mut pages = self.pages.lock();
         let (first, last) = ((pos / 4096) as usize, (end.div_ceil(4096) as usize).min(pages.len()));
-        if first < last && !Self::fill(&mut pages, first, last - first) {
+        if first < last && !self.fill(&mut pages, first, last - first) {
             return Err(-ENOMEM);
         }
         let mut done = 0usize;
@@ -199,7 +252,7 @@ impl MemObj {
         let mut pages = self.pages.lock();
         let first = ((off / 4096) as usize).min(pages.len());
         let n = ((len / 4096) as usize).min(pages.len() - first);
-        if !Self::fill(&mut pages, first, n) {
+        if !self.fill(&mut pages, first, n) {
             return None;
         }
         let slice = &pages[first..first + n];

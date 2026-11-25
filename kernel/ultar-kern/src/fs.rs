@@ -660,7 +660,17 @@ fn ext4_target(path: &str) -> Option<(usize, String)> {
     }
 }
 
-fn with_ext4<R>(i: usize, f: impl FnOnce(&crate::ext4::Ext4) -> R) -> Option<R> {
+/// The ext4 mount (also a read-only one) that holds `path`, and the path inside it.
+pub(crate) fn ext4_at(path: &str) -> Option<(usize, String)> {
+    if tmpfs::is_private(path) || ["/dev", "/proc", "/tmp", "/run", "/sys"].iter().any(|d| path == *d || path.starts_with(&alloc::format!("{d}/"))) {
+        return None;
+    }
+    let m = MOUNTS.lock();
+    let (i, (p, mnt)) = m.iter().enumerate().filter(|(_, (p, _))| p == "/" || path == p || path.starts_with(&alloc::format!("{p}/"))).max_by_key(|(_, (p, _))| p.len())?;
+    matches!(mnt, Mnt::Ext4(..)).then(|| (i, String::from(&path[p.len().min(path.len())..])))
+}
+
+pub(crate) fn with_ext4<R>(i: usize, f: impl FnOnce(&crate::ext4::Ext4) -> R) -> Option<R> {
     let m = MOUNTS.lock();
     match &m.get(i)?.1 {
         Mnt::Ext4(x, _) => Some(f(x)),

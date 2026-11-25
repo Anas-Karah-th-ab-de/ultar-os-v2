@@ -56,7 +56,7 @@ if command -v gcc >/dev/null && gcc -O2 -Wall -Wextra -static -o out/igpu-bin/dr
 else
   echo "dritest not built (gcc or static libc missing) - the render node is only checked from inside the kernel"
 fi
-LIMIT=240 bash tools/kern-test/igpu-passthrough.sh out/ultar-kern-intel.efi $BINDIR 2>&1 | tail -200
+LIMIT="${LIMIT:-240}" bash tools/kern-test/igpu-passthrough.sh out/ultar-kern-intel.efi $BINDIR 2>&1 | tail -200
 echo "=== after"
 echo "driver after: $(basename "$(readlink -f $DEV/driver)")"
 dmesg | tail -40 | grep -iE "i915|vfio|drm" | tail -15
