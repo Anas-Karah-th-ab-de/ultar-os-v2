@@ -399,6 +399,7 @@ impl Canvas {
         }
         sc
     }
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     fn cursor(&mut self, x: i32, y: i32) {
         // Pfeil 12×19 aus Zeilenbreiten
         const B: [i32; 17] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 7, 7, 4, 4, 3, 2];

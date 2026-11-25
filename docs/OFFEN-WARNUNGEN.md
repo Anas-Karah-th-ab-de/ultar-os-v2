@@ -32,9 +32,30 @@ Dazu sechs Stellen, die nur die laufende Hülle benutzt und der Testbau nicht (`
 `Codec::enable_mic`, `StubCodec`, `Ctl::has`, `Ctl::set_frac`, `Mixer::each`, `CTL_READ`, `PCM_SW_PARAMS`,
 `Dev::modem_path` – Wege für Mikrofon, Mischer und Modem, die noch niemand ruft.
 
-## Nicht angefasst: der Kern
+## Kern (`kernel/ultar-kern`)
 
-`kernel/ultar-kern` meldet 68 Warnungen (unbenutzter Code vor allem im Nvidia-Treiber, Funktionszeiger als
-Zahl, zwei unerreichbare Zweige in `syscall.rs`). Dort wird gerade gearbeitet (iGPU/NPU); die Warnungen sind
-für den Zuständigen. Die zwei unerreichbaren Zweige (`204` und `52` stehen doppelt in den Systemaufrufen)
-sind die einzigen, die auf einen echten Fehler hindeuten können.
+Der Kern meldete 68 Warnungen. Hier lässt er sich nicht bauen (keine Rust-Quellen für `build-std`), geprüft
+wird diese Änderung deshalb **nur vom Kern-Lauf der CI**.
+
+Behoben (ohne das Verhalten zu ändern):
+
+- 17-mal Funktion direkt in eine Zahl gewandelt → erst in einen Zeiger (`arch.rs`, `apic.rs`, `proc.rs`, `trap.rs`),
+- zwei unnötige `unsafe` um `__cpuid` (`arch.rs`, `ps2maus.rs`), ein unbenutzter Wiederexport (`net.rs`),
+  ein Anfangswert, den niemand liest (`gen_xhci.rs`), die Variable `TRAMP` (`apic.rs`),
+- Systemaufruf 204 stand zweimal da; der zweite Eintrag (in der Liste „tut nichts“) war nie erreichbar.
+
+Markiert wie oben, nicht gelöscht: `arm_deadline`, `reboot_hw`, `absolut`, `verworfen`, `Canvas::cursor`,
+`write32x`, `PciDev::w32x`, `Shared::refs`, `SIGTERM`, `BS_ALLOCATE_PAGES`, `MRAD`, `Wait::Pipe` und die Felder
+`UsbDev::speed`, `Fat::part`, `Inode::mtime`, `PciDev::driver`. Die Nvidia-Schnittstellen (`drivers/nvidia`)
+ruft noch niemand; dort gilt die Erlaubnis für das ganze Modul.
+
+### Eine Warnung bleibt mit Absicht: `getpeername` (Systemaufruf 52) tut nichts
+
+`syscall.rs` führt 52 in der Liste „tut nichts, meldet Erfolg“ und weiter unten noch einmal mit der echten
+Antwort (`51 | 52 => sys_sockname(…)`). Der erste Eintrag gewinnt: Ein Programm, das fragt, mit wem es
+verbunden ist, bekommt Erfolg und einen unbeschriebenen Puffer. Das ist vermutlich ein Fehler. Es zu
+berichtigen ändert das Verhalten des Kerns für alle Programme und gehört dem, der den Kern prüfen kann – darum
+steht die Warnung noch da.
+
+Die C-Prüfprogramme (`kerntest.c`, `ereignis.c`, `lauscher.c`, `nettest.c`) melden ignorierte Rückgabewerte
+und zwei mögliche Kürzungen bei `snprintf`; nicht angefasst.

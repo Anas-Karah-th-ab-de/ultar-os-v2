@@ -390,7 +390,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         // ihren Rückfallweg nehmen (sonst lesen Ubuntu-26-Programme eine leere Hilfstabelle und stürzen ab)
         157 => Res::Val(calls::sys_prctl(a[0], a[1])),
         // sync, syncfs: nothing is ever held back – every write to a disk is done when its call returns
-        170 | 171 | 203 | 204 | 221 | 52 | 280 | 162 | 306 => Res::Val(0),
+        170 | 171 | 203 | 221 | 52 | 280 | 162 | 306 => Res::Val(0),
         82 => Res::Val(sys_rename(-100, a[0], -100, a[1])),
         264 | 316 => Res::Val(sys_rename(a[0] as i32 as i64, a[1], a[2] as i32 as i64, a[3])),
         77 => Res::Val(sys_ftruncate(a[0], a[1])),

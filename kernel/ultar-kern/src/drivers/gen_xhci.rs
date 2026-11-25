@@ -245,7 +245,7 @@ impl Hc {
     fn transfer(&mut self, slot: u32, dci: u32, buf: u64, len: usize, ms: u64) -> Option<usize> {
         let ring = self.ring(slot, dci);
         let mut off = 0usize;
-        let mut last = 0;
+        let mut last;
         loop {
             let a = buf + off as u64;
             let n = (4096 - (a & 0xfff) as usize).min(len - off);

@@ -193,19 +193,19 @@ extern "x86-interrupt" fn e_bp(_f: Frame) {
 }
 
 pub unsafe fn init_idt() {
-    set(0, e_de as u64, 0);
-    set(3, e_bp as u64, 0);
-    set(6, e_ud as u64, 0);
-    set(7, e_nm as u64, 0);
-    set(8, e_df as u64, 1);
-    set(10, e_ts as u64, 0);
-    set(11, e_np as u64, 0);
-    set(12, e_ss as u64, 0);
-    set(13, e_gp as u64, 0);
-    set(14, e_pf as u64, 0);
-    set(16, e_mf as u64, 0);
-    set(17, e_ac as u64, 0);
-    set(19, e_xm as u64, 0);
+    set(0, e_de as *const () as u64, 0);
+    set(3, e_bp as *const () as u64, 0);
+    set(6, e_ud as *const () as u64, 0);
+    set(7, e_nm as *const () as u64, 0);
+    set(8, e_df as *const () as u64, 1);
+    set(10, e_ts as *const () as u64, 0);
+    set(11, e_np as *const () as u64, 0);
+    set(12, e_ss as *const () as u64, 0);
+    set(13, e_gp as *const () as u64, 0);
+    set(14, e_pf as *const () as u64, 0);
+    set(16, e_mf as *const () as u64, 0);
+    set(17, e_ac as *const () as u64, 0);
+    set(19, e_xm as *const () as u64, 0);
     let dtr = Dtr { limit: (core::mem::size_of::<[Gate; 256]>() - 1) as u16, base: core::ptr::addr_of!(IDT) as u64 };
     asm!("lidt [{}]", in(reg) &dtr);
     // alten 8259-Interruptcontroller stumm schalten (wir arbeiten mit Abfrage; APIC folgt)
@@ -314,12 +314,10 @@ pub fn sleep_us(us: u64) {
 
 /// CPU-Name über CPUID
 pub fn cpu_name(out: &mut [u8; 48]) -> &str {
-    unsafe {
-        for (i, leaf) in [0x8000_0002u32, 0x8000_0003, 0x8000_0004].iter().enumerate() {
-            let r = core::arch::x86_64::__cpuid(*leaf);
-            for (j, v) in [r.eax, r.ebx, r.ecx, r.edx].iter().enumerate() {
-                out[i * 16 + j * 4..i * 16 + j * 4 + 4].copy_from_slice(&v.to_le_bytes());
-            }
+    for (i, leaf) in [0x8000_0002u32, 0x8000_0003, 0x8000_0004].iter().enumerate() {
+        let r = core::arch::x86_64::__cpuid(*leaf);
+        for (j, v) in [r.eax, r.ebx, r.ecx, r.edx].iter().enumerate() {
+            out[i * 16 + j * 4..i * 16 + j * 4 + 4].copy_from_slice(&v.to_le_bytes());
         }
     }
     let n = out.iter().position(|&b| b == 0).unwrap_or(48);
@@ -327,6 +325,7 @@ pub fn cpu_name(out: &mut [u8; 48]) -> &str {
 }
 
 /// Neustart über den Reset-Port des Chipsatzes (Rückfall, wenn die Firmware nicht mag)
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn reboot_hw() -> ! {
     unsafe {
         outb(0xcf9, 0x02);

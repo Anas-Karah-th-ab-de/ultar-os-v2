@@ -165,6 +165,7 @@ impl Drop for Fd {
 pub enum Wait {
     Input,
     Child(i64),
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     Pipe,
     Sleep(u64),
     Vfork(u64),
@@ -186,6 +187,7 @@ impl<T> Shared<T> {
     pub fn new(t: T) -> Shared<T> {
         Shared(Arc::new(core::cell::UnsafeCell::new(t)))
     }
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn refs(&self) -> usize {
         Arc::strong_count(&self.0)
     }
@@ -346,7 +348,7 @@ fn sched_ctx() -> *mut u64 {
 pub fn check_window() {
     let rsp: u64;
     unsafe { core::arch::asm!("mov {}, rsp", out(reg) rsp) };
-    let code = check_window as usize as u64;
+    let code = check_window as *const () as usize as u64;
     let bad = |a: u64| (USER_LOW..USER_LOW_END).contains(&a);
     if bad(rsp) || bad(code) {
         WINDOW_OK.store(false, Ordering::Relaxed);

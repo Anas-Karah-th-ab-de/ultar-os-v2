@@ -56,6 +56,7 @@ static DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 
 /// Arms the restart deadline: used by the remote hardware test so that a hanging kernel
 /// gives the machine back instead of staying down until someone presses the power button.
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn arm_deadline(ms_from_now: u64) {
     DEADLINE_MS.store(crate::arch::uptime_ms() + ms_from_now, Ordering::Relaxed);
 }
@@ -306,7 +307,6 @@ fn icr(dest: u32, low: u32) {
 /// Weitere Prozessorkerne starten (INIT-SIPI-SIPI). `tramp`: freie Seite unter 1 MB für den Startcode (0 = keine).
 pub unsafe fn start_aps(rsdp: u64, tramp: u64) {
     let tramp_ok = tramp != 0;
-    let TRAMP = tramp;
     let cpus = madt_cpus(rsdp);
     *CPUS.lock() = cpus.clone();
     let me = id();
@@ -319,19 +319,19 @@ pub unsafe fn start_aps(rsdp: u64, tramp: u64) {
     }
     let start = core::ptr::addr_of!(ultar_ap_start) as u64;
     let len = core::ptr::addr_of!(ultar_ap_end) as u64 - start;
-    core::ptr::copy_nonoverlapping(start as *const u8, TRAMP as *mut u8, len as usize);
+    core::ptr::copy_nonoverlapping(start as *const u8, tramp as *mut u8, len as usize);
     // feste Adressen im Startcode auf die gewählte Seite umrechnen
     let off = |p: *const u8| p as u64 - start;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_gdt))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_gdt))) as u32;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j32))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap32))) as u32;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j64))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap64))) as u32;
-    let vars = TRAMP + (core::ptr::addr_of!(ultar_ap_cr3) as u64 - start);
+    *((tramp + off(core::ptr::addr_of!(ultar_ap_fix_gdt))) as *mut u32) = (tramp + off(core::ptr::addr_of!(ultar_ap_gdt))) as u32;
+    *((tramp + off(core::ptr::addr_of!(ultar_ap_fix_j32))) as *mut u32) = (tramp + off(core::ptr::addr_of!(ultar_ap_ap32))) as u32;
+    *((tramp + off(core::ptr::addr_of!(ultar_ap_fix_j64))) as *mut u32) = (tramp + off(core::ptr::addr_of!(ultar_ap_ap64))) as u32;
+    let vars = tramp + (core::ptr::addr_of!(ultar_ap_cr3) as u64 - start);
     // oberste Seitentabelle für den Start nach unten kopieren (CR3 wird im 32-Bit-Modus geladen)
-    let low = TRAMP + 0x1000;
+    let low = tramp + 0x1000;
     core::ptr::copy_nonoverlapping(pml4 as *const u8, low as *mut u8, 4096);
     *(vars as *mut u64) = low;
     *((vars + 8) as *mut u64) = rdmsr(0xC000_0080) & !(1 << 10);
-    *((vars + 24) as *mut u64) = ap_main as usize as u64;
+    *((vars + 24) as *mut u64) = ap_main as *const () as usize as u64;
     for &c in cpus.iter().filter(|&&c| c != me) {
         let before = ONLINE.load(Ordering::SeqCst);
         let stack = alloc::vec![0u8; 32 * 1024].leak();
@@ -339,7 +339,7 @@ pub unsafe fn start_aps(rsdp: u64, tramp: u64) {
         icr(c, 0x4500);
         arch::sleep_us(10_000);
         for _ in 0..2 {
-            icr(c, 0x4600 | (TRAMP >> 12) as u32);
+            icr(c, 0x4600 | (tramp >> 12) as u32);
             arch::sleep_us(200);
         }
         let t = arch::uptime_ms();

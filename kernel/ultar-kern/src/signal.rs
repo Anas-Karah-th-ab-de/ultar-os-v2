@@ -10,6 +10,7 @@ pub const SIGINT: u64 = 2;
 pub const SIGKILL: u64 = 9;
 pub const SIGSEGV: u64 = 11;
 pub const SIGPIPE: u64 = 13;
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub const SIGTERM: u64 = 15;
 pub const SIGCHLD: u64 = 17;
 const SA_RESTART: u64 = 0x1000_0000;

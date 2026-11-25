@@ -28,6 +28,7 @@ static E0: AtomicBool = AtomicBool::new(false);
 static MX: AtomicI32 = AtomicI32::new(-1);
 static MY: AtomicI32 = AtomicI32::new(-1);
 static MT: AtomicI32 = AtomicI32::new(0);
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 static MRAD: AtomicI32 = AtomicI32::new(0);
 static MEREIGNIS: AtomicUsize = AtomicUsize::new(usize::MAX);
 

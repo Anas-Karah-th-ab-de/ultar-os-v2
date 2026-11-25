@@ -47,7 +47,7 @@ fn hintertuer(cmd: u32, arg: u32) -> (u32, u32, u32, u32) {
 fn ist_vmware() -> bool {
     // nur auf x86-Gästen mit Hypervisor-Bit sinnvoll – sonst löst `in` auf echter Hardware nichts Schlimmes aus,
     // liefert aber keine Kennung
-    let hv = unsafe { core::arch::x86_64::__cpuid(1).ecx } & (1 << 31) != 0;
+    let hv = core::arch::x86_64::__cpuid(1).ecx & (1 << 31) != 0;
     hv && hintertuer(10, !VMW_MAGIC).1 == VMW_MAGIC
 }
 
@@ -104,6 +104,7 @@ pub fn abfragen() {
     }
 }
 
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn absolut() -> bool {
     ABSOLUT.load(Ordering::Relaxed)
 }

@@ -58,6 +58,7 @@ pub struct RuntimeServices {
     pub f: [usize; 14],
 }
 
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 const BS_ALLOCATE_PAGES: usize = 2;
 const BS_GET_MEMORY_MAP: usize = 4;
 const BS_ALLOCATE_POOL: usize = 5;

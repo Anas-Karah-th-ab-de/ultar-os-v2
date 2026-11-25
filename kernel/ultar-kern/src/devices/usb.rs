@@ -33,6 +33,7 @@ pub struct UsbDev {
     /// Class, subclass, protocol of the device descriptor.
     pub class: [u8; 3],
     /// Link speed code of the port (xHCI: 1 full, 2 low, 3 high, 4+ super speed).
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub speed: u32,
     pub ifaces: Vec<Iface>,
 }

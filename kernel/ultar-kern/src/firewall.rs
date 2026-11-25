@@ -41,6 +41,7 @@ pub fn eingehend_erlaubt(proto: u8, src: [u8; 4], dport: u16) -> bool {
     false
 }
 
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn verworfen() {
     VERWORFEN.fetch_add(1, Ordering::Relaxed);
 }

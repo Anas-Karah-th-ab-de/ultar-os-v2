@@ -209,7 +209,7 @@ extern "sysv64" {
 pub unsafe fn init_msrs() {
     wrmsr(0xC000_0080, rdmsr(0xC000_0080) | 1);
     wrmsr(0xC000_0081, (0x18u64 << 48) | (0x08u64 << 32));
-    wrmsr(0xC000_0082, ultar_syscall as usize as u64);
+    wrmsr(0xC000_0082, ultar_syscall as *const () as usize as u64);
     wrmsr(0xC000_0084, 0x4_7700);
 }
 

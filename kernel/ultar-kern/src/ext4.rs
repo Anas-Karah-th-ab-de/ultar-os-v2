@@ -21,6 +21,7 @@ pub struct Inode {
     pub size: u64,
     pub flags: u32,
     block: [u8; 60],
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub mtime: u32,
     /// Owner (32 bits: low half at 2, high half at 0x78) and group (24, 0x7A).
     pub uid: u32,

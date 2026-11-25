@@ -20,7 +20,7 @@ pub struct Config {
 
 pub static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
 
-pub use crate::dhcp::{dhcp, dhcp_all, input, ipv4_text, ipv4_write, link_changes, set_static, tick};
+pub use crate::dhcp::{dhcp_all, input, ipv4_text, ipv4_write, link_changes, set_static, tick};
 static ACTIVE_NIC: AtomicUsize = AtomicUsize::new(0);
 
 pub fn active_nic() -> usize {

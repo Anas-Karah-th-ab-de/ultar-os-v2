@@ -61,6 +61,7 @@ pub fn read32x(b: u8, d: u8, f: u8, off: u16) -> Option<u32> {
 }
 
 /// Erweiterter Konfigurationsraum schreiben; `false` ohne ECAM.
+#[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
 pub fn write32x(b: u8, d: u8, f: u8, off: u16, v: u32) -> bool {
     match ecam_addr(b, d, f, off) {
         Some(a) => {
@@ -99,6 +100,7 @@ pub struct PciDev {
     pub subsys: u16,
     pub bars: [Option<Bar>; 6],
     /// Name des Treibers, der das Gerät übernommen hat
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub driver: Option<&'static str>,
 }
 
@@ -143,6 +145,7 @@ impl PciDev {
         read32x(self.bus, self.dev, self.func, off)
     }
     /// Erweiterter Konfigurationsraum schreiben; `false` ohne ECAM.
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     pub fn w32x(&self, off: u16, v: u32) -> bool {
         write32x(self.bus, self.dev, self.func, off, v)
     }

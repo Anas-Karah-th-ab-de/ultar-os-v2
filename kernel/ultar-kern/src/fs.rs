@@ -29,6 +29,7 @@ pub enum Node {
 
 struct Fat {
     disk: usize,
+    #[allow(dead_code)] // nothing uses it yet; kept, see docs/OFFEN-WARNUNGEN.md
     part: u64,
     bps: u64,
     spc: u64,
