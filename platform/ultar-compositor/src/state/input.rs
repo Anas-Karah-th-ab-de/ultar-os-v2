@@ -200,10 +200,7 @@ impl State {
             }
             InputEventKind::Key { code, state } => {
                 self.keyboard.events = self.keyboard.events.wrapping_add(1);
-                if !self.keyboard.repeat.passes(code, state, event.time_us) {
-                    return;
-                }
-                self.key(code, state)
+                self.key_helper_input(code, state, event.time_us);
             }
             InputEventKind::TouchDown { slot, x, y } => self.touch_down(u32::from(slot), x, y),
             InputEventKind::TouchMove { slot, x, y } => self.touch_move(u32::from(slot), x, y),

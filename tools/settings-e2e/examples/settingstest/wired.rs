@@ -5,6 +5,9 @@
 //! looks through and how its surfaces look; the Settings window follows the accessibility
 //! switches itself. The Storage page shows what the volume service measured.
 
+#[path = "wired_helpers.rs"]
+mod wired_helpers;
+
 use super::{click, open, setup::Run};
 use std::time::Duration;
 use ultar_bus::messages::settings::{Changed, Get, Set, SettingValue};
@@ -18,7 +21,7 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
-use ultar_surface::proto::{PointerSize, Request};
+use ultar_surface::proto::{ComposeKey, PointerSize, Request};
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
 use ultar_ui::Size;
 use ultar_update::policy::Policy;
@@ -236,6 +239,13 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
             enabled: false,
             delay_ms: u16::try_from(delay_ms).map_err(|_| "delay")?,
             per_second: u8::try_from(per_second).map_err(|_| "rate")?,
+        },
+        Request::ConfigureKeyHelpers {
+            sticky_keys: false,
+            slow_keys: false,
+            bounce_keys: false,
+            mouse_keys: false,
+            compose_key: ComposeKey::None,
         },
     ];
     let requests = d.service.requests();
@@ -537,6 +547,7 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let desktop = Follower::connect(run, "the shell", "desktop")?;
     let volumed = Follower::connect(run, "the volume service", "volumed")?;
     input(bus, admin, run, &displayd)?;
+    wired_helpers::key_helpers(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop, &displayd)?;
     storage::storage(bus, run)?;
     storage::storage_settings(bus, admin, run, &volumed)?;
