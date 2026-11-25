@@ -85,8 +85,10 @@ pub fn fetch(site: &Site, part: &Part) -> Result<String, String> {
     }
     let hash = sha256_of(&file)?;
     if !part.sha256.is_empty() && hash != part.sha256.to_lowercase() {
+        // set aside, so that the next run downloads it again
+        let _ = std::fs::rename(&file, file.with_extension("bad"));
         return Err(format!(
-            "{}: hash is {hash}, the recipe pins {} – the archive is not the pinned release",
+            "{}: hash is {hash}, the recipe pins {} – not the pinned release (damaged download or changed upstream file); set aside as .bad",
             part.archive(),
             part.sha256
         ));
