@@ -65,16 +65,37 @@ fn full_block_describes_the_three_engines() {
     assert_eq!(masks, [1, 0, 0, 1, 1, 0]);
     assert_eq!((b[4668], b[4668 + 3 * 32], b[4668 + 4 * 32]), (0, 0, 0));
     assert_eq!((b[4668 + 1], b[4668 + 32]), (32, 32));
-    // register lists: status page and interrupt mask of each engine, 16 bytes per entry
-    assert_eq!((get(&b, 0), get(&b, 4)), (base + regs as u32, 2));
+    // register lists, 16 bytes per entry (address, value kept by the GuC, flags): render has
+    // five (with the compute switch), copy and compute four
+    assert_eq!((get(&b, 0), get(&b, 4)), (base + regs as u32, 5));
     assert_eq!(
-        (get(&b, 3 * 32 * 8), get(&b, 4 * 32 * 8)),
-        (base + regs as u32 + 32, base + regs as u32 + 64)
+        (get(&b, 3 * 32 * 8), get(&b, 3 * 32 * 8 + 4)),
+        (base + regs as u32 + 5 * 16, 4)
     );
-    let list: Vec<u32> = (0..6).map(|i| get(&b, regs + i * 16)).collect();
+    assert_eq!(
+        (get(&b, 4 * 32 * 8), get(&b, 4 * 32 * 8 + 4)),
+        (base + regs as u32 + 9 * 16, 4)
+    );
+    let list: Vec<(u32, u32)> = (0..13)
+        .map(|i| (get(&b, regs + i * 16), get(&b, regs + i * 16 + 8)))
+        .collect();
     assert_eq!(
         list,
-        [0x2080, 0x20a8, 0x2_2080, 0x2_20a8, 0x1_a080, 0x1_a0a8]
+        [
+            (0x2098, 0),
+            (0x229c, 1),
+            (0x2080, 0),
+            (0x20a8, 0),
+            (0x1_4800, 1),
+            (0x2_2098, 0),
+            (0x2_229c, 1),
+            (0x2_2080, 0),
+            (0x2_20a8, 0),
+            (0x1_a098, 0),
+            (0x1_a29c, 1),
+            (0x1_a080, 0),
+            (0x1_a0a8, 0),
+        ]
     );
     // golden contexts: address per class, engine state size without status page and registers
     assert_eq!(get(&b, 4116), base + golden as u32);
