@@ -69,6 +69,7 @@ impl Runtime {
         self.fwk
             .get(&mut dev.mmio, Domain::Render)
             .map_err(|e| format!("render forcewake: {e}"))?;
+        workarounds(dev);
         ultar_intel_gt::engines::program_pat(&mut dev.mmio);
         let before = ultar_intel_gt::engines::program_mocs(&mut dev.mmio);
         let after = ultar_intel_gt::Hw::read(&mut dev.mmio, ultar_intel_gt::engines::LNCFCMOCS0);
@@ -101,6 +102,20 @@ impl Runtime {
         }
         self.mem.release(dev);
     }
+}
+
+/// Programs the hardware workarounds of the GT (`ultar_intel_gt::workarounds`) and logs which
+/// took.
+fn workarounds(dev: &mut Device) {
+    use ultar_intel_gt::{ident::Gmdid, regs::GMD_ID, workarounds as wa, Hw};
+    let ver = Gmdid::decode(dev.mmio.read(GMD_ID)).map_or(0, |g| g.verx100());
+    if !wa::applies(ver) {
+        crate::kprintln!("[intel-gt] no workarounds for graphics {ver}");
+        return;
+    }
+    let ok = wa::apply(&mut dev.mmio);
+    let names: alloc::vec::Vec<&str> = wa::XE_LPG.iter().zip(ok).map(|(w, o)| if o { w.name } else { "-" }).collect();
+    crate::kprintln!("[intel-gt] workarounds for graphics {ver} set: {}", names.join(" "));
 }
 
 /// Asks for the GT's highest frequency (it would stay near the lowest and compute several times
