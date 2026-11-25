@@ -26,7 +26,7 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 25] = [
+pub const WIRED: [(&str, &str); 32] = [
     // ultar-llm-bus starts and stops the model service with it (`init.switch`).
     ("assistant.enabled", "llm-bus"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
@@ -59,6 +59,16 @@ pub const WIRED: [(&str, &str); 25] = [
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.arabic_variants", "shell"),
+    // The update service (ultar-updated) maps these onto its policy under the ceiling of
+    // /etc/ultar/update.conf, notifies through notifyd and offers updates from a plugged-in
+    // drive. updates.auto_apps stays out: app updates belong to the launcher/Store.
+    ("updates.auto_system", "updated"),
+    ("updates.window.from", "updated"),
+    ("updates.window.until", "updated"),
+    ("updates.channel", "updated"),
+    ("updates.metered", "updated"),
+    ("updates.offline_usb", "updated"),
+    ("updates.notify", "updated"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -82,6 +92,15 @@ mod tests {
         assert!(!takes_effect("keyboard", "keyboard.compose_key"));
         assert!(takes_effect("search", "search.source.apps"));
         assert!(!takes_effect("search", "search.source.files"));
+        assert!(takes_effect("updates", "updates.auto_system"));
+        assert!(takes_effect("updates", "updates.window.from"));
+        assert!(takes_effect("updates", "updates.window.until"));
+        assert!(takes_effect("updates", "updates.channel"));
+        assert!(takes_effect("updates", "updates.metered"));
+        assert!(takes_effect("updates", "updates.offline_usb"));
+        assert!(takes_effect("updates", "updates.notify"));
+        // App updates belong to the launcher/Store, not the system updater.
+        assert!(!takes_effect("updates", "updates.auto_apps"));
         assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
         assert!(!takes_effect(
             "accessibility",
