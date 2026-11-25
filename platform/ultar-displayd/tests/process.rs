@@ -324,6 +324,31 @@ fn pointer_and_key_repeat_settings_reach_the_compositor() {
 }
 
 #[test]
+fn the_keyboard_switch_and_per_window_reach_the_compositor() {
+    use ultar_surface::proto::SwitchShortcut;
+    let rig = Rig::new("kbd");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    // The schema's defaults arrive with the connection.
+    rig.wait_for("defaults", |s| {
+        s.keyboard == (Some(SwitchShortcut::SuperSpace), false)
+    });
+    set(&app, "keyboard.switch_shortcut", text("alt_shift"));
+    set(&app, "keyboard.per_window", SettingValue::Flag(true));
+    rig.wait_for("alt_shift and per window", |s| {
+        s.keyboard == (Some(SwitchShortcut::AltShift), true)
+    });
+    // Changed while the display service is away: read again when it is back.
+    drop(d);
+    set(&app, "keyboard.switch_shortcut", text("ctrl_shift"));
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.keyboard == (Some(SwitchShortcut::CtrlShift), true)
+    });
+}
+
+#[test]
 fn pointer_tuning_and_the_large_pointer_reach_the_compositor() {
     use ultar_surface::proto::PointerSize;
     let rig = Rig::new("tuning");

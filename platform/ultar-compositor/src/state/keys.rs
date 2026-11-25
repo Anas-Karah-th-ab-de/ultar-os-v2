@@ -6,7 +6,7 @@ use crate::decor::Part;
 use crate::keymap::{self, Output as KeyOutput};
 use crate::wm::{self, Arrow};
 use ultar_hal::KeyState;
-use ultar_surface::proto::{Event, Modifiers};
+use ultar_surface::proto::{Event, Modifiers, SwitchShortcut};
 
 impl State {
     pub(super) fn key(&mut self, code: u16, state: KeyState) {
@@ -108,17 +108,21 @@ impl State {
     /// screen: Super+Space at once (the key is used); Ctrl+Shift and Alt+Shift (as on Windows
     /// and Ubuntu) when the second modifier of the pair is released and no other key was
     /// pressed meanwhile, so Ctrl+Shift+N and Alt+Shift+Tab stay shortcuts. The modifier keys
-    /// themselves still reach the client. True if the key was used.
+    /// themselves still reach the client. `keyboard.switch_shortcut`
+    /// (`Request::ConfigureKeyboard`) leaves only the chosen combination; unconfigured, all
+    /// three switch. True if the key was used.
     fn layout_keys(&mut self, code: u16, state: KeyState) -> bool {
         let held = self.keyboard.modifiers & !Modifiers::ALT_GR;
+        let wants = |s| self.keyboard.switch.is_none_or(|w| w == s);
         match keymap::modifier_bit(code) {
             Some(bit) if bit != Modifiers::ALT_GR && bit != Modifiers::SUPER => {
                 if state == KeyState::Pressed {
                     let pair = [
-                        Modifiers::SHIFT | Modifiers::CTRL,
-                        Modifiers::SHIFT | Modifiers::ALT,
+                        (SwitchShortcut::CtrlShift, Modifiers::SHIFT | Modifiers::CTRL),
+                        (SwitchShortcut::AltShift, Modifiers::SHIFT | Modifiers::ALT),
                     ];
-                    self.keyboard.layout_chord = pair.contains(&held);
+                    self.keyboard.layout_chord =
+                        pair.iter().any(|(s, p)| wants(*s) && *p == held);
                 } else if state == KeyState::Released
                     && std::mem::take(&mut self.keyboard.layout_chord)
                 {
@@ -133,7 +137,11 @@ impl State {
             None => {
                 self.keyboard.layout_chord = false;
                 let only_super = held == Modifiers::SUPER;
-                if code == 57 && only_super && state != KeyState::Released {
+                if code == 57
+                    && only_super
+                    && wants(SwitchShortcut::SuperSpace)
+                    && state != KeyState::Released
+                {
                     if state == KeyState::Pressed {
                         self.next_layout();
                     }

@@ -54,7 +54,19 @@ gegen den echten Dienst).
   - Der Aufruf startet oder beendet nur; er setzt den Absturz-Zähler nicht zurück (anders als `init.control`),
     und ein Dienst lässt sich höchstens alle 2 s schalten.
   - Jeder Schaltvorgang und jede Ablehnung steht mit Aufrufer im Protokoll des Dienst-Verwalters.
-- Aus: der Modell-Dienst wird beendet, `llm.state` meldet „kein Modell“, der Helfer fällt auf ein verliehenes
+- Aus: der Modell-Dienst wird beendet, `llm.state` meldet „kein Modell”, der Helfer fällt auf ein verliehenes
   Modell oder die kleinste Hilfe zurück.
 - Tests: 6 (neu: Schalter als echter Prozess); im Dienst-Verwalter: wer schalten darf, und welche Dienstdatei
   `switch` überhaupt haben darf.
+
+## Nachtrag 25.11.2026 (2): die Modellgröße der Person (`assistant.model`)
+
+- Der Dienst liest `assistant.model` beim Start (`settings.get`) und folgt `settings.changed`.
+- Gewählt wird das größte installierte Modell der gewählten Klasse (klein/mittel/groß, dieselben
+  Größenklassen wie `llm.state`); es bekommt das `model`-Feld jeder Weitergabe und steht in `llm.state`.
+- Ist keine Modell der Klasse installiert, bleibt die eigene Wahl des Modell-Dienstes (das geladene,
+  sonst das größte installierte); der Zustand meldet weiterhin, was wirklich da ist.
+- `assistant.model_place` bleibt ungeknüpft: `ultar-llm` liest seine Modellordner nur beim Start aus
+  seiner Konfiguration; es gibt keinen Aufruf, zur Laufzeit einen Ordner hinzuzufügen, und llm-bus
+  darf diese Konfiguration nicht schreiben (siehe `docs/integration/settings-wiring.md`).
+- Tests: 8 (neu: Klassenwahl, Modellgröße als echter Prozess mit Ersatz-Buchse).

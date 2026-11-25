@@ -95,6 +95,21 @@ impl State {
                     (enabled, delay_ms, per_second);
                 Ok(())
             }
+            Request::ConfigureKeyboard {
+                switch_shortcut,
+                per_window,
+            } => {
+                self.require_output_config(client)?;
+                self.keyboard.switch = Some(switch_shortcut);
+                self.keyboard.per_window = per_window;
+                if !per_window {
+                    // Switched off: no window keeps a language of its own any more.
+                    for w in &mut self.windows {
+                        w.layout = None;
+                    }
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }

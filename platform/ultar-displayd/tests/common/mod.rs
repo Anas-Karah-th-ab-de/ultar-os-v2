@@ -25,7 +25,7 @@ use ultar_settingsd::schema::NoDefaults;
 use ultar_settingsd::seed;
 use ultar_settingsd::server::{Server, ServerParts};
 use ultar_settingsd::store::StoreConfig;
-use ultar_surface::proto::{OutputIdentity, OutputMode, Rights};
+use ultar_surface::proto::{OutputIdentity, OutputMode, Rights, SwitchShortcut};
 
 pub const DAEMON: &str = env!("CARGO_BIN_EXE_ultar-displayd");
 pub const WAIT: Duration = Duration::from_secs(20);
@@ -191,6 +191,8 @@ pub struct Snap {
     pub pointer: PointerSnap,
     /// Key repeat: on, delay in milliseconds, per second.
     pub key_repeat: (bool, u16, u8),
+    /// The switch combination (`None`: unconfigured) and per-window languages.
+    pub keyboard: (Option<SwitchShortcut>, bool),
 }
 
 impl Snap {
@@ -269,6 +271,7 @@ fn snapshot(comp: &Compositor) -> Snap {
             let r = comp.state.keyboard.repeat;
             (r.enabled, r.delay_ms, r.per_second)
         },
+        keyboard: (comp.state.keyboard.switch, comp.state.keyboard.per_window),
         identify: comp
             .state
             .session

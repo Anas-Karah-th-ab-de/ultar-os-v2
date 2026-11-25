@@ -348,6 +348,15 @@ pub enum Request {
         /// driver reports.
         per_second: u8,
     },
+    /// Which keys switch the input language and whether every window keeps its own
+    /// (needs [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
+    /// `keyboard.switch_shortcut` and `keyboard.per_window` on).
+    ConfigureKeyboard {
+        /// The combination that makes the next layout of the list active.
+        switch_shortcut: super::SwitchShortcut,
+        /// Every window remembers its own input language and gets it back on focus.
+        per_window: bool,
+    },
     /// The app draws the header of this toplevel itself (needs
     /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
     /// the "not responding" close stay with the compositor; system dialogs keep theirs.
@@ -408,6 +417,7 @@ impl Request {
             Request::SetKeyboardLayouts { .. } => 43,
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
+            Request::ConfigureKeyboard { .. } => 46,
         }
     }
 
@@ -615,6 +625,13 @@ impl Request {
                 per_second,
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
+            }
+            Request::ConfigureKeyboard {
+                switch_shortcut,
+                per_window,
+            } => {
+                switch_shortcut.encode(w);
+                w.bool(*per_window);
             }
             _ => {}
         }

@@ -24,6 +24,10 @@ before and are not part of this rule.
 | Users | add, remove, change password | account service | `account.users_list`, `account.user_create`, `account.user_remove`, `account.user_password`; the account service asks for the administrator in the system dialog | settings `tests/groups.rs` (fake service) |
 | Updates | "Check now", "Update from a drive", state line | update service | `update.check`, `update.offline`, `update.progress` | settings `tests/groups.rs` (fake service) |
 | Updates | `updates.auto_system`, `.window.from`, `.window.until`, `.channel`, `.metered`, `.offline_usb`, `.notify` | update service | reads them at start and on `settings.changed` and maps them onto its policy under the ceiling of `/etc/ultar/update.conf`; `notify` posts through notifyd, `offline_usb` offers a bundle from a plugged-in drive | ultar-update `tests/settings_follow.rs` (real bus), settings-e2e |
+| Assistant | `assistant.model` (small/medium/large) | llm-bus | reads it at start and on `settings.changed`; the largest installed model of the chosen class answers (the `model` field of the completion) and `llm.state` reports it; a class with no installed model leaves the model service's own pick | llm-bus `choice.rs`/`backend.rs` tests, `tests/process.rs` (real bus + stand-in model socket), settings-e2e |
+| Assistant | `assistant.check_links`, `assistant.see_screen` | agentd | `check_links` appends the catalogue warning (`agent.link_warning`) to the model's answer when a link in it looks suspicious – a local check, no request goes out (scheme other than http/https, user-info part, a host that is an address as numbers, punycode `xn--`); `see_screen` opens the tool `see_screen`: the person consents in the system dialog first, then the capture service saves a screenshot and the helper says where | agentd `links.rs`/`session.rs`/`tools.rs` tests, `tests/reach.rs` (real bus, runtime change), settings-e2e |
+| Keyboard | `keyboard.switch_shortcut`, `keyboard.per_window` | compositor | displayd sends `Request::ConfigureKeyboard` (at start, on `settings.changed` and after every reconnect); only the chosen combination switches the layout; with `per_window` every window remembers its own layout and gets it back on focus (off forgets; a new layout list keeps the languages that are still in it) | compositor `tests/input_config.rs`, displayd `tests/process.rs` (real settingsd + displayd + compositor), settings-e2e |
+| Keyboard | `keyboard.input_languages` | the shell (desktop); the sign-in reads the same list | the shell reads it at start and on `settings.changed` and gives the list to the compositor (`SetKeyboardLayouts`); when it names any, it wins over `region.keyboard.layouts` (empty: the region's list, as before); the active one stays `region.keyboard.active`; the sign-in reads the list through `login.access` at start | desktop `app/keyboard.rs` tests, settingsd `tests/accessibility.rs`, settings-e2e |
 
 Limits that are part of the truth:
 
@@ -53,6 +57,21 @@ Limits that are part of the truth:
   the first allowed one. The rate limit and `uupdate policy set` remain for what the page does
   not offer. The window is UTC, as the policy and the system clock are (the time zone setting
   is not wired yet). `updates.notify` also gates the drive offer (it is a notification).
+- `assistant.model` chooses among the installed models by file size (the same classes as
+  `llm.state`); it cannot install a model. A class with none installed leaves the model
+  service's own pick, and the state still tells what is really there.
+- `assistant.see_screen`: the consent is asked for every capture (`sysdialog.authenticate`,
+  the trusted system dialog). The picture is saved in the person's `Pictures` folder by the
+  capture service; the image itself does not reach the model – the bus completion contract
+  carries text only – so the helper tells where the picture is. The tool is not even named to
+  the model while the switch is off.
+- `assistant.check_links` warns, it does not block: the model's words stay verbatim, the
+  warning is a translated catalogue text appended to them. The check is heuristic and local
+  (no link is fetched).
+- `keyboard.switch_shortcut`: an unconfigured compositor keeps all three combinations
+  (Super+Space, Ctrl+Shift, Alt+Shift); the display service imposes the schema's default
+  (Super+Space) when it connects, as with the key repeat. The sign-in reads the input
+  languages at start (`login.access`); the session shell follows them at runtime.
 
 ## 2. Shown disabled with the note "Not yet available in this version"
 
@@ -70,12 +89,11 @@ Nothing in the system follows these yet. Each line says what it waits for.
 | Colour | all (`colour.*`) | colour management in the compositor (ICC profiles) |
 | Mobile network | all (`mobile.*`) | the modem service on the bus offers calls only (`modem.dial` …), no data, roaming or APN |
 | Mesh | all (`mesh.*`) | `ultar-mesh` is on main (`mesh.set_enabled`, `mesh.set_rights`); this branch is based on build/appbus, which does not contain it yet – wire `mesh.enabled`, `mesh.visible` and the per-device rights when the base has it |
-| Assistant | all (`assistant.*`) | the assistant: `ultar-llm` is started by the old surface and has no bus contract |
+| Assistant | `assistant.model_place`, `.voice`, `.wake_word`, `.wake_phrase` | `model_place`: the model service (`ultar-llm`) reads its model folders from its configuration at start only – there is no bus or HTTP call to add a folder at runtime, and llm-bus has no right to write that configuration; wiring needs a new contract in `ultar-llm` (or a reviewed config-write bridge). `voice`, `wake_word`, `wake_phrase`: no speech component exists – `ultar-sprache` translates command-line text, there is no speech synthesis or recognition service |
 | Cells and containers | all (`cells.*`) | `ultar-zellen` has no bus contract and no shipped service definition |
 | Emergency | all (`emergency.*`) | lock screen and phone do not read them yet |
 | Mouse and touchpad | `pointer.touchpad.tap_to_click`, `.two_finger_scroll`, `.natural_scroll`, `.disable_while_typing`, `.gestures` | an input layer that tells touchpads apart: the kernel's PS/2 driver (`kernel/ultar-kern/src/drivers/ps2maus.rs`) reports plain relative motion, and the evdev classifier (`ultar-hal-gfx/src/evdev_devices.rs`, `classify`) reports every relative device and every absolute device with buttons as `Mouse` – there are no tap, finger or gesture events to follow, so no touchpad scroll is distinguishable from a wheel either |
-| Keyboard | `keyboard.input_languages`, `.switch_shortcut`, `.per_window` | layouts belong to build/phonekb – not duplicated here |
-| Keyboard | `keyboard.compose_key`, `.on_screen`, `.suggestions`, `.autocorrect` | compose table in the compositor; the on-screen keyboard (`ultar-ime`, build/phonekb) |
+| Keyboard | `keyboard.compose_key`, `.on_screen`, `.suggestions`, `.autocorrect` | compose table in the compositor; the on-screen keyboard program (the drawing side of `ultar-ime`, with suggestions and autocorrect) belongs to build/phonekb – on this branch `ultar-ime` is only the layout core, and neither the desktop nor the compositor draws an on-screen keyboard or offers suggestions, so there is nothing to follow the switches |
 | Accessibility | `screen_reader`, `on_screen_keyboard`, `zoom`, `zoom_percent`, `reader_rate`, `colour_filter`, `visual_alert`, `mono_audio`, `captions`, `sticky_keys`, `slow_keys`, `bounce_keys`, `mouse_keys`, `dwell_click`, `show_in_bar` | no screen reader or on-screen keyboard program yet; zoom and colour filter in the compositor; key and pointer helpers in the compositor's input path; mono audio in audiod |
 | Search | `search.source.files`, `search.file_places` | no bus service may read the person's home: it is `0700`, owned by the person, while the shell (uid 816) and the volume service (828) run as their own users, and no file-search service exists. Wiring needs a service that searches the person's own places (the home folders named by `search.file_places`) and answers the shell – bounded in count and time, no root access for the caller, nothing outside the person's places |
 | Search | `search.source.store` | the catalogue parser lives in `apps/ultar-store`; the platform shell may not depend on the apps area (`tools/check-layers.toml`), and the parser must be reused, not duplicated. Wiring needs the catalogue data and parser extracted into a shared `system/core` crate that both the Store and the shell use |
@@ -117,6 +135,7 @@ they say when their service or adapter is missing.
 |---|---|---|
 | `Request::ConfigurePointer { speed, natural_scroll, swap_buttons, acceleration, size, double_click_ms }` (opcode 44; the old two-field body still decodes, the added fields default to the schema) | `ultar-surface/src/proto/{request,request_decode,input_config}.rs`, `ultar-compositor/src/state/{input,output_config,accel,grabs}.rs` | right `ui.output-config` (the display service); an app gets `Permission` |
 | `Request::ConfigureKeyRepeat { enabled, delay_ms, per_second }` (opcode 45) | the same, `state/key_repeat.rs` | the same |
+| `Request::ConfigureKeyboard { switch_shortcut, per_window }` (opcode 46; `SwitchShortcut` = super_space / alt_shift / ctrl_shift) | `ultar-surface/src/proto/{request,request_decode,input_config}.rs`, `ultar-compositor/src/state/{keys,windows,output_config,shell}.rs` | right `ui.output-config` (the display service); an app gets `Permission` |
 | `volumes.usage` → `UsageReply { places: [{id, name, total_bytes, free_bytes}] }` (`internal` first) | `ultar-bus/src/messages/volumes.rs`, `ultar-volumed/src/service.rs` | bus rule `app.settings` |
 | Bus rule `app.settings` | `rootfs/etc/ultar/bus-policy.toml` | new calls: `update.check`, `launcher.list`, `launcher.permissions`, `launcher.revoke` (never `launcher.grant`), `volumes.usage`; new topic: `update.progress` |
 | Bus rule `system.updated` | `rootfs/etc/ultar/bus-policy.toml`, `services/bus.toml` | `settings.get` + `settings.changed` (the `updates.*` policy), `notify.post` (the notifications), `volumes.state` (the drive offer); own root-only socket `updated.sock` |

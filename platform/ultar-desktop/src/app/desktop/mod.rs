@@ -254,10 +254,9 @@ impl DesktopApp {
         {
             self.apply_display_mode();
         }
-        if keys
-            .iter()
-            .any(|k| k == keyboard::LAYOUTS || k == keyboard::ACTIVE)
-        {
+        if keys.iter().any(|k| {
+            k == keyboard::LAYOUTS || k == keyboard::ACTIVE || k == keyboard::INPUT_LANGUAGES
+        }) {
             self.apply_keyboard()?;
         }
         if keys.iter().any(|k| k == link::BAR_POSITION) && !self.bar_fixed {

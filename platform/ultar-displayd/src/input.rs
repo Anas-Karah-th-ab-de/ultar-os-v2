@@ -1,12 +1,14 @@
 //! Mouse, touchpad and keyboard settings on their way to the compositor: the `pointer.*`
 //! settings and the pointer parts of `accessibility.*` become `Request::ConfigurePointer`,
-//! `keyboard.repeat.*` become `Request::ConfigureKeyRepeat` (the display service already
+//! `keyboard.repeat.*` become `Request::ConfigureKeyRepeat`, `keyboard.switch_shortcut` and
+//! `keyboard.per_window` become `Request::ConfigureKeyboard` (the display service already
 //! holds the compositor's configuration right).
 
 use ultar_bus::messages::settings::SettingValue;
 use ultar_surface::proto::{
-    PointerSize, Request, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS, MAX_KEY_REPEATS_PER_SECOND,
-    MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS, MIN_POINTER_SPEED,
+    PointerSize, Request, SwitchShortcut, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS,
+    MAX_KEY_REPEATS_PER_SECOND, MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS,
+    MIN_POINTER_SPEED,
 };
 
 /// Setting: pointer speed, -10 to 10.
@@ -29,6 +31,10 @@ pub const REPEAT: &str = "keyboard.repeat.enabled";
 pub const REPEAT_DELAY: &str = "keyboard.repeat.delay_ms";
 /// Setting: repeats per second.
 pub const REPEAT_RATE: &str = "keyboard.repeat.per_second";
+/// Setting: the keys that switch the input language.
+pub const SWITCH_SHORTCUT: &str = "keyboard.switch_shortcut";
+/// Setting: every window remembers its own input language.
+pub const PER_WINDOW: &str = "keyboard.per_window";
 
 /// The settings panels whose values the compositor follows.
 pub const PANELS: [&str; 3] = ["pointer", "keyboard", "accessibility"];
@@ -56,6 +62,10 @@ pub struct InputSettings {
     pub repeat_delay_ms: u16,
     /// Repeats per second.
     pub repeats_per_second: u8,
+    /// The keys that switch the input language.
+    pub switch_shortcut: SwitchShortcut,
+    /// Every window remembers its own input language.
+    pub per_window: bool,
 }
 
 impl Default for InputSettings {
@@ -72,6 +82,8 @@ impl Default for InputSettings {
             repeat: true,
             repeat_delay_ms: 500,
             repeats_per_second: 25,
+            switch_shortcut: SwitchShortcut::SuperSpace,
+            per_window: false,
         }
     }
 }
@@ -86,6 +98,15 @@ fn size_word(t: &str) -> PointerSize {
         "large" => PointerSize::Large,
         "larger" => PointerSize::Larger,
         _ => PointerSize::Normal,
+    }
+}
+
+/// The switch combination a word of the setting names; anything else is the default.
+fn shortcut_word(t: &str) -> SwitchShortcut {
+    match t {
+        "alt_shift" => SwitchShortcut::AltShift,
+        "ctrl_shift" => SwitchShortcut::CtrlShift,
+        _ => SwitchShortcut::SuperSpace,
     }
 }
 
@@ -122,6 +143,8 @@ impl InputSettings {
                 let most = i64::from(MAX_KEY_REPEATS_PER_SECOND);
                 self.repeats_per_second = u8::try_from(within(*v, 1, most)).unwrap_or(0);
             }
+            (SWITCH_SHORTCUT, SettingValue::Text(t)) => self.switch_shortcut = shortcut_word(t),
+            (PER_WINDOW, SettingValue::Flag(on)) => self.per_window = *on,
             _ => {}
         }
         *self != before
@@ -137,7 +160,7 @@ impl InputSettings {
     }
 
     /// The requests that put these values into effect.
-    pub fn requests(&self) -> [Request; 2] {
+    pub fn requests(&self) -> [Request; 3] {
         [
             Request::ConfigurePointer {
                 speed: self.speed,
@@ -151,6 +174,10 @@ impl InputSettings {
                 enabled: self.repeat,
                 delay_ms: self.repeat_delay_ms,
                 per_second: self.repeats_per_second,
+            },
+            Request::ConfigureKeyboard {
+                switch_shortcut: self.switch_shortcut,
+                per_window: self.per_window,
             },
         ]
     }
@@ -272,5 +299,37 @@ mod tests {
         );
         assert!(p.on_changed(REPEAT_RATE, &SettingValue::Integer(1_000)));
         assert_eq!(p.repeats_per_second, MAX_KEY_REPEATS_PER_SECOND);
+    }
+
+    #[test]
+    fn the_switch_shortcut_and_per_window_follow_the_settings() {
+        let mut p = InputSettings::default();
+        let keyboard = |p: &InputSettings| p.requests()[2].clone();
+        assert_eq!(
+            keyboard(&p),
+            Request::ConfigureKeyboard {
+                switch_shortcut: SwitchShortcut::SuperSpace,
+                per_window: false,
+            }
+        );
+        assert!(!p.on_changed(SWITCH_SHORTCUT, &SettingValue::Text("super_space".into())));
+        assert!(p.on_changed(SWITCH_SHORTCUT, &SettingValue::Text("alt_shift".into())));
+        assert!(p.on_changed(PER_WINDOW, &SettingValue::Flag(true)));
+        assert_eq!(
+            keyboard(&p),
+            Request::ConfigureKeyboard {
+                switch_shortcut: SwitchShortcut::AltShift,
+                per_window: true,
+            }
+        );
+        assert!(p.on_changed(SWITCH_SHORTCUT, &SettingValue::Text("ctrl_shift".into())));
+        assert_eq!(p.switch_shortcut, SwitchShortcut::CtrlShift);
+        // An unknown word falls back to the default; a wrong type changes nothing.
+        assert!(p.on_changed(SWITCH_SHORTCUT, &SettingValue::Text("super_l".into())));
+        assert_eq!(p.switch_shortcut, SwitchShortcut::SuperSpace);
+        assert!(!p.on_changed(SWITCH_SHORTCUT, &SettingValue::Flag(true)));
+        assert!(!p.on_changed(PER_WINDOW, &SettingValue::Integer(1)));
+        assert!(p.on_changed(PER_WINDOW, &SettingValue::Flag(false)));
+        assert_eq!(keyboard(&p), keyboard(&InputSettings::default()));
     }
 }

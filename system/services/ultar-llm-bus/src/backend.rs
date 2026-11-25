@@ -26,6 +26,29 @@ pub fn class_of(bytes: u64) -> ModelClass {
     }
 }
 
+/// The largest installed model of class `want` (`None`: none of that class is installed).
+pub fn pick_class(models: &[(String, u64)], want: ModelClass) -> Option<&(String, u64)> {
+    models
+        .iter()
+        .filter(|(_, bytes)| class_of(*bytes) == want)
+        .max_by_key(|(_, bytes)| *bytes)
+}
+
+/// The models of a `/v1/models` reply: id and size in bytes.
+fn model_list(reply: &Value) -> Vec<(String, u64)> {
+    reply["data"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .filter_map(|m| {
+                    let id = m["id"].as_str()?.to_owned();
+                    Some((id, m["meta"]["bytes"].as_u64().unwrap_or(0)))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The model service behind its socket.
 #[derive(Clone, Debug)]
 pub struct Backend {
@@ -67,28 +90,33 @@ impl Backend {
     /// What the model service can do now: ready when it answers and a model is installed;
     /// the class is that of the model in use, or of the largest installed one.
     pub fn state(&self) -> LlmState {
+        self.state_with(None)
+    }
+
+    /// Like [`Backend::state`], but the largest installed model of the wanted class counts
+    /// (`assistant.model`); when none of that class is installed, the model in use or the
+    /// largest installed one counts, as without a choice.
+    pub fn state_with(&self, want: Option<ModelClass>) -> LlmState {
         let health = self.request("GET", "/health", "", LOOK_TIME);
         let models = self.request("GET", "/v1/models", "", LOOK_TIME);
         let (Some(health), Some(models)) = (health, models) else {
             return LlmState::default();
         };
-        let list = models["data"].as_array().cloned().unwrap_or_default();
-        let size = |m: &Value| m["meta"]["bytes"].as_u64().unwrap_or(0);
-        let loaded = health["model"].as_str();
-        let chosen = list
-            .iter()
-            .find(|m| m["id"].as_str() == loaded && loaded.is_some())
-            .or_else(|| list.iter().max_by_key(|m| size(m)));
+        let list = model_list(&models);
+        let loaded = health["model"].as_str().unwrap_or("");
+        let chosen = want
+            .and_then(|c| pick_class(&list, c).cloned())
+            .or_else(|| {
+                list.iter()
+                    .find(|(id, _)| !loaded.is_empty() && id == loaded)
+                    .cloned()
+            })
+            .or_else(|| list.iter().max_by_key(|(_, bytes)| *bytes).cloned());
         match chosen {
-            Some(model) => LlmState {
+            Some((id, bytes)) => LlmState {
                 ready: true,
-                model: model["id"]
-                    .as_str()
-                    .unwrap_or("")
-                    .chars()
-                    .take(96)
-                    .collect(),
-                class: class_of(size(model)),
+                model: id.chars().take(96).collect(),
+                class: class_of(bytes),
             },
             None => LlmState::default(),
         }
@@ -102,7 +130,22 @@ impl Backend {
         max_tokens: u32,
         wait: Duration,
     ) -> Option<String> {
-        let body = json!({
+        self.complete_with(None, system, prompt, max_tokens, wait)
+    }
+
+    /// Like [`Backend::complete`], but the largest installed model of the wanted class
+    /// answers (`assistant.model`); when none of that class is installed, the model service
+    /// picks its own.
+    pub fn complete_with(
+        &self,
+        want: Option<ModelClass>,
+        system: &str,
+        prompt: &str,
+        max_tokens: u32,
+        wait: Duration,
+    ) -> Option<String> {
+        let model = want.and_then(|c| pick_class(&self.models(), c).map(|(id, _)| id.clone()));
+        let mut body = json!({
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
@@ -110,6 +153,9 @@ impl Backend {
             "max_tokens": max_tokens,
             "stream": false,
         });
+        if let Some(m) = model {
+            body["model"] = json!(m);
+        }
         let reply = self.request("POST", "/v1/chat/completions", &body.to_string(), wait)?;
         let text = reply["choices"][0]["message"]["content"].as_str()?;
         let mut end = text.len().min(MAX_ANSWER);
@@ -117,6 +163,13 @@ impl Backend {
             end -= 1;
         }
         (end > 0).then(|| text[..end].to_owned())
+    }
+
+    /// The installed models: id and size in bytes (empty when the service does not answer).
+    pub fn models(&self) -> Vec<(String, u64)> {
+        self.request("GET", "/v1/models", "", LOOK_TIME)
+            .map(|reply| model_list(&reply))
+            .unwrap_or_default()
     }
 }
 
@@ -141,6 +194,30 @@ mod tests {
         );
         assert_eq!(body_of(b"HTTP/1.1 503 Busy\r\n\r\n{}"), None);
         assert_eq!(body_of(b"garbage"), None);
+    }
+
+    #[test]
+    fn the_largest_model_of_the_wanted_class_is_picked() {
+        let models = vec![
+            ("tiny".to_owned(), 400_000_000),
+            ("small-2".to_owned(), 1_500_000_000),
+            ("qwen-4b".to_owned(), 2_500_000_000),
+            ("big".to_owned(), 20_000_000_000),
+        ];
+        assert_eq!(
+            pick_class(&models, ModelClass::Small).map(|(id, _)| id.as_str()),
+            Some("small-2")
+        );
+        assert_eq!(
+            pick_class(&models, ModelClass::Medium).map(|(id, _)| id.as_str()),
+            Some("qwen-4b")
+        );
+        assert_eq!(
+            pick_class(&models, ModelClass::Large).map(|(id, _)| id.as_str()),
+            Some("big")
+        );
+        assert_eq!(pick_class(&models[..1], ModelClass::Large), None);
+        assert_eq!(pick_class(&[], ModelClass::Small), None);
     }
 
     #[test]

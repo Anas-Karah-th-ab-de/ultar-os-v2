@@ -27,11 +27,17 @@ pub const CHECKED_PANELS: [&str; 17] = [
 
 /// Settings of those panels with an effect: who follows them.
 pub const WIRED: &[(&str, &str)] = &[
-    // ultar-llm-bus starts and stops the model service with it (`init.switch`).
+    // ultar-llm-bus starts and stops the model service with it (`init.switch`) and lets
+    // the largest installed model of the chosen size answer (`assistant.model`).
     ("assistant.enabled", "llm-bus"),
+    ("assistant.model", "llm-bus"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
-    // and how long the list of what it did is kept.
+    // how long the list of what it did is kept, whether it may see the screen when asked
+    // (with the person's consent in the system dialog, through the capture service), and
+    // whether suspicious links in the model's answers are warned about.
     ("assistant.act", "agentd"),
+    ("assistant.see_screen", "agentd"),
+    ("assistant.check_links", "agentd"),
     ("assistant.reach.apps", "agentd"),
     ("assistant.reach.settings", "agentd"),
     ("assistant.reach.network", "agentd"),
@@ -58,6 +64,13 @@ pub const WIRED: &[(&str, &str)] = &[
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
+    // displayd passes these to the compositor too (`Request::ConfigureKeyboard`): the keys
+    // that switch the input language and whether every window keeps its own.
+    ("keyboard.switch_shortcut", "compositor"),
+    ("keyboard.per_window", "compositor"),
+    // The shell gives the compositor the input languages of the Keyboard page (they win
+    // over the region's layouts when there are any); the sign-in reads the same list.
+    ("keyboard.input_languages", "shell"),
     // The shell (bar, sheets, lock screen) and this window follow these.
     ("accessibility.large_text", "shell"),
     ("accessibility.high_contrast", "shell"),
@@ -141,5 +154,28 @@ mod tests {
             assert!(CHECKED_PANELS.contains(&panel), "{key}");
         }
         assert!(!takes_effect("printers", "printers.paper"));
+    }
+
+    #[test]
+    fn the_assistant_and_keyboard_pages_have_their_consumers() {
+        assert!(takes_effect("keyboard", "keyboard.switch_shortcut"));
+        assert!(takes_effect("keyboard", "keyboard.per_window"));
+        assert!(takes_effect("keyboard", "keyboard.input_languages"));
+        // The on-screen keyboard program is not on this branch (build/phonekb).
+        assert!(!takes_effect("keyboard", "keyboard.on_screen"));
+        assert!(!takes_effect("keyboard", "keyboard.suggestions"));
+        assert!(!takes_effect("keyboard", "keyboard.autocorrect"));
+        assert!(!takes_effect(
+            "accessibility",
+            "accessibility.on_screen_keyboard"
+        ));
+        assert!(takes_effect("assistant", "assistant.model"));
+        assert!(takes_effect("assistant", "assistant.see_screen"));
+        assert!(takes_effect("assistant", "assistant.check_links"));
+        // No speech component and no runtime model-folder contract yet.
+        assert!(!takes_effect("assistant", "assistant.model_place"));
+        assert!(!takes_effect("assistant", "assistant.voice"));
+        assert!(!takes_effect("assistant", "assistant.wake_word"));
+        assert!(!takes_effect("assistant", "assistant.wake_phrase"));
     }
 }

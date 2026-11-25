@@ -161,7 +161,7 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             Request::IdentifyOutputs { numbers, ms }
         }
         37 => Request::DetectOutputs,
-        44 | 45 => decode_input(opcode, r)?,
+        44 | 45 | 46 => decode_input(opcode, r)?,
         41 => Request::SetPhoneMode { on: r.bool()? },
         42 => Request::ClientHeader {
             surface: surface(r)?,
@@ -187,8 +187,16 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
 }
 
 /// The overview's requests: a thumbnail (38), show (39) or move to (40) a workspace.
-/// The pointer and key-repeat configuration of the display service.
+/// The pointer, key-repeat and keyboard configuration of the display service.
 fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    if opcode == 46 {
+        let switch_shortcut = super::SwitchShortcut::decode(r)?;
+        let per_window = r.bool()?;
+        return Ok(Request::ConfigureKeyboard {
+            switch_shortcut,
+            per_window,
+        });
+    }
     if opcode == 44 {
         let speed = i8::from_le_bytes([r.u8()?]);
         if !(super::MIN_POINTER_SPEED..=super::MAX_POINTER_SPEED).contains(&speed) {

@@ -235,6 +235,7 @@ impl Toolbox for BusTools<'_> {
             "airplane" => self.airplane(call.arg("on")),
             "media" => self.media(call.arg("button")),
             "screenshot" => self.screenshot(),
+            "see_screen" => self.see_screen(),
             "lock" => self.lock(),
             "help" => Self::help(call.arg("topic")),
             "suspend" => self.suspend(),

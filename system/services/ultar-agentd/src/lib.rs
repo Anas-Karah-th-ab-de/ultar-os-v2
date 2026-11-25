@@ -17,6 +17,7 @@
 pub mod activity;
 pub mod brain;
 pub mod help;
+pub mod links;
 pub mod minimal;
 pub mod model;
 mod msg;

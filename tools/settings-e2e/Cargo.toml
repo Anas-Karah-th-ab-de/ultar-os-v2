@@ -19,6 +19,8 @@ ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-update = { path = "../../system/core/ultar-update" }
+ultar-agentd = { path = "../../system/services/ultar-agentd" }
+ultar-llm-bus = { path = "../../system/services/ultar-llm-bus" }
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

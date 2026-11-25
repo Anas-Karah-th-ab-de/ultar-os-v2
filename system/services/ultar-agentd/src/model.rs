@@ -83,11 +83,17 @@ mod tests {
 
     #[test]
     fn the_model_is_told_every_tool_and_the_form_of_its_answers() {
-        let rules = system_prompt(&Limits::default());
+        let open = Limits {
+            see_screen: true,
+            ..Limits::default()
+        };
+        let rules = system_prompt(&open);
         for tool in TOOLS {
             assert!(rules.contains(tool.name), "{}", tool.name);
         }
         assert!(rules.contains("{\"say\":\"text\"}"));
+        // Seeing the screen is not told to the model until the person allowed it.
+        assert!(!system_prompt(&Limits::default()).contains("see_screen"));
     }
 
     #[test]

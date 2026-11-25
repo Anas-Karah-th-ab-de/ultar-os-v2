@@ -16,8 +16,14 @@ use ultar_bus::messages::settings::{
     MAX_ACCESSIBILITY,
 };
 
-/// The input-language settings the sign-in screen reads (in this order).
-pub const LOGIN_KEYBOARD: [&str; 2] = ["region.keyboard.layouts", "region.keyboard.active"];
+/// The input-language settings the sign-in screen reads (in this order): the Keyboard
+/// page's input languages (they win over the region's layouts when there are any), the
+/// region's layouts and the active one.
+pub const LOGIN_KEYBOARD: [&str; 3] = [
+    "keyboard.input_languages",
+    "region.keyboard.layouts",
+    "region.keyboard.active",
+];
 /// The one of them it may write.
 const LOGIN_WRITABLE: &str = "region.keyboard.active";
 

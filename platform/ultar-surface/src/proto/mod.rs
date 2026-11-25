@@ -19,8 +19,9 @@ mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
 pub use input_config::{
-    PointerSize, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS, MAX_KEY_REPEATS_PER_SECOND,
-    MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS, MIN_POINTER_SPEED,
+    PointerSize, SwitchShortcut, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS,
+    MAX_KEY_REPEATS_PER_SECOND, MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS,
+    MIN_POINTER_SPEED,
 };
 pub use outputs::{
     Arrangement, OutputDetails, OutputIdentity, OutputMode, OutputSetup, Setup, SetupOutcome,
