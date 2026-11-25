@@ -12,17 +12,19 @@ use ultar_bus::messages::power::PowerState;
 use ultar_bus::messages::settings::{Changed, SettingValue};
 use ultar_bus::{Client, ClientOptions, TypedSubscription};
 use ultar_ui::tokens::ThemeKind;
+use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 
 /// The setting that puts the bar at the bottom (standard) or at the top with a dock.
 /// (`bar.layout` of the settings schema: `bottom_bar` | `top_bar_dock`, panel "Desktop bar").
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 12] = [
+pub const FOLLOWED: [&str; 13] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
     "accessibility.reduce_motion",
+    "accessibility.double_click_ms",
     "search.source.apps",
     "search.source.settings",
     "search.source.calculator",
@@ -130,6 +132,11 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
         ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
         ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
         ("accessibility.reduce_motion", SettingValue::Flag(on)) => d.values.reduce_motion = *on,
+        ("accessibility.double_click_ms", SettingValue::Integer(v))
+            if (i64::from(MIN_DOUBLE_CLICK_MS)..=i64::from(MAX_DOUBLE_CLICK_MS)).contains(v) =>
+        {
+            d.values.double_click_ms = Some(*v as u16);
+        }
         (k, SettingValue::Flag(on)) if d.overview.sources.set(k, *on) => {}
         ("display.night_light.enabled", SettingValue::Flag(on)) => d.values.night = *on,
         ("power.mode", SettingValue::Text(t)) => {
@@ -186,6 +193,31 @@ mod tests {
         );
         assert_eq!(d.values.brightness, Some(100));
         apply_setting(&mut d, "x", &SettingValue::Flag(true));
+    }
+
+    #[test]
+    fn the_double_click_time_reaches_the_state_within_its_range() {
+        let mut d = Desktop::new(Lang::En);
+        assert_eq!(d.values.double_click_ms, None, "not read yet");
+        assert!(FOLLOWED.contains(&"accessibility.double_click_ms"));
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Integer(700),
+        );
+        assert_eq!(d.values.double_click_ms, Some(700));
+        // Outside the range or of the wrong type: the last good value stays.
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Integer(5000),
+        );
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Flag(true),
+        );
+        assert_eq!(d.values.double_click_ms, Some(700));
     }
 
     #[test]

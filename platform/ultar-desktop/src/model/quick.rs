@@ -234,6 +234,9 @@ pub struct QuickValues {
     pub large_text: bool,
     /// accessibility.reduce_motion: nothing of the shell moves on its own.
     pub reduce_motion: bool,
+    /// accessibility.double_click_ms: two clicks of a double click this far apart, if the
+    /// setting is known (the windows keep the toolkit's 400 ms until then).
+    pub double_click_ms: Option<u16>,
 }
 
 /// One tile as shown.

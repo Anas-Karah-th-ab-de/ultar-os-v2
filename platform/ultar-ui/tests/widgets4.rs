@@ -68,6 +68,36 @@ fn double_click_needs_the_same_node_within_the_window() {
 }
 
 #[test]
+fn the_double_click_interval_is_a_setting_of_the_window() {
+    let mut ui = ui(Lang::En);
+    let root = ui.root();
+    let a = ui.add(root, Button::new(k("demo.save"))).expect("a");
+    assert_eq!(ui.double_click_ms(), motion::DOUBLE_CLICK as u16);
+    // A longer interval: clicks 500 ms apart are still a double click.
+    ui.set_double_click_ms(700);
+    assert_eq!(of(&click(&mut ui, a)), vec![ActionKind::Activated]);
+    ui.advance_to(500);
+    assert_eq!(
+        of(&click(&mut ui, a)),
+        vec![ActionKind::Activated, ActionKind::DoubleActivated]
+    );
+    // A shorter one: 300 ms apart is too slow now.
+    ui.set_double_click_ms(200);
+    ui.advance_to(10_000);
+    click(&mut ui, a);
+    ui.advance_to(10_300);
+    assert_eq!(of(&click(&mut ui, a)), vec![ActionKind::Activated]);
+    // Out of range falls back to the default; a valid value survives a rebuild.
+    for bad in [0, 199, 1001, u16::MAX] {
+        ui.set_double_click_ms(bad);
+        assert_eq!(ui.double_click_ms(), motion::DOUBLE_CLICK as u16, "{bad}");
+    }
+    ui.set_double_click_ms(600);
+    ui.clear();
+    assert_eq!(ui.double_click_ms(), 600, "clear keeps the setting");
+}
+
+#[test]
 fn pointer_responses_carry_the_held_modifiers() {
     let mut ui = ui(Lang::En);
     let root = ui.root();

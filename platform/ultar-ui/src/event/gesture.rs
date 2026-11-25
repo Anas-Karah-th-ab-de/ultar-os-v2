@@ -195,7 +195,7 @@ impl Ui {
     /// enough and close enough is a double click.
     pub(crate) fn detect_double(&mut self, id: NodeId, pos: Point, out: &mut Vec<Action>) {
         let now = self.now_ms;
-        let window = u64::from(motion::DOUBLE_CLICK);
+        let window = u64::from(self.double_click_ms());
         match self.layers.gestures.last_click {
             Some((node, at, at_pos))
                 if node == id && now.saturating_sub(at) <= window && !far(at_pos, pos) =>
