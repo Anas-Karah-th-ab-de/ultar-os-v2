@@ -282,9 +282,21 @@ fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String>
 /// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
 /// resets the engine when the context does not give way; the queue takes no more jobs.
 fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
-    let Some(id) = rt.programs.queues.get(&key).map(|q| q.id) else {
+    let Some((id, class, seen, submitted)) = rt.programs.queues.get(&key).map(|q| (q.id, q.class, q.seen, q.submitted)) else {
         return;
     };
+    // where the engine stands, read before the GuC resets it (Linux: RING_ACTHD, RING_IPEHR,
+    // RING_BBADDR); offsets from the engine's base
+    let base = match class {
+        Class::Render => 0x2000,
+        Class::Blitter => 0x22000,
+        _ => 0x1a000,
+    };
+    let mut reg = |off: u32| ultar_intel_gt::Hw::read(&mut dev.mmio, base + off);
+    let (acthd, ipehr, bbaddr, bbaddr_hi) = (reg(0x74), reg(0x68), reg(0x140), reg(0x168));
+    crate::kprintln!(
+        "[intel-gt] hung job on {class:?}: jobs {seen}/{submitted} done, ACTHD {acthd:#x}, IPEHR {ipehr:#x}, batch {bbaddr_hi:#x}{bbaddr:08x}"
+    );
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
     let reset = events
