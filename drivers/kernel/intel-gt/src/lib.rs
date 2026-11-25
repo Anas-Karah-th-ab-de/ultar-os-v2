@@ -18,6 +18,7 @@
 //! * [`ctb`] – the command buffers (requests, responses, events),
 //! * [`mi`], [`lrc`], [`submit`] – commands, the context image and the messages that make the
 //!   GuC run a context on an engine,
+//! * [`irq`] – interrupts of the engines and the GuC (a job ended, a message from the GuC),
 //! * [`slpc`] – the GuC's power management (frequency from the load, sleep when idle),
 //! * [`topology`] – slices, execution units and cache banks of this chip (fuses),
 //! * [`uapi`] – the interface for programs (Linux `xe` uAPI): request numbers and device queries,
@@ -50,6 +51,7 @@ pub mod fw;
 pub mod guc;
 pub mod hwconfig;
 pub mod hxg;
+pub mod irq;
 pub mod ident;
 pub mod lrc;
 pub mod mi;

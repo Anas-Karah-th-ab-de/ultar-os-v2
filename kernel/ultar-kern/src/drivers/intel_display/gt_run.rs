@@ -180,6 +180,10 @@ pub fn start(dev: &mut Device) -> Result<String, String> {
             return Err(e);
         }
     };
+    match super::gt_irq::setup(dev) {
+        Ok(()) => crate::kprintln!("[intel-gt] interrupts: MSI vector {:#x} to this core", super::gt_irq::VECTOR),
+        Err(e) => crate::kprintln!("[intel-gt] interrupts: {e}; waits stay on the timer"),
+    }
     let ms = (crate::arch::uptime_ns() - t0) / 1_000_000;
     let text = format!(
         "{what} running with command buffers, {} golden image(s) from {ran} first job(s), up in {ms} ms",
