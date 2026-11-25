@@ -8,7 +8,8 @@
 #   OPTIN=0  boot the VM without the driver's opt-in (expects READ-ONLY OK); default: with opt-in.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-mkdir -p out
+mkdir -p out out/igpu-bin
+rm -f out/igpu-bin/*
 DEV=/sys/bus/pci/devices/0000:00:02.0
 export PATH=/usr/lib/rust-1.97/bin:$PATH RUSTC_BOOTSTRAP=1
 # The UEFI target links with rust-lld. Newer Ubuntu releases ship it in a separate package; fall back to LLVM's lld-link.
@@ -48,7 +49,14 @@ for u in ${STOP_UNITS:-}; do
 done
 sleep 2
 echo "=== passthrough"
-LIMIT=240 bash tools/kern-test/igpu-passthrough.sh out/ultar-kern-intel.efi 2>&1 | tail -200
+# the program that uses the render node (static, built here; skipped without a C compiler)
+BINDIR=""
+if command -v gcc >/dev/null && gcc -O2 -Wall -Wextra -static -o out/igpu-bin/dritest kernel/ultar-kern/user/dritest.c 2>/dev/null; then
+  BINDIR=out/igpu-bin
+else
+  echo "dritest not built (gcc or static libc missing) - the render node is only checked from inside the kernel"
+fi
+LIMIT=240 bash tools/kern-test/igpu-passthrough.sh out/ultar-kern-intel.efi $BINDIR 2>&1 | tail -200
 echo "=== after"
 echo "driver after: $(basename "$(readlink -f $DEV/driver)")"
 dmesg | tail -40 | grep -iE "i915|vfio|drm" | tail -15
