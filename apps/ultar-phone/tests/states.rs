@@ -194,3 +194,62 @@ fn ringing_asks_for_the_call_screen() {
     let a = app(with_calls(vec![call(1, Phase::Active, false)]));
     assert!(!a.wants_call_screen());
 }
+
+/// Regression (real-input gate, "phone: no answer to Tab 1 … window frozen"): a rebuild of the
+/// tree (a new `call.state`, the minute turning, the bus thread's first answer) right after a
+/// Tab hid the focus ring (the toolkit forgot that the keyboard was in use when the tree was
+/// built again) and took the focus away altogether when it stood on the scrolling dial pad;
+/// the ring vanished before a frame showed it and the window looked as if the key had not
+/// arrived. Wherever Tab puts the focus, it is still there, with its ring, after a rebuild.
+#[test]
+fn the_focus_survives_a_rebuild_wherever_tab_put_it() {
+    use ultar_ui::event::{Event, Key, Modifiers};
+    let state = ultar_bus::messages::call::CallState::default();
+    for (w, h) in [
+        (1280.0, 800.0),
+        (800.0, 660.0),
+        (800.0, 420.0),
+        (480.0, 320.0),
+    ] {
+        for with_log in [true, false] {
+            let size = ultar_ui::Size { w, h };
+            let mut a = app_with(
+                ultar_ui::Lang::Ar,
+                ultar_ui::tokens::ThemeKind::Dark,
+                size,
+                state.clone(),
+            );
+            if !with_log {
+                a.set_log(Vec::new()).unwrap();
+            }
+            for step in 0..60 {
+                a.handle(Event::Key {
+                    key: Key::Tab,
+                    modifiers: Modifiers::default(),
+                })
+                .unwrap();
+                let Some(before) = a.ui_ref().focused() else {
+                    panic!("{w}x{h}: Tab {step} left nothing focused");
+                };
+                let at = a.ui_ref().rect(before).unwrap();
+                assert!(
+                    a.ui_ref().visual(before).focused,
+                    "{w}x{h}: Tab {step}: no ring"
+                );
+                a.set_state(state.clone(), 1_000 + step).unwrap();
+                let after = a.ui_ref().focused();
+                let ring = after.is_some_and(|id| a.ui_ref().visual(id).focused);
+                assert!(
+                    ring,
+                    "{w}x{h} log={with_log}: Tab {step}: the rebuild hid the focus ring"
+                );
+                let kept = after.and_then(|id| a.ui_ref().rect(id));
+                assert_eq!(
+                    kept,
+                    Some(at),
+                    "{w}x{h} log={with_log}: Tab {step}: focus at {at:?} lost by a rebuild"
+                );
+            }
+        }
+    }
+}

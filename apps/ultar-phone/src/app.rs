@@ -388,28 +388,33 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
 
     /// Rebuilds the tree from the model; focus and hover stay where they were.
     pub(crate) fn rebuild(&mut self) -> Result<(), AppError> {
-        let focused = self
-            .ui
-            .focused()
+        let had_focus = self.ui.focused();
+        let focused = had_focus
             .and_then(|f| self.built.clicks.iter().find(|(id, _)| *id == f))
             .map(|(_, c)| *c);
+        // What scrolls takes the focus itself (the dial pad in a small window, a long history)
+        // and is no click target: its place in the Tab order finds it again.
+        let place = match (had_focus, focused) {
+            (Some(f), None) => self.ui.focus_order().iter().position(|id| *id == f),
+            _ => None,
+        };
         // The dial pad keeps its scroll position across rebuilds (every key press rebuilds).
-        let pad = self
-            .built
-            .pad
-            .and_then(|p| self.ui.scroll_offset(p).ok())
-            .filter(|o| *o > 0.0);
+        let pad = self.built.pad.and_then(|p| self.ui.scroll_offset(p).ok());
         self.built = view::build(&mut self.ui, &self.model)?;
         self.ui.layout();
-        if let (Some(offset), Some(id)) = (pad, self.built.pad) {
-            if self.ui.set_scroll_offset(id, offset).is_ok() {
-                self.ui.layout();
-            }
-        }
         if let Some(c) = focused {
             if let Some((id, _)) = self.built.clicks.iter().find(|(_, x)| *x == c) {
                 // A control that became disabled cannot keep the focus; that is fine.
                 let _ = self.ui.focus(*id);
+            }
+        } else if let Some(id) = place.and_then(|i| self.ui.focus_order().get(i).copied()) {
+            let _ = self.ui.focus(id);
+        }
+        // The pad stays where the user scrolled it: giving the focus back must not bring the
+        // focused key into view again (it is a rebuild, not a step of the keyboard).
+        if let (Some(offset), Some(id)) = (pad, self.built.pad) {
+            if self.ui.set_scroll_offset(id, offset).is_ok() {
+                self.ui.layout();
             }
         }
         if let Some(pos) = self.pointer {
