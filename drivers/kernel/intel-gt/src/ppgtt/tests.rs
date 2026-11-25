@@ -216,3 +216,36 @@ fn removing_part_of_a_two_megabyte_entry_keeps_the_rest() {
     assert_eq!(pt.lookup(&mut m, MIB2), None);
     pt.map_cached(&mut m, MIB2, &phys, 0).unwrap();
 }
+
+#[test]
+fn scratch_space_maps_unbound_addresses_to_nothing() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new_scratch(&mut m).unwrap();
+    assert!(pt.is_scratch());
+    assert_eq!(pt.table_pages().len(), 513);
+    let va = 4 << 30 | 1 << 21 | 3 << 12;
+    assert!(pt.is_null(&mut m, va));
+    assert!(pt.is_null(&mut m, ADDRESS_SPACE - PAGE));
+    // a buffer goes where nothing was mapped; its neighbours stay null
+    pt.map(&mut m, va, &[0xaaaa_0000]).unwrap();
+    assert_eq!(pt.lookup(&mut m, va), Some(0xaaaa_0000));
+    assert!(pt.is_null(&mut m, va + PAGE));
+    assert!(pt.is_null(&mut m, va - PAGE));
+    // memory stays protected: no second mapping over it
+    assert!(pt.map(&mut m, va, &[0xbbbb_0000]).is_err());
+    // removed, the address is null again
+    pt.unmap(&mut m, va, 1).unwrap();
+    assert!(pt.is_null(&mut m, va));
+    pt.map(&mut m, va, &[0xcccc_0000]).unwrap();
+    assert_eq!(pt.lookup(&mut m, va), Some(0xcccc_0000));
+}
+
+#[test]
+fn scratch_space_takes_2mib_pages() {
+    let mut m = Mem::default();
+    let mut pt = Ppgtt::new_scratch(&mut m).unwrap();
+    let phys: Vec<u64> = (0..512).map(|k| 0x4000_0000 + k * PAGE).collect();
+    assert_eq!(pt.map_cached(&mut m, 2 << 21, &phys, 3).unwrap(), 1);
+    assert_eq!(pt.lookup(&mut m, (2 << 21) + 5 * PAGE), Some(0x4000_0000 + 5 * PAGE));
+    assert!(pt.is_null(&mut m, 3 << 21));
+}
