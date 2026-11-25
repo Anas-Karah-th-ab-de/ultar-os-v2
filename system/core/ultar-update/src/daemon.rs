@@ -10,15 +10,18 @@ use crate::engine::{Engine, Environment};
 use crate::error::UpdateError;
 use crate::fault::CancelFlag;
 use crate::filectl::FileBootControl;
+use crate::follow::{follow_settings, follow_volumes};
 use crate::fsutil::{create_private_dir, read_bounded};
 use crate::health::{BusHealth, FsSpace, HealthCheck};
 use crate::net::HttpSource;
+use crate::notify::{BusPost, NotifyingPublisher};
 use crate::partctl::PartitionBootControl;
 use crate::service::{Core, SourceFactory};
+use crate::settings::UpdateSettings;
 use crate::source::UpdateSource;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ultar_bus::{BusError, Client, ClientOptions};
 
@@ -278,7 +281,13 @@ fn run_with<B: BootControl + 'static>(
         config.server.clone(),
         config.token_file.clone(),
     ));
-    let publisher = Arc::new(BusPublisher(client.clone()));
+    let settings = Arc::new(Mutex::new(UpdateSettings::default()));
+    let poster = Arc::new(BusPost(client.clone()));
+    let publisher = Arc::new(NotifyingPublisher::new(
+        BusPublisher(client.clone()),
+        poster.clone(),
+        settings.clone(),
+    ));
     let core = Arc::new(Core::new(
         engine,
         cancel.clone(),
@@ -304,9 +313,34 @@ fn run_with<B: BootControl + 'static>(
     }
     let endpoint = client.register(crate::contract::SERVICE)?;
     (hooks.ready)(outcome);
+    start_followers(core.clone(), client.clone(), config, settings, poster);
     start_timer(core.clone(), u64::from(config.check_interval_minutes) * 60);
     serve(core, endpoint);
     Ok(())
+}
+
+/// Spawns the threads that follow the person's settings (mapped onto the policy under the
+/// ceiling) and the mounted drives (the offer of an update from a stick). The shared settings
+/// gate the notifications and the drive offer.
+fn start_followers<B: BootControl + 'static>(
+    core: Arc<Core<B>>,
+    client: Client,
+    config: &DaemonConfig,
+    settings: Arc<Mutex<UpdateSettings>>,
+    poster: Arc<BusPost>,
+) {
+    follow_settings(
+        core,
+        client.clone(),
+        config.ceiling.clone(),
+        settings.clone(),
+    );
+    follow_volumes(
+        client,
+        config.access.offline_roots.clone(),
+        settings,
+        poster,
+    );
 }
 
 /// The timer thread lives as long as the process. It wakes often and asks whether a run is
