@@ -35,7 +35,8 @@
 #   7b2. every page of the Settings app on the real settings service (settings-e2e.sh, SETTINGS: ALLES OK),
 #   7c. the system services behind the desktop shell (dienste-e2e.sh, DIENSTE: ALLES OK),
 #   7e. the phone: ultar-calld with the test-double modem and the phone app (telefon-e2e.sh, TELEFON: ALLES OK),
-#       and the sound card's call streams /dev/ultar/pcm (pcm-e2e.sh, PCM-E2E: ALLES OK),
+#       and the sound card's call streams /dev/ultar/pcm (pcm-e2e.sh, PCM-E2E: ALLES OK) and the camera
+#       node /dev/ultar/kamera (kamera-e2e.sh, KAMERA-E2E: ALLES OK),
 #   7f. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
 #       the graphical installation from A to Z with the first start of the installed disk (installer-e2e.sh,
 #       INSTALLER: ALLES OK; opt-in with INSTALLER_E2E=1, see docs/integration/installer-boot.md),
@@ -177,6 +178,9 @@ IMG=out/ultar-kern-esp.img bash tools/kern-test/telefon-e2e.sh
 # Sound for calls: /dev/ultar/pcm plays and records at the card's pace, the tone reaches the speaker
 # (pcm-e2e.sh, PCM-E2E: ALLES OK).
 IMG=out/ultar-kern-esp.img bash tools/kern-test/pcm-e2e.sh | tail -1
+# Camera for video calls: without a camera in the machine /dev/ultar/kamera is absent and nothing breaks
+# (kamera-e2e.sh; KAMERA_USB=<vid>:<pid> passes a real camera in, KAMERA-E2E: ALLES OK).
+IMG=out/ultar-kern-esp.img bash tools/kern-test/kamera-e2e.sh | tail -1
 # Installer mode: whole-disk nodes only on an installation medium, only for the installer's identity, the
 # boot disk never a target (installer-disk.sh, INSTALLER-DISK: ALLES OK).
 IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/installer-disk.sh | tail -3

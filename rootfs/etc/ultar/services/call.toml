@@ -15,8 +15,9 @@ args = [
 # other device (UDP), and to the sound card.
 # right sound: the running streams /dev/ultar/pcm (microphone and speaker of a call); nothing else
 # of the sound card and no other device.
+# right camera: the pictures of /dev/ultar/kamera while a video call runs; no other device.
 user = 829
-rights = ["sound"]
+rights = ["sound", "camera"]
 dirs = ["/data/ultar/calls"]
 after = ["bus"]
 restart = "on-failure"

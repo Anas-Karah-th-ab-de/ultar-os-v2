@@ -319,6 +319,8 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
 pub fn poll() {
     // USB hot-plug is looked at on the same paths (rate-limited there)
     crate::devices::poll();
+    // a streaming camera has no interrupts either: its transfers are taken here between reads
+    crate::drivers::gen_xhci::uvc::poll();
     // see `flush`; received data is charged to the owner of the socket it lands in (`Sock::take`)
     crate::heap::kernel(poll_network)
 }

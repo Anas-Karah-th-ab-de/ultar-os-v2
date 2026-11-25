@@ -69,6 +69,8 @@ pub enum FdKind {
     Dri(Arc<crate::svcdev::dri::DriFd>),
     /// Sound streams `/dev/ultar/pcm` (svcdev/pcm.rs)
     Pcm(Arc<crate::svcdev::pcm::PcmFd>),
+    /// Camera pictures `/dev/ultar/kamera` (svcdev/kamera.rs)
+    Kamera(Arc<crate::svcdev::kamera::KameraFd>),
 }
 
 pub enum UnixState {
@@ -129,6 +131,7 @@ impl Fd {
             FdKind::Uinput(u) => FdKind::Uinput(u.clone()),
             FdKind::Dri(d) => FdKind::Dri(d.clone()),
             FdKind::Pcm(p) => FdKind::Pcm(p.clone()),
+            FdKind::Kamera(k) => FdKind::Kamera(k.clone()),
         };
         Fd { kind, cloexec: false, flags: self.flags }
     }

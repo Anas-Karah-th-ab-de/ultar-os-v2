@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use ultar_bus::messages::call::{CallState, LogEntry};
+use ultar_bus::messages::call::{CallPicture, CallState, LogEntry};
 use ultar_bus::{Client as Bus, ClientOptions};
 use ultar_i18n::Lang;
 use ultar_phone::port::{CallPort, PortError, Request};
@@ -81,6 +81,8 @@ enum FromBus {
     },
     /// A new `call.state`.
     State(CallState),
+    /// A picture of the call (`call.picture`): own camera or other side, JPEG.
+    Picture(bool, Vec<u8>),
 }
 
 /// Connects to the bus and asks the call service, off the window's thread.
@@ -118,6 +120,7 @@ fn bus_work(path: &Path, tx: &Sender<FromBus>) {
     {
         return;
     }
+    pictures(&bus, tx);
     let Ok(states) = BusPort::new(bus, START).states() else {
         return;
     };
@@ -126,6 +129,23 @@ fn bus_work(path: &Path, tx: &Sender<FromBus>) {
             return;
         }
     }
+}
+
+/// Follows `call.picture` on a thread of its own (pictures come while states wait).
+fn pictures(bus: &Bus, tx: &Sender<FromBus>) {
+    let Ok(sub) = bus.subscribe::<CallPicture>() else {
+        return;
+    };
+    let tx = tx.clone();
+    let _ = std::thread::Builder::new()
+        .name("phone-picture".into())
+        .spawn(move || {
+            while let Ok(p) = sub.recv() {
+                if tx.send(FromBus::Picture(p.own, p.jpeg)).is_err() {
+                    return;
+                }
+            }
+        });
 }
 
 impl CallPort for Port {
@@ -193,11 +213,13 @@ fn run(o: Options) -> Result<(), String> {
 
 /// Takes what the bus thread learnt; false once it ended.
 fn from_bus(window: &mut PhoneWindow<Port>, rx: &Receiver<FromBus>) -> bool {
-    loop {
+    // only the newest pictures of a burst are decoded and shown (other side, own camera)
+    let mut pictures: [Option<Vec<u8>>; 2] = [None, None];
+    let live = loop {
         let message = match rx.try_recv() {
             Ok(m) => m,
-            Err(TryRecvError::Empty) => return true,
-            Err(TryRecvError::Disconnected) => return false,
+            Err(TryRecvError::Empty) => break true,
+            Err(TryRecvError::Disconnected) => break false,
         };
         let now = window.now_ms();
         match message {
@@ -213,8 +235,15 @@ fn from_bus(window: &mut PhoneWindow<Port>, rx: &Receiver<FromBus>) -> bool {
             FromBus::State(state) => {
                 let _ = window.app().set_state(state, now);
             }
+            FromBus::Picture(own, jpeg) => pictures[usize::from(own)] = Some(jpeg),
+        }
+    };
+    for (own, jpeg) in pictures.into_iter().enumerate() {
+        if let Some(jpeg) = jpeg {
+            let _ = window.app().set_picture(own == 1, &jpeg);
         }
     }
+    live
 }
 
 fn main() -> ExitCode {

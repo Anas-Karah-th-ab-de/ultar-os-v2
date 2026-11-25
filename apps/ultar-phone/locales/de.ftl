@@ -81,6 +81,7 @@ phone.share = Bildschirm teilen
 phone.hangup = Auflegen
 phone.video.peer = Bild von { $name }
 phone.video.own = Dein Bild
+phone.video.remote = Bild der Gegenseite
 phone.phase.dialing = Wird angerufen…
 phone.phase.alerting = Es klingelt…
 phone.phase.held = Anruf gehalten

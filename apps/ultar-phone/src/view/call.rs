@@ -13,7 +13,9 @@ use ultar_ui::layout::{CrossAlign, Flex, MainAlign, Padding, Sizing};
 use ultar_ui::text::Weight;
 use ultar_ui::tokens::{ColorRole, Space, TypeSize};
 use ultar_ui::ui::{NodeId, UiError};
-use ultar_ui::widgets::{Badge, Button, ButtonVariant, Card, Dialog, Icon, Label, Text, Tone};
+use ultar_ui::widgets::{
+    Badge, Button, ButtonVariant, Card, Dialog, Icon, Label, PixelArea, Text, Tone,
+};
 
 fn avatar(b: &mut Builder<'_>, parent: NodeId) -> Result<NodeId, UiError> {
     let side = Space::S48.points();
@@ -168,7 +170,7 @@ pub(crate) fn in_call(
     if let Some(other) = model.other_call(id) {
         second_call(b, main, other)?;
     }
-    picture(b, main, call)?;
+    picture(b, main, call, model.pictures)?;
     controls(b, main, model, call)?;
     if model.keypad {
         keypad(b, main, model)?;
@@ -236,18 +238,31 @@ fn second_call(b: &mut Builder<'_>, main: NodeId, other: &CallInfo) -> Result<()
     Ok(())
 }
 
-fn picture(b: &mut Builder<'_>, main: NodeId, call: &CallInfo) -> Result<(), UiError> {
+fn picture(
+    b: &mut Builder<'_>,
+    main: NodeId,
+    call: &CallInfo,
+    pictures: crate::model::Pictures,
+) -> Result<(), UiError> {
     let flex = Flex::column()
         .gap(Space::S8)
         .main(MainAlign::Center)
         .cross(CrossAlign::Center)
         .padding(Padding::all(Space::S16));
     let area = b.add(main, Card::new().flex(flex), Sizing::grow(1))?;
-    b.add(
-        area,
-        Icon::new(IconId::User).color(ColorRole::TextMuted),
-        Sizing::AUTO,
-    )?;
+    if pictures.other {
+        // the other side's picture (call.picture), 320×240 as a call sends it
+        let (w, h) = metrics::remote_picture();
+        let pic = PixelArea::new(Label::key("phone.video.remote"));
+        let node = b.add(area, pic, Sizing::width(w).with_height(h))?;
+        b.built.remote = Some(node);
+    } else {
+        b.add(
+            area,
+            Icon::new(IconId::User).color(ColorRole::TextMuted),
+            Sizing::AUTO,
+        )?;
+    }
     let peer = Label::key_with("phone.video.peer", &[("name", Model::who(call))]);
     b.add(
         area,
@@ -264,8 +279,13 @@ fn picture(b: &mut Builder<'_>, main: NodeId, call: &CallInfo) -> Result<(), UiE
             Card::new().raised().flex(own),
             Sizing::width(w).with_height(h),
         )?;
-        b.add(own, Icon::new(IconId::Video).small(), Sizing::AUTO)?;
-        b.add(own, small(Label::key("phone.video.own")), Sizing::AUTO)?;
+        if pictures.own {
+            let pic = PixelArea::new(Label::key("phone.video.own"));
+            b.built.own = Some(b.add(own, pic, Sizing::width(w).with_height(h))?);
+        } else {
+            b.add(own, Icon::new(IconId::Video).small(), Sizing::AUTO)?;
+            b.add(own, small(Label::key("phone.video.own")), Sizing::AUTO)?;
+        }
     }
     Ok(())
 }

@@ -39,6 +39,10 @@ pub mod metrics {
     pub fn own_picture() -> (f32, f32) {
         (grid(48.0), grid(32.0))
     }
+    /// The other side's picture (the size a call sends: `g(80)` × `g(60)`).
+    pub fn remote_picture() -> (f32, f32) {
+        (grid(80.0), grid(60.0))
+    }
 }
 
 /// Handles of one built tree.
@@ -60,6 +64,10 @@ pub struct Built {
     pub dialog: Option<NodeId>,
     /// The call timer text.
     pub timer: Option<NodeId>,
+    /// The other side's picture.
+    pub remote: Option<NodeId>,
+    /// The own camera's picture.
+    pub own: Option<NodeId>,
 }
 
 /// Collects nodes while the tree is built.

@@ -15,6 +15,8 @@ ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-surface = { path = "../../platform/ultar-surface" }
+zune-jpeg = "0.5"
 
 [dev-dependencies]
+jpeg-encoder = "0.6"
 ultar-ui = { path = "../../platform/ultar-ui" }

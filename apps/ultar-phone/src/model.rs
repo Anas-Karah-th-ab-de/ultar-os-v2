@@ -91,6 +91,17 @@ pub struct Model {
     pub wall_s: i64,
     /// Offset of the local time zone from UTC in seconds.
     pub utc_offset_s: i32,
+    /// Which pictures of a video call arrived (cleared when no call is active).
+    pub pictures: Pictures,
+}
+
+/// Which pictures of a video call arrived.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Pictures {
+    /// The other side's.
+    pub other: bool,
+    /// The own camera's.
+    pub own: bool,
 }
 
 /// Maps Arabic-Indic and Eastern Arabic-Indic digits to 0–9 (DESKTOP-SPEC §3: digits are 0–9).
@@ -140,6 +151,7 @@ impl Model {
         if !state.calls.iter().any(|c| c.phase == Phase::Active) {
             self.keypad = false;
             self.tones.clear();
+            self.pictures = Pictures::default();
         }
         if let Some(Dialog::Share(id)) = self.dialog {
             if !state.calls.iter().any(|c| c.id == id) {

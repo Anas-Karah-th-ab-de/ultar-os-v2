@@ -18,6 +18,7 @@ mod app_click;
 pub mod click;
 pub mod launch;
 pub mod model;
+pub mod picture;
 pub mod port;
 pub mod text;
 pub mod view;

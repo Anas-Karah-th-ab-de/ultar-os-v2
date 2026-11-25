@@ -82,6 +82,7 @@ phone.share = مشاركة الشاشة
 phone.hangup = إنهاء المكالمة
 phone.video.peer = صورة { $name }
 phone.video.own = صورتك
+phone.video.remote = صورة الطرف الآخر
 phone.phase.dialing = جارٍ الاتصال…
 phone.phase.alerting = يرنّ…
 phone.phase.held = المكالمة معلّقة

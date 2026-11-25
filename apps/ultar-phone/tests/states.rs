@@ -253,3 +253,36 @@ fn the_focus_survives_a_rebuild_wherever_tab_put_it() {
         }
     }
 }
+
+/// A 32×24 JPEG of one colour.
+fn jpeg() -> Vec<u8> {
+    let rgb = [30u8, 140, 60].repeat(32 * 24);
+    let mut out = Vec::new();
+    jpeg_encoder::Encoder::new(&mut out, 90)
+        .encode(&rgb, 32, 24, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
+    out
+}
+
+#[test]
+fn the_other_sides_picture_shows_in_a_video_call_and_goes_with_it() {
+    let mut a = app(with_calls(vec![call(7, Phase::Active, true)]));
+    assert!(a.built().remote.is_none(), "no picture before one arrives");
+    assert!(!a.set_picture(false, b"garbage").unwrap());
+    assert!(a.set_picture(false, &jpeg()).unwrap());
+    let node = a.built().remote.expect("picture node");
+    assert_eq!(a.ui_ref().picture_size(node), Some((32, 24)));
+    // the next picture goes into the same node, no new tree
+    assert!(a.set_picture(false, &jpeg()).unwrap());
+    assert_eq!(a.built().remote, Some(node));
+    // the own camera's picture goes into the small own picture
+    assert!(a.set_picture(true, &jpeg()).unwrap());
+    let own = a.built().own.expect("own picture node");
+    assert!(a.ui_ref().picture_size(own).is_some());
+    assert!(a.built().remote.is_some(), "the other side's picture stays");
+    // the call ends: the pictures go, and a late one is not shown on the dial pad
+    a.set_state(ready(), 210_000).unwrap();
+    assert!(a.built().remote.is_none() && a.built().own.is_none());
+    assert!(!a.set_picture(false, &jpeg()).unwrap());
+    assert_eq!(a.model().pictures, Default::default());
+}

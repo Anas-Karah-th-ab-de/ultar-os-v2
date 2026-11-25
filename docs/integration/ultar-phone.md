@@ -171,5 +171,22 @@ tone, see ≥ 10 pictures, same safety number, server database unchanged); `test
 the release server's TURN relay); `tools/kern-test/pcm-e2e.sh` (in `ci.sh`: `PCM-E2E: ALLES OK`, the tone
 reaches QEMU's speaker, input recorded at the card's pace).
 
-**Open:** no camera driver yet (no UVC/isochronous USB in the kernel, no camera service): a video call from
-a device without camera is offered as a voice call; the phone app shows no remote picture yet.
+### Camera and the other side's picture (2026-11-25)
+
+| Part | Where | What |
+|---|---|---|
+| Kernel | `drivers/gen_xhci/uvc.rs`, `svcdev/kamera.rs` | USB Video Class 1.1/1.5, MJPEG: at attach only the descriptors (frame 320×240, else the smallest larger one); opening `/dev/ultar/kamera` (right `camera`, bit 13, one opener) negotiates VS_PROBE/VS_COMMIT at 15 pictures a second, selects the largest alternate setting that carries the payload (falls back when the bus refuses the bandwidth), queues 192 isochronous TDs (xHCI isoch TRBs, start as soon as possible) and puts frames together (frame id, end of frame, error bit); the reader gets the newest whole JPEG per `read`. The event ring has 1024 entries. |
+| Call service | `ultar-call/src/camera.rs` | `Camera` reads the node without waiting, puts in the standard Huffman tables (cameras leave them out), decodes and scales to 320×240; `CallVideo` = camera (optional) + `PictureSink` (the camera's own JPEG goes on for the own picture, nothing is encoded twice). Without a camera a video call still shows the other side. `--camera NODE` (default from `ultar-hal-system::seat_nodes::camera_node`). |
+| Bus | `call.picture` (`CallPicture{own, jpeg}`, ≤ 256 KiB, not retained) | published by `system.calld`, followed only by `app.phone` (bus policy). |
+| Phone app | `src/picture.rs`, `view/call.rs`, `bin/ultar-phone.rs` | the other side's picture (`PixelArea`, 320×240) and the own camera's (in the small own card, made smaller to fit) appear with their first picture and go when no call is active; a burst of pictures shows only the newest of each. |
+
+**Tests:** `ultar-call` camera tests (tables put in, scaling, a file standing in for the node);
+`apps/ultar-phone/tests/states.rs` (picture shown, replaced in place, gone with the call);
+`tools/kern-test/kamera-e2e.sh` (in `ci.sh` without a camera: the node is absent; with
+`KAMERA_USB=046d:08e5` a real camera passed into QEMU). Real run 2026-11-25: Logitech C920 through
+usbipd → WSL → QEMU `usb-host` (`KAMERA_HOSTOPTS=isobufs=32,isobsize=64`): 12 whole pictures in 8 s,
+none broken, no transfer errors; the low rate is the usbip path (whole frames lost on the way), not
+the driver.
+
+**Open:** a camera that streams only over bulk endpoints and uncompressed (YUY2) cameras are not
+offered (every current USB webcam offers MJPEG over isochronous endpoints).

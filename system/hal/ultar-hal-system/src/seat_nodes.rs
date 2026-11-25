@@ -56,6 +56,12 @@ pub fn pcm_node(root: &Path) -> PathBuf {
     node_path(root, "ultar/pcm")
 }
 
+/// The first camera of the Ultar kernel (one MJPEG picture per read; one opener, right
+/// `camera`) below `root`.
+pub fn camera_node(root: &Path) -> PathBuf {
+    node_path(root, "ultar/kamera")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

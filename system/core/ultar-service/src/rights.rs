@@ -35,11 +35,13 @@ pub enum Right {
     InputInject,
     /// Play and record sound through the running streams `/dev/ultar/pcm` (call service).
     Sound,
+    /// Take pictures from a camera through `/dev/ultar/kamera` (call service).
+    Camera,
 }
 
 impl Right {
     /// Every right the kernel knows.
-    pub const ALL: [Right; 13] = [
+    pub const ALL: [Right; 14] = [
         Right::Mount,
         Right::NetAdmin,
         Right::LoadDriver,
@@ -53,6 +55,7 @@ impl Right {
         Right::Bluetooth,
         Right::InputInject,
         Right::Sound,
+        Right::Camera,
     ];
 
     /// The kernel's bit for this right.
@@ -71,6 +74,7 @@ impl Right {
             Self::Bluetooth => 1 << 10,
             Self::InputInject => 1 << 11,
             Self::Sound => 1 << 12,
+            Self::Camera => 1 << 13,
         }
     }
 }
@@ -83,7 +87,7 @@ impl RightSet {
     /// No right at all – what most services need.
     pub const NONE: RightSet = RightSet(0);
     /// Mask of all rights the kernel knows.
-    pub const ALL_BITS: u64 = 0x1fff;
+    pub const ALL_BITS: u64 = 0x3fff;
 
     /// The set of the given rights.
     pub fn of(rights: &[Right]) -> Self {
@@ -122,7 +126,7 @@ mod tests {
         assert_eq!(RightSet::NONE.drop_mask(), u64::MAX);
         let driver = RightSet::of(&[Right::LoadDriver, Right::RawDevice]);
         assert!(driver.has(Right::LoadDriver) && !driver.has(Right::Reboot));
-        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x1fff & !0x24);
+        assert_eq!(driver.drop_mask() & RightSet::ALL_BITS, 0x3fff & !0x24);
         // Bits of rights a later kernel may add are dropped too.
         assert_ne!(driver.drop_mask() & (1 << 40), 0);
         assert_eq!(RightSet::default(), RightSet::NONE);

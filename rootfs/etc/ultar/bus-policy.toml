@@ -107,7 +107,7 @@ subscribe = ["update.progress", "notify.invoked", "media.command"]
 [[rule]]
 identity  = "system.calld"
 register  = ["call"]
-publish   = ["call.state"]
+publish   = ["call.state", "call.picture"]
 subscribe = ["modem.state", "account.state"]
 # The account service proves and signs with the device key for calls (the key never leaves it)
 # and hands out the relay's credentials; only this service may ask.
@@ -123,7 +123,7 @@ publish  = ["modem.state"]
 [[rule]]
 identity  = "app.phone"
 call      = ["call.*"]
-subscribe = ["call.state"]
+subscribe = ["call.state", "call.picture"]
 
 # The Ultar Store is the installer UI (DESKTOP-SPEC §7.3): it asks the
 # launcher to list, start, install and uninstall. The launcher

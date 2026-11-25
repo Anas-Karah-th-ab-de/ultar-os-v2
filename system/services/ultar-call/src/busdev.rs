@@ -1,8 +1,10 @@
 //! The call service's [`Device`] on the bus: the account (`account.state`) says whether and where
 //! the person is signed in; the account service proves and signs with the device key and hands
 //! out the relay's credentials (`account.device_*`) – the key itself never comes here. Sound goes
-//! through the sound card's running streams ([`crate::pcm`]).
+//! through the sound card's running streams ([`crate::pcm`]), pictures through the camera node
+//! ([`crate::camera`]); the other side's picture goes to the phone app (`call.picture`).
 
+use crate::camera::{CallVideo, Camera, PictureSink};
 use crate::e2e::engine::Signer;
 use crate::e2e::media::{AudioIo, VideoIo};
 use crate::e2e::net::TurnConfig;
@@ -16,6 +18,7 @@ use ultar_bus::messages::account_device::{
     DeviceAnswer, DeviceKey, SignCall, SignalAnswer, SignalHello, Turn, CALL_SIGN_LABEL,
 };
 use ultar_bus::messages::account_service::{AccountState, Phase};
+use ultar_bus::messages::call::{CallPicture, MAX_PICTURE};
 use ultar_bus::Client;
 
 /// How long the account service may take (a TURN credential goes to the server).
@@ -27,12 +30,13 @@ pub struct BusDevice {
     account: Arc<Mutex<Option<AccountState>>>,
     dir: PathBuf,
     pcm: PathBuf,
+    camera: PathBuf,
 }
 
 impl BusDevice {
     /// Follows `account.state` on its own thread; `dir` is the service's folder (pinned keys),
-    /// `pcm` the sound node.
-    pub fn start(client: Client, dir: PathBuf, pcm: PathBuf) -> Arc<Self> {
+    /// `pcm` the sound node, `camera` the camera node.
+    pub fn start(client: Client, dir: PathBuf, pcm: PathBuf, camera: PathBuf) -> Arc<Self> {
         let account = Arc::new(Mutex::new(None));
         if let Ok(sub) = client.subscribe::<AccountState>() {
             let a = account.clone();
@@ -52,6 +56,7 @@ impl BusDevice {
             account,
             dir,
             pcm,
+            camera,
         })
     }
 
@@ -68,6 +73,17 @@ fn server_of(st: &AccountState) -> Option<String> {
     matches!(st.phase, Phase::SignedIn | Phase::Offline)
         .then(|| format!("https://{}", st.server))
         .filter(|_| !st.server.is_empty())
+}
+
+/// The pictures of a call for the phone app (`call.picture`).
+struct BusPictures(Client);
+
+impl PictureSink for BusPictures {
+    fn show(&mut self, own: bool, jpeg: Vec<u8>) {
+        if jpeg.len() <= MAX_PICTURE {
+            let _ = self.0.publish_unconfirmed(&CallPicture { own, jpeg });
+        }
+    }
 }
 
 struct BusAuth(Client);
@@ -145,7 +161,11 @@ impl Device for BusDevice {
         }
     }
     fn video(&self) -> Option<Box<dyn VideoIo>> {
-        None
+        // without a camera the call still shows the other side
+        Some(Box::new(CallVideo {
+            camera: Camera::open(&self.camera).ok(),
+            sink: Box::new(BusPictures(self.client.clone())),
+        }))
     }
     fn pins(&self) -> Pins {
         Pins::open(self.dir.join("pins"))

@@ -8,6 +8,9 @@
 //! * `pcm` – the sound card's running streams (`pcm.rs`) for the call service; right
 //!   [`Rights::SOUND`]; one open descriptor at a time.
 //!
+//! * `kamera` – the pictures of the first USB camera (`kamera.rs`) for the call service; right
+//!   [`Rights::CAMERA`]; one open descriptor at a time.
+//!
 //! * `/dev/dri/renderD128` – the GPU for programs (`dri.rs`, Linux `xe` uAPI); for now right
 //!   [`Rights::RAW_DEVICE`], and only present once the GT driver published its device record.
 //!
@@ -20,6 +23,7 @@ use alloc::vec::Vec;
 
 pub mod dri;
 pub mod hci;
+pub mod kamera;
 pub mod pcm;
 pub mod uinput;
 
@@ -36,6 +40,9 @@ pub fn node(d: &str) -> Option<&'static str> {
     if d == pcm::NODE {
         return pcm::present().then_some(pcm::NODE);
     }
+    if d == kamera::NODE {
+        return kamera::present().then_some(kamera::NODE);
+    }
     if d == dri::NODE {
         return dri::present().then_some(dri::NODE);
     }
@@ -50,6 +57,9 @@ pub fn names() -> Vec<String> {
     if pcm::present() {
         v.push(String::from("pcm"));
     }
+    if kamera::present() {
+        v.push(String::from("kamera"));
+    }
     v
 }
 
@@ -60,6 +70,8 @@ pub fn right_for(path: &str) -> Option<Rights> {
         Some(Rights::INPUT_INJECT)
     } else if d == pcm::NODE {
         Some(Rights::SOUND)
+    } else if d == kamera::NODE {
+        Some(Rights::CAMERA)
     } else if d == dri::NODE {
         Some(dri::RIGHT)
     } else if HCI_NODES.contains(&d) {
@@ -86,6 +98,9 @@ pub fn open(d: &str, rights: Rights) -> Result<crate::proc::FdKind, i64> {
     if d == pcm::NODE {
         return pcm::open();
     }
+    if d == kamera::NODE {
+        return kamera::open();
+    }
     match hci_index(d) {
         Some(i) => hci::open(i),
         None => Ok(uinput::open()),
@@ -105,6 +120,10 @@ pub fn rdev(d: &str) -> Option<u64> {
     if d == pcm::NODE {
         // sound major 116 like Linux ALSA
         return Some(116 << 8 | 16);
+    }
+    if d == kamera::NODE {
+        // video4linux major 81
+        return Some(81 << 8);
     }
     hci_index(d).map(|i| 10 << 8 | (240 + i as u64))
 }

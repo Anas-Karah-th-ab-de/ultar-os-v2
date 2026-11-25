@@ -233,3 +233,25 @@ calls! {
     Block => "block", Done;
     Snapshot => "snapshot", CallState;
 }
+
+/// Largest picture of [`CallPicture`] (bytes).
+pub const MAX_PICTURE: usize = 256 * 1024;
+
+/// A picture of a video call (`call.picture`, not retained): one JPEG of at most
+/// [`MAX_PICTURE`] bytes, about 12 a second – the other side's, or the own camera's for the
+/// small own picture. Only the phone app may follow it.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct CallPicture {
+    /// The own camera's picture (else the other side's).
+    pub own: bool,
+    /// The picture.
+    pub jpeg: Vec<u8>,
+}
+
+impl Message for CallPicture {
+    const VERSION: u16 = 1;
+}
+impl Topic for CallPicture {
+    const TOPIC: &'static str = "call.picture";
+    const RETAINED: bool = false;
+}

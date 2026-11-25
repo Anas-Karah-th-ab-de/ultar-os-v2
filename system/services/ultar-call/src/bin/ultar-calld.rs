@@ -1,13 +1,14 @@
 //! `ultar-calld` – the call service daemon.
 //!
 //! `ultar-calld --bus SOCKET [--log FILE] [--modem] [--fake-modem] [--ultar OWN_NUMBER]
-//!              [--account] [--pcm NODE] [--lang ar|en|de]`
+//!              [--account] [--pcm NODE] [--camera NODE] [--lang ar|en|de]`
 //! * `--modem`: the mobile network through the modem service (`modem.*`, ultar-ril);
 //! * `--fake-modem`: the test double of the modem in this process (tests on the Ultar kernel);
 //! * `--ultar`: the Ultar-number way over the local mock backend, with this own number (tests);
 //! * `--account`: the Ultar-number way end to end with the person's account (`account.*`):
 //!   signalling at the account server, the device key in the account service, sound through
-//!   `--pcm` (default `/dev/ultar/pcm`); the pinned keys of other numbers lie beside `--log`.
+//!   `--pcm` (default `/dev/ultar/pcm`), pictures from `--camera` (default `/dev/ultar/kamera`);
+//!   the pinned keys of other numbers lie beside `--log`.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
@@ -41,6 +42,7 @@ struct Args {
     ultar: Option<String>,
     account: bool,
     pcm: Option<PathBuf>,
+    camera: Option<PathBuf>,
     lang: String,
 }
 
@@ -59,6 +61,7 @@ fn parse(list: &[String]) -> Option<Args> {
             "--ultar" => a.ultar = Some(it.next()?.clone()),
             "--account" => a.account = true,
             "--pcm" => a.pcm = Some(PathBuf::from(it.next()?)),
+            "--camera" => a.camera = Some(PathBuf::from(it.next()?)),
             "--lang" => a.lang = it.next()?.clone(),
             _ => return None,
         }
@@ -111,7 +114,11 @@ fn run(a: &Args) -> Result<(), Msg> {
             .clone()
             .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
         let account = connect(&path, "calld").ok_or(Msg::NoBus)?;
-        let device = BusDevice::start(account, dir, pcm);
+        let camera = a
+            .camera
+            .clone()
+            .unwrap_or_else(|| ultar_hal_system::seat_nodes::camera_node(Path::new("/")));
+        let device = BusDevice::start(account, dir, pcm, camera);
         let backend = E2eCall::new(device);
         muted = Some(backend.muted.clone());
         lines.push(Box::new(UltarLine::new(Box::new(backend), None)));

@@ -15,6 +15,7 @@
 
 pub mod busdev;
 pub mod calllog;
+pub mod camera;
 pub mod e2e;
 pub mod fake;
 pub mod fake_modem;

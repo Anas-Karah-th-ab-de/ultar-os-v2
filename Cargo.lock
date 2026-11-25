@@ -5799,10 +5799,12 @@ dependencies = [
 name = "ultar-phone"
 version = "0.8.0"
 dependencies = [
+ "jpeg-encoder",
  "ultar-bus",
  "ultar-i18n",
  "ultar-surface",
  "ultar-ui",
+ "zune-jpeg",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ use crate::view::{self, Built};
 use std::fmt;
 use ultar_bus::messages::call::{CallError, CallState, Cellular, Phase, Ultar, Way};
 use ultar_i18n::{Lang, ParseError, Translator};
+use ultar_ui::canvas::Canvas;
 use ultar_ui::event::{ActionKind, Event, Response};
 use ultar_ui::paint::PaintEnv;
 use ultar_ui::tokens::{motion, InputMode, ThemeKind};
@@ -85,6 +86,9 @@ pub struct PhoneApp<P: CallPort, H: Host> {
     pub(crate) pointer: Option<Point>,
     pub(crate) hold_start: Option<u64>,
     pub(crate) last_second: u64,
+    /// The newest pictures of a video call: the other side's and the own camera's.
+    pub(crate) remote: Option<Canvas>,
+    pub(crate) own: Option<Canvas>,
 }
 
 impl<P: CallPort, H: Host> PhoneApp<P, H> {
@@ -109,6 +113,8 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
             pointer: None,
             hold_start: None,
             last_second: 0,
+            remote: None,
+            own: None,
         };
         app.model.set_state(state, 0);
         app.reload_log();
@@ -239,11 +245,59 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
         self.rebuild()
     }
 
+    /// A picture of the call arrived (`call.picture`, a JPEG): the own camera's (`own`) or the
+    /// other side's; false: not a picture, or no call to show it in.
+    pub fn set_picture(&mut self, own: bool, jpeg: &[u8]) -> Result<bool, AppError> {
+        if !matches!(self.model.screen(), Screen::InCall(_)) {
+            return Ok(false);
+        }
+        let fit = if own {
+            let (w, h) = view::metrics::own_picture();
+            let s = f64::from(self.ui.env().scale);
+            Some(((f64::from(w) * s) as usize, (f64::from(h) * s) as usize))
+        } else {
+            None
+        };
+        let Some(canvas) = crate::picture::canvas(jpeg, fit) else {
+            return Ok(false);
+        };
+        let seen = if own {
+            self.own = Some(canvas);
+            std::mem::replace(&mut self.model.pictures.own, true)
+        } else {
+            self.remote = Some(canvas);
+            std::mem::replace(&mut self.model.pictures.other, true)
+        };
+        if seen {
+            self.show_pictures()?;
+        } else {
+            self.rebuild()?;
+        }
+        Ok(true)
+    }
+
+    /// Puts the newest pictures into their nodes.
+    fn show_pictures(&mut self) -> Result<(), AppError> {
+        if let (Some(id), Some(c)) = (self.built.remote, &self.remote) {
+            self.ui.set_picture(id, c.clone())?;
+        }
+        if let (Some(id), Some(c)) = (self.built.own, &self.own) {
+            self.ui.set_picture(id, c.clone())?;
+        }
+        Ok(())
+    }
+
     /// A new `call.state` arrived at local time `now_ms`.
     pub fn set_state(&mut self, state: CallState, now_ms: u64) -> Result<(), AppError> {
         let ended_before = self.model.state.ended.as_ref().map(|c| c.id);
         let ended_now = state.ended.as_ref().map(|c| c.id);
         self.model.set_state(state, now_ms);
+        if !self.model.pictures.other {
+            self.remote = None;
+        }
+        if !self.model.pictures.own {
+            self.own = None;
+        }
         if ended_before != ended_now {
             self.reload_log();
         }
@@ -401,6 +455,7 @@ impl<P: CallPort, H: Host> PhoneApp<P, H> {
         // The dial pad keeps its scroll position across rebuilds (every key press rebuilds).
         let pad = self.built.pad.and_then(|p| self.ui.scroll_offset(p).ok());
         self.built = view::build(&mut self.ui, &self.model)?;
+        self.show_pictures()?;
         self.ui.layout();
         if let Some(c) = focused {
             if let Some((id, _)) = self.built.clicks.iter().find(|(_, x)| *x == c) {

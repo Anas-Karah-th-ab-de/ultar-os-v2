@@ -40,10 +40,13 @@ impl Rights {
     /// Play and record sound through the running streams `/dev/ultar/pcm` (the call service).
     /// Neither `RAW_DEVICE` nor `FILE_ADMIN` opens that node: only this right does.
     pub const SOUND: Rights = Rights(1 << 12);
+    /// Take pictures from a camera through `/dev/ultar/kamera` (the call service). Neither
+    /// `RAW_DEVICE` nor `FILE_ADMIN` opens that node: only this right does.
+    pub const CAMERA: Rights = Rights(1 << 13);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0x1fff);
+    pub const ALL: Rights = Rights(0x3fff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {

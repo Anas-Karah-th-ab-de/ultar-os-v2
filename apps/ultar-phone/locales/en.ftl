@@ -81,6 +81,7 @@ phone.share = Share screen
 phone.hangup = End call
 phone.video.peer = Picture of { $name }
 phone.video.own = Your picture
+phone.video.remote = Picture of the other side
 phone.phase.dialing = Calling…
 phone.phase.alerting = Ringing…
 phone.phase.held = Call on hold

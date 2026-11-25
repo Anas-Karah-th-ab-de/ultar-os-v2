@@ -22,6 +22,7 @@ pub mod bt;
 mod hid;
 mod hotplug;
 mod pointer;
+pub mod uvc;
 pub use hotplug::hotplug;
 
 pub struct Drv;
@@ -60,6 +61,8 @@ const TRB_EVAL_CTX: u32 = 13;
 const EV_TRANSFER: u32 = 32;
 const EV_CMD: u32 = 33;
 const RING: usize = 256;
+/// Entries of the event ring (a camera completes a transfer every 125 µs; four pages).
+const EV_RING: usize = 1024;
 
 /// Ring aus TRBs (16 Byte) mit Link-TRB am Ende
 struct Ring {
@@ -161,7 +164,7 @@ impl Hc {
         }
         let e = Event { param: r32(a) as u64 | (r32(a + 4) as u64) << 32, status: r32(a + 8), control };
         self.ev_idx += 1;
-        if self.ev_idx == RING {
+        if self.ev_idx == EV_RING {
             self.ev_idx = 0;
             self.ev_cycle ^= 1;
         }
@@ -182,6 +185,9 @@ impl Hc {
                     continue;
                 }
                 if bt::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
+                    continue;
+                }
+                if uvc::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
             }
@@ -578,6 +584,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
     let mut what = format!("{vid:04x}:{pid:04x}");
     let mut hub: Option<(u32, u64, bool)> = None;
     let mut bt_bound = false;
+    let mut cam_bound = false;
     for d in &ifs {
         if d.class == 9 && hub.is_none() {
             // Hub (USB 2.0 Kap. 11 / USB 3.2 Kap. 10)
@@ -630,6 +637,12 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
                 }
                 Err(e) if d.eps.iter().any(|e| e.1 & 3 == 3) => crate::kprintln!("[xhci] {e}"),
                 Err(_) => {}
+            }
+        } else if d.class == 0x0E && d.sub == 1 && !cam_bound {
+            // camera (video class): only the descriptors now, the stream starts when the node opens
+            if let Some((w, h)) = uvc::attach(hc, slot, (inp, out, speed), &cd) {
+                cam_bound = true;
+                what = format!("Kamera {w}x{h} MJPEG {what}");
             }
         } else if d.class == 8 && d.sub == 6 && d.proto == 0x50 {
             // Massenspeicher (Bulk-Only, SCSI)
@@ -692,21 +705,27 @@ fn config_ep_x(
         let base = ring.base;
         hc.rings.push((slot, dci, ring));
         let ec = ictx(inp, ctx, dci as usize + 1);
+        // isochronous (1 OUT, 5 IN): bInterval is 2^(n-1) frames (full speed) or microframes
+        let iso = typ == 1 || typ == 5;
         let iv = if typ == 7 {
             // Intervall in 125-µs-Einheiten (2^n): Voll-/Niedriggeschwindigkeit in ms → ×8
             let us = if speed <= 2 { (interval.max(1) as u32) * 8 } else { 1 << (interval.clamp(1, 16) - 1) };
             31 - us.max(1).leading_zeros()
+        } else if iso {
+            interval.clamp(1, 16) as u32 - 1 + if speed <= 2 { 3 } else { 0 }
         } else {
             0
         };
         w32(ec, iv << 16);
-        w32(ec + 4, (3 << 1) | (typ << 3) | ((mp & 0x7ff) << 16));
+        // isochronous: no error retries, high-speed transactions per microframe as Max Burst
+        let (cerr, burst) = if iso { (0, (mp >> 11) & 3) } else { (3, 0) };
+        w32(ec + 4, (cerr << 1) | (typ << 3) | (burst << 8) | ((mp & 0x7ff) << 16));
         w64(ec + 8, base | 1);
         // interrupt: Max ESIT Payload (bits 31:16, one packet times the high-speed multiplier) and
         // the average TRB length; a periodic endpoint without its payload gets no bandwidth on
         // some host controllers
         let esit = (mp & 0x7ff) * (((mp >> 11) & 3) + 1);
-        w32(ec + 16, if typ == 7 { (esit << 16) | (mp & 0x7ff).min(8) } else { 1024 });
+        w32(ec + 16, if typ == 7 { (esit << 16) | (mp & 0x7ff).min(8) } else if iso { (esit << 16) | esit } else { 1024 });
     }
     hc.command(inp, (TRB_CONFIG_EP << 10) | (slot << 24)).ok_or("Endpunkte einrichten fehlgeschlagen")?;
     Ok(())
@@ -892,10 +911,10 @@ impl Driver for Drv {
         let cmd = Ring::new().ok_or("kein Speicher")?;
         w64(op + 0x18, cmd.base | 1);
         // Ereignisring mit einem Segment
-        let ev = alloc_pages(1).ok_or("kein Speicher")?;
+        let ev = alloc_pages(EV_RING * 16 / 4096).ok_or("kein Speicher")?;
         let erst = alloc_pages(1).ok_or("kein Speicher")?;
         w64(erst, ev);
-        w32(erst + 8, RING as u32);
+        w32(erst + 8, EV_RING as u32);
         let ir = rt + 0x20;
         w32(ir + 8, 1);
         w64(ir + 0x18, ev);

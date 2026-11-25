@@ -606,6 +606,12 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         Some(crate::svcdev::pcm::Io::Block) => return Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 5)),
         None => {}
     }
+    match crate::svcdev::kamera::sys_read(fd, buf, n) {
+        Some(crate::svcdev::kamera::Io::Val(v)) => return Res::Val(v),
+        // the camera's transfers are taken while waiting: look again in 4 ms
+        Some(crate::svcdev::kamera::Io::Block) => return Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 4)),
+        None => {}
+    }
     let n = n.min(1 << 24) as usize;
     enum Src {
         Data(Vec<u8>),
@@ -683,7 +689,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) | FdKind::Dri(_) | FdKind::Pcm(_) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) | FdKind::Dri(_) | FdKind::Pcm(_) | FdKind::Kamera(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -1361,6 +1367,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
             FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
             FdKind::Pcm(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::pcm::NODE).unwrap_or(0))),
+            FdKind::Kamera(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::kamera::NODE).unwrap_or(0))),
             FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::dri::NODE).unwrap_or(0))),
         })
     })
@@ -2060,6 +2067,7 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
             let (rd, wr) = crate::svcdev::pcm::ready();
             r(rd) | w(wr)
         }
+        FdKind::Kamera(k) => r(crate::svcdev::kamera::ready(k)),
         FdKind::Fb(_) => w(true),
         _ => ev & 5,
     }
