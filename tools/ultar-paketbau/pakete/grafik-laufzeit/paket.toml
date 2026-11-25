@@ -1,0 +1,195 @@
+# Ultar Grafik-Laufzeit: what a program needs to compute on the GPU through Vulkan – built
+# from unmodified upstream releases, nothing taken from a distribution.
+#
+# Stage A (this file): build tools, the C library, zlib, libdrm, the Vulkan loader.
+# Stage B (next): the LLVM tool chain Mesa needs at build time, Mesa's Intel Vulkan driver.
+#
+# The build machine provides only: a C/C++ compiler, make, python3 and the headers of the
+# Linux kernel interface (`/usr/include/linux`). Everything else is built here.
+#
+# Update from upstream: `ultar-paketbau outdated` lists newer releases; change `version` and
+# `sha256` of the part, build, run the tests. Our own changes are patch files next to this
+# recipe (none so far).
+
+id = "grafik-laufzeit"
+name = "Ultar Grafik-Laufzeit"
+version = "1"
+arch = "x86_64"
+prefix = "/pkg/grafik-laufzeit"
+host_needs = ["gcc", "g++", "make", "python3", "git", "curl", "tar", "patch", "xz"]
+
+env = [
+  # only what was built here is found, never a library of the build machine
+  ["PKG_CONFIG_LIBDIR", "{prefix}/lib/pkgconfig:{prefix}/share/pkgconfig"],
+  ["PYTHONPATH", "{tools}/py"],
+]
+runtime_env = [
+  ["CC", "gcc -isystem {prefix}/include -B{prefix}/lib"],
+  ["CXX", "g++ -isystem {prefix}/include -B{prefix}/lib"],
+  ["LDFLAGS", "-L{prefix}/lib -Wl,-rpath,{prefix}/lib -Wl,--dynamic-linker={prefix}/lib/ld-linux-x86-64.so.2 -static-libstdc++ -static-libgcc"],
+]
+# needed to build against the package, not to run it
+remove = ["include", "lib/*.a", "lib/*.o", "lib/pkgconfig", "share/pkgconfig", "share/i18n", "share/locale", "share/info", "share/man", "share/cmake", "lib/cmake", "var", "sbin", "libexec", "etc/rpc"]
+
+# ---- build tools (not shipped) -------------------------------------------------------------
+
+[[part]]
+name = "pkgconf"
+kind = "tool"
+version = "0"
+source = "https://distfiles.ariadne.space/pkgconf/pkgconf-{version}.tar.xz"
+upstream = "https://github.com/pkgconf/pkgconf"
+tag = "pkgconf-{version}"
+license = "ISC"
+why = "finds the libraries built here (and only those)"
+build = ["./configure --prefix={tools}", "make -j{jobs}", "make install", "ln -sf pkgconf {tools}/bin/pkg-config"]
+
+[[part]]
+name = "m4"
+kind = "tool"
+version = "0"
+source = "https://ftp.gnu.org/gnu/m4/m4-{version}.tar.xz"
+upstream = "https://git.savannah.gnu.org/git/m4.git"
+tag = "v{version}"
+license = "GPL-3.0-or-later (build tool, not shipped)"
+why = "needed by bison and flex"
+build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "bison"
+kind = "tool"
+version = "0"
+source = "https://ftp.gnu.org/gnu/bison/bison-{version}.tar.xz"
+upstream = "https://git.savannah.gnu.org/git/bison.git"
+tag = "v{version}"
+license = "GPL-3.0-or-later (build tool, not shipped)"
+why = "parser generator: C library and Mesa"
+build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "flex"
+kind = "tool"
+version = "0"
+source = "https://github.com/westes/flex/releases/download/v{version}/flex-{version}.tar.gz"
+upstream = "https://github.com/westes/flex"
+tag = "v{version}"
+license = "BSD-2-Clause"
+why = "scanner generator: Mesa"
+build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "gawk"
+kind = "tool"
+version = "0"
+source = "https://ftp.gnu.org/gnu/gawk/gawk-{version}.tar.xz"
+upstream = "https://git.savannah.gnu.org/git/gawk.git"
+tag = "gawk-{version}"
+license = "GPL-3.0-or-later (build tool, not shipped)"
+why = "the C library's build scripts"
+build = ["./configure --prefix={tools}", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "ninja"
+kind = "tool"
+version = "0"
+source = "https://github.com/ninja-build/ninja/archive/refs/tags/v{version}.tar.gz"
+upstream = "https://github.com/ninja-build/ninja"
+tag = "v{version}"
+license = "Apache-2.0"
+why = "runs the builds meson and cmake describe"
+build = ["python3 configure.py --bootstrap", "install -Dm755 ninja {tools}/bin/ninja"]
+
+[[part]]
+name = "meson"
+kind = "tool"
+version = "0"
+source = "https://github.com/mesonbuild/meson/releases/download/{version}/meson-{version}.tar.gz"
+upstream = "https://github.com/mesonbuild/meson"
+tag = "{version}"
+license = "Apache-2.0"
+why = "build system of libdrm and Mesa"
+build = [
+  "rm -rf {tools}/meson && mkdir -p {tools}/meson {tools}/bin && cp -r . {tools}/meson/",
+  "printf '#!/bin/sh\\nexec python3 {tools}/meson/meson.py \"$@\"\\n' > {tools}/bin/meson && chmod +x {tools}/bin/meson",
+]
+
+[[part]]
+name = "cmake"
+kind = "tool"
+version = "0"
+source = "https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}.tar.gz"
+upstream = "https://github.com/Kitware/CMake"
+tag = "v{version}"
+license = "BSD-3-Clause"
+why = "build system of the Vulkan loader"
+build = ["./bootstrap --prefix={tools} --parallel={jobs} -- -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF", "make -j{jobs}", "make install"]
+
+# ---- the package ----------------------------------------------------------------------------
+
+[[part]]
+name = "glibc"
+kind = "runtime"
+version = "0"
+source = "https://ftp.gnu.org/gnu/glibc/glibc-{version}.tar.xz"
+upstream = "https://sourceware.org/git/glibc.git"
+tag = "glibc-{version}"
+license = "LGPL-2.1-or-later"
+why = "C library and program loader of the package"
+build = [
+  # the C library itself is built with the plain compiler: it is what the others then use
+  "mkdir build",
+  "cd build && env -u CC -u CXX -u LDFLAGS ../configure --prefix={prefix} --libdir={prefix}/lib --disable-werror --disable-nscd --without-selinux libc_cv_slibdir={prefix}/lib libc_cv_rtlddir={prefix}/lib",
+  "cd build && env -u CC -u CXX -u LDFLAGS make -j{jobs}",
+  "cd build && env -u CC -u CXX -u LDFLAGS make install",
+]
+
+[[part]]
+name = "zlib"
+kind = "runtime"
+version = "0"
+source = "https://github.com/madler/zlib/releases/download/v{version}/zlib-{version}.tar.gz"
+upstream = "https://github.com/madler/zlib"
+tag = "v{version}"
+license = "Zlib"
+why = "compression (Mesa)"
+build = ["./configure --prefix={prefix}", "make -j{jobs}", "make install"]
+
+[[part]]
+name = "libdrm"
+kind = "runtime"
+version = "0"
+source = "https://dri.freedesktop.org/libdrm/libdrm-{version}.tar.xz"
+upstream = "https://gitlab.freedesktop.org/mesa/libdrm.git"
+tag = "libdrm-{version}"
+license = "MIT"
+why = "finds the GPU's device file and talks to it"
+build = [
+  "meson setup build --prefix={prefix} --libdir=lib --buildtype=release -Dintel=disabled -Dradeon=disabled -Damdgpu=disabled -Dnouveau=disabled -Dvmwgfx=disabled -Dtests=false -Dman-pages=disabled -Dvalgrind=disabled -Dcairo-tests=disabled",
+  "ninja -C build -j{jobs} install",
+]
+
+[[part]]
+name = "vulkan-headers"
+kind = "runtime"
+version = "0"
+source = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v{version}.tar.gz"
+upstream = "https://github.com/KhronosGroup/Vulkan-Headers"
+tag = "v{version}"
+license = "Apache-2.0 OR MIT"
+why = "the Vulkan interface (build time)"
+build = ["cmake -S . -B build -G Ninja -DCMAKE_INSTALL_PREFIX={prefix} -DVULKAN_HEADERS_ENABLE_TESTS=OFF -DVULKAN_HEADERS_ENABLE_MODULE=OFF", "cmake --install build"]
+
+[[part]]
+name = "vulkan-loader"
+kind = "runtime"
+version = "0"
+source = "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/v{version}.tar.gz"
+upstream = "https://github.com/KhronosGroup/Vulkan-Loader"
+tag = "v{version}"
+license = "Apache-2.0"
+why = "libvulkan: hands programs the GPU driver"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_PREFIX_PATH={prefix} -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_TESTS=OFF -DFALLBACK_DATA_DIRS={prefix}/share -DFALLBACK_CONFIG_DIRS={prefix}/etc/xdg -DCMAKE_INSTALL_SYSCONFDIR={prefix}/etc",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
