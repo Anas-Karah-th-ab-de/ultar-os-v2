@@ -398,7 +398,7 @@ impl Backend for Gpu {
     }
 
     fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno> {
-        let (_, rt) = self.parts()?;
+        let (dev, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         if let Some(n) = PAT_ASKED.get(pat as usize) {
             n.fetch_add(pages.len() as u64, Ordering::Relaxed);
@@ -409,15 +409,24 @@ impl Backend for Gpu {
             .map_cached(&mut rt.mem.tables, va, pages, pat)
             .map_err(|_| Errno::NoMem)?;
         HUGE_ENTRIES.fetch_add(huge as u64, Ordering::Relaxed);
+        // in a scratch space the engines may hold the translation to nothing that was there
+        // before (Linux invalidates after every bind of such a space)
+        if space.is_scratch() {
+            invalidate(dev, rt)?;
+        }
         Ok(())
     }
 
     fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
-        let (_, rt) = self.parts()?;
+        let (dev, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         space
             .map_null(&mut rt.mem.tables, va, pages)
-            .map_err(|_| Errno::NoMem)
+            .map_err(|_| Errno::NoMem)?;
+        if space.is_scratch() {
+            invalidate(dev, rt)?;
+        }
+        Ok(())
     }
 
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
