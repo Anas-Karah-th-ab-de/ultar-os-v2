@@ -95,8 +95,21 @@ impl DesktopApp {
                     .client
                     .send(&Request::SetKeyboardLayout { index: *index })?;
             }
+            Effect::History => self.keep_history(),
         }
         Ok(())
+    }
+
+    /// Keeps the search history beside the shell: save it when `search.history` is on,
+    /// delete it when off (nothing is stored then).
+    fn keep_history(&mut self) {
+        let dir = self.history_dir.as_deref();
+        let user = &self.shell.user;
+        if self.shell.d.overview.sources.history {
+            crate::model::history::save(&self.shell.d.overview.history, dir, user);
+        } else {
+            crate::model::history::delete(dir, user);
+        }
     }
 
     /// A call to a system service; its answer goes into the state (outputs, a day's events)

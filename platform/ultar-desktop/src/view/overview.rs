@@ -238,11 +238,41 @@ pub(crate) fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
         Hit::Command(c) => ListItem::new(Label::key(c.key()))
             .icon(IconId::Forward)
             .sublabel(Label::key("desk.ov.group.commands")),
+        Hit::Character(ch) => {
+            let name = crate::model::characters::find(ch).map_or("", |c| c.name(d.lang));
+            ListItem::new(Label::data(&format!("{ch}  {name}")))
+                .icon(IconId::Language)
+                .sublabel(Label::key("desk.ov.group.characters"))
+        }
+        Hit::History(record) => {
+            use crate::model::history::Record;
+            let label = match record {
+                Record::Search(t) => Label::data(t),
+                Record::App(id) => {
+                    let name = d
+                        .catalog
+                        .iter()
+                        .find(|a| &a.id == id)
+                        .map_or(id.clone(), |a| a.display_name(tr));
+                    Label::data(&name)
+                }
+                Record::Setting(panel) => Label::key(format!("desk.search.panel.{panel}")),
+            };
+            ListItem::new(label)
+                .icon(IconId::Clock)
+                .sublabel(Label::key("desk.ov.group.history"))
+        }
     }
 }
 
 fn results(view: &mut View, root: NodeId, d: &Desktop, tr: &Translator) -> Result<(), UiError> {
-    let hits = search::search_in(&d.overview.query, &d.catalog, tr, d.overview.sources);
+    let hits = search::search_in_with_history(
+        &d.overview.query,
+        &d.catalog,
+        tr,
+        d.overview.sources,
+        &d.overview.history,
+    );
     let row = view.ui.add(root, Flex::row().main(MainAlign::Center))?;
     if hits.is_empty() {
         view.ui.add(

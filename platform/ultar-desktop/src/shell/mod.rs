@@ -8,6 +8,7 @@ mod gestures;
 mod grid;
 mod handoff;
 mod helper;
+mod history;
 mod keys;
 mod menus;
 mod network;
@@ -54,6 +55,9 @@ pub enum Effect {
     Thumbnails(Vec<u32>, (u16, u16)),
     /// Call a system service.
     Service(crate::model::services::Call),
+    /// Keep the search history beside the shell (save it when `search.history` is on,
+    /// delete it when off). The entries are already in the state.
+    History,
 }
 
 /// What an app start opens (`launcher.start` version 2, docs/integration/ultar-launcher.md):

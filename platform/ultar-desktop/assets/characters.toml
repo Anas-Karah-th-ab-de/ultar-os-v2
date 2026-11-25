@@ -1,0 +1,294 @@
+# The characters the overview search offers (search.source.characters): emoji, symbols and
+# the Arabic letters, each with an English and a real Arabic name. Data, not code – the names
+# are user-visible text and live here beside the shell (like the Store's catalogue), parsed by
+# model/characters.rs. The character itself is what choosing a result inserts.
+
+[[character]]
+ch = "ا"
+en = "alif"
+ar = "ألف"
+
+[[character]]
+ch = "ب"
+en = "ba"
+ar = "باء"
+
+[[character]]
+ch = "ت"
+en = "ta"
+ar = "تاء"
+
+[[character]]
+ch = "ث"
+en = "tha"
+ar = "ثاء"
+
+[[character]]
+ch = "ج"
+en = "jim"
+ar = "جيم"
+
+[[character]]
+ch = "ح"
+en = "ha"
+ar = "حاء"
+
+[[character]]
+ch = "خ"
+en = "kha"
+ar = "خاء"
+
+[[character]]
+ch = "د"
+en = "dal"
+ar = "دال"
+
+[[character]]
+ch = "ذ"
+en = "dhal"
+ar = "ذال"
+
+[[character]]
+ch = "ر"
+en = "ra"
+ar = "راء"
+
+[[character]]
+ch = "ز"
+en = "zay"
+ar = "زاي"
+
+[[character]]
+ch = "س"
+en = "sin"
+ar = "سين"
+
+[[character]]
+ch = "ش"
+en = "shin"
+ar = "شين"
+
+[[character]]
+ch = "ص"
+en = "sad"
+ar = "صاد"
+
+[[character]]
+ch = "ض"
+en = "dad"
+ar = "ضاد"
+
+[[character]]
+ch = "ط"
+en = "ta"
+ar = "طاء"
+
+[[character]]
+ch = "ظ"
+en = "za"
+ar = "ظاء"
+
+[[character]]
+ch = "ع"
+en = "ayn"
+ar = "عين"
+
+[[character]]
+ch = "غ"
+en = "ghayn"
+ar = "غين"
+
+[[character]]
+ch = "ف"
+en = "fa"
+ar = "فاء"
+
+[[character]]
+ch = "ق"
+en = "qaf"
+ar = "قاف"
+
+[[character]]
+ch = "ك"
+en = "kaf"
+ar = "كاف"
+
+[[character]]
+ch = "ل"
+en = "lam"
+ar = "لام"
+
+[[character]]
+ch = "م"
+en = "mim"
+ar = "ميم"
+
+[[character]]
+ch = "ن"
+en = "nun"
+ar = "نون"
+
+[[character]]
+ch = "ه"
+en = "ha"
+ar = "هاء"
+
+[[character]]
+ch = "و"
+en = "waw"
+ar = "واو"
+
+[[character]]
+ch = "ي"
+en = "ya"
+ar = "ياء"
+
+[[character]]
+ch = "😀"
+en = "grinning face"
+ar = "وجه مبتسم"
+
+[[character]]
+ch = "😂"
+en = "face with tears of joy"
+ar = "وجه بدموع الفرح"
+
+[[character]]
+ch = "❤"
+en = "red heart"
+ar = "قلب أحمر"
+
+[[character]]
+ch = "⭐"
+en = "star"
+ar = "نجمة"
+
+[[character]]
+ch = "✓"
+en = "check mark"
+ar = "علامة صح"
+
+[[character]]
+ch = "✗"
+en = "cross mark"
+ar = "علامة خطأ"
+
+[[character]]
+ch = "→"
+en = "right arrow"
+ar = "سهم إلى اليمين"
+
+[[character]]
+ch = "←"
+en = "left arrow"
+ar = "سهم إلى اليسار"
+
+[[character]]
+ch = "↑"
+en = "up arrow"
+ar = "سهم إلى الأعلى"
+
+[[character]]
+ch = "↓"
+en = "down arrow"
+ar = "سهم إلى الأسفل"
+
+[[character]]
+ch = "★"
+en = "black star"
+ar = "نجمة مصمتة"
+
+[[character]]
+ch = "♪"
+en = "music note"
+ar = "نوتة موسيقية"
+
+[[character]]
+ch = "☀"
+en = "sun"
+ar = "شمس"
+
+[[character]]
+ch = "☂"
+en = "umbrella"
+ar = "مظلة"
+
+[[character]]
+ch = "✉"
+en = "envelope"
+ar = "ظرف رسالة"
+
+[[character]]
+ch = "☎"
+en = "telephone"
+ar = "هاتف"
+
+[[character]]
+ch = "✈"
+en = "airplane"
+ar = "طائرة"
+
+[[character]]
+ch = "⚙"
+en = "gear"
+ar = "ترس"
+
+[[character]]
+ch = "🔒"
+en = "lock"
+ar = "قفل"
+
+[[character]]
+ch = "🔑"
+en = "key"
+ar = "مفتاح"
+
+[[character]]
+ch = "📁"
+en = "folder"
+ar = "مجلد"
+
+[[character]]
+ch = "📄"
+en = "document"
+ar = "مستند"
+
+[[character]]
+ch = "🖼"
+en = "picture"
+ar = "صورة"
+
+[[character]]
+ch = "🎵"
+en = "music"
+ar = "موسيقى"
+
+[[character]]
+ch = "🌙"
+en = "crescent moon"
+ar = "هلال"
+
+[[character]]
+ch = "☺"
+en = "smiling face"
+ar = "وجه مبتسم"
+
+[[character]]
+ch = "،"
+en = "arabic comma"
+ar = "فاصلة عربية"
+
+[[character]]
+ch = "؟"
+en = "arabic question mark"
+ar = "علامة استفهام عربية"
+
+[[character]]
+ch = "٭"
+en = "arabic star"
+ar = "نجمة عربية"
+
+[[character]]
+ch = "﷽"
+en = "basmala"
+ar = "بسملة"

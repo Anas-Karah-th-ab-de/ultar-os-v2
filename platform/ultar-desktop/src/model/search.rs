@@ -1,10 +1,15 @@
 //! The overview search (DESKTOP-SPEC §5.1 "Suche"): one field, results grouped – apps,
-//! settings (jumps to the panel), calculation, commands. Arabic matches without regard to
-//! vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). Sources without a
-//! service (files, Store, characters) are not offered.
+//! settings (jumps to the panel), calculation, commands, characters. Arabic matches without
+//! regard to vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). The
+//! characters come from a table that ships with the shell (`model::characters`); sources
+//! without a service (files, Store) are not offered.
 
 use super::apps::AppInfo;
-use ultar_i18n::{arabic, numbers, Translator};
+use ultar_i18n::{arabic, Translator};
+
+/// The calculator lives in its own module; re-exported so the search and its callers use one
+/// name (`search.source.calculator`).
+pub use super::calc::calculate;
 
 /// Most results per group.
 pub const MAX_PER_GROUP: usize = 6;
@@ -83,6 +88,10 @@ pub enum Hit {
     Calc(String),
     /// Run a command.
     Command(Command),
+    /// A character (emoji, symbol, Arabic letter) from the table; choosing it inserts it.
+    Character(String),
+    /// A remembered search or opened result; choosing it runs it again.
+    History(super::history::Record),
     /// Ask the helper this (the whole query, in the person's words).
     Helper(String),
 }
@@ -99,6 +108,10 @@ pub struct Sources {
     pub calculator: bool,
     /// Commands (lock, power, display mode, quick settings).
     pub commands: bool,
+    /// Characters (emoji, symbols, Arabic letters) from the shell's table.
+    pub characters: bool,
+    /// Remembered searches and opened results (`search.history`).
+    pub history: bool,
     /// Arabic matches without regard to vowel marks and letter variants.
     pub arabic_variants: bool,
     /// The helper answers on this device (`agent.state` was seen).
@@ -112,6 +125,8 @@ impl Default for Sources {
             settings: true,
             calculator: true,
             commands: true,
+            characters: true,
+            history: true,
             arabic_variants: true,
             helper: false,
         }
@@ -120,11 +135,13 @@ impl Default for Sources {
 
 impl Sources {
     /// The settings the search follows.
-    pub const KEYS: [&'static str; 5] = [
+    pub const KEYS: [&'static str; 7] = [
         "search.source.apps",
         "search.source.settings",
         "search.source.calculator",
         "search.source.commands",
+        "search.source.characters",
+        "search.history",
         "search.arabic_variants",
     ];
 
@@ -135,6 +152,8 @@ impl Sources {
             "search.source.settings" => &mut self.settings,
             "search.source.calculator" => &mut self.calculator,
             "search.source.commands" => &mut self.commands,
+            "search.source.characters" => &mut self.characters,
+            "search.history" => &mut self.history,
             "search.arabic_variants" => &mut self.arabic_variants,
             _ => return false,
         };
@@ -154,7 +173,26 @@ pub fn search(query: &str, apps: &[AppInfo], tr: &Translator) -> Vec<Hit> {
 }
 
 /// Searches the sources that are switched on; an empty (or only blank) query has no results.
+/// No history is offered (see [`search_in_with_history`] for the shell's own list).
 pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Sources) -> Vec<Hit> {
+    search_in_with_history(
+        query,
+        apps,
+        tr,
+        sources,
+        &super::history::History::default(),
+    )
+}
+
+/// Like [`search_in`], also offering the remembered searches and opened results that match
+/// (`search.history`), newest first, before the helper.
+pub fn search_in_with_history(
+    query: &str,
+    apps: &[AppInfo],
+    tr: &Translator,
+    sources: Sources,
+    history: &super::history::History,
+) -> Vec<Hit> {
     let query: String = query.chars().take(MAX_QUERY).collect();
     let query = query.trim();
     if query.is_empty() {
@@ -193,6 +231,7 @@ pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Source
                 .map(Hit::Command),
         );
     }
+    out.extend(table_hits(query, variants, sources, history));
     // Always last: whatever was typed can be asked of the helper.
     if sources.helper && query.chars().count() >= MIN_HELPER {
         out.push(Hit::Helper(query.to_owned()));
@@ -200,98 +239,32 @@ pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Source
     out
 }
 
-/// Evaluates `+ - * / × ÷ ( )` on decimal numbers (Arabic-Indic digits and the Arabic
-/// decimal comma are accepted); `None` for anything else or a single plain number.
-pub fn calculate(text: &str) -> Option<String> {
-    let text = numbers::to_western_digits(text)
-        .replace('٫', ".")
-        .replace('×', "*")
-        .replace('÷', "/");
-    if !text.chars().any(|c| matches!(c, '+' | '-' | '*' | '/')) {
-        return None;
+/// The characters and the remembered entries that match (the shell's own tables), each
+/// bounded to [`MAX_PER_GROUP`].
+fn table_hits(
+    query: &str,
+    variants: bool,
+    sources: Sources,
+    history: &super::history::History,
+) -> Vec<Hit> {
+    let mut out = Vec::new();
+    if sources.characters {
+        out.extend(
+            super::characters::search(query, variants)
+                .into_iter()
+                .take(MAX_PER_GROUP)
+                .map(|c| Hit::Character(c.ch.clone())),
+        );
     }
-    let tokens: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
-    let mut p = Parser {
-        t: &tokens,
-        i: 0,
-        depth: 0,
-    };
-    let value = p.sum()?;
-    if p.i != tokens.len() || !value.is_finite() || value.abs() > 1e15 {
-        return None;
+    if sources.history {
+        out.extend(
+            history
+                .matching(query, variants)
+                .take(MAX_PER_GROUP)
+                .map(|r| Hit::History(r.clone())),
+        );
     }
-    let rounded = (value * 1e9).round() / 1e9;
-    let mut s = format!("{rounded}");
-    if s == "-0" {
-        s = "0".into();
-    }
-    Some(s)
-}
-
-struct Parser<'a> {
-    t: &'a [char],
-    i: usize,
-    depth: u8,
-}
-
-impl Parser<'_> {
-    fn peek(&self) -> Option<char> {
-        self.t.get(self.i).copied()
-    }
-
-    fn sum(&mut self) -> Option<f64> {
-        let mut v = self.product()?;
-        while let Some(op @ ('+' | '-')) = self.peek() {
-            self.i += 1;
-            let r = self.product()?;
-            v = if op == '+' { v + r } else { v - r };
-        }
-        Some(v)
-    }
-
-    fn product(&mut self) -> Option<f64> {
-        let mut v = self.atom()?;
-        while let Some(op @ ('*' | '/')) = self.peek() {
-            self.i += 1;
-            let r = self.atom()?;
-            if op == '/' && r == 0.0 {
-                return None;
-            }
-            v = if op == '*' { v * r } else { v / r };
-        }
-        Some(v)
-    }
-
-    fn atom(&mut self) -> Option<f64> {
-        match self.peek()? {
-            '(' if self.depth < 16 => {
-                self.i += 1;
-                self.depth += 1;
-                let v = self.sum()?;
-                self.depth -= 1;
-                (self.peek() == Some(')')).then(|| self.i += 1)?;
-                Some(v)
-            }
-            '-' => {
-                self.i += 1;
-                Some(-self.atom()?)
-            }
-            c if c.is_ascii_digit() || c == '.' => {
-                let start = self.i;
-                while self.peek().is_some_and(|c| c.is_ascii_digit() || c == '.')
-                    && self.i - start < 24
-                {
-                    self.i += 1;
-                }
-                self.t[start..self.i]
-                    .iter()
-                    .collect::<String>()
-                    .parse()
-                    .ok()
-            }
-            _ => None,
-        }
-    }
+    out
 }
 
 #[cfg(test)]
@@ -318,24 +291,42 @@ mod tests {
     }
 
     #[test]
-    fn the_calculator_is_small_and_safe() {
-        assert_eq!(calculate("1+2*3").as_deref(), Some("7"));
-        assert_eq!(calculate("(1+2)*3").as_deref(), Some("9"));
-        assert_eq!(calculate("١٠ ÷ ٤").as_deref(), Some("2.5"));
-        assert_eq!(calculate("-3+1").as_deref(), Some("-2"));
-        assert_eq!(calculate("0.1+0.2").as_deref(), Some("0.3"));
-        for bad in [
-            "42",
-            "1/0",
-            "1+",
-            "(1+2",
-            "a+b",
-            "1e400*1e400",
-            &"(".repeat(40),
-            "9999999999999999*9999",
-        ] {
-            assert_eq!(calculate(bad), None, "{bad}");
-        }
+    fn characters_are_found_by_name_and_the_source_switches_them_off() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let ar = crate::i18n::translator(Lang::Ar).unwrap();
+        let heart = Hit::Character("❤".into());
+        assert!(search("heart", &base_apps(), &en).contains(&heart));
+        assert!(search("قلب", &base_apps(), &ar).contains(&heart));
+        // The source switched off in Settings: no characters.
+        let mut sources = Sources::default();
+        assert!(sources.set("search.source.characters", false));
+        assert!(!search_in("heart", &base_apps(), &en, sources).contains(&heart));
+        // Apps still found with characters off.
+        assert!(search_in("files", &base_apps(), &en, sources)
+            .iter()
+            .any(|h| matches!(h, Hit::App(_))));
+    }
+
+    #[test]
+    fn history_is_offered_when_on_and_gone_when_off() {
+        use super::super::history::{History, Record};
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let mut history = History::default();
+        history.record(Record::Search("weather".into()));
+        history.record(Record::App("org.ultar.files".into()));
+        let hit = Hit::History(Record::Search("weather".into()));
+        let sources = Sources::default();
+        assert!(
+            search_in_with_history("weather", &base_apps(), &en, sources, &history).contains(&hit)
+        );
+        // The plain search (no history) does not offer it.
+        assert!(!search_in("weather", &base_apps(), &en, sources).contains(&hit));
+        // Switched off in Settings: no history hits.
+        let mut off = Sources::default();
+        assert!(off.set("search.history", false));
+        assert!(
+            !search_in_with_history("weather", &base_apps(), &en, off, &history).contains(&hit)
+        );
     }
 
     #[test]
@@ -356,6 +347,7 @@ mod tests {
         // Without the Arabic variants only the exact spelling matches.
         assert!(find("الملفات", &ar, "search.arabic_variants").contains(&files));
         assert!(!find("المِلفات", &ar, "search.arabic_variants").contains(&files));
-        assert!(!Sources::default().set("search.history", false));
+        // A key the search does not follow is refused (files has no source yet).
+        assert!(!Sources::default().set("search.source.files", false));
     }
 }

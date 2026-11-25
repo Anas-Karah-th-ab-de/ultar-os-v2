@@ -10,7 +10,8 @@ use std::time::Duration;
 use ultar_bus::messages::settings::{Changed, Get, SettingValue};
 use ultar_bus::{Client, TypedSubscription};
 use ultar_desktop::app::desktop::link::apply_setting;
-use ultar_desktop::model::search::{search_in, Hit};
+use ultar_desktop::model::history::Record;
+use ultar_desktop::model::search::{search_in, search_in_with_history, Hit};
 use ultar_desktop::model::Desktop;
 use ultar_displayd::input::InputSettings;
 use ultar_i18n::Lang;
@@ -205,6 +206,64 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
     Ok(())
 }
 
+/// Characters and history: the shell's own tables follow their switches. A name offers the
+/// character; switching the source off removes it. A remembered search is offered; switching
+/// history off clears what was kept.
+fn search_tables(
+    app: &mut App,
+    admin: &Client,
+    shell: &Follower,
+    desk: &mut Desktop,
+    apps: &[ultar_desktop::model::apps::AppInfo],
+    tr: &ultar_i18n::Translator,
+) -> Result<(), String> {
+    let follow = |desk: &mut Desktop, key: &str, value: SettingValue| {
+        shell.told(key, &value)?;
+        apply_setting(desk, key, &value);
+        Ok::<(), String>(())
+    };
+    let finds_heart = |desk: &Desktop| {
+        search_in("heart", apps, tr, desk.overview.sources)
+            .iter()
+            .any(|hit| matches!(hit, Hit::Character(_)))
+    };
+    if !finds_heart(desk) {
+        return Err("the shell's search does not offer characters".into());
+    }
+    let off = change(
+        (&mut *app, admin),
+        ("search", "search.source.characters"),
+        None,
+    )?;
+    follow(desk, "search.source.characters", off)?;
+    if finds_heart(desk) || desk.overview.sources.characters {
+        return Err("the shell still searches characters".into());
+    }
+    desk.overview
+        .history
+        .record(Record::Search("weather".into()));
+    let finds_weather = |desk: &Desktop| {
+        search_in_with_history(
+            "weather",
+            apps,
+            tr,
+            desk.overview.sources,
+            &desk.overview.history,
+        )
+        .iter()
+        .any(|hit| matches!(hit, Hit::History(_)))
+    };
+    if !finds_weather(desk) {
+        return Err("the shell's search does not offer history".into());
+    }
+    let off = change((&mut *app, admin), ("search", "search.history"), None)?;
+    follow(desk, "search.history", off)?;
+    if finds_weather(desk) || !desk.overview.history.entries.is_empty() {
+        return Err("the shell still keeps history after switching it off".into());
+    }
+    Ok(())
+}
+
 /// Search and accessibility: the shell's own state follows, and the Settings window too.
 fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<(), String> {
     let mut desk = Desktop::new(Lang::En);
@@ -232,6 +291,7 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
     if finds_files(&desk) || sources.apps || sources.calculator || !sources.settings {
         return Err(format!("the shell still searches {sources:?}"));
     }
+    search_tables(&mut app, admin, shell, &mut desk, &apps, &tr)?;
     let mut app = page(bus, run, "accessibility")?;
     for key in [
         "accessibility.large_text",
@@ -258,8 +318,9 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
         change((&mut app, admin), ("accessibility", key), None)?;
     }
     println!(
-        "SETTINGS: search and accessibility pages -> shell: apps and calculator not searched, \
-         large text, high contrast, no motion (the Settings window too)"
+        "SETTINGS: search and accessibility pages -> shell: apps, calculator and characters not \
+         searched, history cleared when off, large text, high contrast, no motion (the Settings \
+         window too)"
     );
     Ok(())
 }

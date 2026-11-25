@@ -34,6 +34,12 @@ ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
 ultar-service = { path = "../../system/core/ultar-service" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
+# The search history is kept as JSON beside the shell (model/history.rs); already in the
+# workspace (the helper keeps its activity list the same way).
+serde_json = "1"
+# The characters table is data beside the shell (assets/characters.toml, model/characters.rs);
+# already in the workspace (the Store parses its catalogue with it).
+toml = "0.8"
 
 [dev-dependencies]
 ultar-ui = { path = "../ultar-ui" }

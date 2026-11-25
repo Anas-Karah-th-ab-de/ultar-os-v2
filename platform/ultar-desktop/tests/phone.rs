@@ -121,12 +121,18 @@ fn mobile_search_and_apps_open_over_the_home_screen() {
         )))
     );
     h.key_popup(Key::Enter);
+    // The browser opens; the opened app and the submitted search are remembered
+    // (search.history is on by default), each asking for the history to be kept.
     assert_eq!(
         h.take(),
-        vec![Effect::Launch {
-            app: "org.ultar.browser".into(),
-            open: Opening::start()
-        }]
+        vec![
+            Effect::Launch {
+                app: "org.ultar.browser".into(),
+                open: Opening::start()
+            },
+            Effect::History,
+            Effect::History,
+        ]
     );
     assert_eq!(h.shell.d.open, Open::None);
     // mobile.apps.

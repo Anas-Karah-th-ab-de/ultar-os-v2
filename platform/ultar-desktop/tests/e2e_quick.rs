@@ -119,6 +119,7 @@ impl World {
             light: false,
             form: Some("desktop".into()),
             bar: None,
+            state: None,
         };
         let (stop2, seen2) = (stop.clone(), seen.clone());
         let shell = std::thread::spawn(move || {

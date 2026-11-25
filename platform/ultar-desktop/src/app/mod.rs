@@ -31,6 +31,9 @@ pub struct Options {
     /// Where the desktop's bar is (`--bar top|bottom`); without it the setting
     /// `bar.layout` decides, and the bottom is the standard.
     pub bar: Option<BarPlace>,
+    /// The shell's own folder (`--state DIR`): the search history is kept beside it, per
+    /// person. Without it nothing is remembered across restarts.
+    pub state: Option<PathBuf>,
 }
 
 /// Why a program stopped.
@@ -75,6 +78,7 @@ pub fn parse_options(args: impl Iterator<Item = String>) -> Option<(Options, Vec
         light: false,
         form: std::env::var("ULTAR_OBERFLAECHE").ok(),
         bar: None,
+        state: None,
     };
     let mut rest = Vec::new();
     let mut args = args.peekable();
@@ -86,6 +90,7 @@ pub fn parse_options(args: impl Iterator<Item = String>) -> Option<(Options, Vec
             "--light" => o.light = true,
             "--form" => o.form = Some(args.next()?),
             "--bar" => o.bar = Some(BarPlace::parse(&args.next()?)?),
+            "--state" => o.state = Some(PathBuf::from(args.next()?)),
             _ => rest.push(word),
         }
     }

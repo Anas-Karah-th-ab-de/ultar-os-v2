@@ -45,11 +45,15 @@ fn a_search_result_opens_settings_on_its_area() {
     assert!(h.popup_target(&hit), "the panel is found");
     h.take();
     h.click_popup(hit);
+    // The panel opens and the opened result is remembered (search.history is on).
     assert_eq!(
         h.take(),
-        vec![Effect::Launch {
-            app: "org.ultar.settings".into(),
-            open: Opening::settings_page("displays"),
-        }]
+        vec![
+            Effect::Launch {
+                app: "org.ultar.settings".into(),
+                open: Opening::settings_page("displays"),
+            },
+            Effect::History,
+        ]
     );
 }

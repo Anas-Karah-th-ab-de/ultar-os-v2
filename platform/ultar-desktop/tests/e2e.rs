@@ -133,6 +133,7 @@ impl World {
             light: false,
             form: Some("desktop".into()),
             bar: None,
+            state: None,
         }
     }
 

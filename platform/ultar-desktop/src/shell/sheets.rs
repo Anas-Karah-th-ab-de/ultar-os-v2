@@ -2,6 +2,7 @@
 //! Projection, all apps).
 
 use super::bar::{launch, CALENDAR, SETTINGS};
+use super::history::{open_record, remember};
 use super::keys::confirm_projection;
 use super::Opening;
 use super::{Effect, Outcome, Shell};
@@ -328,13 +329,30 @@ pub(super) fn open_app(s: &mut Shell, app: &str) -> Outcome {
 
 fn result(s: &mut Shell, hit: &Hit) -> Outcome {
     match hit {
-        Hit::App(id) => open_app(s, id),
+        Hit::App(id) => {
+            let mut out = open_app(s, id);
+            out.effects
+                .extend(remember(s, crate::model::history::Record::App(id.clone())));
+            out
+        }
         Hit::Setting(panel) => {
             let area = crate::model::search::panel_area(panel);
-            launch(s, SETTINGS, Opening::settings_page(area))
+            let mut out = launch(s, SETTINGS, Opening::settings_page(area));
+            out.effects.extend(remember(
+                s,
+                crate::model::history::Record::Setting((*panel).to_owned()),
+            ));
+            out
         }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
+        // A character goes into the search field (the picker's one field).
+        Hit::Character(ch) => {
+            s.d.overview.query.push_str(ch);
+            Outcome::surfaces()
+        }
+        // A remembered entry runs again (and is remembered again, newest first).
+        Hit::History(record) => open_record(s, record),
         Hit::Helper(text) => super::helper::ask_from_search(s, text),
         Hit::Command(Command::Lock) => {
             s.d.open = Open::None;
@@ -363,14 +381,20 @@ fn first_result(s: &mut Shell) -> Outcome {
             None => Outcome::none(),
         };
     }
-    let hits = crate::model::search::search_in(
+    let hits = crate::model::search::search_in_with_history(
         &s.d.overview.query,
         &s.d.catalog,
         &s.tr,
         s.d.overview.sources,
+        &s.d.overview.history,
     );
-    match hits.first() {
+    let mut out = match hits.first() {
         Some(hit) => result(s, &hit.clone()),
         None => Outcome::none(),
-    }
+    };
+    // The submitted search itself is remembered too.
+    let query = s.d.overview.query.clone();
+    out.effects
+        .extend(remember(s, crate::model::history::Record::Search(query)));
+    out
 }
