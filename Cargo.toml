@@ -50,6 +50,8 @@ members = [
     "apps/ultar-web",
     "apps/ultar-phone",
     "apps/ultar-files",
+    "platform/ultar-textview",
+    "apps/ultar-editor",
     "external/ultar-telegram",
     "platform/ultar-ime",
     "platform/ultar-shell",

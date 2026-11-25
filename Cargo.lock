@@ -5527,6 +5527,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-editor"
+version = "0.8.0"
+dependencies = [
+ "ultar-i18n",
+ "ultar-office",
+ "ultar-surface",
+ "ultar-textview",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-face"
 version = "0.8.0"
 dependencies = [
@@ -6008,6 +6019,14 @@ dependencies = [
  "grammers-client",
  "grammers-session",
  "tokio",
+]
+
+[[package]]
+name = "ultar-textview"
+version = "0.8.0"
+dependencies = [
+ "ultar-i18n",
+ "ultar-ui",
 ]
 
 [[package]]

@@ -36,6 +36,15 @@ pub struct UiWindow {
     shortcuts: Option<fn(&UiEvent) -> bool>,
     /// Chunks of the clipboard text a field asked for (Ctrl+V), until the last one.
     pasting: Option<Vec<u8>>,
+    /// The paste in progress was asked for by the app ([`UiWindow::request_paste`]).
+    app_paste: bool,
+    /// Clipboard text the app asked for, once it arrived.
+    pasted: Option<String>,
+    /// Pointer presses, releases, scrolls and moves with a button held, oldest first (for
+    /// pictures the app draws itself: the text of the editor and the terminal).
+    pointer_events: Vec<UiEvent>,
+    /// A pointer button is held.
+    held: bool,
 }
 
 /// Largest clipboard text a field takes (more is cut off: a field holds one line).
@@ -179,6 +188,10 @@ impl UiWindow {
             key_input: false,
             shortcuts: None,
             pasting: None,
+            app_paste: false,
+            pasted: None,
+            pointer_events: Vec::new(),
+            held: false,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -201,6 +214,11 @@ impl UiWindow {
         &self.window
     }
 
+    /// Keeps the window open after a close request (see [`Window::keep_open`]).
+    pub fn keep_open(&mut self) {
+        self.window.keep_open();
+    }
+
     /// Key presses the widget tree did not use since the last call (the app's shortcuts:
     /// Ctrl+C, Delete, F2 …), oldest first.
     pub fn take_unhandled_keys(&mut self) -> Vec<UiEvent> {
@@ -212,6 +230,51 @@ impl UiWindow {
     /// (Alt+arrows for back and forward).
     pub fn set_shortcuts(&mut self, filter: Option<fn(&UiEvent) -> bool>) {
         self.shortcuts = filter;
+    }
+
+    /// Pointer presses, releases, scrolls and moves with a button held since the last call,
+    /// oldest first (the widget tree handled them too). An app that draws a picture itself
+    /// (the editor's text) places its caret and selection with them.
+    pub fn take_pointer_events(&mut self) -> Vec<UiEvent> {
+        std::mem::take(&mut self.pointer_events)
+    }
+
+    /// Asks the compositor for the clipboard text for the app itself (not for a field);
+    /// it arrives with [`UiWindow::take_pasted`].
+    pub fn request_paste(&mut self) -> Result<(), ClientError> {
+        self.pasting = Some(Vec::new());
+        self.app_paste = true;
+        self.client.send(&Request::ReadSelection {
+            serial: self.serial,
+            mime: TEXT_MIME.to_owned(),
+        })
+    }
+
+    /// The clipboard text asked for with [`UiWindow::request_paste`], once it arrived.
+    pub fn take_pasted(&mut self) -> Option<String> {
+        self.pasted.take()
+    }
+
+    fn note_pointer(&mut self, event: &UiEvent) {
+        let keep = match event {
+            UiEvent::PointerDown { .. } => {
+                self.held = true;
+                true
+            }
+            UiEvent::PointerUp { .. } => {
+                self.held = false;
+                true
+            }
+            UiEvent::Scroll { .. } => true,
+            UiEvent::PointerMove { .. } => self.held,
+            _ => false,
+        };
+        if keep {
+            if self.pointer_events.len() >= MAX_UNHANDLED {
+                self.pointer_events.remove(0);
+            }
+            self.pointer_events.push(*event);
+        }
     }
 
     /// `true` when the last input event was a key press: an app tells "Enter on an item"
@@ -257,6 +320,7 @@ impl UiWindow {
         }
         if self.ui.take_paste() {
             self.pasting = Some(Vec::new());
+            self.app_paste = false;
             self.client.send(&Request::ReadSelection {
                 serial: self.serial,
                 mime: TEXT_MIME.to_owned(),
@@ -278,10 +342,15 @@ impl UiWindow {
                 }
                 let bytes = self.pasting.take().unwrap_or_default();
                 let text = String::from_utf8_lossy(&bytes);
+                if std::mem::take(&mut self.app_paste) {
+                    self.pasted = Some(text.into_owned());
+                    return Some(Vec::new());
+                }
                 Some(self.ui.paste(&text))
             }
             Event::TransferCancelled { .. } if self.pasting.is_some() => {
                 self.pasting = None;
+                self.app_paste = false;
                 Some(Vec::new())
             }
             _ => None,
@@ -350,6 +419,7 @@ impl UiWindow {
         }
         match translate(event, self.pointer) {
             Some(ui_event) => {
+                self.note_pointer(&ui_event);
                 if self.shortcuts.is_some_and(|f| f(&ui_event))
                     && self.unhandled.len() < MAX_UNHANDLED
                 {
