@@ -92,7 +92,7 @@ pub(super) fn control(
 
 /// Clicks the switch of `key`, or its slider at `at` of its width; the value the settings
 /// service holds afterwards.
-fn change(
+pub(super) fn change(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     at: Option<f32>,
@@ -541,5 +541,6 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     storage::storage(bus, run)?;
     storage::storage_settings(bus, admin, run, &volumed)?;
     updates(bus, admin, run)?;
-    super::apps::apps(bus, admin, run, &desktop)
+    super::apps::apps(bus, admin, run, &desktop)?;
+    crate::wired_users::users_emergency(bus, admin, run)
 }

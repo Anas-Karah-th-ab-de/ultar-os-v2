@@ -16,10 +16,12 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::Duration;
 use ultar_bus::messages::auth::{Outcome as AuthOutcome, Secret};
+use ultar_bus::messages::call::CallState;
 use ultar_bus::messages::lock::{Lock, LockReply, SERVICE};
 use ultar_bus::messages::media::MediaState;
 use ultar_bus::messages::notify::Posted;
 use ultar_bus::messages::power::PowerActions;
+use ultar_bus::messages::settings::Changed;
 use ultar_bus::{Client, ClientOptions, IncomingRequest, ServiceEndpoint, TypedSubscription};
 use ultar_surface::client::WindowConfig;
 use ultar_surface::proto::{Event, Request, Role, SurfaceId};
@@ -32,28 +34,53 @@ pub const APP_ID: &str = "org.ultar.lock";
 
 /// The running lock screen.
 pub struct LockApp {
-    host: Host,
+    pub(super) host: Host,
     /// The state (tests).
     pub state: LockState,
     look: Look,
-    surface: Option<SurfaceId>,
-    ports: Option<BusPorts>,
+    pub(super) surface: Option<SurfaceId>,
+    pub(super) ports: Option<BusPorts>,
     endpoint: Option<ServiceEndpoint>,
     posted: Option<TypedSubscription<Posted>>,
     notes: Notes,
-    waiting: Vec<IncomingRequest>,
-    verify: Option<Receiver<Option<AuthOutcome>>>,
-    clock: Arc<dyn Clock>,
-    user: Option<String>,
+    /// Open checks and questions.
+    pub(super) pending: Pending,
+    pub(super) clock: Arc<dyn Clock>,
+    pub(super) user: Option<String>,
     /// The last frame showed a wait after a wrong password (one more frame when it ends).
     wait_shown: bool,
-    /// `power.actions` and `media.state`.
-    topics: (
-        Option<TypedSubscription<PowerActions>>,
-        Option<TypedSubscription<MediaState>>,
-    ),
+    /// The topics the lock screen follows.
+    pub(super) feeds: Feeds,
     /// Which layout announcements are the user's switches (stored in the settings).
     layouts: super::keyboard::LayoutSync,
+}
+
+/// Open checks and questions of the lock screen.
+pub(super) struct Pending {
+    /// `lock.lock` questions waiting for the first frame.
+    pub(super) waiting: Vec<IncomingRequest>,
+    /// The running password check.
+    pub(super) verify: Option<Receiver<Option<AuthOutcome>>>,
+    /// Automatic sign-in (`users.auto_login`) waits for the first frame it can unlock.
+    pub(super) auto: bool,
+}
+
+/// The topics the lock screen follows: the services' state and the settings changes.
+pub(super) struct Feeds {
+    /// `power.actions`.
+    pub(super) power: Option<TypedSubscription<PowerActions>>,
+    /// `media.state`.
+    pub(super) media: Option<TypedSubscription<MediaState>>,
+    /// `settings.changed` (users.*, emergency.*).
+    pub(super) settings: Option<TypedSubscription<Changed>>,
+    /// `call.state` (to see the emergency call end).
+    pub(super) call: Option<TypedSubscription<CallState>>,
+    /// The settings service answered at least once.
+    pub(super) settings_known: bool,
+    /// Next try to read the settings (ms since the epoch).
+    pub(super) next_settings_ms: u64,
+    /// The emergency call's answer (worker thread).
+    pub(super) emergency: Option<Receiver<Option<u32>>>,
 }
 
 impl std::fmt::Debug for LockApp {
@@ -79,14 +106,21 @@ impl LockApp {
         let endpoint = client.as_ref().and_then(|c| c.register(SERVICE).ok());
         let host = Host::connect(&options.compositor, APP_ID)?;
         let posted = client.as_ref().and_then(|c| c.subscribe::<Posted>().ok());
-        let topics = (
-            client
+        let feeds = Feeds {
+            power: client
                 .as_ref()
                 .and_then(|c| c.subscribe::<PowerActions>().ok()),
-            client
+            media: client
                 .as_ref()
                 .and_then(|c| c.subscribe::<MediaState>().ok()),
-        );
+            settings: client.as_ref().and_then(|c| c.subscribe::<Changed>().ok()),
+            call: client
+                .as_ref()
+                .and_then(|c| c.subscribe::<CallState>().ok()),
+            settings_known: false,
+            next_settings_ms: 0,
+            emergency: None,
+        };
         let theme = if options.light {
             ThemeKind::Light
         } else {
@@ -104,15 +138,19 @@ impl LockApp {
             endpoint,
             posted,
             notes: Notes::default(),
-            waiting: Vec::new(),
-            verify: None,
+            pending: Pending {
+                waiting: Vec::new(),
+                verify: None,
+                auto: false,
+            },
             clock,
             user,
             wait_shown: false,
-            topics,
+            feeds,
             layouts: super::keyboard::LayoutSync::default(),
         };
         app.keyboard_from_settings()?;
+        app.read_settings();
         Ok(app)
     }
 
@@ -148,7 +186,10 @@ impl LockApp {
 
     /// One turn.
     pub fn turn(&mut self) -> Result<(), AppError> {
-        let tick = if self.state.stage == Stage::Hidden {
+        // The SOS light needs a finer clock than the usual frame pace.
+        let tick = if self.state.emergency.sos_active() {
+            100
+        } else if self.state.stage == Stage::Hidden {
             500
         } else {
             250
@@ -157,25 +198,28 @@ impl LockApp {
             self.event(event)?;
         }
         self.bus()?;
-        if let Some(rx) = &self.verify {
+        self.follow_settings();
+        if let Some(rx) = &self.pending.verify {
             if let Ok(outcome) = rx.try_recv() {
-                self.verify = None;
+                self.pending.verify = None;
                 let now = self.clock.now_ms();
                 let effect = self.state.verified(outcome, now);
                 self.run_effect(effect)?;
                 self.show()?;
             }
         }
+        self.follow_emergency();
         // The countdown after a wrong password, and once more when it ends: the field and the
         // button are usable again (found on the Ultar kernel: they stayed disabled).
         let waiting =
             self.state.stage == Stage::SignIn && self.state.wait_ms(self.clock.now_ms()) > 0;
-        if waiting || self.wait_shown {
+        if waiting || self.wait_shown || self.state.emergency.sos_active() {
             self.show()?;
         }
         self.wait_shown = waiting;
         self.host.draw()?;
         self.answer_waiting();
+        self.finish_auto_login()?;
         Ok(())
     }
 
@@ -184,11 +228,11 @@ impl LockApp {
             self.notes.add(p);
         }
         let mut changed = false;
-        while let Some(Ok(Some(p))) = self.topics.0.as_ref().map(|s| s.try_recv()) {
+        while let Some(Ok(Some(p))) = self.feeds.power.as_ref().map(|s| s.try_recv()) {
             self.state.svc.power_off = p.power_off && !p.needs_admin;
             changed = true;
         }
-        while let Some(Ok(Some(m))) = self.topics.1.as_ref().map(|s| s.try_recv()) {
+        while let Some(Ok(Some(m))) = self.feeds.media.as_ref().map(|s| s.try_recv()) {
             self.state.svc.media = m
                 .now
                 .map(|n| (n.title, n.artist, n.playing, n.can_previous, n.can_next));
@@ -201,7 +245,7 @@ impl LockApp {
             if request.decode::<Lock>().is_ok() {
                 self.state.locked();
                 self.show()?;
-                self.waiting.push(request);
+                self.pending.waiting.push(request);
             } else {
                 let _ = request.fail(ultar_bus::ErrorCode::UnknownMethod);
             }
@@ -212,15 +256,19 @@ impl LockApp {
     /// `lock.lock` is answered once the lock surface has its first frame (that frame
     /// locks the compositor).
     fn answer_waiting(&mut self) {
-        let drawn = self
-            .surface
-            .and_then(|id| self.host.surface(id))
-            .is_some_and(|s| s.window.configure().is_some());
+        let drawn = self.drawn();
         if drawn || self.state.stage == Stage::Hidden {
-            for r in self.waiting.drain(..) {
+            for r in self.pending.waiting.drain(..) {
                 let _ = r.reply(&LockReply { locked: drawn });
             }
         }
+    }
+
+    /// Whether the lock surface has its first frame (it locks the compositor).
+    pub(super) fn drawn(&self) -> bool {
+        self.surface
+            .and_then(|id| self.host.surface(id))
+            .is_some_and(|s| s.window.configure().is_some())
     }
 
     fn event(&mut self, event: HostEvent) -> Result<(), AppError> {
@@ -288,6 +336,16 @@ impl LockApp {
             (Some(Target::User(i)), ActionKind::Activated) => {
                 self.state.choose_user(i);
             }
+            // emergency.on_lock_screen: the panel with what the person chose to show.
+            (Some(Target::Emergency), ActionKind::Activated) => {
+                self.state.emergency.flip(self.state.prefs.emergency_on);
+            }
+            (Some(Target::EmergencyCall), ActionKind::Activated) => {
+                self.start_emergency_call();
+            }
+            (Some(Target::EmergencyBack), ActionKind::Activated) => {
+                self.state.emergency.open = false;
+            }
             (Some(Target::EmergencyOff), ActionKind::Activated) if self.state.svc.power_off => {
                 self.service(LockCall::PowerOff);
             }
@@ -331,8 +389,15 @@ impl LockApp {
         };
         let secret = Secret::new(view.ui.text(field).unwrap_or_default().to_owned());
         let _ = view.ui.set_text(field, "");
-        let effect = self.state.submit(secret, self.clock.now_ms());
+        let now = self.clock.now_ms();
+        let effect = self.state.submit(secret, now, self.local_min(now));
         self.run_effect(effect)
+    }
+
+    /// The local time in minutes since midnight (the parental window's clock).
+    pub(super) fn local_min(&self, now_ms: u64) -> u16 {
+        LocalTime::at(now_ms, self.clock.offset_s())
+            .map_or(0, |t| u16::from(t.hour) * 60 + u16::from(t.minute))
     }
 
     fn run_effect(&mut self, effect: Option<LockEffect>) -> Result<(), AppError> {
@@ -348,7 +413,7 @@ impl LockApp {
                     let outcome = ports.and_then(|p| p.verify(&user, method, secret).ok());
                     let _ = tx.send(outcome);
                 });
-                self.verify = Some(rx);
+                self.pending.verify = Some(rx);
             }
             Some(LockEffect::Unlock) => {
                 if let Some(surface) = self.surface {
@@ -396,7 +461,7 @@ impl LockApp {
         }
     }
 
-    fn refresh_user(&mut self) {
+    pub(super) fn refresh_user(&mut self) {
         self.refresh_access();
         let Some(ports) = &self.ports else {
             return;
@@ -426,7 +491,7 @@ impl LockApp {
     }
 
     /// Shows the current stage (or removes the surface when hidden).
-    fn show(&mut self) -> Result<(), AppError> {
+    pub(super) fn show(&mut self) -> Result<(), AppError> {
         self.state.caps_lock = self.host.caps_lock();
         self.state.notes = self.notes.counts_by_app();
         let now = self.clock.now_ms();
@@ -468,5 +533,7 @@ pub fn run(
     // What the accessibility switches say from the first frame on (they survive a restart).
     app.refresh_access();
     app.apply_access();
+    // users.auto_login: the chosen user signs in at a fresh start without a password.
+    app.try_auto_login();
     app.run(stop)
 }

@@ -309,6 +309,18 @@ impl Accounts {
         }
     }
 
+    /// `users.auto_login` from the settings service: the named user signs in at start
+    /// (the per-user flag `account.user_auto_login`); an unknown or empty name means
+    /// nobody. The setting is administrator-only in settingsd, so no dialog here.
+    pub fn apply_auto_login(&mut self, user: Option<String>) -> Result<(), Refusal> {
+        let user = user.filter(|u| self.user(u).is_ok());
+        self.edit(|s| {
+            for u in &mut s.users {
+                u.auto_login = user.as_deref() == Some(u.name.as_str());
+            }
+        })
+    }
+
     /// Applies an edit to a copy, stores it, and only then takes it.
     fn edit(&mut self, f: impl FnOnce(&mut Stored)) -> Result<(), Refusal> {
         let mut next = self.stored()?.clone();

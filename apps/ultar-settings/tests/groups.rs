@@ -467,6 +467,8 @@ fn users_are_added_and_removed_through_the_account_service() {
     assert_eq!(log(&world), ["account.user_create sami"]);
     assert!(app.state.dialog.is_none());
     assert_eq!(app.state.more.users.len(), 3);
+    // users.new_kind was standard (the schema default): sami is a standard user.
+    assert_eq!(app.state.more.users[2].kind, UserKind::Standard);
     let leila = app.view.node(Act::UserRemove(1)).expect("remove leila");
     click(&mut app, leila);
     let ok = app.view.node(Act::DialogOk).expect("ok");

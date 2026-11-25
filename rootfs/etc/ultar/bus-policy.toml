@@ -78,12 +78,15 @@ register  = ["auth"]
 
 
 # Lock screen (814): offers `lock`, checks passwords, sees how many
-# notifications wait (never their content).
+# notifications wait (never their content). It follows `users.*` (the user list,
+# automatic sign-in at a fresh start, the parental time window) and `emergency.*`
+# (the panel on the cover, the SOS light); `call.emergency` carries no number –
+# the call service dials the configured one itself.
 [[rule]]
 identity  = "system.lock"
 register  = ["lock"]
-call      = ["settings.set_accessibility", "settings.accessibility", "auth.users", "auth.verify", "account.users_list", "account.user_picture_get", "power.restart", "power.off", "power.system", "session.signed_in", "session.signin", "session.users", "session.system", "media.play_pause", "media.next", "media.previous", "media.system"]
-subscribe = ["notify.posted", "power.actions", "session.state", "media.state"]
+call      = ["settings.set_accessibility", "settings.accessibility", "settings.get", "auth.users", "auth.verify", "account.users_list", "account.user_picture_get", "power.restart", "power.off", "power.system", "session.signed_in", "session.signin", "session.users", "session.system", "media.play_pause", "media.next", "media.previous", "media.system", "call.emergency"]
+subscribe = ["notify.posted", "power.actions", "session.state", "media.state", "settings.changed", "call.state"]
 
 
 # System dialogs (815): offers `sysdialog` (permission and administrator
@@ -115,14 +118,17 @@ call      = ["update.status", "update.check", "update.download", "update.history
 subscribe = ["update.progress", "notify.invoked", "media.command"]
 
 # Call service: offers `call`, publishes the call state, drives the modem.
+# `call.emergency` dials `emergency.number`, which it reads and validates itself
+# (the lock screen may start an emergency call, never dial an arbitrary number).
 [[rule]]
 identity  = "system.calld"
 register  = ["call"]
 publish   = ["call.state", "call.picture"]
-subscribe = ["modem.state", "account.state"]
+subscribe = ["modem.state", "account.state", "settings.changed"]
 # The account service proves and signs with the device key for calls (the key never leaves it)
-# and hands out the relay's credentials; only this service may ask.
-call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn"]
+# and hands out the relay's credentials; only this service may ask. `settings.get` reads
+# `emergency.number` for `call.emergency`.
+call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn", "settings.get"]
 
 # Modem service (ultar-ril): offers `modem` and its state, nothing else.
 [[rule]]
@@ -168,12 +174,14 @@ call      = ["settings.set_displays", "settings.admin", "settings.list", "settin
 # Account service: offers `account`, publishes the users and the Ultar account
 # state, stores passwords in the authentication service (auth.admin: it is
 # the administrator of auth – it asks the user in the system dialog first)
-# and asks the system dialog for an administrator's password.
+# and asks the system dialog for an administrator's password. It follows
+# `users.auto_login` (the device setting of the per-user automatic sign-in).
 [[rule]]
 identity = "system.accountd"
 register = ["account"]
 publish  = ["account.users", "account.state"]
-call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", "auth.remove_user", "auth.admin", "sysdialog.authenticate"]
+call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", "auth.remove_user", "auth.admin", "sysdialog.authenticate", "settings.get"]
+subscribe = ["settings.changed"]
 
 # The Settings app (identity app.settings: the launcher's app map names its user id). Exactly
 # the methods and topics of its pages: settings (list, set, confirm/revert a pending change -
@@ -235,12 +243,14 @@ call      = ["init.power", "init.shutdown", "lock.lock", "sysdialog.authenticate
 # Session service (820): offers `session`, publishes who is signed in,
 # checks accounts with the authentication service, locks the screen for
 # switching and signing out, tells the account service who is in front.
+# It follows `users.parental*`: standard users sign in only in the time window;
+# their sessions end at its end, with a warning before (notify.post).
 [[rule]]
 identity  = "system.sessiond"
 register  = ["session"]
 publish   = ["session.state"]
-subscribe = ["account.users"]
-call      = ["auth.users", "lock.lock", "account.session"]
+subscribe = ["account.users", "settings.changed"]
+call      = ["auth.users", "lock.lock", "account.session", "settings.get", "notify.post"]
 
 # Notification service (821): offers `notify` and publishes its topics.
 [[rule]]

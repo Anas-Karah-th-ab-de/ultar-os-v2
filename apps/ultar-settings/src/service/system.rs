@@ -38,8 +38,13 @@ pub struct Drive {
 pub trait SystemPort {
     /// The local users.
     fn users(&mut self) -> PortResult<Vec<LocalUser>>;
-    /// Adds a standard user; the users afterwards.
-    fn user_create(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>>;
+    /// Adds a user of `kind` (the Users page proposes `users.new_kind`); the users afterwards.
+    fn user_create(
+        &mut self,
+        name: &str,
+        password: &str,
+        kind: users::UserKind,
+    ) -> PortResult<Vec<LocalUser>>;
     /// Removes a user (the files stay); the users afterwards.
     fn user_remove(&mut self, name: &str) -> PortResult<Vec<LocalUser>>;
     /// Sets a new password; the users afterwards.
@@ -88,11 +93,16 @@ impl SystemPort for BusSystem {
         Self::users_of(reply.map_err(port_error))
     }
 
-    fn user_create(&mut self, name: &str, password: &str) -> PortResult<Vec<LocalUser>> {
+    fn user_create(
+        &mut self,
+        name: &str,
+        password: &str,
+        kind: users::UserKind,
+    ) -> PortResult<Vec<LocalUser>> {
         let call = users::CreateUser {
             name: name.to_owned(),
             display_name: name.to_owned(),
-            kind: users::UserKind::Standard,
+            kind,
             password: users::Secret::new(password.to_owned()),
             confirm: users::Secret::new(password.to_owned()),
         };

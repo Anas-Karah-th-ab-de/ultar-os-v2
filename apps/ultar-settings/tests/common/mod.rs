@@ -197,10 +197,20 @@ fn more_panels(displays: usize) -> Vec<PanelInfo> {
     }
     first
         .into_iter()
-        .map(|(id, key)| PanelInfo {
-            id: id.into(),
-            title: Text::key(&format!("settings.panel.{id}")),
-            items: vec![item(key, ItemKind::Toggle, SettingValue::Flag(false))],
+        .map(|(id, key)| {
+            let mut items = vec![item(key, ItemKind::Toggle, SettingValue::Flag(false))];
+            if id == "users" {
+                items.push(item(
+                    "users.new_kind",
+                    choice(&["standard", "administrator"], "users.new_kind"),
+                    text("standard"),
+                ));
+            }
+            PanelInfo {
+                id: id.into(),
+                title: Text::key(&format!("settings.panel.{id}")),
+                items,
+            }
         })
         .collect()
 }

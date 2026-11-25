@@ -4289,11 +4289,14 @@ name = "settings-e2e"
 version = "0.8.0"
 dependencies = [
  "rustix",
+ "ultar-accountd",
  "ultar-bus",
+ "ultar-call",
  "ultar-desktop",
  "ultar-displayd",
  "ultar-i18n",
  "ultar-launcher",
+ "ultar-sessiond",
  "ultar-settings",
  "ultar-surface",
  "ultar-ui",
