@@ -138,76 +138,59 @@ pub fn takes_effect(panel: &str, key: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// The panel of a key: its first word (`pointer` for the mouse page).
+    fn panel(key: &str) -> &str {
+        key.split('.').next().unwrap_or_default()
+    }
+
     #[test]
-    fn old_panels_are_untouched_and_new_ones_need_a_consumer() {
+    fn old_panels_are_untouched_and_wired_keys_belong_to_checked_panels() {
+        // The ten panels of the first seed are followed as before.
         assert!(takes_effect("power", "power.mode"));
-        assert!(takes_effect("pointer", "pointer.speed"));
-        assert!(takes_effect("pointer", "pointer.primary_button"));
-        assert!(takes_effect("pointer", "pointer.acceleration"));
-        assert!(takes_effect("pointer", "pointer.size"));
-        assert!(takes_effect("accessibility", "accessibility.large_pointer"));
-        assert!(takes_effect(
-            "accessibility",
-            "accessibility.double_click_ms"
-        ));
-        assert!(takes_effect("accessibility", "accessibility.high_contrast"));
-        assert!(!takes_effect("sharing", "sharing.files"));
-        assert!(!takes_effect("sharing", "sharing.screen"));
-        // The touchpad options wait for an input layer that tells touchpads apart.
-        assert!(!takes_effect("pointer", "pointer.touchpad.gestures"));
-        assert!(!takes_effect("pointer", "pointer.touchpad.tap_to_click"));
-        assert!(!takes_effect("pointer", "pointer.touchpad.natural_scroll"));
-        assert!(takes_effect("keyboard", "keyboard.repeat.delay_ms"));
-        assert!(takes_effect("keyboard", "keyboard.compose_key"));
-        // The keyboard helpers reach the compositor's key input path.
-        assert!(takes_effect("accessibility", "accessibility.sticky_keys"));
-        assert!(takes_effect("accessibility", "accessibility.slow_keys"));
-        assert!(takes_effect("accessibility", "accessibility.bounce_keys"));
-        assert!(takes_effect("accessibility", "accessibility.mouse_keys"));
-        // dwell_click still waits for a pointer helper that is not built yet.
-        assert!(!takes_effect("accessibility", "accessibility.dwell_click"));
-        assert!(takes_effect("search", "search.source.apps"));
-        assert!(takes_effect("search", "search.source.characters"));
-        assert!(takes_effect("search", "search.history"));
-        assert!(!takes_effect("search", "search.source.files"));
-        assert!(!takes_effect("search", "search.source.store"));
-        assert!(!takes_effect("search", "search.file_places"));
-        assert!(takes_effect("updates", "updates.auto_system"));
-        assert!(takes_effect("updates", "updates.window.from"));
-        assert!(takes_effect("updates", "updates.window.until"));
-        assert!(takes_effect("updates", "updates.channel"));
-        assert!(takes_effect("updates", "updates.metered"));
-        assert!(takes_effect("updates", "updates.offline_usb"));
-        assert!(takes_effect("updates", "updates.notify"));
-        // App updates belong to the launcher/Store, not the system updater.
-        assert!(!takes_effect("updates", "updates.auto_apps"));
-        assert!(takes_effect("apps", "apps.default.web"));
-        assert!(takes_effect("apps", "apps.default.documents"));
-        assert!(takes_effect("apps", "apps.removable_media"));
-        assert!(takes_effect("apps", "apps.autostart"));
-        assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
-        assert!(!takes_effect(
-            "accessibility",
-            "accessibility.screen_reader"
-        ));
-        // The volume service follows the low-space warning and automount, the launcher the
-        // downloads clean-up; trim and old-update clean-up have no effect in this version.
-        assert!(takes_effect("storage", "storage.low_space_percent"));
-        assert!(takes_effect("storage", "storage.automount"));
-        assert!(takes_effect("storage", "storage.clean_downloads"));
-        assert!(takes_effect("storage", "storage.clean_downloads_days"));
-        assert!(!takes_effect("storage", "storage.trim"));
-        assert!(!takes_effect("storage", "storage.clean_old_updates"));
-        // Every wired key belongs to a checked panel (its first word, `pointer` for the
-        // mouse page).
         for (key, _) in WIRED {
-            let panel = key.split('.').next().unwrap_or_default();
-            assert!(CHECKED_PANELS.contains(&panel), "{key}");
+            assert!(CHECKED_PANELS.contains(&panel(key)), "{key}");
+            assert!(takes_effect(panel(key), key), "{key}");
         }
-        assert!(!takes_effect("printers", "printers.paper"));
-        // Users and Emergency: what the lock screen, the account service, the session
-        // service, the call service and this app follow.
+    }
+
+    #[test]
+    fn these_settings_take_effect() {
         for key in [
+            "pointer.speed",
+            "pointer.primary_button",
+            "pointer.acceleration",
+            "pointer.size",
+            "accessibility.large_pointer",
+            "accessibility.double_click_ms",
+            "accessibility.high_contrast",
+            "accessibility.reduce_motion",
+            // the keyboard helpers reach the compositor's key input path
+            "accessibility.sticky_keys",
+            "accessibility.slow_keys",
+            "accessibility.bounce_keys",
+            "accessibility.mouse_keys",
+            "keyboard.repeat.delay_ms",
+            "keyboard.compose_key",
+            "search.source.apps",
+            "search.source.characters",
+            "search.history",
+            "updates.auto_system",
+            "updates.window.from",
+            "updates.window.until",
+            "updates.channel",
+            "updates.metered",
+            "updates.offline_usb",
+            "updates.notify",
+            "apps.default.web",
+            "apps.default.documents",
+            "apps.removable_media",
+            "apps.autostart",
+            // volumed: low-space warning and automount; the launcher: the downloads clean-up
+            "storage.low_space_percent",
+            "storage.automount",
+            "storage.clean_downloads",
+            "storage.clean_downloads_days",
+            // the lock screen, the account, session and call services and this app
             "users.list_on_login",
             "users.auto_login",
             "users.new_kind",
@@ -221,13 +204,38 @@ mod tests {
             "emergency.number",
             "emergency.sos_light",
         ] {
-            let panel = key.split('.').next().unwrap_or_default();
-            assert!(takes_effect(panel, key), "{key}");
+            assert!(takes_effect(panel(key), key), "{key}");
         }
-        // Still waiting: a guest session needs per-user desktops (review S-1), the
-        // power key and both volume keys never reach a system handler on this branch.
-        assert!(!takes_effect("users", "users.guest"));
-        assert!(!takes_effect("emergency", "emergency.power_presses"));
-        assert!(!takes_effect("emergency", "emergency.key_escape"));
+    }
+
+    #[test]
+    fn these_still_wait_and_say_so() {
+        for key in [
+            "sharing.files",
+            "sharing.screen",
+            "printers.paper",
+            // an input layer that tells touchpads apart
+            "pointer.touchpad.gestures",
+            "pointer.touchpad.tap_to_click",
+            "pointer.touchpad.natural_scroll",
+            // a pointer helper that is not built yet; no screen reader yet
+            "accessibility.dwell_click",
+            "accessibility.screen_reader",
+            // a per-person file-search service; the catalogue in a shared crate
+            "search.source.files",
+            "search.file_places",
+            "search.source.store",
+            // app updates belong to the launcher/Store, not the system updater
+            "updates.auto_apps",
+            // no FITRIM in the kernel; the updater keeps no superseded images
+            "storage.trim",
+            "storage.clean_old_updates",
+            // per-user desktops (review S-1); the power and volume keys reach no handler
+            "users.guest",
+            "emergency.power_presses",
+            "emergency.key_escape",
+        ] {
+            assert!(!takes_effect(panel(key), key), "{key}");
+        }
     }
 }
