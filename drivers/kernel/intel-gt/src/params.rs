@@ -50,7 +50,6 @@ const LOG_STATE_CAPTURE: u32 = genmask(11, 10);
 const LOG_BUF_ADDR: u32 = genmask(31, 12);
 const WA_DUAL_QUEUE: u32 = 1 << 11;
 const WA_ENABLE_TSC_CHECK_ON_RC6: u32 = 1 << 22;
-const CTL_ENABLE_SLPC: u32 = 1 << 2;
 const CTL_ENABLE_LITE_RESTORE: u32 = 1 << 4;
 const CTL_DISABLE_MULTI_QUEUE: u32 = 1 << 24;
 const DEBUG_LOG_DISABLED: u32 = 1 << 6;
@@ -58,8 +57,8 @@ const ADS_ADDR: u32 = genmask(21, 1);
 
 impl Params {
     /// The parameter words for graphics 12.70–12.74 (Xe_LPG) as Linux sets them: log sections in
-    /// 4 KiB units (capture in 1 MiB units), dual-queue and RC6 time-stamp workarounds, power
-    /// management by the GuC (SLPC), lite restore, verbose logging off.
+    /// 4 KiB units (capture in 1 MiB units), dual-queue and RC6 time-stamp workarounds, lite
+    /// restore, verbose logging off. Unlike Linux without power management by the GuC (SLPC).
     pub fn words(&self, stage: Stage) -> Result<[u32; PARAM_WORDS]> {
         if !self.log_ggtt.is_multiple_of(4096) || !self.ads_ggtt.is_multiple_of(4096) {
             return Err(Error::Invalid("GuC buffer not page aligned"));
@@ -74,7 +73,10 @@ impl Params {
             | prep(LOG_BUF_ADDR, self.log_ggtt >> 12);
         if stage == Stage::Full {
             p[CTL_WA] = WA_DUAL_QUEUE | WA_ENABLE_TSC_CHECK_ON_RC6;
-            p[CTL_FEATURE] = CTL_ENABLE_LITE_RESTORE | CTL_ENABLE_SLPC;
+            // power management stays with the kernel: the GuC's own (SLPC) only runs after a
+            // start request with its shared data, which the kernel does not send yet; enabled but
+            // not started it held the GT at 1800 of 2350 MHz under load
+            p[CTL_FEATURE] = CTL_ENABLE_LITE_RESTORE;
             let multi_queue = Version {
                 major: 70,
                 minor: 66,
@@ -115,7 +117,7 @@ mod tests {
         // valid | notify | capture units; crash 16K -> 3, events 64K -> 15, capture 1M -> 0
         assert_eq!(w[0], 0x0100_0000 | 0b0111 | 3 << 4 | 15 << 6);
         assert_eq!(w[1], 1 << 11 | 1 << 22);
-        assert_eq!(w[2], 1 << 4 | 1 << 2 | 1 << 24);
+        assert_eq!(w[2], 1 << 4 | 1 << 24, "lite restore, single queue; no SLPC");
         assert_eq!(w[3], 1 << 6);
         assert_eq!(w[4], 0x1200 << 1);
         assert_eq!(w[5], 0x7d51_0003);
