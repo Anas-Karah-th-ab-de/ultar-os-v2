@@ -14,7 +14,9 @@ pub const STORE: &str = "org.ultar.store";
 
 /// The launcher's and the drive service's own contracts.
 pub mod contract {
-    pub use ultar_bus::messages::launcher::{Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP};
+    pub use ultar_bus::messages::launcher::{
+        Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP,
+    };
     pub use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
 }
 

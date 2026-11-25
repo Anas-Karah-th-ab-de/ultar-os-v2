@@ -4410,6 +4410,7 @@ dependencies = [
  "ultar-desktop",
  "ultar-displayd",
  "ultar-i18n",
+ "ultar-launcher",
  "ultar-settings",
  "ultar-surface",
  "ultar-ui",

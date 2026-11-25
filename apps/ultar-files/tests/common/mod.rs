@@ -98,10 +98,7 @@ pub fn ui(lang: Lang, theme: ThemeKind, size: Size) -> Ui {
 pub struct Shared(pub std::rc::Rc<std::cell::RefCell<Fake>>);
 
 impl ultar_files::service::LauncherPort for Shared {
-    fn resolve(
-        &mut self,
-        uri: &str,
-    ) -> Result<Option<String>, ultar_files::service::PortError> {
+    fn resolve(&mut self, uri: &str) -> Result<Option<String>, ultar_files::service::PortError> {
         self.0.borrow_mut().resolve(uri)
     }
     fn open(

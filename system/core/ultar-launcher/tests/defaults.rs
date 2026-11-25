@@ -40,19 +40,40 @@ fn resolve_follows_the_default_apps_and_falls_back() {
             .unwrap();
     }
     // the schema's defaults resolve to the installed system apps
-    assert_eq!(launcher.resolve("https://example.org/a").as_deref(), Some("browser"));
-    assert_eq!(launcher.resolve("mailto:a@example.org").as_deref(), Some("mail"));
-    assert_eq!(launcher.resolve("file:///m/u/song.mp3").as_deref(), Some("media"));
-    assert_eq!(launcher.resolve("file:///m/u/pic.png").as_deref(), Some("images"));
+    assert_eq!(
+        launcher.resolve("https://example.org/a").as_deref(),
+        Some("browser")
+    );
+    assert_eq!(
+        launcher.resolve("mailto:a@example.org").as_deref(),
+        Some("mail")
+    );
+    assert_eq!(
+        launcher.resolve("file:///m/u/song.mp3").as_deref(),
+        Some("media")
+    );
+    assert_eq!(
+        launcher.resolve("file:///m/u/pic.png").as_deref(),
+        Some("images")
+    );
     // a runtime change reaches the resolution
     launcher.follow_setting("apps.default.web", &text("store.web"));
-    assert_eq!(launcher.resolve("https://example.org").as_deref(), Some("store.web"));
+    assert_eq!(
+        launcher.resolve("https://example.org").as_deref(),
+        Some("store.web")
+    );
     // an invalid value falls back to the system default
     launcher.follow_setting("apps.default.web", &text("Not An Id!"));
-    assert_eq!(launcher.resolve("https://example.org").as_deref(), Some("browser"));
+    assert_eq!(
+        launcher.resolve("https://example.org").as_deref(),
+        Some("browser")
+    );
     // a valid id that is not installed falls back too
     launcher.follow_setting("apps.default.web", &text("ghost"));
-    assert_eq!(launcher.resolve("https://example.org").as_deref(), Some("browser"));
+    assert_eq!(
+        launcher.resolve("https://example.org").as_deref(),
+        Some("browser")
+    );
     // a URI no installed app declares resolves to nothing
     assert_eq!(launcher.resolve("file:///m/u/folder"), None);
     assert_eq!(launcher.resolve("trash:///"), None);

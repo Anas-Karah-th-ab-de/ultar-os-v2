@@ -446,10 +446,15 @@ fn opening_a_file_follows_the_default_app_setting() {
     double_click(&mut app, item);
     assert_eq!(fake.borrow().opened.last().unwrap().0, "org.ultar.editor");
     // no app for the kind: "no app can open it", nothing launched
-    fake.borrow_mut().defaults.retain(|(k, _)| *k != Kind::Documents);
+    fake.borrow_mut()
+        .defaults
+        .retain(|(k, _)| *k != Kind::Documents);
     let before = fake.borrow().opened.len();
     let item = node(&app, &Target::Item("تقرير.docx".into()));
     double_click(&mut app, item);
     assert_eq!(fake.borrow().opened.len(), before);
-    assert_eq!(app.state.notice.as_ref().unwrap().key, "files.notice.no_app");
+    assert_eq!(
+        app.state.notice.as_ref().unwrap().key,
+        "files.notice.no_app"
+    );
 }

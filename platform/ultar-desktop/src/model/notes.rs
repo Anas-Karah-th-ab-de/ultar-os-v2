@@ -119,7 +119,8 @@ impl Notes {
                 app_id: "org.ultar.files".to_owned(),
                 title: Text::key("desk.media.title"),
                 body: Body::Localized(
-                    Text::key("desk.media.body").with(ultar_bus::TextArg::Verbatim(name.to_owned())),
+                    Text::key("desk.media.body")
+                        .with(ultar_bus::TextArg::Verbatim(name.to_owned())),
                 ),
                 actions: vec![Action {
                     id: uri.to_owned(),

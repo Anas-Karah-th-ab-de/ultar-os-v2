@@ -434,14 +434,13 @@ fn kind_of_extension(rest: &str) -> Option<Kind> {
     let path = rest.split(['?', '#']).next()?;
     let ext = path.rsplit('.').next()?.to_ascii_lowercase();
     let kind = match ext.as_str() {
-        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "wma" | "mid" | "midi" => {
-            Kind::Music
-        }
+        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "wma" | "mid"
+        | "midi" => Kind::Music,
         "mp4" | "m4v" | "mkv" | "webm" | "avi" | "mov" | "wmv" | "flv" | "mpg" | "mpeg" | "ts" => {
             Kind::Video
         }
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "avif" | "heic"
-        | "ico" => Kind::Photos,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "avif"
+        | "heic" | "ico" => Kind::Photos,
         "pdf" | "txt" | "md" | "rtf" | "odt" | "ods" | "odp" | "doc" | "docx" | "xls" | "xlsx"
         | "ppt" | "pptx" | "csv" | "epub" | "html" | "htm" => Kind::Documents,
         _ => return None,

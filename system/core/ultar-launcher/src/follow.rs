@@ -48,10 +48,7 @@ fn sign_in(launcher: &Arc<Launcher>, state: &SessionState) {
 }
 
 /// Drains a subscription into `take`; `false` when the connection ended (reconnect).
-fn drain<T: ultar_bus::Topic>(
-    sub: &Option<TypedSubscription<T>>,
-    mut take: impl FnMut(T),
-) -> bool {
+fn drain<T: ultar_bus::Topic>(sub: &Option<TypedSubscription<T>>, mut take: impl FnMut(T)) -> bool {
     let Some(sub) = sub else {
         return true;
     };

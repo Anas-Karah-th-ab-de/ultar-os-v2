@@ -78,9 +78,7 @@ fn default_app_calls_round_trip() {
         app: Some("browser".into()),
     });
     round(&ResolveReply { app: None });
-    round(&Candidates {
-        kind: Kind::Photos,
-    });
+    round(&Candidates { kind: Kind::Photos });
     round(&CandidatesReply {
         apps: vec!["images".into(), "acme.viewer".into()],
     });

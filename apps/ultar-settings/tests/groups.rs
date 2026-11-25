@@ -570,7 +570,11 @@ fn the_default_app_rows_offer_the_launchers_candidates() {
                 },
                 SettingValue::Text("browser".into()),
             ),
-            row("apps.removable_media", media, SettingValue::Text("ask".into())),
+            row(
+                "apps.removable_media",
+                media,
+                SettingValue::Text("ask".into()),
+            ),
         ];
         w.system.candidates = vec![(Kind::Web, vec!["browser".into(), "store.web".into()])];
     }

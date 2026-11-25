@@ -156,8 +156,7 @@ fn is_app_id(text: &str) -> bool {
         b.first().is_some_and(u8::is_ascii_lowercase)
             && b.last().is_some_and(|c| *c != b'-')
             && !s.contains("--")
-            && b
-                .iter()
+            && b.iter()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
     };
     !text.is_empty()

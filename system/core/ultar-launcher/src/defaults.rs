@@ -105,6 +105,11 @@ impl Autostart {
         true
     }
 
+    /// The apps the list names (in order).
+    pub fn list(&self) -> &[String] {
+        &self.list
+    }
+
     /// The apps to start now: the whole list once when someone signs in (the person in
     /// front appears), nothing while the session runs, and a fresh start after the next
     /// sign-in once everyone signed out. Records what it hands out.

@@ -392,8 +392,8 @@ impl FakeLauncher {
                             })
                         }),
                         "resolve" => req.respond::<Resolve>(|r| {
-                            let app = kind_of_uri(&r.uri)
-                                .map(|k| d.lock().unwrap().app(k).to_owned());
+                            let app =
+                                kind_of_uri(&r.uri).map(|k| d.lock().unwrap().app(k).to_owned());
                             Ok(ResolveReply { app })
                         }),
                         "list" => req.respond::<List>(|_| Ok(ListReply::default())),
@@ -423,7 +423,9 @@ fn apps(
     // the default web app: browser -> store.web (a candidate the launcher offered)
     let web = choose(&mut app, admin, ("apps", "apps.default.web"), 1)?;
     if web != SettingValue::Text("store.web".into()) {
-        return Err(format!("apps.default.web is {web:?}, not the chosen candidate"));
+        return Err(format!(
+            "apps.default.web is {web:?}, not the chosen candidate"
+        ));
     }
     // removable media: ask -> open_files; the shell's state follows
     let mut desk = Desktop::new(Lang::En);

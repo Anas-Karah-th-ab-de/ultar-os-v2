@@ -349,10 +349,7 @@ impl SystemPort for Fake {
         apps.ok_or(PortError::Unavailable)
     }
 
-    fn candidates(
-        &mut self,
-        kind: ultar_bus::messages::launcher::Kind,
-    ) -> PortResult<Vec<String>> {
+    fn candidates(&mut self, kind: ultar_bus::messages::launcher::Kind) -> PortResult<Vec<String>> {
         let w = self.0.borrow();
         if w.system.apps.is_none() {
             return Err(PortError::Unavailable);
