@@ -279,6 +279,31 @@ fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String>
     Ok(())
 }
 
+/// Prints the commands of a hung batch around `va` (where the engine stands): 96 words before,
+/// 8 after, looked up in the programs' address spaces. To read which dispatch did not end.
+fn dump_batch(rt: &mut Runtime, va: u64) {
+    let tables = &mut rt.mem.tables;
+    let start = va.saturating_sub(96 * 4);
+    for line in 0..13u64 {
+        let at = start + line * 32;
+        let mut text = alloc::string::String::new();
+        for k in 0..8u64 {
+            let a = at + k * 4;
+            let phys = rt.programs.vms.values_mut().find_map(|vm| vm.lookup(tables, a & !0xfff));
+            match phys {
+                // SAFETY: memory bound to the GPU is mapped one to one in the kernel.
+                Some(p) => {
+                    let w = unsafe { core::ptr::read_volatile((p + (a & 0xfff)) as *const u32) };
+                    text.push_str(&alloc::format!(" {w:08x}"));
+                }
+                None => text.push_str(" --------"),
+            }
+        }
+        let mark = if (at..at + 32).contains(&va) { " <" } else { "" };
+        crate::kprintln!("[intel-gt]   {at:#x}:{text}{mark}");
+    }
+}
+
 /// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
 /// resets the engine when the context does not give way; the queue takes no more jobs.
 fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
@@ -297,6 +322,7 @@ fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
     crate::kprintln!(
         "[intel-gt] hung job on {class:?}: jobs {seen}/{submitted} done, ACTHD {acthd:#x}, IPEHR {ipehr:#x}, batch {bbaddr_hi:#x}{bbaddr:08x}"
     );
+    dump_batch(rt, (bbaddr_hi as u64) << 32 | (acthd & !3) as u64);
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
     let reset = events
