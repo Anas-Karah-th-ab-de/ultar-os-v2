@@ -27,12 +27,15 @@ pub mod backend;
 pub mod catalog;
 pub mod deeplink;
 pub mod error;
+#[cfg(feature = "bus")]
+pub mod follow;
 pub mod i18n;
 pub mod online;
 #[cfg(feature = "online")]
 pub mod online_https;
 pub mod scripted;
 pub mod search;
+pub mod settings;
 pub mod signature;
 pub mod source;
 pub mod state;

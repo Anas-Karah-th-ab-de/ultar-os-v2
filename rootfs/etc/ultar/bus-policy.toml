@@ -133,10 +133,14 @@ subscribe = ["call.state", "call.picture"]
 # launcher to list, start, install and uninstall. The launcher
 # still verifies every package signature itself (`launcher.admin` marks the
 # installer identity); the store never touches packages or cells directly.
+# It follows updates.auto_apps (and the shared updates.metered / updates.window.*
+# rules) to install available app updates by itself, and reads net.state to know
+# whether the connection is metered. Exactly those settings, nothing else.
 [[rule]]
 identity = "app.store"
 call     = ["launcher.list", "launcher.start", "launcher.install", "launcher.uninstall",
-            "launcher.admin"]
+            "launcher.admin", "settings.get"]
+subscribe = ["settings.changed", "net.state"]
 
 # The administrator's tools (usettings, udevctl, ulog, uupdate on the root-only
 # socket). For `update.*` the identity must also be listed as admin= in update.conf.

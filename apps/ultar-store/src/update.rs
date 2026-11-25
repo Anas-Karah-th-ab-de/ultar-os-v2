@@ -220,6 +220,20 @@ impl Store {
         }
     }
 
+    /// Automatic app updates (`updates.auto_apps`): when allowed and nothing is in flight,
+    /// start the update-all chain. Off — or a running operation — only offers updates on the
+    /// Updates page; the caller gates `allowed` on the window and the metered connection.
+    pub fn auto_update(&mut self, allowed: bool) -> Vec<Command> {
+        if !allowed
+            || !self.has_catalog()
+            || self.operation.is_some()
+            || !self.update_queue.is_empty()
+        {
+            return Vec::new();
+        }
+        self.act(StoreAction::UpdateAll)
+    }
+
     /// The package file the catalogue offers for this app (offline first).
     pub fn package_path(&self, app: &str) -> Option<String> {
         let file = self.entry(app)?.pin.package.clone()?;

@@ -20,12 +20,14 @@
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use ultar_store::action::{Command, StoreAction, StoreEvent};
 use ultar_store::backend::{Backend, SystemBackend};
+use ultar_store::follow::{SharedMetered, SharedSettings};
 use ultar_store::i18n;
 use ultar_store::online::{self, OnlineCatalogSource, UreqFetch};
+use ultar_store::settings::AppUpdateSettings;
 use ultar_store::source::{CatalogSource, EmbeddedCatalogSource, FileCatalogSource};
 use ultar_store::state::{Area, Store};
 use ultar_store::view::{self, HitMap};
@@ -55,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     view::build(&mut ui, &store, &mut hits)?;
 
     let (cmd_tx, event_rx) = spawn_worker()?;
+    let mut auto = spawn_followers();
     let socket =
         std::env::var("ULTAR_COMPOSITOR_SOCKET").unwrap_or_else(|_| COMPOSITOR_DEFAULT.to_string());
     let client = Client::connect(PathBuf::from(&socket).as_path(), "org.ultar.store")?;
@@ -74,7 +77,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    event_loop(&mut win, &mut store, &mut hits, &cmd_tx, &event_rx)
+    event_loop(&mut win, &mut store, &mut hits, &cmd_tx, &event_rx, &mut auto)
+}
+
+/// Automatic app updates (`updates.auto_apps`): the shared settings and metered flag the
+/// follower threads keep current, the tick they send on a relevant change, and when the
+/// window loop last rechecked (it also rechecks periodically for the install window).
+struct AutoUpdate {
+    settings: SharedSettings,
+    metered: SharedMetered,
+    tick: Receiver<()>,
+    last: Instant,
+}
+
+/// Starts the settings and network followers on the bus (when a socket is given). Without a
+/// bus the defaults stay (automatic updates on, window 02:00–05:00, metered unknown) and no
+/// tick ever comes, so nothing runs by itself — browsing still works.
+fn spawn_followers() -> AutoUpdate {
+    let settings: SharedSettings = Arc::new(Mutex::new(AppUpdateSettings::default()));
+    let metered: SharedMetered = Arc::new(Mutex::new(None));
+    let (tick_tx, tick_rx) = mpsc::channel();
+    if let Some(socket) = bus_socket() {
+        let options = ultar_bus::ClientOptions::named("app.store");
+        if let Ok(client) = ultar_bus::Client::connect(PathBuf::from(&socket).as_path(), options) {
+            ultar_store::follow::follow_settings(
+                client.clone(),
+                Arc::clone(&settings),
+                tick_tx.clone(),
+            );
+            ultar_store::follow::follow_net(client, Arc::clone(&metered), tick_tx);
+        }
+    }
+    AutoUpdate {
+        settings,
+        metered,
+        tick: tick_rx,
+        last: Instant::now(),
+    }
+}
+
+/// Rechecks whether automatic app updates may run now and starts them if so. Runs when a
+/// follower ticked (a setting or the connection changed) and at least once a minute (the
+/// install window opens with time). The model decides; nothing runs while an operation is
+/// in flight or the setting is off.
+fn run_auto_update(store: &mut Store, cmd_tx: &Sender<Command>, auto: &mut AutoUpdate) -> bool {
+    let mut ticked = false;
+    while auto.tick.try_recv().is_ok() {
+        ticked = true;
+    }
+    if !ticked && auto.last.elapsed() < Duration::from_secs(60) {
+        return false;
+    }
+    auto.last = Instant::now();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let settings = auto
+        .settings
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .clone();
+    let metered = *auto
+        .metered
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    let cmds = store.auto_update(settings.allowed_now(now, metered));
+    for cmd in &cmds {
+        let _ = cmd_tx.send(cmd.clone());
+    }
+    !cmds.is_empty()
 }
 
 /// The backend worker: commands in, events out, nothing blocks the UI thread.
@@ -103,6 +175,7 @@ fn event_loop(
     hits: &mut HitMap,
     cmd_tx: &Sender<Command>,
     event_rx: &Receiver<StoreEvent>,
+    auto: &mut AutoUpdate,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut dirty = true;
     loop {
@@ -110,6 +183,10 @@ fn event_loop(
             for cmd in store.event(ev) {
                 let _ = cmd_tx.send(cmd);
             }
+            dirty = true;
+        }
+        // Automatic app updates (updates.auto_apps), gated on the window and the connection.
+        if run_auto_update(store, cmd_tx, auto) {
             dirty = true;
         }
         if dirty {
