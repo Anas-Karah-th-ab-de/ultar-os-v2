@@ -27,9 +27,9 @@ use ultar_intel_gt::uapi::{EngineClass, Errno};
 
 const RING_BYTES: u32 = 16384;
 /// Bytes of one job in a ring.
-const JOB_BYTES: u32 = 32;
-/// Jobs that may wait in one ring (the ring holds 512).
-const MAX_PENDING: u64 = 400;
+const JOB_BYTES: u32 = 64;
+/// Jobs that may wait in one ring (the ring holds 256).
+const MAX_PENDING: u64 = 200;
 /// Test switch (`gpu-pat=N` on the test medium): every buffer gets cache attribute N on the GT.
 /// Only for measuring – the CPU still caches write-back, so a non-coherent N may show stale data.
 pub static FORCE_PAT: AtomicU8 = AtomicU8::new(0xff);
@@ -72,6 +72,8 @@ impl Usage {
 /// A context of a program on one engine.
 struct Queue {
     usage: Usage,
+    /// Engine class: how a job ends (flush and store).
+    class: Class,
     /// Context id at the GuC.
     id: u32,
     ring: GgttBuf,
@@ -211,6 +213,7 @@ fn build_queue(
         seqno,
         tail: JOB_BYTES,
         submitted: 0,
+        class,
         usage: Usage::default(),
         seen: 0,
         since_ns: 0,
@@ -425,9 +428,15 @@ impl Backend for Gpu {
             q.usage.busy_from = q.since_ns;
         }
         let seqno = q.submitted + 1;
+        // the job's number is stored once its writes reached memory: a program that sees the
+        // number sees the data
         let mut job = mi::batch_start(batch_va, false).to_vec();
-        job.extend_from_slice(&mi::store_imm_ggtt(q.seqno.gtt, seqno as u32));
+        match q.class {
+            Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
+            class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
+        }
         job.push(mi::ARB_CHECK);
+        job.resize(JOB_BYTES as usize / 4, mi::NOOP);
         let tail = (q.tail + JOB_BYTES) % RING_BYTES;
         let tail_at = lrc::PPHWSP_SIZE + lrc::CTX_RING_TAIL * 4;
         let written = q.ring.write_at(q.tail as usize, &words_to_bytes(&job))
