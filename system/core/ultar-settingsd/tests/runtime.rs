@@ -176,7 +176,12 @@ fn limits_are_applied_and_root_must_be_declared() {
         &own_soft_limit("Max address space")
     ));
     assert!(has("Max core file size", "0"), "{limits}");
-    assert!(has("Max processes", "128"), "{limits}");
+    // A build run by its owner shares that user with cargo and the other tests: the limit
+    // on the user's processes stays as inherited (ultar-service, `Outcome::SharedUser`).
+    assert!(
+        has("Max processes", &own_soft_limit("Max processes")),
+        "{limits}"
+    );
     send_signal(child.id(), "TERM");
     assert_eq!(child.wait_with_output().unwrap().status.code(), Some(0));
 

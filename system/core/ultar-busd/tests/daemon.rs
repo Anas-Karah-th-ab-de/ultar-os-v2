@@ -137,7 +137,11 @@ fn limits_are_applied_to_the_running_broker() {
     let space = "Max address space";
     assert_eq!(row(space), row_of(&own, space));
     assert_eq!(row("Max core file size"), ["0", "0"]);
-    assert_eq!(row("Max processes"), ["1024", "1024"]);
+    // This broker is a build run by its owner, not an installed service under a user of its
+    // own: the limit on that user's processes would count cargo and every other test as
+    // well, so it is left as inherited (ultar-service, `Outcome::SharedUser`).
+    let processes = "Max processes";
+    assert_eq!(row(processes), row_of(&own, processes));
     let status = std::fs::read_to_string(format!("/proc/{}/status", child.id())).unwrap();
     assert!(status
         .lines()
