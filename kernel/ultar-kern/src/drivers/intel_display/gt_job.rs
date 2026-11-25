@@ -393,6 +393,41 @@ fn one(env: &mut Env, spec: &Spec, id: u32) -> Result<String, String> {
     Ok(text)
 }
 
+/// Brings the engines into the state contexts can run in. Each engine gets its status page
+/// once; it stays until the GuC is reset. The render forcewake domain must be awake.
+pub fn engines_up(env: &mut Env) -> Result<(), String> {
+    for base in [BCS, RCS, CCS] {
+        let status_page =
+            buffer(env.dev, env.bufs, 4096).map_err(|e| format!("status page: {e}"))?;
+        engines::setup(&mut env.dev.mmio, base, status_page);
+    }
+    engines::enable_compute(&mut env.dev.mmio);
+    Ok(())
+}
+
+/// Runs one first batch per engine class and keeps what the engines saved as the golden
+/// images (in `env.goldens` and in the ADS). `first_id`: context ids and sequence numbers
+/// from there on are used. Returns how many jobs ran.
+pub fn record_goldens(env: &mut Env, first_id: u32) -> Result<u32, String> {
+    let batches = JOBS.iter().filter(|s| s.kind == Kind::Batch);
+    let mut n = 0;
+    for spec in batches {
+        one(env, spec, first_id + n).map_err(|e| format!("{}: {e}", spec.what))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// One batch on the compute engine with a context from its golden image, context id `id`:
+/// the proof that the GT in operation takes work.
+pub fn compute_probe(env: &mut Env, id: u32) -> Result<String, String> {
+    let spec = JOBS
+        .iter()
+        .find(|s| s.kind == Kind::FromGolden && s.class == Class::Compute)
+        .ok_or("no compute job")?;
+    one(env, spec, id)
+}
+
 /// Runs the test jobs through the GuC (the command buffers are on).
 pub fn jobs(env: &mut Env) -> Vec<(&'static str, Result<String, String>)> {
     let mut fwk = Forcewake::new(0);
@@ -400,14 +435,9 @@ pub fn jobs(env: &mut Env) -> Vec<(&'static str, Result<String, String>)> {
         return alloc::vec![(JOBS[0].what, Err(format!("render forcewake: {e}")))];
     }
     let mut out = Vec::new();
-    // each engine gets its status page once; it stays until the GuC is reset
-    for base in [BCS, RCS, CCS] {
-        match buffer(env.dev, env.bufs, 4096) {
-            Ok(status_page) => engines::setup(&mut env.dev.mmio, base, status_page),
-            Err(e) => out.push((JOBS[0].what, Err(format!("status page: {e}")))),
-        }
+    if let Err(e) = engines_up(env) {
+        out.push((JOBS[0].what, Err(e)));
     }
-    engines::enable_compute(&mut env.dev.mmio);
     for (id, spec) in JOBS.iter().enumerate() {
         if !out.is_empty() && out.iter().any(|(_, r)| r.is_err()) {
             break;

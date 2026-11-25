@@ -72,7 +72,7 @@ impl Report {
     }
 }
 
-fn firmware() -> Option<(&'static str, alloc::sync::Arc<Vec<u8>>)> {
+pub(super) fn firmware() -> Option<(&'static str, alloc::sync::Arc<Vec<u8>>)> {
     GUC_PATHS
         .iter()
         .find_map(|p| crate::fs::read_all(p).map(|d| (*p, d)))
@@ -122,14 +122,24 @@ fn ctb_and_jobs(
 
 /// What a load keeps until the GuC is back in reset: buffers and page tables.
 #[derive(Default)]
-struct Memory {
-    bufs: Vec<GgttBuf>,
-    tables: TableMem,
+pub(super) struct Memory {
+    pub(super) bufs: Vec<GgttBuf>,
+    pub(super) tables: TableMem,
     /// Index of the ADS block in `bufs`.
-    ads: usize,
+    pub(super) ads: usize,
 }
 
-fn ctb_request(
+impl Memory {
+    /// Gives everything back (the GuC is in reset and no engine runs).
+    pub(super) fn release(self, dev: &mut Device) {
+        for b in self.bufs {
+            b.release(dev);
+        }
+        self.tables.release();
+    }
+}
+
+pub(super) fn ctb_request(
     dev: &mut Device,
     bufs: &mut Vec<GgttBuf>,
     channel: &mut Option<(Ct, Words)>,
@@ -234,6 +244,43 @@ fn ads_block(
 
 /// Maps image, log and the minimal ADS, resets the GuC, uploads and – if it gets ready – talks
 /// to it.
+/// Buffers, boot parameters and the upload: the GuC's status afterwards. The ADS block's
+/// index goes into `mem.ads`.
+pub(super) fn bring_up(
+    dev: &mut Device,
+    file: &[u8],
+    img: &fw::GucImage,
+    wopcm_size: u32,
+    stage: Stage,
+    mem: &mut Memory,
+) -> Result<Status, String> {
+    let bufs = &mut mem.bufs;
+    let image_gtt = buffer(dev, bufs, file.len() as u64)?;
+    if let Some(b) = bufs.last_mut() {
+        b.fill(file);
+    }
+    let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
+    let (ads_gtt, ads_size) = ads_block(dev, bufs, img, stage)?;
+    mem.ads = bufs.len() - 1;
+    for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
+        guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
+    }
+    let params = boot_params(dev, img, log_gtt, ads_gtt, stage)?;
+    guc::reset(&mut dev.mmio).map_err(|e| format!("{e}"))?;
+    match guc::upload(
+        &mut dev.mmio,
+        img,
+        file,
+        image_gtt as u64,
+        wopcm_size,
+        &params,
+    ) {
+        Ok(st) => Ok(st),
+        Err(ultar_intel_gt::Error::GucLoad { status }) => Ok(Status::decode(status)),
+        Err(e) => Err(format!("{e}")),
+    }
+}
+
 fn load(
     dev: &mut Device,
     file: &[u8],
@@ -242,37 +289,13 @@ fn load(
     stage: Stage,
     mem: &mut Memory,
 ) -> Result<Loaded, String> {
+    let status = bring_up(dev, file, img, wopcm_size, stage, mem)?;
     let bufs = &mut mem.bufs;
-    let image_gtt = buffer(dev, bufs, file.len() as u64)?;
-    if let Some(b) = bufs.last_mut() {
-        b.fill(file);
-    }
-    let log_gtt = buffer(dev, bufs, guc::LOG_BUFFER_SIZE as u64)?;
-    let (ads_gtt, ads_size) = ads_block(dev, bufs, img, stage)?;
-    let ads_index = bufs.len() - 1;
-    for (gtt, len) in [(log_gtt, guc::LOG_BUFFER_SIZE as u64), (ads_gtt, ads_size)] {
-        guc::check_ggtt(gtt as u64, len, wopcm_size).map_err(|e| format!("{e}"))?;
-    }
-    let params = boot_params(dev, img, log_gtt, ads_gtt, stage)?;
-    guc::reset(&mut dev.mmio).map_err(|e| format!("{e}"))?;
-    let status = match guc::upload(
-        &mut dev.mmio,
-        img,
-        file,
-        image_gtt as u64,
-        wopcm_size,
-        &params,
-    ) {
-        Ok(st) => st,
-        Err(ultar_intel_gt::Error::GucLoad { status }) => Status::decode(status),
-        Err(e) => return Err(format!("{e}")),
-    };
     let ready = status.load() == guc::Load::Ready;
     // first load: the register channel; second load: the command buffers
     let hwconfig = (ready && stage == Stage::Minimal).then(|| hwconfig_table(dev, bufs));
     let (ctb, jobs) = match ready && stage == Stage::Full {
         true => {
-            mem.ads = ads_index;
             let (ctb, jobs) = ctb_and_jobs(dev, mem);
             (Some(ctb), jobs)
         }
@@ -301,10 +324,7 @@ fn upload(
     if let Err(e) = guc::reset(&mut dev.mmio) {
         kprintln!("GTTEST: GuC reset after the upload: {e}");
     }
-    for b in mem.bufs {
-        b.release(dev);
-    }
-    mem.tables.release();
+    mem.release(dev);
     result
 }
 
@@ -410,27 +430,51 @@ fn report_load(r: &mut Report, l: &Loaded, stage: Stage, ms: u64) {
 /// GTTEST – the GT's self test on real hardware. Ends with `GTTEST: ALLES OK` or
 /// `GTTEST: FEHLER (<list>)`.
 pub fn selftest() {
-    let mut guard = DEVICE.lock();
-    let Some(dev) = guard.as_mut() else {
-        kprintln!("GTTEST: no Intel display device bound");
-        return;
-    };
     let mut r = Report { fails: Vec::new() };
-    run_on(dev, &mut r);
-    let facts = *FACTS.lock();
-    if let (true, Some(f)) = (r.fails.is_empty(), facts) {
-        // everything a program is told has been seen on this device: the render node appears
-        if let Ok(t) = super::gt_uapi::publish(dev, &f) {
-            r.check(true, "render node published", &t);
-            match super::gt_uapi::selfcheck() {
-                Ok(t) => r.check(true, "program interface answers the first questions", &t),
-                Err(e) => r.check(false, "program interface answers the first questions", &e),
-            }
+    let published = {
+        let mut guard = DEVICE.lock();
+        let Some(dev) = guard.as_mut() else {
+            kprintln!("GTTEST: no Intel display device bound");
+            return;
+        };
+        run_on(dev, &mut r);
+        r.fails.is_empty() && operate(dev, &mut r)
+    };
+    // the node takes the device itself: asked only after it was let go here
+    if published {
+        match super::gt_uapi::selfcheck() {
+            Ok(t) => r.check(true, "program interface answers the first questions", &t),
+            Err(e) => r.check(false, "program interface answers the first questions", &e),
         }
     }
     if r.fails.is_empty() {
         kprintln!("GTTEST: ALLES OK");
     } else {
         kprintln!("GTTEST: FEHLER ({})", r.fails.join("; "));
+    }
+}
+
+/// After every check passed: the GT goes into operation and the render node appears (all a
+/// program is told has been seen on this device). Returns whether the node was published.
+fn operate(dev: &mut Device, r: &mut Report) -> bool {
+    let Some(f) = *FACTS.lock() else {
+        return false;
+    };
+    match super::gt_run::start(dev) {
+        Ok(t) => r.check(true, "GT stays in operation", &t),
+        Err(e) => r.check(false, "GT stays in operation", &e),
+    }
+    if super::gt_run::running() {
+        match super::gt_run::compute_probe(dev) {
+            Ok(t) => r.check(true, "compute job on the GT in operation", &t),
+            Err(e) => r.check(false, "compute job on the GT in operation", &e),
+        }
+    }
+    match super::gt_uapi::publish(dev, &f) {
+        Ok(t) => {
+            r.check(true, "render node published", &t);
+            true
+        }
+        Err(_) => false,
     }
 }

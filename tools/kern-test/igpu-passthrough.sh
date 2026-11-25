@@ -154,8 +154,11 @@ run_vm() {   # $1 = extra vfio-pci options; ends QEMU as soon as the verdict lin
     -serial "file:$W/serial.log" -monitor none 2> "$W/qemu.err" &
   local qp=$!
   while kill -0 "$qp" 2>/dev/null; do
-    # GTTEST runs after INTELTEST and is the last test that uses this device
-    if grep -aqE "GTTEST: (ALLES OK|FEHLER|no Intel)|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
+    # GTTEST runs after INTELTEST; with a bin-dir that holds dritest, the program that uses the
+    # render node runs right after it and is the last test that uses this device
+    local done_re="GTTEST: (ALLES OK|FEHLER|no Intel)"
+    [ -n "$BINS" ] && [ -e "$BINS/dritest" ] && done_re="DRITEST: |GTTEST: no Intel|Programm dritest: nicht"
+    if grep -aqE "$done_re|AUSNAHME|PANIK" "$W/serial.log" 2>/dev/null; then sleep 2; kill "$qp" 2>/dev/null; break; fi
     sleep 1
   done
   wait "$qp" 2>/dev/null || true
@@ -185,4 +188,9 @@ else
 fi
 if [ "${OPTIN:-1}" != 0 ]; then
   echo "VERDICT: $(grep -aE 'GTTEST: (ALLES OK|FEHLER|no Intel)' "$W/serial.log" | tail -1 || echo 'GTTEST: no verdict')"
+  if [ -n "$BINS" ] && [ -e "$BINS/dritest" ]; then
+    echo "--- dritest (a program on /dev/dri/renderD128)"
+    sed -n '/Programm dritest/,/DRITEST: /p' "$W/serial.log" | head -140
+    echo "VERDICT: $(grep -aE 'DRITEST: ' "$W/serial.log" | tail -1 || echo 'DRITEST: no verdict')"
+  fi
 fi
