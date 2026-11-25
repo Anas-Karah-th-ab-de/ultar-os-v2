@@ -26,6 +26,9 @@ pub struct Part {
     pub version: String,
     /// Download address of the release archive; `{version}` is replaced.
     pub source: String,
+    /// A second address of the same archive, tried when the first one fails or stalls.
+    #[serde(default)]
+    pub mirror: String,
     /// SHA-256 of the archive. Empty only while a recipe is being written (`fetch` prints it).
     #[serde(default)]
     pub sha256: String,
@@ -85,6 +88,15 @@ impl Part {
         crate::version::fill(&self.source, &self.version)
     }
 
+    /// Every address of the archive, in the order they are tried.
+    pub fn urls(&self) -> Vec<String> {
+        let mut all = vec![self.url()];
+        if !self.mirror.is_empty() {
+            all.push(crate::version::fill(&self.mirror, &self.version));
+        }
+        all
+    }
+
     /// File name of the archive.
     pub fn archive(&self) -> String {
         let url = self.url();
@@ -106,6 +118,9 @@ impl Part {
         }
         if !self.source.starts_with("https://") || !self.source.contains("{version") {
             out.push(format!("{p}: source must be https and contain {{version}}"));
+        }
+        if !self.mirror.is_empty() && !self.mirror.starts_with("https://") {
+            out.push(format!("{p}: mirror must be https"));
         }
         let hex = self.sha256.len() == 64 && self.sha256.chars().all(|c| c.is_ascii_hexdigit());
         if !self.sha256.is_empty() && !hex {

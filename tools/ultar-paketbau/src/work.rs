@@ -52,11 +52,25 @@ pub fn fetch(site: &Site, part: &Part) -> Result<String, String> {
     if !file.exists() {
         std::fs::create_dir_all(site.root.join("sources")).map_err(|e| e.to_string())?;
         let tmp = file.with_extension("part");
-        let mut curl = Command::new("curl");
-        curl.args(["-fL", "--retry", "3", "-sS", "-o"])
-            .arg(&tmp)
-            .arg(part.url());
-        run(&mut curl, &format!("download of {}", part.url()))?;
+        let mut last = String::new();
+        // an address that stalls (under 10 kB/s for 30 s) counts as failed: the next is tried
+        let got = part.urls().iter().any(|url| {
+            let mut curl = Command::new("curl");
+            curl.args(["-fL", "--retry", "2", "-sS", "--connect-timeout", "20"]);
+            curl.args(["--speed-limit", "10000", "--speed-time", "30", "-o"]);
+            curl.arg(&tmp).arg(url);
+            match run(&mut curl, &format!("download of {url}")) {
+                Ok(()) => true,
+                Err(e) => {
+                    last = e;
+                    false
+                }
+            }
+        });
+        if !got {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(last);
+        }
         std::fs::rename(&tmp, &file).map_err(|e| e.to_string())?;
     }
     let hash = sha256_of(&file)?;
