@@ -36,3 +36,4 @@ pub mod plan;
 pub mod ports;
 pub mod service;
 pub mod values;
+pub mod visual;
