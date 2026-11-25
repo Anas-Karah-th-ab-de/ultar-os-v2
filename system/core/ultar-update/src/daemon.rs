@@ -281,8 +281,6 @@ fn run_with<B: BootControl + 'static>(
         config.server.clone(),
         config.token_file.clone(),
     ));
-    // The person's settings (followed on their own thread) gate the notifications and the
-    // offer of updates from a plugged-in drive.
     let settings = Arc::new(Mutex::new(UpdateSettings::default()));
     let poster = Arc::new(BusPost(client.clone()));
     let publisher = Arc::new(NotifyingPublisher::new(
@@ -315,21 +313,34 @@ fn run_with<B: BootControl + 'static>(
     }
     let endpoint = client.register(crate::contract::SERVICE)?;
     (hooks.ready)(outcome);
+    start_followers(core.clone(), client.clone(), config, settings, poster);
+    start_timer(core.clone(), u64::from(config.check_interval_minutes) * 60);
+    serve(core, endpoint);
+    Ok(())
+}
+
+/// Spawns the threads that follow the person's settings (mapped onto the policy under the
+/// ceiling) and the mounted drives (the offer of an update from a stick). The shared settings
+/// gate the notifications and the drive offer.
+fn start_followers<B: BootControl + 'static>(
+    core: Arc<Core<B>>,
+    client: Client,
+    config: &DaemonConfig,
+    settings: Arc<Mutex<UpdateSettings>>,
+    poster: Arc<BusPost>,
+) {
     follow_settings(
-        core.clone(),
+        core,
         client.clone(),
         config.ceiling.clone(),
         settings.clone(),
     );
     follow_volumes(
-        client.clone(),
+        client,
         config.access.offline_roots.clone(),
         settings,
         poster,
     );
-    start_timer(core.clone(), u64::from(config.check_interval_minutes) * 60);
-    serve(core, endpoint);
-    Ok(())
 }
 
 /// The timer thread lives as long as the process. It wakes often and asks whether a run is
