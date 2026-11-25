@@ -212,5 +212,7 @@ fi
 if [ -n "${TESTPROG:-}" ]; then
   echo "--- extra program"
   sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' "$W/serial.log" | head -"${EXTRA_LINES:-400}"
+  # the program's own verdict line (e.g. VKRECHNEN: ALLES OK ...), if it prints one
+  echo "VERDICT: $(sed -n '/Zusatzprogramm .*:$/,/Zusatzprogramm beendet/p' "$W/serial.log" | grep -aE '^[A-Z]+: (ALLES OK|FEHLER)' | tail -1 | grep . || echo 'extra program: no verdict')"
   [ -n "${SERIAL_OUT:-}" ] && cp "$W/serial.log" "$SERIAL_OUT"
 fi
