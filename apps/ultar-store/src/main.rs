@@ -246,7 +246,7 @@ fn catalog_source() -> Arc<dyn CatalogSource> {
     let url = std::env::var("ULTAR_STORE_URL").unwrap_or_else(|_| online::DEFAULT_URL.to_string());
     match OnlineCatalogSource::new(
         &url,
-        PathBuf::from(data).join("catalog-cache"),
+        data.join("catalog-cache"),
         trusted,
         Box::new(fetch),
         Arc::clone(&image),
