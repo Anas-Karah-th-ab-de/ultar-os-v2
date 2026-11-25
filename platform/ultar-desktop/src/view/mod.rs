@@ -162,6 +162,9 @@ pub enum Target {
     VpnProfile(String),
     /// Quick settings: "VPN settings" (Settings > Network > VPN).
     VpnSettings,
+    /// Quick settings: the accessibility button (Settings > Accessibility), shown
+    /// while `accessibility.show_in_bar` is on.
+    AccessSettings,
     /// Lock: accessibility menu.
     Access,
     /// Lock: a switch of the accessibility menu (index into `lock::access::SWITCHES`).
@@ -180,6 +183,10 @@ pub enum Target {
     MoreTime,
     /// Top bar: the menu of the active app.
     AppMenu,
+    /// On-screen keyboard: a key (row, index in the row of `ultar_ime::rows`).
+    OskKey(usize, usize),
+    /// On-screen keyboard: a word suggestion (index).
+    OskSuggestion(usize),
     /// A notification's action button (notification id, action index).
     NoteAction(u64, u8),
     /// Lock screen: a control of the playing medium (0 previous, 1 play/pause, 2 next).

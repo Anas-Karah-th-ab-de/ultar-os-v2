@@ -1,12 +1,13 @@
-//! The display service passes the pointer and key-repeat settings on
-//! (`Request::ConfigurePointer`, `Request::ConfigureKeyRepeat`); an app may not.
+//! The display service passes the pointer, key-repeat and keyboard settings on
+//! (`Request::ConfigurePointer`, `Request::ConfigureKeyRepeat`, `Request::ConfigureKeyboard`);
+//! an app may not.
 
 mod common;
 
 use common::{compositor, test_config, Peer};
 use ultar_compositor::{Compositor, Config, RightsTable};
 use ultar_hal::InputEvent;
-use ultar_surface::proto::{ErrorCode, Event, PointerSize, Request, Rights};
+use ultar_surface::proto::{ErrorCode, Event, PointerSize, Request, Rights, SwitchShortcut};
 
 const UID_DISPLAYD: u32 = 817;
 const UID_APP: u32 = 20_001;
@@ -394,4 +395,102 @@ fn the_display_service_sets_how_a_held_key_repeats() {
     });
     s.pump(&mut comp);
     assert_eq!(hold(&mut comp, &mut w), 0, "off: one press only");
+}
+
+#[test]
+fn the_switch_shortcut_setting_leaves_only_the_chosen_combination() {
+    let mut comp = rig();
+    let mut w = Peer::hello(&mut comp);
+    w.window(&mut comp, 1, 0x00ff00);
+    w.pump(&mut comp);
+    let ctrl_shift = |c: &mut Compositor| {
+        common::key(c, 29, true);
+        common::key(c, 42, true);
+        common::key(c, 42, false);
+        common::key(c, 29, false);
+    };
+    let super_space = |c: &mut Compositor| {
+        common::key(c, 125, true);
+        common::key(c, 57, true);
+        common::key(c, 57, false);
+        common::key(c, 125, false);
+    };
+    // Unconfigured: every combination switches, as before.
+    ctrl_shift(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 1);
+    // An app may not choose the combination.
+    let mut app = Peer::hello_as(&mut comp, UID_APP);
+    app.send(&Request::ConfigureKeyboard {
+        switch_shortcut: SwitchShortcut::SuperSpace,
+        per_window: false,
+    });
+    app.pump(&mut comp);
+    assert_eq!(app.error(), Some(ErrorCode::Permission));
+    let mut s = Peer::hello_as(&mut comp, UID_DISPLAYD);
+    // Super+Space only: the chord does nothing, the space switches.
+    s.send(&Request::ConfigureKeyboard {
+        switch_shortcut: SwitchShortcut::SuperSpace,
+        per_window: false,
+    });
+    s.pump(&mut comp);
+    ctrl_shift(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 1);
+    super_space(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 0);
+    // Ctrl+Shift only: the space passes through, the chord switches.
+    s.send(&Request::ConfigureKeyboard {
+        switch_shortcut: SwitchShortcut::CtrlShift,
+        per_window: false,
+    });
+    s.pump(&mut comp);
+    super_space(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 0);
+    ctrl_shift(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 1);
+}
+
+#[test]
+fn per_window_languages_are_remembered_and_forgotten() {
+    let mut comp = rig();
+    let mut w1 = Peer::hello(&mut comp);
+    w1.window(&mut comp, 1, 0x00ff00);
+    let mut w2 = Peer::hello(&mut comp);
+    w2.window(&mut comp, 2, 0x0000ff);
+    w1.pump(&mut comp);
+    w2.pump(&mut comp);
+    let (k1, k2) = (comp.state.windows[0].key, comp.state.windows[1].key);
+    let mut s = Peer::hello_as(&mut comp, UID_DISPLAYD);
+    let alt_shift = |c: &mut Compositor| {
+        common::key(c, 56, true);
+        common::key(c, 42, true);
+        common::key(c, 42, false);
+        common::key(c, 56, false);
+    };
+    s.send(&Request::ConfigureKeyboard {
+        switch_shortcut: SwitchShortcut::AltShift,
+        per_window: true,
+    });
+    s.pump(&mut comp);
+    comp.state.focus_window(k1);
+    alt_shift(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 1, "w1 types English");
+    comp.state.focus_window(k2);
+    alt_shift(&mut comp);
+    assert_eq!(comp.state.keyboard.layout_index, 0, "w2 types Arabic");
+    comp.state.focus_window(k1);
+    assert_eq!(comp.state.keyboard.layout_index, 1, "w1 gets English back");
+    comp.state.focus_window(k2);
+    assert_eq!(comp.state.keyboard.layout_index, 0, "w2 gets Arabic back");
+    // Off: nothing is remembered any more, the layout stays as it is.
+    s.send(&Request::ConfigureKeyboard {
+        switch_shortcut: SwitchShortcut::AltShift,
+        per_window: false,
+    });
+    s.pump(&mut comp);
+    comp.state.focus_window(k1);
+    assert_eq!(comp.state.keyboard.layout_index, 0, "no restore when off");
+    alt_shift(&mut comp);
+    comp.state.focus_window(k2);
+    comp.state.focus_window(k1);
+    assert_eq!(comp.state.keyboard.layout_index, 1, "nothing remembered");
 }

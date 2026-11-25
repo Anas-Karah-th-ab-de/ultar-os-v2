@@ -28,6 +28,7 @@ args = [
     "--listen", "/run/ultar/bus/authd.sock=system.authd", "--mode", "0660", "--group", "813", "--max-connections", "4",
     "--listen", "/run/ultar/bus/lock.sock=system.lock", "--mode", "0660", "--group", "814", "--max-connections", "2",
     "--listen", "/run/ultar/bus/sysdialog.sock=system.sysdialog", "--mode", "0660", "--group", "815", "--max-connections", "2",
+    "--listen", "/run/ultar/bus/osk.sock=system.osk", "--mode", "0660", "--group", "839", "--max-connections", "2",
     "--listen", "/run/ultar/bus/desktop.sock=system.shell", "--mode", "0660", "--group", "816", "--max-connections", "4",
     "--listen", "/run/ultar/bus/displayd.sock=system.displayd", "--mode", "0660", "--group", "817", "--max-connections", "4",
     "--listen", "/run/ultar/bus/accountd.sock=system.accountd", "--mode", "0660", "--group", "818", "--max-connections", "4",
@@ -70,7 +71,7 @@ args = [
     "--log-socket", "/run/ultar/log/busd.sock",
 ]
 user = 801
-groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 840]
+groups = [802, 803, 804, 805, 813, 814, 815, 816, 817, 818, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 833, 834, 835, 837, 839, 840]
 public_dirs = ["/run/ultar/bus", "/run/ultar/appbus"]
 notify = true
 after = ["logd"]

@@ -7,6 +7,10 @@
 
 #[path = "wired_helpers.rs"]
 mod wired_helpers;
+#[path = "wired_osk.rs"]
+mod wired_osk;
+#[path = "wired_store.rs"]
+mod wired_store;
 
 use super::{click, open, setup::Run};
 use std::time::Duration;
@@ -21,7 +25,7 @@ use ultar_i18n::Lang;
 use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
-use ultar_surface::proto::{ComposeKey, PointerSize, Request};
+use ultar_surface::proto::{ComposeKey, PointerSize, Request, SwitchShortcut};
 use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
 use ultar_ui::Size;
 use ultar_update::policy::Policy;
@@ -33,14 +37,14 @@ mod storage;
 pub(super) const WAIT: Duration = Duration::from_secs(20);
 
 /// A service that follows the settings: its connection and what it was told.
-pub(super) struct Follower {
+pub(crate) struct Follower {
     name: &'static str,
     changes: TypedSubscription<Changed>,
     _client: Client,
 }
 
 impl Follower {
-    pub(super) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
+    pub(crate) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
         let client = run.client_at(socket)?;
         let changes = client
             .subscribe::<Changed>()
@@ -53,7 +57,7 @@ impl Follower {
     }
 
     /// Waits until this service is told that `key` is now `value`.
-    pub(super) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
+    pub(crate) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
         loop {
             let change = self
                 .changes
@@ -95,7 +99,7 @@ pub(super) fn control(
 
 /// Clicks the switch of `key`, or its slider at `at` of its width; the value the settings
 /// service holds afterwards.
-pub(super) fn change(
+pub(crate) fn change(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     at: Option<f32>,
@@ -125,7 +129,7 @@ pub(super) fn change(
 
 /// Chooses an option of the select of `key`: a click opens the list, `steps` times
 /// ArrowDown moves the highlight, Enter takes it; the value the service holds afterwards.
-fn choose(
+pub(crate) fn choose(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     steps: usize,
@@ -144,7 +148,7 @@ fn choose(
     reply.value.ok_or(format!("{key}: no value"))
 }
 
-pub(super) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
+pub(crate) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
     let area = index_of(area).ok_or(format!("area {area}"))?;
     open(bus, run, Lang::En, Size::new(1280.0, 800.0), area)
 }
@@ -165,7 +169,7 @@ impl Display<'_> {
     }
 }
 
-fn whole(key: &str, value: &SettingValue) -> Result<i64, String> {
+pub(crate) fn whole(key: &str, value: &SettingValue) -> Result<i64, String> {
     match value {
         SettingValue::Integer(n) => Ok(*n),
         other => Err(format!("{key} is {other:?}")),
@@ -247,6 +251,10 @@ fn input(bus: &Client, admin: &Client, run: &Run, displayd: &Follower) -> Result
             mouse_keys: false,
             compose_key: ComposeKey::None,
         },
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::SuperSpace,
+            per_window: false,
+        },
     ];
     let requests = d.service.requests();
     if fast <= 0 || delay_ms <= 500 || per_second >= 25 || requests != wanted {
@@ -303,6 +311,7 @@ fn search_tables(
             tr,
             desk.overview.sources,
             &desk.overview.history,
+            desk.overview.store.as_ref(),
         )
         .iter()
         .any(|hit| matches!(hit, Hit::History(_)))
@@ -364,7 +373,7 @@ fn shell(
     Ok(())
 }
 
-/// Search page: the shell's overview stops searching apps and the calculator.
+/// Search page: the shell's overview stops searching apps, the calculator and the Store.
 fn search_sources(
     bus: &Client,
     admin: &Client,
@@ -383,13 +392,18 @@ fn search_sources(
         return Err("the shell's search does not find the Files app".into());
     }
     let mut app = page(bus, run, "search")?;
-    for key in ["search.source.apps", "search.source.calculator"] {
+    for key in [
+        "search.source.apps",
+        "search.source.calculator",
+        "search.source.store",
+    ] {
         let off = change((&mut app, admin), ("search", key), None)?;
         shell.told(key, &off)?;
         apply_setting(desk, key, &off);
     }
     let sources = desk.overview.sources;
-    if finds_files(desk) || sources.apps || sources.calculator || !sources.settings {
+    if finds_files(desk) || sources.apps || sources.calculator || sources.store || !sources.settings
+    {
         return Err(format!("the shell still searches {sources:?}"));
     }
     search_tables(&mut app, admin, shell, desk, &apps, &tr)
@@ -553,5 +567,13 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     storage::storage_settings(bus, admin, run, &volumed)?;
     updates(bus, admin, run)?;
     super::apps::apps(bus, admin, run, &desktop)?;
+    wired_store::auto_apps(bus, admin, run)?;
+    super::access_visual::check(bus, admin, run, &desktop, &displayd)?;
+    services::keyboard_layouts(bus, admin, run, &displayd, &desktop)?;
+    services::assistant(bus, admin, run)?;
+    wired_osk::osk(bus, admin, run)?;
     crate::wired_users::users_emergency(bus, admin, run)
 }
+
+#[path = "wired_services.rs"]
+mod services;

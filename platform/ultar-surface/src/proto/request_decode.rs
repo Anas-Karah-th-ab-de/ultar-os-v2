@@ -161,7 +161,11 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             Request::IdentifyOutputs { numbers, ms }
         }
         37 => Request::DetectOutputs,
-        44..=46 => decode_input(opcode, r)?,
+        44..=47 => decode_input(opcode, r)?,
+        56 | 57 => super::visual::decode(opcode, r)?,
+        48 => Request::ImeKey {
+            key: super::ImeKey::decode(r)?,
+        },
         41 => Request::SetPhoneMode { on: r.bool()? },
         42 => Request::ClientHeader {
             surface: surface(r)?,
@@ -171,34 +175,51 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
                 _ => return Err(WireError::BadValue),
             },
         },
-        43 => {
-            let n = usize::from(r.u8()?);
-            if n == 0 || n > super::MAX_LAYOUTS {
-                return Err(WireError::BadValue);
-            }
-            let mut names = Vec::with_capacity(n);
-            for _ in 0..n {
-                names.push(r.str(super::MAX_LAYOUT_NAME)?);
-            }
-            Request::SetKeyboardLayouts { names }
-        }
+        43 => decode_layouts(r)?,
         _ => return Err(WireError::BadValue),
     })
 }
 
-/// The pointer, key-repeat and keyboard-helpers configuration of the display service.
-fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
-    if opcode == 46 {
-        let (sticky_keys, slow_keys) = (r.bool()?, r.bool()?);
-        let (bounce_keys, mouse_keys) = (r.bool()?, r.bool()?);
-        let compose_key = super::ComposeKey::decode(r)?;
-        return Ok(Request::ConfigureKeyHelpers {
-            sticky_keys,
-            slow_keys,
-            bounce_keys,
-            mouse_keys,
-            compose_key,
+/// The input languages of the shell (43): one to [`super::MAX_LAYOUTS`] names.
+fn decode_layouts(r: &mut Reader<'_>) -> Result<Request, WireError> {
+    let n = usize::from(r.u8()?);
+    if n == 0 || n > super::MAX_LAYOUTS {
+        return Err(WireError::BadValue);
+    }
+    let mut names = Vec::with_capacity(n);
+    for _ in 0..n {
+        names.push(r.str(super::MAX_LAYOUT_NAME)?);
+    }
+    Ok(Request::SetKeyboardLayouts { names })
+}
+
+/// The keyboard helpers (46) and the language-switch configuration (47).
+fn decode_keys(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    if opcode == 47 {
+        let switch_shortcut = super::SwitchShortcut::decode(r)?;
+        let per_window = r.bool()?;
+        return Ok(Request::ConfigureKeyboard {
+            switch_shortcut,
+            per_window,
         });
+    }
+    let (sticky_keys, slow_keys) = (r.bool()?, r.bool()?);
+    let (bounce_keys, mouse_keys) = (r.bool()?, r.bool()?);
+    let compose_key = super::ComposeKey::decode(r)?;
+    Ok(Request::ConfigureKeyHelpers {
+        sticky_keys,
+        slow_keys,
+        bounce_keys,
+        mouse_keys,
+        compose_key,
+    })
+}
+
+/// The pointer, key-repeat, keyboard-helpers and keyboard configuration of the display
+/// service.
+fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    if opcode >= 46 {
+        return decode_keys(opcode, r);
     }
     if opcode == 44 {
         let speed = i8::from_le_bytes([r.u8()?]);

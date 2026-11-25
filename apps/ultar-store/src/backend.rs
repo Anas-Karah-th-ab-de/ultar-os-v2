@@ -77,7 +77,7 @@ impl SystemBackend {
             location: Mutex::new(CatalogLocation::BuiltIn),
             bus,
             media_dir: PathBuf::from("/media"),
-            log_dir: std::env::var("ULTAR_STORE_DATA").ok().map(PathBuf::from),
+            log_dir: crate::data_dir(),
             trusted_dir: trusted_dir_from_env(),
         })
     }
@@ -89,7 +89,7 @@ impl SystemBackend {
             location: Mutex::new(CatalogLocation::BuiltIn),
             bus: None,
             media_dir: PathBuf::from("/media"),
-            log_dir: std::env::var("ULTAR_STORE_DATA").ok().map(PathBuf::from),
+            log_dir: crate::data_dir(),
             trusted_dir: trusted_dir_from_env(),
         }
     }

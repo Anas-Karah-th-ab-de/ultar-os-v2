@@ -1,0 +1,19 @@
+# On-screen keyboard (ultar-osk, role ui.input-method as user 839): appears as the
+# input panel when a text field is focused and the settings want it (keyboard.on_screen,
+# accessibility.on_screen_keyboard), types into that field only (the compositor checks
+# the right and that the panel is shown), offers word suggestions and autocorrect
+# (keyboard.suggestions, keyboard.autocorrect). It reads settings and whether a hardware
+# keyboard is attached (devices.capabilities); nothing else.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-osk"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/osk.sock",
+]
+user = 839
+after = ["compositor", "settingsd"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "64M"
+"pids.max" = "8"

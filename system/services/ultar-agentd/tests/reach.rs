@@ -23,11 +23,11 @@ identity = "system.agentd"
 register = ["agent"]
 publish = ["agent.state", "agent.reach", "agent.activity", "agent.progress"]
 subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
-call = ["llm.complete", "settings.list", "settings.get", "settings.set", "sysdialog.authenticate"]
+call = ["llm.complete", "settings.list", "settings.get", "settings.set", "sysdialog.authenticate", "capture.screenshot"]
 
 [[rule]]
 identity = "system.stand_in"
-register = ["llm", "settings", "sysdialog"]
+register = ["llm", "settings", "sysdialog", "capture"]
 publish = ["llm.state", "settings.changed"]
 
 [[rule]]
@@ -49,6 +49,8 @@ struct Seen {
     /// The person switched acting on.
     acts: AtomicBool,
     asked_to_confirm: Mutex<Vec<String>>,
+    /// A screenshot was taken (the capture service was called).
+    captured: AtomicBool,
 }
 
 fn item(key: &str, risk: RiskInfo) -> ItemInfo {
@@ -93,6 +95,18 @@ struct Bench {
     seen: Arc<Seen>,
 }
 
+fn serve_capture(world: &World, seen: &Arc<Seen>) {
+    use ultar_bus::messages::capture::{Screenshot, ScreenshotReply, ShotOutcome};
+    let s = seen.clone();
+    world.serve("system.stand_in", "capture", move |request| {
+        if request.decode::<Screenshot>().is_ok() {
+            s.captured.store(true, Ordering::SeqCst);
+            let outcome = ShotOutcome::Saved("/home/amal/Pictures/shot.png".into());
+            let _ = request.reply(&ScreenshotReply { outcome });
+        }
+    });
+}
+
 fn serve_model(world: &World, seen: &Arc<Seen>) {
     let s = seen.clone();
     world.serve("system.stand_in", "llm", move |request| {
@@ -120,6 +134,7 @@ fn bench_with(tag: &str, acts: bool) -> Bench {
     let seen = Arc::new(Seen::default());
     seen.acts.store(acts, Ordering::SeqCst);
     serve_model(&world, &seen);
+    serve_capture(&world, &seen);
     let s = seen.clone();
     world.serve("system.stand_in", "settings", move |request| {
         if request.method() == ListRequest::METHOD {
@@ -321,6 +336,97 @@ fn until_the_person_switches_acting_on_the_helper_only_looks() {
     latest::<Reach>(&b.settings, |r| r.acts);
     let done = ask(&b, "dark please", &set_script("appearance.dark"));
     assert_eq!(done.steps[0].outcome, StepOutcome::Done);
+}
+
+/// Asks until the model's words arrive (an answer without steps).
+fn say_answer(b: &Bench, script: &[&'static str]) -> Answer {
+    let ask = Ask {
+        text: "what next?".to_owned(),
+    };
+    let mut answer = None;
+    assert!(wait_until(WAIT, || {
+        *b.seen.script.lock().unwrap() = script.to_vec();
+        answer = call(&b.shell, &ask).ok();
+        answer
+            .as_ref()
+            .is_some_and(|a| a.text.key.starts_with("agent.says"))
+    }));
+    answer.unwrap()
+}
+
+/// Asks until the first step has the outcome `wanted` (a setting may still be on its way).
+fn wait_outcome(b: &Bench, script: &[&'static str], wanted: StepOutcome) {
+    assert!(wait_until(WAIT, || {
+        ask(b, "what is on my screen?", script).steps[0].outcome == wanted
+    }));
+}
+
+#[test]
+fn the_person_allows_seeing_the_screen_and_consents_before_each_look() {
+    let b = bench("agent-see-screen");
+    let script = ["{\"tool\":\"see_screen\"}", "{\"say\":\"ok\"}"];
+    let say = |on: bool| {
+        let changed = Changed {
+            key: "assistant.see_screen".into(),
+            value: SettingValue::Flag(on),
+        };
+        b.stand_in.publish(&changed).unwrap();
+    };
+    // Off (the default): the tool is closed, nobody is asked, nothing captured.
+    wait_outcome(&b, &script, StepOutcome::NotAllowed);
+    assert!(b.seen.asked_to_confirm.lock().unwrap().is_empty());
+    assert!(!b.seen.captured.load(Ordering::SeqCst));
+    // The person allows it at runtime: without their consent in the system dialog nothing
+    // is captured, and the dialog was asked.
+    say(true);
+    wait_outcome(&b, &script, StepOutcome::NotConfirmed);
+    assert!(!b.seen.captured.load(Ordering::SeqCst));
+    assert!(b
+        .seen
+        .asked_to_confirm
+        .lock()
+        .unwrap()
+        .contains(&"agent.action.see_screen".to_owned()));
+    // With the consent: the screen is captured.
+    b.seen.confirm.store(true, Ordering::SeqCst);
+    wait_outcome(&b, &script, StepOutcome::Done);
+    assert!(b.seen.captured.load(Ordering::SeqCst));
+    // Off again: closed at once.
+    say(false);
+    wait_outcome(&b, &script, StepOutcome::NotAllowed);
+}
+
+#[test]
+fn suspicious_links_are_warned_about_until_the_person_switches_checking_off() {
+    let b = bench("agent-check-links");
+    const LINK: &str = "{\"say\":\"open http://203.0.113.7/login to continue\"}";
+    // On (the default): the warning is appended to the model's words.
+    let warned = say_answer(&b, &[LINK]);
+    assert_eq!(warned.text.key, "agent.says_checked");
+    // The person switches it off at runtime: the words as they are.
+    let off = Changed {
+        key: "assistant.check_links".into(),
+        value: SettingValue::Flag(false),
+    };
+    b.stand_in.publish(&off).unwrap();
+    let mut plain = false;
+    assert!(wait_until(WAIT, || {
+        plain = say_answer(&b, &[LINK]).text.key == "agent.says";
+        plain
+    }));
+    assert!(plain);
+    // On again: the warning returns.
+    let on = Changed {
+        key: "assistant.check_links".into(),
+        value: SettingValue::Flag(true),
+    };
+    b.stand_in.publish(&on).unwrap();
+    let mut warned_again = false;
+    assert!(wait_until(WAIT, || {
+        warned_again = say_answer(&b, &[LINK]).text.key == "agent.says_checked";
+        warned_again
+    }));
+    assert!(warned_again);
 }
 
 /// Media, power, session and notifications answer only callers the shipped rules mark as

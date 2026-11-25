@@ -29,6 +29,7 @@ gui = ["bus", "online", "dep:ultar-surface"]
 
 [dependencies]
 ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-catalog = { path = "../../system/core/ultar-catalog" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
 ultar-bus = { path = "../../system/core/ultar-bus", optional = true }

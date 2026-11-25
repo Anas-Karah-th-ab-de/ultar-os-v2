@@ -55,6 +55,10 @@ fn the_lock_screen_changes_accessibility_and_nothing_else() {
         keyboard,
         vec![
             &(
+                "keyboard.input_languages".to_owned(),
+                SettingValue::List(Vec::new())
+            ),
+            &(
                 "region.keyboard.layouts".to_owned(),
                 SettingValue::Text("ar_en".into())
             ),

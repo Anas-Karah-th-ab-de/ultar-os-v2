@@ -1,7 +1,7 @@
 //! Clicks in the sheets of the bar (CLICKS.md: QuickSettings, CalendarSheet, Overview,
 //! Projection, all apps).
 
-use super::bar::{launch, CALENDAR, SETTINGS};
+use super::bar::{launch, CALENDAR, SETTINGS, STORE};
 use super::history::{open_record, remember};
 use super::keys::confirm_projection;
 use super::Opening;
@@ -51,6 +51,10 @@ pub(super) fn on_popup(s: &mut Shell, target: &Target, kind: &ActionKind) -> Out
             launch(s, SETTINGS, Opening::settings_page("power"))
         }
         (Target::Settings, ActionKind::Activated) => launch(s, SETTINGS, Opening::start()),
+        // qs.access: the accessibility button opens Settings > Accessibility.
+        (Target::AccessSettings, ActionKind::Activated) => {
+            launch(s, SETTINGS, Opening::settings_page("accessibility"))
+        }
         (Target::Lock, ActionKind::Activated) => {
             s.d.open = Open::None;
             Outcome::effect_and_close(Effect::Lock)
@@ -327,6 +331,8 @@ fn result(s: &mut Shell, hit: &Hit) -> Outcome {
                 .extend(remember(s, crate::model::history::Record::App(id.clone())));
             out
         }
+        // An app from the Store's catalogue that is not installed: open the Store on it.
+        Hit::Store(id) => launch(s, STORE, Opening::store_page(id, false)),
         Hit::Setting(panel) => {
             let area = crate::model::search::panel_area(panel);
             let mut out = launch(s, SETTINGS, Opening::settings_page(area));
@@ -379,6 +385,7 @@ fn first_result(s: &mut Shell) -> Outcome {
         &s.tr,
         s.d.overview.sources,
         &s.d.overview.history,
+        s.d.overview.store.as_ref(),
     );
     let mut out = match hits.first() {
         Some(hit) => result(s, &hit.clone()),

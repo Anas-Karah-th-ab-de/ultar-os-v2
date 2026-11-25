@@ -23,6 +23,8 @@ pub const PATH: &str = "/usr/bin:/bin";
 pub const BUS_ENV: &str = "ULTAR_BUS_SOCKET";
 /// The apps' variable naming where the file areas are (only set for apps that have some).
 pub const AREAS_ENV: &str = "ULTAR_AREAS";
+/// The apps' variable naming their publish directory (only set for apps that have one).
+pub const PUBLISH_ENV: &str = "ULTAR_PUBLISH";
 /// File name of the apps' bus socket inside `app_bus`.
 pub const BUS_SOCKET: &str = "bus.sock";
 /// The compositor's variable for the activation token.
@@ -120,6 +122,24 @@ fn dev_mode(cell: bool, platform: &crate::platform::Platform) -> DevMode {
     }
 }
 
+/// The directory the app may publish to for the system: only a system app the operator
+/// names in `publishers`, only in a cell; `None` when it cannot be made (nothing published).
+fn publish_dir(
+    core: &Core,
+    id: &AppId,
+    entry: &Entry,
+    owner: Option<datadir::Owner>,
+    cell: bool,
+) -> Option<std::path::PathBuf> {
+    let root = core.config.paths.publish_root.as_ref()?;
+    let named = core.config.publishers.iter().any(|p| p == id.as_str());
+    let system = entry.profile == crate::profile::ProfileName::System;
+    if !(cell && named && system) {
+        return None;
+    }
+    datadir::ensure_publish_dir(root, id.as_str(), owner).ok()
+}
+
 /// The plan for `role` of the installed app `id`.
 pub(crate) fn prepare(
     core: &Core,
@@ -190,6 +210,7 @@ pub(crate) fn prepare(
             groups.push(group);
         }
     }
+    let publish = publish_dir(core, id, &entry, owner, cell);
     let plan = CellPlan {
         identity: owner.map(|o| (o.uid, o.gid)),
         group_dir,
@@ -204,6 +225,7 @@ pub(crate) fn prepare(
         view: core.config.system_view.clone(),
         shares,
         areas: areas.clone(),
+        publish: publish.clone(),
         groups,
         dev,
         tmp_bytes: limits.tmp_bytes,
@@ -220,6 +242,9 @@ pub(crate) fn prepare(
     }
     if !areas.is_empty() {
         env.push((AREAS_ENV.to_owned(), view::AREAS.to_owned()));
+    }
+    if publish.is_some() {
+        env.push((PUBLISH_ENV.to_owned(), view::PUBLISH.to_owned()));
     }
     Ok(Prepared { plan, env, restart })
 }

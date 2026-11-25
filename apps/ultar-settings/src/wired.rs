@@ -27,11 +27,27 @@ pub const CHECKED_PANELS: [&str; 17] = [
 
 /// Settings of those panels with an effect: who follows them.
 pub const WIRED: &[(&str, &str)] = &[
-    // ultar-llm-bus starts and stops the model service with it (`init.switch`).
+    // The on-screen keyboard (ultar-osk) follows these: when it appears (automatic without
+    // a hardware keyboard, always, never; the accessibility switch shows it always), word
+    // suggestions and autocorrect.
+    ("keyboard.on_screen", "osk"),
+    ("keyboard.suggestions", "osk"),
+    ("keyboard.autocorrect", "osk"),
+    ("accessibility.on_screen_keyboard", "osk"),
+    // ultar-llm-bus starts and stops the model service with it (`init.switch`) and lets
+    // the largest installed model of the chosen size answer (`assistant.model`).
     ("assistant.enabled", "llm-bus"),
+    ("assistant.model", "llm-bus"),
+    // ultar-llm-bus checks the folder and passes it to the model service, which reads it
+    // with every model search (`/run/ultar/llmbus/model-place`).
+    ("assistant.model_place", "llm-bus + llm"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
-    // and how long the list of what it did is kept.
+    // how long the list of what it did is kept, whether it may see the screen when asked
+    // (with the person's consent in the system dialog, through the capture service), and
+    // whether suspicious links in the model's answers are warned about.
     ("assistant.act", "agentd"),
+    ("assistant.see_screen", "agentd"),
+    ("assistant.check_links", "agentd"),
     ("assistant.reach.apps", "agentd"),
     ("assistant.reach.settings", "agentd"),
     ("assistant.reach.network", "agentd"),
@@ -55,6 +71,12 @@ pub const WIRED: &[(&str, &str)] = &[
     ("pointer.size", "compositor"),
     ("accessibility.large_pointer", "compositor"),
     ("accessibility.double_click_ms", "compositor"),
+    // displayd passes the accessibility view to the compositor as well
+    // (`Request::ConfigureVisual`): the magnifier scales the output around the
+    // pointer, the colour filter is a final colour matrix over every pixel.
+    ("accessibility.zoom", "compositor"),
+    ("accessibility.zoom_percent", "compositor"),
+    ("accessibility.colour_filter", "compositor"),
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
@@ -66,10 +88,22 @@ pub const WIRED: &[(&str, &str)] = &[
     ("accessibility.bounce_keys", "compositor"),
     ("accessibility.mouse_keys", "compositor"),
     ("keyboard.compose_key", "compositor"),
+    // displayd passes these to the compositor too (`Request::ConfigureKeyboard`): the keys
+    // that switch the input language and whether every window keeps its own.
+    ("keyboard.switch_shortcut", "compositor"),
+    ("keyboard.per_window", "compositor"),
+    // The shell gives the compositor the input languages of the Keyboard page (they win
+    // over the region's layouts when there are any); the sign-in reads the same list.
+    ("keyboard.input_languages", "shell"),
     // The shell (bar, sheets, lock screen) and this window follow these.
     ("accessibility.large_text", "shell"),
     ("accessibility.high_contrast", "shell"),
     ("accessibility.reduce_motion", "shell"),
+    // The shell flashes the screen when a notification alerts (visual_alert,
+    // through the compositor's `Request::VisualAlert`) and keeps an accessibility
+    // button in the quick settings that opens this page (show_in_bar).
+    ("accessibility.visual_alert", "shell"),
+    ("accessibility.show_in_bar", "shell"),
     // The search of the shell's overview (model/search.rs `Sources`, read at start and on
     // settings.changed); the characters come from the shell's own table (model/characters.rs),
     // the history is kept beside the shell per person (model/history.rs); off deletes it.
@@ -78,11 +112,18 @@ pub const WIRED: &[(&str, &str)] = &[
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.source.characters", "shell"),
+    // Store results: the Store publishes its verified catalogue in its publish directory
+    // (launcher `publishers`), the shell reads it and checks the signature again.
+    ("search.source.store", "shell + Store"),
     ("search.history", "shell"),
     ("search.arabic_variants", "shell"),
+    // The Store (apps/ultar-store) follows updates.auto_apps: it installs available app
+    // updates by itself under the shared updates.metered / updates.window.* rules (the
+    // system updater installs only system images). Off = only offer updates.
+    ("updates.auto_apps", "store"),
     // The update service (ultar-updated) maps these onto its policy under the ceiling of
     // /etc/ultar/update.conf, notifies through notifyd and offers updates from a plugged-in
-    // drive. updates.auto_apps stays out: app updates belong to the launcher/Store.
+    // drive.
     ("updates.auto_system", "updated"),
     ("updates.window.from", "updated"),
     ("updates.window.until", "updated"),
@@ -153,57 +194,75 @@ mod tests {
         }
     }
 
+    /// Settings of the checked panels whose service follows them.
+    const TAKING_EFFECT: &[&str] = &[
+        "pointer.speed",
+        "pointer.primary_button",
+        "pointer.acceleration",
+        "pointer.size",
+        "accessibility.large_pointer",
+        "accessibility.double_click_ms",
+        "accessibility.high_contrast",
+        "accessibility.reduce_motion",
+        // the keyboard helpers reach the compositor's key input path
+        "accessibility.sticky_keys",
+        "accessibility.slow_keys",
+        "accessibility.bounce_keys",
+        "accessibility.mouse_keys",
+        // the accessibility view: magnifier and colour filter in the compositor,
+        // the visual alert and the bar button in the shell
+        "accessibility.zoom",
+        "accessibility.zoom_percent",
+        "accessibility.colour_filter",
+        "accessibility.visual_alert",
+        "accessibility.show_in_bar",
+        "keyboard.repeat.delay_ms",
+        "keyboard.compose_key",
+        // the on-screen keyboard
+        "keyboard.on_screen",
+        "keyboard.suggestions",
+        "keyboard.autocorrect",
+        "accessibility.on_screen_keyboard",
+        "search.source.apps",
+        "search.source.characters",
+        "search.source.store",
+        "search.history",
+        // the Store installs app updates by itself
+        "updates.auto_apps",
+        "updates.auto_system",
+        "updates.window.from",
+        "updates.window.until",
+        "updates.channel",
+        "updates.metered",
+        "updates.offline_usb",
+        "updates.notify",
+        "apps.default.web",
+        "apps.default.documents",
+        "apps.removable_media",
+        "apps.autostart",
+        // volumed: low-space warning and automount; the launcher: the downloads clean-up
+        "storage.low_space_percent",
+        "storage.automount",
+        "storage.clean_downloads",
+        "storage.clean_downloads_days",
+        // the lock screen, the account, session and call services and this app
+        "users.list_on_login",
+        "users.auto_login",
+        "users.new_kind",
+        "users.parental",
+        "users.parental.from",
+        "users.parental.until",
+        "emergency.on_lock_screen",
+        "emergency.contact_name",
+        "emergency.contact_phone",
+        "emergency.medical",
+        "emergency.number",
+        "emergency.sos_light",
+    ];
+
     #[test]
     fn these_settings_take_effect() {
-        for key in [
-            "pointer.speed",
-            "pointer.primary_button",
-            "pointer.acceleration",
-            "pointer.size",
-            "accessibility.large_pointer",
-            "accessibility.double_click_ms",
-            "accessibility.high_contrast",
-            "accessibility.reduce_motion",
-            // the keyboard helpers reach the compositor's key input path
-            "accessibility.sticky_keys",
-            "accessibility.slow_keys",
-            "accessibility.bounce_keys",
-            "accessibility.mouse_keys",
-            "keyboard.repeat.delay_ms",
-            "keyboard.compose_key",
-            "search.source.apps",
-            "search.source.characters",
-            "search.history",
-            "updates.auto_system",
-            "updates.window.from",
-            "updates.window.until",
-            "updates.channel",
-            "updates.metered",
-            "updates.offline_usb",
-            "updates.notify",
-            "apps.default.web",
-            "apps.default.documents",
-            "apps.removable_media",
-            "apps.autostart",
-            // volumed: low-space warning and automount; the launcher: the downloads clean-up
-            "storage.low_space_percent",
-            "storage.automount",
-            "storage.clean_downloads",
-            "storage.clean_downloads_days",
-            // the lock screen, the account, session and call services and this app
-            "users.list_on_login",
-            "users.auto_login",
-            "users.new_kind",
-            "users.parental",
-            "users.parental.from",
-            "users.parental.until",
-            "emergency.on_lock_screen",
-            "emergency.contact_name",
-            "emergency.contact_phone",
-            "emergency.medical",
-            "emergency.number",
-            "emergency.sos_light",
-        ] {
+        for key in TAKING_EFFECT {
             assert!(takes_effect(panel(key), key), "{key}");
         }
     }
@@ -221,12 +280,11 @@ mod tests {
             // a pointer helper that is not built yet; no screen reader yet
             "accessibility.dwell_click",
             "accessibility.screen_reader",
-            // a per-person file-search service; the catalogue in a shared crate
+            // audiod has no sample path to mix to mono
+            "accessibility.mono_audio",
+            // a per-person file-search service
             "search.source.files",
             "search.file_places",
-            "search.source.store",
-            // app updates belong to the launcher/Store, not the system updater
-            "updates.auto_apps",
             // no FITRIM in the kernel; the updater keeps no superseded images
             "storage.trim",
             "storage.clean_old_updates",
@@ -237,5 +295,20 @@ mod tests {
         ] {
             assert!(!takes_effect(panel(key), key), "{key}");
         }
+    }
+
+    #[test]
+    fn the_assistant_and_keyboard_pages_have_their_consumers() {
+        assert!(takes_effect("keyboard", "keyboard.switch_shortcut"));
+        assert!(takes_effect("keyboard", "keyboard.per_window"));
+        assert!(takes_effect("keyboard", "keyboard.input_languages"));
+        assert!(takes_effect("assistant", "assistant.model"));
+        assert!(takes_effect("assistant", "assistant.see_screen"));
+        assert!(takes_effect("assistant", "assistant.check_links"));
+        assert!(takes_effect("assistant", "assistant.model_place"));
+        // No speech component yet.
+        assert!(!takes_effect("assistant", "assistant.voice"));
+        assert!(!takes_effect("assistant", "assistant.wake_word"));
+        assert!(!takes_effect("assistant", "assistant.wake_phrase"));
     }
 }

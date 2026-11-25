@@ -1,10 +1,12 @@
 //! The overview search (DESKTOP-SPEC §5.1 "Suche"): one field, results grouped – apps,
-//! settings (jumps to the panel), calculation, commands, characters. Arabic matches without
-//! regard to vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). The
-//! characters come from a table that ships with the shell (`model::characters`); sources
-//! without a service (files, Store) are not offered.
+//! settings (jumps to the panel), calculation, commands, characters, Store apps. Arabic matches
+//! without regard to vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). The
+//! characters come from a table that ships with the shell (`model::characters`); the Store apps
+//! come from the Store's cached, signature-checked catalogue (`model::store`), offered when not
+//! installed. The files source has no service yet and is not offered.
 
 use super::apps::AppInfo;
+use ultar_catalog::Catalog;
 use ultar_i18n::{arabic, Translator};
 
 /// The calculator lives in its own module; re-exported so the search and its callers use one
@@ -82,6 +84,9 @@ pub fn panel_area(panel: &str) -> &str {
 pub enum Hit {
     /// Start or raise an app.
     App(String),
+    /// An app from the Store's catalogue that is not installed; choosing it opens the Store
+    /// on that app (`store://app/<id>`).
+    Store(String),
     /// Open Settings at a panel.
     Setting(&'static str),
     /// A calculation and its result (digits 0–9).
@@ -102,6 +107,8 @@ pub enum Hit {
 pub struct Sources {
     /// Installed apps.
     pub apps: bool,
+    /// Apps from the Store's catalogue that are not installed (`search.source.store`).
+    pub store: bool,
     /// Panels of Settings.
     pub settings: bool,
     /// Calculations.
@@ -122,6 +129,7 @@ impl Default for Sources {
     fn default() -> Self {
         Sources {
             apps: true,
+            store: true,
             settings: true,
             calculator: true,
             commands: true,
@@ -135,8 +143,9 @@ impl Default for Sources {
 
 impl Sources {
     /// The settings the search follows.
-    pub const KEYS: [&'static str; 7] = [
+    pub const KEYS: [&'static str; 8] = [
         "search.source.apps",
+        "search.source.store",
         "search.source.settings",
         "search.source.calculator",
         "search.source.commands",
@@ -149,6 +158,7 @@ impl Sources {
     pub fn set(&mut self, key: &str, on: bool) -> bool {
         let field = match key {
             "search.source.apps" => &mut self.apps,
+            "search.source.store" => &mut self.store,
             "search.source.settings" => &mut self.settings,
             "search.source.calculator" => &mut self.calculator,
             "search.source.commands" => &mut self.commands,
@@ -181,17 +191,20 @@ pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Source
         tr,
         sources,
         &super::history::History::default(),
+        None,
     )
 }
 
 /// Like [`search_in`], also offering the remembered searches and opened results that match
-/// (`search.history`), newest first, before the helper.
+/// (`search.history`), newest first, before the helper, and the Store's catalogue apps that
+/// are not installed (`store`, `search.source.store`).
 pub fn search_in_with_history(
     query: &str,
     apps: &[AppInfo],
     tr: &Translator,
     sources: Sources,
     history: &super::history::History,
+    store: Option<&Catalog>,
 ) -> Vec<Hit> {
     let query: String = query.chars().take(MAX_QUERY).collect();
     let query = query.trim();
@@ -207,6 +220,11 @@ pub fn search_in_with_history(
                 .take(MAX_PER_GROUP)
                 .map(|a| Hit::App(a.id.clone())),
         );
+    }
+    if sources.store {
+        if let Some(catalog) = store {
+            out.extend(store_hits(query, catalog, apps, variants));
+        }
     }
     if sources.settings {
         out.extend(
@@ -237,6 +255,29 @@ pub fn search_in_with_history(
         out.push(Hit::Helper(query.to_owned()));
     }
     out
+}
+
+/// The Store's catalogue apps that match and are **not installed** (an installed app is
+/// already offered by the apps source). The catalogue id is mapped to the shell's app id
+/// (`org.ultar.<id>` for one-part ids) before comparing with the installed list. Bounded to
+/// [`MAX_PER_GROUP`]; choosing one opens the Store on that app.
+fn store_hits(query: &str, catalog: &Catalog, apps: &[AppInfo], variants: bool) -> Vec<Hit> {
+    catalog
+        .apps
+        .iter()
+        .filter(|a| {
+            let shell_id = crate::ports::bus::shell_id(&a.id);
+            !apps.iter().any(|i| i.id == shell_id)
+        })
+        .filter(|a| {
+            a.name.texts().iter().any(|t| matches(t, query, variants))
+                || matches(&a.summary.en, query, variants)
+                || matches(&a.summary.ar, query, variants)
+                || a.id.contains(query)
+        })
+        .take(MAX_PER_GROUP)
+        .map(|a| Hit::Store(a.id.clone()))
+        .collect()
 }
 
 /// The characters and the remembered entries that match (the shell's own tables), each
@@ -317,7 +358,8 @@ mod tests {
         let hit = Hit::History(Record::Search("weather".into()));
         let sources = Sources::default();
         assert!(
-            search_in_with_history("weather", &base_apps(), &en, sources, &history).contains(&hit)
+            search_in_with_history("weather", &base_apps(), &en, sources, &history, None)
+                .contains(&hit)
         );
         // The plain search (no history) does not offer it.
         assert!(!search_in("weather", &base_apps(), &en, sources).contains(&hit));
@@ -325,8 +367,100 @@ mod tests {
         let mut off = Sources::default();
         assert!(off.set("search.history", false));
         assert!(
-            !search_in_with_history("weather", &base_apps(), &en, off, &history).contains(&hit)
+            !search_in_with_history("weather", &base_apps(), &en, off, &history, None)
+                .contains(&hit)
         );
+    }
+
+    /// A catalogue with one app not installed (km-office) and one already installed (files,
+    /// which the shell names org.ultar.files).
+    fn store_fixture() -> Catalog {
+        use ultar_catalog::{CatalogApp, Loc, PackagePin, Source};
+        let loc = |ar: &str, en: &str| Loc {
+            ar: ar.into(),
+            en: en.into(),
+            de: None,
+        };
+        let entry = |id: &str, ar: &str, name: &str| CatalogApp {
+            id: id.into(),
+            name: loc(ar, name),
+            summary: loc("s", "s"),
+            description: loc("d", "d"),
+            publisher: "p".into(),
+            category: "office".into(),
+            icon: "office".into(),
+            source: Source::Ultar,
+            version: Some("1.0.0".into()),
+            size_download: None,
+            size_installed: None,
+            file_types: Vec::new(),
+            permissions: Vec::new(),
+            requires: Vec::new(),
+            pin: PackagePin::default(),
+        };
+        Catalog {
+            format_version: ultar_catalog::FORMAT_VERSION,
+            generated: None,
+            apps: vec![
+                entry("km-office", "مكتب", "Office"),
+                entry("files", "الملفات", "Files"),
+            ],
+        }
+    }
+
+    #[test]
+    fn store_apps_are_offered_by_name_and_installed_ones_are_left_out() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let ar = crate::i18n::translator(Lang::Ar).unwrap();
+        let catalog = store_fixture();
+        let hit = Hit::Store("km-office".into());
+        let sources = Sources::default();
+        let find = |query: &str, tr: &Translator| {
+            search_in_with_history(
+                query,
+                &base_apps(),
+                tr,
+                sources,
+                &Default::default(),
+                Some(&catalog),
+            )
+        };
+        // Found by its English and its real Arabic name.
+        assert!(find("office", &en).contains(&hit));
+        assert!(find("مكتب", &ar).contains(&hit));
+        // The installed Files app is offered as an app, never again as a Store hit.
+        let files = find("files", &en);
+        assert!(files.contains(&Hit::App("org.ultar.files".into())));
+        assert!(!files.contains(&Hit::Store("files".into())));
+    }
+
+    #[test]
+    fn the_store_source_switch_gates_the_hits() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let catalog = store_fixture();
+        let hit = Hit::Store("km-office".into());
+        let mut off = Sources::default();
+        assert!(off.set("search.source.store", false));
+        // Switched off in Settings: no Store hits.
+        assert!(!search_in_with_history(
+            "office",
+            &base_apps(),
+            &en,
+            off,
+            &Default::default(),
+            Some(&catalog)
+        )
+        .contains(&hit));
+        // No catalogue (no verified cache): nothing offered.
+        assert!(!search_in_with_history(
+            "office",
+            &base_apps(),
+            &en,
+            Sources::default(),
+            &Default::default(),
+            None
+        )
+        .contains(&hit));
     }
 
     #[test]

@@ -134,6 +134,36 @@ fn install_file_takes_the_path_directly() {
 }
 
 #[test]
+fn auto_update_installs_only_when_allowed_and_idle() {
+    let mut s = store_with(&[("a", "2.0", &[], Some("a.uap"))]);
+    s.installed = vec![InstalledApp {
+        id: "a".into(),
+        version: "1.0".into(),
+        size: None,
+        last_used_ms: None,
+    }];
+    // Off: only offer updates, nothing starts.
+    assert!(s.auto_update(false).is_empty());
+    assert!(s.operation.is_none());
+    // On: the update-all chain starts (an Install command for the newer version).
+    let cmds = s.auto_update(true);
+    assert!(matches!(cmds[0], Command::Install { .. }));
+    assert_eq!(s.operation.as_ref().unwrap().kind, OpKind::Update);
+    // Busy: a running operation is not interrupted.
+    assert!(s.auto_update(true).is_empty());
+    // Done and up to date: nothing more to do.
+    let _ = s.event(StoreEvent::OperationDone {
+        app: "a".into(),
+        result: Ok(()),
+    });
+    s.installed[0].version = "2.0".into();
+    assert!(s.auto_update(true).is_empty());
+    // No usable catalogue: nothing automatic.
+    let mut empty = Store::new();
+    assert!(empty.auto_update(true).is_empty());
+}
+
+#[test]
 fn update_all_chains_the_updates() {
     let mut s = store_with(&[
         ("a", "2.0", &[], Some("a.uap")),

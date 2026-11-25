@@ -39,6 +39,7 @@ fn sample_requests() -> Vec<Request> {
         Request::StartDrag { serial: 3, mimes: mimes() },
         Request::ReadDrop { mime: "image/png".into() },
         Request::TextInput { surface: s, enabled: true, purpose: 2 },
+        Request::ImeKey { key: ImeKey::Backspace },
         Request::ImeCommit { text: "سلام\n".into() },
         Request::Capture { output: OutputId(0) },
         Request::Unlock { surface: s },
@@ -155,6 +156,16 @@ fn every_request_round_trips_and_truncation_fails() {
             delay_ms: 500,
             per_second: 25,
         },
+        Request::ConfigureVisual {
+            zoom: true,
+            zoom_percent: 400,
+            filter: ColourFilter::Tritanopia,
+        },
+        Request::VisualAlert { ms: 200 },
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::CtrlShift,
+            per_window: true,
+        },
     ];
     for request in sample_requests().into_iter().chain(phone).chain(input) {
         let frame = request.encode().unwrap();
@@ -225,6 +236,20 @@ fn the_pointer_configuration_accepts_the_old_and_the_new_form() {
     for len in 3..7 {
         assert!(Request::decode(44, &body[..len]).is_err(), "len {len}");
     }
+}
+
+#[test]
+fn the_keyboard_configuration_refuses_unknown_keys() {
+    assert_eq!(
+        Request::decode(47, &[1, 1]).unwrap(),
+        Request::ConfigureKeyboard {
+            switch_shortcut: SwitchShortcut::AltShift,
+            per_window: true,
+        }
+    );
+    assert!(Request::decode(47, &[3, 0]).is_err(), "unknown shortcut");
+    assert!(Request::decode(47, &[0, 2]).is_err(), "not a bool");
+    assert!(Request::decode(47, &[0]).is_err(), "truncated");
 }
 
 #[test]

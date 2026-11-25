@@ -38,10 +38,14 @@ pub struct UiWindow {
     pasting: Option<Vec<u8>>,
     /// What the app itself asked for: its own paste, the pointer over its own pictures.
     app: app_input::AppInput,
+    /// The kind of the focused text field last told to the compositor.
+    text_input: Option<u8>,
 }
 
 #[path = "ui_app_input.rs"]
 mod app_input;
+#[path = "ui_text_input.rs"]
+pub mod text_input;
 
 /// Largest clipboard text a field takes (more is cut off: a field holds one line).
 pub const MAX_PASTE: usize = 64 * 1024;
@@ -185,6 +189,7 @@ impl UiWindow {
             shortcuts: None,
             pasting: None,
             app: app_input::AppInput::default(),
+            text_input: None,
         };
         while this.window.configure().is_none() {
             this.dispatch(Some(super::client::WELCOME_TIMEOUT))?;
@@ -252,8 +257,24 @@ impl UiWindow {
             .advance_to(self.started.elapsed().as_millis() as u64);
         actions.extend(self.ui.take_actions());
         self.clipboard()?;
+        self.announce_text_field()?;
         self.draw()?;
         Ok(actions)
+    }
+
+    /// Tells the compositor when the focus enters or leaves a text field (the on-screen
+    /// keyboard follows it).
+    fn announce_text_field(&mut self) -> Result<(), ClientError> {
+        let now = text_input::focused(&self.ui);
+        if now == self.text_input {
+            return Ok(());
+        }
+        self.text_input = now;
+        self.client.send(&Request::TextInput {
+            surface: self.window.surface(),
+            enabled: now.is_some(),
+            purpose: now.unwrap_or(text_input::TEXT),
+        })
     }
 
     /// What a field asked of the clipboard: Ctrl+C/X offers its text, Ctrl+V reads the
@@ -343,6 +364,11 @@ impl UiWindow {
         }
         if let Some(actions) = self.pasted(event) {
             return Ok(actions);
+        }
+        // Text typed on the on-screen keyboard (or a layout's composed text) goes into the
+        // focused field like a paste.
+        if let Event::Text { text, .. } = event {
+            return Ok(self.ui.paste(text));
         }
         match event {
             Event::PointerButton {

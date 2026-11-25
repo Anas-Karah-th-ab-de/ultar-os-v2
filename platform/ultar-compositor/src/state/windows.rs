@@ -43,6 +43,8 @@ pub struct Window {
     pub id: u32,
     /// Its workspace and whether that one is shown.
     pub place: Place,
+    /// The layout it last typed with (`keyboard.per_window`); back on focus.
+    pub layout: Option<usize>,
 }
 
 /// A window's title bar.
@@ -97,6 +99,7 @@ impl Window {
                 shown: true,
                 bare: false,
             },
+            layout: None,
         }
     }
 
@@ -369,12 +372,25 @@ impl State {
     }
 
     /// Moves the keyboard focus (sends focus events, re-renders the title
-    /// bars, offers the clipboard to a newly focused client).
+    /// bars, offers the clipboard to a newly focused client). With
+    /// `keyboard.per_window` the window left keeps its layout and the one
+    /// entered gets its own back.
     pub fn set_focus(&mut self, key: Option<SurfaceKey>) {
         if self.focus == key {
             return;
         }
         let old = self.focus;
+        if self.keyboard.per_window {
+            if let Some(i) = old.and_then(|k| self.window_index(k)) {
+                self.windows[i].layout = Some(self.keyboard.layout_index);
+            }
+            if let Some(i) = key.and_then(|k| self.window_index(k)) {
+                let remembered = self.windows[i].layout;
+                if let Some(l) = remembered.filter(|l| *l < self.config.layouts.len()) {
+                    self.keyboard.layout_index = l;
+                }
+            }
+        }
         self.focus = key;
         self.session.focus_serial = self.next_serial();
         for (k, focused) in [(old, false), (key, true)] {

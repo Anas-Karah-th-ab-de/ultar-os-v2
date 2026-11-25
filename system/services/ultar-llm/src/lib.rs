@@ -8,5 +8,6 @@ pub mod http;
 #[cfg(feature = "llama")]
 pub mod llama;
 pub mod models;
+pub mod place;
 pub mod platform;
 pub mod service;

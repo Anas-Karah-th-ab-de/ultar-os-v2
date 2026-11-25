@@ -74,6 +74,9 @@ pub struct OnlineCatalogSource {
     fetch: Box<dyn Fetch>,
     fallback: Arc<dyn CatalogSource>,
     last: Mutex<Option<Catalog>>,
+    /// The shared, world-readable cache the shell's overview search reads
+    /// (`search.source.store`); the verified bytes are published here too.
+    shared: PathBuf,
 }
 
 impl OnlineCatalogSource {
@@ -97,7 +100,16 @@ impl OnlineCatalogSource {
             fetch,
             fallback,
             last: Mutex::new(None),
+            shared: ultar_catalog::source::store_publish_dir_from_env(),
         })
+    }
+
+    /// Where the verified catalogue is published for the shell's overview search
+    /// (default [`ultar_catalog::source::store_publish_dir_from_env`]; tests point it at a
+    /// temporary directory).
+    pub fn with_shared_cache(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.shared = dir.into();
+        self
     }
 
     fn fetch_small(&self, name: &str, max: u64) -> Result<Vec<u8>, FetchError> {
@@ -134,6 +146,13 @@ impl OnlineCatalogSource {
         // catalogue is still good, the next offline start falls back further.
         let _ = write_atomic(&self.cache, &sig_name, blob.as_bytes())
             .and_then(|()| write_atomic(&self.cache, CATALOG_FILE, &body));
+        // Publish the same verified bytes to the shared cache the shell reads
+        // (search.source.store). Best effort: the Store's own cache above is authoritative;
+        // the image provisions the shared directory (writable here, readable by the shell).
+        if self.shared != self.cache {
+            let _ = write_atomic(&self.shared, &sig_name, blob.as_bytes())
+                .and_then(|()| write_atomic(&self.shared, CATALOG_FILE, &body));
+        }
         self.remember(&catalog);
         Ok(Some(LoadedCatalog {
             catalog,

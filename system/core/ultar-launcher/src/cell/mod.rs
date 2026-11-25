@@ -148,6 +148,9 @@ pub struct CellPlan {
     /// The user's file areas the app declares: host directory, name below
     /// [`view::AREAS`], writable (never executable).
     pub areas: Vec<(PathBuf, String, bool)>,
+    /// The directory the app publishes to for the system (bound writable, never executable,
+    /// at [`view::PUBLISH`]; others may read it, see `launcher.toml` `publishers`).
+    pub publish: Option<PathBuf>,
     /// Supplementary groups of the app (the user's files group, when it has areas).
     pub groups: Vec<u32>,
     /// Device nodes.
@@ -259,6 +262,9 @@ impl CellPlan {
             let mode = if *rw { "rw" } else { "ro" };
             args.extend(["--area".into(), format!("{name}:{mode}:{}", text(host))]);
         }
+        if let Some(dir) = &self.publish {
+            args.extend(["--publish".into(), text(dir)]);
+        }
         for group in &self.groups {
             args.extend(["--groups".into(), group.to_string()]);
         }
@@ -287,6 +293,7 @@ impl CellPlan {
             view: Vec::new(),
             shares: Vec::new(),
             areas: Vec::new(),
+            publish: None,
             groups: Vec::new(),
             dev: DevMode::None,
             tmp_bytes: 0,
@@ -316,6 +323,7 @@ impl CellPlan {
                 "--view" => plan.view.push(path()?),
                 "--share" => plan.shares.push(path()?),
                 "--area" => plan.areas.push(parse_area(value)?),
+                "--publish" => plan.publish = Some(path()?),
                 "--groups" => plan.groups.push(value.parse::<u32>().ok()?),
                 "--dev" => plan.dev = DevMode::from_word(value)?,
                 "--tmp" => plan.tmp_bytes = value.parse().ok()?,

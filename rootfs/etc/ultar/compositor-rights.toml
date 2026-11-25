@@ -6,11 +6,14 @@
 # once.
 #
 # The desktop shell, the lock screen and the system dialogs run as their own
-# users (docs/integration/desktop-shell.md); the on-screen keyboard still runs
-# inside ultar-shell and gets a line when it has its own user.
+# users (docs/integration/desktop-shell.md); the on-screen keyboard (ultar-osk)
+# runs as its own user with ui.input-method.
 814 = "ui.lock-screen"
 815 = "ui.system-dialog"
 816 = "ui.shell"
+# The on-screen keyboard (ultar-osk): shows the input panel and types into the focused
+# text field only.
+839 = "ui.input-method"
 # The display service (user 817): sets the output arrangement and learns
 # each display's identity and modes (docs/integration/display-account-services.md).
 817 = "ui.output-config"

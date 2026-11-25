@@ -1,5 +1,6 @@
 //! Limits of the pointer and key-repeat configuration ([`Request::ConfigurePointer`],
-//! [`Request::ConfigureKeyRepeat`]).
+//! [`Request::ConfigureKeyRepeat`]) and the keys that switch the input language
+//! ([`Request::ConfigureKeyboard`]).
 
 #[allow(unused_imports)] // for the links above
 use super::Request;
@@ -74,9 +75,61 @@ impl PointerSize {
     }
 }
 
+/// The keys that switch the input language (`keyboard.switch_shortcut`,
+/// [`Request::ConfigureKeyboard`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SwitchShortcut {
+    /// Super+Space, at once.
+    #[default]
+    SuperSpace,
+    /// Alt+Shift, released with no other key pressed meanwhile.
+    AltShift,
+    /// Ctrl+Shift, released with no other key pressed meanwhile.
+    CtrlShift,
+}
+
+impl SwitchShortcut {
+    /// The byte on the wire.
+    pub fn encode(self, w: &mut Writer) {
+        w.u8(match self {
+            SwitchShortcut::SuperSpace => 0,
+            SwitchShortcut::AltShift => 1,
+            SwitchShortcut::CtrlShift => 2,
+        });
+    }
+
+    /// Reads one byte; unknown combinations are refused.
+    pub fn decode(r: &mut Reader<'_>) -> Result<SwitchShortcut, WireError> {
+        Ok(match r.u8()? {
+            0 => SwitchShortcut::SuperSpace,
+            1 => SwitchShortcut::AltShift,
+            2 => SwitchShortcut::CtrlShift,
+            _ => return Err(WireError::BadValue),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switch_shortcuts_round_trip_and_unknown_ones_are_refused() {
+        assert_eq!(SwitchShortcut::default(), SwitchShortcut::SuperSpace);
+        for shortcut in [
+            SwitchShortcut::SuperSpace,
+            SwitchShortcut::AltShift,
+            SwitchShortcut::CtrlShift,
+        ] {
+            let mut w = Writer::new(0);
+            shortcut.encode(&mut w);
+            let frame = w.finish().unwrap();
+            let mut r = Reader::new(&frame[8..]);
+            assert_eq!(SwitchShortcut::decode(&mut r).unwrap(), shortcut);
+        }
+        let mut r = Reader::new(&[3]);
+        assert_eq!(SwitchShortcut::decode(&mut r), Err(WireError::BadValue));
+    }
 
     #[test]
     fn sizes_scale_and_never_shrink_below_the_floor() {

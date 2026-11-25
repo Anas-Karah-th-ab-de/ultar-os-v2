@@ -25,13 +25,17 @@
 pub mod action;
 pub mod backend;
 pub mod catalog;
+pub mod deeplink;
 pub mod error;
+#[cfg(feature = "bus")]
+pub mod follow;
 pub mod i18n;
 pub mod online;
 #[cfg(feature = "online")]
 pub mod online_https;
 pub mod scripted;
 pub mod search;
+pub mod settings;
 pub mod signature;
 pub mod source;
 pub mod state;
@@ -47,3 +51,13 @@ pub use ultar_ui::event;
 pub const BUILT_IN_CATALOG: &str = include_str!("../assets/ultar-catalog.toml");
 
 pub use state::Store;
+
+/// The Store's own data area: `ULTAR_STORE_DATA` when set (tests, tools), else the `HOME`
+/// the launcher gives every app (its data directory; `/data` inside its cell). The online
+/// catalogue cache and the error reports live there. `None` when neither is set.
+pub fn data_dir() -> Option<std::path::PathBuf> {
+    ["ULTAR_STORE_DATA", "HOME"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .map(std::path::PathBuf::from)
+}

@@ -14,6 +14,8 @@ use ultar_sys::cell::{self as sys_cell, BindMode};
 pub const DATA: &str = "/data";
 /// Where the user's file areas appear (`/areas/<name>`).
 pub const AREAS: &str = "/areas";
+/// Where the app's publish directory appears (`ULTAR_PUBLISH`), if it has one.
+pub const PUBLISH: &str = "/publish";
 /// The private temporary directory.
 pub const TMP: &str = "/tmp";
 /// Name of the old root during the switch.
@@ -107,6 +109,10 @@ pub fn build(plan: &CellPlan) -> Result<(), CellFailure> {
         };
         sys_cell::bind(host, &target, mode).map_err(|_| CellFailure::Mounts)?;
     }
+    if let Some(host) = plan.publish.as_ref().filter(|h| h.is_dir()) {
+        let target = mount_point(root, Path::new(PUBLISH))?;
+        sys_cell::bind(host, &target, BindMode::WritableNoExec).map_err(|_| CellFailure::Mounts)?;
+    }
     let old = root.join(OLD);
     std::fs::create_dir(&old).map_err(|_| CellFailure::Root)?;
     sys_cell::pivot_root(root, &old).map_err(|_| CellFailure::Root)?;
@@ -138,6 +144,7 @@ mod tests {
             view: Vec::new(),
             shares: Vec::new(),
             areas: Vec::new(),
+            publish: None,
             groups: Vec::new(),
             dev: DevMode::None,
             tmp_bytes: 64 << 20,

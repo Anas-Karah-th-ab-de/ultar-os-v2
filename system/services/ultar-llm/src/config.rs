@@ -186,7 +186,8 @@ pub struct ModelFile {
     pub bytes: u64,
 }
 
-/// Alle .gguf-Dateien in den Modellordnern (Teil-Dateien "-00002-of-…" nur über die erste).
+/// Alle .gguf-Dateien in den Modellordnern und im Ordner, den die Person gewählt hat
+/// (`assistant.model_place`, siehe [`crate::place`]); Teil-Dateien "-00002-of-…" nur über die erste.
 pub fn list_models(c: &Config) -> Vec<ModelFile> {
     let mut out: Vec<ModelFile> = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -226,8 +227,9 @@ pub fn list_models(c: &Config) -> Vec<ModelFile> {
     if !c.model.is_empty() && !c.model.starts_with("mock:") {
         add(PathBuf::from(&c.model));
     }
-    for d in &c.model_dirs {
-        if let Ok(rd) = std::fs::read_dir(d) {
+    let place = crate::place::read(Path::new(crate::place::PLACE_FILE), &crate::place::ROOTS);
+    for d in c.model_dirs.iter().map(PathBuf::from).chain(place) {
+        if let Ok(rd) = std::fs::read_dir(&d) {
             let mut v: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
             v.sort();
             for p in v {

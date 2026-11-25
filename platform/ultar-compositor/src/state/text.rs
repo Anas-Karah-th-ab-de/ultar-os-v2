@@ -1,7 +1,7 @@
 //! Text: window titles and the input method.
 
 use super::{ClientId, State};
-use ultar_surface::proto::{ErrorCode, Event, Rights, Role};
+use ultar_surface::proto::{ErrorCode, Event, ImeKey, Modifiers, Rights, Role};
 
 /// Removes invisible format characters (bidi marks, overrides, isolates,
 /// zero-width and other format characters, tags) so a title cannot
@@ -29,20 +29,19 @@ pub(super) fn clean_title(title: &str) -> String {
 }
 
 impl State {
-    /// Tells the input method whether the text target has a text field.
+    /// Tells the input methods whether the text target has a text field: every client with
+    /// the right `ui.input-method` (an on-screen keyboard shows its panel only when a field
+    /// wants it, so it must hear about the field before it has a panel).
     pub(super) fn update_ime(&mut self) {
         let wanted = self
             .text_target()
             .and_then(|k| self.surface(k))
             .and_then(|s| s.text_input);
         let panels: Vec<ClientId> = self
-            .layers
+            .clients
             .iter()
-            .filter(|k| {
-                self.surface(**k)
-                    .is_some_and(|s| s.role == Role::InputPanel)
-            })
-            .map(|k| k.client)
+            .filter(|(_, c)| c.rights.contains(Rights::INPUT_METHOD))
+            .map(|(id, _)| *id)
             .collect();
         for client in panels {
             let event = Event::ImeState {
@@ -53,12 +52,40 @@ impl State {
         }
     }
 
-    pub(super) fn ime_commit(&mut self, client: ClientId, text: String) -> Result<(), ErrorCode> {
+    /// The input method may type only with the right and while its panel is shown.
+    fn may_type(&self, client: ClientId) -> Result<(), ErrorCode> {
         let c = self.clients.get(&client).ok_or(ErrorCode::UnknownObject)?;
         let has_panel = c.surfaces.values().any(|s| s.role == Role::InputPanel);
         if !c.rights.contains(Rights::INPUT_METHOD) || !has_panel {
             return Err(ErrorCode::Permission);
         }
+        Ok(())
+    }
+
+    /// An editing key of the input method reaches the focused field as a press and a
+    /// release (serial 0: it proves no user action of the app's own).
+    pub(super) fn ime_key(&mut self, client: ClientId, key: ImeKey) -> Result<(), ErrorCode> {
+        self.may_type(client)?;
+        if let Some(focus) = self.text_target() {
+            for state in [1, 0] {
+                self.send(
+                    focus.client,
+                    Event::Key {
+                        surface: focus.surface,
+                        code: key.code(),
+                        state,
+                        modifiers: Modifiers::default(),
+                        character: 0,
+                        serial: 0,
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn ime_commit(&mut self, client: ClientId, text: String) -> Result<(), ErrorCode> {
+        self.may_type(client)?;
         if let Some(focus) = self.text_target() {
             self.send(
                 focus.client,

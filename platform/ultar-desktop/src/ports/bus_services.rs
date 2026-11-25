@@ -224,7 +224,8 @@ impl BusPorts {
     }
 
     /// The input languages from `settings.accessibility` (login.access answers them after the
-    /// switches): the list and the active index, `None` without a usable answer.
+    /// switches): the list and the active index, `None` without a usable answer. The Keyboard
+    /// page's input languages win over the region's layouts when there are any.
     pub fn login_keyboard(&self) -> Result<Option<(Vec<String>, u8)>, PortError> {
         let reply = self.ask(&settings::Accessibility {})?;
         let text = |key: &str| {
@@ -233,9 +234,20 @@ impl BusPorts {
                 _ => None,
             })
         };
-        let layouts = text(crate::app::keyboard::LAYOUTS);
+        let langs = reply
+            .values
+            .iter()
+            .find_map(|(k, v)| match v {
+                settings::SettingValue::List(l) if k == crate::app::keyboard::INPUT_LANGUAGES => {
+                    Some(l.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+        let layouts = text(crate::app::keyboard::LAYOUTS).unwrap_or_default();
         let active = text(crate::app::keyboard::ACTIVE);
-        Ok(layouts.and_then(|l| crate::app::keyboard::from_values(l, active)))
+        let list = crate::app::keyboard::combined(&langs, &layouts).join("_");
+        Ok(crate::app::keyboard::from_values(list, active))
     }
 
     /// `call.emergency`: the call service reads and dials the configured emergency

@@ -65,6 +65,8 @@ struct Raw {
     max_running: Option<u32>,
     stop_grace_ms: Option<u64>,
     areas_group: Option<u32>,
+    #[serde(default)]
+    publishers: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +85,7 @@ struct RawPaths {
     app_bus: Option<String>,
     bus_apps: Option<String>,
     areas_root: Option<String>,
+    publish_root: Option<String>,
 }
 
 impl RawPaths {
@@ -101,6 +104,7 @@ impl RawPaths {
             app_bus: optional("app_bus", self.app_bus)?,
             bus_apps: optional("bus_apps", self.bus_apps)?,
             areas_root: optional("areas_root", self.areas_root)?,
+            publish_root: optional("publish_root", self.publish_root)?,
         })
     }
 }
@@ -136,6 +140,9 @@ pub struct Paths {
     pub bus_apps: Option<PathBuf>,
     /// The user's file areas (`<areas_root>/<name>`, see `areas.rs`).
     pub areas_root: Option<PathBuf>,
+    /// Where apps named in `publishers` publish for the system (`<publish_root>/<id>`, `0755`,
+    /// owned by the app; the root is the launcher's own `0755` directory).
+    pub publish_root: Option<PathBuf>,
 }
 
 /// The configuration.
@@ -157,6 +164,9 @@ pub struct Config {
     pub stop_grace: std::time::Duration,
     /// Group of the user's file areas (the only supplementary group of an app with areas).
     pub areas_group: Option<u32>,
+    /// System apps that get a publish directory (`paths.publish_root`): what they write there
+    /// every other user may read, so only apps whose readers check it (a signed catalogue).
+    pub publishers: Vec<String>,
 }
 
 fn path(key: &'static str, text: &str) -> Result<PathBuf, ConfigError> {
@@ -176,6 +186,11 @@ fn list(key: &'static str, items: &[String]) -> Result<Vec<PathBuf>, ConfigError
         return Err(ConfigError::Bound(key));
     }
     items.iter().map(|t| path(key, t)).collect()
+}
+
+fn publishers(ids: Vec<String>) -> Result<Vec<String>, ConfigError> {
+    let valid = ids.len() <= MAX_VIEW && ids.iter().all(|id| crate::appid::AppId::new(id).is_ok());
+    valid.then_some(ids).ok_or(ConfigError::Bound("publishers"))
 }
 
 impl Config {
@@ -210,6 +225,7 @@ impl Config {
             max_running,
             stop_grace: std::time::Duration::from_millis(grace),
             areas_group: raw.areas_group,
+            publishers: publishers(raw.publishers)?,
         })
     }
 
@@ -317,5 +333,17 @@ mod tests {
             Err(ConfigError::Io(_))
         ));
         assert_eq!(ConfigError::Range.to_string(), "launcher.config.range");
+    }
+
+    #[test]
+    fn only_the_store_publishes_and_a_bad_name_is_refused() {
+        let config = Config::parse(SHIPPED).unwrap();
+        assert_eq!(config.publishers, ["store"]);
+        let root = config.paths.publish_root.unwrap();
+        assert_eq!(root, PathBuf::from("/data/ultar/publish"));
+        let bad = SHIPPED.replace("publishers = [\"store\"]", "publishers = [\"../etc\"]");
+        assert_eq!(Config::parse(&bad), Err(ConfigError::Bound("publishers")));
+        let none = SHIPPED.replace("publishers = [\"store\"]", "");
+        assert!(Config::parse(&none).unwrap().publishers.is_empty());
     }
 }

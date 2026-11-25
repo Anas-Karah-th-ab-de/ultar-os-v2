@@ -226,6 +226,17 @@ fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
                 .icon(app.map_or(IconId::Apps, |a| a.icon))
                 .sublabel(Label::key("desk.ov.group.apps"))
         }
+        Hit::Store(id) => {
+            let name = d
+                .overview
+                .store
+                .as_ref()
+                .and_then(|c| c.app(id))
+                .map_or(id.clone(), |a| a.name.text(d.lang).to_owned());
+            ListItem::new(Label::data(&name))
+                .icon(IconId::Bag)
+                .sublabel(Label::key("desk.ov.group.store"))
+        }
         Hit::Setting(panel) => ListItem::new(Label::key(format!("desk.search.panel.{panel}")))
             .icon(IconId::Gear)
             .sublabel(Label::key("desk.ov.group.settings")),
@@ -272,6 +283,7 @@ fn results(view: &mut View, root: NodeId, d: &Desktop, tr: &Translator) -> Resul
         tr,
         d.overview.sources,
         &d.overview.history,
+        d.overview.store.as_ref(),
     );
     let row = view.ui.add(root, Flex::row().main(MainAlign::Center))?;
     if hits.is_empty() {

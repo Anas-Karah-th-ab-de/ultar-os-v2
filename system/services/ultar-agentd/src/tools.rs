@@ -36,7 +36,7 @@ use Area::{Apps, Devices, Help, Network, Notifications, Power, Screen, Settings,
 use Risk::{Changes, Dangerous, Reads};
 
 /// Every tool of the helper.
-pub const TOOLS: [Tool; 33] = [
+pub const TOOLS: [Tool; 34] = [
     tool("list_apps", Apps, Reads, &[], "lists the ids of the installed apps"),
     tool("open_app", Apps, Changes, &["app"], "opens the app with this id"),
     tool("close_app", Apps, Dangerous, &["app"], "closes the app with this id; unsaved work in it is lost"),
@@ -53,6 +53,7 @@ pub const TOOLS: [Tool; 33] = [
     tool("mute", Sound, Changes, &["on"], "mutes (true) or unmutes (false) the sound"),
     tool("media", Sound, Changes, &["button"], "presses a media button: play_pause, next or previous"),
     tool("screenshot", Screen, Changes, &[], "takes a screenshot and says where it was saved"),
+    tool("see_screen", Screen, Reads, &[], "asks the person in the system dialog, then takes a screenshot of the screen and says where it was saved; only when the person allowed the helper to see the screen"),
     tool("lock", Screen, Changes, &[], "locks the screen"),
     tool("notifications", Notifications, Reads, &[], "lists the open notifications with their ids"),
     tool("dismiss_notification", Notifications, Changes, &["id"], "removes the notification with this id"),
@@ -100,12 +101,27 @@ impl Tool {
 }
 
 /// What the person closed to the helper.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Limits {
     /// Areas switched off.
     pub off: Vec<Area>,
     /// The helper only looks and explains (`assistant.act` is off).
     pub read_only: bool,
+    /// The helper may see the screen when asked (`assistant.see_screen`, off until then).
+    pub see_screen: bool,
+    /// Suspicious links in the model's answers are warned about (`assistant.check_links`).
+    pub check_links: bool,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            off: Vec::new(),
+            read_only: false,
+            see_screen: false,
+            check_links: true,
+        }
+    }
 }
 
 impl Limits {
@@ -113,6 +129,8 @@ impl Limits {
     pub fn closes(&self, tool: &Tool) -> Option<&'static str> {
         if self.off.contains(&tool.area) {
             Some("the person switched this area off for the helper")
+        } else if tool.name == "see_screen" && !self.see_screen {
+            Some("the person has not allowed the helper to see the screen")
         } else if self.read_only && tool.risk != Reads {
             Some("the person lets the helper only look, not act; they change that in Settings")
         } else {
@@ -209,6 +227,7 @@ mod tests {
         let limits = Limits {
             off: vec![Area::Power],
             read_only: true,
+            ..Limits::default()
         };
         let all = reach(&limits);
         assert!(!all.acts);
@@ -229,5 +248,29 @@ mod tests {
         assert!(find("format_disk").is_none());
         assert_eq!(Call::new("wifi", &[("on", "true")]).arg("on"), "true");
         assert_eq!(Call::new("wifi", &[]).arg("on"), "");
+    }
+
+    #[test]
+    fn seeing_the_screen_needs_the_persons_switch() {
+        let tool = find("see_screen").unwrap();
+        assert_eq!(tool.area, Area::Screen);
+        assert_eq!(tool.risk, Risk::Reads);
+        // Off (the default): closed even though looking is otherwise allowed.
+        let limits = Limits::default();
+        assert!(limits.closes(tool).is_some());
+        // On: open, also while the helper may only look.
+        let on = Limits {
+            see_screen: true,
+            read_only: true,
+            ..Limits::default()
+        };
+        assert!(on.closes(tool).is_none());
+        // A switched-off Screen area closes it still.
+        let off = Limits {
+            off: vec![Area::Screen],
+            see_screen: true,
+            ..Limits::default()
+        };
+        assert!(off.closes(tool).is_some());
     }
 }

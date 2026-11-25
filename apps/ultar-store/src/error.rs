@@ -2,25 +2,9 @@
 
 use std::fmt;
 
-/// What can go wrong on a catalogue source.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SourceError {
-    /// The catalogue file could not be read (missing, denied).
-    Unreadable,
-    /// The catalogue body is not valid TOML or does not follow the format.
-    Damaged,
-    /// There is no signature file next to the catalogue.
-    Unsigned,
-    /// The signature does not match the body.
-    BadSignature,
-    /// The signature is well-formed but no trusted key matches it.
-    UnknownSigner,
-    /// The catalogue format version is newer than this app understands.
-    TooNew,
-    /// A downloaded package does not match the size or SHA-256 the signed catalogue pins
-    /// (or the catalogue pins none for an online package); it was discarded.
-    PackageMismatch,
-}
+/// What can go wrong on a catalogue source. Defined in the shared crate `ultar-catalog`
+/// (the shell's search reads catalogues with the same errors); re-exported here.
+pub use ultar_catalog::source::SourceError;
 
 /// What can go wrong on an operation with the system (launcher, files).
 #[derive(Debug, Clone, PartialEq, Eq)]

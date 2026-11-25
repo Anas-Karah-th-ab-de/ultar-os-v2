@@ -196,6 +196,12 @@ pub enum Request {
         /// The text.
         text: String,
     },
+    /// An editing key typed on the on-screen keyboard (input method only): the focused
+    /// field gets it as a key press and release.
+    ImeKey {
+        /// The key.
+        key: super::ImeKey,
+    },
     /// Reads the pixels of an output (needs [`Rights::CAPTURE`]).
     Capture {
         /// The output.
@@ -348,6 +354,26 @@ pub enum Request {
         /// driver reports.
         per_second: u8,
     },
+    /// The accessibility view of the output (needs [`Rights::OUTPUT_CONFIG`]: the display
+    /// service passes `accessibility.zoom`, `accessibility.zoom_percent` and
+    /// `accessibility.colour_filter` on). The magnifier scales the output around the
+    /// pointer; the colour filter is a final colour matrix over every pixel.
+    ConfigureVisual {
+        /// The magnifier is on (`accessibility.zoom`).
+        zoom: bool,
+        /// Magnification in percent, [`super::MIN_ZOOM_PERCENT`] (the output as it is) to
+        /// [`super::MAX_ZOOM_PERCENT`] (`accessibility.zoom_percent`).
+        zoom_percent: u16,
+        /// The colour filter (`accessibility.colour_filter`).
+        filter: super::ColourFilter,
+    },
+    /// A short flash over the whole output, for the visual alert (needs [`Rights::SHELL`]:
+    /// the shell asks for it when a notification alerts and `accessibility.visual_alert`
+    /// is on). Answered by nothing; the flash goes by itself after `ms`.
+    VisualAlert {
+        /// How long the flash stays, in milliseconds, 1 to [`super::MAX_FLASH_MS`].
+        ms: u32,
+    },
     /// The keyboard helpers of the accessibility page and the compose key (needs
     /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
     /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
@@ -363,6 +389,15 @@ pub enum Request {
         mouse_keys: bool,
         /// The key that starts a compose sequence.
         compose_key: super::ComposeKey,
+    },
+    /// Which keys switch the input language and whether every window keeps its own
+    /// (needs [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
+    /// `keyboard.switch_shortcut` and `keyboard.per_window` on).
+    ConfigureKeyboard {
+        /// The combination that makes the next layout of the list active.
+        switch_shortcut: super::SwitchShortcut,
+        /// Every window remembers its own input language and gets it back on focus.
+        per_window: bool,
     },
     /// The app draws the header of this toplevel itself (needs
     /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
@@ -403,6 +438,7 @@ impl Request {
             Request::ReadDrop { .. } => 22,
             Request::TextInput { .. } => 23,
             Request::ImeCommit { .. } => 24,
+            Request::ImeKey { .. } => 48,
             Request::Capture { .. } => 25,
             Request::Unlock { .. } => 26,
             Request::RequestActivation { .. } => 27,
@@ -425,6 +461,9 @@ impl Request {
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
             Request::ConfigureKeyHelpers { .. } => 46,
+            Request::ConfigureKeyboard { .. } => 47,
+            Request::ConfigureVisual { .. } => 56,
+            Request::VisualAlert { .. } => 57,
         }
     }
 
@@ -551,6 +590,7 @@ impl Request {
             Request::ImeCommit { text } => {
                 w.str(text, MAX_IME_TEXT);
             }
+            Request::ImeKey { key } => key.encode(w),
             Request::Capture { output } => {
                 w.u32(output.0);
             }
@@ -633,6 +673,17 @@ impl Request {
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
             }
+            Request::ConfigureVisual {
+                zoom,
+                zoom_percent,
+                filter,
+            } => {
+                w.bool(*zoom).u16(*zoom_percent);
+                filter.encode(w);
+            }
+            Request::VisualAlert { ms } => {
+                w.u32(*ms);
+            }
             Request::ConfigureKeyHelpers {
                 sticky_keys,
                 slow_keys,
@@ -645,6 +696,13 @@ impl Request {
                     .bool(*bounce_keys)
                     .bool(*mouse_keys);
                 compose_key.encode(w);
+            }
+            Request::ConfigureKeyboard {
+                switch_shortcut,
+                per_window,
+            } => {
+                switch_shortcut.encode(w);
+                w.bool(*per_window);
             }
             _ => {}
         }

@@ -45,7 +45,11 @@ impl State {
             | Request::DetectOutputs
             | Request::ConfigurePointer { .. }
             | Request::ConfigureKeyRepeat { .. }
-            | Request::ConfigureKeyHelpers { .. }) => self.output_request(client, r),
+            | Request::ConfigureKeyHelpers { .. }
+            | Request::ConfigureKeyboard { .. }) => self.output_request(client, r),
+            r @ (Request::ConfigureVisual { .. } | Request::VisualAlert { .. }) => {
+                self.visual_request(client, r)
+            }
             Request::Hello { app_id, .. } => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.hello = true;
@@ -224,6 +228,7 @@ impl State {
                 Ok(())
             }
             Request::ImeCommit { text } => self.ime_commit(client, text),
+            Request::ImeKey { key } => self.ime_key(client, key),
             Request::Unlock { surface } => self.unlock(client, surface),
             Request::RequestActivation { serial } => {
                 self.request_activation(client, serial);

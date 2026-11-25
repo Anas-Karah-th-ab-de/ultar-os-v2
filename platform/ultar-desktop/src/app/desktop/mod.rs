@@ -29,6 +29,8 @@ pub const APP_ID: &str = "org.ultar.desktop";
 const BUS_POLL: Duration = Duration::from_millis(500);
 /// How long a launch waits for its activation token.
 const TOKEN_WAIT_MS: u64 = 300;
+/// How long the visual-alert flash stays (the compositor's limit is 1000 ms).
+const FLASH_MS: u32 = 200;
 
 /// The open popup surface.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +105,9 @@ fn read_services(link: &Link, d: &mut Desktop) {
                 .collect();
         }
     }
+    // The Store's cached, signature-checked catalogue for the overview search
+    // (search.source.store); no network. Absent or unverified: nothing offered.
+    d.overview.store = crate::model::store::load_from_env();
 }
 
 /// The person's remembered searches, read beside the shell (only shown when
@@ -214,8 +219,20 @@ impl DesktopApp {
                 ..Outcome::none()
             })?;
         }
+        self.send_visual_alert();
         self.host.draw()?;
         Ok(())
+    }
+
+    /// A notification alerted while `accessibility.visual_alert` is on: flash the
+    /// screen through the compositor (the shell cannot draw over other windows).
+    fn send_visual_alert(&mut self) {
+        if self.shell.d.notes.take_flash() {
+            let _ = self
+                .host
+                .client
+                .send(&Request::VisualAlert { ms: FLASH_MS });
+        }
     }
 
     fn poll_bus(&mut self) -> Result<(), AppError> {
@@ -254,10 +271,9 @@ impl DesktopApp {
         {
             self.apply_display_mode();
         }
-        if keys
-            .iter()
-            .any(|k| k == keyboard::LAYOUTS || k == keyboard::ACTIVE)
-        {
+        if keys.iter().any(|k| {
+            k == keyboard::LAYOUTS || k == keyboard::ACTIVE || k == keyboard::INPUT_LANGUAGES
+        }) {
             self.apply_keyboard()?;
         }
         if keys.iter().any(|k| k == link::BAR_POSITION) && !self.bar_fixed {
@@ -266,7 +282,7 @@ impl DesktopApp {
                 return self.reshape(Shape { bar: place });
             }
         }
-        self.sync_history(&keys)?;
+        self.sync_local(&keys)?;
         if any {
             if self.look.theme != self.shell.d.theme {
                 self.look.theme = self.shell.d.theme;
@@ -274,6 +290,20 @@ impl DesktopApp {
             self.rebuild(Outcome::surfaces())?;
         }
         Ok(())
+    }
+
+    /// What the shell keeps or reads beside the settings: the Store's catalogue, the history.
+    fn sync_local(&mut self, keys: &[String]) -> Result<(), AppError> {
+        self.sync_store_catalog(keys);
+        self.sync_history(keys)
+    }
+
+    /// search.source.store changed: read the Store's cached catalogue again (a fresh verified
+    /// cache may have appeared); the switch itself gates what is offered.
+    fn sync_store_catalog(&mut self, keys: &[String]) {
+        if keys.iter().any(|k| k == "search.source.store") {
+            self.shell.d.overview.store = crate::model::store::load_from_env();
+        }
     }
 
     /// search.history changed: keep the file beside the shell in step (save when on, delete

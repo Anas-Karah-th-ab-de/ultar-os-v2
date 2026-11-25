@@ -6038,14 +6038,18 @@ version = "0.8.0"
 dependencies = [
  "rustix",
  "ultar-accountd",
+ "ultar-agentd",
  "ultar-bus",
  "ultar-call",
  "ultar-desktop",
  "ultar-displayd",
  "ultar-i18n",
+ "ultar-ime",
  "ultar-launcher",
+ "ultar-llm-bus",
  "ultar-sessiond",
  "ultar-settings",
+ "ultar-store",
  "ultar-surface",
  "ultar-ui",
  "ultar-update",
@@ -8513,6 +8517,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-catalog"
+version = "0.8.0"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek 2.2.0",
+ "hex",
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+ "tempfile",
+ "toml 0.8.23",
+ "ultar-i18n",
+]
+
+[[package]]
 name = "ultar-check"
 version = "0.8.0"
 dependencies = [
@@ -8573,15 +8592,19 @@ dependencies = [
 name = "ultar-desktop"
 version = "0.8.0"
 dependencies = [
+ "ed25519-dalek 2.2.0",
+ "hex",
  "serde",
  "serde_json",
  "toml 0.8.23",
  "ultar-brand",
  "ultar-bus",
+ "ultar-catalog",
  "ultar-compositor",
  "ultar-dialog-core",
  "ultar-hal",
  "ultar-i18n",
+ "ultar-ime",
  "ultar-lock-core",
  "ultar-service",
  "ultar-settings",
@@ -9133,6 +9156,7 @@ dependencies = [
  "toml 0.8.23",
  "ultar-brand",
  "ultar-bus",
+ "ultar-catalog",
  "ultar-i18n",
  "ultar-surface",
  "ultar-ui",

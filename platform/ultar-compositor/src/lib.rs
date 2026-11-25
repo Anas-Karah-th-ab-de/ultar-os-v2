@@ -24,6 +24,7 @@ pub mod config;
 pub mod conn;
 pub mod cursor;
 pub mod decor;
+pub mod effects;
 pub mod geom;
 pub mod keymap;
 pub mod msg;

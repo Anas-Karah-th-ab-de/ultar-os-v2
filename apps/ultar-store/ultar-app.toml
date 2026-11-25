@@ -17,6 +17,12 @@ modes       = ["mobile", "desktop"]  # both: the layout class switches with the 
 required    = []
 optional    = []
 
+[open]
+# store://app/<id>            the app's page (the shell's "Details in Store", overview search)
+# store://app/<id>?action=remove   the removal dialog (the shell's "Remove app")
+# The launcher hands the URI to a fresh instance as ULTAR_OPEN_URI (src/deeplink.rs).
+schemes     = ["store"]
+
 [permissions]
 # The store never touches hardware or files of other apps; its only network use is
 # HTTPS to the store server (signed catalogue + packages). Everything else

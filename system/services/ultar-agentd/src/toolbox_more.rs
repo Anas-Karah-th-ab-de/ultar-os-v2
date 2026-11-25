@@ -4,6 +4,7 @@
 use crate::help;
 use crate::toolbox::{done, flag, BusTools, BAD, CALL_TIME};
 use crate::tools::Outcome;
+use ultar_bus::messages::agent::StepOutcome;
 use ultar_bus::messages::bluetooth::{BtOutcome, Set as SetBluetooth};
 use ultar_bus::messages::capture::{Screenshot, ShotOutcome};
 use ultar_bus::messages::lock::Lock;
@@ -44,6 +45,19 @@ impl BusTools<'_> {
             Ok(ShotOutcome::Saved(path)) => done(true, &format!("saved as {path}")),
             _ => done(false, "no screenshot was taken"),
         }
+    }
+
+    /// Seeing the screen (`assistant.see_screen`): the person consents in the system dialog
+    /// first; without that nothing is captured. The picture is saved for the person; the
+    /// helper tells where it is.
+    pub(crate) fn see_screen(&self) -> Outcome {
+        if !self.confirmed("see_screen") {
+            return (
+                StepOutcome::NotConfirmed,
+                "the person did not confirm".to_owned(),
+            );
+        }
+        self.screenshot()
     }
 
     pub(crate) fn lock(&self) -> Outcome {

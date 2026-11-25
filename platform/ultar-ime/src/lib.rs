@@ -74,6 +74,38 @@ pub enum Purpose {
 }
 
 impl Purpose {
+    /// Alle Feldarten in der Reihenfolge ihrer Kennzahl auf dem Draht
+    /// (`Request::TextInput.purpose`, `Event::ImeState.purpose`).
+    pub const ALL: [Purpose; 10] = [
+        Purpose::Text,
+        Purpose::Multiline,
+        Purpose::Password,
+        Purpose::Pin,
+        Purpose::Phone,
+        Purpose::Number,
+        Purpose::Email,
+        Purpose::Url,
+        Purpose::Search,
+        Purpose::Send,
+    ];
+
+    /// Kennzahl auf dem Draht.
+    pub fn code(self) -> u8 {
+        Purpose::ALL
+            .iter()
+            .position(|p| *p == self)
+            .and_then(|i| u8::try_from(i).ok())
+            .unwrap_or(0)
+    }
+
+    /// Feldart einer Kennzahl; unbekannte Zahlen gelten als einfacher Text.
+    pub fn from_code(code: u8) -> Purpose {
+        Purpose::ALL
+            .get(usize::from(code))
+            .copied()
+            .unwrap_or(Purpose::Text)
+    }
+
     /// Kein Lernen, keine Vorschläge, kein Verlauf der Zwischenablage.
     pub fn sensitive(self) -> bool {
         matches!(self, Purpose::Password | Purpose::Pin)
@@ -746,7 +778,7 @@ pub fn hit(placed: &[Placed], x: f32, y: f32, bias: f32) -> Option<usize> {
         } else {
             0.0
         };
-        if best.map_or(true, |(_, bd)| d < bd) {
+        if best.is_none_or(|(_, bd)| d < bd) {
             best = Some((i, d));
         }
     }
@@ -756,6 +788,15 @@ pub fn hit(placed: &[Placed], x: f32, y: f32, bias: f32) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn purpose_codes_round_trip() {
+        for p in Purpose::ALL {
+            assert_eq!(Purpose::from_code(p.code()), p);
+        }
+        assert_eq!(Purpose::from_code(200), Purpose::Text);
+        assert_eq!(Purpose::Password.code(), 2);
+    }
 
     fn chars(rows: &[Row], kind: RowKind) -> Vec<String> {
         rows.iter()
@@ -1017,7 +1058,7 @@ mod tests {
             let m = metrics(360.0, 780.0, true, 1, false);
             let p = place(&r, 0.0, 0.0, 360.0, &m, 1.0);
             let last_keys_row = r.len() - 2;
-            let bk = p.iter().filter(|k| k.row == last_keys_row).last().unwrap();
+            let bk = p.iter().rfind(|k| k.row == last_keys_row).unwrap();
             assert_eq!(bk.def.act, Act::Backspace);
             assert!(bk.r.right() > 350.0, "{lang:?}");
             let act = p.last().unwrap();

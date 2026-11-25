@@ -91,6 +91,17 @@ fn smallest(request: &str, toolbox: &dyn Toolbox, limits: &Limits) -> (Text, Vec
     (text, steps)
 }
 
+/// The model's words as the answer; with `assistant.check_links` a suspicious link in them
+/// adds the warning of the catalogue (the words stay verbatim, the warning is translated).
+fn checked(words: String, limits: &Limits) -> Text {
+    if limits.check_links && crate::links::first_suspicious(&words).is_some() {
+        return says("agent.says_checked")
+            .with(TextArg::Verbatim(words))
+            .with(TextArg::Key("agent.link_warning".to_owned()));
+    }
+    says("agent.says").with(TextArg::Verbatim(words))
+}
+
 /// Lets a model work on the request; `None` when the model did not keep to the form
 /// (the caller falls back to the smallest help).
 fn with_model(
@@ -105,8 +116,7 @@ fn with_model(
     for _ in 0..MAX_STEPS {
         match model::read(&thinker.think(&system, &prompt)?)? {
             Move::Say(text) => {
-                let text = says("agent.says").with(TextArg::Verbatim(text));
-                return Some((text, steps));
+                return Some((checked(text, limits), steps));
             }
             Move::Use(call) => {
                 let (outcome, told) = run(&call, toolbox, limits, &mut steps);
@@ -248,6 +258,7 @@ mod tests {
         let off = Limits {
             off: vec![Area::Sound],
             read_only: false,
+            ..Limits::default()
         };
         let fixed = answer("mute", Brain::Minimal, &script(&[]), &notes, &off);
         assert_eq!(fixed.text.key, "agent.not_allowed");
@@ -273,11 +284,67 @@ mod tests {
         let look = Limits {
             off: Vec::new(),
             read_only: true,
+            ..Limits::default()
         };
         let refused = answer("mute", Brain::Minimal, &script(&[]), &notes, &look);
         assert_eq!(refused.text.key, "agent.act_off");
         assert!(!model::system_prompt(&look).contains("- wifi("));
         assert!(model::system_prompt(&look).contains("- network_status("));
+    }
+
+    #[test]
+    fn suspicious_links_are_warned_about_only_when_checking_is_on() {
+        const LINK: &str = "{\"say\":\"open http://203.0.113.7/login to continue\"}";
+        const GOOD: &str = "{\"say\":\"open https://example.com to continue\"}";
+        let notes = Notes::default();
+        let on = Limits {
+            check_links: true,
+            ..Limits::default()
+        };
+        let a = answer("what next?", Brain::Local, &script(&[LINK]), &notes, &on);
+        assert_eq!(a.text.key, "agent.says_checked");
+        assert_eq!(a.text.args.len(), 2);
+        assert!(matches!(&a.text.args[0], TextArg::Verbatim(t) if t.contains("203.0.113.7")));
+        assert!(matches!(&a.text.args[1], TextArg::Key(k) if k == "agent.link_warning"));
+        // Off (the person switched it): the words as they are.
+        let off = Limits {
+            check_links: false,
+            ..Limits::default()
+        };
+        let b = answer("what next?", Brain::Local, &script(&[LINK]), &notes, &off);
+        assert_eq!(b.text.key, "agent.says");
+        // A harmless link is not warned about.
+        let c = answer("what next?", Brain::Local, &script(&[GOOD]), &notes, &on);
+        assert_eq!(c.text.key, "agent.says");
+    }
+
+    #[test]
+    fn seeing_the_screen_is_closed_until_the_person_allowed_it() {
+        const SEE: &str = "{\"tool\":\"see_screen\"}";
+        const SAY: &str = "{\"say\":\"ok\"}";
+        let notes = Notes::default();
+        let a = answer(
+            "what is on my screen?",
+            Brain::Local,
+            &script(&[SEE, SAY]),
+            &notes,
+            &Limits::default(),
+        );
+        assert_eq!(a.steps[0].outcome, StepOutcome::NotAllowed);
+        assert!(notes.0.borrow().is_empty());
+        let on = Limits {
+            see_screen: true,
+            ..Limits::default()
+        };
+        let b = answer(
+            "what is on my screen?",
+            Brain::Local,
+            &script(&[SEE, SAY]),
+            &notes,
+            &on,
+        );
+        assert_eq!(b.steps[0].outcome, StepOutcome::Done);
+        assert_eq!(notes.0.borrow()[0].tool, "see_screen");
     }
 
     #[test]

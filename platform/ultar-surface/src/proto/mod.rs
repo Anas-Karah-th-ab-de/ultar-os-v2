@@ -7,6 +7,7 @@
 
 mod event;
 mod event_codec;
+mod ime;
 mod input_config;
 mod key_helpers;
 mod outputs;
@@ -16,12 +17,15 @@ mod shell;
 #[cfg(test)]
 mod tests;
 mod types;
+mod visual;
 mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
+pub use ime::ImeKey;
 pub use input_config::{
-    PointerSize, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS, MAX_KEY_REPEATS_PER_SECOND,
-    MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS, MIN_POINTER_SPEED,
+    PointerSize, SwitchShortcut, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS,
+    MAX_KEY_REPEATS_PER_SECOND, MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS,
+    MIN_POINTER_SPEED,
 };
 pub use key_helpers::ComposeKey;
 pub use outputs::{
@@ -36,4 +40,7 @@ pub use shell::{
     MAX_WORKSPACES,
 };
 pub use types::*;
+pub use visual::{
+    ColourFilter, DEFAULT_ZOOM_PERCENT, MAX_FLASH_MS, MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT,
+};
 pub use windows::{WindowEntry, MAX_LISTED_WINDOWS};

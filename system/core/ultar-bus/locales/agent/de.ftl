@@ -5,6 +5,9 @@ agent.not_confirmed = Nicht bestätigt, also ist nichts passiert.
 agent.not_allowed = Das darf der Helfer nicht.
 agent.act_off = Handeln ist ausgeschaltet. Schalte unter Einstellungen › Assistent „Assistent darf handeln“ ein; bis dahin sehe ich nur nach und erkläre.
 agent.says = {arg0}
+agent.says_checked = {arg0}
+    {arg1}
+agent.link_warning = Vorsicht: Diese Antwort enthält einen Link, der verdächtig aussieht. Prüfe ihn, bevor du ihn öffnest.
 agent.too_many_steps = Zu viele Schritte. Frag noch einmal kürzer.
 agent.minimal.help = Auf diesem Gerät gibt es kein Sprachmodell und auf keinem gekoppelten Gerät eines, das es verleiht. Ich verstehe im Moment nur feste Befehle: eine App öffnen, Lautstärke und eine Zahl, stumm, WLAN an oder aus, auf anderem Gerät fortsetzen, meine Geräte.
 agent.action.restart = Dieses Gerät neu starten
@@ -13,6 +16,7 @@ agent.action.suspend = Dieses Gerät schlafen legen
 agent.action.setting_set = Eine heikle Systemeinstellung ändern
 agent.action.close_app = Eine App schließen; Ungespeichertes darin geht verloren
 agent.action.sign_out = Abmelden und die offenen Apps schließen
+agent.action.see_screen = Dem Helfer erlauben, den Bildschirm zu sehen (Bildschirmfoto)
 agent.help.pairing = Zwei deiner Geräte koppelst du unter Einstellungen › Verbund: Ein Gerät zeigt einen sechsstelligen Code, das andere tippt ihn ein. Der Code gilt fünf Minuten und fünf Versuche.
 agent.help.continue = Zum Weitermachen auf einem anderen Gerät öffne das Menü der App in der oberen Leiste und wähle „Auf anderem Gerät weitermachen“, oder drücke Super+M. Das andere Gerät fragt seine Person, bevor etwas geöffnet wird.
 agent.help.files = Eine Datei wird einem gekoppelten Gerät angeboten und dort erst gespeichert, wenn seine Person annimmt. Empfangene Dateien liegen im Eingang des Verbunds.
