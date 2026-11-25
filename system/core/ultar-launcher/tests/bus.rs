@@ -94,12 +94,12 @@ fn the_shell_steers_apps_and_only_the_administrator_installs() {
     let (code, out, err) = ulaunch(&world, "admin.sock", &["install", &package]);
     assert_eq!(code, Some(0), "{err}");
     assert!(out.contains("store.good uid=20000 app.standard"), "{out}");
-    let (code, out, _) = ulaunch(
+    let (code, out, err) = ulaunch(
         &world,
         "shell.sock",
         &["start", "store.good", "--token", "9"],
     );
-    assert_eq!(code, Some(0));
+    assert_eq!(code, Some(0), "{out}{err}");
     assert!(
         out.contains("running") && out.contains("already=false"),
         "{out}"

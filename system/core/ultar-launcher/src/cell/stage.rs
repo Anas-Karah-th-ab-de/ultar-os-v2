@@ -167,7 +167,11 @@ pub fn stage_one(words: &[String]) -> i32 {
 fn confine(plan: &CellPlan) -> Result<(), CellFailure> {
     ultar_sys::set_umask(0o077);
     ultar_sys::set_limit(Resource::Core, 0, 0).map_err(|_| CellFailure::Setup)?;
-    if let Some(n) = plan.nproc {
+    // The limit counts every process and thread of the user. An app gets a user of its own
+    // and with it this limit; a cell that stays the launcher's own user (a build under
+    // test, started without the right to change users) would count that user's other
+    // programs too and could not start – there the limit is not set.
+    if let (Some(n), Some(_)) = (plan.nproc, plan.identity) {
         ultar_sys::set_limit(Resource::Processes, n, n).map_err(|_| CellFailure::Setup)?;
     }
     if let Some((uid, gid)) = plan.identity {
