@@ -108,8 +108,13 @@ desk.month.long.7 = تموز
 desk.month.long.8 = آب
 desk.month.long.9 = أيلول
 desk.note.app.power = الطاقة
+desk.note.app.update = التحديثات
 desk.note.important = مهم
 desk.note.now = الآن
+desk.note.update.available = يتوفر تحديث للنظام
+desk.note.update.restart = أعد تشغيل الجهاز لإكمال التحديث
+desk.note.update.usb = عُثر على تحديث على قرص
+desk.note.update.usb.body = ثبّته من «الإعدادات › التحديثات» ({arg0})
 desk.note.verbatim = {arg0}
 desk.ov.calc = = {value}
 desk.ov.close = إغلاق النافذة: {title}

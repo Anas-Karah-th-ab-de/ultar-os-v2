@@ -108,8 +108,13 @@ desk.month.long.7 = Juli
 desk.month.long.8 = August
 desk.month.long.9 = September
 desk.note.app.power = Energie
+desk.note.app.update = Updates
 desk.note.important = Wichtig
 desk.note.now = jetzt
+desk.note.update.available = Ein Systemupdate ist verfügbar
+desk.note.update.restart = Zum Abschließen des Updates das Gerät neu starten
+desk.note.update.usb = Update auf einem Laufwerk gefunden
+desk.note.update.usb.body = Über Einstellungen › Updates von {arg0} installieren
 desk.note.verbatim = {arg0}
 desk.ov.calc = = {value}
 desk.ov.close = Fenster schließen: {title}

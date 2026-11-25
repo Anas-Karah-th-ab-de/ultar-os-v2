@@ -36,6 +36,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_update_notification_keys_exist_in_every_language() {
+        // The update service posts these keys (ultar-update notify.rs); the shell renders them.
+        for lang in Lang::ALL {
+            let tr = translator(lang).unwrap();
+            for key in [
+                "desk.note.app.update",
+                "desk.note.update.available",
+                "desk.note.update.restart",
+                "desk.note.update.usb",
+                "desk.note.update.usb.body",
+            ] {
+                assert!(tr.catalog(lang).get(key).is_some(), "{key} in {lang:?}");
+            }
+        }
+    }
+
+    #[test]
     fn catalogs_parse_and_have_the_same_keys() {
         let keys = |lang: Lang| {
             let tr = translator(lang).unwrap();
