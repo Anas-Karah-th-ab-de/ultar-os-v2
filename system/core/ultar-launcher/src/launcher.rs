@@ -30,6 +30,10 @@ pub(crate) struct Core {
     pub(crate) stopping: bool,
     /// Apps being uninstalled (no start meanwhile).
     pub(crate) removing: std::collections::BTreeSet<AppId>,
+    /// Default apps (`apps.default.*`), read at start and on `settings.changed`.
+    pub(crate) defaults: crate::defaults::Defaults,
+    /// The autostart list and what was started this session.
+    pub(crate) autostart: crate::defaults::Autostart,
 }
 
 /// The app launcher.
@@ -188,6 +192,8 @@ impl Launcher {
             generation: 0,
             stopping: false,
             removing: std::collections::BTreeSet::new(),
+            defaults: crate::defaults::Defaults::default(),
+            autostart: crate::defaults::Autostart::default(),
         };
         core.write_rights_or_withdraw()?;
         let record = Record::new(Level::Info, "launcher.platform")
