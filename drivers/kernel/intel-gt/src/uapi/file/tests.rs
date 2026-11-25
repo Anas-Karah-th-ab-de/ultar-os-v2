@@ -489,3 +489,37 @@ fn a_stopped_queue_releases_its_fences_and_takes_no_more_jobs() {
     );
     assert_eq!(be.runs.len(), 1);
 }
+
+#[test]
+fn a_bind_queue_names_binds_and_an_empty_exec_follows_the_last_job() {
+    let (mut f, mut be, mut mem) = (File::<Fake>::default(), Fake::default(), Mem::default());
+    let v = vm(&mut f, &mut be);
+    // class 5 is no engine: nothing is asked of the GPU
+    let bq = queue(&mut f, &mut be, v, 5).unwrap();
+    assert!(be.queues.is_empty());
+    let h = create(&mut f, &mut be, 4096).unwrap();
+    let mut arg = bind_arg(v, h, 0, 4096, 0x10000, 0);
+    put32(&mut arg, 12, bq);
+    f.vm_bind(&mut be, &arg, &mut mem).unwrap();
+    // an engine queue or a queue of another address space cannot be named for a bind
+    let q = queue(&mut f, &mut be, v, 0).unwrap();
+    put32(&mut arg, 12, q);
+    assert_eq!(f.vm_bind(&mut be, &arg, &mut mem), Err(Errno::Inval));
+    // and a bind queue runs nothing
+    assert_eq!(f.exec(&mut be, &exec_arg(bq, 0x10000, 0, 0), &mut mem), Err(Errno::Inval));
+    // waiting for idle: the fence of an exec without batch is stored when the last job is over
+    f.exec(&mut be, &exec_arg(q, 0x10000, 0, 0), &mut mem).unwrap();
+    let mut mem = fence_mem(9);
+    let mut idle = exec_arg(q, 0, 0x7000, 1);
+    idle[32] = 0;
+    f.exec(&mut be, &idle, &mut mem).unwrap();
+    f.reap(&mut be, &mut mem);
+    assert_eq!((be.runs.len(), u64_at(&mem.0[1].1, 0)), (1, 0));
+    be.done = 1;
+    f.reap(&mut be, &mut mem);
+    assert_eq!(u64_at(&mem.0[1].1, 0), 9);
+    let mut destroy = [0u8; 24];
+    put32(&mut destroy, 0, bq);
+    f.queue_destroy(&mut be, &destroy).unwrap();
+    assert!(be.freed_queues.is_empty());
+}

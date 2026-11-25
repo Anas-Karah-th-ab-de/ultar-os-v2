@@ -123,7 +123,12 @@ impl<B: Backend> File<B> {
     pub fn vm_bind(&mut self, be: &mut B, arg: &[u8], user: &mut impl User) -> Result<(), Errno> {
         let b = fields(arg, 136, 120, true)?;
         let (vm_id, queue, count) = (u32_at(b, 8), u32_at(b, 12), u32_at(b, 20));
-        if queue != 0 || u32_at(b, 16) != 0 || u32_at(b, 104) != 0 {
+        if u32_at(b, 16) != 0 || u32_at(b, 104) != 0 {
+            return Err(Errno::Inval);
+        }
+        // a bind queue of this address space may be named; binds take effect at once anyway
+        let named = |q: &Queue| q.backend.is_none() && q.vm == vm_id;
+        if queue != 0 && !self.queues.get(&queue).is_some_and(named) {
             return Err(Errno::Inval);
         }
         if count == 0 || count > MAX_BIND_OPS {
