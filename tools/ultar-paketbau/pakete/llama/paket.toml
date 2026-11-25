@@ -118,7 +118,7 @@ build = [
 # ---- the package ----------------------------------------------------------------------------
 
 [[part]]
-name = "llama.cpp"
+name = "llama-cpp"
 kind = "runtime"
 version = "12723"
 source = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b{version}.tar.gz"
