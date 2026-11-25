@@ -134,7 +134,7 @@ fn wrong_sizes_and_unknown_queries_are_refused() {
     let d = beelink();
     assert_eq!(d.query(QUERY_CONFIG, 47, &[]), Err(Errno::Inval));
     assert_eq!(d.query(QUERY_ENGINES, 4096, &[]), Err(Errno::Inval));
-    assert_eq!(d.query(5, 0, &[]), Err(Errno::Inval));
+    assert_eq!(d.query(6, 0, &[]), Err(Errno::Inval));
     assert_eq!(d.query(99, 0, &[]), Err(Errno::Inval));
 }
 
