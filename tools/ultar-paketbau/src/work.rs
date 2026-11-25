@@ -240,12 +240,13 @@ pub fn run_check(site: &Site, recipe: &Recipe, check: &Check) -> Result<String, 
     let dirs = site.dirs();
     let root = site.root.join("empty");
     let at = root.join(recipe.prefix.trim_start_matches('/'));
-    let gpu = match check.gpu {
-        true => "mkdir -p $R/dev/dri $R/sys && mount --rbind /dev/dri $R/dev/dri && mount --rbind /sys $R/sys &&",
-        false => "",
-    };
+    let shared: String = check
+        .share
+        .iter()
+        .map(|d| format!("mkdir -p \"$R{d}\" && mount --rbind '{d}' \"$R{d}\" && "))
+        .collect();
     let script = format!(
-        "R='{}'; rm -rf \"$R\"; mkdir -p '{}' && mount --bind '{}' '{}' && mount -o remount,ro,bind '{}' && {gpu} chroot \"$R\" {}",
+        "R='{}'; rm -rf \"$R\"; mkdir -p '{}' && mount --bind '{}' '{}' && mount -o remount,ro,bind '{}' && {shared} chroot \"$R\" {}",
         root.display(),
         at.display(),
         shipped(site, recipe).display(),

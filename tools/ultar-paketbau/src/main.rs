@@ -102,7 +102,8 @@ fn closure(recipe: &Recipe, tree: &Path) -> Result<(), String> {
 fn host_ready(recipe: &Recipe) -> Result<(), String> {
     for tool in &recipe.host_needs {
         let found = std::process::Command::new("sh")
-            .args(["-c", &format!("command -v {tool} >/dev/null")])
+            .args(["-c", &format!("command -v {tool}")])
+            .stdout(std::process::Stdio::null())
             .status()
             .is_ok_and(|s| s.success());
         if !found {

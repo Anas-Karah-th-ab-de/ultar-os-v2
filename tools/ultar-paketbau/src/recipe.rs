@@ -91,9 +91,10 @@ pub struct Check {
     pub run: String,
     /// What its output must contain.
     pub expect: String,
-    /// Whether the GPU of the build machine is handed in (`/dev/dri`, `/sys`).
+    /// Directories of the build machine handed into that system (for a check that needs
+    /// the GPU: its device files and the kernel's description of the devices).
     #[serde(default)]
-    pub gpu: bool,
+    pub share: Vec<String>,
 }
 
 fn plain_name(s: &str) -> bool {
@@ -204,7 +205,14 @@ impl Recipe {
             out.push("remove: paths below the prefix only".into());
         }
         for c in &self.checks {
-            if !c.run.starts_with(&format!("{}/", self.prefix)) || c.expect.is_empty() {
+            let plain = |d: &String| d.starts_with('/') && !d.contains(['\'', ' ', '"']);
+            if !c.share.iter().all(plain) {
+                out.push(format!(
+                    "check {:?}: share lists absolute directories",
+                    c.name
+                ));
+            }
+            if !c.run.starts_with("{prefix}/") || c.expect.is_empty() {
                 out.push(format!(
                     "check {:?}: runs a program of the package and expects output",
                     c.name
