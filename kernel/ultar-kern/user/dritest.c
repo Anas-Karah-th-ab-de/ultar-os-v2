@@ -2,7 +2,8 @@
  * program uses the Linux xe driver: found in /dev/dri, opened, driver name and version, capabilities and
  * the device queries (two calls each: size, then data); wrong sizes, unknown requests and callers without
  * the right are refused. Then the GPU works for the program: buffers created and mapped, an address
- * space, bindings, a queue per engine, batches that store values into a buffer, waits on user fences,
+ * space, bindings, a queue per engine, batches that store values into a buffer, waits on user fences
+ * and on sync objects,
  * 600 jobs through one ring, rebinding, refusals, cleanup when a process just exits, and a batch that
  * never ends: its queue is stopped, the waiter is let go, and the engine works again afterwards.
  *                                                                                → "DRITEST: ALLES OK"
@@ -124,6 +125,23 @@ struct xe_wait_user_fence {
     uint32_t exec_queue_id, pad2;
     uint64_t reserved[2];
 };
+struct drm_syncobj_create {
+    uint32_t handle, flags;
+};
+struct drm_syncobj_wait {
+    uint64_t handles;
+    int64_t timeout_nsec;
+    uint32_t count_handles, flags, first_signaled, pad;
+};
+struct drm_syncobj_timeline_wait {
+    uint64_t handles, points;
+    int64_t timeout_nsec;
+    uint32_t count_handles, flags, first_signaled, pad;
+};
+#define IOCTL_SYNCOBJ_CREATE _IOWR('d', 0xbf, struct drm_syncobj_create)
+#define IOCTL_SYNCOBJ_DESTROY _IOWR('d', 0xc0, struct drm_syncobj_create)
+#define IOCTL_SYNCOBJ_WAIT _IOWR('d', 0xc3, struct drm_syncobj_wait)
+#define IOCTL_SYNCOBJ_TIMELINE_WAIT _IOWR('d', 0xca, struct drm_syncobj_timeline_wait)
 #define IOCTL_GEM_CLOSE _IOW('d', 0x09, struct drm_gem_close)
 #define IOCTL_GEM_CREATE _IOWR('d', 0x41, struct xe_gem_create)
 #define IOCTL_GEM_MMAP_OFFSET _IOWR('d', 0x42, struct xe_gem_mmap_offset)
@@ -181,7 +199,9 @@ static void version_and_caps(int fd) {
     check("Fähigkeit monotone Zeitstempel", ioctl(fd, IOCTL_GET_CAP, &c) == 0 && c.value == 1);
     c.capability = 0x13;
     c.value = 7;
-    check("Synchronisationsobjekte werden (noch) nicht behauptet", ioctl(fd, IOCTL_GET_CAP, &c) == 0 && c.value == 0);
+    check("Fähigkeit Synchronisationsobjekte", ioctl(fd, IOCTL_GET_CAP, &c) == 0 && c.value == 1);
+    c.capability = 0x5;
+    check("Puffer zwischen Programmen teilen wird nicht behauptet", ioctl(fd, IOCTL_GET_CAP, &c) == 0 && c.value == 0);
     c.capability = 0x999;
     check("unbekannte Fähigkeit: EINVAL", ioctl(fd, IOCTL_GET_CAP, &c) == -1 && errno == EINVAL);
 }
@@ -317,6 +337,41 @@ static void engines(struct gpu *g) {
         struct xe_exec_queue_destroy d = {.exec_queue_id = q};
         check("Warteschlange beendet", q && ioctl(g->fd, IOCTL_QUEUE_DESTROY, &d) == 0);
     }
+}
+
+static int64_t in_ns(int64_t ns) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000000000ll + t.tv_nsec + ns;
+}
+
+/* the end of a job travels through sync objects: a binary one, and a point of a timeline */
+static void sync_objects(struct gpu *g) {
+    int fd = g->fd;
+    uint32_t q = queue(fd, g->vm, 4);
+    struct drm_syncobj_create so = {0}, tl = {0};
+    check("Synchronisationsobjekte angelegt", ioctl(fd, IOCTL_SYNCOBJ_CREATE, &so) == 0 && ioctl(fd, IOCTL_SYNCOBJ_CREATE, &tl) == 0 && so.handle && tl.handle);
+    struct drm_syncobj_wait w = {.handles = (uintptr_t)&so.handle, .count_handles = 1, .timeout_nsec = in_ns(50000000)};
+    check("Warten auf ein Objekt, an dem nichts hängt: EINVAL", ioctl(fd, IOCTL_SYNCOBJ_WAIT, &w) == -1 && errno == EINVAL);
+    store_batch(g->batch, DATA_VA + 512, 0x51c0);
+    struct xe_sync syncs[2] = {{.type = 0, .flags = 1, .addr = so.handle}, {.type = 1, .flags = 1, .addr = tl.handle, .timeline_value = 3}};
+    struct xe_exec e = {.exec_queue_id = q, .num_syncs = 2, .syncs = (uintptr_t)syncs, .address = BATCH_VA, .num_batch_buffer = 1};
+    int sent = q && ioctl(fd, IOCTL_EXEC, &e) == 0;
+    w.timeout_nsec = in_ns(2000000000ll);
+    check("Auftrag meldet sein Ende über ein Synchronisationsobjekt", sent && ioctl(fd, IOCTL_SYNCOBJ_WAIT, &w) == 0 && g->data[128] == 0x51c0);
+    uint64_t point = 3;
+    struct drm_syncobj_timeline_wait tw = {.handles = (uintptr_t)&tl.handle, .points = (uintptr_t)&point, .count_handles = 1, .timeout_nsec = in_ns(2000000000ll)};
+    check("und über einen Punkt einer Zeitleiste", ioctl(fd, IOCTL_SYNCOBJ_TIMELINE_WAIT, &tw) == 0);
+    /* the next job waits for the first one's object before it runs */
+    store_batch(g->batch, DATA_VA + 516, 0x51c1);
+    struct xe_sync chain[2] = {{.type = 0, .flags = 0, .addr = so.handle}, {.type = 2, .flags = 1, .addr = (uintptr_t)&g->fence, .timeline_value = 0x51}};
+    struct xe_exec e2 = {.exec_queue_id = q, .num_syncs = 2, .syncs = (uintptr_t)chain, .address = BATCH_VA, .num_batch_buffer = 1};
+    g->fence = 0;
+    struct xe_wait_user_fence uw = {.addr = (uintptr_t)&g->fence, .value = 0x51, .mask = ~0ull, .timeout = 2000000000ll};
+    check("ein Auftrag, der auf ein Synchronisationsobjekt wartet, läuft danach", ioctl(fd, IOCTL_EXEC, &e2) == 0 && ioctl(fd, IOCTL_WAIT_USER_FENCE, &uw) == 0 && g->data[129] == 0x51c1);
+    check("Synchronisationsobjekte beendet", ioctl(fd, IOCTL_SYNCOBJ_DESTROY, &so) == 0 && ioctl(fd, IOCTL_SYNCOBJ_DESTROY, &tl) == 0);
+    struct xe_exec_queue_destroy d = {.exec_queue_id = q};
+    ioctl(fd, IOCTL_QUEUE_DESTROY, &d);
 }
 
 static void many_and_rebind(struct gpu *g) {
@@ -471,6 +526,7 @@ int main(void) {
             printf("    Grafik nicht in Betrieb: nur die Abfragen geprüft\n");
         } else if (setup(&g, fd) == 0) {
             engines(&g);
+            sync_objects(&g);
             many_and_rebind(&g);
             gpu_refusals(&g);
             exit_without_cleanup();

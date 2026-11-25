@@ -4,11 +4,12 @@
 //!
 //! Follows the request semantics of Linux' `xe` driver (`xe_bo.c`, `xe_vm.c`,
 //! `xe_exec_queue.c`, `xe_exec.c`, `xe_wait_user_fence.c`; MIT). Simpler than Linux in these
-//! points, each refused with an error instead of done wrongly: no sync objects (user fences
-//! only), no sparse or user-pointer bindings, a binding can only be replaced or removed whole,
+//! points, each refused with an error instead of done wrongly: a job that waits for a sync
+//! object makes its exec wait (Linux queues it), no sparse or user-pointer bindings, a binding can only be replaced or removed whole,
 //! one batch per exec, one engine per queue.
 
 use super::drm::User;
+use super::sync::{self, Point, Sync, SyncObj};
 use super::{EngineClass, Errno};
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -51,12 +52,8 @@ const MAX_VMS: usize = 16;
 const MAX_QUEUES: usize = 64;
 const MAX_BINDS: usize = 16384;
 const MAX_BIND_OPS: u32 = 256;
-const MAX_SYNCS: u32 = 16;
 const MAX_FENCES: usize = 1024;
 const VA_END: u64 = 1 << 48;
-
-const SYNC_TYPE_USER_FENCE: u32 = 2;
-const SYNC_FLAG_SIGNAL: u32 = 1;
 
 struct Bind<B: Backend> {
     va: u64,
@@ -89,6 +86,7 @@ pub struct File<B: Backend> {
     buffers: BTreeMap<u32, (B::Buffer, u64, u32)>,
     vms: BTreeMap<u32, Vm<B>>,
     queues: BTreeMap<u32, Queue>,
+    pub(super) syncs: BTreeMap<u32, SyncObj>,
     fences: Vec<Fence>,
     /// A wait in progress: address, value and the time it ends.
     waiting: Option<(u64, u64, u64)>,
@@ -101,6 +99,7 @@ impl<B: Backend> Default for File<B> {
             buffers: BTreeMap::new(),
             vms: BTreeMap::new(),
             queues: BTreeMap::new(),
+            syncs: BTreeMap::new(),
             fences: Vec::new(),
             waiting: None,
             next_id: 1,
@@ -135,6 +134,16 @@ fn fields(arg: &[u8], len: usize, zero_from: usize, no_ext: bool) -> Result<&[u8
 }
 
 impl<B: Backend> File<B> {
+    /// The backend's number of queue `id`, if the file has it.
+    pub(super) fn queue_backend(&self, id: u32) -> Option<u32> {
+        self.queues.get(&id).map(|q| q.backend)
+    }
+
+    /// A new handle or id.
+    pub(super) fn new_id(&mut self) -> u32 {
+        self.id()
+    }
+
     fn id(&mut self) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
@@ -334,27 +343,6 @@ impl<B: Backend> File<B> {
         Ok(())
     }
 
-    /// Reads `count` sync entries (48 bytes each) and returns the user fences among them as
-    /// `(address, value)`. Sync objects are not there yet.
-    fn syncs(user: &mut impl User, addr: u64, count: u32) -> Result<Vec<(u64, u64)>, Errno> {
-        if count > MAX_SYNCS {
-            return Err(Errno::Inval);
-        }
-        let mut out = Vec::new();
-        for i in 0..count as u64 {
-            let s = user.read(addr + i * 48, 48).ok_or(Errno::Fault)?;
-            let s = fields(&s, 48, 32, true)?;
-            if u32_at(s, 8) != SYNC_TYPE_USER_FENCE {
-                return Err(Errno::OpNotSupp);
-            }
-            if u32_at(s, 12) != SYNC_FLAG_SIGNAL || !u64_at(s, 16).is_multiple_of(8) {
-                return Err(Errno::Inval);
-            }
-            out.push((u64_at(s, 16), u64_at(s, 24)));
-        }
-        Ok(out)
-    }
-
     /// `DRM_IOCTL_XE_VM_BIND`. The operations take effect before this returns, so the fences
     /// are stored right away.
     pub fn vm_bind(&mut self, be: &mut B, arg: &[u8], user: &mut impl User) -> Result<(), Errno> {
@@ -369,7 +357,8 @@ impl<B: Backend> File<B> {
         if !self.vms.contains_key(&vm_id) {
             return Err(Errno::NoEnt);
         }
-        let fences = Self::syncs(user, u64_at(b, 112), u32_at(b, 108))?;
+        let syncs = sync::read(user, u64_at(b, 112), u32_at(b, 108))?;
+        self.syncs_ready(be, &syncs)?;
         if count == 1 {
             self.bind_op(be, vm_id, &b[24..104])?;
         } else {
@@ -379,9 +368,17 @@ impl<B: Backend> File<B> {
                 self.bind_op(be, vm_id, &op)?;
             }
         }
-        for (addr, value) in fences {
-            if !user.write(addr, &value.to_le_bytes()) {
-                return Err(Errno::Fault);
+        self.finish_now(&syncs, user)
+    }
+
+    /// Everything the request's syncs signal is done right now.
+    fn finish_now(&mut self, syncs: &[Sync], user: &mut impl User) -> Result<(), Errno> {
+        self.syncs_signal(syncs, Point::Signaled);
+        for s in syncs {
+            if let Sync::UserFence { addr, value } = s {
+                if !user.write(*addr, &value.to_le_bytes()) {
+                    return Err(Errno::Fault);
+                }
             }
         }
         Ok(())
@@ -471,26 +468,26 @@ impl<B: Backend> File<B> {
         if be.queue_banned(q.backend) {
             return Err(Errno::Canceled);
         }
-        let fences = Self::syncs(user, u64_at(b, 16), u32_at(b, 12))?;
-        if self.fences.len() + fences.len() > MAX_FENCES {
+        let (backend, batch) = (q.backend, u64_at(b, 24));
+        let syncs = sync::read(user, u64_at(b, 16), u32_at(b, 12))?;
+        self.syncs_ready(be, &syncs)?;
+        if self.fences.len() + syncs.len() > MAX_FENCES {
             return Err(Errno::Again);
         }
         if batches == 0 {
-            for (addr, value) in fences {
-                if !user.write(addr, &value.to_le_bytes()) {
-                    return Err(Errno::Fault);
-                }
-            }
-            return Ok(());
+            return self.finish_now(&syncs, user);
         }
-        let seqno = be.queue_run(q.backend, u64_at(b, 24))?;
-        for (addr, value) in fences {
-            self.fences.push(Fence {
-                queue: id,
-                seqno,
-                addr,
-                value,
-            });
+        let seqno = be.queue_run(backend, batch)?;
+        self.syncs_signal(&syncs, Point::Job { queue: id, seqno });
+        for s in &syncs {
+            if let Sync::UserFence { addr, value } = s {
+                self.fences.push(Fence {
+                    queue: id,
+                    seqno,
+                    addr: *addr,
+                    value: *value,
+                });
+            }
         }
         Ok(())
     }
@@ -546,6 +543,7 @@ impl<B: Backend> File<B> {
             be.vm_free(vm.backend);
         }
         self.buffers.clear();
+        self.syncs.clear();
         self.fences.clear();
     }
 }

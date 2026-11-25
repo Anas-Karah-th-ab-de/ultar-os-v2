@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 
 pub mod drm;
 pub mod file;
+pub mod sync;
 
 /// First driver request number of DRM.
 pub const DRM_COMMAND_BASE: u32 = 0x40;

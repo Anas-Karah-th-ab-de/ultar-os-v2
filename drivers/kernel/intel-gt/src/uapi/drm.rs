@@ -14,6 +14,10 @@ pub const DRM_GEM_CLOSE: u32 = 0x09;
 
 /// Capability: time stamps are monotonic.
 pub const CAP_TIMESTAMP_MONOTONIC: u64 = 0x6;
+/// Capability: sync objects.
+pub const CAP_SYNCOBJ: u64 = 0x13;
+/// Capability: sync objects with timelines.
+pub const CAP_SYNCOBJ_TIMELINE: u64 = 0x14;
 /// The highest capability number DRM knows.
 const CAP_LAST: u64 = 0x15;
 
@@ -70,7 +74,7 @@ fn get_cap(arg: &mut [u8]) -> Result<(), Errno> {
         return Err(Errno::Inval);
     }
     let value = match u64_at(arg, 0) {
-        CAP_TIMESTAMP_MONOTONIC => 1,
+        CAP_TIMESTAMP_MONOTONIC | CAP_SYNCOBJ | CAP_SYNCOBJ_TIMELINE => 1,
         1..=CAP_LAST => 0,
         _ => return Err(Errno::Inval),
     };
@@ -126,6 +130,15 @@ pub fn ioctl<B: Backend>(
     file.reap(be, user);
     match (r.nr, r.driver()) {
         (DRM_GEM_CLOSE, _) => file.gem_close(arg),
+        (0xbf, _) => file.syncobj_create(arg),
+        (0xc0, _) => file.syncobj_destroy(arg),
+        (0xc3, _) => file.syncobj_wait(be, arg, user, false),
+        (0xca, _) => file.syncobj_wait(be, arg, user, true),
+        (0xc4, _) => file.syncobj_set(arg, user, None),
+        (0xc5, _) => file.syncobj_set(arg, user, Some(super::sync::Point::Signaled)),
+        (0xcb, _) => file.syncobj_query(be, arg, user),
+        (0xcc, _) => file.syncobj_transfer(arg),
+        (0xcd, _) => file.syncobj_timeline_signal(arg, user),
         (_, Some(super::XE_GEM_CREATE)) => file.gem_create(be, arg),
         (_, Some(super::XE_GEM_MMAP_OFFSET)) => file.gem_mmap_offset(arg),
         (_, Some(super::XE_VM_CREATE)) => file.vm_create(be, arg),

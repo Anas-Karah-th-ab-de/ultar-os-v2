@@ -68,14 +68,13 @@ fn full_block_describes_the_three_engines() {
     // register lists, 16 bytes per entry (address, value kept by the GuC, flags): render has
     // five (with the compute switch), copy and compute four
     assert_eq!((get(&b, 0), get(&b, 4)), (base + regs as u32, 5));
-    assert_eq!(
-        (get(&b, 3 * 32 * 8), get(&b, 3 * 32 * 8 + 4)),
-        (base + regs as u32 + 5 * 16, 4)
-    );
-    assert_eq!(
-        (get(&b, 4 * 32 * 8), get(&b, 4 * 32 * 8 + 4)),
-        (base + regs as u32 + 9 * 16, 4)
-    );
+    for (class, first) in [(3, 5), (4, 9)] {
+        let at = class * 32 * 8;
+        assert_eq!(
+            (get(&b, at), get(&b, at + 4)),
+            (base + regs as u32 + first * 16, 4)
+        );
+    }
     let list: Vec<(u32, u32)> = (0..13)
         .map(|i| (get(&b, regs + i * 16), get(&b, regs + i * 16 + 8)))
         .collect();

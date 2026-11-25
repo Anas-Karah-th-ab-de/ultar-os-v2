@@ -256,7 +256,12 @@ fn capabilities_announce_only_what_exists() {
         .map(|_| u64_at(&arg, 8))
     };
     assert_eq!(cap(drm::CAP_TIMESTAMP_MONOTONIC, &mut mem), Ok(1));
-    assert_eq!(cap(0x13, &mut mem), Ok(0), "sync objects are not there yet");
+    assert_eq!(cap(0x13, &mut mem), Ok(1), "sync objects");
+    assert_eq!(
+        cap(0x5, &mut mem),
+        Ok(0),
+        "no buffer sharing between programs yet"
+    );
     assert_eq!(cap(0x99, &mut mem), Err(Errno::Inval));
 }
 

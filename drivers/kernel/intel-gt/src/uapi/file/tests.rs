@@ -95,7 +95,7 @@ impl User for Mem {
     }
 }
 
-fn create(f: &mut File<Fake>, be: &mut Fake, size: u64) -> Result<u32, Errno> {
+pub fn create(f: &mut File<Fake>, be: &mut Fake, size: u64) -> Result<u32, Errno> {
     let mut arg = [0u8; 56];
     put64(&mut arg, 8, size);
     put32(&mut arg, 16, 1);
@@ -103,13 +103,13 @@ fn create(f: &mut File<Fake>, be: &mut Fake, size: u64) -> Result<u32, Errno> {
     f.gem_create(be, &mut arg).map(|_| u32_at(&arg, 28))
 }
 
-fn vm(f: &mut File<Fake>, be: &mut Fake) -> u32 {
+pub fn vm(f: &mut File<Fake>, be: &mut Fake) -> u32 {
     let mut arg = [0u8; 32];
     f.vm_create(be, &mut arg).unwrap();
     u32_at(&arg, 12)
 }
 
-fn bind_arg(vm: u32, handle: u32, offset: u64, range: u64, addr: u64, op: u32) -> [u8; 136] {
+pub fn bind_arg(vm: u32, handle: u32, offset: u64, range: u64, addr: u64, op: u32) -> [u8; 136] {
     let mut arg = [0u8; 136];
     put32(&mut arg, 8, vm);
     put32(&mut arg, 20, 1);
@@ -121,7 +121,7 @@ fn bind_arg(vm: u32, handle: u32, offset: u64, range: u64, addr: u64, op: u32) -
     arg
 }
 
-fn queue(f: &mut File<Fake>, be: &mut Fake, vm: u32, class: u16) -> Result<u32, Errno> {
+pub fn queue(f: &mut File<Fake>, be: &mut Fake, vm: u32, class: u16) -> Result<u32, Errno> {
     let mut mem = Mem(vec![(0x9000, vec![0; 8])]);
     mem.0[0].1[0] = class as u8;
     let mut arg = [0u8; 48];
@@ -133,7 +133,7 @@ fn queue(f: &mut File<Fake>, be: &mut Fake, vm: u32, class: u16) -> Result<u32, 
         .map(|_| u32_at(&arg, 20))
 }
 
-fn exec_arg(queue: u32, batch: u64, syncs: u64, n: u32) -> [u8; 56] {
+pub fn exec_arg(queue: u32, batch: u64, syncs: u64, n: u32) -> [u8; 56] {
     let mut arg = [0u8; 56];
     put32(&mut arg, 8, queue);
     put32(&mut arg, 12, n);
@@ -144,7 +144,7 @@ fn exec_arg(queue: u32, batch: u64, syncs: u64, n: u32) -> [u8; 56] {
 }
 
 /// Memory with one user-fence sync entry at 0x7000 that stores `value` at 0x8000.
-fn fence_mem(value: u64) -> Mem {
+pub fn fence_mem(value: u64) -> Mem {
     let mut sync = vec![0u8; 48];
     put32(&mut sync, 8, 2);
     put32(&mut sync, 12, 1);
@@ -328,12 +328,12 @@ fn bad_queue_and_exec_requests_are_refused() {
     let mut two = exec_arg(q, 0, 0, 0);
     two[32] = 2;
     assert_eq!(f.exec(&mut be, &two, &mut mem), Err(Errno::Inval));
-    // a sync object instead of a user fence
+    // a sync type that does not exist
     let mut m = fence_mem(1);
-    put32(&mut m.0[0].1, 8, 0);
+    put32(&mut m.0[0].1, 8, 7);
     assert_eq!(
         f.exec(&mut be, &exec_arg(q, 0, 0x7000, 1), &mut m),
-        Err(Errno::OpNotSupp)
+        Err(Errno::Inval)
     );
     assert_eq!(
         f.exec(&mut be, &exec_arg(q, 0, 0x6000, 1), &mut mem),
