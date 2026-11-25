@@ -190,7 +190,7 @@ if [ "${OPTIN:-1}" != 0 ]; then
   echo "VERDICT: $(grep -aE 'GTTEST: (ALLES OK|FEHLER|no Intel)' "$W/serial.log" | tail -1 || echo 'GTTEST: no verdict')"
   if [ -n "$BINS" ] && [ -e "$BINS/dritest" ]; then
     echo "--- dritest (a program on /dev/dri/renderD128)"
-    sed -n '/Programm dritest/,/DRITEST: /p' "$W/serial.log" | head -60
+    sed -n '/Programm dritest/,/DRITEST: /p' "$W/serial.log" | head -140
     echo "VERDICT: $(grep -aE 'DRITEST: ' "$W/serial.log" | tail -1 || echo 'DRITEST: no verdict')"
   fi
 fi

@@ -18,6 +18,7 @@ pub mod buffer;
 pub mod connector;
 pub mod device;
 pub mod gt;
+pub mod gt_exec;
 pub mod gt_job;
 pub mod gt_run;
 pub mod gt_uapi;

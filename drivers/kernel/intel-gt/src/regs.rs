@@ -198,6 +198,9 @@ pub const GFX_MODE: u32 = 0x29c;
 /// The engine runs contexts, not the old ring mode.
 pub const GFX_DISABLE_LEGACY_MODE: u32 = 1 << 3;
 
+/// First of the registers that say how memory mapped with a "PAT index" is cached.
+pub const PAT_INDEX0: u32 = 0x4800;
+
 /// Configuration of the GT's clocks.
 pub const RPM_CONFIG0: u32 = 0xd00;
 

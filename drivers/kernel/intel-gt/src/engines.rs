@@ -88,6 +88,19 @@ pub fn setup(hw: &mut impl Hw, base: u32, status_page_ggtt: u32) {
     hw.write(base + RING_HWS_PGA, status_page_ggtt);
 }
 
+/// Caching of the five "PAT indexes" page table entries can name on Xe_LPG, as Linux programs
+/// them (`xe_pat.c`): 0 write-back, 1 write-through, 2 uncached, 3 write-back and the GPU sees
+/// what is in the CPU's caches, 4 the same in both directions. The kernel maps memory of
+/// programs with index 3, so nothing has to be flushed by hand.
+pub const XE_LPG_PAT: [u32; 5] = [0, 1 << 2, 3 << 2, 2, 3];
+
+/// Writes [`XE_LPG_PAT`]. Needs the GT forcewake domain awake.
+pub fn program_pat(hw: &mut impl Hw) {
+    for (i, value) in XE_LPG_PAT.iter().enumerate() {
+        hw.write(PAT_INDEX0 + 4 * i as u32, *value);
+    }
+}
+
 /// Frequency in Hz at which the engines' time stamp counters run, from the crystal the
 /// firmware configured and the divider (`RPM_CONFIG0`); programs scale GPU times with it.
 /// `None` for a crystal code that does not exist. As Linux' `xe_gt_clock.c`.
@@ -203,6 +216,22 @@ mod tests {
                 (0x22098, 0xffff_ffff),
                 (0x2229c, 0x0008_0008),
                 (0x22080, 0x0123_4000)
+            ]
+        );
+    }
+
+    #[test]
+    fn pat_table_is_written_in_order() {
+        let mut s = Sim::new();
+        program_pat(&mut s);
+        assert_eq!(
+            s.writes,
+            [
+                (0x4800, 0),
+                (0x4804, 4),
+                (0x4808, 12),
+                (0x480c, 2),
+                (0x4810, 3)
             ]
         );
     }

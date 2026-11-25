@@ -107,7 +107,13 @@ pub struct Ct {
     tail: u32,
     head: u32,
     fence: u16,
+    /// Events that arrived while another one was waited for (action, payload), oldest first;
+    /// at most [`BACKLOG`] are kept. The owner takes them out with [`Ct::take_backlog`].
+    backlog: Vec<(u32, Vec<u32>)>,
 }
+
+/// Number of events kept for the owner while it waits for another one.
+pub const BACKLOG: usize = 64;
 
 fn self_cfg(hw: &mut impl Hw, key: u32, len: u32, val: u64) -> Result<()> {
     let request = [
@@ -153,6 +159,7 @@ impl Ct {
             tail: 0,
             head: 0,
             fence: 0,
+            backlog: Vec::new(),
         })
     }
 
@@ -246,6 +253,12 @@ impl Ct {
                         hint,
                     })
                 }
+                Some(G2h::Event { action: a, payload }) => {
+                    if self.backlog.len() == BACKLOG {
+                        self.backlog.remove(0);
+                    }
+                    self.backlog.push((a, payload));
+                }
                 Some(_) => {}
                 None => {
                     if hw.now_us().saturating_sub(start) >= timeout_us as u64 {
@@ -258,6 +271,11 @@ impl Ct {
                 }
             }
         }
+    }
+
+    /// The events that arrived while others were waited for (see [`Ct::wait_event`]).
+    pub fn take_backlog(&mut self) -> Vec<(u32, Vec<u32>)> {
+        core::mem::take(&mut self.backlog)
     }
 
     /// Takes the next message out of the G2H ring; `None` when it is empty.

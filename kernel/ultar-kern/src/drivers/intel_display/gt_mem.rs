@@ -171,6 +171,16 @@ pub struct TableMem {
 }
 
 impl TableMem {
+    /// Frees the table pages `pages` of one address space that ended.
+    pub fn free(&mut self, pages: &[u64]) {
+        for p in pages {
+            if let Some(i) = self.pages.iter().position(|x| x == p) {
+                self.pages.swap_remove(i);
+                crate::mem::free_run(*p, 1);
+            }
+        }
+    }
+
     /// Frees every table page (the caller made sure no context uses the tables any more).
     pub fn release(self) {
         for p in self.pages {

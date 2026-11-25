@@ -197,8 +197,28 @@ const ADS_CAPTURE: usize = ADS_PRIVATE_DATA + 8;
 const CAPTURE_WORDS: usize = 2 * 16 + 2 * 16 + 2;
 const ENGINE_ENABLED_MASKS: usize = SYSTEM_INFO + MAPPING_TABLE_SIZE;
 const REGSET_SIZE: usize = 4096;
-/// Status page address and interrupt mask: what the GuC restores after an engine reset.
-const REGSET_PER_ENGINE: [u32; 2] = [0x80, 0xa8];
+/// What the GuC restores after an engine reset, per engine (offset, flags); see [`regset`].
+const REGSET_PER_ENGINE: [(u32, u32); 4] =
+    [(0x98, 0), (0x29c, REGSET_MASKED), (0x80, 0), (0xa8, 0)];
+/// The register is written with a mask in its upper half.
+const REGSET_MASKED: u32 = 1 << 0;
+/// The switch of the compute engines: lost with a reset of the render engine's domain.
+const RCU_MODE: u32 = 0x1_4800;
+
+/// The registers the GuC saves before it resets engine `e` and writes back afterwards
+/// (address, flags): interrupt handling, context mode (without it the engine would come back
+/// in the old ring mode and run nothing), status page, interrupt mask – and with the render
+/// engine the switch of the compute engines.
+fn regset(e: &Engine) -> Vec<(u32, u32)> {
+    let mut list: Vec<(u32, u32)> = REGSET_PER_ENGINE
+        .iter()
+        .map(|(off, flags)| (e.mmio_base + off, *flags))
+        .collect();
+    if e.class == Class::Render {
+        list.push((RCU_MODE, REGSET_MASKED));
+    }
+    list
+}
 
 fn regset_offset() -> usize {
     page_align(STATIC_SIZE)
@@ -250,7 +270,7 @@ pub fn full(
     dist_dbs_populated: u32,
     engines: &[Engine],
 ) -> Result<Vec<u8>> {
-    if engines.len() * REGSET_PER_ENGINE.len() * 16 > REGSET_SIZE {
+    if engines.len() * (REGSET_PER_ENGINE.len() + 1) * 16 > REGSET_SIZE {
         return Err(Error::Invalid(
             "too many engines for the register list page",
         ));
@@ -274,9 +294,11 @@ pub fn full(
         // register list of this engine: address, then the 16-bit count
         let list = (class * MAX_INSTANCES_PER_CLASS + inst) * 8;
         put(&mut blob, list, ads_ggtt + regs as u32);
-        put(&mut blob, list + 4, REGSET_PER_ENGINE.len() as u32);
-        for off in REGSET_PER_ENGINE {
-            put(&mut blob, regs, e.mmio_base + off);
+        let saved = regset(e);
+        put(&mut blob, list + 4, saved.len() as u32);
+        for (addr, flags) in saved {
+            put(&mut blob, regs, addr);
+            put(&mut blob, regs + 8, flags);
             regs += 16;
         }
         if first_of_class {

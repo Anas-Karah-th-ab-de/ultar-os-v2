@@ -32,6 +32,8 @@ enum Source {
     Obj(Arc<MemObj>),
     /// The framebuffer; `true` when opened for writing.
     Fb(bool),
+    /// The GPU render node: `off` names one of the opener's buffers (svcdev/dri.rs).
+    Gpu(Arc<crate::svcdev::dri::DriFd>),
 }
 
 /// `mmap` of a memory object or the framebuffer; `None`: the descriptor is neither (or not open).
@@ -39,6 +41,7 @@ pub fn mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Op
     let src = crate::syscall::with(|p| match p.fd(fd as u64).map(|d| (&d.kind, d.flags & 3)) {
         Some((FdKind::Mem(m, _), _)) => Some(Source::Obj(m.clone())),
         Some((FdKind::Fb(_), mode)) => Some(Source::Fb(mode != 0)),
+        Some((FdKind::Dri(d), _)) => Some(Source::Gpu(d.clone())),
         _ => None,
     })
     .flatten()?;
@@ -57,6 +60,10 @@ pub fn mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Op
             }
             Backing::of(m, write, off)
         }
+        Source::Gpu(d) => match crate::svcdev::dri::mmap_object(&d, off, len) {
+            Some(m) if shared => Backing::of(m, write, 0),
+            _ => return Some(-EINVAL),
+        },
         Source::Fb(_) if !shared => return Some(-ENODEV),
         Source::Fb(false) if write => return Some(-EACCES),
         Source::Fb(_) => Backing::Framebuffer(off),
