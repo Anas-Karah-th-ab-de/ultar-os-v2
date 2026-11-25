@@ -157,7 +157,7 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface", "platform/ultar-textview"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface", "platform/ultar-textview", "platform/ultar-tor"]
 
 [[allow]]
 from = "apps"
@@ -170,6 +170,12 @@ crates = ["system/core/ultar-bus", "system/core/ultar-i18n", "system/core/ultar-
 from = "apps"
 to = "system-core"
 crates = ["system/core/ultar-pkg"]
+
+# The browser plays the sound of pages through the sound card: the node's path from the HAL.
+[[allow]]
+from = "apps"
+to = "system-hal"
+crates = ["system/hal/ultar-hal-system"]
 
 # The office library (text buffer with encodings and undo, documents, sheets, PDF) is shared by
 # the editor and the office apps; it has no window and no process of its own.

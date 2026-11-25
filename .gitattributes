@@ -1,0 +1,5 @@
+# Files that end up in the system image or are compared byte for byte (ultar-check compares
+# rootfs/etc/os-release with ultar_brand::release::OS_RELEASE) keep LF on every checkout,
+# also on Windows with core.autocrlf=true.
+rootfs/** text=auto eol=lf
+*.sh text eol=lf

@@ -17,6 +17,9 @@ pub struct MoreState {
     pub apps: Vec<AppEntry>,
     /// Why the apps could not be read.
     pub apps_error: Option<Text>,
+    /// The default-app choices: (`apps.default.<kind>` key, the installed apps that declare
+    /// the kind), from the launcher. The Settings page offers these instead of free text.
+    pub candidates: Vec<(String, Vec<String>)>,
     /// Mounted drives (volume service).
     pub drives: Vec<Drive>,
     /// Why the drives could not be read.

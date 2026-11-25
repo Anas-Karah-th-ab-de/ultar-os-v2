@@ -1,7 +1,7 @@
 //! The desktop's bus connection: ports and the topics it follows (settings, notifications,
 //! power, device capabilities). Without a bus every service part stays disabled.
 
-use crate::model::quick::PowerMode;
+use crate::model::quick::{PowerMode, RemovableMedia};
 use crate::model::Desktop;
 use crate::ports::bus::BusPorts;
 use crate::ports::SettingsPort;
@@ -12,25 +12,30 @@ use ultar_bus::messages::power::PowerState;
 use ultar_bus::messages::settings::{Changed, SettingValue};
 use ultar_bus::{Client, ClientOptions, TypedSubscription};
 use ultar_ui::tokens::ThemeKind;
+use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 
 /// The setting that puts the bar at the bottom (standard) or at the top with a dock.
 /// (`bar.layout` of the settings schema: `bottom_bar` | `top_bar_dock`, panel "Desktop bar").
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 12] = [
+pub const FOLLOWED: [&str; 16] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
     "accessibility.reduce_motion",
+    "accessibility.double_click_ms",
     "search.source.apps",
     "search.source.settings",
     "search.source.calculator",
     "search.source.commands",
+    "search.source.characters",
+    "search.history",
     "search.arabic_variants",
     "notifications.do_not_disturb",
     "display.night_light.enabled",
     "power.mode",
+    "apps.removable_media",
 ];
 
 /// Ports and subscriptions.
@@ -130,12 +135,27 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
         ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
         ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
         ("accessibility.reduce_motion", SettingValue::Flag(on)) => d.values.reduce_motion = *on,
+        // Off keeps nothing: the remembered entries go (the file is deleted by the app).
+        ("search.history", SettingValue::Flag(on)) => {
+            d.overview.sources.history = *on;
+            if !on {
+                d.overview.history.clear();
+            }
+        }
+        ("accessibility.double_click_ms", SettingValue::Integer(v))
+            if (i64::from(MIN_DOUBLE_CLICK_MS)..=i64::from(MAX_DOUBLE_CLICK_MS)).contains(v) =>
+        {
+            d.values.double_click_ms = Some(*v as u16);
+        }
         (k, SettingValue::Flag(on)) if d.overview.sources.set(k, *on) => {}
         ("display.night_light.enabled", SettingValue::Flag(on)) => d.values.night = *on,
         ("power.mode", SettingValue::Text(t)) => {
             if let Some(m) = PowerMode::parse(t) {
                 d.values.power = m;
             }
+        }
+        ("apps.removable_media", SettingValue::Text(t)) => {
+            d.values.removable_media = RemovableMedia::parse(t);
         }
         (k, SettingValue::Integer(v)) if Some(k) == brightness_key(d).as_deref() => {
             d.values.brightness = Some((*v).clamp(0, 100) as u8);
@@ -186,6 +206,76 @@ mod tests {
         );
         assert_eq!(d.values.brightness, Some(100));
         apply_setting(&mut d, "x", &SettingValue::Flag(true));
+    }
+
+    #[test]
+    fn switching_history_off_clears_the_remembered_entries() {
+        use crate::model::history::Record;
+        let mut d = Desktop::new(Lang::En);
+        d.overview.history.record(Record::Search("weather".into()));
+        assert!(d.overview.sources.history && !d.overview.history.entries.is_empty());
+        apply_setting(&mut d, "search.history", &SettingValue::Flag(false));
+        assert!(!d.overview.sources.history);
+        assert!(d.overview.history.entries.is_empty(), "off keeps nothing");
+        // On again: storing resumes (the list starts empty).
+        apply_setting(&mut d, "search.history", &SettingValue::Flag(true));
+        assert!(d.overview.sources.history);
+        d.overview
+            .history
+            .record(Record::App("org.ultar.files".into()));
+        assert_eq!(d.overview.history.entries.len(), 1);
+    }
+
+    #[test]
+    fn the_double_click_time_reaches_the_state_within_its_range() {
+        let mut d = Desktop::new(Lang::En);
+        assert_eq!(d.values.double_click_ms, None, "not read yet");
+        assert!(FOLLOWED.contains(&"accessibility.double_click_ms"));
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Integer(700),
+        );
+        assert_eq!(d.values.double_click_ms, Some(700));
+        // Outside the range or of the wrong type: the last good value stays.
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Integer(5000),
+        );
+        apply_setting(
+            &mut d,
+            "accessibility.double_click_ms",
+            &SettingValue::Flag(true),
+        );
+        assert_eq!(d.values.double_click_ms, Some(700));
+    }
+
+    #[test]
+    fn the_removable_media_setting_reaches_the_state() {
+        use crate::model::quick::RemovableMedia;
+        let mut d = Desktop::new(Lang::En);
+        assert!(FOLLOWED.contains(&"apps.removable_media"));
+        assert_eq!(d.values.removable_media, RemovableMedia::Ask);
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("open_files".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::OpenFiles);
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("nothing".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::Nothing);
+        // an unknown word keeps the default (ask)
+        apply_setting(
+            &mut d,
+            "apps.removable_media",
+            &SettingValue::Text("nonsense".into()),
+        );
+        assert_eq!(d.values.removable_media, RemovableMedia::Ask);
     }
 
     #[test]

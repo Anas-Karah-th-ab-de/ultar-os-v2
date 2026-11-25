@@ -174,14 +174,16 @@ impl App {
     }
 
     /// The window follows the accessibility settings like the shell does: larger text, the
-    /// high-contrast palette, no motion. Read from the panels the service listed.
+    /// high-contrast palette, no motion, the double-click time. Read from the panels the
+    /// service listed.
     fn follow_access(&mut self) {
-        let flag = |key: &str| {
+        let item = |key: &str| {
             let items = &self.state.panel("accessibility")?.items;
-            match items.iter().find(|i| i.key == key)?.value {
-                SettingValue::Flag(on) => Some(on),
-                _ => None,
-            }
+            items.iter().find(|i| i.key == key).map(|i| &i.value)
+        };
+        let flag = |key: &str| match item(key) {
+            Some(SettingValue::Flag(on)) => Some(*on),
+            _ => None,
         };
         let large = flag("accessibility.large_text");
         let contrast = flag("accessibility.high_contrast");
@@ -194,6 +196,10 @@ impl App {
         }
         if let Some(on) = still {
             self.ui.set_reduce_motion(on);
+        }
+        if let Some(SettingValue::Integer(ms)) = item("accessibility.double_click_ms") {
+            // Out of range: the toolkit falls back to its default.
+            self.ui.set_double_click_ms(u16::try_from(*ms).unwrap_or(0));
         }
     }
 

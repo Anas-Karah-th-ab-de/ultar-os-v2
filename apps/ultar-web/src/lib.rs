@@ -26,6 +26,8 @@ pub mod chrome;
 pub mod engine;
 pub mod filter;
 pub mod ipc;
+pub mod media;
 pub mod model;
+pub mod privacy;
 pub mod url;
 pub mod window;

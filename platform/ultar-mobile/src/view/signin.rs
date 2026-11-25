@@ -35,6 +35,16 @@ pub fn error_label(s: &LockState, now_ms: u64) -> Option<Label> {
         SignInError::NoService => "mobile.signin.no_service",
         SignInError::NoUser => "mobile.signin.no_user",
         SignInError::OtherUser => "mobile.signin.other_user",
+        SignInError::OutsideHours => {
+            let clock = ultar_lock_core::prefs::clock_text;
+            return Some(Label::key_with(
+                "mobile.signin.outside_hours",
+                &[
+                    ("from", &clock(s.prefs.from_min)),
+                    ("until", &clock(s.prefs.until_min)),
+                ],
+            ));
+        }
     };
     Some(Label::key(key))
 }

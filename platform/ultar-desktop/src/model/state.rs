@@ -124,6 +124,8 @@ pub struct OverviewState {
     pub query: String,
     /// What the search looks through (Settings > Search).
     pub sources: super::search::Sources,
+    /// The remembered searches and opened results (`search.history`).
+    pub history: super::history::History,
     /// The conversation with the helper (asked from the search or in its own sheet).
     pub helper: super::helper::Helper,
     /// Shown workspace and how many there are (`Event::Workspaces`); `None` until the

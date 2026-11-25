@@ -237,6 +237,11 @@ impl<'a> Reader<'a> {
         self.take(len)
     }
 
+    /// Bytes not read yet (an extended message may carry optional trailing fields).
+    pub fn remaining(&self) -> usize {
+        self.data.len() - self.pos
+    }
+
     /// Fails if bytes are left over.
     pub fn end(&self) -> Result<(), WireError> {
         if self.pos == self.data.len() {

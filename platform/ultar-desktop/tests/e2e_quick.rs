@@ -118,6 +118,7 @@ impl World {
             lang: ultar_i18n::Lang::Ar,
             light: false,
             bar: None,
+            state: None,
         };
         let (stop2, seen2) = (stop.clone(), seen.clone());
         let shell = std::thread::spawn(move || {

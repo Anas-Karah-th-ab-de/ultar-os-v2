@@ -2,25 +2,35 @@
 //! Independent of the backend and of the event loop, so it can be driven
 //! by tests directly.
 
+mod accel;
+mod bounce_keys;
 mod budget;
+mod compose;
+mod compose_table;
 mod grabs;
 mod input;
+mod key_helpers;
 mod key_repeat;
 mod keys;
 mod layers;
 mod memory;
+mod mouse_keys;
 mod output_config;
 mod outputs;
 pub mod phone;
 mod requests;
 mod session;
 mod shell;
+mod slow_keys;
+mod sticky_keys;
 mod text;
 mod transfer;
 mod windows;
 mod workspaces;
 
+pub use accel::Acceleration;
 pub use input::PointerGrab;
+pub use key_helpers::KeyHelpers;
 pub use key_repeat::KeyRepeat;
 pub use layers::Placed;
 pub use output_config::{Identify, OutputManagement, Provisional, MAX_QUEUED_SETUPS};
@@ -144,6 +154,8 @@ pub struct Keyboard {
     pub events: u64,
     /// How a held key repeats (`Request::ConfigureKeyRepeat`).
     pub repeat: KeyRepeat,
+    /// The keyboard helpers and the compose key (`Request::ConfigureKeyHelpers`).
+    pub helpers: KeyHelpers,
 }
 
 /// Number sources.
@@ -458,6 +470,7 @@ impl State {
             self.transfers.next_deadline(),
             indicator,
             self.output_deadline(),
+            self.slow_keys_deadline(),
         ]
         .into_iter()
         .flatten()

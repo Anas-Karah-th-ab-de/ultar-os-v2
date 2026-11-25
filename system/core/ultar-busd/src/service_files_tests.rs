@@ -288,9 +288,10 @@ fn the_broker_definition_parses_and_gives_each_service_its_own_private_socket() 
         );
     }
     // One per service of IDS but the broker itself, plus the administrator's,
-    // init's and the modem service's (ril: root on the phone, no group) – and one
-    // apps' socket, whose peers are named by the launcher's app map.
-    assert_eq!(sockets.len(), IDS.len() + 2);
+    // init's, the modem service's (ril: root on the phone, no group) and the
+    // update service's (updated: root, no group) – and one apps' socket, whose
+    // peers are named by the launcher's app map.
+    assert_eq!(sockets.len(), IDS.len() + 3);
     let apps = parsed
         .listeners
         .iter()

@@ -24,6 +24,7 @@ pub use access::{
     A11yNode, A11yState, Role, CELL_PARTS, MENU_LEVEL_PARTS, MENU_PARTS, TOAST_PARTS,
 };
 pub use error::UiError;
+pub use settings::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 
 pub(crate) use layers::{Drag, DragKind, Layers, MenuOrigin, MenuState, PaintStep, Tip};
 
@@ -183,6 +184,14 @@ struct Dirty {
     rects: Vec<Rect>,
 }
 
+/// The accessibility settings a window follows (`accessibility.reduce_motion`,
+/// `accessibility.double_click_ms`). They survive [`Ui::clear`]: a rebuild keeps them.
+#[derive(Clone, Copy, Debug)]
+struct Access {
+    reduce_motion: bool,
+    double_click_ms: u16,
+}
+
 /// A widget tree, its layout, its interaction state and its drawing resources.
 pub struct Ui {
     pub(crate) nodes: Vec<Node>,
@@ -190,7 +199,7 @@ pub struct Ui {
     pub(crate) order: Vec<NodeId>,
     pub(crate) env: PaintEnv,
     pub(crate) mode: InputMode,
-    reduce_motion: bool,
+    access: Access,
     size: Size,
     background: Option<ColorRole>,
     pub(crate) tr: Translator,
@@ -242,7 +251,10 @@ impl Ui {
             order: Vec::new(),
             env,
             mode,
-            reduce_motion: false,
+            access: Access {
+                reduce_motion: false,
+                double_click_ms: crate::tokens::motion::DOUBLE_CLICK as u16,
+            },
             size,
             background: Some(ColorRole::Ground),
             tr: translator,

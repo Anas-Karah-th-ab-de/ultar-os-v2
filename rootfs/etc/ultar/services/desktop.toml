@@ -7,8 +7,11 @@ exec = "/usr/bin/ultar-desktop"
 args = [
     "--compositor", "/run/ultar/ui/compositor.sock",
     "--bus", "/run/ultar/bus/desktop.sock",
+    "--state", "/data/ultar/desktop",
 ]
 user = 816
+# Its own folder: the per-person search history (search.history), nothing else.
+dirs = ["/data/ultar/desktop"]
 after = ["compositor", "launcher", "settingsd", "lock"]
 restart = "always"
 

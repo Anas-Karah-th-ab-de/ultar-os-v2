@@ -260,7 +260,9 @@ impl LockProgram {
         };
         let secret = Secret::new(ui.text(field).unwrap_or_default().to_owned());
         let _ = ui.set_text(field, "");
-        let effect = self.state.submit(secret, now_ms());
+        let minute = local_now(zone_offset(super::tz::DEFAULT))
+            .map_or(12 * 60, |t| u16::from(t.hour) * 60 + u16::from(t.minute));
+        let effect = self.state.submit(secret, now_ms(), minute);
         self.effect(effect)?;
         self.show()
     }

@@ -6,9 +6,11 @@ use std::time::Duration;
 use ultar_bus::messages::account_local::{LocalUsers, SetSession, UsersReply as AccountReply};
 use ultar_bus::messages::auth::{UserInfo, Users as AuthUsers, UsersReply as AuthReply};
 use ultar_bus::messages::lock::{Lock, LockReply};
+use ultar_bus::messages::notify::{Post, PostReply};
 use ultar_bus::messages::session::{
     SessionOutcome, SessionState, SignOut, SignedIn, SwitchUser, Users,
 };
+use ultar_bus::messages::settings::{Changed, Get, GetReply, SettingValue};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 
@@ -17,8 +19,17 @@ const POLICY: &str = r#"
 identity = "system.sessiond"
 register = ["session"]
 publish = ["session.state"]
-subscribe = ["account.users"]
-call = ["auth.users", "lock.lock", "account.session"]
+subscribe = ["account.users", "settings.changed"]
+call = ["auth.users", "lock.lock", "account.session", "settings.get", "notify.post"]
+
+[[rule]]
+identity = "system.settingsd"
+register = ["settings"]
+publish = ["settings.changed"]
+
+[[rule]]
+identity = "system.notifyd"
+register = ["notify"]
 
 [[rule]]
 identity = "system.authd"
@@ -44,8 +55,10 @@ identity = "app.notes"
 call = ["session.sign_out"]
 "#;
 
-const IDS: [&str; 6] = [
+const IDS: [&str; 8] = [
     "system.sessiond",
+    "system.settingsd",
+    "system.notifyd",
     "system.authd",
     "system.lock",
     "system.accountd",
@@ -58,6 +71,12 @@ struct Seen {
     locks: u32,
     lock_ok: bool,
     told: Vec<Option<String>>,
+    /// What the settings stand-in answers for `settings.get`.
+    settings: std::collections::BTreeMap<String, SettingValue>,
+    /// How often `settings.get` was asked (the start read happened).
+    queries: u32,
+    /// The notifications the session service posted.
+    posts: Vec<Post>,
 }
 
 fn setup(tag: &str) -> (World, Arc<Mutex<Seen>>) {
@@ -75,12 +94,14 @@ fn setup(tag: &str) -> (World, Arc<Mutex<Seen>>) {
                         name: (*n).into(),
                         display_name: format!("{n}!"),
                         has_pin: false,
-                        admin: false,
+                        // badr is the administrator; amal a standard user.
+                        admin: *n == "badr",
                     })
                     .collect(),
             })
         });
     });
+    serve_settings_notify(&world, &seen);
     let s = seen.clone();
     world.serve("system.lock", "lock", move |r| {
         let _ = r.respond::<Lock>(|_| {
@@ -102,6 +123,28 @@ fn setup(tag: &str) -> (World, Arc<Mutex<Seen>>) {
         });
     });
     (world, seen)
+}
+
+/// The settings stand-in (answers `settings.get` from `Seen::settings`) and the
+/// notification stand-in (records the posts).
+fn serve_settings_notify(world: &World, seen: &Arc<Mutex<Seen>>) {
+    let s = seen.clone();
+    world.serve("system.settingsd", "settings", move |r| {
+        let _ = r.respond::<Get>(|g| {
+            let mut s = s.lock().unwrap();
+            s.queries += 1;
+            Ok(GetReply {
+                value: s.settings.get(&g.key).cloned(),
+            })
+        });
+    });
+    let s = seen.clone();
+    world.serve("system.notifyd", "notify", move |r| {
+        let _ = r.respond::<Post>(|p| {
+            s.lock().unwrap().posts.push(p);
+            Ok(PostReply { id: 1 })
+        });
+    });
 }
 
 fn start(world: &World) -> Daemon {
@@ -236,4 +279,102 @@ fn apps_are_refused_and_sessions_survive_a_crash_but_not_removed_accounts() {
     let mut third = start(&world);
     assert!(call(&shell, &Users {}).unwrap().users.is_empty());
     assert_eq!(third.terminate(), Some(0));
+}
+
+/// Minutes since midnight of the wall clock (the service's basis).
+fn now_min() -> u16 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    u16::try_from((secs % 86_400) / 60).unwrap()
+}
+
+fn hhmm(m: u16) -> String {
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+/// The settings service tells sessiond a new value (and answers the next read with it).
+fn tell(world: &World, seen: &Arc<Mutex<Seen>>, key: &str, value: SettingValue) {
+    seen.lock()
+        .unwrap()
+        .settings
+        .insert(key.into(), value.clone());
+    world
+        .client("system.settingsd")
+        .publish(&Changed {
+            key: key.into(),
+            value,
+        })
+        .unwrap();
+}
+
+/// One warning for `name`, with the name in its body.
+fn assert_warned(seen: &Arc<Mutex<Seen>>, name: &str) {
+    let s = seen.lock().unwrap();
+    assert_eq!(s.posts.len(), 1, "one warning, not one per tick");
+    let body = match &s.posts[0].body {
+        ultar_bus::messages::notify::Body::Localized(t) => t,
+        other => panic!("warning body: {other:?}"),
+    };
+    assert!(body
+        .args
+        .iter()
+        .any(|a| matches!(a, ultar_bus::TextArg::Verbatim(v) if v == name)));
+}
+
+/// users.parental: a standard user signs in only in the window; an open session is
+/// warned shortly before the window ends and signed out at its end (the screen locks
+/// first); an administrator is never restricted.
+#[test]
+fn parental_window_warns_and_ends_standard_sessions() {
+    let (world, seen) = setup("parental");
+    let mut daemon = start(&world);
+    let lock = world.client("system.lock");
+    let shell = world.client("system.shell");
+    let state = shell.subscribe::<SessionState>().unwrap();
+    assert_eq!(state.recv_timeout(WAIT).unwrap(), SessionState::default());
+    assert!(wait_until(WAIT, || seen.lock().unwrap().queries >= 3));
+    // Both sign in; amal (standard) is in front.
+    assert_eq!(outcome(&lock, &signed_in("badr")), SessionOutcome::Done);
+    assert_eq!(outcome(&lock, &signed_in("amal")), SessionOutcome::Done);
+    assert!(wait_until(WAIT, || state
+        .try_recv()
+        .ok()
+        .flatten()
+        .is_some_and(
+            |s| s.user.as_deref() == Some("amal") && s.signed_in.len() == 2
+        )));
+    // A window that began an hour ago and ends in three minutes: the warning is due.
+    let m = now_min();
+    let from = SettingValue::Text(hhmm((m + 1440 - 60) % 1440));
+    let until = SettingValue::Text(hhmm((m + 3) % 1440));
+    tell(&world, &seen, "users.parental.from", from);
+    tell(&world, &seen, "users.parental.until", until);
+    tell(&world, &seen, "users.parental", SettingValue::Flag(true));
+    assert!(wait_until(WAIT, || seen
+        .lock()
+        .unwrap()
+        .posts
+        .iter()
+        .any(|p| p.title.key == "sessiond.parental.title")));
+    assert_warned(&seen, "amal");
+    // The warning alone changes no session.
+    assert!(state.try_recv().ok().flatten().is_none());
+    // The window ends now: amal's session ends (screen locked first), badr stays.
+    let end = SettingValue::Text(hhmm(now_min()));
+    tell(&world, &seen, "users.parental.until", end);
+    assert!(wait_until(WAIT, || state
+        .try_recv()
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.user.is_none() && s.signed_in == ["badr"])));
+    assert!(
+        seen.lock().unwrap().locks >= 1,
+        "locked before the sign-out"
+    );
+    // Outside the window a standard user cannot sign in; an administrator can.
+    assert_eq!(outcome(&lock, &signed_in("amal")), SessionOutcome::Refused);
+    assert_eq!(outcome(&lock, &signed_in("badr")), SessionOutcome::Done);
+    assert_eq!(daemon.terminate(), Some(0));
 }

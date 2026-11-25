@@ -76,6 +76,7 @@ app.settings.users.sub = الإضافة والحذف وتغيير كلمة ال�
 app.settings.users.none = لا يوجد مستخدمون بعد
 app.settings.users.add = إضافة مستخدم
 app.settings.users.add.text = يحصل المستخدم الجديد على مجلد شخصي وصلاحيات عادية.
+app.settings.users.add.text.admin = يحصل المستخدم الجديد على مجلد شخصي وصلاحيات المسؤول: يستطيع تغيير الإعدادات وإدارة المستخدمين الآخرين.
 app.settings.users.name = اسم المستخدم
 app.settings.users.password = تغيير كلمة المرور
 app.settings.users.password.name = تغيير كلمة مرور {name}

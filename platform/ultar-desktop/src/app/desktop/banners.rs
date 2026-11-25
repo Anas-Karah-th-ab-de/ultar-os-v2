@@ -29,9 +29,9 @@ impl DesktopApp {
             place.offset.1 += shift;
             (view, place)
         });
-        match (built, self.banners) {
+        match (built, self.banners.surface) {
             (None, Some((id, _))) => {
-                self.banners = None;
+                self.banners.surface = None;
                 self.host.close(id)?;
             }
             (None, None) => {}
@@ -52,7 +52,7 @@ impl DesktopApp {
                     view,
                     Some(place.surface),
                 )?;
-                self.banners = Some((id, place.offset));
+                self.banners.surface = Some((id, place.offset));
             }
         }
         Ok(())
@@ -63,10 +63,11 @@ impl DesktopApp {
     pub(super) fn tick_banners(&mut self) -> Result<(), AppError> {
         let now = self.shell.clock.now_ms();
         let elapsed = now
-            .saturating_sub(std::mem::replace(&mut self.banner_tick, now))
+            .saturating_sub(std::mem::replace(&mut self.banners.tick, now))
             .min(1_000);
         let held = self
             .banners
+            .surface
             .and_then(|(id, _)| self.host.surface(id))
             .is_some_and(|s| s.pointer_inside());
         if held {
@@ -84,6 +85,9 @@ impl DesktopApp {
             (Target::Dismiss(id), ActionKind::Activated) => {
                 self.shell.d.notes.dismiss(*id);
                 Outcome::surfaces()
+            }
+            (Target::NoteAction(id, index), ActionKind::Activated) => {
+                self.shell.note_action(*id, *index)
             }
             _ => Outcome::none(),
         }

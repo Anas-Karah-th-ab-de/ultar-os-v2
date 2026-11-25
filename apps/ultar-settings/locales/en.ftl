@@ -76,6 +76,7 @@ app.settings.users.sub = Adding, removing and changing a password need an admini
 app.settings.users.none = No users yet
 app.settings.users.add = Add user
 app.settings.users.add.text = The new user gets a home folder and standard rights.
+app.settings.users.add.text.admin = The new user gets a home folder and administrator rights: they can change settings and manage other users.
 app.settings.users.name = User name
 app.settings.users.password = Change password
 app.settings.users.password.name = Change the password of {name}

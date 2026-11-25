@@ -11,6 +11,8 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod parental;
+mod parental_service;
 pub mod service;
 pub mod sessions;
 

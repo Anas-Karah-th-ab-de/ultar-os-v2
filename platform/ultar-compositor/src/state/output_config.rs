@@ -62,10 +62,26 @@ impl State {
             Request::ConfigurePointer {
                 speed,
                 natural_scroll,
+                swap_buttons,
+                acceleration,
+                size,
+                double_click_ms,
             } => {
                 self.require_output_config(client)?;
-                self.pointer.speed = speed;
-                self.pointer.natural_scroll = natural_scroll;
+                let old_size = self.pointer.size;
+                let pointer = &mut self.pointer;
+                pointer.speed = speed;
+                pointer.natural_scroll = natural_scroll;
+                pointer.swap_buttons = swap_buttons;
+                pointer.accel.on = acceleration;
+                pointer.size = size;
+                pointer.double_click_ms = double_click_ms;
+                if old_size != size {
+                    // The pointer image changes under the resting pointer: redraw
+                    // what the old size covered and what the new one covers.
+                    self.damage_cursor_sized(old_size);
+                    self.damage_cursor();
+                }
                 Ok(())
             }
             Request::ConfigureKeyRepeat {
@@ -79,8 +95,31 @@ impl State {
                     (enabled, delay_ms, per_second);
                 Ok(())
             }
+            Request::ConfigureKeyHelpers { .. } => self.apply_key_helpers(client, r),
             _ => Ok(()),
         }
+    }
+
+    /// `ConfigureKeyHelpers`: the keyboard helpers and the compose key of the same right.
+    fn apply_key_helpers(&mut self, client: ClientId, r: Request) -> Result<(), ErrorCode> {
+        self.require_output_config(client)?;
+        if let Request::ConfigureKeyHelpers {
+            sticky_keys,
+            slow_keys,
+            bounce_keys,
+            mouse_keys,
+            compose_key,
+        } = r
+        {
+            self.configure_key_helpers(
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            );
+        }
+        Ok(())
     }
 
     fn require_output_config(&self, client: ClientId) -> Result<(), ErrorCode> {

@@ -20,9 +20,12 @@ use ultar_ui::widgets::{
 };
 
 /// Senders of the system that are not apps: id, name, icon.
-const SYSTEM_SENDERS: [(&str, &str, IconId); 2] = [
+const SYSTEM_SENDERS: [(&str, &str, IconId); 5] = [
     ("org.ultar.power", "desk.note.app.power", IconId::Battery),
     ("org.ultar.shell", "brand.product", IconId::Mark),
+    ("org.ultar.update", "desk.note.app.update", IconId::Download),
+    ("org.ultar.volumed", "desk.note.app.volumed", IconId::Usb),
+    ("org.ultar.session", "desk.note.app.session", IconId::Lock),
 ];
 
 /// Minutes below which the time reads "now".

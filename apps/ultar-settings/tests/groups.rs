@@ -467,6 +467,8 @@ fn users_are_added_and_removed_through_the_account_service() {
     assert_eq!(log(&world), ["account.user_create sami"]);
     assert!(app.state.dialog.is_none());
     assert_eq!(app.state.more.users.len(), 3);
+    // users.new_kind was standard (the schema default): sami is a standard user.
+    assert_eq!(app.state.more.users[2].kind, UserKind::Standard);
     let leila = app.view.node(Act::UserRemove(1)).expect("remove leila");
     click(&mut app, leila);
     let ok = app.view.node(Act::DialogOk).expect("ok");
@@ -543,4 +545,44 @@ fn the_window_follows_the_accessibility_switches_it_shows() {
     }
     later.poll().expect("poll");
     assert!(!later.ui.env().high_contrast);
+}
+
+#[test]
+fn the_window_follows_the_double_click_time() {
+    let world = world();
+    let mut app = wide(&world, Lang::En, "accessibility");
+    assert_eq!(app.ui.double_click_ms(), 400);
+    let set_ms = |world: &Shared, value: SettingValue| {
+        let mut w = world.borrow_mut();
+        let panels = w.panels.as_mut().expect("panels");
+        let access = panels
+            .iter_mut()
+            .find(|p| p.id == "accessibility")
+            .expect("panel");
+        match access
+            .items
+            .iter_mut()
+            .find(|i| i.key == "accessibility.double_click_ms")
+        {
+            Some(row) => row.value = value,
+            None => access.items.push(row(
+                "accessibility.double_click_ms",
+                ItemKind::Integer {
+                    min: 200,
+                    max: 1000,
+                    step: 50,
+                },
+                value,
+            )),
+        }
+        w.changed = true;
+    };
+    // Changed elsewhere (another window, quick settings): this one follows.
+    set_ms(&world, SettingValue::Integer(700));
+    app.poll().expect("poll");
+    assert_eq!(app.ui.double_click_ms(), 700);
+    // Outside the schema's range: the toolkit falls back to its default.
+    set_ms(&world, SettingValue::Integer(5000));
+    app.poll().expect("poll");
+    assert_eq!(app.ui.double_click_ms(), 400);
 }

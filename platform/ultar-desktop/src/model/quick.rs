@@ -4,6 +4,7 @@
 //! know about yet counts as present. A tile whose service is missing is shown disabled with
 //! the reason as its state line – never a click without effect.
 
+pub use super::media::RemovableMedia;
 use super::services::Services;
 use ultar_bus::messages::bluetooth::BluetoothState;
 use ultar_bus::messages::net::NetState;
@@ -212,6 +213,11 @@ pub struct QuickValues {
     pub large_text: bool,
     /// accessibility.reduce_motion: nothing of the shell moves on its own.
     pub reduce_motion: bool,
+    /// accessibility.double_click_ms: two clicks of a double click this far apart, if the
+    /// setting is known (the windows keep the toolkit's 400 ms until then).
+    pub double_click_ms: Option<u16>,
+    /// apps.removable_media: what a newly plugged-in drive does.
+    pub removable_media: RemovableMedia,
 }
 
 /// One tile as shown.

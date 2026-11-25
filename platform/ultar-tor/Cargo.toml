@@ -1,0 +1,23 @@
+[package]
+name = "ultar-tor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS – Tor in pure Rust (Arti) behind a local SOCKS5 port with a secret: apps reach the internet without showing the device's address; one circuit per site (area 6, platform)"
+
+[lib]
+name = "ultar_tor"
+path = "src/lib.rs"
+
+[dependencies]
+# Arti, the Tor client of the Tor Project in Rust (MIT/Apache-2.0); SQLite for its state is
+# bundled and linked statically.
+arti-client = { version = "0.48", default-features = false, features = ["tokio", "rustls", "static-sqlite"] }
+tor-rtcompat = { version = "0.48", default-features = false, features = ["tokio", "rustls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync"] }
+getrandom = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
+ureq = { version = "3", default-features = false, features = ["socks-proxy"] }

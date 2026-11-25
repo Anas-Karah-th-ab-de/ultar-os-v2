@@ -2,6 +2,7 @@
 //! The state machine is shared with the phone (`ultar-lock-core`).
 
 pub mod access;
+pub mod emergency;
 pub mod view;
 
-pub use ultar_lock_core::{LockEffect, LockServices, LockState, SignInError, Stage};
+pub use ultar_lock_core::{prefs, LockEffect, LockServices, LockState, SignInError, Stage};

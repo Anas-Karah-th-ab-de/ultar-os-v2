@@ -287,11 +287,18 @@ fn pointer_and_key_repeat_settings_reach_the_compositor() {
     ready(&rig, &app);
     // The schema's defaults arrive with the connection.
     rig.wait_for("defaults", |s| {
-        s.pointer == (0, false) && s.key_repeat == (true, 500, 25)
+        s.pointer == PointerSnap::default() && s.key_repeat == (true, 500, 25)
     });
     set(&app, "pointer.speed", SettingValue::Integer(6));
     set(&app, "pointer.natural_scroll", SettingValue::Flag(true));
-    rig.wait_for("pointer", |s| s.pointer == (6, true));
+    rig.wait_for("pointer", |s| {
+        s.pointer
+            == PointerSnap {
+                speed: 6,
+                natural_scroll: true,
+                ..PointerSnap::default()
+            }
+    });
     set(&app, "keyboard.repeat.delay_ms", SettingValue::Integer(300));
     set(
         &app,
@@ -306,6 +313,100 @@ fn pointer_and_key_repeat_settings_reach_the_compositor() {
     set(&app, "pointer.speed", SettingValue::Integer(-3));
     let _d = rig.start_displayd();
     rig.wait_for("after the restart", |s| {
-        s.pointer == (-3, true) && s.key_repeat == (false, 300, 10)
+        s.pointer
+            == PointerSnap {
+                speed: -3,
+                natural_scroll: true,
+                ..PointerSnap::default()
+            }
+            && s.key_repeat == (false, 300, 10)
+    });
+}
+
+#[test]
+fn pointer_tuning_and_the_large_pointer_reach_the_compositor() {
+    use ultar_surface::proto::PointerSize;
+    let rig = Rig::new("tuning");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    rig.wait_for("defaults", |s| s.pointer == PointerSnap::default());
+    // Button swap, acceleration, cursor size and the double-click time.
+    set(&app, "pointer.primary_button", text("right"));
+    set(&app, "pointer.acceleration", SettingValue::Flag(false));
+    set(&app, "pointer.size", text("large"));
+    set(
+        &app,
+        "accessibility.double_click_ms",
+        SettingValue::Integer(700),
+    );
+    let tuned = PointerSnap {
+        swap_buttons: true,
+        acceleration: false,
+        size: PointerSize::Large,
+        double_click_ms: 700,
+        ..PointerSnap::default()
+    };
+    rig.wait_for("pointer tuning", |s| s.pointer == tuned);
+    // A large pointer forces at least the large size, even over "normal".
+    set(&app, "pointer.size", text("normal"));
+    set(
+        &app,
+        "accessibility.large_pointer",
+        SettingValue::Flag(true),
+    );
+    rig.wait_for("large pointer", |s| {
+        s.pointer
+            == PointerSnap {
+                size: PointerSize::Large,
+                ..tuned
+            }
+    });
+    // Changed while the display service is away: read again when it is back.
+    drop(d);
+    set(
+        &app,
+        "accessibility.double_click_ms",
+        SettingValue::Integer(250),
+    );
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.pointer
+            == PointerSnap {
+                double_click_ms: 250,
+                ..tuned
+            }
+    });
+}
+
+#[test]
+fn keyboard_helpers_and_the_compose_key_reach_the_compositor() {
+    use ultar_surface::proto::ComposeKey;
+    let rig = Rig::new("helpers");
+    let d = rig.start_displayd();
+    let app = rig.client("app.settings");
+    ready(&rig, &app);
+    // The schema's defaults arrive with the connection.
+    rig.wait_for("defaults", |s| {
+        s.key_helpers == (false, false, false, false, ComposeKey::None)
+    });
+    set(&app, "accessibility.sticky_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.slow_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.bounce_keys", SettingValue::Flag(true));
+    set(&app, "accessibility.mouse_keys", SettingValue::Flag(true));
+    set(&app, "keyboard.compose_key", text("menu"));
+    rig.wait_for("helpers on", |s| {
+        s.key_helpers == (true, true, true, true, ComposeKey::Menu)
+    });
+    // A runtime change of the compose key.
+    set(&app, "keyboard.compose_key", text("alt_gr"));
+    rig.wait_for("compose alt_gr", |s| s.key_helpers.4 == ComposeKey::AltGr);
+    // Changed while the display service is away: read again when it is back.
+    drop(d);
+    set(&app, "accessibility.sticky_keys", SettingValue::Flag(false));
+    set(&app, "keyboard.compose_key", text("caps_lock"));
+    let _d = rig.start_displayd();
+    rig.wait_for("after the restart", |s| {
+        s.key_helpers == (false, true, true, true, ComposeKey::CapsLock)
     });
 }

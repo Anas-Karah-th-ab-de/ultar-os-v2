@@ -314,13 +314,26 @@ pub enum Request {
     /// [`Rights::OUTPUT_CONFIG`]).
     DetectOutputs,
     /// How relative pointer devices behave (needs [`Rights::OUTPUT_CONFIG`]: the display
-    /// service passes the settings `pointer.speed` and `pointer.natural_scroll` on).
+    /// service passes the settings `pointer.*` and the pointer parts of `accessibility.*`
+    /// on). The body grew with the settings: a decoder accepts the old two-field form and
+    /// fills the rest with the schema's defaults.
     ConfigurePointer {
         /// Pointer speed, [`super::MIN_POINTER_SPEED`] (slowest) to
         /// [`super::MAX_POINTER_SPEED`]; 0 moves the pointer as far as the device reports.
         speed: i8,
         /// The content follows the wheel or the fingers (scroll deltas are reversed).
         natural_scroll: bool,
+        /// The right button is the primary one (`pointer.primary_button` = `right`):
+        /// primary and secondary clicks are swapped.
+        swap_buttons: bool,
+        /// Faster movements travel farther (`pointer.acceleration`).
+        acceleration: bool,
+        /// Edge of the pointer image (`pointer.size`, `accessibility.large_pointer`).
+        size: super::PointerSize,
+        /// Milliseconds between two clicks of a double click
+        /// (`accessibility.double_click_ms`), [`super::MIN_DOUBLE_CLICK_MS`] to
+        /// [`super::MAX_DOUBLE_CLICK_MS`].
+        double_click_ms: u16,
     },
     /// How a held key repeats (needs [`Rights::OUTPUT_CONFIG`]: the display service passes
     /// the settings `keyboard.repeat.*` on). The compositor thins out the repeats the keyboard
@@ -334,6 +347,22 @@ pub enum Request {
         /// Repeats per second, at most [`super::MAX_KEY_REPEATS_PER_SECOND`]; 0 = as the
         /// driver reports.
         per_second: u8,
+    },
+    /// The keyboard helpers of the accessibility page and the compose key (needs
+    /// [`Rights::OUTPUT_CONFIG`]: the display service passes the settings
+    /// `accessibility.{sticky,slow,bounce,mouse}_keys` and `keyboard.compose_key` on).
+    /// The compositor's key input path follows them; the values are the settings schema's.
+    ConfigureKeyHelpers {
+        /// A modifier pressed and released alone stays active for the next key (twice locks).
+        sticky_keys: bool,
+        /// A key counts only after being held for a moment.
+        slow_keys: bool,
+        /// Repeats of the same key within a moment are dropped.
+        bounce_keys: bool,
+        /// The numeric keypad moves the pointer and clicks.
+        mouse_keys: bool,
+        /// The key that starts a compose sequence.
+        compose_key: super::ComposeKey,
     },
     /// The app draws the header of this toplevel itself (needs
     /// [`Rights::CLIENT_HEADER`]): no compositor title bar. Move, resize, snap, Alt+F4 and
@@ -395,6 +424,7 @@ impl Request {
             Request::SetKeyboardLayouts { .. } => 43,
             Request::ConfigurePointer { .. } => 44,
             Request::ConfigureKeyRepeat { .. } => 45,
+            Request::ConfigureKeyHelpers { .. } => 46,
         }
     }
 
@@ -584,8 +614,17 @@ impl Request {
             Request::ConfigurePointer {
                 speed,
                 natural_scroll,
+                swap_buttons,
+                acceleration,
+                size,
+                double_click_ms,
             } => {
-                w.u8(speed.to_le_bytes()[0]).bool(*natural_scroll);
+                w.u8(speed.to_le_bytes()[0])
+                    .bool(*natural_scroll)
+                    .bool(*swap_buttons)
+                    .bool(*acceleration);
+                size.encode(w);
+                w.u16(*double_click_ms);
             }
             Request::ConfigureKeyRepeat {
                 enabled,
@@ -593,6 +632,19 @@ impl Request {
                 per_second,
             } => {
                 w.bool(*enabled).u16(*delay_ms).u8(*per_second);
+            }
+            Request::ConfigureKeyHelpers {
+                sticky_keys,
+                slow_keys,
+                bounce_keys,
+                mouse_keys,
+                compose_key,
+            } => {
+                w.bool(*sticky_keys)
+                    .bool(*slow_keys)
+                    .bool(*bounce_keys)
+                    .bool(*mouse_keys);
+                compose_key.encode(w);
             }
             _ => {}
         }

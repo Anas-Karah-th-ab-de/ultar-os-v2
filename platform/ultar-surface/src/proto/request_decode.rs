@@ -161,7 +161,7 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
             Request::IdentifyOutputs { numbers, ms }
         }
         37 => Request::DetectOutputs,
-        44 | 45 => decode_input(opcode, r)?,
+        44..=46 => decode_input(opcode, r)?,
         41 => Request::SetPhoneMode { on: r.bool()? },
         42 => Request::ClientHeader {
             surface: surface(r)?,
@@ -186,17 +186,50 @@ fn decode_session(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError>
     })
 }
 
-/// The overview's requests: a thumbnail (38), show (39) or move to (40) a workspace.
-/// The pointer and key-repeat configuration of the display service.
+/// The pointer, key-repeat and keyboard-helpers configuration of the display service.
 fn decode_input(opcode: u16, r: &mut Reader<'_>) -> Result<Request, WireError> {
+    if opcode == 46 {
+        let (sticky_keys, slow_keys) = (r.bool()?, r.bool()?);
+        let (bounce_keys, mouse_keys) = (r.bool()?, r.bool()?);
+        let compose_key = super::ComposeKey::decode(r)?;
+        return Ok(Request::ConfigureKeyHelpers {
+            sticky_keys,
+            slow_keys,
+            bounce_keys,
+            mouse_keys,
+            compose_key,
+        });
+    }
     if opcode == 44 {
         let speed = i8::from_le_bytes([r.u8()?]);
         if !(super::MIN_POINTER_SPEED..=super::MAX_POINTER_SPEED).contains(&speed) {
             return Err(WireError::BadValue);
         }
+        let natural_scroll = r.bool()?;
+        // The old form ends here; the fields added later carry the schema's defaults.
+        if r.remaining() == 0 {
+            return Ok(Request::ConfigurePointer {
+                speed,
+                natural_scroll,
+                swap_buttons: false,
+                acceleration: true,
+                size: super::PointerSize::Normal,
+                double_click_ms: super::DEFAULT_DOUBLE_CLICK_MS,
+            });
+        }
+        let (swap_buttons, acceleration) = (r.bool()?, r.bool()?);
+        let size = super::PointerSize::decode(r)?;
+        let double_click_ms = r.u16()?;
+        if !(super::MIN_DOUBLE_CLICK_MS..=super::MAX_DOUBLE_CLICK_MS).contains(&double_click_ms) {
+            return Err(WireError::BadValue);
+        }
         return Ok(Request::ConfigurePointer {
             speed,
-            natural_scroll: r.bool()?,
+            natural_scroll,
+            swap_buttons,
+            acceleration,
+            size,
+            double_click_ms,
         });
     }
     let (enabled, delay_ms, per_second) = (r.bool()?, r.u16()?, r.u8()?);

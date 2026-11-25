@@ -69,6 +69,7 @@ mobile.signin.caps = Caps Lock is on
 mobile.signin.no_service = The sign-in service does not answer. Try again.
 mobile.signin.no_user = There is no user on this device.
 mobile.signin.other_user = Only the person whose session this is can unlock it.
+mobile.signin.outside_hours = Sign-in is allowed between {from} and {until}.
 mobile.signin.password = Password of {user}
 mobile.signin.password_hint = Password
 mobile.signin.picture = User picture

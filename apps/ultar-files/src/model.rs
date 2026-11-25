@@ -316,17 +316,4 @@ impl FileKind {
             FileKind::Other => "files.kind.other",
         }
     }
-
-    /// The app that opens this kind by default (Settings → Apps decides later; these are
-    /// the apps of the base system, DESKTOP-SPEC §9).
-    pub fn default_app(self) -> Option<&'static str> {
-        match self {
-            FileKind::Plain => Some("org.ultar.editor"),
-            FileKind::Text | FileKind::Sheet => Some("org.ultar.office"),
-            FileKind::Image => Some("org.ultar.images"),
-            FileKind::Audio | FileKind::Video => Some("org.ultar.media"),
-            FileKind::Web => Some("org.ultar.browser"),
-            FileKind::Folder | FileKind::Archive | FileKind::Link | FileKind::Other => None,
-        }
-    }
 }

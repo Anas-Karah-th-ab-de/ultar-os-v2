@@ -246,9 +246,11 @@ fn offered_and_tapped(tag: &str, click: DialogClick) -> Option<bool> {
     let caller = w.ask();
     w.until("the sheet", |w| !w.seen.lock().unwrap().buttons.is_empty());
     // The sheet covers the work area under the trusted title bar.
-    let content = w.dialog_content().unwrap();
     let title = ultar_compositor::decor::TITLEBAR;
-    assert_eq!((content.w, content.h), (W as i32, H as i32 - title));
+    w.until("the sheet over the work area", |w| {
+        w.dialog_content()
+            .is_some_and(|c| (c.w, c.h) == (W as i32, H as i32 - title))
+    });
     w.tap(click);
     let answer = w.answer(caller);
     w.until("the question closed", |w| {

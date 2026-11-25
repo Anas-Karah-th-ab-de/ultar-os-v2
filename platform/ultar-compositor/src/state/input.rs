@@ -11,6 +11,8 @@ use ultar_surface::proto::{Event, Modifiers, FIXED_ONE};
 
 /// The primary button's Linux code.
 pub const BTN_PRIMARY: u16 = 0x110;
+/// The secondary button's Linux code.
+pub const BTN_SECONDARY: u16 = 0x111;
 /// Least opacity (of 255) a pixel needs to take input: fainter pixels are
 /// not really seen by the user and belong to what is below.
 pub const HIT_ALPHA: u32 = 32;
@@ -82,7 +84,7 @@ pub struct PointerFocus {
 }
 
 /// Pointer state.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Pointer {
     /// Position (logical points).
     pub x: f64,
@@ -102,10 +104,41 @@ pub struct Pointer {
     pub speed: i8,
     /// Scroll deltas are reversed (`Request::ConfigurePointer`).
     pub natural_scroll: bool,
+    /// The right button is the primary one (`pointer.primary_button` = `right`).
+    pub swap_buttons: bool,
+    /// Edge of the pointer image (`pointer.size`, `accessibility.large_pointer`).
+    pub size: ultar_surface::proto::PointerSize,
+    /// Milliseconds between two clicks of a double click (`accessibility.double_click_ms`).
+    pub double_click_ms: u16,
+    /// The acceleration profile and its last motion time (`pointer.acceleration`).
+    pub accel: super::Acceleration,
     /// Last input was touch (pointer hidden).
     pub hidden: bool,
     /// Touch contacts and the surface each one belongs to.
     pub(super) touches: std::collections::HashMap<u32, SurfaceKey>,
+}
+
+impl Default for Pointer {
+    /// The defaults of the settings schema.
+    fn default() -> Self {
+        Pointer {
+            x: 0.0,
+            y: 0.0,
+            focus: None,
+            held: 0,
+            grab: None,
+            last_title: None,
+            snap_preview: None,
+            speed: 0,
+            natural_scroll: false,
+            swap_buttons: false,
+            size: ultar_surface::proto::PointerSize::Normal,
+            double_click_ms: ultar_surface::proto::DEFAULT_DOUBLE_CLICK_MS,
+            accel: super::Acceleration::default(),
+            hidden: false,
+            touches: std::collections::HashMap::new(),
+        }
+    }
 }
 
 pub(super) fn fixed(v: f64) -> i32 {
@@ -134,7 +167,8 @@ impl State {
     pub fn input(&mut self, event: &InputEvent) {
         match event.kind {
             InputEventKind::PointerMotion { dx, dy } => {
-                let factor = speed_factor(self.pointer.speed);
+                let accel = self.pointer.accel.factor(dx, dy, event.time_us);
+                let factor = speed_factor(self.pointer.speed) * accel;
                 let (x, y) = (
                     self.pointer.x + f64::from(dx) * factor,
                     self.pointer.y + f64::from(dy) * factor,
@@ -146,7 +180,15 @@ impl State {
                 self.pointer_to(x, y);
             }
             InputEventKind::PointerButton { button, pressed } => {
-                self.button(button_code(button), pressed)
+                let code = button_code(button);
+                // The right button primary (left-handed): the two buttons are swapped
+                // everywhere – decorations, grabs and what the clients are told.
+                let code = match (self.pointer.swap_buttons, code) {
+                    (true, BTN_PRIMARY) => BTN_SECONDARY,
+                    (true, BTN_SECONDARY) => BTN_PRIMARY,
+                    _ => code,
+                };
+                self.button(code, pressed)
             }
             InputEventKind::Scroll { dx, dy } => {
                 let sign = if self.pointer.natural_scroll {
@@ -158,10 +200,7 @@ impl State {
             }
             InputEventKind::Key { code, state } => {
                 self.keyboard.events = self.keyboard.events.wrapping_add(1);
-                if !self.keyboard.repeat.passes(code, state, event.time_us) {
-                    return;
-                }
-                self.key(code, state)
+                self.key_helper_input(code, state, event.time_us);
             }
             InputEventKind::TouchDown { slot, x, y } => self.touch_down(u32::from(slot), x, y),
             InputEventKind::TouchMove { slot, x, y } => self.touch_move(u32::from(slot), x, y),
@@ -245,8 +284,14 @@ impl State {
     }
 
     pub(super) fn damage_cursor(&mut self) {
+        self.damage_cursor_sized(self.pointer.size);
+    }
+
+    /// Damages the area a pointer image of `size` covers (the old size too when the
+    /// size changes, so a shrinking pointer leaves no trace).
+    pub(super) fn damage_cursor_sized(&mut self, size: ultar_surface::proto::PointerSize) {
         if self.config.cursor && !self.pointer.hidden {
-            let r = crate::render::cursor_rect(self.pointer.x, self.pointer.y);
+            let r = crate::render::cursor_rect(self.pointer.x, self.pointer.y, size);
             self.damage_logical(r);
         }
     }

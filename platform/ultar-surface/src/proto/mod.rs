@@ -8,6 +8,7 @@
 mod event;
 mod event_codec;
 mod input_config;
+mod key_helpers;
 mod outputs;
 mod request;
 mod request_decode;
@@ -19,8 +20,10 @@ mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
 pub use input_config::{
-    MAX_KEY_REPEATS_PER_SECOND, MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_POINTER_SPEED,
+    PointerSize, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS, MAX_KEY_REPEATS_PER_SECOND,
+    MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS, MIN_POINTER_SPEED,
 };
+pub use key_helpers::ComposeKey;
 pub use outputs::{
     Arrangement, OutputDetails, OutputIdentity, OutputMode, OutputSetup, Setup, SetupOutcome,
     SetupRefusal, Transform, MAX_CONNECTOR, MAX_IDENTIFY_MS, MAX_OUTPUT_MODES, MAX_PRODUCT_NAME,

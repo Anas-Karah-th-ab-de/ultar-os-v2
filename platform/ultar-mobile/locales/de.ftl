@@ -69,6 +69,7 @@ mobile.signin.caps = Feststelltaste ist an
 mobile.signin.no_service = Der Anmeldedienst antwortet nicht. Erneut versuchen.
 mobile.signin.no_user = Auf diesem Gerät gibt es keinen Benutzer.
 mobile.signin.other_user = Nur die Person, der diese Sitzung gehört, kann sie entsperren.
+mobile.signin.outside_hours = Anmeldung ist zwischen {from} und {until} erlaubt.
 mobile.signin.password = Kennwort von {user}
 mobile.signin.password_hint = Kennwort
 mobile.signin.picture = Benutzerbild

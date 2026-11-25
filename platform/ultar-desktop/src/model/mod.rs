@@ -3,8 +3,12 @@
 //! that the views and the click handling can be tested without a compositor.
 
 pub mod apps;
+pub mod calc;
 pub mod calendar;
+pub mod characters;
 pub mod helper;
+pub mod history;
+pub mod media;
 pub mod mesh;
 pub mod notes;
 pub mod quick;

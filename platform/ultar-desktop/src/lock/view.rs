@@ -1,6 +1,6 @@
 //! The two stages of the lock screen as widget trees (boards Lock and Login).
 
-use super::{LockState, SignInError, Stage};
+use super::{emergency, prefs, LockState, SignInError, Stage};
 use crate::model::time::{self, LocalTime};
 use crate::view::{new_ui, Look, Target, View};
 use ultar_bus::messages::auth::Method;
@@ -40,6 +40,13 @@ pub fn build(
     }
     let mut ui = new_ui(look, size, tr)?;
     ui.set_background(ColorRole::Ground);
+    // emergency.sos_light: the screen flashes SOS while the emergency call runs.
+    if s.emergency.sos_active() && s.prefs.sos_light {
+        let elapsed = now.0.saturating_sub(s.emergency.started_ms);
+        if emergency::sos_light_on(elapsed) {
+            ui.set_background(ColorRole::Text);
+        }
+    }
     ui.set_root_flex(Flex::column().padding(Padding::all(Space::S24)));
     let mut view = View::new(ui);
     let root = view.ui.root();
@@ -57,9 +64,13 @@ pub fn build(
         .main(MainAlign::Center)
         .cross(CrossAlign::Center);
     let middle = view.ui.add_sized(root, middle, Sizing::grow(1))?;
-    match s.stage {
-        Stage::Cover => cover(&mut view, middle, s, now.1, tr)?,
-        _ => sign_in(&mut view, middle, s, now.0)?,
+    if s.emergency.open {
+        emergency::panel(&mut view, middle, s)?;
+    } else {
+        match s.stage {
+            Stage::Cover => cover(&mut view, middle, s, now.1, tr)?,
+            _ => sign_in(&mut view, middle, s, now.0)?,
+        }
     }
     bottom(&mut view, root, s)?;
     Ok(Some(view))
@@ -152,6 +163,13 @@ fn error_label(s: &LockState, now: u64) -> Option<Label> {
         SignInError::NoService => Some(Label::key("lock.error.no_service")),
         SignInError::NoUser => Some(Label::key("lock.error.no_user")),
         SignInError::OtherUser => Some(Label::key("lock.error.other_user")),
+        SignInError::OutsideHours => Some(Label::key_with(
+            "lock.error.outside_hours",
+            &[
+                ("from", &prefs::clock_text(s.prefs.from_min)),
+                ("until", &prefs::clock_text(s.prefs.until_min)),
+            ],
+        )),
     }
 }
 
@@ -182,7 +200,7 @@ fn heading(view: &mut View, middle: NodeId, s: &LockState) -> Result<String, UiE
         .user
         .as_ref()
         .map_or(String::new(), |u| u.display_name.clone());
-    if s.users.len() > 1 {
+    if s.users.len() > 1 && s.prefs.list_on_login {
         users(view, middle, s)?;
     } else {
         let who = view.ui.add(
@@ -270,9 +288,12 @@ fn bottom(view: &mut View, root: NodeId, s: &LockState) -> Result<(), UiError> {
     let sos = Button::new(Label::key("lock.emergency")).icon(IconId::Sos);
     let sos = view.ui.add(row, sos)?;
     view.mark(sos, Target::Emergency);
-    view.ui.set_disabled(sos, true)?;
-    view.ui
-        .set_tooltip(sos, Some(Label::key("lock.reason.no_emergency")))?;
+    // emergency.on_lock_screen: the person switches the button on in Settings.
+    if !s.prefs.emergency_on {
+        view.ui.set_disabled(sos, true)?;
+        view.ui
+            .set_tooltip(sos, Some(Label::key("lock.reason.emergency_off")))?;
+    }
     let off = Button::new(Label::key("lock.power_off")).icon(IconId::Power);
     let off = view.ui.add(row, off)?;
     view.mark(off, Target::EmergencyOff);

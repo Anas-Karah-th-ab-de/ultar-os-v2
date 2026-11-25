@@ -132,6 +132,7 @@ impl World {
             lang: ultar_i18n::Lang::En,
             light: false,
             bar: None,
+            state: None,
         }
     }
 

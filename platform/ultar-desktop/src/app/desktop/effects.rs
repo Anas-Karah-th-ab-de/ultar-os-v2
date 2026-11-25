@@ -95,8 +95,21 @@ impl DesktopApp {
                     .client
                     .send(&Request::SetKeyboardLayout { index: *index })?;
             }
+            Effect::History => self.keep_history(),
         }
         Ok(())
+    }
+
+    /// Keeps the search history beside the shell: save it when `search.history` is on,
+    /// delete it when off (nothing is stored then).
+    fn keep_history(&mut self) {
+        let dir = self.history_dir.as_deref();
+        let user = &self.shell.user;
+        if self.shell.d.overview.sources.history {
+            crate::model::history::save(&self.shell.d.overview.history, dir, user);
+        } else {
+            crate::model::history::delete(dir, user);
+        }
     }
 
     /// A call to a system service; its answer goes into the state (outputs, a day's events)
@@ -345,6 +358,9 @@ impl DesktopApp {
         let v = self.shell.d.values;
         self.look = self.look.with_access(v.high_contrast, v.large_text);
         self.look.reduce_motion = v.reduce_motion;
+        if let Some(ms) = v.double_click_ms {
+            self.look.double_click_ms = ms;
+        }
         let screen = screen(&self.host);
         if outcome.bar {
             let view = build_bar(&self.shell, self.look, screen.w)?;

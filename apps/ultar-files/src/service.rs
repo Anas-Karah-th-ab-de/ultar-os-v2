@@ -47,8 +47,11 @@ pub struct Mounted {
     pub uri: String,
 }
 
-/// The app launcher (`launcher.start` version 2).
+/// The app launcher (`launcher.resolve` and `launcher.start` version 2).
 pub trait LauncherPort {
+    /// The default app for `uri`: the launcher resolves it through `apps.default.*` and
+    /// keeps only an installed app that declares the URI. `None`: no app opens it.
+    fn resolve(&mut self, uri: &str) -> Result<Option<String>, PortError>;
     /// Starts `app` with `uri` to open (`activation_token` from the compositor, if any).
     fn open(
         &mut self,
@@ -67,7 +70,7 @@ pub trait VolumesPort {
 }
 
 /// Ports of a test or of a window without services: records every call.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Fake {
     /// `(app, uri)` of every open.
     pub opened: Vec<(String, String)>,
@@ -79,9 +82,46 @@ pub struct Fake {
     pub busy: Vec<String>,
     /// Drive states to report, oldest first.
     pub drive_states: VecDeque<Vec<Mounted>>,
+    /// The default app of each kind (as `apps.default.*` names them), which `resolve`
+    /// follows; a test changes these to see the opened app change.
+    pub defaults: Vec<(ultar_bus::messages::launcher::Kind, String)>,
+}
+
+impl Default for Fake {
+    fn default() -> Self {
+        use ultar_bus::messages::launcher::Kind;
+        let app = |k: Kind, a: &str| (k, a.to_owned());
+        Self {
+            opened: Vec::new(),
+            installed: Vec::new(),
+            ejected: Vec::new(),
+            busy: Vec::new(),
+            drive_states: VecDeque::new(),
+            defaults: vec![
+                app(Kind::Web, "org.ultar.web"),
+                app(Kind::Mail, "org.ultar.mail"),
+                app(Kind::Calendar, "org.ultar.calendar"),
+                app(Kind::Music, "org.ultar.media"),
+                app(Kind::Video, "org.ultar.media"),
+                app(Kind::Photos, "org.ultar.images"),
+                app(Kind::Documents, "org.ultar.office"),
+            ],
+        }
+    }
 }
 
 impl LauncherPort for Fake {
+    fn resolve(&mut self, uri: &str) -> Result<Option<String>, PortError> {
+        let Some(kind) = ultar_bus::messages::launcher::kind_of_uri(uri) else {
+            return Ok(None);
+        };
+        Ok(self
+            .defaults
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, a)| a.clone()))
+    }
+
     fn open(&mut self, app: &str, uri: &str, _token: Option<u64>) -> Result<(), PortError> {
         if !self.installed.is_empty() && !self.installed.iter().any(|a| a == app) {
             return Err(PortError::NotInstalled);

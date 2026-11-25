@@ -1,0 +1,31 @@
+Ultar: matrix-vector path for 9 to 16 tokens (speculative decoding verify blocks)
+
+llama.cpp's Vulkan backend switches from the matrix-vector kernels to the tiled matrix kernels
+above 8 tokens. On the Intel Arc 140T (Xe-LPG+, Mesa, integer dot product, no matrix cores) the
+tiled kernels are slow for few tokens: Qwen3.6-35B-A3B pp10 32, pp12 38, pp16 46 t/s against
+pp8 73. With the vector path up to 16 (experts and dense weights): pp10 79, pp12 85, pp16 92 t/s;
+pp1-8 and pp24/32 unchanged; test-backend-ops MUL_MAT and MUL_MAT_ID pass. Verify blocks of
+speculative decoding (DFlash: 7-15 drafted tokens) fall exactly into this range.
+
+--- a/ggml/src/ggml-vulkan/ggml-vulkan-types.h
++++ b/ggml/src/ggml-vulkan/ggml-vulkan-types.h
+@@ -383,7 +383,7 @@
+     bool transfer_only;
+ };
+ 
+-static constexpr uint32_t mul_mat_vec_max_cols = 8;
++static constexpr uint32_t mul_mat_vec_max_cols = 16;
+ 
+ static constexpr uint32_t p021_max_gqa_ratio = 8;
+ 
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -8880,7 +8880,7 @@
+ static bool ggml_vk_use_mul_mat_vec_id(const ggml_tensor * dst) {
+     const ggml_tensor * src0 = dst->src[0];
+     const ggml_tensor * ids = dst->src[2];
+-    return ids->ne[1] <= 8 && (src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16 || ggml_is_quantized(src0->type));
++    return ids->ne[1] <= 16 && (src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16 || ggml_is_quantized(src0->type));
+ }
+ 
+ bool ggml_vk_use_mul_mat_vec_id(const struct ggml_cgraph * cgraph, int node_idx) {

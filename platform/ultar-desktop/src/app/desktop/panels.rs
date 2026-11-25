@@ -70,7 +70,7 @@ impl DesktopApp {
         }
         self.shell.d.open = crate::model::Open::None;
         let popup = self.popup.take().map(|p| p.id);
-        let banners = self.banners.take().map(|b| b.0);
+        let banners = self.banners.surface.take().map(|b| b.0);
         for id in [popup, banners, self.second.take()].into_iter().flatten() {
             self.host.close(id)?;
         }

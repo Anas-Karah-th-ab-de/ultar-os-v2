@@ -73,6 +73,7 @@ mobile.signin.caps = مفتاح الأحرف الكبيرة مفعّل
 mobile.signin.no_service = خدمة التحقق لا تستجيب. حاول مجدداً.
 mobile.signin.no_user = لا يوجد مستخدم على هذا الجهاز.
 mobile.signin.other_user = لا يستطيع فتح هذه الجلسة إلا صاحبها.
+mobile.signin.outside_hours = يُسمح بتسجيل الدخول بين {from} و{until}.
 mobile.signin.password = كلمة مرور {user}
 mobile.signin.password_hint = كلمة المرور
 mobile.signin.picture = صورة المستخدم

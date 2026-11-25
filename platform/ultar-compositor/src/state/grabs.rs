@@ -11,9 +11,11 @@ use ultar_surface::proto::WindowState;
 impl State {
     pub(super) fn title_double_click(&mut self, key: SurfaceKey) -> bool {
         let now = self.now;
-        let double = self.pointer.last_title.is_some_and(|(k, t)| {
-            k == key && now.saturating_sub(t) <= ultar_ui::tokens::motion::DOUBLE_CLICK as u64
-        });
+        let window = u64::from(self.pointer.double_click_ms);
+        let double = self
+            .pointer
+            .last_title
+            .is_some_and(|(k, t)| k == key && now.saturating_sub(t) <= window);
         self.pointer.last_title = if double { None } else { Some((key, now)) };
         if double {
             if let Some(i) = self.window_index(key) {

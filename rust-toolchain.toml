@@ -1,0 +1,5 @@
+# The toolchain CI uses (.github/workflows/*.yml). Local builds use the same one, so a newer
+# local clippy does not report lints CI does not know (e.g. chunks_exact_to_as_chunks in 1.98).
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]

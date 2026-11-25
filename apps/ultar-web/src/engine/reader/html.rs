@@ -21,7 +21,68 @@ pub enum Kind {
     Quote,
     /// Preformatted text (line breaks kept).
     Pre,
+    /// A sound or a video; its one link is the file, its text the name shown.
+    Media(MediaKind),
 }
+
+/// What a media block plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKind {
+    /// `<audio>`.
+    Audio,
+    /// `<video>`.
+    Video,
+}
+
+/// A `<video>` or `<audio>` being read.
+struct PendingMedia {
+    kind: MediaKind,
+    src: Option<String>,
+    label: String,
+}
+
+impl Block {
+    /// A media block for the file at `src` shown as `label`.
+    pub fn media(kind: MediaKind, src: &str, label: &str) -> Block {
+        let text = if label.trim().is_empty() {
+            file_name(src)
+        } else {
+            label.trim().to_owned()
+        };
+        Block {
+            kind: Kind::Media(kind),
+            links: vec![Link {
+                start: 0,
+                end: text.len(),
+                href: src.to_owned(),
+            }],
+            text,
+        }
+    }
+
+    /// The file of a media block.
+    pub fn media_src(&self) -> Option<&str> {
+        matches!(self.kind, Kind::Media(_)).then(|| self.links.first().map(|l| l.href.as_str()))?
+    }
+}
+
+/// The last part of an address, decoded loosely (the name of a media file).
+fn file_name(src: &str) -> String {
+    let path = src.split(['?', '#']).next().unwrap_or(src);
+    let last = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path);
+    if last.is_empty() {
+        src.to_owned()
+    } else {
+        last.replace("%20", " ")
+    }
+}
+
+/// Media types the player plays best (a `<source>` of one of them is taken first).
+const PLAYABLE: [&str; 7] = ["mp4", "mpeg", "aac", "wav", "ogg", "flac", "m4a"];
 
 /// A link inside a block: bytes `start..end` of its text lead to `href` (absolute).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +161,7 @@ struct Builder {
     link: Option<(usize, String)>,
     pre: usize,
     base: String,
+    media: Option<PendingMedia>,
 }
 
 impl Builder {
@@ -137,7 +199,8 @@ impl Builder {
     }
 
     fn push_text(&mut self, raw: &str) {
-        if self.text.len() >= MAX_BLOCK_TEXT {
+        // the fallback text inside <video>/<audio> ("your browser cannot …") is not shown
+        if self.media.is_some() || self.text.len() >= MAX_BLOCK_TEXT {
             return;
         }
         if self.pre > 0 {
@@ -175,6 +238,7 @@ pub fn read(html: &str, url: &str) -> Document {
         link: None,
         pre: 0,
         base: url.to_owned(),
+        media: None,
     };
     let mut hidden: Option<String> = None;
     let mut in_title = false;
@@ -215,6 +279,7 @@ pub fn read(html: &str, url: &str) -> Document {
         }
         element(&mut b, &name, closing, attrs);
     }
+    end_media(&mut b);
     b.flush();
     b.doc.title = title.split_whitespace().collect::<Vec<_>>().join(" ");
     b.doc
@@ -261,6 +326,7 @@ fn element(b: &mut Builder, name: &str, closing: bool, attrs: &str) {
             }
         }
         ("td" | "th", false) => b.push_text(" "),
+        ("video" | "audio" | "source", _) => media_element(b, name, closing, attrs),
         _ if BLOCKS.contains(&name) => {
             b.flush();
             if closing {
@@ -285,6 +351,55 @@ fn element(b: &mut Builder, name: &str, closing: bool, attrs: &str) {
         }
         _ => {}
     }
+}
+
+/// `<video>`, `<audio>` and their `<source>`s.
+fn media_element(b: &mut Builder, name: &str, closing: bool, attrs: &str) {
+    match (name, closing) {
+        ("source", false) => {
+            let src = attr(attrs, "src").and_then(|s| join(&b.base, &s));
+            let kind = attr(attrs, "type").unwrap_or_default().to_ascii_lowercase();
+            let Some((m, src)) = b.media.as_mut().zip(src) else {
+                return;
+            };
+            let playable = PLAYABLE.iter().any(|p| kind.contains(p)) || is_playable(&src);
+            if m.src.is_none() || (playable && !m.src.as_deref().is_some_and(is_playable)) {
+                m.src = Some(src);
+            }
+        }
+        ("source", true) => {}
+        (_, true) => end_media(b),
+        (_, false) => {
+            end_media(b);
+            b.flush();
+            let kind = if name == "video" {
+                MediaKind::Video
+            } else {
+                MediaKind::Audio
+            };
+            let label = attr(attrs, "title")
+                .or_else(|| attr(attrs, "aria-label"))
+                .unwrap_or_default();
+            let src = attr(attrs, "src").and_then(|s| join(&b.base, &s));
+            b.media = Some(PendingMedia { kind, src, label });
+        }
+    }
+}
+
+/// The `<video>`/`<audio>` being read becomes a block (when it named a file).
+fn end_media(b: &mut Builder) {
+    if let Some(m) = b.media.take() {
+        if let Some(src) = m.src {
+            if b.doc.blocks.len() < MAX_BLOCKS {
+                b.doc.blocks.push(Block::media(m.kind, &src, &m.label));
+            }
+        }
+    }
+}
+
+fn is_playable(src: &str) -> bool {
+    let lower = src.to_ascii_lowercase();
+    PLAYABLE.iter().any(|p| lower.contains(p))
 }
 
 /// End of a tag starting at `s[0] == '<'`: the `>` outside quotes.
@@ -460,65 +575,5 @@ pub fn join(base: &str, href: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn blocks_links_title_and_hidden_parts() {
-        let html = r#"<html><head><title> سوريا &amp; العالم </title><style>p{}</style>
-            <script>alert("x<p>")</script></head><body>
-            <h1>عنوان</h1><p>نص <a href="/wiki/دمشق">دمشق</a> هنا.</p>
-            <ul><li>one</li><li><a href='https://example.org/x'>two</a></li></ul>
-            <pre>a  b
-c</pre><!-- <p>no</p> --><img src=x alt="صورة"></body></html>"#;
-        let d = read(html, "https://ar.wikipedia.org/wiki/سوريا");
-        assert_eq!(d.title, "سوريا & العالم");
-        let texts: Vec<&str> = d.blocks.iter().map(|b| b.text.as_str()).collect();
-        assert_eq!(
-            texts,
-            ["عنوان", "نص دمشق هنا.", "one", "two", "a  b\nc", "[صورة]"]
-        );
-        assert_eq!(d.blocks[0].kind, Kind::Heading(1));
-        assert_eq!(d.blocks[2].kind, Kind::Item);
-        assert_eq!(d.blocks[4].kind, Kind::Pre);
-        let link = &d.blocks[1].links[0];
-        assert_eq!(&d.blocks[1].text[link.start..link.end], "دمشق");
-        assert_eq!(link.href, "https://ar.wikipedia.org/wiki/دمشق");
-        assert_eq!(d.blocks[3].links[0].href, "https://example.org/x");
-    }
-
-    #[test]
-    fn broken_markup_does_not_panic() {
-        for html in [
-            "<",
-            "<a href='x",
-            "<p>a<b",
-            "&#xFFFFFFF;",
-            "<!--",
-            "<a href=>x</a>",
-            "&",
-        ] {
-            let _ = read(html, "http://h/");
-        }
-        assert_eq!(entities("&lt;&#1587;&#x0645;&bogus;"), "<سم&bogus;");
-    }
-
-    #[test]
-    fn relative_links() {
-        let b = "https://h.org/a/b/c.html?q=1";
-        assert_eq!(
-            join(b, "d.html").as_deref(),
-            Some("https://h.org/a/b/d.html")
-        );
-        assert_eq!(join(b, "../d").as_deref(), Some("https://h.org/a/d"));
-        assert_eq!(join(b, "/x?y").as_deref(), Some("https://h.org/x?y"));
-        assert_eq!(join(b, "//cdn.org/z").as_deref(), Some("https://cdn.org/z"));
-        assert_eq!(
-            join(b, "?p=2").as_deref(),
-            Some("https://h.org/a/b/c.html?p=2")
-        );
-        assert_eq!(join(b, "javascript:alert(1)"), None);
-        assert_eq!(join(b, "mailto:a@b"), None);
-        assert_eq!(join(b, "#top"), None);
-    }
-}
+#[path = "html_tests.rs"]
+mod tests;

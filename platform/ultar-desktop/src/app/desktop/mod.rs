@@ -38,6 +38,15 @@ struct PopupSurface {
     offset: (i32, i32),
 }
 
+/// The banners' surface.
+#[derive(Debug, Default)]
+struct BannerSurface {
+    /// The surface and its offset.
+    surface: Option<(SurfaceId, (i32, i32))>,
+    /// When the banners' clocks were last looked at (ms).
+    tick: u64,
+}
+
 /// The running shell.
 pub struct DesktopApp {
     host: Host,
@@ -47,10 +56,8 @@ pub struct DesktopApp {
     /// The dock.
     second: Option<SurfaceId>,
     popup: Option<PopupSurface>,
-    /// The banners' surface and its offset.
-    banners: Option<(SurfaceId, (i32, i32))>,
-    /// When the banners' clocks were last looked at (ms).
-    banner_tick: u64,
+    /// The banners' surface and when their clocks were last looked at.
+    banners: BannerSurface,
     link: Option<Link>,
     displays: Vec<(OutputId, String)>,
     pending: Option<(String, Opening, u64)>,
@@ -61,6 +68,9 @@ pub struct DesktopApp {
     slow: slow::SlowCalls,
     /// Which layout announcements are the user's switches (stored in the settings).
     layouts: keyboard::LayoutSync,
+    /// The shell's own folder for the per-person search history (`None`: nothing kept
+    /// across restarts).
+    history_dir: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for DesktopApp {
@@ -95,6 +105,15 @@ fn read_services(link: &Link, d: &mut Desktop) {
     }
 }
 
+/// The person's remembered searches, read beside the shell (only shown when
+/// `search.history` is on; off keeps nothing).
+fn read_history(d: &mut Desktop, state: Option<&std::path::Path>, user: &str) {
+    d.overview.history = crate::model::history::load(state, user);
+    if !d.overview.sources.history {
+        d.overview.history.clear();
+    }
+}
+
 impl DesktopApp {
     /// Connects to the compositor and the bus and shows the bar.
     pub fn start(
@@ -116,6 +135,7 @@ impl DesktopApp {
         if let Some(link) = &link {
             read_services(link, &mut d);
         }
+        read_history(&mut d, options.state.as_deref(), user);
         let size = screen(&host);
         let place = options
             .bar
@@ -134,14 +154,14 @@ impl DesktopApp {
             second: None,
             bar_fixed: options.bar.is_some(),
             popup: None,
-            banners: None,
-            banner_tick: 0,
+            banners: BannerSurface::default(),
             link,
             displays: Vec::new(),
             pending: None,
             started: Instant::now(),
             slow: slow::SlowCalls::default(),
             layouts: keyboard::LayoutSync::default(),
+            history_dir: options.state.clone(),
         };
         app.apply_keyboard()?;
         app.open_side_panels()?;
@@ -227,6 +247,7 @@ impl DesktopApp {
                 })?;
             }
         }
+        self.react_media()?;
         if keys
             .iter()
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")
@@ -245,11 +266,30 @@ impl DesktopApp {
                 return self.reshape(Shape { bar: place });
             }
         }
+        self.sync_history(&keys)?;
         if any {
             if self.look.theme != self.shell.d.theme {
                 self.look.theme = self.shell.d.theme;
             }
             self.rebuild(Outcome::surfaces())?;
+        }
+        Ok(())
+    }
+
+    /// search.history changed: keep the file beside the shell in step (save when on, delete
+    /// when off). The entries are already in the state (`apply_setting` clears them on off).
+    fn sync_history(&mut self, keys: &[String]) -> Result<(), AppError> {
+        if keys.iter().any(|k| k == "search.history") {
+            self.apply(Outcome::effect(crate::shell::Effect::History))?;
+        }
+        Ok(())
+    }
+
+    /// A drive with media was plugged in: `apps.removable_media` decides what happens.
+    fn react_media(&mut self) -> Result<(), AppError> {
+        let media = self.shell.media_inserted();
+        if media.bar || media.popup || !media.effects.is_empty() {
+            self.apply(media)?;
         }
         Ok(())
     }
@@ -303,7 +343,7 @@ impl DesktopApp {
         if self.is_panel(id) {
             return self.shell.on_surface(&target, kind);
         }
-        if self.banners.is_some_and(|(b, _)| b == id) {
+        if self.banners.surface.is_some_and(|(b, _)| b == id) {
             return self.on_banner(&target, kind);
         }
         match (kind, &target) {

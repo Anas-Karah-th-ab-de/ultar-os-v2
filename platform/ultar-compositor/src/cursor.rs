@@ -5,18 +5,20 @@
 use crate::geom::Rect;
 use crate::output::Output;
 use crate::pixels::{self, Image};
+use ultar_surface::proto::PointerSize;
 use ultar_ui::tokens::{self, Space};
 
 /// Edge of the pointer image in logical points (token `size.icon`).
 pub const CURSOR: i32 = tokens::size::ICON as i32;
 
-/// The logical area the pointer image covers at a position.
-pub fn cursor_rect(x: f64, y: f64) -> Rect {
+/// The logical area a pointer image of `size` covers at a position.
+pub fn cursor_rect(x: f64, y: f64, size: PointerSize) -> Rect {
+    let edge = (f64::from(CURSOR) * size.factor()).ceil() as i32;
     Rect::new(
         x.floor() as i32 - 1,
         y.floor() as i32 - 1,
-        CURSOR + 2,
-        CURSOR + 2,
+        edge + 2,
+        edge + 2,
     )
 }
 
@@ -134,7 +136,21 @@ mod tests {
         assert!(body & 0xff > 0x80, "inside is the fill colour");
         let big = cursor_image(2.0, 0xffff_ffff, 0xff00_0000).unwrap();
         assert_eq!(big.width(), 48);
-        assert_eq!(cursor_rect(10.5, 20.2), Rect::new(9, 19, 26, 26));
+        assert_eq!(
+            cursor_rect(10.5, 20.2, PointerSize::Normal),
+            Rect::new(9, 19, 26, 26)
+        );
+        assert_eq!(
+            cursor_rect(10.5, 20.2, PointerSize::Large),
+            Rect::new(9, 19, 38, 38)
+        );
+        assert_eq!(
+            cursor_rect(10.5, 20.2, PointerSize::Larger),
+            Rect::new(9, 19, 50, 50)
+        );
+        // A larger pointer image is drawn at the size's factor of the output scale.
+        let large = cursor_image(PointerSize::Large.factor(), 0xffff_ffff, 0xff00_0000).unwrap();
+        assert_eq!(large.width(), 36);
         assert!(inside(&ARROW, 2.0, 10.0));
         assert!(!inside(&ARROW, 20.0, 2.0));
         assert_eq!(scaled(0xff80_4020, 128), 0x8040_2010);
