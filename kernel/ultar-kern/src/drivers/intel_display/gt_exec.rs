@@ -349,9 +349,11 @@ impl Backend for Gpu {
         b.frames(0, b.size()).unwrap_or_default()
     }
 
-    fn vm_new(&mut self) -> Result<u32, Errno> {
+    fn vm_new(&mut self, scratch: bool) -> Result<u32, Errno> {
         let (_, rt) = self.parts()?;
-        let space = Ppgtt::new(&mut rt.mem.tables).map_err(|_| Errno::NoMem)?;
+        let tables = &mut rt.mem.tables;
+        let space = if scratch { Ppgtt::new_scratch(tables) } else { Ppgtt::new(tables) };
+        let space = space.map_err(|_| Errno::NoMem)?;
         rt.programs.next += 1;
         rt.programs.vms.insert(rt.programs.next, space);
         Ok(rt.programs.next)
