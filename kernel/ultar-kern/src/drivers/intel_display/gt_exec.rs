@@ -15,7 +15,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicU64, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use spin::MutexGuard;
 use ultar_intel_gt::ads::Class;
 use ultar_intel_gt::lrc::{self, Context};
@@ -33,6 +33,10 @@ const MAX_PENDING: u64 = 200;
 /// Test switch (`gpu-pat=N` on the test medium): every buffer gets cache attribute N on the GT.
 /// Only for measuring – the CPU still caches write-back, so a non-coherent N may show stale data.
 pub static FORCE_PAT: AtomicU8 = AtomicU8::new(0xff);
+/// Test switch (`gpu-wc-all` on the test medium): every buffer is mapped write-combining on the
+/// CPU and without coherence on the GT, also those the program wants cached (measuring only:
+/// the CPU reads them slowly then).
+pub static WC_ALL: AtomicBool = AtomicBool::new(false);
 /// 2 MiB entries the GT got for buffers (for the log).
 pub static HUGE_ENTRIES: AtomicU64 = AtomicU64::new(0);
 /// Pages bound per cache attribute the programs asked for (for the log).
@@ -337,7 +341,8 @@ impl Backend for Gpu {
     type Buffer = Arc<crate::memfd::MemObj>;
 
     fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno> {
-        let obj = crate::memfd::MemObj::new_gpu(write_combining);
+        let wc = write_combining || WC_ALL.load(Ordering::Relaxed);
+        let obj = crate::memfd::MemObj::new_gpu(wc);
         obj.set_size(size).map_err(|_| Errno::NoMem)?;
         Ok(Arc::new(obj))
     }
@@ -364,6 +369,7 @@ impl Backend for Gpu {
         // maps the buffer) – unless a test forces another one
         let used = match FORCE_PAT.load(Ordering::Relaxed) {
             forced @ 0..=4 => forced,
+            _ if WC_ALL.load(Ordering::Relaxed) && pat >= 3 => 1,
             _ => pat,
         };
         let huge = space

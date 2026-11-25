@@ -12,6 +12,7 @@ use crate::Hw;
 pub const RPNSWREQ: u32 = 0xa008;
 /// `RP_CONTROL`: bits 10:9 let the power unit take software requests.
 pub const RP_CONTROL: u32 = 0xa024;
+const RPSWCTL_MASK: u32 = 0x3 << 9;
 const RPSWCTL_ENABLE: u32 = 0x2 << 9;
 const RPSWCTL_DISABLE: u32 = 0;
 /// `MTL_RP_STATE_CAP`: highest ratio in bits 8:0, lowest in bits 24:16.
@@ -45,9 +46,11 @@ pub fn current(hw: &mut impl Hw) -> Ratio {
 /// Asks the power unit for `ratio`: software requests are let through, the request is written,
 /// and the gate is closed again so that nothing else rewrites it.
 pub fn request(hw: &mut impl Hw, ratio: Ratio) {
-    hw.write(RP_CONTROL, RPSWCTL_ENABLE);
+    // only the gate bits change; the rest of the register stays as the power unit has it
+    let control = hw.read(RP_CONTROL) & !RPSWCTL_MASK;
+    hw.write(RP_CONTROL, control | RPSWCTL_ENABLE);
     hw.write(RPNSWREQ, (ratio.0 & RATIO_MASK) << 23);
-    hw.write(RP_CONTROL, RPSWCTL_DISABLE);
+    hw.write(RP_CONTROL, control | RPSWCTL_DISABLE);
 }
 
 #[cfg(test)]
@@ -69,8 +72,9 @@ mod tests {
         hw.set(MIRROR_TARGET_WP1, 0xffff_fe00 | 42);
         assert_eq!(limits(&mut hw), (Ratio(18), Ratio(135)));
         assert_eq!(current(&mut hw), Ratio(42));
+        hw.set(RP_CONTROL, 0x8000_0400 | 0x1);
         request(&mut hw, Ratio(135));
         assert_eq!(hw.get(RPNSWREQ), 135 << 23);
-        assert_eq!(hw.get(RP_CONTROL), 0);
+        assert_eq!(hw.get(RP_CONTROL), 0x8000_0001);
     }
 }
