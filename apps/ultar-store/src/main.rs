@@ -15,6 +15,8 @@
 //!   [`ultar_store::online::DEFAULT_URL`]); `ULTAR_STORE_OFFLINE=1` switches the
 //!   server off. The server copy is verified like a stick and cached in
 //!   `ULTAR_STORE_DATA/catalog-cache`.
+//! * `ULTAR_OPEN_URI` – a `store://app/<id>[?action=remove]` deep link the launcher
+//!   hands a fresh instance (the shell's "Details in Store" / overview search).
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -63,6 +65,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = cmd_tx.send(cmd);
     }
     let _ = cmd_tx.send(Command::ReloadCatalog);
+    // A deep link (store://app/<id>, ULTAR_OPEN_URI) opens that app's page once the
+    // catalogue is on its way; applied after Discover so it is not reset.
+    if let Some(link) = ultar_store::deeplink::from_env() {
+        for action in link.actions() {
+            for cmd in store.act(action) {
+                let _ = cmd_tx.send(cmd);
+            }
+        }
+    }
     event_loop(&mut win, &mut store, &mut hits, &cmd_tx, &event_rx)
 }
 

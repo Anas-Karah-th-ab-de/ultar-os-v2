@@ -25,6 +25,7 @@
 pub mod action;
 pub mod backend;
 pub mod catalog;
+pub mod deeplink;
 pub mod error;
 pub mod i18n;
 pub mod online;

@@ -231,7 +231,8 @@ impl Catalog {
 }
 
 /// Ids in a catalogue must be safe as directory names (same rule as packages).
-fn valid_catalog_id(id: &str) -> bool {
+/// Public so a deep link (`store://app/<id>`) can check an id before it opens a page.
+pub fn valid_catalog_id(id: &str) -> bool {
     let bytes = id.as_bytes();
     bytes.first().is_some_and(|b| b.is_ascii_alphanumeric())
         && bytes.len() <= 128
