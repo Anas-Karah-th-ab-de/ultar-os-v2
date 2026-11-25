@@ -6022,6 +6022,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-terminal"
+version = "0.8.0"
+dependencies = [
+ "ultar-i18n",
+ "ultar-surface",
+ "ultar-textview",
+ "ultar-ui",
+]
+
+[[package]]
 name = "ultar-textview"
 version = "0.8.0"
 dependencies = [

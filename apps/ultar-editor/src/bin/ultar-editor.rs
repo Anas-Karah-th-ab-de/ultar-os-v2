@@ -62,6 +62,10 @@ fn parse(args: impl Iterator<Item = String>) -> Option<Options> {
             "--areas" => o.areas = args.next()?.into(),
             "--lang" => o.lang = Lang::parse(&args.next()?)?,
             "--light" => o.light = true,
+            // the launcher passes every app the apps' bus; these need none
+            "--bus" => {
+                args.next()?;
+            }
             a if !a.starts_with('-') => o.uri = Some(a.to_owned()),
             _ => return None,
         }

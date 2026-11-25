@@ -52,6 +52,7 @@ members = [
     "apps/ultar-files",
     "platform/ultar-textview",
     "apps/ultar-editor",
+    "apps/ultar-terminal",
     "external/ultar-telegram",
     "platform/ultar-ime",
     "platform/ultar-shell",
