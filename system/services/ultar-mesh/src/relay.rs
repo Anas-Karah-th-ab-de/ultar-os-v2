@@ -34,6 +34,10 @@ pub struct Login {
     pub url: String,
     /// The account's device token.
     pub token: String,
+    /// A file with the token, read again before every connection: the account service writes
+    /// it after sign-in and removes it on sign-out, so the relay follows without a restart.
+    /// When set, it is used instead of `token`; while it is missing the relay waits.
+    pub token_file: Option<std::path::PathBuf>,
     /// This device's name (data).
     pub name: String,
     /// Its kind as a word.
@@ -237,9 +241,16 @@ impl Relay {
         own: &[u8],
         incoming: &mpsc::Sender<Halves>,
     ) -> Option<()> {
+        let token = match &login.token_file {
+            Some(file) => std::fs::read_to_string(file)
+                .ok()
+                .map(|t| t.trim().to_owned())
+                .filter(|t| !t.is_empty() && t.len() <= 4096)?,
+            None => login.token.clone(),
+        };
         let (mut socket, _) = tungstenite::connect(login.url.as_str()).ok()?;
         let hello = serde_json::json!({
-            "token": login.token, "pk": hex(own), "name": login.name,
+            "token": token, "pk": hex(own), "name": login.name,
             "ausgabe": login.kind, "rolle": "dienst", "kerne": 0, "frei": 0,
         });
         socket.send(Message::Text(hello.to_string())).ok()?;

@@ -102,9 +102,11 @@ in `Cargo.toml` and `messages/mod.rs`). To ship the service:
   `sysdialog.handoff`; the mesh asks through it and takes its answer). Not built: settings page,
   quick-settings tile, gesture, window-menu entry, the phone sheets, a command-line tool; no app reports
   its activity. Boards and description: `docs/ui/mesh.md` (approved 2026-11-24).
-- **Relay token.** The relay client reads the account's device token from a file. `ultar-accountd` keeps
-  the token to itself; it needs a way to hand the mesh a ticket. The client was run against a stand-in
-  relay, not against the real server.
+- **Relay token (done 2026-11-25).** `ultar-accountd` writes the device token after the person signs in to
+  `/data/ultar/account-relay/relay.token` (group `accountrelay`, only it and the mesh service), the mesh reads
+  it before every connection (`Login::token_file`), so the relay follows sign-in and sign-out without a
+  restart. The relay protocol as the mesh uses it (role `dienst`, open frame with the sender's key) is
+  checked against the release server by `server/cloud-e2e/tests/live_server.rs`.
 - **Remote view, sound, calls and notifications across devices.** `RemoteView` is planned for in the
   stage logic and switched off (`Config::remote_view = false`): the compositor has no window sharing yet.
   A speaker or TV is found and paired but has nothing it can be handed (no "continue playing there" stage).

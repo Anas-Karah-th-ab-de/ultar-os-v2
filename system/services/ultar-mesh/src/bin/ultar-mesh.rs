@@ -72,20 +72,21 @@ fn listen(args: &CommonArgs) -> Result<Listen, Msg> {
     for peer in list(args.option("peer").unwrap_or("")) {
         peers.push(peer.parse().map_err(|_| Msg::BadArguments)?);
     }
-    // The relay needs the account's device token; without both there is no relay.
-    let token = match args
+    // The relay needs the account's device token: read from the file before every connection
+    // (the account service writes it at sign-in); without both options there is no relay.
+    let token_file = args
         .path("relay-token-file")
-        .map_err(|_| Msg::BadArguments)?
-    {
-        Some(file) => std::fs::read_to_string(file).ok(),
-        None => None,
-    };
-    let relay = args.option("relay").zip(token).map(|(url, token)| Login {
-        url: url.to_owned(),
-        token: token.trim().to_owned(),
-        name: name(args),
-        kind: kind_word(args),
-    });
+        .map_err(|_| Msg::BadArguments)?;
+    let relay = args
+        .option("relay")
+        .zip(token_file)
+        .map(|(url, file)| Login {
+            url: url.to_owned(),
+            token: String::new(),
+            token_file: Some(file),
+            name: name(args),
+            kind: kind_word(args),
+        });
     Ok(Listen {
         bind: SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)),
         announce,

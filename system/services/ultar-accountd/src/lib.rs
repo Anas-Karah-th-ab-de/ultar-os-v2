@@ -7,8 +7,10 @@
 //!   display name, picture, password, administrator or standard, automatic
 //!   sign-in, remove with the choice to keep or delete the files; topic
 //!   `account.users` (retained). Rules and checks in [`core`].
-//! * **the Ultar account link** (§12.1), offline first: always "signed out"
-//!   with the reason, until an account server exists ([`link`]).
+//! * **the Ultar account link** (§12.1) to the account server `ultraos-server`
+//!   ([`link`], server port [`link_cloud`], files [`link_store`]): sign in or create
+//!   an account, this device's number, services, devices, password; the device
+//!   stays fully usable without it.
 //!
 //! **One credential store.** Password hashes (Argon2id) live only in the
 //! authentication service `ultar-authd` (`auth.*`), which the lock screen
@@ -30,6 +32,8 @@
 pub mod core;
 pub mod daemon;
 pub mod link;
+pub mod link_cloud;
+pub mod link_store;
 pub mod msg;
 pub mod names;
 pub mod picture;

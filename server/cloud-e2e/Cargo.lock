@@ -1363,6 +1363,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-rustls"
+version = "0.26.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
+dependencies = [
+ "rustls",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1370,8 +1380,12 @@ checksum = "edc5f74e248dc973e0dbb7b74c7e0d6fcc301c694ff50049504004ef4d0cdcd9"
 dependencies = [
  "futures-util",
  "log",
+ "rustls",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls",
  "tungstenite",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -1514,6 +1528,8 @@ dependencies = [
  "httparse",
  "log",
  "rand",
+ "rustls",
+ "rustls-pki-types",
  "sha1",
  "thiserror",
  "utf-8",
@@ -1526,8 +1542,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
+name = "ultar-brand"
+version = "0.8.0"
+
+[[package]]
 name = "ultar-cloud"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -1546,7 +1566,7 @@ dependencies = [
 
 [[package]]
 name = "ultar-cloud-e2e"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "futures-util",
  "rusqlite",
@@ -1558,15 +1578,19 @@ dependencies = [
  "ultar-i18n",
  "ultar-pkg",
  "ultraos-server",
+ "ureq",
 ]
 
 [[package]]
 name = "ultar-i18n"
-version = "0.7.0"
+version = "0.8.0"
+dependencies = [
+ "ultar-brand",
+]
 
 [[package]]
 name = "ultar-pkg"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -1582,15 +1606,15 @@ dependencies = [
 
 [[package]]
 name = "ultar-sprache"
-version = "0.1.0"
+version = "0.8.0"
 
 [[package]]
 name = "ultar-vpn"
-version = "0.6.0"
+version = "0.8.0"
 
 [[package]]
 name = "ultraos-server"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "argon2",
  "axum",

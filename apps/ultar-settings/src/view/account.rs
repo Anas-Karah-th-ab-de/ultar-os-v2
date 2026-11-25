@@ -52,11 +52,12 @@ pub fn strength(password: &str) -> u8 {
 /// Narrowest the middle column (sign-in) may be beside the other two.
 const MIDDLE_MIN: f32 = 320.0;
 
-/// The account service's key of "there is no account server yet".
+/// The account service's key of "no account server is set".
 const NO_SERVER: &str = "accountd.link.no_server";
 
-/// The account service's key of a refused password (the only failure that uses up an attempt).
-const WRONG_PASSWORD: &str = "accountd.refused.wrong_password";
+/// The account service's key of a refused sign-in password (the only failure that uses up an
+/// attempt).
+const WRONG_PASSWORD: &str = "accountd.link.wrong_password";
 
 fn header_row(cx: &mut Cx<'_>, content: NodeId) -> Result<(), UiError> {
     let row = cx.ui.add(

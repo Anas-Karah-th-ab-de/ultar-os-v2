@@ -1,7 +1,9 @@
 # Account service (docs/integration/display-account-services.md): local
-# users and the Ultar account link state. Keeps no secret: passwords go to
+# users and the Ultar account (sign-in at ultar.code-craft.tech over HTTPS,
+# this device's key and number, devices, services). Local passwords go to
 # the authentication service (auth.*), administrator actions are confirmed
 # in the system dialog (sysdialog.authenticate), both asked by this service.
+# The account token stays in /data/ultar/accounts/link (0600).
 exec = "/usr/bin/ultar-accountd"
 args = [
     "--bus", "/run/ultar/bus/accountd.sock",
@@ -11,10 +13,15 @@ args = [
     "--policy", "/etc/ultar/bus-policy.toml",
     "--uids", "1000-19999",
     "--log-socket", "/run/ultar/log/accountd.sock",
+    # The Ultar account link: the device token for the Verbund relay, for the mesh service only.
+    "--relay-token", "/data/ultar/account-relay/relay.token",
+    "--relay-group", "838",
 ]
-# Its own user; its bus and log sockets are open to its group (818).
+# Its own user; its bus and log sockets are open to its group (818). The group accountrelay
+# (838) it shares with the mesh service alone: the relay token, nothing else.
 user = 818
-dirs = ["/data/ultar/accounts"]
+groups = [838]
+dirs = ["/data/ultar/accounts", "/data/ultar/account-relay"]
 # right file_admin: a new user's home is created and handed to the new user
 # id (chown), a removed user's home is moved to /home/.removed or deleted;
 # nothing else this service does needs it.

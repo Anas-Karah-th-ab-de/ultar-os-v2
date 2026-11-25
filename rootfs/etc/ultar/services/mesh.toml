@@ -9,7 +9,9 @@
 # are reachable for the launcher only, so this service can neither read a file to send
 # (no --share) nor put a received one where the Files app shows it (the inbox is its
 # own folder). Handing over what is open in an app works without files. Without --jobs
-# no job of another device runs, without --relay there is no way over the internet.
+# no job of another device runs. Over the internet it goes through the relay of the Ultar
+# account server, signed in with the device token the account service writes after the
+# person signs in (read before every connection; signed out: no relay).
 editions = ["phone", "desktop", "server"]
 exec = "/usr/bin/ultar-mesh"
 args = [
@@ -17,9 +19,13 @@ args = [
     "--state", "/data/ultar/mesh/state",
     "--inbox", "/data/ultar/mesh/inbox",
     "--log-socket", "/run/ultar/log/mesh.sock",
+    "--relay", "wss://ultar.code-craft.tech/v1/verbund/relais",
+    "--relay-token-file", "/data/ultar/account-relay/relay.token",
 ]
-# Its own user (833) without kernel rights: ports above 1024 and its own folders.
+# Its own user (833) without kernel rights: ports above 1024 and its own folders; group
+# accountrelay (838) to read the relay token.
 user = 833
+groups = [838]
 dirs = ["/data/ultar/mesh", "/data/ultar/mesh/state", "/data/ultar/mesh/inbox"]
 notify = true
 after = ["bus"]

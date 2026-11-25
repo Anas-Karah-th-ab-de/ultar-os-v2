@@ -245,18 +245,24 @@ fn the_broker_stops_apps_without_the_right_and_the_link_is_offline() {
         session,
         Err(BusError::Remote(ErrorCode::PermissionDenied))
     ));
-    // The Ultar account: signed out, with the reason; signing in is refused.
+    // The Ultar account: signed out; a server that does not answer refuses the sign-in with
+    // the reason and uses up no attempt.
     let state = app.call(&Status {}, WAIT).unwrap().outcome.unwrap();
-    assert_eq!(state.phase, Phase::SignedOut);
-    assert_eq!(state.error.unwrap().key, "accountd.link.no_server");
+    assert_eq!(
+        (state.phase, state.server.as_str()),
+        (Phase::SignedOut, "127.0.0.1:9")
+    );
+    assert_eq!(state.error, None);
     let sign_in = SignIn {
         user: "x".into(),
         password: "y".into(),
     };
     refused(
         app.call(&sign_in, WAIT).unwrap().outcome,
-        "accountd.link.no_server",
+        "accountd.link.unreachable",
     );
+    let state = app.call(&Status {}, WAIT).unwrap().outcome.unwrap();
+    assert_eq!(state.attempts_remaining, 5);
 }
 
 #[test]

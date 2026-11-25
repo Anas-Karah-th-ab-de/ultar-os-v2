@@ -4,7 +4,9 @@
 //! account keep answering meanwhile – one question at a time.
 
 use crate::core::{Accounts, Config, Op, Ports};
-use crate::link;
+use crate::link::{self, Link, LinkCall};
+use crate::link_cloud::CloudServer;
+use crate::link_store::Store;
 use crate::names::{parse_ids, SystemIds};
 use crate::ports::{BusCredentials, BusDialog, Credentials, Dialog, FsHomes};
 
@@ -50,6 +52,12 @@ pub struct Args {
     pub token_file: Option<PathBuf>,
     /// Start even as root (development).
     pub allow_root: bool,
+    /// Host of the Ultar account server (default [`link::DEFAULT_SERVER`]).
+    pub account_server: String,
+    /// Where the mesh service reads the relay token (none: no relay).
+    pub relay_token: Option<PathBuf>,
+    /// The group the relay token is readable by (shared only with the mesh service).
+    pub relay_group: Option<u32>,
 }
 
 /// Why the command line was refused.
@@ -75,6 +83,9 @@ struct Raw {
     token_file: Option<PathBuf>,
     uids: (u32, u32),
     allow_root: bool,
+    account_server: Option<String>,
+    relay_token: Option<PathBuf>,
+    relay_group: Option<u32>,
 }
 
 /// Reads the command line (`None`: help).
@@ -100,6 +111,11 @@ pub fn parse(
             "--policy" => raw.policy = Some(path()?),
             "--log-socket" => raw.log_socket = Some(path()?),
             "--token-file" => raw.token_file = Some(path()?),
+            "--account-server" => raw.account_server = Some(value()?),
+            "--relay-token" => raw.relay_token = Some(path()?),
+            "--relay-group" => {
+                raw.relay_group = Some(value()?.parse().map_err(|_| UsageError)?);
+            }
             "--uids" => {
                 let v = value()?;
                 let (a, b) = v.split_once('-').ok_or(UsageError)?;
@@ -126,6 +142,11 @@ fn finish(raw: Raw) -> Result<Args, UsageError> {
         log_socket: raw.log_socket,
         token_file: raw.token_file,
         allow_root: raw.allow_root,
+        account_server: raw
+            .account_server
+            .unwrap_or_else(|| link::DEFAULT_SERVER.to_owned()),
+        relay_token: raw.relay_token,
+        relay_group: raw.relay_group,
     };
     let paths = [&args.bus, &args.dir, &args.homes, &args.ids, &args.policy];
     let ids_ok = args.uids.0 >= 1000 && args.uids.0 <= args.uids.1 && args.uids.1 < 20_000;
@@ -134,7 +155,9 @@ fn finish(raw: Raw) -> Result<Args, UsageError> {
             .log_socket
             .iter()
             .chain(&args.token_file)
-            .all(|p| p.is_absolute());
+            .chain(&args.relay_token)
+            .all(|p| p.is_absolute())
+        && !args.account_server.is_empty();
     (abs && ids_ok).then_some(args).ok_or(UsageError)
 }
 
@@ -208,19 +231,18 @@ pub fn run(
     let session = BusSession::connect(&args.bus, options).map_err(StartError::Bus)?;
     let endpoint = session.register(SERVICE).map_err(StartError::Bus)?;
     let (tx, rx) = channel();
-    {
-        let tx = tx.clone();
-        lifecycle.on_stop(move || {
-            let _ = tx.send(Input::Stop);
-        });
-    }
+    let stop = tx.clone();
+    lifecycle.on_stop(move || {
+        let _ = stop.send(Input::Stop);
+    });
     feed_requests(endpoint, tx.clone())?;
     let config = Config {
         dir: args.dir.clone(),
         uids: args.uids,
         system,
     };
-    let mut service = Service {
+    let (link_tx, link_rx) = channel::<Box<IncomingRequest>>();
+    let service = Service {
         accounts: Accounts::open(config),
         credentials: BusCredentials(session.client().clone()),
         dialog: BusDialog(session.client().clone()),
@@ -234,14 +256,30 @@ pub fn run(
         logger,
         session: &session,
         tx,
+        link: link_tx,
     };
     if !service.accounts.usable() {
         logger.log(Level::Error, "accountd.store_damaged");
     }
-    let _ = session.publish_retained(&link::state());
     service.publish();
-    ready();
-    logger.log(Level::Info, "accountd.ready");
+    std::thread::scope(|scope| {
+        let session = &session;
+        let worker = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn_scoped(scope, move || serve_link(args, link_rx, session));
+        if worker.is_err() {
+            logger.log(Level::Error, "accountd.link_failed");
+        }
+        ready();
+        logger.log(Level::Info, "accountd.ready");
+        serve(service, &rx);
+    });
+    session.close();
+    Ok(())
+}
+
+/// The service loop until stop; dropping the service at the end ends the link thread.
+fn serve(mut service: Service<'_>, rx: &std::sync::mpsc::Receiver<Input>) {
     while let Ok(input) = rx.recv() {
         match input {
             Input::Stop => break,
@@ -249,8 +287,71 @@ pub fn run(
             Input::Authorized(r, op, result) => service.authorized(*r, op, result),
         }
     }
-    session.close();
-    Ok(())
+}
+
+/// The kind word of this device for the account's device list.
+fn device_kind() -> String {
+    match std::env::var("ULTAR_EDITION").as_deref() {
+        Ok("phone") => "phone".into(),
+        Ok("server") => "server".into(),
+        _ => "desktop".into(),
+    }
+}
+
+/// This device's name as the account lists it.
+fn device_name() -> String {
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|h| h.trim().chars().take(64).collect::<String>())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "Ultar".into())
+}
+
+fn decode_link(r: &IncomingRequest) -> Option<LinkCall> {
+    use ultar_bus::messages::account_service as a;
+    let m = r.method();
+    Some(match m {
+        _ if m == a::Status::METHOD => LinkCall::Status,
+        _ if m == a::SignOut::METHOD => LinkCall::SignOut,
+        _ if m == a::SignIn::METHOD => LinkCall::SignIn(r.decode().ok()?),
+        _ if m == a::Create::METHOD => LinkCall::Create(r.decode().ok()?),
+        _ if m == a::SetServer::METHOD => LinkCall::SetServer(r.decode().ok()?),
+        _ if m == a::SetService::METHOD => LinkCall::SetService(r.decode().ok()?),
+        _ if m == a::ChangePassword::METHOD => LinkCall::ChangePassword(r.decode().ok()?),
+        _ if m == a::Delete::METHOD => LinkCall::Delete(r.decode().ok()?),
+        _ if m == a::DeviceSignOut::METHOD => LinkCall::DeviceSignOut(r.decode().ok()?),
+        _ if m == a::DeviceRemove::METHOD => LinkCall::DeviceRemove(r.decode().ok()?),
+        _ => return None,
+    })
+}
+
+/// The Ultar account link on its own thread: talking to the server takes up to a few
+/// seconds and must not hold up the local users.
+fn serve_link(
+    args: &Args,
+    calls: std::sync::mpsc::Receiver<Box<IncomingRequest>>,
+    session: &BusSession,
+) {
+    let store = Store::new(&args.dir, args.relay_token.clone(), args.relay_group);
+    let mut link = Link::open(
+        CloudServer::new(&args.dir),
+        &args.account_server,
+        store,
+        &device_name(),
+        &device_kind(),
+    );
+    let _ = session.publish_retained(&link.state(Instant::now()));
+    link.refresh();
+    let _ = session.publish_retained(&link.state(Instant::now()));
+    while let Ok(r) = calls.recv() {
+        let Some(call) = decode_link(&r) else {
+            let _ = r.fail(ErrorCode::BadPayload);
+            continue;
+        };
+        let reply = link.call(call, Instant::now());
+        let _ = r.reply(&reply);
+        let _ = session.publish_retained(&link.state(Instant::now()));
+    }
 }
 
 struct Service<'a> {
@@ -265,6 +366,7 @@ struct Service<'a> {
     logger: &'a Logger,
     session: &'a BusSession,
     tx: Sender<Input>,
+    link: Sender<Box<IncomingRequest>>,
 }
 
 fn decode_op(r: &IncomingRequest) -> Option<Result<Op, BusError>> {
@@ -306,7 +408,9 @@ impl Service<'_> {
     fn request(&mut self, r: IncomingRequest) {
         let method = r.method().to_owned();
         if link::is_link_method(&method) {
-            let _ = r.reply(&link::answer(&method));
+            if let Err(e) = self.link.send(Box::new(r)) {
+                let _ = e.0.fail(ErrorCode::ServiceBusy);
+            }
             return;
         }
         match decode_op(&r) {

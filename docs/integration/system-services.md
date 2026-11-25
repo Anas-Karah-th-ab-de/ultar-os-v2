@@ -261,9 +261,16 @@ password, confirm}`, `user_rename`, `user_picture{Initials | Builtin(<24) | Imag
 `user_password{user, current?, new, confirm}`, `user_kind`, `user_auto_login{user?}` (at most one),
 `user_remove{user, Keep|Delete}`, `user_picture_get`, `session{user?}` (sign-in screen only); topic `account.users`
 (retained). Each answers `UsersReply{Ok(LocalUsers) | Err(Refusal{reason: Text})}`.
-The Ultar account (`account.status` …, §12.1) is offline first: always `SignedOut` with `error =
-accountd.link.no_server`; sign-in/create/server/delete/devices are refused with that reason, services with
-`accountd.link.needs_account` – nothing pretends to be online.
+The Ultar account (`account.status` …, §12.1) talks to the account server `ultraos-server`
+(`--account-server`, default `ultar.code-craft.tech`, HTTPS) on its own thread (`src/link.rs`, server port
+`link_cloud.rs` through `ultar-cloud`, files `link_store.rs`): create/sign in registers this device with its own
+key and gets its number; the account token stays in `/data/ultar/accounts/link` (`0600`); the device token for
+the Verbund relay goes to `--relay-token` (`/data/ultar/account-relay`, group `accountrelay` 838 shared with the
+mesh service only) and is removed on sign-out. Only a refused password uses up one of 5 attempts (then 15 min
+lock); a server that cannot be reached uses none and, while signed in, shows `Offline` with the last state.
+Device list, removing another device, password change and the services of this device work; deleting the
+account is refused (`accountd.link.not_offered`: the server has no such call). Live check against the release
+server: `tests/live_link.rs` (ignored; `ULTAR_LIVE_USER`, `ULTAR_LIVE_PASSWORD`).
 
 **Rules:** own display name, own picture and own password *with the current one* need no dialog; everything else
 (another user, kind, auto sign-in, create, remove, a password without the current one) needs an administrator's

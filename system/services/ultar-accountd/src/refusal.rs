@@ -49,15 +49,37 @@ pub enum Key {
     StoreFailed,
     /// The account file is damaged (an administrator must repair it).
     StoreDamaged,
-    /// The Ultar account needs a server that does not exist yet.
+    /// No account server is set (kept for older catalogs and the Settings app's info bar).
     NoServer,
     /// A service of the account needs a signed-in account.
     NeedsAccount,
+    /// The account server cannot be reached.
+    Unreachable,
+    /// User name or password of the Ultar account wrong (uses up one attempt).
+    LinkWrongPassword,
+    /// The Ultar account name is taken.
+    LinkNameTaken,
+    /// The server does not accept this user name, password or address.
+    LinkRejected,
+    /// The server asks to wait.
+    LinkThrottled,
+    /// The sign-in ended (password changed elsewhere, device removed).
+    SessionEnded,
+    /// This device may not manage the account's other devices yet.
+    NotManager,
+    /// The server answered with an error.
+    ServerError,
+    /// Too many wrong passwords: sign-in waits.
+    Locked,
+    /// The server does not offer this.
+    NotOffered,
+    /// Already signed in (sign out first).
+    AlreadySignedIn,
 }
 
 impl Key {
     /// Every key (catalog completeness test).
-    pub const ALL: [Key; 23] = [
+    pub const ALL: [Key; 34] = [
         Key::NotAuthorized,
         Key::DialogUnavailable,
         Key::Busy,
@@ -81,6 +103,17 @@ impl Key {
         Key::StoreDamaged,
         Key::NoServer,
         Key::NeedsAccount,
+        Key::Unreachable,
+        Key::LinkWrongPassword,
+        Key::LinkNameTaken,
+        Key::LinkRejected,
+        Key::LinkThrottled,
+        Key::SessionEnded,
+        Key::NotManager,
+        Key::ServerError,
+        Key::Locked,
+        Key::NotOffered,
+        Key::AlreadySignedIn,
     ];
 
     /// The i18n key.
@@ -109,6 +142,17 @@ impl Key {
             Key::StoreDamaged => "accountd.refused.store_damaged",
             Key::NoServer => "accountd.link.no_server",
             Key::NeedsAccount => "accountd.link.needs_account",
+            Key::Unreachable => "accountd.link.unreachable",
+            Key::LinkWrongPassword => "accountd.link.wrong_password",
+            Key::LinkNameTaken => "accountd.link.name_taken",
+            Key::LinkRejected => "accountd.link.rejected",
+            Key::LinkThrottled => "accountd.link.throttled",
+            Key::SessionEnded => "accountd.link.session_ended",
+            Key::NotManager => "accountd.link.not_manager",
+            Key::ServerError => "accountd.link.server_error",
+            Key::Locked => "accountd.link.locked",
+            Key::NotOffered => "accountd.link.not_offered",
+            Key::AlreadySignedIn => "accountd.link.signed_in",
         }
     }
 }

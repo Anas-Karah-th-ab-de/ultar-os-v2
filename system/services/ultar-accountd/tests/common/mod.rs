@@ -333,7 +333,12 @@ impl World {
             .arg("--uids")
             .arg(format!("{a}-{b}"))
             .arg("--token-file")
-            .arg(self.dir.join("token"));
+            .arg(self.dir.join("token"))
+            // an address where nothing answers: the account link never leaves the machine
+            .arg("--account-server")
+            .arg("127.0.0.1:9")
+            .arg("--relay-token")
+            .arg(self.dir.join("relay/relay.token"));
         if me() == 0 {
             cmd.arg("--allow-root");
         }

@@ -122,6 +122,7 @@ fn login(url: &str, token: &str, name: &str) -> ultar_mesh::relay::Login {
     ultar_mesh::relay::Login {
         url: url.to_owned(),
         token: token.to_owned(),
+        token_file: None,
         name: name.to_owned(),
         kind: "desktop".to_owned(),
     }

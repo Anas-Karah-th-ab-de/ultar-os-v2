@@ -63,6 +63,9 @@ disk = 832
 # The user's file areas (/data/ultar/areas/*, 0770 launcher:userfiles): system apps that
 # declare file areas get this group in their cell (ultar-launcher areas.rs).
 userfiles = 836
+# The relay token of the Ultar account (/data/ultar/account-relay, 0750/0640 accountd:accountrelay):
+# written by the account service after sign-in, read by the mesh service for the Verbund relay.
+accountrelay = 838
 
 [members]
 busd = ["logd"]
@@ -96,6 +99,7 @@ netd = ["busd", "logd"]
 btd = ["busd", "logd"]
 volumed = ["busd", "logd"]
 mesh = ["busd", "logd"]
+accountrelay = ["accountd", "mesh"]
 agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
