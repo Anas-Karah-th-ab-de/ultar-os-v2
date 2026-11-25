@@ -403,16 +403,50 @@ impl Kind {
     }
 
     /// The URI schemes whose declaration in a manifest makes an app a candidate for
-    /// this kind. The four file kinds share the `file` scheme: an app that opens files
-    /// declares it, and the extension tells the kinds apart.
+    /// this kind. The four file kinds share the `file`/`files` schemes: an app that opens
+    /// files declares one of them, and the extension tells the kinds apart.
     pub const fn schemes(self) -> &'static [&'static str] {
         match self {
             Self::Web => &["http", "https"],
             Self::Mail => &["mailto"],
             Self::Calendar => &["calendar", "webcal"],
-            Self::Music | Self::Video | Self::Photos | Self::Documents => &["file"],
+            Self::Music | Self::Video | Self::Photos | Self::Documents => &["file", "files"],
         }
     }
+}
+
+/// The kind of thing a URI names: its scheme tells the web, mail and calendar kinds; a
+/// `file://` URI's extension tells the four file kinds apart. Anything else names no kind.
+/// The launcher resolves through this ([`Resolve`]); openers use it to ask for a default.
+pub fn kind_of_uri(uri: &str) -> Option<Kind> {
+    let (scheme, rest) = uri.split_once(':')?;
+    match scheme {
+        "http" | "https" => Some(Kind::Web),
+        "mailto" => Some(Kind::Mail),
+        "calendar" | "webcal" => Some(Kind::Calendar),
+        "file" | "files" => kind_of_extension(rest),
+        _ => None,
+    }
+}
+
+/// The file kind of a `file://` URI's path (its extension, lower case).
+fn kind_of_extension(rest: &str) -> Option<Kind> {
+    let path = rest.split(['?', '#']).next()?;
+    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
+    let kind = match ext.as_str() {
+        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "wma" | "mid" | "midi" => {
+            Kind::Music
+        }
+        "mp4" | "m4v" | "mkv" | "webm" | "avi" | "mov" | "wmv" | "flv" | "mpg" | "mpeg" | "ts" => {
+            Kind::Video
+        }
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "avif" | "heic"
+        | "ico" => Kind::Photos,
+        "pdf" | "txt" | "md" | "rtf" | "odt" | "ods" | "odp" | "doc" | "docx" | "xls" | "xlsx"
+        | "ppt" | "pptx" | "csv" | "epub" | "html" | "htm" => Kind::Documents,
+        _ => return None,
+    };
+    Some(kind)
 }
 
 /// Most apps [`CandidatesReply`] lists for one kind.

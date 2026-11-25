@@ -7,7 +7,7 @@ use crate::fs::copy::Cancel;
 use crate::fs::undo::Undo;
 use crate::fs::{free_name, AreaId, Fs, FsError, Loc};
 use crate::jobs::{self, JobMsg};
-use crate::model::{Dialog, JobKind};
+use crate::model::{Dialog, JobKind, Notice};
 use crate::service::bus::STORE;
 use crate::service::PortError;
 use crate::update;
@@ -27,6 +27,7 @@ impl App {
                 Effect::Reload => self.reload(),
                 Effect::Job(kind) => self.start_job(kind),
                 Effect::Launch { app, uri } => self.launch(&app, &uri),
+                Effect::Open { uri, name } => self.open_default(&uri, &name),
                 Effect::Eject(id) => {
                     let done = self.ports.volumes.eject(&id).map_err(|_| FsError::Busy);
                     let more = update::ejected(&mut self.state, &id, done);
@@ -38,6 +39,23 @@ impl App {
                 Effect::Rename(loc, name) => self.rename(&loc, &name),
                 Effect::FocusItems => {}
             }
+        }
+    }
+
+    /// Opens a file with its default app: the launcher resolves the URI through
+    /// `apps.default.*`; no installed app for it says so, a service that cannot is a dialog.
+    fn open_default(&mut self, uri: &str, name: &str) {
+        match self.ports.launcher.resolve(uri) {
+            Ok(Some(app)) => self.launch(&app, uri),
+            Ok(None) => {
+                self.state.notice = Some(Notice {
+                    key: "files.notice.no_app",
+                    count: 1,
+                    name: name.to_owned(),
+                    undo: false,
+                });
+            }
+            Err(e) => self.state.dialog = Some(port_failed(e)),
         }
     }
 

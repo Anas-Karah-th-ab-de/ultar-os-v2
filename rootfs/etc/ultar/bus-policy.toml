@@ -44,10 +44,14 @@ call     = ["settings.ping", "devices.ping"]
 identity = "system.init"
 register = ["init"]
 
-# App launcher: offers `launcher` (apps, their instances and permissions).
+# App launcher: offers `launcher` (apps, their instances and permissions). It reads the
+# default apps and the autostart list (settings.get) and follows their changes and who
+# signs in (settings.changed, session.state) to start the autostart apps once.
 [[rule]]
-identity = "system.launcher"
-register = ["launcher"]
+identity  = "system.launcher"
+register  = ["launcher"]
+call      = ["settings.get"]
+subscribe = ["settings.changed", "session.state"]
 
 # The surface (shell): starts, stops and lists apps and asks the user for
 # permissions (system dialogs). Not install/uninstall: those need
@@ -170,19 +174,21 @@ call     = ["auth.users", "auth.verify", "auth.set_secret", "auth.update_user", 
 # state (read), update check and progress, how full the storage and the mounted drives are
 # (volumes.usage), the installed apps with
 # their permissions and taking a permission back (launcher.revoke; never launcher.grant: a
-# permission is granted only through the shell's system dialog). Administrator actions are
-# confirmed by the services in the system dialog, not by this rule.
+# permission is granted only through the shell's system dialog), and the installed apps that
+# declare each kind as the choices of the default-app rows (launcher.candidates). Administrator
+# actions are confirmed by the services in the system dialog, not by this rule.
 [[rule]]
 identity  = "app.settings"
-call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "launcher.list", "launcher.permissions", "launcher.revoke", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4"]
+call      = ["settings.list", "settings.get", "settings.set", "settings.confirm", "settings.revert", "devices.list", "devices.switch", "devices.rollback", "devices.rescan", "update.offline", "update.check", "launcher.list", "launcher.permissions", "launcher.revoke", "launcher.candidates", "volumes.usage", "net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.import", "vpn.set", "vpn.remove", "display.identify", "display.detect", "display.apply", "display.keep", "display.revert", "account.status", "account.sign_in", "account.sign_out", "account.create", "account.set_server", "account.set_service", "account.change_password", "account.delete", "account.device_sign_out", "account.device_remove", "account.users_list", "account.user_create", "account.user_rename", "account.user_picture", "account.user_password", "account.user_kind", "account.user_auto_login", "account.user_remove", "account.user_picture_get", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget", "net.set_ipv4"]
 subscribe = ["settings.changed", "settings.pending", "settings.pending_resolved", "devices.capabilities", "devices.driver_state", "net.wifi", "vpn.state", "display.outputs", "account.users", "account.state", "audio.state", "net.state", "bluetooth.state", "power.state", "update.progress"]
 
-# The Files app: opens a file with its default app (launcher.start v2 with a URI) after
-# checking that app is installed (launcher.list), the drives in the sidebar and their eject
+# The Files app: opens a file with its default app – the launcher resolves the URI through
+# apps.default.* (launcher.resolve), then Files starts that app (launcher.start v2 with the
+# URI); launcher.list for the installed apps, the drives in the sidebar and their eject
 # buttons, "the drive may be removed" (notify.post, also in app.*).
 [[rule]]
 identity  = "app.files"
-call      = ["launcher.start", "launcher.list", "volumes.eject"]
+call      = ["launcher.start", "launcher.list", "launcher.resolve", "volumes.eject"]
 subscribe = ["volumes.state"]
 
 # The App-Builder (store id km-code-craft.appbuilder): installs the package it built for

@@ -18,42 +18,12 @@ pub const MAX_AUTOSTART: usize = 64;
 /// Prefix of the default-app settings keys.
 const PREFIX: &str = "apps.default.";
 
+/// The kind of thing a URI names (shared with the openers, `ultar_bus::messages::launcher`).
+pub use ultar_bus::messages::launcher::kind_of_uri;
+
 /// The kind of a default-app settings key, if it is one.
 pub fn kind_of_key(key: &str) -> Option<Kind> {
     Kind::from_word(key.strip_prefix(PREFIX)?)
-}
-
-/// The kind of thing a URI names: its scheme tells the web, mail and calendar kinds; a
-/// `file://` URI's extension tells the four file kinds apart. Anything else names no kind.
-pub fn kind_of_uri(uri: &str) -> Option<Kind> {
-    let (scheme, rest) = uri.split_once(':')?;
-    match scheme {
-        "http" | "https" => Some(Kind::Web),
-        "mailto" => Some(Kind::Mail),
-        "calendar" | "webcal" => Some(Kind::Calendar),
-        "file" => kind_of_extension(rest),
-        _ => None,
-    }
-}
-
-/// The file kind of a `file://` URI's path (its extension, lower case).
-fn kind_of_extension(rest: &str) -> Option<Kind> {
-    let path = rest.split(['?', '#']).next()?;
-    let ext = path.rsplit('.').next()?.to_ascii_lowercase();
-    let kind = match ext.as_str() {
-        "mp3" | "flac" | "ogg" | "oga" | "wav" | "m4a" | "aac" | "opus" | "wma" | "mid" | "midi" => {
-            Kind::Music
-        }
-        "mp4" | "m4v" | "mkv" | "webm" | "avi" | "mov" | "wmv" | "flv" | "mpg" | "mpeg" | "ts" => {
-            Kind::Video
-        }
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "avif" | "heic"
-        | "ico" => Kind::Photos,
-        "pdf" | "txt" | "md" | "rtf" | "odt" | "ods" | "odp" | "doc" | "docx" | "xls" | "xlsx"
-        | "ppt" | "pptx" | "csv" | "epub" | "html" | "htm" => Kind::Documents,
-        _ => return None,
-    };
-    Some(kind)
 }
 
 /// A stored default app: a valid app id, or the kind's system default.
@@ -156,7 +126,8 @@ impl Autostart {
     }
 }
 
-/// Whether the installed app `app` declares the URI's scheme in its manifest.
+/// Whether the installed app `app` declares the URI's scheme in its manifest. `file` and
+/// `files` both mean "opens files" (a mounted drive and a place of the user).
 fn declares(core: &Core, app: &str, scheme: &str) -> bool {
     let Ok(id) = AppId::new(app) else {
         return false;
@@ -164,8 +135,13 @@ fn declares(core: &Core, app: &str, scheme: &str) -> bool {
     if core.installed(&id).is_err() {
         return false;
     }
+    let wanted: &[&str] = if scheme == "file" || scheme == "files" {
+        &["file", "files"]
+    } else {
+        std::slice::from_ref(&scheme)
+    };
     core.manifest(&id)
-        .is_ok_and(|m| m.open_schemes.iter().any(|s| s == scheme))
+        .is_ok_and(|m| m.open_schemes.iter().any(|s| wanted.contains(&s.as_str())))
 }
 
 impl Launcher {

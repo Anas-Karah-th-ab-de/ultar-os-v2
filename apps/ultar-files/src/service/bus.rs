@@ -14,8 +14,25 @@ pub const STORE: &str = "org.ultar.store";
 
 /// The launcher's and the drive service's own contracts.
 pub mod contract {
-    pub use ultar_bus::messages::launcher::{Role, Start, ERROR_UNKNOWN_APP};
+    pub use ultar_bus::messages::launcher::{Resolve, ResolveReply, Role, Start, ERROR_UNKNOWN_APP};
     pub use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
+}
+
+/// The launcher's id of an app Files names `app`: base-system apps have one-part ids in
+/// the launcher (`office`), Files names them `org.ultar.<id>`; a dotted store id stays.
+fn launcher_id(app: &str) -> &str {
+    app.strip_prefix("org.ultar.")
+        .filter(|rest| !rest.is_empty() && !rest.contains('.'))
+        .unwrap_or(app)
+}
+
+/// Files' name of an app the launcher resolves as `id` (the inverse of [`launcher_id`]).
+fn shell_id(id: &str) -> String {
+    if id.contains('.') {
+        id.to_owned()
+    } else {
+        format!("org.ultar.{id}")
+    }
 }
 
 fn port_error(e: &BusError) -> PortError {
@@ -32,6 +49,14 @@ fn port_error(e: &BusError) -> PortError {
 pub struct BusLauncher(pub Client);
 
 impl LauncherPort for BusLauncher {
+    fn resolve(&mut self, uri: &str) -> Result<Option<String>, PortError> {
+        let ask = contract::Resolve {
+            uri: uri.to_owned(),
+        };
+        let reply = self.0.call(&ask, TIMEOUT).map_err(|e| port_error(&e))?;
+        Ok(reply.app.map(|id| shell_id(&id)))
+    }
+
     fn open(
         &mut self,
         app: &str,
@@ -39,7 +64,7 @@ impl LauncherPort for BusLauncher {
         activation_token: Option<u64>,
     ) -> Result<(), PortError> {
         let start = contract::Start {
-            app: app.to_owned(),
+            app: launcher_id(app).to_owned(),
             role: contract::Role::Ui,
             activation_token,
             uri: Some(uri.to_owned()),

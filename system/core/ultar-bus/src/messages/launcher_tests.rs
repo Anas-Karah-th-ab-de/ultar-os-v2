@@ -105,3 +105,21 @@ fn kinds_have_distinct_words_keys_and_defaults() {
     assert!(Kind::Web.schemes().contains(&"https"));
     assert!(Kind::Documents.schemes().contains(&"file"));
 }
+
+#[test]
+fn uris_name_their_kind() {
+    for (uri, kind) in [
+        ("https://example.org/a", Kind::Web),
+        ("mailto:a@example.org", Kind::Mail),
+        ("calendar://event/1", Kind::Calendar),
+        ("file:///m/u/song.mp3", Kind::Music),
+        ("file:///m/u/film.mkv", Kind::Video),
+        ("file:///m/u/pic.JPG", Kind::Photos),
+        ("file:///m/u/doc.pdf", Kind::Documents),
+    ] {
+        assert_eq!(kind_of_uri(uri), Some(kind), "{uri}");
+    }
+    for uri in ["trash:///", "file:///m/u/folder", "file:///m/u/a.zip", ""] {
+        assert_eq!(kind_of_uri(uri), None, "{uri}");
+    }
+}

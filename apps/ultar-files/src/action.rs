@@ -145,6 +145,14 @@ pub enum Effect {
         /// What to open.
         uri: String,
     },
+    /// Open `uri` with its default app: the launcher resolves it through `apps.default.*`
+    /// (`launcher.resolve`), then Files starts that app.
+    Open {
+        /// What to open.
+        uri: String,
+        /// The item's name (for "no app can open it").
+        name: String,
+    },
     /// `volumes.eject`.
     Eject(String),
     /// Create the folder and then rename it (new folder).
