@@ -235,7 +235,11 @@ impl State {
         );
         let limits = self.surface(key).map(|s| s.limits).unwrap_or_default();
         let (w, h) = wm::clamp_size(size.0, size.1, limits.min, limits.max, work);
-        let frame = if secure {
+        let frame = if secure && self.session.shell.phone.on {
+            // Phone: the dialog covers the work area under its trusted title bar and shows
+            // its question as a sheet from the bottom edge (docs/ui/mesh.md §2.4).
+            work
+        } else if secure {
             let (fw, fh) = (w / 2, h / 2 + TITLEBAR);
             Rect::new(
                 work.x + (work.w - fw) / 2,

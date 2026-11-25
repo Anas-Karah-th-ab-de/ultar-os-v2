@@ -185,7 +185,9 @@ system-services.md and bus-policy.toml merged: both rule sets, network §3, Blue
   primary-button drag starting within 16 points of the bottom or a side edge is kept from the
   apps; 48 points make a swipe, a finger resting 400 ms at the end makes "held". The shell asks
   for it whenever its shape is the phone (`app/desktop/panels.rs`); `Shell::on_edge`: home,
-  recent apps, back (the shell's sheet first). Tests: compositor `tests/phone_mode.rs` (4),
+  recent apps, back (the shell's sheet first). A system dialog opened in phone mode keeps its
+  trusted title bar and covers the work area below it (the phone's `ultar-mobile-dialog` draws
+  its question as a sheet from the bottom edge). Tests: compositor `tests/phone_mode.rs` (5),
   desktop `tests/phone.rs`.
 * **Arranging apps on the phone** (`model/arrange.rs`, `shell/arrange.rs`): drag on the home
   screen moves an app or puts it into the favourites row (the row keeps three); in all apps an

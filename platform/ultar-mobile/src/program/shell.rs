@@ -7,7 +7,7 @@ use super::bus::Link;
 use super::{local_now, ms_to_minute, screen_size, zone_offset, Options, ProgramError};
 use crate::app::{apply_click, apply_swipe, Effect};
 use crate::click::Click;
-use crate::model::{Mobile, Screen};
+use crate::model::{Mobile, Screen, WinAction, Window};
 use crate::view::{self, metrics, Built, Part};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -15,7 +15,9 @@ use ultar_hal_system::load::Sampler;
 use ultar_i18n::Translator;
 use ultar_shell_host::{Host, HostEvent};
 use ultar_surface::client::WindowConfig;
-use ultar_surface::proto::{Edge, Event, Role, SurfaceId};
+use ultar_surface::proto::{
+    Edge, Event, Request, Role, SurfaceId, SwipeEdge, WindowAction, WindowState,
+};
 use ultar_ui::event::{Action, ActionKind};
 use ultar_ui::geom::{Point, Size};
 use ultar_ui::paint::PaintEnv;
@@ -96,6 +98,9 @@ impl ShellProgram {
         let panel = |edge, size| WindowConfig::with_role(Role::Panel { edge, size }, "", false);
         let status = host.open(&panel(Edge::Top, metrics::status() as u32), blank()?, None)?;
         let nav = host.open(&panel(Edge::Bottom, metrics::nav() as u32), blank()?, None)?;
+        // Phone mode: apps fill the space between the bars without title bars, and the
+        // compositor reports the edge swipes (the window list came with the welcome).
+        host.client.send(&Request::SetPhoneMode { on: true })?;
         let bg = WindowConfig::with_role(Role::Background, "", false);
         let home = host.open(&bg, blank()?, None)?;
         let mut shell = ShellProgram {
@@ -139,6 +144,10 @@ impl ShellProgram {
         if let Some(link) = self.link.as_mut() {
             changed |= link.poll(&mut self.model, &self.tr);
         }
+        // A notice of the mesh ends by itself.
+        let shown = self.model.mesh.notice_at(self.model.now_ms);
+        self.model.now_ms = super::now_ms();
+        changed |= shown != self.model.mesh.notice_at(self.model.now_ms);
         let now = local_now(self.offset);
         if now != self.model.now {
             let zone = self.link.as_ref().map_or(super::tz::DEFAULT, Link::zone);
@@ -183,6 +192,29 @@ impl ShellProgram {
                 changed
             }
             HostEvent::Resized(..) => true,
+            HostEvent::Compositor(Event::WindowsChanged { windows }) => {
+                let list = windows
+                    .into_iter()
+                    .map(|w| Window {
+                        id: w.id,
+                        app: super::bus::shell_id(&w.app_id),
+                        title: w.title,
+                        minimized: w.state == WindowState::Minimized,
+                        focused: w.focused,
+                    })
+                    .collect();
+                self.model.set_windows(list);
+                true
+            }
+            // Phone mode: up from the bottom edge = home, held = recent apps, in from a side = back.
+            HostEvent::Compositor(Event::EdgeSwipe { edge, held }) => {
+                let click = match (edge, held) {
+                    (SwipeEdge::Bottom, false) => Click::Home,
+                    (SwipeEdge::Bottom, true) => Click::Recents,
+                    (SwipeEdge::Side, _) => Click::Back,
+                };
+                self.click(click)
+            }
             HostEvent::Compositor(Event::Output(_) | Event::OutputRemoved { .. }) => {
                 self.screen = screen_size(self.host.client.outputs());
                 true
@@ -222,6 +254,12 @@ impl ShellProgram {
                     .unwrap_or_default();
                 self.model.query = text.to_owned();
                 true
+            }
+            ActionKind::DragEnded { delta, .. } => {
+                let Some(click) = crate::app::drag_click(built.click(node), delta) else {
+                    return false;
+                };
+                self.click(click)
             }
             ActionKind::Closed if self.model.power_menu => {
                 self.model.power_menu = false;
@@ -272,10 +310,47 @@ impl ShellProgram {
         changed
     }
 
-    fn effects(&self, effects: &[Effect]) {
-        if let Some(link) = &self.link {
-            for e in effects {
-                link.run(e);
+    fn effects(&mut self, effects: &[Effect]) {
+        for e in effects {
+            if let Effect::Window(window, action) = e {
+                let action = match action {
+                    WinAction::Activate => WindowAction::Activate,
+                    WinAction::Minimize => WindowAction::Minimize,
+                    WinAction::Close => WindowAction::Close,
+                    WinAction::Back => WindowAction::Back,
+                };
+                let request = Request::WindowAction {
+                    window: *window,
+                    action,
+                };
+                let _ = self.host.client.send(&request);
+            }
+        }
+        let Some(link) = &self.link else { return };
+        for e in effects {
+            match e {
+                Effect::MeshSend { app, device } => {
+                    // The window's title when the app has one (a document, a page), else its name.
+                    let window = self.model.windows.iter().rev().find(|w| &w.app == app);
+                    let title = match window.filter(|w| !w.title.is_empty()) {
+                        Some(w) => w.title.clone(),
+                        None => match self.model.app(app) {
+                            Some(a) => a
+                                .key
+                                .as_ref()
+                                .map_or_else(|| a.name.clone(), |k| self.tr.t(k).into_owned()),
+                            None => app.clone(),
+                        },
+                    };
+                    if let Some(outcome) = link.send(app, &title, device.clone()) {
+                        self.model.mesh.sent(app, outcome, self.model.now_ms);
+                        if self.model.mesh.choice.is_some() {
+                            // The choice survives `go` (it is cleared only on other screens).
+                            self.model.go(Screen::Mesh);
+                        }
+                    }
+                }
+                other => link.run(other),
             }
         }
     }
@@ -311,7 +386,7 @@ impl ShellProgram {
     fn show_sheet(&mut self) -> Result<(), ProgramError> {
         let open = matches!(
             self.model.screen,
-            Screen::Quick | Screen::Recents | Screen::Search
+            Screen::Quick | Screen::Recents | Screen::Search | Screen::Mesh
         );
         let size = Size::new(
             self.screen.w,

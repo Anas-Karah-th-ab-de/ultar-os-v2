@@ -27,13 +27,17 @@ pub enum Toggle {
     Vpn,
     /// Torch (only with a camera light).
     Torch,
+    /// Device mesh (large tile; only with the mesh service). Its state lives in the mesh
+    /// model, not in [`Quick`].
+    Mesh,
 }
 
 impl Toggle {
     /// Every switch in the order of the quick settings.
-    pub const ALL: [Toggle; 10] = [
+    pub const ALL: [Toggle; 11] = [
         Toggle::Wifi,
         Toggle::MobileData,
+        Toggle::Mesh,
         Toggle::Bluetooth,
         Toggle::Airplane,
         Toggle::Dnd,
@@ -57,6 +61,7 @@ impl Toggle {
             Toggle::Location => IconId::Compass,
             Toggle::Vpn => IconId::Vpn,
             Toggle::Torch => IconId::Sun,
+            Toggle::Mesh => IconId::Mesh,
         }
     }
 
@@ -73,12 +78,13 @@ impl Toggle {
             Toggle::Location => "mobile.qs.location",
             Toggle::Vpn => "mobile.qs.vpn",
             Toggle::Torch => "mobile.qs.torch",
+            Toggle::Mesh => "mobile.qs.mesh",
         }
     }
 
     /// One of the two large tiles at the top.
     pub fn large(self) -> bool {
-        matches!(self, Toggle::Wifi | Toggle::MobileData)
+        matches!(self, Toggle::Wifi | Toggle::MobileData | Toggle::Mesh)
     }
 }
 
@@ -93,6 +99,8 @@ pub struct Hardware {
     pub battery: bool,
     /// A camera light.
     pub torch: bool,
+    /// The mesh service runs.
+    pub mesh: bool,
 }
 
 impl Hardware {
@@ -102,6 +110,7 @@ impl Hardware {
         bluetooth: true,
         battery: true,
         torch: true,
+        mesh: false,
     };
 
     /// Whether the phone can offer `t`.
@@ -111,6 +120,7 @@ impl Hardware {
             Toggle::Bluetooth => self.bluetooth,
             Toggle::Saver => self.battery,
             Toggle::Torch => self.torch,
+            Toggle::Mesh => self.mesh,
             _ => true,
         }
     }
@@ -195,5 +205,10 @@ mod tests {
         let (large, small) = Quick::shown(Hardware::PHONE);
         assert_eq!(large.len(), 2);
         assert_eq!(small.len(), 8);
+        let (large, _) = Quick::shown(Hardware {
+            mesh: true,
+            ..Hardware::PHONE
+        });
+        assert_eq!(large, vec![Toggle::Wifi, Toggle::MobileData, Toggle::Mesh]);
     }
 }

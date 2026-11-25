@@ -1,0 +1,14 @@
+[package]
+name = "ultar-dialog-core"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "State of the system dialogs shared by every device of Ultar OS (platform, area 5): queue, deadlines, safe answers – no view"
+
+[lib]
+name = "ultar_dialog_core"
+path = "src/lib.rs"
+
+[dependencies]
+ultar-bus = { path = "../../system/core/ultar-bus" }

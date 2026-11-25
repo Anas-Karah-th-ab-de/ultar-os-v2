@@ -74,6 +74,13 @@ fn header(b: &mut Builder<'_>, parent: NodeId, m: &Mobile) -> Result<(), UiError
 
 /// The state line of a large tile.
 fn state(m: &Mobile, t: Toggle) -> Label {
+    if t == Toggle::Mesh {
+        let n = i64::try_from(m.mesh.connected()).unwrap_or(0);
+        return match m.mesh.enabled() {
+            true => Label::key_count("mobile.qs.mesh.on", "count", n),
+            false => Label::key("mobile.qs.off"),
+        };
+    }
     let on = m.quick.is_on(t);
     match (t, on, &m.quick.network) {
         (Toggle::Wifi, true, Some(net)) => Label::data(net),
@@ -90,9 +97,27 @@ fn large_tiles(
     m: &Mobile,
     tiles: &[Toggle],
 ) -> Result<(), UiError> {
+    let rows = b.flex(parent, Flex::column().gap(Space::S8), Sizing::AUTO)?;
+    for pair in tiles.chunks(2) {
+        large_row(b, rows, m, pair)?;
+    }
+    Ok(())
+}
+
+/// Two large tiles side by side (a single one keeps its half).
+fn large_row(
+    b: &mut Builder<'_>,
+    parent: NodeId,
+    m: &Mobile,
+    tiles: &[Toggle],
+) -> Result<(), UiError> {
     let row = b.flex(parent, Flex::row().gap(Space::S8), Sizing::AUTO)?;
     for t in tiles {
-        let on = m.quick.is_on(*t);
+        let on = if *t == Toggle::Mesh {
+            m.mesh.enabled()
+        } else {
+            m.quick.is_on(*t)
+        };
         let pair = b.flex(row, Flex::row(), Sizing::grow(1))?;
         let tile = Brick::new(
             BrickKind::QuickTile {
@@ -104,8 +129,16 @@ fn large_tiles(
             Label::key(t.key()),
         );
         b.click(pair, tile, Sizing::grow(1), Click::Toggle(*t))?;
-        let more = Brick::new(BrickKind::QuickMore { on }, Label::key("mobile.qs.more"));
-        b.click(pair, more, Sizing::AUTO, Click::ToggleMore(*t))?;
+        let more_key = if *t == Toggle::Mesh {
+            "mobile.mesh.continue"
+        } else {
+            "mobile.qs.more"
+        };
+        let more = Brick::new(BrickKind::QuickMore { on }, Label::key(more_key));
+        let id = b.click(pair, more, Sizing::AUTO, Click::ToggleMore(*t))?;
+        if *t == Toggle::Mesh && !(m.mesh.can_send() && !m.recents.is_empty()) {
+            b.ui.set_disabled(id, true)?;
+        }
     }
     Ok(())
 }

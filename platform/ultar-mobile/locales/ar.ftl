@@ -89,3 +89,80 @@ mobile.power.restart = إعادة التشغيل
 mobile.power.off = إيقاف التشغيل
 mobile.power.lock = قفل الشاشة
 mobile.power.cancel = إلغاء
+mobile.mesh.choose = المتابعة على جهاز آخر
+mobile.mesh.choose.hint = اضغط مطوّلاً على تطبيق في التطبيقات الأخيرة ثم اسحب للأعلى لفتح هذه القائمة. يُسأل صاحب الجهاز هناك قبل الفتح.
+mobile.mesh.target.state = يُفتح في الموضع نفسه
+mobile.mesh.target.file = يُرسل الملف فقط
+mobile.mesh.target.view = يُعرض من هنا
+mobile.mesh.send = إرسال
+mobile.mesh.cancel = إلغاء
+mobile.mesh.continue = المتابعة على جهاز آخر
+mobile.mesh.waiting = بانتظار الجهاز الآخر
+mobile.mesh.opened = فُتح على الجهاز الآخر
+mobile.mesh.declined = رفض الجهاز الآخر
+mobile.mesh.expired = لم يُجب أحد خلال دقيقة
+mobile.mesh.failed = لم يُرسل: انقطع الاتصال
+mobile.mesh.no_target = لا جهاز يستطيع استقبال هذا الآن
+mobile.mesh.no_activity = لا شيء يمكن متابعته
+mobile.qs.mesh = الترابط
+mobile.qs.mesh.on = {count ->
+    [zero] مفعّل · لا أجهزة متصلة
+    [one] مفعّل · جهاز واحد متصل
+    [two] مفعّل · جهازان متصلان
+    [few] مفعّل · {count} أجهزة متصلة
+    [many] مفعّل · {count} جهازًا متصلًا
+   *[other] مفعّل · {count} جهاز متصل
+}
+
+# System dialogs (ultar-mobile-dialog): the desktop's dialog.* texts as phone sheets
+mobile.dialog.system = النظام
+mobile.dialog.scrim = خلف السؤال
+mobile.dialog.allow_always = السماح دائماً
+mobile.dialog.allow_once = مرة واحدة
+mobile.dialog.deny = رفض
+mobile.dialog.cancel = إلغاء
+mobile.dialog.permission.title = السماح لـ «{app}» باستخدام {what}؟
+mobile.dialog.permission.text = يطلب التطبيق هذا الإذن. يمكنك تغيير القرار لاحقاً في الإعدادات.
+mobile.dialog.permission.camera = الكاميرا
+mobile.dialog.permission.microphone = الميكروفون
+mobile.dialog.permission.location = الموقع
+mobile.dialog.permission.screen_share = مشاركة الشاشة
+mobile.dialog.permission.files = الملفات خارج مجلده
+mobile.dialog.permission.network = الشبكة
+mobile.dialog.permission.background = العمل في الخلفية
+mobile.dialog.permission.notifications = الإشعارات
+mobile.dialog.auth.title = مطلوب إذن المسؤول
+mobile.dialog.auth.text = «{app}» يريد: {action}
+mobile.dialog.auth.password = كلمة مرور {user}
+mobile.dialog.auth.no_admin = لا يوجد مسؤول على هذا الجهاز.
+mobile.dialog.auth.confirm = تأكيد
+mobile.dialog.auth.wrong = كلمة المرور غير صحيحة.
+mobile.dialog.auth.wait = كلمة المرور غير صحيحة. حاول مجدداً بعد {seconds} ث.
+mobile.dialog.keep.title = هل تريد الاحتفاظ بهذه الإعدادات؟
+mobile.dialog.keep.text = تغيّر وضع العرض إلى «{mode}». إن لم تختر، يعود الوضع السابق.
+mobile.dialog.keep.timer = تُلغى تلقائياً خلال {seconds} ثانية
+mobile.dialog.keep.left = الوقت المتبقّي
+mobile.dialog.keep.keep = احتفاظ
+mobile.dialog.keep.revert = تراجع
+mobile.dialog.keep.more = أحتاج وقتاً أكثر
+mobile.dialog.keep.mode.extend = توسيع
+mobile.dialog.keep.mode.mirror = تكرار
+mobile.dialog.keep.mode.single = شاشة واحدة
+mobile.dialog.keep.mode.other = إعداد جديد
+mobile.dialog.bt.consent = إقران مع {name}؟
+mobile.dialog.bt.consent.text = سيتمكن هذا الجهاز من الاتصال بهذا الهاتف.
+mobile.dialog.bt.pair = إقران
+mobile.dialog.bt.compare = هل يعرض {name} هذا الرقم؟
+mobile.dialog.bt.yes = نعم
+mobile.dialog.bt.no = لا
+mobile.dialog.bt.show = اكتب {number} على {name} ثم اضغط Enter
+mobile.dialog.handoff.title = متابعة من {name}؟
+mobile.dialog.handoff.text = يريد جهازك {name} أن تكمل هنا ما كنت تعمل عليه هناك. لا يُحفظ ولا يُفتح شيء قبل قبولك.
+mobile.dialog.handoff.file = استلام ملف من {name}؟
+mobile.dialog.handoff.file.text = يريد جهازك {name} أن يرسل إليك هذا الملف. لا يُحفظ شيء قبل قبولك.
+mobile.dialog.handoff.same_place = في الموضع نفسه
+mobile.dialog.handoff.paired = جهاز مقترن
+mobile.dialog.handoff.encrypted = مشفّر من طرف إلى طرف
+mobile.dialog.handoff.system = سؤال من النظام · يُرفض تلقائياً إن لم تُجب خلال دقيقة
+mobile.dialog.handoff.accept = قبول
+mobile.dialog.handoff.decline = رفض

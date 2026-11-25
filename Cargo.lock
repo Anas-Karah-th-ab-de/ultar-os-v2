@@ -5742,6 +5742,7 @@ dependencies = [
  "ultar-brand",
  "ultar-bus",
  "ultar-compositor",
+ "ultar-dialog-core",
  "ultar-hal",
  "ultar-i18n",
  "ultar-lock-core",
@@ -5766,6 +5767,13 @@ dependencies = [
  "ultar-profile",
  "ultar-service",
  "ultar-sys",
+]
+
+[[package]]
+name = "ultar-dialog-core"
+version = "0.8.0"
+dependencies = [
+ "ultar-bus",
 ]
 
 [[package]]
@@ -6017,6 +6025,7 @@ version = "0.8.0"
 dependencies = [
  "ultar-bus",
  "ultar-compositor",
+ "ultar-dialog-core",
  "ultar-hal",
  "ultar-hal-system",
  "ultar-i18n",

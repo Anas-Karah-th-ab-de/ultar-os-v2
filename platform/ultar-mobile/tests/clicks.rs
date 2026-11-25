@@ -69,7 +69,7 @@ fn an_app_of_the_grid_and_of_the_dock_starts_and_becomes_recent() {
 fn every_grid_app_is_reachable_through_the_pages() {
     let mut m = sample(false);
     for i in 0..20 {
-        m.apps.push(ultar_mobile::model::apps::App::named(
+        m.launcher.apps.push(ultar_mobile::model::apps::App::named(
             &format!("x.app{i}"),
             &format!("App {i}"),
             ultar_ui::icon::IconId::Apps,
@@ -82,7 +82,7 @@ fn every_grid_app_is_reachable_through_the_pages() {
     let mut seen = Vec::new();
     for p in 0..pages {
         tap(&mut a, &Click::Page(p));
-        assert_eq!(a.model.page, p);
+        assert_eq!(a.model.launcher.page, p);
         for g in &grid {
             if a.built().node(&Click::App(g.clone())).is_some() {
                 seen.push(g.clone());
@@ -98,11 +98,11 @@ fn every_grid_app_is_reachable_through_the_pages() {
     tap(&mut a, &Click::Page(0));
     a.swipe(Point::new(300.0, 400.0), Point::new(-120.0, 0.0))
         .unwrap();
-    assert_eq!(a.model.page, 1);
+    assert_eq!(a.model.launcher.page, 1);
     let mut ar = app(Lang::Ar, ThemeKind::Dark, a.model.clone());
     ar.swipe(Point::new(60.0, 400.0), Point::new(120.0, 0.0))
         .unwrap();
-    assert_eq!(ar.model.page, 2.min(pages - 1));
+    assert_eq!(ar.model.launcher.page, 2.min(pages - 1));
 }
 
 #[test]
@@ -128,10 +128,17 @@ fn the_status_bar_and_the_swipe_down_open_the_quick_settings() {
 fn every_switch_of_the_quick_settings_switches_and_says_so() {
     let mut a = home(Lang::Ar);
     tap(&mut a, &Click::Status);
+    let on = |m: &ultar_mobile::Mobile, t| {
+        if t == Toggle::Mesh {
+            m.mesh.enabled()
+        } else {
+            m.quick.is_on(t)
+        }
+    };
     for t in Toggle::ALL {
-        let before = a.model.quick.is_on(t);
+        let before = on(&a.model, t);
         let effects = tap(&mut a, &Click::Toggle(t));
-        let after = a.model.quick.is_on(t);
+        let after = on(&a.model, t);
         assert_eq!(effects, vec![Effect::Set(t, after)], "{t:?}");
         assert_ne!(before, after, "{t:?}");
         assert_eq!(a.model.screen, Screen::Quick);
@@ -276,11 +283,11 @@ fn the_navigation_bar_works_on_every_open_screen() {
     for screen in [Screen::Home, Screen::Quick, Screen::Recents, Screen::Search] {
         let mut m = sample(false);
         m.go(screen);
-        m.page = 1;
+        m.launcher.page = 1;
         let mut a = app(Lang::Ar, ThemeKind::Light, m);
         tap(&mut a, &Click::Home);
         assert_eq!(
-            (a.model.screen, a.model.page),
+            (a.model.screen, a.model.launcher.page),
             (Screen::Home, 0),
             "{screen:?}"
         );
@@ -329,4 +336,170 @@ fn every_node_of_every_screen_can_be_tapped() {
             }
         }
     }
+}
+
+/// The mesh on the phone (docs/ui/mesh.md §2.5): the tile switches, its arrow and each recent
+/// app continue on another device, a recent app held and swiped up does the same, the choice
+/// sends to the chosen device, and every answer becomes a notice in the status bar.
+#[test]
+fn the_mesh_tile_recents_and_the_choice() {
+    let mut a = home(Lang::Ar);
+    tap(&mut a, &Click::Status);
+    assert_eq!(
+        tap(&mut a, &Click::Toggle(Toggle::Mesh)),
+        vec![Effect::Set(Toggle::Mesh, false)]
+    );
+    assert!(!a.model.mesh.enabled());
+    assert!(
+        tap(&mut a, &Click::ToggleMore(Toggle::Mesh)).is_empty(),
+        "off: nothing sent"
+    );
+    tap(&mut a, &Click::Toggle(Toggle::Mesh));
+    assert_eq!(
+        tap(&mut a, &Click::ToggleMore(Toggle::Mesh)),
+        vec![send("org.ultar.files")]
+    );
+    mesh_from_recents_and_the_choice(&mut a);
+}
+
+fn send(app: &str) -> Effect {
+    Effect::MeshSend {
+        app: app.into(),
+        device: None,
+    }
+}
+
+/// Recents: the button, held + swiped up; then the choice, cancel and a notice.
+fn mesh_from_recents_and_the_choice(a: &mut ultar_mobile::MobileApp) {
+    use ultar_bus::messages::mesh::{SendOutcome, Target};
+    tap(a, &Click::Recents);
+    let settings = "org.ultar.settings".to_owned();
+    assert_eq!(
+        tap(a, &Click::MeshSend(settings.clone())),
+        vec![send(&settings)]
+    );
+    let id = a.built().node(&Click::App(settings.clone())).unwrap();
+    a.ui().layout();
+    let r = a.ui().rect(id).unwrap();
+    let effects = drag(a, r.center(), -120.0);
+    assert_eq!(effects, vec![send(&settings)]);
+    // Two devices: the choice; the second is chosen and sent to.
+    a.model
+        .mesh
+        .sent(&settings, SendOutcome::Choose(targets()), 0);
+    a.model.go(Screen::Mesh);
+    a.rebuild().unwrap();
+    tap(a, &Click::MeshChoose(1));
+    let sent = tap(a, &Click::MeshConfirm);
+    assert_eq!(
+        sent,
+        vec![Effect::MeshSend {
+            app: settings.clone(),
+            device: Some("beelink".into())
+        }]
+    );
+    assert_eq!(a.model.screen, Screen::Home);
+    // Cancel sends nothing.
+    a.model
+        .mesh
+        .sent(&settings, SendOutcome::Choose(targets()), 0);
+    a.model.go(Screen::Mesh);
+    a.rebuild().unwrap();
+    assert!(tap(a, &Click::MeshCancel).is_empty());
+    assert!(a.model.mesh.choice.is_none());
+    // An answer is a notice.
+    let t: Target = targets().remove(0);
+    a.model.mesh.sent(
+        &settings,
+        SendOutcome::Offered {
+            offer: 1,
+            target: t,
+        },
+        a.model.now_ms,
+    );
+    assert_eq!(
+        a.model.mesh.notice_at(a.model.now_ms),
+        Some("mobile.mesh.waiting")
+    );
+}
+
+#[test]
+fn without_the_mesh_service_there_is_no_tile_and_no_button() {
+    let mut m = sample(false);
+    m.mesh.state = None;
+    m.hardware.mesh = false;
+    m.go(Screen::Quick);
+    let a = app(Lang::En, ThemeKind::Dark, m.clone());
+    assert!(a.built().node(&Click::Toggle(Toggle::Mesh)).is_none());
+    m.go(Screen::Recents);
+    let a = app(Lang::En, ThemeKind::Dark, m);
+    assert!(a
+        .built()
+        .node(&Click::MeshSend("org.ultar.files".into()))
+        .is_none());
+}
+
+/// Press, move up by `dy` in steps, release.
+fn drag(a: &mut ultar_mobile::MobileApp, from: Point, dy: f32) -> Vec<Effect> {
+    use ultar_ui::event::{Event, PointerButton};
+    let mut out = a.handle(Event::PointerMove { pos: from }).unwrap();
+    out.extend(
+        a.handle(Event::PointerDown {
+            pos: from,
+            button: PointerButton::Primary,
+        })
+        .unwrap(),
+    );
+    for i in 1..=6 {
+        let pos = Point::new(from.x, from.y + dy * i as f32 / 6.0);
+        out.extend(a.handle(Event::PointerMove { pos }).unwrap());
+    }
+    let end = Point::new(from.x, from.y + dy);
+    out.extend(
+        a.handle(Event::PointerUp {
+            pos: end,
+            button: PointerButton::Primary,
+        })
+        .unwrap(),
+    );
+    out
+}
+
+/// Windows: an app with a window comes to the front instead of starting again; home puts
+/// every window away; closing a recent app closes its windows; back with nothing of the
+/// shell open goes back in the app in front.
+#[test]
+fn the_apps_windows_follow_the_shell() {
+    use ultar_mobile::model::{WinAction, Window};
+    let mut a = home(Lang::En);
+    let w = |id, app: &str, focused| Window {
+        id,
+        app: app.into(),
+        title: "notes.txt".into(),
+        minimized: false,
+        focused,
+    };
+    a.model.set_windows(vec![
+        w(4, "org.ultar.files", false),
+        w(9, "org.ultar.settings", true),
+    ]);
+    a.rebuild().unwrap();
+    assert_eq!(a.model.recents[0], "org.ultar.settings");
+    let files = "org.ultar.files".to_owned();
+    assert_eq!(
+        tap(&mut a, &Click::App(files.clone())),
+        vec![Effect::Window(4, WinAction::Activate)]
+    );
+    assert_eq!(
+        tap(&mut a, &Click::Back),
+        vec![Effect::Window(9, WinAction::Back)]
+    );
+    let home = tap(&mut a, &Click::Home);
+    assert!(home.contains(&Effect::Window(4, WinAction::Minimize)));
+    assert!(home.contains(&Effect::Window(9, WinAction::Minimize)));
+    tap(&mut a, &Click::Recents);
+    assert_eq!(
+        tap(&mut a, &Click::CloseRecent(files)),
+        vec![Effect::Window(4, WinAction::Close)]
+    );
 }

@@ -15,6 +15,7 @@ ultar-ui = { path = "../ultar-ui", default-features = false }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-lock-core = { path = "../ultar-lock-core" }
+ultar-dialog-core = { path = "../ultar-dialog-core" }
 ultar-surface = { path = "../ultar-surface" }
 ultar-shell-host = { path = "../ultar-shell-host" }
 ultar-service = { path = "../../system/core/ultar-service" }
@@ -29,6 +30,11 @@ path = "src/bin/ultar-mobile.rs"
 [[bin]]
 name = "ultar-mobile-lock"
 path = "src/bin/ultar-mobile-lock.rs"
+
+# The phone's system dialogs: bottom sheets (role ui.system-dialog).
+[[bin]]
+name = "ultar-mobile-dialog"
+path = "src/bin/ultar-mobile-dialog.rs"
 
 [dev-dependencies]
 ultar-bus = { path = "../../system/core/ultar-bus" }

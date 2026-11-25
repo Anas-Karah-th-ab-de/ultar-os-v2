@@ -54,13 +54,19 @@ pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError
         )?;
     }
     for app in apps {
-        entry(b, list, app)?;
+        entry(b, list, app, m.mesh.present().then(|| m.mesh.can_send()))?;
     }
     Ok(())
 }
 
-/// One recent app: open it again, or close it.
-fn entry(b: &mut Builder<'_>, list: NodeId, app: &crate::model::apps::App) -> Result<(), UiError> {
+/// One recent app: open it again (held and swiped up: continue it on another device), the
+/// mesh button when the mesh service runs (`mesh`: whether it can send now), close.
+fn entry(
+    b: &mut Builder<'_>,
+    list: NodeId,
+    app: &crate::model::apps::App,
+    mesh: Option<bool>,
+) -> Result<(), UiError> {
     let flex = Flex::row()
         .gap(Space::S8)
         .cross(CrossAlign::Center)
@@ -69,7 +75,13 @@ fn entry(b: &mut Builder<'_>, list: NodeId, app: &crate::model::apps::App) -> Re
     let open = Button::new(app_label(app))
         .variant(ButtonVariant::Quiet)
         .icon(app.icon);
-    b.click(card, open, Sizing::grow(1), Click::App(app.id.clone()))?;
+    let open = b.click(card, open, Sizing::grow(1), Click::App(app.id.clone()))?;
+    if let Some(can) = mesh {
+        b.ui.set_draggable(open, can)?;
+        let send = IconButton::new(IconId::Mesh, Label::key("mobile.mesh.continue"));
+        let send = b.click(card, send, Sizing::AUTO, Click::MeshSend(app.id.clone()))?;
+        b.ui.set_disabled(send, !can)?;
+    }
     let close = IconButton::new(IconId::Close, Label::key("mobile.recents.close"));
     let id = app.id.clone();
     b.click(card, close, Sizing::AUTO, Click::CloseRecent(id))?;

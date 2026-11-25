@@ -135,7 +135,7 @@ fn grid(b: &mut Builder<'_>, parent: NodeId, m: &Mobile) -> Result<(), UiError> 
     let per = per_page(b.screen().h);
     let all = m.grid_apps();
     let pages = apps::pages(&all, per);
-    let page = m.page.min(pages.len().saturating_sub(1));
+    let page = m.launcher.page.min(pages.len().saturating_sub(1));
     let area = b.flex(parent, Flex::column().gap(Space::S8), Sizing::grow(1))?;
     b.built.grid = Some(area);
     let shown = pages.get(page).copied().unwrap_or(&[]);

@@ -49,7 +49,7 @@ pub fn body(b: &mut Builder<'_>, root: NodeId, m: &Mobile) -> Result<(), UiError
         now: m.now,
         counts: counts.into_iter().collect(),
         torch: m.hardware.torch.then(|| m.quick.is_on(Toggle::Torch)),
-        apps: &m.apps,
+        apps: &m.launcher.apps,
         camera: true,
         emergency: m.hardware.modem,
     };

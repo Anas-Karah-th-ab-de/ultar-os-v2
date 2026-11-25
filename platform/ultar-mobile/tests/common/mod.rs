@@ -50,6 +50,8 @@ pub fn sample(locked: bool) -> Mobile {
         },
     ];
     m.recents = vec!["org.ultar.files".into(), "org.ultar.settings".into()];
+    m.hardware.mesh = true;
+    m.mesh.state = Some(mesh_state(true));
     if !locked {
         m.unlocked();
     }
@@ -66,6 +68,9 @@ pub fn tap(a: &mut MobileApp, click: &Click) -> Vec<Effect> {
         .built()
         .node(click)
         .unwrap_or_else(|| panic!("no node for {click:?}"));
+    a.ui().layout();
+    // A finger scrolls first to what lies below the fold.
+    let _ = a.ui().scroll_into_view(id);
     a.ui().layout();
     let pos = a.ui().rect(id).expect("shown").center();
     tap_at(a, pos)
@@ -100,4 +105,47 @@ pub fn dump(a: &mut MobileApp, name: &str) {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(std::path::Path::new(&dir).join(format!("{name}.png")), png).unwrap();
     }
+}
+
+/// The mesh on, with two connected paired devices and one not in reach.
+pub fn mesh_state(enabled: bool) -> ultar_bus::messages::mesh::MeshState {
+    use ultar_bus::messages::mesh::{DeviceKind, MeshState, Peer};
+    let peer = |id: &str, kind, reachable| Peer {
+        id: id.into(),
+        name: id.into(),
+        kind,
+        capabilities: Vec::new(),
+        paired: true,
+        reachable,
+        rights: Vec::new(),
+    };
+    MeshState {
+        enabled,
+        id: "phone".into(),
+        name: "KM One".into(),
+        peers: vec![
+            peer("ultar-pc", DeviceKind::Desktop, true),
+            peer("beelink", DeviceKind::Server, true),
+            peer("tablet", DeviceKind::Tablet, false),
+        ],
+    }
+}
+
+/// The two devices of the choice (board CompactMeshSend).
+pub fn targets() -> Vec<ultar_bus::messages::mesh::Target> {
+    use ultar_bus::messages::mesh::{DeviceKind, Stage, Target};
+    vec![
+        Target {
+            device: "ultar-pc".into(),
+            name: "ultar-pc".into(),
+            kind: DeviceKind::Desktop,
+            stage: Stage::State,
+        },
+        Target {
+            device: "beelink".into(),
+            name: "beelink".into(),
+            kind: DeviceKind::Server,
+            stage: Stage::File,
+        },
+    ]
 }

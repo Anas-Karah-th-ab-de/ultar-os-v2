@@ -46,6 +46,7 @@ struct Seen {
     lock: Vec<(Click, Rect)>,
     field: Option<Rect>,
     lock_state: String,
+    recents: Vec<String>,
 }
 
 const SHELL_CLICKS: [Click; 8] = [
@@ -134,9 +135,16 @@ impl World {
                 let mut s = seen.lock().unwrap();
                 s.screen = Some(app.model.screen);
                 s.dnd = app.model.quick.is_on(Toggle::Dnd);
+                s.recents = app.model.recents.clone();
                 s.shell = SHELL_CLICKS
                     .iter()
-                    .chain([Click::App("org.ultar.files".into())].iter())
+                    .chain(
+                        [
+                            Click::App("org.ultar.files".into()),
+                            Click::App("org.ultar.settings".into()),
+                        ]
+                        .iter(),
+                    )
                     .filter_map(|c| app.locate(c).map(|r| (c.clone(), r)))
                     .collect();
             }
@@ -402,10 +410,55 @@ fn the_shell_shows_its_bars_and_home_and_every_tap_works() {
     w.until("recents", |w| w.screen() == Some(Screen::Recents));
     w.tap(&Click::Back, false);
     w.until("home after back", |w| w.screen() == Some(Screen::Home));
-    // An app of the grid starts through the launcher (its one-part id).
+    an_apps_window_follows_the_shell(&mut w);
+}
+
+/// An app's window: it shows in the recent apps; home puts it away; its icon brings it back.
+fn an_apps_window_follows_the_shell(w: &mut World) {
+    let socket = w.socket.clone();
+    let stop = w.stop.clone();
+    w.threads.push(std::thread::spawn(move || {
+        let mut c = ultar_surface::client::Client::connect(&socket, "org.ultar.files").unwrap();
+        let config = ultar_surface::client::WindowConfig::toplevel("notes.txt");
+        let mut win = ultar_surface::client::Window::create(&mut c, &config).unwrap();
+        while !stop.load(Ordering::SeqCst) {
+            if let Ok(Some(e)) = c.next_event(Some(Duration::from_millis(20))) {
+                if win.handle(&e) {
+                    if let (ultar_surface::proto::Event::Configure(cf), true) = (&e, win.can_draw())
+                    {
+                        let px = vec![0x80u8; (cf.width * cf.height * 4) as usize];
+                        let _ = win.present(&mut c, &px, (cf.width, cf.height), &[]);
+                    }
+                }
+            }
+        }
+    }));
+    w.until("the window in the recent apps", |w| {
+        w.seen.lock().unwrap().recents.first().map(String::as_str) == Some("org.ultar.files")
+    });
+    w.tap(&Click::Home, false);
+    w.until("the window put away", |w| {
+        w.comp
+            .state
+            .windows
+            .iter()
+            .all(|x| x.state == ultar_surface::proto::WindowState::Minimized)
+    });
+    // Its icon brings the window back instead of starting the app again.
     w.tap(&Click::App("org.ultar.files".into()), false);
-    w.until("files started", |w| {
-        w.starts.lock().unwrap().contains(&"files".to_owned())
+    w.until("the window in front again", |w| {
+        w.comp
+            .state
+            .windows
+            .iter()
+            .any(|x| x.state != ultar_surface::proto::WindowState::Minimized)
+    });
+    assert!(!w.starts.lock().unwrap().contains(&"files".to_owned()));
+    // An app without a window starts through the launcher (its one-part id).
+    w.tap(&Click::Home, false);
+    w.tap(&Click::App("org.ultar.settings".into()), false);
+    w.until("settings started", |w| {
+        w.starts.lock().unwrap().contains(&"settings".to_owned())
     });
 }
 

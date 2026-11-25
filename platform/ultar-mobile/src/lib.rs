@@ -20,6 +20,7 @@
 
 pub mod app;
 pub mod click;
+pub mod dialog;
 pub mod i18n;
 pub mod model;
 pub mod program;

@@ -59,4 +59,13 @@ pub enum Click {
     Method,
     /// Sign-in: back to the cover.
     SignInBack,
+    /// Continue this app on another device (recent apps; the quick tile's arrow: the app
+    /// in front).
+    MeshSend(String),
+    /// The choice: this device.
+    MeshChoose(usize),
+    /// The choice: send to the chosen device.
+    MeshConfirm,
+    /// The choice: cancel.
+    MeshCancel,
 }

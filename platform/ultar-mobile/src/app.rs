@@ -6,7 +6,7 @@
 use crate::click::Click;
 use crate::model::quick::Toggle;
 use crate::model::time::LocalTime;
-use crate::model::{Mobile, Screen};
+use crate::model::{Mobile, Screen, WinAction};
 use crate::view::{self, Built};
 use ultar_ui::event::{ActionKind, Event, Response};
 use ultar_ui::geom::{Point, Size};
@@ -73,6 +73,16 @@ pub enum Effect {
     PowerOff,
     /// Lock the screen now (`lock.lock`).
     LockNow,
+    /// Act on an app's window.
+    Window(u32, crate::model::WinAction),
+    /// Continue `app` on another device: `device` chosen, or `None` – wherever it can go
+    /// (`mesh.handoff_send`; the answer goes back through [`crate::model::mesh::Mesh::sent`]).
+    MeshSend {
+        /// The app whose activity is offered.
+        app: String,
+        /// The chosen device.
+        device: Option<String>,
+    },
 }
 
 /// Errors of the shell.
@@ -196,6 +206,11 @@ impl MobileApp {
                         changed |= self.click(click, &mut effects);
                     }
                 }
+                ActionKind::DragEnded { delta, .. } => {
+                    if let Some(click) = drag_click(self.built.click(node), delta) {
+                        changed |= self.click(click, &mut effects);
+                    }
+                }
                 _ => {}
             }
         }
@@ -276,24 +291,63 @@ pub fn apply_click(
             let ids = m.notes.drain(..).map(|n| n.id).collect();
             effects.push(Effect::ClearNotes(ids));
         }
-        Click::CloseRecent(id) => {
-            m.forget_recent(&id);
-            effects.push(Effect::Close(id));
-        }
+        Click::CloseRecent(id) => close_app(m, &id, effects),
         Click::ClearRecents => {
-            for id in std::mem::take(&mut m.recents) {
-                effects.push(Effect::Close(id));
+            for id in m.recents.clone() {
+                close_app(m, &id, effects);
             }
         }
         Click::App(id) => {
-            effects.push(Effect::Launch(id.clone()));
+            // Its window to the front when it has one, else start it.
+            match m.windows_of(&id).last() {
+                Some(w) => effects.push(Effect::Window(*w, WinAction::Activate)),
+                None => effects.push(Effect::Launch(id.clone())),
+            }
             m.started(&id);
         }
         Click::Power => m.power_menu = true,
+        c @ (Click::ToggleMore(Toggle::Mesh)
+        | Click::MeshSend(_)
+        | Click::MeshChoose(_)
+        | Click::MeshConfirm
+        | Click::MeshCancel) => mesh_click(m, c, effects),
         Click::PowerCancel => m.power_menu = false,
-        other => navigate(m, other, per_page),
+        other => navigate(m, other, per_page, effects),
     }
     true
+}
+
+/// The device mesh clicks: send the app in front or a recent one, choose a device, confirm.
+fn mesh_click(m: &mut Mobile, click: Click, effects: &mut Vec<Effect>) {
+    match click {
+        Click::ToggleMore(Toggle::Mesh) => match m
+            .front()
+            .map(|w| w.app.clone())
+            .or_else(|| m.recents.first().cloned())
+        {
+            Some(app) if m.mesh.can_send() => effects.push(Effect::MeshSend { app, device: None }),
+            _ => {}
+        },
+        Click::MeshSend(app) => {
+            if m.mesh.can_send() {
+                effects.push(Effect::MeshSend { app, device: None });
+            }
+        }
+        Click::MeshChoose(i) => {
+            if let Some(c) = m.mesh.choice.as_mut() {
+                c.chosen = i.min(c.targets.len().saturating_sub(1));
+            }
+        }
+        Click::MeshConfirm => {
+            if let Some(c) = m.mesh.choice.take() {
+                let device = c.targets.get(c.chosen).map(|t| t.device.clone());
+                effects.push(Effect::MeshSend { app: c.app, device });
+            }
+            m.go(Screen::Home);
+        }
+        Click::MeshCancel => m.go(Screen::Home),
+        _ => {}
+    }
 }
 
 fn switch(m: &mut Mobile, t: Toggle, effects: &mut Vec<Effect>) {
@@ -302,21 +356,53 @@ fn switch(m: &mut Mobile, t: Toggle, effects: &mut Vec<Effect>) {
     }
 }
 
-/// Clicks that only move between the screens.
-fn navigate(m: &mut Mobile, click: Click, per_page: usize) {
+/// Closes an app from the recent apps: its windows, or the app itself without one.
+fn close_app(m: &mut Mobile, app: &str, effects: &mut Vec<Effect>) {
+    let windows = m.windows_of(app);
+    if windows.is_empty() {
+        effects.push(Effect::Close(app.to_owned()));
+    }
+    for w in windows {
+        effects.push(Effect::Window(w, WinAction::Close));
+    }
+    m.forget_recent(app);
+}
+
+/// Clicks that only move between the screens (and put the apps away for the home screen).
+fn navigate(m: &mut Mobile, click: Click, per_page: usize, effects: &mut Vec<Effect>) {
     let toggle = |m: &Mobile, s: Screen| if m.screen == s { Screen::Home } else { s };
     match click {
         Click::Status => m.go(toggle(m, Screen::Quick)),
         Click::Recents => m.go(toggle(m, Screen::Recents)),
         Click::Search => m.go(Screen::Search),
         Click::Back if m.power_menu => m.power_menu = false,
+        Click::Back if m.screen == Screen::Home => {
+            // Nothing of the shell open: the app in front goes back one step.
+            if let Some(w) = m.front() {
+                effects.push(Effect::Window(w.id, WinAction::Back));
+            }
+        }
         Click::Back => m.back(),
         Click::Home => {
             m.go(Screen::Home);
-            m.page = 0;
+            m.launcher.page = 0;
+            for w in m.windows.iter().filter(|w| !w.minimized) {
+                effects.push(Effect::Window(w.id, WinAction::Minimize));
+            }
         }
         Click::Page(p) => m.show_page(p, per_page),
         _ => {}
+    }
+}
+
+/// A recent app held and swiped up (the gesture of the first Ultar phone): continue it on
+/// another device.
+pub fn drag_click(click: Option<&Click>, delta: Point) -> Option<Click> {
+    match click {
+        Some(Click::App(id)) if delta.y <= -SWIPE && delta.y.abs() >= delta.x.abs() => {
+            Some(Click::MeshSend(id.clone()))
+        }
+        _ => None,
     }
 }
 
@@ -327,7 +413,7 @@ fn platform_only(click: &Click) -> Option<Effect> {
         Click::Emergency => Effect::Emergency,
         Click::Camera => Effect::Camera,
         Click::Voice => Effect::Voice,
-        Click::ToggleMore(t) => Effect::Settings(Some(settings_page(*t))),
+        Click::ToggleMore(t) if *t != Toggle::Mesh => Effect::Settings(Some(settings_page(*t))),
         Click::Settings => Effect::Settings(None),
         Click::PowerRestart => Effect::Restart,
         Click::PowerOff => Effect::PowerOff,

@@ -245,3 +245,30 @@ fn a_mouse_drag_works_the_same_and_nothing_while_locked() {
     touch(&mut comp, "up", 180.0, 600.0);
     assert!(swipes(&mut shell, &mut comp).is_empty());
 }
+
+#[test]
+fn a_system_dialog_covers_the_work_area_under_its_trusted_title_bar() {
+    const DIALOG_UID: u32 = 5004;
+    let mut rights = RightsTable::default();
+    rights.grant(SHELL_UID, Rights::SHELL);
+    rights.grant(DIALOG_UID, Rights::SYSTEM_DIALOG);
+    let config = Config {
+        rights,
+        ..test_config()
+    };
+    let mut comp = compositor(config, &[(360, 800)]);
+    let mut shell = Peer::hello_as(&mut comp, SHELL_UID);
+    for (id, edge, size) in [(1, Edge::Top, 32), (2, Edge::Bottom, 44)] {
+        shell.window_role(&mut comp, id, Role::Panel { edge, size }, 0x101010);
+    }
+    shell.send(&Request::SetPhoneMode { on: true });
+    shell.pump(&mut comp);
+    let mut dialog = Peer::hello_as(&mut comp, DIALOG_UID);
+    let d = dialog.window_role(&mut comp, 1, Role::SystemDialog, 0xffffff);
+    let c = dialog.last_configure(d).unwrap();
+    let title = ultar_compositor::decor::TITLEBAR as u32;
+    assert_eq!((c.width, c.height), (360, 800 - 32 - 44 - title));
+    let w = comp.state.windows.iter().find(|w| w.secure).unwrap();
+    assert!(w.decorated(), "the trusted title bar stays");
+    assert_eq!((w.frame.x, w.frame.y), (0, 32));
+}

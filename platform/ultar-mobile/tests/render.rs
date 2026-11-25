@@ -10,12 +10,13 @@ use ultar_ui::snapshot::render;
 use ultar_ui::tokens::{ColorRole, ThemeKind, DARK, LIGHT};
 use ultar_ui::Lang;
 
-const SCREENS: [Screen; 5] = [
+const SCREENS: [Screen; 6] = [
     Screen::Lock,
     Screen::Home,
     Screen::Quick,
     Screen::Recents,
     Screen::Search,
+    Screen::Mesh,
 ];
 
 fn check(a: &mut ultar_mobile::MobileApp, lang: Lang, theme: ThemeKind, name: &str) {
@@ -78,6 +79,14 @@ fn every_screen_in_both_languages_and_themes() {
                 if screen == Screen::Search {
                     m.query = "set".into();
                 }
+                if screen == Screen::Mesh {
+                    m.mesh.sent(
+                        "org.ultar.files",
+                        ultar_bus::messages::mesh::SendOutcome::Choose(targets()),
+                        0,
+                    );
+                    m.go(Screen::Mesh);
+                }
                 let mut a = app(lang, theme, m);
                 let name = format!("{screen:?}-{lang:?}-{theme:?}").to_lowercase();
                 dump(&mut a, &name);
@@ -92,6 +101,13 @@ fn every_screen_in_both_languages_and_themes() {
 fn german_builds_too() {
     for screen in SCREENS {
         let mut m = sample(screen == Screen::Lock);
+        if screen == Screen::Mesh {
+            m.mesh.sent(
+                "org.ultar.files",
+                ultar_bus::messages::mesh::SendOutcome::Choose(targets()),
+                0,
+            );
+        }
         m.go(screen);
         let mut a = app(Lang::De, ThemeKind::Dark, m);
         let name = format!("{screen:?}-de-dark").to_lowercase();

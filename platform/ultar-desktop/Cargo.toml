@@ -35,6 +35,7 @@ ultar-brand = { path = "../../system/core/ultar-brand" }
 ultar-service = { path = "../../system/core/ultar-service" }
 ultar-shell-host = { path = "../ultar-shell-host" }
 ultar-lock-core = { path = "../ultar-lock-core" }
+ultar-dialog-core = { path = "../ultar-dialog-core" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc", "std"] }
 
 [dev-dependencies]

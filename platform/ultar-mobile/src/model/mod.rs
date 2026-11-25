@@ -2,6 +2,7 @@
 //! functions, so that views and clicks are tested without a compositor.
 
 pub mod apps;
+pub mod mesh;
 pub mod quick;
 pub mod time;
 
@@ -22,6 +23,8 @@ pub enum Screen {
     Recents,
     /// The search over apps and settings.
     Search,
+    /// The choice of the device that continues an app (board CompactMeshSend).
+    Mesh,
 }
 
 /// Strength of a radio signal in bars 0–4; `None` = no connection.
@@ -59,6 +62,45 @@ pub struct Note {
     pub time: String,
 }
 
+/// What the shell does to an app's window (the compositor carries it out).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WinAction {
+    /// Bring it to the front.
+    Activate,
+    /// Put it away (home screen).
+    Minimize,
+    /// Close it.
+    Close,
+    /// The app's own back step.
+    Back,
+}
+
+/// An app's window as the compositor reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Window {
+    /// The compositor's id.
+    pub id: u32,
+    /// The app (shell id, `org.ultar.files`).
+    pub app: String,
+    /// Its title.
+    pub title: String,
+    /// Put away.
+    pub minimized: bool,
+    /// Has the keyboard (the app in front).
+    pub focused: bool,
+}
+
+/// The apps on the home screen.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Launcher {
+    /// The page of the app grid (from 0).
+    pub page: usize,
+    /// Installed apps in home screen order.
+    pub apps: Vec<App>,
+    /// Identifiers of the dock apps.
+    pub dock: Vec<String>,
+}
+
 /// The whole phone shell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mobile {
@@ -66,12 +108,8 @@ pub struct Mobile {
     pub screen: Screen,
     /// The screen is locked (the lock screen comes back on every wake).
     pub locked: bool,
-    /// The page of the app grid (from 0).
-    pub page: usize,
-    /// Installed apps in home screen order.
-    pub apps: Vec<App>,
-    /// Identifiers of the dock apps.
-    pub dock: Vec<String>,
+    /// The apps, the dock and the page shown.
+    pub launcher: Launcher,
     /// Recently used apps, newest first.
     pub recents: Vec<String>,
     /// Now.
@@ -90,6 +128,12 @@ pub struct Mobile {
     pub query: String,
     /// The power menu is open (over the quick settings).
     pub power_menu: bool,
+    /// The device mesh.
+    pub mesh: mesh::Mesh,
+    /// The apps' windows, bottom to top.
+    pub windows: Vec<Window>,
+    /// Now in milliseconds since the epoch (notices end by it).
+    pub now_ms: u64,
 }
 
 impl Default for Mobile {
@@ -97,9 +141,11 @@ impl Default for Mobile {
         Mobile {
             screen: Screen::Lock,
             locked: true,
-            page: 0,
-            apps: apps::system_apps(),
-            dock: apps::default_dock(),
+            launcher: Launcher {
+                page: 0,
+                apps: apps::system_apps(),
+                dock: apps::default_dock(),
+            },
             recents: Vec::new(),
             now: None,
             status: Status::default(),
@@ -109,6 +155,9 @@ impl Default for Mobile {
             next: None,
             query: String::new(),
             power_menu: false,
+            mesh: mesh::Mesh::default(),
+            windows: Vec::new(),
+            now_ms: 0,
         }
     }
 }
@@ -116,21 +165,26 @@ impl Default for Mobile {
 impl Mobile {
     /// The app with identifier `id`.
     pub fn app(&self, id: &str) -> Option<&App> {
-        self.apps.iter().find(|a| a.id == id)
+        self.launcher.apps.iter().find(|a| a.id == id)
     }
 
     /// The apps of the grid (the dock apps are not repeated there).
     pub fn grid_apps(&self) -> Vec<App> {
-        self.apps
+        self.launcher
+            .apps
             .iter()
-            .filter(|a| !self.dock.contains(&a.id))
+            .filter(|a| !self.launcher.dock.contains(&a.id))
             .cloned()
             .collect()
     }
 
     /// The dock apps that are installed, in dock order.
     pub fn dock_apps(&self) -> Vec<&App> {
-        self.dock.iter().filter_map(|id| self.app(id)).collect()
+        self.launcher
+            .dock
+            .iter()
+            .filter_map(|id| self.app(id))
+            .collect()
     }
 
     /// Number of grid pages with `per_page` apps.
@@ -140,15 +194,15 @@ impl Mobile {
 
     /// Shows `page` (kept inside the pages there are).
     pub fn show_page(&mut self, page: usize, per_page: usize) {
-        self.page = page.min(self.page_count(per_page).saturating_sub(1));
+        self.launcher.page = page.min(self.page_count(per_page).saturating_sub(1));
     }
 
     /// A swipe on the grid: `forward` = towards the next page.
     pub fn turn_page(&mut self, forward: bool, per_page: usize) {
         let page = if forward {
-            self.page.saturating_add(1)
+            self.launcher.page.saturating_add(1)
         } else {
-            self.page.saturating_sub(1)
+            self.launcher.page.saturating_sub(1)
         };
         self.show_page(page, per_page);
     }
@@ -162,6 +216,9 @@ impl Mobile {
             self.query.clear();
         }
         self.power_menu = false;
+        if screen != Screen::Mesh {
+            self.mesh.choice = None;
+        }
         self.screen = screen;
     }
 
@@ -182,7 +239,9 @@ impl Mobile {
     /// Back: closes what lies over the home screen.
     pub fn back(&mut self) {
         match self.screen {
-            Screen::Quick | Screen::Recents | Screen::Search => self.go(Screen::Home),
+            Screen::Quick | Screen::Recents | Screen::Search | Screen::Mesh => {
+                self.go(Screen::Home)
+            }
             Screen::Home | Screen::Lock => {}
         }
     }
@@ -198,6 +257,48 @@ impl Mobile {
         self.query.clear();
     }
 
+    /// The compositor's windows changed: the recent apps follow them (top first), apps
+    /// started but without a window yet stay behind them.
+    pub fn set_windows(&mut self, windows: Vec<Window>) {
+        let mut recents: Vec<String> = Vec::new();
+        for w in windows.iter().rev() {
+            if !recents.contains(&w.app) {
+                recents.push(w.app.clone());
+            }
+        }
+        let gone: Vec<String> = self
+            .windows
+            .iter()
+            .map(|w| w.app.clone())
+            .filter(|a| !windows.iter().any(|w| &w.app == a))
+            .collect();
+        for r in &self.recents {
+            if !recents.contains(r) && !gone.contains(r) {
+                recents.push(r.clone());
+            }
+        }
+        recents.truncate(MAX_RECENTS);
+        self.recents = recents;
+        self.windows = windows;
+    }
+
+    /// The windows of `app`.
+    pub fn windows_of(&self, app: &str) -> Vec<u32> {
+        self.windows
+            .iter()
+            .filter(|w| w.app == app)
+            .map(|w| w.id)
+            .collect()
+    }
+
+    /// The window in front (focused, not put away).
+    pub fn front(&self) -> Option<&Window> {
+        self.windows
+            .iter()
+            .rev()
+            .find(|w| w.focused && !w.minimized)
+    }
+
     /// Removes one app from the recent apps.
     pub fn forget_recent(&mut self, id: &str) {
         self.recents.retain(|r| r != id);
@@ -205,6 +306,14 @@ impl Mobile {
 
     /// Switches `t`, if the phone offers it.
     pub fn toggle(&mut self, t: Toggle) -> Option<bool> {
+        if t == Toggle::Mesh {
+            let on = !self.mesh.enabled();
+            if let Some(state) = self.mesh.state.as_mut() {
+                state.enabled = on;
+                return Some(on);
+            }
+            return None;
+        }
         if !self.hardware.offers(t) {
             return None;
         }
@@ -220,7 +329,7 @@ impl Mobile {
 
     /// The apps that match the search text.
     pub fn hits(&self, shown: impl Fn(&App) -> String) -> Vec<&App> {
-        apps::matching(&self.apps, &self.query, shown)
+        apps::matching(&self.launcher.apps, &self.query, shown)
     }
 }
 
@@ -263,14 +372,14 @@ mod tests {
     fn pages_stay_inside_and_the_dock_is_not_in_the_grid() {
         let mut m = open();
         let grid = m.grid_apps();
-        assert!(grid.iter().all(|a| !m.dock.contains(&a.id)));
+        assert!(grid.iter().all(|a| !m.launcher.dock.contains(&a.id)));
         assert_eq!(m.page_count(4), 2);
         m.turn_page(true, 4);
         m.turn_page(true, 4);
-        assert_eq!(m.page, 1);
+        assert_eq!(m.launcher.page, 1);
         m.turn_page(false, 4);
         m.turn_page(false, 4);
-        assert_eq!(m.page, 0);
+        assert_eq!(m.launcher.page, 0);
     }
 
     #[test]
@@ -286,6 +395,31 @@ mod tests {
             m.started(&i.to_string());
         }
         assert_eq!(m.recents.len(), MAX_RECENTS);
+    }
+
+    #[test]
+    fn recents_follow_the_windows() {
+        let mut m = open();
+        m.started("x.started");
+        let w = |id, app: &str| Window {
+            id,
+            app: app.into(),
+            title: String::new(),
+            minimized: false,
+            focused: false,
+        };
+        m.set_windows(vec![w(1, "a"), w(2, "b"), w(3, "a")]);
+        assert_eq!(
+            m.recents,
+            ["a", "b", "x.started"].map(String::from).to_vec()
+        );
+        assert_eq!(m.windows_of("a"), vec![1, 3]);
+        m.set_windows(vec![w(2, "b")]);
+        assert_eq!(
+            m.recents,
+            ["b", "x.started"].map(String::from).to_vec(),
+            "a closed"
+        );
     }
 
     #[test]

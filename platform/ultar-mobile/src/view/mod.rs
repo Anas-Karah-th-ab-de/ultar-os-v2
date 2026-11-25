@@ -6,6 +6,7 @@ pub mod bars;
 pub mod clock;
 pub mod home;
 pub mod lock;
+pub mod mesh;
 pub mod quick;
 pub mod recents;
 pub mod search;
@@ -221,6 +222,7 @@ fn body(b: &mut Builder<'_>, root: NodeId, model: &Mobile) -> Result<(), UiError
         Screen::Quick => quick::body(b, root, model),
         Screen::Recents => recents::body(b, root, model),
         Screen::Search => search::body(b, root, model),
+        Screen::Mesh => mesh::body(b, root, model),
     }
 }
 

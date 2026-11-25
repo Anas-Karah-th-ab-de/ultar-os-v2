@@ -1,0 +1,19 @@
+# System dialogs of the phone (ultar-mobile-dialog, role ui.system-dialog as user 815):
+# the same questions and bus contract as the desktop's ultar-sysdialog (permission,
+# administrator password, Bluetooth pairing, an offer of another device, "keep these display
+# settings?") with the shared dialog state ultar-dialog-core, shown as sheets from the
+# bottom edge. A question nobody answers gets the safe answer.
+editions = ["phone"]
+manual = true
+exec = "/usr/bin/ultar-mobile-dialog"
+args = [
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--bus", "/run/ultar/bus/sysdialog.sock",
+]
+user = 815
+after = ["compositor", "authd", "settingsd"]
+restart = "always"
+
+[cgroup]
+"memory.max" = "96M"
+"pids.max" = "16"

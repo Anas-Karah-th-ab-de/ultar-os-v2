@@ -9,8 +9,9 @@ Bausteine ohne eigene Ansicht:
 | `platform/ultar-ui` | gemeinsam | Werkzeugkasten: Tokens, Widgets, Text, Ereignisse |
 | `platform/ultar-shell-host` | gemeinsam | Compositor-Anbindung: Flächen, Eingabe, Wischen, Zeichnen – ohne eigene Ansicht |
 | `platform/ultar-lock-core` | gemeinsam | Zustand der Sperre: Stufen, wer entsperren darf, Wartezeit nach Fehlversuchen |
+| `platform/ultar-dialog-core` | gemeinsam | Zustand der Systemdialoge: Warteschlange, Fristen, sichere Antworten |
 | `system/hal/ultar-hal-system` (`load`) | gemeinsam | Prozessorlast und belegter Speicher |
-| `platform/ultar-mobile` | **nur Handy** | Handy-Oberfläche und Handy-Sperrbildschirm |
+| `platform/ultar-mobile` | **nur Handy** | Handy-Oberfläche, Handy-Sperrbildschirm, Handy-Systemdialoge |
 | `platform/ultar-desktop` | **nur Desktop** | Leiste, Übersicht, Desktop-Sperrbildschirm, Systemdialoge |
 
 Das Layout folgt dem Handy des ersten Ultar OS („Ultar Noir“, Repo `ultar-os`, `crates/ultar-shell`).
@@ -21,9 +22,10 @@ Das Layout folgt dem Handy des ersten Ultar OS („Ultar Noir“, Repo `ultar-os
 |---|---|---|---|
 | `ultar-mobile` | `ui.shell`, 816 | `mobile.toml` | Statusleiste und Navigationsleiste als Panels, Startbildschirm als Hintergrund, Schnelleinstellungen / Zuletzt verwendet / Suche als Blatt zwischen den Leisten; Apps öffnen dazwischen |
 | `ultar-mobile-lock` | `ui.lock-screen`, 814 | `mobile-lock.toml` | Sperrbildschirm: Abdeckung und Anmeldung (Kennwort oder PIN); bietet `lock.lock`; entsperrt nur nach `auth.verify` und wenn der gemeinsame Sperrzustand zustimmt |
+| `ultar-mobile-dialog` | `ui.system-dialog`, 815 | `mobile-dialog.toml` | Systemdialoge als Blatt vom unteren Rand: Berechtigung, Verwalter-Kennwort, Bluetooth-Kopplung, Angebot eines anderen Geräts, „Anzeige behalten?“; bietet `sysdialog` wie `ultar-sysdialog` |
 
-Beide gehören zur Ausgabe `phone` (`editions = ["phone"]`); `desktop.toml` und `lock.toml` nur noch zur
-Ausgabe `desktop`. `scripts/build-initramfs.sh` legt je Ausgabe nur deren Programme ins Abbild.
+Alle drei gehören zur Ausgabe `phone` (`editions = ["phone"]`); `desktop.toml`, `lock.toml` und
+`sysdialog.toml` nur noch zur Ausgabe `desktop`. `scripts/build-initramfs.sh` legt je Ausgabe nur deren Programme ins Abbild.
 
 ## Bildschirme
 
@@ -57,6 +59,34 @@ mobilen Daten, ohne Bluetooth kein Bluetooth, ohne Akku kein Energiesparen.
 | CPU, RAM | `ultar-hal-system::load` |
 | Ein/Aus | `power.restart`, `power.off`, `lock.lock` |
 
+## Geräteverbund (Weitergeben)
+
+Wie am Desktop, gleicher Bus-Vertrag (`mesh.send`, Themen Zustand und Fortschritt):
+- Schnelleinstellungen: Kachel **Geräteverbund** schaltet den Verbund (`mesh.set_enabled`); ihr Pfeil gibt die
+  App im Vordergrund (sonst die zuletzt benutzte) weiter.
+- Zuletzt benutzt: jede App hat einen Weitergeben-Knopf; App festhalten und nach oben ziehen tut dasselbe.
+- Mehr als ein mögliches Gerät: Auswahlblatt (`CompactMeshSend`), Gerät wählen, Senden oder Abbrechen.
+- Antworten (wartet, geöffnet, abgelehnt, keine Antwort, kein Gerät) erscheinen kurz in der Statusleiste.
+- Eingehend: Systemdialog `CompactMeshIncoming` (unten).
+- Ohne Verbund-Dienst gibt es weder Kachel noch Knopf.
+
+Fenster: die Shell folgt `WindowsChanged`; Home legt Fenster weg, „Zuletzt benutzt“ zeigt sie, ein
+App-Symbol holt das vorhandene Fenster nach vorn statt die App neu zu starten.
+
+## Systemdialoge (`ultar-mobile-dialog`)
+
+Gleicher Bus-Vertrag und gleiches Verhalten wie `ultar-sysdialog` des Desktops: meldet `sysdialog` an
+(`permission`, `authenticate` mit Verwalter-Kennwort über `auth.verify`, `bt_pair`, `handoff`), fragt
+„Anzeige behalten?“ zu jeder offenen Anzeige-Änderung von `settings`, eine Frage nach der anderen; wer
+nicht rechtzeitig antwortet, bekommt die sichere Antwort (ablehnen, abbrechen, zurücknehmen). Die
+Entscheidungen trifft der gemeinsame Zustand `ultar-dialog-core` (der Desktop nutzt ihn ebenso).
+
+Darstellung (Board `CompactMeshIncoming`, `docs/ui/mesh.md` §2.4): eine `SystemDialog`-Fläche unter der
+vertrauenswürdigen Titelleiste des Compositors, im Handy-Modus über den ganzen Arbeitsbereich. Oben der
+abgedunkelte Teil in der Scrim-Farbe (ein Tipp dort beantwortet nichts), unten das Blatt mit Titel, Text
+und Knöpfen in Fingergröße über die ganze Breite – die Hauptaktion **über** der sicheren; der Fokus liegt
+auf der sicheren Antwort. Texte unter `mobile.dialog.*` (gleicher Wortlaut wie `dialog.*` des Desktops).
+
 ## Aufbau von `ultar-mobile`
 
 | Schicht | Ordner | Aufgabe |
@@ -64,7 +94,8 @@ mobilen Daten, ohne Bluetooth kein Bluetooth, ohne Akku kein Energiesparen.
 | Modell | `src/model/` | Zustand ohne Zeichnen: Apps und Seiten, Schnelleinstellungen, Zeit, Mitteilungen |
 | Ansicht | `src/view/` | ein Baum je Bildschirm, in Teilen (Statusleiste, Navigationsleiste, Inhalt); nur `ultar-ui`; Punktmatrix-Uhr in `clock.rs` |
 | Klicks | `src/click.rs`, `src/app.rs` | was jeder Knoten bedeutet; Eingabe → Modell → Wirkungen (`Effect`) |
-| Programme | `src/program/` | Compositor und Bus: `shell.rs`, `lock.rs`, `bus.rs`, `bus_map.rs`, `lock_bus.rs` |
+| Programme | `src/program/` | Compositor und Bus: `shell.rs`, `lock.rs`, `dialog.rs`, `bus.rs`, `bus_map.rs`, `lock_bus.rs`, `dialog_bus.rs` |
+| Systemdialoge | `src/dialog/` | Blatt (`sheet.rs`), Angebot eines anderen Geräts (`handoff.rs`), übrige Fragen (`questions.rs`); `choose` = was ein Tipp für den gemeinsamen Dialogzustand bedeutet |
 
 ## Prüfung
 
@@ -81,6 +112,14 @@ ULTAR_MOBILE_OUT=/tmp/mobile cargo test -p ultar-mobile --test render   # Bildsc
 - `tests/e2e.rs`: echter Compositor (Handy-Bildschirm 360 × 760), echter Bus, Launcher und Anmeldedienst
   als Stellvertreter. Ein Finger tippt Statusleiste, Schalter, Navigationsleiste und eine App (Start über den
   Launcher); der Sperrbildschirm bleibt bei falschem Kennwort zu und öffnet nur mit dem richtigen.
+- `tests/dialog_render.rs`: jede Systemdialog-Frage auf 360 × 760 in Arabisch und Englisch, hell und dunkel
+  (Deutsch baut auch) – nichts außerhalb, nichts unübersetzt, Knöpfe in Fingergröße, Hauptaktion oben,
+  Fokus auf der sicheren Antwort; PNGs mit `ULTAR_MOBILE_OUT`.
+- `tests/dialog_clicks.rs`: Annehmen / Ablehnen / Fristablauf (= Ablehnen), Berechtigung, „behalten?“ –
+  durch Tipps auf das gebaute Blatt.
+- `tests/dialog_e2e.rs`: echter Compositor im Handy-Modus, echter Bus, Dialogprogramm im eigenen Thread; ein
+  Mesh-Stellvertreter ruft `sysdialog.handoff`, ein Finger tippt Annehmen (Antwort `accept: true`) bzw.
+  Ablehnen (`false`).
 
 ## Aus dem ersten Ultar OS übernommen (dort auf dem A30 erprobt)
 
@@ -99,4 +138,3 @@ ULTAR_MOBILE_OUT=/tmp/mobile cargo test -p ultar-mobile --test render   # Bildsc
 - Sperrbildschirm und Zeitzone: er darf keine Einstellungen lesen und zeigt die Standardzone
   (`Asia/Damascus`), bis ihm die Zone auf einem eigenen, engen Weg gemeldet wird.
 - Mitteilungstexte aus fremden Katalogen: unbekannte Schlüssel zeigen den App-Namen statt des Titels (wie am Desktop).
-- Der Geräteverbund (Weitergeben) hat auf dem Handy noch keine Oberfläche.

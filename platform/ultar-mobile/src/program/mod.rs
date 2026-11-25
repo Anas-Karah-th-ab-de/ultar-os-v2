@@ -10,6 +10,8 @@
 
 pub mod bus;
 pub mod bus_map;
+pub mod dialog;
+pub mod dialog_bus;
 pub mod lock;
 pub mod lock_bus;
 pub mod shell;

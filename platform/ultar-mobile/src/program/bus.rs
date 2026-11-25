@@ -14,13 +14,15 @@ use crate::model::Mobile;
 use std::path::Path;
 use std::time::Duration;
 use ultar_bus::messages::{
-    audio, bluetooth, calendar, launcher, lock, modem, net, notify, power, settings,
+    audio, bluetooth, calendar, launcher, lock, mesh, modem, net, notify, power, settings,
 };
 use ultar_bus::{Client, ClientOptions, TypedSubscription};
 use ultar_i18n::Translator;
 
 /// How long one call may take.
 pub const CALL: Duration = Duration::from_secs(3);
+/// The mesh may look for devices before it answers.
+const MESH_CALL: Duration = Duration::from_secs(5);
 /// Bus name of the shell.
 pub const NAME: &str = "org.ultar.mobile";
 
@@ -42,6 +44,8 @@ struct Topics {
     changed: Option<TypedSubscription<settings::Changed>>,
     calendar: Option<TypedSubscription<calendar::Changed>>,
     modem: Option<TypedSubscription<modem::ModemState>>,
+    mesh: Option<TypedSubscription<mesh::MeshState>>,
+    progress: Option<TypedSubscription<mesh::HandoffProgress>>,
 }
 
 /// The shell's bus connection.
@@ -74,6 +78,8 @@ impl Link {
             changed: client.subscribe().ok(),
             calendar: client.subscribe().ok(),
             modem: client.subscribe().ok(),
+            mesh: client.subscribe().ok(),
+            progress: client.subscribe().ok(),
         };
         Some(Link {
             client,
@@ -88,7 +94,7 @@ impl Link {
         if let Ok(r) = self.client.call(&launcher::List {}, CALL) {
             let listed: Vec<String> = r.apps.into_iter().map(|a| a.app).collect();
             if !listed.is_empty() {
-                m.apps = apps_from(&listed);
+                m.launcher.apps = apps_from(&listed);
             }
         }
         if let Ok(r) = self.client.call(&notify::List {}, CALL) {
@@ -201,6 +207,15 @@ impl Link {
             m.hardware.modem = s.cellular != ultar_bus::messages::call::Cellular::NoModem;
             changed = true;
         }
+        while let Some(state) = next(&t.mesh) {
+            m.hardware.mesh = true;
+            m.mesh.state = Some(state);
+            changed = true;
+        }
+        while let Some(p) = next(&t.progress) {
+            m.mesh.progress(&p, m.now_ms);
+            changed = true;
+        }
         changed |= self.poll_notes(m, tr);
         changed |= self.poll_settings(m);
         if next(&self.topics.calendar).is_some() {
@@ -285,8 +300,32 @@ impl Link {
             Effect::Restart => c.call(&power::Restart {}, CALL).map(|_| ()),
             Effect::PowerOff => c.call(&power::PowerOff {}, CALL).map(|_| ()),
             Effect::LockNow => c.call(&lock::Lock {}, CALL).map(|_| ()),
-            Effect::Unlock => Ok(()),
+            // Sent by the shell itself (`send`): its answer changes the model.
+            Effect::Unlock | Effect::MeshSend { .. } | Effect::Window(..) => Ok(()),
         };
+    }
+
+    /// Continue `app` (`title`: its name as shown) on `device`, or wherever it can go: the
+    /// mesh is told what is in front, then asked to send it.
+    pub fn send(
+        &self,
+        app: &str,
+        title: &str,
+        device: Option<String>,
+    ) -> Option<mesh::SendOutcome> {
+        let activity = mesh::Activity {
+            app: app.to_owned(),
+            title: title.to_owned(),
+            uri: None,
+            file: None,
+        };
+        let set = mesh::SetActivity {
+            activity: Some(activity),
+        };
+        self.client.call(&set, MESH_CALL).ok()?;
+        self.client
+            .call(&mesh::HandoffSend { target: device }, MESH_CALL)
+            .ok()
     }
 
     fn start(&self, app: &str, uri: Option<String>) -> Result<(), ultar_bus::BusError> {
@@ -329,6 +368,7 @@ impl Link {
                 .call(&modem::ModemSetData { on: Some(on) }, CALL)
                 .map(|_| ()),
             Toggle::Torch => c.call(&power::Torch { on: Some(on) }, CALL).map(|_| ()),
+            Toggle::Mesh => c.call(&mesh::SetEnabled { enabled: on }, CALL).map(|_| ()),
         }
     }
 }
