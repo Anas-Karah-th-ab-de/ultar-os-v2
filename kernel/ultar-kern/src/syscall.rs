@@ -659,7 +659,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) | FdKind::Dri(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -1326,6 +1326,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
             FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
+            FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
         })
     })
     .flatten();
@@ -1873,6 +1874,9 @@ fn sys_ioctl(fd: u64, req: u64, arg: u64) -> i64 {
         _ => {}
     }
     if let Some(r) = crate::svcdev::uinput::sys_ioctl(fd, req, arg) {
+        return r;
+    }
+    if let Some(r) = crate::svcdev::dri::sys_ioctl(fd, req, arg) {
         return r;
     }
     let geraet = with(|p| match p.fd(fd).map(|d| &d.kind) {

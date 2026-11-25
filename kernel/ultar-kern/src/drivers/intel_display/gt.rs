@@ -175,6 +175,7 @@ fn hwconfig_table(dev: &mut Device, bufs: &mut Vec<GgttBuf>) -> Result<(u32, usi
         .last()
         .map(|b| b.bytes(size as usize))
         .unwrap_or_default();
+    *super::gt_uapi::HWCONFIG.lock() = Some(table.clone());
     let entries = hwconfig::parse(&table).map_err(|e| {
         let head: Vec<String> = table
             .chunks_exact(4)
@@ -338,6 +339,7 @@ fn guc_check(dev: &mut Device, r: &mut Report) {
         Ok(i) => i,
         Err(e) => return r.check(false, "GuC firmware file", &format!("{path}: {e}")),
     };
+    *super::gt_uapi::SUBMISSION.lock() = Some(img.submission);
     r.check(
         true,
         "GuC firmware file",
@@ -415,6 +417,17 @@ pub fn selftest() {
     };
     let mut r = Report { fails: Vec::new() };
     run_on(dev, &mut r);
+    let facts = *FACTS.lock();
+    if let (true, Some(f)) = (r.fails.is_empty(), facts) {
+        // everything a program is told has been seen on this device: the render node appears
+        if let Ok(t) = super::gt_uapi::publish(dev, &f) {
+            r.check(true, "render node published", &t);
+            match super::gt_uapi::selfcheck() {
+                Ok(t) => r.check(true, "program interface answers the first questions", &t),
+                Err(e) => r.check(false, "program interface answers the first questions", &e),
+            }
+        }
+    }
     if r.fails.is_empty() {
         kprintln!("GTTEST: ALLES OK");
     } else {

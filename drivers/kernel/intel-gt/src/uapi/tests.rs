@@ -156,3 +156,121 @@ fn the_request_structure_is_parsed_and_checked() {
     assert_eq!(DeviceQuery::parse(&arg), Err(Errno::Inval));
     assert_eq!(DeviceQuery::parse(&arg[..39]), Err(Errno::Inval));
 }
+
+/// A program's memory for the tests: (address, bytes) regions.
+#[derive(Default)]
+struct Mem(Vec<(u64, Vec<u8>)>);
+
+impl drm::User for Mem {
+    fn write(&mut self, addr: u64, data: &[u8]) -> bool {
+        match self
+            .0
+            .iter_mut()
+            .find(|(a, b)| *a == addr && b.len() >= data.len())
+        {
+            Some((_, b)) => {
+                b[..data.len()].copy_from_slice(data);
+                true
+            }
+            None => false,
+        }
+    }
+    fn read(&mut self, addr: u64, len: usize) -> Option<Vec<u8>> {
+        let (_, b) = self.0.iter().find(|(a, b)| *a == addr && b.len() >= len)?;
+        Some(b[..len].to_vec())
+    }
+}
+
+const IOCTL_VERSION: u32 = 0xc040_6400;
+const IOCTL_GET_CAP: u32 = 0xc010_640c;
+const IOCTL_DEVICE_QUERY: u32 = 0xc028_6440;
+
+#[test]
+fn version_names_the_driver_and_reports_full_lengths() {
+    let d = beelink();
+    let mut mem = Mem(vec![(0x1000, vec![0; 2]), (0x2000, vec![0; 8])]);
+    let mut arg = [0u8; 64];
+    // first call as libdrm makes it: no buffers, lengths wanted
+    drm::ioctl(&d, IOCTL_VERSION, &mut arg, &mut mem).unwrap();
+    assert_eq!(u32_at(&arg, 0), 1);
+    assert_eq!(u32_at(&arg, 4), 1);
+    assert_eq!(u64_at(&arg, 16), 2);
+    assert_eq!(u64_at(&arg, 32), 0);
+    assert_eq!(u64_at(&arg, 48), drm::DRIVER_DESC.len() as u64);
+    // second call with buffers; the description buffer is shorter than the text
+    arg[24..32].copy_from_slice(&0x1000u64.to_le_bytes());
+    arg[48..56].copy_from_slice(&8u64.to_le_bytes());
+    arg[56..64].copy_from_slice(&0x2000u64.to_le_bytes());
+    drm::ioctl(&d, IOCTL_VERSION, &mut arg, &mut mem).unwrap();
+    assert_eq!(mem.0[0].1, b"xe");
+    assert_eq!(mem.0[1].1, b"Intel Xe");
+    assert_eq!(u64_at(&arg, 48), drm::DRIVER_DESC.len() as u64);
+    // a buffer that is not the program's memory
+    arg[24..32].copy_from_slice(&0x9000u64.to_le_bytes());
+    assert_eq!(
+        drm::ioctl(&d, IOCTL_VERSION, &mut arg, &mut mem),
+        Err(Errno::Fault)
+    );
+}
+
+#[test]
+fn capabilities_announce_only_what_exists() {
+    let d = beelink();
+    let mut mem = Mem::default();
+    let cap = |n: u64, mem: &mut Mem| {
+        let mut arg = [0u8; 16];
+        arg[..8].copy_from_slice(&n.to_le_bytes());
+        drm::ioctl(&d, IOCTL_GET_CAP, &mut arg, mem).map(|_| u64_at(&arg, 8))
+    };
+    assert_eq!(cap(drm::CAP_TIMESTAMP_MONOTONIC, &mut mem), Ok(1));
+    assert_eq!(cap(0x13, &mut mem), Ok(0), "sync objects are not there yet");
+    assert_eq!(cap(0x99, &mut mem), Err(Errno::Inval));
+}
+
+#[test]
+fn device_query_through_the_entry_point() {
+    let d = beelink();
+    let mut mem = Mem(vec![(0x4000, vec![0xff; 48])]);
+    let mut arg = [0u8; 40];
+    arg[8] = QUERY_CONFIG as u8;
+    drm::ioctl(&d, IOCTL_DEVICE_QUERY, &mut arg, &mut mem).unwrap();
+    assert_eq!(u32_at(&arg, 12), 48, "size written back");
+    arg[16..24].copy_from_slice(&0x4000u64.to_le_bytes());
+    drm::ioctl(&d, IOCTL_DEVICE_QUERY, &mut arg, &mut mem).unwrap();
+    assert_eq!(u64_at(&mem.0[0].1, 8), 0x0003_7d51);
+    // the firmware query reads which firmware from the program's buffer
+    let mut mem = Mem(vec![(0x5000, vec![0; 32])]);
+    arg[8] = QUERY_UC_FW_VERSION as u8;
+    arg[12] = 32;
+    arg[16..24].copy_from_slice(&0x5000u64.to_le_bytes());
+    drm::ioctl(&d, IOCTL_DEVICE_QUERY, &mut arg, &mut mem).unwrap();
+    assert_eq!(u32_at(&mem.0[0].1, 12), 26);
+    // buffer not in the program's memory
+    arg[16..24].copy_from_slice(&0x6000u64.to_le_bytes());
+    assert_eq!(
+        drm::ioctl(&d, IOCTL_DEVICE_QUERY, &mut arg, &mut mem),
+        Err(Errno::Fault)
+    );
+}
+
+#[test]
+fn other_requests_are_refused() {
+    let d = beelink();
+    let mut mem = Mem::default();
+    let mut arg = [0u8; 64];
+    // GEM create: not there yet
+    assert_eq!(
+        drm::ioctl(&d, 0xc038_6441, &mut arg, &mut mem),
+        Err(Errno::Inval)
+    );
+    // not a DRM request
+    assert_eq!(
+        drm::ioctl(&d, 0x5401, &mut arg, &mut mem),
+        Err(Errno::NoTty)
+    );
+    // structure shorter than the request says
+    assert_eq!(
+        drm::ioctl(&d, IOCTL_VERSION, &mut arg[..32], &mut mem),
+        Err(Errno::Inval)
+    );
+}

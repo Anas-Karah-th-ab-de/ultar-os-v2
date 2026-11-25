@@ -5,6 +5,9 @@
 //! * `uinput` – virtual keyboards, mice and tablets (`uinput.rs`), for the Bluetooth service and
 //!   remote control; right [`Rights::INPUT_INJECT`].
 //!
+//! * `/dev/dri/renderD128` – the GPU for programs (`dri.rs`, Linux `xe` uAPI); for now right
+//!   [`Rights::RAW_DEVICE`], and only present once the GT driver published its device record.
+//!
 //! The gate of these nodes is their right alone (default deny): `RAW_DEVICE`, `FILE_ADMIN`, the
 //! node's owner and mode open nothing here. The nodes report root-owned `0600`.
 
@@ -12,6 +15,7 @@ use crate::isolation::rights::Rights;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub mod dri;
 pub mod hci;
 pub mod uinput;
 
@@ -24,6 +28,9 @@ pub const UINPUT_NODE: &str = "ultar/uinput";
 pub fn node(d: &str) -> Option<&'static str> {
     if d == UINPUT_NODE {
         return Some(UINPUT_NODE);
+    }
+    if d == dri::NODE {
+        return dri::present().then_some(dri::NODE);
     }
     let i = HCI_NODES.iter().position(|n| *n == d)?;
     crate::drivers::gen_xhci::bt::nodes().contains(&(i as u8)).then_some(HCI_NODES[i])
@@ -41,6 +48,8 @@ pub fn right_for(path: &str) -> Option<Rights> {
     let d = path.strip_prefix("/dev/")?;
     if d == UINPUT_NODE {
         Some(Rights::INPUT_INJECT)
+    } else if d == dri::NODE {
+        Some(dri::RIGHT)
     } else if HCI_NODES.contains(&d) {
         Some(Rights::BLUETOOTH)
     } else {
@@ -59,6 +68,9 @@ pub fn open(d: &str, rights: Rights) -> Result<crate::proc::FdKind, i64> {
     if !rights.has(need) {
         return Err(-EACCES);
     }
+    if d == dri::NODE {
+        return dri::open();
+    }
     match hci_index(d) {
         Some(i) => hci::open(i),
         None => Ok(uinput::open()),
@@ -71,10 +83,15 @@ pub fn rdev(d: &str) -> Option<u64> {
     if d == UINPUT_NODE {
         return Some(10 << 8 | 223);
     }
+    if d == dri::NODE {
+        // DRM major 226, render nodes start at minor 128
+        return Some(226 << 8 | 128);
+    }
     hci_index(d).map(|i| 10 << 8 | (240 + i as u64))
 }
 
 pub(crate) const ENOENT: i64 = 2;
+pub(crate) const ENOTTY: i64 = 25;
 pub(crate) const EIO: i64 = 5;
 pub(crate) const EAGAIN: i64 = 11;
 pub(crate) const EBUSY: i64 = 16;

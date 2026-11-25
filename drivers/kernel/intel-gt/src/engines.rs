@@ -88,6 +88,21 @@ pub fn setup(hw: &mut impl Hw, base: u32, status_page_ggtt: u32) {
     hw.write(base + RING_HWS_PGA, status_page_ggtt);
 }
 
+/// Frequency in Hz at which the engines' time stamp counters run, from the crystal the
+/// firmware configured and the divider (`RPM_CONFIG0`); programs scale GPU times with it.
+/// `None` for a crystal code that does not exist. As Linux' `xe_gt_clock.c`.
+pub fn reference_clock(hw: &mut impl Hw) -> Option<u32> {
+    let c0 = hw.read(RPM_CONFIG0);
+    let crystal = match (c0 >> 3) & 7 {
+        0 => 24_000_000u32,
+        1 => 19_200_000,
+        2 => 38_400_000,
+        3 => 25_000_000,
+        _ => return None,
+    };
+    Some(crystal >> (3 - ((c0 >> 1) & 3)))
+}
+
 /// Switches the compute engines on (off after reset). Needs the render forcewake domain awake.
 pub fn enable_compute(hw: &mut impl Hw) {
     hw.write(RCU_MODE, masked_enable(RCU_MODE_CCS_ENABLE));
@@ -190,6 +205,18 @@ mod tests {
                 (0x22080, 0x0123_4000)
             ]
         );
+    }
+
+    #[test]
+    fn reference_clock_from_crystal_and_divider() {
+        let mut s = Sim::new();
+        // 38.4 MHz crystal, shift parameter 2: one tick every two crystal cycles
+        s.set(0xd00, 2 << 3 | 2 << 1);
+        assert_eq!(reference_clock(&mut s), Some(19_200_000));
+        s.set(0xd00, 1 << 3 | 3 << 1);
+        assert_eq!(reference_clock(&mut s), Some(19_200_000));
+        s.set(0xd00, 5 << 3);
+        assert_eq!(reference_clock(&mut s), None);
     }
 
     #[test]
