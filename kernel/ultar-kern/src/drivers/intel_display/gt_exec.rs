@@ -33,6 +33,8 @@ const MAX_PENDING: u64 = 200;
 /// Test switch (`gpu-pat=N` on the test medium): every buffer gets cache attribute N on the GT.
 /// Only for measuring – the CPU still caches write-back, so a non-coherent N may show stale data.
 pub static FORCE_PAT: AtomicU8 = AtomicU8::new(0xff);
+/// 2 MiB entries the GT got for buffers (for the log).
+pub static HUGE_ENTRIES: AtomicU64 = AtomicU64::new(0);
 /// Pages bound per cache attribute the programs asked for (for the log).
 pub static PAT_ASKED: [AtomicU64; 5] = [const { AtomicU64::new(0) }; 5];
 
@@ -364,9 +366,11 @@ impl Backend for Gpu {
             forced @ 0..=4 => forced,
             _ => pat,
         };
-        space
+        let huge = space
             .map_cached(&mut rt.mem.tables, va, pages, used)
-            .map_err(|_| Errno::NoMem)
+            .map_err(|_| Errno::NoMem)?;
+        HUGE_ENTRIES.fetch_add(huge as u64, Ordering::Relaxed);
+        Ok(())
     }
 
     fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
@@ -490,10 +494,11 @@ impl Backend for Gpu {
                 let m = q.usage.mhz;
                 let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
                 crate::kprintln!(
-                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks; pages bound per cache attribute asked 0..4: {asked:?}",
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
                     q.submitted,
                     q.usage.busy_ns / 1_000_000,
-                    m[0], m[1], m[2], m[3]
+                    m[0], m[1], m[2], m[3],
+                    HUGE_ENTRIES.load(Ordering::Relaxed)
                 );
             }
             retire(dev, rt, q);

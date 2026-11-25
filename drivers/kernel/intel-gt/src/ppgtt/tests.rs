@@ -186,7 +186,7 @@ fn two_megabytes_of_contiguous_memory_take_one_entry() {
     let mut pt = Ppgtt::new(&mut m).unwrap();
     // 2 MiB at 6 MiB (aligned) from memory at 0x4000_0000, then one more page
     let phys: Vec<u64> = (0..513).map(|k| 0x4000_0000 + k * PAGE).collect();
-    pt.map_cached(&mut m, 3 * MIB2, &phys, 1).unwrap();
+    assert_eq!(pt.map_cached(&mut m, 3 * MIB2, &phys, 1), Ok(1));
     // root, one table for the 1 GiB, one for the 2 MiB entries, one page table for the last page
     assert_eq!(pt.table_pages().len(), 4);
     assert_eq!(m.read(0x10_2000, 3), 0x4000_0000 | 0x80 | 0xb);

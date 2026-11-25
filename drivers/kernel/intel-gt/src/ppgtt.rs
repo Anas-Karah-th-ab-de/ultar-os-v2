@@ -174,12 +174,12 @@ impl Ppgtt {
     /// Maps the memory pages `phys` (page-aligned addresses) at `va` and following. Refuses a
     /// range that is mapped already.
     pub fn map(&mut self, mem: &mut impl Tables, va: u64, phys: &[u64]) -> Result<()> {
-        self.map_cached(mem, va, phys, PAT_WB_COHERENT)
+        self.map_cached(mem, va, phys, PAT_WB_COHERENT).map(|_| ())
     }
 
     /// [`Ppgtt::map`] with cache attribute `pat` (index 0–4 of the GT's PAT table; programs name
-    /// it in their bind requests).
-    pub fn map_cached(&mut self, mem: &mut impl Tables, va: u64, phys: &[u64], pat: u8) -> Result<()> {
+    /// it in their bind requests). Returns how many 2 MiB entries it used.
+    pub fn map_cached(&mut self, mem: &mut impl Tables, va: u64, phys: &[u64], pat: u8) -> Result<usize> {
         if pat > 4 {
             return Err(Error::Invalid("PPGTT cache attribute"));
         }
@@ -190,7 +190,7 @@ impl Ppgtt {
         if self.mapped_in(mem, self.root, 3, va, va + phys.len() as u64 * PAGE) {
             return Err(Error::Invalid("PPGTT range already mapped"));
         }
-        let mut i = 0;
+        let (mut i, mut huge) = (0, 0);
         while i < phys.len() {
             let at = va + i as u64 * PAGE;
             if huge_run(phys, i, at) {
@@ -200,6 +200,7 @@ impl Ppgtt {
                 }
                 mem.write(table, index(at, 1), phys[i] | PRESENT | RW | HUGE | pat_bits_huge(pat));
                 i += HUGE_PAGES;
+                huge += 1;
                 continue;
             }
             if let Some(leaf) = self.leaf(mem, at, true)? {
@@ -207,7 +208,7 @@ impl Ppgtt {
             }
             i += 1;
         }
-        Ok(())
+        Ok(huge)
     }
 
     /// Removes the mapping of `pages` pages at `va` (the tables themselves stay). The caller
