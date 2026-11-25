@@ -23,6 +23,9 @@ env = [
   # only what was built here is found, never a library of the build machine
   ["PKG_CONFIG_LIBDIR", "{prefix}/lib/pkgconfig:{prefix}/share/pkgconfig:{tools}/lib/pkgconfig:{tools}/share/pkgconfig"],
   ["PYTHONPATH", "{tools}/py"],
+  # our pkg-config lives in {tools} and would treat {tools}/include as "known anyway"
+  ["PKG_CONFIG_ALLOW_SYSTEM_CFLAGS", "1"],
+  ["PKG_CONFIG_ALLOW_SYSTEM_LIBS", "1"],
 ]
 runtime_env = [
   ["CC", "gcc -isystem {prefix}/include -B{prefix}/lib"],
