@@ -118,7 +118,7 @@ def main() -> int:
     css = font_css(repo)
     inv = {}
     with sync_playwright() as p:
-        br = p.chromium.launch(executable_path=a.chrome, args=["--font-render-hinting=none"])
+        br = p.chromium.launch(executable_path=a.chrome, args=["--font-render-hinting=none", "--disable-lcd-text"])
         for f in sorted((repo / "design/boards/project").glob("*.dc.html")):
             board = f.name.split(".")[0]
             pg = br.new_page(viewport={"width": 2600, "height": 1300}, device_scale_factor=1)
