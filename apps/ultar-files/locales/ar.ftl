@@ -119,6 +119,7 @@ files.notice.undone = تم التراجع
 files.notice.cancelled = أُوقفت العملية
 files.notice.ejected = يمكنك الآن نزع ذاكرة {name} بأمان
 files.notice.no_app = لا يوجد تطبيق لفتح «{name}»
+files.notice.open_failed = تعذّر فتح «{name}»: التطبيق لم يبدأ
 files.error.not_found = العنصر غير موجود
 files.error.exists = يوجد عنصر بهذا الاسم
 files.error.permission = لا تملك إذنًا لهذا المكان

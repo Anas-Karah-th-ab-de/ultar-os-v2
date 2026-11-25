@@ -61,6 +61,8 @@ pub enum LaunchError {
     Busy,
     /// A URI or another window cannot be handed to the running app.
     NoOpen,
+    /// A base app of the system cannot be uninstalled.
+    Protected,
 }
 
 impl LaunchError {
@@ -82,6 +84,7 @@ impl LaunchError {
             Self::Invalid => contract::ERROR_INVALID,
             Self::Busy => contract::ERROR_BUSY,
             Self::NoOpen => contract::ERROR_NO_OPEN,
+            Self::Protected => contract::ERROR_PROTECTED,
         }
     }
 
@@ -107,6 +110,7 @@ impl LaunchError {
             Self::Invalid => "launcher.error.invalid",
             Self::Busy => "launcher.error.busy",
             Self::NoOpen => "launcher.error.no_open",
+            Self::Protected => "launcher.error.protected",
         }
     }
 }

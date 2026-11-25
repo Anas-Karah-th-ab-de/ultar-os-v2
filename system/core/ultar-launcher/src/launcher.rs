@@ -306,6 +306,9 @@ impl Launcher {
         let id = app_id(app)?;
         let mut core = lock(&self.core);
         core.installed(&id)?;
+        if ultar_brand::base_apps::is_base_app(id.as_str()) {
+            return Err(LaunchError::Protected);
+        }
         if !core.removing.insert(id.clone()) {
             return Err(LaunchError::Busy);
         }

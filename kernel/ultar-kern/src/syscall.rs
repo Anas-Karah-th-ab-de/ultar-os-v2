@@ -1625,6 +1625,11 @@ fn sys_rename(od: i64, op: u64, nd: i64, np: u64) -> i64 {
         fs::unlink(&ol.host);
         return 0;
     }
+    // a directory is not moved by copying one file's bytes: the caller copies the tree and removes
+    // the old one, as across file systems (Files, mv)
+    if matches!(fs::stat(&ol.host), Some((1, _))) {
+        return -EXDEV;
+    }
     // a link at the new name is replaced, not written through
     let replaced_link = link_at(&nl).is_some();
     let (o, n) = (ol.host, nl.host);

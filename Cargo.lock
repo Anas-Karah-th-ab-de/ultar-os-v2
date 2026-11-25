@@ -5637,6 +5637,7 @@ dependencies = [
  "serde",
  "sha2 0.10.9",
  "toml",
+ "ultar-brand",
  "ultar-bus",
  "ultar-init",
  "ultar-pkg",

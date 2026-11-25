@@ -70,6 +70,9 @@ fn named_key(code: u16) -> Option<Key> {
         104 => Key::PageUp,
         109 => Key::PageDown,
         127 => Key::Menu,
+        59..=68 => Key::F((code - 58) as u8), // F1 … F10
+        87 => Key::F(11),
+        88 => Key::F(12),
         _ => return None,
     })
 }

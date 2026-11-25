@@ -86,7 +86,7 @@ pub fn place_icon(area: &AreaId) -> IconId {
 pub fn item_icon(item: &Item) -> IconId {
     match file_kind(&item.entry) {
         FileKind::Folder => IconId::KindFolder,
-        FileKind::Text | FileKind::Other | FileKind::Link => IconId::KindText,
+        FileKind::Text | FileKind::Plain | FileKind::Other | FileKind::Link => IconId::KindText,
         FileKind::Sheet => IconId::KindSheet,
         FileKind::Image => IconId::KindImage,
         FileKind::Audio => IconId::Media,
