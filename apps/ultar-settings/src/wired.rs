@@ -94,6 +94,13 @@ pub const WIRED: &[(&str, &str)] = &[
     ("apps.autostart", "launcher"),
     // The shell asks, opens Files, or does nothing when a drive with media is plugged in.
     ("apps.removable_media", "shell"),
+    // The volume service (ultar-volumed) follows these: it warns once when the data
+    // partition runs low, offers a drive with a "Mount" button when automount is off,
+    // and cleans the person's downloads folder once a day.
+    ("storage.low_space_percent", "volumed"),
+    ("storage.automount", "volumed"),
+    ("storage.clean_downloads", "volumed"),
+    ("storage.clean_downloads_days", "volumed"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -150,6 +157,14 @@ mod tests {
             "accessibility",
             "accessibility.screen_reader"
         ));
+        // The volume service follows the low-space warning, automount and the downloads
+        // clean-up; trim and old-update clean-up have no effect in this version.
+        assert!(takes_effect("storage", "storage.low_space_percent"));
+        assert!(takes_effect("storage", "storage.automount"));
+        assert!(takes_effect("storage", "storage.clean_downloads"));
+        assert!(takes_effect("storage", "storage.clean_downloads_days"));
+        assert!(!takes_effect("storage", "storage.trim"));
+        assert!(!takes_effect("storage", "storage.clean_old_updates"));
         // Every wired key belongs to a checked panel (its first word, `pointer` for the
         // mouse page).
         for (key, _) in WIRED {

@@ -20,6 +20,8 @@ ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-update = { path = "../../system/core/ultar-update" }
+# The volume service follows the Storage page settings; the example checks its own code.
+ultar-volumed = { path = "../../system/services/ultar-volumed" }
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 
