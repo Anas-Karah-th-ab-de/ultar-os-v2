@@ -4,10 +4,13 @@
 exec = "/usr/bin/ultar-agentd"
 args = [
     "--bus", "/run/ultar/bus/agentd.sock",
+    "--state", "/data/ultar/agentd",
     "--log-socket", "/run/ultar/log/agentd.sock",
 ]
-# Its own user (834) without kernel rights; it owns no file.
+# Its own user (834) without kernel rights. Its one file: the list of what it did, for
+# the person to read in Settings.
 user = 834
+dirs = ["/data/ultar/agentd"]
 notify = true
 after = ["bus"]
 restart = "always"

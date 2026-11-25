@@ -348,5 +348,33 @@
   "w": 360,
   "h": 800,
   "title": "Kompakt · Zielgerät fragt nach (Blatt von unten, Systemfrage)"
+ },
+ "AssistantReach.dc.html": {
+  "x": 880,
+  "y": 9164,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Assistent: was der Helfer erreicht (Hauptschalter, neun Bereiche) · dunkel · Arabisch"
+ },
+ "AssistantDid.dc.html": {
+  "x": 2400,
+  "y": 9164,
+  "w": 1440,
+  "h": 900,
+  "title": "Einstellungen · Assistent: was der Helfer getan hat (Liste, Ergebnis je Anfrage, vergessen) · hell · Englisch"
+ },
+ "HelperSheet.dc.html": {
+  "x": 3920,
+  "y": 9164,
+  "w": 1440,
+  "h": 900,
+  "title": "Helfer · eigene Fläche (Blatt der Hülle, Super+H): Anfrage, sichtbare Schritte je Bereich, Antwort"
+ },
+ "HelperConfirm.dc.html": {
+  "x": 5440,
+  "y": 9164,
+  "w": 1440,
+  "h": 900,
+  "title": "Helfer · Gefährliches wartet auf die Bestätigung der Person (Systemdialog); eigene Schalter bleiben für den Helfer zu"
  }
 }

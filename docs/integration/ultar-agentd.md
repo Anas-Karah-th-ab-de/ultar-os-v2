@@ -77,3 +77,83 @@ Open points of the helper and of the mesh are collected in `docs/OFFEN-VERBUND-H
   Hülle aus `ultar_bus::messages::agent::LOCALES`.
 - `open_app` nennt dem Starter die einteilige Kennung (`files` statt `org.ultar.files`).
 - `tests/together.rs`: zwei Geräte, echte Dienste, ausgelieferte Regeln. Tests gesamt: 23.
+
+## Nachtrag 25.11.2026 (3): der Helfer erreicht das ganze System – und man sieht es
+
+Entscheidung des Eigentümers: Der Helfer soll **alles im System erreichen**, Gefährliches bestätigt die Person;
+was er erreicht und tut, soll **sichtbar** sein (eigene Fläche und Seite „Was der Helfer darf“).
+
+### Bereiche und Werkzeuge (33, `src/tools.rs`)
+
+Jedes Werkzeug gehört zu einem Bereich (`ultar_bus::messages::agent::Area`).
+
+| Bereich | Werkzeuge (★ = die Person bestätigt vorher) |
+|---|---|
+| Apps | `list_apps`, `open_app`, `close_app`★ |
+| Einstellungen | `settings_panels`, `settings_list`, `setting_get`, `setting_set` (heikle Bereiche ★) |
+| Netz | `network_status`, `wifi`, `bluetooth`, `airplane` |
+| Ton | `sound_status`, `set_volume`, `mute`, `media` |
+| Bildschirm | `screenshot`, `lock` |
+| Benachrichtigungen | `notifications`, `dismiss_notification` |
+| Speicher | `storage`, `eject` |
+| Andere Geräte | `devices`, `continue_on`, `send_file`, `ask_device` |
+| Energie | `battery`, `suspend`★, `sign_out`★, `restart`★, `power_off`★ |
+| Hilfe | `help`, `what_can_you_do`, `what_did_you_do` |
+
+Die breiteste Tür sind die Einstellungen: über `settings.list/get/set` erreicht der Helfer **jede** Einstellung
+des Systems (281 Schlüssel). Darum hat sie die meisten Regeln (`src/toolbox_system.rs`):
+
+- **Nie die eigenen Schalter:** Schlüssel `assistant.*` lehnt der Helfer ab – er kann sich weder einschalten
+  noch einen Bereich öffnen noch seinen Verlauf verlängern.
+- **Nie Verwalter-Einstellungen:** Der Helfer ist am Bus kein Verwalter; `settingsd` lehnt sie ohnehin ab, der
+  Helfer fragt gar nicht erst.
+- **Heikle Bereiche erst nach Bestätigung** (Systemdialog): `privacy`, `account`, `sharing`, `users`, `updates`,
+  `backup`, `mesh`, `cells`, `emergency`.
+- **Nur Werte, die die Einstellung annimmt** (Art, Bereich, Auswahl aus `settings.list`).
+- Einstellungen mit „Behalten?“ (z. B. Auflösung) fragt das System wie bei jeder anderen Änderung.
+
+### Was die Person schließen kann
+
+- `assistant.act` (jetzt **an** als Vorgabe): aus = der Helfer sieht nur nach und erklärt.
+- `assistant.reach.<bereich>` (neun Schalter, Vorgabe an): ein geschlossener Bereich lehnt jedes Werkzeug darin
+  ab – mit und ohne Modell; das Modell bekommt dessen Werkzeuge gar nicht erst genannt.
+- `assistant.history_days`: wie lange die Liste bleibt; 0 = nichts behalten.
+
+Der Helfer folgt `settings.changed` sofort. Zustand am Bus: `agent.reach` (gehalten).
+
+### Was er getan hat
+
+`agent.activity` (gehalten, höchstens 50 Einträge): Anfrage, womit gedacht, Schritte mit Bereich, Einzelheit
+(`key=appearance.dark, value=true`) und Ergebnis, Antwort. Liegt in `/data/ultar/agentd/activity.json` (Benutzer
+834) – die einzige Datei des Helfers. `agent.clear_activity` darf nur die Einstellungen-App.
+
+### Oberfläche
+
+- Einstellungen › Assistent: die Schalter (allgemeine Liste des Bereichs) und die Karte „Was der Assistent getan
+  hat“ mit „Alles vergessen“ (`apps/ultar-settings/src/view/helper.rs`). Tafeln `AssistantReach`, `AssistantDid`.
+- Eigene Fläche des Helfers (Blatt der Hülle, Super+H): Tafeln `HelperSheet`, `HelperConfirm` – **nicht gebaut**,
+  wartet auf Freigabe.
+
+### Fehler der früheren Arbeit, hier gefunden und behoben
+
+Medientasten, Schlafen, Neustart und Ausschalten gingen im echten System **nie**: `ultar-mediad` und
+`ultar-powerd` nehmen nur Aufrufer an, die die Regeln als Teil des Systems kennen (`media.system`,
+`power.system`); die Tests liefen gegen Ersatz-Dienste, die das nicht prüfen. Der Helfer hat jetzt
+`media.system`, `power.system`, `session.system`, `notify.system`; welche Aufrufe er machen darf, bleibt die
+schmale Liste seiner Regel. Ein Test liest die ausgelieferten Regeln und hält das fest
+(`tests/reach.rs`, `the_shipped_rules_let_the_services_accept_the_helper`).
+
+### Was „alles“ heute nicht einschließt
+
+- **Dateien** lesen, suchen, verschieben: die Bereiche der Person erreicht nur der Starter (OFFEN B6).
+- **Apps installieren, Aktualisierungen, Treiber**: diese Dienste haben keinen Vertrag in `ultar-bus/messages`.
+- **Konten, Benutzer, WLAN-Netz mit Passwort beitreten, VPN**: bewusst nicht – Geheimnisse gehen nicht durch ein Modell.
+- **Bildschirm sehen** (`assistant.see_screen`), Sprache, Zwischenablage.
+- Ohne Modell sagt der Helfer Zustände (Akku, Speicher, Geräte) als rohe englische Zeile.
+
+### Tests
+
+Helfer: 21 + 7 + 3 + 1 (Regeln der Einstellungen, Werte, Liste über Neustart, geschlossener Bereich mit und ohne
+Modell, „nur nachsehen“; echter Prozess: Einstellung ändern, eigene und Verwalter-Schlüssel abgelehnt, heikler
+Bereich nur nach Bestätigung, Bereich schließen, Liste lesen und vergessen). Einstellungen: `tests/helper.rs` (3).
+Nicht geprüft: gegen die echten Dienste `settingsd`, `powerd`, `mediad`, `notifyd`, `volumed`, `sessiond`.

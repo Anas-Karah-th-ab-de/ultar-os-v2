@@ -61,6 +61,11 @@ const PW_FIELDS: [(&str, bool); 3] = [
     ("app.settings.dialog.pw.again", true),
 ];
 
+/// "Forget …?": a question without fields whose answer cannot be taken back.
+fn forget(ok: &'static str, title: &'static str, text: &'static str) -> Spec {
+    plain(title, k(text), ok, &[], true)
+}
+
 fn spec(state: &State, purpose: DialogPurpose) -> Spec {
     let d = "app.settings.dialog.";
     match purpose {
@@ -105,12 +110,15 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             &[("app.settings.cloud.address", false)],
             false,
         ),
-        DialogPurpose::CloudClear => plain(
-            "app.settings.cloud.clear.title",
-            k("app.settings.cloud.clear.text"),
+        DialogPurpose::CloudClear => forget(
             "app.settings.cloud.clear",
-            &[],
-            true,
+            "app.settings.cloud.clear.title",
+            "app.settings.cloud.clear.text",
+        ),
+        DialogPurpose::HelperForget => forget(
+            "app.settings.helper.forget",
+            "app.settings.helper.forget.title",
+            "app.settings.helper.forget.text",
         ),
         other => fixed(other),
     }

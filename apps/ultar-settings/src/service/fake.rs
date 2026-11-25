@@ -299,6 +299,8 @@ pub struct SystemWorld {
     pub mesh: Option<ultar_bus::messages::mesh::MeshState>,
     /// The cloud model (`None`: no such service).
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
+    /// What the helper did (`None`: no helper).
+    pub activity: Option<ultar_bus::messages::agent::Activity>,
 }
 
 fn local_user(name: &str, uid: u32) -> LocalUser {

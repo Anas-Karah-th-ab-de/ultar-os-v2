@@ -310,9 +310,10 @@ fn dialog(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
             mesh::dialog_ok(c, purpose)
         }
-        DialogPurpose::CloudKey | DialogPurpose::CloudClear | DialogPurpose::CloudAddress => {
-            cloud::dialog_ok(c, purpose)
-        }
+        DialogPurpose::CloudKey
+        | DialogPurpose::CloudClear
+        | DialogPurpose::CloudAddress
+        | DialogPurpose::HelperForget => cloud::dialog_ok(c, purpose),
         DialogPurpose::ChangePassword
         | DialogPurpose::DeleteAccount
         | DialogPurpose::RemoveDevice(_) => account::dialog_ok(c, purpose),

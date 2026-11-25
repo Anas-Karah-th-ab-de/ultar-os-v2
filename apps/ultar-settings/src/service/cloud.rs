@@ -5,7 +5,7 @@ use super::bus::{call, Retained};
 use super::fake::Shared;
 use super::{PortError, PortResult};
 use std::time::Duration;
-use ultar_bus::messages::agent::{AgentState, Brain};
+use ultar_bus::messages::agent::{Activity, AgentState, Brain, ClearActivity};
 use ultar_bus::messages::llm_cloud::{
     ClearKey, CloudState, Configure, ModelInfo, Refusal, Saved, SetKey,
 };
@@ -27,6 +27,10 @@ pub trait CloudPort {
     fn configure(&mut self, choice: Configure) -> PortResult<()>;
     /// What the helper thinks with right now (`None`: no helper on this device).
     fn brain(&mut self) -> Option<Brain>;
+    /// What the helper did lately (`None`: no helper on this device).
+    fn activity(&mut self) -> Option<Activity>;
+    /// Forgets what the helper did.
+    fn clear_activity(&mut self) -> PortResult<()>;
 }
 
 /// `llmcloud` over the bus.
@@ -34,6 +38,7 @@ pub struct BusCloud {
     client: Client,
     state: Retained<CloudState>,
     helper: Retained<AgentState>,
+    activity: Retained<Activity>,
 }
 
 impl std::fmt::Debug for BusCloud {
@@ -49,6 +54,7 @@ impl BusCloud {
             client: client.clone(),
             state: Retained::new(client),
             helper: Retained::new(client),
+            activity: Retained::new(client),
         }
     }
 }
@@ -90,6 +96,18 @@ impl CloudPort for BusCloud {
 
     fn brain(&mut self) -> Option<Brain> {
         self.helper.get().ok().map(|state| state.brain)
+    }
+
+    fn activity(&mut self) -> Option<Activity> {
+        self.activity.get().ok()
+    }
+
+    fn clear_activity(&mut self) -> PortResult<()> {
+        match call(&self.client, &ClearActivity {}, CALL_TIMEOUT) {
+            Ok(cleared) if cleared.ok => Ok(()),
+            Ok(_) => Err(PortError::Refused(Text::key("app.settings.error.failed"))),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -179,5 +197,17 @@ impl CloudPort for FakeCloud {
         } else {
             Brain::Minimal
         })
+    }
+
+    fn activity(&mut self) -> Option<Activity> {
+        self.0.borrow().system.activity.clone()
+    }
+
+    fn clear_activity(&mut self) -> PortResult<()> {
+        let mut world = self.0.borrow_mut();
+        world.log.push("agent.clear_activity".to_owned());
+        let activity = world.system.activity.as_mut();
+        activity.ok_or(PortError::Unavailable)?.entries.clear();
+        Ok(())
     }
 }

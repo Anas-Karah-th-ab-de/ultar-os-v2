@@ -18,16 +18,9 @@ fn number(text: &str) -> Option<u8> {
     digits.parse::<u8>().ok().filter(|n| *n <= 100)
 }
 
-/// The one call a request means, or `None` when the smallest help does not understand it.
-pub fn understand(request: &str) -> Option<Call> {
-    let text = format!(" {} ", request.to_lowercase());
-    let text = text.as_str();
-    if has(text, &msg::UNMUTE) {
-        return Some(Call::new("mute", &[("on", "false")]));
-    }
-    if has(text, &msg::MUTE) {
-        return Some(Call::new("mute", &[("on", "true")]));
-    }
+/// Bluetooth or airplane mode, when the request names one: the call, or `None` inside
+/// when on or off was not said.
+fn radio(text: &str) -> Option<Option<Call>> {
     for (words, tool) in [
         (&msg::BLUETOOTH[..], "bluetooth"),
         (&msg::AIRPLANE[..], "airplane"),
@@ -38,10 +31,26 @@ pub fn understand(request: &str) -> Option<Call> {
             } else if has(text, &msg::ON) {
                 "true"
             } else {
-                return None;
+                return Some(None);
             };
-            return Some(Call::new(tool, &[("on", on)]));
+            return Some(Some(Call::new(tool, &[("on", on)])));
         }
+    }
+    None
+}
+
+/// The one call a request means, or `None` when the smallest help does not understand it.
+pub fn understand(request: &str) -> Option<Call> {
+    let text = format!(" {} ", request.to_lowercase());
+    let text = text.as_str();
+    if has(text, &msg::UNMUTE) {
+        return Some(Call::new("mute", &[("on", "false")]));
+    }
+    if has(text, &msg::MUTE) {
+        return Some(Call::new("mute", &[("on", "true")]));
+    }
+    if let Some(found) = radio(text) {
+        return found;
     }
     if has(text, &msg::SCREENSHOT) {
         return Some(Call::new("screenshot", &[]));
@@ -67,8 +76,13 @@ pub fn understand(request: &str) -> Option<Call> {
     if has(text, &msg::CONTINUE) {
         return Some(Call::new("continue_on", &[("device", "")]));
     }
-    if has(text, &msg::DEVICES) {
-        return Some(Call::new("devices", &[]));
+    let looks = [
+        (&msg::DEVICES[..], "devices"),
+        (&msg::BATTERY[..], "battery"),
+        (&msg::STORAGE[..], "storage"),
+    ];
+    if let Some((_, tool)) = looks.iter().find(|(words, _)| has(text, words)) {
+        return Some(Call::new(tool, &[]));
     }
     if has(text, &msg::OPEN) {
         let app = msg::APPS.iter().find(|(words, _)| has(text, words))?;
@@ -107,6 +121,8 @@ mod tests {
         assert_eq!(call("turn wifi on"), wanted("wifi", "true"));
         assert_eq!(call("أكمل على جهاز آخر"), wanted("continue_on", ""));
         assert_eq!(call("أجهزتي"), wanted("devices", ""));
+        assert_eq!(call("كم البطارية؟"), wanted("battery", ""));
+        assert_eq!(call("Wie voll ist der Speicher?"), wanted("storage", ""));
     }
 
     #[test]

@@ -2112,6 +2112,144 @@ Total: **1113 clickable elements on 37 boards**, 199 distinct actions, 72 of the
 | 40 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
 | 41 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
 
+## AssistantReach (46)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | السماح للمساعد بالتنفيذ | `assistant.act` | Master switch (setting assistant.act): off, the helper only looks and explains; on, it acts in the open areas. The helper cannot set it. | NEW |
+| 2 | التطبيقات | `assistant.reach.apps` | Opens or closes the area "apps" to the helper (setting assistant.reach.apps); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 3 | الإعدادات | `assistant.reach.settings` | Opens or closes the area "settings" to the helper (setting assistant.reach.settings); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 4 | الشبكة | `assistant.reach.network` | Opens or closes the area "network" to the helper (setting assistant.reach.network); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 5 | الصوت | `assistant.reach.sound` | Opens or closes the area "sound" to the helper (setting assistant.reach.sound); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 6 | الشاشة | `assistant.reach.screen` | Opens or closes the area "screen" to the helper (setting assistant.reach.screen); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 7 | الإشعارات | `assistant.reach.notifications` | Opens or closes the area "notifications" to the helper (setting assistant.reach.notifications); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 8 | التخزين | `assistant.reach.storage` | Opens or closes the area "storage" to the helper (setting assistant.reach.storage); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 9 | أجهزتك الأخرى | `assistant.reach.devices` | Opens or closes the area "devices" to the helper (setting assistant.reach.devices); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 10 | الطاقة | `assistant.reach.power` | Opens or closes the area "power" to the helper (setting assistant.reach.power); a closed area refuses every tool of it. The helper cannot set it. | NEW |
+| 11 | ابحث في الإعدادات | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 12 | واي فاي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | الشبكة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | بلوتوث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | الشاشات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | الصوت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | الطاقة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | سطح المكتب والمرسى | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | النوافذ ومساحات العمل | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | المظهر | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | الإشعارات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | البحث | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | التطبيقات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | الفأرة ولوحة اللمس | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | لوحة المفاتيح | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | الطابعات والماسحات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | الألوان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | تسهيلات الاستخدام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | الخصوصية والأمان | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | المشاركة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | الحسابات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | المستخدمون | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | المنطقة واللغة | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | التاريخ والوقت | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | التخزين | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | العتاد والتعريفات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 37 | التحديثات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 38 | النسخ الاحتياطي | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 39 | الترابط | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 40 | المساعد | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 41 | الخلايا والحاويات | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 42 | الطوارئ | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 43 | حول النظام | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 44 | تصغير | `win.min` | Minimises the window. | §5.2 |
+| 45 | تكبير | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 46 | إغلاق | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## AssistantDid (38)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | Keep history | `assistant.history` | How many days the list of what the helper did is kept (setting assistant.history_days); 0 keeps nothing. | NEW |
+| 2 | Forget all | `assistant.helper.forget` | Asks "Forget what the assistant did?" and then deletes the list on this device (agent.clear_activity). | NEW |
+| 3 | Search settings | `settings.search` | Searches all areas and rows; a result opens the area and jumps to the row. | §8 |
+| 4 | Wi-Fi | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 5 | Network | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 6 | Bluetooth | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 7 | Displays | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 8 | Sound | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 9 | Power | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 10 | Desktop and dock | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 11 | Windows and workspaces | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 12 | Appearance | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 13 | Notifications | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 14 | Search | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 15 | Apps | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 16 | Mouse and touchpad | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 17 | Keyboard | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 18 | Printers and scanners | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 19 | Colour | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 20 | Accessibility | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 21 | Privacy and security | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 22 | Sharing | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 23 | Accounts | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 24 | Users | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 25 | Region and language | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 26 | Date and time | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 27 | Storage | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 28 | Drivers and hardware | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 29 | Updates | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 30 | Backup | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 31 | Mesh | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 32 | Assistant | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 33 | Cells and containers | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 34 | Emergency | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 35 | About | `settings.area` | Opens the area in the content pane; the list scrolls, the current area is marked. | §8 |
+| 36 | Minimize | `win.min` | Minimises the window. | §5.2 |
+| 37 | Maximize | `win.max` | Maximises the window; on a maximised window the icon becomes "restore". | §5.2 |
+| 38 | Close | `win.close` | Closes the window (Alt+F4). | §5.2 |
+
+## HelperSheet (17)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | ما يصل إليه المساعد | `helper.settings` | Opens Settings › Assistant: what the helper reaches and what it did. | NEW |
+| 2 | إرسال | `helper.ask.send` | Sends the request (agent.ask); the steps appear one by one with their area and outcome, then the answer. | NEW |
+| 3 | اسأل المساعد | `helper.ask.field` | The request in the person's words, at most 4096 bytes. | NEW |
+| 4 | سلة المحذوفات | `shell.trash` | Click opens the Trash in Files. Files dropped on it are moved to the Trash (with undo). Right click: Open, Empty trash (asks first). | NEW |
+| 5 | ذاكرة USB | `shell.drive` | Click opens the mounted drive in Files. Right click: Open, Eject. The tile exists only while a drive is mounted. | NEW |
+| 6 | نظرة عامة | `shell.overview` | Opens the Overview; second click or Esc closes it. No menu, no second meaning. | §5.1 |
+| 7 | كل التطبيقات | `shell.apps` | Opens the app grid (all apps, alphabetical). | §5.1 |
+| 8 | بحث | `shell.search` | Opens the Overview with the caret in its search field; typing searches at once. The bar itself holds no second search. | NEW |
+| 9 | الملفات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 10 | المتصفح | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 11 | الطرفية | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 12 | محرر النصوص | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 13 | متجر Ultar | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 14 | الإعدادات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 15 | لغة الإدخال: العربية | `shell.kbd` | Shown only with more than one input language. Click opens a menu: the input languages (choosing one switches at once), "Keyboard settings". Super+Space switches without the menu. | NEW |
+| 16 | الإعدادات السريعة | `shell.status` | Opens the quick settings sheet above the end of the bar; second click, Esc or a click outside closes it and focus returns to this button. | §5.1 (focus return: NEW) |
+| 17 | التقويم والإشعارات | `shell.clock` | Opens the calendar and notifications sheet above the end of the bar; closes like the quick settings. Only one of the two sheets is open at a time. | §5.1 (one sheet at a time: NEW) |
+
+## HelperConfirm (17)
+
+| # | Element (accessible name) | Action | What it does | Ref |
+|---|---|---|---|---|
+| 1 | ما يصل إليه المساعد | `helper.settings` | Opens Settings › Assistant: what the helper reaches and what it did. | NEW |
+| 2 | إيقاف | `helper.stop` | Stops waiting for the answer; a step already done stays done and stays in the list. | NEW |
+| 3 | اسأل المساعد | `helper.ask.field` | The request in the person's words, at most 4096 bytes. | NEW |
+| 4 | سلة المحذوفات | `shell.trash` | Click opens the Trash in Files. Files dropped on it are moved to the Trash (with undo). Right click: Open, Empty trash (asks first). | NEW |
+| 5 | ذاكرة USB | `shell.drive` | Click opens the mounted drive in Files. Right click: Open, Eject. The tile exists only while a drive is mounted. | NEW |
+| 6 | نظرة عامة | `shell.overview` | Opens the Overview; second click or Esc closes it. No menu, no second meaning. | §5.1 |
+| 7 | كل التطبيقات | `shell.apps` | Opens the app grid (all apps, alphabetical). | §5.1 |
+| 8 | بحث | `shell.search` | Opens the Overview with the caret in its search field; typing searches at once. The bar itself holds no second search. | NEW |
+| 9 | الملفات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 10 | المتصفح | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 11 | الطرفية | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 12 | محرر النصوص | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 13 | متجر Ultar | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 14 | الإعدادات | `shell.app` | Click: start the app or raise its window; with several windows a preview to choose from. Middle click: new window. Right click: window list, New window, quick actions, Pin/Unpin, Details in Store, Quit. Drag: reorder; a file dropped on it opens with the app. | §5.1 |
+| 15 | لغة الإدخال: العربية | `shell.kbd` | Shown only with more than one input language. Click opens a menu: the input languages (choosing one switches at once), "Keyboard settings". Super+Space switches without the menu. | NEW |
+| 16 | الإعدادات السريعة | `shell.status` | Opens the quick settings sheet above the end of the bar; second click, Esc or a click outside closes it and focus returns to this button. | §5.1 (focus return: NEW) |
+| 17 | التقويم والإشعارات | `shell.clock` | Opens the calendar and notifications sheet above the end of the bar; closes like the quick settings. Only one of the two sheets is open at a time. | §5.1 (one sheet at a time: NEW) |
+
 ## Spec additions needed
 
 Behaviour the specification does not define yet. Each line is the definition the artboards assume; add it to `docs/DESKTOP-SPEC.md` (section in brackets) or change the board.

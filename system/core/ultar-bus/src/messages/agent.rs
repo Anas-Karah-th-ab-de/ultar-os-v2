@@ -66,6 +66,22 @@ pub struct Step {
     pub tool: String,
     /// How it went.
     pub outcome: StepOutcome,
+    /// The part of the system it touched.
+    pub area: Area,
+    /// What it was used on, in short (data: an app id, `key = value`; may be empty).
+    pub detail: String,
+}
+
+impl Step {
+    /// A step of `tool` without detail.
+    pub fn new(tool: &str, outcome: StepOutcome, area: Area) -> Self {
+        Self {
+            tool: tool.to_owned(),
+            outcome,
+            area,
+            detail: String::new(),
+        }
+    }
 }
 
 /// Answer to [`Ask`].
@@ -83,7 +99,17 @@ pub struct Answer {
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(AgentState, Ask, Step, Answer);
+version_one!(AgentState, Ask);
+
+// Version 2: a step names its area and what it was used on.
+impl Message for Step {
+    const VERSION: u16 = 2;
+}
+impl Message for Answer {
+    const VERSION: u16 = 2;
+}
+
+pub use super::agent_reach::*;
 
 impl Topic for AgentState {
     const TOPIC: &'static str = "agent.state";

@@ -1,7 +1,7 @@
 //! Acting on another device: the helper of a paired device is asked to do something there.
 mod common;
 use common::World;
-use ultar_bus::messages::agent::{Step, StepOutcome};
+use ultar_bus::messages::agent::{Area, Step, StepOutcome};
 use ultar_bus::messages::mesh::{DeviceKind, Right};
 use ultar_mesh::node::Effect;
 use ultar_mesh::trust::DEFAULT_RIGHTS;
@@ -64,10 +64,7 @@ fn the_helper_of_the_other_device_acts_and_reports_its_steps() {
     assert_eq!(w.take(1), vec![asked]);
     // While the computer carries out a request it passes none on and takes no second.
     assert!(w.nodes[1].act(&phone, "and you").is_none());
-    let steps = vec![Step {
-        tool: "mute".into(),
-        outcome: StepOutcome::Done,
-    }];
+    let steps = vec![Step::new("mute", StepOutcome::Done, Area::Sound)];
     let effects = w.nodes[1].acted(&phone, id, true, steps.clone());
     w.run(1, effects);
     let done = Effect::Acted {

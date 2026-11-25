@@ -106,6 +106,8 @@ pub enum DialogPurpose {
     CloudKey,
     /// "Forget the key?".
     CloudClear,
+    /// "Forget what the helper did?".
+    HelperForget,
     /// The address of a provider of the person's own choice is typed.
     CloudAddress,
 }
@@ -138,6 +140,8 @@ pub struct StatusView {
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
     /// What the helper thinks with right now (`None`: no helper).
     pub brain: Option<ultar_bus::messages::agent::Brain>,
+    /// What the helper did lately (`None`: no helper).
+    pub activity: Option<ultar_bus::messages::agent::Activity>,
     /// Why the open status page's service could not be read.
     pub error: Option<Text>,
 }

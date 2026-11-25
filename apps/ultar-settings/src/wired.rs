@@ -26,9 +26,22 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 14] = [
+pub const WIRED: [(&str, &str); 25] = [
     // ultar-llm-bus starts and stops the model service with it (`init.switch`).
     ("assistant.enabled", "llm-bus"),
+    // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
+    // and how long the list of what it did is kept.
+    ("assistant.act", "agentd"),
+    ("assistant.reach.apps", "agentd"),
+    ("assistant.reach.settings", "agentd"),
+    ("assistant.reach.network", "agentd"),
+    ("assistant.reach.sound", "agentd"),
+    ("assistant.reach.screen", "agentd"),
+    ("assistant.reach.notifications", "agentd"),
+    ("assistant.reach.storage", "agentd"),
+    ("assistant.reach.devices", "agentd"),
+    ("assistant.reach.power", "agentd"),
+    ("assistant.history_days", "agentd"),
     // displayd passes these to the compositor (`Request::ConfigurePointer`,
     // `Request::ConfigureKeyRepeat`).
     ("pointer.speed", "compositor"),

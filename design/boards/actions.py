@@ -4,6 +4,22 @@
 N = 'NEW'
 ACTIONS = {
  # assistant · cloud model as the last way – contract: system/core/ultar-bus/src/messages/llm_cloud.rs
+ 'assistant.act': ('Master switch (setting assistant.act): off, the helper only looks and explains; on, it acts in the open areas. The helper cannot set it.', N),
+ 'assistant.reach.apps': ('Opens or closes the area "apps" to the helper (setting assistant.reach.apps); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.settings': ('Opens or closes the area "settings" to the helper (setting assistant.reach.settings); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.network': ('Opens or closes the area "network" to the helper (setting assistant.reach.network); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.sound': ('Opens or closes the area "sound" to the helper (setting assistant.reach.sound); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.screen': ('Opens or closes the area "screen" to the helper (setting assistant.reach.screen); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.notifications': ('Opens or closes the area "notifications" to the helper (setting assistant.reach.notifications); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.storage': ('Opens or closes the area "storage" to the helper (setting assistant.reach.storage); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.devices': ('Opens or closes the area "devices" to the helper (setting assistant.reach.devices); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.reach.power': ('Opens or closes the area "power" to the helper (setting assistant.reach.power); a closed area refuses every tool of it. The helper cannot set it.', N),
+ 'assistant.history': ('How many days the list of what the helper did is kept (setting assistant.history_days); 0 keeps nothing.', N),
+ 'assistant.helper.forget': ('Asks "Forget what the assistant did?" and then deletes the list on this device (agent.clear_activity).', N),
+ 'helper.ask.field': ('The request in the person\'s words, at most 4096 bytes.', N),
+ 'helper.ask.send': ('Sends the request (agent.ask); the steps appear one by one with their area and outcome, then the answer.', N),
+ 'helper.stop': ('Stops waiting for the answer; a step already done stays done and stays in the list.', N),
+ 'helper.settings': ('Opens Settings › Assistant: what the helper reaches and what it did.', N),
  'assistant.cloud.provider': ('Chooses the provider (llmcloud.configure). One with a fixed address is chosen at once; a server of the person\'s own choice first asks for its address (https only). Another provider or address forgets the stored key.', N),
  'assistant.cloud.key': ('Opens the dialog to type the key. It is typed hidden and never shown again.', N),
  'assistant.cloud.key.field': ('The key field: hidden, no spaces, at most 512 characters; an error text below the field says why a key was not stored.', N),

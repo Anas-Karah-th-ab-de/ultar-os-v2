@@ -328,18 +328,35 @@ identity  = "app.settings"
 call      = ["llmcloud.set_key", "llmcloud.clear_key", "llmcloud.configure"]
 subscribe = ["llmcloud.state", "agent.state"]
 
-# The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
-# off are confirmed by the person first (`sysdialog.authenticate`).
+# The helper (834): offers `agent`; its tools are exactly these calls
+# (`docs/integration/ultar-agentd.md`). It reaches every part of the system that has a
+# service here, always as itself: never `settings.admin`, never an account or a user,
+# never another app's permissions. What ends work or cannot be taken back, and a change
+# in a sensitive settings panel, is confirmed by the person first
+# (`sysdialog.authenticate`). The person switches whole areas off (`assistant.reach.*`,
+# which the helper itself never sets) and reads what it did (`agent.activity`).
 [[rule]]
 identity  = "system.agentd"
 register  = ["agent"]
-publish   = ["agent.state"]
-subscribe = ["llm.state", "mesh.state", "llmcloud.state"]
-call      = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
+publish   = ["agent.state", "agent.reach", "agent.activity"]
+subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed",
+             "net.state", "bluetooth.state", "audio.state", "power.state"]
+call      = ["launcher.list", "launcher.start", "launcher.stop", "audio.set_volume", "audio.set_mute", "net.set_wifi",
              "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act", "llm.complete", "llmcloud.complete",
              "bluetooth.set", "net.set_airplane", "media.play_pause", "media.next", "media.previous",
              "capture.screenshot", "lock.lock", "power.suspend",
-             "sysdialog.authenticate", "power.restart", "power.off"]
+             "settings.list", "settings.get", "settings.set",
+             "notify.list", "notify.dismiss", "volumes.usage", "volumes.eject", "session.sign_out",
+             "sysdialog.authenticate", "power.restart", "power.off",
+             # These four services answer only callers they know as part of the system;
+             # the methods the helper may call stay exactly the ones listed above.
+             "media.system", "power.system", "session.system", "notify.system"]
+
+# The Settings app shows what the helper reaches and did, and forgets it on request.
+[[rule]]
+identity  = "app.settings"
+call      = ["agent.clear_activity"]
+subscribe = ["agent.reach", "agent.activity"]
 
 # The shell and the Settings app drive the mesh and ask the helper (own rules, so the
 # long lists above stay as they are).

@@ -1,7 +1,7 @@
 //! Talking to a model: the rules it gets, and reading what it answers. The model never
 //! acts itself – it names a tool of the list, the helper decides whether and how to use it.
 
-use crate::tools::{Call, TOOLS};
+use crate::tools::{Call, Limits, TOOLS};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -23,13 +23,13 @@ pub enum Move {
     Say(String),
 }
 
-/// The rules for the model: who it is, the tools, and the one form its answers have.
-pub fn system_prompt() -> String {
+/// The rules for the model: who it is, the tools the person left open, and the one form its answers have.
+pub fn system_prompt(limits: &Limits) -> String {
     let mut text = String::from(
         "You are the helper of this device. You answer in the language of the person, \
          Arabic first. You can only act through these tools:\n",
     );
-    for tool in TOOLS {
+    for tool in TOOLS.iter().filter(|t| limits.closes(t).is_none()) {
         text.push_str(&format!(
             "- {}({}): {}\n",
             tool.name,
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn the_model_is_told_every_tool_and_the_form_of_its_answers() {
-        let rules = system_prompt();
+        let rules = system_prompt(&Limits::default());
         for tool in TOOLS {
             assert!(rules.contains(tool.name), "{}", tool.name);
         }

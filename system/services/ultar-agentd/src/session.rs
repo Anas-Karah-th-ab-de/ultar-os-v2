@@ -3,12 +3,14 @@
 
 use crate::minimal;
 use crate::model::{self, Move, Thinker};
-use crate::tools::{self, Call, Toolbox};
+use crate::tools::{self, Call, Limits, Toolbox};
 use ultar_bus::messages::agent::{Answer, Brain, Step, StepOutcome};
 use ultar_bus::{Text, TextArg};
 
 /// Tools one request may use in a row.
 pub const MAX_STEPS: usize = 6;
+/// Longest note of what a step was used on, in bytes.
+const MAX_DETAIL: usize = 96;
 
 fn says(key: &str) -> Text {
     Text::key(key)
@@ -23,19 +25,57 @@ fn outcome_key(outcome: StepOutcome) -> &'static str {
     }
 }
 
+/// What a call was used on, in short: its one argument, or `name=value` pairs.
+fn detail(call: &Call) -> String {
+    let mut text = match call.args.len() {
+        1 => call.args.values().next().cloned().unwrap_or_default(),
+        _ => {
+            let pairs: Vec<String> = call.args.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            pairs.join(", ")
+        }
+    };
+    if text.len() > MAX_DETAIL {
+        let cut = (0..=MAX_DETAIL).rev().find(|i| text.is_char_boundary(*i));
+        text.truncate(cut.unwrap_or(0));
+    }
+    text
+}
+
+/// Uses one tool – unless it does not exist or the person closed it – and
+/// writes the step down.
+fn run(
+    call: &Call,
+    toolbox: &dyn Toolbox,
+    limits: &Limits,
+    steps: &mut Vec<Step>,
+) -> tools::Outcome {
+    let tool = tools::find(&call.tool);
+    let (outcome, told) = match tool {
+        None => (StepOutcome::NotAllowed, "no such tool".to_owned()),
+        Some(tool) => match limits.closes(tool) {
+            Some(why) => (StepOutcome::NotAllowed, why.to_owned()),
+            None => toolbox.run(call),
+        },
+    };
+    steps.push(Step {
+        tool: call.tool.clone(),
+        outcome,
+        area: tool.map(|t| t.area).unwrap_or_default(),
+        detail: detail(call),
+    });
+    (outcome, told)
+}
+
 /// The smallest help: one fixed command, or the list of what it understands.
-fn smallest(request: &str, toolbox: &dyn Toolbox) -> (Text, Vec<Step>) {
+fn smallest(request: &str, toolbox: &dyn Toolbox, limits: &Limits) -> (Text, Vec<Step>) {
     let Some(call) = minimal::understand(request) else {
         // A question about this system is answered from the help topics.
         let topic = crate::help::topic_of(request).and_then(crate::help::key);
         let key = topic.as_deref().unwrap_or("agent.minimal.help");
         return (says(key), Vec::new());
     };
-    let (outcome, told) = toolbox.run(&call);
-    let step = Step {
-        tool: call.tool.clone(),
-        outcome,
-    };
+    let mut steps = Vec::new();
+    let (outcome, told) = run(&call, toolbox, limits, &mut steps);
     // A tool that only looks has something to tell.
     let reads = tools::find(&call.tool).is_some_and(|t| t.risk == tools::Risk::Reads);
     let text = if reads && outcome == StepOutcome::Done {
@@ -43,19 +83,7 @@ fn smallest(request: &str, toolbox: &dyn Toolbox) -> (Text, Vec<Step>) {
     } else {
         says(outcome_key(outcome))
     };
-    (text, vec![step])
-}
-
-fn use_tool(call: &Call, toolbox: &dyn Toolbox, steps: &mut Vec<Step>) -> String {
-    let (outcome, told) = match tools::find(&call.tool) {
-        Some(_) => toolbox.run(call),
-        None => (StepOutcome::NotAllowed, "no such tool".to_owned()),
-    };
-    steps.push(Step {
-        tool: call.tool.clone(),
-        outcome,
-    });
-    format!("\n{} -> {:?}: {}", call.tool, outcome, told)
+    (text, steps)
 }
 
 /// Lets a model work on the request; `None` when the model did not keep to the form
@@ -64,8 +92,9 @@ fn with_model(
     request: &str,
     thinker: &dyn Thinker,
     toolbox: &dyn Toolbox,
+    limits: &Limits,
 ) -> Option<(Text, Vec<Step>)> {
-    let system = model::system_prompt();
+    let system = model::system_prompt(limits);
     let mut prompt = format!("The person asks: {request}");
     let mut steps = Vec::new();
     for _ in 0..MAX_STEPS {
@@ -74,23 +103,34 @@ fn with_model(
                 let text = says("agent.says").with(TextArg::Verbatim(text));
                 return Some((text, steps));
             }
-            Move::Use(call) => prompt.push_str(&use_tool(&call, toolbox, &mut steps)),
+            Move::Use(call) => {
+                let (outcome, told) = run(&call, toolbox, limits, &mut steps);
+                prompt.push_str(&format!("\n{} -> {:?}: {}", call.tool, outcome, told));
+            }
         }
     }
     Some((says("agent.too_many_steps"), steps))
 }
 
-/// Answers one request with `brain`.
-pub fn answer(request: &str, brain: Brain, thinker: &dyn Thinker, toolbox: &dyn Toolbox) -> Answer {
+/// Answers one request with `brain`; what `limits` closes stays closed.
+pub fn answer(
+    request: &str,
+    brain: Brain,
+    thinker: &dyn Thinker,
+    toolbox: &dyn Toolbox,
+    limits: &Limits,
+) -> Answer {
     let thought = match brain {
         Brain::Minimal => None,
-        Brain::Local | Brain::Mesh(_) | Brain::Cloud => with_model(request, thinker, toolbox),
+        Brain::Local | Brain::Mesh(_) | Brain::Cloud => {
+            with_model(request, thinker, toolbox, limits)
+        }
     };
     match thought {
         Some((text, steps)) => Answer { text, brain, steps },
         None => {
             // No model, or it failed: the smallest help, and the answer says so.
-            let (text, steps) = smallest(request, toolbox);
+            let (text, steps) = smallest(request, toolbox, limits);
             Answer {
                 text,
                 brain: Brain::Minimal,
@@ -104,6 +144,7 @@ pub fn answer(request: &str, brain: Brain, thinker: &dyn Thinker, toolbox: &dyn 
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    use ultar_bus::messages::agent::Area;
 
     /// A model that answers from a script; a toolbox that notes what it was asked.
     struct Script(RefCell<Vec<&'static str>>);
@@ -122,6 +163,10 @@ mod tests {
         }
     }
 
+    fn open() -> Limits {
+        Limits::default()
+    }
+
     fn script(lines: &[&'static str]) -> Script {
         Script(RefCell::new(lines.to_vec()))
     }
@@ -129,10 +174,16 @@ mod tests {
     #[test]
     fn without_a_model_a_fixed_command_works_and_anything_else_gets_the_help_text() {
         let notes = Notes::default();
-        let a = answer("mute", Brain::Minimal, &script(&[]), &notes);
+        let a = answer("mute", Brain::Minimal, &script(&[]), &notes, &open());
         assert_eq!((a.text.key.as_str(), a.steps.len()), ("agent.done", 1));
         assert_eq!(notes.0.borrow()[0], Call::new("mute", &[("on", "true")]));
-        let b = answer("tell me a story", Brain::Minimal, &script(&[]), &notes);
+        let b = answer(
+            "tell me a story",
+            Brain::Minimal,
+            &script(&[]),
+            &notes,
+            &open(),
+        );
         assert_eq!(
             (b.text.key.as_str(), b.steps.len()),
             ("agent.minimal.help", 0)
@@ -147,7 +198,7 @@ mod tests {
             "{\"tool\":\"open_app\",\"args\":{\"app\":\"org.ultar.browser\"}}",
             "{\"say\":\"Wi-Fi is on and the browser is open.\"}",
         ]);
-        let a = answer("go online", Brain::Local, &model, &notes);
+        let a = answer("go online", Brain::Local, &model, &notes, &open());
         assert_eq!(a.brain, Brain::Local);
         assert_eq!(a.steps.len(), 2);
         assert_eq!(a.text.key, "agent.says");
@@ -161,7 +212,7 @@ mod tests {
             "{\"tool\":\"format_disk\"}",
             "{\"say\":\"I cannot do that.\"}",
         ]);
-        let a = answer("wipe it", Brain::Local, &model, &notes);
+        let a = answer("wipe it", Brain::Local, &model, &notes, &open());
         assert_eq!(a.steps[0].outcome, StepOutcome::NotAllowed);
         assert!(notes.0.borrow().is_empty());
     }
@@ -174,6 +225,7 @@ mod tests {
             Brain::Mesh("desk".into()),
             &script(&["nonsense"]),
             &notes,
+            &open(),
         );
         assert_eq!(
             a.brain,
@@ -181,15 +233,53 @@ mod tests {
             "the answer says where it really thought"
         );
         assert_eq!(a.text.key, "agent.done");
-        let gone = answer("mute", Brain::Local, &script(&[]), &notes);
+        let gone = answer("mute", Brain::Local, &script(&[]), &notes, &open());
         assert_eq!(gone.brain, Brain::Minimal);
+    }
+
+    #[test]
+    fn an_area_the_person_switched_off_is_closed_with_and_without_a_model() {
+        let notes = Notes::default();
+        let off = Limits {
+            off: vec![Area::Sound],
+            read_only: false,
+        };
+        let fixed = answer("mute", Brain::Minimal, &script(&[]), &notes, &off);
+        assert_eq!(fixed.text.key, "agent.not_allowed");
+        let model = script(&[
+            "{\"tool\":\"set_volume\",\"args\":{\"percent\":30}}",
+            "{\"tool\":\"wifi\",\"args\":{\"on\":true}}",
+            "{\"say\":\"ok\"}",
+        ]);
+        let a = answer("quiet and online", Brain::Local, &model, &notes, &off);
+        let seen: Vec<_> = a.steps.iter().map(|s| (s.area, s.outcome)).collect();
+        assert_eq!(
+            seen,
+            [
+                (Area::Sound, StepOutcome::NotAllowed),
+                (Area::Network, StepOutcome::Done)
+            ]
+        );
+        assert_eq!(a.steps[0].detail, "30");
+        assert_eq!(notes.0.borrow().len(), 1, "only the allowed tool ran");
+        assert!(!model::system_prompt(&off).contains("set_volume"));
+        assert!(model::system_prompt(&open()).contains("setting_set"));
+        // "only look": nothing is changed, looking still works
+        let look = Limits {
+            off: Vec::new(),
+            read_only: true,
+        };
+        let refused = answer("mute", Brain::Minimal, &script(&[]), &notes, &look);
+        assert_eq!(refused.text.key, "agent.not_allowed");
+        assert!(!model::system_prompt(&look).contains("- wifi("));
+        assert!(model::system_prompt(&look).contains("- network_status("));
     }
 
     #[test]
     fn a_model_that_never_stops_is_stopped() {
         let notes = Notes::default();
         let model = script(&["{\"tool\":\"devices\"}"; 20]);
-        let a = answer("loop", Brain::Local, &model, &notes);
+        let a = answer("loop", Brain::Local, &model, &notes, &open());
         assert_eq!(a.steps.len(), MAX_STEPS);
         assert_eq!(a.text.key, "agent.too_many_steps");
     }

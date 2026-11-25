@@ -41,12 +41,12 @@ fn seed_builds_and_covers_every_area() {
             (Panel::Updates, 8),
             (Panel::Backup, 8),
             (Panel::Mesh, 10),
-            (Panel::Assistant, 10),
+            (Panel::Assistant, 19),
             (Panel::Cells, 6),
             (Panel::Emergency, 8),
         ]
     );
-    assert_eq!(registry.defs().len(), 272);
+    assert_eq!(registry.defs().len(), 281);
 }
 
 #[test]

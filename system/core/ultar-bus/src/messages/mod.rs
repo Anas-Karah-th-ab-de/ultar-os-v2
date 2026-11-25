@@ -68,12 +68,16 @@
 //! | `llmcloud.set_key`, `llmcloud.clear_key`, `llmcloud.complete` | call | – | cloud model |
 //! | `agent.state` | topic | yes | local helper (`ultar-agentd`, see [`agent`]) |
 //! | `agent.ask` | call | – | local helper |
+//! | `agent.reach` | topic | yes | what the helper reaches (see [`agent_reach`]) |
+//! | `agent.activity` | topic | yes | what the helper did lately |
+//! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
 pub mod account_local;
 pub mod account_service;
 pub mod agent;
+pub mod agent_reach;
 pub mod audio;
 pub mod auth;
 pub mod auth_admin;

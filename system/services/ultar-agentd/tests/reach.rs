@@ -1,0 +1,307 @@
+//! The real `ultar-agentd` reaching the whole system: every setting through the settings
+//! service – but never its own switches, never an administrator's setting, a sensitive one
+//! only after the person confirmed – and the two things the person looks at: which areas
+//! are open, and what the helper did.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use ultar_bus::messages::agent::{Activity, Answer, Area, Ask, ClearActivity, Reach, StepOutcome};
+use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
+use ultar_bus::messages::settings::{
+    Changed, ItemInfo, ItemKind, ListReply, ListRequest, PanelInfo, RiskInfo, ScopeInfo, Set,
+    SetReply, SettingValue,
+};
+use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
+use ultar_bus::{BusError, Call, Client, ErrorCode, Text, Topic};
+use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
+
+const POLICY: &str = r#"
+[[rule]]
+identity = "system.agentd"
+register = ["agent"]
+publish = ["agent.state", "agent.reach", "agent.activity"]
+subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
+call = ["llm.complete", "settings.list", "settings.get", "settings.set", "sysdialog.authenticate"]
+
+[[rule]]
+identity = "system.stand_in"
+register = ["llm", "settings", "sysdialog"]
+publish = ["llm.state", "settings.changed"]
+
+[[rule]]
+identity = "system.shell"
+call = ["agent.ask"]
+
+[[rule]]
+identity = "app.settings"
+call = ["agent.clear_activity"]
+subscribe = ["agent.reach", "agent.activity"]
+"#;
+
+#[derive(Default)]
+struct Seen {
+    script: Mutex<Vec<&'static str>>,
+    set: Mutex<Vec<(String, SettingValue)>>,
+    confirm: AtomicBool,
+    asked_to_confirm: Mutex<Vec<String>>,
+}
+
+fn item(key: &str, risk: RiskInfo) -> ItemInfo {
+    ItemInfo {
+        key: key.to_owned(),
+        label: Text::default(),
+        description: Text::default(),
+        kind: ItemKind::Toggle,
+        value: SettingValue::Flag(false),
+        default: SettingValue::Flag(false),
+        risk,
+        scope: ScopeInfo::System,
+        writable: risk != RiskInfo::AdminOnly,
+        pending: false,
+        template: false,
+    }
+}
+
+fn panels() -> Vec<PanelInfo> {
+    let panel = |id: &str, items: Vec<ItemInfo>| PanelInfo {
+        id: id.to_owned(),
+        title: Text::default(),
+        items,
+    };
+    vec![
+        panel("appearance", vec![item("appearance.dark", RiskInfo::Safe)]),
+        panel("privacy", vec![item("privacy.location", RiskInfo::Safe)]),
+        panel("sharing", vec![item("sharing.ssh", RiskInfo::AdminOnly)]),
+        panel(
+            "assistant",
+            vec![item("assistant.reach.power", RiskInfo::Safe)],
+        ),
+    ]
+}
+
+struct Bench {
+    _world: World,
+    _daemon: Daemon,
+    shell: Client,
+    settings: Client,
+    stand_in: Client,
+    seen: Arc<Seen>,
+}
+
+fn serve_model(world: &World, seen: &Arc<Seen>) {
+    let s = seen.clone();
+    world.serve("system.stand_in", "llm", move |request| {
+        if request.decode::<Complete>().is_ok() {
+            let mut script = s.script.lock().unwrap();
+            let text = if script.is_empty() {
+                String::new()
+            } else {
+                script.remove(0).to_owned()
+            };
+            let ok = !text.is_empty();
+            let _ = request.reply(&Completion { ok, text });
+        }
+    });
+}
+
+fn bench(tag: &str) -> Bench {
+    let ids = [
+        "system.agentd",
+        "system.stand_in",
+        "system.shell",
+        "app.settings",
+    ];
+    let world = World::new(tag, POLICY, &ids);
+    let seen = Arc::new(Seen::default());
+    serve_model(&world, &seen);
+    let s = seen.clone();
+    world.serve("system.stand_in", "settings", move |request| {
+        if request.method() == ListRequest::METHOD {
+            let _ = request.reply(&ListReply { panels: panels() });
+        } else if let Ok(set) = request.decode::<Set>() {
+            s.set.lock().unwrap().push((set.key, set.value));
+            let _ = request.reply(&SetReply { changed: true });
+        } else {
+            let _ = request.fail(ErrorCode::UnknownMethod);
+        }
+    });
+    let s = seen.clone();
+    world.serve("system.stand_in", "sysdialog", move |request| {
+        if let Ok(ask) = request.decode::<Authenticate>() {
+            s.asked_to_confirm.lock().unwrap().push(ask.action.key);
+            let result = if s.confirm.load(Ordering::SeqCst) {
+                AuthResult::Authorized
+            } else {
+                AuthResult::Cancelled
+            };
+            let _ = request.reply(&AuthenticateReply { result });
+        }
+    });
+    let stand_in = world.client("system.stand_in");
+    let state = LlmState {
+        ready: true,
+        model: "own".into(),
+        class: ModelClass::Small,
+    };
+    stand_in.publish(&state).unwrap();
+    let state_dir = world.subdir("agent-state");
+    let args = ["--state", state_dir.to_str().unwrap()];
+    let daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-agentd"), "system.agentd", &args);
+    Bench {
+        shell: world.client("system.shell"),
+        settings: world.client("app.settings"),
+        _world: world,
+        _daemon: daemon,
+        stand_in,
+        seen,
+    }
+}
+
+fn call<C: Call>(client: &Client, c: &C) -> Result<C::Reply, BusError> {
+    let mut last = Err(BusError::Timeout);
+    wait_until(WAIT, || {
+        last = client.call(c, Duration::from_secs(30));
+        !matches!(last, Err(BusError::Remote(ErrorCode::UnknownService)))
+    });
+    last
+}
+
+/// Asks with the model saying `script`; waits first until the helper thinks with a model.
+fn ask(b: &Bench, text: &str, script: &[&'static str]) -> Answer {
+    let ask = Ask {
+        text: text.to_owned(),
+    };
+    let mut answer = None;
+    assert!(wait_until(WAIT, || {
+        *b.seen.script.lock().unwrap() = script.to_vec();
+        answer = call(&b.shell, &ask).ok();
+        answer.as_ref().is_some_and(|a| !a.steps.is_empty())
+    }));
+    answer.unwrap()
+}
+
+fn latest<T: Topic>(client: &Client, wanted: impl Fn(&T) -> bool) -> T {
+    let events = client.subscribe::<T>().unwrap();
+    let mut found = None;
+    assert!(wait_until(WAIT, || {
+        while let Ok(Some(event)) = events.try_recv() {
+            if wanted(&event) {
+                found = Some(event);
+            }
+        }
+        found.is_some()
+    }));
+    found.unwrap()
+}
+
+fn set_script(key: &str) -> [&'static str; 2] {
+    let line =
+        format!("{{\"tool\":\"setting_set\",\"args\":{{\"key\":\"{key}\",\"value\":true}}}}");
+    [Box::leak(line.into_boxed_str()), "{\"say\":\"ok\"}"]
+}
+
+#[test]
+fn the_helper_changes_any_setting_but_not_its_own_and_asks_before_a_sensitive_one() {
+    let b = bench("agent-reach-settings");
+    let outcome = |key: &str| ask(&b, "set it", &set_script(key)).steps[0].outcome;
+
+    assert_eq!(outcome("appearance.dark"), StepOutcome::Done);
+    // its own switches and an administrator's setting: never, and nobody is even asked
+    assert_eq!(outcome("assistant.reach.power"), StepOutcome::NotAllowed);
+    assert_eq!(outcome("sharing.ssh"), StepOutcome::NotAllowed);
+    assert!(b.seen.asked_to_confirm.lock().unwrap().is_empty());
+    // a sensitive panel: only after the person confirmed
+    assert_eq!(outcome("privacy.location"), StepOutcome::NotConfirmed);
+    b.seen.confirm.store(true, Ordering::SeqCst);
+    assert_eq!(outcome("privacy.location"), StepOutcome::Done);
+    assert_eq!(
+        *b.seen.asked_to_confirm.lock().unwrap(),
+        ["agent.action.setting_set", "agent.action.setting_set"]
+    );
+    let flag = SettingValue::Flag(true);
+    assert_eq!(
+        *b.seen.set.lock().unwrap(),
+        [
+            ("appearance.dark".to_owned(), flag.clone()),
+            ("privacy.location".to_owned(), flag)
+        ]
+    );
+}
+
+#[test]
+fn the_person_switches_an_area_off_and_reads_and_forgets_what_the_helper_did() {
+    let b = bench("agent-reach-areas");
+    let open = latest::<Reach>(&b.settings, |r| r.areas.len() == Area::ALL.len());
+    assert!(open.acts && open.areas.iter().all(|a| a.allowed && !a.tools.is_empty()));
+    let first = ask(&b, "dark please", &set_script("appearance.dark"));
+    assert_eq!(first.steps[0].outcome, StepOutcome::Done);
+
+    let off = Changed {
+        key: "assistant.reach.settings".into(),
+        value: SettingValue::Flag(false),
+    };
+    b.stand_in.publish(&off).unwrap();
+    let closed = |r: &Reach| {
+        r.areas
+            .iter()
+            .any(|a| a.area == Area::Settings && !a.allowed)
+    };
+    latest::<Reach>(&b.settings, closed);
+    let second = ask(&b, "dark again", &set_script("appearance.dark"));
+    assert_eq!(second.steps[0].outcome, StepOutcome::NotAllowed);
+    assert_eq!(
+        b.seen.set.lock().unwrap().len(),
+        1,
+        "the closed area was not touched"
+    );
+
+    let done = latest::<Activity>(&b.settings, |a| a.entries.len() == 2);
+    let step = &done.entries[0].steps[0];
+    assert_eq!(done.entries[0].request, "dark please");
+    assert_eq!(
+        (step.tool.as_str(), step.area),
+        ("setting_set", Area::Settings)
+    );
+    assert_eq!(step.detail, "key=appearance.dark, value=true");
+    assert_eq!(done.entries[1].steps[0].outcome, StepOutcome::NotAllowed);
+
+    // only the Settings app forgets it
+    assert!(call(&b.shell, &ClearActivity {}).is_err());
+    assert!(call(&b.settings, &ClearActivity {}).unwrap().ok);
+    latest::<Activity>(&b.settings, |a| a.entries.is_empty());
+}
+
+/// Media, power, session and notifications answer only callers the shipped rules mark as
+/// part of the system. Without that mark a tool passes the bus and is refused by the
+/// service – which a stand-in never shows.
+#[test]
+fn the_shipped_rules_let_the_services_accept_the_helper() {
+    let file = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../rootfs/etc/ultar/bus-policy.toml"
+    );
+    let policy = std::fs::read_to_string(file).unwrap();
+    let start = policy.find("identity  = \"system.agentd\"").unwrap();
+    let rule = &policy[start..];
+    let rule = &rule[..rule.find("\n\n").unwrap()];
+    for service in ["media", "power", "session", "notify"] {
+        assert!(rule.contains(&format!("\"{service}.")), "{service} is used");
+        assert!(
+            rule.contains(&format!("\"{service}.system\"")),
+            "{service}.system"
+        );
+    }
+    // and never more than its own narrow list
+    for wide in [
+        "settings.admin",
+        "\"settings.*\"",
+        "account.",
+        "auth.",
+        "init.",
+        "launcher.grant",
+        "notify.invoke",
+    ] {
+        assert!(!rule.contains(wide), "{wide}");
+    }
+}

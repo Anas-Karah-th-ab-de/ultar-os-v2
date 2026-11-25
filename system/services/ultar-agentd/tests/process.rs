@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use ultar_bus::messages::agent::{AgentState, Answer, Ask, Brain, Step, StepOutcome};
+use ultar_bus::messages::agent::{AgentState, Answer, Area, Ask, Brain, Step, StepOutcome};
 use ultar_bus::messages::audio::{AudioOutcome, AudioReply, SetMute};
 use ultar_bus::messages::launcher::{InstanceState, Start, StartReply};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
@@ -20,8 +20,8 @@ const POLICY: &str = r#"
 [[rule]]
 identity = "system.agentd"
 register = ["agent"]
-publish = ["agent.state"]
-subscribe = ["llm.state", "mesh.state", "llmcloud.state"]
+publish = ["agent.state", "agent.reach", "agent.activity"]
+subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
 call = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
         "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act",
         "llm.complete", "llmcloud.complete",
@@ -138,10 +138,7 @@ fn serve_models(world: &World, seen: &Arc<Seen>, lender: Option<ModelClass>) {
             let _ = request.reply(&ModelList { lenders });
         } else if let Ok(act) = request.decode::<Act>() {
             // The other device's helper: it does what it was asked, when it is "desk".
-            let step = Step {
-                tool: "mute".into(),
-                outcome: StepOutcome::Done,
-            };
+            let step = Step::new("mute", StepOutcome::Done, Area::Sound);
             s.asked_there.lock().unwrap().push(act.text);
             let _ = request.reply(&Acted {
                 ok: act.device == "desk",
@@ -336,6 +333,10 @@ fn every_text_the_helper_can_say_exists_in_all_three_languages() {
         "agent.minimal.help",
         "agent.action.restart",
         "agent.action.power_off",
+        "agent.action.suspend",
+        "agent.action.setting_set",
+        "agent.action.close_app",
+        "agent.action.sign_out",
     ];
     for (lang, catalogue) in ultar_bus::messages::agent::LOCALES {
         for key in keys {

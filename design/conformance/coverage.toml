@@ -1518,3 +1518,115 @@ impl = "apps/ultar-settings/src/view/dialog.rs"
 test = "apps/ultar-settings/tests/mesh.rs"
 boards = "AssistantCloud:1, AssistantCloudKey:1, AssistantCloudLight:1"
 note = "generic dialog action"
+
+[action."assistant.act"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/src/session.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.apps"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.settings"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.network"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.sound"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.screen"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.notifications"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.storage"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.devices"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.reach.power"]
+status = "different"
+impl = "system/services/ultar-agentd/src/service.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/tests/reach.rs"
+boards = "AssistantReach:1"
+note = "a setting of the panel, drawn by the generic list (no own card, no icon); followed by ultar-agentd"
+
+[action."assistant.history"]
+status = "different"
+impl = "system/services/ultar-agentd/src/activity.rs + apps/ultar-settings/src/view/panel.rs"
+test = "system/services/ultar-agentd/src/activity.rs"
+boards = "AssistantDid:1"
+note = "a number field in the generic list, not a select in its own card"
+
+[action."assistant.helper.forget"]
+status = "ok"
+impl = "apps/ultar-settings/src/view/helper.rs + src/update/cloud.rs"
+test = "apps/ultar-settings/tests/helper.rs"
+boards = "AssistantDid:1"
+note = ""
+
+[action."helper.ask.field"]
+status = "missing"
+impl = ""
+test = ""
+boards = "HelperConfirm:1, HelperSheet:1"
+note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+
+[action."helper.ask.send"]
+status = "missing"
+impl = ""
+test = ""
+boards = "HelperConfirm:1, HelperSheet:1"
+note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+
+[action."helper.stop"]
+status = "missing"
+impl = ""
+test = ""
+boards = "HelperConfirm:1, HelperSheet:1"
+note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+
+[action."helper.settings"]
+status = "missing"
+impl = ""
+test = ""
+boards = "HelperConfirm:1, HelperSheet:1"
+note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"

@@ -109,6 +109,8 @@ pub enum Act {
     CloudKey,
     /// Forget the key of the cloud model.
     CloudClear,
+    /// Forget the list of what the helper did.
+    HelperForget,
     /// Choose the provider of the cloud model.
     CloudProvider,
     /// Choose the model.
@@ -196,6 +198,7 @@ impl Act {
             Act::AccountDeviceRemove(_) => "account.device.remove",
             Act::CloudKey => "assistant.cloud.key",
             Act::CloudClear => "assistant.cloud.clear",
+            Act::HelperForget => "assistant.helper.forget",
             Act::CloudProvider => "assistant.cloud.provider",
             Act::CloudModel => "assistant.cloud.model",
             Act::CloudAddress => "assistant.cloud.address",

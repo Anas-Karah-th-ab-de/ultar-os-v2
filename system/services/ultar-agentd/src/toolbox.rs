@@ -29,6 +29,10 @@ pub const APP_ID: &str = "org.ultar.helper";
 pub struct BusTools<'a> {
     /// The helper's connection.
     pub client: &'a Client,
+    /// What the helper reaches now, in words for the model.
+    pub reach: String,
+    /// What the helper did lately, in words for the model.
+    pub lately: String,
 }
 
 pub(crate) fn done(ok: bool, told: &str) -> Outcome {
@@ -177,7 +181,7 @@ impl BusTools<'_> {
 
     /// The person confirms a dangerous action in the system dialog (an administrator's
     /// password); without that nothing happens.
-    fn confirmed(&self, tool: &str) -> bool {
+    pub(crate) fn confirmed(&self, tool: &str) -> bool {
         let ask = Authenticate {
             app_id: APP_ID.to_owned(),
             app_name: "helper".to_owned(),
@@ -207,6 +211,9 @@ impl Toolbox for BusTools<'_> {
                 StepOutcome::NotConfirmed,
                 "the person did not confirm".to_owned(),
             );
+        }
+        if let Some(outcome) = self.run_system(tool.name, call) {
+            return outcome;
         }
         match tool.name {
             "list_apps" => self.apps(),

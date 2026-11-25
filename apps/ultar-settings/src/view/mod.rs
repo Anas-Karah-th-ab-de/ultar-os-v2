@@ -12,6 +12,7 @@ mod dialog;
 mod display;
 mod display_rows;
 mod drivers;
+pub mod helper;
 pub mod mesh;
 pub mod metrics;
 mod more;
@@ -129,6 +130,7 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
         (PageKind::Panel(id), _) => {
             panel::generic(cx, content, id)?;
             if id == "assistant" {
+                helper::build(cx, content)?;
                 cloud::build(cx, content)?;
             }
             Ok(())

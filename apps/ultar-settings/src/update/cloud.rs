@@ -1,4 +1,5 @@
-//! Clicks of the cloud-model section on Settings › Assistant: choose the provider (with
+//! Clicks of the sections on Settings › Assistant – forget what the helper did, and the
+//! cloud model: choose the provider (with
 //! its address when it needs one) and the model, enter the key, forget it.
 
 use super::{ask, close, dialog_error, fields, Ctl, Outcome};
@@ -16,13 +17,19 @@ pub const PANEL: &str = "assistant";
 pub fn load(state: &mut State, ports: &mut Ports) {
     state.status.cloud = ports.cloud.state().ok();
     state.status.brain = ports.cloud.brain();
+    state.status.activity = ports.cloud.activity();
 }
 
 /// `true` for the actions of this section.
 pub fn owns(act: Act) -> bool {
     matches!(
         act,
-        Act::CloudKey | Act::CloudClear | Act::CloudProvider | Act::CloudModel | Act::CloudAddress
+        Act::CloudKey
+            | Act::CloudClear
+            | Act::CloudProvider
+            | Act::CloudModel
+            | Act::CloudAddress
+            | Act::HelperForget
     )
 }
 
@@ -76,6 +83,7 @@ pub fn handle(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         (Act::CloudKey, ActionKind::Activated) => ask(c.state, DialogPurpose::CloudKey),
         (Act::CloudClear, ActionKind::Activated) => ask(c.state, DialogPurpose::CloudClear),
         (Act::CloudAddress, ActionKind::Activated) => ask(c.state, DialogPurpose::CloudAddress),
+        (Act::HelperForget, ActionKind::Activated) => ask(c.state, DialogPurpose::HelperForget),
         (Act::CloudProvider, ActionKind::Selected(i)) => provider(c, i),
         (Act::CloudModel, ActionKind::Selected(i)) => model(c, i),
         _ => Outcome::default(),
@@ -104,6 +112,10 @@ pub fn dialog_ok(c: &mut Ctl<'_>, purpose: DialogPurpose) -> Outcome {
             (stored, "app.settings.cloud.saved")
         }
         DialogPurpose::CloudAddress => (address(c), "app.settings.cloud.address.saved"),
+        DialogPurpose::HelperForget => (
+            c.ports.cloud.clear_activity(),
+            "app.settings.helper.forgotten",
+        ),
         _ => (c.ports.cloud.clear_key(), "app.settings.cloud.cleared"),
     };
     if let Err(e) = result {

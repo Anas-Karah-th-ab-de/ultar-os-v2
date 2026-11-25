@@ -26,6 +26,17 @@ pub const APPS: [(&[&str], &str); 6] = [
     (&["المتجر", "متجر", "store"], "org.ultar.store"),
 ];
 
+/// Words that ask how full the battery is.
+pub const BATTERY: [&str; 5] = ["البطارية", "بطارية", "battery", "akku", "batterie"];
+/// Words that ask how full the storage is.
+pub const STORAGE: [&str; 6] = [
+    "التخزين",
+    "المساحة",
+    "storage",
+    "disk space",
+    "speicher",
+    "speicherplatz",
+];
 /// Words for the sound volume (followed by a number).
 pub const VOLUME: [&str; 6] = ["الصوت", "صوت", "volume", "lautstärke", "مستوى الصوت", "ton"];
 /// Words that mute.
