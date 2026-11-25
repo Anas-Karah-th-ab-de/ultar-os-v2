@@ -40,12 +40,13 @@ fn inside(path: &str, prefix: &str) -> bool {
     path == prefix || path.starts_with(&format!("{prefix}/"))
 }
 
-/// Every way `elf` reaches outside the package at `prefix` (empty: none). `exists` says
-/// whether a file is in the package.
-pub fn leaks(elf: &Elf, prefix: &str, exists: &dyn Fn(&str) -> bool) -> Vec<String> {
+/// Every way `elf` reaches outside the packages at `roots` – the package itself and the ones
+/// it is built on (empty: none). `exists` says whether a file is in one of them.
+pub fn leaks(elf: &Elf, roots: &[String], exists: &dyn Fn(&str) -> bool) -> Vec<String> {
+    let within = |path: &str| roots.iter().any(|r| inside(path, r));
     let mut out = Vec::new();
     if let Some(interp) = &elf.interp {
-        if !inside(interp, prefix) || !exists(interp) {
+        if !within(interp) || !exists(interp) {
             out.push(format!(
                 "{}: started by {interp}, not by the package's loader",
                 elf.path
@@ -56,22 +57,22 @@ pub fn leaks(elf: &Elf, prefix: &str, exists: &dyn Fn(&str) -> bool) -> Vec<Stri
         .parent()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
-    // the package's loader searches <prefix>/lib after the file's own list
+    // a package's loader searches <prefix>/lib after the file's own list
     let mut dirs: Vec<String> = elf
         .runpath
         .iter()
         .map(|d| d.replace("$ORIGIN", &origin).replace("${ORIGIN}", &origin))
         .collect();
     for d in &dirs {
-        if !inside(d, prefix) {
+        if !within(d) {
             out.push(format!("{}: searches {d}, outside the package", elf.path));
         }
     }
-    dirs.push(format!("{prefix}/lib"));
+    dirs.extend(roots.iter().map(|r| format!("{r}/lib")));
     for lib in &elf.needed {
         let found = dirs
             .iter()
-            .any(|d| inside(d, prefix) && exists(&format!("{d}/{lib}")));
+            .any(|d| within(d) && exists(&format!("{d}/{lib}")));
         if !found {
             out.push(format!(
                 "{}: needs {lib}, which is not in the package",
@@ -105,7 +106,7 @@ mod tests {
             "/pkg/probe/lib/libc.so.6",
             "/pkg/probe/bin/../lib/extra/libz.so.1",
         ]);
-        assert_eq!(leaks(&elf, P, &files), Vec::<String>::new());
+        assert_eq!(leaks(&elf, &[P.to_string()], &files), Vec::<String>::new());
     }
 
     #[test]
@@ -117,7 +118,7 @@ mod tests {
             runpath: vec!["/usr/lib/x86_64-linux-gnu".into()],
         };
         let files = has(&["/pkg/probe/lib/libc.so.6"]);
-        let l = leaks(&elf, P, &files);
+        let l = leaks(&elf, &[P.to_string()], &files);
         assert_eq!(l.len(), 3, "{l:?}");
         assert!(l[0].contains("/lib64/ld-linux"));
         assert!(l[1].contains("/usr/lib/x86_64-linux-gnu"));
@@ -133,7 +134,7 @@ mod tests {
             ..Elf::default()
         };
         let files = has(&["/pkg/probe/lib/libc.so.6", "/pkg/probe-other/lib/libc.so.6"]);
-        let l = leaks(&lib, P, &files);
+        let l = leaks(&lib, &[P.to_string()], &files);
         assert_eq!(l.len(), 1, "{l:?}");
         assert!(l[0].contains("/pkg/probe-other/lib"));
     }
@@ -141,5 +142,21 @@ mod tests {
     #[test]
     fn text_is_not_an_elf_file() {
         assert_eq!(read("x", b"#!/bin/sh\n"), None);
+    }
+
+    #[test]
+    fn a_package_may_stand_on_another_one() {
+        // a program of /pkg/llama started by the loader of the package it is built on
+        let base = "/pkg/base";
+        let elf = Elf {
+            path: "/pkg/demo/bin/tool".into(),
+            interp: Some(format!("{base}/lib/ld.so")),
+            needed: vec!["libc.so.6".into(), "libown.so".into()],
+            runpath: vec!["/pkg/demo/lib".into(), format!("{base}/lib")],
+        };
+        let files = |f: &str| ["/pkg/base/lib/ld.so", "/pkg/base/lib/libc.so.6", "/pkg/demo/lib/libown.so"].contains(&f);
+        assert!(leaks(&elf, &["/pkg/demo".into(), base.into()], &files).is_empty());
+        // without naming the base, all of it is outside
+        assert_eq!(leaks(&elf, &["/pkg/demo".into()], &files).len(), 3);
     }
 }

@@ -248,8 +248,18 @@ pub fn run_check(site: &Site, recipe: &Recipe, check: &Check) -> Result<String, 
         .iter()
         .map(|d| format!("mkdir -p \"$R{d}\" && mount --rbind '{d}' \"$R{d}\" && "))
         .collect();
+    // the packages it is built on: their shipped tree if this work directory built them
+    let based: String = recipe
+        .uses
+        .iter()
+        .map(|u| {
+            let built = site.root.join("out").join(u.trim_start_matches('/'));
+            let from = if built.exists() { built.display().to_string() } else { u.clone() };
+            format!("mkdir -p \"$R{u}\" && mount --bind '{from}' \"$R{u}\" && mount -o remount,ro,bind \"$R{u}\" && ")
+        })
+        .collect();
     let script = format!(
-        "R='{}'; rm -rf \"$R\"; mkdir -p '{}' && mount --bind '{}' '{}' && mount -o remount,ro,bind '{}' && {shared} chroot \"$R\" {}",
+        "R='{}'; rm -rf \"$R\"; mkdir -p '{}' && mount --bind '{}' '{}' && mount -o remount,ro,bind '{}' && {based}{shared} chroot \"$R\" {}",
         root.display(),
         at.display(),
         shipped(site, recipe).display(),
@@ -292,11 +302,20 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Every way the files of the package reach outside it, and how many programs and libraries
 /// were looked at. `tree` is where the package lies now, `prefix` where it will live.
-pub fn closure_of(tree: &Path, prefix: &str) -> (usize, Vec<String>) {
+/// `uses`: prefixes of the packages it is built on (looked up where they are installed).
+pub fn closure_of(tree: &Path, prefix: &str, uses: &[String]) -> (usize, Vec<String>) {
+    let mut roots = vec![prefix.to_string()];
+    roots.extend(uses.iter().cloned());
     let mut files = Vec::new();
     walk(tree, &mut files);
     let here = |f: &str| tree.join(f.strip_prefix(prefix).unwrap_or(f).trim_start_matches('/'));
-    let exists = |f: &str| f.starts_with(prefix) && here(f).exists();
+    let exists = |f: &str| {
+        if f.starts_with(prefix) {
+            here(f).exists()
+        } else {
+            uses.iter().any(|u| f.starts_with(u.as_str())) && Path::new(f).exists()
+        }
+    };
     let mut leaks = Vec::new();
     let mut count = 0;
     for f in files {
@@ -319,7 +338,7 @@ pub fn closure_of(tree: &Path, prefix: &str) -> (usize, Vec<String>) {
             continue;
         }
         count += 1;
-        leaks.extend(closure::leaks(&elf, prefix, &exists));
+        leaks.extend(closure::leaks(&elf, &roots, &exists));
     }
     (count, leaks)
 }

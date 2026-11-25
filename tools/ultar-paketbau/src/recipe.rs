@@ -64,6 +64,11 @@ pub struct Recipe {
     pub arch: String,
     /// Where the package lives on the device (and on the build machine while it is built).
     pub prefix: String,
+    /// Prefixes of packages this one is built on (e.g. `/pkg/grafik-laufzeit`): they must be
+    /// installed on the build machine and on the device; its programs may use their loader and
+    /// libraries.
+    #[serde(default)]
+    pub uses: Vec<String>,
     /// Programs the build machine must have; everything else is built from source here.
     pub host_needs: Vec<String>,
     /// Environment for every build command (values may use the variables).
