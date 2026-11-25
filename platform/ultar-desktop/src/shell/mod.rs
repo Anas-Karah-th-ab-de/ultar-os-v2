@@ -9,6 +9,7 @@ mod grid;
 mod handoff;
 mod helper;
 mod keys;
+mod media;
 mod menus;
 mod network;
 mod render;
@@ -328,5 +329,30 @@ impl Shell {
     /// A command of the open menu.
     pub fn on_menu(&mut self, id: u32) -> Outcome {
         menus::chosen(self, id)
+    }
+
+    /// Drives with media appeared (`volumes.state`): `apps.removable_media` decides what
+    /// happens – ask, open in Files, or nothing.
+    pub fn media_inserted(&mut self) -> Outcome {
+        media::inserted(self)
+    }
+
+    /// A notification's button was pressed: the shell's own notice opens its place (a
+    /// plugged-in drive) in Files; a service notification's button goes back to the sender.
+    pub fn note_action(&mut self, id: u64, index: u8) -> Outcome {
+        let Some(action) = self.d.notes.action(id, index as usize) else {
+            return Outcome::none();
+        };
+        if id >= crate::model::notes::LOCAL_IDS - 1024 {
+            self.d.notes.dismiss(id);
+            Outcome::effect_and_close(Effect::Launch {
+                app: bar::FILES.to_owned(),
+                open: Opening::uri(action),
+            })
+        } else {
+            Outcome::effect(Effect::Service(crate::model::services::Call::NoteAction(
+                id, action,
+            )))
+        }
     }
 }

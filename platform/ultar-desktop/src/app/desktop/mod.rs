@@ -234,6 +234,11 @@ impl DesktopApp {
                 })?;
             }
         }
+        // A drive with media was plugged in: apps.removable_media decides what happens.
+        let media = self.shell.media_inserted();
+        if media.bar || media.popup || !media.effects.is_empty() {
+            self.apply(media)?;
+        }
         if keys
             .iter()
             .any(|k| k.starts_with("display.mode") || k == "display.single_display")

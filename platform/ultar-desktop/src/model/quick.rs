@@ -180,6 +180,29 @@ impl PowerMode {
     }
 }
 
+/// What happens when a drive with media is plugged in (`apps.removable_media`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RemovableMedia {
+    /// Ask the person (a notice with an "Open" button).
+    #[default]
+    Ask,
+    /// Open the drive in Files at once.
+    OpenFiles,
+    /// Do nothing.
+    Nothing,
+}
+
+impl RemovableMedia {
+    /// From the setting's value; an unknown word keeps the default (ask).
+    pub fn parse(word: &str) -> RemovableMedia {
+        match word {
+            "open_files" => RemovableMedia::OpenFiles,
+            "nothing" => RemovableMedia::Nothing,
+            _ => RemovableMedia::Ask,
+        }
+    }
+}
+
 /// Whether a tile can be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Avail {
@@ -234,6 +257,8 @@ pub struct QuickValues {
     pub large_text: bool,
     /// accessibility.reduce_motion: nothing of the shell moves on its own.
     pub reduce_motion: bool,
+    /// apps.removable_media: what a newly plugged-in drive does.
+    pub removable_media: RemovableMedia,
 }
 
 /// One tile as shown.
