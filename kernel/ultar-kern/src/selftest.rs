@@ -23,8 +23,9 @@ fn programm(name: &str) -> Option<String> {
 }
 
 /// One more program, named by the test medium in `ultar/testprogramm`: the first line is the
-/// command line, every further line `NAME=value` for its environment or the word `spur` (log its
-/// system calls). Runs after the graphics tests, e.g. a Vulkan probe from a package disk.
+/// command line, every further line `NAME=value` for its environment, the word `spur` (log its
+/// system calls) or `abgewiesen` (log the requests the graphics node refuses). Runs after the
+/// graphics tests, e.g. a Vulkan probe from a package disk.
 fn extra_program() {
     let Some(text) = ["/ultar/testprogramm", "/boot/efi/ultar/testprogramm"].iter().find_map(|p| crate::fs::read_all(p)) else { return };
     let text = String::from_utf8_lossy(&text).into_owned();
@@ -36,6 +37,8 @@ fn extra_program() {
     for l in lines {
         if l == "spur" {
             trace = true;
+        } else if l == "abgewiesen" {
+            crate::svcdev::dri::LOG_REFUSED.store(true, core::sync::atomic::Ordering::Relaxed);
         } else {
             env.push(String::from(l));
         }

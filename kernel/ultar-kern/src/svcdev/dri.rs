@@ -32,6 +32,8 @@ pub const RIGHT: Rights = Rights::RAW_DEVICE;
 pub const RETRY: i64 = i64::MIN;
 
 static DEVICE: Mutex<Option<Arc<uapi::Device>>> = Mutex::new(None);
+/// Log every refused request (set by the test medium's extra program, line `abgewiesen`).
+pub static LOG_REFUSED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// Makes the node appear: `device` is what the queries answer from.
 pub fn publish(device: uapi::Device) {
@@ -119,8 +121,9 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
         },
     };
     let ret = request(&node, req as u32, &mut buf, &mut user);
-    // with the call trace on, a refused request shows what the program asked for
-    if ret < 0 && ret != RETRY && crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed) {
+    // with the call trace on (or asked for alone), a refused request shows what the program asked for
+    let show = LOG_REFUSED.load(core::sync::atomic::Ordering::Relaxed) || crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed);
+    if ret < 0 && ret != RETRY && show {
         let words: Vec<alloc::string::String> = buf.chunks(8).map(|c| c.iter().rev().map(|b| alloc::format!("{b:02x}")).collect()).collect();
         crate::kprintln!("[dri] request {req:#x} refused ({ret}): {}", words.join(" "));
     }
