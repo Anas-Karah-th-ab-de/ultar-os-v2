@@ -4,9 +4,7 @@
 //! account keep answering meanwhile – one question at a time.
 
 use crate::core::{Accounts, Config, Op, Ports};
-use crate::link::{self, Link, LinkCall};
-use crate::link_cloud::CloudServer;
-use crate::link_store::Store;
+use crate::link;
 use crate::names::{parse_ids, SystemIds};
 use crate::ports::{BusCredentials, BusDialog, Credentials, Dialog, FsHomes};
 
@@ -184,6 +182,8 @@ impl std::error::Error for StartError {}
 enum Input {
     Request(Box<IncomingRequest>),
     Authorized(Box<IncomingRequest>, Op, AuthResult),
+    /// A setting the service follows (`users.auto_login`).
+    Setting(String, ultar_bus::messages::settings::SettingValue),
     Stop,
 }
 
@@ -192,6 +192,16 @@ fn load_files(args: &Args) -> Result<(SystemIds, Policy), StartError> {
     let ids = parse_ids(&text).map_err(|_| StartError::Files)?;
     let policy = Policy::load(&args.policy).map_err(|_| StartError::Files)?;
     Ok((ids, policy))
+}
+
+/// The settings follower thread (`users.auto_login`).
+fn spawn_settings(session: &BusSession, tx: Sender<Input>, logger: &Logger) {
+    let feed = crate::settings::feed(session.client().clone(), move |key, value| {
+        tx.send(Input::Setting(key, value)).is_ok()
+    });
+    if feed.is_err() {
+        logger.log(Level::Error, "accountd.settings_failed");
+    }
 }
 
 /// Hands every call of the endpoint to the loop.
@@ -236,6 +246,7 @@ pub fn run(
         let _ = stop.send(Input::Stop);
     });
     feed_requests(endpoint, tx.clone())?;
+    spawn_settings(&session, tx.clone(), logger);
     let config = Config {
         dir: args.dir.clone(),
         uids: args.uids,
@@ -262,20 +273,34 @@ pub fn run(
         logger.log(Level::Error, "accountd.store_damaged");
     }
     service.publish();
+    serve_with_link(args, service, &rx, link_rx, &session, logger, ready);
+    session.close();
+    Ok(())
+}
+
+/// The link thread and the service loop until stop.
+fn serve_with_link(
+    args: &Args,
+    service: Service<'_>,
+    rx: &std::sync::mpsc::Receiver<Input>,
+    link_rx: std::sync::mpsc::Receiver<Box<IncomingRequest>>,
+    session: &BusSession,
+    logger: &Logger,
+    ready: &dyn Fn(),
+) {
     std::thread::scope(|scope| {
-        let session = &session;
         let worker = std::thread::Builder::new()
             .stack_size(512 * 1024)
-            .spawn_scoped(scope, move || serve_link(args, link_rx, session));
+            .spawn_scoped(scope, move || {
+                crate::link_daemon::serve_link(args, link_rx, session)
+            });
         if worker.is_err() {
             logger.log(Level::Error, "accountd.link_failed");
         }
         ready();
         logger.log(Level::Info, "accountd.ready");
-        serve(service, &rx);
+        serve(service, rx);
     });
-    session.close();
-    Ok(())
 }
 
 /// The service loop until stop; dropping the service at the end ends the link thread.
@@ -285,72 +310,8 @@ fn serve(mut service: Service<'_>, rx: &std::sync::mpsc::Receiver<Input>) {
             Input::Stop => break,
             Input::Request(r) => service.request(*r),
             Input::Authorized(r, op, result) => service.authorized(*r, op, result),
+            Input::Setting(key, value) => service.setting(&key, &value),
         }
-    }
-}
-
-/// The kind word of this device for the account's device list.
-fn device_kind() -> String {
-    match std::env::var("ULTAR_EDITION").as_deref() {
-        Ok("phone") => "phone".into(),
-        Ok("server") => "server".into(),
-        _ => "desktop".into(),
-    }
-}
-
-/// This device's name as the account lists it.
-fn device_name() -> String {
-    std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|h| h.trim().chars().take(64).collect::<String>())
-        .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "Ultar".into())
-}
-
-fn decode_link(r: &IncomingRequest) -> Option<LinkCall> {
-    use ultar_bus::messages::account_service as a;
-    let m = r.method();
-    Some(match m {
-        _ if m == a::Status::METHOD => LinkCall::Status,
-        _ if m == a::SignOut::METHOD => LinkCall::SignOut,
-        _ if m == a::SignIn::METHOD => LinkCall::SignIn(r.decode().ok()?),
-        _ if m == a::Create::METHOD => LinkCall::Create(r.decode().ok()?),
-        _ if m == a::SetServer::METHOD => LinkCall::SetServer(r.decode().ok()?),
-        _ if m == a::SetService::METHOD => LinkCall::SetService(r.decode().ok()?),
-        _ if m == a::ChangePassword::METHOD => LinkCall::ChangePassword(r.decode().ok()?),
-        _ if m == a::Delete::METHOD => LinkCall::Delete(r.decode().ok()?),
-        _ if m == a::DeviceSignOut::METHOD => LinkCall::DeviceSignOut(r.decode().ok()?),
-        _ if m == a::DeviceRemove::METHOD => LinkCall::DeviceRemove(r.decode().ok()?),
-        _ => return None,
-    })
-}
-
-/// The Ultar account link on its own thread: talking to the server takes up to a few
-/// seconds and must not hold up the local users.
-fn serve_link(
-    args: &Args,
-    calls: std::sync::mpsc::Receiver<Box<IncomingRequest>>,
-    session: &BusSession,
-) {
-    let store = Store::new(&args.dir, args.relay_token.clone(), args.relay_group);
-    let mut link = Link::open(
-        CloudServer::new(&args.dir),
-        &args.account_server,
-        store,
-        &device_name(),
-        &device_kind(),
-    );
-    let _ = session.publish_retained(&link.state(Instant::now()));
-    link.refresh();
-    let _ = session.publish_retained(&link.state(Instant::now()));
-    while let Ok(r) = calls.recv() {
-        let Some(call) = decode_link(&r) else {
-            let _ = r.fail(ErrorCode::BadPayload);
-            continue;
-        };
-        let reply = link.call(call, Instant::now());
-        let _ = r.reply(&reply);
-        let _ = session.publish_retained(&link.state(Instant::now()));
     }
 }
 
@@ -448,6 +409,14 @@ impl Service<'_> {
             _ => {
                 let _ = r.fail(ErrorCode::UnknownMethod);
             }
+        }
+    }
+
+    /// A setting arrived: `users.auto_login` marks the user that signs in at start
+    /// (settingsd already asked the administrator; no dialog here).
+    fn setting(&mut self, key: &str, value: &ultar_bus::messages::settings::SettingValue) {
+        if crate::settings::apply(&mut self.accounts, self.logger, key, value) {
+            self.publish();
         }
     }
 
