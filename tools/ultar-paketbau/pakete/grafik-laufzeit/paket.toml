@@ -215,6 +215,22 @@ build = [
 ]
 
 [[part]]
+name = "glslang"
+kind = "tool"
+version = "1.4.363.0"
+source = "https://github.com/KhronosGroup/glslang/archive/refs/tags/vulkan-sdk-{version}.tar.gz"
+sha256 = ""
+upstream = "https://github.com/KhronosGroup/glslang"
+tag = "vulkan-sdk-{version}"
+license = "BSD-3-Clause"
+why = "translates the shaders Mesa builds into the driver (glslangValidator)"
+build = [
+  "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DBUILD_SHARED_LIBS=OFF",
+  "cmake --build build -j{jobs}",
+  "cmake --install build",
+]
+
+[[part]]
 name = "spirv-llvm-translator"
 kind = "tool"
 version = "23.1.3"
