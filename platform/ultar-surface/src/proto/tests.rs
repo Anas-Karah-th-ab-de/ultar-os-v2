@@ -155,6 +155,12 @@ fn every_request_round_trips_and_truncation_fails() {
             delay_ms: 500,
             per_second: 25,
         },
+        Request::ConfigureVisual {
+            zoom: true,
+            zoom_percent: 400,
+            filter: ColourFilter::Tritanopia,
+        },
+        Request::VisualAlert { ms: 200 },
     ];
     for request in sample_requests().into_iter().chain(phone).chain(input) {
         let frame = request.encode().unwrap();
