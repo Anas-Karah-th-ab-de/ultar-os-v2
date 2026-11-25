@@ -34,7 +34,7 @@ Current test devices: a Lenovo ThinkPad P1 laptop, a Beelink GTi15 Ultra mini PC
   view are still missing.
 - **Local helper.** You ask in words, the helper acts through the system bus – with narrow rights of its
   own and never without confirmation for anything dangerous. It adapts to the device: with its own language
-  model it thinks itself; a weak device uses the model a paired device lends; without either it understands
+  model it thinks itself; a weak device uses the model a paired device lends; only when both are missing, and if the person entered a key of their own, a cloud model; otherwise it understands
   fixed commands and answers questions about the system in Arabic, English and German. It can also ask the
   helper of a paired device to act there, when that device allows it. The service is built and tested; a
   surface of its own and voice control are still missing.

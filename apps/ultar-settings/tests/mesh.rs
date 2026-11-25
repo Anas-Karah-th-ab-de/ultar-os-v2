@@ -204,11 +204,62 @@ fn every_text_of_the_page_exists_in_all_three_languages() {
     };
     let keys = |text: &str| -> Vec<String> {
         let lines = text.lines().filter_map(|l| l.split(" = ").next());
-        let mesh = lines.filter(|k| k.starts_with("app.settings.mesh."));
+        let ours =
+            |k: &&str| k.starts_with("app.settings.mesh.") || k.starts_with("app.settings.cloud.");
+        let mesh = lines.filter(ours);
         mesh.map(str::to_owned).collect()
     };
     let english = keys(&read("en"));
     assert!(english.len() > 40);
     assert_eq!(keys(&read("ar")), english);
     assert_eq!(keys(&read("de")), english);
+}
+
+#[test]
+fn the_key_of_the_cloud_model_goes_in_hidden_and_is_never_shown() {
+    use ultar_bus::messages::llm_cloud::CloudState;
+    let world = board_world(1, true);
+    // a device without the cloud-model service shows no such section
+    let size = content_size(1440.0, 900.0);
+    let plain = app(&world, Lang::En, ThemeKind::Dark, size, "assistant");
+    assert!(plain.view.node(Act::CloudKey).is_none());
+    world.borrow_mut().system.cloud = Some(CloudState {
+        configured: false,
+        provider: "Claude".into(),
+        model: "m".into(),
+    });
+    let mut app = app(&world, Lang::Ar, ThemeKind::Dark, size, "assistant");
+    assert!(
+        shown(&app).contains("app.settings.cloud.leaves"),
+        "says what leaves the device"
+    );
+    assert!(
+        app.view.node(Act::CloudClear).is_none(),
+        "nothing to forget yet"
+    );
+
+    press(&mut app, Act::CloudKey);
+    let field = app.view.dialog_fields[0];
+    app.ui.set_text(field, "two words").unwrap();
+    press(&mut app, Act::DialogOk);
+    let error = app.state.dialog.as_ref().and_then(|d| d.error.clone());
+    assert_eq!(
+        error.map(|e| e.key),
+        Some("app.settings.cloud.error.key".into())
+    );
+    let field = app.view.dialog_fields[0];
+    app.ui.set_text(field, "sk-secret-123").unwrap();
+    press(&mut app, Act::DialogOk);
+    assert!(app.state.dialog.is_none());
+    assert_eq!(last(&world), "llmcloud.set_key (13 characters)");
+    let text = shown(&app);
+    assert!(
+        text.contains("app.settings.cloud.on") && !text.contains("sk-secret"),
+        "{text}"
+    );
+
+    press(&mut app, Act::CloudClear);
+    press(&mut app, Act::DialogOk);
+    assert_eq!(last(&world), "llmcloud.clear_key");
+    assert!(shown(&app).contains("app.settings.cloud.off"));
 }

@@ -90,6 +90,21 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
         DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
             mesh(state, purpose)
         }
+        // the key is typed hidden and never shown again
+        DialogPurpose::CloudKey => plain(
+            "app.settings.cloud.key.title",
+            k("app.settings.cloud.key.text"),
+            "app.settings.cloud.key.save",
+            &[("app.settings.cloud.key.field", true)],
+            false,
+        ),
+        DialogPurpose::CloudClear => plain(
+            "app.settings.cloud.clear.title",
+            k("app.settings.cloud.clear.text"),
+            "app.settings.cloud.clear",
+            &[],
+            true,
+        ),
         other => fixed(other),
     }
 }

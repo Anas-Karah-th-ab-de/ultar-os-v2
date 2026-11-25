@@ -86,6 +86,7 @@ fn ports(bus: &Bus, documents: PathBuf, clipboard: ClipboardQueue) -> Ports {
         update: Box::new(BusUpdate::new(bus.clone())),
         account: Box::new(BusAccount(bus.clone())),
         mesh: Box::new(ultar_settings::service::mesh::BusMesh::new(bus)),
+        cloud: Box::new(ultar_settings::service::cloud::BusCloud::new(bus)),
         status: Box::new(BusStatus::new(bus)),
         system: Box::new(ultar_settings::service::system::BusSystem::new(bus.clone())),
         files: Box::new(DocumentsFiles { dir: documents }),

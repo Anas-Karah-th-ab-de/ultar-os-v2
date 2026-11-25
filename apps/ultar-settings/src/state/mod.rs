@@ -102,6 +102,10 @@ pub enum DialogPurpose {
     MeshPairJoin,
     /// "Unpair this device?".
     MeshUnpair,
+    /// The key of the cloud model is typed.
+    CloudKey,
+    /// "Forget the key?".
+    CloudClear,
 }
 
 /// An open dialog.
@@ -128,6 +132,8 @@ pub struct StatusView {
     pub bt_searched: bool,
     /// The device mesh (Settings › Mesh).
     pub mesh: mesh::MeshView,
+    /// The cloud model (Settings › Assistant; `None`: no such service).
+    pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
     /// Why the open status page's service could not be read.
     pub error: Option<Text>,
 }

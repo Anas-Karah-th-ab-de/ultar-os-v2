@@ -1,0 +1,25 @@
+[package]
+name = "ultar-llm-cloud"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "A provider's language model as the helper's last way to think, with the person's own key (system services, area 4)"
+
+[lib]
+name = "ultar_llm_cloud"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-llm-cloud"
+path = "src/bin/ultar-llm-cloud.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

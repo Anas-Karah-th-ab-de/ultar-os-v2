@@ -426,3 +426,22 @@ app.settings.mesh.paired_now = The device is paired
 app.settings.mesh.error.digits = The code has six digits.
 app.settings.mesh.error.code = The code is wrong or no longer valid.
 app.settings.mesh.error.port = The mesh could not open its port.
+
+## Settings › Assistant: the cloud model (docs/integration/ultar-llm-cloud.md)
+app.settings.cloud.title = Cloud model, as the last way
+app.settings.cloud.sub = Used only while neither this device nor a paired one has a language model. With your own key.
+app.settings.cloud.leaves = Your request and the list of the helper's tools are sent to the provider
+app.settings.cloud.on = Key stored
+app.settings.cloud.off = No key
+app.settings.cloud.enter = Enter key
+app.settings.cloud.replace = Replace key
+app.settings.cloud.clear = Forget key
+app.settings.cloud.saved = The key is stored
+app.settings.cloud.cleared = The key is forgotten
+app.settings.cloud.key.title = Key of the cloud model
+app.settings.cloud.key.text = Paste the key from your account at the provider. It stays on this device and is never shown again.
+app.settings.cloud.key.field = Key
+app.settings.cloud.key.save = Store
+app.settings.cloud.clear.title = Forget the key?
+app.settings.cloud.clear.text = Without a key the helper sends nothing to the provider.
+app.settings.cloud.error.key = That is not a key: no spaces, at most 512 characters.

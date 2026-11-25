@@ -59,12 +59,12 @@ LOADER=kernel/ultar-loader/target/x86_64-unknown-uefi/release/ultar-loader.efi
 # the session: service manager, bus, log, settings, devices, seat, compositor, lock, dialogs, shell
 PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd ultar-lock ultar-sysdialog ultar-desktop"
 # the services the shell talks to (wave 8) and the app launcher
-PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-llm-bus ultar-displayd ultar-accountd"
+PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-llm-bus ultar-llm-cloud ultar-displayd ultar-accountd"
 # the system apps (installed as signed packages through the launcher, step 2)
 PROGRAMS="$PROGRAMS ultar-settings ultar-files ultar-store ultar-phone ultar-web"
 INSTALLER_IMG=${INSTALLER_IMG:-}
 [ -n "$INSTALLER_IMG" ] && PROGRAMS="$PROGRAMS ultar-installer-ui ultar-firstboot"
-SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd mesh agentd llmbus"
+SERVICES_UP="logd bus settingsd devd seat authd launcher sessiond powerd notifyd calendard audiod mediad captured netd btd volumed displayd accountd mesh agentd llmbus llmcloud"
 # launcher id : program : manifest arguments (the launcher passes no environment of its own;
 # the apps reach the compositor and the apps' bus socket, app.shared, through these). The phone draws its
 # own window header: its manifest asks for ui.client-header (granted to system apps at installation).
@@ -74,7 +74,7 @@ if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
     -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p ultar-desktop \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
-    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-llm-bus -p ultar-displayd -p ultar-accountd -p ultar-pkg \
+    -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-pkg \
     -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"

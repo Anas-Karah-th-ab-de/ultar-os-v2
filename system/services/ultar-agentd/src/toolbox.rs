@@ -8,6 +8,7 @@ use ultar_bus::messages::agent::{Brain, StepOutcome};
 use ultar_bus::messages::audio::{AudioOutcome, SetMute, SetVolume};
 use ultar_bus::messages::launcher::{launcher_id, List, Role, Start};
 use ultar_bus::messages::llm::Complete;
+use ultar_bus::messages::llm_cloud::CloudComplete;
 use ultar_bus::messages::mesh::{HandoffSend, MeshState, SendFile, SendOutcome};
 use ultar_bus::messages::mesh_model::Think;
 use ultar_bus::messages::mesh_remote::Act;
@@ -244,6 +245,15 @@ impl Thinker for BusThinker<'_> {
             Brain::Minimal => None,
             Brain::Local => {
                 let ask = Complete {
+                    system,
+                    prompt,
+                    max_tokens: MAX_TOKENS,
+                };
+                let reply = self.client.call(&ask, THINK_TIME).ok()?;
+                reply.ok.then_some(reply.text)
+            }
+            Brain::Cloud => {
+                let ask = CloudComplete {
                     system,
                     prompt,
                     max_tokens: MAX_TOKENS,

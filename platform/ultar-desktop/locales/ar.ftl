@@ -393,3 +393,4 @@ desk.helper.ask = اسأل المساعد: { $text }
 desk.helper.title = المساعد
 desk.helper.failed = لم يُجب المساعد
 desk.helper.failed.body = حاول مرة أخرى بعد قليل.
+desk.helper.title.cloud = المساعد · فكّر بالنموذج السحابي

@@ -7,6 +7,7 @@
 mod about;
 mod account;
 pub mod bluetooth;
+mod cloud;
 mod dialog;
 mod display;
 mod display_rows;
@@ -125,7 +126,13 @@ pub fn rebuild_content(ui: &mut Ui, state: &State, view: &mut View) -> Result<()
         (PageKind::Drivers, _) => drivers::build(cx, content),
         (PageKind::Account, SubPage::CreateAccount) => account::create(cx, content),
         (PageKind::Account, _) => account::build(cx, content),
-        (PageKind::Panel(id), _) => panel::generic(cx, content, id),
+        (PageKind::Panel(id), _) => {
+            panel::generic(cx, content, id)?;
+            if id == "assistant" {
+                cloud::build(cx, content)?;
+            }
+            Ok(())
+        }
         (PageKind::NoService, _) => panel::no_service(cx, content),
         (PageKind::Status(kind), _) => status::build(cx, content, kind),
         (PageKind::Mesh, SubPage::MeshDevice) => mesh::device(cx, content),

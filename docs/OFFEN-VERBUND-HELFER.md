@@ -50,6 +50,7 @@ Nicht begonnen sind C1, C2, C4, C6, C8, C12; C5 ist eine Entscheidung des Eigent
 | C10 | Helfer: Wissen. ~~Acht Themen (Koppeln, Weitermachen, Dateien, Modell, WLAN, Bluetooth, Aktualisierungen, Helfer) in drei Sprachen, ohne Modell beantwortet, als Werkzeug `help` für das Modell~~ – erledigt. Offen: die Themen des alten Hilfe-Systems übernehmen |
 | ~~C11~~ | ~~Helfer: auf einem anderen Gerät handeln~~ – erledigt: Werkzeug `ask_device`, Aufruf `mesh.act`; das andere Gerät nimmt es nur mit dem Recht „Dieses Gerät steuern“ an, sein eigener Helfer führt aus, Gefährliches bestätigt die Person dort. Keine Ketten, keine Kreise. Offen: Text der Antwort des anderen Helfers (heute nur seine Schritte) |
 | C12 | Helfer: Antwort Stück für Stück anzeigen (heute kommt sie am Ende) |
+| ~~C13~~ | ~~Cloud-Modell als letzter Weg, mit eigenem Schlüssel der Person (Beispiel: Claude)~~ – erledigt: Dienst `ultar-llm-cloud`, Abschnitt in Einstellungen › Assistent, Reihenfolge eigenes Modell → verliehenes → Cloud → kleinste Hilfe. Offen: gegen den echten Anbieter prüfen, Schlüssel verschlüsselt ablegen, weitere Anbieter (`docs/integration/ultar-llm-cloud.md`) |
 
 ## D. Geprüft und noch nicht geprüft
 
@@ -76,6 +77,7 @@ Noch nicht geprüft:
   Dienstdateien durch die Tests von `ultar-busd`, `ultar-init` und `ultar-logd`). In der Integration lief der
   Verbund im Abbild an; ein Startfehler (`mesh.start_failed step=key_mode`) führte zu einer Korrektur im Kern
   (Commits `85ff6a91`, `e8badc92`). Ob er dort seitdem sauber startet, steht hier nicht fest.
+- Das Cloud-Modell gegen den echten Anbieter (hier gab es keinen Schlüssel; geprüft gegen einen Ersatz-Anbieter).
 - Helfer mit einem echten Modell: Die Tests nutzen ein Modell-Skript. Ob ein kleines Modell die
   Antwortform zuverlässig einhält, ist offen; schlägt es fehl, bleibt die kleinste Hilfe.
 - Arabische Texte (Tafeln, Dialog, Helfer) hat kein Muttersprachler gegengelesen.

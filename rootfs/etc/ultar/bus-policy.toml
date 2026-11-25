@@ -316,15 +316,27 @@ publish   = ["llm.state"]
 call      = ["settings.get", "init.switch"]
 subscribe = ["settings.changed"]
 
+# The cloud model (837): offers `llmcloud`. Only the helper may let it think; only the
+# Settings app may set or clear the person's key, and nobody can read it.
+[[rule]]
+identity = "system.llmcloud"
+register = ["llmcloud"]
+publish  = ["llmcloud.state"]
+
+[[rule]]
+identity  = "app.settings"
+call      = ["llmcloud.set_key", "llmcloud.clear_key"]
+subscribe = ["llmcloud.state"]
+
 # The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
 # off are confirmed by the person first (`sysdialog.authenticate`).
 [[rule]]
 identity  = "system.agentd"
 register  = ["agent"]
 publish   = ["agent.state"]
-subscribe = ["llm.state", "mesh.state"]
+subscribe = ["llm.state", "mesh.state", "llmcloud.state"]
 call      = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
-             "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act", "llm.complete",
+             "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act", "llm.complete", "llmcloud.complete",
              "bluetooth.set", "net.set_airplane", "media.play_pause", "media.next", "media.previous",
              "capture.screenshot", "lock.lock", "power.suspend",
              "sysdialog.authenticate", "power.restart", "power.off"]

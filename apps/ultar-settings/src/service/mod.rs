@@ -2,6 +2,7 @@
 //! [`bus`]. Tests and the conformance suite drive the app through [`fake`].
 
 pub mod bus;
+pub mod cloud;
 pub mod fake;
 pub mod mesh;
 pub mod system;
@@ -197,6 +198,8 @@ pub struct Ports {
     pub status: Box<dyn StatusPort>,
     /// The device mesh.
     pub mesh: Box<dyn mesh::MeshPort>,
+    /// The cloud model (the helper's last way to think).
+    pub cloud: Box<dyn cloud::CloudPort>,
     /// Users, apps and drives (Users, Apps and Storage pages).
     pub system: Box<dyn system::SystemPort>,
     /// Documents.

@@ -28,7 +28,7 @@ WAIT = float(os.environ.get("WAIT", "600"))
 LANG_KEY = {"ar": "1", "de": "2", "en": "3"}
 SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", "lock", "sysdialog", "desktop",
             "launcher", "sessiond", "powerd", "notifyd", "calendard", "audiod", "mediad", "captured", "netd", "btd",
-            "volumed", "displayd", "accountd", "mesh", "agentd", "llmbus"]
+            "volumed", "displayd", "accountd", "mesh", "agentd", "llmbus", "llmcloud"]
 # one-shot services: the system apps are installed with the launcher (each must end with code 0)
 APPS = ["settings", "files", "store", "phone", "browser"]
 # the session on the screen: it starts locked, so the lock screen (ground colour over the whole screen) with

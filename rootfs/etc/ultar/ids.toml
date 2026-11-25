@@ -45,6 +45,8 @@ calld = 829
 mesh = 833
 agentd = 834
 llmbus = 835
+# The cloud model, the helper's last way to think (docs/integration/ultar-llm-cloud.md).
+llmcloud = 837
 installer = 840
 nobody = 65534
 
@@ -96,6 +98,7 @@ volumed = ["busd", "logd"]
 mesh = ["busd", "logd"]
 agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
+llmcloud = ["busd", "logd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

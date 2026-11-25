@@ -426,3 +426,22 @@ app.settings.mesh.paired_now = تم إقران الجهاز
 app.settings.mesh.error.digits = الرمز مكوَّن من ستة أرقام.
 app.settings.mesh.error.code = الرمز خاطئ أو لم يعد صالحًا.
 app.settings.mesh.error.port = تعذّر على الترابط فتح منفذه.
+
+## الإعدادات › المساعد: النموذج السحابي (docs/integration/ultar-llm-cloud.md)
+app.settings.cloud.title = النموذج السحابي، كخيار أخير
+app.settings.cloud.sub = يُستعمل فقط ما دام لا هذا الجهاز ولا جهاز مقترن يملك نموذجًا لغويًا. بمفتاحك الخاص.
+app.settings.cloud.leaves = يُرسَل طلبك وقائمة أدوات المساعد إلى المزوّد
+app.settings.cloud.on = المفتاح محفوظ
+app.settings.cloud.off = لا مفتاح
+app.settings.cloud.enter = إدخال المفتاح
+app.settings.cloud.replace = استبدال المفتاح
+app.settings.cloud.clear = نسيان المفتاح
+app.settings.cloud.saved = حُفظ المفتاح
+app.settings.cloud.cleared = نُسي المفتاح
+app.settings.cloud.key.title = مفتاح النموذج السحابي
+app.settings.cloud.key.text = الصق المفتاح من حسابك لدى المزوّد. يبقى على هذا الجهاز ولا يُعرض مرة أخرى.
+app.settings.cloud.key.field = المفتاح
+app.settings.cloud.key.save = حفظ
+app.settings.cloud.clear.title = نسيان المفتاح؟
+app.settings.cloud.clear.text = دون مفتاح لا يرسل المساعد شيئًا إلى المزوّد.
+app.settings.cloud.error.key = هذا ليس مفتاحًا: دون مسافات وبحدّ أقصى 512 حرفًا.

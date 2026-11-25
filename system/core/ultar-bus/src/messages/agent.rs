@@ -25,6 +25,9 @@ pub enum Brain {
     Local,
     /// The model of a paired device (its id).
     Mesh(String),
+    /// A provider's model in the internet, with the person's own key: the last way,
+    /// only while neither this device nor a paired one has a model.
+    Cloud,
 }
 
 /// `agent.state` – what the helper can do right now (retained).

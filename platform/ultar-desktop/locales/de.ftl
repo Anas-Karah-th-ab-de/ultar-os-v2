@@ -393,3 +393,4 @@ desk.helper.ask = Den Helfer fragen: { $text }
 desk.helper.title = Helfer
 desk.helper.failed = Der Helfer hat nicht geantwortet
 desk.helper.failed.body = Versuche es gleich noch einmal.
+desk.helper.title.cloud = Helfer · mit dem Cloud-Modell gedacht

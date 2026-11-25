@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 use ultar_bus::messages::agent::{AgentState, Answer, Ask, MAX_REQUEST, SERVICE};
 use ultar_bus::messages::llm::LlmState;
+use ultar_bus::messages::llm_cloud::CloudState;
 use ultar_bus::messages::mesh::MeshState;
 use ultar_bus::messages::mesh_model::{Lender, Models};
 use ultar_bus::{Call, ErrorCode, IncomingRequest, RawEvent, Topic};
@@ -20,6 +21,7 @@ const CALL_TIME: Duration = Duration::from_secs(2);
 #[derive(Default)]
 pub struct AgentService {
     local: LlmState,
+    cloud: CloudState,
     lenders: Vec<Lender>,
     last: Option<AgentState>,
     next: u64,
@@ -28,7 +30,7 @@ pub struct AgentService {
 
 impl AgentService {
     fn state(&self) -> AgentState {
-        let (brain, lender) = brain::choose(&self.local, &self.lenders);
+        let (brain, lender) = brain::choose_with_cloud(&self.local, &self.lenders, &self.cloud);
         AgentState { brain, lender }
     }
 
@@ -83,7 +85,7 @@ impl Service for AgentService {
     }
 
     fn subscriptions(&self) -> Vec<&'static str> {
-        vec![LlmState::TOPIC, MeshState::TOPIC]
+        vec![LlmState::TOPIC, MeshState::TOPIC, CloudState::TOPIC]
     }
 
     fn tick_every(&self) -> Option<Duration> {
@@ -113,6 +115,9 @@ impl Service for AgentService {
     fn event(&mut self, event: RawEvent, bus: &Bus<'_, Self>) {
         if let Ok(state) = event.decode::<LlmState>() {
             self.local = state;
+            self.publish(bus);
+        } else if let Ok(state) = event.decode::<CloudState>() {
+            self.cloud = state;
             self.publish(bus);
         } else {
             // The mesh changed: a lender may have come or gone.

@@ -3,6 +3,7 @@
 
 mod account;
 mod bluetooth;
+mod cloud;
 mod display;
 mod drivers;
 mod mesh;
@@ -91,7 +92,12 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
         PageKind::Account => account::load(state, ports),
         PageKind::Mesh => mesh::load(state, ports),
         PageKind::Status(kind) => load_status(state, ports, kind),
-        PageKind::Panel(id) => more::load(state, ports, id),
+        PageKind::Panel(id) => {
+            more::load(state, ports, id);
+            if id == cloud::PANEL {
+                cloud::load(state, ports);
+            }
+        }
         PageKind::NoService | PageKind::About => {}
     }
     report_page(state);
@@ -190,6 +196,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         a if account::owns(a) => account::handle(c, a, node, kind),
         a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
         a if mesh::owns(a) => mesh::handle(c, a, kind),
+        a if cloud::owns(a) => cloud::handle(c, a, kind),
         _ => Outcome::default(),
     }
 }
@@ -303,6 +310,7 @@ fn dialog(c: &mut Ctl<'_>, act: Act, kind: ActionKind) -> Outcome {
         DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
             mesh::dialog_ok(c, purpose)
         }
+        DialogPurpose::CloudKey | DialogPurpose::CloudClear => cloud::dialog_ok(c, purpose),
         DialogPurpose::ChangePassword
         | DialogPurpose::DeleteAccount
         | DialogPurpose::RemoveDevice(_) => account::dialog_ok(c, purpose),

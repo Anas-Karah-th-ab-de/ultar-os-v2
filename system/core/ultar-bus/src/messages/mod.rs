@@ -64,6 +64,8 @@
 //! | `mesh.act` | call | – | device mesh (the helper of a paired device acts there, see [`mesh_remote`]) |
 //! | `llm.state` | topic | yes | language-model service (see [`llm`]) |
 //! | `llm.complete` | call | – | language-model service |
+//! | `llmcloud.state` | topic | yes | cloud model, the helper's last way to think (see [`llm_cloud`]) |
+//! | `llmcloud.set_key`, `llmcloud.clear_key`, `llmcloud.complete` | call | – | cloud model |
 //! | `agent.state` | topic | yes | local helper (`ultar-agentd`, see [`agent`]) |
 //! | `agent.ask` | call | – | local helper |
 //!
@@ -85,6 +87,7 @@ pub mod display_service;
 pub mod init;
 pub mod launcher;
 pub mod llm;
+pub mod llm_cloud;
 pub mod lock;
 pub mod log;
 pub mod media;

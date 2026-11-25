@@ -426,3 +426,22 @@ app.settings.mesh.paired_now = Das Gerät ist gekoppelt
 app.settings.mesh.error.digits = Der Code hat sechs Ziffern.
 app.settings.mesh.error.code = Der Code ist falsch oder nicht mehr gültig.
 app.settings.mesh.error.port = Der Verbund konnte seinen Port nicht öffnen.
+
+## Einstellungen › Assistent: das Cloud-Modell (docs/integration/ultar-llm-cloud.md)
+app.settings.cloud.title = Cloud-Modell, als letzter Weg
+app.settings.cloud.sub = Nur solange weder dieses Gerät noch ein gekoppeltes ein Sprachmodell hat. Mit deinem eigenen Schlüssel.
+app.settings.cloud.leaves = Deine Anfrage und die Liste der Werkzeuge des Helfers gehen an den Anbieter
+app.settings.cloud.on = Schlüssel gespeichert
+app.settings.cloud.off = Kein Schlüssel
+app.settings.cloud.enter = Schlüssel eingeben
+app.settings.cloud.replace = Schlüssel ersetzen
+app.settings.cloud.clear = Schlüssel vergessen
+app.settings.cloud.saved = Der Schlüssel ist gespeichert
+app.settings.cloud.cleared = Der Schlüssel ist vergessen
+app.settings.cloud.key.title = Schlüssel des Cloud-Modells
+app.settings.cloud.key.text = Füge den Schlüssel aus deinem Konto beim Anbieter ein. Er bleibt auf diesem Gerät und wird nie wieder angezeigt.
+app.settings.cloud.key.field = Schlüssel
+app.settings.cloud.key.save = Speichern
+app.settings.cloud.clear.title = Schlüssel vergessen?
+app.settings.cloud.clear.text = Ohne Schlüssel sendet der Helfer nichts an den Anbieter.
+app.settings.cloud.error.key = Das ist kein Schlüssel: keine Leerzeichen, höchstens 512 Zeichen.

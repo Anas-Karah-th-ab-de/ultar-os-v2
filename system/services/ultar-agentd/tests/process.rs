@@ -21,16 +21,16 @@ const POLICY: &str = r#"
 identity = "system.agentd"
 register = ["agent"]
 publish = ["agent.state"]
-subscribe = ["llm.state", "mesh.state"]
+subscribe = ["llm.state", "mesh.state", "llmcloud.state"]
 call = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
         "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act",
-        "llm.complete",
+        "llm.complete", "llmcloud.complete",
         "sysdialog.authenticate", "power.restart", "power.off"]
 
 [[rule]]
 identity = "system.stand_in"
-register = ["launcher", "audio", "mesh", "llm", "sysdialog", "power"]
-publish = ["llm.state"]
+register = ["launcher", "audio", "mesh", "llm", "llmcloud", "sysdialog", "power"]
+publish = ["llm.state", "llmcloud.state"]
 
 [[rule]]
 identity = "system.shell"
@@ -342,4 +342,49 @@ fn every_text_the_helper_can_say_exists_in_all_three_languages() {
             assert!(catalogue.contains(&format!("\n{key} = ")), "{lang}: {key}");
         }
     }
+}
+
+#[test]
+fn the_cloud_model_is_used_only_while_no_model_is_on_the_persons_devices() {
+    use std::sync::atomic::AtomicUsize;
+    use ultar_bus::messages::llm_cloud::{CloudComplete, CloudState};
+    let b = bench("agent-cloud", None, None);
+    brain(&b, &Brain::Minimal);
+    let asked = Arc::new(AtomicUsize::new(0));
+    let (count, seen) = (asked.clone(), b.seen.clone());
+    b.world
+        .serve("system.stand_in", "llmcloud", move |request| {
+            if request.decode::<CloudComplete>().is_ok() {
+                count.fetch_add(1, Ordering::SeqCst);
+                let text = seen.script.lock().unwrap().remove(0).to_owned();
+                let _ = request.reply(&Completion { ok: true, text });
+            }
+        });
+    // the person entered a key: the provider's model is the last way
+    let cloud = CloudState {
+        configured: true,
+        provider: "Claude".into(),
+        model: "m".into(),
+    };
+    b.stand_in.publish(&cloud).unwrap();
+    brain(&b, &Brain::Cloud);
+    *b.seen.script.lock().unwrap() = vec![
+        "{\"tool\":\"mute\",\"args\":{\"on\":\"true\"}}",
+        "{\"say\":\"quiet\"}",
+    ];
+    let answer = ask(&b, "please make it quiet");
+    assert_eq!(answer.brain, Brain::Cloud);
+    assert_eq!(asked.load(Ordering::SeqCst), 2);
+    assert_eq!(*b.seen.muted.lock().unwrap(), vec![true]);
+    // an own model appears: the cloud is not asked any more
+    let own = LlmState {
+        ready: true,
+        model: "own".into(),
+        class: ModelClass::Small,
+    };
+    b.stand_in.publish(&own).unwrap();
+    brain(&b, &Brain::Local);
+    *b.seen.script.lock().unwrap() = vec!["{\"say\":\"here\"}"];
+    assert_eq!(ask(&b, "hello there").brain, Brain::Local);
+    assert_eq!(asked.load(Ordering::SeqCst), 2);
 }

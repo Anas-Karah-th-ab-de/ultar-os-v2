@@ -84,7 +84,7 @@ fn with_model(
 pub fn answer(request: &str, brain: Brain, thinker: &dyn Thinker, toolbox: &dyn Toolbox) -> Answer {
     let thought = match brain {
         Brain::Minimal => None,
-        Brain::Local | Brain::Mesh(_) => with_model(request, thinker, toolbox),
+        Brain::Local | Brain::Mesh(_) | Brain::Cloud => with_model(request, thinker, toolbox),
     };
     match thought {
         Some((text, steps)) => Answer { text, brain, steps },

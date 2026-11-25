@@ -5794,6 +5794,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ultar-llm-cloud"
+version = "0.8.0"
+dependencies = [
+ "serde_json",
+ "ultar-bus",
+ "ultar-service",
+ "ultar-svckit",
+ "ureq 2.12.1",
+]
+
+[[package]]
 name = "ultar-logd"
 version = "0.8.0"
 dependencies = [

@@ -105,6 +105,10 @@ pub enum Act {
     BtScan,
     /// Bluetooth page: pair with found device `n` (in the order shown).
     BtPair(usize),
+    /// Enter (or replace) the key of the cloud model.
+    CloudKey,
+    /// Forget the key of the cloud model.
+    CloudClear,
     /// Mesh on or off.
     MeshToggle,
     /// Copy this device's id.
@@ -184,6 +188,8 @@ impl Act {
             Act::AccountDelete => "account.delete",
             Act::AccountDeviceSignOut(_) => "account.device.signout",
             Act::AccountDeviceRemove(_) => "account.device.remove",
+            Act::CloudKey => "assistant.cloud.key",
+            Act::CloudClear => "assistant.cloud.clear",
             Act::MeshToggle => "mesh.toggle",
             Act::MeshCopy => "mesh.copy",
             Act::MeshPair => "mesh.pair",

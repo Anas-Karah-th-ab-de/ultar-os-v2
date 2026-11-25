@@ -34,8 +34,8 @@ Aktuelle Testgeräte: Laptop Lenovo ThinkPad P1, Mini-PC Beelink GTi15 Ultra und
   Verbund noch nicht erprobt; die Handy-Oberfläche und die Fernansicht fehlen noch.
 - **Lokaler Helfer.** Man fragt in Worten, der Helfer handelt über den Systembus – mit eigenen, engen Rechten
   und nie ohne Bestätigung bei Gefährlichem. Er passt sich dem Gerät an: Mit eigenem Sprachmodell denkt er
-  selbst; ein schwaches Gerät nutzt das Modell eines gekoppelten Geräts, das es verleiht; ohne beides
-  versteht er feste Befehle und beantwortet Fragen zum System auf Arabisch, Englisch und Deutsch. Er kann
+  selbst; ein schwaches Gerät nutzt das Modell eines gekoppelten Geräts, das es verleiht; erst wenn beides
+  fehlt, auf Wunsch ein Cloud-Modell mit dem eigenen Schlüssel der Person; sonst versteht er feste Befehle und beantwortet Fragen zum System auf Arabisch, Englisch und Deutsch. Er kann
   auch den Helfer eines gekoppelten Geräts bitten, dort zu handeln, wenn dieses es erlaubt. Der Dienst ist
   gebaut und getestet; eine eigene Oberfläche und die Sprachsteuerung fehlen noch.
 
