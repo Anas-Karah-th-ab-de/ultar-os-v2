@@ -27,13 +27,14 @@ rustix = { version = "1", default-features = false, features = ["std", "net", "f
 # The reader engine (engine::reader): pages fetched in pure Rust. TLS through rustls with the
 # Graviola provider where the CPU and the kernel offer AVX2, else the pure-Rust RustCrypto
 # provider (the Ultar kernel does not keep AVX registers yet); Mozilla roots compiled in.
-ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots", "socks-proxy"] }
 rustls-graviola = "0.4"
 rustls-rustcrypto = "0.0.2-alpha"
 encoding_rs = "0.8"
 # Sound and video of pages (media::): audio decoders in pure Rust (MP3, AAC, FLAC, Vorbis, WAV in
 # MP4/M4A, Ogg, Matroska/WebM, WAV), the MP4 container in pure Rust, H.264 by OpenH264 (BSD,
 # built from source and linked statically).
+ultar-tor = { path = "../../platform/ultar-tor" }
 ultar-hal-system = { path = "../../system/hal/ultar-hal-system" }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "mkv"] }
 mp4 = "0.14"

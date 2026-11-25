@@ -75,3 +75,4 @@ web.media.failed = تعذّر التحميل: {reason}
 web.media.unsupported = صيغة غير مدعومة بعد: {what}
 web.app.name = المتصفح
 web.app.desc = صفحات الويب مع الصوت والفيديو.
+web.reader.blocked = حُجب للحماية: لا تصل الصفحات إلى هذا الجهاز ولا إلى الشبكة المحلية، ولا إلى عناوين غير http(s).

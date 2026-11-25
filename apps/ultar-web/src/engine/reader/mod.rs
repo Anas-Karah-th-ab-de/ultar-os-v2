@@ -14,6 +14,7 @@ use super::{
     DownloadId, EngineError, EngineEvent, FrameDamage, FrameView, KeyInput, PointerInput,
     RequestId, TabId, WebEngine, MAX_TABS,
 };
+use crate::privacy::persona::Persona;
 use html::{Block, Document, Kind};
 use page::{Laid, Painting};
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -77,8 +78,9 @@ pub struct ReaderEngine {
 }
 
 impl ReaderEngine {
-    /// An engine whose own pages (errors) are in `lang`; `user_agent` names the browser.
-    pub fn new(lang: Lang, user_agent: &str) -> Result<ReaderEngine, EngineError> {
+    /// An engine whose own pages (errors) are in `lang`, reaching the internet along `route`
+    /// (Tor) with the persona of a new session.
+    pub fn new(lang: Lang, route: &fetch::Route) -> Result<ReaderEngine, EngineError> {
         let (wake_read, wake_write) = rustix::pipe::pipe_with(
             rustix::pipe::PipeFlags::CLOEXEC | rustix::pipe::PipeFlags::NONBLOCK,
         )
@@ -91,7 +93,7 @@ impl ReaderEngine {
             next_tab: 0,
             next_load: 0,
             events: Vec::new(),
-            client: fetch::Client::new(user_agent),
+            client: fetch::Client::new(Persona::for_session(Persona::new_seed()), route),
             painting,
             tr,
             done_tx,
@@ -243,6 +245,7 @@ impl ReaderEngine {
                 .tr
                 .t_args("web.reader.not_text", &[("type", Arg::Str(mime))]),
             fetch::FetchError::TooLarge => self.tr.t("web.reader.too_large").into_owned(),
+            fetch::FetchError::Blocked(_) => self.tr.t("web.reader.blocked").into_owned(),
         };
         let para = |text: String| Block {
             kind: Kind::Para,

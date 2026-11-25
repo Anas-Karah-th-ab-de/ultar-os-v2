@@ -1,7 +1,28 @@
 use super::*;
 
 fn engine() -> ReaderEngine {
-    ReaderEngine::new(Lang::Ar, "UltarWeb-test").unwrap()
+    let mut e = ReaderEngine::new(Lang::Ar, &fetch::Route::Direct).unwrap();
+    // the tests' own server is on this machine; the browser never reaches it
+    e.client.allow_local = true;
+    e
+}
+
+#[test]
+fn local_addresses_are_refused_without_a_request() {
+    let mut e = ReaderEngine::new(Lang::Ar, &fetch::Route::Direct).unwrap();
+    let tab = e.create_tab(false).unwrap();
+    e.resize(tab, 640, 400, 1.0).unwrap();
+    e.load(tab, "http://127.0.0.1:9/").unwrap();
+    let events = wait(&mut e);
+    assert!(events
+        .iter()
+        .any(|ev| matches!(ev, EngineEvent::Title { title, .. } if title.contains("تعذّر"))));
+    let doc = e.tabs[&tab].doc.as_ref().unwrap();
+    assert!(
+        doc.blocks.iter().any(|b| b.text.contains("حماية")),
+        "{:?}",
+        doc.blocks
+    );
 }
 
 fn wait(e: &mut ReaderEngine) -> Vec<EngineEvent> {

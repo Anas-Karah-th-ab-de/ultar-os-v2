@@ -3,6 +3,8 @@
 //! its instructions, else the RustCrypto provider; Mozilla's roots compiled in. Text is
 //! decoded with the charset the server or the page names (UTF-8, Windows-1256, …).
 
+use crate::privacy::guard::{self, Blocked};
+use crate::privacy::persona::Persona;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -38,6 +40,8 @@ pub enum FetchError {
     NotText(String),
     /// Larger than [`MAX_BYTES`].
     TooLarge,
+    /// The address is refused: this device, the local network or not http(s).
+    Blocked(Blocked),
 }
 
 fn graviola_usable() -> bool {
@@ -63,15 +67,33 @@ fn graviola_usable() -> bool {
     }
 }
 
-/// The HTTP client of the reader.
+/// How the client reaches the internet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Route {
+    /// Through Tor: the proxy address of the browser's Tor client
+    /// (`socks5h://secret@127.0.0.1:port`, names resolved by Tor).
+    Tor(String),
+    /// Straight (tests on this machine only; pages never go this way).
+    Direct,
+}
+
+/// Most redirects followed (each one is checked like the first address).
+const MAX_REDIRECTS: usize = 10;
+
+/// The HTTP client of the reader: every request carries only the persona's headers, every
+/// address (and every redirect) passes the guard, everything goes through Tor.
 #[derive(Clone)]
 pub struct Client {
     agent: ureq::Agent,
+    persona: Arc<Persona>,
+    /// Tests on this machine reach their local server (never in the browser).
+    #[cfg(test)]
+    pub(crate) allow_local: bool,
 }
 
 impl Client {
-    /// A client that names itself `user_agent`.
-    pub fn new(user_agent: &str) -> Client {
+    /// A client for `persona` along `route`.
+    pub fn new(persona: Persona, route: &Route) -> Client {
         let provider = if graviola_usable() {
             rustls_graviola::default_provider()
         } else {
@@ -83,12 +105,18 @@ impl Client {
             .root_certs(RootCerts::WebPki)
             .disable_verification(false)
             .build();
+        let proxy = match route {
+            Route::Tor(url) => ureq::Proxy::new(url).ok(),
+            Route::Direct => None,
+        };
         let config = ureq::Agent::config_builder()
             .tls_config(tls)
-            .user_agent(user_agent)
-            .max_redirects(10)
+            .user_agent(persona.user_agent)
+            // redirects are followed here, each one checked by the guard
+            .max_redirects(0)
+            .save_redirect_history(false)
             .http_status_as_error(false)
-            .proxy(None)
+            .proxy(proxy)
             .timeout_resolve(Some(TIMEOUT))
             .timeout_connect(Some(TIMEOUT))
             .timeout_send_request(Some(TIMEOUT))
@@ -97,24 +125,52 @@ impl Client {
             .build();
         Client {
             agent: ureq::Agent::new_with_config(config),
+            persona: Arc::new(persona),
+            #[cfg(test)]
+            allow_local: false,
         }
+    }
+
+    /// The identity pages see.
+    pub fn persona(&self) -> &Persona {
+        &self.persona
+    }
+
+    fn check(&self, url: &str) -> Result<(), FetchError> {
+        #[cfg(test)]
+        if self.allow_local {
+            return Ok(());
+        }
+        guard::check(url).map_err(FetchError::Blocked)
+    }
+
+    /// Asks for `url`, following redirects; gives the answer and the final address.
+    fn open(&self, url: &str) -> Result<(ureq::http::Response<ureq::Body>, String), FetchError> {
+        let mut url = url.to_owned();
+        for _ in 0..=MAX_REDIRECTS {
+            self.check(&url)?;
+            let mut request = self.agent.get(&url);
+            for (name, value) in self.persona.headers() {
+                request = request.header(name, value);
+            }
+            let response = request
+                .call()
+                .map_err(|e| FetchError::Unreachable(e.to_string()))?;
+            if !response.status().is_redirection() {
+                return Ok((response, url));
+            }
+            let to = header(&response, "location")
+                .ok_or(FetchError::Status(response.status().as_u16()))?;
+            url = super::html::join(&url, &to).ok_or(FetchError::Blocked(Blocked::Scheme))?;
+        }
+        Err(FetchError::Unreachable("too many redirects".into()))
     }
 
     /// Fetches `url` (http or https).
     pub fn get(&self, url: &str) -> Result<Fetched, FetchError> {
-        let response = self
-            .agent
-            .get(url)
-            .header("Accept", "text/html,text/plain;q=0.9,*/*;q=0.1")
-            .header("Accept-Language", "ar,en;q=0.8,de;q=0.6")
-            .call()
-            .map_err(|e| FetchError::Unreachable(e.to_string()))?;
-        let status = response.status().as_u16();
         // the address after redirects (links of the page are relative to it)
-        let final_url = {
-            use ureq::ResponseExt;
-            response.get_uri().to_string()
-        };
+        let (response, final_url) = self.open(url)?;
+        let status = response.status().as_u16();
         let content_type = header(&response, "content-type")
             .unwrap_or_else(|| "text/html".into())
             .to_ascii_lowercase();
@@ -190,11 +246,7 @@ impl Client {
         progress: &AtomicU32,
         stop: &AtomicBool,
     ) -> Result<(Vec<u8>, String), FetchError> {
-        let response = self
-            .agent
-            .get(url)
-            .call()
-            .map_err(|e| FetchError::Unreachable(e.to_string()))?;
+        let (response, _) = self.open(url)?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
             return Err(FetchError::Status(status));

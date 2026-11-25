@@ -157,7 +157,7 @@ crates = ["system/hal/ultar-hal", "system/hal/ultar-hal-system", "system/hal/ult
 [[allow]]
 from = "apps"
 to = "platform"
-crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface", "platform/ultar-textview"]
+crates = ["platform/app-api", "platform/ultar-ui", "platform/ultar-surface", "platform/ultar-textview", "platform/ultar-tor"]
 
 [[allow]]
 from = "apps"

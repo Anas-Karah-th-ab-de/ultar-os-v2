@@ -14,6 +14,7 @@ use ultar_ui::tokens::{InputMode, ThemeKind};
 use ultar_web::app::{Browser, FilesApp, Paths};
 use ultar_web::cell::CellSpec;
 use ultar_web::engine::offline::OfflineEngine;
+use ultar_web::engine::reader::fetch::Route;
 use ultar_web::engine::reader::ReaderEngine;
 use ultar_web::engine::remote::{HostConfig, RemoteEngine};
 use ultar_web::engine::WebEngine;
@@ -129,18 +130,17 @@ fn start(a: Args) -> Result<(), Box<dyn std::error::Error>> {
                 std::io::stderr(),
                 "ultar-web: full engine not available: {e}"
             );
-            let mut agent = ultar_brand::release::Line::<160>::new();
-            let named = ultar_brand::release::write_user_agent(
-                &mut agent,
-                "UltarWeb",
-                env!("CARGO_PKG_VERSION"),
-            );
-            let agent = if named.is_ok() {
-                agent.as_str()
-            } else {
-                "UltarWeb"
+            // Pages go only through Tor (the persona of privacy::persona, the site never sees
+            // this device's address); if Tor cannot start, no page goes out at all.
+            let tor = match ultar_tor::Tor::start(&profile.join("tor")) {
+                Ok(t) => t,
+                Err(e) => {
+                    let _ = writeln!(std::io::stderr(), "ultar-web: tor: {e}");
+                    return show(OfflineEngine::new(), a, lang, Paths { profile, downloads });
+                }
             };
-            match ReaderEngine::new(lang, agent) {
+            let route = Route::Tor(tor.proxy_url());
+            match ReaderEngine::new(lang, &route) {
                 Ok(reader) => show(reader, a, lang, Paths { profile, downloads }),
                 Err(e) => {
                     let _ = writeln!(std::io::stderr(), "ultar-web: reader engine: {e}");

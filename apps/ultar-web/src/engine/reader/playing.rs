@@ -191,5 +191,6 @@ fn fetch_reason(e: &fetch::FetchError) -> String {
         fetch::FetchError::Status(code) => format!("HTTP {code}"),
         fetch::FetchError::NotText(mime) => mime.clone(),
         fetch::FetchError::TooLarge => format!("> {} MB", fetch::MAX_MEDIA >> 20),
+        fetch::FetchError::Blocked(_) => "blocked".into(),
     }
 }

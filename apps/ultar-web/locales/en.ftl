@@ -75,3 +75,4 @@ web.media.failed = Couldn’t load: {reason}
 web.media.unsupported = Format not supported yet: {what}
 web.app.name = Browser
 web.app.desc = Web pages with sound and video.
+web.reader.blocked = Blocked for protection: pages never reach this device, the local network or addresses other than http(s).
