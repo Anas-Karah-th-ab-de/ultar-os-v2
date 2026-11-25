@@ -193,4 +193,19 @@ impl State {
     pub fn panel(&self, id: &str) -> Option<&PanelInfo> {
         self.panels.iter().find(|p| p.id == id)
     }
+
+    /// The kind the Users page proposes for a new user (`users.new_kind`); an invalid
+    /// or missing value means the schema default, standard.
+    pub fn new_user_kind(&self) -> ultar_bus::messages::account_local::UserKind {
+        use ultar_bus::messages::account_local::UserKind;
+        use ultar_bus::messages::settings::SettingValue;
+        let value = self
+            .panel("users")
+            .and_then(|p| p.items.iter().find(|i| i.key == "users.new_kind"))
+            .map(|i| &i.value);
+        match value {
+            Some(SettingValue::Text(t)) if t == "administrator" => UserKind::Administrator,
+            _ => UserKind::Standard,
+        }
+    }
 }

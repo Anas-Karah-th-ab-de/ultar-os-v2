@@ -100,7 +100,11 @@ pub fn dialog_ok(c: &mut Ctl<'_>, purpose: DialogPurpose) -> Outcome {
                 return dialog_error(c.state, Text::key("app.settings.account.fill_in"));
             }
             match new_password(&f, 1) {
-                Ok(password) => c.ports.system.user_create(&name, &password),
+                // users.new_kind: the kind the page proposes (standard/administrator).
+                Ok(password) => {
+                    let kind = c.state.new_user_kind();
+                    c.ports.system.user_create(&name, &password, kind)
+                }
                 Err(text) => return dialog_error(c.state, text),
             }
         }

@@ -321,11 +321,18 @@ impl SystemPort for Fake {
         users.ok_or(PortError::Unavailable)
     }
 
-    fn user_create(&mut self, name: &str, _password: &str) -> PortResult<Vec<LocalUser>> {
+    fn user_create(
+        &mut self,
+        name: &str,
+        _password: &str,
+        kind: ultar_bus::messages::account_local::UserKind,
+    ) -> PortResult<Vec<LocalUser>> {
         self.call(format!("account.user_create {name}"))?;
         let mut w = self.0.borrow_mut();
         let users = w.system.users.as_mut().ok_or(PortError::Unavailable)?;
-        users.push(local_user(name, 1000 + users.len() as u32));
+        let mut made = local_user(name, 1000 + users.len() as u32);
+        made.kind = kind;
+        users.push(made);
         Ok(users.clone())
     }
 

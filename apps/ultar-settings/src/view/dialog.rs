@@ -92,6 +92,8 @@ fn spec(state: &State, purpose: DialogPurpose) -> Spec {
             let ok = "app.settings.users.remove";
             plain("app.settings.users.remove.title", text, ok, &[], true)
         }
+        // users.new_kind: the dialog says which kind the new user will be.
+        DialogPurpose::UserAdd => user_add(state),
         DialogPurpose::MeshPairShow | DialogPurpose::MeshPairJoin | DialogPurpose::MeshUnpair => {
             mesh(state, purpose)
         }
@@ -178,6 +180,23 @@ const USER_FIELDS: [(&str, bool); 3] = [
     ("app.settings.dialog.pw.again", true),
 ];
 
+/// The add-user dialog: its text says the kind `users.new_kind` proposes.
+fn user_add(state: &State) -> Spec {
+    let text = match state.new_user_kind() {
+        ultar_bus::messages::account_local::UserKind::Administrator => {
+            "app.settings.users.add.text.admin"
+        }
+        _ => "app.settings.users.add.text",
+    };
+    plain(
+        "app.settings.users.add",
+        k(text),
+        "app.settings.users.add",
+        &USER_FIELDS,
+        false,
+    )
+}
+
 fn fixed(purpose: DialogPurpose) -> Spec {
     let (title, text, ok, fields, danger): (_, _, _, &[(&str, bool)], _) = match purpose {
         DialogPurpose::FirmwareUsb => (
@@ -192,13 +211,6 @@ fn fixed(purpose: DialogPurpose) -> Spec {
             "app.settings.dialog.pw.text",
             "app.settings.dialog.pw.ok",
             &PW_FIELDS,
-            false,
-        ),
-        DialogPurpose::UserAdd => (
-            "app.settings.users.add",
-            "app.settings.users.add.text",
-            "app.settings.users.add",
-            &USER_FIELDS,
             false,
         ),
         DialogPurpose::UserPassword(_) => (

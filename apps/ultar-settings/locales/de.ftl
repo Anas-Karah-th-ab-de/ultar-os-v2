@@ -76,6 +76,7 @@ app.settings.users.sub = Hinzufügen, Entfernen und Kennwortänderung brauchen d
 app.settings.users.none = Noch keine Benutzer
 app.settings.users.add = Benutzer hinzufügen
 app.settings.users.add.text = Der neue Benutzer bekommt einen persönlichen Ordner und Standardrechte.
+app.settings.users.add.text.admin = Der neue Benutzer bekommt einen persönlichen Ordner und Administratorrechte: er kann Einstellungen ändern und andere Benutzer verwalten.
 app.settings.users.name = Benutzername
 app.settings.users.password = Kennwort ändern
 app.settings.users.password.name = Kennwort von {name} ändern

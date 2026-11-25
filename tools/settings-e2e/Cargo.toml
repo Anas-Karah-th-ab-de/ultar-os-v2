@@ -18,6 +18,11 @@ ultar-surface = { path = "../../platform/ultar-surface" }
 ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# The services that follow the Users and Emergency settings (their own code checks
+# the effect, with their own identity on the bus).
+ultar-accountd = { path = "../../system/services/ultar-accountd" }
+ultar-sessiond = { path = "../../system/services/ultar-sessiond" }
+ultar-call = { path = "../../system/services/ultar-call" }
 # The example stops the service manager and measures the storage itself.
 rustix = { version = "1", default-features = false, features = ["std", "process", "fs"] }
 

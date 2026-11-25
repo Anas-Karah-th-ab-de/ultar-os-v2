@@ -24,14 +24,14 @@ use ultar_ui::Size;
 const WAIT: Duration = Duration::from_secs(20);
 
 /// A service that follows the settings: its connection and what it was told.
-struct Follower {
+pub(super) struct Follower {
     name: &'static str,
     changes: TypedSubscription<Changed>,
     _client: Client,
 }
 
 impl Follower {
-    fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
+    pub(super) fn connect(run: &Run, name: &'static str, socket: &str) -> Result<Follower, String> {
         let client = run.client_at(socket)?;
         let changes = client
             .subscribe::<Changed>()
@@ -44,7 +44,7 @@ impl Follower {
     }
 
     /// Waits until this service is told that `key` is now `value`.
-    fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
+    pub(super) fn told(&self, key: &str, value: &SettingValue) -> Result<(), String> {
         loop {
             let change = self
                 .changes
@@ -82,7 +82,7 @@ fn control(app: &mut App, panel: &str, key: &str) -> Result<ultar_ui::ui::NodeId
 
 /// Clicks the switch of `key`, or its slider at `at` of its width; the value the settings
 /// service holds afterwards.
-fn change(
+pub(super) fn change(
     (app, admin): (&mut App, &Client),
     (panel, key): (&str, &str),
     at: Option<f32>,
@@ -110,7 +110,7 @@ fn change(
     reply.value.ok_or(format!("{key}: no value"))
 }
 
-fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
+pub(super) fn page(bus: &Client, run: &Run, area: &str) -> Result<App, String> {
     let area = index_of(area).ok_or(format!("area {area}"))?;
     open(bus, run, Lang::En, Size::new(1280.0, 800.0), area)
 }
@@ -293,5 +293,6 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let desktop = Follower::connect(run, "the shell", "desktop")?;
     input(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop)?;
-    storage(bus, run)
+    storage(bus, run)?;
+    crate::wired_users::users_emergency(bus, admin, run)
 }
