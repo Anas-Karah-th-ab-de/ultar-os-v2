@@ -29,14 +29,41 @@ const RING_BYTES: u32 = 16384;
 const JOB_BYTES: u32 = 32;
 /// Jobs that may wait in one ring (the ring holds 512).
 const MAX_PENDING: u64 = 400;
+/// A queue that ran at least this many jobs gets a line in the log when it ends.
+const USAGE_LOG_JOBS: u64 = 50;
 const STEP_TIMEOUT_US: u32 = 500_000;
 /// How long the GuC gets to stop a context (it waits 640 ms for a hung one, then resets).
 const STOP_TIMEOUT_US: u32 = 3_000_000;
 /// How long one job may take before its queue is stopped (Linux: 5 s).
 const JOB_TIMEOUT_NS: u64 = 5_000_000_000;
 
+/// What a queue did, for the log when it ends: how many jobs, how long the engine worked for it
+/// (from a job handed to an idle queue until the queue was seen idle again) and the range of
+/// frequencies the GT was seen at while it worked.
+#[derive(Default)]
+struct Usage {
+    busy_ns: u64,
+    busy_from: u64,
+    mhz: Option<(u32, u32)>,
+}
+
+impl Usage {
+    fn working(&mut self, mhz: u32) {
+        let (low, high) = self.mhz.unwrap_or((mhz, mhz));
+        self.mhz = Some((low.min(mhz), high.max(mhz)));
+    }
+
+    fn idle(&mut self, now: u64) {
+        if self.busy_from != 0 {
+            self.busy_ns += now - self.busy_from;
+            self.busy_from = 0;
+        }
+    }
+}
+
 /// A context of a program on one engine.
 struct Queue {
+    usage: Usage,
     /// Context id at the GuC.
     id: u32,
     ring: GgttBuf,
@@ -176,6 +203,7 @@ fn build_queue(
         seqno,
         tail: JOB_BYTES,
         submitted: 0,
+        usage: Usage::default(),
         seen: 0,
         since_ns: 0,
         banned: false,
@@ -377,6 +405,7 @@ impl Backend for Gpu {
         if q.submitted == finished {
             // the queue was idle: the hang check measures this job from now
             q.since_ns = crate::arch::uptime_ns();
+            q.usage.busy_from = q.since_ns;
         }
         let seqno = q.submitted + 1;
         let mut job = mi::batch_start(batch_va, false).to_vec();
@@ -411,6 +440,11 @@ impl Backend for Gpu {
         if finished != q.seen {
             (q.seen, q.since_ns) = (finished, now);
         }
+        if finished == q.submitted {
+            q.usage.idle(now);
+        } else {
+            q.usage.working(ultar_intel_gt::freq::current(&mut dev.mmio).mhz());
+        }
         if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
             ban(dev, rt, queue);
             return u64::MAX;
@@ -426,6 +460,10 @@ impl Backend for Gpu {
     fn queue_free(&mut self, queue: u32) {
         let Ok((dev, rt)) = self.parts() else { return };
         if let Some(q) = rt.programs.queues.remove(&queue) {
+            if q.submitted >= USAGE_LOG_JOBS {
+                let (low, high) = q.usage.mhz.unwrap_or((0, 0));
+                crate::kprintln!("[intel-gt] queue ends: {} jobs, engine busy {} ms, GT seen at {low}–{high} MHz while busy", q.submitted, q.usage.busy_ns / 1_000_000);
+            }
             retire(dev, rt, q);
         }
     }
