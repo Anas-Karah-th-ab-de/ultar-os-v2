@@ -35,12 +35,14 @@ cp "$KERN" "$W/kernel.efi"
 # The broken release: a copy of the kernel source with one panic right after the clock is set up
 # (the product source has no such hook)
 KP=$W/kpanic
-mkdir -p "$KP/kernel" "$KP/system/core" "$KP/assets" "$KP/drivers/kernel"
+mkdir -p "$KP/kernel" "$KP/assets"
 cp -r kernel/ultar-kern "$KP/kernel/"; rm -rf "$KP/kernel/ultar-kern/target"
-# every path dependency of the kernel (ultar-slots, ultar-brand)
-cp -r system/core/ultar-slots system/core/ultar-brand "$KP/system/core/"; cp -r assets/fonts "$KP/assets/"
-# path dependencies of the kernel besides ultar-slots (the Intel display logic)
-cp -r drivers/kernel/intel-display "$KP/drivers/kernel/"; rm -rf "$KP/drivers/kernel/intel-display/target"
+cp -r assets/fonts "$KP/assets/"
+# every path dependency of the kernel, read from its manifest (a new one - the Intel GT and NPU
+# drivers - was missing from a fixed list: the copy did not build and the gate ended without a word)
+for dep in $(sed -n 's/.*path = "\.\.\/\.\.\/\([^"]*\)".*/\1/p' kernel/ultar-kern/Cargo.toml); do
+  mkdir -p "$KP/$(dirname "$dep")"; cp -r "$dep" "$KP/$dep"; rm -rf "${KP:?}/${dep:?}/target"
+done
 python3 - "$KP/kernel/ultar-kern/src/main.rs" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()
@@ -48,7 +50,8 @@ anchor = "        bootslot::report();\n"
 assert anchor in s
 open(p, "w").write(s.replace(anchor, anchor + '        panic!("ab-test-panic: kernel built to fail its start");\n', 1))
 PY
-( cd "$KP/kernel/ultar-kern" && env -u CARGO_TARGET_DIR RUSTC_BOOTSTRAP=1 cargo build --release -q 2>/dev/null )
+( cd "$KP/kernel/ultar-kern" && env -u CARGO_TARGET_DIR RUSTC_BOOTSTRAP=1 cargo build --release -q >"$W/kpanic-build.log" 2>&1 ) \
+  || { tail -20 "$W/kpanic-build.log"; echo "AB-TEST: FEHLER (the kernel that panics did not build)"; exit 1; }
 cp "$KP/kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi" "$W/kernel-panic.efi"
 rm -rf "$KP"
 ( cd kernel/ultar-loader && env -u CARGO_TARGET_DIR RUSTC_BOOTSTRAP=1 cargo build --release -q )

@@ -263,8 +263,14 @@ impl Ui {
         NodeId::new(0, 0)
     }
 
-    /// Removes every node and interaction state; the root becomes an empty column.
+    /// Removes every node and interaction state; the root becomes an empty column. One thing
+    /// stays: whether the user was working with the keyboard (the focus ring was showing). An
+    /// app that builds its tree again and gives the focus back with [`Ui::focus`] gets the ring
+    /// back with it – without this every rebuild (a new state of a service, the minute turning)
+    /// took the ring away from under a keyboard user, and a Tab followed by a rebuild before
+    /// the next frame showed nothing at all (the window looked frozen).
     pub fn clear(&mut self) {
+        let keyboard = self.input.focus.is_some() && self.input.focus_visible;
         self.nodes.clear();
         self.nodes.push(tree::new_node(
             Widget::Flex(Flex::column()),
@@ -272,6 +278,7 @@ impl Ui {
             None,
         ));
         self.input = InputState::default();
+        self.input.focus_visible = keyboard;
         self.layers = Layers::default();
         self.invalidate_layout();
     }
