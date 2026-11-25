@@ -131,7 +131,8 @@ impl<B: Backend> File<B> {
         if queue != 0 && !self.queues.get(&queue).is_some_and(named) {
             return Err(Errno::Inval);
         }
-        if count == 0 || count > MAX_BIND_OPS {
+        // no operation at all: only the syncs, stored when the binds before are done – they are
+        if count > MAX_BIND_OPS {
             return Err(Errno::Inval);
         }
         if !self.vms.contains_key(&vm_id) {
@@ -141,7 +142,7 @@ impl<B: Backend> File<B> {
         self.syncs_ready(be, &syncs)?;
         if count == 1 {
             self.bind_op(be, vm_id, &b[24..104])?;
-        } else {
+        } else if count > 1 {
             let vector = u64_at(b, 24);
             for i in 0..count as u64 {
                 let op = user.read(vector + i * 80, 80).ok_or(Errno::Fault)?;
