@@ -127,6 +127,9 @@ upstream = "https://github.com/ggml-org/llama.cpp"
 tag = "b{version}"
 license = "MIT"
 why = "runs language models (GGUF files); the Vulkan backend computes on the GPU"
+# Our only patch: the fast matrix-vector path up to 16 tokens instead of 8 (verify blocks of
+# speculative decoding on the Arc 140T, see the patch header).
+patches = ["vulkan-vec-16.patch"]
 # `test-backend-ops` (tests) compares every GPU operation with the CPU – the tool to find a
 # wrong or hanging shader on Ultar. Examples are built too: `llama-speculative-simple` measures speculative decoding (MTP heads of
 # the model, draft models) without a server.
