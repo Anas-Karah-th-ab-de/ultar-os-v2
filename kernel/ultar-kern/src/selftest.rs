@@ -115,6 +115,14 @@ pub fn run() {
     crate::drivers::intel_display::selftest::run();
     // Intel GT (render/compute side): identification, engines, GuC image and signature (GTTEST: …)
     crate::drivers::intel_display::gt::selftest();
+    // a program on the GPU render node the GT test published (DRITEST: …); only on the test medium
+    if let Some(path) = programm("dritest") {
+        kprintln!("[test] Programm dritest:");
+        match crate::proc::spawn(&path, vec![String::from("dritest")], vec![String::from("PATH=/bin")]) {
+            Ok(_) => crate::proc::run_all(),
+            Err(e) => kprintln!("  Fehler: {e}"),
+        }
+    }
     // Intel NPU: clock fuses, power-up to a running IP block, power-down (NPUTEST: …)
     crate::drivers::intel_npu::selftest();
     crate::werkstatt::report();
