@@ -138,6 +138,21 @@ pub fn trusted_dir_from_env() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/etc/ultar/trusted-keys"))
 }
 
+/// The shared, world-readable directory the Store publishes its verified catalogue cache to
+/// and the shell's overview search reads it from (`search.source.store`). The Store's own
+/// cache lives in its private data area (`ULTAR_STORE_DATA/catalog-cache`, `0700`); the shell
+/// (its own user) cannot read that, so the verified bytes are also published here. The image
+/// provisions this directory (writable by the Store, readable by the shell); `ULTAR_STORE_CACHE`
+/// overrides it (tests, dev images). No network is involved on either side.
+pub const STORE_CACHE_DIR: &str = "/data/ultar/store-cache";
+
+/// The shared catalogue cache directory; `ULTAR_STORE_CACHE` overrides (tests, dev images).
+pub fn store_cache_dir_from_env() -> PathBuf {
+    std::env::var("ULTAR_STORE_CACHE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(STORE_CACHE_DIR))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

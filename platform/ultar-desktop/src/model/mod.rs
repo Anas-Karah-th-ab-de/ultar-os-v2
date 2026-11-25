@@ -15,6 +15,7 @@ pub mod quick;
 pub mod search;
 pub mod services;
 pub mod state;
+pub mod store;
 pub mod time;
 pub mod wifi;
 

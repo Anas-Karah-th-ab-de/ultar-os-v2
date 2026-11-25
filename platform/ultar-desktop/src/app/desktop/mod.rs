@@ -98,6 +98,9 @@ fn read_services(link: &Link, d: &mut Desktop) {
                 .collect();
         }
     }
+    // The Store's cached, signature-checked catalogue for the overview search
+    // (search.source.store); no network. Absent or unverified: nothing offered.
+    d.overview.store = crate::model::store::load_from_env();
 }
 
 /// The person's remembered searches, read beside the shell (only shown when
@@ -268,6 +271,11 @@ impl DesktopApp {
                     ..self.shell.shape
                 });
             }
+        }
+        // search.source.store changed: read the Store's cached catalogue again (a fresh
+        // verified cache may have appeared); the switch itself gates what is offered.
+        if keys.iter().any(|k| k == "search.source.store") {
+            self.shell.d.overview.store = crate::model::store::load_from_env();
         }
         self.sync_history(&keys)?;
         if any {

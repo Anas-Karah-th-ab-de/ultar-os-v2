@@ -5484,11 +5484,14 @@ dependencies = [
 name = "ultar-desktop"
 version = "0.8.0"
 dependencies = [
+ "ed25519-dalek 2.2.0",
+ "hex",
  "serde",
  "serde_json",
  "toml",
  "ultar-brand",
  "ultar-bus",
+ "ultar-catalog",
  "ultar-compositor",
  "ultar-hal",
  "ultar-i18n",

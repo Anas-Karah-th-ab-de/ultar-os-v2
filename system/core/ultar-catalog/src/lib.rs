@@ -22,4 +22,6 @@ pub mod sign;
 pub mod source;
 
 pub use model::{Catalog, CatalogApp, Loc, PackagePin, Permission, Source, FORMAT_VERSION};
-pub use source::{FileCatalogSource, LoadedCatalog, SourceError};
+pub use source::{
+    store_cache_dir_from_env, trusted_dir_from_env, FileCatalogSource, LoadedCatalog, SourceError,
+};

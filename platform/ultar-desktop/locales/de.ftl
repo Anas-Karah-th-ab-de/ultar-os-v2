@@ -125,6 +125,7 @@ desk.ov.group.characters = Zeichen
 desk.ov.group.commands = Befehle
 desk.ov.group.history = Verlauf
 desk.ov.group.settings = Einstellungen
+desk.ov.group.store = Aus dem Store
 desk.ov.new_workspace = Neue Arbeitsfläche
 desk.ov.no_preview = Keine Vorschau
 desk.ov.no_results = Keine Ergebnisse

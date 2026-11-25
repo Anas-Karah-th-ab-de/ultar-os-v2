@@ -30,6 +30,7 @@ path = "src/bin/ultar-sysdialog.rs"
 ultar-ui = { path = "../ultar-ui", default-features = false }
 ultar-surface = { path = "../ultar-surface" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-catalog = { path = "../../system/core/ultar-catalog" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
 ultar-service = { path = "../../system/core/ultar-service" }
@@ -45,6 +46,10 @@ toml = "0.8"
 ultar-ui = { path = "../ultar-ui" }
 ultar-compositor = { path = "../ultar-compositor" }
 ultar-hal = { path = "../../system/hal/ultar-hal" }
+# Signing a catalogue fixture for the Store-source test (model/store.rs); already in the
+# workspace (the Store and ultar-catalog sign with them).
+ed25519-dalek = "2"
+hex = "0.4"
 # only its list of areas: every settings://<page> the shell opens must be one of them
 ultar-settings = { path = "../../apps/ultar-settings" }
 

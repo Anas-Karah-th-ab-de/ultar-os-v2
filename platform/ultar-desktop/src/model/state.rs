@@ -162,6 +162,9 @@ pub struct OverviewState {
     pub query: String,
     /// What the search looks through (Settings > Search).
     pub sources: super::search::Sources,
+    /// The Store's cached, signature-checked catalogue (`search.source.store`); `None` until
+    /// a verified cache is read. Apps from it that are not installed are offered.
+    pub store: Option<ultar_catalog::Catalog>,
     /// The remembered searches and opened results (`search.history`).
     pub history: super::history::History,
     /// The conversation with the helper (asked from the search or in its own sheet).

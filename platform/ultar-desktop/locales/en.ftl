@@ -125,6 +125,7 @@ desk.ov.group.characters = Characters
 desk.ov.group.commands = Commands
 desk.ov.group.history = History
 desk.ov.group.settings = Settings
+desk.ov.group.store = From the Store
 desk.ov.new_workspace = New workspace
 desk.ov.no_preview = No preview
 desk.ov.no_results = No results

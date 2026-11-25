@@ -89,6 +89,7 @@ fn results(view: &mut View, root: NodeId, d: &Desktop, tr: &Translator) -> Resul
         tr,
         d.overview.sources,
         &d.overview.history,
+        d.overview.store.as_ref(),
     );
     if hits.is_empty() {
         return muted(view, root, "desk.ov.no_results");

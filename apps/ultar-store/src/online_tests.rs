@@ -34,6 +34,7 @@ struct Setup {
     server: Arc<FakeServer>,
     source: OnlineCatalogSource,
     cache: PathBuf,
+    shared: PathBuf,
     key: SigningKey,
 }
 
@@ -63,6 +64,7 @@ fn setup() -> Setup {
         .unwrap()
         .insert("appbuilder-0.8.0.uap".into(), pkg);
     let cache = dir.path().join("cache");
+    let shared = dir.path().join("shared");
     let fallback: Arc<dyn CatalogSource> =
         Arc::new(EmbeddedCatalogSource::new("image", crate::BUILT_IN_CATALOG));
     let source = OnlineCatalogSource::new(
@@ -72,12 +74,14 @@ fn setup() -> Setup {
         Box::new(FakeFetch(Arc::clone(&server))),
         fallback,
     )
-    .unwrap();
+    .unwrap()
+    .with_shared_cache(&shared);
     Setup {
         _dir: dir,
         server,
         source,
         cache,
+        shared,
         key,
     }
 }
@@ -109,6 +113,19 @@ fn loads_verifies_caches_and_downloads_a_pinned_package() {
     // Present and matching: no second download (server down does not matter).
     s.server.down.store(true, Ordering::SeqCst);
     s.source.ensure_package(&pkg).unwrap();
+}
+
+#[test]
+fn publishes_the_verified_cache_the_shell_can_read() {
+    let s = setup();
+    s.source.load().unwrap();
+    // The shared cache holds the body and its signature, and verifies against the trusted
+    // keys exactly as the shell's overview search reads it (model/store.rs).
+    assert!(s.shared.join(CATALOG_FILE).is_file());
+    let keys = s._dir.path().join("keys");
+    let loaded = FileCatalogSource::new(&s.shared, &keys).load().unwrap();
+    assert!(loaded.verified);
+    assert_eq!(loaded.catalog.apps[0].id, "km-code-craft.appbuilder");
 }
 
 #[test]

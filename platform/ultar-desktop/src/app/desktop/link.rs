@@ -19,13 +19,14 @@ use ultar_ui::ui::{MAX_DOUBLE_CLICK_MS, MIN_DOUBLE_CLICK_MS};
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 15] = [
+pub const FOLLOWED: [&str; 16] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
     "accessibility.reduce_motion",
     "accessibility.double_click_ms",
     "search.source.apps",
+    "search.source.store",
     "search.source.settings",
     "search.source.calculator",
     "search.source.commands",
@@ -264,5 +265,19 @@ mod tests {
         let sources = d.overview.sources;
         assert!(!sources.apps && !sources.arabic_variants && sources.settings);
         assert!(d.values.reduce_motion);
+    }
+
+    #[test]
+    fn the_store_source_switch_reaches_the_state() {
+        let mut d = Desktop::new(Lang::En);
+        assert!(d.overview.sources.store, "on until the settings say otherwise");
+        assert!(FOLLOWED.contains(&"search.source.store"));
+        apply_setting(&mut d, "search.source.store", &SettingValue::Flag(false));
+        assert!(!d.overview.sources.store);
+        apply_setting(&mut d, "search.source.store", &SettingValue::Flag(true));
+        assert!(d.overview.sources.store);
+        // A value of the wrong type changes nothing (the last good value stays).
+        apply_setting(&mut d, "search.source.store", &SettingValue::Integer(1));
+        assert!(d.overview.sources.store);
     }
 }

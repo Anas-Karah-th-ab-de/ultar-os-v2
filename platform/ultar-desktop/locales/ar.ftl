@@ -125,6 +125,7 @@ desk.ov.group.characters = أحرف ورموز
 desk.ov.group.commands = أوامر
 desk.ov.group.history = السجل
 desk.ov.group.settings = الإعدادات
+desk.ov.group.store = من المتجر
 desk.ov.new_workspace = مساحة عمل جديدة
 desk.ov.no_preview = لا توجد معاينة
 desk.ov.no_results = لا نتائج
