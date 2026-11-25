@@ -293,6 +293,12 @@ impl State {
     /// Damages the area a pointer image of `size` covers (the old size too when the
     /// size changes, so a shrinking pointer leaves no trace).
     pub(super) fn damage_cursor_sized(&mut self, size: ultar_surface::proto::PointerSize) {
+        // The magnifier scales the output around the pointer: every move of the
+        // pointer (or change of its image) redraws the whole magnified view.
+        if self.session.visual.zoom_active() {
+            self.damage_all();
+            return;
+        }
         if self.config.cursor && !self.pointer.hidden {
             let r = crate::render::cursor_rect(self.pointer.x, self.pointer.y, size);
             self.damage_logical(r);

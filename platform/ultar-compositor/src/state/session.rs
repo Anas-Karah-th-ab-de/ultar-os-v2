@@ -58,6 +58,8 @@ pub struct Session {
     /// Output management of the display service (provisional setup,
     /// display numbers).
     pub manage: super::output_config::OutputManagement,
+    /// The accessibility view: magnifier, colour filter and the alert flash.
+    pub visual: super::visual::Visual,
 }
 
 /// What an activation token allows: focus until `expiry`, as long as the

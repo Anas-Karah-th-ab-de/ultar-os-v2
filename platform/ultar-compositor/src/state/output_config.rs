@@ -229,6 +229,7 @@ impl State {
 
     /// Expires the display numbers and the provisional deadline.
     pub fn tick_outputs(&mut self) {
+        self.tick_visual();
         let now = self.now;
         if self
             .session
@@ -260,6 +261,11 @@ impl State {
         let now_due =
             (manage.revert_due.is_some() || !manage.queued.is_empty() || !manage.detect.is_empty())
                 .then_some(self.now);
-        [identify, provisional, now_due].into_iter().flatten().min()
+        let flash =
+            (self.session.visual.flash_until > self.now).then_some(self.session.visual.flash_until);
+        [identify, provisional, now_due, flash]
+            .into_iter()
+            .flatten()
+            .min()
     }
 }
