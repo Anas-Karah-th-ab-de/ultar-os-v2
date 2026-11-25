@@ -323,6 +323,9 @@ fn wait_event_finds_the_event_and_stops_at_a_failure() {
     m.guc_says(0, &[EVENT | 0x8002, 9]);
     m.guc_says(0, &[EVENT | 0x1002, 7]);
     assert_eq!(ct.wait_event(&mut s, &mut m, 0x1002, 1000).unwrap(), [7]);
+    // the event that came first is kept for the owner
+    assert_eq!(ct.take_backlog(), [(0x8002, vec![9])]);
+    assert!(ct.take_backlog().is_empty());
     // nothing more: the wait runs out
     assert!(matches!(
         ct.wait_event(&mut s, &mut m, 0x1002, 1000),

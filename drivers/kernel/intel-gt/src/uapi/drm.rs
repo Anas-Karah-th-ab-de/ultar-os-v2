@@ -133,7 +133,7 @@ pub fn ioctl<B: Backend>(
         (_, Some(super::XE_VM_BIND)) => file.vm_bind(be, arg, user),
         (_, Some(super::XE_EXEC_QUEUE_CREATE)) => file.queue_create(be, arg, user),
         (_, Some(super::XE_EXEC_QUEUE_DESTROY)) => file.queue_destroy(be, arg),
-        (_, Some(super::XE_EXEC_QUEUE_GET_PROPERTY)) => file.queue_get_property(arg),
+        (_, Some(super::XE_EXEC_QUEUE_GET_PROPERTY)) => file.queue_get_property(be, arg),
         (_, Some(super::XE_EXEC)) => file.exec(be, arg, user),
         (_, Some(super::XE_WAIT_USER_FENCE)) => file.wait_user_fence(be, arg, user),
         _ => Err(Errno::Inval),

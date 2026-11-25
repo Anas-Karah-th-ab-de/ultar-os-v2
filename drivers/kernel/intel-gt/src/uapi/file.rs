@@ -33,8 +33,11 @@ pub trait Backend {
     fn queue_new(&mut self, vm: u32, class: EngineClass) -> Result<u32, Errno>;
     /// Runs the batch at `batch_va`; returns the job's sequence number (they count up from 1).
     fn queue_run(&mut self, queue: u32, batch_va: u64) -> Result<u64, Errno>;
-    /// Sequence number of the last job of the queue that finished (0: none yet).
+    /// Sequence number of the last job of the queue that finished (0: none yet); `u64::MAX`
+    /// once the queue was stopped because a job hung (nothing of it will finish any more).
     fn queue_done(&mut self, queue: u32) -> u64;
+    /// Whether the queue was stopped because a job of it hung.
+    fn queue_banned(&mut self, queue: u32) -> bool;
     /// Ends a queue.
     fn queue_free(&mut self, queue: u32);
     /// Monotonic time in ns.
@@ -445,16 +448,14 @@ impl<B: Backend> File<B> {
         Ok(())
     }
 
-    /// `DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY`: whether the queue was banned (never, so far).
-    pub fn queue_get_property(&mut self, arg: &mut [u8]) -> Result<(), Errno> {
+    /// `DRM_IOCTL_XE_EXEC_QUEUE_GET_PROPERTY`: whether the queue was stopped because a job hung.
+    pub fn queue_get_property(&mut self, be: &mut B, arg: &mut [u8]) -> Result<(), Errno> {
         let b = fields(arg, 40, 24, true)?;
         if u32_at(b, 12) != 0 {
             return Err(Errno::Inval);
         }
-        if !self.queues.contains_key(&u32_at(b, 8)) {
-            return Err(Errno::NoEnt);
-        }
-        put64(arg, 16, 0);
+        let q = self.queues.get(&u32_at(b, 8)).ok_or(Errno::NoEnt)?;
+        put64(arg, 16, be.queue_banned(q.backend) as u64);
         Ok(())
     }
 
@@ -466,6 +467,9 @@ impl<B: Backend> File<B> {
         let q = self.queues.get(&id).ok_or(Errno::NoEnt)?;
         if batches > 1 {
             return Err(Errno::Inval);
+        }
+        if be.queue_banned(q.backend) {
+            return Err(Errno::Canceled);
         }
         let fences = Self::syncs(user, u64_at(b, 16), u32_at(b, 12))?;
         if self.fences.len() + fences.len() > MAX_FENCES {

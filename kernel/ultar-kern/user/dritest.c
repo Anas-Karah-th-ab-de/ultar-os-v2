@@ -3,7 +3,8 @@
  * the device queries (two calls each: size, then data); wrong sizes, unknown requests and callers without
  * the right are refused. Then the GPU works for the program: buffers created and mapped, an address
  * space, bindings, a queue per engine, batches that store values into a buffer, waits on user fences,
- * 600 jobs through one ring, rebinding, refusals, and cleanup when a process just exits.
+ * 600 jobs through one ring, rebinding, refusals, cleanup when a process just exits, and a batch that
+ * never ends: its queue is stopped, the waiter is let go, and the engine works again afterwards.
  *                                                                                → "DRITEST: ALLES OK"
  * The node only exists after the GT driver published its device record (GTTEST on an Intel GPU).
  */
@@ -22,6 +23,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define PR_ULTAR_RIGHTS_DROP 0x554c5201
@@ -130,6 +132,12 @@ struct xe_wait_user_fence {
 #define IOCTL_VM_BIND _IOW('d', 0x45, struct xe_vm_bind)
 #define IOCTL_QUEUE_CREATE _IOWR('d', 0x46, struct xe_exec_queue_create)
 #define IOCTL_QUEUE_DESTROY _IOW('d', 0x47, struct xe_exec_queue_destroy)
+struct xe_queue_get_property {
+    uint64_t extensions;
+    uint32_t exec_queue_id, property;
+    uint64_t value, reserved[2];
+};
+#define IOCTL_QUEUE_GET_PROPERTY _IOWR('d', 0x48, struct xe_queue_get_property)
 #define IOCTL_EXEC _IOW('d', 0x49, struct xe_exec)
 #define IOCTL_WAIT_USER_FENCE _IOWR('d', 0x4a, struct xe_wait_user_fence)
 #define IOCTL_OBSERVATION _IOW('d', 0x4b, char[24])
@@ -385,6 +393,45 @@ static void exit_without_cleanup(void) {
     }
 }
 
+static double seconds(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec / 1e9;
+}
+
+/* a batch that jumps to itself forever: the kernel stops the queue after its job time is over */
+static void hung_job(int fd) {
+    struct gpu g = {0};
+    if (setup(&g, fd) != 0) return;
+    uint32_t q = queue(fd, g.vm, 4);
+    g.batch[0] = 0x31u << 23 | 1u << 8 | 1; /* MI_BATCH_BUFFER_START in this address space */
+    g.batch[1] = (uint32_t)BATCH_VA;
+    g.batch[2] = (uint32_t)(BATCH_VA >> 32);
+    struct xe_sync sync = {.type = 2, .flags = 1, .addr = (uintptr_t)&g.fence, .timeline_value = 0xdead};
+    struct xe_exec e = {.exec_queue_id = q, .num_syncs = 1, .syncs = (uintptr_t)&sync, .address = BATCH_VA, .num_batch_buffer = 1};
+    double t0 = seconds();
+    int sent = q && ioctl(fd, IOCTL_EXEC, &e) == 0;
+    struct xe_wait_user_fence w = {.addr = (uintptr_t)&g.fence, .value = 0xdead, .mask = ~0ull, .timeout = 15000000000ll};
+    int waited = ioctl(fd, IOCTL_WAIT_USER_FENCE, &w);
+    double took = seconds() - t0;
+    printf("    hängender Auftrag: Warten kehrte nach %.1f s zurück (Rückgabe %d, errno %d)\n", took, waited, errno);
+    check("hängender Auftrag: der Wartende wird nach der Auftragszeit entlassen", sent && waited == 0 && took > 3.0 && took < 12.0);
+    struct xe_queue_get_property p = {.exec_queue_id = q};
+    check("Warteschlange ist als gestoppt gemeldet", ioctl(fd, IOCTL_QUEUE_GET_PROPERTY, &p) == 0 && p.value == 1);
+    check("gestoppte Warteschlange nimmt nichts mehr an: ECANCELED", ioctl(fd, IOCTL_EXEC, &e) == -1 && errno == ECANCELED);
+    struct xe_exec_queue_destroy d = {.exec_queue_id = q};
+    check("gestoppte Warteschlange beendet", ioctl(fd, IOCTL_QUEUE_DESTROY, &d) == 0);
+    /* the engine was reset: it must work again, and so must the others */
+    static const uint16_t classes[] = {4, 0, 1};
+    for (unsigned i = 0; i < 3; i++) {
+        uint32_t nq = queue(fd, g.vm, classes[i]);
+        store_batch(g.batch, DATA_VA + 64, 0x600d0000u + i);
+        g.fence = 0;
+        int ok = nq && run(fd, nq, &g.fence, 5) == 0 && g.data[16] == 0x600d0000u + i;
+        check(i == 0 ? "danach arbeitet die Rechen-Engine wieder" : i == 1 ? "danach arbeitet die Render-Engine" : "danach arbeitet die Kopier-Engine", ok);
+    }
+}
+
 static void without_right(void) {
     pid_t c = fork();
     if (c == 0) {
@@ -427,6 +474,7 @@ int main(void) {
             many_and_rebind(&g);
             gpu_refusals(&g);
             exit_without_cleanup();
+            hung_job(fd);
         }
         close(fd);
     }

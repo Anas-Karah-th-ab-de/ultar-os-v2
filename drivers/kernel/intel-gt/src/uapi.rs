@@ -95,6 +95,8 @@ pub enum Errno {
     Time = 62,
     /// Not supported (yet).
     OpNotSupp = 95,
+    /// The queue was stopped because a job of it hung.
+    Canceled = 125,
 }
 
 /// Engine classes as programs name them.

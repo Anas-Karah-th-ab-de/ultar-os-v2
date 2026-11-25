@@ -15,6 +15,7 @@ pub struct Fake {
     pub freed_queues: Vec<u32>,
     pub runs: Vec<(u32, u64)>,
     pub done: u64,
+    pub banned: bool,
     pub now: u64,
     next_page: u64,
 }
@@ -54,7 +55,14 @@ impl Backend for Fake {
         Ok(self.runs.len() as u64)
     }
     fn queue_done(&mut self, _queue: u32) -> u64 {
-        self.done
+        if self.banned {
+            u64::MAX
+        } else {
+            self.done
+        }
+    }
+    fn queue_banned(&mut self, _queue: u32) -> bool {
+        self.banned
     }
     fn queue_free(&mut self, queue: u32) {
         self.freed_queues.push(queue);
@@ -421,4 +429,28 @@ fn closing_the_file_ends_queues_and_address_spaces() {
         (vec![201], vec![101])
     );
     assert!(f.buffer_at(1 << 32).is_none());
+}
+
+#[test]
+fn a_stopped_queue_releases_its_fences_and_takes_no_more_jobs() {
+    let (mut f, mut be) = (File::<Fake>::default(), Fake::default());
+    let v = vm(&mut f, &mut be);
+    let q = queue(&mut f, &mut be, v, 4).unwrap();
+    let mut mem = fence_mem(0x99);
+    f.exec(&mut be, &exec_arg(q, 0x10_0000, 0x7000, 1), &mut mem)
+        .unwrap();
+    let mut prop = [0u8; 40];
+    put32(&mut prop, 8, q);
+    f.queue_get_property(&mut be, &mut prop).unwrap();
+    assert_eq!(u64_at(&prop, 16), 0);
+    be.banned = true;
+    f.reap(&mut be, &mut mem);
+    assert_eq!(u64_at(&mem.0[1].1, 0), 0x99, "the waiter is let go");
+    f.queue_get_property(&mut be, &mut prop).unwrap();
+    assert_eq!(u64_at(&prop, 16), 1);
+    assert_eq!(
+        f.exec(&mut be, &exec_arg(q, 0x10_0000, 0, 0), &mut mem),
+        Err(Errno::Canceled)
+    );
+    assert_eq!(be.runs.len(), 1);
 }

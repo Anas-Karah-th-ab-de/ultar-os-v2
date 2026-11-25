@@ -30,6 +30,10 @@ const JOB_BYTES: u32 = 32;
 /// Jobs that may wait in one ring (the ring holds 512).
 const MAX_PENDING: u64 = 400;
 const STEP_TIMEOUT_US: u32 = 500_000;
+/// How long the GuC gets to stop a context (it waits 640 ms for a hung one, then resets).
+const STOP_TIMEOUT_US: u32 = 3_000_000;
+/// How long one job may take before its queue is stopped (Linux: 5 s).
+const JOB_TIMEOUT_NS: u64 = 5_000_000_000;
 
 /// A context of a program on one engine.
 struct Queue {
@@ -43,6 +47,14 @@ struct Queue {
     tail: u32,
     /// Number of the last job handed over.
     submitted: u64,
+    /// Number of the last job seen finished, and when that or the hand-over of the job that
+    /// waits longest was (ns): what the hang check measures from.
+    seen: u64,
+    since_ns: u64,
+    /// Stopped because a job hung: the GuC no longer knows the context.
+    banned: bool,
+    /// The GuC did not confirm that it let go of the context: its buffers stay.
+    kept: bool,
 }
 
 /// What programs created.
@@ -164,6 +176,10 @@ fn build_queue(
         seqno,
         tail: JOB_BYTES,
         submitted: 0,
+        seen: 0,
+        since_ns: 0,
+        banned: false,
+        kept: false,
     };
     Ok((queue, descriptor))
 }
@@ -193,34 +209,75 @@ fn register(
     Ok(())
 }
 
-/// Disables and deregisters the context and gives its buffers back.
-fn retire(dev: &mut Device, rt: &mut Runtime, q: Queue) {
+/// Takes the context away from the GuC: disable, then deregister. A hung job makes the first
+/// step take as long as the GuC gives the context to stop (then it resets the engine).
+fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String> {
     let (hw, words) = (&mut dev.mmio, &mut rt.words);
-    for (action, event) in [
+    for (what, action, event) in [
         (
-            &submit::schedule(q.id, false)[..],
+            "disable",
+            &submit::schedule(id, false)[..],
             submit::EVENT_SCHED_CONTEXT_MODE_DONE,
         ),
         (
-            &submit::deregister(q.id)[..],
+            "deregister",
+            &submit::deregister(id)[..],
             submit::EVENT_DEREGISTER_CONTEXT_DONE,
         ),
     ] {
-        let sent = rt.ct.post(hw, words, action).map(|_| ());
-        let done = sent.and_then(|_| {
-            rt.ct
-                .wait_event(hw, words, event, STEP_TIMEOUT_US)
-                .map(|_| ())
-        });
-        if let Err(e) = done {
-            // the GuC may still use the buffers: they are kept rather than freed under it
-            crate::kprintln!(
-                "[intel-gt] context {} not retired ({e}); its buffers are kept",
-                q.id
-            );
-            core::mem::forget(q);
-            return;
+        rt.ct
+            .post(hw, words, action)
+            .map_err(|e| format!("{what}: {e}"))?;
+        rt.ct
+            .wait_event(hw, words, event, STOP_TIMEOUT_US)
+            .map_err(|e| format!("{what} not confirmed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
+/// resets the engine when the context does not give way; the queue takes no more jobs.
+fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
+    let Some(id) = rt.programs.queues.get(&key).map(|q| q.id) else {
+        return;
+    };
+    let result = unregister(dev, rt, id);
+    let events = rt.ct.take_backlog();
+    let reset = events
+        .iter()
+        .any(|(a, p)| *a == submit::EVENT_CONTEXT_RESET && p.first() == Some(&id));
+    crate::kprintln!(
+        "[intel-gt] context {id} stopped: a job hung{}{}",
+        if reset {
+            ", the GuC reset its engine"
+        } else {
+            ""
+        },
+        match &result {
+            Ok(()) => String::new(),
+            Err(e) => format!("; {e}"),
         }
+    );
+    if let Some(q) = rt.programs.queues.get_mut(&key) {
+        q.banned = true;
+        // without the GuC's confirmation the buffers are never given back
+        q.kept = result.is_err();
+    }
+}
+
+/// Gives the buffers of a queue back (and takes it from the GuC first if it still knows it).
+fn retire(dev: &mut Device, rt: &mut Runtime, q: Queue) {
+    let mut kept = q.kept;
+    if !q.banned {
+        if let Err(e) = unregister(dev, rt, q.id) {
+            crate::kprintln!("[intel-gt] context {} not retired ({e})", q.id);
+            kept = true;
+        }
+    }
+    if kept {
+        // the GuC may still use the buffers: they are kept rather than freed under it
+        core::mem::forget(q);
+        return;
     }
     for b in [q.ring, q.image, q.seqno] {
         b.release(dev);
@@ -302,8 +359,16 @@ impl Backend for Gpu {
     fn queue_run(&mut self, queue: u32, batch_va: u64) -> Result<u64, Errno> {
         let (dev, rt) = self.parts()?;
         let q = rt.programs.queues.get_mut(&queue).ok_or(Errno::NoEnt)?;
-        if q.submitted - done(q) >= MAX_PENDING {
+        if q.banned {
+            return Err(Errno::Canceled);
+        }
+        let finished = done(q);
+        if q.submitted - finished >= MAX_PENDING {
             return Err(Errno::Again);
+        }
+        if q.submitted == finished {
+            // the queue was idle: the hang check measures this job from now
+            q.since_ns = crate::arch::uptime_ns();
         }
         let seqno = q.submitted + 1;
         let mut job = mi::batch_start(batch_va, false).to_vec();
@@ -325,11 +390,29 @@ impl Backend for Gpu {
     }
 
     fn queue_done(&mut self, queue: u32) -> u64 {
-        let found = self
-            .rt
-            .as_ref()
-            .and_then(|rt| rt.programs.queues.get(&queue));
-        found.map(done).unwrap_or(u64::MAX)
+        let Ok((dev, rt)) = self.parts() else {
+            return u64::MAX;
+        };
+        let Some(q) = rt.programs.queues.get_mut(&queue) else {
+            return u64::MAX;
+        };
+        if q.banned {
+            return u64::MAX;
+        }
+        let (finished, now) = (done(q), crate::arch::uptime_ns());
+        if finished != q.seen {
+            (q.seen, q.since_ns) = (finished, now);
+        }
+        if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
+            ban(dev, rt, queue);
+            return u64::MAX;
+        }
+        finished
+    }
+
+    fn queue_banned(&mut self, queue: u32) -> bool {
+        let queues = self.rt.as_ref().map(|rt| &rt.programs.queues);
+        queues.and_then(|q| q.get(&queue)).is_some_and(|q| q.banned)
     }
 
     fn queue_free(&mut self, queue: u32) {
