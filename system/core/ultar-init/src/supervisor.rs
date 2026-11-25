@@ -44,6 +44,8 @@ pub enum ControlError {
     Already,
     /// The system is shutting down.
     ShuttingDown,
+    /// The service was switched a moment ago.
+    TooSoon,
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +64,8 @@ pub struct Supervisor {
     pub forwarder: Forwarder,
     journal: Box<dyn FnMut(&str)>,
     shutdown: Option<Shutdown>,
+    /// When each switchable service was last switched (`init.switch`).
+    pub(crate) switched: BTreeMap<String, Instant>,
 }
 
 /// Signals the process group of the service whose (unreaped) process is
@@ -102,6 +106,7 @@ impl Supervisor {
             forwarder,
             journal,
             shutdown: None,
+            switched: BTreeMap::new(),
         };
         supervisor.add(specs);
         supervisor

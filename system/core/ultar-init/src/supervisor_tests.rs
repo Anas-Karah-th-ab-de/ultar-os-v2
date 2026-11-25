@@ -3,6 +3,7 @@
 //! restarts, requests, shutdown. Confinement itself is tested with the
 //! real launcher in `tests/`.
 
+use super::control::SWITCH_PAUSE;
 use super::*;
 use crate::groups::GroupTree;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -237,34 +238,59 @@ fn a_dependency_cycle_is_refused_and_the_rest_runs() {
 }
 
 #[test]
-fn only_a_service_marked_for_it_is_switched_by_the_person() {
+fn a_service_is_switched_only_by_the_one_its_file_names() {
     let dir = temp("switch");
     let sleep = "exec = \"/bin/sleep\"\nargs = [\"30\"]";
-    let model = format!("{sleep}\nmanual = true\nswitch = true");
+    // its own user: here the one the test runs as (no right to become another)
+    let me = ultar_sys::euid();
+    let model = format!("{sleep}\nuser = {me}\nmanual = true\nswitch = \"system.llmbus\"");
     let mut sup = supervisor(&dir, vec![spec("model", &model), spec("core", sleep)]);
     assert!(drive(&mut sup, |s| s.state_of("core")
         == Some(ServiceState::Running)));
-    // a manual service waits for the switch; any other service is none of its business
     assert_ne!(sup.state_of("model"), Some(ServiceState::Running));
-    let now = Instant::now();
-    assert_eq!(sup.switch("core", false, now), Err(ControlError::Unknown));
-    assert_eq!(sup.switch("nope", true, now), Err(ControlError::Unknown));
+    let (keeper, t0) = ("system.llmbus", Instant::now());
+    // any other service, and any other caller - an administrator included - gets "unknown"
+    assert_eq!(
+        sup.switch("core", false, keeper, t0),
+        Err(ControlError::Unknown)
+    );
+    assert_eq!(
+        sup.switch("nope", true, keeper, t0),
+        Err(ControlError::Unknown)
+    );
+    for other in ["system.admin", "app.settings", "system.llm", ""] {
+        assert_eq!(
+            sup.switch("model", true, other, t0),
+            Err(ControlError::Unknown)
+        );
+    }
     assert_eq!(sup.state_of("core"), Some(ServiceState::Running));
-    sup.switch("model", true, now).unwrap();
+    assert_ne!(sup.state_of("model"), Some(ServiceState::Running));
+
+    sup.switch("model", true, keeper, t0).unwrap();
     assert!(drive(&mut sup, |s| s.state_of("model")
         == Some(ServiceState::Running)));
-    // on twice is done, not an error
+    // on twice is done; off right after on must wait
     assert_eq!(
-        sup.switch("model", true, Instant::now()),
+        sup.switch("model", true, keeper, t0),
         Ok(ServiceState::Running)
     );
-    sup.switch("model", false, Instant::now()).unwrap();
+    assert_eq!(
+        sup.switch("model", false, keeper, t0),
+        Err(ControlError::TooSoon)
+    );
+    let later = t0 + SWITCH_PAUSE;
+    sup.switch("model", false, keeper, later).unwrap();
     assert!(drive(&mut sup, |s| s.state_of("model")
         == Some(ServiceState::Stopped)));
     assert_eq!(
-        sup.switch("model", false, Instant::now()),
+        sup.switch("model", false, keeper, later),
         Ok(ServiceState::Stopped)
     );
     sup.begin_shutdown(Instant::now());
+    assert_eq!(
+        sup.switch("model", true, keeper, later + SWITCH_PAUSE),
+        Err(ControlError::ShuttingDown)
+    );
     assert!(drive(&mut sup, Supervisor::shutdown_done));
 }

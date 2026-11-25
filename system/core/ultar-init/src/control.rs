@@ -22,8 +22,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use ultar_bus::messages::init::{
     Control, ControlReply, Power, PowerAction, PowerReply, Status, StatusReply, Switch,
-    ADMIN_METHOD, ERROR_ALREADY, ERROR_SHUTTING_DOWN, ERROR_UNKNOWN_SERVICE, MAX_SERVICES, SERVICE,
-    SHUTDOWN_METHOD, SWITCH_METHOD,
+    ADMIN_METHOD, ERROR_ALREADY, ERROR_SHUTTING_DOWN, ERROR_TOO_SOON, ERROR_UNKNOWN_SERVICE,
+    MAX_SERVICES, SERVICE, SHUTDOWN_METHOD, SWITCH_METHOD,
 };
 use ultar_bus::{Client, ErrorCode, Identity, IncomingRequest, Policy};
 use ultar_service::{BusSession, Lifecycle, SessionOptions, StopCause};
@@ -166,6 +166,7 @@ fn control_code(error: ControlError) -> ErrorCode {
         ControlError::Unknown => ERROR_UNKNOWN_SERVICE,
         ControlError::Already => ERROR_ALREADY,
         ControlError::ShuttingDown => ERROR_SHUTTING_DOWN,
+        ControlError::TooSoon => ERROR_TOO_SOON,
     })
 }
 
@@ -212,14 +213,22 @@ pub fn answer(
         return answer_power(request, supervisor, admins, pid1);
     }
     if request.method() == SWITCH_METHOD {
-        // No administrator right: the policy names who may call it, and only services
-        // whose file says `switch = true` can be switched.
+        // No administrator right, and none is gained: the service's own file names the
+        // one identity that may switch it (checked here against the caller the broker
+        // vouches for, on top of the bus policy).
+        let caller = request.caller().to_owned();
+        let mut refused = None;
         let _ = request.respond::<Switch>(|switch| {
-            supervisor
-                .switch(&switch.service, switch.on, now)
-                .map(|state| ControlReply { state })
+            let done = supervisor.switch(&switch.service, switch.on, &caller, now);
+            if done.is_err() {
+                refused = Some(switch.service.clone());
+            }
+            done.map(|state| ControlReply { state })
                 .map_err(control_code)
         });
+        if let Some(service) = refused {
+            supervisor.note(&format!("refused switch caller={caller} service={service}"));
+        }
         return None;
     }
     let caller = request.caller().to_owned();

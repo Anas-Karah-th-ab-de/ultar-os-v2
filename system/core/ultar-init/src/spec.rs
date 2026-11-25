@@ -169,7 +169,7 @@ struct LifeFile {
     #[serde(default)]
     manual: bool,
     #[serde(default)]
-    switch: bool,
+    switch: Option<String>,
     #[serde(default)]
     editions: Vec<String>,
     #[serde(default)]
@@ -235,8 +235,9 @@ pub struct Life {
     pub description: Option<String>,
     /// Started only on request.
     pub manual: bool,
-    /// The person may switch it on and off (`init.switch`, without administrator rights).
-    pub switch: bool,
+    /// The one system service that may switch it on and off for the person
+    /// (`init.switch`, without administrator rights); `None`: nobody may.
+    pub switch: Option<String>,
     /// Editions the service exists in (empty: all).
     pub editions: Vec<String>,
     /// Boot profiles the service exists in and whether it starts there by
@@ -349,6 +350,26 @@ fn timeout(value: Option<u64>, what: &'static str) -> Result<Option<u64>, SpecEr
     }
 }
 
+/// `switch` names the one bus identity that may switch the service: a system service,
+/// never an app. Only a service that is started on request, runs as a user of its own
+/// and holds no kernel right can be given away like that – so the call can never start,
+/// stop or bring back anything that matters to the safety of the system.
+fn check_switch(file: &ServiceFile) -> Result<(), SpecError> {
+    let Some(owner) = &file.life.switch else {
+        return Ok(());
+    };
+    let name = owner.strip_prefix("system.").unwrap_or("");
+    let plain = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-';
+    let named = !name.is_empty() && name.len() <= 48 && name.chars().all(plain);
+    let confine = &file.confine;
+    let harmless = file.life.manual && confine.rights.is_empty() && confine.user.is_some();
+    if named && harmless {
+        Ok(())
+    } else {
+        Err(SpecError::Bound("switch"))
+    }
+}
+
 fn check_lists(file: &ServiceFile) -> Result<(), SpecError> {
     let (life, confine) = (&file.life, &file.confine);
     let dirs = confine.dirs.len() + confine.public_dirs.len();
@@ -396,6 +417,7 @@ impl ServiceSpec {
             return Err(SpecError::Name);
         }
         check_lists(&file)?;
+        check_switch(&file)?;
         let (life, confine) = (file.life, file.confine);
         let profiles = match life.profiles {
             // a profile table says everything about starting: `manual` beside it is a contradiction

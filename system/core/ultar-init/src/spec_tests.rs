@@ -177,3 +177,32 @@ fn faulty_profile_tables_are_refused() {
     let many: String = (0..9).map(|i| format!("p{i} = \"start\"\n")).collect();
     assert!(refused(&format!("exec = \"/a\"\n[profiles]\n{many}")));
 }
+
+#[test]
+fn only_a_harmless_service_can_be_given_to_another_service_to_switch() {
+    let file = |more: &str| format!("exec = \"/usr/bin/a\"\n{more}");
+    let good = file("user = 810\nmanual = true\nswitch = \"system.llmbus\"");
+    let spec = ServiceSpec::parse(&good, "a").unwrap();
+    assert_eq!(spec.life.switch.as_deref(), Some("system.llmbus"));
+    assert_eq!(
+        ServiceSpec::parse(&file("manual = true"), "a")
+            .unwrap()
+            .life
+            .switch,
+        None
+    );
+    let refused = [
+        // an app, a wildcard or anything that is not one system service
+        "user = 810\nmanual = true\nswitch = \"app.settings\"",
+        "user = 810\nmanual = true\nswitch = \"system.*\"",
+        "user = 810\nmanual = true\nswitch = \"system.\"",
+        "user = 810\nmanual = true\nswitch = \"\"",
+        // a service that starts by itself, runs as root or holds a kernel right
+        "user = 810\nswitch = \"system.llmbus\"",
+        "manual = true\nswitch = \"system.llmbus\"",
+        "user = 810\nmanual = true\nrights = [\"net_admin\"]\nswitch = \"system.llmbus\"",
+    ];
+    for more in refused {
+        assert!(ServiceSpec::parse(&file(more), "a").is_err(), "{more}");
+    }
+}

@@ -6,7 +6,7 @@
 manual = true
 # The person switches it (Settings › Assistant, assistant.enabled); ultar-llm-bus tells the
 # service manager (init.switch).
-switch = true
+switch = "system.llmbus"
 exec = "/usr/bin/ultar-llm"
 args = ["serve", "--socket", "/run/ultar/llm/llm.sock"]
 # Identity and rights: its own user (810) without kernel rights. It reads the

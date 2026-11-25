@@ -162,6 +162,8 @@ pub const ERROR_UNKNOWN_SERVICE: u32 = 1;
 pub const ERROR_ALREADY: u32 = 2;
 /// Error code of `init.control`: the system is shutting down.
 pub const ERROR_SHUTTING_DOWN: u32 = 3;
+/// Service error of [`Switch`]: the service was switched a moment ago.
+pub const ERROR_TOO_SOON: u32 = 4;
 
 impl Message for Status {
     const VERSION: u16 = 1;
@@ -243,9 +245,11 @@ mod tests {
     }
 }
 
-/// `init.switch` – switch a service on or off that the person may switch (its service
-/// file says `switch = true`; today: the language model). No administrator right: the
-/// policy names the one service that follows the person's setting.
+/// `init.switch` – switch one service on or off for the person. Not an administrator
+/// call and no way to become one: a service file names the one system service that may
+/// switch it (`switch = "system.x"`), and such a file is only accepted for a service that
+/// starts on request, runs as its own user and holds no kernel right. Today: the
+/// language model, switched by `ultar-llm-bus` following the person's setting.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct Switch {
     /// The service.

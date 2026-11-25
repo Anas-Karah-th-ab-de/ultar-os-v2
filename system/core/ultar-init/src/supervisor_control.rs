@@ -5,6 +5,9 @@ use crate::unit::UnitState;
 use std::time::Instant;
 use ultar_bus::messages::init::{Action, Exit, ServiceState, ServiceStatus};
 
+/// Shortest time between two switches of one service.
+pub const SWITCH_PAUSE: std::time::Duration = std::time::Duration::from_secs(2);
+
 impl Supervisor {
     /// Carries out `action` for `name`; returns the state right after.
     pub fn control(
@@ -44,26 +47,54 @@ impl Supervisor {
             .ok_or(ControlError::Unknown)
     }
 
-    /// Switches a service the person may switch (`switch = true` in its file) on or off;
-    /// already on or already off is done. Any other service is unknown here.
+    /// Switches a service on or off for `caller`. Only the identity the service's file
+    /// names (`switch = "system.x"`) may, and only for that service: to everyone else,
+    /// and for every other service, it is unknown. Already on or already off is done.
+    ///
+    /// Unlike [`Self::control`] this gives nothing back that the supervisor withheld: a
+    /// service given up after crashes keeps its count, and one service is switched at
+    /// most once per [`SWITCH_PAUSE`].
     pub fn switch(
         &mut self,
         name: &str,
         on: bool,
+        caller: &str,
         now: Instant,
     ) -> Result<ServiceState, ControlError> {
-        let switchable = self.units.get(name).is_some_and(|u| u.spec.life.switch);
-        if !switchable {
+        if self.shutdown.is_some() {
+            return Err(ControlError::ShuttingDown);
+        }
+        let unit = self.units.get_mut(name).ok_or(ControlError::Unknown)?;
+        if unit.spec.life.switch.as_deref() != Some(caller) {
             return Err(ControlError::Unknown);
         }
-        let action = if on { Action::Start } else { Action::Stop };
-        match self.control(action, name, now) {
-            Err(ControlError::Already) => {
-                let unit = self.units.get(name).ok_or(ControlError::Unknown)?;
-                Ok(unit.state.public())
-            }
-            other => other,
+        let live = unit.is_live();
+        let wanted = if on {
+            live
+        } else {
+            !live && unit.state == UnitState::Stopped
+        };
+        if wanted {
+            return Ok(unit.state.public());
         }
+        let recent = |at: &Instant| now.saturating_duration_since(*at) < SWITCH_PAUSE;
+        if self.switched.get(name).is_some_and(recent) {
+            return Err(ControlError::TooSoon);
+        }
+        match (on, live) {
+            (true, _) => unit.state = UnitState::Waiting,
+            (false, false) => unit.state = UnitState::Stopped,
+            (false, true) => {
+                unit.start_after_stop = false;
+                self.stop_unit(name, now);
+            }
+        }
+        self.switched.insert(name.to_owned(), now);
+        let word = if on { "on" } else { "off" };
+        self.note(&format!("switch {word} {name} by={caller}"));
+        self.tick(now);
+        let unit = self.units.get(name).ok_or(ControlError::Unknown)?;
+        Ok(unit.state.public())
     }
 
     /// The table of the control socket (`ultar-ctl status`): a header and

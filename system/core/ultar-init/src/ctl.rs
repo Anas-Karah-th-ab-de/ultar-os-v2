@@ -71,6 +71,7 @@ fn control_reply(supervisor: &mut Supervisor, action: Action, name: &str, now: I
         Err(ControlError::Unknown) => format!("error: unknown service {name}\n"),
         Err(ControlError::Already) => format!("error: {name} already {}\n", action.word()),
         Err(ControlError::ShuttingDown) => "error: shutting down\n".to_owned(),
+        Err(ControlError::TooSoon) => format!("error: {name} was switched a moment ago\n"),
     }
 }
 

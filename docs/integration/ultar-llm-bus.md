@@ -44,8 +44,17 @@ gegen den echten Dienst).
 - Schalter: `assistant.enabled` (Einstellungen › Assistent). Voreinstellung jetzt **aus**.
 - `ultar-llm-bus` liest die Einstellung beim Start (`settings.get`) und folgt `settings.changed`; es sagt dem
   Dienst-Verwalter `init.switch { service: "llm", on }`.
-- `init.switch` ist neu und eng: kein Verwalter-Recht, wirkt nur auf Dienste, deren Dienstdatei `switch = true`
-  sagt (heute nur `llm.toml`). Jeder andere Dienst ist dafür unbekannt. „Schon an“ und „schon aus“ gelten als erledigt.
+- `init.switch` ist neu und eng. Es erhöht kein Recht:
+  - Die Dienstdatei nennt **die eine** System-Identität, die schalten darf (`switch = "system.llmbus"`).
+    Der Dienst-Verwalter prüft den Aufrufer selbst dagegen, zusätzlich zur Bus-Regel. Für jeden anderen
+    Aufrufer – auch den Verwalter – und für jeden anderen Dienst heißt die Antwort „unbekannt“.
+  - Eine Dienstdatei mit `switch` wird nur angenommen, wenn der Dienst auf Anforderung startet
+    (`manual = true`), als eigener Benutzer läuft und **kein** Kernrecht hat. Apps, Platzhalter und leere
+    Namen sind als Schalter nicht erlaubt.
+  - Der Aufruf startet oder beendet nur; er setzt den Absturz-Zähler nicht zurück (anders als `init.control`),
+    und ein Dienst lässt sich höchstens alle 2 s schalten.
+  - Jeder Schaltvorgang und jede Ablehnung steht mit Aufrufer im Protokoll des Dienst-Verwalters.
 - Aus: der Modell-Dienst wird beendet, `llm.state` meldet „kein Modell“, der Helfer fällt auf ein verliehenes
   Modell oder die kleinste Hilfe zurück.
-- Tests: 6 (neu: Schalter als echter Prozess); im Dienst-Verwalter: nur markierte Dienste lassen sich schalten.
+- Tests: 6 (neu: Schalter als echter Prozess); im Dienst-Verwalter: wer schalten darf, und welche Dienstdatei
+  `switch` überhaupt haben darf.
