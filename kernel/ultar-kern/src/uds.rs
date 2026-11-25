@@ -47,16 +47,7 @@ pub struct Peer {
 
 /// Identity of the calling process.
 pub fn me() -> Peer {
-    with(|p| Peer {
-        pid: p.tgid,
-        uid: p.g.iso.cred.euid(),
-        gid: p.g.iso.cred.egid(),
-    })
-    .unwrap_or(Peer {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    })
+    with(|p| Peer { pid: p.tgid, uid: p.g.iso.cred.euid(), gid: p.g.iso.cred.egid() }).unwrap_or(Peer { pid: 0, uid: 0, gid: 0 })
 }
 
 /// Mark both directions of a fresh connection: `ours` is what the caller writes to, `theirs` what
@@ -78,11 +69,7 @@ pub fn bind_node(loc: &Loc, abstract_name: bool) -> Result<(), i64> {
         return Err(-EROFS);
     }
     // a cell must not add entries to the kernel's own trees (they are shared by every view)
-    if loc.confined
-        && ["/proc", "/dev"]
-            .iter()
-            .any(|d| crate::isolation::mount::below(&loc.host, d).is_some())
-    {
+    if loc.confined && ["/proc", "/dev"].iter().any(|d| crate::isolation::mount::below(&loc.host, d).is_some()) {
         return Err(-EPERM);
     }
     if !matches!(fs::stat(&parent(&loc.host)), Some((1, _))) {
@@ -120,11 +107,7 @@ enum Kind {
 fn kind_of(fd: u64) -> Option<Kind> {
     with(|p| match p.fd(fd).map(|d| &d.kind) {
         Some(FdKind::UnixConn(rx, _)) => Some(Kind::Connected(rx.writer())),
-        Some(FdKind::UnixSock(s)) => Some(if matches!(&*s.lock(), UnixState::Listening(..)) {
-            Kind::Listening
-        } else {
-            Kind::Unbound
-        }),
+        Some(FdKind::UnixSock(s)) => Some(if matches!(&*s.lock(), UnixState::Listening(..)) { Kind::Listening } else { Kind::Unbound }),
         _ => None,
     })
     .flatten()
@@ -134,11 +117,7 @@ fn kind_of(fd: u64) -> Option<Kind> {
 /// peer is not visible there); "nobody" (`-1`) for a socket that is not connected.
 fn ucred(peer: Option<Peer>) -> [u8; UCRED] {
     let (pid, uid, gid) = match peer {
-        Some(p) => (
-            with(|me| me.link.ns().local(p.pid)).flatten().unwrap_or(0) as u32,
-            p.uid,
-            p.gid,
-        ),
+        Some(p) => (with(|me| me.link.ns().local(p.pid)).flatten().unwrap_or(0) as u32, p.uid, p.gid),
         None => (0, u32::MAX, u32::MAX),
     };
     let mut out = [0u8; UCRED];
@@ -154,17 +133,11 @@ fn user_len(lenp: u64) -> Option<usize> {
 }
 
 fn reply(val: u64, lenp: u64, data: &[u8]) -> i64 {
-    let Some(room) = user_len(lenp) else {
-        return -EFAULT;
-    };
+    let Some(room) = user_len(lenp) else { return -EFAULT };
     if room < data.len() {
         return -EINVAL;
     }
-    let ok = with(|p| {
-        crate::proc::write_user(p.space(), val, data)
-            && crate::proc::write_user(p.space(), lenp, &(data.len() as u32).to_le_bytes())
-    })
-    .unwrap_or(false);
+    let ok = with(|p| crate::proc::write_user(p.space(), val, data) && crate::proc::write_user(p.space(), lenp, &(data.len() as u32).to_le_bytes())).unwrap_or(false);
     if ok {
         0
     } else {
@@ -174,9 +147,7 @@ fn reply(val: u64, lenp: u64, data: &[u8]) -> i64 {
 
 /// `getsockopt` on a Unix socket: `SO_PEERCRED`, and the few integer options programs ask for.
 pub fn getsockopt(fd: u64, level: u64, opt: u64, val: u64, lenp: u64) -> i64 {
-    let Some(kind) = kind_of(fd) else {
-        return -ENOTSOCK;
-    };
+    let Some(kind) = kind_of(fd) else { return -ENOTSOCK };
     if level != SOL_SOCKET {
         return -ENOPROTOOPT;
     }

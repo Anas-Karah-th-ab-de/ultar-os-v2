@@ -36,8 +36,7 @@ pub enum Step {
 
 /// Whether `fd` is a connected Unix socket (the calls here are for those only).
 pub fn is_conn(fd: u64) -> bool {
-    crate::syscall::with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::UnixConn(..))))
-        .unwrap_or(false)
+    crate::syscall::with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::UnixConn(..)))).unwrap_or(false)
 }
 
 /// The descriptor numbers in a control buffer (`SCM_RIGHTS` messages; others are ignored).
@@ -72,9 +71,7 @@ fn copies(p: &mut Proc, nums: &[i32]) -> Result<Vec<Fd>, i64> {
         return Err(-ENOMEM);
     }
     for &n in nums {
-        let Some(d) = (n >= 0).then(|| p.fd(n as u64)).flatten() else {
-            return Err(-EBADF);
-        };
+        let Some(d) = (n >= 0).then(|| p.fd(n as u64)).flatten() else { return Err(-EBADF) };
         if matches!(d.kind, FdKind::UnixConn(..) | FdKind::UnixSock(_)) {
             return Err(-EOPNOTSUPP);
         }
@@ -95,13 +92,9 @@ pub fn send(fd: u64, data: &[u8], ctl: &[u8], flags: u64) -> Step {
             Ok(f) => f,
             Err(e) => return Step::Val(e),
         };
-        let Some(d) = p.fd(fd) else {
-            return Step::Val(-EBADF);
-        };
+        let Some(d) = p.fd(fd) else { return Step::Val(-EBADF) };
         let nonblock = d.flags & 0x800 != 0 || flags & MSG_DONTWAIT != 0;
-        let FdKind::UnixConn(_, tx) = &d.kind else {
-            return Step::Val(-EBADF);
-        };
+        let FdKind::UnixConn(_, tx) = &d.kind else { return Step::Val(-EBADF) };
         let tx = tx.clone();
         if tx.read_closed() {
             if flags & MSG_NOSIGNAL == 0 {
@@ -109,11 +102,7 @@ pub fn send(fd: u64, data: &[u8], ctl: &[u8], flags: u64) -> Step {
             }
             return Step::Val(-EPIPE);
         }
-        let r = if fds.is_empty() {
-            tx.push(data).map_err(|e| (e, fds))
-        } else {
-            tx.push_with_rights(data, fds)
-        };
+        let r = if fds.is_empty() { tx.push(data).map_err(|e| (e, fds)) } else { tx.push_with_rights(data, fds) };
         match r {
             Ok(n) => {
                 crate::socket::bump();
@@ -137,57 +126,29 @@ pub struct Received {
 
 /// `recvmsg`/`recvfrom` on a connected Unix socket: fill the buffers `iov`, put descriptors into the
 /// control buffer at `ctl` (room `ctl_room`).
-pub fn recv(
-    fd: u64,
-    iov: &[(u64, u64)],
-    ctl: u64,
-    ctl_room: u64,
-    flags: u64,
-) -> Result<Received, Step> {
-    let total = iov
-        .iter()
-        .map(|x| x.1)
-        .fold(0u64, |a, b| a.saturating_add(b))
-        .min(MAX_BYTES as u64) as usize;
+pub fn recv(fd: u64, iov: &[(u64, u64)], ctl: u64, ctl_room: u64, flags: u64) -> Result<Received, Step> {
+    let total = iov.iter().map(|x| x.1).fold(0u64, |a, b| a.saturating_add(b)).min(MAX_BYTES as u64) as usize;
     let seen = crate::socket::gen();
     crate::syscall::with(|p| {
-        let Some(d) = p.fd(fd) else {
-            return Err(Step::Val(-EBADF));
-        };
+        let Some(d) = p.fd(fd) else { return Err(Step::Val(-EBADF)) };
         let nonblock = d.flags & 0x800 != 0 || flags & MSG_DONTWAIT != 0;
-        let FdKind::UnixConn(rx, _) = &d.kind else {
-            return Err(Step::Val(-EBADF));
-        };
+        let FdKind::UnixConn(rx, _) = &d.kind else { return Err(Step::Val(-EBADF)) };
         let rx = rx.clone();
         let mut b = rx.buf.lock();
         if total == 0 || b.is_empty() && rx.write_closed() {
-            return Ok(Received {
-                len: 0,
-                ctl_len: 0,
-                msg_flags: 0,
-            });
+            return Ok(Received { len: 0, ctl_len: 0, msg_flags: 0 });
         }
         if b.is_empty() {
-            return Err(if nonblock {
-                Step::Val(-EAGAIN)
-            } else {
-                Step::Wait(seen)
-            });
+            return Err(if nonblock { Step::Val(-EAGAIN) } else { Step::Wait(seen) });
         }
-        let Some((data, fds)) = rx.take_with_rights(&mut b, total) else {
-            return Err(Step::Val(-ENOMEM));
-        };
+        let Some((data, fds)) = rx.take_with_rights(&mut b, total) else { return Err(Step::Val(-ENOMEM)) };
         drop(b);
         crate::socket::bump();
         if !scatter(p, iov, &data) {
             return Err(Step::Val(-EFAULT));
         }
         let (ctl_len, msg_flags) = deliver(p, fds, ctl, ctl_room, flags & MSG_CMSG_CLOEXEC != 0);
-        Ok(Received {
-            len: data.len() as i64,
-            ctl_len,
-            msg_flags,
-        })
+        Ok(Received { len: data.len() as i64, ctl_len, msg_flags })
     })
     .unwrap_or(Err(Step::Val(-EBADF)))
 }
@@ -233,8 +194,7 @@ fn deliver(p: &mut Proc, fds: Vec<Fd>, ctl: u64, room: u64, cloexec: bool) -> (u
     msg.extend_from_slice(&len.to_le_bytes());
     msg.extend_from_slice(&SOL_SOCKET.to_le_bytes());
     msg.extend_from_slice(&SCM_RIGHTS.to_le_bytes());
-    nums.iter()
-        .for_each(|n| msg.extend_from_slice(&n.to_le_bytes()));
+    nums.iter().for_each(|n| msg.extend_from_slice(&n.to_le_bytes()));
     if !crate::proc::write_user(p.space(), ctl, &msg) {
         return (0, MSG_CTRUNC);
     }

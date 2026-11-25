@@ -148,16 +148,11 @@ unsafe fn smbios_str(p: u64, len: u8, n: u8) -> String {
     let mut s = String::new();
     while rd8(q) != 0 && s.len() < 64 {
         let c = rd8(q);
-        s.push(if c.is_ascii_graphic() || c == b' ' {
-            c as char
-        } else {
-            '?'
-        });
+        s.push(if c.is_ascii_graphic() || c == b' ' { c as char } else { '?' });
         q += 1;
     }
     let t = s.trim();
-    if t.eq_ignore_ascii_case("Default string") || t.eq_ignore_ascii_case("To be filled by O.E.M.")
-    {
+    if t.eq_ignore_ascii_case("Default string") || t.eq_ignore_ascii_case("To be filled by O.E.M.") {
         String::new()
     } else {
         String::from(t)
@@ -179,8 +174,7 @@ unsafe fn smbios(ep: u64) -> Option<(u8, bool, String, String)> {
     if tab == 0 || len == 0 || len > 1 << 20 {
         return None;
     }
-    let (mut gehaeuse, mut akku, mut hersteller, mut modell) =
-        (0u8, false, String::new(), String::new());
+    let (mut gehaeuse, mut akku, mut hersteller, mut modell) = (0u8, false, String::new(), String::new());
     let mut p = tab;
     while p + 4 <= tab + len {
         let typ = rd8(p);
@@ -211,26 +205,13 @@ unsafe fn smbios(ep: u64) -> Option<(u8, bool, String, String)> {
 /// Beim Start einmal bestimmen (nach den Seitentabellen, die Tabellen liegen 1:1 abgebildet)
 pub fn init(smbios_ep: u64, rsdp: u64) {
     let sm = unsafe { smbios(smbios_ep) };
-    let pm = unsafe {
-        crate::apic::find_table(rsdp, b"FACP")
-            .map(|f| rd8(f + 45))
-            .unwrap_or(0)
-    };
-    let (gehaeuse, akku, hersteller, modell) =
-        sm.clone()
-            .unwrap_or((0, false, String::new(), String::new()));
+    let pm = unsafe { crate::apic::find_table(rsdp, b"FACP").map(|f| rd8(f + 45)).unwrap_or(0) };
+    let (gehaeuse, akku, hersteller, modell) = sm.clone().unwrap_or((0, false, String::new(), String::new()));
     let (art, quelle) = if let Some(a) = aus_gehaeuse(gehaeuse) {
         (a, "smbios")
     } else if let Some(a) = aus_pm_profil(pm) {
         // „Mobil“ ohne Akku ist meist ein Mini-PC mit Laptop-Chip
-        (
-            if a == Art::Laptop && sm.is_some() && !akku {
-                Art::Pc
-            } else {
-                a
-            },
-            "acpi",
-        )
+        (if a == Art::Laptop && sm.is_some() && !akku { Art::Pc } else { a }, "acpi")
     } else if akku {
         (Art::Laptop, "akku")
     } else {
@@ -240,24 +221,12 @@ pub fn init(smbios_ep: u64, rsdp: u64) {
         "[geraet] {} ({}{}{}) · Gehäuse {} · Ausgabe {} · Quelle {quelle}",
         art.anzeige_name(),
         hersteller,
-        if hersteller.is_empty() || modell.is_empty() {
-            ""
-        } else {
-            " "
-        },
+        if hersteller.is_empty() || modell.is_empty() { "" } else { " " },
         modell,
         gehaeuse_text(gehaeuse),
         art.ausgabe()
     );
-    *INFO.lock() = Some(Info {
-        art,
-        quelle,
-        gehaeuse,
-        pm_profil: pm,
-        akku,
-        hersteller,
-        modell,
-    });
+    *INFO.lock() = Some(Info { art, quelle, gehaeuse, pm_profil: pm, akku, hersteller, modell });
 }
 
 pub fn art() -> Art {
@@ -267,9 +236,7 @@ pub fn art() -> Art {
 /// Inhalt von /proc/ultar/geraet (Schlüssel=Wert, von ultar-edition gelesen)
 pub fn text() -> String {
     let g = INFO.lock();
-    let Some(i) = g.as_ref() else {
-        return String::from("art=pc\nausgabe=desktop\nquelle=standard\n");
-    };
+    let Some(i) = g.as_ref() else { return String::from("art=pc\nausgabe=desktop\nquelle=standard\n") };
     format!(
         "art={}\nausgabe={}\nquelle={}\ngehaeuse={} ({})\nacpi_profil={}\nakku={}\nhersteller={}\nmodell={}\n{}",
         i.art.name(),

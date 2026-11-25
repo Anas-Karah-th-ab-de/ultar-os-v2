@@ -30,10 +30,7 @@
 //! children of `cells` and `apps` that have processes – all its processes; only if there is none,
 //! the largest single process of `session`. Processes of `system` are never chosen.
 
-use super::{
-    branch_of, for_children, memory, parent, pids, top_of, Denied, APPS, CELLS, ROOT, SESSION,
-    SYSTEM,
-};
+use super::{branch_of, for_children, memory, parent, pids, top_of, Denied, APPS, CELLS, ROOT, SESSION, SYSTEM};
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 static TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -54,23 +51,11 @@ pub fn init(total: u64) {
     let reserve = crate::mem::reserve_bytes();
     TOTAL.store(total, Ordering::Relaxed);
     CRITICAL.store(reserve + reserve / 2, Ordering::Relaxed);
-    LOW.store(
-        reserve + (total / 16).clamp(16 * MIB, 256 * MIB).min(total / 4),
-        Ordering::Relaxed,
-    );
-    PROTECT_SYSTEM.store(
-        (total / 16).clamp(16 * MIB, 512 * MIB).min(total / 8),
-        Ordering::Relaxed,
-    );
-    PROTECT_SESSION.store(
-        (total / 8).clamp(32 * MIB, 1024 * MIB).min(total / 4),
-        Ordering::Relaxed,
-    );
+    LOW.store(reserve + (total / 16).clamp(16 * MIB, 256 * MIB).min(total / 4), Ordering::Relaxed);
+    PROTECT_SYSTEM.store((total / 16).clamp(16 * MIB, 512 * MIB).min(total / 8), Ordering::Relaxed);
+    PROTECT_SESSION.store((total / 8).clamp(32 * MIB, 1024 * MIB).min(total / 4), Ordering::Relaxed);
     THREADS.store((total / (64 << 10)).clamp(256, 65536), Ordering::Relaxed);
-    PLENTY.store(
-        (reserve + protected(SYSTEM) + protected(SESSION)).max(low()),
-        Ordering::Relaxed,
-    );
+    PLENTY.store((reserve + protected(SYSTEM) + protected(SESSION)).max(low()), Ordering::Relaxed);
 }
 
 /// Low watermark in bytes.
@@ -124,20 +109,11 @@ pub fn check(g: u16, n: u64) -> Result<(), Denied> {
         return Ok(());
     }
     let after = free - n;
-    let kept = unused(SYSTEM)
-        + if branch == SESSION {
-            0
-        } else {
-            unused(SESSION)
-        };
+    let kept = unused(SYSTEM) + if branch == SESSION { 0 } else { unused(SESSION) };
     if after < reserve + kept {
         return Err(Denied::Share);
     }
-    let unit = if branch == SESSION {
-        SESSION
-    } else {
-        top_of(g)
-    };
+    let unit = if branch == SESSION { SESSION } else { top_of(g) };
     if after < low() && offender(None) == Some(unit) {
         return Err(Denied::Share);
     }
@@ -152,8 +128,7 @@ pub fn offender(has_processes: Option<&dyn Fn(u16) -> bool>) -> Option<u16> {
     for_children(APPS, |g| units += count(g));
     for_children(CELLS, |g| units += count(g));
     let total = TOTAL.load(Ordering::Relaxed);
-    let pool =
-        total.saturating_sub(crate::mem::reserve_bytes() + protected(SYSTEM) + protected(SESSION));
+    let pool = total.saturating_sub(crate::mem::reserve_bytes() + protected(SYSTEM) + protected(SESSION));
     let share = (pool / (units + 1)).max(1);
     let mut best: Option<(u128, u16)> = None;
     let mut consider = |g: u16, share: u64| {

@@ -22,71 +22,21 @@ static PENDING: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::n
 /// US-Zeichen → arabisches Zeichen (zweites Zeichen für Lam-Alef in PENDING)
 pub fn arabisch(c: char) -> char {
     let (a, b): (char, Option<char>) = match c {
-        'q' => ('ض', None),
-        'w' => ('ص', None),
-        'e' => ('ث', None),
-        'r' => ('ق', None),
-        't' => ('ف', None),
-        'y' => ('غ', None),
-        'u' => ('ع', None),
-        'i' => ('ه', None),
-        'o' => ('خ', None),
-        'p' => ('ح', None),
-        '[' => ('ج', None),
-        ']' => ('د', None),
-        'a' => ('ش', None),
-        's' => ('س', None),
-        'd' => ('ي', None),
-        'f' => ('ب', None),
-        'g' => ('ل', None),
-        'h' => ('ا', None),
-        'j' => ('ت', None),
-        'k' => ('ن', None),
-        'l' => ('م', None),
-        ';' => ('ك', None),
-        '\'' => ('ط', None),
-        '`' => ('ذ', None),
-        'z' => ('ئ', None),
-        'x' => ('ء', None),
-        'c' => ('ؤ', None),
-        'v' => ('ر', None),
-        'b' => ('ل', Some('ا')),
-        'n' => ('ى', None),
-        'm' => ('ة', None),
-        ',' => ('و', None),
-        '.' => ('ز', None),
-        '/' => ('ظ', None),
-        'Q' => ('\u{64e}', None),
-        'W' => ('\u{64b}', None),
-        'E' => ('\u{64f}', None),
-        'R' => ('\u{64c}', None),
-        'T' => ('ل', Some('إ')),
-        'Y' => ('إ', None),
-        'U' => ('‘', None),
-        'I' => ('÷', None),
-        'O' => ('×', None),
-        'P' => ('؛', None),
-        '{' => ('<', None),
-        '}' => ('>', None),
-        'A' => ('\u{650}', None),
-        'S' => ('\u{64d}', None),
-        'D' => (']', None),
-        'F' => ('[', None),
-        'G' => ('ل', Some('أ')),
-        'H' => ('أ', None),
-        'J' => ('ـ', None),
-        'K' => ('،', None),
-        'L' => ('/', None),
-        '~' => ('\u{651}', None),
-        'Z' => ('~', None),
-        'X' => ('\u{652}', None),
-        'C' => ('}', None),
-        'V' => ('{', None),
-        'B' => ('ل', Some('آ')),
-        'N' => ('آ', None),
-        'M' => ('\'', None),
-        '<' => (',', None),
-        '>' => ('.', None),
+        'q' => ('ض', None), 'w' => ('ص', None), 'e' => ('ث', None), 'r' => ('ق', None), 't' => ('ف', None),
+        'y' => ('غ', None), 'u' => ('ع', None), 'i' => ('ه', None), 'o' => ('خ', None), 'p' => ('ح', None),
+        '[' => ('ج', None), ']' => ('د', None),
+        'a' => ('ش', None), 's' => ('س', None), 'd' => ('ي', None), 'f' => ('ب', None), 'g' => ('ل', None),
+        'h' => ('ا', None), 'j' => ('ت', None), 'k' => ('ن', None), 'l' => ('م', None), ';' => ('ك', None),
+        '\'' => ('ط', None), '`' => ('ذ', None),
+        'z' => ('ئ', None), 'x' => ('ء', None), 'c' => ('ؤ', None), 'v' => ('ر', None), 'b' => ('ل', Some('ا')),
+        'n' => ('ى', None), 'm' => ('ة', None), ',' => ('و', None), '.' => ('ز', None), '/' => ('ظ', None),
+        'Q' => ('\u{64e}', None), 'W' => ('\u{64b}', None), 'E' => ('\u{64f}', None), 'R' => ('\u{64c}', None),
+        'T' => ('ل', Some('إ')), 'Y' => ('إ', None), 'U' => ('‘', None), 'I' => ('÷', None), 'O' => ('×', None),
+        'P' => ('؛', None), '{' => ('<', None), '}' => ('>', None),
+        'A' => ('\u{650}', None), 'S' => ('\u{64d}', None), 'D' => (']', None), 'F' => ('[', None),
+        'G' => ('ل', Some('أ')), 'H' => ('أ', None), 'J' => ('ـ', None), 'K' => ('،', None), 'L' => ('/', None),
+        '~' => ('\u{651}', None), 'Z' => ('~', None), 'X' => ('\u{652}', None), 'C' => ('}', None), 'V' => ('{', None),
+        'B' => ('ل', Some('آ')), 'N' => ('آ', None), 'M' => ('\'', None), '<' => (',', None), '>' => ('.', None),
         '?' => ('؟', None),
         _ => (c, None),
     };
@@ -102,10 +52,8 @@ fn umschalten() {
 }
 
 //                      0    1    2    3    4    5    6    7    8    9    a    b    c    d    e    f
-const DE: &[u8; 58] =
-    b"\0\x1b1234567890\xdf\xb4\x08\tqwertzuiop\xfc+\n\0asdfghjkl\xf6\xe4^\0#yxcvbnm,.-\0*\0 ";
-const DE_S: &[u8; 58] =
-    b"\0\x1b!\"\xa7$%&/()=?`\x08\tQWERTZUIOP\xdc*\n\0ASDFGHJKL\xd6\xc4\xb0\0'YXCVBNM;:_\0*\0 ";
+const DE: &[u8; 58] = b"\0\x1b1234567890\xdf\xb4\x08\tqwertzuiop\xfc+\n\0asdfghjkl\xf6\xe4^\0#yxcvbnm,.-\0*\0 ";
+const DE_S: &[u8; 58] = b"\0\x1b!\"\xa7$%&/()=?`\x08\tQWERTZUIOP\xdc*\n\0ASDFGHJKL\xd6\xc4\xb0\0'YXCVBNM;:_\0*\0 ";
 const US: &[u8; 58] = b"\0\x1b1234567890-=\x08\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 ";
 const US_S: &[u8; 58] = b"\0\x1b!@#$%^&*()_+\x08\tQWERTYUIOP{}\n\0ASDFGHJKL:\"~\0|ZXCVBNM<>?\0*\0 ";
 
@@ -187,11 +135,7 @@ pub fn poll() -> Option<char> {
             };
         }
         if code == 0x56 {
-            return Some(if SHIFT.load(Ordering::Relaxed) {
-                '>'
-            } else {
-                '<'
-            });
+            return Some(if SHIFT.load(Ordering::Relaxed) { '>' } else { '<' });
         }
         let t = match (de, SHIFT.load(Ordering::Relaxed)) {
             (true, false) => DE,
@@ -204,12 +148,6 @@ pub fn poll() -> Option<char> {
             return None;
         }
         let c = b as char;
-        Some(
-            if ar && !c.is_ascii_digit() && !c.is_control() && c != ' ' {
-                arabisch(c)
-            } else {
-                c
-            },
-        )
+        Some(if ar && !c.is_ascii_digit() && !c.is_control() && c != ' ' { arabisch(c) } else { c })
     }
 }

@@ -31,24 +31,11 @@ pub enum FdKind {
     Null,
     Zero,
     Random,
-    File {
-        data: Arc<Vec<u8>>,
-        pos: u64,
-        path: String,
-        append: bool,
-        write: bool,
-        dirty: bool,
-    },
+    File { data: Arc<Vec<u8>>, pos: u64, path: String, append: bool, write: bool, dirty: bool },
     /// `path` ist der Pfad im Dateibaum des Kerns; `view`/`tag`: path as the opening process saw it and the
     /// view it was opened in (base for *at calls, see isolation::path)
     /// (the listing is shared between duplicates of the descriptor – a directory can be large)
-    Dir {
-        ents: Arc<Vec<fs::DirEnt>>,
-        pos: usize,
-        path: String,
-        view: String,
-        tag: crate::isolation::ViewTag,
-    },
+    Dir { ents: Arc<Vec<fs::DirEnt>>, pos: usize, path: String, view: String, tag: crate::isolation::ViewTag },
     PipeR(Arc<Pipe>),
     PipeW(Arc<Pipe>),
     Sock(Arc<crate::socket::Handle>),
@@ -87,18 +74,12 @@ pub enum UnixState {
 
 /// Unix-Verbindung als Paar von Rohren; Zähler wie bei offenen Enden
 pub fn unix_pair() -> (FdKind, FdKind) {
-    let (a, b) = (
-        Pipe::with_capacity(crate::pipe::UNIX_DEFAULT),
-        Pipe::with_capacity(crate::pipe::UNIX_DEFAULT),
-    );
+    let (a, b) = (Pipe::with_capacity(crate::pipe::UNIX_DEFAULT), Pipe::with_capacity(crate::pipe::UNIX_DEFAULT));
     for p in [&a, &b] {
         p.readers.store(1, Ordering::SeqCst);
         p.writers.store(1, Ordering::SeqCst);
     }
-    (
-        FdKind::UnixConn(a.clone(), b.clone()),
-        FdKind::UnixConn(b, a),
-    )
+    (FdKind::UnixConn(a.clone(), b.clone()), FdKind::UnixConn(b, a))
 }
 
 pub struct Fd {
@@ -114,34 +95,8 @@ impl Fd {
             FdKind::Null => FdKind::Null,
             FdKind::Zero => FdKind::Zero,
             FdKind::Random => FdKind::Random,
-            FdKind::File {
-                data,
-                pos,
-                path,
-                append,
-                write,
-                dirty,
-            } => FdKind::File {
-                data: data.clone(),
-                pos: *pos,
-                path: path.clone(),
-                append: *append,
-                write: *write,
-                dirty: *dirty,
-            },
-            FdKind::Dir {
-                ents,
-                pos,
-                path,
-                view,
-                tag,
-            } => FdKind::Dir {
-                ents: ents.clone(),
-                pos: *pos,
-                path: path.clone(),
-                view: view.clone(),
-                tag: *tag,
-            },
+            FdKind::File { data, pos, path, append, write, dirty } => FdKind::File { data: data.clone(), pos: *pos, path: path.clone(), append: *append, write: *write, dirty: *dirty },
+            FdKind::Dir { ents, pos, path, view, tag } => FdKind::Dir { ents: ents.clone(), pos: *pos, path: path.clone(), view: view.clone(), tag: *tag },
             FdKind::PipeR(p) => {
                 p.readers.fetch_add(1, Ordering::SeqCst);
                 FdKind::PipeR(p.clone())
@@ -169,11 +124,7 @@ impl Fd {
             FdKind::Hci(h) => FdKind::Hci(h.clone()),
             FdKind::Uinput(u) => FdKind::Uinput(u.clone()),
         };
-        Fd {
-            kind,
-            cloexec: false,
-            flags: self.flags,
-        }
+        Fd { kind, cloexec: false, flags: self.flags }
     }
 }
 
@@ -198,13 +149,7 @@ impl Drop for Fd {
                     crate::syscall::unix_unlisten(s);
                 }
             }
-            FdKind::File {
-                data,
-                path,
-                write: true,
-                dirty: true,
-                ..
-            } => {
+            FdKind::File { data, path, write: true, dirty: true, .. } => {
                 // the buffer itself becomes the stored file (no copy)
                 fs::store_file(path, data.clone());
             }
@@ -402,9 +347,7 @@ pub fn check_window() {
     let bad = |a: u64| (USER_LOW..USER_LOW_END).contains(&a);
     if bad(rsp) || bad(code) {
         WINDOW_OK.store(false, Ordering::Relaxed);
-        crate::kprintln!(
-            "[proc] Kern liegt bei {code:#x} – fest gebundene Programme (ET_EXEC) abgeschaltet"
-        );
+        crate::kprintln!("[proc] Kern liegt bei {code:#x} – fest gebundene Programme (ET_EXEC) abgeschaltet");
     }
 }
 
@@ -426,9 +369,7 @@ pub fn write_user(sp: &AddrSpace, va: u64, data: &[u8]) -> bool {
     let mut off = 0;
     while off < data.len() {
         let a = va + off as u64;
-        let Some((pa, w)) = sp.translate(a) else {
-            return false;
-        };
+        let Some((pa, w)) = sp.translate(a) else { return false };
         if !w {
             return false;
         }
@@ -490,13 +431,7 @@ pub fn read_strv(sp: &AddrSpace, mut va: u64) -> Option<Vec<String>> {
 /// Text of the error when a program cannot be loaded for lack of memory.
 pub const NO_MEMORY: &str = "kein Speicher";
 
-fn copy_to(
-    sp: &mut AddrSpace,
-    va: u64,
-    data: &[u8],
-    writable: bool,
-    exec: bool,
-) -> Result<(), &'static str> {
+fn copy_to(sp: &mut AddrSpace, va: u64, data: &[u8], writable: bool, exec: bool) -> Result<(), &'static str> {
     let mut off = 0usize;
     let mut a = va;
     let end = va + data.len() as u64;
@@ -504,9 +439,7 @@ fn copy_to(
         let page = a & !0xfff;
         let pa = sp.map(page, writable, exec).ok_or(NO_MEMORY)?;
         let n = ((page + 4096).min(end) - a) as usize;
-        unsafe {
-            core::ptr::copy_nonoverlapping(data[off..].as_ptr(), (pa + (a - page)) as *mut u8, n)
-        };
+        unsafe { core::ptr::copy_nonoverlapping(data[off..].as_ptr(), (pa + (a - page)) as *mut u8, n) };
         off += n;
         a += n as u64;
         if data.is_empty() {
@@ -570,10 +503,7 @@ fn load_segments(sp: &mut AddrSpace, data: &[u8], base: u64) -> Result<(u64, u64
         // area (below it lies the kernel's identity map, which a user page would replace in this
         // address space), and a segment the user half cannot hold is refused
         let wrapped = base.checked_add(u64le(p, 16)) != Some(va);
-        let outside = wrapped
-            || memsz > 1 << 34
-            || va + memsz > STACK_TOP
-            || base != 0 && va < 0x1000_0000_0000;
+        let outside = wrapped || memsz > 1 << 34 || va + memsz > STACK_TOP || base != 0 && va < 0x1000_0000_0000;
         if outside || off + filesz > data.len() {
             return Err("ELF beschädigt");
         }
@@ -600,19 +530,8 @@ fn load_segments(sp: &mut AddrSpace, data: &[u8], base: u64) -> Result<(u64, u64
 ///
 /// `read`: reads a file by the path the program names (the dynamic loader); the caller resolves it in the
 /// view of the process that will run the program.
-pub fn load_elf(
-    data: &[u8],
-    argv: &[String],
-    envp: &[String],
-    path: &str,
-    read: &dyn Fn(&str) -> Option<Arc<Vec<u8>>>,
-) -> Result<Image, &'static str> {
-    if data.len() < 64
-        || &data[0..4] != b"\x7fELF"
-        || data[4] != 2
-        || data[5] != 1
-        || u16le(data, 18) != 62
-    {
+pub fn load_elf(data: &[u8], argv: &[String], envp: &[String], path: &str, read: &dyn Fn(&str) -> Option<Arc<Vec<u8>>>) -> Result<Image, &'static str> {
+    if data.len() < 64 || &data[0..4] != b"\x7fELF" || data[4] != 2 || data[5] != 1 || u16le(data, 18) != 62 {
         return Err("kein x86_64-ELF-Programm");
     }
     let typ = u16le(data, 16);
@@ -626,9 +545,7 @@ pub fn load_elf(
     let interp = (0..phnum).find(|&i| u32le(ph(i), 0) == 3).map(|i| {
         let p = ph(i);
         let (o, n) = (u64le(p, 8) as usize, u64le(p, 32) as usize);
-        String::from_utf8_lossy(&data[o.min(data.len())..(o + n).min(data.len())])
-            .trim_end_matches('\0')
-            .to_string()
+        String::from_utf8_lossy(&data[o.min(data.len())..(o + n).min(data.len())]).trim_end_matches('\0').to_string()
     });
     let base = match typ {
         2 => {
@@ -656,11 +573,7 @@ pub fn load_elf(
         None => (prog_entry, 0),
     };
     let brk = (top + 4095) & !4095;
-    let brk_limit = if base == 0 {
-        USER_LOW_END
-    } else {
-        brk + (1 << 30)
-    };
+    let brk_limit = if base == 0 { USER_LOW_END } else { brk + (1 << 30) };
 
     // Stapel: 256 KB sofort, Rest wächst bei Bedarf
     let mut a = STACK_TOP - 256 * 1024;
@@ -668,13 +581,7 @@ pub fn load_elf(
         sp.map(a, true, false).ok_or(NO_MEMORY)?;
         a += 4096;
     }
-    let total: usize = argv
-        .iter()
-        .chain(envp.iter())
-        .map(|s| s.len() + 1)
-        .sum::<usize>()
-        + path.len()
-        + 64;
+    let total: usize = argv.iter().chain(envp.iter()).map(|s| s.len() + 1).sum::<usize>() + path.len() + 64;
     let mut strs: Vec<u8> = crate::mem::try_with_capacity(total).ok_or(NO_MEMORY)?;
     let mut put = |s: &[u8]| -> u64 {
         let o = strs.len() as u64;
@@ -733,14 +640,7 @@ pub fn load_elf(
     }
     copy_to(&mut sp, start, &wb, true, false)?;
     copy_to(&mut sp, sbase, &strs, true, false)?;
-    Ok(Image {
-        auxv,
-        space: sp,
-        entry,
-        sp: start,
-        brk,
-        brk_limit,
-    })
+    Ok(Image { auxv, space: sp, entry, sp: start, brk, brk_limit })
 }
 
 pub fn fresh_frame(entry: u64, sp: u64) -> TrapFrame {
@@ -757,15 +657,7 @@ pub fn fresh_frame(entry: u64, sp: u64) -> TrapFrame {
 }
 
 fn console_fds() -> Vec<Option<Fd>> {
-    (0..3)
-        .map(|_| {
-            Some(Fd {
-                kind: FdKind::Console,
-                cloexec: false,
-                flags: 2,
-            })
-        })
-        .collect()
+    (0..3).map(|_| Some(Fd { kind: FdKind::Console, cloexec: false, flags: 2 })).collect()
 }
 
 /// Programm aus dem Dateibaum starten (Vordergrund der Kern-Konsole)
@@ -811,9 +703,7 @@ fn ist_hintergrund(ps: &[Box<Proc>], p: &Proc, bg: &[u64]) -> bool {
 fn vordergrund_aktiv() -> bool {
     let ps = PROCS.lock();
     let bg = HINTERGRUND.lock();
-    ps.iter().any(|p| {
-        !matches!(p.state, State::Dead | State::Zombie(_)) && !ist_hintergrund(&ps, p, &bg)
-    })
+    ps.iter().any(|p| !matches!(p.state, State::Dead | State::Zombie(_)) && !ist_hintergrund(&ps, p, &bg))
 }
 
 fn hat_hintergrund() -> bool {
@@ -839,11 +729,7 @@ fn kill_vordergrund() {
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
     let mut ps = PROCS.lock();
     let bg = HINTERGRUND.lock().clone();
-    let groups: Vec<u64> = ps
-        .iter()
-        .filter(|p| p.pid == p.tgid && !ist_hintergrund(&ps, p, &bg))
-        .map(|p| p.tgid)
-        .collect();
+    let groups: Vec<u64> = ps.iter().filter(|p| p.pid == p.tgid && !ist_hintergrund(&ps, p, &bg)).map(|p| p.tgid).collect();
     for g in groups {
         end_group(&mut ps, g, 9);
     }
@@ -860,13 +746,7 @@ pub fn spawn_init(path: &str, argv: Vec<String>, envp: Vec<String>) -> Result<u6
 /// Start a program from the kernel itself in resource group `res`: programs of the kernel console
 /// and the self test belong to `session`, `ultar-init` and background services to `system`.
 /// Everything the new process needs is charged to that group.
-fn spawn_as(
-    path: &str,
-    argv: Vec<String>,
-    envp: Vec<String>,
-    want: Option<u64>,
-    res: u16,
-) -> Result<u64, String> {
+fn spawn_as(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>, res: u16) -> Result<u64, String> {
     let made = crate::heap::scope(res, || spawn_in(path, argv, envp, want, res));
     let p = made?;
     let pid = p.pid;
@@ -874,31 +754,18 @@ fn spawn_as(
     Ok(pid)
 }
 
-fn spawn_in(
-    path: &str,
-    argv: Vec<String>,
-    envp: Vec<String>,
-    want: Option<u64>,
-    res: u16,
-) -> Result<Box<Proc>, String> {
+fn spawn_in(path: &str, argv: Vec<String>, envp: Vec<String>, want: Option<u64>, res: u16) -> Result<Box<Proc>, String> {
     let data = fs::read_all(path).ok_or_else(|| alloc::format!("{path}: nicht gefunden"))?;
-    let img = load_elf(&data, &argv, &envp, path, &|p| fs::read_all(p))
-        .map_err(|e| alloc::format!("{path}: {e}"))?;
-    let kstack =
-        crate::mem::try_vec(KSTACK).ok_or_else(|| alloc::format!("{path}: {NO_MEMORY}"))?;
-    let pids = crate::groups::PidCharge::new(res)
-        .ok_or_else(|| alloc::format!("{path}: zu viele Prozesse"))?;
+    let img = load_elf(&data, &argv, &envp, path, &|p| fs::read_all(p)).map_err(|e| alloc::format!("{path}: {e}"))?;
+    let kstack = crate::mem::try_vec(KSTACK).ok_or_else(|| alloc::format!("{path}: {NO_MEMORY}"))?;
+    let pids = crate::groups::PidCharge::new(res).ok_or_else(|| alloc::format!("{path}: zu viele Prozesse"))?;
     let pid = want.unwrap_or_else(|| NEXT_PID.fetch_add(1, Ordering::Relaxed));
     let g = Group {
         space: Some(Arc::new(img.space)),
         fds: console_fds(),
         cwd: {
             let c = SHELL_CWD.lock().clone();
-            if c.is_empty() {
-                String::from("/")
-            } else {
-                c
-            }
+            if c.is_empty() { String::from("/") } else { c }
         },
         brk_start: img.brk,
         brk: img.brk,
@@ -968,13 +835,10 @@ fn run_one() -> Option<bool> {
             return None;
         }
         wake(&mut ps);
-        let busy: Vec<u64> = ps
-            .iter()
-            .filter_map(|p| match p.state {
-                State::Running(c) if c != cpu => Some(p.tgid),
-                _ => None,
-            })
-            .collect();
+        let busy: Vec<u64> = ps.iter().filter_map(|p| match p.state {
+            State::Running(c) if c != cpu => Some(p.tgid),
+            _ => None,
+        }).collect();
         let n = ps.len();
         let last = LAST[cpu].load(Ordering::Relaxed) as usize;
         let mut found = None;
@@ -1064,11 +928,7 @@ pub fn run_all() {
             crate::kprintln!("^C");
             let now = crate::arch::uptime_ms();
             if now.saturating_sub(LAST_INT.swap(now, Ordering::Relaxed)) < 1000 {
-                if hat_hintergrund() {
-                    kill_vordergrund()
-                } else {
-                    kill_all()
-                }
+                if hat_hintergrund() { kill_vordergrund() } else { kill_all() }
             } else {
                 crate::signal::interrupt_all();
             }
@@ -1093,11 +953,7 @@ pub fn ap_loop() -> ! {
 fn wake(ps: &mut [Box<Proc>]) {
     let now = crate::arch::uptime_ms();
     let input = crate::syscall::input_ready();
-    let all: Vec<(u64, u64, bool)> = ps
-        .iter()
-        .filter(|p| p.pid == p.tgid)
-        .map(|p| (p.pid, p.ppid, matches!(p.state, State::Zombie(_))))
-        .collect();
+    let all: Vec<(u64, u64, bool)> = ps.iter().filter(|p| p.pid == p.tgid).map(|p| (p.pid, p.ppid, matches!(p.state, State::Zombie(_)))).collect();
     let alive: Vec<u64> = all.iter().filter(|x| !x.2).map(|x| x.0).collect();
     for p in ps.iter_mut() {
         if let State::Blocked(w) = p.state {
@@ -1128,16 +984,9 @@ fn wake(ps: &mut [Box<Proc>]) {
                     }
                 }
                 Wait::Net(g) => crate::socket::gen() != g,
-                Wait::Poll(g, t) => {
-                    crate::socket::gen() != g
-                        || input
-                        || (t != 0 && now >= t)
-                        || p.pending & !p.sigmask != 0
-                        || p.pending & p.sigmask != 0 && has_sigfd(p)
-                }
+                Wait::Poll(g, t) => crate::socket::gen() != g || input || (t != 0 && now >= t) || p.pending & !p.sigmask != 0 || p.pending & p.sigmask != 0 && has_sigfd(p),
                 Wait::Child(pid) => {
-                    let mine =
-                        |x: &&(u64, u64, bool)| x.1 == p.tgid && (pid <= 0 || x.0 == pid as u64);
+                    let mine = |x: &&(u64, u64, bool)| x.1 == p.tgid && (pid <= 0 || x.0 == pid as u64);
                     all.iter().filter(mine).any(|x| x.2) || !all.iter().any(|x| mine(&x))
                 }
                 Wait::Vfork(c) => vfork_done(c, alive.contains(&c)),
@@ -1183,38 +1032,23 @@ fn vfork_done(c: u64, alive: bool) -> bool {
 }
 
 fn has_sigfd(p: &Proc) -> bool {
-    p.g.fds
-        .iter()
-        .flatten()
-        .any(|f| matches!(f.kind, FdKind::SigFd(_)))
+    p.g.fds.iter().flatten().any(|f| matches!(f.kind, FdKind::SigFd(_)))
 }
 
 fn reap_orphans() {
     let mut ps = PROCS.lock();
     let pids: Vec<u64> = ps.iter().map(|p| p.pid).collect();
-    ps.retain(|p| {
-        p.on_cpu
-            || !(p.state == State::Dead
-                || matches!(p.state, State::Zombie(_)) && (p.ppid == 0 || !pids.contains(&p.ppid)))
-    });
+    ps.retain(|p| p.on_cpu || !(p.state == State::Dead || matches!(p.state, State::Zombie(_)) && (p.ppid == 0 || !pids.contains(&p.ppid))));
 }
 
 pub fn kill_all() {
     unsafe { core::arch::asm!("mov cr3, {}", in(reg) crate::paging::kernel_pml4()) };
     let mut ps = PROCS.lock();
-    let groups: Vec<u64> = ps
-        .iter()
-        .filter(|p| p.pid == p.tgid)
-        .map(|p| p.tgid)
-        .collect();
+    let groups: Vec<u64> = ps.iter().filter(|p| p.pid == p.tgid).map(|p| p.tgid).collect();
     for g in groups {
         end_group(&mut ps, g, 9);
     }
-    ps.retain(|p| {
-        p.on_cpu
-            || matches!(p.state, State::Running(_))
-            || p.killed.is_some() && !matches!(p.state, State::Zombie(_) | State::Dead)
-    });
+    ps.retain(|p| p.on_cpu || matches!(p.state, State::Running(_)) || p.killed.is_some() && !matches!(p.state, State::Zombie(_) | State::Dead));
 }
 
 /// Prozess anhalten und zurück in den Planer (Rahmen wird gesichert). Keine Sperre darf gehalten werden.
@@ -1234,10 +1068,7 @@ pub fn switch_out(f: &TrapFrame, state: Option<State>) -> ! {
 /// Fadengruppe beenden: alle Fäden, Speicher und Dateien freigeben, Gruppenführer wird Zombie
 fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
     let cpu = crate::percpu::id();
-    if ps
-        .iter()
-        .any(|t| t.tgid == tgid && matches!(t.state, State::Running(c) if c != cpu))
-    {
+    if ps.iter().any(|t| t.tgid == tgid && matches!(t.state, State::Running(c) if c != cpu)) {
         // läuft auf einem anderen Kern: dort beim nächsten Eintritt beenden
         for t in ps.iter_mut().filter(|t| t.tgid == tgid) {
             t.killed = Some(status);
@@ -1246,11 +1077,7 @@ fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
     }
     let mut g = None;
     for t in ps.iter_mut().filter(|t| t.tgid == tgid) {
-        t.state = if t.pid == tgid {
-            State::Zombie(status)
-        } else {
-            State::Dead
-        };
+        t.state = if t.pid == tgid { State::Zombie(status) } else { State::Dead };
         g = Some(t.g.clone());
     }
     if let Some(mut g) = g {
@@ -1275,25 +1102,14 @@ fn end_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
 /// If the group that just ended was pid 1 of a pid namespace: close the namespace and kill every
 /// other process in it (and in namespaces nested below).
 fn end_pid_namespace(ps: &mut Vec<Box<Proc>>, tgid: u64) {
-    let Some(ns) = ps
-        .iter()
-        .find(|t| t.pid == tgid)
-        .map(|t| t.link.ns().clone())
-    else {
-        return;
-    };
+    let Some(ns) = ps.iter().find(|t| t.pid == tgid).map(|t| t.link.ns().clone()) else { return };
     if ns.is_initial() || ns.init_global() != tgid || ns.is_dead() {
         return;
     }
     ns.mark_dead();
     let victims: Vec<u64> = ps
         .iter()
-        .filter(|p| {
-            p.pid == p.tgid
-                && p.tgid != tgid
-                && ns.contains(p.link.ns())
-                && !matches!(p.state, State::Zombie(_) | State::Dead)
-        })
+        .filter(|p| p.pid == p.tgid && p.tgid != tgid && ns.contains(p.link.ns()) && !matches!(p.state, State::Zombie(_) | State::Dead))
         .map(|p| p.tgid)
         .collect();
     for v in victims {
@@ -1319,22 +1135,11 @@ pub fn exit_thread(status: i32, group: bool) -> ! {
                     }
                 }
             }
-            let others = ps
-                .iter()
-                .filter(|t| {
-                    t.tgid == tgid
-                        && t.pid != me
-                        && !matches!(t.state, State::Dead | State::Exiting | State::Zombie(_))
-                })
-                .count();
+            let others = ps.iter().filter(|t| t.tgid == tgid && t.pid != me && !matches!(t.state, State::Dead | State::Exiting | State::Zombie(_))).count();
             if group || others == 0 {
                 end_group(&mut ps, tgid, status);
             } else {
-                ps[i].state = if me == tgid {
-                    State::Exiting
-                } else {
-                    State::Dead
-                };
+                ps[i].state = if me == tgid { State::Exiting } else { State::Dead };
             }
         }
     }
@@ -1381,11 +1186,7 @@ pub fn futex_wake_locked(ps: &mut [Box<Proc>], pa: u64, n: u64) -> u64 {
 /// Zeitgeber aus einem Benutzerprogramm: anderen Prozessen Rechenzeit geben
 pub fn on_timer(f: &mut TrapFrame) {
     let me = current();
-    let killed = PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .and_then(|p| p.killed);
+    let killed = PROCS.lock().iter().find(|p| p.pid == me).and_then(|p| p.killed);
     if let Some(st) = killed {
         exit_thread(st, true);
     }
@@ -1395,15 +1196,8 @@ pub fn on_timer(f: &mut TrapFrame) {
     }
     let (others, sig) = {
         let ps = PROCS.lock();
-        let o = ps
-            .iter()
-            .filter(|p| p.state == State::Ready && !p.on_cpu)
-            .count();
-        let s = ps
-            .iter()
-            .find(|p| p.pid == me)
-            .map(|p| p.pending & !p.sigmask != 0)
-            .unwrap_or(false);
+        let o = ps.iter().filter(|p| p.state == State::Ready && !p.on_cpu).count();
+        let s = ps.iter().find(|p| p.pid == me).map(|p| p.pending & !p.sigmask != 0).unwrap_or(false);
         (o, s)
     };
     if sig {
@@ -1436,14 +1230,10 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
                 Some(p) => {
                     crate::heap::set_context(p.g.res);
                     match p.g.space.as_ref().map(|s| s.fault_in(cr2)) {
-                        Some(Fault::NotReserved)
-                            if cr2 < STACK_TOP && cr2 >= STACK_TOP - STACK_MAX =>
-                        {
-                            match p.space_mut().map(cr2 & !0xfff, true, false) {
-                                Some(_) => Fault::Mapped,
-                                None => Fault::NoMemory,
-                            }
-                        }
+                        Some(Fault::NotReserved) if cr2 < STACK_TOP && cr2 >= STACK_TOP - STACK_MAX => match p.space_mut().map(cr2 & !0xfff, true, false) {
+                            Some(_) => Fault::Mapped,
+                            None => Fault::NoMemory,
+                        },
                         Some(r) => r,
                         None => Fault::NotReserved,
                     }
@@ -1477,35 +1267,15 @@ pub fn on_fault(f: &mut TrapFrame, v: u64) {
     }
     // built and freed in an inner scope: nothing on this stack is dropped once the process is gone
     crate::heap::kernel(|| {
-        let name = PROCS
-            .lock()
-            .iter()
-            .find(|p| p.pid == current())
-            .map(|p| p.name.clone())
-            .unwrap_or_default();
-        crate::kprintln!(
-            "[proc] {} (pid {}): {} {} {:#x}, {} {:#x} – {}",
-            name,
-            current(),
-            crate::trap::name(v),
-            crate::sprache::t("bei"),
-            f.rip,
-            crate::sprache::t("adresse"),
-            cr2,
-            crate::sprache::t("beendet")
-        );
+        let name = PROCS.lock().iter().find(|p| p.pid == current()).map(|p| p.name.clone()).unwrap_or_default();
+        crate::kprintln!("[proc] {} (pid {}): {} {} {:#x}, {} {:#x} – {}", name, current(), crate::trap::name(v), crate::sprache::t("bei"), f.rip, crate::sprache::t("adresse"), cr2, crate::sprache::t("beendet"));
     });
     exit_current(sig as i32);
 }
 
 pub fn on_syscall(f: &mut TrapFrame) {
     let me = current();
-    let (killed, res) = PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| (p.killed, p.g.res))
-        .unwrap_or((None, crate::groups::ROOT));
+    let (killed, res) = PROCS.lock().iter().find(|p| p.pid == me).map(|p| (p.killed, p.g.res)).unwrap_or((None, crate::groups::ROOT));
     if let Some(st) = killed {
         exit_thread(st, true);
     }
@@ -1514,18 +1284,10 @@ pub fn on_syscall(f: &mut TrapFrame) {
     crate::heap::clear_refused();
     crate::percpu::me().errno = 0;
     // only where a `memory.max` is set somewhere: remember the charge to see what this call added
-    let before = if crate::groups::limits_set() {
-        crate::groups::memory(res)
-    } else {
-        u64::MAX
-    };
+    let before = if crate::groups::limits_set() { crate::groups::memory(res) } else { u64::MAX };
     crate::syscall::dispatch(f);
     crate::oom::after_syscall(res, before);
-    let killed = PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .and_then(|p| p.killed);
+    let killed = PROCS.lock().iter().find(|p| p.pid == me).and_then(|p| p.killed);
     if let Some(st) = killed {
         exit_thread(st, true);
     }
@@ -1552,34 +1314,14 @@ pub struct Info {
 pub fn infos() -> Vec<Info> {
     let ps = PROCS.lock();
     let me = current();
-    let ns = ps
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| p.link.ns().clone())
-        .unwrap_or_else(crate::isolation::pid::PidNs::initial);
+    let ns = ps.iter().find(|p| p.pid == me).map(|p| p.link.ns().clone()).unwrap_or_else(crate::isolation::pid::PidNs::initial);
     ps.iter()
         .filter(|p| p.pid == p.tgid)
         .filter_map(|p| {
             let pid = ns.local(p.pid)?;
-            let pages =
-                p.g.space
-                    .as_ref()
-                    .map(|s| s.resident.load(Ordering::Relaxed))
-                    .unwrap_or(0);
+            let pages = p.g.space.as_ref().map(|s| s.resident.load(Ordering::Relaxed)).unwrap_or(0);
             let (ppid, pgid) = (ns.local(p.ppid).unwrap_or(0), ns.local(p.pgid).unwrap_or(0));
-            Some(Info {
-                global: p.pid,
-                pid,
-                ppid,
-                pgid,
-                name: p.name.clone(),
-                cmdline: p.g.cmdline.clone(),
-                exe: p.g.exe_host.clone(),
-                state: p.state,
-                pages,
-                auxv: p.g.auxv.clone(),
-                res: p.g.res,
-            })
+            Some(Info { global: p.pid, pid, ppid, pgid, name: p.name.clone(), cmdline: p.g.cmdline.clone(), exe: p.g.exe_host.clone(), state: p.state, pages, auxv: p.g.auxv.clone(), res: p.g.res })
         })
         .collect()
 }
@@ -1587,34 +1329,19 @@ pub fn infos() -> Vec<Info> {
 /// Group (kernel-wide number) of the calling thread; 0 outside a process.
 pub fn current_group() -> u64 {
     let me = current();
-    PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| p.tgid)
-        .unwrap_or(0)
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.tgid).unwrap_or(0)
 }
 
 /// Whether the reader lives in the initial pid namespace (the kernel console counts as that).
 pub fn reader_in_initial_pid_ns() -> bool {
     let me = current();
-    PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| p.link.ns().is_initial())
-        .unwrap_or(true)
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.link.ns().is_initial()).unwrap_or(true)
 }
 
 /// Mount namespace of the calling process if it is not the initial one.
 pub fn reader_mount_ns() -> Option<Arc<crate::isolation::mount::MountNs>> {
     let me = current();
-    PROCS
-        .lock()
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| p.g.iso.mnt.clone())
-        .filter(|m| !m.is_initial())
+    PROCS.lock().iter().find(|p| p.pid == me).map(|p| p.g.iso.mnt.clone()).filter(|m| !m.is_initial())
 }
 
 /// Namespace of kind `kind` ("mnt" or "pid") of the group with the kernel-wide number `tgid`.
@@ -1629,11 +1356,7 @@ pub fn ns_ref(tgid: u64, kind: &str) -> Option<crate::isolation::NsRef> {
 }
 
 pub fn list() -> Vec<(u64, u64, String, State)> {
-    PROCS
-        .lock()
-        .iter()
-        .map(|p| (p.pid, p.ppid, p.name.clone(), p.state))
-        .collect()
+    PROCS.lock().iter().map(|p| (p.pid, p.ppid, p.name.clone(), p.state)).collect()
 }
 
 /// Process ids of the thread groups that belong to resource group `g` (not its descendants), as the
@@ -1641,15 +1364,8 @@ pub fn list() -> Vec<(u64, u64, String, State)> {
 pub fn group_members(g: u16) -> Vec<u64> {
     let ps = PROCS.lock();
     let me = current();
-    let ns = ps
-        .iter()
-        .find(|p| p.pid == me)
-        .map(|p| p.link.ns().clone())
-        .unwrap_or_else(crate::isolation::pid::PidNs::initial);
-    ps.iter()
-        .filter(|p| p.pid == p.tgid && p.g.res == g && !matches!(p.state, State::Dead))
-        .filter_map(|p| ns.local(p.pid))
-        .collect()
+    let ns = ps.iter().find(|p| p.pid == me).map(|p| p.link.ns().clone()).unwrap_or_else(crate::isolation::pid::PidNs::initial);
+    ps.iter().filter(|p| p.pid == p.tgid && p.g.res == g && !matches!(p.state, State::Dead)).filter_map(|p| ns.local(p.pid)).collect()
 }
 
 /// Move the thread group `tgid` (kernel-wide number) into resource group `to`: its threads are
@@ -1661,10 +1377,7 @@ pub fn move_group(tgid: u64, to: u16) -> Result<(), i64> {
     if !crate::groups::is_live(to) {
         return Err(-2);
     }
-    let from = match ps
-        .iter()
-        .find(|p| p.tgid == tgid && !matches!(p.state, State::Dead))
-    {
+    let from = match ps.iter().find(|p| p.tgid == tgid && !matches!(p.state, State::Dead)) {
         Some(p) => p.g.res,
         None => return Err(-3),
     };
@@ -1687,13 +1400,7 @@ pub fn move_group(tgid: u64, to: u16) -> Result<(), i64> {
     if let Some(p) = ps.iter_mut().find(|p| p.tgid == tgid) {
         p.g.res = to;
     }
-    if tgid
-        == ps
-            .iter()
-            .find(|p| p.pid == current())
-            .map(|p| p.tgid)
-            .unwrap_or(0)
-    {
+    if tgid == ps.iter().find(|p| p.pid == current()).map(|p| p.tgid).unwrap_or(0) {
         crate::heap::set_context(to);
     }
     Ok(())

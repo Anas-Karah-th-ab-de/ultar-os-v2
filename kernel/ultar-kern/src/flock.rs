@@ -26,18 +26,14 @@ const MAX_LOCKS: usize = 1024;
 static LOCKS: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
 
 fn alive(tgid: u64) -> bool {
-    PROCS.lock().iter().any(|p| {
-        p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Exiting | State::Dead)
-    })
+    PROCS.lock().iter().any(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Exiting | State::Dead))
 }
 
 /// The `flock` system call. A blocking request on a held lock is answered like `LOCK_NB`
 /// (`EWOULDBLOCK`): the kernel has no wait queue for it, and the caller decides how to retry.
 pub fn sys_flock(fd: u64, op: u64) -> i64 {
     let target = with(|p| match p.fd(fd).map(|d| &d.kind) {
-        Some(FdKind::File { path, .. }) | Some(FdKind::Dir { path, .. }) => {
-            Ok((path.clone(), p.tgid))
-        }
+        Some(FdKind::File { path, .. }) | Some(FdKind::Dir { path, .. }) => Ok((path.clone(), p.tgid)),
         Some(_) => Err(-EINVAL),
         None => Err(-EBADF),
     });

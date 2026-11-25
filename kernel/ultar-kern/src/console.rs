@@ -49,13 +49,7 @@ pub struct Font {
 
 impl Font {
     pub const fn empty() -> Font {
-        Font {
-            data: &[],
-            glyphs: 0,
-            height: 16,
-            map: [(0, 0); 1024],
-            n: 0,
-        }
+        Font { data: &[], glyphs: 0, height: 16, map: [(0, 0); 1024], n: 0 }
     }
     /// PSF1 mit Unicode-Tabelle (Modus 2/3)
     pub fn load(data: &'static [u8]) -> Font {
@@ -97,9 +91,7 @@ impl Font {
             if cp > 0xffff {
                 return None;
             }
-            let i = self.map[..self.n]
-                .binary_search_by_key(&(cp as u16), |e| e.0)
-                .ok()?;
+            let i = self.map[..self.n].binary_search_by_key(&(cp as u16), |e| e.0).ok()?;
             self.map[i].1 as usize
         } else if (cp as usize) < self.glyphs {
             cp as usize
@@ -143,12 +135,7 @@ pub fn grafik(an: bool) {
             fill(&f, 0, 0, f.width as usize, f.height as usize, s.bg);
             fill(&f, 0, 0, f.width as usize, CH * TOP - 4, 0x141821);
             fill(&f, 0, CH * TOP - 4, f.width as usize, 2, 0xC9A227);
-            let title = concat!(
-                ultar_brand::product_caps!(),
-                "  ·  ",
-                ultar_brand::vendor!(),
-                "  ·  Rust"
-            );
+            let title = concat!(ultar_brand::product_caps!(), "  ·  ", ultar_brand::vendor!(), "  ·  Rust");
             for (i, ch) in title.chars().enumerate() {
                 draw_char(&f, 1 + i, 0, ch, 0xE6C454, 0x141821, 8);
             }
@@ -182,17 +169,8 @@ pub struct Screen {
 const LINE: usize = 256;
 
 pub static mut SCREEN: Screen = Screen {
-    fb: None,
-    col: 0,
-    row: 0,
-    cols: 0,
-    rows: 0,
-    fg: 0xE6E8EE,
-    bg: 0x0B0D12,
-    esc: 0,
-    cells: [' '; LINE],
-    len: 0,
-    drawn: 0,
+    fb: None, col: 0, row: 0, cols: 0, rows: 0, fg: 0xE6E8EE, bg: 0x0B0D12, esc: 0,
+    cells: [' '; LINE], len: 0, drawn: 0,
 };
 
 /// Spalten und Zeilen der Konsole (Bildschirm, sonst 80×25)
@@ -224,12 +202,7 @@ pub fn screen_init(fb: Option<Framebuffer>) {
             // Kopfleiste: Gold der Marke KM Code Craft
             fill(&f, 0, 0, f.width as usize, CH * TOP - 4, 0x141821);
             fill(&f, 0, CH * TOP - 4, f.width as usize, 2, 0xC9A227);
-            let title = concat!(
-                ultar_brand::product_caps!(),
-                "  ·  ",
-                ultar_brand::vendor!(),
-                "  ·  Rust"
-            );
+            let title = concat!(ultar_brand::product_caps!(), "  ·  ", ultar_brand::vendor!(), "  ·  Rust");
             for (i, ch) in title.chars().enumerate() {
                 draw_char(&f, 1 + i, 0, ch, 0xE6C454, 0x141821, 8);
             }
@@ -239,11 +212,7 @@ pub fn screen_init(fb: Option<Framebuffer>) {
 
 #[inline]
 fn px(f: &Framebuffer, x: usize, y: usize, rgb: u32) {
-    let v = if f.bgr {
-        rgb
-    } else {
-        ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff)
-    };
+    let v = if f.bgr { rgb } else { ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff) };
     unsafe { core::ptr::write_volatile((f.base as *mut u32).add(y * f.stride as usize + x), v) };
 }
 
@@ -259,19 +228,11 @@ fn draw_char(f: &Framebuffer, col: usize, row: usize, c: char, fg: u32, bg: u32,
     let (x0, y0) = (col * CW, row * CH + yoff / 2);
     let lat = unsafe { &*core::ptr::addr_of!(LATIN) };
     let ara = unsafe { &*core::ptr::addr_of!(ARABIC) };
-    let g = lat
-        .glyph(c)
-        .or_else(|| ara.glyph(c))
-        .or_else(|| lat.glyph('?'));
+    let g = lat.glyph(c).or_else(|| ara.glyph(c)).or_else(|| lat.glyph('?'));
     for y in 0..CH {
         let bits = g.map(|g| g.get(y).copied().unwrap_or(0)).unwrap_or(0);
         for x in 0..CW {
-            px(
-                f,
-                x0 + x,
-                y0 + y,
-                if bits & (0x80 >> x) != 0 { fg } else { bg },
-            );
+            px(f, x0 + x, y0 + y, if bits & (0x80 >> x) != 0 { fg } else { bg });
         }
     }
 }
@@ -310,11 +271,7 @@ impl Screen {
         let h = self.rows * CH;
         unsafe {
             let base = f.base as *mut u32;
-            core::ptr::copy(
-                base.add((top + CH) * stride),
-                base.add(top * stride),
-                (h - top - CH) * stride,
-            );
+            core::ptr::copy(base.add((top + CH) * stride), base.add(top * stride), (h - top - CH) * stride);
         }
         fill(f, 0, h - CH, f.width as usize, CH, self.bg);
         self.row = self.rows - 1;
@@ -339,14 +296,7 @@ impl Screen {
                             self.redraw(&f);
                         }
                     } else if c == 'J' {
-                        fill(
-                            &f,
-                            0,
-                            TOP * CH,
-                            f.width as usize,
-                            (self.rows - TOP) * CH,
-                            self.bg,
-                        );
+                        fill(&f, 0, TOP * CH, f.width as usize, (self.rows - TOP) * CH, self.bg);
                         self.row = TOP;
                         self.col = 0;
                         self.newline_reset();
@@ -450,15 +400,7 @@ fn lock() -> Guard {
         return Guard(false, was_on);
     }
     let mut n = 0u64;
-    while OWNER
-        .compare_exchange(
-            usize::MAX,
-            me,
-            core::sync::atomic::Ordering::Acquire,
-            core::sync::atomic::Ordering::Relaxed,
-        )
-        .is_err()
-    {
+    while OWNER.compare_exchange(usize::MAX, me, core::sync::atomic::Ordering::Acquire, core::sync::atomic::Ordering::Relaxed).is_err() {
         core::hint::spin_loop();
         n += 1;
         if n > 200_000_000 {
@@ -663,12 +605,7 @@ pub fn visual_line_rtl(s: &str) -> alloc::vec::Vec<char> {
 
 /// Formen bilden (Zeichen ohne Zelle: Vokalzeichen; Lam+Alef wird eine Zelle)
 fn shape(log: &[char]) -> alloc::vec::Vec<char> {
-    let letters: alloc::vec::Vec<(usize, char)> = log
-        .iter()
-        .copied()
-        .enumerate()
-        .filter(|(_, c)| !is_mark(*c))
-        .collect();
+    let letters: alloc::vec::Vec<(usize, char)> = log.iter().copied().enumerate().filter(|(_, c)| !is_mark(*c)).collect();
     let mut shaped: alloc::vec::Vec<char> = alloc::vec::Vec::with_capacity(log.len());
     let mut i = 0;
     while i < letters.len() {

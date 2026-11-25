@@ -31,17 +31,10 @@ pub fn eingehend_erlaubt(proto: u8, src: [u8; 4], dport: u16) -> bool {
     if src[0] == 127 {
         return true;
     }
-    if crate::verbund::aktiv()
-        && ((proto == 17 && dport == crate::verbund::UDP_PORT)
-            || (proto == 6 && dport == crate::verbund::TCP_PORT))
-    {
+    if crate::verbund::aktiv() && ((proto == 17 && dport == crate::verbund::UDP_PORT) || (proto == 6 && dport == crate::verbund::TCP_PORT)) {
         return true;
     }
-    if OFFEN
-        .lock()
-        .iter()
-        .any(|&(p, port)| p == proto && port == dport)
-    {
+    if OFFEN.lock().iter().any(|&(p, port)| p == proto && port == dport) {
         return true;
     }
     VERWORFEN.fetch_add(1, Ordering::Relaxed);
@@ -55,12 +48,7 @@ pub fn verworfen() {
 /// Befehl ausführen: „offen 22“, „offen udp 53“, „zu 22“, „ping an|aus“
 pub fn befehl(z: &str) -> Result<String, String> {
     let w: Vec<&str> = z.split_whitespace().collect();
-    let port = |s: &str| {
-        s.parse::<u16>()
-            .ok()
-            .filter(|p| *p != 0)
-            .ok_or_else(|| format!("Port? {s}"))
-    };
+    let port = |s: &str| s.parse::<u16>().ok().filter(|p| *p != 0).ok_or_else(|| format!("Port? {s}"));
     match w.as_slice() {
         ["ping", x] => {
             PING.store(*x == "an", Ordering::Relaxed);
@@ -71,9 +59,7 @@ pub fn befehl(z: &str) -> Result<String, String> {
         ["zu", p] | ["zu", "tcp", p] => schliessen(6, port(p)?),
         ["zu", "udp", p] => schliessen(17, port(p)?),
         [] => Ok(text()),
-        _ => Err(String::from(
-            "offen [tcp|udp] <port> | zu [tcp|udp] <port> | ping an|aus",
-        )),
+        _ => Err(String::from("offen [tcp|udp] <port> | zu [tcp|udp] <port> | ping an|aus")),
     }
 }
 
@@ -100,21 +86,9 @@ pub fn text() -> String {
         s += &format!("offen {} {port}\n", proto_name(p));
     }
     if crate::verbund::aktiv() {
-        s += &format!(
-            "offen verbund udp {} tcp {}\n",
-            crate::verbund::UDP_PORT,
-            crate::verbund::TCP_PORT
-        );
+        s += &format!("offen verbund udp {} tcp {}\n", crate::verbund::UDP_PORT, crate::verbund::TCP_PORT);
     }
-    s += &format!(
-        "ping {}\nverworfen {}\n",
-        if PING.load(Ordering::Relaxed) {
-            "an"
-        } else {
-            "aus"
-        },
-        VERWORFEN.load(Ordering::Relaxed)
-    );
+    s += &format!("ping {}\nverworfen {}\n", if PING.load(Ordering::Relaxed) { "an" } else { "aus" }, VERWORFEN.load(Ordering::Relaxed));
     s
 }
 

@@ -10,14 +10,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
 
-fn dhcp_msg(
-    mac: [u8; 6],
-    xid: u32,
-    typ: u8,
-    ciaddr: [u8; 4],
-    req_ip: Option<[u8; 4]>,
-    server: Option<[u8; 4]>,
-) -> Vec<u8> {
+fn dhcp_msg(mac: [u8; 6], xid: u32, typ: u8, ciaddr: [u8; 4], req_ip: Option<[u8; 4]>, server: Option<[u8; 4]>) -> Vec<u8> {
     let mut m = vec![0u8; 240];
     m[0] = 1; // Anfrage
     m[1] = 1; // Ethernet
@@ -71,26 +64,11 @@ fn parse_dhcp(frame: &[u8], xid: u32) -> Option<Reply> {
         return None;
     }
     let d = &u[8..];
-    if d.len() < 240
-        || d[0] != 2
-        || u32::from_be_bytes([d[4], d[5], d[6], d[7]]) != xid
-        || d[236..240] != [99, 130, 83, 99]
-    {
+    if d.len() < 240 || d[0] != 2 || u32::from_be_bytes([d[4], d[5], d[6], d[7]]) != xid || d[236..240] != [99, 130, 83, 99] {
         return None;
     }
     let yi = [d[16], d[17], d[18], d[19]];
-    let mut r = Reply {
-        typ: 0,
-        yiaddr: yi,
-        cfg: Config {
-            ip: yi,
-            ..Default::default()
-        },
-        server: [d[20], d[21], d[22], d[23]],
-        lease: 0,
-        t1: 0,
-        t2: 0,
-    };
+    let mut r = Reply { typ: 0, yiaddr: yi, cfg: Config { ip: yi, ..Default::default() }, server: [d[20], d[21], d[22], d[23]], lease: 0, t1: 0, t2: 0 };
     let mut p = 240;
     while p < d.len() && d[p] != 255 {
         if d[p] == 0 {
@@ -133,16 +111,8 @@ fn parse_dhcp(frame: &[u8], xid: u32) -> Option<Reply> {
 }
 
 fn bcast_dhcp(n: usize, mac: [u8; 6], src: [u8; 4], msg: &[u8]) -> bool {
-    let f = eth(
-        [0xff; 6],
-        mac,
-        0x0800,
-        &ipv4(src, [255; 4], 17, &udp(68, 67, msg)),
-    );
-    NET.lock()
-        .get_mut(n)
-        .map(|d| d.send(&f).is_ok())
-        .unwrap_or(false)
+    let f = eth([0xff; 6], mac, 0x0800, &ipv4(src, [255; 4], 17, &udp(68, 67, msg)));
+    NET.lock().get_mut(n).map(|d| d.send(&f).is_ok()).unwrap_or(false)
 }
 
 /// Where an interface stands with its IPv4 address.
@@ -207,18 +177,7 @@ struct IfState {
 }
 
 impl IfState {
-    const NEW: IfState = IfState {
-        fixed: None,
-        phase: Phase::Idle,
-        xid: 0,
-        offer: None,
-        next_tx: 0,
-        tries: 0,
-        lease: None,
-        cfg: None,
-        link: None,
-        link_changes: 0,
-    };
+    const NEW: IfState = IfState { fixed: None, phase: Phase::Idle, xid: 0, offer: None, next_tx: 0, tries: 0, lease: None, cfg: None, link: None, link_changes: 0 };
 }
 
 static IFS: Mutex<Vec<IfState>> = Mutex::new(Vec::new());
@@ -255,13 +214,8 @@ pub fn start_dhcp(n: usize) {
 
 /// The interface that carries the address of the sockets follows the one with an address.
 fn settle_active() {
-    let (active, cfgs): (usize, Vec<Option<Config>>) =
-        (active_nic(), IFS.lock().iter().map(|s| s.cfg).collect());
-    let pick = if cfgs.get(active).copied().flatten().is_some() {
-        Some(active)
-    } else {
-        cfgs.iter().position(|c| c.is_some())
-    };
+    let (active, cfgs): (usize, Vec<Option<Config>>) = (active_nic(), IFS.lock().iter().map(|s| s.cfg).collect());
+    let pick = if cfgs.get(active).copied().flatten().is_some() { Some(active) } else { cfgs.iter().position(|c| c.is_some()) };
     match pick {
         Some(p) => {
             set_active_nic(p);
@@ -308,21 +262,14 @@ pub fn renew(n: usize) {
 }
 
 fn send_for(n: usize, s: &IfState) {
-    let Some(mac) = NET.lock().get(n).map(|d| d.mac()) else {
-        return;
-    };
+    let Some(mac) = NET.lock().get(n).map(|d| d.mac()) else { return };
     match s.phase {
         Phase::Selecting => {
             bcast_dhcp(n, mac, [0; 4], &dhcp_msg(mac, s.xid, 1, [0; 4], None, None));
         }
         Phase::Requesting => {
             if let Some((ip, srv)) = s.offer {
-                bcast_dhcp(
-                    n,
-                    mac,
-                    [0; 4],
-                    &dhcp_msg(mac, s.xid, 3, [0; 4], Some(ip), Some(srv)),
-                );
+                bcast_dhcp(n, mac, [0; 4], &dhcp_msg(mac, s.xid, 3, [0; 4], Some(ip), Some(srv)));
             }
         }
         Phase::Renewing | Phase::Rebinding => {
@@ -357,11 +304,7 @@ fn dhcp_timers(n: usize, now: u64) {
                 s.next_tx = 0;
             }
         }
-        if !matches!(
-            s.phase,
-            Phase::Selecting | Phase::Requesting | Phase::Renewing | Phase::Rebinding
-        ) || now < s.next_tx
-        {
+        if !matches!(s.phase, Phase::Selecting | Phase::Requesting | Phase::Renewing | Phase::Rebinding) || now < s.next_tx {
             return (false, *s);
         }
         if s.phase == Phase::Requesting && s.tries >= 4 {
@@ -394,9 +337,7 @@ pub fn input(n: usize, f: &[u8]) -> bool {
         return false;
     }
     let xid = with_if(n, |s| s.xid);
-    let Some(r) = parse_dhcp(f, xid) else {
-        return true;
-    };
+    let Some(r) = parse_dhcp(f, xid) else { return true };
     let now = crate::arch::uptime_ms();
     let mut changed = false;
     with_if(n, |s| match (s.phase, r.typ) {
@@ -408,33 +349,15 @@ pub fn input(n: usize, f: &[u8]) -> bool {
         }
         (Phase::Requesting | Phase::Renewing | Phase::Rebinding, 5) => {
             let secs = if r.lease == 0 { 3600 } else { r.lease };
-            let t1 = if r.t1 == 0 || r.t1 >= secs {
-                secs / 2
-            } else {
-                r.t1
-            };
-            let t2 = if r.t2 == 0 || r.t2 >= secs || r.t2 <= t1 {
-                secs / 8 * 7
-            } else {
-                r.t2
-            };
+            let t1 = if r.t1 == 0 || r.t1 >= secs { secs / 2 } else { r.t1 };
+            let t2 = if r.t2 == 0 || r.t2 >= secs || r.t2 <= t1 { secs / 8 * 7 } else { r.t2 };
             let ms = |x: u32| now + x as u64 * 1000;
             let mut cfg = r.cfg;
             if cfg.ip == [0; 4] {
                 cfg.ip = r.yiaddr;
             }
             s.cfg = Some(cfg);
-            s.lease = Some(Lease {
-                server: r.server,
-                secs,
-                t1: ms(t1),
-                t2: ms(t2),
-                end: if r.lease == u32::MAX {
-                    u64::MAX
-                } else {
-                    ms(secs)
-                },
-            });
+            s.lease = Some(Lease { server: r.server, secs, t1: ms(t1), t2: ms(t2), end: if r.lease == u32::MAX { u64::MAX } else { ms(secs) } });
             s.phase = Phase::Bound;
             s.offer = None;
             changed = true;
@@ -464,11 +387,7 @@ pub fn input(n: usize, f: &[u8]) -> bool {
 pub fn tick() {
     let now = crate::arch::uptime_ms();
     let last = LAST_TICK.load(Ordering::Relaxed);
-    if now.saturating_sub(last) < 100
-        || LAST_TICK
-            .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
-    {
+    if now.saturating_sub(last) < 100 || LAST_TICK.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
         return;
     }
     let count = NET.lock().len();
@@ -502,12 +421,7 @@ pub fn tick() {
             continue;
         }
         if n != active_nic() || CONFIG.lock().is_none() {
-            let busy = with_if(n, |s| {
-                matches!(
-                    s.phase,
-                    Phase::Selecting | Phase::Requesting | Phase::Renewing | Phase::Rebinding
-                )
-            });
+            let busy = with_if(n, |s| matches!(s.phase, Phase::Selecting | Phase::Requesting | Phase::Renewing | Phase::Rebinding));
             if busy && n != active_nic() {
                 let mut buf = [0u8; 2048];
                 for _ in 0..16 {
@@ -557,11 +471,7 @@ pub fn dhcp(n: usize) -> Option<Config> {
 pub fn dhcp_all() -> Option<(usize, Config)> {
     let count = NET.lock().len();
     for n in 0..count {
-        let (linked, detached) = NET
-            .lock()
-            .get(n)
-            .map(|d| (d.link().unwrap_or(true), d.detached()))
-            .unwrap_or((false, true));
+        let (linked, detached) = NET.lock().get(n).map(|d| (d.link().unwrap_or(true), d.detached())).unwrap_or((false, true));
         if detached {
             continue;
         }
@@ -595,42 +505,20 @@ pub fn ipv4_text(n: usize) -> String {
     let now = crate::arch::uptime_ms();
     let s = with_if(n, |s| *s);
     let active = active_nic() == n && CONFIG.lock().is_some();
-    let mut t = alloc::format!(
-        "mode={}\nstate={}\nactive={}\nlink_changes={}\n",
-        if s.fixed.is_some() { "static" } else { "dhcp" },
-        s.phase.word(),
-        u8::from(active),
-        s.link_changes
-    );
+    let mut t = alloc::format!("mode={}\nstate={}\nactive={}\nlink_changes={}\n", if s.fixed.is_some() { "static" } else { "dhcp" }, s.phase.word(), u8::from(active), s.link_changes);
     if let Some(c) = s.cfg {
         t += &alloc::format!("address={}/{}\n", ip_text(c.ip), prefix(c.mask));
         if c.gw != [0; 4] {
             t += &alloc::format!("gateway={}\n", ip_text(c.gw));
         }
-        let dns: Vec<String> = [c.dns, c.dns2]
-            .iter()
-            .filter(|d| **d != [0; 4])
-            .map(|d| ip_text(*d))
-            .collect();
+        let dns: Vec<String> = [c.dns, c.dns2].iter().filter(|d| **d != [0; 4]).map(|d| ip_text(*d)).collect();
         if !dns.is_empty() {
             t += &alloc::format!("dns={}\n", dns.join(" "));
         }
     }
     if let Some(l) = s.lease {
-        let left = |x: u64| {
-            if x == u64::MAX {
-                u64::MAX / 1000
-            } else {
-                x.saturating_sub(now) / 1000
-            }
-        };
-        t += &alloc::format!(
-            "server={}\nlease={}\nrenew_in={}\nexpires_in={}\n",
-            ip_text(l.server),
-            l.secs,
-            left(l.t1),
-            left(l.end)
-        );
+        let left = |x: u64| if x == u64::MAX { u64::MAX / 1000 } else { x.saturating_sub(now) / 1000 };
+        t += &alloc::format!("server={}\nlease={}\nrenew_in={}\nexpires_in={}\n", ip_text(l.server), l.secs, left(l.t1), left(l.end));
     }
     t
 }
@@ -645,22 +533,13 @@ pub fn ipv4_write(n: usize, text: &str) -> Result<(), &'static str> {
             let a = w.next().ok_or("address missing")?;
             let (ipt, nn) = a.split_once('/').ok_or("prefix missing")?;
             let ip = parse_ip(ipt).ok_or("bad address")?;
-            let nn: u32 = nn
-                .parse()
-                .ok()
-                .filter(|x| (1..=32).contains(x))
-                .ok_or("bad prefix")?;
+            let nn: u32 = nn.parse().ok().filter(|x| (1..=32).contains(x)).ok_or("bad prefix")?;
             let mask = (u32::MAX << (32 - nn)).to_be_bytes();
             let gw = match w.next() {
                 Some("-") | None => [0; 4],
                 Some(g) => parse_ip(g).ok_or("bad router")?,
             };
-            let mut cfg = Config {
-                ip,
-                mask,
-                gw,
-                ..Default::default()
-            };
+            let mut cfg = Config { ip, mask, gw, ..Default::default() };
             if let Some(d) = w.next() {
                 let mut it = d.split(',');
                 cfg.dns = it.next().and_then(parse_ip).ok_or("bad dns")?;
@@ -677,3 +556,4 @@ pub fn ipv4_write(n: usize, text: &str) -> Result<(), &'static str> {
     }
     Ok(())
 }
+

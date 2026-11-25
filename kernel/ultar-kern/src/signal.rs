@@ -30,25 +30,12 @@ pub fn send_locked(ps: &mut Vec<Box<Proc>>, tgid: u64, tid: u64, sig: u64) -> bo
     if sig == 0 || sig > 64 {
         return false;
     }
-    let Some(lead) = ps
-        .iter()
-        .find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead))
-    else {
-        return false;
-    };
+    let Some(lead) = ps.iter().find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)) else { return false };
     let act = lead.g.sigact[sig as usize];
     crate::socket::bump();
     // von allen Fäden gesperrt: nur vormerken (z. B. für signalfd), keine Standardaktion
-    if sig != SIGKILL
-        && ps
-            .iter()
-            .filter(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead))
-            .all(|p| p.sigmask & bit(sig) != 0)
-    {
-        if let Some(p) = ps
-            .iter_mut()
-            .find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead))
-        {
+    if sig != SIGKILL && ps.iter().filter(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)).all(|p| p.sigmask & bit(sig) != 0) {
+        if let Some(p) = ps.iter_mut().find(|p| p.tgid == tgid && !matches!(p.state, State::Zombie(_) | State::Dead)) {
             p.pending |= bit(sig);
         }
         return true;
@@ -66,25 +53,8 @@ pub fn send_locked(ps: &mut Vec<Box<Proc>>, tgid: u64, tid: u64, sig: u64) -> bo
     // Empfänger: gewünschter Faden, sonst einer, der das Signal nicht sperrt
     let idx = ps
         .iter()
-        .position(|p| {
-            p.tgid == tgid
-                && (tid == 0 || p.pid == tid)
-                && p.sigmask & bit(sig) == 0
-                && matches!(
-                    p.state,
-                    State::Ready | State::Blocked(_) | State::Running(_)
-                )
-        })
-        .or_else(|| {
-            ps.iter().position(|p| {
-                p.tgid == tgid
-                    && (tid == 0 || p.pid == tid)
-                    && matches!(
-                        p.state,
-                        State::Ready | State::Blocked(_) | State::Running(_)
-                    )
-            })
-        });
+        .position(|p| p.tgid == tgid && (tid == 0 || p.pid == tid) && p.sigmask & bit(sig) == 0 && matches!(p.state, State::Ready | State::Blocked(_) | State::Running(_)))
+        .or_else(|| ps.iter().position(|p| p.tgid == tgid && (tid == 0 || p.pid == tid) && matches!(p.state, State::Ready | State::Blocked(_) | State::Running(_))));
     let Some(i) = idx else { return false };
     let p = &mut ps[i];
     p.pending |= bit(sig);
@@ -116,11 +86,7 @@ fn interrupt(p: &mut Proc, restart: bool) {
 /// Strg+C: SIGINT an alle Gruppen
 pub fn interrupt_all() {
     let mut ps = PROCS.lock();
-    let groups: Vec<u64> = ps
-        .iter()
-        .filter(|p| p.pid == p.tgid && !matches!(p.state, State::Zombie(_) | State::Dead))
-        .map(|p| p.tgid)
-        .collect();
+    let groups: Vec<u64> = ps.iter().filter(|p| p.pid == p.tgid && !matches!(p.state, State::Zombie(_) | State::Dead)).map(|p| p.tgid).collect();
     for g in groups {
         send_locked(&mut ps, g, 0, SIGINT);
     }
@@ -166,8 +132,7 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     let mut b = alloc::vec![0u8; FRAME];
     w64(&mut b, 0, act.restorer);
     let regs = [
-        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx,
-        f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, 0,
+        f.r8, f.r9, f.r10, f.r11, f.r12, f.r13, f.r14, f.r15, f.rdi, f.rsi, f.rbp, f.rbx, f.rdx, f.rax, f.rcx, f.rsp, f.rip, f.rflags, 0x2b, f.err, f.vector, old_mask, 0,
     ];
     for (i, r) in regs.iter().enumerate() {
         w64(&mut b, UC + 40 + i * 8, *r);
@@ -203,12 +168,8 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
 /// rt_sigreturn: Zustand aus dem ucontext zurückholen
 pub fn sigreturn(p: &mut Proc, f: &mut TrapFrame) -> bool {
     let uc = f.rsp;
-    let Some(space) = p.g.space.as_ref() else {
-        return false;
-    };
-    let Some(b) = proc::read_user(space, uc, UC_SIZE) else {
-        return false;
-    };
+    let Some(space) = p.g.space.as_ref() else { return false };
+    let Some(b) = proc::read_user(space, uc, UC_SIZE) else { return false };
     let g = |i: usize| r64(&b, 40 + i * 8);
     f.r8 = g(0);
     f.r9 = g(1);

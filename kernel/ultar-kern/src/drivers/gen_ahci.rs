@@ -105,10 +105,7 @@ impl Disk {
                 w(e + 12, (n as u32 - 1) & 0x3f_ffff);
             }
             // Kopf in der Befehlsliste: FIS 5 Doppelwörter, W-Bit beim Schreiben, PRDTL
-            w(
-                self.clb,
-                5 | if cmd == ATA_WRITE_DMA_EXT { 1 << 6 } else { 0 } | ((pages as u32) << 16),
-            );
+            w(self.clb, 5 | if cmd == ATA_WRITE_DMA_EXT { 1 << 6 } else { 0 } | ((pages as u32) << 16));
             w(self.clb + 4, 0);
             w(self.clb + 8, self.ctba as u32);
             w(self.clb + 12, (self.ctba >> 32) as u32);
@@ -186,8 +183,7 @@ impl Driver for Drv {
                 // Laufwerk hochfahren (SUD) und auf die Verbindung warten (DET = 3)
                 w(p + P_CMD, r(p + P_CMD) | (1 << 1) | (1 << 2));
                 // leere Ports schnell überspringen: ohne Gerät bleibt DET 0
-                if !wait(|| r(p + P_SSTS) & 0xf != 0, 15) || !wait(|| r(p + P_SSTS) & 0xf == 3, 200)
-                {
+                if !wait(|| r(p + P_SSTS) & 0xf != 0, 15) || !wait(|| r(p + P_SSTS) & 0xf == 3, 200) {
                     continue;
                 }
                 let Some((clb, ctba, data)) = port_init(p) else {
@@ -198,31 +194,17 @@ impl Driver for Drv {
                 wait(|| r(p + P_SIG) != 0xffff_ffff, 500);
                 if r(p + P_SIG) != 0x0000_0101 {
                     let sig = r(p + P_SIG);
-                    let what = if sig == 0xeb14_0101 {
-                        "CD/DVD-Laufwerk (ATAPI) – Treiber folgt"
-                    } else {
-                        "unbekanntes Gerät"
-                    };
+                    let what = if sig == 0xeb14_0101 { "CD/DVD-Laufwerk (ATAPI) – Treiber folgt" } else { "unbekanntes Gerät" };
                     crate::kprintln!("[ahci] Port {i}: {what} (Signatur {sig:#x})");
                     continue;
                 }
-                let mut disk = Disk {
-                    name: String::new(),
-                    port: p,
-                    clb,
-                    ctba,
-                    data,
-                    sectors: 0,
-                };
+                let mut disk = Disk { name: String::new(), port: p, clb, ctba, data, sectors: 0 };
                 if let Err(e) = disk.ata(ATA_IDENTIFY, 0, 0, 512) {
                     crate::kprintln!("[ahci] Port {i}: IDENTIFY {e}");
                     continue;
                 }
                 let id = core::slice::from_raw_parts(data as *const u16, 256);
-                disk.sectors = id[100] as u64
-                    | (id[101] as u64) << 16
-                    | (id[102] as u64) << 32
-                    | (id[103] as u64) << 48;
+                disk.sectors = id[100] as u64 | (id[101] as u64) << 16 | (id[102] as u64) << 32 | (id[103] as u64) << 48;
                 if disk.sectors == 0 {
                     disk.sectors = id[60] as u64 | (id[61] as u64) << 16;
                 }
@@ -233,24 +215,13 @@ impl Driver for Drv {
                     model.push(*wd as u8 as char);
                 }
                 let mut bl = BLOCK.lock();
-                disk.name = format!(
-                    "sata{}",
-                    bl.iter().filter(|b| b.name().starts_with("sata")).count()
-                );
-                crate::kprintln!(
-                    "[ahci] {}: {}, {} MB (Port {i} von {nports})",
-                    disk.name,
-                    model.trim(),
-                    disk.sectors / 2048
-                );
+                disk.name = format!("sata{}", bl.iter().filter(|b| b.name().starts_with("sata")).count());
+                crate::kprintln!("[ahci] {}: {}, {} MB (Port {i} von {nports})", disk.name, model.trim(), disk.sectors / 2048);
                 bl.push(Box::new(disk));
                 found += 1;
             }
             if found == 0 {
-                crate::kprintln!(
-                    "[ahci] Controller {}: keine SATA-Laufwerke angeschlossen",
-                    d.id()
-                );
+                crate::kprintln!("[ahci] Controller {}: keine SATA-Laufwerke angeschlossen", d.id());
             }
         }
         Ok(())
@@ -267,34 +238,16 @@ impl BlockDev for Disk {
     fn read(&mut self, lba: u64, buf: &mut [u8]) -> Result<()> {
         for (i, chunk) in buf.chunks_mut(MAXB).enumerate() {
             let start = lba + (i * MAXB / 512) as u64;
-            self.ata(
-                ATA_READ_DMA_EXT,
-                start,
-                (chunk.len() / 512) as u16,
-                chunk.len(),
-            )?;
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    self.data as *const u8,
-                    chunk.as_mut_ptr(),
-                    chunk.len(),
-                )
-            };
+            self.ata(ATA_READ_DMA_EXT, start, (chunk.len() / 512) as u16, chunk.len())?;
+            unsafe { core::ptr::copy_nonoverlapping(self.data as *const u8, chunk.as_mut_ptr(), chunk.len()) };
         }
         Ok(())
     }
     fn write(&mut self, lba: u64, buf: &[u8]) -> Result<()> {
         for (i, chunk) in buf.chunks(MAXB).enumerate() {
             let start = lba + (i * MAXB / 512) as u64;
-            unsafe {
-                core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.data as *mut u8, chunk.len())
-            };
-            self.ata(
-                ATA_WRITE_DMA_EXT,
-                start,
-                (chunk.len() / 512) as u16,
-                chunk.len(),
-            )?;
+            unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.data as *mut u8, chunk.len()) };
+            self.ata(ATA_WRITE_DMA_EXT, start, (chunk.len() / 512) as u16, chunk.len())?;
         }
         Ok(())
     }

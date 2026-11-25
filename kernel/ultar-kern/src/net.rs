@@ -2,11 +2,11 @@
 //! Erneuerung und festen Adressen steht in `dhcp.rs`.
 
 use crate::driver::NET;
-use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use alloc::string::String;
 use spin::Mutex;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Default)]
 pub struct Config {
@@ -20,9 +20,7 @@ pub struct Config {
 
 pub static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
 
-pub use crate::dhcp::{
-    dhcp, dhcp_all, input, ipv4_text, ipv4_write, link_changes, set_static, tick,
-};
+pub use crate::dhcp::{dhcp, dhcp_all, input, ipv4_text, ipv4_write, link_changes, set_static, tick};
 static ACTIVE_NIC: AtomicUsize = AtomicUsize::new(0);
 
 pub fn active_nic() -> usize {
@@ -38,10 +36,7 @@ pub fn active_mac() -> Option<[u8; 6]> {
 }
 
 pub fn active_send(frame: &[u8]) -> Result<(), String> {
-    NET.lock()
-        .get_mut(active_nic())
-        .ok_or_else(|| String::from("no active network interface"))?
-        .send(frame)
+    NET.lock().get_mut(active_nic()).ok_or_else(|| String::from("no active network interface"))?.send(frame)
 }
 
 pub fn csum(data: &[u8]) -> u16 {
@@ -69,20 +64,7 @@ pub fn eth(dst: [u8; 6], src: [u8; 6], typ: u16, payload: &[u8]) -> Vec<u8> {
 
 pub fn ipv4(src: [u8; 4], dst: [u8; 4], proto: u8, payload: &[u8]) -> Vec<u8> {
     let len = 20 + payload.len();
-    let mut h = vec![
-        0x45,
-        0,
-        (len >> 8) as u8,
-        len as u8,
-        0,
-        1,
-        0x40,
-        0,
-        64,
-        proto,
-        0,
-        0,
-    ];
+    let mut h = vec![0x45, 0, (len >> 8) as u8, len as u8, 0, 1, 0x40, 0, 64, proto, 0, 0];
     h.extend_from_slice(&src);
     h.extend_from_slice(&dst);
     let c = csum(&h);
@@ -125,10 +107,7 @@ fn arp_resolve(n: usize, mac: [u8; 6], my: [u8; 4], target: [u8; 4]) -> Option<[
     a.extend_from_slice(&my);
     a.extend_from_slice(&[0; 6]);
     a.extend_from_slice(&target);
-    NET.lock()
-        .get_mut(n)?
-        .send(&eth([0xff; 6], mac, 0x0806, &a))
-        .ok()?;
+    NET.lock().get_mut(n)?.send(&eth([0xff; 6], mac, 0x0806, &a)).ok()?;
     let mut res = None;
     wait_frame(n, 1000, |f| {
         if f.len() >= 42 && f[12..14] == [8, 6] && f[20..22] == [0, 2] && f[28..32] == target {
@@ -155,13 +134,8 @@ pub fn ping(n: usize, dst: [u8; 4]) -> Option<u64> {
     icmp[2] = (c >> 8) as u8;
     icmp[3] = c as u8;
     let t0 = crate::arch::uptime_ms();
-    NET.lock()
-        .get_mut(n)?
-        .send(&eth(hmac, mac, 0x0800, &ipv4(cfg.ip, dst, 1, &icmp)))
-        .ok()?;
-    let ok = wait_frame(n, 2000, |f| {
-        f.len() >= 42 && f[12..14] == [8, 0] && f[23] == 1 && f[26..30] == dst && f[34] == 0
-    });
+    NET.lock().get_mut(n)?.send(&eth(hmac, mac, 0x0800, &ipv4(cfg.ip, dst, 1, &icmp))).ok()?;
+    let ok = wait_frame(n, 2000, |f| f.len() >= 42 && f[12..14] == [8, 0] && f[23] == 1 && f[26..30] == dst && f[34] == 0);
     ok.then(|| crate::arch::uptime_ms() - t0)
 }
 

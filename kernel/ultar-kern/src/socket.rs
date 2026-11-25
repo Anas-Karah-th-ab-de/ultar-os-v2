@@ -94,9 +94,7 @@ impl Sock {
     /// owner's group gets no memory – the segment is dropped (not acknowledged, the peer repeats it).
     fn take(&mut self, data: &[u8]) -> bool {
         let rx = &mut self.rx;
-        let ok = crate::heap::scope(self.owner, || {
-            crate::heap::fallible(|| rx.try_reserve(data.len())).is_ok()
-        });
+        let ok = crate::heap::scope(self.owner, || crate::heap::fallible(|| rx.try_reserve(data.len())).is_ok());
         if ok {
             rx.extend(data.iter().copied());
         }
@@ -130,11 +128,7 @@ fn cookie(src: [u8; 4], sp: u16, dp: u16, fenster: u64) -> u32 {
         COOKIE_GEHEIM.store(g, Ordering::Relaxed);
     }
     // splitmix64 über Geheimnis, Adressen, Ports und Zeitfenster (64 s)
-    let mut x = g
-        ^ (u32::from_be_bytes(src) as u64) << 32
-        ^ (sp as u64) << 16
-        ^ dp as u64
-        ^ fenster.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let mut x = g ^ (u32::from_be_bytes(src) as u64) << 32 ^ (sp as u64) << 16 ^ dp as u64 ^ fenster.wrapping_mul(0x9E37_79B9_7F4A_7C15);
     for _ in 0..2 {
         x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
         x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
@@ -167,14 +161,7 @@ pub fn create(udp: bool) -> Option<usize> {
     let branch = crate::groups::branch_of(sock.owner);
     let limited = branch == crate::groups::APPS || branch == crate::groups::CELLS;
     let unit = crate::groups::top_of(sock.owner);
-    if ss.len() >= MAX_SOCKS
-        || limited
-            && ss
-                .values()
-                .filter(|s| crate::groups::top_of(s.owner) == unit)
-                .count()
-                >= MAX_SOCKS_GROUP
-    {
+    if ss.len() >= MAX_SOCKS || limited && ss.values().filter(|s| crate::groups::top_of(s.owner) == unit).count() >= MAX_SOCKS_GROUP {
         return None;
     }
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed) as usize;
@@ -221,19 +208,12 @@ static ARP_ASKED: Mutex<Vec<([u8; 4], u64)>> = Mutex::new(Vec::new());
 /// IP-Paket zum Senden einreihen (gesendet wird in `flush`, ohne gehaltene Sperren)
 fn send_ip(dst: [u8; 4], proto: u8, payload: &[u8]) {
     if (proto == 17 || proto == 6) && payload.len() >= 4 {
-        let (sp, dp) = (
-            u16::from_be_bytes([payload[0], payload[1]]),
-            u16::from_be_bytes([payload[2], payload[3]]),
-        );
+        let (sp, dp) = (u16::from_be_bytes([payload[0], payload[1]]), u16::from_be_bytes([payload[2], payload[3]]));
         if !crate::verbund::erlaubt(proto, sp, dp) {
             return; // Verbund AUS: nichts verlässt das Gerät
         }
     }
-    let src = if dst[0] == 127 {
-        [127, 0, 0, 1]
-    } else {
-        my_ip()
-    };
+    let src = if dst[0] == 127 { [127, 0, 0, 1] } else { my_ip() };
     // the queue is the kernel's (packets leave it within moments); it is bounded in count and bytes
     crate::heap::kernel(|| {
         let pkt = ipv4(src, dst, proto, payload);
@@ -264,12 +244,7 @@ fn flush_queue() {
             continue;
         }
         // Rundruf (255.255.255.255 oder Netz-Broadcast): an alle, ohne ARP
-        let bc = [
-            cfg.ip[0] | !cfg.mask[0],
-            cfg.ip[1] | !cfg.mask[1],
-            cfg.ip[2] | !cfg.mask[2],
-            cfg.ip[3] | !cfg.mask[3],
-        ];
+        let bc = [cfg.ip[0] | !cfg.mask[0], cfg.ip[1] | !cfg.mask[1], cfg.ip[2] | !cfg.mask[2], cfg.ip[3] | !cfg.mask[3]];
         if dst == [255; 4] || dst == bc {
             raw_send(&eth([0xff; 6], my, 0x0800, &pkt));
             continue;
@@ -334,11 +309,7 @@ fn tcp_out(s: &Sock, seq: u32, flags: u8, data: &[u8]) {
     t[13] = flags;
     t[14..16].copy_from_slice(&65535u16.to_be_bytes());
     t.extend_from_slice(data);
-    let src = if s.rip[0] == 127 {
-        [127, 0, 0, 1]
-    } else {
-        my_ip()
-    };
+    let src = if s.rip[0] == 127 { [127, 0, 0, 1] } else { my_ip() };
     let c = tcp_csum(src, s.rip, &t);
     t[16..18].copy_from_slice(&c.to_be_bytes());
     send_ip(s.rip, 6, &t);
@@ -392,12 +363,7 @@ fn handle(f: &[u8]) {
     }
     let typ = u16::from_be_bytes([f[12], f[13]]);
     if typ == 0x0806 && f.len() >= 42 {
-        let (op, sha, spa, tpa) = (
-            u16::from_be_bytes([f[20], f[21]]),
-            &f[22..28],
-            &f[28..32],
-            &f[38..42],
-        );
+        let (op, sha, spa, tpa) = (u16::from_be_bytes([f[20], f[21]]), &f[22..28], &f[28..32], &f[38..42]);
         let mut ip = [0u8; 4];
         ip.copy_from_slice(spa);
         let mut m = [0u8; 6];
@@ -439,10 +405,7 @@ fn handle(f: &[u8]) {
     dst.copy_from_slice(&ip[16..20]);
     let body = &ip[ihl..tot];
     match ip[9] {
-        1 if !body.is_empty()
-            && body[0] == 8
-            && (src[0] == 127 || crate::firewall::PING.load(Ordering::Relaxed)) =>
-        {
+        1 if !body.is_empty() && body[0] == 8 && (src[0] == 127 || crate::firewall::PING.load(Ordering::Relaxed)) => {
             // Echo-Antwort
             let mut r = body.to_vec();
             r[0] = 0;
@@ -470,14 +433,13 @@ fn handle(f: &[u8]) {
                 if s.dgrams.len() < 256 && waiting + (len - 8) <= MAX_RX {
                     let owner = s.owner;
                     let dgrams = &mut s.dgrams;
-                    let stored =
-                        crate::heap::scope(owner, || match crate::mem::try_copy(&body[8..len]) {
-                            Some(d) if crate::heap::fallible(|| dgrams.try_reserve(1)).is_ok() => {
-                                dgrams.push_back((src, sp, d));
-                                true
-                            }
-                            _ => false,
-                        });
+                    let stored = crate::heap::scope(owner, || match crate::mem::try_copy(&body[8..len]) {
+                        Some(d) if crate::heap::fallible(|| dgrams.try_reserve(1)).is_ok() => {
+                            dgrams.push_back((src, sp, d));
+                            true
+                        }
+                        _ => false,
+                    });
                     if stored {
                         GEN.fetch_add(1, Ordering::Relaxed);
                     }
@@ -488,10 +450,7 @@ fn handle(f: &[u8]) {
             }
         }
         6 if body.len() >= 20 => {
-            let (sp, dp) = (
-                u16::from_be_bytes([body[0], body[1]]),
-                u16::from_be_bytes([body[2], body[3]]),
-            );
+            let (sp, dp) = (u16::from_be_bytes([body[0], body[1]]), u16::from_be_bytes([body[2], body[3]]));
             if crate::verbund::erlaubt(6, sp, dp) {
                 tcp_in(src, dst, body)
             }
@@ -511,26 +470,15 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
     let data = &seg[off..];
     let mut ss = SOCKS.lock();
     GEN.fetch_add(1, Ordering::Relaxed);
-    let id = ss
-        .iter()
-        .find(|(_, s)| {
-            !s.udp && s.lport == dp && s.rport == sp && s.rip == src && s.st != Tcp::Listen
-        })
-        .map(|(k, _)| *k);
+    let id = ss.iter().find(|(_, s)| !s.udp && s.lport == dp && s.rport == sp && s.rip == src && s.st != Tcp::Listen).map(|(k, _)| *k);
     let Some(id) = id else {
         // neue Verbindung an einem lauschenden Socket?
         if fl & SYN != 0 && fl & ACK == 0 {
             if !crate::firewall::eingehend_erlaubt(6, src, dp) {
                 return; // Brandmauer: still verwerfen – von außen sieht der Port „gefiltert“ aus
             }
-            if let Some((&lid, _)) = ss
-                .iter()
-                .find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp)
-            {
-                let halboffen = ss
-                    .values()
-                    .filter(|s| s.parent == Some(lid) && s.st == Tcp::SynRcvd)
-                    .count();
+            if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp) {
+                let halboffen = ss.values().filter(|s| s.parent == Some(lid) && s.st == Tcp::SynRcvd).count();
                 if halboffen >= MAX_HALBOFFEN || ss.len() >= MAX_SOCKS {
                     // SYN-Flut: zustandslos mit Cookie antworten
                     let mut t = Sock::new(false);
@@ -563,17 +511,11 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
             }
         }
         // ACK auf eine Cookie-Antwort: Verbindung jetzt anlegen
-        if fl & ACK != 0 && fl & (SYN | RST) == 0 && crate::firewall::eingehend_erlaubt(6, src, dp)
-        {
+        if fl & ACK != 0 && fl & (SYN | RST) == 0 && crate::firewall::eingehend_erlaubt(6, src, dp) {
             let f = cookie_fenster();
-            let gueltig = [f, f.wrapping_sub(1)]
-                .iter()
-                .any(|&w| ack.wrapping_sub(1) == cookie(src, sp, dp, w));
+            let gueltig = [f, f.wrapping_sub(1)].iter().any(|&w| ack.wrapping_sub(1) == cookie(src, sp, dp, w));
             if gueltig && ss.len() < MAX_SOCKS {
-                if let Some((&lid, _)) = ss
-                    .iter()
-                    .find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp)
-                {
+                if let Some((&lid, _)) = ss.iter().find(|(_, s)| !s.udp && s.st == Tcp::Listen && s.lport == dp) {
                     if ss[&lid].backlog.len() < 64 {
                         let nid = NEXT_ID.fetch_add(1, Ordering::Relaxed) as usize;
                         let mut c = Sock::new(false);
@@ -618,19 +560,11 @@ fn tcp_in(src: [u8; 4], _dst: [u8; 4], seg: &[u8]) {
     s.peer_win = win;
     if fl & RST != 0 {
         // nur echte RST annehmen (passende Folgenummer bzw. Bestätigung) – gegen blind eingeschleuste Abbrüche
-        let echt = if s.st == Tcp::SynSent {
-            fl & ACK != 0 && ack == s.snd_nxt
-        } else {
-            seq == s.rcv_nxt
-        };
+        let echt = if s.st == Tcp::SynSent { fl & ACK != 0 && ack == s.snd_nxt } else { seq == s.rcv_nxt };
         if !echt {
             return;
         }
-        s.err = if s.st == Tcp::SynSent {
-            -ECONNREFUSED
-        } else {
-            -ECONNRESET
-        };
+        s.err = if s.st == Tcp::SynSent { -ECONNREFUSED } else { -ECONNRESET };
         s.st = Tcp::Closed;
         s.fin_rcvd = true;
         return;
@@ -708,10 +642,7 @@ fn retransmit() {
         if s.udp || matches!(s.st, Tcp::Closed | Tcp::Listen) {
             continue;
         }
-        let pending = s.st == Tcp::SynSent
-            || s.st == Tcp::SynRcvd
-            || !s.unacked.is_empty()
-            || (s.fin_sent && s.snd_una != s.snd_nxt);
+        let pending = s.st == Tcp::SynSent || s.st == Tcp::SynRcvd || !s.unacked.is_empty() || (s.fin_sent && s.snd_una != s.snd_nxt);
         if !pending || now < s.last_tx + 400 * (1 << s.tries.min(5)) {
             continue;
         }
@@ -772,11 +703,7 @@ pub fn make_addr(ip: [u8; 4], port: u16) -> Vec<u8> {
 pub fn bind(id: usize, ip: [u8; 4], port: u16) -> i64 {
     let mut ss = SOCKS.lock();
     let udp = ss.get(&id).map(|s| s.udp).unwrap_or(false);
-    if port != 0
-        && ss
-            .iter()
-            .any(|(k, s)| *k != id && s.udp == udp && s.lport == port && s.parent.is_none())
-    {
+    if port != 0 && ss.iter().any(|(k, s)| *k != id && s.udp == udp && s.lport == port && s.parent.is_none()) {
         return -EADDRINUSE;
     }
     let Some(s) = ss.get_mut(&id) else { return -9 };
@@ -799,9 +726,7 @@ pub fn listen(id: usize) -> i64 {
 pub fn connect(id: usize, ip: [u8; 4], port: u16) -> Result<bool, i64> {
     let ip = if ip == [0; 4] { [127, 0, 0, 1] } else { ip };
     let mut ss = SOCKS.lock();
-    let Some(s) = ss.get_mut(&id) else {
-        return Err(-9);
-    };
+    let Some(s) = ss.get_mut(&id) else { return Err(-9) };
     if s.lport == 0 {
         s.lport = ephemeral();
     }
@@ -828,10 +753,7 @@ pub fn connect(id: usize, ip: [u8; 4], port: u16) -> Result<bool, i64> {
     drop(ss);
     poll();
     let ss = SOCKS.lock();
-    Ok(ss
-        .get(&id)
-        .map(|s| s.st == Tcp::Established)
-        .unwrap_or(false))
+    Ok(ss.get(&id).map(|s| s.st == Tcp::Established).unwrap_or(false))
 }
 
 pub fn accept(id: usize) -> Option<usize> {
@@ -841,11 +763,7 @@ pub fn accept(id: usize) -> Option<usize> {
 /// Daten senden; Anzahl oder Fehler
 /// Build the UDP datagram `s` sends to `to` (or its connected peer) and remember the peer, whose
 /// answers may come in. Returns the destination and the datagram, or the negative error number.
-fn udp_datagram(
-    s: &mut Sock,
-    data: &[u8],
-    to: Option<([u8; 4], u16)>,
-) -> Result<([u8; 4], Vec<u8>), i64> {
+fn udp_datagram(s: &mut Sock, data: &[u8], to: Option<([u8; 4], u16)>) -> Result<([u8; 4], Vec<u8>), i64> {
     if s.lport == 0 {
         s.lport = ephemeral();
     }
@@ -927,15 +845,9 @@ pub enum Recv {
 pub fn recv(id: usize, max: usize, peek: bool) -> Recv {
     poll();
     let mut ss = SOCKS.lock();
-    let Some(s) = ss.get_mut(&id) else {
-        return Recv::Err(-9);
-    };
+    let Some(s) = ss.get_mut(&id) else { return Recv::Err(-9) };
     if s.udp {
-        return match if peek {
-            s.dgrams.front().cloned()
-        } else {
-            s.dgrams.pop_front()
-        } {
+        return match if peek { s.dgrams.front().cloned() } else { s.dgrams.pop_front() } {
             Some((ip, port, mut d)) => {
                 d.truncate(max);
                 Recv::Data(d, Some((ip, port)))
@@ -945,9 +857,7 @@ pub fn recv(id: usize, max: usize, peek: bool) -> Recv {
     }
     if !s.rx.is_empty() {
         let n = max.min(s.rx.len());
-        let Some(mut d) = crate::mem::try_with_capacity::<u8>(n) else {
-            return Recv::Err(-12);
-        };
+        let Some(mut d) = crate::mem::try_with_capacity::<u8>(n) else { return Recv::Err(-12) };
         if peek {
             d.extend(s.rx.iter().take(n).copied());
         } else {
@@ -974,11 +884,7 @@ pub fn shutdown_write(id: usize) {
             s.fin_sent = true;
             let seq = s.snd_nxt;
             s.snd_nxt = s.snd_nxt.wrapping_add(1);
-            s.st = if s.st == Tcp::CloseWait {
-                Tcp::LastAck
-            } else {
-                Tcp::FinWait
-            };
+            s.st = if s.st == Tcp::CloseWait { Tcp::LastAck } else { Tcp::FinWait };
             s.last_tx = crate::arch::uptime_ms();
             tcp_out(s, seq, FIN | ACK, &[]);
         }
@@ -1005,15 +911,12 @@ pub fn close(id: usize) {
 /// Lesebereit (Daten, Verbindung zum Annehmen, Ende), schreibbereit
 pub fn readiness(id: usize) -> (bool, bool) {
     let ss = SOCKS.lock();
-    let Some(s) = ss.get(&id) else {
-        return (true, true);
-    };
+    let Some(s) = ss.get(&id) else { return (true, true) };
     if s.udp {
         return (!s.dgrams.is_empty(), true);
     }
     let r = !s.rx.is_empty() || !s.backlog.is_empty() || s.fin_rcvd || s.st == Tcp::Closed;
-    let w = matches!(s.st, Tcp::Established | Tcp::CloseWait) && s.unacked.len() < 65536
-        || s.st == Tcp::Closed;
+    let w = matches!(s.st, Tcp::Established | Tcp::CloseWait) && s.unacked.len() < 65536 || s.st == Tcp::Closed;
     (r, w)
 }
 
@@ -1035,11 +938,7 @@ pub fn is_nonblock(id: usize) -> bool {
 }
 
 pub fn pending_error(id: usize) -> i64 {
-    SOCKS
-        .lock()
-        .get_mut(&id)
-        .map(|s| core::mem::replace(&mut s.err, 0))
-        .unwrap_or(0)
+    SOCKS.lock().get_mut(&id).map(|s| core::mem::replace(&mut s.err, 0)).unwrap_or(0)
 }
 
 /// Anzeige für `netz`: offene Verbindungen
@@ -1051,17 +950,7 @@ pub fn list() -> Vec<alloc::string::String> {
             alloc::format!(
                 "{} {}.{}.{}.{}:{} -> {}.{}.{}.{}:{} {:?}",
                 if s.udp { "udp" } else { "tcp" },
-                s.lip[0],
-                s.lip[1],
-                s.lip[2],
-                s.lip[3],
-                s.lport,
-                s.rip[0],
-                s.rip[1],
-                s.rip[2],
-                s.rip[3],
-                s.rport,
-                s.st
+                s.lip[0], s.lip[1], s.lip[2], s.lip[3], s.lport, s.rip[0], s.rip[1], s.rip[2], s.rip[3], s.rport, s.st
             )
         })
         .collect()

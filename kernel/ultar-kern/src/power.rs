@@ -124,10 +124,7 @@ unsafe fn acpi_reset() {
             let dev = (addr >> 32) & 0x1f;
             let func = (addr >> 16) & 7;
             let off = addr & 0xff;
-            outl(
-                0xcf8,
-                0x8000_0000 | (dev << 11) as u32 | (func << 8) as u32 | (off & 0xfc) as u32,
-            );
+            outl(0xcf8, 0x8000_0000 | (dev << 11) as u32 | (func << 8) as u32 | (off & 0xfc) as u32);
             outb(0xcfc + (off & 3) as u16, val);
         }
         _ => return,
@@ -178,9 +175,7 @@ unsafe fn aml_zahl(q: &mut u64) -> Option<u16> {
 /// SLP_TYPa/b für S5 aus der DSDT (`Name (_S5, Package () {a, b, …})`)
 unsafe fn s5_typ(dsdt: u64) -> Option<(u16, u16)> {
     let len = r32(dsdt + 4) as u64;
-    if &[r8(dsdt), r8(dsdt + 1), r8(dsdt + 2), r8(dsdt + 3)] != b"DSDT"
-        || !(36..(64 << 20)).contains(&len)
-    {
+    if &[r8(dsdt), r8(dsdt + 1), r8(dsdt + 2), r8(dsdt + 3)] != b"DSDT" || !(36..(64 << 20)).contains(&len) {
         return None;
     }
     let ende = dsdt + len;
@@ -188,24 +183,14 @@ unsafe fn s5_typ(dsdt: u64) -> Option<(u16, u16)> {
     while p + 12 < ende {
         // NameOp (0x08), optional „\“, dann _S5_ und PackageOp (0x12)
         let name_davor = r8(p - 1) == 0x08 || (r8(p - 1) == b'\\' && r8(p - 2) == 0x08);
-        if name_davor
-            && r8(p) == b'_'
-            && r8(p + 1) == b'S'
-            && r8(p + 2) == b'5'
-            && r8(p + 3) == b'_'
-            && r8(p + 4) == 0x12
-        {
+        if name_davor && r8(p) == b'_' && r8(p + 1) == b'S' && r8(p + 2) == b'5' && r8(p + 3) == b'_' && r8(p + 4) == 0x12 {
             let mut q = p + 5;
             q += 1 + (r8(q) >> 6) as u64; // PkgLength
             let anzahl = r8(q);
             q += 1;
             if anzahl >= 1 {
                 let a = aml_zahl(&mut q)?;
-                let b = if anzahl >= 2 {
-                    aml_zahl(&mut q).unwrap_or(0)
-                } else {
-                    0
-                };
+                let b = if anzahl >= 2 { aml_zahl(&mut q).unwrap_or(0) } else { 0 };
                 return Some((a & 7, b & 7));
             }
         }
@@ -217,16 +202,8 @@ unsafe fn s5_typ(dsdt: u64) -> Option<(u16, u16)> {
 /// ACPI S5 (Soft-Off); kehrt zurück, wenn die Maschine danach noch läuft
 unsafe fn acpi_aus() {
     let Some((f, len)) = fadt() else { return };
-    let dsdt = if len >= 148 && r64(f + 140) != 0 {
-        r64(f + 140)
-    } else {
-        r32(f + 40) as u64
-    };
-    let (a, b) = if dsdt != 0 {
-        s5_typ(dsdt).unwrap_or((0, 0))
-    } else {
-        (0, 0)
-    };
+    let dsdt = if len >= 148 && r64(f + 140) != 0 { r64(f + 140) } else { r32(f + 40) as u64 };
+    let (a, b) = if dsdt != 0 { s5_typ(dsdt).unwrap_or((0, 0)) } else { (0, 0) };
     let flags = if len >= 116 { r32(f + 112) } else { 0 };
     // hardware-reduziert (Flags-Bit 20): Sleep Control Register (Versatz 244)
     if flags & (1 << 20) != 0 && len >= 256 {

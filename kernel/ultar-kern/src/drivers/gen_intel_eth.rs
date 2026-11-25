@@ -16,13 +16,12 @@ pub static DRV: Drv = Drv;
 
 /// bekannte Geräte: 8254x (e1000), 82571–82574 (e1000e), I217/I218/I219 (e1000e, Laptops)
 const IDS: &[u16] = &[
-    0x100e, 0x100f, 0x1004, 0x1008, 0x1010, 0x1015, 0x1019, 0x101e, 0x1026, 0x1075, 0x1076, 0x1079,
-    0x107c, 0x105e, 0x105f, 0x10a4, 0x10b9, 0x10d3, 0x10f6, 0x150c, 0x153a, 0x153b, 0x155a, 0x1559,
-    0x15a0, 0x15a1, 0x15a2, 0x15a3, 0x156f, 0x1570, 0x15b7, 0x15b8, 0x15b9, 0x15bb, 0x15bc, 0x15bd,
-    0x15be, 0x15d6, 0x15d7, 0x15d8, 0x15e3, 0x0d4e, 0x0d4f, 0x0d4c, 0x0d4d, 0x15fb, 0x15fc, 0x1a1e,
-    0x1a1f, // I210/I211 (1G), I225/I226 (2.5G)
-    0x1533, 0x1536, 0x1539, 0x157b, 0x157c, 0x15f2, 0x15f3, 0x0d9f, 0x15f8, 0x125b, 0x125c, 0x125d,
-    0x125f,
+    0x100e, 0x100f, 0x1004, 0x1008, 0x1010, 0x1015, 0x1019, 0x101e, 0x1026, 0x1075, 0x1076, 0x1079, 0x107c, 0x105e, 0x105f, 0x10a4, 0x10b9,
+    0x10d3, 0x10f6, 0x150c, 0x153a, 0x153b, 0x155a, 0x1559, 0x15a0, 0x15a1, 0x15a2, 0x15a3, 0x156f, 0x1570, 0x15b7, 0x15b8, 0x15b9, 0x15bb,
+    0x15bc, 0x15bd, 0x15be, 0x15d6, 0x15d7, 0x15d8, 0x15e3, 0x0d4e, 0x0d4f, 0x0d4c, 0x0d4d, 0x15fb, 0x15fc, 0x1a1e, 0x1a1f,
+    // I210/I211 (1G), I225/I226 (2.5G)
+    0x1533, 0x1536, 0x1539, 0x157b, 0x157c, 0x15f2, 0x15f3, 0x0d9f, 0x15f8,
+    0x125b, 0x125c, 0x125d, 0x125f,
 ];
 
 const CTRL: u64 = 0x0000;
@@ -116,21 +115,10 @@ impl Driver for Drv {
             return Err("Rücksetzen hängt".into());
         }
         w(m, IMC, 0xffff_ffff);
-        w(
-            m,
-            CTRL,
-            (r(m, CTRL) | (1 << 6) | (1 << 5)) & !(1 << 3) & !(1 << 31) & !(1 << 7),
-        );
+        w(m, CTRL, (r(m, CTRL) | (1 << 6) | (1 << 5)) & !(1 << 3) & !(1 << 31) & !(1 << 7));
         // MAC: Empfangsadresse 0 (aus dem EEPROM geladen), sonst EEPROM direkt lesen
         let (lo, hi) = (r(m, RAL), r(m, RAH));
-        let mut mac = [
-            lo as u8,
-            (lo >> 8) as u8,
-            (lo >> 16) as u8,
-            (lo >> 24) as u8,
-            hi as u8,
-            (hi >> 8) as u8,
-        ];
+        let mut mac = [lo as u8, (lo >> 8) as u8, (lo >> 16) as u8, (lo >> 24) as u8, hi as u8, (hi >> 8) as u8];
         if mac == [0; 6] || mac == [0xff; 6] {
             for i in 0..3u32 {
                 w(m, EERD, 1 | (i << 8));
@@ -142,11 +130,7 @@ impl Driver for Drv {
                 mac[i as usize * 2 + 1] = (v >> 8) as u8;
             }
             w(m, RAL, u32::from_le_bytes([mac[0], mac[1], mac[2], mac[3]]));
-            w(
-                m,
-                RAH,
-                u16::from_le_bytes([mac[4], mac[5]]) as u32 | (1 << 31),
-            );
+            w(m, RAH, u16::from_le_bytes([mac[4], mac[5]]) as u32 | (1 << 31));
         }
         for i in 0..128 {
             w(m, MTA + i * 4, 0);
@@ -155,12 +139,7 @@ impl Driver for Drv {
         let rx_ring = alloc_pages(1).ok_or("kein Speicher")?;
         let rx_bufs = alloc_pages(N * BUF / 4096).ok_or("kein Speicher")?;
         for i in 0..N {
-            unsafe {
-                core::ptr::write_volatile(
-                    (rx_ring + i as u64 * 16) as *mut u64,
-                    rx_bufs + (i * BUF) as u64,
-                )
-            };
+            unsafe { core::ptr::write_volatile((rx_ring + i as u64 * 16) as *mut u64, rx_bufs + (i * BUF) as u64) };
         }
         w(m, RDBAL, rx_ring as u32);
         w(m, RDBAH, (rx_ring >> 32) as u32);
@@ -189,17 +168,7 @@ impl Driver for Drv {
             "[intel-eth] {name}: {:04x} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} Verbindung {} {}",
             d.device, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], if link { "steht" } else { "fehlt" }, speed
         );
-        nl.push(Box::new(Nic {
-            name,
-            mmio: m,
-            mac,
-            rx_ring,
-            rx_bufs,
-            tx_ring,
-            tx_bufs,
-            rx_next: 0,
-            tx_next: 0,
-        }));
+        nl.push(Box::new(Nic { name, mmio: m, mac, rx_ring, rx_bufs, tx_ring, tx_bufs, rx_next: 0, tx_next: 0 }));
         Ok(())
     }
     fn can_remove(&self) -> core::result::Result<(), &'static str> {
@@ -258,14 +227,9 @@ impl NetDev for Nic {
         let buf = self.tx_bufs + (i * BUF) as u64;
         unsafe {
             // vorheriger Auftrag in diesem Platz fertig?
-            if core::ptr::read_volatile((d + 8) as *const u64) != 0
-                && core::ptr::read_volatile((d + 12) as *const u8) & 1 == 0
-            {
+            if core::ptr::read_volatile((d + 8) as *const u64) != 0 && core::ptr::read_volatile((d + 12) as *const u8) & 1 == 0 {
                 let mm = self.mmio;
-                if !wait(
-                    || core::ptr::read_volatile((d + 12) as *const u8) & 1 != 0,
-                    100,
-                ) {
+                if !wait(|| core::ptr::read_volatile((d + 12) as *const u8) & 1 != 0, 100) {
                     let _ = r(mm, TDH);
                     return Err("Senden hängt".into());
                 }
@@ -291,11 +255,7 @@ impl NetDev for Nic {
         let len = unsafe { core::ptr::read_volatile((d + 8) as *const u16) } as usize;
         let n = len.min(buf.len());
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                (self.rx_bufs + (i * BUF) as u64) as *const u8,
-                buf.as_mut_ptr(),
-                n,
-            );
+            core::ptr::copy_nonoverlapping((self.rx_bufs + (i * BUF) as u64) as *const u8, buf.as_mut_ptr(), n);
             core::ptr::write_volatile((d + 8) as *mut u64, 0);
             core::ptr::write_volatile((d + 12) as *mut u8, 0);
         }

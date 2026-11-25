@@ -43,15 +43,7 @@ pub struct Caps {
 
 impl Default for Caps {
     fn default() -> Self {
-        Caps {
-            name: String::new(),
-            id: [6, 0, 0, 1],
-            ev: 0,
-            keys: [0; 96],
-            rel: 0,
-            abs: 0,
-            ranges: [(0, 0); 64],
-        }
+        Caps { name: String::new(), id: [6, 0, 0, 1], ev: 0, keys: [0; 96], rel: 0, abs: 0, ranges: [(0, 0); 64] }
     }
 }
 
@@ -71,9 +63,7 @@ impl Caps {
     /// Declare code `code` of type `t` (`UI_SET_KEYBIT`, `UI_SET_RELBIT`, `UI_SET_ABSBIT`).
     pub fn set_code(&mut self, t: u16, code: u16) -> bool {
         match t {
-            EV_KEY if (1..=KEY_MAX).contains(&code) => {
-                self.keys[code as usize / 8] |= 1 << (code % 8)
-            }
+            EV_KEY if (1..=KEY_MAX).contains(&code) => self.keys[code as usize / 8] |= 1 << (code % 8),
             EV_REL if code <= REL_MAX => self.rel |= 1 << code,
             EV_ABS if code <= ABS_MAX => self.abs |= 1 << code,
             _ => return false,
@@ -95,10 +85,7 @@ impl Caps {
     pub fn set_name(&mut self, raw: &[u8]) {
         let raw = raw.split(|b| *b == 0).next().unwrap_or(&[]);
         let mut name = String::new();
-        for c in String::from_utf8_lossy(raw)
-            .chars()
-            .filter(|c| !c.is_control() && *c != '\u{fffd}')
-        {
+        for c in String::from_utf8_lossy(raw).chars().filter(|c| !c.is_control() && *c != '\u{fffd}') {
             if name.len() + c.len_utf8() > NAME_MAX {
                 break;
             }
@@ -126,9 +113,7 @@ impl Caps {
         match t {
             EV_SYN => (code == 0).then_some(0),
             EV_KEY if declared(EV_KEY) && self.key(code) && (0..=2).contains(&value) => Some(value),
-            EV_REL if declared(EV_REL) && code <= REL_MAX && self.rel & (1 << code) != 0 => {
-                Some(value)
-            }
+            EV_REL if declared(EV_REL) && code <= REL_MAX && self.rel & (1 << code) != 0 => Some(value),
             EV_ABS if declared(EV_ABS) && code <= ABS_MAX && self.abs & (1 << code) != 0 => {
                 let (min, max) = self.ranges[code as usize];
                 Some(value.clamp(min, max))
@@ -154,11 +139,6 @@ impl Caps {
             return None;
         }
         let (min, max) = self.ranges[code as usize];
-        Some(
-            [0, min, max, 0, 0, 0]
-                .iter()
-                .flat_map(|v: &i32| v.to_le_bytes())
-                .collect(),
-        )
+        Some([0, min, max, 0, 0, 0].iter().flat_map(|v: &i32| v.to_le_bytes()).collect())
     }
 }

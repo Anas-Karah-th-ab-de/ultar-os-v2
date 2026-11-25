@@ -12,18 +12,18 @@
 extern crate alloc;
 
 mod apic;
-mod arch;
 mod bootslot;
 mod buddy;
+mod arch;
 mod console;
 mod cred;
 mod devices;
-mod dhcp;
+mod input;
+mod memfd;
+mod scm;
+mod shm;
 mod driver;
 mod drivers;
-mod efi;
-mod eingabe;
-mod ext4;
 mod firewall;
 mod flock;
 mod fs;
@@ -31,33 +31,33 @@ mod geraet;
 mod grafik;
 mod groups;
 mod heap;
-mod input;
 mod install;
 mod isolation;
-mod klog;
-mod mem;
-mod memfd;
-mod net;
-mod oom;
-mod paging;
-mod pci;
-mod percpu;
-mod perm;
-mod pipe;
 mod power;
-mod proc;
-mod procfs;
-mod rawpart;
-mod scm;
-mod selftest;
-mod shell;
-mod shm;
-mod signal;
-mod slab;
-mod socket;
 mod sprache;
 mod startseite;
 mod svcdev;
+mod efi;
+mod eingabe;
+mod ext4;
+mod klog;
+mod mem;
+mod dhcp;
+mod net;
+mod oom;
+mod paging;
+mod percpu;
+mod pci;
+mod perm;
+mod pipe;
+mod proc;
+mod procfs;
+mod rawpart;
+mod shell;
+mod selftest;
+mod signal;
+mod slab;
+mod socket;
 mod syscall;
 mod trap;
 mod trybuf;
@@ -87,26 +87,15 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     let mut schalter = [0u8; 8];
     // SAFETY: still in the firmware phase; `image`/`st` are what the firmware passed.
     // SAFETY: firmware image, system table and file buffer remain valid in the boot phase.
-    if let Some(k) = unsafe {
-        efi::datei_lesen(
-            image,
-            st,
-            ultar_intel_display::optin::FILE_PATH,
-            &mut schalter,
-        )
-    } {
+    if let Some(k) = unsafe { efi::datei_lesen(image, st, ultar_intel_display::optin::FILE_PATH, &mut schalter) } {
         drivers::intel_display::opt_in_file(&schalter[..k]);
     }
     // SAFETY: firmware image, system table and file buffer remain valid in the boot phase.
-    if let Some(k) =
-        unsafe { efi::datei_lesen(image, st, drivers::nvidia_display::FILE_PATH, &mut schalter) }
-    {
+    if let Some(k) = unsafe { efi::datei_lesen(image, st, drivers::nvidia_display::FILE_PATH, &mut schalter) } {
         drivers::nvidia_display::opt_in_file(&schalter[..k]);
     }
     // SAFETY: firmware image, system table and file buffer remain valid in the boot phase.
-    if let Some(k) =
-        unsafe { efi::datei_lesen(image, st, ultar_intel_npu::optin::FILE_PATH, &mut schalter) }
-    {
+    if let Some(k) = unsafe { efi::datei_lesen(image, st, ultar_intel_npu::optin::FILE_PATH, &mut schalter) } {
         drivers::intel_npu::opt_in_file(&schalter[..k]);
     }
     // Systemsprache von der Startpartition (installiertes System): gilt ab dem ersten Bild
@@ -133,9 +122,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
         trap::init();
         arch::calibrate_tsc();
         bootslot::report();
-        let fb = boot
-            .fb
-            .map(|f| (f.base, f.stride as u64 * f.height as u64 * 4));
+        let fb = boot.fb.map(|f| (f.base, f.stride as u64 * f.height as u64 * 4));
         // Prozessor-Schutz an: SMEP/SMAP/UMIP (der Kern greift auf Benutzerspeicher nur über die Seitentabelle zu)
         arch::haerten();
         paging::init(mem::top(&boot), fb);
@@ -147,53 +134,22 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
             None => 180_000,
         });
         // freie Seite unter 1 MB für den Startcode der weiteren Kerne (bevorzugt 0x8000)
-        let free = |a: u64| {
-            boot.regions().any(|d| {
-                crate::efi::usable(d.typ) && d.phys <= a && d.phys + d.pages * 4096 >= a + 0x1000
-            })
-        };
+        let free = |a: u64| boot.regions().any(|d| crate::efi::usable(d.typ) && d.phys <= a && d.phys + d.pages * 4096 >= a + 0x1000);
         // zwei Seiten: Startcode + Kopie der obersten Seitentabelle (muss unter 4 GB liegen)
         let ok2 = |a: u64| free(a) && free(a + 0x1000);
-        let tramp = if ok2(0x8000) {
-            0x8000
-        } else {
-            (0x1000..0x9e000u64)
-                .step_by(0x1000)
-                .find(|&a| ok2(a))
-                .unwrap_or(0)
-        };
+        let tramp = if ok2(0x8000) { 0x8000 } else { (0x1000..0x9e000u64).step_by(0x1000).find(|&a| ok2(a)).unwrap_or(0) };
         if tramp == 0 {
             for d in boot.regions().filter(|d| d.phys < 0x10_0000) {
-                kprintln!(
-                    "[smp] Speicher unter 1 MB: {:#x} +{} Seiten Typ {}",
-                    d.phys,
-                    d.pages,
-                    d.typ
-                );
+                kprintln!("[smp] Speicher unter 1 MB: {:#x} +{} Seiten Typ {}", d.phys, d.pages, d.typ);
             }
         }
         apic::start_aps(boot.rsdp, tramp);
     }
     startseite::startbild(15, "p_kern");
-    kprintln!(
-        concat!(
-            "Ultar-Kern {} – eigener Kernel von ",
-            ultar_brand::vendor!(),
-            " (Rust, ohne Linux)"
-        ),
-        env!("CARGO_PKG_VERSION")
-    );
-    kprintln!(
-        "[schutz] Prozessor: {}, NX, Netz standardmäßig zu (nichts von außen erreichbar)",
-        *arch::SCHUTZ.lock()
-    );
+    kprintln!(concat!("Ultar-Kern {} – eigener Kernel von ", ultar_brand::vendor!(), " (Rust, ohne Linux)"), env!("CARGO_PKG_VERSION"));
+    kprintln!("[schutz] Prozessor: {}, NX, Netz standardmäßig zu (nichts von außen erreichbar)", *arch::SCHUTZ.lock());
     if let Some(f) = boot.fb {
-        kprintln!(
-            "[kern] Bildschirm {}x{} ({})",
-            f.width,
-            f.height,
-            if f.bgr { "BGR" } else { "RGB" }
-        );
+        kprintln!("[kern] Bildschirm {}x{} ({})", f.width, f.height, if f.bgr { "BGR" } else { "RGB" });
     }
     kprintln!("[kern] ACPI-Wurzel {:#x}", boot.rsdp);
     power::init(boot.rsdp);
@@ -203,13 +159,8 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
 
     startseite::startbild(35, "p_hw");
     match pci::init_ecam(boot.rsdp) {
-        0 => kprintln!(
-            "[pci] kein ECAM (MCFG fehlt): erweiterter Konfigurationsraum nicht verfügbar"
-        ),
-        b => kprintln!(
-            "[pci] ECAM bei {:#x}: erweiterter Konfigurationsraum verfügbar",
-            b
-        ),
+        0 => kprintln!("[pci] kein ECAM (MCFG fehlt): erweiterter Konfigurationsraum nicht verfügbar"),
+        b => kprintln!("[pci] ECAM bei {:#x}: erweiterter Konfigurationsraum verfügbar", b),
     }
     let devs = pci::scan();
     kprintln!("[pci] {} Gerät(e) gefunden", devs.len());
@@ -237,10 +188,7 @@ pub extern "efiapi" fn efi_main(image: efi::Handle, st: *mut efi::SystemTable) -
     } else {
         werkstatt::report();
     }
-    kprintln!(
-        "{}",
-        sprache::t("bereit").replace("{}", &alloc::format!("{}", arch::uptime_ms()))
-    );
+    kprintln!("{}", sprache::t("bereit").replace("{}", &alloc::format!("{}", arch::uptime_ms())));
     // Installationsmedium (Startpartition ULTAR-INSTALL): grafische Installation direkt starten
     if install::startmedium_ist_installer() {
         if !install::sitzung_starten() {

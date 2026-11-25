@@ -16,16 +16,16 @@ without Linux.
 | G1b | Minimal ADS block, boot parameters for the first load, GuC **ready**, register message channel (HXG over MMIO), hardware config table | **done, run on the Beelink** (24.11.2026): `firmware 0xf0 ready` 67 ms after the reset, table of 752 bytes with 56 entries fetched and parsed; `GTTEST: ALLES OK` |
 | G1c | Command buffers (CTB): H2G/G2H rings, registration (`SELF_CFG` keys, `CONTROL_CTB`), send, receive, polled request | **done, run on the Beelink** (25.11.2026): buffers enabled, the opt-in request Linux sends first (`0x550e`) answered in 108 µs; `GTTEST: ALLES OK` |
 | G1d | Full ADS (enabled engines, mapping, per-engine register lists, golden context slots, empty capture list) and second load with features and workarounds | **done, run on the Beelink** (25.11.2026): `firmware 0xf0 ready` with render, copy and compute engine announced; command buffers answer after it. Golden context images are still zero (filled in G3) |
-| G2 | Memory: page tables (PPGTT) as pure logic, table memory and buffers in the kernel | **done, run on the Beelink** (25.11.2026) as part of G3: batches run in a context's own address space. Still open: TLB invalidation (needed once mappings are removed or reused) |
-| G3 | Contexts (LRC), registration with the GuC, scheduling policy, enable/submit, events, disable/deregister; proof: an engine writes a value | **done, run on the Beelink** (25.11.2026, runs 13 and 14): `bcs0` runs a store command from the ring (GGTT only); `bcs0`, `rcs0` and `ccs0` each run a batch from their own page tables that stores a value through them; every context is disabled and deregistered again; `GTTEST: ALLES OK`. Still open: golden context images in the ADS (the render image the engine saved has 150 state words set, see 2c), submitting a second job to an enabled context, engine reset handling |
-| G4 | User interface: the Linux `xe` DRM uAPI on `/dev/dri/renderD128` (device query, GEM create/mmap, VM create/bind, exec queue, exec, syncobj) | open |
+| G2 | Memory: page tables (PPGTT) as pure logic, table memory and buffers in the kernel | **done, run on the Beelink** (25.11.2026) as part of G3: batches run in a context's own address space. TLB invalidation through the GuC runs on the Beelink as well (run 17) |
+| G3 | Contexts (LRC), registration with the GuC, scheduling policy, enable/submit, events, disable/deregister; proof: an engine writes a value | **done, run on the Beelink** (25.11.2026, runs 13 and 14): `bcs0` runs a store command from the ring (GGTT only); `bcs0`, `rcs0` and `ccs0` each run a batch from their own page tables that stores a value through them; every context is disabled and deregistered again; `GTTEST: ALLES OK`. Runs 15–17 (25.11.2026): a second job on an enabled context (`SCHED_CONTEXT`), the saved images copied into the ADS as golden contexts, and for each class a context that starts from its golden image; job buffers are given back after each context, with TLB invalidation. Still open: workarounds and default 3D state in the golden images (2c), engine reset handling |
+| G4 | User interface: the Linux `xe` DRM uAPI on `/dev/dri/renderD128` | **G4a written, host tests only** (25.11.2026): request numbers and the device queries (engines, memory regions, config, GT list, hardware config table, GuC version) as bytes in the layout of `xe_drm.h` (`uapi.rs`, 9 tests). Not connected to the kernel yet: no device node, no `ioctl` path. Open: G4b device node, `DRM_IOCTL_VERSION`/`GET_CAP`, queries answered from the running GuC; G4c buffers (GEM create, mmap into the process); G4d address spaces and bind; G4e exec queues, exec, sync objects and user fences |
 | G5 | Mesa (ANV/Vulkan, iris) from the Ubuntu packages unchanged; `vulkaninfo`, off-screen cube, llama.cpp Vulkan in `ultar-llm` | open |
 
 1. **Hardware run** (`tools/kern-test/igpu-run.sh` with `STOP_UNITS="udl-llm-fast.service"`, log on the Beelink:
    `/root/ultar-test/gt-run1.log`, checkout `/root/ultar-igpu-npu`): `INTELTEST: ALLES OK` and `GTTEST: ALLES OK`;
    the whole run takes about 20 s, the host's i915 loads its own GuC again afterwards (function level reset).
    Five runs on 24.11.2026 (logs `gt-run1.log` … `gt-run5.log`, loop script `/root/ultar-test/gt-loop.sh <log>`);
-   runs 7–12 on 25.11.2026 with the command buffers and the full ADS (run 9 failed once, see 2b), runs 13–14 with jobs on the engines; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
+   runs 7–12 on 25.11.2026 with the command buffers and the full ADS (run 9 failed once, see 2b), runs 13–17 with jobs on the engines; under VFIO only (no bare-metal start). The WOPCM write path (registers not yet locked) has not run
    on hardware: i915 had locked them, the driver kept that layout.
 2. **Engines run test jobs, nothing more yet.** With the full ADS the GuC schedules contexts on the copy, render
    and compute engine (G3). The jobs are single store commands; there is no interface for programs (G4) and no
@@ -34,13 +34,19 @@ without Linux.
    first five cache lines until the kernel dropped those lines (`clflush`) before reading. The GGTT's "coherent"
    cache attribute (index 3, what Linux uses) does not change that – tried on 25.11.2026. Buffers the GT writes are
    read after dropping the lines; buffers the CPU writes are flushed before the GT reads them.
-2b. **One unexplained failure.** In one of ten runs a GGTT entry did not read back as written while the GuC was
-   running (`GGTT: display registers read all ones`, run 9); the next run passed. The failure message now names the
-   entry and the value read. Not understood yet.
-2c. **Golden contexts.** The ADS still announces zeroed golden context images. The images the engines saved after
-   the first job are what Linux records as the default state: render 150 of 12288 state words set, compute none,
-   copy has no engine state beyond the register page. They are read in GTTEST but not yet written into the ADS;
-   the GuC needs them when it resets an engine.
+2b. **GGTT read-back fails now and then.** In 2 of 17 runs one GGTT entry did not read back as written while the
+   GuC was running (runs 9 and 16); both times every entry was right on a second look, so the read was wrong, not
+   the table. The kernel now maps a second time (write, read back, flush) before it gives up, and logs a note.
+   Why the read fails is not understood.
+2c. **Golden contexts.** The image each engine saved after its first batch is copied into the ADS (words set in
+   register and engine state: copy 119, render 740, compute 157) and new contexts start from it. Linux primes that
+   first context with its workaround register list and the render engine's default state commands before it
+   records the image; that priming is not written yet, so the images are the hardware's plain state. It has to be
+   added before Mesa renders (G5). What the GuC does with the images at an engine reset has not been exercised.
+2d. **Stale translations** (found on hardware, run 16): after a job's buffers were given back and their GGTT
+   addresses reused, the next context ran with the old context's ring state. Dropping the cached translations
+   through the GuC (`TLB_INVALIDATION` `0x7000`, scope GuC and scope full, each confirmed by event `0x7001`) after
+   GGTT changes fixes it (run 17).
 3. **Interrupts.** The kernel has no MSI routing for PCI devices; G2H messages will be polled until it has
    (same limit as the display driver, intel-display.md §0.4).
 4. **Media GT.** Identified and read (engines, GuC status); its GuC, HuC and the GSC are not loaded. Video decode
@@ -109,8 +115,10 @@ machine's RAM, so large models fit; prompt processing gains most; generation spe
   1 ms slice, 640 ms preemption timeout, frequency request), `SCHED_CONTEXT_MODE_SET` (`0x1001`) enable – this also
   runs what waits in the ring; the GuC confirms with event `0x1002`. On the Beelink the value is in memory by the
   time that event has been read (about 0.1 ms). Retire: mode set disable (event `0x1002`), `DEREGISTER_CONTEXT`
-  (`0x4503`, event `0x4600`). `SCHED_CONTEXT` (`0x1000`) for further jobs of an enabled context is written but not
-  yet used on hardware.
+  (`0x4503`, event `0x4600`). Further jobs of an enabled context: commands behind the ring's tail, new tail into
+  the context image, `SCHED_CONTEXT` (`0x1000`); on the Beelink the second value is there after about 50 µs.
+* **Golden image and new contexts:** `ads::golden_slot` says where a class's image lies in the ADS; a new context
+  takes register and engine state from it and sets its own ring, page table root and run time (`lrc::image_from`).
 * **Ring and batch:** GGTT job = `MI_ARB_ON_OFF` on, `MI_STORE_DATA_IMM` (GGTT), arbitration check; page table job
   = `MI_BATCH_BUFFER_START` (bit 8: context address space) to a batch holding `MI_STORE_DATA_IMM` and
   `MI_BATCH_BUFFER_END`. The ring tail is a multiple of 8 bytes.

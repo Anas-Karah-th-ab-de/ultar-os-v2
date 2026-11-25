@@ -44,15 +44,7 @@ struct Small {
     used: u64,
 }
 
-static SMALL: spin::Mutex<Small> = spin::Mutex::new(Small {
-    heaps: [const { Heap::empty() }; MAX_CHUNKS],
-    base: [0; MAX_CHUNKS],
-    pages: [0; MAX_CHUNKS],
-    high: 0,
-    empty: 0,
-    held: 0,
-    used: 0,
-});
+static SMALL: spin::Mutex<Small> = spin::Mutex::new(Small { heaps: [const { Heap::empty() }; MAX_CHUNKS], base: [0; MAX_CHUNKS], pages: [0; MAX_CHUNKS], high: 0, empty: 0, held: 0, used: 0 });
 static EMERGENCY: spin::Mutex<Heap> = spin::Mutex::new(Heap::empty());
 static EMERGENCY_RANGE: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
 static EMERGENCY_USES: AtomicU64 = AtomicU64::new(0);
@@ -236,8 +228,7 @@ fn with_header(layout: Layout) -> Option<(Layout, usize)> {
 }
 
 fn in_emergency(p: u64) -> bool {
-    p >= EMERGENCY_RANGE[0].load(Ordering::Relaxed)
-        && p < EMERGENCY_RANGE[1].load(Ordering::Relaxed)
+    p >= EMERGENCY_RANGE[0].load(Ordering::Relaxed) && p < EMERGENCY_RANGE[1].load(Ordering::Relaxed)
 }
 
 /// # Safety
@@ -245,12 +236,7 @@ fn in_emergency(p: u64) -> bool {
 // SAFETY: (contract) the block at `base` is at least `off >= HEADER` bytes long – see `# Safety` above.
 unsafe fn finish(base: NonNull<u8>, off: usize, owner: u16, charged: u64) -> *mut u8 {
     let user = base.as_ptr().add(off);
-    (user.sub(HEADER) as *mut Header).write(Header {
-        owner,
-        _pad: 0,
-        magic: MAGIC,
-        charged,
-    });
+    (user.sub(HEADER) as *mut Header).write(Header { owner, _pad: 0, magic: MAGIC, charged });
     user
 }
 
@@ -263,9 +249,7 @@ fn slab_class(layout: Layout) -> Option<usize> {
 }
 
 fn alloc_small(layout: Layout, owner: u16, policy: bool) -> *mut u8 {
-    let Some((inner, off)) = with_header(layout) else {
-        return core::ptr::null_mut();
-    };
+    let Some((inner, off)) = with_header(layout) else { return core::ptr::null_mut() };
     let class = slab_class(layout);
     let bytes = class.map_or(inner.size(), crate::slab::block_size) as u64;
     if policy {
@@ -324,9 +308,7 @@ fn alloc_large(layout: Layout, owner: u16, policy: bool) -> *mut u8 {
         }
         Err(_) => {
             // forced and no run of that size left: last resort is the emergency heap
-            let Some((inner, off)) = with_header(layout) else {
-                return core::ptr::null_mut();
-            };
+            let Some((inner, off)) = with_header(layout) else { return core::ptr::null_mut() };
             let bytes = inner.size() as u64;
             match emergency(inner) {
                 Some(p) => {
@@ -354,10 +336,7 @@ unsafe impl GlobalAlloc for KernelAlloc {
         // requests below a page are always forced: the many tiny buffers of a system call must not
         // fail just because the caller's group is at its limit or memory is short (the reserve is
         // there for them); what counts – pages and buffers – is at least a page
-        let (owner, policy) = (
-            cpu.charge as u16,
-            cpu.fallible != 0 && layout.size() >= PAGE as usize,
-        );
+        let (owner, policy) = (cpu.charge as u16, cpu.fallible != 0 && layout.size() >= PAGE as usize);
         if is_small(layout) {
             alloc_small(layout, owner, policy)
         } else {
@@ -373,20 +352,13 @@ unsafe impl GlobalAlloc for KernelAlloc {
             crate::mem::free_run(addr, run_pages(layout));
             return;
         }
-        let Some((inner, off)) = with_header(layout) else {
-            return;
-        };
+        let Some((inner, off)) = with_header(layout) else { return };
         // SAFETY: small and emergency objects carry a header right in front of the user pointer.
         let h = (ptr.sub(HEADER) as *const Header).read();
         if h.magic != MAGIC {
             return;
         }
-        (ptr.sub(HEADER) as *mut Header).write(Header {
-            owner: 0,
-            _pad: 0,
-            magic: 0,
-            charged: 0,
-        });
+        (ptr.sub(HEADER) as *mut Header).write(Header { owner: 0, _pad: 0, magic: 0, charged: 0 });
         // SAFETY: `off` bytes in front of the user pointer belong to the same block.
         let base = NonNull::new_unchecked(ptr.sub(off));
         if in_emergency(addr) {
@@ -394,9 +366,7 @@ unsafe impl GlobalAlloc for KernelAlloc {
         } else {
             match crate::mem::heap_page(addr) {
                 Some(crate::mem::HeapPage::Slab(class)) => crate::slab::free(base, class as usize),
-                Some(crate::mem::HeapPage::Chunk(slot)) => {
-                    SMALL.lock().free(slot as usize, base, inner)
-                }
+                Some(crate::mem::HeapPage::Chunk(slot)) => SMALL.lock().free(slot as usize, base, inner),
                 None => {}
             }
         }

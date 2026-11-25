@@ -18,18 +18,14 @@ fn rd(reg: u32) -> u32 {
     if X2.load(Ordering::Relaxed) {
         unsafe { rdmsr(0x800 + (reg >> 4)) as u32 }
     } else {
-        unsafe {
-            core::ptr::read_volatile((BASE.load(Ordering::Relaxed) + reg as u64) as *const u32)
-        }
+        unsafe { core::ptr::read_volatile((BASE.load(Ordering::Relaxed) + reg as u64) as *const u32) }
     }
 }
 fn wr(reg: u32, v: u32) {
     if X2.load(Ordering::Relaxed) {
         unsafe { wrmsr(0x800 + (reg >> 4), v as u64) }
     } else {
-        unsafe {
-            core::ptr::write_volatile((BASE.load(Ordering::Relaxed) + reg as u64) as *mut u32, v)
-        }
+        unsafe { core::ptr::write_volatile((BASE.load(Ordering::Relaxed) + reg as u64) as *mut u32, v) }
     }
 }
 
@@ -95,16 +91,7 @@ pub unsafe fn init() {
     wr(0x380, count);
     TIMER_COUNT.store(count, Ordering::Relaxed);
     core::arch::asm!("sti");
-    crate::kprintln!(
-        "[apic] {} · Zeitgeber {} Hz{}",
-        if X2.load(Ordering::Relaxed) {
-            "x2APIC"
-        } else {
-            "xAPIC"
-        },
-        HZ,
-        ""
-    );
+    crate::kprintln!("[apic] {} · Zeitgeber {} Hz{}", if X2.load(Ordering::Relaxed) { "x2APIC" } else { "xAPIC" }, HZ, "");
 }
 
 // ------------------------------------------------------------------ ACPI
@@ -125,19 +112,11 @@ pub unsafe fn find_table(rsdp: u64, want: &[u8; 4]) -> Option<u64> {
         return None;
     }
     let rev = *((rsdp + 15) as *const u8);
-    let (root, wide) = if rev >= 2 && u64at(rsdp + 24) != 0 {
-        (u64at(rsdp + 24), true)
-    } else {
-        (u32at(rsdp + 16) as u64, false)
-    };
+    let (root, wide) = if rev >= 2 && u64at(rsdp + 24) != 0 { (u64at(rsdp + 24), true) } else { (u32at(rsdp + 16) as u64, false) };
     let len = u32at(root + 4) as u64;
     let n = (len - 36) / if wide { 8 } else { 4 };
     for i in 0..n {
-        let t = if wide {
-            u64at(root + 36 + i * 8)
-        } else {
-            u32at(root + 36 + i * 4) as u64
-        };
+        let t = if wide { u64at(root + 36 + i * 8) } else { u32at(root + 36 + i * 4) as u64 };
         if t != 0 && &sig(t) == want {
             return Some(t);
         }
@@ -148,9 +127,7 @@ pub unsafe fn find_table(rsdp: u64, want: &[u8; 4]) -> Option<u64> {
 /// APIC-Kennungen aller eingeschalteten Prozessorkerne laut MADT
 pub unsafe fn madt_cpus(rsdp: u64) -> alloc::vec::Vec<u32> {
     let mut v = alloc::vec::Vec::new();
-    let Some(m) = find_table(rsdp, b"APIC") else {
-        return v;
-    };
+    let Some(m) = find_table(rsdp, b"APIC") else { return v };
     let len = u32at(m + 4) as u64;
     let mut p = m + 44;
     while p + 2 <= m + len {
@@ -338,22 +315,16 @@ pub unsafe fn start_aps(rsdp: u64, tramp: u64) {
         return crate::kprintln!("[smp] 1 Prozessorkern");
     }
     if !tramp_ok {
-        return crate::kprintln!(
-            "[smp] {} Kerne gemeldet – Start nicht möglich (keine freie Seite unter 1 MB)",
-            cpus.len()
-        );
+        return crate::kprintln!("[smp] {} Kerne gemeldet – Start nicht möglich (keine freie Seite unter 1 MB)", cpus.len());
     }
     let start = core::ptr::addr_of!(ultar_ap_start) as u64;
     let len = core::ptr::addr_of!(ultar_ap_end) as u64 - start;
     core::ptr::copy_nonoverlapping(start as *const u8, TRAMP as *mut u8, len as usize);
     // feste Adressen im Startcode auf die gewählte Seite umrechnen
     let off = |p: *const u8| p as u64 - start;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_gdt))) as *mut u32) =
-        (TRAMP + off(core::ptr::addr_of!(ultar_ap_gdt))) as u32;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j32))) as *mut u32) =
-        (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap32))) as u32;
-    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j64))) as *mut u32) =
-        (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap64))) as u32;
+    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_gdt))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_gdt))) as u32;
+    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j32))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap32))) as u32;
+    *((TRAMP + off(core::ptr::addr_of!(ultar_ap_fix_j64))) as *mut u32) = (TRAMP + off(core::ptr::addr_of!(ultar_ap_ap64))) as u32;
     let vars = TRAMP + (core::ptr::addr_of!(ultar_ap_cr3) as u64 - start);
     // oberste Seitentabelle für den Start nach unten kopieren (CR3 wird im 32-Bit-Modus geladen)
     let low = TRAMP + 0x1000;
@@ -376,11 +347,7 @@ pub unsafe fn start_aps(rsdp: u64, tramp: u64) {
             arch::pause();
         }
     }
-    crate::kprintln!(
-        "[smp] {} von {} Prozessorkernen aktiv",
-        ONLINE.load(Ordering::SeqCst),
-        cpus.len()
-    );
+    crate::kprintln!("[smp] {} von {} Prozessorkernen aktiv", ONLINE.load(Ordering::SeqCst), cpus.len());
 }
 
 pub fn cpu_count() -> (u32, usize) {

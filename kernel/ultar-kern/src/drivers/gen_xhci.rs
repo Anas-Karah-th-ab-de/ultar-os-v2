@@ -70,11 +70,7 @@ struct Ring {
 
 impl Ring {
     fn new() -> Option<Ring> {
-        Some(Ring {
-            base: alloc_pages(1)?,
-            idx: 0,
-            cycle: 1,
-        })
+        Some(Ring { base: alloc_pages(1)?, idx: 0, cycle: 1 })
     }
     /// TRB einreihen; liefert seine Adresse
     fn push(&mut self, param: u64, status: u32, control: u32) -> u64 {
@@ -152,11 +148,7 @@ static NEXT_HC: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsiz
 
 impl Hc {
     fn ring(&mut self, slot: u32, dci: u32) -> &mut Ring {
-        let i = self
-            .rings
-            .iter()
-            .position(|r| r.0 == slot && r.1 == dci)
-            .unwrap();
+        let i = self.rings.iter().position(|r| r.0 == slot && r.1 == dci).unwrap();
         &mut self.rings[i].2
     }
 
@@ -167,11 +159,7 @@ impl Hc {
         if control & 1 != self.ev_cycle {
             return None;
         }
-        let e = Event {
-            param: r32(a) as u64 | (r32(a + 4) as u64) << 32,
-            status: r32(a + 8),
-            control,
-        };
+        let e = Event { param: r32(a) as u64 | (r32(a + 4) as u64) << 32, status: r32(a + 8), control };
         self.ev_idx += 1;
         if self.ev_idx == RING {
             self.ev_idx = 0;
@@ -186,24 +174,14 @@ impl Hc {
     fn pump(&mut self) {
         while let Some(e) = self.next_event() {
             if e.typ() == EV_TRANSFER {
-                if let Some(k) = self
-                    .kbds
-                    .iter()
-                    .position(|k| k.slot == e.slot() && k.dci == e.ep())
-                {
+                if let Some(k) = self.kbds.iter().position(|k| k.slot == e.slot() && k.dci == e.ep()) {
                     self.kbd_report(k, e.code());
                     continue;
                 }
                 if pointer::report(self, (e.slot(), e.ep()), e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
-                if bt::report(
-                    self,
-                    (e.slot(), e.ep()),
-                    e.param,
-                    e.code(),
-                    e.status & 0xff_ffff,
-                ) {
+                if bt::report(self, (e.slot(), e.ep()), e.param, e.code(), e.status & 0xff_ffff) {
                     continue;
                 }
             }
@@ -235,48 +213,18 @@ impl Hc {
     }
 
     /// Steuerübertragung auf Endpunkt 0
-    fn control(
-        &mut self,
-        slot: u32,
-        rt: u8,
-        req: u8,
-        value: u16,
-        index: u16,
-        len: u16,
-        buf: u64,
-    ) -> Option<usize> {
-        let setup = rt as u64
-            | (req as u64) << 8
-            | (value as u64) << 16
-            | (index as u64) << 32
-            | (len as u64) << 48;
+    fn control(&mut self, slot: u32, rt: u8, req: u8, value: u16, index: u16, len: u16, buf: u64) -> Option<usize> {
+        let setup = rt as u64 | (req as u64) << 8 | (value as u64) << 16 | (index as u64) << 32 | (len as u64) << 48;
         let input = rt & 0x80 != 0;
-        let trt = if len == 0 {
-            0
-        } else if input {
-            3
-        } else {
-            2
-        };
+        let trt = if len == 0 { 0 } else if input { 3 } else { 2 };
         let ring = self.ring(slot, 1);
         ring.push(setup, 8, (TRB_SETUP << 10) | (1 << 6) | (trt << 16));
         if len > 0 {
-            ring.push(
-                buf,
-                len as u32,
-                (TRB_DATA << 10) | if input { 1 << 16 } else { 0 },
-            );
+            ring.push(buf, len as u32, (TRB_DATA << 10) | if input { 1 << 16 } else { 0 });
         }
-        let st = ring.push(
-            0,
-            0,
-            (TRB_STATUS << 10) | (1 << 5) | if len == 0 || !input { 1 << 16 } else { 0 },
-        );
+        let st = ring.push(0, 0, (TRB_STATUS << 10) | (1 << 5) | if len == 0 || !input { 1 << 16 } else { 0 });
         w32(self.db + slot as u64 * 4, 1);
-        let e = self.wait_for(
-            |e| e.typ() == EV_TRANSFER && e.slot() == slot && (e.param == st || e.code() != 1),
-            2000,
-        )?;
+        let e = self.wait_for(|e| e.typ() == EV_TRANSFER && e.slot() == slot && (e.param == st || e.code() != 1), 2000)?;
         if e.code() == 6 {
             // STALL (Gerät lehnt die Anfrage ab): Endpunkt 0 wieder freigeben, sonst schlagen alle weiteren Anfragen fehl
             self.reset_ep(slot, 1);
@@ -302,11 +250,7 @@ impl Hc {
             let a = buf + off as u64;
             let n = (4096 - (a & 0xfff) as usize).min(len - off);
             let end = off + n >= len;
-            last = ring.push(
-                a,
-                n as u32,
-                (TRB_NORMAL << 10) | if end { 1 << 5 } else { (1 << 4) | (1 << 2) },
-            );
+            last = ring.push(a, n as u32, (TRB_NORMAL << 10) | if end { 1 << 5 } else { (1 << 4) | (1 << 2) });
             off += n;
             if end {
                 break;
@@ -314,10 +258,7 @@ impl Hc {
         }
         let _ = last;
         w32(self.db + slot as u64 * 4, dci);
-        let e = self.wait_for(
-            |e| e.typ() == EV_TRANSFER && e.slot() == slot && e.ep() == dci,
-            ms,
-        )?;
+        let e = self.wait_for(|e| e.typ() == EV_TRANSFER && e.slot() == slot && e.ep() == dci, ms)?;
         if !matches!(e.code(), 1 | 13) {
             return None;
         }
@@ -399,162 +340,18 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
         42 => '\x08',
         43 => '\t',
         44 => ' ',
-        45 => {
-            if de {
-                if altgr {
-                    '\\'
-                } else if shift {
-                    '?'
-                } else {
-                    'ß'
-                }
-            } else if shift {
-                '_'
-            } else {
-                '-'
-            }
-        }
-        46 => {
-            if de {
-                if shift {
-                    '`'
-                } else {
-                    '´'
-                }
-            } else if shift {
-                '+'
-            } else {
-                '='
-            }
-        }
-        47 => {
-            if de {
-                if shift {
-                    'Ü'
-                } else {
-                    'ü'
-                }
-            } else if shift {
-                '{'
-            } else {
-                '['
-            }
-        }
-        48 => {
-            if de {
-                if altgr {
-                    '~'
-                } else if shift {
-                    '*'
-                } else {
-                    '+'
-                }
-            } else if shift {
-                '}'
-            } else {
-                ']'
-            }
-        }
-        49 | 50 => {
-            if de {
-                if shift {
-                    '\''
-                } else {
-                    '#'
-                }
-            } else if shift {
-                '|'
-            } else {
-                '\\'
-            }
-        }
-        51 => {
-            if de {
-                if shift {
-                    'Ö'
-                } else {
-                    'ö'
-                }
-            } else if shift {
-                ':'
-            } else {
-                ';'
-            }
-        }
-        52 => {
-            if de {
-                if shift {
-                    'Ä'
-                } else {
-                    'ä'
-                }
-            } else if shift {
-                '"'
-            } else {
-                '\''
-            }
-        }
-        53 => {
-            if de {
-                if shift {
-                    '°'
-                } else {
-                    '^'
-                }
-            } else if shift {
-                '~'
-            } else {
-                '`'
-            }
-        }
-        54 => {
-            if shift {
-                if de {
-                    ';'
-                } else {
-                    '<'
-                }
-            } else {
-                ','
-            }
-        }
-        55 => {
-            if shift {
-                if de {
-                    ':'
-                } else {
-                    '>'
-                }
-            } else {
-                '.'
-            }
-        }
-        56 => {
-            if de {
-                if shift {
-                    '_'
-                } else {
-                    '-'
-                }
-            } else if shift {
-                '?'
-            } else {
-                '/'
-            }
-        }
-        100 => {
-            if de {
-                if altgr {
-                    '|'
-                } else if shift {
-                    '>'
-                } else {
-                    '<'
-                }
-            } else {
-                '\\'
-            }
-        }
+        45 => if de { if altgr { '\\' } else if shift { '?' } else { 'ß' } } else if shift { '_' } else { '-' },
+        46 => if de { if shift { '`' } else { '´' } } else if shift { '+' } else { '=' },
+        47 => if de { if shift { 'Ü' } else { 'ü' } } else if shift { '{' } else { '[' },
+        48 => if de { if altgr { '~' } else if shift { '*' } else { '+' } } else if shift { '}' } else { ']' },
+        49 | 50 => if de { if shift { '\'' } else { '#' } } else if shift { '|' } else { '\\' },
+        51 => if de { if shift { 'Ö' } else { 'ö' } } else if shift { ':' } else { ';' },
+        52 => if de { if shift { 'Ä' } else { 'ä' } } else if shift { '"' } else { '\'' },
+        53 => if de { if shift { '°' } else { '^' } } else if shift { '~' } else { '`' },
+        54 => if shift { if de { ';' } else { '<' } } else { ',' },
+        55 => if shift { if de { ':' } else { '>' } } else { '.' },
+        56 => if de { if shift { '_' } else { '-' } } else if shift { '?' } else { '/' },
+        100 => if de { if altgr { '|' } else if shift { '>' } else { '<' } } else { '\\' },
         79 | 80 | 81 | 82 => {
             v.extend(['\x1b', '[', ['C', 'D', 'B', 'A'][(u - 79) as usize]]);
             return v;
@@ -577,9 +374,7 @@ fn hid_chars(u: u8, shift: bool, altgr: bool, ctrl: bool) -> Vec<char> {
 pub fn poll_key() -> Option<char> {
     let mut g = HC.try_lock()?;
     for hc in g.iter_mut() {
-        if hc.keys.is_empty()
-            && (!hc.kbds.is_empty() || pointer::any(hc.index) || bt::any(hc.index))
-        {
+        if hc.keys.is_empty() && (!hc.kbds.is_empty() || pointer::any(hc.index) || bt::any(hc.index)) {
             hc.pump();
         }
         if let Some(c) = hc.keys.pop_front() {
@@ -639,13 +434,7 @@ struct Lage {
 
 impl Lage {
     fn wurzel(port: u32) -> Lage {
-        Lage {
-            root: port,
-            route: 0,
-            depth: 0,
-            tt_slot: 0,
-            tt_port: 0,
-        }
+        Lage { root: port, route: 0, depth: 0, tt_slot: 0, tt_port: 0 }
     }
     fn name(&self) -> String {
         let mut s = format!("{}", self.root);
@@ -673,10 +462,7 @@ fn hub_ports(hc: &mut Hc, hub: u32, ports: u32, pwr_ms: u64, ss: bool, speed: u3
     };
     for p in 1..=ports {
         let Some((s, _)) = status(hc, p) else {
-            crate::kprintln!(
-                "[xhci] Hub {} Anschluss {p}: Status nicht lesbar",
-                lage.name()
-            );
+            crate::kprintln!("[xhci] Hub {} Anschluss {p}: Status nicht lesbar", lage.name());
             continue;
         };
         if s & 1 == 0 {
@@ -705,23 +491,12 @@ fn hub_ports(hc: &mut Hc, hub: u32, ports: u32, pwr_ms: u64, ss: bool, speed: u3
         kind.route = lage.route | (p.min(15) << (4 * lage.depth));
         kind.depth = lage.depth + 1;
         if !ok {
-            crate::kprintln!(
-                "[xhci] Port {}: Rücksetzen am Hub fehlgeschlagen",
-                kind.name()
-            );
+            crate::kprintln!("[xhci] Port {}: Rücksetzen am Hub fehlgeschlagen", kind.name());
             continue;
         }
         let s = status(hc, p).map(|x| x.0).unwrap_or(0);
         // Geschwindigkeit: USB-3-Hub → SuperSpeed; USB-2-Hub: Bit 9 Low, Bit 10 High, sonst Full
-        let cs = if ss {
-            4
-        } else if s & (1 << 9) != 0 {
-            2
-        } else if s & (1 << 10) != 0 {
-            3
-        } else {
-            1
-        };
+        let cs = if ss { 4 } else if s & (1 << 9) != 0 { 2 } else if s & (1 << 10) != 0 { 3 } else { 1 };
         if cs <= 2 && speed == 3 {
             kind.tt_slot = hub;
             kind.tt_port = p;
@@ -736,9 +511,7 @@ fn hub_ports(hc: &mut Hc, hub: u32, ports: u32, pwr_ms: u64, ss: bool, speed: u3
 
 fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, String> {
     let port = lage.root;
-    let ev = hc
-        .command(0, TRB_ENABLE_SLOT << 10)
-        .ok_or("Slot freigeben fehlgeschlagen")?;
+    let ev = hc.command(0, TRB_ENABLE_SLOT << 10).ok_or("Slot freigeben fehlgeschlagen")?;
     let slot = ev.slot();
     let ctx = hc.ctx;
     let out = alloc_pages(1).ok_or("kein Speicher")?;
@@ -763,12 +536,10 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
     w32(e0 + 4, (3 << 1) | (4 << 3) | (mps << 16));
     w64(e0 + 8, ep0_base | 1);
     w32(e0 + 16, 8);
-    hc.command(inp, (TRB_ADDRESS << 10) | (slot << 24))
-        .ok_or("Adresse vergeben fehlgeschlagen")?;
+    hc.command(inp, (TRB_ADDRESS << 10) | (slot << 24)).ok_or("Adresse vergeben fehlgeschlagen")?;
     let buf = alloc_pages(1).ok_or("kein Speicher")?;
     // Gerätebeschreibung (erst 8 Byte für die Paketgröße von EP0)
-    hc.control(slot, 0x80, 6, 0x0100, 0, 8, buf)
-        .ok_or("Gerätebeschreibung fehlt")?;
+    hc.control(slot, 0x80, 6, 0x0100, 0, 8, buf).ok_or("Gerätebeschreibung fehlt")?;
     let real = unsafe { *((buf + 7) as *const u8) } as u32;
     if speed <= 2 && real != mps && real != 0 {
         unsafe { core::ptr::write_bytes(inp as *mut u8, 0, 4096) };
@@ -776,21 +547,14 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
         w32(e0 + 4, (3 << 1) | (4 << 3) | (real << 16));
         hc.command(inp, (TRB_EVAL_CTX << 10) | (slot << 24));
     }
-    hc.control(slot, 0x80, 6, 0x0100, 0, 18, buf)
-        .ok_or("Gerätebeschreibung fehlt")?;
+    hc.control(slot, 0x80, 6, 0x0100, 0, 18, buf).ok_or("Gerätebeschreibung fehlt")?;
     let dd: Vec<u8> = unsafe { core::slice::from_raw_parts(buf as *const u8, 18) }.to_vec();
-    let (vid, pid) = (
-        u16::from_le_bytes([dd[8], dd[9]]),
-        u16::from_le_bytes([dd[10], dd[11]]),
-    );
+    let (vid, pid) = (u16::from_le_bytes([dd[8], dd[9]]), u16::from_le_bytes([dd[10], dd[11]]));
     // Konfiguration lesen
-    hc.control(slot, 0x80, 6, 0x0200, 0, 9, buf)
-        .ok_or("Konfiguration fehlt")?;
+    hc.control(slot, 0x80, 6, 0x0200, 0, 9, buf).ok_or("Konfiguration fehlt")?;
     let total = unsafe { core::ptr::read_unaligned((buf + 2) as *const u16) }.min(4096);
-    hc.control(slot, 0x80, 6, 0x0200, 0, total, buf)
-        .ok_or("Konfiguration fehlt")?;
-    let cd: Vec<u8> =
-        unsafe { core::slice::from_raw_parts(buf as *const u8, total as usize) }.to_vec();
+    hc.control(slot, 0x80, 6, 0x0200, 0, total, buf).ok_or("Konfiguration fehlt")?;
+    let cd: Vec<u8> = unsafe { core::slice::from_raw_parts(buf as *const u8, total as usize) }.to_vec();
     let cfg_val = cd[5];
     let mut ifs: Vec<Desc> = Vec::new();
     let mut o = 0usize;
@@ -800,30 +564,17 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             break;
         }
         match cd[o + 1] {
-            4 if l >= 9 => ifs.push(Desc {
-                class: cd[o + 5],
-                sub: cd[o + 6],
-                proto: cd[o + 7],
-                iface: cd[o + 2],
-                config: cfg_val,
-                eps: Vec::new(),
-            }),
+            4 if l >= 9 => ifs.push(Desc { class: cd[o + 5], sub: cd[o + 6], proto: cd[o + 7], iface: cd[o + 2], config: cfg_val, eps: Vec::new() }),
             5 if l >= 7 => {
                 if let Some(d) = ifs.last_mut() {
-                    d.eps.push((
-                        cd[o + 2],
-                        cd[o + 3],
-                        u16::from_le_bytes([cd[o + 4], cd[o + 5]]) & 0x7ff,
-                        cd[o + 6],
-                    ));
+                    d.eps.push((cd[o + 2], cd[o + 3], u16::from_le_bytes([cd[o + 4], cd[o + 5]]) & 0x7ff, cd[o + 6]));
                 }
             }
             _ => {}
         }
         o += l;
     }
-    hc.control(slot, 0x00, 9, cfg_val as u16, 0, 0, 0)
-        .ok_or("Konfiguration setzen fehlgeschlagen")?;
+    hc.control(slot, 0x00, 9, cfg_val as u16, 0, 0, 0).ok_or("Konfiguration setzen fehlgeschlagen")?;
     let mut what = format!("{vid:04x}:{pid:04x}");
     let mut hub: Option<(u32, u64, bool)> = None;
     let mut bt_bound = false;
@@ -832,8 +583,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             // Hub (USB 2.0 Kap. 11 / USB 3.2 Kap. 10)
             let ss = speed >= 4;
             let typ: u16 = if ss { 0x2A } else { 0x29 };
-            hc.control(slot, 0xA0, 6, typ << 8, 0, 12, buf)
-                .ok_or("Hub-Beschreibung fehlt")?;
+            hc.control(slot, 0xA0, 6, typ << 8, 0, 12, buf).ok_or("Hub-Beschreibung fehlt")?;
             let nports = unsafe { *((buf + 2) as *const u8) } as u32;
             let chars = unsafe { core::ptr::read_unaligned((buf + 3) as *const u16) } as u32;
             let pwr = unsafe { *((buf + 5) as *const u8) } as u64 * 2;
@@ -854,22 +604,13 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             hub = Some((nports, pwr, ss));
         } else if d.class == 3 && d.sub == 1 && d.proto == 1 {
             // Boot-Tastatur
-            let Some(&(addr, _, mp, interval)) =
-                d.eps.iter().find(|e| e.0 & 0x80 != 0 && e.1 & 3 == 3)
-            else {
-                continue;
-            };
+            let Some(&(addr, _, mp, interval)) = d.eps.iter().find(|e| e.0 & 0x80 != 0 && e.1 & 3 == 3) else { continue };
             let dci = (addr as u32 & 0xf) * 2 + 1;
             config_ep(hc, slot, inp, out, speed, &[(dci, 7, mp as u32, interval)])?;
             hc.control(slot, 0x21, 0x0B, 0, d.iface as u16, 0, 0); // SET_PROTOCOL: Boot
             hc.control(slot, 0x21, 0x0A, 0, d.iface as u16, 0, 0); // SET_IDLE
             let kb = alloc_pages(1).ok_or("kein Speicher")?;
-            hc.kbds.push(Kbd {
-                slot,
-                dci,
-                buf: kb,
-                last: [0; 8],
-            });
+            hc.kbds.push(Kbd { slot, dci, buf: kb, last: [0; 8] });
             let ring = hc.ring(slot, dci);
             ring.push(kb, 8, (TRB_NORMAL << 10) | (1 << 5) | (1 << 2));
             w32(hc.db + slot as u64 * 4, dci);
@@ -892,30 +633,13 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
             }
         } else if d.class == 8 && d.sub == 6 && d.proto == 0x50 {
             // Massenspeicher (Bulk-Only, SCSI)
-            let Some(&(ina, _, inmp, _)) = d.eps.iter().find(|e| e.0 & 0x80 != 0 && e.1 & 3 == 2)
-            else {
-                continue;
-            };
-            let Some(&(outa, _, outmp, _)) = d.eps.iter().find(|e| e.0 & 0x80 == 0 && e.1 & 3 == 2)
-            else {
-                continue;
-            };
+            let Some(&(ina, _, inmp, _)) = d.eps.iter().find(|e| e.0 & 0x80 != 0 && e.1 & 3 == 2) else { continue };
+            let Some(&(outa, _, outmp, _)) = d.eps.iter().find(|e| e.0 & 0x80 == 0 && e.1 & 3 == 2) else { continue };
             let (din, dout) = ((ina as u32 & 0xf) * 2 + 1, (outa as u32 & 0xf) * 2);
-            config_ep(
-                hc,
-                slot,
-                inp,
-                out,
-                speed,
-                &[(din, 6, inmp as u32, 0), (dout, 2, outmp as u32, 0)],
-            )?;
+            config_ep(hc, slot, inp, out, speed, &[(din, 6, inmp as u32, 0), (dout, 2, outmp as u32, 0)])?;
             let _ = d.config;
             let disk = UsbDisk::new(hc, slot, din, dout)?;
-            what = format!(
-                "Datenträger {} {} MB ({what})",
-                disk.name,
-                disk.sectors * disk.bsize as u64 >> 20
-            );
+            what = format!("Datenträger {} {} MB ({what})", disk.name, disk.sectors * disk.bsize as u64 >> 20);
             BLOCK.lock().push(Box::new(disk));
         }
     }
@@ -929,14 +653,7 @@ fn attach(hc: &mut Hc, lage: Lage, speed: u32) -> core::result::Result<String, S
 }
 
 /// Endpunkte einrichten: (DCI, Typ, max. Paket, Intervall)
-fn config_ep(
-    hc: &mut Hc,
-    slot: u32,
-    inp: u64,
-    out: u64,
-    speed: u32,
-    eps: &[(u32, u32, u32, u8)],
-) -> core::result::Result<(), String> {
+fn config_ep(hc: &mut Hc, slot: u32, inp: u64, out: u64, speed: u32, eps: &[(u32, u32, u32, u8)]) -> core::result::Result<(), String> {
     config_ep_x(hc, slot, inp, out, speed, eps, None)
 }
 
@@ -964,16 +681,10 @@ fn config_ep_x(
     for i in 0..4 {
         w32(sc + i * 4, r32(out + i * 4));
     }
-    w32(
-        sc,
-        (r32(sc) & !(0x1f << 27)) | (maxdci.max((r32(out) >> 27) & 0x1f) << 27),
-    );
+    w32(sc, (r32(sc) & !(0x1f << 27)) | (maxdci.max((r32(out) >> 27) & 0x1f) << 27));
     if let Some((nports, mtt, ttt)) = hub {
         w32(sc, r32(sc) | (1 << 26) | if mtt { 1 << 25 } else { 0 });
-        w32(
-            sc + 4,
-            (r32(sc + 4) & 0x00ff_ffff) | (nports.min(255) << 24),
-        );
+        w32(sc + 4, (r32(sc + 4) & 0x00ff_ffff) | (nports.min(255) << 24));
         w32(sc + 8, (r32(sc + 8) & !(3 << 16)) | (ttt << 16));
     }
     for &(dci, typ, mp, interval) in eps {
@@ -983,11 +694,7 @@ fn config_ep_x(
         let ec = ictx(inp, ctx, dci as usize + 1);
         let iv = if typ == 7 {
             // Intervall in 125-µs-Einheiten (2^n): Voll-/Niedriggeschwindigkeit in ms → ×8
-            let us = if speed <= 2 {
-                (interval.max(1) as u32) * 8
-            } else {
-                1 << (interval.clamp(1, 16) - 1)
-            };
+            let us = if speed <= 2 { (interval.max(1) as u32) * 8 } else { 1 << (interval.clamp(1, 16) - 1) };
             31 - us.max(1).leading_zeros()
         } else {
             0
@@ -999,17 +706,9 @@ fn config_ep_x(
         // the average TRB length; a periodic endpoint without its payload gets no bandwidth on
         // some host controllers
         let esit = (mp & 0x7ff) * (((mp >> 11) & 3) + 1);
-        w32(
-            ec + 16,
-            if typ == 7 {
-                (esit << 16) | (mp & 0x7ff).min(8)
-            } else {
-                1024
-            },
-        );
+        w32(ec + 16, if typ == 7 { (esit << 16) | (mp & 0x7ff).min(8) } else { 1024 });
     }
-    hc.command(inp, (TRB_CONFIG_EP << 10) | (slot << 24))
-        .ok_or("Endpunkte einrichten fehlgeschlagen")?;
+    hc.command(inp, (TRB_CONFIG_EP << 10) | (slot << 24)).ok_or("Endpunkte einrichten fehlgeschlagen")?;
     Ok(())
 }
 
@@ -1031,17 +730,7 @@ impl UsbDisk {
     fn new(hc: &mut Hc, slot: u32, din: u32, dout: u32) -> core::result::Result<UsbDisk, String> {
         let buf = alloc_pages(17).ok_or("kein Speicher")?;
         let n = BLOCK.lock().len();
-        let mut d = UsbDisk {
-            name: format!("usb{n}"),
-            hc: hc.index,
-            slot,
-            din,
-            dout,
-            sectors: 0,
-            bsize: 512,
-            buf,
-            tag: 1,
-        };
+        let mut d = UsbDisk { name: format!("usb{n}"), hc: hc.index, slot, din, dout, sectors: 0, bsize: 512, buf, tag: 1 };
         // Gerät bereit? (TEST UNIT READY, ggf. mehrfach)
         for _ in 0..10 {
             if d.scsi(hc, &[0u8; 6], 0, false).is_ok() {
@@ -1051,8 +740,7 @@ impl UsbDisk {
         }
         let mut cap = [0u8; 16];
         cap[0] = 0x25;
-        d.scsi(hc, &cap[..10], 8, true)
-            .map_err(|e| format!("Kapazität: {e}"))?;
+        d.scsi(hc, &cap[..10], 8, true).map_err(|e| format!("Kapazität: {e}"))?;
         let b = unsafe { core::slice::from_raw_parts(d.buf as *const u8, 8) };
         let last = u32::from_be_bytes(b[0..4].try_into().unwrap()) as u64;
         d.bsize = u32::from_be_bytes(b[4..8].try_into().unwrap()) as usize;
@@ -1064,13 +752,7 @@ impl UsbDisk {
     }
 
     /// SCSI-Befehl über Bulk-Only: CBW → Daten (im Puffer) → CSW
-    fn scsi(
-        &mut self,
-        hc: &mut Hc,
-        cb: &[u8],
-        len: usize,
-        input: bool,
-    ) -> core::result::Result<usize, String> {
+    fn scsi(&mut self, hc: &mut Hc, cb: &[u8], len: usize, input: bool) -> core::result::Result<usize, String> {
         let cbw = self.buf + 64 * 1024;
         unsafe { core::ptr::write_bytes(cbw as *mut u8, 0, 64) };
         self.tag = self.tag.wrapping_add(1);
@@ -1082,23 +764,13 @@ impl UsbDisk {
             *((cbw + 14) as *mut u8) = cb.len() as u8;
             core::ptr::copy_nonoverlapping(cb.as_ptr(), (cbw + 15) as *mut u8, cb.len());
         }
-        hc.transfer(self.slot, self.dout, cbw, 31, 2000)
-            .ok_or("CBW")?;
+        hc.transfer(self.slot, self.dout, cbw, 31, 2000).ok_or("CBW")?;
         let mut got = 0;
         if len > 0 {
-            got = hc
-                .transfer(
-                    self.slot,
-                    if input { self.din } else { self.dout },
-                    self.buf,
-                    len,
-                    5000,
-                )
-                .ok_or("Daten")?;
+            got = hc.transfer(self.slot, if input { self.din } else { self.dout }, self.buf, len, 5000).ok_or("Daten")?;
         }
         let csw = cbw + 512;
-        hc.transfer(self.slot, self.din, csw, 13, 2000)
-            .ok_or("CSW")?;
+        hc.transfer(self.slot, self.din, csw, 13, 2000).ok_or("CSW")?;
         if r32(csw) != 0x5342_5355 {
             return Err("CSW ungültig".into());
         }
@@ -1115,10 +787,7 @@ impl UsbDisk {
         cb[2..6].copy_from_slice(&(lba as u32).to_be_bytes());
         cb[7..9].copy_from_slice(&(n as u16).to_be_bytes());
         let mut g = HC.lock();
-        let hc = g
-            .iter_mut()
-            .find(|h| h.index == self.hc)
-            .ok_or("kein Controller")?;
+        let hc = g.iter_mut().find(|h| h.index == self.hc).ok_or("kein Controller")?;
         self.scsi(hc, &cb, n * self.bsize, !write).map(|_| ())
     }
 }
@@ -1140,25 +809,13 @@ impl BlockDev for UsbDisk {
             let s = lba + (i * 64) as u64;
             if per <= 1 {
                 self.rw(false, s, chunk.len() / 512)?;
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        self.buf as *const u8,
-                        chunk.as_mut_ptr(),
-                        chunk.len(),
-                    )
-                };
+                unsafe { core::ptr::copy_nonoverlapping(self.buf as *const u8, chunk.as_mut_ptr(), chunk.len()) };
             } else {
                 let first = s / per as u64;
                 let last = (s + (chunk.len() / 512) as u64).div_ceil(per as u64);
                 self.rw(false, first, (last - first) as usize)?;
                 let off = ((s % per as u64) * 512) as usize;
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        (self.buf + off as u64) as *const u8,
-                        chunk.as_mut_ptr(),
-                        chunk.len(),
-                    )
-                };
+                unsafe { core::ptr::copy_nonoverlapping((self.buf + off as u64) as *const u8, chunk.as_mut_ptr(), chunk.len()) };
             }
         }
         Ok(())
@@ -1168,9 +825,7 @@ impl BlockDev for UsbDisk {
             return Err("Schreiben nur bei 512-Byte-Sektoren".into());
         }
         for (i, chunk) in buf.chunks(32 * 1024).enumerate() {
-            unsafe {
-                core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.buf as *mut u8, chunk.len())
-            };
+            unsafe { core::ptr::copy_nonoverlapping(chunk.as_ptr(), self.buf as *mut u8, chunk.len()) };
             self.rw(true, lba + (i * 64) as u64, chunk.len() / 512)?;
         }
         Ok(())
@@ -1214,11 +869,7 @@ impl Driver for Drv {
                 w32(cap + 4, r32(cap + 4) & 0xffff_e000);
             }
             let next = (v >> 8) & 0xff;
-            x = if next == 0 {
-                0
-            } else {
-                x + ((next as u64) << 2)
-            };
+            x = if next == 0 { 0 } else { x + ((next as u64) << 2) };
         }
         // anhalten, zurücksetzen
         w32(op, r32(op) & !1);
@@ -1254,32 +905,9 @@ impl Driver for Drv {
         if !wait(|| r32(op + 4) & 1 == 0, 1000) {
             return Err("startet nicht".into());
         }
-        crate::kprintln!(
-            "[xhci] Controller {:04x}:{:04x}: {} Port(s), {} Slots, Kontext {} Byte",
-            d.vendor,
-            d.device,
-            ports,
-            max_slots,
-            ctx
-        );
+        crate::kprintln!("[xhci] Controller {:04x}:{:04x}: {} Port(s), {} Slots, Kontext {} Byte", d.vendor, d.device, ports, max_slots, ctx);
         let index = NEXT_HC.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        let mut hc = Hc {
-            index,
-            ports,
-            op,
-            rt,
-            db,
-            ctx,
-            dcbaa,
-            cmd,
-            ev_base: ev,
-            ev_idx: 0,
-            ev_cycle: 1,
-            rings: Vec::new(),
-            pending: VecDeque::new(),
-            kbds: Vec::new(),
-            keys: VecDeque::new(),
-        };
+        let mut hc = Hc { index, ports, op, rt, db, ctx, dcbaa, cmd, ev_base: ev, ev_idx: 0, ev_cycle: 1, rings: Vec::new(), pending: VecDeque::new(), kbds: Vec::new(), keys: VecDeque::new() };
         // Anschlüsse mit Strom versorgen (falls der Controller das verlangt, HCCPARAMS1.PPC)
         if hcc1 & 8 != 0 {
             for p in 1..=ports {

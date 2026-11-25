@@ -73,9 +73,7 @@ impl Driver for Drv {
         d.vendor == 0x8086 && d.class == 0x0c && d.subclass == 0x05
     }
     fn probe(&self, d: &PciDev) -> Result<()> {
-        let bar = d.bars[4]
-            .filter(|b| b.io)
-            .ok_or("E/A-Bereich (BAR4) fehlt")?;
+        let bar = d.bars[4].filter(|b| b.io).ok_or("E/A-Bereich (BAR4) fehlt")?;
         // E/A-Zugriff im Befehlsregister an, Unterbrechungen aus; HOSTC: Controller ein, kein SMI, kein I2C-Modus
         let cmd = d.r32(0x04) & 0xffff;
         d.w32(0x04, cmd | 0x0401);

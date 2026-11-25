@@ -208,11 +208,7 @@ pub fn top_of(g: u16) -> u16 {
         top = cur;
         cur = parent(cur);
     }
-    if cur == g {
-        g
-    } else {
-        top
-    }
+    if cur == g { g } else { top }
 }
 
 /// Whether `g` is `ancestor` or lies below it.
@@ -265,11 +261,7 @@ pub fn try_charge(g: u16, n: u64) -> Result<(), Denied> {
         let now = if max == NO_LIMIT {
             s.mem.fetch_add(n, Ordering::Relaxed) + n
         } else {
-            match s
-                .mem
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                    v.checked_add(n).filter(|&v| v <= max)
-                }) {
+            match s.mem.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(n).filter(|&v| v <= max)) {
                 Ok(v) => v + n,
                 Err(_) => {
                     s.events[0].fetch_add(1, Ordering::Relaxed);
@@ -315,13 +307,8 @@ pub fn uncharge(g: u16, n: u64) {
 /// A removed group gives its slot back once nothing is charged to it any more.
 fn release_if_done(g: u16) {
     let s = slot(g);
-    if s.state.load(Ordering::Relaxed) == DYING
-        && s.mem.load(Ordering::Relaxed) == 0
-        && s.pids.load(Ordering::Relaxed) == 0
-    {
-        let _ = s
-            .state
-            .compare_exchange(DYING, FREE, Ordering::Relaxed, Ordering::Relaxed);
+    if s.state.load(Ordering::Relaxed) == DYING && s.mem.load(Ordering::Relaxed) == 0 && s.pids.load(Ordering::Relaxed) == 0 {
+        let _ = s.state.compare_exchange(DYING, FREE, Ordering::Relaxed, Ordering::Relaxed);
     }
 }
 

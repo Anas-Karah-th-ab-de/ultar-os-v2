@@ -68,8 +68,7 @@ pub fn added(d: UsbDev) {
 /// The device at port path `port` of controller `hc` and everything behind it are gone; returns
 /// their slots (the controller driver frees them).
 pub fn removed(hc: usize, port: &str) -> Vec<u32> {
-    let below =
-        |d: &UsbDev| d.hc == hc && (d.port == port || d.port.starts_with(&format!("{port}.")));
+    let below = |d: &UsbDev| d.hc == hc && (d.port == port || d.port.starts_with(&format!("{port}.")));
     let gone: Vec<UsbDev> = {
         let mut list = DEVS.lock();
         let gone = list.iter().filter(|d| below(d)).cloned().collect();
@@ -77,12 +76,7 @@ pub fn removed(hc: usize, port: &str) -> Vec<u32> {
         gone
     };
     for d in gone.iter().rev() {
-        super::events::emit(
-            "remove",
-            &format!("/bus/usb/devices/{}", d.name()),
-            "usb",
-            &vars(d),
-        );
+        super::events::emit("remove", &format!("/bus/usb/devices/{}", d.name()), "usb", &vars(d));
     }
     gone.iter().map(|d| d.slot).collect()
 }
@@ -96,14 +90,8 @@ pub fn present(hc: usize, port: u32) -> bool {
 fn vars(d: &UsbDev) -> Vec<(&'static str, String)> {
     alloc::vec![
         ("DEVTYPE", String::from("usb_device")),
-        (
-            "PRODUCT",
-            format!("{:x}/{:x}/{:x}", d.vendor, d.product, d.bcd)
-        ),
-        (
-            "TYPE",
-            format!("{}/{}/{}", d.class[0], d.class[1], d.class[2])
-        ),
+        ("PRODUCT", format!("{:x}/{:x}/{:x}", d.vendor, d.product, d.bcd)),
+        ("TYPE", format!("{}/{}/{}", d.class[0], d.class[1], d.class[2])),
         ("BUSNUM", format!("{:03}", d.hc + 1)),
         ("DEVNUM", format!("{:03}", d.slot)),
     ]
@@ -117,8 +105,6 @@ pub fn poll() {
         return;
     }
     NEXT_POLL.store(now + 200, core::sync::atomic::Ordering::Relaxed);
-    let Some(_g) = super::CONTROL.try_lock() else {
-        return;
-    };
+    let Some(_g) = super::CONTROL.try_lock() else { return };
     crate::heap::kernel(crate::drivers::gen_xhci::hotplug);
 }

@@ -66,9 +66,7 @@ pub fn mmap(addr: u64, len: u64, prot: u64, flags: u64, fd: i64, off: u64) -> Op
 
 /// Map `what` (shared) at a new or fixed address.
 fn map(addr: u64, len: u64, flags: u64, what: Backing) -> i64 {
-    let Some(frames) = what.frames(len) else {
-        return -ENOMEM;
-    };
+    let Some(frames) = what.frames(len) else { return -ENOMEM };
     let w = what.writable();
     crate::syscall::with(|p| {
         let va = match crate::syscall::place(p, addr, len, flags) {
@@ -105,18 +103,10 @@ fn copy(addr: u64, len: u64, prot: u64, flags: u64, m: &MemObj, off: u64) -> i64
 /// `mremap(old, old_len, new_len, flags, new_addr)`.
 pub fn mremap(old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -> i64 {
     let (old_len, new_len) = ((old_len + 4095) & !4095, (new_len + 4095) & !4095);
-    if old & 0xfff != 0
-        || flags & !(MREMAP_MAYMOVE | MREMAP_FIXED) != 0
-        || new_len == 0
-        || new_len > 1 << 34
-        || old_len > 1 << 34
-    {
+    if old & 0xfff != 0 || flags & !(MREMAP_MAYMOVE | MREMAP_FIXED) != 0 || new_len == 0 || new_len > 1 << 34 || old_len > 1 << 34 {
         return -EINVAL;
     }
-    if old < crate::paging::USER_LOW
-        || old + old_len > USER_TOP
-        || flags & MREMAP_FIXED != 0 && flags & MREMAP_MAYMOVE == 0
-    {
+    if old < crate::paging::USER_LOW || old + old_len > USER_TOP || flags & MREMAP_FIXED != 0 && flags & MREMAP_MAYMOVE == 0 {
         return -EINVAL;
     }
     crate::syscall::with(|p| {
@@ -143,14 +133,7 @@ fn target(p: &mut Proc, old: u64, new_len: u64, flags: u64, new_addr: u64) -> Re
 }
 
 /// Resize a shared mapping: it is mapped anew from the same object and offset.
-fn remap_shared(
-    p: &mut Proc,
-    old: u64,
-    old_len: u64,
-    new_len: u64,
-    flags: u64,
-    new_addr: u64,
-) -> i64 {
+fn remap_shared(p: &mut Proc, old: u64, old_len: u64, new_len: u64, flags: u64, new_addr: u64) -> i64 {
     let va = if new_len <= old_len && flags & MREMAP_FIXED == 0 {
         old
     } else {
@@ -159,12 +142,8 @@ fn remap_shared(
             Err(e) => return e,
         }
     };
-    let Some(what) = p.space().take_shared(old, old_len) else {
-        return -EINVAL;
-    };
-    let Some(frames) = what.frames(new_len) else {
-        return -ENOMEM;
-    };
+    let Some(what) = p.space().take_shared(old, old_len) else { return -EINVAL };
+    let Some(frames) = what.frames(new_len) else { return -ENOMEM };
     let w = what.writable();
     if !p.space().map_shared(va, &frames, w, what) {
         return -ENOMEM;
@@ -219,8 +198,7 @@ pub fn vsync_wait(fd: u64, req: u64) -> Option<u64> {
     if req != FBIO_WAITFORVSYNC {
         return None;
     }
-    let fb = crate::syscall::with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Fb(_))))
-        .unwrap_or(false);
+    let fb = crate::syscall::with(|p| matches!(p.fd(fd).map(|d| &d.kind), Some(FdKind::Fb(_)))).unwrap_or(false);
     fb.then(next_vblank)
 }
 
