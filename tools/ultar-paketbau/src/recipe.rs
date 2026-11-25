@@ -97,10 +97,16 @@ impl Part {
         all
     }
 
-    /// File name of the archive.
+    /// File name the archive is kept under: the part's name and version, with the ending of
+    /// the address (addresses of different parts may end in the same file name).
     pub fn archive(&self) -> String {
         let url = self.url();
-        url.rsplit('/').next().unwrap_or("source").to_string()
+        let file = url.rsplit('/').next().unwrap_or("");
+        let ending = [".tar.xz", ".tar.gz", ".tar.bz2", ".tar.zst", ".tgz"]
+            .into_iter()
+            .find(|e| file.ends_with(e))
+            .unwrap_or(".tar");
+        format!("{}-{}{ending}", self.name, self.version)
     }
 
     fn problems(&self, out: &mut Vec<String>) {
@@ -239,6 +245,10 @@ build = ["./configure --prefix={prefix}", "make -j{jobs} install"]
         assert_eq!(r.problems(true), Vec::<String>::new());
         assert_eq!(r.parts[0].url(), "https://example.org/zlib-1.3.1.tar.gz");
         assert_eq!(r.parts[0].archive(), "zlib-1.3.1.tar.gz");
+        let mut tagged = r.parts[0].clone();
+        tagged.name = "ninja".into();
+        tagged.source = "https://example.org/archive/refs/tags/v{version}.tar.gz".into();
+        assert_eq!(tagged.archive(), "ninja-1.3.1.tar.gz");
         let dirs = Dirs {
             tools: "/t".into(),
             recipe: "/r".into(),

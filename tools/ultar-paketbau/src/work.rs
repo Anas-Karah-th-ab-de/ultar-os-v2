@@ -53,11 +53,21 @@ pub fn fetch(site: &Site, part: &Part) -> Result<String, String> {
         std::fs::create_dir_all(site.root.join("sources")).map_err(|e| e.to_string())?;
         let tmp = file.with_extension("part");
         let mut last = String::new();
-        // an address that stalls (under 10 kB/s for 30 s) counts as failed: the next is tried
+        // an address that stalls (under 1 kB/s for a minute) counts as failed: the next is
+        // tried; what was received is kept and continued (slow lines are normal here)
         let got = part.urls().iter().any(|url| {
             let mut curl = Command::new("curl");
-            curl.args(["-fL", "--retry", "2", "-sS", "--connect-timeout", "20"]);
-            curl.args(["--speed-limit", "10000", "--speed-time", "30", "-o"]);
+            curl.args([
+                "-fL",
+                "--retry",
+                "5",
+                "-sS",
+                "--connect-timeout",
+                "20",
+                "-C",
+                "-",
+            ]);
+            curl.args(["--speed-limit", "1000", "--speed-time", "60", "-o"]);
             curl.arg(&tmp).arg(url);
             match run(&mut curl, &format!("download of {url}")) {
                 Ok(()) => true,
