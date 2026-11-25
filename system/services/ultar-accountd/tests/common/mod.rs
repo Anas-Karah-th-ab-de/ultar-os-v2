@@ -337,7 +337,7 @@ impl World {
         if me() == 0 {
             cmd.arg("--allow-root");
         }
-        let daemon = Daemon(cmd.spawn().unwrap());
+        let mut daemon = Daemon(cmd.spawn().unwrap());
         let probe = connect(&self.socket, "app.settings");
         let start = Instant::now();
         while probe
@@ -345,6 +345,13 @@ impl World {
             .is_err()
         {
             assert!(start.elapsed() < WAIT, "accountd did not come up");
+            // A daemon that gave up at once (seen on the CI runner while several tests
+            // start theirs together) is started again, as the service manager would;
+            // how it ended is printed, so the cause shows in the log.
+            if let Ok(Some(status)) = daemon.0.try_wait() {
+                eprintln!("accountd ended before it was ready ({status}); starting it again");
+                daemon = Daemon(cmd.spawn().unwrap());
+            }
             std::thread::sleep(Duration::from_millis(50));
         }
         daemon

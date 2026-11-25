@@ -76,6 +76,12 @@ def main():
         if check:
             if not path.exists() or path.read_text() != text:
                 stale.append(f"{path}: stale")
+                # which rows differ (manifest | boards), so a log says why
+                have = path.read_text().splitlines() if path.exists() else []
+                pairs = [(a, b) for a, b in zip(have, text.splitlines()) if a != b]
+                for a, b in pairs[:5]:
+                    stale.append(f"  manifest: {a}\n  boards:   {b}")
+                stale.append(f"  {len(pairs)} rows differ, {len(have)} rows in the manifest, {len(text.splitlines())} on the board")
         else:
             path.write_text(text)
     if stale:

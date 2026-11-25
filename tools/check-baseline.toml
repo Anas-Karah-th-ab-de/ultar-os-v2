@@ -1,7 +1,17 @@
 [[entry]]
 rule = "layers"
+path = "platform/ultar-desktop/Cargo.toml"
+count = 1
+
+[[entry]]
+rule = "layers"
 path = "platform/ultar-shell/Cargo.toml"
 count = 8
+
+[[entry]]
+rule = "layers"
+path = "system/services/ultar-btd/Cargo.toml"
+count = 2
 
 [[entry]]
 rule = "layers"
@@ -435,11 +445,6 @@ count = 1
 
 [[entry]]
 rule = "text"
-path = "kernel/ultar-kern/src/arch.rs"
-count = 3
-
-[[entry]]
-rule = "text"
 path = "kernel/ultar-kern/src/driver.rs"
 count = 1
 
@@ -526,12 +531,12 @@ count = 75
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/main.rs"
-count = 2
+count = 4
 
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/paging.rs"
-count = 2
+count = 1
 
 [[entry]]
 rule = "text"
@@ -546,7 +551,7 @@ count = 7
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/selftest.rs"
-count = 5
+count = 7
 
 [[entry]]
 rule = "text"
@@ -556,17 +561,12 @@ count = 123
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/sprache.rs"
-count = 11
+count = 41
 
 [[entry]]
 rule = "text"
 path = "kernel/ultar-kern/src/startseite.rs"
 count = 27
-
-[[entry]]
-rule = "text"
-path = "kernel/ultar-kern/src/trap.rs"
-count = 5
 
 [[entry]]
 rule = "text"
@@ -935,6 +935,11 @@ count = 2
 
 [[entry]]
 rule = "size"
+path = "apps/ultar-files/src/view/items.rs"
+count = 1
+
+[[entry]]
+rule = "size"
 path = "apps/ultar-office/src/bin/udoc.rs"
 count = 1
 
@@ -966,6 +971,21 @@ count = 4
 [[entry]]
 rule = "size"
 path = "apps/ultar-office/src/xlsx.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-settings/src/bin/ultar-settings.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-settings/src/state/mod.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "apps/ultar-settings/src/view/display.rs"
 count = 2
 
 [[entry]]
@@ -1081,6 +1101,51 @@ count = 9
 [[entry]]
 rule = "size"
 path = "kernel/ultar-kern/src/trap.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-compositor/src/bin/ultar-compositor.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-compositor/src/keymap.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-compositor/src/state/transfer.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-compositor/tests/shell_protocol.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-desktop/src/app/desktop/mod.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-desktop/src/view/bluetooth.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-desktop/tests/clicks.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-desktop/tests/e2e_quick.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-desktop/tests/wifi.rs"
 count = 1
 
 [[entry]]
@@ -1345,6 +1410,46 @@ count = 1
 
 [[entry]]
 rule = "size"
+path = "platform/ultar-surface/src/proto/request.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-surface/src/proto/request_decode.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-surface/src/proto/tests.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/build.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/src/event/activate.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/src/event/keys.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/src/ui/access_describe.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "platform/ultar-ui/src/widgets/text_field.rs"
+count = 3
+
+[[entry]]
+rule = "size"
 path = "platform/ultar-ui/tests/review_arabic.rs"
 count = 1
 
@@ -1440,6 +1545,16 @@ count = 1
 
 [[entry]]
 rule = "size"
+path = "system/core/ultar-busd/src/apps.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-busd/src/service_files_tests.rs"
+count = 2
+
+[[entry]]
+rule = "size"
 path = "system/core/ultar-init/src/boot.rs"
 count = 2
 
@@ -1460,6 +1575,21 @@ count = 1
 
 [[entry]]
 rule = "size"
+path = "system/core/ultar-init/src/spec.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-launcher/src/plan.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/core/ultar-settingsd/tests/accessibility.rs"
+count = 1
+
+[[entry]]
+rule = "size"
 path = "system/services/ultar-admin/src/main.rs"
 count = 3
 
@@ -1471,6 +1601,16 @@ count = 1
 [[entry]]
 rule = "size"
 path = "system/services/ultar-bt/src/lib.rs"
+count = 1
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-btd/src/stack/host.rs"
+count = 2
+
+[[entry]]
+rule = "size"
+path = "system/services/ultar-btd/tests/scan.rs"
 count = 1
 
 [[entry]]
@@ -1770,18 +1910,13 @@ count = 5
 
 [[entry]]
 rule = "unsafe"
-path = "kernel/ultar-kern/src/mem.rs"
-count = 6
-
-[[entry]]
-rule = "unsafe"
 path = "kernel/ultar-kern/src/paging.rs"
 count = 9
 
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/pci.rs"
-count = 2
+count = 9
 
 [[entry]]
 rule = "unsafe"
@@ -1791,7 +1926,7 @@ count = 2
 [[entry]]
 rule = "unsafe"
 path = "kernel/ultar-kern/src/power.rs"
-count = 8
+count = 17
 
 [[entry]]
 rule = "unsafe"
@@ -1800,13 +1935,8 @@ count = 24
 
 [[entry]]
 rule = "unsafe"
-path = "kernel/ultar-kern/src/selftest.rs"
-count = 1
-
-[[entry]]
-rule = "unsafe"
 path = "kernel/ultar-kern/src/syscall.rs"
-count = 10
+count = 8
 
 [[entry]]
 rule = "unsafe"
@@ -2081,7 +2211,7 @@ count = 6
 [[entry]]
 rule = "unwrap"
 path = "kernel/ultar-kern/src/paging.rs"
-count = 5
+count = 1
 
 [[entry]]
 rule = "unwrap"
@@ -2321,7 +2451,7 @@ count = 25
 [[entry]]
 rule = "unwrap"
 path = "system/services/ultar-call/src/real.rs"
-count = 23
+count = 22
 
 [[entry]]
 rule = "unwrap"
@@ -2777,3 +2907,4 @@ count = 1
 rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
+
