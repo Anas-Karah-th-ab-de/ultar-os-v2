@@ -14,7 +14,7 @@ pub const STORE: &str = "org.ultar.store";
 
 /// The launcher's and the drive service's own contracts.
 pub mod contract {
-    pub use ultar_bus::messages::launcher::{Role, Start, ERROR_UNKNOWN_APP};
+    pub use ultar_bus::messages::launcher::{launcher_id, Role, Start, ERROR_UNKNOWN_APP};
     pub use ultar_bus::messages::volumes::{Eject, EjectOutcome, VolumesState};
 }
 
@@ -39,7 +39,8 @@ impl LauncherPort for BusLauncher {
         activation_token: Option<u64>,
     ) -> Result<(), PortError> {
         let start = contract::Start {
-            app: app.to_owned(),
+            // the launcher knows the system apps by their one-part id (`org.ultar.editor` → `editor`)
+            app: contract::launcher_id(app).to_owned(),
             role: contract::Role::Ui,
             activation_token,
             uri: Some(uri.to_owned()),

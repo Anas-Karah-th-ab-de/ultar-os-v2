@@ -184,6 +184,18 @@ fn open_remove_buttons(
         Button::new(Label::key("store.open")).variant(ButtonVariant::Plain),
     )?;
     hits.bind(open, StoreAction::Launch(app.to_string()));
+    remove_button(ui, line, hits, app)
+}
+
+/// Remove, for every app but the base apps of the system (they stay; updates replace them).
+fn remove_button(ui: &mut Ui, line: NodeId, hits: &mut HitMap, app: &str) -> Result<(), UiError> {
+    if ultar_brand::base_apps::is_base_app(app) {
+        ui.add(
+            line,
+            Text::new(Label::key("store.app.system")).color(ColorRole::TextMuted),
+        )?;
+        return Ok(());
+    }
     let remove = ui.add(
         line,
         Button::new(Label::key("store.app.remove")).variant(ButtonVariant::Danger),
@@ -323,10 +335,5 @@ fn installed_only_page(
         Button::new(Label::key("store.open")).variant(ButtonVariant::Plain),
     )?;
     hits.bind(open, StoreAction::Launch(id.to_string()));
-    let remove = ui.add(
-        line,
-        Button::new(Label::key("store.app.remove")).variant(ButtonVariant::Danger),
-    )?;
-    hits.bind(remove, StoreAction::Remove(id.to_string()));
-    Ok(())
+    remove_button(ui, line, hits, id)
 }

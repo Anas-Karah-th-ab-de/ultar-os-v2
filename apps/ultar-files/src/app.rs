@@ -7,7 +7,7 @@ use crate::fs::copy::Cancel;
 use crate::fs::{trash, AreaId, Fs, FsError, Loc};
 use crate::jobs::{self, JobMsg, ThumbMsg};
 use crate::model::{Dialog, Drive, Item, Running, State};
-use crate::service::{LauncherPort, Mounted, PortError, VolumesPort};
+use crate::service::{LauncherPort, Mounted, VolumesPort};
 use crate::update;
 use crate::view::{self, Built};
 use std::sync::mpsc::Receiver;
@@ -479,14 +479,6 @@ pub(crate) fn drive_of(m: &Mounted) -> Option<Drive> {
         uri: m.uri.trim_end_matches('/').to_owned(),
         area: AreaId::Drive(last.to_owned()),
     })
-}
-
-pub(crate) fn port_failed(e: PortError) -> Dialog {
-    let fs_error = match e {
-        PortError::Unavailable => FsError::Io,
-        PortError::NotInstalled | PortError::Refused => FsError::Permission,
-    };
-    Dialog::Failed(fs_error, 1)
 }
 
 /// Marks the running job (used by [`App::apply`]).

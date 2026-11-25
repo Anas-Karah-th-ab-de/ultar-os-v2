@@ -130,6 +130,9 @@ pub(crate) fn installed_page(
                 .icon(rows::catalog_icon(store, &entry.id)),
         )?;
         hits.bind(item, StoreAction::Open(entry.id.clone()));
+        if ultar_brand::base_apps::is_base_app(&entry.id) {
+            continue; // base app of the system: stays installed
+        }
         let remove = ui.add(
             item,
             Button::new(Label::key("store.installed.remove")).variant(ButtonVariant::Danger),
