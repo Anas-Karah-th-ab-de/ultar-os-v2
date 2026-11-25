@@ -8,11 +8,13 @@
 pub mod fetch;
 pub mod html;
 pub mod page;
+mod playing;
 
 use super::{
     DownloadId, EngineError, EngineEvent, FrameDamage, FrameView, KeyInput, PointerInput,
     RequestId, TabId, WebEngine, MAX_TABS,
 };
+use crate::privacy::persona::Persona;
 use html::{Block, Document, Kind};
 use page::{Laid, Painting};
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -49,6 +51,8 @@ struct Tab {
     /// Number of the load in flight (an older answer is dropped).
     loading: Option<u64>,
     pressed: Option<(f32, f32)>,
+    /// Sound and video playing in the page.
+    media: playing::TabMedia,
 }
 
 struct Done {
@@ -74,8 +78,9 @@ pub struct ReaderEngine {
 }
 
 impl ReaderEngine {
-    /// An engine whose own pages (errors) are in `lang`; `user_agent` names the browser.
-    pub fn new(lang: Lang, user_agent: &str) -> Result<ReaderEngine, EngineError> {
+    /// An engine whose own pages (errors) are in `lang`, reaching the internet along `route`
+    /// (Tor) with the persona of a new session.
+    pub fn new(lang: Lang, route: &fetch::Route) -> Result<ReaderEngine, EngineError> {
         let (wake_read, wake_write) = rustix::pipe::pipe_with(
             rustix::pipe::PipeFlags::CLOEXEC | rustix::pipe::PipeFlags::NONBLOCK,
         )
@@ -88,7 +93,7 @@ impl ReaderEngine {
             next_tab: 0,
             next_load: 0,
             events: Vec::new(),
-            client: fetch::Client::new(user_agent),
+            client: fetch::Client::new(Persona::for_session(Persona::new_seed()), route),
             painting,
             tr,
             done_tx,
@@ -165,9 +170,11 @@ impl ReaderEngine {
         } else {
             doc.title.clone()
         };
+        let autoplay = doc.blocks.len() == 1 && doc.blocks[0].media_src().is_some();
         t.doc = Some(doc);
         t.scroll = 0.0;
         t.laid = None;
+        t.media.clear();
         let (can_back, can_forward) = (t.index > 0, t.index + 1 < t.history.len());
         self.events.extend([
             EngineEvent::Navigated {
@@ -185,6 +192,9 @@ impl ReaderEngine {
             },
         ]);
         self.render(tab);
+        if autoplay {
+            self.autoplay(tab);
+        }
     }
 
     /// The page that came (or the page that says why none came): address, text, secure?
@@ -192,7 +202,17 @@ impl ReaderEngine {
         match done.result {
             Ok(f) => {
                 let secure = f.url.starts_with("https://");
-                let doc = if f.mime == "text/plain" {
+                let doc = if fetch::is_media(&f.mime) {
+                    let kind = if f.mime.starts_with("video/") {
+                        html::MediaKind::Video
+                    } else {
+                        html::MediaKind::Audio
+                    };
+                    Document {
+                        title: String::new(),
+                        blocks: vec![Block::media(kind, &f.url, "")],
+                    }
+                } else if f.mime == "text/plain" {
                     Document {
                         title: String::new(),
                         blocks: vec![Block {
@@ -225,6 +245,7 @@ impl ReaderEngine {
                 .tr
                 .t_args("web.reader.not_text", &[("type", Arg::Str(mime))]),
             fetch::FetchError::TooLarge => self.tr.t("web.reader.too_large").into_owned(),
+            fetch::FetchError::Blocked(_) => self.tr.t("web.reader.blocked").into_owned(),
         };
         let para = |text: String| Block {
             kind: Kind::Para,
@@ -264,7 +285,9 @@ impl ReaderEngine {
             return;
         };
         t.scroll = t.scroll.clamp(0.0, (laid.height - h as f32).max(0.0));
-        t.frame = self.painting.draw(laid, w, h, t.scroll);
+        let (media, tr) = (&t.media, &self.tr);
+        let view = |src: &str| media.view(src, tr);
+        t.frame = self.painting.draw(laid, (w, h), t.scroll, &view);
         if t.frame.is_some() {
             self.events.push(EngineEvent::Frame {
                 tab,
@@ -323,6 +346,7 @@ impl WebEngine for ReaderEngine {
                 scroll: 0.0,
                 loading: None,
                 pressed: None,
+                media: playing::TabMedia::default(),
             },
         );
         Ok(tab)
@@ -407,11 +431,12 @@ impl WebEngine for ReaderEngine {
                 let pressed = t.pressed.take();
                 let near =
                     pressed.is_some_and(|(px, py)| (px - x).abs() < 8.0 && (py - y).abs() < 8.0);
-                let link = t
-                    .laid
-                    .as_ref()
-                    .filter(|_| near)
-                    .and_then(|l| page::link_at(l, x, y + t.scroll));
+                let at = t.laid.as_ref().filter(|_| near);
+                if let Some(b) = at.and_then(|l| page::media_at(l, x, y + t.scroll)) {
+                    self.click_media(tab, &b);
+                    return Ok(());
+                }
+                let link = at.and_then(|l| page::link_at(l, x, y + t.scroll));
                 if let Some(href) = link {
                     self.navigate(tab, href)?;
                 }
@@ -464,6 +489,7 @@ impl WebEngine for ReaderEngine {
         for done in arrived {
             self.arrived(done);
         }
+        self.refresh_all_media();
         Ok(std::mem::take(&mut self.events))
     }
     fn frame(&self, tab: TabId) -> Option<FrameView<'_>> {

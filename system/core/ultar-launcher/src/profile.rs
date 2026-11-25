@@ -96,7 +96,10 @@ const SYSTEM: Profile = Profile {
     pids_default: 128,
     pids_max: 1024,
     tmp_mb: 128,
-    kernel_rights: 0,
+    // Apps of the system may play sound themselves (the browser's videos, the phone): the
+    // sound card's streams, nothing else. A sound service that mixes several apps and keeps
+    // recording apart will take this over.
+    kernel_rights: crate::perm::KERNEL_SOUND,
 };
 
 /// The limits an app's cell gets.
