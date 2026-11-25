@@ -4,6 +4,9 @@
 # Anfrage und entlädt es im Leerlauf, bei Speicherdruck, leerem Akku oder Hitze (Einstellungen: /etc/ultar/llm.toml).
 # Erreichbar nur auf dem Gerät: /run/ultar/llm/llm.sock und 127.0.0.1:8080 (OpenAI-kompatibel).
 manual = true
+# The person switches it (Settings › Assistant, assistant.enabled); ultar-llm-bus tells the
+# service manager (init.switch).
+switch = true
 exec = "/usr/bin/ultar-llm"
 args = ["serve", "--socket", "/run/ultar/llm/llm.sock"]
 # Identity and rights: its own user (810) without kernel rights. It reads the

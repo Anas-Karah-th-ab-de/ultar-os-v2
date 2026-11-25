@@ -307,9 +307,14 @@ subscribe = ["llm.state"]
 
 # The language model's bus face (835): offers `llm` (state and one answer per call).
 [[rule]]
-identity = "system.llmbus"
-register = ["llm"]
-publish  = ["llm.state"]
+identity  = "system.llmbus"
+register  = ["llm"]
+publish   = ["llm.state"]
+# The model service runs while the person has the assistant switched on: it reads that
+# one setting and tells the service manager (`init.switch` reaches only services whose
+# file says `switch = true`).
+call      = ["settings.get", "init.switch"]
+subscribe = ["settings.changed"]
 
 # The helper (834): offers `agent`; its tools are exactly these calls. Restart and power
 # off are confirmed by the person first (`sysdialog.authenticate`).

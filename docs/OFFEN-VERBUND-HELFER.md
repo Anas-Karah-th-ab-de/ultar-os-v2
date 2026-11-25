@@ -68,9 +68,10 @@ Noch nicht geprüft:
 - Verbindung über den echten Konto-Server (bisher nur ein Ersatz-Server nach dessen Regeln).
 - Rundruf im echten Netz (bisher Ankündigungen auf einer Maschine).
 - `ultar-llm-bus` gegen den echten Modell-Dienst: bisher nur gegen einen Ersatz mit denselben drei
-  Anfragen (`/health`, `/v1/models`, `/v1/chat/completions`). Der Modell-Dienst startet nur auf
-  Anforderung (`manual = true`, Kernparameter `ultar.start=llm`). Von selbst startet ihn niemand: Der Aufruf
-  dafür (`init.control`) dürfte jeden Dienst starten und stoppen – das Recht bekommt die Brücke nicht.
+  Anfragen (`/health`, `/v1/models`, `/v1/chat/completions`).
+- Der Schalter des Assistenten im echten Abbild: `assistant.enabled` (Einstellungen › Assistent, jetzt **aus**
+  bis die Person ihn einschaltet) → `ultar-llm-bus` → `init.switch` → Modell-Dienst. Geprüft in Tests des
+  Dienst-Verwalters und der Brücke, nicht im laufenden System.
 - Das Abbild mit den drei neuen Diensten: in dieser Arbeit nicht gebaut und nicht gestartet (geprüft sind die
   Dienstdateien durch die Tests von `ultar-busd`, `ultar-init` und `ultar-logd`). In der Integration lief der
   Verbund im Abbild an; ein Startfehler (`mesh.start_failed step=key_mode`) führte zu einer Korrektur im Kern

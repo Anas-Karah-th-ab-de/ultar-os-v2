@@ -133,7 +133,9 @@ pub(super) fn mesh() -> Vec<SettingDef> {
 pub(super) fn assistant() -> Vec<SettingDef> {
     const P: Panel = Panel::Assistant;
     vec![
-        SettingDef::flag("assistant.enabled", P, true),
+        // Off until the person switches it on: the model service runs only then
+        // (ultar-llm-bus, init.switch).
+        SettingDef::flag("assistant.enabled", P, false),
         SettingDef::flag("assistant.wake_word", P, true),
         SettingDef::text(
             "assistant.wake_phrase",

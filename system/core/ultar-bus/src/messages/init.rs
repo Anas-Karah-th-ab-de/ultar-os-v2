@@ -18,6 +18,8 @@ pub const ADMIN_METHOD: &str = "admin";
 pub const SHUTDOWN_METHOD: &str = "shutdown";
 /// Most services one reply lists.
 pub const MAX_SERVICES: usize = 256;
+/// Method of [`Switch`].
+pub const SWITCH_METHOD: &str = "switch";
 
 /// Where a service is in its life.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -239,4 +241,25 @@ mod tests {
         assert_eq!(words.len(), states.len());
         assert_ne!(Action::Stop.word(), Action::Start.word());
     }
+}
+
+/// `init.switch` – switch a service on or off that the person may switch (its service
+/// file says `switch = true`; today: the language model). No administrator right: the
+/// policy names the one service that follows the person's setting.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct Switch {
+    /// The service.
+    pub service: String,
+    /// On or off.
+    pub on: bool,
+}
+
+impl Message for Switch {
+    const VERSION: u16 = 1;
+}
+
+impl Call for Switch {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = SWITCH_METHOD;
+    type Reply = ControlReply;
 }

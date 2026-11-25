@@ -235,3 +235,36 @@ fn a_dependency_cycle_is_refused_and_the_rest_runs() {
     sup.begin_shutdown(Instant::now());
     assert!(drive(&mut sup, Supervisor::shutdown_done));
 }
+
+#[test]
+fn only_a_service_marked_for_it_is_switched_by_the_person() {
+    let dir = temp("switch");
+    let sleep = "exec = \"/bin/sleep\"\nargs = [\"30\"]";
+    let model = format!("{sleep}\nmanual = true\nswitch = true");
+    let mut sup = supervisor(&dir, vec![spec("model", &model), spec("core", sleep)]);
+    assert!(drive(&mut sup, |s| s.state_of("core")
+        == Some(ServiceState::Running)));
+    // a manual service waits for the switch; any other service is none of its business
+    assert_ne!(sup.state_of("model"), Some(ServiceState::Running));
+    let now = Instant::now();
+    assert_eq!(sup.switch("core", false, now), Err(ControlError::Unknown));
+    assert_eq!(sup.switch("nope", true, now), Err(ControlError::Unknown));
+    assert_eq!(sup.state_of("core"), Some(ServiceState::Running));
+    sup.switch("model", true, now).unwrap();
+    assert!(drive(&mut sup, |s| s.state_of("model")
+        == Some(ServiceState::Running)));
+    // on twice is done, not an error
+    assert_eq!(
+        sup.switch("model", true, Instant::now()),
+        Ok(ServiceState::Running)
+    );
+    sup.switch("model", false, Instant::now()).unwrap();
+    assert!(drive(&mut sup, |s| s.state_of("model")
+        == Some(ServiceState::Stopped)));
+    assert_eq!(
+        sup.switch("model", false, Instant::now()),
+        Ok(ServiceState::Stopped)
+    );
+    sup.begin_shutdown(Instant::now());
+    assert!(drive(&mut sup, Supervisor::shutdown_done));
+}
