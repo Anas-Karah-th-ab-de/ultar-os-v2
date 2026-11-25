@@ -21,10 +21,17 @@ pub fn load(state: &mut State, ports: &mut Ports, panel: &str) {
             Ok(users) => (more.users, more.users_error) = (users, None),
             Err(e) => more.users_error = Some(e.text()),
         },
-        "apps" => match ports.system.apps() {
-            Ok(apps) => (more.apps, more.apps_error) = (apps, None),
-            Err(e) => more.apps_error = Some(e.text()),
-        },
+        "apps" => {
+            match ports.system.apps() {
+                Ok(apps) => (more.apps, more.apps_error) = (apps, None),
+                Err(e) => more.apps_error = Some(e.text()),
+            }
+            // the default-app rows offer the installed apps that declare each kind
+            more.candidates = ultar_bus::messages::launcher::Kind::ALL
+                .into_iter()
+                .map(|k| (k.key(), ports.system.candidates(k).unwrap_or_default()))
+                .collect();
+        }
         "storage" => match ports.system.drives() {
             Ok(drives) => (more.drives, more.drives_error) = (drives, None),
             Err(e) => more.drives_error = Some(e.text()),

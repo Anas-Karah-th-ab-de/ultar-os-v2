@@ -26,7 +26,7 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 25] = [
+pub const WIRED: [(&str, &str); 34] = [
     // ultar-llm-bus starts and stops the model service with it (`init.switch`).
     ("assistant.enabled", "llm-bus"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
@@ -59,6 +59,18 @@ pub const WIRED: [(&str, &str); 25] = [
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.arabic_variants", "shell"),
+    // The launcher resolves a link/file through the default apps (and offers the installed
+    // apps that declare each kind as the choices); it starts the autostart list after sign-in.
+    ("apps.default.web", "launcher"),
+    ("apps.default.mail", "launcher"),
+    ("apps.default.calendar", "launcher"),
+    ("apps.default.music", "launcher"),
+    ("apps.default.video", "launcher"),
+    ("apps.default.photos", "launcher"),
+    ("apps.default.documents", "launcher"),
+    ("apps.autostart", "launcher"),
+    // The shell asks, opens Files, or does nothing when a drive with media is plugged in.
+    ("apps.removable_media", "shell"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -82,6 +94,10 @@ mod tests {
         assert!(!takes_effect("keyboard", "keyboard.compose_key"));
         assert!(takes_effect("search", "search.source.apps"));
         assert!(!takes_effect("search", "search.source.files"));
+        assert!(takes_effect("apps", "apps.default.web"));
+        assert!(takes_effect("apps", "apps.default.documents"));
+        assert!(takes_effect("apps", "apps.removable_media"));
+        assert!(takes_effect("apps", "apps.autostart"));
         assert!(takes_effect("accessibility", "accessibility.reduce_motion"));
         assert!(!takes_effect(
             "accessibility",

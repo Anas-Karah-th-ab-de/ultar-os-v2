@@ -124,6 +124,26 @@ pub fn generic(cx: &mut Cx<'_>, content: NodeId, id: &str) -> Result<(), UiError
     Ok(())
 }
 
+/// The choices of a default-app row (`apps.default.*`): the installed apps the launcher
+/// reports for the kind, plus the stored value when it is not among them, so the row always
+/// shows what is set. Shared with the click handler so both offer the same list.
+pub fn default_options(
+    more: &crate::state::more::MoreState,
+    key: &str,
+    current: &str,
+) -> Vec<String> {
+    let mut options = more
+        .candidates
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, apps)| apps.clone())
+        .unwrap_or_default();
+    if !current.is_empty() && !options.iter().any(|o| o == current) {
+        options.push(current.to_owned());
+    }
+    options
+}
+
 /// The control at the end of a generic row (`None`: a value shown as text).
 fn control(
     cx: &mut Cx<'_>,
@@ -134,6 +154,19 @@ fn control(
     let name = label(&item.label, cx.tr);
     let act = Act::PanelItem(index);
     let wide = Sizing::width(super::metrics::brightness_width());
+    // A default app is chosen from the installed apps that declare the kind (the launcher's
+    // candidates), not typed as free text.
+    if item.key.starts_with("apps.default.") {
+        let current = match &item.value {
+            SettingValue::Text(t) => t.as_str(),
+            _ => "",
+        };
+        let options = default_options(&cx.state.more, &item.key, current);
+        let selected = options.iter().position(|o| o == current).unwrap_or(0);
+        let labels = options.iter().map(|o| Label::data(o)).collect();
+        let select = Select::new(name, labels).selected(selected);
+        return Ok(Some(cx.act(row, select, act)?));
+    }
     let id = match control_of(item) {
         Control::Switch(on) => cx.act(row, Switch::new(name, on), act)?,
         Control::Choice(_, selected) => {

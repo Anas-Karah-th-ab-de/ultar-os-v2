@@ -293,6 +293,8 @@ pub struct SystemWorld {
     pub users: Option<Vec<LocalUser>>,
     /// Installed apps (`None`: launcher down).
     pub apps: Option<Vec<AppEntry>>,
+    /// The installed apps that declare each kind (the default-app choices).
+    pub candidates: Vec<(ultar_bus::messages::launcher::Kind, Vec<String>)>,
     /// Mounted drives (`None`: volume service down).
     pub drives: Option<Vec<Drive>>,
     /// The device mesh (`None`: service down).
@@ -345,6 +347,22 @@ impl SystemPort for Fake {
     fn apps(&mut self) -> PortResult<Vec<AppEntry>> {
         let apps = self.0.borrow().system.apps.clone();
         apps.ok_or(PortError::Unavailable)
+    }
+
+    fn candidates(
+        &mut self,
+        kind: ultar_bus::messages::launcher::Kind,
+    ) -> PortResult<Vec<String>> {
+        let w = self.0.borrow();
+        if w.system.apps.is_none() {
+            return Err(PortError::Unavailable);
+        }
+        Ok(w.system
+            .candidates
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, apps)| apps.clone())
+            .unwrap_or_default())
     }
 
     fn app_revoke(&mut self, app: &str, permission: &str) -> PortResult<bool> {

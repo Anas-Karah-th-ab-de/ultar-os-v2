@@ -544,3 +544,52 @@ fn the_window_follows_the_accessibility_switches_it_shows() {
     later.poll().expect("poll");
     assert!(!later.ui.env().high_contrast);
 }
+
+#[test]
+fn the_default_app_rows_offer_the_launchers_candidates() {
+    use ultar_bus::messages::launcher::Kind;
+    let world = world();
+    {
+        let mut w = world.borrow_mut();
+        let panels = w.panels.as_mut().expect("panels");
+        let apps = panels.iter_mut().find(|p| p.id == "apps").expect("apps");
+        let media = ItemKind::Choice {
+            choices: ["ask", "open_files", "nothing"]
+                .iter()
+                .map(|c| ChoiceInfo {
+                    id: (*c).into(),
+                    label: Text::key(&format!("settings.apps.removable_media.choice.{c}")),
+                })
+                .collect(),
+        };
+        apps.items = vec![
+            row(
+                "apps.default.web",
+                ItemKind::Text {
+                    format: "name".into(),
+                },
+                SettingValue::Text("browser".into()),
+            ),
+            row("apps.removable_media", media, SettingValue::Text("ask".into())),
+        ];
+        w.system.candidates = vec![(Kind::Web, vec!["browser".into(), "store.web".into()])];
+    }
+    let mut app = wide(&world, Lang::En, "apps");
+    // both rows take effect now: neither is disabled with the "not yet" note
+    let web = app.view.node(Act::PanelItem(0)).expect("web row");
+    let media = app.view.node(Act::PanelItem(1)).expect("media row");
+    assert!(!app.ui.is_disabled(web) && !app.ui.is_disabled(media));
+    // the web row is a choice of the launcher's candidates; pick the second (store.web)
+    click(&mut app, web);
+    assert!(app.ui.is_open(web), "the default app offers a list");
+    key(&mut app, Key::ArrowDown);
+    key(&mut app, Key::Enter);
+    assert_eq!(
+        log(&world).last().expect("a set"),
+        "settings.set apps.default.web=Text(\"store.web\")"
+    );
+    assert_eq!(
+        app.state.panel("apps").unwrap().items[0].value,
+        SettingValue::Text("store.web".into())
+    );
+}
