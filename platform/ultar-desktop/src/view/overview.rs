@@ -238,6 +238,12 @@ pub(crate) fn hit_item(hit: &Hit, d: &Desktop, tr: &Translator) -> ListItem {
         Hit::Command(c) => ListItem::new(Label::key(c.key()))
             .icon(IconId::Forward)
             .sublabel(Label::key("desk.ov.group.commands")),
+        Hit::Character(ch) => {
+            let name = crate::model::characters::find(ch).map_or("", |c| c.name(d.lang));
+            ListItem::new(Label::data(&format!("{ch}  {name}")))
+                .icon(IconId::Language)
+                .sublabel(Label::key("desk.ov.group.characters"))
+        }
     }
 }
 

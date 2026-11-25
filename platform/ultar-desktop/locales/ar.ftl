@@ -116,6 +116,7 @@ desk.ov.close = إغلاق النافذة: {title}
 desk.ov.current = الحالية
 desk.ov.group.apps = تطبيقات
 desk.ov.group.calc = حساب
+desk.ov.group.characters = أحرف ورموز
 desk.ov.group.commands = أوامر
 desk.ov.group.settings = الإعدادات
 desk.ov.new_workspace = مساحة عمل جديدة

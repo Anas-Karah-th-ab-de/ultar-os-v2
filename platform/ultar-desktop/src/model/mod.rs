@@ -5,6 +5,7 @@
 pub mod apps;
 pub mod arrange;
 pub mod calendar;
+pub mod characters;
 pub mod helper;
 pub mod mesh;
 pub mod notes;

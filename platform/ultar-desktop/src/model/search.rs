@@ -1,7 +1,8 @@
 //! The overview search (DESKTOP-SPEC §5.1 "Suche"): one field, results grouped – apps,
-//! settings (jumps to the panel), calculation, commands. Arabic matches without regard to
-//! vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). Sources without a
-//! service (files, Store, characters) are not offered.
+//! settings (jumps to the panel), calculation, commands, characters. Arabic matches without
+//! regard to vowel marks and letter variants (`ultar_i18n::arabic::search_matches`). The
+//! characters come from a table that ships with the shell (`model::characters`); sources
+//! without a service (files, Store) are not offered.
 
 use super::apps::AppInfo;
 use ultar_i18n::{arabic, numbers, Translator};
@@ -83,6 +84,8 @@ pub enum Hit {
     Calc(String),
     /// Run a command.
     Command(Command),
+    /// A character (emoji, symbol, Arabic letter) from the table; choosing it inserts it.
+    Character(String),
     /// Ask the helper this (the whole query, in the person's words).
     Helper(String),
 }
@@ -99,6 +102,8 @@ pub struct Sources {
     pub calculator: bool,
     /// Commands (lock, power, display mode, quick settings).
     pub commands: bool,
+    /// Characters (emoji, symbols, Arabic letters) from the shell's table.
+    pub characters: bool,
     /// Arabic matches without regard to vowel marks and letter variants.
     pub arabic_variants: bool,
     /// The helper answers on this device (`agent.state` was seen).
@@ -112,6 +117,7 @@ impl Default for Sources {
             settings: true,
             calculator: true,
             commands: true,
+            characters: true,
             arabic_variants: true,
             helper: false,
         }
@@ -120,11 +126,12 @@ impl Default for Sources {
 
 impl Sources {
     /// The settings the search follows.
-    pub const KEYS: [&'static str; 5] = [
+    pub const KEYS: [&'static str; 6] = [
         "search.source.apps",
         "search.source.settings",
         "search.source.calculator",
         "search.source.commands",
+        "search.source.characters",
         "search.arabic_variants",
     ];
 
@@ -135,6 +142,7 @@ impl Sources {
             "search.source.settings" => &mut self.settings,
             "search.source.calculator" => &mut self.calculator,
             "search.source.commands" => &mut self.commands,
+            "search.source.characters" => &mut self.characters,
             "search.arabic_variants" => &mut self.arabic_variants,
             _ => return false,
         };
@@ -191,6 +199,14 @@ pub fn search_in(query: &str, apps: &[AppInfo], tr: &Translator, sources: Source
                         || matches(&tr.t(&format!("{}.words", c.key())), query, variants)
                 })
                 .map(Hit::Command),
+        );
+    }
+    if sources.characters {
+        out.extend(
+            super::characters::search(query, variants)
+                .into_iter()
+                .take(MAX_PER_GROUP)
+                .map(|c| Hit::Character(c.ch.to_owned())),
         );
     }
     // Always last: whatever was typed can be asked of the helper.
@@ -336,6 +352,23 @@ mod tests {
         ] {
             assert_eq!(calculate(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn characters_are_found_by_name_and_the_source_switches_them_off() {
+        let en = crate::i18n::translator(Lang::En).unwrap();
+        let ar = crate::i18n::translator(Lang::Ar).unwrap();
+        let heart = Hit::Character("❤".into());
+        assert!(search("heart", &base_apps(), &en).contains(&heart));
+        assert!(search("قلب", &base_apps(), &ar).contains(&heart));
+        // The source switched off in Settings: no characters.
+        let mut sources = Sources::default();
+        assert!(sources.set("search.source.characters", false));
+        assert!(!search_in("heart", &base_apps(), &en, sources).contains(&heart));
+        // Apps still found with characters off.
+        assert!(search_in("files", &base_apps(), &en, sources)
+            .iter()
+            .any(|h| matches!(h, Hit::App(_))));
     }
 
     #[test]

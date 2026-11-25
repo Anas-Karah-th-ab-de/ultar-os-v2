@@ -116,6 +116,7 @@ desk.ov.close = Fenster schließen: {title}
 desk.ov.current = aktuell
 desk.ov.group.apps = Apps
 desk.ov.group.calc = Rechnen
+desk.ov.group.characters = Zeichen
 desk.ov.group.commands = Befehle
 desk.ov.group.settings = Einstellungen
 desk.ov.new_workspace = Neue Arbeitsfläche

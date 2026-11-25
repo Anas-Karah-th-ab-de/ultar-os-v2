@@ -18,7 +18,7 @@ use ultar_ui::tokens::ThemeKind;
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 12] = [
+pub const FOLLOWED: [&str; 13] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
@@ -27,6 +27,7 @@ pub const FOLLOWED: [&str; 12] = [
     "search.source.settings",
     "search.source.calculator",
     "search.source.commands",
+    "search.source.characters",
     "search.arabic_variants",
     "notifications.do_not_disturb",
     "display.night_light.enabled",

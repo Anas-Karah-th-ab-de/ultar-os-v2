@@ -335,6 +335,11 @@ fn result(s: &mut Shell, hit: &Hit) -> Outcome {
         }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
+        // A character goes into the search field (the picker's one field).
+        Hit::Character(ch) => {
+            s.d.overview.query.push_str(ch);
+            Outcome::surfaces()
+        }
         Hit::Helper(text) => super::helper::ask_from_search(s, text),
         Hit::Command(Command::Lock) => {
             s.d.open = Open::None;

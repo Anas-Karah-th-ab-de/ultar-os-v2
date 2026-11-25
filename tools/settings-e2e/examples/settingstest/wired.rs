@@ -232,6 +232,21 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
     if finds_files(&desk) || sources.apps || sources.calculator || !sources.settings {
         return Err(format!("the shell still searches {sources:?}"));
     }
+    // Characters: a name offers the character from the shell's table; the source switch
+    // removes it (the setting reaches the shell's own state).
+    let finds_heart = |desk: &Desktop| {
+        search_in("heart", &apps, &tr, desk.overview.sources)
+            .iter()
+            .any(|hit| matches!(hit, Hit::Character(_)))
+    };
+    if !finds_heart(&desk) {
+        return Err("the shell's search does not offer characters".into());
+    }
+    let off = change((&mut app, admin), ("search", "search.source.characters"), None)?;
+    follow(&mut desk, "search.source.characters", off)?;
+    if finds_heart(&desk) || desk.overview.sources.characters {
+        return Err("the shell still searches characters".into());
+    }
     let mut app = page(bus, run, "accessibility")?;
     for key in [
         "accessibility.large_text",
@@ -258,8 +273,8 @@ fn shell(bus: &Client, admin: &Client, run: &Run, shell: &Follower) -> Result<()
         change((&mut app, admin), ("accessibility", key), None)?;
     }
     println!(
-        "SETTINGS: search and accessibility pages -> shell: apps and calculator not searched, \
-         large text, high contrast, no motion (the Settings window too)"
+        "SETTINGS: search and accessibility pages -> shell: apps, calculator and characters not \
+         searched, large text, high contrast, no motion (the Settings window too)"
     );
     Ok(())
 }
