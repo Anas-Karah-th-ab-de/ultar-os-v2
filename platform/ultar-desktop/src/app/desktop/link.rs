@@ -18,7 +18,7 @@ use ultar_ui::tokens::ThemeKind;
 pub const BAR_POSITION: &str = "bar.layout";
 
 /// Settings the bar follows.
-pub const FOLLOWED: [&str; 13] = [
+pub const FOLLOWED: [&str; 14] = [
     "appearance.theme",
     "accessibility.high_contrast",
     "accessibility.large_text",
@@ -28,6 +28,7 @@ pub const FOLLOWED: [&str; 13] = [
     "search.source.calculator",
     "search.source.commands",
     "search.source.characters",
+    "search.history",
     "search.arabic_variants",
     "notifications.do_not_disturb",
     "display.night_light.enabled",
@@ -131,6 +132,13 @@ pub fn apply_setting(d: &mut Desktop, key: &str, value: &SettingValue) {
         ("accessibility.high_contrast", SettingValue::Flag(on)) => d.values.high_contrast = *on,
         ("accessibility.large_text", SettingValue::Flag(on)) => d.values.large_text = *on,
         ("accessibility.reduce_motion", SettingValue::Flag(on)) => d.values.reduce_motion = *on,
+        // Off keeps nothing: the remembered entries go (the file is deleted by the app).
+        ("search.history", SettingValue::Flag(on)) => {
+            d.overview.sources.history = *on;
+            if !on {
+                d.overview.history.clear();
+            }
+        }
         (k, SettingValue::Flag(on)) if d.overview.sources.set(k, *on) => {}
         ("display.night_light.enabled", SettingValue::Flag(on)) => d.values.night = *on,
         ("power.mode", SettingValue::Text(t)) => {
@@ -187,6 +195,24 @@ mod tests {
         );
         assert_eq!(d.values.brightness, Some(100));
         apply_setting(&mut d, "x", &SettingValue::Flag(true));
+    }
+
+    #[test]
+    fn switching_history_off_clears_the_remembered_entries() {
+        use crate::model::history::Record;
+        let mut d = Desktop::new(Lang::En);
+        d.overview.history.record(Record::Search("weather".into()));
+        assert!(d.overview.sources.history && !d.overview.history.entries.is_empty());
+        apply_setting(&mut d, "search.history", &SettingValue::Flag(false));
+        assert!(!d.overview.sources.history);
+        assert!(d.overview.history.entries.is_empty(), "off keeps nothing");
+        // On again: storing resumes (the list starts empty).
+        apply_setting(&mut d, "search.history", &SettingValue::Flag(true));
+        assert!(d.overview.sources.history);
+        d.overview
+            .history
+            .record(Record::App("org.ultar.files".into()));
+        assert_eq!(d.overview.history.entries.len(), 1);
     }
 
     #[test]

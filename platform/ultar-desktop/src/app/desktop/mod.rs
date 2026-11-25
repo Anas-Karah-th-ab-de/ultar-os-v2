@@ -63,6 +63,9 @@ pub struct DesktopApp {
     slow: slow::SlowCalls,
     /// Which layout announcements are the user's switches (stored in the settings).
     layouts: keyboard::LayoutSync,
+    /// The shell's own folder for the per-person search history (`None`: nothing kept
+    /// across restarts).
+    history_dir: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for DesktopApp {
@@ -97,6 +100,15 @@ fn read_services(link: &Link, d: &mut Desktop) {
     }
 }
 
+/// The person's remembered searches, read beside the shell (only shown when
+/// `search.history` is on; off keeps nothing).
+fn read_history(d: &mut Desktop, state: Option<&std::path::Path>, user: &str) {
+    d.overview.history = crate::model::history::load(state, user);
+    if !d.overview.sources.history {
+        d.overview.history.clear();
+    }
+}
+
 impl DesktopApp {
     /// Connects to the compositor and the bus and shows the bar.
     pub fn start(
@@ -118,6 +130,7 @@ impl DesktopApp {
         if let Some(link) = &link {
             read_services(link, &mut d);
         }
+        read_history(&mut d, options.state.as_deref(), user);
         let size = screen(&host);
         let form = Form::choose(options.form.as_deref(), size.w);
         let place = options
@@ -149,6 +162,7 @@ impl DesktopApp {
             started: Instant::now(),
             slow: slow::SlowCalls::default(),
             layouts: keyboard::LayoutSync::default(),
+            history_dir: options.state.clone(),
         };
         app.apply_keyboard()?;
         app.open_side_panels()?;
@@ -255,11 +269,21 @@ impl DesktopApp {
                 });
             }
         }
+        self.sync_history(&keys)?;
         if any {
             if self.look.theme != self.shell.d.theme {
                 self.look.theme = self.shell.d.theme;
             }
             self.rebuild(Outcome::surfaces())?;
+        }
+        Ok(())
+    }
+
+    /// search.history changed: keep the file beside the shell in step (save when on, delete
+    /// when off). The entries are already in the state (`apply_setting` clears them on off).
+    fn sync_history(&mut self, keys: &[String]) -> Result<(), AppError> {
+        if keys.iter().any(|k| k == "search.history") {
+            self.apply(Outcome::effect(crate::shell::Effect::History))?;
         }
         Ok(())
     }

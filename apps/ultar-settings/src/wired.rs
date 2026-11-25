@@ -26,7 +26,7 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 26] = [
+pub const WIRED: [(&str, &str); 27] = [
     // ultar-llm-bus starts and stops the model service with it (`init.switch`).
     ("assistant.enabled", "llm-bus"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
@@ -54,12 +54,14 @@ pub const WIRED: [(&str, &str); 26] = [
     ("accessibility.high_contrast", "shell"),
     ("accessibility.reduce_motion", "shell"),
     // The search of the shell's overview (model/search.rs `Sources`, read at start and on
-    // settings.changed); the characters come from the shell's own table (model/characters.rs).
+    // settings.changed); the characters come from the shell's own table (model/characters.rs),
+    // the history is kept beside the shell per person (model/history.rs); off deletes it.
     ("search.source.apps", "shell"),
     ("search.source.settings", "shell"),
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.source.characters", "shell"),
+    ("search.history", "shell"),
     ("search.arabic_variants", "shell"),
 ];
 
@@ -84,6 +86,7 @@ mod tests {
         assert!(!takes_effect("keyboard", "keyboard.compose_key"));
         assert!(takes_effect("search", "search.source.apps"));
         assert!(takes_effect("search", "search.source.characters"));
+        assert!(takes_effect("search", "search.history"));
         assert!(!takes_effect("search", "search.source.files"));
         assert!(!takes_effect("search", "search.source.store"));
         assert!(!takes_effect("search", "search.file_places"));

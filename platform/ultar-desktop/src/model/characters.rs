@@ -3,98 +3,73 @@
 //! name. Typing a name (in either language, Arabic without regard to vowel marks and letter
 //! variants when `search.arabic_variants` is on) offers the character; choosing it puts the
 //! character into the search field. No service is involved – the table ships with the shell.
+//!
+//! The names are user-visible text, so they live in `assets/characters.toml` (data, like the
+//! Store's catalogue), not as literals in the code; this module only parses and searches it.
 
+use serde::Deserialize;
+use std::sync::OnceLock;
 use ultar_i18n::{arabic, Lang};
 
 /// One character the search offers, with its name in English and Arabic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Character {
     /// The character itself (what choosing it inserts).
-    pub ch: &'static str,
+    pub ch: String,
     /// Its English name (words to match).
-    pub en: &'static str,
+    pub en: String,
     /// Its Arabic name (real Arabic, the reference).
-    pub ar: &'static str,
+    pub ar: String,
 }
 
 impl Character {
     /// The name in `lang` (German falls back to English: the table carries ar and en).
-    pub fn name(self, lang: Lang) -> &'static str {
+    pub fn name(&self, lang: Lang) -> &str {
         match lang {
-            Lang::Ar => self.ar,
-            _ => self.en,
+            Lang::Ar => &self.ar,
+            _ => &self.en,
         }
     }
 }
 
-/// The table: the Arabic letters, then common emoji and symbols. Small on purpose – this
-/// is a picker of what people search for by name, not a full Unicode database.
-pub const TABLE: &[Character] = &[
-    // The Arabic letters (isolated form), by their names.
-    Character { ch: "ا", en: "alif", ar: "ألف" },
-    Character { ch: "ب", en: "ba", ar: "باء" },
-    Character { ch: "ت", en: "ta", ar: "تاء" },
-    Character { ch: "ث", en: "tha", ar: "ثاء" },
-    Character { ch: "ج", en: "jim", ar: "جيم" },
-    Character { ch: "ح", en: "ha", ar: "حاء" },
-    Character { ch: "خ", en: "kha", ar: "خاء" },
-    Character { ch: "د", en: "dal", ar: "دال" },
-    Character { ch: "ذ", en: "dhal", ar: "ذال" },
-    Character { ch: "ر", en: "ra", ar: "راء" },
-    Character { ch: "ز", en: "zay", ar: "زاي" },
-    Character { ch: "س", en: "sin", ar: "سين" },
-    Character { ch: "ش", en: "shin", ar: "شين" },
-    Character { ch: "ص", en: "sad", ar: "صاد" },
-    Character { ch: "ض", en: "dad", ar: "ضاد" },
-    Character { ch: "ط", en: "ta", ar: "طاء" },
-    Character { ch: "ظ", en: "za", ar: "ظاء" },
-    Character { ch: "ع", en: "ayn", ar: "عين" },
-    Character { ch: "غ", en: "ghayn", ar: "غين" },
-    Character { ch: "ف", en: "fa", ar: "فاء" },
-    Character { ch: "ق", en: "qaf", ar: "قاف" },
-    Character { ch: "ك", en: "kaf", ar: "كاف" },
-    Character { ch: "ل", en: "lam", ar: "لام" },
-    Character { ch: "م", en: "mim", ar: "ميم" },
-    Character { ch: "ن", en: "nun", ar: "نون" },
-    Character { ch: "ه", en: "ha", ar: "هاء" },
-    Character { ch: "و", en: "waw", ar: "واو" },
-    Character { ch: "ي", en: "ya", ar: "ياء" },
-    // Emoji and symbols.
-    Character { ch: "😀", en: "grinning face", ar: "وجه مبتسم" },
-    Character { ch: "😂", en: "face with tears of joy", ar: "وجه بدموع الفرح" },
-    Character { ch: "❤", en: "red heart", ar: "قلب أحمر" },
-    Character { ch: "⭐", en: "star", ar: "نجمة" },
-    Character { ch: "✓", en: "check mark", ar: "علامة صح" },
-    Character { ch: "✗", en: "cross mark", ar: "علامة خطأ" },
-    Character { ch: "→", en: "right arrow", ar: "سهم إلى اليمين" },
-    Character { ch: "←", en: "left arrow", ar: "سهم إلى اليسار" },
-    Character { ch: "↑", en: "up arrow", ar: "سهم إلى الأعلى" },
-    Character { ch: "↓", en: "down arrow", ar: "سهم إلى الأسفل" },
-    Character { ch: "★", en: "black star", ar: "نجمة مصمتة" },
-    Character { ch: "♪", en: "music note", ar: "نوتة موسيقية" },
-    Character { ch: "☀", en: "sun", ar: "شمس" },
-    Character { ch: "☂", en: "umbrella", ar: "مظلة" },
-    Character { ch: "✉", en: "envelope", ar: "ظرف رسالة" },
-    Character { ch: "☎", en: "telephone", ar: "هاتف" },
-    Character { ch: "✈", en: "airplane", ar: "طائرة" },
-    Character { ch: "⚙", en: "gear", ar: "ترس" },
-    Character { ch: "🔒", en: "lock", ar: "قفل" },
-    Character { ch: "🔑", en: "key", ar: "مفتاح" },
-    Character { ch: "📁", en: "folder", ar: "مجلد" },
-    Character { ch: "📄", en: "document", ar: "مستند" },
-    Character { ch: "🖼", en: "picture", ar: "صورة" },
-    Character { ch: "🎵", en: "music", ar: "موسيقى" },
-    Character { ch: "🌙", en: "crescent moon", ar: "هلال" },
-    Character { ch: "☺", en: "smiling face", ar: "وجه مبتسم" },
-    Character { ch: "،", en: "arabic comma", ar: "فاصلة عربية" },
-    Character { ch: "؟", en: "arabic question mark", ar: "علامة استفهام عربية" },
-    Character { ch: "٭", en: "arabic star", ar: "نجمة عربية" },
-    Character { ch: "﷽", en: "basmala", ar: "بسملة" },
-];
+#[derive(Deserialize)]
+struct Entry {
+    ch: String,
+    en: String,
+    ar: String,
+}
+
+#[derive(Deserialize)]
+struct Table {
+    character: Vec<Entry>,
+}
+
+/// The table that ships with the shell.
+const SOURCE: &str = include_str!("../../assets/characters.toml");
+
+/// The parsed table (once; a damaged file leaves nothing offered rather than stopping the
+/// shell). Small on purpose – a picker of what people search for by name, not all of Unicode.
+pub fn table() -> &'static [Character] {
+    static TABLE: OnceLock<Vec<Character>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        let parsed: Table = toml::from_str(SOURCE).unwrap_or(Table {
+            character: Vec::new(),
+        });
+        parsed
+            .character
+            .into_iter()
+            .map(|e| Character {
+                ch: e.ch,
+                en: e.en,
+                ar: e.ar,
+            })
+            .collect()
+    })
+}
 
 /// The entry whose character is exactly `ch`, if the table has it.
 pub fn find(ch: &str) -> Option<&'static Character> {
-    TABLE.iter().find(|c| c.ch == ch)
+    table().iter().find(|c| c.ch == ch)
 }
 
 /// `true` when `text` matches `query` (case-insensitive; Arabic also without vowel marks
@@ -111,12 +86,10 @@ pub fn search(query: &str, variants: bool) -> Vec<&'static Character> {
     if query.is_empty() {
         return Vec::new();
     }
-    TABLE
+    table()
         .iter()
         .filter(|c| {
-            c.ch == query
-                || matches(c.en, query, variants)
-                || matches(c.ar, query, variants)
+            c.ch == query || matches(&c.en, query, variants) || matches(&c.ar, query, variants)
         })
         .collect()
 }
@@ -153,9 +126,10 @@ mod tests {
 
     #[test]
     fn every_entry_has_both_names_and_a_character() {
-        for c in TABLE {
+        assert!(!table().is_empty(), "the shipped table parses");
+        for c in table() {
             assert!(!c.ch.is_empty() && !c.en.is_empty() && !c.ar.is_empty());
-            assert_eq!(find(c.ch).map(|f| f.ch), Some(c.ch));
+            assert_eq!(find(&c.ch).map(|f| f.ch.as_str()), Some(c.ch.as_str()));
             assert_eq!(c.name(Lang::Ar), c.ar);
             assert_eq!(c.name(Lang::En), c.en);
             assert_eq!(c.name(Lang::De), c.en);

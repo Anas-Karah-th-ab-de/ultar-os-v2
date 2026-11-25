@@ -83,7 +83,13 @@ fn recent(view: &mut View, root: NodeId, d: &Desktop) -> Result<(), UiError> {
 }
 
 fn results(view: &mut View, root: NodeId, d: &Desktop, tr: &Translator) -> Result<(), UiError> {
-    let hits = search::search_in(&d.overview.query, &d.catalog, tr, d.overview.sources);
+    let hits = search::search_in_with_history(
+        &d.overview.query,
+        &d.catalog,
+        tr,
+        d.overview.sources,
+        &d.overview.history,
+    );
     if hits.is_empty() {
         return muted(view, root, "desk.ov.no_results");
     }
