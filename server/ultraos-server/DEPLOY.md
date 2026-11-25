@@ -26,6 +26,7 @@ cargo test                     # startet den echten Server auf einem freien Port
 | Variable | Zweck | Beispiel / Standard |
 |---|---|---|
 | `ULTRAOS_BIND` | Lauschadresse (hinter Caddy) | `127.0.0.1:8080` |
+| `ULTRAOS_LOG` | Protokoll-Stufe `error`/`warn`/`info`/`debug`/`off`. Release-Server: `warn` (keine Zeile je Anfrage, keine Konto-/Geräte-Ereignisse; Anrufe werden nie protokolliert) | `info` |
 | `ULTRAOS_DB` | SQLite-Datei | `/var/lib/ultraos/ultraos.sqlite` |
 | `ULTRAOS_FILES` | Dateiablage für Pakete und System-Abbilder (Dateiname = SHA-256 des Inhalts) | `/var/lib/ultraos/files` |
 | `ULTRAOS_SECRET` | 32-Byte Token-Schlüssel (hex, **fest setzen!**). Gesetzt, aber fehlerhaft → Server startet nicht. | `openssl rand -hex 32` |
@@ -96,8 +97,12 @@ tls-listening-port=5349
 use-auth-secret
 static-auth-secret=<derselbe Wert wie ULTRAOS_TURN_SECRET>
 realm=ultar.code-craft.tech
+# nichts protokollieren: keine Adressen, keine Benutzer, keine Sitzungen
+log-file=/dev/null
+no-stdout-log
 ```
-(Server gibt kurzlebige Zugangsdaten über `/v1/turn-cred` aus.)
+(Server gibt kurzlebige Zugangsdaten über `/v1/turn-cred` aus; der Benutzer ist `<Ablauf>:<Zufall>`,
+nie das Konto. Im Container zusätzlich `logging: driver: none`.)
 
 ## 6. WireGuard-Server `/etc/wireguard/wg0.conf`
 ```

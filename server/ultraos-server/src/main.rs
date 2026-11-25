@@ -200,13 +200,33 @@ async fn run_server(lang: Lang) -> ExitCode {
     }
 }
 
+/// Log level from `ULTRAOS_LOG` (`error`, `warn`, `info`, `debug`, `off`; default `info`).
+/// A release server runs with `warn`: no line per request, no account or device events.
+fn log_level() -> Option<tracing::Level> {
+    match std::env::var("ULTRAOS_LOG").as_deref() {
+        Ok("off") => None,
+        Ok("error") => Some(tracing::Level::ERROR),
+        Ok("warn") => Some(tracing::Level::WARN),
+        Ok("debug") => Some(tracing::Level::DEBUG),
+        _ => Some(tracing::Level::INFO),
+    }
+}
+
 fn main() -> ExitCode {
     // Logs go to stderr without colours (journald); stdout is for command results only.
+    let Some(level) = log_level() else {
+        return run_main();
+    };
     tracing_subscriber::fmt()
+        .with_max_level(level)
         .with_target(false)
         .with_ansi(false)
         .with_writer(|| LossyStderr)
         .init();
+    run_main()
+}
+
+fn run_main() -> ExitCode {
     let lang = Lang::from_env();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
