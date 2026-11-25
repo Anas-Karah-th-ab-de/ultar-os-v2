@@ -123,7 +123,8 @@ pub fn sys_ioctl(fd: u64, req: u64, arg: u64) -> Option<i64> {
     let ret = request(&node, req as u32, &mut buf, &mut user);
     // with the call trace on (or asked for alone), a refused request shows what the program asked for
     let show = LOG_REFUSED.load(core::sync::atomic::Ordering::Relaxed) || crate::syscall::TRACE.load(core::sync::atomic::Ordering::Relaxed);
-    if ret < 0 && ret != RETRY && show {
+    // a wait that ran out of time is an answer, not a refusal
+    if ret < 0 && ret != RETRY && ret != -(Errno::Time as i64) && show {
         let words: Vec<alloc::string::String> = buf.chunks(8).map(|c| c.iter().rev().map(|b| alloc::format!("{b:02x}")).collect()).collect();
         crate::kprintln!("[dri] request {req:#x} refused ({ret}): {}", words.join(" "));
     }

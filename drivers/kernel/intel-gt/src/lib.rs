@@ -44,6 +44,7 @@ pub mod ctb;
 pub mod engines;
 pub mod error;
 pub mod forcewake;
+pub mod freq;
 pub mod fw;
 pub mod guc;
 pub mod hwconfig;
