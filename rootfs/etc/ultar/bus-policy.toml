@@ -286,12 +286,16 @@ register = ["bluetooth"]
 publish  = ["bluetooth.state"]
 call     = ["sysdialog.bt_pair"]
 
-# Removable-drive service (828): offers `volumes`, follows who is in front.
+# Removable-drive service (828): offers `volumes`, follows who is in front and the Storage
+# page settings (settings.get/changed). With automount off it offers a drive with a "Mount"
+# button (notify.post, its own invoked buttons via notify.invoked/take_invoked, withdrawn
+# with notify.dismiss) and warns once when the data partition runs low (notify.post).
 [[rule]]
 identity  = "system.volumed"
 register  = ["volumes"]
 publish   = ["volumes.state"]
-subscribe = ["session.state", "account.users"]
+subscribe = ["session.state", "account.users", "settings.changed", "notify.invoked"]
+call      = ["settings.get", "notify.post", "notify.dismiss", "notify.take_invoked"]
 
 # Device mesh (833): offers `mesh`, publishes its state, the incoming offers and their
 # progress; lists and starts apps for what arrives, asks the person through the system
