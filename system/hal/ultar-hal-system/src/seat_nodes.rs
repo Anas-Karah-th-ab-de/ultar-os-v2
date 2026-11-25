@@ -50,6 +50,12 @@ pub fn relative_devname(value: &str) -> &str {
     value.strip_prefix("/dev/").unwrap_or(value)
 }
 
+/// The sound card's running streams of the Ultar kernel (48 kHz, 16 bit,
+/// stereo; one opener, right `sound`) below `root`.
+pub fn pcm_node(root: &Path) -> PathBuf {
+    node_path(root, "ultar/pcm")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

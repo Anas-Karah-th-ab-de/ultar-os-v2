@@ -2,21 +2,30 @@
 name = "ultar-call"
 version.workspace = true
 edition.workspace = true
-description = "Anrufe/Video zwischen Ultar-Geräten über die Cloud-Signalisierung (WebRTC, Ende-zu-Ende DTLS-SRTP). Mock als Standard; echtes WebRTC hinter Feature 'call-real'."
+description = "Call service of Ultar OS: Ultar-number voice and video calls end to end (the server relays sealed bytes only) and the mobile network"
 
 [dependencies]
 ultar-bus = { path = "../../core/ultar-bus" }
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# End-to-end calls (src/e2e): pure Rust crypto, STUN/TURN, voice and picture codecs.
+x25519-dalek = "2"
+ed25519-dalek = "2"
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+hmac = "0.12"
+sha1 = "0.10"
+md5 = "0.7"
+rand_core = { version = "0.6", features = ["getrandom"] }
+base64 = "0.22"
+hex = "0.4"
+jpeg-encoder = "0.6"
+zune-jpeg = "0.5"
 
-# Signalisierung im Gerätebau (Feature real). Die Medien-Engine (webrtc-Crate) wird am Gerät
-# eingehängt (siehe real.rs / docs/A30-ANRUFE.md) und erst dort gegen den Audio-Stack verifiziert.
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
-tokio-tungstenite = { version = "0.23", features = ["native-tls"], optional = true }
-futures-util = { version = "0.3", optional = true }
-
-[features]
-real = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util"]
+# The signalling socket (TLS in pure Rust, the root certificates built in).
+tungstenite = { version = "0.23", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [lib]
 name = "ultar_call"
@@ -26,10 +35,4 @@ path = "src/lib.rs"
 name = "ultar-calld"
 path = "src/bin/ultar-calld.rs"
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
-tokio-tungstenite = "0.23"
-futures-util = "0.3"
-
-[[test]]
-name = "r3_notices"
-required-features = ["real"]
+tempfile = "3"

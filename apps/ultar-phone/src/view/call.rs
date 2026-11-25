@@ -49,6 +49,17 @@ fn badges(
             .with_icon();
         b.add(row, e2e, Sizing::AUTO)?;
     }
+    if call.key_changed {
+        // the other number's device key is new: compare the safety number before trusting
+        let changed = Badge::new(Label::key("phone.key_changed"))
+            .tone(Tone::Warning)
+            .with_icon();
+        b.add(row, changed, Sizing::AUTO)?;
+    }
+    if let Some(n) = &call.safety {
+        let safety = Badge::new(Label::key_with("phone.safety", &[("n", n)])).tone(Tone::Neutral);
+        b.add(row, safety, Sizing::AUTO)?;
+    }
     if quality && call.phase == Phase::Active {
         let q = Badge::new(Label::key("phone.quality.good"))
             .tone(Tone::Success)

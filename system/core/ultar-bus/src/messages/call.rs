@@ -205,6 +205,12 @@ pub struct CallInfo {
     pub encrypted: bool,
     /// Service clock (ms) when the call became active; the duration is `clock_ms - this`.
     pub active_since_ms: Option<u64>,
+    /// Safety number of the two devices (Ultar way, once the keys are agreed): 12 groups of 5
+    /// digits, the same on both phones; the people compare it to be sure nobody is in between.
+    pub safety: Option<String>,
+    /// The other number's device key is not the one seen before (new device or someone in
+    /// between): the phone warns until the safety number was compared.
+    pub key_changed: bool,
 }
 
 /// Video state of a call.

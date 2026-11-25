@@ -6,7 +6,7 @@
 
 use crate::link::{Enrolled, LinkError, RemoteDevice, Server};
 use std::path::{Path, PathBuf};
-use ultar_cloud::{Client, CloudError, DeviceHome};
+use ultar_cloud::{Client, CloudError, DeviceHome, KeyStore};
 
 /// `ultraos-server` reached with `ultar-cloud`.
 pub struct CloudServer {
@@ -132,5 +132,33 @@ impl Server for CloudServer {
         account(server, token)
             .remove_device(&key, device)
             .map_err(map)
+    }
+
+    fn signal_hello(&self, server: &str) -> Result<String, LinkError> {
+        let proof = self.home().signal_proof(&base(server)).map_err(map)?;
+        proof.hello().map_err(map)
+    }
+
+    fn signal_answer(&self, server: &str, challenge: &str) -> Result<String, LinkError> {
+        let proof = self.home().signal_proof(&base(server)).map_err(map)?;
+        proof.answer(challenge).map_err(map)
+    }
+
+    fn device_key(&self) -> Result<[u8; 32], LinkError> {
+        let key = self.home().key_store().map_err(map)?;
+        key.public_key().map_err(|_| LinkError::Server)
+    }
+
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, LinkError> {
+        let key = self.home().key_store().map_err(map)?;
+        key.sign(message)
+            .map(|s| s.to_vec())
+            .map_err(|_| LinkError::Server)
+    }
+
+    fn turn(&self, server: &str, token: &str) -> Result<(String, String, String), LinkError> {
+        let c = account(server, token).turn_credentials().map_err(map)?;
+        let host = c.udp_server().ok_or(LinkError::Server)?;
+        Ok((host, c.username, c.credential))
     }
 }

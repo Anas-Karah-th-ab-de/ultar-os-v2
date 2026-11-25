@@ -66,6 +66,16 @@ pub enum LineEvent {
     Connected(Key),
     /// The call is over.
     Ended(Key, End),
+    /// The call's end-to-end keys are agreed: the safety number of the two devices, and whether
+    /// the other number's device key differs from the one seen before.
+    Secured {
+        /// The call.
+        key: Key,
+        /// 12 groups of 5 digits.
+        safety: String,
+        /// The key changed.
+        changed: bool,
+    },
     /// Availability changed.
     Status(Status),
 }

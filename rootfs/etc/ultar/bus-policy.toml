@@ -108,8 +108,10 @@ subscribe = ["update.progress", "notify.invoked", "media.command"]
 identity  = "system.calld"
 register  = ["call"]
 publish   = ["call.state"]
-subscribe = ["modem.state"]
-call      = ["modem.*"]
+subscribe = ["modem.state", "account.state"]
+# The account service proves and signs with the device key for calls (the key never leaves it)
+# and hands out the relay's credentials; only this service may ask.
+call      = ["modem.*", "account.device_signal_hello", "account.device_signal_answer", "account.device_key", "account.device_sign_call", "account.device_turn"]
 
 # Modem service (ultar-ril): offers `modem` and its state, nothing else.
 [[rule]]

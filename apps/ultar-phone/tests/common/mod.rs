@@ -188,6 +188,8 @@ pub fn call(id: u32, phase: Phase, video: bool) -> CallInfo {
         },
         encrypted: true,
         active_since_ms: Some(200_000 - 134_000),
+        safety: None,
+        key_changed: false,
     }
 }
 

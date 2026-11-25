@@ -206,7 +206,8 @@ impl Message for LogReply {
     const VERSION: u16 = 1;
 }
 impl Message for CallState {
-    const VERSION: u16 = 1;
+    // 2: CallInfo got `safety` and `key_changed`.
+    const VERSION: u16 = 2;
 }
 impl Topic for CallState {
     const TOPIC: &'static str = "call.state";

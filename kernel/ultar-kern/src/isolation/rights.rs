@@ -37,10 +37,13 @@ impl Rights {
     /// Create virtual input devices through `/dev/ultar/uinput` (the Bluetooth service for its
     /// keyboards and mice, remote control). Neither `RAW_DEVICE` nor `FILE_ADMIN` opens that node.
     pub const INPUT_INJECT: Rights = Rights(1 << 11);
+    /// Play and record sound through the running streams `/dev/ultar/pcm` (the call service).
+    /// Neither `RAW_DEVICE` nor `FILE_ADMIN` opens that node: only this right does.
+    pub const SOUND: Rights = Rights(1 << 12);
     /// No right at all.
     pub const NONE: Rights = Rights(0);
     /// Every right: the set of programs started by the kernel.
-    pub const ALL: Rights = Rights(0xfff);
+    pub const ALL: Rights = Rights(0x1fff);
 
     /// Raw bit mask (for `prctl`).
     pub fn bits(self) -> u64 {

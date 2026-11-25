@@ -96,6 +96,8 @@ fn ringing(phase: Phase) -> CallState {
         media: Media::default(),
         encrypted: true,
         active_since_ms: Some(0),
+        safety: None,
+        key_changed: false,
     };
     CallState {
         calls: vec![call],

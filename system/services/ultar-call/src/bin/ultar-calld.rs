@@ -1,16 +1,22 @@
 //! `ultar-calld` – the call service daemon.
 //!
-//! `ultar-calld --bus SOCKET [--log FILE] [--modem] [--fake-modem] [--ultar OWN_NUMBER] [--lang ar|en|de]`
+//! `ultar-calld --bus SOCKET [--log FILE] [--modem] [--fake-modem] [--ultar OWN_NUMBER]
+//!              [--account] [--pcm NODE] [--lang ar|en|de]`
 //! * `--modem`: the mobile network through the modem service (`modem.*`, ultar-ril);
 //! * `--fake-modem`: the test double of the modem in this process (tests on the Ultar kernel);
-//! * `--ultar`: the Ultar-number way over the device backend, with the own number.
+//! * `--ultar`: the Ultar-number way over the local mock backend, with this own number (tests);
+//! * `--account`: the Ultar-number way end to end with the person's account (`account.*`):
+//!   signalling at the account server, the device key in the account service, sound through
+//!   `--pcm` (default `/dev/ultar/pcm`); the pinned keys of other numbers lie beside `--log`.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use ultar_bus::messages::call::{Cellular, Output};
 use ultar_bus::{Client, ClientOptions};
+use ultar_call::busdev::BusDevice;
+use ultar_call::e2e::backend::MuteRoute;
 use ultar_call::fake::FakeAudio;
 use ultar_call::fake_modem::{FakeModem, FakeModemControl};
 use ultar_call::line::SystemClock;
@@ -18,7 +24,7 @@ use ultar_call::modem_line::{ModemAudio, ModemLine};
 use ultar_call::service::{Service, DEFAULT_TICK};
 use ultar_call::session::Session;
 use ultar_call::ultar_line::UltarLine;
-use ultar_call::Line;
+use ultar_call::{E2eCall, Line};
 
 /// Time a modem command may take.
 const MODEM_WAIT: Duration = Duration::from_secs(5);
@@ -33,6 +39,8 @@ struct Args {
     modem: bool,
     fake_modem: bool,
     ultar: Option<String>,
+    account: bool,
+    pcm: Option<PathBuf>,
     lang: String,
 }
 
@@ -49,6 +57,8 @@ fn parse(list: &[String]) -> Option<Args> {
             "--modem" => a.modem = true,
             "--fake-modem" => a.fake_modem = true,
             "--ultar" => a.ultar = Some(it.next()?.clone()),
+            "--account" => a.account = true,
+            "--pcm" => a.pcm = Some(PathBuf::from(it.next()?)),
             "--lang" => a.lang = it.next()?.clone(),
             _ => return None,
         }
@@ -89,10 +99,31 @@ fn run(a: &Args) -> Result<(), Msg> {
             Some(own.clone()),
         )));
     }
-    let audio: Box<dyn ultar_call::line::AudioRoute> = if modem {
-        Box::new(ModemAudio::new(bus.clone(), MODEM_WAIT))
-    } else {
-        Box::new(FakeAudio::new(&[Output::Earpiece]))
+    let mut muted = None;
+    if a.account {
+        let dir = a
+            .log
+            .as_ref()
+            .and_then(|l| l.parent().map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("/data/ultar/calls"));
+        let pcm = a
+            .pcm
+            .clone()
+            .unwrap_or_else(|| ultar_hal_system::seat_nodes::pcm_node(Path::new("/")));
+        let account = connect(&path, "calld").ok_or(Msg::NoBus)?;
+        let device = BusDevice::start(account, dir, pcm);
+        let backend = E2eCall::new(device);
+        muted = Some(backend.muted.clone());
+        lines.push(Box::new(UltarLine::new(Box::new(backend), None)));
+    }
+    let audio: Box<dyn ultar_call::line::AudioRoute> = match (modem, muted) {
+        (true, Some(flag)) => Box::new(BothRoute {
+            modem: ModemAudio::new(bus.clone(), MODEM_WAIT),
+            ultar: MuteRoute::new(flag),
+        }),
+        (true, None) => Box::new(ModemAudio::new(bus.clone(), MODEM_WAIT)),
+        (false, Some(flag)) => Box::new(MuteRoute::new(flag)),
+        (false, None) => Box::new(FakeAudio::new(&[Output::Earpiece])),
     };
     let mut session = Session::new(lines, audio, Box::new(SystemClock::default()));
     if let Some(log) = &a.log {
@@ -102,6 +133,26 @@ fn run(a: &Args) -> Result<(), Msg> {
     }
     let service = Service::new(bus, session, DEFAULT_TICK).map_err(|_| Msg::NoBus)?;
     service.run().map_err(|_| Msg::Stopped)
+}
+
+/// Microphone switch for both ways on a phone: the modem's and the Ultar calls'; the outputs are
+/// the modem's.
+struct BothRoute {
+    modem: ModemAudio,
+    ultar: MuteRoute,
+}
+
+impl ultar_call::line::AudioRoute for BothRoute {
+    fn set_mute(&mut self, on: bool) -> Result<(), ultar_call::line::LineError> {
+        self.ultar.set_mute(on)?;
+        self.modem.set_mute(on)
+    }
+    fn set_output(&mut self, output: Output) -> Result<(), ultar_call::line::LineError> {
+        self.modem.set_output(output)
+    }
+    fn outputs(&self) -> Vec<Output> {
+        self.modem.outputs()
+    }
 }
 
 fn main() {

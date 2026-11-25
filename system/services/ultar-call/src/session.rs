@@ -142,6 +142,18 @@ impl Session {
                 }
                 _ => return false,
             },
+            LineEvent::Secured {
+                key,
+                safety,
+                changed,
+            } => match self.position(line, key) {
+                Some(i) => {
+                    let info = &mut self.calls[i].info;
+                    info.safety = Some(safety);
+                    info.key_changed = changed;
+                }
+                None => return false,
+            },
             LineEvent::Ended(key, end) => match self.position(line, key) {
                 Some(i) => {
                     let end = match (self.calls[i].info.phase, end) {
@@ -188,6 +200,8 @@ impl Session {
             },
             encrypted: way == Way::Ultar,
             active_since_ms: None,
+            safety: None,
+            key_changed: false,
         };
         let live = Live {
             info,

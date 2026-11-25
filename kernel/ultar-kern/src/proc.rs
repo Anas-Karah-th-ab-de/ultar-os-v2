@@ -67,6 +67,8 @@ pub enum FdKind {
     Uinput(Arc<crate::svcdev::uinput::UinputFd>),
     /// GPU render node `/dev/dri/renderD128` (svcdev/dri.rs)
     Dri(Arc<crate::svcdev::dri::DriFd>),
+    /// Sound streams `/dev/ultar/pcm` (svcdev/pcm.rs)
+    Pcm(Arc<crate::svcdev::pcm::PcmFd>),
 }
 
 pub enum UnixState {
@@ -126,6 +128,7 @@ impl Fd {
             FdKind::Hci(h) => FdKind::Hci(h.clone()),
             FdKind::Uinput(u) => FdKind::Uinput(u.clone()),
             FdKind::Dri(d) => FdKind::Dri(d.clone()),
+            FdKind::Pcm(p) => FdKind::Pcm(p.clone()),
         };
         Fd { kind, cloexec: false, flags: self.flags }
     }

@@ -108,6 +108,8 @@ fn state_round_trips_on_the_wire() {
             media: Media::default(),
             encrypted: false,
             active_since_ms: None,
+            safety: None,
+            key_changed: false,
         }],
         ended: None,
         audio: Audio {

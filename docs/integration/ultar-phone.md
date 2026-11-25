@@ -8,7 +8,7 @@ Base f675fcc · 2026-11-24 · role "Bau Oberfläche". Boards PhoneDial, PhoneInc
 | Part | Where | Content |
 |---|---|---|
 | Bus contract `call.*` | `system/core/ultar-bus/src/messages/call.rs`, `call_requests.rs` | topic `call.state` (retained: both ways' availability, own number, ≤ 2 live calls, last ended call, audio), 16 calls `call.dial/answer/decline/hangup/hold/mute/output/dtmf/video/camera/share/text/log/forget/block/snapshot`, typed `CallError` as `ErrorCode::Service(code)`, limits (`MAX_CALLS` 2, number 32 B, text 160 B, log 200, blocked 256), `check_number`, `check_text`, `is_emergency` |
-| Call service | `system/services/ultar-call/src/{line,session,session_cmd,calllog,service,fake,ultar_line}.rs` | `Line` (one per way) + `AudioRoute` + `Clock` traits; `Session` state machine (dialing → alerting → active ⇄ held, ringing / waiting, ended with `End::{Local, Remote, Declined, Missed, Busy, Blocked, Failed(Failure)}`), emergency numbers without SIM/service, hold-on-dial, swap, answer-and-hold / answer-and-end, third call refused (logged missed), blocked numbers declined unheard, mute reset after the last call; `Service` (bus loop: registers `call`, answers, publishes `call.state` on change, polls lines every tick); `fake::{FakeLine, FakeControl, FakeAudio, ManualClock}` test double; `UltarLine` adapts the existing `CallBackend` (WebRTC / `MockCall`) as the Ultar-number line. The old `CallBackend` API is unchanged (ultar-shell still builds). |
+| Call service | `system/services/ultar-call/src/{line,session,session_cmd,calllog,service,fake,ultar_line}.rs` | `Line` (one per way) + `AudioRoute` + `Clock` traits; `Session` state machine (dialing → alerting → active ⇄ held, ringing / waiting, ended with `End::{Local, Remote, Declined, Missed, Busy, Blocked, Failed(Failure)}`), emergency numbers without SIM/service, hold-on-dial, swap, answer-and-hold / answer-and-end, third call refused (logged missed), blocked numbers declined unheard, mute reset after the last call; `Service` (bus loop: registers `call`, answers, publishes `call.state` on change, polls lines every tick); `fake::{FakeLine, FakeControl, FakeAudio, ManualClock}` test double; `UltarLine` adapts a `CallBackend` (`E2eCall` of §8, or `MockCall`) as the Ultar-number line. |
 | Phone app | `apps/ultar-phone` (lib) | `model` (pure state), `view` (ultar-ui widgets + tokens only; wide/medium = boards, compact = one column with Call/History tabs), `app::PhoneApp` (events, clicks, rebuild with focus/hover kept, toasts, held backspace, timer), `port::{CallPort, BusPort, Host}`, `locales/{ar,en,de}.ftl` (121 keys, Arabic reference) |
 | Call screen right | `platform/ultar-surface` (`Role::CallScreen` = 8, `Rights::CALL_SCREEN` = 64, `ALL` = 127), `platform/ultar-compositor` (`ui.call-screen` in `PERMISSION_NAMES`, rank 7 above the lock, full screen, shown while locked) | see §4 |
 | E2E crate | `tools/phone-e2e` | phone app ↔ real broker ↔ call service + fake line (apps may not depend on services; tools may) |
@@ -150,3 +150,26 @@ Still open (honest):
    exists. No `ultar-phone` binary / app manifest yet.
 4. `tests/modem.rs` polls the fake modem's state with short sleeps (bounded); the other tests wait
    on bus events.
+
+## 8. Ultar-number calls end to end (2026-11-25)
+
+The server only connects two numbers; it never learns keys, voice, pictures or who talked how long, and
+keeps nothing (signalling: no log line, `ULTRAOS_LOG=warn`; TURN: random user tag, coturn without log file).
+
+| Part | Where | What |
+|---|---|---|
+| Protocol | `ultar-call/src/e2e/{crypto,engine,pins}.rs` | hello (call id, ephemeral X25519, device Ed25519) → reply (own keys, signature over the transcript T = SHA-256 of both) → sealed confirm (caller signature, video flag, candidates); the callee rings only after both signatures check. HKDF-SHA256 keys per direction for signalling and media, ChaCha20-Poly1305 with counter nonces and a replay window. Keys pinned on first call (TOFU); a changed key shows a warning; both phones show the same 60-digit safety number (`call.state` `safety`, `key_changed`). Every server message is an opaque `{"to","type":"e2e","data"}`. |
+| Network | `e2e/{stun,net,media}.rs` | STUN binding, TURN allocate/ChannelBind/refresh (RFC 8489/8656), direct and relayed candidates, probes pick the first working way; `relay_only` hides the own address (the other side then must not be relay-only too: coturn refuses relay-to-relay on its own address). |
+| Voice / picture | `e2e/{audio,video}.rs` | 16 kHz mono 20 ms IMA ADPCM with jitter buffer; JPEG 320×240 in 1100-byte pieces, 12 fps. |
+| Device key | `ultar-accountd` `link.rs` (`account.device_*`) | The device key never leaves accountd: calld asks for the signalling hello/answer, the public key, a signature over T (label `ultar-call-e2e-v1`, hash only) and TURN credentials. Policy: `system.calld` only. |
+| Sound | kernel `gen_hda` + `svcdev/pcm.rs`, `ultar-call/src/pcm.rs` | `/dev/ultar/pcm` (path from `ultar-hal-system::seat_nodes::pcm_node`): 48 kHz 16 bit stereo running output and input rings, one opener, right `sound` (bit 12, `call.toml`). |
+| Daemon | `ultar-calld --account [--pcm NODE]` | `BusDevice` + `E2eCall` as the Ultar line next to the modem line. |
+
+**Tests:** `ultar-call` unit tests (crypto, replay, STUN, ADPCM, engine, media over loopback);
+`server/cloud-e2e/tests/calls.rs` (two devices against the real server: video call, both hear the other's
+tone, see ≥ 10 pictures, same safety number, server database unchanged); `tests/live_call.rs` (ignored; through
+the release server's TURN relay); `tools/kern-test/pcm-e2e.sh` (in `ci.sh`: `PCM-E2E: ALLES OK`, the tone
+reaches QEMU's speaker, input recorded at the card's pace).
+
+**Open:** no camera driver yet (no UVC/isochronous USB in the kernel, no camera service): a video call from
+a device without camera is offered as a voice call; the phone app shows no remote picture yet.

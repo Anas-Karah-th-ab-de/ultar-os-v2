@@ -174,6 +174,8 @@ mod tests {
             media: Media::default(),
             encrypted: true,
             active_since_ms: None,
+            safety: None,
+            key_changed: false,
         }
     }
 

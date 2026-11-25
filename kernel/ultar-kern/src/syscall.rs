@@ -599,6 +599,12 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     if let Some(r) = crate::svcdev::uinput::sys_read(fd) {
         return Res::Val(r);
     }
+    match crate::svcdev::pcm::sys_read(fd, buf, n) {
+        Some(crate::svcdev::pcm::Io::Val(v)) => return Res::Val(v),
+        // the stream moves 192 bytes per millisecond: look again in 5 ms
+        Some(crate::svcdev::pcm::Io::Block) => return Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 5)),
+        None => {}
+    }
     let n = n.min(1 << 24) as usize;
     enum Src {
         Data(Vec<u8>),
@@ -676,7 +682,7 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
             FdKind::Console => Src::Console,
             FdKind::Null => Src::Data(Vec::new()),
             // handled above (copied straight into the caller's memory)
-            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) | FdKind::Dri(_) => Src::Err(-EBADF),
+            FdKind::Zero | FdKind::Random | FdKind::File { .. } | FdKind::RawPart(_) | FdKind::Mem(..) | FdKind::Hci(_) | FdKind::Uinput(_) | FdKind::Dri(_) | FdKind::Pcm(_) => Src::Err(-EBADF),
             FdKind::Dir { .. } => Src::Err(-EISDIR),
             FdKind::Ns(_) => Src::Err(-EINVAL),
             FdKind::Fb(_) => match at {
@@ -862,6 +868,11 @@ fn write_res(fd: u64, buf: u64, n: u64) -> Res {
     }
     if let Some(r) = crate::svcdev::uinput::sys_write(fd, buf, n) {
         return Res::Val(r);
+    }
+    match crate::svcdev::pcm::sys_write(fd, buf, n) {
+        Some(crate::svcdev::pcm::Io::Val(v)) => return Res::Val(v),
+        Some(crate::svcdev::pcm::Io::Block) => return Res::Block(Wait::Sleep(crate::arch::uptime_ms() + 5)),
+        None => {}
     }
     let want = n.min(1 << 24) as usize;
     // a large write to a pipe is delivered in pieces (see `Res::Partial`): copy from the caller only
@@ -1343,6 +1354,7 @@ fn sys_fstat(fd: u64, buf: u64) -> i64 {
             FdKind::Ns(_) => Ok(stat_buf(0o100444, 0, 12, 0)),
             FdKind::RawPart(r) => Ok(stat_buf(0o060600, r.size(), 13, 0)),
             FdKind::Hci(_) | FdKind::Uinput(_) => Ok(stat_buf(0o020600, 0, 14, 0)),
+            FdKind::Pcm(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::pcm::NODE).unwrap_or(0))),
             FdKind::Dri(_) => Ok(stat_buf(0o020600, 0, 14, crate::svcdev::rdev(crate::svcdev::dri::NODE).unwrap_or(0))),
         })
     })
@@ -2038,6 +2050,10 @@ fn fd_events(p: &mut Proc, fd: i64, ev: u32, inp: bool, pending: u64) -> u32 {
         FdKind::Eingabe(e) => r(crate::eingabe::bereit(e.0, e.2)),
         FdKind::Hci(h) => r(crate::svcdev::hci::ready(h)) | w(true),
         FdKind::Uinput(_) => w(true),
+        FdKind::Pcm(_) => {
+            let (rd, wr) = crate::svcdev::pcm::ready();
+            r(rd) | w(wr)
+        }
         FdKind::Fb(_) => w(true),
         _ => ev & 5,
     }

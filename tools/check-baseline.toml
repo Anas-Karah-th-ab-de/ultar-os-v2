@@ -1615,11 +1615,6 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "system/services/ultar-call/src/real.rs"
-count = 1
-
-[[entry]]
-rule = "size"
 path = "system/services/ultar-cloud/tests/device_sec_review.rs"
 count = 1
 
@@ -2447,11 +2442,6 @@ count = 1
 rule = "unwrap"
 path = "system/services/ultar-admin/src/main.rs"
 count = 25
-
-[[entry]]
-rule = "unwrap"
-path = "system/services/ultar-call/src/real.rs"
-count = 22
 
 [[entry]]
 rule = "unwrap"

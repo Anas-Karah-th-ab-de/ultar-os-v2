@@ -344,6 +344,13 @@ fn serve_link(
     link.refresh();
     let _ = session.publish_retained(&link.state(Instant::now()));
     while let Ok(r) = calls.recv() {
+        if link::is_device_method(r.method()) {
+            let _ = match link::decode_device(&r) {
+                Some(call) => r.reply(&link.device(call)),
+                None => r.fail(ErrorCode::BadPayload),
+            };
+            continue;
+        }
         let Some(call) = decode_link(&r) else {
             let _ = r.fail(ErrorCode::BadPayload);
             continue;
@@ -407,7 +414,7 @@ impl Service<'_> {
 
     fn request(&mut self, r: IncomingRequest) {
         let method = r.method().to_owned();
-        if link::is_link_method(&method) {
+        if link::is_link_method(&method) || link::is_device_method(&method) {
             if let Err(e) = self.link.send(Box::new(r)) {
                 let _ = e.0.fail(ErrorCode::ServiceBusy);
             }

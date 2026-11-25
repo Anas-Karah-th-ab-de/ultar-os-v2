@@ -65,6 +65,28 @@ fn installed_version(root: &Path, id: &str) -> Option<String> {
     })
 }
 
+/// Credentials of the TURN relay.
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct TurnCredentials {
+    /// `stun:`/`turn:` addresses.
+    pub urls: Vec<String>,
+    /// User name (`<expiry>:<random>`).
+    pub username: String,
+    /// Password.
+    pub credential: String,
+}
+
+impl TurnCredentials {
+    /// `host:port` of the first `turn:` address over UDP.
+    pub fn udp_server(&self) -> Option<String> {
+        self.urls
+            .iter()
+            .filter_map(|u| u.strip_prefix("turn:"))
+            .find(|u| !u.contains("transport=tcp"))
+            .map(|u| u.split('?').next().unwrap_or(u).to_owned())
+    }
+}
+
 /// A client for one server.
 #[derive(Clone)]
 pub struct Client {
@@ -299,6 +321,13 @@ impl Client {
     pub fn entitlements(&self) -> Result<Entitlements, CloudError> {
         self.require_token()?;
         self.get("/v1/account/entitlements", &[])
+    }
+
+    /// Short-lived TURN credentials for a call (`/v1/turn-cred`): the relay's addresses, a user
+    /// name that is random for every credential, and its password.
+    pub fn turn_credentials(&self) -> Result<TurnCredentials, CloudError> {
+        self.require_token()?;
+        self.get("/v1/turn-cred", &[])
     }
 
     /// Provisions a WireGuard peer for the given public key.

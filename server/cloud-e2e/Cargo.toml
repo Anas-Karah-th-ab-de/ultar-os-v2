@@ -19,6 +19,7 @@ ultar-cloud = { path = "../../system/services/ultar-cloud" }
 ultar-pkg = { path = "../../system/core/ultar-pkg" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultraos-server = { path = "../ultraos-server" }
+ultar-call = { path = "../../system/services/ultar-call" }
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 serde_json = "1"

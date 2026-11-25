@@ -75,6 +75,7 @@
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).
 
+pub mod account_device;
 pub mod account_local;
 pub mod account_service;
 pub mod agent;

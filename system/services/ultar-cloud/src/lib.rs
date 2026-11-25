@@ -35,7 +35,7 @@ pub mod model;
 pub mod signalling;
 pub mod watch;
 
-pub use client::{Client, VpnPeer};
+pub use client::{Client, TurnCredentials, VpnPeer};
 pub use client_device::{
     authorize_replacement, AccountDevices, AddedDevice, Challenge, DeviceEntry, DeviceEvent,
     RecoveryState, Registration, ReplaceGrant, ReplaceRequest,

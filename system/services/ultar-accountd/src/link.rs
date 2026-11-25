@@ -16,6 +16,9 @@
 use crate::link_store::{Saved, Store};
 use crate::refusal::{refuse, Key};
 use std::time::{Duration, Instant};
+use ultar_bus::messages::account_device::{
+    DeviceAnswer, DeviceReply, CALL_SIGN_LABEL, MAX_CHALLENGE,
+};
 use ultar_bus::messages::account_service::{
     AccountService, AccountState, ChangePassword, Create, Delete, DeviceEntry, DeviceRemove,
     DeviceSignOut, Phase, Refusal, Reply, SetServer, SetService, SignIn, SignOut, Status,
@@ -87,6 +90,16 @@ pub trait Server {
     ) -> Result<String, LinkError>;
     /// Removes another device from the account (its tokens end at once).
     fn remove_device(&self, server: &str, token: &str, device: &str) -> Result<(), LinkError>;
+    /// The device key's first frame on the signalling socket.
+    fn signal_hello(&self, server: &str) -> Result<String, LinkError>;
+    /// The device key's answer to the signalling socket's challenge (only for `server`).
+    fn signal_answer(&self, server: &str, challenge: &str) -> Result<String, LinkError>;
+    /// The device's public key.
+    fn device_key(&self) -> Result<[u8; 32], LinkError>;
+    /// Signature over `message` with the device key.
+    fn sign(&self, message: &[u8]) -> Result<Vec<u8>, LinkError>;
+    /// TURN credentials: `host:port`, user, password.
+    fn turn(&self, server: &str, token: &str) -> Result<(String, String, String), LinkError>;
 }
 
 /// One device of the account as the server lists it.
@@ -490,6 +503,93 @@ impl<S: Server> Link<S> {
             Err(e) => Err(refuse(reason(&e))),
         }
     }
+}
+
+impl<S: Server> Link<S> {
+    /// Answers the call service (device key and relay); only while signed in.
+    pub fn device(&mut self, call: DeviceCall) -> DeviceReply {
+        let outcome = match self.token.clone() {
+            None => Err(refuse(Key::NeedsAccount)),
+            Some(token) => self.device_answer(call, &token).map_err(|e| {
+                if e == LinkError::SessionEnded {
+                    self.end_session(Some(Key::SessionEnded));
+                }
+                refuse(reason(&e))
+            }),
+        };
+        DeviceReply { outcome }
+    }
+
+    fn device_answer(&self, call: DeviceCall, token: &str) -> Result<DeviceAnswer, LinkError> {
+        let host = self.host();
+        Ok(match call {
+            DeviceCall::Hello => DeviceAnswer::Frame(self.server.signal_hello(&host)?),
+            DeviceCall::Answer(c) if c.len() <= MAX_CHALLENGE => {
+                DeviceAnswer::Frame(self.server.signal_answer(&host, &c)?)
+            }
+            DeviceCall::Answer(_) => return Err(LinkError::Rejected),
+            DeviceCall::Key => DeviceAnswer::Key(self.server.device_key()?),
+            DeviceCall::SignCall(t) => {
+                let mut m = CALL_SIGN_LABEL.to_vec();
+                m.extend_from_slice(&t);
+                DeviceAnswer::Signature(self.server.sign(&m)?)
+            }
+            DeviceCall::Turn => {
+                let (server, user, password) = self.server.turn(&host, token)?;
+                DeviceAnswer::Turn {
+                    server,
+                    user,
+                    password,
+                }
+            }
+        })
+    }
+}
+
+/// A call of the call service (decoded by the daemon).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeviceCall {
+    /// `account.device_signal_hello`
+    Hello,
+    /// `account.device_signal_answer`
+    Answer(String),
+    /// `account.device_key`
+    Key,
+    /// `account.device_sign_call` (the transcript hash)
+    SignCall([u8; 32]),
+    /// `account.device_turn`
+    Turn,
+}
+
+/// True for the call service's methods (`account_device`).
+pub fn is_device_method(method: &str) -> bool {
+    use ultar_bus::messages::account_device as d;
+    [
+        d::SignalHello::METHOD,
+        d::SignalAnswer::METHOD,
+        d::DeviceKey::METHOD,
+        d::SignCall::METHOD,
+        d::Turn::METHOD,
+    ]
+    .contains(&method)
+}
+
+/// The device call of a bus request (`account.device_*`), if it decodes.
+pub fn decode_device(r: &ultar_bus::IncomingRequest) -> Option<DeviceCall> {
+    use ultar_bus::messages::account_device as d;
+    let m = r.method();
+    Some(match m {
+        _ if m == d::SignalHello::METHOD => DeviceCall::Hello,
+        _ if m == d::SignalAnswer::METHOD => {
+            DeviceCall::Answer(r.decode::<d::SignalAnswer>().ok()?.challenge)
+        }
+        _ if m == d::DeviceKey::METHOD => DeviceCall::Key,
+        _ if m == d::SignCall::METHOD => {
+            DeviceCall::SignCall(r.decode::<d::SignCall>().ok()?.transcript)
+        }
+        _ if m == d::Turn::METHOD => DeviceCall::Turn,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

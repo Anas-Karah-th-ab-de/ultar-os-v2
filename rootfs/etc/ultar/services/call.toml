@@ -7,9 +7,16 @@ args = [
     "--bus", "/run/ultar/bus/calld.sock",
     "--log", "/data/ultar/calls/calls.log",
     "--modem",
+    # Ultar-number calls end to end with the person's account (account.*): signalling at the
+    # account server, the device key stays in the account service, sound through /dev/ultar/pcm.
+    "--account",
 ]
-# Identity and rights: its own user (829), no kernel rights; it talks only to the bus.
+# Identity: its own user (829); it talks to the bus, the account server, the TURN relay and the
+# other device (UDP), and to the sound card.
+# right sound: the running streams /dev/ultar/pcm (microphone and speaker of a call); nothing else
+# of the sound card and no other device.
 user = 829
+rights = ["sound"]
 dirs = ["/data/ultar/calls"]
 after = ["bus"]
 restart = "on-failure"

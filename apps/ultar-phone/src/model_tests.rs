@@ -24,6 +24,8 @@ fn call(id: u32, phase: Phase) -> CallInfo {
         media: Media::default(),
         encrypted: true,
         active_since_ms: Some(1000),
+        safety: None,
+        key_changed: false,
     }
 }
 

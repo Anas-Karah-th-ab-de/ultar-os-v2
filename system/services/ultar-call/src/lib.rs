@@ -5,19 +5,24 @@
 //!   `ultar_bus::messages::call` (`call.dial`, `call.answer`, … and the retained topic
 //!   `call.state`) through a [`session::Session`] over one [`Line`] per way (Ultar number,
 //!   mobile network) and an [`line::AudioRoute`]. [`fake`] is the test double of every backend.
-//! * The older device-to-device backend [`CallBackend`] (signalling over the cloud server,
-//!   media end to end via WebRTC/DTLS-SRTP; a local mock by default, the real path behind the
-//!   feature `real`). [`ultar_line::UltarLine`] makes it the Ultar-number [`Line`].
+//! * The device-to-device backend [`CallBackend`]: [`E2eCall`] ([`e2e`]) – signalling over the
+//!   account server, keys from the two device keys, voice and picture sealed end to end, directly
+//!   or through the TURN relay; [`MockCall`] for user interface work.
+//!   [`ultar_line::UltarLine`] makes it the Ultar-number [`Line`].
 //!
-//! (Signalisierung über `/v1/signal`, WebSocket; der Server sieht die Medien nie.)
+//! The server relays and forgets: it never sees voice, picture or addresses in the clear and
+//! keeps nothing about a call.
 
+pub mod busdev;
 pub mod calllog;
+pub mod e2e;
 pub mod fake;
 pub mod fake_modem;
 pub mod line;
 pub mod logstore;
 pub mod modem_line;
 pub mod msg;
+pub mod pcm;
 pub mod service;
 pub mod session;
 mod session_cmd;
@@ -37,6 +42,20 @@ pub enum CallState {
 #[derive(Clone, Debug)]
 pub enum CallEvent {
     Incoming(String),
+    /// A call comes in; `video` when it was placed as a video call.
+    IncomingCall {
+        /// The caller's number (as the signalling server delivered it).
+        number: String,
+        /// Video call.
+        video: bool,
+    },
+    /// The end-to-end keys are agreed (see [`e2e::crypto::safety_number`]).
+    Secured {
+        /// Safety number.
+        safety: String,
+        /// The other number's device key changed.
+        changed: bool,
+    },
     Ringing,
     Answered,
     Ended,
@@ -74,6 +93,10 @@ pub trait CallBackend: Send {
     fn state(&self) -> CallState;
     /// true, wenn beim Signalserver angemeldet.
     fn ready(&self) -> bool;
+    /// The own Ultar number as the signalling server named it (none before the first sign-in).
+    fn number(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Mock ohne Netz: lokale Zustandsmaschine, damit die Oberfläche vollständig läuft.
@@ -125,19 +148,9 @@ impl CallBackend for MockCall {
     }
 }
 
-#[cfg(feature = "real")]
-mod real;
-#[cfg(feature = "real")]
-pub use real::WebrtcCall;
+pub use e2e::backend::{Device, E2eCall};
 
-/// Standard-Backend je nach Build.
+/// The backend without a device (no key, no media): the local mock for user interface work.
 pub fn default_backend() -> Box<dyn CallBackend> {
-    #[cfg(feature = "real")]
-    {
-        Box::new(real::WebrtcCall::default())
-    }
-    #[cfg(not(feature = "real"))]
-    {
-        Box::new(MockCall::default())
-    }
+    Box::new(MockCall::default())
 }

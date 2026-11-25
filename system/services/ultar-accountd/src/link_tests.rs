@@ -121,6 +121,24 @@ impl Server for Fake {
         drop(w);
         Ok(self.token(&user))
     }
+    fn signal_hello(&self, _: &str) -> Result<String, LinkError> {
+        self.reach()?;
+        Ok("hello".into())
+    }
+    fn signal_answer(&self, _: &str, c: &str) -> Result<String, LinkError> {
+        self.reach()?;
+        Ok(format!("answer:{c}"))
+    }
+    fn device_key(&self) -> Result<[u8; 32], LinkError> {
+        Ok([9; 32])
+    }
+    fn sign(&self, m: &[u8]) -> Result<Vec<u8>, LinkError> {
+        Ok(m.to_vec())
+    }
+    fn turn(&self, _: &str, token: &str) -> Result<(String, String, String), LinkError> {
+        self.user_of(token)?;
+        Ok(("194.62.29.64:3478".into(), "1:ab".into(), "pw".into()))
+    }
     fn remove_device(&self, _: &str, token: &str, device: &str) -> Result<(), LinkError> {
         self.user_of(token)?;
         let mut w = self.0.borrow_mut();
@@ -365,4 +383,42 @@ fn every_link_method_is_known() {
         assert!(is_link_method(m), "{m}");
     }
     assert!(!is_link_method("user_create"));
+}
+
+#[test]
+fn the_call_service_gets_proofs_and_signatures_never_the_key() {
+    use ultar_bus::messages::account_device::{DeviceAnswer, CALL_SIGN_LABEL};
+    let t = T::new(Fake::up());
+    let now = Instant::now();
+    let mut link = t.link();
+    let refused = link.device(DeviceCall::Key).outcome.unwrap_err();
+    assert_eq!(refused.reason.key, "accountd.link.needs_account");
+    t.fake
+        .0
+        .borrow_mut()
+        .accounts
+        .insert("anas".into(), "pw".into());
+    link.call(sign_in("anas", "pw"), now).outcome.unwrap();
+    assert_eq!(
+        link.device(DeviceCall::Key).outcome,
+        Ok(DeviceAnswer::Key([9; 32]))
+    );
+    // what gets signed is always the call label and the 32-byte hash
+    let Ok(DeviceAnswer::Signature(signed)) = link.device(DeviceCall::SignCall([7; 32])).outcome
+    else {
+        panic!("no signature")
+    };
+    assert_eq!(signed, [CALL_SIGN_LABEL, &[7; 32]].concat());
+    assert_eq!(
+        link.device(DeviceCall::Answer("c".into())).outcome,
+        Ok(DeviceAnswer::Frame("answer:c".into()))
+    );
+    let long = DeviceCall::Answer("x".repeat(5000));
+    assert_eq!(
+        link.device(long).outcome.unwrap_err().reason.key,
+        "accountd.link.rejected"
+    );
+    let turn = link.device(DeviceCall::Turn).outcome.unwrap();
+    assert!(matches!(turn, DeviceAnswer::Turn { ref server, .. } if server == "194.62.29.64:3478"));
+    assert!(is_device_method("device_sign_call") && !is_device_method("sign_in"));
 }

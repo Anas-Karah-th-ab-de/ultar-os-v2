@@ -25,6 +25,8 @@ fn outgoing(id: u32, dial: &Dial, cameras: u8) -> CallInfo {
         },
         encrypted: dial.way == Way::Ultar,
         active_since_ms: None,
+        safety: None,
+        key_changed: false,
     }
 }
 

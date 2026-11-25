@@ -29,11 +29,16 @@ impl UltarLine {
     }
 
     fn state(&self) -> Ultar {
-        match (&self.own_number, self.backend.ready()) {
+        match (&self.number(), self.backend.ready()) {
             (None, _) => Ultar::SignedOut,
             (Some(_), true) => Ultar::Ready,
             (Some(_), false) => Ultar::Offline,
         }
+    }
+
+    /// The own number: given at start, else the one the backend signed in with.
+    fn number(&self) -> Option<String> {
+        self.own_number.clone().or_else(|| self.backend.number())
     }
 
     fn new_key(&mut self) -> Key {
@@ -50,6 +55,18 @@ impl UltarLine {
                 number,
                 name: None,
                 video: false,
+            },
+            CallEvent::IncomingCall { number, video } => LineEvent::Incoming {
+                key: self.new_key(),
+                way: Way::Ultar,
+                number,
+                name: None,
+                video,
+            },
+            CallEvent::Secured { safety, changed } => LineEvent::Secured {
+                key: self.current?,
+                safety,
+                changed,
             },
             CallEvent::Ringing => LineEvent::Alerting(self.current?),
             CallEvent::Answered => LineEvent::Connected(self.current?),
@@ -123,10 +140,7 @@ impl Line for UltarLine {
         let state = self.state();
         if self.reported != Some(state) {
             self.reported = Some(state);
-            out.push(LineEvent::Status(Status::Ultar(
-                state,
-                self.own_number.clone(),
-            )));
+            out.push(LineEvent::Status(Status::Ultar(state, self.number())));
         }
         for event in self.backend.poll() {
             out.extend(self.translate(event));

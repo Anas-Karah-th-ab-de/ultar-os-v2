@@ -3,6 +3,8 @@
 //! Abschnitt 3 (Register), 4.4 (CORB/RIRB), 4.5 (Ströme, Pufferliste), 7 (Codec-Verben und -Parameter).
 //! Umfang: Controller zurücksetzen, Codecs über CORB/RIRB befragen, Ausgabeweg Pin ← … ← DAC finden und einschalten,
 //! ein Ausgabestrom 48 kHz / 16 Bit / Stereo im Abfragebetrieb. Schnittstelle: `spiele()`, `ton()`.
+//! Dazu laufende Ströme für Programme (`/dev/ultar/pcm`, svcdev/pcm.rs): Ausgabe und Eingabe
+//! (Mikrofon oder Line-In) als Ringe, siehe `gen_hda/strom.rs`.
 //! Auftrag: werkstatt/auftraege/hda.md · Status: ausgeschrieben, in QEMU (ich9-intel-hda + hda-duplex) geprüft.
 
 use crate::driver::{Driver, Result};
@@ -12,6 +14,9 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use spin::Mutex;
+
+mod strom;
+use strom::Ring;
 
 pub struct Drv;
 pub static DRV: Drv = Drv;
@@ -48,13 +53,17 @@ struct Hda {
     n_corb: u16,
     n_rirb: u16,
     rp: u16,
-    sd: u64,
-    bdl: u64,
-    buf: u64,
     codec: u8,
     dac: u8,
     pin: u8,
     name: String,
+    /// Output ring for programs (first pages of `buf`, same buffer list).
+    out: Ring,
+    /// Input ring and its ADC, if the codec has a way in.
+    inn: Option<Ring>,
+    adc: Option<u8>,
+    /// A program holds `/dev/ultar/pcm`.
+    offen: bool,
 }
 
 static HDA: Mutex<Option<Hda>> = Mutex::new(None);
@@ -244,12 +253,16 @@ impl Hda {
 
     /// Abtastwerte (16 Bit, Stereo verschachtelt) abspielen; wartet bis zum Ende. Liefert gespielte Bytes.
     fn spiele(&mut self, werte: &[i16]) -> Result<usize> {
+        if self.offen {
+            // a program holds the streams (/dev/ultar/pcm): nothing is played
+            return Ok(0);
+        }
         let bytes = (werte.len() * 2).min(BUF_SEITEN * 4096) & !7;
         if bytes < 16 {
             return Ok(0);
         }
-        unsafe { core::ptr::copy_nonoverlapping(werte.as_ptr() as *const u8, self.buf as *mut u8, bytes) };
-        let sd = self.sd;
+        unsafe { core::ptr::copy_nonoverlapping(werte.as_ptr() as *const u8, self.out.buf as *mut u8, bytes) };
+        let (sd, bdl, buf) = (self.out.sd, self.out.bdl, self.out.buf);
         // Strom anhalten und zurücksetzen (3.3.35)
         w8(sd, r8(sd) & !2);
         wait(|| r8(sd) & 2 == 0, 20);
@@ -260,14 +273,14 @@ impl Hda {
         // Pufferliste: mindestens zwei Einträge; Meldung (IOC) am Ende des letzten
         let halb = (bytes / 2) & !3;
         unsafe {
-            let b = self.bdl as *mut u64;
-            b.write_volatile(self.buf);
+            let b = bdl as *mut u64;
+            b.write_volatile(buf);
             b.add(1).write_volatile(halb as u64);
-            b.add(2).write_volatile(self.buf + halb as u64);
+            b.add(2).write_volatile(buf + halb as u64);
             b.add(3).write_volatile((bytes - halb) as u64 | 1 << 32);
         }
-        w32(sd + 0x18, self.bdl as u32);
-        w32(sd + 0x1c, (self.bdl >> 32) as u32);
+        w32(sd + 0x18, bdl as u32);
+        w32(sd + 0x1c, (bdl >> 32) as u32);
         w32(sd + 0x08, bytes as u32);
         w16(sd + 0x0c, 1);
         w16(sd + 0x12, FORMAT);
@@ -321,29 +334,7 @@ impl Driver for Drv {
         if gcap & 1 == 0 && (ringe | bdl | (buf + (BUF_SEITEN * 4096) as u64)) >> 32 != 0 {
             return Err("Controller kann nur 32-Bit-Adressen, Speicher liegt darüber".into());
         }
-        // CORB (Befehle) und RIRB (Antworten) in einer Seite: 1 KB + 2 KB
-        w8(m + CORBCTL, 0);
-        w8(m + RIRBCTL, 0);
-        wait(|| r8(m + CORBCTL) & 2 == 0, 20);
-        let n_corb = ring(m + CORBSIZE);
-        let n_rirb = ring(m + RIRBSIZE);
-        let (corb, rirb) = (ringe, ringe + 2048);
-        w32(m + CORBLBASE, corb as u32);
-        w32(m + CORBUBASE, (corb >> 32) as u32);
-        w16(m + CORBWP, 0);
-        w16(m + CORBRP, 0x8000);
-        wait(|| r16(m + CORBRP) & 0x8000 != 0, 10);
-        w16(m + CORBRP, 0);
-        wait(|| r16(m + CORBRP) & 0x8000 == 0, 10);
-        w32(m + RIRBLBASE, rirb as u32);
-        w32(m + RIRBUBASE, (rirb >> 32) as u32);
-        w16(m + RIRBWP, 0x8000);
-        w16(m + RINTCNT, 1);
-        w8(m + RIRBSTS, 0x05);
-        // RINTCTL an: der Controller zählt Antworten und meldet sie in RIRBSTS (wird nach jeder Antwort quittiert);
-        // eine Unterbrechung entsteht nicht, weil INTCTL aus ist (Abfragebetrieb)
-        w8(m + RIRBCTL, 3);
-        w8(m + CORBCTL, 2);
+        let (corb, rirb, n_corb, n_rirb) = befehlsringe(m, ringe);
         let codecs = r16(m + STATESTS) & 0x7fff;
         if codecs == 0 {
             return Err("kein Codec angeschlossen".into());
@@ -354,20 +345,45 @@ impl Driver for Drv {
             return Err("Controller hat keinen Ausgabestrom".into());
         }
         let sd = m + 0x80 + iss as u64 * 0x20;
-        let mut h = Hda { m, corb, rirb, n_corb, n_rirb, rp: 0, sd, bdl, buf, codec: 0, dac: 0, pin: 0, name: String::new() };
+        // input ring on the first input stream, if the controller has one
+        let inn = if iss > 0 {
+            let cbdl = alloc_pages(1).ok_or("kein Speicher")?;
+            let cbuf = alloc_pages(strom::RING_PAGES).ok_or("kein Speicher")?;
+            Some(Ring::new(m + 0x80, cbdl, cbuf))
+        } else {
+            None
+        };
+        let out = Ring::new(sd, bdl, buf);
+        let h = Hda { m, corb, rirb, n_corb, n_rirb, rp: 0, codec: 0, dac: 0, pin: 0, name: String::new(), out, inn, adc: None, offen: false };
+        h.codec_suchen(codecs, iss, oss)
+    }
+}
+
+impl Hda {
+    /// Den ersten Codec mit Ausgabeweg (und, wenn vorhanden, Eingang) einrichten und eintragen.
+    fn codec_suchen(mut self, codecs: u16, iss: u16, oss: u16) -> Result<()> {
         let mut fehler = String::from("kein Codec mit Ausgabe");
         for c in 0..15u8 {
             if codecs & (1 << c) == 0 {
                 continue;
             }
-            h.codec = c;
-            match h.weg_einrichten() {
+            self.codec = c;
+            match self.weg_einrichten() {
                 Ok((pin, dac, kennung)) => {
-                    h.pin = pin;
-                    h.dac = dac;
-                    h.name = format!("Codec {c} {:04x}:{:04x}", kennung >> 16, kennung & 0xffff);
-                    crate::kprintln!("[hda] {}: Ausgang Pin {pin} ← DAC {dac}, 48 kHz 16 Bit Stereo ({iss} Ein-/{oss} Ausgabeströme)", h.name);
-                    *HDA.lock() = Some(h);
+                    self.pin = pin;
+                    self.dac = dac;
+                    self.name = format!("Codec {c} {:04x}:{:04x}", kennung >> 16, kennung & 0xffff);
+                    crate::kprintln!("[hda] {}: Ausgang Pin {pin} ← DAC {dac}, 48 kHz 16 Bit Stereo ({iss} Ein-/{oss} Ausgabeströme)", self.name);
+                    if self.inn.is_some() {
+                        match self.afg().and_then(|fg| self.ein_einrichten(fg)) {
+                            Some((adc, ein)) => {
+                                self.adc = Some(adc);
+                                crate::kprintln!("[hda] {}: Eingang Pin {ein} → ADC {adc}", self.name);
+                            }
+                            None => crate::kprintln!("[hda] {}: kein Eingang (Mikrofon/Line-In) gefunden", self.name),
+                        }
+                    }
+                    *HDA.lock() = Some(self);
                     return Ok(());
                 }
                 Err(e) => fehler = e,
@@ -375,6 +391,67 @@ impl Driver for Drv {
         }
         Err(fehler)
     }
+
+    /// The audio function group of the codec.
+    fn afg(&mut self) -> Option<u8> {
+        let gruppen = self.param(0, 0x04).ok()?;
+        let erste = (gruppen >> 16) as u8;
+        (erste..erste.saturating_add(gruppen as u8)).find(|&fg| self.param(fg, 0x05).is_ok_and(|t| t & 0xff == 1))
+    }
+}
+
+/// Why `/dev/ultar/pcm` cannot be opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PcmError {
+    /// No sound card with output.
+    Gone,
+    /// Another program holds it.
+    Busy,
+}
+
+/// Opens the running streams for one program.
+pub fn pcm_open() -> core::result::Result<(), PcmError> {
+    let mut g = HDA.lock();
+    let h = g.as_mut().ok_or(PcmError::Gone)?;
+    if h.offen {
+        return Err(PcmError::Busy);
+    }
+    h.offen = true;
+    h.pcm_start();
+    Ok(())
+}
+
+/// The program let go: the streams stop.
+pub fn pcm_close() {
+    if let Some(h) = HDA.lock().as_mut() {
+        h.pcm_stop();
+        h.offen = false;
+    }
+}
+
+/// Queues sound (48 kHz, 16 bit, stereo interleaved, little endian); returns the bytes taken.
+pub fn pcm_write(data: &[u8]) -> usize {
+    HDA.lock().as_mut().map_or(0, |h| h.pcm_write(data))
+}
+
+/// Reads recorded sound (same format); returns the bytes read.
+pub fn pcm_read(out: &mut [u8]) -> usize {
+    HDA.lock().as_mut().map_or(0, |h| h.pcm_read(out))
+}
+
+/// Whether recorded sound is waiting.
+pub fn pcm_readable() -> bool {
+    HDA.lock().as_mut().is_some_and(|h| h.pcm_readable())
+}
+
+/// Whether the output has room.
+pub fn pcm_writable() -> bool {
+    HDA.lock().as_mut().is_some_and(|h| h.pcm_writable())
+}
+
+/// Whether a sound card is there (the node exists).
+pub fn pcm_present() -> bool {
+    HDA.lock().is_some()
 }
 
 /// Beschreibung der Tonausgabe (für `ton` ohne Angaben und die Geräteliste)
@@ -403,4 +480,32 @@ pub fn ton(hz: u64, ms: u64) -> Result<usize> {
         w.push(s);
     }
     spiele(&w)
+}
+
+/// CORB (Befehle) und RIRB (Antworten) in der Seite `ringe` einrichten und starten.
+fn befehlsringe(m: u64, ringe: u64) -> (u64, u64, u16, u16) {
+    // CORB (Befehle) und RIRB (Antworten) in einer Seite: 1 KB + 2 KB
+    w8(m + CORBCTL, 0);
+    w8(m + RIRBCTL, 0);
+    wait(|| r8(m + CORBCTL) & 2 == 0, 20);
+    let n_corb = ring(m + CORBSIZE);
+    let n_rirb = ring(m + RIRBSIZE);
+    let (corb, rirb) = (ringe, ringe + 2048);
+    w32(m + CORBLBASE, corb as u32);
+    w32(m + CORBUBASE, (corb >> 32) as u32);
+    w16(m + CORBWP, 0);
+    w16(m + CORBRP, 0x8000);
+    wait(|| r16(m + CORBRP) & 0x8000 != 0, 10);
+    w16(m + CORBRP, 0);
+    wait(|| r16(m + CORBRP) & 0x8000 == 0, 10);
+    w32(m + RIRBLBASE, rirb as u32);
+    w32(m + RIRBUBASE, (rirb >> 32) as u32);
+    w16(m + RIRBWP, 0x8000);
+    w16(m + RINTCNT, 1);
+    w8(m + RIRBSTS, 0x05);
+    // RINTCTL an: der Controller zählt Antworten und meldet sie in RIRBSTS (wird nach jeder Antwort quittiert);
+    // eine Unterbrechung entsteht nicht, weil INTCTL aus ist (Abfragebetrieb)
+    w8(m + RIRBCTL, 3);
+    w8(m + CORBCTL, 2);
+    (corb, rirb, n_corb, n_rirb)
 }

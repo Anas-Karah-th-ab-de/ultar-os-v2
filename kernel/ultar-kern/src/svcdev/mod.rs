@@ -5,6 +5,9 @@
 //! * `uinput` – virtual keyboards, mice and tablets (`uinput.rs`), for the Bluetooth service and
 //!   remote control; right [`Rights::INPUT_INJECT`].
 //!
+//! * `pcm` – the sound card's running streams (`pcm.rs`) for the call service; right
+//!   [`Rights::SOUND`]; one open descriptor at a time.
+//!
 //! * `/dev/dri/renderD128` – the GPU for programs (`dri.rs`, Linux `xe` uAPI); for now right
 //!   [`Rights::RAW_DEVICE`], and only present once the GT driver published its device record.
 //!
@@ -17,6 +20,7 @@ use alloc::vec::Vec;
 
 pub mod dri;
 pub mod hci;
+pub mod pcm;
 pub mod uinput;
 
 /// Names below `/dev/` of the controller nodes (index = node number).
@@ -29,6 +33,9 @@ pub fn node(d: &str) -> Option<&'static str> {
     if d == UINPUT_NODE {
         return Some(UINPUT_NODE);
     }
+    if d == pcm::NODE {
+        return pcm::present().then_some(pcm::NODE);
+    }
     if d == dri::NODE {
         return dri::present().then_some(dri::NODE);
     }
@@ -40,6 +47,9 @@ pub fn node(d: &str) -> Option<&'static str> {
 pub fn names() -> Vec<String> {
     let mut v: Vec<String> = crate::drivers::gen_xhci::bt::nodes().into_iter().map(|i| alloc::format!("hci{i}")).collect();
     v.push(String::from("uinput"));
+    if pcm::present() {
+        v.push(String::from("pcm"));
+    }
     v
 }
 
@@ -48,6 +58,8 @@ pub fn right_for(path: &str) -> Option<Rights> {
     let d = path.strip_prefix("/dev/")?;
     if d == UINPUT_NODE {
         Some(Rights::INPUT_INJECT)
+    } else if d == pcm::NODE {
+        Some(Rights::SOUND)
     } else if d == dri::NODE {
         Some(dri::RIGHT)
     } else if HCI_NODES.contains(&d) {
@@ -71,6 +83,9 @@ pub fn open(d: &str, rights: Rights) -> Result<crate::proc::FdKind, i64> {
     if d == dri::NODE {
         return dri::open();
     }
+    if d == pcm::NODE {
+        return pcm::open();
+    }
     match hci_index(d) {
         Some(i) => hci::open(i),
         None => Ok(uinput::open()),
@@ -86,6 +101,10 @@ pub fn rdev(d: &str) -> Option<u64> {
     if d == dri::NODE {
         // DRM major 226, render nodes start at minor 128
         return Some(226 << 8 | 128);
+    }
+    if d == pcm::NODE {
+        // sound major 116 like Linux ALSA
+        return Some(116 << 8 | 16);
     }
     hci_index(d).map(|i| 10 << 8 | (240 + i as u64))
 }
