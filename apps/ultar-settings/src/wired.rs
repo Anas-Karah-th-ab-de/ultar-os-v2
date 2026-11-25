@@ -26,7 +26,7 @@ pub const CHECKED_PANELS: [&str; 17] = [
 ];
 
 /// Settings of those panels with an effect: who follows them.
-pub const WIRED: [(&str, &str); 25] = [
+pub const WIRED: [(&str, &str); 29] = [
     // ultar-llm-bus starts and stops the model service with it (`init.switch`).
     ("assistant.enabled", "llm-bus"),
     // The helper (ultar-agentd) follows these: whether it acts, which areas it reaches,
@@ -59,6 +59,13 @@ pub const WIRED: [(&str, &str); 25] = [
     ("search.source.calculator", "shell"),
     ("search.source.commands", "shell"),
     ("search.arabic_variants", "shell"),
+    // The volume service (ultar-volumed) follows these: it warns once when the data
+    // partition runs low, offers a drive with a "Mount" button when automount is off,
+    // and cleans the person's downloads folder once a day.
+    ("storage.low_space_percent", "volumed"),
+    ("storage.automount", "volumed"),
+    ("storage.clean_downloads", "volumed"),
+    ("storage.clean_downloads_days", "volumed"),
 ];
 
 /// `true` when changing `key` of `panel` has an effect in this version.
@@ -87,6 +94,14 @@ mod tests {
             "accessibility",
             "accessibility.screen_reader"
         ));
+        // The volume service follows the low-space warning, automount and the downloads
+        // clean-up; trim and old-update clean-up have no effect in this version.
+        assert!(takes_effect("storage", "storage.low_space_percent"));
+        assert!(takes_effect("storage", "storage.automount"));
+        assert!(takes_effect("storage", "storage.clean_downloads"));
+        assert!(takes_effect("storage", "storage.clean_downloads_days"));
+        assert!(!takes_effect("storage", "storage.trim"));
+        assert!(!takes_effect("storage", "storage.clean_old_updates"));
         // Every wired key belongs to a checked panel (its first word, `pointer` for the
         // mouse page).
         for (key, _) in WIRED {
