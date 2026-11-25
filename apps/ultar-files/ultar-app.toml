@@ -1,5 +1,5 @@
 id          = "org.ultar.files"
-version     = "0.7.0"
+version     = "0.7.1"
 publisher   = "km-code-craft"
 kind        = "native"
 min_os      = "2.0"
