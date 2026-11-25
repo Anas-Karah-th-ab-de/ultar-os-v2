@@ -73,6 +73,17 @@ impl Sessions {
         Ok(user)
     }
 
+    /// Ends one person's session (the parental window ended): signed out, and nobody
+    /// in front when it was them. `true` when they were signed in.
+    pub fn end(&mut self, user: &str) -> bool {
+        let was = self.signed_in.iter().any(|u| u == user);
+        self.signed_in.retain(|u| u != user);
+        if self.active.as_deref() == Some(user) {
+            self.active = None;
+        }
+        was
+    }
+
     /// Drops people whose account no longer exists (removed by an administrator).
     pub fn keep_only(&mut self, accounts: &[String]) {
         self.signed_in.retain(|u| accounts.contains(u));
@@ -115,6 +126,20 @@ mod tests {
         assert_eq!(s.sign_out().unwrap(), "amal");
         assert_eq!(s.state().signed_in, vec!["badr".to_owned()]);
         assert!(s.is_valid());
+    }
+
+    #[test]
+    fn ending_one_session_leaves_the_others() {
+        let mut s = Sessions::default();
+        s.sign_in("amal").unwrap();
+        s.sign_in("badr").unwrap();
+        assert!(!s.end("ghost"));
+        assert!(s.end("badr"), "the one in front");
+        assert_eq!(s.active(), None);
+        assert_eq!(s.signed_in(), ["amal"]);
+        assert!(s.end("amal"));
+        assert!(s.signed_in().is_empty());
+        assert!(!s.end("amal"), "already gone");
     }
 
     #[test]
