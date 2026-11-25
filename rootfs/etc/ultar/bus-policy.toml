@@ -338,7 +338,7 @@ subscribe = ["llmcloud.state", "agent.state"]
 [[rule]]
 identity  = "system.agentd"
 register  = ["agent"]
-publish   = ["agent.state", "agent.reach", "agent.activity"]
+publish   = ["agent.state", "agent.reach", "agent.activity", "agent.progress"]
 subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed",
              "net.state", "bluetooth.state", "audio.state", "power.state"]
 call      = ["launcher.list", "launcher.start", "launcher.stop", "audio.set_volume", "audio.set_mute", "net.set_wifi",
@@ -363,7 +363,7 @@ subscribe = ["agent.reach", "agent.activity"]
 [[rule]]
 identity  = "system.shell"
 call      = ["mesh.*", "agent.ask"]
-subscribe = ["mesh.*", "agent.state"]
+subscribe = ["mesh.*", "agent.state", "agent.progress"]
 
 [[rule]]
 identity  = "app.settings"

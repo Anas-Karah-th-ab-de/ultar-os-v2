@@ -124,7 +124,7 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
         super::shapes::for_top_bar(s.d.open, &mut popup, screen);
     }
     let preferred = match s.d.open {
-        Open::Overview | Open::Apps(_) => Some(Target::SearchField),
+        Open::Overview | Open::Apps(_) | Open::Helper => Some(Target::SearchField),
         Open::Projection(mode) => Some(Target::Mode(mode)),
         _ => None,
     };
@@ -181,6 +181,10 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
         }
         Open::Projection(mode) => {
             let (v, p) = view::projection::build(mode, look, screen, &s.tr)?;
+            sheet(v, p)
+        }
+        Open::Helper => {
+            let (v, p) = view::helper::build(&s.d, look, screen, &s.tr)?;
             sheet(v, p)
         }
         Open::Overview => {

@@ -11,6 +11,7 @@ pub mod calendar;
 pub mod compact;
 pub mod dock;
 pub mod geometry;
+pub mod helper;
 pub mod menu;
 pub mod note;
 pub mod overview;
@@ -32,6 +33,14 @@ use ultar_ui::widgets::Card;
 /// What an operable node means.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
+    /// Helper sheet: send the request.
+    HelperSend,
+    /// Helper sheet: stop waiting for the answer.
+    HelperStop,
+    /// Helper sheet: open Settings › Assistant.
+    HelperSettings,
+    /// Quick settings: open the helper (`qs.assistant`).
+    Assistant,
     /// Bar: trash.
     Trash,
     /// Bar: overview.

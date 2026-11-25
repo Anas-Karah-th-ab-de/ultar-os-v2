@@ -167,7 +167,14 @@ fn overview_and_apps(s: &mut Shell, target: &Target, kind: &ActionKind) -> Outco
             s.d.open = Open::Projection(*i);
             confirm_projection(s)
         }
+        (Target::SearchField, ActionKind::Submitted) if s.d.open == Open::Helper => {
+            super::helper::send(s)
+        }
         (Target::SearchField, ActionKind::Submitted) => first_result(s),
+        (Target::HelperSend, ActionKind::Activated) => super::helper::send(s),
+        (Target::HelperStop, ActionKind::Activated) => super::helper::stop(s),
+        (Target::HelperSettings, ActionKind::Activated) => super::helper::settings(s),
+        (Target::Assistant, ActionKind::Activated) => super::helper::toggle(s),
         _ => Outcome::none(),
     }
 }
@@ -328,11 +335,7 @@ fn result(s: &mut Shell, hit: &Hit) -> Outcome {
         }
         // A calculation result stays; selecting it changes nothing (copy needs the clipboard).
         Hit::Calc(_) => Outcome::none(),
-        Hit::Helper(text) => {
-            s.d.open = Open::None;
-            s.d.overview.query.clear();
-            Outcome::effect_and_close(Effect::Service(Call::AskHelper(text.clone())))
-        }
+        Hit::Helper(text) => super::helper::ask_from_search(s, text),
         Hit::Command(Command::Lock) => {
             s.d.open = Open::None;
             Outcome::effect_and_close(Effect::Lock)

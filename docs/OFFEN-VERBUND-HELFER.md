@@ -34,7 +34,7 @@ hingehört. Erledigtes wird hier gestrichen, nicht umformuliert.
 
 ## C. Eigene Arbeit
 
-Nicht begonnen sind C1, C2, C4, C6, C8, C12; C5 ist eine Entscheidung des Eigentümers.
+Nicht begonnen sind C1, C2, C4, C6, C8; C5 ist eine Entscheidung des Eigentümers.
 
 | # | Was |
 |---|---|
@@ -44,12 +44,12 @@ Nicht begonnen sind C1, C2, C4, C6, C8, C12; C5 ist eine Entscheidung des Eigent
 | C4 | Verbund-Schlüssel an die Geräte-Identität binden (`docs/DEVICE-IDENTITY.md`) |
 | C5 | Entscheidung offen: automatisches Vertrauen zwischen Geräten desselben Kontos (heute: immer Code) |
 | C6 | Tafeln: mittlere Größe (Tablet), hoher Kontrast, hell/englisch für alle Flächen |
-| C7 | Helfer: Oberfläche. ~~Erreichbar über die Suche der Übersicht: was getippt ist, lässt sich „den Helfer fragen“; die Antwort kommt als Meldung und bleibt in der Liste~~ – gebaut ohne Tafel. ~~Einstellungen › Assistent: Schalter für das, was er erreicht, und die Liste dessen, was er getan hat~~ – gebaut (Tafeln `AssistantReach`, `AssistantDid`). Offen: eigene Fläche mit sichtbaren Schritten (Tafeln `HelperSheet`, `HelperConfirm` warten auf Freigabe), Handy |
+| ~~C7~~ | ~~Helfer: Oberfläche~~ – erledigt: eigenes Blatt der Hülle (Super+H, Knopf in den Schnelleinstellungen, aus der Suche) mit sichtbaren Schritten, wartendem Schritt und „Stopp“ (Tafeln `HelperSheet`, `HelperConfirm`, freigegeben); Einstellungen › Assistent mit Schaltern und der Liste dessen, was er getan hat (Tafeln `AssistantReach`, `AssistantDid`). Offen: Handy, Sprechblasen und Referenzbilder nach Tafel, mehr als die letzten zwei Anfragen im Blatt |
 | C8 | Helfer: Sprache (Weckwort „Hey KM“, Spracherkennung, Sprachausgabe, Arabisch zuerst) |
 | C9 | Helfer: erreicht das ganze System. ~~Bluetooth, Flugmodus, Medientasten, Bildschirmfoto, Sperren, Schlafen~~, ~~jede Einstellung lesen und setzen (eigene und Verwalter-Schlüssel nie, heikle Bereiche nach Bestätigung), Zustand von Netz, Ton, Akku, Speicher, Benachrichtigungen, App schließen, Laufwerk auswerfen, Abmelden~~ – erledigt (33 Werkzeuge in zehn Bereichen, je Bereich abschaltbar). Offen: Dateien (B6), Store, Aktualisierungen und Treiber (kein Vertrag am Bus), Bildschirm sehen |
 | C10 | Helfer: Wissen. ~~Acht Themen (Koppeln, Weitermachen, Dateien, Modell, WLAN, Bluetooth, Aktualisierungen, Helfer) in drei Sprachen, ohne Modell beantwortet, als Werkzeug `help` für das Modell~~ – erledigt. Offen: die Themen des alten Hilfe-Systems übernehmen |
 | ~~C11~~ | ~~Helfer: auf einem anderen Gerät handeln~~ – erledigt: Werkzeug `ask_device`, Aufruf `mesh.act`; das andere Gerät nimmt es nur mit dem Recht „Dieses Gerät steuern“ an, sein eigener Helfer führt aus, Gefährliches bestätigt die Person dort. Keine Ketten, keine Kreise. Offen: Text der Antwort des anderen Helfers (heute nur seine Schritte) |
-| C12 | Helfer: Antwort Stück für Stück anzeigen (heute kommt sie am Ende) |
+| C12 | Helfer: ~~Schritte einzeln anzeigen (`agent.progress`)~~ – erledigt. Offen: die Antwort des Modells Stück für Stück |
 | ~~C13~~ | ~~Cloud-Modell als letzter Weg, mit eigenem Schlüssel der Person (Beispiel: Claude)~~ – erledigt: Dienst `ultar-llm-cloud`, Abschnitt in Einstellungen › Assistent, Reihenfolge eigenes Modell → verliehenes → Cloud → kleinste Hilfe. Schlüssel versiegelt abgelegt, zwei Anbieter (Claude, OpenAI-kompatibel), Modellwahl aus der Liste des Anbieters, Kosten-Hinweis, Tafeln `AssistantCloud*`. Offen: gegen den echten Anbieter prüfen, Schlüsselspeicher in der Hardware, Freigabe der Tafeln (`docs/integration/ultar-llm-cloud.md`) |
 
 ## D. Geprüft und noch nicht geprüft
@@ -81,6 +81,7 @@ Noch nicht geprüft:
 - Die neuen Werkzeuge des Helfers gegen die echten Dienste (`settingsd`, `powerd`, `mediad`, `notifyd`, `volumed`,
   `sessiond`): geprüft sind sie gegen Ersatz-Dienste und gegen die ausgelieferten Regeln. Dabei gefunden: Medientasten,
   Schlafen, Neustart, Ausschalten wurden im echten System bisher abgewiesen (fehlendes `media.system`, `power.system`).
+- Das Blatt des Helfers und die Seite in den Einstellungen liefen nur in Tests (Klicks, Tasten), auf keinem Bildschirm.
 - Helfer mit einem echten Modell: Die Tests nutzen ein Modell-Skript. Ob ein kleines Modell die
   Antwortform zuverlässig einhält, ist offen; schlägt es fehl, bleibt die kleinste Hilfe.
 - Arabische Texte (Tafeln, Dialog, Helfer) hat kein Muttersprachler gegengelesen.

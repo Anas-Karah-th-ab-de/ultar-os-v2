@@ -70,6 +70,7 @@
 //! | `agent.ask` | call | – | local helper |
 //! | `agent.reach` | topic | yes | what the helper reaches (see [`agent_reach`]) |
 //! | `agent.activity` | topic | yes | what the helper did lately |
+//! | `agent.progress` | topic | – | each step of the request being answered |
 //! | `agent.clear_activity` | call | – | local helper (the Settings app only) |
 //!
 //! Every user-visible string is a [`crate::Text`] (i18n key + arguments).

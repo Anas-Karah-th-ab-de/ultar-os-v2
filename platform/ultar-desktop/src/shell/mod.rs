@@ -7,6 +7,7 @@ mod bar;
 mod gestures;
 mod grid;
 mod handoff;
+mod helper;
 mod keys;
 mod menus;
 mod network;
@@ -298,6 +299,9 @@ impl Shell {
 
     /// Text typed into the search field of the open popup.
     pub fn on_query(&mut self, text: &str) -> Outcome {
+        if self.d.open == Open::Helper {
+            return helper::typed(self, text);
+        }
         self.d.overview.query = text.chars().take(crate::model::search::MAX_QUERY).collect();
         Outcome {
             effects: Vec::new(),

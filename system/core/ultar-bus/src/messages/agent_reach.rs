@@ -163,10 +163,24 @@ pub struct Cleared {
     pub ok: bool,
 }
 
+/// `agent.progress` – the request being answered moves on (not retained): the surface
+/// that asked shows each step as it happens instead of only the end.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub enum Progress {
+    /// A step was taken (done, failed or refused).
+    Step(Step),
+    /// This tool waits for the person's confirmation in the system dialog.
+    Waiting(String),
+}
+
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(Reach, Activity, ClearActivity, Cleared);
+version_one!(Reach, Activity, ClearActivity, Cleared, Progress);
+
+impl Topic for Progress {
+    const TOPIC: &'static str = "agent.progress";
+}
 
 impl Topic for Reach {
     const TOPIC: &'static str = "agent.reach";

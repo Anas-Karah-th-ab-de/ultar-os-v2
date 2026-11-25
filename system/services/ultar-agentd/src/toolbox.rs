@@ -4,7 +4,7 @@
 use crate::model::{Thinker, MAX_TOKENS};
 use crate::tools::{self, Call, Outcome, Risk, Toolbox};
 use std::time::Duration;
-use ultar_bus::messages::agent::{Brain, StepOutcome};
+use ultar_bus::messages::agent::{Brain, Progress, StepOutcome};
 use ultar_bus::messages::audio::{AudioOutcome, SetMute, SetVolume};
 use ultar_bus::messages::launcher::{launcher_id, List, Role, Start};
 use ultar_bus::messages::llm::Complete;
@@ -182,6 +182,8 @@ impl BusTools<'_> {
     /// The person confirms a dangerous action in the system dialog (an administrator's
     /// password); without that nothing happens.
     pub(crate) fn confirmed(&self, tool: &str) -> bool {
+        // whoever watches sees that this step waits for the person
+        let _ = self.client.publish(&Progress::Waiting(tool.to_owned()));
         let ask = Authenticate {
             app_id: APP_ID.to_owned(),
             app_name: "helper".to_owned(),
@@ -202,6 +204,10 @@ impl BusTools<'_> {
 }
 
 impl Toolbox for BusTools<'_> {
+    fn note(&self, progress: &Progress) {
+        let _ = self.client.publish(progress);
+    }
+
     fn run(&self, call: &Call) -> Outcome {
         let Some(tool) = tools::find(&call.tool) else {
             return (StepOutcome::NotAllowed, "no such tool".to_owned());

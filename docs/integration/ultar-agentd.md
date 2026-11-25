@@ -159,3 +159,26 @@ Helfer: 21 + 7 + 3 + 1 (Regeln der Einstellungen, Werte, Liste über Neustart, g
 Modell, „nur nachsehen“; echter Prozess: Einstellung ändern, eigene und Verwalter-Schlüssel abgelehnt, heikler
 Bereich nur nach Bestätigung, Bereich schließen, Liste lesen und vergessen). Einstellungen: `tests/helper.rs` (3).
 Nicht geprüft: gegen die echten Dienste `settingsd`, `powerd`, `mediad`, `notifyd`, `volumed`, `sessiond`.
+
+## Nachtrag 25.11.2026 (4): eigene Fläche des Helfers, Handeln erst nach Einschalten
+
+Freigabe des Eigentümers für die Tafeln `HelperSheet` und `HelperConfirm`; `assistant.act` bleibt **aus**, bis
+die Person es einschaltet.
+
+- **Blatt der Hülle** (`platform/ultar-desktop/src/view/helper.rs`, `shell/helper.rs`, `model/helper.rs`):
+  Super+H, der Knopf in den Schnelleinstellungen (`qs.assistant`) oder „den Helfer fragen“ in der Suche öffnen es.
+  Oben steht, womit er denkt; das Zahnrad führt zu Einstellungen › Assistent. Anfrage tippen, Enter oder
+  „Senden“. Die letzten zwei Anfragen stehen da, mit jedem Schritt (Bereich, Einzelheit, Ergebnis) und der Antwort.
+- **Schritte kommen einzeln** (`agent.progress`, nicht gehalten): `Progress::Step` nach jedem Schritt,
+  `Progress::Waiting(werkzeug)` bevor der Systemdialog fragt. Das Blatt zeigt dann „Das System fragt dich jetzt
+  in seinem eigenen Fenster“.
+- **„Stopp“** beendet nur das Warten: Erledigtes bleibt erledigt und gelistet, die späte Antwort wird nicht mehr
+  als erwartete gezeigt. Den laufenden Auftrag im Helfer bricht es nicht ab.
+- Ist das Blatt zu, wenn die Antwort kommt, erscheint sie wie bisher als Meldung. Auf dem Handy gibt es das Blatt
+  noch nicht (Suche und Meldung wie bisher).
+
+Abweichungen von den Tafeln: Anfragen als einfache Zeilen statt Sprechblasen; das Feld ist das Suchfeld (mit
+Lupe); der wartende Schritt steht als Hinweis, nicht als eigene Zeile mit Plakette; keine Referenzbilder.
+
+Tests: `platform/ultar-desktop/tests/helper.rs` (4), `model/helper.rs` (1), `ultar-agentd/tests/reach.rs`
+(Fortschritt am Bus; „nur nachsehen“ bis zum Einschalten).

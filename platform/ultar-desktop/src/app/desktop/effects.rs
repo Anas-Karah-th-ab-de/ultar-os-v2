@@ -131,6 +131,16 @@ impl DesktopApp {
             Ok(Answer::Joined(_)) => {}
             Ok(Answer::Sent(outcome)) => crate::model::mesh::sent(d, outcome, now),
             Ok(Answer::Helper(answer)) => {
+                // asked in the helper's sheet: the answer goes there, and into a
+                // notification only when the sheet was closed meanwhile
+                let asked = match call {
+                    Call::AskHelper(text) => text.as_str(),
+                    _ => "",
+                };
+                let taken = d.overview.helper.answer(asked, answer.clone());
+                if taken && d.open == Open::Helper {
+                    return;
+                }
                 // an answer thought in the internet says so in its title
                 let cloud = answer.brain == ultar_bus::messages::agent::Brain::Cloud;
                 let title = if cloud {
@@ -141,6 +151,13 @@ impl DesktopApp {
                 d.notes.post_said(SHELL, title, answer.text, now);
             }
             Ok(Answer::NotDone) | Err(_) if matches!(call, Call::AskHelper(_)) => {
+                let asked = match call {
+                    Call::AskHelper(text) => text.as_str(),
+                    _ => "",
+                };
+                if d.overview.helper.failed(asked) && d.open == Open::Helper {
+                    return;
+                }
                 d.notes.post_notice(SHELL, "desk.helper.failed", now);
             }
             Ok(Answer::NotDone) | Err(_) if *call == Call::Networks => {

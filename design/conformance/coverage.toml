@@ -913,11 +913,11 @@ boards = "QuickSettings:1"
 note = ""
 
 [action."qs.assistant"]
-status = "different"
-impl = "platform/ultar-desktop/src/view/quick.rs + src/shell/sheets.rs"
-test = "platform/ultar-desktop/tests/clicks.rs"
+status = "ok"
+impl = "platform/ultar-desktop/src/view/quick.rs + src/shell/helper.rs"
+test = "platform/ultar-desktop/tests/helper.rs"
 boards = "QuickSettings:1"
-note = "absent while the Assistant component is not installed (spec)"
+note = "shown only with the helper service on the bus; also Super+H"
 
 [action."qs.shot"]
 status = "ok"
@@ -1604,29 +1604,29 @@ boards = "AssistantDid:1"
 note = ""
 
 [action."helper.ask.field"]
-status = "missing"
-impl = ""
-test = ""
+status = "different"
+impl = "platform/ultar-desktop/src/view/helper.rs + src/shell/helper.rs"
+test = "platform/ultar-desktop/tests/helper.rs"
 boards = "HelperConfirm:1, HelperSheet:1"
-note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+note = "the search field brick (with its icon); requests are plain lines, not bubbles"
 
 [action."helper.ask.send"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "platform/ultar-desktop/src/view/helper.rs + src/shell/helper.rs"
+test = "platform/ultar-desktop/tests/helper.rs"
 boards = "HelperConfirm:1, HelperSheet:1"
-note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+note = ""
 
 [action."helper.stop"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "platform/ultar-desktop/src/view/helper.rs + src/shell/helper.rs"
+test = "platform/ultar-desktop/tests/helper.rs"
 boards = "HelperConfirm:1, HelperSheet:1"
-note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+note = ""
 
 [action."helper.settings"]
-status = "missing"
-impl = ""
-test = ""
+status = "ok"
+impl = "platform/ultar-desktop/src/view/helper.rs + src/shell/helper.rs"
+test = "platform/ultar-desktop/tests/helper.rs"
 boards = "HelperConfirm:1, HelperSheet:1"
-note = "board added 25.11.2026, waits for approval; today the helper is asked from the overview search and answers as a notification"
+note = ""

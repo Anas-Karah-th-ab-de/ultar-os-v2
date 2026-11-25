@@ -2,7 +2,9 @@
 //! A tool that is not in this list does not exist for the helper, whatever a model says.
 
 use std::collections::BTreeMap;
-use ultar_bus::messages::agent::{Area, AreaReach, Reach, StepOutcome, ToolInfo, ToolRisk};
+use ultar_bus::messages::agent::{
+    Area, AreaReach, Progress, Reach, StepOutcome, ToolInfo, ToolRisk,
+};
 
 /// How much a tool can change.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -179,6 +181,9 @@ pub type Outcome = (StepOutcome, String);
 pub trait Toolbox {
     /// Uses one tool.
     fn run(&self, call: &Call) -> Outcome;
+
+    /// Tells whoever watches that the request moved on (nobody, unless overridden).
+    fn note(&self, _progress: &Progress) {}
 }
 
 #[cfg(test)]

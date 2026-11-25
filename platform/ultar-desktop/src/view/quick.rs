@@ -206,6 +206,11 @@ fn footer(view: &mut View, card: NodeId, d: &Desktop) -> Result<(), UiError> {
         }
     }
     let actions = view.ui.add(row, Flex::row().gap(Space::S4))?;
+    if d.overview.sources.helper {
+        let spark = IconButton::new(IconId::Spark, Label::key("desk.qs.assistant"));
+        let id = view.ui.add(actions, spark)?;
+        view.mark(id, Target::Assistant);
+    }
     let items = [
         (
             IconId::Shot,

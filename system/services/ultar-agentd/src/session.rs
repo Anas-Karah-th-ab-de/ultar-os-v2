@@ -4,7 +4,7 @@
 use crate::minimal;
 use crate::model::{self, Move, Thinker};
 use crate::tools::{self, Call, Limits, Toolbox};
-use ultar_bus::messages::agent::{Answer, Brain, Step, StepOutcome};
+use ultar_bus::messages::agent::{Answer, Brain, Progress, Step, StepOutcome};
 use ultar_bus::{Text, TextArg};
 
 /// Tools one request may use in a row.
@@ -57,12 +57,14 @@ fn run(
             None => toolbox.run(call),
         },
     };
-    steps.push(Step {
+    let step = Step {
         tool: call.tool.clone(),
         outcome,
         area: tool.map(|t| t.area).unwrap_or_default(),
         detail: detail(call),
-    });
+    };
+    toolbox.note(&Progress::Step(step.clone()));
+    steps.push(step);
     (outcome, told)
 }
 

@@ -6,8 +6,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use ultar_bus::messages::agent::ACT_KEY;
 use ultar_bus::messages::agent::{Activity, Answer, Area, Ask, ClearActivity, Reach, StepOutcome};
+use ultar_bus::messages::agent::{Progress, ACT_KEY};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
 use ultar_bus::messages::settings::{
     Changed, Get, GetReply, ItemInfo, ItemKind, ListReply, ListRequest, PanelInfo, RiskInfo,
@@ -21,7 +21,7 @@ const POLICY: &str = r#"
 [[rule]]
 identity = "system.agentd"
 register = ["agent"]
-publish = ["agent.state", "agent.reach", "agent.activity"]
+publish = ["agent.state", "agent.reach", "agent.activity", "agent.progress"]
 subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
 call = ["llm.complete", "settings.list", "settings.get", "settings.set", "sysdialog.authenticate"]
 
@@ -33,6 +33,7 @@ publish = ["llm.state", "settings.changed"]
 [[rule]]
 identity = "system.shell"
 call = ["agent.ask"]
+subscribe = ["agent.progress"]
 
 [[rule]]
 identity = "app.settings"
@@ -227,7 +228,15 @@ fn the_helper_changes_any_setting_but_not_its_own_and_asks_before_a_sensitive_on
     assert_eq!(outcome("sharing.ssh"), StepOutcome::NotAllowed);
     assert!(b.seen.asked_to_confirm.lock().unwrap().is_empty());
     // a sensitive panel: only after the person confirmed
+    // whoever asked sees the steps as they happen, and when one waits for the person
+    let progress = b.shell.subscribe::<Progress>().unwrap();
     assert_eq!(outcome("privacy.location"), StepOutcome::NotConfirmed);
+    let mut seen = Vec::new();
+    while let Ok(Some(p)) = progress.try_recv() {
+        seen.push(p);
+    }
+    assert_eq!(seen[0], Progress::Waiting("setting_set".into()));
+    assert!(matches!(&seen[1], Progress::Step(s) if s.outcome == StepOutcome::NotConfirmed));
     b.seen.confirm.store(true, Ordering::SeqCst);
     assert_eq!(outcome("privacy.location"), StepOutcome::Done);
     assert_eq!(

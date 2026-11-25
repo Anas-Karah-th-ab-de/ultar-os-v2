@@ -23,7 +23,7 @@ const POLICY: &str = r#"
 [[rule]]
 identity = "system.agentd"
 register = ["agent"]
-publish = ["agent.state", "agent.reach", "agent.activity"]
+publish = ["agent.state", "agent.reach", "agent.activity", "agent.progress"]
 subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
 call = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
         "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act",

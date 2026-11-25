@@ -122,7 +122,9 @@ pub(super) fn compact_popup(s: &Shell, look: Look, screen: Size) -> Result<Optio
             popup.offset.1 += (screen.h - size::BAR_HEIGHT).round() as i32;
             popup
         }
-        Open::None | Open::Projection(_) => return Ok(None),
+        // The phone has no helper sheet yet: it asks from the search and reads the answer
+        // as a notification.
+        Open::None | Open::Projection(_) | Open::Helper => return Ok(None),
     }))
 }
 
@@ -158,6 +160,7 @@ pub(super) fn for_top_bar(open: Open, popup: &mut Popup, screen: Size) {
         Open::Overview | Open::None => {}
         Open::Quick(_)
         | Open::Calendar
+        | Open::Helper
         | Open::KeyboardMenu
         | Open::PowerMenu
         | Open::OutputMenu

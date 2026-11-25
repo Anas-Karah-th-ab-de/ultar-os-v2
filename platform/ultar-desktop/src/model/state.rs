@@ -110,6 +110,8 @@ pub enum Open {
     Apps(Option<super::apps::Category>),
     /// The overview (with the caret in its search field).
     Overview,
+    /// The helper's sheet (Super+H).
+    Helper,
     /// The display mode panel (Super+P) with its highlighted mode (0–3).
     Projection(usize),
     /// The menu of the keyboard language button.
@@ -160,6 +162,8 @@ pub struct OverviewState {
     pub query: String,
     /// What the search looks through (Settings > Search).
     pub sources: super::search::Sources,
+    /// The conversation with the helper (asked from the search or in its own sheet).
+    pub helper: super::helper::Helper,
     /// Shown workspace and how many there are (`Event::Workspaces`); `None` until the
     /// compositor said.
     pub workspaces: Option<(u8, u8)>,
