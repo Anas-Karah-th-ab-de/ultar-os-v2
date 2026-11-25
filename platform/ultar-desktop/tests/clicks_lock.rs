@@ -78,26 +78,35 @@ fn lock(a: &str) -> bool {
             on && v.ui.is_disabled(n) && v.ui.tooltip(n).is_some()
         }
         "login.access" => access(&mut s),
-        "lock.sos" | "qs.power" => {
-            // Disabled with the reason until the emergency / accessibility parts exist.
-            let tr = ultar_desktop::i18n::translator(Lang::Ar).unwrap();
-            let look = ultar_desktop::view::Look::new(Lang::Ar, ThemeKind::Dark);
-            if a != "lock.sos" {
-                s.show_sign_in();
-            }
-            let mut v = ultar_desktop::lock::view::build(&s, (0, None), look, SCREEN, &tr)
-                .unwrap()
-                .unwrap();
-            let _ = v.ui.content_size();
-            let t = match a {
-                "lock.sos" => Target::Emergency,
-                _ => Target::EmergencyOff,
-            };
-            let n = v.node(&t).unwrap();
+        "lock.sos" => sos(&mut s),
+        "qs.power" => {
+            s.show_sign_in();
+            let v = lock_view(&s);
+            let n = v.node(&Target::EmergencyOff).unwrap();
             v.ui.is_disabled(n) && v.ui.tooltip(n).is_some()
         }
         _ => login(a, &mut s),
     }
+}
+
+/// lock.sos: disabled with the reason while `emergency.on_lock_screen` is off; on, it
+/// opens the panel with the call and back buttons (the details are the person's own).
+fn sos(s: &mut LockState) -> bool {
+    let v = lock_view(s);
+    let n = v.node(&Target::Emergency).unwrap();
+    let off = v.ui.is_disabled(n) && v.ui.tooltip(n).is_some();
+    s.prefs.emergency_on = true;
+    s.prefs.contact_name = "ليلى".into();
+    let v = lock_view(s);
+    let n = v.node(&Target::Emergency).unwrap();
+    let on = !v.ui.is_disabled(n);
+    s.emergency.flip(s.prefs.emergency_on);
+    let v = lock_view(s);
+    let panel =
+        v.node(&Target::EmergencyCall).is_some() && v.node(&Target::EmergencyBack).is_some();
+    s.emergency.open = false;
+    let closed = lock_view(s).node(&Target::EmergencyCall).is_none();
+    off && on && panel && closed
 }
 
 /// login.access: disabled with the reason without the settings service; with it the menu
@@ -180,7 +189,7 @@ fn login(a: &str, s: &mut LockState) -> bool {
         }
         "login.password" | "login.submit" => {
             s.show_sign_in();
-            let e = s.submit(Secret::new("pw".into()), 0);
+            let e = s.submit(Secret::new("pw".into()), 0, 720);
             let sent = matches!(e, Some(LockEffect::Verify { .. }));
             let back = s.verified(
                 Some(AuthOutcome::Denied {

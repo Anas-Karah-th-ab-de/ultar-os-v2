@@ -4,6 +4,7 @@
 pub mod desktop;
 pub mod keyboard;
 pub mod lock;
+mod lock_follow;
 pub mod sysdialog;
 
 use crate::model::BarPlace;
