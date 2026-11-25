@@ -37,6 +37,16 @@ pub type Reader = alloc::boxed::Box<dyn Fn(u64, usize) -> Option<Vec<u8>> + Send
 /// Pages a [`Reader`] is asked for at once (4 MiB).
 const READ_AHEAD: usize = 1024;
 
+/// Writes the zeroed page `p` out of the CPU's caches: it was zeroed through the kernel's
+/// cached view, and a write-combining user or a non-coherent GPU must not miss those zeros nor
+/// have a cache line written over its data later.
+fn flush_page(p: u64) {
+    for line in (p..p + 4096).step_by(64) {
+        // SAFETY: `line` lies in the page just allocated, identity-mapped in the kernel.
+        unsafe { core::arch::x86_64::_mm_clflush(line as *const u8) };
+    }
+}
+
 /// A page of an object that has no memory yet.
 const HOLE: u64 = 0;
 
@@ -48,6 +58,9 @@ pub struct MemObj {
     pages: Mutex<Vec<u64>>,
     /// Where the content of a hole comes from (a file on a disk); `None`: holes are zero.
     source: Option<Reader>,
+    /// Mapped write-combining, past the CPU's caches (GPU buffers the GT reads without looking
+    /// into them): new pages are flushed out of the caches before anyone sees them.
+    write_combining: bool,
     size: AtomicU64,
     seals: AtomicU32,
     /// Mappings of the object in any address space; `writable_maps`: those with write access.
@@ -61,6 +74,7 @@ impl MemObj {
         MemObj {
             pages: Mutex::new(Vec::new()),
             source: None,
+            write_combining: false,
             size: AtomicU64::new(0),
             seals: AtomicU32::new(if sealing { 0 } else { SEAL_SEAL }),
             maps: AtomicU64::new(0),
@@ -80,11 +94,30 @@ impl MemObj {
         Some(MemObj {
             pages: Mutex::new(pages),
             source: Some(source),
+            write_combining: false,
             size: AtomicU64::new(size),
             seals: AtomicU32::new(SEALS_ALL),
             maps: AtomicU64::new(0),
             writable_maps: AtomicU64::new(0),
         })
+    }
+
+    /// An empty object that is mapped write-combining (see the field).
+    pub fn new_write_combining() -> MemObj {
+        MemObj {
+            pages: Mutex::new(Vec::new()),
+            source: None,
+            write_combining: true,
+            size: AtomicU64::new(0),
+            seals: AtomicU32::new(SEAL_SEAL),
+            maps: AtomicU64::new(0),
+            writable_maps: AtomicU64::new(0),
+        }
+    }
+
+    /// Whether mappings of this object bypass the CPU's caches.
+    pub fn write_combining(&self) -> bool {
+        self.write_combining
     }
 
     pub fn size(&self) -> u64 {
@@ -107,7 +140,14 @@ impl MemObj {
         let Some(read) = &self.source else {
             for slot in pages[first..first + n].iter_mut().filter(|p| **p == HOLE) {
                 let Some(p) = crate::mem::alloc_page() else { return false };
+                if self.write_combining {
+                    flush_page(p);
+                }
                 *slot = p;
+            }
+            if self.write_combining {
+                // SAFETY: orders the flushes before the pages are handed out.
+                unsafe { core::arch::x86_64::_mm_mfence() };
             }
             return true;
         };

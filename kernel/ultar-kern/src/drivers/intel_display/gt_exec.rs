@@ -331,8 +331,8 @@ fn done(q: &Queue) -> u64 {
 impl Backend for Gpu {
     type Buffer = Arc<crate::memfd::MemObj>;
 
-    fn buffer_new(&mut self, size: u64) -> Result<Self::Buffer, Errno> {
-        let obj = crate::memfd::MemObj::new(false);
+    fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno> {
+        let obj = if write_combining { crate::memfd::MemObj::new_write_combining() } else { crate::memfd::MemObj::new(false) };
         obj.set_size(size).map_err(|_| Errno::NoMem)?;
         Ok(Arc::new(obj))
     }
@@ -355,11 +355,11 @@ impl Backend for Gpu {
         if let Some(n) = PAT_ASKED.get(pat as usize) {
             n.fetch_add(pages.len() as u64, Ordering::Relaxed);
         }
-        // the CPU maps every buffer write-back: the GT has to look into its caches (coherent),
-        // whatever the program asked for – unless a test forces another attribute
+        // what the program asked for (the logic refused attributes that do not fit how the CPU
+        // maps the buffer) – unless a test forces another one
         let used = match FORCE_PAT.load(Ordering::Relaxed) {
             forced @ 0..=4 => forced,
-            _ => ultar_intel_gt::ppgtt::PAT_WB_COHERENT,
+            _ => pat,
         };
         space
             .map_cached(&mut rt.mem.tables, va, pages, used)

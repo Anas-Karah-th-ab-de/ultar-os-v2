@@ -9,6 +9,9 @@ impl AddrSpace {
     /// `false`: no memory for a page table or the list – nothing stays mapped.
     pub fn map_shared(&self, va: u64, frames: &[u64], writable: bool, what: crate::memfd::Backing) -> bool {
         let end = va + frames.len() as u64 * 4096;
+        // write-combining objects: past the caches (PAT entry 1, see `arch::pat_setzen`)
+        let wc = matches!(&what, crate::memfd::Backing::Obj(o, ..) if o.write_combining());
+        let cache = if wc { super::PWT } else { 0 };
         {
             let mut l = self.shared.lock();
             if !crate::mem::try_reserve(&mut l, 1) {
@@ -23,7 +26,7 @@ impl AddrSpace {
                 self.unmap_shared(va, end - va);
                 return false;
             };
-            *e = pa | P | U | if writable { W } else { 0 } | nx();
+            *e = pa | P | U | cache | if writable { W } else { 0 } | nx();
         }
         true
     }

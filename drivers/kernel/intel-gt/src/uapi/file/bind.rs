@@ -66,7 +66,11 @@ impl<B: Backend> File<B> {
 
     /// Maps `range` bytes of buffer `handle` from `offset` at `addr`.
     fn bind_buffer(&mut self, be: &mut B, vm_id: u32, handle: u32, (offset, range, addr): (u64, u64, u64), pat: u8) -> Result<(), Errno> {
-        let (buffer, size, owner) = self.buffers.get(&handle).ok_or(Errno::NoEnt)?;
+        let (buffer, size, owner, wc) = self.buffers.get(&handle).ok_or(Errno::NoEnt)?;
+        // memory the CPU caches must be seen coherently by the GT (as Linux requires)
+        if !*wc && !PAT_COHERENT.contains(&pat) {
+            return Err(Errno::Inval);
+        }
         let aligned = (range | addr | offset) % PAGE == 0 && range != 0;
         let fits = offset.checked_add(range).is_some_and(|e| e <= *size)
             && addr.checked_add(range).is_some_and(|e| e <= VA_END);

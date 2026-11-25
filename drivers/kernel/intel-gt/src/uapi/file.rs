@@ -19,7 +19,9 @@ pub trait Backend {
     /// A buffer: memory pages that stay where they are while a clone of this lives.
     type Buffer: Clone;
     /// A zeroed buffer of `size` bytes (a multiple of the page size).
-    fn buffer_new(&mut self, size: u64) -> Result<Self::Buffer, Errno>;
+    /// `write_combining`: the program maps it write-combining (not through the CPU's caches),
+    /// so the GT may read it without looking into them.
+    fn buffer_new(&mut self, size: u64, write_combining: bool) -> Result<Self::Buffer, Errno>;
     /// The buffer's memory pages, in order.
     fn buffer_pages(&self, b: &Self::Buffer) -> Vec<u64>;
     /// A new address space; returns its number.
@@ -57,6 +59,10 @@ const MAX_BINDS: usize = 16384;
 const MAX_BIND_OPS: u32 = 256;
 const MAX_FENCES: usize = 1024;
 const VA_END: u64 = 1 << 48;
+/// `DRM_XE_GEM_CPU_CACHING_WC`.
+const CACHING_WC: u16 = 2;
+/// Cache attributes (PAT index) with which the GT looks into the CPU's caches (Xe_LPG: 3, 4).
+const PAT_COHERENT: [u8; 2] = [3, 4];
 /// `DRM_XE_ENGINE_CLASS_VM_BIND`: not an engine – a queue that only takes binds.
 const ENGINE_CLASS_VM_BIND: u16 = 5;
 
@@ -92,7 +98,8 @@ struct Fence {
 
 /// The state behind one open of the render node.
 pub struct File<B: Backend> {
-    buffers: BTreeMap<u32, (B::Buffer, u64, u32)>,
+    /// Buffer, size, address space it is private to (0: none), write-combining.
+    buffers: BTreeMap<u32, (B::Buffer, u64, u32, bool)>,
     vms: BTreeMap<u32, Vm<B>>,
     queues: BTreeMap<u32, Queue>,
     pub(super) syncs: BTreeMap<u32, SyncObj>,
@@ -164,7 +171,7 @@ impl<B: Backend> File<B> {
         if offset & 0xffff_ffff != 0 {
             return None;
         }
-        let (b, size, _) = self.buffers.get(&((offset >> 32) as u32))?;
+        let (b, size, _, _) = self.buffers.get(&((offset >> 32) as u32))?;
         Some((b, *size))
     }
 
@@ -209,9 +216,10 @@ impl<B: Backend> File<B> {
         if self.buffers.len() >= MAX_BUFFERS {
             return Err(Errno::NoMem);
         }
-        let buffer = be.buffer_new(size)?;
+        let wc = caching == CACHING_WC;
+        let buffer = be.buffer_new(size, wc)?;
         let handle = self.id();
-        self.buffers.insert(handle, (buffer, size, vm));
+        self.buffers.insert(handle, (buffer, size, vm, wc));
         put32(arg, 28, handle);
         Ok(())
     }

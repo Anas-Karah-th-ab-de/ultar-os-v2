@@ -277,8 +277,9 @@ extern "sysv64" fn ap_main() -> ! {
         arch::load_tss(idx);
         arch::load_idt_ap();
         crate::trap::init_msrs();
-        // Schutzbits wie auf dem ersten Kern
+        // Schutzbits und Speichertypen wie auf dem ersten Kern
         arch::haerten();
+        arch::pat_setzen();
     }
     enable_local();
     wr(0x3E0, 0x3);
