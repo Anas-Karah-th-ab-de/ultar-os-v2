@@ -7,7 +7,7 @@
 
 use super::{click, open, setup::Run, texts};
 use std::time::Duration;
-use ultar_bus::messages::settings::{Changed, Get, SettingValue};
+use ultar_bus::messages::settings::{Changed, Get, Set, SettingValue};
 use ultar_bus::{Client, TypedSubscription};
 use ultar_desktop::app::desktop::link::apply_setting;
 use ultar_desktop::model::search::{search_in, Hit};
@@ -18,8 +18,10 @@ use ultar_settings::action::Act;
 use ultar_settings::areas::index_of;
 use ultar_settings::App;
 use ultar_surface::proto::Request;
-use ultar_ui::event::{Event, PointerButton};
+use ultar_ui::event::{Event, Key, Modifiers, PointerButton};
 use ultar_ui::Size;
+use ultar_update::policy::Policy;
+use ultar_update::settings::{Ceiling, UpdateSettings};
 
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -287,11 +289,107 @@ fn storage(bus: &Client, run: &Run) -> Result<(), String> {
     Ok(())
 }
 
+/// Types `text` into the row's field (select all, type, Enter) and returns the stored value.
+fn edit(
+    app: &mut App,
+    admin: &Client,
+    panel: &str,
+    key: &str,
+    text: &str,
+) -> Result<SettingValue, String> {
+    let node = control(app, panel, key)?;
+    click(app, node)?;
+    let ctrl_a = Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    };
+    let press = |app: &mut App, key, modifiers| {
+        app.handle(Event::Key { key, modifiers })
+            .map_err(|e| format!("{e:?}"))
+    };
+    press(app, Key::Char('a'), ctrl_a)?;
+    for c in text.chars() {
+        press(app, Key::Char(c), Modifiers::NONE)?;
+    }
+    press(app, Key::Enter, Modifiers::NONE)?;
+    let reply = admin
+        .call(&Get { key: key.into() }, WAIT)
+        .map_err(|e| format!("get {e}"))?;
+    reply.value.ok_or(format!("{key}: no value"))
+}
+
+/// What the update service does with a change it is told about: its settings follow, and its
+/// own code maps them onto the policy under the administrator's ceiling.
+struct Updater<'a> {
+    told: &'a Follower,
+    settings: UpdateSettings,
+}
+
+impl Updater<'_> {
+    fn follow(&mut self, key: &str, value: SettingValue) -> Result<(), String> {
+        self.told.told(key, &value)?;
+        self.settings
+            .take(key, &value)
+            .then_some(())
+            .ok_or(format!("the update service ignores {key}={value:?}"))
+    }
+}
+
+/// Updates page: the switches and the window through the page, the administrator-only channel
+/// as the administrator; the update service's settings follow and become its policy.
+fn updates(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
+    let updated = Follower::connect(run, "the update service", "updated")?;
+    let mut u = Updater {
+        told: &updated,
+        settings: UpdateSettings::default(),
+    };
+    let mut app = page(bus, run, "updates")?;
+    for key in [
+        "updates.auto_system",
+        "updates.metered",
+        "updates.offline_usb",
+        "updates.notify",
+    ] {
+        let value = change((&mut app, admin), ("updates", key), None)?;
+        u.follow(key, value)?;
+    }
+    let from = edit(&mut app, admin, "updates", "updates.window.from", "01:00")?;
+    u.follow("updates.window.from", from)?;
+    let until = edit(&mut app, admin, "updates", "updates.window.until", "04:30")?;
+    u.follow("updates.window.until", until)?;
+    // The channel is administrator-only (the page shows it read-only); set it as one.
+    let channel = SettingValue::Text("preview".into());
+    admin
+        .call(
+            &Set {
+                key: "updates.channel".into(),
+                value: channel.clone(),
+            },
+            WAIT,
+        )
+        .map_err(|e| format!("set channel {e}"))?;
+    u.follow("updates.channel", channel)?;
+
+    let p = u.settings.policy(&Policy::default(), &Ceiling::default());
+    if p.automatic || !p.allow_metered || p.channel != "preview" || p.window != Some((60, 270)) {
+        return Err(format!("the update policy is {p:?}"));
+    }
+    if u.settings.offline_usb || u.settings.notify {
+        return Err("the drive offer / notifications were not switched off".into());
+    }
+    println!(
+        "SETTINGS: updates page -> update service: automatic off, window 01:00–04:30, preview \
+         channel, metered allowed, drive offer and notifications off"
+    );
+    Ok(())
+}
+
 /// Everything above.
 pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     let displayd = Follower::connect(run, "the display service", "displayd")?;
     let desktop = Follower::connect(run, "the shell", "desktop")?;
     input(bus, admin, run, &displayd)?;
     shell(bus, admin, run, &desktop)?;
-    storage(bus, run)
+    storage(bus, run)?;
+    updates(bus, admin, run)
 }

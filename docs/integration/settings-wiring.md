@@ -22,6 +22,7 @@ before and are not part of this rule.
 | Apps | installed apps with their declared permissions; switching one off takes it back | launcher | `launcher.list`, `launcher.permissions`, `launcher.revoke` (granting stays with the system dialog) | settings `tests/groups.rs` (fake service) |
 | Users | add, remove, change password | account service | `account.users_list`, `account.user_create`, `account.user_remove`, `account.user_password`; the account service asks for the administrator in the system dialog | settings `tests/groups.rs` (fake service) |
 | Updates | "Check now", "Update from a drive", state line | update service | `update.check`, `update.offline`, `update.progress` | settings `tests/groups.rs` (fake service) |
+| Updates | `updates.auto_system`, `.window.from`, `.window.until`, `.channel`, `.metered`, `.offline_usb`, `.notify` | update service | reads them at start and on `settings.changed` and maps them onto its policy under the ceiling of `/etc/ultar/update.conf`; `notify` posts through notifyd, `offline_usb` offers a bundle from a plugged-in drive | ultar-update `tests/settings_follow.rs` (real bus), settings-e2e |
 
 Limits that are part of the truth:
 
@@ -31,8 +32,18 @@ Limits that are part of the truth:
   driver's own repeat. A driver that reports no event times is passed through unchanged.
 - Large text, high contrast and reduced motion reach the shell, the lock screen and the Settings
   window. Other apps follow once they read the settings (app bus access, branch build/appbus).
-- The Apps, Users and Updates sections are tested against fake services only: the kernel run
-  (settings-e2e) starts no launcher, account or update service.
+- The Apps and Users sections are tested against fake services only: the kernel run
+  (settings-e2e) starts no launcher or account service. The Updates page's actions (check,
+  offline) use a fake update service; its wired settings are checked with the update service's
+  own code over the real bus (as the display service's are) and in ultar-update
+  `tests/settings_follow.rs`.
+- The update settings are the one source the person sees: at start and on every change they
+  overwrite the mapped policy fields (`automatic`, `window`, `channel`, `allow_metered`).
+  `/etc/ultar/update.conf` is the administrator's ceiling (`allow_automatic`, `allow_metered`,
+  `channels`): a setting cannot allow what the file forbids; a forbidden channel falls back to
+  the first allowed one. The rate limit and `uupdate policy set` remain for what the page does
+  not offer. The window is UTC, as the policy and the system clock are (the time zone setting
+  is not wired yet). `updates.notify` also gates the drive offer (it is a notification).
 
 ## 2. Shown disabled with the note "Not yet available in this version"
 
@@ -61,7 +72,7 @@ Nothing in the system follows these yet. Each line says what it waits for.
 | Apps | `apps.default.*`, `apps.removable_media`, `apps.autostart` | the launcher's bus contract has no table of default apps and no autostart list |
 | Users | `users.list_on_login`, `.guest`, `.auto_login`, `.new_kind`, `.parental*` | the lock screen and the account service do not read them (automatic sign-in is `account.user_auto_login` per user; not on the page yet) |
 | Storage | `storage.clean_*`, `.low_space_percent`, `.automount`, `.trim` | a clean-up job; volumed mounts every removable drive of the person in front |
-| Updates | `updates.auto_*`, `.window.*`, `.channel`, `.metered`, `.offline_usb`, `.notify` | the update service has its own policy (`update.get_policy`, `/etc/ultar/update.conf`) and does not read the settings |
+| Updates | `updates.auto_apps` | app updates belong to the launcher and the Store; the system updater installs only system images (kernel/system/boot roles) and the launcher has no automatic app-update path |
 
 ### SSH
 
@@ -98,6 +109,7 @@ they say when their service or adapter is missing.
 | `Request::ConfigureKeyRepeat { enabled, delay_ms, per_second }` (opcode 44) | the same, `state/key_repeat.rs` | the same |
 | `volumes.usage` → `UsageReply { places: [{id, name, total_bytes, free_bytes}] }` (`internal` first) | `ultar-bus/src/messages/volumes.rs`, `ultar-volumed/src/service.rs` | bus rule `app.settings` |
 | Bus rule `app.settings` | `rootfs/etc/ultar/bus-policy.toml` | new calls: `update.check`, `launcher.list`, `launcher.permissions`, `launcher.revoke` (never `launcher.grant`), `volumes.usage`; new topic: `update.progress` |
+| Bus rule `system.updated` | `rootfs/etc/ultar/bus-policy.toml`, `services/bus.toml` | `settings.get` + `settings.changed` (the `updates.*` policy), `notify.post` (the notifications), `volumes.state` (the drive offer); own root-only socket `updated.sock` |
 
 Adding a wired setting: make its service follow it, add the key to `WIRED`, add the change through
 its page and the check of its effect to `tools/settings-e2e/examples/settingstest/wired.rs`, and move
