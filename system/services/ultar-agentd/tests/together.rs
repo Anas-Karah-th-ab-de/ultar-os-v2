@@ -12,12 +12,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use ultar_bus::messages::agent::{AgentState, Answer, Ask, Brain, StepOutcome};
+use ultar_bus::messages::agent::{AgentState, Answer, Ask, Brain, StepOutcome, ACT_KEY};
 use ultar_bus::messages::audio::{AudioOutcome, AudioReply, SetMute};
 use ultar_bus::messages::launcher::{AppStatus, InstanceState, List, ListReply, Start, StartReply};
 use ultar_bus::messages::mesh::{
     Done, MeshState, PairBegin, PairJoin, Right, SetEnabled, SetRights,
 };
+use ultar_bus::messages::settings::{Get, GetReply, SettingValue};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
 
@@ -130,6 +131,12 @@ fn stand_ins(world: &World, seen: &Seen) {
             });
         }
     });
+    // the person switched acting on (`assistant.act`); nothing else is set
+    world.serve("system.settingsd", "settings", move |request| {
+        let acts = request.decode::<Get>().is_ok_and(|get| get.key == ACT_KEY);
+        let value = acts.then_some(SettingValue::Flag(true));
+        let _ = request.reply(&GetReply { value });
+    });
     let s = seen.clone();
     world.serve("system.audiod", "audio", move |request| {
         if let Ok(mute) = request.decode::<SetMute>() {
@@ -192,6 +199,7 @@ fn device(tag: &str, name: &str, kind: &str, ports: (u16, u16), model: Option<&S
     let (mesh, llm_bus) = programs();
     let policy = std::fs::read_to_string(repo().join("rootfs/etc/ultar/bus-policy.toml")).unwrap();
     let identities = [
+        "system.settingsd",
         "system.mesh",
         "system.agentd",
         "system.llmbus",

@@ -80,6 +80,9 @@ fn smallest(request: &str, toolbox: &dyn Toolbox, limits: &Limits) -> (Text, Vec
     let reads = tools::find(&call.tool).is_some_and(|t| t.risk == tools::Risk::Reads);
     let text = if reads && outcome == StepOutcome::Done {
         says("agent.says").with(TextArg::Verbatim(told))
+    } else if limits.read_only && !reads {
+        // The person can change that: say where.
+        says("agent.act_off")
     } else {
         says(outcome_key(outcome))
     };
@@ -270,7 +273,7 @@ mod tests {
             read_only: true,
         };
         let refused = answer("mute", Brain::Minimal, &script(&[]), &notes, &look);
-        assert_eq!(refused.text.key, "agent.not_allowed");
+        assert_eq!(refused.text.key, "agent.act_off");
         assert!(!model::system_prompt(&look).contains("- wifi("));
         assert!(model::system_prompt(&look).contains("- network_status("));
     }

@@ -6,11 +6,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use ultar_bus::messages::agent::ACT_KEY;
 use ultar_bus::messages::agent::{Activity, Answer, Area, Ask, ClearActivity, Reach, StepOutcome};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
 use ultar_bus::messages::settings::{
-    Changed, ItemInfo, ItemKind, ListReply, ListRequest, PanelInfo, RiskInfo, ScopeInfo, Set,
-    SetReply, SettingValue,
+    Changed, Get, GetReply, ItemInfo, ItemKind, ListReply, ListRequest, PanelInfo, RiskInfo,
+    ScopeInfo, Set, SetReply, SettingValue,
 };
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
 use ultar_bus::{BusError, Call, Client, ErrorCode, Text, Topic};
@@ -44,6 +45,8 @@ struct Seen {
     script: Mutex<Vec<&'static str>>,
     set: Mutex<Vec<(String, SettingValue)>>,
     confirm: AtomicBool,
+    /// The person switched acting on.
+    acts: AtomicBool,
     asked_to_confirm: Mutex<Vec<String>>,
 }
 
@@ -105,7 +108,7 @@ fn serve_model(world: &World, seen: &Arc<Seen>) {
     });
 }
 
-fn bench(tag: &str) -> Bench {
+fn bench_with(tag: &str, acts: bool) -> Bench {
     let ids = [
         "system.agentd",
         "system.stand_in",
@@ -114,11 +117,17 @@ fn bench(tag: &str) -> Bench {
     ];
     let world = World::new(tag, POLICY, &ids);
     let seen = Arc::new(Seen::default());
+    seen.acts.store(acts, Ordering::SeqCst);
     serve_model(&world, &seen);
     let s = seen.clone();
     world.serve("system.stand_in", "settings", move |request| {
         if request.method() == ListRequest::METHOD {
             let _ = request.reply(&ListReply { panels: panels() });
+        } else if request.method() == Get::METHOD {
+            // the person switched acting on; nothing else is set
+            let acts = request.decode::<Get>().is_ok_and(|get| get.key == ACT_KEY);
+            let value = (acts && s.acts.load(Ordering::SeqCst)).then_some(SettingValue::Flag(true));
+            let _ = request.reply(&GetReply { value });
         } else if let Ok(set) = request.decode::<Set>() {
             s.set.lock().unwrap().push((set.key, set.value));
             let _ = request.reply(&SetReply { changed: true });
@@ -156,6 +165,12 @@ fn bench(tag: &str) -> Bench {
         stand_in,
         seen,
     }
+}
+
+fn bench(tag: &str) -> Bench {
+    let b = bench_with(tag, true);
+    latest::<Reach>(&b.settings, |r| r.acts);
+    b
 }
 
 fn call<C: Call>(client: &Client, c: &C) -> Result<C::Reply, BusError> {
@@ -270,6 +285,33 @@ fn the_person_switches_an_area_off_and_reads_and_forgets_what_the_helper_did() {
     assert!(call(&b.shell, &ClearActivity {}).is_err());
     assert!(call(&b.settings, &ClearActivity {}).unwrap().ok);
     latest::<Activity>(&b.settings, |a| a.entries.is_empty());
+}
+
+#[test]
+fn until_the_person_switches_acting_on_the_helper_only_looks() {
+    let b = bench_with("agent-reach-look", false);
+    let closed = latest::<Reach>(&b.settings, |r| !r.areas.is_empty());
+    assert!(!closed.acts);
+    let refused = ask(&b, "dark please", &set_script("appearance.dark"));
+    assert_eq!(refused.steps[0].outcome, StepOutcome::NotAllowed);
+    assert!(b.seen.set.lock().unwrap().is_empty());
+    let look = [
+        "{\"tool\":\"setting_get\",\"args\":{\"key\":\"appearance.dark\"}}",
+        "{\"say\":\"off\"}",
+    ];
+    assert_eq!(
+        ask(&b, "is it dark?", &look).steps[0].outcome,
+        StepOutcome::Done
+    );
+    // the person switches it on: the helper follows at once
+    let on = Changed {
+        key: ACT_KEY.into(),
+        value: SettingValue::Flag(true),
+    };
+    b.stand_in.publish(&on).unwrap();
+    latest::<Reach>(&b.settings, |r| r.acts);
+    let done = ask(&b, "dark please", &set_script("appearance.dark"));
+    assert_eq!(done.steps[0].outcome, StepOutcome::Done);
 }
 
 /// Media, power, session and notifications answer only callers the shipped rules mark as

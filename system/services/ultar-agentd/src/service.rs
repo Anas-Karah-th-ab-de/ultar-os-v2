@@ -37,6 +37,8 @@ pub struct AgentService {
     limits: Limits,
     reach: Option<Reach>,
     log: Log,
+    /// The settings service told what the person allowed.
+    settings_known: bool,
 }
 
 /// The setting that says how many days the list of what was done is kept.
@@ -52,6 +54,11 @@ impl AgentService {
     pub fn new(dir: Option<&Path>) -> Self {
         Self {
             log: Log::open(dir),
+            // Acting is off until the person switched it on (`assistant.act`).
+            limits: Limits {
+                off: Vec::new(),
+                read_only: true,
+            },
             ..Self::default()
         }
     }
@@ -86,18 +93,26 @@ impl AgentService {
         }
     }
 
-    /// Reads the helper's settings once at start (none without a settings service: then
-    /// every area is open and the list is kept for the default time).
-    fn read_settings(bus: &Bus<'_, Self>) {
+    /// Reads the helper's settings (at start, and again until the settings service
+    /// answered). Until then the helper only looks: it never acts on a guess of what the
+    /// person allowed.
+    fn read_settings(&self, bus: &Bus<'_, Self>) {
+        if self.settings_known {
+            return;
+        }
         let _ = bus.later(|client| {
             let mut keys: Vec<String> = Area::ALL.into_iter().filter_map(Area::setting).collect();
             keys.extend([HISTORY_KEY.to_owned(), ACT_KEY.to_owned()]);
-            let read = keys.into_iter().filter_map(|key| {
-                let reply = client.call(&Get { key: key.clone() }, CALL_TIME);
-                Some((key, reply.ok()?.value?))
-            });
-            let values: Vec<(String, SettingValue)> = read.collect();
+            let mut answered = false;
+            let mut values: Vec<(String, SettingValue)> = Vec::new();
+            for key in keys {
+                if let Ok(reply) = client.call(&Get { key: key.clone() }, CALL_TIME) {
+                    answered = true;
+                    values.extend(reply.value.map(|value| (key, value)));
+                }
+            }
             Box::new(move |service: &mut Self, bus: &Bus<'_, Self>| {
+                service.settings_known |= answered;
                 for (key, value) in &values {
                     service.setting(key, value, bus);
                 }
@@ -208,7 +223,7 @@ impl Service for AgentService {
         self.publish(bus);
         self.publish_reach(bus);
         bus.retain(self.log.list());
-        Self::read_settings(bus);
+        self.read_settings(bus);
         self.look(bus);
     }
 
@@ -251,6 +266,7 @@ impl Service for AgentService {
     }
 
     fn tick(&mut self, bus: &Bus<'_, Self>) {
+        self.read_settings(bus);
         self.look(bus);
     }
 }

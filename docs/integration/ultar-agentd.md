@@ -114,7 +114,9 @@ des Systems (281 Schlüssel). Darum hat sie die meisten Regeln (`src/toolbox_sys
 
 ### Was die Person schließen kann
 
-- `assistant.act` (jetzt **an** als Vorgabe): aus = der Helfer sieht nur nach und erklärt.
+- `assistant.act` (Vorgabe **aus**, Entscheidung des Eigentümers): Bis die Person es einschaltet, sieht der Helfer
+  nur nach und erklärt. Erreicht er den Einstellungsdienst nicht, bleibt es dabei (er handelt nie auf Verdacht) und
+  fragt alle 5 s erneut. Ohne Modell sagt er, wo man es einschaltet (`agent.act_off`).
 - `assistant.reach.<bereich>` (neun Schalter, Vorgabe an): ein geschlossener Bereich lehnt jedes Werkzeug darin
   ab – mit und ohne Modell; das Modell bekommt dessen Werkzeuge gar nicht erst genannt.
 - `assistant.history_days`: wie lange die Liste bleibt; 0 = nichts behalten.

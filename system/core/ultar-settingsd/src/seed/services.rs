@@ -147,9 +147,10 @@ pub(super) fn assistant() -> Vec<SettingDef> {
         SettingDef::choice("assistant.model", P, &["small", "medium", "large"], "small"),
         SettingDef::text("assistant.model_place", P, TextFormat::Path, ""),
         SettingDef::flag("assistant.see_screen", P, false),
-        // The helper acts (ultar-agentd). Off: it only looks and explains. What is
-        // dangerous always asks first; the helper itself can change none of these.
-        SettingDef::flag("assistant.act", P, true),
+        // The helper acts (ultar-agentd) only after the person switched this on; until
+        // then it only looks and explains. What is dangerous always asks first; the
+        // helper itself can change none of these.
+        SettingDef::flag("assistant.act", P, false),
         SettingDef::flag("assistant.reach.apps", P, true),
         SettingDef::flag("assistant.reach.settings", P, true),
         SettingDef::flag("assistant.reach.network", P, true),

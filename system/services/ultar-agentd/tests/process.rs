@@ -5,13 +5,16 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
-use ultar_bus::messages::agent::{AgentState, Answer, Area, Ask, Brain, Step, StepOutcome};
+use ultar_bus::messages::agent::{
+    AgentState, Answer, Area, Ask, Brain, Reach, Step, StepOutcome, ACT_KEY,
+};
 use ultar_bus::messages::audio::{AudioOutcome, AudioReply, SetMute};
 use ultar_bus::messages::launcher::{InstanceState, Start, StartReply};
 use ultar_bus::messages::llm::{Complete, Completion, LlmState, ModelClass};
 use ultar_bus::messages::mesh_model::{Lender, ModelList, Models, Think, Thought};
 use ultar_bus::messages::mesh_remote::{Act, Acted};
 use ultar_bus::messages::power::{ActionOutcome, ActionReply, PowerOff};
+use ultar_bus::messages::settings::{Get, GetReply, SettingValue};
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate, AuthenticateReply};
 use ultar_bus::{BusError, Call, Client, ErrorCode};
 use ultar_svckit::testkit::{wait_until, Daemon, World, WAIT};
@@ -25,17 +28,17 @@ subscribe = ["llm.state", "mesh.state", "llmcloud.state", "settings.changed"]
 call = ["launcher.list", "launcher.start", "audio.set_volume", "audio.set_mute", "net.set_wifi",
         "mesh.models", "mesh.think", "mesh.handoff_send", "mesh.send_file", "mesh.act",
         "llm.complete", "llmcloud.complete",
-        "sysdialog.authenticate", "power.restart", "power.off"]
+        "sysdialog.authenticate", "power.restart", "power.off", "settings.get"]
 
 [[rule]]
 identity = "system.stand_in"
-register = ["launcher", "audio", "mesh", "llm", "llmcloud", "sysdialog", "power"]
+register = ["launcher", "audio", "mesh", "llm", "llmcloud", "sysdialog", "power", "settings"]
 publish = ["llm.state", "llmcloud.state"]
 
 [[rule]]
 identity = "system.shell"
 call = ["agent.ask"]
-subscribe = ["agent.state"]
+subscribe = ["agent.state", "agent.reach"]
 "#;
 
 fn call<C: Call>(client: &Client, c: &C) -> Result<C::Reply, BusError> {
@@ -77,6 +80,15 @@ fn next(seen: &Seen) -> String {
     } else {
         script.remove(0).to_owned()
     }
+}
+
+/// The settings: the person switched acting on.
+fn serve_settings(world: &World) {
+    world.serve("system.stand_in", "settings", move |request| {
+        let acts = request.decode::<Get>().is_ok_and(|get| get.key == ACT_KEY);
+        let value = acts.then_some(SettingValue::Flag(true));
+        let _ = request.reply(&GetReply { value });
+    });
 }
 
 fn serve_actions(world: &World, seen: &Arc<Seen>) {
@@ -175,6 +187,7 @@ fn bench(tag: &str, lender: Option<ModelClass>, local: Option<ModelClass>) -> Be
         &["system.agentd", "system.stand_in", "system.shell"],
     );
     let seen = Arc::new(Seen::default());
+    serve_settings(&world);
     serve_actions(&world, &seen);
     serve_models(&world, &seen, lender);
     let stand_in = world.client("system.stand_in");
@@ -188,6 +201,12 @@ fn bench(tag: &str, lender: Option<ModelClass>, local: Option<ModelClass>) -> Be
     }
     let daemon = world.spawn(env!("CARGO_BIN_EXE_ultar-agentd"), "system.agentd", &[]);
     let shell = world.client("system.shell");
+    let reach = shell.subscribe::<Reach>().unwrap();
+    let acts = || matches!(reach.try_recv(), Ok(Some(r)) if r.acts);
+    assert!(
+        wait_until(WAIT, acts),
+        "the helper never learned it may act"
+    );
     Bench {
         world,
         _daemon: daemon,
@@ -330,6 +349,7 @@ fn every_text_the_helper_can_say_exists_in_all_three_languages() {
         "agent.not_allowed",
         "agent.says",
         "agent.too_many_steps",
+        "agent.act_off",
         "agent.minimal.help",
         "agent.action.restart",
         "agent.action.power_off",
