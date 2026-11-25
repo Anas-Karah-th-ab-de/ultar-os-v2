@@ -196,6 +196,10 @@ pub enum Target {
     SheetClose,
     /// Top bar: the menu of the active app.
     AppMenu,
+    /// On-screen keyboard: a key (row, index in the row of `ultar_ime::rows`).
+    OskKey(usize, usize),
+    /// On-screen keyboard: a word suggestion (index).
+    OskSuggestion(usize),
     /// A notification's action button (notification id, action index).
     NoteAction(u64, u8),
     /// Lock screen: a control of the playing medium (0 previous, 1 play/pause, 2 next).

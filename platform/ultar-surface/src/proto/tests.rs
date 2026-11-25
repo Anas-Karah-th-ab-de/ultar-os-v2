@@ -39,6 +39,7 @@ fn sample_requests() -> Vec<Request> {
         Request::StartDrag { serial: 3, mimes: mimes() },
         Request::ReadDrop { mime: "image/png".into() },
         Request::TextInput { surface: s, enabled: true, purpose: 2 },
+        Request::ImeKey { key: ImeKey::Backspace },
         Request::ImeCommit { text: "سلام\n".into() },
         Request::Capture { output: OutputId(0) },
         Request::Unlock { surface: s },

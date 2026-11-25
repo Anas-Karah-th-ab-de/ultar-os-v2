@@ -48,6 +48,8 @@ pub struct Host {
     caps_lock: bool,
     /// Where a primary press began that no node took.
     press: Option<(SurfaceId, ultar_ui::geom::Point)>,
+    /// The kind of each surface's focused text field last told to the compositor.
+    text_fields: BTreeMap<SurfaceId, u8>,
 }
 
 impl std::fmt::Debug for Host {
@@ -74,6 +76,7 @@ impl Host {
             serial: None,
             caps_lock: false,
             press: None,
+            text_fields: BTreeMap::new(),
         }
     }
 
@@ -182,8 +185,33 @@ impl Host {
                     .map(|a| HostEvent::Action(*id, a)),
             );
         }
+        self.announce_text_fields()?;
         self.draw()?;
         Ok(out)
+    }
+
+    /// Tells the compositor when a surface's focus enters or leaves a text field (the
+    /// on-screen keyboard follows it: the search field, the lock screen's password).
+    fn announce_text_fields(&mut self) -> Result<(), ClientError> {
+        use ultar_surface::ui::text_input;
+        for (id, s) in &self.surfaces {
+            let now = text_input::focused(&s.view.ui);
+            if self.text_fields.get(id).copied() == now {
+                continue;
+            }
+            match now {
+                Some(kind) => self.text_fields.insert(*id, kind),
+                None => self.text_fields.remove(id),
+            };
+            self.client.send(&Request::TextInput {
+                surface: *id,
+                enabled: now.is_some(),
+                purpose: now.unwrap_or(text_input::TEXT),
+            })?;
+        }
+        self.text_fields
+            .retain(|id, _| self.surfaces.contains_key(id));
+        Ok(())
     }
 
     /// Paints every surface that changed.
@@ -194,15 +222,8 @@ impl Host {
         Ok(())
     }
 
-    fn handle(&mut self, event: &Event, out: &mut Vec<HostEvent>) -> Result<(), ClientError> {
-        if let Event::BufferReleased { .. } = event {
-            let _ = self.surfaces.values_mut().any(|s| s.window.handle(event));
-            return Ok(());
-        }
-        if let Event::Key { modifiers, .. } = event {
-            self.caps_lock = modifiers.has(ultar_surface::proto::Modifiers::CAPS_LOCK);
-        }
-        let target = surface_of(event);
+    /// Remembers the serial of the user's last press or key (activation tokens).
+    fn note_serial(&mut self, event: &Event) {
         if let Event::PointerButton {
             serial,
             pressed: true,
@@ -214,6 +235,18 @@ impl Host {
         {
             self.serial = Some(*serial);
         }
+    }
+
+    fn handle(&mut self, event: &Event, out: &mut Vec<HostEvent>) -> Result<(), ClientError> {
+        if let Event::BufferReleased { .. } = event {
+            let _ = self.surfaces.values_mut().any(|s| s.window.handle(event));
+            return Ok(());
+        }
+        if let Event::Key { modifiers, .. } = event {
+            self.caps_lock = modifiers.has(ultar_surface::proto::Modifiers::CAPS_LOCK);
+        }
+        let target = surface_of(event);
+        self.note_serial(event);
         let Some(id) = target.filter(|id| self.surfaces.contains_key(id)) else {
             out.push(HostEvent::Compositor(event.clone()));
             return Ok(());
@@ -221,6 +254,12 @@ impl Host {
         let Some(s) = self.surfaces.get_mut(&id) else {
             return Ok(());
         };
+        if let Event::Text { text, .. } = event {
+            // Typed on the on-screen keyboard: into the focused field, like a paste.
+            let actions = s.view.ui.paste(text);
+            out.extend(actions.into_iter().map(|a| HostEvent::Action(id, a)));
+            return Ok(());
+        }
         if s.window.handle(event) {
             if let Event::Configure(c) = event {
                 let before = s.view.ui.size();

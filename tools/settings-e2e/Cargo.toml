@@ -19,6 +19,8 @@ ultar-surface = { path = "../../platform/ultar-surface" }
 ultar-ui = { path = "../../platform/ultar-ui" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
+# The on-screen keyboard's own code checks its settings (keys, suggestions).
+ultar-ime = { path = "../../platform/ultar-ime" }
 ultar-update = { path = "../../system/core/ultar-update" }
 # The Store follows updates.auto_apps (the example checks the Store's own code).
 ultar-store = { path = "../../apps/ultar-store", features = ["bus"] }

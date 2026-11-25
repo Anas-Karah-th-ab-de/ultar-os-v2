@@ -26,8 +26,15 @@ path = "src/bin/ultar-lock.rs"
 name = "ultar-sysdialog"
 path = "src/bin/ultar-sysdialog.rs"
 
+# The on-screen keyboard (role: input panel, right ui.input-method): layouts from ultar-ime,
+# suggestions and autocorrect from small word lists (assets/osk-words-*.txt).
+[[bin]]
+name = "ultar-osk"
+path = "src/bin/ultar-osk.rs"
+
 [dependencies]
 ultar-ui = { path = "../ultar-ui", default-features = false }
+ultar-ime = { path = "../ultar-ime" }
 ultar-surface = { path = "../ultar-surface" }
 ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-catalog = { path = "../../system/core/ultar-catalog" }

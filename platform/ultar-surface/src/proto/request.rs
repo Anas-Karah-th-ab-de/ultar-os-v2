@@ -196,6 +196,12 @@ pub enum Request {
         /// The text.
         text: String,
     },
+    /// An editing key typed on the on-screen keyboard (input method only): the focused
+    /// field gets it as a key press and release.
+    ImeKey {
+        /// The key.
+        key: super::ImeKey,
+    },
     /// Reads the pixels of an output (needs [`Rights::CAPTURE`]).
     Capture {
         /// The output.
@@ -432,6 +438,7 @@ impl Request {
             Request::ReadDrop { .. } => 22,
             Request::TextInput { .. } => 23,
             Request::ImeCommit { .. } => 24,
+            Request::ImeKey { .. } => 48,
             Request::Capture { .. } => 25,
             Request::Unlock { .. } => 26,
             Request::RequestActivation { .. } => 27,
@@ -583,6 +590,7 @@ impl Request {
             Request::ImeCommit { text } => {
                 w.str(text, MAX_IME_TEXT);
             }
+            Request::ImeKey { key } => key.encode(w),
             Request::Capture { output } => {
                 w.u32(output.0);
             }

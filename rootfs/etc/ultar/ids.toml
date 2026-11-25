@@ -47,6 +47,8 @@ agentd = 834
 llmbus = 835
 # The cloud model, the helper's last way to think (docs/integration/ultar-llm-cloud.md).
 llmcloud = 837
+# The on-screen keyboard (ultar-osk): compositor right ui.input-method only.
+osk = 839
 installer = 840
 nobody = 65534
 
@@ -105,6 +107,7 @@ accountrelay = ["accountd", "mesh"]
 agentd = ["busd", "logd"]
 llmbus = ["busd", "logd"]
 llmcloud = ["busd", "logd"]
+osk = ["busd"]
 
 [ranges]
 # User (and group) ids of apps: one per app, given by ultar-launcher at

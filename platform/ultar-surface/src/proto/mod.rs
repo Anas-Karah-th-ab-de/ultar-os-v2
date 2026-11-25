@@ -7,6 +7,7 @@
 
 mod event;
 mod event_codec;
+mod ime;
 mod input_config;
 mod key_helpers;
 mod outputs;
@@ -20,6 +21,7 @@ mod visual;
 mod windows;
 
 pub use event::{Configure, ErrorCode, Event, OutputInfo};
+pub use ime::ImeKey;
 pub use input_config::{
     PointerSize, SwitchShortcut, DEFAULT_DOUBLE_CLICK_MS, MAX_DOUBLE_CLICK_MS,
     MAX_KEY_REPEATS_PER_SECOND, MAX_KEY_REPEAT_DELAY_MS, MAX_POINTER_SPEED, MIN_DOUBLE_CLICK_MS,

@@ -11,6 +11,9 @@
 //! - `ultar-sysdialog`: permission prompts, the administrator password prompt and "keep
 //!   these display settings?" – role *system dialog* (right `ui.system-dialog`), inside the
 //!   compositor's trusted frame.
+//! - `ultar-osk`: the on-screen keyboard – role *input panel* (right `ui.input-method`); it
+//!   follows the focused text field (`ImeState`) and sends text (`ImeCommit`) and keys
+//!   (`ImeKey`) to it.
 //!
 //! Layers inside the crate: [`model`] (state without drawing), [`view`] (widget trees built
 //! from `ultar-ui` only), [`shell`] (what each click does), [`lock`] and [`dialog`] (their
@@ -26,6 +29,7 @@ pub mod host;
 pub mod i18n;
 pub mod lock;
 pub mod model;
+pub mod osk;
 pub mod ports;
 pub mod shell;
 pub mod view;

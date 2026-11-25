@@ -92,7 +92,7 @@ fn service(name: &str) -> Service {
 }
 
 /// User ids of the services with own bus sockets (their group ids are the same).
-const IDS: [(&str, i64); 27] = [
+const IDS: [(&str, i64); 28] = [
     ("bus", 801),
     ("logd", 802),
     ("settingsd", 803),
@@ -119,6 +119,7 @@ const IDS: [(&str, i64); 27] = [
     ("agentd", 834),
     ("llmbus", 835),
     ("llmcloud", 837),
+    ("osk", 839),
     ("installer", 840),
 ];
 

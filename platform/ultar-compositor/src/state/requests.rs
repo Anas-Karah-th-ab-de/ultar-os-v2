@@ -228,6 +228,7 @@ impl State {
                 Ok(())
             }
             Request::ImeCommit { text } => self.ime_commit(client, text),
+            Request::ImeKey { key } => self.ime_key(client, key),
             Request::Unlock { surface } => self.unlock(client, surface),
             Request::RequestActivation { serial } => {
                 self.request_activation(client, serial);

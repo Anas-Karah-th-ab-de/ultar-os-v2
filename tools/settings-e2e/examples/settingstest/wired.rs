@@ -7,6 +7,8 @@
 
 #[path = "wired_helpers.rs"]
 mod wired_helpers;
+#[path = "wired_osk.rs"]
+mod wired_osk;
 #[path = "wired_store.rs"]
 mod wired_store;
 
@@ -564,6 +566,7 @@ pub fn wired(bus: &Client, admin: &Client, run: &Run) -> Result<(), String> {
     super::access_visual::check(bus, admin, run, &desktop, &displayd)?;
     services::keyboard_layouts(bus, admin, run, &displayd, &desktop)?;
     services::assistant(bus, admin, run)?;
+    wired_osk::osk(bus, admin, run)?;
     crate::wired_users::users_emergency(bus, admin, run)
 }
 

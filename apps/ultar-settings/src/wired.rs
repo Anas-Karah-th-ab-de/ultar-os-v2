@@ -27,6 +27,13 @@ pub const CHECKED_PANELS: [&str; 17] = [
 
 /// Settings of those panels with an effect: who follows them.
 pub const WIRED: &[(&str, &str)] = &[
+    // The on-screen keyboard (ultar-osk) follows these: when it appears (automatic without
+    // a hardware keyboard, always, never; the accessibility switch shows it always), word
+    // suggestions and autocorrect.
+    ("keyboard.on_screen", "osk"),
+    ("keyboard.suggestions", "osk"),
+    ("keyboard.autocorrect", "osk"),
+    ("accessibility.on_screen_keyboard", "osk"),
     // ultar-llm-bus starts and stops the model service with it (`init.switch`) and lets
     // the largest installed model of the chosen size answer (`assistant.model`).
     ("assistant.enabled", "llm-bus"),
@@ -181,66 +188,74 @@ mod tests {
         }
     }
 
+    /// Settings of the checked panels whose service follows them.
+    const TAKING_EFFECT: &[&str] = &[
+        "pointer.speed",
+        "pointer.primary_button",
+        "pointer.acceleration",
+        "pointer.size",
+        "accessibility.large_pointer",
+        "accessibility.double_click_ms",
+        "accessibility.high_contrast",
+        "accessibility.reduce_motion",
+        // the keyboard helpers reach the compositor's key input path
+        "accessibility.sticky_keys",
+        "accessibility.slow_keys",
+        "accessibility.bounce_keys",
+        "accessibility.mouse_keys",
+        // the accessibility view: magnifier and colour filter in the compositor,
+        // the visual alert and the bar button in the shell
+        "accessibility.zoom",
+        "accessibility.zoom_percent",
+        "accessibility.colour_filter",
+        "accessibility.visual_alert",
+        "accessibility.show_in_bar",
+        "keyboard.repeat.delay_ms",
+        "keyboard.compose_key",
+        // the on-screen keyboard
+        "keyboard.on_screen",
+        "keyboard.suggestions",
+        "keyboard.autocorrect",
+        "accessibility.on_screen_keyboard",
+        "search.source.apps",
+        "search.source.characters",
+        "search.history",
+        // the Store installs app updates by itself
+        "updates.auto_apps",
+        "updates.auto_system",
+        "updates.window.from",
+        "updates.window.until",
+        "updates.channel",
+        "updates.metered",
+        "updates.offline_usb",
+        "updates.notify",
+        "apps.default.web",
+        "apps.default.documents",
+        "apps.removable_media",
+        "apps.autostart",
+        // volumed: low-space warning and automount; the launcher: the downloads clean-up
+        "storage.low_space_percent",
+        "storage.automount",
+        "storage.clean_downloads",
+        "storage.clean_downloads_days",
+        // the lock screen, the account, session and call services and this app
+        "users.list_on_login",
+        "users.auto_login",
+        "users.new_kind",
+        "users.parental",
+        "users.parental.from",
+        "users.parental.until",
+        "emergency.on_lock_screen",
+        "emergency.contact_name",
+        "emergency.contact_phone",
+        "emergency.medical",
+        "emergency.number",
+        "emergency.sos_light",
+    ];
+
     #[test]
     fn these_settings_take_effect() {
-        for key in [
-            "pointer.speed",
-            "pointer.primary_button",
-            "pointer.acceleration",
-            "pointer.size",
-            "accessibility.large_pointer",
-            "accessibility.double_click_ms",
-            "accessibility.high_contrast",
-            "accessibility.reduce_motion",
-            // the keyboard helpers reach the compositor's key input path
-            "accessibility.sticky_keys",
-            "accessibility.slow_keys",
-            "accessibility.bounce_keys",
-            "accessibility.mouse_keys",
-            // the accessibility view: magnifier and colour filter in the compositor,
-            // the visual alert and the bar button in the shell
-            "accessibility.zoom",
-            "accessibility.zoom_percent",
-            "accessibility.colour_filter",
-            "accessibility.visual_alert",
-            "accessibility.show_in_bar",
-            "keyboard.repeat.delay_ms",
-            "keyboard.compose_key",
-            "search.source.apps",
-            "search.source.characters",
-            "search.history",
-            // the Store installs app updates by itself
-            "updates.auto_apps",
-            "updates.auto_system",
-            "updates.window.from",
-            "updates.window.until",
-            "updates.channel",
-            "updates.metered",
-            "updates.offline_usb",
-            "updates.notify",
-            "apps.default.web",
-            "apps.default.documents",
-            "apps.removable_media",
-            "apps.autostart",
-            // volumed: low-space warning and automount; the launcher: the downloads clean-up
-            "storage.low_space_percent",
-            "storage.automount",
-            "storage.clean_downloads",
-            "storage.clean_downloads_days",
-            // the lock screen, the account, session and call services and this app
-            "users.list_on_login",
-            "users.auto_login",
-            "users.new_kind",
-            "users.parental",
-            "users.parental.from",
-            "users.parental.until",
-            "emergency.on_lock_screen",
-            "emergency.contact_name",
-            "emergency.contact_phone",
-            "emergency.medical",
-            "emergency.number",
-            "emergency.sos_light",
-        ] {
+        for key in TAKING_EFFECT {
             assert!(takes_effect(panel(key), key), "{key}");
         }
     }
@@ -282,14 +297,6 @@ mod tests {
         assert!(takes_effect("keyboard", "keyboard.switch_shortcut"));
         assert!(takes_effect("keyboard", "keyboard.per_window"));
         assert!(takes_effect("keyboard", "keyboard.input_languages"));
-        // The on-screen keyboard program is not on this branch (build/phonekb).
-        assert!(!takes_effect("keyboard", "keyboard.on_screen"));
-        assert!(!takes_effect("keyboard", "keyboard.suggestions"));
-        assert!(!takes_effect("keyboard", "keyboard.autocorrect"));
-        assert!(!takes_effect(
-            "accessibility",
-            "accessibility.on_screen_keyboard"
-        ));
         assert!(takes_effect("assistant", "assistant.model"));
         assert!(takes_effect("assistant", "assistant.see_screen"));
         assert!(takes_effect("assistant", "assistant.check_links"));
