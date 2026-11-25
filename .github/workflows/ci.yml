@@ -247,6 +247,6 @@ jobs:
       - name: Toolchain and emulator
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools tesseract-ocr tesseract-ocr-ara
+          sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools qemu-utils e2fsprogs tesseract-ocr tesseract-ocr-ara
       - name: Build, boot and test
         run: PATH=/usr/lib/rust-1.97/bin:$PATH tools/kern-test/ci.sh
