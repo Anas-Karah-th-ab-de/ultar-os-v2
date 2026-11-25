@@ -81,6 +81,7 @@ build = [
   "cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={tools} -DCMAKE_INSTALL_LIBDIR=lib -DSPIRV-Headers_SOURCE_DIR={build}/spirv-headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF -DBUILD_SHARED_LIBS=OFF",
   "cmake --build build -j{jobs}",
   "cmake --install build",
+  "install -m 755 build/bin/test-backend-ops {prefix}/bin/test-backend-ops",
 ]
 
 [[part]]
@@ -127,7 +128,8 @@ upstream = "https://github.com/ggml-org/llama.cpp"
 tag = "b{version}"
 license = "MIT"
 why = "runs language models (GGUF files); the Vulkan backend computes on the GPU"
-# Examples are built too: `llama-speculative-simple` measures speculative decoding (MTP heads of
+# `test-backend-ops` (tests) compares every GPU operation with the CPU – the tool to find a
+# wrong or hanging shader on Ultar. Examples are built too: `llama-speculative-simple` measures speculative decoding (MTP heads of
 # the model, draft models) without a server.
 # Processor: built for SSE4.2 only. The Ultar kernel does not save the wider registers (AVX) of a
 # program yet, so code using them is stopped there; the model runs on the GPU, the processor
@@ -137,7 +139,7 @@ why = "runs language models (GGUF files); the Vulkan backend computes on the GPU
 # are then missing). The first command asks the compiler where its C++ headers are.
 build = [
   "echo | g++ -xc++ -E -v - 2>&1 | grep '^ /.*c++' | sed 's/^ / -isystem /' | tr -d '\\n' > cxx-dirs",
-  "CXX=\"g++ $(cat cxx-dirs) -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib\" cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=ON -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX_VNNI=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_AVX512=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_NUMBER={version} -DVulkan_INCLUDE_DIR=/pkg/grafik-laufzeit/include -DVulkan_LIBRARY=/pkg/grafik-laufzeit/lib/libvulkan.so -DVulkan_GLSLC_EXECUTABLE={tools}/bin/glslc",
+  "CXX=\"g++ $(cat cxx-dirs) -isystem /pkg/grafik-laufzeit/include -B/pkg/grafik-laufzeit/lib\" cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DGGML_VULKAN=ON -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_SSE42=ON -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX_VNNI=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_AVX512=OFF -DLLAMA_CURL=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=ON -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_NUMBER={version} -DVulkan_INCLUDE_DIR=/pkg/grafik-laufzeit/include -DVulkan_LIBRARY=/pkg/grafik-laufzeit/lib/libvulkan.so -DVulkan_GLSLC_EXECUTABLE={tools}/bin/glslc",
   "cmake --build build -j{jobs}",
   "cmake --install build",
 ]
