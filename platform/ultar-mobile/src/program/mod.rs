@@ -13,6 +13,7 @@ pub mod bus_map;
 pub mod lock;
 pub mod lock_bus;
 pub mod shell;
+pub mod tz;
 
 use crate::model::time::LocalTime;
 use std::path::PathBuf;
@@ -87,9 +88,14 @@ pub fn now_ms() -> u64 {
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// The local time (UTC until the time zone setting is read).
-pub fn local_now() -> Option<LocalTime> {
-    LocalTime::at(now_ms(), 0)
+/// The local time in the zone `offset_s` seconds east of UTC.
+pub fn local_now(offset_s: i32) -> Option<LocalTime> {
+    LocalTime::at(now_ms(), offset_s)
+}
+
+/// Seconds east of UTC of zone `name` now.
+pub fn zone_offset(name: &str) -> i32 {
+    tz::offset(name, i64::try_from(now_ms() / 1000).unwrap_or(0))
 }
 
 /// The size of the first output in points (a phone has one; a phone-sized default before

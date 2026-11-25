@@ -108,6 +108,33 @@ pub struct ModemMute {
     pub on: bool,
 }
 
+/// `modem.set_data` – mobile data wanted (`Some`) or only asked (`None`). The radio service
+/// keeps the wish and builds the data connection as soon as SIM and network allow it.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ModemSetData {
+    /// On, off, or `None` to ask.
+    pub on: Option<bool>,
+}
+
+/// Answer to [`ModemSetData`]: whether mobile data is wanted now.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct ModemData {
+    /// Mobile data wanted.
+    pub on: bool,
+}
+
+impl Message for ModemSetData {
+    const VERSION: u16 = 1;
+}
+impl Message for ModemData {
+    const VERSION: u16 = 1;
+}
+impl Call for ModemSetData {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = "set_data";
+    type Reply = ModemData;
+}
+
 macro_rules! modem_calls {
     ($($call:ident => $method:literal;)*) => {$(
         impl Message for $call {

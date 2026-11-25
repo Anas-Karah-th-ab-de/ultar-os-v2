@@ -6138,6 +6138,7 @@ dependencies = [
  "ultar-bus",
  "ultar-hal",
  "ultar-hal-linux",
+ "ultar-hal-system",
  "ultar-service",
  "ultar-svckit",
 ]

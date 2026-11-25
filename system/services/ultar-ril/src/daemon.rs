@@ -44,7 +44,7 @@ const IPC_LOG: &str = "/run/ultar/radio/ipc.log";
 /// Flugmodus: Datei vorhanden = Funk aus.
 pub const AIRPLANE_FLAG: &str = "/data/ultar/airplane.on";
 /// Mobile Daten gewünscht (Schnelleinstellungen schreiben die Datei).
-pub const MOBILE_DATA_FLAG: &str = "/run/ultar/mobiledata.on";
+pub const MOBILE_DATA_FLAG: &str = ultar_ril::bus::DATA_FLAG;
 /// Zugangsdaten: Zeilen `apn=…`, `user=…`, `pass=…` (fehlt die Datei: leerer APN = Netz-Vorgabe).
 pub const APN_CONF: &str = "/data/ultar/apn.conf";
 

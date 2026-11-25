@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 use ultar_bus::messages::auth::{self, Method, Outcome, Secret, UserInfo};
 use ultar_bus::messages::lock::{Lock, SERVICE};
-use ultar_bus::messages::{notify, session};
+use ultar_bus::messages::{notify, power, session};
 use ultar_bus::{Client, ClientOptions, IncomingRequest, ServiceEndpoint, TypedSubscription};
 
 /// How long one call may take.
@@ -36,14 +36,11 @@ impl LockLink {
     pub fn connect(path: &Path, name: &str) -> Option<LockLink> {
         let client = Client::connect(path, ClientOptions::named(name)).ok()?;
         let endpoint = client.register(SERVICE).ok();
+        // Like the desktop's lock screen: only what is posted while it runs is counted
+        // (its rights allow no list of notifications and no content).
         let posted = client.subscribe().ok();
         let dismissed = client.subscribe().ok();
-        let mut notes = BTreeMap::new();
-        if let Ok(r) = client.call(&notify::List {}, CALL) {
-            for p in r.notes {
-                notes.insert(p.id, super::bus::shell_id(&p.post.app_id));
-            }
-        }
+        let notes = BTreeMap::new();
         Some(LockLink {
             client,
             endpoint,
@@ -93,6 +90,12 @@ impl LockLink {
             .call(&auth::Users {}, CALL)
             .ok()
             .map(|r| r.users)
+    }
+
+    /// Switches the torch (`Some`) or asks (`None`): `None` without a torch.
+    pub fn torch(&self, on: Option<bool>) -> Option<bool> {
+        let r = self.client.call(&power::Torch { on }, CALL).ok()?;
+        r.present.then_some(r.on)
     }
 
     /// The person who signed in (the session service keeps them in front).

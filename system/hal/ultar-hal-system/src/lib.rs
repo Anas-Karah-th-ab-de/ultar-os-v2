@@ -11,7 +11,7 @@
 //! [`hardware`] enumerates the devices of the running system for driver matching and
 //! [`kernel_drivers`] reads which built-in kernel drivers exist and what they operate.
 //! This crate is the only place where hardware paths (`/proc/ultar/…`, `/sys/…`) appear.
-//! [`load`] reads processor load and memory in use.
+//! [`load`] reads processor load and memory in use, [`torch`] finds and switches the camera light.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
@@ -20,6 +20,7 @@ pub mod hardware;
 pub mod kernel_drivers;
 pub mod load;
 pub mod seat_nodes;
+pub mod torch;
 
 pub use hardware::{HardwareError, HardwareReader, Inventory};
 pub use kernel_drivers::{kernel_abi, uevent_seqnum, BindState, ControlInterface, KernelDrivers};

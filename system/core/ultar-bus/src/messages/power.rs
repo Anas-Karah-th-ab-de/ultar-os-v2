@@ -122,10 +122,40 @@ pub struct ActionReply {
     pub outcome: ActionOutcome,
 }
 
+/// `power.torch` – switch the camera light (`Some`) or only ask (`None`).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Torch {
+    /// On, off, or `None` to ask.
+    pub on: Option<bool>,
+}
+
+/// Answer to [`Torch`].
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct TorchReply {
+    /// The device has a torch.
+    pub present: bool,
+    /// It is on.
+    pub on: bool,
+}
+
+impl Call for Torch {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = "torch";
+    type Reply = TorchReply;
+}
+
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(PowerActions, Suspend, Restart, PowerOff, ActionReply);
+version_one!(
+    PowerActions,
+    Suspend,
+    Restart,
+    PowerOff,
+    ActionReply,
+    Torch,
+    TorchReply
+);
 
 impl Topic for PowerActions {
     const TOPIC: &'static str = "power.actions";

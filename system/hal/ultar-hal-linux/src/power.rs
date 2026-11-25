@@ -29,6 +29,11 @@ impl LinuxPower {
         Self { root: root.into() }
     }
 
+    /// The root it reads below (`/` on a device).
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
     fn supplies(&self) -> Vec<(String, PathBuf)> {
         entries(&self.root.join("sys/class/power_supply"), MAX_ENTRIES)
             .into_iter()

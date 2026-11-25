@@ -9,6 +9,7 @@ const SEAT: u32 = 812;
 fn config(allowed: &[&str]) -> SeatConfig {
     SeatConfig {
         group: SEAT,
+        torch_group: None,
         virtual_allowed: allowed.iter().map(|s| (*s).to_owned()).collect(),
     }
 }

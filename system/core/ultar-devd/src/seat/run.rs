@@ -135,6 +135,11 @@ fn run_once(
 ) -> i32 {
     let reports = scan(&args.root, config);
     print_reports(out, &reports);
+    if let Some(group) = config.torch_group {
+        if let Some(line) = super::light::report(&super::light::apply_torch(&args.root, group)) {
+            let _ = writeln!(out, "{line}");
+        }
+    }
     let modes = DeviceModes::of(&reports, Platform::detect() == Platform::Ultar);
     verdict(out, messages, modes, reports.len());
     if !store(args.state.as_deref(), modes, messages, err) || modes == DeviceModes::Failed {

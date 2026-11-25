@@ -29,6 +29,7 @@ const DND: &str = "notifications.do_not_disturb";
 const NIGHT: &str = "display.night_light.enabled";
 const LOCATION: &str = "privacy.location";
 const POWER_MODE: &str = "power.mode";
+const ZONE: &str = "datetime.timezone.name";
 
 /// The topics the shell follows.
 struct Topics {
@@ -49,6 +50,8 @@ pub struct Link {
     topics: Topics,
     /// `display.<id>.brightness` of the phone's panel, once the settings service named it.
     brightness: Option<String>,
+    /// The time zone's name (`datetime.timezone.name`).
+    zone: String,
 }
 
 impl std::fmt::Debug for Link {
@@ -76,6 +79,7 @@ impl Link {
             client,
             topics,
             brightness: None,
+            zone: super::tz::DEFAULT.into(),
         })
     }
 
@@ -88,7 +92,13 @@ impl Link {
             }
         }
         if let Ok(r) = self.client.call(&notify::List {}, CALL) {
-            m.notes = r.notes.iter().rev().map(|p| note_from(p, tr, 0)).collect();
+            let off = super::zone_offset(&self.zone);
+            m.notes = r
+                .notes
+                .iter()
+                .rev()
+                .map(|p| note_from(p, tr, off))
+                .collect();
         }
         for (key, t) in [
             (DND, Toggle::Dnd),
@@ -98,6 +108,16 @@ impl Link {
             if let Some(settings::SettingValue::Flag(on)) = self.get(key) {
                 m.quick.set(t, on);
             }
+        }
+        if let Some(settings::SettingValue::Text(zone)) = self.get(ZONE) {
+            self.zone = zone;
+        }
+        if let Ok(d) = self.client.call(&modem::ModemSetData { on: None }, CALL) {
+            m.quick.set(Toggle::MobileData, d.on);
+        }
+        if let Ok(t) = self.client.call(&power::Torch { on: None }, CALL) {
+            m.hardware.torch = t.present;
+            m.quick.set(Toggle::Torch, t.on);
         }
         if let Some(settings::SettingValue::Text(mode)) = self.get(POWER_MODE) {
             m.quick.set(Toggle::Saver, mode == "saver");
@@ -127,6 +147,11 @@ impl Link {
                 m.quick.brightness = v.clamp(0, 100) as u8;
             }
         }
+    }
+
+    /// The time zone's name.
+    pub fn zone(&self) -> &str {
+        &self.zone
     }
 
     fn get(&self, key: &str) -> Option<settings::SettingValue> {
@@ -187,9 +212,10 @@ impl Link {
 
     fn poll_notes(&self, m: &mut Mobile, tr: &Translator) -> bool {
         let mut changed = false;
+        let off = super::zone_offset(&self.zone);
         while let Some(p) = next(&self.topics.posted) {
             m.notes.retain(|n| n.id != p.id);
-            m.notes.insert(0, note_from(&p, tr, 0));
+            m.notes.insert(0, note_from(&p, tr, off));
             m.notes.truncate(MAX_NOTES);
             changed = true;
         }
@@ -200,7 +226,7 @@ impl Link {
         changed
     }
 
-    fn poll_settings(&self, m: &mut Mobile) -> bool {
+    fn poll_settings(&mut self, m: &mut Mobile) -> bool {
         let mut changed = false;
         while let Some(c) = next(&self.topics.changed) {
             changed = true;
@@ -299,8 +325,10 @@ impl Link {
             Toggle::Vpn => c
                 .call(&ultar_bus::messages::vpn::SetVpn { on, name: None }, CALL)
                 .map(|_| ()),
-            // Mobile data and the torch have no service yet: the switch stays in the shell.
-            Toggle::MobileData | Toggle::Torch => Ok(()),
+            Toggle::MobileData => c
+                .call(&modem::ModemSetData { on: Some(on) }, CALL)
+                .map(|_| ()),
+            Toggle::Torch => c.call(&power::Torch { on: Some(on) }, CALL).map(|_| ()),
         }
     }
 }

@@ -54,7 +54,7 @@ register = ["launcher"]
 # launcher.admin as well, which only the administrator has.
 [[rule]]
 identity  = "system.shell"
-call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
+call      = ["net.networks", "net.join", "net.disconnect", "net.forget", "net.known", "vpn.set", "launcher.start", "launcher.stop", "launcher.list", "launcher.permissions", "launcher.grant", "launcher.revoke", "settings.get", "settings.set", "settings.set_displays", "lock.lock", "sysdialog.permission", "display.apply", "display.keep", "display.revert", "display.identify", "account.users_list", "account.user_picture_get", "power.suspend", "power.restart", "power.off", "power.system", "session.switch_user", "session.sign_out", "session.users", "session.system", "notify.invoke", "notify.dismiss", "notify.list", "notify.system", "calendar.day", "modem.set_data", "power.torch", "audio.set_volume", "audio.set_mute", "audio.outputs", "audio.set_output", "media.play_pause", "media.next", "media.previous", "media.system", "capture.screenshot", "net.set_wifi", "net.set_airplane", "net.scan", "net.connect", "bluetooth.set", "bluetooth.devices", "bluetooth.connect", "bluetooth.disconnect", "volumes.eject", "bluetooth.scan", "bluetooth.pair", "bluetooth.forget"]
 subscribe = ["net.wifi", "vpn.state", "settings.changed", "notify.posted", "power.state", "devices.capabilities", "display.outputs", "account.users", "power.actions", "session.state", "notify.dismissed", "calendar.changed", "audio.state", "media.state", "net.state", "bluetooth.state", "volumes.state"]
 
 
@@ -71,7 +71,7 @@ register  = ["auth"]
 [[rule]]
 identity  = "system.lock"
 register  = ["lock"]
-call      = ["settings.set_accessibility", "settings.accessibility", "auth.users", "auth.verify", "account.users_list", "account.user_picture_get", "power.restart", "power.off", "power.system", "session.signed_in", "session.signin", "session.users", "session.system", "media.play_pause", "media.next", "media.previous", "media.system"]
+call      = ["settings.set_accessibility", "settings.accessibility", "power.torch", "auth.users", "auth.verify", "account.users_list", "account.user_picture_get", "power.restart", "power.off", "power.system", "session.signed_in", "session.signin", "session.users", "session.system", "media.play_pause", "media.next", "media.previous", "media.system"]
 subscribe = ["notify.posted", "power.actions", "session.state", "media.state"]
 
 

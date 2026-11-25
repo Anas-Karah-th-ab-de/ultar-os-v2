@@ -8,8 +8,9 @@ use crate::link::ModemLink;
 use crate::tel::CallStatus;
 use ultar_bus::messages::call::{check_number, Cellular};
 use ultar_bus::messages::modem::{
-    ModemAnswer, ModemCall, ModemCallStatus, ModemDial, ModemDone, ModemDtmf, ModemHold, ModemMute,
-    ModemRelease, ModemState, ERR_OFFLINE, ERR_REFUSED, MAX_MODEM_CALLS, SERVICE,
+    ModemAnswer, ModemCall, ModemCallStatus, ModemData, ModemDial, ModemDone, ModemDtmf, ModemHold,
+    ModemMute, ModemRelease, ModemSetData, ModemState, ERR_OFFLINE, ERR_REFUSED, MAX_MODEM_CALLS,
+    SERVICE,
 };
 use ultar_bus::{BusError, Client, ErrorCode, IncomingRequest, ServiceEndpoint};
 
@@ -62,6 +63,30 @@ pub struct ModemService {
     bus: Client,
     endpoint: ServiceEndpoint,
     published: Option<ModemState>,
+    /// The file that says "mobile data wanted" (read by the daemon's data loop).
+    data_flag: std::path::PathBuf,
+}
+
+/// Default place of the mobile-data wish (`/run`: off again after a restart, like the
+/// old phone).
+pub const DATA_FLAG: &str = "/run/ultar/mobiledata.on";
+
+/// Keeps or asks the mobile-data wish in `flag`.
+pub fn set_data(flag: &std::path::Path, on: Option<bool>) -> std::io::Result<bool> {
+    match on {
+        Some(true) => {
+            if let Some(dir) = flag.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(flag, "1")?;
+        }
+        Some(false) => match std::fs::remove_file(flag) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+            _ => {}
+        },
+        None => {}
+    }
+    Ok(flag.exists())
 }
 
 fn refused(_: std::io::Error) -> ErrorCode {
@@ -76,7 +101,14 @@ impl ModemService {
             bus,
             endpoint,
             published: None,
+            data_flag: DATA_FLAG.into(),
         })
+    }
+
+    /// The same service keeping the mobile-data wish in `flag` (tests).
+    pub fn with_data_flag(mut self, flag: std::path::PathBuf) -> ModemService {
+        self.data_flag = flag;
+        self
     }
 
     /// Answers every waiting command and publishes the state if it changed.
@@ -87,6 +119,16 @@ impl ModemService {
     ) -> Result<(), BusError> {
         while let Some(request) = self.endpoint.try_recv()? {
             let online = state.cellular != Cellular::Airplane && engine.st.powered;
+            // The data wish is kept even while the modem is off (it applies when it comes up).
+            if request.method() == "set_data" {
+                let flag = self.data_flag.clone();
+                let _ = request.respond::<ModemSetData>(|r| {
+                    set_data(&flag, r.on)
+                        .map(|on| ModemData { on })
+                        .map_err(refused)
+                });
+                continue;
+            }
             // A failed answer concerns one request only (caller gone, hostile payload).
             let _ = handle(engine, request, online);
         }
@@ -171,5 +213,22 @@ mod tests {
         assert_eq!(crate::tel::build_manage_call(2, 1), vec![2, 1]);
         assert_eq!(crate::tel::build_mute(false), vec![0]);
         assert_eq!(crate::tel::build_dtmf(1, b'#'), Some(vec![1, b'#']));
+    }
+}
+
+#[cfg(test)]
+mod data_tests {
+    use super::set_data;
+
+    #[test]
+    fn the_data_wish_is_kept_asked_and_dropped() {
+        let dir = std::env::temp_dir().join(format!("ril-data-{}", std::process::id()));
+        let flag = dir.join("run/mobiledata.on");
+        assert!(!set_data(&flag, None).unwrap());
+        assert!(set_data(&flag, Some(true)).unwrap());
+        assert!(set_data(&flag, None).unwrap());
+        assert!(!set_data(&flag, Some(false)).unwrap());
+        assert!(!set_data(&flag, Some(false)).unwrap(), "off twice is fine");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

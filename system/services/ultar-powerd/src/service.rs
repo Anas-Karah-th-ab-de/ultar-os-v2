@@ -7,7 +7,8 @@ use std::time::Duration;
 use ultar_bus::messages::init::{Power as InitPower, PowerAction};
 use ultar_bus::messages::lock::Lock;
 use ultar_bus::messages::power::{
-    ActionOutcome, ActionReply, PowerActions, PowerOff, PowerState, Restart, Suspend, SERVICE,
+    ActionOutcome, ActionReply, PowerActions, PowerOff, PowerState, Restart, Suspend, Torch,
+    TorchReply, SERVICE,
 };
 use ultar_bus::messages::session::SessionState;
 use ultar_bus::messages::sysdialog::{AuthResult, Authenticate};
@@ -38,6 +39,8 @@ pub struct PowerService {
     /// gets its answer, so a call sent right after an answer never finds the service busy
     /// (clearing it later on the loop raced with the next call).
     busy: Arc<AtomicBool>,
+    /// The torch and its last state (the Samsung control cannot be read back).
+    torch: (Option<ultar_hal_system::torch::TorchNode>, bool),
 }
 
 /// Which action of the menu.
@@ -82,7 +85,9 @@ impl PowerService {
             power_off: true,
             needs_admin: false,
         };
+        let torch = (ultar_hal_system::torch::find(hal.root()), false);
         Self {
+            torch,
             hal,
             access,
             signed_in: 0,
@@ -116,6 +121,34 @@ impl PowerService {
                 .word("op", action.word())
                 .word("outcome", outcome_word(outcome)),
         );
+    }
+
+    /// `power.torch`: system components only (shell, lock screen).
+    fn torch(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
+        let Ok(t) = request.decode::<Torch>() else {
+            let _ = request.fail(ErrorCode::BadPayload);
+            return;
+        };
+        let caller = request.caller().to_owned();
+        if !self.access.is_system(&caller) && !self.access.is_admin(&caller) {
+            bus.log(Record::new(Level::Warn, "powerd.refused").word("op", "torch"));
+            let _ = request.fail(ErrorCode::PermissionDenied);
+            return;
+        }
+        let (node, last) = &mut self.torch;
+        let Some(node) = node.as_ref() else {
+            let _ = request.reply(&TorchReply::default());
+            return;
+        };
+        if let Some(on) = t.on {
+            if ultar_hal_system::torch::set(node, on).is_ok() {
+                *last = on;
+            } else {
+                bus.log(Record::new(Level::Warn, "powerd.torch_failed"));
+            }
+        }
+        let on = ultar_hal_system::torch::is_on(node).unwrap_or(*last);
+        let _ = request.reply(&TorchReply { present: true, on });
     }
 
     fn act(&mut self, request: IncomingRequest, action: Action, bus: &Bus<'_, Self>) {
@@ -219,6 +252,9 @@ impl Service for PowerService {
 
     fn request(&mut self, request: IncomingRequest, bus: &Bus<'_, Self>) {
         // The three calls carry no fields; a payload that is not theirs is refused.
+        if request.method() == Torch::METHOD {
+            return self.torch(request, bus);
+        }
         let (action, valid) = match request.method() {
             m if m == Suspend::METHOD => (Action::Suspend, request.decode::<Suspend>().is_ok()),
             m if m == Restart::METHOD => (Action::Restart, request.decode::<Restart>().is_ok()),

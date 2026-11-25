@@ -21,6 +21,7 @@
 
 mod apply;
 mod events;
+pub mod light;
 mod run;
 
 pub use apply::{apply_node, scan, write_state, Applied, DeviceModes, NodeReport};
@@ -48,6 +49,9 @@ pub struct SeatConfig {
     /// keyboards of the system); empty by default.
     #[serde(default)]
     pub virtual_allowed: Vec<String>,
+    /// Group that gets the torch's control file (`light.rs`); none: left alone.
+    #[serde(default)]
+    pub torch_group: Option<u32>,
 }
 
 /// Why a configuration was refused.

@@ -4,7 +4,7 @@
 //! windows between the bars; the bars stay.
 
 use super::bus::Link;
-use super::{local_now, ms_to_minute, screen_size, Options, ProgramError};
+use super::{local_now, ms_to_minute, screen_size, zone_offset, Options, ProgramError};
 use crate::app::{apply_click, apply_swipe, Effect};
 use crate::click::Click;
 use crate::model::{Mobile, Screen};
@@ -51,6 +51,8 @@ pub struct ShellProgram {
     screen: Size,
     sampler: Sampler,
     sampled: Instant,
+    /// Seconds east of UTC of the time zone (read again every minute).
+    offset: i32,
 }
 
 impl std::fmt::Debug for ShellProgram {
@@ -75,13 +77,14 @@ impl ShellProgram {
         let screen = screen_size(host.client.outputs());
         let mut model = Mobile::default();
         model.unlocked();
-        model.now = local_now();
         model.hardware.torch = false;
         let mut link = options.bus.as_deref().and_then(Link::connect);
         if let Some(link) = link.as_mut() {
             link.load(&mut model, &tr);
             link.report_display(&mut model, host.client.outputs());
         }
+        let offset = zone_offset(link.as_ref().map_or(super::tz::DEFAULT, Link::zone));
+        model.now = local_now(offset);
         let blank = || -> Result<Ui, ProgramError> {
             Ok(Ui::new(
                 env,
@@ -111,6 +114,7 @@ impl ShellProgram {
             screen,
             sampler: Sampler::default(),
             sampled: Instant::now(),
+            offset,
         };
         shell.sample();
         shell.show()?;
@@ -135,9 +139,11 @@ impl ShellProgram {
         if let Some(link) = self.link.as_mut() {
             changed |= link.poll(&mut self.model, &self.tr);
         }
-        let now = local_now();
+        let now = local_now(self.offset);
         if now != self.model.now {
-            self.model.now = now;
+            let zone = self.link.as_ref().map_or(super::tz::DEFAULT, Link::zone);
+            self.offset = zone_offset(zone);
+            self.model.now = local_now(self.offset);
             changed = true;
         }
         if self.sampled.elapsed() >= SAMPLE {

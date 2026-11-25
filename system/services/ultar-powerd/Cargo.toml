@@ -15,6 +15,7 @@ name = "ultar-powerd"
 path = "src/bin/ultar-powerd.rs"
 
 [dependencies]
+ultar-hal-system = { path = "../../hal/ultar-hal-system" }
 ultar-bus = { path = "../../core/ultar-bus" }
 ultar-service = { path = "../../core/ultar-service" }
 ultar-svckit = { path = "../../core/ultar-svckit" }

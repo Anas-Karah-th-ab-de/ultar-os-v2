@@ -69,7 +69,7 @@ mobilen Daten, ohne Bluetooth kein Bluetooth, ohne Akku kein Energiesparen.
 ## Prüfung
 
 ```bash
-cargo test -p ultar-mobile                                              # 39 Tests
+cargo test -p ultar-mobile                                              # 40 Tests (dazu Tests in ultar-ril, ultar-powerd, ultar-hal-system, ultar-devd)
 ULTAR_MOBILE_OUT=/tmp/mobile cargo test -p ultar-mobile --test render   # Bildschirmfotos als PNG
 ```
 
@@ -82,13 +82,21 @@ ULTAR_MOBILE_OUT=/tmp/mobile cargo test -p ultar-mobile --test render   # Bildsc
   als Stellvertreter. Ein Finger tippt Statusleiste, Schalter, Navigationsleiste und eine App (Start über den
   Launcher); der Sperrbildschirm bleibt bei falschem Kennwort zu und öffnet nur mit dem richtigen.
 
+## Aus dem ersten Ultar OS übernommen (dort auf dem A30 erprobt)
+
+| Funktion | Alt (`ultar-os`, `quick.rs`) | Neu (v2) |
+|---|---|---|
+| Taschenlampe | Oberfläche schrieb als root direkt in `sysfs` | `ultar-hal-system::torch` (gleiche Logik: Samsung `rear_flash`, sonst LED `*torch*`/`*flash*`, nie `*s2mu*`); `ultar-powerd` schaltet über `power.torch`; `ultar-devd-seat` gibt nur diese Datei der Gruppe 819 (`torch_group` in `devd-seat.toml`); Kachel und Knopf auf dem Sperrbildschirm |
+| Mobile Daten | Oberfläche schrieb `/run/ultar/mobiledata.on` | `modem.set_data` an den Funkdienst (`ultar-ril`), der dieselbe Datei führt und die Datenverbindung wie bisher aufbaut |
+| Zeitzone | Minuten-Abstand als Einstellung | `datetime.timezone.name` → Zonendatei (TZif) oder Tabelle der Zonen ohne Sommerzeit; Mitteilungszeiten in Ortszeit |
+
 ## Noch offen
 
 - Auf einem echten Handy (A30) noch nicht gestartet; dafür fehlt der ARM64-Abbild-Weg (siehe `PLAN.md` P11).
-- Mobile Daten und Taschenlampe haben noch keinen Dienst: die Kachel „mobile Daten“ merkt sich nur den
-  Zustand, die Taschenlampe wird nicht angeboten.
-- Kamera und Notruf auf dem Sperrbildschirm werden erst angeboten, wenn es eine Kamera-App und einen Notruf
-  über dem Sperrbildschirm gibt.
-- Zeitzone: die Uhr zeigt UTC, bis die Einstellung `datetime.timezone.name` gelesen wird (wie am Desktop).
-- Mitteilungstexte aus fremden Katalogen: unbekannte Schlüssel zeigen den App-Namen statt des Titels.
+- Notruf und Kamera vom Sperrbildschirm: im alten System lief alles in einem Prozess als root. In v2 braucht
+  das Telefon einen Notruf-Wählbildschirm als `CallScreen` über der Sperre (nur Notrufnummern) und eine
+  Kamera-App; beides gibt es noch nicht, darum werden die Knöpfe dort noch nicht angeboten.
+- Sperrbildschirm und Zeitzone: er darf keine Einstellungen lesen und zeigt die Standardzone
+  (`Asia/Damascus`), bis ihm die Zone auf einem eigenen, engen Weg gemeldet wird.
+- Mitteilungstexte aus fremden Katalogen: unbekannte Schlüssel zeigen den App-Namen statt des Titels (wie am Desktop).
 - Der Geräteverbund (Weitergeben) hat auf dem Handy noch keine Oberfläche.

@@ -48,9 +48,11 @@ struct Seen {
     lock_state: String,
 }
 
-const SHELL_CLICKS: [Click; 6] = [
+const SHELL_CLICKS: [Click; 8] = [
     Click::Status,
     Click::Toggle(Toggle::Dnd),
+    Click::Toggle(Toggle::Torch),
+    Click::Toggle(Toggle::MobileData),
     Click::Home,
     Click::Recents,
     Click::Back,
@@ -292,6 +294,42 @@ fn services(bus: &std::path::Path, stop: &Arc<AtomicBool>, starts: &Arc<Mutex<Ve
         }
     });
     auth(bus, stop);
+    hardware(bus, stop, starts);
+}
+
+/// The power service's torch and the radio service's mobile data: every switch is recorded
+/// in `asked` as `torch=on` / `data=on`.
+fn hardware(bus: &std::path::Path, stop: &Arc<AtomicBool>, asked: &Arc<Mutex<Vec<String>>>) {
+    use ultar_bus::messages::modem::{ModemData, ModemSetData};
+    use ultar_bus::messages::power::{Torch, TorchReply};
+    for service in ["power", "modem"] {
+        let (bus2, stop2, asked2) = (bus.to_owned(), stop.clone(), asked.clone());
+        std::thread::spawn(move || {
+            let client = Client::connect(&bus2, ClientOptions::named(service)).unwrap();
+            let endpoint = client.register(service).unwrap();
+            while !stop2.load(Ordering::SeqCst) {
+                let Ok(request) = endpoint.recv_timeout(Duration::from_millis(50)) else {
+                    continue;
+                };
+                if let Ok(t) = request.decode::<Torch>() {
+                    if let Some(on) = t.on {
+                        asked2.lock().unwrap().push(format!("torch={on}"));
+                    }
+                    let _ = request.reply(&TorchReply {
+                        present: true,
+                        on: t.on.unwrap_or(false),
+                    });
+                } else if let Ok(d) = request.decode::<ModemSetData>() {
+                    if let Some(on) = d.on {
+                        asked2.lock().unwrap().push(format!("data={on}"));
+                    }
+                    let _ = request.reply(&ModemData {
+                        on: d.on.unwrap_or(false),
+                    });
+                }
+            }
+        });
+    }
 }
 
 /// The authentication service: account "anas", password "geheim1".
@@ -344,6 +382,15 @@ fn the_shell_shows_its_bars_and_home_and_every_tap_works() {
     });
     w.tap(&Click::Toggle(Toggle::Dnd), false);
     w.until("do not disturb on", |w| w.seen.lock().unwrap().dnd);
+    // Torch (power service) and mobile data (radio service), as on the first Ultar phone.
+    w.tap(&Click::Toggle(Toggle::Torch), false);
+    w.until("torch on", |w| {
+        w.starts.lock().unwrap().contains(&"torch=true".to_owned())
+    });
+    w.tap(&Click::Toggle(Toggle::MobileData), false);
+    w.until("mobile data on", |w| {
+        w.starts.lock().unwrap().contains(&"data=true".to_owned())
+    });
     // Navigation bar: home closes the sheet.
     w.tap(&Click::Home, false);
     w.until("home again", |w| w.screen() == Some(Screen::Home));

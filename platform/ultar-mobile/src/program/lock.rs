@@ -7,7 +7,7 @@
 //! lock screen); this program only wires them to the compositor, the bus and the views.
 
 use super::lock_bus::LockLink;
-use super::{local_now, now_ms, screen_size, Options, ProgramError};
+use super::{local_now, now_ms, screen_size, zone_offset, Options, ProgramError};
 use crate::click::Click;
 use crate::model::apps;
 use crate::model::Mobile;
@@ -46,6 +46,8 @@ pub struct LockProgram {
     wait_shown: bool,
     /// The minute the cover shows.
     minute: u64,
+    /// The torch: `None` without one, else whether it is on.
+    torch: Option<bool>,
 }
 
 impl std::fmt::Debug for LockProgram {
@@ -85,6 +87,7 @@ impl LockProgram {
             verify: None,
             wait_shown: false,
             minute: 0,
+            torch: None,
         })
     }
 
@@ -138,6 +141,7 @@ impl LockProgram {
         }
         if !requests.is_empty() {
             self.state.locked();
+            self.torch = link.torch(None);
             self.waiting.extend(requests);
             self.show()?;
         } else if notes && self.state.stage == Stage::Cover {
@@ -164,6 +168,7 @@ impl LockProgram {
         match event {
             HostEvent::Compositor(Event::SessionLocked { locked: true }) => {
                 self.state.locked();
+                self.torch = self.link.as_ref().and_then(|l| l.torch(None));
                 self.show()
             }
             HostEvent::Compositor(Event::SessionLocked { locked: false }) => {
@@ -193,6 +198,10 @@ impl LockProgram {
         let field = self.built.password == Some(node);
         match (self.built.click(node).cloned(), kind) {
             (Some(Click::Unlock), ActionKind::Activated) => self.sign_in(),
+            (Some(Click::Torch), ActionKind::Activated | ActionKind::Toggled(_)) => {
+                let want = !self.torch.unwrap_or(false);
+                self.torch = self.link.as_ref().and_then(|l| l.torch(Some(want)));
+            }
             (Some(Click::Submit), ActionKind::Activated) => return self.submit(),
             (None, ActionKind::Submitted) if field => return self.submit(),
             (Some(Click::Method), ActionKind::Activated) => self.state.switch_method(),
@@ -309,9 +318,9 @@ impl LockProgram {
         let all = apps::system_apps();
         let counts = self.link.as_ref().map(LockLink::counts).unwrap_or_default();
         let cover = Cover {
-            now: local_now(),
+            now: local_now(zone_offset(super::tz::DEFAULT)),
             counts,
-            torch: None,
+            torch: self.torch,
             apps: &all,
             camera: false,
             emergency: false,
