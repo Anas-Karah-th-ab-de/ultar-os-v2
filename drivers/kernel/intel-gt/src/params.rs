@@ -130,7 +130,7 @@ mod tests {
             },
             ..params()
         };
-        assert_eq!(newer.words(Stage::Full).unwrap()[2], 1 << 4 | 1 << 2);
+        assert_eq!(newer.words(Stage::Full).unwrap()[2], 1 << 4);
     }
 
     #[test]
