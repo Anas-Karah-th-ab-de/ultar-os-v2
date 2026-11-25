@@ -29,7 +29,9 @@ impl SlowKeys {
     }
 
     fn position(&self, code: u16) -> Option<usize> {
-        self.pending[..self.count].iter().position(|(c, _)| *c == code)
+        self.pending[..self.count]
+            .iter()
+            .position(|(c, _)| *c == code)
     }
 
     fn remove(&mut self, i: usize) {
@@ -117,7 +119,10 @@ mod tests {
         assert!(s.intercept(30, KeyState::Pressed, 0), "press held back");
         assert_eq!(s.next_due(), Some(SLOW_KEYS_MS));
         assert!(s.take_due(100).is_empty(), "not held long enough");
-        assert!(s.intercept(30, KeyState::Released, 100), "release held back");
+        assert!(
+            s.intercept(30, KeyState::Released, 100),
+            "release held back"
+        );
         assert!(s.take_due(1000).is_empty(), "cancelled");
         assert_eq!(s.next_due(), None);
     }
@@ -126,7 +131,10 @@ mod tests {
     fn a_held_key_counts_after_the_interval() {
         let mut s = on();
         assert!(s.intercept(30, KeyState::Pressed, 0));
-        assert!(s.intercept(30, KeyState::Repeated, 100), "repeat while waiting");
+        assert!(
+            s.intercept(30, KeyState::Repeated, 100),
+            "repeat while waiting"
+        );
         assert!(s.take_due(299).is_empty());
         assert_eq!(s.take_due(300), vec![30], "counts at 300 ms");
         assert_eq!(s.next_due(), None);

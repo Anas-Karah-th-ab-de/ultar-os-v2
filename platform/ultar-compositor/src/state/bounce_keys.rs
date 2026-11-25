@@ -46,7 +46,10 @@ impl BounceKeys {
     }
 
     fn record(&mut self, code: u16, time: u64) {
-        if let Some(slot) = self.recent[..self.count].iter_mut().find(|(c, _)| *c == code) {
+        if let Some(slot) = self.recent[..self.count]
+            .iter_mut()
+            .find(|(c, _)| *c == code)
+        {
             slot.1 = time;
             return;
         }

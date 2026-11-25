@@ -152,7 +152,10 @@ mod tests {
             action(55, KeyState::Pressed),
             Some(MouseAction::Click(BTN_MIDDLE))
         );
-        assert_eq!(action(78, KeyState::Pressed), Some(MouseAction::DoubleClick));
+        assert_eq!(
+            action(78, KeyState::Pressed),
+            Some(MouseAction::DoubleClick)
+        );
         assert_eq!(action(82, KeyState::Pressed), Some(MouseAction::Hold));
         assert_eq!(action(82, KeyState::Released), Some(MouseAction::Release));
         assert_eq!(action(83, KeyState::Pressed), Some(MouseAction::Release));

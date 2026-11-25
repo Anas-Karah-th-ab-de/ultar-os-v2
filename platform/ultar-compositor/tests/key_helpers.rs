@@ -26,13 +26,7 @@ fn rig(layout: Layout) -> Compositor {
     compositor(config, &[(1280, 800)])
 }
 
-fn helpers(
-    sticky: bool,
-    slow: bool,
-    bounce: bool,
-    mouse: bool,
-    compose: ComposeKey,
-) -> Request {
+fn helpers(sticky: bool, slow: bool, bounce: bool, mouse: bool, compose: ComposeKey) -> Request {
     Request::ConfigureKeyHelpers {
         sticky_keys: sticky,
         slow_keys: slow,
@@ -104,17 +98,29 @@ fn sticky_keys_latch_a_modifier_for_the_next_key_only() {
     s.send(&helpers(true, false, false, false, ComposeKey::None));
     s.pump(&mut comp);
     // Shift pressed and released alone, then 'a' (30): the client sees 'A' with Shift.
-    comp.inject(&[key_ev(42, KeyState::Pressed, 0), key_ev(42, KeyState::Released, 0)]);
-    comp.inject(&[key_ev(30, KeyState::Pressed, 0), key_ev(30, KeyState::Released, 0)]);
+    comp.inject(&[
+        key_ev(42, KeyState::Pressed, 0),
+        key_ev(42, KeyState::Released, 0),
+    ]);
+    comp.inject(&[
+        key_ev(30, KeyState::Pressed, 0),
+        key_ev(30, KeyState::Released, 0),
+    ]);
     w.pump(&mut comp);
     assert_eq!(
         press_of(&w.take(), 30),
         Some((u32::from('A'), Modifiers(Modifiers::SHIFT)))
     );
     // The next 'a' is normal again (the latch was consumed).
-    comp.inject(&[key_ev(30, KeyState::Pressed, 0), key_ev(30, KeyState::Released, 0)]);
+    comp.inject(&[
+        key_ev(30, KeyState::Pressed, 0),
+        key_ev(30, KeyState::Released, 0),
+    ]);
     w.pump(&mut comp);
-    assert_eq!(press_of(&w.take(), 30), Some((u32::from('a'), Modifiers(0))));
+    assert_eq!(
+        press_of(&w.take(), 30),
+        Some((u32::from('a'), Modifiers(0)))
+    );
 }
 
 #[test]
@@ -123,10 +129,16 @@ fn sticky_keys_pressed_twice_lock_the_modifier() {
     s.send(&helpers(true, false, false, false, ComposeKey::None));
     s.pump(&mut comp);
     for _ in 0..2 {
-        comp.inject(&[key_ev(42, KeyState::Pressed, 0), key_ev(42, KeyState::Released, 0)]);
+        comp.inject(&[
+            key_ev(42, KeyState::Pressed, 0),
+            key_ev(42, KeyState::Released, 0),
+        ]);
     }
     for _ in 0..2 {
-        comp.inject(&[key_ev(30, KeyState::Pressed, 0), key_ev(30, KeyState::Released, 0)]);
+        comp.inject(&[
+            key_ev(30, KeyState::Pressed, 0),
+            key_ev(30, KeyState::Released, 0),
+        ]);
         w.pump(&mut comp);
         assert_eq!(
             press_of(&w.take(), 30),
@@ -157,7 +169,10 @@ fn slow_keys_count_a_key_only_after_it_is_held() {
     comp.state.now = 2300;
     comp.dispatch(Some(Duration::ZERO)).unwrap();
     w.pump(&mut comp);
-    assert_eq!(press_of(&w.take(), 30), Some((u32::from('a'), Modifiers(0))));
+    assert_eq!(
+        press_of(&w.take(), 30),
+        Some((u32::from('a'), Modifiers(0)))
+    );
     comp.inject(&[key_ev(30, KeyState::Released, 0)]);
 }
 
@@ -178,7 +193,16 @@ fn bounce_keys_drop_a_quick_repress() {
     let presses = w
         .take()
         .iter()
-        .filter(|e| matches!(e, Event::Key { code: 30, state: 1, .. }))
+        .filter(|e| {
+            matches!(
+                e,
+                Event::Key {
+                    code: 30,
+                    state: 1,
+                    ..
+                }
+            )
+        })
         .count();
     assert_eq!(presses, 1, "the bounce did not count");
     tap(&mut comp, 2000); // after the interval it counts again
@@ -211,7 +235,9 @@ fn mouse_keys_move_the_pointer_and_click() {
             ..
         }
     )));
-    assert!(!events.iter().any(|e| matches!(e, Event::Key { code: 76, .. })));
+    assert!(!events
+        .iter()
+        .any(|e| matches!(e, Event::Key { code: 76, .. })));
 }
 
 #[test]
@@ -221,7 +247,10 @@ fn the_compose_key_produces_a_latin_accent() {
     s.pump(&mut comp);
     // Menu, apostrophe (40), e (18) -> é.
     for code in [139, 40, 18] {
-        comp.inject(&[key_ev(code, KeyState::Pressed, 0), key_ev(code, KeyState::Released, 0)]);
+        comp.inject(&[
+            key_ev(code, KeyState::Pressed, 0),
+            key_ev(code, KeyState::Released, 0),
+        ]);
     }
     w.pump(&mut comp);
     let events = w.take();
@@ -236,7 +265,10 @@ fn the_compose_key_produces_an_arabic_hamza() {
     s.pump(&mut comp);
     // Alt Gr (100), hamza (45), alef (35) -> alef with hamza above.
     for code in [100, 45, 35] {
-        comp.inject(&[key_ev(code, KeyState::Pressed, 0), key_ev(code, KeyState::Released, 0)]);
+        comp.inject(&[
+            key_ev(code, KeyState::Pressed, 0),
+            key_ev(code, KeyState::Released, 0),
+        ]);
     }
     w.pump(&mut comp);
     assert_eq!(texts(&w.take()), vec!["أ".to_string()]);
@@ -247,8 +279,14 @@ fn caps_lock_as_the_compose_key_does_not_toggle_caps() {
     let (mut comp, _w, mut s) = focused(Layout::English);
     s.send(&helpers(false, false, false, false, ComposeKey::CapsLock));
     s.pump(&mut comp);
-    comp.inject(&[key_ev(58, KeyState::Pressed, 0), key_ev(58, KeyState::Released, 0)]);
-    assert!(!comp.state.keyboard.caps_lock, "it starts a sequence instead");
+    comp.inject(&[
+        key_ev(58, KeyState::Pressed, 0),
+        key_ev(58, KeyState::Released, 0),
+    ]);
+    assert!(
+        !comp.state.keyboard.caps_lock,
+        "it starts a sequence instead"
+    );
 }
 
 #[test]
@@ -256,15 +294,33 @@ fn the_helpers_follow_a_runtime_change() {
     let (mut comp, mut w, mut s) = focused(Layout::English);
     s.send(&helpers(true, false, false, false, ComposeKey::None));
     s.pump(&mut comp);
-    comp.inject(&[key_ev(42, KeyState::Pressed, 0), key_ev(42, KeyState::Released, 0)]);
-    comp.inject(&[key_ev(30, KeyState::Pressed, 0), key_ev(30, KeyState::Released, 0)]);
+    comp.inject(&[
+        key_ev(42, KeyState::Pressed, 0),
+        key_ev(42, KeyState::Released, 0),
+    ]);
+    comp.inject(&[
+        key_ev(30, KeyState::Pressed, 0),
+        key_ev(30, KeyState::Released, 0),
+    ]);
     w.pump(&mut comp);
-    assert_eq!(press_of(&w.take(), 30).map(|(c, _)| c), Some(u32::from('A')));
+    assert_eq!(
+        press_of(&w.take(), 30).map(|(c, _)| c),
+        Some(u32::from('A'))
+    );
     // Turned off at runtime: a lone Shift no longer latches.
     s.send(&helpers(false, false, false, false, ComposeKey::None));
     s.pump(&mut comp);
-    comp.inject(&[key_ev(42, KeyState::Pressed, 0), key_ev(42, KeyState::Released, 0)]);
-    comp.inject(&[key_ev(30, KeyState::Pressed, 0), key_ev(30, KeyState::Released, 0)]);
+    comp.inject(&[
+        key_ev(42, KeyState::Pressed, 0),
+        key_ev(42, KeyState::Released, 0),
+    ]);
+    comp.inject(&[
+        key_ev(30, KeyState::Pressed, 0),
+        key_ev(30, KeyState::Released, 0),
+    ]);
     w.pump(&mut comp);
-    assert_eq!(press_of(&w.take(), 30).map(|(c, _)| c), Some(u32::from('a')));
+    assert_eq!(
+        press_of(&w.take(), 30).map(|(c, _)| c),
+        Some(u32::from('a'))
+    );
 }

@@ -273,7 +273,13 @@ fn snapshot(comp: &Compositor) -> Snap {
         },
         key_helpers: {
             let h = &comp.state.keyboard.helpers;
-            (h.sticky.on, h.slow.on, h.bounce.on, h.mouse.on, h.compose.key)
+            (
+                h.sticky.on,
+                h.slow.on,
+                h.bounce.on,
+                h.mouse.on,
+                h.compose.key,
+            )
         },
         identify: comp
             .state

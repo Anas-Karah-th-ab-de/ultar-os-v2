@@ -56,7 +56,12 @@ impl State {
         }
         let modifiers = Modifiers(mods | self.caps_bit());
         let output = if pressed {
-            keymap::translate(self.key_layout(), code, Modifiers(mods), self.keyboard.caps_lock)
+            keymap::translate(
+                self.key_layout(),
+                code,
+                Modifiers(mods),
+                self.keyboard.caps_lock,
+            )
         } else {
             KeyOutput::None
         };
