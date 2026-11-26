@@ -103,7 +103,7 @@ struct Queue {
 /// What programs created.
 #[derive(Default)]
 pub(super) struct Programs {
-    vms: BTreeMap<u32, Ppgtt>,
+    pub(super) vms: BTreeMap<u32, Ppgtt>,
     queues: BTreeMap<u32, Queue>,
     next: u32,
     tlb_seqno: u32,
@@ -279,35 +279,15 @@ fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String>
     Ok(())
 }
 
-/// Prints the commands of a hung batch around `va` (where the engine stands): 96 words before,
-/// 8 after, looked up in the programs' address spaces. To read which dispatch did not end.
-fn dump_batch(rt: &mut Runtime, va: u64) {
-    let tables = &mut rt.mem.tables;
-    let start = va.saturating_sub(96 * 4);
-    for line in 0..13u64 {
-        let at = start + line * 32;
-        let mut text = alloc::string::String::new();
-        for k in 0..8u64 {
-            let a = at + k * 4;
-            let phys = rt.programs.vms.values_mut().find_map(|vm| vm.lookup(tables, a & !0xfff));
-            match phys {
-                // SAFETY: memory bound to the GPU is mapped one to one in the kernel.
-                Some(p) => {
-                    let w = unsafe { core::ptr::read_volatile((p + (a & 0xfff)) as *const u32) };
-                    text.push_str(&alloc::format!(" {w:08x}"));
-                }
-                None => text.push_str(" --------"),
-            }
-        }
-        let mark = if (at..at + 32).contains(&va) { " <" } else { "" };
-        crate::kprintln!("[intel-gt]   {at:#x}:{text}{mark}");
-    }
-}
-
 /// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
 /// resets the engine when the context does not give way; the queue takes no more jobs.
 fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
-    let Some((id, class, seen, submitted)) = rt.programs.queues.get(&key).map(|q| (q.id, q.class, q.seen, q.submitted)) else {
+    let Some((id, class, seen, submitted)) = rt
+        .programs
+        .queues
+        .get(&key)
+        .map(|q| (q.id, q.class, q.seen, q.submitted))
+    else {
         return;
     };
     // where the engine stands, read before the GuC resets it (Linux: RING_ACTHD, RING_IPEHR,
@@ -328,7 +308,7 @@ fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
     let (fault, d0, d1) = (gr(0xcec4), gr(0xceb8), gr(0xcebc));
     let page = ((d1 & 0xf) as u64) << 44 | (d0 as u64) << 12;
     crate::kprintln!("[intel-gt] fault register {fault:#x}, page {page:#x}, data1 {d1:#x}");
-    dump_batch(rt, (bbaddr_hi as u64) << 32 | (acthd & !3) as u64);
+    super::gt_hang::dump(rt, (bbaddr_hi as u64) << 32 | (acthd & !3) as u64);
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
     let reset = events
@@ -396,7 +376,11 @@ impl Backend for Gpu {
     fn vm_new(&mut self, scratch: bool) -> Result<u32, Errno> {
         let (_, rt) = self.parts()?;
         let tables = &mut rt.mem.tables;
-        let space = if scratch { Ppgtt::new_scratch(tables) } else { Ppgtt::new(tables) };
+        let space = if scratch {
+            Ppgtt::new_scratch(tables)
+        } else {
+            Ppgtt::new(tables)
+        };
         let space = space.map_err(|_| Errno::NoMem)?;
         rt.programs.next += 1;
         rt.programs.vms.insert(rt.programs.next, space);
@@ -491,8 +475,14 @@ impl Backend for Gpu {
         // number sees the data
         let mut job = mi::batch_start(batch_va, false).to_vec();
         match q.class {
-            Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
-            class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
+            Class::Blitter => {
+                job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32))
+            }
+            class => job.extend_from_slice(&mi::flush_store_ggtt_render(
+                q.seqno.gtt,
+                seqno as u32,
+                class == Class::Compute,
+            )),
         }
         job.push(mi::USER_INTERRUPT);
         job.push(mi::ARB_CHECK);
@@ -530,7 +520,8 @@ impl Backend for Gpu {
             q.usage.idle(now);
         } else {
             let mhz = ultar_intel_gt::freq::current(&mut dev.mmio).mhz();
-            q.usage.working(mhz, ultar_intel_gt::freq::limit_reasons(&mut dev.mmio));
+            q.usage
+                .working(mhz, ultar_intel_gt::freq::limit_reasons(&mut dev.mmio));
         }
         if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
             ban(dev, rt, queue);
@@ -549,7 +540,10 @@ impl Backend for Gpu {
         if let Some(q) = rt.programs.queues.remove(&queue) {
             if q.submitted >= USAGE_LOG_JOBS {
                 let m = q.usage.mhz;
-                let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
+                let asked: Vec<u64> = PAT_ASKED
+                    .iter()
+                    .map(|n| n.load(Ordering::Relaxed))
+                    .collect();
                 crate::kprintln!(
                     "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
                     q.submitted,
