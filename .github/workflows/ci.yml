@@ -249,4 +249,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools qemu-utils e2fsprogs tesseract-ocr tesseract-ocr-ara python3-pil
       - name: Build, boot and test
-        run: PATH=/usr/lib/rust-1.97/bin:$PATH tools/kern-test/ci.sh
+        # the graphical installation runs in its own job (installer, below)
+        run: PATH=/usr/lib/rust-1.97/bin:$PATH INSTALLER_E2E=0 tools/kern-test/ci.sh
+
+  installer:
+    name: Graphical installation on the Ultar kernel (QEMU, A to Z)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain and emulator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends rustc-1.97 cargo-1.97 rust-1.97-src qemu-system-x86 ovmf mtools dosfstools qemu-utils e2fsprogs
+      - name: Install from the medium, restart, first start of the installed disk
+        run: |
+          PATH=/usr/lib/rust-1.97/bin:$PATH bash tools/kern-test/installer-e2e.sh | tee installer.log
+          grep -q "^INSTALLER: ALLES OK" installer.log

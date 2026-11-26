@@ -114,10 +114,12 @@ identity = "system.net"
 call     = ["update.network"]
 
 # The graphical installer (installation medium, profile installer): looks at
-# the devices and tries another driver (step 7), nothing else.
+# the devices and tries another driver (step 7) and, on its last step, restarts
+# the machine into the installed system (init.power; init.shutdown is the
+# pseudo method init asks for). It runs only in the profile installer.
 [[rule]]
 identity = "system.installer"
-call     = ["devices.list", "devices.switch", "devices.rescan"]
+call     = ["devices.list", "devices.switch", "devices.rescan", "init.power", "init.shutdown"]
 
 # Apps: may look at the update state and ask for a check or a download. The
 # update service itself refuses them everything that changes the system.

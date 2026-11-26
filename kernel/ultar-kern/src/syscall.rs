@@ -238,7 +238,7 @@ fn put(va: u64, data: &[u8]) -> bool {
     with(|p| proc::write_user(p.space(), va, data)).unwrap_or(false)
 }
 
-fn get(va: u64, n: usize) -> Option<Vec<u8>> {
+pub(crate) fn get(va: u64, n: usize) -> Option<Vec<u8>> {
     with(|p| proc::read_user(p.space(), va, n)).flatten()
 }
 
@@ -461,7 +461,7 @@ pub fn dispatch(f: &mut TrapFrame) {
         // call 52 used to stand in the "does nothing" list above and hid this line.
         52 => Res::Val(if sock_id(a[0]).is_some() { sys_sockname(a[0], a[1], a[2], true) } else { 0 }),
         53 => Res::Val(sys_socketpair(a[0], a[1], a[3])),
-        54 => Res::Val(0),
+        54 => Res::Val(crate::uds::setsockopt(a[0], a[1], a[2], a[3], a[4]).unwrap_or(0)),
         55 => Res::Val(sys_getsockopt(a[0], a[1], a[2], a[3], a[4])),
         137 | 138 => Res::Val(sys_statfs(nr == 138, a[0], a[1])),
         334 | 332 | 435 | 326 | 425 | 426 | 427 => Res::Val(-ENOSYS),
@@ -622,6 +622,10 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
         Console,
         Block(Wait),
         Err(i64),
+        /// data of a Unix socket with `SO_RCVTIMEO`: its kept deadline ends
+        DataEndsWait(Vec<u8>),
+        /// nothing yet on a Unix socket with `SO_RCVTIMEO` (milliseconds, event counter)
+        Timed(u64, u64),
     }
     let src = with(|p| {
         // sources that are copied straight into the caller's memory (no buffer of the caller's size)
@@ -708,12 +712,16 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                 None => Src::Block(Wait::Poll(crate::socket::gen(), crate::arch::uptime_ms() + 8)),
             },
             FdKind::PipeR(pp) | FdKind::UnixConn(pp, _) => {
+                let timeout = pp.read_timeout_ms.load(Ordering::Relaxed);
                 let mut b = pp.buf.lock();
                 if b.is_empty() {
                     if pp.write_closed() {
                         Src::Data(Vec::new())
                     } else if d.flags & 0x800 != 0 {
                         Src::Err(-11)
+                    } else if timeout != 0 {
+                        // SO_RCVTIMEO: wait at most that long (deadline kept across the repeats)
+                        Src::Timed(timeout, crate::socket::gen())
                     } else {
                         Src::Block(Wait::Net(crate::socket::gen()))
                     }
@@ -722,7 +730,11 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
                         Some(out) => {
                             // room for a waiting writer
                             crate::socket::bump();
-                            Src::Data(out)
+                            if timeout != 0 {
+                                Src::DataEndsWait(out)
+                            } else {
+                                Src::Data(out)
+                            }
                         }
                         None => Src::Err(-ENOMEM),
                     }
@@ -771,6 +783,15 @@ fn sys_read(fd: u64, buf: u64, n: u64, at: Option<u64>) -> Res {
     .unwrap_or(Src::Err(-EBADF));
     match src {
         Src::Data(d) => Res::Val(if put(buf, &d) || d.is_empty() { d.len() as i64 } else { -EFAULT }),
+        Src::DataEndsWait(d) => {
+            with(|p| p.poll_dl = None);
+            Res::Val(if put(buf, &d) || d.is_empty() { d.len() as i64 } else { -EFAULT })
+        }
+        Src::Timed(ms, seen) => match poll_wait(ms as i64, 0, seen) {
+            // the deadline passed: EAGAIN, as a Linux read with SO_RCVTIMEO
+            Res::Val(_) => Res::Val(-11),
+            r => r,
+        },
         Src::Done(v) => Res::Val(v),
         Src::Err(e) => Res::Val(e),
         Src::Block(w) => Res::Block(w),
@@ -2536,17 +2557,12 @@ fn sys_shutdown(fd: u64, how: u64) -> i64 {
     }
     if let Some(us) = unix_sock(fd) {
         unix_unlisten(&us);
-        let queued = match core::mem::replace(&mut *us.lock(), proc::UnixState::Unbound) {
-            proc::UnixState::Listening(_, q) => q,
-            proc::UnixState::Unbound => return -ENOTCONN_U,
-        };
-        // the queued connections were never accepted: their ends close (the connector sees EOF/EPIPE)
-        for (r, w) in queued {
-            r.readers.fetch_sub(1, Ordering::SeqCst);
-            w.writers.fetch_sub(1, Ordering::SeqCst);
-        }
-        crate::socket::bump();
-        return 0;
+        // the queued connections were never accepted: their ends close when the old state drops
+        // (the connector sees EOF/EPIPE, `impl Drop for UnixState`)
+        let old = core::mem::replace(&mut *us.lock(), proc::UnixState::Unbound);
+        let listening = matches!(old, proc::UnixState::Listening(..));
+        drop(old);
+        return if listening { 0 } else { -ENOTCONN_U };
     }
     let pipes = with(|p| match p.fd(fd).map(|d| &d.kind) {
         Some(FdKind::UnixConn(rx, tx)) => Ok((rx.clone(), tx.clone())),
@@ -2651,8 +2667,11 @@ fn sys_sendto(fd: u64, buf: u64, len: u64, addr: u64, alen: u64) -> Res {
 fn sys_recvfrom(fd: u64, buf: u64, len: u64, flags: u64, addr: u64, lenp: u64) -> Res {
     if crate::scm::is_conn(fd) {
         return match crate::scm::recv(fd, &[(buf, len)], 0, 0, flags) {
-            Ok(r) => Res::Val(r.len),
-            Err(s) => scm_res(s),
+            Ok(r) => {
+                recv_ends_wait(fd);
+                Res::Val(r.len)
+            }
+            Err(s) => scm_recv_res(fd, s),
         };
     }
     let Some(id) = sock_id(fd) else { return sys_read(fd, buf, len, None) };
@@ -2664,6 +2683,33 @@ fn msghdr(m: u64) -> Option<(u64, u64, Vec<(u64, u64)>)> {
     let b = get(m, 56)?;
     let r = |o: usize| u64::from_le_bytes(b[o..o + 8].try_into().unwrap());
     Some((r(0), r(8) & 0xffff_ffff, iov(r(16), r(24))))
+}
+
+/// A receive on a Unix socket that would wait: with `SO_RCVTIMEO` at most that long (then `EAGAIN`).
+fn scm_recv_res(fd: u64, s: crate::scm::Step) -> Res {
+    match (s, unix_read_timeout(fd)) {
+        (crate::scm::Step::Wait(seen), ms) if ms != 0 => match poll_wait(ms as i64, 0, seen) {
+            Res::Val(_) => Res::Val(-11),
+            r => r,
+        },
+        (s, _) => scm_res(s),
+    }
+}
+
+/// `SO_RCVTIMEO` of a connected Unix socket in milliseconds (0: none or not such a socket).
+fn unix_read_timeout(fd: u64) -> u64 {
+    with(|p| match p.fd(fd).map(|d| &d.kind) {
+        Some(FdKind::UnixConn(rx, _)) => rx.read_timeout_ms.load(Ordering::Relaxed),
+        _ => 0,
+    })
+    .unwrap_or(0)
+}
+
+/// A receive that delivered: the deadline its waits kept (`SO_RCVTIMEO`) ends.
+fn recv_ends_wait(fd: u64) {
+    if unix_read_timeout(fd) != 0 {
+        with(|p| p.poll_dl = None);
+    }
 }
 
 fn scm_res(s: crate::scm::Step) -> Res {
@@ -2736,9 +2782,10 @@ fn sys_recvmsg(fd: u64, m: u64, flags: u64) -> Res {
                 put(m + 40, &r.ctl_len.to_le_bytes());
                 put(m + 48, &r.msg_flags.to_le_bytes());
                 put(m + 8, &0u32.to_le_bytes());
+                recv_ends_wait(fd);
                 Res::Val(r.len)
             }
-            Err(s) => scm_res(s),
+            Err(s) => scm_recv_res(fd, s),
         };
     }
     let Some(id) = sock_id(fd) else {

@@ -1,6 +1,9 @@
 //! Unterbrechungen, Ausnahmen und Systemaufrufe über einen gemeinsamen Einstieg.
 //!
-//! Jeder Einstieg legt einen vollständigen `TrapFrame` (alle Register + SSE-Zustand) auf den Kernstapel.
+//! Jeder Einstieg legt einen vollständigen `TrapFrame` (alle Register + Gleitkomma-/Vektorzustand) auf den
+//! Kernstapel. Aus Benutzerprogrammen mit `xsave64` (x87, SSE, AVX – soweit `arch::xsave_an` sie eingeschaltet
+//! hat; der Bereich liegt auf 64 Byte ausgerichtet, weil der Kernstapel auf 64 Byte endet und der Rahmen ein
+//! Vielfaches von 64 Byte ist), aus dem Kern selbst mit `fxsave64` (der Kern nutzt keine Vektorbefehle).
 //! Aus Benutzerprogrammen: Systemaufruf (`syscall`), Zeitgeber, Ausnahmen → proc.rs entscheidet, ob das
 //! Programm weiterläuft, wartet oder ein anderes drankommt.
 
@@ -8,10 +11,20 @@ use crate::arch;
 use crate::paging::{rdmsr, wrmsr};
 use core::arch::global_asm;
 
-#[repr(C, align(16))]
+/// Größe des Sicherungsbereichs: XSAVE-Standardformat für x87 + SSE + AVX (832 Byte) mit Reserve.
+pub const FX_SIZE: usize = 1024;
+
+/// Ob Programmrahmen mit `xsave64`/`xrstor64` gesichert werden (sonst `fxsave64`); gesetzt einmal beim Start.
+#[no_mangle]
+pub static ULTAR_XSAVE_ON: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+#[repr(C, align(64))]
 #[derive(Clone)]
 pub struct TrapFrame {
-    pub fx: [u8; 512],
+    /// FXSAVE- bzw. XSAVE-Bereich (Standardformat)
+    pub fx: [u8; FX_SIZE],
+    /// hält den Rahmen auf 64 Byte: 176 Byte Register + 1040 = 1216 = 19 × 64
+    pub _pad: [u8; 16],
     pub r15: u64,
     pub r14: u64,
     pub r13: u64,
@@ -35,6 +48,8 @@ pub struct TrapFrame {
     pub rsp: u64,
     pub ss: u64,
 }
+
+const _: () = assert!(core::mem::size_of::<TrapFrame>() % 64 == 0 && core::mem::offset_of!(TrapFrame, cs) == 1184);
 
 impl TrapFrame {
     pub fn zeroed() -> TrapFrame {
@@ -113,15 +128,35 @@ ultar_trap_common_noswap:
     push r13
     push r14
     push r15
-    sub rsp, 512
+    sub rsp, 1040
+    test byte ptr [rsp + 1184], 3
+    jz 3f
+    cmp byte ptr [rip + ULTAR_XSAVE_ON], 0
+    je 3f
+    mov eax, -1
+    mov edx, -1
+    xsave64 [rsp]
+    jmp 4f
+3:
     fxsave64 [rsp]
+4:
     mov rdi, rsp
     cld
     call ultar_trap_rust
 .global ultar_trap_restore
 ultar_trap_restore:
+    test byte ptr [rsp + 1184], 3
+    jz 3f
+    cmp byte ptr [rip + ULTAR_XSAVE_ON], 0
+    je 3f
+    mov eax, -1
+    mov edx, -1
+    xrstor64 [rsp]
+    jmp 4f
+3:
     fxrstor64 [rsp]
-    add rsp, 512
+4:
+    add rsp, 1040
     pop r15
     pop r14
     pop r13

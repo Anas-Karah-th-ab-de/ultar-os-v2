@@ -21,6 +21,8 @@ them (website, downloads, store). Flow: build on a builder → copy the files to
    random per-build password, no first-start account setup). Known gaps (in the notes): graphical installation not
    verified end to end (installer-e2e opt-in), no encryption, no automatic restart, image's system apps are signed
    with a per-build key (not the server's system key) so store updates of system apps will not verify on it.
+   Since 2026-11-26 (after 0.8.0): the graphical installation is verified end to end in QEMU (installer-e2e,
+   default in ci.sh and its own GitHub job) and Restart on the last step restarts the machine.
 2. **Version:** one source `tools/release/VERSION` = `0.8.0` (VERSION file says `0.8.0-beta`; workspace, kernel, loader, signd all 0.8.0). The workspace (`0.6.0`), kernel
    (`0.4.0`) and brand/os-release (`0.7.0`) are aligned in the image step (deliverable 1), not yet.
 3. **Device trust:** the public keys created on the server must be put into

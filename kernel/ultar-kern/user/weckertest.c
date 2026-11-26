@@ -2,7 +2,9 @@
  * the child's exit) and report a failed execve; shutdown() and the peer's close wake readers and writers
  * blocked on an AF_UNIX socket in another thread (read 0, write EPIPE), also for poll and epoll; accept()
  * blocked on a listening socket ends at shutdown; a signal for the whole process is read from a signalfd
- * by whichever thread waits on it. One line per check ("ok" / "FEHLER"); the last line is
+ * by whichever thread waits on it; a connection still queued at a listener that closes (or whose process
+ * ends) reads end of file instead of waiting forever; SO_RCVTIMEO bounds a blocking read and recvmsg on a
+ * Unix socket (EAGAIN after the time, a fresh limit for the next read). One line per check ("ok" / "FEHLER"); the last line is
  * "WECKERTEST: ALLES OK" when every check passed.
  *   weckertest              all checks
  *   weckertest --sleep <s>  helper: sleep, then exit 0 (the long-running child of the spawn checks) */
@@ -221,6 +223,88 @@ static void accept_checks(void) {
     unlink(a.sun_path);
 }
 
+/* ---------------------------------------------------------------- listener goes away, read time limit */
+
+static int listen_at(struct sockaddr_un *a, const char *tag) {
+    a->sun_family = AF_UNIX;
+    snprintf(a->sun_path, sizeof a->sun_path, "/tmp/weckertest-%s-%d.sock", tag, getpid());
+    unlink(a->sun_path);
+    int l = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (bind(l, (void *)a, sizeof *a) != 0 || listen(l, 4) != 0) return -1;
+    return l;
+}
+
+static void gone_listener_checks(void) {
+    struct sockaddr_un a;
+    char b[8];
+    /* 1. the listener is closed while a connection waits in its queue */
+    int l = listen_at(&a, "zu");
+    int c = socket(AF_UNIX, SOCK_STREAM, 0);
+    int ok = l >= 0 && connect(c, (void *)&a, sizeof a) == 0;
+    close(l);
+    struct pollfd p = {.fd = c, .events = POLLIN};
+    int pr = poll(&p, 1, 3000);
+    errno = 0;
+    ssize_t r = read(c, b, sizeof b);
+    /* the Ultar kernel: end of file; Linux: ECONNRESET – either way the reader does not wait */
+    check("Unix: Verbindung in der Warteschlange eines geschlossenen Lauschers liest Dateiende", ok && pr == 1 && (r == 0 || (r == -1 && errno == ECONNRESET)));
+    close(c);
+    unlink(a.sun_path);
+    /* 2. the listener's process ends while a connection waits in its queue */
+    int pipefd[2];
+    if (pipe(pipefd) != 0) pipefd[0] = pipefd[1] = -1;
+    pid_t kid = fork();
+    if (kid == 0) {
+        struct sockaddr_un k;
+        int lk = listen_at(&k, "ende");
+        char go = lk >= 0 ? 'y' : 'n';
+        if (write(pipefd[1], &go, 1) != 1) _exit(2);
+        usleep(500000);
+        _exit(0); /* never accepts */
+    }
+    char go = 0;
+    ok = read(pipefd[0], &go, 1) == 1 && go == 'y';
+    snprintf(a.sun_path, sizeof a.sun_path, "/tmp/weckertest-ende-%d.sock", kid);
+    c = socket(AF_UNIX, SOCK_STREAM, 0);
+    ok = ok && connect(c, (void *)&a, sizeof a) == 0;
+    long t0 = ms();
+    errno = 0;
+    r = read(c, b, sizeof b); /* blocks until the listener's process ended */
+    long took = ms() - t0;
+    waitpid(kid, NULL, 0);
+    check("Unix: Verbindung in der Warteschlange liest Dateiende, wenn der Prozess des Lauschers endet",
+          ok && (r == 0 || (r == -1 && errno == ECONNRESET)) && took < 5000);
+    close(c);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    unlink(a.sun_path);
+    /* 3. SO_RCVTIMEO: read and recvmsg end with EAGAIN after the limit; data before it is read; the next
+     *    read gets the whole limit again */
+    int sv[2];
+    ok = socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0;
+    struct timeval tv = {.tv_sec = 0, .tv_usec = 400000}, back = {0};
+    socklen_t bl = sizeof back;
+    ok = ok && setsockopt(sv[0], SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv) == 0;
+    ok = ok && getsockopt(sv[0], SOL_SOCKET, SO_RCVTIMEO, &back, &bl) == 0 && back.tv_usec == 400000 && back.tv_sec == 0;
+    t0 = ms();
+    errno = 0;
+    r = read(sv[0], b, sizeof b);
+    took = ms() - t0;
+    check("Unix: SO_RCVTIMEO – read endet nach der Frist mit EAGAIN", ok && r == -1 && errno == EAGAIN && took >= 350 && took < 3000);
+    if (write(sv[1], "x", 1) != 1) ok = 0;
+    r = read(sv[0], b, sizeof b);
+    t0 = ms();
+    errno = 0;
+    struct iovec io = {.iov_base = b, .iov_len = sizeof b};
+    struct msghdr m = {.msg_iov = &io, .msg_iovlen = 1};
+    ssize_t r2 = recvmsg(sv[0], &m, 0);
+    took = ms() - t0;
+    check("Unix: SO_RCVTIMEO – Daten vor der Frist, danach recvmsg wieder mit voller Frist (EAGAIN)",
+          ok && r == 1 && r2 == -1 && errno == EAGAIN && took >= 350 && took < 3000);
+    close(sv[0]);
+    close(sv[1]);
+}
+
 /* ---------------------------------------------------------------- signalfd in a threaded process */
 
 struct sig {
@@ -345,6 +429,7 @@ int main(int argc, char **argv) {
     unix_checks();
     readiness_checks();
     accept_checks();
+    gone_listener_checks();
     signal_checks();
     console_lines();
     kill_race();

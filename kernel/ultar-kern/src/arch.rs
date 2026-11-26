@@ -63,7 +63,7 @@ static mut DF_STACK: [[u8; 8192]; MAXCPU] = [[0; 8192]; MAXCPU];
 unsafe fn set_tss(cpu: usize) {
     let tss_base = core::ptr::addr_of!(TSS[cpu]) as u64;
     let mut ist = [0u64; 7];
-    ist[0] = (core::ptr::addr_of!(DF_STACK[cpu]) as u64 + 8192) & !15;
+    ist[0] = (core::ptr::addr_of!(DF_STACK[cpu]) as u64 + 8192) & !63; // 64: XSAVE area of a frame from ring 3
     core::ptr::addr_of_mut!(TSS[cpu].ist).write_unaligned(ist);
     let lim = (core::mem::size_of::<Tss>() - 1) as u64;
     GDT[6 + 2 * cpu] = (lim & 0xffff) | ((tss_base & 0xffffff) << 16) | (0x89u64 << 40) | (((lim >> 16) & 0xf) << 48) | (((tss_base >> 24) & 0xff) << 56);
@@ -337,6 +337,61 @@ pub fn reboot_hw() -> ! {
 
 // ------------------------------------------------------------------ Härtung und Zufall
 
+/// XSAVE-Zustände für Programme einschalten (jeder Kern): CR4.OSXSAVE und XCR0 = x87 | SSE | AVX, soweit der
+/// Prozessor sie kann und der Bereich in `trap::FX_SIZE` passt. Danach melden CPUID und `xgetbv` den Programmen
+/// AVX als nutzbar (glibc, Graviola, llama.cpp), und die Einstiege in `trap.rs` sichern die YMM-Register mit.
+/// Der erste Kern entscheidet; weitere Kerne folgen derselben Wahl.
+// SAFETY: only at the start of a core (ring 0, before programs run on it): CR4.OSXSAVE and XCR0 are set
+// only to bits CPUID reports, and the trap entries switch to xsave64 only after XCR0 holds x87|SSE.
+pub unsafe fn xsave_an() {
+    use core::sync::atomic::Ordering::SeqCst;
+    let l1 = core::arch::x86_64::__cpuid(1);
+    let (xsave, avx) = (l1.ecx & (1 << 26) != 0, l1.ecx & (1 << 28) != 0);
+    // 0 = noch nicht entschieden, 1 = aus (fxsave), 2 = an
+    static WAHL: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+    static MASKE: AtomicU64 = AtomicU64::new(0);
+    if !xsave || WAHL.load(SeqCst) == 1 {
+        WAHL.store(1, SeqCst);
+        return;
+    }
+    let mut cr4: u64;
+    core::arch::asm!("mov {}, cr4", out(reg) cr4);
+    core::arch::asm!("mov cr4, {}", in(reg) cr4 | (1 << 18));
+    let mask = match MASKE.load(SeqCst) {
+        0 => {
+            let want = if avx { 0x7 } else { 0x3 };
+            let can = core::arch::x86_64::__cpuid_count(0xd, 0).eax as u64;
+            want & can
+        }
+        m => m,
+    };
+    core::arch::asm!("xsetbv", in("ecx") 0u32, in("eax") mask as u32, in("edx") (mask >> 32) as u32);
+    // Größe des Standardformats für die eingeschalteten Zustände
+    let size = core::arch::x86_64::__cpuid_count(0xd, 0).ebx as usize;
+    if WAHL.load(SeqCst) == 0 {
+        if mask & 3 != 3 || size > crate::trap::FX_SIZE {
+            core::arch::asm!("xsetbv", in("ecx") 0u32, in("eax") 3u32, in("edx") 0u32);
+            core::arch::asm!("mov cr4, {}", in(reg) cr4 & !(1 << 18));
+            WAHL.store(1, SeqCst);
+            return;
+        }
+        MASKE.store(mask, SeqCst);
+        WAHL.store(2, SeqCst);
+        crate::trap::ULTAR_XSAVE_ON.store(1, SeqCst);
+    }
+}
+
+/// Bits von XCR0, die Programme sichern lassen (0 = XSAVE aus).
+pub fn xcr0() -> u64 {
+    if crate::trap::ULTAR_XSAVE_ON.load(core::sync::atomic::Ordering::Relaxed) == 0 {
+        return 0;
+    }
+    let (lo, hi): (u32, u32);
+    // SAFETY: xgetbv(0) only reads XCR0; CR4.OSXSAVE is on (ULTAR_XSAVE_ON is set only after that).
+    unsafe { core::arch::asm!("xgetbv", in("ecx") 0u32, out("eax") lo, out("edx") hi) };
+    (lo as u64) | ((hi as u64) << 32)
+}
+
 /// Schutzbits des Prozessors setzen (falls vorhanden): SMEP (Kern führt nie Benutzercode aus),
 /// SMAP (Kern liest/schreibt Benutzerspeicher nie direkt – nur über die Seitentabelle des Prozesses),
 /// UMIP (Programme lesen keine Deskriptortabellen aus). Liefert die gesetzten Namen.
@@ -355,6 +410,7 @@ pub unsafe fn haerten() -> &'static str {
         cr4 |= 1 << 11;
     }
     core::arch::asm!("mov cr4, {}", in(reg) cr4);
+    xsave_an();
     let name = match (smep, smap, umip) {
         (true, true, true) => "SMEP SMAP UMIP",
         (true, true, false) => "SMEP SMAP",

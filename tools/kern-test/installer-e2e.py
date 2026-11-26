@@ -10,7 +10,8 @@ USB tablet, PS/2 keyboard, no virtio):
    monitor (sendkey: the PS/2 keyboard -> the kernel's event node -> the compositor -> the installer) and follows
    those lines: Tab until Next has the focus, Enter; on the account step it types the full name, the user name
    (Latin layout: Super+Space), the password twice; on the summary it ticks the erase line (Space) and presses
-   Install. Then it waits for "installation written".
+   Install. Then it waits for "installation written", presses Restart on the last step and waits until the
+   machine restarts (the service manager ends every service, the kernel resets; QEMU has -no-reboot).
 2. The target alone (NVMe) starts: loader (A/B) -> kernel -> ultar-init (profile system) -> ultar-firstboot turns
    the installer's answers into the first account; the image's check service lists the accounts.
 Verdict line: "INSTALLER-E2E: OK …" (exit 0) or "INSTALLER-E2E: FEHLER (…)".
@@ -207,9 +208,31 @@ def install(medium, target, prefix):
             return "the installation did not end"
         if done.group(1) != b"written":
             return done.group(1).decode(errors="replace").strip()
-        vm.pump(3)  # the last writes reach the disk file
         if re.search(rb"\[treiber\] .* -> virtio", vm.buf):
             return "a virtio device is present"
+        # the last step: Restart ends every service in order and restarts the machine (init.power);
+        # QEMU runs with -no-reboot, so the restart ends it
+        if not vm.wait_for(re.compile(rb"\[installer-ui\] step=Done"), WAIT):
+            return "no Done step after the installation"
+        vm.pump(2)
+        if not d.focus("Restart"):
+            return "Tab does not reach Restart on the Done step"
+        mark = len(vm.buf)
+        vm.monitor(f"sendkey ret {HOLD_MS}")
+        if not vm.wait_for(re.compile(rb"\[installer-ui\] restart requested"), 120, mark):
+            return "Restart on the Done step did nothing"
+        end = time.time() + WAIT
+        while time.time() < end and vm.p.poll() is None:
+            vm.pump(0.5)
+        while vm.pump(0.1):
+            pass
+        refused = re.search(rb"\[installer-ui\] restart not possible[^\n]*", vm.buf[mark:])
+        if refused:
+            return refused.group(0).decode(errors="replace").strip()
+        if vm.p.poll() is None:
+            return "the machine did not restart after Restart"
+        if not re.search(rb"halt Reboot", vm.buf[mark:]):
+            return "the machine ended without the service manager's ordered restart"
         return None
     finally:
         vm.end()

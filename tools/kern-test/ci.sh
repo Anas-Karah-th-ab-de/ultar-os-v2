@@ -14,6 +14,8 @@
 #       package through them (devd-qemu.sh; DEVD=/UDRV= for prebuilt binaries),
 #   5d. wake-ups (weckertest): posix_spawn/vfork release the parent at execve, shutdown/close wake blocked
 #       Unix-socket readers, writers and accept, signalfd in threaded processes,
+#   5d2. the AVX state (avxtest): CPUID OSXSAVE and XCR0 x87|SSE|AVX, YMM registers kept across preemption,
+#       sched_yield, signal handlers and fork (the kernel saves programs with xsave64),
 #   5e. what a compositor needs (fenstertest): memfd + seals, shared mappings across fork and processes,
 #       SCM_RIGHTS, MSG_DONTWAIT, POLLOUT wake-ups, poll timeouts below a second, mremap, fb0 mmap + vblank,
 #       owner/group/mode of device nodes, evdev capability ioctls, /sys/class/input; a USB keyboard that
@@ -38,8 +40,9 @@
 #       and the sound card's call streams /dev/ultar/pcm (pcm-e2e.sh, PCM-E2E: ALLES OK) and the camera
 #       node /dev/ultar/kamera (kamera-e2e.sh, KAMERA-E2E: ALLES OK),
 #   7f. installer mode: whole-disk nodes for the installer only (installer-disk.sh, INSTALLER-DISK: ALLES OK) and
-#       the graphical installation from A to Z with the first start of the installed disk (installer-e2e.sh,
-#       INSTALLER: ALLES OK; opt-in with INSTALLER_E2E=1, see docs/integration/installer-boot.md),
+#       the graphical installation from A to Z, the restart from its last step and the first start of the
+#       installed disk (installer-e2e.sh, INSTALLER: ALLES OK; INSTALLER_E2E=0 skips it, about 15 minutes
+#       under TCG),
 #   7g. Bluetooth: a USB controller (usb-redir + bt-usb.py) through /dev/ultar/hci0, ultar-btd sets it up as its own
 #       user, its keyboards through /dev/ultar/uinput (bt-e2e.sh, BT: ALLES OK; virtual input devices alone:
 #       bttest uinput in the first boot, BTTEST-UINPUT: ALLES OK),
@@ -73,9 +76,9 @@ fi
 mcopy -o -i out/ultar-kern-esp.img "$BUSCK" ::/bin/busck
 LOG="${LOG:-$(mktemp)}"
 # a second network card (e1000) is the device the bind/unbind cycle of geraetetest works on
-QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" "/bin/fenstertest" "/bin/bttest uinput" > "$LOG" 2>&1 || true
+QARGS="${QARGS:-} -netdev user,id=n2 -device e1000,netdev=n2" SMP="${SMP:-2}" timeout 300 python3 tools/kern-test/qtest.py out/ultar-kern-esp.img "geraete" "/bin/kerntest" "/bin/busck" "/bin/zelltest" "/bin/rechtetest" "/bin/geraetetest" "/bin/weckertest" "/bin/spawntest" "/bin/fenstertest" "/bin/bttest uinput" "/bin/avxtest" > "$LOG" 2>&1 || true
 fail=0
-for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK" "BTTEST-UINPUT: ALLES OK"; do
+for expect in "alle Geräte haben einen Treiber" "Ergebnis: ALLES OK" "BUS SELFCHECK OK" "ZELLTEST: ALLES OK" "RECHTETEST: ALLES OK" "GERAETETEST: ALLES OK" "WECKERTEST: ALLES OK" "SPAWNTEST: ALLES OK" "FENSTERTEST: ALLES OK" "BTTEST-UINPUT: ALLES OK" "AVXTEST: ALLES OK"; do
   if grep -q "$expect" "$LOG"; then echo "ok    $expect"; else echo "FAIL  $expect"; fail=1; fi
 done
 if grep -qiE "kernel panic|PANIK" "$LOG"; then echo "FAIL  kernel panic"; fail=1; fi
@@ -185,11 +188,10 @@ IMG=out/ultar-kern-esp.img bash tools/kern-test/kamera-e2e.sh | tail -1
 # boot disk never a target (installer-disk.sh, INSTALLER-DISK: ALLES OK).
 IMG=out/ultar-kern-esp.img SMP="${SMP:-2}" bash tools/kern-test/installer-disk.sh | tail -3
 # The graphical installation from A to Z on VMware-like hardware: medium + empty disk, the installer driven
-# by keys, then the installed disk alone with the account it was given (installer-e2e.sh). Opt-in
-# (INSTALLER_E2E=1) until the kernel's keyboard path stops losing typed characters under QEMU (TCG): the
-# account step cannot be typed reliably yet (docs/integration/installer-boot.md, open point 1).
-if [ "${INSTALLER_E2E:-0}" = 0 ]; then
-  echo "skip  INSTALLER (INSTALLER_E2E=1 runs it; open point in docs/integration/installer-boot.md)"
+# by keys, Restart on the last step (the service manager ends every service, the machine restarts), then the
+# installed disk alone with the account it was given (installer-e2e.sh). INSTALLER_E2E=0 skips it.
+if [ "${INSTALLER_E2E:-1}" = 0 ]; then
+  echo "skip  INSTALLER (INSTALLER_E2E=0)"
 else
   ILOG="${INSTALLER_LOG:-$(mktemp)}"
   if SMP="${SMP:-2}" bash tools/kern-test/installer-e2e.sh > "$ILOG" 2>&1 && grep -q "^INSTALLER: ALLES OK" "$ILOG"; then

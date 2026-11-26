@@ -18,3 +18,5 @@ installtest
 bttest
 ausschalttest
 dritest
+avxtest
+nettest

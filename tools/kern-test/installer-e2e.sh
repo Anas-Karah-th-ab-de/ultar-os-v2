@@ -45,6 +45,9 @@ args = ["--list", "--auth-dir", "/data/ultar/auth"]
 oneshot = true
 console = true
 after = ["firstboot"]
+# Identity: root with the right file_admin, like firstboot (the account file is authd's, mode 0600, in a
+# directory init made for firstboot; root without a right may not read it)
+rights = ["file_admin"]
 EOF
 printf 'desktop\n' >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"

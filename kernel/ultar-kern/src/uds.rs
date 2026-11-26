@@ -97,6 +97,41 @@ pub fn connect_node(loc: &Loc, abstract_name: bool) -> Result<(), i64> {
     }
 }
 
+/// `SO_RCVTIMEO`.
+const SO_RCVTIMEO: u64 = 20;
+
+/// The direction a connected Unix socket descriptor reads from.
+fn read_pipe(fd: u64) -> Option<Arc<Pipe>> {
+    with(|p| match p.fd(fd).map(|d| &d.kind) {
+        Some(FdKind::UnixConn(rx, _)) => Some(rx.clone()),
+        _ => None,
+    })
+    .flatten()
+}
+
+/// `setsockopt` on a connected Unix socket. `SO_RCVTIMEO` (a `timeval`, rounded up to whole
+/// milliseconds; 0 = wait without limit): a blocking read that waited that long ends with `EAGAIN`,
+/// as on Linux – the bus client relies on it while it greets a broker that may be going away.
+/// `None`: not handled here (the call keeps its old answer, success without effect).
+pub fn setsockopt(fd: u64, level: u64, opt: u64, val: u64, len: u64) -> Option<i64> {
+    if level != SOL_SOCKET || opt != SO_RCVTIMEO {
+        return None;
+    }
+    let rx = read_pipe(fd)?;
+    if len < 16 {
+        return Some(-EINVAL);
+    }
+    let Some(tv) = crate::syscall::get(val, 16) else { return Some(-EFAULT) };
+    let sec = i64::from_le_bytes(tv[0..8].try_into().unwrap_or([0; 8]));
+    let usec = i64::from_le_bytes(tv[8..16].try_into().unwrap_or([0; 8]));
+    if sec < 0 || !(0..1_000_000).contains(&usec) {
+        return Some(-33); // EDOM, as Linux
+    }
+    let ms = (sec as u64).saturating_mul(1000).saturating_add((usec as u64).div_ceil(1000));
+    rx.read_timeout_ms.store(ms, core::sync::atomic::Ordering::Relaxed);
+    Some(0)
+}
+
 /// What `getsockopt` can tell about a Unix socket descriptor.
 enum Kind {
     Connected(Option<Peer>),
@@ -150,6 +185,13 @@ pub fn getsockopt(fd: u64, level: u64, opt: u64, val: u64, lenp: u64) -> i64 {
     let Some(kind) = kind_of(fd) else { return -ENOTSOCK };
     if level != SOL_SOCKET {
         return -ENOPROTOOPT;
+    }
+    if opt == SO_RCVTIMEO {
+        let ms = read_pipe(fd).map_or(0, |r| r.read_timeout_ms.load(core::sync::atomic::Ordering::Relaxed));
+        let mut tv = [0u8; 16];
+        tv[0..8].copy_from_slice(&(ms / 1000).to_le_bytes());
+        tv[8..16].copy_from_slice(&((ms % 1000) * 1000).to_le_bytes());
+        return reply(val, lenp, &tv);
     }
     let number: i32 = match (opt, &kind) {
         // SO_PEERCRED

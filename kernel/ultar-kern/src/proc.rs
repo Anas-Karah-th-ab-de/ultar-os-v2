@@ -78,6 +78,21 @@ pub enum UnixState {
     Listening(String, alloc::collections::VecDeque<(Arc<Pipe>, Arc<Pipe>)>),
 }
 
+/// Connections still in the queue of a listener that goes away (closed, its process ended, or
+/// `shutdown`) were never accepted: their ends close, so the connector reads end of file and its
+/// writes fail with `EPIPE` instead of waiting for an answer that never comes.
+impl Drop for UnixState {
+    fn drop(&mut self) {
+        if let UnixState::Listening(_, q) = self {
+            for (r, w) in q.drain(..) {
+                r.readers.fetch_sub(1, Ordering::SeqCst);
+                w.writers.fetch_sub(1, Ordering::SeqCst);
+            }
+            crate::socket::bump();
+        }
+    }
+}
+
 /// Unix-Verbindung als Paar von Rohren; Zähler wie bei offenen Enden
 pub fn unix_pair() -> (FdKind, FdKind) {
     let (a, b) = (Pipe::with_capacity(crate::pipe::UNIX_DEFAULT), Pipe::with_capacity(crate::pipe::UNIX_DEFAULT));
@@ -832,7 +847,8 @@ pub fn new_pid() -> u64 {
 const R_SWITCH: u64 = 1;
 
 fn kstack_top(p: &Proc) -> u64 {
-    (p.kstack.as_ptr() as u64 + p.kstack.len() as u64) & !15
+    // 64 Byte: der XSAVE-Bereich eines Programmrahmens liegt dann ausgerichtet (trap.rs)
+    (p.kstack.as_ptr() as u64 + p.kstack.len() as u64) & !63
 }
 
 static LAST: [AtomicU64; crate::arch::MAXCPU] = [const { AtomicU64::new(0) }; crate::arch::MAXCPU];
@@ -887,7 +903,7 @@ fn run_one() -> Option<bool> {
         }
         let p = &mut ps[i];
         let top = kstack_top(p);
-        let fp = (top - core::mem::size_of::<TrapFrame>() as u64) & !15;
+        let fp = (top - core::mem::size_of::<TrapFrame>() as u64) & !63;
         p.state = State::Running(cpu);
         p.on_cpu = true;
         unsafe {

@@ -1,6 +1,19 @@
 # Ultar OS v2 – Stand
 
-Stand 22.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
+Stand 26.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
+
+## Installation auf dem Ultar-Kern vollständig geprüft (26.11.2026)
+
+| Baustein | Stand |
+|---|---|
+| Grafische Installation A–Z | `installer-e2e.sh` grün in QEMU: alle 16 Schritte per Tastatur (inkl. Konto), Schreiben, **Neustart** aus dem letzten Schritt, Erststart der installierten Platte allein mit Konto. Läuft in `ci.sh` und als eigener GitHub-Job `installer` |
+| Neustart nach der Installation | „Neu starten“ ruft `init.power` (Reboot); ultar-init beendet alle Dienste geordnet und startet die Maschine neu |
+| Kern: Unix-Sockel | Verbindungen in der Warteschlange eines verschwundenen Lauschers lesen Dateiende (vorher ewiges Warten); `SO_RCVTIMEO` gilt für read/recvfrom/recvmsg – beides hielt ultar-init beim Herunterfahren fest |
+| Kern: AVX | XSAVE: CR4.OSXSAVE, XCR0 = x87/SSE/AVX; YMM-Register bleiben über Planerwechsel, Signale und fork erhalten (`avxtest`). Programme (glibc, Graviola-TLS, llama.cpp) sehen AVX jetzt als nutzbar |
+
+Offen bleiben: Verschlüsselung im Installer (Regel „keine eigene Krypto“: braucht geprüften LUKS2-Schreiber + XTS im Kern),
+WLAN-Treiber, Anzeige über die Intel-Grafik (Rendern/PRIME), Bluetooth/Ton/Touchpad auf echter Hardware, Start direkt
+auf dem Beelink. Details: `docs/integration/installer-boot.md`, `docs/integration/kernel-xsave-unix-sockets.md`.
 
 ## Umsetzung Welle 4 (23.11.2026) – gebaut, eingebunden, unabhängig geprüft
 

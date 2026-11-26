@@ -5,21 +5,15 @@ binaries (the patch deletes the committed test binaries below).
 
 ## Open points (first)
 
-1. **End-to-end installation is not green yet (task 3).** `tools/kern-test/installer-e2e.sh` builds a medium
-   whose marker asks for the installer session, boots it with an empty NVMe disk on VMware-like hardware and
-   drives `ultar-installer-ui` by keys through the QEMU monitor, following the installer's `--report` lines.
-   Proven in QEMU: the kernel starts ultar-init with the profile `installer`; logd, bus, devd, seat, compositor
-   and the installer come up; the installer lists `/dev/ultar/disk/nvme0` and is driven by Tab/Enter through
-   language, accessibility, keyboard, network, try/install, kind, drivers, components, extras, disk and
-   encryption to the account step. **There it stops:** characters typed through the monitor are lost (of
-   "anas" one to three characters arrive, of a 14-character password 4–9), on the USB keyboard and on the PS/2
-   keyboard alike, also with 2.5 s between characters, and Super+Space (Latin layout) does not take effect.
-   Tab and Enter, which the driver confirms by the next report line, always arrive. Cause not found in this
-   round; candidates: the kernel only polls the keyboards (no interrupts) inside `read`/`poll` of an input
-   node (`eingabe::pumpen`), and USB keys of a node nobody reads go to the console path. Because of this the
-   step is **opt-in** in `ci.sh` (`INSTALLER_E2E=1`); the marker `INSTALLER: ALLES OK` and the first start
-   (`ultar-firstboot` → account, check service lists it) are implemented but have not run green.
-   `make-vmware.sh --installer` (an installer VM with an empty second disk) is **not done**.
+1. **End-to-end installation: green (2026-11-26).** `tools/kern-test/installer-e2e.sh` builds a medium whose
+   marker asks for the installer session, boots it with an empty NVMe disk on VMware-like hardware and drives
+   `ultar-installer-ui` by keys through the QEMU monitor (all 16 steps incl. typing the account step), presses
+   **Restart** on the last step, waits for the machine to restart and then starts the installed disk alone:
+   `ultar-firstboot` creates the account, the check service lists it. The typed characters that were lost in
+   round 1 arrive now (the PS/2 path was reworked by the VMware fixes, `da001dfa`). It runs by default in
+   `ci.sh` (`INSTALLER_E2E=0` skips it) and as its own GitHub job (`installer`, about 15 minutes under TCG).
+   Fixed on the way: the test's account check ran as root without a right and could not read the account file
+   (mode 0600, owner authd) – it has the right `file_admin` now, like `ultar-firstboot`. `make-vmware.sh --installer` is still **not done**.
 2. **Encryption (task 4) not done – the installer option stays disabled** with its reason
    (`installer.reason.encryption`: "the Ultar kernel cannot unlock an encrypted disk at start"). Nothing of a
    LUKS2 writer or a kernel XTS layer is in this patch; no half-working encryption ships. Plan: (a) a no_std
@@ -29,8 +23,15 @@ binaries (the patch deletes the committed test binaries below).
    kernel opens `ultar-data` through an XTS block device after a passphrase prompt on the early console, key
    only in kernel memory, zeroized on shutdown; (c) the installer formats the data partition and drops the
    disabled reason.
-3. **Restart after the installation:** Done → Restart ends `ultar-installer-ui` with code 0; nothing reboots
-   the machine yet (no power call of the service manager in this base). The e2e test restarts by itself.
+3. **Restart after the installation: done (2026-11-26).** Done → Restart asks the service manager over the bus
+   (`init.power` with `Reboot`; the policy gives `system.installer` `init.power` and the pseudo method
+   `init.shutdown`, the installer runs only in the profile `installer`). ultar-init ends every service in order,
+   unmounts and restarts the machine. The installer prints `[installer-ui] restart requested` before the call
+   (init may end it before the answer arrives) and `restart not possible: …` when the call fails; then it
+   only ends (status 0) as before. Two kernel faults kept ultar-init from ever reaching the restart and are
+   fixed (`weckertest`): a connection still queued at a listener that went away (here: the bus client
+   reconnecting while busd ended) never saw end of file, and `SO_RCVTIMEO` was ignored, so the client's
+   greeting waited forever and `BusLink::stop` never returned.
 4. **authd is not in this base** (`wip/desktop-shell`). `ultar-firstboot` writes the account in authd's file
    format (`/data/ultar/auth/users`, header `#ultar-auth crc32=…`, `user <name> admin=1 display=<hex>
    password=<argon2id phc> pin=-`, owner 813 = authd's id there). The installer profile does not start authd

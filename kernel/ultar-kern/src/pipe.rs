@@ -71,6 +71,8 @@ pub struct Pipe {
     rights: Mutex<VecDeque<(u64, alloc::vec::Vec<crate::proc::Fd>)>>,
     /// Bytes taken out of `buf` so far: the stream offset of its first byte. Changed under `buf`.
     taken: AtomicU64,
+    /// Unix socket: `SO_RCVTIMEO` of the end that reads this direction, in milliseconds (0 = none).
+    pub read_timeout_ms: AtomicU64,
 }
 
 impl Pipe {
@@ -81,7 +83,7 @@ impl Pipe {
 
     /// Empty pipe with the given capacity and no open ends.
     pub fn with_capacity(cap: u64) -> Arc<Pipe> {
-        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None), rights: Mutex::new(VecDeque::new()), taken: AtomicU64::new(0) })
+        Arc::new(Pipe { buf: Mutex::new(VecDeque::new()), readers: AtomicU64::new(0), writers: AtomicU64::new(0), cap: AtomicU64::new(cap), writer: [AtomicU64::new(0), AtomicU64::new(0)], shut: core::sync::atomic::AtomicBool::new(false), lens: Mutex::new(None), rights: Mutex::new(VecDeque::new()), taken: AtomicU64::new(0), read_timeout_ms: AtomicU64::new(0) })
     }
 
     /// Empty pipe in packet mode: every [`Pipe::push_packet`] is read back as one message.

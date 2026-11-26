@@ -10,8 +10,10 @@
 //! directory is one disk, the boot disk is never among them; only the installer's user opens
 //! them). `--report` writes one line per change of step, focus or the Next button's state to
 //! standard error (`[installer-ui] step=… focus=… next=…`; never typed text) – the session's
-//! console and the end-to-end test follow it. Exit status: 0 installed (restart), 3 cancelled
-//! (nothing written), 1 failure, 2 usage.
+//! console and the end-to-end test follow it. "Restart" on the last step asks the service manager
+//! over the bus to end every service in order and restart the machine (`init.power`); when that
+//! call is refused or the bus is gone, the installer only ends (status 0) and says why. Exit
+//! status: 0 installed (restart), 3 cancelled (nothing written), 1 failure, 2 usage.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
@@ -259,12 +261,40 @@ fn run(o: Options) -> Run {
     }
 }
 
+/// Asks the service manager to end every service in order and restart the machine.
+fn restart(bus: Option<&std::path::Path>) -> Result<(), String> {
+    use ultar_bus::messages::init::{Power, PowerAction};
+    let path = bus.ok_or("no bus socket")?;
+    let client = Bus::connect(path, ClientOptions::named(APP_ID)).map_err(|e| format!("{e:?}"))?;
+    client
+        .call(
+            &Power {
+                action: PowerAction::Reboot,
+            },
+            Duration::from_secs(5),
+        )
+        .map(|_| ())
+        .map_err(|e| format!("{e:?}"))
+}
+
 fn main() -> ExitCode {
     let Some(options) = parse(std::env::args().skip(1)) else {
         return ExitCode::from(2);
     };
+    let (bus, report) = (options.bus.clone(), options.report);
     match run(options) {
-        Run::Exit(Exit::Restart) => ExitCode::SUCCESS,
+        Run::Exit(Exit::Restart) => {
+            // said before the call: the service manager may end this process before the answer arrives
+            if report {
+                eprintln!("[installer-ui] restart requested");
+            }
+            if let Err(e) = restart(bus.as_deref()) {
+                if report {
+                    eprintln!("[installer-ui] restart not possible: {e}");
+                }
+            }
+            ExitCode::SUCCESS
+        }
         Run::Exit(Exit::Cancelled) => ExitCode::from(3),
         Run::Failed => ExitCode::FAILURE,
     }

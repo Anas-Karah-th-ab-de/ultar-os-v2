@@ -126,7 +126,8 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     }
     let old_mask = p.sus_mask.take().unwrap_or(p.sigmask);
     let mut sp = f.rsp.wrapping_sub(128);
-    sp = (sp - 512) & !63;
+    // Gleitkomma-/Vektorzustand wie im Rahmen (FXSAVE oder XSAVE-Standardformat), auf 64 Byte
+    sp = (sp - crate::trap::FX_SIZE as u64) & !63;
     let fx_addr = sp;
     sp -= FRAME as u64;
     let frame = (sp & !15) - 8;
@@ -166,6 +167,18 @@ pub fn deliver(p: &mut Proc, f: &mut TrapFrame) -> Result<bool, i32> {
     Ok(true)
 }
 
+/// Den vom Programm zurückgegebenen Sicherungsbereich so beschneiden, dass `fxrstor`/`xrstor` keinen #GP auslösen:
+/// MXCSR-Reservebits, im XSAVE-Kopf nur eingeschaltete Zustände, Standardformat (XCOMP_BV = 0), Reserve null.
+fn sanitize_fx(fx: &mut [u8; crate::trap::FX_SIZE]) {
+    let mut m = [0u8; 4];
+    m.copy_from_slice(&fx[24..28]);
+    fx[24..28].copy_from_slice(&(u32::from_le_bytes(m) & 0xffff).to_le_bytes());
+    let mut bv = [0u8; 8];
+    bv.copy_from_slice(&fx[512..520]);
+    fx[512..520].copy_from_slice(&(u64::from_le_bytes(bv) & crate::arch::xcr0()).to_le_bytes());
+    fx[520..576].fill(0);
+}
+
 /// rt_sigreturn: Zustand aus dem ucontext zurückholen
 pub fn sigreturn(p: &mut Proc, f: &mut TrapFrame) -> bool {
     let uc = f.rsp;
@@ -194,11 +207,9 @@ pub fn sigreturn(p: &mut Proc, f: &mut TrapFrame) -> bool {
     f.ss = crate::arch::UDATA;
     let fx = r64(&b, 224);
     if fx != 0 {
-        if let Some(d) = proc::read_user(p.space(), fx, 512) {
+        if let Some(d) = proc::read_user(p.space(), fx, crate::trap::FX_SIZE) {
             f.fx.copy_from_slice(&d);
-            // MXCSR-Reservebits löschen (sonst #GP bei fxrstor)
-            let m = u32::from_le_bytes(f.fx[24..28].try_into().unwrap()) & 0xffff;
-            f.fx[24..28].copy_from_slice(&m.to_le_bytes());
+            sanitize_fx(&mut f.fx);
         }
     }
     p.sigmask = r64(&b, 296) & !(bit(SIGKILL) | bit(19));
