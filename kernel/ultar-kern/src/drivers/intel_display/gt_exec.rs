@@ -353,6 +353,26 @@ fn retire(dev: &mut Device, rt: &mut Runtime, q: Queue) {
     let _ = invalidate(dev, rt);
 }
 
+/// Unbinds that had to wait for running jobs (logged at queue end).
+static UNBIND_WAITS: AtomicU64 = AtomicU64::new(0);
+
+/// Waits (at most 2 s) until every job handed to the engines has ended: memory is taken out of
+/// an address space only when no job can still touch it. Linux orders an unbind after the jobs
+/// of the address space (their fences in its reservation object); a program that frees memory a
+/// submitted job still uses (llama.cpp grows a scratch buffer while recording) must not have the
+/// pages taken from under the GPU.
+fn quiesce(rt: &mut Runtime) {
+    let busy = |rt: &Runtime| rt.programs.queues.values().any(|q| !q.banned && done(q) < q.submitted);
+    if !busy(rt) {
+        return;
+    }
+    UNBIND_WAITS.fetch_add(1, Ordering::Relaxed);
+    let start = crate::arch::uptime_ns();
+    while busy(rt) && crate::arch::uptime_ns() - start < 2_000_000_000 {
+        crate::arch::sleep_us(20);
+    }
+}
+
 /// Number of the last finished job of `q`.
 fn done(q: &Queue) -> u64 {
     let b = q.seqno.bytes(4);
@@ -421,6 +441,7 @@ impl Backend for Gpu {
 
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
         let (dev, rt) = self.parts()?;
+        quiesce(rt);
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         space
             .unmap(&mut rt.mem.tables, va, pages)
@@ -545,13 +566,14 @@ impl Backend for Gpu {
                     .map(|n| n.load(Ordering::Relaxed))
                     .collect();
                 crate::kprintln!(
-                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}; unbinds that waited for jobs {}",
                     q.submitted,
                     q.usage.busy_ns / 1_000_000,
                     m[0], m[1], m[2], m[3],
                     q.usage.limited,
                     super::gt_irq::counts(),
-                    HUGE_ENTRIES.load(Ordering::Relaxed)
+                    HUGE_ENTRIES.load(Ordering::Relaxed),
+                    UNBIND_WAITS.load(Ordering::Relaxed)
                 );
             }
             retire(dev, rt, q);
