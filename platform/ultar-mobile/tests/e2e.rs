@@ -102,7 +102,7 @@ impl World {
         std::mem::forget(broker);
         let stop = Arc::new(AtomicBool::new(false));
         let starts = Arc::new(Mutex::new(Vec::new()));
-        services(&bus, &stop, &starts);
+        services(&bus, &stop, &starts, tag != "noaccount");
         World {
             comp,
             bus,
@@ -268,7 +268,12 @@ impl Drop for World {
 
 /// A launcher (lists four apps, records starts) and an authentication service (account
 /// "anas", password "geheim1") on the bus.
-fn services(bus: &std::path::Path, stop: &Arc<AtomicBool>, starts: &Arc<Mutex<Vec<String>>>) {
+fn services(
+    bus: &std::path::Path,
+    stop: &Arc<AtomicBool>,
+    starts: &Arc<Mutex<Vec<String>>>,
+    accounts: bool,
+) {
     let (bus2, stop2, starts2) = (bus.to_owned(), stop.clone(), starts.clone());
     std::thread::spawn(move || {
         let client = Client::connect(&bus2, ClientOptions::named("launcher")).unwrap();
@@ -301,7 +306,7 @@ fn services(bus: &std::path::Path, stop: &Arc<AtomicBool>, starts: &Arc<Mutex<Ve
             }
         }
     });
-    auth(bus, stop);
+    auth(bus, stop, accounts);
     hardware(bus, stop, starts);
 }
 
@@ -340,8 +345,8 @@ fn hardware(bus: &std::path::Path, stop: &Arc<AtomicBool>, asked: &Arc<Mutex<Vec
     }
 }
 
-/// The authentication service: account "anas", password "geheim1".
-fn auth(bus: &std::path::Path, stop: &Arc<AtomicBool>) {
+/// The authentication service: account "anas", password "geheim1" (none with `accounts` off).
+fn auth(bus: &std::path::Path, stop: &Arc<AtomicBool>, accounts: bool) {
     let (bus3, stop3) = (bus.to_owned(), stop.clone());
     std::thread::spawn(move || {
         let client = Client::connect(&bus3, ClientOptions::named("authd")).unwrap();
@@ -357,7 +362,8 @@ fn auth(bus: &std::path::Path, stop: &Arc<AtomicBool>) {
                     has_pin: false,
                     admin: true,
                 };
-                let _ = request.reply(&UsersReply { users: vec![anas] });
+                let users = if accounts { vec![anas] } else { Vec::new() };
+                let _ = request.reply(&UsersReply { users });
             } else if let Ok(v) = request.decode::<Verify>() {
                 let outcome = if v.user == "anas" && v.secret.expose() == "geheim1" {
                     Outcome::Granted
@@ -499,6 +505,33 @@ fn the_lock_screen_lifts_the_lock_only_for_the_right_password() {
         assert!(
             start.elapsed() < Duration::from_secs(10),
             "not unlocked: {}",
+            w.seen.lock().unwrap().lock_state
+        );
+        w.pump(20);
+    }
+}
+
+/// A phone without any account (no installer ran): the lock opens by itself.
+#[test]
+fn a_phone_without_accounts_is_not_locked_out() {
+    let mut w = World::new("noaccount");
+    w.spawn_lock();
+    w.pump(300);
+    let bus = w.bus.clone();
+    std::thread::spawn(move || {
+        let _ = Client::connect(&bus, ClientOptions::named("shell"))
+            .unwrap()
+            .call(&Lock {}, Duration::from_secs(10));
+    });
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(3) && !w.comp.state.locked() {
+        w.pump(20);
+    }
+    let start = Instant::now();
+    while w.comp.state.locked() {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "still locked: {}",
             w.seen.lock().unwrap().lock_state
         );
         w.pump(20);

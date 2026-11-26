@@ -80,6 +80,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Option<Args> {
             "--headless" => args.headless.push(size(&it.next()?)?),
             "--kms" => args.output = Some(OutputKind::Kms(Some(PathBuf::from(it.next()?)))),
             "--fb" => args.output = Some(OutputKind::Framebuffer(Some(PathBuf::from(it.next()?)))),
+            "--decon" => args.output = Some(OutputKind::Decon(Some(PathBuf::from(it.next()?)))),
             "--rights" => args.rights = Some(PathBuf::from(it.next()?)),
             "--inline" => args.inline = true,
             "--lang" => args.lang = Some(Lang::parse(&it.next()?)?),

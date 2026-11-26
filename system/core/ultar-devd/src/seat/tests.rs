@@ -110,6 +110,7 @@ fn only_seat_nodes_are_looked_after() {
         "input/event12",
         "dri/card1",
         "fb0",
+        "ion",
     ] {
         assert!(is_seat_node(yes), "{yes}");
     }
@@ -124,6 +125,7 @@ fn only_seat_nodes_are_looked_after() {
         "input/event0/x",
         "/dev/fb0",
         "dri/card12345",
+        "ion0",
     ] {
         assert!(!is_seat_node(no), "{no}");
     }

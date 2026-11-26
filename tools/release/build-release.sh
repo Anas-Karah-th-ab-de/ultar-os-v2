@@ -15,13 +15,16 @@ VER=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.to
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "BUILD-RELEASE: FEHLER (checkout not clean)"; git status --short | head; exit 1
 fi
-REL=out/release; rm -rf "$REL"; mkdir -p "$REL"
+REL=out/release; [ -n "${KEEP_RELEASE:-}" ] || rm -rf "$REL"; mkdir -p "$REL"
 echo "== Ultar OS $VER from $(git rev-parse --short HEAD)"
-INSTALLER_IMG=1 bash tools/vm/make-vmware.sh
-IMG=ultar-os-$VER-installer-x86_64.img
-xz -T0 -6 -c out/vmware/UltarOS-v2-installer.img >"$REL/$IMG.xz"
-cp out/vmware/UltarOS-v2-installer.png "$REL/installer-screen.png" 2>/dev/null || cp out/vmware/UltarOS-v2-installer.ppm "$REL/installer-screen.ppm"
-rm -f out/vmware/UltarOS-v2-installer.img
+# EDITION=phone: the phone edition on the Ultar kernel (x86_64 phones/tablets, QEMU)
+EDITION=${EDITION:-desktop}
+if [ "$EDITION" = phone ]; then N=UltarOS-v2-phone; IMG=ultar-os-$VER-phone-installer-x86_64.img; SHOT=phone-installer-screen
+else N=UltarOS-v2; IMG=ultar-os-$VER-installer-x86_64.img; SHOT=installer-screen; fi
+EDITION=$EDITION INSTALLER_IMG=1 bash tools/vm/make-vmware.sh
+xz -T0 -6 -c "out/vmware/$N-installer.img" >"$REL/$IMG.xz"
+cp "out/vmware/$N-installer.png" "$REL/$SHOT.png" 2>/dev/null || cp "out/vmware/$N-installer.ppm" "$REL/$SHOT.ppm"
+rm -f "out/vmware/$N-installer.img"
 if [ -n "${VMWARE:-}" ]; then
   bash tools/vm/make-vmware.sh
   cp out/vmware/UltarOS-v2.zip "$REL/ultar-os-$VER-vmware-PRIVATE.zip"

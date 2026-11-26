@@ -22,6 +22,12 @@
 # the graphical installer session (session=init, docs/integration/installer-boot.md), NO account and no password
 # in the image (the installer's account step creates it, ultar-firstboot writes it at the first start); its check
 # boots it in QEMU with an empty NVMe disk until the installer reports its first step (screenshot).
+# EDITION=phone (with INSTALLER_IMG=1) builds the phone edition on the Ultar kernel for x86_64 phones and tablets
+# (and QEMU): the phone's own session (ultar-mobile, ultar-mobile-lock, ultar-mobile-dialog) instead of the
+# desktop's, edition marker "phone"; out/vmware/UltarOS-v2-phone-installer.img.
+# TREE_ONLY=1 stops after the system tree (out/vmware/<name>-tree, no kernel, no medium, no account): used by
+# tools/release/build-a30.sh for the Galaxy A30 on its Linux kernel, with BIN=<aarch64 programs> and TOOL_BIN=<host
+# programs> (upkg-keygen, upkg-sign run here).
 # Environment: DISK_MIB (4096), LANG_CODE (ar | de | en), KEEP=1 keeps out/vmware/work, SYSTEM_KEY and
 # SYSTEM_KEY_PUB (the system signing key, hex files; default: a key made for this build only); for the QEMU runs
 # SMP (4), MEM (1024), WAIT, ACCEL (tcg | kvm), see tools/vm/vmware-vm.py.
@@ -33,31 +39,47 @@ cd "$(dirname "$0")/../.."
 export PATH=$PATH:/usr/sbin:/sbin
 [ -d /usr/lib/rust-1.97/bin ] && export PATH=/usr/lib/rust-1.97/bin:$PATH
 export RUSTC_BOOTSTRAP=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_RELEASE_DEBUG=0
+export EDITION=${EDITION:-desktop}
+case "$EDITION" in desktop | phone) ;; *) echo "MAKE-VMWARE: FEHLER (EDITION must be desktop or phone)"; exit 1 ;; esac
 NAME=UltarOS-v2
+[ "$EDITION" = phone ] && NAME=UltarOS-v2-phone
 OUT=out/vmware
 VM=$OUT/$NAME
 W=$OUT/work
 LANG_CODE=${LANG_CODE:-ar}
 DISK_MIB=${DISK_MIB:-4096}
 fail() { echo "MAKE-VMWARE: FEHLER ($*)"; exit 1; }
-for tool in qemu-system-x86_64 qemu-img mke2fs debugfs mkfs.vfat mcopy mmd python3 cargo; do
-  command -v "$tool" >/dev/null || fail "tool missing: $tool"
-done
-for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do [ -f "$f" ] || fail "firmware missing: $f"; done
+TREE_ONLY=${TREE_ONLY:-}
+if [ -z "$TREE_ONLY" ]; then
+  for tool in qemu-system-x86_64 qemu-img mke2fs debugfs mkfs.vfat mcopy mmd python3 cargo; do
+    command -v "$tool" >/dev/null || fail "tool missing: $tool"
+  done
+  for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do [ -f "$f" ] || fail "firmware missing: $f"; done
+fi
 case "$LANG_CODE" in ar | de | en) ;; *) fail "LANG_CODE must be ar, de or en" ;; esac
-rm -rf "$W" "$VM" "$OUT/$NAME.zip" "$OUT/$NAME-installer.img"
+rm -rf "$W" "$VM" "$OUT/$NAME.zip" "$OUT/$NAME-installer.img" "$OUT/$NAME-tree"
 mkdir -p "$W" "$VM"
 cleanup() { [ -n "${KEEP:-}" ] || rm -rf "$W"; }
 trap cleanup EXIT
 
 # 1) Programs
 echo "== 1/5 build"
-env -u CARGO_TARGET_DIR bash scripts/build-kern.sh >"$W/build-kern.log" 2>&1 || { tail -20 "$W/build-kern.log"; fail "kernel build"; }
-env -u CARGO_TARGET_DIR bash scripts/build-loader.sh >"$W/build-loader.log" 2>&1 || { tail -20 "$W/build-loader.log"; fail "loader build"; }
+if [ -z "$TREE_ONLY" ]; then
+  env -u CARGO_TARGET_DIR bash scripts/build-kern.sh >"$W/build-kern.log" 2>&1 || { tail -20 "$W/build-kern.log"; fail "kernel build"; }
+  env -u CARGO_TARGET_DIR bash scripts/build-loader.sh >"$W/build-loader.log" 2>&1 || { tail -20 "$W/build-loader.log"; fail "loader build"; }
+fi
 KERNEL=kernel/ultar-kern/target/x86_64-unknown-uefi/release/ultar-kern.efi
 LOADER=kernel/ultar-loader/target/x86_64-unknown-uefi/release/ultar-loader.efi
 # the session: service manager, bus, log, settings, devices, seat, compositor, lock, dialogs, shell
-PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd ultar-lock ultar-sysdialog ultar-desktop"
+# the edition's own session programs (the phone and the desktop each have their own shell)
+if [ "$EDITION" = phone ]; then
+  SESSION_PROGRAMS="ultar-mobile-lock ultar-mobile-dialog ultar-mobile"; SESSION_CRATE=ultar-mobile
+  SESSION_SERVICES="compositor mobile-lock mobile-dialog mobile"
+else
+  SESSION_PROGRAMS="ultar-lock ultar-sysdialog ultar-desktop"; SESSION_CRATE=ultar-desktop
+  SESSION_SERVICES="compositor lock sysdialog desktop"
+fi
+PROGRAMS="ultar-init uinit ultar-busd ultar-logd ulog ultar-settingsd usettings ultar-devd ultar-devd-seat udevctl ultar-compositor ultar-authd $SESSION_PROGRAMS"
 # the services the shell talks to (wave 8) and the app launcher
 PROGRAMS="$PROGRAMS ultar-launcher ulaunch ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-llm-bus ultar-llm-cloud ultar-displayd ultar-accountd ultar-calld"
 # the system apps (installed as signed packages through the launcher, step 2)
@@ -72,14 +94,16 @@ UI_ARGS="\"--compositor\", \"/run/ultar/ui/compositor.sock\", \"--bus\", \"/run/
 APPS="settings:ultar-settings:$UI_ARGS|files:ultar-files:$UI_ARGS|store:ultar-store:|phone:ultar-phone:$UI_ARGS|editor:ultar-editor:$UI_ARGS|terminal:ultar-terminal:$UI_ARGS|browser:ultar-web:\"--socket\", \"/run/ultar/ui/compositor.sock\", \"--lang\", \"$LANG_CODE\""
 if [ -z "${BIN:-}" ]; then
   RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu \
-    -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p ultar-desktop \
+    -p ultar-init -p ultar-busd -p ultar-logd -p ultar-settingsd -p ultar-devd -p ultar-compositor -p ultar-auth -p "$SESSION_CRATE" \
     -p ultar-launcher -p ultar-sessiond -p ultar-powerd -p ultar-notifyd -p ultar-calendard -p ultar-audiod -p ultar-mediad \
     -p ultar-captured -p ultar-netd -p ultar-btd -p ultar-volumed -p ultar-mesh -p ultar-agentd -p ultar-llm-bus -p ultar-llm-cloud -p ultar-displayd -p ultar-accountd -p ultar-call -p ultar-pkg \
     -p ultar-settings -p ultar-files -p ultar-store -p ultar-phone -p ultar-web -p ultar-editor -p ultar-terminal ${INSTALLER_IMG:+-p ultar-installer-ui} --features ultar-store/gui --bins \
     >"$W/build-programs.log" 2>&1 || { tail -20 "$W/build-programs.log"; fail "program build"; }
   BIN="${CARGO_TARGET_DIR:-target}/x86_64-unknown-linux-gnu/release"
 fi
-for p in $PROGRAMS upkg-keygen upkg-sign; do [ -x "$BIN/$p" ] || fail "program missing: $BIN/$p"; done
+TOOL_BIN=${TOOL_BIN:-$BIN}
+for p in $PROGRAMS; do [ -x "$BIN/$p" ] || fail "program missing: $BIN/$p"; done
+for p in upkg-keygen upkg-sign; do [ -x "$TOOL_BIN/$p" ] || fail "program missing: $TOOL_BIN/$p"; done
 
 # 2) System tree: the shipped configuration of rootfs/etc/ultar, the services this image has programs for
 echo "== 2/5 system tree and installation medium"
@@ -105,7 +129,7 @@ if [ -n "${SYSTEM_KEY:-}" ]; then
   cp "$PUB" "$W/system.pub"
 else
   KEY=$W/system.key
-  (umask 077; "$BIN/upkg-keygen" >"$KEY" 2>"$W/keygen.err") || fail "upkg-keygen"
+  (umask 077; "$TOOL_BIN/upkg-keygen" >"$KEY" 2>"$W/keygen.err") || fail "upkg-keygen"
   tail -1 "$W/keygen.err" >"$W/system.pub"
 fi
 mkdir -p "$R/etc/ultar/trusted-keys/system" "$W/apps/payload"
@@ -150,7 +174,7 @@ $perms
 [limits]
 memory_mb = 384
 MANIFEST
-  "$BIN/upkg-sign" "$W/apps/$id.toml" "$W/apps/payload" "$R/usr/lib/ultar/apps/$id.uap" "$KEY" >/dev/null \
+  "$TOOL_BIN/upkg-sign" "$W/apps/$id.toml" "$W/apps/payload" "$R/usr/lib/ultar/apps/$id.uap" "$KEY" >/dev/null \
     || fail "package $id"
   cat >"$R/etc/ultar/services/app-$id.toml" <<SERVICE
 # Installs (or confirms) the system app $id with the launcher at every start: a registration step
@@ -171,7 +195,7 @@ done
 # The shipped session services are not started by the ordinary system (`manual = true`, or
 # `[profiles] system = "manual"`) because the legacy ultar-shell would drive the same display; this image
 # has no ultar-shell, so they start with the system. Nothing else of the files changes.
-for s in compositor lock sysdialog desktop; do
+for s in $SESSION_SERVICES; do
   f="rootfs/etc/ultar/services/$s.toml"
   if grep -q '^manual = true$' "$f"; then
     grep -v '^manual = true$' "$f" >"$R/etc/ultar/services/$s.toml"
@@ -188,7 +212,7 @@ if [ -n "$INSTALLER_IMG" ]; then
   sed -i 's/^after = \["bus"\]$/after = ["bus", "firstboot"]/' "$R/etc/ultar/services/authd.toml"
   grep -q '^after = \["bus", "firstboot"\]$' "$R/etc/ultar/services/authd.toml" || fail "authd.toml: after"
 fi
-printf 'desktop\n' >"$R/etc/ultar/edition"
+printf '%s\n' "$EDITION" >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"
 printf '%s\n' "$LANG_CODE" >"$R/etc/ultar/sprache"
 printf 'ultar\n' >"$R/etc/hostname"
@@ -213,6 +237,11 @@ awk -v P="$R/etc/passwd" -v G="$R/etc/group" '
       print k ":x:" gid[k] ":" mem[k] >> G
     }
   }' rootfs/etc/ultar/ids.toml
+if [ -n "$TREE_ONLY" ]; then
+  mv "$R" "$OUT/$NAME-tree"
+  echo "MAKE-VMWARE: ALLES OK ($OUT/$NAME-tree)"
+  exit 0
+fi
 if [ -x /bin/busybox ] && file -L /bin/busybox | grep -q "statically linked"; then
   cp /bin/busybox "$R/bin/busybox"; /bin/busybox --list >"$R/bin/.applets"
 fi
