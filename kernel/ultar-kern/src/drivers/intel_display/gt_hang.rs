@@ -95,6 +95,12 @@ fn buffers(rt: &mut Runtime, va: u64) {
             | u64::from(s[3] >> 21) << 21)
             + 1;
         let (first, last) = (mapped(rt, base), mapped(rt, base + size.saturating_sub(1)));
+        let tables = &mut rt.mem.tables;
+        let ptes: alloc::vec::Vec<(u64, u32)> = [base, base + size.saturating_sub(1)]
+            .iter()
+            .filter_map(|a| rt.programs.vms.values_mut().find_map(|vm| vm.entry(tables, *a).filter(|e| e.0 != 0)))
+            .collect();
+        crate::kprintln!("[intel-gt]     entries (value, level) first/last: {ptes:x?}");
         crate::kprintln!(
             "[intel-gt]   binding {i}: entry {entry:#x}, surface {ss:#x}: base {base:#x}, size {size:#x}, mapped first/last {first}/{last}, words {:08x?}",
             &s[..4]
