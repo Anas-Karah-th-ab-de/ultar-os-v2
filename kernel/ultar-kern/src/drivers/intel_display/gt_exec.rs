@@ -322,6 +322,12 @@ fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
     crate::kprintln!(
         "[intel-gt] hung job on {class:?}: jobs {seen}/{submitted} done, ACTHD {acthd:#x}, IPEHR {ipehr:#x}, batch {bbaddr_hi:#x}{bbaddr:08x}"
     );
+    // a memory fault of the GPU (i915 GEN12_RING_FAULT_REG, GEN12_FAULT_TLB_DATA0/1): valid
+    // bit 0, type bits 2:1, the page in DATA0 (bits 43:12) and DATA1 (bits 47:44)
+    let mut gr = |r: u32| ultar_intel_gt::Hw::read(&mut dev.mmio, r);
+    let (fault, d0, d1) = (gr(0xcec4), gr(0xceb8), gr(0xcebc));
+    let page = ((d1 & 0xf) as u64) << 44 | (d0 as u64) << 12;
+    crate::kprintln!("[intel-gt] fault register {fault:#x}, page {page:#x}, data1 {d1:#x}");
     dump_batch(rt, (bbaddr_hi as u64) << 32 | (acthd & !3) as u64);
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
