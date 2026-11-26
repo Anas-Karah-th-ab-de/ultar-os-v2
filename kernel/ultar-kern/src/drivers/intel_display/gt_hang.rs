@@ -74,6 +74,9 @@ fn buffers(rt: &mut Runtime, va: u64) {
         lo | u64::from(word(rt, a + 5 * 4).unwrap_or(0)) << 32
     });
     crate::kprintln!("[intel-gt] dispatch at {walker:#x}: binding table {bt:#x}, pool {pool:x?}, surface state base {ssba:x?}");
+    // Mesa's address layout (anv_va.c): the internal surface state pool starts at 4 GiB, which
+    // is the surface state base when the batch with STATE_BASE_ADDRESS is out of reach
+    let ssba = ssba.or(Some(0x1_0000_0000));
     let (Some(pool), Some(ssba)) = (pool, ssba) else {
         return;
     };
