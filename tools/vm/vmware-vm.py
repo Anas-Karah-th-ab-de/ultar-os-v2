@@ -26,7 +26,10 @@ CODE = "/usr/share/OVMF/OVMF_CODE_4M.fd"
 VARS = "/usr/share/OVMF/OVMF_VARS_4M.fd"
 WAIT = float(os.environ.get("WAIT", "600"))
 LANG_KEY = {"ar": "1", "de": "2", "en": "3"}
-SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", "lock", "sysdialog", "desktop",
+# the session services of the edition (EDITION=phone: the phone's own shell)
+SESSION = (["mobile-lock", "mobile-dialog", "mobile"] if os.environ.get("EDITION") == "phone"
+           else ["lock", "sysdialog", "desktop"])
+SERVICES = ["logd", "bus", "settingsd", "devd", "seat", "authd", "compositor", *SESSION,
             "launcher", "sessiond", "powerd", "notifyd", "calendard", "audiod", "mediad", "captured", "netd", "btd",
             "volumed", "displayd", "accountd", "mesh", "agentd", "llmbus", "llmcloud"]
 # one-shot services: the system apps are installed with the launcher (each must end with code 0)

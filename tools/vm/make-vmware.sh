@@ -39,7 +39,7 @@ cd "$(dirname "$0")/../.."
 export PATH=$PATH:/usr/sbin:/sbin
 [ -d /usr/lib/rust-1.97/bin ] && export PATH=/usr/lib/rust-1.97/bin:$PATH
 export RUSTC_BOOTSTRAP=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_RELEASE_DEBUG=0
-EDITION=${EDITION:-desktop}
+export EDITION=${EDITION:-desktop}
 case "$EDITION" in desktop | phone) ;; *) echo "MAKE-VMWARE: FEHLER (EDITION must be desktop or phone)"; exit 1 ;; esac
 NAME=UltarOS-v2
 [ "$EDITION" = phone ] && NAME=UltarOS-v2-phone
