@@ -4,6 +4,7 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 use crate::emergency;
+use crate::mono;
 use crate::session::Session;
 use std::time::Duration;
 use ultar_bus::messages::call::{
@@ -32,6 +33,10 @@ pub struct Service {
     settings_changes: Option<TypedSubscription<Changed>>,
     /// Throttle of the settings read until it answers (ticks).
     settings_try: u32,
+    /// `accessibility.mono_audio` and the kernel's switch it goes to.
+    mono: mono::Switch,
+    /// The settings service answered for `accessibility.mono_audio`.
+    mono_known: bool,
 }
 
 fn code(e: CallError) -> ErrorCode {
@@ -70,7 +75,17 @@ impl Service {
             settings_known: false,
             settings_changes,
             settings_try: 0,
+            mono: mono::Switch::new(ultar_hal_system::seat_nodes::pcm_mono_node(
+                std::path::Path::new("/"),
+            )),
+            mono_known: false,
         })
+    }
+
+    /// The kernel's mono switch at `node` (tests: a file).
+    pub fn with_mono_node(mut self, node: std::path::PathBuf) -> Self {
+        self.mono = mono::Switch::new(node);
+        self
     }
 
     /// The session (tests read the state through it).
@@ -106,8 +121,9 @@ impl Service {
         Ok(())
     }
 
-    /// `emergency.number`: read once at start (again until the settings service
-    /// answers), then follow every change. Until then the default 112 is in effect.
+    /// `emergency.number` and `accessibility.mono_audio`: read once at start (again until
+    /// the settings service answers), then follow every change. Until then the default 112
+    /// is in effect and mono is off.
     fn follow_settings(&mut self) {
         if self.settings_changes.is_none() {
             self.settings_changes = self.bus.subscribe::<Changed>().ok();
@@ -116,20 +132,43 @@ impl Service {
             if c.key == emergency::KEY {
                 self.emergency_number = emergency::of(&c.value);
                 self.settings_known = true;
+            } else if c.key == mono::KEY {
+                if let Some(on) = mono::of(&c.value) {
+                    self.mono.want(on);
+                }
+                self.mono_known = true;
             }
         }
+        self.settings_try = self.settings_try.wrapping_add(1);
+        // About every two seconds (40 ticks of 50 ms), not every tick.
+        if self.settings_try % 40 == 1 {
+            self.read_settings();
+            // a sound card that came later, or a write that failed
+            self.mono.apply();
+        }
+    }
+
+    /// Asks the settings service for what it has not answered yet.
+    fn read_settings(&mut self) {
+        let read = |key: &str| {
+            let get = Get {
+                key: key.to_owned(),
+            };
+            self.bus.call(&get, Duration::from_millis(200)).ok()
+        };
         if !self.settings_known {
-            self.settings_try = self.settings_try.wrapping_add(1);
-            // About every two seconds (40 ticks of 50 ms), not every tick.
-            if self.settings_try % 40 == 1 {
-                let get = Get {
-                    key: emergency::KEY.to_owned(),
-                };
-                if let Ok(reply) = self.bus.call(&get, Duration::from_millis(200)) {
-                    self.settings_known = true;
-                    if let Some(value) = reply.value {
-                        self.emergency_number = emergency::of(&value);
-                    }
+            if let Some(reply) = read(emergency::KEY) {
+                self.settings_known = true;
+                if let Some(value) = reply.value {
+                    self.emergency_number = emergency::of(&value);
+                }
+            }
+        }
+        if !self.mono_known {
+            if let Some(reply) = read(mono::KEY) {
+                self.mono_known = true;
+                if let Some(on) = reply.value.as_ref().and_then(mono::of) {
+                    self.mono.want(on);
                 }
             }
         }

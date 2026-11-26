@@ -354,6 +354,23 @@ impl Ppgtt {
         false
     }
 
+    /// The entry that translates `va` and its level (0: 4 KiB, 1: 2 MiB, 2: 1 GiB), present or
+    /// not: for reading what the GPU sees (cache attribute, null).
+    pub fn entry(&mut self, mem: &mut impl Tables, va: u64) -> Option<(u64, u32)> {
+        if va >= ADDRESS_SPACE {
+            return None;
+        }
+        let mut table = self.root;
+        for level in (0..=3).rev() {
+            let entry = mem.read(table, index(va, level));
+            if level == 0 || entry & PRESENT == 0 || entry & NULL != 0 || entry & HUGE != 0 {
+                return Some((entry, level));
+            }
+            table = entry & ADDR;
+        }
+        None
+    }
+
     /// The memory page mapped at `va`, if any.
     pub fn lookup(&mut self, mem: &mut impl Tables, va: u64) -> Option<u64> {
         if va >= ADDRESS_SPACE {

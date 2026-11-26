@@ -33,7 +33,7 @@ run() { # $1 audiodev, $2 pcmtest arguments
 run "none,id=snd" "" 1
 # 2. what the card plays reaches the speaker: QEMU writes it into a WAV file (no input there)
 run "wav,id=snd,path=$WORK/out.wav" "--output-only" 2
-python3 - "$WORK/out.wav" <<'PY'
+check_wav() { python3 - "$1" "$2" <<'PY'
 import math, struct, sys
 # QEMU finishes the WAV header only on a clean exit; read the fixed 44-byte header directly.
 raw = open(sys.argv[1], "rb").read()
@@ -43,7 +43,7 @@ ch, rate = struct.unpack("<HI", raw[22:28])
 body = raw[44:]
 n = len(body) // (2 * ch)
 data = struct.unpack("<%dh" % (n * ch), body[: n * ch * 2])
-mono = data[::ch]
+mono = data[int(sys.argv[2])::ch]
 loud = [i for i, s in enumerate(mono) if abs(s) > 2000]
 if len(loud) < rate:
     sys.exit("PCM-E2E: FEHLER only %d loud samples of %d" % (len(loud), len(mono)))
@@ -58,4 +58,10 @@ if p440 < 50 * p300:
     sys.exit("PCM-E2E: FEHLER no 440 Hz in the recording (%.0f vs %.0f)" % (p440, p300))
 print("PCM-E2E: ALLES OK (%d frames, 440 Hz played)" % len(loud))
 PY
+}
+check_wav "$WORK/out.wav" 0
+# 3. mono (accessibility): the tone only on the left channel, the switch /dev/ultar/pcm-mono on –
+#    the card plays it on the right one too
+run "wav,id=snd,path=$WORK/mono.wav" "--output-only --mono" 3
+check_wav "$WORK/mono.wav" 1
 echo "ok    PCM: ALLES OK"

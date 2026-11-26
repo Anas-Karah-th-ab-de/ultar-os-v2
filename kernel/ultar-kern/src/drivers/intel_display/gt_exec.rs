@@ -103,7 +103,7 @@ struct Queue {
 /// What programs created.
 #[derive(Default)]
 pub(super) struct Programs {
-    vms: BTreeMap<u32, Ppgtt>,
+    pub(super) vms: BTreeMap<u32, Ppgtt>,
     queues: BTreeMap<u32, Queue>,
     next: u32,
     tlb_seqno: u32,
@@ -282,7 +282,12 @@ fn unregister(dev: &mut Device, rt: &mut Runtime, id: u32) -> Result<(), String>
 /// A job of queue `key` did not finish in [`JOB_TIMEOUT_NS`]: the queue is stopped. The GuC
 /// resets the engine when the context does not give way; the queue takes no more jobs.
 fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
-    let Some((id, class, seen, submitted)) = rt.programs.queues.get(&key).map(|q| (q.id, q.class, q.seen, q.submitted)) else {
+    let Some((id, class, seen, submitted)) = rt
+        .programs
+        .queues
+        .get(&key)
+        .map(|q| (q.id, q.class, q.seen, q.submitted))
+    else {
         return;
     };
     // where the engine stands, read before the GuC resets it (Linux: RING_ACTHD, RING_IPEHR,
@@ -297,6 +302,13 @@ fn ban(dev: &mut Device, rt: &mut Runtime, key: u32) {
     crate::kprintln!(
         "[intel-gt] hung job on {class:?}: jobs {seen}/{submitted} done, ACTHD {acthd:#x}, IPEHR {ipehr:#x}, batch {bbaddr_hi:#x}{bbaddr:08x}"
     );
+    // a memory fault of the GPU (i915 GEN12_RING_FAULT_REG, GEN12_FAULT_TLB_DATA0/1): valid
+    // bit 0, type bits 2:1, the page in DATA0 (bits 43:12) and DATA1 (bits 47:44)
+    let mut gr = |r: u32| ultar_intel_gt::Hw::read(&mut dev.mmio, r);
+    let (fault, d0, d1) = (gr(0xcec4), gr(0xceb8), gr(0xcebc));
+    let page = ((d1 & 0xf) as u64) << 44 | (d0 as u64) << 12;
+    crate::kprintln!("[intel-gt] fault register {fault:#x}, page {page:#x}, data1 {d1:#x}");
+    super::gt_hang::dump(rt, (bbaddr_hi as u64) << 32 | (acthd & !3) as u64);
     let result = unregister(dev, rt, id);
     let events = rt.ct.take_backlog();
     let reset = events
@@ -341,6 +353,26 @@ fn retire(dev: &mut Device, rt: &mut Runtime, q: Queue) {
     let _ = invalidate(dev, rt);
 }
 
+/// Unbinds that had to wait for running jobs (logged at queue end).
+static UNBIND_WAITS: AtomicU64 = AtomicU64::new(0);
+
+/// Waits (at most 2 s) until every job handed to the engines has ended: memory is taken out of
+/// an address space only when no job can still touch it. Linux orders an unbind after the jobs
+/// of the address space (their fences in its reservation object); a program that frees memory a
+/// submitted job still uses (llama.cpp grows a scratch buffer while recording) must not have the
+/// pages taken from under the GPU.
+fn quiesce(rt: &mut Runtime) {
+    let busy = |rt: &Runtime| rt.programs.queues.values().any(|q| !q.banned && done(q) < q.submitted);
+    if !busy(rt) {
+        return;
+    }
+    UNBIND_WAITS.fetch_add(1, Ordering::Relaxed);
+    let start = crate::arch::uptime_ns();
+    while busy(rt) && crate::arch::uptime_ns() - start < 2_000_000_000 {
+        crate::arch::sleep_us(20);
+    }
+}
+
 /// Number of the last finished job of `q`.
 fn done(q: &Queue) -> u64 {
     let b = q.seqno.bytes(4);
@@ -364,7 +396,11 @@ impl Backend for Gpu {
     fn vm_new(&mut self, scratch: bool) -> Result<u32, Errno> {
         let (_, rt) = self.parts()?;
         let tables = &mut rt.mem.tables;
-        let space = if scratch { Ppgtt::new_scratch(tables) } else { Ppgtt::new(tables) };
+        let space = if scratch {
+            Ppgtt::new_scratch(tables)
+        } else {
+            Ppgtt::new(tables)
+        };
         let space = space.map_err(|_| Errno::NoMem)?;
         rt.programs.next += 1;
         rt.programs.vms.insert(rt.programs.next, space);
@@ -372,7 +408,7 @@ impl Backend for Gpu {
     }
 
     fn vm_map(&mut self, vm: u32, va: u64, pages: &[u64], pat: u8) -> Result<(), Errno> {
-        let (_, rt) = self.parts()?;
+        let (dev, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         if let Some(n) = PAT_ASKED.get(pat as usize) {
             n.fetch_add(pages.len() as u64, Ordering::Relaxed);
@@ -383,19 +419,29 @@ impl Backend for Gpu {
             .map_cached(&mut rt.mem.tables, va, pages, pat)
             .map_err(|_| Errno::NoMem)?;
         HUGE_ENTRIES.fetch_add(huge as u64, Ordering::Relaxed);
+        // in a scratch space the engines may hold the translation to nothing that was there
+        // before (Linux invalidates after every bind of such a space)
+        if space.is_scratch() {
+            invalidate(dev, rt)?;
+        }
         Ok(())
     }
 
     fn vm_map_null(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
-        let (_, rt) = self.parts()?;
+        let (dev, rt) = self.parts()?;
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         space
             .map_null(&mut rt.mem.tables, va, pages)
-            .map_err(|_| Errno::NoMem)
+            .map_err(|_| Errno::NoMem)?;
+        if space.is_scratch() {
+            invalidate(dev, rt)?;
+        }
+        Ok(())
     }
 
     fn vm_unmap(&mut self, vm: u32, va: u64, pages: u64) -> Result<(), Errno> {
         let (dev, rt) = self.parts()?;
+        quiesce(rt);
         let space = rt.programs.vms.get_mut(&vm).ok_or(Errno::NoEnt)?;
         space
             .unmap(&mut rt.mem.tables, va, pages)
@@ -450,8 +496,14 @@ impl Backend for Gpu {
         // number sees the data
         let mut job = mi::batch_start(batch_va, false).to_vec();
         match q.class {
-            Class::Blitter => job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32)),
-            class => job.extend_from_slice(&mi::flush_store_ggtt_render(q.seqno.gtt, seqno as u32, class == Class::Compute)),
+            Class::Blitter => {
+                job.extend_from_slice(&mi::flush_store_ggtt_copy(q.seqno.gtt, seqno as u32))
+            }
+            class => job.extend_from_slice(&mi::flush_store_ggtt_render(
+                q.seqno.gtt,
+                seqno as u32,
+                class == Class::Compute,
+            )),
         }
         job.push(mi::USER_INTERRUPT);
         job.push(mi::ARB_CHECK);
@@ -489,7 +541,8 @@ impl Backend for Gpu {
             q.usage.idle(now);
         } else {
             let mhz = ultar_intel_gt::freq::current(&mut dev.mmio).mhz();
-            q.usage.working(mhz, ultar_intel_gt::freq::limit_reasons(&mut dev.mmio));
+            q.usage
+                .working(mhz, ultar_intel_gt::freq::limit_reasons(&mut dev.mmio));
         }
         if finished < q.submitted && now.saturating_sub(q.since_ns) > JOB_TIMEOUT_NS {
             ban(dev, rt, queue);
@@ -508,15 +561,19 @@ impl Backend for Gpu {
         if let Some(q) = rt.programs.queues.remove(&queue) {
             if q.submitted >= USAGE_LOG_JOBS {
                 let m = q.usage.mhz;
-                let asked: Vec<u64> = PAT_ASKED.iter().map(|n| n.load(Ordering::Relaxed)).collect();
+                let asked: Vec<u64> = PAT_ASKED
+                    .iter()
+                    .map(|n| n.load(Ordering::Relaxed))
+                    .collect();
                 crate::kprintln!(
-                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}",
+                    "[intel-gt] queue ends: {} jobs, engine busy {} ms, GT frequency while busy <1000/<1700/<2200/more MHz: {}/{}/{}/{} looks, held back by heat/power/other {:?}; GPU interrupts taken/engine/GuC/lost {:?}; pages bound per cache attribute asked 0..4: {asked:?}; 2 MiB entries {}; unbinds that waited for jobs {}",
                     q.submitted,
                     q.usage.busy_ns / 1_000_000,
                     m[0], m[1], m[2], m[3],
                     q.usage.limited,
                     super::gt_irq::counts(),
-                    HUGE_ENTRIES.load(Ordering::Relaxed)
+                    HUGE_ENTRIES.load(Ordering::Relaxed),
+                    UNBIND_WAITS.load(Ordering::Relaxed)
                 );
             }
             retire(dev, rt, q);

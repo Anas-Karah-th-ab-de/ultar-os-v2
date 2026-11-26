@@ -77,6 +77,9 @@ pub const WIRED: &[(&str, &str)] = &[
     ("accessibility.zoom", "compositor"),
     ("accessibility.zoom_percent", "compositor"),
     ("accessibility.colour_filter", "compositor"),
+    // calld (right `sound`) writes it to the kernel's switch /dev/ultar/pcm-mono; the kernel
+    // sums both channels in the card's output path for every writer (browser, calls).
+    ("accessibility.mono_audio", "calld + kernel"),
     ("keyboard.repeat.enabled", "compositor"),
     ("keyboard.repeat.delay_ms", "compositor"),
     ("keyboard.repeat.per_second", "compositor"),
@@ -214,6 +217,7 @@ mod tests {
         "accessibility.zoom",
         "accessibility.zoom_percent",
         "accessibility.colour_filter",
+        "accessibility.mono_audio",
         "accessibility.visual_alert",
         "accessibility.show_in_bar",
         "keyboard.repeat.delay_ms",
@@ -280,8 +284,6 @@ mod tests {
             // a pointer helper that is not built yet; no screen reader yet
             "accessibility.dwell_click",
             "accessibility.screen_reader",
-            // audiod has no sample path to mix to mono
-            "accessibility.mono_audio",
             // a per-person file-search service
             "search.source.files",
             "search.file_places",

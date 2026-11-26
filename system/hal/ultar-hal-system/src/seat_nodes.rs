@@ -56,6 +56,12 @@ pub fn pcm_node(root: &Path) -> PathBuf {
     node_path(root, "ultar/pcm")
 }
 
+/// The switch of the Ultar kernel that sums both channels into each before they reach the
+/// card (`1` on, `0` off; right `sound`) below `root`.
+pub fn pcm_mono_node(root: &Path) -> PathBuf {
+    node_path(root, "ultar/pcm-mono")
+}
+
 /// The first camera of the Ultar kernel (one MJPEG picture per read; one opener, right
 /// `camera`) below `root`.
 pub fn camera_node(root: &Path) -> PathBuf {

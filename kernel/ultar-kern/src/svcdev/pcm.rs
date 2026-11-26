@@ -8,6 +8,13 @@
 //!   a codec without microphone or line in records nothing (`read` waits for ever / `EAGAIN`);
 //! * `poll`: `POLLIN` when recorded sound waits, `POLLOUT` when the output has room;
 //! * the last close stops the streams.
+//!
+//! `/dev/ultar/pcm-mono`: the switch that sums both channels into each before they reach the
+//! card (accessibility, "mono audio"); for every writer of the streams at once.
+//!
+//! * open: right `SOUND` only; any number of descriptors; no sound card: `ENODEV`;
+//! * `write`: `1` switches it on, `0` off (the first byte counts); anything else `EINVAL`;
+//! * `read`: `EINVAL`.
 
 use super::{EAGAIN, EBUSY, EFAULT, EINVAL, ENODEV};
 use crate::drivers::gen_hda::{self, PcmError};
@@ -17,15 +24,21 @@ use alloc::sync::Arc;
 
 /// Name below `/dev/`.
 pub const NODE: &str = "ultar/pcm";
+/// Name below `/dev/` of the mono switch.
+pub const MONO_NODE: &str = "ultar/pcm-mono";
 /// Largest single transfer (≈ 0.34 s).
 const MAX_IO: usize = 64 * 1024;
 
-/// The open node.
-pub struct PcmFd;
+/// The open node: the streams, or the mono switch.
+pub struct PcmFd {
+    switch: bool,
+}
 
 impl Drop for PcmFd {
     fn drop(&mut self) {
-        gen_hda::pcm_close();
+        if !self.switch {
+            gen_hda::pcm_close();
+        }
     }
 }
 
@@ -37,9 +50,27 @@ pub fn present() -> bool {
 /// Opens the node (the caller holds the right).
 pub fn open() -> Result<FdKind, i64> {
     match gen_hda::pcm_open() {
-        Ok(()) => Ok(FdKind::Pcm(Arc::new(PcmFd))),
+        Ok(()) => Ok(FdKind::Pcm(Arc::new(PcmFd { switch: false }))),
         Err(PcmError::Gone) => Err(-ENODEV),
         Err(PcmError::Busy) => Err(-EBUSY),
+    }
+}
+
+/// Opens the mono switch (the caller holds the right); not exclusive, the streams stay as they are.
+pub fn open_mono() -> Result<FdKind, i64> {
+    if !present() {
+        return Err(-ENODEV);
+    }
+    Ok(FdKind::Pcm(Arc::new(PcmFd { switch: true })))
+}
+
+/// Sums the two channels of every whole frame (16 bit little endian, left then right) into both.
+pub fn downmix(data: &mut [u8]) {
+    for frame in data.chunks_exact_mut(4) {
+        let left = i16::from_le_bytes([frame[0], frame[1]]) as i32;
+        let right = i16::from_le_bytes([frame[2], frame[3]]) as i32;
+        let both = (((left + right) / 2) as i16).to_le_bytes();
+        frame.copy_from_slice(&[both[0], both[1], both[0], both[1]]);
     }
 }
 
@@ -51,10 +82,11 @@ pub enum Io {
     Block,
 }
 
-fn handle(fd: u64) -> Option<bool> {
+/// `(nonblocking, the mono switch)` of the descriptor, if it is one of these nodes.
+fn handle(fd: u64) -> Option<(bool, bool)> {
     with(|p| match p.fd(fd) {
         Some(d) => match &d.kind {
-            FdKind::Pcm(_) => Some(d.flags & 0x800 != 0),
+            FdKind::Pcm(f) => Some((d.flags & 0x800 != 0, f.switch)),
             _ => None,
         },
         None => None,
@@ -64,7 +96,10 @@ fn handle(fd: u64) -> Option<bool> {
 
 /// `read` on the node; `None` if `fd` is not it.
 pub fn sys_read(fd: u64, buf: u64, n: u64) -> Option<Io> {
-    let nonblock = handle(fd)?;
+    let (nonblock, switch) = handle(fd)?;
+    if switch {
+        return Some(Io::Val(-EINVAL));
+    }
     let want = (n as usize).min(MAX_IO) & !3;
     if want == 0 {
         return Some(Io::Val(-EINVAL));
@@ -82,19 +117,41 @@ pub fn sys_read(fd: u64, buf: u64, n: u64) -> Option<Io> {
 
 /// `write` on the node; `None` if `fd` is not it.
 pub fn sys_write(fd: u64, buf: u64, n: u64) -> Option<Io> {
-    let nonblock = handle(fd)?;
+    let (nonblock, switch) = handle(fd)?;
+    if switch {
+        return Some(Io::Val(switch_write(buf, n)));
+    }
     let want = (n as usize).min(MAX_IO) & !3;
     if want == 0 {
         return Some(Io::Val(-EINVAL));
     }
-    let Some(data) = with(|p| proc::read_user(p.space(), buf, want)).flatten() else {
+    let Some(mut data) = with(|p| proc::read_user(p.space(), buf, want)).flatten() else {
         return Some(Io::Val(-EFAULT));
     };
+    if gen_hda::mono() {
+        downmix(&mut data);
+    }
     let taken = gen_hda::pcm_write(&data);
     if taken == 0 {
         return Some(if nonblock { Io::Val(-EAGAIN) } else { Io::Block });
     }
     Some(Io::Val(taken as i64))
+}
+
+/// `write` on the mono switch: `1` on, `0` off.
+fn switch_write(buf: u64, n: u64) -> i64 {
+    if n == 0 {
+        return -EINVAL;
+    }
+    let Some(first) = with(|p| proc::read_user(p.space(), buf, 1)).flatten() else {
+        return -EFAULT;
+    };
+    match first.first() {
+        Some(b'1') => gen_hda::set_mono(true),
+        Some(b'0') => gen_hda::set_mono(false),
+        _ => return -EINVAL,
+    }
+    n as i64
 }
 
 /// `poll` bits: readable, writable.

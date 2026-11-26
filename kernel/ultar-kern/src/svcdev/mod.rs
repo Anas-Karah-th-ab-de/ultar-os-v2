@@ -7,6 +7,8 @@
 //!
 //! * `pcm` – the sound card's running streams (`pcm.rs`) for the call service; right
 //!   [`Rights::SOUND`]; one open descriptor at a time.
+//! * `pcm-mono` – the switch that sums both channels into each (`pcm.rs`); right
+//!   [`Rights::SOUND`].
 //!
 //! * `kamera` – the pictures of the first USB camera (`kamera.rs`) for the call service; right
 //!   [`Rights::CAMERA`]; one open descriptor at a time.
@@ -40,6 +42,9 @@ pub fn node(d: &str) -> Option<&'static str> {
     if d == pcm::NODE {
         return pcm::present().then_some(pcm::NODE);
     }
+    if d == pcm::MONO_NODE {
+        return pcm::present().then_some(pcm::MONO_NODE);
+    }
     if d == kamera::NODE {
         return kamera::present().then_some(kamera::NODE);
     }
@@ -56,6 +61,7 @@ pub fn names() -> Vec<String> {
     v.push(String::from("uinput"));
     if pcm::present() {
         v.push(String::from("pcm"));
+        v.push(String::from("pcm-mono"));
     }
     if kamera::present() {
         v.push(String::from("kamera"));
@@ -68,7 +74,7 @@ pub fn right_for(path: &str) -> Option<Rights> {
     let d = path.strip_prefix("/dev/")?;
     if d == UINPUT_NODE {
         Some(Rights::INPUT_INJECT)
-    } else if d == pcm::NODE {
+    } else if d == pcm::NODE || d == pcm::MONO_NODE {
         Some(Rights::SOUND)
     } else if d == kamera::NODE {
         Some(Rights::CAMERA)
@@ -98,6 +104,9 @@ pub fn open(d: &str, rights: Rights) -> Result<crate::proc::FdKind, i64> {
     if d == pcm::NODE {
         return pcm::open();
     }
+    if d == pcm::MONO_NODE {
+        return pcm::open_mono();
+    }
     if d == kamera::NODE {
         return kamera::open();
     }
@@ -120,6 +129,10 @@ pub fn rdev(d: &str) -> Option<u64> {
     if d == pcm::NODE {
         // sound major 116 like Linux ALSA
         return Some(116 << 8 | 16);
+    }
+    if d == pcm::MONO_NODE {
+        // a control node of the same card
+        return Some(116 << 8);
     }
     if d == kamera::NODE {
         // video4linux major 81
