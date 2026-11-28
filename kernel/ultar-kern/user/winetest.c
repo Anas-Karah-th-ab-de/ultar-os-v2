@@ -392,6 +392,27 @@ static void proc_in_cell(void) {
     check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "cell: /proc/self in a cell's own proc mount (lines above)");
 }
 
+// chroot without an own mount namespace, then proc mounted at the new /proc (what ART in the Android
+// area does): the mount takes effect for this process and /proc/self works there
+static void proc_in_chroot(void) {
+    pid_t c = fork();
+    if (c == 0) {
+        mkdir("/tmp/wt-root", 0755);
+        mkdir("/tmp/wt-root/proc", 0755);
+        if (chroot("/tmp/wt-root") != 0 || chdir("/") != 0) _exit(9);
+        if (mount("proc", "/proc", "proc", 0, NULL) != 0) _exit(8);
+        char pid[32], b[64] = "";
+        snprintf(pid, sizeof pid, "%d", getpid());
+        ssize_t n = readlink("/proc/self", b, sizeof b - 1);
+        int ok = n > 0 && (b[n] = 0, strcmp(b, pid) == 0) && link_is("/proc/self/cwd", "/") && access("/proc/self/maps", R_OK) == 0;
+        umount2("/proc", MNT_DETACH);
+        _exit(ok ? 0 : 7);
+    }
+    int st = 0;
+    waitpid(c, &st, 0);
+    check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "chroot + mount proc (no own namespace): /proc/self works there");
+}
+
 // ---- fatal signals end the whole process (ART kept running after abort()) ------------------------
 
 static void *abort_thread(void *a) {
@@ -543,6 +564,7 @@ int main(int argc, char **argv) {
     if (access("/data", W_OK) == 0) shared_files("/data/wt-shared");
     proc_self("/bin/winetest", "/tmp", "proc");
     proc_in_cell();
+    proc_in_chroot();
     fatal_signals();
     socket_rights();
     if (failures == 0)

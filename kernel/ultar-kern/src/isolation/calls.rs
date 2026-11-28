@@ -195,13 +195,19 @@ fn mount_source(iso: &Isolation, source: u64, fstype: u64, flags: u64, data: u64
 
 /// `mount(source, target, fstype, flags, data)`.
 pub fn sys_mount(source: u64, target: u64, fstype: u64, flags: u64, data: u64) -> i64 {
-    let Some(iso) = snapshot() else { return -ESRCH };
+    let Some(mut iso) = snapshot() else { return -ESRCH };
     if !iso.rights.has(Rights::MOUNT) {
         return -EPERM;
     }
-    // The initial namespace is the kernel's base tree: unchanged behaviour (accepted, no effect).
+    // The initial namespace is the kernel's base tree: unchanged behaviour (accepted, no effect). A
+    // chrooted program that mounts (ART in the Android area mounts proc at its /proc) gets a namespace
+    // of its own for that, as after unshare(CLONE_NEWNS) – the base tree still never changes.
     if iso.mnt.is_initial() {
-        return 0;
+        if iso.root == "/" || sys_unshare(CLONE_NEWNS) != 0 {
+            return 0;
+        }
+        let Some(own) = snapshot() else { return -ESRCH };
+        iso = own;
     }
     // a single file may be a mount point too (a bind of a device node, a socket, a file)
     let (at, at_dir) = match node_in_ns(&iso, target, true) {
