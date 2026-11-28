@@ -798,6 +798,7 @@ settingsd.daemon.profile_rejected = The device profile file is not valid: {detai
 settingsd.daemon.schema_error = The settings schema is faulty: {detail}
 settingsd.daemon.store_error = The settings directory could not be opened: {detail}
 settingsd.daemon.bus_error = Could not connect to the system bus: {detail}
+settingsd.daemon.already_running = Another settings service already uses this settings directory: {detail}
 settingsd.daemon.write_error = The settings could not be written: {detail}
 settingsd.daemon.ready = Settings service ready
 settingsd.daemon.stopped = Settings service stopped

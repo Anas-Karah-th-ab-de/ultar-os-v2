@@ -798,6 +798,7 @@ settingsd.daemon.profile_rejected = ملف وصف الجهاز غير صالح: 
 settingsd.daemon.schema_error = خطأ في تعريف الإعدادات: {detail}
 settingsd.daemon.store_error = تعذّر فتح مجلد الإعدادات: {detail}
 settingsd.daemon.bus_error = تعذّر الاتصال بناقل النظام: {detail}
+settingsd.daemon.already_running = خدمة إعدادات أخرى تستخدم مجلد الإعدادات هذا: {detail}
 settingsd.daemon.write_error = تعذّرت كتابة الإعدادات: {detail}
 settingsd.daemon.ready = خدمة الإعدادات جاهزة
 settingsd.daemon.stopped = توقفت خدمة الإعدادات
