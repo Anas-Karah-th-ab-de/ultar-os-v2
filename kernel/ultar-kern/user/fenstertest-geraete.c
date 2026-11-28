@@ -108,7 +108,7 @@ static void passing_checks(int sv[2]) {
     for (int i = 0; i < n; i++) close(got[i]);
     int bad = 999;
     denied("K4 ungültiger Deskriptor", send_fds(sv[0], "x", &bad, 1, 0), EBADF);
-    denied("K4 Unix-Sockets werden nicht übergeben (kein Kreis ohne Sammler)", send_fds(sv[0], "x", &sv[1], 1, 0), EOPNOTSUPP);
+    denied("K4 ein Unix-Socket landet nicht in sich selbst (kein Kreis ohne Sammler)", send_fds(sv[0], "x", &sv[1], 1, 0), EOPNOTSUPP);
     pid_t c = fork();
     if (c == 0) {
         int fd = -1, k;

@@ -136,10 +136,14 @@ static void mremap_checks(void) {
     check("K13 mremap MAYMOVE vergrößert, der Inhalt bleibt", same);
     check("K13 der neue Teil ist genullt und beschreibbar", same && b[big - 1] == 0 && (b[big - 1] = 7) == 7);
     check("K13 verkleinern bleibt an der Stelle", same && mremap(b, big, small, 0) == b);
+    // without MAYMOVE as Linux: in place when the space behind is free, else ENOMEM
+    check("K13 vergrößern ohne MAYMOVE: an der Stelle, wenn dahinter frei", same && mremap(b, small, big, 0) == b);
+    unsigned char *wall = same ? mmap(b + big, 4096, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS | 0x100000 /* MAP_FIXED_NOREPLACE */, -1, 0) : MAP_FAILED;
     errno = 0;
-    check("K13 vergrößern ohne MAYMOVE: ENOMEM", same && mremap(b, small, big, 0) == MAP_FAILED && errno == ENOMEM);
+    check("K13 vergrößern ohne MAYMOVE: ENOMEM, wenn dahinter belegt", wall == b + big && mremap(b, big, big + 4096, 0) == MAP_FAILED && errno == ENOMEM);
+    if (wall != MAP_FAILED) munmap(wall, 4096);
     denied("K13 unbekannte Flags", (long)mremap(b, small, big, 0x80), EINVAL);
-    if (same) munmap(b, small);
+    if (same) munmap(b, big);
     char *r = malloc(1 << 20);
     memset(r, 5, 1 << 20);
     r = realloc(r, 8 << 20);
