@@ -465,6 +465,11 @@ desk.desk.rename.title = Verknüpfung umbenennen
 desk.desk.rename.name = Name
 desk.desk.rename.save = Umbenennen
 desk.desk.rename.cancel = Abbrechen
+desk.desk.home = Persönlicher Ordner
+desk.desk.show_in_files = In Dateien zeigen
+desk.desk.trash = In den Papierkorb
+desk.desk.no_app = Keine App öffnet diese Datei
+desk.desk.no_app.body = Installiere im Store eine App für diese Art Datei.
 
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert

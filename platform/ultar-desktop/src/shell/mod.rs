@@ -4,6 +4,7 @@
 
 mod bar;
 mod desk;
+mod desk_items;
 mod grid;
 mod handoff;
 mod helper;
@@ -17,6 +18,7 @@ mod shapes;
 mod sheets;
 
 pub use desk::{item as desk_item, shortcut as shortcut_item};
+pub use desk_items::{item as icon_item, HOME_URI};
 pub use menus::{open_menu, MenuKind, MENU_KEYBOARD_SETTINGS};
 pub use render::{build_bar, build_popup, status_icons, Popup};
 pub use shapes::{bar_panel, build_second, second_panel};
@@ -61,6 +63,14 @@ pub enum Effect {
     History,
     /// Keep the desktop's shortcuts beside the shell (they are already in the state).
     Shortcuts,
+    /// Open a file with its default app (the launcher resolves the URI); none installed for
+    /// it is said in a notice.
+    OpenFile {
+        /// Its `files://` URI.
+        uri: String,
+        /// Its name (for the notice).
+        name: String,
+    },
 }
 
 /// What an app start opens (`launcher.start` version 2, docs/integration/ultar-launcher.md):
@@ -284,6 +294,12 @@ impl Shell {
             (Target::RenameField, ActionKind::Submitted)
             | (Target::RenameSave, ActionKind::Activated) => desk::rename_done(self),
             (Target::RenameCancel, ActionKind::Activated) => self.close(),
+            (Target::AppItem(app), ActionKind::DragStarted) => {
+                desk::drag_started(self, &app.clone())
+            }
+            (Target::AppItem(app), ActionKind::DragEnded { target, .. }) => {
+                desk::drag_ended(self, &app.clone(), target.is_none())
+            }
             _ => sheets::on_popup(self, target, kind),
         }
     }

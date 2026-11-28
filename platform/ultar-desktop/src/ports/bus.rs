@@ -4,7 +4,7 @@ use super::{AuthPort, LauncherPort, LockPort, PortError, SettingsPort};
 use crate::shell::Opening;
 use std::time::Duration;
 use ultar_bus::messages::auth::{self, Method, Outcome as AuthOutcome, Secret, UserInfo};
-use ultar_bus::messages::launcher::{List, Role, Start};
+use ultar_bus::messages::launcher::{List, Resolve, Role, Start};
 use ultar_bus::messages::lock::Lock;
 use ultar_bus::messages::settings::{
     Confirm, DisplayDescriptor, Get, Revert, Set, SetDisplays, SettingValue,
@@ -150,6 +150,14 @@ impl LauncherPort for BusPorts {
             .call(&List {}, CALL_TIMEOUT)
             .map_err(port_error)?;
         Ok(reply.apps.into_iter().map(|a| shell_id(&a.app)).collect())
+    }
+
+    fn resolve(&self, uri: &str) -> Result<Option<String>, PortError> {
+        let ask = Resolve {
+            uri: uri.to_owned(),
+        };
+        let reply = self.client.call(&ask, CALL_TIMEOUT).map_err(port_error)?;
+        Ok(reply.app.map(|id| shell_id(&id)))
     }
 }
 

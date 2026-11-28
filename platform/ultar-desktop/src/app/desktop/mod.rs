@@ -110,12 +110,18 @@ fn read_services(link: &Link, d: &mut Desktop) {
     d.overview.store = crate::model::store::load_from_env();
 }
 
-/// The person's remembered searches, read beside the shell (only shown when
-/// `search.history` is on; off keeps nothing).
-fn read_history(d: &mut Desktop, state: Option<&std::path::Path>, user: &str) {
+/// What is kept beside the shell and in the desktop folder: the person's remembered
+/// searches (only shown when `search.history` is on; off keeps nothing), their desktop
+/// shortcuts and the desktop folder's items.
+fn read_kept(d: &mut Desktop, options: &Options, user: &str) {
+    let state = options.state.as_deref();
     d.overview.history = crate::model::history::load(state, user);
     if !d.overview.sources.history {
         d.overview.history.clear();
+    }
+    d.places.shortcuts = crate::model::places::load(state, user);
+    if let Some(dir) = &options.desk_folder {
+        d.places.files = crate::model::desk_files::list(dir);
     }
 }
 
@@ -140,8 +146,7 @@ impl DesktopApp {
         if let Some(link) = &link {
             read_services(link, &mut d);
         }
-        read_history(&mut d, options.state.as_deref(), user);
-        d.places.shortcuts = crate::model::places::load(options.state.as_deref(), user);
+        read_kept(&mut d, options, user);
         let size = screen(&host);
         let place = options
             .bar
@@ -162,7 +167,7 @@ impl DesktopApp {
             shell,
             look,
             bar,
-            side: panels::SidePanels::default(),
+            side: panels::SidePanels::new(options.desk_folder.clone()),
             bar_fixed: options.bar.is_some(),
             popup: None,
             banners: BannerSurface::default(),
@@ -218,6 +223,7 @@ impl DesktopApp {
             self.event(event)?;
         }
         self.poll_bus()?;
+        self.scan_desk_folder()?;
         self.finish_slow()?;
         self.launch_due(None)?;
         self.tick_banners()?;

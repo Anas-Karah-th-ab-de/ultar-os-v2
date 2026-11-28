@@ -2,18 +2,19 @@
 
 Stand 28.11.2026 · alle Zahlen gemessen in dieser Sitzung (Bau-Rechner: 2 Kerne, QEMU ohne KVM)
 
-## Rechtsklick auf den Schreibtisch und App-Verknüpfungen (28.11.2026)
+## Rechtsklick auf den Schreibtisch, App-Verknüpfungen und Schreibtisch-Ordner (28.11.2026)
 
 | Baustein | Stand |
 |---|---|
-| Rechtsklick auf den Hintergrund | Menü am Zeiger (öffnet zur Endseite, kippt an Rand und Leiste): Neue Verknüpfung…, Neuer Ordner und Einfügen (gesperrt, bis der Schreibtisch-Ordner von Files erreichbar ist), große/mittlere/kleine Symbole, Schreibtischsymbole anzeigen, Nach Name sortieren, Hintergrund ändern, Anzeigeeinstellungen, Schreibtisch anpassen, Im Terminal öffnen |
-| Verknüpfungen | anlegen über „Neue Verknüpfung…“ (App-Raster wählt die App) oder im Menü einer App im App-Raster („Zum Schreibtisch hinzufügen“/„Vom Schreibtisch entfernen“); Klick wählt, Doppelklick öffnet (Fenster nach vorn oder Start); Rechtsklick: Öffnen, Umbenennen (Dialog, Enter), An Leiste anheften/lösen, Vom Schreibtisch entfernen, Eigenschaften (Einstellungen › App) |
-| Gespeichert | je Person neben der Hülle (`<state>/<person>/desktop.json`), beim Start gelesen; nicht installierte Apps werden nicht gezeigt |
-| Einstellungen | `desktop.icons.enabled`, `.size`, `.start_corner` wirken sofort (vorher „noch nicht verfügbar“) |
-| Werkzeugkasten | `BrickKind::DeskIcon` (Kachel 32/48/64, Name zweizeilig, Auswahl mit Akzentkante), `Ui::set_brick` (Auswahl ohne Neuaufbau, damit der Doppelklick gelingt), `HostEvent::Menu` trägt jetzt den Zeigerpunkt |
-| Geprüft | `tests/desk.rs` (Klicks, Menüs, Umbenennen, Ecken, Arabisch, Leiste oben) und 16 neue Bildvergleiche (beide Themen, beide Sprachen) |
-
-Offen: Dateien und Ordner des Schreibtisch-Ordners selbst (Files `--desktop` hat dafür eine eigene Hintergrundfläche, die noch nicht gestartet wird) und Verknüpfungen per Ziehen aus dem App-Raster.
+| Rechtsklick auf den Hintergrund | Menü am Zeiger (öffnet zur Endseite, kippt an Rand und Leiste): Neue Verknüpfung…, Neuer Ordner (Files legt ihn im Schreibtisch-Ordner an, Name zum Tippen), Einfügen (gesperrt: Files hält seine Zwischenablage je Fenster), große/mittlere/kleine Symbole, Schreibtischsymbole anzeigen, Nach Name sortieren, Hintergrund ändern, Anzeigeeinstellungen, Schreibtisch anpassen, Im Terminal öffnen |
+| Symbole auf dem Schreibtisch | in dieser Reihenfolge: Persönlicher Ordner, eingehängte Laufwerke, App-Verknüpfungen, Dateien und Ordner des Schreibtisch-Ordners (Bereich `desktop`, Ordner zuerst, alle 2 s neu gelesen, versteckte Namen und Verweise ausgelassen); Klick wählt, Doppelklick öffnet (Ordner/Laufwerk in Files, Datei mit ihrer Standard-App über `launcher.resolve`, keine App → Hinweis) |
+| Rechtsklick auf ein Symbol | Verknüpfung: Öffnen, Umbenennen (Dialog), An Leiste anheften/lösen, Vom Schreibtisch entfernen, Eigenschaften; Datei/Ordner: Öffnen, In Dateien zeigen, Umbenennen, In den Papierkorb, Eigenschaften – die Änderung macht Files (`files://desktop/<name>?action=rename|trash|properties`, mit Rückgängig); Laufwerk: Öffnen, Auswerfen; Persönlicher Ordner: Öffnen, Eigenschaften |
+| Verknüpfungen anlegen | „Neue Verknüpfung…“ (App-Raster wählt die App), im App-Raster „Zum Schreibtisch hinzufügen“/„Vom Schreibtisch entfernen“, oder eine App aus dem App-Raster auf den Schreibtisch ziehen (während des Ziehens zeigt der Hintergrund blass, wo sie hinkommt) |
+| Gespeichert | Verknüpfungen je Person neben der Hülle (`<state>/<person>/desktop.json`), beim Start gelesen; nicht installierte Apps werden nicht gezeigt |
+| Rechte | die Hülle (816) ist in der Gruppe `userfiles` und liest nur den Bereich `desktop` (`--desk-folder`); Bus-Recht `launcher.resolve` |
+| Einstellungen | `desktop.icons.enabled`, `.size`, `.start_corner` wirken sofort |
+| Werkzeugkasten | `BrickKind::DeskIcon`, `Ui::set_brick` (Auswahl ohne Neuaufbau, damit der Doppelklick gelingt), `HostEvent::Menu` trägt den Zeigerpunkt |
+| Geprüft | `tests/desk.rs`, `tests/desk_items.rs` (Klicks, Menüs, Reihenfolge, Ecken, Arabisch, Ziehen), Files `tests/desk_actions.rs`, CLICKS `desk.icon` jetzt in der Hülle geprüft; Bildvergleiche aller Flächen neu (der Schreibtisch zeigt jetzt den persönlichen Ordner wie Tafel „Main“) |
 
 ## Logo, Ein/Aus und Einstellungen, die sofort wirken (28.11.2026)
 

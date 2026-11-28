@@ -129,7 +129,7 @@ pub fn build_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>,
             | Open::TileMenu(_)
             | Open::AppMenu
             | Open::DeskMenu(..)
-            | Open::ShortcutMenu(..)
+            | Open::ItemMenu(..)
     ) {
         first_operable(&mut popup.view, preferred);
     }
@@ -195,7 +195,7 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
             let anchor = super::shapes::menu_anchor(s, look, screen);
             return menu_popup(s, look, screen, anchor);
         }
-        Open::DeskMenu(..) | Open::ShortcutMenu(..) | Open::Rename(_) => {
+        Open::DeskMenu(..) | Open::ItemMenu(..) | Open::Rename(_) => {
             return desk_popup(s, look, screen)
         }
     };
@@ -206,7 +206,7 @@ fn desktop_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, U
 /// rename dialog in the middle.
 fn desk_popup(s: &Shell, look: Look, screen: Size) -> Result<Option<Popup>, UiError> {
     let (v, p) = match s.d.open {
-        Open::DeskMenu(x, y) | Open::ShortcutMenu(_, x, y) => {
+        Open::DeskMenu(x, y) | Open::ItemMenu(_, x, y) => {
             let Some((_, menu)) = super::open_menu(s) else {
                 return Ok(None);
             };

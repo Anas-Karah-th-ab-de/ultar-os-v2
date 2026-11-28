@@ -1,24 +1,22 @@
 //! The desktop background (DESKTOP-SPEC §5.1 "Arbeitsfläche"): its right-click menu and the
 //! app shortcuts on it – added from the menu ("New shortcut" → app grid) and from an app's
 //! menu in the app grid, selected, opened, renamed, pinned, removed, sorted, sized, hidden,
-//! placed from their corner – and the pictures of the background with shortcuts, both menus
-//! and the rename dialog in both themes and both languages.
+//! placed from their corner. The other icons, dragging from the grid and the pictures:
+//! `tests/desk_items.rs`.
 
 mod common;
 
-use common::shots::*;
 use common::*;
 use ultar_bus::messages::settings::SettingValue;
+use ultar_desktop::model::places::DeskItem;
 use ultar_desktop::model::prefs::{Corner, IconSize};
 use ultar_desktop::model::Open;
-use ultar_desktop::shell::{desk_item, shortcut_item, Effect, Opening, Outcome};
+use ultar_desktop::shell::{desk_item, shortcut_item, Effect, Opening};
 use ultar_desktop::view::apps::item;
 use ultar_desktop::view::Target;
 use ultar_i18n::Lang;
 use ultar_surface::proto::WindowAction;
 use ultar_ui::event::{ActionKind, Key};
-use ultar_ui::geom::Size;
-use ultar_ui::snapshot::Image;
 use ultar_ui::tokens::ThemeKind;
 
 const FILES: &str = "org.ultar.files";
@@ -128,7 +126,7 @@ fn the_app_grid_puts_an_app_on_the_desktop_and_takes_it_off() {
     assert!(h.take().contains(&Effect::Shortcuts));
     let bg = h.background();
     assert!(
-        bg.node(&Target::Shortcut(0)).is_some(),
+        bg.node(&Target::Desk(DeskItem::Shortcut(0))).is_some(),
         "it is on the background"
     );
     h.click_bar(Target::AllApps);
@@ -143,11 +141,11 @@ fn the_app_grid_puts_an_app_on_the_desktop_and_takes_it_off() {
 fn a_click_selects_and_a_double_click_opens() {
     let mut h = with_shortcuts(Lang::En, ThemeKind::Dark);
     let mut bg = h.background();
-    h.click_background(&mut bg, Target::Shortcut(1), 1);
-    assert_eq!(h.shell.d.places.selected, Some(1));
+    h.click_background(&mut bg, Target::Desk(DeskItem::Shortcut(1)), 1);
+    assert_eq!(h.shell.d.places.selected, Some(DeskItem::Shortcut(1)));
     assert!(h.take().is_empty(), "a single click only selects");
     let mut bg = h.background();
-    h.click_background(&mut bg, Target::Shortcut(1), 2);
+    h.click_background(&mut bg, Target::Desk(DeskItem::Shortcut(1)), 2);
     assert_eq!(
         h.take(),
         vec![Effect::Launch {
@@ -157,18 +155,21 @@ fn a_click_selects_and_a_double_click_opens() {
     );
     // An app with a window: the window comes forward.
     let mut bg = h.background();
-    h.click_background(&mut bg, Target::Shortcut(0), 2);
+    h.click_background(&mut bg, Target::Desk(DeskItem::Shortcut(0)), 2);
     assert_eq!(h.take(), vec![Effect::Window(2, WindowAction::Activate)]);
 }
 
 #[test]
 fn the_shortcut_menu_renames() {
     let mut h = with_shortcuts(Lang::En, ThemeKind::Dark);
-    h.right_background(Some(Target::Shortcut(2)), (100, 300));
-    assert_eq!(h.shell.d.open, Open::ShortcutMenu(2, 100, 300));
+    h.right_background(Some(Target::Desk(DeskItem::Shortcut(2))), (100, 300));
+    assert_eq!(
+        h.shell.d.open,
+        Open::ItemMenu(DeskItem::Shortcut(2), 100, 300)
+    );
     assert_eq!(
         h.shell.d.places.selected,
-        Some(2),
+        Some(DeskItem::Shortcut(2)),
         "the clicked one is selected"
     );
     // Rename: the dialog with the shown name, typed, Enter.
@@ -194,7 +195,7 @@ fn the_shortcut_menu_renames() {
     );
     assert!(h.take().contains(&Effect::Shortcuts));
     // Cancel keeps the name.
-    h.right_background(Some(Target::Shortcut(2)), (100, 300));
+    h.right_background(Some(Target::Desk(DeskItem::Shortcut(2))), (100, 300));
     choose(&mut h, shortcut_item::RENAME);
     h.type_popup("x");
     h.click_popup(Target::RenameCancel);
@@ -208,12 +209,12 @@ fn the_shortcut_menu_renames() {
 fn the_shortcut_menu_pins_shows_properties_and_removes() {
     let mut h = with_shortcuts(Lang::En, ThemeKind::Dark);
     // Pin to the bar (Firefox is not pinned yet).
-    h.right_background(Some(Target::Shortcut(3)), (100, 300));
+    h.right_background(Some(Target::Desk(DeskItem::Shortcut(3))), (100, 300));
     choose(&mut h, shortcut_item::PIN);
     let firefox = "org.mozilla.firefox".to_owned();
     assert!(h.shell.d.places.pinned.contains(&firefox));
     // Properties: the app's page in Settings.
-    h.right_background(Some(Target::Shortcut(3)), (100, 300));
+    h.right_background(Some(Target::Desk(DeskItem::Shortcut(3))), (100, 300));
     choose(&mut h, shortcut_item::PROPERTIES);
     assert_eq!(
         h.take(),
@@ -223,7 +224,7 @@ fn the_shortcut_menu_pins_shows_properties_and_removes() {
         }]
     );
     // Remove from the desktop: the app stays installed.
-    h.right_background(Some(Target::Shortcut(0)), (100, 300));
+    h.right_background(Some(Target::Desk(DeskItem::Shortcut(0))), (100, 300));
     choose(&mut h, shortcut_item::REMOVE);
     assert_eq!(shortcuts(&h)[0], BROWSER);
     assert!(h.shell.d.catalog.iter().any(|a| a.id == FILES));
@@ -247,8 +248,10 @@ fn the_menu_sets_size_visibility_and_order() {
     let large_bg = h.background();
     menu(&mut h, desk_item::SIZE + 2);
     assert_eq!(h.shell.d.prefs.desk.size, IconSize::Small);
-    let cell =
-        |v: &ultar_desktop::view::View| v.ui.rect(v.node(&Target::Shortcut(0)).unwrap()).unwrap();
+    let cell = |v: &ultar_desktop::view::View| {
+        v.ui.rect(v.node(&Target::Desk(DeskItem::Shortcut(0))).unwrap())
+            .unwrap()
+    };
     assert!(
         cell(&h.background()).w < cell(&large_bg).w,
         "small icons are smaller"
@@ -298,10 +301,16 @@ fn the_menu_leads_to_settings_and_the_terminal() {
             open: Opening::start(),
         }]
     );
-    // What needs the files service is not offered as working.
-    for id in [desk_item::NEW_FOLDER, desk_item::PASTE] {
-        assert!(menu(&mut h, id).is_empty());
-    }
+    // A new folder: Files makes it in the desktop folder, its name ready to type.
+    assert_eq!(
+        menu(&mut h, desk_item::NEW_FOLDER),
+        vec![Effect::Launch {
+            app: FILES.into(),
+            open: Opening::uri("files://desktop/?action=new_folder"),
+        }]
+    );
+    // Paste needs Files' clipboard: not offered as working.
+    assert!(menu(&mut h, desk_item::PASTE).is_empty());
 }
 
 #[test]
@@ -309,7 +318,8 @@ fn the_shortcuts_follow_their_settings_and_their_corner() {
     let mut h = with_shortcuts(Lang::En, ThemeKind::Dark);
     let first = |h: &Harness| {
         let v = h.background();
-        v.ui.rect(v.node(&Target::Shortcut(0)).unwrap()).unwrap()
+        v.ui.rect(v.node(&Target::Desk(DeskItem::Home)).unwrap())
+            .unwrap()
     };
     let r = first(&h);
     assert_eq!((r.x, r.y), (24.0, 24.0), "top start, 24 from the edges");
@@ -333,59 +343,18 @@ fn the_shortcuts_follow_their_settings_and_their_corner() {
         many.shell.d.places.add(&id);
     }
     let v = many.background();
-    let x = |i: usize| v.ui.rect(v.node(&Target::Shortcut(i)).unwrap()).unwrap().x;
+    let x = |i: usize| {
+        v.ui.rect(v.node(&Target::Desk(DeskItem::Shortcut(i))).unwrap())
+            .unwrap()
+            .x
+    };
     assert!(x(29) > x(0), "several columns");
     // Uninstalled apps are not shown, a menu over nothing changes nothing.
     many.shell.d.catalog.retain(|a| a.id != "org.example.app0");
-    assert!(many.background().node(&Target::Shortcut(0)).is_none());
-    many.right_background(Some(Target::Shortcut(99)), (1, 1));
+    assert!(many
+        .background()
+        .node(&Target::Desk(DeskItem::Shortcut(0)))
+        .is_none());
+    many.right_background(Some(Target::Desk(DeskItem::Shortcut(99))), (1, 1));
     assert_eq!(many.shell.d.open, Open::DeskMenu(1, 1));
-}
-
-/// The background, the bar and the popup composed like the compositor does.
-fn screen(h: &mut Harness) -> Image {
-    let mut img = blank_of(h.look.theme, SCREEN);
-    let mut bg = h.background();
-    over(&mut img, &mut bg, SCREEN, (0, 0));
-    let bar_top = (SCREEN.h - 56.0) as i32;
-    over(
-        &mut img,
-        &mut h.bar,
-        Size::new(SCREEN.w, 56.0),
-        (0, bar_top),
-    );
-    if let Some(p) = &mut h.popup {
-        let size = p.size;
-        let off = (p.offset.0, bar_top + p.offset.1);
-        over(&mut img, &mut p.view, size, off);
-    }
-    img
-}
-
-#[test]
-fn the_background_its_menus_and_the_rename_dialog_match_their_references() {
-    let mut problems = Vec::new();
-    for (lang, theme) in VARIANTS {
-        let mut h = with_shortcuts(lang, theme);
-        h.shell.d.places.selected = Some(1);
-        h.apply(Outcome::surfaces());
-        let img = screen(&mut h);
-        check("desk-shortcuts", lang, theme, &img, &mut problems);
-        let at = if lang == Lang::Ar {
-            (900, 260)
-        } else {
-            (540, 260)
-        };
-        h.right_background(None, at);
-        let img = screen(&mut h);
-        check("desk-menu", lang, theme, &img, &mut problems);
-        h.shell.close();
-        h.right_background(Some(Target::Shortcut(2)), (130, 300));
-        let img = screen(&mut h);
-        check("desk-shortcut-menu", lang, theme, &img, &mut problems);
-        choose(&mut h, shortcut_item::RENAME);
-        let img = screen(&mut h);
-        check("desk-rename", lang, theme, &img, &mut problems);
-    }
-    assert!(problems.is_empty(), "{problems:#?}");
 }
