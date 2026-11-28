@@ -5,7 +5,14 @@
 //! |---|---|
 //! | `network` | the cell: without it the app gets a network namespace of its own (only a loopback device) |
 //! | `background` | the launcher: the app's `[service]` starts only with it |
-//! | `ui.shell`, `ui.input-method`, `ui.lock-screen`, `ui.capture`, `ui.overlay`, `ui.system-dialog`, `ui.client-header` | the compositor, through the app rights file the launcher writes (`crate::rightsfile`) |
+//! | `ui.capture`, `ui.overlay`, `ui.client-header` | the compositor, through the app rights file the launcher writes (`crate::rightsfile`) |
+//!
+//! `ui.shell`, `ui.input-method`, `ui.lock-screen` and `ui.system-dialog`
+//! are known names but never an app's permission (review S-7): the shell,
+//! the keyboard, the lock screen and the system dialogs are system services
+//! whose rights come only from the static `compositor-rights.toml`. No
+//! profile can grant them, so one "Allow" can never hand an app `Unlock`,
+//! the shell protocol or the trusted mark of a system dialog.
 //!
 //! Bus calls and named file areas of a manifest are recorded and shown,
 //! not granted here (bus: the broker's policy; files: no file service yet).
@@ -76,6 +83,16 @@ impl Permission {
         !matches!(self, Self::Network | Self::Background)
     }
 
+    /// Whether it belongs to the system's own user interface (shell, keyboard,
+    /// lock screen, system dialogs): only the static rights file gives it,
+    /// never the launcher (review S-7).
+    pub const fn is_system_ui(self) -> bool {
+        matches!(
+            self,
+            Self::UiShell | Self::UiInputMethod | Self::UiLockScreen | Self::UiSystemDialog
+        )
+    }
+
     const fn bit(self) -> u16 {
         1 << (self as u16)
     }
@@ -98,6 +115,16 @@ impl PermissionSet {
     /// Every permission.
     pub const fn all() -> Self {
         Self((1 << Permission::ALL.len()) - 1)
+    }
+
+    /// Every permission an app can hold at all: all but the system UI ones
+    /// ([`Permission::is_system_ui`]).
+    pub const fn for_apps() -> Self {
+        Self::all()
+            .without(Permission::UiShell)
+            .without(Permission::UiInputMethod)
+            .without(Permission::UiLockScreen)
+            .without(Permission::UiSystemDialog)
     }
 
     /// The set with exactly `permissions`.
@@ -218,6 +245,18 @@ mod tests {
         );
         assert!(PermissionSet::EMPTY.is_empty() && !set.is_empty());
         assert_eq!(PermissionSet::all().iter().filter(|p| p.is_ui()).count(), 7);
+    }
+
+    #[test]
+    fn the_system_ui_is_no_app_permission() {
+        let apps = PermissionSet::for_apps();
+        for p in Permission::ALL {
+            assert_eq!(apps.has(p), !p.is_system_ui(), "{p}");
+        }
+        assert_eq!(
+            apps.names(),
+            "network,background,ui.capture,ui.overlay,ui.client-header"
+        );
     }
 
     #[test]
