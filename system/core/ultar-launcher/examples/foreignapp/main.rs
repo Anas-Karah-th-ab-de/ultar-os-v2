@@ -16,8 +16,6 @@
 //! `ultar-compositor` and `ultar-wayland`; the data disk holds the Linux area at
 //! `/data/foreign/linux`.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 mod world;
 
 use std::path::Path;
@@ -85,18 +83,9 @@ fn component_test() {
     }
 }
 
-fn main() {
-    let args = Args::parse().unwrap_or_else(|| {
-        println!("foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]");
-        std::process::exit(2)
-    });
-    let world = World::start(&args).unwrap_or_else(|e| fail(&format!("setup: {e}")));
-    let files = world.client("app.files");
-    let settings = world.client("app.settings");
-    let progress = files
-        .subscribe::<ultar_bus::messages::foreign::Progress>()
-        .unwrap();
-    // the first answer counts the Linux area once (slow on the Ultar kernel)
+/// The service answers and sees the Linux area (the first answer counts it once: slow on
+/// the Ultar kernel).
+fn service_ready(settings: &ultar_bus::Client) {
     let mut last = String::from("no answer");
     let seen = world::poll(Duration::from_secs(600), || {
         match settings.call(&RuntimeState {}, Duration::from_secs(120)) {
@@ -116,8 +105,15 @@ fn main() {
         &format!("the service does not see the Linux area: {last}"),
     );
     println!("FOREIGN-APP: service ok");
+}
 
-    // 1. Files installs the package of the person (the dialog answers "authorized")
+/// Step 1: Files installs the package of the person (the dialog answers "authorized"); the
+/// app's user id and the apps the package brought.
+fn install(world: &World) -> (u32, Vec<String>) {
+    let files = world.client("app.files");
+    let progress = files
+        .subscribe::<ultar_bus::messages::foreign::Progress>()
+        .unwrap_or_else(|e| fail(&format!("subscribe: {e:?}")));
     let install = Install {
         from: InstallFrom::File(world.deb.display().to_string()),
         choices: Choices::default(),
@@ -133,7 +129,6 @@ fn main() {
         done.apps.iter().any(|a| a == APP),
         &format!("apps: {:?}", done.apps),
     );
-    let apps = done.apps.clone();
     check(world.asked() >= 1, "the administrator was not asked");
     let status = world.app().unwrap_or_else(|| fail("no launcher entry"));
     check(status.profile == "app.foreign", &status.profile);
@@ -148,8 +143,12 @@ fn main() {
         "no ui.client-header for the app",
     );
     println!("FOREIGN-APP: rights ok");
+    (uid, done.apps)
+}
 
-    // 2. started as from the app grid: its cell, behind the bridge, on the screen
+/// Steps 2 and 3: started as from the app grid (its cell, behind the bridge, on the
+/// screen), then the stop ends the cell.
+fn run_and_stop(world: &World, uid: u32, draw: u64) {
     world
         .launcher
         .start(APP, Role::Ui, None)
@@ -167,22 +166,22 @@ fn main() {
         world.cell_pids().len()
     );
     println!("FOREIGN-APP: SHOT");
-    std::thread::sleep(Duration::from_secs(args.draw));
+    std::thread::sleep(Duration::from_secs(draw));
     let owned = world.data_owned_by(uid);
     println!("FOREIGN-APP: files in its data owned by {uid}: {owned}");
-
-    // 3. the stop ends the cell
     let _ = world.launcher.stop(APP, Role::Ui);
     check(
         world::poll(Duration::from_secs(120), || world.cell_pids().is_empty()),
         "the cell outlived the stop",
     );
     println!("FOREIGN-APP: stopped");
+}
 
-    // 4. removal leaves nothing behind (the package goes with its last app)
-    for id in &apps {
+/// Step 4: removal leaves nothing behind (the package goes with its last app).
+fn remove(world: &World, settings: &ultar_bus::Client, apps: &[String]) {
+    for id in apps {
         let removed = world.call(
-            &settings,
+            settings,
             &Remove {
                 id: id.clone(),
                 keep_data: false,
@@ -193,19 +192,19 @@ fn main() {
             &format!("remove {id}: {:?}", removed.outcome),
         );
         check(
-            world::poll(APT_WAIT, || !world.call(&settings, &RuntimeState {}).busy),
+            world::poll(APT_WAIT, || !world.call(settings, &RuntimeState {}).busy),
             "the service stayed busy",
         );
     }
     check(
         world::poll(APT_WAIT, || {
-            !world.call(&settings, &RuntimeState {}).busy && !world.installed("mousepad")
+            !world.call(settings, &RuntimeState {}).busy && !world.installed("mousepad")
         }),
         "mousepad stayed in the area",
     );
     check(world.app().is_none(), "the launcher entry stayed");
     check(
-        world.call(&settings, &List {}).apps.is_empty(),
+        world.call(settings, &List {}).apps.is_empty(),
         "the service lists it",
     );
     check(!world.app_data().exists(), "its data stayed");
@@ -214,6 +213,19 @@ fn main() {
         "the program stayed",
     );
     println!("FOREIGN-APP: removed");
+}
+
+fn main() {
+    let args = Args::parse().unwrap_or_else(|| {
+        println!("foreignapp --bin DIR --deb FILE [--groups] [--draw SECONDS]");
+        std::process::exit(2)
+    });
+    let world = World::start(&args).unwrap_or_else(|e| fail(&format!("setup: {e}")));
+    let settings = world.client("app.settings");
+    service_ready(&settings);
+    let (uid, apps) = install(&world);
+    run_and_stop(&world, uid, args.draw);
+    remove(&world, &settings, &apps);
     world.stop();
     // the component „Linux-Programme“ as the service installs it, on this kernel
     component_test();
