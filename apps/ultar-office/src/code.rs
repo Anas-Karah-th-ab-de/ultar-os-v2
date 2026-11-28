@@ -1324,7 +1324,10 @@ pub fn highlight(line: &str, lang: Lang, st: LineState) -> (Vec<(usize, usize, T
 /// Whether the word `w` (first byte `first`, followed by `next`) is shown as a name: `$vars`,
 /// calls, HTML/XML tags, keys of data files and capitalised types of the typed languages.
 fn word_is_name(lang: Lang, first: u8, w: &str, next: &str, after_tag: bool) -> bool {
-    let key_lang = matches!(lang, Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css);
+    let key_lang = matches!(
+        lang,
+        Lang::Json | Lang::Yaml | Lang::Toml | Lang::Ini | Lang::Css
+    );
     let typed_lang = matches!(
         lang,
         Lang::Rust

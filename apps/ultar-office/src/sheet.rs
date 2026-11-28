@@ -422,7 +422,9 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
         }
         if c == '#' {
             let rest: String = ch[i..].iter().collect();
-            let known = ["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#CIRC!"];
+            let known = [
+                "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#CIRC!",
+            ];
             let Some(e) = known.iter().find(|e| rest.starts_with(**e)) else {
                 return Err(format!("#NAME? ({c})"));
             };
@@ -790,9 +792,7 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
                         _ => return false,
                     }
                 }
-                parts
-                    .last()
-                    .is_none_or(|l| l.is_empty() || a.ends_with(l))
+                parts.last().is_none_or(|l| l.is_empty() || a.ends_with(l))
             } else {
                 a == b
             }
@@ -805,11 +805,7 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
 }
 
 impl<'a> Eval<'a> {
-    pub(crate) fn new(
-        wb: &'a Workbook,
-        now: f64,
-        memo: Option<&'a crate::calc::Memo>,
-    ) -> Eval<'a> {
+    pub(crate) fn new(wb: &'a Workbook, now: f64, memo: Option<&'a crate::calc::Memo>) -> Eval<'a> {
         Eval {
             wb,
             visiting: HashSet::new(),
@@ -833,7 +829,10 @@ impl<'a> Eval<'a> {
             return Value::Empty;
         }
         if let Some(f) = raw.strip_prefix('=') {
-            if let Some(v) = self.memo.and_then(|m| m.borrow().get(&(sheet, r, c)).cloned()) {
+            if let Some(v) = self
+                .memo
+                .and_then(|m| m.borrow().get(&(sheet, r, c)).cloned())
+            {
                 return v;
             }
             if !self.visiting.insert((sheet, r, c)) || self.depth > 200 {
@@ -1282,7 +1281,10 @@ impl<'a> Eval<'a> {
                 let (y, m, d) = (num!(0), num!(1), num!(2));
                 // months and days roll over like in Excel (DATE(2024;14;1) = 1.2.2025)
                 let months = y as i64 * 12 + (m as i64 - 1);
-                let (yy, mm) = (months.div_euclid(12) as i32, months.rem_euclid(12) as u32 + 1);
+                let (yy, mm) = (
+                    months.div_euclid(12) as i32,
+                    months.rem_euclid(12) as u32 + 1,
+                );
                 if !(1900..=9999).contains(&yy) {
                     return verr("#NUM!");
                 }

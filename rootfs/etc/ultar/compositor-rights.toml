@@ -20,7 +20,7 @@
 # Screenshot service: reads outputs for the shell's screenshot button.
 825 = "ui.capture"
 # Remote view source (ultar-screend): reads the screen for the viewer.
-841 = "ui.capture"
+843 = "ui.capture"
 # Device mesh (user 833): reads and offers the clipboard for other devices
 # (docs/integration/mesh-clipboard.md). Never while the session is locked,
 # never a confidential entry.

@@ -11,7 +11,7 @@ args = [
     "--compositor", "/run/ultar/ui/compositor.sock",
     "--log-socket", "/run/ultar/log/screend.sock",
 ]
-user = 841
+user = 843
 # right input_inject: virtual pointer and keyboard (Linux: /dev/uinput; Ultar:
 # /dev/ultar/uinput); nothing else this service does needs a right.
 rights = ["input_inject"]

@@ -61,7 +61,8 @@ fn decimals(fmt: &str) -> usize {
 fn is_date(fmt: &str) -> bool {
     fmt.contains("yyyy")
         || fmt.contains("yy")
-        || ((fmt.contains("dd") || fmt.contains("mmmm") || fmt.contains("mmm")) && fmt.contains("mm"))
+        || ((fmt.contains("dd") || fmt.contains("mmmm") || fmt.contains("mmm"))
+            && fmt.contains("mm"))
 }
 
 /// The currency symbol (if any) held as a literal in front of a number format.

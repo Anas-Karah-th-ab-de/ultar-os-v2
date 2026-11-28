@@ -429,7 +429,7 @@ identity  = "app.settings"
 call      = ["mesh.*"]
 subscribe = ["mesh.state", "mesh.handoff_progress"]
 
-# Remote view (docs/integration/remote-view.md). The screen service of the viewed device (841)
+# Remote view (docs/integration/remote-view.md). The screen service of the viewed device (843)
 # follows the session the mesh serves, sends the picture pieces, and shows who is watching
 # through a notification with a Stop button. The viewer app asks, types and stops.
 [[rule]]
