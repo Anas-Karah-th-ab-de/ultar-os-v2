@@ -11,6 +11,12 @@ use ultar_ui::tokens::{ColorRole, Space};
 use ultar_ui::ui::{NodeId, Ui, UiError};
 use ultar_ui::widgets::{Checkbox, InfoBar, Label, Progress, Row, Scroll, Text, Tone};
 
+/// Height of a dialog's title, buttons, padding and margins around the list (points).
+const CHROME: f32 = 224.0;
+/// Least and most height of the list of facts and choices.
+const MIN_LIST: f32 = 160.0;
+const MAX_LIST: f32 = 520.0;
+
 /// The sheet's title.
 pub fn title(sheet: &Sheet) -> Label {
     let key = match sheet.phase {
@@ -63,12 +69,15 @@ fn ready(
     sheet: &Sheet,
     i: &Inspected,
 ) -> Result<(), UiError> {
+    // The dialog takes the height of its content: the facts and choices get what the window
+    // leaves beside the title, the buttons and the margins, and scroll inside it.
+    let height = (ui.size().h - CHROME).clamp(MIN_LIST, MAX_LIST);
     let scroll = ui.add_sized(
         dialog,
         Scroll::new()
             .flex(Flex::column().gap(Space::S8))
             .name(Label::key("files.foreign.details")),
-        Sizing::grow(1),
+        Sizing::grow(1).with_height(height),
     )?;
     let warning = InfoBar::new(Tone::Warning, Label::key("files.foreign.unchecked"))
         .message(Label::key("files.foreign.unchecked_hint"));
