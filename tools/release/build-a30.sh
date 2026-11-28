@@ -29,8 +29,8 @@ export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc CXX_aarch64_unknown_li
 export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
 CRATES="ultar-init ultar-busd ultar-logd ultar-settingsd ultar-devd ultar-compositor ultar-auth ultar-mobile
   ultar-launcher ultar-sessiond ultar-powerd ultar-notifyd ultar-calendard ultar-audiod ultar-mediad ultar-captured
-  ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-llm-bus ultar-llm-cloud ultar-displayd
-  ultar-accountd ultar-call ultar-pkg ultar-settings ultar-files ultar-store ultar-phone ultar-web ultar-editor ultar-terminal"
+  ultar-netd ultar-btd ultar-volumed ultar-mesh ultar-agentd ultar-voiced ultar-llm-bus ultar-llm-cloud ultar-displayd
+  ultar-accountd ultar-call ultar-screend ultar-pkg ultar-settings ultar-files ultar-store ultar-phone ultar-web ultar-editor ultar-pdf ultar-doc ultar-sheet ultar-terminal"
 args=(); for c in $CRATES; do args+=(-p "$c"); done
 CARGO_TARGET_DIR=$TDIR RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target $TARGET \
   -Z build-std=std,panic_abort "${args[@]}" --features ultar-store/gui --bins >"$W/build.log" 2>&1 \

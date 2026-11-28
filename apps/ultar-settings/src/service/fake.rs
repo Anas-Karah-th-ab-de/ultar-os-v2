@@ -311,6 +311,8 @@ pub struct SystemWorld {
     pub cloud: Option<ultar_bus::messages::llm_cloud::CloudState>,
     /// What the helper did (`None`: no helper).
     pub activity: Option<ultar_bus::messages::agent::Activity>,
+    /// Voice control (`None`: no such service).
+    pub voice: Option<ultar_bus::messages::voice::VoiceState>,
 }
 
 fn local_user(name: &str, uid: u32) -> LocalUser {
@@ -408,6 +410,7 @@ pub fn ports(world: &Shared) -> Ports {
         status: f(),
         mesh: Box::new(super::mesh::FakeMesh(world.clone())),
         cloud: Box::new(super::cloud::FakeCloud(world.clone())),
+        voice: Box::new(super::voice::FakeVoice(world.clone())),
         system: f(),
         files: f(),
         clipboard: f(),

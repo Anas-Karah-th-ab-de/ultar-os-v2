@@ -426,6 +426,7 @@ impl App {
                                     Block::Para(Para::new(Style::Title, "")),
                                     Block::Para(Para::new(Style::Normal, "")),
                                 ],
+                                ..Document::default()
                             },
                             None,
                         )
@@ -1583,6 +1584,13 @@ impl App {
                         rgb(0xD1D5DB),
                     );
                     y += ui.dp(12.0);
+                }
+                // the old shell shows a picture only as a framed place (the Word app draws it)
+                Block::Picture(_) => {
+                    num = 0;
+                    let h = ui.dp(60.0);
+                    ui.cv.rect(Rect::new(inner_x, y, inner_w, h), rgb(0xF3F4F6));
+                    y += h + ui.dp(12.0);
                 }
             }
         }

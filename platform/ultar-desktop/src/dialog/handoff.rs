@@ -93,7 +93,11 @@ pub(super) fn handoff(
     tr: &Translator,
 ) -> Result<NodeId, UiError> {
     let name = p.from_name.chars().take(64).collect::<String>();
-    let (title, text) = if p.app.is_empty() {
+    // A device that wants to see and operate this screen has its own words (remote view).
+    let seeing = p.stage == Stage::RemoteView;
+    let (title, text) = if seeing {
+        ("dialog.view.title", "dialog.view.text")
+    } else if p.app.is_empty() {
         ("dialog.handoff.file", "dialog.handoff.file.text")
     } else {
         ("dialog.handoff.title", "dialog.handoff.text")
@@ -104,13 +108,24 @@ pub(super) fn handoff(
         Label::key_with(title, &who),
         Label::key_with(text, &who),
     )?;
-    offered(view, root, p, tr)?;
+    if !seeing {
+        offered(view, root, p, tr)?;
+    }
     assurances(view, root)?;
     let row = Flex::row().gap(Space::S8).main(MainAlign::End);
     let row = view.ui.add(root, row)?;
-    let decline = "dialog.handoff.decline";
+    let decline = if seeing {
+        "dialog.view.decline"
+    } else {
+        "dialog.handoff.decline"
+    };
     let decline = button(view, row, decline, ButtonVariant::Plain, Target::Deny)?;
-    let accept = Button::new(Label::key("dialog.handoff.accept"))
+    let accept = if seeing {
+        "dialog.view.accept"
+    } else {
+        "dialog.handoff.accept"
+    };
+    let accept = Button::new(Label::key(accept))
         .variant(ButtonVariant::Primary)
         .icon(IconId::Check);
     let accept = view.ui.add(row, accept)?;

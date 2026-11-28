@@ -6,6 +6,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+use crate::style::CellStyle;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Empty,
@@ -80,6 +82,18 @@ pub fn fmt_num(n: f64) -> String {
     }
 }
 
+/// Heute als Excel-Serienzahl mit Tagesbruchteil (lokale Systemzeit, UTC-Tage seit dem
+/// 30.12.1899). Der Wert ändert sich mit jedem Aufruf – für deterministische Tests
+/// `value_at`/`eval_formula_at` mit festem `now` verwenden.
+pub fn excel_now() -> f64 {
+    const UNIX_TO_EXCEL: f64 = 25_569.0;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    UNIX_TO_EXCEL + secs / 86_400.0
+}
+
 // ------------------------------------------------------------------ Adressen
 
 /// Spaltennummer (0 = A) → Buchstaben
@@ -122,8 +136,11 @@ pub fn parse_cell(s: &str) -> Option<(u32, u32)> {
     Some((row - 1, col - 1))
 }
 
+/// A parsed range: the sheet name when given, the first and the last cell.
+pub type RangeRef = (Option<String>, (u32, u32), (u32, u32));
+
 /// "A1:C5" / "A1" (optional mit "Blatt!") → (Blatt, (r0,c0), (r1,c1))
-pub fn parse_range(s: &str) -> Option<(Option<String>, (u32, u32), (u32, u32))> {
+pub fn parse_range(s: &str) -> Option<RangeRef> {
     let (sheet, rest) = match s.rsplit_once('!') {
         Some((sh, r)) => (Some(sh.trim_matches('\'').to_string()), r),
         None => (None, s),
@@ -151,6 +168,16 @@ pub struct Sheet {
     pub cells: BTreeMap<(u32, u32), String>,
     /// Spaltenbreiten in Zeichen (optional)
     pub widths: BTreeMap<u32, f32>,
+    /// Zeilenhöhen in Punkten (optional)
+    pub heights: BTreeMap<u32, f32>,
+    /// Formatierung je Zelle
+    pub styles: BTreeMap<(u32, u32), CellStyle>,
+    /// Blatt läuft von rechts nach links (Spalte A rechts)
+    pub rtl: bool,
+    /// Frozen header rows (stay visible while scrolling).
+    pub frozen_rows: u32,
+    /// Frozen header columns.
+    pub frozen_cols: u32,
 }
 
 impl Sheet {
@@ -170,6 +197,26 @@ impl Sheet {
             self.cells.insert((r, c), raw.to_string());
         }
     }
+    /// The formatting of a cell (default when unset).
+    pub fn style(&self, r: u32, c: u32) -> CellStyle {
+        self.styles.get(&(r, c)).cloned().unwrap_or_default()
+    }
+    /// Sets the formatting of a cell; a default formatting is stored as nothing.
+    pub fn set_style(&mut self, r: u32, c: u32, style: CellStyle) {
+        if style.is_default() {
+            self.styles.remove(&(r, c));
+        } else {
+            self.styles.insert((r, c), style);
+        }
+    }
+    /// Die sichtbare Breite einer Spalte (Standard: 10 Zeichen).
+    pub fn width(&self, c: u32) -> f32 {
+        self.widths.get(&c).copied().unwrap_or(10.0)
+    }
+    /// Die sichtbare Höhe einer Zeile in Punkten (Standard: 20).
+    pub fn height(&self, r: u32) -> f32 {
+        self.heights.get(&r).copied().unwrap_or(20.0)
+    }
     /// Benutzter Bereich: (Zeilen, Spalten)
     pub fn extent(&self) -> (u32, u32) {
         let mut rows = 0;
@@ -185,6 +232,14 @@ impl Sheet {
         for ((r, c), v) in old {
             self.cells.insert((if r >= at { r + 1 } else { r }, c), v);
         }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            self.styles.insert((if r >= at { r + 1 } else { r }, c), v);
+        }
+        let old = std::mem::take(&mut self.heights);
+        for (r, v) in old {
+            self.heights.insert(if r >= at { r + 1 } else { r }, v);
+        }
     }
     pub fn delete_row(&mut self, at: u32) {
         let old = std::mem::take(&mut self.cells);
@@ -194,11 +249,33 @@ impl Sheet {
             }
             self.cells.insert((if r > at { r - 1 } else { r }, c), v);
         }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            if r == at {
+                continue;
+            }
+            self.styles.insert((if r > at { r - 1 } else { r }, c), v);
+        }
+        let old = std::mem::take(&mut self.heights);
+        for (r, v) in old {
+            if r == at {
+                continue;
+            }
+            self.heights.insert(if r > at { r - 1 } else { r }, v);
+        }
     }
     pub fn insert_col(&mut self, at: u32) {
         let old = std::mem::take(&mut self.cells);
         for ((r, c), v) in old {
             self.cells.insert((r, if c >= at { c + 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            self.styles.insert((r, if c >= at { c + 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.widths);
+        for (c, v) in old {
+            self.widths.insert(if c >= at { c + 1 } else { c }, v);
         }
     }
     pub fn delete_col(&mut self, at: u32) {
@@ -208,6 +285,20 @@ impl Sheet {
                 continue;
             }
             self.cells.insert((r, if c > at { c - 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.styles);
+        for ((r, c), v) in old {
+            if c == at {
+                continue;
+            }
+            self.styles.insert((r, if c > at { c - 1 } else { c }), v);
+        }
+        let old = std::mem::take(&mut self.widths);
+        for (c, v) in old {
+            if c == at {
+                continue;
+            }
+            self.widths.insert(if c > at { c - 1 } else { c }, v);
         }
     }
 }
@@ -232,22 +323,22 @@ impl Workbook {
 
     /// Wert einer Zelle (Formeln werden berechnet)
     pub fn value(&self, sheet: usize, r: u32, c: u32) -> Value {
-        let mut ev = Eval {
-            wb: self,
-            visiting: HashSet::new(),
-            depth: 0,
-        };
-        ev.cell(sheet, r, c)
+        self.value_at(sheet, r, c, excel_now())
+    }
+
+    /// Wert einer Zelle zu einem festen Zeitpunkt (`now` = Excel-Serienzahl); für Tests.
+    pub fn value_at(&self, sheet: usize, r: u32, c: u32, now: f64) -> Value {
+        Eval::new(self, now, None).cell(sheet, r, c)
     }
 
     /// Formel oder Ausdruck im Kontext eines Blatts auswerten (ohne Zelle zu verändern)
     pub fn eval_formula(&self, sheet: usize, f: &str) -> Value {
-        let mut ev = Eval {
-            wb: self,
-            visiting: HashSet::new(),
-            depth: 0,
-        };
-        ev.formula(sheet, f.trim_start_matches('='))
+        self.eval_formula_at(sheet, f, excel_now())
+    }
+
+    /// Formel zu einem festen Zeitpunkt auswerten (`now` = Excel-Serienzahl).
+    pub fn eval_formula_at(&self, sheet: usize, f: &str, now: f64) -> Value {
+        Eval::new(self, now, None).formula(sheet, f.trim_start_matches('='))
     }
 
     /// Zelle per Text setzen: "Blatt!B3" oder "B3" (dann erstes/angegebenes Blatt)
@@ -292,6 +383,8 @@ enum Tok {
     Str(String),
     Ref(String),
     Ident(String),
+    /// An error literal such as `#REF!`.
+    Err(String),
     Op(&'static str),
     LParen,
     RParen,
@@ -325,6 +418,18 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
             }
             let t: String = ch[st..i].iter().collect();
             out.push(Tok::Num(t.parse().map_err(|_| "#VALUE!".to_string())?));
+            continue;
+        }
+        if c == '#' {
+            let rest: String = ch[i..].iter().collect();
+            let known = [
+                "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#CIRC!",
+            ];
+            let Some(e) = known.iter().find(|e| rest.starts_with(**e)) else {
+                return Err(format!("#NAME? ({c})"));
+            };
+            out.push(Tok::Err((*e).to_string()));
+            i += e.chars().count();
             continue;
         }
         if c == '"' {
@@ -370,9 +475,8 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 i += 1;
             }
             let t: String = ch[st..i].iter().collect();
-            if i < ch.len() && ch[i] == '(' && !t.contains('!') {
-                out.push(Tok::Ident(t.to_ascii_uppercase()));
-            } else if t.eq_ignore_ascii_case("TRUE") || t.eq_ignore_ascii_case("FALSE") {
+            let call = i < ch.len() && ch[i] == '(' && !t.contains('!');
+            if call || t.eq_ignore_ascii_case("TRUE") || t.eq_ignore_ascii_case("FALSE") {
                 out.push(Tok::Ident(t.to_ascii_uppercase()));
             } else {
                 out.push(Tok::Ref(t));
@@ -414,10 +518,11 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
 }
 
 #[derive(Clone, Debug)]
-enum Ast {
+pub(crate) enum Ast {
     Num(f64),
     Str(String),
     Bool(bool),
+    Err(String),
     Ref(Option<String>, (u32, u32), (u32, u32), bool),
     Un(&'static str, Box<Ast>),
     Bin(&'static str, Box<Ast>, Box<Ast>),
@@ -487,6 +592,7 @@ impl Parser {
         match self.next() {
             Some(Tok::Num(n)) => Ok(Ast::Num(n)),
             Some(Tok::Str(s)) => Ok(Ast::Str(s)),
+            Some(Tok::Err(e)) => Ok(Ast::Err(e)),
             Some(Tok::LParen) => {
                 let e = self.expr(1)?;
                 match self.next() {
@@ -528,7 +634,7 @@ impl Parser {
     }
 }
 
-fn parse(f: &str) -> Result<Ast, String> {
+pub(crate) fn parse(f: &str) -> Result<Ast, String> {
     let t = lex(f)?;
     let mut p = Parser { t, i: 0 };
     let e = p.expr(1)?;
@@ -568,6 +674,8 @@ pub const FUNCTIONS: &[&str] = &[
     "POWER",
     "MOD",
     "PI",
+    "TODAY",
+    "NOW",
     "LEN",
     "UPPER",
     "LOWER",
@@ -592,12 +700,20 @@ pub const FUNCTIONS: &[&str] = &[
     "TEXT",
     "STDEV",
     "VAR",
+    "ISERROR",
+    "DATE",
+    "YEAR",
+    "MONTH",
+    "DAY",
 ];
 
-struct Eval<'a> {
-    wb: &'a Workbook,
-    visiting: HashSet<(usize, u32, u32)>,
+/// The evaluator; `memo` (when set) holds the values of formula cells already calculated.
+pub(crate) struct Eval<'a> {
+    pub(crate) wb: &'a Workbook,
+    pub(crate) visiting: HashSet<(usize, u32, u32)>,
     depth: u32,
+    now: f64,
+    memo: Option<&'a crate::calc::Memo>,
 }
 
 /// Argument: einzelner Wert oder Bereich (Zeilen × Spalten)
@@ -676,9 +792,7 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
                         _ => return false,
                     }
                 }
-                parts
-                    .last()
-                    .map_or(true, |l| l.is_empty() || a.ends_with(l))
+                parts.last().is_none_or(|l| l.is_empty() || a.ends_with(l))
             } else {
                 a == b
             }
@@ -690,8 +804,23 @@ fn crit_match(v: &Value, crit: &Value) -> bool {
     }
 }
 
-impl Eval<'_> {
-    fn cell(&mut self, sheet: usize, r: u32, c: u32) -> Value {
+impl<'a> Eval<'a> {
+    pub(crate) fn new(wb: &'a Workbook, now: f64, memo: Option<&'a crate::calc::Memo>) -> Eval<'a> {
+        Eval {
+            wb,
+            visiting: HashSet::new(),
+            depth: 0,
+            now,
+            memo,
+        }
+    }
+
+    /// The value of a parsed formula in `sheet`.
+    pub(crate) fn ast(&mut self, sheet: usize, a: &Ast) -> Value {
+        self.eval(sheet, a).one()
+    }
+
+    pub(crate) fn cell(&mut self, sheet: usize, r: u32, c: u32) -> Value {
         let Some(sh) = self.wb.sheets.get(sheet) else {
             return verr("#REF!");
         };
@@ -700,6 +829,12 @@ impl Eval<'_> {
             return Value::Empty;
         }
         if let Some(f) = raw.strip_prefix('=') {
+            if let Some(v) = self
+                .memo
+                .and_then(|m| m.borrow().get(&(sheet, r, c)).cloned())
+            {
+                return v;
+            }
             if !self.visiting.insert((sheet, r, c)) || self.depth > 200 {
                 return verr("#CIRC!");
             }
@@ -707,6 +842,9 @@ impl Eval<'_> {
             let v = self.formula(sheet, f);
             self.depth -= 1;
             self.visiting.remove(&(sheet, r, c));
+            if let Some(m) = self.memo {
+                m.borrow_mut().insert((sheet, r, c), v.clone());
+            }
             return v;
         }
         literal(raw)
@@ -731,6 +869,7 @@ impl Eval<'_> {
             Ast::Num(n) => Arg::One(Value::Num(*n)),
             Ast::Str(s) => Arg::One(Value::Text(s.clone())),
             Ast::Bool(b) => Arg::One(Value::Bool(*b)),
+            Ast::Err(e) => Arg::One(verr(e)),
             Ast::Ref(sh, p, q, is_range) => {
                 let Some(si) = self.sheet_of(sheet, sh) else {
                     return Arg::One(verr("#REF!"));
@@ -968,6 +1107,8 @@ impl Eval<'_> {
                 }
             }
             "PI" => Value::Num(std::f64::consts::PI),
+            "TODAY" => Value::Num(self.now.floor()),
+            "NOW" => Value::Num(self.now),
             "LEN" => {
                 need!(1);
                 Value::Num(txt!(0).chars().count() as f64)
@@ -1129,6 +1270,36 @@ impl Eval<'_> {
                 match v.iter().position(|x| eq_val(x, &key)) {
                     Some(i) => Value::Num((i + 1) as f64),
                     None => verr("#N/A"),
+                }
+            }
+            "ISERROR" => {
+                need!(1);
+                Value::Bool(self.eval(sheet, &args[0]).one().is_err())
+            }
+            "DATE" => {
+                need!(3);
+                let (y, m, d) = (num!(0), num!(1), num!(2));
+                // months and days roll over like in Excel (DATE(2024;14;1) = 1.2.2025)
+                let months = y as i64 * 12 + (m as i64 - 1);
+                let (yy, mm) = (
+                    months.div_euclid(12) as i32,
+                    months.rem_euclid(12) as u32 + 1,
+                );
+                if !(1900..=9999).contains(&yy) {
+                    return verr("#NUM!");
+                }
+                Value::Num(crate::style::to_excel_date(yy, mm, 1) + d.trunc() - 1.0)
+            }
+            "YEAR" | "MONTH" | "DAY" => {
+                need!(1);
+                let n = num!(0);
+                match crate::style::excel_date(n) {
+                    Some((y, m, d)) => Value::Num(match name {
+                        "YEAR" => y as f64,
+                        "MONTH" => m as f64,
+                        _ => d as f64,
+                    }),
+                    None => verr("#NUM!"),
                 }
             }
             "ISNUMBER" => {
@@ -1462,6 +1633,35 @@ mod tests {
         w.set_ref(0, "Kosten!A1", "100").unwrap();
         w.set_ref(0, "A1", "=Kosten!A1*2").unwrap();
         assert_eq!(w.value(0, 0, 0), Value::Num(200.0));
+    }
+
+    #[test]
+    fn heute_und_jetzt_mit_fester_uhr() {
+        let w = wb(&[("A1", "=TODAY()"), ("A2", "=NOW()")]);
+        assert_eq!(w.value_at(0, 0, 0, 45_291.5), Value::Num(45_291.0));
+        assert_eq!(w.value_at(0, 1, 0, 45_291.75), Value::Num(45_291.75));
+    }
+
+    #[test]
+    fn zellenformat_und_masse() {
+        let mut w = Workbook::new();
+        w.sheets[0].set_style(
+            0,
+            0,
+            CellStyle {
+                bold: true,
+                num_fmt: "0.00".into(),
+                ..CellStyle::default()
+            },
+        );
+        assert!(w.sheets[0].style(0, 0).bold);
+        assert_eq!(w.sheets[0].style(1, 0), CellStyle::default());
+        assert_eq!(w.sheets[0].width(0), 10.0);
+        w.sheets[0].widths.insert(0, 8.5);
+        assert_eq!(w.sheets[0].width(0), 8.5);
+        assert_eq!(w.sheets[0].height(0), 20.0);
+        w.sheets[0].heights.insert(0, 30.0);
+        assert_eq!(w.sheets[0].height(0), 30.0);
     }
 
     #[test]

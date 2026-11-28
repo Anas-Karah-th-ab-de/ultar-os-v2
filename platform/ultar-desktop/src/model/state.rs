@@ -1,7 +1,6 @@
 //! Everything the bar and its sheets show, in one place.
 
 use super::apps::{self, AppInfo};
-use super::calendar::Month;
 use super::notes::Notes;
 use super::quick::{Presence, QuickValues};
 use ultar_i18n::Lang;
@@ -199,10 +198,10 @@ pub struct Desktop {
     pub values: QuickValues,
     /// Notifications.
     pub notes: Notes,
+    /// Calls of the person's other devices (banner and controls).
+    pub calls: super::calls::Calls,
     /// What is open.
     pub open: Open,
-    /// Month shown by the calendar and the selected day index.
-    pub calendar: Option<(Month, usize)>,
     /// The overview: its search text, the workspaces, the window thumbnails.
     pub overview: OverviewState,
     /// What the system services report (and the main display's settings id).
@@ -228,8 +227,8 @@ impl Desktop {
                 ..QuickValues::default()
             },
             notes: Notes::default(),
+            calls: super::calls::Calls::default(),
             open: Open::None,
-            calendar: None,
             overview: OverviewState::default(),
             svc: super::services::Services::default(),
             prefs: super::prefs::Prefs::default(),

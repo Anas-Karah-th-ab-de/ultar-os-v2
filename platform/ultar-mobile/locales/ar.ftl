@@ -172,3 +172,7 @@ mobile.mesh.open = فتح
 mobile.mesh.received = وصل ملف من جهاز آخر
 mobile.mesh.notice_close = إغلاق
 mobile.mesh.devices = الأجهزة
+mobile.dialog.view.title = يريد {name} رؤية هذه الشاشة والتحكم بها
+mobile.dialog.view.text = سيرى من يجلس عند {name}، جهازك المقترن، كل ما على هذه الشاشة ويمكنه الكتابة والنقر هنا. يمكنك إيقاف ذلك في أي وقت. لا يُعرض شيء قبل أن تسمح.
+mobile.dialog.view.accept = سماح
+mobile.dialog.view.decline = رفض

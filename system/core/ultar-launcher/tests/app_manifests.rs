@@ -11,7 +11,11 @@ fn base_app_manifests_parse() {
         "ultar-settings",
         "ultar-store",
         "ultar-editor",
+        "ultar-sheet",
+        "ultar-doc",
+        "ultar-pdf",
         "ultar-terminal",
+        "ultar-remote",
         "ultar-web",
     ] {
         let file = apps.join(app).join("ultar-app.toml");

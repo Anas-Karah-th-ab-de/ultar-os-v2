@@ -12,7 +12,9 @@ const POLICY: &str = r#"
 [[rule]]
 identity = "system.mediad"
 register = ["media"]
-publish = ["media.state", "media.command"]
+publish = ["media.state", "media.command", "media.there"]
+subscribe = ["mesh.state", "mesh.media_incoming", "mesh.media_pcm_in", "mesh.media_control", "mesh.media_progress"]
+call = ["mesh.media_open", "mesh.media_pcm", "mesh.media_ctl"]
 
 [[rule]]
 identity = "system.lock"

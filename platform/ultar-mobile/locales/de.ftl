@@ -164,3 +164,7 @@ mobile.mesh.open = Öffnen
 mobile.mesh.received = Eine Datei von einem anderen Gerät ist angekommen
 mobile.mesh.notice_close = Schließen
 mobile.mesh.devices = Geräte
+mobile.dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
+mobile.dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
+mobile.dialog.view.accept = Erlauben
+mobile.dialog.view.decline = Ablehnen

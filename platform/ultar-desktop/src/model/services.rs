@@ -90,6 +90,12 @@ pub enum Call {
     OfferCancel(u64),
     /// `agent.ask`: the helper does or answers this.
     AskHelper(String),
+    /// `mesh.call_answer {id, accept}`: answer or decline a call another device offers.
+    CallAnswer(u64, bool),
+    /// `mesh.call_end {id}`: hang up the call that is led here.
+    CallEnd(u64),
+    /// `call.mesh_mute {on}`: mute or unmute the microphone of the call that is led here.
+    CallMute(bool),
 }
 
 impl Call {

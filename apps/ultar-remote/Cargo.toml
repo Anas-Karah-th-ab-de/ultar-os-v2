@@ -1,0 +1,24 @@
+[package]
+name = "ultar-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Ultar OS remote view: see and operate another device's screen over the mesh (mesh item C1)"
+
+[lib]
+name = "ultar_remote"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-remote"
+path = "src/bin/ultar-remote.rs"
+
+[dependencies]
+ultar-ui = { path = "../../platform/ultar-ui", default-features = false }
+ultar-surface = { path = "../../platform/ultar-surface" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-i18n = { path = "../../system/core/ultar-i18n" }
+
+[dev-dependencies]
+ultar-ui = { path = "../../platform/ultar-ui" }

@@ -1,0 +1,26 @@
+# Remote view source (docs/integration/remote-view.md): when a paired device with the right
+# "control" asks and the person here says yes (system dialog of the mesh), this service
+# reads the screen from the compositor (right ui.capture for this user only,
+# compositor-rights.toml), sends the changed parts to the mesh and types what the viewer
+# types through virtual input devices. It never starts by itself: it waits for the mesh.
+# A lock screen ends the session; nothing is typed on it.
+editions = ["phone", "desktop"]
+exec = "/usr/bin/ultar-screend"
+args = [
+    "--bus", "/run/ultar/bus/screend.sock",
+    "--compositor", "/run/ultar/ui/compositor.sock",
+    "--log-socket", "/run/ultar/log/screend.sock",
+]
+user = 843
+# right input_inject: virtual pointer and keyboard (Linux: /dev/uinput; Ultar:
+# /dev/ultar/uinput); nothing else this service does needs a right.
+rights = ["input_inject"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+# One screen of up to 8K in memory (a frame, the last frame, the changes) and its encoding.
+"memory.max" = "384M"
+"pids.max" = "16"
+"cpu.weight" = "50"

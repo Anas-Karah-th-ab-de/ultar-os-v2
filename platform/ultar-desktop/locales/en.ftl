@@ -446,6 +446,21 @@ volumed.drive.mount = Mount
 desk.mesh.list.empty = No paired devices
 desk.mesh.list.here = Connected
 desk.mesh.list.devices = Paired devices
+desk.note.screend = {arg0} is looking at this screen
+desk.note.screend.body = Everything you do here is visible to that device, and it can type here.
+desk.note.screend.stop = Stop
+desk.call.incoming = Incoming call from {arg0}
+desk.call.incoming.body = On {arg0}. Answer here to talk through this computer.
+desk.call.answer = Answer
+desk.call.decline = Decline
+desk.call.active = In a call with {arg0}
+desk.call.active.body = The sound goes through {arg0}.
+desk.call.active.muted = Microphone off. The sound goes through {arg0}.
+desk.call.mute = Mute
+desk.call.unmute = Unmute
+desk.call.hangup = Hang up
+desk.note.mirror.title = {arg0}: {arg1}
+desk.note.mirror.locked = New notification on {arg0}
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = New shortcut…
@@ -488,3 +503,8 @@ desk.metrics.none = –
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Copied on {arg0}
 mesh.clip.body = Paste with Ctrl+V
+desk.app.remote = Remote view
+dialog.view.title = {name} wants to see and control this screen
+dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
+dialog.view.accept = Allow
+dialog.view.decline = Deny

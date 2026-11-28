@@ -1,0 +1,114 @@
+# ultar-sheet - texts of the spreadsheet (Arabic is the reference)
+app.sheet.name = Spreadsheet
+app.sheet.desc = Calculate with tables, formulas and charts of numbers in Arabic and English.
+
+sheet.untitled = New workbook
+sheet.loading = Opening the workbook…
+sheet.too_big.title = This workbook is too large
+sheet.too_big = The file is too large to open here (limit {mb} MB).
+sheet.damaged.title = This file can’t be opened
+sheet.damaged = The file is not a workbook this app can read: {reason}.
+
+sheet.reason.denied = writing here is not allowed
+sheet.reason.missing = the file or folder does not exist
+sheet.reason.exists = a file with this name exists
+sheet.reason.name = this name can’t be used
+sheet.reason.too_big = the file is too large
+sheet.reason.damaged = the file is damaged
+sheet.reason.io = the disk did not answer
+
+sheet.new = New
+sheet.open = Open…
+sheet.save = Save
+sheet.save_as = Save as…
+sheet.undo = Undo
+sheet.redo = Redo
+sheet.tools = Tools
+sheet.bold = B
+sheet.italic = I
+sheet.wrap = Wrap
+sheet.align_start = Start
+sheet.align_center = Centre
+sheet.align_end = End
+sheet.color = Text colour
+sheet.fill = Fill
+sheet.fmt_general = General
+sheet.fmt_number = 1,234.00
+sheet.fmt_percent = %
+sheet.fmt_currency = $
+sheet.fmt_date = Date
+sheet.freeze_row = Freeze row
+sheet.freeze_col = Freeze column
+sheet.rtl = Right to left
+sheet.sort_asc = Sort A–Z
+sheet.sort_desc = Sort Z–A
+sheet.fill_down = Fill down
+sheet.fill_right = Fill right
+sheet.row_add = + Row
+sheet.row_del = − Row
+sheet.col_add = + Column
+sheet.col_del = − Column
+sheet.find = Find
+sheet.extend = Extend selection
+
+sheet.formula = Formula bar
+sheet.formula.hint = Type a value or a formula such as =SUM(A1:A9)
+sheet.grid = Sheet
+sheet.empty = This sheet is empty. Select a cell and start typing.
+sheet.stats = Sum {sum}  ·  Average {avg}  ·  Count {n}
+
+sheet.find.field = Find
+sheet.replace.field = Replace with
+sheet.find_prev = Previous
+sheet.find_next = Next
+sheet.match_case = Match case
+sheet.replace_one = Replace
+sheet.replace_all = Replace all
+sheet.close = Close
+
+sheet.sheet_add = +
+sheet.sheet_rename = Rename sheet
+sheet.sheet_delete = Delete sheet
+sheet.sheet_deleted = Sheet deleted. Undo brings it back.
+sheet.sheet_last = The last sheet can’t be deleted.
+
+sheet.copied = Copied
+sheet.cut = Cut
+sheet.pasted = Pasted
+sheet.paste_cut = Pasted; what did not fit was left out.
+sheet.no_room = There is no room for more rows or columns.
+sheet.sort_failed = The selection can’t be sorted.
+sheet.not_found = Nothing found.
+sheet.replaced = Replaced in {n} cells.
+sheet.bad_formula = This formula can’t be read: {why}
+sheet.saved = Saved “{name}”
+sheet.saved_values = Saved “{name}” – a CSV file keeps only the values of this sheet.
+sheet.saved_utf8 = Saved “{name}” in UTF-8 – the old encoding could not hold every character.
+sheet.save_failed = Couldn’t save “{name}”: {reason}
+sheet.recovered = The unsaved changes were recovered. Save the workbook to keep them.
+
+sheet.ask.title = Save changes to “{name}”?
+sheet.ask.message = If you don’t save, the changes are lost.
+sheet.ask.save = Save
+sheet.ask.discard = Don’t save
+sheet.ask.cancel = Cancel
+sheet.name.title = Save as
+sheet.name.field = File name (in Documents)
+sheet.name.ok = Save
+sheet.open.title = Open a workbook
+sheet.open.ok = Open
+sheet.rename.title = Rename sheet
+sheet.rename.field = Sheet name
+sheet.rename.ok = Rename
+sheet.rename.taken = A sheet with this name exists.
+sheet.rename.bad = This sheet name can’t be used.
+sheet.recover.title = Recover unsaved changes?
+sheet.recover.message = The app closed unexpectedly. A copy of your unsaved changes was found.
+sheet.recover.ok = Recover
+sheet.recover.discard = Discard the copy
+sheet.agent.title = The assistant asks to change this workbook
+sheet.agent.message = The assistant wants to: {what}
+sheet.agent.allow = Allow
+sheet.agent.deny = Don’t allow
+sheet.agent.write = write {n} cells starting at {range}
+sheet.agent.add = add the sheet “{name}”

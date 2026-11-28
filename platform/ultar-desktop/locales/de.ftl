@@ -446,6 +446,21 @@ volumed.drive.mount = Einhängen
 desk.mesh.list.empty = Keine gekoppelten Geräte
 desk.mesh.list.here = Verbunden
 desk.mesh.list.devices = Gekoppelte Geräte
+desk.note.screend = {arg0} sieht diesen Bildschirm
+desk.note.screend.body = Alles, was du hier tust, ist auf diesem Gerät sichtbar, und es kann hier tippen.
+desk.note.screend.stop = Beenden
+desk.call.incoming = Eingehender Anruf von {arg0}
+desk.call.incoming.body = Auf {arg0}. Hier annehmen, um über diesen Computer zu sprechen.
+desk.call.answer = Annehmen
+desk.call.decline = Ablehnen
+desk.call.active = Im Gespräch mit {arg0}
+desk.call.active.body = Der Ton läuft über {arg0}.
+desk.call.active.muted = Mikrofon aus. Der Ton läuft über {arg0}.
+desk.call.mute = Stumm
+desk.call.unmute = Stumm aus
+desk.call.hangup = Auflegen
+desk.note.mirror.title = {arg0}: {arg1}
+desk.note.mirror.locked = Neue Benachrichtigung auf {arg0}
 
 # The desktop background: its menu, the app shortcuts, the rename dialog
 desk.desk.new_shortcut = Neue Verknüpfung…
@@ -488,3 +503,8 @@ desk.metrics.none = –
 # The device mesh: an entry of the shared clipboard arrived from another device.
 mesh.clip.title = Auf {arg0} kopiert
 mesh.clip.body = Mit Strg+V einfügen
+desk.app.remote = Fernansicht
+dialog.view.title = {name} möchte diesen Bildschirm sehen und steuern
+dialog.view.text = Wer an {name}, deinem gekoppelten Gerät, sitzt, sieht alles auf diesem Bildschirm und kann hier tippen und klicken. Du kannst es jederzeit beenden. Vorher wird nichts gezeigt.
+dialog.view.accept = Erlauben
+dialog.view.decline = Ablehnen

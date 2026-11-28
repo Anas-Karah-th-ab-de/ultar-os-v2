@@ -164,3 +164,7 @@ mobile.mesh.open = Open
 mobile.mesh.received = A file arrived from another device
 mobile.mesh.notice_close = Close
 mobile.mesh.devices = Devices
+mobile.dialog.view.title = {name} wants to see and control this screen
+mobile.dialog.view.text = The person at {name}, your paired device, will see everything on this screen and can type and click here. You can stop it at any time. Nothing is shown before you allow it.
+mobile.dialog.view.accept = Allow
+mobile.dialog.view.decline = Deny

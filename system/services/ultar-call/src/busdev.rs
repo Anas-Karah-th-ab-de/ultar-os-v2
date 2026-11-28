@@ -31,12 +31,25 @@ pub struct BusDevice {
     dir: PathBuf,
     pcm: PathBuf,
     camera: PathBuf,
+    /// Where the call's voice goes while it is answered on another device.
+    bridge: crate::mesh_tap::Bridge,
 }
 
 impl BusDevice {
     /// Follows `account.state` on its own thread; `dir` is the service's folder (pinned keys),
     /// `pcm` the sound node, `camera` the camera node.
     pub fn start(client: Client, dir: PathBuf, pcm: PathBuf, camera: PathBuf) -> Arc<Self> {
+        Self::start_with(client, dir, pcm, camera, crate::mesh_tap::Bridge::default())
+    }
+
+    /// [`BusDevice::start`] with the `bridge` the mesh relay switches the call's voice with.
+    pub fn start_with(
+        client: Client,
+        dir: PathBuf,
+        pcm: PathBuf,
+        camera: PathBuf,
+        bridge: crate::mesh_tap::Bridge,
+    ) -> Arc<Self> {
         let account = Arc::new(Mutex::new(None));
         if let Ok(sub) = client.subscribe::<AccountState>() {
             let a = account.clone();
@@ -57,6 +70,7 @@ impl BusDevice {
             dir,
             pcm,
             camera,
+            bridge,
         })
     }
 
@@ -155,10 +169,11 @@ impl Device for BusDevice {
         })
     }
     fn audio(&self) -> Box<dyn AudioIo> {
-        match crate::pcm::PcmAudio::open(&self.pcm) {
+        let card: Box<dyn AudioIo> = match crate::pcm::PcmAudio::open(&self.pcm) {
             Ok(a) => Box::new(a),
             Err(_) => Box::new(crate::pcm::Silent),
-        }
+        };
+        self.bridge.audio(card)
     }
     fn video(&self) -> Option<Box<dyn VideoIo>> {
         // without a camera the call still shows the other side

@@ -1,0 +1,17 @@
+[package]
+name = "calls-e2e"
+version = "0.8.1"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "End-to-end test of a call between two devices: two real mesh services and the real call service on each (tools: may join services)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dev-dependencies]
+ultar-mesh = { path = "../../system/services/ultar-mesh" }
+ultar-call = { path = "../../system/services/ultar-call" }
+ultar-bus = { path = "../../system/core/ultar-bus" }
+ultar-svckit = { path = "../../system/core/ultar-svckit", features = ["testkit"] }

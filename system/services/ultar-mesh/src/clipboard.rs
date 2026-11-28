@@ -13,7 +13,7 @@ pub const MAX_CLIP: usize = 16 * 1024;
 impl Node {
     /// The clipboard of this device changed.
     pub fn clipboard_set(&mut self, text: &str, confidential: bool) -> Vec<Effect> {
-        let echo = self.clip_remote.as_deref() == Some(text);
+        let echo = self.clip.remote.as_deref() == Some(text);
         if confidential || echo || text.is_empty() || text.len() > MAX_CLIP {
             return Vec::new();
         }
@@ -21,9 +21,9 @@ impl Node {
         if targets.is_empty() {
             return Vec::new();
         }
-        self.clip_seq += 1;
+        self.clip.seq += 1;
         self.clip.image = None;
-        let seq = self.clip_seq;
+        let seq = self.clip.seq;
         targets
             .into_iter()
             .map(|id| {
@@ -39,7 +39,7 @@ impl Node {
         if !fits || !wanted || !self.allows(peer, Right::Clipboard) {
             return Vec::new();
         }
-        self.clip_remote = Some(text.clone());
+        self.clip.remote = Some(text.clone());
         self.clip.image = None;
         let mut effects = vec![Effect::Clipboard(ClipboardRemote {
             from: peer.to_owned(),

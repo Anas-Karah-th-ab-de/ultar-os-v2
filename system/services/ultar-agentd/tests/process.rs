@@ -37,7 +37,7 @@ publish = ["llm.state", "llmcloud.state"]
 
 [[rule]]
 identity = "system.shell"
-call = ["agent.ask"]
+call = ["agent.ask", "agent.ask_voice"]
 subscribe = ["agent.state", "agent.reach"]
 "#;
 
@@ -262,6 +262,47 @@ fn a_device_without_a_model_gets_the_smallest_help() {
         "nothing was asked"
     );
     let _ = &b.world;
+}
+
+#[test]
+fn a_spoken_request_acts_but_on_a_locked_screen_nothing_is_changed() {
+    use ultar_bus::messages::agent::AskVoice;
+    let b = bench("agent-voice", None, None);
+    brain(&b, &Brain::Minimal);
+    let spoken = |text: &str, locked: bool| -> Answer {
+        call(
+            &b.shell,
+            &AskVoice {
+                text: text.to_owned(),
+                locked,
+            },
+        )
+        .unwrap()
+    };
+    // an unlocked screen: spoken like typed
+    let done = spoken("mute", false);
+    assert_eq!(done.steps[0].outcome, StepOutcome::Done);
+    assert_eq!(*b.seen.muted.lock().unwrap(), vec![true]);
+    // a locked screen: the helper may not change anything, nothing reaches the sound service
+    let shut = spoken("mute", true);
+    assert!(
+        shut.steps.iter().all(|s| s.outcome != StepOutcome::Done),
+        "{:?}",
+        shut.steps
+    );
+    assert_eq!(
+        *b.seen.muted.lock().unwrap(),
+        vec![true],
+        "a locked screen changed the sound"
+    );
+    assert!(call(
+        &b.shell,
+        &AskVoice {
+            text: "  ".into(),
+            locked: true
+        }
+    )
+    .is_err());
 }
 
 #[test]

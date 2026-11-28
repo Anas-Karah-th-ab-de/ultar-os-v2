@@ -1,0 +1,27 @@
+[package]
+name = "ultar-voiced"
+version = "0.8.0"
+edition = "2021"
+license = "Proprietary"
+authors = ["KM Code Craft <https://code-craft.tech>"]
+description = "Voice control of the helper: the person says the wake word, the helper hears the request and answers aloud – everything on the device, off by default (system services, area 4)"
+
+[lib]
+name = "ultar_voiced"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultar-voiced"
+path = "src/bin/ultar-voiced.rs"
+
+[dependencies]
+ultar-bus = { path = "../../core/ultar-bus" }
+ultar-i18n = { path = "../../core/ultar-i18n" }
+ultar-service = { path = "../../core/ultar-service" }
+ultar-svckit = { path = "../../core/ultar-svckit" }
+serde = { version = "1", features = ["derive"] }
+# the answer of the speech-to-text server (already used by ultar-agentd)
+serde_json = "1"
+
+[dev-dependencies]
+ultar-svckit = { path = "../../core/ultar-svckit", features = ["testkit"] }

@@ -413,6 +413,13 @@ impl Shell {
         let Some(action) = self.d.notes.action(id, index as usize) else {
             return Outcome::none();
         };
+        if crate::model::calls::is_call_note(id) {
+            let d = &mut self.d;
+            return match d.calls.pressed(id, &action, &mut d.notes) {
+                Some(call) => Outcome::effect_and_close(Effect::Service(call)),
+                None => Outcome::none(),
+            };
+        }
         if id >= crate::model::notes::LOCAL_IDS - 1024 {
             self.d.notes.dismiss(id);
             // A plugged-in drive's notice opens Files at its place.

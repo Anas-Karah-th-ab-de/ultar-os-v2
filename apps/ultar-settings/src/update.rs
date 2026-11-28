@@ -9,6 +9,7 @@ mod drivers;
 mod mesh;
 mod more;
 mod panel;
+pub(crate) mod voice;
 
 pub use drivers::offered as offered_drivers;
 
@@ -96,6 +97,7 @@ pub fn load_page(state: &mut State, ports: &mut Ports) {
             more::load(state, ports, id);
             if id == cloud::PANEL {
                 cloud::load(state, ports);
+                voice::load(state, ports);
             }
         }
         PageKind::NoService | PageKind::About => {}
@@ -145,6 +147,8 @@ pub fn load_page_light(state: &mut State, ports: &mut Ports) {
         }
         PageKind::Status(kind) => load_status(state, ports, kind),
         PageKind::Mesh => mesh::load(state, ports),
+        // the training counts and the test result change while the person speaks
+        PageKind::Panel(id) if id == cloud::PANEL => voice::load(state, ports),
         _ => {}
     }
 }
@@ -197,6 +201,7 @@ pub fn handle(c: &mut Ctl<'_>, node: NodeId, kind: ActionKind) -> Outcome {
         a if bluetooth::owns(a) => bluetooth::handle(c, a, kind),
         a if mesh::owns(a) => mesh::handle(c, a, kind),
         a if cloud::owns(a) => cloud::handle(c, a, kind),
+        a if voice::owns(a) => voice::handle(c, a, kind),
         _ => Outcome::default(),
     }
 }

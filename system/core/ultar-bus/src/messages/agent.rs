@@ -46,6 +46,17 @@ pub struct Ask {
     pub text: String,
 }
 
+/// `agent.ask_voice` – a request the person spoke; the voice control service calls this, so
+/// the helper knows it came in by voice and answers aloud. Same reply as [`Ask`].
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct AskVoice {
+    /// What the person said.
+    pub text: String,
+    /// The screen was locked when it was said: the helper then only looks and explains, it
+    /// changes nothing and ends nothing (the harmless requests only).
+    pub locked: bool,
+}
+
 /// How a step went.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StepOutcome {
@@ -99,7 +110,7 @@ pub struct Answer {
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(AgentState, Ask);
+version_one!(AgentState, Ask, AskVoice);
 
 // Version 2: a step names its area and what it was used on.
 impl Message for Step {
@@ -119,6 +130,12 @@ impl Topic for AgentState {
 impl Call for Ask {
     const SERVICE: &'static str = SERVICE;
     const METHOD: &'static str = "ask";
+    type Reply = Answer;
+}
+
+impl Call for AskVoice {
+    const SERVICE: &'static str = SERVICE;
+    const METHOD: &'static str = "ask_voice";
     type Reply = Answer;
 }
 

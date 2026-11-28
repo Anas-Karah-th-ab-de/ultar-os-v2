@@ -1,0 +1,22 @@
+# Voice control "Hey KM" (docs/integration/ultar-voiced.md): listens through the audio service
+# only while the person has switched it on, recognises the words on the device (whisper.cpp,
+# started on demand), speaks the answer (eSpeak NG) and hands the request to the helper.
+exec = "/usr/bin/ultar-voiced"
+args = [
+    "--bus", "/run/ultar/bus/voiced.sock",
+    "--state", "/data/ultar/voice",
+    "--log-socket", "/run/ultar/log/voiced.sock",
+]
+# Its own user (842) without kernel rights. Its files: the settings, the person's trained
+# words and voice (no recordings) and the speech models the update brought.
+user = 842
+dirs = ["/data/ultar/voice"]
+notify = true
+after = ["bus"]
+restart = "always"
+
+[cgroup]
+# The recogniser child (whisper.cpp, "small" model) runs inside this limit.
+"memory.max" = "3G"
+"pids.max" = "32"
+"cpu.weight" = "50"

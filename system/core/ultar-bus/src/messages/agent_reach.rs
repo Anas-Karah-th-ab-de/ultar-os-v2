@@ -137,6 +137,9 @@ pub struct Entry {
     pub at: u64,
     /// What the person asked (data).
     pub request: String,
+    /// The request came in by voice; older entries omit it.
+    #[serde(default)]
+    pub by_voice: bool,
     /// Where the helper thought.
     pub brain: Brain,
     /// What it did, in order.
@@ -176,7 +179,16 @@ pub enum Progress {
 macro_rules! version_one {
     ($($t:ty),*) => { $( impl Message for $t { const VERSION: u16 = 1; } )* };
 }
-version_one!(Reach, Activity, ClearActivity, Cleared, Progress);
+version_one!(Reach, ClearActivity, Cleared, Progress);
+
+// Version 2: an entry says whether its request came in by voice.
+impl Message for Activity {
+    const VERSION: u16 = 2;
+}
+// Version 3: an entry carries the by-voice flag.
+impl Message for Entry {
+    const VERSION: u16 = 3;
+}
 
 impl Topic for Progress {
     const TOPIC: &'static str = "agent.progress";

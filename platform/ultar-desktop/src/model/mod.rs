@@ -5,6 +5,7 @@
 pub mod apps;
 pub mod calc;
 pub mod calendar;
+pub mod calls;
 pub mod characters;
 pub mod desk_files;
 pub mod helper;

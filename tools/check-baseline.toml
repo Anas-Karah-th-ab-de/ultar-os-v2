@@ -430,11 +430,6 @@ count = 1
 
 [[entry]]
 rule = "text"
-path = "apps/ultar-office/src/pdf.rs"
-count = 5
-
-[[entry]]
-rule = "text"
 path = "external/ultar-telegram/src/lib.rs"
 count = 2
 
@@ -960,18 +955,8 @@ count = 1
 
 [[entry]]
 rule = "size"
-path = "apps/ultar-office/src/pdf.rs"
-count = 1
-
-[[entry]]
-rule = "size"
 path = "apps/ultar-office/src/sheet.rs"
 count = 4
-
-[[entry]]
-rule = "size"
-path = "apps/ultar-office/src/xlsx.rs"
-count = 2
 
 [[entry]]
 rule = "size"
@@ -2892,4 +2877,11 @@ count = 1
 rule = "brand"
 path = "system/services/ultar-sshd/src/main.rs"
 count = 2
+
+
+# servo-host is its own workspace and cannot use the HAL crate; it names the kernel's sound node once
+[[entry]]
+rule = "paths"
+path = "external/servo-host/src/pcm.rs"
+count = 1
 

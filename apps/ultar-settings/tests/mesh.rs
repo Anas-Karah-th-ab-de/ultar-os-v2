@@ -197,6 +197,31 @@ fn a_devices_rights_change_at_once_and_unpairing_asks_first() {
 }
 
 #[test]
+fn calls_and_sound_are_off_after_pairing_and_the_ninth_switch_turns_them_on() {
+    for lang in [Lang::Ar, Lang::En, Lang::De] {
+        let (world, mut app) = open(lang, Some(mesh(true)));
+        press(&mut app, Act::MeshDevice(0));
+        assert!(app.view.node(Act::MeshGrant(8)).is_some(), "{lang:?}");
+        assert!(app.view.node(Act::MeshGrant(9)).is_none());
+        // Off to begin with: the paired device may not call, play or mirror here.
+        let peer = world.borrow().system.mesh.clone().unwrap().peers[0].clone();
+        assert!(!peer.grants().contains(&Grant::Call));
+        press(&mut app, Act::MeshGrant(8));
+        assert_eq!(
+            last(&world),
+            "mesh.set_grants phone-id [Handoff, Files, Clipboard, Call]",
+            "{lang:?}"
+        );
+        press(&mut app, Act::MeshGrant(8));
+        assert_eq!(
+            last(&world),
+            "mesh.set_grants phone-id [Handoff, Files, Clipboard]",
+            "{lang:?}"
+        );
+    }
+}
+
+#[test]
 fn every_text_of_the_page_exists_in_all_three_languages() {
     let read = |lang: &str| {
         let file = format!("apps/ultar-settings/locales/{lang}.ftl");

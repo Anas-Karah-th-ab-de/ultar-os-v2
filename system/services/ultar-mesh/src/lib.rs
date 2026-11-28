@@ -14,15 +14,20 @@
 
 mod acting;
 pub mod arrived;
+pub mod audio_link;
+pub mod calls;
 pub mod clip_bridge;
 pub mod clip_image;
 mod clip_service;
 mod clip_share;
 pub mod clipboard;
+mod codec;
 pub mod compute;
 pub mod device;
 pub mod handoff;
 mod lending;
+pub mod media_link;
+mod media_service;
 pub mod model;
 pub mod net;
 pub mod node;
@@ -36,6 +41,8 @@ pub mod secure;
 pub mod service;
 pub mod transfer;
 pub mod trust;
+pub mod view;
+mod viewbus;
 pub mod wire;
 
 pub use service::MeshService;
