@@ -19,7 +19,8 @@ optional    = ["modem"]
 
 [permissions]
 # call.*: dial, answer, end, the call state (the call service; numbers and names: no other app).
-bus         = ["call.*"]
+# launcher.start: "Phone settings" opens the Settings app.
+bus         = ["call.*", "launcher.start"]
 # The phone draws its own window header.
 ui          = ["ui.client-header"]
 network     = "none"

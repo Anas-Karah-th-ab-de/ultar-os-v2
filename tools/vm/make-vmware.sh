@@ -207,10 +207,13 @@ for s in $SESSION_SERVICES; do
 done
 if [ -n "$INSTALLER_IMG" ]; then
   # the installer (profile installer only) and the first start (profile system); the authentication
-  # service starts after the first start has written the account the installer was given
+  # and the settings service start after the first start has written the account and the settings
+  # the installer was given
   for s in installer firstboot; do cp "rootfs/etc/ultar/services/$s.toml" "$R/etc/ultar/services/"; done
-  sed -i 's/^after = \["bus"\]$/after = ["bus", "firstboot"]/' "$R/etc/ultar/services/authd.toml"
-  grep -q '^after = \["bus", "firstboot"\]$' "$R/etc/ultar/services/authd.toml" || fail "authd.toml: after"
+  for s in authd settingsd; do
+    sed -i 's/^after = \["bus"\]$/after = ["bus", "firstboot"]/' "$R/etc/ultar/services/$s.toml"
+    grep -q '^after = \["bus", "firstboot"\]$' "$R/etc/ultar/services/$s.toml" || fail "$s.toml: after"
+  done
 fi
 printf '%s\n' "$EDITION" >"$R/etc/ultar/edition"
 printf 'init\n' >"$R/etc/ultar/session"

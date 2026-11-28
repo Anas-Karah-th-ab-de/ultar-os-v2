@@ -8,12 +8,16 @@
 //! counter of the next id only grows – no id is ever given to another app.
 //!
 //! ```text
-//! ultar-launcher-state 2
+//! ultar-launcher-state 3
 //! range 20000 49999
 //! next 20002
-//! app camera 20000 app.system 1 1.4.0 <sha-256 of the manifest> network,ui.capture <signer key id>
-//! app acme.game 20001 app.standard 0 1.0 <sha-256> - <signer key id>
+//! app camera 20000 app.system 1 1.4.0 <sha-256 of the manifest> network,ui.capture <signer>
+//! app acme.game 20001 app.standard 0 1.0 <sha-256> - <signer>
 //! ```
+//!
+//! The signer is the full SHA-256 of the signing key (64 hex digits, format
+//! 3). Files of format 2 hold the 16-digit short id; such an entry keeps it
+//! until the app is next installed, which writes the full one (R2-2).
 
 use crate::appid::AppId;
 use crate::atomic;
@@ -25,7 +29,9 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 /// First line of the state file.
-const MAGIC: &str = "ultar-launcher-state 2";
+const MAGIC: &str = "ultar-launcher-state 3";
+/// First line of the format before full signer identities (still read).
+const MAGIC_2: &str = "ultar-launcher-state 2";
 /// Most apps the state holds (installed and uninstalled); `list` shows all
 /// of them (`ultar_bus::messages::launcher::MAX_APPS` is the same number).
 pub const MAX_APPS: usize = ultar_bus::messages::launcher::MAX_APPS;
@@ -105,9 +111,10 @@ pub struct Entry {
     pub digest: String,
     /// What is granted.
     pub granted: PermissionSet,
-    /// Id of the key that signed it (16 hex digits): the app's identity
-    /// together with its id – kept after uninstalling, so the id, user id
-    /// and kept data only ever go back to the same signer.
+    /// SHA-256 of the key that signed it (64 hex digits; 16 in entries of
+    /// format 2): the app's identity together with its id – kept after
+    /// uninstalling, so the id, user id and kept data only ever go back to
+    /// the same signer.
     pub signer: String,
 }
 
@@ -138,7 +145,7 @@ fn parse_entry(words: &[&str]) -> Option<(AppId, Entry)> {
     let [id, uid, profile, installed, version, digest, granted, signer] = words else {
         return None;
     };
-    let hex16 = signer.len() == 16
+    let signer_ok = matches!(signer.len(), 16 | 64)
         && signer
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
@@ -158,7 +165,7 @@ fn parse_entry(words: &[&str]) -> Option<(AppId, Entry)> {
         version: version_ok(version).then(|| (*version).to_owned())?,
         digest: hex.then(|| (*digest).to_owned())?,
         granted: PermissionSet::parse_names(granted)?,
-        signer: hex16.then(|| (*signer).to_owned())?,
+        signer: signer_ok.then(|| (*signer).to_owned())?,
     };
     Some((AppId::new(id).ok()?, entry))
 }
@@ -183,7 +190,10 @@ impl State {
                 .map(|w| w.parse().map_err(|_| StateError::Corrupt(n + 1)))
                 .collect()
         };
-        if !header(MAGIC)?.is_empty() {
+        // format 2 is read as well (short signer ids); it is written as 3
+        let first = text.lines().next().unwrap_or_default();
+        let magic = if first == MAGIC_2 { MAGIC_2 } else { MAGIC };
+        if !header(magic)?.is_empty() {
             return Err(StateError::Corrupt(1));
         }
         if header("range ")? != [range.first, range.last] {

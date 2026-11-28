@@ -29,7 +29,8 @@ pub(crate) struct Instance {
     pub(crate) pid: u32,
     /// Stage 1, the launcher's own child: the only process signalled (0: none).
     pub(crate) helper: u32,
-    /// The app's memory group (the last resort of a stop).
+    /// The memory group of this instance's role, below the app's group
+    /// (`apps/<app>/<role>`; the last resort of a stop).
     pub(crate) group: Option<std::path::PathBuf>,
     /// Steps of a stop taken: 0 `SIGTERM`, 1 end the cell, 2 hard end.
     pub(crate) escalated: u8,
@@ -106,24 +107,24 @@ impl Instance {
     }
 
     /// The next step of a stop whose deadline passed: end the cell, then
-    /// end stage 1 and empty the memory group.
-    pub(crate) fn escalate(&mut self, grace: Duration, now: Instant) {
+    /// end stage 1. At the hard end it returns the role's memory group,
+    /// which the caller empties once it let go of the launcher's lock
+    /// ([`crate::cleanup::end_group`] waits; review R2-3).
+    pub(crate) fn escalate(&mut self, grace: Duration, now: Instant) -> Option<std::path::PathBuf> {
         if self.escalated == 0 {
             self.escalated = 1;
             self.deadline = Some(now + grace);
             if self.helper != 0 {
                 let _ = send_signal(self.helper, StopSignal::KillRequest);
             }
-            return;
+            return None;
         }
         self.escalated = 2;
         self.deadline = None;
         if self.helper != 0 {
             let _ = send_signal(self.helper, StopSignal::Kill);
         }
-        if let Some(dir) = &self.group {
-            crate::cleanup::end_group(dir);
-        }
+        self.group.clone()
     }
 }
 

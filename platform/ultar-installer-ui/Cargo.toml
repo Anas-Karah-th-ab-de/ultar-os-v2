@@ -30,6 +30,8 @@ ultar-bus = { path = "../../system/core/ultar-bus" }
 ultar-i18n = { path = "../../system/core/ultar-i18n" }
 ultar-slots = { path = "../../system/core/ultar-slots" }
 ultar-brand = { path = "../../system/core/ultar-brand" }
+# First start: the choices become settings in the settings service's own store format
+ultar-settingsd = { path = "../../system/core/ultar-settingsd" }
 getrandom = "0.2"
 # Argon2id hash of the user password for the first start (RustCrypto, pure Rust)
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
@@ -40,3 +42,4 @@ ultar-slots = { path = "../../system/core/ultar-slots" }
 ultar-installer-ui = { path = ".", features = ["testkit"] }
 ultar-ui = { path = "../ultar-ui" }
 png = "0.17"
+toml = { version = "0.8", default-features = false, features = ["parse"] }

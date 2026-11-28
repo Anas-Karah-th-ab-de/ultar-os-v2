@@ -147,10 +147,11 @@ identity = "system.ril"
 register = ["modem"]
 publish  = ["modem.state"]
 
-# The phone app: every call request and the call state (numbers and names: no other app).
+# The phone app: every call request and the call state (numbers and names: no other app);
+# launcher.start for "Phone settings" (opens the Settings app).
 [[rule]]
 identity  = "app.phone"
-call      = ["call.*"]
+call      = ["call.*", "launcher.start"]
 subscribe = ["call.state", "call.picture"]
 
 # The Ultar Store is the installer UI (DESKTOP-SPEC §7.3): it asks the

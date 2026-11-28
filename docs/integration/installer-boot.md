@@ -32,11 +32,29 @@ binaries (the patch deletes the committed test binaries below).
    fixed (`weckertest`): a connection still queued at a listener that went away (here: the bus client
    reconnecting while busd ended) never saw end of file, and `SO_RCVTIMEO` was ignored, so the client's
    greeting waited forever and `BusLink::stop` never returned.
-4. **authd is not in this base** (`wip/desktop-shell`). `ultar-firstboot` writes the account in authd's file
+4. **All choices are applied at the first start (2026-11-28).** Before, only the account was taken over;
+   language, keyboard, time zone, accessibility, device name, edition and components stayed unused in the
+   record. `ultar-firstboot --settings-dir /data/ultar/settings --install-dir /data/ultar/install`
+   (`src/firstboot_settings.rs`) now stores `region.language`, `region.keyboard.layouts/active`,
+   `datetime.timezone.name` (+ `datetime.timezone.automatic = false`, only together with a valid name),
+   `accessibility.large_text/screen_reader` and `sharing.device_name` in the settings service's own store
+   format: every key resolved and checked against the seed schema, the file chosen by the key's scope
+   (`system.toml` / `user-default.toml`), written atomically; a value already stored is kept, a damaged file is
+   left for settingsd to quarantine, a refused value is reported, nothing of this fails the start (the account
+   must not be lost). Edition, components (only known ids), codecs and "updates during the installation" go
+   into `selection.toml` (`pending = true`) for the Store/update service, which install them once online (the
+   medium carries no component packages). The log line `[firstboot] settings stored=… kept=… refused=[…]
+   damaged=[…] selection=…` names keys only, never values. In the installation image authd **and settingsd**
+   start after firstboot (`make-vmware.sh`); settingsd adopts the files at its start (init's `dirs`).
+   `installer-e2e.py` checks the line (8 values from the defaults, nothing refused or damaged, selection
+   written). Unit tests: right file per scope, settingsd's `Store::open` reads them without a notice, kept and
+   damaged files, refused values, hostile component text. **Open:** the Store does not read `selection.toml`
+   yet (shows/installs the chosen components when online).
+5. **authd is not in this base** (`wip/desktop-shell`). `ultar-firstboot` writes the account in authd's file
    format (`/data/ultar/auth/users`, header `#ultar-auth crc32=…`, `user <name> admin=1 display=<hex>
    password=<argon2id phc> pin=-`, owner 813 = authd's id there). The installer profile does not start authd
    (the installer does not need it: the password is hashed by the installer itself).
-5. Ids: `installer = 840` (`ids.toml`); 813–832 are taken in the shell/service branches. Merge both lists.
+6. Ids: `installer = 840` (`ids.toml`); 813–832 are taken in the shell/service branches. Merge both lists.
 
 ## Task 1 – flaky vmware-like gate: root cause
 

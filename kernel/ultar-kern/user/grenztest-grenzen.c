@@ -175,6 +175,38 @@ static void tree_rules(void) {
     check("Baum: Untergruppe, dann Gruppe entfernen", rmdir(G_PIDS "/unter") == 0 && rmdir(G_PIDS) == 0 && access(G_PIDS, F_OK) == -1);
 }
 
+#define G_KILL CG "/apps/grenz-ende"
+
+/* child: join `group`, then wait to be ended */
+static void sit_in(const char *group) {
+    if (put_text(pf("%s/cgroup.procs", group), "0") != 0) _exit(40);
+    for (;;) pause();
+}
+
+/* review R2-3 / S-9: `cgroup.kill` ends the group and its subgroups at once, by group, not by number */
+static void group_kill(void) {
+    check("Ende: Gruppe und Untergruppe angelegt", mkdir(G_KILL, 0755) == 0 && mkdir(G_KILL "/unter", 0755) == 0);
+    pid_t a = fork();
+    if (a == 0) sit_in(G_KILL);
+    pid_t b = fork();
+    if (b == 0) sit_in(G_KILL);
+    pid_t c = fork();
+    if (c == 0) sit_in(G_KILL "/unter");
+    pid_t bystander = fork();
+    if (bystander == 0) for (;;) pause();
+    long end = now_ms() + 10000;
+    while ((num_at(G_KILL "/pids.current") < 2 || num_at(G_KILL "/unter/pids.current") < 1) && now_ms() < end) nap_ms(10);
+    check("Ende: cgroup.kill steht im Verzeichnis", access(G_KILL "/cgroup.kill", W_OK) == 0);
+    check("Ende: Unsinn -> EINVAL, Wurzel und feste Äste -> EINVAL", put_text(G_KILL "/cgroup.kill", "2") == -EINVAL && put_text(CG "/cgroup.kill", "1") == -EINVAL && put_text(CG "/apps/cgroup.kill", "1") == -EINVAL && put_text(CG "/session/cgroup.kill", "1") == -EINVAL);
+    check("Ende: cgroup.kill schreiben", put_text(G_KILL "/cgroup.kill", "1") == 0);
+    int sa = 0, sb = 0, sc = 0;
+    check("Ende: alle drei durch SIGKILL beendet (auch in der Untergruppe)", wait_ms(a, &sa, 5000) && wait_ms(b, &sb, 5000) && wait_ms(c, &sc, 5000) && WIFSIGNALED(sa) && WTERMSIG(sa) == SIGKILL && WIFSIGNALED(sb) && WIFSIGNALED(sc) && WTERMSIG(sc) == SIGKILL);
+    check("Ende: Gruppe leer, Unbeteiligter und Schreiber leben", num_at(G_KILL "/pids.current") == 0 && keyed_num(G_KILL "/cgroup.events", "populated") == 0 && kill(bystander, 0) == 0);
+    kill(bystander, SIGKILL);
+    waitpid(bystander, NULL, 0);
+    check("Ende: Gruppen entfernt", rmdir(G_KILL "/unter") == 0 && rmdir(G_KILL) == 0);
+}
+
 /* cell: ordinary activity (files, links, pipes, processes, memory), then tell the host and wait for it */
 static int cell_ready;
 static int busy_cell(long go_fd) {
@@ -233,5 +265,6 @@ void limit_tests(void) {
     memory_limit_calls();
     pids_limit();
     tree_rules();
+    group_kill();
     cell_group();
 }

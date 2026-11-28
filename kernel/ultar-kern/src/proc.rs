@@ -1193,6 +1193,24 @@ pub fn exit_current(status: i32) -> ! {
     exit_thread(status, true)
 }
 
+/// `cgroup.kill`: ends every thread group whose resource group is `g` or lies below it, all
+/// under one hold of the process table – no member can exit and free its number in between, so
+/// nothing else is ever hit (review R2-3 / S-9). Returns how many groups were ended.
+pub fn kill_resource_group(g: u16) -> usize {
+    let mut ps = PROCS.lock();
+    let mut ended = 0;
+    // one at a time: ending a group changes the table (no list to allocate under the lock)
+    while let Some(tgid) = ps
+        .iter()
+        .find(|p| p.pid == p.tgid && p.killed.is_none() && !matches!(p.state, State::Dead | State::Zombie(_)) && crate::groups::within(p.g.res, g))
+        .map(|p| p.tgid)
+    {
+        kill_group(&mut ps, tgid, 9);
+        ended += 1;
+    }
+    ended
+}
+
 /// Gruppe von außen beenden (Signal)
 pub fn kill_group(ps: &mut Vec<Box<Proc>>, tgid: u64, status: i32) {
     // trifft es die eigene Gruppe mitten in einem Systemaufruf (z. B. abort() → kill(getpid(), SIGABRT)),

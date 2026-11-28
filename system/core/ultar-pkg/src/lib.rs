@@ -102,6 +102,12 @@ pub fn key_id(pubkey: &VerifyingKey) -> String {
     sha256_hex(&pubkey.to_bytes())[..16].to_string()
 }
 
+/// The full identity of a public key: all 64 hex digits of its SHA-256. What decides
+/// "the same signer" (the short [`key_id`] only finds the key; review R2-2).
+pub fn key_fingerprint(pubkey: &VerifyingKey) -> String {
+    sha256_hex(&pubkey.to_bytes())
+}
+
 fn load_signing(hex_priv: &str) -> Result<SigningKey, String> {
     let b = hex::decode(hex_priv.trim()).map_err(|e| format!("Schlüssel hex: {e}"))?;
     let arr: [u8; 32] = b
@@ -247,6 +253,8 @@ pub struct SignedManifest {
     pub bytes: Vec<u8>,
     /// Id of the verifying key ([`key_id`]: 16 hex digits of its SHA-256).
     pub key_id: String,
+    /// Full identity of the verifying key ([`key_fingerprint`]: 64 hex digits).
+    pub key_fingerprint: String,
     /// Name of the key's file in the trusted directory (before the first `.`).
     pub key_name: String,
 }
@@ -298,6 +306,7 @@ pub fn verify_signed(uap: &Path, trusted_dir: &Path) -> Result<SignedManifest, S
     Ok(SignedManifest {
         bytes: p.manifest,
         key_id: key_id(key),
+        key_fingerprint: key_fingerprint(key),
         key_name: name.clone(),
     })
 }
